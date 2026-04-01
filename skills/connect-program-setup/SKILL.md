@@ -1,0 +1,43 @@
+---
+name: connect-program-setup
+description: >
+  Create or configure a Program in Connect for the CRISPR-Connect opportunity.
+  Checks if an existing program fits before creating a new one.
+---
+
+# Connect Program Setup
+
+Create or select a Connect program for this opportunity.
+
+## Process
+
+1. **Read the IDD** from `ACE/<opp-name>/idd.md`.
+
+2. **Check for existing programs** that match this opportunity's domain/scope.
+   Use connect-labs MCP `list_solicitations` or similar to browse existing programs.
+
+3. **Decide: reuse or create**
+   - If an existing program fits, note the program ID
+   - If not, create a new program with appropriate name, description, and config
+
+4. **Write program details** to `ACE/<opp-name>/connect-setup/program.md`:
+   - Program ID
+   - Program name
+   - Whether reused or newly created
+   - Configuration details
+
+## MCP Tools Used
+- Google Drive: `drive_read_file`, `drive_create_file`
+- Connect (connect-labs): existing solicitation tools for discovery
+- Connect: `create_program` — **NOT YET BUILT** (CCC-301)
+
+## Current Workaround
+1. Read the IDD and determine program requirements
+2. Ask the user: "Does an existing Connect program fit this opportunity, or should we create a new one?"
+3. If new: provide the user with the recommended program name and configuration
+4. Ask the user to create it in the Connect UI and provide the Program ID
+5. Record the Program ID in the opportunity folder
+
+## Mode Behavior
+- **Auto:** Create program (or guide manual creation), proceed
+- **Review:** Present program choice for approval
