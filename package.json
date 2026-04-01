@@ -1,0 +1,19 @@
+{
+  "name": "ace",
+  "version": "0.1.0",
+  "description": "AI Connect Engine - orchestrator for building Connect Opps using AI",
+  "type": "module",
+  "scripts": {
+    "mcp:gdrive": "npx tsx mcp/google-drive-server.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "googleapis": "^171.4.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "zod": "^4.3.6"
+  }
+}
