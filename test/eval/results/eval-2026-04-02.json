@@ -1,7 +1,7 @@
 [
   {
     "iddName": "malaria-bed-nets",
-    "timestamp": "2026-04-02T00:14:38.821Z",
+    "timestamp": "2026-04-02T13:57:36.370Z",
     "learn": {
       "nova": {
         "blueprint": {
@@ -15,7 +15,7 @@
                   "name": "Household Identification Quiz",
                   "type": "survey",
                   "learn_module": {
-                    "description": "Learn to identify households eligible for bed net distribution — those with children under 5 or pregnant women — and how to assess their current bed net needs."
+                    "description": "Learn to identify households eligible for bed net distribution based on the presence of children under 5 and pregnant women."
                   },
                   "assessment": {
                     "score_question": "score",
@@ -23,129 +23,214 @@
                   },
                   "questions": [
                     {
-                      "id": "q1_no_eligible_members",
+                      "id": "lesson_summary",
+                      "type": "label",
+                      "label": "Eligible households have children under 5 or pregnant women. Verify eligibility through observation and interviews. Document all eligible members and current bed net status before registering."
+                    },
+                    {
+                      "id": "q1",
                       "type": "select1",
-                      "label": "Scenario: You arrive at a household. The head of household tells you they have 4 family members: himself (age 35), his wife (age 30), and two children (ages 6 and 8). No one in the household is pregnant. Should you register this household for bed net distribution?",
+                      "label": "A household has 3 children ages 2, 7, and 12. Is this household eligible for bed nets?",
+                      "hint": "Eligibility targets specific vulnerable groups: children under 5 and pregnant women.",
                       "required": "true()",
                       "options": [
                         {
+                          "value": "yes_under5",
+                          "label": "Yes, the 2-year-old qualifies"
+                        },
+                        {
                           "value": "yes_all",
-                          "label": "Yes — all households in the area should receive bed nets"
+                          "label": "Yes, all children qualify"
                         },
                         {
-                          "value": "not_eligible",
-                          "label": "No — this household does not meet the eligibility criteria"
+                          "value": "no_over5",
+                          "label": "No, most children are over 5"
                         },
                         {
-                          "value": "yes_one_net",
-                          "label": "Yes — but only distribute one net since the children are older"
-                        },
-                        {
-                          "value": "refer",
-                          "label": "Refer them to the health facility for assessment"
+                          "value": "only_no_nets",
+                          "label": "Only if they have no nets"
                         }
                       ]
                     },
                     {
-                      "id": "q2_absent_household",
+                      "id": "q2",
                       "type": "select1",
-                      "label": "Scenario: A neighbor tells you that a nearby household has a pregnant woman, but when you visit, no one is home. What is the correct action?",
+                      "label": "A woman is 4 months pregnant with no children under 5. Is her household eligible?",
+                      "hint": "Consider all categories of eligible household members, not just children.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "skip",
-                          "label": "Skip the household and move on to the next one"
+                          "value": "yes_pregnant",
+                          "label": "Yes, pregnant women qualify"
                         },
                         {
-                          "value": "register_neighbor_info",
-                          "label": "Register the household as eligible based on the neighbor's information"
+                          "value": "no_children_only",
+                          "label": "No, only households with children qualify"
                         },
                         {
-                          "value": "schedule_return",
-                          "label": "Schedule a return visit to verify eligibility in person"
+                          "value": "need_clinic_card",
+                          "label": "Only with a clinic card"
+                        },
+                        {
+                          "value": "after_delivery",
+                          "label": "Only after delivery"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "q3",
+                      "type": "select1",
+                      "label": "You visit a household and nobody is home. What should you do?",
+                      "hint": "Every visit attempt must be documented for program tracking.",
+                      "required": "true()",
+                      "options": [
+                        {
+                          "value": "return_visit",
+                          "label": "Schedule a return visit and note the attempt"
                         },
                         {
                           "value": "mark_ineligible",
-                          "label": "Mark the household as ineligible since no one was available"
+                          "label": "Mark as ineligible"
+                        },
+                        {
+                          "value": "ask_neighbors",
+                          "label": "Register based on neighbor information"
+                        },
+                        {
+                          "value": "skip_household",
+                          "label": "Skip and move to the next household"
                         }
                       ]
                     },
                     {
-                      "id": "q3_damaged_nets",
+                      "id": "q4",
                       "type": "select1",
-                      "label": "Scenario: A household has 2 children under 5 and owns 3 existing bed nets, but all 3 nets have large holes and tears. How should you assess their bed net situation?",
+                      "label": "The household head reports 2 children under 5, but you only see 1. What should you do?",
+                      "hint": "Accurate registration requires verifying all household members.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "enough_nets",
-                          "label": "They already have 3 nets, so no additional distribution is needed"
+                          "value": "verify_children",
+                          "label": "Ask to verify all children present or absent"
                         },
                         {
-                          "value": "record_poor_condition",
-                          "label": "Record 3 existing nets in poor condition and assess how many replacements are needed"
+                          "value": "record_seen",
+                          "label": "Record only the child you see"
                         },
                         {
-                          "value": "count_good_only",
-                          "label": "Count only nets in good condition and ignore the damaged ones"
+                          "value": "record_stated",
+                          "label": "Record 2 children as stated"
                         },
                         {
-                          "value": "discard_all",
-                          "label": "Discard all old nets immediately and record zero existing nets"
+                          "value": "flag_suspicious",
+                          "label": "Mark the household as suspicious"
                         }
                       ]
                     },
                     {
-                      "id": "q4_multiple_criteria",
+                      "id": "q5",
                       "type": "select1",
-                      "label": "Scenario: You visit a household where a woman is 8 months pregnant and has a 3-year-old child. The household currently has 1 intact bed net. What makes this household eligible for the program?",
+                      "label": "A household has 1 pregnant woman and 3 children under 5. How many eligible members total?",
+                      "hint": "Each eligible individual is counted separately for net allocation.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "only_pregnant",
-                          "label": "Only the pregnant woman makes them eligible"
+                          "value": "four_members",
+                          "label": "4 eligible members"
                         },
                         {
-                          "value": "only_child",
-                          "label": "Only the child under 5 makes them eligible"
+                          "value": "one_household",
+                          "label": "1 - the household counts once"
                         },
                         {
-                          "value": "both_pregnant_and_child",
-                          "label": "Both the pregnant woman and the child under 5 make them eligible"
+                          "value": "three_children",
+                          "label": "3 - only children count"
                         },
                         {
-                          "value": "not_eligible_has_net",
-                          "label": "They are not eligible since they already have a bed net"
+                          "value": "two_categories",
+                          "label": "2 - one per category"
                         }
                       ]
                     },
                     {
-                      "id": "q5_community_pressure",
+                      "id": "q6",
                       "type": "select1",
-                      "label": "Scenario: You visit a household of 7 people. The head of household insists they need bed nets, but there are no children under 5 and no pregnant women. A community leader asks you to include them in the program. What is the correct action?",
+                      "label": "A household has 2 existing nets but 4 eligible members. What do you record?",
+                      "hint": "Complete documentation of both existing nets and eligible members supports accurate need assessment.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "include_leader_request",
-                          "label": "Include them since the community leader made the request"
+                          "value": "record_both",
+                          "label": "2 existing nets and 4 eligible members"
                         },
                         {
-                          "value": "follow_criteria",
-                          "label": "Follow the eligibility criteria — this household is not currently eligible"
+                          "value": "gap_only",
+                          "label": "Only the net gap of 2"
                         },
                         {
-                          "value": "register_fewer_nets",
-                          "label": "Register them but give them fewer nets than a fully eligible household"
+                          "value": "members_only",
+                          "label": "4 eligible members, ignore existing nets"
                         },
                         {
-                          "value": "ask_supervisor_exception",
-                          "label": "Immediately make an exception for this one case to maintain community relations"
+                          "value": "skip_covered",
+                          "label": "Household is covered, skip it"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "q7",
+                      "type": "select1",
+                      "label": "The household head refuses to share family information. What is your best response?",
+                      "hint": "Building community trust is essential. Participation must always be voluntary.",
+                      "required": "true()",
+                      "options": [
+                        {
+                          "value": "explain_benefits",
+                          "label": "Explain program benefits and respect their decision"
+                        },
+                        {
+                          "value": "estimate_info",
+                          "label": "Register with estimated information"
+                        },
+                        {
+                          "value": "report_leader",
+                          "label": "Report them to the village leader"
+                        },
+                        {
+                          "value": "mark_ineligible",
+                          "label": "Mark as ineligible and move on"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "q8",
+                      "type": "select1",
+                      "label": "An elderly couple has no children under 5 or pregnant women. Are they eligible?",
+                      "hint": "Eligibility is strictly defined by program criteria for vulnerable groups.",
+                      "required": "true()",
+                      "options": [
+                        {
+                          "value": "not_eligible",
+                          "label": "No, they don't meet eligibility criteria"
+                        },
+                        {
+                          "value": "all_qualify",
+                          "label": "Yes, all households qualify"
+                        },
+                        {
+                          "value": "if_had_nets",
+                          "label": "Only if they previously had nets"
+                        },
+                        {
+                          "value": "if_request",
+                          "label": "Only if they request nets"
                         }
                       ]
                     },
                     {
                       "id": "score",
                       "type": "hidden",
-                      "calculate": "if(/data/q1_no_eligible_members = 'not_eligible', 20, 0) + if(/data/q2_absent_household = 'schedule_return', 20, 0) + if(/data/q3_damaged_nets = 'record_poor_condition', 20, 0) + if(/data/q4_multiple_criteria = 'both_pregnant_and_child', 20, 0) + if(/data/q5_community_pressure = 'follow_criteria', 20, 0)"
+                      "calculate": "round((if(/data/q1 = 'yes_under5', 1, 0) + if(/data/q2 = 'yes_pregnant', 1, 0) + if(/data/q3 = 'return_visit', 1, 0) + if(/data/q4 = 'verify_children', 1, 0) + if(/data/q5 = 'four_members', 1, 0) + if(/data/q6 = 'record_both', 1, 0) + if(/data/q7 = 'explain_benefits', 1, 0) + if(/data/q8 = 'not_eligible', 1, 0)) div 8 * 100)"
                     }
                   ]
                 }
@@ -158,7 +243,7 @@
                   "name": "Distribution Protocol Quiz",
                   "type": "survey",
                   "learn_module": {
-                    "description": "Learn the correct procedures for distributing insecticide-treated bed nets — including documentation requirements, handling shortages, and obtaining recipient acknowledgment."
+                    "description": "Learn the correct procedures for distributing insecticide-treated bed nets, including allocation rules, documentation, and recipient acknowledgment."
                   },
                   "assessment": {
                     "score_question": "score",
@@ -166,142 +251,227 @@
                   },
                   "questions": [
                     {
-                      "id": "q1_head_absent",
+                      "id": "lesson_summary",
+                      "type": "label",
+                      "label": "Each eligible household receives one ITN per two eligible members. Document recipient identity, quantities, and old net condition. Always obtain acknowledgment before completing distribution."
+                    },
+                    {
+                      "id": "q1",
                       "type": "select1",
-                      "label": "Scenario: You arrive to distribute bed nets to an eligible household with 2 children under 5 and 1 pregnant woman. The household head is away at the market, but the mother is home with the children. What should you do?",
+                      "label": "A household has 4 eligible members. How many nets should they receive?",
+                      "hint": "The allocation formula is one net per two eligible members.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "wait_for_head",
-                          "label": "Wait until the household head returns before distributing"
+                          "value": "two_nets",
+                          "label": "2 nets"
                         },
                         {
-                          "value": "distribute_with_mother",
-                          "label": "Distribute the nets and record the distribution with the mother as the recipient"
+                          "value": "four_nets",
+                          "label": "4 nets - one per person"
                         },
                         {
-                          "value": "leave_with_neighbor",
-                          "label": "Leave the nets with a neighbor to pass along later"
+                          "value": "one_net",
+                          "label": "1 net per household"
                         },
                         {
-                          "value": "cancel_visit",
-                          "label": "Cancel the distribution and reschedule for another day"
+                          "value": "three_nets",
+                          "label": "3 nets"
                         }
                       ]
                     },
                     {
-                      "id": "q2_insufficient_supply",
+                      "id": "q2",
                       "type": "select1",
-                      "label": "Scenario: You planned to visit 8 households today, but you realize you only have enough nets for 5 households. What is the correct protocol?",
+                      "label": "The household head is away but the spouse is present. Can you distribute nets?",
+                      "hint": "Any responsible adult household member can receive nets on behalf of the family.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "partial_each",
-                          "label": "Distribute partial quantities to each household so everyone gets something"
+                          "value": "yes_record_spouse",
+                          "label": "Yes, give to the spouse and record their name"
                         },
                         {
-                          "value": "most_children",
-                          "label": "Prioritize whichever households you think have the most need"
+                          "value": "no_head_only",
+                          "label": "No, only the household head can receive"
                         },
                         {
-                          "value": "contact_supervisor",
-                          "label": "Contact your supervisor for guidance on distribution priority and resupply"
+                          "value": "yes_no_record",
+                          "label": "Yes, but skip documentation"
                         },
                         {
-                          "value": "skip_distribution",
-                          "label": "Cancel all distributions for the day until you receive more nets"
+                          "value": "leave_nets",
+                          "label": "Leave nets and return for documentation"
                         }
                       ]
                     },
                     {
-                      "id": "q3_required_records",
+                      "id": "q3",
                       "type": "select1",
-                      "label": "Scenario: You have just handed 3 bed nets to an eligible household. What information MUST you record during this distribution visit?",
+                      "label": "A household's existing nets have large holes. How do you record their condition?",
+                      "hint": "Net condition affects the total need calculation for the household.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "only_number",
-                          "label": "Only the number of nets distributed"
+                          "value": "damaged_replace",
+                          "label": "Damaged - needs replacement"
                         },
                         {
-                          "value": "number_recipient_condition",
-                          "label": "Number of nets distributed, name of the person who received them, and condition of any old nets"
+                          "value": "count_functional",
+                          "label": "Count them as functional"
                         },
                         {
-                          "value": "only_photo",
-                          "label": "Just take a photo of the household as proof"
+                          "value": "dispose_now",
+                          "label": "Dispose of them immediately"
                         },
                         {
-                          "value": "only_signature",
-                          "label": "Only the recipient's signature or thumbprint"
+                          "value": "ignore_condition",
+                          "label": "Don't record old net condition"
                         }
                       ]
                     },
                     {
-                      "id": "q4_household_change",
+                      "id": "q4",
                       "type": "select1",
-                      "label": "Scenario: You arrive to distribute nets based on a registration done 3 weeks ago. The family now has a newborn baby who was not counted during registration. How should you handle this?",
+                      "label": "The recipient cannot sign the acknowledgment form. What do you do?",
+                      "hint": "Alternative forms of acknowledgment are acceptable in the program.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "original_plan",
-                          "label": "Distribute only the originally assessed number of nets"
+                          "value": "thumbprint",
+                          "label": "Record a thumbprint or witness acknowledgment"
                         },
                         {
-                          "value": "update_and_reassess",
-                          "label": "Update the household record with the newborn and reassess the number of nets needed"
+                          "value": "skip_ack",
+                          "label": "Skip acknowledgment"
                         },
                         {
-                          "value": "ignore_change",
-                          "label": "Ignore the change — the newborn can share an existing net"
+                          "value": "no_distribute",
+                          "label": "Don't distribute without a signature"
                         },
                         {
-                          "value": "register_again",
-                          "label": "Tell the family they must register again in the next distribution cycle"
+                          "value": "sign_for_them",
+                          "label": "Sign on their behalf"
                         }
                       ]
                     },
                     {
-                      "id": "q5_refused_acknowledgment",
+                      "id": "q5",
                       "type": "select1",
-                      "label": "Scenario: After handing over the bed nets, the recipient understands how to use them but refuses to sign the acknowledgment form because she cannot write. What should you do?",
+                      "label": "You recorded the wrong number of nets distributed. What should you do?",
+                      "hint": "Data accuracy is critical for program inventory and tracking.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "take_back",
-                          "label": "Take the nets back since there is no proof of distribution"
+                          "value": "correct_now",
+                          "label": "Correct the record immediately and note the change"
                         },
                         {
-                          "value": "skip_acknowledgment",
-                          "label": "Record the distribution without any form of acknowledgment"
+                          "value": "leave_it",
+                          "label": "Leave it - small errors don't matter"
                         },
                         {
-                          "value": "explain_and_document",
-                          "label": "Offer a thumbprint as an alternative and document how acknowledgment was obtained"
+                          "value": "new_form",
+                          "label": "Start a completely new form"
                         },
                         {
-                          "value": "give_to_another",
-                          "label": "Give the nets to another household member who can sign"
+                          "value": "supervisor_fix",
+                          "label": "Ask your supervisor to fix it later"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "q6",
+                      "type": "select1",
+                      "label": "A household asks for extra nets for visiting relatives. What do you do?",
+                      "hint": "Net allocation follows strict program rules based on registered eligible members.",
+                      "required": "true()",
+                      "options": [
+                        {
+                          "value": "eligible_only",
+                          "label": "Explain nets are for registered eligible members only"
+                        },
+                        {
+                          "value": "give_extra",
+                          "label": "Give extra nets to be helpful"
+                        },
+                        {
+                          "value": "register_visitors",
+                          "label": "Register the visitors as household members"
+                        },
+                        {
+                          "value": "promise_more",
+                          "label": "Promise to return with more nets"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "q7",
+                      "type": "select1",
+                      "label": "You discover a household was incorrectly registered as eligible. What do you do?",
+                      "hint": "Only verified eligible households should receive nets to maintain program integrity.",
+                      "required": "true()",
+                      "options": [
+                        {
+                          "value": "do_not_distribute",
+                          "label": "Do not distribute and update the record"
+                        },
+                        {
+                          "value": "distribute_anyway",
+                          "label": "Distribute since they're already registered"
+                        },
+                        {
+                          "value": "delete_record",
+                          "label": "Delete the household record entirely"
+                        },
+                        {
+                          "value": "give_one",
+                          "label": "Give one net as goodwill"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "q8",
+                      "type": "select1",
+                      "label": "What must be recorded for every net distribution?",
+                      "hint": "Complete documentation protects both the CHW and the program.",
+                      "required": "true()",
+                      "options": [
+                        {
+                          "value": "all_details",
+                          "label": "Recipient name, quantity, date, and acknowledgment"
+                        },
+                        {
+                          "value": "nets_only",
+                          "label": "Only the number of nets"
+                        },
+                        {
+                          "value": "name_only",
+                          "label": "Just the household name"
+                        },
+                        {
+                          "value": "gps_only",
+                          "label": "GPS coordinates only"
                         }
                       ]
                     },
                     {
                       "id": "score",
                       "type": "hidden",
-                      "calculate": "if(/data/q1_head_absent = 'distribute_with_mother', 20, 0) + if(/data/q2_insufficient_supply = 'contact_supervisor', 20, 0) + if(/data/q3_required_records = 'number_recipient_condition', 20, 0) + if(/data/q4_household_change = 'update_and_reassess', 20, 0) + if(/data/q5_refused_acknowledgment = 'explain_and_document', 20, 0)"
+                      "calculate": "round((if(/data/q1 = 'two_nets', 1, 0) + if(/data/q2 = 'yes_record_spouse', 1, 0) + if(/data/q3 = 'damaged_replace', 1, 0) + if(/data/q4 = 'thumbprint', 1, 0) + if(/data/q5 = 'correct_now', 1, 0) + if(/data/q6 = 'eligible_only', 1, 0) + if(/data/q7 = 'do_not_distribute', 1, 0) + if(/data/q8 = 'all_details', 1, 0)) div 8 * 100)"
                     }
                   ]
                 }
               ]
             },
             {
-              "name": "Follow-Up Verification",
+              "name": "Follow-up Verification",
               "forms": [
                 {
                   "name": "Verification Visit Quiz",
                   "type": "survey",
                   "learn_module": {
-                    "description": "Learn the correct procedures for conducting follow-up verification visits — including when to visit, how to assess net installation and usage, and what to do when households are non-compliant."
+                    "description": "Learn the correct procedures for follow-up verification visits, including timing, compliance assessment, and counseling households on proper bed net use."
                   },
                   "assessment": {
                     "score_question": "score",
@@ -309,129 +479,214 @@
                   },
                   "questions": [
                     {
-                      "id": "q1_visit_timing",
+                      "id": "lesson_summary",
+                      "type": "label",
+                      "label": "Follow-up visits happen 2 weeks after distribution. Verify nets are hung over sleeping areas, check for damage, and confirm eligible members sleep under nets. Counsel on proper use if needed."
+                    },
+                    {
+                      "id": "q1",
                       "type": "select1",
-                      "label": "Scenario: You distributed bed nets to a household last Tuesday. Your supervisor asks when the follow-up verification visit should be scheduled. What is the correct timing?",
+                      "label": "When should you conduct the first follow-up visit after distribution?",
+                      "hint": "The program specifies a standard follow-up timeline for all households.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "three_days",
-                          "label": "Within 3 days of distribution"
+                          "value": "two_weeks",
+                          "label": "2 weeks after distribution"
                         },
                         {
-                          "value": "two_weeks",
-                          "label": "Approximately 2 weeks after distribution"
+                          "value": "next_day",
+                          "label": "The next day"
                         },
                         {
                           "value": "one_month",
-                          "label": "One month after distribution"
+                          "label": "1 month later"
                         },
                         {
-                          "value": "whenever_free",
-                          "label": "Whenever the CHW has free time in their schedule"
+                          "value": "on_request",
+                          "label": "Only if the household requests it"
                         }
                       ]
                     },
                     {
-                      "id": "q2_net_misuse",
+                      "id": "q2",
                       "type": "select1",
-                      "label": "Scenario: During a verification visit, you find that 2 of the 3 distributed nets are properly hung over sleeping areas. However, the third net is being used as a fishing net by the river. What should you record and do?",
+                      "label": "You find the distributed net still in its package, unused. What do you do?",
+                      "hint": "Non-use is an opportunity for education and hands-on support, not punishment.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "all_in_use",
-                          "label": "Record all 3 nets as in use since the family received them"
+                          "value": "counsel_demo",
+                          "label": "Counsel on importance and demonstrate installation"
                         },
                         {
-                          "value": "two_in_use_counsel",
-                          "label": "Record 2 nets installed and in use, 1 net misused, and counsel the family on proper use"
-                        },
-                        {
-                          "value": "report_misuse",
-                          "label": "Report the household to authorities for misuse of program supplies"
-                        },
-                        {
-                          "value": "zero_in_use",
-                          "label": "Record 0 nets properly in use since not all are being used correctly"
-                        }
-                      ]
-                    },
-                    {
-                      "id": "q3_nets_in_packaging",
-                      "type": "select1",
-                      "label": "Scenario: You arrive for a verification visit and find all distributed bed nets still sealed in their original packaging. The family says they don't know how to hang them. What is the most appropriate action?",
-                      "required": "true()",
-                      "options": [
-                        {
-                          "value": "record_not_installed",
-                          "label": "Record the nets as not installed and leave"
-                        },
-                        {
-                          "value": "demonstrate_install",
-                          "label": "Demonstrate how to properly hang the nets, help the family install them, and record them as now installed"
+                          "value": "record_leave",
+                          "label": "Record as non-compliant and leave"
                         },
                         {
                           "value": "take_back",
-                          "label": "Take the nets back and redistribute them to a household that will use them"
+                          "label": "Take the net back"
                         },
                         {
-                          "value": "schedule_another",
-                          "label": "Schedule another visit in 2 weeks and hope they figure it out"
+                          "value": "schedule_only",
+                          "label": "Schedule another visit without helping"
                         }
                       ]
                     },
                     {
-                      "id": "q4_observation_vs_claim",
+                      "id": "q3",
                       "type": "select1",
-                      "label": "Scenario: During a daytime verification visit, you observe that all bed nets are neatly folded and stored in a cupboard — none are hung up. The family insists they hang and use them every night. How should you record this?",
+                      "label": "A net is hung but doesn't properly cover the sleeping area. What do you record?",
+                      "hint": "Partial compliance should be documented accurately with corrective action taken.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "in_use_family_says",
-                          "label": "Record nets as in use — the family's word is sufficient"
+                          "value": "improper_guide",
+                          "label": "Installed improperly - provide hanging guidance"
                         },
                         {
-                          "value": "not_installed_observation",
-                          "label": "Record nets as not currently installed based on your direct observation and note the family's claim"
+                          "value": "compliant",
+                          "label": "Installed and fully compliant"
                         },
                         {
-                          "value": "come_back_night",
-                          "label": "Don't record anything — come back at night to verify"
+                          "value": "not_installed",
+                          "label": "Not installed"
                         },
                         {
-                          "value": "verified_confirmed",
-                          "label": "Mark as verified since the family confirmed usage"
+                          "value": "needs_new",
+                          "label": "Needs a replacement net"
                         }
                       ]
                     },
                     {
-                      "id": "q5_unable_to_reach",
+                      "id": "q4",
                       "type": "select1",
-                      "label": "Scenario: It has been 3 weeks since distribution and you have visited the household twice for verification, but no one has been home either time. What should you do?",
+                      "label": "The household reports the net tore after one week. What should you do?",
+                      "hint": "Documenting damage details and cause helps the program improve net quality.",
                       "required": "true()",
                       "options": [
                         {
-                          "value": "close_verified",
-                          "label": "Close the case as verified since you attempted the visits"
+                          "value": "record_report",
+                          "label": "Record damage, assess cause, report for replacement"
                         },
                         {
-                          "value": "mark_noncompliant",
-                          "label": "Mark the household as non-compliant with the program"
+                          "value": "repair_self",
+                          "label": "Tell them to repair it themselves"
                         },
                         {
-                          "value": "try_different_time",
-                          "label": "Attempt at least one more visit at a different time of day and document all visit attempts"
+                          "value": "give_replacement",
+                          "label": "Immediately give a replacement from your stock"
                         },
                         {
-                          "value": "remove_from_list",
-                          "label": "Remove the household from your follow-up list"
+                          "value": "close_case",
+                          "label": "Close the case as verified"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "q5",
+                      "type": "select1",
+                      "label": "Two of 3 eligible children are sleeping under nets. How do you record usage?",
+                      "hint": "Record actual numbers for accurate compliance tracking across the program.",
+                      "required": "true()",
+                      "options": [
+                        {
+                          "value": "partial",
+                          "label": "Partial compliance - 2 of 3 using nets"
+                        },
+                        {
+                          "value": "full",
+                          "label": "Full compliance"
+                        },
+                        {
+                          "value": "non_compliant",
+                          "label": "Non-compliant"
+                        },
+                        {
+                          "value": "not_applicable",
+                          "label": "Not applicable"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "q6",
+                      "type": "select1",
+                      "label": "A household is using the bed net for fishing instead of sleeping. What is the best action?",
+                      "hint": "Net misuse is a common challenge. Education is the primary intervention strategy.",
+                      "required": "true()",
+                      "options": [
+                        {
+                          "value": "counsel_misuse",
+                          "label": "Counsel on proper use and health risks of misuse"
+                        },
+                        {
+                          "value": "take_back",
+                          "label": "Take the net back immediately"
+                        },
+                        {
+                          "value": "report_auth",
+                          "label": "Report to authorities"
+                        },
+                        {
+                          "value": "ignore_compliant",
+                          "label": "Ignore it and mark as compliant"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "q7",
+                      "type": "select1",
+                      "label": "Only a teenager is home during your verification visit. What do you do?",
+                      "hint": "Some observations can be made directly, but full verification needs a responsible adult.",
+                      "required": "true()",
+                      "options": [
+                        {
+                          "value": "partial_return",
+                          "label": "Observe net installation, schedule return for full check"
+                        },
+                        {
+                          "value": "full_verify",
+                          "label": "Complete the full verification"
+                        },
+                        {
+                          "value": "cancel_visit",
+                          "label": "Cancel the visit entirely"
+                        },
+                        {
+                          "value": "teen_fill_form",
+                          "label": "Ask the teenager to answer all questions"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "q8",
+                      "type": "select1",
+                      "label": "All nets are properly installed and all members sleep under them. What is the case outcome?",
+                      "hint": "Successful verification with full compliance leads to case completion.",
+                      "required": "true()",
+                      "options": [
+                        {
+                          "value": "verified_complete",
+                          "label": "Mark as verified and complete"
+                        },
+                        {
+                          "value": "another_followup",
+                          "label": "Schedule another follow-up visit"
+                        },
+                        {
+                          "value": "close_delete",
+                          "label": "Close and delete the record"
+                        },
+                        {
+                          "value": "distribute_more",
+                          "label": "Distribute additional nets"
                         }
                       ]
                     },
                     {
                       "id": "score",
                       "type": "hidden",
-                      "calculate": "if(/data/q1_visit_timing = 'two_weeks', 20, 0) + if(/data/q2_net_misuse = 'two_in_use_counsel', 20, 0) + if(/data/q3_nets_in_packaging = 'demonstrate_install', 20, 0) + if(/data/q4_observation_vs_claim = 'not_installed_observation', 20, 0) + if(/data/q5_unable_to_reach = 'try_different_time', 20, 0)"
+                      "calculate": "round((if(/data/q1 = 'two_weeks', 1, 0) + if(/data/q2 = 'counsel_demo', 1, 0) + if(/data/q3 = 'improper_guide', 1, 0) + if(/data/q4 = 'record_report', 1, 0) + if(/data/q5 = 'partial', 1, 0) + if(/data/q6 = 'counsel_misuse', 1, 0) + if(/data/q7 = 'partial_return', 1, 0) + if(/data/q8 = 'verified_complete', 1, 0)) div 8 * 100)"
                     }
                   ]
                 }
@@ -440,31 +695,872 @@
           ],
           "case_types": null
         },
-        "sessionId": "d0fcbbbd-eb1f-4600-b1eb-73b9f36116ee",
-        "durationMs": 159839,
+        "sessionId": "ab09518f-dc98-46ab-877a-cd1df2d158dd",
+        "durationMs": 368005,
         "tokenUsage": {
-          "inputTokens": 45380,
-          "outputTokens": 11963
+          "inputTokens": 71485,
+          "outputTokens": 28114
         }
       },
-      "score": null,
-      "error": "Command failed: claude -p \"You are an expert evaluator for CommCare Connect applications. Score this generated learn app blueprint against the IDD requirements.\\n\\n## IDD (Requirements)\\n\\n# Intervention Design Document: Malaria Bed Net Distribution Pilot\\n\\n## Problem Statement\\nIn rural districts of Zambia, malaria remains the leading cause of under-5 mortality. Insecticide-treated bed nets (ITNs) are proven effective but distribution coverage and usage compliance remain below 60%.\\n\\n## Intervention Design\\nTrain community health workers (CHWs) to register households, assess bed net needs, distribute ITNs, and conduct follow-up visits to verify installation and usage. Each CHW covers ~200 households.\\n\\n## Learn App Specification\\n### Data Collection\\nCHWs learn how to:\\n- Identify eligible households (those with children under 5 or pregnant women)\\n- Assess bed net condition and count\\n- Record distribution properly\\n- Conduct follow-up verification visits\\n\\n### Visit Structure\\n- Training module: 3 lessons (household identification, distribution protocol, follow-up verification)\\n- Assessment after each lesson\\n- Estimated 15 minutes per lesson\\n\\n### Forms\\n| Form Name | Purpose | Key Fields |\\n|-----------|---------|------------|\\n| Household Identification Quiz | Test ability to identify eligible households | scenario questions, correct answers, score |\\n| Distribution Protocol Quiz | Test proper distribution recording | step ordering, documentation requirements, score |\\n| Verification Visit Quiz | Test follow-up procedures | timing rules, compliance indicators, score |\\n\\n## Deliver App Specification\\n### Services Delivered\\n- Household registration (demographics, GPS, bed net count)\\n- Bed net distribution (number distributed, recipients, condition of old nets)\\n- Follow-up verification visit (net installed? being used? condition?)\\n\\n### Workflow\\n1. Register household → assess need → schedule distribution\\n2. Distribute nets → record quantities → get acknowledgment\\n3. Follow-up at 2 weeks → verify installation → record usage\\n\\n### Case Management\\n- Case type: household\\n- Properties: head_of_household, num_children_under_5, num_pregnant_women, num_nets_needed, num_nets_distributed, nets_installed, nets_in_use\\n- Case lifecycle: registered → nets_distributed → verified → closed\\n\\n## Target Population\\n- Beneficiaries: ~5,000 households in 3 rural districts\\n- Geographic scope: Luapula Province, Zambia\\n\\n## FLW Requirements\\n- 25 CHWs\\n- Must complete all Learn app training modules with >80% assessment score\\n- Each covers ~200 households\\n\\n## LLO Preference\\n- Preferred: Zambia CHW Cooperative (existing relationship)\\n- Alternative: District Health Office community program\\n\\n## Success Metrics\\n| Metric | Target | Measurement |\\n|--------|--------|-------------|\\n| CHW training completion rate | >90% | Learn app assessment scores |\\n| Household registration coverage | >85% | Deliver app registrations vs. census |\\n| Net distribution rate | >80% | Nets distributed / nets needed |\\n| Follow-up visit completion | >75% | Verification visits / distributions |\\n| Net usage at 2 weeks | >70% | Verified in-use / distributed |\\n\\n## Timeline\\n- Start: 2026-05-01\\n- CHW training: 2 weeks\\n- Distribution phase: 6 weeks\\n- Follow-up phase: 4 weeks\\n- End: 2026-08-15\\n\\n## Budget\\n- Per-delivery payment: $2 per household visit (registration + distribution + follow-up)\\n- Estimated total: $30,000 (5,000 households × 3 visits × $2)\\n\\n\\n## Generated Blueprint\\n\\n```json\\n{\\n  \\\"app_name\\\": \\\"Malaria Bed Net Distribution Training\\\",\\n  \\\"connect_type\\\": \\\"learn\\\",\\n  \\\"modules\\\": [\\n    {\\n      \\\"name\\\": \\\"Household Identification\\\",\\n      \\\"forms\\\": [\\n        {\\n          \\\"name\\\": \\\"Household Identification Quiz\\\",\\n          \\\"type\\\": \\\"survey\\\",\\n          \\\"learn_module\\\": {\\n            \\\"description\\\": \\\"Learn to identify households eligible for bed net distribution — those with children under 5 or pregnant women — and how to assess their current bed net needs.\\\"\\n          },\\n          \\\"assessment\\\": {\\n            \\\"score_question\\\": \\\"score\\\",\\n            \\\"passing_score\\\": 80\\n          },\\n          \\\"questions\\\": [\\n            {\\n              \\\"id\\\": \\\"q1_no_eligible_members\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: You arrive at a household. The head of household tells you they have 4 family members: himself (age 35), his wife (age 30), and two children (ages 6 and 8). No one in the household is pregnant. Should you register this household for bed net distribution?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"yes_all\\\",\\n                  \\\"label\\\": \\\"Yes — all households in the area should receive bed nets\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"not_eligible\\\",\\n                  \\\"label\\\": \\\"No — this household does not meet the eligibility criteria\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"yes_one_net\\\",\\n                  \\\"label\\\": \\\"Yes — but only distribute one net since the children are older\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"refer\\\",\\n                  \\\"label\\\": \\\"Refer them to the health facility for assessment\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"q2_absent_household\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: A neighbor tells you that a nearby household has a pregnant woman, but when you visit, no one is home. What is the correct action?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"skip\\\",\\n                  \\\"label\\\": \\\"Skip the household and move on to the next one\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"register_neighbor_info\\\",\\n                  \\\"label\\\": \\\"Register the household as eligible based on the neighbor's information\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"schedule_return\\\",\\n                  \\\"label\\\": \\\"Schedule a return visit to verify eligibility in person\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"mark_ineligible\\\",\\n                  \\\"label\\\": \\\"Mark the household as ineligible since no one was available\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"q3_damaged_nets\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: A household has 2 children under 5 and owns 3 existing bed nets, but all 3 nets have large holes and tears. How should you assess their bed net situation?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"enough_nets\\\",\\n                  \\\"label\\\": \\\"They already have 3 nets, so no additional distribution is needed\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"record_poor_condition\\\",\\n                  \\\"label\\\": \\\"Record 3 existing nets in poor condition and assess how many replacements are needed\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"count_good_only\\\",\\n                  \\\"label\\\": \\\"Count only nets in good condition and ignore the damaged ones\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"discard_all\\\",\\n                  \\\"label\\\": \\\"Discard all old nets immediately and record zero existing nets\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"q4_multiple_criteria\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: You visit a household where a woman is 8 months pregnant and has a 3-year-old child. The household currently has 1 intact bed net. What makes this household eligible for the program?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"only_pregnant\\\",\\n                  \\\"label\\\": \\\"Only the pregnant woman makes them eligible\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"only_child\\\",\\n                  \\\"label\\\": \\\"Only the child under 5 makes them eligible\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"both_pregnant_and_child\\\",\\n                  \\\"label\\\": \\\"Both the pregnant woman and the child under 5 make them eligible\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"not_eligible_has_net\\\",\\n                  \\\"label\\\": \\\"They are not eligible since they already have a bed net\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"q5_community_pressure\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: You visit a household of 7 people. The head of household insists they need bed nets, but there are no children under 5 and no pregnant women. A community leader asks you to include them in the program. What is the correct action?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"include_leader_request\\\",\\n                  \\\"label\\\": \\\"Include them since the community leader made the request\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"follow_criteria\\\",\\n                  \\\"label\\\": \\\"Follow the eligibility criteria — this household is not currently eligible\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"register_fewer_nets\\\",\\n                  \\\"label\\\": \\\"Register them but give them fewer nets than a fully eligible household\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"ask_supervisor_exception\\\",\\n                  \\\"label\\\": \\\"Immediately make an exception for this one case to maintain community relations\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"score\\\",\\n              \\\"type\\\": \\\"hidden\\\",\\n              \\\"calculate\\\": \\\"if(/data/q1_no_eligible_members = 'not_eligible', 20, 0) + if(/data/q2_absent_household = 'schedule_return', 20, 0) + if(/data/q3_damaged_nets = 'record_poor_condition', 20, 0) + if(/data/q4_multiple_criteria = 'both_pregnant_and_child', 20, 0) + if(/data/q5_community_pressure = 'follow_criteria', 20, 0)\\\"\\n            }\\n          ]\\n        }\\n      ]\\n    },\\n    {\\n      \\\"name\\\": \\\"Distribution Protocol\\\",\\n      \\\"forms\\\": [\\n        {\\n          \\\"name\\\": \\\"Distribution Protocol Quiz\\\",\\n          \\\"type\\\": \\\"survey\\\",\\n          \\\"learn_module\\\": {\\n            \\\"description\\\": \\\"Learn the correct procedures for distributing insecticide-treated bed nets — including documentation requirements, handling shortages, and obtaining recipient acknowledgment.\\\"\\n          },\\n          \\\"assessment\\\": {\\n            \\\"score_question\\\": \\\"score\\\",\\n            \\\"passing_score\\\": 80\\n          },\\n          \\\"questions\\\": [\\n            {\\n              \\\"id\\\": \\\"q1_head_absent\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: You arrive to distribute bed nets to an eligible household with 2 children under 5 and 1 pregnant woman. The household head is away at the market, but the mother is home with the children. What should you do?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"wait_for_head\\\",\\n                  \\\"label\\\": \\\"Wait until the household head returns before distributing\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"distribute_with_mother\\\",\\n                  \\\"label\\\": \\\"Distribute the nets and record the distribution with the mother as the recipient\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"leave_with_neighbor\\\",\\n                  \\\"label\\\": \\\"Leave the nets with a neighbor to pass along later\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"cancel_visit\\\",\\n                  \\\"label\\\": \\\"Cancel the distribution and reschedule for another day\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"q2_insufficient_supply\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: You planned to visit 8 households today, but you realize you only have enough nets for 5 households. What is the correct protocol?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"partial_each\\\",\\n                  \\\"label\\\": \\\"Distribute partial quantities to each household so everyone gets something\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"most_children\\\",\\n                  \\\"label\\\": \\\"Prioritize whichever households you think have the most need\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"contact_supervisor\\\",\\n                  \\\"label\\\": \\\"Contact your supervisor for guidance on distribution priority and resupply\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"skip_distribution\\\",\\n                  \\\"label\\\": \\\"Cancel all distributions for the day until you receive more nets\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"q3_required_records\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: You have just handed 3 bed nets to an eligible household. What information MUST you record during this distribution visit?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"only_number\\\",\\n                  \\\"label\\\": \\\"Only the number of nets distributed\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"number_recipient_condition\\\",\\n                  \\\"label\\\": \\\"Number of nets distributed, name of the person who received them, and condition of any old nets\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"only_photo\\\",\\n                  \\\"label\\\": \\\"Just take a photo of the household as proof\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"only_signature\\\",\\n                  \\\"label\\\": \\\"Only the recipient's signature or thumbprint\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"q4_household_change\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: You arrive to distribute nets based on a registration done 3 weeks ago. The family now has a newborn baby who was not counted during registration. How should you handle this?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"original_plan\\\",\\n                  \\\"label\\\": \\\"Distribute only the originally assessed number of nets\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"update_and_reassess\\\",\\n                  \\\"label\\\": \\\"Update the household record with the newborn and reassess the number of nets needed\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"ignore_change\\\",\\n                  \\\"label\\\": \\\"Ignore the change — the newborn can share an existing net\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"register_again\\\",\\n                  \\\"label\\\": \\\"Tell the family they must register again in the next distribution cycle\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"q5_refused_acknowledgment\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: After handing over the bed nets, the recipient understands how to use them but refuses to sign the acknowledgment form because she cannot write. What should you do?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"take_back\\\",\\n                  \\\"label\\\": \\\"Take the nets back since there is no proof of distribution\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"skip_acknowledgment\\\",\\n                  \\\"label\\\": \\\"Record the distribution without any form of acknowledgment\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"explain_and_document\\\",\\n                  \\\"label\\\": \\\"Offer a thumbprint as an alternative and document how acknowledgment was obtained\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"give_to_another\\\",\\n                  \\\"label\\\": \\\"Give the nets to another household member who can sign\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"score\\\",\\n              \\\"type\\\": \\\"hidden\\\",\\n              \\\"calculate\\\": \\\"if(/data/q1_head_absent = 'distribute_with_mother', 20, 0) + if(/data/q2_insufficient_supply = 'contact_supervisor', 20, 0) + if(/data/q3_required_records = 'number_recipient_condition', 20, 0) + if(/data/q4_household_change = 'update_and_reassess', 20, 0) + if(/data/q5_refused_acknowledgment = 'explain_and_document', 20, 0)\\\"\\n            }\\n          ]\\n        }\\n      ]\\n    },\\n    {\\n      \\\"name\\\": \\\"Follow-Up Verification\\\",\\n      \\\"forms\\\": [\\n        {\\n          \\\"name\\\": \\\"Verification Visit Quiz\\\",\\n          \\\"type\\\": \\\"survey\\\",\\n          \\\"learn_module\\\": {\\n            \\\"description\\\": \\\"Learn the correct procedures for conducting follow-up verification visits — including when to visit, how to assess net installation and usage, and what to do when households are non-compliant.\\\"\\n          },\\n          \\\"assessment\\\": {\\n            \\\"score_question\\\": \\\"score\\\",\\n            \\\"passing_score\\\": 80\\n          },\\n          \\\"questions\\\": [\\n            {\\n              \\\"id\\\": \\\"q1_visit_timing\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: You distributed bed nets to a household last Tuesday. Your supervisor asks when the follow-up verification visit should be scheduled. What is the correct timing?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"three_days\\\",\\n                  \\\"label\\\": \\\"Within 3 days of distribution\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"two_weeks\\\",\\n                  \\\"label\\\": \\\"Approximately 2 weeks after distribution\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"one_month\\\",\\n                  \\\"label\\\": \\\"One month after distribution\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"whenever_free\\\",\\n                  \\\"label\\\": \\\"Whenever the CHW has free time in their schedule\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"q2_net_misuse\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: During a verification visit, you find that 2 of the 3 distributed nets are properly hung over sleeping areas. However, the third net is being used as a fishing net by the river. What should you record and do?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"all_in_use\\\",\\n                  \\\"label\\\": \\\"Record all 3 nets as in use since the family received them\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"two_in_use_counsel\\\",\\n                  \\\"label\\\": \\\"Record 2 nets installed and in use, 1 net misused, and counsel the family on proper use\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"report_misuse\\\",\\n                  \\\"label\\\": \\\"Report the household to authorities for misuse of program supplies\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"zero_in_use\\\",\\n                  \\\"label\\\": \\\"Record 0 nets properly in use since not all are being used correctly\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"q3_nets_in_packaging\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: You arrive for a verification visit and find all distributed bed nets still sealed in their original packaging. The family says they don't know how to hang them. What is the most appropriate action?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"record_not_installed\\\",\\n                  \\\"label\\\": \\\"Record the nets as not installed and leave\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"demonstrate_install\\\",\\n                  \\\"label\\\": \\\"Demonstrate how to properly hang the nets, help the family install them, and record them as now installed\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"take_back\\\",\\n                  \\\"label\\\": \\\"Take the nets back and redistribute them to a household that will use them\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"schedule_another\\\",\\n                  \\\"label\\\": \\\"Schedule another visit in 2 weeks and hope they figure it out\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"q4_observation_vs_claim\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: During a daytime verification visit, you observe that all bed nets are neatly folded and stored in a cupboard — none are hung up. The family insists they hang and use them every night. How should you record this?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"in_use_family_says\\\",\\n                  \\\"label\\\": \\\"Record nets as in use — the family's word is sufficient\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"not_installed_observation\\\",\\n                  \\\"label\\\": \\\"Record nets as not currently installed based on your direct observation and note the family's claim\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"come_back_night\\\",\\n                  \\\"label\\\": \\\"Don't record anything — come back at night to verify\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"verified_confirmed\\\",\\n                  \\\"label\\\": \\\"Mark as verified since the family confirmed usage\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"q5_unable_to_reach\\\",\\n              \\\"type\\\": \\\"select1\\\",\\n              \\\"label\\\": \\\"Scenario: It has been 3 weeks since distribution and you have visited the household twice for verification, but no one has been home either time. What should you do?\\\",\\n              \\\"required\\\": \\\"true()\\\",\\n              \\\"options\\\": [\\n                {\\n                  \\\"value\\\": \\\"close_verified\\\",\\n                  \\\"label\\\": \\\"Close the case as verified since you attempted the visits\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"mark_noncompliant\\\",\\n                  \\\"label\\\": \\\"Mark the household as non-compliant with the program\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"try_different_time\\\",\\n                  \\\"label\\\": \\\"Attempt at least one more visit at a different time of day and document all visit attempts\\\"\\n                },\\n                {\\n                  \\\"value\\\": \\\"remove_from_list\\\",\\n                  \\\"label\\\": \\\"Remove the household from your follow-up list\\\"\\n                }\\n              ]\\n            },\\n            {\\n              \\\"id\\\": \\\"score\\\",\\n              \\\"type\\\": \\\"hidden\\\",\\n              \\\"calculate\\\": \\\"if(/data/q1_visit_timing = 'two_weeks', 20, 0) + if(/data/q2_net_misuse = 'two_in_use_counsel', 20, 0) + if(/data/q3_nets_in_packaging = 'demonstrate_install', 20, 0) + if(/data/q4_observation_vs_claim = 'not_installed_observation', 20, 0) + if(/data/q5_unable_to_reach = 'try_different_time', 20, 0)\\\"\\n            }\\n          ]\\n        }\\n      ]\\n    }\\n  ],\\n  \\\"case_types\\\": null\\n}\\n```\\n\\n## Scoring Criteria\\n\\nRate each dimension 0-10 with specific reasoning. Be strict — a 7 means \\\"good but has notable gaps\\\", a 9 means \\\"excellent with only minor issues\\\", a 10 means \\\"perfect\\\".\\n\\n### 1. IDD Coverage (0-10)\\nDoes the app address all requirements from the IDD's Learn App Specification?\\n- Are all specified forms/modules present?\\n- Are all specified fields/questions included?\\n- Does the scope match (nothing major missing, nothing extraneous)?\\n\\n### 2. Form Completeness (0-10)\\nAre forms well-structured?\\n- Do forms have all required questions with correct types?\\n- Are labels clear and professional?\\n- Are required fields marked appropriately?\\n- For Learn apps: does each quiz have enough questions to meaningfully assess knowledge?\\n- For Deliver apps: do forms capture all necessary service delivery data?\\n\\n### 3. Connect Configuration (0-10)\\nAre Connect-specific configs correct for this app type?\\n- For Learn: does each form have learn_module (with description) and assessment (with score_question and passing_score)?\\n- For Deliver: do forms have deliver_unit and/or task configs as appropriate?\\n- Are the configs logically correct (e.g., assessments reference actual score questions)?\\n- Is connect_type set correctly at the app level?\\n\\n### 4. Data Model (0-10)\\nFor Learn apps: N/A (score 10 if no case management, which is correct)\\nFor Deliver apps:\\n- Are case types and properties complete per IDD?\\n- Is case_name_property set correctly?\\n- Are case properties mapped to form questions?\\n- Is the case lifecycle correct (registration → followup → close)?\\n\\n### 5. Validation & Logic (0-10)\\n- Are constraints present where they should be (numeric ranges, required fields)?\\n- Are calculated fields correct (score calculations for Learn, derived fields for Deliver)?\\n- Is skip/display logic present where needed?\\n- Are XPath expressions syntactically plausible?\\n- For Deliver: is conditional case closure logic correct?\\n\\n### 6. Field Usability (0-10)\\nWould a CHW in the field find this app usable?\\n- Are question labels clear and jargon-free?\\n- Is the form flow logical?\\n- Are select options comprehensive and unambiguous?\\n- Are hints/help text provided where useful?\\n- Is the information architecture sensible (module organization, form ordering)?\\n\\n## Output Format\\n\\nRespond with ONLY a JSON object, no other text:\\n\\n{\\n  \\\"idd_coverage\\\": {\\\"score\\\": N, \\\"reasoning\\\": \\\"...\\\"},\\n  \\\"form_completeness\\\": {\\\"score\\\": N, \\\"reasoning\\\": \\\"...\\\"},\\n  \\\"connect_config\\\": {\\\"score\\\": N, \\\"reasoning\\\": \\\"...\\\"},\\n  \\\"data_model\\\": {\\\"score\\\": N, \\\"reasoning\\\": \\\"...\\\"},\\n  \\\"validation_logic\\\": {\\\"score\\\": N, \\\"reasoning\\\": \\\"...\\\"},\\n  \\\"field_usability\\\": {\\\"score\\\": N, \\\"reasoning\\\": \\\"...\\\"},\\n  \\\"summary\\\": \\\"2-3 sentence overall assessment\\\"\\n}\" --output-format text --no-input 2>/dev/null\n/bin/sh: jsonn{n: command not found\n"
+      "score": {
+        "dimensions": {
+          "idd_coverage": {
+            "score": 9,
+            "max": 10,
+            "reasoning": "All 3 specified modules present (Household Identification, Distribution Protocol, Follow-up Verification) with matching form names. All key field categories covered: scenario questions and scoring for Household ID, step ordering and documentation for Distribution Protocol, timing rules and compliance indicators for Verification. connect_type correctly set to 'learn', case_types correctly null. Minor gap: IDD specifies '15 minutes per lesson' implying substantial instructional content, but each lesson is a single summary paragraph label — adequate for a blueprint but thin for actual training delivery."
+          },
+          "form_completeness": {
+            "score": 8,
+            "max": 10,
+            "reasoning": "Each form has 8 scenario-based select1 questions plus a lesson summary label and hidden score calculation — well-structured and sufficient for meaningful knowledge assessment. All questions marked required. Labels are clear, professional, and scenario-based. Question types are appropriate (select1 for multiple-choice quizzes). However, the instructional content before each quiz is a single label paragraph, which is minimal for a training module that should teach before assessing. A real learn app would benefit from multiple lesson screens with richer content preceding the quiz."
+          },
+          "connect_config": {
+            "score": 10,
+            "max": 10,
+            "reasoning": "All Connect-specific configurations are correct and internally consistent. connect_type is 'learn'. Every form has learn_module with a meaningful description and assessment block with score_question referencing the actual hidden 'score' question id. passing_score of 80 aligns with the IDD's >80% requirement. Form type is 'survey' throughout, which is correct for learn modules. No misconfigurations detected."
+          },
+          "data_model": {
+            "score": 10,
+            "max": 10,
+            "reasoning": "Learn app correctly has case_types set to null. No case management is needed for a training/assessment app, and none is incorrectly included. This is the correct data model for this app type."
+          },
+          "validation_logic": {
+            "score": 8,
+            "max": 10,
+            "reasoning": "Score calculations are syntactically correct XPath: each uses if() for answer checking, sums correct answers, divides by 8, multiplies by 100, and wraps in round(). All correct answer values match the intended correct options. required='true()' is set on all quiz questions. Two issues: (1) Score granularity is coarse — only 9 possible values (0, 13, 25, 38, 50, 63, 75, 88, 100), meaning the effective passing threshold is 88% (7/8 correct), not 80% as configured, since 6/8=75% fails. This is stricter than the IDD's >80% target. (2) No display logic exists to show correct/incorrect feedback after each question, which would enhance the learning experience but is not strictly required by the IDD."
+          },
+          "field_usability": {
+            "score": 9,
+            "max": 10,
+            "reasoning": "Excellent field usability. Questions are realistic scenario-based situations CHWs would actually encounter (household head away, nets used for fishing, teenager home alone). Labels are jargon-free and clear. Each question has 4 well-differentiated options with plausible distractors that test understanding rather than memorization. Hints are provided on every question and guide thinking without giving away answers. Module ordering follows the logical field workflow (identify → distribute → verify). Form flow is intuitive. Minor gap: the single-paragraph lesson summary before each quiz may not adequately prepare a CHW who is truly learning the material for the first time."
+          }
+        },
+        "totalScore": 54,
+        "maxScore": 60,
+        "percentage": 90,
+        "summary": "Strong blueprint that faithfully covers all IDD Learn app requirements with well-crafted scenario-based assessments. The three modules map exactly to the IDD specification with correct Connect configuration throughout. Main weaknesses are thin instructional content (single label per lesson) and coarse score granularity that makes the effective passing threshold 88% rather than the intended 80%. Overall a solid, field-ready quiz structure that would meaningfully assess CHW readiness."
+      }
     },
     "deliver": {
       "nova": {
-        "blueprint": null,
-        "sessionId": "94bd8040-338a-42b6-b7b8-073594475fa5",
-        "durationMs": 0,
-        "tokenUsage": {
-          "inputTokens": 0,
-          "outputTokens": 0
+        "blueprint": {
+          "app_name": "Malaria Bed Net Distribution",
+          "connect_type": "deliver",
+          "modules": [
+            {
+              "name": "Household Registration",
+              "case_type": "household",
+              "forms": [
+                {
+                  "name": "Register Household",
+                  "type": "registration",
+                  "deliver_unit": {
+                    "label": "Household Registered"
+                  },
+                  "questions": [
+                    {
+                      "id": "intro",
+                      "type": "label",
+                      "label": "Register a new household. Collect the head of household's details, count children under 5 and pregnant women, and check existing bed nets to calculate how many new nets are needed."
+                    },
+                    {
+                      "id": "demographics",
+                      "type": "group",
+                      "label": "Household Demographics",
+                      "children": [
+                        {
+                          "id": "head_of_household",
+                          "type": "text",
+                          "label": "Head of household name",
+                          "hint": "Full name of the person who heads this household",
+                          "required": "true()",
+                          "case_property": "head_of_household",
+                          "is_case_name": true
+                        },
+                        {
+                          "id": "village",
+                          "type": "text",
+                          "label": "Village",
+                          "required": "true()",
+                          "case_property": "village"
+                        },
+                        {
+                          "id": "phone_number",
+                          "type": "phone",
+                          "label": "Phone number",
+                          "hint": "Household contact number, if available",
+                          "case_property": "phone_number"
+                        },
+                        {
+                          "id": "gps_location",
+                          "type": "geopoint",
+                          "label": "Household GPS location",
+                          "hint": "Stand near the household entrance and capture GPS",
+                          "required": "true()",
+                          "case_property": "gps_location"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "needs_assessment",
+                      "type": "group",
+                      "label": "Bed Net Needs Assessment",
+                      "children": [
+                        {
+                          "id": "num_children_under_5",
+                          "type": "int",
+                          "label": "Children under 5",
+                          "hint": "Count all children under 5 years in this household",
+                          "required": "true()",
+                          "constraint": ". >= 0 and . <= 20",
+                          "constraint_msg": "Enter a number between 0 and 20",
+                          "case_property": "num_children_under_5"
+                        },
+                        {
+                          "id": "num_pregnant_women",
+                          "type": "int",
+                          "label": "Pregnant women",
+                          "hint": "Count all currently pregnant women in this household",
+                          "required": "true()",
+                          "constraint": ". >= 0 and . <= 10",
+                          "constraint_msg": "Enter a number between 0 and 10",
+                          "case_property": "num_pregnant_women"
+                        },
+                        {
+                          "id": "existing_good_nets",
+                          "type": "int",
+                          "label": "Existing nets in good condition",
+                          "hint": "Count bed nets currently owned that are not torn or damaged",
+                          "required": "true()",
+                          "constraint": ". >= 0 and . <= 50",
+                          "constraint_msg": "Enter a number between 0 and 50",
+                          "case_property": "existing_good_nets"
+                        },
+                        {
+                          "id": "num_nets_needed",
+                          "type": "hidden",
+                          "calculate": "if(/data/needs_assessment/num_children_under_5 + /data/needs_assessment/num_pregnant_women - /data/needs_assessment/existing_good_nets > 0, /data/needs_assessment/num_children_under_5 + /data/needs_assessment/num_pregnant_women - /data/needs_assessment/existing_good_nets, 0)",
+                          "case_property": "num_nets_needed"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "nets_needed_display",
+                      "type": "label",
+                      "label": "This household needs ${/data/needs_assessment/num_nets_needed} bed net(s).",
+                      "relevant": "/data/needs_assessment/num_nets_needed > 0"
+                    },
+                    {
+                      "id": "no_nets_needed_display",
+                      "type": "label",
+                      "label": "This household already has enough bed nets. No distribution needed.",
+                      "relevant": "/data/needs_assessment/num_nets_needed = 0"
+                    },
+                    {
+                      "id": "registration_date",
+                      "type": "hidden",
+                      "calculate": "today()",
+                      "case_property": "registration_date"
+                    },
+                    {
+                      "id": "household_status_initial",
+                      "type": "hidden",
+                      "calculate": "'registered'",
+                      "case_property": "household_status"
+                    }
+                  ]
+                }
+              ],
+              "case_list_columns": [
+                {
+                  "field": "head_of_household",
+                  "header": "Head of Household"
+                },
+                {
+                  "field": "village",
+                  "header": "Village"
+                },
+                {
+                  "field": "num_nets_needed",
+                  "header": "Nets Needed"
+                },
+                {
+                  "field": "household_status",
+                  "header": "Stage"
+                }
+              ],
+              "case_detail_columns": [
+                {
+                  "field": "head_of_household",
+                  "header": "Head of Household"
+                },
+                {
+                  "field": "village",
+                  "header": "Village"
+                },
+                {
+                  "field": "phone_number",
+                  "header": "Phone"
+                },
+                {
+                  "field": "num_children_under_5",
+                  "header": "Children Under 5"
+                },
+                {
+                  "field": "num_pregnant_women",
+                  "header": "Pregnant Women"
+                },
+                {
+                  "field": "existing_good_nets",
+                  "header": "Existing Good Nets"
+                },
+                {
+                  "field": "num_nets_needed",
+                  "header": "Nets Needed"
+                },
+                {
+                  "field": "household_status",
+                  "header": "Stage"
+                }
+              ]
+            },
+            {
+              "name": "Bed Net Distribution",
+              "case_type": "household",
+              "case_list_filter": "household_status = 'registered' and int(num_nets_needed) > 0",
+              "forms": [
+                {
+                  "name": "Distribute Bed Nets",
+                  "type": "followup",
+                  "deliver_unit": {
+                    "label": "Distribution Visit"
+                  },
+                  "connect_task": true,
+                  "questions": [
+                    {
+                      "id": "intro",
+                      "type": "label",
+                      "label": "Distribute bed nets to this household. Confirm the number needed, record how many you give out, and get acknowledgment from the recipient."
+                    },
+                    {
+                      "id": "hh_summary",
+                      "type": "group",
+                      "label": "Household Summary",
+                      "children": [
+                        {
+                          "id": "display_name",
+                          "type": "label",
+                          "label": "Household head: ${#case/head_of_household}"
+                        },
+                        {
+                          "id": "display_village",
+                          "type": "label",
+                          "label": "Village: ${#case/village}"
+                        },
+                        {
+                          "id": "display_nets_needed",
+                          "type": "label",
+                          "label": "Nets needed: ${#case/num_nets_needed}"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "distribution",
+                      "type": "group",
+                      "label": "Distribution Details",
+                      "children": [
+                        {
+                          "id": "num_nets_distributed",
+                          "type": "int",
+                          "label": "Nets distributed",
+                          "hint": "Enter the number of nets given to this household",
+                          "required": "true()",
+                          "constraint": ". > 0 and . <= 20",
+                          "constraint_msg": "Must distribute at least 1 net (max 20)",
+                          "case_property": "num_nets_distributed"
+                        },
+                        {
+                          "id": "recipient_name",
+                          "type": "text",
+                          "label": "Recipient name",
+                          "hint": "Full name of the person who received the nets",
+                          "required": "true()",
+                          "case_property": "recipient_name"
+                        },
+                        {
+                          "id": "old_nets_condition",
+                          "type": "select1",
+                          "label": "Condition of old nets",
+                          "hint": "Assess the condition of any existing nets in the household",
+                          "required": "true()",
+                          "options": [
+                            {
+                              "value": "none",
+                              "label": "No existing nets"
+                            },
+                            {
+                              "value": "good",
+                              "label": "Good condition"
+                            },
+                            {
+                              "value": "torn",
+                              "label": "Torn or damaged"
+                            },
+                            {
+                              "value": "unusable",
+                              "label": "Unusable"
+                            }
+                          ],
+                          "case_property": "old_nets_condition"
+                        },
+                        {
+                          "id": "acknowledgment_received",
+                          "type": "select1",
+                          "label": "Recipient acknowledged receipt?",
+                          "hint": "Confirm the recipient verbally acknowledged receiving the nets",
+                          "required": "true()",
+                          "options": [
+                            {
+                              "value": "yes",
+                              "label": "Yes"
+                            },
+                            {
+                              "value": "no",
+                              "label": "No"
+                            }
+                          ],
+                          "case_property": "acknowledgment_received"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "distribution_date",
+                      "type": "hidden",
+                      "calculate": "today()",
+                      "case_property": "distribution_date"
+                    },
+                    {
+                      "id": "household_status_update",
+                      "type": "hidden",
+                      "calculate": "'nets_distributed'",
+                      "case_property": "household_status"
+                    }
+                  ]
+                }
+              ],
+              "case_list_columns": [
+                {
+                  "field": "head_of_household",
+                  "header": "Head of Household"
+                },
+                {
+                  "field": "village",
+                  "header": "Village"
+                },
+                {
+                  "field": "num_nets_needed",
+                  "header": "Nets Needed"
+                }
+              ],
+              "case_detail_columns": [
+                {
+                  "field": "head_of_household",
+                  "header": "Head of Household"
+                },
+                {
+                  "field": "village",
+                  "header": "Village"
+                },
+                {
+                  "field": "phone_number",
+                  "header": "Phone"
+                },
+                {
+                  "field": "num_children_under_5",
+                  "header": "Children Under 5"
+                },
+                {
+                  "field": "num_pregnant_women",
+                  "header": "Pregnant Women"
+                },
+                {
+                  "field": "existing_good_nets",
+                  "header": "Existing Good Nets"
+                },
+                {
+                  "field": "num_nets_needed",
+                  "header": "Nets Needed"
+                }
+              ]
+            },
+            {
+              "name": "Follow-up Verification",
+              "case_type": "household",
+              "case_list_filter": "household_status = 'nets_distributed' or household_status = 'needs_revisit'",
+              "forms": [
+                {
+                  "name": "Verify Net Installation",
+                  "type": "followup",
+                  "deliver_unit": {
+                    "label": "Verification Visit"
+                  },
+                  "connect_task": true,
+                  "questions": [
+                    {
+                      "id": "intro",
+                      "type": "label",
+                      "label": "Conduct a follow-up visit (2 weeks after distribution). Visually inspect that bed nets are installed over sleeping areas and ask if they are being used nightly."
+                    },
+                    {
+                      "id": "hh_summary",
+                      "type": "group",
+                      "label": "Household Summary",
+                      "children": [
+                        {
+                          "id": "display_name",
+                          "type": "label",
+                          "label": "Household head: ${#case/head_of_household}"
+                        },
+                        {
+                          "id": "display_village",
+                          "type": "label",
+                          "label": "Village: ${#case/village}"
+                        },
+                        {
+                          "id": "display_nets_distributed",
+                          "type": "label",
+                          "label": "Nets distributed: ${#case/num_nets_distributed}"
+                        },
+                        {
+                          "id": "display_distribution_date",
+                          "type": "label",
+                          "label": "Distribution date: ${#case/distribution_date}"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "verification",
+                      "type": "group",
+                      "label": "Verification Details",
+                      "children": [
+                        {
+                          "id": "nets_installed",
+                          "type": "select1",
+                          "label": "Are the nets installed?",
+                          "hint": "Visually check if nets are hung over sleeping areas",
+                          "required": "true()",
+                          "options": [
+                            {
+                              "value": "all",
+                              "label": "All installed"
+                            },
+                            {
+                              "value": "some",
+                              "label": "Some installed"
+                            },
+                            {
+                              "value": "none",
+                              "label": "None installed"
+                            }
+                          ],
+                          "case_property": "nets_installed"
+                        },
+                        {
+                          "id": "non_install_reason",
+                          "type": "text",
+                          "label": "Why are some/all nets not installed?",
+                          "hint": "Ask the household why nets have not been hung up",
+                          "relevant": "/data/verification/nets_installed != 'all'",
+                          "case_property": "non_install_reason"
+                        },
+                        {
+                          "id": "nets_in_use",
+                          "type": "select1",
+                          "label": "Are the nets being used nightly?",
+                          "hint": "Ask if household members slept under the nets last night",
+                          "required": "true()",
+                          "options": [
+                            {
+                              "value": "all",
+                              "label": "All in use"
+                            },
+                            {
+                              "value": "some",
+                              "label": "Some in use"
+                            },
+                            {
+                              "value": "none",
+                              "label": "None in use"
+                            }
+                          ],
+                          "case_property": "nets_in_use"
+                        },
+                        {
+                          "id": "non_use_reason",
+                          "type": "text",
+                          "label": "Why are some/all nets not being used?",
+                          "hint": "Common reasons: too hot, no mosquitoes, stored for later",
+                          "relevant": "/data/verification/nets_in_use != 'all'",
+                          "case_property": "non_use_reason"
+                        },
+                        {
+                          "id": "net_condition_at_followup",
+                          "type": "select1",
+                          "label": "Net condition",
+                          "hint": "Visually inspect the distributed nets",
+                          "required": "true()",
+                          "options": [
+                            {
+                              "value": "good",
+                              "label": "Good condition"
+                            },
+                            {
+                              "value": "minor_damage",
+                              "label": "Minor damage (small tears)"
+                            },
+                            {
+                              "value": "major_damage",
+                              "label": "Major damage (large holes)"
+                            },
+                            {
+                              "value": "missing",
+                              "label": "Nets missing"
+                            }
+                          ],
+                          "case_property": "net_condition_at_followup"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "verification_date",
+                      "type": "hidden",
+                      "calculate": "today()",
+                      "case_property": "verification_date"
+                    },
+                    {
+                      "id": "should_close",
+                      "type": "hidden",
+                      "calculate": "if(/data/verification/nets_installed = 'all' and /data/verification/nets_in_use = 'all', 'yes', 'no')"
+                    },
+                    {
+                      "id": "household_status_update",
+                      "type": "hidden",
+                      "calculate": "if(/data/should_close = 'yes', 'verified', 'needs_revisit')",
+                      "case_property": "household_status"
+                    }
+                  ],
+                  "close_case": {
+                    "question": "/data/should_close",
+                    "answer": "yes"
+                  }
+                }
+              ],
+              "case_list_columns": [
+                {
+                  "field": "head_of_household",
+                  "header": "Head of Household"
+                },
+                {
+                  "field": "village",
+                  "header": "Village"
+                },
+                {
+                  "field": "num_nets_distributed",
+                  "header": "Nets Distributed"
+                },
+                {
+                  "field": "distribution_date",
+                  "header": "Distributed On"
+                }
+              ],
+              "case_detail_columns": [
+                {
+                  "field": "head_of_household",
+                  "header": "Head of Household"
+                },
+                {
+                  "field": "village",
+                  "header": "Village"
+                },
+                {
+                  "field": "num_nets_distributed",
+                  "header": "Nets Distributed"
+                },
+                {
+                  "field": "distribution_date",
+                  "header": "Distribution Date"
+                },
+                {
+                  "field": "recipient_name",
+                  "header": "Recipient"
+                },
+                {
+                  "field": "household_status",
+                  "header": "Stage"
+                }
+              ]
+            }
+          ],
+          "case_types": [
+            {
+              "name": "household",
+              "case_name_property": "head_of_household",
+              "properties": [
+                {
+                  "name": "head_of_household",
+                  "label": "Head of Household",
+                  "required": "true()"
+                },
+                {
+                  "name": "village",
+                  "label": "Village",
+                  "required": "true()"
+                },
+                {
+                  "name": "phone_number",
+                  "label": "Phone Number",
+                  "data_type": "phone"
+                },
+                {
+                  "name": "gps_location",
+                  "label": "GPS Location",
+                  "data_type": "geopoint"
+                },
+                {
+                  "name": "num_children_under_5",
+                  "label": "Children Under 5",
+                  "data_type": "int",
+                  "required": "true()",
+                  "constraint": ". >= 0 and . <= 20",
+                  "constraint_msg": "Enter a number between 0 and 20"
+                },
+                {
+                  "name": "num_pregnant_women",
+                  "label": "Pregnant Women",
+                  "data_type": "int",
+                  "required": "true()",
+                  "constraint": ". >= 0 and . <= 10",
+                  "constraint_msg": "Enter a number between 0 and 10"
+                },
+                {
+                  "name": "existing_good_nets",
+                  "label": "Existing Nets in Good Condition",
+                  "data_type": "int",
+                  "constraint": ". >= 0 and . <= 50",
+                  "constraint_msg": "Enter a number between 0 and 50"
+                },
+                {
+                  "name": "num_nets_needed",
+                  "label": "Nets Needed",
+                  "data_type": "int",
+                  "hint": "Calculated: children under 5 + pregnant women - existing good nets (min 0)"
+                },
+                {
+                  "name": "household_status",
+                  "label": "Workflow Stage",
+                  "data_type": "select1",
+                  "options": [
+                    {
+                      "value": "registered",
+                      "label": "Registered"
+                    },
+                    {
+                      "value": "nets_distributed",
+                      "label": "Nets Distributed"
+                    },
+                    {
+                      "value": "needs_revisit",
+                      "label": "Needs Revisit"
+                    },
+                    {
+                      "value": "verified",
+                      "label": "Verified"
+                    }
+                  ]
+                },
+                {
+                  "name": "registration_date",
+                  "label": "Registration Date",
+                  "data_type": "date"
+                },
+                {
+                  "name": "num_nets_distributed",
+                  "label": "Nets Distributed",
+                  "data_type": "int"
+                },
+                {
+                  "name": "distribution_date",
+                  "label": "Distribution Date",
+                  "data_type": "date"
+                },
+                {
+                  "name": "recipient_name",
+                  "label": "Recipient Name"
+                },
+                {
+                  "name": "old_nets_condition",
+                  "label": "Condition of Old Nets",
+                  "data_type": "select1",
+                  "options": [
+                    {
+                      "value": "none",
+                      "label": "No existing nets"
+                    },
+                    {
+                      "value": "good",
+                      "label": "Good condition"
+                    },
+                    {
+                      "value": "torn",
+                      "label": "Torn or damaged"
+                    },
+                    {
+                      "value": "unusable",
+                      "label": "Unusable"
+                    }
+                  ]
+                },
+                {
+                  "name": "acknowledgment_received",
+                  "label": "Acknowledgment Received",
+                  "data_type": "select1",
+                  "options": [
+                    {
+                      "value": "yes",
+                      "label": "Yes"
+                    },
+                    {
+                      "value": "no",
+                      "label": "No"
+                    }
+                  ]
+                },
+                {
+                  "name": "nets_installed",
+                  "label": "Nets Installed",
+                  "data_type": "select1",
+                  "options": [
+                    {
+                      "value": "all",
+                      "label": "All installed"
+                    },
+                    {
+                      "value": "some",
+                      "label": "Some installed"
+                    },
+                    {
+                      "value": "none",
+                      "label": "None installed"
+                    }
+                  ]
+                },
+                {
+                  "name": "nets_in_use",
+                  "label": "Nets In Use",
+                  "data_type": "select1",
+                  "options": [
+                    {
+                      "value": "all",
+                      "label": "All in use"
+                    },
+                    {
+                      "value": "some",
+                      "label": "Some in use"
+                    },
+                    {
+                      "value": "none",
+                      "label": "None in use"
+                    }
+                  ]
+                },
+                {
+                  "name": "net_condition_at_followup",
+                  "label": "Net Condition at Follow-up",
+                  "data_type": "select1",
+                  "options": [
+                    {
+                      "value": "good",
+                      "label": "Good condition"
+                    },
+                    {
+                      "value": "minor_damage",
+                      "label": "Minor damage"
+                    },
+                    {
+                      "value": "major_damage",
+                      "label": "Major damage"
+                    },
+                    {
+                      "value": "missing",
+                      "label": "Missing"
+                    }
+                  ]
+                },
+                {
+                  "name": "non_install_reason",
+                  "label": "Reason Not Installed"
+                },
+                {
+                  "name": "non_use_reason",
+                  "label": "Reason Not In Use"
+                },
+                {
+                  "name": "verification_date",
+                  "label": "Verification Date",
+                  "data_type": "date"
+                }
+              ]
+            }
+          ]
         },
-        "error": "Failed to authenticate. API Error: 401 {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"Invalid authentication credentials\"},\"request_id\":\"req_011CZeTbkr9e7dnyhzynHTLg\"}"
+        "sessionId": "48417804-a266-4f64-b006-1d82d39aea50",
+        "durationMs": 558521,
+        "tokenUsage": {
+          "inputTokens": 74516,
+          "outputTokens": 31350
+        }
       },
-      "score": null
+      "score": {
+        "dimensions": {
+          "idd_coverage": {
+            "score": 9,
+            "max": 10,
+            "reasoning": "All three IDD-specified services are present as distinct modules: household registration (demographics, GPS, bed net count), bed net distribution (quantities, recipients, old net condition), and follow-up verification (installation, usage, condition). All seven IDD case properties are captured. The three-step workflow (register→distribute→verify) is faithfully implemented with case list filters enforcing the correct sequencing. The 'needs_revisit' status is a sensible addition beyond the IDD's four-state lifecycle. Minor gap: no explicit scheduling mechanism between registration and distribution, though the case list filter functionally serves this purpose."
+          },
+          "form_completeness": {
+            "score": 9,
+            "max": 10,
+            "reasoning": "All three forms have comprehensive question sets with correct types (text, int, phone, geopoint, select1, hidden, label). Required fields are correctly marked — all demographic and assessment fields are required, optional fields like phone_number are not. Labels are clear and professional. Good use of groups to organize related questions (demographics, needs assessment, distribution details, verification details). Follow-up forms include summary display labels showing previously collected case data, giving CHWs context. Intro labels on each form clearly explain the task. Minor: the distribution form could benefit from a photo capture of old nets or distribution receipt, but this wasn't specified in the IDD."
+          },
+          "connect_config": {
+            "score": 8,
+            "max": 10,
+            "reasoning": "connect_type correctly set to 'deliver'. All three forms have deliver_unit with descriptive labels. Distribution and verification forms correctly have connect_task: true for payment tracking. Close case logic is properly configured with question/answer reference. Notable gap: the registration form lacks connect_task: true — per the IDD, CHWs are paid $2 per household visit including registration, so registration visits should also be trackable as connect tasks for payment. This could cause registration visits to go uncompensated."
+          },
+          "data_model": {
+            "score": 9,
+            "max": 10,
+            "reasoning": "Case type 'household' with case_name_property 'head_of_household' is correct. All seven IDD-specified properties are present (head_of_household, num_children_under_5, num_pregnant_women, num_nets_needed, num_nets_distributed, nets_installed, nets_in_use) plus valuable additions (village, gps_location, phone_number, existing_good_nets, recipient_name, old_nets_condition, dates, reasons). The case_types schema at the bottom is thorough with data types, constraints, and option sets. Case properties are consistently mapped from form questions via case_property. The lifecycle (registered→nets_distributed→needs_revisit/verified→closed) correctly extends the IDD's four states with a practical 'needs_revisit' state. is_case_name: true correctly placed on head_of_household."
+          },
+          "validation_logic": {
+            "score": 9,
+            "max": 10,
+            "reasoning": "Strong validation throughout. Numeric constraints are sensible: children 0-20, pregnant women 0-10, existing nets 0-50, distributed nets 1-20. The num_nets_needed calculation correctly uses max(0, children + pregnant - existing). Case list filters correctly enforce workflow: distribution only shows registered households with nets needed, verification shows distributed or needs-revisit households. Conditional display logic works correctly: nets_needed_display vs no_nets_needed_display, non_install_reason shown only when nets not all installed, non_use_reason shown only when nets not all in use. Close case logic correctly closes only when all nets installed AND all in use. Status transitions are correct across all three forms. XPath expressions are syntactically valid. Minor: the verification form requires nets_in_use even when nets_installed='none', where skip logic could avoid a redundant question."
+          },
+          "field_usability": {
+            "score": 8,
+            "max": 10,
+            "reasoning": "Labels are clear and jargon-free — a CHW with basic training could use this. Hints provide practical guidance ('Stand near the household entrance and capture GPS', 'Common reasons: too hot, no mosquitoes, stored for later'). Form flow is logical within each module and across the workflow. Select options are comprehensive and unambiguous. Case list columns are well-chosen for each module's context (e.g., verification shows distribution date to help CHWs identify 2-week-old distributions). The display of previous case data in follow-up forms prevents CHWs from needing to remember details. Two gaps: (1) no mechanism to enforce the IDD's 2-week timing between distribution and verification — CHWs could verify too early; (2) the verification form asks about net usage even when no nets are installed, which would confuse field workers."
+          }
+        },
+        "totalScore": 52,
+        "maxScore": 60,
+        "percentage": 87,
+        "summary": "This is a high-quality blueprint that faithfully translates the IDD requirements into a well-structured CommCare application. The three-module workflow with case list filters enforcing the correct lifecycle is well-designed, and the data model comprehensively captures all specified and derived fields. The main gaps are the missing connect_task on the registration form (which could affect CHW payment), and minor field-level usability issues around skip logic in the verification form."
+      }
     },
-    "overallScore": 0,
+    "overallScore": 106,
     "overallMax": 120,
-    "overallPercentage": 0
+    "overallPercentage": 88
   }
 ]

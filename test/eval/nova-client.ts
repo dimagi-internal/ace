@@ -40,6 +40,7 @@ export async function generateApp(prompt: string, sessionId?: string): Promise<N
   let buffer = '';
   let resultSessionId = '';
   let resultText = '';
+  let streamedText = ''; // Accumulate all text events as fallback
   let durationMs = 0;
   let tokenUsage = { inputTokens: 0, outputTokens: 0 };
 
@@ -57,6 +58,8 @@ export async function generateApp(prompt: string, sessionId?: string): Promise<N
         const data = JSON.parse(line.slice(6));
         if (data.type === 'init') {
           resultSessionId = data.sessionId;
+        } else if (data.type === 'text') {
+          streamedText += data.text;
         } else if (data.type === 'result') {
           resultText = data.text;
           durationMs = data.durationMs || 0;
@@ -68,7 +71,7 @@ export async function generateApp(prompt: string, sessionId?: string): Promise<N
             sessionId: resultSessionId,
             durationMs,
             tokenUsage,
-            rawText: '',
+            rawText: streamedText,
             error: data.message,
           };
         }
@@ -76,10 +79,11 @@ export async function generateApp(prompt: string, sessionId?: string): Promise<N
     }
   }
 
-  // Extract JSON blueprint from markdown code block
-  const blueprint = extractBlueprint(resultText);
+  // Try result text first, fall back to accumulated streamed text
+  const textToSearch = resultText || streamedText;
+  const blueprint = extractBlueprint(textToSearch);
 
-  return { blueprint, sessionId: resultSessionId, durationMs, tokenUsage, rawText: resultText };
+  return { blueprint, sessionId: resultSessionId, durationMs, tokenUsage, rawText: textToSearch };
 }
 
 function extractBlueprint(text: string): Record<string, unknown> | null {
@@ -107,11 +111,16 @@ This is a Connect Learn app — set connect_type to "learn".
 
 Use the Learn App Specification section to create training modules. Each module should:
 - Be a separate module with one quiz form
-- Have 5 scenario-based multiple choice questions
-- Include a hidden "score" question that calculates percentage correct (each correct answer = 20 points)
+- Have 7-8 scenario-based multiple choice questions for robust assessment
+- Include a hidden "score" question that calculates percentage correct
 - Configure Connect learn_module (with description) and assessment (with score_question and passing_score of 80) on each form
 
-No case management — pure training/assessment app.
+## Quality requirements — these are critical:
+- Keep question labels concise (under 30 words) — these will be read on small Android screens by CHWs
+- Add a hint on each question with additional context if the scenario needs more detail
+- Before each quiz, add a "label" type question with a brief lesson summary (3-4 sentences) so the CHW gets instructional content before assessment
+- Make select options short and clearly distinguishable
+- No case management — pure training/assessment app
 
 Do not ask clarifying questions — generate the app directly from this spec.
 
@@ -133,6 +142,14 @@ Use the Deliver App Specification section to create the app. Follow these guidel
 - Include all case properties specified in the IDD
 - Add appropriate validation constraints
 - Include conditional case closure where specified
+
+## Quality requirements — these are critical:
+- Use calculated/hidden fields for values that can be derived (e.g., nets_needed = children_under_5 + pregnant_women - existing_good_nets). Do NOT make the CHW manually enter values that can be computed.
+- Add case list filter expressions so CHWs only see cases at the right stage (e.g., distribution module only shows "registered" cases, verification only shows "nets_distributed" cases). Use a case property like "status" to track stage.
+- For conditional case closure, check specific conditions (e.g., close only if all nets installed AND in use), not unconditional
+- Add a brief introductory "label" question at the top of each form explaining what the CHW should do
+- Keep question labels concise for mobile screens
+- Add hints on fields where the expected input might be unclear
 
 Do not ask clarifying questions — generate the app directly from this spec.
 

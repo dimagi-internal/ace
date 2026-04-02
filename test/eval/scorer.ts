@@ -117,8 +117,8 @@ Respond with ONLY a JSON object, no other text:
   let result: string;
   try {
     result = execSync(
-      `cat ${JSON.stringify(tmpFile)} | claude -p - --output-format text --no-input 2>/dev/null`,
-      { maxBuffer: 1024 * 1024, timeout: 120000 },
+      `cat ${JSON.stringify(tmpFile)} | claude -p - --output-format text 2>/dev/null`,
+      { maxBuffer: 1024 * 1024, timeout: 180000 },
     ).toString().trim();
   } finally {
     try { unlinkSync(tmpFile); } catch {}
