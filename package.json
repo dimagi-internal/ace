@@ -4,7 +4,9 @@
   "description": "AI Connect Engine - orchestrator for building Connect Opps using AI",
   "type": "module",
   "scripts": {
-    "mcp:gdrive": "npx tsx mcp/google-drive-server.ts"
+    "mcp:gdrive": "npx tsx mcp/google-drive-server.ts",
+    "eval": "npx tsx test/eval/run-eval.ts",
+    "eval:idd": "npx tsx test/eval/run-eval.ts"
   },
   "keywords": [],
   "author": "",
