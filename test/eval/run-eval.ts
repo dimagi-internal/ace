@@ -1,4 +1,6 @@
 #!/usr/bin/env npx tsx
+// Increase undici body timeout for long-running Nova requests
+process.env.UNDICI_BODY_TIMEOUT = '900000'; // 15 min
 /**
  * ACE Evaluation Pipeline
  *
@@ -13,20 +15,20 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
 import { generateApp, buildLearnPrompt, buildDeliverPrompt, type NovaResult } from './nova-client.js';
 import { scoreBlueprint, formatScorecard, type ScoreResult } from './scorer.js';
+import { validateBlueprint, formatValidationResult, type ValidationResult } from './structural-validator.js';
+
+interface AppEvalResult {
+  nova: NovaResult;
+  structural: ValidationResult | null;
+  score: ScoreResult | null;
+  error?: string;
+}
 
 interface EvalResult {
   iddName: string;
   timestamp: string;
-  learn: {
-    nova: NovaResult;
-    score: ScoreResult | null;
-    error?: string;
-  };
-  deliver: {
-    nova: NovaResult;
-    score: ScoreResult | null;
-    error?: string;
-  };
+  learn: AppEvalResult;
+  deliver: AppEvalResult;
   overallScore: number;
   overallMax: number;
   overallPercentage: number;
@@ -73,11 +75,20 @@ async function evaluateIDD(iddPath: string): Promise<EvalResult> {
     console.log(`  App: ${bp.app_name} | Type: ${bp.connect_type} | Modules: ${bp.modules?.length || 0}`);
   }
 
-  // Score Learn app
+  // Structural validation + scoring for Learn
+  let learnStructural: ValidationResult | null = null;
   let learnScore: ScoreResult | null = null;
   let learnError: string | undefined;
   if (learnResult.blueprint) {
-    console.log('\n--- Scoring Learn app ---');
+    console.log('\n--- Validating Learn app structure ---');
+    learnStructural = validateBlueprint(learnResult.blueprint, 'learn');
+    console.log(`  Structural: ${learnStructural.passed ? 'PASSED' : 'FAILED'} (${learnStructural.errors.length} errors, ${learnStructural.warnings.length} warnings)`);
+    console.log(`  Connect ready: ${Object.entries(learnStructural.connectReadiness).filter(([k, v]) => k !== 'missingForConnect' && v === true).length} checks passed`);
+    if (learnStructural.connectReadiness.missingForConnect.length > 0) {
+      console.log(`  Missing for Connect: ${learnStructural.connectReadiness.missingForConnect.length} items`);
+    }
+
+    console.log('\n--- Scoring Learn app (LLM judge) ---');
     try {
       learnScore = await scoreBlueprint(idd, learnResult.blueprint, 'learn');
       console.log(`  Score: ${learnScore.totalScore}/${learnScore.maxScore} (${learnScore.percentage}%)`);
@@ -87,11 +98,20 @@ async function evaluateIDD(iddPath: string): Promise<EvalResult> {
     }
   }
 
-  // Score Deliver app
+  // Structural validation + scoring for Deliver
+  let deliverStructural: ValidationResult | null = null;
   let deliverScore: ScoreResult | null = null;
   let deliverError: string | undefined;
   if (deliverResult.blueprint) {
-    console.log('\n--- Scoring Deliver app ---');
+    console.log('\n--- Validating Deliver app structure ---');
+    deliverStructural = validateBlueprint(deliverResult.blueprint, 'deliver');
+    console.log(`  Structural: ${deliverStructural.passed ? 'PASSED' : 'FAILED'} (${deliverStructural.errors.length} errors, ${deliverStructural.warnings.length} warnings)`);
+    console.log(`  Connect ready: ${Object.entries(deliverStructural.connectReadiness).filter(([k, v]) => k !== 'missingForConnect' && v === true).length} checks passed`);
+    if (deliverStructural.connectReadiness.missingForConnect.length > 0) {
+      console.log(`  Missing for Connect: ${deliverStructural.connectReadiness.missingForConnect.length} items`);
+    }
+
+    console.log('\n--- Scoring Deliver app (LLM judge) ---');
     try {
       deliverScore = await scoreBlueprint(idd, deliverResult.blueprint, 'deliver');
       console.log(`  Score: ${deliverScore.totalScore}/${deliverScore.maxScore} (${deliverScore.percentage}%)`);
@@ -103,9 +123,9 @@ async function evaluateIDD(iddPath: string): Promise<EvalResult> {
 
   // Calculate overall
   const learnTotal = learnScore?.totalScore || 0;
-  const learnMax = learnScore?.maxScore || 60;
+  const learnMax = learnScore?.maxScore || 40;
   const deliverTotal = deliverScore?.totalScore || 0;
-  const deliverMax = deliverScore?.maxScore || 60;
+  const deliverMax = deliverScore?.maxScore || 40;
   const overallScore = learnTotal + deliverTotal;
   const overallMax = learnMax + deliverMax;
   const overallPercentage = Math.round((overallScore / overallMax) * 100);
@@ -113,8 +133,8 @@ async function evaluateIDD(iddPath: string): Promise<EvalResult> {
   return {
     iddName,
     timestamp,
-    learn: { nova: learnResult, score: learnScore, error: learnError },
-    deliver: { nova: deliverResult, score: deliverScore, error: deliverError },
+    learn: { nova: learnResult, structural: learnStructural, score: learnScore, error: learnError },
+    deliver: { nova: deliverResult, structural: deliverStructural, score: deliverScore, error: deliverError },
     overallScore,
     overallMax,
     overallPercentage,
@@ -147,20 +167,24 @@ function writeReport(results: EvalResult[]): string {
     lines.push(`---`);
     lines.push('');
     lines.push(`# ${r.iddName}`);
-    lines.push('');
 
-    if (r.learn.score) {
-      lines.push(formatScorecard('Learn', r.learn.score));
-    } else {
-      lines.push(`## Learn App: ${r.learn.error || r.learn.nova.error || 'No blueprint generated'}`);
-    }
+    for (const [label, data] of [['Learn', r.learn] as const, ['Deliver', r.deliver] as const]) {
+      lines.push('');
 
-    lines.push('');
+      // Structural validation
+      if (data.structural) {
+        lines.push(formatValidationResult(data.structural, label));
+        lines.push('');
+      }
 
-    if (r.deliver.score) {
-      lines.push(formatScorecard('Deliver', r.deliver.score));
-    } else {
-      lines.push(`## Deliver App: ${r.deliver.error || r.deliver.nova.error || 'No blueprint generated'}`);
+      // LLM scoring
+      if (data.score) {
+        lines.push(formatScorecard(label, data.score));
+      } else if (data.nova.blueprint) {
+        lines.push(`## ${label} App Scoring: ${data.error || 'Failed'}`);
+      } else {
+        lines.push(`## ${label} App: ${data.error || data.nova.error || 'No blueprint generated'}`);
+      }
     }
 
     // Generation stats
@@ -182,27 +206,41 @@ function writeReport(results: EvalResult[]): string {
   lines.push('');
 
   for (const r of results) {
-    const weakDimensions: { name: string; score: number; reasoning: string; app: string }[] = [];
+    const issues: { name: string; score: number; reasoning: string; app: string; type: 'structural' | 'score' }[] = [];
 
     for (const [app, data] of [['Learn', r.learn] as const, ['Deliver', r.deliver] as const]) {
-      if (!data.score) continue;
-      for (const [key, dim] of Object.entries(data.score.dimensions)) {
-        if (dim.score < 8) {
-          weakDimensions.push({
-            name: key.replace(/_/g, ' '),
-            score: dim.score,
-            reasoning: dim.reasoning,
-            app,
-          });
+      // Structural issues
+      if (data.structural) {
+        for (const e of data.structural.errors) {
+          issues.push({ name: 'STRUCTURAL ERROR', score: 0, reasoning: e, app, type: 'structural' });
+        }
+        for (const m of data.structural.connectReadiness.missingForConnect) {
+          issues.push({ name: 'CONNECT GAP', score: 0, reasoning: m, app, type: 'structural' });
+        }
+      }
+
+      // Score-based issues
+      if (data.score) {
+        for (const [key, dim] of Object.entries(data.score.dimensions)) {
+          if (dim.score < 7) {
+            issues.push({
+              name: key.replace(/_/g, ' '),
+              score: dim.score,
+              reasoning: dim.reasoning,
+              app,
+              type: 'score',
+            });
+          }
         }
       }
     }
 
-    if (weakDimensions.length > 0) {
+    if (issues.length > 0) {
       lines.push(`### ${r.iddName}`);
-      weakDimensions.sort((a, b) => a.score - b.score);
-      for (const d of weakDimensions) {
-        lines.push(`- **${d.app} / ${d.name}** (${d.score}/10): ${d.reasoning}`);
+      issues.sort((a, b) => a.score - b.score);
+      for (const d of issues) {
+        const prefix = d.type === 'structural' ? `${d.name}` : `${d.name} (${d.score}/10)`;
+        lines.push(`- **${d.app} / ${prefix}**: ${d.reasoning}`);
       }
       lines.push('');
     }

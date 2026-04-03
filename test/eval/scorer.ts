@@ -10,12 +10,10 @@ import { tmpdir } from 'os';
 
 export interface ScoreResult {
   dimensions: {
-    idd_coverage: DimensionScore;
-    form_completeness: DimensionScore;
-    connect_config: DimensionScore;
-    data_model: DimensionScore;
-    validation_logic: DimensionScore;
-    field_usability: DimensionScore;
+    idd_fidelity: DimensionScore;
+    connect_wiring: DimensionScore;
+    data_integrity: DimensionScore;
+    production_readiness: DimensionScore;
   };
   totalScore: number;
   maxScore: number;
@@ -36,7 +34,16 @@ export async function scoreBlueprint(
 ): Promise<ScoreResult> {
   const blueprintJson = JSON.stringify(blueprint, null, 2);
 
-  const prompt = `You are an expert evaluator for CommCare Connect applications. Score this generated ${appType} app blueprint against the IDD requirements.
+  const prompt = `You are a HARSH evaluator for CommCare Connect applications. Your job is to find problems, not praise. Score this generated ${appType} app blueprint against the IDD requirements.
+
+## Scoring Philosophy
+- A 5 is AVERAGE — it works but has meaningful gaps
+- A 7 means GOOD — real gaps exist but nothing breaks
+- A 9 means EXCELLENT — only nitpicks remain
+- A 10 is virtually IMPOSSIBLE — reserve for genuinely flawless work
+- Most scores should be 4-7. If you're scoring above 8, you're being too generous.
+- Deduct heavily for anything that would cause a PRODUCTION FAILURE
+- Deduct for anything a Connect admin would need to manually fix before the app works
 
 ## IDD (Requirements)
 
@@ -48,66 +55,55 @@ ${idd}
 ${blueprintJson}
 \`\`\`
 
-## Scoring Criteria
+## Scoring Dimensions
 
-Rate each dimension 0-10 with specific reasoning. Be strict — a 7 means "good but has notable gaps", a 9 means "excellent with only minor issues", a 10 means "perfect".
+### 1. IDD Fidelity (0-10)
+Does the app match the IDD EXACTLY? Not "roughly covers" — EXACTLY.
+- Count every form specified in the IDD. Is each one present? (-2 per missing form)
+- Count every field specified in the IDD. Is each one present with the right type? (-1 per missing field)
+- Are there forms/fields NOT in the IDD? (-1 per extraneous addition, unless clearly necessary)
+- Does the scope match the IDD's intent, or did the generator interpret it loosely?
 
-### 1. IDD Coverage (0-10)
-Does the app address all requirements from the IDD's ${appType === 'learn' ? 'Learn' : 'Deliver'} App Specification?
-- Are all specified forms/modules present?
-- Are all specified fields/questions included?
-- Does the scope match (nothing major missing, nothing extraneous)?
+### 2. Connect Wiring (0-10)
+Can a Connect admin set up LearnModules, DeliverUnits, Tasks, and Assessments from this blueprint WITHOUT guessing?
+- For Learn: does EVERY form have learn_module with a real description AND assessment with score_question pointing to an actual hidden question AND a passing_score?
+- For Deliver: does EVERY form have deliver_unit? Do service/followup forms have task configs?
+- Are IDs explicit or will the admin need to invent them?
+- Can you map blueprint → Connect Django models (LearnModule, DeliverUnit, Task, Assessment, DeliverUnitFlagRules) without ambiguity?
+- Is there enough metadata to configure payment units and verification rules?
+- CRITICAL: if connect_type is wrong or missing, score 0.
 
-### 2. Form Completeness (0-10)
-Are forms well-structured?
-- Do forms have all required questions with correct types?
-- Are labels clear and professional?
-- Are required fields marked appropriately?
-- For Learn apps: does each quiz have enough questions to meaningfully assess knowledge?
-- For Deliver apps: do forms capture all necessary service delivery data?
+### 3. Data Integrity (0-10)
+Will the data collected be correct and complete?
+- Are calculated fields actually calculated (not manual entry for derivable values)?
+- Are XPath expressions syntactically valid?
+- Do case properties capture all IDD-specified data points?
+- Is case lifecycle correct (registration creates, followup updates, close conditions)?
+- Are there data loss risks (e.g., case property not mapped, calculated field wrong)?
+- For Learn: do score calculations produce the right range? Can a CHW actually achieve the passing score?
+- For Deliver: do case list filters enforce workflow ordering, or can a CHW skip steps?
 
-### 3. Connect Configuration (0-10)
-Are Connect-specific configs correct for this app type?
-- For Learn: does each form have learn_module (with description) and assessment (with score_question and passing_score)?
-- For Deliver: do forms have deliver_unit and/or task configs as appropriate?
-- Are the configs logically correct (e.g., assessments reference actual score questions)?
-- Is connect_type set correctly at the app level?
-
-### 4. Data Model (0-10)
-For Learn apps: N/A (score 10 if no case management, which is correct)
-For Deliver apps:
-- Are case types and properties complete per IDD?
-- Is case_name_property set correctly?
-- Are case properties mapped to form questions?
-- Is the case lifecycle correct (registration → followup → close)?
-
-### 5. Validation & Logic (0-10)
-- Are constraints present where they should be (numeric ranges, required fields)?
-- Are calculated fields correct (score calculations for Learn, derived fields for Deliver)?
-- Is skip/display logic present where needed?
-- Are XPath expressions syntactically plausible?
-- For Deliver: is conditional case closure logic correct?
-
-### 6. Field Usability (0-10)
-Would a CHW in the field find this app usable?
-- Are question labels clear and jargon-free?
-- Is the form flow logical?
-- Are select options comprehensive and unambiguous?
-- Are hints/help text provided where useful?
-- Is the information architecture sensible (module organization, form ordering)?
+### 4. Production Readiness (0-10)
+Would you deploy this to 25 CHWs in rural Zambia tomorrow?
+- Are required fields marked required?
+- Are constraints preventing bad data (negative numbers, out-of-range values)?
+- Is skip/display logic preventing irrelevant questions?
+- Are labels short enough for small Android screens (<30 words)?
+- Are hints present where input is ambiguous?
+- Is the form flow logical and self-explanatory?
+- Are there any UX problems that would cause CHW confusion or errors?
+- Would a CHW with basic literacy and 30 minutes of training succeed with this app?
 
 ## Output Format
 
 Respond with ONLY a JSON object, no other text:
 
 {
-  "idd_coverage": {"score": N, "reasoning": "..."},
-  "form_completeness": {"score": N, "reasoning": "..."},
-  "connect_config": {"score": N, "reasoning": "..."},
-  "data_model": {"score": N, "reasoning": "..."},
-  "validation_logic": {"score": N, "reasoning": "..."},
-  "field_usability": {"score": N, "reasoning": "..."},
-  "summary": "2-3 sentence overall assessment"
+  "idd_fidelity": {"score": N, "reasoning": "List every specific gap found. Name the missing/extra items."},
+  "connect_wiring": {"score": N, "reasoning": "For each form, state whether Connect config is complete. Name what's missing."},
+  "data_integrity": {"score": N, "reasoning": "List every data issue found. XPath problems, missing calculations, wrong types."},
+  "production_readiness": {"score": N, "reasoning": "List every UX/field issue. Be specific about what would fail in the field."},
+  "summary": "2-3 sentences. Lead with the biggest problem."
 }`;
 
   // Write prompt to temp file to avoid shell escaping issues
@@ -133,12 +129,10 @@ Respond with ONLY a JSON object, no other text:
   const scores = JSON.parse(jsonMatch[0]);
 
   const dimensions = {
-    idd_coverage: { score: scores.idd_coverage.score, max: 10, reasoning: scores.idd_coverage.reasoning },
-    form_completeness: { score: scores.form_completeness.score, max: 10, reasoning: scores.form_completeness.reasoning },
-    connect_config: { score: scores.connect_config.score, max: 10, reasoning: scores.connect_config.reasoning },
-    data_model: { score: scores.data_model.score, max: 10, reasoning: scores.data_model.reasoning },
-    validation_logic: { score: scores.validation_logic.score, max: 10, reasoning: scores.validation_logic.reasoning },
-    field_usability: { score: scores.field_usability.score, max: 10, reasoning: scores.field_usability.reasoning },
+    idd_fidelity: { score: scores.idd_fidelity.score, max: 10, reasoning: scores.idd_fidelity.reasoning },
+    connect_wiring: { score: scores.connect_wiring.score, max: 10, reasoning: scores.connect_wiring.reasoning },
+    data_integrity: { score: scores.data_integrity.score, max: 10, reasoning: scores.data_integrity.reasoning },
+    production_readiness: { score: scores.production_readiness.score, max: 10, reasoning: scores.production_readiness.reasoning },
   };
 
   const totalScore = Object.values(dimensions).reduce((sum, d) => sum + d.score, 0);

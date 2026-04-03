@@ -1,7 +1,13 @@
 /**
  * Nova API client for ACE evaluation.
  * Drives Nova's /api/claude-code endpoint, parses SSE, extracts blueprints.
+ * Uses curl subprocess to avoid Node fetch body timeout issues with long SSE streams.
  */
+
+import { execSync } from 'child_process';
+import { writeFileSync, readFileSync, unlinkSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
 export interface NovaResult {
   blueprint: Record<string, unknown> | null;
@@ -18,68 +24,68 @@ export async function generateApp(prompt: string, sessionId?: string): Promise<N
   const body: Record<string, unknown> = { prompt };
   if (sessionId) body.sessionId = sessionId;
 
-  const resp = await fetch(`${NOVA_URL}/api/claude-code`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const bodyFile = join(tmpdir(), `nova-req-${Date.now()}.json`);
+  const outFile = join(tmpdir(), `nova-resp-${Date.now()}.txt`);
 
-  if (!resp.ok) {
+  writeFileSync(bodyFile, JSON.stringify(body));
+
+  try {
+    execSync(
+      `curl -sN -X POST ${NOVA_URL}/api/claude-code -H "Content-Type: application/json" -d @${bodyFile} > ${outFile}`,
+      { timeout: 15 * 60 * 1000, maxBuffer: 50 * 1024 * 1024 },
+    );
+  } catch (e: any) {
     return {
-      blueprint: null,
-      sessionId: '',
-      durationMs: 0,
+      blueprint: null, sessionId: '', durationMs: 0,
       tokenUsage: { inputTokens: 0, outputTokens: 0 },
-      rawText: '',
-      error: `HTTP ${resp.status}: ${await resp.text()}`,
+      rawText: '', error: `curl failed: ${e.message?.slice(0, 200)}`,
     };
+  } finally {
+    try { unlinkSync(bodyFile); } catch {}
   }
 
-  const reader = resp.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
+  // Parse SSE output
+  let raw: string;
+  try {
+    raw = readFileSync(outFile, 'utf-8');
+  } catch {
+    return {
+      blueprint: null, sessionId: '', durationMs: 0,
+      tokenUsage: { inputTokens: 0, outputTokens: 0 },
+      rawText: '', error: 'No output from Nova',
+    };
+  } finally {
+    try { unlinkSync(outFile); } catch {}
+  }
+
   let resultSessionId = '';
   let resultText = '';
-  let streamedText = ''; // Accumulate all text events as fallback
+  let streamedText = '';
   let durationMs = 0;
   let tokenUsage = { inputTokens: 0, outputTokens: 0 };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      try {
-        const data = JSON.parse(line.slice(6));
-        if (data.type === 'init') {
-          resultSessionId = data.sessionId;
-        } else if (data.type === 'text') {
-          streamedText += data.text;
-        } else if (data.type === 'result') {
-          resultText = data.text;
-          durationMs = data.durationMs || 0;
-          tokenUsage = data.usage || tokenUsage;
-          if (!resultSessionId) resultSessionId = data.sessionId;
-        } else if (data.type === 'error') {
-          return {
-            blueprint: null,
-            sessionId: resultSessionId,
-            durationMs,
-            tokenUsage,
-            rawText: streamedText,
-            error: data.message,
-          };
-        }
-      } catch {}
-    }
+  for (const line of raw.split('\n')) {
+    if (!line.startsWith('data: ')) continue;
+    try {
+      const data = JSON.parse(line.slice(6));
+      if (data.type === 'init') {
+        resultSessionId = data.sessionId;
+      } else if (data.type === 'text') {
+        streamedText += data.text;
+      } else if (data.type === 'result') {
+        resultText = data.text;
+        durationMs = data.durationMs || 0;
+        tokenUsage = data.usage || tokenUsage;
+        if (!resultSessionId) resultSessionId = data.sessionId;
+      } else if (data.type === 'error') {
+        return {
+          blueprint: null, sessionId: resultSessionId, durationMs, tokenUsage,
+          rawText: streamedText, error: data.message,
+        };
+      }
+    } catch {}
   }
 
-  // Try result text first, fall back to accumulated streamed text
   const textToSearch = resultText || streamedText;
   const blueprint = extractBlueprint(textToSearch);
 
