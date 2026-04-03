@@ -14,6 +14,22 @@ ACE follows the same architecture as the canopy plugin: agents orchestrate skill
 4. **Individually replaceable components** — each skill handles one step. Improving ACE means improving one skill at a time.
 5. **Generated documentation** — `/ace:docs` generates a human-readable playbook from agent and skill definitions, always in sync with the actual system.
 
+## Success Criteria
+
+**Efficiency:**
+- Time from Idea approval to LLO Proof of Concept Live within one week by the end of Q2 2026 with little to no Dimagi intervention required.
+
+**Quality:**
+- LLM-as-Judge pass rates at each gate ≥ 80% on first attempt (meaning ACE's drafts are good enough 4/5 times)
+- Zero "bad sends" — no emails, app publishes, or invitations that had to be recalled due to ACE error
+
+**Coverage:**
+- All 19 steps executable by end of Q2 2026 without manual fallback before the end of Q2 2026
+
+**Learning:**
+- Each cycle produces concrete SKILL.md improvements pushed to the repo
+- Learnings-summary skill produces actionable IDD seeds for next cycle
+
 ## Architecture
 
 ### Plugin Structure
@@ -24,12 +40,12 @@ ace/
 │   └── plugin.json
 ├── agents/
 │   ├── ace-orchestrator.md          # Top-level: dispatches to phase agents
-│   ├── app-builder.md               # IDD → Nova → test → deploy
-│   ├── connect-setup.md             # Program → Opportunity → config → invites
+│   ├── app-builder.md               # IDD → Nova → test → deploy to CommCareHQ
+│   ├── connect-setup.md             # Workspace → Program → Opportunity → config → invites
 │   ├── llo-manager.md               # Onboarding → OCS → monitoring
 │   └── closeout.md                  # Invoicing → feedback → learnings → grading
 ├── commands/
-│   ├── run.md                       # /ace:run <opp-id> [--mode auto|review]
+│   ├── run.md                       # /ace:run <opp-id> [--mode auto|review] [--dry-run]
 │   ├── step.md                      # /ace:step <step-name> <opp-id>
 │   ├── status.md                    # /ace:status [opp-id]
 │   └── docs.md                      # /ace:docs — generate playbook from source
@@ -37,13 +53,15 @@ ace/
 │   ├── idea-to-idd/SKILL.md
 │   ├── idd-to-learn-app/SKILL.md
 │   ├── idd-to-deliver-app/SKILL.md
-│   ├── app-deploy/SKILL.md
 │   ├── app-test/SKILL.md
+│   ├── app-deploy/SKILL.md
 │   ├── training-materials/SKILL.md
 │   ├── connect-program-setup/SKILL.md
 │   ├── connect-opp-setup/SKILL.md
 │   ├── llo-invite/SKILL.md
 │   ├── llo-onboarding/SKILL.md
+│   ├── llo-uat/SKILL.md
+│   ├── llo-launch/SKILL.md
 │   ├── ocs-agent-setup/SKILL.md
 │   ├── timeline-monitor/SKILL.md
 │   ├── flw-data-review/SKILL.md
@@ -59,7 +77,7 @@ ace/
 │       └── nova-integration.md      # Nova fork/API requirements
 ├── mcp/
 │   ├── google-drive-server.ts       # Google Drive + Sheets MCP (built)
-│   └── ocs-server.ts               # OCS MCP (to build)
+│   └── ocs-server.ts                # OCS MCP (to build)
 ├── templates/                       # Email, IDD, training, collateral templates
 ├── scripts/                         # Utility scripts for skills
 └── docs/
@@ -81,7 +99,7 @@ The top-level ace-orchestrator dispatches to 4 phase agents. Each phase agent kn
 
 The agent/skill boundary is expected to evolve. We may collapse or split agents as we test. The current grouping reflects natural phases of the process.
 
-### Skills (17)
+### Skills (19)
 
 Each skill is a SKILL.md file that handles one step of the CRISPR-Connect process. Skills are stateless prompt definitions that Claude executes. They read from and write to the opportunity's Google Drive folder and call MCP tools for external system access.
 
@@ -178,6 +196,28 @@ These are the APIs and platform changes Cal's team needs to build. They unblock 
 
 Skills that depend on unbuilt APIs start as stubs with manual fallback instructions.
 
+## Testing and Dry-Run Strategy
+
+ACE has real-world side effects (emails, app publishes, Jira tickets, LLO invitations). We need a way to test without those side effects.
+
+**Dry-run mode (`/ace:run <opp-id> --dry-run`):**
+- All skills execute normally and produce outputs in the opp folder
+- Effectful skills write their intended action to `comms-log/dry-run-<step>.md` instead of executing
+  - e.g., llo-invite writes the email it *would* send, to whom, with what attachments
+  - e.g., app-deploy writes the API call it *would* make and the app JSON
+- LLM-as-Judge still runs and gates still apply
+- State.yaml tracks steps as `dry-run-success` or `dry-run-blocked`
+
+**Test fixtures:**
+- A synthetic opportunity ("CRISPR-Test-001") lives permanently in the ACE Google Drive folder
+- It has a fake IDD, fake LLO contacts (team members), and fake app summaries
+- New skills can be tested against this fixture before being run on real opportunities
+
+**Sandbox environment:**
+- For steps that hit Connect APIs or CommCareHQ: Cal maintains a staging instance
+- Skills that call external APIs should accept a `--sandbox` flag that routes to staging endpoints
+- MCP server configs include staging URLs alongside production
+
 ## Improvement Model
 
 Same as canopy. Skills improve by editing the SKILL.md and pushing to the plugin repo. The goal is continuous self-improvement:
@@ -190,6 +230,11 @@ Same as canopy. Skills improve by editing the SKILL.md and pushing to the plugin
 6. Next run uses the improved skill
 
 No formal interface contracts or versioning beyond what git provides. The agent definitions and skill files are the source of truth.
+
+**How ACE skill improvement differs from canopy:** Canopy skills mostly produce documents and analysis — a bad output wastes time but doesn't create external damage. ACE skills can send emails, publish apps, and create financial tickets. This means:
+
+- **Regression testing.** After editing a SKILL.md, re-run it against the test fixture (CRISPR-Test-001) before running on real opportunities.
+- **Changelog in SKILL.md.** Each skill maintains a `## Change Log` section at the bottom with date, change description, and who made it. Git provides this too, but an in-file log makes it visible to Claude when executing the skill.
 
 ## Generated Documentation
 
