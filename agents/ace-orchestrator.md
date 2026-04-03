@@ -39,6 +39,7 @@ Gate steps are:
 - After idea-to-idd (IDD must be approved before building apps)
 - After app-deploy (apps must be verified before publishing)
 - After llo-invite (invites must be reviewed before sending)
+- After llo-launch (opportunity activation must be verified before monitoring begins)
 
 ## Workflow
 
@@ -56,9 +57,9 @@ rules and delivery/payment units, LLO invitations sent.
 
 ### Phase 3: LLO Management
 Dispatch to the **llo-manager** agent.
-This phase produces: LLOs onboarded, OCS agent configured, ongoing monitoring
-active. This phase has recurring skills (timeline-monitor, flw-data-review) that
-run on schedule during the active opportunity.
+This phase produces: LLOs onboarded, UAT completed, opportunity activated (go-live),
+OCS agent configured, ongoing monitoring active. This phase has recurring skills
+(timeline-monitor, flw-data-review) that run on schedule during the active opportunity.
 
 ### Phase 4: Closeout
 Dispatch to the **closeout** agent. Triggered when the opportunity reaches its
@@ -79,6 +80,23 @@ If a skill fails:
 1. Log the error in `state.yaml`
 2. In auto mode: email the admin group with error details, continue to next step if possible
 3. In review mode: present the error and ask how to proceed (retry, skip, abort)
+
+## Dry-Run Mode
+
+When `--dry-run` is passed to `/ace:run`:
+- All skills execute normally — reading inputs, generating outputs, writing to GDrive
+- Effectful skills (those that send emails, publish apps, create tickets, or call external APIs) write their intended actions to `comms-log/dry-run-<step>.md` instead of executing
+- LLM-as-Judge evaluation still runs at each step
+- Gates still apply in review mode
+- `state.yaml` tracks steps as `dry-run-success` or `dry-run-blocked` instead of `success` or `blocked`
+- Pass the dry-run flag to all phase agents
+
+## Sandbox Mode
+
+When `--sandbox` is passed to `/ace:run`:
+- MCP servers route external API calls to staging endpoints (Connect staging, CommCare staging project space)
+- MCP servers read `ACE_SANDBOX=true` environment variable to determine endpoint routing
+- Can be combined with `--dry-run` for maximum safety
 
 ## Starting a New Opportunity
 

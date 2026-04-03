@@ -94,7 +94,7 @@ The top-level ace-orchestrator dispatches to 4 phase agents. Each phase agent kn
 | **ace-orchestrator** | Dispatches to phase agents, tracks overall opp state | Jon |
 | **app-builder** | idea-to-idd, idd-to-learn-app, idd-to-deliver-app, app-deploy, app-test, training-materials | Cal + Neal |
 | **connect-setup** | connect-program-setup, connect-opp-setup, llo-invite | Cal |
-| **llo-manager** | llo-onboarding, ocs-agent-setup, timeline-monitor, flw-data-review | Jon |
+| **llo-manager** | llo-onboarding, llo-uat, llo-launch, ocs-agent-setup, timeline-monitor, flw-data-review | Jon |
 | **closeout** | opp-closeout, llo-feedback, learnings-summary, cycle-grade | Jon |
 
 The agent/skill boundary is expected to evolve. We may collapse or split agents as we test. The current grouping reflects natural phases of the process.
@@ -120,13 +120,15 @@ Each skill is a SKILL.md file that handles one step of the CRISPR-Connect proces
 | 11 | Configure verification rules, units, payments | `connect-opp-setup` | | Folded into opp setup — may split into own skill if complex |
 | 12 | Look up LLO contacts, send invites | `llo-invite` | | Needs Invite API + LLO Directory |
 | 13 | Email LLOs with training + instructions | `llo-onboarding` | | Via Ace-AI@Dimagi.com |
-| 14 | OCS answer bot for LLO questions | `ocs-agent-setup` | Yes | ACE configures OCS agent per opp |
-| 15 | Monitor LLO timeline compliance | `timeline-monitor` | Yes | Recurring during active opp |
-| 16 | Review FLW data, suggest improvements | `flw-data-review` | Yes | Recurring during active opp |
-| 17 | Pull invoices, create Jira payment ticket | `opp-closeout` | | Triggered at opp end date |
-| 18 | Prompt LLO for feedback | `llo-feedback` | | |
-| 19 | Summarize learnings, create new IDD | `learnings-summary` | | Can trigger another cycle |
-| 20 | Grade overall CRISPR-Connect cycle | `cycle-grade` | Yes | |
+| 14 | LLO User Acceptance Testing | `llo-uat` | | LLOs test apps before go-live |
+| 15 | Opportunity Go-Live | `llo-launch` | | Activate opportunity, notify LLOs (gate step) |
+| 16 | OCS answer bot for LLO questions | `ocs-agent-setup` | Yes | ACE configures OCS agent per opp |
+| 17 | Monitor LLO timeline compliance | `timeline-monitor` | Yes | Recurring during active opp |
+| 18 | Review FLW data, suggest improvements | `flw-data-review` | Yes | Recurring during active opp |
+| 19 | Pull invoices, create Jira payment ticket | `opp-closeout` | | Triggered at opp end date |
+| 20 | Prompt LLO for feedback | `llo-feedback` | | |
+| 21 | Summarize learnings, create new IDD | `learnings-summary` | | Can trigger another cycle |
+| 22 | Grade overall CRISPR-Connect cycle | `cycle-grade` | Yes | |
 
 ### MCP Servers
 
@@ -172,7 +174,7 @@ The team can open any opportunity folder and see exactly where things stand. ACE
 
 ### LLM-as-Judge
 
-10 of the 17 skills have LLM-as-Judge evaluation. This means ACE evaluates the quality of its own output at that step before proceeding. The criteria are defined within each skill's SKILL.md. Over time, these evaluations improve as skills are refined.
+10 of the 19 skills have LLM-as-Judge evaluation. This means ACE evaluates the quality of its own output at that step before proceeding. The criteria are defined within each skill's SKILL.md. Over time, these evaluations improve as skills are refined.
 
 ### OCS Integration
 

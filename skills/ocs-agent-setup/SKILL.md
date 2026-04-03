@@ -55,3 +55,15 @@ Create and configure an OCS agent that handles LLO questions for this opportunit
 ## Mode Behavior
 - **Auto:** Configure agent (or guide manual config), proceed
 - **Review:** Present agent context for review before configuring
+
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Write the agent configuration (name, email routing, context document, escalation rules) to `comms-log/dry-run-ocs-agent-setup.md`
+- Do not create or configure the OCS agent
+- State tracks as `dry-run-success`
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

@@ -52,3 +52,9 @@ Generate the Deliver (service delivery) app from the IDD using Nova.
 ## Mode Behavior
 - **Auto:** Generate app (or brief), notify admin group, proceed
 - **Review:** Present app summary for review before proceeding
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

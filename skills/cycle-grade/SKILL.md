@@ -42,3 +42,15 @@ Produce a final grade and assessment of the complete CRISPR-Connect cycle.
 ## Mode Behavior
 - **Auto:** Generate grade, email report, mark opportunity as closed
 - **Review:** Present grade for team review and discussion
+
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Grade report is still generated and written to GDrive as normal
+- Write the admin group email (recipients, subject, body with grade report) to `comms-log/dry-run-cycle-grade.md` instead of sending
+- State tracks as `dry-run-success`
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

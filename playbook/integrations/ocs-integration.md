@@ -86,3 +86,12 @@ Until the OCS MCP server is built:
 3. The user confirms the agent is active before ACE proceeds
 4. Transcript analysis in `timeline-monitor` and `flw-data-review` is skipped or
    performed manually until the API is accessible
+
+## Staging Environment
+
+When `--sandbox` is active, ACE routes OCS API calls to a staging instance if available.
+
+- **Staging URL:** TBD — staging OCS may not exist yet. Confirm with Jon.
+- **How it works:** OCS MCP server reads `ACE_SANDBOX=true` environment variable and switches endpoints
+- **Data isolation:** TBD — depends on whether OCS supports multi-tenancy or separate staging instances
+- **Fallback:** If no staging OCS exists, sandbox mode for OCS skills falls back to dry-run behavior (log intended actions without executing)

@@ -44,3 +44,9 @@ Generate training materials from the app summaries and standard templates.
 ## Mode Behavior
 - **Auto:** Generate materials, notify admin group, proceed
 - **Review:** Present materials for review before distributing to LLOs
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

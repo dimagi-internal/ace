@@ -56,3 +56,15 @@ Create and fully configure a Connect opportunity.
 ## Mode Behavior
 - **Auto:** Configure (or guide manual config), proceed
 - **Review:** Present configuration spec for approval before creating
+
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Write the full opportunity configuration (name, dates, verification rules, delivery units, payment units) to `comms-log/dry-run-connect-opp-setup.md`
+- Do not create or configure the opportunity in Connect
+- State tracks as `dry-run-success`
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

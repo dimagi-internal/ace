@@ -33,6 +33,7 @@ Invoke the `app-deploy` skill.
 - Input: app JSON/CCZ files from GDrive
 - Output: apps uploaded to CCHQ CRISPR-Connect domain, built and published
 - **Gate (review mode):** Present app deployment summary for verification
+- Note: app-test depends on deployed apps (reads deployment-summary.md), so deploy must precede test even though the directory listing shows test first
 
 ### Step 4: Test and Train (parallel)
 Invoke `app-test` and `training-materials` skills. These can run in parallel.

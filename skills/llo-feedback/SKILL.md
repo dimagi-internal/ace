@@ -48,3 +48,15 @@ Collect feedback from LLOs about the completed opportunity.
 ## Mode Behavior
 - **Auto:** Send feedback requests, monitor and document responses
 - **Review:** Present email drafts for review before sending
+
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Write feedback request email drafts (recipients, subject, body) to `comms-log/dry-run-llo-feedback.md`
+- Do not send emails or monitor for responses
+- State tracks as `dry-run-success`
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

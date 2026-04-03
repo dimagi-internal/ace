@@ -46,3 +46,9 @@ Analyze FLW data and recommend improvements to communicate to LLOs.
 ## Mode Behavior
 - **Auto:** Analyze data, write report, email recommendations to admin group
 - **Review:** Present findings and recommendations for team discussion
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

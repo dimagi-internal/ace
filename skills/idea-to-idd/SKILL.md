@@ -49,3 +49,9 @@ Doc (IDD) that specifies a Connect application.
 ## Mode Behavior
 - **Auto:** Write IDD, email summary to admin group, proceed
 - **Review:** Write IDD, present for human review, wait for approval
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

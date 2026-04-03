@@ -12,7 +12,7 @@ You set up the Connect platform for a CRISPR-Connect opportunity.
 
 ## Workflow
 
-Execute these steps in order:
+Execute these steps in order. Before creating a Program, ensure the correct Connect Workspace is selected. The CRISPR-Connect workspace should be used for all ACE opportunities.
 
 ### Step 1: Program Setup
 Invoke the `connect-program-setup` skill.

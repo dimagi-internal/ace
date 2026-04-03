@@ -47,3 +47,15 @@ Identify and invite LLOs to participate in the opportunity.
 ## Mode Behavior
 - **Auto:** Send invites (or guide manual invites), notify admin group
 - **Review:** Present invite list for approval before sending (this is a gate step)
+
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Write the invite list (LLO names, contacts, emails) and invite content to `comms-log/dry-run-llo-invite.md`
+- Do not send invitations via Connect invite API
+- State tracks as `dry-run-success`
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

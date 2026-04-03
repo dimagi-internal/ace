@@ -1,0 +1,31 @@
+opportunity: CRISPR-Test-001
+mode: review
+created: 2026-04-03T00:00:00Z
+type: synthetic-test-fixture
+
+steps:
+  idea-to-idd: pending
+  idd-to-learn-app: pending
+  idd-to-deliver-app: pending
+  app-deploy: pending
+  app-test: pending
+  training-materials: pending
+  connect-program-setup: pending
+  connect-opp-setup: pending
+  llo-invite: pending
+  llo-onboarding: pending
+  llo-uat: pending
+  llo-launch: pending
+  ocs-agent-setup: pending
+  timeline-monitor: pending
+  flw-data-review: pending
+  opp-closeout: pending
+  llo-feedback: pending
+  learnings-summary: pending
+  cycle-grade: pending
+
+gates:
+  idea-to-idd: pending
+  app-deploy: pending
+  llo-invite: pending
+  llo-launch: pending

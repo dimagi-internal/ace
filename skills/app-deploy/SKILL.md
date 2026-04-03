@@ -44,3 +44,15 @@ Upload the generated Learn and Deliver apps to CommCare HQ and publish them.
 ## Mode Behavior
 - **Auto:** Deploy (or guide manual deploy), notify admin group, proceed
 - **Review:** Present deployment summary, wait for verification before proceeding
+
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Write the intended API calls (app upload, build, publish) and app package references to `comms-log/dry-run-app-deploy.md`
+- Do not upload, build, or publish apps on CCHQ
+- State tracks as `dry-run-success`
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

@@ -45,3 +45,15 @@ Process the financial closeout of a completed opportunity.
 ## Mode Behavior
 - **Auto:** Pull invoices, create Jira ticket, proceed
 - **Review:** Present invoice details for verification before creating ticket
+
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Write the Jira ticket specification (project, summary, description, attachments) and invoice details to `comms-log/dry-run-opp-closeout.md`
+- Do not create the Jira ticket or pull invoices from Connect
+- State tracks as `dry-run-success`
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

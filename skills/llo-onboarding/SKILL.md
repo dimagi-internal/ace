@@ -44,3 +44,15 @@ Send onboarding communications to LLOs who accepted the opportunity invitation.
 ## Mode Behavior
 - **Auto:** Send emails directly, log to GDrive
 - **Review:** Present email drafts for review before sending
+
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Write the onboarding email content (recipients, subject, body, attachments) to `comms-log/dry-run-llo-onboarding.md`
+- Do not send emails
+- State tracks as `dry-run-success`
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

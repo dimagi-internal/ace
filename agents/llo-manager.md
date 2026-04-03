@@ -2,8 +2,8 @@
 name: llo-manager
 description: >
   Orchestrates LLO management during an active opportunity: onboarding,
-  OCS agent setup, timeline monitoring, and FLW data review. Includes
-  recurring skills that run on schedule.
+  UAT, go-live, OCS agent setup, timeline monitoring, and FLW data review.
+  Includes recurring skills that run on schedule.
 model: inherit
 ---
 
@@ -18,13 +18,26 @@ Invoke the `llo-onboarding` skill.
 - Input: invite list, training materials from GDrive
 - Output: onboarding emails sent to LLOs with training materials and instructions
 
-### Step 2: OCS Agent Setup
+### Step 2: LLO User Acceptance Testing
+Invoke the `llo-uat` skill.
+- Input: deployment summary, training materials, opportunity config, LLO contacts
+- Output: UAT results with LLO sign-off status
+- Monitor OCS transcripts for reported issues during UAT window
+
+### Step 3: Opportunity Go-Live
+Invoke the `llo-launch` skill.
+- Input: UAT results confirming LLO sign-offs
+- Output: opportunity activated in Connect, LLOs notified of go-live
+- **Gate (review mode):** Present launch readiness summary for approval before activating
+- Depends on: Step 2 (UAT must pass before launch)
+
+### Step 4: OCS Agent Setup
 Invoke the `ocs-agent-setup` skill.
 - Input: IDD, training materials, opportunity context
 - Output: OCS agent configured for this opportunity
 - **LLM-as-Judge:** Evaluate agent context quality
 
-### Step 3: Ongoing Monitoring (recurring)
+### Step 5: Ongoing Monitoring (recurring)
 These skills run on a schedule during the active opportunity:
 
 **Timeline Monitor** — invoke `timeline-monitor` skill weekly (or as configured).

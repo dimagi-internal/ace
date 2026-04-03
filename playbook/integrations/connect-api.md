@@ -90,3 +90,12 @@ user to complete them manually. The skill will:
 
 This means ACE can still orchestrate the full lifecycle — it just has more human
 touchpoints until the APIs are built.
+
+## Staging Environment
+
+When `--sandbox` is active, ACE routes Connect API calls to the staging instance.
+
+- **Staging URL:** TBD — confirm with Cal's team
+- **How it works:** MCP server reads `ACE_SANDBOX=true` environment variable and switches the base URL from production to staging
+- **Data isolation:** Staging has its own database — no impact on production programs, opportunities, or invitations
+- **Limitations:** Staging may not have the same LLO Directory data as production

@@ -42,3 +42,16 @@ Check LLO progress against expected timeline and prompt action if behind.
 ## Mode Behavior
 - **Auto:** Check timeline, send prompting emails if needed, log report
 - **Review:** Present findings and draft emails for approval before sending
+
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Write any prompting email drafts (recipients, subject, body) to `comms-log/dry-run-timeline-monitor.md`
+- Monitoring report is still written to `ACE/<opp-name>/monitoring/` as normal
+- Do not send emails to LLOs
+- State tracks as `dry-run-success`
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

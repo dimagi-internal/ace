@@ -62,3 +62,12 @@ Skills requiring unbuilt CommCare APIs will fall back to manual upload via the H
 
 For the `app-test` skill, manual verification steps will be included as a checklist
 until automated test submission and result validation are available.
+
+## Staging Environment
+
+When `--sandbox` is active, ACE routes CommCare API calls to the staging project space.
+
+- **Staging project space:** TBD — confirm with Cal's team (likely `crispr-connect-staging`)
+- **How it works:** MCP server reads `ACE_SANDBOX=true` environment variable and targets the staging project space instead of the production CRISPR-Connect domain
+- **Data isolation:** Staging project space is separate from production — app uploads, builds, and publishes only affect staging
+- **Limitations:** scout-data analytics may not be available for the staging project space

@@ -41,3 +41,15 @@ Create or select a Connect program for this opportunity.
 ## Mode Behavior
 - **Auto:** Create program (or guide manual creation), proceed
 - **Review:** Present program choice for approval
+
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Write the program configuration (name, description, settings) to `comms-log/dry-run-connect-program-setup.md`
+- Do not create or modify programs in Connect
+- State tracks as `dry-run-success`
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

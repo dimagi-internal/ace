@@ -47,3 +47,9 @@ Create a test plan and execute it against the deployed Learn and Deliver apps.
 ## Mode Behavior
 - **Auto:** Run tests, write results, notify admin group, proceed
 - **Review:** Present test results and any critical bugs for review
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-04-03 | Initial version | ACE team |

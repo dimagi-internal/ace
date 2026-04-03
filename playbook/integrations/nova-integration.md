@@ -93,3 +93,11 @@ Until Nova integration is resolved with Braxton:
 This manual flow still benefits from ACE's IDD-to-brief generation, which structures
 the requirements in the exact format Nova expects. The human step is just the Nova
 interaction itself.
+
+## Staging Environment
+
+When `--sandbox` is active, Nova app generation should target staging outputs.
+
+- **Staging behavior:** TBD — Nova integration is not yet automated. Once a Nova API exists, sandbox mode should route to a staging Nova instance or tag generated apps as "test"
+- **Current state:** Since Nova is currently manual (user creates apps in Nova UI), sandbox mode has no effect on Nova steps. The dry-run flag is more relevant for these skills.
+- **Future:** When Nova API is available, the MCP server should read `ACE_SANDBOX=true` and route accordingly

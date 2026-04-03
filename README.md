@@ -10,6 +10,8 @@ Install as a Claude Code plugin, then:
 
 ```
 /ace:run <opp-name> --mode review    # Run full lifecycle
+/ace:run <opp-name> --dry-run        # Test without side effects
+/ace:run <opp-name> --sandbox        # Route to staging endpoints
 /ace:step <skill-name> <opp-name>    # Run a single step
 /ace:status                          # Show all opportunities
 /ace:docs                            # Generate playbook
@@ -18,7 +20,7 @@ Install as a Claude Code plugin, then:
 ## Architecture
 
 - **5 agents** — ace-orchestrator + 4 phase agents (app-builder, connect-setup, llo-manager, closeout)
-- **17 skills** — one per process step, each a SKILL.md that Claude executes
+- **19 skills** — one per process step, each a SKILL.md that Claude executes
 - **4 commands** — run, step, status, docs
 - **2 MCP servers** — Google Drive (built), OCS (scaffold)
 - **2 execution modes** — auto (hands-off) and review (pauses at gates)
