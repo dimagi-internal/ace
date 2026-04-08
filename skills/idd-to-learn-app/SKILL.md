@@ -38,6 +38,30 @@ Generate the Learn (data collection) app from the IDD using Nova.
 
 7. **Notify admin group** that Learn app generation is complete, with link to summary.
 
+## Archetypes
+
+The Learn app's job depends on the IDD's `archetype:` field. Read it before passing anything to Nova.
+
+### `atomic-visit`
+Learn app teaches FLWs to **collect data** at individual visits. Standard form-walkthrough Learn app: how to open a case, complete each form field, what good vs. bad inputs look like (e.g., the photo standardization protocol from the Evidence Model — Layer A), how to handle edge cases (no stock, hostile vendor, duplicate), submission and case closure.
+
+### `focus-group`
+Learn app teaches FLWs to **facilitate group discussions** — this is a **craft, not a checklist**. The brief to Nova is fundamentally different from atomic-visit:
+
+- **Facilitation basics**: opening the session, introducing yourself, setting ground rules
+- **Probing techniques**: how to ask "tell me more," "can you give an example," "what do you mean by that," without leading
+- **Neutral framing**: how to ask sensitive questions (vaccination decisions, religious objections) without conveying judgment
+- **Group dynamics**: managing dominant participants, drawing out quiet ones, handling disagreement, recognizing groupthink
+- **Question guide walkthrough**: the IDD's prioritized question list, with probes — covered in the order specified (program-specific questions last to avoid anchoring)
+- **Session form walkthrough**: how to capture per-domain themes, notable quotes, level of consensus, time spent, facilitator reflection — referencing the Output Specification from the IDD
+- **Consent and ethics**: verbal consent script, audio recording consent, what to do if a participant withdraws
+- **Logistics**: venue setup, attendance register, audio recording start/stop, compensation distribution
+
+The Nova prompt should explicitly say "this is a facilitation training app, not a form-walkthrough app" and reference the IDD's Facilitation Protocol section.
+
+### `multi-stage`
+Generate one Learn app per stage that has its own delivery work, branching on each stage's archetype. If only Stage 2 involves FLW delivery, only that stage gets a Learn app. The Stage Gate from the IDD determines whether Stage 2 training launches before or after Stage 1 results.
+
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
 - Nova: TBD — see `playbook/integrations/nova-integration.md`
@@ -58,3 +82,4 @@ Generate the Learn (data collection) app from the IDD using Nova.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
+| 2026-04-08 | Add `## Archetypes` section: `atomic-visit` (form walkthrough), `focus-group` (facilitation craft training), `multi-stage` (per-stage branching) | ACE team (PM scout, focus-group framework lens) |
