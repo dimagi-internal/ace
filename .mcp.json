@@ -1,0 +1,6 @@
+{
+  "ace-gdrive": {
+    "command": "npx",
+    "args": ["tsx", "${CLAUDE_PLUGIN_ROOT}/mcp/google-drive-server.ts"]
+  }
+}
