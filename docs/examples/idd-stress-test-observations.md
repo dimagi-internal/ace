@@ -4,6 +4,13 @@ Analysis of two sample Intervention Design Documents to inform how the ACE pipel
 
 These notes were generated in conversation while exploring the kinds of stress tests, evidence layers, and Connect/CommCare configurations the ACE skills will need to support.
 
+## Source artifacts
+
+The two raw IDDs analyzed below are committed alongside this file so the folder is self-contained:
+
+- **[`idd-vaccine-hesitancy.md`](idd-vaccine-hesitancy.md)** — two-stage intervention with focus groups (Stage 1) and household follow-up pilot (Stage 2). The harder case — focus groups don't fit the standard Connect delivery model.
+- **[`idd-turmeric-market-survey.md`](idd-turmeric-market-survey.md)** — single-stage vendor photo survey with MTN card color reference. The cleaner case — maps directly onto atomic photo+GPS+form deliveries.
+
 ---
 
 ## IDD #1 — Vaccine Hesitancy (Sokoto State)
