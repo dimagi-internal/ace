@@ -29,6 +29,7 @@ function getAuth() {
     scopes: [
       'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/drive',
+      'https://www.googleapis.com/auth/documents',
     ],
   });
 }
@@ -36,6 +37,7 @@ function getAuth() {
 const auth = getAuth();
 const sheets = google.sheets({ version: 'v4', auth });
 const drive = google.drive({ version: 'v3', auth });
+const docs = google.docs({ version: 'v1', auth });
 
 // ============================================================================
 // Helper
@@ -58,8 +60,8 @@ function error(msg: string) {
 // ============================================================================
 
 const server = new McpServer({
-  name: 'google-drive',
-  version: '2.0.0',
+  name: 'ace-gdrive',
+  version: '0.2.0',
 });
 
 // 1. List sheets (tabs) in a spreadsheet
@@ -268,7 +270,146 @@ server.tool(
   },
 );
 
-// 10. Diagnose Drive API access
+// 10. Update a Drive file's content
+server.tool(
+  'drive_update_file',
+  'Update the text content of an existing Google Doc in Drive. Use for updating IDDs, summaries, and other docs as ACE skills produce new content.',
+  {
+    fileId: z.string().describe('The Google Drive file ID'),
+    content: z.string().describe('The new text content to write'),
+  },
+  async ({ fileId, content: newContent }) => {
+    try {
+      const resp = await drive.files.update({
+        fileId,
+        media: { mimeType: 'text/plain', body: newContent },
+        fields: 'id, name, modifiedTime',
+      });
+      return result({ id: resp.data.id, name: resp.data.name, modifiedTime: resp.data.modifiedTime });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 11. Create a file in Google Drive
+server.tool(
+  'drive_create_file',
+  'Create a new Google Doc in Drive with the given name and content, optionally inside a parent folder. Used by ACE skills (idea-to-idd, idd-to-learn-app, etc.) to write artifacts to opportunity folders.',
+  {
+    name: z.string().describe('Name for the new file'),
+    content: z.string().describe('Text content for the file'),
+    parentFolderId: z.string().optional().describe('Parent folder ID (omit to create in root)'),
+  },
+  async ({ name: fileName, content: fileContent, parentFolderId }) => {
+    try {
+      const fileMetadata: Record<string, unknown> = {
+        name: fileName,
+        mimeType: 'application/vnd.google-apps.document',
+      };
+      if (parentFolderId) {
+        fileMetadata.parents = [parentFolderId];
+      }
+      const created = await drive.files.create({
+        requestBody: fileMetadata,
+        fields: 'id, name, webViewLink',
+      });
+      const fileId = created.data.id!;
+
+      await drive.files.update({
+        fileId,
+        media: { mimeType: 'text/plain', body: fileContent },
+        fields: 'id',
+      });
+
+      return result({ id: fileId, name: created.data.name, webViewLink: created.data.webViewLink });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 12. Create a folder in Google Drive
+server.tool(
+  'drive_create_folder',
+  'Create a new folder in Google Drive, optionally inside a parent folder. ACE uses this to set up the per-opportunity folder structure (ACE/<opp-name>/).',
+  {
+    name: z.string().describe('Name for the new folder'),
+    parentFolderId: z.string().optional().describe('Parent folder ID (omit to create in root)'),
+  },
+  async ({ name: folderName, parentFolderId }) => {
+    try {
+      const fileMetadata: Record<string, unknown> = {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+      };
+      if (parentFolderId) {
+        fileMetadata.parents = [parentFolderId];
+      }
+      const resp = await drive.files.create({
+        requestBody: fileMetadata,
+        fields: 'id, name, webViewLink',
+      });
+      return result({ id: resp.data.id, name: resp.data.name, webViewLink: resp.data.webViewLink });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 13. Move a file into a different folder
+server.tool(
+  'drive_move_file',
+  'Move an existing file into a different folder in Google Drive',
+  {
+    fileId: z.string().describe('The file ID to move'),
+    newParentFolderId: z.string().describe('The destination folder ID'),
+  },
+  async ({ fileId, newParentFolderId }) => {
+    try {
+      const file = await drive.files.get({ fileId, fields: 'parents' });
+      const previousParents = (file.data.parents || []).join(',');
+
+      const resp = await drive.files.update({
+        fileId,
+        addParents: newParentFolderId,
+        removeParents: previousParents,
+        fields: 'id, name, parents, webViewLink',
+      });
+      return result({ id: resp.data.id, name: resp.data.name, webViewLink: resp.data.webViewLink });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 14. Transfer ownership of a Drive file or folder
+server.tool(
+  'drive_transfer_ownership',
+  'Transfer ownership of a file or folder to another Google account',
+  {
+    fileId: z.string().describe('The file or folder ID'),
+    email: z.string().describe('Email address of the new owner'),
+  },
+  async ({ fileId, email }) => {
+    try {
+      const resp = await drive.permissions.create({
+        fileId,
+        transferOwnership: true,
+        requestBody: {
+          type: 'user',
+          role: 'owner',
+          emailAddress: email,
+        },
+      });
+      return result({ permissionId: resp.data.id, newOwner: email });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 15. Diagnose Drive API access
 server.tool(
   'drive_diagnose',
   'Test Drive API access - checks scopes, lists recent files the SA can see, and tests a specific file ID',
@@ -319,6 +460,110 @@ server.tool(
 );
 
 // ============================================================================
+// Google Docs tools
+// ============================================================================
+
+// 16. Get full document structure
+server.tool(
+  'docs_get',
+  'Read the full structured JSON of a Google Doc — paragraphs, tables, smart chips, inline objects, and all element indices. Use this to inspect document structure before making edits via docs_batch_update.',
+  {
+    documentId: z.string().describe('The Google Doc ID from the URL'),
+    tabId: z.string().optional().describe('Specific tab ID (omit for first tab)'),
+  },
+  async ({ documentId, tabId }) => {
+    try {
+      const resp = await docs.documents.get({ documentId });
+      if (tabId && resp.data.tabs) {
+        const tab = resp.data.tabs.find(
+          (t: any) => t.tabProperties?.tabId === tabId,
+        );
+        if (!tab) {
+          return error(`Tab "${tabId}" not found. Available tabs: ${resp.data.tabs.map((t: any) => t.tabProperties?.tabId).join(', ')}`);
+        }
+        return result({ title: resp.data.title, documentId: resp.data.documentId, tab });
+      }
+      return result(resp.data);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 17. Batch update a Google Doc (raw API)
+server.tool(
+  'docs_batch_update',
+  'Execute raw Google Docs API batchUpdate requests. Supports all 40 request types: insertText, replaceAllText, deleteContentRange, insertTable, updateTextStyle, etc. See https://developers.google.com/docs/api/reference/rest/v1/documents/request for the full request schema.',
+  {
+    documentId: z.string().describe('The Google Doc ID'),
+    requests: z.array(z.record(z.unknown())).describe('Array of Docs API request objects, e.g. [{"insertText": {"location": {"index": 1}, "text": "Hello"}}]'),
+  },
+  async ({ documentId, requests }) => {
+    try {
+      const resp = await docs.documents.batchUpdate({
+        documentId,
+        requestBody: { requests },
+      });
+      return result({
+        documentId: resp.data.documentId,
+        replies: resp.data.replies,
+      });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 18. Copy a template doc and replace placeholder text
+server.tool(
+  'docs_copy_template',
+  'Copy a Google Doc template and optionally replace placeholder text. Smart chips (person chips, dates, building blocks) survive the copy. Use placeholders like {{NAME}} in the template, then pass replacements to fill them in. Useful for ACE training materials, IDD templates, and onboarding email templates.',
+  {
+    templateDocId: z.string().describe('The template Google Doc ID to copy'),
+    title: z.string().describe('Title for the new document'),
+    replacements: z.record(z.string()).optional().describe('Key-value map of placeholder text to replace, e.g. {"{{OPP_NAME}}": "Vaccine Hesitancy Pilot", "{{LLO_NAME}}": "TestLand Health Partners"}'),
+    parentFolderId: z.string().optional().describe('Destination folder ID (omit to create in same location as template)'),
+  },
+  async ({ templateDocId, title, replacements, parentFolderId }) => {
+    try {
+      const copyMetadata: Record<string, unknown> = { name: title };
+      if (parentFolderId) {
+        copyMetadata.parents = [parentFolderId];
+      }
+      const copy = await drive.files.copy({
+        fileId: templateDocId,
+        requestBody: copyMetadata,
+        fields: 'id, name, webViewLink',
+      });
+      const newDocId = copy.data.id!;
+
+      if (replacements && Object.keys(replacements).length > 0) {
+        const requests = Object.entries(replacements).map(
+          ([placeholder, replacement]) => ({
+            replaceAllText: {
+              containsText: { text: placeholder, matchCase: true },
+              replaceText: replacement,
+            },
+          }),
+        );
+        await docs.documents.batchUpdate({
+          documentId: newDocId,
+          requestBody: { requests },
+        });
+      }
+
+      return result({
+        id: newDocId,
+        title: copy.data.name,
+        webViewLink: copy.data.webViewLink,
+      });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// ============================================================================
 // Start
 // ============================================================================
 
@@ -328,6 +573,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Google Drive MCP server error:', err);
+  console.error('ACE google-drive MCP server error:', err);
   process.exit(1);
 });
