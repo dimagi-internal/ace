@@ -3,6 +3,7 @@
 ## Opportunity: Community Health Worker Training Pilot — TestLand
 **Date:** 2026-03-15
 **Author:** Neal (ACE test fixture)
+**Archetype:** atomic-visit
 
 ---
 
@@ -70,6 +71,14 @@ Deploy a Learn + Deliver model where CHWs first complete training modules on MCH
 | Visit coverage | 80% of beneficiaries visited on schedule | Deliver app submission rates |
 | Data quality | <5% forms with missing required fields | CommCare data quality reports |
 | Referral appropriateness | >90% referrals clinically justified | Clinic record cross-check |
+
+## Evidence Model
+
+| Layer | Purpose | Captured by | Verified by |
+|---|---|---|---|
+| **A — Delivery proof** | The CHW visited the beneficiary and completed the appropriate form | Visit form submission (Prenatal Visit / Immunization Visit / Danger Sign Referral), GPS coordinate, timestamp, case ID, all required fields populated | Automated: GPS within target district, all required fields non-empty, case lifecycle action consistent (registration creates, follow-up updates), submission time within working hours |
+| **B — Content proof** | The visit was conducted properly and the data is plausible | BP reading within physiologically possible range, vaccine batch number format valid, danger signs checklist complete with at least one entry where flagged, referral form attached when danger signs are present | Automated + AI-assisted: range checks on numeric fields, batch-number regex, conditional-required-field enforcement, referral cross-check |
+| **C — Cross-delivery quality** | The dataset is useful and the FLWs are performing consistently | Per-FLW visit volume vs. cohort baseline, per-FLW referral rate vs. cohort baseline, case dropout patterns, data quality drift over time | AI advisory: outlier detection per FLW, referral-rate plausibility (too-low = under-referring, too-high = over-referring), case-dropout cluster detection |
 
 ## Timeline
 - Start date: 2026-04-01

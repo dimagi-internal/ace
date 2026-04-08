@@ -2,6 +2,7 @@ opportunity: CRISPR-Test-001
 mode: review
 created: 2026-04-03T00:00:00Z
 type: synthetic-test-fixture
+archetype: atomic-visit
 
 steps:
   idea-to-idd: pending
