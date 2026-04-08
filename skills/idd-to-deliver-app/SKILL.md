@@ -38,6 +38,27 @@ Generate the Deliver (service delivery) app from the IDD using Nova.
 
 7. **Notify admin group** that Deliver app generation is complete.
 
+## Archetypes
+
+The Deliver app's structure depends on the IDD's `archetype:` field. The "delivery unit" concept is the most archetype-sensitive part of ACE — get this wrong and `connect-opp-setup` will configure the wrong verification rules.
+
+### `atomic-visit`
+Delivery unit = **one FLW visit to one beneficiary**. The form is the verification artifact: every required field, photo, GPS coordinate. Case management follows the standard create → update → close pattern. The form's fields map 1:1 to Layer A and Layer B of the IDD's Evidence Model.
+
+### `focus-group`
+Delivery unit = **one completed group session with all required artifacts**. The form is a session-documentation form, not an individual-beneficiary form. Required artifacts:
+
+- **Pre-session**: date, GPS, venue, segment, participant count, consent confirmed (per participant), recording started
+- **Per question domain (one section per domain in the IDD's question guide)**: themes observed, notable quotes (verbatim, with translation if needed), level of consensus, time spent
+- **Post-session**: facilitator reflection (what went well, what didn't, anything surprising), attendance photo, audio file upload, total session duration
+
+Case management is **per session**, not per participant. There's no "case lifecycle" for participants — they're not the unit. The opportunity-level case is the segment (e.g., "Women, remote, under-vaccinated children"), and each session against that segment is a delivery against that case.
+
+The Nova prompt should explicitly call out that this is **session documentation, not atomic data collection**, and reference the IDD's Output Specification section for the per-domain summary fields.
+
+### `multi-stage`
+Generate one Deliver app per stage that has its own delivery work, branching on each stage's archetype. The two Deliver apps may have completely different structures (e.g., Stage 1 = focus-group session form, Stage 2 = atomic household-visit form).
+
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
 - Nova: TBD — see `playbook/integrations/nova-integration.md`
@@ -58,3 +79,4 @@ Generate the Deliver (service delivery) app from the IDD using Nova.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
+| 2026-04-08 | Add `## Archetypes` section: `atomic-visit` (per-beneficiary form), `focus-group` (per-session documentation form, segment-level case), `multi-stage` (per-stage branching) | ACE team (PM scout, focus-group framework lens) |

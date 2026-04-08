@@ -3,6 +3,15 @@
 ## Opportunity: [Name]
 **Date:** [Date]
 **Author:** [Name]
+**Archetype:** [atomic-visit | focus-group | multi-stage]
+
+> **Archetype guidance.** ACE skills branch on this field. Pick the closest single archetype, or `multi-stage` for IDDs that combine archetypes across stages (then declare each stage's archetype in its section header — see Stage examples below). The current supported archetypes are:
+>
+> - **`atomic-visit`** — one FLW visit produces one structured delivery (photo + GPS + form). Verification is automated. Examples: turmeric market survey, household-level data collection. **Default if unspecified.**
+> - **`focus-group`** — one FLW-facilitated group session produces qualitative content (audio + per-domain summaries + attendance). Verification mixes automated session-level checks with AI-assisted content evaluation. Example: vaccine-hesitancy Stage 1.
+> - **`multi-stage`** — combines two or more archetypes across sequenced stages, each with its own gate. Stage 1 may be `focus-group`, Stage 2 may be `atomic-visit`, etc. Example: full vaccine-hesitancy IDD.
+>
+> Adding a new archetype is a framework change — see `skills/README.md` (when it exists) or the `## Archetypes` section of any skill that branches on it.
 
 ---
 
@@ -55,6 +64,24 @@
 | Metric | Target | Measurement Method |
 |--------|--------|--------------------|
 | | | |
+
+## Evidence Model
+
+> **What this section is for.** ACE downstream skills (`connect-opp-setup`, `app-test`, `flw-data-review`, `cycle-grade`) read this section to know what to verify, what to test for, what to analyze, and how to grade. The goal is **one place** where the IDD declares "what counts as a good delivery," using a consistent vocabulary across all archetypes.
+>
+> Three layers, increasing in cost and decreasing in automatability:
+>
+> - **Layer A — Delivery proof** (the thing happened). Automated, hard gates. Used by `connect-opp-setup` to set verification rules.
+> - **Layer B — Content proof** (it was done properly). AI-assisted or structured human review. Used by `app-test` and `flw-data-review`.
+> - **Layer C — Cross-delivery quality** (the data is useful). AI synthesis across deliveries. Used by `flw-data-review` and `cycle-grade`.
+>
+> Every IDD must fill in all three layers, even if Layer C is "not applicable, single-shot delivery." Worked examples for both `atomic-visit` and `focus-group` archetypes are in `docs/examples/idd-stress-test-observations.md`.
+
+| Layer | Purpose | Captured by | Verified by |
+|---|---|---|---|
+| **A — Delivery proof** | [What artifacts prove the delivery happened?] | [Form field, photo, audio, GPS, attendance, etc.] | [Automated check — what condition must hold?] |
+| **B — Content proof** | [What artifacts prove the delivery was done properly?] | [Per-domain summary, photo content, form-field substance, etc.] | [AI-assisted check or structured human review — what's the rubric?] |
+| **C — Cross-delivery quality** | [What patterns across deliveries indicate the dataset is useful?] | [Theme variance across segments, outlier detection, saturation, etc.] | [AI synthesis or analyst review — or "N/A — single delivery"] |
 
 ## Timeline
 - Start date: [date]
