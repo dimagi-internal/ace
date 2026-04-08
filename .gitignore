@@ -11,3 +11,6 @@ node_modules/
 # Temporary scripts and artifacts from live-OCS verification sessions.
 # These contain exploration code and HTML dumps that shouldn't live in git.
 scripts/tmp/
+
+# Claude Code session-local settings (per-developer, not shared state)
+.claude/settings.local.json
