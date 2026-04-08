@@ -30,6 +30,12 @@ Install as a Claude Code plugin, then:
 - [Design Spec](docs/superpowers/specs/2026-04-01-ace-design.md) — full architecture and rationale
 - [Generated Playbook](docs/generated/playbook.md) — human-readable process flow (generated from agent/skill definitions)
 - [Integration Specs](playbook/integrations/) — what APIs exist vs. need to be built
+- [ACE Web Harness Design](docs/superpowers/specs/2026-04-07-ace-web-harness-design.md) — cross-cutting architecture spec for the browser-based ACE frontend
+- [IDD Stress-Test Observations](docs/examples/idd-stress-test-observations.md) — how to validate an IDD and verify LLO execution, with two sample IDDs worked through end-to-end
+
+## Related projects
+
+- **[ace-web](https://github.com/jjackson/ace-web)** — the browser-based chat + transcript harness for ACE. Django + Channels + React on GCP Cloud Run, built against the design spec above. Implementation plans (1A, 1B, 1C, 1D) live inside that repo at `docs/plans/`. Work on ace-web implementation happens directly in the ace-web checkout, not from this repo.
 
 ## Planning Spreadsheet
 
