@@ -1,5 +1,9 @@
 # ACE Web Harness — Plan 1A: Foundation
 
+> **Status: COMPLETE (2026-04-07).** Executed via subagent-driven-development. Tasks 1–10 implemented and committed; Task 11 (manual GCP deploy) is pending user action.
+>
+> **If you are re-running this plan from scratch**, ALSO apply the 15 fixes documented in the "Post-execution corrections" section at the bottom of this file. They were identified by per-task and whole-plan code reviews and cover several real security bugs, schema mistakes, and cross-task integration issues that the original plan shipped with.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stand up a deployable Django + Channels + React skeleton on GCP Cloud Run with Postgres, IAP-based auth, and the full data model migrated. At the end of this plan, you can hit `https://<cloud-run-url>/health` after Google SSO and see a 200, and all database tables exist. No chat functionality yet — that's Plan 1B.
@@ -2376,3 +2380,127 @@ If any of these fail, fix before moving to Plan 1B.
 - Presence indicators → **Plan 1C**
 - Session list page, share tokens, `ace upload` CLI → **Plan 1D**
 - Claude CLI auth flow (PTY-based `claude setup-token`) → **Plan 1B** (when CLIBackend lands)
+
+---
+
+## Post-execution corrections
+
+Issues found during review of the executed plan that a future re-runner should apply on top of the tasks above. Each has a corresponding fix-up commit in the `ace-web` repo for cross-reference.
+
+### Task 2 — Django project skeleton
+
+**Security (3 issues, commit `150421f`):**
+
+1. `config/settings/base.py`: `ALLOWED_HOSTS` default should be `[]`, not `["*"]`. The wildcard fallback in base is dangerous because it flows to production if `production.py` misconfigures. Development.py overrides to `["*"]` so dev is unaffected.
+2. `config/settings/base.py`: guard the `.env` read with `if (BASE_DIR / ".env").exists():` — unconditional read is surprising in Cloud Run where there is no `.env` file, and can mask config errors.
+3. `config/settings/production.py`: add `SECRET_KEY = env("DJANGO_SECRET_KEY")` with NO default, so a misconfigured prod deploy crashes at startup instead of silently using the dev key.
+4. `config/settings/production.py`: add a prominent WARNING comment that `CHANNEL_LAYERS` is still `InMemoryChannelLayer` from base.py and must be replaced with `channels-redis` before scaling Cloud Run past `max-instances=1` (Plan 1C).
+5. Add explanatory comments to `config/asgi.py` and `config/wsgi.py` about why they default `DJANGO_SETTINGS_MODULE` to production.
+6. Add a forward-reference comment in `config/urls.py` noting that `apps.common.urls` is created in Task 3 (transient broken state between Tasks 2 and 3).
+
+### Task 3 — Common app + health
+
+**Test environment (commit `ef368e1`):**
+
+7. `config/settings/test.py` must filter forward-referenced apps/middleware while Tasks 4 and 5 are still pending. Add:
+
+```python
+_unbuilt_apps = {"apps.auth.apps.AuthConfig", "apps.sessions.apps.SessionsConfig"}
+_unbuilt_middleware = {"apps.auth.middleware.IAPHeaderAuthMiddleware"}
+INSTALLED_APPS = [a for a in INSTALLED_APPS if a not in _unbuilt_apps]
+MIDDLEWARE = [m for m in MIDDLEWARE if m not in _unbuilt_middleware]
+AUTH_USER_MODEL = "auth.User"  # base.py points to ace_auth.User which doesn't exist yet
+```
+
+Each subsequent task removes its entries from the filter sets. By Task 5 the sets are empty and the override block should be deleted entirely (see Issue 14).
+
+### Task 4 — Auth app and IAP middleware
+
+**Data integrity and races (commit `dbcc37f`):**
+
+8. `apps/auth/managers.py`: `create_user` must default `google_sub=None` (not `""`) and coerce falsy to `None` via `google_sub or None`. Empty string would collide on the UNIQUE constraint the second time a user is created without a sub.
+9. `apps/auth/middleware.py`: `_get_or_create_user` must handle `IntegrityError` on the create path and re-fetch — otherwise concurrent first-logins for the same email will 500.
+10. Add `test_two_users_without_google_sub_can_coexist`, `test_existing_user_is_returned_not_recreated`, and `test_google_sub_is_backfilled_when_missing` to cover the scenarios above.
+11. Add a NOTE comment inside `IAPHeaderAuthMiddleware` that it only runs on HTTP requests — Plan 1C must add equivalent auth handling for WebSocket ASGI scopes.
+
+### Task 5 — Sessions data model
+
+**Schema and polish (commit `065b503`):**
+
+12. `apps/sessions/models.py`: `Message.started_at` must NOT be `auto_now_add=True`. It should be `models.DateTimeField(null=True, blank=True)` so the consumer can set it explicitly when streaming begins. With `auto_now_add=True` it always equals `created_at` and is useless.
+13. `apps/sessions/models.py`: add a `save()` override on `Session` that retries with a fresh slug on `IntegrityError` — 48 bits of entropy is plenty but the failure mode is a confusing error.
+14. `apps/sessions/models.py`: remove the redundant explicit `models.Index(fields=["session", "turn_index"])` from `Message.Meta.indexes` — the `UniqueConstraint` on the same fields already creates the index.
+15. `apps/sessions/tests/test_models.py`: remove any developer-specific hardcoded paths (e.g., `/Users/jjackson/...`) and use `/tmp/...` instead.
+
+### Whole-plan review corrections (commits `a091bad` + `30d54ff`)
+
+After all tasks completed, a final whole-plan review caught cross-cutting issues:
+
+16. **Critical:** `config/urls.py` had no SPA catch-all — navigating to `/` or any React Router route returned 404. Add a `TemplateView` catch-all for non-api/non-admin/non-static paths:
+
+```python
+re_path(
+    r"^(?!api/|admin/|static/).*$",
+    TemplateView.as_view(template_name="index.html"),
+    name="spa",
+),
+```
+
+17. **Critical:** `docker-compose.yml` `command:` key is silently ignored because Dockerfile uses `ENTRYPOINT` with no `CMD`. Either make `entrypoint.sh` conditionally pass `--reload` when `DJANGO_DEBUG=True` (the chosen fix) or have entrypoint.sh use `exec "$@"`. Local dev hot-reload was silently broken before this fix.
+
+18. **Important:** Remove Node.js and `@anthropic-ai/claude-code` installation from the production Dockerfile — Plan 1A does not use the CLI. Plan 1B will add them via a separate stage when the CLIBackend ships. Having them in 1A bloats the image by ~200 MB and expands attack surface for no benefit.
+
+19. **Important:** `docs/deploy.md` smoke test `curl /api/health` would return 403 because `--no-allow-unauthenticated` routes all traffic through IAP first. Update to:
+
+```bash
+curl -s -H "Authorization: Bearer $(gcloud auth print-identity-token)" ${URL}/api/health
+```
+
+20. **Important:** Add `tests/`, `apps/*/tests/`, `conftest.py` to `.dockerignore` so test files don't ship in the production image.
+
+21. **Important:** Remove unused `pydantic` and `daphne` from `pyproject.toml` dependencies — neither is imported anywhere.
+
+22. **Minor:** After Task 5 completes, `config/settings/test.py` should lose the `_unbuilt_apps`/`_unbuilt_middleware` filter machinery (now dead code since all apps are built).
+
+23. **Minor:** `config/settings/production.py`: `ALLOWED_HOSTS` default should be removed entirely. `env.list("DJANGO_ALLOWED_HOSTS")` with no fallback means a misconfigured deploy crashes at startup.
+
+24. **Minor:** Add security headers to `production.py`:
+
+```python
+SECURE_HSTS_SECONDS = 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+X_FRAME_OPTIONS = "DENY"
+```
+
+25. **Cross-cutting:** The `Dockerfile` `collectstatic` build step needs `DJANGO_ALLOWED_HOSTS=build-time-placeholder` inline (alongside the existing `DJANGO_SECRET_KEY=build-time-placeholder`) once fix #23 removes the default. Inline on the same `RUN` line so it does not leak into the runtime image.
+
+### Known pre-existing follow-ups (not blocking)
+
+- **Setuptools flat-layout discovery:** `pip install -e .` fails because the repo has `apps/`, `config/`, `frontend/`, and `staticfiles/` at the top level and setuptools can't guess which is the package. Add `[tool.setuptools.packages.find]` configuration with `include = ["apps*", "config*"]` to `pyproject.toml`. Tests pass because the venv was installed earlier with a working set of packages; this bites a future fresh install.
+- **Slug retry test coverage:** The `Session.save()` collision retry loop has no test. Add one using `unittest.mock.patch` on `generate_slug`. Low priority — the collision probability is essentially zero.
+
+### Final commits in order
+
+```
+05ceb29 chore: initialize ace-web repo with Django stack                    (Task 1)
+57c863e chore: scaffold Django project with split settings and ASGI          (Task 2)
+150421f fix(settings): tighten production defaults per code review           (fixes 1-6)
+36ec017 feat(common): add health check endpoint with envelope wrapper        (Task 3)
+ef368e1 fix(tests): filter forward-referenced apps from test settings        (fix 7)
+184cd8e feat(auth): add custom User model and IAP header middleware          (Task 4)
+dbcc37f fix(auth): coerce empty google_sub to NULL and handle race           (fixes 8-11)
+8c61c76 feat(sessions): add full data model with constraints and tests       (Task 5)
+065b503 fix(sessions): clean up Message timestamps, slug retries, polish     (fixes 12-15)
+e0290a6 chore(channels): wire empty Channels routing into ASGI app           (Task 6)
+deeda31 feat(frontend): scaffold React + Vite + Tailwind shell               (Task 7)
+2c9ddb1 chore(docker): add Dockerfile, entrypoint, and env template          (Task 8)
+767ff5e chore(docker): add docker-compose for local dev + dockerignore       (Task 9)
+8272178 chore(deploy): add Cloud Build config and GCP setup docs             (Task 10)
+a091bad fix(1a): address whole-plan review findings                          (fixes 16-24)
+30d54ff fix(1a): pass DJANGO_ALLOWED_HOSTS placeholder during collectstatic  (fix 25)
+```
+
+Plan 1B should start from `30d54ff` or later.
