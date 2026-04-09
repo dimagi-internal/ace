@@ -5,6 +5,39 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.1 — 2026-04-09
+
+Shared Drive support for the Google Drive MCP and a clean service-account key
+location that survives plugin updates.
+
+### Fixed
+
+- `mcp/google-drive-server.ts` now passes `supportsAllDrives: true` on every
+  `drive.files.*` / `drive.permissions.create` call, and
+  `includeItemsFromAllDrives: true` on list calls. Without these flags, service
+  accounts hit `Service Accounts do not have storage quota` when creating docs
+  even inside a Shared Drive folder, because the Drive API silently treated
+  the write as a "My Drive" create. ACE skills can now write artifacts into
+  the ACE Shared Drive folder.
+
+### Changed
+
+- Service-account key path is now resolved from the standard
+  `GOOGLE_APPLICATION_CREDENTIALS` env var, which `.mcp.json` sets to
+  `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json`. That location is outside the
+  versioned plugin cache dir, so it automatically survives `/ace:update` and
+  is shared across worktrees and installs — drop the key once per machine.
+  Falls back to the legacy `<plugin-root>/.gws-sa-key.json` for in-repo dev
+  workflows.
+- `/ace:setup` and `/ace:doctor` now probe the canonical
+  `$CLAUDE_PLUGIN_DATA` path first and warn with a migration hint on legacy
+  installs.
+- `/ace:update` no longer copies `.gws-sa-key.json` forward on each update —
+  it's in the persistent data dir now, so there's nothing to carry.
+- README, design spec, and setup docs migrated off the retired
+  `gws-local-dev@dimagi-chrome-extension` service account and on to
+  `ace-service-account@connect-labs`, with a Shared Drive requirement note.
+
 ## 0.1.0 — 2026-04-09
 
 Initial deploy infrastructure — ACE can now be installed, updated, and
