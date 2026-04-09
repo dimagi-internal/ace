@@ -42,8 +42,8 @@ fi
 echo "INFO plugin_root=$ROOT"
 
 pass() { echo "PASS $1"; }
-warn() { echo "WARN $1: $2"; [ -n "${3:-}" ] && echo "  fix: $3"; }
-fail() { echo "FAIL $1: $2"; [ -n "${3:-}" ] && echo "  fix: $3"; }
+warn() { echo "WARN $1"; [ -n "${2:-}" ] && echo "  fix: $2"; }
+fail() { echo "FAIL $1"; [ -n "${2:-}" ] && echo "  fix: $2"; }
 
 # --- Version consistency ---
 VER_FILE="$(tr -d "[:space:]" < "$ROOT/VERSION" 2>/dev/null || echo missing)"
