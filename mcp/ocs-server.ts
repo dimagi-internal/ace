@@ -18,6 +18,7 @@ import { CompositeBackend } from './ocs/backends/composite.js';
 import { PlaywrightSession } from './ocs/auth/playwright-session.js';
 import { loadBaseUrl, loadRestToken } from './ocs/auth/rest-token.js';
 import type { RequestFn } from './ocs/backends/pipeline-patch.js';
+import { createLoggingProxy, defaultFileLogger } from './ocs/logging.js';
 
 const baseUrl = loadBaseUrl();
 const teamSlug = process.env.OCS_TEAM_SLUG ?? 'dimagi';
@@ -57,7 +58,7 @@ async function getPlaywrightBackend(): Promise<PlaywrightBackend> {
 }
 
 // CompositeBackend — lazy playwright proxy so REST-only calls don't pay the browser cost
-const composite = new CompositeBackend({
+const compositeRaw = new CompositeBackend({
   rest,
   playwright: new Proxy({} as PlaywrightBackend, {
     get(_, prop) {
@@ -69,6 +70,9 @@ const composite = new CompositeBackend({
     },
   }),
 });
+
+// Wrap in logging proxy so every atom call emits a structured log entry
+const composite = createLoggingProxy(compositeRaw, defaultFileLogger());
 
 // ── MCP Server Setup ────────────────────────────────────────────────
 
