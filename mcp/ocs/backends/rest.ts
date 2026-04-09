@@ -90,6 +90,61 @@ export class RestBackend {
     await this.request('POST', '/api/trigger_bot', args);
   }
 
+  async listSessions(args: {
+    experiment_id?: string;
+    since?: string;
+    tags?: string;
+    versions?: string;
+    cursor?: string;
+    page_size?: number;
+  }) {
+    const qs = new URLSearchParams();
+    if (args.experiment_id) qs.set('experiment', args.experiment_id);
+    if (args.since) qs.set('ordering', args.since);
+    if (args.tags) qs.set('tags', args.tags);
+    if (args.versions) qs.set('versions', args.versions);
+    if (args.cursor) qs.set('cursor', args.cursor);
+    qs.set('page_size', String(args.page_size ?? 50));
+    const body = (await this.request('GET', `/api/sessions/?${qs}`)) as {
+      results: Array<{ id: string; tags: string[]; created_at: string }>;
+      next: string | null;
+    };
+    return { sessions: body.results, next_cursor: body.next ?? undefined };
+  }
+
+  async getSession(args: { session_id: string }) {
+    return (await this.request('GET', `/api/sessions/${args.session_id}/`)) as {
+      id: string;
+      tags: string[];
+      created_at: string;
+      messages: Array<{ id: string; created_at: string; message_type: 'human' | 'ai' | 'system'; content: string }>;
+    };
+  }
+
+  async endSession(args: { session_id: string }) {
+    await this.request('POST', `/api/sessions/${args.session_id}/end_experiment_session/`);
+  }
+
+  async addSessionTags(args: { session_id: string; tags: string[] }) {
+    return (await this.request('POST', `/api/sessions/${args.session_id}/tags/`, { tags: args.tags })) as { tags: string[] };
+  }
+
+  async removeSessionTags(args: { session_id: string; tags: string[] }) {
+    return (await this.request('DELETE', `/api/sessions/${args.session_id}/tags/`, { tags: args.tags })) as { tags: string[] };
+  }
+
+  async updateSessionState(args: { session_id: string; state: Record<string, unknown> }) {
+    return (await this.request('PATCH', `/api/sessions/${args.session_id}/update_state/`, { state: args.state })) as { state: Record<string, unknown> };
+  }
+
+  async updateParticipantData(args: {
+    identifier: string;
+    platform: string;
+    data: Array<Record<string, unknown>>;
+  }) {
+    await this.request('POST', '/api/participants', args);
+  }
+
   async downloadFile(args: { file_id: number }) {
     const res = await fetch(`${this.opts.baseUrl}/api/files/${args.file_id}/content`, {
       method: 'GET',

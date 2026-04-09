@@ -107,3 +107,82 @@ describe('RestBackend chatbot atoms', () => {
     expect(f.filename).toBe('x.pdf');
   });
 });
+
+describe('RestBackend session atoms', () => {
+  it('listSessions filters by experiment', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/sessions/?experiment=42&page_size=50', method: 'GET' })
+      .reply(200, { results: [{ id: 's1', tags: ['foo'], created_at: 'ts' }], next: null });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const out = await b.listSessions({ experiment_id: '42' });
+    expect(out.sessions[0].id).toBe('s1');
+  });
+
+  it('getSession returns messages', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/sessions/s1/', method: 'GET' })
+      .reply(200, {
+        id: 's1',
+        tags: [],
+        created_at: 'ts',
+        messages: [{ id: 'm1', created_at: 'ts', message_type: 'human', content: 'hi' }],
+      });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const sess = await b.getSession({ session_id: 's1' });
+    expect(sess.messages[0].content).toBe('hi');
+  });
+
+  it('addSessionTags posts to /tags/', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/sessions/s1/tags/', method: 'POST' })
+      .reply(200, { tags: ['a', 'b'] });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const r = await b.addSessionTags({ session_id: 's1', tags: ['a', 'b'] });
+    expect(r.tags).toEqual(['a', 'b']);
+  });
+
+  it('removeSessionTags sends DELETE', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/sessions/s1/tags/', method: 'DELETE' })
+      .reply(200, { tags: [] });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const r = await b.removeSessionTags({ session_id: 's1', tags: ['a'] });
+    expect(r.tags).toEqual([]);
+  });
+
+  it('endSession posts to end_experiment_session', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/sessions/s1/end_experiment_session/', method: 'POST' })
+      .reply(200, '');
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    await expect(b.endSession({ session_id: 's1' })).resolves.toBeUndefined();
+  });
+
+  it('updateSessionState patches', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/sessions/s1/update_state/', method: 'PATCH' })
+      .reply(200, { state: { foo: 1 } });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const r = await b.updateSessionState({ session_id: 's1', state: { foo: 1 } });
+    expect(r.state).toEqual({ foo: 1 });
+  });
+
+  it('updateParticipantData posts to /api/participants', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/participants', method: 'POST' })
+      .reply(200, '');
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    await expect(b.updateParticipantData({
+      identifier: 'p1',
+      platform: 'api',
+      data: [{ experiment: 'e1', data: { name: 'Jane' } }],
+    })).resolves.toBeUndefined();
+  });
+});
