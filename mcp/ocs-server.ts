@@ -1,147 +1,322 @@
 /**
  * OCS MCP Server for ACE
  *
- * Provides tools for managing OCS agents and reading conversation transcripts.
- * Exposes agent CRUD and transcript access over stdio using the Model Context Protocol.
+ * Exposes 22 atomic OCS capabilities as MCP tools. Delegates to a CompositeBackend
+ * that routes each atom to either REST (public OCS API) or Playwright (authenticated
+ * Django session + CSRF) based on capability-map.ts.
  *
- * TODO: Connect to actual OCS APIs once endpoints are confirmed.
- * For now, this is a scaffold that documents the intended tool interface.
+ * See docs/superpowers/specs/2026-04-08-ace-ocs-chatbot-buildout-design.md
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
-const server = new McpServer({
-  name: 'ocs',
-  version: '0.1.0',
+import { RestBackend } from './ocs/backends/rest.js';
+import { PlaywrightBackend } from './ocs/backends/playwright.js';
+import { CompositeBackend } from './ocs/backends/composite.js';
+import { PlaywrightSession } from './ocs/auth/playwright-session.js';
+import { loadBaseUrl, loadRestToken } from './ocs/auth/rest-token.js';
+import type { RequestFn } from './ocs/backends/pipeline-patch.js';
+
+const baseUrl = loadBaseUrl();
+const teamSlug = process.env.OCS_TEAM_SLUG ?? 'dimagi';
+
+// REST backend (immediate, stateless)
+const rest = new RestBackend({ baseUrl, token: loadRestToken() });
+
+// Playwright backend — lazily initialized on first authoring call
+let playwright: PlaywrightBackend | undefined;
+let session: PlaywrightSession | undefined;
+
+async function getPlaywrightBackend(): Promise<PlaywrightBackend> {
+  if (playwright) return playwright;
+  session = new PlaywrightSession({
+    baseUrl,
+    teamSlug,
+    username: process.env.OCS_USERNAME,
+    password: process.env.OCS_PASSWORD,
+  });
+  const ctx = await session.getContext();
+  const csrfToken = session.getCsrfToken();
+
+  const request: RequestFn = async (method, url, body) => {
+    if (method === 'GET') {
+      const res = await ctx.request.get(url);
+      return { ok: res.ok(), json: async () => await res.json() };
+    }
+    const res = await ctx.request.post(url, {
+      headers: { 'X-CSRFToken': csrfToken, Referer: baseUrl },
+      data: body,
+    });
+    return { ok: res.ok(), json: async () => await res.json() };
+  };
+
+  playwright = new PlaywrightBackend({ teamSlug, baseUrl, csrfToken, request });
+  return playwright;
+}
+
+// CompositeBackend — lazy playwright proxy so REST-only calls don't pay the browser cost
+const composite = new CompositeBackend({
+  rest,
+  playwright: new Proxy({} as PlaywrightBackend, {
+    get(_, prop) {
+      return async (...args: unknown[]) => {
+        const real = await getPlaywrightBackend();
+        // @ts-expect-error dynamic dispatch
+        return real[prop as string](...args);
+      };
+    },
+  }),
 });
 
-// ============================================================================
-// Agent Management
-// ============================================================================
+// ── MCP Server Setup ────────────────────────────────────────────────
+
+const server = new McpServer({ name: 'ocs', version: '1.0.0' });
+
+function result(data: unknown) {
+  return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+}
+
+// ── Authoring atoms (10) ────────────────────────────────────────────
 
 server.tool(
-  'ocs_create_agent',
-  'Create a new OCS agent for a Connect opportunity. Configures the agent with IDD context, training materials, and opportunity details.',
+  'ocs_clone_chatbot',
+  'Clone an OCS chatbot from a template. Returns the new experiment_id, public_id, and pipeline_id.',
+  { template_id: z.number(), new_name: z.string() },
+  async (args) => result(await composite.cloneChatbot(args)),
+);
+
+server.tool(
+  'ocs_set_chatbot_system_prompt',
+  "Update the LLMResponseWithPrompt node's prompt field for this chatbot.",
+  { experiment_id: z.number(), prompt: z.string() },
+  async (args) => { await composite.setChatbotSystemPrompt(args); return result({ ok: true }); },
+);
+
+server.tool(
+  'ocs_create_collection',
+  'Create a new Collection (RAG knowledge base) in OCS.',
   {
-    name: z.string().describe('Agent name, e.g. "ACE - Malaria Pilot"'),
-    context: z.string().describe('Full context document for the agent (IDD + training + opp details)'),
-    email: z.string().optional().describe('Email address the agent responds from (default: ace-ai@dimagi.com)'),
-    config: z.string().optional().describe('JSON config for agent behavior (escalation rules, cc list, etc.)'),
+    name: z.string(),
+    summary: z.string(),
+    is_index: z.boolean(),
+    is_remote_index: z.boolean(),
+    llm_provider: z.number().optional(),
+    embedding_model: z.number().optional(),
   },
-  async ({ name, context, email, config }) => {
-    // TODO: Implement against actual OCS API
-    return {
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify({
-          status: 'not_implemented',
-          message: 'OCS agent creation API not yet connected. See playbook/integrations/ocs-integration.md for requirements.',
-          intended: { name, contextLength: context.length, email: email || 'ace-ai@dimagi.com' },
-        }, null, 2),
-      }],
-    };
+  async (args) => result(await composite.createCollection(args)),
+);
+
+server.tool(
+  'ocs_upload_collection_files',
+  'Upload files to an existing Collection. Files will be chunked and embedded asynchronously.',
+  {
+    collection_id: z.number(),
+    files: z.array(z.object({
+      name: z.string(),
+      content: z.string().describe('Base64-encoded file content'),
+      mime_type: z.string(),
+    })),
+  },
+  async (args) => {
+    const decoded = args.files.map((f) => ({
+      name: f.name,
+      content: Buffer.from(f.content, 'base64'),
+      mime_type: f.mime_type,
+    }));
+    return result(await composite.uploadCollectionFiles({ collection_id: args.collection_id, files: decoded }));
   },
 );
 
 server.tool(
-  'ocs_update_context',
-  'Update an existing OCS agent\'s context/knowledge base. Use when new information becomes available during an opportunity.',
-  {
-    agentId: z.string().describe('The OCS agent ID'),
-    context: z.string().describe('Updated context document'),
-  },
-  async ({ agentId, context }) => {
-    return {
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify({
-          status: 'not_implemented',
-          message: 'OCS context update API not yet connected.',
-          intended: { agentId, contextLength: context.length },
-        }, null, 2),
-      }],
-    };
-  },
+  'ocs_wait_for_collection_indexing',
+  'Poll until all files in a Collection have been indexed (chunked + embedded).',
+  { collection_id: z.number(), timeout_sec: z.number().optional() },
+  async (args) => result(await composite.waitForCollectionIndexing(args)),
 );
 
 server.tool(
-  'ocs_agent_status',
-  'Check the health and stats of an OCS agent.',
+  'ocs_attach_knowledge',
+  "Attach one or more Collections to a chatbot's retriever node.",
   {
-    agentId: z.string().describe('The OCS agent ID'),
+    experiment_id: z.number(),
+    collection_index_ids: z.array(z.number()),
+    max_results: z.number().optional(),
+    generate_citations: z.boolean().optional(),
   },
-  async ({ agentId }) => {
-    return {
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify({
-          status: 'not_implemented',
-          message: 'OCS agent status API not yet connected.',
-          intended: { agentId },
-        }, null, 2),
-      }],
-    };
-  },
-);
-
-// ============================================================================
-// Transcript Access
-// ============================================================================
-
-server.tool(
-  'ocs_list_transcripts',
-  'List conversation transcripts for an OCS agent. Supports filtering by date and LLO.',
-  {
-    agentId: z.string().describe('The OCS agent ID'),
-    since: z.string().optional().describe('ISO date string — only transcripts after this date'),
-    lloFilter: z.string().optional().describe('Filter by LLO name or ID'),
-  },
-  async ({ agentId, since, lloFilter }) => {
-    return {
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify({
-          status: 'not_implemented',
-          message: 'OCS transcript list API not yet connected. APIs exist per design spec — need to map endpoints.',
-          intended: { agentId, since, lloFilter },
-        }, null, 2),
-      }],
-    };
-  },
+  async (args) => { await composite.attachKnowledge(args); return result({ ok: true }); },
 );
 
 server.tool(
-  'ocs_get_transcript',
-  'Get a single conversation transcript by ID.',
+  'ocs_set_chatbot_tools',
+  "Configure the chatbot's tools, custom actions, built-in tools, and MCP tools.",
   {
-    transcriptId: z.string().describe('The transcript ID'),
+    experiment_id: z.number(),
+    tools: z.array(z.string()).optional(),
+    custom_actions: z.array(z.string()).optional(),
+    built_in_tools: z.array(z.string()).optional(),
+    mcp_tools: z.array(z.string()).optional(),
   },
-  async ({ transcriptId }) => {
-    return {
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify({
-          status: 'not_implemented',
-          message: 'OCS transcript access API not yet connected.',
-          intended: { transcriptId },
-        }, null, 2),
-      }],
-    };
+  async (args) => { await composite.setChatbotTools(args); return result({ ok: true }); },
+);
+
+server.tool(
+  'ocs_set_source_material',
+  "Point a chatbot's legacy SourceMaterial FK at a specific row. Use null to clear.",
+  { experiment_id: z.number(), source_material_id: z.number().nullable() },
+  async (args) => { await composite.setSourceMaterial(args); return result({ ok: true }); },
+);
+
+server.tool(
+  'ocs_publish_chatbot_version',
+  'Publish a new default version of a chatbot.',
+  { experiment_id: z.number(), description: z.string() },
+  async (args) => result(await composite.publishChatbotVersion(args)),
+);
+
+server.tool(
+  'ocs_get_chatbot_embed_info',
+  'Fetch the public_id and embed_key needed to render the OCS widget.',
+  { experiment_id: z.number() },
+  async (args) => result(await composite.getChatbotEmbedInfo(args)),
+);
+
+// ── Observation atoms (12) ──────────────────────────────────────────
+
+server.tool(
+  'ocs_list_chatbots',
+  'List chatbots on the OCS team.',
+  { cursor: z.string().optional(), page_size: z.number().optional() },
+  async (args) => result(await composite.listChatbots(args)),
+);
+
+server.tool(
+  'ocs_get_chatbot',
+  'Retrieve a single chatbot by experiment ID.',
+  { experiment_id: z.number() },
+  async (args) => result(await composite.getChatbot(args)),
+);
+
+server.tool(
+  'ocs_list_sessions',
+  'List sessions, optionally filtered by experiment, tags, or since-date.',
+  {
+    experiment_id: z.string().optional(),
+    since: z.string().optional(),
+    tags: z.string().optional(),
+    versions: z.string().optional(),
+    cursor: z.string().optional(),
+    page_size: z.number().optional(),
+  },
+  async (args) => result(await composite.listSessions(args)),
+);
+
+server.tool(
+  'ocs_get_session',
+  'Retrieve a session with its full message history.',
+  { session_id: z.string() },
+  async (args) => result(await composite.getSession(args)),
+);
+
+server.tool(
+  'ocs_end_session',
+  'Mark a session as ended.',
+  { session_id: z.string() },
+  async (args) => { await composite.endSession(args); return result({ ok: true }); },
+);
+
+server.tool(
+  'ocs_add_session_tags',
+  'Add tags to a session.',
+  { session_id: z.string(), tags: z.array(z.string()) },
+  async (args) => result(await composite.addSessionTags(args)),
+);
+
+server.tool(
+  'ocs_remove_session_tags',
+  'Remove tags from a session.',
+  { session_id: z.string(), tags: z.array(z.string()) },
+  async (args) => result(await composite.removeSessionTags(args)),
+);
+
+server.tool(
+  'ocs_update_session_state',
+  'Patch the arbitrary state blob on a session.',
+  { session_id: z.string(), state: z.record(z.string(), z.unknown()) },
+  async (args) => result(await composite.updateSessionState(args)),
+);
+
+server.tool(
+  'ocs_send_test_message',
+  'Send a test message to a chatbot via the OpenAI-compatible endpoint.',
+  {
+    experiment_id: z.number(),
+    messages: z.array(z.object({ role: z.string(), content: z.string() })),
+  },
+  async (args) => result(await composite.sendTestMessage({
+    experiment_id: args.experiment_id,
+    messages: args.messages as Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+  })),
+);
+
+server.tool(
+  'ocs_trigger_bot_message',
+  'Trigger the bot to send a message to a participant on a given channel.',
+  {
+    experiment_id: z.string(),
+    identifier: z.string(),
+    platform: z.string(),
+    prompt_text: z.string(),
+    session_data: z.record(z.string(), z.unknown()).optional(),
+    participant_data: z.record(z.string(), z.unknown()).optional(),
+  },
+  async (args) => { await composite.triggerBotMessage(args); return result({ ok: true }); },
+);
+
+server.tool(
+  'ocs_update_participant_data',
+  'Create or update participant data across one or more experiments.',
+  {
+    identifier: z.string(),
+    platform: z.string(),
+    data: z.array(z.object({
+      experiment: z.string(),
+      data: z.record(z.string(), z.unknown()).optional(),
+      schedules: z.array(z.record(z.string(), z.unknown())).optional(),
+    })),
+  },
+  async (args) => { await composite.updateParticipantData(args as never); return result({ ok: true }); },
+);
+
+server.tool(
+  'ocs_download_file',
+  'Download a file from OCS by file ID.',
+  { file_id: z.number() },
+  async (args) => {
+    const f = await composite.downloadFile(args);
+    return result({
+      filename: f.filename,
+      mime_type: f.mime_type,
+      content_base64: f.content.toString('base64'),
+    });
   },
 );
 
-// ============================================================================
-// Start
-// ============================================================================
+// ── Startup ─────────────────────────────────────────────────────────
 
 async function main() {
+  try {
+    await rest.verify();
+  } catch (e) {
+    console.error('OCS REST verification failed:', e);
+    process.exit(1);
+  }
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
 main().catch((err) => {
-  console.error('OCS MCP server error:', err);
+  console.error('OCS MCP server fatal error:', err);
   process.exit(1);
 });
