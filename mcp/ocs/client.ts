@@ -1,5 +1,6 @@
 import type {
   Experiment,
+  ClonedChatbot,
   Session,
   SessionWithMessages,
   ChatCompletionMessage,
@@ -11,7 +12,7 @@ export interface OcsClient {
   cloneChatbot(args: {
     template_id: number;
     new_name: string;
-  }): Promise<{ experiment_id: number; public_id: string; pipeline_id: number }>;
+  }): Promise<ClonedChatbot>;
 
   setChatbotSystemPrompt(args: {
     experiment_id: number;
@@ -74,7 +75,7 @@ export interface OcsClient {
     page_size?: number;
   }): Promise<{ chatbots: Experiment[]; next_cursor?: string }>;
 
-  getChatbot(args: { experiment_id: number }): Promise<Experiment>;
+  getChatbot(args: { public_id: string }): Promise<Experiment>;
 
   listSessions(args: {
     experiment_id?: string;
