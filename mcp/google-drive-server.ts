@@ -234,6 +234,8 @@ server.tool(
         q: `'${folderId}' in parents and trashed = false`,
         fields: 'files(id, name, mimeType, modifiedTime, webViewLink)',
         orderBy: 'name',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
       });
       return result(resp.data.files);
     } catch (e: any) {
@@ -251,7 +253,7 @@ server.tool(
   },
   async ({ fileId }) => {
     try {
-      const meta = await drive.files.get({ fileId, fields: 'mimeType, name' });
+      const meta = await drive.files.get({ fileId, fields: 'mimeType, name', supportsAllDrives: true });
       const mimeType = meta.data.mimeType || '';
 
       let content: string;
@@ -259,7 +261,7 @@ server.tool(
         const resp = await drive.files.export({ fileId, mimeType: 'text/plain' }, { responseType: 'text' });
         content = resp.data as string;
       } else {
-        const resp = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'text' });
+        const resp = await drive.files.get({ fileId, alt: 'media', supportsAllDrives: true }, { responseType: 'text' });
         content = resp.data as string;
       }
 
@@ -284,6 +286,7 @@ server.tool(
         fileId,
         media: { mimeType: 'text/plain', body: newContent },
         fields: 'id, name, modifiedTime',
+        supportsAllDrives: true,
       });
       return result({ id: resp.data.id, name: resp.data.name, modifiedTime: resp.data.modifiedTime });
     } catch (e: any) {
@@ -313,6 +316,7 @@ server.tool(
       const created = await drive.files.create({
         requestBody: fileMetadata,
         fields: 'id, name, webViewLink',
+        supportsAllDrives: true,
       });
       const fileId = created.data.id!;
 
@@ -320,6 +324,7 @@ server.tool(
         fileId,
         media: { mimeType: 'text/plain', body: fileContent },
         fields: 'id',
+        supportsAllDrives: true,
       });
 
       return result({ id: fileId, name: created.data.name, webViewLink: created.data.webViewLink });
@@ -349,6 +354,7 @@ server.tool(
       const resp = await drive.files.create({
         requestBody: fileMetadata,
         fields: 'id, name, webViewLink',
+        supportsAllDrives: true,
       });
       return result({ id: resp.data.id, name: resp.data.name, webViewLink: resp.data.webViewLink });
     } catch (e: any) {
@@ -367,7 +373,7 @@ server.tool(
   },
   async ({ fileId, newParentFolderId }) => {
     try {
-      const file = await drive.files.get({ fileId, fields: 'parents' });
+      const file = await drive.files.get({ fileId, fields: 'parents', supportsAllDrives: true });
       const previousParents = (file.data.parents || []).join(',');
 
       const resp = await drive.files.update({
@@ -375,6 +381,7 @@ server.tool(
         addParents: newParentFolderId,
         removeParents: previousParents,
         fields: 'id, name, parents, webViewLink',
+        supportsAllDrives: true,
       });
       return result({ id: resp.data.id, name: resp.data.name, webViewLink: resp.data.webViewLink });
     } catch (e: any) {
@@ -396,6 +403,7 @@ server.tool(
       const resp = await drive.permissions.create({
         fileId,
         transferOwnership: true,
+        supportsAllDrives: true,
         requestBody: {
           type: 'user',
           role: 'owner',
@@ -433,6 +441,8 @@ server.tool(
           pageSize: 10,
           fields: 'files(id, name, mimeType, owners, shared)',
           orderBy: 'modifiedTime desc',
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
         });
         results.visibleFiles = list.data.files?.map(f => ({
           name: f.name,
@@ -445,7 +455,7 @@ server.tool(
 
       if (testFileId) {
         try {
-          const file = await drive.files.get({ fileId: testFileId, fields: 'id, name, mimeType, owners, permissions' });
+          const file = await drive.files.get({ fileId: testFileId, fields: 'id, name, mimeType, owners, permissions', supportsAllDrives: true });
           results.testFile = { name: file.data.name, mimeType: file.data.mimeType };
         } catch (e: any) {
           results.testFile = `FAILED: ${e.message}`;
@@ -534,6 +544,7 @@ server.tool(
         fileId: templateDocId,
         requestBody: copyMetadata,
         fields: 'id, name, webViewLink',
+        supportsAllDrives: true,
       });
       const newDocId = copy.data.id!;
 
