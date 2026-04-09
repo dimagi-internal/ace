@@ -1,0 +1,49 @@
+{
+  "pipeline": {
+    "id": 77,
+    "name": "ACE Golden Template",
+    "data": {
+      "nodes": [
+        {
+          "id": "start-1",
+          "type": "startNode",
+          "data": { "type": "StartNode", "params": {} },
+          "position": { "x": 0, "y": 0 }
+        },
+        {
+          "id": "llm-1",
+          "type": "pipelineNode",
+          "data": {
+            "type": "LLMResponseWithPrompt",
+            "label": "answerer",
+            "params": {
+              "prompt": "You are a helpful assistant.",
+              "source_material_id": null,
+              "collection_id": null,
+              "collection_index_ids": [],
+              "max_results": 20,
+              "generate_citations": true,
+              "tools": [],
+              "custom_actions": [],
+              "built_in_tools": [],
+              "mcp_tools": []
+            }
+          },
+          "position": { "x": 300, "y": 0 }
+        },
+        {
+          "id": "end-1",
+          "type": "endNode",
+          "data": { "type": "EndNode", "params": {} },
+          "position": { "x": 600, "y": 0 }
+        }
+      ],
+      "edges": [
+        { "id": "e1", "source": "start-1", "target": "llm-1" },
+        { "id": "e2", "source": "llm-1", "target": "end-1" }
+      ],
+      "viewport": { "x": 0, "y": 0, "zoom": 1 }
+    },
+    "errors": []
+  }
+}
