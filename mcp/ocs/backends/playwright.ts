@@ -49,6 +49,47 @@ export class PlaywrightBackend {
     return pipelineId;
   }
 
+  async setChatbotSystemPrompt(args: { experiment_id: number; prompt: string }) {
+    const pipelineId = await this.pipelineIdFor(args.experiment_id);
+    await patchLlmNodeParams(this.patchContext(), pipelineId, { prompt: args.prompt });
+  }
+
+  async attachKnowledge(args: {
+    experiment_id: number;
+    collection_index_ids: number[];
+    max_results?: number;
+    generate_citations?: boolean;
+  }) {
+    const patch: Partial<LlmNodeParams> = { collection_index_ids: args.collection_index_ids };
+    if (args.max_results !== undefined) patch.max_results = args.max_results;
+    if (args.generate_citations !== undefined) patch.generate_citations = args.generate_citations;
+    const pipelineId = await this.pipelineIdFor(args.experiment_id);
+    await patchLlmNodeParams(this.patchContext(), pipelineId, patch);
+  }
+
+  async setChatbotTools(args: {
+    experiment_id: number;
+    tools?: string[];
+    custom_actions?: string[];
+    built_in_tools?: string[];
+    mcp_tools?: string[];
+  }) {
+    const patch: Partial<LlmNodeParams> = {};
+    if (args.tools !== undefined) patch.tools = args.tools;
+    if (args.custom_actions !== undefined) patch.custom_actions = args.custom_actions;
+    if (args.built_in_tools !== undefined) patch.built_in_tools = args.built_in_tools;
+    if (args.mcp_tools !== undefined) patch.mcp_tools = args.mcp_tools;
+    const pipelineId = await this.pipelineIdFor(args.experiment_id);
+    await patchLlmNodeParams(this.patchContext(), pipelineId, patch);
+  }
+
+  async setSourceMaterial(args: { experiment_id: number; source_material_id: number | null }) {
+    const pipelineId = await this.pipelineIdFor(args.experiment_id);
+    await patchLlmNodeParams(this.patchContext(), pipelineId, {
+      source_material_id: args.source_material_id,
+    });
+  }
+
   async cloneChatbot(args: { template_id: number; new_name: string }) {
     const copyUrl = `/a/${this.opts.teamSlug}/chatbots/${args.template_id}/copy/`;
     const copyRes = await this.opts.request('POST', copyUrl, {
