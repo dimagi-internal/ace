@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# ace-doctor — health checks for an ACE plugin install.
+#
+# By default audits the plugin copy this script ships with (i.e. $(dirname $0)/..).
+# That's the right answer when launched via the /ace:doctor slash command, because
+# Claude Code loads slash command bodies from the installed plugin copy, and the
+# launcher execs bin/ace-doctor from that same copy.
+#
+# Overrides:
+#   ACE_DIR=/path/to/ace      audit a specific plugin root
+#   --here                    walk up from $PWD to find an ACE checkout (dev mode)
+#   --installed               force use of the newest ~/.claude/plugins/cache/ace/ace/*
+#
+# Exit status: 0 always (check results go to stdout as PASS/WARN/FAIL lines).
+set +e
+
+SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+MODE="self"
+ROOT=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --here)       MODE="pwd" ;;
+    --installed)  MODE="installed" ;;
+    --root)       shift; ROOT="$1" ;;
+    *)            echo "ace-doctor: unknown arg: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+# Root resolution
+if [ -n "${ACE_DIR:-}" ]; then
+  ROOT="$ACE_DIR"
+elif [ -n "$ROOT" ]; then
+  :  # already set via --root
+elif [ "$MODE" = "pwd" ]; then
+  D="$PWD"
+  while [ "$D" != "/" ]; do
+    if [ -f "$D/.claude-plugin/plugin.json" ] && grep -q '"name": "ace"' "$D/.claude-plugin/plugin.json" 2>/dev/null; then
+      ROOT="$D"; break
+    fi
+    D="$(dirname "$D")"
+  done
+elif [ "$MODE" = "installed" ]; then
+  # Prefer the authoritative install path Claude Code records in
+  # ~/.claude/plugins/installed_plugins.json. Fall back to version-sorted
+  # newest directory under the cache if that file is missing or unreadable.
+  REG="$HOME/.claude/plugins/installed_plugins.json"
+  if [ -f "$REG" ]; then
+    ROOT="$(node -e "try { const d=JSON.parse(require('fs').readFileSync('$REG','utf8')); const e=d['ace@ace']; if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break;}}} else if(e&&e.installPath){console.log(e.installPath);} } catch(_) {}" 2>/dev/null)"
+  fi
+  if [ -z "$ROOT" ] || [ ! -f "$ROOT/.claude-plugin/plugin.json" ]; then
+    ROOT="$(ls -1d "$HOME"/.claude/plugins/cache/ace/ace/*/ 2>/dev/null | sed 's:/$::' | sort -V | tail -1)"
+  fi
+else
+  # Default: self — audit the plugin copy this script lives in.
+  ROOT="$SELF_DIR"
+fi
+
+if [ -z "$ROOT" ] || [ ! -f "$ROOT/.claude-plugin/plugin.json" ]; then
+  echo "FAIL plugin_root_not_found: could not locate ACE plugin (mode=$MODE)"
+  echo "  fix: run from an ACE checkout, or after /plugin install ace@ace, or pass --root /path"
+  exit 0
+fi
+
+echo "INFO plugin_root=$ROOT (mode=$MODE)"
+
+# If the user is inside a dev worktree that differs from $ROOT, flag it so they
+# know the doctor is auditing the installed copy rather than their checkout.
+PWD_MATCH=""
+D="$PWD"
+while [ "$D" != "/" ]; do
+  if [ -f "$D/.claude-plugin/plugin.json" ] && grep -q '"name": "ace"' "$D/.claude-plugin/plugin.json" 2>/dev/null; then
+    PWD_MATCH="$D"; break
+  fi
+  D="$(dirname "$D")"
+done
+if [ -n "$PWD_MATCH" ] && [ "$PWD_MATCH" != "$ROOT" ]; then
+  echo "INFO cwd_is_ace_checkout=$PWD_MATCH (pass --here to audit it instead)"
+fi
+
+pass() { printf 'PASS %s\n' "$1"; }
+warn() { printf 'WARN %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
+fail() { printf 'FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
+
+# --- Version consistency ---
+VER_FILE="$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null || echo missing)"
+VER_PLUGIN="$(node -e "console.log(require('$ROOT/.claude-plugin/plugin.json').version);" 2>/dev/null || echo missing)"
+VER_MARKET="$(node -e "console.log(require('$ROOT/.claude-plugin/marketplace.json').plugins[0].version);" 2>/dev/null || echo missing)"
+VER_PKG="$(node -e "console.log(require('$ROOT/package.json').version);" 2>/dev/null || echo missing)"
+
+if [ "$VER_FILE" = "$VER_PLUGIN" ] && [ "$VER_PLUGIN" = "$VER_MARKET" ] && [ "$VER_MARKET" = "$VER_PKG" ]; then
+  pass "version_consistency: all four sources agree on $VER_FILE"
+else
+  warn "version_consistency: VERSION=$VER_FILE plugin.json=$VER_PLUGIN marketplace.json=$VER_MARKET package.json=$VER_PKG" "bump all four in a single commit when releasing"
+fi
+
+# --- Node / npm ---
+if command -v node >/dev/null 2>&1; then
+  pass "node: $(node --version)"
+else
+  fail "node: not on PATH" "install Node.js v18+"
+fi
+
+if command -v npm >/dev/null 2>&1; then
+  pass "npm: $(npm --version)"
+else
+  fail "npm: not on PATH" "install Node.js v18+ (bundles npm)"
+fi
+
+# --- node_modules + tsx ---
+if [ -d "$ROOT/node_modules" ] && [ -x "$ROOT/node_modules/.bin/tsx" ]; then
+  pass "deps: node_modules present, tsx=$("$ROOT/node_modules/.bin/tsx" --version 2>&1 | head -1)"
+else
+  fail "deps: node_modules missing or tsx not installed at $ROOT" "run /ace:setup (or 'npm install' in $ROOT)"
+fi
+
+# --- Google service-account key ---
+# Canonical: $CLAUDE_PLUGIN_DATA/gws-sa-key.json — survives plugin updates.
+# Legacy: $ROOT/.gws-sa-key.json — for pre-migration installs.
+if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+  DATA_DIR="$CLAUDE_PLUGIN_DATA"
+else
+  DATA_DIR="$HOME/.claude/plugins/data/ace-ace"
+fi
+CANONICAL_KEY="$DATA_DIR/gws-sa-key.json"
+LEGACY_KEY="$ROOT/.gws-sa-key.json"
+
+KEY=""
+KEY_LOC=""
+if [ -f "$CANONICAL_KEY" ] && [ -r "$CANONICAL_KEY" ]; then
+  KEY="$CANONICAL_KEY"; KEY_LOC="canonical"
+elif [ -f "$LEGACY_KEY" ] && [ -r "$LEGACY_KEY" ]; then
+  KEY="$LEGACY_KEY"; KEY_LOC="legacy"
+fi
+
+if [ -n "$KEY" ]; then
+  CE="$(node -e "try { console.log(JSON.parse(require('fs').readFileSync('$KEY','utf8')).client_email); } catch(e) { console.log('unreadable'); }" 2>/dev/null || echo unreadable)"
+  if [ "$CE" = "unreadable" ]; then
+    fail "gws_key: $KEY is not valid JSON" "re-drop the service-account key"
+  elif [ "$KEY_LOC" = "legacy" ]; then
+    warn "gws_key: $CE at LEGACY path $LEGACY_KEY" "migrate to $CANONICAL_KEY so it survives plugin updates: mv \"$LEGACY_KEY\" \"$CANONICAL_KEY\" && chmod 600 \"$CANONICAL_KEY\""
+  else
+    pass "gws_key: $CE at $CANONICAL_KEY"
+  fi
+else
+  fail "gws_key: missing (checked $CANONICAL_KEY and $LEGACY_KEY)" "mkdir -p \"$DATA_DIR\" && drop the service-account JSON at $CANONICAL_KEY (ask Jon for the ACE key)"
+fi
+
+# --- .mcp.json sanity ---
+if [ -f "$ROOT/.mcp.json" ]; then
+  MCP_NAMES="$(node -e "const m=require('$ROOT/.mcp.json'); console.log(Object.keys(m).join(','));" 2>/dev/null || echo parse_error)"
+  if [ "$MCP_NAMES" = "parse_error" ]; then
+    fail "mcp_manifest: .mcp.json does not parse" "verify JSON syntax"
+  else
+    pass "mcp_manifest: servers=$MCP_NAMES"
+    case "$MCP_NAMES" in
+      *ace-gdrive*) ;;
+      *) warn "mcp_manifest: ace-gdrive not declared" "restore the ace-gdrive entry in .mcp.json" ;;
+    esac
+  fi
+else
+  fail "mcp_manifest: .mcp.json missing" "restore .mcp.json at the plugin root"
+fi
+
+# --- ace-update-check binary ---
+if [ -x "$ROOT/bin/ace-update-check" ]; then
+  pass "update_check: bin/ace-update-check executable"
+else
+  warn "update_check: bin/ace-update-check missing or not executable" "chmod +x $ROOT/bin/ace-update-check"
+fi
+
+# --- Auto-update hook registration (informational) ---
+if [ -f "$HOME/.claude/settings.json" ]; then
+  if grep -q "ace-update-check" "$HOME/.claude/settings.json" 2>/dev/null; then
+    pass "auto_update: SessionStart hook registered in ~/.claude/settings.json"
+  else
+    warn "auto_update: not registered" "run /ace:setup --auto-update to enable background update checks"
+  fi
+fi
+
+# --- Related repos (optional, soft warnings) ---
+if [ -d "$HOME/emdash-projects/ace-web" ] || [ -d "$HOME/ace-web" ]; then
+  pass "ace_web: local checkout detected"
+else
+  warn "ace_web: no local checkout of jjackson/ace-web found" "clone if you need the browser harness"
+fi
+
+if command -v connect-mcp >/dev/null 2>&1 || [ -d "$HOME/emdash-projects/connect-labs" ]; then
+  pass "connect_labs: available"
+else
+  warn "connect_labs: not detected" "install separately if skills need CommCare/Connect MCP tools"
+fi
+
+echo ""
+echo "STATUS: COMPLETE"

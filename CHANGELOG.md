@@ -5,6 +5,38 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.2 — 2026-04-09
+
+`/ace:doctor` overhaul: the checks now actually print their messages, and the
+detection logic stops getting confused when you run the doctor from inside a
+dev worktree.
+
+### Fixed
+
+- `/ace:doctor` output lines were coming back as bare `PASS ` / `FAIL ` with
+  empty messages. The helper functions in `commands/doctor.md` used `$1` / `$2`
+  positional params, which Claude Code's slash-command argument expansion
+  substituted with empty strings *before* bash ever saw the script. The doctor
+  logic has been moved out of the slash command body into a real
+  `bin/ace-doctor` script, so positional params behave normally.
+- Plugin-root detection no longer silently audits a dev worktree when you meant
+  to audit the installed plugin. Previously the detection walked up from `$PWD`
+  before falling back to the installed cache, so running `/ace:doctor` from
+  inside an ACE checkout shadowed the real install. `bin/ace-doctor` now
+  defaults to auditing the copy it ships in (which, for the slash command, is
+  always the installed plugin), and the launcher resolves that copy via
+  `$CLAUDE_PLUGIN_ROOT` → `~/.claude/plugins/installed_plugins.json` → a
+  version-sorted cache fallback.
+
+### Added
+
+- `bin/ace-doctor` standalone script. Supports `--here` (walk up from `$PWD`
+  for dev workflows), `--installed` (force the registered install), and
+  `ACE_DIR=/path` / `--root /path` overrides. Emits
+  `INFO cwd_is_ace_checkout=...` when you're standing inside a different
+  ACE checkout than the one being audited, so there's never ambiguity about
+  which copy was checked.
+
 ## 0.1.1 — 2026-04-09
 
 Shared Drive support for the Google Drive MCP and a clean service-account key
