@@ -13,6 +13,6 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": false
   },
-  "include": ["mcp/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
+  "include": ["mcp/ocs/**/*.ts", "mcp/ocs-server.ts", "test/mcp/**/*.ts", "vitest.config.ts"],
   "exclude": ["node_modules", "test/eval/**"]
 }
