@@ -1,8 +1,14 @@
 /**
  * Throwaway test: verify the ACE service account can create + update + delete
- * a doc inside the target ACE folder. Run with:
+ * a doc inside the target ACE folder. Mirrors the key resolution logic from
+ * mcp/google-drive-server.ts so this script also validates the
+ * GOOGLE_APPLICATION_CREDENTIALS env var code path. Run with:
  *
+ *   # fallback path (in-repo key):
  *   npx tsx scripts/test-sa-create.ts
+ *
+ *   # canonical env-var path:
+ *   GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json npx tsx scripts/test-sa-create.ts
  */
 import { google } from 'googleapis';
 import fs from 'fs';
@@ -10,15 +16,31 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SA_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
+const LEGACY_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
 const TARGET_FOLDER_ID = '1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz';
 
+function resolveKeyPath(): { path: string; source: 'env' | 'legacy' } {
+  const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (envPath && fs.existsSync(envPath)) {
+    return { path: envPath, source: 'env' };
+  }
+  if (fs.existsSync(LEGACY_KEY_PATH)) {
+    return { path: LEGACY_KEY_PATH, source: 'legacy' };
+  }
+  throw new Error(
+    `No SA key found. Set GOOGLE_APPLICATION_CREDENTIALS or drop key at ${LEGACY_KEY_PATH}`,
+  );
+}
+
 async function main() {
-  const keyFile = JSON.parse(fs.readFileSync(SA_KEY_PATH, 'utf-8'));
-  console.log('SA email:', keyFile.client_email);
+  const key = resolveKeyPath();
+  console.log(`Key source: ${key.source}`);
+  console.log(`Key path:   ${key.path}`);
+  const keyFile = JSON.parse(fs.readFileSync(key.path, 'utf-8'));
+  console.log(`SA email:   ${keyFile.client_email}`);
 
   const auth = new google.auth.GoogleAuth({
-    credentials: keyFile,
+    keyFile: key.path,
     scopes: [
       'https://www.googleapis.com/auth/drive',
       'https://www.googleapis.com/auth/documents',

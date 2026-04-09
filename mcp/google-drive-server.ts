@@ -16,21 +16,47 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SA_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
+const LEGACY_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
+
+const SCOPES = [
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/documents',
+];
 
 // ============================================================================
 // Auth
 // ============================================================================
 
+/**
+ * Resolve the Google service-account key path.
+ *
+ * Priority:
+ *   1. $GOOGLE_APPLICATION_CREDENTIALS — Google's standard env var. In .mcp.json
+ *      we set this to ${CLAUDE_PLUGIN_DATA}/gws-sa-key.json so Claude Code expands
+ *      it to the per-plugin persistent data dir at launch (survives plugin updates
+ *      and is shared across worktrees / installed copies).
+ *   2. <plugin-root>/.gws-sa-key.json — legacy fallback so existing local dev
+ *      checkouts and pre-migration installs keep working.
+ */
+function resolveKeyPath(): string {
+  const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (envPath && fs.existsSync(envPath)) {
+    return envPath;
+  }
+  if (fs.existsSync(LEGACY_KEY_PATH)) {
+    return LEGACY_KEY_PATH;
+  }
+  throw new Error(
+    `No Google service-account key found. Set GOOGLE_APPLICATION_CREDENTIALS ` +
+      `or place the key at ${LEGACY_KEY_PATH}. Run /ace:setup for help.`,
+  );
+}
+
 function getAuth() {
-  const keyFile = JSON.parse(fs.readFileSync(SA_KEY_PATH, 'utf-8'));
   return new google.auth.GoogleAuth({
-    credentials: keyFile,
-    scopes: [
-      'https://www.googleapis.com/auth/spreadsheets',
-      'https://www.googleapis.com/auth/drive',
-      'https://www.googleapis.com/auth/documents',
-    ],
+    keyFile: resolveKeyPath(),
+    scopes: SCOPES,
   });
 }
 

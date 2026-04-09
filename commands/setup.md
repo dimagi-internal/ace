@@ -87,13 +87,38 @@ else
 fi
 
 # --- Check for the Google service-account key ---
-KEY_PATH="$ROOT/.gws-sa-key.json"
-if [ -f "$KEY_PATH" ] && [ -r "$KEY_PATH" ]; then
-  # Parse client_email to show *which* service account is wired up
-  CLIENT_EMAIL="$(node -e "try { console.log(JSON.parse(require(\"fs\").readFileSync(\"$KEY_PATH\",\"utf8\")).client_email); } catch(e) { console.log(\"unreadable\"); }" 2>/dev/null || echo "unreadable")"
-  echo "GWS_KEY: ok ($CLIENT_EMAIL)"
+# Preferred location: $CLAUDE_PLUGIN_DATA/gws-sa-key.json — persistent across
+# plugin updates and shared across worktrees. Claude Code sets
+# $CLAUDE_PLUGIN_DATA when the plugin is loaded; if this script is run from a
+# bare checkout we compute the canonical path the same way Claude Code would
+# (~/.claude/plugins/data/<plugin>-<marketplace>/).
+if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+  DATA_DIR="$CLAUDE_PLUGIN_DATA"
 else
-  echo "GWS_KEY: MISSING — drop your service-account JSON at $KEY_PATH"
+  DATA_DIR="$HOME/.claude/plugins/data/ace-ace"
+fi
+mkdir -p "$DATA_DIR"
+CANONICAL_KEY="$DATA_DIR/gws-sa-key.json"
+LEGACY_KEY="$ROOT/.gws-sa-key.json"
+
+KEY_PATH=""
+if [ -f "$CANONICAL_KEY" ] && [ -r "$CANONICAL_KEY" ]; then
+  KEY_PATH="$CANONICAL_KEY"
+elif [ -f "$LEGACY_KEY" ] && [ -r "$LEGACY_KEY" ]; then
+  KEY_PATH="$LEGACY_KEY"
+fi
+
+if [ -n "$KEY_PATH" ]; then
+  CLIENT_EMAIL="$(node -e "try { console.log(JSON.parse(require(\"fs\").readFileSync(\"$KEY_PATH\",\"utf8\")).client_email); } catch(e) { console.log(\"unreadable\"); }" 2>/dev/null || echo "unreadable")"
+  if [ "$KEY_PATH" = "$CANONICAL_KEY" ]; then
+    echo "GWS_KEY: ok ($CLIENT_EMAIL) at canonical $CANONICAL_KEY"
+  else
+    echo "GWS_KEY: ok ($CLIENT_EMAIL) at LEGACY path $LEGACY_KEY"
+    echo "GWS_KEY_MIGRATE: move to $CANONICAL_KEY so it survives plugin updates"
+  fi
+else
+  echo "GWS_KEY: MISSING — drop your service-account JSON at $CANONICAL_KEY"
+  echo "GWS_KEY_HINT: mkdir -p \"$DATA_DIR\" && mv /path/to/key.json \"$CANONICAL_KEY\" && chmod 600 \"$CANONICAL_KEY\""
 fi
 
 # --- Check .mcp.json ---
@@ -124,7 +149,8 @@ Read the output line-by-line:
 - `STATUS: OK` — Setup succeeded. Continue to Step 3.
 - `STATUS: ERROR plugin_root_not_found` — Tell the user the plugin root couldn't be found. Ask them to run this from inside a Claude Code session that has ACE installed, or from their local ACE checkout. **STOP.**
 - `STATUS: ERROR node_missing` or `npm_missing` — Tell the user to install Node.js (v18+). **STOP.**
-- `GWS_KEY: MISSING …` — Include the exact path in your message and tell the user: "Drop your Google service-account JSON at `<path>`. Ask Jon for the Dimagi key if you don't have one (service account: `gws-local-dev@dimagi-chrome-extension.iam.gserviceaccount.com`)."
+- `GWS_KEY: MISSING …` — Include the exact path in your message and tell the user: "Drop your Google service-account JSON at `<path>` (use the `GWS_KEY_HINT` command to create the dir and chmod the file). Ask Jon for the ACE key if you don't have one (service account: `ace-service-account@connect-labs.iam.gserviceaccount.com`)."
+- `GWS_KEY: ok … at LEGACY path …` — The key still works but lives in the plugin checkout dir, which gets wiped on plugin updates. Show the user the `GWS_KEY_MIGRATE` line and offer to move it: `mv <legacy> <canonical> && chmod 600 <canonical>`.
 - `TSX: missing` or `INSTALL_STATUS` nonzero — Tell the user `npm install` failed; show the last ~20 lines of output and ask them to fix the underlying npm error.
 - `VERSION: MISMATCH` — Warn the user and tell them to open an issue; this should never happen in a clean install.
 
