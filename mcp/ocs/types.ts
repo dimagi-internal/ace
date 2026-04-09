@@ -2,13 +2,30 @@
 // Naming: snake_case for fields that cross the HTTP boundary (matches OCS API + eventual REST),
 // camelCase only for internal helpers. Interface method names are camelCase (TS convention).
 
+/**
+ * An Experiment (chatbot) as returned by the OCS REST API.
+ *
+ * IMPORTANT: the REST API's `id` field is the UUID `public_id` (DRF
+ * `lookup_field = "public_id"` in apps/api/views/experiments.py), NOT the
+ * integer database id. Web routes use the integer id via scrapes/URLs, which
+ * we track separately when we have both (see ClonedChatbot).
+ */
 export interface Experiment {
-  id: number;
+  id: string;
   name: string;
-  public_id: string;
+  url?: string;
   version_number?: number;
-  pipeline_id?: number;
-  team_slug?: string;
+}
+
+/**
+ * The result of cloneChatbot, which carries BOTH identifiers because the
+ * operation bridges web routes (integer id) and REST (UUID public_id), plus
+ * the pipeline_id scraped from the edit page.
+ */
+export interface ClonedChatbot {
+  experiment_id: number;
+  public_id: string;
+  pipeline_id: number;
 }
 
 export interface Collection {

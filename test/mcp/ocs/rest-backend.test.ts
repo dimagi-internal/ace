@@ -38,25 +38,33 @@ describe('RestBackend.verify', () => {
 });
 
 describe('RestBackend chatbot atoms', () => {
-  it('listChatbots passes cursor and page_size as query params', async () => {
+  it('listChatbots passes cursor and page_size as query params, returns UUID ids', async () => {
+    // OCS /api/experiments/ returns `id` as the UUID public_id, not the integer db id.
+    // See apps/api/views/experiments.py:36 (lookup_field = "public_id").
     mockAgent.get(BASE)
       .intercept({ path: '/api/experiments/?cursor=abc&page_size=25', method: 'GET' })
-      .reply(200, { results: [{ id: 1, name: 'bot', public_id: 'uuid-1' }], next: 'xyz' });
+      .reply(200, {
+        results: [{ id: '00000000-0000-4000-8000-000000000001', name: 'bot' }],
+        next: 'xyz',
+      });
 
     const b = new RestBackend({ baseUrl: BASE, token: 't' });
     const out = await b.listChatbots({ cursor: 'abc', page_size: 25 });
-    expect(out.chatbots[0].id).toBe(1);
+    expect(out.chatbots[0].id).toBe('00000000-0000-4000-8000-000000000001');
+    expect(typeof out.chatbots[0].id).toBe('string');
     expect(out.next_cursor).toBe('xyz');
   });
 
-  it('getChatbot fetches a single experiment', async () => {
+  it('getChatbot uses the UUID public_id as the path parameter', async () => {
+    // The `{id}` path param is the UUID public_id, not the integer db id.
     mockAgent.get(BASE)
-      .intercept({ path: '/api/experiments/42/', method: 'GET' })
-      .reply(200, { id: 42, name: 'bot', public_id: 'uuid-42' });
+      .intercept({ path: '/api/experiments/uuid-42/', method: 'GET' })
+      .reply(200, { id: 'uuid-42', name: 'bot' });
 
     const b = new RestBackend({ baseUrl: BASE, token: 't' });
-    const exp = await b.getChatbot({ experiment_id: 42 });
+    const exp = await b.getChatbot({ public_id: 'uuid-42' });
     expect(exp.name).toBe('bot');
+    expect(exp.id).toBe('uuid-42');
   });
 
   it('sendTestMessage posts OpenAI-compatible body', async () => {

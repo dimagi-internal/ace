@@ -53,18 +53,22 @@ export class RestBackend {
     const qs = new URLSearchParams();
     if (args.cursor) qs.set('cursor', args.cursor);
     qs.set('page_size', String(args.page_size ?? 50));
+    // NOTE: OCS's ExperimentSerializer returns `id` as the UUID public_id, not
+    // the integer db id. See apps/api/views/experiments.py:36 (lookup_field = "public_id").
     const body = (await this.request('GET', `/api/experiments/?${qs}`)) as {
-      results: Array<{ id: number; name: string; public_id: string }>;
+      results: Array<{ id: string; name: string; url?: string; version_number?: number }>;
       next: string | null;
     };
     return { chatbots: body.results, next_cursor: body.next ?? undefined };
   }
 
-  async getChatbot(args: { experiment_id: number }) {
-    return (await this.request('GET', `/api/experiments/${args.experiment_id}/`)) as {
-      id: number;
+  async getChatbot(args: { public_id: string }) {
+    // The `{id}` path param is the UUID public_id (see apps/api/views/experiments.py).
+    return (await this.request('GET', `/api/experiments/${args.public_id}/`)) as {
+      id: string;
       name: string;
-      public_id: string;
+      url?: string;
+      version_number?: number;
     };
   }
 

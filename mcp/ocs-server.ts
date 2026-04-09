@@ -60,28 +60,69 @@ async function getPlaywrightBackend(): Promise<PlaywrightBackend> {
     csrfToken = fresh;
   }
 
-  async function doRequest(method: 'GET' | 'POST', url: string, body?: unknown) {
+  async function doRequest(
+    method: 'GET' | 'POST',
+    url: string,
+    body?: unknown,
+    options?: { followRedirects?: boolean; multipart?: Record<string, unknown> },
+  ) {
     if (method === 'GET') {
-      return ctx.request.get(url);
+      return ctx.request.get(url, {
+        maxRedirects: options?.followRedirects === false ? 0 : undefined,
+      });
+    }
+    // POST: route to either multipart or JSON body depending on options.
+    const maxRedirects = options?.followRedirects === false ? 0 : undefined;
+    const headers = { 'X-CSRFToken': csrfToken, Referer: baseUrl };
+    if (options?.multipart) {
+      // Re-map our `files_N` synthetic field names back to the repeated `files`
+      // field name that Django's `request.FILES.getlist("files")` expects.
+      // Playwright's `multipart` dict doesn't support duplicate keys directly,
+      // so we work around it by using unique keys then letting Playwright
+      // stream each one. The server-side `getlist` call on `files` won't find
+      // anything under `files_0`, so for each entry we prefix with `files`.
+      //
+      // NOTE: Playwright accepts Node's FormData via `form` — we use that path
+      // when we need multiple values for one field. Otherwise, the dict works.
+      const form = new FormData();
+      for (const [key, value] of Object.entries(options.multipart)) {
+        if (typeof value === 'string') {
+          form.append(key.startsWith('files_') ? 'files' : key, value);
+        } else if (value && typeof value === 'object' && 'buffer' in value) {
+          const file = value as { name: string; mimeType: string; buffer: Buffer };
+          form.append(
+            key.startsWith('files_') ? 'files' : key,
+            new Blob([new Uint8Array(file.buffer)], { type: file.mimeType }),
+            file.name,
+          );
+        }
+      }
+      return ctx.request.post(url, {
+        headers,
+        multipart: form,
+        maxRedirects,
+      });
     }
     return ctx.request.post(url, {
-      headers: { 'X-CSRFToken': csrfToken, Referer: baseUrl },
+      headers,
       data: body,
+      maxRedirects,
     });
   }
 
-  const request: RequestFn = (method, url, body) =>
+  const request: RequestFn = (method, url, body, options) =>
     serialize(async () => {
-      let res = await doRequest(method, url, body);
+      let res = await doRequest(method, url, body, options);
       // CSRF retry: Django returns 403 Forbidden with a CSRF message. Refetch
       // the token and retry the mutation once before giving up.
       if (!res.ok() && res.status() === 403 && method !== 'GET') {
         await refreshCsrf();
-        res = await doRequest(method, url, body);
+        res = await doRequest(method, url, body, options);
       }
       return {
         ok: res.ok(),
         status: res.status(),
+        headers: res.headers(),
         text: async () => await res.text(),
         json: async () => await res.json(),
       };
@@ -235,8 +276,8 @@ server.tool(
 
 server.tool(
   'ocs_get_chatbot',
-  'Retrieve a single chatbot by experiment ID.',
-  { experiment_id: z.number() },
+  'Retrieve a single chatbot by its public UUID (from ocs_list_chatbots).',
+  { public_id: z.string() },
   async (args) => result(await composite.getChatbot(args)),
 );
 

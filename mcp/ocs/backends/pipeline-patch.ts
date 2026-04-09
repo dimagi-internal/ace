@@ -5,15 +5,29 @@ export interface RequestResult {
   ok: boolean;
   /** HTTP status code. Optional for backward-compat with older test fakes. */
   status?: number;
-  /** Response body as text — used for HttpError messages. Optional for older test fakes. */
+  /** Response body as text — used for HttpError messages and HTML scraping. Optional for older test fakes. */
   text?: () => Promise<string>;
+  /** Response headers as a flat dict. Used to read Location on 302 redirects. */
+  headers?: Record<string, string>;
   json: () => Promise<unknown>;
+}
+
+/**
+ * Request options. `followRedirects: false` is important for POSTs that return a
+ * 302 with a Location we need to parse (e.g., chatbot clone, channel create).
+ * `multipart` switches to multipart/form-data body encoding — Django views that
+ * parse `request.FILES` require this.
+ */
+export interface RequestOptions {
+  followRedirects?: boolean;
+  multipart?: Record<string, string | { name: string; mimeType: string; buffer: Buffer }>;
 }
 
 export type RequestFn = (
   method: 'GET' | 'POST',
   url: string,
   body?: unknown,
+  options?: RequestOptions,
 ) => Promise<RequestResult>;
 
 export interface PipelinePatchContext {

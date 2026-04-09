@@ -1,16 +1,73 @@
 import type { RequestFn, RequestResult } from './pipeline-patch.js';
 import { patchLlmNodeParams, type PipelinePatchContext } from './pipeline-patch.js';
-import type { LlmNodeParams } from '../types.js';
-import { CollectionIndexingTimeoutError, HttpError } from '../errors.js';
+import type { LlmNodeParams, ClonedChatbot } from '../types.js';
+import { CollectionIndexingTimeoutError, HttpError, PipelineShapeError } from '../errors.js';
 
+// ── HTML scrape helpers ────────────────────────────────────────────
+// These match the exact templates rendered by OCS's Django views. If a
+// template changes upstream, the corresponding regex here is the first
+// thing that breaks. Each helper is unit-tested against a fixture.
+
+/**
+ * Extract the widget_token from the channel edit-dialog HTML.
+ * Matches the input rendered by templates/channels/widgets/widget_params.html:
+ *   <input type="text" id="widget_token" value="{{ widget.token }}" ...>
+ */
 export function extractWidgetToken(html: string): string | undefined {
-  const match = html.match(/data-widget-token="([^"]+)"/);
+  const match = html.match(/id="widget_token"[^>]*value="([^"]+)"/);
   return match?.[1];
 }
 
 /**
- * Construct an HttpError from a non-ok RequestResult. Tolerates older test
- * fakes that don't populate `status` or `text()`.
+ * Extract the experiment's public_id UUID from the chatbot home page HTML.
+ * Matches the widget tag rendered by templates/chatbots/single_chatbot_home.html:
+ *   <open-chat-studio-widget ... chatbot-id="{{ experiment.public_id }}" ...>
+ */
+export function extractPublicId(html: string): string | undefined {
+  const match = html.match(/chatbot-id="([0-9a-f-]{36})"/);
+  return match?.[1];
+}
+
+/**
+ * Extract the pipeline_id from the pipeline-builder page HTML.
+ * Matches the script block rendered by templates/pipelines/pipeline_builder.html:
+ *   SiteJS.pipeline.renderPipeline("#pipelineBuilder", "<team>", <pipeline_id>);
+ */
+export function extractPipelineId(html: string): number | undefined {
+  const match = html.match(/renderPipeline\("#pipelineBuilder",\s*"[^"]+",\s*(\d+)\)/);
+  return match ? Number(match[1]) : undefined;
+}
+
+/**
+ * Extract the EMBEDDED_WIDGET channel id from the chatbot home page HTML.
+ * Matches the hx-get URL on the channel button in templates/chatbots/components/channel_buttons.html:
+ *   hx-get="/a/<team>/chatbots/<eid>/channels/<channel_id>/edit-dialog/"
+ * Only returns the id if the surrounding button's i tag is the embedded_widget icon.
+ */
+export function extractEmbeddedWidgetChannelId(html: string, experimentId: number): number | undefined {
+  // Each channel button has: hx-get="...channels/<id>/edit-dialog/" and i.fa-brands.fa-embedded_widget
+  // We look for channel edit-dialog URLs and then cross-reference which one is embedded_widget.
+  const rowRegex = new RegExp(
+    `hx-get="[^"]*chatbots/${experimentId}/channels/(\\d+)/edit-dialog/"[^]*?fa-(embedded_widget)`,
+    'g'
+  );
+  for (const m of html.matchAll(rowRegex)) {
+    return Number(m[1]);
+  }
+  return undefined;
+}
+
+/**
+ * Extract the new experiment integer id from a 302 Location header after POST /copy/.
+ * Matches: /a/<team>/chatbots/<experiment_id>/
+ */
+export function extractExperimentIdFromLocation(location: string): number | undefined {
+  const match = location.match(/\/chatbots\/(\d+)\//);
+  return match ? Number(match[1]) : undefined;
+}
+
+/**
+ * Build a 302-response error with context for debugging.
  */
 async function httpErrorFor(res: RequestResult, path: string): Promise<HttpError> {
   const status = res.status ?? 0;
@@ -50,19 +107,34 @@ export class PlaywrightBackend {
    * Checks cache, then falls back to GET /api/experiments/<id>/.
    * Throws if the experiment retrieve doesn't include a pipeline reference.
    */
+  /**
+   * Resolve an experiment_id (integer) to its pipeline_id (integer).
+   *
+   * The OCS REST API's `/api/experiments/<id>/` response does NOT include
+   * `pipeline_id` (see apps/api/views/experiments.py + api-schema.yml Experiment
+   * schema). Instead we scrape it from the pipeline-builder page, which renders
+   * it inline as `SiteJS.pipeline.renderPipeline("#pipelineBuilder", "<team>", <pipeline_id>)`.
+   * See templates/pipelines/pipeline_builder.html.
+   *
+   * The result is cached so subsequent pipeline-patch atoms on the same experiment
+   * don't re-scrape. Populated eagerly by cloneChatbot.
+   */
   async pipelineIdFor(experimentId: number): Promise<number> {
     const cached = this.pipelineCache.get(experimentId);
     if (cached !== undefined) return cached;
 
-    const path = `/api/experiments/${experimentId}/`;
+    const path = `/a/${this.opts.teamSlug}/chatbots/${experimentId}/edit/`;
     const res = await this.opts.request('GET', path);
     if (!res.ok) throw await httpErrorFor(res, path);
-    const body = (await res.json()) as { pipeline_id?: number; pipeline?: { id?: number } };
-    const pipelineId = body.pipeline_id ?? body.pipeline?.id;
+    if (!res.text) {
+      throw new Error('RequestResult.text is required for pipelineIdFor; backend injected an older-shape fake');
+    }
+    const html = await res.text();
+    const pipelineId = extractPipelineId(html);
     if (!pipelineId) {
-      throw new Error(
-        `Experiment ${experimentId} has no pipeline reference in /api/experiments/ response. ` +
-          'Spec open verification item #11: confirm pipeline_id is surfaced in the experiment retrieve body.'
+      throw new PipelineShapeError(
+        `Could not find pipeline_id in the edit page for experiment ${experimentId}. ` +
+          'Template drift on templates/pipelines/pipeline_builder.html?'
       );
     }
     this.pipelineCache.set(experimentId, pipelineId);
@@ -137,17 +209,31 @@ export class PlaywrightBackend {
     collection_id: number;
     files: Array<{ name: string; content: Buffer | string; mime_type: string }>;
   }) {
-    // TODO (spec verification item #13): Django's `add_collection_files` view
-    // (apps/documents/views.py:352) parses `request.FILES` which expects real
-    // multipart/form-data. The JSON body below will likely fail on first real
-    // contact with OCS — needs to be rewired through a multipart-aware path
-    // (Playwright's `multipart:` option) once we can verify against OCS dev.
-    // The unit test is intentionally loose and does not guard this.
+    // Django's `add_collection_files` view (apps/documents/views.py:352) parses
+    // `request.FILES`, which requires multipart/form-data. We route through the
+    // `multipart` RequestOptions channel so the production closure in
+    // ocs-server.ts uses Playwright's native `multipart:` option instead of a
+    // JSON body.
+    //
+    // Multipart fields: each file is posted under the `files` field name
+    // (Django takes `request.FILES.getlist("files")`). The CSRF token travels
+    // as a regular form field.
     const path = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/add_files`;
-    const res = await this.opts.request('POST', path, {
-      files: args.files,
+    const multipart: Record<string, string | { name: string; mimeType: string; buffer: Buffer }> = {
       csrfmiddlewaretoken: this.opts.csrfToken,
+    };
+    // Playwright's multipart dict uses field names as keys; for multiple files
+    // sharing a name, we stream them as `files_0`, `files_1`, ... and the
+    // production closure re-maps to the `files` field name before posting.
+    // This is the only way Playwright's dict-based multipart supports repeated fields.
+    args.files.forEach((f, i) => {
+      multipart[`files_${i}`] = {
+        name: f.name,
+        mimeType: f.mime_type,
+        buffer: Buffer.isBuffer(f.content) ? f.content : Buffer.from(f.content),
+      };
     });
+    const res = await this.opts.request('POST', path, undefined, { multipart });
     if (!res.ok) throw await httpErrorFor(res, path);
     const body = (await res.json()) as { file_ids: number[] };
     return { file_ids: body.file_ids };
@@ -190,28 +276,101 @@ export class PlaywrightBackend {
     throw new CollectionIndexingTimeoutError(args.collection_id, timeoutSec);
   }
 
-  async cloneChatbot(args: { template_id: number; new_name: string }) {
+  async cloneChatbot(args: { template_id: number; new_name: string }): Promise<ClonedChatbot> {
+    // Step 1: POST the copy form. `copy_chatbot` in apps/chatbots/views.py:772
+    // returns a 302 redirect to single_chatbot_home, NOT a JSON body. We disable
+    // redirect-following so we can parse the new experiment_id from the
+    // Location header directly.
     const copyUrl = `/a/${this.opts.teamSlug}/chatbots/${args.template_id}/copy/`;
-    const copyRes = await this.opts.request('POST', copyUrl, {
-      new_name: args.new_name,
-      csrfmiddlewaretoken: this.opts.csrfToken,
-    });
-    if (!copyRes.ok) throw await httpErrorFor(copyRes, copyUrl);
-    const copyBody = (await copyRes.json()) as { experiment_id: number };
+    const copyRes = await this.opts.request(
+      'POST',
+      copyUrl,
+      { new_name: args.new_name, csrfmiddlewaretoken: this.opts.csrfToken },
+      { followRedirects: false },
+    );
+    if (copyRes.status !== 302 && !copyRes.ok) {
+      throw await httpErrorFor(copyRes, copyUrl);
+    }
+    const location = copyRes.headers?.location ?? copyRes.headers?.['Location'];
+    if (!location) {
+      throw new Error(
+        `Clone of template ${args.template_id} did not return a Location header. ` +
+          `Status: ${copyRes.status}`
+      );
+    }
+    const experimentId = extractExperimentIdFromLocation(location);
+    if (!experimentId) {
+      throw new Error(`Could not parse experiment_id from Location header: ${location}`);
+    }
 
-    const expUrl = `/api/experiments/${copyBody.experiment_id}/`;
-    const expRes = await this.opts.request('GET', expUrl);
-    if (!expRes.ok) throw await httpErrorFor(expRes, expUrl);
-    const exp = (await expRes.json()) as { id: number; public_id: string; pipeline_id: number };
+    // Step 2: GET the edit page to scrape both public_id and pipeline_id. The
+    // pipeline builder page renders `pipeline_id` inline in a <script> block,
+    // and the chatbot home page renders `public_id` as a widget tag attribute
+    // — but since the edit page links to both, GETting the home page is one
+    // call that gets us the public_id cheaply. Then we separately GET /edit/
+    // for pipeline_id.
+    const homePath = `/a/${this.opts.teamSlug}/chatbots/${experimentId}/`;
+    const homeRes = await this.opts.request('GET', homePath);
+    if (!homeRes.ok || !homeRes.text) throw await httpErrorFor(homeRes, homePath);
+    const homeHtml = await homeRes.text();
+    const publicId = extractPublicId(homeHtml);
+    if (!publicId) {
+      throw new Error(
+        `Could not find public_id in chatbot home page for experiment ${experimentId}. ` +
+          'Template may have changed or flag_chat_widget is off (the widget tag is behind that flag).'
+      );
+    }
 
-    // Cache the mapping so downstream pipeline-patch atoms don't re-fetch
-    this.pipelineCache.set(exp.id, exp.pipeline_id);
+    const editPath = `/a/${this.opts.teamSlug}/chatbots/${experimentId}/edit/`;
+    const editRes = await this.opts.request('GET', editPath);
+    if (!editRes.ok || !editRes.text) throw await httpErrorFor(editRes, editPath);
+    const editHtml = await editRes.text();
+    const pipelineId = extractPipelineId(editHtml);
+    if (!pipelineId) {
+      throw new PipelineShapeError(
+        `Could not find pipeline_id in edit page for experiment ${experimentId}. ` +
+          'Template drift on templates/pipelines/pipeline_builder.html?'
+      );
+    }
+    this.pipelineCache.set(experimentId, pipelineId);
 
-    return {
-      experiment_id: exp.id,
-      public_id: exp.public_id,
-      pipeline_id: exp.pipeline_id,
-    };
+    // Step 3: Create the EMBEDDED_WIDGET channel on the clone. The clone does
+    // NOT inherit the template's ExperimentChannel rows (channels are
+    // ForeignKey(experiment, CASCADE) and create_new_version(is_copy=True) in
+    // apps/experiments/models.py:895 doesn't touch them). Without this step,
+    // getChatbotEmbedInfo would always fail because the clone has zero channels.
+    await this.createEmbeddedWidgetChannel(experimentId, args.new_name);
+
+    return { experiment_id: experimentId, public_id: publicId, pipeline_id: pipelineId };
+  }
+
+  /**
+   * Create an EMBEDDED_WIDGET channel on an existing experiment.
+   *
+   * POSTs to the channel create-dialog endpoint. The server auto-generates
+   * `widget_token = secrets.token_urlsafe(24)` in EmbeddedWidgetChannelForm.clean()
+   * (apps/channels/forms.py:649), so we don't supply one. We pass
+   * `allow_all_domains=on` so the widget can be embedded on any origin (ACE's
+   * connect-labs chat route will add per-opp domain restrictions later if needed).
+   */
+  private async createEmbeddedWidgetChannel(experimentId: number, channelName: string): Promise<void> {
+    const path = `/a/${this.opts.teamSlug}/chatbots/${experimentId}/channels/create-dialog/embedded_widget/`;
+    const res = await this.opts.request(
+      'POST',
+      path,
+      {
+        name: channelName,
+        platform: 'embedded_widget',
+        allow_all_domains: 'on',
+        csrfmiddlewaretoken: this.opts.csrfToken,
+      },
+      { followRedirects: false },
+    );
+    // The view's form_valid returns HttpResponseClientRedirect (200 with HX-Redirect
+    // header) or re-renders on error — either way, a non-2xx/3xx status is a failure.
+    if (!res.ok && res.status !== 302) {
+      throw await httpErrorFor(res, path);
+    }
   }
 
   async publishChatbotVersion(args: { experiment_id: number; description: string }) {
@@ -225,26 +384,60 @@ export class PlaywrightBackend {
     return (await res.json()) as { version_number: number; task_id: string };
   }
 
+  /**
+   * Fetch the public_id + embed_key for an experiment's EMBEDDED_WIDGET channel.
+   *
+   * Three HTTP calls:
+   *   1. GET /a/<team>/chatbots/<eid>/              → scrape public_id from the
+   *                                                    <open-chat-studio-widget>
+   *                                                    tag + find the channel_id
+   *                                                    of the embedded_widget
+   *                                                    channel from its hx-get
+   *                                                    URL on the channel button
+   *   2. GET /a/<team>/chatbots/<eid>/channels/<channel_id>/edit-dialog/
+   *                                                 → scrape widget_token from
+   *                                                    the widget_params.html
+   *                                                    partial's hidden input
+   *
+   * Why not the REST API? Because `/api/experiments/<id>/` takes a UUID path
+   * parameter and doesn't expose the channel's embed_key at all. Everything
+   * hangs off the admin HTML.
+   */
   async getChatbotEmbedInfo(args: { experiment_id: number }) {
-    // REST half: public_id from /api/experiments/{id}/
-    const expPath = `/api/experiments/${args.experiment_id}/`;
-    const expRes = await this.opts.request('GET', expPath);
-    if (!expRes.ok) throw await httpErrorFor(expRes, expPath);
-    const exp = (await expRes.json()) as { public_id: string };
+    const homePath = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/`;
+    const homeRes = await this.opts.request('GET', homePath);
+    if (!homeRes.ok || !homeRes.text) throw await httpErrorFor(homeRes, homePath);
+    const homeHtml = await homeRes.text();
 
-    // Playwright half: scrape widget_token from the channels page HTML
-    const chanUrl = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/channels/`;
-    const chanRes = await this.opts.request('GET', chanUrl);
-    if (!chanRes.ok) throw await httpErrorFor(chanRes, chanUrl);
-    const chanBody = (await chanRes.json()) as { html: string };
-    const embedKey = extractWidgetToken(chanBody.html);
-    if (!embedKey) {
+    const publicId = extractPublicId(homeHtml);
+    if (!publicId) {
       throw new Error(
-        `No EMBEDDED_WIDGET channel found for experiment ${args.experiment_id}. ` +
-          'Verify clone channel copy behavior — see spec open verification item #1.'
+        `Could not scrape public_id from chatbot home page for experiment ${args.experiment_id}. ` +
+          'Flag `flag_chat_widget` may be off (the widget tag is behind that flag).'
       );
     }
 
-    return { public_id: exp.public_id, embed_key: embedKey };
+    const channelId = extractEmbeddedWidgetChannelId(homeHtml, args.experiment_id);
+    if (!channelId) {
+      throw new Error(
+        `No EMBEDDED_WIDGET channel found on chatbot home page for experiment ${args.experiment_id}. ` +
+          'Clone may have skipped the channel-creation step; run cloneChatbot instead.'
+      );
+    }
+
+    const editDialogPath = `/channels/${this.opts.teamSlug}/chatbots/${args.experiment_id}/channels/${channelId}/edit-dialog/`;
+    const dialogRes = await this.opts.request('GET', editDialogPath);
+    if (!dialogRes.ok || !dialogRes.text) throw await httpErrorFor(dialogRes, editDialogPath);
+    const dialogHtml = await dialogRes.text();
+
+    const embedKey = extractWidgetToken(dialogHtml);
+    if (!embedKey) {
+      throw new Error(
+        `Could not scrape widget_token from channel edit-dialog for experiment ${args.experiment_id}, channel ${channelId}. ` +
+          'Template may have changed on templates/channels/widgets/widget_params.html.'
+      );
+    }
+
+    return { public_id: publicId, embed_key: embedKey };
   }
 }

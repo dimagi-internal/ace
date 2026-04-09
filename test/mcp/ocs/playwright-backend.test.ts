@@ -2,7 +2,14 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PlaywrightBackend } from '../../../mcp/ocs/backends/playwright.js';
+import {
+  PlaywrightBackend,
+  extractWidgetToken,
+  extractPublicId,
+  extractPipelineId,
+  extractEmbeddedWidgetChannelId,
+  extractExperimentIdFromLocation,
+} from '../../../mcp/ocs/backends/playwright.js';
 import type { RequestFn } from '../../../mcp/ocs/backends/pipeline-patch.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,22 +30,163 @@ function loadPipelineFixture() {
   );
 }
 
+// Realistic HTML fragments pulled from the actual OCS templates.
+// These anchor the scrape regexes to the real DOM shape so a template change
+// upstream will surface as a test failure.
+
+const HOME_HTML_WITH_WIDGET = `
+<html><body>
+  <h1 id="chatbot-name">ACE - Malaria Pilot</h1>
+  <!-- Channels section with one embedded_widget channel -->
+  <div id="dynamic-channels" class="inline">
+    <button class="btn btn-ghost btn-sm normal-case!"
+            hx-get="/channels/dimagi/chatbots/99/channels/333/edit-dialog/"
+            hx-target="#channel_create_edit_modal_placeholder"
+            hx-swap="innerHTML">
+      <span class="tooltip" data-tip="embedded_widget"><i
+          class="fa-brands fa-embedded_widget"></i> Embedded Widget</span>
+    </button>
+  </div>
+  <!-- Widget tag behind flag_chat_widget -->
+  <open-chat-studio-widget
+    id="chatbot-widget"
+    show-button="false"
+    visible="false"
+    chatbot-id="00000000-0000-4000-8000-000000000099"
+    api-base-url="https://chatbots.dimagi.com"
+    position="right"
+    persistent-session="false"
+  ></open-chat-studio-widget>
+</body></html>
+`;
+
+const EDIT_HTML_WITH_PIPELINE_ID = `
+<html><body>
+  <div class="max-w-7xl mx-auto" id="pipelineBuilder"></div>
+  <script type="module">
+    window.DOCUMENTATION_BASE_URL = 'https://docs.example.com';
+    document.addEventListener('DOMContentLoaded', () => {
+      SiteJS.pipeline.renderPipeline("#pipelineBuilder", "dimagi", 77);
+    }
+    )
+  </script>
+</body></html>
+`;
+
+const EDIT_DIALOG_HTML_WITH_TOKEN = `
+<html><body>
+  <div class="card bg-base-200">
+    <div class="card-body">
+      <label class="label">Chatbot ID:</label>
+      <div class="join w-full">
+        <input type="text" id="widget_chatbot_id" value="00000000-0000-4000-8000-000000000099" class="input" readonly>
+      </div>
+      <label class="label">Embed Token:</label>
+      <div class="join w-full">
+        <input type="text" id="widget_token" value="tok-abc123" class="input" readonly>
+      </div>
+    </div>
+  </div>
+</body></html>
+`;
+
+// ── HTML scrape helpers ────────────────────────────────────────────
+
+describe('HTML scrape helpers', () => {
+  it('extractWidgetToken matches the real widget_params.html shape', () => {
+    expect(extractWidgetToken(EDIT_DIALOG_HTML_WITH_TOKEN)).toBe('tok-abc123');
+  });
+
+  it('extractWidgetToken returns undefined when absent', () => {
+    expect(extractWidgetToken('<html></html>')).toBeUndefined();
+  });
+
+  it('extractPublicId matches the widget tag on the chatbot home page', () => {
+    expect(extractPublicId(HOME_HTML_WITH_WIDGET)).toBe('00000000-0000-4000-8000-000000000099');
+  });
+
+  it('extractPublicId returns undefined when the widget tag is absent (flag off)', () => {
+    expect(extractPublicId('<html><body><h1>no widget</h1></body></html>')).toBeUndefined();
+  });
+
+  it('extractPipelineId matches the SiteJS.pipeline.renderPipeline call', () => {
+    expect(extractPipelineId(EDIT_HTML_WITH_PIPELINE_ID)).toBe(77);
+  });
+
+  it('extractPipelineId returns undefined when the script block is absent', () => {
+    expect(extractPipelineId('<html></html>')).toBeUndefined();
+  });
+
+  it('extractEmbeddedWidgetChannelId finds the embedded_widget channel row', () => {
+    expect(extractEmbeddedWidgetChannelId(HOME_HTML_WITH_WIDGET, 99)).toBe(333);
+  });
+
+  it('extractEmbeddedWidgetChannelId returns undefined when no embedded_widget row exists', () => {
+    const htmlWithOtherChannel = `
+      <button hx-get="/channels/dimagi/chatbots/99/channels/444/edit-dialog/">
+        <i class="fa-brands fa-telegram"></i> Telegram
+      </button>
+    `;
+    expect(extractEmbeddedWidgetChannelId(htmlWithOtherChannel, 99)).toBeUndefined();
+  });
+
+  it('extractExperimentIdFromLocation parses the redirect Location header', () => {
+    expect(extractExperimentIdFromLocation('/a/dimagi/chatbots/99/')).toBe(99);
+    expect(extractExperimentIdFromLocation('/a/dimagi/chatbots/12345/?foo=bar')).toBe(12345);
+    expect(extractExperimentIdFromLocation('/some/other/path')).toBeUndefined();
+  });
+});
+
+// ── cloneChatbot ─────────────────────────────────────────────────────
+
 describe('PlaywrightBackend.cloneChatbot', () => {
-  it('POSTs copy form and returns the new experiment info', async () => {
-    const calls: Array<{ method: string; url: string; body?: unknown }> = [];
-    const request: RequestFn = async (method, url, body) => {
-      calls.push({ method, url, body });
-      if (url === '/a/dimagi/chatbots/5/copy/') {
+  it('handles the 302 redirect, scrapes ids, and creates the widget channel', async () => {
+    const calls: Array<{ method: string; url: string }> = [];
+    const request: RequestFn = async (method, url, body, options) => {
+      calls.push({ method, url });
+
+      if (method === 'POST' && url === '/a/dimagi/chatbots/5/copy/') {
+        // Simulate Django's redirect response
+        expect(options?.followRedirects).toBe(false);
+        expect(body).toMatchObject({
+          new_name: 'ACE - Malaria Pilot',
+          csrfmiddlewaretoken: 'csrf-xyz',
+        });
         return {
-          ok: true,
-          json: async () => ({ experiment_id: 99 }),
+          ok: false,
+          status: 302,
+          headers: { location: '/a/dimagi/chatbots/99/' },
+          text: async () => '',
+          json: async () => ({}),
         };
       }
-      if (url === '/api/experiments/99/') {
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/') {
         return {
           ok: true,
-          json: async () => ({ id: 99, public_id: 'uuid-99', pipeline_id: 77 }),
+          status: 200,
+          text: async () => HOME_HTML_WITH_WIDGET,
+          json: async () => ({}),
         };
+      }
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/edit/') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => EDIT_HTML_WITH_PIPELINE_ID,
+          json: async () => ({}),
+        };
+      }
+      if (
+        method === 'POST' &&
+        url === '/a/dimagi/chatbots/99/channels/create-dialog/embedded_widget/'
+      ) {
+        expect(body).toMatchObject({
+          name: 'ACE - Malaria Pilot',
+          platform: 'embedded_widget',
+          allow_all_domains: 'on',
+          csrfmiddlewaretoken: 'csrf-xyz',
+        });
+        return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
       }
       throw new Error(`unexpected ${method} ${url}`);
     };
@@ -46,15 +194,54 @@ describe('PlaywrightBackend.cloneChatbot', () => {
     const backend = makeBackend(request);
     const out = await backend.cloneChatbot({ template_id: 5, new_name: 'ACE - Malaria Pilot' });
 
-    expect(out).toEqual({ experiment_id: 99, public_id: 'uuid-99', pipeline_id: 77 });
-    expect(calls[0].method).toBe('POST');
-    expect(calls[0].url).toBe('/a/dimagi/chatbots/5/copy/');
-    expect(calls[0].body).toMatchObject({
-      new_name: 'ACE - Malaria Pilot',
-      csrfmiddlewaretoken: 'csrf-xyz',
+    expect(out).toEqual({
+      experiment_id: 99,
+      public_id: '00000000-0000-4000-8000-000000000099',
+      pipeline_id: 77,
     });
+    // Verify the full 4-call sequence
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      'POST /a/dimagi/chatbots/5/copy/',
+      'GET /a/dimagi/chatbots/99/',
+      'GET /a/dimagi/chatbots/99/edit/',
+      'POST /a/dimagi/chatbots/99/channels/create-dialog/embedded_widget/',
+    ]);
+  });
+
+  it('throws when the copy POST response has no Location header', async () => {
+    const request: RequestFn = async (method, url) => {
+      if (method === 'POST' && url === '/a/dimagi/chatbots/5/copy/') {
+        return { ok: false, status: 302, headers: {}, text: async () => '', json: async () => ({}) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request);
+    await expect(
+      backend.cloneChatbot({ template_id: 5, new_name: 'x' })
+    ).rejects.toThrow(/did not return a Location header/);
+  });
+
+  it('throws when Location does not match the expected pattern', async () => {
+    const request: RequestFn = async (method, url) => {
+      if (method === 'POST' && url === '/a/dimagi/chatbots/5/copy/') {
+        return {
+          ok: false,
+          status: 302,
+          headers: { location: '/some/unexpected/path' },
+          text: async () => '',
+          json: async () => ({}),
+        };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request);
+    await expect(
+      backend.cloneChatbot({ template_id: 5, new_name: 'x' })
+    ).rejects.toThrow(/Could not parse experiment_id/);
   });
 });
+
+// ── Pipeline-patch atoms ─────────────────────────────────────────────
 
 describe('PlaywrightBackend pipeline-patch atoms', () => {
   // Seed: experiment 99 maps to pipeline 77 (matches the fixture's pipeline id)
@@ -117,11 +304,16 @@ describe('PlaywrightBackend pipeline-patch atoms', () => {
     expect(llm.data.params.source_material_id).toBe(321);
   });
 
-  it('falls back to /api/experiments/<id>/ lookup when cache misses', async () => {
+  it('falls back to scraping /a/<team>/chatbots/<id>/edit/ when cache misses', async () => {
     const fixture = loadPipelineFixture();
     const request: RequestFn = async (method, url) => {
-      if (method === 'GET' && url === '/api/experiments/99/') {
-        return { ok: true, json: async () => ({ id: 99, pipeline_id: 77 }) };
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/edit/') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => EDIT_HTML_WITH_PIPELINE_ID,
+          json: async () => ({}),
+        };
       }
       if (method === 'GET' && url === '/a/dimagi/pipelines/data/77/') {
         return { ok: true, json: async () => fixture };
@@ -131,13 +323,15 @@ describe('PlaywrightBackend pipeline-patch atoms', () => {
       }
       throw new Error(`unexpected ${method} ${url}`);
     };
-    // No seed — backend must resolve experiment→pipeline via REST lookup
+    // No seed — backend must resolve experiment→pipeline via the edit-page scrape
     const backend = makeBackend(request);
     await expect(
       backend.setChatbotSystemPrompt({ experiment_id: 99, prompt: 'x' })
     ).resolves.toBeUndefined();
   });
 });
+
+// ── Collection atoms ─────────────────────────────────────────────────
 
 describe('PlaywrightBackend collection atoms', () => {
   it('createCollection POSTs form and returns collection_id', async () => {
@@ -165,11 +359,22 @@ describe('PlaywrightBackend collection atoms', () => {
     expect(out.collection_id).toBe(501);
   });
 
-  it('uploadCollectionFiles POSTs multipart and returns file_ids', async () => {
-    const request: RequestFn = async (method, url, body) => {
+  it('uploadCollectionFiles sends multipart (not JSON body)', async () => {
+    const request: RequestFn = async (method, url, body, options) => {
       if (method === 'POST' && url === '/a/dimagi/documents/collections/501/add_files') {
-        // Body shape is deliberately loose to match what a real multipart helper emits
-        expect((body as { files: unknown[] }).files).toHaveLength(1);
+        // The atom must route through the multipart channel, not the JSON body.
+        expect(body).toBeUndefined();
+        expect(options?.multipart).toBeDefined();
+        expect(options!.multipart!.csrfmiddlewaretoken).toBe('csrf-xyz');
+        // One file → one files_0 entry
+        const fileEntry = options!.multipart!.files_0 as {
+          name: string;
+          mimeType: string;
+          buffer: Buffer;
+        };
+        expect(fileEntry.name).toBe('idd.pdf');
+        expect(fileEntry.mimeType).toBe('application/pdf');
+        expect(fileEntry.buffer.toString()).toBe('PDF');
         return { ok: true, json: async () => ({ file_ids: [9001] }) };
       }
       throw new Error(`unexpected ${method} ${url}`);
@@ -189,7 +394,13 @@ describe('PlaywrightBackend collection atoms', () => {
       if (method === 'GET' && url.startsWith('/a/dimagi/documents/collections/501/files/')) {
         call++;
         const chunkCount = call >= 2 ? 5 : 0;
-        return { ok: true, json: async () => ({ chunk_count: chunkCount, status: chunkCount > 0 ? 'COMPLETED' : 'PROCESSING' }) };
+        return {
+          ok: true,
+          json: async () => ({
+            chunk_count: chunkCount,
+            status: chunkCount > 0 ? 'COMPLETED' : 'PROCESSING',
+          }),
+        };
       }
       throw new Error(`unexpected ${method} ${url}`);
     };
@@ -216,6 +427,8 @@ describe('PlaywrightBackend collection atoms', () => {
   });
 });
 
+// ── Publish + embed info ─────────────────────────────────────────────
+
 describe('PlaywrightBackend publish + embed info', () => {
   it('publishChatbotVersion POSTs versions/create form', async () => {
     const request: RequestFn = async (method, url, body) => {
@@ -236,27 +449,50 @@ describe('PlaywrightBackend publish + embed info', () => {
     expect(out.task_id).toBe('celery-123');
   });
 
-  it('getChatbotEmbedInfo scrapes widget_token from the channels page', async () => {
-    const scrapedHtml = `
-      <html><body>
-        <div class="channel-row" data-platform="EMBEDDED_WIDGET">
-          <code data-widget-token="tok-abc123"></code>
-        </div>
-      </body></html>
-    `;
+  it('getChatbotEmbedInfo does a 3-hop scrape (home → edit-dialog → token)', async () => {
+    const calls: string[] = [];
     const request: RequestFn = async (method, url) => {
-      if (method === 'GET' && url === '/api/experiments/99/') {
-        return { ok: true, json: async () => ({ id: 99, public_id: 'uuid-99' }) };
+      calls.push(`${method} ${url}`);
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => HOME_HTML_WITH_WIDGET,
+          json: async () => ({}),
+        };
       }
-      if (method === 'GET' && url === '/a/dimagi/chatbots/99/channels/') {
-        return { ok: true, json: async () => ({ html: scrapedHtml }) };
+      if (method === 'GET' && url === '/channels/dimagi/chatbots/99/channels/333/edit-dialog/') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => EDIT_DIALOG_HTML_WITH_TOKEN,
+          json: async () => ({}),
+        };
       }
       throw new Error(`unexpected ${method} ${url}`);
     };
 
     const backend = makeBackend(request);
     const out = await backend.getChatbotEmbedInfo({ experiment_id: 99 });
-    expect(out.public_id).toBe('uuid-99');
+    expect(out.public_id).toBe('00000000-0000-4000-8000-000000000099');
     expect(out.embed_key).toBe('tok-abc123');
+    expect(calls).toEqual([
+      'GET /a/dimagi/chatbots/99/',
+      'GET /channels/dimagi/chatbots/99/channels/333/edit-dialog/',
+    ]);
+  });
+
+  it('getChatbotEmbedInfo throws with a clear message when no embedded_widget channel is present', async () => {
+    const htmlNoChannel = HOME_HTML_WITH_WIDGET.replace(/fa-brands fa-embedded_widget/, 'fa-brands fa-telegram');
+    const request: RequestFn = async (method, url) => {
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/') {
+        return { ok: true, status: 200, text: async () => htmlNoChannel, json: async () => ({}) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request);
+    await expect(
+      backend.getChatbotEmbedInfo({ experiment_id: 99 })
+    ).rejects.toThrow(/No EMBEDDED_WIDGET channel/);
   });
 });
