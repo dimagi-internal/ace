@@ -1,2 +1,13 @@
+# Existing entries
 node_modules/
 .gws-sa-key.json
+
+# Environment secrets — only .env.example is committed, real .env files
+# with actual team ids, tokens, and experiment ids must never land in git.
+.env
+.env.local
+.env.*.local
+
+# Temporary scripts and artifacts from live-OCS verification sessions.
+# These contain exploration code and HTML dumps that shouldn't live in git.
+scripts/tmp/
