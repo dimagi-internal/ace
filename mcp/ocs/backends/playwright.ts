@@ -2,6 +2,11 @@ import type { RequestFn } from './pipeline-patch.js';
 import { patchLlmNodeParams, type PipelinePatchContext } from './pipeline-patch.js';
 import type { LlmNodeParams } from '../types.js';
 
+export function extractWidgetToken(html: string): string | undefined {
+  const match = html.match(/data-widget-token="([^"]+)"/);
+  return match?.[1];
+}
+
 export interface PlaywrightBackendOptions {
   teamSlug: string;
   baseUrl: string;
@@ -186,5 +191,41 @@ export class PlaywrightBackend {
       public_id: exp.public_id,
       pipeline_id: exp.pipeline_id,
     };
+  }
+
+  async publishChatbotVersion(args: { experiment_id: number; description: string }) {
+    const res = await this.opts.request(
+      'POST',
+      `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/versions/create`,
+      {
+        version_description: args.description,
+        make_default: true,
+        csrfmiddlewaretoken: this.opts.csrfToken,
+      },
+    );
+    if (!res.ok) throw new Error('publishChatbotVersion failed');
+    return (await res.json()) as { version_number: number; task_id: string };
+  }
+
+  async getChatbotEmbedInfo(args: { experiment_id: number }) {
+    // REST half: public_id from /api/experiments/{id}/
+    const expRes = await this.opts.request('GET', `/api/experiments/${args.experiment_id}/`);
+    if (!expRes.ok) throw new Error('experiment retrieve failed');
+    const exp = (await expRes.json()) as { public_id: string };
+
+    // Playwright half: scrape widget_token from the channels page HTML
+    const chanUrl = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/channels/`;
+    const chanRes = await this.opts.request('GET', chanUrl);
+    if (!chanRes.ok) throw new Error('channels page fetch failed');
+    const chanBody = (await chanRes.json()) as { html: string };
+    const embedKey = extractWidgetToken(chanBody.html);
+    if (!embedKey) {
+      throw new Error(
+        `No EMBEDDED_WIDGET channel found for experiment ${args.experiment_id}. ` +
+          'Verify clone channel copy behavior — see spec open verification item #1.'
+      );
+    }
+
+    return { public_id: exp.public_id, embed_key: embedKey };
   }
 }

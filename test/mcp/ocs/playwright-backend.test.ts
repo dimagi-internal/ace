@@ -205,3 +205,48 @@ describe('PlaywrightBackend collection atoms', () => {
     expect(out.files_indexed).toBe(1);
   });
 });
+
+describe('PlaywrightBackend publish + embed info', () => {
+  it('publishChatbotVersion POSTs versions/create form', async () => {
+    const request: RequestFn = async (method, url, body) => {
+      if (method === 'POST' && url === '/a/dimagi/chatbots/99/versions/create') {
+        expect(body).toMatchObject({
+          version_description: 'initial',
+          make_default: true,
+          csrfmiddlewaretoken: 'csrf-xyz',
+        });
+        return { ok: true, json: async () => ({ version_number: 1, task_id: 'celery-123' }) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+
+    const backend = makeBackend(request);
+    const out = await backend.publishChatbotVersion({ experiment_id: 99, description: 'initial' });
+    expect(out.version_number).toBe(1);
+    expect(out.task_id).toBe('celery-123');
+  });
+
+  it('getChatbotEmbedInfo scrapes widget_token from the channels page', async () => {
+    const scrapedHtml = `
+      <html><body>
+        <div class="channel-row" data-platform="EMBEDDED_WIDGET">
+          <code data-widget-token="tok-abc123"></code>
+        </div>
+      </body></html>
+    `;
+    const request: RequestFn = async (method, url) => {
+      if (method === 'GET' && url === '/api/experiments/99/') {
+        return { ok: true, json: async () => ({ id: 99, public_id: 'uuid-99' }) };
+      }
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/channels/') {
+        return { ok: true, json: async () => ({ html: scrapedHtml }) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+
+    const backend = makeBackend(request);
+    const out = await backend.getChatbotEmbedInfo({ experiment_id: 99 });
+    expect(out.public_id).toBe('uuid-99');
+    expect(out.embed_key).toBe('tok-abc123');
+  });
+});
