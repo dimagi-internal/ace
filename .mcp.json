@@ -1,7 +1,10 @@
 {
   "ace-gdrive": {
     "command": "npx",
-    "args": ["tsx", "${CLAUDE_PLUGIN_ROOT}/mcp/google-drive-server.ts"]
+    "args": ["tsx", "${CLAUDE_PLUGIN_ROOT}/mcp/google-drive-server.ts"],
+    "env": {
+      "GOOGLE_APPLICATION_CREDENTIALS": "${CLAUDE_PLUGIN_DATA}/gws-sa-key.json"
+    }
   },
   "ace-ocs": {
     "command": "npx",

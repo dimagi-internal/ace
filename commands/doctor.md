@@ -78,16 +78,38 @@ else
 fi
 
 # --- Google service-account key ---
-KEY="$ROOT/.gws-sa-key.json"
-if [ -f "$KEY" ] && [ -r "$KEY" ]; then
+# Canonical location: $CLAUDE_PLUGIN_DATA/gws-sa-key.json (persistent across
+# plugin updates). Falls back to the legacy in-repo path for pre-migration
+# installs. Claude Code expands ${CLAUDE_PLUGIN_DATA} in .mcp.json at server
+# launch, so the canonical path must exist whenever the plugin is installed
+# from a marketplace.
+if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+  DATA_DIR="$CLAUDE_PLUGIN_DATA"
+else
+  DATA_DIR="$HOME/.claude/plugins/data/ace-ace"
+fi
+CANONICAL_KEY="$DATA_DIR/gws-sa-key.json"
+LEGACY_KEY="$ROOT/.gws-sa-key.json"
+
+KEY=""
+KEY_LOC=""
+if [ -f "$CANONICAL_KEY" ] && [ -r "$CANONICAL_KEY" ]; then
+  KEY="$CANONICAL_KEY"; KEY_LOC="canonical"
+elif [ -f "$LEGACY_KEY" ] && [ -r "$LEGACY_KEY" ]; then
+  KEY="$LEGACY_KEY"; KEY_LOC="legacy"
+fi
+
+if [ -n "$KEY" ]; then
   CE="$(node -e "try { console.log(JSON.parse(require(\"fs\").readFileSync(\"$KEY\",\"utf8\")).client_email); } catch(e) { console.log(\"unreadable\"); }" 2>/dev/null || echo unreadable)"
   if [ "$CE" = "unreadable" ]; then
     fail "gws_key: $KEY is not valid JSON" "re-drop the service-account key"
+  elif [ "$KEY_LOC" = "legacy" ]; then
+    warn "gws_key: $CE at LEGACY path $LEGACY_KEY" "migrate to $CANONICAL_KEY so it survives plugin updates: mv \"$LEGACY_KEY\" \"$CANONICAL_KEY\" && chmod 600 \"$CANONICAL_KEY\""
   else
-    pass "gws_key: $CE"
+    pass "gws_key: $CE at $CANONICAL_KEY"
   fi
 else
-  fail "gws_key: missing at $KEY" "drop your Google service-account JSON at this path (ask Jon for the Dimagi key)"
+  fail "gws_key: missing (checked $CANONICAL_KEY and $LEGACY_KEY)" "mkdir -p \"$DATA_DIR\" && drop the service-account JSON at $CANONICAL_KEY (ask Jon for the ACE key)"
 fi
 
 # --- .mcp.json sanity ---

@@ -65,20 +65,12 @@ Run this single bash command. Replace `NEW_VERSION` with the version from Step 1
 
 ```bash
 NEW_VERSION=<version from step 1> && \
-OLD_CACHE="$(ls -1dt ~/.claude/plugins/cache/ace/ace/* 2>/dev/null | head -1)" && \
 mkdir -p ~/.claude/plugins/cache/ace/ace/$NEW_VERSION && \
 rsync -a --delete \
   --exclude='node_modules' \
-  --exclude='.gws-sa-key.json' \
   --exclude='.git' \
   ~/.claude/plugins/marketplaces/ace/ \
   ~/.claude/plugins/cache/ace/ace/$NEW_VERSION/ && \
-if [ -n "$OLD_CACHE" ] && [ -f "$OLD_CACHE/.gws-sa-key.json" ]; then \
-  cp "$OLD_CACHE/.gws-sa-key.json" ~/.claude/plugins/cache/ace/ace/$NEW_VERSION/.gws-sa-key.json && \
-  echo "KEY: carried forward from $OLD_CACHE"; \
-else \
-  echo "KEY: no previous key found — run /ace:setup after this to drop it in"; \
-fi && \
 cd ~/.claude/plugins/cache/ace/ace/$NEW_VERSION && \
 echo "INSTALLING: npm install (may take 30-60s)" && \
 npm install --silent 2>&1 | tail -10 && \
@@ -148,6 +140,7 @@ Summarize the top entry in 3-5 bullets.
   `~/emdash-projects/ace` or dev worktree.
 - If Step 1 says `UP_TO_DATE`, STOP immediately. Do not run Step 2.
 - Always tell the user to run `/reload-plugins` after a successful update.
-- The `.gws-sa-key.json` and `node_modules/` are deliberately excluded from the
-  rsync: the key is carried forward explicitly, and `node_modules` is
-  reinstalled fresh against the new `package.json`.
+- `node_modules/` is deliberately excluded from the rsync so it's reinstalled
+  fresh against the new `package.json`. The service-account key lives in
+  `$CLAUDE_PLUGIN_DATA` (outside the versioned cache dir) so it automatically
+  survives updates without any explicit copy-forward.

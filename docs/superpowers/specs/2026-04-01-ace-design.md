@@ -133,7 +133,7 @@ Each skill is a SKILL.md file that handles one step of the CRISPR-Connect proces
 ### MCP Servers
 
 **In ACE repo:**
-- **Google Drive MCP** (`mcp/google-drive-server.ts`) — Sheets + Drive tools. Already built. Service account: `gws-local-dev@dimagi-chrome-extension.iam.gserviceaccount.com`. This is the canonical Google Drive MCP, registered in canopy's registry for cross-project use.
+- **Google Drive MCP** (`mcp/google-drive-server.ts`) — Sheets + Drive tools. Already built. Service account: `ace-service-account@connect-labs.iam.gserviceaccount.com`. The SA key is resolved via `GOOGLE_APPLICATION_CREDENTIALS`, which `.mcp.json` sets to `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` so it persists across plugin updates and is shared across all worktrees/installs. This is the canonical Google Drive MCP, registered in canopy's registry for cross-project use.
 - **OCS MCP** (`mcp/ocs-server.ts`) — To build. Agent management (create/configure agents per opportunity), transcript access (read LLO conversations for analysis), context injection.
 
 **In connect-labs (external):**
