@@ -6,54 +6,95 @@ ACE is a Claude Code plugin with the same architecture as canopy: agents orchest
 
 ## Quick Start
 
-Install as a Claude Code plugin, then complete the [Setup](#setup) below, then:
-
 ```
-/ace:run <opp-name> --mode review    # Run full lifecycle
-/ace:run <opp-name> --dry-run        # Test without side effects
-/ace:run <opp-name> --sandbox        # Route to staging endpoints
-/ace:step <skill-name> <opp-name>    # Run a single step
-/ace:status                          # Show all opportunities
-/ace:docs                            # Generate playbook
+/plugin marketplace add jjackson/ace     # Add the ACE marketplace
+/plugin install ace@ace                  # Install the plugin
+/ace:setup                               # Install deps + verify the service-account key
+/ace:doctor                              # Sanity-check everything
+
+/ace:run <opp-name> --mode review        # Run full lifecycle
+/ace:run <opp-name> --dry-run            # Test without side effects
+/ace:run <opp-name> --sandbox            # Route to staging endpoints
+/ace:step <skill-name> <opp-name>        # Run a single step
+/ace:status                              # Show all opportunities
+/ace:docs                                # Generate playbook
+/ace:update                              # Pull the latest release from GitHub
 ```
 
 ## Setup
 
-ACE bundles a Google Drive MCP server (`mcp/google-drive-server.ts`) that the skills use to read/write opportunity state in Drive. It auto-registers via `.mcp.json` when the plugin is installed in Claude Code, but two one-time setup steps are required on each machine:
+ACE is a Claude Code plugin that bundles a Google Drive MCP server
+(`mcp/google-drive-server.ts`) plus an OCS MCP server (`mcp/ocs-server.ts`).
+The `.mcp.json` manifest auto-registers them when the plugin is installed.
 
-### 1. Install plugin dependencies
+**One command sets everything up:**
 
-The MCP server is invoked as `npx tsx mcp/google-drive-server.ts`. `tsx` and the other Node dependencies (Google API client, MCP SDK) need to be installed in the plugin directory:
-
-```bash
-cd "$(find ~/.claude/plugins/cache/ace -maxdepth 2 -name package.json -exec dirname {} \; | head -1)"
-npm install
+```
+/ace:setup
 ```
 
-If you're developing the plugin locally (not via Claude Code install), just `cd` into your checkout and `npm install` there.
+This detects the plugin root (whether you're in a marketplace install or a
+local dev checkout), runs `npm install` so `tsx` and the Google API client are
+available, verifies the service-account key is present, cross-checks the MCP
+manifest, and (optionally with `--auto-update`) registers a `SessionStart` hook
+that runs background update checks.
 
-### 2. Drop in the Google service-account key
-
-The MCP server reads `.gws-sa-key.json` from the plugin root. This file is gitignored — you have to add it manually:
+The one thing `/ace:setup` can't do for you is drop in the service-account
+key — it's a secret you have to supply. When the setup script reports
+`GWS_KEY: MISSING`, it will print the exact path. Copy your key there:
 
 ```bash
-# Path depends on whether you're using the marketplace install or a local dev checkout.
-# For marketplace install:
-cp /path/to/your/sa-key.json ~/.claude/plugins/cache/ace/<version>/.gws-sa-key.json
-
-# For local dev checkout:
-cp /path/to/your/sa-key.json /path/to/your/ace/checkout/.gws-sa-key.json
+cp /path/to/your/sa-key.json <path-from-setup-output>/.gws-sa-key.json
 ```
 
-The service account needs `https://www.googleapis.com/auth/spreadsheets` and `https://www.googleapis.com/auth/drive` scopes. The Dimagi service account currently used is `gws-local-dev@dimagi-chrome-extension.iam.gserviceaccount.com` — ask Jon for the key.
+The service account needs `https://www.googleapis.com/auth/spreadsheets` and
+`https://www.googleapis.com/auth/drive` scopes. The Dimagi service account
+currently used is
+`gws-local-dev@dimagi-chrome-extension.iam.gserviceaccount.com` — ask Jon for
+the key.
 
-### 3. Verify
+After dropping the key, re-run `/ace:setup` and then restart your Claude Code
+session. The `ace-gdrive` MCP server should appear in `/mcp`.
 
-After install + key drop, restart your Claude Code session. The `ace-gdrive` MCP server should appear in `/mcp` and expose tools like `sheets_read`, `drive_read_file`, `drive_create_file`, etc. If it doesn't, check that `.gws-sa-key.json` exists at the plugin root and that `npm install` completed without errors.
+### Verify
+
+```
+/ace:doctor
+```
+
+Cross-checks version consistency, dependencies, the service-account key, the
+MCP manifest, and related repos (`ace-web`, `connect-labs`). Prints PASS / WARN
+/ FAIL for each check with a fix hint. Run this any time something feels off.
+
+### Updating
+
+```
+/ace:update
+```
+
+Pulls the latest release from `~/.claude/plugins/marketplaces/ace`, copies it
+into a new versioned cache dir (carrying forward your `.gws-sa-key.json`),
+reinstalls deps, updates `installed_plugins.json`, and tells you to
+`/reload-plugins`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
+If you'd rather not run this by hand, `/ace:setup --auto-update` registers a
+`SessionStart` hook that checks for new versions in the background every
+session (cached 60 min when up-to-date, 720 min when there's an upgrade
+available, with a snoozeable 24h/48h/7d backoff borrowed from gstack).
+
+### Manual install (dev checkouts)
+
+If you're hacking on the plugin locally rather than via the marketplace, clone
+the repo and run `npm install` yourself. `/ace:setup` and `/ace:doctor` still
+work — they detect the repo by walking up from `$PWD` looking for
+`.claude-plugin/plugin.json`.
 
 ### Other MCP servers
 
-The OCS MCP (`mcp/ocs-server.ts`) is a scaffold — every tool currently returns `{status: 'not_implemented'}`. It is **not** wired into `.mcp.json` because exposing it would only add stub tools to the session. It will be added to `.mcp.json` once the underlying OCS endpoints are connected. Track this in `playbook/integrations/ocs-integration.md`.
+The OCS MCP (`mcp/ocs-server.ts`) is wired into `.mcp.json` as `ace-ocs`. It is
+partially implemented — see `playbook/integrations/ocs-integration.md` and the
+`mcp/ocs/` backends. Authenticate with `/ace:ocs-login` before calling any tool
+that hits the live service.
 
 The CommCare and Connect MCPs live in the `connect-labs` repo, not in this plugin. To use them in a Claude Code session today, install the connect-labs MCP separately. ACE skills that depend on them have `## Current Workaround` sections that degrade to human-in-the-loop until those servers are also wired into a Claude Code plugin manifest.
 
@@ -63,8 +104,8 @@ The Nova MCP does not exist yet — see `playbook/integrations/nova-integration.
 
 - **5 agents** — ace-orchestrator + 4 phase agents (app-builder, connect-setup, llo-manager, closeout)
 - **19 skills** — one per process step, each a SKILL.md that Claude executes
-- **4 commands** — run, step, status, docs
-- **2 MCP servers** — Google Drive (built), OCS (scaffold)
+- **8 commands** — `run`, `step`, `status`, `docs`, `ocs-login`, `setup`, `update`, `doctor`
+- **2 MCP servers** — Google Drive (`ace-gdrive`), OCS (`ace-ocs`)
 - **2 execution modes** — auto (hands-off) and review (pauses at gates)
 
 ## Documentation
