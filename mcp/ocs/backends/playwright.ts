@@ -90,6 +90,80 @@ export class PlaywrightBackend {
     });
   }
 
+  async createCollection(args: {
+    name: string;
+    summary: string;
+    is_index: boolean;
+    is_remote_index: boolean;
+    llm_provider?: number;
+    embedding_model?: number;
+  }) {
+    const res = await this.opts.request(
+      'POST',
+      `/a/${this.opts.teamSlug}/documents/collection/new/`,
+      {
+        name: args.name,
+        summary: args.summary,
+        is_index: args.is_index,
+        is_remote_index: args.is_remote_index,
+        llm_provider: args.llm_provider,
+        embedding_provider_model: args.embedding_model,
+        csrfmiddlewaretoken: this.opts.csrfToken,
+      },
+    );
+    if (!res.ok) throw new Error('createCollection failed');
+    const body = (await res.json()) as { collection_id: number };
+    return { collection_id: body.collection_id };
+  }
+
+  async uploadCollectionFiles(args: {
+    collection_id: number;
+    files: Array<{ name: string; content: Buffer | string; mime_type: string }>;
+  }) {
+    const res = await this.opts.request(
+      'POST',
+      `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/add_files`,
+      {
+        files: args.files,
+        csrfmiddlewaretoken: this.opts.csrfToken,
+      },
+    );
+    if (!res.ok) throw new Error('uploadCollectionFiles failed');
+    const body = (await res.json()) as { file_ids: number[] };
+    return { file_ids: body.file_ids };
+  }
+
+  // Internal test seam: _fileIds + _pollIntervalMs. Real callers supply _fileIds from
+  // the return value of uploadCollectionFiles and tracked in skill state.
+  async waitForCollectionIndexing(args: {
+    collection_id: number;
+    timeout_sec?: number;
+    _fileIds?: number[];
+    _pollIntervalMs?: number;
+  }) {
+    const fileIds = args._fileIds ?? [];
+    const timeoutSec = args.timeout_sec ?? 300;
+    const pollInterval = args._pollIntervalMs ?? 2000;
+    const deadline = Date.now() + timeoutSec * 1000;
+
+    while (Date.now() < deadline) {
+      let indexed = 0;
+      for (const fid of fileIds) {
+        const url = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/files/${fid}/status`;
+        const res = await this.opts.request('GET', url);
+        if (!res.ok) continue;
+        const body = (await res.json()) as { chunk_count?: number };
+        if ((body.chunk_count ?? 0) > 0) indexed++;
+      }
+      if (indexed === fileIds.length) {
+        return { ready: true, files_indexed: indexed, pending: 0 };
+      }
+      await new Promise((r) => setTimeout(r, pollInterval));
+    }
+
+    throw new Error(`Collection ${args.collection_id} indexing timed out after ${timeoutSec}s`);
+  }
+
   async cloneChatbot(args: { template_id: number; new_name: string }) {
     const copyUrl = `/a/${this.opts.teamSlug}/chatbots/${args.template_id}/copy/`;
     const copyRes = await this.opts.request('POST', copyUrl, {
