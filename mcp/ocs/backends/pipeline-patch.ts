@@ -13,14 +13,24 @@ export interface RequestResult {
 }
 
 /**
- * Request options. `followRedirects: false` is important for POSTs that return a
- * 302 with a Location we need to parse (e.g., chatbot clone, channel create).
- * `multipart` switches to multipart/form-data body encoding — Django views that
- * parse `request.FILES` require this.
+ * Request options. Each flag maps to a specific Playwright request.post mode:
+ *
+ * - `followRedirects: false` → `maxRedirects: 0`, lets us parse 302 Location
+ *   headers (e.g. `/copy/`, channel create-dialog).
+ * - `multipart` → Playwright's `multipart:` option, required by Django views
+ *   that parse `request.FILES` (e.g. `add_collection_files`).
+ * - `formEncoded: true` → Playwright's `form:` option (application/x-www-form-urlencoded),
+ *   required by Django views that parse `request.POST` via `FormCls(request.POST)`.
+ *   Without this, bodies are sent as JSON (`data:`) which Django form views ignore
+ *   and the view falls through to its unauthenticated branch.
+ *
+ * Default (none of the above) sends the body as JSON (`data:`), which is what
+ * the pipeline_data endpoint expects (it calls `FlowPipelineData.model_validate_json`).
  */
 export interface RequestOptions {
   followRedirects?: boolean;
   multipart?: Record<string, string | { name: string; mimeType: string; buffer: Buffer }>;
+  formEncoded?: boolean;
 }
 
 export type RequestFn = (

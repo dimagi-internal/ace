@@ -20,11 +20,20 @@ export function extractWidgetToken(html: string): string | undefined {
 
 /**
  * Extract the experiment's public_id UUID from the chatbot home page HTML.
- * Matches the widget tag rendered by templates/chatbots/single_chatbot_home.html:
- *   <open-chat-studio-widget ... chatbot-id="{{ experiment.public_id }}" ...>
+ *
+ * We anchor on the `#api-url-link` hidden input which renders as:
+ *   <input id="api-url-link" type="hidden"
+ *          value="https://.../api/openai/<public_id>/chat/completions" />
+ *
+ * This is more reliable than scraping the `<open-chat-studio-widget>` tag
+ * because OCS itself renders a global support widget on every authenticated
+ * page (chatbot-id matches some fixed OCS-support uuid), and the
+ * per-experiment widget only renders behind the `flag_chat_widget` feature
+ * flag. Using the api-url-link avoids both problems — it's always rendered
+ * and always specific to the current experiment.
  */
 export function extractPublicId(html: string): string | undefined {
-  const match = html.match(/chatbot-id="([0-9a-f-]{36})"/);
+  const match = html.match(/id="api-url-link"[^>]*\/api\/openai\/([0-9a-f-]{36})\//);
   return match?.[1];
 }
 
@@ -191,18 +200,25 @@ export class PlaywrightBackend {
     embedding_model?: number;
   }) {
     const path = `/a/${this.opts.teamSlug}/documents/collection/new/`;
-    const res = await this.opts.request('POST', path, {
+    // Django CollectionForm parses request.POST → form-encoded
+    const form: Record<string, string> = {
       name: args.name,
       summary: args.summary,
-      is_index: args.is_index,
-      is_remote_index: args.is_remote_index,
-      llm_provider: args.llm_provider,
-      embedding_provider_model: args.embedding_model,
       csrfmiddlewaretoken: this.opts.csrfToken,
-    });
-    if (!res.ok) throw await httpErrorFor(res, path);
-    const body = (await res.json()) as { collection_id: number };
-    return { collection_id: body.collection_id };
+    };
+    if (args.is_index) form.is_index = 'on';
+    if (args.is_remote_index) form.is_remote_index = 'on';
+    if (args.llm_provider !== undefined) form.llm_provider = String(args.llm_provider);
+    if (args.embedding_model !== undefined) form.embedding_provider_model = String(args.embedding_model);
+    const res = await this.opts.request('POST', path, form, { formEncoded: true, followRedirects: false });
+    if (!res.ok && res.status !== 302) throw await httpErrorFor(res, path);
+    // CollectionFormMixin.get_success_url redirects to single_collection_home
+    // with the new collection id in the path: /a/<team>/documents/collection/<id>/
+    const loc = res.headers?.location;
+    if (!loc) throw new Error(`createCollection: no Location header (status ${res.status})`);
+    const match = loc.match(/\/collection\/(\d+)\//);
+    if (!match) throw new Error(`createCollection: could not parse collection id from Location: ${loc}`);
+    return { collection_id: Number(match[1]) };
   }
 
   async uploadCollectionFiles(args: {
@@ -278,15 +294,16 @@ export class PlaywrightBackend {
 
   async cloneChatbot(args: { template_id: number; new_name: string }): Promise<ClonedChatbot> {
     // Step 1: POST the copy form. `copy_chatbot` in apps/chatbots/views.py:772
-    // returns a 302 redirect to single_chatbot_home, NOT a JSON body. We disable
-    // redirect-following so we can parse the new experiment_id from the
-    // Location header directly.
+    // parses request.POST (form-encoded) and returns a 302 redirect to
+    // single_chatbot_home on form.is_valid() — otherwise it silently re-renders
+    // the original chatbot's home page with a 200, which looks deceptively
+    // successful. Verified against real OCS 2026-04-09.
     const copyUrl = `/a/${this.opts.teamSlug}/chatbots/${args.template_id}/copy/`;
     const copyRes = await this.opts.request(
       'POST',
       copyUrl,
       { new_name: args.new_name, csrfmiddlewaretoken: this.opts.csrfToken },
-      { followRedirects: false },
+      { followRedirects: false, formEncoded: true },
     );
     if (copyRes.status !== 302 && !copyRes.ok) {
       throw await httpErrorFor(copyRes, copyUrl);
@@ -354,7 +371,10 @@ export class PlaywrightBackend {
    * connect-labs chat route will add per-opp domain restrictions later if needed).
    */
   private async createEmbeddedWidgetChannel(experimentId: number, channelName: string): Promise<void> {
-    const path = `/a/${this.opts.teamSlug}/chatbots/${experimentId}/channels/create-dialog/embedded_widget/`;
+    // Note the URL prefix: channel create-dialog lives under /channels/<team>/...
+    // not /a/<team>/... — verified from apps/channels/urls.py. The `/a/` routes
+    // are for the HTML dashboard; `/channels/` is a separate app URL include.
+    const path = `/channels/${this.opts.teamSlug}/chatbots/${experimentId}/channels/create-dialog/embedded_widget/`;
     const res = await this.opts.request(
       'POST',
       path,
@@ -364,10 +384,11 @@ export class PlaywrightBackend {
         allow_all_domains: 'on',
         csrfmiddlewaretoken: this.opts.csrfToken,
       },
-      { followRedirects: false },
+      { followRedirects: false, formEncoded: true },
     );
-    // The view's form_valid returns HttpResponseClientRedirect (200 with HX-Redirect
-    // header) or re-renders on error — either way, a non-2xx/3xx status is a failure.
+    // Verified 2026-04-09: on success the view returns 200 with HTMX out-of-band
+    // swap HTML containing the new channel button. A 302 would indicate a redirect.
+    // Anything else is a failure.
     if (!res.ok && res.status !== 302) {
       throw await httpErrorFor(res, path);
     }
@@ -375,11 +396,16 @@ export class PlaywrightBackend {
 
   async publishChatbotVersion(args: { experiment_id: number; description: string }) {
     const path = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/versions/create`;
-    const res = await this.opts.request('POST', path, {
-      version_description: args.description,
-      make_default: true,
-      csrfmiddlewaretoken: this.opts.csrfToken,
-    });
+    const res = await this.opts.request(
+      'POST',
+      path,
+      {
+        version_description: args.description,
+        make_default: 'on',
+        csrfmiddlewaretoken: this.opts.csrfToken,
+      },
+      { formEncoded: true },
+    );
     if (!res.ok) throw await httpErrorFor(res, path);
     return (await res.json()) as { version_number: number; task_id: string };
   }

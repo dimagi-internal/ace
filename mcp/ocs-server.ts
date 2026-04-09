@@ -64,26 +64,25 @@ async function getPlaywrightBackend(): Promise<PlaywrightBackend> {
     method: 'GET' | 'POST',
     url: string,
     body?: unknown,
-    options?: { followRedirects?: boolean; multipart?: Record<string, unknown> },
+    options?: {
+      followRedirects?: boolean;
+      multipart?: Record<string, unknown>;
+      formEncoded?: boolean;
+    },
   ) {
     if (method === 'GET') {
       return ctx.request.get(url, {
         maxRedirects: options?.followRedirects === false ? 0 : undefined,
       });
     }
-    // POST: route to either multipart or JSON body depending on options.
     const maxRedirects = options?.followRedirects === false ? 0 : undefined;
     const headers = { 'X-CSRFToken': csrfToken, Referer: baseUrl };
+
     if (options?.multipart) {
-      // Re-map our `files_N` synthetic field names back to the repeated `files`
-      // field name that Django's `request.FILES.getlist("files")` expects.
-      // Playwright's `multipart` dict doesn't support duplicate keys directly,
-      // so we work around it by using unique keys then letting Playwright
-      // stream each one. The server-side `getlist` call on `files` won't find
-      // anything under `files_0`, so for each entry we prefix with `files`.
-      //
-      // NOTE: Playwright accepts Node's FormData via `form` — we use that path
-      // when we need multiple values for one field. Otherwise, the dict works.
+      // Real multipart/form-data — for Django views that parse request.FILES
+      // (e.g. add_collection_files). Use Node's FormData so repeated field
+      // names (`files`) are handled correctly, since Playwright's dict-based
+      // multipart option doesn't allow duplicate keys.
       const form = new FormData();
       for (const [key, value] of Object.entries(options.multipart)) {
         if (typeof value === 'string') {
@@ -97,17 +96,24 @@ async function getPlaywrightBackend(): Promise<PlaywrightBackend> {
           );
         }
       }
+      return ctx.request.post(url, { headers, multipart: form, maxRedirects });
+    }
+
+    if (options?.formEncoded) {
+      // application/x-www-form-urlencoded — for Django views that parse
+      // request.POST via `FormCls(request.POST)`. Playwright's `form:` option
+      // serializes correctly. Without this, bodies go out as JSON and Django
+      // form views silently fall through to their invalid branch.
       return ctx.request.post(url, {
         headers,
-        multipart: form,
+        form: body as Record<string, string>,
         maxRedirects,
       });
     }
-    return ctx.request.post(url, {
-      headers,
-      data: body,
-      maxRedirects,
-    });
+
+    // Default: JSON body (for endpoints that parse request.body as JSON,
+    // e.g. /pipelines/data/<pk>/ which calls FlowPipelineData.model_validate_json).
+    return ctx.request.post(url, { headers, data: body, maxRedirects });
   }
 
   const request: RequestFn = (method, url, body, options) =>

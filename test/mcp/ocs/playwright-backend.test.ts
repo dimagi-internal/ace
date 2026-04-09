@@ -34,6 +34,15 @@ function loadPipelineFixture() {
 // These anchor the scrape regexes to the real DOM shape so a template change
 // upstream will surface as a test failure.
 
+// Anchored on the REAL DOM from templates/chatbots/single_chatbot_home.html
+// — specifically the hidden api-url-link input which is always rendered
+// regardless of the flag_chat_widget feature flag state.
+//
+// The `<open-chat-studio-widget>` tag below simulates the global OCS support
+// widget that renders on every authenticated page. Its chatbot-id is a
+// synthetic test UUID — its only job is to ensure extractPublicId does NOT
+// match it (which would be a regression, since the support widget isn't the
+// current experiment).
 const HOME_HTML_WITH_WIDGET = `
 <html><body>
   <h1 id="chatbot-name">ACE - Malaria Pilot</h1>
@@ -47,16 +56,10 @@ const HOME_HTML_WITH_WIDGET = `
           class="fa-brands fa-embedded_widget"></i> Embedded Widget</span>
     </button>
   </div>
-  <!-- Widget tag behind flag_chat_widget -->
-  <open-chat-studio-widget
-    id="chatbot-widget"
-    show-button="false"
-    visible="false"
-    chatbot-id="00000000-0000-4000-8000-000000000099"
-    api-base-url="https://chatbots.dimagi.com"
-    position="right"
-    persistent-session="false"
-  ></open-chat-studio-widget>
+  <!-- api-url-link hidden input renders unconditionally — this is what we scrape -->
+  <input id="api-url-link" type="hidden" value="https://www.openchatstudio.com/api/openai/00000000-0000-4000-8000-000000000099/chat/completions" />
+  <!-- Decoy support-widget tag — MUST NOT be matched by extractPublicId -->
+  <open-chat-studio-widget chatbot-id="decafbad-0000-0000-0000-000000000000" button-text="Ask me!" position="right"></open-chat-studio-widget>
 </body></html>
 `;
 
@@ -178,8 +181,9 @@ describe('PlaywrightBackend.cloneChatbot', () => {
       }
       if (
         method === 'POST' &&
-        url === '/a/dimagi/chatbots/99/channels/create-dialog/embedded_widget/'
+        url === '/channels/dimagi/chatbots/99/channels/create-dialog/embedded_widget/'
       ) {
+        expect(options?.formEncoded).toBe(true);
         expect(body).toMatchObject({
           name: 'ACE - Malaria Pilot',
           platform: 'embedded_widget',
@@ -204,7 +208,7 @@ describe('PlaywrightBackend.cloneChatbot', () => {
       'POST /a/dimagi/chatbots/5/copy/',
       'GET /a/dimagi/chatbots/99/',
       'GET /a/dimagi/chatbots/99/edit/',
-      'POST /a/dimagi/chatbots/99/channels/create-dialog/embedded_widget/',
+      'POST /channels/dimagi/chatbots/99/channels/create-dialog/embedded_widget/',
     ]);
   });
 
@@ -334,17 +338,26 @@ describe('PlaywrightBackend pipeline-patch atoms', () => {
 // ── Collection atoms ─────────────────────────────────────────────────
 
 describe('PlaywrightBackend collection atoms', () => {
-  it('createCollection POSTs form and returns collection_id', async () => {
-    const request: RequestFn = async (method, url, body) => {
+  it('createCollection POSTs form-encoded and parses collection_id from redirect', async () => {
+    const request: RequestFn = async (method, url, body, options) => {
       if (method === 'POST' && url === '/a/dimagi/documents/collection/new/') {
+        expect(options?.formEncoded).toBe(true);
+        expect(options?.followRedirects).toBe(false);
+        // is_index/is_remote_index flatten to `on`/absent (Django checkbox convention)
         expect(body).toMatchObject({
           name: 'ACE Malaria',
           summary: 'knowledge base',
-          is_index: true,
-          is_remote_index: true,
+          is_index: 'on',
+          is_remote_index: 'on',
           csrfmiddlewaretoken: 'csrf-xyz',
         });
-        return { ok: true, json: async () => ({ collection_id: 501 }) };
+        return {
+          ok: false,
+          status: 302,
+          headers: { location: '/a/dimagi/documents/collection/501/' },
+          text: async () => '',
+          json: async () => ({}),
+        };
       }
       throw new Error(`unexpected ${method} ${url}`);
     };
@@ -430,12 +443,13 @@ describe('PlaywrightBackend collection atoms', () => {
 // ── Publish + embed info ─────────────────────────────────────────────
 
 describe('PlaywrightBackend publish + embed info', () => {
-  it('publishChatbotVersion POSTs versions/create form', async () => {
-    const request: RequestFn = async (method, url, body) => {
+  it('publishChatbotVersion POSTs versions/create as form-encoded', async () => {
+    const request: RequestFn = async (method, url, body, options) => {
       if (method === 'POST' && url === '/a/dimagi/chatbots/99/versions/create') {
+        expect(options?.formEncoded).toBe(true);
         expect(body).toMatchObject({
           version_description: 'initial',
-          make_default: true,
+          make_default: 'on',
           csrfmiddlewaretoken: 'csrf-xyz',
         });
         return { ok: true, json: async () => ({ version_number: 1, task_id: 'celery-123' }) };
