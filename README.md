@@ -104,7 +104,7 @@ The Nova MCP does not exist yet — see `playbook/integrations/nova-integration.
 
 - **5 agents** — ace-orchestrator + 4 phase agents (app-builder, connect-setup, llo-manager, closeout)
 - **19 skills** — one per process step, each a SKILL.md that Claude executes
-- **8 commands** — `run`, `step`, `status`, `docs`, `ocs-login`, `setup`, `update`, `doctor`
+- **9 commands** — `run`, `step`, `status`, `docs`, `ocs-login`, `ocs-bootstrap-template`, `setup`, `update`, `doctor`
 - **2 MCP servers** — Google Drive (`ace-gdrive`), OCS (`ace-ocs`)
 - **2 execution modes** — auto (hands-off) and review (pauses at gates)
 
