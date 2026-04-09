@@ -68,10 +68,35 @@ Don't run quantitative checks (submission rates, outlier detection) — they don
 ### `multi-stage`
 Run the per-archetype review against each stage's data. For multi-stage IDDs where Stage 2 design depends on Stage 1 findings, the Stage 1 review should explicitly produce input for `learnings-summary` and the Stage 2 IDD revision.
 
+## OCS Integration
+
+The flw-data-review skill mines OCS transcripts alongside CommCare form data
+to build a full picture of LLO and FLW experience. Uses these MCP atoms:
+
+- `ocs_list_sessions({ experiment_id })` — full session history for this opportunity's chatbot
+- `ocs_get_session({ session_id })` — per-session transcripts
+- `ocs_add_session_tags({ session_id, tags: [...] })` — categorize transcripts for downstream skills:
+  - `'escalated'` — flagged for human review
+  - `'training-gap'` — indicates the training materials missed something
+  - `'product-feedback'` — substantive feedback about Connect / CommCare that should feed back to the product team
+  - `'data-quality-issue'` — relates to a known data quality pattern from the CommCare analysis
+
+The `experiment_id` for this opportunity comes from
+`ACE/<opp-name>/ocs-agent-config.md`.
+
+### Cross-referencing with CommCare data
+
+When a transcript discusses a specific form submission, correlate via
+participant identifier (if passed through `participant_data`) or timestamp
+proximity to the form submission timestamp. Flag matched pairs in the review
+output so `learnings-summary` can connect "what the LLO asked" to "what actually
+happened in the data".
+
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
 - CommCare (scout-data): `query`, `list_tables`, `describe_table`
 - Connect (connect-labs): `get_opportunity_apps` for app IDs
+- OCS: `ocs_list_sessions`, `ocs_get_session`, `ocs_add_session_tags`
 
 ## Mode Behavior
 - **Auto:** Analyze data, write report, email recommendations to admin group
