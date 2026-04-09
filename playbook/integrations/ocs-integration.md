@@ -1,97 +1,72 @@
 # OCS Integration
 
-## OCS's Role in ACE
+## Overview
 
-OCS (Operational Conversational System) is ACE's **mouth and ears** for LLO interaction.
-ACE creates and configures an OCS agent per opportunity, injecting the IDD, training
-materials, and opportunity-specific context. LLO questions arrive via
-`Ace-AI@Dimagi.com`, are handled by the OCS agent, and all responses are cc'd to the
-CRISPR Admin group (Neal, Jon, Matt, Sarvesh, Cal) for monitoring.
+The ACE↔OCS integration layer is a composite MCP backend that exposes 22
+atomic OCS capabilities. See the design spec at
+`docs/superpowers/specs/2026-04-08-ace-ocs-chatbot-buildout-design.md` for
+architecture and rationale.
 
-ACE then reads OCS transcripts via API to:
-- Analyze sentiment across LLO conversations
-- Identify recurring questions or confusion points
-- Surface issues that need human escalation
-- Inform the `flw-data-review` and `llo-feedback` skills
+This doc is the operational reference: which atoms exist, which skill uses
+each, and how to run the MCP server.
 
-The `ocs-agent-setup` skill creates the agent. The `timeline-monitor` and
-`flw-data-review` skills periodically read transcripts for analysis.
+## Running the MCP server
 
----
+```bash
+npm run mcp:ocs
+```
 
-## What Needs Exploration
+Required environment: see `.env.example`.
 
-The following OCS capabilities need to be scoped before building the OCS MCP server.
-Owner: Jon.
+## Capability map
 
-### Agent Creation API
-- Can OCS agents be created programmatically via API?
-- What parameters are required? (name, email routing, initial context, persona)
-- Is there an existing REST endpoint or does this need to be built?
+### Authoring atoms (10) — Playwright backend today, REST targets documented
 
-### Context Injection
-- How does OCS accept context updates? (initial prompt only? live injection? document
-  upload?)
-- What format does context need to be in? (Markdown? structured JSON? plain text?)
-- Can context be updated after an agent is live without recreating it?
-- Are there size limits on injected context?
+| Atom | Used by |
+|---|---|
+| `ocs_clone_chatbot` | `ocs-agent-setup` |
+| `ocs_set_chatbot_system_prompt` | `ocs-agent-setup` |
+| `ocs_create_collection` | `ocs-agent-setup` |
+| `ocs_upload_collection_files` | `ocs-agent-setup` |
+| `ocs_wait_for_collection_indexing` | `ocs-agent-setup` |
+| `ocs_attach_knowledge` | `ocs-agent-setup` |
+| `ocs_set_chatbot_tools` | `ocs-agent-setup` (optional) |
+| `ocs_set_source_material` | (v2; no v1 skill uses this) |
+| `ocs_publish_chatbot_version` | `ocs-agent-setup` |
+| `ocs_get_chatbot_embed_info` | `ocs-agent-setup` (hybrid: REST + Playwright) |
 
-### Dynamic Updates
-- Can ACE push updates to a live OCS agent? (e.g., when training materials change,
-  or when a new batch of FLWs is onboarded)
-- What is the update latency?
+### Observation atoms (12) — REST backend
 
-### Webhooks
-- Does OCS support webhooks for new messages or conversation events?
-- Can ACE be notified when an LLO sends a message, so the `timeline-monitor` skill
-  can react in near-real-time?
+| Atom | Used by |
+|---|---|
+| `ocs_list_chatbots` | `ocs-agent-setup` (idempotency check) |
+| `ocs_get_chatbot` | `ocs-agent-setup` |
+| `ocs_list_sessions` | `timeline-monitor`, `flw-data-review` |
+| `ocs_get_session` | `timeline-monitor`, `flw-data-review` |
+| `ocs_end_session` | (v2) |
+| `ocs_add_session_tags` | `timeline-monitor`, `flw-data-review` |
+| `ocs_remove_session_tags` | (v2) |
+| `ocs_update_session_state` | (v2) |
+| `ocs_send_test_message` | `ocs-agent-setup` (self-eval) |
+| `ocs_trigger_bot_message` | `timeline-monitor` (nudges) |
+| `ocs_update_participant_data` | (v2) |
+| `ocs_download_file` | (v2) |
 
-### Transcript API Shape
-- What does the transcript API response look like? (conversation structure, timestamps,
-  speaker attribution, message content)
-- Is there pagination for long conversation histories?
-- Can transcripts be filtered by date range or conversation ID?
+## Troubleshooting
 
----
+- **`SessionExpiredError`** — run `/ocs:login` to refresh the Playwright session state
+- **`PipelineShapeError`** — the golden template has more than one `LLMResponseWithPrompt` node, or none. Verify `OCS_GOLDEN_TEMPLATE_ID`.
+- **`HttpError 401/403` on REST atoms** — `OCS_API_TOKEN` is invalid or lacks the required scopes. Regenerate via OCS user settings.
+- **`CollectionIndexingTimeoutError`** — the embedding queue is backed up; increase `timeout_sec` or check OCS dashboard.
 
-## Planned OCS MCP Server Tools
+## Verification items
 
-Once the above is scoped with the OCS team, the `mcp/ocs-server.ts` will expose:
+See spec section "Open verification items" for the 12 items that need
+resolution during implementation. Update this section as each is resolved.
 
-| Tool | Description |
-|------|-------------|
-| `ocs_create_agent` | Create a new OCS agent for an opportunity, with name, email, and initial context |
-| `ocs_update_context` | Push updated context (IDD, training materials, etc.) to a live agent |
-| `ocs_list_transcripts` | List conversations for an agent, with optional date filter |
-| `ocs_get_transcript` | Get the full message history for a specific conversation |
-| `ocs_agent_status` | Check agent health, last activity, and message volume |
+## Change log
 
-These tools will be consumed by:
-- `ocs-agent-setup` skill — uses `ocs_create_agent`, `ocs_update_context`
-- `timeline-monitor` skill — uses `ocs_list_transcripts`, `ocs_get_transcript`
-- `flw-data-review` skill — uses `ocs_list_transcripts`, `ocs_get_transcript`
-
----
-
-## Manual Workaround
-
-Until the OCS MCP server is built:
-
-1. The `ocs-agent-setup` skill generates a **context document** from the IDD and
-   training materials — a ready-to-paste prompt for the OCS agent
-2. The skill presents this document and instructs the user to:
-   - Create the OCS agent manually
-   - Set the email routing to `Ace-AI@Dimagi.com`
-   - Paste the generated context as the agent's system prompt
-3. The user confirms the agent is active before ACE proceeds
-4. Transcript analysis in `timeline-monitor` and `flw-data-review` is skipped or
-   performed manually until the API is accessible
-
-## Staging Environment
-
-When `--sandbox` is active, ACE routes OCS API calls to a staging instance if available.
-
-- **Staging URL:** TBD — staging OCS may not exist yet. Confirm with Jon.
-- **How it works:** OCS MCP server reads `ACE_SANDBOX=true` environment variable and switches endpoints
-- **Data isolation:** TBD — depends on whether OCS supports multi-tenancy or separate staging instances
-- **Fallback:** If no staging OCS exists, sandbox mode for OCS skills falls back to dry-run behavior (log intended actions without executing)
+| Date | Change |
+|------|--------|
+| 2026-04-03 | Initial "open questions" doc |
+| 2026-04-08 | Rewritten as operational reference after composite backend ships |
