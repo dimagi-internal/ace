@@ -41,20 +41,33 @@ that runs background update checks.
 
 The one thing `/ace:setup` can't do for you is drop in the service-account
 key — it's a secret you have to supply. When the setup script reports
-`GWS_KEY: MISSING`, it will print the exact path. Copy your key there:
+`GWS_KEY: MISSING`, it prints the canonical path (under `$CLAUDE_PLUGIN_DATA`)
+and the exact `mkdir -p … && mv … && chmod 600 …` command to run. That
+location is persistent across plugin updates and shared by every worktree and
+install, so you only drop the key once per machine.
 
-```bash
-cp /path/to/your/sa-key.json <path-from-setup-output>/.gws-sa-key.json
-```
+The `.mcp.json` passes the path to the MCP server via the standard
+`GOOGLE_APPLICATION_CREDENTIALS` env var, expanded from
+`${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` at server launch.
 
-The service account needs `https://www.googleapis.com/auth/spreadsheets` and
-`https://www.googleapis.com/auth/drive` scopes. The Dimagi service account
-currently used is
-`gws-local-dev@dimagi-chrome-extension.iam.gserviceaccount.com` — ask Jon for
-the key.
+The service account needs `https://www.googleapis.com/auth/spreadsheets`,
+`https://www.googleapis.com/auth/drive`, and
+`https://www.googleapis.com/auth/documents` scopes. The ACE service account is
+`ace-service-account@connect-labs.iam.gserviceaccount.com` — ask Jon for the
+key. It must be added as Editor on the ACE folder inside the Shared Drive for
+artifact creation to work; see the "Shared Drive" note below.
 
-After dropping the key, re-run `/ace:setup` and then restart your Claude Code
-session. The `ace-gdrive` MCP server should appear in `/mcp`.
+After dropping the key, re-run `/ace:setup` and then `/reload-plugins`. The
+`ace-gdrive` MCP server should appear in `/mcp`.
+
+#### Shared Drive requirement
+
+ACE skills create Google Docs inside an ACE folder that **must live in a
+Google Shared Drive**, not in anyone's "My Drive". Service accounts have zero
+personal Drive storage quota, so creating files under a My Drive folder fails
+with `Service Accounts do not have storage quota`. Inside a Shared Drive the
+Drive itself owns the files, and the SA only needs Editor permission on the
+target folder.
 
 ### Verify
 
@@ -73,9 +86,11 @@ MCP manifest, and related repos (`ace-web`, `connect-labs`). Prints PASS / WARN
 ```
 
 Pulls the latest release from `~/.claude/plugins/marketplaces/ace`, copies it
-into a new versioned cache dir (carrying forward your `.gws-sa-key.json`),
-reinstalls deps, updates `installed_plugins.json`, and tells you to
-`/reload-plugins`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+into a new versioned cache dir, reinstalls deps, updates
+`installed_plugins.json`, and tells you to `/reload-plugins`. Your
+service-account key lives in `$CLAUDE_PLUGIN_DATA`, which is outside the
+versioned cache dir, so it automatically carries forward without any special
+handling. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 If you'd rather not run this by hand, `/ace:setup --auto-update` registers a
 `SessionStart` hook that checks for new versions in the background every
