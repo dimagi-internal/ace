@@ -19,6 +19,7 @@ import { PlaywrightSession } from './ocs/auth/playwright-session.js';
 import { loadBaseUrl, loadRestToken } from './ocs/auth/rest-token.js';
 import type { RequestFn } from './ocs/backends/pipeline-patch.js';
 import { createLoggingProxy, defaultFileLogger } from './ocs/logging.js';
+import { CsrfTokenMissingError } from './ocs/errors.js';
 
 const baseUrl = loadBaseUrl();
 const teamSlug = process.env.OCS_TEAM_SLUG ?? 'dimagi';
@@ -30,6 +31,15 @@ const rest = new RestBackend({ baseUrl, token: loadRestToken() });
 let playwright: PlaywrightBackend | undefined;
 let session: PlaywrightSession | undefined;
 
+// Simple promise-queue serializer so concurrent authoring calls can't race
+// on CSRF token rotation or cookie mutation. Spec section: Playwright backend → Concurrency.
+let requestChain: Promise<unknown> = Promise.resolve();
+function serialize<T>(fn: () => Promise<T>): Promise<T> {
+  const next = requestChain.then(fn, fn);
+  requestChain = next.catch(() => undefined);
+  return next;
+}
+
 async function getPlaywrightBackend(): Promise<PlaywrightBackend> {
   if (playwright) return playwright;
   session = new PlaywrightSession({
@@ -39,19 +49,43 @@ async function getPlaywrightBackend(): Promise<PlaywrightBackend> {
     password: process.env.OCS_PASSWORD,
   });
   const ctx = await session.getContext();
-  const csrfToken = session.getCsrfToken();
+  let csrfToken = session.getCsrfToken();
 
-  const request: RequestFn = async (method, url, body) => {
+  // Refetch the CSRF token from the cookie jar. Django rotates it on certain
+  // events; we call this on a 403 and retry the request once before failing.
+  async function refreshCsrf(): Promise<void> {
+    const cookies = await ctx.cookies();
+    const fresh = cookies.find((c) => c.name === 'csrftoken')?.value;
+    if (!fresh) throw new CsrfTokenMissingError();
+    csrfToken = fresh;
+  }
+
+  async function doRequest(method: 'GET' | 'POST', url: string, body?: unknown) {
     if (method === 'GET') {
-      const res = await ctx.request.get(url);
-      return { ok: res.ok(), json: async () => await res.json() };
+      return ctx.request.get(url);
     }
-    const res = await ctx.request.post(url, {
+    return ctx.request.post(url, {
       headers: { 'X-CSRFToken': csrfToken, Referer: baseUrl },
       data: body,
     });
-    return { ok: res.ok(), json: async () => await res.json() };
-  };
+  }
+
+  const request: RequestFn = (method, url, body) =>
+    serialize(async () => {
+      let res = await doRequest(method, url, body);
+      // CSRF retry: Django returns 403 Forbidden with a CSRF message. Refetch
+      // the token and retry the mutation once before giving up.
+      if (!res.ok() && res.status() === 403 && method !== 'GET') {
+        await refreshCsrf();
+        res = await doRequest(method, url, body);
+      }
+      return {
+        ok: res.ok(),
+        status: res.status(),
+        text: async () => await res.text(),
+        json: async () => await res.json(),
+      };
+    });
 
   playwright = new PlaywrightBackend({ teamSlug, baseUrl, csrfToken, request });
   return playwright;
@@ -135,8 +169,12 @@ server.tool(
 
 server.tool(
   'ocs_wait_for_collection_indexing',
-  'Poll until all files in a Collection have been indexed (chunked + embedded).',
-  { collection_id: z.number(), timeout_sec: z.number().optional() },
+  'Poll until the specified files in a Collection have been indexed (chunked + embedded). Pass the file_ids returned by ocs_upload_collection_files.',
+  {
+    collection_id: z.number(),
+    file_ids: z.array(z.number()),
+    timeout_sec: z.number().optional(),
+  },
   async (args) => result(await composite.waitForCollectionIndexing(args)),
 );
 

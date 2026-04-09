@@ -119,6 +119,24 @@ describe('RestBackend session atoms', () => {
     expect(out.sessions[0].id).toBe('s1');
   });
 
+  it('listSessions `since` filters client-side by created_at, not via `ordering` param', async () => {
+    // Assert the query string does NOT include `since` or `ordering`
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/sessions/?page_size=50', method: 'GET' })
+      .reply(200, {
+        results: [
+          { id: 'old', tags: [], created_at: '2026-04-01T00:00:00Z' },
+          { id: 'new', tags: [], created_at: '2026-04-10T00:00:00Z' },
+        ],
+        next: null,
+      });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const out = await b.listSessions({ since: '2026-04-05T00:00:00Z' });
+    expect(out.sessions).toHaveLength(1);
+    expect(out.sessions[0].id).toBe('new');
+  });
+
   it('getSession returns messages', async () => {
     mockAgent.get(BASE)
       .intercept({ path: '/api/sessions/s1/', method: 'GET' })

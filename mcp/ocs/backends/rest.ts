@@ -100,7 +100,6 @@ export class RestBackend {
   }) {
     const qs = new URLSearchParams();
     if (args.experiment_id) qs.set('experiment', args.experiment_id);
-    if (args.since) qs.set('ordering', args.since);
     if (args.tags) qs.set('tags', args.tags);
     if (args.versions) qs.set('versions', args.versions);
     if (args.cursor) qs.set('cursor', args.cursor);
@@ -109,7 +108,18 @@ export class RestBackend {
       results: Array<{ id: string; tags: string[]; created_at: string }>;
       next: string | null;
     };
-    return { sessions: body.results, next_cursor: body.next ?? undefined };
+    // NOTE: `since` is NOT forwarded to OCS because /api/sessions/ has no
+    // documented date-filter param in the OpenAPI schema. We apply it
+    // client-side after pagination. Spec verification item: confirm whether
+    // OCS adds a `created_at__gte`-style filter and, if so, forward it here.
+    let results = body.results;
+    if (args.since) {
+      const sinceMs = Date.parse(args.since);
+      if (!Number.isNaN(sinceMs)) {
+        results = results.filter((s) => Date.parse(s.created_at) >= sinceMs);
+      }
+    }
+    return { sessions: results, next_cursor: body.next ?? undefined };
   }
 
   async getSession(args: { session_id: string }) {

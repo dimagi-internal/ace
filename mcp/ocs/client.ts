@@ -34,6 +34,7 @@ export interface OcsClient {
 
   waitForCollectionIndexing(args: {
     collection_id: number;
+    file_ids: number[];
     timeout_sec?: number;
   }): Promise<{ ready: boolean; files_indexed: number; pending: number }>;
 

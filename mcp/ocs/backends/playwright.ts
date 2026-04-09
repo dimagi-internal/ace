@@ -1,10 +1,24 @@
-import type { RequestFn } from './pipeline-patch.js';
+import type { RequestFn, RequestResult } from './pipeline-patch.js';
 import { patchLlmNodeParams, type PipelinePatchContext } from './pipeline-patch.js';
 import type { LlmNodeParams } from '../types.js';
+import { CollectionIndexingTimeoutError, HttpError } from '../errors.js';
 
 export function extractWidgetToken(html: string): string | undefined {
   const match = html.match(/data-widget-token="([^"]+)"/);
   return match?.[1];
+}
+
+/**
+ * Construct an HttpError from a non-ok RequestResult. Tolerates older test
+ * fakes that don't populate `status` or `text()`.
+ */
+async function httpErrorFor(res: RequestResult, path: string): Promise<HttpError> {
+  const status = res.status ?? 0;
+  let body = '';
+  if (res.text) {
+    try { body = await res.text(); } catch { /* swallow */ }
+  }
+  return new HttpError(status, path, body);
 }
 
 export interface PlaywrightBackendOptions {
@@ -40,8 +54,9 @@ export class PlaywrightBackend {
     const cached = this.pipelineCache.get(experimentId);
     if (cached !== undefined) return cached;
 
-    const res = await this.opts.request('GET', `/api/experiments/${experimentId}/`);
-    if (!res.ok) throw new Error(`experiment retrieve failed for ${experimentId}`);
+    const path = `/api/experiments/${experimentId}/`;
+    const res = await this.opts.request('GET', path);
+    if (!res.ok) throw await httpErrorFor(res, path);
     const body = (await res.json()) as { pipeline_id?: number; pipeline?: { id?: number } };
     const pipelineId = body.pipeline_id ?? body.pipeline?.id;
     if (!pipelineId) {
@@ -103,20 +118,17 @@ export class PlaywrightBackend {
     llm_provider?: number;
     embedding_model?: number;
   }) {
-    const res = await this.opts.request(
-      'POST',
-      `/a/${this.opts.teamSlug}/documents/collection/new/`,
-      {
-        name: args.name,
-        summary: args.summary,
-        is_index: args.is_index,
-        is_remote_index: args.is_remote_index,
-        llm_provider: args.llm_provider,
-        embedding_provider_model: args.embedding_model,
-        csrfmiddlewaretoken: this.opts.csrfToken,
-      },
-    );
-    if (!res.ok) throw new Error('createCollection failed');
+    const path = `/a/${this.opts.teamSlug}/documents/collection/new/`;
+    const res = await this.opts.request('POST', path, {
+      name: args.name,
+      summary: args.summary,
+      is_index: args.is_index,
+      is_remote_index: args.is_remote_index,
+      llm_provider: args.llm_provider,
+      embedding_provider_model: args.embedding_model,
+      csrfmiddlewaretoken: this.opts.csrfToken,
+    });
+    if (!res.ok) throw await httpErrorFor(res, path);
     const body = (await res.json()) as { collection_id: number };
     return { collection_id: body.collection_id };
   }
@@ -125,28 +137,37 @@ export class PlaywrightBackend {
     collection_id: number;
     files: Array<{ name: string; content: Buffer | string; mime_type: string }>;
   }) {
-    const res = await this.opts.request(
-      'POST',
-      `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/add_files`,
-      {
-        files: args.files,
-        csrfmiddlewaretoken: this.opts.csrfToken,
-      },
-    );
-    if (!res.ok) throw new Error('uploadCollectionFiles failed');
+    // TODO (spec verification item #13): Django's `add_collection_files` view
+    // (apps/documents/views.py:352) parses `request.FILES` which expects real
+    // multipart/form-data. The JSON body below will likely fail on first real
+    // contact with OCS — needs to be rewired through a multipart-aware path
+    // (Playwright's `multipart:` option) once we can verify against OCS dev.
+    // The unit test is intentionally loose and does not guard this.
+    const path = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/add_files`;
+    const res = await this.opts.request('POST', path, {
+      files: args.files,
+      csrfmiddlewaretoken: this.opts.csrfToken,
+    });
+    if (!res.ok) throw await httpErrorFor(res, path);
     const body = (await res.json()) as { file_ids: number[] };
     return { file_ids: body.file_ids };
   }
 
-  // Internal test seam: _fileIds + _pollIntervalMs. Real callers supply _fileIds from
-  // the return value of uploadCollectionFiles and tracked in skill state.
+  // file_ids is now a required caller-supplied list (from uploadCollectionFiles).
+  // _pollIntervalMs is retained as an underscore-prefixed test seam only.
   async waitForCollectionIndexing(args: {
     collection_id: number;
+    file_ids: number[];
     timeout_sec?: number;
-    _fileIds?: number[];
     _pollIntervalMs?: number;
   }) {
-    const fileIds = args._fileIds ?? [];
+    const fileIds = args.file_ids;
+    if (!fileIds || fileIds.length === 0) {
+      throw new Error(
+        `waitForCollectionIndexing called with empty file_ids for collection ${args.collection_id}. ` +
+          'Pass the file_ids returned by uploadCollectionFiles.'
+      );
+    }
     const timeoutSec = args.timeout_sec ?? 300;
     const pollInterval = args._pollIntervalMs ?? 2000;
     const deadline = Date.now() + timeoutSec * 1000;
@@ -166,7 +187,7 @@ export class PlaywrightBackend {
       await new Promise((r) => setTimeout(r, pollInterval));
     }
 
-    throw new Error(`Collection ${args.collection_id} indexing timed out after ${timeoutSec}s`);
+    throw new CollectionIndexingTimeoutError(args.collection_id, timeoutSec);
   }
 
   async cloneChatbot(args: { template_id: number; new_name: string }) {
@@ -175,12 +196,12 @@ export class PlaywrightBackend {
       new_name: args.new_name,
       csrfmiddlewaretoken: this.opts.csrfToken,
     });
-    if (!copyRes.ok) throw new Error(`clone failed for template ${args.template_id}`);
+    if (!copyRes.ok) throw await httpErrorFor(copyRes, copyUrl);
     const copyBody = (await copyRes.json()) as { experiment_id: number };
 
     const expUrl = `/api/experiments/${copyBody.experiment_id}/`;
     const expRes = await this.opts.request('GET', expUrl);
-    if (!expRes.ok) throw new Error(`experiment fetch failed for ${copyBody.experiment_id}`);
+    if (!expRes.ok) throw await httpErrorFor(expRes, expUrl);
     const exp = (await expRes.json()) as { id: number; public_id: string; pipeline_id: number };
 
     // Cache the mapping so downstream pipeline-patch atoms don't re-fetch
@@ -194,29 +215,27 @@ export class PlaywrightBackend {
   }
 
   async publishChatbotVersion(args: { experiment_id: number; description: string }) {
-    const res = await this.opts.request(
-      'POST',
-      `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/versions/create`,
-      {
-        version_description: args.description,
-        make_default: true,
-        csrfmiddlewaretoken: this.opts.csrfToken,
-      },
-    );
-    if (!res.ok) throw new Error('publishChatbotVersion failed');
+    const path = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/versions/create`;
+    const res = await this.opts.request('POST', path, {
+      version_description: args.description,
+      make_default: true,
+      csrfmiddlewaretoken: this.opts.csrfToken,
+    });
+    if (!res.ok) throw await httpErrorFor(res, path);
     return (await res.json()) as { version_number: number; task_id: string };
   }
 
   async getChatbotEmbedInfo(args: { experiment_id: number }) {
     // REST half: public_id from /api/experiments/{id}/
-    const expRes = await this.opts.request('GET', `/api/experiments/${args.experiment_id}/`);
-    if (!expRes.ok) throw new Error('experiment retrieve failed');
+    const expPath = `/api/experiments/${args.experiment_id}/`;
+    const expRes = await this.opts.request('GET', expPath);
+    if (!expRes.ok) throw await httpErrorFor(expRes, expPath);
     const exp = (await expRes.json()) as { public_id: string };
 
     // Playwright half: scrape widget_token from the channels page HTML
     const chanUrl = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/channels/`;
     const chanRes = await this.opts.request('GET', chanUrl);
-    if (!chanRes.ok) throw new Error('channels page fetch failed');
+    if (!chanRes.ok) throw await httpErrorFor(chanRes, chanUrl);
     const chanBody = (await chanRes.json()) as { html: string };
     const embedKey = extractWidgetToken(chanBody.html);
     if (!embedKey) {

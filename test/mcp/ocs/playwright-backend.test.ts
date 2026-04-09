@@ -197,12 +197,22 @@ describe('PlaywrightBackend collection atoms', () => {
     const backend = makeBackend(request);
     const out = await backend.waitForCollectionIndexing({
       collection_id: 501,
+      file_ids: [9001],
       timeout_sec: 10,
-      _fileIds: [9001], // test-only override; production callers track file ids via state
       _pollIntervalMs: 10,
     });
     expect(out.ready).toBe(true);
     expect(out.files_indexed).toBe(1);
+  });
+
+  it('waitForCollectionIndexing throws when file_ids is empty', async () => {
+    const request: RequestFn = async () => {
+      throw new Error('should not be called');
+    };
+    const backend = makeBackend(request);
+    await expect(
+      backend.waitForCollectionIndexing({ collection_id: 501, file_ids: [] })
+    ).rejects.toThrow(/empty file_ids/);
   });
 });
 

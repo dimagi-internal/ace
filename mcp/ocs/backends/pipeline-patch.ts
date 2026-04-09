@@ -3,6 +3,10 @@ import { PipelineShapeError, PipelineValidationError } from '../errors.js';
 
 export interface RequestResult {
   ok: boolean;
+  /** HTTP status code. Optional for backward-compat with older test fakes. */
+  status?: number;
+  /** Response body as text — used for HttpError messages. Optional for older test fakes. */
+  text?: () => Promise<string>;
   json: () => Promise<unknown>;
 }
 
