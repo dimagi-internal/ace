@@ -48,15 +48,21 @@ atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
 
 7. **Compose the system prompt** from the IDD + opp details + escalation rules. The prompt should:
    - Identify the chatbot as the ACE support bot for this specific opportunity
+   - Name the Network Manager / LLO(s) and key dates
    - Summarize the intervention (from IDD)
-   - Name the LLO(s) and key dates
-   - Tell the bot to escalate to the admin group on specific triggers
-   - Reference the attached knowledge base explicitly
+   - Tell the bot to escalate to the admin group at Ace-AI@Dimagi.com on specific triggers
+   - Reference BOTH knowledge sources: the shared Connect collection and the opp-specific collection
+   - Use [training-gap] and [product-feedback] tags per the golden template conventions
 
 8. **Patch the chatbot:**
    - `ocs_set_chatbot_system_prompt({ experiment_id, prompt })`
-   - `ocs_attach_knowledge({ experiment_id, collection_index_ids: [collection_id], max_results: 20, generate_citations: true })`
-   - (Optional) `ocs_set_chatbot_tools({ experiment_id, mcp_tools: [...] })` if ACE MCP tools should be exposed
+   - Build the combined collection list: `[$OCS_SHARED_COLLECTION_ID, collection_id]`
+     where `$OCS_SHARED_COLLECTION_ID` is the Connect knowledge collection from the env
+     (shared across all opps — Confluence-sourced, auto-syncing) and `collection_id` is
+     the per-opp collection created in step 4. The golden template already has the shared
+     collection attached; this step REPLACES the list with both IDs so the per-opp
+     collection is added alongside it.
+   - `ocs_attach_knowledge({ experiment_id, collection_index_ids: [$OCS_SHARED_COLLECTION_ID, collection_id], max_results: 20, generate_citations: true })`
 
 9. **Publish a version:**
    - `ocs_publish_chatbot_version({ experiment_id, description: "Initial ACE version for <opp-name>" })`

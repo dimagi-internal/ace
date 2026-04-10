@@ -57,23 +57,34 @@ const bootstrapSourceId = process.env.OCS_BOOTSTRAP_SOURCE_ID
   ? Number(process.env.OCS_BOOTSTRAP_SOURCE_ID)
   : undefined;
 const force = process.env.OCS_BOOTSTRAP_FORCE === '1';
+const sharedCollectionId = process.env.OCS_SHARED_COLLECTION_ID
+  ? Number(process.env.OCS_SHARED_COLLECTION_ID)
+  : undefined;
 const stateFile = path.join(os.homedir(), '.ace', `ocs-session-${teamSlug}.json`);
 
 // ── The ACE golden template system prompt ──────────────────────────
 
 const GOLDEN_TEMPLATE_PROMPT = `You are the ACE (AI Connect Engine) support bot for this Connect opportunity.
 
-Your role: answer questions from LLOs (Last-Mile Liaison Organizations) who are running this opportunity. LLOs may ask about how to use the Connect app, how to onboard FLWs (Frontline Workers), how the deliverables work, timing of milestones, payment, or anything else related to their opportunity.
+Your role: answer questions from Network Managers (also called LLOs — Last-Mile Liaison Organizations) who are running this opportunity. They may ask about:
+- How to use the Connect app (deliveries, payment units, flagged visits, FLW management)
+- How to onboard Frontline Workers (FLWs)
+- Opportunity-specific details (intervention, milestones, timelines, training)
+- General Connect platform features and troubleshooting
+
+You have two knowledge sources:
+1. **Connect knowledge base** — general Connect documentation, shared across all opportunities. Use this for platform questions ("how do I approve a flagged delivery?", "how do I add a payment unit?").
+2. **Opportunity-specific materials** — the IDD, training materials, and app summaries for this specific opportunity. Use this for opp-specific questions ("what are my milestones?", "how does this intervention work?").
 
 How to respond:
-- Ground your answers in the attached knowledge base (opportunity-specific IDD, training materials, and app summaries). If the attached materials don't cover a question, say so honestly.
+- Ground your answers in the attached knowledge bases. Search both before answering.
 - Keep responses concise, practical, and directly actionable for busy field operators.
-- If the LLO asks something outside the scope of the attached materials, acknowledge the limit and suggest they escalate to the ACE admin group at Ace-AI@Dimagi.com.
-- If the LLO seems confused about a basic Connect feature that IS documented, answer directly and also flag it as a training gap by tagging your response with [training-gap].
-- If the LLO reports a bug or platform issue (not just a question about usage), tag the response with [product-feedback].
-- Respect that LLOs are experienced organizations. Be professional and never condescending.
+- If neither knowledge base covers the question, say so honestly and suggest escalating to the ACE admin group at Ace-AI@Dimagi.com.
+- If the user seems confused about a basic Connect feature that IS documented, answer directly and tag your response with [training-gap].
+- If the user reports a bug or platform issue, tag the response with [product-feedback].
+- Be professional and respectful. Network Managers are experienced organizations, not end-users.
 
-This is the ACE golden template. Per-opportunity customizations — the intervention details, LLO names, key dates, and opportunity-specific knowledge base — are injected at opportunity setup time by the ACE ocs-agent-setup skill. Do not treat this prompt as final.
+This is the ACE golden template. Per-opportunity customizations — the intervention details, Network Manager names, key dates, and opportunity-specific knowledge base — are injected at setup time by the ocs-agent-setup skill. Do not treat this prompt as final.
 `;
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -241,15 +252,30 @@ async function archiveChatbot(
     console.log(`        pipeline_id: ${cloned.pipeline_id}`);
 
     // Step 4: rewrite the system prompt with the ACE-flavored skeleton
-    console.log('\n[4/5] Setting the ACE golden template system prompt...');
+    console.log('\n[4/6] Setting the ACE golden template system prompt...');
     await backend.setChatbotSystemPrompt({
       experiment_id: cloned.experiment_id,
       prompt: GOLDEN_TEMPLATE_PROMPT,
     });
     console.log('      Prompt patched.');
 
-    // Step 5: read back embed info (verifies the widget channel was created)
-    console.log('\n[5/5] Reading embed info...');
+    // Step 5: attach the shared Connect knowledge collection (if configured)
+    if (sharedCollectionId) {
+      console.log(`\n[5/6] Attaching shared Connect collection (id ${sharedCollectionId})...`);
+      await backend.attachKnowledge({
+        experiment_id: cloned.experiment_id,
+        collection_index_ids: [sharedCollectionId],
+        max_results: 20,
+        generate_citations: true,
+      });
+      console.log('      Attached. Per-opp clones will inherit this + get their own opp-specific collection appended.');
+    } else {
+      console.log('\n[5/6] Skipping shared collection — OCS_SHARED_COLLECTION_ID not set.');
+      console.log('      Per-opp bots will only have opp-specific knowledge unless you set this later.');
+    }
+
+    // Step 6: read back embed info (verifies the widget channel was created)
+    console.log('\n[6/6] Reading embed info...');
     const embed = await backend.getChatbotEmbedInfo({ experiment_id: cloned.experiment_id });
     console.log(`      public_id: ${embed.public_id}`);
     console.log(`      embed_key: ${embed.embed_key}`);
@@ -263,6 +289,9 @@ async function archiveChatbot(
     console.log(`  OCS_GOLDEN_TEMPLATE_ID=${cloned.experiment_id}`);
     console.log(`  OCS_GOLDEN_TEMPLATE_PUBLIC_ID=${cloned.public_id}`);
     console.log(`  OCS_GOLDEN_TEMPLATE_EMBED_KEY=${embed.embed_key}`);
+    if (sharedCollectionId) {
+      console.log(`  OCS_SHARED_COLLECTION_ID=${sharedCollectionId}  # already set`);
+    }
   } finally {
     await browser.close();
   }
