@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# pre-commit hook: sync VERSION → JSON files when VERSION is staged.
+set -euo pipefail
+
+if git diff --cached --name-only | grep -q '^VERSION$'; then
+  "$(git rev-parse --show-toplevel)/scripts/sync-version.sh"
+fi

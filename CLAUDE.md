@@ -95,20 +95,22 @@ cd ~/emdash-projects/ace && git pull --rebase && git push
 
 ### Update workflow (the ONLY way to update)
 1. Make changes to skills, commands, agents, or MCP servers in the repo
-2. Bump the **patch version** in ALL FOUR files (e.g. `0.1.5` → `0.1.6`):
-   - `VERSION`
-   - `package.json`
-   - `.claude-plugin/plugin.json`
-   - `.claude-plugin/marketplace.json`
+2. Bump the version in `VERSION` only (e.g. `0.1.6` → `0.1.7`). The pre-commit hook (`scripts/hooks/pre-commit`) automatically syncs `package.json`, `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json` when `VERSION` is staged.
 3. Commit, merge to main, push:
    ```bash
    # From a worktree:
-   git add -A && git commit -m "feat/fix: description (0.1.6)"
+   git add -A && git commit -m "feat/fix: description (0.1.7)"
    cd ~/emdash-projects/ace && git merge <branch> && git push
    ```
 4. **IMMEDIATELY after pushing**, run `/ace:update` in the current session. This is mandatory — it pulls from GitHub, creates a new cache dir, and updates `installed_plugins.json`. Without it, the current session runs stale code while other sessions get the new version on next start. Do NOT skip this step.
 
 New sessions auto-detect the version bump on startup — no manual steps needed.
+
+### Version sync hook setup
+The repo uses `core.hooksPath = scripts/hooks`. If the hook isn't firing (e.g. fresh clone), run:
+```bash
+git config core.hooksPath scripts/hooks
+```
 
 ### How it works
 - `~/.claude/plugins/known_marketplaces.json` — marketplace entry pointing at this git repo
@@ -122,7 +124,7 @@ New sessions auto-detect the version bump on startup — no manual steps needed.
 - **SKILL.md naming.** Skill directory name is kebab-case verb phrases (`idea-to-idd`, `app-test`, `llo-onboarding`) and must match the frontmatter `name:` field exactly. See `skills/README.md`.
 - **MCP servers run direct from TypeScript.** ESM + `npx tsx`, no build step.
 - **OCS capabilities are atomic.** Each atom in `mcp/ocs/capability-map.ts` routes to REST or Playwright; skill code never knows which. When OCS ships a real API for a Playwright-backed atom, it becomes a one-line routing change.
-- **Four-file version lock-step.** `VERSION`, `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` must all match on every release. `/ace:doctor` enforces this; don't bump one without bumping the others.
+- **VERSION is the single source of truth.** Edit `VERSION` only; the pre-commit hook syncs `package.json`, `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json` automatically. `/ace:doctor` verifies they match.
 
 ## Gotchas
 
