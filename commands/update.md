@@ -5,66 +5,84 @@ allowed-tools: [Bash, Read]
 
 # /ace:update
 
-Pull the latest ACE release from GitHub, copy it into a fresh version in the
-plugin cache, carry forward the user's service-account key and any user state,
-reinstall dependencies, and update `installed_plugins.json`.
+Check for a new ACE release on GitHub and, if one exists, pull it, install
+dependencies, and update `installed_plugins.json`.
 
 **This is a rigid, scripted skill.** Run the bash blocks EXACTLY as written.
 Do NOT explore, ls, glob, read files, or improvise. The scripts below are the
 complete procedure — there is nothing else to discover.
 
-## Step 1: Pull and compare (ONE command)
+## Step 1: Fast version check (ONE command)
 
-Run this single bash command. Do NOT split it up or run anything before it:
+This curls the remote VERSION file directly — no git pull. Should complete in
+under 2 seconds.
 
 ```bash
-cd ~/.claude/plugins/marketplaces/ace && git pull origin main 2>&1 && python3 -c "
-import json, subprocess, sys, os
+bash -c '
+set +e
+REMOTE_URL="https://raw.githubusercontent.com/jjackson/ace/main/VERSION"
+REG="$HOME/.claude/plugins/installed_plugins.json"
 
-home = os.path.expanduser('~')
+# Read installed version from registry
+if [ ! -f "$REG" ]; then
+  echo "STATUS: ERROR registry_missing"
+  echo "  ~/.claude/plugins/installed_plugins.json not found."
+  echo "  Install ACE first: /plugin install ace@ace"
+  exit 0
+fi
 
-# Read installed version
-with open(f'{home}/.claude/plugins/installed_plugins.json') as f:
-    installed = json.load(f)
-entry = installed.get('plugins', {}).get('ace@ace', [{}])[0]
-iv = entry.get('version', 'unknown')
-sha = entry.get('gitCommitSha', 'unknown')[:8]
+IV="$(node -e "
+  try {
+    const d = JSON.parse(require(\"fs\").readFileSync(\"$REG\",\"utf8\"));
+    const e = d[\"ace@ace\"] || (d.plugins && d.plugins[\"ace@ace\"]);
+    const v = Array.isArray(e) ? e[0] : e;
+    console.log(v && v.version || \"unknown\");
+  } catch(_) { console.log(\"unknown\"); }
+" 2>/dev/null)"
+SHA="$(node -e "
+  try {
+    const d = JSON.parse(require(\"fs\").readFileSync(\"$REG\",\"utf8\"));
+    const e = d[\"ace@ace\"] || (d.plugins && d.plugins[\"ace@ace\"]);
+    const v = Array.isArray(e) ? e[0] : e;
+    console.log((v && v.gitCommitSha || \"unknown\").slice(0,8));
+  } catch(_) { console.log(\"unknown\"); }
+" 2>/dev/null)"
 
-# Read marketplace version (the repo root IS the plugin root for ACE)
-with open(f'{home}/.claude/plugins/marketplaces/ace/.claude-plugin/plugin.json') as f:
-    marketplace = json.load(f)
-mv = marketplace['version']
+# Fetch remote version via HTTP (fast, 5s timeout)
+RV="$(curl -sf --max-time 5 "$REMOTE_URL" 2>/dev/null | tr -d "[:space:]")"
+if [ -z "$RV" ] || ! echo "$RV" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+$"; then
+  echo "STATUS: ERROR fetch_failed"
+  echo "  Could not fetch remote VERSION from $REMOTE_URL"
+  echo "  Check your network connection."
+  exit 0
+fi
 
-# Recent commits
-log = subprocess.run(['git', 'log', '--oneline', '-5'], capture_output=True, text=True).stdout.strip()
-
-print(f'Installed: v{iv} ({sha})')
-print(f'GitHub:    v{mv}')
-print(f'')
-print(log)
-print(f'')
-if iv == mv:
-    print('STATUS: UP_TO_DATE')
-else:
-    print(f'STATUS: UPGRADE_AVAILABLE {iv} {mv}')
-"
+echo "Installed: v$IV ($SHA)"
+echo "GitHub:    v$RV"
+echo ""
+if [ "$IV" = "$RV" ]; then
+  echo "STATUS: UP_TO_DATE $IV"
+else
+  echo "STATUS: UPGRADE_AVAILABLE $IV $RV"
+fi
+'
 ```
 
 **Read the STATUS line at the end of the output:**
 - `UP_TO_DATE` → Tell the user "Already up to date at **vX.Y.Z**." and **STOP. Do nothing else.**
 - `UPGRADE_AVAILABLE <old> <new>` → Continue to Step 2.
+- `ERROR` → Show the error to the user and **STOP**.
 
-If the `cd` or `git pull` fails, tell the user the ACE marketplace is not
-installed at `~/.claude/plugins/marketplaces/ace` and **STOP**. They need to
-install it first via `/plugin install ace@ace` or by adding the marketplace
-with `/plugin marketplace add jjackson/ace`.
+## Step 2: Pull, install, and register (ONE command)
 
-## Step 2: Install and update (ONE command)
-
-Run this single bash command. Replace `NEW_VERSION` with the version from Step 1:
+This is the slow step (~30-60s, mostly npm install). Replace `NEW_VERSION`
+with the remote version from Step 1:
 
 ```bash
 NEW_VERSION=<version from step 1> && \
+cd ~/.claude/plugins/marketplaces/ace && \
+echo "PULLING: git pull origin main" && \
+git pull origin main 2>&1 && \
 mkdir -p ~/.claude/plugins/cache/ace/ace/$NEW_VERSION && \
 rsync -a --delete \
   --exclude='node_modules' \
@@ -134,7 +152,7 @@ Summarize the top entry in 3-5 bullets.
 
 ## Rules
 
-- **Run EXACTLY the two bash blocks above.** No exploring, no ls, no reading
+- **Run EXACTLY the bash blocks above.** No exploring, no ls, no reading
   files (except CHANGELOG.md in Step 3), no globbing.
 - Always pull from `~/.claude/plugins/marketplaces/ace` — NEVER from any
   `~/emdash-projects/ace` or dev worktree.

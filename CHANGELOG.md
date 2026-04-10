@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.4 — 2026-04-09
+
+Fast update check — no more waiting for `git pull` just to see if you're
+current.
+
+### Changed
+
+- `/ace:update` Step 1 now curls the raw VERSION file from GitHub (typically
+  under 300ms) instead of doing a full `git pull origin main` before comparing
+  versions. The `git pull` only runs in Step 2 when an update is actually
+  available. Same pattern `gstack-update-check` uses.
+
 ## 0.1.3 — 2026-04-09
 
 Auto-update checks are now built in — no setup step needed.
