@@ -447,20 +447,34 @@ describe('PlaywrightBackend publish + embed info', () => {
     const request: RequestFn = async (method, url, body, options) => {
       if (method === 'POST' && url === '/a/dimagi/chatbots/99/versions/create') {
         expect(options?.formEncoded).toBe(true);
+        expect(options?.followRedirects).toBe(false);
         expect(body).toMatchObject({
           version_description: 'initial',
-          make_default: 'on',
+          is_default_version: 'on',
           csrfmiddlewaretoken: 'csrf-xyz',
         });
-        return { ok: true, json: async () => ({ version_number: 1, task_id: 'celery-123' }) };
+        // Django returns 302 redirect on success
+        return {
+          ok: false,
+          status: 302,
+          headers: { location: '/a/dimagi/chatbots/99/#versions' },
+          text: async () => '',
+          json: async () => ({}),
+        };
+      }
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/') {
+        return {
+          ok: true,
+          text: async () => '<div>Version 1</div><div>Version 2</div>',
+          json: async () => ({}),
+        };
       }
       throw new Error(`unexpected ${method} ${url}`);
     };
 
     const backend = makeBackend(request);
     const out = await backend.publishChatbotVersion({ experiment_id: 99, description: 'initial' });
-    expect(out.version_number).toBe(1);
-    expect(out.task_id).toBe('celery-123');
+    expect(out.version_number).toBe(2);
   });
 
   it('getChatbotEmbedInfo does a 3-hop scrape (home → edit-dialog → token)', async () => {

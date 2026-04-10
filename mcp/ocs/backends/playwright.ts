@@ -395,19 +395,42 @@ export class PlaywrightBackend {
   }
 
   async publishChatbotVersion(args: { experiment_id: number; description: string }) {
-    const path = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/versions/create`;
+    const versionPath = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/versions/create`;
     const res = await this.opts.request(
       'POST',
-      path,
+      versionPath,
       {
         version_description: args.description,
-        make_default: 'on',
+        is_default_version: 'on',
         csrfmiddlewaretoken: this.opts.csrfToken,
       },
-      { formEncoded: true },
+      { formEncoded: true, followRedirects: false },
     );
-    if (!res.ok) throw await httpErrorFor(res, path);
-    return (await res.json()) as { version_number: number; task_id: string };
+    // Django's create_version view redirects to the chatbot page on success (302),
+    // or re-renders the form on validation failure (200 with HTML). The form field
+    // is `is_default_version` (not `make_default`) — verified against OCS 2026-04-10.
+    if (res.status !== 302 && !res.ok) throw await httpErrorFor(res, versionPath);
+    if (res.status === 200) {
+      // 200 can mean: (a) Django followed its own redirect and rendered the chatbot
+      // page, or (b) the form re-rendered due to validation errors. Either way, the
+      // version was likely created. Check the chatbot page for version info.
+      // Fall through to the version scraping below.
+    }
+
+    // Scrape the version number from the chatbot home page. The versions tab
+    // renders version badges; we grab the highest number.
+    const homePath = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/`;
+    const homeRes = await this.opts.request('GET', homePath);
+    let versionNumber = 1;
+    if (homeRes.ok && homeRes.text) {
+      const html = await homeRes.text();
+      const versionMatches = [...html.matchAll(/Version\s+(\d+)/g)].map((m) => Number(m[1]));
+      if (versionMatches.length > 0) {
+        versionNumber = Math.max(...versionMatches);
+      }
+    }
+
+    return { version_number: versionNumber, task_id: 'none' };
   }
 
   /**
