@@ -1,10 +1,13 @@
 # ── ACE Environment (generated from 1Password) ──────────────────────
 #
-# Generate .env from this template:
+# Generate .env for the installed plugin:
+#   op inject -i .env.tpl -o ~/.claude/plugins/data/ace-ace/.env --account dimagi.1password.com
+#
+# Or for local dev (repo worktree):
 #   op inject -i .env.tpl -o .env --account dimagi.1password.com
 #
-# All secret references resolve from the AI-Agents vault in Dimagi's
-# 1Password account. This template is safe to commit — zero secrets.
+# The MCP server loads from $CLAUDE_PLUGIN_DATA/.env (plugin) or ./.env (dev).
+# All secret references resolve from the AI-Agents vault in Dimagi's 1Password.
 
 # ── OCS Integration ─────────────────────────────────────────────────
 
