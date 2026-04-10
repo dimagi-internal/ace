@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.5 — 2026-04-10
+
+### Fixed
+
+- `ace-gdrive` MCP server was silently failing to register tools. `tools/list`
+  crashed with `Cannot read properties of undefined (reading '_zod')` because
+  zod 4.x's internal schema representation is incompatible with
+  `zod-to-json-schema@3.25.2` (used by `@modelcontextprotocol/sdk@1.29.0`).
+  Pinned zod to `^3.25.28` which restores all 18 Drive/Sheets/Docs tools.
+
 ## 0.1.4 — 2026-04-09
 
 Fast update check — no more waiting for `git pull` just to see if you're
