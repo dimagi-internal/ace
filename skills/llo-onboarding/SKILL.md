@@ -17,7 +17,7 @@ Send onboarding communications to LLOs who accepted the opportunity invitation.
    - Opportunity details: `ACE/<opp-name>/connect-setup/opportunity.md`
 
 2. **For each invited LLO, compose an onboarding email:**
-   - From: Ace-AI@Dimagi.com
+   - From: `$ACE_GMAIL_ACCOUNT` (via `email-communicator` skill)
    - CC: CRISPR Admin Dimagi Google Group
    - Subject: "[Opportunity Name] — Welcome and Next Steps"
    - Body:
@@ -25,10 +25,10 @@ Send onboarding communications to LLOs who accepted the opportunity invitation.
      - Links to training materials (GDrive links or attachments)
      - Step-by-step instructions for getting started
      - Timeline and expectations
-     - How to ask questions (email Ace-AI@Dimagi.com — handled by OCS)
+     - How to ask questions (email `$ACE_GMAIL_ACCOUNT` — handled by OCS)
      - Contact info for escalation
 
-3. **Send emails** (or draft for review).
+3. **Send emails** via the `email-communicator` skill (or draft for review).
 
 4. **Log communications** to `ACE/<opp-name>/comms-log/onboarding-emails.md`.
 
