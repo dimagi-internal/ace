@@ -70,6 +70,52 @@ Both also auto-register via `.mcp.json` when the plugin is installed.
 
 **Planning spreadsheet:** ACE planning spreadsheet at `https://docs.google.com/spreadsheets/d/1XxcPxK1oYtDxcfmElBb73U2UtLYEodiaMUazjmEVAWE/edit` — reference only, not source of truth for agent work.
 
+## Git worktrees and merging to main
+
+This repo uses emdash which manages git worktrees. If you are in a worktree (check: `git rev-parse --git-dir` contains `/worktrees/`), then `main` is checked out in the main repo at `~/emdash-projects/ace/`. You CANNOT `git checkout main` from a worktree — it will fail.
+
+To merge to main:
+```bash
+cd ~/emdash-projects/ace && git merge <branch-name> && git push
+```
+
+If that fails with local changes, stash first:
+```bash
+cd ~/emdash-projects/ace && git stash && git merge <branch-name> && git push
+```
+
+If remote is ahead, pull first:
+```bash
+cd ~/emdash-projects/ace && git pull --rebase && git push
+```
+
+## Plugin updates — NEVER locally patch
+
+**CRITICAL: Never directly copy, rsync, or write files into `~/.claude/plugins/cache/` or edit `~/.claude/plugins/installed_plugins.json` by hand.** This is "local patching" and it bypasses the plugin system, creates version mismatches, and makes bugs hard to diagnose. If you feel the urge to locally patch, STOP — use `/ace:update` instead.
+
+### Update workflow (the ONLY way to update)
+1. Make changes to skills, commands, agents, or MCP servers in the repo
+2. Bump the **patch version** in ALL FOUR files (e.g. `0.1.5` → `0.1.6`):
+   - `VERSION`
+   - `package.json`
+   - `.claude-plugin/plugin.json`
+   - `.claude-plugin/marketplace.json`
+3. Commit, merge to main, push:
+   ```bash
+   # From a worktree:
+   git add -A && git commit -m "feat/fix: description (0.1.6)"
+   cd ~/emdash-projects/ace && git merge <branch> && git push
+   ```
+4. **IMMEDIATELY after pushing**, run `/ace:update` in the current session. This is mandatory — it pulls from GitHub, creates a new cache dir, and updates `installed_plugins.json`. Without it, the current session runs stale code while other sessions get the new version on next start. Do NOT skip this step.
+
+New sessions auto-detect the version bump on startup — no manual steps needed.
+
+### How it works
+- `~/.claude/plugins/known_marketplaces.json` — marketplace entry pointing at this git repo
+- `~/.claude/plugins/installed_plugins.json` — installed plugin entry with version + commit SHA
+- Cache dir is keyed by version: `~/.claude/plugins/cache/ace/ace/<version>/`
+- On session start, Claude Code pulls the marketplace repo and compares `plugin.json` version against the installed version — if different, it re-installs
+
 ## Conventions
 
 - **Skills are stateless.** All per-opportunity state lives in Google Drive `ACE/<opp-name>/`. Don't introduce local state in `SKILL.md` files.
