@@ -170,13 +170,15 @@ else
   warn "update_check: bin/ace-update-check missing or not executable" "chmod +x $ROOT/bin/ace-update-check"
 fi
 
-# --- Auto-update hook registration (informational) ---
-if [ -f "$HOME/.claude/settings.json" ]; then
-  if grep -q "ace-update-check" "$HOME/.claude/settings.json" 2>/dev/null; then
-    pass "auto_update: SessionStart hook registered in ~/.claude/settings.json"
+# --- Auto-update hook (hooks/hooks.json) ---
+if [ -f "$ROOT/hooks/hooks.json" ]; then
+  if grep -q "ace-update-check" "$ROOT/hooks/hooks.json" 2>/dev/null; then
+    pass "auto_update: hooks/hooks.json declares SessionStart update check"
   else
-    warn "auto_update: not registered" "run /ace:setup --auto-update to enable background update checks"
+    warn "auto_update: hooks/hooks.json exists but does not reference ace-update-check" "verify hooks/hooks.json content"
   fi
+else
+  warn "auto_update: hooks/hooks.json missing" "restore hooks/hooks.json at the plugin root"
 fi
 
 # --- Related repos (optional, soft warnings) ---

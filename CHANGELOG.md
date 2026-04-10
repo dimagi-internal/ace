@@ -5,6 +5,24 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.3 — 2026-04-09
+
+Auto-update checks are now built in — no setup step needed.
+
+### Added
+
+- `hooks/hooks.json` declares a native `SessionStart` hook that runs
+  `bin/ace-update-check` on every new Claude Code session. This is the same
+  mechanism superpowers uses. The hook loads automatically when the plugin is
+  enabled — no user action, no settings.json patching, clean uninstall.
+
+### Changed
+
+- `/ace:doctor` now checks for `hooks/hooks.json` at the plugin root instead
+  of grepping `~/.claude/settings.json` for a user-level hook. The old
+  settings.json approach still works if present, but the native plugin hook is
+  the canonical mechanism.
+
 ## 0.1.2 — 2026-04-09
 
 `/ace:doctor` overhaul: the checks now actually print their messages, and the
