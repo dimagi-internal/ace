@@ -8,6 +8,16 @@
  * See docs/superpowers/specs/2026-04-08-ace-ocs-chatbot-buildout-design.md
  */
 
+// Load env vars from $CLAUDE_PLUGIN_DATA/.env (plugin install) or ./.env (dev).
+// Must be first import so all subsequent process.env reads see the values.
+import { config as dotenvConfig } from 'dotenv';
+import * as path from 'node:path';
+dotenvConfig({
+  path: process.env.CLAUDE_PLUGIN_DATA
+    ? path.join(process.env.CLAUDE_PLUGIN_DATA, '.env')
+    : path.join(process.cwd(), '.env'),
+});
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
