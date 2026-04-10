@@ -5,6 +5,45 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.8 — 2026-04-10
+
+### Added
+
+- CI version bump check: PRs now fail if `VERSION` is not bumped (#23).
+
+## 0.1.7 — 2026-04-10
+
+### Added
+
+- `scripts/hooks/pre-commit` and `scripts/sync-version.sh` — git pre-commit
+  hook that automatically syncs `VERSION` into `package.json`,
+  `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json` when
+  `VERSION` is staged. No more forgetting to update version in four places.
+
+## 0.1.6 — 2026-04-10
+
+### Added
+
+- `email-communicator` skill — sends email from `ace@dimagi-ai.com` via GOG
+  CLI. Used for LLO onboarding, feedback requests, and closeout comms (#20).
+- `.env.tpl` — 1Password-injectable template for OCS and Gmail secrets.
+  `dotenv` loader in `ocs-server.ts` resolves from `$CLAUDE_PLUGIN_DATA/.env`
+  (plugin) or `./.env` (dev) (#22).
+- `ocs-tester` agent + `ocs-chatbot-qa` skill — LLM-as-Judge quality
+  evaluation for OCS chatbots. Sends test prompts, evaluates responses,
+  and reports a quality score (#22).
+- `test/mcp/ocs/e2e.integration.test.ts` — end-to-end integration test
+  exercising the full Playwright backend flow: clone → set prompt → attach
+  knowledge → get embed info → chat via widget → cleanup (#21, #22).
+- `test/fixtures/CRISPR-Test-001`, `CRISPR-Test-002` — golden E2E test
+  fixtures with idea, IDD, state, deployment summary, and app summaries.
+- Shared Connect knowledge collection wired into golden template bootstrap
+  and per-opp chatbot setup (#19).
+
+### Changed
+
+- CLAUDE.md regenerated with worktree/version/update workflow documentation.
+
 ## 0.1.5 — 2026-04-10
 
 ### Fixed

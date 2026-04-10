@@ -14,9 +14,10 @@
     "verbatimModuleSyntax": false
   },
   "include": [
+    "lib/**/*.ts",
     "mcp/ocs/**/*.ts",
     "mcp/ocs-server.ts",
-    "test/mcp/**/*.ts",
+    "test/**/*.ts",
     "scripts/*.ts",
     "vitest.config.ts"
   ],
