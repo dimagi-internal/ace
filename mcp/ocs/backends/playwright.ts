@@ -201,15 +201,22 @@ export class PlaywrightBackend {
   }) {
     const path = `/a/${this.opts.teamSlug}/documents/collection/new/`;
     // Django CollectionForm parses request.POST → form-encoded.
-    // Verified against OCS 2026-04-10: the form now expects `collection_type`
-    // as a radio field ("indexed" for RAG, "media" for media collections).
-    // `is_index` is a hidden field derived from collection_type, not a user input.
+    //
+    // Verified against OCS 2026-04-10 via UI-driven Playwright probe:
+    //   - `is_index` is the actual form field (hidden input), not `collection_type`.
+    //     `collection_type` is a UI-only Alpine radio that sets `is_index` client-side.
+    //   - `is_remote_index` defaults to False in the UI (local index is the normal path).
+    //     Remote indexes trigger `create_remote_index()` which crashes with 500 on
+    //     the connect-ace team even with valid OpenAI creds — likely an OCS bug.
+    //   - For indexed collections, `llm_provider` AND `embedding_provider_model` are
+    //     BOTH required (enforced in CollectionForm.clean()). Without them, the form
+    //     silently drops the is_index flag and creates a media collection instead.
     const form: Record<string, string> = {
       name: args.name,
       summary: args.summary,
-      collection_type: args.is_index ? 'indexed' : 'media',
       csrfmiddlewaretoken: this.opts.csrfToken,
     };
+    if (args.is_index) form.is_index = 'True';
     if (args.is_remote_index) form.is_remote_index = 'on';
     if (args.llm_provider !== undefined) form.llm_provider = String(args.llm_provider);
     if (args.embedding_model !== undefined) form.embedding_provider_model = String(args.embedding_model);
@@ -228,23 +235,15 @@ export class PlaywrightBackend {
     collection_id: number;
     files: Array<{ name: string; content: Buffer | string; mime_type: string }>;
   }) {
-    // Django's `add_collection_files` view (apps/documents/views.py:352) parses
-    // `request.FILES`, which requires multipart/form-data. We route through the
-    // `multipart` RequestOptions channel so the production closure in
-    // ocs-server.ts uses Playwright's native `multipart:` option instead of a
-    // JSON body.
-    //
-    // Multipart fields: each file is posted under the `files` field name
-    // (Django takes `request.FILES.getlist("files")`). The CSRF token travels
-    // as a regular form field.
-    const path = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/add_files`;
+    // Django's `add_collection_files` view (apps/documents/views.py) parses
+    // `request.FILES`, which requires multipart/form-data. The view returns a
+    // 302 redirect to the collection home page on success (NOT a JSON response
+    // with file_ids). We have to scrape the file IDs from the files listing
+    // partial after upload. Verified via UI-driven Playwright probe 2026-04-10.
+    const addPath = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/add_files`;
     const multipart: Record<string, string | { name: string; mimeType: string; buffer: Buffer }> = {
       csrfmiddlewaretoken: this.opts.csrfToken,
     };
-    // Playwright's multipart dict uses field names as keys; for multiple files
-    // sharing a name, we stream them as `files_0`, `files_1`, ... and the
-    // production closure re-maps to the `files` field name before posting.
-    // This is the only way Playwright's dict-based multipart supports repeated fields.
     args.files.forEach((f, i) => {
       multipart[`files_${i}`] = {
         name: f.name,
@@ -252,10 +251,27 @@ export class PlaywrightBackend {
         buffer: Buffer.isBuffer(f.content) ? f.content : Buffer.from(f.content),
       };
     });
-    const res = await this.opts.request('POST', path, undefined, { multipart });
-    if (!res.ok) throw await httpErrorFor(res, path);
-    const body = (await res.json()) as { file_ids: number[] };
-    return { file_ids: body.file_ids };
+    const res = await this.opts.request('POST', addPath, undefined, { multipart, followRedirects: false });
+    // Expect a 302 redirect to the collection home page on success.
+    if (res.status !== 302 && !res.ok) throw await httpErrorFor(res, addPath);
+
+    // Scrape the file IDs from the files listing endpoint. The listing renders
+    // `<a href="/a/<team>/files/file/<file_id>/">filename</a>` for each file,
+    // and `id="collection_file_<collection_file_id>"` on the wrapper div. We
+    // extract both — the file_id is what downstream code uses for status polling.
+    const listPath = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/files/`;
+    const listRes = await this.opts.request('GET', listPath);
+    if (!listRes.ok || !listRes.text) throw await httpErrorFor(listRes, listPath);
+    const html = await listRes.text();
+    const fileIdMatches = [...html.matchAll(/\/files\/file\/(\d+)\//g)];
+    const fileIds = [...new Set(fileIdMatches.map((m) => Number(m[1])))];
+    if (fileIds.length === 0) {
+      throw new Error(
+        `uploadCollectionFiles: no file IDs scraped from files listing for collection ${args.collection_id}. ` +
+          'The upload may have failed silently — check file extension (must be in SUPPORTED_FILE_TYPES).'
+      );
+    }
+    return { file_ids: fileIds };
   }
 
   // file_ids is now a required caller-supplied list (from uploadCollectionFiles).
@@ -279,12 +295,21 @@ export class PlaywrightBackend {
 
     while (Date.now() < deadline) {
       let indexed = 0;
+      const failed: number[] = [];
       for (const fid of fileIds) {
         const url = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/files/${fid}/status`;
         const res = await this.opts.request('GET', url);
         if (!res.ok) continue;
-        const body = (await res.json()) as { chunk_count?: number };
+        const body = (await res.json()) as { chunk_count?: number; status?: string };
         if ((body.chunk_count ?? 0) > 0) indexed++;
+        else if (body.status === 'failed' || body.status === 'error') failed.push(fid);
+      }
+      if (failed.length > 0) {
+        throw new Error(
+          `waitForCollectionIndexing: ${failed.length} file(s) failed to index ` +
+            `(collection ${args.collection_id}, file_ids ${failed.join(', ')}). ` +
+            `Check the OCS Celery worker logs — likely a provider/embedding config issue.`
+        );
       }
       if (indexed === fileIds.length) {
         return { ready: true, files_indexed: indexed, pending: 0 };

@@ -343,12 +343,14 @@ describe('PlaywrightBackend collection atoms', () => {
       if (method === 'POST' && url === '/a/dimagi/documents/collection/new/') {
         expect(options?.formEncoded).toBe(true);
         expect(options?.followRedirects).toBe(false);
-        // collection_type is the new radio field replacing is_index (verified 2026-04-10)
+        // is_index is the actual Django form field; llm_provider + embedding_provider_model
+        // are required for indexed collections (verified 2026-04-10)
         expect(body).toMatchObject({
           name: 'ACE Malaria',
           summary: 'knowledge base',
-          collection_type: 'indexed',
-          is_remote_index: 'on',
+          is_index: 'True',
+          llm_provider: '378',
+          embedding_provider_model: '1',
           csrfmiddlewaretoken: 'csrf-xyz',
         });
         return {
@@ -367,19 +369,21 @@ describe('PlaywrightBackend collection atoms', () => {
       name: 'ACE Malaria',
       summary: 'knowledge base',
       is_index: true,
-      is_remote_index: true,
+      is_remote_index: false,
+      llm_provider: 378,
+      embedding_model: 1,
     });
     expect(out.collection_id).toBe(501);
   });
 
-  it('uploadCollectionFiles sends multipart (not JSON body)', async () => {
+  it('uploadCollectionFiles sends multipart and scrapes file IDs from files listing', async () => {
     const request: RequestFn = async (method, url, body, options) => {
       if (method === 'POST' && url === '/a/dimagi/documents/collections/501/add_files') {
         // The atom must route through the multipart channel, not the JSON body.
         expect(body).toBeUndefined();
         expect(options?.multipart).toBeDefined();
+        expect(options?.followRedirects).toBe(false);
         expect(options!.multipart!.csrfmiddlewaretoken).toBe('csrf-xyz');
-        // One file → one files_0 entry
         const fileEntry = options!.multipart!.files_0 as {
           name: string;
           mimeType: string;
@@ -388,7 +392,26 @@ describe('PlaywrightBackend collection atoms', () => {
         expect(fileEntry.name).toBe('idd.pdf');
         expect(fileEntry.mimeType).toBe('application/pdf');
         expect(fileEntry.buffer.toString()).toBe('PDF');
-        return { ok: true, json: async () => ({ file_ids: [9001] }) };
+        // OCS returns 302 redirect to the collection home page on success.
+        return {
+          ok: false,
+          status: 302,
+          headers: { location: '/a/dimagi/documents/collections/501' },
+          text: async () => '',
+          json: async () => ({}),
+        };
+      }
+      if (method === 'GET' && url === '/a/dimagi/documents/collections/501/files/') {
+        // The files listing renders each file as an anchor /files/file/<id>/
+        return {
+          ok: true,
+          text: async () => `
+            <div id="collection_file_34023">
+              <a href="/a/dimagi/files/file/9001/">idd.pdf</a>
+            </div>
+          `,
+          json: async () => ({}),
+        };
       }
       throw new Error(`unexpected ${method} ${url}`);
     };
