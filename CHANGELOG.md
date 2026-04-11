@@ -5,6 +5,53 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.9 — 2026-04-11
+
+Live-OCS validation of the per-opp RAG collection flow. Ships four form
+and response-parsing fixes to `PlaywrightBackend` that were discovered
+by running the E2E bot creation test against `chatbots.dimagi.com`.
+
+### Added
+
+- `lib/artifact-manifest.ts` — canonical definition of 30 ACE artifacts
+  across 4 lifecycle phases, with `producedBy` / `consumedBy` skill
+  relationships and a `validateFixture()` helper.
+- `test/fixtures/artifact-manifest.test.ts` — fixture validation unit
+  test that catches drift between the manifest and `CRISPR-Test-001`.
+- `test/mcp/ocs/e2e-bot-creation.integration.test.ts` — full 12-step
+  end-to-end bot creation flow against live OCS. Gracefully handles
+  upstream OCS bugs (filed as dimagi/open-chat-studio#3161, #3162).
+- `test/fixtures/CRISPR-Test-001/connect-setup/opportunity.md` and
+  `training-materials/*` stubs — completes the fixture's inputs for
+  the `ocs-agent-setup` skill.
+- `ocs-tester` agent and `ocs-chatbot-qa` skill (delivered earlier in
+  0.1.6 but not previously documented in the changelog summary).
+
+### Fixed
+
+- `publishChatbotVersion`: the Django form field is
+  `is_default_version`, not `make_default`. The endpoint returns a 302
+  redirect (not JSON); scrape the version number from the chatbot home
+  page afterwards.
+- `createCollection`: the form field is `is_index` (hidden input), not
+  `collection_type` (which is a UI-only Alpine radio). For indexed
+  collections, `llm_provider` and `embedding_provider_model` are both
+  required — without them the form silently drops `is_index`.
+- `uploadCollectionFiles`: OCS returns a 302 redirect after upload,
+  not JSON with `file_ids`. Scrape `CollectionFile` PKs from the files
+  listing partial (`id="collection_file_<pk>"`) instead of File IDs.
+- `waitForCollectionIndexing`: the status endpoint returns an HTMX
+  partial (HTML) with `data-tip="<status>"` and `<N> chunks`, not
+  JSON. Parse both from HTML and throw a clear error on status=Failed.
+- Collection delete uses HTTP `DELETE /documents/collections/<id>`
+  (no trailing slash), not `POST .../delete/`.
+
+### Changed
+
+- Default `createCollection` to local index (`is_remote_index=False`)
+  to match the OCS UI default. Remote indexes currently crash with a
+  500 on `connect-ace` — tracked as dimagi/open-chat-studio#3161.
+
 ## 0.1.8 — 2026-04-10
 
 ### Added
