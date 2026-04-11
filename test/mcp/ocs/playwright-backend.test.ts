@@ -343,18 +343,18 @@ describe('PlaywrightBackend collection atoms', () => {
       if (method === 'POST' && url === '/a/dimagi/documents/collection/new/') {
         expect(options?.formEncoded).toBe(true);
         expect(options?.followRedirects).toBe(false);
-        // is_index/is_remote_index flatten to `on`/absent (Django checkbox convention)
+        // collection_type is the new radio field replacing is_index (verified 2026-04-10)
         expect(body).toMatchObject({
           name: 'ACE Malaria',
           summary: 'knowledge base',
-          is_index: 'on',
+          collection_type: 'indexed',
           is_remote_index: 'on',
           csrfmiddlewaretoken: 'csrf-xyz',
         });
         return {
           ok: false,
           status: 302,
-          headers: { location: '/a/dimagi/documents/collection/501/' },
+          headers: { location: '/a/dimagi/documents/collections/501' },
           text: async () => '',
           json: async () => ({}),
         };

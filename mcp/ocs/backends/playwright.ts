@@ -200,23 +200,26 @@ export class PlaywrightBackend {
     embedding_model?: number;
   }) {
     const path = `/a/${this.opts.teamSlug}/documents/collection/new/`;
-    // Django CollectionForm parses request.POST → form-encoded
+    // Django CollectionForm parses request.POST → form-encoded.
+    // Verified against OCS 2026-04-10: the form now expects `collection_type`
+    // as a radio field ("indexed" for RAG, "media" for media collections).
+    // `is_index` is a hidden field derived from collection_type, not a user input.
     const form: Record<string, string> = {
       name: args.name,
       summary: args.summary,
+      collection_type: args.is_index ? 'indexed' : 'media',
       csrfmiddlewaretoken: this.opts.csrfToken,
     };
-    if (args.is_index) form.is_index = 'on';
     if (args.is_remote_index) form.is_remote_index = 'on';
     if (args.llm_provider !== undefined) form.llm_provider = String(args.llm_provider);
     if (args.embedding_model !== undefined) form.embedding_provider_model = String(args.embedding_model);
     const res = await this.opts.request('POST', path, form, { formEncoded: true, followRedirects: false });
     if (!res.ok && res.status !== 302) throw await httpErrorFor(res, path);
-    // CollectionFormMixin.get_success_url redirects to single_collection_home
-    // with the new collection id in the path: /a/<team>/documents/collection/<id>/
+    // CollectionFormMixin.get_success_url redirects to the collection detail page.
+    // URL pattern (verified 2026-04-10): /a/<team>/documents/collections/<id> (no trailing slash)
     const loc = res.headers?.location;
     if (!loc) throw new Error(`createCollection: no Location header (status ${res.status})`);
-    const match = loc.match(/\/collection\/(\d+)\//);
+    const match = loc.match(/\/collections?\/(\d+)/);
     if (!match) throw new Error(`createCollection: could not parse collection id from Location: ${loc}`);
     return { collection_id: Number(match[1]) };
   }
