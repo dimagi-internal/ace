@@ -402,7 +402,10 @@ describe('PlaywrightBackend collection atoms', () => {
         };
       }
       if (method === 'GET' && url === '/a/dimagi/documents/collections/501/files/') {
-        // The files listing renders each file as an anchor /files/file/<id>/
+        // The files listing renders each upload as a wrapper div with
+        // id="collection_file_<pk>" where pk is the CollectionFile PK (what
+        // the status-polling endpoint requires). The anchor's File.id is
+        // different and should NOT be used for status polling.
         return {
           ok: true,
           text: async () => `
@@ -421,22 +424,20 @@ describe('PlaywrightBackend collection atoms', () => {
       collection_id: 501,
       files: [{ name: 'idd.pdf', content: Buffer.from('PDF'), mime_type: 'application/pdf' }],
     });
-    expect(out.file_ids).toEqual([9001]);
+    // Returns CollectionFile IDs (34023), NOT File IDs (9001).
+    expect(out.file_ids).toEqual([34023]);
   });
 
-  it('waitForCollectionIndexing polls until all files have chunk_count > 0', async () => {
+  it('waitForCollectionIndexing polls HTMX status partial until chunks appear', async () => {
     let call = 0;
     const request: RequestFn = async (method, url) => {
       if (method === 'GET' && url.startsWith('/a/dimagi/documents/collections/501/files/')) {
         call++;
         const chunkCount = call >= 2 ? 5 : 0;
-        return {
-          ok: true,
-          json: async () => ({
-            chunk_count: chunkCount,
-            status: chunkCount > 0 ? 'COMPLETED' : 'PROCESSING',
-          }),
-        };
+        const tip = chunkCount > 0 ? 'Complete' : 'In Progress';
+        const html = `<div data-tip="${tip}"></div>` +
+          `<div><span>${chunkCount} chunks</span></div>`;
+        return { ok: true, text: async () => html, json: async () => ({}) };
       }
       throw new Error(`unexpected ${method} ${url}`);
     };
@@ -450,6 +451,26 @@ describe('PlaywrightBackend collection atoms', () => {
     });
     expect(out.ready).toBe(true);
     expect(out.files_indexed).toBe(1);
+  });
+
+  it('waitForCollectionIndexing throws when file status is Failed', async () => {
+    const request: RequestFn = async (method, url) => {
+      if (method === 'GET' && url.startsWith('/a/dimagi/documents/collections/501/files/')) {
+        const html = `<div data-tip="Failed"></div><div><span>0 chunks</span></div>`;
+        return { ok: true, text: async () => html, json: async () => ({}) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+
+    const backend = makeBackend(request);
+    await expect(
+      backend.waitForCollectionIndexing({
+        collection_id: 501,
+        file_ids: [9001],
+        timeout_sec: 10,
+        _pollIntervalMs: 10,
+      }),
+    ).rejects.toThrow(/failed to index/);
   });
 
   it('waitForCollectionIndexing throws when file_ids is empty', async () => {

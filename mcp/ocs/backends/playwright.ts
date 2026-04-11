@@ -255,19 +255,28 @@ export class PlaywrightBackend {
     // Expect a 302 redirect to the collection home page on success.
     if (res.status !== 302 && !res.ok) throw await httpErrorFor(res, addPath);
 
-    // Scrape the file IDs from the files listing endpoint. The listing renders
-    // `<a href="/a/<team>/files/file/<file_id>/">filename</a>` for each file,
-    // and `id="collection_file_<collection_file_id>"` on the wrapper div. We
-    // extract both — the file_id is what downstream code uses for status polling.
+    // Scrape the CollectionFile PKs from the files listing endpoint. Note:
+    // the listing renders TWO different IDs per uploaded file:
+    //   - File.id   → in anchor href `/files/file/<file_id>/`
+    //   - CollectionFile.id → in wrapper div `id="collection_file_<id>"`
+    //
+    // The status-polling endpoint `/collections/<cid>/files/<pk>/status` uses
+    // `<pk>` = CollectionFile PK (NOT File PK). Verified against OCS 2026-04-11:
+    // scraping File IDs and polling with them returns HTML 404s because
+    // `get_object_or_404(CollectionFile, pk=...)` can't find the row.
+    //
+    // We keep the return-value field named `file_ids` for interface stability,
+    // but the values are semantically CollectionFile IDs — they round-trip to
+    // `waitForCollectionIndexing` which polls the status endpoint.
     const listPath = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/files/`;
     const listRes = await this.opts.request('GET', listPath);
     if (!listRes.ok || !listRes.text) throw await httpErrorFor(listRes, listPath);
     const html = await listRes.text();
-    const fileIdMatches = [...html.matchAll(/\/files\/file\/(\d+)\//g)];
-    const fileIds = [...new Set(fileIdMatches.map((m) => Number(m[1])))];
+    const cfIdMatches = [...html.matchAll(/id="collection_file_(\d+)"/g)];
+    const fileIds = [...new Set(cfIdMatches.map((m) => Number(m[1])))];
     if (fileIds.length === 0) {
       throw new Error(
-        `uploadCollectionFiles: no file IDs scraped from files listing for collection ${args.collection_id}. ` +
+        `uploadCollectionFiles: no CollectionFile IDs scraped from files listing for collection ${args.collection_id}. ` +
           'The upload may have failed silently — check file extension (must be in SUPPORTED_FILE_TYPES).'
       );
     }
@@ -297,18 +306,30 @@ export class PlaywrightBackend {
       let indexed = 0;
       const failed: number[] = [];
       for (const fid of fileIds) {
+        // The status endpoint returns an HTMX partial (HTML), not JSON. Scrape
+        // `data-tip="<status>"` ("In Progress" | "Failed" | "Complete") and
+        // `<N> chunks` from the chunk_count span. Verified against OCS
+        // 2026-04-11. `pk` in the URL is the CollectionFile PK, not File PK.
         const url = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/files/${fid}/status`;
         const res = await this.opts.request('GET', url);
-        if (!res.ok) continue;
-        const body = (await res.json()) as { chunk_count?: number; status?: string };
-        if ((body.chunk_count ?? 0) > 0) indexed++;
-        else if (body.status === 'failed' || body.status === 'error') failed.push(fid);
+        if (!res.ok || !res.text) continue;
+        const html = await res.text();
+        const statusMatch = html.match(/data-tip="([^"]+)"/);
+        const chunkMatch = html.match(/>(\d+)\s+chunks?<\/span>/);
+        const status = statusMatch?.[1] ?? '';
+        const chunkCount = chunkMatch ? Number(chunkMatch[1]) : 0;
+        if (chunkCount > 0 || status.toLowerCase() === 'complete' || status.toLowerCase() === 'completed') {
+          indexed++;
+        } else if (status.toLowerCase() === 'failed' || status.toLowerCase() === 'error') {
+          failed.push(fid);
+        }
       }
       if (failed.length > 0) {
         throw new Error(
           `waitForCollectionIndexing: ${failed.length} file(s) failed to index ` +
-            `(collection ${args.collection_id}, file_ids ${failed.join(', ')}). ` +
-            `Check the OCS Celery worker logs — likely a provider/embedding config issue.`
+            `(collection ${args.collection_id}, collection_file_ids ${failed.join(', ')}). ` +
+            `Check the OCS Celery worker logs — exception was caught in ` +
+            `LocalIndexManager.add_files (apps/service_providers/llm_service/index_managers.py).`
         );
       }
       if (indexed === fileIds.length) {
