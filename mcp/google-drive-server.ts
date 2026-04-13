@@ -258,7 +258,7 @@ server.tool(
     try {
       const resp = await drive.files.list({
         q: `'${folderId}' in parents and trashed = false`,
-        fields: 'files(id, name, mimeType, modifiedTime, webViewLink)',
+        fields: 'files(id, name, mimeType, modifiedTime, webViewLink, shortcutDetails)',
         orderBy: 'name',
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
@@ -279,15 +279,29 @@ server.tool(
   },
   async ({ fileId }) => {
     try {
-      const meta = await drive.files.get({ fileId, fields: 'mimeType, name', supportsAllDrives: true });
-      const mimeType = meta.data.mimeType || '';
+      const meta = await drive.files.get({ fileId, fields: 'mimeType, name, shortcutDetails', supportsAllDrives: true });
+      let resolvedId = fileId;
+      let mimeType = meta.data.mimeType || '';
+
+      // If the file is a Drive shortcut, resolve to the target file.
+      // Shortcuts have their own mimeType (application/vnd.google-apps.shortcut)
+      // and store the target's ID and mimeType in shortcutDetails.
+      if (mimeType === 'application/vnd.google-apps.shortcut') {
+        const targetId = (meta.data as any).shortcutDetails?.targetId;
+        const targetMimeType = (meta.data as any).shortcutDetails?.targetMimeType;
+        if (!targetId) {
+          return error('Shortcut has no target file ID');
+        }
+        resolvedId = targetId;
+        mimeType = targetMimeType || '';
+      }
 
       let content: string;
       if (mimeType === 'application/vnd.google-apps.document') {
-        const resp = await drive.files.export({ fileId, mimeType: 'text/plain' }, { responseType: 'text' });
+        const resp = await drive.files.export({ fileId: resolvedId, mimeType: 'text/plain' }, { responseType: 'text' });
         content = resp.data as string;
       } else {
-        const resp = await drive.files.get({ fileId, alt: 'media', supportsAllDrives: true }, { responseType: 'text' });
+        const resp = await drive.files.get({ fileId: resolvedId, alt: 'media', supportsAllDrives: true }, { responseType: 'text' });
         content = resp.data as string;
       }
 
