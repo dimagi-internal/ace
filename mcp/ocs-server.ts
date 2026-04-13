@@ -408,8 +408,11 @@ async function main() {
   try {
     await rest.verify();
   } catch (e) {
-    console.error('OCS REST verification failed:', e);
-    process.exit(1);
+    // Non-fatal: REST backend may be unavailable (no OCS_API_TOKEN, network
+    // issues, etc.). Observation tools (REST-backed) will fail at call time,
+    // but authoring tools (Playwright-backed) still work. This lets the MCP
+    // server start even when only Playwright auth is available.
+    console.error('OCS REST verification failed (non-fatal):', e instanceof Error ? e.message : e);
   }
   const transport = new StdioServerTransport();
   await server.connect(transport);

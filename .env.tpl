@@ -21,8 +21,8 @@ OCS_PROD_TEAM_SLUG=op://AI-Agents/ACE - Open Chat Studio/Teams/prod_team_slug
 OCS_USERNAME=op://AI-Agents/ACE - Open Chat Studio/username
 OCS_PASSWORD=op://AI-Agents/ACE - Open Chat Studio/password
 
-# REST backend API token (not yet provisioned)
-OCS_API_TOKEN=
+# REST backend API token (for observation tools: list/get chatbots, sessions)
+OCS_API_TOKEN=op://AI-Agents/ACE - OCS REST API Key (connect-ace)/credential
 
 # Golden template (from bootstrap script output)
 OCS_GOLDEN_TEMPLATE_ID=op://AI-Agents/ACE - Open Chat Studio/Config/golden_template_id
@@ -36,6 +36,10 @@ OCS_SHARED_COLLECTION_ID=op://AI-Agents/ACE - Open Chat Studio/Config/shared_col
 
 ACE_GMAIL_ACCOUNT=op://AI-Agents/ACE - Open Chat Studio/Config/gmail_account
 ACE_GMAIL_CLIENT=op://AI-Agents/ACE - Open Chat Studio/Config/gmail_client
+
+# ── Google Drive ─────────────────────────────────────────────────────
+
+ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
 
 # ── Paths ────────────────────────────────────────────────────────────
 
