@@ -102,6 +102,13 @@ happened in the data".
 - **Auto:** Analyze data, write report, email recommendations to admin group
 - **Review:** Present findings and recommendations for team discussion
 
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Write the data review to `ACE/<opp-name>/data-reviews/` as normal
+- Write the admin notification content (recipients, subject, body) to `comms-log/dry-run-flw-data-review.md`
+- Do not send notifications or emails to the admin group
+- State tracks as `dry-run-success`
+
 ## Change Log
 
 | Date | Change | Author |

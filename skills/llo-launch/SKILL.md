@@ -30,7 +30,7 @@ Activate the opportunity and notify LLOs that they are live.
    - Confirm mobile download is available
 
 5. **Send launch notification to each LLO:**
-   - From: Ace-AI@Dimagi.com
+   - From: ace@dimagi-ai.com
    - CC: CRISPR Admin Dimagi Google Group
    - Subject: "[Opportunity Name] — You Are Live!"
    - Body:
@@ -55,7 +55,7 @@ Activate the opportunity and notify LLOs that they are live.
 3. Ask the user to confirm apps are published and available for download
 4. Generate launch notification emails as drafts
 5. Write to `ACE/<opp-name>/comms-log/launch-notification-drafts/`
-6. Ask the user to send them from Ace-AI@Dimagi.com
+6. Ask the user to send them from ace@dimagi-ai.com
 7. Record the launch details
 
 ## Mode Behavior

@@ -184,7 +184,7 @@ session_start = hooks.setdefault("SessionStart", [])
 session_start = [h for h in session_start if "ace-update-check" not in json.dumps(h)]
 session_start.append({
     "matcher": "*",
-    "hooks": [{"type": "command", "command": hook_cmd}],
+    "hooks": [{"type": "command", "command": hook_cmd, "async": True}],
 })
 hooks["SessionStart"] = session_start
 with open(path, "w") as f:

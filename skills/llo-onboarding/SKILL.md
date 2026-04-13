@@ -2,7 +2,7 @@
 name: llo-onboarding
 description: >
   Send onboarding emails to invited LLOs with training materials, app
-  instructions, and next steps. Uses Ace-AI@Dimagi.com as sender.
+  instructions, and next steps. Uses ace@dimagi-ai.com as sender.
 ---
 
 # LLO Onboarding
@@ -38,7 +38,7 @@ Send onboarding communications to LLOs who accepted the opportunity invitation.
 ## Current Workaround
 1. Generate the email content for each LLO
 2. Write drafts to `ACE/<opp-name>/comms-log/onboarding-drafts/`
-3. Ask the user to send the emails from Ace-AI@Dimagi.com
+3. Ask the user to send the emails from ace@dimagi-ai.com
 4. Update the comms log with send confirmation
 
 ## Mode Behavior

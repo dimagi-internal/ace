@@ -28,7 +28,7 @@ Check LLO progress against expected timeline and prompt action if behind.
    - Is the tone appropriate for LLO communication?
 
 4. **If behind schedule:**
-   - Draft a prompting email to the LLO via Ace-AI@Dimagi.com
+   - Draft a prompting email to the LLO via ace@dimagi-ai.com
    - Include specific areas of concern and suggested actions
    - CC admin group
 

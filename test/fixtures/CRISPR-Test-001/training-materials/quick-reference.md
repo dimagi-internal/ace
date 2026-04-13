@@ -19,5 +19,5 @@
 ## Key Contacts
 
 - LLO Manager: Neal (neal@test.example.com)
-- Technical Support: Ace-AI@Dimagi.com
+- Technical Support: ace@dimagi-ai.com
 - Clinical Escalation: District Health Office

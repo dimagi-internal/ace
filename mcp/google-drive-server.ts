@@ -256,8 +256,9 @@ server.tool(
   },
   async ({ folderId }) => {
     try {
+      const safeFolderId = folderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
       const resp = await drive.files.list({
-        q: `'${folderId}' in parents and trashed = false`,
+        q: `'${safeFolderId}' in parents and trashed = false`,
         fields: 'files(id, name, mimeType, modifiedTime, webViewLink, shortcutDetails)',
         orderBy: 'name',
         supportsAllDrives: true,

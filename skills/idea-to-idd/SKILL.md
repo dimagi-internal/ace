@@ -126,6 +126,13 @@ The IDD has two or more sequenced stages with different archetypes. Treat the ba
 - **Auto:** Write IDD, email summary to admin group, proceed
 - **Review:** Write IDD, present for human review, wait for approval
 
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Write the IDD to `ACE/<opp-name>/idd.md` as normal
+- Write the admin email summary (recipients, subject, body) to `comms-log/dry-run-idea-to-idd.md`
+- Do not send emails to the admin group
+- State tracks as `dry-run-success`
+
 ## Change Log
 
 | Date | Change | Author |

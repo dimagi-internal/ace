@@ -7,7 +7,7 @@ description: >
   .env.
 ---
 
-# /ocs:bootstrap-template
+# /ace:ocs-bootstrap-template
 
 Run this once per ACE environment (sandbox, staging, prod) to establish the
 OCS chatbot that `ocs-agent-setup` clones for every new opportunity.
@@ -20,7 +20,7 @@ OCS chatbot that `ocs-agent-setup` clones for every new opportunity.
 
 ## Prerequisites
 
-1. An OCS session has been established via `/ocs:login` (session state file at `~/.ace/ocs-session-<team>.json`)
+1. An OCS session has been established via `/ace:ocs-login` (session state file at `~/.ace/ocs-session-<team>.json`)
 2. At least one chatbot exists on the target team to clone from (the script will auto-pick one, or you can set `OCS_BOOTSTRAP_SOURCE_ID`)
 3. Environment variables: `OCS_BASE_URL`, `OCS_TEAM_SLUG`
 
@@ -100,8 +100,8 @@ or any committed file.
 
 ## Troubleshooting
 
-- **`No session state at ~/.ace/ocs-session-<team>.json`** — run `/ocs:login` first
-- **`Session invalid: /a/<team>/chatbots/ returned 302`** — session expired, re-run `/ocs:login`
+- **`No session state at ~/.ace/ocs-session-<team>.json`** — run `/ace:ocs-login` first
+- **`Session invalid: /a/<team>/chatbots/ returned 302`** — session expired, re-run `/ace:ocs-login`
 - **`No source chatbot available to clone from`** — the team has no chatbots yet. Create one manually or set `OCS_BOOTSTRAP_SOURCE_ID` to a chatbot id on another team this user can access
 - **Template appears but prompt is unchanged after force refresh** — the old template was archived but the new clone didn't get the patch; check the script output for step [4/5] errors
 

@@ -29,7 +29,7 @@ evaluating its responses.
 
    **ACE-specific prompts** (always run — tests the golden template prompt):
    - "Who should I contact if you can't answer my question?"
-     (expected: mentions Ace-AI@Dimagi.com)
+     (expected: mentions ace@dimagi-ai.com)
    - "I found a bug in the Connect app where deliveries aren't showing up."
      (expected: tags response with [product-feedback])
    - "I don't understand how to use the app at all."
@@ -64,7 +64,7 @@ evaluating its responses.
    | **Correctness** | 40% | Does the answer match the expected content? Is it factually accurate based on the knowledge base? |
    | **Source usage** | 20% | Did the bot use the right knowledge source (shared collection for Connect questions, opp collection for opp questions)? Does `cited_files` reference relevant documents? |
    | **Tone** | 20% | Professional, respectful, actionable? Not condescending? Appropriate for experienced Network Managers? |
-   | **Tagging** | 20% | Did the bot apply the right tags? [training-gap] for basic-confusion answers, [product-feedback] for bug reports, escalation to Ace-AI@Dimagi.com for out-of-scope? |
+   | **Tagging** | 20% | Did the bot apply the right tags? [training-gap] for basic-confusion answers, [product-feedback] for bug reports, escalation to ace@dimagi-ai.com for out-of-scope? |
 
    Each dimension is scored 0-10. The overall score is the weighted average.
 
@@ -87,7 +87,7 @@ evaluating its responses.
    | # | Prompt | Score | Verdict | Notes |
    |---|--------|-------|---------|-------|
    | 1 | How do I review flagged deliveries? | 8.5 | PASS | Correct steps, good tone |
-   | 2 | Who should I contact? | 9.0 | PASS | Mentioned Ace-AI@Dimagi.com |
+   | 2 | Who should I contact? | 9.0 | PASS | Mentioned ace@dimagi-ai.com |
    | ... | ... | ... | ... | ... |
 
    ## Dimension Breakdown

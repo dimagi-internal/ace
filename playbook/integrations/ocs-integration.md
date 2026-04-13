@@ -54,7 +54,7 @@ Required environment: see `.env.example`.
 
 ## Troubleshooting
 
-- **`SessionExpiredError`** — run `/ocs:login` to refresh the Playwright session state
+- **`SessionExpiredError`** — run `/ace:ocs-login` to refresh the Playwright session state
 - **`PipelineShapeError`** — the golden template has more than one `LLMResponseWithPrompt` node, or none. Verify `OCS_GOLDEN_TEMPLATE_ID`.
 - **`HttpError 401/403` on REST atoms** — `OCS_API_TOKEN` is invalid or lacks the required scopes. Regenerate via OCS user settings.
 - **`CollectionIndexingTimeoutError`** — the embedding queue is backed up; increase `timeout_sec` or check OCS dashboard.

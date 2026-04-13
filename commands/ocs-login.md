@@ -6,7 +6,7 @@ description: >
   to ~/.ace/ocs-session-<team>.json for headless reuse.
 ---
 
-# /ocs:login
+# /ace:ocs-login
 
 Use this command to establish or refresh an OCS session for the Playwright backend.
 

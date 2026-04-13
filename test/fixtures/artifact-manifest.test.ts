@@ -67,6 +67,21 @@ describe('CRISPR-Test-001 fixture', () => {
     expect(result.unexpected).toEqual([]);
   });
 
+  it('reports expected missing files for this partial fixture', () => {
+    // CRISPR-Test-001 provides inputs for ocs-agent-setup, not a complete
+    // opportunity folder. These build-phase artifacts are intentionally absent.
+    const expectedMissing = [
+      'apps/learn-app.json',
+      'apps/deliver-app.json',
+      'test-results/test-plan.md',
+      'test-results/test-results.md',
+      'test-results/bugs.md',
+    ];
+    const files = listFiles(fixtureDir);
+    const result = validateFixture(files, 'setup', ['README.md']);
+    expect(result.missing.sort()).toEqual(expectedMissing.sort());
+  });
+
   it('has all inputs required by ocs-agent-setup', () => {
     // The fixture is designed to provide inputs for the ocs-agent-setup skill.
     // Verify it has every artifact that ocs-agent-setup consumes.

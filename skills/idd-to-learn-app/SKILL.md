@@ -77,6 +77,13 @@ Generate one Learn app per stage that has its own delivery work, branching on ea
 - **Auto:** Generate app (or brief), notify admin group, proceed
 - **Review:** Present app summary for review before proceeding
 
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Write app outputs and summaries to GDrive as normal
+- Write the admin notification content (recipients, subject, body) to `comms-log/dry-run-idd-to-learn-app.md`
+- Do not send notifications to the admin group
+- State tracks as `dry-run-success`
+
 ## Change Log
 
 | Date | Change | Author |

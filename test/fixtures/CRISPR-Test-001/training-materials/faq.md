@@ -24,7 +24,7 @@ A: The referral is logged and the beneficiary's case is flagged. Ensure the bene
 ## Technical Issues
 
 **Q: The app won't sync. What do I do?**
-A: Check your internet connection. If the problem persists, contact your LLO manager or email Ace-AI@Dimagi.com.
+A: Check your internet connection. If the problem persists, contact your LLO manager or email ace@dimagi-ai.com.
 
 **Q: I found a bug in the app. Who do I tell?**
-A: Report it to your LLO manager or email Ace-AI@Dimagi.com with a description of the issue.
+A: Report it to your LLO manager or email ace@dimagi-ai.com with a description of the issue.

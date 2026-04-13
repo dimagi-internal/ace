@@ -73,6 +73,13 @@ Run the per-archetype test plan against each stage's Deliver app. Add cross-stag
 - **Auto:** Run tests, write results, notify admin group, proceed
 - **Review:** Present test results and any critical bugs for review
 
+## Dry-Run Behavior
+When `--dry-run` is active:
+- Run tests and write results to `ACE/<opp-name>/test-results/` as normal
+- Write the admin notification content (recipients, subject, body) to `comms-log/dry-run-app-test.md`
+- Do not send notifications to the admin group
+- State tracks as `dry-run-success`
+
 ## Change Log
 
 | Date | Change | Author |

@@ -40,6 +40,7 @@ const rest = new RestBackend({ baseUrl, token: loadRestToken() });
 // Playwright backend — lazily initialized on first authoring call
 let playwright: PlaywrightBackend | undefined;
 let session: PlaywrightSession | undefined;
+let playwrightInitPromise: Promise<PlaywrightBackend> | undefined;
 
 // Simple promise-queue serializer so concurrent authoring calls can't race
 // on CSRF token rotation or cookie mutation. Spec section: Playwright backend → Concurrency.
@@ -50,8 +51,30 @@ function serialize<T>(fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
+// Cleanup: close the Playwright browser on process exit to avoid zombie Chromium
+function cleanupPlaywright() {
+  if (session) {
+    session.close().catch(() => {});
+  }
+}
+process.on('SIGTERM', () => { cleanupPlaywright(); process.exit(0); });
+process.on('SIGINT', () => { cleanupPlaywright(); process.exit(0); });
+process.on('exit', cleanupPlaywright);
+
 async function getPlaywrightBackend(): Promise<PlaywrightBackend> {
   if (playwright) return playwright;
+  // Guard against concurrent initialization — return the same promise
+  if (playwrightInitPromise) return playwrightInitPromise;
+  playwrightInitPromise = initPlaywright();
+  try {
+    return await playwrightInitPromise;
+  } catch (e) {
+    playwrightInitPromise = undefined;
+    throw e;
+  }
+}
+
+async function initPlaywright(): Promise<PlaywrightBackend> {
   session = new PlaywrightSession({
     baseUrl,
     teamSlug,

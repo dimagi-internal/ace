@@ -1,6 +1,6 @@
 # Onboarding Email Template
 
-**From:** Ace-AI@Dimagi.com
+**From:** ace@dimagi-ai.com
 **CC:** CRISPR Admin Dimagi Google Group
 **Subject:** [Opportunity Name] — Welcome and Next Steps
 
@@ -37,7 +37,7 @@ initiative.
 - **[Date]:** Opportunity ends
 
 ## Getting Help
-- **Email:** Ace-AI@Dimagi.com (AI-assisted, monitored by Dimagi team)
+- **Email:** ace@dimagi-ai.com (AI-assisted, monitored by Dimagi team)
 - **FAQ:** [link to FAQ document]
 - **Escalation:** For urgent issues, contact [escalation contact]
 

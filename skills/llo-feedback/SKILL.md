@@ -17,7 +17,7 @@ Collect feedback from LLOs about the completed opportunity.
    - Key metrics (delivery rates, issues encountered)
 
 2. **Compose feedback request email:**
-   - From: Ace-AI@Dimagi.com
+   - From: ace@dimagi-ai.com
    - CC: admin group
    - Ask about:
      - Application usability (Learn and Deliver apps)
@@ -37,7 +37,7 @@ Collect feedback from LLOs about the completed opportunity.
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
-- OCS: `ocs_list_transcripts` for monitoring responses
+- OCS: `ocs_list_sessions` for monitoring responses
 
 ## Current Workaround
 1. Generate feedback request email drafts

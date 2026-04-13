@@ -18,10 +18,10 @@ This guide helps LLO managers oversee the CHW Training Pilot in TestLand's Easte
 
 - Review FLW submission rates weekly (target: 80% of beneficiaries visited on schedule)
 - Flag FLWs with <50% submission rate for additional support
-- Escalate data quality issues to Ace-AI@Dimagi.com
+- Escalate data quality issues to ace@dimagi-ai.com
 
 ## Escalation Contacts
 
-- Technical issues: Ace-AI@Dimagi.com
+- Technical issues: ace@dimagi-ai.com
 - Clinical concerns: District Health Office
 - Payment questions: Connect support via opportunity page

@@ -42,7 +42,7 @@ Synthesize all information from the completed opportunity into actionable learni
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`
-- OCS: `ocs_list_transcripts`, `ocs_get_transcript`
+- OCS: `ocs_list_sessions`, `ocs_get_session`
 
 ## Mode Behavior
 - **Auto:** Generate learnings, create new IDD if warranted, notify admin group

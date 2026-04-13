@@ -52,7 +52,7 @@ atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
    - Identify the chatbot as the ACE support bot for this specific opportunity
    - Name the Network Manager / LLO(s) and key dates
    - Summarize the intervention (from IDD)
-   - Tell the bot to escalate to the admin group at Ace-AI@Dimagi.com on specific triggers
+   - Tell the bot to escalate to the admin group at ace@dimagi-ai.com on specific triggers
    - Reference BOTH knowledge sources: the shared Connect collection and the opp-specific collection
    - Use [training-gap] and [product-feedback] tags per the golden template conventions
 
@@ -103,7 +103,7 @@ When `--dry-run` is active:
 
 - `PipelineShapeError` — golden template invariant violated. Verify with `OCS_GOLDEN_TEMPLATE_ID` points at a template with exactly one `LLMResponseWithPrompt` node.
 - `CollectionIndexingTimeoutError` — raise timeout; if persists, check OCS dashboard for the collection's indexing queue.
-- `SessionExpiredError` — run `/ocs:login` to re-authenticate.
+- `SessionExpiredError` — run `/ace:ocs-login` to re-authenticate.
 - `HttpError 4xx` on clone — verify `OCS_GOLDEN_TEMPLATE_ID` and `OCS_TEAM_SLUG` env vars.
 - LLM-as-Judge failure — prompt engineering issue; revise step 7's prompt composition.
 

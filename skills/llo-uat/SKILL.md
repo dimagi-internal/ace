@@ -18,7 +18,7 @@ Coordinate UAT with LLOs before the opportunity goes live.
    - LLO contacts: `ACE/<opp-name>/connect-setup/invites.md`
 
 2. **Compose UAT instruction email for each onboarded LLO:**
-   - From: Ace-AI@Dimagi.com
+   - From: ace@dimagi-ai.com
    - CC: CRISPR Admin Dimagi Google Group
    - Subject: "[Opportunity Name] — Please Test Your Apps Before Go-Live"
    - Body:
@@ -47,12 +47,12 @@ Coordinate UAT with LLOs before the opportunity goes live.
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`
-- OCS: `ocs_list_transcripts`, `ocs_get_transcript`
+- OCS: `ocs_list_sessions`, `ocs_get_session`
 
 ## Current Workaround
 1. Generate UAT instruction emails as drafts
 2. Write to `ACE/<opp-name>/comms-log/uat-instruction-drafts/`
-3. Ask the user to send the emails from Ace-AI@Dimagi.com
+3. Ask the user to send the emails from ace@dimagi-ai.com
 4. Ask the user to collect LLO feedback and sign-offs
 5. Document results when provided
 

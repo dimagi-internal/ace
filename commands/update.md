@@ -107,6 +107,7 @@ with open(path) as f:
     data = json.load(f)
 
 entries = data.get('plugins', {}).get('ace@ace', [{}])
+old_version = entries[0].get('version', 'unknown')
 entries[0]['version'] = version
 entries[0]['installPath'] = cache_path
 entries[0]['gitCommitSha'] = sha
@@ -127,7 +128,7 @@ with open(f'{home}/.claude/plugins/marketplaces/ace/.claude-plugin/plugin.json')
 state_dir = f'{home}/.ace'
 os.makedirs(state_dir, exist_ok=True)
 with open(f'{state_dir}/just-upgraded-from', 'w') as f:
-    f.write(f\"{entries[0].get('version','unknown')}\n\")
+    f.write(f\"{old_version}\n\")
 
 if cv == mv:
     print(f'VERIFIED: v{cv} installed and matches GitHub')
