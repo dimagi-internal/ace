@@ -27,8 +27,9 @@ ACE (AI Connect Engine) is a Claude Code plugin that orchestrates the CRISPR-Con
 ## Current state
 
 - **Plugin is installable and self-updating.** `/ace:setup`, `/ace:update`, `/ace:doctor` all shipped (PRs #11, #13). See `CHANGELOG.md` for 0.1.0 release notes.
-- **Google Drive MCP is live.** `ace-gdrive` wired in `.mcp.json` (PR #6). Requires a service-account key at `.gws-sa-key.json` in the plugin root — see README for setup.
+- **Google Drive MCP is live.** `ace-gdrive` wired in `.mcp.json` (PR #6). Resolves Drive shortcuts transparently in `drive_read_file` and `drive_list_folder` (PR #25). Requires a service-account key at `.gws-sa-key.json` in the plugin root — see README for setup.
 - **OCS MCP is under active buildout.** `ace-ocs` is wired, ~22 atomic capabilities are defined in `mcp/ocs/capability-map.ts`, and composite + REST + Playwright backends are partially implemented (PRs #9, #10, #14). An E2E integration test (PR #22) exercises the full clone→configure→embed→chat flow against live OCS. The `ocs-tester` agent + `ocs-chatbot-qa` skill provide LLM-as-Judge quality evaluation. The active plan is `docs/superpowers/plans/2026-04-08-ace-ocs-chatbot-buildout.md`. Authenticate with `/ace:ocs-login` before calling tools that hit live OCS.
+- **OCS domain migrated.** Default base URL is now `https://www.openchatstudio.com` (was `chatbots.dimagi.com`). PR #26 updated all live code, templates, commands, scripts, and tests. The `ocs_send_test_message` tool now uses the anonymous widget chat API (`/api/chat/start/` → `/message/` → `/poll/`) instead of the broken OpenAI-compatible REST endpoint. `ocs_create_collection` defaults `llm_provider` and `embedding_model` from `OCS_LLM_PROVIDER_ID` and `OCS_EMBEDDING_MODEL_ID` env vars.
 - **Connect and CommCare MCPs do NOT live here.** They're in the `connect-labs` repo; install that plugin separately. ACE skills that depend on them ship with `## Current Workaround` sections that degrade to human-in-the-loop.
 - **Nova MCP does not exist yet.** See `playbook/integrations/nova-integration.md`.
 - **ace-web is a sibling repo, not a submodule.** It was a submodule briefly and was removed (commit `b7ccf35`). Work on the browser harness happens directly in the `ace-web` checkout. This repo owns the design spec; `ace-web` owns implementation plans 1A–1D.
@@ -139,4 +140,4 @@ git config core.hooksPath scripts/hooks
 - **`.gws-sa-key.json` is per-machine and gitignored.** `ace-gdrive` won't start without it. `/ace:doctor` reports `GWS_KEY: MISSING` and prints the expected path.
 - **OCS auth is session-based.** `/ace:ocs-login` drives a Playwright login and stores cookies. Every `ace-ocs` tool call needs a live session unless it's REST-backed.
 - **Playwright backend is HTTP-only.** `mcp/ocs/backends/playwright.ts` uses `page.request` exclusively — no click-driving, no selectors. If a new atom looks like it needs UI automation, push back first.
-- **Plans use `- [ ]` syntax but are not live trackers.** Neither plan maintains checkbox state. Use PR history (#1–#14) and code to determine what's shipped, not the checkboxes.
+- **Plans use `- [ ]` syntax but are not live trackers.** Neither plan maintains checkbox state. Use PR history (#1–#26) and code to determine what's shipped, not the checkboxes.

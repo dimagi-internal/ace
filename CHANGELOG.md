@@ -5,6 +5,42 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.11 — 2026-04-14
+
+Three fixes from the first CRISPR-Test-001 E2E run against live OCS.
+
+### Changed
+
+- Default OCS base URL migrated from `chatbots.dimagi.com` to
+  `www.openchatstudio.com` across all live code, templates, commands,
+  scripts, and tests (#26).
+- `ocs_send_test_message` rewritten to use the anonymous widget chat API
+  (`POST /api/chat/start/` → `/message/` → `/poll/`). The old
+  OpenAI-compatible endpoint (`/api/openai/{id}/chat/completions`)
+  returns 404 on connect-ace. Interface changed from
+  `experiment_id` + `messages[]` to `public_id` + `embed_key` + `message`.
+- `ocs_create_collection` now defaults `llm_provider` and
+  `embedding_model` from `OCS_LLM_PROVIDER_ID` and
+  `OCS_EMBEDDING_MODEL_ID` env vars when not explicitly provided.
+
+### Added
+
+- `OCS_LLM_PROVIDER_ID` and `OCS_EMBEDDING_MODEL_ID` in `.env.tpl` and
+  `.env.example` — required for creating indexed RAG collections.
+
+## 0.1.10 — 2026-04-13
+
+### Fixed
+
+- `drive_read_file` and `drive_list_folder` now resolve Google Drive
+  shortcuts transparently. Shortcuts (mimeType
+  `application/vnd.google-apps.shortcut`) are followed to their target
+  file before reading or listing (#25).
+- `loadRestToken()` returns empty string instead of throwing when
+  `OCS_API_TOKEN` is not set, allowing REST-only startup to proceed.
+- OCS MCP server startup is now non-fatal when REST verification
+  fails — authoring tools (Playwright-backed) still work.
+
 ## 0.1.9 — 2026-04-11
 
 Live-OCS validation of the per-opp RAG collection flow. Ships four form
