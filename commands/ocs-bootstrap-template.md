@@ -59,7 +59,7 @@ OCS_BOOTSTRAP_FORCE=1 \
 ACE OCS golden template bootstrap
 ──────────────────────────────────────────────────
   team:          <your team>
-  base URL:      https://chatbots.dimagi.com
+  base URL:      https://www.openchatstudio.com
   template name: ACE Golden Template
   state file:    /Users/you/.ace/ocs-session-<team>.json
 
@@ -87,7 +87,7 @@ ACE OCS golden template bootstrap
 Golden template bootstrapped successfully.
 
 Add to your ACE .env:
-  OCS_BASE_URL=https://chatbots.dimagi.com
+  OCS_BASE_URL=https://www.openchatstudio.com
   OCS_TEAM_SLUG=<your team>
   OCS_GOLDEN_TEMPLATE_ID=<new_id>
   OCS_GOLDEN_TEMPLATE_PUBLIC_ID=<uuid>

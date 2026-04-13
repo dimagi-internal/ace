@@ -22,7 +22,7 @@
  *   6. Print experiment_id, public_id, pipeline_id, embed_key for recording.
  *
  * Usage (values come from your local .env — see .env.example):
- *   OCS_BASE_URL=https://chatbots.dimagi.com \
+ *   OCS_BASE_URL=https://www.openchatstudio.com \
  *   OCS_TEAM_SLUG=<your team> \
  *   OCS_BOOTSTRAP_SOURCE_ID=<source chatbot id> \
  *   OCS_GOLDEN_TEMPLATE_NAME="ACE Golden Template" \
@@ -46,7 +46,7 @@ import { extractPublicId } from '../mcp/ocs/backends/playwright.js';
 
 // ── Config ──────────────────────────────────────────────────────────
 
-const baseUrl = process.env.OCS_BASE_URL ?? 'https://chatbots.dimagi.com';
+const baseUrl = process.env.OCS_BASE_URL ?? 'https://www.openchatstudio.com';
 const teamSlug = process.env.OCS_TEAM_SLUG;
 if (!teamSlug) {
   console.error('OCS_TEAM_SLUG is required (set it in your .env).');

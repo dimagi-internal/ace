@@ -7,7 +7,7 @@ const integration = process.env.OCS_INTEGRATION === '1';
 const describeFn = integration ? describe : describe.skip;
 
 describeFn('PlaywrightBackend integration (requires OCS_INTEGRATION=1 + live session)', () => {
-  const baseUrl = process.env.OCS_BASE_URL ?? 'https://chatbots.dimagi.com';
+  const baseUrl = process.env.OCS_BASE_URL ?? 'https://www.openchatstudio.com';
   const teamSlug = process.env.OCS_TEAM_SLUG ?? 'dimagi';
   const templateId = Number(process.env.OCS_GOLDEN_TEMPLATE_ID ?? 0);
 

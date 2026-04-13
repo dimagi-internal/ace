@@ -11,7 +11,7 @@
 
 # ── OCS Integration ─────────────────────────────────────────────────
 
-OCS_BASE_URL=https://chatbots.dimagi.com
+OCS_BASE_URL=https://www.openchatstudio.com
 
 # Team slugs
 OCS_TEAM_SLUG=op://AI-Agents/ACE - Open Chat Studio/Teams/team_slug
@@ -28,6 +28,10 @@ OCS_API_TOKEN=op://AI-Agents/ACE - OCS REST API Key (connect-ace)/credential
 OCS_GOLDEN_TEMPLATE_ID=op://AI-Agents/ACE - Open Chat Studio/Config/golden_template_id
 OCS_GOLDEN_TEMPLATE_PUBLIC_ID=
 OCS_GOLDEN_TEMPLATE_EMBED_KEY=
+
+# LLM provider and embedding model for indexed collections (from OCS team config)
+OCS_LLM_PROVIDER_ID=op://AI-Agents/ACE - Open Chat Studio/Config/llm_provider_id
+OCS_EMBEDDING_MODEL_ID=op://AI-Agents/ACE - Open Chat Studio/Config/embedding_model_id
 
 # Shared Connect knowledge collection
 OCS_SHARED_COLLECTION_ID=op://AI-Agents/ACE - Open Chat Studio/Config/shared_collection_id

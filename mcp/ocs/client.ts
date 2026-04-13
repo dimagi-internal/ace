@@ -3,7 +3,6 @@ import type {
   ClonedChatbot,
   Session,
   SessionWithMessages,
-  ChatCompletionMessage,
 } from './types.js';
 
 export interface OcsClient {
@@ -106,9 +105,10 @@ export interface OcsClient {
   }): Promise<{ state: Record<string, unknown> }>;
 
   sendTestMessage(args: {
-    experiment_id: number;
-    messages: ChatCompletionMessage[];
-  }): Promise<{ response: ChatCompletionMessage }>;
+    public_id: string;
+    embed_key: string;
+    message: string;
+  }): Promise<{ response: string }>;
 
   triggerBotMessage(args: {
     experiment_id: string;

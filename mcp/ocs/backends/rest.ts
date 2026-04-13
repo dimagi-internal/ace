@@ -73,14 +73,63 @@ export class RestBackend {
   }
 
   async sendTestMessage(args: {
-    experiment_id: number;
-    messages: Array<{ role: string; content: string }>;
+    public_id: string;
+    embed_key: string;
+    message: string;
   }) {
-    const body = (await this.request('POST', `/api/openai/${args.experiment_id}/chat/completions`, {
-      model: 'anything',
-      messages: args.messages,
-    })) as { choices: Array<{ message: { role: string; content: string } }> };
-    return { response: body.choices[0].message as { role: 'assistant'; content: string } };
+    // Use the anonymous widget chat API (POST /api/chat/start/ → send → poll).
+    // The old OpenAI-compatible endpoint (/api/openai/{id}/chat/completions)
+    // returns 404 on connect-ace. The widget API works reliably and doesn't
+    // require a REST API token — only the embed_key.
+    const chatHeaders = {
+      'Content-Type': 'application/json',
+      'X-Embed-Key': args.embed_key,
+      Referer: this.opts.baseUrl,
+    };
+
+    // 1. Start anonymous session
+    const startRes = await fetch(`${this.opts.baseUrl}/api/chat/start/`, {
+      method: 'POST',
+      headers: chatHeaders,
+      body: JSON.stringify({ chatbot_id: args.public_id }),
+    });
+    if (!startRes.ok) {
+      throw new HttpError(startRes.status, '/api/chat/start/', await startRes.text());
+    }
+    const { session_id } = (await startRes.json()) as { session_id: string };
+
+    // 2. Send message
+    const sendRes = await fetch(`${this.opts.baseUrl}/api/chat/${session_id}/message/`, {
+      method: 'POST',
+      headers: chatHeaders,
+      body: JSON.stringify({ message: args.message }),
+    });
+    if (!sendRes.ok) {
+      throw new HttpError(sendRes.status, `/api/chat/${session_id}/message/`, await sendRes.text());
+    }
+    const { task_id } = (await sendRes.json()) as { task_id: string };
+
+    // 3. Poll for response (up to 120s)
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const pollRes = await fetch(
+        `${this.opts.baseUrl}/api/chat/${session_id}/${task_id}/poll/`,
+        { method: 'GET', headers: chatHeaders },
+      );
+      if (!pollRes.ok) continue;
+      const pb = (await pollRes.json()) as {
+        status?: string;
+        message?: { content?: string };
+      };
+      if (pb.status === 'complete' && pb.message?.content) {
+        return { response: pb.message.content };
+      }
+      if (pb.status === 'error' || pb.status === 'failed') {
+        throw new Error(`sendTestMessage: task ${task_id} failed`);
+      }
+    }
+    throw new Error(`sendTestMessage: timed out after 120s waiting for response`);
   }
 
   async triggerBotMessage(args: {

@@ -191,16 +191,20 @@ server.tool(
 
 server.tool(
   'ocs_create_collection',
-  'Create a new Collection (RAG knowledge base) in OCS.',
+  'Create a new Collection (RAG knowledge base) in OCS. For indexed collections (is_index=true), llm_provider and embedding_model are required — defaults from OCS_LLM_PROVIDER_ID and OCS_EMBEDDING_MODEL_ID env vars.',
   {
     name: z.string(),
     summary: z.string(),
     is_index: z.boolean(),
     is_remote_index: z.boolean(),
-    llm_provider: z.number().optional(),
-    embedding_model: z.number().optional(),
+    llm_provider: z.number().optional().describe('LLM provider ID. Defaults to OCS_LLM_PROVIDER_ID env var.'),
+    embedding_model: z.number().optional().describe('Embedding model ID. Defaults to OCS_EMBEDDING_MODEL_ID env var.'),
   },
-  async (args) => result(await composite.createCollection(args)),
+  async (args) => {
+    const llm_provider = args.llm_provider ?? (process.env.OCS_LLM_PROVIDER_ID ? Number(process.env.OCS_LLM_PROVIDER_ID) : undefined);
+    const embedding_model = args.embedding_model ?? (process.env.OCS_EMBEDDING_MODEL_ID ? Number(process.env.OCS_EMBEDDING_MODEL_ID) : undefined);
+    return result(await composite.createCollection({ ...args, llm_provider, embedding_model }));
+  },
 );
 
 server.tool(
@@ -348,15 +352,13 @@ server.tool(
 
 server.tool(
   'ocs_send_test_message',
-  'Send a test message to a chatbot via the OpenAI-compatible endpoint.',
+  'Send a test message to a chatbot via the anonymous widget chat API. Requires the public_id and embed_key from ocs_get_chatbot_embed_info.',
   {
-    experiment_id: z.number(),
-    messages: z.array(z.object({ role: z.string(), content: z.string() })),
+    public_id: z.string().describe('UUID public_id of the chatbot'),
+    embed_key: z.string().describe('Embed key (widget_token) from ocs_get_chatbot_embed_info'),
+    message: z.string().describe('The message to send'),
   },
-  async (args) => result(await composite.sendTestMessage({
-    experiment_id: args.experiment_id,
-    messages: args.messages as Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-  })),
+  async (args) => result(await composite.sendTestMessage(args)),
 );
 
 server.tool(

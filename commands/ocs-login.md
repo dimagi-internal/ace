@@ -35,7 +35,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-const baseUrl = process.env.OCS_BASE_URL ?? 'https://chatbots.dimagi.com';
+const baseUrl = process.env.OCS_BASE_URL ?? 'https://www.openchatstudio.com';
 const teamSlug = process.env.OCS_TEAM_SLUG ?? 'dimagi';
 const stateFile = path.join(os.homedir(), '.ace', `ocs-session-${teamSlug}.json`);
 
@@ -71,5 +71,5 @@ Session saved to /Users/jon/.ace/ocs-session-dimagi.json
 
 - **Browser doesn't open:** make sure Playwright's Chromium is installed (`npx playwright install chromium`).
 - **Login page says "session expired" immediately:** you may be hitting a stale cookie; delete `~/.ace/ocs-session-<team>.json` before re-running.
-- **Dimagi SSO redirect loop:** try signing into `chatbots.dimagi.com` in your regular browser first to complete MFA, then re-run this command.
+- **Dimagi SSO redirect loop:** try signing into `www.openchatstudio.com` in your regular browser first to complete MFA, then re-run this command.
 - **"Saved" but headless calls still fail:** the Playwright backend validates by hitting `/a/<team>/chatbots/`. If that 302s, your session wasn't stored. Re-run the login and watch for errors before pressing Enter.

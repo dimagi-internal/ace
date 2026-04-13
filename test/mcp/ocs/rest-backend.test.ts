@@ -3,7 +3,7 @@ import { MockAgent, setGlobalDispatcher } from 'undici';
 import { RestBackend } from '../../../mcp/ocs/backends/rest.js';
 import { HttpError } from '../../../mcp/ocs/errors.js';
 
-const BASE = 'https://chatbots.dimagi.com';
+const BASE = 'https://www.openchatstudio.com';
 
 let mockAgent: MockAgent;
 
@@ -67,24 +67,32 @@ describe('RestBackend chatbot atoms', () => {
     expect(exp.id).toBe('uuid-42');
   });
 
-  it('sendTestMessage posts OpenAI-compatible body', async () => {
+  it('sendTestMessage uses the widget chat API (start → send → poll)', async () => {
+    const sessionId = 'test-session-123';
+    const taskId = 'test-task-456';
+
+    // 1. Start session
     mockAgent.get(BASE)
-      .intercept({
-        path: '/api/openai/99/chat/completions',
-        method: 'POST',
-        body: (body) => {
-          const parsed = JSON.parse(body as string);
-          return parsed.messages[0].role === 'user';
-        },
-      })
-      .reply(200, { choices: [{ message: { role: 'assistant', content: 'hi' } }] });
+      .intercept({ path: '/api/chat/start/', method: 'POST' })
+      .reply(200, { session_id: sessionId });
+
+    // 2. Send message
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/message/`, method: 'POST' })
+      .reply(200, { task_id: taskId });
+
+    // 3. Poll for response (return complete on first poll)
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/${taskId}/poll/`, method: 'GET' })
+      .reply(200, { status: 'complete', message: { content: 'hi there' } });
 
     const b = new RestBackend({ baseUrl: BASE, token: 't' });
     const res = await b.sendTestMessage({
-      experiment_id: 99,
-      messages: [{ role: 'user', content: 'hello' }],
+      public_id: 'uuid-42',
+      embed_key: 'embed-key-xyz',
+      message: 'hello',
     });
-    expect(res.response.content).toBe('hi');
+    expect(res.response).toBe('hi there');
   });
 
   it('triggerBotMessage posts to /api/trigger_bot', async () => {

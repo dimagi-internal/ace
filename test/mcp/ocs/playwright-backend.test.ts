@@ -17,7 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 function makeBackend(request: RequestFn, pipelineCacheSeed?: Map<number, number>) {
   return new PlaywrightBackend({
     teamSlug: 'dimagi',
-    baseUrl: 'https://chatbots.dimagi.com',
+    baseUrl: 'https://www.openchatstudio.com',
     csrfToken: 'csrf-xyz',
     request,
     pipelineCacheSeed,

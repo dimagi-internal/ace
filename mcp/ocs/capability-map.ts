@@ -53,7 +53,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   add_session_tags:         { backend: 'REST', restTarget: 'POST /api/sessions/{id}/tags/' },
   remove_session_tags:      { backend: 'REST', restTarget: 'DELETE /api/sessions/{id}/tags/' },
   update_session_state:     { backend: 'REST', restTarget: 'PATCH /api/sessions/{id}/update_state/' },
-  send_test_message:        { backend: 'REST', restTarget: 'POST /api/openai/{id}/chat/completions' },
+  send_test_message:        { backend: 'REST', restTarget: 'POST /api/chat/start/ → /message/ → /poll/' },
   trigger_bot_message:      { backend: 'REST', restTarget: 'POST /api/trigger_bot' },
   update_participant_data:  { backend: 'REST', restTarget: 'POST /api/participants' },
   download_file:            { backend: 'REST', restTarget: 'GET /api/files/{id}/content' },

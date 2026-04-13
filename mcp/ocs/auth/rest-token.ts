@@ -3,5 +3,5 @@ export function loadRestToken(): string {
 }
 
 export function loadBaseUrl(): string {
-  return process.env.OCS_BASE_URL ?? 'https://chatbots.dimagi.com';
+  return process.env.OCS_BASE_URL ?? 'https://www.openchatstudio.com';
 }

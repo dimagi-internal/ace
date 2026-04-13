@@ -34,7 +34,9 @@ atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
    - Capture `{experiment_id, public_id, pipeline_id}`
 
 4. **Create a per-opp Collection:**
-   - `ocs_create_collection({ name: "ACE <opp-name>", summary: "Knowledge base for <opp-name> — IDD, training, app summaries", is_index: true, is_remote_index: true })`
+   - `ocs_create_collection({ name: "ACE <opp-name>", summary: "Knowledge base for <opp-name> — IDD, training, app summaries", is_index: true, is_remote_index: false })`
+   - `llm_provider` and `embedding_model` default from `OCS_LLM_PROVIDER_ID` and `OCS_EMBEDDING_MODEL_ID` env vars (required for indexed collections)
+   - Use `is_remote_index: false` (local index) — remote indexes crash with 500 on the connect-ace team
    - Capture `collection_id`
 
 5. **Upload RAG files:**
@@ -68,7 +70,8 @@ atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
    - `ocs_publish_chatbot_version({ experiment_id, description: "Initial ACE version for <opp-name>" })`
 
 10. **Self-evaluate (LLM-as-Judge):**
-    - Send 3-5 canned questions via `ocs_send_test_message`
+    - First call `ocs_get_chatbot_embed_info({ experiment_id })` to get `public_id` and `embed_key`
+    - Send 3-5 canned questions via `ocs_send_test_message({ public_id, embed_key, message })` — uses the anonymous widget chat API
     - Judge responses for correctness + tone against expected answers from the IDD
     - On failure, retry prompt patching once; if still failing, escalate
 
