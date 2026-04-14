@@ -9,10 +9,10 @@ phase: closeout
 phase_display: Closeout
 phase_ordinal: 6
 skills:
-  - { name: opp-closeout,       has_judge: false, primary_output: invoice-summary.md }
-  - { name: llo-feedback,       has_judge: false, primary_output: feedback-report.md }
-  - { name: learnings-summary,  has_judge: false, primary_output: learnings.md }
-  - { name: cycle-grade,        has_judge: true,  primary_output: grade-report.md }
+  - { name: opp-closeout,       has_judge: false }
+  - { name: llo-feedback,       has_judge: false }
+  - { name: learnings-summary,  has_judge: false }
+  - { name: cycle-grade,        has_judge: true }
 ---
 
 # Closeout Agent (Phase 6)

@@ -8,9 +8,9 @@ phase: connect-setup
 phase_display: Connect Setup
 phase_ordinal: 3
 skills:
-  - { name: connect-program-setup, has_judge: false, primary_output: program-config.md }
-  - { name: connect-opp-setup,     has_judge: false, primary_output: opp-config.md }
-  - { name: llo-invite,            has_judge: false, primary_output: invite-list.md }
+  - { name: connect-program-setup, has_judge: false }
+  - { name: connect-opp-setup,     has_judge: false }
+  - { name: llo-invite,            has_judge: false }
 ---
 
 # Connect Setup Agent (Phase 3)

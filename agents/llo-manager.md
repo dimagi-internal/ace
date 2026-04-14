@@ -10,12 +10,12 @@ phase: llo-management
 phase_display: LLO Management
 phase_ordinal: 5
 skills:
-  - { name: llo-onboarding,  has_judge: false, primary_output: onboarding-emails.md }
-  - { name: llo-uat,         has_judge: false, primary_output: uat-protocol.md }
-  - { name: llo-launch,      has_judge: false, primary_output: launch-checklist.md }
+  - { name: llo-onboarding,  has_judge: false }
+  - { name: llo-uat,         has_judge: false }
+  - { name: llo-launch,      has_judge: false }
 recurring_skills:
-  - { name: timeline-monitor, has_judge: true, primary_output: timeline-report.md }
-  - { name: flw-data-review,  has_judge: true, primary_output: flw-review.md }
+  - { name: timeline-monitor, has_judge: true }
+  - { name: flw-data-review,  has_judge: true }
 ---
 
 # LLO Manager Agent (Phase 5)

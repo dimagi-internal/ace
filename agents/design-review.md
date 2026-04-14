@@ -9,8 +9,8 @@ phase: design-review
 phase_display: Design Review
 phase_ordinal: 1
 skills:
-  - { name: idea-to-idd,         has_judge: true,  primary_output: idd.md }
-  - { name: idd-to-test-prompts, has_judge: false, primary_output: test-prompts.md }
+  - { name: idea-to-idd,         has_judge: true }
+  - { name: idd-to-test-prompts, has_judge: false }
 ---
 
 # Design Review Agent (Phase 1)

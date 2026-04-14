@@ -9,8 +9,8 @@ phase: ocs-setup
 phase_display: OCS Setup
 phase_ordinal: 4
 skills:
-  - { name: ocs-agent-setup,  has_judge: false, primary_output: ocs-agent-config.md }
-  - { name: ocs-chatbot-qa,   has_judge: true,  primary_output: "qa-reports/ocs-qa.md" }
+  - { name: ocs-agent-setup,  has_judge: false }
+  - { name: ocs-chatbot-qa,   has_judge: true }
 ---
 
 # OCS Setup Agent (Phase 4)
