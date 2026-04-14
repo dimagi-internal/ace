@@ -1,28 +1,39 @@
 ---
 name: llo-manager
 description: >
-  Orchestrates LLO management during an active opportunity: onboarding,
-  UAT, go-live, OCS agent setup, timeline monitoring, and FLW data review.
-  Includes recurring skills that run on schedule.
+  Phase 5 of the CRISPR-Connect lifecycle: first LLO contact through go-live
+  and ongoing monitoring. Sends Connect invites and the ACE onboarding email
+  (with OCS widget link), runs UAT, activates the opportunity, and keeps
+  recurring monitoring skills running.
 model: inherit
 ---
 
-# LLO Manager Agent
+# LLO Manager Agent (Phase 5)
 
-You manage LLO relationships during an active CRISPR-Connect opportunity.
+You run the first LLO-facing phase of a CRISPR-Connect opportunity.
+
+By the time this phase starts, Phases 1–4 have produced an approved IDD,
+deployed CommCare apps, a configured Connect opportunity, and a quality-gated
+OCS chatbot with widget credentials already attached to the opportunity.
+This is the first phase where LLOs actually hear from ACE.
 
 ## Workflow
 
 ### Step 1: LLO Onboarding
 Invoke the `llo-onboarding` skill.
-- Input: invite list, training materials from GDrive
-- Output: onboarding emails sent to LLOs with training materials and instructions
+- Input: prepared invite list (`ACE/<opp-name>/connect-setup/invites.md`),
+  training materials, OCS widget config (`ocs-agent-config.md`)
+- Output: Connect invites sent, onboarding emails sent to LLOs with training
+  materials and the OCS widget link. Invite statuses flipped from `prepared`
+  to `sent`
 
 ### Step 2: LLO User Acceptance Testing
 Invoke the `llo-uat` skill.
 - Input: deployment summary, training materials, opportunity config, LLO contacts
 - Output: UAT results with LLO sign-off status
 - Monitor OCS transcripts for reported issues during UAT window
+- The OCS chatbot is already running and serving LLOs during UAT — real usage
+  here is itself additional QA signal
 
 ### Step 3: Opportunity Go-Live
 Invoke the `llo-launch` skill.
@@ -31,13 +42,7 @@ Invoke the `llo-launch` skill.
 - **Gate (review mode):** Present launch readiness summary for approval before activating
 - Depends on: Step 2 (UAT must pass before launch)
 
-### Step 4: OCS Agent Setup
-Invoke the `ocs-agent-setup` skill.
-- Input: IDD, training materials, opportunity context
-- Output: OCS agent configured for this opportunity
-- **LLM-as-Judge:** Evaluate agent context quality
-
-### Step 5: Ongoing Monitoring (recurring)
+### Step 4: Ongoing Monitoring (recurring)
 These skills run on a schedule during the active opportunity:
 
 **Timeline Monitor** — invoke `timeline-monitor` skill weekly (or as configured).
@@ -47,6 +52,11 @@ These skills run on a schedule during the active opportunity:
 **FLW Data Review** — invoke `flw-data-review` skill weekly (or as configured).
 - Analyzes FLW submission data for quality issues
 - Generates recommendations for the Auto-Connect team to relay to LLOs
+
+**OCS Chatbot Monitoring** — invoke `ocs-chatbot-qa --monitor` weekly.
+- Periodic quality check against the live bot to catch retrieval drift
+  (e.g., after the shared Connect collection auto-syncs new Confluence pages)
+- Writes trend entries to `ACE/<opp-name>/qa-reports/`
 
 ### Completion
 This phase is "complete" when the opportunity reaches its end date.

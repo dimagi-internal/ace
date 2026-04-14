@@ -13,8 +13,11 @@ Run end-to-end against the OCS MCP server (`mcp/ocs-server.ts`). Uses these
 atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
 `ocs_upload_collection_files`, `ocs_wait_for_collection_indexing`,
 `ocs_set_chatbot_system_prompt`, `ocs_attach_knowledge`, `ocs_set_chatbot_tools`,
-`ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`,
-`ocs_send_test_message`.
+`ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`.
+
+Runs in Phase 4 as Step 1 under the `ocs-setup` agent. The agent handles
+quality gating via `ocs-chatbot-qa` (quick + deep) in subsequent steps, so
+this skill is now purely configuration — no inline self-eval.
 
 ## Process
 
@@ -69,28 +72,21 @@ atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
 9. **Publish a version:**
    - `ocs_publish_chatbot_version({ experiment_id, description: "Initial ACE version for <opp-name>" })`
 
-10. **Self-evaluate (LLM-as-Judge):**
-    - First call `ocs_get_chatbot_embed_info({ experiment_id })` to get `public_id` and `embed_key`
-    - Send 3-5 canned questions via `ocs_send_test_message({ public_id, embed_key, message })` — uses the anonymous widget chat API
-    - Judge responses for correctness + tone against expected answers from the IDD
-    - On failure, retry prompt patching once; if still failing, escalate
-
-11. **Retrieve embed credentials:**
+10. **Retrieve embed credentials:**
     - `ocs_get_chatbot_embed_info({ experiment_id })`
     - Capture `{public_id, embed_key}`
 
-12. **Write state file:** `ACE/<opp-name>/ocs-agent-config.md`
+11. **Write state file:** `ACE/<opp-name>/ocs-agent-config.md`
     - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`
-    - On re-run, this file is the source of truth; skip to step 11 if present
+    - On re-run, this file is the source of truth; skip to step 10 if present
 
-13. **Hand off to connect-setup:**
-    - Pass `{public_id, embed_key}` to the `connect-setup` skill for writing to the Opportunity record
-    - See the Connect interface contract in `docs/superpowers/specs/2026-04-08-ace-ocs-chatbot-buildout-design.md`
+Quality gating (quick + deep QA) and Connect widget handoff happen in
+subsequent steps of the `ocs-setup` agent, not in this skill.
 
 ## Mode Behavior
 
 - **Auto:** Execute all steps. Surface errors with specific atom names.
-- **Review:** Pause before step 3 (show composed prompt + file list) and before step 9 (show post-patch chatbot state).
+- **Review:** Pause before step 3 (show composed prompt + file list) and before step 9 (show post-patch chatbot state before publishing a version).
 
 ## Dry-Run Behavior
 
@@ -105,7 +101,9 @@ When `--dry-run` is active:
 - `CollectionIndexingTimeoutError` — raise timeout; if persists, check OCS dashboard for the collection's indexing queue.
 - `SessionExpiredError` — run `/ace:ocs-login` to re-authenticate.
 - `HttpError 4xx` on clone — verify `OCS_GOLDEN_TEMPLATE_ID` and `OCS_TEAM_SLUG` env vars.
-- LLM-as-Judge failure — prompt engineering issue; revise step 7's prompt composition.
+- Quality gate failure downstream — if `ocs-chatbot-qa --quick` or `--deep`
+  fails in Phase 4, the usual fix is prompt engineering in step 7's
+  composition. Re-run this skill with the revised prompt, then re-run QA.
 
 ## Change Log
 
@@ -113,3 +111,4 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-04-03 | Initial version (manual workaround) | ACE team |
 | 2026-04-08 | Full rewrite against OCS MCP composite backend | ACE team |
+| 2026-04-14 | Removed inline LLM-as-Judge self-eval and connect-setup handoff; quality gating + Connect widget handoff now live in the `ocs-setup` Phase 4 agent | ACE team |
