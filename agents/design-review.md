@@ -5,6 +5,12 @@ description: >
   approved Intervention Design Document (IDD) and derive opp-specific test
   prompts for later OCS chatbot evaluation.
 model: inherit
+phase: design-review
+phase_display: Design Review
+phase_ordinal: 1
+skills:
+  - { name: idea-to-idd,         has_judge: true,  primary_output: idd.md }
+  - { name: idd-to-test-prompts, has_judge: false, primary_output: test-prompts.md }
 ---
 
 # Design Review Agent (Phase 1)

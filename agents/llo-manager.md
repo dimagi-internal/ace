@@ -6,6 +6,16 @@ description: >
   (with OCS widget link), runs UAT, activates the opportunity, and keeps
   recurring monitoring skills running.
 model: inherit
+phase: llo-management
+phase_display: LLO Management
+phase_ordinal: 5
+skills:
+  - { name: llo-onboarding,  has_judge: false, primary_output: onboarding-emails.md }
+  - { name: llo-uat,         has_judge: false, primary_output: uat-protocol.md }
+  - { name: llo-launch,      has_judge: false, primary_output: launch-checklist.md }
+recurring_skills:
+  - { name: timeline-monitor, has_judge: true, primary_output: timeline-report.md }
+  - { name: flw-data-review,  has_judge: true, primary_output: flw-review.md }
 ---
 
 # LLO Manager Agent (Phase 5)

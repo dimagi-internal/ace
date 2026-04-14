@@ -5,6 +5,14 @@ description: >
   collection, learnings summary, and overall cycle grading. Triggered
   when the opportunity reaches its end date.
 model: inherit
+phase: closeout
+phase_display: Closeout
+phase_ordinal: 6
+skills:
+  - { name: opp-closeout,       has_judge: false, primary_output: invoice-summary.md }
+  - { name: llo-feedback,       has_judge: false, primary_output: feedback-report.md }
+  - { name: learnings-summary,  has_judge: false, primary_output: learnings.md }
+  - { name: cycle-grade,        has_judge: true,  primary_output: grade-report.md }
 ---
 
 # Closeout Agent (Phase 6)

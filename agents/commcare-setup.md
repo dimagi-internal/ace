@@ -5,6 +5,15 @@ description: >
   Learn and Deliver apps via Nova, deploy them to CommCare HQ, test, and
   generate training materials.
 model: inherit
+phase: commcare-setup
+phase_display: CommCare Setup
+phase_ordinal: 2
+skills:
+  - { name: idd-to-learn-app,    has_judge: true,  primary_output: learn-app-brief.md }
+  - { name: idd-to-deliver-app,  has_judge: true,  primary_output: deliver-app-brief.md }
+  - { name: app-deploy,          has_judge: false, primary_output: deploy-summary.md }
+  - { name: app-test,            has_judge: true,  primary_output: test-results.yaml }
+  - { name: training-materials,  has_judge: true,  primary_output: llo-manager-guide.md }
 ---
 
 # CommCare Setup Agent (Phase 2)

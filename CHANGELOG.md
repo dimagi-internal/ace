@@ -5,6 +5,32 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.2.1 — 2026-04-14
+
+Phase metadata moved into agent frontmatter. Each phase agent now declares
+its phase name, display name, ordinal position in the lifecycle, and the
+ordered list of skills it orchestrates. This is the structured twin of the
+existing Workflow prose, and is consumed by external tools (e.g. ace-web's
+System Overview tab) that need to reason about the pipeline without parsing
+markdown.
+
+Also clarifies that every skill is human-reviewable — the previous implicit
+"gate" concept was misleading. Review-mode human approval is available on
+every step, not just a few.
+
+### Added
+
+- `phase`, `phase_display`, `phase_ordinal`, and `skills` frontmatter on
+  the six phase agents (`design-review`, `commcare-setup`, `connect-setup`,
+  `ocs-setup`, `llo-manager`, `closeout`). `llo-manager` additionally
+  declares `recurring_skills` for `timeline-monitor` and `flw-data-review`.
+- Each skill entry declares `has_judge` and `primary_output`.
+
+### Changed
+
+- The orchestration data model no longer distinguishes "gate skills" from
+  non-gate skills.
+
 ## 0.2.0 — 2026-04-14
 
 Orchestration restructure. The previous 4-phase flow (`app-builder` →

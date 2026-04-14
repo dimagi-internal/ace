@@ -5,6 +5,12 @@ description: >
   build the opp-specific RAG collection, quality-gate the bot via quick and
   deep chat suites, and stage the widget credentials for Connect.
 model: inherit
+phase: ocs-setup
+phase_display: OCS Setup
+phase_ordinal: 4
+skills:
+  - { name: ocs-agent-setup,  has_judge: false, primary_output: ocs-agent-config.md }
+  - { name: ocs-chatbot-qa,   has_judge: true,  primary_output: "qa-reports/ocs-qa.md" }
 ---
 
 # OCS Setup Agent (Phase 4)
