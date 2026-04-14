@@ -5,6 +5,60 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.2.0 — 2026-04-14
+
+Orchestration restructure. The previous 4-phase flow (`app-builder` →
+`connect-setup` → `llo-manager` → `closeout`) hid OCS setup as Step 4 of
+LLO management — *after* go-live, so LLOs went through onboarding and UAT
+with no support bot. The new 6-phase flow makes OCS a first-class phase
+that runs before any LLO-facing step, and consolidates two overlapping
+OCS test paths into a single skill with three modes.
+
+### Changed
+
+- **Six-phase orchestration.** `ace-orchestrator` now dispatches: (1)
+  design-review, (2) commcare-setup, (3) connect-setup, (4) ocs-setup,
+  (5) llo-manager, (6) closeout. Phases 1–4 run end-to-end with zero LLO
+  involvement, so an operator can review a fully configured opportunity
+  before first contact.
+- **`app-builder` split** into two agents: `design-review` (Phase 1 —
+  `idea-to-idd` + new `idd-to-test-prompts`) and `commcare-setup`
+  (Phase 2 — apps, deploy, test, training). The old `app-builder.md`
+  is removed.
+- **`ocs-setup` is a new Phase 4 agent** that runs `ocs-agent-setup` →
+  `ocs-chatbot-qa --quick` (smoke gate) → `ocs-chatbot-qa --deep`
+  (pre-launch gate) → widget handoff to Connect.
+- **`ocs-agent-setup` is now purely configuration** — the inline 3–5
+  question LLM-as-Judge self-eval and the connect-setup handoff are
+  removed. Quality gating and widget handoff live in `ocs-setup`.
+- **`ocs-chatbot-qa` gains `--quick` / `--deep` / `--monitor` modes.**
+  `--quick` replaces the inline self-eval; `--deep` is the pre-launch
+  gate that uses `test-prompts.md`; `--monitor` is recurring monitoring
+  invoked from Phase 5 with a trend file.
+- **`llo-invite` prepares-only** in Phase 3; sending moves to
+  `llo-onboarding` in Phase 5 so the onboarding email can include the
+  OCS widget link.
+- **`llo-onboarding`** now owns both the Connect system invite send and
+  the ACE-authored onboarding email (with widget link embedded).
+- **`llo-manager`** is Phase 5; the old Step 4 (`ocs-agent-setup`) is
+  removed. Step 4 is now recurring monitoring, including
+  `ocs-chatbot-qa --monitor`.
+- **Artifact manifest** phases renamed: `build` → `design` + `commcare`;
+  `setup` → `connect`; new `ocs` phase (split from `operate`). Adds
+  entries for `test-prompts.md`, `ocs-setup/widget-handoff.md`, and
+  `qa-reports/trend.md`.
+
+### Added
+
+- **`idd-to-test-prompts` skill** (Phase 1 Step 2) — derives opp-specific
+  Q&A pairs with expected-answer summaries from the IDD. Produces
+  `ACE/<opp-name>/test-prompts.md`, the ground truth for the Phase 4
+  deep QA gate. Previously `test-prompts.md` was referenced by
+  `ocs-chatbot-qa` but had no producer.
+- **`ocs-setup/widget-handoff.md`** — operator-facing handoff doc with
+  `{public_id, embed_key}` and paste instructions for the Connect
+  opportunity widget, since `update_opportunity` is unbuilt (CCC-301).
+
 ## 0.1.11 — 2026-04-14
 
 Three fixes from the first CRISPR-Test-001 E2E run against live OCS.

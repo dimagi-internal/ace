@@ -20,7 +20,7 @@
 
 // ── Types ──────────────────────────────────────────────────────────
 
-export type Phase = 'build' | 'setup' | 'operate' | 'closeout';
+export type Phase = 'design' | 'commcare' | 'connect' | 'ocs' | 'operate' | 'closeout';
 
 export interface ArtifactEntry {
   /** Relative path under ACE/<opp-name>/, e.g. "idd.md" or "apps/learn-app.json" */
@@ -39,18 +39,18 @@ export interface ArtifactEntry {
 
 // ── Phase ordering ─────────────────────────────────────────────────
 
-export const PHASES = ['build', 'setup', 'operate', 'closeout'] as const;
+export const PHASES = ['design', 'commcare', 'connect', 'ocs', 'operate', 'closeout'] as const;
 
 // ── Manifest ───────────────────────────────────────────────────────
 
 export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
-  // ── Build phase ────────────────────────────────────────────────
+  // ── Design phase (Phase 1) ─────────────────────────────────────
 
   {
     path: 'idea.md',
     producedBy: 'external',
     consumedBy: ['idea-to-idd'],
-    phase: 'build',
+    phase: 'design',
     required: true,
     description: 'Initial opportunity idea or brief',
   },
@@ -58,28 +58,39 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'idd.md',
     producedBy: 'idea-to-idd',
     consumedBy: [
-      'idd-to-learn-app', 'idd-to-deliver-app', 'app-test',
+      'idd-to-test-prompts', 'idd-to-learn-app', 'idd-to-deliver-app', 'app-test',
       'training-materials', 'connect-program-setup', 'connect-opp-setup',
       'llo-invite', 'ocs-agent-setup', 'timeline-monitor', 'flw-data-review',
       'cycle-grade', 'learnings-summary',
     ],
-    phase: 'build',
+    phase: 'design',
     required: true,
     description: 'Intervention Design Document with archetype, Evidence Model, and stress-test appendix',
+  },
+  {
+    path: 'test-prompts.md',
+    producedBy: 'idd-to-test-prompts',
+    consumedBy: ['ocs-chatbot-qa'],
+    phase: 'design',
+    required: true,
+    description: 'Opp-specific Q&A pairs derived from the IDD; ground truth for OCS deep QA gate',
   },
   {
     path: 'state.yaml',
     producedBy: 'ace-orchestrator',
     consumedBy: ['timeline-monitor'],
-    phase: 'build',
+    phase: 'design',
     required: true,
     description: 'Opportunity lifecycle state: phase, step, mode, gate approvals',
   },
+
+  // ── CommCare phase (Phase 2) ───────────────────────────────────
+
   {
     path: 'apps/learn-app.json',
     producedBy: 'idd-to-learn-app',
     consumedBy: ['app-deploy'],
-    phase: 'build',
+    phase: 'commcare',
     required: true,
     description: 'Learn app package (JSON or CCZ)',
   },
@@ -87,7 +98,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'apps/deliver-app.json',
     producedBy: 'idd-to-deliver-app',
     consumedBy: ['app-deploy'],
-    phase: 'build',
+    phase: 'commcare',
     required: true,
     description: 'Deliver app package (JSON or CCZ)',
   },
@@ -95,7 +106,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'app-summaries/learn-app-summary.md',
     producedBy: 'idd-to-learn-app',
     consumedBy: ['app-test', 'training-materials', 'ocs-agent-setup', 'flw-data-review'],
-    phase: 'build',
+    phase: 'commcare',
     required: true,
     description: 'Learn app structure summary for downstream skills',
   },
@@ -103,7 +114,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'app-summaries/deliver-app-summary.md',
     producedBy: 'idd-to-deliver-app',
     consumedBy: ['app-test', 'training-materials', 'ocs-agent-setup', 'flw-data-review'],
-    phase: 'build',
+    phase: 'commcare',
     required: true,
     description: 'Deliver app structure summary for downstream skills',
   },
@@ -111,7 +122,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'deployment-summary.md',
     producedBy: 'app-deploy',
     consumedBy: ['app-test', 'connect-opp-setup', 'llo-uat', 'llo-launch'],
-    phase: 'build',
+    phase: 'commcare',
     required: true,
     description: 'App deployment details: IDs, URLs, build status',
   },
@@ -119,7 +130,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'test-results/test-plan.md',
     producedBy: 'app-test',
     consumedBy: ['learnings-summary', 'cycle-grade'],
-    phase: 'build',
+    phase: 'commcare',
     required: true,
     description: 'Full test plan with Evidence Model cross-references',
   },
@@ -127,7 +138,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'test-results/test-results.md',
     producedBy: 'app-test',
     consumedBy: ['learnings-summary', 'cycle-grade'],
-    phase: 'build',
+    phase: 'commcare',
     required: true,
     description: 'Test execution results: pass/fail per test case',
   },
@@ -135,7 +146,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'test-results/bugs.md',
     producedBy: 'app-test',
     consumedBy: ['learnings-summary', 'cycle-grade'],
-    phase: 'build',
+    phase: 'commcare',
     required: true,
     description: 'Bugs found during testing with severity and repro steps',
   },
@@ -143,7 +154,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'training-materials/llo-manager-guide.md',
     producedBy: 'training-materials',
     consumedBy: ['llo-onboarding', 'ocs-agent-setup'],
-    phase: 'build',
+    phase: 'commcare',
     required: true,
     description: 'LLO Manager guide for overseeing FLW deployment',
   },
@@ -151,7 +162,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'training-materials/flw-training-guide.md',
     producedBy: 'training-materials',
     consumedBy: ['llo-onboarding', 'ocs-agent-setup'],
-    phase: 'build',
+    phase: 'commcare',
     required: true,
     description: 'FLW training guide for app usage and protocols',
   },
@@ -159,7 +170,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'training-materials/quick-reference.md',
     producedBy: 'training-materials',
     consumedBy: ['llo-onboarding', 'ocs-agent-setup'],
-    phase: 'build',
+    phase: 'commcare',
     required: true,
     description: 'Quick reference card for FLWs in the field',
   },
@@ -167,18 +178,18 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'training-materials/faq.md',
     producedBy: 'training-materials',
     consumedBy: ['llo-onboarding', 'ocs-agent-setup'],
-    phase: 'build',
+    phase: 'commcare',
     required: true,
     description: 'Frequently asked questions for LLOs and FLWs',
   },
 
-  // ── Setup phase ────────────────────────────────────────────────
+  // ── Connect phase (Phase 3) ────────────────────────────────────
 
   {
     path: 'connect-setup/program.md',
     producedBy: 'connect-program-setup',
     consumedBy: ['connect-opp-setup'],
-    phase: 'setup',
+    phase: 'connect',
     required: true,
     description: 'Connect Program ID, name, config details',
   },
@@ -186,7 +197,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'connect-setup/opportunity.md',
     producedBy: 'connect-opp-setup',
     consumedBy: ['llo-invite', 'llo-onboarding', 'llo-uat', 'llo-launch', 'ocs-agent-setup', 'opp-closeout'],
-    phase: 'setup',
+    phase: 'connect',
     required: true,
     description: 'Connect Opportunity ID, verification rules, delivery/payment unit config',
   },
@@ -194,12 +205,31 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'connect-setup/invites.md',
     producedBy: 'llo-invite',
     consumedBy: ['llo-onboarding', 'llo-uat', 'llo-launch', 'llo-feedback'],
-    phase: 'setup',
+    phase: 'connect',
     required: true,
-    description: 'LLO invite log with contacts, rationale, and status',
+    description: 'LLO invite list (prepared in Phase 3, sent in Phase 5)',
   },
 
-  // ── Operate phase ──────────────────────────────────────────────
+  // ── OCS phase (Phase 4) ────────────────────────────────────────
+
+  {
+    path: 'ocs-agent-config.md',
+    producedBy: 'ocs-agent-setup',
+    consumedBy: ['ocs-chatbot-qa', 'llo-onboarding', 'timeline-monitor', 'flw-data-review'],
+    phase: 'ocs',
+    required: true,
+    description: 'OCS chatbot config: experiment_id, public_id, embed_key, collection_id',
+  },
+  {
+    path: 'ocs-setup/widget-handoff.md',
+    producedBy: 'ocs-setup',
+    consumedBy: ['llo-onboarding'],
+    phase: 'ocs',
+    required: true,
+    description: 'Operator-facing handoff doc: creds + paste instructions for the Connect opportunity widget (until update_opportunity API lands)',
+  },
+
+  // ── Operate phase (Phase 5) ────────────────────────────────────
 
   {
     path: 'comms-log/onboarding-emails.md',
@@ -226,20 +256,20 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Activation timestamp, LLO notifications, app URLs, outstanding issues',
   },
   {
-    path: 'ocs-agent-config.md',
-    producedBy: 'ocs-agent-setup',
-    consumedBy: ['ocs-chatbot-qa', 'timeline-monitor', 'flw-data-review'],
-    phase: 'operate',
-    required: true,
-    description: 'OCS chatbot config: experiment_id, public_id, embed_key, collection_id',
+    path: 'qa-reports/YYYY-MM-DD-ocs-qa.md',
+    producedBy: 'ocs-chatbot-qa',
+    consumedBy: [],
+    phase: 'ocs',
+    required: false,
+    description: 'OCS chatbot quality report from LLM-as-Judge evaluation (Phase 4 deep gate + Phase 5 recurring monitor)',
   },
   {
-    path: 'qa-reports/YYYY-MM-DD-ocs-qa.md',
+    path: 'qa-reports/trend.md',
     producedBy: 'ocs-chatbot-qa',
     consumedBy: [],
     phase: 'operate',
     required: false,
-    description: 'OCS chatbot quality report from LLM-as-Judge evaluation',
+    description: 'Rolling trend of OCS QA scores from --monitor runs',
   },
   {
     path: 'monitoring/YYYY-MM-DD-timeline-check.md',

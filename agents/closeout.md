@@ -7,7 +7,7 @@ description: >
 model: inherit
 ---
 
-# Closeout Agent
+# Closeout Agent (Phase 6)
 
 You handle the closeout of a completed CRISPR-Connect opportunity.
 

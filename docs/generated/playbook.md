@@ -1,353 +1,410 @@
 # ACE Playbook — CRISPR-Connect Process
 
-Generated: 2026-04-14
+_Generated: 2026-04-14 (ACE 0.2.0 — 6-phase orchestration)_
 
-> This document is auto-generated from `agents/*.md`, `skills/*/SKILL.md`, and
-> `playbook/integrations/*.md` via `/ace:docs`. Do not edit by hand — your
-> changes will be lost on the next regeneration.
+Derived from `agents/*.md`, `skills/*/SKILL.md`, and
+`playbook/integrations/*.md`. Regenerate with `/ace:docs` after changing any
+of those sources.
 
 ## Overview
 
-ACE (AI Connect Engine) orchestrates the full CRISPR-Connect lifecycle for
-Connect opportunities — from idea iteration through app building, deployment,
-LLO management, and closeout. Opportunity state lives in Google Drive under
-`ACE/<opp-name>/` and is tracked by `state.yaml`.
+ACE (AI Connect Engine) orchestrates the full CRISPR-Connect lifecycle for a
+Connect opportunity. The `ace-orchestrator` agent dispatches to six phase
+agents in order. Phases 1–4 are "setup" and run end-to-end with **zero LLO
+involvement** — an operator reviews the fully configured opportunity before
+any outside contact. Phase 5 is the first LLO-facing phase. Phase 6 closes
+out the opportunity after it ends.
 
-ACE supports two execution modes:
+Two execution modes:
 
-- **Auto mode** — runs all phases sequentially and emails the CRISPR Admin
-  group at each step. Gates are logged but not enforced.
-- **Review mode** — runs all phases sequentially but pauses at gate steps to
-  solicit human approval before proceeding.
+- **Auto** — run all phases sequentially, email the CRISPR Admin group at
+  each step completion, log gates but don't enforce them.
+- **Review** — same flow, but pause at gate steps and use AskUserQuestion
+  to get operator approval. Gate steps:
+  - After `idea-to-idd` (Phase 1) — IDD must be approved
+  - After `app-deploy` (Phase 2) — apps must be verified before Connect setup
+  - After `llo-invite` (Phase 3) — invite list must be approved
+  - After `ocs-chatbot-qa --deep` (Phase 4) — OCS quality must clear the
+    pre-launch bar
+  - After `llo-launch` (Phase 5) — opportunity activation must be verified
 
-Two additional flags can be combined with either mode:
+Two safety flags:
 
-- **`--dry-run`** — effectful skills (email, app publish, Jira ticket creation,
-  external API calls) write their intended actions to
-  `comms-log/dry-run-<step>.md` instead of executing. Outputs written to GDrive
-  still happen; LLM-as-Judge evaluation still runs.
-- **`--sandbox`** — MCP servers route external API calls to staging endpoints
-  (Connect staging, CommCare staging project space) based on `ACE_SANDBOX=true`.
+- `--dry-run` — effectful skills (emails, publishes, tickets, external APIs)
+  write their intended actions to `ACE/<opp-name>/comms-log/dry-run-<step>.md`
+  instead of executing. Gates still apply in review mode. `state.yaml` tracks
+  steps as `dry-run-success` / `dry-run-blocked`.
+- `--sandbox` — MCP servers route external calls to staging endpoints via
+  the `ACE_SANDBOX` env var. Combinable with `--dry-run`.
 
 ## Process Flow
 
-| # | Phase | Skill | Gate (review mode) | Depends on |
-|---|-------|-------|--------------------|------------|
-| 1 | Build | `idea-to-idd` | IDD approval | — |
-| 2a | Build | `idd-to-learn-app` | — | 1 |
-| 2b | Build | `idd-to-deliver-app` | — | 1 |
-| 3 | Build | `app-deploy` | deployment verification | 2a, 2b |
-| 4a | Build | `app-test` | — | 3 |
-| 4b | Build | `training-materials` | — | 2a, 2b |
-| 5 | Setup | `connect-program-setup` | — | 1 |
-| 6 | Setup | `connect-opp-setup` | — | 5, 3 |
-| 7 | Setup | `llo-invite` | invite list approval | 6 |
-| 8 | Operate | `llo-onboarding` | — | 7, 4b |
-| 9 | Operate | `llo-uat` | — | 3, 4b, 6 |
-| 10 | Operate | `llo-launch` | launch readiness | 9 |
-| 11 | Operate | `ocs-agent-setup` | — | 1, 4b, 6 |
-| — | Operate | `timeline-monitor` (recurring) | — | 10 |
-| — | Operate | `flw-data-review` (recurring) | — | 10 |
-| 12 | Closeout | `opp-closeout` | — | opportunity end date |
-| 13 | Closeout | `llo-feedback` | — | 12 |
-| 14 | Closeout | `learnings-summary` | — | 12, 13 |
-| 15 | Closeout | `cycle-grade` | — | 14 |
+```
+Phase 1  design-review        idea-to-idd ──► idd-to-test-prompts
+             │
+             │ gate: IDD approved
+             ▼
+Phase 2  commcare-setup       idd-to-learn-app ∥ idd-to-deliver-app
+                              ──► app-deploy ──► app-test ∥ training-materials
+             │
+             │ gate: apps verified
+             ▼
+Phase 3  connect-setup        connect-program-setup ──► connect-opp-setup
+                              ──► llo-invite (prepared only)
+             │
+             │ gate: invite list approved
+             ▼
+Phase 4  ocs-setup            ocs-agent-setup
+                              ──► ocs-chatbot-qa --quick   (smoke gate)
+                              ──► ocs-chatbot-qa --deep    (pre-launch gate)
+                              ──► widget-handoff to Connect
+             │
+             │ gate: deep QA pass
+             ▼
+Phase 5  llo-manager          llo-onboarding (invite + widget-linked email)
+                              ──► llo-uat ──► llo-launch
+                              ──► (recurring) timeline-monitor ∥ flw-data-review
+                                              ∥ ocs-chatbot-qa --monitor
+             │
+             │ gate: launch approved
+             │ ... opportunity runs ...
+             ▼
+Phase 6  closeout             opp-closeout ──► llo-feedback
+                              ──► learnings-summary ──► cycle-grade
+```
 
-Steps 2a/2b and 4a/4b run in parallel within their phase.
+## Phase 1 — Design Review & Iteration
 
-## Phase 1: App Building
+**Agent:** `design-review`
 
-### Agent: app-builder
+Turn an initial idea into an approved IDD and derive the opp-specific test
+prompt suite that Phase 4's deep QA gate will use as ground truth.
 
-Orchestrates the app building phase of CRISPR-Connect: idea iteration into an
-IDD, passing the IDD to Nova for Learn and Deliver apps, deploying to CCHQ,
-testing, and creating training materials.
+### Step 1 — `idea-to-idd`
 
-### Skills
+Iterate on an idea to produce a well-specified Intervention Design Doc (IDD)
+that defines the intervention, target FLWs, visit structure, and preferred
+LLOs.
 
-#### `idea-to-idd`
-Iterate on an initial idea to produce a well-specified Intervention Design Doc
-(IDD) including archetype, Evidence Model, and stress-test appendix. Declares
-the delivery archetype (`atomic-visit`, `focus-group`, or `multi-stage`) which
-shapes every downstream skill. Runs a 5-question stress-test rubric
-(executability, verifiability, measurability, stage-gate clarity, resource
-realism) and blocks output if ≥2 checks fail.
-- **Output**: `idd.md`
-- **Mode behavior**: auto writes IDD + emails admin group; review pauses for human approval.
-- **LLM-as-Judge**: stress-test rubric with grading anchors.
+- **Input:** `ACE/<opp-name>/idea.md`
+- **Output:** `ACE/<opp-name>/idd.md`
+- **Gate (review mode):** operator approval of the IDD
+- **LLM-as-Judge:** IDD quality (completeness, feasibility, clarity)
 
-#### `idd-to-learn-app`
-Pass an IDD to Nova to generate the Learn app. For `atomic-visit` archetypes
-the Learn app is a form-walkthrough data-collection trainer; for `focus-group`
-it is a facilitation craft training app.
-- **Output**: `apps/learn-app.json`, `app-summaries/learn-app-summary.md`
-- **Current workaround**: Nova API does not exist yet — the skill produces a Nova brief and hands off to a human.
+### Step 2 — `idd-to-test-prompts`
 
-#### `idd-to-deliver-app`
-Pass an IDD to Nova to generate the Deliver app. Delivery unit definition is
-archetype-sensitive: `atomic-visit` = per-beneficiary visit; `focus-group` =
-per-session documentation with segment-level case.
-- **Output**: `apps/deliver-app.json`, `app-summaries/deliver-app-summary.md`
-- **Current workaround**: same as `idd-to-learn-app` — Nova integration pending.
+Derive 20+ Q&A pairs from the IDD covering intervention basics, FLW visit
+flow, eligibility edge cases, data-quality rules, escalation triggers,
+expected `[product-feedback]` / `[training-gap]` paths, and a handful of
+out-of-scope questions.
 
-#### `app-deploy`
-Upload Learn and Deliver app JSONs to the CRISPR-Connect domain on CommCare HQ,
-build, and publish.
-- **Output**: `deployment-summary.md`
-- **Current workaround**: CommCare app upload API is not yet built — the skill produces manual upload instructions.
+- **Input:** `ACE/<opp-name>/idd.md`
+- **Output:** `ACE/<opp-name>/test-prompts.md` — each entry has a question,
+  expected-answer summary, expected tags, and expected escalation. This is
+  the ground truth that `ocs-chatbot-qa --deep` grades responses against
+- **Self-check:** at least one prompt per IDD section + edge-case coverage
 
-#### `app-test`
-Create and execute an automated test plan against the deployed apps. Every
-Layer A artifact from the IDD's Evidence Model must have a passing capture
-test. Errors out if the Evidence Model is missing.
-- **Output**: `test-results/test-plan.md`, `test-results.md`, `bugs.md`
-- **LLM-as-Judge**: coverage + bug-triage self-eval.
+## Phase 2 — CommCare Setup
 
-#### `training-materials`
-Generate LLO Manager Guide, FLW Training Guide, Quick Reference Card, and FAQ
-from the app summaries and IDD.
-- **Output**: `training-materials/{llo-manager-guide,flw-training-guide,quick-reference,faq}.md`
-- **LLM-as-Judge**: clarity + coverage.
+**Agent:** `commcare-setup`
 
-## Phase 2: Connect Setup
+Translate the approved IDD into Learn and Deliver apps via Nova, deploy to
+CommCare HQ, test, and generate training materials.
 
-### Agent: connect-setup
+### Step 1 — `idd-to-learn-app` ∥ `idd-to-deliver-app` (parallel)
 
-Orchestrates Connect platform setup: program creation, opportunity
-configuration, and LLO invitations. Before creating a Program, the
-CRISPR-Connect workspace must be selected.
+Pass the IDD to Nova to generate the Learn (data collection) and Deliver
+(service delivery) apps. Nova asks configuration questions; both skills
+answer them from the IDD and output the app CCZ/JSON + a structure summary.
 
-### Skills
+- **Input:** `ACE/<opp-name>/idd.md`
+- **Output:** `apps/learn-app.json`, `apps/deliver-app.json`,
+  `app-summaries/learn-app-summary.md`,
+  `app-summaries/deliver-app-summary.md`
+- **LLM-as-Judge:** app quality vs. IDD requirements
+- **Current Workaround:** Nova MCP doesn't exist yet — see
+  `playbook/integrations/nova-integration.md`. Skills currently guide an
+  operator through a Nova chat session
 
-#### `connect-program-setup`
-Create or select a Connect program for this opportunity. Checks if an existing
-program fits before creating a new one.
-- **Output**: `connect-setup/program.md`
-- **Current workaround**: `create_program` API does not exist yet (CCC-301).
+### Step 2 — `app-deploy`
 
-#### `connect-opp-setup`
-Create and fully configure the Connect Opportunity — verification rules
-(Evidence Model Layer A → hard gates), delivery units (archetype-sensitive),
-payment units. Errors out if the IDD has no Evidence Model section.
-- **Output**: `connect-setup/opportunity.md`
-- **Current workaround**: Opportunity CRUD and configuration APIs are blocked on CCC-301.
+Upload both apps to the CRISPR-Connect domain on CommCare HQ, build, and
+publish.
 
-#### `llo-invite`
-Look up LLO contacts from the LLO Directory and invite them to the Connect
-opportunity. Gate step in review mode.
-- **Output**: `connect-setup/invites.md`
-- **Current workaround**: Connect invite API does not exist yet; skill produces a recommended invite list.
+- **Input:** `apps/*.json` from GDrive
+- **Output:** `deployment-summary.md` with IDs, URLs, build status
+- **Gate (review mode):** operator verifies the deployment
+- **Current Workaround:** CommCare MCP lives in `connect-labs` — see
+  `playbook/integrations/commcare-api.md`. Skill prompts operator through
+  the CCHQ admin UI
 
-## Phase 3: LLO Management
+### Step 3 — `app-test` ∥ `training-materials` (parallel)
 
-### Agent: llo-manager
+- **`app-test`** — create an automated test plan cross-referenced against
+  the IDD's Evidence Model, execute it, and log bugs.
+  Output: `test-results/test-plan.md`, `test-results.md`, `bugs.md`.
+- **`training-materials`** — generate LLO Manager guide, FLW training
+  guide, quick-reference card, and FAQ from the app summaries + standard
+  templates. Output: `training-materials/*.md`.
+- **LLM-as-Judge:** both skills self-evaluate quality.
 
-Orchestrates LLO management during an active opportunity: onboarding, UAT,
-go-live, OCS agent setup, and recurring monitoring skills that run on schedule.
+## Phase 3 — Connect Setup
 
-### Skills
+**Agent:** `connect-setup`
 
-#### `llo-onboarding`
-Send onboarding emails to invited LLOs with training materials and instructions.
-Uses `ace@dimagi-ai.com` as sender via the `email-communicator` skill.
-- **Output**: `comms-log/onboarding-emails.md`
-- **Current workaround**: historical entry where the skill drafted emails for a human to send; now uses GOG CLI via `email-communicator`.
+Set up the Connect platform for the opportunity. Invite list is **prepared
+only** here; the actual send happens in Phase 5 after the OCS widget is
+configured.
 
-#### `llo-uat`
-Coordinate User Acceptance Testing with onboarded LLOs. Send UAT instructions,
-monitor for feedback via OCS transcripts, and compile LLO sign-off results.
-- **Output**: `uat/uat-results.md`
+### Step 1 — `connect-program-setup`
 
-#### `llo-launch`
-Activate the opportunity for live use. Verifies UAT sign-offs, activates in
-Connect, confirms apps are published, and notifies LLOs. Gate step in review
-mode.
-- **Output**: `launch/launch-record.md`
-- **Current workaround**: Connect activation API pending; skill asks user to activate via Connect UI.
+Create or select a Connect Program. Checks whether an existing program fits
+before creating a new one.
 
-#### `ocs-agent-setup`
-Create and configure an OCS chatbot for this opportunity. Clones the ACE
-golden template, uploads IDD + training + app summaries as a RAG Collection,
-patches the system prompt with opp-specific framing, publishes a version, and
-returns embed credentials for Connect. Idempotent — re-runs use the existing
-chatbot if one already exists.
-- **Output**: `ocs-agent-config.md`
-- **LLM-as-Judge**: 3–5 canned questions via `ocs_send_test_message` compared against expected answers from the IDD.
+- **Input:** IDD + opportunity details
+- **Output:** `connect-setup/program.md`
+- **Current Workaround:** `create_program`/`update_program` not built
+  (CCC-301). Skill presents config values and prompts operator to
+  create via Connect admin UI
 
-#### `timeline-monitor` (recurring)
-Check LLO progress against expected milestones. Uses OCS session data to detect
-stuck, confused, or silent LLOs. Sends nudges via `ocs_trigger_bot_message`
-(auto mode only) and prompting emails if behind schedule.
-- **Output**: `monitoring/YYYY-MM-DD-timeline-check.md`
+### Step 2 — `connect-opp-setup`
 
-#### `flw-data-review` (recurring)
-Analyze FLW submission data for quality issues, trends, and improvement
-opportunities. For `atomic-visit` archetypes, runs quantitative review
-(submission rates, outliers, caps). For `focus-group`, runs qualitative
-synthesis (per-session quality, cross-session themes, saturation, quote bank).
-Cross-references with OCS transcripts.
-- **Output**: `data-reviews/YYYY-MM-DD-review.md`
+Create the Connect Opportunity with verification rules, delivery units, and
+payment units.
 
-## Phase 4: Closeout
+- **Input:** Program ID + IDD + deployment summary
+- **Output:** `connect-setup/opportunity.md`
+- **Current Workaround:** `create_opportunity`/`update_opportunity` not
+  built (CCC-301). Manual operator flow
 
-### Agent: closeout
+### Step 3 — `llo-invite` (prepare only)
 
-Triggered when the opportunity reaches its end date. Orchestrates invoice
-processing, LLO feedback collection, learnings summary, and overall cycle
-grading.
+Identify candidate LLOs from the IDD's preferences and the LLO Directory,
+prepare the invite list with rationale per LLO.
 
-### Skills
+- **Input:** Opportunity ID + IDD's LLO preferences section
+- **Output:** `connect-setup/invites.md` with status `prepared`
+- **Gate (review mode):** operator approval of the list
+- **Note:** sending moves to `llo-onboarding` in Phase 5 so the email can
+  include the OCS widget link
 
-#### `opp-closeout`
-Pull invoices from Connect and create a Jira ticket to issue payment to the LLO.
-- **Output**: `closeout/invoices.md`
-- **Current workaround**: Connect invoice API pending; Jira ticket creation uses Atlassian MCP.
+## Phase 4 — OCS Setup
 
-#### `llo-feedback`
-Prompt LLOs for feedback about the app, process, and suggestions for next
-steps. Monitor responses via OCS transcripts.
-- **Output**: `closeout/llo-feedback.md`
+**Agent:** `ocs-setup`
 
-#### `learnings-summary`
-Synthesize all opportunity artifacts into process/content/technical/relationship
-learnings. Drafts a new IDD for iteration if warranted.
-- **Output**: `closeout/learnings.md`, optionally `closeout/new-idd.md`
+Configure the per-opportunity OCS chatbot, quality-gate it, and hand the
+widget credentials to the operator for the Connect opportunity. No LLOs
+interact in this phase — only the ACE judge does.
 
-#### `cycle-grade`
-Final grade across 6 dimensions (Intervention Effectiveness, App Quality, LLO
-Execution, FLW Performance, Process Efficiency, Communication Quality). For
-`focus-group` archetypes, adds a 7th dimension (Research Quality) and uses
-archetype-specific rubrics for FLW Performance and Intervention Effectiveness.
-For `multi-stage`, grades stage-gate transitions.
-- **Output**: `closeout/cycle-grade.md`
-- **LLM-as-Judge**: self-evaluates grading quality against Evidence Model evidence.
+### Step 1 — `ocs-agent-setup`
 
-## Support Skills
+Clone the ACE golden template, create a per-opp RAG collection, upload
+IDD + training + app summaries, wait for indexing, patch the opp-specific
+system prompt, attach both the shared Connect collection and the opp
+collection as knowledge sources, publish a version.
 
-### `email-communicator`
-Utility skill — send and receive email via GOG CLI using the ACE Gmail account
-(`ace@dimagi-ai.com`). Other skills delegate to this for all email operations.
-- **Operations**: send, reply, search, read
-- **Uses GOG CLI, not MCP**
+- **Input:** IDD, training materials, app summaries, opportunity config
+- **Output:** `ocs-agent-config.md` with
+  `{experiment_id, public_id, embed_key, collection_id, pipeline_id, version_number}`
+- **MCP atoms:** `ocs_list_chatbots`, `ocs_clone_chatbot`,
+  `ocs_create_collection`, `ocs_upload_collection_files`,
+  `ocs_wait_for_collection_indexing`, `ocs_set_chatbot_system_prompt`,
+  `ocs_attach_knowledge`, `ocs_publish_chatbot_version`,
+  `ocs_get_chatbot_embed_info`
+- **Idempotency:** resumes from existing `ocs-agent-config.md` if present
+- **Review mode:** pauses to show composed prompt + file list, and again
+  before publishing
 
-### `ocs-chatbot-qa`
-Evaluate an ACE OCS chatbot's response quality by sending test prompts via the
-anonymous widget endpoint and grading responses with LLM-as-Judge across 4
-dimensions (correctness 40%, source usage 20%, tone 20%, tagging 20%).
-- **Output**: console report or `qa-reports/YYYY-MM-DD-ocs-qa.md`
-- **Invoked by**: the `ocs-tester` agent
+### Step 2 — `ocs-chatbot-qa --quick`
+
+5-question smoke suite (escalation, tagging, shared-collection retrieval,
+graceful-decline) to fast-fail a miswired bot. Stdout summary only.
+
+- **Gate:** overall ≥ 7. On fail: one prompt-patch retry, then escalate
+
+### Step 3 — `ocs-chatbot-qa --deep`
+
+Full suite: Connect-general + ACE-specific + opp-specific (from
+`test-prompts.md`) + edge-case extras (out-of-scope, adversarial,
+multi-turn, non-English if applicable).
+
+- **Output:** `qa-reports/YYYY-MM-DD-ocs-qa.md`
+- **Judge dimensions:** Correctness (40%) · Source usage (20%) · Tone (20%)
+  · Tagging (20%); per-prompt Pass/Warn/Fail
+- **Gate (review mode):** overall ≥ 7 AND every Fail resolved
+
+### Step 4 — Widget handoff to Connect
+
+Present `{public_id, embed_key}` with exact paste instructions.
+
+- **Output:** `ocs-setup/widget-handoff.md`
+- **Current Workaround:** Connect `update_opportunity` API unbuilt
+  (CCC-301). Operator pastes creds into Connect admin UI. Becomes a single
+  API call when CCC-301 lands
+
+## Phase 5 — LLO Management
+
+**Agent:** `llo-manager`
+
+First LLO-facing phase. Sends Connect invites and the ACE onboarding email
+(with widget link), runs UAT, activates the opportunity, and keeps
+recurring monitoring skills running for the life of the opportunity.
+
+### Step 1 — `llo-onboarding`
+
+Issue the Connect system invite for each `prepared` entry and send the
+ACE-authored onboarding email from `ace@dimagi-ai.com` with training
+materials, getting-started instructions, and the **OCS widget link**
+derived from `public_id` + `embed_key`.
+
+- **Input:** `invites.md` (prepared), `training-materials/`,
+  `ocs-agent-config.md`
+- **Output:** `comms-log/onboarding-emails.md`; invite statuses flipped to
+  `sent`
+- **Current Workaround:** Connect `send_invite` not built — operator sends
+  via UI, ACE confirms and flips status
+
+### Step 2 — `llo-uat`
+
+Coordinate UAT with onboarded LLOs. Monitor OCS transcripts for issues
+during the UAT window (real LLO usage here is itself QA signal on top of
+the Phase 4 judge).
+
+- **Output:** `uat/uat-results.md` with per-LLO sign-off status
+
+### Step 3 — `llo-launch`
+
+Verify UAT sign-offs, activate the opportunity in Connect, confirm apps are
+published, notify LLOs of go-live.
+
+- **Output:** `launch/launch-record.md`
+- **Gate (review mode):** operator approval of launch readiness
+
+### Step 4 — Ongoing monitoring (recurring)
+
+Scheduled during the active opportunity until end date:
+
+- **`timeline-monitor`** (weekly) — checks LLO progress against milestones,
+  sends prompting emails if behind. Writes
+  `monitoring/YYYY-MM-DD-timeline-check.md`
+- **`flw-data-review`** (weekly) — analyzes FLW submission quality (Layer
+  B per-delivery + Layer C cross-delivery), produces recommendations.
+  Writes `data-reviews/YYYY-MM-DD-review.md`
+- **`ocs-chatbot-qa --monitor`** (weekly) — periodic deep-suite QA against
+  the live bot to catch retrieval drift (e.g. after the shared Connect
+  collection auto-syncs new Confluence pages). Writes
+  `qa-reports/YYYY-MM-DD-ocs-qa.md` and appends a trend entry to
+  `qa-reports/trend.md`. Emails admin group if overall score drops by
+  more than 1.5 points run-to-run
+
+## Phase 6 — Closeout
+
+**Agent:** `closeout`
+
+Triggered when the opportunity reaches its end date.
+
+### Step 1 — `opp-closeout`
+
+Pull invoices from Connect, create a Jira ticket to issue payment.
+
+- **Output:** `closeout/invoices.md`
+- **Current Workaround:** Connect `list_invoices`/`get_invoice` not built.
+  Manual pull + ticket draft
+
+### Step 2 — `llo-feedback`
+
+Prompt LLOs for feedback, collect and document responses.
+
+- **Output:** `closeout/llo-feedback.md`
+- **Current Workaround:** draft email + operator send
+
+### Step 3 — `learnings-summary`
+
+Synthesize feedback, data reviews, monitoring reports, and OCS transcripts
+into process/content/technical/relationship learnings against the original
+IDD. Optionally produces a new IDD if iteration is warranted.
+
+- **Output:** `closeout/learnings.md` (+ optional `closeout/new-idd.md`)
+
+### Step 4 — `cycle-grade`
+
+Final 6/7-dimension grade with evidence and recommendations. Uses the
+IDD's `archetype:` field and `## Evidence Model` section to determine
+which rubric to apply.
+
+- **Output:** `closeout/cycle-grade.md`
+- **LLM-as-Judge:** self-evaluates grading quality
 
 ## External Integrations
 
-### Connect API (`connect-labs` MCP)
+### Connect API (`playbook/integrations/connect-api.md`)
 
-**Available today** (~20 tools): solicitations, reviews, awards, funds, and
-opportunity lookup CRUD. Production-ready.
+Lives in the `connect-labs` repo (separate plugin). ~20 production tools
+available today for Solicitations, Reviews, Awards, Funds, and Opportunity
+Lookup. **Unbuilt and blocking:** Program/Opportunity CRUD
+(`create_program`, `create_opportunity`, `update_opportunity`),
+verification-rule / delivery-unit / payment-unit configuration, invite API
+(`send_llo_invite`), invoice API (`list_invoices`, `get_invoice`). Tracked
+under CCC-301. Staging URL TBD.
 
-**Needs to be built** (tracked under CCC-301 and related):
-- Program + Opportunity create/update/delete
-- Verification rule, delivery unit, payment unit configuration
-- LLO invite API (blocked on LLO Directory data model)
-- Invoice API for closeout
+### CommCare API (`playbook/integrations/commcare-api.md`)
 
-Until the CRUD APIs land, `connect-program-setup`, `connect-opp-setup`,
-`llo-invite`, `llo-launch`, and `opp-closeout` fall back to
-document-generation + human action in the Connect admin UI.
+Also lives in `connect-labs`. Used by `app-deploy` for CCHQ upload / build /
+publish. Most Phase 2 skills degrade to operator-assisted workflows until
+the MCP is installed alongside ACE.
 
-### CommCare API (`connect-labs` MCP + `scout-data` MCP)
+### OCS (`playbook/integrations/ocs-integration.md`)
 
-**Available today**: app structure tools (`list_apps`, `get_app_structure`,
-`get_form_questions`, `get_form_json_paths`), bundled resources (app metadata,
-domain metadata, user lookup), and analytics via `scout-data` MCP.
+`ace-ocs` MCP is wired via `.mcp.json` and under active buildout. ~22
+atomic capabilities routed through a composite backend (REST + Playwright
++ pipeline-patch). Authenticate with `/ace:ocs-login` before any live
+call. Bootstrap the golden template once per environment with
+`/ace:ocs-bootstrap-template`.
 
-**Needs to be built**:
-- App upload + build + publish (needed by `app-deploy`)
-- Form submission / case data access beyond aggregate analytics
+### Nova (`playbook/integrations/nova-integration.md`)
 
-### OCS (composite `ace-ocs` MCP)
+Nova MCP does **not exist yet**. `idd-to-learn-app` and `idd-to-deliver-app`
+currently guide operators through a Nova chat session manually.
 
-**Live**: 22 atomic capabilities across a composite backend that routes each
-atom to REST (observation) or Playwright (authoring) based on
-`mcp/ocs/capability-map.ts`.
+## Current Limitations (by skill)
 
-**Authoring atoms (10)**: `ocs_clone_chatbot`, `ocs_set_chatbot_system_prompt`,
-`ocs_create_collection`, `ocs_upload_collection_files`,
-`ocs_wait_for_collection_indexing`, `ocs_attach_knowledge`,
-`ocs_set_chatbot_tools`, `ocs_set_source_material`,
-`ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`.
-
-**Observation atoms (12)**: `ocs_list_chatbots`, `ocs_get_chatbot`,
-`ocs_list_sessions`, `ocs_get_session`, `ocs_end_session`,
-`ocs_add_session_tags`, `ocs_remove_session_tags`,
-`ocs_update_session_state`, `ocs_send_test_message`,
-`ocs_trigger_bot_message`, `ocs_update_participant_data`, `ocs_download_file`.
-
-Authentication is session-based — run `/ace:ocs-login` before calling
-Playwright-backed atoms.
-
-### Nova
-
-**Does not exist yet as an MCP.** Key open question: can Nova be driven
-programmatically by ACE? Options under exploration with Braxton:
-
-1. **Nova API** (preferred) — Nova exposes REST endpoint that accepts IDD and
-   returns a `.ccz` / app JSON.
-2. **Nova fork** — fork Nova and add headless/API mode. Viable if fork
-   maintenance is acceptable.
-3. **Headless browser** (not recommended) — drive Nova's UI via gstack.
-
-Until resolved, `idd-to-learn-app` and `idd-to-deliver-app` produce Nova briefs
-and hand off to a human.
-
-## Current Limitations
-
-Skills with `## Current Workaround` sections (APIs blocked on external work):
-
-| Skill | Blocker | Workaround |
-|-------|---------|------------|
-| `idd-to-learn-app` | Nova API does not exist | Generate Nova brief → manual Nova session |
-| `idd-to-deliver-app` | Nova API does not exist | Generate Nova brief → manual Nova session |
-| `app-deploy` | CommCare upload API pending | Produce upload checklist → manual HQ UI upload |
-| `connect-program-setup` | `create_program` pending (CCC-301) | Recommend program → manual Connect UI creation |
-| `connect-opp-setup` | Opportunity CRUD pending (CCC-301) | Generate opp-config spec → manual Connect UI creation |
-| `llo-invite` | Connect invite API pending | Produce recommended invite list → manual invites |
-| `llo-launch` | Connect activation API pending | Ask user to activate via Connect UI |
-| `llo-feedback` | Automated monitoring partial | Drafts feedback emails; user sends and records responses |
-| `opp-closeout` | Connect invoice API pending | Manually pull invoices → Atlassian MCP for Jira ticket |
+| Skill | Limitation |
+|---|---|
+| `app-deploy` | CommCare MCP in separate repo; operator-assisted |
+| `connect-program-setup` | `create_program` unbuilt (CCC-301) |
+| `connect-opp-setup` | `create_opportunity`/`update_opportunity` unbuilt |
+| `idd-to-learn-app` | Nova MCP doesn't exist |
+| `idd-to-deliver-app` | Nova MCP doesn't exist |
+| `llo-invite` | `list_llo_contacts` unbuilt; list-only in Phase 3 |
+| `llo-onboarding` | Connect `send_invite` unbuilt; operator-assisted |
+| `llo-uat`, `llo-launch` | Depend on unbuilt Connect opportunity APIs |
+| `llo-feedback` | Draft-only; operator sends |
+| `opp-closeout` | Connect invoice API unbuilt |
+| `ocs-setup` widget handoff | Connect `update_opportunity` unbuilt — manual paste |
 
 ## Skill Reference
 
-| Skill | MCP Tools | LLM-as-Judge |
-|-------|-----------|--------------|
-| `idea-to-idd` | Drive | Yes (5-question stress-test rubric) |
-| `idd-to-learn-app` | Drive, Nova (pending) | Yes |
-| `idd-to-deliver-app` | Drive, Nova (pending) | Yes |
-| `app-deploy` | Drive, CommCare (pending) | — |
-| `app-test` | Drive, CommCare | Yes (coverage + bug triage) |
-| `training-materials` | Drive | Yes (clarity + coverage) |
-| `connect-program-setup` | Drive, Connect (partial) | — |
-| `connect-opp-setup` | Drive, Connect (pending) | — |
-| `llo-invite` | Drive, Connect (pending) | — |
-| `llo-onboarding` | Drive, `email-communicator` | — |
-| `llo-uat` | Drive, OCS (`ocs_list_sessions`, `ocs_get_session`) | — |
-| `llo-launch` | Drive, Connect (pending) | — |
-| `ocs-agent-setup` | Drive, OCS (full authoring + observation suite) | Yes (test-prompt self-eval) |
-| `ocs-chatbot-qa` | OCS (`ocs_get_chatbot_embed_info`) + raw HTTP | Yes (4-dim rubric) |
-| `timeline-monitor` | Drive, Connect, CommCare, OCS | — |
-| `flw-data-review` | Drive, CommCare (scout-data), Connect, OCS | Yes (signal vs noise) |
-| `opp-closeout` | Drive, Connect (pending), Atlassian | — |
-| `llo-feedback` | Drive, OCS (`ocs_list_sessions`) | — |
-| `learnings-summary` | Drive, OCS (`ocs_list_sessions`, `ocs_get_session`) | — |
-| `cycle-grade` | Drive | Yes (fairness + actionability) |
-| `email-communicator` | None (GOG CLI) | — |
-
-## Agent Reference
-
-| Agent | Role | Dispatches To |
-|-------|------|---------------|
-| `ace-orchestrator` | Top-level: runs the full lifecycle, manages phases, enforces gates in review mode | `app-builder`, `connect-setup`, `llo-manager`, `closeout` |
-| `app-builder` | Phase 1: idea through tested + trained apps | `idea-to-idd`, `idd-to-learn-app`, `idd-to-deliver-app`, `app-deploy`, `app-test`, `training-materials` |
-| `connect-setup` | Phase 2: Connect platform setup | `connect-program-setup`, `connect-opp-setup`, `llo-invite` |
-| `llo-manager` | Phase 3: LLO lifecycle + recurring monitoring | `llo-onboarding`, `llo-uat`, `llo-launch`, `ocs-agent-setup`, `timeline-monitor`, `flw-data-review` |
-| `closeout` | Phase 4: financial closeout + learnings | `opp-closeout`, `llo-feedback`, `learnings-summary`, `cycle-grade` |
-| `ocs-tester` | Standalone: OCS chatbot quality evaluation (pre-launch QA, ongoing monitoring, golden-template validation, ad-hoc debugging) | `ocs-chatbot-qa` |
+| Skill | Phase | Description |
+|---|---|---|
+| `idea-to-idd` | 1 | Iterate an idea into an IDD |
+| `idd-to-test-prompts` | 1 | Derive opp-specific test Q&A pairs from IDD |
+| `idd-to-learn-app` | 2 | Generate Learn app via Nova |
+| `idd-to-deliver-app` | 2 | Generate Deliver app via Nova |
+| `app-deploy` | 2 | Upload + publish apps to CCHQ |
+| `app-test` | 2 | Automated test plan execution vs. Evidence Model |
+| `training-materials` | 2 | LLO/FLW training docs from app summaries |
+| `connect-program-setup` | 3 | Create/select Connect Program |
+| `connect-opp-setup` | 3 | Create Connect Opportunity + config |
+| `llo-invite` | 3 | Prepare LLO invite list (no send) |
+| `ocs-agent-setup` | 4 | Clone golden template, RAG, prompt, publish |
+| `ocs-chatbot-qa` | 4, 5 | `--quick` smoke · `--deep` pre-launch · `--monitor` recurring |
+| `llo-onboarding` | 5 | Send Connect invites + onboarding email w/ widget |
+| `llo-uat` | 5 | Coordinate LLO user-acceptance testing |
+| `llo-launch` | 5 | Activate opportunity, notify go-live |
+| `timeline-monitor` | 5 | Weekly milestone check |
+| `flw-data-review` | 5 | Weekly FLW submission quality review |
+| `opp-closeout` | 6 | Invoice pull + Jira payment ticket |
+| `llo-feedback` | 6 | Collect closeout feedback |
+| `learnings-summary` | 6 | Synthesize learnings; optional new IDD |
+| `cycle-grade` | 6 | Final grade + recommendations |
+| `email-communicator` | utility | GOG-CLI Gmail send/receive for other skills |

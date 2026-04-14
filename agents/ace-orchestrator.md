@@ -36,32 +36,50 @@ Gates are logged but not enforced.
 **Review mode:** Run all phases sequentially but pause at gate steps.
 Use AskUserQuestion to present results and get approval before proceeding.
 Gate steps are:
-- After idea-to-idd (IDD must be approved before building apps)
-- After app-deploy (apps must be verified before publishing)
-- After llo-invite (invites must be reviewed before sending)
-- After llo-launch (opportunity activation must be verified before monitoring begins)
+- After `idea-to-idd` (IDD must be approved before building apps)
+- After `app-deploy` (apps must be verified before Connect setup)
+- After `ocs-chatbot-qa --deep` (OCS quality must clear pre-launch bar)
+- After `llo-invite` (invites must be reviewed before sending)
+- After `llo-launch` (opportunity activation must be verified before monitoring begins)
+
+Phases 1–4 are "setup" — they run end-to-end with no LLO involvement, so an
+operator can review the fully configured opportunity before any outside contact.
+Phase 5 is where LLOs first hear from ACE.
 
 ## Workflow
 
 When invoked with an opportunity, execute these phases in order:
 
-### Phase 1: App Building
-Dispatch to the **app-builder** agent with the opportunity context.
-This phase produces: IDD, Learn app, Deliver app, deployed apps, test results,
+### Phase 1: Design Review & Iteration
+Dispatch to the **design-review** agent with the opportunity context.
+This phase produces: IDD and opp-specific test prompts derived from the IDD.
+
+### Phase 2: CommCare Setup
+Dispatch to the **commcare-setup** agent.
+This phase produces: Learn app, Deliver app, deployed apps on CCHQ, test results,
 training materials.
 
-### Phase 2: Connect Setup
+### Phase 3: Connect Setup
 Dispatch to the **connect-setup** agent.
 This phase produces: Program configured, Opportunity configured with verification
-rules and delivery/payment units, LLO invitations sent.
+rules and delivery/payment units, LLO invitations prepared (not yet sent).
 
-### Phase 3: LLO Management
+### Phase 4: OCS Setup
+Dispatch to the **ocs-setup** agent.
+This phase produces: per-opp OCS chatbot cloned from the golden template with
+opp-specific RAG collection, quick smoke QA passed, deep pre-launch QA passed
+against opp-specific test prompts, embed credentials ready for Connect.
+Ends with a human-in-the-loop step to paste the widget credentials into the
+Connect opportunity until `update_opportunity` lands (CCC-301).
+
+### Phase 5: LLO Management
 Dispatch to the **llo-manager** agent.
-This phase produces: LLOs onboarded, UAT completed, opportunity activated (go-live),
-OCS agent configured, ongoing monitoring active. This phase has recurring skills
-(timeline-monitor, flw-data-review) that run on schedule during the active opportunity.
+This phase produces: LLOs onboarded (with widget link in the onboarding email),
+UAT completed, opportunity activated (go-live), ongoing monitoring active. This
+phase has recurring skills (timeline-monitor, flw-data-review) that run on
+schedule during the active opportunity.
 
-### Phase 4: Closeout
+### Phase 6: Closeout
 Dispatch to the **closeout** agent. Triggered when the opportunity reaches its
 end date.
 This phase produces: Invoices pulled, Jira payment ticket created, LLO feedback

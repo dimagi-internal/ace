@@ -38,9 +38,9 @@ describe('artifact manifest', () => {
     expect(dupes).toEqual([]);
   });
 
-  it('has all four phases represented', () => {
+  it('has all six phases represented', () => {
     const phases = new Set(ARTIFACT_MANIFEST.map((a) => a.phase));
-    expect(phases).toEqual(new Set(['build', 'setup', 'operate', 'closeout']));
+    expect(phases).toEqual(new Set(['design', 'commcare', 'connect', 'ocs', 'operate', 'closeout']));
   });
 
   it('every artifact has at least a producedBy', () => {
@@ -59,7 +59,7 @@ describe('CRISPR-Test-001 fixture', () => {
 
   it('has all files recognized by the manifest (no unexpected files)', () => {
     const files = listFiles(fixtureDir);
-    const result = validateFixture(files, 'setup', ['README.md']);
+    const result = validateFixture(files, 'connect', ['README.md']);
 
     if (result.unexpected.length > 0) {
       console.log('Unexpected files:', result.unexpected);
@@ -69,16 +69,19 @@ describe('CRISPR-Test-001 fixture', () => {
 
   it('reports expected missing files for this partial fixture', () => {
     // CRISPR-Test-001 provides inputs for ocs-agent-setup, not a complete
-    // opportunity folder. These build-phase artifacts are intentionally absent.
+    // opportunity folder. These artifacts are intentionally absent:
+    // test-prompts.md is consumed by ocs-chatbot-qa (not ocs-agent-setup);
+    // apps + test-results live in Phase 2 and aren't needed for OCS config.
     const expectedMissing = [
       'apps/learn-app.json',
       'apps/deliver-app.json',
+      'test-prompts.md',
       'test-results/test-plan.md',
       'test-results/test-results.md',
       'test-results/bugs.md',
     ];
     const files = listFiles(fixtureDir);
-    const result = validateFixture(files, 'setup', ['README.md']);
+    const result = validateFixture(files, 'connect', ['README.md']);
     expect(result.missing.sort()).toEqual(expectedMissing.sort());
   });
 
