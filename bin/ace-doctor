@@ -194,5 +194,84 @@ else
   warn "connect_labs: not detected" "install separately if skills need CommCare/Connect MCP tools"
 fi
 
+# --- Runtime readiness (things needed to actually run an opportunity) ---
+# These are all WARN, not FAIL: a user who only wants design-review runs
+# doesn't need OCS/Gmail configured. But doctor-green should still tell
+# them what's unset so they see the wall before they hit it at Phase 4.
+
+# Prefer the plugin-data .env (persistent across updates). Fall back to a
+# dev checkout's ./.env if that's where the user keeps their secrets.
+ENV_FILE=""
+if [ -f "$DATA_DIR/.env" ]; then
+  ENV_FILE="$DATA_DIR/.env"
+elif [ -f "$ROOT/.env" ]; then
+  ENV_FILE="$ROOT/.env"
+fi
+
+if [ -n "$ENV_FILE" ]; then
+  pass "env_file: $ENV_FILE"
+else
+  warn "env_file: no .env found (checked $DATA_DIR/.env and $ROOT/.env)" "op inject -i \"$ROOT/.env.tpl\" -o \"$DATA_DIR/.env\" --account dimagi.1password.com"
+fi
+
+# get_env KEY — prints the value of KEY from $ENV_FILE, or empty if absent/unresolved.
+# Strips surrounding quotes and treats unresolved 1Password refs (op://...) as empty.
+get_env() {
+  [ -z "$ENV_FILE" ] && return
+  local raw
+  raw="$(grep -E "^[[:space:]]*$1=" "$ENV_FILE" 2>/dev/null | tail -1 | sed -E "s/^[[:space:]]*$1=//; s/^['\"]//; s/['\"]$//")"
+  case "$raw" in
+    op://*) return ;;  # unresolved 1Password reference — treat as missing
+    *) printf '%s' "$raw" ;;
+  esac
+}
+
+if [ -n "$ENV_FILE" ]; then
+  OCS_BASE="$(get_env OCS_BASE_URL)"
+  OCS_TEAM="$(get_env OCS_TEAM_SLUG)"
+  OCS_GTID="$(get_env OCS_GOLDEN_TEMPLATE_ID)"
+  GMAIL_ACCT="$(get_env ACE_GMAIL_ACCOUNT)"
+
+  if [ -n "$OCS_BASE" ] && [ -n "$OCS_TEAM" ] && [ -n "$OCS_GTID" ]; then
+    pass "ocs_env: base=$OCS_BASE team=$OCS_TEAM golden_template=$OCS_GTID"
+  else
+    missing=""
+    [ -z "$OCS_BASE" ] && missing="$missing OCS_BASE_URL"
+    [ -z "$OCS_TEAM" ] && missing="$missing OCS_TEAM_SLUG"
+    [ -z "$OCS_GTID" ] && missing="$missing OCS_GOLDEN_TEMPLATE_ID"
+    hint="re-inject .env via 1Password, or run /ace:ocs-bootstrap-template (for OCS_GOLDEN_TEMPLATE_ID)"
+    warn "ocs_env: missing or unresolved:$missing" "$hint"
+  fi
+
+  if [ -n "$GMAIL_ACCT" ]; then
+    pass "gmail_config: ACE_GMAIL_ACCOUNT=$GMAIL_ACCT"
+  else
+    warn "gmail_config: ACE_GMAIL_ACCOUNT not set" "re-inject .env via 1Password"
+  fi
+
+  # OCS Playwright session — keyed by team slug. Required before any skill
+  # that hits OCS via the Playwright backend (most of Phase 4).
+  if [ -n "$OCS_TEAM" ]; then
+    SESS="$HOME/.ace/ocs-session-$OCS_TEAM.json"
+    if [ -f "$SESS" ]; then
+      # freshness check: warn if > 30 days old (session cookies expire)
+      if find "$SESS" -mtime +30 2>/dev/null | grep -q .; then
+        warn "ocs_session: $SESS is older than 30 days — may be expired" "/ace:ocs-login"
+      else
+        pass "ocs_session: $SESS present"
+      fi
+    else
+      warn "ocs_session: $SESS missing" "/ace:ocs-login"
+    fi
+  else
+    # No team slug — can't check for a session file. Already warned on ocs_env.
+    :
+  fi
+else
+  # No .env at all — individual env-derived checks would all warn the same way.
+  # Emit one consolidated pointer instead of three duplicates.
+  warn "runtime_env: ocs_env, gmail_config, ocs_session all skipped (no .env)" "resolve env_file warning above first"
+fi
+
 echo ""
 echo "STATUS: COMPLETE"

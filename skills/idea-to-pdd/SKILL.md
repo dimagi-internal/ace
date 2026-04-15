@@ -12,8 +12,14 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 
 ## Process
 
-1. **Read the initial idea** from the opportunity folder in GDrive
-   (`ACE/<opp-name>/idea.md` or provided as input).
+1. **Read the initial idea** from `ACE/<opp-name>/idea.md` in GDrive.
+
+   If the file is missing, **stop and return an actionable error**:
+   "`ACE/<opp-name>/idea.md` not found — this is the human-supplied brief
+   that seeds the PDD. If you're running `/ace:step idea-to-pdd`, create the
+   file first. If you're running `/ace:run`, the orchestrator should have
+   prompted for it; re-run `/ace:run <opp-name>` so it captures the idea."
+   Do not invent an idea or proceed without this file.
 
 2. **Determine the delivery archetype** (see `## Archetypes` below). The archetype shapes the section list and the questions you ask in step 3. If the idea spans multiple delivery patterns (e.g., focus groups in Stage 1, atomic visits in Stage 2), pick `multi-stage` and assign an archetype to each stage.
 
@@ -138,3 +144,4 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-08 | Replace weak self-eval with 5-question stress-test rubric (executability, verifiability, measurability, stage-gate clarity, resource realism); block at ≥2 non-pass; include grading anchors from vaccine-hesitancy and turmeric example PDDs; emit stress-test results as PDD appendix | ACE team (PM scout, focus-group framework lens) |
+| 2026-04-15 | Fail fast with actionable error if `idea.md` is missing instead of improvising an idea | ACE team (PM scout, end-to-end UX lens) |

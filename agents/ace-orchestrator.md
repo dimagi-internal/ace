@@ -119,6 +119,32 @@ When `--sandbox` is passed to `/ace:run`:
 ## Starting a New Opportunity
 
 When starting fresh:
-1. Create the opportunity folder in GDrive: `ACE/<opp-name>/`
-2. Initialize `state.yaml` with mode, start time, all steps as "pending"
-3. Begin Phase 1
+
+1. **Ensure the opportunity folder exists in GDrive.**
+   - Use `drive_list_folder` on `ACE/` to see if `ACE/<opp-name>/` already exists.
+   - If it does not, create it with `drive_create_folder`.
+
+2. **Ensure `idea.md` exists in the folder.** This is the single required human
+   input — it's the raw idea or opportunity brief that `idea-to-pdd` iterates
+   into a PDD. It is listed in `lib/artifact-manifest.ts` as
+   `producedBy: 'external'`.
+
+   - Use `drive_list_folder` on `ACE/<opp-name>/` to check for `idea.md`.
+   - If `idea.md` is present, continue to step 3.
+   - If it is missing, **stop and ask the user for it** using
+     `AskUserQuestion`. Offer these options:
+     - **Paste the idea inline** — user provides the brief as free text in the
+       question's "Other" field; write it verbatim to
+       `ACE/<opp-name>/idea.md` with `drive_create_file`.
+     - **Point me at a Drive doc** — user gives a Drive URL or doc ID; fetch
+       the doc with `drive_read_file` and write it (possibly reformatted to
+       markdown) to `ACE/<opp-name>/idea.md`.
+     - **Abort** — user did not intend to start this opportunity. Do not
+       create `state.yaml`; end the run cleanly.
+
+     In `--dry-run` mode, still write `idea.md` to Drive — it's a human input,
+     not an effectful action. In `--sandbox` mode, idea capture is unchanged.
+
+3. **Initialize `state.yaml`** with mode, start time, all steps as "pending".
+
+4. **Begin Phase 1.**

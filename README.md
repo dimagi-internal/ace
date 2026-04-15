@@ -21,6 +21,54 @@ ACE is a Claude Code plugin with the same architecture as canopy: agents orchest
 /ace:update                              # Pull the latest release from GitHub
 ```
 
+## First-Run Walkthrough
+
+The commands above are only the happy path once everything is configured. For a
+fresh install (or a new machine), run through this checklist top-to-bottom.
+Stop at any step that fails — the next step won't work.
+
+1. **Install the plugin** — `/plugin marketplace add jjackson/ace` then
+   `/plugin install ace@ace`.
+
+2. **Run `/ace:setup`** — installs npm deps, verifies tsx and the MCP
+   manifest. It will tell you where to drop the Google service-account key
+   if it's missing.
+
+3. **Drop the GWS service-account key** — `/ace:setup` prints the exact
+   `mkdir -p … && mv … && chmod 600 …` line when `GWS_KEY: MISSING`. Ask Jon
+   for the key (service account:
+   `ace-service-account@connect-labs.iam.gserviceaccount.com`). Re-run
+   `/ace:setup` to confirm `GWS_KEY: ok`.
+
+4. **Generate `.env`** from the 1Password-backed template:
+   ```
+   op inject -i .env.tpl -o ~/.claude/plugins/data/ace-ace/.env --account dimagi.1password.com
+   ```
+   This populates OCS credentials, the Gmail account, and the shared
+   collection IDs. For a local dev checkout, write to `./.env` instead.
+
+5. **Authenticate to OCS** — `/ace:ocs-login` opens a headed browser so you
+   can sign in (SSO/MFA included). Session state is saved to
+   `~/.ace/ocs-session-<team>.json` for headless reuse.
+
+6. **Bootstrap the OCS golden template** (one time per ACE environment) —
+   `/ace:ocs-bootstrap-template`. This creates the chatbot that
+   `ocs-agent-setup` clones from for every new opportunity. Paste the
+   printed `OCS_GOLDEN_TEMPLATE_ID`, `OCS_GOLDEN_TEMPLATE_PUBLIC_ID`, and
+   `OCS_GOLDEN_TEMPLATE_EMBED_KEY` into your `.env`.
+
+7. **Verify with `/ace:doctor`** — all checks should be PASS. Any WARN line
+   tells you what's still missing (e.g., `.env` not found, OCS session
+   expired, golden template not configured).
+
+8. **Try a dry run** — `/ace:run <opp-name> --dry-run`. The orchestrator
+   will prompt for the opportunity idea if `ACE/<opp-name>/idea.md` doesn't
+   exist yet. All effectful actions (emails, publishes, tickets) are logged
+   to `comms-log/dry-run-<step>.md` instead of executing.
+
+After step 8 passes, you're ready to run a real opportunity with
+`/ace:run <opp-name> --mode review`.
+
 ## Setup
 
 ACE is a Claude Code plugin that bundles a Google Drive MCP server
@@ -117,10 +165,11 @@ The Nova MCP does not exist yet — see `playbook/integrations/nova-integration.
 
 ## Architecture
 
-- **6 agents** — ace-orchestrator + 4 phase agents (app-builder, connect-setup, llo-manager, closeout) + ocs-tester
-- **21 skills** — one per process step, each a SKILL.md that Claude executes
+- **8 agents** — `ace-orchestrator` + 6 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `llo-manager`, `closeout`) + `ocs-tester` (ad-hoc QA)
+- **22 skills** — one per process step, each a SKILL.md that Claude executes
 - **9 commands** — `run`, `step`, `status`, `docs`, `ocs-login`, `ocs-bootstrap-template`, `setup`, `update`, `doctor`
 - **2 MCP servers** — Google Drive (`ace-gdrive`), OCS (`ace-ocs`)
+- **6 phases** — design-review → commcare-setup → connect-setup → ocs-setup → llo-manager → closeout (Phases 1–4 run end-to-end before any LLO contact)
 - **2 execution modes** — auto (hands-off) and review (pauses at gates)
 
 ## Documentation

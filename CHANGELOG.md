@@ -5,6 +5,39 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.1 — 2026-04-16
+
+First-run UX hardening based on an end-to-end adoption-blocker scout. Targets
+the specific failure modes a fresh user hits when trying to go idea → deployed
+program without a Dimagi engineer on the line.
+
+### Added
+
+- **Orchestrator captures `idea.md` before Phase 1.** `ace-orchestrator.md`'s
+  "Starting a New Opportunity" section now checks for `ACE/<opp-name>/idea.md`
+  and prompts the user for the brief (inline paste or Drive URL) if it's
+  missing. No more silent failure or improvised ideas when `/ace:run` starts
+  with an empty folder.
+- **`idea-to-pdd` fail-fast error.** If the skill runs via `/ace:step` without
+  `idea.md` present, it now stops with an actionable error pointing at
+  `/ace:run` or explicit file creation — it no longer invents an idea.
+- **README first-run walkthrough.** New section in `README.md` with the full
+  ordered first-run checklist: install → setup → GWS key → `op inject` .env
+  → `/ace:ocs-login` → `/ace:ocs-bootstrap-template` → `/ace:doctor` →
+  `/ace:run --dry-run`.
+- **`/ace:doctor` runtime readiness checks.** `bin/ace-doctor` now also
+  checks (WARN-level) for `.env` presence, `OCS_BASE_URL` /
+  `OCS_TEAM_SLUG` / `OCS_GOLDEN_TEMPLATE_ID`, `ACE_GMAIL_ACCOUNT`, and a
+  `~/.ace/ocs-session-<team>.json` session file (with a > 30 days old
+  freshness warning). Unresolved `op://…` references are treated as
+  missing. Each warning includes a concrete fix hint.
+
+### Fixed
+
+- **Stale architecture counts in README.** `6 agents` / `21 skills` →
+  `8 agents` / `22 skills`; phase agent list updated to the current 6
+  phases.
+
 ## 0.3.0 — 2026-04-15
 
 **Breaking rename:** "Intervention Design Document" / IDD is now "Program
