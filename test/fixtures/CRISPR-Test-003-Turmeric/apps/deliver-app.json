@@ -1,0 +1,51 @@
+{
+  "_note": "SYNTHETIC STUB. Fake app JSON for manifest tests only. Do not deploy.",
+  "name": "ACE Turmeric Survey — Deliver",
+  "id": "DEL-TURMERIC-SYN-0001",
+  "version": 1,
+  "domain": "crispr-connect",
+  "archetype": "atomic-visit",
+  "modules": [
+    {
+      "id": "mod-vendor-intake",
+      "name": "Vendor Intake",
+      "forms": [
+        {
+          "id": "f-vendor-intake",
+          "name": "Vendor Intake Form",
+          "fields": [
+            { "id": "market_name", "type": "text", "required": true },
+            { "id": "gps", "type": "gps", "required": true },
+            { "id": "photo", "type": "image", "required": true },
+            { "id": "vendor_type", "type": "select-one", "required": true },
+            { "id": "vendor_gender", "type": "select-one", "required": true },
+            { "id": "product_form", "type": "select-one", "required": true },
+            { "id": "price", "type": "number", "required": true },
+            { "id": "unit", "type": "select-one", "required": true },
+            { "id": "stock", "type": "select-one", "required": true },
+            { "id": "origin_known", "type": "yes-no", "required": true },
+            { "id": "origin_text", "type": "text", "required": false },
+            { "id": "color", "type": "select-one", "required": true },
+            { "id": "shininess", "type": "select-one", "required": true },
+            { "id": "appearance_notes", "type": "text", "required": false }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mod-education",
+      "name": "Vendor Education",
+      "forms": [
+        {
+          "id": "f-education",
+          "name": "Education Interaction",
+          "fields": [
+            { "id": "education_shared", "type": "yes-no", "required": true },
+            { "id": "vendor_response", "type": "select-one", "required": true },
+            { "id": "education_notes", "type": "text", "required": false }
+          ]
+        }
+      ]
+    }
+  ]
+}

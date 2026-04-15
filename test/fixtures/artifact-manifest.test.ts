@@ -112,3 +112,35 @@ describe('CRISPR-Test-002 fixture', () => {
     expect(fs.existsSync(fixtureDir)).toBe(true);
   });
 });
+
+describe('CRISPR-Test-003-Turmeric fixture (complete E2E)', () => {
+  const fixtureDir = path.join(FIXTURES_DIR, 'CRISPR-Test-003-Turmeric');
+
+  it('fixture directory exists', () => {
+    expect(fs.existsSync(fixtureDir)).toBe(true);
+  });
+
+  it('has all files recognized by the manifest through all 6 phases (no unexpected files)', () => {
+    const files = listFiles(fixtureDir);
+    const result = validateFixture(files, 'closeout', ['README.md']);
+
+    if (result.unexpected.length > 0) {
+      console.log('Unexpected files:', result.unexpected);
+    }
+    expect(result.unexpected).toEqual([]);
+  });
+
+  it('has every required artifact for all 6 phases (no missing files)', () => {
+    // Unlike CRISPR-Test-001 (partial fixture stopping at Phase 3 inputs),
+    // CRISPR-Test-003-Turmeric ships every required artifact as a synthetic
+    // stub. Catches manifest drift across phases 4-6 (OCS, operate,
+    // closeout) that the partial fixtures can't see.
+    const files = listFiles(fixtureDir);
+    const result = validateFixture(files, 'closeout', ['README.md']);
+
+    if (result.missing.length > 0) {
+      console.log('Missing required artifacts:', result.missing);
+    }
+    expect(result.missing).toEqual([]);
+  });
+});
