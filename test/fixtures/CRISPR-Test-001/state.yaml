@@ -5,9 +5,9 @@ type: synthetic-test-fixture
 archetype: atomic-visit
 
 steps:
-  idea-to-idd: pending
-  idd-to-learn-app: pending
-  idd-to-deliver-app: pending
+  idea-to-pdd: pending
+  pdd-to-learn-app: pending
+  pdd-to-deliver-app: pending
   app-deploy: pending
   app-test: pending
   training-materials: pending
@@ -26,7 +26,7 @@ steps:
   cycle-grade: pending
 
 gates:
-  idea-to-idd: pending
+  idea-to-pdd: pending
   app-deploy: pending
   llo-invite: pending
   llo-launch: pending

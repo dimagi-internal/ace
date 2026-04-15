@@ -211,14 +211,14 @@ describeFn('OCS bot creation E2E (requires OCS_INTEGRATION=1 + live session)', (
   // via the shared collection attached in step 7.
   let fileIds: number[] = [];
   let uploadFailed = false;
-  it('uploads IDD and training materials to the collection', async () => {
+  it('uploads PDD and training materials to the collection', async () => {
     if (!collectionId || !documentsAvailable) {
       if (!documentsAvailable) console.log('  skipped — documents not available');
       return;
     }
 
     const files = [
-      { name: 'idd.md', content: readFixture('idd.md'), mime_type: 'text/markdown' },
+      { name: 'pdd.md', content: readFixture('pdd.md'), mime_type: 'text/markdown' },
       { name: 'learn-app-summary.md', content: readFixture('app-summaries/learn-app-summary.md'), mime_type: 'text/markdown' },
       { name: 'deliver-app-summary.md', content: readFixture('app-summaries/deliver-app-summary.md'), mime_type: 'text/markdown' },
       { name: 'flw-training-guide.md', content: readFixture('training-materials/flw-training-guide.md'), mime_type: 'text/markdown' },
@@ -288,7 +288,7 @@ describeFn('OCS bot creation E2E (requires OCS_INTEGRATION=1 + live session)', (
 ## Knowledge Sources
 You have access to two knowledge collections:
 1. Shared Connect knowledge — general CRISPR-Connect platform docs
-2. CRISPR-Test-001 collection — the IDD, app summaries, and training materials for this opportunity
+2. CRISPR-Test-001 collection — the PDD, app summaries, and training materials for this opportunity
 
 ## Escalation Rules
 - For questions you cannot answer from your knowledge sources, direct the user to ace@dimagi-ai.com
@@ -374,7 +374,7 @@ You have access to two knowledge collections:
       {
         prompt: 'How do I register a new pregnant woman in the system?',
         expectKeywords: ['register', 'beneficiary'],
-        description: 'beneficiary registration (IDD knowledge)',
+        description: 'beneficiary registration (PDD knowledge)',
       },
       {
         prompt: 'Who should I contact if I need help with the app?',

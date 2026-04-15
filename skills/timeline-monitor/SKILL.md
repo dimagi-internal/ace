@@ -12,7 +12,7 @@ Check LLO progress against expected timeline and prompt action if behind.
 ## Process (runs periodically)
 
 1. **Read opportunity state** from GDrive:
-   - Timeline/milestones from IDD
+   - Timeline/milestones from PDD
    - Current status from `ACE/<opp-name>/state.yaml`
    - Previous monitoring reports from `ACE/<opp-name>/monitoring/`
 

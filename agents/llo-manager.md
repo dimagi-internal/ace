@@ -22,7 +22,7 @@ recurring_skills:
 
 You run the first LLO-facing phase of a CRISPR-Connect opportunity.
 
-By the time this phase starts, Phases 1–4 have produced an approved IDD,
+By the time this phase starts, Phases 1–4 have produced an approved PDD,
 deployed CommCare apps, a configured Connect opportunity, and a quality-gated
 OCS chatbot with widget credentials already attached to the opportunity.
 This is the first phase where LLOs actually hear from ACE.

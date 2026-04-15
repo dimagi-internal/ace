@@ -11,7 +11,7 @@
 | TestLand Community Health Network | Matt | matt@test.example.com | invited | Secondary LLO, backup capacity |
 
 ## Selection Rationale
-- Both LLOs selected based on IDD preference for Eastern Province experience
+- Both LLOs selected based on PDD preference for Eastern Province experience
 - TestLand Health Partners is the primary LLO with existing district health office relationships
 - TestLand Community Health Network provides backup capacity if needed
 

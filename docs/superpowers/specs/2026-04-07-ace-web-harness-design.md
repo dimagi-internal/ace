@@ -6,11 +6,11 @@
 
 ## Context
 
-This is Module 1 of a larger "ACE web system" — a complete browser-based surface for the ACE (AI Connect Engine / CRISPR-Connect) initiative. The full system will eventually include ~13 modules covering the 21-step ACE process flow (IDD library, opportunity pipeline dashboard, per-opportunity workspace, app preview, test plans, training materials, LLO directory, comms log, babysitter dashboard, analyzer dashboard, closeout, OCS sync / agent provisioner, and more).
+This is Module 1 of a larger "ACE web system" — a complete browser-based surface for the ACE (AI Connect Engine / CRISPR-Connect) initiative. The full system will eventually include ~13 modules covering the 21-step ACE process flow (PDD library, opportunity pipeline dashboard, per-opportunity workspace, app preview, test plans, training materials, LLO directory, comms log, babysitter dashboard, analyzer dashboard, closeout, OCS sync / agent provisioner, and more).
 
 Module 1 is the **chat harness + transcript library**. It exists because the team needs a way to run conversations with ACE through a browser, share those conversations with others, and have a persistent library of past ACE conversations to reference. It is also the cross-cutting foundation the other modules will layer on top of.
 
-**Two sample IDDs** (Vaccine Hesitancy focus groups and Turmeric Market Survey) were used to stress-test ACE's current assumptions in the conversation that preceded this design. Those observations are saved at `docs/examples/idd-stress-test-observations.md` and inform the module roadmap below.
+**Two sample PDDs** (Vaccine Hesitancy focus groups and Turmeric Market Survey) were used to stress-test ACE's current assumptions in the conversation that preceded this design. Those observations are saved at `docs/examples/pdd-stress-test-observations.md` and inform the module roadmap below.
 
 ## Goals
 
@@ -18,7 +18,7 @@ Module 1 is the **chat harness + transcript library**. It exists because the tea
 2. Conversations are persistent, searchable, and shareable within the team.
 3. Existing local `.jsonl` transcripts (from `~/.claude/projects/`) can be uploaded via a small CLI command and become first-class viewable/shareable sessions.
 4. Multi-player collaboration from day one: multiple team members can join a session, see each other's presence, and collaboratively compose the next message via a shared "Next message" draft backed by a queue of other parallel drafts.
-5. Architectural foundation that protects future modules: pluggable chat backends, nullable hooks for opportunity / OCS agent / IDD references, append-only message log, many-to-many user-session model.
+5. Architectural foundation that protects future modules: pluggable chat backends, nullable hooks for opportunity / OCS agent / PDD references, append-only message log, many-to-many user-session model.
 
 ## Non-goals (Module 1)
 
@@ -26,7 +26,7 @@ Module 1 is the **chat harness + transcript library**. It exists because the tea
 - Any LLO-facing surface. Internal team only.
 - Public (unauthenticated) share URLs. Share tokens give pretty URLs but still require team login via IAP.
 - Extracting the CLI-bridge code into a shared library. That's a refactor planned after Module 1 stabilizes.
-- IDD library, opportunity workspace, OCS sync, or any other non-chat module.
+- PDD library, opportunity workspace, OCS sync, or any other non-chat module.
 - Multi-instance Cloud Run scaling. Module 1 runs on a single instance to avoid Redis-for-Channels and shared-auth-token complexity.
 - CRDT-based collaborative editing. Last-write-wins at ~500ms debounce is sufficient given low conflict rates and Slack-based human coordination.
 
@@ -157,7 +157,7 @@ status             text not null              -- 'active' | 'archived' | 'import
 source             text not null              -- 'web' | 'upload'
 opportunity_id     bigint null                 -- placeholder, future opp module
 ocs_agent_id       text null                   -- placeholder, future OCS sync module
-idd_ref            text null                   -- placeholder, future IDD library module
+idd_ref            text null                   -- placeholder, future PDD library module
 cli_session_id     text null                   -- claude CLI's own session UUID, if we use --resume
 ```
 
@@ -390,7 +390,7 @@ Runs in CI only on protected branches, not every PR.
 |---|---|---|
 | 1. Chat harness + transcripts | — | **this spec** |
 | 2. Shared library extraction | 1 | Refactor CLI-bridge patterns into Python package; retrofit canopy-web |
-| 3. IDD library + stress-tester | 1 | Upload/store IDDs, run stress-test skill, view diffs |
+| 3. PDD library + stress-tester | 1 | Upload/store PDDs, run stress-test skill, view diffs |
 | 4. Opportunity pipeline dashboard | 1, 3 | One row per opp, current step, status, blockers |
 | 5. Per-opportunity workspace | 4 | All artifacts for one opp; spawns context-scoped chats |
 | 6. App preview / Nova output viewer | 5 | Inspect `/builder` outputs |

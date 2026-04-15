@@ -34,7 +34,7 @@ Invoke the `llo-feedback` skill.
 ### Step 3: Learnings Summary
 Invoke the `learnings-summary` skill.
 - Input: feedback, data reviews, monitoring reports, OCS transcripts
-- Output: comprehensive learnings doc, potentially a new IDD for iteration
+- Output: comprehensive learnings doc, potentially a new PDD for iteration
 - Depends on: Steps 1 and 2
 
 ### Step 4: Cycle Grade

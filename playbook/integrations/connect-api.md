@@ -84,7 +84,7 @@ user to complete them manually. The skill will:
 1. Describe exactly what needs to be done in Connect (with screenshots or step-by-step
    instructions where helpful)
 2. Present the configuration values ACE has computed (e.g., verification rule settings
-   derived from the IDD)
+   derived from the PDD)
 3. Ask the user to perform the action in the Connect admin UI
 4. Wait for confirmation before proceeding to the next step
 

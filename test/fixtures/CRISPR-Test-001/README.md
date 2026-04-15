@@ -10,7 +10,7 @@ Permanent synthetic opportunity for regression testing ACE skills. Use this fixt
 
 ## Contents
 
-- `idd.md` — Complete IDD for a fictional CHW training pilot
+- `pdd.md` — Complete PDD for a fictional CHW training pilot
 - `state.yaml` — Initial state with all steps pending
 - `app-summaries/` — Minimal but structurally valid Learn and Deliver app summaries
 - `connect-setup/invites.md` — Fake LLO contacts (team members as stand-ins)

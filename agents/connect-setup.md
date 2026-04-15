@@ -27,19 +27,19 @@ Execute these steps in order. Before creating a Program, ensure the correct Conn
 
 ### Step 1: Program Setup
 Invoke the `connect-program-setup` skill.
-- Input: IDD and opportunity details from GDrive
+- Input: PDD and opportunity details from GDrive
 - Output: Program created/configured in Connect
 - Note: may not need a new program each time — check if existing program fits
 
 ### Step 2: Opportunity Setup
 Invoke the `connect-opp-setup` skill.
-- Input: Program ID, IDD, app deployment details
+- Input: Program ID, PDD, app deployment details
 - Output: Opportunity created with verification rules, delivery units, payment units
 - Depends on: Step 1 (needs Program ID)
 
 ### Step 3: LLO Invitation List
 Invoke the `llo-invite` skill.
-- Input: Opportunity ID, LLO preferences from IDD
+- Input: Opportunity ID, LLO preferences from PDD
 - Output: Recommended invite list (LLO contacts + rationale) written to
   `ACE/<opp-name>/connect-setup/invites.md`
 - **Gate (review mode):** Present invite list for approval

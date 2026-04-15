@@ -1,8 +1,8 @@
-# Intervention Design Document: Turmeric Market Survey
+# Program Design Document: Turmeric Market Survey
 
-> **Source artifact.** This is the raw IDD as provided for ACE pipeline stress-testing.
-> See [`idd-stress-test-observations.md`](idd-stress-test-observations.md) for the analysis of this IDD's gaps, verification strategy, and what it reveals about ACE skill requirements.
-> This IDD is the cleaner of the two example cases — it maps directly onto the standard Connect atomic delivery model (one vendor = one photo + GPS + form) and makes a good first end-to-end test of the full ACE pipeline.
+> **Source artifact.** This is the raw PDD as provided for ACE pipeline stress-testing.
+> See [`pdd-stress-test-observations.md`](pdd-stress-test-observations.md) for the analysis of this PDD's gaps, verification strategy, and what it reveals about ACE skill requirements.
+> This PDD is the cleaner of the two example cases — it maps directly onto the standard Connect atomic delivery model (one vendor = one photo + GPS + form) and makes a good first end-to-end test of the full ACE pipeline.
 
 ## Overview
 

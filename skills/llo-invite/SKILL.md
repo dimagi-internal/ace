@@ -16,11 +16,11 @@ include the OCS widget link configured in Phase 4.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - IDD: `ACE/<opp-name>/idd.md` (LLO preferences section)
+   - PDD: `ACE/<opp-name>/pdd.md` (LLO preferences section)
    - Opportunity details: `ACE/<opp-name>/connect-setup/opportunity.md`
 
 2. **Look up LLO contacts:**
-   - Check IDD for preferred/known LLOs
+   - Check PDD for preferred/known LLOs
    - Search LLO Directory for matching organizations
    - Get contact details for each LLO
 
@@ -39,7 +39,7 @@ include the OCS widget link configured in Phase 4.
 - (Connect `send_invite` is called from `llo-onboarding` in Phase 5, not here)
 
 ## Current Workaround
-1. Read the IDD's LLO preference section
+1. Read the PDD's LLO preference section
 2. Generate a recommended invite list with rationale
 3. Write to `ACE/<opp-name>/connect-setup/invites.md` with status `prepared`
 4. Phase 5 guides the operator to send invites through the Connect UI and

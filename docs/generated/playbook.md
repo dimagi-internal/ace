@@ -21,7 +21,7 @@ Two execution modes:
   each step completion, log gates but don't enforce them.
 - **Review** — same flow, but pause at gate steps and use AskUserQuestion
   to get operator approval. Gate steps:
-  - After `idea-to-idd` (Phase 1) — IDD must be approved
+  - After `idea-to-pdd` (Phase 1) — PDD must be approved
   - After `app-deploy` (Phase 2) — apps must be verified before Connect setup
   - After `llo-invite` (Phase 3) — invite list must be approved
   - After `ocs-chatbot-qa --deep` (Phase 4) — OCS quality must clear the
@@ -40,11 +40,11 @@ Two safety flags:
 ## Process Flow
 
 ```
-Phase 1  design-review        idea-to-idd ──► idd-to-test-prompts
+Phase 1  design-review        idea-to-pdd ──► pdd-to-test-prompts
              │
-             │ gate: IDD approved
+             │ gate: PDD approved
              ▼
-Phase 2  commcare-setup       idd-to-learn-app ∥ idd-to-deliver-app
+Phase 2  commcare-setup       pdd-to-learn-app ∥ pdd-to-deliver-app
                               ──► app-deploy ──► app-test ∥ training-materials
              │
              │ gate: apps verified
@@ -77,51 +77,51 @@ Phase 6  closeout             opp-closeout ──► llo-feedback
 
 **Agent:** `design-review`
 
-Turn an initial idea into an approved IDD and derive the opp-specific test
+Turn an initial idea into an approved PDD and derive the opp-specific test
 prompt suite that Phase 4's deep QA gate will use as ground truth.
 
-### Step 1 — `idea-to-idd`
+### Step 1 — `idea-to-pdd`
 
-Iterate on an idea to produce a well-specified Intervention Design Doc (IDD)
+Iterate on an idea to produce a well-specified Program Design Doc (PDD)
 that defines the intervention, target FLWs, visit structure, and preferred
 LLOs.
 
 - **Input:** `ACE/<opp-name>/idea.md`
-- **Output:** `ACE/<opp-name>/idd.md`
-- **Gate (review mode):** operator approval of the IDD
-- **LLM-as-Judge:** IDD quality (completeness, feasibility, clarity)
+- **Output:** `ACE/<opp-name>/pdd.md`
+- **Gate (review mode):** operator approval of the PDD
+- **LLM-as-Judge:** PDD quality (completeness, feasibility, clarity)
 
-### Step 2 — `idd-to-test-prompts`
+### Step 2 — `pdd-to-test-prompts`
 
-Derive 20+ Q&A pairs from the IDD covering intervention basics, FLW visit
+Derive 20+ Q&A pairs from the PDD covering intervention basics, FLW visit
 flow, eligibility edge cases, data-quality rules, escalation triggers,
 expected `[product-feedback]` / `[training-gap]` paths, and a handful of
 out-of-scope questions.
 
-- **Input:** `ACE/<opp-name>/idd.md`
+- **Input:** `ACE/<opp-name>/pdd.md`
 - **Output:** `ACE/<opp-name>/test-prompts.md` — each entry has a question,
   expected-answer summary, expected tags, and expected escalation. This is
   the ground truth that `ocs-chatbot-qa --deep` grades responses against
-- **Self-check:** at least one prompt per IDD section + edge-case coverage
+- **Self-check:** at least one prompt per PDD section + edge-case coverage
 
 ## Phase 2 — CommCare Setup
 
 **Agent:** `commcare-setup`
 
-Translate the approved IDD into Learn and Deliver apps via Nova, deploy to
+Translate the approved PDD into Learn and Deliver apps via Nova, deploy to
 CommCare HQ, test, and generate training materials.
 
-### Step 1 — `idd-to-learn-app` ∥ `idd-to-deliver-app` (parallel)
+### Step 1 — `pdd-to-learn-app` ∥ `pdd-to-deliver-app` (parallel)
 
-Pass the IDD to Nova to generate the Learn (data collection) and Deliver
+Pass the PDD to Nova to generate the Learn (data collection) and Deliver
 (service delivery) apps. Nova asks configuration questions; both skills
-answer them from the IDD and output the app CCZ/JSON + a structure summary.
+answer them from the PDD and output the app CCZ/JSON + a structure summary.
 
-- **Input:** `ACE/<opp-name>/idd.md`
+- **Input:** `ACE/<opp-name>/pdd.md`
 - **Output:** `apps/learn-app.json`, `apps/deliver-app.json`,
   `app-summaries/learn-app-summary.md`,
   `app-summaries/deliver-app-summary.md`
-- **LLM-as-Judge:** app quality vs. IDD requirements
+- **LLM-as-Judge:** app quality vs. PDD requirements
 - **Current Workaround:** Nova MCP doesn't exist yet — see
   `playbook/integrations/nova-integration.md`. Skills currently guide an
   operator through a Nova chat session
@@ -141,7 +141,7 @@ publish.
 ### Step 3 — `app-test` ∥ `training-materials` (parallel)
 
 - **`app-test`** — create an automated test plan cross-referenced against
-  the IDD's Evidence Model, execute it, and log bugs.
+  the PDD's Evidence Model, execute it, and log bugs.
   Output: `test-results/test-plan.md`, `test-results.md`, `bugs.md`.
 - **`training-materials`** — generate LLO Manager guide, FLW training
   guide, quick-reference card, and FAQ from the app summaries + standard
@@ -161,7 +161,7 @@ configured.
 Create or select a Connect Program. Checks whether an existing program fits
 before creating a new one.
 
-- **Input:** IDD + opportunity details
+- **Input:** PDD + opportunity details
 - **Output:** `connect-setup/program.md`
 - **Current Workaround:** `create_program`/`update_program` not built
   (CCC-301). Skill presents config values and prompts operator to
@@ -172,17 +172,17 @@ before creating a new one.
 Create the Connect Opportunity with verification rules, delivery units, and
 payment units.
 
-- **Input:** Program ID + IDD + deployment summary
+- **Input:** Program ID + PDD + deployment summary
 - **Output:** `connect-setup/opportunity.md`
 - **Current Workaround:** `create_opportunity`/`update_opportunity` not
   built (CCC-301). Manual operator flow
 
 ### Step 3 — `llo-invite` (prepare only)
 
-Identify candidate LLOs from the IDD's preferences and the LLO Directory,
+Identify candidate LLOs from the PDD's preferences and the LLO Directory,
 prepare the invite list with rationale per LLO.
 
-- **Input:** Opportunity ID + IDD's LLO preferences section
+- **Input:** Opportunity ID + PDD's LLO preferences section
 - **Output:** `connect-setup/invites.md` with status `prepared`
 - **Gate (review mode):** operator approval of the list
 - **Note:** sending moves to `llo-onboarding` in Phase 5 so the email can
@@ -199,11 +199,11 @@ interact in this phase — only the ACE judge does.
 ### Step 1 — `ocs-agent-setup`
 
 Clone the ACE golden template, create a per-opp RAG collection, upload
-IDD + training + app summaries, wait for indexing, patch the opp-specific
+PDD + training + app summaries, wait for indexing, patch the opp-specific
 system prompt, attach both the shared Connect collection and the opp
 collection as knowledge sources, publish a version.
 
-- **Input:** IDD, training materials, app summaries, opportunity config
+- **Input:** PDD, training materials, app summaries, opportunity config
 - **Output:** `ocs-agent-config.md` with
   `{experiment_id, public_id, embed_key, collection_id, pipeline_id, version_number}`
 - **MCP atoms:** `ocs_list_chatbots`, `ocs_clone_chatbot`,
@@ -322,14 +322,14 @@ Prompt LLOs for feedback, collect and document responses.
 
 Synthesize feedback, data reviews, monitoring reports, and OCS transcripts
 into process/content/technical/relationship learnings against the original
-IDD. Optionally produces a new IDD if iteration is warranted.
+PDD. Optionally produces a new PDD if iteration is warranted.
 
-- **Output:** `closeout/learnings.md` (+ optional `closeout/new-idd.md`)
+- **Output:** `closeout/learnings.md` (+ optional `closeout/new-pdd.md`)
 
 ### Step 4 — `cycle-grade`
 
 Final 6/7-dimension grade with evidence and recommendations. Uses the
-IDD's `archetype:` field and `## Evidence Model` section to determine
+PDD's `archetype:` field and `## Evidence Model` section to determine
 which rubric to apply.
 
 - **Output:** `closeout/cycle-grade.md`
@@ -363,7 +363,7 @@ call. Bootstrap the golden template once per environment with
 
 ### Nova (`playbook/integrations/nova-integration.md`)
 
-Nova MCP does **not exist yet**. `idd-to-learn-app` and `idd-to-deliver-app`
+Nova MCP does **not exist yet**. `pdd-to-learn-app` and `pdd-to-deliver-app`
 currently guide operators through a Nova chat session manually.
 
 ## Current Limitations (by skill)
@@ -373,8 +373,8 @@ currently guide operators through a Nova chat session manually.
 | `app-deploy` | CommCare MCP in separate repo; operator-assisted |
 | `connect-program-setup` | `create_program` unbuilt (CCC-301) |
 | `connect-opp-setup` | `create_opportunity`/`update_opportunity` unbuilt |
-| `idd-to-learn-app` | Nova MCP doesn't exist |
-| `idd-to-deliver-app` | Nova MCP doesn't exist |
+| `pdd-to-learn-app` | Nova MCP doesn't exist |
+| `pdd-to-deliver-app` | Nova MCP doesn't exist |
 | `llo-invite` | `list_llo_contacts` unbuilt; list-only in Phase 3 |
 | `llo-onboarding` | Connect `send_invite` unbuilt; operator-assisted |
 | `llo-uat`, `llo-launch` | Depend on unbuilt Connect opportunity APIs |
@@ -386,10 +386,10 @@ currently guide operators through a Nova chat session manually.
 
 | Skill | Phase | Description |
 |---|---|---|
-| `idea-to-idd` | 1 | Iterate an idea into an IDD |
-| `idd-to-test-prompts` | 1 | Derive opp-specific test Q&A pairs from IDD |
-| `idd-to-learn-app` | 2 | Generate Learn app via Nova |
-| `idd-to-deliver-app` | 2 | Generate Deliver app via Nova |
+| `idea-to-pdd` | 1 | Iterate an idea into an PDD |
+| `pdd-to-test-prompts` | 1 | Derive opp-specific test Q&A pairs from PDD |
+| `pdd-to-learn-app` | 2 | Generate Learn app via Nova |
+| `pdd-to-deliver-app` | 2 | Generate Deliver app via Nova |
 | `app-deploy` | 2 | Upload + publish apps to CCHQ |
 | `app-test` | 2 | Automated test plan execution vs. Evidence Model |
 | `training-materials` | 2 | LLO/FLW training docs from app summaries |
@@ -405,6 +405,6 @@ currently guide operators through a Nova chat session manually.
 | `flw-data-review` | 5 | Weekly FLW submission quality review |
 | `opp-closeout` | 6 | Invoice pull + Jira payment ticket |
 | `llo-feedback` | 6 | Collect closeout feedback |
-| `learnings-summary` | 6 | Synthesize learnings; optional new IDD |
+| `learnings-summary` | 6 | Synthesize learnings; optional new PDD |
 | `cycle-grade` | 6 | Final grade + recommendations |
 | `email-communicator` | utility | GOG-CLI Gmail send/receive for other skills |

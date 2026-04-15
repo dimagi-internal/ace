@@ -47,7 +47,7 @@ handles edge cases gracefully.
   the golden template from `$OCS_GOLDEN_TEMPLATE_ID`.
 - `opp_name` (optional) — if set, loads opp-specific test prompts from
   `ACE/<opp-name>/test-prompts.md` (expected questions + ground-truth answers
-  from the IDD). If unset, only runs Connect-general prompts.
+  from the PDD). If unset, only runs Connect-general prompts.
 - `--deep` flag — runs the full 20+ question suite instead of the quick
   5-question smoke test.
 

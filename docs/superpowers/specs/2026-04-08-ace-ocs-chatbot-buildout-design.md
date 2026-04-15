@@ -472,20 +472,20 @@ Three existing ACE skills consume the MCP. Here's what changes in each.
 Today's version has a "manual workaround" path. After this, the skill runs end-to-end against the MCP:
 
 ```
- 1. Read opp context from GDrive (IDD, training, app summaries, opp details)
+ 1. Read opp context from GDrive (PDD, training, app summaries, opp details)
  2. Compose system prompt text + list of files to upload
  3. ocs_clone_chatbot({ template_id: OCS_GOLDEN_TEMPLATE_ID, new_name: "ACE - <opp>" })
     → {experiment_id, public_id, pipeline_id}
  4. ocs_create_collection({
       name: "ACE <opp>",
-      summary: "Knowledge base for <opp> - IDD, training, app summaries",
+      summary: "Knowledge base for <opp> - PDD, training, app summaries",
       is_index: true,
       is_remote_index: true
     })
     → {collection_id}
  5. ocs_upload_collection_files({
       collection_id,
-      files: [<IDD.pdf>, <training.pdf>, <app-summaries.md>, ...]
+      files: [<PDD.pdf>, <training.pdf>, <app-summaries.md>, ...]
     })
  6. ocs_wait_for_collection_indexing({ collection_id, timeout_sec: 300 })
  7. ocs_set_chatbot_system_prompt({

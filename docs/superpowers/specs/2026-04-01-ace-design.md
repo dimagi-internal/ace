@@ -28,7 +28,7 @@ ACE follows the same architecture as the canopy plugin: agents orchestrate skill
 
 **Learning:**
 - Each cycle produces concrete SKILL.md improvements pushed to the repo
-- Learnings-summary skill produces actionable IDD seeds for next cycle
+- Learnings-summary skill produces actionable PDD seeds for next cycle
 
 ## Architecture
 
@@ -40,7 +40,7 @@ ace/
 │   └── plugin.json
 ├── agents/
 │   ├── ace-orchestrator.md          # Top-level: dispatches to phase agents
-│   ├── app-builder.md               # IDD → Nova → test → deploy to CommCareHQ
+│   ├── app-builder.md               # PDD → Nova → test → deploy to CommCareHQ
 │   ├── connect-setup.md             # Workspace → Program → Opportunity → config → invites
 │   ├── llo-manager.md               # Onboarding → OCS → monitoring
 │   └── closeout.md                  # Invoicing → feedback → learnings → grading
@@ -50,9 +50,9 @@ ace/
 │   ├── status.md                    # /ace:status [opp-id]
 │   └── docs.md                      # /ace:docs — generate playbook from source
 ├── skills/
-│   ├── idea-to-idd/SKILL.md
-│   ├── idd-to-learn-app/SKILL.md
-│   ├── idd-to-deliver-app/SKILL.md
+│   ├── idea-to-pdd/SKILL.md
+│   ├── pdd-to-learn-app/SKILL.md
+│   ├── pdd-to-deliver-app/SKILL.md
 │   ├── app-test/SKILL.md
 │   ├── app-deploy/SKILL.md
 │   ├── training-materials/SKILL.md
@@ -78,7 +78,7 @@ ace/
 ├── mcp/
 │   ├── google-drive-server.ts       # Google Drive + Sheets MCP (built)
 │   └── ocs-server.ts                # OCS MCP (to build)
-├── templates/                       # Email, IDD, training, collateral templates
+├── templates/                       # Email, PDD, training, collateral templates
 ├── scripts/                         # Utility scripts for skills
 └── docs/
     └── generated/
@@ -92,7 +92,7 @@ The top-level ace-orchestrator dispatches to 4 phase agents. Each phase agent kn
 | Agent | Skills it orchestrates | Primary owner |
 |-------|----------------------|---------------|
 | **ace-orchestrator** | Dispatches to phase agents, tracks overall opp state | Jon |
-| **app-builder** | idea-to-idd, idd-to-learn-app, idd-to-deliver-app, app-deploy, app-test, training-materials | Cal + Neal |
+| **app-builder** | idea-to-pdd, pdd-to-learn-app, pdd-to-deliver-app, app-deploy, app-test, training-materials | Cal + Neal |
 | **connect-setup** | connect-program-setup, connect-opp-setup, llo-invite | Cal |
 | **llo-manager** | llo-onboarding, llo-uat, llo-launch, ocs-agent-setup, timeline-monitor, flw-data-review | Jon |
 | **closeout** | opp-closeout, llo-feedback, learnings-summary, cycle-grade | Jon |
@@ -109,9 +109,9 @@ Each skill is a SKILL.md file that handles one step of the CRISPR-Connect proces
 |---|------|-------|-----------|-------|
 | 1 | Establish contracts with LLOs | (manual — Sarvesh) | | Not automated |
 | 2 | Idea generated | (trigger) | | Neal generates initial ideas |
-| 3 | AI-supported concept iteration → IDD | `idea-to-idd` | Yes | Neal upskills Shakes for this |
-| 4 | Pass IDD to Nova → Learn app | `idd-to-learn-app` | Yes | Depends on Nova bot API |
-| 5 | Pass IDD to Nova → Deliver app | `idd-to-deliver-app` | Yes | Can run parallel with step 4 |
+| 3 | AI-supported concept iteration → PDD | `idea-to-pdd` | Yes | Neal upskills Shakes for this |
+| 4 | Pass PDD to Nova → Learn app | `pdd-to-learn-app` | Yes | Depends on Nova bot API |
+| 5 | Pass PDD to Nova → Deliver app | `pdd-to-deliver-app` | Yes | Can run parallel with step 4 |
 | 6 | Upload apps to CCHQ, build & publish | `app-deploy` | | Uses CommCare CLI/MCP |
 | 7 | Automated test plan & execution | `app-test` | Yes | Explore GS team's work |
 | 8 | Create training materials | `training-materials` | Yes | Can run parallel with step 7 |
@@ -127,7 +127,7 @@ Each skill is a SKILL.md file that handles one step of the CRISPR-Connect proces
 | 18 | Review FLW data, suggest improvements | `flw-data-review` | Yes | Recurring during active opp |
 | 19 | Pull invoices, create Jira payment ticket | `opp-closeout` | | Triggered at opp end date |
 | 20 | Prompt LLO for feedback | `llo-feedback` | | |
-| 21 | Summarize learnings, create new IDD | `learnings-summary` | | Can trigger another cycle |
+| 21 | Summarize learnings, create new PDD | `learnings-summary` | | Can trigger another cycle |
 | 22 | Grade overall CRISPR-Connect cycle | `cycle-grade` | Yes | |
 
 ### MCP Servers
@@ -151,7 +151,7 @@ Each opportunity ACE manages gets a folder in Google Drive:
 ACE/
   <opp-name>/
     state.yaml              # Current step, mode, timestamps, gate approvals
-    idd.md                  # Intervention Design Doc
+    pdd.md                  # Program Design Doc
     app-summaries/
       learn-app-summary.md
       deliver-app-summary.md
@@ -168,7 +168,7 @@ The team can open any opportunity folder and see exactly where things stand. ACE
 **Auto mode:** ACE runs through all steps without pausing. Emails the CRISPR Admin Dimagi Google Group (Neal, Jon, Matt, Sarvesh, Cal) at each step completion and on failures. Gates are logged but not enforced.
 
 **Review mode:** ACE pauses at gate steps and waits for human approval before proceeding. Gates are defined in each agent's logic. Key gates:
-- IDD approval (before building apps)
+- PDD approval (before building apps)
 - App deployment approval (before publishing to CCHQ)
 - LLO invite approval (before sending invitations)
 
@@ -178,7 +178,7 @@ The team can open any opportunity folder and see exactly where things stand. ACE
 
 ### OCS Integration
 
-OCS is ACE's "mouth and ears" for LLO interaction. ACE manages OCS — it creates and configures an OCS agent per opportunity, injecting the IDD, training materials, and opportunity context. LLO questions come in via Ace-AI@Dimagi.com, are handled by OCS, and ACE monitors the transcripts via OCS APIs (already exist) to analyze sentiment, identify issues, and recommend next steps. All OCS responses are cc'd to the admin group for monitoring.
+OCS is ACE's "mouth and ears" for LLO interaction. ACE manages OCS — it creates and configures an OCS agent per opportunity, injecting the PDD, training materials, and opportunity context. LLO questions come in via Ace-AI@Dimagi.com, are handled by OCS, and ACE monitors the transcripts via OCS APIs (already exist) to analyze sentiment, identify issues, and recommend next steps. All OCS responses are cc'd to the admin group for monitoring.
 
 ## Technical Enablement (Parallel Track)
 
@@ -212,7 +212,7 @@ ACE has real-world side effects (emails, app publishes, Jira tickets, LLO invita
 
 **Test fixtures:**
 - A synthetic opportunity ("CRISPR-Test-001") lives permanently in the ACE Google Drive folder
-- It has a fake IDD, fake LLO contacts (team members), and fake app summaries
+- It has a fake PDD, fake LLO contacts (team members), and fake app summaries
 - New skills can be tested against this fixture before being run on real opportunities
 
 **Sandbox environment:**
@@ -253,7 +253,7 @@ No formal interface contracts or versioning beyond what git provides. The agent 
 | Person | Role | Owns |
 |--------|------|------|
 | Matt | Managing Director of Connect, initiative owner | Process flow, business requirements |
-| Neal | Idea generation, IDD creation | idea-to-idd skill, initial ideas |
+| Neal | Idea generation, PDD creation | idea-to-pdd skill, initial ideas |
 | Cal | CommCare/Connect tech lead | app-builder agent, connect-setup agent, Connect APIs |
 | Sarvesh | LLO contracts, Auto-Connect | LLO relationships, testing |
 | Jon | ACE agent development | llo-manager agent, closeout agent, MCP servers, overall architecture |

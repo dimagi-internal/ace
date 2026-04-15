@@ -1,15 +1,14 @@
 ---
-name: idea-to-idd
+name: idea-to-pdd
 description: >
-  Iterate on an idea to produce a well-specified Intervention Design Doc (IDD)
+  Iterate on an idea to produce a well-specified Program Design Doc (PDD)
   for a Connect application. Defines the intervention, target FLWs, visit
   structure, and preferred LLOs.
 ---
 
-# Idea to IDD
+# Idea to PDD
 
-Take an initial idea and iterate on it to produce a complete Intervention Design
-Doc (IDD) that specifies a Connect application.
+Take an initial idea and iterate on it to produce a complete Program Design Doc (PDD) that specifies a Connect application.
 
 ## Process
 
@@ -26,7 +25,7 @@ Doc (IDD) that specifies a Connect application.
    - What services need to be delivered (Deliver app)?
    - For non–`atomic-visit` archetypes, also work through the archetype-specific questions in `## Archetypes`.
 
-4. **Draft the IDD** with the **base sections** below, plus **archetype-specific additions** from `## Archetypes`:
+4. **Draft the PDD** with the **base sections** below, plus **archetype-specific additions** from `## Archetypes`:
 
    **Base sections (all archetypes):**
    - **Archetype** — declared in frontmatter, repeated as the first heading
@@ -38,16 +37,16 @@ Doc (IDD) that specifies a Connect application.
    - **FLW Requirements** — number of FLWs, skills needed, geographic distribution
    - **LLO Preference** — preferred or known LLOs to execute, from LLO Directory
    - **Success Metrics** — how to measure if the intervention worked
-   - **Evidence Model** — Layer A / B / C verification plan (see `## Evidence Model` in `templates/idd-template.md`)
+   - **Evidence Model** — Layer A / B / C verification plan (see `## Evidence Model` in `templates/pdd-template.md`)
    - **Timeline** — expected duration of the opportunity
 
 5. **Self-evaluate (LLM-as-Judge) — Stress-Test Rubric.**
 
-   Run this 5-question stress test against the drafted IDD. Each check is **pass / partial / fail**. If **two or more** checks are anything other than `pass`, the IDD is **not approved** — iterate on the weak sections and re-run the stress test before outputting.
+   Run this 5-question stress test against the drafted PDD. Each check is **pass / partial / fail**. If **two or more** checks are anything other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run the stress test before outputting.
 
-   Background and worked examples for this rubric live in `docs/examples/idd-stress-test-observations.md`. Quote specific evidence from the IDD when grading; do not grade in the abstract.
+   Background and worked examples for this rubric live in `docs/examples/pdd-stress-test-observations.md`. Quote specific evidence from the PDD when grading; do not grade in the abstract.
 
-   1. **Executability** — *Could an LLO read this IDD on day one and start work without asking clarifying questions?*
+   1. **Executability** — *Could an LLO read this PDD on day one and start work without asking clarifying questions?*
       Common failure modes: recruitment criteria unspecified (how is "under-vaccinated" determined? self-report vs. card vs. records), language and translation not addressed, facilitator/FLW skill level not stated, consent process missing, venue selection unspecified, participant compensation not mentioned.
 
    2. **Verifiability** — *For every claimed output, is there a concrete artifact we can collect and check?*
@@ -56,7 +55,7 @@ Doc (IDD) that specifies a Connect application.
    3. **Measurability** — *Are success criteria defined for this stage, with units and targets?*
       Common failure modes: success described as "improved understanding" with no metric, sampling cap stated but no target, no per-segment or per-region targets, primary vs. secondary metrics not separated.
 
-   4. **Stage-gate clarity** — *For multi-stage IDDs, what must be true at the end of this stage to proceed to the next?*
+   4. **Stage-gate clarity** — *For multi-stage PDDs, what must be true at the end of this stage to proceed to the next?*
       Common failure modes: Stage 1 → Stage 2 transition undefined, no explicit "go / no-go / iterate" criteria, downstream stage references findings the upstream stage isn't required to produce.
 
    5. **Resource realism** — *Are the LLO's capabilities matched to what's being asked?*
@@ -64,30 +63,30 @@ Doc (IDD) that specifies a Connect application.
 
    **Grading anchors (worked examples):**
 
-   The vaccine-hesitancy IDD at `docs/examples/idd-vaccine-hesitancy.md` is the canonical "fail" case. Expected grades:
+   The vaccine-hesitancy PDD at `docs/examples/pdd-vaccine-hesitancy.md` is the canonical "fail" case. Expected grades:
    - Executability: **fail** — recruitment, language, facilitation, consent, venue all underspecified
    - Verifiability: **fail** — "summary of key themes" output spec is too thin to verify
    - Measurability: **partial** — Stage 2 has metrics, Stage 1 does not
    - Stage-gate clarity: **fail** — Stage 1 → Stage 2 transition undefined
    - Resource realism: **partial** — facilitation skill assumed; ~48-person recruit unscoped
 
-   The turmeric-market-survey IDD at `docs/examples/idd-turmeric-market-survey.md` is the canonical "near-pass" case. Expected grades:
+   The turmeric-market-survey PDD at `docs/examples/pdd-turmeric-market-survey.md` is the canonical "near-pass" case. Expected grades:
    - Executability: **partial** — "market" is free text but the cap depends on market identity
    - Verifiability: **partial** — photo standardization protocol missing; vendor education self-report unverifiable
    - Measurability: **partial** — caps stated, sampling targets missing
    - Stage-gate clarity: **pass** — single stage
    - Resource realism: **pass** — atomic-visit pattern is well-matched to FLW capability
 
-   Both IDDs fail the rubric in their current form. The skill should surface those specific failures and either (a) iterate on the IDD to fix them, or (b) in review mode, hand off to a human with the failure list attached.
+   Both PDDs fail the rubric in their current form. The skill should surface those specific failures and either (a) iterate on the PDD to fix them, or (b) in review mode, hand off to a human with the failure list attached.
 
-6. **Write the IDD** to `ACE/<opp-name>/idd.md` via Google Drive MCP. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the IDD, so downstream skills (and humans) can see what was caught and what was waived.
+6. **Write the PDD** to `ACE/<opp-name>/pdd.md` via Google Drive MCP. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the PDD, so downstream skills (and humans) can see what was caught and what was waived.
 
 ## Archetypes
 
-ACE skills branch on the IDD's declared `archetype:` field. This skill generates archetype-appropriate sections during step 4 (Draft).
+ACE skills branch on the PDD's declared `archetype:` field. This skill generates archetype-appropriate sections during step 4 (Draft).
 
 ### `atomic-visit` (default)
-The IDD describes one FLW visit producing one structured delivery (photo + GPS + form). Use the base sections as-is. Examples: turmeric market survey, household-level data collection.
+The PDD describes one FLW visit producing one structured delivery (photo + GPS + form). Use the base sections as-is. Examples: turmeric market survey, household-level data collection.
 
 **Additional questions to answer in step 3:**
 - What is the exact form structure (every field, every type)?
@@ -96,7 +95,7 @@ The IDD describes one FLW visit producing one structured delivery (photo + GPS +
 - How is duplicate detection handled (vendor ID, stall number, GPS resolution)?
 
 ### `focus-group`
-The IDD describes FLW-facilitated group discussions producing qualitative content (audio + per-domain summaries + attendance). Examples: vaccine-hesitancy Stage 1.
+The PDD describes FLW-facilitated group discussions producing qualitative content (audio + per-domain summaries + attendance). Examples: vaccine-hesitancy Stage 1.
 
 **Additional questions to answer in step 3:**
 - **Recruitment**: Who are the segments? How will participants be identified? What sample size per segment? Comparison groups and their justification?
@@ -108,28 +107,28 @@ The IDD describes FLW-facilitated group discussions producing qualitative conten
 - **Question guide**: Sequencing (sensitive/program-specific questions last to avoid anchoring), prioritization (a 90-minute group covers 8–10 questions well, not 15+), warm-up questions, probing prompts.
 - **Output spec**: What does a "good summary" look like? Format, length, template, required content per question domain. Without this, the qualitative outputs aren't AI-ingestable.
 
-**Additional sections to include in the IDD draft:**
+**Additional sections to include in the PDD draft:**
 - **Recruitment Plan** — segments, sample sizes, identification mechanism, comparison groups
 - **Facilitation Protocol** — skill level, training requirement, venue, language, consent, recording, compensation
 - **Question Guide** — ordered questions per domain, with probes and warm-ups, and time allocation
 - **Output Specification** — per-session summary format with concrete fields (themes, notable quotes, level of consensus, time spent, facilitator reflection)
 
 ### `multi-stage`
-The IDD has two or more sequenced stages with different archetypes. Treat the base sections as describing the overall intervention and create one **Stage X** subsection per stage, each declaring its own archetype and following that archetype's additional sections.
+The PDD has two or more sequenced stages with different archetypes. Treat the base sections as describing the overall intervention and create one **Stage X** subsection per stage, each declaring its own archetype and following that archetype's additional sections.
 
-**Required for multi-stage IDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
+**Required for multi-stage PDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_update_file`
 
 ## Mode Behavior
-- **Auto:** Write IDD, email summary to admin group, proceed
-- **Review:** Write IDD, present for human review, wait for approval
+- **Auto:** Write PDD, email summary to admin group, proceed
+- **Review:** Write PDD, present for human review, wait for approval
 
 ## Dry-Run Behavior
 When `--dry-run` is active:
-- Write the IDD to `ACE/<opp-name>/idd.md` as normal
-- Write the admin email summary (recipients, subject, body) to `comms-log/dry-run-idea-to-idd.md`
+- Write the PDD to `ACE/<opp-name>/pdd.md` as normal
+- Write the admin email summary (recipients, subject, body) to `comms-log/dry-run-idea-to-pdd.md`
 - Do not send emails to the admin group
 - State tracks as `dry-run-success`
 
@@ -138,4 +137,4 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
-| 2026-04-08 | Replace weak self-eval with 5-question stress-test rubric (executability, verifiability, measurability, stage-gate clarity, resource realism); block at ≥2 non-pass; include grading anchors from vaccine-hesitancy and turmeric example IDDs; emit stress-test results as IDD appendix | ACE team (PM scout, focus-group framework lens) |
+| 2026-04-08 | Replace weak self-eval with 5-question stress-test rubric (executability, verifiability, measurability, stage-gate clarity, resource realism); block at ≥2 non-pass; include grading anchors from vaccine-hesitancy and turmeric example PDDs; emit stress-test results as PDD appendix | ACE team (PM scout, focus-group framework lens) |

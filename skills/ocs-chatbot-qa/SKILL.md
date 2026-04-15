@@ -66,7 +66,7 @@ If no mode is passed, default to `--quick`.
 
    **Opp-specific prompts** (only if `opp_name` is provided):
    - Loaded from `ACE/<opp-name>/test-prompts.md` — produced in Phase 1 by
-     the `idd-to-test-prompts` skill. Each entry has a question + an
+     the `pdd-to-test-prompts` skill. Each entry has a question + an
      expected-answer summary for the judge to evaluate against
 
    **Edge-case extras:**

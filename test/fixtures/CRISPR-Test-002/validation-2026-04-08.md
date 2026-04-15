@@ -8,9 +8,9 @@ This is a manual walk-through validation of the focus-group framework changes (j
 
 | Skill | Inputs available? | Process consistent? | Output matches spec? | Notes |
 |---|---|---|---|---|
-| `idea-to-idd` | Yes (after fix below) | Yes | Yes | Required adding `idea.md` to the fixture |
-| `idd-to-learn-app` | Yes | Yes | Yes | — |
-| `idd-to-deliver-app` | Yes | Yes | Yes | — |
+| `idea-to-pdd` | Yes (after fix below) | Yes | Yes | Required adding `idea.md` to the fixture |
+| `pdd-to-learn-app` | Yes | Yes | Yes | — |
+| `pdd-to-deliver-app` | Yes | Yes | Yes | — |
 | `app-test` | Yes (after fix below) | Yes | Yes | Required adding `deployment-summary.md` |
 | `connect-opp-setup` | Yes (after fix below) | Yes | Yes | Required adding `connect-setup/program.md` and `deployment-summary.md` |
 | `flw-data-review` | Partial | Yes | N/A — needs runtime data | Fixture has no synthetic submission data |
@@ -22,7 +22,7 @@ This is a manual walk-through validation of the focus-group framework changes (j
 
 These were missing inputs that prevented end-to-end runnability. Added to **both** CRISPR-Test-001 and CRISPR-Test-002 since the gaps were pre-existing and symmetric:
 
-1. **`idea.md`** — synthetic initial idea, used as input to `idea-to-idd`. Without this, `idea-to-idd` step 1 has nothing to read.
+1. **`idea.md`** — synthetic initial idea, used as input to `idea-to-pdd`. Without this, `idea-to-pdd` step 1 has nothing to read.
 2. **`deployment-summary.md`** — synthetic deployment record (fake CommCare app IDs and URLs), used as input by `app-test` and `connect-opp-setup`. Without this, those skills error at the input-reading step.
 3. **`connect-setup/program.md`** — synthetic Connect program record (fake program ID and URL), used as input by `connect-opp-setup`. Same reason.
 
@@ -30,7 +30,7 @@ These are stubs only; real values would be populated by running the upstream ski
 
 ## Per-skill walk-through
 
-### 1. `idea-to-idd`
+### 1. `idea-to-pdd`
 
 **Inputs read:** `idea.md` (added during validation).
 
@@ -38,29 +38,29 @@ These are stubs only; real values would be populated by running the upstream ski
 - Step 1 reads the idea ✓
 - Step 2 determines archetype from the idea text — vaccine-hesitancy focus groups → `focus-group`
 - Step 3 expands the idea, working through the focus-group additional questions in `## Archetypes`: recruitment, language, facilitation skill, consent, venue, duration/compensation, question guide, output spec
-- Step 4 drafts the IDD with base sections + focus-group additional sections (Recruitment Plan, Facilitation Protocol, Question Guide, Output Specification)
+- Step 4 drafts the PDD with base sections + focus-group additional sections (Recruitment Plan, Facilitation Protocol, Question Guide, Output Specification)
 - Step 5 runs the 5-question stress-test rubric
-- Step 6 writes the IDD with `## Stress Test Results` appendix
+- Step 6 writes the PDD with `## Stress Test Results` appendix
 
-**Expected output:** an IDD structurally equivalent to `test/fixtures/CRISPR-Test-002/idd.md`, with all 5 stress-test checks passing (the fixture was constructed to pass).
+**Expected output:** an PDD structurally equivalent to `test/fixtures/CRISPR-Test-002/pdd.md`, with all 5 stress-test checks passing (the fixture was constructed to pass).
 
-**Comparison with fixture spec:** ✓ The fixture's `idd.md` is an instance of what `idea-to-idd` should produce for a focus-group archetype with all gaps resolved. The README spec ("reads `archetype: focus-group`, drafts focus-group additional sections, runs the rubric, all-pass") matches the SKILL.md process exactly.
+**Comparison with fixture spec:** ✓ The fixture's `pdd.md` is an instance of what `idea-to-pdd` should produce for a focus-group archetype with all gaps resolved. The README spec ("reads `archetype: focus-group`, drafts focus-group additional sections, runs the rubric, all-pass") matches the SKILL.md process exactly.
 
-**Caveat:** This skill is non-deterministic (LLM output varies). The validation here is structural ("the output should have these sections, the rubric should grade these results"), not literal ("the output should equal idd.md byte-for-byte"). The fixture's idd.md is a *target shape*, not a golden output.
+**Caveat:** This skill is non-deterministic (LLM output varies). The validation here is structural ("the output should have these sections, the rubric should grade these results"), not literal ("the output should equal pdd.md byte-for-byte"). The fixture's pdd.md is a *target shape*, not a golden output.
 
-### 2. `idd-to-learn-app`
+### 2. `pdd-to-learn-app`
 
-**Inputs read:** `idd.md`.
+**Inputs read:** `pdd.md`.
 
 **Process trace:**
-- Step 1 reads the IDD ✓
+- Step 1 reads the PDD ✓
 - Step 2 extracts Learn app requirements; `## Archetypes` → `focus-group` → "facilitation training app, not form walkthrough"
-- Step 3 generates a Nova brief that explicitly references the IDD's Facilitation Protocol section and lists the 8 modules from the IDD's Learn App Specification
+- Step 3 generates a Nova brief that explicitly references the PDD's Facilitation Protocol section and lists the 8 modules from the PDD's Learn App Specification
 - Step 4 (workaround active — Nova bot API not built) writes the brief to `ACE/CRISPR-Test-002/app-briefs/learn-app-brief.md`
 - Step 5 self-evaluates whether the brief is a facilitation-training brief (not a form walkthrough)
 - Step 6 writes the app summary
 
-**Expected output:** A Nova brief describing the 8-module facilitation training app with the modules from the IDD's Learn App Specification:
+**Expected output:** A Nova brief describing the 8-module facilitation training app with the modules from the PDD's Learn App Specification:
 1. Facilitation basics
 2. Probing techniques
 3. Neutral framing
@@ -72,14 +72,14 @@ These are stubs only; real values would be populated by running the upstream ski
 
 **Comparison with fixture spec:** ✓ The fixture's `app-summaries/learn-app-summary.md` already documents the expected 8-module structure. The README spec ("brief explicitly references the Facilitation Protocol section, includes the 8 modules, does not generate a generic data-collection-form-walkthrough brief") matches.
 
-### 3. `idd-to-deliver-app`
+### 3. `pdd-to-deliver-app`
 
-**Inputs read:** `idd.md`.
+**Inputs read:** `pdd.md`.
 
 **Process trace:**
-- Step 1 reads the IDD ✓
+- Step 1 reads the PDD ✓
 - Step 2 extracts Deliver app requirements; `## Archetypes` → `focus-group` → "session documentation, segment-level case"
-- Step 3 generates a Nova brief that explicitly references the IDD's Output Specification section and describes the form structure: pre-session, per-question-domain (×6), post-session, with case at segment level
+- Step 3 generates a Nova brief that explicitly references the PDD's Output Specification section and describes the form structure: pre-session, per-question-domain (×6), post-session, with case at segment level
 - Step 4 (workaround) writes the brief
 - Step 5 self-evaluates
 - Step 6 writes the app summary
@@ -90,12 +90,12 @@ These are stubs only; real values would be populated by running the upstream ski
 
 ### 4. `app-test`
 
-**Inputs read:** `app-summaries/learn-app-summary.md`, `app-summaries/deliver-app-summary.md`, `deployment-summary.md` (added during validation), `idd.md`.
+**Inputs read:** `app-summaries/learn-app-summary.md`, `app-summaries/deliver-app-summary.md`, `deployment-summary.md` (added during validation), `pdd.md`.
 
 **Process trace:**
 - Step 1 reads app summaries ✓
 - Step 2 reads deployment details ✓
-- Step 3 reads `archetype: focus-group` and the IDD's Evidence Model section. Errors out if Evidence Model is missing — fixture has it ✓
+- Step 3 reads `archetype: focus-group` and the PDD's Evidence Model section. Errors out if Evidence Model is missing — fixture has it ✓
 - Step 4 generates the test plan; `## Archetypes` → `focus-group` → covers per-domain section coverage, file-upload paths, consent gating, segment-level case lifecycle. Layer A entries from the Evidence Model become capture tests.
 - Step 5 executes tests (in dry-run, generates the plan only)
 - Step 6 self-evaluates with the new check "does every Layer A artifact have a passing capture test?"
@@ -115,21 +115,21 @@ Plus content validation tests on free-text fields (themes, quotes, facilitator r
 
 ### 5. `connect-opp-setup`
 
-**Inputs read:** `idd.md`, `connect-setup/program.md` (added during validation), `deployment-summary.md` (added during validation).
+**Inputs read:** `pdd.md`, `connect-setup/program.md` (added during validation), `deployment-summary.md` (added during validation).
 
 **Process trace:**
 - Step 1 reads inputs ✓
-- Step 2 reads `archetype: focus-group` and the IDD's Evidence Model. Errors if Evidence Model is missing — fixture has it ✓
+- Step 2 reads `archetype: focus-group` and the PDD's Evidence Model. Errors if Evidence Model is missing — fixture has it ✓
 - Step 3 creates the opportunity (workaround active — `create_opportunity` API not built); `## Archetypes` → `focus-group` → uses delivery type "Experiment"
 - Step 4 configures verification rules from Layer A. Each Layer A row in the fixture's Evidence Model maps to one rule.
-- Step 5 configures delivery units; `## Archetypes` → `focus-group` → delivery unit = one completed session (not one participant); total count = 6 sessions from the IDD
+- Step 5 configures delivery units; `## Archetypes` → `focus-group` → delivery unit = one completed session (not one participant); total count = 6 sessions from the PDD
 - Step 6 configures payment units (per-session, $500/session)
 - Step 7 writes the opportunity config summary
 
 **Expected output:** An opportunity config spec with:
 - Delivery type: "Experiment"
 - Delivery unit: one completed focus-group session
-- Payment unit count: 6 (= IDD's planned session count)
+- Payment unit count: 6 (= PDD's planned session count)
 - Verification rules quoting Evidence Model Layer A:
   - GPS within target community area
   - Audio file present, duration ≥ 45 minutes
@@ -139,11 +139,11 @@ Plus content validation tests on free-text fields (themes, quotes, facilitator r
   - Facilitator reflection present
 - Soft flags from Layer B/C: AI quality check on per-domain summaries, segment differentiation
 
-**Comparison with fixture spec:** ✓ The README spec is a 1:1 match with the SKILL.md instructions. The fixture's IDD has all 6 Layer A rows that should become rules.
+**Comparison with fixture spec:** ✓ The README spec is a 1:1 match with the SKILL.md instructions. The fixture's PDD has all 6 Layer A rows that should become rules.
 
 ### 6. `flw-data-review` *(partial — needs runtime data)*
 
-**Inputs read:** app summaries ✓, idd.md (with archetype + Evidence Model) ✓, **fake submission data** *(NOT in fixture)*.
+**Inputs read:** app summaries ✓, pdd.md (with archetype + Evidence Model) ✓, **fake submission data** *(NOT in fixture)*.
 
 **Process trace:**
 - Step 1 reads context including archetype and Evidence Model. Branches to `focus-group` qualitative review.
@@ -154,7 +154,7 @@ Plus content validation tests on free-text fields (themes, quotes, facilitator r
 
 **What the skill *would* do** if the data existed (verified by reading the SKILL.md):
 - Per-session quality review: are summaries specific or generic? Are quote counts ≥ 2 per domain? Is the facilitator reflection substantive?
-- Cross-session synthesis: themes by segment, convergence/divergence between the two segments, saturation indicator, top barriers with quote attribution, implications for a Stage 2 IDD
+- Cross-session synthesis: themes by segment, convergence/divergence between the two segments, saturation indicator, top barriers with quote attribution, implications for a Stage 2 PDD
 - Quote bank extraction
 - Facilitator coaching signals
 - **Does NOT** run quantitative checks (submission rates, outlier detection, daily caps)
@@ -165,7 +165,7 @@ Plus content validation tests on free-text fields (themes, quotes, facilitator r
 
 ### 7. `cycle-grade` *(partial — needs runtime data)*
 
-**Inputs read:** all opportunity artifacts including learnings-summary, idd.md (with archetype + Evidence Model). **Fixture has none of the completed-cycle artifacts** (test results, monitoring reports, FLW data reviews, OCS transcripts, LLO feedback, learnings summary).
+**Inputs read:** all opportunity artifacts including learnings-summary, pdd.md (with archetype + Evidence Model). **Fixture has none of the completed-cycle artifacts** (test results, monitoring reports, FLW data reviews, OCS transcripts, LLO feedback, learnings summary).
 
 **Process trace:**
 - Step 1 reads all artifacts. **This is where the walk-through stops** — the fixture has only the inputs to the *first* skill in the cycle, not the outputs of all 19.
@@ -174,7 +174,7 @@ Plus content validation tests on free-text fields (themes, quotes, facilitator r
 **Why this is a partial:** Validating `cycle-grade` requires the fixture to be in a "completed" state with all the artifacts the grader reads. The fixture is in a "pending" state (per state.yaml). This is the same gap CRISPR-Test-001 has — neither fixture is currently set up for end-of-cycle skill testing.
 
 **What the skill *would* do** if all artifacts existed (verified by reading the SKILL.md):
-- Read the IDD's Evidence Model; Layer A → FLW Performance evidence; Layer B/C → Intervention Effectiveness / Research Quality evidence
+- Read the PDD's Evidence Model; Layer A → FLW Performance evidence; Layer B/C → Intervention Effectiveness / Research Quality evidence
 - For `focus-group`, grade 7 dimensions (the standard 6 + Research Quality). Use facilitation-quality rubric for FLW Performance, research-yield rubric for Intervention Effectiveness.
 - Self-evaluate fairness
 - Write the cycle grade report and email the admin group
@@ -187,7 +187,7 @@ Plus content validation tests on free-text fields (themes, quotes, facilitator r
 
 ### None affecting the merged framework changes
 
-The walk-through did not surface any inconsistencies between the SKILL.md instructions and the fixture spec. The 5 fully-validatable skills (idea-to-idd, idd-to-learn-app, idd-to-deliver-app, app-test, connect-opp-setup) all have clean process traces against the fixture inputs, and each skill's output (per its SKILL.md) matches what the fixture README claims it should produce.
+The walk-through did not surface any inconsistencies between the SKILL.md instructions and the fixture spec. The 5 fully-validatable skills (idea-to-pdd, pdd-to-learn-app, pdd-to-deliver-app, app-test, connect-opp-setup) all have clean process traces against the fixture inputs, and each skill's output (per its SKILL.md) matches what the fixture README claims it should produce.
 
 The 2 partially-validatable skills (flw-data-review, cycle-grade) are blocked on missing runtime data, not on framework or skill bugs. Their SKILL.md → spec mapping is internally consistent.
 
@@ -213,7 +213,7 @@ These are out of scope for the focus-group framework PR but should be tracked as
 
 ## Conclusion
 
-**The focus-group framework changes are validated** for the 5 skills that can be walked through against the fixture (idea-to-idd, idd-to-learn-app, idd-to-deliver-app, app-test, connect-opp-setup). The SKILL.md instructions, the fixture inputs, and the fixture README's regression spec are all internally consistent and produce the same expected outputs.
+**The focus-group framework changes are validated** for the 5 skills that can be walked through against the fixture (idea-to-pdd, pdd-to-learn-app, pdd-to-deliver-app, app-test, connect-opp-setup). The SKILL.md instructions, the fixture inputs, and the fixture README's regression spec are all internally consistent and produce the same expected outputs.
 
 The 2 remaining skills (flw-data-review, cycle-grade) are validated *on paper* (the SKILL.md → spec mapping is correct) but cannot be runtime-validated without additional fixture content. This is a pre-existing limitation that affects atomic-visit testing equally — fixing it is a separate, larger effort than this PR.
 

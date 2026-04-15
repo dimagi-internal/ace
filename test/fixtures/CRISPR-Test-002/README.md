@@ -10,16 +10,16 @@ This fixture is the **regression check** for the focus-group code path. Any SKIL
 
 ## Source
 
-A simplified version of the vaccine-hesitancy IDD at `docs/examples/idd-vaccine-hesitancy.md`:
+A simplified version of the vaccine-hesitancy PDD at `docs/examples/pdd-vaccine-hesitancy.md`:
 
-- **Stage 1 only** (the focus-group stage). The full IDD is multi-stage; we drop Stage 2 to keep this fixture single-archetype and small.
+- **Stage 1 only** (the focus-group stage). The full PDD is multi-stage; we drop Stage 2 to keep this fixture single-archetype and small.
 - **2 segments** instead of 6 (women-close-to-PHC-undervaccinated, men-remote-mixed). Halves the recruitment surface while still exercising segment differentiation in `flw-data-review`.
 - **1 LLO** (a fake one) instead of multiple. Simplifies onboarding and invite logic.
-- **Stress-test rubric grades all `pass`**. The original vaccine-hesitancy IDD fails 4 of 5; this fixture is the version where those gaps have been resolved, so `idea-to-idd` doesn't loop on it.
+- **Stress-test rubric grades all `pass`**. The original vaccine-hesitancy PDD fails 4 of 5; this fixture is the version where those gaps have been resolved, so `idea-to-pdd` doesn't loop on it.
 
 ## Contents
 
-- `idd.md` — Stage-1-only vaccine-hesitancy IDD with `archetype: focus-group`, full Evidence Model, and a `## Stress Test Results` appendix showing all-pass
+- `pdd.md` — Stage-1-only vaccine-hesitancy PDD with `archetype: focus-group`, full Evidence Model, and a `## Stress Test Results` appendix showing all-pass
 - `state.yaml` — Initial state, mode `review`, all steps pending
 - `app-summaries/learn-app-summary.md` — Stub: facilitation-training app structure (the focus-group Learn app brief)
 - `app-summaries/deliver-app-summary.md` — Stub: session-documentation app structure (the focus-group Deliver app brief)
@@ -43,38 +43,38 @@ Or single-step:
 
 When a SKILL.md is edited and re-run against this fixture, here is what each skill **should** produce. If the actual output materially diverges from the spec below — and that divergence isn't intentional and documented in the SKILL.md change log — the change is a regression.
 
-### `idea-to-idd`
-- Reads `archetype: focus-group` from the IDD frontmatter
-- Drafts an IDD with the focus-group additional sections: **Recruitment Plan**, **Facilitation Protocol**, **Question Guide**, **Output Specification** (per `## Archetypes` in `skills/idea-to-idd/SKILL.md`)
+### `idea-to-pdd`
+- Reads `archetype: focus-group` from the PDD frontmatter
+- Drafts an PDD with the focus-group additional sections: **Recruitment Plan**, **Facilitation Protocol**, **Question Guide**, **Output Specification** (per `## Archetypes` in `skills/idea-to-pdd/SKILL.md`)
 - Runs the 5-question stress-test rubric against the draft
 - Produces **all `pass`** for this fixture (it was constructed to pass the rubric)
-- Writes IDD with `## Stress Test Results` appendix showing the grades
+- Writes PDD with `## Stress Test Results` appendix showing the grades
 
-### `idd-to-learn-app`
+### `pdd-to-learn-app`
 - Reads `archetype: focus-group`
 - Generates a **facilitation training app brief** for Nova, not a form-walkthrough brief
 - Brief includes: facilitation basics, probing techniques, neutral framing, group dynamics, question-guide walkthrough, session-form walkthrough, consent and ethics, logistics
-- Brief explicitly references the IDD's Facilitation Protocol section
+- Brief explicitly references the PDD's Facilitation Protocol section
 - Does **not** generate a generic data-collection-form-walkthrough brief
 
-### `idd-to-deliver-app`
+### `pdd-to-deliver-app`
 - Reads `archetype: focus-group`
 - Generates a **session documentation form** brief for Nova
-- Form has pre-session, per-question-domain (one section per domain in the IDD's question guide), and post-session sections
+- Form has pre-session, per-question-domain (one section per domain in the PDD's question guide), and post-session sections
 - Case management is **per-segment**, not per-participant
-- Brief explicitly references the IDD's Output Specification section
+- Brief explicitly references the PDD's Output Specification section
 - Does **not** generate a per-beneficiary form
 
 ### `app-test`
-- Reads `archetype: focus-group` and the IDD's Evidence Model
+- Reads `archetype: focus-group` and the PDD's Evidence Model
 - Generates a test plan focused on per-domain section coverage, file-upload paths (audio, attendance photo), consent gating, segment-level case lifecycle
 - Every Layer A artifact in the Evidence Model has a corresponding test
 - Does **not** include atomic-visit-specific tests like duplicate beneficiary detection
 
 ### `connect-opp-setup`
-- Reads the IDD's Evidence Model Layer A as the source of verification rules
+- Reads the PDD's Evidence Model Layer A as the source of verification rules
 - Sets **delivery unit = one completed focus group session** (not one participant)
-- Sets **payment unit = per verified session**, total count from IDD planned sessions
+- Sets **payment unit = per verified session**, total count from PDD planned sessions
 - Verification rules quote Layer A entries directly: GPS, audio duration ≥ 45 min, attendance form, per-domain summaries, consent confirmation, facilitator reflection
 - Layer B/C entries become **soft flags**, not hard gates
 - Uses delivery type "Experiment" (or flags that "Experiment" delivery type is required)
@@ -88,7 +88,7 @@ When a SKILL.md is edited and re-run against this fixture, here is what each ski
 ### `cycle-grade`
 - Reads `archetype: focus-group`
 - Grades FLW Performance on **facilitation quality**, not submission volume
-- Grades Intervention Effectiveness on **research yield** (theme specificity, segment differentiation, IDD research questions answered)
+- Grades Intervention Effectiveness on **research yield** (theme specificity, segment differentiation, PDD research questions answered)
 - Adds a 7th dimension: **Research Quality** (0–10)
 - Grading evidence quotes actual session content from the Evidence Model layers
 
