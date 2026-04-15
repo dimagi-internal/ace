@@ -1,7 +1,7 @@
 ---
 name: learnings-summary
 description: >
-  Summarize learnings from the completed opportunity and create a new IDD
+  Summarize learnings from the completed opportunity and create a new PDD
   if iteration is warranted. Can trigger another CRISPR-Connect cycle.
 ---
 
@@ -12,7 +12,7 @@ Synthesize all information from the completed opportunity into actionable learni
 ## Process
 
 1. **Read all opportunity artifacts from GDrive:**
-   - IDD (original plan)
+   - PDD (original plan)
    - Test results
    - Monitoring reports from `ACE/<opp-name>/monitoring/`
    - Data reviews from `ACE/<opp-name>/data-reviews/`
@@ -20,7 +20,7 @@ Synthesize all information from the completed opportunity into actionable learni
    - LLO feedback from `ACE/<opp-name>/closeout/llo-feedback.md`
    - Comms log
 
-2. **Analyze against original IDD:**
+2. **Analyze against original PDD:**
    - What worked as designed?
    - What didn't work or needed adjustment?
    - Were success metrics met?
@@ -33,24 +33,24 @@ Synthesize all information from the completed opportunity into actionable learni
    - **Relationship learnings** — what to change about LLO engagement
 
 4. **Determine if iteration is warranted:**
-   - If yes, draft a new IDD incorporating the learnings
-   - This new IDD can trigger another CRISPR-Connect cycle
+   - If yes, draft a new PDD incorporating the learnings
+   - This new PDD can trigger another CRISPR-Connect cycle
 
 5. **Write to GDrive:**
    - `ACE/<opp-name>/closeout/learnings.md` — full learnings document
-   - `ACE/<opp-name>/closeout/new-idd.md` — new IDD if iteration warranted
+   - `ACE/<opp-name>/closeout/new-pdd.md` — new PDD if iteration warranted
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`
 - OCS: `ocs_list_sessions`, `ocs_get_session`
 
 ## Mode Behavior
-- **Auto:** Generate learnings, create new IDD if warranted, notify admin group
-- **Review:** Present learnings and new IDD for team discussion
+- **Auto:** Generate learnings, create new PDD if warranted, notify admin group
+- **Review:** Present learnings and new PDD for team discussion
 
 ## Dry-Run Behavior
 When `--dry-run` is active:
-- Learnings analysis and new IDD generation proceed normally (written to GDrive)
+- Learnings analysis and new PDD generation proceed normally (written to GDrive)
 - Write any notification emails (to admin group) to `comms-log/dry-run-learnings-summary.md` instead of sending
 - State tracks as `dry-run-success`
 

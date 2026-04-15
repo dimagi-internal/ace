@@ -1,23 +1,23 @@
 ---
-name: idd-to-test-prompts
+name: pdd-to-test-prompts
 description: >
-  Derive opp-specific Q&A test prompts from an approved IDD. The output feeds
+  Derive opp-specific Q&A test prompts from an approved PDD. The output feeds
   the OCS deep QA gate in Phase 4 (ocs-chatbot-qa --deep), which uses each
   prompt's expected-answer summary as ground truth for LLM-as-Judge grading.
 ---
 
-# IDD to Test Prompts
+# PDD to Test Prompts
 
 Generate the opp-specific test suite that `ocs-chatbot-qa --deep` uses as its
 ground truth. Runs in Phase 1 (Design Review & Iteration) as Step 2, right
-after `idea-to-idd`.
+after `idea-to-pdd`.
 
 ## Process
 
 1. **Read inputs from GDrive:**
-   - IDD: `ACE/<opp-name>/idd.md`
+   - PDD: `ACE/<opp-name>/pdd.md`
 
-2. **Extract question-worthy material from the IDD.** The IDD's
+2. **Extract question-worthy material from the PDD.** The PDD's
    structure — intervention summary, FLW visit flow, escalation triggers,
    compliance notes — is rich with questions an LLO might ask the ACE bot.
    For each section, generate 3–8 Q&A pairs covering:
@@ -32,7 +32,7 @@ after `idea-to-idd`.
    - **Data quality and GPS.** "Why is GPS required for each delivery?" /
      "What counts as a valid photo?" — answers from verification rules
    - **Escalation.** "What do I do if an FLW reports a safety concern?" —
-     answers from the IDD's escalation triggers
+     answers from the PDD's escalation triggers
    - **Training gaps.** "How do I restart the app if it crashes?" —
      answers that the bot should tag [training-gap] if missing from KB
    - **Known product limitations.** "The app crashes on my phone when I
@@ -45,7 +45,7 @@ after `idea-to-idd`.
 
    ```markdown
    # OCS Test Prompts — <opp-name>
-   Derived from: idd.md (rev YYYY-MM-DD)
+   Derived from: pdd.md (rev YYYY-MM-DD)
    Total prompts: N
 
    ## Prompt 1
@@ -53,7 +53,7 @@ after `idea-to-idd`.
    **Question:** What is this opportunity about?
    **Expected answer summary:** Brief mention of the intervention's goal
    (e.g., "turmeric market survey across 500 farmers in Karnataka over 8
-   weeks"). Should cite the IDD.
+   weeks"). Should cite the PDD.
    **Expected tags:** none
    **Expected escalation:** none
 
@@ -62,7 +62,7 @@ after `idea-to-idd`.
    ```
 
    Each prompt MUST include:
-   - `Category` — groups by IDD section for the deep report breakdown
+   - `Category` — groups by PDD section for the deep report breakdown
    - `Question` — the exact prompt to send
    - `Expected answer summary` — ground truth for the judge (1–3 sentences,
      the judge compares actual response against this)
@@ -72,7 +72,7 @@ after `idea-to-idd`.
      `ace@dimagi-ai.com` / the admin group
 
 4. **Self-evaluate coverage.** Before finishing, check:
-   - At least one prompt per IDD section
+   - At least one prompt per PDD section
    - At least one out-of-scope prompt
    - At least one that should trigger `[product-feedback]`
    - At least one that should trigger `[training-gap]`
@@ -100,10 +100,10 @@ When `--dry-run` is active:
 
 ## Failure Modes
 
-- **IDD missing or empty** — blocker; Phase 1 Step 1 hasn't completed.
+- **PDD missing or empty** — blocker; Phase 1 Step 1 hasn't completed.
   Don't synthesize; escalate
-- **IDD has no escalation/eligibility content** — the resulting test suite
-  will be weak. Flag to operator that the IDD should be strengthened before
+- **PDD has no escalation/eligibility content** — the resulting test suite
+  will be weak. Flag to operator that the PDD should be strengthened before
   proceeding; don't write a half-useful prompt file
 
 ## Change Log

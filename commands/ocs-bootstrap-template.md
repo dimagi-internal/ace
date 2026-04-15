@@ -112,6 +112,6 @@ The resulting `OCS_GOLDEN_TEMPLATE_ID` becomes the source that `ocs-agent-setup`
 - Inherits the golden template's pipeline shape (one `LLMResponseWithPrompt` node — the golden template invariant)
 - Inherits the LLM provider and model
 - Has its system prompt replaced with opp-specific framing by `ocs-agent-setup`
-- Gets its own Collection with the opp's IDD + training + app summaries
+- Gets its own Collection with the opp's PDD + training + app summaries
 - Gets its own EMBEDDED_WIDGET channel (created by the clone step)
 - Reports its `public_id` + `embed_key` back to Connect for the widget routing

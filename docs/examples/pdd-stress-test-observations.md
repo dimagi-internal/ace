@@ -1,19 +1,19 @@
-# Sample IDD Observations
+# Sample PDD Observations
 
-Analysis of two sample Intervention Design Documents to inform how the ACE pipeline (CRISPR-Connect) should stress test IDDs and verify LLO execution.
+Analysis of two sample Program Design Documents to inform how the ACE pipeline (CRISPR-Connect) should stress test PDDs and verify LLO execution.
 
 These notes were generated in conversation while exploring the kinds of stress tests, evidence layers, and Connect/CommCare configurations the ACE skills will need to support.
 
 ## Source artifacts
 
-The two raw IDDs analyzed below are committed alongside this file so the folder is self-contained:
+The two raw PDDs analyzed below are committed alongside this file so the folder is self-contained:
 
-- **[`idd-vaccine-hesitancy.md`](idd-vaccine-hesitancy.md)** — two-stage intervention with focus groups (Stage 1) and household follow-up pilot (Stage 2). The harder case — focus groups don't fit the standard Connect delivery model.
-- **[`idd-turmeric-market-survey.md`](idd-turmeric-market-survey.md)** — single-stage vendor photo survey with MTN card color reference. The cleaner case — maps directly onto atomic photo+GPS+form deliveries.
+- **[`pdd-vaccine-hesitancy.md`](pdd-vaccine-hesitancy.md)** — two-stage intervention with focus groups (Stage 1) and household follow-up pilot (Stage 2). The harder case — focus groups don't fit the standard Connect delivery model.
+- **[`pdd-turmeric-market-survey.md`](pdd-turmeric-market-survey.md)** — single-stage vendor photo survey with MTN card color reference. The cleaner case — maps directly onto atomic photo+GPS+form deliveries.
 
 ---
 
-## IDD #1 — Vaccine Hesitancy (Sokoto State)
+## PDD #1 — Vaccine Hesitancy (Sokoto State)
 
 Two-stage intervention:
 - **Stage 1:** Focus group discussions across six segments (women/men × close/remote × vaccinated/under-vaccinated)
@@ -28,9 +28,9 @@ The focus group stage breaks the standard Connect delivery model. The existing p
 - GPS that is largely meaningless (any community venue works)
 - Skills required (facilitation, neutral probing, group dynamics) that aren't in `/builder` / `/tester` / `/connectifier` today
 
-### Stress-test findings on the IDD itself
+### Stress-test findings on the PDD itself
 
-**Recruitment is underspecified.** The IDD itself flags this. Open questions:
+**Recruitment is underspecified.** The PDD itself flags this. Open questions:
 - How is "under-vaccinated" determined? Self-report vs vaccine card vs facility records?
 - Six segments × ~8 participants = ~48 people minimum to recruit
 - Comparison groups (vaccinated children) may be expensive — analytical justification not given
@@ -72,24 +72,24 @@ The focus group stage breaks the standard Connect delivery model. The existing p
 - Payment unit = per verified session (e.g., 6 sessions total)
 - Verification rules: GPS in expected area + audio duration >45 min + form complete + AI quality check on summaries
 
-### Stress-test checklist (proposed for ACE to run on any IDD)
+### Stress-test checklist (proposed for ACE to run on any PDD)
 
-1. **Executability** — could an LLO read this IDD and start work on day one?
+1. **Executability** — could an LLO read this PDD and start work on day one?
 2. **Verifiability** — for every claimed output, is there a concrete artifact we can collect and check?
 3. **Measurability** — are success criteria defined for this stage?
 4. **Stage-gate clarity** — what must be true at the end of this stage to proceed to the next?
 5. **Resource realism** — are the LLO's capabilities matched to what's being asked?
 
-The Vaccine Hesitancy IDD partially fails on 1, 2, 3, and 4.
+The Vaccine Hesitancy PDD partially fails on 1, 2, 3, and 4.
 
 ---
 
-## IDD #2 — Turmeric Market Survey
+## PDD #2 — Turmeric Market Survey
 
 Single-stage data collection. FLWs visit market vendors, take a photo of turmeric with a yellow MTN reference card, capture GPS, fill out a structured form, and deliver a brief vendor education message.
 
 ### Why this case is a clean fit
-This IDD maps onto the existing ACE pipeline cleanly:
+This PDD maps onto the existing ACE pipeline cleanly:
 - Atomic delivery unit (one vendor)
 - Short duration (minutes)
 - Primary evidence is a photo (hard to fake well)
@@ -97,13 +97,13 @@ This IDD maps onto the existing ACE pipeline cleanly:
 - Quality is judgeable from the artifact itself
 - Form is already specified — `/builder` has a near-complete spec
 
-This is the right IDD to use as the **first end-to-end test of the full ACE pipeline**. If ACE can't catch the stress-test issues below on an easy case, it won't catch harder ones on focus groups.
+This is the right PDD to use as the **first end-to-end test of the full ACE pipeline**. If ACE can't catch the stress-test issues below on an easy case, it won't catch harder ones on focus groups.
 
 ### Stress-test findings
 
 **Scientific integrity (most important):**
 
-1. **Photo standardization is unspecified.** The whole premise is that photos are *comparable*. But the IDD doesn't specify lighting, angle, distance, whether the MTN card is laid flat or held beside, or minimum resolution. Without a photo protocol, the dataset won't support shininess analysis. Fix: visual example + good/bad photo training in Learn app.
+1. **Photo standardization is unspecified.** The whole premise is that photos are *comparable*. But the PDD doesn't specify lighting, angle, distance, whether the MTN card is laid flat or held beside, or minimum resolution. Without a photo protocol, the dataset won't support shininess analysis. Fix: visual example + good/bad photo training in Learn app.
 
 2. **FLW subjective judgment (Q12, Q13) asks non-experts to answer the actual research question.** If the photo is ground truth, these are training wheels and should be framed that way. If the FLW's answer is going to be used in analysis, there's a bias problem no training will fix. Needs an explicit call.
 
@@ -155,11 +155,11 @@ This is the right IDD to use as the **first end-to-end test of the full ACE pipe
 
 The turmeric survey works because **the artifact is the verification** — short, atomic, AI-inspectable. Focus groups have no equivalent.
 
-For ACE to handle qualitative-research IDDs like the focus group case, we need new skills:
+For ACE to handle qualitative-research PDDs like the focus group case, we need new skills:
 
 1. **A facilitation training skill** — "run a focus group" is a craft, not a checklist. The Learn app for this needs to teach probing, neutral framing, group dynamics.
 2. **A qualitative-synthesis skill** — current pipeline assumes structured data; focus group outputs need LLM-as-analyst.
 3. **A quality-assessment skill that can evaluate conversations** — not photos. Reads transcripts/summaries and rates substance, specificity, and segment differentiation.
 4. **A different delivery/payment unit model** — is one delivery = one session? One participant? One hour of facilitated discussion? The current model doesn't have a good answer.
 
-**Recommendation:** Use the Turmeric Market Survey as the first end-to-end ACE test. Treat the gaps listed above as a reference list of things `/builder` and `/tester` should be catching and pushing back on the IDD for. Use the focus group case to scope new skills and a new delivery model.
+**Recommendation:** Use the Turmeric Market Survey as the first end-to-end ACE test. Treat the gaps listed above as a reference list of things `/builder` and `/tester` should be catching and pushing back on the PDD for. Use the focus group case to scope new skills and a new delivery model.

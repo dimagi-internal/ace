@@ -1,4 +1,4 @@
-# Intervention Design Document: Malaria Bed Net Distribution Pilot
+# Program Design Document: Malaria Bed Net Distribution Pilot
 
 ## Problem Statement
 In rural districts of Zambia, malaria remains the leading cause of under-5 mortality. Insecticide-treated bed nets (ITNs) are proven effective but distribution coverage and usage compliance remain below 60%.

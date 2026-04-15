@@ -12,31 +12,31 @@ Create and fully configure a Connect opportunity.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - IDD: `ACE/<opp-name>/idd.md`
+   - PDD: `ACE/<opp-name>/pdd.md`
    - Program details: `ACE/<opp-name>/connect-setup/program.md`
    - App deployment details: `ACE/<opp-name>/deployment-summary.md`
 
-2. **Read the IDD's `archetype:` and `## Evidence Model` section.** These are the inputs for steps 3–5 below. The Evidence Model's Layer A column is the spec for verification rules; Layer B/C inform soft flags. **If the IDD has no Evidence Model section, stop and return an error** — the IDD is incomplete and `idea-to-idd` should re-run with the stress-test rubric.
+2. **Read the PDD's `archetype:` and `## Evidence Model` section.** These are the inputs for steps 3–5 below. The Evidence Model's Layer A column is the spec for verification rules; Layer B/C inform soft flags. **If the PDD has no Evidence Model section, stop and return an error** — the PDD is incomplete and `idea-to-pdd` should re-run with the stress-test rubric.
 
 3. **Create the Opportunity** in Connect:
-   - Name from IDD
+   - Name from PDD
    - Link to Program from previous step
    - Delivery type: "Experiment" (generic type) or the type required by the archetype (see `## Archetypes` below)
-   - Start/end dates from IDD timeline
+   - Start/end dates from PDD timeline
    - Link to CCHQ apps
 
 4. **Configure verification rules from Evidence Model Layer A.**
-   - Each Layer A row in the IDD's Evidence Model maps to one verification rule. Quote the row's "Verified by" condition directly in the rule definition so the rule's intent traces back to the IDD.
+   - Each Layer A row in the PDD's Evidence Model maps to one verification rule. Quote the row's "Verified by" condition directly in the rule definition so the rule's intent traces back to the PDD.
    - Hard gates only — Layer A rules block payment, not flag.
    - Layer B and Layer C entries become **soft flags** (logged for human review, do not block).
 
 5. **Configure delivery units from the Deliver app structure.**
-   - Read the unit definition from the IDD's archetype section (see `## Archetypes` below) — for `atomic-visit` it's per-beneficiary; for `focus-group` it's per-session.
-   - Set expected total count from the IDD's intervention design (e.g., "6 sessions across 6 segments").
-   - Set timeline from the IDD timeline.
+   - Read the unit definition from the PDD's archetype section (see `## Archetypes` below) — for `atomic-visit` it's per-beneficiary; for `focus-group` it's per-session.
+   - Set expected total count from the PDD's intervention design (e.g., "6 sessions across 6 segments").
+   - Set timeline from the PDD timeline.
 
 6. **Configure payment units:**
-   - Based on delivery units and budget from IDD
+   - Based on delivery units and budget from PDD
    - Set payment rates and schedules
 
 7. **Write config summary** to `ACE/<opp-name>/connect-setup/opportunity.md`:
@@ -47,7 +47,7 @@ Create and fully configure a Connect opportunity.
 
 ## Archetypes
 
-The opportunity's delivery unit, payment unit, and verification rules depend on the IDD's `archetype:` field. **Read the IDD's `## Evidence Model` section first** — it tells you exactly what Layer A (delivery proof) gates to enforce.
+The opportunity's delivery unit, payment unit, and verification rules depend on the PDD's `archetype:` field. **Read the PDD's `## Evidence Model` section first** — it tells you exactly what Layer A (delivery proof) gates to enforce.
 
 ### `atomic-visit`
 - **Delivery unit**: one verified beneficiary visit (Layer A passes — GPS + photo + form complete)
@@ -62,26 +62,26 @@ The opportunity's delivery unit, payment unit, and verification rules depend on 
 
 ### `focus-group`
 - **Delivery unit**: one **completed group session with full evidence** — not one participant. The unit is the session.
-- **Payment unit**: per verified session. Set the total payment unit count to the IDD's planned number of sessions (e.g., 6 sessions = 6 payment units), not number of participants.
+- **Payment unit**: per verified session. Set the total payment unit count to the PDD's planned number of sessions (e.g., 6 sessions = 6 payment units), not number of participants.
 - **Verification rules** (drawn from Evidence Model Layer A):
   - GPS within expected venue area (or simply "within target community" — venue GPS is less meaningful for focus groups than for atomic visits)
-  - Audio file uploaded, duration ≥ 45 minutes (or whatever floor the IDD specifies)
+  - Audio file uploaded, duration ≥ 45 minutes (or whatever floor the PDD specifies)
   - Attendance form complete (participant count matches segment requirement)
   - Per-domain summary sections all completed
   - Consent confirmation present
   - Facilitator reflection present
 - **Soft flags** (Layer B/C): AI quality check on per-domain summaries (specificity, presence of quotes, theme coherence), differentiation across segments
-- **Connect delivery type**: use the new generic "Experiment" delivery type, not a standard atomic-visit type. If "Experiment" doesn't exist yet, this is one of the IDDs that requires it (Connect Tech Work item #2 in the planning spreadsheet).
+- **Connect delivery type**: use the new generic "Experiment" delivery type, not a standard atomic-visit type. If "Experiment" doesn't exist yet, this is one of the PDDs that requires it (Connect Tech Work item #2 in the planning spreadsheet).
 
 ### `multi-stage`
-Create one Connect opportunity per stage **OR** one opportunity with two delivery-unit configurations, depending on whether stages overlap in time and whether they involve different LLO sets. Use the IDD's Stage Gate to decide whether Stage 2's opportunity is created up front or only after Stage 1's results are in.
+Create one Connect opportunity per stage **OR** one opportunity with two delivery-unit configurations, depending on whether stages overlap in time and whether they involve different LLO sets. Use the PDD's Stage Gate to decide whether Stage 2's opportunity is created up front or only after Stage 1's results are in.
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
 - Connect: `create_opportunity`, `set_verification_rules`, `set_delivery_units`, `set_payment_units` — **NOT YET BUILT** (CCC-301)
 
 ## Current Workaround
-1. Read IDD and determine all configuration requirements
+1. Read PDD and determine all configuration requirements
 2. Generate a complete configuration spec document
 3. Write it to `ACE/<opp-name>/connect-setup/opp-config-spec.md`
 4. Ask the user to create the opportunity in Connect UI following the spec
@@ -104,4 +104,4 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-08 | Add `## Archetypes` section: focus-group delivery unit = session (not participant), audio + attendance + per-domain summary verification, requires "Experiment" delivery type | ACE team (PM scout, focus-group framework lens) |
-| 2026-04-08 | Add explicit step 2 to read IDD `## Evidence Model`; Layer A → verification rules, Layer B/C → soft flags; error if Evidence Model missing | ACE team (PM scout, focus-group framework lens) |
+| 2026-04-08 | Add explicit step 2 to read PDD `## Evidence Model`; Layer A → verification rules, Layer B/C → soft flags; error if Evidence Model missing | ACE team (PM scout, focus-group framework lens) |

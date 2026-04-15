@@ -37,7 +37,7 @@ CRISPR-Connect process, generated from the actual agent and skill definitions.
    ### Agent: app-builder
    [From agent definition]
    ### Skills
-   #### idea-to-idd
+   #### idea-to-pdd
    [Summary from SKILL.md]
    ...
 

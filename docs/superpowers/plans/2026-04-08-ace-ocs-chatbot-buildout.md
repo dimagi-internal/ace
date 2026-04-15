@@ -3007,7 +3007,7 @@ Replace `skills/ocs-agent-setup/SKILL.md`:
 name: ocs-agent-setup
 description: >
   Create and configure an OCS chatbot for this opportunity. Clones the ACE
-  golden template, uploads IDD + training + app summaries as a RAG Collection,
+  golden template, uploads PDD + training + app summaries as a RAG Collection,
   patches the system prompt with opp-specific framing, publishes a version,
   and returns the embed credentials for Connect to store on the Opportunity.
 ---
@@ -3024,7 +3024,7 @@ atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
 ## Process
 
 1. **Read opportunity context from GDrive:**
-   - IDD: `ACE/<opp-name>/idd.md`
+   - PDD: `ACE/<opp-name>/pdd.md`
    - Training materials: `ACE/<opp-name>/training-materials/`
    - Opportunity details: `ACE/<opp-name>/connect-setup/opportunity.md`
    - App summaries: `ACE/<opp-name>/app-summaries/`
@@ -3039,11 +3039,11 @@ atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
    - Capture `{experiment_id, public_id, pipeline_id}`
 
 4. **Create a per-opp Collection:**
-   - `ocs_create_collection({ name: "ACE <opp-name>", summary: "Knowledge base for <opp-name> — IDD, training, app summaries", is_index: true, is_remote_index: true })`
+   - `ocs_create_collection({ name: "ACE <opp-name>", summary: "Knowledge base for <opp-name> — PDD, training, app summaries", is_index: true, is_remote_index: true })`
    - Capture `collection_id`
 
 5. **Upload RAG files:**
-   - For each file in the opportunity's context (IDD, training PDFs, app summary markdown), base64-encode the content
+   - For each file in the opportunity's context (PDD, training PDFs, app summary markdown), base64-encode the content
    - `ocs_upload_collection_files({ collection_id, files: [...] })`
    - Capture `file_ids`
 
@@ -3051,9 +3051,9 @@ atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
    - `ocs_wait_for_collection_indexing({ collection_id, timeout_sec: 300 })`
    - On timeout, escalate to human
 
-7. **Compose the system prompt** from the IDD + opp details + escalation rules. The prompt should:
+7. **Compose the system prompt** from the PDD + opp details + escalation rules. The prompt should:
    - Identify the chatbot as the ACE support bot for this specific opportunity
-   - Summarize the intervention (from IDD)
+   - Summarize the intervention (from PDD)
    - Name the LLO(s) and key dates
    - Tell the bot to escalate to the admin group on specific triggers
    - Reference the attached knowledge base explicitly
@@ -3068,7 +3068,7 @@ atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
 
 10. **Self-evaluate (LLM-as-Judge):**
     - Send 3-5 canned questions via `ocs_send_test_message`
-    - Judge responses for correctness + tone against expected answers from the IDD
+    - Judge responses for correctness + tone against expected answers from the PDD
     - On failure, retry prompt patching once; if still failing, escalate
 
 11. **Retrieve embed credentials:**

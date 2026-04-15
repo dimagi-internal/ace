@@ -2,7 +2,7 @@
 name: ocs-agent-setup
 description: >
   Create and configure an OCS chatbot for this opportunity. Clones the ACE
-  golden template, uploads IDD + training + app summaries as a RAG Collection,
+  golden template, uploads PDD + training + app summaries as a RAG Collection,
   patches the system prompt with opp-specific framing, publishes a version,
   and returns the embed credentials for Connect to store on the Opportunity.
 ---
@@ -22,7 +22,7 @@ this skill is now purely configuration — no inline self-eval.
 ## Process
 
 1. **Read opportunity context from GDrive:**
-   - IDD: `ACE/<opp-name>/idd.md`
+   - PDD: `ACE/<opp-name>/pdd.md`
    - Training materials: `ACE/<opp-name>/training-materials/`
    - Opportunity details: `ACE/<opp-name>/connect-setup/opportunity.md`
    - App summaries: `ACE/<opp-name>/app-summaries/`
@@ -37,13 +37,13 @@ this skill is now purely configuration — no inline self-eval.
    - Capture `{experiment_id, public_id, pipeline_id}`
 
 4. **Create a per-opp Collection:**
-   - `ocs_create_collection({ name: "ACE <opp-name>", summary: "Knowledge base for <opp-name> — IDD, training, app summaries", is_index: true, is_remote_index: false })`
+   - `ocs_create_collection({ name: "ACE <opp-name>", summary: "Knowledge base for <opp-name> — PDD, training, app summaries", is_index: true, is_remote_index: false })`
    - `llm_provider` and `embedding_model` default from `OCS_LLM_PROVIDER_ID` and `OCS_EMBEDDING_MODEL_ID` env vars (required for indexed collections)
    - Use `is_remote_index: false` (local index) — remote indexes crash with 500 on the connect-ace team
    - Capture `collection_id`
 
 5. **Upload RAG files:**
-   - For each file in the opportunity's context (IDD, training PDFs, app summary markdown), base64-encode the content
+   - For each file in the opportunity's context (PDD, training PDFs, app summary markdown), base64-encode the content
    - `ocs_upload_collection_files({ collection_id, files: [...] })`
    - Capture `file_ids`
 
@@ -51,10 +51,10 @@ this skill is now purely configuration — no inline self-eval.
    - `ocs_wait_for_collection_indexing({ collection_id, timeout_sec: 300 })`
    - On timeout, escalate to human
 
-7. **Compose the system prompt** from the IDD + opp details + escalation rules. The prompt should:
+7. **Compose the system prompt** from the PDD + opp details + escalation rules. The prompt should:
    - Identify the chatbot as the ACE support bot for this specific opportunity
    - Name the Network Manager / LLO(s) and key dates
-   - Summarize the intervention (from IDD)
+   - Summarize the intervention (from PDD)
    - Tell the bot to escalate to the admin group at ace@dimagi-ai.com on specific triggers
    - Reference BOTH knowledge sources: the shared Connect collection and the opp-specific collection
    - Use [training-gap] and [product-feedback] tags per the golden template conventions

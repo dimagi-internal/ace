@@ -1,4 +1,4 @@
-# Intervention Design Document (IDD)
+# Program Design Document (PDD)
 
 ## Opportunity: Community Health Worker Training Pilot — TestLand
 **Date:** 2026-03-15

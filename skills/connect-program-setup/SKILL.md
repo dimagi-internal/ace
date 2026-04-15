@@ -11,7 +11,7 @@ Create or select a Connect program for this opportunity.
 
 ## Process
 
-1. **Read the IDD** from `ACE/<opp-name>/idd.md`.
+1. **Read the PDD** from `ACE/<opp-name>/pdd.md`.
 
 2. **Check for existing programs** that match this opportunity's domain/scope.
    Use connect-labs MCP `list_solicitations` or similar to browse existing programs.
@@ -32,7 +32,7 @@ Create or select a Connect program for this opportunity.
 - Connect: `create_program` — **NOT YET BUILT** (CCC-301)
 
 ## Current Workaround
-1. Read the IDD and determine program requirements
+1. Read the PDD and determine program requirements
 2. Ask the user: "Does an existing Connect program fit this opportunity, or should we create a new one?"
 3. If new: provide the user with the recommended program name and configuration
 4. Ask the user to create it in the Connect UI and provide the Program ID

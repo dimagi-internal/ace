@@ -1,6 +1,6 @@
 /**
  * LLM-as-Judge scorer for ACE evaluation.
- * Evaluates generated blueprints against IDD requirements.
+ * Evaluates generated blueprints against PDD requirements.
  */
 
 import { execSync } from 'child_process';
@@ -34,7 +34,7 @@ export async function scoreBlueprint(
 ): Promise<ScoreResult> {
   const blueprintJson = JSON.stringify(blueprint, null, 2);
 
-  const prompt = `You are a HARSH evaluator for CommCare Connect applications. Your job is to find problems, not praise. Score this generated ${appType} app blueprint against the IDD requirements.
+  const prompt = `You are a HARSH evaluator for CommCare Connect applications. Your job is to find problems, not praise. Score this generated ${appType} app blueprint against the PDD requirements.
 
 ## Scoring Philosophy
 - A 5 is AVERAGE — it works but has meaningful gaps
@@ -45,7 +45,7 @@ export async function scoreBlueprint(
 - Deduct heavily for anything that would cause a PRODUCTION FAILURE
 - Deduct for anything a Connect admin would need to manually fix before the app works
 
-## IDD (Requirements)
+## PDD (Requirements)
 
 ${idd}
 
@@ -57,12 +57,12 @@ ${blueprintJson}
 
 ## Scoring Dimensions
 
-### 1. IDD Fidelity (0-10)
-Does the app match the IDD EXACTLY? Not "roughly covers" — EXACTLY.
-- Count every form specified in the IDD. Is each one present? (-2 per missing form)
-- Count every field specified in the IDD. Is each one present with the right type? (-1 per missing field)
-- Are there forms/fields NOT in the IDD? (-1 per extraneous addition, unless clearly necessary)
-- Does the scope match the IDD's intent, or did the generator interpret it loosely?
+### 1. PDD Fidelity (0-10)
+Does the app match the PDD EXACTLY? Not "roughly covers" — EXACTLY.
+- Count every form specified in the PDD. Is each one present? (-2 per missing form)
+- Count every field specified in the PDD. Is each one present with the right type? (-1 per missing field)
+- Are there forms/fields NOT in the PDD? (-1 per extraneous addition, unless clearly necessary)
+- Does the scope match the PDD's intent, or did the generator interpret it loosely?
 
 ### 2. Connect Wiring (0-10)
 Can a Connect admin set up LearnModules, DeliverUnits, Tasks, and Assessments from this blueprint WITHOUT guessing?
@@ -77,7 +77,7 @@ Can a Connect admin set up LearnModules, DeliverUnits, Tasks, and Assessments fr
 Will the data collected be correct and complete?
 - Are calculated fields actually calculated (not manual entry for derivable values)?
 - Are XPath expressions syntactically valid?
-- Do case properties capture all IDD-specified data points?
+- Do case properties capture all PDD-specified data points?
 - Is case lifecycle correct (registration creates, followup updates, close conditions)?
 - Are there data loss risks (e.g., case property not mapped, calculated field wrong)?
 - For Learn: do score calculations produce the right range? Can a CHW actually achieve the passing score?

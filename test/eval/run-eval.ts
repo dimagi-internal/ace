@@ -4,11 +4,11 @@ process.env.UNDICI_BODY_TIMEOUT = '900000'; // 15 min
 /**
  * ACE Evaluation Pipeline
  *
- * Runs: IDD → Nova prompts → Generate Learn + Deliver apps → Score both → Report
+ * Runs: PDD → Nova prompts → Generate Learn + Deliver apps → Score both → Report
  *
  * Usage: npx tsx test/eval/run-eval.ts [idd-path]
- *        npx tsx test/eval/run-eval.ts test/eval/sample-idds/malaria-bed-nets.md
- *        npx tsx test/eval/run-eval.ts  (runs all sample IDDs)
+ *        npx tsx test/eval/run-eval.ts test/eval/sample-pdds/malaria-bed-nets.md
+ *        npx tsx test/eval/run-eval.ts  (runs all sample PDDs)
  */
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
@@ -152,7 +152,7 @@ function writeReport(results: EvalResult[]): string {
   // Summary table
   lines.push('## Summary');
   lines.push('');
-  lines.push('| IDD | Learn Score | Deliver Score | Overall |');
+  lines.push('| PDD | Learn Score | Deliver Score | Overall |');
   lines.push('|-----|------------|---------------|---------|');
 
   for (const r of results) {
@@ -161,7 +161,7 @@ function writeReport(results: EvalResult[]): string {
     lines.push(`| ${r.iddName} | ${learnPct} | ${deliverPct} | **${r.overallPercentage}%** |`);
   }
 
-  // Detailed results per IDD
+  // Detailed results per PDD
   for (const r of results) {
     lines.push('');
     lines.push(`---`);
@@ -252,7 +252,7 @@ function writeReport(results: EvalResult[]): string {
 // Main
 async function main() {
   const args = process.argv.slice(2);
-  const sampleDir = join(import.meta.dirname, 'sample-idds');
+  const sampleDir = join(import.meta.dirname, 'sample-pdds');
   const resultsDir = join(import.meta.dirname, 'results');
   mkdirSync(resultsDir, { recursive: true });
 
@@ -261,16 +261,16 @@ async function main() {
   if (args.length > 0) {
     iddPaths = args;
   } else {
-    // Run all sample IDDs
+    // Run all sample PDDs
     const files = readdirSync(sampleDir).filter(f => f.endsWith('.md'));
     if (files.length === 0) {
-      console.error('No sample IDDs found in test/eval/sample-idds/');
+      console.error('No sample PDDs found in test/eval/sample-pdds/');
       process.exit(1);
     }
     iddPaths = files.map(f => join(sampleDir, f));
   }
 
-  console.log(`Running ACE evaluation on ${iddPaths.length} IDD(s)...`);
+  console.log(`Running ACE evaluation on ${iddPaths.length} PDD(s)...`);
 
   const results: EvalResult[] = [];
   for (const iddPath of iddPaths) {

@@ -11,7 +11,7 @@ Produce a final grade and assessment of the complete CRISPR-Connect cycle.
 
 ## Process
 
-1. **Read all opportunity artifacts from GDrive**, including learnings summary, the IDD's `archetype:` field, and the IDD's `## Evidence Model` section. The archetype determines which dimensions and rubric to use (see `## Archetypes` below). The Evidence Model determines what "the work was done" actually means: every Layer A entry should appear as an explicit pass/fail in the FLW Performance grade evidence; Layer B/C entries should appear in the Intervention Effectiveness / Research Quality (focus-group) evidence.
+1. **Read all opportunity artifacts from GDrive**, including learnings summary, the PDD's `archetype:` field, and the PDD's `## Evidence Model` section. The archetype determines which dimensions and rubric to use (see `## Archetypes` below). The Evidence Model determines what "the work was done" actually means: every Layer A entry should appear as an explicit pass/fail in the FLW Performance grade evidence; Layer B/C entries should appear in the Intervention Effectiveness / Research Quality (focus-group) evidence.
 
 2. **Grade across dimensions:**
    - **Intervention Effectiveness** (0-10) — did the intervention achieve its goals?
@@ -38,19 +38,19 @@ Produce a final grade and assessment of the complete CRISPR-Connect cycle.
 
 ## Archetypes
 
-The grading dimensions and rubric depend on the IDD's `archetype:` field. The 6 dimensions in step 2 above are the `atomic-visit` defaults. Other archetypes need different dimensions or different rubrics for the same dimensions.
+The grading dimensions and rubric depend on the PDD's `archetype:` field. The 6 dimensions in step 2 above are the `atomic-visit` defaults. Other archetypes need different dimensions or different rubrics for the same dimensions.
 
 ### `atomic-visit`
 Use the 6 dimensions as written:
 - Intervention Effectiveness, App Quality, LLO Execution, FLW Performance, Process Efficiency, Communication Quality.
 
-**FLW Performance** is graded on submission volume, data quality, cap compliance, and per-FLW outliers. **Intervention Effectiveness** is graded on whether quantitative success metrics from the IDD were met.
+**FLW Performance** is graded on submission volume, data quality, cap compliance, and per-FLW outliers. **Intervention Effectiveness** is graded on whether quantitative success metrics from the PDD were met.
 
 ### `focus-group`
 The same 6 dimensions, but **FLW Performance** and **Intervention Effectiveness** need different rubrics:
 
 - **FLW Performance** is graded on **facilitation quality** — depth of probing, balance across participants, summary specificity, audio completeness, neutral framing — not submission volume. Number of sessions facilitated is a floor (did they hit the planned count), not a quality signal.
-- **Intervention Effectiveness** is graded on **research yield** — did the focus groups produce findings that meaningfully informed the next stage or the team's understanding? Are the themes specific, segment-differentiated, and supported by quotes? Did the IDD's research questions get answered? This is a qualitative grade and the LLM-as-Judge should quote actual session content as evidence.
+- **Intervention Effectiveness** is graded on **research yield** — did the focus groups produce findings that meaningfully informed the next stage or the team's understanding? Are the themes specific, segment-differentiated, and supported by quotes? Did the PDD's research questions get answered? This is a qualitative grade and the LLM-as-Judge should quote actual session content as evidence.
 
 Add a 7th dimension for `focus-group`:
 - **Research Quality** (0–10) — Were the session outputs of high enough quality to be the input to a downstream synthesis or decision? Are themes triangulated across segments? Is there visible saturation? Are quotes attributed and verbatim?
@@ -77,4 +77,4 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-08 | Add `## Archetypes` section: focus-group grading uses facilitation-quality and research-yield rubrics for FLW Performance / Intervention Effectiveness, plus a 7th Research Quality dimension; multi-stage grades stage-gate transitions | ACE team (PM scout, focus-group framework lens) |
-| 2026-04-08 | Read IDD `## Evidence Model` in step 1; Layer A drives FLW Performance evidence, Layer B/C drive Intervention Effectiveness / Research Quality evidence | ACE team (PM scout, focus-group framework lens) |
+| 2026-04-08 | Read PDD `## Evidence Model` in step 1; Layer A drives FLW Performance evidence, Layer B/C drive Intervention Effectiveness / Research Quality evidence | ACE team (PM scout, focus-group framework lens) |

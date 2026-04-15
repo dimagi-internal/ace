@@ -2,12 +2,12 @@
 
 ## Nova's Role in ACE
 
-Nova generates CommCare applications from Intervention Design Documents (IDDs). In the
-ACE workflow, once the IDD is approved, ACE passes it to Nova to generate both:
+Nova generates CommCare applications from Program Design Documents (PDDs). In the
+ACE workflow, once the PDD is approved, ACE passes it to Nova to generate both:
 - A **Learn app** — training/knowledge app for FLWs
 - A **Deliver app** — data collection app for FLW service delivery
 
-These two app generation steps (`idd-to-learn-app`, `idd-to-deliver-app`) can run in
+These two app generation steps (`pdd-to-learn-app`, `pdd-to-deliver-app`) can run in
 parallel. Nova's output is then fed to `app-deploy` for upload to CommCare HQ.
 
 ---
@@ -21,9 +21,9 @@ option ACE uses.
 
 ### What we need to know
 - Does Nova have or plan to have a REST API for app generation?
-- Can Nova accept an IDD as input and return a `.ccz` / app JSON without human
+- Can Nova accept an PDD as input and return a `.ccz` / app JSON without human
   interaction?
-- What is Nova's current input format? (structured JSON? Markdown IDD? form input?)
+- What is Nova's current input format? (structured JSON? Markdown PDD? form input?)
 - What authentication/authorization model would a Nova API use?
 - What is the expected latency for app generation? (seconds? minutes?)
 - Are there quality or validation steps in Nova that ACE needs to handle?
@@ -34,7 +34,7 @@ option ACE uses.
 
 ### Option 1: Nova API (Preferred)
 
-Nova exposes a REST API (or we add one) that accepts an IDD and returns a generated
+Nova exposes a REST API (or we add one) that accepts an PDD and returns a generated
 CommCare app package.
 
 ```
@@ -68,7 +68,7 @@ merged. Only recommended if Option 1 is infeasible.
 ### Option 3: Nova via Headless Browser (Not Recommended)
 
 Drive Nova's web UI using a headless browser (e.g., Puppeteer via gstack). ACE fills
-in the IDD form fields, clicks Generate, and downloads the output.
+in the PDD form fields, clicks Generate, and downloads the output.
 
 **Not recommended because:** Brittle to UI changes, error-prone, hard to debug, and
 not a real API integration. Should only be considered as a last resort if Nova cannot
@@ -80,8 +80,8 @@ expose any programmatic interface.
 
 Until Nova integration is resolved with Braxton:
 
-1. The `idd-to-learn-app` and `idd-to-deliver-app` skills generate a **Nova brief**
-   from the approved IDD — a structured document with all the information Nova needs
+1. The `pdd-to-learn-app` and `pdd-to-deliver-app` skills generate a **Nova brief**
+   from the approved PDD — a structured document with all the information Nova needs
    to generate the app
 2. The skill presents this brief and instructs the user to:
    - Open Nova
@@ -90,7 +90,7 @@ Until Nova integration is resolved with Braxton:
 3. The user provides the exported app package path/URL
 4. ACE proceeds to `app-deploy` with the user-provided package
 
-This manual flow still benefits from ACE's IDD-to-brief generation, which structures
+This manual flow still benefits from ACE's PDD-to-brief generation, which structures
 the requirements in the exact format Nova expects. The human step is just the Nova
 interaction itself.
 

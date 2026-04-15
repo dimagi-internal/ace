@@ -5,6 +5,33 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.0 — 2026-04-15
+
+**Breaking rename:** "Intervention Design Document" / IDD is now "Program
+Design Document" / PDD everywhere — full phrase, acronym, filename
+(`idd.md` → `pdd.md`), skill names, docs, fixtures, and manifest entries.
+
+### Changed
+
+- **Four skills renamed:** `idea-to-idd` → `idea-to-pdd`,
+  `idd-to-learn-app` → `pdd-to-learn-app`, `idd-to-deliver-app` →
+  `pdd-to-deliver-app`, `idd-to-test-prompts` → `pdd-to-test-prompts`.
+  Any external callers referencing these names must be updated.
+- **Opportunity artifact renamed:** `ACE/<opp-name>/idd.md` →
+  `ACE/<opp-name>/pdd.md`. Likewise `closeout/new-idd.md` →
+  `closeout/new-pdd.md`. Done now while no opportunities are mid-flight.
+- **Template + examples renamed:** `templates/idd-template.md` →
+  `pdd-template.md`; `docs/examples/idd-*.md` → `pdd-*.md`;
+  `test/sample-idd.md` → `sample-pdd.md`;
+  `test/eval/sample-idds/` → `sample-pdds/`; fixture `idd.md` → `pdd.md`.
+- **Agent frontmatter updated** to reference the new skill names
+  (`design-review` and `commcare-setup`).
+- Section headings inside PDDs that describe the *content* (e.g.
+  `## Intervention Design` — a section that documents how the intervention
+  works) are preserved; only document-name references were renamed.
+- Historical session logs in `.claude/pm/` are left intact — they record
+  what happened at a point in time and shouldn't be rewritten.
+
 ## 0.2.1 — 2026-04-14
 
 Phase metadata moved into agent frontmatter. Each phase agent now declares
@@ -48,7 +75,7 @@ OCS test paths into a single skill with three modes.
   involvement, so an operator can review a fully configured opportunity
   before first contact.
 - **`app-builder` split** into two agents: `design-review` (Phase 1 —
-  `idea-to-idd` + new `idd-to-test-prompts`) and `commcare-setup`
+  `idea-to-pdd` + new `pdd-to-test-prompts`) and `commcare-setup`
   (Phase 2 — apps, deploy, test, training). The old `app-builder.md`
   is removed.
 - **`ocs-setup` is a new Phase 4 agent** that runs `ocs-agent-setup` →
@@ -76,8 +103,8 @@ OCS test paths into a single skill with three modes.
 
 ### Added
 
-- **`idd-to-test-prompts` skill** (Phase 1 Step 2) — derives opp-specific
-  Q&A pairs with expected-answer summaries from the IDD. Produces
+- **`pdd-to-test-prompts` skill** (Phase 1 Step 2) — derives opp-specific
+  Q&A pairs with expected-answer summaries from the PDD. Produces
   `ACE/<opp-name>/test-prompts.md`, the ground truth for the Phase 4
   deep QA gate. Previously `test-prompts.md` was referenced by
   `ocs-chatbot-qa` but had no producer.
@@ -199,7 +226,7 @@ by running the E2E bot creation test against `chatbots.dimagi.com`.
   exercising the full Playwright backend flow: clone → set prompt → attach
   knowledge → get embed info → chat via widget → cleanup (#21, #22).
 - `test/fixtures/CRISPR-Test-001`, `CRISPR-Test-002` — golden E2E test
-  fixtures with idea, IDD, state, deployment summary, and app summaries.
+  fixtures with idea, PDD, state, deployment summary, and app summaries.
 - Shared Connect knowledge collection wired into golden template bootstrap
   and per-opp chatbot setup (#19).
 

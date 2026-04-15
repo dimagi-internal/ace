@@ -707,7 +707,7 @@
           "idd_coverage": {
             "score": 9,
             "max": 10,
-            "reasoning": "All 3 specified modules present (Household Identification, Distribution Protocol, Follow-up Verification) with matching form names. All key field categories covered: scenario questions and scoring for Household ID, step ordering and documentation for Distribution Protocol, timing rules and compliance indicators for Verification. connect_type correctly set to 'learn', case_types correctly null. Minor gap: IDD specifies '15 minutes per lesson' implying substantial instructional content, but each lesson is a single summary paragraph label — adequate for a blueprint but thin for actual training delivery."
+            "reasoning": "All 3 specified modules present (Household Identification, Distribution Protocol, Follow-up Verification) with matching form names. All key field categories covered: scenario questions and scoring for Household ID, step ordering and documentation for Distribution Protocol, timing rules and compliance indicators for Verification. connect_type correctly set to 'learn', case_types correctly null. Minor gap: PDD specifies '15 minutes per lesson' implying substantial instructional content, but each lesson is a single summary paragraph label — adequate for a blueprint but thin for actual training delivery."
           },
           "form_completeness": {
             "score": 8,
@@ -717,7 +717,7 @@
           "connect_config": {
             "score": 10,
             "max": 10,
-            "reasoning": "All Connect-specific configurations are correct and internally consistent. connect_type is 'learn'. Every form has learn_module with a meaningful description and assessment block with score_question referencing the actual hidden 'score' question id. passing_score of 80 aligns with the IDD's >80% requirement. Form type is 'survey' throughout, which is correct for learn modules. No misconfigurations detected."
+            "reasoning": "All Connect-specific configurations are correct and internally consistent. connect_type is 'learn'. Every form has learn_module with a meaningful description and assessment block with score_question referencing the actual hidden 'score' question id. passing_score of 80 aligns with the PDD's >80% requirement. Form type is 'survey' throughout, which is correct for learn modules. No misconfigurations detected."
           },
           "data_model": {
             "score": 10,
@@ -727,7 +727,7 @@
           "validation_logic": {
             "score": 8,
             "max": 10,
-            "reasoning": "Score calculations are syntactically correct XPath: each uses if() for answer checking, sums correct answers, divides by 8, multiplies by 100, and wraps in round(). All correct answer values match the intended correct options. required='true()' is set on all quiz questions. Two issues: (1) Score granularity is coarse — only 9 possible values (0, 13, 25, 38, 50, 63, 75, 88, 100), meaning the effective passing threshold is 88% (7/8 correct), not 80% as configured, since 6/8=75% fails. This is stricter than the IDD's >80% target. (2) No display logic exists to show correct/incorrect feedback after each question, which would enhance the learning experience but is not strictly required by the IDD."
+            "reasoning": "Score calculations are syntactically correct XPath: each uses if() for answer checking, sums correct answers, divides by 8, multiplies by 100, and wraps in round(). All correct answer values match the intended correct options. required='true()' is set on all quiz questions. Two issues: (1) Score granularity is coarse — only 9 possible values (0, 13, 25, 38, 50, 63, 75, 88, 100), meaning the effective passing threshold is 88% (7/8 correct), not 80% as configured, since 6/8=75% fails. This is stricter than the PDD's >80% target. (2) No display logic exists to show correct/incorrect feedback after each question, which would enhance the learning experience but is not strictly required by the PDD."
           },
           "field_usability": {
             "score": 9,
@@ -738,7 +738,7 @@
         "totalScore": 54,
         "maxScore": 60,
         "percentage": 90,
-        "summary": "Strong blueprint that faithfully covers all IDD Learn app requirements with well-crafted scenario-based assessments. The three modules map exactly to the IDD specification with correct Connect configuration throughout. Main weaknesses are thin instructional content (single label per lesson) and coarse score granularity that makes the effective passing threshold 88% rather than the intended 80%. Overall a solid, field-ready quiz structure that would meaningfully assess CHW readiness."
+        "summary": "Strong blueprint that faithfully covers all PDD Learn app requirements with well-crafted scenario-based assessments. The three modules map exactly to the PDD specification with correct Connect configuration throughout. Main weaknesses are thin instructional content (single label per lesson) and coarse score granularity that makes the effective passing threshold 88% rather than the intended 80%. Overall a solid, field-ready quiz structure that would meaningfully assess CHW readiness."
       }
     },
     "deliver": {
@@ -1525,22 +1525,22 @@
           "idd_coverage": {
             "score": 9,
             "max": 10,
-            "reasoning": "All three IDD-specified services are present as distinct modules: household registration (demographics, GPS, bed net count), bed net distribution (quantities, recipients, old net condition), and follow-up verification (installation, usage, condition). All seven IDD case properties are captured. The three-step workflow (register→distribute→verify) is faithfully implemented with case list filters enforcing the correct sequencing. The 'needs_revisit' status is a sensible addition beyond the IDD's four-state lifecycle. Minor gap: no explicit scheduling mechanism between registration and distribution, though the case list filter functionally serves this purpose."
+            "reasoning": "All three PDD-specified services are present as distinct modules: household registration (demographics, GPS, bed net count), bed net distribution (quantities, recipients, old net condition), and follow-up verification (installation, usage, condition). All seven PDD case properties are captured. The three-step workflow (register→distribute→verify) is faithfully implemented with case list filters enforcing the correct sequencing. The 'needs_revisit' status is a sensible addition beyond the PDD's four-state lifecycle. Minor gap: no explicit scheduling mechanism between registration and distribution, though the case list filter functionally serves this purpose."
           },
           "form_completeness": {
             "score": 9,
             "max": 10,
-            "reasoning": "All three forms have comprehensive question sets with correct types (text, int, phone, geopoint, select1, hidden, label). Required fields are correctly marked — all demographic and assessment fields are required, optional fields like phone_number are not. Labels are clear and professional. Good use of groups to organize related questions (demographics, needs assessment, distribution details, verification details). Follow-up forms include summary display labels showing previously collected case data, giving CHWs context. Intro labels on each form clearly explain the task. Minor: the distribution form could benefit from a photo capture of old nets or distribution receipt, but this wasn't specified in the IDD."
+            "reasoning": "All three forms have comprehensive question sets with correct types (text, int, phone, geopoint, select1, hidden, label). Required fields are correctly marked — all demographic and assessment fields are required, optional fields like phone_number are not. Labels are clear and professional. Good use of groups to organize related questions (demographics, needs assessment, distribution details, verification details). Follow-up forms include summary display labels showing previously collected case data, giving CHWs context. Intro labels on each form clearly explain the task. Minor: the distribution form could benefit from a photo capture of old nets or distribution receipt, but this wasn't specified in the PDD."
           },
           "connect_config": {
             "score": 8,
             "max": 10,
-            "reasoning": "connect_type correctly set to 'deliver'. All three forms have deliver_unit with descriptive labels. Distribution and verification forms correctly have connect_task: true for payment tracking. Close case logic is properly configured with question/answer reference. Notable gap: the registration form lacks connect_task: true — per the IDD, CHWs are paid $2 per household visit including registration, so registration visits should also be trackable as connect tasks for payment. This could cause registration visits to go uncompensated."
+            "reasoning": "connect_type correctly set to 'deliver'. All three forms have deliver_unit with descriptive labels. Distribution and verification forms correctly have connect_task: true for payment tracking. Close case logic is properly configured with question/answer reference. Notable gap: the registration form lacks connect_task: true — per the PDD, CHWs are paid $2 per household visit including registration, so registration visits should also be trackable as connect tasks for payment. This could cause registration visits to go uncompensated."
           },
           "data_model": {
             "score": 9,
             "max": 10,
-            "reasoning": "Case type 'household' with case_name_property 'head_of_household' is correct. All seven IDD-specified properties are present (head_of_household, num_children_under_5, num_pregnant_women, num_nets_needed, num_nets_distributed, nets_installed, nets_in_use) plus valuable additions (village, gps_location, phone_number, existing_good_nets, recipient_name, old_nets_condition, dates, reasons). The case_types schema at the bottom is thorough with data types, constraints, and option sets. Case properties are consistently mapped from form questions via case_property. The lifecycle (registered→nets_distributed→needs_revisit/verified→closed) correctly extends the IDD's four states with a practical 'needs_revisit' state. is_case_name: true correctly placed on head_of_household."
+            "reasoning": "Case type 'household' with case_name_property 'head_of_household' is correct. All seven PDD-specified properties are present (head_of_household, num_children_under_5, num_pregnant_women, num_nets_needed, num_nets_distributed, nets_installed, nets_in_use) plus valuable additions (village, gps_location, phone_number, existing_good_nets, recipient_name, old_nets_condition, dates, reasons). The case_types schema at the bottom is thorough with data types, constraints, and option sets. Case properties are consistently mapped from form questions via case_property. The lifecycle (registered→nets_distributed→needs_revisit/verified→closed) correctly extends the PDD's four states with a practical 'needs_revisit' state. is_case_name: true correctly placed on head_of_household."
           },
           "validation_logic": {
             "score": 9,
@@ -1550,13 +1550,13 @@
           "field_usability": {
             "score": 8,
             "max": 10,
-            "reasoning": "Labels are clear and jargon-free — a CHW with basic training could use this. Hints provide practical guidance ('Stand near the household entrance and capture GPS', 'Common reasons: too hot, no mosquitoes, stored for later'). Form flow is logical within each module and across the workflow. Select options are comprehensive and unambiguous. Case list columns are well-chosen for each module's context (e.g., verification shows distribution date to help CHWs identify 2-week-old distributions). The display of previous case data in follow-up forms prevents CHWs from needing to remember details. Two gaps: (1) no mechanism to enforce the IDD's 2-week timing between distribution and verification — CHWs could verify too early; (2) the verification form asks about net usage even when no nets are installed, which would confuse field workers."
+            "reasoning": "Labels are clear and jargon-free — a CHW with basic training could use this. Hints provide practical guidance ('Stand near the household entrance and capture GPS', 'Common reasons: too hot, no mosquitoes, stored for later'). Form flow is logical within each module and across the workflow. Select options are comprehensive and unambiguous. Case list columns are well-chosen for each module's context (e.g., verification shows distribution date to help CHWs identify 2-week-old distributions). The display of previous case data in follow-up forms prevents CHWs from needing to remember details. Two gaps: (1) no mechanism to enforce the PDD's 2-week timing between distribution and verification — CHWs could verify too early; (2) the verification form asks about net usage even when no nets are installed, which would confuse field workers."
           }
         },
         "totalScore": 52,
         "maxScore": 60,
         "percentage": 87,
-        "summary": "This is a high-quality blueprint that faithfully translates the IDD requirements into a well-structured CommCare application. The three-module workflow with case list filters enforcing the correct lifecycle is well-designed, and the data model comprehensively captures all specified and derived fields. The main gaps are the missing connect_task on the registration form (which could affect CHW payment), and minor field-level usability issues around skip logic in the verification form."
+        "summary": "This is a high-quality blueprint that faithfully translates the PDD requirements into a well-structured CommCare application. The three-module workflow with case list filters enforcing the correct lifecycle is well-designed, and the data model comprehensively captures all specified and derived fields. The main gaps are the missing connect_task on the registration form (which could affect CHW payment), and minor field-level usability issues around skip logic in the verification form."
       }
     },
     "overallScore": 106,

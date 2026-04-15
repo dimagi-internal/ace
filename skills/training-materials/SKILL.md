@@ -12,7 +12,7 @@ Generate training materials from the app summaries and standard templates.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - IDD: `ACE/<opp-name>/idd.md`
+   - PDD: `ACE/<opp-name>/pdd.md`
    - Learn app summary: `ACE/<opp-name>/app-summaries/learn-app-summary.md`
    - Deliver app summary: `ACE/<opp-name>/app-summaries/deliver-app-summary.md`
    - Template collateral from `templates/` directory (if available)

@@ -129,7 +129,7 @@ The Nova MCP does not exist yet — see `playbook/integrations/nova-integration.
 - [Generated Playbook](docs/generated/playbook.md) — human-readable process flow (generated from agent/skill definitions)
 - [Integration Specs](playbook/integrations/) — what APIs exist vs. need to be built
 - [ACE Web Harness Design](docs/superpowers/specs/2026-04-07-ace-web-harness-design.md) — cross-cutting architecture spec for the browser-based ACE frontend
-- [IDD Stress-Test Observations](docs/examples/idd-stress-test-observations.md) — how to validate an IDD and verify LLO execution, with two sample IDDs worked through end-to-end
+- [PDD Stress-Test Observations](docs/examples/pdd-stress-test-observations.md) — how to validate an PDD and verify LLO execution, with two sample PDDs worked through end-to-end
 
 ## Related projects
 

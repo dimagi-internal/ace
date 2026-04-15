@@ -23,7 +23,7 @@
 export type Phase = 'design' | 'commcare' | 'connect' | 'ocs' | 'operate' | 'closeout';
 
 export interface ArtifactEntry {
-  /** Relative path under ACE/<opp-name>/, e.g. "idd.md" or "apps/learn-app.json" */
+  /** Relative path under ACE/<opp-name>/, e.g. "pdd.md" or "apps/learn-app.json" */
   path: string;
   /** Skill that creates this artifact (or "external" for human-provided inputs) */
   producedBy: string;
@@ -49,31 +49,31 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'idea.md',
     producedBy: 'external',
-    consumedBy: ['idea-to-idd'],
+    consumedBy: ['idea-to-pdd'],
     phase: 'design',
     required: true,
     description: 'Initial opportunity idea or brief',
   },
   {
-    path: 'idd.md',
-    producedBy: 'idea-to-idd',
+    path: 'pdd.md',
+    producedBy: 'idea-to-pdd',
     consumedBy: [
-      'idd-to-test-prompts', 'idd-to-learn-app', 'idd-to-deliver-app', 'app-test',
+      'pdd-to-test-prompts', 'pdd-to-learn-app', 'pdd-to-deliver-app', 'app-test',
       'training-materials', 'connect-program-setup', 'connect-opp-setup',
       'llo-invite', 'ocs-agent-setup', 'timeline-monitor', 'flw-data-review',
       'cycle-grade', 'learnings-summary',
     ],
     phase: 'design',
     required: true,
-    description: 'Intervention Design Document with archetype, Evidence Model, and stress-test appendix',
+    description: 'Program Design Document with archetype, Evidence Model, and stress-test appendix',
   },
   {
     path: 'test-prompts.md',
-    producedBy: 'idd-to-test-prompts',
+    producedBy: 'pdd-to-test-prompts',
     consumedBy: ['ocs-chatbot-qa'],
     phase: 'design',
     required: true,
-    description: 'Opp-specific Q&A pairs derived from the IDD; ground truth for OCS deep QA gate',
+    description: 'Opp-specific Q&A pairs derived from the PDD; ground truth for OCS deep QA gate',
   },
   {
     path: 'state.yaml',
@@ -88,7 +88,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
 
   {
     path: 'apps/learn-app.json',
-    producedBy: 'idd-to-learn-app',
+    producedBy: 'pdd-to-learn-app',
     consumedBy: ['app-deploy'],
     phase: 'commcare',
     required: true,
@@ -96,7 +96,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   },
   {
     path: 'apps/deliver-app.json',
-    producedBy: 'idd-to-deliver-app',
+    producedBy: 'pdd-to-deliver-app',
     consumedBy: ['app-deploy'],
     phase: 'commcare',
     required: true,
@@ -104,7 +104,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   },
   {
     path: 'app-summaries/learn-app-summary.md',
-    producedBy: 'idd-to-learn-app',
+    producedBy: 'pdd-to-learn-app',
     consumedBy: ['app-test', 'training-materials', 'ocs-agent-setup', 'flw-data-review'],
     phase: 'commcare',
     required: true,
@@ -112,7 +112,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   },
   {
     path: 'app-summaries/deliver-app-summary.md',
-    producedBy: 'idd-to-deliver-app',
+    producedBy: 'pdd-to-deliver-app',
     consumedBy: ['app-test', 'training-materials', 'ocs-agent-setup', 'flw-data-review'],
     phase: 'commcare',
     required: true,
@@ -312,15 +312,15 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['cycle-grade'],
     phase: 'closeout',
     required: true,
-    description: 'Process/content/technical/relationship learnings against original IDD',
+    description: 'Process/content/technical/relationship learnings against original PDD',
   },
   {
-    path: 'closeout/new-idd.md',
+    path: 'closeout/new-pdd.md',
     producedBy: 'learnings-summary',
     consumedBy: [],
     phase: 'closeout',
     required: false,
-    description: 'New IDD incorporating learnings (only if iteration warranted)',
+    description: 'New PDD incorporating learnings (only if iteration warranted)',
   },
   {
     path: 'closeout/cycle-grade.md',

@@ -1,8 +1,8 @@
-# Intervention Design Document: Vaccine Hesitancy
+# Program Design Document: Vaccine Hesitancy
 
-> **Source artifact.** This is the raw IDD as provided for ACE pipeline stress-testing.
-> See [`idd-stress-test-observations.md`](idd-stress-test-observations.md) for the analysis of this IDD's gaps, verification strategy, and what it reveals about ACE skill requirements.
-> This IDD is the harder of the two example cases because the focus group phase does not map cleanly onto the existing Connect delivery model (atomic photo + GPS + form).
+> **Source artifact.** This is the raw PDD as provided for ACE pipeline stress-testing.
+> See [`pdd-stress-test-observations.md`](pdd-stress-test-observations.md) for the analysis of this PDD's gaps, verification strategy, and what it reveals about ACE skill requirements.
+> This PDD is the harder of the two example cases because the focus group phase does not map cleanly onto the existing Connect delivery model (atomic photo + GPS + form).
 
 ## Overview
 

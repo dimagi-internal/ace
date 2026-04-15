@@ -316,7 +316,7 @@ server.tool(
 // 10. Update a Drive file's content
 server.tool(
   'drive_update_file',
-  'Update the text content of an existing Google Doc in Drive. Use for updating IDDs, summaries, and other docs as ACE skills produce new content.',
+  'Update the text content of an existing Google Doc in Drive. Use for updating PDDs, summaries, and other docs as ACE skills produce new content.',
   {
     fileId: z.string().describe('The Google Drive file ID'),
     content: z.string().describe('The new text content to write'),
@@ -339,7 +339,7 @@ server.tool(
 // 11. Create a file in Google Drive
 server.tool(
   'drive_create_file',
-  'Create a new Google Doc in Drive with the given name and content, optionally inside a parent folder. Used by ACE skills (idea-to-idd, idd-to-learn-app, etc.) to write artifacts to opportunity folders.',
+  'Create a new Google Doc in Drive with the given name and content, optionally inside a parent folder. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.',
   {
     name: z.string().describe('Name for the new file'),
     content: z.string().describe('Text content for the file'),
@@ -568,7 +568,7 @@ server.tool(
 // 18. Copy a template doc and replace placeholder text
 server.tool(
   'docs_copy_template',
-  'Copy a Google Doc template and optionally replace placeholder text. Smart chips (person chips, dates, building blocks) survive the copy. Use placeholders like {{NAME}} in the template, then pass replacements to fill them in. Useful for ACE training materials, IDD templates, and onboarding email templates.',
+  'Copy a Google Doc template and optionally replace placeholder text. Smart chips (person chips, dates, building blocks) survive the copy. Use placeholders like {{NAME}} in the template, then pass replacements to fill them in. Useful for ACE training materials, PDD templates, and onboarding email templates.',
   {
     templateDocId: z.string().describe('The template Google Doc ID to copy'),
     title: z.string().describe('Title for the new document'),

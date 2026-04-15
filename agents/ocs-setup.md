@@ -26,7 +26,7 @@ the ACE judge does.
 
 ### Step 1: Configure the chatbot
 Invoke the `ocs-agent-setup` skill.
-- Input: `ACE/<opp-name>/` — IDD, training materials, app summaries, opportunity config
+- Input: `ACE/<opp-name>/` — PDD, training materials, app summaries, opportunity config
 - Output: cloned chatbot with opp system prompt, RAG collection indexed,
   version published. `ACE/<opp-name>/ocs-agent-config.md` written with
   `{experiment_id, public_id, embed_key, collection_id, pipeline_id, version_number}`
@@ -49,7 +49,7 @@ Invoke the `ocs-chatbot-qa` skill with `--deep`.
 - Output: full scored report at `ACE/<opp-name>/qa-reports/YYYY-MM-DD-ocs-qa.md`
 - Tests: Connect-general + ACE-specific + opp-specific prompts from
   `ACE/<opp-name>/test-prompts.md` (produced in Phase 1 by
-  `idd-to-test-prompts`)
+  `pdd-to-test-prompts`)
 - **Gate (review mode):** Present the report for approval before completing
   the phase
 - Depends on: Step 2 (don't run deep QA on a miswired bot)

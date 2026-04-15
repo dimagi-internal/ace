@@ -39,7 +39,7 @@
 
 ```bash
 mkdir -p .claude-plugin agents commands
-mkdir -p skills/{idea-to-idd,idd-to-learn-app,idd-to-deliver-app,app-deploy,app-test,training-materials}
+mkdir -p skills/{idea-to-pdd,pdd-to-learn-app,pdd-to-deliver-app,app-deploy,app-test,training-materials}
 mkdir -p skills/{connect-program-setup,connect-opp-setup,llo-invite}
 mkdir -p skills/{llo-onboarding,ocs-agent-setup,timeline-monitor,flw-data-review}
 mkdir -p skills/{opp-closeout,llo-feedback,learnings-summary,cycle-grade}
@@ -190,7 +190,7 @@ File: `playbook/integrations/ocs-integration.md`
 
 OCS is ACE's "mouth and ears" for LLO interaction. ACE manages OCS:
 - Creates/configures an OCS agent per opportunity
-- Injects context: IDD, training materials, opportunity details
+- Injects context: PDD, training materials, opportunity details
 - Monitors conversation transcripts for issues
 - All LLO communication flows through Ace-AI@Dimagi.com → OCS
 
@@ -203,7 +203,7 @@ OCS already has APIs for:
 ## Needs Exploration
 
 1. **Agent creation API** — can we programmatically create an OCS agent?
-2. **Context injection** — how to push IDD + training materials + opp context into an OCS agent?
+2. **Context injection** — how to push PDD + training materials + opp context into an OCS agent?
 3. **Dynamic updates** — can ACE update the OCS agent's context mid-opportunity?
 4. **Webhook/notification** — can OCS notify ACE when certain events happen (e.g., LLO asks a question ACE should know about)?
 5. **Transcript API shape** — what format are transcripts in? How to filter by opp/LLO?
@@ -220,7 +220,7 @@ Build `mcp/ocs-server.ts` in the ACE repo with tools:
 ## Manual Workaround
 
 Until OCS MCP is built, the ocs-agent-setup skill will:
-1. Generate the context document (IDD summary + training materials + opp details)
+1. Generate the context document (PDD summary + training materials + opp details)
 2. Write it to the opportunity's GDrive folder
 3. Instruct the user to manually configure the OCS agent with this context
 ```
@@ -234,7 +234,7 @@ File: `playbook/integrations/nova-integration.md`
 
 ## Role in ACE
 
-Nova generates CommCare applications from an IDD (Intervention Design Doc). ACE passes the IDD to Nova and answers Nova's configuration questions to produce Learn and Deliver apps.
+Nova generates CommCare applications from an PDD (Program Design Doc). ACE passes the PDD to Nova and answers Nova's configuration questions to produce Learn and Deliver apps.
 
 ## Current State
 
@@ -249,7 +249,7 @@ Nova is an existing tool. Need to explore with Braxton:
 
 ### Option A: Nova API (preferred)
 - Nova exposes an API for app generation
-- ACE sends IDD + config answers → Nova returns app JSON/CCZ
+- ACE sends PDD + config answers → Nova returns app JSON/CCZ
 - Cleanest integration, no fork needed
 
 ### Option B: Nova Fork
@@ -264,7 +264,7 @@ Nova is an existing tool. Need to explore with Braxton:
 ## Manual Workaround
 
 Until Nova integration is built:
-1. ACE generates a structured brief from the IDD for the app builder
+1. ACE generates a structured brief from the PDD for the app builder
 2. ACE writes the brief to the opportunity's GDrive folder
 3. User manually creates the app in Nova using the brief
 4. User uploads the resulting JSON/CCZ to the GDrive folder
@@ -330,7 +330,7 @@ Gates are logged but not enforced.
 **Review mode:** Run all phases sequentially but pause at gate steps.
 Use AskUserQuestion to present results and get approval before proceeding.
 Gate steps are:
-- After idea-to-idd (IDD must be approved before building apps)
+- After idea-to-pdd (PDD must be approved before building apps)
 - After app-deploy (apps must be verified before publishing)
 - After llo-invite (invites must be reviewed before sending)
 
@@ -340,7 +340,7 @@ When invoked with an opportunity, execute these phases in order:
 
 ### Phase 1: App Building
 Dispatch to the **app-builder** agent with the opportunity context.
-This phase produces: IDD, Learn app, Deliver app, deployed apps, test results,
+This phase produces: PDD, Learn app, Deliver app, deployed apps, test results,
 training materials.
 
 ### Phase 2: Connect Setup
@@ -393,13 +393,13 @@ git commit -m "feat: add ace-orchestrator agent definition"
 
 ### Task 4: App-Builder Agent and Skills
 
-The app-builder agent orchestrates: idea → IDD → Nova apps → deploy → test → training materials.
+The app-builder agent orchestrates: idea → PDD → Nova apps → deploy → test → training materials.
 
 **Files:**
 - Create: `agents/app-builder.md`
-- Create: `skills/idea-to-idd/SKILL.md`
-- Create: `skills/idd-to-learn-app/SKILL.md`
-- Create: `skills/idd-to-deliver-app/SKILL.md`
+- Create: `skills/idea-to-pdd/SKILL.md`
+- Create: `skills/pdd-to-learn-app/SKILL.md`
+- Create: `skills/pdd-to-deliver-app/SKILL.md`
 - Create: `skills/app-deploy/SKILL.md`
 - Create: `skills/app-test/SKILL.md`
 - Create: `skills/training-materials/SKILL.md`
@@ -413,7 +413,7 @@ File: `agents/app-builder.md`
 name: app-builder
 description: >
   Orchestrates the app building phase of CRISPR-Connect: idea iteration into
-  an IDD, passing the IDD to Nova for Learn and Deliver apps, deploying to
+  an PDD, passing the PDD to Nova for Learn and Deliver apps, deploying to
   CCHQ, testing, and creating training materials.
 model: inherit
 ---
@@ -426,18 +426,18 @@ You orchestrate the app building phase of a CRISPR-Connect opportunity.
 
 Execute these steps in order for the given opportunity:
 
-### Step 1: Idea to IDD
-Invoke the `idea-to-idd` skill.
+### Step 1: Idea to PDD
+Invoke the `idea-to-pdd` skill.
 - Input: initial idea (from Neal or the opportunity brief)
-- Output: `ACE/<opp-name>/idd.md` written to GDrive
-- **Gate (review mode):** Present IDD for approval before continuing
-- **LLM-as-Judge:** Evaluate IDD quality (completeness, feasibility, clarity)
+- Output: `ACE/<opp-name>/pdd.md` written to GDrive
+- **Gate (review mode):** Present PDD for approval before continuing
+- **LLM-as-Judge:** Evaluate PDD quality (completeness, feasibility, clarity)
 
-### Step 2: IDD to Apps (parallel)
-Invoke `idd-to-learn-app` and `idd-to-deliver-app` skills. These can run in parallel.
-- Input: approved IDD from GDrive
+### Step 2: PDD to Apps (parallel)
+Invoke `pdd-to-learn-app` and `pdd-to-deliver-app` skills. These can run in parallel.
+- Input: approved PDD from GDrive
 - Output: app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
-- **LLM-as-Judge:** Evaluate app quality against IDD requirements
+- **LLM-as-Judge:** Evaluate app quality against PDD requirements
 
 ### Step 3: Deploy Apps
 Invoke the `app-deploy` skill.
@@ -458,23 +458,22 @@ Update opportunity state to mark app-building phase as complete.
 Write phase summary to `ACE/<opp-name>/app-building-summary.md`.
 ```
 
-- [ ] **Step 2: Write idea-to-idd skill**
+- [ ] **Step 2: Write idea-to-pdd skill**
 
-File: `skills/idea-to-idd/SKILL.md`
+File: `skills/idea-to-pdd/SKILL.md`
 
 ```markdown
 ---
-name: idea-to-idd
+name: idea-to-pdd
 description: >
-  Iterate on an idea to produce a well-specified Intervention Design Doc (IDD)
+  Iterate on an idea to produce a well-specified Program Design Doc (PDD)
   for a Connect application. Defines the intervention, target FLWs, visit
   structure, and preferred LLOs.
 ---
 
-# Idea to IDD
+# Idea to PDD
 
-Take an initial idea and iterate on it to produce a complete Intervention Design
-Doc (IDD) that specifies a Connect application.
+Take an initial idea and iterate on it to produce a complete Program Design Doc (PDD) that specifies a Connect application.
 
 ## Process
 
@@ -488,7 +487,7 @@ Doc (IDD) that specifies a Connect application.
    - What data needs to be collected (Learn app)?
    - What services need to be delivered (Deliver app)?
 
-3. **Draft the IDD** with these sections:
+3. **Draft the PDD** with these sections:
    - **Problem Statement** — what problem this solves
    - **Intervention Design** — how the intervention works
    - **Learn App Specification** — what data FLWs collect, visit structure, form design
@@ -500,57 +499,57 @@ Doc (IDD) that specifies a Connect application.
    - **Timeline** — expected duration of the opportunity
 
 4. **Self-evaluate (LLM-as-Judge):**
-   - Is the IDD complete enough for Nova to generate apps?
+   - Is the PDD complete enough for Nova to generate apps?
    - Are the Learn and Deliver app specs specific enough?
    - Are success metrics measurable?
    - Is the FLW/visit structure realistic?
    If quality is insufficient, iterate on weak sections before outputting.
 
-5. **Write the IDD** to `ACE/<opp-name>/idd.md` via Google Drive MCP.
+5. **Write the PDD** to `ACE/<opp-name>/pdd.md` via Google Drive MCP.
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_update_file`
 
 ## Mode Behavior
-- **Auto:** Write IDD, email summary to admin group, proceed
-- **Review:** Write IDD, present for human review, wait for approval
+- **Auto:** Write PDD, email summary to admin group, proceed
+- **Review:** Write PDD, present for human review, wait for approval
 ```
 
-- [ ] **Step 3: Write idd-to-learn-app skill**
+- [ ] **Step 3: Write pdd-to-learn-app skill**
 
-File: `skills/idd-to-learn-app/SKILL.md`
+File: `skills/pdd-to-learn-app/SKILL.md`
 
 ```markdown
 ---
-name: idd-to-learn-app
+name: pdd-to-learn-app
 description: >
-  Pass an IDD to Nova to generate the Learn app. Answer Nova's configuration
+  Pass an PDD to Nova to generate the Learn app. Answer Nova's configuration
   questions. Output the app JSON/CCZ and a summary of decisions made.
 ---
 
-# IDD to Learn App
+# PDD to Learn App
 
-Generate the Learn (data collection) app from the IDD using Nova.
+Generate the Learn (data collection) app from the PDD using Nova.
 
 ## Process
 
-1. **Read the IDD** from `ACE/<opp-name>/idd.md` via Google Drive MCP.
+1. **Read the PDD** from `ACE/<opp-name>/pdd.md` via Google Drive MCP.
 
-2. **Extract Learn app requirements** from the IDD:
+2. **Extract Learn app requirements** from the PDD:
    - What data needs to be collected?
    - Visit structure and frequency
    - Form design requirements
    - Case management needs
 
 3. **Pass to Nova** for app generation.
-   - Provide the Learn app spec section of the IDD
-   - Answer Nova's configuration questions based on the IDD
+   - Provide the Learn app spec section of the PDD
+   - Answer Nova's configuration questions based on the PDD
    - Capture all decisions made during configuration
 
 4. **Receive app output** — JSON/CCZ file from Nova.
 
 5. **Self-evaluate (LLM-as-Judge):**
-   - Does the app structure match the IDD Learn spec?
+   - Does the app structure match the PDD Learn spec?
    - Are all required data collection forms present?
    - Is the visit structure correct?
    - Are case properties properly configured?
@@ -566,7 +565,7 @@ Generate the Learn (data collection) app from the IDD using Nova.
 - Nova: TBD — see `playbook/integrations/nova-integration.md`
 
 ## Current Workaround (Nova not yet integrated)
-1. Generate a structured app brief from the IDD Learn spec
+1. Generate a structured app brief from the PDD Learn spec
 2. Write it to `ACE/<opp-name>/app-briefs/learn-app-brief.md`
 3. Ask the user to create the app in Nova using this brief
 4. Ask the user to upload the resulting JSON/CCZ to the GDrive folder
@@ -577,41 +576,41 @@ Generate the Learn (data collection) app from the IDD using Nova.
 - **Review:** Present app summary for review before proceeding
 ```
 
-- [ ] **Step 4: Write idd-to-deliver-app skill**
+- [ ] **Step 4: Write pdd-to-deliver-app skill**
 
-File: `skills/idd-to-deliver-app/SKILL.md`
+File: `skills/pdd-to-deliver-app/SKILL.md`
 
 ```markdown
 ---
-name: idd-to-deliver-app
+name: pdd-to-deliver-app
 description: >
-  Pass an IDD to Nova to generate the Deliver app. Answer Nova's configuration
+  Pass an PDD to Nova to generate the Deliver app. Answer Nova's configuration
   questions. Output the app JSON/CCZ and a summary of decisions made.
 ---
 
-# IDD to Deliver App
+# PDD to Deliver App
 
-Generate the Deliver (service delivery) app from the IDD using Nova.
+Generate the Deliver (service delivery) app from the PDD using Nova.
 
 ## Process
 
-1. **Read the IDD** from `ACE/<opp-name>/idd.md` via Google Drive MCP.
+1. **Read the PDD** from `ACE/<opp-name>/pdd.md` via Google Drive MCP.
 
-2. **Extract Deliver app requirements** from the IDD:
+2. **Extract Deliver app requirements** from the PDD:
    - What services need to be delivered?
    - Workflow and case management
    - Verification criteria
    - Payment triggers
 
 3. **Pass to Nova** for app generation.
-   - Provide the Deliver app spec section of the IDD
-   - Answer Nova's configuration questions based on the IDD
+   - Provide the Deliver app spec section of the PDD
+   - Answer Nova's configuration questions based on the PDD
    - Capture all decisions made during configuration
 
 4. **Receive app output** — JSON/CCZ file from Nova.
 
 5. **Self-evaluate (LLM-as-Judge):**
-   - Does the app structure match the IDD Deliver spec?
+   - Does the app structure match the PDD Deliver spec?
    - Are all service delivery forms present?
    - Is the case management workflow correct?
    - Are verification criteria properly encoded?
@@ -627,7 +626,7 @@ Generate the Deliver (service delivery) app from the IDD using Nova.
 - Nova: TBD — see `playbook/integrations/nova-integration.md`
 
 ## Current Workaround (Nova not yet integrated)
-1. Generate a structured app brief from the IDD Deliver spec
+1. Generate a structured app brief from the PDD Deliver spec
 2. Write it to `ACE/<opp-name>/app-briefs/deliver-app-brief.md`
 3. Ask the user to create the app in Nova using this brief
 4. Ask the user to upload the resulting JSON/CCZ to the GDrive folder
@@ -766,7 +765,7 @@ Generate training materials from the app summaries and standard templates.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - IDD: `ACE/<opp-name>/idd.md`
+   - PDD: `ACE/<opp-name>/pdd.md`
    - Learn app summary: `ACE/<opp-name>/app-summaries/learn-app-summary.md`
    - Deliver app summary: `ACE/<opp-name>/app-summaries/deliver-app-summary.md`
    - Template collateral from `templates/` directory (if available)
@@ -803,8 +802,8 @@ Generate training materials from the app summaries and standard templates.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add agents/app-builder.md skills/idea-to-idd/ skills/idd-to-learn-app/ skills/idd-to-deliver-app/ skills/app-deploy/ skills/app-test/ skills/training-materials/
-git commit -m "feat: add app-builder agent and 6 skills (idea-to-idd through training-materials)"
+git add agents/app-builder.md skills/idea-to-pdd/ skills/pdd-to-learn-app/ skills/pdd-to-deliver-app/ skills/app-deploy/ skills/app-test/ skills/training-materials/
+git commit -m "feat: add app-builder agent and 6 skills (idea-to-pdd through training-materials)"
 ```
 
 ---
@@ -840,19 +839,19 @@ Execute these steps in order:
 
 ### Step 1: Program Setup
 Invoke the `connect-program-setup` skill.
-- Input: IDD and opportunity details from GDrive
+- Input: PDD and opportunity details from GDrive
 - Output: Program created/configured in Connect
 - Note: may not need a new program each time — check if existing program fits
 
 ### Step 2: Opportunity Setup
 Invoke the `connect-opp-setup` skill.
-- Input: Program ID, IDD, app deployment details
+- Input: Program ID, PDD, app deployment details
 - Output: Opportunity created with verification rules, delivery units, payment units
 - Depends on: Step 1 (needs Program ID)
 
 ### Step 3: LLO Invitations
 Invoke the `llo-invite` skill.
-- Input: Opportunity ID, LLO preferences from IDD
+- Input: Opportunity ID, LLO preferences from PDD
 - Output: LLO contacts identified and invited
 - **Gate (review mode):** Present invite list for approval before sending
 - Depends on: Step 2 (needs Opportunity ID)
@@ -880,7 +879,7 @@ Create or select a Connect program for this opportunity.
 
 ## Process
 
-1. **Read the IDD** from `ACE/<opp-name>/idd.md`.
+1. **Read the PDD** from `ACE/<opp-name>/pdd.md`.
 
 2. **Check for existing programs** that match this opportunity's domain/scope.
    Use connect-labs MCP `list_solicitations` or similar to browse existing programs.
@@ -901,7 +900,7 @@ Create or select a Connect program for this opportunity.
 - Connect: `create_program` — **NOT YET BUILT** (CCC-301)
 
 ## Current Workaround
-1. Read the IDD and determine program requirements
+1. Read the PDD and determine program requirements
 2. Ask the user: "Does an existing Connect program fit this opportunity, or should we create a new one?"
 3. If new: provide the user with the recommended program name and configuration
 4. Ask the user to create it in the Connect UI and provide the Program ID
@@ -931,27 +930,27 @@ Create and fully configure a Connect opportunity.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - IDD: `ACE/<opp-name>/idd.md`
+   - PDD: `ACE/<opp-name>/pdd.md`
    - Program details: `ACE/<opp-name>/connect-setup/program.md`
    - App deployment details: `ACE/<opp-name>/deployment-summary.md`
 
 2. **Create the Opportunity** in Connect:
-   - Name from IDD
+   - Name from PDD
    - Link to Program from previous step
    - Delivery type: "Experiment" (generic type) or appropriate type
-   - Start/end dates from IDD timeline
+   - Start/end dates from PDD timeline
    - Link to CCHQ apps
 
 3. **Configure verification rules:**
-   - Based on IDD success metrics and Deliver app structure
+   - Based on PDD success metrics and Deliver app structure
    - Map verification criteria to form submissions / case properties
 
 4. **Configure delivery units:**
-   - Based on IDD intervention design (visits, services, etc.)
+   - Based on PDD intervention design (visits, services, etc.)
    - Set expected quantities and timelines
 
 5. **Configure payment units:**
-   - Based on delivery units and budget from IDD
+   - Based on delivery units and budget from PDD
    - Set payment rates and schedules
 
 6. **Write config summary** to `ACE/<opp-name>/connect-setup/opportunity.md`:
@@ -965,7 +964,7 @@ Create and fully configure a Connect opportunity.
 - Connect: `create_opportunity`, `set_verification_rules`, `set_delivery_units`, `set_payment_units` — **NOT YET BUILT** (CCC-301)
 
 ## Current Workaround
-1. Read IDD and determine all configuration requirements
+1. Read PDD and determine all configuration requirements
 2. Generate a complete configuration spec document
 3. Write it to `ACE/<opp-name>/connect-setup/opp-config-spec.md`
 4. Ask the user to create the opportunity in Connect UI following the spec
@@ -996,11 +995,11 @@ Identify and invite LLOs to participate in the opportunity.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - IDD: `ACE/<opp-name>/idd.md` (LLO preferences section)
+   - PDD: `ACE/<opp-name>/pdd.md` (LLO preferences section)
    - Opportunity details: `ACE/<opp-name>/connect-setup/opportunity.md`
 
 2. **Look up LLO contacts:**
-   - Check IDD for preferred/known LLOs
+   - Check PDD for preferred/known LLOs
    - Search LLO Directory for matching organizations
    - Get contact details for each LLO
 
@@ -1021,7 +1020,7 @@ Identify and invite LLOs to participate in the opportunity.
 - Connect: `list_llo_contacts`, `send_invite` — **NOT YET BUILT**
 
 ## Current Workaround
-1. Read the IDD's LLO preference section
+1. Read the PDD's LLO preference section
 2. Generate a recommended invite list with rationale
 3. Write to `ACE/<opp-name>/connect-setup/recommended-invites.md`
 4. Ask the user to review the list and send invites through the Connect UI
@@ -1078,7 +1077,7 @@ Invoke the `llo-onboarding` skill.
 
 ### Step 2: OCS Agent Setup
 Invoke the `ocs-agent-setup` skill.
-- Input: IDD, training materials, opportunity context
+- Input: PDD, training materials, opportunity context
 - Output: OCS agent configured for this opportunity
 - **LLM-as-Judge:** Evaluate agent context quality
 
@@ -1159,7 +1158,7 @@ File: `skills/ocs-agent-setup/SKILL.md`
 ---
 name: ocs-agent-setup
 description: >
-  Configure an OCS agent for this opportunity. Inject the IDD, training
+  Configure an OCS agent for this opportunity. Inject the PDD, training
   materials, and opportunity context so OCS can answer LLO questions.
 ---
 
@@ -1170,7 +1169,7 @@ Create and configure an OCS agent that handles LLO questions for this opportunit
 ## Process
 
 1. **Read context from GDrive:**
-   - IDD: `ACE/<opp-name>/idd.md`
+   - PDD: `ACE/<opp-name>/pdd.md`
    - Training materials: `ACE/<opp-name>/training-materials/`
    - Opportunity details: `ACE/<opp-name>/connect-setup/opportunity.md`
    - App summaries: `ACE/<opp-name>/app-summaries/`
@@ -1178,7 +1177,7 @@ Create and configure an OCS agent that handles LLO questions for this opportunit
 2. **Compose agent context document:**
    Combine all relevant information into a structured context that tells
    the OCS agent:
-   - What this opportunity is about (from IDD)
+   - What this opportunity is about (from PDD)
    - How the apps work (from app summaries)
    - What LLOs need to know (from training materials)
    - Key dates and milestones (from opportunity details)
@@ -1234,7 +1233,7 @@ Check LLO progress against expected timeline and prompt action if behind.
 ## Process (runs periodically)
 
 1. **Read opportunity state** from GDrive:
-   - Timeline/milestones from IDD
+   - Timeline/milestones from PDD
    - Current status from `ACE/<opp-name>/state.yaml`
    - Previous monitoring reports from `ACE/<opp-name>/monitoring/`
 
@@ -1288,14 +1287,14 @@ Analyze FLW data and recommend improvements to communicate to LLOs.
 1. **Read opportunity context** from GDrive:
    - App summaries and expected data patterns
    - Previous data reviews from `ACE/<opp-name>/data-reviews/`
-   - IDD success metrics
+   - PDD success metrics
 
 2. **Query FLW data** via scout-data MCP:
    - Form submission rates by FLW
    - Completion rates and dropout patterns
    - Data quality issues (missing fields, outlier values)
    - Case management compliance
-   - Compare against expected metrics from IDD
+   - Compare against expected metrics from PDD
 
 3. **Self-evaluate (LLM-as-Judge):**
    - Are the identified patterns real signals or noise?
@@ -1372,7 +1371,7 @@ Invoke the `llo-feedback` skill.
 ### Step 3: Learnings Summary
 Invoke the `learnings-summary` skill.
 - Input: feedback, data reviews, monitoring reports, OCS transcripts
-- Output: comprehensive learnings doc, potentially a new IDD for iteration
+- Output: comprehensive learnings doc, potentially a new PDD for iteration
 - Depends on: Steps 1 and 2
 
 ### Step 4: Cycle Grade
@@ -1507,7 +1506,7 @@ File: `skills/learnings-summary/SKILL.md`
 ---
 name: learnings-summary
 description: >
-  Summarize learnings from the completed opportunity and create a new IDD
+  Summarize learnings from the completed opportunity and create a new PDD
   if iteration is warranted. Can trigger another CRISPR-Connect cycle.
 ---
 
@@ -1518,7 +1517,7 @@ Synthesize all information from the completed opportunity into actionable learni
 ## Process
 
 1. **Read all opportunity artifacts from GDrive:**
-   - IDD (original plan)
+   - PDD (original plan)
    - Test results
    - Monitoring reports from `ACE/<opp-name>/monitoring/`
    - Data reviews from `ACE/<opp-name>/data-reviews/`
@@ -1526,7 +1525,7 @@ Synthesize all information from the completed opportunity into actionable learni
    - LLO feedback from `ACE/<opp-name>/closeout/llo-feedback.md`
    - Comms log
 
-2. **Analyze against original IDD:**
+2. **Analyze against original PDD:**
    - What worked as designed?
    - What didn't work or needed adjustment?
    - Were success metrics met?
@@ -1539,20 +1538,20 @@ Synthesize all information from the completed opportunity into actionable learni
    - **Relationship learnings** — what to change about LLO engagement
 
 4. **Determine if iteration is warranted:**
-   - If yes, draft a new IDD incorporating the learnings
-   - This new IDD can trigger another CRISPR-Connect cycle
+   - If yes, draft a new PDD incorporating the learnings
+   - This new PDD can trigger another CRISPR-Connect cycle
 
 5. **Write to GDrive:**
    - `ACE/<opp-name>/closeout/learnings.md` — full learnings document
-   - `ACE/<opp-name>/closeout/new-idd.md` — new IDD if iteration warranted
+   - `ACE/<opp-name>/closeout/new-pdd.md` — new PDD if iteration warranted
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`
 - OCS: `ocs_list_transcripts`, `ocs_get_transcript`
 
 ## Mode Behavior
-- **Auto:** Generate learnings, create new IDD if warranted, notify admin group
-- **Review:** Present learnings and new IDD for team discussion
+- **Auto:** Generate learnings, create new PDD if warranted, notify admin group
+- **Review:** Present learnings and new PDD for team discussion
 ```
 
 - [ ] **Step 5: Write cycle-grade skill**
@@ -1670,7 +1669,7 @@ allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 Run a single skill for an opportunity without running the full lifecycle.
 
 ## Arguments
-- `<skill-name>` — name of the skill to invoke (e.g., `idea-to-idd`, `app-test`)
+- `<skill-name>` — name of the skill to invoke (e.g., `idea-to-pdd`, `app-test`)
 - `<opp-name>` — name of the opportunity
 
 ## Process
@@ -1772,7 +1771,7 @@ CRISPR-Connect process, generated from the actual agent and skill definitions.
    ### Agent: app-builder
    [From agent definition]
    ### Skills
-   #### idea-to-idd
+   #### idea-to-pdd
    [Summary from SKILL.md]
    ...
 
@@ -1849,10 +1848,10 @@ const server = new McpServer({
 
 server.tool(
   'ocs_create_agent',
-  'Create a new OCS agent for a Connect opportunity. Configures the agent with IDD context, training materials, and opportunity details.',
+  'Create a new OCS agent for a Connect opportunity. Configures the agent with PDD context, training materials, and opportunity details.',
   {
     name: z.string().describe('Agent name, e.g. "ACE - Malaria Pilot"'),
-    context: z.string().describe('Full context document for the agent (IDD + training + opp details)'),
+    context: z.string().describe('Full context document for the agent (PDD + training + opp details)'),
     email: z.string().optional().describe('Email address the agent responds from (default: ace-ai@dimagi.com)'),
     config: z.string().optional().describe('JSON config for agent behavior (escalation rules, cc list, etc.)'),
   },
@@ -2008,15 +2007,15 @@ git commit -m "feat: add OCS MCP server scaffold with 5 tool stubs"
 ### Task 10: Starter Templates
 
 **Files:**
-- Create: `templates/idd-template.md`
+- Create: `templates/pdd-template.md`
 - Create: `templates/onboarding-email-template.md`
 
-- [ ] **Step 1: Write IDD template**
+- [ ] **Step 1: Write PDD template**
 
-File: `templates/idd-template.md`
+File: `templates/pdd-template.md`
 
 ```markdown
-# Intervention Design Document (IDD)
+# Program Design Document (PDD)
 
 ## Opportunity: [Name]
 **Date:** [Date]
@@ -2145,7 +2144,7 @@ Dimagi
 
 ```bash
 git add templates/
-git commit -m "feat: add starter templates for IDD and onboarding email"
+git commit -m "feat: add starter templates for PDD and onboarding email"
 ```
 
 ---
@@ -2227,9 +2226,9 @@ skills/connect-opp-setup/SKILL.md
 skills/connect-program-setup/SKILL.md
 skills/cycle-grade/SKILL.md
 skills/flw-data-review/SKILL.md
-skills/idea-to-idd/SKILL.md
-skills/idd-to-deliver-app/SKILL.md
-skills/idd-to-learn-app/SKILL.md
+skills/idea-to-pdd/SKILL.md
+skills/pdd-to-deliver-app/SKILL.md
+skills/pdd-to-learn-app/SKILL.md
 skills/learnings-summary/SKILL.md
 skills/llo-feedback/SKILL.md
 skills/llo-invite/SKILL.md
@@ -2243,7 +2242,7 @@ commcare-api.md  connect-api.md  nova-integration.md  ocs-integration.md
 === MCP Servers ===
 google-drive-server.ts  ocs-server.ts
 === Templates ===
-idd-template.md  onboarding-email-template.md
+pdd-template.md  onboarding-email-template.md
 === Generated Docs ===
 playbook.md
 ```

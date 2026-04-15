@@ -36,7 +36,7 @@ Gates are logged but not enforced.
 **Review mode:** Run all phases sequentially but pause at gate steps.
 Use AskUserQuestion to present results and get approval before proceeding.
 Gate steps are:
-- After `idea-to-idd` (IDD must be approved before building apps)
+- After `idea-to-pdd` (PDD must be approved before building apps)
 - After `app-deploy` (apps must be verified before Connect setup)
 - After `ocs-chatbot-qa --deep` (OCS quality must clear pre-launch bar)
 - After `llo-invite` (invites must be reviewed before sending)
@@ -52,7 +52,7 @@ When invoked with an opportunity, execute these phases in order:
 
 ### Phase 1: Design Review & Iteration
 Dispatch to the **design-review** agent with the opportunity context.
-This phase produces: IDD and opp-specific test prompts derived from the IDD.
+This phase produces: PDD and opp-specific test prompts derived from the PDD.
 
 ### Phase 2: CommCare Setup
 Dispatch to the **commcare-setup** agent.

@@ -111,7 +111,7 @@ function extractBlueprint(text: string): Record<string, unknown> | null {
 }
 
 export function buildLearnPrompt(idd: string): string {
-  return `Build a CommCare Connect LEARN app based on the following Intervention Design Document.
+  return `Build a CommCare Connect LEARN app based on the following Program Design Document.
 
 This is a Connect Learn app — set connect_type to "learn".
 
@@ -130,13 +130,13 @@ Use the Learn App Specification section to create training modules. Each module 
 
 Do not ask clarifying questions — generate the app directly from this spec.
 
-## IDD
+## PDD
 
 ${idd}`;
 }
 
 export function buildDeliverPrompt(idd: string): string {
-  return `Build a CommCare Connect DELIVER app based on the following Intervention Design Document.
+  return `Build a CommCare Connect DELIVER app based on the following Program Design Document.
 
 This is a Connect Deliver app — set connect_type to "deliver".
 
@@ -145,7 +145,7 @@ Use the Deliver App Specification section to create the app. Follow these guidel
 - Registration forms should create cases, follow-up forms should update cases
 - Configure Connect deliver_unit on all forms
 - Configure Connect task on service delivery and follow-up forms (not registration)
-- Include all case properties specified in the IDD
+- Include all case properties specified in the PDD
 - Add appropriate validation constraints
 - Include conditional case closure where specified
 
@@ -159,7 +159,7 @@ Use the Deliver App Specification section to create the app. Follow these guidel
 
 Do not ask clarifying questions — generate the app directly from this spec.
 
-## IDD
+## PDD
 
 ${idd}`;
 }

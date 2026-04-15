@@ -1,11 +1,11 @@
-# Intervention Design Document (IDD)
+# Program Design Document (PDD)
 
 ## Opportunity: Vaccine Hesitancy Focus Groups — TestLand
 **Date:** 2026-04-08
 **Author:** Neal (ACE focus-group test fixture)
 **Archetype:** focus-group
 
-> **About this fixture.** Simplified single-stage version of `docs/examples/idd-vaccine-hesitancy.md`. Two segments instead of six, one LLO instead of multiple, and the gaps the original IDD had (recruitment, language, consent, output spec, etc.) have been resolved so the stress-test rubric grades all-pass. This is the regression-test fixture for the `focus-group` archetype across all 7 archetype-aware ACE skills.
+> **About this fixture.** Simplified single-stage version of `docs/examples/pdd-vaccine-hesitancy.md`. Two segments instead of six, one LLO instead of multiple, and the gaps the original PDD had (recruitment, language, consent, output spec, etc.) have been resolved so the stress-test rubric grades all-pass. This is the regression-test fixture for the `focus-group` archetype across all 7 archetype-aware ACE skills.
 
 ---
 
@@ -19,7 +19,7 @@ This opportunity uses focus group discussions to surface caregiver-side drivers 
 
 Run **6 focus group sessions** across **2 community segments** (3 sessions per segment), each session ~75 minutes, facilitated by trained TestLand Health Partners (LLO) staff with audio recording and per-domain summary capture. Synthesize findings across sessions to produce a barriers-and-enablers report that informs Stage 2 design.
 
-This is a single-stage IDD. The `multi-stage` Stage 2 follow-up that the source IDD describes is **out of scope** here — Stage 2 will be a separate opportunity if the findings warrant it.
+This is a single-stage PDD. The `multi-stage` Stage 2 follow-up that the source PDD describes is **out of scope** here — Stage 2 will be a separate opportunity if the findings warrant it.
 
 ## Recruitment Plan
 
@@ -81,7 +81,7 @@ Per session, the facilitator produces:
 - Convergence and divergence across the two segments
 - Saturation indicator (are sessions still surfacing new themes or repeating?)
 - Top 5 barriers by frequency × severity, with supporting quotes
-- Implications for the Stage 2 IDD
+- Implications for the Stage 2 PDD
 
 ## Learn App Specification
 
@@ -91,7 +91,7 @@ Facilitation training app (the focus-group Learn app pattern). Modules:
 2. **Probing techniques** — "tell me more," "give me an example," neutral redirect
 3. **Neutral framing** — asking sensitive questions without conveying judgment, especially around religion and tradition
 4. **Group dynamics** — managing dominant participants, drawing out quiet ones, handling disagreement
-5. **Question guide walkthrough** — reading the IDD's question guide aloud, with the rationale for ordering and probes
+5. **Question guide walkthrough** — reading the PDD's question guide aloud, with the rationale for ordering and probes
 6. **Session form walkthrough** — opening the Deliver app, completing the per-domain summary form, uploading audio and attendance photo
 7. **Consent and ethics** — verbal consent script, audio recording consent, withdrawal handling
 8. **Logistics** — venue setup, attendance register, compensation distribution
@@ -145,7 +145,7 @@ Session documentation app (the focus-group Deliver app pattern). Forms:
 |---|---|---|---|
 | **A — Delivery proof** | The session happened as a focus group with consenting participants | Session start form (date, GPS, venue, segment, attendance count, per-participant consent), audio file upload, attendance photo, session end form | Automated: GPS within target community area, audio file present and ≥ 45 minutes, attendance form complete, all 6 per-domain summary forms submitted, consent confirmation present, facilitator reflection present |
 | **B — Content proof** | The session was facilitated properly and the summaries are usable | Per-domain summary forms (themes, ≥ 2 verbatim quotes per domain, level of consensus, time spent), facilitator reflection | AI-assisted: summaries are specific (not generic), quote count meets density target, consensus rating is grounded in the themes, facilitator reflection acknowledges what worked and what didn't |
-| **C — Cross-delivery quality** | The dataset of 6 sessions yields actionable findings | All 6 session outputs taken together | AI synthesis: theme convergence and divergence across the 2 segments, saturation reached by session 5, top barriers identified with quote attribution, output usable as input to a Stage 2 IDD |
+| **C — Cross-delivery quality** | The dataset of 6 sessions yields actionable findings | All 6 session outputs taken together | AI synthesis: theme convergence and divergence across the 2 segments, saturation reached by session 5, top barriers identified with quote attribution, output usable as input to a Stage 2 PDD |
 
 ## Timeline
 
@@ -167,12 +167,12 @@ Session documentation app (the focus-group Deliver app pattern). Forms:
 
 ## Stress Test Results
 
-These results were produced by `idea-to-idd`'s 5-question stress-test rubric (see `skills/idea-to-idd/SKILL.md`). All grades **pass** — this fixture was constructed to pass the rubric so that downstream skills can run against it without `idea-to-idd` looping.
+These results were produced by `idea-to-pdd`'s 5-question stress-test rubric (see `skills/idea-to-pdd/SKILL.md`). All grades **pass** — this fixture was constructed to pass the rubric so that downstream skills can run against it without `idea-to-pdd` looping.
 
 | Check | Grade | Evidence |
 |---|---|---|
 | Executability | **pass** | Recruitment plan specifies how each segment is identified, language declared (Hausa), facilitator skill level + training requirement explicit, consent process documented, venue selection rule stated, compensation specified |
 | Verifiability | **pass** | Output Specification gives a concrete per-session schema (pre-session block, 6 per-domain blocks with themes/quotes/consensus/time, post-session block); Evidence Model maps each artifact to a verification mechanism |
 | Measurability | **pass** | Success Metrics table has 6 metrics with targets and measurement methods; metrics span all three Evidence Model layers |
-| Stage-gate clarity | **pass** | Single-stage IDD; Stage 2 explicitly out of scope; closeout produces a synthesis report whose role as "input to a possible Stage 2 IDD" is documented |
+| Stage-gate clarity | **pass** | Single-stage PDD; Stage 2 explicitly out of scope; closeout produces a synthesis report whose role as "input to a possible Stage 2 PDD" is documented |
 | Resource realism | **pass** | Facilitation skill is assumed to be developed via the Learn app's 8-module training (not assumed pre-existing); 48-participant recruitment scoped via 4 facilitators × 3 sessions × 8 participants with named recruitment lead time |
