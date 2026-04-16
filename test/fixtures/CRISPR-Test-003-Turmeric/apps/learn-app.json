@@ -1,0 +1,33 @@
+{
+  "_note": "SYNTHETIC STUB. Fake app JSON for manifest tests only. Do not deploy.",
+  "name": "ACE Turmeric Survey — Learn",
+  "id": "LRN-TURMERIC-SYN-0001",
+  "version": 1,
+  "domain": "crispr-connect",
+  "archetype": "atomic-visit",
+  "modules": [
+    {
+      "id": "mod-photo-workflow",
+      "name": "Photo Workflow Training",
+      "forms": [
+        { "id": "f-photo-how-to", "name": "Taking a good MTN-card photo" },
+        { "id": "f-lighting", "name": "Lighting and framing" }
+      ]
+    },
+    {
+      "id": "mod-education-message",
+      "name": "Vendor Education",
+      "forms": [
+        { "id": "f-message-script", "name": "Education message script" },
+        { "id": "f-vendor-response", "name": "Handling skeptical vendors" }
+      ]
+    },
+    {
+      "id": "mod-form-walkthrough",
+      "name": "Vendor Intake Form Walkthrough",
+      "forms": [
+        { "id": "f-intake", "name": "Intake field-by-field" }
+      ]
+    }
+  ]
+}

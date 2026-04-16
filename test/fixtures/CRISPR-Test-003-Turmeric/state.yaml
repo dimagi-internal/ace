@@ -1,0 +1,48 @@
+opportunity: CRISPR-Test-003-Turmeric
+mode: review
+created: 2026-04-16T00:00:00Z
+type: synthetic-test-fixture
+archetype: atomic-visit
+
+# State schema aligned with the 6-phase orchestrator (0.2.0+).
+# This fixture ships *all* artifacts populated (as stubs), so a consumer
+# of this state file should treat every step as "done (synthetic)" for
+# testing downstream skills in isolation. The dry-run orchestrator does
+# not need to rerun upstream steps.
+phases:
+  design-review:
+    idea-to-pdd: done
+    pdd-to-test-prompts: done
+  commcare-setup:
+    pdd-to-learn-app: done
+    pdd-to-deliver-app: done
+    app-deploy: done
+    app-test: done
+    training-materials: done
+  connect-setup:
+    connect-program-setup: done
+    connect-opp-setup: done
+    llo-invite: done
+  ocs-setup:
+    ocs-agent-setup: done
+    ocs-chatbot-qa-quick: done
+    ocs-chatbot-qa-deep: done
+  llo-management:
+    llo-onboarding: done
+    llo-uat: done
+    llo-launch: done
+    timeline-monitor: pending   # recurring; no terminal "done"
+    flw-data-review: pending    # recurring
+    ocs-chatbot-qa-monitor: pending
+  closeout:
+    opp-closeout: done
+    llo-feedback: done
+    learnings-summary: done
+    cycle-grade: done
+
+gates:
+  idea-to-pdd: approved
+  app-deploy: approved
+  ocs-chatbot-qa-deep: approved
+  llo-invite: approved
+  llo-launch: approved

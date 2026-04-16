@@ -5,6 +5,42 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.2 — 2026-04-16
+
+End-to-end workflow hardening based on a core-workflow scout. Targets the gap
+between "install works" (0.3.1) and "full pipeline actually runs end to end":
+fixture drift, silent prerequisite failures, and phase-4-to-6 test coverage.
+
+### Added
+
+- **`CRISPR-Test-003-Turmeric` fixture.** Complete end-to-end test fixture
+  seeded from `docs/examples/pdd-turmeric-market-survey.md` with synthetic
+  stubs for every required artifact across all 6 phases. Replaces the
+  "partial-fixture-only" testing posture and lets CI catch manifest drift
+  in phases 4–6 (OCS, operate, closeout) that `CRISPR-Test-001` /
+  `CRISPR-Test-002` can't see.
+- **Artifact-manifest test spans the full lifecycle.** `artifact-manifest.test.ts`
+  now validates `CRISPR-Test-003-Turmeric` `upToPhase: 'closeout'` with zero
+  unexpected and zero missing required artifacts. Manifest-renames or new
+  required artifacts in any phase now trip the existing `npm test` suite.
+- **`/ace:step` prerequisite check.** `commands/step.md` now specifies a
+  manifest-driven input check: before invoking a skill, look up
+  `artifactsConsumedBy(skill)` in `lib/artifact-manifest.ts` and fail loudly
+  if any required prior artifact is missing from the opportunity folder.
+  Closes the silent-failure bypass path on `/ace:step ocs-chatbot-qa` (and
+  anything else that depends on upstream outputs).
+- **`test/fixtures/validation-2026-04-16.md`.** Fresh desk-trace of
+  `/ace:run CRISPR-Test-001 --dry-run` against the current (post-0.2.0)
+  6-phase orchestrator and PDD terminology. Supersedes the 2026-04-08
+  validation doc.
+
+### Changed
+
+- **`CRISPR-Test-001/state.yaml` refreshed to the 6-phase schema.** The flat
+  19-skill list predated the 0.2.0 phase restructure. Now a phases → skills
+  nested map covering all 22 skills (including the three `ocs-chatbot-qa`
+  modes) and the five actual review-mode gates.
+
 ## 0.3.1 — 2026-04-16
 
 First-run UX hardening based on an end-to-end adoption-blocker scout. Targets
