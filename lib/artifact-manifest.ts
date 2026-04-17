@@ -81,7 +81,15 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['timeline-monitor'],
     phase: 'design',
     required: true,
-    description: 'Opportunity lifecycle state: phase, step, mode, gate approvals',
+    description: 'Opportunity lifecycle state: phase, step, mode, gate approvals, initiated_by / last_actor / last_actor_at',
+  },
+  {
+    path: 'gate-briefs/idea-to-pdd.md',
+    producedBy: 'idea-to-pdd',
+    consumedBy: ['ace-orchestrator'],
+    phase: 'design',
+    required: true,
+    description: 'Gate brief for the Phase 1→2 gate: checklist + stress-test concerns for the PDD',
   },
 
   // ── CommCare phase (Phase 2) ───────────────────────────────────
@@ -125,6 +133,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'commcare',
     required: true,
     description: 'App deployment details: IDs, URLs, build status',
+  },
+  {
+    path: 'gate-briefs/app-deploy.md',
+    producedBy: 'app-deploy',
+    consumedBy: ['ace-orchestrator'],
+    phase: 'commcare',
+    required: true,
+    description: 'Gate brief for the Phase 2→3 gate: build status, Connectify flags, workaround-path warnings',
   },
   {
     path: 'test-results/test-plan.md',
@@ -209,6 +225,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     required: true,
     description: 'LLO invite list (prepared in Phase 3, sent in Phase 5)',
   },
+  {
+    path: 'gate-briefs/llo-invite.md',
+    producedBy: 'llo-invite',
+    consumedBy: ['ace-orchestrator'],
+    phase: 'connect',
+    required: true,
+    description: 'Gate brief for the Phase 3→4 gate: invite-list completeness, duplicates, count drift',
+  },
 
   // ── OCS phase (Phase 4) ────────────────────────────────────────
 
@@ -227,6 +251,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'ocs',
     required: true,
     description: 'Operator-facing handoff doc: creds + paste instructions for the Connect opportunity widget (until update_opportunity API lands)',
+  },
+  {
+    path: 'gate-briefs/ocs-chatbot-qa-deep.md',
+    producedBy: 'ocs-chatbot-qa',
+    consumedBy: ['ace-orchestrator'],
+    phase: 'ocs',
+    required: true,
+    description: 'Gate brief for the Phase 4→5 gate: deep-QA scorecard, failing prompts, dimension weak spots',
   },
 
   // ── Operate phase (Phase 5) ────────────────────────────────────
@@ -254,6 +286,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'operate',
     required: true,
     description: 'Activation timestamp, LLO notifications, app URLs, outstanding issues',
+  },
+  {
+    path: 'gate-briefs/llo-launch.md',
+    producedBy: 'llo-launch',
+    consumedBy: ['ace-orchestrator'],
+    phase: 'operate',
+    required: true,
+    description: 'Gate brief for the Phase 5 launch gate: UAT sign-offs, app build status, launch-readiness',
   },
   {
     path: 'qa-reports/YYYY-MM-DD-ocs-qa.md',

@@ -4,6 +4,14 @@ created: 2026-04-03T00:00:00Z
 type: synthetic-test-fixture
 archetype: atomic-visit
 
+# Operator identity (added 0.3.3). CRISPR-Test-001 is a "just kicked off"
+# fixture — initiated_by set, but last_actor has not moved past creation
+# because no skill has run yet. /ace:status should tag this ACTION NEEDED
+# (the idea-to-pdd gate is pending) and show 'last touched by <initiated_by>'.
+initiated_by: jjackson@dimagi.com
+last_actor: jjackson@dimagi.com
+last_actor_at: 2026-04-03T00:00:00Z
+
 # State schema aligned with the 6-phase orchestrator introduced in 0.2.0.
 # Skill names and phase groupings mirror agents/*.md and lib/artifact-manifest.ts.
 phases:

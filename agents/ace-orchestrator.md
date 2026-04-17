@@ -26,6 +26,44 @@ The state file at `ACE/<opp-name>/state.yaml` tracks:
 - Timestamps for each completed step
 - Gate approvals (who approved, when)
 - Any errors or manual interventions
+- Operator identity — see § State Schema below
+
+## State Schema
+
+`state.yaml` top-level fields (added in 0.3.3 for admin-group legibility):
+
+```yaml
+opportunity: <opp-name>
+mode: review|auto
+created: <ISO timestamp>
+initiated_by: <email>        # set once on creation; never overwritten
+last_actor: <email>          # updated on every skill invocation
+last_actor_at: <ISO timestamp>  # updated on every skill invocation
+
+phases:
+  design-review:
+    idea-to-pdd: done|pending|error|dry-run-success|...
+    ...
+
+gates:
+  idea-to-pdd: approved|pending|rejected
+  ...
+```
+
+**`initiated_by`** — the operator who kicked off the opp. Set once in
+"Starting a New Opportunity" from `git config user.email`. Never overwritten.
+Fallback to the literal string `unknown` if git config is unset.
+
+**`last_actor` / `last_actor_at`** — updated on *every* skill invocation,
+both by the orchestrator (full `/ace:run` passes) and by the
+`/ace:step` command. Always pull from `git config user.email` at the
+moment of the touch. These two fields power `/ace:status`'s
+"last touched by X, N days ago" column and its `--mine` filter, which is
+the primary hand-off mechanism across the 5-person admin group.
+
+The operator identity is *captured*, not *enforced*. There is no
+authorization check — a git config mismatch just means `/ace:status --mine`
+won't find the opp. Keep it that way.
 
 ## Execution Modes
 
@@ -34,7 +72,10 @@ The state file at `ACE/<opp-name>/state.yaml` tracks:
 Gates are logged but not enforced.
 
 **Review mode:** Run all phases sequentially but pause at gate steps.
-Use AskUserQuestion to present results and get approval before proceeding.
+At each gate, read the gate brief written by the producing skill (see
+§ Gate Brief Contract below) and present it alongside the `AskUserQuestion`
+approval prompt, so the admin has a specific checklist and any auto-surfaced
+concerns in front of them instead of having to open the artifact cold.
 Gate steps are:
 - After `idea-to-pdd` (PDD must be approved before building apps)
 - After `app-deploy` (apps must be verified before Connect setup)
@@ -92,6 +133,88 @@ After each phase completes:
 2. In auto mode: send status email to admin group
 3. In review mode: present summary and wait for approval to continue
 
+## Gate Brief Contract
+
+At each of the 5 gate steps above, in review mode, the orchestrator must
+show the admin a **gate brief** before the `AskUserQuestion` approval prompt.
+The brief is the single place where "what am I approving, what should I
+check, and what concerns surfaced automatically" lives. Without it, gate
+approvals devolve into rubber-stamps (and the 2026-04-08 stress-test PDDs
+are the evidence — both failed the rubric and would have sailed through a
+bare "Approve the PDD?" prompt).
+
+**Where the brief lives.** Each gate-producing skill writes
+`ACE/<opp-name>/gate-briefs/<gate-name>.md` as its final step, immediately
+after writing its primary artifact. The 5 expected files are:
+
+```
+ACE/<opp-name>/gate-briefs/idea-to-pdd.md
+ACE/<opp-name>/gate-briefs/app-deploy.md
+ACE/<opp-name>/gate-briefs/ocs-chatbot-qa-deep.md
+ACE/<opp-name>/gate-briefs/llo-invite.md
+ACE/<opp-name>/gate-briefs/llo-launch.md
+```
+
+**Required structure** (every brief uses this shape — no free-form prose):
+
+```markdown
+# Gate Brief — <skill-name>
+Opportunity: <opp-name>
+Generated: <ISO timestamp>
+
+## Artifact Under Review
+- Path: `ACE/<opp-name>/<artifact-path>`
+- Summary: <one sentence describing what the artifact is>
+
+## What to Check
+- <skill-specific checklist item 1 — imperative, concrete>
+- <skill-specific checklist item 2>
+- <skill-specific checklist item 3>
+- (3–5 items; see each skill's `## Gate Brief` section for the exact list)
+
+## Auto-Surfaced Concerns
+<Pulled from the producing skill's LLM-as-Judge / stress-test / QA output.
+List each concern on its own line prefixed with a severity tag:
+  [BLOCKER] — rubric fail, QA score below threshold, error state, etc.
+  [WARN]    — rubric partial, low-but-passing score, rationale gaps
+  [INFO]    — "noted for context, not a problem"
+If the producing skill has nothing to surface, write the literal line
+"None — all auto-checks passed." Do not leave this section empty.>
+
+## Recommended Disposition
+<One sentence from the producing skill's own read of its output. Example:
+"Approve — stress test passed 5/5 with no waivers." or
+"Reject — stress test failed on Executability and Verifiability.">
+```
+
+**Orchestrator responsibilities at a gate:**
+
+1. Read `ACE/<opp-name>/gate-briefs/<gate-name>.md`. If it is missing,
+   fail loudly with an error naming the skill that should have produced it
+   — do not invent a brief.
+2. Display the full brief content verbatim to the admin.
+3. Follow with `AskUserQuestion` offering four options:
+   - **Approve** — mark `gates.<gate-name>: approved`, continue
+   - **Reject** — mark `gates.<gate-name>: rejected`, stop the run, log
+     the admin's reason
+   - **Iterate** — hand the brief's concerns back to the producing skill
+     for another pass (equivalent to re-running the upstream skill)
+   - **Inspect** — open the artifact path printed in the brief for a
+     deeper look, then re-prompt the same question
+
+**Why the brief lives in its own file (not inlined in the artifact).**
+Keeps the artifact (PDD, deployment-summary, etc.) clean for downstream
+skills that consume it and don't care about gate framing. Skills that
+produce briefs don't have to coordinate section-anchor conventions across
+each other.
+
+**Auto mode.** In `--mode auto`, skills still write the gate brief, but
+the orchestrator doesn't pause — it proceeds and the brief is archived for
+retrospective review (and to populate the admin-group status email sent
+between phases). If a `[BLOCKER]` concern appears in an auto-mode brief,
+the orchestrator should pause *anyway* and escalate to the admin group —
+admins opted into auto mode for speed, not to ship known-broken work.
+
 ## Error Handling
 
 If a skill fails:
@@ -145,6 +268,28 @@ When starting fresh:
      In `--dry-run` mode, still write `idea.md` to Drive — it's a human input,
      not an effectful action. In `--sandbox` mode, idea capture is unchanged.
 
-3. **Initialize `state.yaml`** with mode, start time, all steps as "pending".
+3. **Initialize `state.yaml`** with:
+   - `mode`, `created` (ISO timestamp), all steps as `pending`
+   - `initiated_by: <email>` from `git config user.email` (fallback: `unknown`)
+   - `last_actor: <email>` and `last_actor_at: <ISO timestamp>` — same email,
+     same timestamp at creation
 
 4. **Begin Phase 1.**
+
+## Touching State — Operator Capture
+
+Every skill invocation, whether via `/ace:run` or `/ace:step`, must update
+`last_actor` and `last_actor_at` in `state.yaml` *before* dispatching the
+skill. This is a two-line write:
+
+```yaml
+last_actor: <current git config user.email>
+last_actor_at: <ISO timestamp at the moment of dispatch>
+```
+
+Do this once per skill invocation, not once per `/ace:run` — an admin who
+resumes an interrupted run mid-pipeline should show up as the last actor for
+the skills they actually drove, not buried behind the initiator.
+
+If `git config user.email` is unset, write the literal `unknown`. Do not
+block the run.

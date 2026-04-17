@@ -117,7 +117,15 @@ If no mode is passed, default to `--quick`.
      overall score drops more than 1.5 points from the previous run, email
      the admin group with the delta
 
-6. **Generate the report** (skipped for `--quick` stdout-only mode):
+6. **Write the gate brief** (only for `--deep` mode) to
+   `ACE/<opp-name>/gate-briefs/ocs-chatbot-qa-deep.md`. `--quick` and
+   `--monitor` do not write gate briefs — `--quick` is a fast-fail smoke
+   check consumed by `ocs-setup`, and `--monitor` appends to the trend file
+   instead of gating. The brief follows the shape in
+   `agents/ace-orchestrator.md § Gate Brief Contract`; see `## Gate Brief`
+   below for the fields this skill populates.
+
+7. **Generate the report** (skipped for `--quick` stdout-only mode):
 
    ```markdown
    # OCS Chatbot QA Report
@@ -144,6 +152,36 @@ If no mode is passed, default to `--quick`.
    [per-question prompt + response + judge evaluation]
    ```
 
+## Gate Brief
+
+*Applies to `--deep` mode only.* The gate brief at
+`ACE/<opp-name>/gate-briefs/ocs-chatbot-qa-deep.md` summarizes the deep-QA
+scorecard so the admin can decide whether the bot is ready for Phase 5
+without reading the full transcript.
+
+- **Artifact Under Review:** path to the dated report under
+  `ACE/<opp-name>/qa-reports/`; summary is
+  `<overall-score>/10 across <N> prompts, <P> Pass / <W> Warn / <F> Fail`
+- **What to Check** (emit these 4 items verbatim):
+  - Overall score ≥ 7.0 and no Fail verdicts on opp-specific prompts from
+    `test-prompts.md`
+  - All four dimensions (Correctness, Source usage, Tone, Tagging) scored
+    ≥ 6.0 — a dimension below 6 is a retrieval or prompt gap, not noise
+  - Edge-case prompts (out-of-scope, adversarial) all passed — role
+    leakage is a privacy risk, not just a quality one
+  - Cited files on Pass responses actually correspond to the right
+    collection (Connect shared vs. opp-specific) — spot-check one of each
+- **Auto-Surfaced Concerns:** one line per signal:
+  - `[BLOCKER]` for each Fail verdict (include prompt snippet + reason)
+  - `[BLOCKER]` if overall score is below 7.0
+  - `[WARN]` for each dimension scoring 6.0–6.9
+  - `[WARN]` if any Pass used the wrong source collection
+  - `[INFO]` if the deep suite ran fewer than 10 prompts (thin test)
+  - "None — all auto-checks passed." if the bot cleared ≥ 7 with zero Fail
+- **Recommended Disposition:** `Approve` if zero `[BLOCKER]`; `Reject` if
+  any `[BLOCKER]` appears (bot is not ready to serve LLOs); `Iterate` to
+  re-run the deep suite after prompt/RAG adjustments
+
 ## MCP Tools Used
 
 - OCS: `ocs_get_chatbot_embed_info` (to resolve experiment_id → embed credentials)
@@ -167,3 +205,4 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-04-10 | Initial version | ACE team |
 | 2026-04-14 | Added --quick / --deep / --monitor modes; --quick replaces the inline self-eval previously in `ocs-agent-setup`; --deep is the pre-launch gate in Phase 4; --monitor runs recurring in Phase 5 | ACE team |
+| 2026-04-17 | `--deep` emits gate brief at `ACE/<opp-name>/gate-briefs/ocs-chatbot-qa-deep.md`; `--quick` and `--monitor` do not | ACE team (PM scout, internal-admin lens) |

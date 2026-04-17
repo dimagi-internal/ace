@@ -71,7 +71,9 @@ describe('CRISPR-Test-001 fixture', () => {
     // CRISPR-Test-001 provides inputs for ocs-agent-setup, not a complete
     // opportunity folder. These artifacts are intentionally absent:
     // test-prompts.md is consumed by ocs-chatbot-qa (not ocs-agent-setup);
-    // apps + test-results live in Phase 2 and aren't needed for OCS config.
+    // apps + test-results live in Phase 2 and aren't needed for OCS config;
+    // gate-briefs/* are produced during gate pauses that this fixture never
+    // reached (state.yaml shows every phase as pending, so no skill has run).
     const expectedMissing = [
       'apps/learn-app.json',
       'apps/deliver-app.json',
@@ -79,6 +81,9 @@ describe('CRISPR-Test-001 fixture', () => {
       'test-results/test-plan.md',
       'test-results/test-results.md',
       'test-results/bugs.md',
+      'gate-briefs/idea-to-pdd.md',
+      'gate-briefs/app-deploy.md',
+      'gate-briefs/llo-invite.md',
     ];
     const files = listFiles(fixtureDir);
     const result = validateFixture(files, 'connect', ['README.md']);

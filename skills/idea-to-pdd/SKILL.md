@@ -87,6 +87,8 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 
 6. **Write the PDD** to `ACE/<opp-name>/pdd.md` via Google Drive MCP. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the PDD, so downstream skills (and humans) can see what was caught and what was waived.
 
+7. **Write the gate brief** to `ACE/<opp-name>/gate-briefs/idea-to-pdd.md` using the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`. See `## Gate Brief` below for the exact fields this skill populates.
+
 ## Archetypes
 
 ACE skills branch on the PDD's declared `archetype:` field. This skill generates archetype-appropriate sections during step 4 (Draft).
@@ -124,6 +126,31 @@ The PDD has two or more sequenced stages with different archetypes. Treat the ba
 
 **Required for multi-stage PDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
 
+## Gate Brief
+
+The gate brief at `ACE/<opp-name>/gate-briefs/idea-to-pdd.md` translates the
+PDD stress-test output into a shape the admin can act on in 60 seconds.
+Follows the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`.
+
+- **Artifact Under Review:** path `ACE/<opp-name>/pdd.md`; summary is the
+  PDD's archetype + problem-statement one-liner
+- **What to Check** (emit these 4 items verbatim):
+  - Archetype declared in frontmatter matches the idea (`atomic-visit` /
+    `focus-group` / `multi-stage`)
+  - `## Evidence Model` section exists with Layer A / B / C populated
+    (downstream skills fail loudly if any is empty)
+  - `LLO Preference` section names at least one candidate LLO or a
+    defensible "any LLO in region X" scope
+  - Any Stress Test categories graded `partial` or `fail` have a
+    human-readable explanation in the appendix (not just a grade)
+- **Auto-Surfaced Concerns:** one line per stress-test category graded
+  `partial` (→ `[WARN]`) or `fail` (→ `[BLOCKER]`). For each, include the
+  category name and the specific failure-mode hint from the rubric (e.g.,
+  `[BLOCKER] Executability — recruitment criteria unspecified`). If all
+  five categories graded `pass`, write "None — all auto-checks passed."
+- **Recommended Disposition:** `Approve` if 0 `[BLOCKER]` and ≤1 `[WARN]`;
+  `Iterate` if any `[BLOCKER]` appears; `Approve with caveats` otherwise
+
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_update_file`
 
@@ -145,3 +172,4 @@ When `--dry-run` is active:
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-08 | Replace weak self-eval with 5-question stress-test rubric (executability, verifiability, measurability, stage-gate clarity, resource realism); block at ≥2 non-pass; include grading anchors from vaccine-hesitancy and turmeric example PDDs; emit stress-test results as PDD appendix | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-15 | Fail fast with actionable error if `idea.md` is missing instead of improvising an idea | ACE team (PM scout, end-to-end UX lens) |
+| 2026-04-17 | Emit gate brief at `ACE/<opp-name>/gate-briefs/idea-to-pdd.md` so the review-mode gate presents a checklist + stress-test concerns instead of a bare "approve PDD?" prompt | ACE team (PM scout, internal-admin lens) |
