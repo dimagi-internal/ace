@@ -5,6 +5,59 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.3 — 2026-04-17
+
+Admin-group coordination polish based on an internal-Dimagi-users scout.
+Targets the seams between the 6-phase pipeline and a 5-person admin group
+(Matt, Neal, Jon, Sarvesh, Cal) who will run multiple opportunities in
+parallel: triage legibility, hand-off attribution, and gate-review
+context. All three changes are state-schema + command spec edits; no
+runtime code changes.
+
+### Added
+
+- **`/ace:status` computes per-opp status tags.** List view now derives
+  one of `ACTION NEEDED` / `RUNNING` / `IDLE` / `ERROR` / `DONE` per opp
+  from `state.yaml` (gate pending, step error, recurring-only remaining,
+  etc.) and sorts `ACTION NEEDED` to the top. Adds a `Blocked on`
+  column (`gate: <name>` / `error: <skill>` / `input: <file>`) so an
+  admin sees next-action without opening the opp. `--mine` filters to
+  the current operator's `git config user.email`; `--all` shows `IDLE`
+  and `DONE`. `Mode` column drops from the default view. See
+  `commands/status.md`.
+- **Operator identity in `state.yaml`.** New fields `initiated_by`,
+  `last_actor`, `last_actor_at` — all emails, ISO-timestamped. Set once
+  at opp creation (`initiated_by`), updated on every skill invocation
+  (`last_actor` / `last_actor_at`) by both `/ace:run` and `/ace:step`.
+  Pulls from `git config user.email`; falls back to `unknown` if unset.
+  Drives `/ace:status`'s "last touched by X, N days ago" column and
+  `--mine`. See `agents/ace-orchestrator.md § State Schema` and
+  `§ Touching State — Operator Capture`.
+- **Gate-brief contract.** Each of the 5 review-mode gates now has a
+  uniform brief at `ACE/<opp-name>/gate-briefs/<gate-name>.md` produced
+  by the gate-owning skill before the orchestrator pauses. Required
+  shape: artifact under review (path + one-line summary), what-to-check
+  checklist (3–5 imperative items), auto-surfaced concerns tagged
+  `[BLOCKER]` / `[WARN]` / `[INFO]`, and a recommended disposition.
+  Orchestrator must read the brief and display it verbatim before any
+  `AskUserQuestion` approval prompt; missing brief = fail loudly. 5
+  skills emit briefs: `idea-to-pdd`, `app-deploy`, `ocs-chatbot-qa`
+  (only in `--deep` mode), `llo-invite`, `llo-launch`. See
+  `agents/ace-orchestrator.md § Gate Brief Contract` and each skill's
+  new `## Gate Brief` section.
+- **5 new required artifacts in `lib/artifact-manifest.ts`.** One entry
+  per gate brief, each consumed by `ace-orchestrator`. `CRISPR-Test-003-Turmeric`
+  ships stub gate briefs for all 5; `CRISPR-Test-001` is a partial
+  fixture and the 3 design/commcare/connect gate briefs are marked in
+  `expectedMissing`.
+
+### Changed
+
+- **`state.yaml` schema extended.** Pre-0.3.3 fixtures without the three
+  ownership fields still parse; `/ace:status` renders `Last touched:
+  <unknown>, <timestamp>` for them. The orchestrator and `/ace:step`
+  both add the fields on first touch. No migration script needed.
+
 ## 0.3.2 — 2026-04-16
 
 End-to-end workflow hardening based on a core-workflow scout. Targets the gap
