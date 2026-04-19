@@ -265,16 +265,26 @@ Current phase (from state.yaml): <phase>
 
 ## Structural check
 
-- Present: N / M required artifacts
-- Missing: <list, or "none">
-- Unexpected: <list, or "none">
+- **Present:** N / M required artifacts for phase <phase>
+- **Missing:** <list, or "none">
+- **Unexpected:** <files in the folder that aren't in the manifest, or "none">
 
 ## Notes
 
-<Any [INFO] lines from structural scan.>
+<One line per INFO from the structural scan. Concrete examples:
+  [INFO] state.yaml missing — assumed design phase (default)
+  [INFO] 2 unexpected files are operator-maintained (improvement-backlog.md, iteration-log.md); safe to ignore
+  [INFO] pdd.md archetype: focus-group — deep-mode recommendations will use FGD vocabulary
+If no INFOs to surface, write "None.">
 
 _Run `--deep` to aggregate verdicts and get improvement recommendations._
 ```
+
+**Stdout summary format** (always printed, both quick and deep modes):
+```
+opp-eval <mode>: <P>/<M> present, <K> missing, <U> unexpected (phase: <phase>)
+```
+Example: `opp-eval quick: 4/5 present, 1 missing, 2 unexpected (phase: design)`
 
 ### Deep / monitor (`scorecards/YYYY-MM-DD-opp-eval-<mode>.md`)
 
@@ -380,3 +390,4 @@ for dry-run purposes (same convention as `ocs-chatbot-eval`).
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-19 | Initial version — umbrella eval aggregator. Three modes (`--quick` / `--deep` / `--monitor`); rolls every `verdicts/*.yaml` into a run-level scorecard across 6 skill-category dimensions, emits improvement recommendations, and writes a uniform-contract gate brief (advisory; does not gate a phase). | ACE team (opp-eval rollout) |
+| 2026-04-19 | Quick-mode template: add `Unexpected:` row (skill was already surfacing unexpected files but the template omitted it); tighten Notes wording with three concrete examples; specify stdout summary format including unexpected count. Surfaced in first run against a real partial opp (cosmetics-fgd-pilot) | ACE team (qa/eval iteration loop) |

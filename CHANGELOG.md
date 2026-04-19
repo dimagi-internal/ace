@@ -5,6 +5,72 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.3 — 2026-04-19
+
+Contract cleanup + orchestrator hardening, all surfaced from the
+first real-content exercise of the 0.3.5 qa/eval split and the 0.4.0
+opp-eval aggregator.
+
+### Changed
+
+- **Verdict YAML contract formalized.** `skills/README.md § QA vs Eval`
+  now declares `per_item:` as the canonical per-item list key (skills
+  previously drifted between `per_prompt` and `per_item`). Each entry
+  may carry domain-specific subkeys (e.g., `prompt:` for chatbot evals,
+  `session_id:` for FGD evals) but the canonical identifier key is
+  `ref`. Aggregators read by `ref` and ignore domain extras.
+- **`auto_surfaced:` is now an optional top-level verdict field.**
+  Promoted from eval-skill-local to framework-level so opp-eval can
+  concatenate auto-surfaced lines from every per-skill verdict into the
+  run-level brief. `ocs-chatbot-eval` already emitted this block; now
+  it's contract.
+- **`ocs-chatbot-eval` aligned to canonical keys.** `per_prompt` →
+  `per_item` with `prompt:` as a domain-specific subkey inside each
+  entry.
+- **qa/eval split golden-template fallback.** Both `ocs-chatbot-qa`
+  and `ocs-chatbot-eval` now document `ACE/golden-template/` as the
+  canonical path root for no-opp runs. Previously the qa skill said
+  "stdout" and the eval skill said "fail loudly if missing" — hard
+  break on any template smoke test.
+- **`ocs-chatbot-qa` env-source explicit.** Env vars like
+  `OCS_GOLDEN_TEMPLATE_ID` live at `$CLAUDE_PLUGIN_DATA/.env`, not the
+  shell env. Step 1 now says this so programmatic dispatches can find
+  them.
+- **`ocs-chatbot-qa` transport guidance.** The MCP tool
+  `ocs_send_test_message` returns only `response` and misses the
+  `cited_files` / `tags` / `session_id` / `elapsed_ms` that the
+  transcript schema needs. Step 3 (raw widget HTTP) is load-bearing;
+  the skill now explicitly warns against substituting the MCP tool.
+- **`opp-eval` quick-mode scorecard template** now renders the
+  `Unexpected:` row (skill was already finding unexpected files, the
+  template just hadn't shown them), tightens Notes wording with
+  concrete examples, and specifies the stdout summary format
+  including unexpected count.
+- **Orchestrator state-schema example** upgraded from abstract to
+  concrete, covering all 6 phases with the qa/eval split step keys
+  (`ocs-chatbot-qa-{quick,deep,monitor}` +
+  `ocs-chatbot-eval-{quick,deep,monitor}`). Previously the example
+  stopped at `design-review > idea-to-pdd`.
+- **Orchestrator: defensive `state.yaml` init on bypass paths.** New
+  `§ Touching State` subsection documents the rule: every entry path
+  that touches state must tolerate a missing `state.yaml` and
+  initialize it first. `/ace:step` owns the defensive init for its
+  path (covered in `commands/step.md`).
+- **`/ace:step` step 4** upgraded to ensure-then-update: initialize
+  `state.yaml` from the orchestrator schema if missing, then set
+  `last_actor` + `last_actor_at`. This closes the bug I hit myself in
+  the cosmetics-fgd-pilot iteration loop where I bypassed `/ace:run`
+  and the opp never got a state file.
+
+### Why
+
+This whole set was surfaced by Iter 4 + 5 of the iteration loop —
+running `ocs-chatbot-qa` + `ocs-chatbot-eval` against the golden
+template and `opp-eval --quick` against the partial cosmetics-fgd-pilot
+opp. Rubrics, contracts, and orchestrator assumptions all held up
+under load *except* at these seams. Each fix is surgical; none change
+behavior for existing opps that went through `/ace:run`.
+
 ## 0.4.2 — 2026-04-19
 
 Iteration-loop polish: `llo-invite` now archetype-aware.

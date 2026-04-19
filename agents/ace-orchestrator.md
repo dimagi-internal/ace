@@ -41,13 +41,45 @@ last_actor: <email>          # updated on every skill invocation
 last_actor_at: <ISO timestamp>  # updated on every skill invocation
 
 phases:
-  design-review:
+  design-review:        # Phase 1
     idea-to-pdd: done|pending|error|dry-run-success|...
-    ...
+    pdd-to-test-prompts: done|pending|...
+  commcare-setup:       # Phase 2
+    pdd-to-learn-app: pending
+    pdd-to-deliver-app: pending
+    app-deploy: pending
+    app-test: pending
+    training-materials: pending
+  connect-setup:        # Phase 3
+    connect-program-setup: pending
+    connect-opp-setup: pending
+    llo-invite: pending
+  ocs-setup:            # Phase 4 — qa/eval split in 0.3.5
+    ocs-agent-setup: pending
+    ocs-chatbot-qa-quick: pending
+    ocs-chatbot-eval-quick: pending
+    ocs-chatbot-qa-deep: pending
+    ocs-chatbot-eval-deep: pending
+  llo-management:       # Phase 5
+    llo-onboarding: pending
+    llo-uat: pending
+    llo-launch: pending
+    timeline-monitor: pending         # recurring
+    flw-data-review: pending          # recurring
+    ocs-chatbot-qa-monitor: pending   # recurring
+    ocs-chatbot-eval-monitor: pending # recurring
+  closeout:             # Phase 6
+    opp-closeout: pending
+    llo-feedback: pending
+    learnings-summary: pending
+    cycle-grade: pending
 
 gates:
   idea-to-pdd: approved|pending|rejected
-  ...
+  app-deploy: pending
+  ocs-chatbot-eval-deep: pending    # renamed from ocs-chatbot-qa-deep in 0.3.5
+  llo-invite: pending
+  llo-launch: pending
 ```
 
 **`initiated_by`** — the operator who kicked off the opp. Set once in
@@ -64,6 +96,26 @@ the primary hand-off mechanism across the 5-person admin group.
 The operator identity is *captured*, not *enforced*. There is no
 authorization check — a git config mismatch just means `/ace:status --mine`
 won't find the opp. Keep it that way.
+
+**Defensive `state.yaml` init on bypass paths.** `/ace:run` initializes
+`state.yaml` as part of "Starting a New Opportunity." But operators can
+bypass the orchestrator (via `/ace:step <skill> <opp>`, or by dispatching
+a phase agent directly with the `Agent` tool). Every entry path that
+touches state must tolerate a missing `state.yaml`:
+
+1. If `ACE/<opp-name>/state.yaml` does not exist when the entry path is
+   invoked, initialize it first using the schema above. Required fields:
+   `opportunity`, `mode` (default `review`), `created` (ISO now),
+   `initiated_by` (`git config user.email` or `unknown`), `last_actor` +
+   `last_actor_at` (same email + timestamp), all `phases.<phase>.<skill>`
+   keys set to `pending`, all `gates.<gate>` set to `pending`.
+2. Then proceed with the skill dispatch.
+
+`commands/step.md` owns this defensive init for the `/ace:step` path.
+Agent-tool dispatches are expert paths and assumed to know what they're
+doing — but phase agents should still not crash on a missing `state.yaml`
+read; they should skip the status update with a single-line warning and
+let the operator fix the state gap explicitly.
 
 ## Execution Modes
 
