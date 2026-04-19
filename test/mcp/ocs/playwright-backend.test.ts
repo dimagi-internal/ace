@@ -521,6 +521,25 @@ describe('PlaywrightBackend publish + embed info', () => {
     expect(out.version_number).toBe(2);
   });
 
+  it('publishChatbotVersion throws when Django re-renders the form (HTTP 200 = validation failure)', async () => {
+    const request: RequestFn = async (method, url) => {
+      if (method === 'POST' && url === '/a/dimagi/chatbots/99/versions/create') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            '<form><ul class="errorlist"><li>Version description is required.</li></ul></form>',
+          json: async () => ({}),
+        };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request);
+    await expect(
+      backend.publishChatbotVersion({ experiment_id: 99, description: '' }),
+    ).rejects.toThrow(/Version publish rejected.*Version description is required/);
+  });
+
   it('getChatbotEmbedInfo does a 3-hop scrape (home → edit-dialog → token)', async () => {
     const calls: string[] = [];
     const request: RequestFn = async (method, url) => {

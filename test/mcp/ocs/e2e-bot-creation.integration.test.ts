@@ -378,7 +378,7 @@ You have access to two knowledge collections:
       },
       {
         prompt: 'Who should I contact if I need help with the app?',
-        expectKeywords: ['ace-ai@dimagi.com'],
+        expectKeywords: ['ace@dimagi-ai.com'],
         description: 'escalation contact (system prompt)',
       },
       {

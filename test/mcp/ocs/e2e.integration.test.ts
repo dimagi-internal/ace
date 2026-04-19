@@ -8,7 +8,7 @@
  *   OCS_INTEGRATION=1
  *   OCS_TEAM_SLUG=<team>
  *   OCS_GOLDEN_TEMPLATE_ID=<id>
- *   ~/.ace/ocs-session-<team>.json  (from /ocs:login)
+ *   ~/.ace/ocs-session-<team>.json  (from /ace:ocs-login)
  *
  * Optionally:
  *   OCS_SHARED_COLLECTION_ID=<id>  (attaches the shared collection if set)

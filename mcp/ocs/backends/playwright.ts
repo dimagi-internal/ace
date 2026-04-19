@@ -456,15 +456,19 @@ export class PlaywrightBackend {
       { formEncoded: true, followRedirects: false },
     );
     // Django's create_version view redirects to the chatbot page on success (302),
-    // or re-renders the form on validation failure (200 with HTML). The form field
-    // is `is_default_version` (not `make_default`) — verified against OCS 2026-04-10.
-    if (res.status !== 302 && !res.ok) throw await httpErrorFor(res, versionPath);
+    // or re-renders the form on validation failure (200 with HTML). Since we POST
+    // with followRedirects: false, a 200 unambiguously means the form was
+    // re-rendered — the version was NOT created. The form field is
+    // `is_default_version` (not `make_default`) — verified against OCS 2026-04-10.
     if (res.status === 200) {
-      // 200 can mean: (a) Django followed its own redirect and rendered the chatbot
-      // page, or (b) the form re-rendered due to validation errors. Either way, the
-      // version was likely created. Check the chatbot page for version info.
-      // Fall through to the version scraping below.
+      const body = res.text ? await res.text().catch(() => '') : '';
+      const errorMatches = [...body.matchAll(/<ul class="errorlist[^"]*">([\s\S]*?)<\/ul>/g)]
+        .flatMap((m) => [...m[1].matchAll(/<li[^>]*>([^<]+)<\/li>/g)].map((li) => li[1].trim()))
+        .filter((s) => s.length > 0);
+      const summary = errorMatches.length > 0 ? errorMatches.join('; ') : 'form re-rendered without redirect';
+      throw new HttpError(200, versionPath, `Version publish rejected: ${summary}`);
     }
+    if (res.status !== 302 && !res.ok) throw await httpErrorFor(res, versionPath);
 
     // Scrape the version number from the chatbot home page. The versions tab
     // renders version badges; we grab the highest number.

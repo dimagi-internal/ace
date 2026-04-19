@@ -8,7 +8,7 @@
  *
  * How it works:
  *   1. Load the Playwright session state from ~/.ace/ocs-session-<team>.json.
- *      (Run `/ocs:login` first to establish the session.)
+ *      (Run `/ace:ocs-login` first to establish the session.)
  *   2. Check if a chatbot named OCS_GOLDEN_TEMPLATE_NAME already exists on the
  *      team. If yes, refuse to create a duplicate — print its id and exit.
  *   3. Clone the source chatbot (OCS_BOOTSTRAP_SOURCE_ID, default: whatever
@@ -185,7 +185,7 @@ async function archiveChatbot(
 
   if (!fs.existsSync(stateFile)) {
     console.error(`No session state at ${stateFile}.`);
-    console.error('Run /ocs:login first (or manually create the file via Playwright).');
+    console.error('Run /ace:ocs-login first (or manually create the file via Playwright).');
     process.exit(1);
   }
 
@@ -197,7 +197,7 @@ async function archiveChatbot(
     const healthRes = await context.request.get(`/a/${teamSlug}/chatbots/`);
     if (healthRes.status() !== 200) {
       console.error(`Session invalid: /a/${teamSlug}/chatbots/ returned ${healthRes.status()}.`);
-      console.error('Run /ocs:login to refresh.');
+      console.error('Run /ace:ocs-login to refresh.');
       process.exit(1);
     }
 

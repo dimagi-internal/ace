@@ -16,6 +16,7 @@ skills:
 recurring_skills:
   - { name: timeline-monitor, has_judge: true }
   - { name: flw-data-review,  has_judge: true }
+  - { name: ocs-chatbot-qa,   has_judge: true }
 ---
 
 # LLO Manager Agent (Phase 5)
