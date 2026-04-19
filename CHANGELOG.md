@@ -5,6 +5,36 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.1 — 2026-04-19
+
+Iteration-loop polish shaken out of the cosmetics-fgd-pilot Phase 1
+reconnaissance run.
+
+### Changed
+
+- **`pdd-to-test-prompts` is now archetype-aware.** Added `## Archetypes`
+  section with per-archetype category lists: `atomic-visit` keeps
+  visit-flow / eligibility / GPS / duplicate-handling; `focus-group`
+  gets session-flow / recruitment-and-venue / consent-and-recording /
+  question-guide-sequencing / facilitation-technique / output-spec /
+  audio-and-evidence; `multi-stage` mixes per-stage and adds a
+  stage-gate-transition category. Previously the skill was atomic-visit-
+  worded throughout its examples, forcing LLMs running the skill against
+  an FGD PDD to remap categories on the fly — a weak-signal failure mode
+  where a less-grounded run would produce atomic-visit prompts that then
+  fail in the `ocs-chatbot-eval --deep` gate as false-positives.
+- **Archetype-aware skill count** updated from 7 to 8 in
+  `skills/README.md`.
+
+### Why
+
+Surfaced during the cosmetics-fgd-pilot Phase 1 reconnaissance
+(2026-04-19). The subagent running the skill had to manually remap every
+category — "home visit" → "session flow", "GPS per delivery" → "audio
+duration ≥ 45 min", "photo validity" → "product-photo standardization
++ attendance photo". The manual remapping worked, but a weaker LLM
+without that context-inference ability could easily miss it.
+
 ## 0.4.0 — 2026-04-19
 
 Umbrella eval agent — the "one overview judge/review agent that we
