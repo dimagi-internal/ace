@@ -232,6 +232,13 @@ or reshape the core keys — the aggregator reads them positionally.
 - `skills/idea-to-pdd/SKILL.md` — a skill with inline self-eval (no
   separate `-eval` skill). The 5-question stress-test rubric runs inside
   the skill as a self-check before writing the PDD.
+- `skills/opp-eval/SKILL.md` — the canonical **umbrella eval**. Distinct
+  from a per-skill `-eval`: it does not grade any individual artifact
+  itself, it aggregates every discovered `verdicts/*.yaml` file for an
+  opportunity into a run-level scorecard across 6 skill-category
+  dimensions and drafts improvement recommendations. Ad-hoc, not
+  gate-bound. As more per-skill `-eval` skills gain rubrics and start
+  writing to `verdicts/`, opp-eval automatically picks them up.
 
 ## How the PDD `## Evidence Model` flows through skills
 

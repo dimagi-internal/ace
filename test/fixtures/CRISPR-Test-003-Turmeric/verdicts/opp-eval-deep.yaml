@@ -1,0 +1,31 @@
+# Synthetic run-level verdict from opp-eval --deep.
+# In this partial-coverage fixture only the ocs category has a verdict,
+# so the overall score collapses to the ocs score (weights renormalized
+# across non-null categories).
+skill: opp-eval
+target: CRISPR-Test-003-Turmeric
+mode: deep
+ran_at: 2026-04-19T16:50:00Z
+capture_path: verdicts/
+
+overall_score: 8.4
+verdict: pass
+
+dimensions:
+  design:    { score: null, weight: 0.20 }
+  commcare:  { score: null, weight: 0.20 }
+  connect:   { score: null, weight: 0.15 }
+  ocs:       { score: 8.4,  weight: 0.20 }
+  operate:   { score: null, weight: 0.15 }
+  closeout:  { score: null, weight: 0.10 }
+
+per_item:
+  - ref: ocs-chatbot-eval-deep
+    score: 8.4
+    verdict: pass
+    note: "Overall 8.4; weakest dim: tagging (6.8)"
+
+recommendations:
+  - for: ocs-chatbot-eval
+    severity: info
+    recommendation: "Tagging dimension scored 6.8 — tighten [training-gap] application rules in the golden template system prompt"
