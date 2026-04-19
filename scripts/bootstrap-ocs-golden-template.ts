@@ -157,6 +157,52 @@ async function listChatbots(context: BrowserContext): Promise<ChatbotListing[]> 
   return listings;
 }
 
+/**
+ * Return the list of collection_index ids reachable on the team. Source of
+ * truth is the chatbot edit page — the pipeline-builder renders an inline
+ * `"collection_index": [{value, label, edit_url}, ...]` JSON blob with every
+ * local-index Collection on the team. There is no dedicated REST endpoint
+ * (as of OCS 2026-04-19; /a/<team>/documents/collections/ 404s, and the
+ * /api/collections/ REST route is 404 for the public API too).
+ *
+ * We scrape any chatbot's edit page — collections are team-scoped, not
+ * chatbot-scoped, so whichever one we probe has the same list.
+ */
+async function listCollectionIndexIds(
+  context: BrowserContext,
+  teamSlug: string,
+): Promise<number[]> {
+  const listings = await listChatbots(context);
+  if (listings.length === 0) return [];
+  const probeId = listings[0].id;
+  const res = await context.request.get(`/a/${teamSlug}/chatbots/${probeId}/edit/`);
+  if (!res.ok()) return [];
+  const html = await res.text();
+  const idx = html.indexOf('"collection_index"');
+  if (idx === -1) return [];
+  const start = html.indexOf('[', idx);
+  if (start === -1) return [];
+  let depth = 0;
+  let end = start;
+  for (let i = start; i < html.length; i++) {
+    if (html[i] === '[') depth++;
+    else if (html[i] === ']') {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  const decoded = html.slice(start, end + 1).replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+  try {
+    const arr = JSON.parse(decoded) as Array<{ value: number }>;
+    return arr.map((o) => o.value).filter((v): v is number => typeof v === 'number');
+  } catch {
+    return [];
+  }
+}
+
 async function archiveChatbot(
   context: BrowserContext,
   csrfToken: string,
@@ -260,15 +306,46 @@ async function archiveChatbot(
     console.log('      Prompt patched.');
 
     // Step 5: attach the shared Connect knowledge collection (if configured)
+    //
+    // IMPORTANT: Validate the collection exists on this team before attaching.
+    // Attaching a non-existent collection id silently succeeds at the patch
+    // layer (the pipeline-save POST returns 200 with a `errors.node` field),
+    // but then blocks EVERY subsequent `publishChatbotVersion` call with the
+    // opaque message "Unable to create a new version when the pipeline has
+    // errors." The draft pipeline ends up correctly configured, but v1 (the
+    // empty post-clone state) stays as the default version forever and the
+    // embedded widget serves vanilla-LLM responses. This bug was discovered
+    // on 2026-04-19 when the golden template scored 3.84/10 FAIL on
+    // ocs-chatbot-qa --quick: zero citations, zero ACE tags, DoorDash/Route4Me
+    // suggestions for flagged deliveries. Root cause: OCS_SHARED_COLLECTION_ID
+    // pointed at id 718, which did not exist on the connect-ace team. Fix:
+    // probe first, skip gracefully if missing, loudly tell the operator.
     if (sharedCollectionId) {
-      console.log(`\n[5/6] Attaching shared Connect collection (id ${sharedCollectionId})...`);
-      await backend.attachKnowledge({
-        experiment_id: cloned.experiment_id,
-        collection_index_ids: [sharedCollectionId],
-        max_results: 20,
-        generate_citations: true,
-      });
-      console.log('      Attached. Per-opp clones will inherit this + get their own opp-specific collection appended.');
+      console.log(`\n[5/6] Validating shared Connect collection (id ${sharedCollectionId})...`);
+      const collectionsOnTeam = await listCollectionIndexIds(context, teamSlug);
+      if (!collectionsOnTeam.includes(sharedCollectionId)) {
+        console.warn(
+          `      WARN: collection ${sharedCollectionId} is NOT present on team ${teamSlug}. ` +
+            `Available collection_index ids: ${collectionsOnTeam.join(', ') || '(none)'}. ` +
+            `Skipping attachment — otherwise publishChatbotVersion would be silently blocked.`,
+        );
+        console.warn(
+          '      ACTION: create a real Connect knowledge collection on this team, record its id ' +
+            'as OCS_SHARED_COLLECTION_ID in $CLAUDE_PLUGIN_DATA/.env, then re-run this script ' +
+            'with OCS_BOOTSTRAP_FORCE=1 (or call ocs_attach_knowledge directly).',
+        );
+      } else {
+        console.log(`      Collection ${sharedCollectionId} resolved on team. Attaching...`);
+        await backend.attachKnowledge({
+          experiment_id: cloned.experiment_id,
+          collection_index_ids: [sharedCollectionId],
+          max_results: 20,
+          generate_citations: true,
+        });
+        console.log(
+          '      Attached. Per-opp clones will inherit this + get their own opp-specific collection appended.',
+        );
+      }
     } else {
       console.log('\n[5/6] Skipping shared collection — OCS_SHARED_COLLECTION_ID not set.');
       console.log('      Per-opp bots will only have opp-specific knowledge unless you set this later.');
