@@ -17,6 +17,7 @@ ACE is a Claude Code plugin with the same architecture as canopy: agents orchest
 /ace:run <opp-name> --sandbox            # Route to staging endpoints
 /ace:step <skill-name> <opp-name>        # Run a single step
 /ace:status                              # Show all opportunities
+/ace:eval <opp-name> --mode deep         # Umbrella eval (aggregates verdicts/*)
 /ace:docs                                # Generate playbook
 /ace:update                              # Pull the latest release from GitHub
 ```
@@ -166,8 +167,8 @@ The Nova MCP does not exist yet — see `playbook/integrations/nova-integration.
 ## Architecture
 
 - **8 agents** — `ace-orchestrator` + 6 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `llo-manager`, `closeout`) + `ocs-tester` (ad-hoc QA+Eval)
-- **23 skills** — one per process step, each a SKILL.md that Claude executes. Evaluation is a two-phase `-qa` / `-eval` pattern (see `skills/README.md § QA vs Eval`)
-- **9 commands** — `run`, `step`, `status`, `docs`, `ocs-login`, `ocs-bootstrap-template`, `setup`, `update`, `doctor`
+- **24 skills** — one per process step, each a SKILL.md that Claude executes. Evaluation is a two-phase `-qa` / `-eval` pattern (see `skills/README.md § QA vs Eval`), with the `opp-eval` umbrella aggregator rolling per-skill verdicts into a run-level scorecard
+- **10 commands** — `run`, `step`, `status`, `eval`, `docs`, `ocs-login`, `ocs-bootstrap-template`, `setup`, `update`, `doctor`
 - **2 MCP servers** — Google Drive (`ace-gdrive`), OCS (`ace-ocs`)
 - **6 phases** — design-review → commcare-setup → connect-setup → ocs-setup → llo-manager → closeout (Phases 1–4 run end-to-end before any LLO contact)
 - **2 execution modes** — auto (hands-off) and review (pauses at gates)

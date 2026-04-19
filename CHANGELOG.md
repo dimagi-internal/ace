@@ -5,6 +5,72 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.0 — 2026-04-19
+
+Umbrella eval agent — the "one overview judge/review agent that we
+can apply to overall runs" capability that was missing. opp-eval
+aggregates every per-skill `-eval` verdict for an opportunity into a
+single run-level scorecard and drafts improvement recommendations.
+Minor bump because this adds a new user-visible capability (new skill,
+new slash command) on top of the 0.3.5 qa/eval split.
+
+### Added
+
+- **New skill: `opp-eval`.** Umbrella judge. Three modes:
+  - `--quick` — structural artifact check only (walk the manifest,
+    confirm every required non-dated artifact for the opp's current
+    phase exists in Drive). No LLM cost.
+  - `--deep` — structural check **plus** aggregation: walks every
+    `verdicts/*.yaml` file in the opp folder, rolls scores into 6
+    skill-category dimensions (design, commcare, connect, ocs,
+    operate, closeout) with renormalized weights when categories are
+    empty, classifies a run-level verdict (pass ≥ 7 / warn 4–6 /
+    fail < 4), and drafts improvement recommendations for every
+    `warn`/`fail` verdict and every dimension scoring < 6.0.
+  - `--monitor` — same as `--deep` plus appends a one-liner to
+    `scorecards/trend.md` for run-over-run drift visibility.
+
+  Writes `scorecards/YYYY-MM-DD-opp-eval-<mode>.md` (human),
+  `verdicts/opp-eval-<mode>.yaml` (machine, uniform verdict shape from
+  `skills/README.md § QA vs Eval`), and `gate-briefs/opp-eval-deep.md`
+  (advisory; does not gate a phase today — contract uniformity so
+  future automation can consume it without a special case). YAML
+  parsing tolerates missing fields — surfaces gaps as `[INFO]` notes
+  rather than crashing, since partial opps are explicitly supported.
+
+- **New slash command: `/ace:eval <opp-name> [--mode
+  quick|deep|monitor]`.** Thin wrapper that dispatches to the
+  `opp-eval` skill. See `commands/eval.md`.
+
+- **7 new manifest entries in `lib/artifact-manifest.ts`.**
+  `scorecards/YYYY-MM-DD-opp-eval-{quick,deep,monitor}.md`,
+  `scorecards/trend.md`, `verdicts/opp-eval-{deep,monitor}.yaml`,
+  `gate-briefs/opp-eval-deep.md`. All `required: false` (opp-eval is
+  opt-in, not part of the default 6-phase pipeline), all tagged
+  `phase: closeout`.
+
+- **`skills/README.md § QA vs Eval` canonical-examples list.**
+  opp-eval added as the canonical **umbrella eval** example, distinct
+  from per-skill `-eval` skills.
+
+- **`agents/ace-orchestrator.md § Umbrella Eval`.** New section
+  explaining that opp-eval is ad-hoc (not part of `--mode review`
+  auto-pause), does not gate any phase, and automatically picks up
+  new per-skill verdicts via directory discovery as rubric work
+  lands on the rest of the skills.
+
+### Why this release
+
+The 0.3.5 qa/eval split established the uniform `verdicts/<skill>-<mode>.yaml`
+contract that every future `-eval` skill will write. That set up
+opp-eval to exist: an aggregator that reads the verdicts/ directory
+without per-skill knowledge. Today only `ocs-chatbot-eval` writes
+verdicts; opp-eval emits `[INFO]` notes for skills without rubrics —
+which is the forcing function that motivates future rubric work
+across the other 22 skills. The recommendations feature directly
+answers the operator's original ask ("make its own recommendations on
+how to improve") without redesigning per-skill judges.
+
 ## 0.3.5 — 2026-04-19
 
 QA/Eval split refactor — establishes the two-phase evaluation contract

@@ -418,4 +418,5 @@ currently guide operators through a Nova chat session manually.
 | `llo-feedback` | 6 | Collect closeout feedback |
 | `learnings-summary` | 6 | Synthesize learnings; optional new PDD |
 | `cycle-grade` | 6 | Final grade + recommendations |
+| `opp-eval` | ad-hoc (umbrella) | Aggregate every `verdicts/*.yaml` into a run-level scorecard across 6 skill-category dimensions; three modes (`--quick` structural check · `--deep` aggregation + recommendations · `--monitor` same as deep + trend-file append). Not part of the 6-phase pipeline; invoke via `/ace:eval` |
 | `email-communicator` | utility | GOG-CLI Gmail send/receive for other skills |

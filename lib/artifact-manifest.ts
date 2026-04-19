@@ -418,6 +418,65 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     required: true,
     description: '6/7-dimension grades with evidence, recommendations, narrative assessment',
   },
+
+  // ── Umbrella eval (opp-eval) — ad-hoc, opt-in; not part of the default 6-phase pipeline ──
+
+  {
+    path: 'scorecards/YYYY-MM-DD-opp-eval-quick.md',
+    producedBy: 'opp-eval',
+    consumedBy: [],
+    phase: 'closeout',
+    required: false,
+    description: 'Human-readable quick scorecard from opp-eval --quick (structural artifact check only, no LLM cost)',
+  },
+  {
+    path: 'scorecards/YYYY-MM-DD-opp-eval-deep.md',
+    producedBy: 'opp-eval',
+    consumedBy: [],
+    phase: 'closeout',
+    required: false,
+    description: 'Human-readable run-level scorecard from opp-eval --deep: category breakdown, per-skill results, improvement recommendations',
+  },
+  {
+    path: 'scorecards/YYYY-MM-DD-opp-eval-monitor.md',
+    producedBy: 'opp-eval',
+    consumedBy: [],
+    phase: 'closeout',
+    required: false,
+    description: 'Human-readable scorecard from opp-eval --monitor runs; same shape as --deep plus a trend-file append',
+  },
+  {
+    path: 'scorecards/trend.md',
+    producedBy: 'opp-eval',
+    consumedBy: [],
+    phase: 'closeout',
+    required: false,
+    description: 'Rolling trend of run-level opp-eval scores from --monitor runs; one line per run with date, overall, and category breakdown',
+  },
+  {
+    path: 'verdicts/opp-eval-deep.yaml',
+    producedBy: 'opp-eval',
+    consumedBy: [],
+    phase: 'closeout',
+    required: false,
+    description: 'Machine-readable run-level verdict from opp-eval --deep: 6-category aggregation of every per-skill verdict found under verdicts/, plus improvement recommendations. Shape matches skills/README.md § QA vs Eval',
+  },
+  {
+    path: 'verdicts/opp-eval-monitor.yaml',
+    producedBy: 'opp-eval',
+    consumedBy: [],
+    phase: 'closeout',
+    required: false,
+    description: 'Machine-readable run-level verdict from opp-eval --monitor runs; latest-wins file (history lives in scorecards/trend.md)',
+  },
+  {
+    path: 'gate-briefs/opp-eval-deep.md',
+    producedBy: 'opp-eval',
+    consumedBy: [],
+    phase: 'closeout',
+    required: false,
+    description: 'Advisory brief from opp-eval --deep / --monitor. Written for contract uniformity with the 5 real gate briefs; does NOT gate any phase today (opp-eval is ad-hoc, not part of --mode review auto-pause flow)',
+  },
 ] as const;
 
 // ── Helpers ────────────────────────────────────────────────────────

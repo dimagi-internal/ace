@@ -5,8 +5,8 @@ ACE (AI Connect Engine) is a Claude Code plugin that orchestrates the CRISPR-Con
 ## Layout
 
 - `agents/` — 8 agents: `ace-orchestrator` + 6 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `llo-manager`, `closeout`) + `ocs-tester` (ad-hoc QA agent). Phases 1–4 run end-to-end with zero LLO involvement; Phase 5 is where LLOs first hear from ACE.
-- `skills/` — 23 skills, one directory per skill, each with a single `SKILL.md`. Skills are stateless; opportunity state lives in Google Drive under `ACE/<opp-name>/`. See `skills/README.md` for the author contract, including the `## QA vs Eval — the two-phase pattern` section that governs `-qa` / `-eval` skill pairs.
-- `commands/` — 9 slash commands: `run`, `step`, `status`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `ocs-bootstrap-template`.
+- `skills/` — 24 skills, one directory per skill, each with a single `SKILL.md`. Skills are stateless; opportunity state lives in Google Drive under `ACE/<opp-name>/`. See `skills/README.md` for the author contract, including the `## QA vs Eval — the two-phase pattern` section that governs `-qa` / `-eval` skill pairs and the new `opp-eval` umbrella-aggregator pattern.
+- `commands/` — 10 slash commands: `run`, `step`, `status`, `eval`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `ocs-bootstrap-template`.
 - `mcp/` — 2 MCP servers, both wired via `.mcp.json`:
   - `google-drive-server.ts` → `ace-gdrive` (Drive + Docs tooling).
   - `ocs-server.ts` → `ace-ocs` (composite Open Chat Studio backend). Most of the interesting code is in `mcp/ocs/` — `capability-map.ts`, `client.ts`, `types.ts`, `backends/{composite,rest,playwright,pipeline-patch}.ts`, `auth/`, `logging.ts`, `errors.ts`.
@@ -36,6 +36,7 @@ ACE (AI Connect Engine) is a Claude Code plugin that orchestrates the CRISPR-Con
 - **ace-web is a sibling repo, not a submodule.** It was a submodule briefly and was removed (commit `b7ccf35`). Work on the browser harness happens directly in the `ace-web` checkout. This repo owns the design spec; `ace-web` owns implementation plans 1A–1D.
 - **Email skill shipped.** `email-communicator` skill (PR #20) uses GOG CLI to send from `ace@dimagi-ai.com`. Config via `.env.tpl` / `.env`.
 - **CI version bump check.** PR #23 added a GitHub Actions check that verifies VERSION is bumped on PRs.
+- **Umbrella eval shipped (0.4.0).** `opp-eval` skill + `/ace:eval` slash command. Ad-hoc (not part of `--mode review` auto-pause), aggregates every `verdicts/*.yaml` file in an opp folder into a run-level scorecard across 6 skill-category dimensions and drafts improvement recommendations. Three modes: `--quick` (structural artifact check only), `--deep` (structural + aggregation + recommendations), `--monitor` (deep + trend-file append). As more per-skill `-eval` skills gain `## LLM-as-Judge Rubric` sections and start writing to `verdicts/`, opp-eval picks them up automatically.
 
 ## Running tests
 

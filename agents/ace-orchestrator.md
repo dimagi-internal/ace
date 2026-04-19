@@ -217,6 +217,33 @@ between phases). If a `[BLOCKER]` concern appears in an auto-mode brief,
 the orchestrator should pause *anyway* and escalate to the admin group —
 admins opted into auto mode for speed, not to ship known-broken work.
 
+## Umbrella Eval
+
+The `opp-eval` skill (dispatched via `/ace:eval <opp-name> --mode
+quick|deep|monitor`) is an **umbrella aggregator** that rolls every
+per-skill `-eval` verdict for an opportunity into a single run-level
+scorecard and drafts improvement recommendations. It reads
+`ACE/<opp-name>/verdicts/*.yaml`, groups scores into 6 skill-category
+dimensions (design, commcare, connect, ocs, operate, closeout), and
+writes a human scorecard + machine verdict + advisory gate brief.
+
+opp-eval is **ad-hoc**, not part of the `--mode review` auto-pause
+flow. It does not gate any phase. It can be run anytime during or
+after an opportunity — mid-run for a health check, end-of-run for a
+retrospective, or on a schedule (`--monitor` mode) for drift
+detection. The orchestrator does not dispatch opp-eval automatically;
+operators invoke it via `/ace:eval`.
+
+As more per-skill `-eval` skills gain `## LLM-as-Judge Rubric`
+sections and start writing to `verdicts/`, opp-eval automatically
+picks them up via directory discovery — no change to opp-eval itself
+is needed. Today most skills still self-evaluate inline (no separate
+`-eval` skill, so no verdict YAML under `verdicts/`); opp-eval emits
+`[INFO]` notes for those gaps, which is the forcing function for
+future per-skill rubric work. When a rubric arrives and the skill
+starts writing `verdicts/<skill>-<mode>.yaml`, opp-eval picks it up on
+the next run.
+
 ## Error Handling
 
 If a skill fails:
