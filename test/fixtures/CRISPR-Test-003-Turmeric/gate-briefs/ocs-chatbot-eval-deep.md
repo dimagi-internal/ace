@@ -1,9 +1,9 @@
-# Gate Brief — ocs-chatbot-qa-deep
+# Gate Brief — ocs-chatbot-eval-deep
 Opportunity: CRISPR-Test-003-Turmeric
 Generated: 2026-04-16T16:45:00Z
 
 ## Artifact Under Review
-- Path: `ACE/CRISPR-Test-003-Turmeric/qa-reports/2026-04-16-ocs-qa.md`
+- Path: `ACE/CRISPR-Test-003-Turmeric/eval-reports/2026-04-16-ocs-eval.md`
 - Summary: 8.4/10 across 13 prompts, 11 Pass / 2 Warn / 0 Fail.
 
 ## What to Check

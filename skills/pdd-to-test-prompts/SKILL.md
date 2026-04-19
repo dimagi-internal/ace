@@ -1,16 +1,18 @@
 ---
 name: pdd-to-test-prompts
 description: >
-  Derive opp-specific Q&A test prompts from an approved PDD. The output feeds
-  the OCS deep QA gate in Phase 4 (ocs-chatbot-qa --deep), which uses each
-  prompt's expected-answer summary as ground truth for LLM-as-Judge grading.
+  Derive opp-specific Q&A test prompts from an approved PDD. The output
+  feeds the OCS deep gate in Phase 4: `ocs-chatbot-qa --deep` sends the
+  prompts and embeds each `expected_answer_summary` in the transcript;
+  `ocs-chatbot-eval --deep` uses those summaries as ground truth for
+  LLM-as-Judge grading.
 ---
 
 # PDD to Test Prompts
 
-Generate the opp-specific test suite that `ocs-chatbot-qa --deep` uses as its
-ground truth. Runs in Phase 1 (Design Review & Iteration) as Step 2, right
-after `idea-to-pdd`.
+Generate the opp-specific test suite that the Phase 4 qa→eval pair uses as
+its ground truth. Runs in Phase 1 (Design Review & Iteration) as Step 2,
+right after `idea-to-pdd`.
 
 ## Process
 

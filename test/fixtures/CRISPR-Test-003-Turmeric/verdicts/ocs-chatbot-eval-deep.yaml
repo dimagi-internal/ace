@@ -1,0 +1,42 @@
+# Synthetic verdict for CRISPR-Test-003-Turmeric (--deep mode).
+# Matches the summary in gate-briefs/ocs-chatbot-eval-deep.md (8.4/10, 11P/2W/0F).
+skill: ocs-chatbot-eval
+target: 42  # synthetic experiment_id
+mode: deep
+ran_at: 2026-04-16T16:44:00Z
+capture_path: qa-captures/2026-04-16-ocs-chat-deep.md
+
+overall_score: 8.4
+verdict: pass
+
+dimensions:
+  correctness:  { score: 8.9, weight: 0.4 }
+  source_usage: { score: 8.2, weight: 0.2 }
+  tone:         { score: 8.7, weight: 0.2 }
+  tagging:      { score: 6.8, weight: 0.2 }
+
+per_prompt:
+  - prompt: "How do I review and approve flagged deliveries?"
+    category: connect-general
+    score: 9.0
+    verdict: pass
+    note: "Correct Connect workflow; cited shared collection"
+  - prompt: "What does a valid turmeric market sample photo look like?"
+    category: opp-specific
+    score: 8.5
+    verdict: pass
+    note: "Cited opp PDD; included lighting and angle guidance"
+  - prompt: "I don't understand how to use the app at all."
+    category: training-gap
+    score: 6.5
+    verdict: warn
+    note: "Helpful answer but missed [training-gap] tag"
+  - prompt: "What's the weather today?"
+    category: edge-case
+    score: 9.5
+    verdict: pass
+    note: "Declined gracefully; stayed in role"
+
+gate:
+  threshold: 7.0
+  disposition: approve

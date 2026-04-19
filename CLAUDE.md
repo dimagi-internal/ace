@@ -5,7 +5,7 @@ ACE (AI Connect Engine) is a Claude Code plugin that orchestrates the CRISPR-Con
 ## Layout
 
 - `agents/` — 8 agents: `ace-orchestrator` + 6 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `llo-manager`, `closeout`) + `ocs-tester` (ad-hoc QA agent). Phases 1–4 run end-to-end with zero LLO involvement; Phase 5 is where LLOs first hear from ACE.
-- `skills/` — 22 skills, one directory per skill, each with a single `SKILL.md`. Skills are stateless; opportunity state lives in Google Drive under `ACE/<opp-name>/`. See `skills/README.md` for the author contract.
+- `skills/` — 23 skills, one directory per skill, each with a single `SKILL.md`. Skills are stateless; opportunity state lives in Google Drive under `ACE/<opp-name>/`. See `skills/README.md` for the author contract, including the `## QA vs Eval — the two-phase pattern` section that governs `-qa` / `-eval` skill pairs.
 - `commands/` — 9 slash commands: `run`, `step`, `status`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `ocs-bootstrap-template`.
 - `mcp/` — 2 MCP servers, both wired via `.mcp.json`:
   - `google-drive-server.ts` → `ace-gdrive` (Drive + Docs tooling).

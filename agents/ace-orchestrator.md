@@ -79,7 +79,7 @@ concerns in front of them instead of having to open the artifact cold.
 Gate steps are:
 - After `idea-to-pdd` (PDD must be approved before building apps)
 - After `app-deploy` (apps must be verified before Connect setup)
-- After `ocs-chatbot-qa --deep` (OCS quality must clear pre-launch bar)
+- After `ocs-chatbot-eval --deep` (OCS quality must clear pre-launch bar — eval grades the transcript that `ocs-chatbot-qa --deep` captured)
 - After `llo-invite` (invites must be reviewed before sending)
 - After `llo-launch` (opportunity activation must be verified before monitoring begins)
 
@@ -108,8 +108,10 @@ rules and delivery/payment units, LLO invitations prepared (not yet sent).
 ### Phase 4: OCS Setup
 Dispatch to the **ocs-setup** agent.
 This phase produces: per-opp OCS chatbot cloned from the golden template with
-opp-specific RAG collection, quick smoke QA passed, deep pre-launch QA passed
-against opp-specific test prompts, embed credentials ready for Connect.
+opp-specific RAG collection, quick smoke qa+eval passed, deep pre-launch
+qa+eval passed against opp-specific test prompts, embed credentials ready
+for Connect. Each quality gate is a qa→eval pair — `ocs-chatbot-qa`
+captures a transcript, `ocs-chatbot-eval` grades it.
 Ends with a human-in-the-loop step to paste the widget credentials into the
 Connect opportunity until `update_opportunity` lands (CCC-301).
 
@@ -150,7 +152,7 @@ after writing its primary artifact. The 5 expected files are:
 ```
 ACE/<opp-name>/gate-briefs/idea-to-pdd.md
 ACE/<opp-name>/gate-briefs/app-deploy.md
-ACE/<opp-name>/gate-briefs/ocs-chatbot-qa-deep.md
+ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-deep.md
 ACE/<opp-name>/gate-briefs/llo-invite.md
 ACE/<opp-name>/gate-briefs/llo-launch.md
 ```

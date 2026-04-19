@@ -165,8 +165,8 @@ The Nova MCP does not exist yet — see `playbook/integrations/nova-integration.
 
 ## Architecture
 
-- **8 agents** — `ace-orchestrator` + 6 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `llo-manager`, `closeout`) + `ocs-tester` (ad-hoc QA)
-- **22 skills** — one per process step, each a SKILL.md that Claude executes
+- **8 agents** — `ace-orchestrator` + 6 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `llo-manager`, `closeout`) + `ocs-tester` (ad-hoc QA+Eval)
+- **23 skills** — one per process step, each a SKILL.md that Claude executes. Evaluation is a two-phase `-qa` / `-eval` pattern (see `skills/README.md § QA vs Eval`)
 - **9 commands** — `run`, `step`, `status`, `docs`, `ocs-login`, `ocs-bootstrap-template`, `setup`, `update`, `doctor`
 - **2 MCP servers** — Google Drive (`ace-gdrive`), OCS (`ace-ocs`)
 - **6 phases** — design-review → commcare-setup → connect-setup → ocs-setup → llo-manager → closeout (Phases 1–4 run end-to-end before any LLO contact)

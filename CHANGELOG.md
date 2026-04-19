@@ -5,6 +5,65 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.5 — 2026-04-19
+
+QA/Eval split refactor — establishes the two-phase evaluation contract
+that future `-eval` skills and the umbrella `opp-eval` agent will follow.
+
+### Added
+
+- **New skill: `ocs-chatbot-eval`.** Split out from `ocs-chatbot-qa` as
+  the judge half of the qa/eval pair. Reads a captured transcript from
+  `qa-captures/`, runs the 4-dimension LLM-as-Judge rubric, writes a
+  machine-readable verdict YAML to `verdicts/`, a human-readable report
+  to `eval-reports/`, and (for `--deep` mode) the Phase 4→5 gate brief.
+  Three modes (`--quick` / `--deep` / `--monitor`) mirror the qa skill
+  so each capture has a matching judgment pass.
+- **`skills/README.md § QA vs Eval — the two-phase pattern`.** Codifies
+  the separation: `-qa` skills exercise the artifact and produce
+  structured evidence (transcript, audio capture, structural checks);
+  `-eval` skills read evidence and apply LLM-as-Judge. Includes the
+  uniform artifact-path contract (`qa-captures/`, `verdicts/`,
+  `eval-reports/`, `gate-briefs/`) and the shared verdict-YAML shape
+  that future `-eval` skills and the umbrella `opp-eval` aggregator
+  will consume.
+- **6 new manifest entries.** `qa-captures/YYYY-MM-DD-ocs-chat-{quick,deep,monitor}.md`
+  (produced by `ocs-chatbot-qa`, consumed by `ocs-chatbot-eval`);
+  `verdicts/ocs-chatbot-eval-{quick,deep,monitor}.yaml` and
+  `eval-reports/YYYY-MM-DD-ocs-eval.md` + `eval-reports/trend.md`
+  (produced by `ocs-chatbot-eval`).
+- **New gate-brief path.** `gate-briefs/ocs-chatbot-eval-deep.md`
+  (renamed from `ocs-chatbot-qa-deep.md`; the gate sits on the
+  judgment, not the capture).
+
+### Changed
+
+- **`ocs-chatbot-qa` slimmed to capture + structural checks.** No more
+  LLM-as-Judge. Writes to `qa-captures/` and returns structural pass
+  rate. Modes (`--quick` / `--deep` / `--monitor`) now describe suite
+  size only; judgment depth is the eval skill's responsibility.
+- **Consumers dispatch qa → eval pairs.** `agents/ocs-setup.md` (Phase
+  4 Steps 2 and 3), `agents/llo-manager.md` (recurring monitor), and
+  `agents/ocs-tester.md` now invoke the capture skill and the judge
+  skill as a pair. `agents/ace-orchestrator.md`'s gate-brief list
+  updated to point at `ocs-chatbot-eval-deep.md`.
+- **`state.yaml` step keys split.** Phase 4 now tracks
+  `ocs-chatbot-qa-{quick,deep}` and `ocs-chatbot-eval-{quick,deep}`
+  separately; Phase 5 recurring adds `ocs-chatbot-eval-monitor`. Gate
+  renamed from `ocs-chatbot-qa-deep` → `ocs-chatbot-eval-deep`. Fixtures
+  `CRISPR-Test-001` and `CRISPR-Test-003-Turmeric` updated to the new
+  schema. Older fixtures without the split keys still parse; the next
+  skill invocation adds them.
+
+### Why this refactor
+
+Decoupling lets us re-grade an old transcript when a rubric improves
+without re-chatting with the bot; lets a human-captured evidence
+artifact (FGD audio + notes) flow through the same `-eval` machinery as
+a machine-captured one; and establishes the uniform verdict-YAML shape
+that the upcoming umbrella `opp-eval` agent will aggregate across every
+skill's judgment.
+
 ## 0.3.3 — 2026-04-17
 
 Admin-group coordination polish based on an internal-Dimagi-users scout.

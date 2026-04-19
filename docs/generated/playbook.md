@@ -24,8 +24,9 @@ Two execution modes:
   - After `idea-to-pdd` (Phase 1) — PDD must be approved
   - After `app-deploy` (Phase 2) — apps must be verified before Connect setup
   - After `llo-invite` (Phase 3) — invite list must be approved
-  - After `ocs-chatbot-qa --deep` (Phase 4) — OCS quality must clear the
-    pre-launch bar
+  - After `ocs-chatbot-eval --deep` (Phase 4) — OCS quality must clear
+    the pre-launch bar (eval grades the transcript captured by
+    `ocs-chatbot-qa --deep`)
   - After `llo-launch` (Phase 5) — opportunity activation must be verified
 
 Two safety flags:
@@ -55,16 +56,17 @@ Phase 3  connect-setup        connect-program-setup ──► connect-opp-setup
              │ gate: invite list approved
              ▼
 Phase 4  ocs-setup            ocs-agent-setup
-                              ──► ocs-chatbot-qa --quick   (smoke gate)
-                              ──► ocs-chatbot-qa --deep    (pre-launch gate)
+                              ──► ocs-chatbot-qa --quick ──► ocs-chatbot-eval --quick   (smoke gate)
+                              ──► ocs-chatbot-qa --deep  ──► ocs-chatbot-eval --deep    (pre-launch gate)
                               ──► widget-handoff to Connect
              │
-             │ gate: deep QA pass
+             │ gate: deep eval pass
              ▼
 Phase 5  llo-manager          llo-onboarding (invite + widget-linked email)
                               ──► llo-uat ──► llo-launch
                               ──► (recurring) timeline-monitor ∥ flw-data-review
                                               ∥ ocs-chatbot-qa --monitor
+                                              ──► ocs-chatbot-eval --monitor
              │
              │ gate: launch approved
              │ ... opportunity runs ...
@@ -101,7 +103,8 @@ out-of-scope questions.
 - **Input:** `ACE/<opp-name>/pdd.md`
 - **Output:** `ACE/<opp-name>/test-prompts.md` — each entry has a question,
   expected-answer summary, expected tags, and expected escalation. This is
-  the ground truth that `ocs-chatbot-qa --deep` grades responses against
+  the ground truth that `ocs-chatbot-eval --deep` grades responses against
+  (after `ocs-chatbot-qa --deep` captures the transcript)
 - **Self-check:** at least one prompt per PDD section + edge-case coverage
 
 ## Phase 2 — CommCare Setup
@@ -215,22 +218,27 @@ collection as knowledge sources, publish a version.
 - **Review mode:** pauses to show composed prompt + file list, and again
   before publishing
 
-### Step 2 — `ocs-chatbot-qa --quick`
+### Step 2 — `ocs-chatbot-qa --quick` → `ocs-chatbot-eval --quick`
 
-5-question smoke suite (escalation, tagging, shared-collection retrieval,
-graceful-decline) to fast-fail a miswired bot. Stdout summary only.
+qa captures a 5-question smoke suite (escalation, tagging,
+shared-collection retrieval, graceful-decline) with structural checks to
+fast-fail a miswired bot. eval then grades the transcript. Stdout summary
+only.
 
-- **Gate:** overall ≥ 7. On fail: one prompt-patch retry, then escalate
+- **Gate:** qa structural pass rate = 100% AND eval overall ≥ 7. On fail:
+  one prompt-patch retry, then escalate
 
-### Step 3 — `ocs-chatbot-qa --deep`
+### Step 3 — `ocs-chatbot-qa --deep` → `ocs-chatbot-eval --deep`
 
-Full suite: Connect-general + ACE-specific + opp-specific (from
-`test-prompts.md`) + edge-case extras (out-of-scope, adversarial,
-multi-turn, non-English if applicable).
+qa captures the full suite: Connect-general + ACE-specific + opp-specific
+(from `test-prompts.md`) + edge-case extras (out-of-scope, adversarial,
+multi-turn, non-English if applicable) at
+`qa-captures/YYYY-MM-DD-ocs-chat-deep.md`. eval grades each response.
 
-- **Output:** `qa-reports/YYYY-MM-DD-ocs-qa.md`
-- **Judge dimensions:** Correctness (40%) · Source usage (20%) · Tone (20%)
-  · Tagging (20%); per-prompt Pass/Warn/Fail
+- **Outputs:** `verdicts/ocs-chatbot-eval-deep.yaml` (machine),
+  `eval-reports/YYYY-MM-DD-ocs-eval.md` (human), `gate-briefs/ocs-chatbot-eval-deep.md`
+- **Judge dimensions (eval skill):** Correctness (40%) · Source usage (20%)
+  · Tone (20%) · Tagging (20%); per-prompt Pass/Warn/Fail
 - **Gate (review mode):** overall ≥ 7 AND every Fail resolved
 
 ### Step 4 — Widget handoff to Connect
@@ -290,12 +298,14 @@ Scheduled during the active opportunity until end date:
 - **`flw-data-review`** (weekly) — analyzes FLW submission quality (Layer
   B per-delivery + Layer C cross-delivery), produces recommendations.
   Writes `data-reviews/YYYY-MM-DD-review.md`
-- **`ocs-chatbot-qa --monitor`** (weekly) — periodic deep-suite QA against
-  the live bot to catch retrieval drift (e.g. after the shared Connect
-  collection auto-syncs new Confluence pages). Writes
-  `qa-reports/YYYY-MM-DD-ocs-qa.md` and appends a trend entry to
-  `qa-reports/trend.md`. Emails admin group if overall score drops by
-  more than 1.5 points run-to-run
+- **`ocs-chatbot-qa --monitor` → `ocs-chatbot-eval --monitor`** (weekly) —
+  qa captures a periodic full-suite transcript against the live bot to
+  catch retrieval drift (e.g. after the shared Connect collection
+  auto-syncs new Confluence pages); eval grades it. qa writes
+  `qa-captures/YYYY-MM-DD-ocs-chat-monitor.md`; eval writes
+  `verdicts/ocs-chatbot-eval-monitor.yaml`, `eval-reports/YYYY-MM-DD-ocs-eval.md`,
+  and appends a trend entry to `eval-reports/trend.md`. eval emails the
+  admin group if overall score drops by more than 1.5 points run-to-run
 
 ## Phase 6 — Closeout
 
@@ -397,7 +407,8 @@ currently guide operators through a Nova chat session manually.
 | `connect-opp-setup` | 3 | Create Connect Opportunity + config |
 | `llo-invite` | 3 | Prepare LLO invite list (no send) |
 | `ocs-agent-setup` | 4 | Clone golden template, RAG, prompt, publish |
-| `ocs-chatbot-qa` | 4, 5 | `--quick` smoke · `--deep` pre-launch · `--monitor` recurring |
+| `ocs-chatbot-qa` | 4, 5 | Capture: `--quick` smoke · `--deep` pre-launch · `--monitor` recurring (transcript → `qa-captures/`) |
+| `ocs-chatbot-eval` | 4, 5 | Judge: LLM-as-Judge on captured transcript; writes `verdicts/` + `eval-reports/` + Phase 4 gate brief |
 | `llo-onboarding` | 5 | Send Connect invites + onboarding email w/ widget |
 | `llo-uat` | 5 | Coordinate LLO user-acceptance testing |
 | `llo-launch` | 5 | Activate opportunity, notify go-live |

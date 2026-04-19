@@ -31,7 +31,9 @@ phases:
   ocs-setup:            # Phase 4
     ocs-agent-setup: pending
     ocs-chatbot-qa-quick: pending
+    ocs-chatbot-eval-quick: pending
     ocs-chatbot-qa-deep: pending
+    ocs-chatbot-eval-deep: pending
   llo-management:       # Phase 5
     llo-onboarding: pending
     llo-uat: pending
@@ -40,6 +42,7 @@ phases:
     timeline-monitor: pending
     flw-data-review: pending
     ocs-chatbot-qa-monitor: pending
+    ocs-chatbot-eval-monitor: pending
   closeout:             # Phase 6
     opp-closeout: pending
     llo-feedback: pending
@@ -49,8 +52,8 @@ phases:
 # Gate approvals. Operator acknowledgement required in review mode before
 # the next step dispatches.
 gates:
-  idea-to-pdd: pending           # Phase 1 exit
-  app-deploy: pending            # Phase 2 exit
-  ocs-chatbot-qa-deep: pending   # Phase 4 exit
-  llo-invite: pending            # Phase 3 exit (invites sent in Phase 5)
-  llo-launch: pending            # Phase 5 go-live
+  idea-to-pdd: pending             # Phase 1 exit
+  app-deploy: pending              # Phase 2 exit
+  ocs-chatbot-eval-deep: pending   # Phase 4 exit (gate is on the eval, not the qa capture)
+  llo-invite: pending              # Phase 3 exit (invites sent in Phase 5)
+  llo-launch: pending              # Phase 5 go-live
