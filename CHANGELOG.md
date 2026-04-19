@@ -5,6 +5,54 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.4 — 2026-04-19
+
+Fix: `bootstrap-ocs-golden-template.ts` now validates
+`OCS_SHARED_COLLECTION_ID` exists on the team before attaching.
+
+### Fixed
+
+- **Golden template silent-publish bug.** The 2026-04-19 iteration loop
+  discovered that the live golden template (experiment 11792) was
+  stuck at v1 (empty post-clone state) and serving vanilla-LLM responses
+  — scored 3.84/10 FAIL on `ocs-chatbot-qa --quick`. Root cause:
+  `OCS_SHARED_COLLECTION_ID` pointed at collection id 718, which did
+  not exist on the `connect-ace` team. The clone's `ocs_attach_knowledge`
+  call silently succeeded at the pipeline-patch layer, but then blocked
+  every subsequent `publishChatbotVersion` attempt with the opaque UI
+  message *"Unable to create a new version when the pipeline has
+  errors."* The draft ended up correctly configured, but v1 stayed the
+  default version forever and the embedded widget served a bare LLM.
+- **Fix**: pre-flight validate that the configured
+  `OCS_SHARED_COLLECTION_ID` exists on the team before attaching. Skip
+  attachment with a loud, actionable warning if missing. Prevents the
+  silent publish-block from reoccurring when
+  `/ace:ocs-bootstrap-template` is run with a stale env var.
+- **Side effect of the fix**: golden template re-published with the
+  canonical system prompt (PDD not IDD, `ace@dimagi-ai.com`,
+  emoji-discouraged tone guidance). Score went from **3.84/10 FAIL**
+  → **8.2/10 PASS**. Remaining `[WARN]`: `source_usage: 5.0` because no
+  Connect shared knowledge collection exists on team `connect-ace`
+  (team-infrastructure work, backlogged).
+
+### Backlogged (from this fix)
+
+- OCS MCP: add `ocs_list_collections` — `bootstrap-ocs-golden-template.ts`
+  had to scrape the edit page because the REST API doesn't expose it.
+- OCS MCP: `publishChatbotVersion` should pre-flight POST the current
+  graph through `/pipelines/data/` first and surface any
+  `errors.node` entries as a `PipelineValidationError` before attempting
+  version creation. The silent-publish-block bug above was hidden by
+  exactly this gap.
+- `ocs-agent-setup` SKILL: add a pre-flight check on
+  `OCS_SHARED_COLLECTION_ID` — every clone the skill produces hits the
+  same silent-block risk.
+- `$CLAUDE_PLUGIN_DATA/.env` mismatch: once a real Connect shared
+  knowledge collection is created on team `connect-ace`, set
+  `OCS_SHARED_COLLECTION_ID`, `OCS_LLM_PROVIDER_ID`,
+  `OCS_EMBEDDING_MODEL_ID` — they're documented in
+  `ocs-chatbot-qa` / `ocs-agent-setup` but not currently in the env.
+
 ## 0.4.3 — 2026-04-19
 
 Contract cleanup + orchestrator hardening, all surfaced from the
