@@ -1,25 +1,34 @@
 ---
 name: ocs-chatbot-qa
 description: >
-  Evaluate an ACE OCS chatbot's response quality by chatting with it through
-  the anonymous widget endpoint and grading responses with LLM-as-Judge. Has
-  three modes: --quick (smoke gate), --deep (pre-launch gate), --monitor
-  (recurring periodic check).
+  Exercise an ACE OCS chatbot through the anonymous widget endpoint and
+  capture a structured transcript. Runs structural checks (response
+  received, no errors, citations present). Produces the transcript that
+  `ocs-chatbot-eval` then judges. Three modes: --quick (smoke), --deep
+  (pre-launch), --monitor (recurring).
 ---
 
 # OCS Chatbot QA
 
-Test a deployed ACE OCS chatbot by chatting with it anonymously and
-evaluating its responses. Called from the `ocs-setup` agent in Phase 4
-(quick + deep) and from `llo-manager` in Phase 5 (monitor).
+Talk to a deployed ACE OCS chatbot and capture what it says into a
+structured transcript at `qa-captures/`. This skill is the **qa** half of
+the qa/eval pair — it captures evidence and runs cheap structural checks.
+The LLM-as-Judge grading happens separately in `ocs-chatbot-eval`.
+
+Called from the `ocs-setup` agent in Phase 4 (quick + deep) and from
+`llo-manager` in Phase 5 (monitor). Each call is paired with an immediately
+following `ocs-chatbot-eval` call in the same mode.
+
+See `skills/README.md § QA vs Eval — the two-phase pattern` for the
+rationale and artifact-path contract.
 
 ## Modes
 
-| Mode | Suite size | When it runs | Output |
+| Mode | Suite size | When it runs | Capture written to |
 |---|---|---|---|
-| `--quick` | 5 smoke questions | Phase 4 Step 2 (post-setup gate) | stdout summary |
-| `--deep` | Full suite + opp-specific prompts from `test-prompts.md` | Phase 4 Step 3 (pre-launch gate) | `qa-reports/YYYY-MM-DD-ocs-qa.md` |
-| `--monitor` | Full suite, scheduled | Phase 5 recurring, and ad-hoc | `qa-reports/YYYY-MM-DD-ocs-qa.md`, appends to trend file |
+| `--quick` | 5 smoke questions | Phase 4 Step 2 (post-setup) | `qa-captures/YYYY-MM-DD-ocs-chat-quick.md` |
+| `--deep` | Full suite + opp-specific prompts from `test-prompts.md` | Phase 4 Step 3 (pre-launch) | `qa-captures/YYYY-MM-DD-ocs-chat-deep.md` |
+| `--monitor` | Full suite, scheduled | Phase 5 recurring, ad-hoc | `qa-captures/YYYY-MM-DD-ocs-chat-monitor.md` |
 
 If no mode is passed, default to `--quick`.
 
@@ -47,7 +56,7 @@ If no mode is passed, default to `--quick`.
    - "What's the weather today?"
      (expected: declines gracefully, stays in role)
 
-   ### `--deep` suite (full — pre-launch gate)
+   ### `--deep` suite (full — pre-launch)
 
    **Connect-general prompts** (shared collection):
    - "How do I review and approve flagged deliveries?"
@@ -67,7 +76,7 @@ If no mode is passed, default to `--quick`.
    **Opp-specific prompts** (only if `opp_name` is provided):
    - Loaded from `ACE/<opp-name>/test-prompts.md` — produced in Phase 1 by
      the `pdd-to-test-prompts` skill. Each entry has a question + an
-     expected-answer summary for the judge to evaluate against
+     expected-answer summary that `ocs-chatbot-eval` uses as ground truth
 
    **Edge-case extras:**
    - Out-of-scope ("What's the weather today?") — decline gracefully
@@ -77,8 +86,6 @@ If no mode is passed, default to `--quick`.
 
    ### `--monitor` suite
    - Same as `--deep` but skips the edge-case extras (they're stable).
-   - Appends a single-line entry to `ACE/<opp-name>/qa-reports/trend.md` with
-     date, overall score, and dimension breakdown so drift is visible
 
 3. **Chat with the bot:**
    - Start an anonymous session via `POST /api/chat/start/`
@@ -89,114 +96,88 @@ If no mode is passed, default to `--quick`.
      - Capture the response content, cited_files, and tags
    - Timeout: 120 seconds per response (LLM + retrieval can be slow)
 
-4. **Evaluate each response (LLM-as-Judge):**
+4. **Run structural checks on each response** (cheap, deterministic —
+   these are qa-side checks, not LLM judgment):
+   - `response_received`: non-empty string within timeout
+   - `no_error`: no error marker in the response (e.g., not a "sorry,
+     something went wrong" fallback)
+   - `has_citations`: for prompts where the expected answer is KB-sourced,
+     `cited_files` is non-empty
+   - Set per-prompt `structural_pass: true | false` and a `structural_notes`
+     string for the judge (and humans) to read
 
-   For each (prompt, response) pair, grade on 4 dimensions:
-
-   | Dimension | Weight | Criteria |
-   |-----------|--------|----------|
-   | **Correctness** | 40% | Does the answer match the expected content? Is it factually accurate based on the knowledge base? |
-   | **Source usage** | 20% | Did the bot use the right knowledge source (shared collection for Connect questions, opp collection for opp questions)? Does `cited_files` reference relevant documents? |
-   | **Tone** | 20% | Professional, respectful, actionable? Not condescending? Appropriate for experienced Network Managers? |
-   | **Tagging** | 20% | Did the bot apply the right tags? [training-gap] for basic-confusion answers, [product-feedback] for bug reports, escalation to ace@dimagi-ai.com for out-of-scope? |
-
-   Each dimension is scored 0-10. The overall score is the weighted average.
-
-   A response is classified as:
-   - **Pass** (7-10): answer is correct, well-sourced, and properly tagged
-   - **Warn** (4-6): answer is partially correct or missing source/tag
-   - **Fail** (0-3): answer is wrong, off-topic, or violates tone guidelines
-
-5. **Apply the gate (mode-dependent):**
-
-   - `--quick`: overall ≥ 7 passes. On fail, return an error so `ocs-setup`
-     can retry prompt-patching once before escalating
-   - `--deep`: overall ≥ 7 AND every Fail verdict resolved. On fail, escalate
-     to admin group with the report attached
-   - `--monitor`: no gate — write the report and append to trend file. If
-     overall score drops more than 1.5 points from the previous run, email
-     the admin group with the delta
-
-6. **Write the gate brief** (only for `--deep` mode) to
-   `ACE/<opp-name>/gate-briefs/ocs-chatbot-qa-deep.md`. `--quick` and
-   `--monitor` do not write gate briefs — `--quick` is a fast-fail smoke
-   check consumed by `ocs-setup`, and `--monitor` appends to the trend file
-   instead of gating. The brief follows the shape in
-   `agents/ace-orchestrator.md § Gate Brief Contract`; see `## Gate Brief`
-   below for the fields this skill populates.
-
-7. **Generate the report** (skipped for `--quick` stdout-only mode):
+5. **Write the transcript capture** to
+   `ACE/<opp-name>/qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md` (or stdout
+   for `--quick`). Shape:
 
    ```markdown
-   # OCS Chatbot QA Report
+   # OCS Chatbot QA Capture
    Date: YYYY-MM-DD
    Target: <experiment_id> (<bot name>)
    Mode: quick | deep | monitor
-   Overall Score: X.X / 10
+   Suite size: N prompts
+   Structural pass rate: <X/N>
 
-   ## Results
+   ## Entries
 
-   | # | Prompt | Score | Verdict | Notes |
-   |---|--------|-------|---------|-------|
-   | 1 | How do I review flagged deliveries? | 8.5 | PASS | Correct steps, good tone |
-   | 2 | Who should I contact? | 9.0 | PASS | Mentioned ace@dimagi-ai.com |
-   | ... | ... | ... | ... | ... |
+   ### Entry 1
+   - **Category:** connect-general
+   - **Prompt:** How do I review and approve flagged deliveries?
+   - **Expected answer summary:** <from suite or test-prompts.md>
+   - **Expected tags:** []
+   - **Expected escalation:** none
+   - **Response content:**
 
-   ## Dimension Breakdown
-   - Correctness: X.X / 10
-   - Source usage: X.X / 10
-   - Tone: X.X / 10
-   - Tagging: X.X / 10
+     <the bot's reply, verbatim>
 
-   ## Full Transcript
-   [per-question prompt + response + judge evaluation]
+   - **Cited files:** [doc-42, doc-17]
+   - **Tags:** []
+   - **Elapsed:** 4.3s
+   - **Structural pass:** true
+   - **Structural notes:** —
+
+   ### Entry 2
+   ...
    ```
 
-## Gate Brief
+   The transcript is the machine-readable + human-readable input to
+   `ocs-chatbot-eval`. Keep every entry's `expected_*` fields populated so
+   the judge can grade without re-deriving.
 
-*Applies to `--deep` mode only.* The gate brief at
-`ACE/<opp-name>/gate-briefs/ocs-chatbot-qa-deep.md` summarizes the deep-QA
-scorecard so the admin can decide whether the bot is ready for Phase 5
-without reading the full transcript.
+6. **Return structural summary:**
+   - `total_prompts`, `structural_pass_count`, `structural_fail_count`,
+     `capture_path`
+   - On `--quick`, also print to stdout so the agent can see it without
+     reading the capture file
 
-- **Artifact Under Review:** path to the dated report under
-  `ACE/<opp-name>/qa-reports/`; summary is
-  `<overall-score>/10 across <N> prompts, <P> Pass / <W> Warn / <F> Fail`
-- **What to Check** (emit these 4 items verbatim):
-  - Overall score ≥ 7.0 and no Fail verdicts on opp-specific prompts from
-    `test-prompts.md`
-  - All four dimensions (Correctness, Source usage, Tone, Tagging) scored
-    ≥ 6.0 — a dimension below 6 is a retrieval or prompt gap, not noise
-  - Edge-case prompts (out-of-scope, adversarial) all passed — role
-    leakage is a privacy risk, not just a quality one
-  - Cited files on Pass responses actually correspond to the right
-    collection (Connect shared vs. opp-specific) — spot-check one of each
-- **Auto-Surfaced Concerns:** one line per signal:
-  - `[BLOCKER]` for each Fail verdict (include prompt snippet + reason)
-  - `[BLOCKER]` if overall score is below 7.0
-  - `[WARN]` for each dimension scoring 6.0–6.9
-  - `[WARN]` if any Pass used the wrong source collection
-  - `[INFO]` if the deep suite ran fewer than 10 prompts (thin test)
-  - "None — all auto-checks passed." if the bot cleared ≥ 7 with zero Fail
-- **Recommended Disposition:** `Approve` if zero `[BLOCKER]`; `Reject` if
-  any `[BLOCKER]` appears (bot is not ready to serve LLOs); `Iterate` to
-  re-run the deep suite after prompt/RAG adjustments
+7. **Structural gate (mode-dependent):**
+   - `--quick`: structural fail rate > 0 → escalate (the bot is miswired,
+     not a judgment call). Eval is skipped.
+   - `--deep` / `--monitor`: never block at the qa layer. Even a partially
+     broken response is worth judging; eval distinguishes noise from
+     regression. Report structural fails as `[INFO]` in the eval's gate
+     brief inputs.
 
 ## MCP Tools Used
 
-- OCS: `ocs_get_chatbot_embed_info` (to resolve experiment_id → embed credentials)
+- OCS: `ocs_get_chatbot_embed_info` (to resolve `experiment_id` → embed
+  credentials)
 - No other MCP tools — the chat is done via raw HTTP to the anonymous
   widget endpoint, not through the MCP server
 
-## Mode Behavior (review vs. auto)
+## Mode Behavior
 
-- **Auto:** Run the selected mode, write the report, surface gate verdict
-- **Review:** Pause after the chat phase to show raw responses before judging
+- **Auto:** Run the selected mode, write the transcript, return structural
+  summary. Caller (`ocs-setup` or `llo-manager`) dispatches
+  `ocs-chatbot-eval` next.
+- **Review:** Pause after the chat phase to show raw responses before
+  writing the capture
 
 ## Dry-Run Behavior
 
 When `--dry-run` is active:
-- Print the test prompt suite for the selected mode without sending any messages
+- Print the test prompt suite for the selected mode without sending any
+  messages
 - Useful for reviewing what will be tested before running
 
 ## Change Log
@@ -206,3 +187,4 @@ When `--dry-run` is active:
 | 2026-04-10 | Initial version | ACE team |
 | 2026-04-14 | Added --quick / --deep / --monitor modes; --quick replaces the inline self-eval previously in `ocs-agent-setup`; --deep is the pre-launch gate in Phase 4; --monitor runs recurring in Phase 5 | ACE team |
 | 2026-04-17 | `--deep` emits gate brief at `ACE/<opp-name>/gate-briefs/ocs-chatbot-qa-deep.md`; `--quick` and `--monitor` do not | ACE team (PM scout, internal-admin lens) |
+| 2026-04-19 | **QA/eval split.** Removed LLM-as-Judge; this skill now captures transcripts + structural checks only. Writes to `qa-captures/` (renamed from embedded report). Gate brief ownership moved to new `ocs-chatbot-eval` skill. See `skills/README.md § QA vs Eval — the two-phase pattern` | ACE team (qa/eval split refactor) |

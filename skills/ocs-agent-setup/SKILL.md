@@ -16,8 +16,9 @@ atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
 `ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`.
 
 Runs in Phase 4 as Step 1 under the `ocs-setup` agent. The agent handles
-quality gating via `ocs-chatbot-qa` (quick + deep) in subsequent steps, so
-this skill is now purely configuration — no inline self-eval.
+quality gating via the `ocs-chatbot-qa` → `ocs-chatbot-eval` pair (quick
++ deep) in subsequent steps, so this skill is now purely configuration —
+no inline self-eval.
 
 ## Process
 
@@ -80,8 +81,8 @@ this skill is now purely configuration — no inline self-eval.
     - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`
     - On re-run, this file is the source of truth; skip to step 10 if present
 
-Quality gating (quick + deep QA) and Connect widget handoff happen in
-subsequent steps of the `ocs-setup` agent, not in this skill.
+Quality gating (quick + deep qa→eval pairs) and Connect widget handoff
+happen in subsequent steps of the `ocs-setup` agent, not in this skill.
 
 ## Mode Behavior
 
@@ -101,9 +102,10 @@ When `--dry-run` is active:
 - `CollectionIndexingTimeoutError` — raise timeout; if persists, check OCS dashboard for the collection's indexing queue.
 - `SessionExpiredError` — run `/ace:ocs-login` to re-authenticate.
 - `HttpError 4xx` on clone — verify `OCS_GOLDEN_TEMPLATE_ID` and `OCS_TEAM_SLUG` env vars.
-- Quality gate failure downstream — if `ocs-chatbot-qa --quick` or `--deep`
-  fails in Phase 4, the usual fix is prompt engineering in step 7's
-  composition. Re-run this skill with the revised prompt, then re-run QA.
+- Quality gate failure downstream — if `ocs-chatbot-eval --quick` or
+  `--deep` scores below threshold in Phase 4, the usual fix is prompt
+  engineering in step 7's composition. Re-run this skill with the revised
+  prompt, then re-run qa + eval.
 
 ## Change Log
 

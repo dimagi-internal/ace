@@ -60,11 +60,13 @@ Implementation steps the agent (or a thin Bash wrapper) must perform:
 
 **Why this exists.** Without the check, `/ace:step ocs-chatbot-qa my-opp --deep`
 silently fails when `test-prompts.md` hasn't been produced yet (because
-`pdd-to-test-prompts` hasn't run). Per ACE's fail-loudly contract: skills
-that read upstream-produced artifacts must error when those artifacts are
-missing, not improvise content. The check belongs in `/ace:step` so any
-bypass of the orchestrator (which otherwise runs skills in dependency order)
-still enforces the contract.
+`pdd-to-test-prompts` hasn't run), and `/ace:step ocs-chatbot-eval my-opp
+--deep` silently fails when no `qa-captures/` transcript exists yet
+(because `ocs-chatbot-qa --deep` hasn't run). Per ACE's fail-loudly
+contract: skills that read upstream-produced artifacts must error when
+those artifacts are missing, not improvise content. The check belongs in
+`/ace:step` so any bypass of the orchestrator (which otherwise runs skills
+in dependency order) still enforces the contract.
 
 **What NOT to check:**
 - Dated / recurring artifacts (paths containing `YYYY-MM-DD`) — these are
@@ -86,6 +88,11 @@ still enforces the contract.
   → Required: test-prompts.md. Missing.
   → Error: "cannot run — missing required inputs: test-prompts.md
     (produced by: pdd-to-test-prompts)."
+
+/ace:step ocs-chatbot-eval my-opp --deep
+  → Required: qa-captures/*-ocs-chat-deep.md. Missing.
+  → Error: "cannot run — missing required inputs: qa-captures transcript
+    for mode 'deep' (produced by: ocs-chatbot-qa --deep)."
 
 /ace:step connect-opp-setup my-opp
   → Required: program.md, pdd.md, deployment-summary.md. All present.

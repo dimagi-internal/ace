@@ -14,9 +14,10 @@ skills:
   - { name: llo-uat,         has_judge: false }
   - { name: llo-launch,      has_judge: false }
 recurring_skills:
-  - { name: timeline-monitor, has_judge: true }
-  - { name: flw-data-review,  has_judge: true }
-  - { name: ocs-chatbot-qa,   has_judge: true }
+  - { name: timeline-monitor,   has_judge: true }
+  - { name: flw-data-review,    has_judge: true }
+  - { name: ocs-chatbot-qa,     has_judge: false }
+  - { name: ocs-chatbot-eval,   has_judge: true }
 ---
 
 # LLO Manager Agent (Phase 5)
@@ -64,10 +65,15 @@ These skills run on a schedule during the active opportunity:
 - Analyzes FLW submission data for quality issues
 - Generates recommendations for the Auto-Connect team to relay to LLOs
 
-**OCS Chatbot Monitoring** — invoke `ocs-chatbot-qa --monitor` weekly.
+**OCS Chatbot Monitoring** — invoke `ocs-chatbot-qa --monitor` then
+`ocs-chatbot-eval --monitor` weekly (qa captures transcript, eval grades).
 - Periodic quality check against the live bot to catch retrieval drift
   (e.g., after the shared Connect collection auto-syncs new Confluence pages)
-- Writes trend entries to `ACE/<opp-name>/qa-reports/`
+- qa writes `qa-captures/YYYY-MM-DD-ocs-chat-monitor.md`; eval writes
+  `verdicts/ocs-chatbot-eval-monitor.yaml`, `eval-reports/YYYY-MM-DD-ocs-eval.md`,
+  and appends a line to `eval-reports/trend.md`
+- If eval's overall score drops more than 1.5 points from the previous
+  monitor verdict, eval emails the admin group
 
 ### Completion
 This phase is "complete" when the opportunity reaches its end date.

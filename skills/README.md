@@ -111,11 +111,11 @@ Each archetype is a `### <archetype-name>` subheading with a short description a
 
 The 7 archetype-aware skills today are: `idea-to-pdd`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-test`, `connect-opp-setup`, `flw-data-review`, `cycle-grade`.
 
-### `## LLM-as-Judge Rubric` (when the skill self-evaluates)
+### `## LLM-as-Judge Rubric` (when the skill self-evaluates or is an eval skill)
 
-Some skills self-evaluate their output before passing it downstream. When the rubric is non-trivial, factor it out into its own section instead of burying it inside a process step. Place this section **immediately before** `## Archetypes` (if present) or **immediately before** `## MCP Tools Used` (if not).
+Some skills self-evaluate their output before passing it downstream; dedicated `-eval` skills (see `## QA vs Eval — the two-phase pattern` below) exist entirely to apply a rubric. In both cases, when the rubric is non-trivial, factor it out into its own section instead of burying it inside a process step. Place this section **immediately before** `## Archetypes` (if present) or **immediately before** `## MCP Tools Used` (if not).
 
-The rubric should be concrete enough to grade on — bullet points with grading anchors, or a numbered checklist with pass/fail conditions. See `skills/idea-to-pdd/SKILL.md` for the canonical example (the 5-question stress-test rubric with worked anchors from the example PDDs).
+The rubric should be concrete enough to grade on — bullet points with grading anchors, or a numbered checklist with pass/fail conditions. See `skills/idea-to-pdd/SKILL.md` for the canonical example (the 5-question stress-test rubric with worked anchors from the example PDDs). See `skills/ocs-chatbot-eval/SKILL.md` for the 4-dimension weighted-score pattern that dedicated `-eval` skills follow.
 
 ### `## Current Workaround` (when the skill is blocked on un-built APIs)
 
@@ -137,6 +137,101 @@ When `--dry-run` is active:
 ```
 
 See `docs/superpowers/specs/2026-04-01-ace-design.md` § "Testing and Dry-Run Strategy" for the full dry-run model.
+
+## QA vs Eval — the two-phase pattern
+
+Evaluation in ACE splits into two orthogonal phases so evidence can be
+captured once and graded many times (including by different rubrics, or
+re-graded after a rubric improves without re-exercising the artifact).
+
+**`-qa` skills (capture).** Exercise the artifact and produce structured
+evidence. Sometimes the work is mechanical — send a prompt suite and
+collect responses (`ocs-chatbot-qa`), read FLW submissions and verify
+delivery proof (`flw-data-review`). Sometimes the evidence comes from the
+field — FGD audio captured by a facilitator, a sample photo sent by an
+FLW. Either way, a `-qa` skill writes a transcript/capture artifact to a
+known path and runs cheap structural checks (response received, audio
+length ≥ threshold, all required fields present). **`-qa` never runs
+LLM-as-Judge.**
+
+**`-eval` skills (judge).** Read a capture artifact, apply an LLM-as-Judge
+rubric, and write a machine-readable verdict plus a human-readable report.
+Because the evidence is already captured, `-eval` can be re-run anytime
+— against the same transcript with an improved rubric, or across many
+captures to compute a trend. **`-eval` never exercises the artifact.**
+
+### When to use which
+
+- **Most skills produce their own evidence inline.** The skill writes its
+  primary artifact (`pdd.md`, `learn-app.json`, `connect-setup/opportunity.md`)
+  and optionally includes a self-eval step (e.g., `idea-to-pdd`'s 5-question
+  stress-test rubric). No separate `-qa` or `-eval` skills needed.
+- **A standalone `-qa` skill exists when exercising the artifact requires
+  runtime work the producing skill didn't do** — chatting with a deployed
+  bot, running an app through its UI, facilitating a group session,
+  reviewing submitted deliveries. The `-qa` skill writes a capture; the
+  `-eval` skill grades it.
+- **Avoid `-qa` skills that are just `-eval` under a different name.** If
+  nothing runtime is happening between "produce the artifact" and "judge
+  it," the producing skill's inline self-eval is the right place.
+
+### Artifact-path contract
+
+Every `-qa` / `-eval` pair writes to these canonical paths under
+`ACE/<opp-name>/`. Paths are uniform across skills so the umbrella
+`opp-eval` aggregator (future) can discover verdicts without per-skill
+knowledge.
+
+| Purpose | Path | Writer |
+|---|---|---|
+| Capture / transcript / evidence | `qa-captures/YYYY-MM-DD-<slug>.md` | `-qa` skill |
+| Structured machine-readable verdict | `verdicts/<skill>-<mode>.yaml` | `-eval` skill |
+| Human-readable eval report | `eval-reports/YYYY-MM-DD-<slug>.md` | `-eval` skill |
+| Rolling monitor trend | `eval-reports/trend.md` | `-eval` skill (`--monitor` mode only) |
+| Gate brief (if this eval gates a phase) | `gate-briefs/<skill>-<mode>.md` | `-eval` skill |
+
+### Verdict YAML shape
+
+Every `-eval` skill writes the same top-level shape so `opp-eval` can
+aggregate verdicts uniformly across skills:
+
+```yaml
+skill: <eval-skill-name>       # e.g., ocs-chatbot-eval
+target: <what-was-judged>      # e.g., experiment_id, pdd-path
+mode: quick | deep | monitor   # or omit if the eval has one mode
+ran_at: <ISO timestamp>
+capture_path: qa-captures/<path>  # or inline-self-eval if the skill is its own producer
+
+overall_score: 0.0-10.0        # weighted
+verdict: pass | warn | fail
+
+dimensions:
+  <dim-name>: { score: 0-10, weight: 0.0-1.0 }
+  # weights sum to 1.0
+
+per_item:                      # optional — one entry per judged thing
+  - ref: <prompt / row / field>
+    score: 0-10
+    verdict: pass | warn | fail
+    note: <one-line rationale>
+
+gate:                          # optional — only if this eval gates a phase
+  threshold: 0.0-10.0
+  disposition: approve | reject | iterate
+```
+
+Skills may add their own fields below this minimum, but should not rename
+or reshape the core keys — the aggregator reads them positionally.
+
+### Canonical examples
+
+- `skills/ocs-chatbot-qa/SKILL.md` + `skills/ocs-chatbot-eval/SKILL.md` —
+  the reference qa/eval pair. The qa skill captures a chat transcript
+  with structural checks; the eval skill grades across 4 weighted
+  dimensions and writes the Phase 4 gate brief.
+- `skills/idea-to-pdd/SKILL.md` — a skill with inline self-eval (no
+  separate `-eval` skill). The 5-question stress-test rubric runs inside
+  the skill as a self-check before writing the PDD.
 
 ## How the PDD `## Evidence Model` flows through skills
 
