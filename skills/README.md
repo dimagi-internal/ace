@@ -109,7 +109,7 @@ Each archetype is a `### <archetype-name>` subheading with a short description a
 <how the skill handles multi-stage PDDs — typically dispatches per stage>
 ```
 
-The 8 archetype-aware skills today are: `idea-to-pdd`, `pdd-to-test-prompts`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-test`, `connect-opp-setup`, `flw-data-review`, `cycle-grade`.
+The 9 archetype-aware skills today are: `idea-to-pdd`, `pdd-to-test-prompts`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-test`, `connect-opp-setup`, `llo-invite`, `flw-data-review`, `cycle-grade`.
 
 ### `## LLM-as-Judge Rubric` (when the skill self-evaluates or is an eval skill)
 
@@ -256,9 +256,9 @@ The 3 current archetypes are `atomic-visit`, `focus-group`, and `multi-stage`. A
 
 1. **`templates/pdd-template.md`** — add the new archetype to the `Archetype:` enum description and to the archetype-guidance block at the top of the template.
 2. **`skills/idea-to-pdd/SKILL.md`** — add a `### <new-archetype>` subheading inside `## Archetypes` describing the additional questions to ask in step 3 and the archetype-specific sections to draft in step 4.
-3. **The 7 other archetype-aware skills** (`pdd-to-test-prompts`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-test`, `connect-opp-setup`, `flw-data-review`, `cycle-grade`) — add a `### <new-archetype>` subheading inside `## Archetypes` describing how the skill behaves for the new archetype.
+3. **The 8 other archetype-aware skills** (`pdd-to-test-prompts`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-test`, `connect-opp-setup`, `llo-invite`, `flw-data-review`, `cycle-grade`) — add a `### <new-archetype>` subheading inside `## Archetypes` describing how the skill behaves for the new archetype.
 
-Do **not** create a new skill per archetype. The whole point of the archetype mechanism is to avoid forking the framework — a new archetype is an additive change inside the existing 8 skills, not a fan-out of new skill files. (See Lesson 9 of the canopy `product-management` skill: *"Framework changes mean variation points, not new components."*)
+Do **not** create a new skill per archetype. The whole point of the archetype mechanism is to avoid forking the framework — a new archetype is an additive change inside the existing 9 skills, not a fan-out of new skill files. (See Lesson 9 of the canopy `product-management` skill: *"Framework changes mean variation points, not new components."*)
 
 After adding a new archetype, add a regression fixture under `test/fixtures/` (mirror the structure of `CRISPR-Test-001` for `atomic-visit` and `CRISPR-Test-002` for `focus-group`).
 

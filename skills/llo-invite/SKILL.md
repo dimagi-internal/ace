@@ -19,21 +19,30 @@ include the OCS widget link configured in Phase 4.
    - PDD: `ACE/<opp-name>/pdd.md` (LLO preferences section)
    - Opportunity details: `ACE/<opp-name>/connect-setup/opportunity.md`
 
-2. **Look up LLO contacts:**
+2. **Read the PDD's `archetype:` field.** Selection criteria differ by
+   archetype — see `## Archetypes` below. Use the archetype's criteria
+   set in step 3 below; fall back to `atomic-visit` if unspecified.
+
+3. **Look up LLO contacts:**
    - Check PDD for preferred/known LLOs
-   - Search LLO Directory for matching organizations
+   - Search LLO Directory for matching organizations, using the
+     archetype-appropriate capability criteria from `## Archetypes`
    - Get contact details for each LLO
 
-3. **Prepare invite list:**
+4. **Prepare invite list:**
    - LLO name, contact person, email
-   - Why this LLO was selected (geographic match, capability match, etc.)
+   - Why this LLO was selected — rationale must reference the
+     archetype-specific criteria from `## Archetypes` (not just
+     "geographic match"). For FGD archetypes: facilitator skill,
+     language/cultural fit, audio-equipment access, training-readiness
+     if facilitator skill is thin
    - Opportunity summary for the invite
 
-4. **Write invite list** to `ACE/<opp-name>/connect-setup/invites.md` with
+5. **Write invite list** to `ACE/<opp-name>/connect-setup/invites.md` with
    status `prepared` for each entry. Phase 5's `llo-onboarding` picks this up,
    issues the Connect invite, and flips the status to `sent`.
 
-5. **Write the gate brief** to `ACE/<opp-name>/gate-briefs/llo-invite.md`
+6. **Write the gate brief** to `ACE/<opp-name>/gate-briefs/llo-invite.md`
    using the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`.
    See `## Gate Brief` below for the exact fields this skill populates.
 
@@ -58,12 +67,70 @@ highest bad-send risk in the pipeline.
   - `[BLOCKER]` for any row missing a required field
   - `[WARN]` for any rationale that is empty or under 10 words
   - `[WARN]` if the list count differs materially from the PDD target
+    (for `focus-group`, also WARN if count > 2 without multi-site
+    justification — FGD quality degrades with facilitator variance)
+  - `[WARN]` for `focus-group` opps if any rationale is silent on
+    facilitation capability (experience or training plan)
   - `[INFO]` for each LLO that has not previously worked with Dimagi
     (onboarding will take longer)
   - "None — all auto-checks passed." if the list is clean
 - **Recommended Disposition:** `Approve` if zero `[BLOCKER]`; `Iterate` if
   any row is incomplete or duplicated; `Reject` if the list size or
   composition is off — re-run with corrected PDD LLO preferences
+
+## Archetypes
+
+Different archetypes demand different LLO capabilities. Selection
+criteria and expected invite count both shift with archetype — a
+6-session FGD pilot needs 1–2 qualitative-capable LLOs, not the 3–5
+field-execution LLOs a typical atomic-visit opp wants.
+
+### `atomic-visit` (default)
+
+**Selection criteria:**
+- Geographic coverage of the intervention area
+- Established FLW network ready to deploy
+- History of comparable atomic-visit work (household data collection,
+  market surveys, etc.)
+- Capacity to deliver planned volume within the PDD timeline
+
+**Expected count:** matches the PDD's LLO reach (usually 2–5 LLOs to
+cover geography + capacity).
+
+### `focus-group`
+
+**Selection criteria:**
+- **Qualitative research experience** (prior FGDs, semi-structured
+  interviews, ethnographic fieldwork) OR demonstrated willingness to
+  invest in facilitator training — don't assume generic CHW networks
+  have this skill
+- **Language + cultural fit** for the target segment — sensitive topics
+  (health beliefs, stigmatized practices) require a facilitator the
+  participants will open up to
+- **Audio-recording capability** — quality phone/recorder, quiet venue
+  access, ability to upload large files reliably
+- **Facilitator time availability** — FGD facilitation is intensive
+  prep + delivery + write-up per session, not stackable like atomic
+  visits. A per-session payment rate should reflect this
+- **Smaller-N bias** — 1–2 LLOs covering all sessions is usually better
+  than 5 LLOs each doing one session. Variance across facilitators
+  confounds cross-session theme comparison
+
+**Expected count:** 1–2 LLOs total, unless the PDD has multi-site
+coverage needs that force more. Flag explicitly if the PDD's LLO
+reach reads "several LLOs" without justifying why for FGD work.
+
+**Training consideration:** if no candidate LLO has strong facilitation
+experience, explicitly add a training line in the rationale — this is
+input to `training-materials` in Phase 2 and to the LLO's capacity
+planning. Don't silently assume skills that don't exist.
+
+### `multi-stage`
+
+Pick the appropriate selection set per stage. The same LLO can execute
+multiple stages if it has the capabilities for each; otherwise list
+per-stage LLOs in the invite list with the stage named in the
+rationale (e.g., "Stage 1 facilitator, Stage 2 field lead").
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
@@ -94,3 +161,4 @@ When `--dry-run` is active:
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-14 | Split prepare-vs-send: this skill only prepares in Phase 3; sending moves to `llo-onboarding` in Phase 5 so the onboarding email can include the OCS widget link | ACE team |
 | 2026-04-17 | Emit gate brief at `ACE/<opp-name>/gate-briefs/llo-invite.md` so the last-human-check-before-external-send surfaces incomplete rows and count drift | ACE team (PM scout, internal-admin lens) |
+| 2026-04-19 | Added `## Archetypes` section with per-archetype selection criteria; `focus-group` emphasizes qualitative research experience, language/cultural fit, audio-recording capability, facilitator time, small-N bias (1–2 LLOs). Gate brief WARNs for FGD count > 2 without justification and for silent-on-facilitation rationale. Motivated by cosmetics-fgd-pilot recon (2026-04-19) backlog item | ACE team (qa/eval iteration loop) |
