@@ -5,6 +5,31 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.2 — 2026-04-19
+
+Iteration-loop polish: `llo-invite` now archetype-aware.
+
+### Changed
+
+- **`llo-invite` is now archetype-aware.** Added `## Archetypes` section.
+  `atomic-visit` retains geographic + capacity criteria. `focus-group`
+  shifts selection to qualitative research experience (or training
+  willingness), language/cultural fit for sensitive topics,
+  audio-recording capability, facilitator time budgeting, and a
+  **small-N bias** (1–2 LLOs, not 3–5). A weaker LLM recruiting FGD
+  LLOs against the old prompt would likely pick by "geographic match"
+  alone and miss facilitation fit.
+- **Gate brief** gains an FGD-specific WARN: flags when count > 2
+  without multi-site justification, or when rationale is silent on
+  facilitation capability.
+- **Archetype-aware skill count** 8 → 9 in `skills/README.md`.
+
+### Why
+
+Backlog item P2 from the cosmetics-fgd-pilot recon. Field-level
+enforcement (gate brief WARNs) ensures the shift lands even under
+weaker dispatches.
+
 ## 0.4.1 — 2026-04-19
 
 Iteration-loop polish shaken out of the cosmetics-fgd-pilot Phase 1
