@@ -20,13 +20,20 @@ Run a single skill for an opportunity without running the full lifecycle.
    the skill, confirm all of its required prior artifacts are present in
    `ACE/<opp-name>/`. See "Prerequisite check" below. If any are missing,
    stop with an actionable error — do not invoke the skill.
-4. **Update operator identity in `state.yaml`** before dispatching:
+4. **Ensure `state.yaml` exists, then update operator identity.** If
+   `ACE/<opp-name>/state.yaml` is missing (orchestrator was bypassed —
+   typical when an admin runs `/ace:step idea-to-pdd <opp>` without a
+   prior `/ace:run`), initialize it first using the schema in
+   `agents/ace-orchestrator.md § State Schema` and the identity-capture
+   logic in `§ Starting a New Opportunity` step 3. Then set:
    - `last_actor: <git config user.email>` (fallback: `unknown`)
    - `last_actor_at: <ISO timestamp>`
 
-   See `agents/ace-orchestrator.md` § Touching State — Operator Capture.
-   This runs on every `/ace:step` call so `/ace:status` shows accurate
-   hand-off attribution even when admins bypass the orchestrator.
+   See `agents/ace-orchestrator.md` § Touching State — Operator Capture
+   and § Defensive `state.yaml` init on bypass paths. Defensive init runs
+   on every `/ace:step` call so the bypass path is robust and
+   `/ace:status` shows accurate hand-off attribution even when admins
+   skip the orchestrator.
 5. Invoke the specified skill with the opportunity context.
 6. Update `state.yaml` with the result (per-phase nested map, 6-phase schema).
 

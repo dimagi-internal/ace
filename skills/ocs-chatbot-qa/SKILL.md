@@ -42,6 +42,15 @@ If no mode is passed, default to `--quick`.
    - Otherwise, use `$OCS_GOLDEN_TEMPLATE_ID` from the env
    - The `embed_key` and `public_id` are needed for the anonymous chat API
 
+   **Env-source note.** ACE env vars (`OCS_GOLDEN_TEMPLATE_ID`,
+   `OCS_TEAM_SLUG`, `OCS_SHARED_COLLECTION_ID`,
+   `OCS_LLM_PROVIDER_ID`, `OCS_EMBEDDING_MODEL_ID`) live at
+   `$CLAUDE_PLUGIN_DATA/.env`, not the shell env. When running this
+   skill programmatically (subagent dispatch, scripts) the env file
+   must be sourced first. The ACE plugin's env-loading layer handles
+   this for interactive `/ace:*` slash commands; manual invocations
+   need an explicit `source $CLAUDE_PLUGIN_DATA/.env` (or equivalent).
+
 2. **Build the test prompt suite by mode:**
 
    ### `--quick` suite (5 questions — fast fail)
@@ -107,8 +116,14 @@ If no mode is passed, default to `--quick`.
      string for the judge (and humans) to read
 
 5. **Write the transcript capture** to
-   `ACE/<opp-name>/qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md` (or stdout
-   for `--quick`). Shape:
+   `ACE/<opp-name>/qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md`. If no
+   `opp_name` is provided (golden-template-no-opp runs), use
+   `ACE/golden-template/` as the path root — this is the canonical
+   fallback. `ocs-chatbot-eval` reads from the same path convention so
+   the skills compose correctly even without an opp. For `--quick`
+   runs against the golden template with no opp, stdout summary is
+   still emitted, but a transcript file is also written so `--deep`
+   and `--monitor` runs have something to re-grade later. Shape:
 
    ```markdown
    # OCS Chatbot QA Capture
@@ -163,7 +178,15 @@ If no mode is passed, default to `--quick`.
 - OCS: `ocs_get_chatbot_embed_info` (to resolve `experiment_id` → embed
   credentials)
 - No other MCP tools — the chat is done via raw HTTP to the anonymous
-  widget endpoint, not through the MCP server
+  widget endpoint (`POST /api/chat/start/` → `POST /api/chat/{session_id}/message/`
+  → `GET /api/chat/{session_id}/{task_id}/poll/`), not through the MCP
+  server. This is load-bearing: the MCP alternative
+  `ocs_send_test_message` returns only the response text and misses
+  `cited_files`, `tags`, `session_id`, and `elapsed_ms` that the
+  transcript schema requires. **Do not substitute the MCP tool for the
+  raw widget calls** — doing so produces a structurally incomplete
+  transcript that `ocs-chatbot-eval` has to grade around (citations and
+  tagging dimensions become ungradable).
 
 ## Mode Behavior
 
@@ -188,3 +211,4 @@ When `--dry-run` is active:
 | 2026-04-14 | Added --quick / --deep / --monitor modes; --quick replaces the inline self-eval previously in `ocs-agent-setup`; --deep is the pre-launch gate in Phase 4; --monitor runs recurring in Phase 5 | ACE team |
 | 2026-04-17 | `--deep` emits gate brief at `ACE/<opp-name>/gate-briefs/ocs-chatbot-qa-deep.md`; `--quick` and `--monitor` do not | ACE team (PM scout, internal-admin lens) |
 | 2026-04-19 | **QA/eval split.** Removed LLM-as-Judge; this skill now captures transcripts + structural checks only. Writes to `qa-captures/` (renamed from embedded report). Gate brief ownership moved to new `ocs-chatbot-eval` skill. See `skills/README.md § QA vs Eval — the two-phase pattern` | ACE team (qa/eval split refactor) |
+| 2026-04-19 | Document `ACE/golden-template/` as the canonical no-opp fallback path; make env-source of `$OCS_GOLDEN_TEMPLATE_ID` explicit (`$CLAUDE_PLUGIN_DATA/.env`); call out that `ocs_send_test_message` MCP tool is structurally incomplete for the transcript schema — stick to raw widget HTTP. Surfaced during first real qa/eval split exercise against the golden template | ACE team (qa/eval iteration loop) |

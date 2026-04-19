@@ -210,10 +210,21 @@ dimensions:
   # weights sum to 1.0
 
 per_item:                      # optional — one entry per judged thing
-  - ref: <prompt / row / field>
+  - ref: <prompt / row / field>  # canonical item identifier
     score: 0-10
     verdict: pass | warn | fail
     note: <one-line rationale>
+  # Each entry MAY include domain-specific fields (e.g., `prompt:` for
+  # chatbot evals, `session_id:` for FGD evals). The canonical key is
+  # `ref`; aggregators read by `ref` and ignore extras.
+
+auto_surfaced:                 # optional — inputs to the gate brief
+  - severity: BLOCKER | WARN | INFO
+    message: <one-line>
+  # The producing skill drafts one entry per surfaced concern during
+  # judgment. `opp-eval` concatenates these when aggregating verdicts
+  # into the run-level brief. If the producing skill has nothing to
+  # surface, omit this field (don't write an empty list).
 
 gate:                          # optional — only if this eval gates a phase
   threshold: 0.0-10.0
@@ -222,6 +233,9 @@ gate:                          # optional — only if this eval gates a phase
 
 Skills may add their own fields below this minimum, but should not rename
 or reshape the core keys — the aggregator reads them positionally.
+Historical skills used `per_prompt:` for the per-item list; `per_item:`
+is canonical as of 0.4.3, with domain-specific subkeys inside each entry
+(so a chatbot eval entry can include a `prompt:` field alongside `ref`).
 
 ### Canonical examples
 

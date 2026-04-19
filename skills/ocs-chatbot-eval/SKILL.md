@@ -38,6 +38,11 @@ If no mode is passed, default to `--quick`.
    if missing — do not chat with the bot to regenerate it. That's
    `ocs-chatbot-qa`'s job.
 
+   **No-opp fallback.** When running against the golden template with no
+   opp context, read from `ACE/golden-template/qa-captures/` — this is
+   the canonical fallback `ocs-chatbot-qa` writes to when `opp_name` is
+   absent. Documented in `skills/ocs-chatbot-qa/SKILL.md` step 5.
+
 2. **Read the transcript structure.** Each entry in the capture has:
    - `prompt` — what was sent
    - `category` — classification tag from the suite
@@ -87,13 +92,18 @@ If no mode is passed, default to `--quick`.
      tone:         { score: 8.0, weight: 0.2 }
      tagging:      { score: 7.5, weight: 0.2 }
 
-   per_prompt:
-     - prompt: "How do I review flagged deliveries?"
+   per_item:                   # canonical key — see skills/README.md
+     - ref: "How do I review flagged deliveries?"
+       prompt: "How do I review flagged deliveries?"   # domain-specific subkey
        category: connect-general
        score: 8.5
        verdict: pass
        note: "Correct steps, professional tone"
      - ...
+
+   auto_surfaced:              # inputs to the gate brief
+     - severity: BLOCKER | WARN | INFO
+       message: <one-line concern>
 
    gate:
      threshold: 7.0
@@ -199,3 +209,4 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-19 | Initial version — split out from `ocs-chatbot-qa` as the judge half of the qa/eval pair. Reads transcripts from `qa-captures/`, writes `verdicts/`, `eval-reports/`, `gate-briefs/ocs-chatbot-eval-deep.md`. Gate now sits on eval, not qa | ACE team (qa/eval split refactor) |
+| 2026-04-19 | Rename per-item verdict key `per_prompt` → `per_item` (canonical per `skills/README.md § QA vs Eval`); add `prompt:` as domain-specific subkey inside each entry; document `ACE/golden-template/` no-opp fallback path; document `auto_surfaced:` block contract (inputs to the gate brief) | ACE team (qa/eval iteration loop) |
