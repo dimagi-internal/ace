@@ -2,16 +2,24 @@
 name: llo-invite
 description: >
   Identify candidate LLOs for a Connect opportunity and prepare the invite
-  list. Sending happens later in Phase 5 (llo-onboarding) once the OCS widget
-  is ready to include in the onboarding email.
+  list. First step of Phase 5 (LLO Management), running after the OCS
+  chatbot has cleared its deep-eval gate. Sending happens next in
+  `llo-onboarding`.
 ---
 
 # LLO Invite
 
 Identify and prepare the invite list for LLOs to participate in the opportunity.
-This skill runs in Phase 3 (Connect setup) and produces a reviewable list;
-invites go out in Phase 5 (`llo-onboarding`) so the onboarding email can
-include the OCS widget link configured in Phase 4.
+This skill runs as the first step of Phase 5 (LLO Management), after the
+OCS chatbot has passed its deep-eval quality gate in Phase 4. The list
+is reviewed (gate), then `llo-onboarding` (next step in the same phase)
+issues the Connect invites and sends the ACE onboarding email with the
+OCS widget link.
+
+**Why Phase 5, not Phase 3:** we don't want to commit to an LLO roster
+(or burn a review-mode gate on it) before the chatbot they'll be using is
+known-good. Moving invite prep after the OCS deep-eval gate means we
+only propose names once we're ready to follow through.
 
 ## Process
 
@@ -39,8 +47,10 @@ include the OCS widget link configured in Phase 4.
    - Opportunity summary for the invite
 
 5. **Write invite list** to `ACE/<opp-name>/connect-setup/invites.md` with
-   status `prepared` for each entry. Phase 5's `llo-onboarding` picks this up,
-   issues the Connect invite, and flips the status to `sent`.
+   status `prepared` for each entry. `llo-onboarding` (the next step in
+   Phase 5) picks this up, issues the Connect invite, and flips the
+   status to `sent`. Path is kept under `connect-setup/` for back-compat
+   with opps that had this file written under the old Phase-3 placement.
 
 6. **Write the gate brief** to `ACE/<opp-name>/gate-briefs/llo-invite.md`
    using the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`.
@@ -49,9 +59,9 @@ include the OCS widget link configured in Phase 4.
 ## Gate Brief
 
 The gate brief at `ACE/<opp-name>/gate-briefs/llo-invite.md` lets the admin
-validate the invite list before Phase 5 (where the send actually happens).
-This is the last review step before ACE contacts external LLOs — the
-highest bad-send risk in the pipeline.
+validate the invite list before `llo-onboarding` (the very next step in
+this phase) actually sends invites. This is the last review step before
+ACE contacts external LLOs — the highest bad-send risk in the pipeline.
 
 - **Artifact Under Review:** path `ACE/<opp-name>/connect-setup/invites.md`;
   summary is `<N> LLOs prepared for <opp-name>` with country/region mix
@@ -135,14 +145,15 @@ rationale (e.g., "Stage 1 facilitator, Stage 2 field lead").
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
 - Connect: `list_llo_contacts` — **NOT YET BUILT**
-- (Connect `send_invite` is called from `llo-onboarding` in Phase 5, not here)
+- (Connect `send_invite` is called from `llo-onboarding` — the next step
+  in this same phase — not here)
 
 ## Current Workaround
 1. Read the PDD's LLO preference section
 2. Generate a recommended invite list with rationale
 3. Write to `ACE/<opp-name>/connect-setup/invites.md` with status `prepared`
-4. Phase 5 guides the operator to send invites through the Connect UI and
-   flip statuses
+4. `llo-onboarding` (next step in this phase) guides the operator to
+   send invites through the Connect UI and flip statuses
 
 ## Mode Behavior
 - **Auto:** Write the invite list, notify admin group
@@ -160,5 +171,6 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-14 | Split prepare-vs-send: this skill only prepares in Phase 3; sending moves to `llo-onboarding` in Phase 5 so the onboarding email can include the OCS widget link | ACE team |
+| 2026-04-20 | Move entire skill from Phase 3 (connect-setup) to Phase 5 (llo-manager) as the first step. We now don't commit to an invite roster until the OCS chatbot has cleared its deep-eval gate — no point proposing LLOs until we know what we'll hand them | ACE team |
 | 2026-04-17 | Emit gate brief at `ACE/<opp-name>/gate-briefs/llo-invite.md` so the last-human-check-before-external-send surfaces incomplete rows and count drift | ACE team (PM scout, internal-admin lens) |
 | 2026-04-19 | Added `## Archetypes` section with per-archetype selection criteria; `focus-group` emphasizes qualitative research experience, language/cultural fit, audio-recording capability, facilitator time, small-N bias (1–2 LLOs). Gate brief WARNs for FGD count > 2 without justification and for silent-on-facilitation rationale. Motivated by cosmetics-fgd-pilot recon (2026-04-19) backlog item | ACE team (qa/eval iteration loop) |

@@ -83,7 +83,8 @@ describe('CRISPR-Test-001 fixture', () => {
       'test-results/bugs.md',
       'gate-briefs/idea-to-pdd.md',
       'gate-briefs/app-deploy.md',
-      'gate-briefs/llo-invite.md',
+      // gate-briefs/llo-invite.md moved to Phase 5 (operate) as of
+      // 2026-04-20 — no longer required at the ``connect`` cutoff.
     ];
     const files = listFiles(fixtureDir);
     const result = validateFixture(files, 'connect', ['README.md']);
