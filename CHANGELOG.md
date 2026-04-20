@@ -5,6 +5,33 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.0 — 2026-04-20
+
+Feature: scripted end-to-end runs with optional ace-web transcript upload.
+
+### Added
+
+- **`/ace:run --idea FILE|-`** — pre-seed `idea.md` from a file path or
+  stdin, skipping the interactive `AskUserQuestion` prompt in the
+  "Starting a New Opportunity" flow. Enables fully non-interactive
+  lifecycle runs (smoke tests, CI-style invocations, scripted demos).
+- **`/ace:run --ace-web-url URL`** — after the orchestrator returns,
+  upload the run's stream-json transcript to `<URL>/api/ingest/upload`
+  so the deployed ace-web can render it as a chat Session. Requires
+  `ACE_E2E_AUTH_TOKEN` in the environment. No-op if the flag is absent;
+  the plugin remains standalone.
+- **`skills/upload-transcript/`** — new skill encapsulating the
+  e2e-login + `/api/ingest/upload` flow. Invoked by `--ace-web-url`;
+  can also be called directly for ad-hoc transcript uploads.
+
+### Rationale
+
+Part of the ace-web drop-multi-run refactor. The two new flags let us
+retire three turmeric-specific bash setup scripts
+(`turmeric_cli_setup.sh`, `turmeric_auth_login.sh`,
+`turmeric_auth_check.sh`) in favor of generic, composable primitives.
+See ace-web `docs/plans/2026-04-20-drop-multi-run-simplify.md`.
+
 ## 0.4.5 — 2026-04-19
 
 Docs: PM run log for the 2026-04-19 qa-eval-iteration-loop cycle
