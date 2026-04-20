@@ -5,7 +5,7 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.5.7 — 2026-04-20
+## 0.5.8 — 2026-04-20
 
 Adoption-blocker follow-through: the env-drift class closed in 0.5.4
 left one unaudited subclass — `.env.tpl` declaring variables that no
@@ -77,6 +77,60 @@ three are never read anywhere. The third (`OCS_GOLDEN_TEMPLATE_ID`)
 would silently revert on the next `op inject` because `.env.tpl`
 declares it as an `op://` reference. Fixing all three sources of
 friction in one release keeps the story coherent.
+
+## 0.5.7 — 2026-04-20
+
+Silent auth failure caught during turmeric Phase 4 resume: every
+`ace-ocs` tool call returned 401 with an empty Bearer token. Root
+cause: the `.mcp.json` entry for `ace-ocs` had no `env:` block, so the
+subprocess didn't inherit `CLAUDE_PLUGIN_DATA`. `ocs-server.ts` uses
+that var to locate the `.env` holding `OCS_API_TOKEN`; without it,
+dotenv silently fell back to `./.env` (wrong cwd) and the token came
+back `undefined`. `ace-gdrive` worked because its `env:` block
+substitutes `${CLAUDE_PLUGIN_DATA}` at spawn time.
+
+### Fixed
+
+- **`.mcp.json` now passes `CLAUDE_PLUGIN_DATA` through to `ace-ocs`.**
+  One-line env-block addition so the OCS MCP subprocess can locate
+  `$CLAUDE_PLUGIN_DATA/.env` the same way `ocs-server.ts` expects.
+  Existing `.env` content (managed by `op inject` via `.env.tpl`) is
+  unchanged.
+
+### Why
+
+Every future resume that hits Phase 4 without this fix would have
+stalled the same way, with the only tell being a 401 response buried
+in tool-call output and no clear diagnostic. Single-line fix; no
+surface area other than that one MCP subprocess's env.
+
+## 0.5.6 — 2026-04-20
+
+Move `llo-invite` from Phase 3 (Connect Setup) to Phase 5 (LLO
+Management) as the first step. Don't commit to an invite roster or
+burn a review-mode gate on one before the OCS chatbot has cleared its
+deep-eval quality gate in Phase 4. The 5 review gates stay at 5 —
+`llo-invite`'s gate just shifts its placement inside the sequence.
+
+### Changed
+
+- `agents/connect-setup.md` — drop `llo-invite` from skills + workflow.
+- `agents/llo-manager.md` — add `llo-invite` as Step 1 (monitoring
+  renumbered to Step 5).
+- `agents/ace-orchestrator.md` — state.yaml schema example, gate
+  description, phase summaries updated.
+- `lib/artifact-manifest.ts` — move `connect-setup/invites.md` and
+  `gate-briefs/llo-invite.md` from `connect` phase to `operate`.
+- `skills/llo-invite/SKILL.md` — rewrite preamble + gate-brief context
+  + changelog entry.
+
+### Compat
+
+Artifact paths kept as `connect-setup/invites.md` and
+`gate-briefs/llo-invite.md` (not renamed) so existing opps don't
+orphan their prior invite files. Only the manifest phase attribution
+changes. ace-web picks up the new placement automatically on next
+deploy via the dynamic skill registry (no ace-web code change).
 
 ## 0.5.5 — 2026-04-20
 
