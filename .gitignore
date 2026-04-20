@@ -2,8 +2,9 @@
 node_modules/
 .gws-sa-key.json
 
-# Environment secrets — only .env.example is committed, real .env files
-# with actual team ids, tokens, and experiment ids must never land in git.
+# Environment secrets — only .env.tpl (1Password-injectable) is committed;
+# real .env files with actual team ids, tokens, and experiment ids must
+# never land in git.
 .env
 .env.local
 .env.*.local

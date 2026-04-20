@@ -55,9 +55,11 @@ Stop at any step that fails — the next step won't work.
 
 6. **Bootstrap the OCS golden template** (one time per ACE environment) —
    `/ace:ocs-bootstrap-template`. This creates the chatbot that
-   `ocs-agent-setup` clones from for every new opportunity. Paste the
-   printed `OCS_GOLDEN_TEMPLATE_ID`, `OCS_GOLDEN_TEMPLATE_PUBLIC_ID`, and
-   `OCS_GOLDEN_TEMPLATE_EMBED_KEY` into your `.env`.
+   `ocs-agent-setup` clones from for every new opportunity. The script
+   prints two commands to run: one `op item edit` to record the new
+   template id in 1Password (the source of truth), and a second
+   `op inject` to regenerate your local `.env`. Copy-paste both, then
+   `/reload-plugins`.
 
 7. **Verify with `/ace:doctor`** — all checks should be PASS. Any WARN line
    tells you what's still missing (e.g., `.env` not found, OCS session

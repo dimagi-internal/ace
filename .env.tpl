@@ -13,9 +13,8 @@
 
 OCS_BASE_URL=https://www.openchatstudio.com
 
-# Team slugs
+# Team slug
 OCS_TEAM_SLUG=op://AI-Agents/ACE - Open Chat Studio/Teams/team_slug
-OCS_PROD_TEAM_SLUG=op://AI-Agents/ACE - Open Chat Studio/Teams/prod_team_slug
 
 # OCS login (Playwright backend)
 OCS_USERNAME=op://AI-Agents/ACE - Open Chat Studio/username
@@ -29,10 +28,8 @@ OCS_PASSWORD=op://AI-Agents/ACE - Open Chat Studio/password
 # If the 1Password item is ever recreated, update this UUID.
 OCS_API_TOKEN=op://AI-Agents/ccfc36cyidvecda5tzhseuouie/credential
 
-# Golden template (from bootstrap script output)
+# Golden template (created by `/ace:ocs-bootstrap-template`, stored in 1Password)
 OCS_GOLDEN_TEMPLATE_ID=op://AI-Agents/ACE - Open Chat Studio/Config/golden_template_id
-OCS_GOLDEN_TEMPLATE_PUBLIC_ID=
-OCS_GOLDEN_TEMPLATE_EMBED_KEY=
 
 # LLM provider and embedding model for indexed collections (from OCS team config)
 OCS_LLM_PROVIDER_ID=op://AI-Agents/ACE - Open Chat Studio/Config/llm_provider_id
@@ -49,7 +46,3 @@ ACE_GMAIL_CLIENT=op://AI-Agents/ACE - Open Chat Studio/Config/gmail_client
 # ── Google Drive ─────────────────────────────────────────────────────
 
 ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
-
-# ── Paths ────────────────────────────────────────────────────────────
-
-ACE_SESSION_STATE_DIR=~/.ace

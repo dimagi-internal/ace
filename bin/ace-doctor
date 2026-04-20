@@ -290,6 +290,27 @@ if [ -n "$ENV_FILE" ]; then
     else
       pass "env_drift: $ENV_FILE has every key declared in .env.tpl"
     fi
+
+    # Class-level preventer: any key declared in .env.tpl but with zero
+    # consumers in actual code is dead ceremony — it gets injected, eats
+    # a 1Password lookup, and adds a paste-this line nobody needs. Grep
+    # every TPL_KEY against the code-bearing dirs; warn on any hit with
+    # zero consumers. Docs (README/CHANGELOG/runs/playbook) don't count.
+    # Added 0.5.7 after the bootstrap-output audit found three dead vars.
+    UNUSED=""
+    CODE_DIRS="mcp lib scripts skills bin hooks agents commands test"
+    for key in $TPL_KEYS; do
+      HITS="$(cd "$ROOT" && grep -rE "\\b$key\\b" $CODE_DIRS 2>/dev/null | head -1)"
+      if [ -z "$HITS" ]; then
+        UNUSED="$UNUSED $key"
+      fi
+    done
+    UNUSED="$(printf '%s' "$UNUSED" | sed 's/^ //')"
+    if [ -n "$UNUSED" ]; then
+      warn "unused_env_keys: declared in .env.tpl but never read by code: $UNUSED" "drop them from .env.tpl, or wire them into a consumer (mcp/ lib/ scripts/ skills/ bin/ hooks/ agents/ commands/ test/)"
+    else
+      pass "unused_env_keys: every .env.tpl key has at least one consumer"
+    fi
   fi
 
   # OCS Playwright session — keyed by team slug. Required before any skill
