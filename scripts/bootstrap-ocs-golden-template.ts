@@ -21,7 +21,7 @@
  *      so connect-labs can mount the widget.
  *   6. Print experiment_id, public_id, pipeline_id, embed_key for recording.
  *
- * Usage (values come from your local .env — see .env.example):
+ * Usage (values come from your local .env — see .env.tpl):
  *   OCS_BASE_URL=https://www.openchatstudio.com \
  *   OCS_TEAM_SLUG=<your team> \
  *   OCS_BOOTSTRAP_SOURCE_ID=<source chatbot id> \
@@ -357,17 +357,32 @@ async function archiveChatbot(
     console.log(`      public_id: ${embed.public_id}`);
     console.log(`      embed_key: ${embed.embed_key}`);
 
-    // Summary for the user to paste into .env
+    // Summary. The golden template id is source-of-truth in 1Password, NOT
+    // in the local .env — local .env is always regenerated via `op inject`,
+    // so any hand-edit there will silently revert on the next inject. Print
+    // the vault-edit + reinject commands instead of "paste into .env".
+    // (See 2026-04-20 learning: "1Password vault values are hypotheses too".)
     console.log('\n' + '─'.repeat(50));
     console.log('Golden template bootstrapped successfully.');
-    console.log('\nAdd to your ACE .env:');
-    console.log(`  OCS_BASE_URL=${baseUrl}`);
-    console.log(`  OCS_TEAM_SLUG=${teamSlug}`);
-    console.log(`  OCS_GOLDEN_TEMPLATE_ID=${cloned.experiment_id}`);
-    console.log(`  OCS_GOLDEN_TEMPLATE_PUBLIC_ID=${cloned.public_id}`);
-    console.log(`  OCS_GOLDEN_TEMPLATE_EMBED_KEY=${embed.embed_key}`);
+    console.log(`  experiment_id: ${cloned.experiment_id}`);
+    console.log(`  public_id:     ${embed.public_id}`);
+    console.log(`  embed_key:     ${embed.embed_key}`);
+    console.log();
+    console.log('To make this the ACE golden template for your environment:');
+    console.log();
+    console.log('  1. Update 1Password (source of truth for all ACE env values):');
+    console.log(
+      `     op item edit "ACE - Open Chat Studio" \\\n       "Config.golden_template_id[text]=${cloned.experiment_id}" \\\n       --vault AI-Agents --account dimagi.1password.com`,
+    );
+    console.log();
+    console.log('  2. Regenerate your local .env from the vault:');
+    console.log(
+      '     op inject -i .env.tpl -o ~/.claude/plugins/data/ace-ace/.env \\\n       --account dimagi.1password.com',
+    );
+    console.log();
+    console.log('  3. /reload-plugins (or restart Claude Code) so the MCP server picks up the new id.');
     if (sharedCollectionId) {
-      console.log(`  OCS_SHARED_COLLECTION_ID=${sharedCollectionId}  # already set`);
+      console.log(`\n(OCS_SHARED_COLLECTION_ID=${sharedCollectionId} already set — no change needed.)`);
     }
   } finally {
     await browser.close();
@@ -387,7 +402,9 @@ async function printGoldenTemplateInfo(
   const html = await homeRes.text();
   const publicId = extractPublicId(html);
   console.log();
-  console.log(`  OCS_GOLDEN_TEMPLATE_ID=${experimentId}`);
-  console.log(`  OCS_GOLDEN_TEMPLATE_PUBLIC_ID=${publicId ?? '<scrape failed>'}`);
-  console.log('  (run with OCS_BOOTSTRAP_FORCE=1 to refresh and get the embed_key)');
+  console.log(`  experiment_id: ${experimentId}`);
+  console.log(`  public_id:     ${publicId ?? '<scrape failed>'}`);
+  console.log();
+  console.log('  Existing golden template — no vault / .env change needed.');
+  console.log('  (run with OCS_BOOTSTRAP_FORCE=1 to archive and recreate.)');
 }

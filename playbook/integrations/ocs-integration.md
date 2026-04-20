@@ -16,7 +16,7 @@ each, and how to run the MCP server.
 npm run mcp:ocs
 ```
 
-Required environment: see `.env.example`.
+Required environment: see `.env.tpl` (1Password-injectable; the canonical template for every ACE env var).
 
 ## Capability map
 

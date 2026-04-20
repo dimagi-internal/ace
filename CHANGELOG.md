@@ -5,6 +5,79 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.7 — 2026-04-20
+
+Adoption-blocker follow-through: the env-drift class closed in 0.5.4
+left one unaudited subclass — `.env.tpl` declaring variables that no
+code actually reads. Operators went through the ceremony of injecting
+them and pasting them into `.env` for no runtime benefit. This release
+deletes the dead vars, reframes the bootstrap output to keep 1Password
+as the source of truth, drops `.env.example` (redundant with `.env.tpl`),
+and adds a class-level preventer so future dead-var additions get
+caught automatically.
+
+### Removed
+
+- **4 dead environment variables deleted from `.env.tpl`.** None of
+  these had any consumer in `mcp/`, `lib/`, `scripts/`, `skills/`,
+  `bin/`, `hooks/`, `agents/`, `commands/`, or `test/`:
+  - `OCS_GOLDEN_TEMPLATE_PUBLIC_ID` — printed by bootstrap and pasted
+    into `.env` per README, but the per-opp `ocs-agent-setup` skill
+    retrieves its own public_id via `ocs_get_chatbot_embed_info` after
+    cloning. The golden template's value was never used at runtime.
+  - `OCS_GOLDEN_TEMPLATE_EMBED_KEY` — same pattern, same dead code
+    path.
+  - `OCS_PROD_TEAM_SLUG` — declared, injected from 1Password, zero
+    consumers anywhere.
+  - `ACE_SESSION_STATE_DIR` — declared with value `~/.ace`, but every
+    consumer hardcodes `path.join(os.homedir(), '.ace', ...)` rather
+    than reading this var.
+- **`.env.example` deleted.** Two-file pattern (`.env.tpl` for
+  `op inject`, `.env.example` for manual setup) was a holdover from
+  pre-1Password setup. `.env.example` was already drifting from
+  `.env.tpl` (missing `ACE_DRIVE_ROOT_FOLDER_ID` and `OCS_PROD_TEAM_SLUG`).
+  `.env.tpl` is now the single canonical template.
+
+### Added
+
+- **`bin/ace-doctor` `unused_env_keys` check.** For each `KEY=` in
+  `.env.tpl`, greps `mcp/ lib/ scripts/ skills/ bin/ hooks/ agents/
+  commands/ test/` for consumers. WARNs with the list of keys that
+  have no code consumer, and the fix hint ("drop them from .env.tpl,
+  or wire them into a consumer"). Informational (WARN) — dead vars
+  don't break the install, they just add first-run friction. Class-
+  level preventer, so future template additions without a real
+  consumer get surfaced automatically.
+
+### Changed
+
+- **Bootstrap output reframed: 1Password is source of truth, not
+  local `.env`.** `scripts/bootstrap-ocs-golden-template.ts` no
+  longer prints "Add to your ACE .env:" with paste-this values.
+  Instead it prints the two commands operators should actually run:
+  `op item edit "ACE - Open Chat Studio" "Config.golden_template_id[text]=<new_id>" --vault AI-Agents` to update the vault, then `op inject -i .env.tpl -o ~/.claude/plugins/data/ace-ace/.env` to regenerate the local `.env`. Closes the drift hole the 2026-04-20 "vault values are hypotheses too" learning identified: a pasted value silently reverts on the next `op inject` if the vault wasn't updated in lockstep.
+- **README First-Run step 6** and
+  **`commands/ocs-bootstrap-template.md`** updated to match the new
+  bootstrap output. First-run walkthrough now has a coherent single
+  workflow (update vault, re-inject, reload) instead of two
+  contradictory ones (paste to `.env` + also re-inject rewrites
+  `.env`).
+- **`playbook/integrations/ocs-integration.md`** now points at
+  `.env.tpl` instead of the deleted `.env.example`.
+
+### Why
+
+The 2026-04-20 adoption-blockers cycle closed the "keys declared in
+`.env.tpl` but missing from the installed `.env`" class via a doctor
+diff (`env_drift`). What wasn't audited: the inverse class — keys in
+`.env.tpl` that are dead cruft. A fresh install's first-run
+walkthrough currently tells the operator to paste three values into
+`~/.claude/plugins/data/ace-ace/.env` after bootstrap. Two of those
+three are never read anywhere. The third (`OCS_GOLDEN_TEMPLATE_ID`)
+would silently revert on the next `op inject` because `.env.tpl`
+declares it as an `op://` reference. Fixing all three sources of
+friction in one release keeps the story coherent.
+
 ## 0.5.5 — 2026-04-20
 
 Follow-up to 0.5.4: `.env.tpl` itself had a 1Password reference

@@ -32,7 +32,7 @@ OCS chatbot that `ocs-agent-setup` clones for every new opportunity.
 4. Otherwise clones the configured source chatbot (or the first one found on the team)
 5. Sets the cloned pipeline's `LLMResponseWithPrompt.prompt` to the ACE-flavored system prompt skeleton
 6. The clone inherits the source's LLM provider, pipeline structure, and tool wiring; it also gets a new EMBEDDED_WIDGET channel created as part of the clone step
-7. Prints `OCS_GOLDEN_TEMPLATE_ID`, `OCS_GOLDEN_TEMPLATE_PUBLIC_ID`, and `OCS_GOLDEN_TEMPLATE_EMBED_KEY` for pasting into `.env`
+7. Prints the new `experiment_id` along with an `op item edit` command to record it in 1Password (the source of truth) and an `op inject` command to regenerate your local `.env`
 
 ## Usage
 
@@ -85,18 +85,28 @@ ACE OCS golden template bootstrap
 
 ──────────────────────────────────────────────────
 Golden template bootstrapped successfully.
+  experiment_id: <new_id>
+  public_id:     <uuid>
+  embed_key:     <token>
 
-Add to your ACE .env:
-  OCS_BASE_URL=https://www.openchatstudio.com
-  OCS_TEAM_SLUG=<your team>
-  OCS_GOLDEN_TEMPLATE_ID=<new_id>
-  OCS_GOLDEN_TEMPLATE_PUBLIC_ID=<uuid>
-  OCS_GOLDEN_TEMPLATE_EMBED_KEY=<token>
+To make this the ACE golden template for your environment:
+
+  1. Update 1Password (source of truth for all ACE env values):
+     op item edit "ACE - Open Chat Studio" \
+       "Config.golden_template_id[text]=<new_id>" \
+       --vault AI-Agents --account dimagi.1password.com
+
+  2. Regenerate your local .env from the vault:
+     op inject -i .env.tpl -o ~/.claude/plugins/data/ace-ace/.env \
+       --account dimagi.1password.com
+
+  3. /reload-plugins (or restart Claude Code) so the MCP server picks up the new id.
 ```
 
-The script prints real values that you should copy into your local
-`.env` (which is gitignored). Do NOT paste them into `.env.example`
-or any committed file.
+The vault is source-of-truth; your local `.env` is always regenerated
+from it. Do NOT hand-edit `.env` — the next `op inject` (triggered by a
+new `.env.tpl` var) will silently revert the edit back to whatever
+1Password holds.
 
 ## Troubleshooting
 
