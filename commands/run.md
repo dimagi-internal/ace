@@ -89,8 +89,13 @@ full resolution flow. Short version:
      `claude -p --output-format stream-json > <file>`). If the transcript
      path is not available in the run context, log a warning and skip
      the upload — do not fail the overall run.
-   - Dispatch the `upload-transcript` skill with `base_url=<URL>` and
-     `transcript_path=<resolved-path>`.
+   - Dispatch the `upload-transcript` skill with:
+     - `base_url=<URL>`
+     - `transcript_path=<resolved-path>`
+     - `opp_slug=<opp-name>` so the uploaded Session is linked under the
+       opp in the Workbench's linked-chats panel (strongly recommended
+       — without it the transcript is an orphan upload)
+     - `opp_run_id=r1` (current single-run convention)
    - Log the returned `session_slug` and the viewable URL
      (`<URL>/chat/<session_slug>`) to the operator's console.
 

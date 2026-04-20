@@ -17,7 +17,16 @@ shared-secret flow — no per-user personal tokens.
 - `ACE_E2E_AUTH_TOKEN` — env var; shared secret from the target instance's
   `deploy/aws/task-definition.json` or AWS Secrets Manager.
 
-Optional: `email` (defaults to `ace@dimagi-ai.com`).
+Optional:
+- `email` (defaults to `ace@dimagi-ai.com`).
+- `opp_slug` — ACE opportunity slug to link the transcript to. When set,
+  the resulting Session is surfaced under the opp in the Workbench's
+  "linked chats" panel for that step. Strongly recommended when invoked
+  from `/ace:run --ace-web-url`.
+- `opp_run_id` — currently always `r1`; reserved for multi-run.
+- `opp_step_skill` — if the transcript is scoped to a single skill
+  invocation (e.g. just the `idea-to-pdd` run, not the full `/ace:run`
+  lifecycle), set this so the linkage points at the specific step.
 
 ## Steps
 
@@ -41,6 +50,9 @@ Optional: `email` (defaults to `ace@dimagi-ai.com`).
    - `-H "X-CSRFToken: <csrf-value-from-jar>"`
    - `-H "Referer: <base-url>/"`
    - `-F "file=@<transcript_path>;type=application/x-ndjson"`
+   - `-F "opp_slug=<slug>"` (if provided)
+   - `-F "opp_run_id=<run_id>"` (if provided; usually `r1`)
+   - `-F "opp_step_skill=<skill>"` (if provided)
    Expect 201. On non-201, print the response body and fail.
 
 5. **Return** the `data.session_slug` from the 201 response envelope as the
@@ -64,12 +76,20 @@ HTTP=$(curl -sS -c "$COOKIE_JAR" -o /tmp/login-resp.json -w '%{http_code}' \
 curl -sS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -o /dev/null "$BASE_URL/"
 CSRF=$(awk '$6 == "csrftoken_ace" { print $7 }' "$COOKIE_JAR" | tail -n 1)
 
-# 3. upload
+# 3. upload — optional opp/run/step linkage surfaces under that opp in
+# the Workbench's linked-chats panel. Omit any field you don't have.
+UPLOAD_ARGS=(
+  -F "file=@$TRANSCRIPT_PATH;type=application/x-ndjson"
+)
+[ -n "${OPP_SLUG:-}" ]       && UPLOAD_ARGS+=(-F "opp_slug=$OPP_SLUG")
+[ -n "${OPP_RUN_ID:-}" ]     && UPLOAD_ARGS+=(-F "opp_run_id=$OPP_RUN_ID")
+[ -n "${OPP_STEP_SKILL:-}" ] && UPLOAD_ARGS+=(-F "opp_step_skill=$OPP_STEP_SKILL")
+
 HTTP=$(curl -sS -b "$COOKIE_JAR" -o /tmp/upload-resp.json -w '%{http_code}' \
   -X POST "$BASE_URL/api/ingest/upload" \
   -H "X-CSRFToken: $CSRF" \
   -H "Referer: $BASE_URL/" \
-  -F "file=@$TRANSCRIPT_PATH;type=application/x-ndjson")
+  "${UPLOAD_ARGS[@]}")
 [ "$HTTP" = "201" ] || { echo "upload $HTTP"; cat /tmp/upload-resp.json; exit 4; }
 
 # 4. extract session slug from envelope {data: {session_slug: "..."}}
