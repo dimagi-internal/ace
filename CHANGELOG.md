@@ -5,6 +5,20 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.2 — 2026-04-20
+
+Docs: PM run log for the 2026-04-20 collection-clone-and-mcp-preflight
+cycle (`.claude/pm/runs/2026-04-20-collection-clone-and-mcp-preflight.md`).
+Covers the Path C cross-team verification, Iter 8 subagent clone of
+collection 135 (ccc-support) → 350 (connect-ace), and the 0.5.1 MCP
+pre-flight + upload-chunking fixes. Appends four durable preferences to
+`learnings.md`: OCS team-scoping enforcement, pipeline-save dual error
+shapes, metadata files as hypotheses, and Django form silent-accept
+failure modes. Two canopy-skills self-improvement candidates noted
+inline.
+
+No code changes.
+
 ## 0.5.1 — 2026-04-20
 
 MCP robustness: `publishChatbotVersion` pre-flight + `uploadCollectionFiles`
