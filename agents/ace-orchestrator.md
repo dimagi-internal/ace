@@ -187,6 +187,23 @@ After each phase completes:
 2. In auto mode: send status email to admin group
 3. In review mode: present summary and wait for approval to continue
 
+## Post-Run: ace-web Transcript Upload (optional)
+
+When `/ace:run` is invoked with `--ace-web-url URL`, after all phases
+complete (or on fatal error) the orchestrator dispatches the
+`upload-transcript` skill with the current transcript path and the
+provided base URL. This is a best-effort hook — an upload failure is
+logged but does not alter the run's success/failure status.
+
+Requirements:
+- `ACE_E2E_AUTH_TOKEN` must be set in the environment. If absent, log a
+  warning and skip the upload.
+- The transcript path is whatever the operator is writing stream-json to
+  (typically `$JSONL_PATH` in a scripted run). If not resolvable, skip.
+
+This is the only ace-web dependency in the ACE plugin. Without
+`--ace-web-url` the plugin is entirely standalone.
+
 ## Gate Brief Contract
 
 At each of the 5 gate steps above, in review mode, the orchestrator must
@@ -335,7 +352,12 @@ When starting fresh:
 
    - Use `drive_list_folder` on `ACE/<opp-name>/` to check for `idea.md`.
    - If `idea.md` is present, continue to step 3.
-   - If it is missing, **stop and ask the user for it** using
+   - **If the operator passed `--idea FILE|-` to `/ace:run`**, the command
+     has already loaded the body (from file or stdin). Write it verbatim
+     to `ACE/<opp-name>/idea.md` with `drive_create_file` and continue.
+     No `AskUserQuestion` prompt fires on this path — scripted runs are
+     non-interactive by design.
+   - Otherwise, **stop and ask the user for it** using
      `AskUserQuestion`. Offer these options:
      - **Paste the idea inline** — user provides the brief as free text in the
        question's "Other" field; write it verbatim to
