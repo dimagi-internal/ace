@@ -53,7 +53,6 @@ phases:
   connect-setup:        # Phase 3
     connect-program-setup: pending
     connect-opp-setup: pending
-    llo-invite: pending
   ocs-setup:            # Phase 4 — qa/eval split in 0.3.5
     ocs-agent-setup: pending
     ocs-chatbot-qa-quick: pending
@@ -61,6 +60,7 @@ phases:
     ocs-chatbot-qa-deep: pending
     ocs-chatbot-eval-deep: pending
   llo-management:       # Phase 5
+    llo-invite: pending               # moved here from Phase 3 on 2026-04-20
     llo-onboarding: pending
     llo-uat: pending
     llo-launch: pending
@@ -132,7 +132,7 @@ Gate steps are:
 - After `idea-to-pdd` (PDD must be approved before building apps)
 - After `app-deploy` (apps must be verified before Connect setup)
 - After `ocs-chatbot-eval --deep` (OCS quality must clear pre-launch bar — eval grades the transcript that `ocs-chatbot-qa --deep` captured)
-- After `llo-invite` (invites must be reviewed before sending)
+- After `llo-invite` (invites must be reviewed before sending; runs as Phase 5 Step 1, so this gate lives inside Phase 5 between invite prep and the first LLO-facing send)
 - After `llo-launch` (opportunity activation must be verified before monitoring begins)
 
 Phases 1–4 are "setup" — they run end-to-end with no LLO involvement, so an
@@ -155,7 +155,9 @@ training materials.
 ### Phase 3: Connect Setup
 Dispatch to the **connect-setup** agent.
 This phase produces: Program configured, Opportunity configured with verification
-rules and delivery/payment units, LLO invitations prepared (not yet sent).
+rules and delivery/payment units. LLO invite-list preparation moved to Phase 5
+on 2026-04-20 — we don't commit to an invite roster until after the OCS
+chatbot has cleared its deep-eval gate.
 
 ### Phase 4: OCS Setup
 Dispatch to the **ocs-setup** agent.
@@ -169,10 +171,11 @@ Connect opportunity until `update_opportunity` lands (CCC-301).
 
 ### Phase 5: LLO Management
 Dispatch to the **llo-manager** agent.
-This phase produces: LLOs onboarded (with widget link in the onboarding email),
-UAT completed, opportunity activated (go-live), ongoing monitoring active. This
-phase has recurring skills (timeline-monitor, flw-data-review) that run on
-schedule during the active opportunity.
+This phase produces: LLO invite list prepared (first step), LLOs onboarded
+(with widget link in the onboarding email), UAT completed, opportunity
+activated (go-live), ongoing monitoring active. This phase has recurring
+skills (timeline-monitor, flw-data-review) that run on schedule during
+the active opportunity.
 
 ### Phase 6: Closeout
 Dispatch to the **closeout** agent. Triggered when the opportunity reaches its

@@ -217,22 +217,10 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     required: true,
     description: 'Connect Opportunity ID, verification rules, delivery/payment unit config',
   },
-  {
-    path: 'connect-setup/invites.md',
-    producedBy: 'llo-invite',
-    consumedBy: ['llo-onboarding', 'llo-uat', 'llo-launch', 'llo-feedback'],
-    phase: 'connect',
-    required: true,
-    description: 'LLO invite list (prepared in Phase 3, sent in Phase 5)',
-  },
-  {
-    path: 'gate-briefs/llo-invite.md',
-    producedBy: 'llo-invite',
-    consumedBy: ['ace-orchestrator'],
-    phase: 'connect',
-    required: true,
-    description: 'Gate brief for the Phase 3→4 gate: invite-list completeness, duplicates, count drift',
-  },
+  // llo-invite artifacts moved to Phase 5 (operate) on 2026-04-20 — see
+  // the "Operate phase" block below. invite-list prep no longer blocks
+  // Phase 3→4; it now runs as the first step of Phase 5 after the OCS
+  // chatbot has cleared its deep-eval gate.
 
   // ── OCS phase (Phase 4) ────────────────────────────────────────
 
@@ -295,6 +283,25 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
 
   // ── Operate phase (Phase 5) ────────────────────────────────────
 
+  // Path kept as ``connect-setup/invites.md`` rather than renamed to
+  // ``invites/…`` so existing opps don't orphan their prior invite
+  // lists on the phase-reassignment date (2026-04-20).
+  {
+    path: 'connect-setup/invites.md',
+    producedBy: 'llo-invite',
+    consumedBy: ['llo-onboarding', 'llo-uat', 'llo-launch', 'llo-feedback'],
+    phase: 'operate',
+    required: true,
+    description: 'LLO invite list (prepared and sent within Phase 5)',
+  },
+  {
+    path: 'gate-briefs/llo-invite.md',
+    producedBy: 'llo-invite',
+    consumedBy: ['ace-orchestrator'],
+    phase: 'operate',
+    required: true,
+    description: 'Gate brief for the Phase 5 invite-list gate (blocks llo-onboarding): invite-list completeness, duplicates, count drift',
+  },
   {
     path: 'comms-log/onboarding-emails.md',
     producedBy: 'llo-onboarding',
