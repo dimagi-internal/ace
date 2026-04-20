@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.5 — 2026-04-19
+
+Docs: PM run log for the 2026-04-19 qa-eval-iteration-loop cycle
+(`.claude/pm/runs/2026-04-19-qa-eval-iteration-loop.md`). Covers Iters
+1/3/6/7 (PRs #33/#34/#35/#36, versions 0.4.1–0.4.4) + the 0.3.5 qa/eval
+split + 0.4.0 umbrella opp-eval skill as the foundation. Meta-observations,
+confidence levels, backlog priorities, and three canopy-skills
+self-improvement candidates. Appends five durable preferences to
+`learnings.md` and fixes stale agent/skill/command counts in `context.md`.
+
+No code changes.
+
 ## 0.4.4 — 2026-04-19
 
 Fix: `bootstrap-ocs-golden-template.ts` now validates
