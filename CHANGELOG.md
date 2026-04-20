@@ -5,6 +5,32 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.5 — 2026-04-20
+
+Follow-up to 0.5.4: `.env.tpl` itself had a 1Password reference
+`op inject` couldn't parse, which meant 0.5.4's new `env_drift` WARN
+directed users at a command that always failed. This release patches
+the template so the hint actually works.
+
+### Fixed
+
+- **`.env.tpl` `OCS_API_TOKEN` reference now uses item UUID.** The
+  original reference `op://AI-Agents/ACE - OCS REST API Key
+  (connect-ace)/credential` has parentheses in the item name, which
+  `op inject`'s parser silently truncates at (`invalid secret
+  reference 'op://AI-Agents/ACE - OCS REST API Key': too few '/'`).
+  Percent-encoding does not help. UUID-based reference
+  `op://AI-Agents/ccfc36cyidvecda5tzhseuouie/credential` resolves
+  cleanly. Inline comment in the template explains the tradeoff.
+
+### Why
+
+0.5.4 shipped the `env_drift` WARN with a `op inject -i .env.tpl -o ...`
+fix hint. First operator to follow the hint (the author, right after
+shipping 0.5.4) hit the opaque `invalid secret reference` error. The
+adoption-blockers lens had correctly identified the class but missed
+the hint itself was unreachable.
+
 ## 0.5.4 — 2026-04-20
 
 Adoption-blocker cleanup: close the `.env` drift class that silently

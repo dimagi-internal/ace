@@ -21,8 +21,13 @@ OCS_PROD_TEAM_SLUG=op://AI-Agents/ACE - Open Chat Studio/Teams/prod_team_slug
 OCS_USERNAME=op://AI-Agents/ACE - Open Chat Studio/username
 OCS_PASSWORD=op://AI-Agents/ACE - Open Chat Studio/password
 
-# REST backend API token (for observation tools: list/get chatbots, sessions)
-OCS_API_TOKEN=op://AI-Agents/ACE - OCS REST API Key (connect-ace)/credential
+# REST backend API token (for observation tools: list/get chatbots, sessions).
+# Referenced by UUID because the 1Password item name contains parentheses
+# ("ACE - OCS REST API Key (connect-ace)"), which op-inject's parser can't
+# handle in name-based references (even when percent-encoded). UUID refs
+# are slightly less self-documenting but op-inject resolves them cleanly.
+# If the 1Password item is ever recreated, update this UUID.
+OCS_API_TOKEN=op://AI-Agents/ccfc36cyidvecda5tzhseuouie/credential
 
 # Golden template (from bootstrap script output)
 OCS_GOLDEN_TEMPLATE_ID=op://AI-Agents/ACE - Open Chat Studio/Config/golden_template_id
