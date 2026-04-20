@@ -12,9 +12,10 @@ ACE is a Claude Code plugin with the same architecture as canopy: agents orchest
 /ace:setup                               # Install deps + verify the service-account key
 /ace:doctor                              # Sanity-check everything
 
-/ace:run <opp-name> --mode review        # Run full lifecycle
-/ace:run <opp-name> --dry-run            # Test without side effects
-/ace:run <opp-name> --sandbox            # Route to staging endpoints
+/ace:run                                 # Run full lifecycle (smart defaults)
+/ace:run <opp-name> --mode review        # Run full lifecycle for a named slug
+/ace:run --dry-run                       # Test without side effects
+/ace:run --sandbox                       # Route to staging endpoints
 /ace:step <skill-name> <opp-name>        # Run a single step
 /ace:status                              # Show all opportunities
 /ace:eval <opp-name> --mode deep         # Umbrella eval (aggregates verdicts/*)
@@ -62,13 +63,16 @@ Stop at any step that fails — the next step won't work.
    tells you what's still missing (e.g., `.env` not found, OCS session
    expired, golden template not configured).
 
-8. **Try a dry run** — `/ace:run <opp-name> --dry-run`. The orchestrator
-   will prompt for the opportunity idea if `ACE/<opp-name>/idea.md` doesn't
-   exist yet. All effectful actions (emails, publishes, tickets) are logged
-   to `comms-log/dry-run-<step>.md` instead of executing.
+8. **Try a dry run** — `/ace:run --dry-run` (zero-arg smart defaults), or
+   `/ace:run <opp-name> --dry-run` if you want a specific slug. With no
+   arguments, ACE auto-generates `smoke-<timestamp>` and walks you through
+   a Drive-based PDD picker. All effectful actions (emails, publishes,
+   tickets) are logged to `comms-log/dry-run-<step>.md` instead of
+   executing.
 
 After step 8 passes, you're ready to run a real opportunity with
-`/ace:run <opp-name> --mode review`.
+`/ace:run --mode review` (or `/ace:run <opp-name> --mode review` for a
+named slug).
 
 ## Setup
 

@@ -42,13 +42,17 @@ discovers a PDD on Drive and prompts the operator to confirm. See
 full resolution flow. Short version:
 
 1. Resolve slug (from arg, or auto-generate `smoke-<timestamp>`).
-2. Locate the PDDs folder under `ACE_DRIVE_ROOT_FOLDER_ID` (matches
+2. Read `ACE_DRIVE_ROOT_FOLDER_ID` from the environment. If unset/empty,
+   stop with an actionable error pointing at `op inject` (see
+   `agents/ace-orchestrator.md` § Starting a New Opportunity step 2(c).0).
+   Do not silently fall through to inline/paste.
+3. Locate the PDDs folder under `ACE_DRIVE_ROOT_FOLDER_ID` (matches
    `/PDD/i` or `/Program Design Doc/i`).
-3. List files in that folder, sort by slug-stem match then modifiedTime.
-4. `AskUserQuestion` with the top ~5 options + "Other: paste Drive doc
+4. List files in that folder, sort by slug-stem match then modifiedTime.
+5. `AskUserQuestion` with the top ~5 options + "Other: paste Drive doc
    ID" + "Abort". **Confirmation is always shown** — even when exactly
    one file matches — to guard against domain-mismatched PDDs.
-5. Fetch the chosen PDD via `drive_read_file`, write it to
+6. Fetch the chosen PDD via `drive_read_file`, write it to
    `ACE/<slug>/idea.md`, continue the lifecycle.
 
 ## Process

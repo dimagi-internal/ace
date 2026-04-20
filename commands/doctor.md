@@ -71,7 +71,7 @@ Read the output and tell the user:
 2. If the output contains an `INFO cwd_is_ace_checkout=` line, mention it — the user is inside a dev worktree that is NOT being audited; they can pass `--here` to `bin/ace-doctor` directly to audit that checkout instead.
 3. For each **FAIL**, quote the line verbatim and tell the user the exact command from the `fix:` hint.
 4. For each **WARN**, list them briefly. These are non-blocking.
-5. If everything passes, suggest the next step: `/ace:status` to see opportunities, or `/ace:run <opp-name>` to try a dry-run.
+5. If everything passes, suggest the next step: `/ace:status` to see opportunities, or `/ace:run` (zero-arg — smart defaults auto-pick a PDD from Drive) to kick off a fresh opp. Add `--dry-run` for a safe first try.
 
 ## Rules
 

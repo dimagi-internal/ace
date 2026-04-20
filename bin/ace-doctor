@@ -231,6 +231,10 @@ if [ -n "$ENV_FILE" ]; then
   OCS_TEAM="$(get_env OCS_TEAM_SLUG)"
   OCS_GTID="$(get_env OCS_GOLDEN_TEMPLATE_ID)"
   GMAIL_ACCT="$(get_env ACE_GMAIL_ACCOUNT)"
+  DRIVE_ROOT="$(get_env ACE_DRIVE_ROOT_FOLDER_ID)"
+  SHARED_COLL="$(get_env OCS_SHARED_COLLECTION_ID)"
+  LLM_PROV="$(get_env OCS_LLM_PROVIDER_ID)"
+  EMBED_MODEL="$(get_env OCS_EMBEDDING_MODEL_ID)"
 
   if [ -n "$OCS_BASE" ] && [ -n "$OCS_TEAM" ] && [ -n "$OCS_GTID" ]; then
     pass "ocs_env: base=$OCS_BASE team=$OCS_TEAM golden_template=$OCS_GTID"
@@ -243,10 +247,49 @@ if [ -n "$ENV_FILE" ]; then
     warn "ocs_env: missing or unresolved:$missing" "$hint"
   fi
 
+  # Drive root folder — required by /ace:run's smart-default PDD picker
+  # (agents/ace-orchestrator.md § Starting a New Opportunity). Without this,
+  # the picker falls through to the inline-paste fallback with no signal
+  # that the env var is the cause.
+  if [ -n "$DRIVE_ROOT" ]; then
+    pass "drive_root: ACE_DRIVE_ROOT_FOLDER_ID=$DRIVE_ROOT"
+  else
+    warn "drive_root: ACE_DRIVE_ROOT_FOLDER_ID not set (PDD auto-discovery disabled)" "re-inject .env via op inject (var added in 0.5.3)"
+  fi
+
+  # Shared collection triple — required by ocs-agent-setup for per-opp bot
+  # clones to inherit Connect knowledge. Without these, cloned bots publish
+  # with empty RAG and silently answer from base LLM only.
+  # (2026-04-20 run log P1 backlog; see learnings.md "Metadata files as hypotheses".)
+  if [ -n "$SHARED_COLL" ] && [ -n "$LLM_PROV" ] && [ -n "$EMBED_MODEL" ]; then
+    pass "ocs_shared_collection: id=$SHARED_COLL provider=$LLM_PROV embedding=$EMBED_MODEL"
+  else
+    sc_missing=""
+    [ -z "$SHARED_COLL" ] && sc_missing="$sc_missing OCS_SHARED_COLLECTION_ID"
+    [ -z "$LLM_PROV" ] && sc_missing="$sc_missing OCS_LLM_PROVIDER_ID"
+    [ -z "$EMBED_MODEL" ] && sc_missing="$sc_missing OCS_EMBEDDING_MODEL_ID"
+    warn "ocs_shared_collection: missing or unresolved:$sc_missing (per-opp bots will have empty RAG)" "re-inject .env via op inject (vars added in 0.5.1)"
+  fi
+
   if [ -n "$GMAIL_ACCT" ]; then
     pass "gmail_config: ACE_GMAIL_ACCOUNT=$GMAIL_ACCT"
   else
     warn "gmail_config: ACE_GMAIL_ACCOUNT not set" "re-inject .env via 1Password"
+  fi
+
+  # Catch-all: any future .env.tpl addition that the installed .env hasn't
+  # picked up yet. Diff the KEY= sets; warn with a single line listing
+  # whatever is missing. Informational — WARN, not FAIL (per learnings.md
+  # "Runtime-health checks should be WARN, not FAIL").
+  if [ -f "$ROOT/.env.tpl" ]; then
+    TPL_KEYS="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ROOT/.env.tpl" 2>/dev/null | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
+    ENV_KEYS="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_FILE" 2>/dev/null | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
+    ENV_DIFF="$(comm -23 <(printf '%s\n' "$TPL_KEYS") <(printf '%s\n' "$ENV_KEYS") | tr '\n' ' ' | sed 's/ *$//')"
+    if [ -n "$ENV_DIFF" ]; then
+      warn "env_drift: $ENV_FILE is missing keys from .env.tpl: $ENV_DIFF" "op inject -i \"$ROOT/.env.tpl\" -o \"$ENV_FILE\" --account dimagi.1password.com (preserves 1Password-backed values)"
+    else
+      pass "env_drift: $ENV_FILE has every key declared in .env.tpl"
+    fi
   fi
 
   # OCS Playwright session — keyed by team slug. Required before any skill

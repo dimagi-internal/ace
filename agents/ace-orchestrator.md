@@ -363,6 +363,15 @@ When starting fresh:
    **(c) Auto-discover a PDD on Drive** (default when neither (a) nor (b)
    applies). Smart-default flow:
 
+   0. Read `ACE_DRIVE_ROOT_FOLDER_ID` from the environment. If it is
+      **unset or empty**, stop and emit an explicit error:
+      `ACE_DRIVE_ROOT_FOLDER_ID is not set in your .env; re-inject from
+      .env.tpl via "op inject -i .env.tpl -o <env-path> --account
+      dimagi.1password.com" and retry, or pass --idea FILE|- to bypass
+      the picker.` Do NOT silently fall through to (d) — the "no PDDs
+      folder" fallback is for the case where the folder legitimately
+      doesn't exist, not for missing configuration. (Run `/ace:doctor`;
+      a WARN on `drive_root` or `env_drift` points to this.)
    1. `drive_list_folder` on `ACE_DRIVE_ROOT_FOLDER_ID`. Look for a
       sub-folder whose name matches `/PDD/i` or `/Program Design Doc/i`
       (case-insensitive). If none is found, fall through to (d).
