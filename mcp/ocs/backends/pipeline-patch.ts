@@ -84,8 +84,82 @@ export async function patchLlmNodeParams(
   if (!postRes.ok) {
     throw new Error(`pipeline data POST failed for pipeline ${pipelineId}`);
   }
-  const saveBody = (await postRes.json()) as { errors: string[] };
-  if (saveBody.errors && saveBody.errors.length > 0) {
-    throw new PipelineValidationError(saveBody.errors);
+  const errors = extractPipelineErrors(await postRes.json());
+  if (errors.length > 0) {
+    throw new PipelineValidationError(errors);
   }
+}
+
+/**
+ * Round-trip the current pipeline through the save endpoint to surface any
+ * node-level validation errors without modifying the graph. Used as a
+ * pre-flight before `publishChatbotVersion` — catches the silent-block class
+ * of bug where /versions/create returns 200 + form-re-render instead of an
+ * actionable error.
+ *
+ * The 2026-04-19 phantom-collection bug was invisible at publish time: the
+ * version create view re-rendered the form with no errorlist because the
+ * errors originated on the pipeline, not on the version form itself. The
+ * only place those errors surface is the pipeline-save response body, which
+ * `/versions/create` never calls. This helper calls it explicitly.
+ */
+export async function validatePipeline(
+  ctx: PipelinePatchContext,
+  pipelineId: number,
+): Promise<void> {
+  const url = `/a/${ctx.teamSlug}/pipelines/data/${pipelineId}/`;
+  const getRes = await ctx.request('GET', url);
+  if (!getRes.ok) {
+    throw new Error(`pipeline data GET failed for pipeline ${pipelineId}`);
+  }
+  const payload = (await getRes.json()) as PipelineDataResponse;
+  const postRes = await ctx.request('POST', url, {
+    name: payload.pipeline.name,
+    data: payload.pipeline.data,
+  });
+  if (!postRes.ok) {
+    throw new Error(`pipeline data POST failed for pipeline ${pipelineId}`);
+  }
+  const errors = extractPipelineErrors(await postRes.json());
+  if (errors.length > 0) {
+    throw new PipelineValidationError(errors);
+  }
+}
+
+/**
+ * Parse pipeline-save response errors into a flat string list. Handles two
+ * observed shapes:
+ *   - `{ errors: ["error1", "error2"] }` — top-level string array, historically
+ *     the only shape the code checked for
+ *   - `{ errors: { node: { "<node-id>": { "<field>": "<msg>" } } } }` — nested
+ *     per-node shape that OCS returns for node-level validation errors (e.g.
+ *     attaching a collection_index_id that doesn't exist on the team). This
+ *     shape was what hid the 2026-04-19 phantom-collection bug: the top-level
+ *     `errors` was empty-or-absent, so the old check passed, and only
+ *     /versions/create's silent form re-render revealed the issue.
+ *
+ * Node-level errors are returned as `"<node-id>.<field>: <msg>"` so the
+ * resulting `PipelineValidationError` message names exactly which node and
+ * which field broke.
+ */
+export function extractPipelineErrors(body: unknown): string[] {
+  if (!body || typeof body !== 'object') return [];
+  const errors = (body as { errors?: unknown }).errors;
+  if (!errors) return [];
+  if (Array.isArray(errors)) {
+    return errors.filter((e): e is string => typeof e === 'string');
+  }
+  if (typeof errors !== 'object') return [];
+  const out: string[] = [];
+  const nodeErrors = (errors as { node?: Record<string, unknown> }).node;
+  if (nodeErrors && typeof nodeErrors === 'object') {
+    for (const [nodeId, fields] of Object.entries(nodeErrors)) {
+      if (!fields || typeof fields !== 'object') continue;
+      for (const [field, msg] of Object.entries(fields as Record<string, unknown>)) {
+        const text = typeof msg === 'string' ? msg : JSON.stringify(msg);
+        out.push(`${nodeId}.${field}: ${text}`);
+      }
+    }
+  }
+  return out;
 }

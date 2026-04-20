@@ -5,6 +5,61 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.1 — 2026-04-20
+
+MCP robustness: `publishChatbotVersion` pre-flight + `uploadCollectionFiles`
+chunk-params. Both fixes surfaced during Iter 8 of the cosmetics-fgd-pilot
+iteration loop (the collection-clone from ccc-support → connect-ace).
+
+### Fixed
+
+- **`publishChatbotVersion` now pre-flights the pipeline.** Before hitting
+  `/versions/create`, the backend round-trips the current graph through
+  `/pipelines/data/<pid>/` to surface any node-level validation errors.
+  This catches the entire silent-publish-block class of bug — where Django
+  re-renders the version form with HTTP 200 and no errorlist because the
+  errors originated on the pipeline, not the version form. Before this
+  fix, the only signal was the opaque "form re-rendered without redirect"
+  message. Now the caller gets a real `PipelineValidationError` naming
+  the exact node and field that broke.
+- **`extractPipelineErrors` helper** handles the two observed response
+  shapes: top-level string array (`{ errors: ["..."] }`) and nested
+  per-node (`{ errors: { node: { "<id>": { "<field>": "<msg>" } } } }`).
+  The nested shape is what hid the 2026-04-19 phantom-collection bug —
+  the top-level array was empty while the real error lived under
+  `errors.node.LLMResponseWithPrompt-*.collection_index_ids`.
+  `patchLlmNodeParams` now uses the same extractor (previously it only
+  checked the top-level shape).
+- **`uploadCollectionFiles` sends `chunk_size` + `chunk_overlap`.**
+  Django's `add_collection_files` form requires these. Omitting them
+  caused a "successful" upload (form validated, file accepted) with zero
+  chunks produced — retrieval silently never worked. Defaults 800/400
+  match the upstream NM Bot collection source. Tool schema exposes
+  both as optional overrides. Invalid values (overlap ≥ size) throw
+  before the HTTP call.
+
+### Why
+
+The first defense was in `scripts/bootstrap-ocs-golden-template.ts`
+(0.4.4). That caught the specific case of `OCS_SHARED_COLLECTION_ID`
+pointing at a missing collection. This is the generalization: the MCP
+layer now refuses to publish any pipeline with validation errors,
+regardless of source. Covers `ocs-agent-setup`'s per-opp bot creation,
+future collection swaps, manual pipeline edits through the UI, and
+anything else that could leave the pipeline in a published-but-invalid
+state. Item 2 of the prior backlog ("ocs-agent-setup pre-flight") is
+redundant with this and is dropped from the backlog.
+
+### Tests
+
+- 12 new tests: 4 for `extractPipelineErrors` (null/empty/string-array/
+  nested/non-string-value), 3 for `validatePipeline` (happy path,
+  nested errors, GET failure), 1 for `patchLlmNodeParams` nested-errors,
+  2 for `uploadCollectionFiles` chunk-params (custom values, validation
+  error), 1 for `publishChatbotVersion` pre-flight blocking, 1
+  regression for the existing publish-failure path.
+- All 89 tests pass (up from 77).
+
 ## 0.5.0 — 2026-04-20
 
 Feature: scripted end-to-end runs with optional ace-web transcript upload.

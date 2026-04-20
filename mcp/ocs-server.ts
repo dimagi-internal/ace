@@ -232,7 +232,7 @@ server.tool(
 
 server.tool(
   'ocs_upload_collection_files',
-  'Upload files to an existing Collection. Files will be chunked and embedded asynchronously.',
+  'Upload files to an existing Collection. Files will be chunked and embedded asynchronously. chunk_size and chunk_overlap are optional (default 800/400, matching the upstream NM Bot collection); if omitted the upload still works but uses the defaults.',
   {
     collection_id: z.number(),
     files: z.array(z.object({
@@ -240,6 +240,8 @@ server.tool(
       content: z.string().describe('Base64-encoded file content'),
       mime_type: z.string(),
     })),
+    chunk_size: z.number().optional().describe('Chunk size in tokens. Default 800.'),
+    chunk_overlap: z.number().optional().describe('Chunk overlap in tokens. Must be < chunk_size. Default 400.'),
   },
   async (args) => {
     const decoded = args.files.map((f) => ({
@@ -247,7 +249,14 @@ server.tool(
       content: Buffer.from(f.content, 'base64'),
       mime_type: f.mime_type,
     }));
-    return result(await composite.uploadCollectionFiles({ collection_id: args.collection_id, files: decoded }));
+    return result(
+      await composite.uploadCollectionFiles({
+        collection_id: args.collection_id,
+        files: decoded,
+        chunk_size: args.chunk_size,
+        chunk_overlap: args.chunk_overlap,
+      }),
+    );
   },
 );
 

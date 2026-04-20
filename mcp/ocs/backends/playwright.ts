@@ -1,5 +1,5 @@
 import type { RequestFn, RequestResult } from './pipeline-patch.js';
-import { patchLlmNodeParams, type PipelinePatchContext } from './pipeline-patch.js';
+import { patchLlmNodeParams, validatePipeline, type PipelinePatchContext } from './pipeline-patch.js';
 import type { LlmNodeParams, ClonedChatbot } from '../types.js';
 import { CollectionIndexingTimeoutError, HttpError, PipelineShapeError } from '../errors.js';
 
@@ -234,15 +234,39 @@ export class PlaywrightBackend {
   async uploadCollectionFiles(args: {
     collection_id: number;
     files: Array<{ name: string; content: Buffer | string; mime_type: string }>;
+    /**
+     * Chunking parameters for indexing. Django's add_collection_files form
+     * requires these — the view validates `chunk_size > 0` and
+     * `chunk_overlap < chunk_size`. Omitting them before 0.4.6 caused the
+     * upload to silently skip indexing (file uploaded but 0 chunks produced).
+     * Defaults match the NM Bot collection on ccc-support (the reference for
+     * Connect-general knowledge).
+     */
+    chunk_size?: number;
+    chunk_overlap?: number;
   }) {
     // Django's `add_collection_files` view (apps/documents/views.py) parses
     // `request.FILES`, which requires multipart/form-data. The view returns a
     // 302 redirect to the collection home page on success (NOT a JSON response
     // with file_ids). We have to scrape the file IDs from the files listing
     // partial after upload. Verified via UI-driven Playwright probe 2026-04-10.
+    //
+    // chunk_size / chunk_overlap are mandatory form fields (observed during
+    // Iter 8 on 2026-04-20: without them the form validated but indexing
+    // produced zero chunks — the MCP call "succeeded" but retrieval silently
+    // never worked). Defaults match upstream NM Bot collection.
+    const chunkSize = args.chunk_size ?? 800;
+    const chunkOverlap = args.chunk_overlap ?? 400;
+    if (chunkOverlap >= chunkSize) {
+      throw new Error(
+        `uploadCollectionFiles: chunk_overlap (${chunkOverlap}) must be < chunk_size (${chunkSize})`,
+      );
+    }
     const addPath = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/add_files`;
     const multipart: Record<string, string | { name: string; mimeType: string; buffer: Buffer }> = {
       csrfmiddlewaretoken: this.opts.csrfToken,
+      chunk_size: String(chunkSize),
+      chunk_overlap: String(chunkOverlap),
     };
     args.files.forEach((f, i) => {
       multipart[`files_${i}`] = {
@@ -444,6 +468,25 @@ export class PlaywrightBackend {
   }
 
   async publishChatbotVersion(args: { experiment_id: number; description: string }) {
+    // Pre-flight: round-trip the pipeline through /pipelines/data/ to surface
+    // any node-level validation errors BEFORE hitting /versions/create.
+    //
+    // Background: Django's create_version view re-renders the form with HTTP
+    // 200 and NO `<ul class="errorlist">` when the backing pipeline fails
+    // server-side validation (e.g., an attached collection_index_id doesn't
+    // exist on the team). The only place the real error surfaces is the
+    // pipeline-save response body's nested `errors.node.<id>.<field>`, which
+    // /versions/create never calls. This check plugs the gap.
+    //
+    // Discovered 2026-04-19 when a phantom collection 718 bricked the golden
+    // template: attach silently succeeded, every publish silently blocked,
+    // and the only diagnostic signal was "form re-rendered without redirect."
+    // See CHANGELOG 0.4.4 for the bootstrap-side defense and 0.4.6 for this
+    // MCP-layer defense (catches the entire pipeline-invalidity class, not
+    // just collection-id drift).
+    const pipelineId = await this.pipelineIdFor(args.experiment_id);
+    await validatePipeline(this.patchContext(), pipelineId);
+
     const versionPath = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/versions/create`;
     const res = await this.opts.request(
       'POST',

@@ -30,6 +30,10 @@ export interface OcsClient {
   uploadCollectionFiles(args: {
     collection_id: number;
     files: Array<{ name: string; content: Buffer | string; mime_type: string }>;
+    /** Chunk size in tokens. Default 800. */
+    chunk_size?: number;
+    /** Chunk overlap in tokens. Must be < chunk_size. Default 400. */
+    chunk_overlap?: number;
   }): Promise<{ file_ids: number[] }>;
 
   waitForCollectionIndexing(args: {
