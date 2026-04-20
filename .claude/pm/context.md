@@ -15,7 +15,7 @@ ACE (AI Connect Engine) is a Claude Code plugin that orchestrates the 21-step CR
 
 ## Tech Stack
 - Claude Code plugin: agents + skills (SKILL.md) + commands, canopy-style
-- 5 agents (ace-orchestrator + 4 phase), 19 skills, 4 commands
+- 8 agents (ace-orchestrator + 6 phase + ocs-tester), 24 skills, 10 commands
 - 2 MCP servers: Google Drive (built, TS/Node), OCS (scaffold stubs)
 - External deps: connect-labs MCP (~20 tools, gaps tracked as CCC-301), Nova (bot API TBD), CommCare HQ, OCS, Jira
 - Companion repo: `ace-web` (Django + Channels + React on GCP Cloud Run) — browser chat/transcript harness, separate repo
