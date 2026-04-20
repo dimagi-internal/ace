@@ -335,7 +335,12 @@ When starting fresh:
 
    - Use `drive_list_folder` on `ACE/<opp-name>/` to check for `idea.md`.
    - If `idea.md` is present, continue to step 3.
-   - If it is missing, **stop and ask the user for it** using
+   - **If the operator passed `--idea FILE|-` to `/ace:run`**, the command
+     has already loaded the body (from file or stdin). Write it verbatim
+     to `ACE/<opp-name>/idea.md` with `drive_create_file` and continue.
+     No `AskUserQuestion` prompt fires on this path — scripted runs are
+     non-interactive by design.
+   - Otherwise, **stop and ask the user for it** using
      `AskUserQuestion`. Offer these options:
      - **Paste the idea inline** — user provides the brief as free text in the
        question's "Other" field; write it verbatim to
