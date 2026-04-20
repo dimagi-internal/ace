@@ -163,6 +163,52 @@ else
   fail "mcp_manifest: .mcp.json missing" "restore .mcp.json at the plugin root"
 fi
 
+# --- MCP env passthrough check ---
+# Catch the class of silent-stall fixed in 0.5.7: an MCP server source that
+# uses `dotenv` to load `$CLAUDE_PLUGIN_DATA/.env` but whose .mcp.json entry
+# has no env block passing CLAUDE_PLUGIN_DATA through. The subprocess spawns
+# with an empty process.env.CLAUDE_PLUGIN_DATA, dotenv silently falls back
+# to ./.env (subprocess cwd), the real .env is never loaded, every secret
+# reads as undefined, and downstream API calls get 401/403 with no clear
+# signal that the env var was the root cause.
+#
+# This check is static: parse .mcp.json, look at each server's args for a
+# .ts/.js source path, read that source, check for the dotenv+CLAUDE_PLUGIN_DATA
+# pattern, then verify the .mcp.json env block includes CLAUDE_PLUGIN_DATA.
+if [ -f "$ROOT/.mcp.json" ] && [ "$MCP_NAMES" != "parse_error" ]; then
+  MCP_ENV_ISSUES="$(node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const root = '$ROOT';
+    const mcp = JSON.parse(fs.readFileSync(path.join(root, '.mcp.json'), 'utf8'));
+    const issues = [];
+    for (const [name, cfg] of Object.entries(mcp)) {
+      if (!cfg || typeof cfg !== 'object') continue;
+      // Resolve the source file: the last .ts or .js arg, with \${CLAUDE_PLUGIN_ROOT} expanded.
+      const args = Array.isArray(cfg.args) ? cfg.args : [];
+      const src = args.filter(a => typeof a === 'string' && /\\.(ts|js)$/.test(a)).pop();
+      if (!src) continue;
+      const resolved = src.replace(/\\\$\\{CLAUDE_PLUGIN_ROOT\\}/g, root);
+      let body = '';
+      try { body = fs.readFileSync(resolved, 'utf8'); } catch (_) { continue; }
+      // Does this server read process.env.CLAUDE_PLUGIN_DATA to locate .env?
+      const usesPluginData = /process\\.env\\.CLAUDE_PLUGIN_DATA/.test(body) && /dotenv|dotenvConfig|\\brequire\\s*\\(\\s*[\"']dotenv/.test(body);
+      if (!usesPluginData) continue;
+      // If it does, the .mcp.json env block MUST pass CLAUDE_PLUGIN_DATA through.
+      const env = (cfg.env && typeof cfg.env === 'object') ? cfg.env : {};
+      if (!('CLAUDE_PLUGIN_DATA' in env)) {
+        issues.push(name);
+      }
+    }
+    if (issues.length) console.log(issues.join(','));
+  " 2>/dev/null)"
+  if [ -n "$MCP_ENV_ISSUES" ]; then
+    warn "mcp_env_passthrough: servers loading \$CLAUDE_PLUGIN_DATA/.env without env passthrough: $MCP_ENV_ISSUES (silent 401/403 on every tool call)" "add \"CLAUDE_PLUGIN_DATA\": \"\\\${CLAUDE_PLUGIN_DATA}\" to each server's env block in .mcp.json"
+  else
+    pass "mcp_env_passthrough: every MCP server that needs CLAUDE_PLUGIN_DATA receives it"
+  fi
+fi
+
 # --- ace-update-check binary ---
 if [ -x "$ROOT/bin/ace-update-check" ]; then
   pass "update_check: bin/ace-update-check executable"

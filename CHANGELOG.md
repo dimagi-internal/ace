@@ -5,6 +5,31 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.9 — 2026-04-20
+
+Close the class of silent-MCP-stall that 0.5.7 fixed for one server.
+`/ace:doctor` now statically verifies that every MCP server which reads
+`$CLAUDE_PLUGIN_DATA/.env` via dotenv also has `CLAUDE_PLUGIN_DATA`
+in its `.mcp.json` env block. If it doesn't, the subprocess spawns with
+an empty env, dotenv silently falls back to the wrong cwd, every secret
+reads as undefined, and the failure surfaces as opaque 401/403s on the
+first tool call — exactly the pattern that stalled turmeric Phase 4.
+
+### Added
+
+- **`mcp_env_passthrough` check in `bin/ace-doctor`.** For each entry
+  in `.mcp.json`, parses the referenced `.ts`/`.js` source, detects the
+  dotenv + `CLAUDE_PLUGIN_DATA` pattern, and WARNs if the `.mcp.json`
+  env block for that server omits `CLAUDE_PLUGIN_DATA`. Verified it
+  catches the pre-0.5.7 `ace-ocs` state and passes on current main.
+
+### Why
+
+0.5.7 fixed one instance of the bug; 0.5.9 prevents the next one.
+Any future MCP server that hits this pattern (e.g. a new `ace-foo`
+subprocess reading a new secret from `.env`) is flagged by
+`/ace:doctor` before the operator hits an opaque 401 in production.
+
 ## 0.5.8 — 2026-04-20
 
 Adoption-blocker follow-through: the env-drift class closed in 0.5.4
