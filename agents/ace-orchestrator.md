@@ -350,26 +350,44 @@ When starting fresh:
    into a PDD. It is listed in `lib/artifact-manifest.ts` as
    `producedBy: 'external'`.
 
-   - Use `drive_list_folder` on `ACE/<opp-name>/` to check for `idea.md`.
-   - If `idea.md` is present, continue to step 3.
-   - **If the operator passed `--idea FILE|-` to `/ace:run`**, the command
-     has already loaded the body (from file or stdin). Write it verbatim
-     to `ACE/<opp-name>/idea.md` with `drive_create_file` and continue.
-     No `AskUserQuestion` prompt fires on this path — scripted runs are
-     non-interactive by design.
-   - Otherwise, **stop and ask the user for it** using
-     `AskUserQuestion`. Offer these options:
-     - **Paste the idea inline** — user provides the brief as free text in the
-       question's "Other" field; write it verbatim to
-       `ACE/<opp-name>/idea.md` with `drive_create_file`.
-     - **Point me at a Drive doc** — user gives a Drive URL or doc ID; fetch
-       the doc with `drive_read_file` and write it (possibly reformatted to
-       markdown) to `ACE/<opp-name>/idea.md`.
-     - **Abort** — user did not intend to start this opportunity. Do not
-       create `state.yaml`; end the run cleanly.
+   Resolution order (first match wins):
 
-     In `--dry-run` mode, still write `idea.md` to Drive — it's a human input,
-     not an effectful action. In `--sandbox` mode, idea capture is unchanged.
+   **(a) Already present.** `drive_list_folder` on `ACE/<opp-name>/`;
+   if `idea.md` is there, continue to step 3.
+
+   **(b) `--idea FILE|-` passed to `/ace:run`.** The command has already
+   loaded the body (from file or stdin). Write it verbatim to
+   `ACE/<opp-name>/idea.md` with `drive_create_file` and continue. No
+   prompt fires on this path — scripted runs are non-interactive by design.
+
+   **(c) Auto-discover a PDD on Drive** (default when neither (a) nor (b)
+   applies). Smart-default flow:
+
+   1. `drive_list_folder` on `ACE_DRIVE_ROOT_FOLDER_ID`. Look for a
+      sub-folder whose name matches `/PDD/i` or `/Program Design Doc/i`
+      (case-insensitive). If none is found, fall through to (d).
+   2. `drive_list_folder` on that PDDs folder. Collect all files that
+      look like documents (`.md`, `.txt`, or Google Doc MIME).
+   3. Sort the list: files whose name contains the slug's first
+      dash-delimited token (case-insensitive) come first; within each
+      group, newest `modifiedTime` first.
+   4. Take the top 5 entries and present via `AskUserQuestion`. **Always
+      prompt**, even when exactly one file matches — domain-mismatched
+      PDDs would otherwise silently drive a wrong run. Include two
+      additional options:
+      - **Other — paste a Drive doc ID** (for cases where the right
+        document lives outside the PDDs folder).
+      - **Paste the idea inline** (free text in the "Other" field).
+      - **Abort** (do not create `state.yaml`; end the run cleanly).
+   5. Fetch the chosen file via `drive_read_file`, write the body to
+      `ACE/<opp-name>/idea.md` via `drive_create_file`, continue.
+
+   **(d) Fallback — no PDDs folder on Drive.** Prompt with just the
+   inline/paste/abort options from (c)'s extras.
+
+   In `--dry-run` mode, still write `idea.md` to Drive — it's a human
+   input, not an effectful action. In `--sandbox` mode, idea capture is
+   unchanged.
 
 3. **Initialize `state.yaml`** with:
    - `mode`, `created` (ISO timestamp), all steps as `pending`

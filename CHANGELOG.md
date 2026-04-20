@@ -5,6 +5,32 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.3 — 2026-04-20
+
+Feature: `/ace:run` smart defaults — zero-arg happy path.
+
+### Added
+
+- **Auto-generated slug** when `<opp-name>` is omitted:
+  `smoke-<YYYYMMDD-HHMM>`. Lets `/ace:run` (no args) do the right
+  thing in a throwaway-smoke context.
+- **Auto-discover PDD on Drive** when `--idea` is not provided. The
+  orchestrator's "Starting a New Opportunity" flow now lists files in
+  the PDDs folder under `ACE_DRIVE_ROOT_FOLDER_ID`, sorts by
+  slug-stem match + recency, and presents the top 5 via
+  `AskUserQuestion`. Confirmation is always required (even with a
+  single match) to guard against domain-mismatched PDDs.
+- **`--ace-web-url` default** to `https://labs.connect.dimagi.com/ace`
+  when `ACE_E2E_AUTH_TOKEN` is set in the environment. Skipped
+  silently when the env var is absent (so local-only dev still works).
+  Explicit `--ace-web-url ''` force-disables.
+
+### UX
+
+`/ace:run` (zero args) now picks a sensible slug, asks the operator
+to pick a PDD from Drive, and uploads the transcript to labs if the
+E2E token is present. One command end-to-end.
+
 ## 0.5.2 — 2026-04-20
 
 Docs: PM run log for the 2026-04-20 collection-clone-and-mcp-preflight
