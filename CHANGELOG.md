@@ -5,6 +5,51 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.4 — 2026-04-20
+
+Adoption-blocker cleanup: close the `.env` drift class that silently
+broke 0.5.3's smart-default PDD picker on any install that hadn't
+re-injected `.env` since the var was added.
+
+### Added
+
+- **`bin/ace-doctor` env-drift diff.** New `env_drift` check diffs the
+  `KEY=` set in the installed `.env` against `.env.tpl` and WARNs on
+  any key present in the template but absent from the install. Fix
+  hint emits the exact `op inject` command. Catches every future
+  `.env.tpl` addition automatically, not just today's.
+- **`bin/ace-doctor drive_root` check.** Explicit WARN when
+  `ACE_DRIVE_ROOT_FOLDER_ID` is unset — the variable 0.5.3's
+  smart-default PDD picker depends on.
+- **`bin/ace-doctor ocs_shared_collection` check.** Explicit WARN when
+  any of `OCS_SHARED_COLLECTION_ID`, `OCS_LLM_PROVIDER_ID`, or
+  `OCS_EMBEDDING_MODEL_ID` is unset — the triple per-opp bot clones
+  need for Connect-knowledge RAG (2026-04-20 P1 backlog).
+
+### Changed
+
+- **`/ace:run` PDD picker fails loudly on missing
+  `ACE_DRIVE_ROOT_FOLDER_ID`** rather than silently falling through
+  to the inline/paste fallback. `agents/ace-orchestrator.md` §
+  Starting a New Opportunity step 2(c).0 now stops with an actionable
+  error pointing at `op inject` (or `--idea FILE|-` to bypass).
+- **README First-Run Walkthrough + Quick Start + `/ace:doctor` next-step
+  hint** updated to zero-arg `/ace:run` as the primary example,
+  matching the 0.5.3 smart-default flow.
+
+### Why
+
+On 2026-04-20 the installed `.env` on the author's machine was missing
+8 keys from `.env.tpl`, including `ACE_DRIVE_ROOT_FOLDER_ID` (required
+by 0.5.3) and the shared-collection triple (required for post-clone
+RAG). Doctor reported `STATUS: COMPLETE` regardless — it only
+validated 3 of 16 keys. Any admin who injected `.env` before these
+vars were added hits silent failures on the happy path: the picker
+falls through with no signal of why, and per-opp bots publish with
+empty RAG. Doctor is the one place that catches this preventively;
+the use-site pre-flight catches it at invocation time for operators
+who skip doctor.
+
 ## 0.5.3 — 2026-04-20
 
 Feature: `/ace:run` smart defaults — zero-arg happy path.
