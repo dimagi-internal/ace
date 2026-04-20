@@ -376,7 +376,7 @@ describe('PlaywrightBackend collection atoms', () => {
     expect(out.collection_id).toBe(501);
   });
 
-  it('uploadCollectionFiles sends multipart and scrapes file IDs from files listing', async () => {
+  it('uploadCollectionFiles sends multipart with chunk_size + chunk_overlap and scrapes file IDs', async () => {
     const request: RequestFn = async (method, url, body, options) => {
       if (method === 'POST' && url === '/a/dimagi/documents/collections/501/add_files') {
         // The atom must route through the multipart channel, not the JSON body.
@@ -384,6 +384,11 @@ describe('PlaywrightBackend collection atoms', () => {
         expect(options?.multipart).toBeDefined();
         expect(options?.followRedirects).toBe(false);
         expect(options!.multipart!.csrfmiddlewaretoken).toBe('csrf-xyz');
+        // chunk_size and chunk_overlap are required form fields (added 0.4.6);
+        // without them the upload "succeeds" but produces 0 chunks and
+        // retrieval silently never works.
+        expect(options!.multipart!.chunk_size).toBe('800');
+        expect(options!.multipart!.chunk_overlap).toBe('400');
         const fileEntry = options!.multipart!.files_0 as {
           name: string;
           mimeType: string;
@@ -426,6 +431,52 @@ describe('PlaywrightBackend collection atoms', () => {
     });
     // Returns CollectionFile IDs (34023), NOT File IDs (9001).
     expect(out.file_ids).toEqual([34023]);
+  });
+
+  it('uploadCollectionFiles passes custom chunk_size and chunk_overlap through the multipart', async () => {
+    const request: RequestFn = async (method, url, body, options) => {
+      if (method === 'POST' && url === '/a/dimagi/documents/collections/501/add_files') {
+        expect(options!.multipart!.chunk_size).toBe('1200');
+        expect(options!.multipart!.chunk_overlap).toBe('200');
+        return {
+          ok: false,
+          status: 302,
+          headers: { location: '/a/dimagi/documents/collections/501' },
+          text: async () => '',
+          json: async () => ({}),
+        };
+      }
+      if (method === 'GET' && url === '/a/dimagi/documents/collections/501/files/') {
+        return {
+          ok: true,
+          text: async () => '<div id="collection_file_1"></div>',
+          json: async () => ({}),
+        };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request);
+    await backend.uploadCollectionFiles({
+      collection_id: 501,
+      files: [{ name: 'x.pdf', content: Buffer.from('X'), mime_type: 'application/pdf' }],
+      chunk_size: 1200,
+      chunk_overlap: 200,
+    });
+  });
+
+  it('uploadCollectionFiles throws if chunk_overlap >= chunk_size (Django would reject anyway)', async () => {
+    const request: RequestFn = async () => {
+      throw new Error('should not be called — validation must fire first');
+    };
+    const backend = makeBackend(request);
+    await expect(
+      backend.uploadCollectionFiles({
+        collection_id: 501,
+        files: [{ name: 'x.pdf', content: Buffer.from('X'), mime_type: 'application/pdf' }],
+        chunk_size: 500,
+        chunk_overlap: 500,
+      }),
+    ).rejects.toThrow(/chunk_overlap.*must be < chunk_size/);
   });
 
   it('waitForCollectionIndexing polls HTMX status partial until chunks appear', async () => {
@@ -487,8 +538,27 @@ describe('PlaywrightBackend collection atoms', () => {
 // ── Publish + embed info ─────────────────────────────────────────────
 
 describe('PlaywrightBackend publish + embed info', () => {
-  it('publishChatbotVersion POSTs versions/create as form-encoded', async () => {
-    const request: RequestFn = async (method, url, body, options) => {
+  // publishChatbotVersion calls a pre-flight validation via /pipelines/data/
+  // before POSTing /versions/create (added 0.4.6). Tests seed the experiment
+  // → pipeline cache and mock the pipeline-data GET+POST as a no-error
+  // round-trip so the pre-flight passes.
+  const publishSeed = new Map<number, number>([[99, 77]]);
+
+  function withPreflight(impl: RequestFn, errors: unknown = []): RequestFn {
+    const fixture = loadPipelineFixture();
+    return async (method, url, body, options) => {
+      if (method === 'GET' && url === '/a/dimagi/pipelines/data/77/') {
+        return { ok: true, json: async () => fixture };
+      }
+      if (method === 'POST' && url === '/a/dimagi/pipelines/data/77/') {
+        return { ok: true, json: async () => ({ data: fixture.pipeline.data, errors }) };
+      }
+      return impl(method, url, body, options);
+    };
+  }
+
+  it('publishChatbotVersion pre-flights the pipeline, then POSTs versions/create as form-encoded', async () => {
+    const request: RequestFn = withPreflight(async (method, url, body, options) => {
       if (method === 'POST' && url === '/a/dimagi/chatbots/99/versions/create') {
         expect(options?.formEncoded).toBe(true);
         expect(options?.followRedirects).toBe(false);
@@ -497,7 +567,6 @@ describe('PlaywrightBackend publish + embed info', () => {
           is_default_version: 'on',
           csrfmiddlewaretoken: 'csrf-xyz',
         });
-        // Django returns 302 redirect on success
         return {
           ok: false,
           status: 302,
@@ -514,15 +583,15 @@ describe('PlaywrightBackend publish + embed info', () => {
         };
       }
       throw new Error(`unexpected ${method} ${url}`);
-    };
+    });
 
-    const backend = makeBackend(request);
+    const backend = makeBackend(request, publishSeed);
     const out = await backend.publishChatbotVersion({ experiment_id: 99, description: 'initial' });
     expect(out.version_number).toBe(2);
   });
 
   it('publishChatbotVersion throws when Django re-renders the form (HTTP 200 = validation failure)', async () => {
-    const request: RequestFn = async (method, url) => {
+    const request: RequestFn = withPreflight(async (method, url) => {
       if (method === 'POST' && url === '/a/dimagi/chatbots/99/versions/create') {
         return {
           ok: true,
@@ -533,11 +602,33 @@ describe('PlaywrightBackend publish + embed info', () => {
         };
       }
       throw new Error(`unexpected ${method} ${url}`);
-    };
-    const backend = makeBackend(request);
+    });
+    const backend = makeBackend(request, publishSeed);
     await expect(
       backend.publishChatbotVersion({ experiment_id: 99, description: '' }),
     ).rejects.toThrow(/Version publish rejected.*Version description is required/);
+  });
+
+  it('publishChatbotVersion throws PipelineValidationError when pre-flight finds node-level errors (catches the 2026-04-19 phantom-collection class upstream)', async () => {
+    // Simulates the exact shape that hid the 2026-04-19 silent-publish-block:
+    // the /pipelines/data/ save endpoint returns nested `errors.node.<id>.<field>`
+    // with the real message, while /versions/create re-renders the form with no
+    // errorlist. Pre-flight surfaces this before /versions/create is called.
+    const request: RequestFn = withPreflight(async (method, url) => {
+      // If /versions/create is reached, the test has failed — pre-flight should
+      // have thrown first.
+      throw new Error(`pre-flight should have blocked; got unexpected ${method} ${url}`);
+    }, {
+      node: {
+        'LLMResponseWithPrompt-abc': {
+          collection_index_ids: 'Collection index(s) with ID(s) 718 not found',
+        },
+      },
+    });
+    const backend = makeBackend(request, publishSeed);
+    await expect(
+      backend.publishChatbotVersion({ experiment_id: 99, description: 'whatever' }),
+    ).rejects.toThrow(/Pipeline save rejected.*LLMResponseWithPrompt-abc\.collection_index_ids.*718 not found/);
   });
 
   it('getChatbotEmbedInfo does a 3-hop scrape (home → edit-dialog → token)', async () => {

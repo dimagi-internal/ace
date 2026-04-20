@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import {
   patchLlmNodeParams,
   findLlmResponseNode,
+  validatePipeline,
+  extractPipelineErrors,
   type RequestFn,
 } from '../../../mcp/ocs/backends/pipeline-patch.js';
 import { PipelineShapeError, PipelineValidationError } from '../../../mcp/ocs/errors.js';
@@ -99,5 +101,145 @@ describe('patchLlmNodeParams', () => {
     await expect(
       patchLlmNodeParams({ request, teamSlug: 'dimagi' }, 77, { prompt: 'x' })
     ).rejects.toBeInstanceOf(PipelineValidationError);
+  });
+
+  it('throws PipelineValidationError when the save endpoint returns nested node errors (2026-04-19 phantom-collection shape)', async () => {
+    const fixture = loadFixture();
+    const request: RequestFn = async (method) => {
+      if (method === 'GET') return { ok: true, json: async () => fixture };
+      return {
+        ok: true,
+        json: async () => ({
+          data: fixture.pipeline.data,
+          errors: {
+            node: {
+              'LLMResponseWithPrompt-abc': {
+                collection_index_ids: 'Collection index(s) with ID(s) 718 not found',
+              },
+            },
+          },
+        }),
+      };
+    };
+    await expect(
+      patchLlmNodeParams({ request, teamSlug: 'dimagi' }, 77, { prompt: 'x' }),
+    ).rejects.toThrow(/LLMResponseWithPrompt-abc\.collection_index_ids.*718 not found/);
+  });
+});
+
+describe('extractPipelineErrors', () => {
+  it('returns [] for null / non-object input', () => {
+    expect(extractPipelineErrors(null)).toEqual([]);
+    expect(extractPipelineErrors(undefined)).toEqual([]);
+    expect(extractPipelineErrors('oops')).toEqual([]);
+    expect(extractPipelineErrors(42)).toEqual([]);
+  });
+
+  it('returns [] when errors field is absent or empty', () => {
+    expect(extractPipelineErrors({})).toEqual([]);
+    expect(extractPipelineErrors({ errors: [] })).toEqual([]);
+    expect(extractPipelineErrors({ errors: {} })).toEqual([]);
+    expect(extractPipelineErrors({ errors: { node: {} } })).toEqual([]);
+  });
+
+  it('returns top-level string array unchanged (legacy shape)', () => {
+    expect(extractPipelineErrors({ errors: ['bad edge', 'orphan node'] })).toEqual([
+      'bad edge',
+      'orphan node',
+    ]);
+  });
+
+  it('flattens nested node errors with node-id / field prefixes', () => {
+    const body = {
+      errors: {
+        node: {
+          'LLMResponseWithPrompt-abc': {
+            collection_index_ids: 'Collection index(s) with ID(s) 718 not found',
+            prompt: 'prompt cannot be empty',
+          },
+          'StartNode-xyz': {
+            next: 'missing connection',
+          },
+        },
+      },
+    };
+    expect(extractPipelineErrors(body).sort()).toEqual(
+      [
+        'LLMResponseWithPrompt-abc.collection_index_ids: Collection index(s) with ID(s) 718 not found',
+        'LLMResponseWithPrompt-abc.prompt: prompt cannot be empty',
+        'StartNode-xyz.next: missing connection',
+      ].sort(),
+    );
+  });
+
+  it('JSON-stringifies non-string error values so they are still surfaced', () => {
+    const body = {
+      errors: {
+        node: {
+          'abc': {
+            max_results: { min: 1, got: 0 },
+          },
+        },
+      },
+    };
+    expect(extractPipelineErrors(body)).toEqual([
+      'abc.max_results: {"min":1,"got":0}',
+    ]);
+  });
+});
+
+describe('validatePipeline', () => {
+  const URL = '/a/dimagi/pipelines/data/77/';
+
+  it('round-trips the pipeline through save and resolves on empty errors', async () => {
+    const fixture = loadFixture();
+    let postCount = 0;
+    const request: RequestFn = async (method, url, body) => {
+      if (method === 'GET' && url === URL) return { ok: true, json: async () => fixture };
+      if (method === 'POST' && url === URL) {
+        postCount++;
+        // The body is the unchanged graph (no patch applied)
+        expect(body).toMatchObject({ name: fixture.pipeline.name, data: fixture.pipeline.data });
+        return { ok: true, json: async () => ({ data: fixture.pipeline.data, errors: [] }) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    await validatePipeline({ request, teamSlug: 'dimagi' }, 77);
+    expect(postCount).toBe(1);
+  });
+
+  it('throws PipelineValidationError on nested node errors (publish pre-flight)', async () => {
+    const fixture = loadFixture();
+    const request: RequestFn = async (method, url) => {
+      if (method === 'GET' && url === URL) return { ok: true, json: async () => fixture };
+      if (method === 'POST' && url === URL) {
+        return {
+          ok: true,
+          json: async () => ({
+            errors: {
+              node: {
+                'LLMResponseWithPrompt-abc': {
+                  collection_index_ids: 'Collection index(s) with ID(s) 999 not found',
+                },
+              },
+            },
+          }),
+        };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    await expect(
+      validatePipeline({ request, teamSlug: 'dimagi' }, 77),
+    ).rejects.toThrow(/LLMResponseWithPrompt-abc\.collection_index_ids.*999 not found/);
+  });
+
+  it('throws on GET failure', async () => {
+    const request: RequestFn = async (method) => {
+      if (method === 'GET') return { ok: false, json: async () => ({}) };
+      throw new Error('should not POST');
+    };
+    await expect(
+      validatePipeline({ request, teamSlug: 'dimagi' }, 77),
+    ).rejects.toThrow(/pipeline data GET failed/);
   });
 });
