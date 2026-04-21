@@ -5,6 +5,43 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.13 — 2026-04-20
+
+Archetype audit extends to closeout: `llo-feedback` branches by
+archetype so focus-group LLOs aren't asked about a Learn app they
+never used. Feedback questions that miss the work the LLO actually
+did produce thin responses + drift training data toward whichever
+archetype was front-loaded in the survey.
+
+### Added
+
+- **`## Archetypes` section in `skills/llo-feedback/SKILL.md`.**
+  `atomic-visit` (default) keeps app-usability, FLW-experience, and
+  field-conditions questions. `focus-group` swaps in question-guide
+  quality, facilitation experience, audio+upload workflow,
+  participant recruitment, session cadence, and asks specifically
+  "what would make the question guide better for a follow-up round?"
+  `multi-stage` asks per-stage questions (one pass per stage the LLO
+  owned) plus cross-stage transition quality and pipeline coherence;
+  one survey per LLO to avoid fatigue.
+- **Improvement-suggestion tagging** on the output file: entries
+  tagged by archetype dimension (app usability / session facilitation
+  / stage transitions / support / training / other) so
+  `learnings-summary` and `cycle-grade` can aggregate consistently
+  across the archetype mix.
+
+### Why
+
+Fourth and final archetype-branching PR of this session. Full Phase 5
+LLO-facing coverage now archetype-aware end-to-end:
+
+- `llo-onboarding` (0.5.10) — first email
+- `llo-uat` (0.5.11) — UAT checklist
+- `llo-launch` (0.5.12) — go-live
+- `llo-feedback` (0.5.13) — closeout feedback ← this release
+
+Archetype-aware skill count: 12 → 13.
+
 ## 0.5.12 — 2026-04-20
 
 Archetype audit closes the Phase 5 LLO-facing trio: `llo-launch` gets
