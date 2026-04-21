@@ -5,6 +5,39 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.10 — 2026-04-20
+
+Archetype audit: `llo-onboarding` adds per-archetype email framing.
+First LLO-facing artifact of the entire pipeline. Atomic-visit language
+("your FLWs will start collecting deliveries") lands as obviously wrong
+to an org that's running focus groups, and corrodes trust before the
+first session. Branch the welcome framing, the "getting started" step
+list, material emphasis, and timeline cadence by the PDD's `archetype:`
+field.
+
+### Added
+
+- **`## Archetypes` section in `skills/llo-onboarding/SKILL.md`.**
+  `atomic-visit` (default) keeps the existing FLW-download-app flow.
+  `focus-group` addresses the recipient as a facilitator-owning org,
+  leads with question guide + audio upload, and uses session-count
+  cadence language ("N sessions over T weeks"). `multi-stage`
+  front-loads Stage 1 content and names the stage transition explicitly.
+- **Step 3 of the Process** now reads the PDD's `archetype:` field and
+  routes to the appropriate subsection.
+
+### Why
+
+The 2026-04-19 iteration loop established archetype branching as a
+"one skill, one PR" unit of work. `pdd-to-test-prompts` (0.4.1) and
+`llo-invite` (0.4.2) shipped that way. `llo-onboarding` is the next
+high-leverage skill because its output is the **first thing an
+external LLO sees from ACE** — getting the framing wrong there is the
+largest bad-send risk in the pipeline. PM log 2026-04-19 carried
+"Archetype coverage audit (P4)" as standing backlog.
+
+Archetype-aware skill count: 9 → 10.
+
 ## 0.5.9 — 2026-04-20
 
 Close the class of silent-MCP-stall that 0.5.7 fixed for one server.
