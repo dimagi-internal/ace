@@ -5,6 +5,50 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.12 — 2026-04-20
+
+Archetype audit closes the Phase 5 LLO-facing trio: `llo-launch` gets
+per-archetype readiness checks and go-live semantics. "Your
+opportunity is live — FLWs can now use the apps" is exactly the wrong
+email for a focus-group pilot whose first artifact is a scheduled
+Session 1, not a downloadable app. Same Connect activation action;
+different readiness criteria, notification subject, and launch-record
+shape per archetype.
+
+### Added
+
+- **`## Archetypes` section in `skills/llo-launch/SKILL.md`.**
+  `atomic-visit` (default) keeps Learn/Deliver app-build verification
+  and the "You Are Live!" subject. `focus-group` replaces
+  app-readiness with **Session 1 readiness** — venue, recording gear
+  tested, audio-upload path verified, participant recruitment at
+  target, consent practiced — and flips the subject to "Session 1 is
+  on the calendar!" (not "You Are Live," which is FLW-deployment
+  coded). `multi-stage` pins activation to Stage 1's protocol; each
+  stage gets its own `llo-launch` invocation and `launch-record-stage-N.md`
+  so per-stage history is preserved.
+- **Gate-brief "What to Check" item 3** now swaps in the archetype-matched
+  delivery-surface bullet instead of hardcoding "All apps built and
+  downloadable."
+- **Launch-record `archetype_details`** captured per archetype so
+  `timeline-monitor` keys off the right cadence and milestones (session
+  schedule for FGD, first-delivery date for atomic-visit,
+  stage-transition window for multi-stage).
+
+### Why
+
+Third archetype-branching PR of this session. Closes the Phase 5
+LLO-facing trio:
+- `llo-onboarding` (0.5.10) — first email
+- `llo-uat` (0.5.11) — UAT checklist
+- `llo-launch` (0.5.12) — go-live ← this release
+
+Any Phase 5 opp under any archetype now gets archetype-appropriate
+LLO-facing artifacts end-to-end. Remaining atomic-visit-biased Phase
+5 skill: `llo-feedback` (potential stretch — not blocking go-live).
+
+Archetype-aware skill count: 11 → 12.
+
 ## 0.5.11 — 2026-04-20
 
 Archetype audit continues: `llo-uat` gets per-archetype UAT checklists.
