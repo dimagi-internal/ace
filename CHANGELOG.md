@@ -5,6 +5,39 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.11 — 2026-04-20
+
+Archetype audit continues: `llo-uat` gets per-archetype UAT checklists.
+FGD LLOs aren't testing a CommCare app — they're dry-running a
+facilitation session. Atomic-visit "download the Learn app and test
+every module" instructions to a focus-group LLO produce confused
+recipients and silent UAT stalls.
+
+### Added
+
+- **`## Archetypes` section in `skills/llo-uat/SKILL.md`.**
+  `atomic-visit` (default) keeps the existing Learn-app / Deliver-app
+  checklist. `focus-group` replaces "test the apps" with **"dry-run a
+  facilitation session"**: question-guide walk-through, recording
+  workflow, consent flow, session-note template fit, venue/logistics
+  check. Sign-off criterion flips to "you could run Session 1
+  tomorrow." Specifically surfaces dry-run duration as a must-flag
+  signal (session-length mismatches are the first thing dry-runs
+  expose and the hardest to fix mid-study). `multi-stage` uses
+  per-stage UAT — full checklist for Stage 1, reference-only for
+  later stages with their own dedicated UAT windows.
+- **Step 2 of the Process** now reads the PDD's `archetype:` field and
+  routes to the appropriate subsection. UAT results file records the
+  archetype so `llo-launch` applies matching go-live criteria.
+
+### Why
+
+Third shipping archetype-branching PR this session. Pairs with:
+- `llo-onboarding` (0.5.10) — email framing
+- `llo-uat` (0.5.11) — UAT checklist ← this release
+
+Archetype-aware skill count: 10 → 11.
+
 ## 0.5.10 — 2026-04-20
 
 Archetype audit: `llo-onboarding` adds per-archetype email framing.
