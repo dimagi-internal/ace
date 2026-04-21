@@ -32,24 +32,38 @@ const SCOPES = [
  * Resolve the Google service-account key path.
  *
  * Priority:
- *   1. $GOOGLE_APPLICATION_CREDENTIALS — Google's standard env var. In .mcp.json
- *      we set this to ${CLAUDE_PLUGIN_DATA}/gws-sa-key.json so Claude Code expands
- *      it to the per-plugin persistent data dir at launch (survives plugin updates
- *      and is shared across worktrees / installed copies).
- *   2. <plugin-root>/.gws-sa-key.json — legacy fallback so existing local dev
- *      checkouts and pre-migration installs keep working.
+ *   1. $GOOGLE_APPLICATION_CREDENTIALS — Google's standard env var. Operators
+ *      who set it explicitly keep working.
+ *   2. $CLAUDE_PLUGIN_DATA/gws-sa-key.json — composed in Node from the pure
+ *      variable pass-through declared in `.mcp.json`. Mirrors how `ocs-server.ts`
+ *      resolves `$CLAUDE_PLUGIN_DATA/.env`. Avoids relying on Claude Code to
+ *      substitute `${CLAUDE_PLUGIN_DATA}` inside a concatenated string in
+ *      `.mcp.json`, which has been observed to fail intermittently at MCP
+ *      spawn time (seen in eoi-llm-judge and connect-labs sessions on
+ *      2026-04-20/21) even while the pure-pass-through form for ace-ocs kept
+ *      working in the same sessions.
+ *   3. <plugin-root>/.gws-sa-key.json — legacy fallback for pre-migration
+ *      local-dev checkouts.
  */
 function resolveKeyPath(): string {
   const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (envPath && fs.existsSync(envPath)) {
     return envPath;
   }
+  const dataDir = process.env.CLAUDE_PLUGIN_DATA;
+  if (dataDir) {
+    const dataKey = path.join(dataDir, 'gws-sa-key.json');
+    if (fs.existsSync(dataKey)) {
+      return dataKey;
+    }
+  }
   if (fs.existsSync(LEGACY_KEY_PATH)) {
     return LEGACY_KEY_PATH;
   }
   throw new Error(
-    `No Google service-account key found. Set GOOGLE_APPLICATION_CREDENTIALS ` +
-      `or place the key at ${LEGACY_KEY_PATH}. Run /ace:setup for help.`,
+    `No Google service-account key found. Set GOOGLE_APPLICATION_CREDENTIALS, ` +
+      `place the key at $CLAUDE_PLUGIN_DATA/gws-sa-key.json, ` +
+      `or place it at ${LEGACY_KEY_PATH}. Run /ace:setup for help.`,
   );
 }
 

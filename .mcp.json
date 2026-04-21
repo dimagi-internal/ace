@@ -3,7 +3,7 @@
     "command": "npx",
     "args": ["tsx", "${CLAUDE_PLUGIN_ROOT}/mcp/google-drive-server.ts"],
     "env": {
-      "GOOGLE_APPLICATION_CREDENTIALS": "${CLAUDE_PLUGIN_DATA}/gws-sa-key.json"
+      "CLAUDE_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}"
     }
   },
   "ace-ocs": {

@@ -5,6 +5,51 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.15 — 2026-04-21
+
+Silent adoption blocker caught during the `eoi-llm-judge` kickoff
+session: `ace-gdrive` failed to register at MCP spawn time with
+"No Google service-account key found" even though the key was present
+at `$CLAUDE_PLUGIN_DATA/gws-sa-key.json` and `ace-ocs` registered
+successfully in the same session. Root cause mirrors the 0.5.7
+`ace-ocs` fix, just in reverse: gdrive's `.mcp.json` env block used
+a concatenated substitution (`"${CLAUDE_PLUGIN_DATA}/gws-sa-key.json"`)
+where ocs used a pure pass-through (`"${CLAUDE_PLUGIN_DATA}"`). Claude
+Code's `${...}` substitution is reliable for pure values but has been
+observed to fail on concatenated values at spawn time — at least twice
+on 2026-04-20/21 across `connect-labs` and `eoi-llm-judge` worktrees,
+even while pure pass-throughs in the same `.mcp.json` continued to
+work. Intermittent and session-launch-level: once gdrive fails to
+spawn, the MCP is dead for the rest of the session.
+
+The 0.5.9 `mcp_env_passthrough` doctor check didn't catch this because
+gdrive's env block *did* reference `${CLAUDE_PLUGIN_DATA}` — just
+concatenated, not pure. Follow-up: extend the check to also flag
+concatenated substitutions.
+
+### Fixed
+
+- **`.mcp.json` ace-gdrive env block switched to pure pass-through.**
+  Matches the pattern ocs adopted in 0.5.7: `"CLAUDE_PLUGIN_DATA":
+  "${CLAUDE_PLUGIN_DATA}"`. The subprocess now composes the key path
+  in Node instead of relying on Claude Code to splice the variable
+  into a path string.
+- **`mcp/google-drive-server.ts` `resolveKeyPath()` gains a
+  `$CLAUDE_PLUGIN_DATA/gws-sa-key.json` lookup** between the existing
+  `$GOOGLE_APPLICATION_CREDENTIALS` check and the legacy `<plugin-
+  root>/.gws-sa-key.json` fallback. Path composition moves from
+  `.mcp.json` to Node, which removes the class of intermittent-spawn
+  bug the concatenated form exposed.
+
+### Why
+
+Every future session that hits the substitution bug would lose Drive
+access with no clear diagnostic — the only tell is a stderr line in
+the MCP log that Claude Code never surfaces to the user. Two-file
+fix, zero surface area beyond the gdrive MCP subprocess. Same shape
+as the 0.5.7 ocs fix, same rationale (move composition into Node so
+Claude Code's substitution only has to handle pure variable values).
+
 ## 0.5.13 — 2026-04-20
 
 Archetype audit extends to closeout: `llo-feedback` branches by
