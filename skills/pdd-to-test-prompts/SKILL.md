@@ -146,13 +146,28 @@ from step 3):
 ### `multi-stage`
 
 The PDD has two or more sequenced stages with different archetypes.
-Generate prompts from the appropriate archetype branch for each stage,
-prefixed with the stage name in the `Category` field (e.g.
-`stage-1-session-flow`, `stage-2-data-quality`). Also add:
+For each stage, identify its declared archetype and apply that
+archetype's full category list from the sections above. Prefix every
+category with the stage number in the `Category` field (e.g.
+`stage-1-session-flow`, `stage-2-data-quality`, `stage-2-gps`).
 
+**Generating per-stage prompts:** treat each stage independently. A
+`focus-group` Stage 1 generates prompts from all 7 focus-group
+categories; an `atomic-visit` Stage 2 generates prompts from all 4
+atomic-visit categories. Do not collapse stages or skip categories
+because they seem similar across stages — the LLO needs clear
+stage-scoped answers.
+
+**Cross-stage categories** (always add, once per PDD, not per stage):
 - **Stage-gate transition** — "When does Stage 1 end?" / "What has to
-  be true before we start Stage 2?" — answers from the Stage Gate
-  subsection of the PDD
+  be true before we start Stage 2?" / "Can Stage 2 start in the same
+  week Stage 1 finishes?" — answers from the Stage Gate subsection of
+  the PDD. If the Stage Gate section is missing or vague, flag it as a
+  `[WARN]` in the coverage self-check (step 5) — this will generate a
+  false-pass in the deep gate if left undefined.
+- **Intervention continuity** — "Does my Learn app change between
+  stages?" / "Do I keep the same beneficiaries in Stage 2?" — answers
+  from the multi-stage overview in the PDD
 
 ## MCP Tools Used
 
@@ -186,3 +201,4 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-04-14 | Initial version — introduced as Phase 1 Step 2 so Phase 4's `ocs-chatbot-qa --deep` has ground-truth opp-specific prompts to grade against. Previously `test-prompts.md` was referenced by `ocs-chatbot-qa` but had no producer | ACE team |
 | 2026-04-19 | Added `## Archetypes` section branching on PDD archetype. `focus-group` gets session/recruitment/consent/question-guide/facilitation/output/audio categories; atomic-visit retains visit-flow/eligibility/GPS/duplicate categories; multi-stage mixes per-stage with an added stage-gate category. Motivated by cosmetics-fgd-pilot recon (2026-04-19) where the atomic-visit-only category list forced manual remapping | ACE team (qa/eval iteration loop) |
+| 2026-04-20 | Expand `multi-stage` archetype: clarify per-stage archetype dispatch, add intervention-continuity cross-stage category, flag missing Stage Gate as `[WARN]` | ACE team (skills review) |
