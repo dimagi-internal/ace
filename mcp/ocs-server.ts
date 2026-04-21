@@ -8,13 +8,23 @@
  * See docs/superpowers/specs/2026-04-08-ace-ocs-chatbot-buildout-design.md
  */
 
-// Load env vars from $CLAUDE_PLUGIN_DATA/.env (plugin install) or ./.env (dev).
+// Load env vars from <plugin-data-dir>/.env (plugin install) or ./.env (dev).
 // Must be first import so all subsequent process.env reads see the values.
+//
+// Uses resolvePluginDataDir() which tries $CLAUDE_PLUGIN_DATA first and falls
+// back to self-deriving from this module's path. Works around
+// anthropics/claude-code#9427 where env-block substitution in plugin MCP
+// configs is broken on current Claude Code (confirmed on 2.1.116 in the
+// eoi-llm-judge session 2026-04-21: the env var arrives empty even with an
+// inline `mcpServers` in plugin.json).
 import { config as dotenvConfig } from 'dotenv';
 import * as path from 'node:path';
+import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
+logPluginDataDirDiag('ace-ocs', import.meta.url);
+const __pluginDataDir = resolvePluginDataDir(import.meta.url);
 dotenvConfig({
-  path: process.env.CLAUDE_PLUGIN_DATA
-    ? path.join(process.env.CLAUDE_PLUGIN_DATA, '.env')
+  path: __pluginDataDir
+    ? path.join(__pluginDataDir, '.env')
     : path.join(process.cwd(), '.env'),
 });
 

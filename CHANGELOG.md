@@ -5,6 +5,67 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.17 — 2026-04-21
+
+0.5.16 moved the MCP server config inline into `plugin.json` based on
+upstream reports that inline declarations fixed
+[anthropics/claude-code#9427](https://github.com/anthropics/claude-code/issues/9427).
+In the eoi-llm-judge session on Claude Code 2.1.116, that move did **not**
+fix it — `${CLAUDE_PLUGIN_DATA}` still arrives unexpanded in the MCP
+subprocess's env, even though `${CLAUDE_PLUGIN_ROOT}` inside the `args`
+field DOES get expanded in the same session (evidence: the server file
+launches from the correct versioned cache dir). So on current Claude
+Code, env-block substitution is broken independently of whether the
+declaration lives in `.mcp.json` or `plugin.json.mcpServers`.
+
+Rather than keep relying on an upstream substitution that may or may not
+work, both MCP servers now **self-derive** their plugin-data directory
+from their own module path at runtime. This is the real, upstream-
+independent fix.
+
+### Added
+
+- **`lib/plugin-data-dir.ts`** — shared helper exporting
+  `resolvePluginDataDir(import.meta.url)` and `derivePluginDataDir()`.
+  The resolver tries `$CLAUDE_PLUGIN_DATA` first (so operators can still
+  override, and future Claude Code versions that fix substitution will
+  start using the env var automatically), then falls back to walking the
+  caller's module path for a `plugins/cache/<mp>/<plugin>/<version>/...`
+  segment and composing the `plugins/data/<mp>-<plugin>` sibling. Returns
+  null for dev checkouts.
+- **`logPluginDataDirDiag()`** — one-line JSON stderr diagnostic that
+  prints `env_CLAUDE_PLUGIN_DATA`, `env_CLAUDE_PLUGIN_ROOT`,
+  `env_CLAUDE_PLUGIN_ROOT_ECHO`, `derived_data_dir`, and `resolved_data_dir`
+  at MCP startup. Lands in the Claude Code MCP log so anyone debugging a
+  future session can see exactly which tier resolved and whether Claude
+  Code's env substitution is working. Called once each by both servers.
+- **`CLAUDE_PLUGIN_ROOT_ECHO` env entry** in the `plugin.json` `mcpServers`
+  block. Pure diagnostic: the diag line will show whether
+  `${CLAUDE_PLUGIN_ROOT}` expands in env values even when
+  `${CLAUDE_PLUGIN_DATA}` doesn't.
+
+### Changed
+
+- **`mcp/google-drive-server.ts` `resolveKeyPath()` tier 2** now uses
+  `resolvePluginDataDir(import.meta.url)` instead of raw
+  `process.env.CLAUDE_PLUGIN_DATA`.
+- **`mcp/ocs-server.ts` dotenv-path resolution** now uses the same
+  helper. Previously it read `process.env.CLAUDE_PLUGIN_DATA` directly
+  and silently fell back to `./.env` when the env var was missing —
+  which was the root cause of the 401 on startup.
+
+### Why
+
+0.5.15 and 0.5.16 both shipped partial / wrong theories about this bug.
+0.5.15 said "concatenated substitution is broken but pure is fine" —
+wrong, both failed. 0.5.16 said "moving to inline `mcpServers` fixes it"
+— based on an upstream thread that turned out to be about a different
+variable (`${ASYMPTOTE_API_KEY}`, a user env var, not `${CLAUDE_PLUGIN_DATA}`),
+and didn't help in our test. 0.5.17 stops relying on Claude Code's
+substitution layer for the data dir altogether: the server knows where
+it was installed and where its persistent data lives. The diagnostic
+line means the next time this regresses we won't be guessing.
+
 ## 0.5.16 — 2026-04-21
 
 Real root-cause fix for the gdrive-dark + ocs-401 pattern that 0.5.15
