@@ -46,48 +46,50 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
    - **Evidence Model** — Layer A / B / C verification plan (see `## Evidence Model` in `templates/pdd-template.md`)
    - **Timeline** — expected duration of the opportunity
 
-5. **Self-evaluate (LLM-as-Judge) — Stress-Test Rubric.**
-
-   Run this 5-question stress test against the drafted PDD. Each check is **pass / partial / fail**. If **two or more** checks are anything other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run the stress test before outputting.
-
-   Background and worked examples for this rubric live in `docs/examples/pdd-stress-test-observations.md`. Quote specific evidence from the PDD when grading; do not grade in the abstract.
-
-   1. **Executability** — *Could an LLO read this PDD on day one and start work without asking clarifying questions?*
-      Common failure modes: recruitment criteria unspecified (how is "under-vaccinated" determined? self-report vs. card vs. records), language and translation not addressed, facilitator/FLW skill level not stated, consent process missing, venue selection unspecified, participant compensation not mentioned.
-
-   2. **Verifiability** — *For every claimed output, is there a concrete artifact we can collect and check?*
-      Common failure modes: "summary of key themes" with no format/length/template, photo capture without standardization protocol (lighting, angle, distance, color reference), self-reported education delivery with no audit mechanism, qualitative outputs with no path from raw data to AI-ingestable form.
-
-   3. **Measurability** — *Are success criteria defined for this stage, with units and targets?*
-      Common failure modes: success described as "improved understanding" with no metric, sampling cap stated but no target, no per-segment or per-region targets, primary vs. secondary metrics not separated.
-
-   4. **Stage-gate clarity** — *For multi-stage PDDs, what must be true at the end of this stage to proceed to the next?*
-      Common failure modes: Stage 1 → Stage 2 transition undefined, no explicit "go / no-go / iterate" criteria, downstream stage references findings the upstream stage isn't required to produce.
-
-   5. **Resource realism** — *Are the LLO's capabilities matched to what's being asked?*
-      Common failure modes: focus-group facilitation skill assumed without training, ~50 participants to recruit across 6 segments with no recruitment plan, FLW asked to make subjective research judgments (Q12/Q13-style) the artifact should answer instead, photo/data quality dependencies on equipment LLOs may not have.
-
-   **Grading anchors (worked examples):**
-
-   The vaccine-hesitancy PDD at `docs/examples/pdd-vaccine-hesitancy.md` is the canonical "fail" case. Expected grades:
-   - Executability: **fail** — recruitment, language, facilitation, consent, venue all underspecified
-   - Verifiability: **fail** — "summary of key themes" output spec is too thin to verify
-   - Measurability: **partial** — Stage 2 has metrics, Stage 1 does not
-   - Stage-gate clarity: **fail** — Stage 1 → Stage 2 transition undefined
-   - Resource realism: **partial** — facilitation skill assumed; ~48-person recruit unscoped
-
-   The turmeric-market-survey PDD at `docs/examples/pdd-turmeric-market-survey.md` is the canonical "near-pass" case. Expected grades:
-   - Executability: **partial** — "market" is free text but the cap depends on market identity
-   - Verifiability: **partial** — photo standardization protocol missing; vendor education self-report unverifiable
-   - Measurability: **partial** — caps stated, sampling targets missing
-   - Stage-gate clarity: **pass** — single stage
-   - Resource realism: **pass** — atomic-visit pattern is well-matched to FLW capability
-
-   Both PDDs fail the rubric in their current form. The skill should surface those specific failures and either (a) iterate on the PDD to fix them, or (b) in review mode, hand off to a human with the failure list attached.
+5. **Self-evaluate (LLM-as-Judge) — Stress-Test Rubric.** Run the rubric defined in `## LLM-as-Judge Rubric` below against the drafted PDD. If **two or more** checks grade other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run before proceeding.
 
 6. **Write the PDD** to `ACE/<opp-name>/pdd.md` via Google Drive MCP. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the PDD, so downstream skills (and humans) can see what was caught and what was waived.
 
 7. **Write the gate brief** to `ACE/<opp-name>/gate-briefs/idea-to-pdd.md` using the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`. See `## Gate Brief` below for the exact fields this skill populates.
+
+## LLM-as-Judge Rubric
+
+Run this 5-question stress test against the drafted PDD. Each check is **pass / partial / fail**. If **two or more** checks are anything other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run the stress test before outputting.
+
+Background and worked examples live in `docs/examples/pdd-stress-test-observations.md`. Quote specific evidence from the PDD when grading; do not grade in the abstract.
+
+1. **Executability** — *Could an LLO read this PDD on day one and start work without asking clarifying questions?*
+   Common failure modes: recruitment criteria unspecified (how is "under-vaccinated" determined? self-report vs. card vs. records), language and translation not addressed, facilitator/FLW skill level not stated, consent process missing, venue selection unspecified, participant compensation not mentioned.
+
+2. **Verifiability** — *For every claimed output, is there a concrete artifact we can collect and check?*
+   Common failure modes: "summary of key themes" with no format/length/template, photo capture without standardization protocol (lighting, angle, distance, color reference), self-reported education delivery with no audit mechanism, qualitative outputs with no path from raw data to AI-ingestable form.
+
+3. **Measurability** — *Are success criteria defined for this stage, with units and targets?*
+   Common failure modes: success described as "improved understanding" with no metric, sampling cap stated but no target, no per-segment or per-region targets, primary vs. secondary metrics not separated.
+
+4. **Stage-gate clarity** — *For multi-stage PDDs, what must be true at the end of this stage to proceed to the next?*
+   Common failure modes: Stage 1 → Stage 2 transition undefined, no explicit "go / no-go / iterate" criteria, downstream stage references findings the upstream stage isn't required to produce.
+
+5. **Resource realism** — *Are the LLO's capabilities matched to what's being asked?*
+   Common failure modes: focus-group facilitation skill assumed without training, ~50 participants to recruit across 6 segments with no recruitment plan, FLW asked to make subjective research judgments (Q12/Q13-style) the artifact should answer instead, photo/data quality dependencies on equipment LLOs may not have.
+
+**Grading anchors (worked examples):**
+
+The vaccine-hesitancy PDD at `docs/examples/pdd-vaccine-hesitancy.md` is the canonical "fail" case. Expected grades:
+- Executability: **fail** — recruitment, language, facilitation, consent, venue all underspecified
+- Verifiability: **fail** — "summary of key themes" output spec is too thin to verify
+- Measurability: **partial** — Stage 2 has metrics, Stage 1 does not
+- Stage-gate clarity: **fail** — Stage 1 → Stage 2 transition undefined
+- Resource realism: **partial** — facilitation skill assumed; ~48-person recruit unscoped
+
+The turmeric-market-survey PDD at `docs/examples/pdd-turmeric-market-survey.md` is the canonical "near-pass" case. Expected grades:
+- Executability: **partial** — "market" is free text but the cap depends on market identity
+- Verifiability: **partial** — photo standardization protocol missing; vendor education self-report unverifiable
+- Measurability: **partial** — caps stated, sampling targets missing
+- Stage-gate clarity: **pass** — single stage
+- Resource realism: **pass** — atomic-visit pattern is well-matched to FLW capability
+
+Both PDDs fail the rubric in their current form. Surface specific failures and either (a) iterate on the PDD to fix them, or (b) in review mode, hand off to a human with the failure list attached.
 
 ## Archetypes
 
@@ -173,3 +175,4 @@ When `--dry-run` is active:
 | 2026-04-08 | Replace weak self-eval with 5-question stress-test rubric (executability, verifiability, measurability, stage-gate clarity, resource realism); block at ≥2 non-pass; include grading anchors from vaccine-hesitancy and turmeric example PDDs; emit stress-test results as PDD appendix | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-15 | Fail fast with actionable error if `idea.md` is missing instead of improvising an idea | ACE team (PM scout, end-to-end UX lens) |
 | 2026-04-17 | Emit gate brief at `ACE/<opp-name>/gate-briefs/idea-to-pdd.md` so the review-mode gate presents a checklist + stress-test concerns instead of a bare "approve PDD?" prompt | ACE team (PM scout, internal-admin lens) |
+| 2026-04-20 | Extract stress-test rubric from Process step 5 into standalone `## LLM-as-Judge Rubric` section per author contract; process step now references the section | ACE team (skills review) |

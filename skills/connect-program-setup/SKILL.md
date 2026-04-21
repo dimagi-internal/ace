@@ -11,19 +11,31 @@ Create or select a Connect program for this opportunity.
 
 ## Process
 
-1. **Read the PDD** from `ACE/<opp-name>/pdd.md`.
+1. **Read the PDD** from `ACE/<opp-name>/pdd.md`, including the
+   `archetype:` field. Program shape is mostly archetype-agnostic, but
+   program NAME and DESCRIPTION should signal archetype so future opps
+   under the same program can be grouped coherently. See
+   `## Archetypes` below.
 
 2. **Check for existing programs** that match this opportunity's domain/scope.
    Use connect-labs MCP `list_solicitations` or similar to browse existing programs.
+   Prefer archetype-matched programs when reusing — running an FGD opp
+   under a program whose other opps are all atomic-visit creates a
+   mixed-method reporting headache downstream.
 
 3. **Decide: reuse or create**
-   - If an existing program fits, note the program ID
-   - If not, create a new program with appropriate name, description, and config
+   - If an existing program fits AND shares the archetype, note the program ID
+   - If an existing program matches the domain but not the archetype,
+     flag the mismatch in the gate brief / program notes; default to
+     creating a new one unless the admin explicitly opts in
+   - If no match: create a new program with appropriate name,
+     description, and config — name should signal archetype (see below)
 
 4. **Write program details** to `ACE/<opp-name>/connect-setup/program.md`:
    - Program ID
    - Program name
-   - Whether reused or newly created
+   - Archetype declared at program creation (if new)
+   - Whether reused or newly created; note any archetype mismatch if reused
    - Configuration details
 
 ## MCP Tools Used
