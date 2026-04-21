@@ -80,7 +80,11 @@ named slug).
 
 ACE is a Claude Code plugin that bundles a Google Drive MCP server
 (`mcp/google-drive-server.ts`) plus an OCS MCP server (`mcp/ocs-server.ts`).
-The `.mcp.json` manifest auto-registers them when the plugin is installed.
+They are declared inline in `.claude-plugin/plugin.json` under `mcpServers`
+and auto-register when the plugin is installed. (They used to live in a
+separate `.mcp.json` at the plugin root; see 0.5.16 for the move and the
+[upstream Claude Code bug](https://github.com/anthropics/claude-code/issues/9427)
+that forced it.)
 
 **One command sets everything up:**
 
@@ -101,9 +105,10 @@ and the exact `mkdir -p … && mv … && chmod 600 …` command to run. That
 location is persistent across plugin updates and shared by every worktree and
 install, so you only drop the key once per machine.
 
-The `.mcp.json` passes the path to the MCP server via the standard
-`GOOGLE_APPLICATION_CREDENTIALS` env var, expanded from
-`${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` at server launch.
+The `plugin.json` `mcpServers.ace-gdrive.env` block passes
+`CLAUDE_PLUGIN_DATA` through; the server composes the key path in Node as
+`$CLAUDE_PLUGIN_DATA/gws-sa-key.json`. Operators can still set
+`GOOGLE_APPLICATION_CREDENTIALS` explicitly if they want to override.
 
 The service account needs `https://www.googleapis.com/auth/spreadsheets`,
 `https://www.googleapis.com/auth/drive`, and
@@ -161,10 +166,11 @@ work — they detect the repo by walking up from `$PWD` looking for
 
 ### Other MCP servers
 
-The OCS MCP (`mcp/ocs-server.ts`) is wired into `.mcp.json` as `ace-ocs`. It is
-partially implemented — see `playbook/integrations/ocs-integration.md` and the
-`mcp/ocs/` backends. Authenticate with `/ace:ocs-login` before calling any tool
-that hits the live service.
+The OCS MCP (`mcp/ocs-server.ts`) is wired into `plugin.json` `mcpServers`
+as `ace-ocs`. It is partially implemented — see
+`playbook/integrations/ocs-integration.md` and the `mcp/ocs/` backends.
+Authenticate with `/ace:ocs-login` before calling any tool that hits the
+live service.
 
 The CommCare and Connect MCPs live in the `connect-labs` repo, not in this plugin. To use them in a Claude Code session today, install the connect-labs MCP separately. ACE skills that depend on them have `## Current Workaround` sections that degrade to human-in-the-loop until those servers are also wired into a Claude Code plugin manifest.
 

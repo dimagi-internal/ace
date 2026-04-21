@@ -6,7 +6,7 @@ allowed-tools: [Bash, Read]
 # /ace:doctor
 
 Diagnose the health of the installed ACE plugin. Checks version consistency,
-Node dependencies, the Google service-account key, the `.mcp.json` manifest,
+Node dependencies, the Google service-account key, the `plugin.json` `mcpServers` manifest,
 and the presence of related repos (ace-web, connect-labs). Prints each check
 as PASS/WARN/FAIL with a fix hint.
 

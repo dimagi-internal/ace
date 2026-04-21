@@ -133,7 +133,7 @@ Each skill is a SKILL.md file that handles one step of the CRISPR-Connect proces
 ### MCP Servers
 
 **In ACE repo:**
-- **Google Drive MCP** (`mcp/google-drive-server.ts`) — Sheets + Drive tools. Already built. Service account: `ace-service-account@connect-labs.iam.gserviceaccount.com`. The SA key is resolved via `GOOGLE_APPLICATION_CREDENTIALS`, which `.mcp.json` sets to `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` so it persists across plugin updates and is shared across all worktrees/installs. This is the canonical Google Drive MCP, registered in canopy's registry for cross-project use.
+- **Google Drive MCP** (`mcp/google-drive-server.ts`) — Sheets + Drive tools. Already built. Service account: `ace-service-account@connect-labs.iam.gserviceaccount.com`. The SA key is resolved by the server itself from (1) `$GOOGLE_APPLICATION_CREDENTIALS` if set, else (2) `$CLAUDE_PLUGIN_DATA/gws-sa-key.json`, else (3) a legacy plugin-root path. `CLAUDE_PLUGIN_DATA` is passed through via the `mcpServers.ace-gdrive.env` block in `.claude-plugin/plugin.json` (inline rather than a plugin-root `.mcp.json` — see [anthropics/claude-code#9427](https://github.com/anthropics/claude-code/issues/9427) for why). Key persists across plugin updates and is shared across all worktrees/installs. This is the canonical Google Drive MCP, registered in canopy's registry for cross-project use.
 - **OCS MCP** (`mcp/ocs-server.ts`) — To build. Agent management (create/configure agents per opportunity), transcript access (read LLO conversations for analysis), context injection.
 
 **In connect-labs (external):**

@@ -121,12 +121,16 @@ else
   echo "GWS_KEY_HINT: mkdir -p \"$DATA_DIR\" && mv /path/to/key.json \"$CANONICAL_KEY\" && chmod 600 \"$CANONICAL_KEY\""
 fi
 
-# --- Check .mcp.json ---
-if [ -f ".mcp.json" ]; then
-  MCP_SERVERS="$(node -e "const m=require(\"./.mcp.json\"); console.log(Object.keys(m).join(\",\"));" 2>/dev/null || echo "parse_error")"
-  echo "MCP_SERVERS: $MCP_SERVERS"
+# --- Check MCP servers (inline in plugin.json) ---
+if [ -f ".claude-plugin/plugin.json" ]; then
+  MCP_SERVERS="$(node -e "const m=require(\"./.claude-plugin/plugin.json\"); console.log(Object.keys(m.mcpServers||{}).join(\",\"));" 2>/dev/null || echo "parse_error")"
+  if [ -z "$MCP_SERVERS" ]; then
+    echo "MCP_SERVERS: none declared in plugin.json"
+  else
+    echo "MCP_SERVERS: $MCP_SERVERS"
+  fi
 else
-  echo "MCP_SERVERS: .mcp.json missing"
+  echo "MCP_SERVERS: .claude-plugin/plugin.json missing"
 fi
 
 # --- Check VERSION file matches plugin.json ---

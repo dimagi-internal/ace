@@ -35,13 +35,13 @@ const SCOPES = [
  *   1. $GOOGLE_APPLICATION_CREDENTIALS — Google's standard env var. Operators
  *      who set it explicitly keep working.
  *   2. $CLAUDE_PLUGIN_DATA/gws-sa-key.json — composed in Node from the pure
- *      variable pass-through declared in `.mcp.json`. Mirrors how `ocs-server.ts`
- *      resolves `$CLAUDE_PLUGIN_DATA/.env`. Avoids relying on Claude Code to
- *      substitute `${CLAUDE_PLUGIN_DATA}` inside a concatenated string in
- *      `.mcp.json`, which has been observed to fail intermittently at MCP
- *      spawn time (seen in eoi-llm-judge and connect-labs sessions on
- *      2026-04-20/21) even while the pure-pass-through form for ace-ocs kept
- *      working in the same sessions.
+ *      variable pass-through declared in `plugin.json` `mcpServers.ace-gdrive.env`.
+ *      Mirrors how `ocs-server.ts` resolves `$CLAUDE_PLUGIN_DATA/.env`. As of
+ *      0.5.16 the MCP config lives inline in plugin.json (not a separate
+ *      .mcp.json at plugin root) to work around
+ *      https://github.com/anthropics/claude-code/issues/9427, where Claude
+ *      Code fails to substitute ${CLAUDE_PLUGIN_DATA} / ${CLAUDE_PLUGIN_ROOT}
+ *      inside plugin-root .mcp.json. Inline mcpServers substitution works.
  *   3. <plugin-root>/.gws-sa-key.json — legacy fallback for pre-migration
  *      local-dev checkouts.
  */

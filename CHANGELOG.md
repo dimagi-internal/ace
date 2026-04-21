@@ -5,6 +5,72 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.16 — 2026-04-21
+
+Real root-cause fix for the gdrive-dark + ocs-401 pattern that 0.5.15
+shipped a wrong theory for. Upstream bug confirmed:
+[anthropics/claude-code#9427](https://github.com/anthropics/claude-code/issues/9427)
+— Claude Code fails to substitute `${CLAUDE_PLUGIN_ROOT}` and
+`${CLAUDE_PLUGIN_DATA}` inside a plugin's **root `.mcp.json`**, so
+values arrive in the MCP subprocess as literal unexpanded strings
+(or blank). The same substitution works correctly when the server
+config lives **inline in `plugin.json` under `mcpServers`**. The bug
+is still live on Claude Code 2.0.71/2.0.73/2.1.116 despite the issue
+being closed-and-locked upstream, so a plugin-side workaround is
+the only path forward today.
+
+emdash's MCP launcher did not have this bug, which is why ACE had
+been working for weeks under emdash and only surfaced when a user
+switched to the Claude Code CLI in the same worktree.
+
+### Fixed
+
+- **MCP server configs moved inline into `.claude-plugin/plugin.json`
+  under `"mcpServers"`, and plugin-root `.mcp.json` deleted.** Same
+  shape, same env blocks, same commands — only the file they live
+  in changes. This is a first-class, officially documented
+  declaration point; see
+  [code.claude.com/docs/en/mcp#plugin-provided-mcp-servers](https://code.claude.com/docs/en/mcp#plugin-provided-mcp-servers).
+  Both `ace-gdrive` and `ace-ocs` now receive `CLAUDE_PLUGIN_DATA`
+  correctly at spawn time.
+
+### Changed
+
+- **`bin/ace-doctor` reads `plugin.json` `mcpServers`** instead of
+  `.mcp.json` for both the manifest sanity check and the
+  `mcp_env_passthrough` static check.
+- **New `ace-doctor` warn**: if a stale `.mcp.json` is left at the
+  plugin root alongside the inline `mcpServers`, warn and tell the
+  operator to delete it. Some Claude Code versions merge the two
+  sources; the `.mcp.json` entry would silently shadow the working
+  inline one and re-break substitution.
+- **`commands/setup.md` MCP check updated** to read
+  `plugin.json.mcpServers` instead of `.mcp.json`.
+- **Doc updates** in `README.md`, `CLAUDE.md`, `commands/doctor.md`,
+  `docs/superpowers/specs/2026-04-01-ace-design.md`, and the
+  comment in `mcp/google-drive-server.ts` pointing at the upstream
+  issue so the next person debugging this has one-click context.
+
+### Kept from 0.5.15
+
+- The Node-side fallback chain in `google-drive-server.ts`
+  (`GOOGLE_APPLICATION_CREDENTIALS` → `$CLAUDE_PLUGIN_DATA/gws-sa-key.json`
+  → legacy plugin-root path) is retained as defense in depth. It
+  doesn't fix 9427 — but it makes the server robust to the class of
+  "env var should be there but isn't" failures regardless of cause.
+
+### Why
+
+0.5.15 shipped on the wrong diagnosis (concatenated substitution
+fails while pure pass-through works). The actual data: `ace-ocs`
+used the pure pass-through form in 0.5.14 and was **also** getting
+empty `CLAUDE_PLUGIN_DATA` in the failing session — its 401 at
+startup was the same signal as gdrive's throw, just behind a
+non-fatal catch. The real break is at the plugin-root `.mcp.json`
+substitution layer in Claude Code, not inside the format of the
+values. Moving to the inline-in-`plugin.json` declaration point
+sidesteps the broken code path entirely.
+
 ## 0.5.15 — 2026-04-21
 
 Silent adoption blocker caught during the `eoi-llm-judge` kickoff
