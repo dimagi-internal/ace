@@ -14,9 +14,16 @@ import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LEGACY_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
+
+// One-line stderr diag so MCP log shows exactly what CLAUDE_PLUGIN_DATA /
+// CLAUDE_PLUGIN_ROOT the subprocess received and which tier resolveKeyPath
+// will use. See anthropics/claude-code#9427 for the underlying env-block
+// substitution bug this works around.
+logPluginDataDirDiag('ace-gdrive', import.meta.url);
 
 const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
@@ -34,14 +41,16 @@ const SCOPES = [
  * Priority:
  *   1. $GOOGLE_APPLICATION_CREDENTIALS — Google's standard env var. Operators
  *      who set it explicitly keep working.
- *   2. $CLAUDE_PLUGIN_DATA/gws-sa-key.json — composed in Node from the pure
- *      variable pass-through declared in `plugin.json` `mcpServers.ace-gdrive.env`.
- *      Mirrors how `ocs-server.ts` resolves `$CLAUDE_PLUGIN_DATA/.env`. As of
- *      0.5.16 the MCP config lives inline in plugin.json (not a separate
- *      .mcp.json at plugin root) to work around
- *      https://github.com/anthropics/claude-code/issues/9427, where Claude
- *      Code fails to substitute ${CLAUDE_PLUGIN_DATA} / ${CLAUDE_PLUGIN_ROOT}
- *      inside plugin-root .mcp.json. Inline mcpServers substitution works.
+ *   2. <plugin-data-dir>/gws-sa-key.json via `resolvePluginDataDir`, which
+ *      tries `$CLAUDE_PLUGIN_DATA` first, then self-derives the data dir
+ *      from this module's path at runtime. The derivation is the real
+ *      workaround for https://github.com/anthropics/claude-code/issues/9427:
+ *      in our testing (Claude Code 2.1.116, 2026-04-21), Claude Code does
+ *      NOT expand `${CLAUDE_PLUGIN_DATA}` inside env blocks for plugin MCP
+ *      configs — neither in `.mcp.json` nor in inline `plugin.json`
+ *      `mcpServers` — even though the docs imply it should. By deriving the
+ *      data dir from `import.meta.url` we sidestep the broken env path
+ *      entirely.
  *   3. <plugin-root>/.gws-sa-key.json — legacy fallback for pre-migration
  *      local-dev checkouts.
  */
@@ -50,7 +59,10 @@ function resolveKeyPath(): string {
   if (envPath && fs.existsSync(envPath)) {
     return envPath;
   }
-  const dataDir = process.env.CLAUDE_PLUGIN_DATA;
+  // Tier 2: the plugin-data-dir helper tries $CLAUDE_PLUGIN_DATA first, then
+  // self-derives from the server's module path as a fallback. Handles both
+  // the "env var was passed" and "env var wasn't passed (9427)" cases.
+  const dataDir = resolvePluginDataDir(import.meta.url);
   if (dataDir) {
     const dataKey = path.join(dataDir, 'gws-sa-key.json');
     if (fs.existsSync(dataKey)) {
