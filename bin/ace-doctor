@@ -147,42 +147,60 @@ else
   fail "gws_key: missing (checked $CANONICAL_KEY and $LEGACY_KEY)" "mkdir -p \"$DATA_DIR\" && drop the service-account JSON at $CANONICAL_KEY (ask Jon for the ACE key)"
 fi
 
-# --- .mcp.json sanity ---
-if [ -f "$ROOT/.mcp.json" ]; then
-  MCP_NAMES="$(node -e "const m=require('$ROOT/.mcp.json'); console.log(Object.keys(m).join(','));" 2>/dev/null || echo parse_error)"
+# --- MCP manifest sanity ---
+# As of 0.5.16 MCP servers live inline in plugin.json under "mcpServers",
+# NOT in a separate .mcp.json at plugin root. See
+# https://github.com/anthropics/claude-code/issues/9427 — Claude Code fails
+# to expand ${CLAUDE_PLUGIN_ROOT}/${CLAUDE_PLUGIN_DATA} when a plugin declares
+# its servers via plugin-root .mcp.json, but the expansion works correctly
+# when declared inline in plugin.json.
+PLUGIN_JSON="$ROOT/.claude-plugin/plugin.json"
+if [ -f "$PLUGIN_JSON" ]; then
+  MCP_NAMES="$(node -e "const m=require('$PLUGIN_JSON'); console.log(Object.keys(m.mcpServers||{}).join(','));" 2>/dev/null || echo parse_error)"
   if [ "$MCP_NAMES" = "parse_error" ]; then
-    fail "mcp_manifest: .mcp.json does not parse" "verify JSON syntax"
+    fail "mcp_manifest: plugin.json does not parse" "verify JSON syntax"
+  elif [ -z "$MCP_NAMES" ]; then
+    fail "mcp_manifest: plugin.json has no mcpServers block" "restore the mcpServers object with ace-gdrive and ace-ocs"
   else
-    pass "mcp_manifest: servers=$MCP_NAMES"
+    pass "mcp_manifest: servers=$MCP_NAMES (inline in plugin.json)"
     case "$MCP_NAMES" in
       *ace-gdrive*) ;;
-      *) warn "mcp_manifest: ace-gdrive not declared" "restore the ace-gdrive entry in .mcp.json" ;;
+      *) warn "mcp_manifest: ace-gdrive not declared" "restore the ace-gdrive entry in plugin.json mcpServers" ;;
     esac
   fi
 else
-  fail "mcp_manifest: .mcp.json missing" "restore .mcp.json at the plugin root"
+  fail "mcp_manifest: .claude-plugin/plugin.json missing" "restore plugin.json at the plugin root"
+fi
+
+# --- Stale .mcp.json guard ---
+# If both a plugin.json mcpServers block AND a .mcp.json exist, warn — the
+# legacy .mcp.json hits the upstream substitution bug (9427) and will shadow
+# silently on versions where Claude Code merges the two sources.
+if [ -f "$ROOT/.mcp.json" ]; then
+  warn "mcp_manifest: stale .mcp.json present at plugin root" "delete $ROOT/.mcp.json — MCP servers now live inline in plugin.json (see 9427)"
 fi
 
 # --- MCP env passthrough check ---
 # Catch the class of silent-stall fixed in 0.5.7: an MCP server source that
-# uses `dotenv` to load `$CLAUDE_PLUGIN_DATA/.env` but whose .mcp.json entry
-# has no env block passing CLAUDE_PLUGIN_DATA through. The subprocess spawns
-# with an empty process.env.CLAUDE_PLUGIN_DATA, dotenv silently falls back
-# to ./.env (subprocess cwd), the real .env is never loaded, every secret
-# reads as undefined, and downstream API calls get 401/403 with no clear
-# signal that the env var was the root cause.
+# uses `dotenv` to load `$CLAUDE_PLUGIN_DATA/.env` but whose plugin.json
+# mcpServers entry has no env block passing CLAUDE_PLUGIN_DATA through. The
+# subprocess spawns with an empty process.env.CLAUDE_PLUGIN_DATA, dotenv
+# silently falls back to ./.env (subprocess cwd), the real .env is never
+# loaded, every secret reads as undefined, and downstream API calls get
+# 401/403 with no clear signal that the env var was the root cause.
 #
-# This check is static: parse .mcp.json, look at each server's args for a
+# This check is static: parse plugin.json, look at each server's args for a
 # .ts/.js source path, read that source, check for the dotenv+CLAUDE_PLUGIN_DATA
-# pattern, then verify the .mcp.json env block includes CLAUDE_PLUGIN_DATA.
-if [ -f "$ROOT/.mcp.json" ] && [ "$MCP_NAMES" != "parse_error" ]; then
+# pattern, then verify the plugin.json env block includes CLAUDE_PLUGIN_DATA.
+if [ -f "$PLUGIN_JSON" ] && [ "$MCP_NAMES" != "parse_error" ] && [ -n "$MCP_NAMES" ]; then
   MCP_ENV_ISSUES="$(node -e "
     const fs = require('fs');
     const path = require('path');
     const root = '$ROOT';
-    const mcp = JSON.parse(fs.readFileSync(path.join(root, '.mcp.json'), 'utf8'));
+    const plugin = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'plugin.json'), 'utf8'));
+    const servers = plugin.mcpServers || {};
     const issues = [];
-    for (const [name, cfg] of Object.entries(mcp)) {
+    for (const [name, cfg] of Object.entries(servers)) {
       if (!cfg || typeof cfg !== 'object') continue;
       // Resolve the source file: the last .ts or .js arg, with \${CLAUDE_PLUGIN_ROOT} expanded.
       const args = Array.isArray(cfg.args) ? cfg.args : [];
@@ -194,7 +212,7 @@ if [ -f "$ROOT/.mcp.json" ] && [ "$MCP_NAMES" != "parse_error" ]; then
       // Does this server read process.env.CLAUDE_PLUGIN_DATA to locate .env?
       const usesPluginData = /process\\.env\\.CLAUDE_PLUGIN_DATA/.test(body) && /dotenv|dotenvConfig|\\brequire\\s*\\(\\s*[\"']dotenv/.test(body);
       if (!usesPluginData) continue;
-      // If it does, the .mcp.json env block MUST pass CLAUDE_PLUGIN_DATA through.
+      // If it does, the plugin.json env block MUST pass CLAUDE_PLUGIN_DATA through.
       const env = (cfg.env && typeof cfg.env === 'object') ? cfg.env : {};
       if (!('CLAUDE_PLUGIN_DATA' in env)) {
         issues.push(name);
@@ -203,7 +221,7 @@ if [ -f "$ROOT/.mcp.json" ] && [ "$MCP_NAMES" != "parse_error" ]; then
     if (issues.length) console.log(issues.join(','));
   " 2>/dev/null)"
   if [ -n "$MCP_ENV_ISSUES" ]; then
-    warn "mcp_env_passthrough: servers loading \$CLAUDE_PLUGIN_DATA/.env without env passthrough: $MCP_ENV_ISSUES (silent 401/403 on every tool call)" "add \"CLAUDE_PLUGIN_DATA\": \"\\\${CLAUDE_PLUGIN_DATA}\" to each server's env block in .mcp.json"
+    warn "mcp_env_passthrough: servers loading \$CLAUDE_PLUGIN_DATA/.env without env passthrough: $MCP_ENV_ISSUES (silent 401/403 on every tool call)" "add \"CLAUDE_PLUGIN_DATA\": \"\\\${CLAUDE_PLUGIN_DATA}\" to each server's env block in plugin.json mcpServers"
   else
     pass "mcp_env_passthrough: every MCP server that needs CLAUDE_PLUGIN_DATA receives it"
   fi

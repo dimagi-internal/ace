@@ -7,7 +7,7 @@ ACE (AI Connect Engine) is a Claude Code plugin that orchestrates the CRISPR-Con
 - `agents/` — 8 agents: `ace-orchestrator` + 6 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `llo-manager`, `closeout`) + `ocs-tester` (ad-hoc QA agent). Phases 1–4 run end-to-end with zero LLO involvement; Phase 5 is where LLOs first hear from ACE.
 - `skills/` — 24 skills, one directory per skill, each with a single `SKILL.md`. Skills are stateless; opportunity state lives in Google Drive under `ACE/<opp-name>/`. See `skills/README.md` for the author contract, including the `## QA vs Eval — the two-phase pattern` section that governs `-qa` / `-eval` skill pairs and the new `opp-eval` umbrella-aggregator pattern.
 - `commands/` — 10 slash commands: `run`, `step`, `status`, `eval`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `ocs-bootstrap-template`.
-- `mcp/` — 2 MCP servers, both wired via `.mcp.json`:
+- `mcp/` — 2 MCP servers, both wired inline in `.claude-plugin/plugin.json` under `mcpServers` (moved there in 0.5.16 from a plugin-root `.mcp.json` to work around [anthropics/claude-code#9427](https://github.com/anthropics/claude-code/issues/9427) — `${CLAUDE_PLUGIN_DATA}` / `${CLAUDE_PLUGIN_ROOT}` substitution is broken in plugin-root `.mcp.json` but works inline):
   - `google-drive-server.ts` → `ace-gdrive` (Drive + Docs tooling).
   - `ocs-server.ts` → `ace-ocs` (composite Open Chat Studio backend). Most of the interesting code is in `mcp/ocs/` — `capability-map.ts`, `client.ts`, `types.ts`, `backends/{composite,rest,playwright,pipeline-patch}.ts`, `auth/`, `logging.ts`, `errors.ts`.
 - `playbook/integrations/` — integration reference: `ocs-integration.md`, `nova-integration.md`, `connect-api.md`, `commcare-api.md`. Each describes what exists today vs. what still needs to be built.
@@ -27,7 +27,7 @@ ACE (AI Connect Engine) is a Claude Code plugin that orchestrates the CRISPR-Con
 ## Current state
 
 - **Plugin is installable and self-updating.** `/ace:setup`, `/ace:update`, `/ace:doctor` all shipped (PRs #11, #13). See `CHANGELOG.md` for 0.1.0 release notes.
-- **Google Drive MCP is live.** `ace-gdrive` wired in `.mcp.json` (PR #6). Resolves Drive shortcuts transparently in `drive_read_file` and `drive_list_folder` (PR #25). Requires a service-account key at `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` (or `.gws-sa-key.json` in the plugin root as legacy fallback) — see README for setup.
+- **Google Drive MCP is live.** `ace-gdrive` wired inline in `.claude-plugin/plugin.json` `mcpServers` (moved there in 0.5.16 from `.mcp.json`; PR #6 originally landed it). Resolves Drive shortcuts transparently in `drive_read_file` and `drive_list_folder` (PR #25). Requires a service-account key at `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` (or `.gws-sa-key.json` in the plugin root as legacy fallback) — see README for setup.
 - **OCS MCP is under active buildout.** `ace-ocs` is wired, ~22 atomic capabilities are defined in `mcp/ocs/capability-map.ts`, and composite + REST + Playwright backends are partially implemented (PRs #9, #10, #14). An E2E integration test (PR #22) exercises the full clone→configure→embed→chat flow against live OCS. The `ocs-tester` agent + `ocs-chatbot-qa` skill provide LLM-as-Judge quality evaluation. The active plan is `docs/superpowers/plans/2026-04-08-ace-ocs-chatbot-buildout.md`. Authenticate with `/ace:ocs-login` before calling tools that hit live OCS.
 - **OCS domain migrated.** Default base URL is now `https://www.openchatstudio.com` (was `chatbots.dimagi.com`). PR #26 updated all live code, templates, commands, scripts, and tests. The `ocs_send_test_message` tool now uses the anonymous widget chat API (`/api/chat/start/` → `/message/` → `/poll/`) instead of the broken OpenAI-compatible REST endpoint. `ocs_create_collection` defaults `llm_provider` and `embedding_model` from `OCS_LLM_PROVIDER_ID` and `OCS_EMBEDDING_MODEL_ID` env vars.
 - **Orchestration restructured into 6 phases (0.2.0).** Phase order: (1) design-review → (2) commcare-setup → (3) connect-setup → (4) ocs-setup → (5) llo-manager → (6) closeout. Key consequences: `app-builder` was split into `design-review` + `commcare-setup`; `ocs-setup` is a new first-class phase (previously OCS was buried as Step 4 of LLO management *after* go-live); `ocs-chatbot-qa` gained `--quick`/`--deep`/`--monitor` modes and replaces the inline self-eval that used to live in `ocs-agent-setup`; new `pdd-to-test-prompts` skill in Phase 1 produces `test-prompts.md` as ground truth for the deep QA gate; `llo-invite` prepares only, send moves to `llo-onboarding` so the onboarding email can include the OCS widget link.
@@ -56,7 +56,7 @@ npm run mcp:gdrive    # npx tsx mcp/google-drive-server.ts
 npm run mcp:ocs       # npx tsx mcp/ocs-server.ts
 ```
 
-Both also auto-register via `.mcp.json` when the plugin is installed.
+Both also auto-register via the `mcpServers` block in `.claude-plugin/plugin.json` when the plugin is installed.
 
 ## Key docs
 
