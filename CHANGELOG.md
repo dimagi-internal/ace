@@ -5,6 +5,55 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.18 — 2026-04-27
+
+Closes a class-level Drive-write footgun surfaced on the first real
+end-to-end dogfood run of `/ace:run`. Symptom: after `drive_create_folder`
+appeared to succeed, every subsequent `drive_create_file` failed with
+*"The user's Drive storage quota has been exceeded."* Root cause: when
+`parentFolderId` was unset, empty, or otherwise unresolved against the
+configured Shared Drive, the API silently created the new folder in the
+service account's My Drive root — where SAs have zero quota — and every
+file write into that folder then hit the misleading quota error. The MCP
+tool descriptions invited this with *"omit to create in root"*, which is
+never a safe default for an SA-backed deploy.
+
+### Fixed
+
+- **`drive_create_file` and `drive_create_folder` now require
+  `parentFolderId` and pre-flight that the parent lives on a Shared
+  Drive.** Implementation: a single `assertParentOnSharedDrive` helper
+  fetches the parent's `driveId` (Shared-Drive files have one, My Drive
+  files don't) and rejects the create with a typed actionable error if
+  it's empty. Catches the entire silent-My-Drive-fallback class at the
+  MCP boundary, before any API write attempt.
+
+### Added
+
+- **`/ace:doctor` Shared-Drive canary.** Probes
+  `ACE_DRIVE_ROOT_FOLDER_ID` against the Drive API and reports
+  `drive_shared PASS` (with the Shared Drive ID) or `drive_shared FAIL`
+  with the same actionable message as the MCP guard. Runs alongside the
+  existing `drive_root` env-presence check. Operators see the wall before
+  hitting it on the first opp.
+
+### Changed
+
+- **`agents/ace-orchestrator.md` § Starting a New Opportunity** — calls
+  out the Shared-Drive precondition and points at the doctor check.
+- **`skills/README.md`** — adds the Drive parent contract: every
+  `drive_create_file` / `drive_create_folder` must pass an explicit
+  `parentFolderId` rooted in the opp folder; never rely on a default-root
+  fallback.
+
+### How to apply
+
+Run `/ace:update` after pulling. New sessions will pick up the new
+doctor check automatically. Existing My-Drive-stranded opp folders
+(diagnosable via `drive_diagnose` returning a non-empty `owners` field
+and absent `driveId`) should be trashed before re-running their slug,
+otherwise the next `drive_list_folder` will still find the orphan.
+
 ## 0.5.17 — 2026-04-21
 
 0.5.16 moved the MCP server config inline into `plugin.json` based on
