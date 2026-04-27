@@ -5,6 +5,68 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.0 — 2026-04-27
+
+Migrates Phase 2 (CommCare Setup) off the manual Nova-UI / HQ-UI
+handoff and onto the new Nova Claude Code plugin
+(`voidcraft-labs/nova-marketplace`, shipped 2026-04-26 by Braxton).
+The three Phase-2 skills now drive Nova through its slash commands
+instead of telling the operator to fill out a form. Nova owns the app
+storage; ACE only records the durable handle (`nova_app_id`) and the
+HQ deployment outcome.
+
+End-to-end Phase 2 is currently gated on an OAuth allowlist fix on
+Nova's side (the Workspace domain ACE authenticates as is not yet
+allowed by Nova's OAuth client) — until that lands, the operator's
+HQ API key cannot be pasted into Nova's settings page and
+`app-deploy`'s pre-flight will surface the resulting domain mismatch
+as a `[BLOCKER]` in the Phase 2→3 gate brief. See
+`playbook/integrations/nova-integration.md § Known blockers`.
+
+### Changed
+
+- **`pdd-to-learn-app` / `pdd-to-deliver-app`** invoke
+  `/nova:autobuild "<brief>"` instead of writing a brief and asking the
+  operator to drive Nova's UI. Output is `nova_app_id` /
+  `nova_app_url` / `archetype` (plus `delivery_unit` for deliver) in
+  the app summary frontmatter, not a JSON file.
+- **`app-deploy`** invokes `/nova:upload_to_hq <nova_app_id>` for each
+  app. Pre-flights `ACE_HQ_DOMAIN` against Nova's bound HQ project
+  space, captures the resulting HQ app IDs and URLs into
+  `deployment-summary.md` (now with explicit `hq_domain`,
+  `learn_nova_app_id`, `deliver_nova_app_id` frontmatter), and emits a
+  `[BLOCKER]` in the gate brief on domain mismatch.
+- **Artifact manifest:** `apps/learn-app.json` and
+  `apps/deliver-app.json` are now `required: false` with
+  `consumedBy: []`. `app-deploy` is added as a consumer of
+  `app-summaries/learn-app-summary.md` and `deliver-app-summary.md`.
+- **`playbook/integrations/nova-integration.md`** rewritten as a
+  status doc rather than a "what needs exploration" doc. Covers
+  install, ACE's surface area, the HQ-domain-via-Nova-settings
+  coupling, and the OAuth allowlist blocker.
+- **`CLAUDE.md`** drops "Nova MCP does not exist yet"; adds the Nova
+  plugin install dependency note.
+
+### Added
+
+- **`.env.tpl`:** `ACE_HQ_BASE_URL` (default
+  `https://www.commcarehq.org`) and `ACE_HQ_DOMAIN` (declared
+  commented-out — operators set the project space per deployment).
+  Both are read by `app-deploy`'s pre-flight to compare against
+  Nova's bound HQ project space.
+- **`test/skills/nova-contracts.test.ts`:** 27 new contract tests
+  pinning the migration — invocation patterns, summary frontmatter,
+  manifest shape, fixture frontmatter — so a future edit can't
+  silently regress to the workaround flow. Existing fixtures at
+  `test/fixtures/CRISPR-Test-{001,002,003-Turmeric}/` gained the
+  required summary frontmatter.
+
+### Operator notes
+
+- Install Nova once per machine:
+  `/plugin marketplace add voidcraft-labs/nova-marketplace` then
+  `/plugin install nova@nova-marketplace` then `/mcp` and sign in.
+
 ## 0.5.18 — 2026-04-27
 
 Closes a class-level Drive-write footgun surfaced on the first real

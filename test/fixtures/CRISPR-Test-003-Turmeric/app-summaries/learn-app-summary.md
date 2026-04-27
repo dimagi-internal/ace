@@ -1,3 +1,9 @@
+---
+nova_app_id: LRN-TURMERIC-SYN-0001
+nova_app_url: https://commcare.app/apps/LRN-TURMERIC-SYN-0001
+archetype: atomic-visit
+---
+
 # Learn App Summary — Turmeric Market Survey (SYNTHETIC)
 
 **App ID:** LRN-TURMERIC-SYN-0001
