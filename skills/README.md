@@ -61,6 +61,8 @@ A bullet list of MCP tools the skill calls, grouped by server. For each tool, in
 - Connect: `create_opportunity`, `set_verification_rules` — **NOT YET BUILT** (CCC-301)
 ```
 
+**Drive parent contract.** Every `drive_create_file` and `drive_create_folder` call MUST pass an explicit `parentFolderId` rooted in the opportunity's `ACE/<opp-name>/` folder. Service Accounts have zero My-Drive quota; the MCP rejects calls whose parent isn't on a Shared Drive (typed error from `assertParentOnSharedDrive`, added 0.5.18). Never call these tools without `parentFolderId`, and never rely on a "default to root" fallback — there is no safe root for an SA.
+
 ### 4. `## Mode Behavior`
 
 How the skill behaves in **Auto** vs **Review** mode. One bullet per mode. Both modes execute the same steps; only the gating and human-handoff differs.

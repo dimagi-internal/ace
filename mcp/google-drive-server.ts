@@ -107,6 +107,48 @@ function error(msg: string) {
   };
 }
 
+/**
+ * Pre-flight: verify the parent folder lives on a Shared Drive.
+ *
+ * Service Accounts have zero My-Drive storage quota. A `files.create` with a
+ * My-Drive parent (or no parent) silently lands in the SA's My-Drive root,
+ * and every subsequent file write into that folder fails with the misleading
+ * error "The user's Drive storage quota has been exceeded." Catching this at
+ * the create-call boundary turns a class of silent corruption into a typed,
+ * actionable failure.
+ *
+ * On a Shared Drive, every file/folder has a non-empty `driveId` (the Shared
+ * Drive's ID). On My Drive, `driveId` is absent. That single field is the
+ * canonical signal — no scope checks, no quota probes, no second API call
+ * beyond the one `files.get`.
+ */
+async function assertParentOnSharedDrive(
+  parentFolderId: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const meta = await drive.files.get({
+      fileId: parentFolderId,
+      fields: 'id, name, driveId, mimeType',
+      supportsAllDrives: true,
+    });
+    if (meta.data.mimeType !== 'application/vnd.google-apps.folder') {
+      return { ok: false, message: `Parent ${parentFolderId} is not a folder (mimeType: ${meta.data.mimeType}).` };
+    }
+    if (!meta.data.driveId) {
+      return {
+        ok: false,
+        message:
+          `Parent folder "${meta.data.name}" (${parentFolderId}) is in My Drive, not on a Shared Drive. ` +
+          `Service Accounts have zero My-Drive quota; any file create here would fail with "user storage quota exceeded". ` +
+          `Move the folder onto a Shared Drive (or set ACE_DRIVE_ROOT_FOLDER_ID to a folder that already lives on one) and re-run.`,
+      };
+    }
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, message: `Could not resolve parent folder ${parentFolderId}: ${e.message}` };
+  }
+}
+
 // ============================================================================
 // MCP Server
 // ============================================================================
@@ -365,23 +407,22 @@ server.tool(
 // 11. Create a file in Google Drive
 server.tool(
   'drive_create_file',
-  'Create a new Google Doc in Drive with the given name and content, optionally inside a parent folder. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.',
+  'Create a new Google Doc in Drive with the given name and content, inside the given parent folder. The parent MUST be a folder on a Shared Drive — Service Accounts have zero My-Drive quota, so files created in My Drive fail with a misleading "user storage quota exceeded" error. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.',
   {
     name: z.string().describe('Name for the new file'),
     content: z.string().describe('Text content for the file'),
-    parentFolderId: z.string().optional().describe('Parent folder ID (omit to create in root)'),
+    parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
   },
   async ({ name: fileName, content: fileContent, parentFolderId }) => {
     try {
-      const fileMetadata: Record<string, unknown> = {
-        name: fileName,
-        mimeType: 'application/vnd.google-apps.document',
-      };
-      if (parentFolderId) {
-        fileMetadata.parents = [parentFolderId];
-      }
+      const guard = await assertParentOnSharedDrive(parentFolderId);
+      if (!guard.ok) return error(guard.message);
       const created = await drive.files.create({
-        requestBody: fileMetadata,
+        requestBody: {
+          name: fileName,
+          mimeType: 'application/vnd.google-apps.document',
+          parents: [parentFolderId],
+        },
         fields: 'id, name, webViewLink',
         supportsAllDrives: true,
       });
@@ -404,22 +445,21 @@ server.tool(
 // 12. Create a folder in Google Drive
 server.tool(
   'drive_create_folder',
-  'Create a new folder in Google Drive, optionally inside a parent folder. ACE uses this to set up the per-opportunity folder structure (ACE/<opp-name>/).',
+  'Create a new folder in Google Drive, inside the given parent folder. The parent MUST be a folder on a Shared Drive — when the parent is in My Drive (or unset), the new folder lands in the SA\'s My Drive root and every subsequent file write into it fails with a "user storage quota exceeded" error. ACE uses this to set up the per-opportunity folder structure (ACE/<opp-name>/).',
   {
     name: z.string().describe('Name for the new folder'),
-    parentFolderId: z.string().optional().describe('Parent folder ID (omit to create in root)'),
+    parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
   },
   async ({ name: folderName, parentFolderId }) => {
     try {
-      const fileMetadata: Record<string, unknown> = {
-        name: folderName,
-        mimeType: 'application/vnd.google-apps.folder',
-      };
-      if (parentFolderId) {
-        fileMetadata.parents = [parentFolderId];
-      }
+      const guard = await assertParentOnSharedDrive(parentFolderId);
+      if (!guard.ok) return error(guard.message);
       const resp = await drive.files.create({
-        requestBody: fileMetadata,
+        requestBody: {
+          name: folderName,
+          mimeType: 'application/vnd.google-apps.folder',
+          parents: [parentFolderId],
+        },
         fields: 'id, name, webViewLink',
         supportsAllDrives: true,
       });

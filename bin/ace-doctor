@@ -321,6 +321,42 @@ if [ -n "$ENV_FILE" ]; then
     warn "drive_root: ACE_DRIVE_ROOT_FOLDER_ID not set (PDD auto-discovery disabled)" "re-inject .env via op inject (var added in 0.5.3)"
   fi
 
+  # Shared-Drive canary: the configured root MUST live on a Google Shared Drive.
+  # Service Accounts have zero My-Drive quota, so a My-Drive-parented root means
+  # every artifact write fails with "user storage quota exceeded" on the FIRST
+  # opportunity created. Files on a Shared Drive carry a non-empty `driveId`;
+  # files in My Drive don't. One files.get probe catches the entire class.
+  # (2026-04-27, after dogfood run #1 surfaced this as a silent My-Drive fallback.)
+  if [ -n "$DRIVE_ROOT" ] && [ -n "$KEY" ] && [ -d "$ROOT/node_modules/googleapis" ]; then
+    DRIVE_ROOT_PROBE="$(GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+      import { google } from 'googleapis';
+      const auth = new google.auth.GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/drive'] });
+      const drive = google.drive({ version: 'v3', auth });
+      try {
+        const r = await drive.files.get({ fileId: '$DRIVE_ROOT', fields: 'name, driveId, mimeType', supportsAllDrives: true });
+        const driveId = r.data.driveId || '';
+        const name = r.data.name || '';
+        const mt = r.data.mimeType || '';
+        console.log(JSON.stringify({ ok: true, name, driveId, mimeType: mt }));
+      } catch (e) {
+        console.log(JSON.stringify({ ok: false, message: e.message }));
+      }
+    " 2>/dev/null)"
+    PROBE_OK="$(printf '%s' "$DRIVE_ROOT_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.ok?'1':'0'); } catch { console.log('?'); }" 2>/dev/null)"
+    PROBE_DRIVE_ID="$(printf '%s' "$DRIVE_ROOT_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.driveId||''); } catch { console.log(''); }" 2>/dev/null)"
+    PROBE_NAME="$(printf '%s' "$DRIVE_ROOT_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.name||''); } catch { console.log(''); }" 2>/dev/null)"
+    PROBE_MSG="$(printf '%s' "$DRIVE_ROOT_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.message||''); } catch { console.log(''); }" 2>/dev/null)"
+    if [ "$PROBE_OK" = "1" ]; then
+      if [ -n "$PROBE_DRIVE_ID" ]; then
+        pass "drive_shared: \"$PROBE_NAME\" lives on Shared Drive ($PROBE_DRIVE_ID)"
+      else
+        fail "drive_shared: \"$PROBE_NAME\" is in My Drive (no driveId) — every artifact write will fail with 'user storage quota exceeded'" "move the folder onto a Shared Drive that the SA is a member of, or set ACE_DRIVE_ROOT_FOLDER_ID to a folder that already lives on one"
+      fi
+    elif [ -n "$PROBE_MSG" ]; then
+      warn "drive_shared: could not probe ACE_DRIVE_ROOT_FOLDER_ID: $PROBE_MSG" "verify the SA has Editor access to the folder; re-inject .env if the ID is stale"
+    fi
+  fi
+
   # Shared collection triple — required by ocs-agent-setup for per-opp bot
   # clones to inherit Connect knowledge. Without these, cloned bots publish
   # with empty RAG and silently answer from base LLM only.

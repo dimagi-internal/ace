@@ -375,6 +375,16 @@ When starting fresh:
       folder" fallback is for the case where the folder legitimately
       doesn't exist, not for missing configuration. (Run `/ace:doctor`;
       a WARN on `drive_root` or `env_drift` points to this.)
+
+      **Shared-Drive precondition.** The configured root MUST live on a
+      Google Shared Drive — Service Accounts have zero My-Drive quota,
+      so a My-Drive-parented root means every artifact write fails with
+      a misleading "user storage quota exceeded" error. As of 0.5.18
+      `drive_create_file` and `drive_create_folder` pre-flight this on
+      every call and reject with a typed message; `/ace:doctor` reports
+      `drive_shared` PASS/FAIL up-front so you see the wall before you
+      hit it. If `/ace:doctor` shows `drive_shared FAIL`, fix that first
+      — re-running `/ace:run` won't get you past idea capture.
    1. `drive_list_folder` on `ACE_DRIVE_ROOT_FOLDER_ID`. Look for a
       sub-folder whose name matches `/PDD/i` or `/Program Design Doc/i`
       (case-insensitive). If none is found, fall through to (d).
