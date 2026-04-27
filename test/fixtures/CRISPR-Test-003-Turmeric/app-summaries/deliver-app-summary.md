@@ -1,3 +1,10 @@
+---
+nova_app_id: DEL-TURMERIC-SYN-0001
+nova_app_url: https://commcare.app/apps/DEL-TURMERIC-SYN-0001
+archetype: atomic-visit
+delivery_unit: one geo-tagged, photo-documented vendor observation plus education-conversation outcome
+---
+
 # Deliver App Summary — Turmeric Market Survey (SYNTHETIC)
 
 **App ID:** DEL-TURMERIC-SYN-0001

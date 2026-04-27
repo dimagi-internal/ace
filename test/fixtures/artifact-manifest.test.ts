@@ -71,12 +71,16 @@ describe('CRISPR-Test-001 fixture', () => {
     // CRISPR-Test-001 provides inputs for ocs-agent-setup, not a complete
     // opportunity folder. These artifacts are intentionally absent:
     // test-prompts.md is consumed by ocs-chatbot-qa (not ocs-agent-setup);
-    // apps + test-results live in Phase 2 and aren't needed for OCS config;
+    // test-results live in Phase 2 and aren't needed for OCS config;
     // gate-briefs/* are produced during gate pauses that this fixture never
     // reached (state.yaml shows every phase as pending, so no skill has run).
+    //
+    // Note: apps/learn-app.json and apps/deliver-app.json were dropped from
+    // this list on 2026-04-27 when ACE migrated CommCare app generation to
+    // the Nova plugin. Those JSON snapshots are now optional — the canonical
+    // handle is `nova_app_id` in the app summaries — so validateFixture no
+    // longer flags them as missing.
     const expectedMissing = [
-      'apps/learn-app.json',
-      'apps/deliver-app.json',
       'test-prompts.md',
       'test-results/test-plan.md',
       'test-results/test-results.md',

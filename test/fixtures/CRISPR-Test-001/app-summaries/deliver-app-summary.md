@@ -1,3 +1,10 @@
+---
+nova_app_id: DEL-TEST001-SYN-0001
+nova_app_url: https://commcare.app/apps/DEL-TEST001-SYN-0001
+archetype: atomic-visit
+delivery_unit: one verified FLW visit to one beneficiary
+---
+
 # Deliver App Summary — CRISPR-Test-001
 
 **App Name:** TestLand MCH Service Delivery

@@ -1,3 +1,9 @@
+---
+nova_app_id: LRN-TEST001-SYN-0001
+nova_app_url: https://commcare.app/apps/LRN-TEST001-SYN-0001
+archetype: atomic-visit
+---
+
 # Learn App Summary — CRISPR-Test-001
 
 **App Name:** TestLand MCH Training
