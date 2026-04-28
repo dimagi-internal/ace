@@ -103,18 +103,49 @@ P3 was originally framed as *"once P1 lands, redo the detach properly."* Investi
 
 ### Backlog state after this addendum
 
-- **P1** — `set_chatbot_system_prompt` partial-save bug: **superseded.** N1 above is the real bug; P1's fix is partially right (transactional atom is good) but the framing was wrong.
+- **P1** — `set_chatbot_system_prompt` partial-save bug: **superseded by N1.**
 - **P2** — `ocs_archive_chatbot` atom: still open.
 - **P3** — re-cleanup golden template: **closed without code** (architectural decision: clones override at clone time).
 - **P4** — re-run Phase 4 dogfood: **closed, hypothesis confirmed (composite 9.1).**
-- **P5** — per-opp collection ingestion ("garbled binary"): **likely closed.** This run's bot has no garbled-binary disclosures across 28 prompts. The original symptom may have been collection-350-specific rather than ingestion-pipeline-wide.
+- **P5** — per-opp collection ingestion ("garbled binary"): **likely closed.** This run's bot has no garbled-binary disclosures across 28 prompts.
 - **P6** — `drive_create_file` mimeType inference: still open.
-- **N1 (new)** — variable rejection edge case. **Top priority.**
-- **N2 (new)** — experiment_id regression. **Top priority.**
-- **N3 (new)** — one transcript factual check needed.
+- **N3** — one transcript factual check needed (shininess scale prompt 21).
 
 ### Closed by this addendum
 
 - The cycle's central question (*does fixing 350 fix source-usage?*) — **yes.**
 - P3, P4, and likely P5 from the original backlog.
 - The 0.5.18 → 0.6.1 → 0.6.4 arc has measurable artifact-quality validation. The improvement loop is real.
+
+---
+
+## Addendum 2 — 2026-04-28 late evening: N1 + N2 fixed in same session
+
+Both new platform bugs surfaced in the validation pass were diagnosed and shipped in the same session:
+
+### N2 — `experiment_id` regression (shipped 0.6.9, PR #63)
+
+Live `/api/experiments/` returns the API URL (`/api/experiments/<uuid>/`), not the human-facing `/a/<team>/chatbots/<int>/` URL the 0.6.1 regex assumed. Unit-test mocks had the wrong shape so the regression slipped through CI. Fix: composite-level enrichment via the `/a/<team>/chatbots/table/` HTMX endpoint — one Playwright scrape per `listChatbots`/`getChatbot`, name-keyed lookup. Validated: 5/5 chatbots on `connect-ace` resolve to integer `experiment_id`.
+
+### N1 — `{collection_index_summaries}` cross-field rule (shipped 0.6.10, PR #64)
+
+Characterized via a 6-case live OCS probe (`scripts/probe-n1-cross-test.ts`). The actual rule:
+
+> `{collection_index_summaries}` required **iff** `collection_index_ids.length >= 2`.
+
+Bidirectional: single/zero collections must NOT include the variable; multiple collections MUST. The 0.6.4 framing ("variable iff non-empty") was wrong — it accepted invalid `1 + variable` states. Fix: `assertCollectionPromptInvariant` shared helper, used by both `attachKnowledge` and `setChatbotPipeline`. SKILL.md step 7 corrected — single-collection per-opp clones (the canonical case) must NOT include the variable, matching exactly what the orchestrator did during the 9.1/10 validation run.
+
+### Final backlog state
+
+- ~~**N1**~~ ✓ closed (0.6.10)
+- ~~**N2**~~ ✓ closed (0.6.9)
+- **N3** — shininess scale factual check (prompt 21, untested)
+- **P2** — `ocs_archive_chatbot` Playwright atom for orphan cleanup
+- **P6** — `drive_create_file` mimeType inference
+
+### Cycle takeaways for the next session
+
+- The full 0.5.18 → 0.6.1 → 0.6.4 → 0.6.9 → 0.6.10 arc shipped within 36 hours, all driven by a single dogfood run + its validation pass. **Real-run > spec-review continues to compound** — every new bug surfaced was invisible before live execution.
+- The OCS variable rule is durable knowledge for any future `attach_knowledge` work. Captured in tool descriptions, the helper docstring, the SKILL.md step 7 explainer, and the live-probe truth-table tests. Any future skill or atom that touches the LLM node's params will read those.
+- Probe scripts (`scripts/probe-n1-*.ts`, `scripts/probe-experiment-id-recovery.ts`, `scripts/probe-table-anchors.ts`, `scripts/probe-composite-list.ts`) are kept under `scripts/` — they document the investigations and remain executable if OCS ever regresses or changes a contract.
+- **Top priority for next cycle:** P2 (`ocs_archive_chatbot`) — the team `connect-ace` is accumulating orphan turmeric bots across iterations and there's no autonomous cleanup path. ~20 lines of Playwright-form scraping. Closes the orphan-debt class entirely.
