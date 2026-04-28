@@ -3,13 +3,18 @@ import { HttpError } from '../errors.js';
 
 /**
  * Extract the integer experiment_id from a chatbot's web URL.
- * URL shape: `https://<host>/a/<team>/chatbots/<experiment_id>/`
- * (or path-only `/a/<team>/chatbots/<experiment_id>/` — both work).
- * Returns `null` if the URL is missing or doesn't match.
+ *
+ * Historical note: 0.6.1 introduced this helper expecting OCS's REST
+ * `/api/experiments/` to return a human-facing `/a/<team>/chatbots/<int>/`
+ * URL in the `url` field. The 2026-04-28 dogfood validation run found the
+ * live API actually returns the API URL `/api/experiments/<uuid>/`, so this
+ * regex returns `null` in production. Kept as a defensive parser in case
+ * OCS ever returns the human URL — composite enrichment via the chatbots
+ * table HTMX endpoint is the canonical experiment_id source as of 0.6.6.
  */
 export function extractExperimentId(url: string | undefined): number | null {
   if (!url) return null;
-  const m = url.match(/\/chatbots\/(\d+)\//);
+  const m = url.match(/\/a\/[^/]+\/chatbots\/(\d+)\//);
   return m ? Number(m[1]) : null;
 }
 

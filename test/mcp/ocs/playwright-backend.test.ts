@@ -9,6 +9,7 @@ import {
   extractPipelineId,
   extractEmbeddedWidgetChannelId,
   extractExperimentIdFromLocation,
+  parseChatbotTable,
 } from '../../../mcp/ocs/backends/playwright.js';
 import type { RequestFn } from '../../../mcp/ocs/backends/pipeline-patch.js';
 
@@ -137,6 +138,51 @@ describe('HTML scrape helpers', () => {
     expect(extractExperimentIdFromLocation('/a/dimagi/chatbots/99/')).toBe(99);
     expect(extractExperimentIdFromLocation('/a/dimagi/chatbots/12345/?foo=bar')).toBe(12345);
     expect(extractExperimentIdFromLocation('/some/other/path')).toBeUndefined();
+  });
+});
+
+// ── parseChatbotTable (N2 fix, 0.6.6) ────────────────────────────────
+
+describe('parseChatbotTable', () => {
+  // The /a/<team>/chatbots/table/ HTMX endpoint renders one <tr> per bot:
+  //   <tr id="record-<int>" data-redirect-url="/a/<team>/chatbots/<int>/">
+  //     <td><div><a href="/a/<team>/chatbots/<int>/" class="...">NAME</a></div></td>
+  //     ...
+  //   </tr>
+  // (Anchored on the real shape captured from connect-ace on 2026-04-28.)
+  const TABLE_HTML = `
+    <table>
+      <tbody>
+        <tr id="record-12003" data-redirect-url="/a/connect-ace/chatbots/12003/">
+          <td><div class="join">
+            <a href="/a/connect-ace/chatbots/12003/" class="btn">
+                ACE - turmeric-dogfood-20260427-v2
+              </a>
+          </div></td>
+        </tr>
+        <tr id="record-11792" data-redirect-url="/a/connect-ace/chatbots/11792/">
+          <td><div class="join">
+            <a href="/a/connect-ace/chatbots/11792/" class="btn">ACE Golden Template</a>
+          </div></td>
+        </tr>
+      </tbody>
+    </table>`;
+
+  it('parses each row into a name → integer experiment_id map', () => {
+    const map = parseChatbotTable(TABLE_HTML);
+    expect(map.get('ACE - turmeric-dogfood-20260427-v2')).toBe(12003);
+    expect(map.get('ACE Golden Template')).toBe(11792);
+    expect(map.size).toBe(2);
+  });
+
+  it('returns an empty map for a body without record rows', () => {
+    const map = parseChatbotTable('<html><body>no rows here</body></html>');
+    expect(map.size).toBe(0);
+  });
+
+  it('trims whitespace from anchor name', () => {
+    const html = `<tr id="record-99"><a href="/a/x/chatbots/99/">  spaced name  </a>`;
+    expect(parseChatbotTable(html).get('spaced name')).toBe(99);
   });
 });
 
