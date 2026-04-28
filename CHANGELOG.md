@@ -5,6 +5,27 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.5 — 2026-04-28
+
+Doc-only patch landing the "all blockers cleared" state for the
+Nova-plugin migration that 0.6.0 introduced. End-to-end Phase 2 was
+smoke-tested on 2026-04-28: `/nova:autobuild` produced both a Learn
+and a Deliver app under the ACE service identity, and
+`/nova:upload_to_hq` round-tripped both to the configured HQ project
+space with zero warnings.
+
+### Changed
+
+- **`playbook/integrations/nova-integration.md`** — `## Status`
+  flipped from "gated on OAuth allowlist fix" to "Live, end-to-end
+  smoke test passed". `## Known blockers` renamed to `## Resolved
+  blockers (kept for record)` and both the Nova-side OAuth allowlist
+  and the Workspace 2FA policy are documented as cleared. New `## ACE
+  service identity for Nova` section captures the convention that
+  ACE binds the Nova MCP plugin to `ACE_GMAIL_ACCOUNT`'s real Google
+  identity (not a service account) so Nova-side state stays in one
+  place across sessions.
+
 ## 0.6.4 — 2026-04-28
 
 Closes the P1 follow-up from the 2026-04-28 run log: the
