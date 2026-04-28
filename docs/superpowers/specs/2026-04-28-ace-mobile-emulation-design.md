@@ -20,10 +20,11 @@ This is not a cross-platform mobile testing framework, a CI gate, a regression s
 
 1. Add an `ace-mobile` MCP server exposing ten atomic capabilities (device, app, test-user, recipe-execution, debug) backed by a single Maestro implementation.
 2. Ship four static reusable Maestro flows (`connect-register-to-otp`, `connect-register-from-otp`, `connect-login`, `connect-claim-opp`) plus an LLM-driven generator that produces per-Learn-module / per-Deliver-form recipes from existing `app-summaries/*.md` artifacts.
-3. Add an `app-screenshot-capture` skill that runs at the start of Phase 5, captures one PNG per recipe step into Drive, and writes a manifest for downstream consumers.
-4. Reuse the `+7426` ConnectID test-prefix and Dimagi SSO OTP scrape as a **one-time bootstrap** (`/ace:mobile-bootstrap`), entirely within ACE — no shared state with `commcare-ios`.
-5. Make every dependency surface introspectable by `/ace:doctor` (Maestro version, AVD presence, Playwright cookies, env-var resolution, APK install state).
-6. Treat the mobile MCP capability map as a stable interface — even though there's only one backend today, the route table exists so a future cloud-device or Appium backend slots in without skill changes.
+3. Add a new **Phase 5 `training-prep` agent** between current Phase 4 (`ocs-setup`) and current Phase 5 (`llo-manager`). The phase contains the new `app-screenshot-capture` skill plus the existing `training-materials` skill (relocated from current Phase 5). It runs end-to-end automated with no LLO contact, restoring the "Phases 1–N agent-only, then LLO contact" invariant. Existing `llo-manager` becomes Phase 6, existing `closeout` becomes Phase 7.
+4. Make the new `training-prep` phase a true synthesis step: it consumes artifacts from **every prior phase** (PDD + test prompts + archetype from Phase 1, app summaries + deployment URLs from Phase 2, opp identifiers + invite URL + payment/delivery details from Phase 3, OCS chatbot embed URL + token from Phase 4) so the screenshots reference the right opp and the training docs include real URLs and context.
+5. Reuse the `+7426` ConnectID test-prefix and Dimagi SSO OTP scrape as a **one-time bootstrap** (`/ace:mobile-bootstrap`), entirely within ACE — no shared state with `commcare-ios`.
+6. Make every dependency surface introspectable by `/ace:doctor` (Maestro version, AVD presence, Playwright cookies, env-var resolution, APK install state).
+7. Treat the mobile MCP capability map as a stable interface — even though there's only one backend today, the route table exists so a future cloud-device or Appium backend slots in without skill changes.
 
 ## Non-goals
 
@@ -73,7 +74,7 @@ Maestro's YAML model matches ACE's idiom (PDD frontmatter, `.env.tpl` config, ge
 
 ### `commcare-ios` is iOS-only — selectors do not transfer
 
-Phase 9 flows reference iOS accessibility IDs (`signup_link`, `phone_number_field`, `country_code_field`). Our target is the **Android** Connect mobile app and CommCare Android client. We rediscover Android-side selectors via `maestro studio` (interactive inspector) when authoring the three static recipes. The flow *structure* in Phase 9 transfers as a reference; the selectors do not.
+Phase 9 flows reference iOS accessibility IDs (`signup_link`, `phone_number_field`, `country_code_field`). Our target is the **Android** Connect mobile app and CommCare Android client. We rediscover Android-side selectors via `maestro studio` (interactive inspector) when authoring the four static recipes. The flow *structure* in Phase 9 transfers as a reference; the selectors do not.
 
 ---
 
@@ -246,7 +247,7 @@ The split is conceptual: `AVD` operations shell to `adb` / `emulator` directly; 
 
 ## Recipe model
 
-### Static recipes (3 files, in `mcp/mobile/recipes/static/`)
+### Static recipes (4 files, in `mcp/mobile/recipes/static/`)
 
 | File | Purpose | Inputs (env-var) |
 |---|---|---|
@@ -341,34 +342,71 @@ Maestro supports `${VAR}` substitution via `-e KEY=VALUE` on the CLI. ACE passes
 
 Idempotent end-to-end. Re-runnable any time something drifts.
 
+### Phase renumbering
+
+ACE's phases shift to make room for the new training-prep phase:
+
+| New # | Phase | Status |
+|---|---|---|
+| 1 | `design-review` | unchanged |
+| 2 | `commcare-setup` | unchanged |
+| 3 | `connect-setup` | unchanged + new "invite ACE test user" final step |
+| 4 | `ocs-setup` | unchanged |
+| **5** | **`training-prep`** | **NEW — owns `app-screenshot-capture` and the relocated `training-materials` skill** |
+| 6 | `llo-manager` | was Phase 5; loses `training-materials` (now upstream); first LLO contact still here |
+| 7 | `closeout` | was Phase 6; otherwise unchanged |
+
+The new agent lives at `agents/training-prep/AGENT.md`, follows the subagent topology rule (no nested `Agent` dispatches), and is invoked from the level-0 orchestrator the same way every other phase agent is. CLAUDE.md's phase-topology table, `/ace:status`, `/ace:eval`, and the orchestrator procedure doc all need touch-ups; the implementation plan sequences these.
+
 ### Per-opp wiring
 
 **Phase 3 (`connect-setup`)**, new step at the end:
-> Invite the ACE test user (`${ACE_E2E_PHONE}`) to the newly-created opportunity using the existing `connect_send_llo_invite` MCP tool. The test user is functionally an LLO from Connect's perspective; ACE flags it internally as `is_ace_test_user=true` for filtering on later analytics.
+> Invite the ACE test user (`${ACE_E2E_PHONE}`) to the newly-created opportunity using the existing `connect_send_llo_invite` MCP tool. The test user is functionally an LLO from Connect's perspective; ACE flags it internally as `is_ace_test_user=true` for filtering on later analytics. Persist the resulting invite URL to `ACE/<opp>/connect-state.yaml` (existing artifact) under a new `ace_test_user_invite_url` field so `training-prep` can drive the claim flow.
 
-**Phase 5 (`llo-manager`)**, new first step before `llo-onboarding`:
+**Phase 5 (`training-prep`)** runs two skills back-to-back, neither requiring LLO contact:
 
 ```
-app-screenshot-capture(opp_name):
-  1. ensure_avd_running()
-  2. install_apk(connect-mobile)            # no-op if cached
-     install_apk(commcare-android)
-  3. generate_recipes_from_app_summary(opp_name, 'learn')
-     generate_recipes_from_app_summary(opp_name, 'deliver')
-  4. run_recipe(static/connect-login.yaml, {PHONE, PIN})
-  5. run_recipe(static/connect-claim-opp.yaml, {OPP_NAME})
-  6. for each generated recipe:
-        run_recipe(<recipe>, {})
-        upload screenshots to ACE/<opp>/screenshots/<recipe>/<step>.png
-  7. write ACE/<opp>/screenshots/manifest.yaml
-       (lists every recipe, every step, every screenshot path, every step label)
+training-prep agent:
+  1. app-screenshot-capture(opp_name):
+       a. read upstream artifacts (see "Upstream input contract" below)
+       b. ensure_avd_running()
+       c. install_apk(connect-mobile)         # no-op if cached
+          install_apk(commcare-android)
+       d. generate_recipes_from_app_summary(opp_name, 'learn')
+          generate_recipes_from_app_summary(opp_name, 'deliver')
+       e. run_recipe(static/connect-login.yaml, {PHONE, PIN})
+       f. run_recipe(static/connect-claim-opp.yaml, {OPP_NAME, INVITE_URL})
+       g. for each generated recipe:
+            run_recipe(<recipe>, {HQ_DOMAIN, ...})
+            upload screenshots to ACE/<opp>/screenshots/<recipe>/<step>.png
+       h. write ACE/<opp>/screenshots/manifest.yaml
+            (lists every recipe, every step, every screenshot path, every step label)
+  2. training-materials(opp_name):
+       reads screenshots/manifest.yaml + every upstream artifact below;
+       writes ACE/<opp>/training-materials/{llo-manager-guide,flw-training-guide,
+       quick-reference,faq}.md.
 ```
 
-Subsequent existing skills (`training-materials`, `llo-onboarding`) consume `screenshots/manifest.yaml` directly. `training-materials` gets the upgrade naturally — its existing prompt already references screenshots; today they don't exist, tomorrow they do.
+### Upstream input contract for `training-prep`
+
+The new phase is a synthesis step. It reads from every prior phase, not just Phase 2:
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 `design-review` | `ACE/<opp>/pdd.md` | overall context, opp goals, archetype |
+| Phase 1 | `ACE/<opp>/test-prompts.md` | seed FAQs in training docs |
+| Phase 1 | PDD `Archetype:` field | branching for atomic-visit / focus-group / multi-stage training docs |
+| Phase 2 `commcare-setup` | `ACE/<opp>/app-summaries/learn-app-summary.md` | recipe generation; module/form names in docs |
+| Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | recipe generation; module/form names in docs |
+| Phase 2 | `ACE/<opp>/deployment-summary.md` | HQ domain + app version embedded in `connect-claim-opp.yaml` and quoted in docs |
+| Phase 3 `connect-setup` | `ACE/<opp>/connect-state.yaml` (`opportunity_name`, `opportunity_id`, `payment_units`, `delivery_types`, `ace_test_user_invite_url`) | drives `connect-claim-opp` recipe; payment + verification details in LLO Manager Guide |
+| Phase 4 `ocs-setup` | `ACE/<opp>/ocs-state.yaml` (`chatbot_widget_url`, `chatbot_embed_token`) | "where to ask questions" link embedded in FLW Training Guide and Quick Reference |
+
+If any of these inputs are missing, `training-prep` exits with a structured error pointing at the upstream phase. This makes the dependency tree explicit and `/ace:status` can render a clear "blocked on phase N" message.
 
 ### Failure isolation
 
-If `app-screenshot-capture` fails (AVD wouldn't boot, login broke, recipe generation produced invalid YAML), Phase 5 halts before any LLO contact. The skill emits a structured verdict (`verdicts/app-screenshot-capture.yaml`) so `opp-eval` rolls it up. **No real LLO ever sees an opp where screenshots failed silently.**
+If `training-prep` fails (AVD wouldn't boot, login broke, recipe generation produced invalid YAML, missing upstream artifact), Phase 6 halts before any LLO contact. The phase emits structured verdicts (`verdicts/app-screenshot-capture.yaml` and `verdicts/training-materials.yaml`) so `opp-eval` rolls them up. **No real LLO ever sees an opp where training prep failed silently.**
 
 ---
 
@@ -477,7 +515,9 @@ A separate implementation plan (`docs/superpowers/plans/2026-04-28-ace-mobile-em
 4. Static recipe authoring against the Connect Android app (using `maestro studio` interactively).
 5. `register_test_user` composite, `/ace:mobile-bootstrap` slash command.
 6. Recipe generator + LLM prompt + validation.
-7. `app-screenshot-capture` skill, Phase 5 wiring.
-8. Phase 3 wiring — invite ACE test user during `connect-setup`.
-9. `/ace:setup` and `/ace:doctor` updates.
-10. Tests (unit, integration, recipe-gen evals).
+7. `app-screenshot-capture` skill.
+8. New `training-prep` phase agent at `agents/training-prep/AGENT.md`; relocate `training-materials` skill into it; teach `training-materials` to consume the new upstream artifacts (screenshots manifest + chatbot URL + invite URL + payment details).
+9. Renumber `llo-manager` → Phase 6, `closeout` → Phase 7. Update CLAUDE.md phase-topology table, `agents/ace-orchestrator/`, `commands/{run,step,status,eval}.md`, and the orchestrator procedure doc accordingly.
+10. Phase 3 wiring — invite ACE test user during `connect-setup`; persist invite URL to `connect-state.yaml`.
+11. `/ace:setup` and `/ace:doctor` updates.
+12. Tests (unit, integration, recipe-gen evals).
