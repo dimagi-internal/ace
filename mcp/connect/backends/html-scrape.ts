@@ -132,6 +132,43 @@ export function parseInvitesList(html: string, opportunityIdOrProgramId: string)
   return out;
 }
 
+/**
+ * Extract the prefilled values of every named field in a Django form. Handles
+ * <input value="..."> (any attribute order), <textarea>...</textarea>, and
+ * <select> with a `selected` <option>. Skips inputs without a name.
+ *
+ * Returns a flat name→value map. For multi-value fields (checkboxes, multi-
+ * select) the last value wins; we don't have any of those today so it doesn't
+ * matter.
+ */
+export function extractFormFieldValues(html: string): Record<string, string> {
+  const out: Record<string, string> = {};
+
+  // <input> — name and value can appear in either order
+  for (const m of html.matchAll(/<input\b([^>]*)>/g)) {
+    const attrs = m[1];
+    const name = attrs.match(/\bname="([^"]+)"/)?.[1];
+    const value = attrs.match(/\bvalue="([^"]*)"/)?.[1] ?? '';
+    if (name) out[name] = value;
+  }
+
+  // <textarea>...content...</textarea>
+  for (const m of html.matchAll(/<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/g)) {
+    const name = m[1].match(/\bname="([^"]+)"/)?.[1];
+    if (name) out[name] = m[2].trim();
+  }
+
+  // <select>: find its name and the value of its `selected` <option>
+  for (const m of html.matchAll(/<select\b([^>]*)>([\s\S]*?)<\/select>/g)) {
+    const name = m[1].match(/\bname="([^"]+)"/)?.[1];
+    if (!name) continue;
+    const sel = m[2].match(/<option\s+value="([^"]*)"[^>]*\sselected\b/);
+    out[name] = sel?.[1] ?? '';
+  }
+
+  return out;
+}
+
 /** Parse a Django form errorlist into [..., ...]. Returns [] if no errors. */
 export function parseFormErrors(html: string): string[] {
   const out: string[] = [];
