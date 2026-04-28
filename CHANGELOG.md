@@ -5,6 +5,60 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.1 — 2026-04-27
+
+Closes two OCS contract bugs surfaced during the same dogfood run that
+shipped 0.5.18. The first run reached the `ocs-chatbot-eval-deep` gate
+with a composite of 6.5/10 (Source-Usage 1/10, RAG functionally broken)
+*and* surfaced two MCP contract issues that would have blocked any
+self-improve loop trying to autonomously re-attempt setup.
+
+### Fixed
+
+- **`ocs_list_chatbots` and `ocs_get_chatbot` now return the integer
+  `experiment_id` alongside the UUID `id`.** OCS's REST serializer
+  exposes `id` as the UUID public_id, but every authoring atom
+  (`ocs_set_chatbot_system_prompt`, `ocs_attach_knowledge`,
+  `ocs_publish_chatbot_version`, …) requires the integer experiment_id.
+  The skill's idempotency contract — "if a bot for this opp already
+  exists, reconfigure it instead of cloning a duplicate" — was
+  unachievable in practice because the int id wasn't reachable from the
+  list response. The new field is parsed from the human-facing `url`
+  field (`/a/<team>/chatbots/<experiment_id>/`). Closes the orphan-
+  re-clone footgun the previous run hit when resuming after an
+  interrupted clone.
+
+- **`ocs_attach_knowledge` pre-flights that the bot's current system
+  prompt contains the `{collection_index_summaries}` template
+  variable.** When the prompt is missing this token, OCS's
+  pipeline-save endpoint silently rejects the patch and every
+  downstream `publish_chatbot_version` is then blocked with an opaque
+  UI message — same Iter 6 silent-failure class as the 2026-04-19
+  phantom-collection bug fixed in 0.5.1. The MCP now fails fast with a
+  typed `PipelineValidationError` naming the missing token and the
+  remediation (call `ocs_set_chatbot_system_prompt` with a prompt that
+  embeds it). Detach paths (`collection_index_ids: []`) skip the check,
+  so cleanup operations remain unblocked.
+
+### Changed
+
+- **`skills/ocs-agent-setup/SKILL.md`** — Step 2 (idempotency) now
+  reads the integer `experiment_id` directly from `ocs_list_chatbots`
+  results. Step 7 (system-prompt composition) explicitly requires the
+  `{collection_index_summaries}` template variable in the new prompt
+  and explains why.
+
+### Notes for next run
+
+The 6.5/10 deep-eval composite from the 2026-04-27 dogfood was held
+down by a *live* configuration bug (`OCS_SHARED_COLLECTION_ID=350`
+points at a wrong-domain NM Bot collection that leaks immunization
+content into every cloned ACE bot) — that's an env / vault fix, not a
+code fix. Track + fix in a follow-up; this PR's scope is the contract
+hygiene. The orphan turmeric chatbot from the previous run remains
+reachable on OCS (no `ocs_delete_chatbot` / `ocs_archive_chatbot` atom
+yet — also follow-up).
+
 ## 0.6.0 — 2026-04-27
 
 Migrates Phase 2 (CommCare Setup) off the manual Nova-UI / HQ-UI

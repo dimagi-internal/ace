@@ -91,6 +91,28 @@ export async function patchLlmNodeParams(
 }
 
 /**
+ * Read-only fetch of the LLM-response node's current params. Used by atoms
+ * that need to validate state BEFORE patching (e.g. attach_knowledge needs
+ * to verify the prompt contains `{collection_index_summaries}` or the pipeline
+ * save will silently reject — the 0.5.19 dogfood-surfaced footgun).
+ *
+ * Returns the params object plus the name (for parity with patch errors).
+ */
+export async function getLlmNodeParams(
+  ctx: PipelinePatchContext,
+  pipelineId: number,
+): Promise<{ params: LlmNodeParams; pipelineName: string }> {
+  const url = `/a/${ctx.teamSlug}/pipelines/data/${pipelineId}/`;
+  const getRes = await ctx.request('GET', url);
+  if (!getRes.ok) {
+    throw new Error(`pipeline data GET failed for pipeline ${pipelineId}`);
+  }
+  const payload = (await getRes.json()) as PipelineDataResponse;
+  const node = findLlmResponseNode(payload.pipeline.data);
+  return { params: node.data.params, pipelineName: payload.pipeline.name };
+}
+
+/**
  * Round-trip the current pipeline through the save endpoint to surface any
  * node-level validation errors without modifying the graph. Used as a
  * pre-flight before `publishChatbotVersion` — catches the silent-block class

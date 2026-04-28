@@ -17,7 +17,7 @@
             "type": "LLMResponseWithPrompt",
             "label": "answerer",
             "params": {
-              "prompt": "You are a helpful assistant.",
+              "prompt": "You are a helpful assistant.\n\n{collection_index_summaries}",
               "source_material_id": null,
               "collection_id": null,
               "collection_index_ids": [],
