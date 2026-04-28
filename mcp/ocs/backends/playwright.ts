@@ -77,6 +77,32 @@ export function extractExperimentIdFromLocation(location: string): number | unde
 }
 
 /**
+ * Parse the HTMX-rendered `/a/<team>/chatbots/table/` HTML into a
+ * `name → experiment_id` map. Each row in the live OCS response has the
+ * shape:
+ *   `<tr id="record-<int>" data-redirect-url="/a/<team>/chatbots/<int>/">
+ *      ... <a href="/a/<team>/chatbots/<int>/" ...>NAME</a> ... </tr>`
+ * The `id` attribute is the cheapest reliable signal for the integer; the
+ * inner anchor body (trimmed of whitespace) is the canonical chatbot name.
+ *
+ * Returns an empty map on a malformed or unexpected page. Bots with
+ * duplicate names map to whichever row appeared last; OCS treats name as
+ * effectively unique per team.
+ */
+export function parseChatbotTable(html: string): Map<string, number> {
+  const map = new Map<string, number>();
+  // Anchor on `id="record-<int>"` then find the first `<a ...>NAME</a>` after
+  // it. `[\s\S]*?` is lazy across newlines so we stop at the first anchor.
+  const rowRegex = /id="record-(\d+)"[\s\S]*?<a [^>]*>([\s\S]*?)<\/a>/g;
+  for (const m of html.matchAll(rowRegex)) {
+    const id = Number(m[1]);
+    const name = m[2].trim();
+    if (name && Number.isFinite(id)) map.set(name, id);
+  }
+  return map;
+}
+
+/**
  * Build a 302-response error with context for debugging.
  */
 async function httpErrorFor(res: RequestResult, path: string): Promise<HttpError> {
@@ -129,6 +155,37 @@ export class PlaywrightBackend {
    * The result is cached so subsequent pipeline-patch atoms on the same experiment
    * don't re-scrape. Populated eagerly by cloneChatbot.
    */
+  /**
+   * Scrape the team's chatbots-table HTMX endpoint for a `name → experiment_id`
+   * map. Used to recover the integer experiment_id for bots returned by REST
+   * `listChatbots` / `getChatbot`, which only carry the UUID public_id and an
+   * API-shaped `url` (not the `/a/<team>/chatbots/<int>/` URL the 0.6.1
+   * URL-regex parser assumed). Surfaced 2026-04-28 as N2 in the run log
+   * addendum: live OCS responses don't match the unit-test mock shape.
+   *
+   * Endpoint: `/a/<team>/chatbots/table/` returns server-rendered rows of
+   *   `<tr id="record-<int>" data-redirect-url="/a/<team>/chatbots/<int>/">
+   *      <td>...<a ...>NAME</a>...</td>...
+   *    </tr>`
+   * The map is keyed by name because OCS bots are unique by name within a team
+   * (and that's the field skill code uses to look up "is there a bot for this
+   * opp already?").
+   *
+   * Single-call cost is one ~30KB authenticated GET; results are returned
+   * eagerly without caching since this map is consumed per-listChatbots call
+   * and we'd rather see fresh state than stale.
+   */
+  async fetchExperimentIdsByName(): Promise<Map<string, number>> {
+    const path = `/a/${this.opts.teamSlug}/chatbots/table/`;
+    const res = await this.opts.request('GET', path);
+    if (!res.ok) throw await httpErrorFor(res, path);
+    if (!res.text) {
+      throw new Error('RequestResult.text is required for fetchExperimentIdsByName');
+    }
+    const html = await res.text();
+    return parseChatbotTable(html);
+  }
+
   async pipelineIdFor(experimentId: number): Promise<number> {
     const cached = this.pipelineCache.get(experimentId);
     if (cached !== undefined) return cached;

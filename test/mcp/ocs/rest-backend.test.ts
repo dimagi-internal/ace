@@ -38,12 +38,21 @@ describe('RestBackend.verify', () => {
 });
 
 describe('extractExperimentId', () => {
-  it('parses experiment_id from full URL', () => {
+  it('parses experiment_id from full human URL', () => {
     expect(extractExperimentId('https://www.openchatstudio.com/a/connect-ace/chatbots/11996/'))
       .toBe(11996);
   });
-  it('parses experiment_id from path-only URL', () => {
+  it('parses experiment_id from path-only human URL', () => {
     expect(extractExperimentId('/a/connect-ace/chatbots/42/')).toBe(42);
+  });
+  it('returns null for the API URL shape (this is what live OCS actually returns; 0.6.6 N2 fix)', () => {
+    // Live OCS /api/experiments/ returns `url` as the API URL, NOT the human URL.
+    // This is the regression caught in the 2026-04-28 turmeric-dogfood addendum:
+    // we used to assume `/a/<team>/chatbots/<int>/` but the live shape is
+    // `/api/experiments/<uuid>/`. The composite backend now enriches via a
+    // Playwright HTMX scrape; this regex parser is the fallback path.
+    expect(extractExperimentId('https://www.openchatstudio.com/api/experiments/5e946111-357e-4748-97b9-1fadacfa7122/'))
+      .toBeNull();
   });
   it('returns null for undefined / empty / non-matching URLs', () => {
     expect(extractExperimentId(undefined)).toBeNull();
@@ -53,27 +62,45 @@ describe('extractExperimentId', () => {
 });
 
 describe('RestBackend chatbot atoms', () => {
-  it('listChatbots returns both UUID id and integer experiment_id parsed from url', async () => {
-    // OCS /api/experiments/ returns `id` as the UUID public_id, not the integer db id.
-    // See apps/api/views/experiments.py:36 (lookup_field = "public_id").
-    // The integer experiment_id is recoverable from the `url` field — every authoring
-    // atom needs it (closes the idempotency gap surfaced in the 0.5.18 dogfood run).
+  it('listChatbots returns experiment_id: null on the live API-URL shape (composite enriches separately)', async () => {
+    // The 2026-04-28 N2 fix (0.6.6): live OCS returns `url` as the API URL,
+    // not the human URL. The REST-level regex parser correctly returns null
+    // for this shape; the composite backend enriches via a Playwright scrape.
     mockAgent.get(BASE)
       .intercept({ path: '/api/experiments/?cursor=abc&page_size=25', method: 'GET' })
       .reply(200, {
         results: [{
-          id: '00000000-0000-4000-8000-000000000001',
-          name: 'bot',
-          url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/11996/',
+          id: '5e946111-357e-4748-97b9-1fadacfa7122',
+          name: 'ACE - turmeric',
+          url: 'https://www.openchatstudio.com/api/experiments/5e946111-357e-4748-97b9-1fadacfa7122/',
         }],
         next: 'xyz',
       });
 
     const b = new RestBackend({ baseUrl: BASE, token: 't' });
     const out = await b.listChatbots({ cursor: 'abc', page_size: 25 });
-    expect(out.chatbots[0].id).toBe('00000000-0000-4000-8000-000000000001');
-    expect(out.chatbots[0].experiment_id).toBe(11996);
+    expect(out.chatbots[0].id).toBe('5e946111-357e-4748-97b9-1fadacfa7122');
+    expect(out.chatbots[0].experiment_id).toBeNull();
     expect(out.next_cursor).toBe('xyz');
+  });
+
+  it('listChatbots still parses experiment_id from the legacy human-URL shape if OCS ever returns it', async () => {
+    // Defensive: keep the parser for the case where OCS changes back or some
+    // future endpoint returns the human URL.
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/experiments/?page_size=50', method: 'GET' })
+      .reply(200, {
+        results: [{
+          id: 'uuid-1',
+          name: 'bot',
+          url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/11996/',
+        }],
+        next: null,
+      });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const out = await b.listChatbots();
+    expect(out.chatbots[0].experiment_id).toBe(11996);
   });
 
   it('listChatbots returns experiment_id: null when url is missing', async () => {
@@ -89,20 +116,20 @@ describe('RestBackend chatbot atoms', () => {
     expect(out.chatbots[0].experiment_id).toBeNull();
   });
 
-  it('getChatbot uses the UUID public_id as the path parameter and returns experiment_id', async () => {
+  it('getChatbot uses the UUID public_id as the path parameter; returns experiment_id null on API URL', async () => {
     mockAgent.get(BASE)
       .intercept({ path: '/api/experiments/uuid-42/', method: 'GET' })
       .reply(200, {
         id: 'uuid-42',
         name: 'bot',
-        url: '/a/connect-ace/chatbots/9001/',  // path-only also works
+        url: '/api/experiments/uuid-42/',  // live API shape
       });
 
     const b = new RestBackend({ baseUrl: BASE, token: 't' });
     const exp = await b.getChatbot({ public_id: 'uuid-42' });
     expect(exp.name).toBe('bot');
     expect(exp.id).toBe('uuid-42');
-    expect(exp.experiment_id).toBe(9001);
+    expect(exp.experiment_id).toBeNull();
   });
 
   it('sendTestMessage uses the widget chat API (start → send → poll)', async () => {

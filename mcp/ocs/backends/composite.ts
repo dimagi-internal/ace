@@ -35,8 +35,52 @@ export class CompositeBackend implements OcsClient {
 
   // ── Observation (REST today) ─────────────────────────────────────
 
-  listChatbots = (a: Parameters<OcsClient['listChatbots']>[0] = {}) => this.opts.rest.listChatbots(a);
-  getChatbot = (a: Parameters<OcsClient['getChatbot']>[0]) => this.opts.rest.getChatbot(a);
+  /**
+   * REST list + Playwright enrichment for `experiment_id`.
+   *
+   * Live OCS's REST `/api/experiments/` returns `url` as the API URL
+   * `/api/experiments/<uuid>/`, NOT the human-facing
+   * `/a/<team>/chatbots/<int>/`. The 0.6.1 URL-regex parser therefore
+   * always returns null in production. As of 0.6.6, when the parser
+   * returns null, we enrich each result by scraping the team's chatbots
+   * table (HTMX endpoint) for the `name → integer` map, then matching by
+   * name. One Playwright call per listChatbots; if it fails (e.g. session
+   * expired), every result still has `experiment_id: null` and the caller
+   * is responsible for surfacing the gap.
+   */
+  listChatbots = async (a: Parameters<OcsClient['listChatbots']>[0] = {}) => {
+    const out = await this.opts.rest.listChatbots(a);
+    if (out.chatbots.every((c) => c.experiment_id != null)) return out;
+    const idsByName = await this.fetchExperimentIdMapSilently();
+    return {
+      ...out,
+      chatbots: out.chatbots.map((c) =>
+        c.experiment_id == null && idsByName.has(c.name)
+          ? { ...c, experiment_id: idsByName.get(c.name)! }
+          : c,
+      ),
+    };
+  };
+
+  getChatbot = async (a: Parameters<OcsClient['getChatbot']>[0]) => {
+    const out = await this.opts.rest.getChatbot(a);
+    if (out.experiment_id != null) return out;
+    const idsByName = await this.fetchExperimentIdMapSilently();
+    const id = idsByName.get(out.name);
+    return id != null ? { ...out, experiment_id: id } : out;
+  };
+
+  /** Try the HTMX scrape, swallow auth/network errors so list/get still
+   * returns something usable. The trade-off: a silent miss leaves
+   * experiment_id null (same as the regression we're fixing) but doesn't
+   * break the list call entirely. */
+  private async fetchExperimentIdMapSilently(): Promise<Map<string, number>> {
+    try {
+      return await this.opts.playwright.fetchExperimentIdsByName();
+    } catch {
+      return new Map();
+    }
+  }
   listSessions = (a: Parameters<OcsClient['listSessions']>[0]) => this.opts.rest.listSessions(a);
   getSession = (a: Parameters<OcsClient['getSession']>[0]) => this.opts.rest.getSession(a);
   endSession = (a: Parameters<OcsClient['endSession']>[0]) => this.opts.rest.endSession(a);

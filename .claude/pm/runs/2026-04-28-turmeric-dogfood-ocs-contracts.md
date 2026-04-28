@@ -70,3 +70,51 @@ Prioritized; P1 is the unblocker for the entire next cycle.
 - Three orphan turmeric bots are sitting on team `connect-ace` (UUIDs `20f7fe39-…`, `ce90d4db-…`, plus exps 12000 and 12003). Reachable via widget API, not load-bearing for production but cluttering. P2 (archive atom) closes this for future cycles; manual cleanup of these specific orphans is one OCS-UI session if desired.
 - The opp-specific Drive folder `ACE/turmeric-dogfood-20260427/` has a real PDD, real test prompts, real verdicts, real gate briefs, and a comms-log. It is ready for a Phase 5 dispatch the moment we choose to put it in front of LLOs. Don't delete it.
 - `comms-log/observations.md` in the opp folder is the **per-opp evidence log**; this run log is the **cross-opp strategy log**. The first sources the second. When jumping into the next cycle, read this run log first, then drill into observations.md for specific reproducers.
+
+---
+
+## Addendum — 2026-04-28 evening: validation pass after P1 ships
+
+Same-day continuation. After 0.6.4 shipped (`ocs_set_chatbot_pipeline` transactional atom — P1 from above), we re-ran Phase 4 turmeric to test the headline question P4 was asking: *did the wrong-domain shared collection 350 explain the 1/10 source-usage score?*
+
+### Result: hypothesis confirmed
+
+| dimension | first run (post-0.6.1) | re-run (post-0.6.4) | Δ |
+|---|---|---|---|
+| composite | 6.5 | **9.1** | **+2.6** |
+| correctness | 9 | 9.8 | +0.8 |
+| source-usage | **1** | **8.0** | **+7.0** |
+| tone | 9 | 9.2 | +0.2 |
+| tagging | 7 | 9.5 | +2.5 |
+
+Bot 12003 was reconfigured via `ocs_set_chatbot_pipeline({prompt: <opp-specific>, collection_index_ids: [365]})` — opp-specific prompt + per-opp collection only, **no `OCS_SHARED_COLLECTION_ID=350`**. Across all 28 deep-eval prompts: zero wrong-domain leakage (no CLP persona, no $5/service, no 100-services), 10/11 expected tags applied correctly, 3/3 escalations used the canonical phrase. The orchestrator's prediction at the end of run #1 (*"detach 350 → source_usage jumps from 1 to ≥7"*) was within 1 point of the actual delta.
+
+### P3 conclusion: skip the golden-template detach
+
+P3 was originally framed as *"once P1 lands, redo the detach properly."* Investigation in this pass showed it's a no-op: any detach attempt against the golden template hits the cross-field invariant (`{collection_index_summaries}` + empty collections is rejected). Architecturally cleaner: the golden template stays on `[350] + variable` as a working baseline; per-opp clones override at clone time via the new transactional atom. **P3 is closed without code changes** — the SKILL doc update in 0.6.4 step 8 is sufficient.
+
+### Two new platform bugs surfaced (next cycle's #1 and #2)
+
+**N1 — `{collection_index_summaries}` rejection still fires with non-empty collections in the same save.** The 0.6.4 transactional atom assumed the OCS rejection was about the *intermediate* state (variable + empty collections between two focused atom saves). The validation run proved otherwise: `set_chatbot_pipeline({prompt: <has variable>, collection_index_ids: [365]})` — both fields set, both non-empty, in one save — **still rejected**. Workaround that worked: drop the variable from the prompt, keep `collection_index_ids: [365]`. RAG still functions because the collection binding is set; the prompt just doesn't auto-inject summary text. **Implication:** P1's framing of the bug ("intermediate-state cross-field violation") was wrong. The actual server-side rule is stricter than our pre-flight models — possibly the variable requires a *previously-published* collection state, not just a same-save state. Needs OCS-side investigation. The 0.6.4 atom is still useful (it bundles two changes into one save, eliminating ordering issues for non-variable cases) but the pre-flight needs revising or removal.
+
+**N2 — `experiment_id` regression in `ocs_get_chatbot` / `ocs_list_chatbots`.** Orchestrator reports both atoms returned `experiment_id: null` in the validation run despite 0.6.1's fix and 137 unit tests. Run only proceeded because the cached `experiment_id 12003` from earlier in the session was reused. **Severity high for fresh-session resume** — without `experiment_id`, every authoring atom is unreachable, and the SKILL's idempotency contract collapses again. Most likely cause: live OCS response shape diverges from the unit-test mock in a way the URL-extraction regex doesn't handle. Probe needed against the live API. Could also be a 0.6.4 side-effect (though the file diff shows no touches to listChatbots/getChatbot). **This is the next cycle's #1** — until it's fixed, the dogfood loop is not actually self-healing.
+
+**N3 — One factual concern in the eval transcript.** Prompt 21 elaborated a 4-level shininess scale (matte / slight sheen / shiny / very shiny) and a "Module 4 calibration exercise" not in the PDD. Either accurate detail from the `learn-app-summary` in collection 365 (legit) or hallucination. Worth one verification pass before any LLO sees the bot live. Tracked in `comms-log/observations.md`.
+
+### Backlog state after this addendum
+
+- **P1** — `set_chatbot_system_prompt` partial-save bug: **superseded.** N1 above is the real bug; P1's fix is partially right (transactional atom is good) but the framing was wrong.
+- **P2** — `ocs_archive_chatbot` atom: still open.
+- **P3** — re-cleanup golden template: **closed without code** (architectural decision: clones override at clone time).
+- **P4** — re-run Phase 4 dogfood: **closed, hypothesis confirmed (composite 9.1).**
+- **P5** — per-opp collection ingestion ("garbled binary"): **likely closed.** This run's bot has no garbled-binary disclosures across 28 prompts. The original symptom may have been collection-350-specific rather than ingestion-pipeline-wide.
+- **P6** — `drive_create_file` mimeType inference: still open.
+- **N1 (new)** — variable rejection edge case. **Top priority.**
+- **N2 (new)** — experiment_id regression. **Top priority.**
+- **N3 (new)** — one transcript factual check needed.
+
+### Closed by this addendum
+
+- The cycle's central question (*does fixing 350 fix source-usage?*) — **yes.**
+- P3, P4, and likely P5 from the original backlog.
+- The 0.5.18 → 0.6.1 → 0.6.4 arc has measurable artifact-quality validation. The improvement loop is real.

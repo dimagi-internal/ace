@@ -5,6 +5,55 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.9 — 2026-04-28
+
+Closes N2 from the 2026-04-28 turmeric-dogfood addendum: `experiment_id`
+returned `null` from `ocs_list_chatbots` and `ocs_get_chatbot` against
+live OCS, even though 0.6.1 shipped a fix and 137 unit tests passed.
+
+### Root cause
+
+The 0.6.1 URL-regex parser assumed `/api/experiments/` returned each
+result's human-facing chatbot URL (`/a/<team>/chatbots/<int>/`). The
+live API actually returns the API URL (`/api/experiments/<uuid>/`).
+Confirmed via probe in `scripts/probe-list-chatbots-shape.ts`. The unit
+test fixtures had the wrong shape, so the regression slipped through CI.
+
+### Fixed
+
+- **Composite enrichment for `experiment_id`.** When the REST-level URL
+  regex returns `null` (which is now always against live OCS),
+  `CompositeBackend.listChatbots` and `getChatbot` enrich each result by
+  scraping the team's `/a/<team>/chatbots/table/` HTMX endpoint for a
+  `name → integer` map and matching by name. One Playwright call per
+  list/get; if the scrape fails (auth expired etc.), `experiment_id`
+  stays `null` rather than failing the whole call.
+- **`parseChatbotTable` helper** (in `playwright.ts`) — anchors on
+  `id="record-<int>"` plus the first `<a>NAME</a>` after it. Captured
+  from the real connect-ace table HTML on 2026-04-28.
+- **`extractExperimentId` regex tightened** to `/a/<team>/chatbots/<int>/`
+  shape only — so the API URL `/api/experiments/<uuid>/` correctly
+  returns `null` and triggers the composite enrichment fallback.
+
+### Validated
+
+End-to-end probe against live OCS (`scripts/probe-composite-list.ts`):
+5/5 chatbots in the connect-ace team resolve to integer `experiment_id`
+through the composite enrichment path. Bots with duplicate names map to
+whichever row appeared last; the SKILL flow produces unique names per
+opp so this isn't load-bearing.
+
+### Notes
+
+- N1 (variable-rejection edge case where OCS rejects pipeline-save when
+  prompt has `{collection_index_summaries}` even with non-empty
+  collections in the same save) is **not** fixed in this PR. The 0.6.4
+  pre-flight model of the bug ("intermediate-state cross-field
+  violation") was wrong; the actual server-side rule is stricter and
+  needs OCS-side investigation. Workaround documented in
+  `comms-log/observations.md`: drop the variable from the prompt; RAG
+  still works via the collection binding.
+
 ## 0.6.8 — 2026-04-28
 
 `/ace:doctor` now detects when the Nova or connect-labs sibling plugins
