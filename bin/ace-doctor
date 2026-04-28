@@ -515,10 +515,42 @@ if [ -n "$ENV_FILE" ]; then
     # No team slug — can't check for a session file. Already warned on ocs_env.
     :
   fi
+
+  # ── Connect (ace-connect MCP) ───────────────────────────────────────
+  CONNECT_BASE="$(get_env CONNECT_BASE_URL)"
+  HQ_USER="$(get_env ACE_HQ_USERNAME)"
+  HQ_PASS="$(get_env ACE_HQ_PASSWORD)"
+
+  if [ -n "$CONNECT_BASE" ] && [ -n "$HQ_USER" ] && [ -n "$HQ_PASS" ]; then
+    pass "connect_env: base=$CONNECT_BASE hq_user=$HQ_USER hq_password=<set>"
+  else
+    cm=""
+    [ -z "$CONNECT_BASE" ] && cm="$cm CONNECT_BASE_URL"
+    [ -z "$HQ_USER" ] && cm="$cm ACE_HQ_USERNAME"
+    [ -z "$HQ_PASS" ] && cm="$cm ACE_HQ_PASSWORD"
+    warn "connect_env: missing or unresolved:$cm" "re-inject .env via op inject (vars added in 0.8.0)"
+  fi
+
+  # Connect session file. Created by /ace:connect-login OR refreshed silently
+  # by hq-oauth-login.ts when ACE_HQ_USERNAME/PASSWORD are set in .env.
+  CONNECT_SESS="$HOME/.ace/connect-session.json"
+  if [ -f "$CONNECT_SESS" ]; then
+    AGE_S="$(($(date +%s) - $(stat -f %m "$CONNECT_SESS" 2>/dev/null || stat -c %Y "$CONNECT_SESS" 2>/dev/null || echo 0)))"
+    AGE_H="$((AGE_S / 3600))"
+    if [ "$AGE_H" -lt 24 ]; then
+      pass "connect_session: $CONNECT_SESS (age ${AGE_H}h)"
+    else
+      warn "connect_session: $CONNECT_SESS is ${AGE_H}h old — may be stale" "automated re-login will run on first MCP call if HQ creds are set; otherwise /ace:connect-login"
+    fi
+  elif [ -n "$HQ_USER" ] && [ -n "$HQ_PASS" ]; then
+    pass "connect_session: not present (will auto-login from .env on first call)"
+  else
+    warn "connect_session: $CONNECT_SESS missing and no HQ creds in .env" "/ace:connect-login OR set ACE_HQ_USERNAME/PASSWORD"
+  fi
 else
   # No .env at all — individual env-derived checks would all warn the same way.
   # Emit one consolidated pointer instead of three duplicates.
-  warn "runtime_env: ocs_env, gmail_config, ocs_session all skipped (no .env)" "resolve env_file warning above first"
+  warn "runtime_env: ocs_env, gmail_config, ocs_session, connect_env all skipped (no .env)" "resolve env_file warning above first"
 fi
 
 echo ""
