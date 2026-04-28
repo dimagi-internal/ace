@@ -5,6 +5,20 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.11 — 2026-04-28
+
+Docs only. Closes out the 2026-04-27 turmeric-dogfood cycle by recording
+its full arc — including the same-day fixes shipped 0.6.4 → 0.6.9 → 0.6.10
+— in the cross-opp run log.
+
+### Changed
+
+- **`.claude/pm/runs/2026-04-28-turmeric-dogfood-ocs-contracts.md`**
+  gains an "Addendum 2" section documenting the N1 (PR #64) and N2
+  (PR #63) fixes that landed on the same day as the validation pass that
+  surfaced them. Records the 6-case OCS variable truth table and the
+  cycle-closing backlog state (P2 + P6 + N3 remain open).
+
 ## 0.6.10 — 2026-04-28
 
 Closes **N1** from the 2026-04-28 turmeric-dogfood addendum: the
