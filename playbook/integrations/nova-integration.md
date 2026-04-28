@@ -2,12 +2,14 @@
 
 ## Status
 
-**Live (via the Nova Claude Code plugin) — gated on a Google OAuth allowlist fix.**
+**Live (via the Nova Claude Code plugin). End-to-end smoke test passed
+on 2026-04-28.**
 
 Braxton (voidcraft-labs) shipped Nova as a Claude Code plugin on
 2026-04-26. ACE consumes it as a sibling plugin: install once per
 machine, sign in once via OAuth, and ACE invokes Nova through its
-slash commands.
+slash commands. Both `/nova:autobuild` and `/nova:upload_to_hq` round-
+trip cleanly under the ACE service identity.
 
 Install:
 
@@ -20,16 +22,35 @@ Install:
 The Nova MCP server is bundled with the plugin; ACE doesn't run a
 Nova MCP itself.
 
-## Known blockers
+## Resolved blockers (kept for record)
 
-- **OAuth allowlist on Nova's side (2026-04-27).** Signing into
-  `https://commcare.app/` as the ACE Gmail identity (configured via
-  `ACE_GMAIL_ACCOUNT` in `.env`) currently fails because Nova's
-  Google OAuth client allowlist does not yet include the
-  Workspace domain ACE authenticates against. Until that's added on
-  Nova's side, the HQ API key for `$ACE_HQ_DOMAIN` cannot be saved
-  into Nova's settings page, and `app-deploy` will fail pre-flight
-  or upload-time. Remove this section once unblocked.
+Two sequential blockers landed and were cleared on 2026-04-28. Listed
+here for continuity — neither is active.
+
+- **OAuth allowlist on Nova's side (2026-04-27 → cleared 2026-04-28).**
+  Nova's Google OAuth client originally only allowlisted the operating
+  Workspace's primary domain. Adding the secondary domain that the
+  ACE Gmail identity lives under unblocked sign-in at the Nova
+  boundary.
+
+- **Workspace 2FA policy (2026-04-28, brief).** With the Nova
+  allowlist fixed, Google briefly blocked the ACE Gmail sign-in
+  with *"Your sign-in settings don't meet your organization's 2-Step
+  Verification policy."* Resolved by adjusting the Workspace 2FA
+  enforcement scope so the ACE service account is exempt. The
+  account is now sign-in-able via password (1Password-stored) +
+  OAuth consent.
+
+## ACE service identity for Nova
+
+The Nova MCP plugin authenticates as a real Google identity — there's
+no service-account flow on Nova's side. ACE binds Nova to the ACE
+Gmail identity (whatever `ACE_GMAIL_ACCOUNT` is set to in `.env`) so
+that Nova-side state (apps, HQ connection, settings) lives in one
+place across sessions and operators. To re-bind, run `/mcp` →
+disconnect `nova` → reconnect, and sign in as the desired identity.
+Each Nova user has their own settings store; the HQ API key only
+applies to the user it was saved under.
 
 ## ACE's surface area on Nova
 
