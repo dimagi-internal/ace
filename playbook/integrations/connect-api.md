@@ -1,122 +1,165 @@
-# Connect API Integration
+# Connect Integration
 
-## What Exists Today
+## Two MCP servers, two domains
 
-The **connect-labs MCP** (in the `connect-labs` repo) exposes approximately 20 tools for
-interacting with Connect. These are production-ready and available to ACE skills today.
+ACE talks to Connect through **two** MCP servers, each scoped to a distinct
+domain:
 
-### Solicitations
-- `list_solicitations` — list all solicitations
-- `get_solicitation` — get a single solicitation by ID
-- `create_solicitation` — create a new solicitation
-- `update_solicitation` — update solicitation fields
-- `delete_solicitation` — delete a solicitation
+1. **`connect-labs` MCP** (lives in the [`connect-labs` repo](https://github.com/dimagi/connect-labs))
+   — solicitations, reviews, awards, funds. Production-ready and unrelated to
+   the Programs/Opportunities lifecycle ACE manages.
 
-### Reviews
-- `list_reviews` — list reviews for a solicitation
-- `get_review` — get a single review
-- `create_review` — submit a review
-- `update_review` — update a review
+2. **`ace-connect` MCP** (in this repo, `mcp/connect-server.ts`) — Programs,
+   Opportunities, invites, invoices. Built specifically to unblock ACE's
+   `connect-program-setup`, `connect-opp-setup`, `llo-invite`, `llo-onboarding`,
+   `llo-launch`, and `opp-closeout` skills until Cal's team ships the real REST
+   APIs (CCC-301 + invite + invoice).
 
-### Awards
-- `list_awards` — list awards for a solicitation
-- `get_award` — get a single award by ID
-- `create_award` — create an award
-- `update_award` — update award details
+This document covers `ace-connect`. For `connect-labs`, see that repo's docs.
 
-### Funds
-- `list_funds` — list available funds
-- `get_fund` — get a fund by ID
-- `create_fund` — create a fund
-- `update_fund` — update fund details
+## What ace-connect exposes today
 
-### Opportunity Lookup
-- `list_opportunities` — list Connect opportunities
-- `get_opportunity` — fetch opportunity details by ID
-- `search_opportunities` — search opportunities by name or status
+Fourteen atomic capabilities. Authoring atoms create or modify records;
+observation atoms read. Today every atom routes to a Playwright HTTP-only
+backend that drives `connect.dimagi.com` through an authenticated session
+(OAuth-via-CommCareHQ as `ace@dimagi-ai.com`).
 
----
+### Programs (5)
 
-## What Needs to Be Built
+| Atom | Used by |
+|---|---|
+| `connect_create_program` | `connect-program-setup` |
+| `connect_update_program` | `connect-program-setup` |
+| `connect_list_programs` | `connect-program-setup` (idempotency check) |
+| `connect_get_program` | `connect-program-setup` |
+| `connect_list_delivery_types` | `connect-program-setup` (resolve "Nutrition" → 13) |
 
-The following APIs do not exist yet and must be built by Cal's team. They are tracked
-under **CCC-301** and related tickets.
+### Opportunities (4)
 
-### Program + Opportunity CRUD (CCC-301)
-- `create_program` — create a new Connect Program
-- `update_program` — update program fields
-- `create_opportunity` — create a new Opportunity under a Program
-- `update_opportunity` — update opportunity fields
-- `delete_opportunity` — remove an opportunity
+| Atom | Used by |
+|---|---|
+| `connect_create_opportunity` | `connect-opp-setup` |
+| `connect_update_opportunity` | `connect-opp-setup`, `llo-launch` |
+| `connect_list_opportunities` | `connect-opp-setup` (idempotency check) |
+| `connect_get_opportunity` | `connect-opp-setup`, `llo-launch` |
 
-These are the highest-priority gaps. `connect-program-setup` and `connect-opp-setup`
-skills are blocked on these.
+### Lifecycle (1)
 
-### Opportunity Configuration APIs
-- **Verification rules** — set and update rules that govern what counts as a valid
-  delivery (e.g., required form fields, GPS accuracy thresholds)
-- **Delivery units** — configure the units of work FLWs are expected to complete
-- **Payment units** — configure how payment is calculated per delivery unit
+| Atom | Used by |
+|---|---|
+| `connect_activate_opportunity` | `llo-launch` |
 
-These may be folded into `create_opportunity`/`update_opportunity` or exposed as
-separate endpoints. To be determined with Cal's team.
+### Invites (2)
 
-### Invite API
-- `send_llo_invite` — send an invitation to an LLO organization to join a Connect
-  opportunity. Requires the LLO Directory data model to exist (CCC-300).
-- `list_llo_invites` — check invite status for an opportunity
+| Atom | Used by |
+|---|---|
+| `connect_send_llo_invite` | `llo-onboarding` |
+| `connect_list_invites` | `llo-onboarding` (status check) |
 
-Blocked on: LLO Directory in proper data model (separate ticket from CCC-300).
+### Invoices (2)
 
-### Invoice API
-- `list_invoices` — pull invoices for a completed opportunity
-- `get_invoice` — get invoice details by ID
+| Atom | Used by |
+|---|---|
+| `connect_list_invoices` | `opp-closeout` |
+| `connect_get_invoice` | `opp-closeout` |
 
-Needed by the `opp-closeout` skill to pull payment data and create the Jira ticket.
+## Operator runbook
 
----
+### Required env vars (all 1Password-backed in `.env.tpl`)
 
-## Manual Workaround
+```
+CONNECT_BASE_URL=https://connect.dimagi.com
+ACE_HQ_USERNAME=op://AI-Agents/ACE - CommCareHQ/username
+ACE_HQ_PASSWORD=op://AI-Agents/ACE - CommCareHQ/password
+```
 
-Skills that depend on unbuilt APIs will document the required actions and prompt the
-user to complete them manually. The skill will:
+### Establishing a session
 
-1. Describe exactly what needs to be done in Connect (with screenshots or step-by-step
-   instructions where helpful)
-2. Present the configuration values ACE has computed (e.g., verification rule settings
-   derived from the PDD)
-3. Ask the user to perform the action in the Connect admin UI
-4. Wait for confirmation before proceeding to the next step
+Two paths:
 
-This means ACE can still orchestrate the full lifecycle — it just has more human
-touchpoints until the APIs are built.
+- **Automated (default):** the MCP's `PlaywrightSession.getContext()` probes
+  `/accounts/login/`. If the response is 200 (anonymous), it auto-runs
+  `hqOAuthLogin()` with the `.env` creds. The resulting state persists to
+  `~/.ace/connect-session.json` for headless reuse.
+- **Manual fallback:** run `/ace:connect-login` to open a headed Chromium
+  window, sign in by hand (covers MFA / SSO edge cases the automated flow
+  can't handle), and save the resulting state.
 
-### Skills currently in HITL fallback (until APIs ship)
+`bin/ace-doctor` checks both env-var presence and session freshness.
 
-When the listed ticket lands, the skill's `## Current Workaround` block is removed in
-the same PR. Re-generate this index by grepping `^## Current Workaround` across
-`skills/*/SKILL.md`.
+### Org-admin role required
 
-| Skill | Phase | Unblocking ticket(s) | What humanly happens today |
-|-------|-------|----------------------|----------------------------|
-| `connect-program-setup` | 3 | CCC-301 (`create_program`, `update_program`) | Operator creates Program in Connect UI from PDD-derived config |
-| `connect-opp-setup` | 3 | CCC-301 (`create_opportunity`, verification/delivery/payment unit APIs) | Operator creates Opportunity + configures rules in Connect UI |
-| `llo-invite` | 5 | LLO Directory data model + invite API (separate from CCC-300) | Operator hand-curates invite list from PDD `## LLO Preference` |
-| `llo-onboarding` | 5 | Connect invite API + opportunity widget API | Operator sends Connect invites via UI; pastes OCS widget creds onto the Opportunity |
-| `llo-uat` | 5 | None (Connect-side) — uses email-communicator | UAT runs via email; coordinator-tracked manually |
-| `llo-launch` | 5 | `update_opportunity` (CCC-301) for go-live activation | Operator flips Opportunity to active in Connect UI |
-| `llo-feedback` | 6 | None (Connect-side) — uses email-communicator | Feedback collected via email survey thread |
-| `opp-closeout` | 6 | Invoice API (`list_invoices`, `get_invoice`) | Operator pulls invoices from Connect UI, files Jira manually |
+For `create_program` and other write atoms to succeed, the configured account
+(`ace@dimagi-ai.com` today) must be an **Admin** in the target Connect
+organization. Demo/testing happens in `ai-demo-space`.
 
-**OCS-side workarounds** (separate domain): see `playbook/integrations/ocs-integration.md`.
-The `ocs-agent-setup` skill no longer carries a Current Workaround block as of the
-0.6.x contract-hardening arc — its dependencies are met by the `ace-ocs` MCP server.
+To grant admin role:
+1. As an existing org admin, open `https://connect.dimagi.com/a/<org>/organization/`
+2. Members tab → either change the existing member's role to `Admin` or use the
+   "Add Member" form (email + role=admin)
 
-## Staging Environment
+Without admin role, ace@dimagi-ai.com's view defaults to the
+network-member-side ("Apply to Program" buttons) and authoring atoms will
+fail with HTTP errors or empty list scrapes.
 
-When `--sandbox` is active, ACE routes Connect API calls to the staging instance.
+### Re-running probes
 
-- **Staging URL:** TBD — confirm with Cal's team
-- **How it works:** MCP server reads `ACE_SANDBOX=true` environment variable and switches the base URL from production to staging
-- **Data isolation:** Staging has its own database — no impact on production programs, opportunities, or invitations
-- **Limitations:** Staging may not have the same LLO Directory data as production
+When Connect changes a template upstream, the atom that depends on the changed
+HTML breaks. Each domain has a probe script under `scripts/probe-connect-*`
+that documents the live contract; re-run the relevant probe to update the
+fixture, then update the regex in `mcp/connect/backends/html-scrape.ts` until
+its unit test passes against the new fixture.
+
+## What's not yet implemented (deferred)
+
+- **Verification rules / delivery units / payment units** — the original spec
+  called for these as separate atoms, but the concept doesn't appear on
+  Connect's program/opp create or list pages today. Likely lives on a
+  post-creation configuration page we haven't located. Revisit when surfaced.
+- **Invoice atoms scrape** — the schema is present (`list_invoices`,
+  `get_invoice`) but page parsing is conservative (returns empty/stub).
+  Will be filled in as soon as the invoice page shape is observed via a
+  probe (typically only happens once an opp has actually been invoiced).
+
+These gaps are tracked as TODOs in `mcp/connect/backends/playwright.ts`.
+
+## Migration when real REST APIs land
+
+Per the design at `docs/superpowers/specs/2026-04-28-ace-connect-mcp-design.md`:
+
+1. Implement the REST method in `mcp/connect/backends/rest.ts` (replaces a `stub()`)
+2. Flip the `capability-map.ts` entry to `backend: 'REST'`
+3. Flip the dispatch line in `mcp/connect/backends/composite.ts`
+4. Delete the corresponding `playwright.ts` method + its HTML fixture test
+5. Bump VERSION; ship
+
+When all atoms have flipped, delete `auth/`, `commands/connect-login.md`, and
+the HQ creds from `.env.tpl`. The MCP shrinks to a thin REST wrapper.
+
+## Skills no longer in HITL fallback
+
+When the `ace-connect` MCP atom for a skill ships, the skill's
+`## Current Workaround` block in `SKILL.md` is removed in the same PR as the
+atom adoption. The current state (after 0.8.0 lands the MCP — skill rewrites
+follow):
+
+| Skill | Phase | Atom(s) it consumes | Workaround removed in |
+|-------|-------|---------------------|-----------------------|
+| `connect-program-setup` | 3 | `connect_*_program*`, `connect_list_delivery_types` | TBD (skill PR) |
+| `connect-opp-setup` | 3 | `connect_*_opportunity*` | TBD (skill PR) |
+| `llo-invite` | 5 | (preparation only — no atom) | unchanged |
+| `llo-onboarding` | 5 | `connect_send_llo_invite`, `connect_list_invites` | TBD (skill PR) |
+| `llo-uat` | 5 | (uses email-communicator) | unchanged |
+| `llo-launch` | 5 | `connect_activate_opportunity`, `connect_get_opportunity` | TBD (skill PR) |
+| `llo-feedback` | 6 | (uses email-communicator) | unchanged |
+| `opp-closeout` | 6 | `connect_list_invoices`, `connect_get_invoice` | TBD (skill PR) |
+
+## Staging
+
+There is no separate staging instance for Connect today. Tests against
+production use a name-prefix isolation pattern (`ACE-IT-<timestamp>`) to avoid
+clobbering real data, and run inside the `ai-demo-space` org which is
+explicitly provisioned for this kind of dogfood.
+
+If `ACE_SANDBOX=true` ever gets a real Connect staging URL, set
+`CONNECT_BASE_URL` in `.env` to point at it; no other code changes needed.
