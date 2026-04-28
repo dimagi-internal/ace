@@ -137,6 +137,16 @@ git config core.hooksPath scripts/hooks
 - **OCS capabilities are atomic.** Each atom in `mcp/ocs/capability-map.ts` routes to REST or Playwright; skill code never knows which. When OCS ships a real API for a Playwright-backed atom, it becomes a one-line routing change.
 - **VERSION is the single source of truth.** Edit `VERSION` only; the pre-commit hook syncs `package.json`, `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json` automatically. `/ace:doctor` verifies they match.
 
+## Improvement cycles & canopy
+
+This repo is dogfooded by the `canopy` plugin. **Per-opp evidence lives in Drive (`ACE/<opp>/state.yaml`, `verdicts/`, `gate-briefs/`, `comms-log/observations.md`); cross-opp strategy lives in `.claude/pm/runs/<date>-<lens>.md`.** The opp `observations.md` is the evidence log; the run log is the synthesis that cites it. ACE skills don't read run logs; canopy and humans do.
+
+**Re-entering the project:** run `/canopy:pm-status` (or read the most recent file in `.claude/pm/runs/`) — it surfaces the current lens, backlog, and last cycle's findings. Don't ask the orchestrator "what should I do next?" — phase agents only see per-opp state.
+
+**Writing a run log:** copy the structure of the most recent existing run log (Lens / Do it / Backlog / Closed / Skipped / Meta-observations). Write one whenever a session ships a PR, surfaces a deferred backlog item, or defines a reusable lens. Skip for one-off ops or pure research.
+
+**Canopy commands:** `/canopy:pm-status` (re-entry), `/canopy:pm-scout` (run a scout cycle), `/canopy:improve` (full improve loop), `/canopy:patterns` (cross-session friction).
+
 ## Gotchas
 
 - **`.gws-sa-key.json` is per-machine and gitignored.** Located at `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` (legacy fallback: plugin root). `ace-gdrive` won't start without it. `/ace:doctor` reports `GWS_KEY: MISSING` and prints the expected path.

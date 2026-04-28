@@ -5,6 +5,25 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.3 — 2026-04-28
+
+Docs only. Captures the 2026-04-27 turmeric-dogfood cycle in the standard
+PM run-log format and adds a short *Improvement cycles & canopy* section
+to `CLAUDE.md` so future sessions know where per-opp evidence ends and
+cross-opp strategy begins.
+
+### Added
+
+- **`.claude/pm/runs/2026-04-28-turmeric-dogfood-ocs-contracts.md`** —
+  full cycle log: lens, what shipped (0.5.18 + 0.6.1), six-item backlog
+  ranked P1–P6 (P1 is the `set_chatbot_system_prompt` partial-save bug
+  blocking any future Phase 4 re-run), meta-observations on real-run-vs-
+  spec-review and class-level preventers.
+- **`CLAUDE.md` § Improvement cycles & canopy** — four short paragraphs
+  on the Drive-vs-`.claude/pm/runs/` boundary, re-entry pattern
+  (`/canopy:pm-status` or read latest run log), when to write a run log,
+  and the canopy commands available in this repo.
+
 ## 0.6.2 — 2026-04-27
 
 ### Added
