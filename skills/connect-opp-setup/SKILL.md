@@ -59,8 +59,11 @@ whichever PM-side org the opportunity targets).
    - `duplicate`: true (always — duplicate-form-submission flagging is
      defensive default)
    - `catchment_areas`: true if the PDD names per-FLW catchment areas
-   - `location`: distance threshold in meters — inherit Connect's default
-     (10) unless PDD specifies tighter
+   - `location`: boolean toggle — enables location-distance verification.
+     Note: the threshold (default 10m) is NOT settable via the MCP today;
+     `connect_set_verification_flags` preserves whatever value is already
+     on the form. If a tighter threshold is required, log it as a manual
+     follow-up in `comms-log/observations.md` and leave the toggle on.
    - `form_submission_start` / `form_submission_end`: HH:MM:SS — set
      only if the PDD has time-of-day plausibility constraints
    - `deliver_unit_checks`: per-deliver-unit attachment requirements
@@ -147,3 +150,4 @@ When `--dry-run` is active:
 | 2026-04-08 | Add `## Archetypes` section: focus-group delivery unit = session (not participant), audio + attendance + per-domain summary verification, requires "Experiment" delivery type | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-08 | Add explicit step 2 to read PDD `## Evidence Model`; Layer A → verification rules, Layer B/C → soft flags; error if Evidence Model missing | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-28 | Replace HITL workaround with `connect_*_opportunity` + `connect_set_verification_flags` + `connect_create_payment_unit` atoms (ace-connect 0.8.1). Verification mapped to Connect's actual toggles (`gps`, `duplicate`, `catchment_areas`, `location`); deliver units now read-only via `connect_list_deliver_units` (sourced from CommCare app schema) | ACE team |
+| 2026-04-28 | Fix `location` field description — it's a boolean toggle, not a meters threshold; threshold is currently un-settable via the MCP (0.9.4) | ACE team |
