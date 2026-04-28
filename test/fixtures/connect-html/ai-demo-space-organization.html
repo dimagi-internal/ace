@@ -1,0 +1,579 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+
+<link rel="apple-touch-icon" sizes="180x180" href="/static/images/favicons/apple-touch-icon.b59ca68e1151.png">
+<link rel="icon" type="image/png" sizes="96x96" href="/static/images/favicons/favicon-96x96.c40024139556.png">
+<link rel="icon" type="image/svg+xml" href="/static/images/favicons/favicon.b62096104f6b.svg">
+<link rel="manifest" href="/static/images/favicons/site.07030052390d.webmanifest">
+<link rel="shortcut icon" href="/static/images/favicons/favicon.a836b61c1c52.ico">
+
+    <title>Connect</title>
+    
+  
+       <link rel="stylesheet" href="/static/bundles/css/vendors.fc4af69a0837.css">
+       <link rel="stylesheet" href="/static/bundles/css/tailwind.da5b33e84bbd.css">
+       <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+  <link rel="stylesheet" href="/static/bundles/css/tomselect.47e86f65cdfa.css">
+
+    
+  
+      <script id="gtm-data" type="application/json">{"isDimagi": false, "gtmID": "GTM-M3MVWH7F", "userId": 6299}</script>
+      <script src="/static/js/gtx.6b03cca6de39.js" defer></script>
+      <script src="/static/bundles/js/vendors-bundle.fca9de3d73ff.js" defer></script>
+      <script src="/static/bundles/js/tailwind-bundle.d41d8cd98f00.js" defer></script>
+      
+    
+  <script src="/static/bundles/js/tomselect-bundle.cb174a4dbaa3.js" defer></script>
+
+  </head>
+  <body
+    hx-headers='{"X-CSRFToken": "itEaaWhAlhqVaISePjwo1g4TK6ejGHJzYFAdpqOU4pK2Yctq2GIvdyt8j5BHG23W"}'
+    x-data="{ sidebarOpen: $persist(false).as('sidebarOpen'), hasSidebar: true }"
+    x-init="$nextTick(() => $el.classList.add('transition-[padding-left]', 'duration-300'))"
+    :class="hasSidebar ? (sidebarOpen ? 'pl-64' : 'pl-16') : ''"
+    class="flex flex-col justify-center overflow-x-hidden bg-stone-100 font-work-sans"
+  >
+    
+      
+
+<div x-cloak
+    class="fixed top-0 left-0 h-screen bg-brand-deep-purple pt-3 z-40 text-white flex flex-col justify-between transition-all duration-300 px-2"
+    :class="sidebarOpen ? 'w-64' : 'w-16'">
+
+    <!-- Top Section -->
+    <div>
+        <!-- Logo Section -->
+        <div class="">
+            <div class="flex p-2 justify-start">
+                <div
+                    x-show.immediate="!sidebarOpen"
+                    class=" h-12 transition-none"
+                >
+                    <img src="/static/images/logo.b22fb8909009.svg" alt="Compact Logo" class="w-8 h-8">
+                </div>
+                <div
+                    x-show.immediate="sidebarOpen"
+                    class="h-12 pl-1"
+                >
+                    <img src="/static/images/logo-full.137c6df9a195.svg" alt="Full Logo" class="h-12 w-auto">
+                </div>
+            </div>
+        </div>
+
+        <div class="flex rounded-lg items-center p-2 transition-all duration-300 cursor-pointer">
+            <div class="flex items-center justify-center w-8 h-8">
+                <i class="fa-solid text-lg text-brand-sky"
+                    :class="sidebarOpen ? 'fa-xmark': 'fa-bars'"
+                    @click="sidebarOpen = !sidebarOpen"></i>
+
+            </div>
+
+            <div class="transition-all duration-300 overflow-hidden flex items-center"
+                 :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+                <span class="text-xs whitespace-nowrap">Menu</span>
+            </div>
+        </div>
+
+        <!-- Navigation Items -->
+        
+          
+            
+            <div class="mt-5">
+                
+                <a href="/a/ai-demo-space/opportunity/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-table-cells-large"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">Opportunities</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        Opportunities
+    </div>
+
+    <!-- Selected -->
+
+     
+</a>
+
+
+                
+                    
+                    <a href="/a/ai-demo-space/program/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-table-columns"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">Programs</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        Programs
+    </div>
+
+    <!-- Selected -->
+
+     
+</a>
+
+
+                    
+                    
+                    <a href="/a/ai-demo-space/organization/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-building"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">My Workspace</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        My Workspace
+    </div>
+
+    <!-- Selected -->
+
+     
+     <div class="absolute left-0 top-0 w-full h-full bg-brand-mango/20 rounded-lg"></div>
+     <div class="absolute right-0 w-1 h-1/2 top-1/2 -translate-y-1/2 bg-brand-mango rounded-2xl"></div>
+     
+</a>
+
+                
+            </div>
+            
+          
+          
+        
+    </div>
+
+</div>
+
+    
+    <div class="flex-1  px-4">
+      
+
+
+<header class="fixed top-0 left-16 right-0 bg-gray-100 z-30">
+    <div class="flex items-center justify-between w-full px-4 py-2">
+        <!-- Left Section: Module Name -->
+        <h1 class="text-lg text-brand-deep-purple font-medium">Connect</h1>
+
+        
+        <!-- Right Section: Org, Profile Dropdown -->
+        <div class="flex items-center gap-x-2">
+            <!-- Organization selector -->
+            <div x-data="
+              {
+                open: false,
+                hasOrg: true,
+                hasMembership: true,
+                isSuperuser: false,
+                get hasSelectedOrg() {
+                    return this.hasOrg && (this.hasMembership || this.isSuperuser)
+                },
+                membershipsCount: 3,
+                canCreateOrg: false,
+                get showDropdown() {
+                    return this.membershipsCount > 1
+                        || (!this.hasSelectedOrg && this.membershipsCount > 0)
+                        || this.canCreateOrg
+                }
+              }"
+              @click.away="open = false" class="relative mx-8">
+                <button @click="open = !open" class="flex items-center gap-2 focus:outline-none">
+                    <div class="text-left">
+                      <div x-show="hasSelectedOrg" x-transition.opacity x-cloak>
+                        <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                          AI Demo Space
+                        </p>
+                        
+                          <p class="text-gray-500 text-sm font-medium">Claude Test Space</p>
+                        
+                        <p class="text-xs text-gray-400">Program Manager</p>
+                      </div>
+                      <div x-show="!hasSelectedOrg && membershipsCount > 0" x-transition.opacity x-cloak>
+                         <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                          Select Workspace
+                         </p>
+                      </div>
+                      <div x-show="!hasSelectedOrg && membershipsCount == 0 && canCreateOrg" x-transition.opacity x-cloak>
+                        <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                            Create Workspace
+                        </p>
+                      </div>
+                    </div>
+                    <!-- Dropdown Toggle Icon -->
+                    <i x-show="showDropdown" :class="open ? 'rotate-180' : ''" class="fa-solid fa-chevron-down transition-all text-xs"></i>
+                </button>
+
+                  <!-- Organization Selector -->
+                  <div x-show="open && showDropdown" x-transition.opacity x-cloak
+                      class="absolute top-12 right-0 min-w-56 bg-white shadow rounded-lg z-50">
+                      <ul class="p-2 w-full max-h-80 overflow-y-auto">
+                        
+                          
+                            <li class="p-2 hover:bg-gray-100 rounded cursor-pointer text-left">
+                              <a href="/a/jjackson/opportunity/">
+                                <p class="text-brand-deep-purple text-sm font-medium">Baobob-Demo-Workspace</p>
+                                
+                                <p class="text-xs text-gray-400">Network Manager</p>
+                              </a>
+                            </li>
+                          
+                        
+                          
+                        
+                          
+                            <li class="p-2 hover:bg-gray-100 rounded cursor-pointer text-left">
+                              <a href="/a/march-demo/opportunity/">
+                                <p class="text-brand-deep-purple text-sm font-medium">March-Demo</p>
+                                
+                                  <p class="text-gray-500 text-sm font-medium">LLO-Demo</p>
+                                
+                                <p class="text-xs text-gray-400">Program Manager</p>
+                              </a>
+                            </li>
+                          
+                        
+                      </ul>
+                        <div class="p-2" x-show="canCreateOrg" x-transition.opacity x-cloak>
+                            <a class="button button-md primary-dark w-full text-center" href="/register/organization/">
+                            Create Workspace
+                            </a>
+                        </div>
+                  </div>
+
+            </div>
+
+            <!-- User Profile -->
+            <div x-data="{ open: false }" @click.away="open = false" class="relative">
+                <button @click="open = !open" class="focus:outline-none">
+                    <div class="cursor-pointer overflow-hidden">
+                        <div
+  title="ace"
+  class="rounded-full flex items-center justify-center select-none shrink-0 w-10 h-10 text-xs font-medium tracking-wider bg-brand-cornflower-blue text-white"
+>
+  <span>AC</span>
+</div>
+
+                    </div>
+                </button>
+
+                <!-- User Profile Selector -->
+                <div x-show="open" x-transition.opacity x-cloak class="absolute top-12 right-0 min-w-56 w-56 bg-white shadow rounded-lg z-50">
+                    <ul class="p-2 w-full">
+                        <li class="p-2 text-left">
+                            <p class="text-brand-deep-purple font-medium">ace</p>
+                            
+                                <span class="text-gray-400 text-sm">admin</span>
+                            
+                        </li>
+                        <li class="p-2 text-left">
+                            <a class="block p-2 hover:bg-gray-100 rounded cursor-pointer" href="/accounts/email/">
+                              <p class="text-brand-deep-purple">Profile</p>
+                            </a>
+                        </li>
+                        <li class="p-2">
+                          <a class="cursor-pointer" href="/accounts/logout/">
+                            <div class="bg-brand-indigo text-white px-8 py-2 rounded-lg shadow-md hover:bg-blue-800 transition">
+                              Logout
+                            </div>
+                          </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+</header>
+
+      <div class="h-5 w-full mt-16"></div>
+      <main id="content" class="md:max-w-screen-2xl mx-auto">
+        
+
+        
+<p class="my-5 text-sm max-w-screen-lg mx-auto font-medium text-brand-deep-purple">AI Demo Space</p>
+
+<div
+  class="flex flex-col max-w-screen-lg mx-auto gap-2"
+  x-cloak
+  x-data="orgTabs()"
+>
+  <!-- Tabs -->
+    <div class="flex relative mx-auto items-center justify-between w-full px-4 bg-slate-50 rounded-lg shadow-sm h-14">
+      <ul class="tabs">
+        <!-- Details Tab -->
+        <li @click="selectedTab = 'details';" :class="{'active': selectedTab !== 'details'}">
+          <span>Details</span>
+          <div  x-show="selectedTab === 'details'"></div>
+        </li>
+
+        <li @click="selectedTab = 'members';" :class="{'active': selectedTab !== 'members'}">
+          <span>Members</span>
+          <div  x-show="selectedTab === 'members'"></div>
+        </li>
+      </ul>
+
+    <!-- Options -->
+      <div x-show="selectedTab === 'members'" class="flex items-center gap-x-4">
+        <button
+          class="button button-md bg-red-600 hover:bg-red-700 text-white"
+          :disabled="selected.length === 0"
+          @click="showConfirmRemoveMembershipModal = true"
+        >
+          <i class="fa-solid fa-trash"></i>
+          Remove Member(s)
+        </button>
+        <button class="button button-md outline-style" @click="showAddMemberModal = true">
+          Add Members
+        </button>
+      </div>
+  </div>
+
+  <!-- Tab Content Containers -->
+  <div class="w-full">
+    <!-- Details Content (Already rendered) -->
+    <div x-show="selectedTab === 'details'" class="w-full mt-6">
+      <h2 class="text-xl font-semibold text-brand-deep-purple mb-4">Workspace</h2>
+      <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mb-10">
+        <form method="post" class="bg-white">
+          <input type="hidden" name="csrfmiddlewaretoken" value="itEaaWhAlhqVaISePjwo1g4TK6ejGHJzYFAdpqOU4pK2Yctq2GIvdyt8j5BHG23W">
+          
+
+<form  method="post" > <input type="hidden" name="csrfmiddlewaretoken" value="itEaaWhAlhqVaISePjwo1g4TK6ejGHJzYFAdpqOU4pK2Yctq2GIvdyt8j5BHG23W"> <div id="div_id_name" class="mb-3"> <label for="id_name" class="block text-gray-700 text-sm font-bold mb-2">
+            Workspace Name<span class="asteriskField">*</span> </label> <input type="text" name="name" value="AI Demo Space" maxlength="255" class="textinput w-full text-gray-700 appearance-none leading-normal bg-white focus:outline-none px-4 block rounded-lg py-2 border-gray-300 border" required id="id_name"> </div> <div id="div_id_llo_entity" class="mb-3"> <label for="id_llo_entity" class="block text-gray-700 text-sm font-bold mb-2">
+            LLO Entity
+        </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="llo_entity"  id="id_llo_entity" disabled> <option value="51" 
+ >Claude Test Space</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div 
+    class="flex justify-end" > <input type="submit"
+    name="submit"
+    value="Update"
+    
+        class="btn btn-primary button button-md primary-dark"
+        id="submit-id-submit"
+    
+    
+    />
+
+</div> </form>
+
+        </form>
+      </div>
+    </div>
+
+    <div
+    x-show="selectedTab === 'members'"
+    id="invoice_members_container"
+    class="w-full"
+    hx-get="/a/ai-demo-space/organization/member_table??"
+    hx-swap="innerHTML"
+    hx-trigger="loadMembers from:body"
+  ></div>
+  </div>
+
+  
+
+
+<div x-show="showAddMemberModal"
+     x-cloak
+     x-transition.opacity
+     class="modal-backdrop"
+     @keydown.escape.window="showAddMemberModal = false">
+  <div @click.outside="showAddMemberModal = false"
+       class="modal">
+
+    <div class="flex justify-between items-center pb-2 mb-4">
+      <h2 class="text-lg font-semibold text-brand-deep-purple">
+        Invite Member
+      </h2>
+      <button @click="showAddMemberModal = false" class="text-gray-500 hover:text-gray-700">
+        <i class="fa-solid fa-xmark text-xl"></i>
+      </button>
+    </div>
+
+    <form action="/a/ai-demo-space/organization/member" method="post">
+      <input type="hidden" name="csrfmiddlewaretoken" value="itEaaWhAlhqVaISePjwo1g4TK6ejGHJzYFAdpqOU4pK2Yctq2GIvdyt8j5BHG23W">
+      <div class="mb-4">
+        
+
+<form  method="post" > <input type="hidden" name="csrfmiddlewaretoken" value="itEaaWhAlhqVaISePjwo1g4TK6ejGHJzYFAdpqOU4pK2Yctq2GIvdyt8j5BHG23W"> <div  class="flex flex-col" > <div id="div_id_email" class="col-md-5 mb-3"> <input type="text" name="email" placeholder="Enter email address" maxlength="254" class="textinput w-full text-gray-700 appearance-none leading-normal bg-white focus:outline-none px-4 block rounded-lg py-2 border-gray-300 border" required id="id_email"> </div> <div id="div_id_role" class="col-md-5 mb-3"> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="role"  id="id_role"> <option value="admin" 
+ >Admin</option> <option value="member"  selected
+ >Member</option> <option value="viewer" 
+ >Viewer</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div 
+     > <input type="submit"
+    name="submit"
+    value="Submit"
+    
+        class="btn btn-primary button button-md primary-dark float-end"
+        id="submit-id-submit"
+    
+    
+    />
+
+</div>
+
+</div> </form>
+
+      </div>
+    </form>
+  </div>
+</div>
+
+  
+
+<div x-show="showConfirmRemoveMembershipModal" x-cloak x-transition.opacity
+    class="modal-backdrop"
+    @keydown.escape.window="showConfirmRemoveMembershipModal = false">
+    <div @click.outside="showConfirmRemoveMembershipModal = false" class="modal">
+
+        <div class="flex justify-between items-center pb-2 mb-4">
+            <h2 class="text-lg font-medium text-brand-deep-purple">
+                Remove Member(s)
+            </h2>
+            <button @click="showConfirmRemoveMembershipModal = false" class="text-gray-500 hover:text-gray-700">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+
+        <div class="mb-6">
+            <p class="text-gray-700 mb-2">
+                
+                    Are you sure you want to remove the
+                    <span x-text="selected.length"></span>
+                    selected member(s)?
+                
+            </p>
+            <p class="text-red-600 text-sm font-medium">
+                This action is irreversible and cannot be undone.
+            </p>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-4">
+            <button type="button" class="button button-md outline-style" @click="showConfirmRemoveMembershipModal = false">
+                Cancel
+            </button>
+            <form action="/a/ai-demo-space/organization/member/remove" method="post" class="inline">
+                <input type="hidden" name="csrfmiddlewaretoken" value="itEaaWhAlhqVaISePjwo1g4TK6ejGHJzYFAdpqOU4pK2Yctq2GIvdyt8j5BHG23W">
+                <template x-for="id in selected">
+                    <input type="hidden" name="membership_ids" :value="id">
+                </template>
+                <button type="submit" class="button button-md bg-red-600 hover:bg-red-700 text-white"
+                        @click="showConfirmRemoveMembershipModal = false">
+                    <i class="fa-solid fa-trash"></i>
+                    Remove Member(s)
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+</div>
+
+      </main>
+    </div>
+
+    
+        <open-chat-studio-widget
+          class="z-50"
+          visible="false"
+          chatbot-id="104d0f84-a609-4676-b8c8-35d992fe5ffc"
+          embed-key="tFANzDEMLZzZgk_ZEeE4yu1LYwVWavFt"
+          button-text="Need help?"
+          position="right"
+          expanded="false">
+        </open-chat-studio-widget>
+    
+
+  
+
+    
+  
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('orgTabs', () => ({
+      selectedTab: 'details',
+      showAddMemberModal: false,
+      isHistoryAvailable: false,
+      isNewEntity: false,
+      selected: [],
+      selectAll: false,
+      showConfirmRemoveMembershipModal: false,
+      currentUserMembershipId: '1038',
+
+      toggleSelectAll() {
+        this.selectAll = !this.selectAll;
+        if (this.selectAll) {
+          this.selected = Array.from(document.querySelectorAll('input[name="row_select"]'))
+            .map(c => c.value)
+            .filter(c => c !== this.currentUserMembershipId);
+        } else {
+          this.selected = [];
+        }
+      },
+
+      init() {
+        this.updateUrl(this.selectedTab);
+        this.loadTabContent(this.selectedTab);
+
+        this.$watch('selectedTab', (value) => {
+          this.updateUrl(value);
+          this.loadTabContent(value);
+        });
+
+        document.addEventListener('tomselect-elements:initialized', () => {
+          if (!this.$refs.llo_entity) return;
+          this.$refs.llo_entity.tomselect.on('change', (value) => {
+            this.isNewEntity = value ? value.startsWith('new:') : false;
+          });
+        });
+      },
+
+      updateUrl(tab) {
+        const url = new URL(window.location);
+        url.searchParams.set('active_tab', tab);
+        window.history.pushState({}, '', url);
+      },
+
+      loadTabContent(tab) {
+        if (tab === 'members' && !this.isHistoryAvailable) {
+          htmx.trigger('#invoice_members_container', 'loadMembers');
+          this.isHistoryAvailable = true;
+        }
+      },
+    }));
+  });
+</script>
+
+  </body>
+</html>
