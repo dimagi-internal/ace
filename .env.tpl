@@ -55,6 +55,11 @@ ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
 # settings page — ACE cannot pass a domain at upload time. This value
 # lets skills pre-flight that Nova's bound API key matches the
 # expected domain before pushing apps.
+#
+# Set this in your installed `.env` per deployment (e.g.,
+# `connect-ace-prod` for production, your own staging domain for dev).
+# Do not commit a literal value here — `op inject` would overwrite
+# operator-specific values on every refresh.
 
 ACE_HQ_BASE_URL=https://www.commcarehq.org
-ACE_HQ_DOMAIN=connect-ace-prod
+ACE_HQ_DOMAIN=
