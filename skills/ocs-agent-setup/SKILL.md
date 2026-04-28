@@ -84,6 +84,19 @@ no inline self-eval.
 Quality gating (quick + deep qa→eval pairs) and Connect widget handoff
 happen in subsequent steps of the `ocs-setup` agent, not in this skill.
 
+## MCP Tools Used
+
+- **OCS MCP (`ace-ocs`):** `ocs_list_chatbots`, `ocs_clone_chatbot`,
+  `ocs_create_collection`, `ocs_upload_collection_files`,
+  `ocs_wait_for_collection_indexing`, `ocs_set_chatbot_pipeline`,
+  `ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`.
+- **Google Drive MCP (`ace-gdrive`):** `drive_read_file`,
+  `drive_list_folder`, `drive_create_file`.
+
+Authoring atoms route through Playwright (see
+`mcp/ocs/capability-map.ts`); a live `/ace:ocs-login` session is
+required.
+
 ## Mode Behavior
 
 - **Auto:** Execute all steps. Surface errors with specific atom names.

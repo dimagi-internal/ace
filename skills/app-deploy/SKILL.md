@@ -108,7 +108,7 @@ them.
   successfully and URLs resolve; `Reject` if either app failed to
   build or the domain mismatch fires.
 
-## Tools
+## MCP Tools Used
 
 - **Google Drive MCP:** `drive_read_file`, `drive_create_file`
 - **Nova plugin slash commands:** `/nova:upload_to_hq`, `/nova:show`

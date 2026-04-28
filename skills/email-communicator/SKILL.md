@@ -11,16 +11,16 @@ description: >
 
 Send and receive email through the ACE Gmail account using the GOG CLI. This is a utility skill — other skills delegate to it whenever they need to send or read email rather than reimplementing Gmail access themselves.
 
-## Configuration
+### Configuration (preamble)
 
-This skill requires the following environment variables (defined in `.env`):
+Requires these environment variables in `.env`:
 
 | Variable | Description |
 |----------|-------------|
 | `ACE_GMAIL_ACCOUNT` | The Gmail account to send/receive from |
 | `ACE_GMAIL_CLIENT` | The GOG OAuth client name for this account |
 
-The GOG CLI must be installed (`brew install steipete/tap/gogcli`) and authenticated for the configured account before use. Run `gog login $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --services gmail` to authenticate.
+The GOG CLI must be installed (`brew install steipete/tap/gogcli`) and authenticated for the configured account: `gog login $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --services gmail`.
 
 ## Process
 

@@ -106,14 +106,13 @@ branching on each stage's archetype. The two Deliver apps may have
 completely different structures (e.g., Stage 1 = focus-group session
 form, Stage 2 = atomic household-visit form).
 
-## Tools
+## MCP Tools Used
 
 - **Google Drive MCP:** `drive_read_file`, `drive_create_file`
 - **Nova plugin slash commands:** `/nova:autobuild`, `/nova:show`,
   `/nova:list`, `/nova:edit`
 
-See `playbook/integrations/nova-integration.md` for plugin status,
-including the dimagi-ai.com OAuth allowlist blocker.
+See `playbook/integrations/nova-integration.md` for plugin status.
 
 ## Mode Behavior
 - **Auto:** Build via `/nova:autobuild`, write summary, notify admin,
