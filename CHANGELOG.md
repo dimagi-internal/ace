@@ -5,6 +5,41 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.7.1 — 2026-04-28
+
+Catch the class of silent-misconfig surfaced by the 2026-04-27
+turmeric-dogfood run: `OCS_SHARED_COLLECTION_ID` set to an ID that
+exists, but lives on a *different* OCS team. The previous
+`ocs_shared_collection` doctor check only verified the env var was
+non-empty, so it cheerfully PASSed `id=350` even though 350 belonged to
+"NM Bot" on a team other than `OCS_TEAM_SLUG=connect-ace`. Every
+cloned per-opp bot then inherited the wrong domain's RAG, with no
+signal until LLOs got bot answers grounded in the wrong handbook.
+Surfaced as canopy session-review finding #5 in the 2026-04-28 cycle.
+
+### Changed
+
+- **`bin/ace-doctor`** — new `ocs_shared_collection_team` sub-check
+  that follows the existing env-set check. If `OCS_SHARED_COLLECTION_ID`,
+  `OCS_TEAM_SLUG`, `OCS_BASE_URL`, and a Playwright session at
+  `~/.ace/ocs-session-$OCS_TEAM.json` are all present, GETs
+  `/a/$TEAM/documents/collections/$ID` with the session cookies and
+  branches on status: 200 PASSes ("collection $ID exists on team $TEAM"),
+  404 WARNs with a fix pointer to the OCS UI, 301/302 silently defers to
+  the existing `ocs_session` warning (session expired), and other codes
+  WARN with a connectivity hint. WARN, not FAIL, per the runtime-health
+  convention. Sub-second probe (--max-time 3); cookies extracted via a
+  single `node -e` from the existing session JSON, no new deps.
+
+### Why now
+
+Two earlier cycles (the 0.5.x dotenv passthrough fix and the 0.6.x Drive
+shared-drive canary) established the same lesson: silent misconfig
+surfaces days after the run, not at startup. A 50ms probe at doctor time
+catches the entire class — env var set vs. env var pointing at the right
+thing — and matches the existing `drive_shared` precedent of taking one
+HTTP probe to differentiate "configured" from "configured correctly."
+
 ## 0.7.0 — 2026-04-28
 
 Flatten the ACE agent dispatch tree so every `Agent` call originates at

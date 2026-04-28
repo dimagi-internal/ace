@@ -411,6 +411,50 @@ if [ -n "$ENV_FILE" ]; then
     warn "ocs_shared_collection: missing or unresolved:$sc_missing (per-opp bots will have empty RAG)" "re-inject .env via op inject (vars added in 0.5.1)"
   fi
 
+  # Team-membership probe: confirm OCS_SHARED_COLLECTION_ID actually lives on
+  # OCS_TEAM_SLUG. The check above only verifies the env var is set; it would
+  # PASS even when the ID points at a different team's collection — which is
+  # exactly what happened in the 2026-04-27 turmeric-dogfood run, where the
+  # configured 350 belonged to "NM Bot" on a different team. Cloned per-opp
+  # bots silently inherited the wrong domain's RAG. (canopy session-review
+  # finding #5, 2026-04-28 cycle.)
+  #
+  # Probe: GET /a/$TEAM/documents/collections/$ID with the Playwright session
+  # cookie. 200 = collection lives on this team. 404 = it doesn't. 302 = the
+  # session is expired (already warned by the ocs_session check below; skip).
+  if [ -n "$SHARED_COLL" ] && [ -n "$OCS_TEAM" ] && [ -n "$OCS_BASE" ]; then
+    SC_SESS="$HOME/.ace/ocs-session-$OCS_TEAM.json"
+    if [ -f "$SC_SESS" ]; then
+      SC_COOKIES="$(node -e "
+        try {
+          const s = JSON.parse(require('fs').readFileSync('$SC_SESS','utf8'));
+          const cs = (s.cookies || []).filter(c => c.name === 'sessionid' || c.name === 'csrftoken');
+          process.stdout.write(cs.map(c => c.name + '=' + c.value).join('; '));
+        } catch(_) {}
+      " 2>/dev/null)"
+      if [ -n "$SC_COOKIES" ]; then
+        SC_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 -b "$SC_COOKIES" "$OCS_BASE/a/$OCS_TEAM/documents/collections/$SHARED_COLL" 2>/dev/null)"
+        case "$SC_STATUS" in
+          200)
+            pass "ocs_shared_collection_team: collection $SHARED_COLL exists on team $OCS_TEAM"
+            ;;
+          404)
+            warn "ocs_shared_collection_team: collection $SHARED_COLL does NOT exist on team $OCS_TEAM (cloned per-opp bots will fail to attach RAG, or attach a different team's collection)" "open $OCS_BASE/a/$OCS_TEAM/documents/ in the OCS UI; pick a collection that belongs to this team and update OCS_SHARED_COLLECTION_ID in $ENV_FILE"
+            ;;
+          301|302)
+            : # session expired — ocs_session check below already warns
+            ;;
+          000|"")
+            : # network error — silent; not the probe's job to flag
+            ;;
+          *)
+            warn "ocs_shared_collection_team: probe returned HTTP $SC_STATUS for collection $SHARED_COLL on team $OCS_TEAM" "verify $OCS_BASE reachable; refresh session via /ace:ocs-login"
+            ;;
+        esac
+      fi
+    fi
+  fi
+
   if [ -n "$GMAIL_ACCT" ]; then
     pass "gmail_config: ACE_GMAIL_ACCOUNT=$GMAIL_ACCT"
   else
