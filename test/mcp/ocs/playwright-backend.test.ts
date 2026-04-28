@@ -10,6 +10,7 @@ import {
   extractEmbeddedWidgetChannelId,
   extractExperimentIdFromLocation,
   parseChatbotTable,
+  assertCollectionPromptInvariant,
 } from '../../../mcp/ocs/backends/playwright.js';
 import type { RequestFn } from '../../../mcp/ocs/backends/pipeline-patch.js';
 
@@ -138,6 +139,32 @@ describe('HTML scrape helpers', () => {
     expect(extractExperimentIdFromLocation('/a/dimagi/chatbots/99/')).toBe(99);
     expect(extractExperimentIdFromLocation('/a/dimagi/chatbots/12345/?foo=bar')).toBe(12345);
     expect(extractExperimentIdFromLocation('/some/other/path')).toBeUndefined();
+  });
+});
+
+// ── assertCollectionPromptInvariant (N1 fix, 0.6.10) ────────────────
+
+describe('assertCollectionPromptInvariant', () => {
+  // OCS rule, characterized by live probe on 2026-04-28:
+  // {collection_index_summaries} is required iff length >= 2.
+  const VAR = '{collection_index_summaries}';
+
+  it.each([
+    ['no variable + 0 collections', `plain prompt`, [], false],
+    ['no variable + 1 collection', `plain prompt`, [42], false],
+    [`variable + 2 collections`, `hi ${VAR}`, [350, 365], false],
+    [`variable + 3 collections`, `hi ${VAR}`, [1, 2, 3], false],
+  ] as const)('accepts: %s', (_name, prompt, ids, _shouldReject) => {
+    expect(() => assertCollectionPromptInvariant(prompt, ids)).not.toThrow();
+  });
+
+  it.each([
+    [`variable + 0 collections`, `hi ${VAR}`, [], /2 or more/],
+    [`variable + 1 collection`, `hi ${VAR}`, [42], /2 or more/],
+    [`no variable + 2 collections`, `plain`, [350, 365], /Prompt expects|missing required template/],
+    [`no variable + 3 collections`, `plain`, [1, 2, 3], /Prompt expects|missing required template/],
+  ] as const)('rejects: %s', (_name, prompt, ids, errorMatch) => {
+    expect(() => assertCollectionPromptInvariant(prompt, ids)).toThrow(errorMatch);
   });
 });
 
@@ -333,33 +360,57 @@ describe('PlaywrightBackend pipeline-patch atoms', () => {
     expect(llm.data.params.max_results).toBe(15);
   });
 
-  it('attachKnowledge rejects when prompt is missing {collection_index_summaries}', async () => {
-    // Mirror the production fixture but strip the required template variable
-    // from the LLM node's prompt. attach_knowledge should fail-fast with a
-    // typed PipelineValidationError BEFORE attempting any POST — that's the
-    // class-level preventer for the silent-rejection bug surfaced in the
-    // 0.5.19 dogfood (Iter 6 family).
+  it('attachKnowledge rejects single-collection attach when prompt has {collection_index_summaries} (N1 rule)', async () => {
+    // Real OCS rule (characterized by live probe on 2026-04-28): the
+    // variable is required iff collection_index_ids.length >= 2. Attaching
+    // a SINGLE collection while the prompt contains the variable triggers
+    // OCS's "variable is specified, but is missing" rejection.
     const fixture = loadPipelineFixture();
-    const stripped = JSON.parse(JSON.stringify(fixture));
-    const llmNode = stripped.pipeline.data.nodes.find(
+    const withVar = JSON.parse(JSON.stringify(fixture));
+    const llmNode = withVar.pipeline.data.nodes.find(
       (n: { data: { type: string } }) => n.data.type === 'LLMResponseWithPrompt'
     );
-    llmNode.data.params.prompt = 'You are a helpful assistant.'; // no token
+    llmNode.data.params.prompt = 'Hello\n{collection_index_summaries}\nWorld';
     let postCalled = false;
     const request: RequestFn = async (method, url) => {
       if (method === 'GET' && url === '/a/dimagi/pipelines/data/77/') {
-        return { ok: true, json: async () => stripped };
+        return { ok: true, json: async () => withVar };
       }
       if (method === 'POST') {
         postCalled = true;
-        return { ok: true, json: async () => ({ data: stripped.pipeline.data, errors: [] }) };
+        return { ok: true, json: async () => ({ data: withVar.pipeline.data, errors: [] }) };
       }
       throw new Error(`unexpected ${method} ${url}`);
     };
     const backend = makeBackend(request, seed);
     await expect(
       backend.attachKnowledge({ experiment_id: 99, collection_index_ids: [42] })
-    ).rejects.toThrow(/collection_index_summaries/);
+    ).rejects.toThrow(/2 or more/);
+    expect(postCalled).toBe(false);
+  });
+
+  it('attachKnowledge rejects multi-collection attach when prompt LACKS the variable (N1 rule, other side)', async () => {
+    const fixture = loadPipelineFixture();
+    const noVar = JSON.parse(JSON.stringify(fixture));
+    const llmNode = noVar.pipeline.data.nodes.find(
+      (n: { data: { type: string } }) => n.data.type === 'LLMResponseWithPrompt'
+    );
+    llmNode.data.params.prompt = 'You are a helpful assistant.'; // NO variable
+    let postCalled = false;
+    const request: RequestFn = async (method, url) => {
+      if (method === 'GET' && url === '/a/dimagi/pipelines/data/77/') {
+        return { ok: true, json: async () => noVar };
+      }
+      if (method === 'POST') {
+        postCalled = true;
+        return { ok: true, json: async () => ({ data: noVar.pipeline.data, errors: [] }) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request, seed);
+    await expect(
+      backend.attachKnowledge({ experiment_id: 99, collection_index_ids: [42, 43] })
+    ).rejects.toThrow(/Prompt expects|missing required template/);
     expect(postCalled).toBe(false);
   });
 
@@ -410,26 +461,64 @@ describe('PlaywrightBackend pipeline-patch atoms', () => {
     expect(postCalled).toBe(false);
   });
 
-  it('setChatbotPipeline accepts variable+empty if collections being added in same call', async () => {
+  it('setChatbotPipeline accepts variable + multi-collection in same call (canonical valid state)', async () => {
     let saved: { data: { nodes: Array<{ data: { type: string; params: Record<string, unknown> } }> } } | undefined;
     const backend = makeBackend(makePipelineRequest((b) => { saved = b as typeof saved; }), seed);
-    // The cross-field check looks at the *merged* final state. So passing
-    // both prompt and a non-empty collections list together is the canonical
-    // unblock for the chicken-and-egg the atom was created to solve.
+    // OCS rule: variable iff length>=2. Two collections + variable = valid.
     await backend.setChatbotPipeline({
       experiment_id: 99,
       prompt: 'New prompt with {collection_index_summaries}',
-      collection_index_ids: [365],
+      collection_index_ids: [350, 365],
     });
     const llm = saved!.data.nodes.find((n) => n.data.type === 'LLMResponseWithPrompt')!;
     expect(llm.data.params.prompt).toBe('New prompt with {collection_index_summaries}');
+    expect(llm.data.params.collection_index_ids).toEqual([350, 365]);
+  });
+
+  it('setChatbotPipeline accepts no-variable + single-collection (canonical per-opp state)', async () => {
+    let saved: { data: { nodes: Array<{ data: { type: string; params: Record<string, unknown> } }> } } | undefined;
+    const backend = makeBackend(makePipelineRequest((b) => { saved = b as typeof saved; }), seed);
+    await backend.setChatbotPipeline({
+      experiment_id: 99,
+      prompt: 'You are the ACE bot for opp X.',
+      collection_index_ids: [365],
+    });
+    const llm = saved!.data.nodes.find((n) => n.data.type === 'LLMResponseWithPrompt')!;
     expect(llm.data.params.collection_index_ids).toEqual([365]);
   });
 
+  it('setChatbotPipeline rejects multi-collection without the variable (other side of the rule)', async () => {
+    const fixture = loadPipelineFixture();
+    const noVar = JSON.parse(JSON.stringify(fixture));
+    const llmNode = noVar.pipeline.data.nodes.find(
+      (n: { data: { type: string } }) => n.data.type === 'LLMResponseWithPrompt'
+    );
+    llmNode.data.params.prompt = 'plain'; // no variable
+    let postCalled = false;
+    const request: RequestFn = async (method, url) => {
+      if (method === 'GET' && url === '/a/dimagi/pipelines/data/77/') {
+        return { ok: true, json: async () => noVar };
+      }
+      if (method === 'POST') {
+        postCalled = true;
+        return { ok: true, json: async () => ({ data: noVar.pipeline.data, errors: [] }) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request, seed);
+    await expect(
+      backend.setChatbotPipeline({
+        experiment_id: 99,
+        prompt: 'Still no variable',
+        collection_index_ids: [42, 43],
+      })
+    ).rejects.toThrow(/Prompt expects|missing required template/);
+    expect(postCalled).toBe(false);
+  });
+
   it('setChatbotPipeline preserves existing collections when only prompt is changed', async () => {
-    // Operator changes only the prompt; existing fixture has [42] attached
-    // with the variable in the prompt. Final state: prompt updated, collections
-    // unchanged. Cross-field check should pass.
+    // Operator changes only the prompt; existing fixture has [42] attached.
+    // Final state: prompt updated (no variable), single collection. Valid.
     const fixture = loadPipelineFixture();
     const withCollection = JSON.parse(JSON.stringify(fixture));
     const llmNode = withCollection.pipeline.data.nodes.find(
@@ -451,11 +540,10 @@ describe('PlaywrightBackend pipeline-patch atoms', () => {
     const backend = makeBackend(request, seed);
     await backend.setChatbotPipeline({
       experiment_id: 99,
-      prompt: 'Reworded prompt with {collection_index_summaries}',
+      prompt: 'Reworded plain prompt without the variable',
     });
     const llm = saved!.data.nodes.find((n) => n.data.type === 'LLMResponseWithPrompt')!;
-    expect(llm.data.params.prompt).toBe('Reworded prompt with {collection_index_summaries}');
-    // Collections preserved from existing state — operator didn't pass them.
+    expect(llm.data.params.prompt).toBe('Reworded plain prompt without the variable');
     expect(llm.data.params.collection_index_ids).toEqual([42]);
   });
 
