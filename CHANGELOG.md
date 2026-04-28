@@ -5,6 +5,26 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.7 — 2026-04-28
+
+`/ace:update` Step 1 now reads the remote VERSION via `git fetch` + `git
+show origin/main:VERSION` against the local marketplace clone, replacing
+the previous `curl https://raw.githubusercontent.com/...` call. The raw
+endpoint is CDN-cached for 1–5 minutes, which made `/ace:update`
+spuriously report `UP_TO_DATE` immediately after a push and forced
+operators to wait on cache propagation before they could install the
+version they had just shipped. Git fetch is uncached, so Step 1 now
+agrees with Step 2's `git pull`.
+
+### Changed
+
+- **`commands/update.md`** — Step 1 swaps `curl
+  raw.githubusercontent.com/.../VERSION` for `git -C $MARKETPLACE fetch
+  origin main && git show origin/main:VERSION`. Adds a marketplace-
+  missing error path. `bin/ace-update-check` (the SessionStart banner)
+  is intentionally left on the curl path — it has a 1-hour cache and
+  the CDN delay isn't user-visible there.
+
 ## 0.6.6 — 2026-04-28
 
 Ship `ACE_HQ_DOMAIN` as a committed default in `.env.tpl` so fresh

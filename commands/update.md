@@ -14,13 +14,15 @@ complete procedure — there is nothing else to discover.
 
 ## Step 1: Fast version check (ONE command)
 
-This curls the remote VERSION file directly — no git pull. Should complete in
-under 2 seconds.
+Fetches the remote VERSION via `git fetch` against the local marketplace
+clone — uncached, unlike `raw.githubusercontent.com` (which is CDN-cached
+1–5 minutes and would spuriously report `UP_TO_DATE` immediately after a
+push). Should complete in under 2 seconds.
 
 ```bash
 bash -c '
 set +e
-REMOTE_URL="https://raw.githubusercontent.com/jjackson/ace/main/VERSION"
+MARKETPLACE="$HOME/.claude/plugins/marketplaces/ace"
 REG="$HOME/.claude/plugins/installed_plugins.json"
 
 # Read installed version from registry
@@ -28,6 +30,13 @@ if [ ! -f "$REG" ]; then
   echo "STATUS: ERROR registry_missing"
   echo "  ~/.claude/plugins/installed_plugins.json not found."
   echo "  Install ACE first: /plugin install ace@ace"
+  exit 0
+fi
+
+if [ ! -d "$MARKETPLACE/.git" ]; then
+  echo "STATUS: ERROR marketplace_missing"
+  echo "  $MARKETPLACE is not a git checkout."
+  echo "  Re-add the marketplace: /plugin marketplace add jjackson/ace"
   exit 0
 fi
 
@@ -48,12 +57,13 @@ SHA="$(node -e "
   } catch(_) { console.log(\"unknown\"); }
 " 2>/dev/null)"
 
-# Fetch remote version via HTTP (fast, 5s timeout)
-RV="$(curl -sf --max-time 5 "$REMOTE_URL" 2>/dev/null | tr -d "[:space:]")"
+# Fetch remote VERSION via git (uncached, no CDN)
+git -C "$MARKETPLACE" fetch --quiet origin main 2>/dev/null
+RV="$(git -C "$MARKETPLACE" show origin/main:VERSION 2>/dev/null | tr -d "[:space:]")"
 if [ -z "$RV" ] || ! echo "$RV" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+$"; then
   echo "STATUS: ERROR fetch_failed"
-  echo "  Could not fetch remote VERSION from $REMOTE_URL"
-  echo "  Check your network connection."
+  echo "  Could not read VERSION from origin/main in $MARKETPLACE"
+  echo "  Check your network connection and that the remote is reachable."
   exit 0
 fi
 
