@@ -1,58 +1,86 @@
 import type {
   Program,
   Opportunity,
-  VerificationRule,
-  DeliveryUnit,
-  PaymentUnit,
   Invite,
   Invoice,
+  DeliveryType,
 } from './types.js';
 
+/**
+ * The contract every Connect backend implements. Method signatures are sized
+ * to the live Connect data model (see types.ts) — when CCC-301 ships and we
+ * gain a real REST API, the existing CompositeBackend dispatches re-route to
+ * a `RestBackend` impl with no signature changes for callers.
+ */
 export interface ConnectClient {
-  // Programs
-  listPrograms(args: { name?: string }): Promise<{ programs: Program[] }>;
-  getProgram(args: { program_id: number }): Promise<Program>;
-  createProgram(args: { name: string; description?: string; organization_id?: number }): Promise<Program>;
-  updateProgram(args: { program_id: number; name?: string; description?: string }): Promise<Program>;
-
-  // Opportunities
-  listOpportunities(args: { program_id?: number; name?: string }): Promise<{ opportunities: Opportunity[] }>;
-  getOpportunity(args: { opportunity_id: number }): Promise<Opportunity>;
-  createOpportunity(args: {
-    program_id: number;
+  // Programs (CRUD)
+  listPrograms(args: { organization_slug: string; name?: string }): Promise<{ programs: Program[] }>;
+  getProgram(args: { organization_slug: string; program_id: string }): Promise<Program>;
+  createProgram(args: {
+    organization_slug: string;
     name: string;
-    description?: string;
-    start_date?: string;
-    end_date?: string;
-    total_budget?: number;
-    currency?: string;
-  }): Promise<Opportunity>;
-  updateOpportunity(args: {
-    opportunity_id: number;
+    description: string;
+    delivery_type: number;
+    budget: number;
+    currency: string;
+    country: string;
+    start_date: string;
+    end_date: string;
+  }): Promise<Program>;
+  updateProgram(args: {
+    organization_slug: string;
+    program_id: string;
     name?: string;
     description?: string;
+    budget?: number;
     start_date?: string;
     end_date?: string;
-    total_budget?: number;
+  }): Promise<Program>;
+
+  // Lookups (read-only) — the Connect program-init form's <select> options
+  listDeliveryTypes(args: { organization_slug: string }): Promise<{ delivery_types: DeliveryType[] }>;
+
+  // Opportunities (CRUD)
+  listOpportunities(args: { organization_slug: string; program_id?: string; name?: string }): Promise<{ opportunities: Opportunity[] }>;
+  getOpportunity(args: { organization_slug: string; opportunity_id: string }): Promise<Opportunity>;
+  createOpportunity(args: {
+    organization_slug: string;
+    program_id?: string;
+    name: string;
+    short_description: string;
+    description: string;
+    currency: string;
+    country: string;
+    hq_server: string;
+    api_key: string;
+    learn_app_domain: string;
+    learn_app: string;
+    learn_app_description?: string;
+    learn_app_passing_score: number;
+    deliver_app_domain: string;
+    deliver_app: string;
+  }): Promise<Opportunity>;
+  updateOpportunity(args: {
+    organization_slug: string;
+    opportunity_id: string;
+    name?: string;
+    short_description?: string;
+    description?: string;
   }): Promise<Opportunity>;
 
-  // Configuration sub-objects
-  setVerificationRules(args: { opportunity_id: number; rules: VerificationRule[] }): Promise<{ ok: true }>;
-  setDeliveryUnits(args: { opportunity_id: number; units: DeliveryUnit[] }): Promise<{ ok: true; units: DeliveryUnit[] }>;
-  setPaymentUnits(args: { opportunity_id: number; units: PaymentUnit[] }): Promise<{ ok: true; units: PaymentUnit[] }>;
-
   // Lifecycle
-  activateOpportunity(args: { opportunity_id: number }): Promise<{ ok: true; status: 'active' }>;
+  activateOpportunity(args: { organization_slug: string; opportunity_id: string }): Promise<{ ok: true; status: 'active' }>;
 
   // Invites
   sendLloInvite(args: {
-    opportunity_id: number;
+    organization_slug: string;
+    opportunity_id: string;
     organization_name: string;
     contact_email: string;
   }): Promise<Invite>;
-  listInvites(args: { opportunity_id: number }): Promise<{ invites: Invite[] }>;
+  listInvites(args: { organization_slug: string; opportunity_id: string }): Promise<{ invites: Invite[] }>;
 
   // Invoices
-  listInvoices(args: { opportunity_id: number }): Promise<{ invoices: Invoice[] }>;
-  getInvoice(args: { invoice_id: number }): Promise<Invoice>;
+  listInvoices(args: { organization_slug: string; opportunity_id: string }): Promise<{ invoices: Invoice[] }>;
+  getInvoice(args: { organization_slug: string; invoice_id: string }): Promise<Invoice>;
 }

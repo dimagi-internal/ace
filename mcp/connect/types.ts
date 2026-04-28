@@ -1,60 +1,52 @@
-// Connect domain types. snake_case at the HTTP boundary (matches eventual REST);
-// camelCase for TS-internal helpers. Field names mirror what we observe on the
-// Connect server templates and what CCC-301 is expected to expose.
+// Connect domain types. Field names mirror what live Connect templates use
+// (snake_case at the HTTP boundary). Confirmed via live probes 2026-04-28
+// against /a/ai-demo-space/program/init/ and /opportunity/init/.
 
 export interface Program {
-  id: number;
+  id: string;             // UUID — Connect routes use UUIDs (e.g. /program/067a73b8-.../)
   name: string;
-  description?: string;
-  organization_id?: number;
+  description: string;
+  delivery_type: number;  // FK id (e.g. 1 = "Infant Vaccine Promotion", 3 = "Nutrition")
+  budget: number;
+  currency: string;       // ISO 4217 (e.g. "USD")
+  country: string;        // ISO 3166-1 alpha-3 (e.g. "USA", "AFG")
+  start_date: string;     // YYYY-MM-DD
+  end_date: string;       // YYYY-MM-DD
+  organization_slug?: string;  // The /a/<slug>/ org this program belongs to
 }
 
 export interface Opportunity {
-  id: number;
-  program_id: number;
+  id: string;             // UUID
+  program_id?: string;    // UUID; may be null for standalone opps
   name: string;
-  description?: string;
-  start_date?: string;
-  end_date?: string;
-  total_budget?: number;
-  currency?: string;
+  short_description: string;  // ≤50 chars (mobile-app display)
+  description: string;
+  currency: string;
+  country: string;
+  hq_server: string;          // CommCare HQ server identifier (server FK)
+  api_key: string;            // HQ API key used to read app metadata
+  learn_app_domain: string;   // HQ project space for the Learn app
+  learn_app: string;          // Learn app id on HQ
+  learn_app_description?: string;
+  learn_app_passing_score: number;  // 0-100
+  deliver_app_domain: string;
+  deliver_app: string;
   status: 'draft' | 'active' | 'completed' | 'cancelled';
-}
-
-export interface VerificationRule {
-  rule_type: 'gps_accuracy' | 'photo_required' | 'duplicate_check' | 'form_field_required';
-  config: Record<string, unknown>;
-}
-
-export interface DeliveryUnit {
-  id?: number;
-  name: string;
-  app_form_xmlns?: string;
-  max_per_day?: number;
-  max_total?: number;
-}
-
-export interface PaymentUnit {
-  id?: number;
-  name: string;
-  amount: number;
-  delivery_unit_ids: number[];
-  required_count?: number;
+  organization_slug?: string;
 }
 
 export interface Invite {
-  id: number;
-  opportunity_id: number;
+  id: string;
+  opportunity_id: string;
   organization_name: string;
-  organization_id?: number;
   contact_email: string;
   status: 'pending' | 'accepted' | 'declined' | 'expired';
   sent_at?: string;
 }
 
 export interface Invoice {
-  id: number;
-  opportunity_id: number;
+  id: string;
+  opportunity_id: string;
   organization_name: string;
   amount: number;
   currency: string;
@@ -62,4 +54,15 @@ export interface Invoice {
   period_start?: string;
   period_end?: string;
   created_at?: string;
+}
+
+/**
+ * A "delivery type" is a Connect-managed enum. We surface the lookup so callers
+ * can map a human-readable name (e.g. "Nutrition") to the int FK the form
+ * expects. Populated by listing the program-init form and parsing the
+ * <select name="delivery_type"> options.
+ */
+export interface DeliveryType {
+  id: number;
+  name: string;
 }
