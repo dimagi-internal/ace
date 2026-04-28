@@ -5,6 +5,91 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.7 — 2026-04-28
+
+🎯 **Milestone: all 4 ACE `-eval` rubrics now strongly calibrated.**
+Cross-model variance protocols completed against the polished 0.9.5
+rubrics for both `pdd-to-deliver-app-eval` and `pdd-to-learn-app-eval`,
+joining `ocs-chatbot-eval` (0.9.4) and `idea-to-pdd-eval` (0.9.6) at
+the strong-calibration tier.
+
+### Demonstrated — final 2 cross-model audits
+
+**`pdd-to-deliver-app-eval`** — Sonnet 8.5 (pre-cap 8.775), Opus 8.5
+(pre-cap 9.175), Haiku 8.5 (pre-cap 9.0). Pre-cap spread **0.40** ≤ 1.0
+→ strongly calibrated. All 3 hit the 8.5 inflation cap; pre-cap reporting
+(added 0.9.4) is what makes the variance measurable.
+
+**`pdd-to-learn-app-eval`** — Sonnet 8.5 (pre-cap 9.35), Opus 8.5
+(pre-cap 9.25), Haiku 8.5 (pre-cap 9.50). Pre-cap spread **0.25** ≤ 1.0
+→ strongly calibrated. Same cap-binding pattern. The 0.9.4 polish
+(bonus-module pinned to 10.0; documented-platform-limitation rule;
+stub-answer-keys carve-out) tightened pre-cap variance from 0.275
+(same-model) to 0.25 (cross-model) — polish reducing variance without
+changing central tendency, exactly per the eval-calibration learnings doc.
+
+### Final calibration status (all 4 rubrics)
+
+| Rubric | Same-model variance | Cross-model spread | Status |
+|---|---|---|---|
+| `ocs-chatbot-eval` | 0.09 (Runs 6–8) | 0.10 | strongly calibrated (0.9.4) |
+| `idea-to-pdd-eval` | 0.04 (Runs 1–3) | 0.275 | strongly calibrated (0.9.6) |
+| `pdd-to-deliver-app-eval` | 0.425 same-model | 0.40 pre-cap | strongly calibrated (0.9.7) |
+| `pdd-to-learn-app-eval` | 0.275 pre-cap (Runs 1–3) | 0.25 pre-cap | strongly calibrated (0.9.7) |
+
+24 total calibration runs across the session (12 same-model + 12
+cross-model). 100% detection rate against the per-opp ground-truth
+catalogue on every run.
+
+### Updated
+
+- **`ACE/smoke-20260428-1242/eval-calibration/pdd-to-deliver-app-eval-runs.md`**
+  — Runs 4–6 (cross-model) appended.
+- **`ACE/smoke-20260428-1242/eval-calibration/pdd-to-learn-app-eval-runs.md`**
+  — Runs 4–6 (cross-model) appended.
+- **`ACE/smoke-20260428-1242/verdicts/opp-eval-deep-v5.yaml`** — final
+  re-aggregate. Score unchanged from v4 (8.21, PASS, adequate coverage)
+  — the milestone is rigor-of-the-grading, not change-in-the-grade.
+  All 4 contributing rubrics now strongly calibrated.
+
+### Session arc (0.7.0 → 0.9.7)
+
+The eval framework matured across this session in 3 phases:
+
+1. **Topology fix (0.7.0–0.8.x).** ACE topology flattened to level-0
+   `Agent` dispatch; first end-to-end smoke run completed; opp-eval
+   produced a confident-but-meaningless 8.92 PASS at 1/6 coverage.
+
+2. **Calibration framework (0.9.0–0.9.2).** Built `eval-calibration`
+   methodology + 2 new cross-artifact rubrics. First real PASS verdict
+   on opp-eval at adequate coverage. Trajectory: 8.92 (inflated) → 8.43
+   (cap honest) → 8.085 (rubrics honest) → 8.21 (coverage adequate).
+
+3. **Cross-model rigor (0.9.4–0.9.7).** Polished 19 surfaced rubric
+   weaknesses; verified all 4 rubrics at strong-calibration tier via
+   Sonnet/Opus/Haiku cross-model audits. Documented patterns and
+   anti-patterns in `docs/eval-calibration-learnings.md` for future
+   sessions.
+
+The number now means something. 8.21/10 PASS is a weighted view of 3
+calibrated categories (design 8.65, commcare 8.5, ocs 7.67), each
+backed by a strongly-calibrated rubric audited at ≥80% detection rate
+on a per-opp ground-truth catalogue, with cross-model spread ≤1.0.
+
+### Backlog still open
+
+- **Cross-opp validation.** All 4 rubrics calibrated against the same
+  smoke-20260428-1242 artifacts. Next opp run will test whether
+  calibration generalizes beyond this one set.
+- **`connect-program-setup-eval`** — 4th category coverage, unblocked
+  by ace-connect MCP. Needs a non-degraded run for ground truth.
+- **Operate / closeout categories** — wait for Phase 5 / Phase 6 runs.
+- **`cycle-grade` promotion** to a proper `-eval` skill.
+- **Operator-effort tracking** in state.yaml — meta-eval signal not
+  in any current rubric.
+- Three small OCS rubric polish items + tighter composition-rule
+  imperatives queued for the next iteration.
+
 ## 0.9.6 — 2026-04-28
 
 Second strongly-calibrated rubric + durable session learnings doc.
