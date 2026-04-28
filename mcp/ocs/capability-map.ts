@@ -6,9 +6,10 @@ export interface CapabilityRoute {
 }
 
 export type Capability =
-  // Authoring (10)
+  // Authoring (11)
   | 'clone_chatbot'
   | 'set_chatbot_system_prompt'
+  | 'set_chatbot_pipeline'
   | 'create_collection'
   | 'upload_collection_files'
   | 'wait_for_collection_indexing'
@@ -35,6 +36,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   // Authoring
   clone_chatbot:                { backend: 'PLAYWRIGHT', restTarget: 'POST /api/experiments/' },
   set_chatbot_system_prompt:    { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/experiments/{id}/prompt/' },
+  set_chatbot_pipeline:         { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/experiments/{id}/pipeline/' },
   create_collection:            { backend: 'PLAYWRIGHT', restTarget: 'POST /api/collections/' },
   upload_collection_files:      { backend: 'PLAYWRIGHT', restTarget: 'POST /api/collections/{id}/files/' },
   wait_for_collection_indexing: { backend: 'PLAYWRIGHT', restTarget: 'GET /api/collections/{id}/files/{fid}/status/' },

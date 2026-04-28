@@ -217,9 +217,27 @@ server.tool(
 
 server.tool(
   'ocs_set_chatbot_system_prompt',
-  "Update the LLMResponseWithPrompt node's prompt field for this chatbot.",
+  "Update the LLMResponseWithPrompt node's prompt field for this chatbot. NOTE: when also changing collection_index_ids in the same operator-visible step, prefer ocs_set_chatbot_pipeline — it does both updates in a single transactional save and avoids the cross-field validation chicken-and-egg (e.g. setting a prompt with `{collection_index_summaries}` when no collections are attached, or vice versa).",
   { experiment_id: z.number(), prompt: z.string() },
   async (args) => { await composite.setChatbotSystemPrompt(args); return result({ ok: true }); },
+);
+
+server.tool(
+  'ocs_set_chatbot_pipeline',
+  "Transactional update of the LLMResponseWithPrompt node's params: prompt + collections + tools + source material in one save. Any field omitted is preserved from the existing pipeline. Pre-flight: if the FINAL prompt (after merge) contains `{collection_index_summaries}`, the FINAL collection_index_ids must be non-empty — otherwise OCS rejects the save and the bot becomes unconfigurable. Use this when changing both prompt and collections together; use the focused atoms (ocs_set_chatbot_system_prompt, ocs_attach_knowledge, ocs_set_chatbot_tools, ocs_set_source_material) when only changing one.",
+  {
+    experiment_id: z.number(),
+    prompt: z.string().optional(),
+    collection_index_ids: z.array(z.number()).optional(),
+    max_results: z.number().optional(),
+    generate_citations: z.boolean().optional(),
+    source_material_id: z.number().nullable().optional(),
+    tools: z.array(z.string()).optional(),
+    custom_actions: z.array(z.string()).optional(),
+    built_in_tools: z.array(z.string()).optional(),
+    mcp_tools: z.array(z.string()).optional(),
+  },
+  async (args) => { await composite.setChatbotPipeline(args); return result({ ok: true }); },
 );
 
 server.tool(
