@@ -5,6 +5,19 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.8.2 — 2026-04-28
+
+### Fixed
+
+- `connect_create_program`, `connect_create_opportunity`, and
+  `connect_create_payment_unit` reject numeric arguments coming in as
+  strings. Surfaced when a Claude Code MCP-tool call serialized
+  `delivery_type: 11` and `budget: 10000` as strings; the Zod schemas
+  rejected them with `"Expected number, received string"`. Switched
+  the affected fields to `z.coerce.number()` so either form is
+  accepted (the playwright backend was already coercing via `String(...)`
+  internally).
+
 ## 0.8.1 — 2026-04-28
 
 Phase 3 (Connect Setup) is now fully atom-driven. The five blocked
