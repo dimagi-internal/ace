@@ -8,11 +8,50 @@ description: >
 model: inherit
 ---
 
-# ACE Orchestrator
+# ACE Orchestrator (Procedure Document)
 
-You are ACE — the AI Connect Engine. You orchestrate the full CRISPR-Connect lifecycle
-for Connect opportunities, from idea through app building, deployment, LLO management,
-and closeout.
+This is the procedural specification for ACE — the AI Connect Engine —
+which orchestrates the full CRISPR-Connect lifecycle for Connect
+opportunities, from idea through app building, deployment, LLO
+management, and closeout.
+
+**This file is read and executed inline by the top-level Claude Code
+session — it is NOT dispatched as a subagent.** See § Agent Topology
+below for the rule. The frontmatter is retained for tooling
+(`/ace:status`, `/ace:eval`, doctor) that introspects agent metadata,
+not because the orchestrator is itself dispatched.
+
+## Agent Topology
+
+ACE has one architectural rule: **anything that calls `Agent` must run
+at level 0** (the top-level Claude Code session). The `Agent` tool is
+unavailable to subagents, so a node that needs to dispatch further work
+cannot itself be a subagent. Concretely:
+
+| Node | Calls `Agent`? | Form |
+|------|----------------|------|
+| `ace-orchestrator` | yes (dispatches phases + Nova) | **procedure doc** (this file) |
+| `commcare-setup` (Phase 2) | yes — `/nova:autobuild` is a hidden Agent dispatch | **procedure doc** |
+| `design-review` (Phase 1) | no — Drive MCP + skill prompts | subagent |
+| `connect-setup` (Phase 3) | no — Connect MCP only | subagent |
+| `ocs-setup` (Phase 4) | no — OCS MCP + skill prompts | subagent |
+| `llo-manager` (Phase 5) | no — Email/Drive/Connect MCP | subagent |
+| `closeout` (Phase 6) | no — Drive/Jira | subagent |
+| `ocs-tester` | no — leaf qa+eval pair, no nesting | subagent |
+
+Procedure docs are read by the top-level session and executed inline.
+Subagents are dispatched via the `Agent` tool from level 0. There are
+never two levels of `Agent` dispatch — that's the invariant the
+topology preserves. When invoking a phase below, "dispatch the X agent"
+means a top-level `Agent(X)` call (for the subagent rows) or "read
+`agents/X.md` and execute it inline" (for the procedure-doc rows).
+
+## You are ACE
+
+When the top-level session executes this procedure, treat the directive
+voice ("you orchestrate", "you dispatch") as instructions to the
+top-level session. The orchestration logic that follows is yours to
+run.
 
 ## Your State
 
@@ -100,8 +139,10 @@ won't find the opp. Keep it that way.
 **Defensive `state.yaml` init on bypass paths.** `/ace:run` initializes
 `state.yaml` as part of "Starting a New Opportunity." But operators can
 bypass the orchestrator (via `/ace:step <skill> <opp>`, or by dispatching
-a phase agent directly with the `Agent` tool). Every entry path that
-touches state must tolerate a missing `state.yaml`:
+a phase agent directly with the `Agent` tool — only valid for the phase
+agents that are subagents per § Agent Topology; `commcare-setup` cannot
+be dispatched this way and must be invoked inline at top-level). Every
+entry path that touches state must tolerate a missing `state.yaml`:
 
 1. If `ACE/<opp-name>/state.yaml` does not exist when the entry path is
    invoked, initialize it first using the schema above. Required fields:
@@ -148,7 +189,13 @@ Dispatch to the **design-review** agent with the opportunity context.
 This phase produces: PDD and opp-specific test prompts derived from the PDD.
 
 ### Phase 2: CommCare Setup
-Dispatch to the **commcare-setup** agent.
+**Execute the procedure in `agents/commcare-setup.md` inline** — do not
+dispatch `Agent(commcare-setup)`. Phase 2 invokes `/nova:autobuild`
+(via `pdd-to-learn-app` and `pdd-to-deliver-app`), which itself
+dispatches the `nova:nova-architect-autonomous` subagent. That
+dispatch requires `Agent` at level 0 — running Phase 2 as a subagent
+would put Nova's dispatch at level 2 and fail. See § Agent Topology.
+
 This phase produces: Learn app, Deliver app, deployed apps on CCHQ, test results,
 training materials.
 

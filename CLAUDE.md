@@ -1,10 +1,43 @@
 # ACE — Agent Guide
 
-ACE (AI Connect Engine) is a Claude Code plugin that orchestrates the CRISPR-Connect lifecycle for Connect opportunities — idea → app build → deploy → LLO management → closeout. It follows the canopy plugin architecture: agents in `agents/` dispatch to skills in `skills/`, skills are prompt-based `SKILL.md` files, and MCP servers in `mcp/` provide external-system access.
+ACE (AI Connect Engine) is a Claude Code plugin that orchestrates the CRISPR-Connect lifecycle for Connect opportunities — idea → app build → deploy → LLO management → closeout. It follows the canopy plugin architecture, with a tweak: agents in `agents/` come in two forms (procedure docs that the top-level session executes inline, and subagents dispatched from level 0); skills in `skills/` are prompt-based `SKILL.md` files; MCP servers in `mcp/` provide external-system access. See § Agent topology below for the invariant that determines which agents are which form.
+
+## Agent topology
+
+ACE has one architectural rule: **anything that calls `Agent` must run
+at level 0** (the top-level Claude Code session). The `Agent` tool is
+unavailable to subagents, so a node that needs to dispatch further work
+cannot itself be a subagent. The directory structure looks the same
+either way (everything lives under `agents/`), but the wiring differs:
+
+| Node | Calls `Agent`? | Form | Invoked how |
+|------|----------------|------|-------------|
+| `ace-orchestrator` | yes (dispatches phases + Nova) | procedure doc | `/ace:run` reads it and executes inline |
+| `commcare-setup` (Phase 2) | yes — `/nova:autobuild` is a hidden Agent dispatch | procedure doc | orchestrator reads it and executes inline |
+| `design-review` (Phase 1) | no | subagent | `Agent(design-review)` from level 0 |
+| `connect-setup` (Phase 3) | no | subagent | `Agent(connect-setup)` from level 0 |
+| `ocs-setup` (Phase 4) | no | subagent | `Agent(ocs-setup)` from level 0 |
+| `llo-manager` (Phase 5) | no | subagent | `Agent(llo-manager)` from level 0 |
+| `closeout` (Phase 6) | no | subagent | `Agent(closeout)` from level 0 |
+| `ocs-tester` | no — leaf qa+eval pair | subagent | `Agent(ocs-tester)` ad-hoc |
+
+There are never two levels of `Agent` dispatch — that's the invariant.
+Procedure docs retain frontmatter so tooling (`/ace:status`, `/ace:eval`,
+`/ace:doctor`, `/ace:docs`) that introspects agent metadata keeps
+working. They are not registered as subagents in the dispatch sense:
+`/ace:run` and `/ace:step` execute them inline.
+
+This rule landed in 0.7.0. The previous design dispatched the
+orchestrator as a subagent, which silently broke Phase 2 the moment
+ACE migrated CommCare app builds onto Nova's `/nova:autobuild` (0.6.0)
+— Nova's slash command dispatches the architect via `Agent`, and an
+orchestrator-as-subagent put that dispatch at level 2 where `Agent`
+isn't available. The fix flattens the dispatch tree so every `Agent`
+call originates at level 0.
 
 ## Layout
 
-- `agents/` — 8 agents: `ace-orchestrator` + 6 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `llo-manager`, `closeout`) + `ocs-tester` (ad-hoc QA agent). Phases 1–4 run end-to-end with zero LLO involvement; Phase 5 is where LLOs first hear from ACE.
+- `agents/` — 8 agents total. Two are procedure docs (`ace-orchestrator`, `commcare-setup`); six are subagents (`design-review`, `connect-setup`, `ocs-setup`, `llo-manager`, `closeout`, `ocs-tester`). See § Agent topology above for the rule. Phases 1–4 run end-to-end with zero LLO involvement; Phase 5 is where LLOs first hear from ACE.
 - `skills/` — 24 skills, one directory per skill, each with a single `SKILL.md`. Skills are stateless; opportunity state lives in Google Drive under `ACE/<opp-name>/`. See `skills/README.md` for the author contract, including the `## QA vs Eval — the two-phase pattern` section that governs `-qa` / `-eval` skill pairs and the new `opp-eval` umbrella-aggregator pattern.
 - `commands/` — 10 slash commands: `run`, `step`, `status`, `eval`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `ocs-bootstrap-template`.
 - `mcp/` — 2 MCP servers, both wired inline in `.claude-plugin/plugin.json` under `mcpServers` (moved there in 0.5.16 from a plugin-root `.mcp.json` to work around [anthropics/claude-code#9427](https://github.com/anthropics/claude-code/issues/9427) — `${CLAUDE_PLUGIN_DATA}` / `${CLAUDE_PLUGIN_ROOT}` substitution is broken in plugin-root `.mcp.json` but works inline):

@@ -34,7 +34,12 @@ Run a single skill for an opportunity without running the full lifecycle.
    on every `/ace:step` call so the bypass path is robust and
    `/ace:status` shows accurate hand-off attribution even when admins
    skip the orchestrator.
-5. Invoke the specified skill with the opportunity context.
+5. Invoke the specified skill with the opportunity context. Skills run
+   inline at top-level (this `/ace:step` invocation IS the top-level
+   session) so `Agent` is available — required for any skill that
+   invokes `/nova:autobuild` (Phase 2's `pdd-to-learn-app` /
+   `pdd-to-deliver-app`) or otherwise dispatches a subagent. See
+   `CLAUDE.md` § Agent topology.
 6. Update `state.yaml` with the result (per-phase nested map, 6-phase schema).
 
 ## Prerequisite check

@@ -16,9 +16,19 @@ skills:
   - { name: training-materials,  has_judge: true }
 ---
 
-# CommCare Setup Agent (Phase 2)
+# CommCare Setup (Phase 2 Procedure Document)
 
-You build and deploy the CommCare-side apps for a CRISPR-Connect opportunity.
+This file specifies Phase 2 of the CRISPR-Connect lifecycle: build and
+deploy the CommCare-side apps.
+
+**This file is read and executed inline by the top-level Claude Code
+session — it is NOT dispatched as a subagent.** Step 1 invokes
+`/nova:autobuild`, which itself dispatches `nova:nova-architect-autonomous`
+via the `Agent` tool. `Agent` is only available at level 0; running
+Phase 2 as a subagent would put Nova's dispatch at level 2 and fail.
+See `agents/ace-orchestrator.md` § Agent Topology. The frontmatter is
+retained for tooling that introspects agent metadata, not because Phase
+2 is itself dispatched.
 
 ## Workflow
 

@@ -5,6 +5,64 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.7.0 — 2026-04-28
+
+Flatten the ACE agent dispatch tree so every `Agent` call originates at
+level 0 (the top-level Claude Code session). The `Agent` tool is
+unavailable to subagents, so any node that dispatches further work
+cannot itself be a subagent. The previous design dispatched the
+orchestrator as a subagent, which silently broke Phase 2 the moment
+the 0.6.0 Nova-plugin migration landed: `/nova:autobuild` dispatches
+`nova:nova-architect-autonomous` via `Agent`, and an
+orchestrator-as-subagent placed that dispatch at level 2 where `Agent`
+isn't reachable. The first e2e validation run after 0.6.0 surfaced
+this as a hard halt at `pdd-to-learn-app` / `pdd-to-deliver-app`.
+
+The fix is structural: `ace-orchestrator` and `commcare-setup` become
+procedure documents that the top-level session reads and executes
+inline (they call `Agent`, so they must run at level 0). The other
+five phase agents (`design-review`, `connect-setup`, `ocs-setup`,
+`llo-manager`, `closeout`) plus `ocs-tester` are clean leaves — they
+use MCP tools and skill prompts but never dispatch — and stay as
+subagents launched from level 0. There are never two levels of
+`Agent` dispatch.
+
+### Changed
+
+- **`commands/run.md`** — Step 2 changes from "Dispatch to the
+  ace-orchestrator agent" to "Execute the orchestration procedure
+  inline at top-level. Read `agents/ace-orchestrator.md` and follow
+  it." Smart-default and post-run sections updated to match.
+- **`commands/step.md`** — Step 5 clarifies that skills run inline at
+  top-level so `Agent` is available, required for any skill that
+  invokes `/nova:autobuild` or otherwise dispatches a subagent.
+- **`agents/ace-orchestrator.md`** — Opening section reframed as a
+  procedure-doc preamble. New `## Agent Topology` table is the
+  authoritative spec of which agents are subagents vs procedure docs.
+  Phase 2 dispatch line changes from "Dispatch to the commcare-setup
+  agent" to "Execute the procedure in `agents/commcare-setup.md`
+  inline" with a one-paragraph rationale referencing the topology
+  rule. Defensive-init bypass-paths note tightened to mark
+  `commcare-setup` as not directly `Agent`-dispatchable.
+- **`agents/commcare-setup.md`** — Opening reframed as a procedure-doc
+  preamble citing the `/nova:autobuild` → architect dispatch chain as
+  the reason Phase 2 cannot be a subagent.
+- **`CLAUDE.md`** — New `## Agent topology` section at the top of the
+  file is the canonical reference for the rule. The `## Layout`
+  bullet for `agents/` is rewritten to reflect the two-form split. The
+  intro paragraph picks up the same framing.
+
+### Why now
+
+This is the right scope for the lesson. A narrower fix (only
+flattening the orchestrator) would leave `commcare-setup`-as-subagent
+dispatching `/nova:autobuild` and recreate the same bug at the next
+level down. A wider fix (flattening every phase agent) gives up real
+agent isolation for the five phases that don't need it. The
+"call-graph determines form" invariant is the smallest rule that
+covers all current and likely-future skill compositions without
+reintroducing the trap.
+
 ## 0.6.11 — 2026-04-28
 
 Docs only. Closes out the 2026-04-27 turmeric-dogfood cycle by recording

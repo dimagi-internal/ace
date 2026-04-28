@@ -36,10 +36,10 @@ Run the full CRISPR-Connect lifecycle for a Connect opportunity.
 ## Smart-default UX (zero-arg happy path)
 
 The intended minimum invocation is literally `/ace:run` (or
-`/ace:run <slug>`). When no `--idea` is provided, the orchestrator
-discovers a PDD on Drive and prompts the operator to confirm. See
-§ Starting a New Opportunity in `agents/ace-orchestrator.md` for the
-full resolution flow. Short version:
+`/ace:run <slug>`). When no `--idea` is provided, the orchestration
+procedure discovers a PDD on Drive and prompts the operator to confirm.
+See § Starting a New Opportunity in `agents/ace-orchestrator.md` for
+the full resolution flow. Short version:
 
 1. Resolve slug (from arg, or auto-generate `smoke-<timestamp>`).
 2. Read `ACE_DRIVE_ROOT_FOLDER_ID` from the environment. If unset/empty,
@@ -74,7 +74,17 @@ full resolution flow. Short version:
    Pass the body through to the orchestrator alongside the slug so the
    "Starting a New Opportunity" flow can skip its PDD-picker.
 
-2. Dispatch to the **ace-orchestrator** agent with:
+2. **Execute the orchestration procedure inline at top-level.** Read
+   `agents/ace-orchestrator.md` and follow it as a procedure document
+   from this (top-level) Claude Code session. Do **not** dispatch
+   `Agent(ace-orchestrator)` — the orchestrator is a procedure doc, not
+   a subagent (see `CLAUDE.md` § Agent topology). The reason this
+   matters: the orchestrator dispatches per-phase agents and (for
+   Phase 2) the Nova architect, all of which require the `Agent` tool.
+   `Agent` is only available at level 0; running the orchestrator as a
+   subagent would put it at level 1 and break every dispatch.
+
+   Inputs to thread through:
    - Slug
    - Execution mode
    - Idea body (if `--idea` was provided)
@@ -82,8 +92,9 @@ full resolution flow. Short version:
    - Sandbox flag (if set)
    - Any existing state from GDrive (if resuming)
 
-3. After the orchestrator returns, if `--ace-web-url` is non-empty
-   (explicit or defaulted):
+3. After the orchestration procedure completes (all phases run or a
+   gate halts the run), if `--ace-web-url` is non-empty (explicit or
+   defaulted):
    - Resolve the path of the current stream-json transcript (the `.jsonl`
      file the operator is recording, typically via
      `claude -p --output-format stream-json > <file>`). If the transcript
@@ -99,4 +110,4 @@ full resolution flow. Short version:
    - Log the returned `session_slug` and the viewable URL
      (`<URL>/chat/<session_slug>`) to the operator's console.
 
-The orchestrator handles all phases in step 2.
+The orchestration procedure handles all phases in step 2.
