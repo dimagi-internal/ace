@@ -5,157 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.9.1 — 2026-04-28
+## 0.8.2 — 2026-04-28
 
-Second iteration of the eval calibration loop, driven by what 0.9.0's
-first calibration run surfaced. Demonstrates the methodology actually
-self-improves rather than just calibrating once. **Trends across the
-three iterations on the smoke-20260428-1242 OCS deep transcript:**
-v1 8.92 → v2 8.28 → **v3 7.62** (-1.30 total). Each rubric edit moved
-the score in the right direction with deterministic, audited
-deductions.
+### Fixed
 
-### Changed
-
-- **`skills/ocs-chatbot-eval/SKILL.md`** — `refusal_correctness` no
-  longer defaults to 10 when a suite has zero adversarial prompts.
-  It now caps at **6/10 (warn)** in that case. The previous default
-  was hiding 2.0 weighted points of inflation — refusal discipline
-  that has never been tested is unmeasured, not perfect, and the
-  weighted overall must reflect that gap. Re-run variance protocol:
-  7.57 / 7.66 / 7.62 (variance 0.09 unchanged; cap is deterministic).
-
-- **`skills/pdd-to-deliver-app-eval/SKILL.md`** — first-iteration
-  fixes after LLM-judge calibration. The 0.9.0 rubric variance was
-  0.425 across 3 runs — just inside the ≤0.5 target. Two fixes:
-  (a) `field_count_match` clarifies how to score "split" deviations
-  (parent + relevance-conditional child = one half-deviation, not
-  two adds; spec-implied "free-text other" fields = zero deviation),
-  and (b) inflation-guard cap at 8.5 when ≥2 `[WARN]`-tier
-  auto_surfaced entries (mirrors OCS rubric pattern).
-
-- **`skills/eval-calibration/SKILL.md`** — variance-hardening
-  guidance. When 3 sequential same-model runs produce a tight
-  spread (≤ 0.1), suspect anchoring. New "provisional" vs
-  "strongly calibrated" distinction: provisional at ≤ 0.5
-  same-model variance; strongly calibrated requires either
-  cross-model spread ≤ 1.0 (different judge models) or
-  shuffled-prompt-order spread ≤ 0.5.
-
-### Demonstrated
-
-Calibration audit trails at `ACE/smoke-20260428-1242/eval-calibration/`:
-
-- `ocs-chatbot-eval-runs.md` — 8 runs total. Score trajectory
-  8.92 → 8.28 → 7.62.
-- `pdd-to-deliver-app-eval-runs.md` — first 3-run LLM-judge
-  variance protocol. Median 8.55, variance 0.425, detection 4/4.
-
-`opp-eval-deep-v3.yaml` re-aggregates: raw 8.085 (down from 8.43),
-verdict still capped at WARN because coverage tier remains
-"partial" (2 of 6 categories). Path to a real PASS verdict requires
-lifting coverage to "adequate" (3 categories) — clearest next move
-is `idea-to-pdd-eval`.
-
-### Backlog (queued from 0.9.1 findings)
-
-- **`idea-to-pdd-eval`** — top-leverage next rubric. Covers design
-  category, lifts opp-eval from partial → adequate coverage.
-- **OCS rubric 0.9.2 follow-ups:** tier the refusal cap by
-  adversarial-prompt count; include out-of-scope handling in
-  refusal score; resolve tone-vs-correctness double-counting on
-  typos; split source_usage cap into "empty + body grounds" vs
-  "empty + body fails"; specify multi-error per-entry behavior.
-- **Cross-model variance** for both calibrated rubrics.
-- **`connect-program-setup-eval`** — now unblocked by 0.8.0/0.8.1
-  ace-connect MCP.
-
-## 0.9.0 — 2026-04-28
-
-Self-improving evaluation framework. The first end-to-end smoke run
-exposed two real eval failures: (a) `opp-eval` returned a confident
-PASS at 8.92/10 with only 1 of 6 categories actually scored — pure
-inflation from the weight-renormalization math; (b) `ocs-chatbot-eval`
-scored a chatbot 8.98/10 despite a contact-info typo in 12% of
-responses and an empty `cited_files` API field on every entry. The
-rubrics directionally noticed (source_usage was the lowest dim) but
-had no hard-deduction rules, so scores landed in the safe 8–9
-generosity zone. This release rewires the eval system around three
-properties: ground-truth detection, inter-run stability, and
-inflation discipline.
-
-### Added
-
-- **`skills/eval-calibration/SKILL.md`** — new skill: the calibration
-  methodology. Defines the per-opp ground-truth catalogue
-  (`ACE/<opp>/eval-calibration/known-issues.md`), the multi-run
-  variance protocol (≥3 LLM-judge runs, variance ≤ 0.5), and the
-  detection-rate metric (≥80% of catalogued issues must be flagged).
-  Output is a calibrated rubric plus an audit trail
-  (`<rubric-name>-runs.md`) showing each rubric edit's before/after on
-  a fixed artifact.
-
-- **`skills/pdd-to-deliver-app-eval/SKILL.md`** — new cross-artifact
-  eval skill, the template for future PDD-vs-build rubrics. 5
-  dimensions: field_count_match (0.20), question_order_match (0.15),
-  gate_semantics_match (0.25), conditional_logic_match (0.15),
-  connectify_wiring (0.25). Calibrated against the
-  smoke-20260428-1242 ground-truth catalogue with 4/4 detection on
-  first manual application.
-
-### Changed
-
-- **`skills/ocs-chatbot-eval/SKILL.md`** — calibrated rubric. Added
-  `refusal_correctness` as a 5th dimension. Re-weighted: correctness
-  0.30, source_usage 0.20, refusal_correctness 0.20, tone 0.15,
-  tagging 0.15. Hard-deduction rules: factual error → 1-point
-  Correctness deduction with hard ceiling 7; empty `cited_files`
-  despite `generate_citations: true` → automatic ≤5 cap on Source
-  usage; same factual error in ≥2 entries → suite-level inflation
-  guard caps overall at 8.5. Manual application against
-  smoke-20260428-1242 deep transcript drops 8.98 → 8.28 with 3/3
-  known issues flagged.
-
-- **`skills/pdd-to-test-prompts/SKILL.md`** — required adversarial
-  coverage. Suites must include ≥1 prompt in each of 5 adversarial
-  categories (`should-refuse`, `out-of-scope`,
-  `hallucination-probe`, `leading-question`, `negative-frame`) and
-  ≥15% of total prompts must be adversarial.
-
-- **`skills/opp-eval/SKILL.md`** — coverage-aware run-level verdict.
-  Raw weighted-mean is computed first, then coverage caps the
-  verdict regardless of score: 0–1 categories → `incomplete`; 2 →
-  `warn` cap; 3 → `pass` cap if raw ≥7; 4+ → full normal verdict.
-  New `incomplete` verdict for runs with too few rubrics to grade
-  meaningfully. The first smoke run's PASS at 1/6 coverage would
-  now correctly classify as `incomplete`.
-
-### Demonstrated
-
-Calibration runs against `smoke-20260428-1242` artifacts written to
-`eval-calibration/` and `verdicts/*-v2.yaml`:
-
-- **OCS deep:** 8.98 → 8.28 (-0.70). Source_usage capped at 5.0 by
-  empty `cited_files` rule. Correctness 8.5 by 3-typo deduction.
-- **Deliver app:** new rubric scored 8.575 with 4/4 known issues
-  flagged. Weakest dim: `gate_semantics_match` 7.5 (Q2 GPS
-  hint-vs-validate gap).
-- **opp-eval re-run:** raw 8.43 but verdict capped at `warn` (was
-  PASS) because coverage is `partial` (2 of 6 categories).
-
-The variance protocol (≥3 LLM-judge runs per rubric to confirm
-score variance ≤ 0.5) is queued as a follow-on session — manual
-applications used the new criteria but weren't fresh LLM-judge
-invocations.
-
-### Backlog
-
-`pdd-to-learn-app-eval`, `idea-to-pdd-eval`, operator-effort
-tracking in `state.yaml`, `cycle-grade` promotion to a proper
-`-eval` skill, real LLM-judge variance runs, Connect-side
-`connect-program-setup-eval` (now unblocked by 0.8.0/0.8.1's
-ace-connect MCP — next session can stand it up against actual
-Connect artifacts).
+- `connect_create_program`, `connect_create_opportunity`, and
+  `connect_create_payment_unit` reject numeric arguments coming in as
+  strings. Surfaced when a Claude Code MCP-tool call serialized
+  `delivery_type: 11` and `budget: 10000` as strings; the Zod schemas
+  rejected them with `"Expected number, received string"`. Switched
+  the affected fields to `z.coerce.number()` so either form is
+  accepted (the playwright backend was already coercing via `String(...)`
+  internally).
 
 ## 0.8.1 — 2026-04-28
 
