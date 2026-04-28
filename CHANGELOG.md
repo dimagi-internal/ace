@@ -5,6 +5,65 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.6 — 2026-04-28
+
+Second strongly-calibrated rubric + durable session learnings doc.
+
+### Demonstrated — `idea-to-pdd-eval` cross-model variance
+
+Three judge models against the same fixed PDD with the polished
+0.9.5 rubric:
+
+| Model | Overall | Notes |
+|---|---|---|
+| Sonnet | 8.65 | Stress ceiling 7.5 bound; load-bearing + mid `numbers_consistent` deductions |
+| Opus | 8.55 | Stress ceiling 7.5 bound (composition rule applied); same deductions |
+| Haiku | 8.825 | Did NOT apply stress-test composition rule (read formula instead of ceiling); offset by lower `numbers_consistent` |
+
+**Cross-model spread: 0.275** ≤ 1.0 → **strongly calibrated.**
+
+Same Haiku-divergence pattern as the OCS rubric: when language is
+borderline directive-vs-guidance, Haiku reads literally and the
+others read as instruction. Multi-dimensional weighted score is
+robust because dimensions counterbalance.
+
+ACE now has **2 of 4 rubrics strongly calibrated** (OCS, idea-to-pdd).
+`pdd-to-deliver-app-eval` and `pdd-to-learn-app-eval` are
+provisional — cross-model audits queued.
+
+### Added — durable eval calibration learnings
+
+- **`docs/eval-calibration-learnings.md`** — reference doc capturing
+  patterns and anti-patterns observed across the 0.9.0–0.9.5
+  trajectory. Six anti-patterns documented (inflation by weight
+  renormalization, generosity by default, "N/A defaults to perfect",
+  cap-collapses-variance, self-eval over-confidence, same-model
+  variance is not enough). Practical recipes for building a new
+  `-eval` skill, recovering from suspiciously-low variance, and
+  testing whether a rubric is actually discriminating. Linked from
+  `skills/eval-calibration/SKILL.md` § See also.
+
+### Backlog (still open after 0.9.6)
+
+- Cross-model variance on `pdd-to-deliver-app-eval` and
+  `pdd-to-learn-app-eval` (move them from provisional to strongly
+  calibrated).
+- Same-model re-runs of polished rubrics to confirm 0.9.4–0.9.5
+  polish reduced (or didn't increase) variance.
+- Tighten `idea-to-pdd-eval` composition-rule wording to imperative
+  so Haiku-tier judges don't misread (Haiku's higher 8.825 stems
+  from reading the rule as guidance rather than directive).
+- Operator-effort tracking in `state.yaml`.
+- `cycle-grade` promotion to a proper `-eval` skill (deferred until
+  a closed-cycle opp produces ground truth).
+- `connect-program-setup-eval` (deferred until a non-degraded
+  Phase 3 run produces ground truth).
+- Three OCS-rubric polish items not yet shipped: refine "unspeccable
+  Layer B" anchor for `feasibility_headline_metrics` (Haiku scored
+  it 8.5 vs Sonnet/Opus 6.5–7.5); clarify `numbers_consistent`
+  severity-tier rules (Haiku applied two load-bearing 2.0
+  deductions, Sonnet/Opus applied two mid 1.0).
+
 ## 0.9.5 — 2026-04-28
 
 Rubric polish (19 surfaced weaknesses → fixes batched across all 4

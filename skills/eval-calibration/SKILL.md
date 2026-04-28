@@ -216,6 +216,14 @@ self-congratulating: every rubric edit must show measurable
 improvement in detection rate or variance against a real
 ground-truth set, captured in an auditable run-record.
 
+## See also
+
+- **`docs/eval-calibration-learnings.md`** — durable reference for
+  patterns and anti-patterns observed across the 0.9.0–0.9.5
+  calibration trajectory. The "recipes" section walks through how
+  to build a new `-eval` skill end-to-end. Read this before
+  authoring a new rubric or iterating on an existing one.
+
 ## Change Log
 
 | Date | Change | Author |
