@@ -1,0 +1,875 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+
+<link rel="apple-touch-icon" sizes="180x180" href="/static/images/favicons/apple-touch-icon.b59ca68e1151.png">
+<link rel="icon" type="image/png" sizes="96x96" href="/static/images/favicons/favicon-96x96.c40024139556.png">
+<link rel="icon" type="image/svg+xml" href="/static/images/favicons/favicon.b62096104f6b.svg">
+<link rel="manifest" href="/static/images/favicons/site.07030052390d.webmanifest">
+<link rel="shortcut icon" href="/static/images/favicons/favicon.a836b61c1c52.ico">
+
+    <title>Connect</title>
+    
+       <link rel="stylesheet" href="/static/bundles/css/vendors.fc4af69a0837.css">
+       <link rel="stylesheet" href="/static/bundles/css/tailwind.da5b33e84bbd.css">
+       <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    
+      <script id="gtm-data" type="application/json">{"isDimagi": false, "gtmID": "GTM-M3MVWH7F", "userId": 6299}</script>
+      <script src="/static/js/gtx.6b03cca6de39.js" defer></script>
+      <script src="/static/bundles/js/vendors-bundle.fca9de3d73ff.js" defer></script>
+      <script src="/static/bundles/js/tailwind-bundle.d41d8cd98f00.js" defer></script>
+      
+    
+  </head>
+  <body
+    hx-headers='{"X-CSRFToken": "pn9YdvzIAMsVY9SEXH7vcXed7KGJRGDH5z51sZ62jUM2MDtQa4jCofDsGJ37R1X4"}'
+    x-data="{ sidebarOpen: $persist(false).as('sidebarOpen'), hasSidebar: true }"
+    x-init="$nextTick(() => $el.classList.add('transition-[padding-left]', 'duration-300'))"
+    :class="hasSidebar ? (sidebarOpen ? 'pl-64' : 'pl-16') : ''"
+    class="flex flex-col justify-center overflow-x-hidden bg-stone-100 font-work-sans"
+  >
+    
+      
+
+<div x-cloak
+    class="fixed top-0 left-0 h-screen bg-brand-deep-purple pt-3 z-40 text-white flex flex-col justify-between transition-all duration-300 px-2"
+    :class="sidebarOpen ? 'w-64' : 'w-16'">
+
+    <!-- Top Section -->
+    <div>
+        <!-- Logo Section -->
+        <div class="">
+            <div class="flex p-2 justify-start">
+                <div
+                    x-show.immediate="!sidebarOpen"
+                    class=" h-12 transition-none"
+                >
+                    <img src="/static/images/logo.b22fb8909009.svg" alt="Compact Logo" class="w-8 h-8">
+                </div>
+                <div
+                    x-show.immediate="sidebarOpen"
+                    class="h-12 pl-1"
+                >
+                    <img src="/static/images/logo-full.137c6df9a195.svg" alt="Full Logo" class="h-12 w-auto">
+                </div>
+            </div>
+        </div>
+
+        <div class="flex rounded-lg items-center p-2 transition-all duration-300 cursor-pointer">
+            <div class="flex items-center justify-center w-8 h-8">
+                <i class="fa-solid text-lg text-brand-sky"
+                    :class="sidebarOpen ? 'fa-xmark': 'fa-bars'"
+                    @click="sidebarOpen = !sidebarOpen"></i>
+
+            </div>
+
+            <div class="transition-all duration-300 overflow-hidden flex items-center"
+                 :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+                <span class="text-xs whitespace-nowrap">Menu</span>
+            </div>
+        </div>
+
+        <!-- Navigation Items -->
+        
+          
+            
+            <div class="mt-5">
+                
+                <a href="/a/ai-demo-space/opportunity/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-table-cells-large"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">Opportunities</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        Opportunities
+    </div>
+
+    <!-- Selected -->
+
+     
+     <div class="absolute left-0 top-0 w-full h-full bg-brand-mango/20 rounded-lg"></div>
+     <div class="absolute right-0 w-1 h-1/2 top-1/2 -translate-y-1/2 bg-brand-mango rounded-2xl"></div>
+     
+</a>
+
+
+                
+                    
+                    <a href="/a/ai-demo-space/program/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-table-columns"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">Programs</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        Programs
+    </div>
+
+    <!-- Selected -->
+
+     
+</a>
+
+
+                    
+                    
+                    <a href="/a/ai-demo-space/organization/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-building"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">My Workspace</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        My Workspace
+    </div>
+
+    <!-- Selected -->
+
+     
+</a>
+
+                
+            </div>
+            
+          
+          
+        
+    </div>
+
+</div>
+
+    
+    <div class="flex-1  px-4">
+      
+
+
+<header class="fixed top-0 left-16 right-0 bg-gray-100 z-30">
+    <div class="flex items-center justify-between w-full px-4 py-2">
+        <!-- Left Section: Module Name -->
+        <h1 class="text-lg text-brand-deep-purple font-medium">Connect</h1>
+
+        
+        <!-- Right Section: Org, Profile Dropdown -->
+        <div class="flex items-center gap-x-2">
+            <!-- Organization selector -->
+            <div x-data="
+              {
+                open: false,
+                hasOrg: true,
+                hasMembership: true,
+                isSuperuser: false,
+                get hasSelectedOrg() {
+                    return this.hasOrg && (this.hasMembership || this.isSuperuser)
+                },
+                membershipsCount: 3,
+                canCreateOrg: false,
+                get showDropdown() {
+                    return this.membershipsCount > 1
+                        || (!this.hasSelectedOrg && this.membershipsCount > 0)
+                        || this.canCreateOrg
+                }
+              }"
+              @click.away="open = false" class="relative mx-8">
+                <button @click="open = !open" class="flex items-center gap-2 focus:outline-none">
+                    <div class="text-left">
+                      <div x-show="hasSelectedOrg" x-transition.opacity x-cloak>
+                        <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                          AI Demo Space
+                        </p>
+                        
+                          <p class="text-gray-500 text-sm font-medium">Claude Test Space</p>
+                        
+                        <p class="text-xs text-gray-400">Program Manager</p>
+                      </div>
+                      <div x-show="!hasSelectedOrg && membershipsCount > 0" x-transition.opacity x-cloak>
+                         <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                          Select Workspace
+                         </p>
+                      </div>
+                      <div x-show="!hasSelectedOrg && membershipsCount == 0 && canCreateOrg" x-transition.opacity x-cloak>
+                        <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                            Create Workspace
+                        </p>
+                      </div>
+                    </div>
+                    <!-- Dropdown Toggle Icon -->
+                    <i x-show="showDropdown" :class="open ? 'rotate-180' : ''" class="fa-solid fa-chevron-down transition-all text-xs"></i>
+                </button>
+
+                  <!-- Organization Selector -->
+                  <div x-show="open && showDropdown" x-transition.opacity x-cloak
+                      class="absolute top-12 right-0 min-w-56 bg-white shadow rounded-lg z-50">
+                      <ul class="p-2 w-full max-h-80 overflow-y-auto">
+                        
+                          
+                            <li class="p-2 hover:bg-gray-100 rounded cursor-pointer text-left">
+                              <a href="/a/jjackson/opportunity/">
+                                <p class="text-brand-deep-purple text-sm font-medium">Baobob-Demo-Workspace</p>
+                                
+                                <p class="text-xs text-gray-400">Network Manager</p>
+                              </a>
+                            </li>
+                          
+                        
+                          
+                        
+                          
+                            <li class="p-2 hover:bg-gray-100 rounded cursor-pointer text-left">
+                              <a href="/a/march-demo/opportunity/">
+                                <p class="text-brand-deep-purple text-sm font-medium">March-Demo</p>
+                                
+                                  <p class="text-gray-500 text-sm font-medium">LLO-Demo</p>
+                                
+                                <p class="text-xs text-gray-400">Program Manager</p>
+                              </a>
+                            </li>
+                          
+                        
+                      </ul>
+                        <div class="p-2" x-show="canCreateOrg" x-transition.opacity x-cloak>
+                            <a class="button button-md primary-dark w-full text-center" href="/register/organization/">
+                            Create Workspace
+                            </a>
+                        </div>
+                  </div>
+
+            </div>
+
+            <!-- User Profile -->
+            <div x-data="{ open: false }" @click.away="open = false" class="relative">
+                <button @click="open = !open" class="focus:outline-none">
+                    <div class="cursor-pointer overflow-hidden">
+                        <div
+  title="ace"
+  class="rounded-full flex items-center justify-center select-none shrink-0 w-10 h-10 text-xs font-medium tracking-wider bg-brand-cornflower-blue text-white"
+>
+  <span>AC</span>
+</div>
+
+                    </div>
+                </button>
+
+                <!-- User Profile Selector -->
+                <div x-show="open" x-transition.opacity x-cloak class="absolute top-12 right-0 min-w-56 w-56 bg-white shadow rounded-lg z-50">
+                    <ul class="p-2 w-full">
+                        <li class="p-2 text-left">
+                            <p class="text-brand-deep-purple font-medium">ace</p>
+                            
+                                <span class="text-gray-400 text-sm">admin</span>
+                            
+                        </li>
+                        <li class="p-2 text-left">
+                            <a class="block p-2 hover:bg-gray-100 rounded cursor-pointer" href="/accounts/email/">
+                              <p class="text-brand-deep-purple">Profile</p>
+                            </a>
+                        </li>
+                        <li class="p-2">
+                          <a class="cursor-pointer" href="/accounts/logout/">
+                            <div class="bg-brand-indigo text-white px-8 py-2 rounded-lg shadow-md hover:bg-blue-800 transition">
+                              Logout
+                            </div>
+                          </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+</header>
+
+      <div class="h-5 w-full mt-16"></div>
+      <main id="content" class="md:max-w-screen-2xl mx-auto">
+        
+
+        
+<div class="container md:max-w-screen-lg mx-auto flex flex-col gap-8"
+  x-data="{ showAddApiKeyModal: false }">
+  
+
+
+<div class="stepper mb-4" id="nav-tab" role="tablist">
+  <a class="active" id="step1-tab" data-toggle="tab" href="/a/ai-demo-space/opportunity/94cf2729-0425-499c-9f3e-5edfbb4bd546/init/edit/">
+    <h6>1</h6>
+    <span>Create Opportunity</span>
+  </a>
+  <hr class="border-t-2 border-dashed border-gray-300 w-full">
+  <a class="" id="step2-tab" data-toggle="tab" href=" /a/ai-demo-space/opportunity/94cf2729-0425-499c-9f3e-5edfbb4bd546/payment_units/create">
+    <h6>2</h6>
+    <span>Payment Unit</span>
+  </a>
+  <hr class="border-t-2 border-dashed border-gray-300 w-full">
+  <a class="" id="step3-tab" data-toggle="tab" href=" /a/ai-demo-space/opportunity/94cf2729-0425-499c-9f3e-5edfbb4bd546/finalize/">
+    <h6>3</h6>
+    <span>Budget</span>
+  </a>
+ </div>
+
+  <h6 class="title">Create Details</h6>
+  
+
+
+
+  
+  <form method="post" hx-ext="loading-states">
+    <input type="hidden" name="csrfmiddlewaretoken" value="pn9YdvzIAMsVY9SEXH7vcXed7KGJRGDH5z51sZ62jUM2MDtQa4jCofDsGJ37R1X4">
+    
+
+<form  method="post" > <input type="hidden" name="csrfmiddlewaretoken" value="pn9YdvzIAMsVY9SEXH7vcXed7KGJRGDH5z51sZ62jUM2MDtQa4jCofDsGJ37R1X4"> <div  class="grid grid-cols-2 gap-4 card_bg" > <div class='col-span-2'><h6 class='title-sm'>Opportunity Details</h6><span class='hint'>Add the details of the opportunity. All fields are mandatory.</span></div><div 
+     class="" > <div id="div_id_name" class="mb-3"> <label for="id_name" class="block text-gray-700 text-sm font-bold mb-2">
+            Name<span class="asteriskField">*</span> </label> <input type="text" name="name" maxlength="255" class="textinput rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" required id="id_name"> </div> <div id="div_id_short_description" class="mb-3"> <label for="id_short_description" class="block text-gray-700 text-sm font-bold mb-2">
+            Short description <i class='fa-solid fa-circle-info text-gray-400' x-tooltip.raw='This field is used to provide a description to users on the mobile app. It is displayed when the user wants to view more information about the opportunity.'></i><span class="asteriskField">*</span> </label> <input type="text" name="short_description" maxlength="50" class="textinput rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" required id="id_short_description"> </div> <div id="div_id_description" class="mb-3"> <label for="id_description" class="block text-gray-700 text-sm font-bold mb-2">
+            Description <i class='fa-solid fa-circle-info text-gray-400' x-tooltip.raw='This field is used to provide a description to users accessing the opportunity on the web.'></i><span class="asteriskField">*</span> </label> <textarea name="description" cols="40" rows="3" class="textarea rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" required id="id_description">
+</textarea> </div> </div>
+<div 
+     class="" > <div id="div_id_currency" class="mb-3"> <label for="id_currency" class="block text-gray-700 text-sm font-bold mb-2">
+            Currency<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="currency"  data-tomselect="1" id="id_currency" required> <option value=""  selected
+ >Select a currency</option> <option value="AED" 
+ >AED (UAE Dirham)</option> <option value="AFN" 
+ >AFN (Afghani)</option> <option value="ALL" 
+ >ALL (Lek)</option> <option value="AMD" 
+ >AMD (Armenian Dram)</option> <option value="AOA" 
+ >AOA (Kwanza)</option> <option value="ARS" 
+ >ARS (Argentine Peso)</option> <option value="AUD" 
+ >AUD (Australian Dollar)</option> <option value="AWG" 
+ >AWG (Aruban Florin)</option> <option value="AZN" 
+ >AZN (Azerbaijan Manat)</option> <option value="BAM" 
+ >BAM (Convertible Mark)</option> <option value="BBD" 
+ >BBD (Barbados Dollar)</option> <option value="BDT" 
+ >BDT (Taka)</option> <option value="BGN" 
+ >BGN (Bulgarian Lev)</option> <option value="BHD" 
+ >BHD (Bahraini Dinar)</option> <option value="BIF" 
+ >BIF (Burundi Franc)</option> <option value="BMD" 
+ >BMD (Bermudian Dollar)</option> <option value="BND" 
+ >BND (Brunei Dollar)</option> <option value="BOB" 
+ >BOB (Boliviano)</option> <option value="BOV" 
+ >BOV (Mvdol)</option> <option value="BRL" 
+ >BRL (Brazilian Real)</option> <option value="BSD" 
+ >BSD (Bahamian Dollar)</option> <option value="BTN" 
+ >BTN (Ngultrum)</option> <option value="BWP" 
+ >BWP (Pula)</option> <option value="BYN" 
+ >BYN (Belarusian Ruble)</option> <option value="BZD" 
+ >BZD (Belize Dollar)</option> <option value="CAD" 
+ >CAD (Canadian Dollar)</option> <option value="CDF" 
+ >CDF (Congolese Franc)</option> <option value="CHF" 
+ >CHF (Swiss Franc)</option> <option value="CLF" 
+ >CLF (Unidad de Fomento)</option> <option value="CLP" 
+ >CLP (Chilean Peso)</option> <option value="CNY" 
+ >CNY (Yuan Renminbi)</option> <option value="COP" 
+ >COP (Colombian Peso)</option> <option value="COU" 
+ >COU (Unidad de Valor Real)</option> <option value="CRC" 
+ >CRC (Costa Rican Colon)</option> <option value="CUP" 
+ >CUP (Cuban Peso)</option> <option value="CVE" 
+ >CVE (Cabo Verde Escudo)</option> <option value="CZK" 
+ >CZK (Czech Koruna)</option> <option value="DJF" 
+ >DJF (Djibouti Franc)</option> <option value="DKK" 
+ >DKK (Danish Krone)</option> <option value="DOP" 
+ >DOP (Dominican Peso)</option> <option value="DZD" 
+ >DZD (Algerian Dinar)</option> <option value="EGP" 
+ >EGP (Egyptian Pound)</option> <option value="ERN" 
+ >ERN (Nakfa)</option> <option value="ETB" 
+ >ETB (Ethiopian Birr)</option> <option value="EUR" 
+ >EUR (Euro)</option> <option value="FJD" 
+ >FJD (Fiji Dollar)</option> <option value="FKP" 
+ >FKP (Falkland Islands Pound)</option> <option value="GBP" 
+ >GBP (Pound Sterling)</option> <option value="GEL" 
+ >GEL (Lari)</option> <option value="GHS" 
+ >GHS (Ghana Cedi)</option> <option value="GIP" 
+ >GIP (Gibraltar Pound)</option> <option value="GMD" 
+ >GMD (Dalasi)</option> <option value="GNF" 
+ >GNF (Guinean Franc)</option> <option value="GTQ" 
+ >GTQ (Quetzal)</option> <option value="GYD" 
+ >GYD (Guyana Dollar)</option> <option value="HKD" 
+ >HKD (Hong Kong Dollar)</option> <option value="HNL" 
+ >HNL (Lempira)</option> <option value="HTG" 
+ >HTG (Gourde)</option> <option value="HUF" 
+ >HUF (Forint)</option> <option value="IDR" 
+ >IDR (Rupiah)</option> <option value="ILS" 
+ >ILS (New Israeli Sheqel)</option> <option value="INR" 
+ >INR (Indian Rupee)</option> <option value="IQD" 
+ >IQD (Iraqi Dinar)</option> <option value="IRR" 
+ >IRR (Iranian Rial)</option> <option value="ISK" 
+ >ISK (Iceland Krona)</option> <option value="JMD" 
+ >JMD (Jamaican Dollar)</option> <option value="JOD" 
+ >JOD (Jordanian Dinar)</option> <option value="JPY" 
+ >JPY (Yen)</option> <option value="KES" 
+ >KES (Kenyan Shilling)</option> <option value="KGS" 
+ >KGS (Som)</option> <option value="KHR" 
+ >KHR (Riel)</option> <option value="KMF" 
+ >KMF (Comorian Franc)</option> <option value="KPW" 
+ >KPW (North Korean Won)</option> <option value="KRW" 
+ >KRW (Won)</option> <option value="KWD" 
+ >KWD (Kuwaiti Dinar)</option> <option value="KYD" 
+ >KYD (Cayman Islands Dollar)</option> <option value="KZT" 
+ >KZT (Tenge)</option> <option value="LAK" 
+ >LAK (Lao Kip)</option> <option value="LBP" 
+ >LBP (Lebanese Pound)</option> <option value="LKR" 
+ >LKR (Sri Lanka Rupee)</option> <option value="LRD" 
+ >LRD (Liberian Dollar)</option> <option value="LSL" 
+ >LSL (Loti)</option> <option value="LYD" 
+ >LYD (Libyan Dinar)</option> <option value="MAD" 
+ >MAD (Moroccan Dirham)</option> <option value="MDL" 
+ >MDL (Moldovan Leu)</option> <option value="MGA" 
+ >MGA (Malagasy Ariary)</option> <option value="MKD" 
+ >MKD (Denar)</option> <option value="MMK" 
+ >MMK (Kyat)</option> <option value="MNT" 
+ >MNT (Tugrik)</option> <option value="MOP" 
+ >MOP (Pataca)</option> <option value="MRU" 
+ >MRU (Ouguiya)</option> <option value="MUR" 
+ >MUR (Mauritius Rupee)</option> <option value="MVR" 
+ >MVR (Rufiyaa)</option> <option value="MWK" 
+ >MWK (Malawi Kwacha)</option> <option value="MXN" 
+ >MXN (Mexican Peso)</option> <option value="MXV" 
+ >MXV (Mexican Unidad de Inversion (UDI))</option> <option value="MYR" 
+ >MYR (Malaysian Ringgit)</option> <option value="MZN" 
+ >MZN (Mozambique Metical)</option> <option value="NAD" 
+ >NAD (Namibia Dollar)</option> <option value="NGN" 
+ >NGN (Naira)</option> <option value="NIO" 
+ >NIO (Cordoba Oro)</option> <option value="NOK" 
+ >NOK (Norwegian Krone)</option> <option value="NPR" 
+ >NPR (Nepalese Rupee)</option> <option value="NZD" 
+ >NZD (New Zealand Dollar)</option> <option value="OMR" 
+ >OMR (Rial Omani)</option> <option value="PAB" 
+ >PAB (Balboa)</option> <option value="PEN" 
+ >PEN (Sol)</option> <option value="PGK" 
+ >PGK (Kina)</option> <option value="PHP" 
+ >PHP (Philippine Peso)</option> <option value="PKR" 
+ >PKR (Pakistan Rupee)</option> <option value="PLN" 
+ >PLN (Zloty)</option> <option value="PYG" 
+ >PYG (Guarani)</option> <option value="QAR" 
+ >QAR (Qatari Rial)</option> <option value="RON" 
+ >RON (Romanian Leu)</option> <option value="RSD" 
+ >RSD (Serbian Dinar)</option> <option value="RUB" 
+ >RUB (Russian Ruble)</option> <option value="RWF" 
+ >RWF (Rwanda Franc)</option> <option value="SAR" 
+ >SAR (Saudi Riyal)</option> <option value="SBD" 
+ >SBD (Solomon Islands Dollar)</option> <option value="SCR" 
+ >SCR (Seychelles Rupee)</option> <option value="SDG" 
+ >SDG (Sudanese Pound)</option> <option value="SEK" 
+ >SEK (Swedish Krona)</option> <option value="SGD" 
+ >SGD (Singapore Dollar)</option> <option value="SHP" 
+ >SHP (Saint Helena Pound)</option> <option value="SLE" 
+ >SLE (Leone)</option> <option value="SOS" 
+ >SOS (Somali Shilling)</option> <option value="SRD" 
+ >SRD (Surinam Dollar)</option> <option value="SSP" 
+ >SSP (South Sudanese Pound)</option> <option value="STN" 
+ >STN (Dobra)</option> <option value="SVC" 
+ >SVC (El Salvador Colon)</option> <option value="SYP" 
+ >SYP (Syrian Pound)</option> <option value="SZL" 
+ >SZL (Lilangeni)</option> <option value="THB" 
+ >THB (Baht)</option> <option value="TJS" 
+ >TJS (Somoni)</option> <option value="TMT" 
+ >TMT (Turkmenistan New Manat)</option> <option value="TND" 
+ >TND (Tunisian Dinar)</option> <option value="TOP" 
+ >TOP (Pa&#x27;anga)</option> <option value="TRY" 
+ >TRY (Turkish Lira)</option> <option value="TTD" 
+ >TTD (Trinidad and Tobago Dollar)</option> <option value="TWD" 
+ >TWD (New Taiwan Dollar)</option> <option value="TZS" 
+ >TZS (Tanzanian Shilling)</option> <option value="UAH" 
+ >UAH (Hryvnia)</option> <option value="UGX" 
+ >UGX (Uganda Shilling)</option> <option value="USD" 
+ >USD (US Dollar)</option> <option value="UYI" 
+ >UYI (Uruguay Peso en Unidades Indexadas (UI))</option> <option value="UYU" 
+ >UYU (Peso Uruguayo)</option> <option value="UYW" 
+ >UYW (Unidad Previsional)</option> <option value="UZS" 
+ >UZS (Uzbekistan Sum)</option> <option value="VES" 
+ >VES (Bolívar Soberano)</option> <option value="VND" 
+ >VND (Dong)</option> <option value="VUV" 
+ >VUV (Vatu)</option> <option value="WST" 
+ >WST (Tala)</option> <option value="XAF" 
+ >XAF (CFA Franc BEAC)</option> <option value="XCD" 
+ >XCD (East Caribbean Dollar)</option> <option value="XCG" 
+ >XCG (Caribbean Guilder)</option> <option value="XOF" 
+ >XOF (CFA Franc BCEAO)</option> <option value="XPF" 
+ >XPF (CFP Franc)</option> <option value="YER" 
+ >YER (Yemeni Rial)</option> <option value="ZAR" 
+ >ZAR (Rand)</option> <option value="ZMW" 
+ >ZMW (Zambian Kwacha)</option> <option value="ZWG" 
+ >ZWG (Zimbabwe Gold)</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div id="div_id_country" class="mb-3"> <label for="id_country" class="block text-gray-700 text-sm font-bold mb-2">
+            Country<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="country"  data-tomselect="1" id="id_country" required> <option value=""  selected
+ >Select a country</option> <option value="AFG" 
+ >Afghanistan</option> <option value="ALA" 
+ >Åland Islands</option> <option value="ALB" 
+ >Albania</option> <option value="DZA" 
+ >Algeria</option> <option value="ASM" 
+ >American Samoa</option> <option value="AND" 
+ >Andorra</option> <option value="AGO" 
+ >Angola</option> <option value="AIA" 
+ >Anguilla</option> <option value="ATA" 
+ >Antarctica</option> <option value="ATG" 
+ >Antigua and Barbuda</option> <option value="ARG" 
+ >Argentina</option> <option value="ARM" 
+ >Armenia</option> <option value="ABW" 
+ >Aruba</option> <option value="AUS" 
+ >Australia</option> <option value="AUT" 
+ >Austria</option> <option value="AZE" 
+ >Azerbaijan</option> <option value="BHS" 
+ >Bahamas</option> <option value="BHR" 
+ >Bahrain</option> <option value="BGD" 
+ >Bangladesh</option> <option value="BRB" 
+ >Barbados</option> <option value="BLR" 
+ >Belarus</option> <option value="BEL" 
+ >Belgium</option> <option value="BLZ" 
+ >Belize</option> <option value="BEN" 
+ >Benin</option> <option value="BMU" 
+ >Bermuda</option> <option value="BTN" 
+ >Bhutan</option> <option value="BOL" 
+ >Bolivia (Plurinational State of)</option> <option value="BES" 
+ >Bonaire, Sint Eustatius and Saba</option> <option value="BIH" 
+ >Bosnia and Herzegovina</option> <option value="BWA" 
+ >Botswana</option> <option value="BVT" 
+ >Bouvet Island</option> <option value="BRA" 
+ >Brazil</option> <option value="IOT" 
+ >British Indian Ocean Territory</option> <option value="VGB" 
+ >British Virgin Islands</option> <option value="BRN" 
+ >Brunei Darussalam</option> <option value="BGR" 
+ >Bulgaria</option> <option value="BFA" 
+ >Burkina Faso</option> <option value="BDI" 
+ >Burundi</option> <option value="CPV" 
+ >Cabo Verde</option> <option value="KHM" 
+ >Cambodia</option> <option value="CMR" 
+ >Cameroon</option> <option value="CAN" 
+ >Canada</option> <option value="CYM" 
+ >Cayman Islands</option> <option value="CAF" 
+ >Central African Republic</option> <option value="TCD" 
+ >Chad</option> <option value="CHL" 
+ >Chile</option> <option value="CHN" 
+ >China</option> <option value="HKG" 
+ >China, Hong Kong Special Administrative Region</option> <option value="MAC" 
+ >China, Macao Special Administrative Region</option> <option value="CXR" 
+ >Christmas Island</option> <option value="CCK" 
+ >Cocos (Keeling) Islands</option> <option value="COL" 
+ >Colombia</option> <option value="COM" 
+ >Comoros</option> <option value="COG" 
+ >Congo</option> <option value="COK" 
+ >Cook Islands</option> <option value="CRI" 
+ >Costa Rica</option> <option value="HRV" 
+ >Croatia</option> <option value="CUB" 
+ >Cuba</option> <option value="CUW" 
+ >Curaçao</option> <option value="CYP" 
+ >Cyprus</option> <option value="CZE" 
+ >Czechia</option> <option value="PRK" 
+ >Democratic People&#x27;s Republic of Korea</option> <option value="COD" 
+ >Democratic Republic of the Congo</option> <option value="DNK" 
+ >Denmark</option> <option value="DJI" 
+ >Djibouti</option> <option value="DMA" 
+ >Dominica</option> <option value="DOM" 
+ >Dominican Republic</option> <option value="ECU" 
+ >Ecuador</option> <option value="EGY" 
+ >Egypt</option> <option value="SLV" 
+ >El Salvador</option> <option value="GNQ" 
+ >Equatorial Guinea</option> <option value="ERI" 
+ >Eritrea</option> <option value="EST" 
+ >Estonia</option> <option value="SWZ" 
+ >Eswatini</option> <option value="ETH" 
+ >Ethiopia</option> <option value="FLK" 
+ >Falkland Islands</option> <option value="FRO" 
+ >Faroe Islands</option> <option value="FJI" 
+ >Fiji</option> <option value="FIN" 
+ >Finland</option> <option value="FRA" 
+ >France</option> <option value="GUF" 
+ >French Guiana</option> <option value="PYF" 
+ >French Polynesia</option> <option value="ATF" 
+ >French Southern Territories</option> <option value="GAB" 
+ >Gabon</option> <option value="GMB" 
+ >Gambia</option> <option value="GEO" 
+ >Georgia</option> <option value="DEU" 
+ >Germany</option> <option value="GHA" 
+ >Ghana</option> <option value="GIB" 
+ >Gibraltar</option> <option value="GRC" 
+ >Greece</option> <option value="GRL" 
+ >Greenland</option> <option value="GRD" 
+ >Grenada</option> <option value="GLP" 
+ >Guadeloupe</option> <option value="GUM" 
+ >Guam</option> <option value="GTM" 
+ >Guatemala</option> <option value="GGY" 
+ >Guernsey</option> <option value="GIN" 
+ >Guinea</option> <option value="GNB" 
+ >Guinea-Bissau</option> <option value="GUY" 
+ >Guyana</option> <option value="HTI" 
+ >Haiti</option> <option value="HMD" 
+ >Heard Island and McDonald Islands</option> <option value="VAT" 
+ >Holy See</option> <option value="HND" 
+ >Honduras</option> <option value="HUN" 
+ >Hungary</option> <option value="ISL" 
+ >Iceland</option> <option value="IND" 
+ >India</option> <option value="IDN" 
+ >Indonesia</option> <option value="IRN" 
+ >Iran (Islamic Republic of)</option> <option value="IRQ" 
+ >Iraq</option> <option value="IRL" 
+ >Ireland</option> <option value="IMN" 
+ >Isle of Man</option> <option value="ISR" 
+ >Israel</option> <option value="ITA" 
+ >Italy</option> <option value="CIV" 
+ >Ivory Coast</option> <option value="JAM" 
+ >Jamaica</option> <option value="JPN" 
+ >Japan</option> <option value="JEY" 
+ >Jersey</option> <option value="JOR" 
+ >Jordan</option> <option value="KAZ" 
+ >Kazakhstan</option> <option value="KEN" 
+ >Kenya</option> <option value="KIR" 
+ >Kiribati</option> <option value="KWT" 
+ >Kuwait</option> <option value="KGZ" 
+ >Kyrgyzstan</option> <option value="LAO" 
+ >Lao People&#x27;s Democratic Republic</option> <option value="LVA" 
+ >Latvia</option> <option value="LBN" 
+ >Lebanon</option> <option value="LSO" 
+ >Lesotho</option> <option value="LBR" 
+ >Liberia</option> <option value="LBY" 
+ >Libya</option> <option value="LIE" 
+ >Liechtenstein</option> <option value="LTU" 
+ >Lithuania</option> <option value="LUX" 
+ >Luxembourg</option> <option value="MDG" 
+ >Madagascar</option> <option value="MWI" 
+ >Malawi</option> <option value="MYS" 
+ >Malaysia</option> <option value="MDV" 
+ >Maldives</option> <option value="MLI" 
+ >Mali</option> <option value="MLT" 
+ >Malta</option> <option value="MHL" 
+ >Marshall Islands</option> <option value="MTQ" 
+ >Martinique</option> <option value="MRT" 
+ >Mauritania</option> <option value="MUS" 
+ >Mauritius</option> <option value="MYT" 
+ >Mayotte</option> <option value="MEX" 
+ >Mexico</option> <option value="FSM" 
+ >Micronesia (Federated States of)</option> <option value="MCO" 
+ >Monaco</option> <option value="MNG" 
+ >Mongolia</option> <option value="MNE" 
+ >Montenegro</option> <option value="MSR" 
+ >Montserrat</option> <option value="MAR" 
+ >Morocco</option> <option value="MOZ" 
+ >Mozambique</option> <option value="MMR" 
+ >Myanmar</option> <option value="NAM" 
+ >Namibia</option> <option value="NRU" 
+ >Nauru</option> <option value="NPL" 
+ >Nepal</option> <option value="NLD" 
+ >Netherlands</option> <option value="NCL" 
+ >New Caledonia</option> <option value="NZL" 
+ >New Zealand</option> <option value="NIC" 
+ >Nicaragua</option> <option value="NER" 
+ >Niger</option> <option value="NGA" 
+ >Nigeria</option> <option value="NIU" 
+ >Niue</option> <option value="NFK" 
+ >Norfolk Island</option> <option value="MNP" 
+ >Northern Mariana Islands</option> <option value="MKD" 
+ >North Macedonia</option> <option value="NOR" 
+ >Norway</option> <option value="OMN" 
+ >Oman</option> <option value="PAK" 
+ >Pakistan</option> <option value="PLW" 
+ >Palau</option> <option value="PAN" 
+ >Panama</option> <option value="PNG" 
+ >Papua New Guinea</option> <option value="PRY" 
+ >Paraguay</option> <option value="PER" 
+ >Peru</option> <option value="PHL" 
+ >Philippines</option> <option value="PCN" 
+ >Pitcairn</option> <option value="POL" 
+ >Poland</option> <option value="PRT" 
+ >Portugal</option> <option value="PRI" 
+ >Puerto Rico</option> <option value="QAT" 
+ >Qatar</option> <option value="KOR" 
+ >Republic of Korea</option> <option value="MDA" 
+ >Republic of Moldova</option> <option value="REU" 
+ >Réunion</option> <option value="ROU" 
+ >Romania</option> <option value="RUS" 
+ >Russian Federation</option> <option value="RWA" 
+ >Rwanda</option> <option value="BLM" 
+ >Saint Barthélemy</option> <option value="SHN" 
+ >Saint Helena</option> <option value="KNA" 
+ >Saint Kitts and Nevis</option> <option value="LCA" 
+ >Saint Lucia</option> <option value="MAF" 
+ >Saint Martin (French Part)</option> <option value="SPM" 
+ >Saint Pierre and Miquelon</option> <option value="VCT" 
+ >Saint Vincent and the Grenadines</option> <option value="WSM" 
+ >Samoa</option> <option value="SMR" 
+ >San Marino</option> <option value="STP" 
+ >Sao Tome and Principe</option> <option value="SAU" 
+ >Saudi Arabia</option> <option value="SEN" 
+ >Senegal</option> <option value="SRB" 
+ >Serbia</option> <option value="SYC" 
+ >Seychelles</option> <option value="SLE" 
+ >Sierra Leone</option> <option value="SGP" 
+ >Singapore</option> <option value="SXM" 
+ >Sint Maarten (Dutch part)</option> <option value="SVK" 
+ >Slovakia</option> <option value="SVN" 
+ >Slovenia</option> <option value="SLB" 
+ >Solomon Islands</option> <option value="SOM" 
+ >Somalia</option> <option value="ZAF" 
+ >South Africa</option> <option value="SGS" 
+ >South Georgia and the South Sandwich Islands</option> <option value="SSD" 
+ >South Sudan</option> <option value="ESP" 
+ >Spain</option> <option value="LKA" 
+ >Sri Lanka</option> <option value="PSE" 
+ >State of Palestine</option> <option value="SDN" 
+ >Sudan</option> <option value="SUR" 
+ >Suriname</option> <option value="SJM" 
+ >Svalbard and Jan Mayen Islands</option> <option value="SWE" 
+ >Sweden</option> <option value="CHE" 
+ >Switzerland</option> <option value="SYR" 
+ >Syrian Arab Republic</option> <option value="TWN" 
+ >Taiwan</option> <option value="TJK" 
+ >Tajikistan</option> <option value="THA" 
+ >Thailand</option> <option value="TLS" 
+ >Timor-Leste</option> <option value="TGO" 
+ >Togo</option> <option value="TKL" 
+ >Tokelau</option> <option value="TON" 
+ >Tonga</option> <option value="TTO" 
+ >Trinidad and Tobago</option> <option value="TUN" 
+ >Tunisia</option> <option value="TUR" 
+ >Turkey</option> <option value="TKM" 
+ >Turkmenistan</option> <option value="TCA" 
+ >Turks and Caicos Islands</option> <option value="TUV" 
+ >Tuvalu</option> <option value="UGA" 
+ >Uganda</option> <option value="UKR" 
+ >Ukraine</option> <option value="ARE" 
+ >United Arab Emirates</option> <option value="GBR" 
+ >United Kingdom of Great Britain and Northern Ireland</option> <option value="TZA" 
+ >United Republic of Tanzania</option> <option value="UMI" 
+ >United States Minor Outlying Islands</option> <option value="USA" 
+ >United States of America</option> <option value="VIR" 
+ >United States Virgin Islands</option> <option value="URY" 
+ >Uruguay</option> <option value="UZB" 
+ >Uzbekistan</option> <option value="VUT" 
+ >Vanuatu</option> <option value="VEN" 
+ >Venezuela (Bolivarian Republic of)</option> <option value="VNM" 
+ >Viet Nam</option> <option value="WLF" 
+ >Wallis and Futuna Islands</option> <option value="ESH" 
+ >Western Sahara</option> <option value="YEM" 
+ >Yemen</option> <option value="ZMB" 
+ >Zambia</option> <option value="ZWE" 
+ >Zimbabwe</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div id="div_id_hq_server" class="mb-3"> <label for="id_hq_server" class="block text-gray-700 text-sm font-bold mb-2">
+            Hq server<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="hq_server"  id="id_hq_server" required> <option value=""  selected
+ >---------</option> <option value="1" 
+ >CommCareHQ (https://www.commcarehq.org)</option> <option value="2" 
+ >India (https://india.commcarehq.org)</option> <option value="3" 
+ >CommCareHQ EU (https://eu.commcarehq.org)</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div 
+     class="flex items-center gap-1" > <div id="div_id_api_key" class="flex-1 mb-3"> <label for="id_api_key" class="block text-gray-700 text-sm font-bold mb-2">
+            Api key<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="api_key"  hx-get="/users/api_keys/" hx-include="#id_hq_server" hx-target="this" hx-trigger="change from:#id_hq_server, reload_api_keys from:body" id="id_api_key" data-loading-disable required> <option value=""  selected
+ >Select a HQ Server to load API Keys.</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <button class='button-icon primary-dark'type='button' @click='showAddApiKeyModal = true'><i class='fa-solid fa-plus'></i></button>
+</div>
+
+</div>
+
+</div>
+<div  class="grid grid-cols-2 gap-4 card_bg my-4" > <div class='col-span-2'><h6 class='title-sm'>Apps</h6><span class='hint'>Add required apps to the opportunity. All fields are mandatory.</span></div><div 
+     class=""  data-loading-states> <div id="div_id_learn_app_domain" class="mb-3"> <label for="id_learn_app_domain" class="block text-gray-700 text-sm font-bold mb-2">
+            Learn app domain<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="learn_app_domain"  hx-get="/hq/domains/" hx-include="#id_hq_server, #id_api_key" hx-target="this" hx-trigger="change from:#id_api_key" id="id_learn_app_domain" data-loading-disable required> <option value=""  selected
+ >Select an API key to load domains.</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div id="div_id_learn_app" class="mb-3"> <label for="id_learn_app" class="block text-gray-700 text-sm font-bold mb-2">
+            Learn app<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="learn_app"  hx-get="/hq/applications/" hx-include="#id_hq_server, #id_learn_app_domain, #id_api_key" hx-target="this" hx-trigger="change from:#id_learn_app_domain" id="id_learn_app" data-loading-disable required> <option value=""  selected
+ >Loading...</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div id="div_id_learn_app_description" class="mb-3"> <label for="id_learn_app_description" class="block text-gray-700 text-sm font-bold mb-2">
+            Learn app description<span class="asteriskField">*</span> </label> <textarea name="learn_app_description" cols="40" rows="3" class="textarea rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" required id="id_learn_app_description">
+</textarea> </div> <div id="div_id_learn_app_passing_score" class="mb-3"> <label for="id_learn_app_passing_score" class="block text-gray-700 text-sm font-bold mb-2">
+            Learn app passing score<span class="asteriskField">*</span> </label> <input type="number" name="learn_app_passing_score" min="0" max="100" class="numberinput rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" required id="id_learn_app_passing_score"> </div> </div>
+<div 
+     class=""  data-loading-states> <div id="div_id_deliver_app_domain" class="mb-3"> <label for="id_deliver_app_domain" class="block text-gray-700 text-sm font-bold mb-2">
+            Deliver app domain<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="deliver_app_domain"  hx-get="/hq/domains/" hx-include="#id_hq_server, #id_api_key" hx-target="this" hx-trigger="change from:#id_api_key" id="id_deliver_app_domain" data-loading-disable required> <option value=""  selected
+ >Select an API key to load domains.</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div id="div_id_deliver_app" class="mb-3"> <label for="id_deliver_app" class="block text-gray-700 text-sm font-bold mb-2">
+            Deliver app<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="deliver_app"  hx-get="/hq/applications/" hx-include="#id_hq_server, #id_deliver_app_domain, #id_api_key" hx-target="this" hx-trigger="change from:#id_deliver_app_domain" id="id_deliver_app" data-loading-disable required> <option value=""  selected
+ >Loading...</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> </div>
+
+</div>
+<div  class="flex justify-end" > <input type="submit"
+    name="submit"
+    value="Submit"
+    
+        class="btn btn-primary button button-md primary-dark"
+        id="submit-id-submit"
+    
+    
+    />
+
+</div> </form>
+
+  </form>
+
+
+
+  <div x-cloak x-show="showAddApiKeyModal" x-transition.opacity class="modal-backdrop">
+    <div @click.away="showAddApiKeyModal = false" x-transition class="modal">
+      <div class="header flex justify-between items-center mb-2">
+        <h2 class="title">Create API Key</h2>
+        <button @click="showAddApiKeyModal = false" class="button-icon" aria-label="Close">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <form hx-post="/a/ai-demo-space/opportunity/add_api_key/"
+        @htmx:after-request="showAddApiKeyModal = !$event.detail.successful; $dispatch('reload_api_keys')">
+        
+
+<input type="hidden" name="csrfmiddlewaretoken" value="pn9YdvzIAMsVY9SEXH7vcXed7KGJRGDH5z51sZ62jUM2MDtQa4jCofDsGJ37R1X4"> <div id="div_api_key_form_id_for_hq_server" class="mb-3"> <label for="api_key_form_id_for_hq_server" class="block text-gray-700 text-sm font-bold mb-2">
+            Hq server<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="hq_server"  id="api_key_form_id_for_hq_server" required> <option value=""  selected
+ >---------</option> <option value="1" 
+ >CommCareHQ (https://www.commcarehq.org)</option> <option value="2" 
+ >India (https://india.commcarehq.org)</option> <option value="3" 
+ >CommCareHQ EU (https://eu.commcarehq.org)</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div id="div_api_key_form_id_for_api_key" class="mb-3"> <label for="api_key_form_id_for_api_key" class="block text-gray-700 text-sm font-bold mb-2">
+            Api key<span class="asteriskField">*</span> </label> <input type="text" name="api_key" maxlength="50" class="textinput rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" required id="api_key_form_id_for_api_key"> </div> <div 
+    class="flex justify-end" > <input type="submit"
+    name="submit"
+    value="Save"
+    
+        class="btn btn-primary button button-md primary-dark"
+        id="submit-id-submit"
+    
+    
+    />
+
+</div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+      </main>
+    </div>
+
+    
+        <open-chat-studio-widget
+          class="z-50"
+          visible="false"
+          chatbot-id="104d0f84-a609-4676-b8c8-35d992fe5ffc"
+          embed-key="tFANzDEMLZzZgk_ZEeE4yu1LYwVWavFt"
+          button-text="Need help?"
+          position="right"
+          expanded="false">
+        </open-chat-studio-widget>
+    
+
+  
+    
+  
+  </body>
+</html>
