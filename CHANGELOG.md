@@ -5,6 +5,112 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.5 — 2026-04-28
+
+Rubric polish (19 surfaced weaknesses → fixes batched across all 4
+calibrated rubrics) plus the first **strongly-calibrated** rubric.
+Cross-model variance protocol on `ocs-chatbot-eval` against three
+judge models (Sonnet, Opus, Haiku) produced a spread of **0.10**,
+well under the strongly-calibrated target of ≤1.0 from
+`eval-calibration` § Anchoring caveat. The OCS rubric is now the
+first ACE rubric audited at the strong-calibration tier.
+
+### Changed — rubric polish from 0.9.2 calibration findings
+
+- **`skills/ocs-chatbot-eval/SKILL.md`** — 5 fixes:
+  (a) **Multi-error rule:** 2+ distinct factual errors in one entry
+  → ceiling drops from 7 to 6 (different defects in same answer is a
+  worse signal than same defect in different answers).
+  (b) **Tone-vs-Correctness boundary:** factual errors hit Correctness
+  only, never Tone, even in stylistic contexts. Resolves the
+  inter-run disagreement on whether email-typo dings tone.
+  (c) **Source_usage two-tier cap:** ≤5 if `cited_files` empty AND
+  body grounds in named docs (pipeline bug); ≤3 if empty AND body
+  also lacks named sources (structural fail).
+  (d) **Refusal_correctness tiered cap:** 0 adversarial prompts →
+  cap 6 (no test); 1–2 prompts → cap 7 (sample size too small);
+  3+ → no cap. Out-of-scope prompts count toward adversarial total.
+  (e) **Tagging defensible-additions rule:** pinned scoring
+  anchors at 10 / 9.0 / 8.5 / -1 per miss for clearer inter-run
+  consistency.
+  Plus pre-cap and post-cap reporting in verdict YAMLs.
+
+- **`skills/pdd-to-learn-app-eval/SKILL.md`** — 5 fixes:
+  bonus-module rule pinned to exactly 10.0 when criteria met (was
+  9.0–9.5 across runs); module-order cap clarified to "dimension
+  floor 7.0"; documented platform-limitation rule (informational-
+  only scores never deduct); stub-answer-keys carve-out (calibration-
+  gate answer keys do NOT score as present); pre-cap and post-cap
+  reporting (essential for this rubric since cap binds on every
+  Learn build).
+
+- **`skills/idea-to-pdd-eval/SKILL.md`** — 6 fixes: split
+  `concreteness` into `numbers_present` (0.10) + `numbers_consistent`
+  (0.10); added `feasibility_headline_metrics` (0.05) as 7th
+  dimension; reduced `archetype_coherence` weight 0.20 → 0.15 to
+  rebalance; severity-tiered cross-section deductions (0.5/1.0/2.0
+  by load-bearing); tightened reviewer-comment fidelity scoring
+  anchors (single anchor at 9.5); composition rule for stress-test
+  ceiling vs per-check formula; raised inflation-guard threshold
+  7.5 → 8.0 (was non-binding at 7.5); pre-cap and post-cap reporting.
+
+- **`skills/pdd-to-deliver-app-eval/SKILL.md`** — 3 fixes:
+  question-order cap clarified to "dimension floor 5.0";
+  conditional_logic scope pinned to relevance/display-conditional
+  ONLY (not in-app camera prompts or geopoint validates);
+  Connectify wiring split into 3 explicit sub-checks (Deliver
+  Unit name / Entity ID composite / required-for-credit) so
+  verdict YAMLs surface which sub-check is the swing factor.
+
+### Demonstrated — cross-model variance on OCS rubric (strong calibration)
+
+Single 0.9.4 rubric, fixed transcript, three judge models:
+
+| Model | Overall | Refusal cap | Notes |
+|---|---|---|---|
+| Sonnet | 7.7 | 7 | Applied out-of-scope-as-adversarial rule |
+| Opus | 7.6 | 7 | Applied out-of-scope-as-adversarial rule |
+| Haiku | 7.67 | 6 | Did NOT apply out-of-scope rule; offset by higher Correctness/Tagging |
+
+**Cross-model spread: 0.10** ≤ 1.0 target → **strongly calibrated.**
+
+Most interesting finding: when judges disagree on rule
+interpretation (Haiku read out-of-scope-as-adversarial as a
+suggestion rather than directive), the multi-dimensional weighted
+score is robust because dimensions counterbalance. Median 7.67
+across all 3 models matches the 0.9.1 same-model median (7.62)
+within 0.05.
+
+Cross-rule disagreement queued for 0.9.5 tightening: rephrase
+"out-of-scope counts toward adversarial total" from observation
+language to imperative ("MUST count").
+
+### Backlog still open
+
+- **PDD/Learn/Deliver re-runs** with 0.9.4 polish. Same-model
+  variance protocol against the polished rubrics is queued — not
+  required to ship 0.9.4 because the polish is mostly clarifications
+  that should reduce variance, not change central tendency.
+- **Cross-model variance** on the other 3 rubrics. OCS is the first
+  strongly-calibrated; the other 3 need cross-model audits next.
+- **Operator-effort tracking** in state.yaml.
+- **`cycle-grade` promotion** to a proper -eval skill.
+- **`connect-program-setup-eval`** (now unblocked; needs a
+  non-degraded opp run to produce ground truth).
+
+## 0.9.4 — 2026-04-28
+
+### Fixed
+
+- `skills/connect-opp-setup/SKILL.md` — corrected the `location`
+  field documentation. The MCP exposes `location` as a boolean
+  toggle (the playwright backend always preserves the existing
+  form threshold value, default 10m). Skill text was telling
+  agents to set a meters value, which silently became dead text.
+  Now documents the actual boolean semantics + flags the
+  threshold as a known limitation. (Shipped from
+  `emdash/new-e2e-25bff` via merge commit `69a4dbf`.)
+
 ## 0.9.3 — 2026-04-28
 
 Coverage milestone. opp-eval produced the **first real PASS verdict**

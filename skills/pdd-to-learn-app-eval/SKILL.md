@@ -52,11 +52,11 @@ different rubric dimensions tuned to Learn-app concerns.
 
    | Dimension | Weight | Criteria |
    |---|---|---|
-   | **Module-count match** | 15% | Total module count matches PDD spec. **Bonus-module rule:** Nova commonly adds a final certification-check module beyond the PDD-numbered modules (e.g. PDD specifies 7 modules + a 10-MCQ final, Nova ships 7 + 1 separate quiz module). Count this as **zero deviation** if Nova explicitly tags the bonus as `assessment-only` and the PDD's content is preserved. Other module additions or omissions are 1-point deductions per gap. |
-   | **Module-order match** | 10% | Modules appear in the order the PDD specified. The PDD's narrative order (intro → flow → consent → photo → calibration → safety → vendor talk for atomic-visit) should be preserved. Reordering is a 1-point deduction per swap, capped at 3 points. |
-   | **Assessment Score wiring** | 30% | Most load-bearing dimension. The Connectify Assessment Score(s) MUST be wired correctly: numerator/denominator match the PDD's threshold (e.g. 10/12, 8/10), the score is tagged so Connect can read it as the gate to unlock Deliver, and the threshold matches the PDD spec exactly. Missing Assessment tag is a fail (≤3). Wrong threshold is a 3-point deduction. |
-   | **Content-topic coverage** | 25% | Each module's content covers the PDD-specified topics. The bot-judge reads the Nova module's actual field titles + label content and compares to PDD bullet points. Missing topics are 1-point deductions per topic. Topic present but with placeholder/stub content (the LLO must fill in reference photos, phone numbers, etc.) scores **as present** for this dimension — placeholders are expected for the kinds of content that must be LLO-localized. The auto_surfaced section flags placeholders separately. |
-   | **Archetype coherence** | 20% | For `atomic-visit`: the Learn app teaches form-walkthrough + observation calibration + safety, NOT facilitation craft. For `focus-group`: the Learn app teaches facilitation craft (probing, neutral framing, group dynamics), NOT form completion. Wrong-archetype framing is a 4-point deduction. For `multi-stage`: per-stage Learn apps each grade against their own archetype branch. |
+   | **Module-count match** | 15% | Total module count matches PDD spec. **Bonus-module rule (pinned 0.9.4):** if Nova adds a final certification-check module that meets BOTH conditions: (a) explicitly tagged as `assessment-only` (no `learn_module` wrapper) AND (b) PDD-specified content for the embedded check is preserved verbatim — score this dimension at **exactly 10.0**, not 9.5. Either condition unmet = 9.0 (small structural deviation). Other module additions or omissions are 1-point deductions per gap. |
+   | **Module-order match** | 10% | Modules appear in the order the PDD specified (atomic-visit narrative: intro → flow → consent → photo → calibration → safety → vendor talk). **Cap clarification (pinned 0.9.4):** "capped at 3 points" means the dimension floor is **7.0** — i.e., reordering deductions stop accumulating after 3 points off, so the worst possible score is 7. Pre-0.9.4 wording was ambiguous (could be read as "stop counting after 3 swaps"). |
+   | **Assessment Score wiring** | 30% | Most load-bearing dimension. The Connectify Assessment Score(s) MUST be wired correctly: numerator/denominator match the PDD's threshold (e.g. 10/12, 8/10), the score is tagged so Connect can read it as the gate to unlock Deliver, and the threshold matches the PDD spec exactly. Missing Assessment tag is a fail (≤3). Wrong threshold is a 3-point deduction. **Documented platform limitations rule (pinned 0.9.4):** when an internal score is documented in `eval-calibration/known-issues.md` as "informational-only / platform-limitation" (e.g. Module 3's `consent_score` not gated by Connect), it surfaces as `[INFO]` in `auto_surfaced` and does NOT deduct from this dimension. Platform limitations the LLO can't fix shouldn't bite the build's score. |
+   | **Content-topic coverage** | 25% | Each module's content covers the PDD-specified topics. **Placeholder rule (clarified 0.9.4):** content the LLO must localize (reference photos, phone numbers, market lists) scores **as present** if the Nova field is wired to receive the content with proper structure (correct count of placeholders, correctly-typed fields). **Stub-answer-keys carve-out (added 0.9.4):** when a placeholder field is the *answer key* for a Connectify Assessment gate (e.g. Module 5's `expected_color_*` / `expected_shininess_*` fields), it does NOT score as present — a calibration gate scoring against stub answers is meaningless and the dimension must reflect that. Score these as 0.5-point deductions per missing answer key, capped at 2 points off the dimension. The auto_surfaced section flags ALL placeholders for the LLO regardless. |
+   | **Archetype coherence** | 20% | For `atomic-visit`: the Learn app teaches form-walkthrough + observation calibration + safety, NOT facilitation craft. **M7 vendor-education-talk reading (pinned 0.9.4):** the M7 module's content is the FLW-reads-script-TO-vendor pattern, NOT a facilitation pattern (vendor doesn't speak in response to a structured question guide). atomic-visit coherent. For `focus-group`: the Learn app teaches facilitation craft (probing, neutral framing, group dynamics), NOT form completion. Wrong-archetype framing is a 4-point deduction. For `multi-stage`: per-stage Learn apps each grade against their own archetype branch. |
 
    **Deduction rules:**
    - Any single dimension ≤3 → suite verdict `fail`, regardless of
@@ -64,6 +64,15 @@ different rubric dimensions tuned to Learn-app concerns.
    - **Inflation guard (mirrors OCS / deliver-app rubrics):** if the
      rubric surfaces ≥2 `[WARN]`-tier `auto_surfaced` entries,
      overall is capped at **8.5** regardless of per-dimension math.
+   - **Pre-cap and post-cap reporting (added 0.9.4):** the verdict
+     YAML's `overall_score` is the post-cap value. Add a sibling
+     `overall_score_pre_cap` field showing the raw weighted mean.
+     This is essential for the Learn rubric specifically because
+     the cap binds on every Learn build today (every build has 3+
+     placeholder WARNs by design — M4 photos, M5 calibration, M6
+     phone numbers). Without pre-cap reporting the variance
+     protocol collapses to 0.00 post-cap and we lose visibility
+     into the underlying judge discretion.
 
 5. **Write the verdict YAML** to
    `ACE/<opp-name>/verdicts/pdd-to-learn-app-eval.yaml`:
