@@ -1,0 +1,208 @@
+/**
+ * Connect MCP Server for ACE
+ *
+ * Exposes 14 atomic Connect capabilities as MCP tools. Delegates to a
+ * CompositeBackend that routes each atom to either REST (when those endpoints
+ * land) or Playwright (today, driving connect.dimagi.com under
+ * ace@dimagi-ai.com via OAuth-via-CommCareHQ).
+ *
+ * See docs/superpowers/specs/2026-04-28-ace-connect-mcp-design.md
+ */
+import { config as dotenvConfig } from 'dotenv';
+import * as path from 'node:path';
+import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
+logPluginDataDirDiag('ace-connect', import.meta.url);
+const __pluginDataDir = resolvePluginDataDir(import.meta.url);
+dotenvConfig({
+  path: __pluginDataDir
+    ? path.join(__pluginDataDir, '.env')
+    : path.join(process.cwd(), '.env'),
+});
+
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { z } from 'zod';
+
+import { RestBackend } from './connect/backends/rest.js';
+import { PlaywrightBackend } from './connect/backends/playwright.js';
+import { CompositeBackend } from './connect/backends/composite.js';
+import { PlaywrightSession } from './connect/auth/playwright-session.js';
+import { createLoggingProxy, defaultFileLogger } from './connect/logging.js';
+
+const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
+
+const rest = new RestBackend({ baseUrl });
+
+let playwright: PlaywrightBackend | undefined;
+let session: PlaywrightSession | undefined;
+let initPromise: Promise<PlaywrightBackend> | undefined;
+
+let chain: Promise<unknown> = Promise.resolve();
+function serialize<T>(fn: () => Promise<T>): Promise<T> {
+  const next = chain.then(fn, fn);
+  chain = next.catch(() => undefined);
+  return next;
+}
+
+function cleanup() { if (session) session.close().catch(() => {}); }
+process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+process.on('SIGINT', () => { cleanup(); process.exit(0); });
+process.on('exit', cleanup);
+
+async function getPlaywrightBackend(): Promise<PlaywrightBackend> {
+  if (playwright) return playwright;
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    session = new PlaywrightSession({
+      baseUrl,
+      hqUsername: process.env.ACE_HQ_USERNAME,
+      hqPassword: process.env.ACE_HQ_PASSWORD,
+    });
+    const ctx = await session.getContext();
+    playwright = new PlaywrightBackend({
+      baseUrl,
+      csrfToken: session.getCsrfToken(),
+      request: ctx.request,
+    });
+    return playwright;
+  })();
+  try { return await initPromise; }
+  catch (e) { initPromise = undefined; throw e; }
+}
+
+async function client() {
+  const pw = await getPlaywrightBackend();
+  return createLoggingProxy(
+    new CompositeBackend({ rest, playwright: pw }),
+    defaultFileLogger(),
+  );
+}
+
+const json = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(v, null, 2) }] });
+
+const server = new McpServer({ name: 'ace-connect', version: '0.1.0' });
+
+// ── Programs ──────────────────────────────────────────────────────
+
+server.tool('connect_list_programs',
+  { organization_slug: z.string(), name: z.string().optional() },
+  async (args) => json(await serialize(async () => (await client()).listPrograms(args)))
+);
+
+server.tool('connect_get_program',
+  { organization_slug: z.string(), program_id: z.string() },
+  async (args) => json(await serialize(async () => (await client()).getProgram(args)))
+);
+
+server.tool('connect_create_program',
+  {
+    organization_slug: z.string(),
+    name: z.string(),
+    description: z.string(),
+    delivery_type: z.number().int(),
+    budget: z.number(),
+    currency: z.string(),
+    country: z.string(),
+    start_date: z.string(),
+    end_date: z.string(),
+  },
+  async (args) => json(await serialize(async () => (await client()).createProgram(args)))
+);
+
+server.tool('connect_update_program',
+  {
+    organization_slug: z.string(),
+    program_id: z.string(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    budget: z.number().optional(),
+    start_date: z.string().optional(),
+    end_date: z.string().optional(),
+  },
+  async (args) => json(await serialize(async () => (await client()).updateProgram(args)))
+);
+
+server.tool('connect_list_delivery_types',
+  { organization_slug: z.string() },
+  async (args) => json(await serialize(async () => (await client()).listDeliveryTypes(args)))
+);
+
+// ── Opportunities ─────────────────────────────────────────────────
+
+server.tool('connect_list_opportunities',
+  { organization_slug: z.string(), program_id: z.string().optional(), name: z.string().optional() },
+  async (args) => json(await serialize(async () => (await client()).listOpportunities(args)))
+);
+
+server.tool('connect_get_opportunity',
+  { organization_slug: z.string(), opportunity_id: z.string() },
+  async (args) => json(await serialize(async () => (await client()).getOpportunity(args)))
+);
+
+server.tool('connect_create_opportunity',
+  {
+    organization_slug: z.string(),
+    program_id: z.string().optional(),
+    name: z.string(),
+    short_description: z.string().max(50),
+    description: z.string(),
+    currency: z.string(),
+    country: z.string(),
+    hq_server: z.string(),
+    api_key: z.string(),
+    learn_app_domain: z.string(),
+    learn_app: z.string(),
+    learn_app_description: z.string().optional(),
+    learn_app_passing_score: z.number().int().min(0).max(100),
+    deliver_app_domain: z.string(),
+    deliver_app: z.string(),
+  },
+  async (args) => json(await serialize(async () => (await client()).createOpportunity(args)))
+);
+
+server.tool('connect_update_opportunity',
+  {
+    organization_slug: z.string(),
+    opportunity_id: z.string(),
+    name: z.string().optional(),
+    short_description: z.string().max(50).optional(),
+    description: z.string().optional(),
+  },
+  async (args) => json(await serialize(async () => (await client()).updateOpportunity(args)))
+);
+
+server.tool('connect_activate_opportunity',
+  { organization_slug: z.string(), opportunity_id: z.string() },
+  async (args) => json(await serialize(async () => (await client()).activateOpportunity(args)))
+);
+
+// ── Invites ──────────────────────────────────────────────────────
+
+server.tool('connect_send_llo_invite',
+  {
+    organization_slug: z.string(),
+    opportunity_id: z.string(),
+    organization_name: z.string(),
+    contact_email: z.string().email(),
+  },
+  async (args) => json(await serialize(async () => (await client()).sendLloInvite(args)))
+);
+
+server.tool('connect_list_invites',
+  { organization_slug: z.string(), opportunity_id: z.string() },
+  async (args) => json(await serialize(async () => (await client()).listInvites(args)))
+);
+
+// ── Invoices ─────────────────────────────────────────────────────
+
+server.tool('connect_list_invoices',
+  { organization_slug: z.string(), opportunity_id: z.string() },
+  async (args) => json(await serialize(async () => (await client()).listInvoices(args)))
+);
+
+server.tool('connect_get_invoice',
+  { organization_slug: z.string(), invoice_id: z.string() },
+  async (args) => json(await serialize(async () => (await client()).getInvoice(args)))
+);
+
+await server.connect(new StdioServerTransport());

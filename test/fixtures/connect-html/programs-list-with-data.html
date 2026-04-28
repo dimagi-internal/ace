@@ -1,0 +1,1256 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+
+<link rel="apple-touch-icon" sizes="180x180" href="/static/images/favicons/apple-touch-icon.b59ca68e1151.png">
+<link rel="icon" type="image/png" sizes="96x96" href="/static/images/favicons/favicon-96x96.c40024139556.png">
+<link rel="icon" type="image/svg+xml" href="/static/images/favicons/favicon.b62096104f6b.svg">
+<link rel="manifest" href="/static/images/favicons/site.07030052390d.webmanifest">
+<link rel="shortcut icon" href="/static/images/favicons/favicon.a836b61c1c52.ico">
+
+    <title>Connect</title>
+    
+  
+       <link rel="stylesheet" href="/static/bundles/css/vendors.fc4af69a0837.css">
+       <link rel="stylesheet" href="/static/bundles/css/tailwind.da5b33e84bbd.css">
+       <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+  <link rel="stylesheet" href="/static/bundles/css/tomselect.47e86f65cdfa.css">
+
+    
+  
+      <script id="gtm-data" type="application/json">{"isDimagi": false, "gtmID": "GTM-M3MVWH7F", "userId": 6299}</script>
+      <script src="/static/js/gtx.6b03cca6de39.js" defer></script>
+      <script src="/static/bundles/js/vendors-bundle.fca9de3d73ff.js" defer></script>
+      <script src="/static/bundles/js/tailwind-bundle.d41d8cd98f00.js" defer></script>
+      
+    
+  <script src="/static/bundles/js/tomselect-bundle.cb174a4dbaa3.js" defer></script>
+
+  </head>
+  <body
+    hx-headers='{"X-CSRFToken": "Qbg1yTo8oXhzMCAwwMeIx3eDDTyhci91O7H75wDow3wIMTGG9QjQztvnHQnI47p9"}'
+    x-data="{ sidebarOpen: $persist(false).as('sidebarOpen'), hasSidebar: true }"
+    x-init="$nextTick(() => $el.classList.add('transition-[padding-left]', 'duration-300'))"
+    :class="hasSidebar ? (sidebarOpen ? 'pl-64' : 'pl-16') : ''"
+    class="flex flex-col justify-center overflow-x-hidden bg-stone-100 font-work-sans"
+  >
+    
+      
+
+<div x-cloak
+    class="fixed top-0 left-0 h-screen bg-brand-deep-purple pt-3 z-40 text-white flex flex-col justify-between transition-all duration-300 px-2"
+    :class="sidebarOpen ? 'w-64' : 'w-16'">
+
+    <!-- Top Section -->
+    <div>
+        <!-- Logo Section -->
+        <div class="">
+            <div class="flex p-2 justify-start">
+                <div
+                    x-show.immediate="!sidebarOpen"
+                    class=" h-12 transition-none"
+                >
+                    <img src="/static/images/logo.b22fb8909009.svg" alt="Compact Logo" class="w-8 h-8">
+                </div>
+                <div
+                    x-show.immediate="sidebarOpen"
+                    class="h-12 pl-1"
+                >
+                    <img src="/static/images/logo-full.137c6df9a195.svg" alt="Full Logo" class="h-12 w-auto">
+                </div>
+            </div>
+        </div>
+
+        <div class="flex rounded-lg items-center p-2 transition-all duration-300 cursor-pointer">
+            <div class="flex items-center justify-center w-8 h-8">
+                <i class="fa-solid text-lg text-brand-sky"
+                    :class="sidebarOpen ? 'fa-xmark': 'fa-bars'"
+                    @click="sidebarOpen = !sidebarOpen"></i>
+
+            </div>
+
+            <div class="transition-all duration-300 overflow-hidden flex items-center"
+                 :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+                <span class="text-xs whitespace-nowrap">Menu</span>
+            </div>
+        </div>
+
+        <!-- Navigation Items -->
+        
+          
+            
+            <div class="mt-5">
+                
+                <a href="/a/ai-demo-space/opportunity/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-table-cells-large"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">Opportunities</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        Opportunities
+    </div>
+
+    <!-- Selected -->
+
+     
+</a>
+
+
+                
+                    
+                    <a href="/a/ai-demo-space/program/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-table-columns"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">Programs</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        Programs
+    </div>
+
+    <!-- Selected -->
+
+     
+     <div class="absolute left-0 top-0 w-full h-full bg-brand-mango/20 rounded-lg"></div>
+     <div class="absolute right-0 w-1 h-1/2 top-1/2 -translate-y-1/2 bg-brand-mango rounded-2xl"></div>
+     
+</a>
+
+
+                    
+                    
+                    <a href="/a/ai-demo-space/organization/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-building"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">My Workspace</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        My Workspace
+    </div>
+
+    <!-- Selected -->
+
+     
+</a>
+
+                
+            </div>
+            
+          
+          
+        
+    </div>
+
+</div>
+
+    
+    <div class="flex-1  px-4">
+      
+
+
+<header class="fixed top-0 left-16 right-0 bg-gray-100 z-30">
+    <div class="flex items-center justify-between w-full px-4 py-2">
+        <!-- Left Section: Module Name -->
+        <h1 class="text-lg text-brand-deep-purple font-medium">Connect</h1>
+
+        
+        <!-- Right Section: Org, Profile Dropdown -->
+        <div class="flex items-center gap-x-2">
+            <!-- Organization selector -->
+            <div x-data="
+              {
+                open: false,
+                hasOrg: true,
+                hasMembership: true,
+                isSuperuser: false,
+                get hasSelectedOrg() {
+                    return this.hasOrg && (this.hasMembership || this.isSuperuser)
+                },
+                membershipsCount: 3,
+                canCreateOrg: false,
+                get showDropdown() {
+                    return this.membershipsCount > 1
+                        || (!this.hasSelectedOrg && this.membershipsCount > 0)
+                        || this.canCreateOrg
+                }
+              }"
+              @click.away="open = false" class="relative mx-8">
+                <button @click="open = !open" class="flex items-center gap-2 focus:outline-none">
+                    <div class="text-left">
+                      <div x-show="hasSelectedOrg" x-transition.opacity x-cloak>
+                        <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                          AI Demo Space
+                        </p>
+                        
+                          <p class="text-gray-500 text-sm font-medium">Claude Test Space</p>
+                        
+                        <p class="text-xs text-gray-400">Program Manager</p>
+                      </div>
+                      <div x-show="!hasSelectedOrg && membershipsCount > 0" x-transition.opacity x-cloak>
+                         <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                          Select Workspace
+                         </p>
+                      </div>
+                      <div x-show="!hasSelectedOrg && membershipsCount == 0 && canCreateOrg" x-transition.opacity x-cloak>
+                        <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                            Create Workspace
+                        </p>
+                      </div>
+                    </div>
+                    <!-- Dropdown Toggle Icon -->
+                    <i x-show="showDropdown" :class="open ? 'rotate-180' : ''" class="fa-solid fa-chevron-down transition-all text-xs"></i>
+                </button>
+
+                  <!-- Organization Selector -->
+                  <div x-show="open && showDropdown" x-transition.opacity x-cloak
+                      class="absolute top-12 right-0 min-w-56 bg-white shadow rounded-lg z-50">
+                      <ul class="p-2 w-full max-h-80 overflow-y-auto">
+                        
+                          
+                            <li class="p-2 hover:bg-gray-100 rounded cursor-pointer text-left">
+                              <a href="/a/jjackson/opportunity/">
+                                <p class="text-brand-deep-purple text-sm font-medium">Baobob-Demo-Workspace</p>
+                                
+                                <p class="text-xs text-gray-400">Network Manager</p>
+                              </a>
+                            </li>
+                          
+                        
+                          
+                        
+                          
+                            <li class="p-2 hover:bg-gray-100 rounded cursor-pointer text-left">
+                              <a href="/a/march-demo/opportunity/">
+                                <p class="text-brand-deep-purple text-sm font-medium">March-Demo</p>
+                                
+                                  <p class="text-gray-500 text-sm font-medium">LLO-Demo</p>
+                                
+                                <p class="text-xs text-gray-400">Program Manager</p>
+                              </a>
+                            </li>
+                          
+                        
+                      </ul>
+                        <div class="p-2" x-show="canCreateOrg" x-transition.opacity x-cloak>
+                            <a class="button button-md primary-dark w-full text-center" href="/register/organization/">
+                            Create Workspace
+                            </a>
+                        </div>
+                  </div>
+
+            </div>
+
+            <!-- User Profile -->
+            <div x-data="{ open: false }" @click.away="open = false" class="relative">
+                <button @click="open = !open" class="focus:outline-none">
+                    <div class="cursor-pointer overflow-hidden">
+                        <div
+  title="ace"
+  class="rounded-full flex items-center justify-center select-none shrink-0 w-10 h-10 text-xs font-medium tracking-wider bg-brand-cornflower-blue text-white"
+>
+  <span>AC</span>
+</div>
+
+                    </div>
+                </button>
+
+                <!-- User Profile Selector -->
+                <div x-show="open" x-transition.opacity x-cloak class="absolute top-12 right-0 min-w-56 w-56 bg-white shadow rounded-lg z-50">
+                    <ul class="p-2 w-full">
+                        <li class="p-2 text-left">
+                            <p class="text-brand-deep-purple font-medium">ace</p>
+                            
+                                <span class="text-gray-400 text-sm">admin</span>
+                            
+                        </li>
+                        <li class="p-2 text-left">
+                            <a class="block p-2 hover:bg-gray-100 rounded cursor-pointer" href="/accounts/email/">
+                              <p class="text-brand-deep-purple">Profile</p>
+                            </a>
+                        </li>
+                        <li class="p-2">
+                          <a class="cursor-pointer" href="/accounts/logout/">
+                            <div class="bg-brand-indigo text-white px-8 py-2 rounded-lg shadow-md hover:bg-blue-800 transition">
+                              Logout
+                            </div>
+                          </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+</header>
+
+      <div class="h-5 w-full mt-16"></div>
+      <main id="content" class="md:max-w-screen-2xl mx-auto">
+        
+          
+          <div class="flex items-center justify-between p-4 mb-4 rounded-lg border-[0.5px]
+                    bg-message-success text-message-success-text border-message-success-border
+                    ">
+            <div class="flex items-center gap-2">
+              
+                <i class="fa-regular fa-circle-check"></i>
+              
+              <span>Program &#x27;ACE-Probe-1777406601155&#x27; created successfully.</span>
+            </div>
+            <button type="button"
+                    class="ml-4 text-xl font-light hover:font-normal focus:outline-none"
+                    aria-label="Close"
+                    onclick="this.parentElement.remove()">
+              &times;
+            </button>
+          </div>
+          
+        
+
+        
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4" x-data="{showProgramAddModal: false}">
+  <div class="col-span-2">
+    <div class="flex justify-between">
+      <h2 class="mb-4 text-brand-deep-purple font-medium text-sm">Programs</h2>
+      
+      <div class="flex items-center gap-2">
+        <button class="button button-md button-outline-rounded"
+          hx-get="/a/ai-demo-space/program/init/"
+          hx-target="#program-add-form"
+          @htmx:after-request="showProgramAddModal = true">
+           <div class="flex items-center justify-between gap-4">
+             <p class="text-sm">
+               Add Programs
+             </p>
+             <i class="fa-solid fa-plus"></i>
+           </div>
+       </button>
+      </div>
+      
+    </div>
+  </div>
+  <div class="col-span-1">
+    <div class="mb-4 text-brand-deep-purple font-medium text-sm">Recent Activities</div>
+  </div>
+
+  <div class="col-span-2">
+    
+<div x-data="{showProgramEditModal: false}">
+  <div class="flex flex-col gap-4">
+    
+      <div class="flex flex-col p-6 rounded-xl shadow-sm bg-white gap-5 relative" x-data="{showOpp: false, showInviteModal: false}">
+        <div class="absolute w-8 bg-brand-mango h-2 top-0 -translate-y-1/2 left-6 rounded-full"></div>
+          <div class="flex w-full justify-between">
+            <div class="w-full">
+              <p class="card_title">ACE-Probe-1777406601155</p>
+              <p class="card_description w-full max-w-1/2">Created by ace-connect probe script</p>
+            </div>
+            <div class="flex items-start justify-end gap-6">
+              <button class="button-icon"
+                hx-get="/a/ai-demo-space/program/34d4fb36-2028-4a79-8cd3-aa8e5e7d842f/edit"
+                hx-target="#program-edit-form"
+                @htmx:after-request="showProgramEditModal = true">
+                <i class="fa-solid fa-pen"></i>
+              </button>
+              <button class="button button-sm outline-style" @click="showInviteModal = true">Invite</button>
+              <div x-cloak x-show="showInviteModal" x-transition.opacity class="modal-backdrop" >
+                <div @click.away="showInviteModal = false" x-transition class="modal">
+                  <div class="header">
+                    <h2 class="title">Invite Workspace</h2>
+                    <button @click="showInviteModal = false" class="button-icon" aria-label="Close">
+                      <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                  </div>
+                  <form action="/a/ai-demo-space/program/34d4fb36-2028-4a79-8cd3-aa8e5e7d842f/invite" method="post">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="Qbg1yTo8oXhzMCAwwMeIx3eDDTyhci91O7H75wDow3wIMTGG9QjQztvnHQnI47p9">
+                    <div class="flex flex-col gap-2 py-4">
+                      <label for="organization" class="title-sm">Workspace</label>
+                      <select id="organization" name="organization" required data-tomselect data-tomselect:no-remove-button>
+                        
+                          <option value="6y6thy56hy6">6y6thy56hy6</option>
+                        
+                          <option value="cowacdi-1">abdoul-org</option>
+                        
+                          <option value="abdoul-sandbox">Abdoul Sandbox</option>
+                        
+                          <option value="abdouls-org-2">Abdoul&#x27;s Org 2</option>
+                        
+                          <option value="abhishek-ccc-test-personal">Abhishek-CCC-Test-Personal</option>
+                        
+                          <option value="abhishek-chc">Abhishek CHC</option>
+                        
+                          <option value="abhishek-demo-organization">Abhishek - Demo Organization</option>
+                        
+                          <option value="abhishek-readers">Abhishek Readers</option>
+                        
+                          <option value="abhisheks-nm-test">Abhishek&#x27;s NM Test</option>
+                        
+                          <option value="abhishek-test">abhishek-test</option>
+                        
+                          <option value="achirwa">achirwa</option>
+                        
+                          <option value="action-for-humanitarian-initiatives-uganda-afhi-uganda-1">Action for Humanitarian Initiatives Uganda (AFHI Uganda)</option>
+                        
+                          <option value="action-for-humanitarian-initiatives-uganda-afhi-uganda">Action for Humanitarian Initiatives Uganda (AFHI Uganda)</option>
+                        
+                          <option value="action-sante-rdc">Action sante Rdc</option>
+                        
+                          <option value="adamas-org">Adama&#x27;s Org</option>
+                        
+                          <option value="alliance-des-familles-pour-le-developpement-integral-du-congo">AFDIC</option>
+                        
+                          <option value="aflaming">aflaming - demo test</option>
+                        
+                          <option value="afrikanlawrist">Afrikanlawrist</option>
+                        
+                          <option value="agir-pour-sauver-la-vie-2">Agir pour sauver la vie</option>
+                        
+                          <option value="agir-pour-sauver-la-vie-3">Agir pour sauver la vie</option>
+                        
+                          <option value="agir-pour-sauver-la-vie-4">Agir pour sauver la vie</option>
+                        
+                          <option value="agir-pour-sauver-la-vie-1">Agir pour Sauver la Vie</option>
+                        
+                          <option value="agir-pour-sauver-la-vie">AGIR POUR SAUVER LA VIE</option>
+                        
+                          <option value="ong-agir-pour-sauver-la-vie">AGIR POUR SAUVER LA VIE</option>
+                        
+                          <option value="arewa-health-trust-initiative">AHTI DGw</option>
+                        
+                          <option value="ajeets-org">Ajeet&#x27;s Org</option>
+                        
+                          <option value="ansh">Ansh</option>
+                        
+                          <option value="eha-clinics">[Archived] EHA Clinics</option>
+                        
+                          <option value="world-vision-ethiopia-test-1">[Archived] WVE CCC Test - EUT</option>
+                        
+                          <option value="arisha-test-organization">Arisha Test Organization</option>
+                        
+                          <option value="asfdsaf">asfdsaf</option>
+                        
+                          <option value="asharma">asharma</option>
+                        
+                          <option value="asiddiqui">asiddiqui</option>
+                        
+                          <option value="asonal">asonal</option>
+                        
+                          <option value="auto-connect-master">Auto Connect Program Manager</option>
+                        
+                          <option value="automation_test_01">Automation_Test_01</option>
+                        
+                          <option value="automation_test_02">Automation_Test_02</option>
+                        
+                          <option value="avazirna">avazirna</option>
+                        
+                          <option value="awosinapaul">awosinapaul</option>
+                        
+                          <option value="jjackson">Baobob-Demo-Workspace</option>
+                        
+                          <option value="bela-community-development-initiative">BELA Community Development Initiative</option>
+                        
+                          <option value="beri-ng-kmc">BERI - NG - KMC</option>
+                        
+                          <option value="bzemmaa1">bzemmaa1</option>
+                        
+                          <option value="akrishnancccdemo">CCC Demo (akrishnan)</option>
+                        
+                          <option value="paverma">CCC-KMC Test-Demo</option>
+                        
+                          <option value="ccc-support">CCC Support</option>
+                        
+                          <option value="cdentraidefamilialegmailcom">cdentraidefamiliale@gmail.com</option>
+                        
+                          <option value="cellowitz">cellowitz</option>
+                        
+                          <option value="center-of-technology-and-entrepreneurship-development-cted">Center of Technology and Entrepreneurship Development</option>
+                        
+                          <option value="centre-de-developpement-rural-de-kibututu">Centre de Développement Rural de Kibututu</option>
+                        
+                          <option value="sffh-connect-demo">CHANT</option>
+                        
+                          <option value="childfund">childfund</option>
+                        
+                          <option value="chinsinsisamuel2">chinsinsisamuel2</option>
+                        
+                          <option value="chisomokamwana">chisomokamwana</option>
+                        
+                          <option value="chw-cn">CHW-CN</option>
+                        
+                          <option value="ckelly">ckelly</option>
+                        
+                          <option value="claude-test">Claude Test</option>
+                        
+                          <option value="clp-vaccine-promotion-test">CLP - Vaccine Promotion Test</option>
+                        
+                          <option value="cmaisha">cmaisha</option>
+                        
+                          <option value="cmancina">cmancina</option>
+                        
+                          <option value="comcare-connect">Comcare connect</option>
+                        
+                          <option value="comite-dentraide-familiale-cef-asbl">COMITE D’ENTRAIDE FAMILIALE (CEF, Asbl)</option>
+                        
+                          <option value="community-health-alliance-uganda-chau-1">Community Health Alliance Uganda - CHAU</option>
+                        
+                          <option value="community-health-alliance-uganda-chau">Community Health Alliance Uganda (CHAU)</option>
+                        
+                          <option value="community-health-worker-champions-network-chw-cn">Community Health Worker Champions Network (CHW-CN)</option>
+                        
+                          <option value="community-health-worker-champions-network-chw-cn-1">Community Health Worker Champions Network (CHW-CN)</option>
+                        
+                          <option value="concern-for-women-and-children-development-foundation-1">Concern for Women and Children Development Foundation</option>
+                        
+                          <option value="concern-for-women-and-children-development-foundation-cowacdi">CONCERN FOR WOMEN AND CHILDREN DEVELOPMENT FOUNDATION (COWACDI)</option>
+                        
+                          <option value="akash-sandbox">Connect PM - Sandbox</option>
+                        
+                          <option value="connect-qa">Connect QA</option>
+                        
+                          <option value="nheynes">connect-testing</option>
+                        
+                          <option value="connect-test-pawan">Connect Test Pawan</option>
+                        
+                          <option value="conroys-organization">Conroy&#x27;s Organization</option>
+                        
+                          <option value="coordinationcef-rdcorg">coordination@cef-rdc.org</option>
+                        
+                          <option value="coordination-nationale-de-renforcement-du-systeme-communautaire-cnrsc-asbl">COORDINATION NATIONALE DE RENFORCEMENT DU SYSTEME COMMUNAUTAIRE (CNRSC ASBL)</option>
+                        
+                          <option value="cory">Cory</option>
+                        
+                          <option value="cory-no-hq">Cory No HQ</option>
+                        
+                          <option value="concern-for-women-and-children-development-foundation">COWACDI DGw</option>
+                        
+                          <option value="cowacdi-interviews">COWACDI Interviews</option>
+                        
+                          <option value="create">Create</option>
+                        
+                          <option value="cro-ng-primary">CRO - NG - Primary</option>
+                        
+                          <option value="csims">csims</option>
+                        
+                          <option value="csimsconnectfeb">csims+connect+feb</option>
+                        
+                          <option value="csmit-test">csmit-test</option>
+                        
+                          <option value="civil-society-scaling-up-nutrition-in-nigeria-cs-sunn">[CS-SUNN DGw] Civil Society Scaling-Up Nutrition in Nigeria</option>
+                        
+                          <option value="ctsims_unprivileged">ctsims_unprivileged</option>
+                        
+                          <option value="c-wins">C-WINS DGw</option>
+                        
+                          <option value="caphrem">D2Org CCC- CHC</option>
+                        
+                          <option value="d-8healthandsocialprotection">d-8healthandsocialprotection</option>
+                        
+                          <option value="daindemben-federation-2">Daindemben Federation</option>
+                        
+                          <option value="daindemben-federation-1">Daindemben Federation</option>
+                        
+                          <option value="daindemben-federation">Daindemben Federation</option>
+                        
+                          <option value="daveconnectworkspace">DaveConnectWorkspace</option>
+                        
+                          <option value="de-flores-humanitarian-foundation">De Flores Humanitarian Foundation - Nigeria</option>
+                        
+                          <option value="test_kmc_repeater-1">Demo_NM</option>
+                        
+                          <option value="demo-org">Demo-Org</option>
+                        
+                          <option value="dimagi-chc-master-test">Demo Organization</option>
+                        
+                          <option value="desal">DESAL</option>
+                        
+                          <option value="dg_connect">dg_connect</option>
+                        
+                          <option value="ysimoes">Digital &amp; Health Mozambique</option>
+                        
+                          <option value="dil-india">DIL India</option>
+                        
+                          <option value="dimagi">DImagi</option>
+                        
+                          <option value="dimagi-gw-chc-2024-2025">Dimagi CHC</option>
+                        
+                          <option value="dimagi-chlorine">Dimagi-Chlorine</option>
+                        
+                          <option value="dimagi-chlorine-implementation">Dimagi - Chlorine Implementation</option>
+                        
+                          <option value="dimagi-egeoffroy">Dimagi-egeoffroy</option>
+                        
+                          <option value="dimagi-interviews">dimagi-interviews</option>
+                        
+                          <option value="dimagi-kmc">Dimagi-KMC</option>
+                        
+                          <option value="dimagi-rooftop-sampling">Dimagi - Rooftop Sampling</option>
+                        
+                          <option value="dsivaramakrishnan">dsivaramakrishnan</option>
+                        
+                          <option value="dviggiano">dviggiano</option>
+                        
+                          <option value="e">E</option>
+                        
+                          <option value="tnyirenda">ECD, IVC and MBW Experiments</option>
+                        
+                          <option value="ecf-connect-demo">ECF Vaccine Demo</option>
+                        
+                          <option value="eha-clinics-reach">[EHA-C DGw] EHA Clinics - REACH</option>
+                        
+                          <option value="eha-clinic">EHA clinic</option>
+                        
+                          <option value="eha-clinics-1">EHA Clinics</option>
+                        
+                          <option value="ehealth-africa-connect-interviews">eHealth Africa Connect Interviews</option>
+                        
+                          <option value="elie-ndagu">Elie NDAGU</option>
+                        
+                          <option value="equitable-health-access-initiative">Equitable Health Access Initiative</option>
+                        
+                          <option value="feline-fine">Feline Fine PM (test)</option>
+                        
+                          <option value="foundation-for-integrated-care">FIC-Nigeria</option>
+                        
+                          <option value="fikr_desalegn">fikr_desalegn</option>
+                        
+                          <option value="fkhaviriya">Fkhaviriya</option>
+                        
+                          <option value="flowinformatics">flowinformatics</option>
+                        
+                          <option value="foadingnshom">foadingnshom</option>
+                        
+                          <option value="focus-1000">FOCUS 1000</option>
+                        
+                          <option value="founders-pledge">Founders Pledge-Archive</option>
+                        
+                          <option value="je-suis-lenfant">[FP] Je suis l’enfant ONG</option>
+                        
+                          <option value="gachette-junior">gachette junior</option>
+                        
+                          <option value="giftlegison">giftlegison</option>
+                        
+                          <option value="givedirectly">givedirectly</option>
+                        
+                          <option value="global-health-innovation">Global Health innovation</option>
+                        
+                          <option value="global-health-innovations-ghi">Global Health Innovations (GHI)</option>
+                        
+                          <option value="globecom-wellme-connect">GLOBCOM</option>
+                        
+                          <option value="kkaur">GLOBCOM</option>
+                        
+                          <option value="gnff-as-inar">GNFF as INAR</option>
+                        
+                          <option value="goal">GOAL</option>
+                        
+                          <option value="akrishnan">gPM+ test</option>
+                        
+                          <option value="hajarakotoarisoa">haja.rakotoarisoa</option>
+                        
+                          <option value="hei-ng-primary">HEI - NG - Primary</option>
+                        
+                          <option value="henike">HENIKE</option>
+                        
+                          <option value="helping-hands-and-grassroot-support-foundation">HHGSF DGw</option>
+                        
+                          <option value="hotosm">HOTOSM</option>
+                        
+                          <option value="crs">https://crs.csod.com/</option>
+                        
+                          <option value="hvhh1ddjh1dj">hvh&quot;&gt;&lt;h1&gt;ddj&lt;/h1&gt;dj</option>
+                        
+                          <option value="hyadav">hyadav</option>
+                        
+                          <option value="idevpro-africa">iDevPro-Africa</option>
+                        
+                          <option value="idevpro-african-institute">iDevPro African Institute</option>
+                        
+                          <option value="idiene_test">idiene_test</option>
+                        
+                          <option value="indic-origin">Indic Origin</option>
+                        
+                          <option value="infinity-mind-foundation">Infinity Mind Foundation</option>
+                        
+                          <option value="infinity-mind-foundation-sierra-leone">Infinity Mind Foundation Sierra Leone</option>
+                        
+                          <option value="ismail-khadija">ISMAIL KHADIJA</option>
+                        
+                          <option value="isodaf">ISODAF DGw</option>
+                        
+                          <option value="isodaf-kogi">iSODAF Kogi</option>
+                        
+                          <option value="isodaf-kogi-1">ISODAF KOGI</option>
+                        
+                          <option value="itekajules131">itekajules131</option>
+                        
+                          <option value="isa-wali-empowerment-initiative">IWEI</option>
+                        
+                          <option value="direction-de-soins-de-sante-primaire">Je suis l&#x27;enfant ONG</option>
+                        
+                          <option value="janna-health-foundation">[JHF DGw] Janna Health Foundation</option>
+                        
+                          <option value="jignesh-test-org">Jignesh Test Org</option>
+                        
+                          <option value="jpanchal">jpanchal</option>
+                        
+                          <option value="kamal-ibrahim-foundation">Kamal Ibrahim Foundation</option>
+                        
+                          <option value="kanwalpreet">kanwalpreet</option>
+                        
+                          <option value="kdevar">kdevar</option>
+                        
+                          <option value="kenpath-test">kenpath-test</option>
+                        
+                          <option value="kikapu-garden">KIKAPU GARDEN</option>
+                        
+                          <option value="khidnet-uganda">KINGA HEALTH INITIATIVE AND DEVELOPMENT NETWORK (KHIDNET-UGANDA)</option>
+                        
+                          <option value="kittyconnection">KittyConnection (NM org)</option>
+                        
+                          <option value="kk-readers-test">[KK] Readers Test</option>
+                        
+                          <option value="kmc-test-org">KMC Test Org</option>
+                        
+                          <option value="kritimehrotra">kritimehrotra</option>
+                        
+                          <option value="kyetume-cbhc">Kyetume CBHC</option>
+                        
+                          <option value="kyetume-cbhc-programme">Kyetume CBHC Programme</option>
+                        
+                          <option value="kyetume-community-based-health-care-programme-kcbhcp">Kyetume Community Based Health Care Programme (KCBHCP)</option>
+                        
+                          <option value="la-lumiere-des-enfants">La Lumière des enfants</option>
+                        
+                          <option value="lbagnoli">lbagnoli</option>
+                        
+                          <option value="nicholasgordon725">LMH_test</option>
+                        
+                          <option value="mada_test">mada_test</option>
+                        
+                          <option value="march-demo">March-Demo</option>
+                        
+                          <option value="mariam">mariam</option>
+                        
+                          <option value="matt_test">matt_test</option>
+                        
+                          <option value="mauricettengabonayahoofr">mauricettengabona@yahoo.fr</option>
+                        
+                          <option value="mauricettengabonayahoofr-1">mauricettengabona@yahoo.fr</option>
+                        
+                          <option value="mbw-test-network-manager">MBW test Network Manager</option>
+                        
+                          <option value="ministry-of-health-and-sanitation-county-government-of-turkana-kenya">Ministry of Health Services  and Sanitation, County Government of Turkana, Kenya</option>
+                        
+                          <option value="mobiklinic">Mobiklinic</option>
+                        
+                          <option value="mondaypomak">mondaypomak</option>
+                        
+                          <option value="monu">monu</option>
+                        
+                          <option value="msimiyu">msimiyu</option>
+                        
+                          <option value="msimiyu-network">msimiyu-network</option>
+                        
+                          <option value="munafa-mpatie-federation">MUNAFA M&#x27;PATIE FEDERATION</option>
+                        
+                          <option value="my-test-org">My Test Org</option>
+                        
+                          <option value="nalanda">Nalanda</option>
+                        
+                          <option value="nama-wellness">Nama Wellness</option>
+                        
+                          <option value="network-manager">Network Manager</option>
+                        
+                          <option value="network-manager-prod">Network Manager [Prod]</option>
+                        
+                          <option value="nglowacky">nglowacky</option>
+                        
+                          <option value="ngueredejoellagmailcom">Ngueredejoella@gmail.com</option>
+                        
+                          <option value="nlesh">nlesh</option>
+                        
+                          <option value="cowacdi">None</option>
+                        
+                          <option value="nsaxena">nsaxena</option>
+                        
+                          <option value="nsaxenaccc_prod">nsaxena+ccc_prod</option>
+                        
+                          <option value="nsaxenatest_ccc">nsaxena+test_ccc</option>
+                        
+                          <option value="nsnitinsaxena03">nsnitinsaxena03</option>
+                        
+                          <option value="nstancic">nstancic</option>
+                        
+                          <option value="org_mn">org_mn</option>
+                        
+                          <option value="ors-pilot-demo">ORS Pilot - Demo</option>
+                        
+                          <option value="pachi">PACHI</option>
+                        
+                          <option value="edallariva">Pachi Malawi</option>
+                        
+                          <option value="parth">parth</option>
+                        
+                          <option value="paverma-1">paverma</option>
+                        
+                          <option value="peace-restoration-integral-global-development-initiative">Peace Restoration &amp; Integral Global Development Initiative</option>
+                        
+                          <option value="perspectives-developpement">Perspectives Developpement</option>
+                        
+                          <option value="perspectives-developpement-1">Perspectives Développement</option>
+                        
+                          <option value="planned-parenthood-federation-of-nigeria-1">Planned Parenthood federation of Nigeria</option>
+                        
+                          <option value="pm_automation_01">PM_Automation_01</option>
+                        
+                          <option value="pm_automation_02">PM_Automation_02</option>
+                        
+                          <option value="pmittal">pmittal</option>
+                        
+                          <option value="pm-test-product">PM Test - Product</option>
+                        
+                          <option value="planned-parenthood-federation-of-nigeria">[PPFN DGw]  Nigeria</option>
+                        
+                          <option value="ppfn-rooftop-sampling">PPFN (Rooftop Sampling)</option>
+                        
+                          <option value="preterm-infants-parents-network-uganda">Preterm Infants Parents Network</option>
+                        
+                          <option value="program-manager-prod">Program Manager [Prod]</option>
+                        
+                          <option value="program-manager-pverma">Program Manager pverma</option>
+                        
+                          <option value="pruthvigottimukkula">pruthvi.gottimukkula</option>
+                        
+                          <option value="pruthvigottimukkulaccc">pruthvi.gottimukkula+ccc</option>
+                        
+                          <option value="pulsebd">PulseBD</option>
+                        
+                          <option value="pverma">pverma</option>
+                        
+                          <option value="pverma-chc">pverma-chc</option>
+                        
+                          <option value="pvtestpmorg">pvtestpmorg</option>
+                        
+                          <option value="rama-test-org">Rama Test Org</option>
+                        
+                          <option value="rfc">RFC</option>
+                        
+                          <option value="rfc-1">RFC</option>
+                        
+                          <option value="roadmap-for-women-and-youth-development">Roadmap for Women and Youth Development</option>
+                        
+                          <option value="rsiva">rsiva</option>
+                        
+                          <option value="rural-women-and-youth-development">RUWOYD</option>
+                        
+                          <option value="sagar-atre">Sagar Atre</option>
+                        
+                          <option value="sagar-test">Sagar Test</option>
+                        
+                          <option value="sageen-golden-technologies">SAGEEN GOLDEN TECHNOLOGIES</option>
+                        
+                          <option value="sahlemamush">sahlemamush</option>
+                        
+                          <option value="sample">sample</option>
+                        
+                          <option value="sanity">sanity</option>
+                        
+                          <option value="sankalp-pm-org">Sankalp PM Org</option>
+                        
+                          <option value="sarvesh_lab_tes_nm">sarvesh_lab_test_nm</option>
+                        
+                          <option value="saumyadeb-dasgupta-home">Saumyadeb Dasgupta Home</option>
+                        
+                          <option value="sdasgupta">sdasgupta</option>
+                        
+                          <option value="sena-nigeria">sena-nigeria</option>
+                        
+                          <option value="sffh-ccc-demo">sffh-ccc-demo</option>
+                        
+                          <option value="shalinigoli">shalini.goli</option>
+                        
+                          <option value="shubhamtest">shubhamtest</option>
+                        
+                          <option value="sisay-edecha">Sisay Edecha</option>
+                        
+                          <option value="sistemabio">Sistema.bio</option>
+                        
+                          <option value="smhlanga">smhlanga</option>
+                        
+                          <option value="solina-1">Solina</option>
+                        
+                          <option value="solina">Solina DGw</option>
+                        
+                          <option value="connect-nigeria">Solina ECD Nigeria</option>
+                        
+                          <option value="solina-health">Solina health</option>
+                        
+                          <option value="solina-health-limited">Solina Health limited</option>
+                        
+                          <option value="solina-rooftop-sampling">Solina Rooftop Sampling</option>
+                        
+                          <option value="solutions-dimagi">solutions-dimagi</option>
+                        
+                          <option value="spoidanid4454">spoidanid4454</option>
+                        
+                          <option value="spoumangogmailcom">spoumango@gmail.com</option>
+                        
+                          <option value="sreddy">sreddy</option>
+                        
+                          <option value="srowan">srowan</option>
+                        
+                          <option value="ss-network-manager">SS Network Manager</option>
+                        
+                          <option value="test-organization">SS Organization</option>
+                        
+                          <option value="ss-project-manager">SS Program manager</option>
+                        
+                          <option value="stewari">stewari_nm_sandbox</option>
+                        
+                          <option value="stewari_pm_sandbox">stewari_pm_sandbox</option>
+                        
+                          <option value="sujukwa">Sujukwa</option>
+                        
+                          <option value="supporting-citizen-initiative-for-development-in-africa-scida">Supporting Citizen Initiative for Development in Africa (SCIDA)</option>
+                        
+                          <option value="surabhi-test">Surabhi test</option>
+                        
+                          <option value="sylvie-learning">Sylvie Learning</option>
+                        
+                          <option value="t8d9-07f97f">T8d9 07f97f</option>
+                        
+                          <option value="tanzania-community-care">Tanzania Community Care</option>
+                        
+                          <option value="tatianaprudenceouanekpone115gmailcom">Tatianaprudenceouanekpone115@gmail.com</option>
+                        
+                          <option value="test-3">test</option>
+                        
+                          <option value="afdic">test</option>
+                        
+                          <option value="test">Test</option>
+                        
+                          <option value="test-2">Test</option>
+                        
+                          <option value="test-1">Test 1</option>
+                        
+                          <option value="test-ayogi-org">Test Ayogi Org</option>
+                        
+                          <option value="test_ccc_1">test_ccc_1</option>
+                        
+                          <option value="test-ccc-kmc">[Test] CCC KMC</option>
+                        
+                          <option value="world-vision-ethiopia-test">[Test] gPM+ Rounds - WVE</option>
+                        
+                          <option value="testing-organization-for-arisha">Testing Organization for Arisha</option>
+                        
+                          <option value="chc-test-runs-pm">Testing PM Org</option>
+                        
+                          <option value="test-kmc-nm">Test-KMC-NM</option>
+                        
+                          <option value="test_kmc_repeater">Test_KMC_Repeater</option>
+                        
+                          <option value="test_kriti_2">test_kriti_2</option>
+                        
+                          <option value="test_kriti">Test Kriti Org (NM)</option>
+                        
+                          <option value="test-nm-2sept">Test NM</option>
+                        
+                          <option value="test_nm_246">test_nm_246</option>
+                        
+                          <option value="test_org">test_org</option>
+                        
+                          <option value="ccc-delivery-sandbox">Test Org</option>
+                        
+                          <option value="test-org-july-2025">Test Org July 2025</option>
+                        
+                          <option value="test-rs-org">test-rs-org</option>
+                        
+                          <option value="test_st">test_st</option>
+                        
+                          <option value="the-girl-nurture-project">The Girl Nurture Project</option>
+                        
+                          <option value="themba-test">Themba Test</option>
+                        
+                          <option value="tmp">tmp</option>
+                        
+                          <option value="tnyirenda-1">tnyirenda</option>
+                        
+                          <option value="to-delete">to-delete</option>
+                        
+                          <option value="tumaini-letu-nshamba">Tumaini Letu Nshamba-Tanzania</option>
+                        
+                          <option value="walusikumuyunda">Walusiku.Muyunda</option>
+                        
+                          <option value="jsingh">WellMe</option>
+                        
+                          <option value="asidtharthan">WellMe Connect</option>
+                        
+                          <option value="williammkandawire101">williammkandawire101</option>
+                        
+                          <option value="women-empowerment-action">Women Empowerment Action</option>
+                        
+                          <option value="world-hope-international">World Hope International</option>
+                        
+                          <option value="world-vision-5">world vision</option>
+                        
+                          <option value="world-vision-6">World vision</option>
+                        
+                          <option value="world-vision-8">World vision</option>
+                        
+                          <option value="world-vision-9">World vision</option>
+                        
+                          <option value="world-vision-10">World vision</option>
+                        
+                          <option value="world-vision-12">World vision</option>
+                        
+                          <option value="world-vision-13">World vision</option>
+                        
+                          <option value="world-vision-14">World vision</option>
+                        
+                          <option value="world-vision-3">World vision</option>
+                        
+                          <option value="world-vision">World vision</option>
+                        
+                          <option value="world-vision-7">World vision</option>
+                        
+                          <option value="world-vision-1">World Vision</option>
+                        
+                          <option value="world-vision-2">World Vision</option>
+                        
+                          <option value="world-vision-4">World Vision</option>
+                        
+                          <option value="world-vision-11">World Vision</option>
+                        
+                          <option value="world-vision-ethiopia">World Vision Ethiopia [Roll-Out]</option>
+                        
+                          <option value="world-vsion">World vsion</option>
+                        
+                          <option value="yadebodogmailcom">yadebodo@gmail.com</option>
+                        
+                          <option value="yruegg">yruegg</option>
+                        
+                          <option value="yume-labs-1">Yume Labs</option>
+                        
+                          <option value="yumelabs-nm-org">YumeLabs - NM Org</option>
+                        
+                          <option value="zainab-ayuba">Zainab Ayuba</option>
+                        
+                          <option value="zandre-engelbrecht-test">zandre-engelbrecht-test</option>
+                        
+                          <option value="zandres-test">Zandre Test</option>
+                        
+                          <option value="zenith-of-the-girl-child-and-women-initiative-support-zegcawis">ZEGCAWIS DGw</option>
+                        
+                      </select>
+                      <span class="hint">Select the workspace you want to invite.</span>
+                    </div>
+                    <div class="footer">
+                      <button type="button" @click="showInviteModal = false" class="button button-md outline-style">Close</button>
+                      <button type="submit" class="button button-md primary-dark">Invite</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+
+          <div class="infocard-dark">
+              <i class="fa-solid fa-file-circle-check"></i>
+              <div>
+                  <h6>Delivery Type</h6>
+                  <p>Nutrition</p>
+              </div>
+          </div>
+
+          <div class="flex xl:items-center items-start xl:flex-row flex-col lg:gap-6 gap-3">
+            <div class="flex flex-row items-center lg:gap-6 gap-3">
+              <div class="infocard-dark">
+                  <i class="fa-solid fa-calendar-check"></i>
+                  <div>
+                      <h6>Start Date</h6>
+                      <p>May 1, 2026</p>
+                  </div>
+              </div>
+              <i class="fa-solid fa-arrow-right text-brand-mango"></i>
+              <div class="infocard-dark">
+                  <div>
+                      <h6>End Date</h6>
+                      <p>Aug. 1, 2026</p>
+                  </div>
+              </div>
+            </div>
+            <div class="line my-2 h-8 w-0.5 bg-gray-200 lg:block hidden"></div>
+            <div class="flex flex-row gap-8">
+              <div class="infocard-dark">
+                  <i class="fa-solid fa-money-bill-wave"></i>
+                  <div>
+                      <h6>Budget</h6>
+                      <p>1,000 USD</p>
+                  </div>
+              </div>
+              <div class="infocard-dark">
+                  <i class="fa-solid fa-hand-holding-dollar"></i>
+                  <div>
+                      <h6 class="whitespace-nowrap">Allocated Budget</h6>
+                      <p>0 USD</p>
+                  </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- progress -->
+          <div class="bg-neutral-100 rounded-lg w-full h-20 flex items-center px-5 justify-evenly gap-6">
+            <div class="infocard-dark !w-fit">
+                <i class="fa-solid fa-envelope"></i>
+                <div>
+                    <h6>Invited</h6>
+                    <p>0</p>
+                </div>
+            </div>
+            <i class="fa-solid fa-arrow-right text-brand-mango"></i>
+            <div class="infocard-dark !w-fit">
+                <i class="fa-solid fa-file-lines"></i>
+                <div>
+                    <h6>Applied</h6>
+                    <p>0</p>
+                </div>
+            </div>
+            <i class="fa-solid fa-arrow-right text-brand-mango"></i>
+            <div class="infocard-dark !w-fit">
+                <i class="fa-solid fa-circle-check"></i>
+                <div>
+                    <h6>Accepted</h6>
+                    <p>0</p>
+                </div>
+            </div>
+          </div>
+
+          
+
+          <div class="flex flex-col gap-y-4" x-cloak x-show="showOpp">
+          
+          </div>
+          
+      </div>
+    
+  </div>
+
+  <div x-cloak x-show="showProgramEditModal" x-transition.opacity class="modal-backdrop">
+    <div @click.away="showProgramEditModal = false" x-transition class="modal">
+      <div class="header flex justify-between items-center mb-2">
+        <h2 class="title">Edit Program</h2>
+        <button @click="showProgramEditModal = false" class="button-icon" aria-label="Close">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div id="program-edit-form"></div>
+    </div>
+  </div>
+</div>
+
+  </div>
+  <div class="col-span-1">
+    <div class="bg-gray-100 rounded-lg overflow-y-hidden hover:overflow-y-auto">
+      <div class="flex flex-col gap-4">
+        
+          <div class="activity-comp flex flex-col p-6 rounded-lg bg-white gap-5" x-data="{ expanded: false }">
+            <div class="flex gap-4 items-center">
+              <i class="fa-solid fa-clock-rotate-left"></i>
+              <p class="text-base">Pending Review</p>
+            </div>
+            
+            <div class="flex justify-end" x-show="0 > 2">
+              <button class="button-text" @click="expanded = !expanded">
+                <span x-text="expanded ? 'less' : 'more'"></span>
+                <i :class="expanded ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'"></i>
+              </button>
+            </div>
+          </div>
+        
+          <div class="activity-comp flex flex-col p-6 rounded-lg bg-white gap-5" x-data="{ expanded: false }">
+            <div class="flex gap-4 items-center">
+              <i class="fa-solid fa-clock-rotate-left"></i>
+              <p class="text-base">Pending Invoices</p>
+            </div>
+            
+            <div class="flex justify-end" x-show="0 > 2">
+              <button class="button-text" @click="expanded = !expanded">
+                <span x-text="expanded ? 'less' : 'more'"></span>
+                <i :class="expanded ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'"></i>
+              </button>
+            </div>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+  
+  <div x-cloak x-show="showProgramAddModal" x-transition.opacity class="modal-backdrop">
+    <div @click.away="showProgramAddModal = false" x-transition class="modal">
+      <div class="header flex justify-between items-center mb-2">
+        <h2 class="title">Create Program</h2>
+        <button @click="showProgramAddModal = false" class="button-icon" aria-label="Close">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div id="program-add-form"></div>
+    </div>
+  </div>
+  
+</div>
+
+      </main>
+    </div>
+
+    
+        <open-chat-studio-widget
+          class="z-50"
+          visible="false"
+          chatbot-id="104d0f84-a609-4676-b8c8-35d992fe5ffc"
+          embed-key="tFANzDEMLZzZgk_ZEeE4yu1LYwVWavFt"
+          button-text="Need help?"
+          position="right"
+          expanded="false">
+        </open-chat-studio-widget>
+    
+
+  
+    
+  
+  </body>
+</html>
