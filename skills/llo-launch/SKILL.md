@@ -31,8 +31,13 @@ Activate the opportunity and notify LLOs that they are live.
      issues
    - If blocking issues remain, halt and notify admin group
 
-4. **Activate the opportunity in Connect:**
-   - Change opportunity status from draft/test to active
+4. **Activate the opportunity in Connect** via
+   `connect_activate_opportunity` (ace-connect MCP, 0.8.1+):
+   - Pass `organization_slug` and `opportunity_id` from
+     `connect-setup/opportunity.md`. The atom flips the `active`
+     checkbox on the opportunity edit form.
+   - Verify by calling `connect_get_opportunity` and confirming
+     `status=active`.
    - Payment/tracking semantics are archetype-specific — see § Archetypes
 
 5. **Confirm delivery surface readiness (archetype-specific):** see
@@ -199,16 +204,10 @@ overwrite the prior file; prior launch records stay in
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
-- Connect: opportunity activation API — **NOT YET BUILT**
-
-## Current Workaround
-1. Verify UAT results from GDrive
-2. Ask the user to activate the opportunity in the Connect UI
-3. Ask the user to confirm apps are published and available for download
-4. Generate launch notification emails as drafts
-5. Write to `ACE/<opp-name>/comms-log/launch-notification-drafts/`
-6. Ask the user to send them from ace@dimagi-ai.com
-7. Record the launch details
+- Connect (`ace-connect` MCP, 0.8.1+):
+  - `connect_activate_opportunity` — flip the opportunity to active
+  - `connect_get_opportunity` — verify post-activation status
+- Email: `email-communicator` skill (sends launch notifications)
 
 ## Mode Behavior
 - **Auto:** Activate opportunity, send launch notifications, proceed to monitoring phase
@@ -228,3 +227,4 @@ When `--dry-run` is active:
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-17 | Emit gate brief at `ACE/<opp-name>/gate-briefs/llo-launch.md` *before* activation so the highest-stakes gate is approved on readiness, not retrospectively on a launch record | ACE team (PM scout, internal-admin lens) |
 | 2026-04-20 | Added `## Archetypes` with per-archetype readiness checks, Connect activation semantics, launch email subject + body, and launch-record details. `focus-group` replaces "apps published" with "Session 1 venue + recording + participant recruitment confirmed" and subject flips to "Session 1 is on the calendar" (not "You Are Live" which is FLW-coded). `multi-stage` pins activation to Stage 1 only; each stage gets its own launch run, records preserved per-stage in `launch-record-stage-N.md`. Gate-brief checklist item 3 swaps in archetype-specific bullet | ACE team |
+| 2026-04-28 | Replace HITL workaround with `connect_activate_opportunity` + `connect_get_opportunity` (ace-connect 0.8.1) | ACE team |

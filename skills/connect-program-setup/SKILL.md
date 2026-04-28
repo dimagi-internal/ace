@@ -18,50 +18,77 @@ Create or select a Connect program for this opportunity.
    `## Archetypes` below.
 
 2. **Check for existing programs** that match this opportunity's domain/scope.
-   Use connect-labs MCP `list_solicitations` or similar to browse existing programs.
-   Prefer archetype-matched programs when reusing — running an FGD opp
-   under a program whose other opps are all atomic-visit creates a
-   mixed-method reporting headache downstream.
+   Call `connect_list_programs` (with `organization_slug` from the
+   opportunity context — typically `ai-demo-space` for ACE-managed
+   programs). Prefer archetype-matched programs when reusing — running
+   an FGD opp under a program whose other opps are all atomic-visit
+   creates a mixed-method reporting headache downstream.
 
 3. **Decide: reuse or create**
-   - If an existing program fits AND shares the archetype, note the program ID
+   - If an existing program fits AND shares the archetype, note the
+     program ID; skip step 4.
    - If an existing program matches the domain but not the archetype,
      flag the mismatch in the gate brief / program notes; default to
-     creating a new one unless the admin explicitly opts in
-   - If no match: create a new program with appropriate name,
-     description, and config — name should signal archetype (see below)
+     creating a new one unless the admin explicitly opts in.
+   - If no match: proceed to step 4.
 
-4. **Write program details** to `ACE/<opp-name>/connect-setup/program.md`:
-   - Program ID
+4. **Create the program** via `connect_create_program`:
+   - `organization_slug`: `ai-demo-space` (or whichever PM-side org the
+     opportunity is configured for)
+   - `name`: archetype-signaling name (e.g. `"Vaccine Hesitancy Pilot
+     (FGD) — Q2 2026"`)
+   - `description`: PDD's intervention summary
+   - `delivery_type`: int FK from `connect_list_delivery_types` — match
+     the PDD's modality (e.g. `13` = Nutrition, `5` = Readers; call
+     `connect_list_delivery_types` if the mapping is unknown)
+   - `budget`: total program budget from the PDD
+   - `currency`: 3-letter ISO (e.g. `USD`)
+   - `country`: 3-letter ISO3 (e.g. `USA`, `KEN`)
+   - `start_date` / `end_date`: PDD timeline (YYYY-MM-DD)
+
+5. **Write program details** to `ACE/<opp-name>/connect-setup/program.md`:
+   - Program ID (UUID)
    - Program name
    - Archetype declared at program creation (if new)
    - Whether reused or newly created; note any archetype mismatch if reused
-   - Configuration details
+   - Configuration details (delivery_type name + id, budget, currency,
+     country, dates)
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
-- Connect (connect-labs): existing solicitation tools for discovery
-- Connect: `create_program` — **NOT YET BUILT** (CCC-301)
-
-## Current Workaround
-1. Read the PDD and determine program requirements
-2. Ask the user: "Does an existing Connect program fit this opportunity, or should we create a new one?"
-3. If new: provide the user with the recommended program name and configuration
-4. Ask the user to create it in the Connect UI and provide the Program ID
-5. Record the Program ID in the opportunity folder
+- Connect (`ace-connect` MCP, 0.8.1+):
+  - `connect_list_programs` — discovery
+  - `connect_list_delivery_types` — resolve human name → int FK
+  - `connect_create_program` — create
+  - `connect_get_program` — verify after create
 
 ## Mode Behavior
-- **Auto:** Create program (or guide manual creation), proceed
-- **Review:** Present program choice for approval
+- **Auto:** Create program (or reuse), proceed
+- **Review:** Present program choice for approval before calling
+  `connect_create_program`
 
 ## Dry-Run Behavior
 When `--dry-run` is active:
-- Write the program configuration (name, description, settings) to `comms-log/dry-run-connect-program-setup.md`
-- Do not create or modify programs in Connect
+- Write the program configuration (name, description, settings) to
+  `comms-log/dry-run-connect-program-setup.md`
+- Do not call `connect_create_program`
 - State tracks as `dry-run-success`
+
+## Archetypes
+
+Program-level naming + description should hint the archetype for
+downstream coherence:
+- `atomic-visit`: prefer names like `"<Domain> Survey — <Year>"` or
+  `"<Domain> Field Deployment"`. Description leads with FLW deployment.
+- `focus-group`: prefer names like `"<Domain> FGD Pilot"` or
+  `"<Domain> Qualitative Research"`. Description leads with discussion-
+  group method.
+- `multi-stage`: prefer names like `"<Domain> Multi-Stage Study"`.
+  Description names each stage's protocol.
 
 ## Change Log
 
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
+| 2026-04-28 | Replace HITL workaround with `connect_*_program` atoms (ace-connect 0.8.1) | ACE team |

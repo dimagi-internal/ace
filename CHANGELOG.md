@@ -5,6 +5,77 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.8.1 — 2026-04-28
+
+Phase 3 (Connect Setup) is now fully atom-driven. The five blocked
+skills under Connect's domain — `connect-program-setup`,
+`connect-opp-setup`, `llo-onboarding`, `llo-launch`, `opp-closeout` —
+no longer carry `## Current Workaround` blocks; they call
+`ace-connect` atoms directly. `llo-invite` is a prep-only skill and
+needs no Connect mutation.
+
+### Added — 4 new opportunity-config atoms (capability map now 18, was 14)
+
+After live-probing `/opportunity/<id>/*` against march-demo's existing
+opportunity, found the post-create configuration pages and wired them
+into the MCP:
+
+- `connect_set_verification_flags` — top-level toggles (`duplicate`,
+  `gps`, `catchment_areas`, `location` distance, `form_submission_*`
+  time windows) plus per-deliver-unit attachment + duration checks.
+  Driven from the PDD's Evidence Model Layer A.
+- `connect_create_payment_unit` — name, description, amount, max_total
+  / max_daily caps, date range, required + optional deliver-unit FKs.
+- `connect_list_payment_units` — read-only list of payment units
+  configured on an opp.
+- `connect_list_deliver_units` — read-only list of deliver units. These
+  come from the CommCare Deliver app's form schema, not Connect itself,
+  and are not directly creatable.
+
+### Fixed
+
+- `connect_activate_opportunity` now drives the `active` checkbox on
+  `/<id>/edit` (the previous `/activate/` URL didn't exist; the 0.8.0
+  atom always 404'd).
+- `getOpportunity` hydrates from `/edit` (was returning empty stubs
+  derived from the list view).
+- `parseOpportunitiesList` matches Connect's actual anchor-wrapped row
+  layout (was using the program-card regex; returned 0 in 0.8.0).
+
+### Changed — skill rewrites
+
+- `connect-program-setup` calls `connect_list_programs` /
+  `connect_list_delivery_types` / `connect_create_program` /
+  `connect_get_program` end-to-end.
+- `connect-opp-setup` adds the full post-create configuration flow:
+  `connect_create_opportunity` → `connect_list_deliver_units` →
+  `connect_set_verification_flags` (mapped from PDD Evidence Model
+  Layer A) → `connect_create_payment_unit` (per the PDD payment plan).
+- `llo-onboarding` calls `connect_send_llo_invite` to issue the
+  Connect system invite at the program level (org slug, not email,
+  per Connect's data model).
+- `llo-launch` calls `connect_activate_opportunity` followed by
+  `connect_get_opportunity` to verify `status=active`.
+- `opp-closeout` calls `connect_list_invoices` / `connect_get_invoice`
+  (atoms return conservative defaults until the invoice page shape is
+  probed live; flagged in the skill's failure modes).
+- `agents/connect-setup.md` rewritten to reflect that Phase 3 is now
+  HITL-free; gates inside the phase are removed.
+
+### Notes
+
+- Connect's invite UI is **program-level**, not opportunity-level. The
+  `connect_send_llo_invite` atom takes a program UUID as its
+  `opportunity_id` arg and the invited LLO's workspace slug as
+  `organization_name`. Until Connect changes its data model or we add a
+  separate `connect_invite_program` atom, this naming will read a
+  little oddly in skill code.
+- Verification rules / payment units / delivery units have moved out
+  of "TODO when found" and into "live and tested." Delivery units
+  remain read-only — they're sourced from the CommCare Deliver app's
+  XForm schema and Connect renders them automatically. Payment-unit
+  creation depends on having at least one delivery unit on the opp.
+
 ## 0.8.0 — 2026-04-28
 
 New `ace-connect` MCP server, mirroring the `ace-ocs` pattern. Drives

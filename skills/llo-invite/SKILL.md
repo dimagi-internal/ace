@@ -144,16 +144,11 @@ rationale (e.g., "Stage 1 facilitator, Stage 2 field lead").
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
-- Connect: `list_llo_contacts` — **NOT YET BUILT**
-- (Connect `send_invite` is called from `llo-onboarding` — the next step
-  in this same phase — not here)
-
-## Current Workaround
-1. Read the PDD's LLO preference section
-2. Generate a recommended invite list with rationale
-3. Write to `ACE/<opp-name>/connect-setup/invites.md` with status `prepared`
-4. `llo-onboarding` (next step in this phase) guides the operator to
-   send invites through the Connect UI and flip statuses
+- This skill is **preparation-only** — no Connect mutation calls.
+  Sending happens in `llo-onboarding` (the next step in Phase 5) via
+  `connect_send_llo_invite`. The eventual `list_llo_contacts` /
+  Directory API would replace the manual PDD-driven candidate selection
+  but is still pending in CCC-301.
 
 ## Mode Behavior
 - **Auto:** Write the invite list, notify admin group
@@ -174,3 +169,4 @@ When `--dry-run` is active:
 | 2026-04-20 | Move entire skill from Phase 3 (connect-setup) to Phase 5 (llo-manager) as the first step. We now don't commit to an invite roster until the OCS chatbot has cleared its deep-eval gate — no point proposing LLOs until we know what we'll hand them | ACE team |
 | 2026-04-17 | Emit gate brief at `ACE/<opp-name>/gate-briefs/llo-invite.md` so the last-human-check-before-external-send surfaces incomplete rows and count drift | ACE team (PM scout, internal-admin lens) |
 | 2026-04-19 | Added `## Archetypes` section with per-archetype selection criteria; `focus-group` emphasizes qualitative research experience, language/cultural fit, audio-recording capability, facilitator time, small-N bias (1–2 LLOs). Gate brief WARNs for FGD count > 2 without justification and for silent-on-facilitation rationale. Motivated by cosmetics-fgd-pilot recon (2026-04-19) backlog item | ACE team (qa/eval iteration loop) |
+| 2026-04-28 | Removed `## Current Workaround` (no atom needed — this is a prep-only skill; sending moved to `llo-onboarding` via `connect_send_llo_invite` in 0.8.1) | ACE team |
