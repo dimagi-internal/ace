@@ -100,10 +100,29 @@ If no mode is passed, default to `--quick`.
    formula is: `sum(score_i * weight_i) / sum(weight_i)` for categories
    where `score_i` is not null.
 
-8. **Classify the run-level verdict:**
-   - `pass` — overall ≥ 7.0
-   - `warn` — overall 4.0–6.9
-   - `fail` — overall < 4.0
+8. **Classify the run-level verdict (coverage-aware as of 0.8.0).** The
+   raw weighted-mean score is computed first; then **coverage** caps
+   the verdict regardless of score. This is the explicit fix for the
+   "1/6 categories scored 8.9 → run-level PASS" inflation surfaced by
+   the first smoke run.
+
+   Coverage tier (count of categories with score ≠ null, ignoring
+   categories with `expected_at_phase` later than the opp's current
+   phase):
+
+   | Categories scored | Tier | Verdict cap | Notes |
+   |---|---|---|---|
+   | 0 | none     | `incomplete` | Nothing to grade |
+   | 1 | thin     | `incomplete` | Single-category score isn't a run grade — flag `[INFO]` |
+   | 2 | partial  | `warn` (max) | One cross-skill signal exists but most of the run is unmeasured |
+   | 3 | adequate | `pass` if raw ≥ 7 | Half-coverage; raw score governs |
+   | 4+ | full    | `pass` if raw ≥ 7; `warn` 4.0–6.9; `fail` <4.0 | Cross-skill view is real |
+
+   The verdict cap applies AFTER the raw score: a 9.5 raw with
+   1-category coverage emits `incomplete`, not a misleading PASS.
+   `incomplete` is a new verdict introduced in 0.8.0 — downstream
+   readers treat it as "needs more rubric coverage before this number
+   is meaningful," not as a quality fail.
 
 9. **Build per-skill breakdown.** For each discovered verdict, capture:
    - `ref` — the eval skill name + mode (e.g. `ocs-chatbot-eval-deep`)

@@ -5,6 +5,93 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.0 — 2026-04-28
+
+Self-improving evaluation framework. The first end-to-end smoke run
+exposed two real eval failures: (a) `opp-eval` returned a confident
+PASS at 8.92/10 with only 1 of 6 categories actually scored — pure
+inflation from the weight-renormalization math; (b) `ocs-chatbot-eval`
+scored a chatbot 8.98/10 despite a contact-info typo in 12% of
+responses and an empty `cited_files` API field on every entry. The
+rubrics directionally noticed (source_usage was the lowest dim) but
+had no hard-deduction rules, so scores landed in the safe 8–9
+generosity zone. This release rewires the eval system around three
+properties: ground-truth detection, inter-run stability, and
+inflation discipline.
+
+### Added
+
+- **`skills/eval-calibration/SKILL.md`** — new skill: the calibration
+  methodology. Defines the per-opp ground-truth catalogue
+  (`ACE/<opp>/eval-calibration/known-issues.md`), the multi-run
+  variance protocol (≥3 LLM-judge runs, variance ≤ 0.5), and the
+  detection-rate metric (≥80% of catalogued issues must be flagged).
+  Output is a calibrated rubric plus an audit trail
+  (`<rubric-name>-runs.md`) showing each rubric edit's before/after on
+  a fixed artifact.
+
+- **`skills/pdd-to-deliver-app-eval/SKILL.md`** — new cross-artifact
+  eval skill, the template for future PDD-vs-build rubrics. 5
+  dimensions: field_count_match (0.20), question_order_match (0.15),
+  gate_semantics_match (0.25), conditional_logic_match (0.15),
+  connectify_wiring (0.25). Calibrated against the
+  smoke-20260428-1242 ground-truth catalogue with 4/4 detection on
+  first manual application.
+
+### Changed
+
+- **`skills/ocs-chatbot-eval/SKILL.md`** — calibrated rubric. Added
+  `refusal_correctness` as a 5th dimension. Re-weighted: correctness
+  0.30, source_usage 0.20, refusal_correctness 0.20, tone 0.15,
+  tagging 0.15. Hard-deduction rules: factual error → 1-point
+  Correctness deduction with hard ceiling 7; empty `cited_files`
+  despite `generate_citations: true` → automatic ≤5 cap on Source
+  usage; same factual error in ≥2 entries → suite-level inflation
+  guard caps overall at 8.5. Manual application against
+  smoke-20260428-1242 deep transcript drops 8.98 → 8.28 with 3/3
+  known issues flagged.
+
+- **`skills/pdd-to-test-prompts/SKILL.md`** — required adversarial
+  coverage. Suites must include ≥1 prompt in each of 5 adversarial
+  categories (`should-refuse`, `out-of-scope`,
+  `hallucination-probe`, `leading-question`, `negative-frame`) and
+  ≥15% of total prompts must be adversarial.
+
+- **`skills/opp-eval/SKILL.md`** — coverage-aware run-level verdict.
+  Raw weighted-mean is computed first, then coverage caps the
+  verdict regardless of score: 0–1 categories → `incomplete`; 2 →
+  `warn` cap; 3 → `pass` cap if raw ≥7; 4+ → full normal verdict.
+  New `incomplete` verdict for runs with too few rubrics to grade
+  meaningfully. The first smoke run's PASS at 1/6 coverage would
+  now correctly classify as `incomplete`.
+
+### Demonstrated
+
+Calibration runs against `smoke-20260428-1242` artifacts written to
+`eval-calibration/` and `verdicts/*-v2.yaml`:
+
+- **OCS deep:** 8.98 → 8.28 (-0.70). Source_usage capped at 5.0 by
+  empty `cited_files` rule. Correctness 8.5 by 3-typo deduction.
+- **Deliver app:** new rubric scored 8.575 with 4/4 known issues
+  flagged. Weakest dim: `gate_semantics_match` 7.5 (Q2 GPS
+  hint-vs-validate gap).
+- **opp-eval re-run:** raw 8.43 but verdict capped at `warn` (was
+  PASS) because coverage is `partial` (2 of 6 categories).
+
+The variance protocol (≥3 LLM-judge runs per rubric to confirm
+score variance ≤ 0.5) is queued as a follow-on session — manual
+applications used the new criteria but weren't fresh LLM-judge
+invocations.
+
+### Backlog
+
+`pdd-to-learn-app-eval`, `idea-to-pdd-eval`, operator-effort
+tracking in `state.yaml`, `cycle-grade` promotion to a proper
+`-eval` skill, real LLM-judge variance runs, Connect-side
+`connect-program-setup-eval` (now unblocked by 0.8.0/0.8.1's
+ace-connect MCP — next session can stand it up against actual
+Connect artifacts).
+
 ## 0.8.1 — 2026-04-28
 
 Phase 3 (Connect Setup) is now fully atom-driven. The five blocked
