@@ -287,6 +287,158 @@ describe('PlaywrightBackend pipeline-patch atoms', () => {
     expect(llm.data.params.max_results).toBe(15);
   });
 
+  it('attachKnowledge rejects when prompt is missing {collection_index_summaries}', async () => {
+    // Mirror the production fixture but strip the required template variable
+    // from the LLM node's prompt. attach_knowledge should fail-fast with a
+    // typed PipelineValidationError BEFORE attempting any POST — that's the
+    // class-level preventer for the silent-rejection bug surfaced in the
+    // 0.5.19 dogfood (Iter 6 family).
+    const fixture = loadPipelineFixture();
+    const stripped = JSON.parse(JSON.stringify(fixture));
+    const llmNode = stripped.pipeline.data.nodes.find(
+      (n: { data: { type: string } }) => n.data.type === 'LLMResponseWithPrompt'
+    );
+    llmNode.data.params.prompt = 'You are a helpful assistant.'; // no token
+    let postCalled = false;
+    const request: RequestFn = async (method, url) => {
+      if (method === 'GET' && url === '/a/dimagi/pipelines/data/77/') {
+        return { ok: true, json: async () => stripped };
+      }
+      if (method === 'POST') {
+        postCalled = true;
+        return { ok: true, json: async () => ({ data: stripped.pipeline.data, errors: [] }) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request, seed);
+    await expect(
+      backend.attachKnowledge({ experiment_id: 99, collection_index_ids: [42] })
+    ).rejects.toThrow(/collection_index_summaries/);
+    expect(postCalled).toBe(false);
+  });
+
+  it('setChatbotPipeline patches prompt + collection_index_ids in a single save', async () => {
+    let saved: { data: { nodes: Array<{ data: { type: string; params: Record<string, unknown> } }> } } | undefined;
+    const backend = makeBackend(makePipelineRequest((b) => { saved = b as typeof saved; }), seed);
+    await backend.setChatbotPipeline({
+      experiment_id: 99,
+      prompt: 'New prompt with {collection_index_summaries}',
+      collection_index_ids: [42, 43],
+      max_results: 10,
+    });
+    const llm = saved!.data.nodes.find((n) => n.data.type === 'LLMResponseWithPrompt')!;
+    expect(llm.data.params.prompt).toBe('New prompt with {collection_index_summaries}');
+    expect(llm.data.params.collection_index_ids).toEqual([42, 43]);
+    expect(llm.data.params.max_results).toBe(10);
+  });
+
+  it('setChatbotPipeline rejects when final prompt has {collection_index_summaries} but final collections empty', async () => {
+    // Operator changes only the prompt to one with the variable, leaves
+    // collections unset → final collections come from existing fixture
+    // (which we'll mock as empty).
+    const fixture = loadPipelineFixture();
+    const stripped = JSON.parse(JSON.stringify(fixture));
+    const llmNode = stripped.pipeline.data.nodes.find(
+      (n: { data: { type: string } }) => n.data.type === 'LLMResponseWithPrompt'
+    );
+    llmNode.data.params.prompt = 'You are a helpful assistant.'; // no token
+    llmNode.data.params.collection_index_ids = [];
+    let postCalled = false;
+    const request: RequestFn = async (method, url) => {
+      if (method === 'GET' && url === '/a/dimagi/pipelines/data/77/') {
+        return { ok: true, json: async () => stripped };
+      }
+      if (method === 'POST') {
+        postCalled = true;
+        return { ok: true, json: async () => ({ data: stripped.pipeline.data, errors: [] }) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request, seed);
+    await expect(
+      backend.setChatbotPipeline({
+        experiment_id: 99,
+        prompt: 'Updated prompt with {collection_index_summaries}',
+      })
+    ).rejects.toThrow(/collection_index_summaries/);
+    expect(postCalled).toBe(false);
+  });
+
+  it('setChatbotPipeline accepts variable+empty if collections being added in same call', async () => {
+    let saved: { data: { nodes: Array<{ data: { type: string; params: Record<string, unknown> } }> } } | undefined;
+    const backend = makeBackend(makePipelineRequest((b) => { saved = b as typeof saved; }), seed);
+    // The cross-field check looks at the *merged* final state. So passing
+    // both prompt and a non-empty collections list together is the canonical
+    // unblock for the chicken-and-egg the atom was created to solve.
+    await backend.setChatbotPipeline({
+      experiment_id: 99,
+      prompt: 'New prompt with {collection_index_summaries}',
+      collection_index_ids: [365],
+    });
+    const llm = saved!.data.nodes.find((n) => n.data.type === 'LLMResponseWithPrompt')!;
+    expect(llm.data.params.prompt).toBe('New prompt with {collection_index_summaries}');
+    expect(llm.data.params.collection_index_ids).toEqual([365]);
+  });
+
+  it('setChatbotPipeline preserves existing collections when only prompt is changed', async () => {
+    // Operator changes only the prompt; existing fixture has [42] attached
+    // with the variable in the prompt. Final state: prompt updated, collections
+    // unchanged. Cross-field check should pass.
+    const fixture = loadPipelineFixture();
+    const withCollection = JSON.parse(JSON.stringify(fixture));
+    const llmNode = withCollection.pipeline.data.nodes.find(
+      (n: { data: { type: string } }) => n.data.type === 'LLMResponseWithPrompt'
+    );
+    llmNode.data.params.collection_index_ids = [42];
+
+    let saved: { data: { nodes: Array<{ data: { type: string; params: Record<string, unknown> } }> } } | undefined;
+    const request: RequestFn = async (method, url, body) => {
+      if (method === 'GET' && url === '/a/dimagi/pipelines/data/77/') {
+        return { ok: true, json: async () => withCollection };
+      }
+      if (method === 'POST' && url === '/a/dimagi/pipelines/data/77/') {
+        saved = body as typeof saved;
+        return { ok: true, json: async () => ({ data: withCollection.pipeline.data, errors: [] }) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request, seed);
+    await backend.setChatbotPipeline({
+      experiment_id: 99,
+      prompt: 'Reworded prompt with {collection_index_summaries}',
+    });
+    const llm = saved!.data.nodes.find((n) => n.data.type === 'LLMResponseWithPrompt')!;
+    expect(llm.data.params.prompt).toBe('Reworded prompt with {collection_index_summaries}');
+    // Collections preserved from existing state — operator didn't pass them.
+    expect(llm.data.params.collection_index_ids).toEqual([42]);
+  });
+
+  it('attachKnowledge skips the pre-flight when collection_index_ids is empty (detach path)', async () => {
+    // Detaching all collections is a legitimate operation (e.g. clearing a
+    // wrong-domain shared collection). The token check only matters when at
+    // least one collection is being attached.
+    const fixture = loadPipelineFixture();
+    const stripped = JSON.parse(JSON.stringify(fixture));
+    const llmNode = stripped.pipeline.data.nodes.find(
+      (n: { data: { type: string } }) => n.data.type === 'LLMResponseWithPrompt'
+    );
+    llmNode.data.params.prompt = 'You are a helpful assistant.'; // no token
+    let saved: unknown;
+    const request: RequestFn = async (method, url, body) => {
+      if (method === 'GET' && url === '/a/dimagi/pipelines/data/77/') {
+        return { ok: true, json: async () => stripped };
+      }
+      if (method === 'POST' && url === '/a/dimagi/pipelines/data/77/') {
+        saved = body;
+        return { ok: true, json: async () => ({ data: stripped.pipeline.data, errors: [] }) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request, seed);
+    await backend.attachKnowledge({ experiment_id: 99, collection_index_ids: [] });
+    expect(saved).toBeDefined();
+  });
+
   it('setChatbotTools patches tool arrays', async () => {
     let saved: { data: { nodes: Array<{ data: { type: string; params: Record<string, unknown> } }> } } | undefined;
     const backend = makeBackend(makePipelineRequest((b) => { saved = b as typeof saved; }), seed);

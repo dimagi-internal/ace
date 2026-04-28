@@ -217,9 +217,27 @@ server.tool(
 
 server.tool(
   'ocs_set_chatbot_system_prompt',
-  "Update the LLMResponseWithPrompt node's prompt field for this chatbot.",
+  "Update the LLMResponseWithPrompt node's prompt field for this chatbot. NOTE: when also changing collection_index_ids in the same operator-visible step, prefer ocs_set_chatbot_pipeline — it does both updates in a single transactional save and avoids the cross-field validation chicken-and-egg (e.g. setting a prompt with `{collection_index_summaries}` when no collections are attached, or vice versa).",
   { experiment_id: z.number(), prompt: z.string() },
   async (args) => { await composite.setChatbotSystemPrompt(args); return result({ ok: true }); },
+);
+
+server.tool(
+  'ocs_set_chatbot_pipeline',
+  "Transactional update of the LLMResponseWithPrompt node's params: prompt + collections + tools + source material in one save. Any field omitted is preserved from the existing pipeline. Pre-flight: if the FINAL prompt (after merge) contains `{collection_index_summaries}`, the FINAL collection_index_ids must be non-empty — otherwise OCS rejects the save and the bot becomes unconfigurable. Use this when changing both prompt and collections together; use the focused atoms (ocs_set_chatbot_system_prompt, ocs_attach_knowledge, ocs_set_chatbot_tools, ocs_set_source_material) when only changing one.",
+  {
+    experiment_id: z.number(),
+    prompt: z.string().optional(),
+    collection_index_ids: z.array(z.number()).optional(),
+    max_results: z.number().optional(),
+    generate_citations: z.boolean().optional(),
+    source_material_id: z.number().nullable().optional(),
+    tools: z.array(z.string()).optional(),
+    custom_actions: z.array(z.string()).optional(),
+    built_in_tools: z.array(z.string()).optional(),
+    mcp_tools: z.array(z.string()).optional(),
+  },
+  async (args) => { await composite.setChatbotPipeline(args); return result({ ok: true }); },
 );
 
 server.tool(
@@ -283,7 +301,7 @@ server.tool(
 
 server.tool(
   'ocs_attach_knowledge',
-  "Attach one or more Collections to a chatbot's retriever node.",
+  "Attach one or more Collections to a chatbot's retriever node. Pre-flight: when attaching at least one collection (collection_index_ids non-empty), the bot's current system prompt MUST contain the `{collection_index_summaries}` template variable — without it, the OCS pipeline-save endpoint silently rejects the patch and every downstream publish_chatbot_version is blocked. The MCP fails fast with a typed error in this case; fix by calling ocs_set_chatbot_system_prompt with a prompt containing the token, then retry. Pass collection_index_ids=[] to detach all collections (skips the token check).",
   {
     experiment_id: z.number(),
     collection_index_ids: z.array(z.number()),
@@ -331,14 +349,14 @@ server.tool(
 
 server.tool(
   'ocs_list_chatbots',
-  'List chatbots on the OCS team.',
+  'List chatbots on the OCS team. Each entry includes both `id` (UUID public_id, used by ocs_get_chatbot/ocs_send_test_message) AND `experiment_id` (integer, used by every authoring atom: ocs_set_chatbot_system_prompt, ocs_attach_knowledge, ocs_publish_chatbot_version, etc.). Use this to find an existing bot by name and reconfigure it idempotently — no need to clone if it already exists.',
   { cursor: z.string().optional(), page_size: z.number().optional() },
   async (args) => result(await composite.listChatbots(args)),
 );
 
 server.tool(
   'ocs_get_chatbot',
-  'Retrieve a single chatbot by its public UUID (from ocs_list_chatbots).',
+  'Retrieve a single chatbot by its public UUID (from ocs_list_chatbots). Returns both `id` (UUID) and `experiment_id` (integer) — the latter is required by every authoring atom.',
   { public_id: z.string() },
   async (args) => result(await composite.getChatbot(args)),
 );

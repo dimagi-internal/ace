@@ -18,6 +18,34 @@ export interface OcsClient {
     prompt: string;
   }): Promise<void>;
 
+  /**
+   * Transactional update of the LLM-response node's params: prompt +
+   * collection bindings + tools + source material in a single
+   * GET-mutate-POST cycle. Use this when changing prompt and collections
+   * together — the OCS pipeline-save validates cross-field constraints
+   * (e.g. `{collection_index_summaries}` in the prompt requires a
+   * non-empty `collection_index_ids`), and stepping the changes through
+   * separate atoms can leave the pipeline in a state OCS rejects on the
+   * intermediate save (the chicken-and-egg surfaced in 0.6.3 dogfood).
+   *
+   * Any field left unset is preserved from the existing pipeline state.
+   * Pre-flight: if the final prompt contains `{collection_index_summaries}`,
+   * the final `collection_index_ids` must be non-empty — fails fast with a
+   * typed PipelineValidationError otherwise.
+   */
+  setChatbotPipeline(args: {
+    experiment_id: number;
+    prompt?: string;
+    collection_index_ids?: number[];
+    max_results?: number;
+    generate_citations?: boolean;
+    source_material_id?: number | null;
+    tools?: string[];
+    custom_actions?: string[];
+    built_in_tools?: string[];
+    mcp_tools?: string[];
+  }): Promise<void>;
+
   createCollection(args: {
     name: string;
     summary: string;

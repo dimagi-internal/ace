@@ -30,7 +30,7 @@ no inline self-eval.
 
 2. **Check for existing chatbot** (idempotency):
    - Call `ocs_list_chatbots` and filter by `name == "ACE - <opp-name>"`
-   - If found, skip to step 11 with the existing `experiment_id`
+   - If found, **read the integer `experiment_id` from the matched entry** (returned alongside the UUID `id` as of 0.5.19) and skip to step 11. Do NOT clone — re-cloning leaves the prior bot orphaned in OCS, which has no MCP-side cleanup atom. The previous (pre-0.5.19) skill version had to clone a `-resume` variant because the integer id wasn't reachable from list results; that footgun is closed.
    - Otherwise continue to step 3
 
 3. **Clone the golden template:**
@@ -52,7 +52,8 @@ no inline self-eval.
    - `ocs_wait_for_collection_indexing({ collection_id, timeout_sec: 300 })`
    - On timeout, escalate to human
 
-7. **Compose the system prompt** from the PDD + opp details + escalation rules. The prompt should:
+7. **Compose the system prompt** from the PDD + opp details + escalation rules. The prompt MUST:
+   - **Include the literal template variable `{collection_index_summaries}`** somewhere in the prompt body (typically near the top of a "Knowledge" or "Reference" section). The OCS pipeline-save endpoint silently rejects `attach_knowledge` for any prompt that's missing this token — as of 0.5.19 the MCP fails fast with a typed error in this case rather than letting it become a downstream silent-publish-block (Iter 6 silent-failure class). The token is interpolated at runtime with one-line summaries of every attached collection so the LLM knows what RAG is available.
    - Identify the chatbot as the ACE support bot for this specific opportunity
    - Name the Network Manager / LLO(s) and key dates
    - Summarize the intervention (from PDD)
@@ -60,15 +61,22 @@ no inline self-eval.
    - Reference BOTH knowledge sources: the shared Connect collection and the opp-specific collection
    - Use [training-gap] and [product-feedback] tags per the golden template conventions
 
-8. **Patch the chatbot:**
-   - `ocs_set_chatbot_system_prompt({ experiment_id, prompt })`
+8. **Patch the chatbot in one transactional call:**
    - Build the combined collection list: `[$OCS_SHARED_COLLECTION_ID, collection_id]`
      where `$OCS_SHARED_COLLECTION_ID` is the Connect knowledge collection from the env
      (shared across all opps — Confluence-sourced, auto-syncing) and `collection_id` is
      the per-opp collection created in step 4. The golden template already has the shared
      collection attached; this step REPLACES the list with both IDs so the per-opp
-     collection is added alongside it.
-   - `ocs_attach_knowledge({ experiment_id, collection_index_ids: [$OCS_SHARED_COLLECTION_ID, collection_id], max_results: 20, generate_citations: true })`
+     collection is added alongside it. Omit `$OCS_SHARED_COLLECTION_ID` if the env var
+     is unset — the per-opp collection alone is fine.
+   - `ocs_set_chatbot_pipeline({ experiment_id, prompt, collection_index_ids: [$OCS_SHARED_COLLECTION_ID, collection_id], max_results: 20, generate_citations: true })`
+     This is a single transactional save: prompt + collections in one POST. As of 0.6.4,
+     prefer this over calling `ocs_set_chatbot_system_prompt` and `ocs_attach_knowledge`
+     separately when both are changing — OCS validates `{collection_index_summaries}` in the
+     prompt against the final `collection_index_ids` and rejects intermediate states. The
+     bundled atom includes the same pre-flight check as `ocs_attach_knowledge` (final
+     prompt's variable ↔ final non-empty collections); a typed `PipelineValidationError` is
+     raised if the merged state would violate it.
 
 9. **Publish a version:**
    - `ocs_publish_chatbot_version({ experiment_id, description: "Initial ACE version for <opp-name>" })`
@@ -114,3 +122,5 @@ When `--dry-run` is active:
 | 2026-04-03 | Initial version (manual workaround) | ACE team |
 | 2026-04-08 | Full rewrite against OCS MCP composite backend | ACE team |
 | 2026-04-14 | Removed inline LLM-as-Judge self-eval and connect-setup handoff; quality gating + Connect widget handoff now live in the `ocs-setup` Phase 4 agent | ACE team |
+| 2026-04-27 | Step 2 idempotency uses the integer `experiment_id` returned by `ocs_list_chatbots` (0.5.19 — no more orphan re-clones). Step 7 explicitly requires `{collection_index_summaries}` in the system prompt; MCP `ocs_attach_knowledge` pre-flights this and fails with a typed error otherwise. | ACE team |
+| 2026-04-28 | Step 8 collapsed into a single `ocs_set_chatbot_pipeline` call (0.6.4 — transactional save). Closes the chicken-and-egg surfaced in the 2026-04-27 dogfood where `set_chatbot_system_prompt` followed by `attach_knowledge` (or vice versa) hit OCS cross-field validation on the intermediate save. | ACE team |

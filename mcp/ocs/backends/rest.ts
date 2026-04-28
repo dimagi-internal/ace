@@ -1,6 +1,18 @@
 import { fetch } from 'undici';
 import { HttpError } from '../errors.js';
 
+/**
+ * Extract the integer experiment_id from a chatbot's web URL.
+ * URL shape: `https://<host>/a/<team>/chatbots/<experiment_id>/`
+ * (or path-only `/a/<team>/chatbots/<experiment_id>/` — both work).
+ * Returns `null` if the URL is missing or doesn't match.
+ */
+export function extractExperimentId(url: string | undefined): number | null {
+  if (!url) return null;
+  const m = url.match(/\/chatbots\/(\d+)\//);
+  return m ? Number(m[1]) : null;
+}
+
 export interface RestBackendOptions {
   baseUrl: string;
   token: string;
@@ -55,21 +67,34 @@ export class RestBackend {
     qs.set('page_size', String(args.page_size ?? 50));
     // NOTE: OCS's ExperimentSerializer returns `id` as the UUID public_id, not
     // the integer db id. See apps/api/views/experiments.py:36 (lookup_field = "public_id").
+    // The integer `experiment_id` is needed by every authoring atom
+    // (set_chatbot_system_prompt, attach_knowledge, publish_chatbot_version,
+    // etc.) and is recoverable from the human-facing `url` field, which has
+    // the form `/a/<team>/chatbots/<experiment_id>/`. Surfacing it here
+    // closes the idempotency gap: a skill that lists bots by name can then
+    // reconfigure an existing bot directly, instead of cloning a duplicate
+    // because the int id was unreachable.
     const body = (await this.request('GET', `/api/experiments/?${qs}`)) as {
       results: Array<{ id: string; name: string; url?: string; version_number?: number }>;
       next: string | null;
     };
-    return { chatbots: body.results, next_cursor: body.next ?? undefined };
+    const chatbots = body.results.map((r) => ({
+      ...r,
+      experiment_id: extractExperimentId(r.url),
+    }));
+    return { chatbots, next_cursor: body.next ?? undefined };
   }
 
   async getChatbot(args: { public_id: string }) {
     // The `{id}` path param is the UUID public_id (see apps/api/views/experiments.py).
-    return (await this.request('GET', `/api/experiments/${args.public_id}/`)) as {
+    // See listChatbots for why we surface the integer experiment_id alongside.
+    const raw = (await this.request('GET', `/api/experiments/${args.public_id}/`)) as {
       id: string;
       name: string;
       url?: string;
       version_number?: number;
     };
+    return { ...raw, experiment_id: extractExperimentId(raw.url) };
   }
 
   async sendTestMessage(args: {

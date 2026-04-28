@@ -5,7 +5,7 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.6.1 — 2026-04-28
+## 0.6.5 — 2026-04-28
 
 Doc-only patch landing the "all blockers cleared" state for the
 Nova-plugin migration that 0.6.0 introduced. End-to-end Phase 2 was
@@ -25,6 +25,137 @@ space with zero warnings.
   ACE binds the Nova MCP plugin to `ACE_GMAIL_ACCOUNT`'s real Google
   identity (not a service account) so Nova-side state stays in one
   place across sessions.
+
+## 0.6.4 — 2026-04-28
+
+Closes the P1 follow-up from the 2026-04-28 run log: the
+`set_chatbot_system_prompt` ↔ `attach_knowledge` chicken-and-egg that
+blocked the previous Phase 4 re-run mid-flight.
+
+### Added
+
+- **`ocs_set_chatbot_pipeline` MCP atom (transactional save).** Updates
+  the LLMResponseWithPrompt node's params — prompt, collection_index_ids,
+  max_results, generate_citations, source_material_id, and the four tool
+  arrays — in a single GET-mutate-POST cycle. Any field omitted is
+  preserved from the existing state. Pre-flight: if the *final* prompt
+  (after merge) contains `{collection_index_summaries}`, the *final*
+  collection_index_ids must be non-empty; otherwise a typed
+  `PipelineValidationError` fires before the POST. This is the canonical
+  unblock for the case the orchestrator hit on 2026-04-27: prompt and
+  collection state changing in the same operator-visible step, with
+  ordering between the two focused atoms causing OCS to reject the
+  intermediate save.
+
+### Changed
+
+- **`skills/ocs-agent-setup/SKILL.md` step 8** collapsed into a single
+  `ocs_set_chatbot_pipeline` call. Previously two calls
+  (`ocs_set_chatbot_system_prompt` + `ocs_attach_knowledge`); now one
+  transactional save with both prompt and collections set together.
+- **`ocs_set_chatbot_system_prompt` and `ocs_attach_knowledge` tool
+  descriptions** now point at the bundled atom for the both-changing case
+  and remain the right pick when only one is changing.
+
+### Notes
+
+- The 0.6.3 dogfood's hypothesis (*partial save semantics*) turned out
+  not to be the literal mechanism — the existing `patchLlmNodeParams`
+  already does GET full graph → mutate → POST full graph. The bug was
+  that *between* two focused atom calls, the intermediate POSTed state
+  itself violated the cross-field invariant (variable in prompt but
+  empty collections, or vice versa). Bundling the changes into one POST
+  sidesteps the intermediate state entirely.
+- `ocs_archive_chatbot` (P2 from the run log) is a separate follow-up.
+
+## 0.6.3 — 2026-04-28
+
+Docs only. Captures the 2026-04-27 turmeric-dogfood cycle in the standard
+PM run-log format and adds a short *Improvement cycles & canopy* section
+to `CLAUDE.md` so future sessions know where per-opp evidence ends and
+cross-opp strategy begins.
+
+### Added
+
+- **`.claude/pm/runs/2026-04-28-turmeric-dogfood-ocs-contracts.md`** —
+  full cycle log: lens, what shipped (0.5.18 + 0.6.1), six-item backlog
+  ranked P1–P6 (P1 is the `set_chatbot_system_prompt` partial-save bug
+  blocking any future Phase 4 re-run), meta-observations on real-run-vs-
+  spec-review and class-level preventers.
+- **`CLAUDE.md` § Improvement cycles & canopy** — four short paragraphs
+  on the Drive-vs-`.claude/pm/runs/` boundary, re-entry pattern
+  (`/canopy:pm-status` or read latest run log), when to write a run log,
+  and the canopy commands available in this repo.
+
+## 0.6.2 — 2026-04-27
+
+### Added
+
+- **`upload-transcript` now sends `ace_root_folder_id`** alongside the
+  existing `opp_slug` / `opp_run_id` / `opp_step_skill` multipart fields.
+  Populated from `$ACE_DRIVE_ROOT_FOLDER_ID` when set (omitted otherwise).
+  Pairs with the multi-tenancy work on the ace-web side
+  (`labs.connect.dimagi.com/ace`): when the value matches a Workspace's
+  `drive_root_folder_id` and the uploading user is a member, the
+  resulting Session and IngestUpload are attributed to that workspace
+  and surface in its linked-chats panel. Without it, uploads still
+  succeed but land as orphans (workspace=NULL) visible only to the
+  uploading user — fine for solo dogfooding, broken for third-party
+  Connect Tech users running ACE against the shared deploy.
+
+## 0.6.1 — 2026-04-27
+
+Closes two OCS contract bugs surfaced during the same dogfood run that
+shipped 0.5.18. The first run reached the `ocs-chatbot-eval-deep` gate
+with a composite of 6.5/10 (Source-Usage 1/10, RAG functionally broken)
+*and* surfaced two MCP contract issues that would have blocked any
+self-improve loop trying to autonomously re-attempt setup.
+
+### Fixed
+
+- **`ocs_list_chatbots` and `ocs_get_chatbot` now return the integer
+  `experiment_id` alongside the UUID `id`.** OCS's REST serializer
+  exposes `id` as the UUID public_id, but every authoring atom
+  (`ocs_set_chatbot_system_prompt`, `ocs_attach_knowledge`,
+  `ocs_publish_chatbot_version`, …) requires the integer experiment_id.
+  The skill's idempotency contract — "if a bot for this opp already
+  exists, reconfigure it instead of cloning a duplicate" — was
+  unachievable in practice because the int id wasn't reachable from the
+  list response. The new field is parsed from the human-facing `url`
+  field (`/a/<team>/chatbots/<experiment_id>/`). Closes the orphan-
+  re-clone footgun the previous run hit when resuming after an
+  interrupted clone.
+
+- **`ocs_attach_knowledge` pre-flights that the bot's current system
+  prompt contains the `{collection_index_summaries}` template
+  variable.** When the prompt is missing this token, OCS's
+  pipeline-save endpoint silently rejects the patch and every
+  downstream `publish_chatbot_version` is then blocked with an opaque
+  UI message — same Iter 6 silent-failure class as the 2026-04-19
+  phantom-collection bug fixed in 0.5.1. The MCP now fails fast with a
+  typed `PipelineValidationError` naming the missing token and the
+  remediation (call `ocs_set_chatbot_system_prompt` with a prompt that
+  embeds it). Detach paths (`collection_index_ids: []`) skip the check,
+  so cleanup operations remain unblocked.
+
+### Changed
+
+- **`skills/ocs-agent-setup/SKILL.md`** — Step 2 (idempotency) now
+  reads the integer `experiment_id` directly from `ocs_list_chatbots`
+  results. Step 7 (system-prompt composition) explicitly requires the
+  `{collection_index_summaries}` template variable in the new prompt
+  and explains why.
+
+### Notes for next run
+
+The 6.5/10 deep-eval composite from the 2026-04-27 dogfood was held
+down by a *live* configuration bug (`OCS_SHARED_COLLECTION_ID=350`
+points at a wrong-domain NM Bot collection that leaks immunization
+content into every cloned ACE bot) — that's an env / vault fix, not a
+code fix. Track + fix in a follow-up; this PR's scope is the contract
+hygiene. The orphan turmeric chatbot from the previous run remains
+reachable on OCS (no `ocs_delete_chatbot` / `ocs_archive_chatbot` atom
+yet — also follow-up).
 
 ## 0.6.0 — 2026-04-27
 
