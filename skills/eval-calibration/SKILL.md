@@ -120,6 +120,28 @@ Calibration target: **score_variance ≤ 0.5**. Higher variance means
 the rubric prompt is under-specified — different LLM rolls of the
 dice produce materially different scores.
 
+**Anchoring caveat (added 0.9.1):** when 3 sequential same-model runs
+produce a tight spread (≤ 0.1), be suspicious. Anchoring is the most
+common false-pass mode: each run after run 1 latches onto the prior
+overall score and re-derives it instead of grading independently.
+Two ways to harden against anchoring:
+
+- **Cross-model variance.** Run 1, 2, 3 on different judge models
+  (Sonnet, Opus, Haiku). A rubric whose criteria are explicit
+  enough should produce comparable scores across models. If the
+  spread blows up, the rubric is leaning on judge-specific
+  generosity rather than the criteria themselves.
+- **Shuffled prompt order.** Re-run with the transcript entries in
+  a different order so the judge can't pattern-match against its
+  own earlier grading.
+
+A rubric is **provisionally calibrated** at ≤ 0.5 same-model
+variance, **strongly calibrated** if cross-model spread is also ≤ 1.0
+or shuffled-order spread is also ≤ 0.5. New rubrics should ship at
+provisional; rubrics that gate critical decisions (the OCS deep
+gate, future Phase 2→3 gate via `pdd-to-deliver-app-eval`) should
+move to strongly calibrated before they're trusted in production.
+
 ### Step 5 — Iterate the rubric
 
 If detection rate < 80% OR variance > 0.5, edit the relevant skill's

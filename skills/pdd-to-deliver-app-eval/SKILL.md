@@ -53,7 +53,7 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` and
 
    | Dimension | Weight | Criteria |
    |---|---|---|
-   | **Field-count match** | 20% | Total field count in the built app matches the PDD's spec exactly. Extra hidden/computed fields that don't appear to the FLW are fine; extra user-facing fields are not. ±1 from spec is a 0.5-point deduction; ±2+ is a 2-point deduction. |
+   | **Field-count match** | 20% | Total field count in the built app matches the PDD's spec exactly. Extra hidden/computed fields (case_name, entity_id) are fine; extra user-facing fields are not. **Split rule (added 0.9.1):** when one PDD field is implemented as a parent + a relevance-conditional child (e.g. PDD Q8 "Price per unit, required if disclosed" → built Q8 `price_disclosed` + Q8b `price_per_unit` relevant when Q8=yes), count this as **one half-deviation (-0.5 points)**, not two adds. The split is defensible UX but does change the user-visible field count. **Sub-question rule:** when PDD spec says "free-text 'other' allowed" and the build adds a separate `_other` field for that input, count as **zero deviation (-0)** — that's spec-implied. ±1 net deviation = 0.5-point deduction; ±2+ = 2-point deduction. |
    | **Question-order match** | 15% | Per-section question order matches the LLO numbering. Out-of-order is a 1-point deduction per question, capped at 5 points. Section-level reorder (e.g. consent gate placement) is graded under "Gate semantics." |
    | **Gate semantics match** | 25% | Required-yes consent gate (or equivalent) is present, in the correct form-flow position, and with the correct branch behavior (e.g. "if no, short-circuit to refusal-reason and submit"). Missing gate is a fail. Wrong branch behavior is ≤4. |
    | **Conditional logic match** | 15% | Display-conditional fields (e.g. "Q12 only if Q11=yes") are wired correctly. Missing condition makes a field always-shown — that's a 2-point deduction per missed condition. Inverted condition is ≤3. |
@@ -62,6 +62,12 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` and
    **Deduction rules:**
    - Any single dimension ≤3 → suite verdict `fail`, regardless of
      overall mean.
+   - **Inflation guard (added 0.9.1, mirrors `ocs-chatbot-eval`):** if
+     the rubric surfaces ≥2 `[WARN]`-tier `auto_surfaced` entries,
+     overall is capped at **8.5** regardless of per-dimension math.
+     Multiple defects compound — a build with 2+ documented spec
+     deviations can still pass but should not score in the
+     "essentially-perfect" 8.7+ band.
    - 2+ dimensions in 4–6 range → suite verdict `warn`.
    - All 5 dimensions ≥ 7 AND overall ≥ 7.5 → suite verdict `pass`.
 
