@@ -5,6 +5,48 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.4 — 2026-04-28
+
+Closes the P1 follow-up from the 2026-04-28 run log: the
+`set_chatbot_system_prompt` ↔ `attach_knowledge` chicken-and-egg that
+blocked the previous Phase 4 re-run mid-flight.
+
+### Added
+
+- **`ocs_set_chatbot_pipeline` MCP atom (transactional save).** Updates
+  the LLMResponseWithPrompt node's params — prompt, collection_index_ids,
+  max_results, generate_citations, source_material_id, and the four tool
+  arrays — in a single GET-mutate-POST cycle. Any field omitted is
+  preserved from the existing state. Pre-flight: if the *final* prompt
+  (after merge) contains `{collection_index_summaries}`, the *final*
+  collection_index_ids must be non-empty; otherwise a typed
+  `PipelineValidationError` fires before the POST. This is the canonical
+  unblock for the case the orchestrator hit on 2026-04-27: prompt and
+  collection state changing in the same operator-visible step, with
+  ordering between the two focused atoms causing OCS to reject the
+  intermediate save.
+
+### Changed
+
+- **`skills/ocs-agent-setup/SKILL.md` step 8** collapsed into a single
+  `ocs_set_chatbot_pipeline` call. Previously two calls
+  (`ocs_set_chatbot_system_prompt` + `ocs_attach_knowledge`); now one
+  transactional save with both prompt and collections set together.
+- **`ocs_set_chatbot_system_prompt` and `ocs_attach_knowledge` tool
+  descriptions** now point at the bundled atom for the both-changing case
+  and remain the right pick when only one is changing.
+
+### Notes
+
+- The 0.6.3 dogfood's hypothesis (*partial save semantics*) turned out
+  not to be the literal mechanism — the existing `patchLlmNodeParams`
+  already does GET full graph → mutate → POST full graph. The bug was
+  that *between* two focused atom calls, the intermediate POSTed state
+  itself violated the cross-field invariant (variable in prompt but
+  empty collections, or vice versa). Bundling the changes into one POST
+  sidesteps the intermediate state entirely.
+- `ocs_archive_chatbot` (P2 from the run log) is a separate follow-up.
+
 ## 0.6.3 — 2026-04-28
 
 Docs only. Captures the 2026-04-27 turmeric-dogfood cycle in the standard

@@ -156,6 +156,61 @@ export class PlaywrightBackend {
     await patchLlmNodeParams(this.patchContext(), pipelineId, { prompt: args.prompt });
   }
 
+  /**
+   * Transactional update of the LLM node's params. Reads the current
+   * pipeline, merges any provided fields, runs cross-field validation,
+   * and POSTs back in one save. See the OcsClient interface for the
+   * cross-field constraint this fixes.
+   */
+  async setChatbotPipeline(args: {
+    experiment_id: number;
+    prompt?: string;
+    collection_index_ids?: number[];
+    max_results?: number;
+    generate_citations?: boolean;
+    source_material_id?: number | null;
+    tools?: string[];
+    custom_actions?: string[];
+    built_in_tools?: string[];
+    mcp_tools?: string[];
+  }) {
+    const pipelineId = await this.pipelineIdFor(args.experiment_id);
+
+    // Read current state to compute the *final* state after this patch
+    // would apply. We need that to decide whether the cross-field invariant
+    // (`{collection_index_summaries}` ↔ non-empty collection_index_ids)
+    // holds, and we'd be doing the GET inside patchLlmNodeParams anyway.
+    const { params: current } = await getLlmNodeParams(this.patchContext(), pipelineId);
+
+    const finalPrompt = args.prompt !== undefined ? args.prompt : (typeof current.prompt === 'string' ? current.prompt : '');
+    const finalCollectionIds = args.collection_index_ids !== undefined
+      ? args.collection_index_ids
+      : (Array.isArray(current.collection_index_ids) ? current.collection_index_ids : []);
+
+    if (finalPrompt.includes('{collection_index_summaries}') && finalCollectionIds.length === 0) {
+      throw new PipelineValidationError([
+        `LLMResponseWithPrompt: cross-field validation failed — final prompt references ` +
+          `\`{collection_index_summaries}\` but final collection_index_ids is empty. ` +
+          `OCS pipeline-save rejects this state. Either remove the template variable from ` +
+          `the prompt, or include at least one collection in the same setChatbotPipeline call ` +
+          `via collection_index_ids.`,
+      ]);
+    }
+
+    const patch: Partial<LlmNodeParams> = {};
+    if (args.prompt !== undefined) patch.prompt = args.prompt;
+    if (args.collection_index_ids !== undefined) patch.collection_index_ids = args.collection_index_ids;
+    if (args.max_results !== undefined) patch.max_results = args.max_results;
+    if (args.generate_citations !== undefined) patch.generate_citations = args.generate_citations;
+    if (args.source_material_id !== undefined) patch.source_material_id = args.source_material_id;
+    if (args.tools !== undefined) patch.tools = args.tools;
+    if (args.custom_actions !== undefined) patch.custom_actions = args.custom_actions;
+    if (args.built_in_tools !== undefined) patch.built_in_tools = args.built_in_tools;
+    if (args.mcp_tools !== undefined) patch.mcp_tools = args.mcp_tools;
+
+    await patchLlmNodeParams(this.patchContext(), pipelineId, patch);
+  }
+
   async attachKnowledge(args: {
     experiment_id: number;
     collection_index_ids: number[];

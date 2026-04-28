@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { CAPABILITY_MAP, type Capability } from '../../../mcp/ocs/capability-map.js';
 
 describe('capability map', () => {
-  it('has exactly 22 entries', () => {
-    expect(Object.keys(CAPABILITY_MAP).length).toBe(22);
+  it('has exactly 23 entries', () => {
+    expect(Object.keys(CAPABILITY_MAP).length).toBe(23);
   });
 
   it('every entry has a backend and a restTarget', () => {
@@ -27,10 +27,10 @@ describe('capability map', () => {
 
   it('routes authoring atoms through PLAYWRIGHT (except embed info which is HYBRID)', () => {
     const authoring: Capability[] = [
-      'clone_chatbot', 'set_chatbot_system_prompt', 'create_collection',
-      'upload_collection_files', 'wait_for_collection_indexing',
-      'attach_knowledge', 'set_chatbot_tools', 'set_source_material',
-      'publish_chatbot_version',
+      'clone_chatbot', 'set_chatbot_system_prompt', 'set_chatbot_pipeline',
+      'create_collection', 'upload_collection_files',
+      'wait_for_collection_indexing', 'attach_knowledge', 'set_chatbot_tools',
+      'set_source_material', 'publish_chatbot_version',
     ];
     for (const cap of authoring) {
       expect(CAPABILITY_MAP[cap].backend, cap).toBe('PLAYWRIGHT');
