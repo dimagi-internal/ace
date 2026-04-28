@@ -5,6 +5,103 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.3 — 2026-04-28
+
+Coverage milestone. opp-eval produced the **first real PASS verdict**
+on `smoke-20260428-1242` (overall 8.21, coverage tier `adequate`,
+3 of 6 categories scored — not coverage-capped). Trajectory:
+v1 8.92 PASS (inflated, 1/6 categories) → v2 8.43 WARN (capped) →
+v3 8.085 WARN (capped) → **v4 8.21 PASS (real)**. The score went
+down twice as rubrics tightened and then back up slightly when
+adequate coverage unlocked the verdict cap — net result is a
+run-level number that finally means something.
+
+### Added — 2 new calibrated `-eval` rubrics
+
+- **`skills/idea-to-pdd-eval/SKILL.md`** — covers the design
+  category. 5 dimensions: stress_test_agreement (0.25),
+  reviewer_comment_fidelity (0.20), structural_completeness (0.15),
+  archetype_coherence (0.20), concreteness (0.20). Inflation guard
+  at 7.5 when PDD self-eval is 5/5 but this rubric scores ≤7.5.
+  Calibration: 3 LLM-judge runs scored 8.48 / 8.52 / 8.48 (variance
+  0.04), detection 3/3 against the smoke-20260428-1242 PDD's known
+  issues (cross-section inconsistency on Learn-app gates, scope
+  mismatch on FLW count vs LLO Pref, stress-test self-grade
+  overconfidence on Verifiability).
+
+- **`skills/pdd-to-learn-app-eval/SKILL.md`** — covers the second
+  half of the commcare category. Mirror of pdd-to-deliver-app-eval
+  but tuned for Learn-app concerns. 5 dimensions:
+  module_count_match (0.15) with bonus-cert-module rule,
+  module_order_match (0.10), assessment_score_wiring (0.30 — most
+  load-bearing for Connect-side Learn→Deliver gating),
+  content_topic_coverage (0.25) with placeholders-count-as-present,
+  archetype_coherence (0.20). Inflation guard at 8.5 when ≥2 WARN
+  auto_surfaced. Calibration: 3 LLM-judge runs all 8.50 post-cap
+  (variance 0.00; pre-cap 8.80–9.075, variance 0.275), detection
+  5/5. The cap binds on every Learn build today because every
+  build has 3+ placeholder WARNs (M4 photos, M5 calibration set,
+  M6 phone numbers) — that's the rubric correctly reflecting "live
+  deployment is blocked until the LLO populates."
+
+### Updated
+
+- **`ACE/smoke-20260428-1242/eval-calibration/known-issues.md`** —
+  added 3 PDD ground-truth issues (for idea-to-pdd-eval) and 5
+  Learn-build ground-truth issues (for pdd-to-learn-app-eval).
+  Total catalogued issues across all artifacts: 15. Per-rubric
+  detection rate is 100% across all 12 same-model calibration
+  runs run this session.
+
+- **`ACE/smoke-20260428-1242/verdicts/opp-eval-deep-v4.yaml`** —
+  re-aggregated with the 4 calibrated rubrics. First PASS verdict
+  for this opp at the adequate coverage tier.
+
+### Calibration trajectory across the session
+
+| Rubric | First-run | Calibrated | Trend |
+|---|---|---|---|
+| ocs-chatbot-eval | 8.92 (inflated) | 7.62 (variance 0.09) | -1.30 over 3 iterations |
+| pdd-to-deliver-app-eval | 8.575 (manual) | 8.55 (variance 0.425) | confirmed manual ≈ LLM-judge median |
+| idea-to-pdd-eval | n/a | 8.48 (variance 0.04) | calibrated cleanly first try |
+| pdd-to-learn-app-eval | n/a | 8.50 (variance 0.00 post-cap) | inflation cap binds; rubric working as intended |
+
+15 same-model calibration runs total this session, all detecting
+their full ground-truth set.
+
+### Backlog (queued from 0.9.2 calibration findings — to ship in 0.9.3)
+
+Five rubrics-each-surfaced-its-own-weaknesses observations from the
+variance protocol runs:
+
+- **OCS rubric (5):** tier the refusal cap by adversarial-prompt
+  count; include out-of-scope handling in refusal score; resolve
+  tone-vs-correctness double-counting on typos; split source_usage
+  cap; specify multi-error per-entry.
+- **Deliver-app rubric (5):** field-count split rule (shipped in
+  0.9.1); inflation guard (shipped in 0.9.1); 3 more from the
+  Plan-agent's pre-execution analysis remain.
+- **Learn-app rubric (5):** record pre-cap and post-cap overall
+  both in verdict YAML; carve out stub-answer-keys-in-Assessment-
+  gate from "placeholders count as present"; pin bonus-module-rule
+  scoring to 10.0 if criteria met; pin archetype_coherence M7
+  vendor-education reading; pin documented platform limitations
+  as INFO-only never-deduct.
+- **PDD rubric (6):** split concreteness into numbers-present vs
+  numbers-consistent; tier cross-section deductions by severity;
+  resolve stress-test ceiling vs per-check formula composition;
+  tighten reviewer-comment fidelity scoring anchors; raise
+  inflation-guard threshold from 7.5 to 8.0; add a feasibility
+  dimension for headline-metric-claims.
+
+Plus the 0.9.0 backlog still open:
+- Cross-model variance (Sonnet/Opus/Haiku) for "strongly
+  calibrated" status.
+- Operator-effort tracking in state.yaml.
+- `cycle-grade` promotion to a proper -eval skill.
+- `connect-program-setup-eval` (now unblocked; needs a
+  non-degraded opp run to produce ground truth).
+
 ## 0.9.2 — 2026-04-28
 
 ### Fixed
