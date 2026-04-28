@@ -1,6 +1,6 @@
 import type { APIRequestContext, APIResponse } from 'playwright';
 import type { ConnectClient } from '../client.js';
-import type { Program, Opportunity, Invite, Invoice, DeliveryType } from '../types.js';
+import type { Program, Opportunity, Invite, Invoice, DeliverUnit, PaymentUnit } from '../types.js';
 import { HttpError, ConnectValidationError } from '../errors.js';
 import {
   extractFormCsrfToken,
@@ -11,6 +11,8 @@ import {
   parseOpportunitiesList,
   parseInvitesList,
   parseFormErrors,
+  parseDeliverUnitTable,
+  parsePaymentUnitTable,
 } from './html-scrape.js';
 
 export interface PlaywrightBackendOptions {
@@ -28,13 +30,26 @@ async function httpErrorFor(res: APIResponse, urlPath: string): Promise<HttpErro
 /**
  * Playwright HTTP-only Connect backend.
  *
- * For mutations: GET the form page → extract CSRF → POST → on 302 we either
- * follow the Location to the list page and look up the new record by name,
- * or extract the UUID from the Location directly. Connect's program-init
- * redirects to the list (not the detail page), so create-then-find-by-name
- * is the canonical pattern. Empirically observed via scripts/_probe-create.ts.
+ * For mutations: GET the form page → extract CSRF + prefilled values → POST
+ * the merged set. Connect's edit and config pages use Knockout/Alpine for
+ * presentation but post normal Django form data.
  *
- * For reads: GET the list/detail page → parse with helpers from html-scrape.ts.
+ * For reads: GET the list/detail/table page → parse with helpers from
+ * html-scrape.ts.
+ *
+ * Key URL conventions (confirmed live 2026-04-28 against march-demo
+ * opportunity dea88661-1cd6-486b-ab25-48584bf61a8e):
+ *   /a/<org>/program/                              — list
+ *   /a/<org>/program/init/                         — create form (POST same URL)
+ *   /a/<org>/program/<uuid>/edit                   — edit form
+ *   /a/<org>/program/<uuid>/invite                 — invite an LLO org to a program
+ *   /a/<org>/opportunity/                          — list
+ *   /a/<org>/opportunity/init/                     — create form
+ *   /a/<org>/opportunity/<uuid>/edit               — edit form (toggles active/is_test)
+ *   /a/<org>/opportunity/<uuid>/verification_flags_config/  — verification toggles + formsets
+ *   /a/<org>/opportunity/<uuid>/payment_unit/create         — payment-unit create form
+ *   /a/<org>/opportunity/<uuid>/payment_unit_table/         — payment units list
+ *   /a/<org>/opportunity/<uuid>/deliver_unit_table          — delivery units list (read-only)
  *
  * Concurrency: this class assumes the caller serializes calls (the MCP
  * server uses a promise-chain serializer) so CSRF rotation can't race.
@@ -48,15 +63,12 @@ export class PlaywrightBackend implements ConnectClient {
     const path = `/a/${organization_slug}/program/`;
     const res = await this.opts.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
-    const html = await res.text();
-    let programs = parseProgramsList(html).map((p) => ({ ...p, organization_slug }));
+    let programs = parseProgramsList(await res.text()).map((p) => ({ ...p, organization_slug }));
     if (name) programs = programs.filter((p) => p.name === name);
     return { programs };
   };
 
   getProgram: ConnectClient['getProgram'] = async ({ organization_slug, program_id }) => {
-    // Connect doesn't expose a "program detail" page distinct from the list.
-    // Hydrate by fetching the list then matching by id.
     const list = await this.listPrograms({ organization_slug });
     const found = list.programs.find((p) => p.id === program_id);
     if (!found) {
@@ -98,17 +110,12 @@ export class PlaywrightBackend implements ConnectClient {
     });
 
     if (postRes.status() === 302) {
-      // Connect redirects to the list page, not the detail page.
-      // Re-list to find the new program by name.
       const list = await this.listPrograms({ organization_slug: args.organization_slug, name: args.name });
       const created = list.programs[0];
-      if (!created) {
-        throw new HttpError(500, formPath, `program create succeeded (302) but new "${args.name}" not found in list`);
-      }
+      if (!created) throw new HttpError(500, formPath, `program create succeeded (302) but "${args.name}" not found`);
       return { ...created, ...args };
     }
     if (postRes.status() === 200) {
-      // Form re-rendered with errors
       const errs = parseFormErrors(await postRes.text());
       throw new ConnectValidationError(errs.length ? errs : ['form rejected; no errorlist found']);
     }
@@ -158,8 +165,7 @@ export class PlaywrightBackend implements ConnectClient {
     const path = `/a/${organization_slug}/opportunity/`;
     const res = await this.opts.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
-    const html = await res.text();
-    const stubs = parseOpportunitiesList(html);
+    const stubs = parseOpportunitiesList(await res.text());
     let opportunities: Opportunity[] = stubs.map((s) => ({
       id: s.id,
       name: s.name,
@@ -182,12 +188,29 @@ export class PlaywrightBackend implements ConnectClient {
   };
 
   getOpportunity: ConnectClient['getOpportunity'] = async ({ organization_slug, opportunity_id }) => {
-    const list = await this.listOpportunities({ organization_slug });
-    const found = list.opportunities.find((o) => o.id === opportunity_id);
-    if (!found) {
-      throw new HttpError(404, `/a/${organization_slug}/opportunity/${opportunity_id}/`, 'opportunity not found in list');
-    }
-    return found;
+    // Hydrate from the edit form which has every field's current value.
+    const editPath = `/a/${organization_slug}/opportunity/${opportunity_id}/edit`;
+    const editRes = await this.opts.request.get(editPath);
+    if (editRes.status() !== 200) throw await httpErrorFor(editRes, editPath);
+    const v = extractFormFieldValues(await editRes.text());
+    const isActive = v['active'] === 'on' || v['active'] === 'true' || v['active'] === '';  // checkbox `value=""` when no value attr but checked
+    return {
+      id: opportunity_id,
+      name: v['name'] ?? '',
+      short_description: v['short_description'] ?? '',
+      description: v['description'] ?? '',
+      currency: v['currency'] ?? '',
+      country: v['country'] ?? '',
+      hq_server: v['hq_server'] ?? '',
+      api_key: v['api_key'] ?? '',
+      learn_app_domain: v['learn_app_domain'] ?? '',
+      learn_app: v['learn_app'] ?? '',
+      learn_app_passing_score: Number(v['learn_app_passing_score'] ?? 0),
+      deliver_app_domain: v['deliver_app_domain'] ?? '',
+      deliver_app: v['deliver_app'] ?? '',
+      status: isActive ? 'active' : 'draft',
+      organization_slug,
+    };
   };
 
   createOpportunity: ConnectClient['createOpportunity'] = async (args) => {
@@ -242,70 +265,243 @@ export class PlaywrightBackend implements ConnectClient {
     throw await httpErrorFor(postRes, formPath);
   };
 
+  /**
+   * Update an opportunity by re-POSTing the /edit form. Re-uses the form's
+   * existing values and overrides only the fields the caller passes.
+   *
+   * `is_test` is a checkbox: send `is_test=on` to enable, OMIT the field to
+   * disable.
+   */
   updateOpportunity: ConnectClient['updateOpportunity'] = async (args) => {
-    const editPath = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/edit/`;
+    return this.postEditForm(args.organization_slug, args.opportunity_id, {
+      name: args.name,
+      short_description: args.short_description,
+      description: args.description,
+      end_date: args.end_date,
+      is_test: args.is_test,
+    });
+  };
+
+  /**
+   * Activate an opportunity by re-POSTing the /edit form with `active=on`.
+   * (Connect has no /activate/ URL — activation is a checkbox toggle.)
+   */
+  activateOpportunity: ConnectClient['activateOpportunity'] = async ({ organization_slug, opportunity_id }) => {
+    await this.postEditForm(organization_slug, opportunity_id, { active: true });
+    return { ok: true, status: 'active' as const };
+  };
+
+  /** Internal: re-POST the opportunity edit form with a partial override. */
+  private async postEditForm(
+    organization_slug: string,
+    opportunity_id: string,
+    overrides: {
+      name?: string; short_description?: string; description?: string;
+      end_date?: string; active?: boolean; is_test?: boolean;
+    },
+  ): Promise<Opportunity> {
+    const editPath = `/a/${organization_slug}/opportunity/${opportunity_id}/edit`;
     const editRes = await this.opts.request.get(editPath);
     if (editRes.status() !== 200) throw await httpErrorFor(editRes, editPath);
-    const csrf = extractFormCsrfToken(await editRes.text()) ?? this.opts.csrfToken;
-    const current = await this.getOpportunity({ organization_slug: args.organization_slug, opportunity_id: args.opportunity_id });
+    const editHtml = await editRes.text();
+    const csrf = extractFormCsrfToken(editHtml) ?? this.opts.csrfToken;
+    const current = extractFormFieldValues(editHtml);
+
+    const form: Record<string, string> = {
+      csrfmiddlewaretoken: csrf,
+      name: overrides.name ?? current['name'] ?? '',
+      short_description: overrides.short_description ?? current['short_description'] ?? '',
+      description: overrides.description ?? current['description'] ?? '',
+      delivery_type: current['delivery_type'] ?? '',
+      end_date: overrides.end_date ?? current['end_date'] ?? '',
+      currency: current['currency'] ?? '',
+      country: current['country'] ?? '',
+    };
+    // Optional fields that may or may not be in the form
+    if (current['users'] != null) form['users'] = current['users'];
+    if (current['learn_level'] != null) form['learn_level'] = current['learn_level'];
+    if (current['delivery_level'] != null) form['delivery_level'] = current['delivery_level'];
+
+    // Checkboxes: `active` and `is_test`. To toggle ON, set `=on`. To toggle
+    // OFF, OMIT the field. We preserve current state if not overridden.
+    const wantActive = overrides.active ?? (current['active'] === 'on' || current['active'] === '' && editHtml.match(/name="active"[^>]*checked/));
+    const wantTest = overrides.is_test ?? (current['is_test'] === 'on' || current['is_test'] === '' && editHtml.match(/name="is_test"[^>]*checked/));
+    if (wantActive) form['active'] = 'on';
+    if (wantTest) form['is_test'] = 'on';
 
     const postRes = await this.opts.request.post(editPath, {
-      form: {
-        csrfmiddlewaretoken: csrf,
-        name: args.name ?? current.name,
-        short_description: args.short_description ?? current.short_description,
-        description: args.description ?? current.description,
-      },
+      form,
       maxRedirects: 0,
       headers: {
-        Referer: `${this.opts.baseUrl}/a/${args.organization_slug}/opportunity/`,
+        Referer: `${this.opts.baseUrl}/a/${organization_slug}/opportunity/`,
         'X-CSRFToken': csrf,
       },
     });
-
     if (postRes.status() === 302) {
-      return await this.getOpportunity({ organization_slug: args.organization_slug, opportunity_id: args.opportunity_id });
+      return await this.getOpportunity({ organization_slug, opportunity_id });
     }
     if (postRes.status() === 200) {
       const errs = parseFormErrors(await postRes.text());
       throw new ConnectValidationError(errs.length ? errs : ['opportunity edit rejected; no errorlist found']);
     }
     throw await httpErrorFor(postRes, editPath);
-  };
+  }
 
-  // ── Lifecycle ────────────────────────────────────────────────────
+  // ── Verification flags / payment units / deliver units ────────────
 
-  activateOpportunity: ConnectClient['activateOpportunity'] = async ({ organization_slug, opportunity_id }) => {
-    const activatePath = `/a/${organization_slug}/opportunity/${opportunity_id}/activate/`;
-    const postRes = await this.opts.request.post(activatePath, {
-      form: { csrfmiddlewaretoken: this.opts.csrfToken },
+  /**
+   * Set the top-level verification toggles. v1 supports the simple flags
+   * (duplicate, gps, catchment_areas, location, form_submission_*); the
+   * formset-driven per-deliver-unit checks and form-field rules are sent
+   * if provided but we re-post existing formset rows verbatim if not.
+   */
+  setVerificationFlags: ConnectClient['setVerificationFlags'] = async ({ organization_slug, opportunity_id, flags }) => {
+    const path = `/a/${organization_slug}/opportunity/${opportunity_id}/verification_flags_config/`;
+    const getRes = await this.opts.request.get(path);
+    if (getRes.status() !== 200) throw await httpErrorFor(getRes, path);
+    const html = await getRes.text();
+    const csrf = extractFormCsrfToken(html) ?? this.opts.csrfToken;
+    const current = extractFormFieldValues(html);
+
+    const form: Record<string, string> = {
+      csrfmiddlewaretoken: csrf,
+      // top-level toggles (checkboxes — set `=on` to enable, omit to disable)
+      // location is REQUIRED (number, default 10m)
+      location: current['location'] ?? '10',
+      form_submission_start: flags.form_submission_start ?? current['form_submission_start'] ?? '',
+      form_submission_end: flags.form_submission_end ?? current['form_submission_end'] ?? '',
+    };
+
+    const wasChecked = (name: string) => new RegExp(`name="${name}"[^>]*checked`).test(html);
+    const want = (key: 'duplicate' | 'gps' | 'catchment_areas') =>
+      flags[key] !== undefined ? !!flags[key] : wasChecked(key);
+    if (want('duplicate')) form['duplicate'] = 'on';
+    if (want('gps')) form['gps'] = 'on';
+    if (want('catchment_areas')) form['catchment_areas'] = 'on';
+
+    // Formset management: preserve every existing formset row by replaying
+    // their values. The TOTAL_FORMS / INITIAL_FORMS / MIN_NUM_FORMS / MAX_NUM_FORMS
+    // hidden fields are essential for Django formset processing.
+    for (const k of [
+      'deliver_unit-TOTAL_FORMS', 'deliver_unit-INITIAL_FORMS',
+      'deliver_unit-MIN_NUM_FORMS', 'deliver_unit-MAX_NUM_FORMS',
+      'form_json-TOTAL_FORMS', 'form_json-INITIAL_FORMS',
+      'form_json-MIN_NUM_FORMS', 'form_json-MAX_NUM_FORMS',
+    ]) {
+      if (current[k] != null) form[k] = current[k];
+    }
+    // Replay every deliver_unit-N-* and form_json-N-* field.
+    for (const [k, v] of Object.entries(current)) {
+      if (/^(deliver_unit|form_json)-\d+-/.test(k)) {
+        form[k] = v;
+      }
+    }
+    // Re-apply check_attachments toggles if the caller supplied per-unit overrides
+    if (flags.deliver_unit_checks) {
+      for (const c of flags.deliver_unit_checks) {
+        // Find the row index that points at this deliver_unit_id
+        for (const [k, v] of Object.entries(current)) {
+          if (/^deliver_unit-\d+-deliver_unit$/.test(k) && Number(v) === c.deliver_unit_id) {
+            const idx = k.match(/^deliver_unit-(\d+)-/)![1];
+            if (c.check_attachments) form[`deliver_unit-${idx}-check_attachments`] = 'on';
+            else delete form[`deliver_unit-${idx}-check_attachments`];
+            if (c.duration_seconds != null) form[`deliver_unit-${idx}-duration`] = String(c.duration_seconds);
+          }
+        }
+      }
+    }
+
+    const postRes = await this.opts.request.post(path, {
+      form,
       maxRedirects: 0,
       headers: {
         Referer: `${this.opts.baseUrl}/a/${organization_slug}/opportunity/${opportunity_id}/`,
-        'X-CSRFToken': this.opts.csrfToken,
+        'X-CSRFToken': csrf,
       },
     });
     if (postRes.status() === 302 || postRes.status() === 200) {
-      return { ok: true, status: 'active' as const };
+      // Heuristic: 200 with errorlist is failure
+      if (postRes.status() === 200) {
+        const errs = parseFormErrors(await postRes.text());
+        if (errs.length) throw new ConnectValidationError(errs);
+      }
+      return { ok: true };
     }
-    throw await httpErrorFor(postRes, activatePath);
+    throw await httpErrorFor(postRes, path);
   };
 
-  // ── Invites ──────────────────────────────────────────────────────
-  // NB: Connect's invite UI is on the *program* page (/a/<org>/program/<uuid>/invite),
-  // and the form takes an `organization` slug — not a free-form email. Until the
-  // Connect data model evolves, treat `opportunity_id` here as a Connect program id.
+  listDeliverUnits: ConnectClient['listDeliverUnits'] = async ({ organization_slug, opportunity_id }) => {
+    const path = `/a/${organization_slug}/opportunity/${opportunity_id}/deliver_unit_table`;
+    const res = await this.opts.request.get(path);
+    if (res.status() !== 200) throw await httpErrorFor(res, path);
+    return { deliver_units: parseDeliverUnitTable(await res.text()) };
+  };
+
+  createPaymentUnit: ConnectClient['createPaymentUnit'] = async (args) => {
+    const formPath = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/payment_unit/create`;
+    const getRes = await this.opts.request.get(formPath);
+    if (getRes.status() !== 200) throw await httpErrorFor(getRes, formPath);
+    const csrf = extractFormCsrfToken(await getRes.text()) ?? this.opts.csrfToken;
+
+    // Required-deliver-units and optional-deliver-units are multi-select
+    // fields. Send them as repeated form-encoded params.
+    const formData = new URLSearchParams();
+    formData.append('csrfmiddlewaretoken', csrf);
+    formData.append('name', args.name);
+    formData.append('description', args.description);
+    formData.append('amount', String(args.amount));
+    if (args.max_total != null) formData.append('max_total', String(args.max_total));
+    if (args.max_daily != null) formData.append('max_daily', String(args.max_daily));
+    if (args.start_date) formData.append('start_date', args.start_date);
+    if (args.end_date) formData.append('end_date', args.end_date);
+    for (const id of args.required_deliver_unit_ids) formData.append('required_deliver_units', String(id));
+    for (const id of args.optional_deliver_unit_ids ?? []) formData.append('optional_deliver_units', String(id));
+
+    const postRes = await this.opts.request.post(formPath, {
+      data: formData.toString(),
+      maxRedirects: 0,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Referer: `${this.opts.baseUrl}/a/${args.organization_slug}/opportunity/${args.opportunity_id}/`,
+        'X-CSRFToken': csrf,
+      },
+    });
+
+    if (postRes.status() === 302) {
+      // Connect redirects to the opp detail / payment_unit_table; re-list to find by name
+      const list = await this.listPaymentUnits({
+        organization_slug: args.organization_slug,
+        opportunity_id: args.opportunity_id,
+      });
+      const created = list.payment_units.find((p) => p.name === args.name);
+      if (!created) {
+        throw new HttpError(500, formPath, `payment_unit create succeeded (302) but "${args.name}" not found`);
+      }
+      return created;
+    }
+    if (postRes.status() === 200) {
+      const errs = parseFormErrors(await postRes.text());
+      throw new ConnectValidationError(errs.length ? errs : ['payment_unit create rejected; no errorlist found']);
+    }
+    throw await httpErrorFor(postRes, formPath);
+  };
+
+  listPaymentUnits: ConnectClient['listPaymentUnits'] = async ({ organization_slug, opportunity_id }) => {
+    const path = `/a/${organization_slug}/opportunity/${opportunity_id}/payment_unit_table/`;
+    const res = await this.opts.request.get(path);
+    if (res.status() !== 200) throw await httpErrorFor(res, path);
+    return { payment_units: parsePaymentUnitTable(await res.text()) };
+  };
+
+  // ── Invites (program-level) ──────────────────────────────────────
 
   sendLloInvite: ConnectClient['sendLloInvite'] = async (args) => {
     const invitePath = `/a/${args.organization_slug}/program/${args.opportunity_id}/invite`;
     const formPath = `/a/${args.organization_slug}/program/`;
-    // Need a CSRF + the form is rendered inline; refresh from the list page.
     const listRes = await this.opts.request.get(formPath);
     if (listRes.status() !== 200) throw await httpErrorFor(listRes, formPath);
     const csrf = extractFormCsrfToken(await listRes.text()) ?? this.opts.csrfToken;
 
-    // Connect expects `organization` (slug) — for our purposes, contact_email
-    // can't be used directly. Caller must pass the org slug as organization_name.
     const postRes = await this.opts.request.post(invitePath, {
       form: {
         csrfmiddlewaretoken: csrf,
@@ -319,7 +515,7 @@ export class PlaywrightBackend implements ConnectClient {
     });
     if (postRes.status() === 302 || postRes.status() === 200) {
       return {
-        id: 'pending',  // Connect doesn't return an invite UUID directly; would need a follow-up GET
+        id: 'pending',
         opportunity_id: args.opportunity_id,
         organization_name: args.organization_name,
         contact_email: args.contact_email,
@@ -330,33 +526,19 @@ export class PlaywrightBackend implements ConnectClient {
   };
 
   listInvites: ConnectClient['listInvites'] = async ({ organization_slug, opportunity_id }) => {
-    // Tries the program-level invite-table endpoint; if the schema differs, the
-    // parser returns []. Real shape will be confirmed when we ship the live test.
-    const path = `/a/${organization_slug}/program/${opportunity_id}/`;
-    const res = await this.opts.request.get(path);
-    if (res.status() !== 200) {
-      // Fall back to the program list page (where invites are inlined per program)
-      const listRes = await this.opts.request.get(`/a/${organization_slug}/program/`);
-      if (listRes.status() !== 200) throw await httpErrorFor(listRes, path);
-      return { invites: parseInvitesList(await listRes.text(), opportunity_id) };
-    }
-    return { invites: parseInvitesList(await res.text(), opportunity_id) };
+    const listRes = await this.opts.request.get(`/a/${organization_slug}/program/`);
+    if (listRes.status() !== 200) throw await httpErrorFor(listRes, `/a/${organization_slug}/program/`);
+    return { invites: parseInvitesList(await listRes.text(), opportunity_id) };
   };
 
-  // ── Invoices ─────────────────────────────────────────────────────
-  // Connect's invoice UI hasn't been mapped yet; these atoms stub a 404 until
-  // probed. Skill consumers expecting invoice data should fall back to HITL
-  // until probe-connect-invoice.ts confirms the schema.
+  // ── Invoices (stub — page shape not yet probed) ─────────────────
 
   listInvoices: ConnectClient['listInvoices'] = async ({ organization_slug, opportunity_id }) => {
     const path = `/a/${organization_slug}/opportunity/${opportunity_id}/invoices/`;
     const res = await this.opts.request.get(path);
     if (res.status() !== 200) {
-      // Empty rather than throwing — invoices may simply not exist for this opp yet
       return { invoices: [] };
     }
-    // TODO: scrape invoice rows when the page shape is known. For now return []
-    // so callers don't crash.
     return { invoices: [] };
   };
 
@@ -364,7 +546,6 @@ export class PlaywrightBackend implements ConnectClient {
     const path = `/a/${organization_slug}/invoice/${invoice_id}/`;
     const res = await this.opts.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
-    // TODO: parse invoice detail page. For now return a minimal stub keyed by id.
     return {
       id: invoice_id,
       opportunity_id: '',

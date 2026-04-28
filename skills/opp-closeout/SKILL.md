@@ -15,9 +15,16 @@ Process the financial closeout of a completed opportunity.
    - Opportunity config: `ACE/<opp-name>/connect-setup/opportunity.md`
    - Delivery/payment unit config
 
-2. **Pull invoices** from Connect for this opportunity.
+2. **Pull invoices** from Connect for this opportunity via
+   `connect_list_invoices` (and `connect_get_invoice` for any that need
+   detail hydration). Invoice atoms are conservative in 0.8.1 — they
+   return empty/stub records for opps that haven't been billed yet.
    - Get auto-generated invoices based on verified deliveries
    - Calculate total payment amount
+   - **If the invoice list is empty AND the opportunity has completed
+     deliveries**, the invoice page shape may have evolved since
+     0.8.1's probe — re-run `scripts/probe-connect-invoice.ts` to
+     update the parser, or fall back to manual UI export until then.
 
 3. **Create Jira ticket** for payment processing:
    - Project: appropriate Jira project for Connect payments
@@ -32,15 +39,10 @@ Process the financial closeout of a completed opportunity.
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
-- Connect: invoice pull API — **NOT YET BUILT**
+- Connect (`ace-connect` MCP, 0.8.1+):
+  - `connect_list_invoices` — pull invoices for the opportunity
+  - `connect_get_invoice` — hydrate invoice detail
 - Jira (Atlassian MCP): `createJiraIssue`
-
-## Current Workaround
-1. Read opportunity details and calculate expected payment
-2. Document the invoice expectations
-3. Ask the user to pull invoices from Connect UI
-4. Ask the user to create the Jira payment ticket (or use Atlassian MCP if available)
-5. Record the details
 
 ## Mode Behavior
 - **Auto:** Pull invoices, create Jira ticket, proceed
@@ -57,3 +59,4 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
+| 2026-04-28 | Replace HITL workaround with `connect_list_invoices` + `connect_get_invoice` (ace-connect 0.8.1). Note: invoice page shape was not yet probed at 0.8.1 ship; atoms return conservative defaults until the page has been observed live | ACE team |

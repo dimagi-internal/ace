@@ -24,8 +24,12 @@ ACE-authored onboarding email with the widget link embedded.
      (`public_id`, `embed_key`)
 
 2. **Send Connect system invites** for each `prepared` LLO entry via
-   Connect `send_invite` (**NOT YET BUILT** — see workaround below). Flip
-   status to `sent` in the invite list.
+   `connect_send_llo_invite` (ace-connect MCP, 0.8.1+). Pass the
+   program's UUID (from `connect-setup/program.md`) as `opportunity_id`
+   — Connect's invite UI is at the program level, not opportunity. The
+   `organization_name` arg is the LLO org's slug (the workspace they
+   belong to, not their display name). After each call, flip status to
+   `sent` in `invites.md`.
 
 3. **Read the PDD's `archetype:` field.** Email content — framing, "getting
    started" steps, timeline language, and which pieces of training material
@@ -141,14 +145,10 @@ criteria explicitly so the recipient knows what finishes Stage 1.
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`
-
-## Current Workaround
-1. Guide the operator to send Connect invites through the Connect UI for each
-   `prepared` LLO; update `invites.md` statuses to `sent`
-2. Generate the onboarding email content for each LLO (with widget link)
-3. Write drafts to `ACE/<opp-name>/comms-log/onboarding-drafts/`
-4. Ask the user to send the emails from ace@dimagi-ai.com
-5. Update the comms log with send confirmation
+- Connect (`ace-connect` MCP, 0.8.1+):
+  - `connect_send_llo_invite` — issue the system invite to the LLO org
+  - `connect_list_invites` — verify status / detect already-invited
+- Email: `email-communicator` skill (sends from `ace@dimagi-ai.com`)
 
 ## Mode Behavior
 - **Auto:** Send emails directly, log to GDrive
@@ -167,3 +167,4 @@ When `--dry-run` is active:
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-14 | Own Connect system invite send (moved from `llo-invite`) and include OCS widget link in onboarding email; this is the first LLO-facing step in the lifecycle | ACE team |
 | 2026-04-20 | Added `## Archetypes` section with per-archetype email framing, "getting started" steps, and timeline language. `focus-group` addresses the recipient as a facilitator-owning org (not FLW-managing), leads with question guide + audio upload, and uses session-count cadence language. `multi-stage` front-loads Stage 1 content. Prevents atomic-visit framing from landing as the first LLO-facing artifact on FGD opps | ACE team |
+| 2026-04-28 | Replace HITL workaround with `connect_send_llo_invite` (ace-connect 0.8.1). Connect's invite is program-level, so the atom takes the program UUID and an `organization` slug for the target LLO workspace | ACE team |

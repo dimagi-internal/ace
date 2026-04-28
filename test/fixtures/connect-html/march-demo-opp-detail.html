@@ -1,0 +1,1243 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+
+<link rel="apple-touch-icon" sizes="180x180" href="/static/images/favicons/apple-touch-icon.b59ca68e1151.png">
+<link rel="icon" type="image/png" sizes="96x96" href="/static/images/favicons/favicon-96x96.c40024139556.png">
+<link rel="icon" type="image/svg+xml" href="/static/images/favicons/favicon.b62096104f6b.svg">
+<link rel="manifest" href="/static/images/favicons/site.07030052390d.webmanifest">
+<link rel="shortcut icon" href="/static/images/favicons/favicon.a836b61c1c52.ico">
+
+    <title>Connect</title>
+    
+       <link rel="stylesheet" href="/static/bundles/css/vendors.fc4af69a0837.css">
+       <link rel="stylesheet" href="/static/bundles/css/tailwind.da5b33e84bbd.css">
+       <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    
+      <script id="gtm-data" type="application/json">{"isDimagi": false, "gtmID": "GTM-M3MVWH7F", "userId": 6299}</script>
+      <script src="/static/js/gtx.6b03cca6de39.js" defer></script>
+      <script src="/static/bundles/js/vendors-bundle.fca9de3d73ff.js" defer></script>
+      <script src="/static/bundles/js/tailwind-bundle.d41d8cd98f00.js" defer></script>
+      
+    
+  </head>
+  <body
+    hx-headers='{"X-CSRFToken": "W3yJAiaeFdqljpQy9sNmWUY3PzCNOhTAUZZP7VpuNjFujGWIMwSuYkfNTwreG69I"}'
+    x-data="{ sidebarOpen: $persist(false).as('sidebarOpen'), hasSidebar: true }"
+    x-init="$nextTick(() => $el.classList.add('transition-[padding-left]', 'duration-300'))"
+    :class="hasSidebar ? (sidebarOpen ? 'pl-64' : 'pl-16') : ''"
+    class="flex flex-col justify-center overflow-x-hidden bg-stone-100 font-work-sans"
+  >
+    
+      
+
+<div x-cloak
+    class="fixed top-0 left-0 h-screen bg-brand-deep-purple pt-3 z-40 text-white flex flex-col justify-between transition-all duration-300 px-2"
+    :class="sidebarOpen ? 'w-64' : 'w-16'">
+
+    <!-- Top Section -->
+    <div>
+        <!-- Logo Section -->
+        <div class="">
+            <div class="flex p-2 justify-start">
+                <div
+                    x-show.immediate="!sidebarOpen"
+                    class=" h-12 transition-none"
+                >
+                    <img src="/static/images/logo.b22fb8909009.svg" alt="Compact Logo" class="w-8 h-8">
+                </div>
+                <div
+                    x-show.immediate="sidebarOpen"
+                    class="h-12 pl-1"
+                >
+                    <img src="/static/images/logo-full.137c6df9a195.svg" alt="Full Logo" class="h-12 w-auto">
+                </div>
+            </div>
+        </div>
+
+        <div class="flex rounded-lg items-center p-2 transition-all duration-300 cursor-pointer">
+            <div class="flex items-center justify-center w-8 h-8">
+                <i class="fa-solid text-lg text-brand-sky"
+                    :class="sidebarOpen ? 'fa-xmark': 'fa-bars'"
+                    @click="sidebarOpen = !sidebarOpen"></i>
+
+            </div>
+
+            <div class="transition-all duration-300 overflow-hidden flex items-center"
+                 :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+                <span class="text-xs whitespace-nowrap">Menu</span>
+            </div>
+        </div>
+
+        <!-- Navigation Items -->
+        
+          
+            
+            <div class="mt-5">
+                
+                <a href="/a/march-demo/opportunity/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-table-cells-large"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">Opportunities</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        Opportunities
+    </div>
+
+    <!-- Selected -->
+
+     
+     <div class="absolute left-0 top-0 w-full h-full bg-brand-mango/20 rounded-lg"></div>
+     <div class="absolute right-0 w-1 h-1/2 top-1/2 -translate-y-1/2 bg-brand-mango rounded-2xl"></div>
+     
+</a>
+
+
+                
+                    
+                    <a href="/a/march-demo/program/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-table-columns"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">Programs</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        Programs
+    </div>
+
+    <!-- Selected -->
+
+     
+</a>
+
+
+                    
+                    
+                    <a href="/a/march-demo/organization/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-building"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">My Workspace</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        My Workspace
+    </div>
+
+    <!-- Selected -->
+
+     
+</a>
+
+                
+            </div>
+            
+          
+          
+        
+    </div>
+
+</div>
+
+    
+    <div class="flex-1  px-4">
+      
+
+
+<header class="fixed top-0 left-16 right-0 bg-gray-100 z-30">
+    <div class="flex items-center justify-between w-full px-4 py-2">
+        <!-- Left Section: Module Name -->
+        <h1 class="text-lg text-brand-deep-purple font-medium">Connect</h1>
+
+        
+        <!-- Right Section: Org, Profile Dropdown -->
+        <div class="flex items-center gap-x-2">
+            <!-- Organization selector -->
+            <div x-data="
+              {
+                open: false,
+                hasOrg: true,
+                hasMembership: true,
+                isSuperuser: false,
+                get hasSelectedOrg() {
+                    return this.hasOrg && (this.hasMembership || this.isSuperuser)
+                },
+                membershipsCount: 3,
+                canCreateOrg: false,
+                get showDropdown() {
+                    return this.membershipsCount > 1
+                        || (!this.hasSelectedOrg && this.membershipsCount > 0)
+                        || this.canCreateOrg
+                }
+              }"
+              @click.away="open = false" class="relative mx-8">
+                <button @click="open = !open" class="flex items-center gap-2 focus:outline-none">
+                    <div class="text-left">
+                      <div x-show="hasSelectedOrg" x-transition.opacity x-cloak>
+                        <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                          March-Demo
+                        </p>
+                        
+                          <p class="text-gray-500 text-sm font-medium">LLO-Demo</p>
+                        
+                        <p class="text-xs text-gray-400">Program Manager</p>
+                      </div>
+                      <div x-show="!hasSelectedOrg && membershipsCount > 0" x-transition.opacity x-cloak>
+                         <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                          Select Workspace
+                         </p>
+                      </div>
+                      <div x-show="!hasSelectedOrg && membershipsCount == 0 && canCreateOrg" x-transition.opacity x-cloak>
+                        <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                            Create Workspace
+                        </p>
+                      </div>
+                    </div>
+                    <!-- Dropdown Toggle Icon -->
+                    <i x-show="showDropdown" :class="open ? 'rotate-180' : ''" class="fa-solid fa-chevron-down transition-all text-xs"></i>
+                </button>
+
+                  <!-- Organization Selector -->
+                  <div x-show="open && showDropdown" x-transition.opacity x-cloak
+                      class="absolute top-12 right-0 min-w-56 bg-white shadow rounded-lg z-50">
+                      <ul class="p-2 w-full max-h-80 overflow-y-auto">
+                        
+                          
+                            <li class="p-2 hover:bg-gray-100 rounded cursor-pointer text-left">
+                              <a href="/a/jjackson/opportunity/">
+                                <p class="text-brand-deep-purple text-sm font-medium">Baobob-Demo-Workspace</p>
+                                
+                                <p class="text-xs text-gray-400">Network Manager</p>
+                              </a>
+                            </li>
+                          
+                        
+                          
+                            <li class="p-2 hover:bg-gray-100 rounded cursor-pointer text-left">
+                              <a href="/a/ai-demo-space/opportunity/">
+                                <p class="text-brand-deep-purple text-sm font-medium">AI Demo Space</p>
+                                
+                                  <p class="text-gray-500 text-sm font-medium">Claude Test Space</p>
+                                
+                                <p class="text-xs text-gray-400">Program Manager</p>
+                              </a>
+                            </li>
+                          
+                        
+                          
+                        
+                      </ul>
+                        <div class="p-2" x-show="canCreateOrg" x-transition.opacity x-cloak>
+                            <a class="button button-md primary-dark w-full text-center" href="/register/organization/">
+                            Create Workspace
+                            </a>
+                        </div>
+                  </div>
+
+            </div>
+
+            <!-- User Profile -->
+            <div x-data="{ open: false }" @click.away="open = false" class="relative">
+                <button @click="open = !open" class="focus:outline-none">
+                    <div class="cursor-pointer overflow-hidden">
+                        <div
+  title="ace"
+  class="rounded-full flex items-center justify-center select-none shrink-0 w-10 h-10 text-xs font-medium tracking-wider bg-brand-cornflower-blue text-white"
+>
+  <span>AC</span>
+</div>
+
+                    </div>
+                </button>
+
+                <!-- User Profile Selector -->
+                <div x-show="open" x-transition.opacity x-cloak class="absolute top-12 right-0 min-w-56 w-56 bg-white shadow rounded-lg z-50">
+                    <ul class="p-2 w-full">
+                        <li class="p-2 text-left">
+                            <p class="text-brand-deep-purple font-medium">ace</p>
+                            
+                                <span class="text-gray-400 text-sm">member</span>
+                            
+                        </li>
+                        <li class="p-2 text-left">
+                            <a class="block p-2 hover:bg-gray-100 rounded cursor-pointer" href="/accounts/email/">
+                              <p class="text-brand-deep-purple">Profile</p>
+                            </a>
+                        </li>
+                        <li class="p-2">
+                          <a class="cursor-pointer" href="/accounts/logout/">
+                            <div class="bg-brand-indigo text-white px-8 py-2 rounded-lg shadow-md hover:bg-blue-800 transition">
+                              Logout
+                            </div>
+                          </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+</header>
+
+      <div class="h-5 w-full mt-16"></div>
+      <main id="content" class="md:max-w-screen-2xl mx-auto">
+        
+
+        
+    <div x-data="{isTest: true, showCatchmentImportModal: false, showCatchmentExportModal: false }"
+        class="container md:max-w-screen-2xl mx-auto flex flex-col gap-4">
+      <ul class="breadcrumb">
+    
+    <li>
+        <a href="/a/march-demo/opportunity/">Opportunities</a>
+        <i class="fa-solid fa-chevron-right"></i>
+    </li>
+    
+    <li>
+        <a href="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/">Demo Opp</a>
+        <i class="fa-solid fa-chevron-right"></i>
+    </li>
+    
+</ul>
+
+        
+        <div class="flex flex-col gap-8 w-full rounded-lg p-4" :class="isTest ? 'bg-white shadow-xs' : 'bg-brand-deep-purple'">
+          <div class="flex items-center relative" :class="{'gap-6': isTest}"  x-data="{ isOpen: false }">
+              <h3 class="text-sm font-medium text-brand-sky flex-1"></h3>
+              
+              <span class="badge badge-md primary-light">Test</span>
+              
+              
+                <i class="fa-solid cursor-pointer"
+                 :class="[isTest ? 'text-gray-800' : 'text-white', isOpen ? 'fa-xmark' : 'fa-bars']"
+                 @click="isOpen = !isOpen"></i>
+              
+              <!-- Dropdown Menu -->
+              
+
+<div
+  x-show="isOpen"
+  x-cloak
+  @click.away="isOpen = false"
+  x-transition:enter="transition ease-out duration-200"
+  x-transition:enter-start="opacity-0 scale-95"
+  x-transition:enter-end="opacity-100 scale-100"
+  x-transition:leave="transition ease-in duration-150"
+  x-transition:leave-start="opacity-100 scale-100"
+  x-transition:leave-end="opacity-0 scale-95"
+  class="absolute right-0 top-8 w-50 py-2 bg-white rounded-lg shadow-xl z-20"
+>
+  <ul>
+     
+    <li>
+       <a href="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/edit" class="block px-4 py-2.5 text-sm text-brand-deep-purple"
+        >Edit Opportunity</a
+      >
+    </li>
+    <li>
+       <a href="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/payment_unit/create"
+        class="block px-4 py-2.5 text-sm text-brand-deep-purple">
+        Add Payment Unit
+      </a>
+    </li>
+    
+
+    
+    <li x-data="{showMoreOptions: false}">
+      <a class="block px-4 py-2.5 text-sm text-brand-deep-purple" @click="showMoreOptions = true">Catchment Areas</a>
+      <div x-show="showMoreOptions"
+          x-cloak
+          @click.away="showMoreOptions = false"
+          class="ms-4"
+        >
+        <a class="block px-4 py-2.5 text-sm text-brand-deep-purple" @click="showCatchmentImportModal = true">Import</a>
+        <a class="block px-4 py-2.5 text-sm text-brand-deep-purple" @click="showCatchmentExportModal = true">Export</a>
+      </div>
+    </li>
+    
+    <li>
+      <a href="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/user_invite/" class="block px-4 py-2.5 text-sm text-brand-deep-purple"
+        >Add Connect Workers</a
+      >
+    </li>
+    
+    <li>
+      <a href="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/add_budget_existing_users" class="block px-4 py-2.5 text-sm text-brand-deep-purple"
+        >Add Budget</a
+      >
+    </li>
+    
+    <li>
+      <a  href="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/verification_flags_config/" class="block px-4 py-2.5 text-sm text-brand-deep-purple"
+        >Verification Flags</a
+      >
+    </li>
+    
+    <li>
+      <a href="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/send_message" class="block px-4 py-2.5 text-sm text-brand-deep-purple"
+        >Send Message</a
+      >
+    </li>
+    
+      <li>
+        <a href="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/task_types/" class="block px-4 py-2.5 text-sm text-brand-deep-purple">
+          Configure Task Types
+        </a>
+      </li>
+    
+  </ul>
+</div>
+
+          </div>
+          <div class="flex justify-between items-end">
+              <div class="flex flex-col gap-2">
+                  <h1 class="text-2xl font-medium block" :class="isTest? 'text-brand-deep-purple': 'text-white' ">Demo Opp</h1>
+                <p class="text-sm font-regular w-6/12" :class="isTest ? 'text-gray-600' : 'text-gray-100'">This is a test opp</p>
+              </div>
+              <div class="flex mt-6">
+
+              <!-- Opportunity resources: payment unit, learn app deliver app and its display modal-->
+                <div x-cloak class="flex gap-4" x-data="{
+                      showModal: false,
+                      selectedTab: '',
+                      selectedOption: '',
+                      historyLoaded: false,
+                  }"
+                     x-init="$watch('showModal', value => {
+                            document.body.classList.toggle('overflow-hidden', value);
+                             if (value && !historyLoaded) {
+                               $dispatch('tabShown');
+                               historyLoaded = true;
+                              }
+                        })">
+                      <!-- apps list -->
+                      
+                      <div class="min-w-48 flex flex-row items-center justify-between px-4 h-10 bg-brand-indigo rounded cursor-pointer"
+                           @click="showModal = !showModal; ; selectedTab = 'Learn App'; selectedOption = 'Learn App'">
+                          <div class="flex items-center">
+                              <i class="fa-solid fa-book-open text-white text-sm"></i>
+                              <h3 class="text-sm font-normal text-white flex-1 pl-2 whitespace-nowrap">Learn App</h3>
+                          </div>
+                          <h3 class="text-sm font-medium text-white">2</h3>
+                      </div>
+                      
+                      <div class="min-w-48 flex flex-row items-center justify-between px-4 h-10 bg-brand-indigo rounded cursor-pointer"
+                           @click="showModal = !showModal; ; selectedTab = 'Deliver App'; selectedOption = 'Deliver App'">
+                          <div class="flex items-center">
+                              <i class="fa-solid fa-clipboard-check text-white text-sm"></i>
+                              <h3 class="text-sm font-normal text-white flex-1 pl-2 whitespace-nowrap">Deliver App</h3>
+                          </div>
+                          <h3 class="text-sm font-medium text-white">5</h3>
+                      </div>
+                      
+                      <div class="min-w-48 flex flex-row items-center justify-between px-4 h-10 bg-brand-indigo rounded cursor-pointer"
+                           @click="showModal = !showModal; ; selectedTab = 'Payments Units'; selectedOption = 'Payments Units'">
+                          <div class="flex items-center">
+                              <i class="fa-solid fa-hand-holding-dollar text-white text-sm"></i>
+                              <h3 class="text-sm font-normal text-white flex-1 pl-2 whitespace-nowrap">Payments Units</h3>
+                          </div>
+                          <h3 class="text-sm font-medium text-white">1</h3>
+                      </div>
+                      
+
+                      <!-- Modal -->
+                      <div x-show="showModal"
+    class="fixed inset-0 z-50 overflow-y-auto">
+
+    <!-- Background overlay -->
+    <div class="fixed inset-0 bg-black/50 bg-opacity-50 transition-opacity"
+            @click="showModal = false;"></div>
+
+    <!-- Modal content -->
+    <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="relative rounded-2xl bg-gray-100 shadow-xl w-2/3 h-1/2 mx-auto overflow-hidden p-3"
+                @click.away="showModal = false;">
+            <!-- Modal header with tabs -->
+            <div class="flex flex-col w-full"
+                 x-init="selectedTab='Learn App'">
+
+
+                <!-- Tabs -->
+                <div class="flex relative mx-auto items-center shadow rounded-lg justify-between w-full px-3 mb-3 bg-slate-50 h-14">
+                    <ul class="tabs">
+                        <li x-tooltip.raw.html.interactive="<a href='https://www.commcarehq.org/a/andreaconnect/apps/view/5b2a4e0f3cd445dc919418807dcc4065' target='_blank' class='underline'>Unreleased - [April 2025] Learn App</a>"
+                            @click="selectedTab = 'Learn App'"
+                            :class="{ 'active': selectedTab === 'Learn App' }">
+                            <span>Learn App</span>
+                            <div x-show="selectedTab === 'Learn App'"></div>
+                        </li>
+                        <!-- Delivery App Tab -->
+                        <li x-tooltip.raw.html.interactive="<a href='https://www.commcarehq.org/a/andreaconnect/apps/view/4bfd85552dd44af3834d7fbb6400ac26' target='_blank' class='underline'>Unreleased - [April 2025] Delivey App</a>"
+                            @click="selectedTab = 'Deliver App'"
+                            :class="{ 'active': selectedTab === 'Deliver App' }">
+                            <span>Deliver App</span>
+                            <div x-show="selectedTab === 'Deliver App'"></div>
+                        </li>
+                        <!-- Payment Units Tab -->
+                        <li @click="selectedTab = 'Payments Units'"
+                            :class="{ 'active': selectedTab === 'Payments Units' }">
+                            <span>Payment Units</span>
+                            <div x-show="selectedTab === 'Payments Units'"></div>
+                        </li>
+                    </ul>
+
+                    <!-- Close button -->
+                    <button @click="showModal = false;" id="button" class="button-icon" >
+                        <i class="fa-solid fa-xmark text-brand-deep-purple"></i>
+                    </button>
+                </div>
+
+                <!-- Modal body / Tab content -->
+                <div class="z-50 bg-white ">
+                    <div x-show="selectedTab === 'Learn App'"
+                            hx-get="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/learn_module_table"
+                            hx-trigger="tabShown from:body"
+                            hx-swap="innerHTML"
+                            class=" rounded-lg h-full w-full">
+                        <div class="flex justify-center items-center h-full">
+                            <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-brand-deep-purple"></div>
+                        </div>
+                    </div>
+
+                    <!-- Deliver App Content -->
+                    <div x-show="selectedTab === 'Deliver App'"
+                            hx-get="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/deliver_unit_table"
+                            hx-trigger="tabShown from:body"
+                            hx-swap="innerHTML"
+                            class="rounded-lg h-full w-full">
+                        <div class="flex justify-center items-center h-full">
+                            <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-brand-deep-purple"></div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Units Content -->
+                    <div x-show="selectedTab === 'Payments Units'"
+                            hx-get="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/payment_unit_table/"
+                           hx-trigger="tabShown from:body"
+                            hx-swap="innerHTML"
+                            class="rounded-lg h-full w-full">
+                        <div class="flex justify-center items-center h-full">
+                            <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-brand-deep-purple"></div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+                  </div>
+              </div>
+          </div>
+          <!-- opportunity info -->
+            <div class="p-4 rounded-lg w-full" :class="isTest ? 'bg-slate-100' : 'bg-black/20'">
+              <div class="flex gap-2 w-full items-center justify-between">
+                  
+                  <div class="flex gap-2 items-start">
+                    <div :class="isTest? 'infocard-dark' : 'infocard-light'">
+                          <i class="fa-solid fa-file-circle-check"
+                             :class="{'!text-brand-cornflower-blue': isTest}"
+                          ></i>
+                          <div>
+                            <h6 :class="{ '!text-brand-cornflower-blue': isTest }">Delivery Type</h6>
+                              <p>---</p>
+                          </div>
+                      </div>
+                  </div>
+
+                  <!--Separator Between basic detail columns-->
+                  
+                      <div class="w-0.5 h-10 bg-slate-200 bg-opacity-30"></div>
+                  
+                  
+                  <div class="flex gap-2 items-start">
+                    <div :class="isTest? 'infocard-dark' : 'infocard-light'">
+                          <i class="fa-solid fa-calendar-days"
+                             :class="{'!text-brand-cornflower-blue': isTest}"
+                          ></i>
+                          <div>
+                            <h6 :class="{ '!text-brand-cornflower-blue': isTest }">Start Date</h6>
+                              <p>2026-03-17</p>
+                          </div>
+                      </div>
+                  </div>
+
+                  <!--Separator Between basic detail columns-->
+                  
+                  
+                  <div class="flex gap-2 items-start">
+                    <div :class="isTest? 'infocard-dark' : 'infocard-light'">
+                          <i class="fa-solid fa-arrow-right !text-brand-mango"
+                             :class="{'!text-brand-cornflower-blue': isTest}"
+                          ></i>
+                          <div>
+                            <h6 :class="{ '!text-brand-cornflower-blue': isTest }">End Date</h6>
+                              <p>2027-03-16</p>
+                          </div>
+                      </div>
+                  </div>
+
+                  <!--Separator Between basic detail columns-->
+                  
+                      <div class="w-0.5 h-10 bg-slate-200 bg-opacity-30"></div>
+                  
+                  
+                  <div class="flex gap-2 items-start">
+                    <div :class="isTest? 'infocard-dark' : 'infocard-light'">
+                          <i class="fa-solid fa-users"
+                             :class="{'!text-brand-cornflower-blue': isTest}"
+                          ></i>
+                          <div>
+                            <h6 :class="{ '!text-brand-cornflower-blue': isTest }">Max Connect Workers</h6>
+                              <p><span x-data x-tooltip.raw="Maximum allowed workers in the Opportunity">100</span></p>
+                          </div>
+                      </div>
+                  </div>
+
+                  <!--Separator Between basic detail columns-->
+                  
+                      <div class="w-0.5 h-10 bg-slate-200 bg-opacity-30"></div>
+                  
+                  
+                  <div class="flex gap-2 items-start">
+                    <div :class="isTest? 'infocard-dark' : 'infocard-light'">
+                          <i class="fa-solid fa-gears"
+                             :class="{'!text-brand-cornflower-blue': isTest}"
+                          ></i>
+                          <div>
+                            <h6 :class="{ '!text-brand-cornflower-blue': isTest }">Max Service Deliveries</h6>
+                              <p><span x-data x-tooltip.raw="Maximum number of payment units that can be delivered. Each payment unit is a service delivery">100000</span></p>
+                          </div>
+                      </div>
+                  </div>
+
+                  <!--Separator Between basic detail columns-->
+                  
+                      <div class="w-0.5 h-10 bg-slate-200 bg-opacity-30"></div>
+                  
+                  
+                  <div class="flex gap-2 items-start">
+                    <div :class="isTest? 'infocard-dark' : 'infocard-light'">
+                          <i class="fa-solid fa-money-bill"
+                             :class="{'!text-brand-cornflower-blue': isTest}"
+                          ></i>
+                          <div>
+                            <h6 :class="{ '!text-brand-cornflower-blue': isTest }">Max Budget</h6>
+                              <p><span x-data x-tooltip.raw="Maximum payments that can be made for workers and organization">NGN 200,000</span></p>
+                          </div>
+                      </div>
+                  </div>
+
+                  <!--Separator Between basic detail columns-->
+                  
+                  
+                  <div>
+                    
+                        <span class="badge badge-md positive-dark">Active</span>
+                    
+                  </div>
+              </div>
+          </div>
+      </div>
+         <div>
+            <!--Skeletons -->
+           
+<!-- Skeleton Loader with HTMX call -->
+<div
+  id="opp-stats-container"
+  hx-get="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/opportunity_delivery_stats/"
+  hx-trigger="load"
+  hx-target="#opp-stats-container"
+  hx-swap="innerHTML"
+>
+  <div class="flex flex-row flex-wrap gap-4 p-4 rounded-t-lg bg-white animate-pulse">
+    
+    <div class="w-fit flex-1 flex flex-col gap-4">
+      <div class="flex flex-row items-center gap-2">
+        <div class="flex-1 h-4 bg-gray-200 rounded"></div>
+        <div class="h-3 w-20 bg-gray-200 rounded"></div>
+      </div>
+      
+      <div class="flex gap-2 rounded-lg p-4 items-center bg-brand-indigo">
+        <div class="w-10 h-10 rounded-md bg-gray-300 flex items-center justify-center">
+          <div class="w-4 h-4 bg-gray-200 rounded"></div>
+        </div>
+        <div class="flex-1 space-y-1">
+          <div class="h-3 w-20 bg-gray-200 rounded"></div>
+          <div class="h-4 w-24 bg-gray-300 rounded"></div>
+        </div>
+        <div class="h-6 w-10 bg-gray-200 rounded"></div>
+        <div class="ml-2 h-5 w-10 bg-green-300 rounded-full"></div>
+        <div class="h-4 w-4 bg-gray-200 rounded"></div>
+      </div>
+      
+      <div class="flex gap-2 rounded-lg p-4 items-center bg-brand-indigo">
+        <div class="w-10 h-10 rounded-md bg-gray-300 flex items-center justify-center">
+          <div class="w-4 h-4 bg-gray-200 rounded"></div>
+        </div>
+        <div class="flex-1 space-y-1">
+          <div class="h-3 w-20 bg-gray-200 rounded"></div>
+          <div class="h-4 w-24 bg-gray-300 rounded"></div>
+        </div>
+        <div class="h-6 w-10 bg-gray-200 rounded"></div>
+        <div class="ml-2 h-5 w-10 bg-green-300 rounded-full"></div>
+        <div class="h-4 w-4 bg-gray-200 rounded"></div>
+      </div>
+      
+    </div>
+    
+    <div class="w-fit flex-1 flex flex-col gap-4">
+      <div class="flex flex-row items-center gap-2">
+        <div class="flex-1 h-4 bg-gray-200 rounded"></div>
+        <div class="h-3 w-20 bg-gray-200 rounded"></div>
+      </div>
+      
+      <div class="flex gap-2 rounded-lg p-4 items-center bg-brand-indigo">
+        <div class="w-10 h-10 rounded-md bg-gray-300 flex items-center justify-center">
+          <div class="w-4 h-4 bg-gray-200 rounded"></div>
+        </div>
+        <div class="flex-1 space-y-1">
+          <div class="h-3 w-20 bg-gray-200 rounded"></div>
+          <div class="h-4 w-24 bg-gray-300 rounded"></div>
+        </div>
+        <div class="h-6 w-10 bg-gray-200 rounded"></div>
+        <div class="ml-2 h-5 w-10 bg-green-300 rounded-full"></div>
+        <div class="h-4 w-4 bg-gray-200 rounded"></div>
+      </div>
+      
+      <div class="flex gap-2 rounded-lg p-4 items-center bg-brand-indigo">
+        <div class="w-10 h-10 rounded-md bg-gray-300 flex items-center justify-center">
+          <div class="w-4 h-4 bg-gray-200 rounded"></div>
+        </div>
+        <div class="flex-1 space-y-1">
+          <div class="h-3 w-20 bg-gray-200 rounded"></div>
+          <div class="h-4 w-24 bg-gray-300 rounded"></div>
+        </div>
+        <div class="h-6 w-10 bg-gray-200 rounded"></div>
+        <div class="ml-2 h-5 w-10 bg-green-300 rounded-full"></div>
+        <div class="h-4 w-4 bg-gray-200 rounded"></div>
+      </div>
+      
+    </div>
+    
+    <div class="w-fit flex-1 flex flex-col gap-4">
+      <div class="flex flex-row items-center gap-2">
+        <div class="flex-1 h-4 bg-gray-200 rounded"></div>
+        <div class="h-3 w-20 bg-gray-200 rounded"></div>
+      </div>
+      
+      <div class="flex gap-2 rounded-lg p-4 items-center bg-brand-indigo">
+        <div class="w-10 h-10 rounded-md bg-gray-300 flex items-center justify-center">
+          <div class="w-4 h-4 bg-gray-200 rounded"></div>
+        </div>
+        <div class="flex-1 space-y-1">
+          <div class="h-3 w-20 bg-gray-200 rounded"></div>
+          <div class="h-4 w-24 bg-gray-300 rounded"></div>
+        </div>
+        <div class="h-6 w-10 bg-gray-200 rounded"></div>
+        <div class="ml-2 h-5 w-10 bg-green-300 rounded-full"></div>
+        <div class="h-4 w-4 bg-gray-200 rounded"></div>
+      </div>
+      
+      <div class="flex gap-2 rounded-lg p-4 items-center bg-brand-indigo">
+        <div class="w-10 h-10 rounded-md bg-gray-300 flex items-center justify-center">
+          <div class="w-4 h-4 bg-gray-200 rounded"></div>
+        </div>
+        <div class="flex-1 space-y-1">
+          <div class="h-3 w-20 bg-gray-200 rounded"></div>
+          <div class="h-4 w-24 bg-gray-300 rounded"></div>
+        </div>
+        <div class="h-6 w-10 bg-gray-200 rounded"></div>
+        <div class="ml-2 h-5 w-10 bg-green-300 rounded-full"></div>
+        <div class="h-4 w-4 bg-gray-200 rounded"></div>
+      </div>
+      
+    </div>
+    
+  </div>
+</div>
+
+
+
+           
+<!-- Skeleton Loader with HTMX call -->
+<div
+  id="worker-progress-container"
+  hx-get="/a/march-demo/opportunity/1237/opportunity_worker_progress_stats/"
+  hx-trigger="load"
+  hx-target="#worker-progress-container"
+  hx-swap="innerHTML"
+>
+  <div class="flex gap-4 w-full justify-between p-4 rounded-b-xl bg-white animate-pulse">
+    
+    <div class="flex flex-col p-2 bg-indigo-50 rounded-xl w-full">
+      <!-- Section title skeleton -->
+      <div class="h-4 w-1/3 bg-indigo-200 rounded my-2"></div>
+
+      <div class="bg-white p-4 rounded-lg">
+        
+        <div class="flex gap-8 w-full items-end rounded-lg my-3">
+          <div class="flex flex-col gap-1.5 w-full">
+            <div class="flex gap-4 items-center">
+              <!-- Progress title skeleton -->
+              <div class="h-3 w-1/4 bg-gray-300 rounded"></div>
+              <!-- Badge skeleton -->
+              <div class="h-5 w-10 bg-indigo-100 rounded-full"></div>
+            </div>
+            <!-- Progress bar skeleton -->
+            <div class="w-full bg-gray-200 rounded-full h-2.5">
+              <div class="bg-indigo-300 h-2.5 rounded-full" style="width: 50%"></div>
+            </div>
+          </div>
+          <!-- Total skeleton -->
+          <div class="h-5 w-6 bg-gray-300 rounded"></div>
+        </div>
+        
+        <div class="flex gap-8 w-full items-end rounded-lg my-3">
+          <div class="flex flex-col gap-1.5 w-full">
+            <div class="flex gap-4 items-center">
+              <!-- Progress title skeleton -->
+              <div class="h-3 w-1/4 bg-gray-300 rounded"></div>
+              <!-- Badge skeleton -->
+              <div class="h-5 w-10 bg-indigo-100 rounded-full"></div>
+            </div>
+            <!-- Progress bar skeleton -->
+            <div class="w-full bg-gray-200 rounded-full h-2.5">
+              <div class="bg-indigo-300 h-2.5 rounded-full" style="width: 50%"></div>
+            </div>
+          </div>
+          <!-- Total skeleton -->
+          <div class="h-5 w-6 bg-gray-300 rounded"></div>
+        </div>
+        
+        <div class="flex gap-8 w-full items-end rounded-lg my-3">
+          <div class="flex flex-col gap-1.5 w-full">
+            <div class="flex gap-4 items-center">
+              <!-- Progress title skeleton -->
+              <div class="h-3 w-1/4 bg-gray-300 rounded"></div>
+              <!-- Badge skeleton -->
+              <div class="h-5 w-10 bg-indigo-100 rounded-full"></div>
+            </div>
+            <!-- Progress bar skeleton -->
+            <div class="w-full bg-gray-200 rounded-full h-2.5">
+              <div class="bg-indigo-300 h-2.5 rounded-full" style="width: 50%"></div>
+            </div>
+          </div>
+          <!-- Total skeleton -->
+          <div class="h-5 w-6 bg-gray-300 rounded"></div>
+        </div>
+        
+      </div>
+    </div>
+    
+    <div class="flex flex-col p-2 bg-indigo-50 rounded-xl w-full">
+      <!-- Section title skeleton -->
+      <div class="h-4 w-1/3 bg-indigo-200 rounded my-2"></div>
+
+      <div class="bg-white p-4 rounded-lg">
+        
+        <div class="flex gap-8 w-full items-end rounded-lg my-3">
+          <div class="flex flex-col gap-1.5 w-full">
+            <div class="flex gap-4 items-center">
+              <!-- Progress title skeleton -->
+              <div class="h-3 w-1/4 bg-gray-300 rounded"></div>
+              <!-- Badge skeleton -->
+              <div class="h-5 w-10 bg-indigo-100 rounded-full"></div>
+            </div>
+            <!-- Progress bar skeleton -->
+            <div class="w-full bg-gray-200 rounded-full h-2.5">
+              <div class="bg-indigo-300 h-2.5 rounded-full" style="width: 50%"></div>
+            </div>
+          </div>
+          <!-- Total skeleton -->
+          <div class="h-5 w-6 bg-gray-300 rounded"></div>
+        </div>
+        
+        <div class="flex gap-8 w-full items-end rounded-lg my-3">
+          <div class="flex flex-col gap-1.5 w-full">
+            <div class="flex gap-4 items-center">
+              <!-- Progress title skeleton -->
+              <div class="h-3 w-1/4 bg-gray-300 rounded"></div>
+              <!-- Badge skeleton -->
+              <div class="h-5 w-10 bg-indigo-100 rounded-full"></div>
+            </div>
+            <!-- Progress bar skeleton -->
+            <div class="w-full bg-gray-200 rounded-full h-2.5">
+              <div class="bg-indigo-300 h-2.5 rounded-full" style="width: 50%"></div>
+            </div>
+          </div>
+          <!-- Total skeleton -->
+          <div class="h-5 w-6 bg-gray-300 rounded"></div>
+        </div>
+        
+        <div class="flex gap-8 w-full items-end rounded-lg my-3">
+          <div class="flex flex-col gap-1.5 w-full">
+            <div class="flex gap-4 items-center">
+              <!-- Progress title skeleton -->
+              <div class="h-3 w-1/4 bg-gray-300 rounded"></div>
+              <!-- Badge skeleton -->
+              <div class="h-5 w-10 bg-indigo-100 rounded-full"></div>
+            </div>
+            <!-- Progress bar skeleton -->
+            <div class="w-full bg-gray-200 rounded-full h-2.5">
+              <div class="bg-indigo-300 h-2.5 rounded-full" style="width: 50%"></div>
+            </div>
+          </div>
+          <!-- Total skeleton -->
+          <div class="h-5 w-6 bg-gray-300 rounded"></div>
+        </div>
+        
+      </div>
+    </div>
+    
+    <div class="flex flex-col p-2 bg-indigo-50 rounded-xl w-full">
+      <!-- Section title skeleton -->
+      <div class="h-4 w-1/3 bg-indigo-200 rounded my-2"></div>
+
+      <div class="bg-white p-4 rounded-lg">
+        
+        <div class="flex gap-8 w-full items-end rounded-lg my-3">
+          <div class="flex flex-col gap-1.5 w-full">
+            <div class="flex gap-4 items-center">
+              <!-- Progress title skeleton -->
+              <div class="h-3 w-1/4 bg-gray-300 rounded"></div>
+              <!-- Badge skeleton -->
+              <div class="h-5 w-10 bg-indigo-100 rounded-full"></div>
+            </div>
+            <!-- Progress bar skeleton -->
+            <div class="w-full bg-gray-200 rounded-full h-2.5">
+              <div class="bg-indigo-300 h-2.5 rounded-full" style="width: 50%"></div>
+            </div>
+          </div>
+          <!-- Total skeleton -->
+          <div class="h-5 w-6 bg-gray-300 rounded"></div>
+        </div>
+        
+        <div class="flex gap-8 w-full items-end rounded-lg my-3">
+          <div class="flex flex-col gap-1.5 w-full">
+            <div class="flex gap-4 items-center">
+              <!-- Progress title skeleton -->
+              <div class="h-3 w-1/4 bg-gray-300 rounded"></div>
+              <!-- Badge skeleton -->
+              <div class="h-5 w-10 bg-indigo-100 rounded-full"></div>
+            </div>
+            <!-- Progress bar skeleton -->
+            <div class="w-full bg-gray-200 rounded-full h-2.5">
+              <div class="bg-indigo-300 h-2.5 rounded-full" style="width: 50%"></div>
+            </div>
+          </div>
+          <!-- Total skeleton -->
+          <div class="h-5 w-6 bg-gray-300 rounded"></div>
+        </div>
+        
+        <div class="flex gap-8 w-full items-end rounded-lg my-3">
+          <div class="flex flex-col gap-1.5 w-full">
+            <div class="flex gap-4 items-center">
+              <!-- Progress title skeleton -->
+              <div class="h-3 w-1/4 bg-gray-300 rounded"></div>
+              <!-- Badge skeleton -->
+              <div class="h-5 w-10 bg-indigo-100 rounded-full"></div>
+            </div>
+            <!-- Progress bar skeleton -->
+            <div class="w-full bg-gray-200 rounded-full h-2.5">
+              <div class="bg-indigo-300 h-2.5 rounded-full" style="width: 50%"></div>
+            </div>
+          </div>
+          <!-- Total skeleton -->
+          <div class="h-5 w-6 bg-gray-300 rounded"></div>
+        </div>
+        
+      </div>
+    </div>
+    
+  </div>
+</div>
+
+
+
+           
+<div
+  id="opp-funnel-container"
+  hx-get="/a/march-demo/opportunity/1237/opportunity_funnel_progress_stats/"
+  hx-trigger="load"
+  hx-target="#opp-funnel-container"
+  hx-swap="innerHTML"
+  class="mt-4"
+>
+  <div class="flex flex-col gap-8 w-full p-8 shadow-sm rounded-xl bg-white animate-pulse">
+    <h4 class="text-brand-deep-purple font-medium">Connect Worker Progress Funnel</h4>
+    <div class="flex flex-col md:flex-row gap-4 justify-between">
+      
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <div class="bg-indigo-100 h-12 w-12 rounded flex items-center justify-center">
+            <div class="bg-indigo-300 h-6 w-6 rounded"></div>
+          </div>
+          
+          <div class="relative w-32 h-0.5 bg-transparent border-dashed border-t-2 border-gray-300 my-6">
+            <div class="absolute -right-1 -top-[6.5px] w-2.5 h-2.5 border-t-2 border-r-2 border-gray-300 rotate-45"></div>
+          </div>
+          
+        </div>
+        <div class="h-6 w-12 bg-gray-200 rounded"></div>
+        <div class="h-3 w-20 bg-gray-200 rounded"></div>
+      </div>
+      
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <div class="bg-indigo-100 h-12 w-12 rounded flex items-center justify-center">
+            <div class="bg-indigo-300 h-6 w-6 rounded"></div>
+          </div>
+          
+          <div class="relative w-32 h-0.5 bg-transparent border-dashed border-t-2 border-gray-300 my-6">
+            <div class="absolute -right-1 -top-[6.5px] w-2.5 h-2.5 border-t-2 border-r-2 border-gray-300 rotate-45"></div>
+          </div>
+          
+        </div>
+        <div class="h-6 w-12 bg-gray-200 rounded"></div>
+        <div class="h-3 w-20 bg-gray-200 rounded"></div>
+      </div>
+      
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <div class="bg-indigo-100 h-12 w-12 rounded flex items-center justify-center">
+            <div class="bg-indigo-300 h-6 w-6 rounded"></div>
+          </div>
+          
+          <div class="relative w-32 h-0.5 bg-transparent border-dashed border-t-2 border-gray-300 my-6">
+            <div class="absolute -right-1 -top-[6.5px] w-2.5 h-2.5 border-t-2 border-r-2 border-gray-300 rotate-45"></div>
+          </div>
+          
+        </div>
+        <div class="h-6 w-12 bg-gray-200 rounded"></div>
+        <div class="h-3 w-20 bg-gray-200 rounded"></div>
+      </div>
+      
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <div class="bg-indigo-100 h-12 w-12 rounded flex items-center justify-center">
+            <div class="bg-indigo-300 h-6 w-6 rounded"></div>
+          </div>
+          
+          <div class="relative w-32 h-0.5 bg-transparent border-dashed border-t-2 border-gray-300 my-6">
+            <div class="absolute -right-1 -top-[6.5px] w-2.5 h-2.5 border-t-2 border-r-2 border-gray-300 rotate-45"></div>
+          </div>
+          
+        </div>
+        <div class="h-6 w-12 bg-gray-200 rounded"></div>
+        <div class="h-3 w-20 bg-gray-200 rounded"></div>
+      </div>
+      
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <div class="bg-indigo-100 h-12 w-12 rounded flex items-center justify-center">
+            <div class="bg-indigo-300 h-6 w-6 rounded"></div>
+          </div>
+          
+          <div class="relative w-32 h-0.5 bg-transparent border-dashed border-t-2 border-gray-300 my-6">
+            <div class="absolute -right-1 -top-[6.5px] w-2.5 h-2.5 border-t-2 border-r-2 border-gray-300 rotate-45"></div>
+          </div>
+          
+        </div>
+        <div class="h-6 w-12 bg-gray-200 rounded"></div>
+        <div class="h-3 w-20 bg-gray-200 rounded"></div>
+      </div>
+      
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <div class="bg-indigo-100 h-12 w-12 rounded flex items-center justify-center">
+            <div class="bg-indigo-300 h-6 w-6 rounded"></div>
+          </div>
+          
+          <div class="relative w-32 h-0.5 bg-transparent border-dashed border-t-2 border-gray-300 my-6">
+            <div class="absolute -right-1 -top-[6.5px] w-2.5 h-2.5 border-t-2 border-r-2 border-gray-300 rotate-45"></div>
+          </div>
+          
+        </div>
+        <div class="h-6 w-12 bg-gray-200 rounded"></div>
+        <div class="h-3 w-20 bg-gray-200 rounded"></div>
+      </div>
+      
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <div class="bg-indigo-100 h-12 w-12 rounded flex items-center justify-center">
+            <div class="bg-indigo-300 h-6 w-6 rounded"></div>
+          </div>
+          
+        </div>
+        <div class="h-6 w-12 bg-gray-200 rounded"></div>
+        <div class="h-3 w-20 bg-gray-200 rounded"></div>
+      </div>
+      
+    </div>
+  </div>
+</div>
+
+
+
+        </div>
+      
+      
+
+<div x-show="showCatchmentExportModal"
+     x-cloak
+     x-transition.opacity
+     class="modal-backdrop"
+     @keydown.escape.window="showCatchmentExportModal = false">
+  <div @click.outside="showCatchmentExportModal = false"
+       class="modal">
+
+    <div class="flex justify-between items-center pb-2 mb-4">
+      <h2 class="text-lg font-medium text-brand-deep-purple">
+        Export Catchment Area
+      </h2>
+      <button @click="showCatchmentExportModal = false" class="text-gray-500 hover:text-gray-700">
+        <i class="fa-solid fa-xmark text-xl"></i>
+      </button>
+    </div>
+
+    <form action="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/catchment_area_export/"
+          method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrfmiddlewaretoken" value="W3yJAiaeFdqljpQy9sNmWUY3PzCNOhTAUZZP7VpuNjFujGWIMwSuYkfNTwreG69I">
+      <div class="mb-4">
+        
+
+<input type="hidden" name="csrfmiddlewaretoken" value="W3yJAiaeFdqljpQy9sNmWUY3PzCNOhTAUZZP7VpuNjFujGWIMwSuYkfNTwreG69I"> <div  class="flex flex-col" > <div id="div_id_format" class="mb-3"> <label for="id_format" class="block text-gray-700 text-sm font-bold mb-2">
+            Format<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="format"  id="id_format"> <option value="csv"  selected
+ >CSV</option> <option value="xlsx" 
+ >Excel</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> </div>
+
+      </div>
+
+      <div class="flex justify-end gap-2 pt-4">
+        <button type="button" class="button button-md outline-style" @click="showCatchmentExportModal = false">
+          Close
+        </button>
+        <button type="submit" class="button button-md primary-dark">
+          <i class="bi bi-filetype-xls"></i>
+          Export
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+      
+      
+
+<div x-show="showCatchmentImportModal"
+     x-cloak
+     x-transition.opacity
+     class="modal-backdrop"
+     @keydown.escape.window="showCatchmentImportModal = false">
+  <div @click.outside="showCatchmentImportModal = false"
+       class="modal">
+
+    <div class="flex justify-between items-center pb-2 mb-4">
+      <h2 class="text-lg font-medium text-brand-deep-purple">
+        Import Catchment Area
+      </h2>
+      <button @click="showCatchmentImportModal = false" class="text-gray-500 hover:text-gray-700">
+        <i class="fa-solid fa-xmark text-xl"></i>
+      </button>
+    </div>
+
+    <form action="/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/catchment_area_import/"
+          method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrfmiddlewaretoken" value="W3yJAiaeFdqljpQy9sNmWUY3PzCNOhTAUZZP7VpuNjFujGWIMwSuYkfNTwreG69I">
+
+      
+      
+      <div class="mb-4">
+        <label for="importFile_showCatchmentImportModal" class="block text-sm font-medium text-gray-700 mb-1">
+          Select file to import
+        </label>
+
+        <input type="file"
+               id="importFile_showCatchmentImportModal"
+               name="catchments" 
+               required
+               class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-deep-purple focus:border-brand-deep-purple p-2" 
+               aria-describedby="importFile_showCatchmentImportModal_help" />
+
+        
+        <p class="mt-2 text-xs text-gray-500" id="importFile_showCatchmentImportModal_help">
+          The file must contain at least the "Area Name", "Active", "Latitude", "Longitude", "Site code" and "Radius" column.
+        </p>
+        
+      </div>
+      
+
+      <div class="flex justify-end gap-2 pt-4">
+        <button type="button" @click="showCatchmentImportModal = false"
+                class="button button-md outline-style">
+          Close
+        </button>
+        <button type="submit"
+                class="button button-md primary-dark">
+          <i class="bi bi-cloud-arrow-up"></i>
+          Import
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+    </div>
+
+      </main>
+    </div>
+
+    
+        <open-chat-studio-widget
+          class="z-50"
+          visible="false"
+          chatbot-id="104d0f84-a609-4676-b8c8-35d992fe5ffc"
+          embed-key="tFANzDEMLZzZgk_ZEeE4yu1LYwVWavFt"
+          button-text="Need help?"
+          position="right"
+          expanded="false">
+        </open-chat-studio-widget>
+    
+
+  
+    
+  
+  </body>
+</html>

@@ -4,14 +4,11 @@ import type {
   Invite,
   Invoice,
   DeliveryType,
+  VerificationFlags,
+  PaymentUnit,
+  DeliverUnit,
 } from './types.js';
 
-/**
- * The contract every Connect backend implements. Method signatures are sized
- * to the live Connect data model (see types.ts) — when CCC-301 ships and we
- * gain a real REST API, the existing CompositeBackend dispatches re-route to
- * a `RestBackend` impl with no signature changes for callers.
- */
 export interface ConnectClient {
   // Programs (CRUD)
   listPrograms(args: { organization_slug: string; name?: string }): Promise<{ programs: Program[] }>;
@@ -37,7 +34,6 @@ export interface ConnectClient {
     end_date?: string;
   }): Promise<Program>;
 
-  // Lookups (read-only) — the Connect program-init form's <select> options
   listDeliveryTypes(args: { organization_slug: string }): Promise<{ delivery_types: DeliveryType[] }>;
 
   // Opportunities (CRUD)
@@ -66,16 +62,49 @@ export interface ConnectClient {
     name?: string;
     short_description?: string;
     description?: string;
+    end_date?: string;
+    is_test?: boolean;
   }): Promise<Opportunity>;
 
-  // Lifecycle
-  activateOpportunity(args: { organization_slug: string; opportunity_id: string }): Promise<{ ok: true; status: 'active' }>;
-
-  // Invites
-  sendLloInvite(args: {
+  // Per-opportunity configuration (post-create)
+  setVerificationFlags(args: {
     organization_slug: string;
     opportunity_id: string;
-    organization_name: string;
+    flags: VerificationFlags;
+  }): Promise<{ ok: true }>;
+  listDeliverUnits(args: {
+    organization_slug: string;
+    opportunity_id: string;
+  }): Promise<{ deliver_units: DeliverUnit[] }>;
+  createPaymentUnit(args: {
+    organization_slug: string;
+    opportunity_id: string;
+    name: string;
+    description: string;
+    amount: number;
+    max_total?: number;
+    max_daily?: number;
+    start_date?: string;
+    end_date?: string;
+    required_deliver_unit_ids: number[];
+    optional_deliver_unit_ids?: number[];
+  }): Promise<PaymentUnit>;
+  listPaymentUnits(args: {
+    organization_slug: string;
+    opportunity_id: string;
+  }): Promise<{ payment_units: PaymentUnit[] }>;
+
+  // Lifecycle
+  activateOpportunity(args: {
+    organization_slug: string;
+    opportunity_id: string;
+  }): Promise<{ ok: true; status: 'active' }>;
+
+  // Invites (program-level — invite an LLO org to a program/its opps)
+  sendLloInvite(args: {
+    organization_slug: string;
+    opportunity_id: string;       // semantically a program_id today; see Notes
+    organization_name: string;    // the LLO org's slug
     contact_email: string;
   }): Promise<Invite>;
   listInvites(args: { organization_slug: string; opportunity_id: string }): Promise<{ invites: Invite[] }>;
