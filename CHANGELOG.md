@@ -5,6 +5,51 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.8.0 — 2026-04-28
+
+New `ace-connect` MCP server, mirroring the `ace-ocs` pattern. Drives
+`connect.dimagi.com` through a Playwright HTTP-only session
+authenticated as `ace@dimagi-ai.com` via OAuth-with-CommCareHQ.
+Unblocks the six skills that have been stuck on Cal's CCC-301 work
+(`connect-program-setup`, `connect-opp-setup`, `llo-onboarding`,
+`llo-launch`, `opp-closeout`, plus the Connect-side prep for
+`llo-invite`) — once the real REST APIs land, individual atoms flip
+from PLAYWRIGHT to REST one line at a time in `capability-map.ts`.
+
+### Added
+
+- `mcp/connect-server.ts` registering 14 atomic Connect capabilities
+  (5 Programs, 4 Opportunities, 1 lifecycle, 2 invites, 2 invoices).
+- `mcp/connect/` mirroring `mcp/ocs/`'s shape: capability map, client
+  interface, types, errors, logging proxy, REST stubs, Playwright
+  backend, composite router.
+- `mcp/connect/auth/playwright-session.ts` and `hq-oauth-login.ts` —
+  automated HQ-OAuth login from `.env` creds, with manual fallback
+  via the new `/ace:connect-login` slash command for MFA/SSO edge cases.
+- `bin/ace-doctor` now reports `connect_env` and `connect_session`
+  freshness alongside the existing OCS/Drive checks.
+- `.env.tpl` adds `CONNECT_BASE_URL`, `ACE_HQ_USERNAME`,
+  `ACE_HQ_PASSWORD` (1Password-backed via `ACE - CommCareHQ`).
+- Probe scripts (`scripts/probe-connect-*`) plus captured HTML
+  fixtures under `test/fixtures/connect-html/` for unit-testable
+  scrape helpers — same durability pattern as the OCS contract probes.
+- Live integration test at `test/mcp/connect/integration/e2e.integration.test.ts`,
+  gated on `CONNECT_INTEGRATION=1`.
+
+### Notes
+
+- `ace@dimagi-ai.com` must be granted org `Admin` role in the target
+  Connect organization. Without that, authoring atoms fail with HTTP
+  errors or empty list scrapes (the user's view defaults to the
+  network-member-side "Apply to Program" UI).
+- v1 ships with conservative invoice atoms (page shape not yet
+  observed) and no verification/delivery/payment-unit atoms (those
+  concepts didn't surface on the program/opp pages we probed). Both
+  gaps tracked as TODOs in `playwright.ts`.
+- Skill rewrites (removing the `## Current Workaround` blocks)
+  follow in subsequent PRs; this version ships only the MCP layer
+  with full E2E coverage so consuming skills can adopt incrementally.
+
 ## 0.7.1 — 2026-04-28
 
 Catch the class of silent-misconfig surfaced by the 2026-04-27
