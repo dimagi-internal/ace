@@ -252,10 +252,50 @@ else
   warn "ace_web: no local checkout of jjackson/ace-web found" "clone if you need the browser harness"
 fi
 
-if command -v connect-mcp >/dev/null 2>&1 || [ -d "$HOME/emdash-projects/connect-labs" ]; then
-  pass "connect_labs: available"
+# --- Sibling plugin installs (Phase 2 + Phase 3 dependencies) ---
+# Nova drives Phase 2 (commcare-setup): pdd-to-learn-app, pdd-to-deliver-app,
+# app-deploy. Without Nova installed, those skills produce stub artifacts.
+# connect-labs drives Phase 3 (connect-setup): connect-program-setup,
+# connect-opp-setup. Without it, the skills can't actually create programs
+# or opportunities. Both failure modes are silent — the skills run, write
+# something, and the operator only notices days later when nothing works.
+# The signal we can check from here is simple and authoritative: is the
+# plugin listed in ~/.claude/plugins/installed_plugins.json?
+PLUGIN_REG="$HOME/.claude/plugins/installed_plugins.json"
+
+probe_plugin() {
+  # probe_plugin <pattern> — print the matched plugin key (or empty).
+  # Pattern matches against keys in installed_plugins.json (e.g., "nova@" or "connect-labs").
+  [ -f "$PLUGIN_REG" ] || return
+  node -e "
+    try {
+      const d = JSON.parse(require('fs').readFileSync('$PLUGIN_REG','utf8'));
+      const plugins = d.plugins || d;
+      const pat = '$1';
+      for (const k of Object.keys(plugins)) {
+        if (k.indexOf(pat) !== -1) { console.log(k); break; }
+      }
+    } catch(_) {}
+  " 2>/dev/null
+}
+
+NOVA_KEY="$(probe_plugin nova)"
+if [ -n "$NOVA_KEY" ]; then
+  pass "nova_plugin: $NOVA_KEY installed"
 else
-  warn "connect_labs: not detected" "install separately if skills need CommCare/Connect MCP tools"
+  warn "nova_plugin: not installed (Phase 2 commcare-setup degrades to HITL stubs — pdd-to-learn-app, pdd-to-deliver-app, app-deploy will not produce real apps)" "/plugin install nova@nova-marketplace, then sign in via OAuth on first /nova:autobuild"
+fi
+
+CL_KEY="$(probe_plugin connect-labs)"
+if [ -n "$CL_KEY" ]; then
+  pass "connect_labs_plugin: $CL_KEY installed"
+else
+  warn "connect_labs_plugin: not installed (Phase 3 connect-setup degrades to HITL — connect-program-setup, connect-opp-setup cannot create programs or opportunities)" "install the connect-labs plugin from its marketplace"
+fi
+
+# Local checkout is still useful for development; keep as a soft hint.
+if [ -d "$HOME/emdash-projects/connect-labs" ]; then
+  pass "connect_labs_repo: local checkout detected (dev mode)"
 fi
 
 # --- Runtime readiness (things needed to actually run an opportunity) ---

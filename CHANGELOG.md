@@ -5,6 +5,34 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.8 — 2026-04-28
+
+`/ace:doctor` now detects when the Nova or connect-labs sibling plugins
+are not installed. Both produce silent failure modes: without Nova, Phase
+2 (commcare-setup) writes stub artifacts instead of real CommCare apps;
+without connect-labs, Phase 3 (connect-setup) cannot actually create
+Programs or Opportunities. Operators historically discovered these
+mid-run, days after the env had silently degraded.
+
+### Changed
+
+- **`bin/ace-doctor`** — replaces the soft `connect_labs: available`
+  check (which was satisfied by either a non-existent `connect-mcp`
+  command OR the repo being cloned, neither of which proves the plugin
+  is loaded) with two authoritative checks against
+  `~/.claude/plugins/installed_plugins.json`:
+  - `nova_plugin` — PASS if `nova@*` is installed; otherwise WARN with
+    the install command.
+  - `connect_labs_plugin` — PASS if any key containing `connect-labs`
+    is installed; otherwise WARN.
+  - The local-repo signal is preserved as `connect_labs_repo` (dev mode
+    hint, separate from plugin-installed state).
+
+  Surfaced by canopy session-review findings #3 and #4 (2026-04-28
+  cycle), which observed Phase 2 + Phase 3 silently HITL-degrading
+  during dogfood runs because the operator had not realized the
+  sibling plugins weren't loaded.
+
 ## 0.6.7 — 2026-04-28
 
 `/ace:update` Step 1 now reads the remote VERSION via `git fetch` + `git
