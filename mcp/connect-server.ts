@@ -167,8 +167,66 @@ server.tool('connect_update_opportunity',
     name: z.string().optional(),
     short_description: z.string().max(50).optional(),
     description: z.string().optional(),
+    end_date: z.string().optional(),
+    is_test: z.boolean().optional(),
   },
   async (args) => json(await serialize(async () => (await client()).updateOpportunity(args)))
+);
+
+// ── Per-opportunity configuration ────────────────────────────────
+
+const VerificationFlagsZ = z.object({
+  duplicate: z.boolean().optional(),
+  gps: z.boolean().optional(),
+  catchment_areas: z.boolean().optional(),
+  location: z.boolean().optional(),
+  form_submission_start: z.string().optional(),
+  form_submission_end: z.string().optional(),
+  deliver_unit_checks: z.array(z.object({
+    deliver_unit_id: z.number().int(),
+    check_attachments: z.boolean(),
+    duration_seconds: z.number().int().optional(),
+    id: z.number().int().optional(),
+  })).optional(),
+  form_field_rules: z.array(z.object({
+    name: z.string(),
+    question_path: z.string(),
+    question_value: z.string(),
+    deliver_unit_id: z.number().int(),
+    id: z.number().int().optional(),
+  })).optional(),
+});
+
+server.tool('connect_set_verification_flags',
+  { organization_slug: z.string(), opportunity_id: z.string(), flags: VerificationFlagsZ },
+  async (args) => json(await serialize(async () => (await client()).setVerificationFlags(args)))
+);
+
+server.tool('connect_list_deliver_units',
+  { organization_slug: z.string(), opportunity_id: z.string() },
+  async (args) => json(await serialize(async () => (await client()).listDeliverUnits(args)))
+);
+
+server.tool('connect_create_payment_unit',
+  {
+    organization_slug: z.string(),
+    opportunity_id: z.string(),
+    name: z.string(),
+    description: z.string(),
+    amount: z.number(),
+    max_total: z.number().int().optional(),
+    max_daily: z.number().int().optional(),
+    start_date: z.string().optional(),
+    end_date: z.string().optional(),
+    required_deliver_unit_ids: z.array(z.number().int()),
+    optional_deliver_unit_ids: z.array(z.number().int()).optional(),
+  },
+  async (args) => json(await serialize(async () => (await client()).createPaymentUnit(args)))
+);
+
+server.tool('connect_list_payment_units',
+  { organization_slug: z.string(), opportunity_id: z.string() },
+  async (args) => json(await serialize(async () => (await client()).listPaymentUnits(args)))
 );
 
 server.tool('connect_activate_opportunity',

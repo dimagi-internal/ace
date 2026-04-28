@@ -9,7 +9,7 @@
  * from /a/ai-demo-space/program/ (and friends).
  */
 
-import type { DeliveryType, Program, Opportunity, Invite } from '../types.js';
+import type { DeliveryType, Program, Opportunity, Invite, DeliverUnit, PaymentUnit } from '../types.js';
 
 /** Extract the csrfmiddlewaretoken value from a Django form HTML. */
 export function extractFormCsrfToken(html: string): string | undefined {
@@ -81,30 +81,32 @@ export function parseProgramsList(html: string): Program[] {
 }
 
 /**
- * Parse Connect's opportunity list page. The list page is currently behind
- * a different route (per-program `<program_uuid>/opportunity/` we believe);
- * this helper covers both org-wide and program-scoped listings.
- *
- * Row anchor: `hx-get="/a/<org>/opportunity/<uuid>/...` and the same
- * `<p class="card_title">` convention as programs.
+ * Parse Connect's opportunity list page. Each row contains an anchor:
+ *   <a href=/a/<org>/opportunity/<uuid>/ class="flex flex-col ...">
+ *     <p class="text-sm text-slate-900">NAME</p>
+ *     <p class="text-xs text-slate-400">SUBTITLE</p>
+ *   </a>
+ * (Confirmed live 2026-04-28 against march-demo's opportunity list.)
  */
 export function parseOpportunitiesList(html: string): Pick<Opportunity, 'id' | 'name' | 'short_description'>[] {
   const out: Pick<Opportunity, 'id' | 'name' | 'short_description'>[] = [];
-  const cardRegex = /<div[^>]*class="[^"]*shadow-sm[^"]*"[^>]*>([\s\S]*?)(?=<div[^>]*class="[^"]*shadow-sm|<\/section>|<\/main>)/g;
-  for (const card of html.matchAll(cardRegex)) {
-    const body = card[1];
-    const titleMatch = body.match(/<p class="card_title"[^>]*>([\s\S]*?)<\/p>/);
-    const descMatch = body.match(/<p class="card_description[^"]*"[^>]*>([\s\S]*?)<\/p>/);
-    const uuidMatch = body.match(/\/opportunity\/([a-f0-9-]{36})/);
-    if (titleMatch && uuidMatch) {
+  // Match anchors that wrap the title block. The anchor's class is "flex flex-col items-start"
+  const anchorRegex = /<a\s+href=["']?\/a\/[^/]+\/opportunity\/([a-f0-9-]{36})\/?["']?[^>]*class="[^"]*flex flex-col[^"]*"[^>]*>([\s\S]*?)<\/a>/g;
+  for (const m of html.matchAll(anchorRegex)) {
+    const id = m[1];
+    const inner = m[2];
+    const ps = [...inner.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/g)].map((p) => p[1].replace(/<[^>]+>/g, '').trim());
+    if (ps[0]) {
       out.push({
-        id: uuidMatch[1],
-        name: titleMatch[1].replace(/<[^>]+>/g, '').trim(),
-        short_description: descMatch?.[1].replace(/<[^>]+>/g, '').trim() ?? '',
+        id,
+        name: ps[0],
+        short_description: ps[1] ?? '',
       });
     }
   }
-  return out;
+  // Dedupe by id (the same opp may appear in nav + list)
+  const seen = new Set<string>();
+  return out.filter((o) => seen.has(o.id) ? false : (seen.add(o.id), true));
 }
 
 /**
@@ -166,6 +168,60 @@ export function extractFormFieldValues(html: string): Record<string, string> {
     out[name] = sel?.[1] ?? '';
   }
 
+  return out;
+}
+
+/**
+ * Parse Connect's deliver_unit_table HTML into typed rows.
+ *
+ * The page renders a plain `<table>` whose `<tr>` rows have whitespace-padded
+ * `<td>` cells in this order: id, slug, name. Confirmed live 2026-04-28
+ * against march-demo opp dea88661-1cd6-486b-ab25-48584bf61a8e.
+ */
+export function parseDeliverUnitTable(html: string): DeliverUnit[] {
+  const out: DeliverUnit[] = [];
+  // Anchor on rows inside <tbody> with `class="even"` or `class="odd"` (Connect convention).
+  const rowRegex = /<tr class="(?:even|odd)"[^>]*>([\s\S]*?)<\/tr>/g;
+  for (const m of html.matchAll(rowRegex)) {
+    const cells = [...m[1].matchAll(/<td\s*[^>]*>([\s\S]*?)<\/td>/g)]
+      .map((c) => c[1].replace(/<[^>]+>/g, '').trim());
+    if (cells.length >= 3) {
+      const id = Number(cells[0]);
+      if (Number.isFinite(id)) out.push({ id, slug: cells[1], name: cells[2] });
+    }
+  }
+  return out;
+}
+
+/**
+ * Parse Connect's payment_unit_table HTML. Columns observed live:
+ * id, name, start_date, end_date, amount, max_total.
+ */
+export function parsePaymentUnitTable(html: string): PaymentUnit[] {
+  const out: PaymentUnit[] = [];
+  const rowRegex = /<tr class="(?:even|odd)"[^>]*>([\s\S]*?)<\/tr>/g;
+  for (const m of html.matchAll(rowRegex)) {
+    const cells = [...m[1].matchAll(/<td\s*[^>]*>([\s\S]*?)<\/td>/g)]
+      .map((c) => c[1].replace(/<[^>]+>/g, '').trim());
+    if (cells.length >= 5) {
+      const id = Number(cells[0]);
+      const amount = Number(cells[4]);
+      const max_total = Number(cells[5] ?? 0);
+      if (Number.isFinite(id)) {
+        out.push({
+          id,
+          name: cells[1],
+          description: '',
+          amount: Number.isFinite(amount) ? amount : 0,
+          max_total: Number.isFinite(max_total) ? max_total : undefined,
+          start_date: cells[2] || undefined,
+          end_date: cells[3] || undefined,
+          required_deliver_unit_ids: [],
+          optional_deliver_unit_ids: [],
+        });
+      }
+    }
+  }
   return out;
 }
 

@@ -1,38 +1,95 @@
 // Connect domain types. Field names mirror what live Connect templates use
 // (snake_case at the HTTP boundary). Confirmed via live probes 2026-04-28
-// against /a/ai-demo-space/program/init/ and /opportunity/init/.
+// against /a/<org>/program/init/, /opportunity/init/, and the per-opportunity
+// config endpoints (verification_flags_config, payment_unit/create,
+// deliver_unit_table, user_invite).
 
 export interface Program {
-  id: string;             // UUID — Connect routes use UUIDs (e.g. /program/067a73b8-.../)
+  id: string;
   name: string;
   description: string;
-  delivery_type: number;  // FK id (e.g. 1 = "Infant Vaccine Promotion", 3 = "Nutrition")
+  delivery_type: number;
   budget: number;
-  currency: string;       // ISO 4217 (e.g. "USD")
-  country: string;        // ISO 3166-1 alpha-3 (e.g. "USA", "AFG")
-  start_date: string;     // YYYY-MM-DD
-  end_date: string;       // YYYY-MM-DD
-  organization_slug?: string;  // The /a/<slug>/ org this program belongs to
+  currency: string;
+  country: string;
+  start_date: string;
+  end_date: string;
+  organization_slug?: string;
 }
 
 export interface Opportunity {
-  id: string;             // UUID
-  program_id?: string;    // UUID; may be null for standalone opps
+  id: string;
+  program_id?: string;
   name: string;
-  short_description: string;  // ≤50 chars (mobile-app display)
+  short_description: string;
   description: string;
   currency: string;
   country: string;
-  hq_server: string;          // CommCare HQ server identifier (server FK)
-  api_key: string;            // HQ API key used to read app metadata
-  learn_app_domain: string;   // HQ project space for the Learn app
-  learn_app: string;          // Learn app id on HQ
+  hq_server: string;
+  api_key: string;
+  learn_app_domain: string;
+  learn_app: string;
   learn_app_description?: string;
-  learn_app_passing_score: number;  // 0-100
+  learn_app_passing_score: number;
   deliver_app_domain: string;
   deliver_app: string;
   status: 'draft' | 'active' | 'completed' | 'cancelled';
   organization_slug?: string;
+}
+
+/**
+ * Verification flags as exposed by /opportunity/<id>/verification_flags_config/.
+ * Each top-level toggle, plus optional formset rows for per-deliver-unit checks
+ * and per-form-field rules. v1 surfaces the top-level toggles only — caller can
+ * pass `deliver_unit_checks` / `form_field_rules` arrays for advanced cases but
+ * the formset serialization is best-effort and will fall back to leaving prior
+ * values if the array shape doesn't match Connect's expectations.
+ */
+export interface VerificationFlags {
+  duplicate?: boolean;
+  gps?: boolean;
+  catchment_areas?: boolean;
+  location?: boolean;
+  form_submission_start?: string;        // HH:MM:SS
+  form_submission_end?: string;          // HH:MM:SS
+  deliver_unit_checks?: DeliverUnitCheck[];
+  form_field_rules?: FormFieldRule[];
+}
+
+export interface DeliverUnitCheck {
+  deliver_unit_id: number;
+  check_attachments: boolean;
+  duration_seconds?: number;
+  id?: number;  // existing row PK; omit for new
+}
+
+export interface FormFieldRule {
+  name: string;            // human-readable rule name
+  question_path: string;   // CommCare question path (e.g. /data/photo_taken)
+  question_value: string;  // expected value (e.g. "yes")
+  deliver_unit_id: number; // FK
+  id?: number;
+}
+
+export interface PaymentUnit {
+  id: number;
+  name: string;
+  description: string;
+  amount: number;
+  max_total?: number;
+  max_daily?: number;
+  start_date?: string;
+  end_date?: string;
+  required_deliver_unit_ids: number[];
+  optional_deliver_unit_ids: number[];
+  parent_payment_unit_id?: number;  // for sub-units
+}
+
+export interface DeliverUnit {
+  id: number;
+  name: string;
+  slug?: string;
+  app_form_xmlns?: string;
 }
 
 export interface Invite {
@@ -56,12 +113,6 @@ export interface Invoice {
   created_at?: string;
 }
 
-/**
- * A "delivery type" is a Connect-managed enum. We surface the lookup so callers
- * can map a human-readable name (e.g. "Nutrition") to the int FK the form
- * expects. Populated by listing the program-init form and parsing the
- * <select name="delivery_type"> options.
- */
 export interface DeliveryType {
   id: number;
   name: string;

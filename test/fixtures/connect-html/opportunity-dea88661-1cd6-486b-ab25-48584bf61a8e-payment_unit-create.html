@@ -1,0 +1,420 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+
+<link rel="apple-touch-icon" sizes="180x180" href="/static/images/favicons/apple-touch-icon.b59ca68e1151.png">
+<link rel="icon" type="image/png" sizes="96x96" href="/static/images/favicons/favicon-96x96.c40024139556.png">
+<link rel="icon" type="image/svg+xml" href="/static/images/favicons/favicon.b62096104f6b.svg">
+<link rel="manifest" href="/static/images/favicons/site.07030052390d.webmanifest">
+<link rel="shortcut icon" href="/static/images/favicons/favicon.a836b61c1c52.ico">
+
+    <title>Connect</title>
+    
+       <link rel="stylesheet" href="/static/bundles/css/vendors.fc4af69a0837.css">
+       <link rel="stylesheet" href="/static/bundles/css/tailwind.da5b33e84bbd.css">
+       <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    
+      <script id="gtm-data" type="application/json">{"isDimagi": false, "gtmID": "GTM-M3MVWH7F", "userId": 6299}</script>
+      <script src="/static/js/gtx.6b03cca6de39.js" defer></script>
+      <script src="/static/bundles/js/vendors-bundle.fca9de3d73ff.js" defer></script>
+      <script src="/static/bundles/js/tailwind-bundle.d41d8cd98f00.js" defer></script>
+      
+    
+  </head>
+  <body
+    hx-headers='{"X-CSRFToken": "mTPn9LJcDxpdEKiexIi6n5PobVbVkwArkPgtGoYsLDEmE1ooaMnepv68fS0mclQz"}'
+    x-data="{ sidebarOpen: $persist(false).as('sidebarOpen'), hasSidebar: true }"
+    x-init="$nextTick(() => $el.classList.add('transition-[padding-left]', 'duration-300'))"
+    :class="hasSidebar ? (sidebarOpen ? 'pl-64' : 'pl-16') : ''"
+    class="flex flex-col justify-center overflow-x-hidden bg-stone-100 font-work-sans"
+  >
+    
+      
+
+<div x-cloak
+    class="fixed top-0 left-0 h-screen bg-brand-deep-purple pt-3 z-40 text-white flex flex-col justify-between transition-all duration-300 px-2"
+    :class="sidebarOpen ? 'w-64' : 'w-16'">
+
+    <!-- Top Section -->
+    <div>
+        <!-- Logo Section -->
+        <div class="">
+            <div class="flex p-2 justify-start">
+                <div
+                    x-show.immediate="!sidebarOpen"
+                    class=" h-12 transition-none"
+                >
+                    <img src="/static/images/logo.b22fb8909009.svg" alt="Compact Logo" class="w-8 h-8">
+                </div>
+                <div
+                    x-show.immediate="sidebarOpen"
+                    class="h-12 pl-1"
+                >
+                    <img src="/static/images/logo-full.137c6df9a195.svg" alt="Full Logo" class="h-12 w-auto">
+                </div>
+            </div>
+        </div>
+
+        <div class="flex rounded-lg items-center p-2 transition-all duration-300 cursor-pointer">
+            <div class="flex items-center justify-center w-8 h-8">
+                <i class="fa-solid text-lg text-brand-sky"
+                    :class="sidebarOpen ? 'fa-xmark': 'fa-bars'"
+                    @click="sidebarOpen = !sidebarOpen"></i>
+
+            </div>
+
+            <div class="transition-all duration-300 overflow-hidden flex items-center"
+                 :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+                <span class="text-xs whitespace-nowrap">Menu</span>
+            </div>
+        </div>
+
+        <!-- Navigation Items -->
+        
+          
+            
+            <div class="mt-5">
+                
+                <a href="/a/march-demo/opportunity/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-table-cells-large"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">Opportunities</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        Opportunities
+    </div>
+
+    <!-- Selected -->
+
+     
+     <div class="absolute left-0 top-0 w-full h-full bg-brand-mango/20 rounded-lg"></div>
+     <div class="absolute right-0 w-1 h-1/2 top-1/2 -translate-y-1/2 bg-brand-mango rounded-2xl"></div>
+     
+</a>
+
+
+                
+                    
+                    <a href="/a/march-demo/program/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-table-columns"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">Programs</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        Programs
+    </div>
+
+    <!-- Selected -->
+
+     
+</a>
+
+
+                    
+                    
+                    <a href="/a/march-demo/organization/" class="flex rounded-lg items-center p-2 hover:bg-brand-sunset-light transition-all duration-300 relative group">
+    <!-- Icon Container with Fixed Width -->
+    <div class="flex items-center justify-center w-8 h-8">
+        <i class="fa-solid fa-building"></i>
+    </div>
+
+    <!-- Text Container with Fixed Width -->
+    <div class="transition-all duration-300 overflow-hidden flex items-center"
+         :class="sidebarOpen ? 'w-40 ml-4 opacity-100' : 'w-0 opacity-0'">
+        <span class="text-xs whitespace-nowrap">My Workspace</span>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="absolute hidden px-2 py-1 ml-4 text-sm transform -translate-y-1/2 bg-white rounded top-1/2 left-full text-brand-deep-purple group-hover:block whitespace-nowrap z-30 shadow-lg"
+         x-show="!sidebarOpen"
+         x-cloak>
+        My Workspace
+    </div>
+
+    <!-- Selected -->
+
+     
+</a>
+
+                
+            </div>
+            
+          
+          
+        
+    </div>
+
+</div>
+
+    
+    <div class="flex-1  px-4">
+      
+
+
+<header class="fixed top-0 left-16 right-0 bg-gray-100 z-30">
+    <div class="flex items-center justify-between w-full px-4 py-2">
+        <!-- Left Section: Module Name -->
+        <h1 class="text-lg text-brand-deep-purple font-medium">Connect</h1>
+
+        
+        <!-- Right Section: Org, Profile Dropdown -->
+        <div class="flex items-center gap-x-2">
+            <!-- Organization selector -->
+            <div x-data="
+              {
+                open: false,
+                hasOrg: true,
+                hasMembership: true,
+                isSuperuser: false,
+                get hasSelectedOrg() {
+                    return this.hasOrg && (this.hasMembership || this.isSuperuser)
+                },
+                membershipsCount: 3,
+                canCreateOrg: false,
+                get showDropdown() {
+                    return this.membershipsCount > 1
+                        || (!this.hasSelectedOrg && this.membershipsCount > 0)
+                        || this.canCreateOrg
+                }
+              }"
+              @click.away="open = false" class="relative mx-8">
+                <button @click="open = !open" class="flex items-center gap-2 focus:outline-none">
+                    <div class="text-left">
+                      <div x-show="hasSelectedOrg" x-transition.opacity x-cloak>
+                        <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                          March-Demo
+                        </p>
+                        
+                          <p class="text-gray-500 text-sm font-medium">LLO-Demo</p>
+                        
+                        <p class="text-xs text-gray-400">Program Manager</p>
+                      </div>
+                      <div x-show="!hasSelectedOrg && membershipsCount > 0" x-transition.opacity x-cloak>
+                         <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                          Select Workspace
+                         </p>
+                      </div>
+                      <div x-show="!hasSelectedOrg && membershipsCount == 0 && canCreateOrg" x-transition.opacity x-cloak>
+                        <p class="text-sm font-medium text-brand-deep-purple cursor-pointer">
+                            Create Workspace
+                        </p>
+                      </div>
+                    </div>
+                    <!-- Dropdown Toggle Icon -->
+                    <i x-show="showDropdown" :class="open ? 'rotate-180' : ''" class="fa-solid fa-chevron-down transition-all text-xs"></i>
+                </button>
+
+                  <!-- Organization Selector -->
+                  <div x-show="open && showDropdown" x-transition.opacity x-cloak
+                      class="absolute top-12 right-0 min-w-56 bg-white shadow rounded-lg z-50">
+                      <ul class="p-2 w-full max-h-80 overflow-y-auto">
+                        
+                          
+                            <li class="p-2 hover:bg-gray-100 rounded cursor-pointer text-left">
+                              <a href="/a/jjackson/opportunity/">
+                                <p class="text-brand-deep-purple text-sm font-medium">Baobob-Demo-Workspace</p>
+                                
+                                <p class="text-xs text-gray-400">Network Manager</p>
+                              </a>
+                            </li>
+                          
+                        
+                          
+                            <li class="p-2 hover:bg-gray-100 rounded cursor-pointer text-left">
+                              <a href="/a/ai-demo-space/opportunity/">
+                                <p class="text-brand-deep-purple text-sm font-medium">AI Demo Space</p>
+                                
+                                  <p class="text-gray-500 text-sm font-medium">Claude Test Space</p>
+                                
+                                <p class="text-xs text-gray-400">Program Manager</p>
+                              </a>
+                            </li>
+                          
+                        
+                          
+                        
+                      </ul>
+                        <div class="p-2" x-show="canCreateOrg" x-transition.opacity x-cloak>
+                            <a class="button button-md primary-dark w-full text-center" href="/register/organization/">
+                            Create Workspace
+                            </a>
+                        </div>
+                  </div>
+
+            </div>
+
+            <!-- User Profile -->
+            <div x-data="{ open: false }" @click.away="open = false" class="relative">
+                <button @click="open = !open" class="focus:outline-none">
+                    <div class="cursor-pointer overflow-hidden">
+                        <div
+  title="ace"
+  class="rounded-full flex items-center justify-center select-none shrink-0 w-10 h-10 text-xs font-medium tracking-wider bg-brand-cornflower-blue text-white"
+>
+  <span>AC</span>
+</div>
+
+                    </div>
+                </button>
+
+                <!-- User Profile Selector -->
+                <div x-show="open" x-transition.opacity x-cloak class="absolute top-12 right-0 min-w-56 w-56 bg-white shadow rounded-lg z-50">
+                    <ul class="p-2 w-full">
+                        <li class="p-2 text-left">
+                            <p class="text-brand-deep-purple font-medium">ace</p>
+                            
+                                <span class="text-gray-400 text-sm">member</span>
+                            
+                        </li>
+                        <li class="p-2 text-left">
+                            <a class="block p-2 hover:bg-gray-100 rounded cursor-pointer" href="/accounts/email/">
+                              <p class="text-brand-deep-purple">Profile</p>
+                            </a>
+                        </li>
+                        <li class="p-2">
+                          <a class="cursor-pointer" href="/accounts/logout/">
+                            <div class="bg-brand-indigo text-white px-8 py-2 rounded-lg shadow-md hover:bg-blue-800 transition">
+                              Logout
+                            </div>
+                          </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+</header>
+
+      <div class="h-5 w-full mt-16"></div>
+      <main id="content" class="md:max-w-screen-2xl mx-auto">
+        
+
+        
+<div class="container md:max-w-screen-lg mx-auto flex flex-col gap-6">
+  
+
+
+
+  <h2 class="text-xl text-brand-deep-purple mb-2">Payment Unit Create</h2>
+  <form method="post" hx-ext="loading-states">
+    <input type="hidden" name="csrfmiddlewaretoken" value="mTPn9LJcDxpdEKiexIi6n5PobVbVkwArkPgtGoYsLDEmE1ooaMnepv68fS0mclQz">
+    
+
+<form  method="post" > <input type="hidden" name="csrfmiddlewaretoken" value="mTPn9LJcDxpdEKiexIi6n5PobVbVkwArkPgtGoYsLDEmE1ooaMnepv68fS0mclQz"> <div 
+    class="flex flex-col gap-4" > <div  class="grid grid-cols-2 gap-4 p-6 card_bg" > <div 
+     class="" > <div id="div_id_name" class="mb-3"> <label for="id_name" class="block text-gray-700 text-sm font-bold mb-2">
+            Name<span class="asteriskField">*</span> </label> <input type="text" name="name" maxlength="255" class="textinput rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" required id="id_name"> </div> <div id="div_id_description" class="mb-3"> <label for="id_description" class="block text-gray-700 text-sm font-bold mb-2">
+            Description<span class="asteriskField">*</span> </label> <textarea name="description" cols="40" rows="10" class="textarea rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" required id="id_description">
+</textarea> </div> </div>
+<div 
+     class="" > <div 
+    class="grid grid-cols-2 gap-4" > <div id="div_id_amount" class="mb-3"> <label for="id_amount" class="block text-gray-700 text-sm font-bold mb-2">
+            Worker pay per visit<span class="asteriskField">*</span> </label> <input type="number" name="amount" min="0" class="numberinput rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" required id="id_amount"> </div> </div>
+<div  class="grid grid-cols-2 gap-4" > <div id="div_id_max_total" class="mb-3"> <label for="id_max_total" class="block text-gray-700 text-sm font-bold mb-2">
+            Maximum visits per user<span class="asteriskField">*</span> </label> <input type="number" name="max_total" class="numberinput rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" required id="id_max_total"> </div> <div id="div_id_max_daily" class="mb-3"> <label for="id_max_daily" class="block text-gray-700 text-sm font-bold mb-2">
+            Maximum visits per day<span class="asteriskField">*</span> </label> <input type="number" name="max_daily" class="numberinput rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" required id="id_max_daily"> </div> </div> <div id="div_id_start_date" class="mb-3"> <label for="id_start_date" class="block text-gray-700 text-sm font-bold mb-2">
+            Start date
+        </label> <input type="date" name="start_date" class="dateinput rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" id="id_start_date"> <small id="id_start_date_helptext" class="text-gray-600">Optional. If not specified opportunity start date applies to form submissions.</small> </div> <div id="div_id_end_date" class="mb-3"> <label for="id_end_date" class="block text-gray-700 text-sm font-bold mb-2">
+            End date
+        </label> <input type="date" name="end_date" class="dateinput rounded-lg leading-normal focus:outline-none block px-4 border-gray-300 appearance-none bg-white text-gray-700 py-2 border w-full" id="id_end_date"> <small id="id_end_date_helptext" class="text-gray-600">Optional. If not specified opportunity end date applies to form submissions.</small> </div> </div>
+
+</div>
+<div  class="grid grid-cols-2 gap-4 p-6 card_bg" > <div id="div_id_required_deliver_units" class="mb-3"> <label for="" class="block text-gray-700 text-sm font-bold mb-2">
+            Required deliver units<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="mr-3"> <label class="block text-gray-700" for="id_required_deliver_units_1"> <input type="checkbox" class="" name="required_deliver_units" id="id_required_deliver_units_1" value="3339" >
+            Optional Delivery
+        </label> </div> <div class="mr-3"> <label class="block text-gray-700" for="id_required_deliver_units_2"> <input type="checkbox" class="" name="required_deliver_units" id="id_required_deliver_units_2" value="3340" >
+            Optional Delivery 2
+        </label> </div> <div class="mr-3"> <label class="block text-gray-700" for="id_required_deliver_units_3"> <input type="checkbox" class="" name="required_deliver_units" id="id_required_deliver_units_3" value="3341" >
+            Optional Delivery 3
+        </label> </div> <div class="mr-3"> <label class="block text-gray-700" for="id_required_deliver_units_4"> <input type="checkbox" class="" name="required_deliver_units" id="id_required_deliver_units_4" value="3342" >
+            optional delivery unit 4
+        </label> </div> </div> <small class="text-gray-600">All of the selected Deliver Units are required for payment accrual.</small> </div> <div id="div_id_payment_units" class="mb-3"> <label for="" class="block text-gray-700 text-sm font-bold mb-2">
+            Payment units
+        </label> <div class="mb-3"> <div class="mr-3"> <label class="block text-gray-700" for="id_payment_units_1"> <input type="checkbox" class="" name="payment_units" id="id_payment_units_1" value="1451" >
+            March refresh
+        </label> </div> </div> <small class="text-gray-600">The selected Payment Units need to be completed in order to complete this payment unit.</small> </div> <div id="div_id_optional_deliver_units" class="mb-3"> <label for="" class="block text-gray-700 text-sm font-bold mb-2">
+            Optional deliver units
+        </label> <div class="mb-3"> <div class="mr-3"> <label class="block text-gray-700" for="id_optional_deliver_units_1"> <input type="checkbox" class="" name="optional_deliver_units" id="id_optional_deliver_units_1" value="3339" >
+            Optional Delivery
+        </label> </div> <div class="mr-3"> <label class="block text-gray-700" for="id_optional_deliver_units_2"> <input type="checkbox" class="" name="optional_deliver_units" id="id_optional_deliver_units_2" value="3340" >
+            Optional Delivery 2
+        </label> </div> <div class="mr-3"> <label class="block text-gray-700" for="id_optional_deliver_units_3"> <input type="checkbox" class="" name="optional_deliver_units" id="id_optional_deliver_units_3" value="3341" >
+            Optional Delivery 3
+        </label> </div> <div class="mr-3"> <label class="block text-gray-700" for="id_optional_deliver_units_4"> <input type="checkbox" class="" name="optional_deliver_units" id="id_optional_deliver_units_4" value="3342" >
+            optional delivery unit 4
+        </label> </div> </div> <small class="text-gray-600">Any one of these Deliver Units combined with all the required Deliver Units will accrue payment. Multiple Deliver Units can be selected.</small> </div> <div 
+     > <button type="button" class="button button-md outline-style" id="sync-button"
+                    hx-post="/a/march-demo/opportunity/1237/sync_deliver_units/"
+                    hx-trigger="click" hx-swap="none" hx-on::after-request="alert(event?.detail?.xhr?.response);
+                    event.detail.successful && location.reload();
+                    this.removeAttribute('disabled'); this.innerHTML='Sync Deliver Units';""
+                    hx-disabled-elt="this"
+                    hx-on:click="this.innerHTML = 'Syncing...';"> <span id="sync-text">Sync Deliver Units</span> </button> </div>
+
+</div>
+<div  class="flex justify-end" > <input type="submit"
+    name="submit"
+    value="Submit"
+    
+        class="btn btn-primary button button-md primary-dark"
+        id="submit-id-submit"
+    
+    
+    />
+
+</div>
+
+</div> </form>
+
+  </form>
+
+
+</div>
+
+      </main>
+    </div>
+
+    
+        <open-chat-studio-widget
+          class="z-50"
+          visible="false"
+          chatbot-id="104d0f84-a609-4676-b8c8-35d992fe5ffc"
+          embed-key="tFANzDEMLZzZgk_ZEeE4yu1LYwVWavFt"
+          button-text="Need help?"
+          position="right"
+          expanded="false">
+        </open-chat-studio-widget>
+    
+
+  
+    
+  
+  </body>
+</html>
