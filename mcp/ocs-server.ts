@@ -224,7 +224,7 @@ server.tool(
 
 server.tool(
   'ocs_set_chatbot_pipeline',
-  "Transactional update of the LLMResponseWithPrompt node's params: prompt + collections + tools + source material in one save. Any field omitted is preserved from the existing pipeline. Pre-flight: if the FINAL prompt (after merge) contains `{collection_index_summaries}`, the FINAL collection_index_ids must be non-empty — otherwise OCS rejects the save and the bot becomes unconfigurable. Use this when changing both prompt and collections together; use the focused atoms (ocs_set_chatbot_system_prompt, ocs_attach_knowledge, ocs_set_chatbot_tools, ocs_set_source_material) when only changing one.",
+  "Transactional update of the LLMResponseWithPrompt node's params: prompt + collections + tools + source material in one save. Any field omitted is preserved from the existing pipeline. OCS cross-field rule (verified 2026-04-28): the FINAL prompt must contain `{collection_index_summaries}` iff FINAL collection_index_ids.length >= 2. Pre-flight raises a typed error in either violation direction. Use this when changing both prompt and collections together; use the focused atoms when only changing one.",
   {
     experiment_id: z.number(),
     prompt: z.string().optional(),
@@ -301,7 +301,7 @@ server.tool(
 
 server.tool(
   'ocs_attach_knowledge',
-  "Attach one or more Collections to a chatbot's retriever node. Pre-flight: when attaching at least one collection (collection_index_ids non-empty), the bot's current system prompt MUST contain the `{collection_index_summaries}` template variable — without it, the OCS pipeline-save endpoint silently rejects the patch and every downstream publish_chatbot_version is blocked. The MCP fails fast with a typed error in this case; fix by calling ocs_set_chatbot_system_prompt with a prompt containing the token, then retry. Pass collection_index_ids=[] to detach all collections (skips the token check).",
+  "Attach one or more Collections to a chatbot's retriever node. OCS cross-field rule (verified 2026-04-28 via live probe): the prompt MUST contain `{collection_index_summaries}` if and only if `collection_index_ids.length >= 2`. Single or zero collections must NOT include the variable; multiple collections MUST include it. The MCP pre-flights both directions and fails fast with a typed PipelineValidationError if the bot's current prompt + your new collections list would violate it. Fix by either adjusting the prompt (via ocs_set_chatbot_system_prompt) or attaching a different number of collections. For atomic prompt+collections changes, prefer ocs_set_chatbot_pipeline.",
   {
     experiment_id: z.number(),
     collection_index_ids: z.array(z.number()),

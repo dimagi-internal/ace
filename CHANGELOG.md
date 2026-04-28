@@ -5,6 +5,72 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.10 — 2026-04-28
+
+Closes **N1** from the 2026-04-28 turmeric-dogfood addendum: the
+`{collection_index_summaries}` rejection that defeated 0.6.4's
+transactional save. Characterized via direct probes against live OCS
+(see `scripts/probe-n1-cross-test.ts` for the full truth table).
+
+### Root cause
+
+The 0.6.4 pre-flight checked the wrong invariant. Real OCS rule:
+
+| collections | `{collection_index_summaries}` in prompt | OCS save |
+|---|---|---|
+| 0 | absent | ACCEPTED |
+| 0 | present | rejected ("variable is missing") |
+| 1 | absent | ACCEPTED |
+| 1 | present | **rejected** ("variable is missing") |
+| ≥2 | absent | **rejected** ("Prompt expects ... variable") |
+| ≥2 | present | ACCEPTED |
+
+In words: **the variable is required if and only if `collection_index_ids.length >= 2`.**
+Single or zero collections must NOT include the variable; multiple
+collections MUST include it. Architectural intuition: with a single
+collection there's nothing to disambiguate at retrieval time; the
+variable is a multi-collection feature.
+
+The 0.6.4 framing of the bug ("transactional save" = bundling prompt +
+collections in one POST) was correct for *one* of the failure modes
+(ordering between two focused atom calls) but the underlying pre-flight
+rule was wrong, so the transactional atom could still produce a
+violating final state.
+
+### Fixed
+
+- **`assertCollectionPromptInvariant` shared helper** — bidirectional
+  check matching the live rule. Used by both `attachKnowledge` and
+  `setChatbotPipeline`. Throws a typed `PipelineValidationError` on
+  either violation direction with a fix hint pointing at the right
+  remediation (drop the variable or attach more collections).
+- **Tool descriptions** for `ocs_attach_knowledge` and
+  `ocs_set_chatbot_pipeline` now state the iff rule explicitly.
+- **`skills/ocs-agent-setup/SKILL.md` step 7** corrected — single-
+  collection clones (`OCS_SHARED_COLLECTION_ID` unset) must NOT include
+  the variable; multi-collection clones (shared + opp) MUST.
+
+### Validated
+
+`scripts/probe-n1-cross-test.ts` exercised six combinations against live
+OCS bot 12003. Test cases A/B (single collection, no variable) accepted;
+C (multi without variable) rejected; D/F (single + variable) rejected;
+E (multi + variable) accepted. Bot was restored to a known-good state
+after the run. 8 new unit tests cover the same truth table against
+mocked saves.
+
+### Notes
+
+- The orchestrator's earlier workaround (drop the variable from the
+  per-opp clone's prompt; RAG still works via the single-collection
+  binding) was correct. The `9.1/10` validation eval used exactly this
+  state — single per-opp collection, no variable in prompt — and that's
+  the canonical per-opp shape going forward.
+- Probe scripts (`probe-n1-pipeline-diff.ts`,
+  `probe-n1-add-variable.ts`, `probe-n1-collection-meta.ts`,
+  `probe-n1-cross-test.ts`) are kept under `scripts/` — they document
+  the investigation and remain useful if OCS ever changes the rule.
+
 ## 0.6.9 — 2026-04-28
 
 Closes N2 from the 2026-04-28 turmeric-dogfood addendum: `experiment_id`

@@ -77,6 +77,55 @@ export function extractExperimentIdFromLocation(location: string): number | unde
 }
 
 /**
+ * Enforce the OCS LLMResponseWithPrompt cross-field rule for the
+ * `{collection_index_summaries}` template variable.
+ *
+ * The actual server-side rule, characterized by direct probe against live
+ * OCS on 2026-04-28 (see `scripts/probe-n1-cross-test.ts` for the truth
+ * table): **the variable is required if and only if `collection_index_ids`
+ * has length >= 2.** Single or zero collections must NOT include the
+ * variable; multiple collections must include it.
+ *
+ * This corrects the wrong invariant 0.6.4 was checking ("variable iff
+ * non-empty collections"). The 0.6.4 framing matched neither error path:
+ *   - Multi-collection without variable → "Prompt expects
+ *     collection_index_summaries variable."
+ *   - Single/zero collections WITH variable → "collection_index_summaries
+ *     variable is specified, but collection_index_summaries is missing."
+ *
+ * Architectural intuition: with a single collection there's nothing to
+ * disambiguate — OCS substitutes the collection content directly via the
+ * retriever pipeline. The `{collection_index_summaries}` template is only
+ * meaningful when the LLM needs to choose between multiple attached
+ * collections at runtime.
+ */
+export function assertCollectionPromptInvariant(prompt: string, collectionIds: readonly number[]): void {
+  const VARIABLE = '{collection_index_summaries}';
+  const hasVar = prompt.includes(VARIABLE);
+  const isMulti = collectionIds.length >= 2;
+
+  if (hasVar && !isMulti) {
+    throw new PipelineValidationError([
+      `LLMResponseWithPrompt.prompt: \`${VARIABLE}\` is present but only ` +
+        `${collectionIds.length} collection${collectionIds.length === 1 ? ' is' : 's are'} attached ` +
+        `(the variable requires 2 or more). OCS pipeline-save will reject this with ` +
+        `"variable is specified, but is missing". ` +
+        `Either remove the template variable from the prompt, or attach a second collection.`,
+    ]);
+  }
+
+  if (!hasVar && isMulti) {
+    throw new PipelineValidationError([
+      `LLMResponseWithPrompt.prompt: ${collectionIds.length} collections are attached but ` +
+        `the prompt is missing required template variable \`${VARIABLE}\`. OCS pipeline-save ` +
+        `will reject this with "Prompt expects collection_index_summaries variable." ` +
+        `Add \`${VARIABLE}\` somewhere in the prompt (typically in a "Knowledge:" section), ` +
+        `or reduce the attached collections to a single one.`,
+    ]);
+  }
+}
+
+/**
  * Parse the HTMX-rendered `/a/<team>/chatbots/table/` HTML into a
  * `name → experiment_id` map. Each row in the live OCS response has the
  * shape:
@@ -244,15 +293,7 @@ export class PlaywrightBackend {
       ? args.collection_index_ids
       : (Array.isArray(current.collection_index_ids) ? current.collection_index_ids : []);
 
-    if (finalPrompt.includes('{collection_index_summaries}') && finalCollectionIds.length === 0) {
-      throw new PipelineValidationError([
-        `LLMResponseWithPrompt: cross-field validation failed — final prompt references ` +
-          `\`{collection_index_summaries}\` but final collection_index_ids is empty. ` +
-          `OCS pipeline-save rejects this state. Either remove the template variable from ` +
-          `the prompt, or include at least one collection in the same setChatbotPipeline call ` +
-          `via collection_index_ids.`,
-      ]);
-    }
+    assertCollectionPromptInvariant(finalPrompt, finalCollectionIds);
 
     const patch: Partial<LlmNodeParams> = {};
     if (args.prompt !== undefined) patch.prompt = args.prompt;
@@ -279,28 +320,9 @@ export class PlaywrightBackend {
     if (args.generate_citations !== undefined) patch.generate_citations = args.generate_citations;
     const pipelineId = await this.pipelineIdFor(args.experiment_id);
 
-    // Pre-flight: when attaching at least one collection, the pipeline's LLM
-    // node requires the `{collection_index_summaries}` template variable in
-    // its prompt — without it, the pipeline-save endpoint rejects with the
-    // node-level error "Prompt expects collection_index_summaries variable."
-    // The previous attach attempt would otherwise hit a confusing partial-
-    // success state (REST returns ok, version-publish then silently blocks).
-    // Catch it here with a typed error that names the exact remediation.
-    // (2026-04-27 dogfood — same Iter 6 silent-failure class as 0.5.1.)
-    if (args.collection_index_ids.length > 0) {
-      const { params } = await getLlmNodeParams(this.patchContext(), pipelineId);
-      const prompt = typeof params.prompt === 'string' ? params.prompt : '';
-      if (!prompt.includes('{collection_index_summaries}')) {
-        throw new PipelineValidationError([
-          `LLMResponseWithPrompt.prompt: missing required template variable ` +
-            `\`{collection_index_summaries}\` — the OCS pipeline-save endpoint will reject ` +
-            `attach_knowledge for any experiment whose prompt is missing this token. ` +
-            `Update the bot's system prompt via ocs_set_chatbot_system_prompt to embed ` +
-            `\`{collection_index_summaries}\` (typically near the top of the system message ` +
-            `or in a "Knowledge" section), then retry attach_knowledge.`,
-        ]);
-      }
-    }
+    const { params } = await getLlmNodeParams(this.patchContext(), pipelineId);
+    const finalPrompt = typeof params.prompt === 'string' ? params.prompt : '';
+    assertCollectionPromptInvariant(finalPrompt, args.collection_index_ids);
 
     await patchLlmNodeParams(this.patchContext(), pipelineId, patch);
   }
