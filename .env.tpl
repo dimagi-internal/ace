@@ -58,3 +58,19 @@ ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
 
 ACE_HQ_BASE_URL=https://www.commcarehq.org
 ACE_HQ_DOMAIN=connect-ace-prod
+
+# ── Connect (ace-connect MCP) ────────────────────────────────────────
+#
+# ace-connect drives connect.dimagi.com through an authenticated browser
+# session belonging to ace@dimagi-ai.com. Login is OAuth-via-CommCareHQ:
+# Connect bounces to HQ, HQ accepts these creds, HQ redirects back.
+#
+# When real Connect REST APIs land (CCC-301 + invite + invoice), individual
+# atoms flip from PLAYWRIGHT to REST in mcp/connect/capability-map.ts.
+
+CONNECT_BASE_URL=https://connect.dimagi.com
+
+# CommCare HQ credentials for the ACE service account. ace-connect drives
+# the HQ OAuth flow with these to mint a Connect session cookie.
+ACE_HQ_USERNAME=op://AI-Agents/ACE - CommCareHQ/username
+ACE_HQ_PASSWORD=op://AI-Agents/ACE - CommCareHQ/password
