@@ -111,7 +111,7 @@ delivery, only that stage gets a Learn app. The Stage Gate from the PDD
 determines whether Stage 2 training launches before or after Stage 1
 results.
 
-## Tools
+## MCP Tools Used
 
 - **Google Drive MCP:** `drive_read_file`, `drive_create_file`
 - **Nova plugin slash commands:** `/nova:autobuild`, `/nova:show`,
@@ -121,8 +121,7 @@ The Nova plugin is installed separately
 (`/plugin install nova@nova-marketplace`) and signs in via OAuth on first
 use. ACE does not call Nova MCP tools by name; it invokes the user-facing
 slash commands listed above. See
-`playbook/integrations/nova-integration.md` for current status (notably
-the dimagi-ai.com OAuth allowlist blocker).
+`playbook/integrations/nova-integration.md` for current status.
 
 ## Mode Behavior
 - **Auto:** Build via `/nova:autobuild`, write summary, notify admin,

@@ -91,6 +91,31 @@ The turmeric-market-survey PDD at `docs/examples/pdd-turmeric-market-survey.md` 
 
 Both PDDs fail the rubric in their current form. Surface specific failures and either (a) iterate on the PDD to fix them, or (b) in review mode, hand off to a human with the failure list attached.
 
+## Gate Brief
+
+The gate brief at `ACE/<opp-name>/gate-briefs/idea-to-pdd.md` translates the
+PDD stress-test output into a shape the admin can act on in 60 seconds.
+Follows the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`.
+
+- **Artifact Under Review:** path `ACE/<opp-name>/pdd.md`; summary is the
+  PDD's archetype + problem-statement one-liner
+- **What to Check** (emit these 4 items verbatim):
+  - Archetype declared in frontmatter matches the idea (`atomic-visit` /
+    `focus-group` / `multi-stage`)
+  - `## Evidence Model` section exists with Layer A / B / C populated
+    (downstream skills fail loudly if any is empty)
+  - `LLO Preference` section names at least one candidate LLO or a
+    defensible "any LLO in region X" scope
+  - Any Stress Test categories graded `partial` or `fail` have a
+    human-readable explanation in the appendix (not just a grade)
+- **Auto-Surfaced Concerns:** one line per stress-test category graded
+  `partial` (→ `[WARN]`) or `fail` (→ `[BLOCKER]`). For each, include the
+  category name and the specific failure-mode hint from the rubric (e.g.,
+  `[BLOCKER] Executability — recruitment criteria unspecified`). If all
+  five categories graded `pass`, write "None — all auto-checks passed."
+- **Recommended Disposition:** `Approve` if 0 `[BLOCKER]` and ≤1 `[WARN]`;
+  `Iterate` if any `[BLOCKER]` appears; `Approve with caveats` otherwise
+
 ## Archetypes
 
 ACE skills branch on the PDD's declared `archetype:` field. This skill generates archetype-appropriate sections during step 4 (Draft).
@@ -127,31 +152,6 @@ The PDD describes FLW-facilitated group discussions producing qualitative conten
 The PDD has two or more sequenced stages with different archetypes. Treat the base sections as describing the overall intervention and create one **Stage X** subsection per stage, each declaring its own archetype and following that archetype's additional sections.
 
 **Required for multi-stage PDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
-
-## Gate Brief
-
-The gate brief at `ACE/<opp-name>/gate-briefs/idea-to-pdd.md` translates the
-PDD stress-test output into a shape the admin can act on in 60 seconds.
-Follows the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`.
-
-- **Artifact Under Review:** path `ACE/<opp-name>/pdd.md`; summary is the
-  PDD's archetype + problem-statement one-liner
-- **What to Check** (emit these 4 items verbatim):
-  - Archetype declared in frontmatter matches the idea (`atomic-visit` /
-    `focus-group` / `multi-stage`)
-  - `## Evidence Model` section exists with Layer A / B / C populated
-    (downstream skills fail loudly if any is empty)
-  - `LLO Preference` section names at least one candidate LLO or a
-    defensible "any LLO in region X" scope
-  - Any Stress Test categories graded `partial` or `fail` have a
-    human-readable explanation in the appendix (not just a grade)
-- **Auto-Surfaced Concerns:** one line per stress-test category graded
-  `partial` (→ `[WARN]`) or `fail` (→ `[BLOCKER]`). For each, include the
-  category name and the specific failure-mode hint from the rubric (e.g.,
-  `[BLOCKER] Executability — recruitment criteria unspecified`). If all
-  five categories graded `pass`, write "None — all auto-checks passed."
-- **Recommended Disposition:** `Approve` if 0 `[BLOCKER]` and ≤1 `[WARN]`;
-  `Iterate` if any `[BLOCKER]` appears; `Approve with caveats` otherwise
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_update_file`

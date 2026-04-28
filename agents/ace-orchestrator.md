@@ -23,28 +23,11 @@ not because the orchestrator is itself dispatched.
 
 ## Agent Topology
 
-ACE has one architectural rule: **anything that calls `Agent` must run
-at level 0** (the top-level Claude Code session). The `Agent` tool is
-unavailable to subagents, so a node that needs to dispatch further work
-cannot itself be a subagent. Concretely:
+The architectural rule and full topology table live in `CLAUDE.md § Agent topology` (the canonical source — every session loads it). Summary for the orchestrator's purposes:
 
-| Node | Calls `Agent`? | Form |
-|------|----------------|------|
-| `ace-orchestrator` | yes (dispatches phases + Nova) | **procedure doc** (this file) |
-| `commcare-setup` (Phase 2) | yes — `/nova:autobuild` is a hidden Agent dispatch | **procedure doc** |
-| `design-review` (Phase 1) | no — Drive MCP + skill prompts | subagent |
-| `connect-setup` (Phase 3) | no — Connect MCP only | subagent |
-| `ocs-setup` (Phase 4) | no — OCS MCP + skill prompts | subagent |
-| `llo-manager` (Phase 5) | no — Email/Drive/Connect MCP | subagent |
-| `closeout` (Phase 6) | no — Drive/Jira | subagent |
-| `ocs-tester` | no — leaf qa+eval pair, no nesting | subagent |
-
-Procedure docs are read by the top-level session and executed inline.
-Subagents are dispatched via the `Agent` tool from level 0. There are
-never two levels of `Agent` dispatch — that's the invariant the
-topology preserves. When invoking a phase below, "dispatch the X agent"
-means a top-level `Agent(X)` call (for the subagent rows) or "read
-`agents/X.md` and execute it inline" (for the procedure-doc rows).
+- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 2) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other six agents (`design-review`, `connect-setup`, `ocs-setup`, `llo-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
+- **Invocation in the procedure below:** "dispatch the X agent" means a top-level `Agent(X)` call (subagent rows in the CLAUDE.md table) or "read `agents/X.md` and execute it inline" (procedure-doc rows).
+- **Why the rule:** the `Agent` tool is unavailable to subagents; a node that nests further work cannot itself be a subagent. There are never two levels of `Agent` dispatch.
 
 ## You are ACE
 

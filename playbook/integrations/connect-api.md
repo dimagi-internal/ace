@@ -91,6 +91,27 @@ user to complete them manually. The skill will:
 This means ACE can still orchestrate the full lifecycle — it just has more human
 touchpoints until the APIs are built.
 
+### Skills currently in HITL fallback (until APIs ship)
+
+When the listed ticket lands, the skill's `## Current Workaround` block is removed in
+the same PR. Re-generate this index by grepping `^## Current Workaround` across
+`skills/*/SKILL.md`.
+
+| Skill | Phase | Unblocking ticket(s) | What humanly happens today |
+|-------|-------|----------------------|----------------------------|
+| `connect-program-setup` | 3 | CCC-301 (`create_program`, `update_program`) | Operator creates Program in Connect UI from PDD-derived config |
+| `connect-opp-setup` | 3 | CCC-301 (`create_opportunity`, verification/delivery/payment unit APIs) | Operator creates Opportunity + configures rules in Connect UI |
+| `llo-invite` | 5 | LLO Directory data model + invite API (separate from CCC-300) | Operator hand-curates invite list from PDD `## LLO Preference` |
+| `llo-onboarding` | 5 | Connect invite API + opportunity widget API | Operator sends Connect invites via UI; pastes OCS widget creds onto the Opportunity |
+| `llo-uat` | 5 | None (Connect-side) — uses email-communicator | UAT runs via email; coordinator-tracked manually |
+| `llo-launch` | 5 | `update_opportunity` (CCC-301) for go-live activation | Operator flips Opportunity to active in Connect UI |
+| `llo-feedback` | 6 | None (Connect-side) — uses email-communicator | Feedback collected via email survey thread |
+| `opp-closeout` | 6 | Invoice API (`list_invoices`, `get_invoice`) | Operator pulls invoices from Connect UI, files Jira manually |
+
+**OCS-side workarounds** (separate domain): see `playbook/integrations/ocs-integration.md`.
+The `ocs-agent-setup` skill no longer carries a Current Workaround block as of the
+0.6.x contract-hardening arc — its dependencies are met by the `ace-ocs` MCP server.
+
 ## Staging Environment
 
 When `--sandbox` is active, ACE routes Connect API calls to the staging instance.

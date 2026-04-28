@@ -1,0 +1,93 @@
+import { describe, it, expect } from 'vitest';
+import { validateVerdict, VerdictSchema } from '../../lib/verdict-schema.js';
+
+const validVerdict = {
+  skill: 'ocs-chatbot-eval',
+  target: 'experiment_id=12003',
+  mode: 'deep',
+  ran_at: '2026-04-28T18:00:00Z',
+  capture_path: 'qa-captures/2026-04-28-ocs-chat-deep.md',
+  overall_score: 9.1,
+  verdict: 'pass',
+  dimensions: {
+    correctness:  { score: 9.8, weight: 0.4 },
+    source_usage: { score: 8.0, weight: 0.3 },
+    tone:         { score: 9.2, weight: 0.2 },
+    tagging:      { score: 9.5, weight: 0.1 },
+  },
+  per_item: [
+    { ref: 'prompt-1', score: 9.5, verdict: 'pass', note: 'cited correct file' },
+  ],
+  auto_surfaced: [
+    { severity: 'INFO', message: 'one prompt elaborated detail not in PDD; verify' },
+  ],
+  gate: { threshold: 7.0, disposition: 'approve' },
+};
+
+describe('verdict schema', () => {
+  it('accepts a fully-populated valid verdict', () => {
+    const r = validateVerdict(validVerdict);
+    expect(r.errors, JSON.stringify(r.errors)).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it('accepts a minimal verdict (no per_item, auto_surfaced, gate, mode)', () => {
+    const minimal = { ...validVerdict };
+    delete (minimal as any).mode;
+    delete (minimal as any).per_item;
+    delete (minimal as any).auto_surfaced;
+    delete (minimal as any).gate;
+    const r = validateVerdict(minimal);
+    expect(r.ok, JSON.stringify(r.errors)).toBe(true);
+  });
+
+  it('rejects verdicts missing required top-level fields', () => {
+    const broken = { ...validVerdict };
+    delete (broken as any).overall_score;
+    const r = validateVerdict(broken);
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.includes('overall_score'))).toBe(true);
+  });
+
+  it('rejects out-of-range scores', () => {
+    const broken = {
+      ...validVerdict,
+      dimensions: { correctness: { score: 11, weight: 1.0 } },
+    };
+    const r = validateVerdict(broken);
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects unknown verdict dispositions', () => {
+    const r = validateVerdict({ ...validVerdict, verdict: 'maybe' });
+    expect(r.ok).toBe(false);
+  });
+
+  it('warns when dimension weights do not sum to 1.0', () => {
+    const broken = {
+      ...validVerdict,
+      dimensions: {
+        a: { score: 5, weight: 0.4 },
+        b: { score: 5, weight: 0.4 }, // sums to 0.8
+      },
+    };
+    const r = validateVerdict(broken);
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.includes('weights sum'))).toBe(true);
+  });
+
+  it('allows extra domain-specific fields in per_item entries', () => {
+    const withExtras = {
+      ...validVerdict,
+      per_item: [
+        { ref: 'p1', score: 9, verdict: 'pass', prompt: 'What is X?', cited_files: ['a.md'] },
+      ],
+    };
+    const r = validateVerdict(withExtras);
+    expect(r.ok, JSON.stringify(r.errors)).toBe(true);
+  });
+
+  it('exports VerdictSchema as a Zod schema', () => {
+    expect(VerdictSchema.safeParse(validVerdict).success).toBe(true);
+  });
+});

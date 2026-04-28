@@ -115,9 +115,15 @@ The 9 archetype-aware skills today are: `idea-to-pdd`, `pdd-to-test-prompts`, `p
 
 ### `## LLM-as-Judge Rubric` (when the skill self-evaluates or is an eval skill)
 
-Some skills self-evaluate their output before passing it downstream; dedicated `-eval` skills (see `## QA vs Eval — the two-phase pattern` below) exist entirely to apply a rubric. In both cases, when the rubric is non-trivial, factor it out into its own section instead of burying it inside a process step. Place this section **immediately before** `## Archetypes` (if present) or **immediately before** `## MCP Tools Used` (if not).
+Some skills self-evaluate their output before passing it downstream; dedicated `-eval` skills (see `## QA vs Eval — the two-phase pattern` below) exist entirely to apply a rubric. In both cases, when the rubric is non-trivial, factor it out into its own section instead of burying it inside a process step. Place this section **immediately before** `## Gate Brief` (if present), `## Archetypes` (if present), or `## MCP Tools Used` (if neither).
 
 The rubric should be concrete enough to grade on — bullet points with grading anchors, or a numbered checklist with pass/fail conditions. See `skills/idea-to-pdd/SKILL.md` for the canonical example (the 5-question stress-test rubric with worked anchors from the example PDDs). See `skills/ocs-chatbot-eval/SKILL.md` for the 4-dimension weighted-score pattern that dedicated `-eval` skills follow.
+
+### `## Gate Brief` (when the skill ends a phase with a `gate-briefs/<gate>.md` artifact)
+
+Required for any skill that writes `gate-briefs/<gate>.md` — the canonical artifact the orchestrator reads at a `--mode review` pause. Place this section **immediately after** `## LLM-as-Judge Rubric` (if present) and **immediately before** `## Archetypes` (if present) or `## MCP Tools Used` (if neither). Document the four fields the gate brief populates (Artifact Under Review, What to Check, Auto-Surfaced Concerns, Recommended Disposition) using the canonical shape from `agents/ace-orchestrator.md § Gate Brief Contract`.
+
+The 5 gate-owning skills today are: `idea-to-pdd` (Phase 1→2), `app-deploy` (Phase 2→3), `ocs-chatbot-eval` (Phase 4→5), `llo-invite` (Phase 5 invite-list), `llo-launch` (Phase 5 launch). `opp-eval` also writes a Gate Brief section but its brief is advisory (does not gate any phase).
 
 ### `## Current Workaround` (when the skill is blocked on un-built APIs)
 
@@ -127,7 +133,7 @@ Many existing skills have these blocks (everything blocked on CCC-301, Nova bot 
 
 ### `## Dry-Run Behavior` (when the skill has external side effects)
 
-Required for any skill that sends emails, publishes apps, creates Jira tickets, or otherwise produces external effects. Document what the skill does instead under `--dry-run`. Place this **after** `## Mode Behavior` and **before** `## Change Log`.
+Required for any skill that sends emails, publishes apps, creates Jira tickets, or otherwise produces external effects. Document what the skill does instead under `--dry-run`. Place this **after** `## Mode Behavior` and **before** `## Failure Modes` (if present) or `## Change Log` (if not).
 
 ```markdown
 ## Dry-Run Behavior
@@ -139,6 +145,10 @@ When `--dry-run` is active:
 ```
 
 See `docs/superpowers/specs/2026-04-01-ace-design.md` § "Testing and Dry-Run Strategy" for the full dry-run model.
+
+### `## Failure Modes` (when the skill has typed errors worth enumerating)
+
+Optional. Use it to enumerate named errors and recovery hints — the kind of thing an operator wants to grep when a skill stops cold. Bullet list of `<ErrorName>` → recovery hint. Place this section **after** `## Dry-Run Behavior` (if present) or `## Mode Behavior` (if not), and **before** `## Change Log`. Canonical examples: `skills/ocs-agent-setup/SKILL.md`, `skills/pdd-to-test-prompts/SKILL.md`.
 
 ## QA vs Eval — the two-phase pattern
 
@@ -239,6 +249,12 @@ Historical skills used `per_prompt:` for the per-item list; `per_item:`
 is canonical as of 0.4.3, with domain-specific subkeys inside each entry
 (so a chatbot eval entry can include a `prompt:` field alongside `ref`).
 
+The shape is mirrored in code at `lib/verdict-schema.ts` (Zod schema +
+`validateVerdict()` helper). Tests live at `test/lib/verdict-schema.test.ts`.
+Skill prompts cannot import the schema at runtime, but `opp-eval` and
+external tooling can validate verdicts before aggregation; the schema is
+the source of truth if this prose drifts.
+
 ### Canonical examples
 
 - `skills/ocs-chatbot-qa/SKILL.md` + `skills/ocs-chatbot-eval/SKILL.md` —
@@ -309,6 +325,7 @@ Before committing a new SKILL.md, verify:
 - [ ] All five required sections present in order: `# <Display Name>` → `## Process` → `## MCP Tools Used` → `## Mode Behavior` → `## Change Log`
 - [ ] Process steps are numbered sequentially (`grep -nE '^[0-9]+\.' SKILL.md`)
 - [ ] If the skill branches on PDD archetype, `## Archetypes` is present with all 3 archetypes covered
+- [ ] If the skill writes a `gate-briefs/<gate>.md` artifact (one of the 5 phase gates), `## Gate Brief` is present, placed after `## LLM-as-Judge Rubric` (if any) and before `## Archetypes`/`## MCP Tools Used`
 - [ ] If the skill consumes the PDD's Evidence Model, an explicit early process step reads it and errors if missing
 - [ ] If the skill has external side effects, `## Dry-Run Behavior` is present
 - [ ] If the skill is blocked on un-built APIs, `## Current Workaround` is present

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { CAPABILITY_MAP, type Capability } from '../../../mcp/ocs/capability-map.js';
+import { CompositeBackend } from '../../../mcp/ocs/backends/composite.js';
+
+/** snake_case capability name → camelCase composite method name */
+function toMethodName(cap: Capability): string {
+  return cap.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+}
 
 describe('capability map', () => {
   it('has exactly 23 entries', () => {
@@ -36,5 +42,27 @@ describe('capability map', () => {
       expect(CAPABILITY_MAP[cap].backend, cap).toBe('PLAYWRIGHT');
     }
     expect(CAPABILITY_MAP.get_chatbot_embed_info.backend).toBe('HYBRID');
+  });
+
+  it('every capability has a corresponding CompositeBackend method', () => {
+    // Mock backends — we only need property-access for this check, never call.
+    const composite = new CompositeBackend({ rest: {} as any, playwright: {} as any });
+    const missing: string[] = [];
+    for (const cap of Object.keys(CAPABILITY_MAP) as Capability[]) {
+      const method = toMethodName(cap);
+      if (typeof (composite as any)[method] !== 'function') {
+        missing.push(`${cap} → ${method}`);
+      }
+    }
+    expect(missing, 'capabilities without CompositeBackend implementations').toEqual([]);
+  });
+
+  it('snake_case ↔ camelCase round-trips for every capability', () => {
+    // Catches accidental drift if a capability is renamed but not updated everywhere.
+    for (const cap of Object.keys(CAPABILITY_MAP)) {
+      const camel = cap.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+      const back = camel.replace(/([A-Z])/g, '_$1').toLowerCase();
+      expect(back, cap).toBe(cap);
+    }
   });
 });
