@@ -27,6 +27,12 @@ Optional:
 - `opp_step_skill` — if the transcript is scoped to a single skill
   invocation (e.g. just the `idea-to-pdd` run, not the full `/ace:run`
   lifecycle), set this so the linkage points at the specific step.
+- `ace_root_folder_id` — the Drive root folder id this plugin writes
+  opps under (typically `$ACE_DRIVE_ROOT_FOLDER_ID` from `.env`). When
+  sent and matching a Workspace's `drive_root_folder_id` on the
+  ace-web side, the upload is attributed to that workspace and
+  appears in its linked-chats panel. If absent, the upload is stored
+  as an orphan (workspace=NULL) — functional but not attributed.
 
 ## Steps
 
@@ -53,6 +59,8 @@ Optional:
    - `-F "opp_slug=<slug>"` (if provided)
    - `-F "opp_run_id=<run_id>"` (if provided; usually `r1`)
    - `-F "opp_step_skill=<skill>"` (if provided)
+   - `-F "ace_root_folder_id=<id>"` (if `$ACE_DRIVE_ROOT_FOLDER_ID` is
+     set; omit the field entirely if not — never send empty)
    Expect 201. On non-201, print the response body and fail.
 
 5. **Return** the `data.session_slug` from the 201 response envelope as the
@@ -84,6 +92,7 @@ UPLOAD_ARGS=(
 [ -n "${OPP_SLUG:-}" ]       && UPLOAD_ARGS+=(-F "opp_slug=$OPP_SLUG")
 [ -n "${OPP_RUN_ID:-}" ]     && UPLOAD_ARGS+=(-F "opp_run_id=$OPP_RUN_ID")
 [ -n "${OPP_STEP_SKILL:-}" ] && UPLOAD_ARGS+=(-F "opp_step_skill=$OPP_STEP_SKILL")
+[ -n "${ACE_DRIVE_ROOT_FOLDER_ID:-}" ] && UPLOAD_ARGS+=(-F "ace_root_folder_id=$ACE_DRIVE_ROOT_FOLDER_ID")
 
 HTTP=$(curl -sS -b "$COOKIE_JAR" -o /tmp/upload-resp.json -w '%{http_code}' \
   -X POST "$BASE_URL/api/ingest/upload" \

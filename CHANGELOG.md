@@ -5,6 +5,22 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.2 — 2026-04-27
+
+### Added
+
+- **`upload-transcript` now sends `ace_root_folder_id`** alongside the
+  existing `opp_slug` / `opp_run_id` / `opp_step_skill` multipart fields.
+  Populated from `$ACE_DRIVE_ROOT_FOLDER_ID` when set (omitted otherwise).
+  Pairs with the multi-tenancy work on the ace-web side
+  (`labs.connect.dimagi.com/ace`): when the value matches a Workspace's
+  `drive_root_folder_id` and the uploading user is a member, the
+  resulting Session and IngestUpload are attributed to that workspace
+  and surface in its linked-chats panel. Without it, uploads still
+  succeed but land as orphans (workspace=NULL) visible only to the
+  uploading user — fine for solo dogfooding, broken for third-party
+  Connect Tech users running ACE against the shared deploy.
+
 ## 0.6.1 — 2026-04-27
 
 Closes two OCS contract bugs surfaced during the same dogfood run that
