@@ -287,6 +287,62 @@ describe('PlaywrightBackend pipeline-patch atoms', () => {
     expect(llm.data.params.max_results).toBe(15);
   });
 
+  it('attachKnowledge rejects when prompt is missing {collection_index_summaries}', async () => {
+    // Mirror the production fixture but strip the required template variable
+    // from the LLM node's prompt. attach_knowledge should fail-fast with a
+    // typed PipelineValidationError BEFORE attempting any POST — that's the
+    // class-level preventer for the silent-rejection bug surfaced in the
+    // 0.5.19 dogfood (Iter 6 family).
+    const fixture = loadPipelineFixture();
+    const stripped = JSON.parse(JSON.stringify(fixture));
+    const llmNode = stripped.pipeline.data.nodes.find(
+      (n: { data: { type: string } }) => n.data.type === 'LLMResponseWithPrompt'
+    );
+    llmNode.data.params.prompt = 'You are a helpful assistant.'; // no token
+    let postCalled = false;
+    const request: RequestFn = async (method, url) => {
+      if (method === 'GET' && url === '/a/dimagi/pipelines/data/77/') {
+        return { ok: true, json: async () => stripped };
+      }
+      if (method === 'POST') {
+        postCalled = true;
+        return { ok: true, json: async () => ({ data: stripped.pipeline.data, errors: [] }) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request, seed);
+    await expect(
+      backend.attachKnowledge({ experiment_id: 99, collection_index_ids: [42] })
+    ).rejects.toThrow(/collection_index_summaries/);
+    expect(postCalled).toBe(false);
+  });
+
+  it('attachKnowledge skips the pre-flight when collection_index_ids is empty (detach path)', async () => {
+    // Detaching all collections is a legitimate operation (e.g. clearing a
+    // wrong-domain shared collection). The token check only matters when at
+    // least one collection is being attached.
+    const fixture = loadPipelineFixture();
+    const stripped = JSON.parse(JSON.stringify(fixture));
+    const llmNode = stripped.pipeline.data.nodes.find(
+      (n: { data: { type: string } }) => n.data.type === 'LLMResponseWithPrompt'
+    );
+    llmNode.data.params.prompt = 'You are a helpful assistant.'; // no token
+    let saved: unknown;
+    const request: RequestFn = async (method, url, body) => {
+      if (method === 'GET' && url === '/a/dimagi/pipelines/data/77/') {
+        return { ok: true, json: async () => stripped };
+      }
+      if (method === 'POST' && url === '/a/dimagi/pipelines/data/77/') {
+        saved = body;
+        return { ok: true, json: async () => ({ data: stripped.pipeline.data, errors: [] }) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const backend = makeBackend(request, seed);
+    await backend.attachKnowledge({ experiment_id: 99, collection_index_ids: [] });
+    expect(saved).toBeDefined();
+  });
+
   it('setChatbotTools patches tool arrays', async () => {
     let saved: { data: { nodes: Array<{ data: { type: string; params: Record<string, unknown> } }> } } | undefined;
     const backend = makeBackend(makePipelineRequest((b) => { saved = b as typeof saved; }), seed);

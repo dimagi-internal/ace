@@ -1,5 +1,6 @@
 import type { RequestFn, RequestResult } from './pipeline-patch.js';
-import { patchLlmNodeParams, validatePipeline, type PipelinePatchContext } from './pipeline-patch.js';
+import { patchLlmNodeParams, validatePipeline, getLlmNodeParams, type PipelinePatchContext } from './pipeline-patch.js';
+import { PipelineValidationError } from '../errors.js';
 import type { LlmNodeParams, ClonedChatbot } from '../types.js';
 import { CollectionIndexingTimeoutError, HttpError, PipelineShapeError } from '../errors.js';
 
@@ -165,6 +166,30 @@ export class PlaywrightBackend {
     if (args.max_results !== undefined) patch.max_results = args.max_results;
     if (args.generate_citations !== undefined) patch.generate_citations = args.generate_citations;
     const pipelineId = await this.pipelineIdFor(args.experiment_id);
+
+    // Pre-flight: when attaching at least one collection, the pipeline's LLM
+    // node requires the `{collection_index_summaries}` template variable in
+    // its prompt — without it, the pipeline-save endpoint rejects with the
+    // node-level error "Prompt expects collection_index_summaries variable."
+    // The previous attach attempt would otherwise hit a confusing partial-
+    // success state (REST returns ok, version-publish then silently blocks).
+    // Catch it here with a typed error that names the exact remediation.
+    // (2026-04-27 dogfood — same Iter 6 silent-failure class as 0.5.1.)
+    if (args.collection_index_ids.length > 0) {
+      const { params } = await getLlmNodeParams(this.patchContext(), pipelineId);
+      const prompt = typeof params.prompt === 'string' ? params.prompt : '';
+      if (!prompt.includes('{collection_index_summaries}')) {
+        throw new PipelineValidationError([
+          `LLMResponseWithPrompt.prompt: missing required template variable ` +
+            `\`{collection_index_summaries}\` — the OCS pipeline-save endpoint will reject ` +
+            `attach_knowledge for any experiment whose prompt is missing this token. ` +
+            `Update the bot's system prompt via ocs_set_chatbot_system_prompt to embed ` +
+            `\`{collection_index_summaries}\` (typically near the top of the system message ` +
+            `or in a "Knowledge" section), then retry attach_knowledge.`,
+        ]);
+      }
+    }
+
     await patchLlmNodeParams(this.patchContext(), pipelineId, patch);
   }
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MockAgent, setGlobalDispatcher } from 'undici';
-import { RestBackend } from '../../../mcp/ocs/backends/rest.js';
+import { RestBackend, extractExperimentId } from '../../../mcp/ocs/backends/rest.js';
 import { HttpError } from '../../../mcp/ocs/errors.js';
 
 const BASE = 'https://www.openchatstudio.com';
@@ -37,34 +37,72 @@ describe('RestBackend.verify', () => {
   });
 });
 
+describe('extractExperimentId', () => {
+  it('parses experiment_id from full URL', () => {
+    expect(extractExperimentId('https://www.openchatstudio.com/a/connect-ace/chatbots/11996/'))
+      .toBe(11996);
+  });
+  it('parses experiment_id from path-only URL', () => {
+    expect(extractExperimentId('/a/connect-ace/chatbots/42/')).toBe(42);
+  });
+  it('returns null for undefined / empty / non-matching URLs', () => {
+    expect(extractExperimentId(undefined)).toBeNull();
+    expect(extractExperimentId('')).toBeNull();
+    expect(extractExperimentId('/a/team/projects/99/')).toBeNull();
+  });
+});
+
 describe('RestBackend chatbot atoms', () => {
-  it('listChatbots passes cursor and page_size as query params, returns UUID ids', async () => {
+  it('listChatbots returns both UUID id and integer experiment_id parsed from url', async () => {
     // OCS /api/experiments/ returns `id` as the UUID public_id, not the integer db id.
     // See apps/api/views/experiments.py:36 (lookup_field = "public_id").
+    // The integer experiment_id is recoverable from the `url` field — every authoring
+    // atom needs it (closes the idempotency gap surfaced in the 0.5.18 dogfood run).
     mockAgent.get(BASE)
       .intercept({ path: '/api/experiments/?cursor=abc&page_size=25', method: 'GET' })
       .reply(200, {
-        results: [{ id: '00000000-0000-4000-8000-000000000001', name: 'bot' }],
+        results: [{
+          id: '00000000-0000-4000-8000-000000000001',
+          name: 'bot',
+          url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/11996/',
+        }],
         next: 'xyz',
       });
 
     const b = new RestBackend({ baseUrl: BASE, token: 't' });
     const out = await b.listChatbots({ cursor: 'abc', page_size: 25 });
     expect(out.chatbots[0].id).toBe('00000000-0000-4000-8000-000000000001');
-    expect(typeof out.chatbots[0].id).toBe('string');
+    expect(out.chatbots[0].experiment_id).toBe(11996);
     expect(out.next_cursor).toBe('xyz');
   });
 
-  it('getChatbot uses the UUID public_id as the path parameter', async () => {
-    // The `{id}` path param is the UUID public_id, not the integer db id.
+  it('listChatbots returns experiment_id: null when url is missing', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/experiments/?page_size=50', method: 'GET' })
+      .reply(200, {
+        results: [{ id: 'uuid-no-url', name: 'orphan' }],
+        next: null,
+      });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const out = await b.listChatbots();
+    expect(out.chatbots[0].experiment_id).toBeNull();
+  });
+
+  it('getChatbot uses the UUID public_id as the path parameter and returns experiment_id', async () => {
     mockAgent.get(BASE)
       .intercept({ path: '/api/experiments/uuid-42/', method: 'GET' })
-      .reply(200, { id: 'uuid-42', name: 'bot' });
+      .reply(200, {
+        id: 'uuid-42',
+        name: 'bot',
+        url: '/a/connect-ace/chatbots/9001/',  // path-only also works
+      });
 
     const b = new RestBackend({ baseUrl: BASE, token: 't' });
     const exp = await b.getChatbot({ public_id: 'uuid-42' });
     expect(exp.name).toBe('bot');
     expect(exp.id).toBe('uuid-42');
+    expect(exp.experiment_id).toBe(9001);
   });
 
   it('sendTestMessage uses the widget chat API (start → send → poll)', async () => {
