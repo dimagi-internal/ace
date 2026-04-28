@@ -5,6 +5,21 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.6 — 2026-04-28
+
+Ship `ACE_HQ_DOMAIN` as a committed default in `.env.tpl` so fresh
+operator installs land with the canonical CRISPR-Connect HQ project
+space (`connect-ace-prod`) pre-populated for the Nova-plugin upload
+flow introduced in 0.6.0. Previous template left it commented with a
+"set per deployment" note; in practice there is one ACE deployment
+and one HQ domain, so the template now reflects that.
+
+### Changed
+
+- **`.env.tpl`** — uncommented `ACE_HQ_DOMAIN` and set it to
+  `connect-ace-prod`. Surrounding comment trimmed to drop the
+  obsolete "leave commented out" guidance.
+
 ## 0.6.5 — 2026-04-28
 
 Doc-only patch landing the "all blockers cleared" state for the

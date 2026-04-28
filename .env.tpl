@@ -49,15 +49,12 @@ ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
 
 # ── CommCare HQ ──────────────────────────────────────────────────────
 #
-# Set ACE_HQ_DOMAIN to the HQ project space ACE uploads CommCare apps
-# to via the Nova plugin (`/nova:upload_to_hq`). Nova reads the actual
+# ACE_HQ_DOMAIN is the HQ project space ACE uploads CommCare apps to
+# via the Nova plugin (`/nova:upload_to_hq`). Nova reads the actual
 # target project space from whichever HQ API key is saved on its
-# settings page — ACE cannot pass a domain at upload time. Setting this
-# value here lets skills pre-flight that Nova's bound API key matches
-# the expected domain before pushing apps.
-#
-# Per deployment — leave commented out in the committed template; set
-# in the operator's local `.env`.
+# settings page — ACE cannot pass a domain at upload time. This value
+# lets skills pre-flight that Nova's bound API key matches the
+# expected domain before pushing apps.
 
 ACE_HQ_BASE_URL=https://www.commcarehq.org
-# ACE_HQ_DOMAIN=
+ACE_HQ_DOMAIN=connect-ace-prod
