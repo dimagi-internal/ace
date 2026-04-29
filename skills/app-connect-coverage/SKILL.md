@@ -199,17 +199,21 @@ When `--dry-run` is active:
   autobuild fundamentally misclassified the app. This skill can't
   recover — re-run `pdd-to-{learn,deliver}-app` with a stronger
   Connect-type signal in the spec. Halt with clear error.
-- **Nova bug — `update_form` silently strips fields not in the
-  documented schema** (e.g. `entity_id`, `entity_name`). When we
-  detect that the mutation didn't take effect (Step 4's re-fetch
-  shows no change), exit with a `blocked` status pointing at
-  `voidcraft-labs/nova-plugin#1`. Don't retry — the bug isn't
-  transient.
-- **`validate_app` reports CCHQ rule violations after our fix** (e.g.
-  the `entity_id: ""` case). This is the Nova entity-id bug surfacing
-  at platform-validate time. Same handling — `blocked` status,
-  upstream pointer. The released CCZ won't load on a phone, so this
-  is a hard fail, not a warning.
+- **Nova bug — `update_form` re-injects empty `entity_id`/`entity_name`
+  on `connect.deliver_unit`** even when the operator passes a clean
+  payload of just `{name}`. Confirmed live 2026-04-29: the mutation
+  ack's, but the re-fetch shows the empty entity fields back. The
+  `name` change DOES take effect, but the malformed binding stays.
+  When Step 4's re-fetch shows the entity fields still empty, exit
+  `blocked` with a pointer to `voidcraft-labs/nova-plugin#1`.
+  Don't retry — the bug isn't transient.
+- **`validate_app` is blind to the deliver_unit bug.** Confirmed live
+  2026-04-29: the Nova platform validator returns `{success: true}`
+  for an app whose `connect.deliver_unit` has empty `entity_id`/
+  `entity_name`. Don't rely on `validate_app` alone to catch coverage
+  failures — Step 4's per-mutation re-fetch is the actual gate.
+  `validate_app` is necessary but not sufficient. (See nova-plugin#1
+  for the upstream tracker.)
 - **Iteration budget exhausted (3+ rounds with no convergence).**
   Either the heuristic is wrong (we keep "fixing" something that
   Nova then resets) or there's an unknown Nova bug. Halt with the
@@ -256,3 +260,4 @@ verify+fix discipline is reliable across concerns.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-29 | Initial version. First in the post-Nova verify+fix family. Detection of Connect markers per form, auto-fix via `nova_update_form`, loop until clean or until a known Nova-side blocker is hit. Documents the pattern for future `app-<concern>-coverage` siblings. (0.10.7) | ACE team |
+| 2026-04-29 | Smoke-tested live against `turmeric-market-survey-2026-04-29-coverage`. Skill exited `clean` in one iteration on the Learn side, `blocked` in one iteration on the Deliver side. Updates from the run: (a) bug description was inverted — Nova INJECTS empty `entity_id`/`entity_name`, doesn't strip them; (b) `nova_validate_app` returns `success: true` despite the malformed deliver_unit, so the per-mutation re-fetch in Step 4 is the actual gate (validate_app is necessary but not sufficient). Both findings folded back into Failure Modes. (0.10.12) | ACE team |
