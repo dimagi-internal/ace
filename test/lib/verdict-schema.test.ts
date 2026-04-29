@@ -90,4 +90,51 @@ describe('verdict schema', () => {
   it('exports VerdictSchema as a Zod schema', () => {
     expect(VerdictSchema.safeParse(validVerdict).success).toBe(true);
   });
+
+  it('accepts v2 verdict tiers (incomplete, partial)', () => {
+    for (const v of ['incomplete', 'partial']) {
+      const r = validateVerdict({ ...validVerdict, verdict: v });
+      expect(r.ok, `${v}: ${JSON.stringify(r.errors)}`).toBe(true);
+    }
+  });
+
+  it('accepts v2 severity tiers (PLATFORM, DRIFT, INFO-SKIPPED)', () => {
+    for (const sev of ['PLATFORM', 'DRIFT', 'INFO-SKIPPED']) {
+      const r = validateVerdict({
+        ...validVerdict,
+        auto_surfaced: [{ severity: sev, message: 'sample' }],
+      });
+      expect(r.ok, `${sev}: ${JSON.stringify(r.errors)}`).toBe(true);
+    }
+  });
+
+  it('rejects unknown severity tiers', () => {
+    const r = validateVerdict({
+      ...validVerdict,
+      auto_surfaced: [{ severity: 'CRITICAL', message: 'sample' }],
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('per_item.verdict is restricted to pass/warn/fail (no partial/incomplete)', () => {
+    for (const v of ['incomplete', 'partial']) {
+      const r = validateVerdict({
+        ...validVerdict,
+        per_item: [{ ref: 'p1', score: 5, verdict: v }],
+      });
+      expect(r.ok, `per_item should reject ${v}`).toBe(false);
+    }
+  });
+
+  it('accepts optional live_state_verified boolean', () => {
+    for (const lsv of [true, false]) {
+      const r = validateVerdict({ ...validVerdict, live_state_verified: lsv });
+      expect(r.ok, `live_state_verified=${lsv}: ${JSON.stringify(r.errors)}`).toBe(true);
+    }
+  });
+
+  it('accepts optional overall_score_pre_cap', () => {
+    const r = validateVerdict({ ...validVerdict, overall_score_pre_cap: 9.4, overall_score: 8.5 });
+    expect(r.ok, JSON.stringify(r.errors)).toBe(true);
+  });
 });

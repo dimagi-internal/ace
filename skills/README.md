@@ -214,8 +214,14 @@ mode: quick | deep | monitor   # or omit if the eval has one mode
 ran_at: <ISO timestamp>
 capture_path: qa-captures/<path>  # or inline-self-eval if the skill is its own producer
 
-overall_score: 0.0-10.0        # weighted
-verdict: pass | warn | fail
+overall_score: 0.0-10.0           # weighted, post-cap
+overall_score_pre_cap: 0.0-10.0   # optional; raw weighted mean before any cap binds
+verdict: pass | warn | fail | incomplete | partial
+
+# Optional. true if the rubric ran live MCP probes against upstream state
+# and confirmed agreement; false if probes were skipped, failed, or N/A.
+# When false on a non-degraded artifact, verdict is capped at `partial`.
+live_state_verified: true | false
 
 dimensions:
   <dim-name>: { score: 0-10, weight: 0.0-1.0 }
@@ -224,24 +230,39 @@ dimensions:
 per_item:                      # optional — one entry per judged thing
   - ref: <prompt / row / field>  # canonical item identifier
     score: 0-10
-    verdict: pass | warn | fail
+    verdict: pass | warn | fail   # per-item is always graded; no incomplete/partial
     note: <one-line rationale>
   # Each entry MAY include domain-specific fields (e.g., `prompt:` for
   # chatbot evals, `session_id:` for FGD evals). The canonical key is
   # `ref`; aggregators read by `ref` and ignore extras.
 
 auto_surfaced:                 # optional — inputs to the gate brief
-  - severity: BLOCKER | WARN | INFO
+  - severity: BLOCKER | WARN | INFO | PLATFORM | DRIFT | INFO-SKIPPED
     message: <one-line>
-  # The producing skill drafts one entry per surfaced concern during
-  # judgment. `opp-eval` concatenates these when aggregating verdicts
-  # into the run-level brief. If the producing skill has nothing to
-  # surface, omit this field (don't write an empty list).
+  # BLOCKER, WARN, INFO are the rubric-deducting tiers (WARN counts toward
+  # inflation guards). PLATFORM (defect upstream of the skill), DRIFT
+  # (artifact-vs-live-state disagreement), and INFO-SKIPPED (sub-check
+  # bypassed for missing input) are diagnostic-only — they document gaps
+  # without penalizing skill quality. The producing skill drafts one entry
+  # per surfaced concern during judgment. `opp-eval` concatenates these
+  # when aggregating verdicts into the run-level brief. If the producing
+  # skill has nothing to surface, omit this field (don't write an empty
+  # list).
 
 gate:                          # optional — only if this eval gates a phase
   threshold: 0.0-10.0
   disposition: approve | reject | iterate
 ```
+
+**Verdict tier semantics:**
+- `pass` / `warn` / `fail` — graded artifact, defects (or absence) sized by
+  the rubric's deductions.
+- `incomplete` — structural gap in the artifact prevents grading
+  (degraded-mode TBD-MANUAL ids, missing PDD, etc.). Counts as "not gradable"
+  in `opp-eval`'s coverage cap, not as a defect.
+- `partial` — artifact looks correct on paper but live verification probes
+  failed at grading time. Records the text-only score; downstream consumers
+  should re-grade when MCP is reachable. Caps overall at 8.5.
 
 Skills may add their own fields below this minimum, but should not rename
 or reshape the core keys — the aggregator reads them positionally.
