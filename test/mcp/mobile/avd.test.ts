@@ -83,3 +83,21 @@ describe('AvdBackend.installApk', () => {
     });
   });
 });
+
+describe('AvdBackend.captureUiDump', () => {
+  it('runs uiautomator dump, pulls XML, parses elements', async () => {
+    const xml = `<hierarchy><node resource-id="login_btn" text="Sign in" class="android.widget.Button" bounds="[0,0][100,50]"/></hierarchy>`;
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
+      'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+      'adb -s emulator-5554 shell uiautomator dump /sdcard/window_dump.xml': { stdout: 'UI hierarchy dumped\n' },
+      'adb -s emulator-5554 exec-out cat /sdcard/window_dump.xml': { stdout: xml },
+    });
+    const backend = new AvdBackend({ shell });
+    const r = await backend.captureUiDump('ACE_Pixel_API_34');
+    expect(r.xml).toBe(xml);
+    expect(r.elements).toContainEqual(
+      expect.objectContaining({ id: 'login_btn', text: 'Sign in', class: 'android.widget.Button' }),
+    );
+  });
+});

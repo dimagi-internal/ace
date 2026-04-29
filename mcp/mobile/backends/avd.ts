@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { AvdBootError, AdbError } from '../errors.js';
-import type { AvdInfo, ApkInfo } from '../types.js';
+import type { AvdInfo, ApkInfo, UiDumpResult } from '../types.js';
 
 const AVD_BOOT_TIMEOUT_MS = 120_000;
 const AVD_BOOT_POLL_MS = 2_000;
@@ -119,5 +119,32 @@ export class AvdBackend {
       if (name === avdName) return { name, serial, status: 'booted' };
     }
     return null;
+  }
+
+  async captureUiDump(avdName: string): Promise<UiDumpResult> {
+    const avd = await this.ensureAvdRunning(avdName);
+    await this.shell('adb', ['-s', avd.serial, 'shell', 'uiautomator', 'dump', '/sdcard/window_dump.xml']);
+    const xmlR = await this.shell('adb', ['-s', avd.serial, 'exec-out', 'cat', '/sdcard/window_dump.xml']);
+    return { xml: xmlR.stdout, elements: this.parseHierarchy(xmlR.stdout) };
+  }
+
+  private parseHierarchy(xml: string): UiDumpResult['elements'] {
+    const out: UiDumpResult['elements'] = [];
+    const nodeRe = /<node\s+([^>]*?)\/?>/g;
+    let m: RegExpExecArray | null;
+    while ((m = nodeRe.exec(xml)) !== null) {
+      const attrs = m[1];
+      const get = (k: string) => {
+        const am = attrs.match(new RegExp(`${k}="([^"]*)"`));
+        return am ? am[1] : undefined;
+      };
+      out.push({
+        id: get('resource-id') || undefined,
+        text: get('text') || undefined,
+        class: get('class') || undefined,
+        bounds: get('bounds') || undefined,
+      });
+    }
+    return out;
   }
 }
