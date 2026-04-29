@@ -10,6 +10,8 @@ function fakeShell(scripted: Record<string, { stdout: string; stderr?: string; c
   });
 }
 
+import { AvdBootError } from '../../../mcp/mobile/errors.js';
+
 describe('AvdBackend.listAvds', () => {
   it('parses emulator -list-avds output', async () => {
     const shell = fakeShell({
@@ -24,5 +26,39 @@ describe('AvdBackend.listAvds', () => {
     const shell = fakeShell({ 'emulator -list-avds': { stdout: '' } });
     const backend = new AvdBackend({ shell });
     expect(await backend.listAvds()).toEqual([]);
+  });
+});
+
+describe('AvdBackend.ensureAvdRunning', () => {
+  it('returns existing serial if AVD already booted', async () => {
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
+      'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+    });
+    const backend = new AvdBackend({ shell });
+    const info = await backend.ensureAvdRunning('ACE_Pixel_API_34');
+    expect(info).toMatchObject({ name: 'ACE_Pixel_API_34', serial: 'emulator-5554', status: 'booted' });
+  });
+
+  it('throws AvdBootError if AVD does not exist', async () => {
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\n' },
+      'emulator -list-avds': { stdout: 'Other_AVD\n' },
+    });
+    const backend = new AvdBackend({ shell });
+    await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(AvdBootError);
+  });
+});
+
+describe('AvdBackend.stopAvd', () => {
+  it('shells adb emu kill against the matching device', async () => {
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
+      'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+      'adb -s emulator-5554 emu kill': { stdout: '' },
+    });
+    const backend = new AvdBackend({ shell });
+    await backend.stopAvd('ACE_Pixel_API_34');
+    expect(shell).toHaveBeenCalledWith('adb', ['-s', 'emulator-5554', 'emu', 'kill']);
   });
 });
