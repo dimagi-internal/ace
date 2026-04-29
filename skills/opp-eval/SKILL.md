@@ -89,10 +89,17 @@ If no mode is passed, default to `--quick`.
    | `closeout`  | 0.10 | `opp-closeout`, `llo-feedback`, `learnings-summary`, `cycle-grade` |
 
    Category weights sum to 1.0. Per-category score is the simple mean
-   of all verdicts that map into the category. Categories with zero
-   verdicts score `null` and their weight is redistributed proportionally
-   across categories that **did** score — so a partial opp (e.g., still
-   in Phase 3, no OCS verdict yet) gets a meaningful run-level number
+   of all verdicts that map into the category, **excluding any verdict
+   with `verdict: incomplete`** (added 0.9.8). An `incomplete` verdict
+   means the rubric correctly detected a structural gap (degraded mode,
+   phase not run, target artifact missing) and refused to grade —
+   that's a coverage gap, not a quality signal, and shouldn't affect
+   the category mean.
+
+   Categories with zero gradable verdicts (zero non-incomplete) score
+   `null` and their weight is redistributed proportionally across
+   categories that **did** score — so a partial opp (e.g., still in
+   Phase 3, no OCS verdict yet) gets a meaningful run-level number
    rather than an artificially low one.
 
 7. **Compute the run-level overall score.** Weighted mean of the
@@ -106,7 +113,8 @@ If no mode is passed, default to `--quick`.
    "1/6 categories scored 8.9 → run-level PASS" inflation surfaced by
    the first smoke run.
 
-   Coverage tier (count of categories with score ≠ null, ignoring
+   Coverage tier (count of categories with score ≠ null — i.e.,
+   categories with at least one non-incomplete verdict — ignoring
    categories with `expected_at_phase` later than the opp's current
    phase):
 

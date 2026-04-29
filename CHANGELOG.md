@@ -5,6 +5,77 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.8 — 2026-04-28
+
+Two new provisional rubrics added — covers the remaining 2 of 6
+opp-eval categories. ACE's eval framework now has rubrics defined
+for **all 6 categories**, with 4 strongly calibrated and 2
+provisional pending real ground-truth artifacts.
+
+### Added
+
+- **`skills/connect-program-setup-eval/SKILL.md`** — covers the
+  `connect` category. 5 dimensions: program_fit_decision (0.15),
+  verification_rule_fidelity (0.25 — most load-bearing for Layer A
+  faithfulness), delivery_unit_wiring (0.20), payment_unit_fit
+  (0.20), active_window_status (0.20). Inflation guard at 8.5.
+  Explicit `incomplete` verdict for degraded-mode artifacts (which
+  is what `smoke-20260428-1242` Phase 3 produced before the
+  ace-connect MCP shipped) — degraded mode is environment, not
+  quality, and shouldn't deduct. The rubric integrates with the new
+  ace-connect MCP `connect_get_*` tools to verify live state against
+  `connect-setup-summary.md` claims when the IDs are real.
+
+- **`skills/cycle-grade-eval/SKILL.md`** — covers the `closeout`
+  category. 5 dimensions: self_eval_agreement (0.25),
+  learnings_concreteness (0.25 — vague aphorisms ≤4),
+  recommendation_specificity (0.20 — must point at a concrete
+  artifact change), evidence_citation_discipline (0.15 — uncited
+  cycle-level claims are improvisation), trajectory_framing (0.15
+  — must acknowledge calibration history when it shaped the score).
+  Inflation guard at 8.5. Explicit `incomplete` verdict when Phase
+  6 hasn't run yet.
+
+### Changed
+
+- **`skills/opp-eval/SKILL.md`** — `verdict: incomplete` verdicts
+  are now excluded from category mean. They represent a rubric
+  correctly detecting a structural gap (degraded mode, phase not
+  run, target artifact missing) and refusing to grade. That's a
+  coverage gap, not a quality signal, and shouldn't affect the
+  category score. Categories with zero non-incomplete verdicts
+  remain `null` (existing behavior).
+
+### Coverage status (rubrics defined / strongly calibrated / verdicts on smoke-20260428-1242)
+
+| Category | Rubric | Calibration | Smoke verdict |
+|---|---|---|---|
+| design | idea-to-pdd-eval | strongly | 8.65 (PASS) |
+| commcare | pdd-to-deliver-app-eval + pdd-to-learn-app-eval | strongly | 8.5 each (PASS) |
+| connect | connect-program-setup-eval (NEW) | provisional | will emit `incomplete` (degraded artifacts) |
+| ocs | ocs-chatbot-eval | strongly | 7.62 (PASS) |
+| operate | none yet | — | (Phase 5 not run) |
+| closeout | cycle-grade-eval (NEW) | provisional | will emit `incomplete` (Phase 6 not run) |
+
+Coverage frontier: **5 of 6 categories** now have rubrics defined.
+The remaining gap is operate (Phase 5 skills: llo-onboarding,
+llo-uat, llo-launch, flw-data-review, timeline-monitor). Building
+those rubrics is queued — they're easier with a real Phase 5 run
+producing ground-truth artifacts.
+
+### Backlog still open
+
+- **Cross-opp validation.** All 4 calibrated rubrics still trained
+  on smoke-20260428-1242 only.
+- **Real non-degraded Phase 3 run** to produce ground truth for
+  connect-program-setup-eval calibration.
+- **First closed-cycle opp** to produce ground truth for
+  cycle-grade-eval calibration.
+- **Operate-category rubrics** (5 skills, no rubrics yet).
+- **Operator-effort tracking** in state.yaml.
+- 3 small OCS rubric polish items + tighter composition-rule
+  imperatives.
+
 ## 0.9.7 — 2026-04-28
 
 🎯 **Milestone: all 4 ACE `-eval` rubrics now strongly calibrated.**
