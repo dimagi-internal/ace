@@ -5,6 +5,32 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.15 — 2026-04-29
+
+**Doc fix: name the canonical `.env` location so agents stop hunting.**
+
+CLAUDE.md told future sessions how to *generate* `.env` (`op inject`)
+and that 1Password owned the values, but never said *where the
+installed `.env` lives*. When an orchestrator session needed to inspect
+env state, it would walk through `~/.claude/plugins/cache/`, the
+worktree, and the parent shell before finding the file at
+`$CLAUDE_PLUGIN_DATA/.env`. `bin/ace-doctor` already knew the
+canonical path; only the human-readable docs lagged.
+
+### Changed
+
+- `CLAUDE.md` `## Layout` — `.env.tpl` line now names the install path
+  (`$CLAUDE_PLUGIN_DATA/.env`, legacy fallback plugin root) and the
+  full `op inject` command including `--account dimagi.1password.com`.
+- `CLAUDE.md` `## Gotchas` — new bullet parallel to the
+  `.gws-sa-key.json` one: `.env` is per-machine, lives at
+  `$CLAUDE_PLUGIN_DATA/.env`, and the in-shell env vars are normally
+  empty because values load into MCP-server subprocesses, not the
+  parent shell.
+- `agents/ace-orchestrator.md` — the `ACE_DRIVE_ROOT_FOLDER_ID unset`
+  error replaces the `<env-path>` placeholder with the concrete
+  `$CLAUDE_PLUGIN_DATA/.env` path so it matches doctor's hint verbatim.
+
 ## 0.10.13 — 2026-04-29
 
 **Class-level preventer for rubric-prose ↔ schema drift.**
