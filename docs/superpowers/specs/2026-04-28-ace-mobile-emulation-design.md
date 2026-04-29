@@ -126,8 +126,8 @@ Phase 9 flows reference iOS accessibility IDs (`signup_link`, `phone_number_fiel
               │  installed APKs
               ▼
        ┌──────────────────────┐
-       │ Connect mobile (apk) │
        │ CommCare Android (apk)│
+       │ — Connect/ConnectID is integrated as of 2.62.0
        └──────────────────────┘
 ```
 
@@ -496,12 +496,12 @@ Runs `generate_recipes_from_app_summary` against the existing `CRISPR-Test-001` 
 
 ## Open questions
 
-These survived brainstorming and are flagged for resolution during implementation, not as blockers to the plan:
+Status as of 2026-04-29 implementation pass:
 
-1. **Connect mobile APK source URL.** Where does the bootstrap step pull the Connect mobile Android APK from? CommCare Android is likely available via a known Dimagi release URL or HQ. The Connect mobile app may be on the Play Store (in which case `install_apk` becomes "open Play Store and install" — different shape) or distributed internally. Resolve before implementing the bootstrap APK-install step.
+1. **~~Connect mobile APK source URL~~ — RESOLVED.** Discovery during implementation: as of CommCare 2.62.0 (April 2026) Connect/ConnectID is **integrated into the CommCare Android app itself**. There is no separate `com.dimagi.connect` package. Single APK `org.commcare.dalvik` covers both the CommCare and Connect flows. Download URL: `https://github.com/dimagi/commcare-android/releases/download/commcare_2.62.0/app-commcare-release.apk`. All four static recipes use `appId: org.commcare.dalvik`.
 2. **1Password vault name and item path.** The spec uses `op://ace/connect-test-user/...` as a placeholder. Final vault and item paths confirmed during the bootstrap dry-run.
-3. **AVD image specifics.** Spec defaults to `ACE_Pixel_API_34` (Pixel device profile, API 34, ARM64 system image). Validated when authoring the static recipes — if the Connect Android app has min-API requirements above that, bump to API 35.
-4. **Static-recipe selector authoring.** Static recipes pin element IDs discovered via `maestro studio`. We won't know how stable those IDs are across Connect mobile releases until we author the first one — failure mode is covered (assertVisible at end of flow), but selector-drift cadence is unknown.
+3. **AVD image specifics.** Confirmed `ACE_Pixel_API_34` works (Pixel 7 device profile, API 34 / Android 14, ARM64 ARM-native on Apple Silicon). AVD created and CommCare 2.62.0 installs cleanly during implementation.
+4. **Static-recipe selector authoring — PARTIALLY DONE.** The four static YAMLs ship as scaffolds with `REPLACE_*` placeholders. Final selector discovery requires an interactive `maestro studio` session against CommCare 2.62.0 in its Connect-flow path; deferred to a per-operator setup step (the first run of `/ace:mobile-bootstrap` against a real AVD will surface the selectors via `mobile_capture_ui_dump`).
 
 ---
 

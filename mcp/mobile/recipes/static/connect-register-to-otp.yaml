@@ -2,10 +2,10 @@
 # against the Connect mobile Android app before this recipe will run.
 # See docs/superpowers/specs/2026-04-28-ace-mobile-emulation-design.md
 # Drive Connect mobile from splash through to the OTP screen.
-appId: com.dimagi.connect
+appId: org.commcare.dalvik
 ---
 - launchApp:
-    appId: com.dimagi.connect
+    appId: org.commcare.dalvik
     clearState: true
 - extendedWaitUntil:
     visible:

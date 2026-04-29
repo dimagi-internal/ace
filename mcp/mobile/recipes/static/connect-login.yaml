@@ -1,8 +1,8 @@
 # SCAFFOLD ONLY — REPLACE_* selectors must be discovered via `maestro studio`.
-appId: com.dimagi.connect
+appId: org.commcare.dalvik
 ---
 - launchApp:
-    appId: com.dimagi.connect
+    appId: org.commcare.dalvik
     clearState: false
 - extendedWaitUntil:
     visible:

@@ -33,10 +33,10 @@ This command is idempotent — re-run any time you suspect drift.
    - Tool: `mcp__ace_mobile__mobile_ensure_avd_running`
    - Args: `{ "avdName": "${ACE_AVD_NAME}" }`
 
-5. **Check Connect mobile + CommCare Android APKs are installed on the AVD.**
-   - Run: `adb shell pm list packages com.dimagi.connect`
+5. **Check the CommCare Android APK is installed on the AVD.**
+   - **Important:** As of CommCare 2.62.0 (April 2026), Connect/ConnectID is integrated into the CommCare app itself — there is no separate `com.dimagi.connect` package. The single APK `org.commcare.dalvik` covers both flows.
    - Run: `adb shell pm list packages org.commcare.dalvik`
-   - If either is missing, prompt the user for an APK path (or HQ download URL) and call `mobile_install_apk` for each.
+   - If missing, download from `https://github.com/dimagi/commcare-android/releases/download/commcare_2.62.0/app-commcare-release.apk` (or pin a different version), then call `mobile_install_apk` with the local path.
 
 6. **Verify Playwright cookies for connect.dimagi.com.**
    - Check `${HOME}/.ace/playwright-userdata/` exists and contains a `Cookies` file.

@@ -1,9 +1,10 @@
 ---
 name: app-screenshot-capture
 description: >
-  Drive the Connect mobile and CommCare Android apps through scripted Maestro
-  flows on a local AVD and capture one PNG per recipe step into Drive. First
-  step of Phase 5 (training-prep). Produces ACE/<opp>/screenshots/ + manifest.yaml.
+  Drive the CommCare Android app (which integrates Connect/ConnectID as of
+  2.62.0) through scripted Maestro flows on a local AVD and capture one PNG
+  per recipe step into Drive. First step of Phase 5 (training-prep). Produces
+  ACE/<opp>/screenshots/ + manifest.yaml.
 ---
 
 # App Screenshot Capture
