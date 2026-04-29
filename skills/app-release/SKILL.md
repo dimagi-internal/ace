@@ -91,21 +91,62 @@ procedure below to rediscover.
    (Connect's OAuth-via-CCHQ flow leaves valid CCHQ cookies). If
    expired, run `/ace:connect-login` to refresh.
 
-3. **For each app (learn + deliver):** run the verified Step 1 + Step 2
+3. **Pre-flight: verify Nova added Connect markers to every form.**
+   This is the most common failure mode and the cheapest to detect.
+   For each app:
+
+   - Call `mcp__plugin_nova_nova__get_app({app_id: <nova_app_id>})` to
+     confirm the blueprint declares `Connect type: learn` (or `deliver`).
+   - For each form in the blueprint, call
+     `mcp__plugin_nova_nova__get_form({app_id, moduleIndex, formIndex})`
+     and check the `connect` field on the returned form:
+     - **Deliver app forms** must have `connect.deliver_unit` (or
+       `connect.task`) set with a `name`. Missing = build will pass
+       but Connect's `Sync Deliver Units` will return zero — the
+       opp gets stuck at Phase 3 Step 2.
+     - **Learn app forms** must have `connect.learn_module` (content)
+       and/or `connect.assessment` (quiz) set per the prompt's content/
+       quiz/both rule.
+
+   If any form is missing its expected Connect block, halt and surface:
+   "Nova autobuild did not configure Connect markers on form <N> of
+   module <M> in <app_id>. Re-run `/nova:edit <app_id>` with the
+   instruction `Set the Connect deliver_unit/learn_module/assessment
+   block on every form per the autobuild prompt's CommCare Connect
+   rules.` See § Known Nova bug below for context."
+
+4. **For each app (learn + deliver):** run the verified Step 1 + Step 2
    POSTs above. Each call is idempotent on the build side: re-POSTing
    `/apps/save/` after a release creates a new build at the next version,
    leaving prior builds released. So safe to re-run.
 
-4. **Verify both apps show `is_released: true`** via the API.
+5. **Verify both apps show `is_released: true`** via the API.
 
-5. **Update `deployment-summary.md`** with a `releases:` block:
-   ```yaml
-   releases:
-     learn_app:  { build_id: <id>, version: <n>, released_at: <iso> }
-     deliver_app: { build_id: <id>, version: <n>, released_at: <iso> }
+6. **Verify the released CCZ contains `<learn:deliver>` /
+   `<learn:module>` blocks.** The ultimate test of "Connect can see
+   this app" — the form XML in the CCZ must have elements in the
+   `http://commcareconnect.com/data/v1/learn` namespace. If `is_released`
+   is true but the CCZ has zero such markers, the form lacks Connect
+   metadata at the source (Nova didn't generate it). Halt with the
+   same remediation as Step 3.
+
+   ```bash
+   curl -H "Authorization: ApiKey <user>:<key>" \
+     "<base>/a/<domain>/apps/api/download_ccz/?app_id=<app_id>&latest=release" \
+     -o /tmp/app.ccz
+   unzip -q /tmp/app.ccz -d /tmp/app/
+   grep -rcE 'commcareconnect|<learn:(deliver|module|task|assessment)' /tmp/app/ | grep -v ':0'
+   # Must list at least one form file with markers per app
    ```
 
-6. **Trigger Connect's deliver-unit sync.** Connect caches per-opp
+7. **Update `deployment-summary.md`** with a `releases:` block:
+   ```yaml
+   releases:
+     learn_app:  { build_id: <id>, version: <n>, released_at: <iso>, connect_markers: <count> }
+     deliver_app: { build_id: <id>, version: <n>, released_at: <iso>, connect_markers: <count> }
+   ```
+
+8. **Trigger Connect's deliver-unit sync.** Connect caches per-opp
    deliver units; after a release, the next opp create or wizard step
    will pick up the new schema. If an opp ALREADY exists (re-running
    this skill mid-cycle), tell the operator to either re-run
@@ -115,10 +156,50 @@ procedure below to rediscover.
    Sync URL pattern (verified 2026-04-29):
    ```
    POST /a/<connect_org>/opportunity/<opp_int_id>/sync_deliver_units/
+   X-CSRFToken: <from hx-headers in form HTML>
    ```
    Note `opp_int_id` is Connect's internal int FK, not the UUID. To
    discover it, GET the wizard page and read the `hx-post` attribute on
    the Sync Deliver Units button.
+
+## Known Nova bugs (as of 2026-04-29)
+
+Two distinct bugs in `voidcraft-labs/nova-plugin` cause Phase 3 Step 2 to
+silently produce a draft opp with zero deliver units:
+
+1. **Autobuild often skips Connect markers entirely.** The
+   nova-architect-autonomous prompt has a `## CommCare Connect` section
+   that instructs the agent to set `learn_module`/`assessment` on Learn
+   forms and `deliver_unit`/`task` on Deliver forms, but in practice the
+   autobuild run completes WITHOUT setting them. The blueprint records
+   `Connect type: deliver` at the app level but each form has no
+   `connect` block. Workaround: pre-flight (Step 3 above) calls
+   `nova_get_form` on every form and surfaces the missing markers; the
+   operator can then fix via `/nova:edit`.
+
+2. **`update_form` `deliver_unit` schema lists only `name`, but the
+   runtime auto-fills empty `entity_id` and `entity_name` that
+   serialize as invalid XPath.** Repro:
+   ```
+   nova_update_form(connect={deliver_unit: {name: "Vendor visit"}})
+     → form.connect.deliver_unit = {
+         name: "Vendor visit", entity_id: "", entity_name: ""
+       }
+   ```
+   On `/apps/save/` (build creation), CCHQ rejects with:
+   ```
+   Validation Error: Problem with bind for
+     /data/connect_deliver/deliver/entity_id
+     contains invalid calculate expression []
+   ```
+   Passing entity_id/entity_name in the update_form call doesn't help —
+   they get stripped at the schema validator. **Workaround:** none yet
+   from ACE-side; needs a Nova upstream fix to either omit empty
+   entity_id/entity_name from the bind, or expose them as input params
+   with sensible defaults (e.g. `uuid()`).
+
+If you hit either bug, surface it explicitly to the operator with a
+pointer to this section, rather than retrying.
 
 5. **Update deployment-summary.md.**
    Append a `releases` block to the frontmatter with the new build IDs and
@@ -191,3 +272,4 @@ When `--dry-run` is active:
 | 2026-04-29 | Initial version. Carved out as a separate Phase 2 step (between `app-deploy` and `connect-opp-setup`) after the turmeric-market-survey-2026-04-28 dogfood made it clear that "Nova upload" and "released and discoverable by Connect" are different states. (0.10.1) | ACE team |
 | 2026-04-29 | Correct the prerequisite section: ace@dimagi-ai.com IS Admin on connect-ace-prod (verified live). The UI's "Sorry, you don't have permission" banner is a Knockout fallback for any `buildState() == 'error'`, not a literal permission verdict. Replace the bad pre-flight with an empirical probe procedure for endpoint discovery — CCHQ's `Make New Version` and `Make Released` URL patterns aren't stable public APIs and need to be re-discovered when the UI changes. (0.10.3) | ACE team |
 | 2026-04-29 | Discovered + verified the actual endpoints on `/apps/view/<app_id>/releases/`: `POST /apps/save/<app_id>/` (empty body) returns the new build with `_id`; `POST /apps/view/<app_id>/releases/release/<build_id>/` with `ajax=true&is_released=true` flips the release flag. Tested live against `0c96435881b0...` (deliver) and `76fd5f0e2834...` (learn) on connect-ace-prod — both successfully released. Also documented the Connect-side sync endpoint: `POST /a/<org>/opportunity/<int_id>/sync_deliver_units/`. (0.10.4) | ACE team |
+| 2026-04-29 | Add Connect-coverage pre-flight (Step 3) and CCZ verification (Step 6) — checks Nova blueprints have `connect.deliver_unit` / `learn_module` / `assessment` set on every form, then verifies the released CCZ has `<learn:deliver>` / `<learn:module>` markers. Document two upstream Nova bugs that cause silent failures: (a) autobuild often skips Connect markers entirely; (b) `update_form deliver_unit` runtime auto-fills empty `entity_id`/`entity_name` that serialize as invalid XPath, breaking the build. Both need Nova upstream fixes; the skill surfaces clear pointers when either is detected. Learn-app pipeline currently works end-to-end; Deliver-app pipeline blocks on bug (b). (0.10.5) | ACE team |
