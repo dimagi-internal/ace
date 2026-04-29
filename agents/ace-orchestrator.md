@@ -405,8 +405,9 @@ When starting fresh:
 
    0. Read `ACE_DRIVE_ROOT_FOLDER_ID` from the environment. If it is
       **unset or empty**, stop and emit an explicit error:
-      `ACE_DRIVE_ROOT_FOLDER_ID is not set in your .env; re-inject from
-      .env.tpl via "op inject -i .env.tpl -o <env-path> --account
+      `ACE_DRIVE_ROOT_FOLDER_ID is not set in your .env (expected at
+      $CLAUDE_PLUGIN_DATA/.env); re-inject from .env.tpl via "op inject
+      -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --account
       dimagi.1password.com" and retry, or pass --idea FILE|- to bypass
       the picker.` Do NOT silently fall through to (d) — the "no PDDs
       folder" fallback is for the case where the folder legitimately
