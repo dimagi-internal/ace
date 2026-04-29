@@ -1,51 +1,75 @@
-# SCAFFOLD ONLY — REPLACE_* selectors must be discovered via `maestro studio`
-# against the Connect mobile Android app before this recipe will run.
-# See docs/superpowers/specs/2026-04-28-ace-mobile-emulation-design.md
-# Drive Connect mobile from splash through to the OTP screen.
+# Drive CommCare Android (which integrates Connect/PersonalID as of 2.62.0)
+# from a fresh install through to the OTP entry screen. The flow is:
+#
+#   1. Launch CommCare → "Welcome to CommCare" setup screen
+#   2. Open nav drawer (top-left burger)
+#   3. Tap "Sign In / Register" (nav_drawer_sign_in_button)
+#   4. PersonalIdActivity opens with phone entry form
+#   5. Fill country code, phone, accept consent, continue
+#
+# Selectors discovered against CommCare 2.62.0 on 2026-04-29 via uiautomator
+# dump. Stops at the OTP entry screen — composite caller fetches OTP via
+# Playwright and continues with connect-register-from-otp.yaml.
+#
+# OTP-entry-screen selector (REPLACE_otp_entry) still needs final discovery —
+# requires advancing past the continue button against the live Connect-id
+# backend, which only happens for valid +7426 test numbers. The first real
+# /ace:mobile-bootstrap run will surface it.
 appId: org.commcare.dalvik
 ---
 - launchApp:
     appId: org.commcare.dalvik
     clearState: true
-- extendedWaitUntil:
-    visible:
-      id: "REPLACE_signup_button"
-    timeout: 30000
-- tapOn:
-    id: "REPLACE_signup_button"
 
 - extendedWaitUntil:
     visible:
-      id: "REPLACE_phone_entry"
-    timeout: 10000
+      id: "org.commcare.dalvik:id/str_setup_message"
+    timeout: 30000
+
+# Open the navigation drawer (top-left burger icon) and tap Sign In / Register.
 - tapOn:
-    id: "REPLACE_country_code"
+    point: "73,209"
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+    timeout: 5000
+- tapOn:
+    id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+
+# PersonalIdActivity — phone entry form.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/connect_primary_phone_input"
+    timeout: 10000
+
+- tapOn:
+    id: "org.commcare.dalvik:id/countryCode"
 - eraseText: 10
 - inputText: ${COUNTRY_CODE}
-- tapOn:
-    id: "REPLACE_phone_entry"
-- inputText: ${PHONE_LOCAL}
-- tapOn:
-    id: "REPLACE_continue_button"
 
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_primary_phone_input"
+- eraseText: 15
+- inputText: ${PHONE_LOCAL}
+
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_consent_check"
+
+# If the phone is already registered, surface a sentinel for the composite
+# caller. The dialog text is best-effort; we'll refine this once we observe
+# the actual duplicate-phone flow against the +7426 backend.
 - runFlow:
     when:
       visible:
-        text: "Phone already registered"
+        text: "already registered"
     commands:
       - evalScript: ${output.stdout = 'PHONE_ALREADY_REGISTERED'}
       - stopApp
 
-- extendedWaitUntil:
-    visible:
-      id: "REPLACE_pin_entry"
-    timeout: 10000
 - tapOn:
-    id: "REPLACE_pin_entry"
-- inputText: ${PIN}
-- tapOn:
-    id: "REPLACE_pin_continue"
+    id: "org.commcare.dalvik:id/personalid_phone_continue_button"
 
+# OTP entry screen — final selector still REPLACE_otp_entry pending live run.
 - extendedWaitUntil:
     visible:
       id: "REPLACE_otp_entry"

@@ -1,37 +1,64 @@
-# SCAFFOLD ONLY — REPLACE_* selectors must be discovered via `maestro studio`.
+# Sign in an already-registered PersonalID user (CommCare 2.62.0+ integrated
+# Connect flow). Assumes CommCare is installed but the PersonalID session is
+# fresh or expired — i.e., nav drawer shows "Sign In / Register".
+#
+# If the user is already signed in, the nav drawer shows their name + a
+# "Sign Out" option instead — flow short-circuits via runFlow.when.
+#
+# Post-login screens (PIN entry, biometric prompt, recovery flow) still need
+# final selector discovery. The first real /ace:mobile-bootstrap run that
+# successfully completes registration will surface them.
 appId: org.commcare.dalvik
 ---
 - launchApp:
     appId: org.commcare.dalvik
     clearState: false
+
 - extendedWaitUntil:
     visible:
-      id: "REPLACE_signin_or_home"
+      id: "org.commcare.dalvik:id/str_setup_message"
     timeout: 30000
 
+- tapOn:
+    point: "73,209"
+
+# Already signed in? Take a screenshot and stop.
 - runFlow:
     when:
-      visible:
-        id: "REPLACE_home_screen_root"
+      notVisible:
+        id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
     commands:
       - takeScreenshot: "connect-login-already-signed-in"
       - stopApp
 
 - tapOn:
-    id: "REPLACE_signin_button"
-- tapOn:
-    id: "REPLACE_phone_entry"
-- inputText: ${PHONE_LOCAL}
-- tapOn:
-    id: "REPLACE_continue_button"
-- tapOn:
-    id: "REPLACE_pin_entry"
-- inputText: ${PIN}
-- tapOn:
-    id: "REPLACE_pin_continue"
+    id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
 
 - extendedWaitUntil:
     visible:
-      id: "REPLACE_home_screen_root"
+      id: "org.commcare.dalvik:id/connect_primary_phone_input"
+    timeout: 10000
+
+- tapOn:
+    id: "org.commcare.dalvik:id/countryCode"
+- eraseText: 10
+- inputText: ${COUNTRY_CODE}
+
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_primary_phone_input"
+- eraseText: 15
+- inputText: ${PHONE_LOCAL}
+
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_consent_check"
+
+- tapOn:
+    id: "org.commcare.dalvik:id/personalid_phone_continue_button"
+
+# Post-phone screens (OTP, PIN, etc.) — final selectors REPLACE_* pending live
+# bootstrap run.
+- extendedWaitUntil:
+    visible:
+      id: "REPLACE_post_login_root"
     timeout: 30000
 - takeScreenshot: "connect-login-home"
