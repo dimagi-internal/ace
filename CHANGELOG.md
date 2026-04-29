@@ -5,6 +5,59 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.10 — 2026-04-29
+
+**Capture-method branching in `ocs-chatbot-eval` source-usage dimension.**
+
+Third and final cross-opp validation finding from the 0.9.11 turmeric-
+dogfood run. The source-usage rubric capped at ≤5 whenever `cited_files`
+was empty and the body named source docs — meant to catch a pipeline bug
+where structured citations don't populate. But the QA skill captures
+exclusively via the anonymous widget endpoint, and that endpoint never
+returns inline citation markup regardless of bot grounding. Result: the
+cap fired on every widget transcript regardless of bot quality, conflating
+"bot is hallucinating" with "API doesn't expose grounding signal."
+
+### Fixed
+
+- **`ocs-chatbot-qa` transcript schema:** added `Capture method:` header
+  field (`widget` | `openai-compat`). Today only `widget` is in use.
+- **`ocs-chatbot-eval` source-usage dimension:** branches on capture
+  method.
+  - **`widget`:** grades body-text grounding (does the response name
+    source docs by title? does it paraphrase content the KB
+    demonstrably contains?). Emits
+    `[PLATFORM] empty cited_files expected on widget capture;
+    structured-citation grade not applicable` instead of binding the
+    cap. Anchored deductions: -2 if body asserts facts without naming
+    any source; ≤3 if body fabricates a source title not in the KB.
+  - **`openai-compat`:** existing two-tier cap retained — empty
+    `cited_files` there IS a real grounding gap.
+- Default to `widget` if the header field is missing (legacy
+  pre-0.10.10 transcripts).
+
+### Why this matters for the eval framework
+
+This polish removes a class of false deductions that affected every
+widget-captured transcript — the same pattern as the
+`connect-program-setup-eval` `[PLATFORM]` tier added in 0.10.7. Both
+fixes follow the rule: rubrics MUST distinguish "thing the operator can
+fix" from "thing the operator cannot fix." When the cap can't
+discriminate, it's noise, not signal.
+
+### Cross-opp validation backlog now closed
+
+All three findings from 0.9.11 cross-opp validation have shipped:
+
+1. ✅ HITL-stub branch in app-eval rubrics (0.10.8)
+2. ✅ Clean-source reviewer fidelity in idea-to-pdd-eval (0.10.9)
+3. ✅ Widget-API source-usage cap in ocs-chatbot-eval (0.10.10)
+
+The five connect-program-setup-eval polish items also shipped in 0.10.7,
+plus the read-side `getProgram` bug fix in 0.10.6. Net: every concrete
+finding from the eval framework's first non-degraded production runs is
+either fixed or closed-with-rationale.
+
 ## 0.10.9 — 2026-04-29
 
 **Clean-source branch added to `idea-to-pdd-eval` reviewer-comment-fidelity.**
