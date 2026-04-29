@@ -34,7 +34,28 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` and
      `get_app({app_id: <nova_app_id>})` — provides the authoritative
      field-by-field structure, not the human summary.
 
-2. **Extract the PDD's Deliver spec.** Parse the `## Deliver App
+2. **Detect HITL-pending stub.** If the deliver app summary contains
+   any of:
+   - `nova_app_id: null`, `nova_app_id: TBD`, or no `nova_app_id` at all
+   - explicit status text marking the build as HITL-pending
+     (e.g. "actual app JSON/CCZ not yet produced", "awaiting human
+     completion", "HITL-pending", "stub-only")
+   - the summary lists *only* placeholders/section names with no
+     field-level structure (the "skeleton" shape Phase 2 emits before
+     Nova finishes a build)
+
+   then emit `verdict: incomplete` immediately with `[INFO] HITL-stub
+   summary; no built app to grade against PDD spec`. Do NOT score zero
+   or warn — like degraded mode in `connect-program-setup-eval`, this
+   is a structural gap in the upstream environment, not a quality
+   defect. Once Nova produces a real `nova_app_id` and field-level
+   structure, the rubric becomes gradable. Surfaced 0.9.11 cross-opp
+   validation: trying to grade a HITL-pending summary makes 2 of 5
+   dimensions ungradable (field-order, conditional-logic) and inflates
+   the others toward "looks fine" because there's nothing concrete to
+   discriminate against.
+
+3. **Extract the PDD's Deliver spec.** Parse the `## Deliver App
    Specification` section (or equivalent for `multi-stage`). Build a
    structured expectation:
    - Total field count (sum across all sections).
@@ -45,10 +66,10 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` and
    - Connectify Deliver Unit name and Entity ID composite formula.
    - Operational caps that should appear in form intro copy.
 
-3. **Extract the built app's actual structure** from the Nova
+4. **Extract the built app's actual structure** from the Nova
    blueprint (or app summary). Build the matching structured snapshot.
 
-4. **Grade across 5 dimensions.** Each dimension is 0–10. Overall
+5. **Grade across 5 dimensions.** Each dimension is 0–10. Overall
    score is the weighted mean.
 
    | Dimension | Weight | Criteria |
@@ -71,7 +92,7 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` and
    - 2+ dimensions in 4–6 range → suite verdict `warn`.
    - All 5 dimensions ≥ 7 AND overall ≥ 7.5 → suite verdict `pass`.
 
-5. **Write the verdict YAML** to
+6. **Write the verdict YAML** to
    `ACE/<opp-name>/verdicts/pdd-to-deliver-app-eval.yaml` using the
    shared shape (see `skills/README.md § QA vs Eval`):
 
@@ -112,7 +133,7 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` and
      disposition: approve | reject | iterate
    ```
 
-6. **Write the human-readable report** to
+7. **Write the human-readable report** to
    `ACE/<opp-name>/eval-reports/YYYY-MM-DD-pdd-to-deliver-eval.md`:
 
    ```markdown
@@ -144,7 +165,7 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` and
    actionable edits.>
    ```
 
-7. **Auto-surfaced concerns** feed the gate brief (when invoked from
+8. **Auto-surfaced concerns** feed the gate brief (when invoked from
    the Phase 2→3 gate):
    - `[BLOCKER]` for any dimension scoring ≤ 3.
    - `[BLOCKER]` if overall score is below 7.0.
@@ -213,3 +234,4 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-28 | Initial version. Cross-artifact rubric: 5 dimensions (field_count_match, question_order_match, gate_semantics_match, conditional_logic_match, connectify_wiring). Calibrated against `eval-calibration/known-issues.md`. Template for future cross-artifact evals. | ACE team (eval system buildout) |
+| 2026-04-29 | Added step-2 HITL-pending stub detection. If the deliver app summary has no `nova_app_id`, has `TBD`/`null`, is explicitly marked HITL-pending, or carries only skeleton structure, emit `verdict: incomplete` immediately. Surfaced 0.9.11 cross-opp validation against `turmeric-dogfood-20260427`: trying to grade a HITL-pending summary made 2 of 5 dimensions ungradable (field-order, conditional-logic) and inflated the others. The early-return pattern mirrors `connect-program-setup-eval`'s degraded-mode detection — both treat upstream environmental gaps as `incomplete`, not as quality defects. | ACE team (0.10.8) |

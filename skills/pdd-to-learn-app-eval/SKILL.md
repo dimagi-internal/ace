@@ -30,7 +30,25 @@ different rubric dimensions tuned to Learn-app concerns.
      `get_app({app_id: <nova_app_id>})` for authoritative module
      structure.
 
-2. **Extract the PDD's Learn spec.** Parse `## Learn App
+2. **Detect HITL-pending stub.** If the learn app summary contains
+   any of:
+   - `nova_app_id: null`, `nova_app_id: TBD`, or no `nova_app_id` at all
+   - explicit status text marking the build as HITL-pending
+     (e.g. "actual app JSON/CCZ not yet produced", "awaiting human
+     completion", "HITL-pending", "stub-only")
+   - the summary lists *only* module titles with no Connectify
+     wiring detail or content-topic breakdowns (the "skeleton" shape
+     Phase 2 emits before Nova finishes a build)
+
+   then emit `verdict: incomplete` immediately with `[INFO] HITL-stub
+   summary; no built app to grade against PDD spec`. Do NOT score zero
+   or warn — this is a structural gap in the upstream environment, not
+   a quality defect. Surfaced 0.9.11 cross-opp validation: trying to
+   grade a HITL-pending Learn summary makes Assessment Score wiring
+   (the most load-bearing dimension at 30%) entirely missing — and the
+   ≤3 → fail rule then fires on a stub, not on a real defect.
+
+3. **Extract the PDD's Learn spec.** Parse `## Learn App
    Specification`. Build a structured expectation:
    - Total module count (PDD-numbered, not counting bonus
      certification modules Nova may add).
@@ -44,10 +62,10 @@ different rubric dimensions tuned to Learn-app concerns.
      craft" content (probing techniques, neutral framing, group
      dynamics) is load-bearing.
 
-3. **Extract the built app's actual structure** from the blueprint
+4. **Extract the built app's actual structure** from the blueprint
    (or app summary). Build the matching snapshot.
 
-4. **Grade across 5 dimensions.** Each dimension is 0–10. Overall
+5. **Grade across 5 dimensions.** Each dimension is 0–10. Overall
    score is the weighted mean.
 
    | Dimension | Weight | Criteria |
@@ -74,7 +92,7 @@ different rubric dimensions tuned to Learn-app concerns.
      protocol collapses to 0.00 post-cap and we lose visibility
      into the underlying judge discretion.
 
-5. **Write the verdict YAML** to
+6. **Write the verdict YAML** to
    `ACE/<opp-name>/verdicts/pdd-to-learn-app-eval.yaml`:
 
    ```yaml
@@ -116,7 +134,7 @@ different rubric dimensions tuned to Learn-app concerns.
      disposition: approve | reject | iterate
    ```
 
-6. **Auto-surfaced concerns:**
+7. **Auto-surfaced concerns:**
    - `[BLOCKER]` for any dimension scoring ≤ 3.
    - `[BLOCKER]` if overall is below 7.0.
    - `[WARN]` for each placeholder-content gap that the LLO MUST
@@ -171,3 +189,4 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-28 | Initial version. 5 dimensions: module_count_match (0.15), module_order_match (0.10), assessment_score_wiring (0.30 — most load-bearing), content_topic_coverage (0.25), archetype_coherence (0.20). Mirror of pdd-to-deliver-app-eval. Inflation guard at 8.5 when ≥2 WARN auto_surfaced. | ACE team (eval system buildout — 0.9.2) |
+| 2026-04-29 | Added step-2 HITL-pending stub detection. If the learn app summary has no `nova_app_id`, has `TBD`/`null`, is explicitly marked HITL-pending, or lists only module titles without Connectify wiring or content-topic detail, emit `verdict: incomplete` immediately. Without this guard the rubric's most load-bearing dimension (assessment_score_wiring at 30%) graded a stub as "wiring entirely missing" → forced ≤3 → fail, on a build that wasn't actually a defect. Mirrors the deliver-app-eval HITL guard. | ACE team (0.10.8) |

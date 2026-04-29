@@ -5,6 +5,50 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.8 — 2026-04-29
+
+**HITL-stub branch added to `pdd-to-deliver-app-eval` and `pdd-to-learn-app-eval`.**
+
+The 0.9.11 cross-opp validation against `turmeric-dogfood-20260427` ran
+both cross-artifact app rubrics against an HITL-pending app summary
+(explicitly notes "actual app JSON/CCZ not yet produced"). Without an
+early-return guard, the rubrics graded the stub:
+
+- `pdd-to-deliver-app-eval`: 2 of 5 dimensions became ungradable
+  (field-order, conditional-logic), and the remaining three drifted
+  toward "looks fine" because there was nothing concrete to
+  discriminate against.
+- `pdd-to-learn-app-eval`: the most load-bearing dimension
+  (assessment_score_wiring, 30%) graded the stub as "wiring entirely
+  missing" → ≤3 → fail. The build wasn't actually a defect; the rubric
+  was being run too early.
+
+### Fixed
+
+- Both rubrics now have a step-2 "Detect HITL-pending stub" guard.
+  Triggers on any of: `nova_app_id` missing/`null`/`TBD`; explicit
+  status text marking the build as HITL-pending; summary listing only
+  skeleton structure with no field-level (Deliver) or wiring detail
+  (Learn).
+- On match, emit `verdict: incomplete` with `[INFO] HITL-stub summary;
+  no built app to grade against PDD spec`. Subsequent steps are
+  skipped.
+
+This mirrors `connect-program-setup-eval`'s degraded-mode detection
+(step 2). The pattern: structural gaps in the upstream environment
+(`TBD-MANUAL` ids, HITL-pending stubs, unbuilt apps) are environmental,
+not quality defects, and rubrics MUST short-circuit to `incomplete`
+before grading. The new v2 schema (0.10.7) made `incomplete` a
+first-class verdict tier.
+
+### Why this matters for calibration
+
+`pdd-to-learn-app-eval` previously graded `7.3 (FAIL)` on the turmeric
+HITL-stub artifact (0.9.11 cross-opp report). With the guard, the
+correct verdict is `incomplete` — and the cross-opp generalization
+table now reads cleanly: 3 of 4 rubrics generalize, 1 is `incomplete`
+on stub artifacts (correct behavior), 0 are mis-grading.
+
 ## 0.10.7 — 2026-04-29
 
 **Verdict schema v2 + connect-program-setup-eval rubric polish (5 items).**
