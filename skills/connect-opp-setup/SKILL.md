@@ -106,17 +106,39 @@ whichever PM-side org the opportunity targets).
      from defaults vs. set explicitly)
    - Deliver units (from step 4) and Payment units (from step 6)
 
-8. **Invite the ACE test user.**
+8. **Pre-invite the ACE test user (REQUIRED for PersonalID registration).**
 
-   This step makes the new opportunity claimable by the ACE-managed test
-   ConnectID user (`${ACE_E2E_PHONE}`). Phase 5 `app-screenshot-capture`
-   drives Connect mobile through the claim-opp flow as this user; without
-   the invite, the opp won't appear in the test user's opportunity list.
+   This step is structurally load-bearing for ACE's emulator-driven mobile
+   testing — not just a convenience. There are **two reasons** ACE must
+   invite `${ACE_E2E_PHONE}` to every Connect opportunity it creates:
+
+   **(a) Claim flow:** Phase 5 `app-screenshot-capture` drives Connect mobile
+   through the claim-opp flow as this user; without the invite, the opp
+   won't appear in the test user's opportunity list and the screenshot
+   recipe stalls.
+
+   **(b) PersonalID registration gate (the critical reason):** Connect-id's
+   `/users/start_configuration` endpoint runs an `@app_integrity` decorator
+   that synchronously calls `check_number_for_existing_invites(phone)` over
+   HTTP to connect.dimagi.com. **For phone numbers with NO existing invite
+   anywhere in Connect, this lookup hangs long enough to trip gunicorn's
+   worker timeout, which kills the worker via `sys.exit(1)`.** The client
+   receives an empty/malformed response and force-stops (CommCare NPE on
+   `getSessionFailureSubcode()`). See Sentry `CONNECT-ID-3F` and the paired
+   filed bug in CommCare-Android. So `${ACE_E2E_PHONE}` must have an active
+   invite somewhere in Connect *before* `/ace:mobile-bootstrap` attempts
+   to register it for the first time.
+
+   This means: the **first** ACE opp ever created bootstraps the test user's
+   pre-invite. Subsequent opps keep it warm. If the test user has never
+   been invited to anything, registration will crash the CommCare app —
+   not because of an integrity / OTP / SMS issue, but because of this
+   server-side timeout cascade.
 
    - Tool: `connect_send_llo_invite`
    - Args: `{ opportunity_id: <uuid from step 3>, phone: ${ACE_E2E_PHONE} }`
    - Capture the returned invite URL.
-   - Persist to `ACE/<opp-name>/connect-state.yaml` under a new field:
+   - Persist to `ACE/<opp-name>/connect-state.yaml`:
      ```yaml
      ace_test_user_invite_url: <invite URL>
      ```
@@ -125,10 +147,10 @@ whichever PM-side org the opportunity targets).
    - Mark internally with `is_ace_test_user: true` so analytics filters
      can exclude this user later.
 
-   **Why a separate step:** the test-user invite is functionally an LLO
-   invite from Connect's perspective, but it's automated/non-human. We
-   keep it in Phase 3 (here) so the opportunity is fully claim-ready by
-   the time Phase 5 runs.
+   **For first-time setup**, the operator may need to manually invite
+   `${ACE_E2E_PHONE}` to any Connect opportunity (typically a placeholder
+   in `connect-ace-prod`) once, before `/ace:mobile-bootstrap` runs. After
+   that, every ACE-created opp keeps the invite alive.
 
 ## Archetypes
 
@@ -193,3 +215,4 @@ When `--dry-run` is active:
 | 2026-04-28 | Fix `location` field description — it's a boolean toggle, not a meters threshold; threshold is currently un-settable via the MCP (0.9.4) | ACE team |
 | 2026-04-28 | Add Step 8: invite ACE test user (`${ACE_E2E_PHONE}`) and persist invite URL to `connect-state.yaml`; required for Phase 5 `app-screenshot-capture` to drive the claim-opp flow | ACE team (mobile-emulation) |
 | 2026-04-29 | Fix three silent-500 schema bugs in `connect_create_opportunity`: `hq_server` now accepts the human label "prod"/"india"/"eu" (resolves to int FK by parsing live form), `api_key` now takes the raw 40-char HQ key (registered with Connect transparently via `/opportunity/add_api_key/`), and `learn_app`/`deliver_app` now take bare HQ app ids (wrapped in the JSON form-value Connect requires by querying `/hq/applications/`). Also: `learn_app_description` is now required in the schema to match Connect's form. (0.10.1) | ACE team |
+| 2026-04-29 | Step 8 docs: clarify the test-user pre-invite is structurally required for PersonalID registration, not just the claim flow. Connect-id's `/users/start_configuration` synchronously calls `check_number_for_existing_invites` and the worker dies (SystemExit) when that lookup hangs for un-invited numbers — see Sentry `CONNECT-ID-3F` and paired CommCare NPE bug. ACE must keep `${ACE_E2E_PHONE}` invited to at least one Connect opp at all times. | ACE team (mobile-emulation) |
