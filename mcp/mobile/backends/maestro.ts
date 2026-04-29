@@ -23,6 +23,8 @@ const ALLOWED_STEP_KEYS = new Set([
   'copyTextFrom',
   'pasteText',
   'runFlow',
+  'evalScript',
+  'stopApp',
 ]);
 
 export interface MaestroBackendOpts {

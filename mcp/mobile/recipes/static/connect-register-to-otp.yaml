@@ -1,0 +1,52 @@
+# SCAFFOLD ONLY — REPLACE_* selectors must be discovered via `maestro studio`
+# against the Connect mobile Android app before this recipe will run.
+# See docs/superpowers/specs/2026-04-28-ace-mobile-emulation-design.md
+# Drive Connect mobile from splash through to the OTP screen.
+appId: com.dimagi.connect
+---
+- launchApp:
+    appId: com.dimagi.connect
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "REPLACE_signup_button"
+    timeout: 30000
+- tapOn:
+    id: "REPLACE_signup_button"
+
+- extendedWaitUntil:
+    visible:
+      id: "REPLACE_phone_entry"
+    timeout: 10000
+- tapOn:
+    id: "REPLACE_country_code"
+- eraseText: 10
+- inputText: ${COUNTRY_CODE}
+- tapOn:
+    id: "REPLACE_phone_entry"
+- inputText: ${PHONE_LOCAL}
+- tapOn:
+    id: "REPLACE_continue_button"
+
+- runFlow:
+    when:
+      visible:
+        text: "Phone already registered"
+    commands:
+      - evalScript: ${output.stdout = 'PHONE_ALREADY_REGISTERED'}
+      - stopApp
+
+- extendedWaitUntil:
+    visible:
+      id: "REPLACE_pin_entry"
+    timeout: 10000
+- tapOn:
+    id: "REPLACE_pin_entry"
+- inputText: ${PIN}
+- tapOn:
+    id: "REPLACE_pin_continue"
+
+- extendedWaitUntil:
+    visible:
+      id: "REPLACE_otp_entry"
+    timeout: 15000
