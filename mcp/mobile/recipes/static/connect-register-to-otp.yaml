@@ -11,10 +11,22 @@
 # dump. Stops at the OTP entry screen — composite caller fetches OTP via
 # Playwright and continues with connect-register-from-otp.yaml.
 #
-# OTP-entry-screen selector (REPLACE_otp_entry) still needs final discovery —
-# requires advancing past the continue button against the live Connect-id
-# backend, which only happens for valid +7426 test numbers. The first real
-# /ace:mobile-bootstrap run will surface it.
+# OTP-entry-screen selector (REPLACE_otp_entry) still needs final discovery.
+# Per Dimagi, +7426 is supposed to bypass OTP entirely — confirm this by
+# advancing past the continue button against a real Connect-id backend.
+#
+# Known Maestro environmental gotcha (2026-04-29): the AVD created via
+# `system-images;android-34;google_apis;arm64-v8a` includes Google Play
+# Services, which surfaces a phone-number-hint bottom sheet on focus of
+# the connect_primary_phone_input AutoCompleteTextView. The sheet absorbs
+# subsequent inputText events, breaking the eraseText/inputText pattern.
+# Fix is one of:
+#   1. Use a non-GMS AVD: `sdkmanager "system-images;android-34;default;arm64-v8a"`
+#      then create AVD with `avdmanager create avd -n ACE_Pixel_API_34_nogms ...`
+#   2. ADB clipboard paste in place of Maestro inputText for the phone field.
+# Until either lands, register_test_user composite cannot complete on a stock
+# `google_apis` AVD — register the test user manually via maestro studio or
+# direct touch as a one-time setup.
 appId: org.commcare.dalvik
 ---
 - launchApp:
@@ -42,15 +54,27 @@ appId: org.commcare.dalvik
       id: "org.commcare.dalvik:id/connect_primary_phone_input"
     timeout: 10000
 
+# Google Play Services' phone-number hint sheet ("Choose a phone number")
+# auto-pops when the AutoCompleteTextView gains focus. It's a system overlay
+# not visible to Maestro's view tree, so a runFlow.when conditional doesn't
+# fire. Dismiss it unconditionally with a BACK key after each focus event.
+- tapOn:
+    id: "org.commcare.dalvik:id/countryCode"
+- pressKey: Back
 - tapOn:
     id: "org.commcare.dalvik:id/countryCode"
 - eraseText: 10
 - inputText: ${COUNTRY_CODE}
+- hideKeyboard
 
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_primary_phone_input"
+- pressKey: Back
 - tapOn:
     id: "org.commcare.dalvik:id/connect_primary_phone_input"
 - eraseText: 15
 - inputText: ${PHONE_LOCAL}
+- hideKeyboard
 
 - tapOn:
     id: "org.commcare.dalvik:id/connect_consent_check"
