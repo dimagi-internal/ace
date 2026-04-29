@@ -1,0 +1,37 @@
+# SCAFFOLD ONLY — REPLACE_* selectors must be discovered via `maestro studio`.
+appId: com.dimagi.connect
+---
+- launchApp:
+    appId: com.dimagi.connect
+    clearState: false
+- extendedWaitUntil:
+    visible:
+      id: "REPLACE_signin_or_home"
+    timeout: 30000
+
+- runFlow:
+    when:
+      visible:
+        id: "REPLACE_home_screen_root"
+    commands:
+      - takeScreenshot: "connect-login-already-signed-in"
+      - stopApp
+
+- tapOn:
+    id: "REPLACE_signin_button"
+- tapOn:
+    id: "REPLACE_phone_entry"
+- inputText: ${PHONE_LOCAL}
+- tapOn:
+    id: "REPLACE_continue_button"
+- tapOn:
+    id: "REPLACE_pin_entry"
+- inputText: ${PIN}
+- tapOn:
+    id: "REPLACE_pin_continue"
+
+- extendedWaitUntil:
+    visible:
+      id: "REPLACE_home_screen_root"
+    timeout: 30000
+- takeScreenshot: "connect-login-home"

@@ -1,14 +1,14 @@
 ---
 name: llo-manager
 description: >
-  Phase 5 of the CRISPR-Connect lifecycle: first LLO contact through go-live
+  Phase 6 of the CRISPR-Connect lifecycle: first LLO contact through go-live
   and ongoing monitoring. Prepares the LLO invite list, sends Connect invites
   and the ACE onboarding email (with OCS widget link), runs UAT, activates
   the opportunity, and keeps recurring monitoring skills running.
 model: inherit
 phase: llo-management
 phase_display: LLO Management
-phase_ordinal: 5
+phase_ordinal: 6
 skills:
   - { name: llo-invite,      has_judge: false }
   - { name: llo-onboarding,  has_judge: false }
@@ -21,14 +21,18 @@ recurring_skills:
   - { name: ocs-chatbot-eval,   has_judge: true }
 ---
 
-# LLO Manager Agent (Phase 5)
+# LLO Manager Agent (Phase 6)
 
 You run the first LLO-facing phase of a CRISPR-Connect opportunity.
 
-By the time this phase starts, Phases 1–4 have produced an approved PDD,
-deployed CommCare apps, a configured Connect opportunity, and a quality-gated
-OCS chatbot with widget credentials already attached to the opportunity.
+By the time this phase starts, Phases 1–5 have produced an approved PDD,
+deployed CommCare apps, a configured Connect opportunity, a quality-gated
+OCS chatbot with widget credentials already attached to the opportunity, and
+the screenshot + training-material artifacts produced by `training-prep`.
 This is the first phase where LLOs actually hear from ACE.
+
+Training materials and screenshots were produced upstream in Phase 5
+(`training-prep`); this phase consumes them but does not generate them.
 
 The invite-list preparation (`llo-invite`) runs HERE, not in Phase 3, so
 we don't prepare a list until the OCS chatbot has cleared its deep-eval

@@ -218,3 +218,14 @@ Tell the user exactly what state they're in:
 - **Run EXACTLY the two bash blocks above.** No exploring, no ls, no reading files, no globbing.
 - Never commit the service-account key. If the user pastes it into the chat, warn them.
 - If Step 1 reports any `ERROR`, do not run Step 2.
+
+## Mobile emulation (optional, Mac only)
+
+If you plan to use Phase 5 `training-prep` end-to-end (screenshot capture + training docs):
+
+1. Install Maestro: `curl -Ls "https://get.maestro.mobile.dev" | bash`
+2. Install `adb`: `brew install android-platform-tools`
+3. Create the AVD `ACE_Pixel_API_34` via Android Studio.
+4. Run `/ace:mobile-bootstrap` to register the ACE test user and seed Playwright cookies.
+
+If you skip this, Phase 5 will fail; Phases 1–4 still work without mobile.

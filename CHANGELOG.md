@@ -5,6 +5,21 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.0 — 2026-04-28
+
+**New: Phase 5 `training-prep` + ACE mobile emulation**
+
+- New `ace-mobile` MCP server (10 atomic capabilities) drives a local Mac AVD via Maestro and captures raw PNGs at every recipe step. Backed by `adb`/`emulator`/`avdmanager` shell-outs (AVD lifecycle), `maestro test` (recipe runner with vocabulary-validating YAML pre-flight), and a TS-reimplementation of the Playwright OTP fetcher.
+- New `app-screenshot-capture` skill produces `ACE/<opp>/screenshots/` + manifest from generated per-module Maestro recipes.
+- New `training-prep` phase agent (Phase 5) runs `app-screenshot-capture` + the relocated `training-materials` skill end-to-end automated, with no LLO contact. Phases renumbered: `llo-manager` → 6, `closeout` → 7. Restores the "Phases 1–N agent-only, then LLO contact" invariant that was previously broken by `training-materials` running in commcare-setup.
+- `training-materials` now consumes screenshots manifest, `connect-state.yaml`, and `ocs-state.yaml`, so generated docs include real URLs and step-by-step screenshots.
+- New `/ace:mobile-bootstrap` slash command for one-time per-machine setup (Maestro, AVD, Playwright cookies, ACE test user registration).
+- `connect-opp-setup` now invites the ACE test user (`${ACE_E2E_PHONE}`) to each new opp; invite URL persisted to `connect-state.yaml` so Phase 5 can drive the claim-opp flow.
+- `.env.tpl` extended with `ACE_E2E_*` + `ACE_AVD_NAME`. `/ace:doctor` grew a `[Mobile]` section.
+- Mac-only, local-AVD-only. No cloud device farms in this release.
+
+See `docs/superpowers/specs/2026-04-28-ace-mobile-emulation-design.md` and `docs/superpowers/plans/2026-04-28-ace-mobile-emulation.md`.
+
 ## 0.9.11 — 2026-04-28
 
 Cross-opp validation: applied all 4 strongly-calibrated rubrics

@@ -1,0 +1,27 @@
+# SCAFFOLD ONLY — REPLACE_* selectors must be discovered via `maestro studio`.
+# Assumes Connect mobile is already signed in and at the home screen.
+appId: com.dimagi.connect
+---
+- assertVisible:
+    id: "REPLACE_home_screen_root"
+- tapOn:
+    id: "REPLACE_opportunities_tab"
+- extendedWaitUntil:
+    visible:
+      text: ${OPP_NAME}
+    timeout: 15000
+- takeScreenshot: "claim-opp-list"
+- tapOn:
+    text: ${OPP_NAME}
+- extendedWaitUntil:
+    visible:
+      id: "REPLACE_accept_invite_button"
+    timeout: 10000
+- takeScreenshot: "claim-opp-detail"
+- tapOn:
+    id: "REPLACE_accept_invite_button"
+- extendedWaitUntil:
+    visible:
+      id: "REPLACE_commcare_handoff_or_learn_root"
+    timeout: 30000
+- takeScreenshot: "claim-opp-handoff"

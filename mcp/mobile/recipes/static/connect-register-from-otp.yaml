@@ -1,0 +1,36 @@
+# SCAFFOLD ONLY — REPLACE_* selectors must be discovered via `maestro studio`.
+# Drive Connect mobile from the OTP entry screen through to home.
+appId: com.dimagi.connect
+---
+- assertVisible:
+    id: "REPLACE_otp_entry"
+- tapOn:
+    id: "REPLACE_otp_entry"
+- inputText: ${OTP}
+- tapOn:
+    id: "REPLACE_otp_verify"
+
+- extendedWaitUntil:
+    visible:
+      id: "REPLACE_name_entry"
+    timeout: 15000
+- tapOn:
+    id: "REPLACE_name_entry"
+- inputText: ${NAME}
+- tapOn:
+    id: "REPLACE_name_continue"
+
+- extendedWaitUntil:
+    visible:
+      id: "REPLACE_backup_code_entry"
+    timeout: 10000
+- tapOn:
+    id: "REPLACE_backup_code_entry"
+- inputText: ${BACKUP_CODE}
+- tapOn:
+    id: "REPLACE_backup_code_continue"
+
+- extendedWaitUntil:
+    visible:
+      id: "REPLACE_home_screen_root"
+    timeout: 30000

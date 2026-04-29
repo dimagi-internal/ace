@@ -91,6 +91,30 @@ whichever PM-side org the opportunity targets).
      from defaults vs. set explicitly)
    - Deliver units (from step 4) and Payment units (from step 6)
 
+8. **Invite the ACE test user.**
+
+   This step makes the new opportunity claimable by the ACE-managed test
+   ConnectID user (`${ACE_E2E_PHONE}`). Phase 5 `app-screenshot-capture`
+   drives Connect mobile through the claim-opp flow as this user; without
+   the invite, the opp won't appear in the test user's opportunity list.
+
+   - Tool: `connect_send_llo_invite`
+   - Args: `{ opportunity_id: <uuid from step 3>, phone: ${ACE_E2E_PHONE} }`
+   - Capture the returned invite URL.
+   - Persist to `ACE/<opp-name>/connect-state.yaml` under a new field:
+     ```yaml
+     ace_test_user_invite_url: <invite URL>
+     ```
+   - If `ACE/<opp-name>/connect-state.yaml` doesn't exist yet, create it.
+     If it does, merge — don't overwrite other fields.
+   - Mark internally with `is_ace_test_user: true` so analytics filters
+     can exclude this user later.
+
+   **Why a separate step:** the test-user invite is functionally an LLO
+   invite from Connect's perspective, but it's automated/non-human. We
+   keep it in Phase 3 (here) so the opportunity is fully claim-ready by
+   the time Phase 5 runs.
+
 ## Archetypes
 
 The PDD's `archetype:` field shapes verification + payment unit setup:
@@ -127,6 +151,7 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
   - `connect_set_verification_flags`
   - `connect_create_payment_unit`
   - `connect_get_opportunity` (verify after create)
+  - `connect_send_llo_invite`
 
 ## Mode Behavior
 - **Auto:** Create + configure end-to-end, proceed
@@ -151,3 +176,4 @@ When `--dry-run` is active:
 | 2026-04-08 | Add explicit step 2 to read PDD `## Evidence Model`; Layer A → verification rules, Layer B/C → soft flags; error if Evidence Model missing | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-28 | Replace HITL workaround with `connect_*_opportunity` + `connect_set_verification_flags` + `connect_create_payment_unit` atoms (ace-connect 0.8.1). Verification mapped to Connect's actual toggles (`gps`, `duplicate`, `catchment_areas`, `location`); deliver units now read-only via `connect_list_deliver_units` (sourced from CommCare app schema) | ACE team |
 | 2026-04-28 | Fix `location` field description — it's a boolean toggle, not a meters threshold; threshold is currently un-settable via the MCP (0.9.4) | ACE team |
+| 2026-04-28 | Add Step 8: invite ACE test user (`${ACE_E2E_PHONE}`) and persist invite URL to `connect-state.yaml`; required for Phase 5 `app-screenshot-capture` to drive the claim-opp flow | ACE team (mobile-emulation) |

@@ -283,6 +283,36 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
 
   // ── Operate phase (Phase 5) ────────────────────────────────────
 
+  // Mobile-emulation artifacts (2026-04-28). Produced by
+  // ``app-screenshot-capture`` as the first step of Phase 5
+  // (training-prep) and consumed by ``training-materials`` to embed
+  // real screenshots in the FLW training guide. Marked optional
+  // (``required: false``) until the fixtures backfill these paths.
+  {
+    path: 'mobile-recipes/learn/manifest.yaml',
+    producedBy: 'app-screenshot-capture',
+    consumedBy: ['app-screenshot-capture'],
+    phase: 'operate',
+    required: false,
+    description: 'Manifest of generated Learn-app Maestro recipes (one per module).',
+  },
+  {
+    path: 'mobile-recipes/deliver/manifest.yaml',
+    producedBy: 'app-screenshot-capture',
+    consumedBy: ['app-screenshot-capture'],
+    phase: 'operate',
+    required: false,
+    description: 'Manifest of generated Deliver-app Maestro recipes (one per module).',
+  },
+  {
+    path: 'screenshots/manifest.yaml',
+    producedBy: 'app-screenshot-capture',
+    consumedBy: ['training-materials'],
+    phase: 'operate',
+    required: false,
+    description: 'Manifest of every captured screenshot with step labels and Drive paths.',
+  },
+
   // Path kept as ``connect-setup/invites.md`` rather than renamed to
   // ``invites/…`` so existing opps don't orphan their prior invite
   // lists on the phase-reassignment date (2026-04-20).
