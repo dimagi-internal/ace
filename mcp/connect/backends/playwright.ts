@@ -131,12 +131,28 @@ export class PlaywrightBackend implements ConnectClient {
   };
 
   getProgram: ConnectClient['getProgram'] = async ({ organization_slug, program_id }) => {
-    const list = await this.listPrograms({ organization_slug });
-    const found = list.programs.find((p) => p.id === program_id);
-    if (!found) {
-      throw new HttpError(404, `/a/${organization_slug}/program/${program_id}/`, 'program not found in list');
+    // Hydrate from the edit form. The list page only renders name and
+    // description (parseProgramsList zeroes the rest) so going through
+    // listPrograms returns a shell — same pattern as getOpportunity.
+    const editPath = `/a/${organization_slug}/program/${program_id}/edit`;
+    const editRes = await this.opts.request.get(editPath);
+    if (editRes.status() === 404) {
+      throw new HttpError(404, editPath, 'program not found');
     }
-    return found;
+    if (editRes.status() !== 200) throw await httpErrorFor(editRes, editPath);
+    const v = extractFormFieldValues(await editRes.text());
+    return {
+      id: program_id,
+      name: v['name'] ?? '',
+      description: v['description'] ?? '',
+      delivery_type: Number(v['delivery_type'] ?? 0),
+      budget: Number(v['budget'] ?? 0),
+      currency: v['currency'] ?? '',
+      country: v['country'] ?? '',
+      start_date: v['start_date'] ?? '',
+      end_date: v['end_date'] ?? '',
+      organization_slug,
+    };
   };
 
   listDeliveryTypes: ConnectClient['listDeliveryTypes'] = async ({ organization_slug }) => {
