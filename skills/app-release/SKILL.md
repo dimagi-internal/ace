@@ -41,29 +41,44 @@ this action!` banner is a generic fallback bound to `buildState() ==
 'error'` in Knockout, not a literal permission verdict, so its presence
 alone is not diagnostic.
 
-## Endpoint discovery is empirical
+## Endpoints (verified 2026-04-29)
 
-CCHQ's URL patterns for "Make New Version" and "Release" are not stable
-public APIs. The UI's `Make New Version` button calls a Knockout
-`makeNewBuild()` function which POSTs a large app-state JSON to a
-domain-specific URL. The release URL pattern is also internal.
+CCHQ's URL patterns are internal UI routes, not public APIs. These were
+discovered by network-tracing the UI's `Make New Version` and `Released`
+toggle on `/a/<domain>/apps/view/<app_id>/releases/`:
 
-This skill documents what's known to work as of 2026-04-29; if the
-upstream UI changes, follow the **probe procedure** below before
-guessing.
+```
+# Step 1 — Make a versioned build (creates a "build" doc; sets built_on)
+GET  /a/<domain>/apps/view/<app_id>/releases/             # GET first to refresh csrftoken
+POST /a/<domain>/apps/save/<app_id>/                       # empty body suffices
+  → 200 { "saved_app": { "_id": "<build_id>", ... } }      # _id IS the new build_id
 
-### Probe procedure
-1. Open `/a/<domain>/apps/view/<app_id>/` in a real browser (or via
-   `/browse` with imported CCHQ cookies from `~/.ace/connect-session.json`).
-2. Open DevTools → Network. Click `Make New Version`. Copy the POST URL
-   and request body.
-3. Once a build appears in the table, click `Make Released`. Copy that
-   POST URL and body.
-4. Replicate the calls via curl with the same cookies + CSRF.
+# Step 2 — Release that build (toggles is_released=true)
+POST /a/<domain>/apps/view/<app_id>/releases/release/<build_id>/
+  Body: ajax=true&is_released=true
+  → 200 { "is_released": true, "latest_released_version": <n> }
+```
 
-The skill's "happy path" below assumes the patterns observed in 2026-04
-(below); when they break, use the probe procedure to find the new ones
-rather than guessing at variants.
+CSRF: extract from the `csrftoken` cookie set by the GET in step 1; pass
+it as `X-CSRFToken` header on both POSTs.
+
+Verify via the read-only HQ API (no UI session needed):
+```
+GET /a/<domain>/api/v0.5/application/<build_id>/
+Authorization: ApiKey <ACE_HQ_USERNAME>:<ACE_HQ_API_KEY>
+→ { "is_released": true, "version": <n>, "built_on": "<iso>" }
+```
+
+If the URL pattern shifts in a future CCHQ release, use the probe
+procedure below to rediscover.
+
+### Probe procedure (only when the verified URLs above fail)
+1. Open `/a/<domain>/apps/view/<app_id>/releases/` in `/browse` with the
+   CCHQ cookies imported from `~/.ace/connect-session.json`.
+2. Inject an XHR/fetch interceptor (`window._cap = []; XMLHttpRequest…`).
+3. Click `Make New Version`. Capture the POST URL + body.
+4. Once a build appears, click the `Released` toggle (CSS-styled button,
+   bound to `$root.toggleRelease`). Capture that POST URL + body.
 
 ## Process
 
@@ -73,37 +88,37 @@ rather than guessing at variants.
    - Also read `hq_domain` (typically `connect-ace-prod`) and `hq_base_url`.
 
 2. **Establish session.** Use the `~/.ace/connect-session.json` cookie jar
-   (same one ace-connect uses — Connect's OAuth-via-CCHQ flow leaves
-   valid CCHQ cookies in it). Or, if the session has expired, run
-   `/ace:connect-login` to refresh.
+   (Connect's OAuth-via-CCHQ flow leaves valid CCHQ cookies). If
+   expired, run `/ace:connect-login` to refresh.
 
-3. **Make a build for each app.** For each of `learn_app_id` and
-   `deliver_app_id`:
+3. **For each app (learn + deliver):** run the verified Step 1 + Step 2
+   POSTs above. Each call is idempotent on the build side: re-POSTing
+   `/apps/save/` after a release creates a new build at the next version,
+   leaving prior builds released. So safe to re-run.
 
-   - GET the app's view page to refresh the `csrftoken` cookie:
-     ```
-     GET /a/<hq_domain>/apps/view/<app_id>/
-     ```
-   - POST to `/a/<hq_domain>/apps/save/<app_id>/`. Empty body returns
-     a 200 with the saved-app JSON but does NOT make a build. The UI's
-     button POSTs the full app-state JSON; if you can scrape that JSON
-     from the page (Knockout viewmodel → JSON.stringify) and replay it,
-     the response should include a build with `built_on != null` and
-     a versioned id.
-   - Verify the build was created by querying:
-     ```
-     GET /a/<hq_domain>/api/v0.5/application/?app_type=build&app_id=<app_id>
-     Authorization: ApiKey <ACE_HQ_USERNAME>:<ACE_HQ_API_KEY>
-     ```
-     A real build has `built_on` set and a non-null `version > 1`.
+4. **Verify both apps show `is_released: true`** via the API.
 
-4. **Release the build.** Once a build exists, mark it released. Probe
-   the URL pattern via the UI's `Make Released` button if needed.
-   Successful release flips `is_released` to true. Verify:
+5. **Update `deployment-summary.md`** with a `releases:` block:
+   ```yaml
+   releases:
+     learn_app:  { build_id: <id>, version: <n>, released_at: <iso> }
+     deliver_app: { build_id: <id>, version: <n>, released_at: <iso> }
    ```
-   GET /a/<hq_domain>/api/v0.5/application/<build_id>/
+
+6. **Trigger Connect's deliver-unit sync.** Connect caches per-opp
+   deliver units; after a release, the next opp create or wizard step
+   will pick up the new schema. If an opp ALREADY exists (re-running
+   this skill mid-cycle), tell the operator to either re-run
+   `connect-opp-setup` (it will re-sync) or visit the opp wizard and
+   click `Sync Deliver Units` manually.
+
+   Sync URL pattern (verified 2026-04-29):
    ```
-   Look for `is_released: true`.
+   POST /a/<connect_org>/opportunity/<opp_int_id>/sync_deliver_units/
+   ```
+   Note `opp_int_id` is Connect's internal int FK, not the UUID. To
+   discover it, GET the wizard page and read the `hx-post` attribute on
+   the Sync Deliver Units button.
 
 5. **Update deployment-summary.md.**
    Append a `releases` block to the frontmatter with the new build IDs and
@@ -175,3 +190,4 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-04-29 | Initial version. Carved out as a separate Phase 2 step (between `app-deploy` and `connect-opp-setup`) after the turmeric-market-survey-2026-04-28 dogfood made it clear that "Nova upload" and "released and discoverable by Connect" are different states. (0.10.1) | ACE team |
 | 2026-04-29 | Correct the prerequisite section: ace@dimagi-ai.com IS Admin on connect-ace-prod (verified live). The UI's "Sorry, you don't have permission" banner is a Knockout fallback for any `buildState() == 'error'`, not a literal permission verdict. Replace the bad pre-flight with an empirical probe procedure for endpoint discovery — CCHQ's `Make New Version` and `Make Released` URL patterns aren't stable public APIs and need to be re-discovered when the UI changes. (0.10.3) | ACE team |
+| 2026-04-29 | Discovered + verified the actual endpoints on `/apps/view/<app_id>/releases/`: `POST /apps/save/<app_id>/` (empty body) returns the new build with `_id`; `POST /apps/view/<app_id>/releases/release/<build_id>/` with `ajax=true&is_released=true` flips the release flag. Tested live against `0c96435881b0...` (deliver) and `76fd5f0e2834...` (learn) on connect-ace-prod — both successfully released. Also documented the Connect-side sync endpoint: `POST /a/<org>/opportunity/<int_id>/sync_deliver_units/`. (0.10.4) | ACE team |
