@@ -1,36 +1,172 @@
-# SCAFFOLD ONLY — REPLACE_* selectors must be discovered via `maestro studio`.
-# Drive Connect mobile from the OTP entry screen through to home.
+# Drive CommCare PersonalID from the post-Continue state through to
+# account creation. Two branches converge here:
+#
+#   - Demo users (+7426 prefix): a snackbar reads "I see you're a demo user,
+#     so we'll skip the OTP" with an OK action (id snackbar_action). Tapping
+#     OK lands on the App Lock screen.
+#   - Real users: an OTP entry screen (selector REPLACE_otp_entry — still
+#     pending discovery against a non-demo phone). After OTP verification,
+#     the flow joins back at the App Lock screen.
+#
+# All selectors below verified live on CommCare 2.62.0 on 2026-04-29 against
+# ACE_Pixel_API_34_PS, registering +74260000100 from a fresh install.
+#
+# Variables:
+#   ${OTP}          — required only for the real-user path
+#   ${NAME}         — display name (e.g., "ACE Test User")
+#   ${BACKUP_CODE}  — 6-digit numeric (e.g., "123456")
+#
+# AVD prerequisite: hw.camera.front=emulated. The default AVD config has
+# hw.camera.front=none, which makes CameraX fail validation on the photo
+# capture step. Without a front camera, take_photo_button does nothing —
+# logcat shows CameraValidator: "Camera LENS_FACING_FRONT verification failed".
+# Fix in ~/.android/avd/<NAME>.avd/config.ini, then cold-boot the AVD.
+
 appId: org.commcare.dalvik
 ---
-- assertVisible:
-    id: "REPLACE_otp_entry"
-- tapOn:
-    id: "REPLACE_otp_entry"
-- inputText: ${OTP}
-- tapOn:
-    id: "REPLACE_otp_verify"
 
+# Branch 1: demo-user snackbar (+7426)
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/snackbar_action"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/snackbar_action"
+
+# Branch 2: real-user OTP entry. Selector still pending discovery.
+- runFlow:
+    when:
+      visible:
+        id: "REPLACE_otp_entry"
+    commands:
+      - tapOn:
+          id: "REPLACE_otp_entry"
+      - inputText: ${OTP}
+      - tapOn:
+          id: "REPLACE_otp_verify"
+
+# Both branches converge here. App Lock screen offers Configure Fingerprint
+# and Configure PIN; AVD has no fingerprint enrolled so we use PIN.
 - extendedWaitUntil:
     visible:
-      id: "REPLACE_name_entry"
+      id: "org.commcare.dalvik:id/connect_verify_pin_button"
     timeout: 15000
 - tapOn:
-    id: "REPLACE_name_entry"
-- inputText: ${NAME}
-- tapOn:
-    id: "REPLACE_name_continue"
+    id: "org.commcare.dalvik:id/connect_verify_pin_button"
 
+# CommCare hands off to com.android.settings/.password.ChooseLockPassword.
+# Pick PIN (the lock_pattern / lock_password options also exist).
 - extendedWaitUntil:
     visible:
-      id: "REPLACE_backup_code_entry"
+      id: "com.android.settings:id/lock_pin"
     timeout: 10000
 - tapOn:
-    id: "REPLACE_backup_code_entry"
-- inputText: ${BACKUP_CODE}
+    id: "com.android.settings:id/lock_pin"
+
+# Set a PIN
+- extendedWaitUntil:
+    visible:
+      id: "com.android.settings:id/password_entry"
+    timeout: 5000
+- inputText: "1234"
+- tapOn: "NEXT"
+
+# Confirm PIN
+- waitForAnimationToEnd:
+    timeout: 2000
+- inputText: "1234"
+- tapOn: "CONFIRM"
+
+# Lock-screen redaction interstitial (com.android.settings/.notification.RedactionInterstitial).
+- extendedWaitUntil:
+    visible:
+      text: "Lock screen"
+    timeout: 5000
+- tapOn: "DONE"
+
+# Back in PersonalID. Tap AGREE & CONTINUE on the App Lock screen.
+- extendedWaitUntil:
+    visible:
+      text: "AGREE & CONTINUE"
+    timeout: 10000
+- tapOn: "AGREE & CONTINUE"
+
+# System biometric prompt: "Unlock PersonalID" / "Please unlock to continue".
+# Enter the PIN we just set.
+- extendedWaitUntil:
+    visible:
+      id: "com.android.systemui:id/lockPassword"
+    timeout: 8000
 - tapOn:
-    id: "REPLACE_backup_code_continue"
+    id: "com.android.systemui:id/lockPassword"
+- inputText: "1234"
+- pressKey: Enter
+
+# Snackbar appears: "I see you're a demo user, so we'll skip the OTP"
+# (only for demo users — real users skip this snackbar).
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/snackbar_action"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/snackbar_action"
+
+# Name screen
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/nameTextValue"
+    timeout: 10000
+- tapOn:
+    id: "org.commcare.dalvik:id/nameTextValue"
+- inputText: ${NAME}
+- hideKeyboard
+- tapOn:
+    id: "org.commcare.dalvik:id/personalid_name_continue_button"
+
+# Backup code: choose + confirm 6-digit code
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/connect_backup_code_input"
+    timeout: 10000
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_backup_code_input"
+- inputText: ${BACKUP_CODE}
+- hideKeyboard
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_backup_code_repeat_input"
+- inputText: ${BACKUP_CODE}
+- hideKeyboard
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_backup_code_button"
+
+# Photo capture — final step. Requires hw.camera.front=emulated on the AVD
+# (see header). On a properly configured AVD, take_photo_button opens the
+# system camera; tap the shutter then save_photo_button submits.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/take_photo_button"
+    timeout: 10000
+- tapOn:
+    id: "org.commcare.dalvik:id/take_photo_button"
+
+# System camera UI: shutter + done. Maestro can't drive the AOSP camera
+# reliably across versions, so this last hop is best-effort. If it fails,
+# the test user is registered enough to claim opportunities — the photo
+# requirement is a nice-to-have for the demo persona.
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      visible:
+        text: "Done"
+    commands:
+      - tapOn: "Done"
 
 - extendedWaitUntil:
     visible:
-      id: "REPLACE_home_screen_root"
-    timeout: 30000
+      id: "org.commcare.dalvik:id/save_photo_button"
+    timeout: 15000
+- tapOn:
+    id: "org.commcare.dalvik:id/save_photo_button"

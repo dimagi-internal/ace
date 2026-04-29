@@ -19,7 +19,7 @@ This command is idempotent — re-run any time you suspect drift.
    - Run: `which adb && adb version`
    - If missing: tell the user to run `brew install android-platform-tools` and stop.
 
-3. **Confirm `${ACE_AVD_NAME}` (default `ACE_Pixel_API_34`) exists.**
+3. **Confirm `${ACE_AVD_NAME}` (default `ACE_Pixel_API_34`) exists and has a front camera.**
    - Run: `emulator -list-avds`
    - If not present: print this guidance and stop —
      ```
@@ -28,6 +28,12 @@ This command is idempotent — re-run any time you suspect drift.
        System Image: API 34, ARM64 (or x86_64 if Intel Mac)
        Name: ACE_Pixel_API_34
      ```
+   - If present: verify the front camera is emulated. Run
+     `grep '^hw.camera.front' ~/.android/avd/${ACE_AVD_NAME}.avd/config.ini`.
+     If it reads `hw.camera.front=none`, the photo-capture step at the end
+     of registration silently no-ops (CameraX validation fails with
+     "Camera LENS_FACING_FRONT verification failed"). Fix by editing the
+     config to `hw.camera.front=emulated` and cold-booting the AVD.
 
 4. **Boot the AVD using `mobile_ensure_avd_running`.**
    - Tool: `mcp__ace_mobile__mobile_ensure_avd_running`
@@ -51,10 +57,36 @@ This command is idempotent — re-run any time you suspect drift.
 7. **Verify all `ACE_E2E_*` env vars are populated.**
    - Read each from `process.env`. Any missing → tell the user to update 1Password and re-run `op inject -i .env.tpl -o .env`, then stop.
 
-8. **Register the ACE test user (if not already).**
+8. **Verify `${ACE_E2E_PHONE}` is pre-invited to a Connect opportunity (CRITICAL).**
+
+   **DO NOT skip this check.** Connect-id's `/users/start_configuration`
+   endpoint runs `check_number_for_existing_invites(phone)` synchronously
+   and **the worker dies (SystemExit) when the number has no existing
+   invite anywhere in Connect**. CommCare then receives an empty response
+   and force-stops with NullPointerException. This isn't an integrity or
+   OTP issue — it's a server-side timeout cascade. See Sentry `CONNECT-ID-3F`.
+
+   - Sign in to https://connect.dimagi.com as a user with admin access to
+     the test program (typically `connect-ace-prod`).
+   - Navigate to any opportunity in that program.
+   - Send an invite to `${ACE_E2E_PHONE}`.
+   - The invite does NOT need to be accepted; its mere existence is what
+     `check_number_for_existing_invites` checks.
+
+   Future ACE-created opps (Phase 3 `connect-opp-setup` Step 8) will keep
+   the invite alive automatically. This bootstrap step only matters for
+   the very first registration on a fresh test user.
+
+   Skip this step **only** if the operator has confirmed `${ACE_E2E_PHONE}`
+   already has an invite somewhere in Connect.
+
+9. **Register the ACE test user (if not already).**
    - Tool: `mcp__ace_mobile__mobile_register_test_user`
    - Args: `{ "avdName": "${ACE_AVD_NAME}", "phone": "${ACE_E2E_PHONE}", "phoneLocal": "${ACE_E2E_PHONE_LOCAL}", "countryCode": "${ACE_E2E_COUNTRY_CODE}", "pin": "${ACE_E2E_PIN}", "backupCode": "${ACE_E2E_BACKUP_CODE}", "name": "${ACE_E2E_NAME}" }`
    - If `alreadyRegistered: true`, fine.
+   - If registration fails with `SystemExit` / NPE / "CommCare keeps stopping",
+     the most likely cause is step 8 was skipped or the invite has been
+     revoked. Re-verify and retry.
 
-9. **Print success summary.**
-   - Echo: AVD name, test-user phone, Playwright user-data dir, all ACE_E2E_* var presence.
+10. **Print success summary.**
+    - Echo: AVD name, test-user phone, Playwright user-data dir, all ACE_E2E_* var presence.
