@@ -5,6 +5,50 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.16 — 2026-04-29
+
+**Connect MCP: structured form-validation errors + new `connect_register_hq_api_key` atom.**
+
+A real ACE session creating an opportunity for "Turmeric Market Survey —
+2026-04-28" burned ~90 minutes diagnosing an opaque HTTP 500. Three separate
+payload-shape bugs (hq_server expects int FK, api_key expects int FK,
+learn_app/deliver_app must be JSON-stringified `{id, name}` objects) all
+surfaced as identical opaque 500s because the Playwright backend wasn't
+parsing Connect's form-rejection HTML. The agent had to reverse-engineer each
+via curl + headed browser.
+
+### Added
+
+- `connect_register_hq_api_key` MCP atom — registers a CommCare HQ API key
+  with Connect via `/opportunity/add_api_key/` and returns the int FK that
+  `connect_create_opportunity` and Connect's other forms need. Idempotent:
+  if the key is already registered for the given hq_server, the existing
+  record is returned. Lets agents verify and debug the FK lookup
+  independently of the larger create-opp flow.
+- `parseFormErrorsByField` in `mcp/connect/backends/html-scrape.ts` — parses
+  Connect's crispy-rendered Django form into a per-field error map. Walks
+  each `<div id="div_id_<field>">` block and harvests the `<ul class="errorlist">`
+  items inside it; form-level errors land under `__all__`.
+- `ConnectValidationError.fieldErrors` — structured `{field: [msgs]}` map
+  alongside the existing flat `validationErrors` list. `toJSON()` returns
+  `{error: 'validation_error', message, errors, fields}` for MCP responses.
+- `test/fixtures/connect-html/opportunity-init-validation-errors.html` —
+  regression fixture covering the three real Turmeric-session failures
+  plus a non-field error.
+
+### Changed
+
+- `connect_create_opportunity` (and every other Playwright atom that
+  POSTs a form) now returns the structured per-field error payload
+  instead of letting an opaque HTTP 500 bubble up. Agents can branch
+  on `fields.api_key`, `fields.learn_app`, etc. directly.
+- `mcp/connect-server.ts` wraps every atom call in `runAtom`, which
+  converts `ConnectValidationError` into an MCP response with
+  `isError: true` and the structured JSON body — so the error shape
+  is consistent across all atoms.
+- `capability-map.ts` now lists 19 atoms (was 18). New entry:
+  `register_hq_api_key`.
+
 ## 0.10.15 — 2026-04-29
 
 **Doc fix: name the canonical `.env` location so agents stop hunting.**

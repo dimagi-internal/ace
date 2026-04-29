@@ -22,6 +22,7 @@ export class CompositeBackend implements ConnectClient {
 
   // Lookups
   listDeliveryTypes = (a: Parameters<ConnectClient['listDeliveryTypes']>[0]) => this.opts.playwright.listDeliveryTypes(a);
+  registerHqApiKey = (a: Parameters<ConnectClient['registerHqApiKey']>[0]) => this.opts.playwright.registerHqApiKey(a);
 
   // Opportunities
   listOpportunities = (a: Parameters<ConnectClient['listOpportunities']>[0]) => this.opts.playwright.listOpportunities(a);

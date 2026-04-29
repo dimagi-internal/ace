@@ -11,9 +11,29 @@ import {
   parseOpportunitiesList,
   parseInvitesList,
   parseFormErrors,
+  parseFormErrorsByField,
   parseDeliverUnitTable,
   parsePaymentUnitTable,
 } from './html-scrape.js';
+
+/**
+ * Build a structured ConnectValidationError from a 200-with-errorlist response
+ * body. Tries field-keyed parsing first (preferred); falls back to the flat
+ * list. If neither finds anything, returns a single-line "rejected" stub so
+ * the caller still gets a typed validation error rather than an opaque 500.
+ */
+function validationErrorFromHtml(html: string, contextLabel: string): ConnectValidationError {
+  const fields = parseFormErrorsByField(html);
+  const flat = parseFormErrors(html);
+  if (Object.keys(fields).length === 0 && flat.length === 0) {
+    return new ConnectValidationError([`${contextLabel}; no errorlist found`]);
+  }
+  // Prefer the union: every flat error is also represented under a field
+  // (or __all__) in the structured map, so flat is a strict superset for
+  // human display but the structured map is what callers branch on.
+  const messages = flat.length ? flat : Object.values(fields).flat();
+  return new ConnectValidationError(messages, fields);
+}
 
 export interface PlaywrightBackendOptions {
   baseUrl: string;
@@ -194,8 +214,7 @@ export class PlaywrightBackend implements ConnectClient {
       return { ...created, ...args };
     }
     if (postRes.status() === 200) {
-      const errs = parseFormErrors(await postRes.text());
-      throw new ConnectValidationError(errs.length ? errs : ['form rejected; no errorlist found']);
+      throw validationErrorFromHtml(await postRes.text(), 'program create rejected');
     }
     throw await httpErrorFor(postRes, formPath, 'POST');
   };
@@ -231,8 +250,7 @@ export class PlaywrightBackend implements ConnectClient {
       return await this.getProgram({ organization_slug: args.organization_slug, program_id: args.program_id });
     }
     if (postRes.status() === 200) {
-      const errs = parseFormErrors(await postRes.text());
-      throw new ConnectValidationError(errs.length ? errs : ['edit rejected; no errorlist found']);
+      throw validationErrorFromHtml(await postRes.text(), 'program edit rejected');
     }
     throw await httpErrorFor(postRes, editPath, 'POST');
   };
@@ -288,6 +306,47 @@ export class PlaywrightBackend implements ConnectClient {
       deliver_app: v['deliver_app'] ?? '',
       status: isActive ? 'active' : 'draft',
       organization_slug,
+    };
+  };
+
+  /**
+   * Public atom: register an HQ API key with Connect and return the structured
+   * record (org slug, hq_server label/id, key id, truncated label).
+   *
+   * Resolves the caller's hq_server label exactly the same way createOpportunity
+   * does (so passing 'prod' / 'india' / 'eu' / a URL all work). If the key is
+   * already registered, returns the existing record (idempotent).
+   */
+  registerHqApiKey: ConnectClient['registerHqApiKey'] = async ({ organization_slug, hq_server, api_key }) => {
+    // Need the create-opportunity form to (a) resolve the hq_server label and
+    // (b) pull a CSRF that's scoped to the same form view the agent flow uses.
+    const formPath = `/a/${organization_slug}/opportunity/init/`;
+    const formRes = await this.opts.request.get(formPath);
+    if (formRes.status() !== 200) throw await httpErrorFor(formRes, formPath, 'GET');
+    const formHtml = await formRes.text();
+    const csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
+    const hqServerId = resolveHqServer(formHtml, hq_server);
+    if (!hqServerId) {
+      throw new ConnectValidationError(
+        [
+          `hq_server '${hq_server}' did not match any Connect-known server. ` +
+          `Use 'prod', 'india', 'eu', a server URL, or the int FK directly.`,
+        ],
+        { hq_server: ['Unknown server label'] },
+      );
+    }
+    const apiKeyId = await this.ensureHqApiKeyRegistered({
+      organization_slug,
+      hq_server_id: hqServerId,
+      api_key,
+      csrf,
+    });
+    return {
+      organization_slug,
+      hq_server: hq_server,
+      hq_server_id: hqServerId,
+      api_key_id: apiKeyId,
+      truncated_label: truncatedKeyLabel(api_key),
     };
   };
 
@@ -479,8 +538,7 @@ export class PlaywrightBackend implements ConnectClient {
       return list.opportunities[0];
     }
     if (postRes.status() === 200) {
-      const errs = parseFormErrors(await postRes.text());
-      throw new ConnectValidationError(errs.length ? errs : ['opportunity create rejected; no errorlist found']);
+      throw validationErrorFromHtml(await postRes.text(), 'opportunity create rejected');
     }
     throw await httpErrorFor(postRes, formPath, 'POST');
   };
@@ -561,8 +619,7 @@ export class PlaywrightBackend implements ConnectClient {
       return await this.getOpportunity({ organization_slug, opportunity_id });
     }
     if (postRes.status() === 200) {
-      const errs = parseFormErrors(await postRes.text());
-      throw new ConnectValidationError(errs.length ? errs : ['opportunity edit rejected; no errorlist found']);
+      throw validationErrorFromHtml(await postRes.text(), 'opportunity edit rejected');
     }
     throw await httpErrorFor(postRes, editPath, 'POST');
   }
@@ -642,8 +699,11 @@ export class PlaywrightBackend implements ConnectClient {
     if (postRes.status() === 302 || postRes.status() === 200) {
       // Heuristic: 200 with errorlist is failure
       if (postRes.status() === 200) {
-        const errs = parseFormErrors(await postRes.text());
-        if (errs.length) throw new ConnectValidationError(errs);
+        const html = await postRes.text();
+        const errs = parseFormErrors(html);
+        if (errs.length) {
+          throw validationErrorFromHtml(html, 'verification flags rejected');
+        }
       }
       return { ok: true };
     }
@@ -746,8 +806,7 @@ export class PlaywrightBackend implements ConnectClient {
       return created;
     }
     if (postRes.status() === 200) {
-      const errs = parseFormErrors(await postRes.text());
-      throw new ConnectValidationError(errs.length ? errs : ['payment_unit create rejected; no errorlist found']);
+      throw validationErrorFromHtml(await postRes.text(), 'payment_unit create rejected');
     }
     throw await httpErrorFor(postRes, formPath, 'POST');
   };

@@ -31,4 +31,34 @@ describe('connect errors', () => {
     expect(err.message).toMatch(/name required/);
     expect(err.message).toMatch(/budget must be positive/);
   });
+
+  it('ConnectValidationError.toJSON omits fields when none are provided', () => {
+    const err = new ConnectValidationError(['name required']);
+    expect(err.toJSON()).toEqual({
+      error: 'validation_error',
+      message: err.message,
+      errors: ['name required'],
+    });
+    expect(err.fieldErrors).toBeUndefined();
+  });
+
+  it('ConnectValidationError.toJSON includes fields when provided', () => {
+    const err = new ConnectValidationError(
+      ['Select a valid choice.', 'Enter a valid JSON.'],
+      { api_key: ['Select a valid choice.'], learn_app: ['Enter a valid JSON.'] },
+    );
+    const j = err.toJSON();
+    expect(j.error).toBe('validation_error');
+    expect(j.fields).toEqual({
+      api_key: ['Select a valid choice.'],
+      learn_app: ['Enter a valid JSON.'],
+    });
+    expect(j.errors).toEqual(['Select a valid choice.', 'Enter a valid JSON.']);
+  });
+
+  it('ConnectValidationError omits empty fieldErrors map', () => {
+    const err = new ConnectValidationError(['x'], {});
+    expect(err.fieldErrors).toBeUndefined();
+    expect(err.toJSON().fields).toBeUndefined();
+  });
 });
