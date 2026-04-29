@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
-import { AvdBootError } from '../errors.js';
-import type { AvdInfo } from '../types.js';
+import { AvdBootError, AdbError } from '../errors.js';
+import type { AvdInfo, ApkInfo } from '../types.js';
 
 const AVD_BOOT_TIMEOUT_MS = 120_000;
 const AVD_BOOT_POLL_MS = 2_000;
@@ -81,6 +81,28 @@ export class AvdBackend {
     const found = await this.findRunningAvd(avdName);
     if (!found) return;
     await this.shell('adb', ['-s', found.serial, 'emu', 'kill']);
+  }
+
+  async installApk(avdName: string, apkPath: string): Promise<ApkInfo> {
+    const avd = await this.ensureAvdRunning(avdName);
+    const r = await this.shell('adb', ['-s', avd.serial, 'install', '-r', apkPath]);
+    if (r.exitCode !== 0 || !r.stdout.includes('Success')) {
+      throw new AdbError('install', r.exitCode, r.stderr || r.stdout);
+    }
+    return this.parseApkInfo(apkPath);
+  }
+
+  async uninstallApk(avdName: string, packageId: string): Promise<{ uninstalled: boolean }> {
+    const avd = await this.ensureAvdRunning(avdName);
+    const r = await this.shell('adb', ['-s', avd.serial, 'uninstall', packageId]);
+    return { uninstalled: r.stdout.includes('Success') };
+  }
+
+  private async parseApkInfo(apkPath: string): Promise<ApkInfo> {
+    const r = await this.shell('aapt', ['dump', 'badging', apkPath]);
+    const m = r.stdout.match(/package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'/);
+    if (!m) throw new AdbError('aapt', 0, `could not parse apk metadata for ${apkPath}`);
+    return { packageId: m[1], versionCode: parseInt(m[2], 10), versionName: m[3], path: apkPath };
   }
 
   private async findRunningAvd(avdName: string): Promise<AvdInfo | null> {

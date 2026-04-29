@@ -62,3 +62,24 @@ describe('AvdBackend.stopAvd', () => {
     expect(shell).toHaveBeenCalledWith('adb', ['-s', 'emulator-5554', 'emu', 'kill']);
   });
 });
+
+describe('AvdBackend.installApk', () => {
+  it('shells adb install -r and parses package info via aapt', async () => {
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
+      'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+      'adb -s emulator-5554 install -r /tmp/foo.apk': { stdout: 'Performing Streamed Install\nSuccess\n' },
+      'aapt dump badging /tmp/foo.apk': {
+        stdout: `package: name='org.commcare.dalvik' versionCode='2550' versionName='2.55'\n`,
+      },
+    });
+    const backend = new AvdBackend({ shell });
+    const r = await backend.installApk('ACE_Pixel_API_34', '/tmp/foo.apk');
+    expect(r).toEqual({
+      packageId: 'org.commcare.dalvik',
+      versionName: '2.55',
+      versionCode: 2550,
+      path: '/tmp/foo.apk',
+    });
+  });
+});
