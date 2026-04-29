@@ -554,4 +554,45 @@ else
 fi
 
 echo ""
+echo "[Mobile]"
+
+if command -v maestro >/dev/null 2>&1; then
+  echo "  Maestro:                $(which maestro)    $(maestro --version 2>/dev/null | head -1)    OK"
+else
+  echo "  Maestro:                MISSING — install with curl -Ls 'https://get.maestro.mobile.dev' | bash"
+fi
+
+if command -v adb >/dev/null 2>&1; then
+  echo "  adb:                    $(which adb)    $(adb version | head -1)    OK"
+else
+  echo "  adb:                    MISSING — install with brew install android-platform-tools"
+fi
+
+AVD_NAME="${ACE_AVD_NAME:-ACE_Pixel_API_34}"
+if command -v emulator >/dev/null 2>&1 && emulator -list-avds 2>/dev/null | grep -q "^${AVD_NAME}$"; then
+  if adb devices 2>/dev/null | grep -q "^emulator-"; then
+    echo "  AVD:                    ${AVD_NAME}    booted    OK"
+  else
+    echo "  AVD:                    ${AVD_NAME}    not booted    INFO"
+  fi
+else
+  echo "  AVD:                    ${AVD_NAME}    MISSING — create via Android Studio AVD Manager"
+fi
+
+PLAYWRIGHT_DIR="${ACE_PLAYWRIGHT_USER_DATA_DIR:-${HOME}/.ace/playwright-userdata}"
+if [ -d "${PLAYWRIGHT_DIR}" ] && find "${PLAYWRIGHT_DIR}" -name 'Cookies' -type f -size +0c | grep -q .; then
+  echo "  Playwright cookies:     ${PLAYWRIGHT_DIR}    valid    OK"
+else
+  echo "  Playwright cookies:     MISSING — run /ace:mobile-bootstrap"
+fi
+
+for v in ACE_E2E_PHONE ACE_E2E_PIN ACE_E2E_BACKUP_CODE ACE_AVD_NAME; do
+  if [ -n "${!v:-}" ]; then
+    echo "  ${v}:    set    OK"
+  else
+    echo "  ${v}:    MISSING — populate via 1Password + op inject"
+  fi
+done
+
+echo ""
 echo "STATUS: COMPLETE"
