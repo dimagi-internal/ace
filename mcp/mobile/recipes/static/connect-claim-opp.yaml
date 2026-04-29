@@ -1,6 +1,6 @@
 # SCAFFOLD ONLY — REPLACE_* selectors must be discovered via `maestro studio`.
 # Assumes Connect mobile is already signed in and at the home screen.
-appId: com.dimagi.connect
+appId: org.commcare.dalvik
 ---
 - assertVisible:
     id: "REPLACE_home_screen_root"
