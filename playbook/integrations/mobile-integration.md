@@ -135,6 +135,40 @@ to `hw.camera.front=emulated` before booting. If the AVD was already
 running with the bad config, stop it (`mobile_stop_avd`) and re-run
 `mobile_ensure_avd_running` to apply the fix and cold-boot.
 
+### Face-capture gate (2.62.0+)
+
+CommCare 2.62.0 added an in-app face-capture screen
+(`org.commcare.fragments.MicroImageActivity` aka "Capture Face Picture")
+between the Backup Code step and registration completion. The screen
+shows a live viewfinder with a `face_overlay` and uses face detection to
+auto-trigger the shutter — there is no manual capture button.
+
+**The AVD's emulated front camera does not show a face.** `emulated`
+shows a moving gray test pattern; `virtualscene` shows an empty 3D
+office. Neither triggers the face detector, so the recipe's final
+`save_photo_button` assertion fails and registration cannot complete on
+the device. The phone number IS registered server-side at this point
+(name + backup code submitted), but the local CommCare app session is
+blocked.
+
+**Live-verified workarounds:** none in 0.10.x. Three hypothetical paths,
+none implemented:
+
+1. `hw.camera.front=webcam0` — uses the host Mac webcam. Requires a real
+   human in front of the camera; defeats automation.
+2. Stream a synthetic face image via the emulator gRPC API on port 8554.
+   Complex, not yet prototyped.
+3. Use a CommCare build flag or Connect-id demo-user provision to skip
+   face capture entirely. Would need a server-side change.
+
+**Implication for ACE Phase 5 `training-prep`:** screenshot capture of a
+*deployed CommCare app* (the Phase 5 use case) does NOT need a fully
+registered PersonalID — `app-screenshot-capture` opens the deployed app
+directly, not via the registration flow. So this gate doesn't block the
+ACE production path. It only blocks an end-to-end "register a fresh
+test user from scratch on a clean AVD" flow, which is a one-time
+bootstrap task documented as a known limitation.
+
 ### Google Play Services phone-number hint
 
 GMS-equipped AVDs surface a "Choose a phone number" bottom sheet on focus
@@ -202,13 +236,21 @@ If the AVD/Maestro can't find a JDK, the operator override is to
 ## What's not yet built
 
 - `connect-claim-opp.yaml` selectors are scaffolded (REPLACE_*). Discovery
-  pass deferred until a real opportunity is needed in a test run.
+  pass deferred — the registered-test-user state required for capture is
+  blocked by the face-capture gate (see Gotchas above). For the Phase 5
+  `training-prep` use case this isn't a blocker because the deployed
+  CommCare app is opened directly without going through PersonalID
+  registration.
 - The deliver-app navigation recipes (`generate_recipes_from_app_summary`)
   have been wired but not run live against a Nova-deployed app. The
   generator's parsing logic is unit-tested; the LLM contract isn't.
 - Cross-platform support is implemented but only verified on macOS Apple
   Silicon. Linux and Windows paths are best-effort, awaiting first-run
   validation.
+- A face-capture bypass for fully-automated PersonalID registration on
+  AVDs. The recipe runs through 28/30 steps; the final two
+  (`save_photo_button` after auto-shutter) require a face the emulated
+  camera doesn't supply. See "Face-capture gate" in Gotchas.
 
 ## Sibling docs
 
