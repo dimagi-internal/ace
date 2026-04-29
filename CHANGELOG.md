@@ -5,6 +5,35 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.19 — 2026-04-29
+
+**Optimized mobile selector-discovery workflow.**
+
+### Changed
+
+- **`playbook/integrations/mobile-integration.md` — selector discovery
+  loop rewritten.** Recommends `maestro studio` (interactive selector
+  picker) over the dump-and-grep loop, `mobile_capture_ui_dump` over
+  `adb shell uiautomator dump` + `adb pull` + `grep`, and snapshot-driven
+  iteration (load a `registered-test-user` snapshot in ~3s instead of
+  replaying the 4-minute registration flow). New "Performance &
+  efficiency" subsection codifies the screencap-Read PNG anti-pattern:
+  almost every CommCare/PersonalID selector is resource-id-driven, so the
+  uiautomator XML alone is enough — reserve screenshots for genuinely
+  visual states like the AOSP camera UI.
+- **`commands/mobile-bootstrap.md`** adds a recommended
+  `mobile_save_snapshot` step after first registration, so future
+  discovery sessions don't re-pay the 4-minute setup cost.
+
+### Why
+
+A self-review of the 0.10.18 live-verification session found ~15
+iterations of (screencap → Read PNG → uiautomator dump → grep → edit
+recipe → re-run). The PNG reads were the main context burn and the
+re-runs were the main wall-clock burn — both avoidable with the atoms
+already shipped in 0.10.18. This release just makes the optimized
+workflow the documented default.
+
 ## 0.10.18 — 2026-04-29
 
 **End-to-end Android control: camera auto-fix, snapshots, cross-platform Java, dropped OTP path.**
