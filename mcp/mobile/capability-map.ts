@@ -1,0 +1,31 @@
+export type Backend = 'MAESTRO' | 'AVD' | 'COMPOSITE';
+
+export type Capability =
+  | 'ensure_avd_running'
+  | 'stop_avd'
+  | 'list_avds'
+  | 'install_apk'
+  | 'uninstall_apk'
+  | 'register_test_user'
+  | 'fetch_otp'
+  | 'run_recipe'
+  | 'generate_recipes_from_app_summary'
+  | 'capture_ui_dump';
+
+export interface CapabilityRoute {
+  backend: Backend;
+  description: string;
+}
+
+export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
+  ensure_avd_running: { backend: 'AVD', description: 'Boot the AVD if cold; idempotent' },
+  stop_avd: { backend: 'AVD', description: 'Graceful AVD shutdown' },
+  list_avds: { backend: 'AVD', description: 'List AVDs known to avdmanager' },
+  install_apk: { backend: 'AVD', description: 'adb install -r' },
+  uninstall_apk: { backend: 'AVD', description: 'adb uninstall' },
+  register_test_user: { backend: 'COMPOSITE', description: 'Maestro + Playwright registration flow' },
+  fetch_otp: { backend: 'COMPOSITE', description: 'Playwright OTP scrape' },
+  run_recipe: { backend: 'MAESTRO', description: 'maestro test <recipe>' },
+  generate_recipes_from_app_summary: { backend: 'MAESTRO', description: 'LLM emits Maestro YAML from app summary' },
+  capture_ui_dump: { backend: 'AVD', description: 'adb shell uiautomator dump' },
+};

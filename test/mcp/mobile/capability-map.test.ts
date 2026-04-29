@@ -1,0 +1,32 @@
+import { describe, it, expect } from 'vitest';
+import { CAPABILITY_MAP, type Capability } from '../../../mcp/mobile/capability-map.js';
+
+const EXPECTED_CAPS: Capability[] = [
+  'ensure_avd_running',
+  'stop_avd',
+  'list_avds',
+  'install_apk',
+  'uninstall_apk',
+  'register_test_user',
+  'fetch_otp',
+  'run_recipe',
+  'generate_recipes_from_app_summary',
+  'capture_ui_dump',
+];
+
+describe('mobile capability-map', () => {
+  it('declares exactly 10 capabilities', () => {
+    expect(Object.keys(CAPABILITY_MAP).sort()).toEqual([...EXPECTED_CAPS].sort());
+  });
+
+  it('every capability has a backend', () => {
+    for (const cap of EXPECTED_CAPS) {
+      expect(CAPABILITY_MAP[cap].backend).toMatch(/^(AVD|MAESTRO|COMPOSITE)$/);
+    }
+  });
+
+  it('routes register_test_user and fetch_otp through COMPOSITE', () => {
+    expect(CAPABILITY_MAP.register_test_user.backend).toBe('COMPOSITE');
+    expect(CAPABILITY_MAP.fetch_otp.backend).toBe('COMPOSITE');
+  });
+});
