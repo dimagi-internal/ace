@@ -661,10 +661,56 @@ export class PlaywrightBackend implements ConnectClient {
     const formPath = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/payment_unit/create`;
     const getRes = await this.opts.request.get(formPath);
     if (getRes.status() !== 200) throw await httpErrorFor(getRes, formPath);
-    const csrf = extractFormCsrfToken(await getRes.text()) ?? this.opts.csrfToken;
+    const formHtml = await getRes.text();
+    const csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
 
-    // Required-deliver-units and optional-deliver-units are multi-select
-    // fields. Send them as repeated form-encoded params.
+    // The deliver-unit checkboxes use a different id namespace than
+    // `connect_list_deliver_units` returns. The list returns a small
+    // per-opp display id (1, 2, 3...); the form-checkbox `value` is the
+    // global Connect-side DB primary key (e.g. 5112). Connect's view
+    // reads the PK form-value, NOT the display id. If we POST the
+    // display id directly, Connect 302-redirects with a Django messages
+    // cookie of "Invalid Data" — silently dropping the create.
+    //
+    // Mitigation: parse this form's `<input name="required_deliver_units"
+    // value="5112">Vendor visit</label>` checkboxes and map our caller's
+    // display ids → form values by matching against the deliver-unit
+    // table list (same opp). We look up name first, then fall back to
+    // numeric position if the names diverge.
+    const checkboxValueByName = new Map<string, string>();
+    for (const m of formHtml.matchAll(
+      /<input[^>]*name="(?:required|optional)_deliver_units"[^>]*value="(\d+)"[^>]*>\s*([^<]+)/g,
+    )) {
+      const value = m[1];
+      const label = m[2].trim();
+      if (!checkboxValueByName.has(label)) checkboxValueByName.set(label, value);
+    }
+    const list = await this.listDeliverUnits({
+      organization_slug: args.organization_slug,
+      opportunity_id: args.opportunity_id,
+    });
+    const idToFormValue = new Map<number, string>();
+    for (const du of list.deliver_units) {
+      const v = checkboxValueByName.get(du.name);
+      if (v) idToFormValue.set(du.id, v);
+    }
+    const mapId = (id: number): string => {
+      const v = idToFormValue.get(id);
+      if (v) return v;
+      // Caller may have passed a form-value PK directly; if it's a
+      // value the form actually exposes, accept it. Otherwise surface
+      // a clear error rather than silent-drop on Connect's side.
+      const idStr = String(id);
+      if ([...checkboxValueByName.values()].includes(idStr)) return idStr;
+      throw new ConnectValidationError([
+        `deliver_unit_id ${id} did not resolve to any form-value in the create-payment_unit form. ` +
+        `Available deliver units (display id → form name → form value): ` +
+        `${list.deliver_units
+          .map((du) => `${du.id} → "${du.name}" → ${idToFormValue.get(du.id) ?? '?'}`)
+          .join('; ')}`,
+      ]);
+    };
+
     const formData = new URLSearchParams();
     formData.append('csrfmiddlewaretoken', csrf);
     formData.append('name', args.name);
@@ -674,8 +720,8 @@ export class PlaywrightBackend implements ConnectClient {
     if (args.max_daily != null) formData.append('max_daily', String(args.max_daily));
     if (args.start_date) formData.append('start_date', args.start_date);
     if (args.end_date) formData.append('end_date', args.end_date);
-    for (const id of args.required_deliver_unit_ids) formData.append('required_deliver_units', String(id));
-    for (const id of args.optional_deliver_unit_ids ?? []) formData.append('optional_deliver_units', String(id));
+    for (const id of args.required_deliver_unit_ids) formData.append('required_deliver_units', mapId(id));
+    for (const id of args.optional_deliver_unit_ids ?? []) formData.append('optional_deliver_units', mapId(id));
 
     const postRes = await this.opts.request.post(formPath, {
       data: formData.toString(),
