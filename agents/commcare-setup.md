@@ -53,9 +53,11 @@ Invoke the `app-release` skill.
   can now read the form schema. Without this step, Phase 3
   (`connect-opp-setup`) creates the opp shell but cannot configure
   payment units (deliver-units list comes back empty).
-- **Prerequisite:** `ace@dimagi-ai.com` must have App Editor permissions on
-  the target project space. If missing, the skill halts with a clear
-  remediation pointer (admin-side fix, not auto-resolvable).
+- **Prerequisite:** the user backing `ACE_HQ_USERNAME` needs a role with
+  `edit_apps` on the target project space; the standard `Admin` role
+  includes it. The skill includes an empirical probe procedure for the
+  underlying CCHQ endpoints — they're internal UI routes, not stable
+  public APIs.
 - Note: `app-test` reads `deployment-summary.md`, so deploy + release must
   precede test.
 
