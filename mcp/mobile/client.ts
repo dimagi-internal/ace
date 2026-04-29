@@ -8,6 +8,7 @@ import { fetchOtp } from './auth/fetch-otp.js';
 import { RecipeGenerator, type LlmFn } from './backends/recipe-generator.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, OtpResult, TestUserRegistrationResult, UiDumpResult,
+  SnapshotResult,
 } from './types.js';
 import { logInfo } from './logging.js';
 
@@ -52,6 +53,12 @@ export class MobileClient {
     return this.avd.uninstallApk(avdName, pkg);
   }
   captureUiDump(avdName: string): Promise<UiDumpResult> { return this.avd.captureUiDump(avdName); }
+  saveSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
+    return this.avd.saveSnapshot(avdName, snapshotName);
+  }
+  loadSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
+    return this.avd.loadSnapshot(avdName, snapshotName);
+  }
 
   fetchOtp(phone: string, headed = false): Promise<OtpResult> {
     return fetchOtp(phone, { userDataDir: this.playwrightUserDataDir, headed });
@@ -61,7 +68,18 @@ export class MobileClient {
     return this.maestro.runRecipe(recipePath, env, screenshotDir);
   }
 
-  // register_test_user and generate_recipes_from_app_summary added in later tasks.
+  /**
+   * Register the ACE test user end-to-end via Maestro. Assumes the +7426
+   * demo-bypass prefix is in use (otherwise Connect-id needs a real OTP, a
+   * path we no longer maintain — see CHANGELOG 0.10.17). Also assumes the
+   * phone is pre-invited to a Connect opportunity; without that, Connect-id's
+   * /users/start_configuration crashes with SystemExit (CI-643).
+   *
+   * Two recipes back this:
+   *   - connect-register-to-otp.yaml: launch → phone entry → Continue
+   *   - connect-register-from-otp.yaml: snackbar OK → App Lock + PIN →
+   *     name → backup code → photo capture
+   */
   async registerTestUser(args: {
     avdName: string;
     phone: string;
@@ -73,32 +91,28 @@ export class MobileClient {
   }): Promise<TestUserRegistrationResult> {
     await this.avd.ensureAvdRunning(args.avdName);
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-mobile-reg-'));
-    const toOtpRecipe = path.join(this.staticRecipesDir, 'connect-register-to-otp.yaml');
-    const fromOtpRecipe = path.join(this.staticRecipesDir, 'connect-register-from-otp.yaml');
+    const toContinue = path.join(this.staticRecipesDir, 'connect-register-to-otp.yaml');
+    const fromContinue = path.join(this.staticRecipesDir, 'connect-register-from-otp.yaml');
 
-    logInfo('register_test_user: part A (to OTP)');
-    const partA = await this.maestro.runRecipe(toOtpRecipe, {
+    logInfo('register_test_user: part A (launch → Continue)');
+    const partA = await this.maestro.runRecipe(toContinue, {
       PHONE_LOCAL: args.phoneLocal,
       COUNTRY_CODE: args.countryCode,
       PIN: args.pin,
-    }, path.join(tmp, 'to-otp'));
+    }, path.join(tmp, 'part-a'));
     if (partA.status !== 'pass') {
-      // Detect "already registered" early via a sentinel string the recipe writes on duplicate.
       if (partA.stdout.includes('PHONE_ALREADY_REGISTERED')) {
         return { alreadyRegistered: true, phone: args.phone };
       }
       throw new Error(`register_test_user part A failed: ${partA.stderr || partA.stdout}`);
     }
 
-    logInfo('register_test_user: fetching OTP');
-    const otpResult = await this.fetchOtp(args.phone);
-
-    logInfo('register_test_user: part B (from OTP)');
-    const partB = await this.maestro.runRecipe(fromOtpRecipe, {
-      OTP: otpResult.otp,
+    logInfo('register_test_user: part B (post-Continue → registered)');
+    const partB = await this.maestro.runRecipe(fromContinue, {
       NAME: args.name,
       BACKUP_CODE: args.backupCode,
-    }, path.join(tmp, 'from-otp'));
+      PIN: args.pin,
+    }, path.join(tmp, 'part-b'));
     if (partB.status !== 'pass') {
       if (partB.stdout.includes('PHONE_ALREADY_REGISTERED')) {
         return { alreadyRegistered: true, phone: args.phone };

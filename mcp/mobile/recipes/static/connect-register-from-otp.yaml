@@ -1,31 +1,30 @@
 # Drive CommCare PersonalID from the post-Continue state through to
-# account creation. Two branches converge here:
+# account creation, end-to-end automated.
 #
-#   - Demo users (+7426 prefix): a snackbar reads "I see you're a demo user,
-#     so we'll skip the OTP" with an OK action (id snackbar_action). Tapping
-#     OK lands on the App Lock screen.
-#   - Real users: an OTP entry screen (selector REPLACE_otp_entry — still
-#     pending discovery against a non-demo phone). After OTP verification,
-#     the flow joins back at the App Lock screen.
+# This recipe assumes the +7426 demo-bypass prefix is in use (Connect-id
+# special-cases that range to skip OTP entirely). The non-demo OTP path is
+# not maintained — see CHANGELOG 0.10.x. ACE has no use case for testing
+# real-OTP delivery on a managed test phone.
 #
-# All selectors below verified live on CommCare 2.62.0 on 2026-04-29 against
+# Selectors verified live on CommCare 2.62.0 on 2026-04-29 against
 # ACE_Pixel_API_34_PS, registering +74260000100 from a fresh install.
 #
 # Variables:
-#   ${OTP}          — required only for the real-user path
 #   ${NAME}         — display name (e.g., "ACE Test User")
 #   ${BACKUP_CODE}  — 6-digit numeric (e.g., "123456")
+#   ${PIN}          — 4-digit PIN for the device App Lock (defaults to "1234")
 #
 # AVD prerequisite: hw.camera.front=emulated. The default AVD config has
 # hw.camera.front=none, which makes CameraX fail validation on the photo
-# capture step. Without a front camera, take_photo_button does nothing —
-# logcat shows CameraValidator: "Camera LENS_FACING_FRONT verification failed".
-# Fix in ~/.android/avd/<NAME>.avd/config.ini, then cold-boot the AVD.
+# capture step. mobile_ensure_avd_running auto-patches this in 0.10.18+;
+# pre-0.10.18 AVDs need a manual edit to ~/.android/avd/<NAME>.avd/config.ini.
 
 appId: org.commcare.dalvik
 ---
 
-# Branch 1: demo-user snackbar (+7426)
+# Demo-user snackbar ("I see you're a demo user, so we'll skip the OTP").
+# Auto-fades after ~5s, so this is best-effort: dismiss if still up,
+# otherwise the App Lock screen wait below will catch us up.
 - runFlow:
     when:
       visible:
@@ -34,19 +33,7 @@ appId: org.commcare.dalvik
       - tapOn:
           id: "org.commcare.dalvik:id/snackbar_action"
 
-# Branch 2: real-user OTP entry. Selector still pending discovery.
-- runFlow:
-    when:
-      visible:
-        id: "REPLACE_otp_entry"
-    commands:
-      - tapOn:
-          id: "REPLACE_otp_entry"
-      - inputText: ${OTP}
-      - tapOn:
-          id: "REPLACE_otp_verify"
-
-# Both branches converge here. App Lock screen offers Configure Fingerprint
+# App Lock screen offers Configure Fingerprint
 # and Configure PIN; AVD has no fingerprint enrolled so we use PIN.
 - extendedWaitUntil:
     visible:
@@ -55,42 +42,43 @@ appId: org.commcare.dalvik
 - tapOn:
     id: "org.commcare.dalvik:id/connect_verify_pin_button"
 
-# CommCare hands off to com.android.settings/.password.ChooseLockPassword.
-# Pick PIN (the lock_pattern / lock_password options also exist).
-- extendedWaitUntil:
-    visible:
-      id: "com.android.settings:id/lock_pin"
-    timeout: 10000
-- tapOn:
-    id: "com.android.settings:id/lock_pin"
-
-# Set a PIN
-- extendedWaitUntil:
-    visible:
-      id: "com.android.settings:id/password_entry"
-    timeout: 5000
-- inputText: "1234"
-- tapOn: "NEXT"
-
-# Confirm PIN
-- waitForAnimationToEnd:
-    timeout: 2000
-- inputText: "1234"
-- tapOn: "CONFIRM"
-
-# Lock-screen redaction interstitial (com.android.settings/.notification.RedactionInterstitial).
-- extendedWaitUntil:
-    visible:
-      text: "Lock screen"
-    timeout: 5000
-- tapOn: "DONE"
-
-# Back in PersonalID. Tap AGREE & CONTINUE on the App Lock screen.
-- extendedWaitUntil:
-    visible:
-      text: "AGREE & CONTINUE"
-    timeout: 10000
-- tapOn: "AGREE & CONTINUE"
+# Two branches here:
+#
+#   A) Device has no screen lock yet → CommCare hands off to
+#      com.android.settings/.password.ChooseLockPassword. We pick PIN, set
+#      it, confirm it, dismiss the lock-screen redaction interstitial, then
+#      come back to the App Lock screen and tap AGREE & CONTINUE.
+#   B) Device already has a screen lock (e.g., a prior registration set the
+#      PIN globally) → Configure-PIN immediately surfaces the system unlock
+#      prompt without going through the chooser. Skip A, go straight to the
+#      unlock step further down.
+- runFlow:
+    when:
+      visible:
+        id: "com.android.settings:id/lock_pin"
+    commands:
+      - tapOn:
+          id: "com.android.settings:id/lock_pin"
+      - extendedWaitUntil:
+          visible:
+            id: "com.android.settings:id/password_entry"
+          timeout: 5000
+      - inputText: ${PIN}
+      - tapOn: "NEXT"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - inputText: ${PIN}
+      - tapOn: "CONFIRM"
+      - extendedWaitUntil:
+          visible:
+            text: "Lock screen"
+          timeout: 5000
+      - tapOn: "DONE"
+      - extendedWaitUntil:
+          visible:
+            text: "AGREE & CONTINUE"
+          timeout: 10000
+      - tapOn: "AGREE & CONTINUE"
 
 # System biometric prompt: "Unlock PersonalID" / "Please unlock to continue".
 # Enter the PIN we just set.
@@ -100,11 +88,12 @@ appId: org.commcare.dalvik
     timeout: 8000
 - tapOn:
     id: "com.android.systemui:id/lockPassword"
-- inputText: "1234"
+- inputText: ${PIN}
 - pressKey: Enter
 
-# Snackbar appears: "I see you're a demo user, so we'll skip the OTP"
-# (only for demo users — real users skip this snackbar).
+# Second snackbar after successful unlock (same demo-user message). Some
+# CommCare builds re-show it post-unlock; runFlow.when keeps the recipe
+# working whether it appears or not.
 - runFlow:
     when:
       visible:

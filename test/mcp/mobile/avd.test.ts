@@ -1,4 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { AvdBackend } from '../../../mcp/mobile/backends/avd.js';
 
 function fakeShell(scripted: Record<string, { stdout: string; stderr?: string; code?: number }>) {
@@ -81,6 +84,101 @@ describe('AvdBackend.installApk', () => {
       versionCode: 2550,
       path: '/tmp/foo.apk',
     });
+  });
+});
+
+describe('AvdBackend.ensureFrontCameraEmulated', () => {
+  let tmpAvdHome: string;
+  let oldEnv: string | undefined;
+
+  beforeEach(() => {
+    tmpAvdHome = fs.mkdtempSync(path.join(os.tmpdir(), 'avd-test-'));
+    oldEnv = process.env.ANDROID_AVD_HOME;
+    process.env.ANDROID_AVD_HOME = tmpAvdHome;
+  });
+  afterEach(() => {
+    if (oldEnv === undefined) delete process.env.ANDROID_AVD_HOME;
+    else process.env.ANDROID_AVD_HOME = oldEnv;
+    fs.rmSync(tmpAvdHome, { recursive: true, force: true });
+  });
+
+  function writeConfig(name: string, contents: string) {
+    const dir = path.join(tmpAvdHome, `${name}.avd`);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'config.ini'), contents);
+  }
+
+  function readConfig(name: string): string {
+    return fs.readFileSync(path.join(tmpAvdHome, `${name}.avd`, 'config.ini'), 'utf8');
+  }
+
+  it('rewrites hw.camera.front=none to emulated', () => {
+    writeConfig('AvdA', 'hw.camera.back=emulated\nhw.camera.front=none\nhw.gps=yes\n');
+    const backend = new AvdBackend();
+    expect(backend.ensureFrontCameraEmulated('AvdA')).toBe(true);
+    expect(readConfig('AvdA')).toContain('hw.camera.front=emulated');
+    expect(readConfig('AvdA')).not.toContain('hw.camera.front=none');
+  });
+
+  it('appends hw.camera.front=emulated when key missing', () => {
+    writeConfig('AvdB', 'hw.camera.back=emulated\nhw.gps=yes\n');
+    const backend = new AvdBackend();
+    expect(backend.ensureFrontCameraEmulated('AvdB')).toBe(true);
+    expect(readConfig('AvdB')).toMatch(/hw\.camera\.front=emulated\s*$/);
+  });
+
+  it('is a no-op when already set to emulated (idempotent)', () => {
+    writeConfig('AvdC', 'hw.camera.front=emulated\n');
+    const backend = new AvdBackend();
+    expect(backend.ensureFrontCameraEmulated('AvdC')).toBe(false);
+    // Original content preserved.
+    expect(readConfig('AvdC')).toBe('hw.camera.front=emulated\n');
+  });
+
+  it('returns false when config.ini does not exist', () => {
+    const backend = new AvdBackend();
+    expect(backend.ensureFrontCameraEmulated('NonexistentAvd')).toBe(false);
+  });
+});
+
+describe('AvdBackend.saveSnapshot / loadSnapshot', () => {
+  it('shells adb emu avd snapshot save', async () => {
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
+      'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+      'adb -s emulator-5554 emu avd snapshot save registered_user': { stdout: 'OK\n' },
+    });
+    const backend = new AvdBackend({ shell });
+    const r = await backend.saveSnapshot('ACE_Pixel_API_34', 'registered_user');
+    expect(r).toMatchObject({
+      avdName: 'ACE_Pixel_API_34',
+      snapshotName: 'registered_user',
+      saved: true,
+    });
+  });
+
+  it('shells adb emu avd snapshot load', async () => {
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
+      'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+      'adb -s emulator-5554 emu avd snapshot load registered_user': { stdout: 'OK\n' },
+    });
+    const backend = new AvdBackend({ shell });
+    const r = await backend.loadSnapshot('ACE_Pixel_API_34', 'registered_user');
+    expect(r.saved).toBe(true);
+  });
+
+  it('reports saved=false when adb prints an error', async () => {
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
+      'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+      'adb -s emulator-5554 emu avd snapshot load missing': {
+        stdout: 'KO: error: snapshot not found\n',
+      },
+    });
+    const backend = new AvdBackend({ shell });
+    const r = await backend.loadSnapshot('ACE_Pixel_API_34', 'missing');
+    expect(r.saved).toBe(false);
   });
 });
 
