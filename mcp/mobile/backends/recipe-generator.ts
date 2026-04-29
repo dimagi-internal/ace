@@ -48,13 +48,31 @@ export class RecipeGenerator {
     this.maestro = opts.maestro ?? new MaestroBackend({ shell: opts.shell });
   }
 
+  /**
+   * Extract module names from an app-summary markdown blob.
+   *
+   * Three formats supported, tried in order. The first that yields any
+   * modules wins:
+   *
+   *   1. **Modules section with H3 entries:** a `## Modules` heading whose
+   *      block contains `### N. <name>` rows. Used by Test-001-style
+   *      atomic-visit summaries.
+   *   2. **Modules section with a markdown table:** a `## Modules` heading
+   *      whose block contains a `| # | Module | ... |` table. Module name
+   *      is column 2. Used by Test-002-style focus-group summaries.
+   *   3. **Legacy: top-level `## Module ...` headings.** Picks up any H2
+   *      heading whose text starts with "Module". Used by hand-authored
+   *      summaries before the `## Modules` parent convention landed.
+   */
   parseSummary(summary: string): string[] {
-    const out: string[] = [];
-    for (const line of summary.split('\n')) {
-      const m = line.match(/^##\s+(.+?)\s*$/);
-      if (m) out.push(m[1].trim());
+    const modulesBlock = extractModulesBlock(summary);
+    if (modulesBlock) {
+      const h3 = parseH3Modules(modulesBlock);
+      if (h3.length > 0) return h3;
+      const table = parseTableModules(modulesBlock);
+      if (table.length > 0) return table;
     }
-    return out;
+    return parseLegacyH2Modules(summary);
   }
 
   async generateForModule(args: {
@@ -75,4 +93,56 @@ export class RecipeGenerator {
     }
     return yaml;
   }
+}
+
+function extractModulesBlock(summary: string): string | null {
+  const lines = summary.split('\n');
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s+Modules\s*$/i.test(lines[i])) {
+      start = i + 1;
+      break;
+    }
+  }
+  if (start === -1) return null;
+
+  let end = lines.length;
+  for (let i = start; i < lines.length; i++) {
+    if (/^##\s+/.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n');
+}
+
+function parseH3Modules(block: string): string[] {
+  const out: string[] = [];
+  for (const line of block.split('\n')) {
+    const m = line.match(/^###\s+(.+?)\s*$/);
+    if (m) out.push(m[1].trim());
+  }
+  return out;
+}
+
+function parseTableModules(block: string): string[] {
+  const out: string[] = [];
+  for (const line of block.split('\n')) {
+    // Skip header (`| # | Module | ...`) and separator (`|---|---|...`).
+    if (/^\|\s*#?\s*\|\s*Module/i.test(line)) continue;
+    if (/^\|[\s\-:|]+\|$/.test(line)) continue;
+    // Match `| <number> | <name> | ...` and capture column 2.
+    const m = line.match(/^\|\s*\d+\s*\|\s*([^|]+?)\s*\|/);
+    if (m) out.push(m[1].trim());
+  }
+  return out;
+}
+
+function parseLegacyH2Modules(summary: string): string[] {
+  const out: string[] = [];
+  for (const line of summary.split('\n')) {
+    const m = line.match(/^##\s+(Module\b.+?)\s*$/);
+    if (m) out.push(m[1].trim());
+  }
+  return out;
 }

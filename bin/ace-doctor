@@ -568,26 +568,45 @@ else
   echo "  adb:                    MISSING — install with brew install android-platform-tools"
 fi
 
-AVD_NAME="${ACE_AVD_NAME:-ACE_Pixel_API_34}"
-if command -v emulator >/dev/null 2>&1 && emulator -list-avds 2>/dev/null | grep -q "^${AVD_NAME}$"; then
+# Read ACE_AVD_NAME from .env first (matches the rest of doctor's behavior),
+# fall back to process env, then to the default.
+AVD_NAME="$(get_env ACE_AVD_NAME)"
+[ -z "$AVD_NAME" ] && AVD_NAME="${ACE_AVD_NAME:-ACE_Pixel_API_34}"
+
+# Search broader paths for emulator/adb in case the doctor session doesn't
+# have ANDROID_HOME on PATH (common when run from a non-interactive shell).
+EMULATOR_BIN=""
+for candidate in \
+    "$(command -v emulator 2>/dev/null)" \
+    "/opt/homebrew/share/android-commandlinetools/emulator/emulator" \
+    "${ANDROID_HOME:-}/emulator/emulator" \
+    "${ANDROID_SDK_ROOT:-}/emulator/emulator"; do
+  [ -x "$candidate" ] && EMULATOR_BIN="$candidate" && break
+done
+
+if [ -n "$EMULATOR_BIN" ] && "$EMULATOR_BIN" -list-avds 2>/dev/null | grep -q "^${AVD_NAME}$"; then
   if adb devices 2>/dev/null | grep -q "^emulator-"; then
     echo "  AVD:                    ${AVD_NAME}    booted    OK"
   else
-    echo "  AVD:                    ${AVD_NAME}    not booted    INFO"
+    echo "  AVD:                    ${AVD_NAME}    available (not booted)    OK"
   fi
 else
-  echo "  AVD:                    ${AVD_NAME}    MISSING — create via Android Studio AVD Manager"
+  echo "  AVD:                    ${AVD_NAME}    MISSING — create via Android Studio or 'avdmanager create avd -n ${AVD_NAME} -k \"system-images;android-34;google_apis;arm64-v8a\" -d pixel_7'"
 fi
 
 PLAYWRIGHT_DIR="${ACE_PLAYWRIGHT_USER_DATA_DIR:-${HOME}/.ace/playwright-userdata}"
-if [ -d "${PLAYWRIGHT_DIR}" ] && find "${PLAYWRIGHT_DIR}" -name 'Cookies' -type f -size +0c | grep -q .; then
+if [ -d "${PLAYWRIGHT_DIR}" ] && find "${PLAYWRIGHT_DIR}" -name 'Cookies' -type f -size +0c 2>/dev/null | grep -q .; then
   echo "  Playwright cookies:     ${PLAYWRIGHT_DIR}    valid    OK"
 else
   echo "  Playwright cookies:     MISSING — run /ace:mobile-bootstrap"
 fi
 
+# Read ACE_E2E_* and ACE_AVD_NAME from $ENV_FILE via get_env so they aren't
+# perpetually MISSING when doctor runs from a shell that didn't load .env.
 for v in ACE_E2E_PHONE ACE_E2E_PIN ACE_E2E_BACKUP_CODE ACE_AVD_NAME; do
-  if [ -n "${!v:-}" ]; then
+  val="$(get_env "$v")"
+  [ -z "$val" ] && val="${!v:-}"
+  if [ -n "$val" ]; then
     echo "  ${v}:    set    OK"
   else
     echo "  ${v}:    MISSING — populate via 1Password + op inject"

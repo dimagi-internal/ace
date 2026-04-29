@@ -54,15 +54,34 @@ describe('RecipeGenerator.generateForModule', () => {
 });
 
 describe('RecipeGenerator.parseSummary', () => {
-  it('extracts module names from app summary markdown', () => {
+  it('extracts legacy `## Module N — name` headings', () => {
     const gen = new RecipeGenerator({ llm: vi.fn() });
     const modules = gen.parseSummary(APP_SUMMARY);
     expect(modules).toEqual(['Module 1 — Pre-test']);
   });
 
-  it('handles multiple modules', () => {
+  it('handles multiple legacy modules', () => {
     const summary = `## Module 1 — A\n\n## Module 2 — B\n\n## Module 3 — C\n`;
     const gen = new RecipeGenerator({ llm: vi.fn() });
     expect(gen.parseSummary(summary)).toEqual(['Module 1 — A', 'Module 2 — B', 'Module 3 — C']);
+  });
+
+  it('extracts H3 modules under `## Modules` parent', () => {
+    const summary = `## Overview\n\nFiller text\n\n## Modules\n\n### 1. Foo\nbody\n\n### 2. Bar\nbody\n\n## Other section\n\n### Should not match\n`;
+    const gen = new RecipeGenerator({ llm: vi.fn() });
+    expect(gen.parseSummary(summary)).toEqual(['1. Foo', '2. Bar']);
+  });
+
+  it('extracts table-row modules under `## Modules` parent', () => {
+    const summary = `## Modules\n\n| # | Module | Purpose |\n|---|---|---|\n| 1 | Facilitation basics | Opening sessions |\n| 2 | Probing techniques | Tell me more |\n\n## Other section\n`;
+    const gen = new RecipeGenerator({ llm: vi.fn() });
+    expect(gen.parseSummary(summary)).toEqual(['Facilitation basics', 'Probing techniques']);
+  });
+
+  it('does not pick up non-module H2 headings when no `## Modules` block exists', () => {
+    const summary = `## Overview\n\n## Connect Configuration\n\n## Notable differences\n`;
+    const gen = new RecipeGenerator({ llm: vi.fn() });
+    // None of these start with "Module" — legacy parser returns empty.
+    expect(gen.parseSummary(summary)).toEqual([]);
   });
 });
