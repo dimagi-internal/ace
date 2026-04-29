@@ -9,31 +9,53 @@ Run this **once per workstation** before the `training-prep` phase can capture s
 
 This command is idempotent — re-run any time you suspect drift.
 
+## Supported platforms
+
+ACE mobile emulation has been live-validated on **macOS Apple Silicon** (the
+primary developer platform). Linux and Windows path resolution is implemented
+in `mobile_ensure_avd_running` but only tested via unit tests; first-run
+operator validation is welcome.
+
+The atom layer (Maestro + adb + emulator + Java) is platform-portable. The
+only OS-specific bits are the install commands for those tools and the AVD
+home directory; both are handled by the table below and `resolveJavaHome()`
+in `mcp/mobile/backends/avd.ts`.
+
+| Step prerequisite | macOS | Linux / WSL2 | Windows native |
+|---|---|---|---|
+| Maestro | `curl -Ls "https://get.maestro.mobile.dev" \| bash` | same as macOS | `iwr -useb https://get.maestro.mobile.dev/win \| iex` (PowerShell) |
+| adb | `brew install android-platform-tools` | `apt install android-tools-adb` (Debian/Ubuntu) or `dnf install android-tools` | Bundled with Android Studio's `platform-tools/`; add to `Path` |
+| emulator + AVDs | Android Studio installer | `sdkmanager "platform-tools" "emulator" "system-images;android-34;google_apis_playstore;arm64-v8a"` | Android Studio installer |
+| JDK 17 | `brew install openjdk@17` | `apt install openjdk-17-jdk` | Adoptium Temurin 17 installer |
+| AVD home | `~/.android/avd/` | `~/.android/avd/` (or `$ANDROID_AVD_HOME`) | `%USERPROFILE%\.android\avd\` |
+
+`mobile_ensure_avd_running` resolves `JAVA_HOME` automatically using the
+order in `resolveJavaHome()`. Operators can override with
+`export JAVA_HOME=/path/to/jdk17` before launching Claude Code.
+
 ## Steps the agent should execute, in order
 
 1. **Check Maestro is installed.**
-   - Run: `which maestro && maestro --version`
-   - If missing: tell the user to run `curl -Ls "https://get.maestro.mobile.dev" | bash` and stop.
+   - Run: `which maestro && maestro --version` (Unix) or `Get-Command maestro` (Windows PS).
+   - If missing: print the install command from the platform table above and stop.
 
 2. **Check `adb` is on PATH.**
-   - Run: `which adb && adb version`
-   - If missing: tell the user to run `brew install android-platform-tools` and stop.
+   - Run: `which adb && adb version` (Unix) or `Get-Command adb` (Windows PS).
+   - If missing: print the install command from the platform table above and stop.
 
-3. **Confirm `${ACE_AVD_NAME}` (default `ACE_Pixel_API_34`) exists and has a front camera.**
+3. **Confirm `${ACE_AVD_NAME}` (default `ACE_Pixel_API_34`) exists.**
    - Run: `emulator -list-avds`
    - If not present: print this guidance and stop —
      ```
      Create the AVD via Android Studio's AVD Manager:
        Device: Pixel 7
-       System Image: API 34, ARM64 (or x86_64 if Intel Mac)
+       System Image: API 34, ARM64 (Apple Silicon / Linux ARM) or x86_64 (Intel/AMD)
        Name: ACE_Pixel_API_34
      ```
-   - If present: verify the front camera is emulated. Run
-     `grep '^hw.camera.front' ~/.android/avd/${ACE_AVD_NAME}.avd/config.ini`.
-     If it reads `hw.camera.front=none`, the photo-capture step at the end
-     of registration silently no-ops (CameraX validation fails with
-     "Camera LENS_FACING_FRONT verification failed"). Fix by editing the
-     config to `hw.camera.front=emulated` and cold-booting the AVD.
+   - The front-camera config check is no longer manual — `mobile_ensure_avd_running`
+     auto-patches `hw.camera.front=emulated` before booting (0.10.18+).
+     Pre-0.10.18 AVDs that were booted with the old config need a one-time
+     stop + ensure-running cycle to pick up the change.
 
 4. **Boot the AVD using `mobile_ensure_avd_running`.**
    - Tool: `mcp__ace_mobile__mobile_ensure_avd_running`

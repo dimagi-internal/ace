@@ -44,3 +44,10 @@ export interface UiDumpResult {
   xml: string;
   elements: Array<{ id?: string; text?: string; class?: string; bounds?: string }>;
 }
+
+export interface SnapshotResult {
+  avdName: string;
+  snapshotName: string;
+  saved: boolean;
+  output: string;
+}

@@ -5,6 +5,76 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.18 — 2026-04-29
+
+**End-to-end Android control: camera auto-fix, snapshots, cross-platform Java, dropped OTP path.**
+
+### Added
+
+- **`mobile_save_snapshot` / `mobile_load_snapshot` atoms.** Wraps
+  `adb emu avd snapshot save|load <name>`. Lets a register-once setup be
+  restored on every test run in seconds rather than re-driving the full
+  PersonalID flow each time. 12 atoms total now (was 10).
+- **`AvdBackend.ensureFrontCameraEmulated()` runs before every boot.**
+  Reads `~/.android/avd/<NAME>.avd/config.ini`, rewrites
+  `hw.camera.front=none` (the default Pixel 7 template ships this) to
+  `hw.camera.front=emulated`, and appends the key if missing. Idempotent —
+  returns false if already correct. Without this fix CameraX silently
+  fails LENS_FACING_FRONT validation and the photo step in CommCare
+  PersonalID registration no-ops with no UI signal. Closes Gap 1 from the
+  4/29 punch list.
+- **Platform-aware `JAVA_HOME` resolution in `defaultShell`.** Resolves a
+  JDK 17 home for macOS (`/usr/libexec/java_home -v 17`, then homebrew),
+  Linux (`/usr/lib/jvm/java-17-openjdk-*`), and Windows
+  (`%ProgramFiles%\Eclipse Adoptium\jdk-17.*`). Operator override via
+  `export JAVA_HOME=...` still wins. Closes Gap 5.
+- **`playbook/integrations/mobile-integration.md`.** Mirrors
+  `ocs-integration.md` / `connect-api.md`. Architecture, atom inventory,
+  what's verified vs. scaffolded, recipe vocabulary, the three durable
+  gotchas (pre-invite, front camera, GMS phone-hint sheet), and the
+  selector-discovery loop.
+
+### Changed
+
+- **`commands/mobile-bootstrap.md`** now has a per-platform install matrix
+  (Maestro / adb / emulator+AVD / JDK 17 / AVD home) covering macOS,
+  Linux/WSL2, and Windows native. Step 3 no longer asks the operator to
+  hand-edit `config.ini` — auto-patched by `mobile_ensure_avd_running`.
+- **`mobile_register_test_user` no longer fetches an OTP.** The +7426
+  demo-bypass is the only registration path ACE maintains; Connect-id
+  short-circuits OTP delivery for that range and surfaces a "demo user,
+  skip OTP" snackbar instead. The static `connect-register-from-otp.yaml`
+  recipe drops the `REPLACE_otp_entry` placeholder and runs straight from
+  snackbar dismiss → App Lock → name → backup code → photo.
+- **`connect-register-from-otp.yaml` handles both screen-lock branches.**
+  When the device has no screen lock, the recipe walks
+  `Configure PIN → set → confirm → DONE → AGREE & CONTINUE`. When a screen
+  lock already exists (e.g., from a prior registration on the same AVD),
+  the system jumps straight to the unlock prompt and the recipe skips the
+  setup steps via `runFlow.when`.
+
+### Verified
+
+- 219 unit tests pass (was 212; +7 covering camera auto-fix and snapshot
+  atoms).
+- All 12 capabilities declared in `capability-map.test.ts`.
+- All Phase A registration selectors live-verified end-to-end on
+  CommCare 2.62.0 / `ACE_Pixel_API_34_PS` (ARM64 google_apis_playstore).
+  Phase B (snackbar OK → App Lock → name → backup → photo) selectors
+  carried over from the live capture in 0.10.17. Photo step's CameraX
+  unblock has been verified at the config-patch level (the helper rewrites
+  `hw.camera.front=emulated` correctly) but the post-fix end-to-end
+  re-registration was blocked by an AVD secure-buffer state mid-session;
+  the next clean cold-boot is the natural verification window.
+
+### Known limitations
+
+- `connect-claim-opp.yaml` selectors still scaffolded (`REPLACE_*`) —
+  discovery deferred until a real opportunity is needed in a Phase 5 test
+  run.
+- Linux and Windows path resolution implemented and unit-tested; first
+  operator-machine run welcome.
+
 ## 0.10.17 — 2026-04-29
 
 **Live-AVD verification of the PersonalID registration flow.**
