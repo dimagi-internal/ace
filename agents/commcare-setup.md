@@ -8,11 +8,12 @@ phase: commcare-setup
 phase_display: CommCare Setup
 phase_ordinal: 2
 skills:
-  - { name: pdd-to-learn-app,    has_judge: true }
-  - { name: pdd-to-deliver-app,  has_judge: true }
-  - { name: app-deploy,          has_judge: false }
-  - { name: app-release,         has_judge: false }
-  - { name: app-test,            has_judge: true }
+  - { name: pdd-to-learn-app,        has_judge: true }
+  - { name: pdd-to-deliver-app,      has_judge: true }
+  - { name: app-connect-coverage,    has_judge: false }
+  - { name: app-deploy,              has_judge: false }
+  - { name: app-release,             has_judge: false }
+  - { name: app-test,                has_judge: true }
 ---
 
 # CommCare Setup (Phase 2 Procedure Document)
@@ -38,6 +39,27 @@ Invoke `pdd-to-learn-app` and `pdd-to-deliver-app` skills. These can run in para
 - Input: approved PDD from GDrive
 - Output: app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
 - **LLM-as-Judge:** Evaluate app quality against PDD requirements
+
+### Step 1.5: Connect-marker coverage (verify + auto-fix)
+Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
+- Input: `nova_app_id` from each app summary; PDD for context
+- Output: `ACE/<opp-name>/app-coverage/{learn,deliver}-connect-coverage.md`
+  reporting before/after state per form. The Nova app on Firestore is
+  mutated in place — every form's `connect` block (`learn_module` /
+  `assessment` / `deliver_unit` / `task`) is set per the form's purpose.
+- **Why before deploy:** Connect's `Sync Deliver Units` reads markers
+  from the released CCZ. If markers are missing, the opp gets stuck
+  silently at Phase 3 Step 2 (no deliver units → no payment unit).
+  Fixing on the Nova side before upload avoids round-tripping HQ
+  builds.
+- **Why before eval:** the existing `pdd-to-{learn,deliver}-app-eval`
+  judges grade Connectify wiring (25% weight). Running coverage first
+  means evals score the auto-fixed app, not whatever Nova happened to
+  emit.
+- **Failure mode:** if the skill exits `blocked` with a Nova-bug
+  pointer (`voidcraft-labs/nova-plugin#1`), halt Phase 2 — `app-deploy`
+  + `app-release` will produce a broken opp downstream. Wait for
+  upstream fix.
 
 ### Step 2: Deploy Apps
 Invoke the `app-deploy` skill.
