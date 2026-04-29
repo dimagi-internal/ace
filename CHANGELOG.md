@@ -5,6 +5,57 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.13 — 2026-04-29
+
+**Class-level preventer for rubric-prose ↔ schema drift.**
+
+The 0.10.7 schema bump was needed because eight `*-eval/SKILL.md` files
+had referenced `verdict: incomplete` for months before
+`lib/verdict-schema.ts` accepted that value. Drift was harmless only
+because nothing called `validateVerdict` at runtime on a real verdict
+(the schema test was the lone consumer). 0.10.13 closes that class:
+the next time a rubric YAML example uses a literal the schema doesn't
+allow, CI fails before the discrepancy can land.
+
+### Added
+
+- `test/lib/eval-skill-yaml-drift.test.ts` — walks every
+  `skills/*-eval/SKILL.md`, extracts each `` ```yaml `` block, and
+  asserts that every `verdict:`, `severity:`, `disposition:`, and
+  `mode:` literal is in the corresponding `lib/verdict-schema.ts`
+  enum. Indent-aware: per-item context narrows `verdict` to
+  `pass|warn|fail` (no `incomplete`/`partial`); custom fields like
+  `opp-eval`'s `recommendations[].severity` are skipped. Pipe-syntax
+  doc lines (`verdict: pass | warn | fail | incomplete`) are split
+  and each value checked individually.
+- Six synthetic detection tests inside the same suite verify the
+  walker actually catches drift (unknown verdict, unknown severity,
+  per-item over-reach, custom-field skip, pipe-syntax handling) — so
+  the per-skill checks can't pass vacuously if the walker breaks.
+
+### Why this matters for the eval framework
+
+Per the dominant ACE design rule (CLAUDE.md § Conventions —
+*"Class-level preventers > instance-level fixes"*): when a silent-
+failure class surfaces, catch it at the boundary so every future
+instance is structurally impossible. 0.10.13 turns the rubric-prose
+contract into runtime-enforced truth, in the same shape as
+`ocs_shared_collection_team` (0.7.1) and `assertParentOnSharedDrive`
+(Drive parent guard).
+
+This unblocks future schema evolution: the next time a rubric needs
+a new tier, the editor will hit the failing test immediately and
+know to extend the enum (and bump `SCHEMA_VERSION`) instead of
+silently shipping drift.
+
+### Test counts
+
+Full suite: 234 passing / 29 skipped after this change. The new
+suite contributes 16 tests (1 discovery sanity, 9 per-skill drift
+checks, 6 synthetic detection fixtures). Every per-skill check
+passes on first run — 0.10.7 already cleaned the existing drift —
+so the preventer ships in green state.
+
 ## 0.10.10 — 2026-04-29
 
 **Capture-method branching in `ocs-chatbot-eval` source-usage dimension.**
