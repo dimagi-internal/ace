@@ -27,24 +27,39 @@ whichever PM-side org the opportunity targets).
    an error** — the PDD is incomplete and `idea-to-pdd` should re-run
    with the stress-test rubric.
 
-3. **Create the opportunity** via `connect_create_opportunity`:
+3. **Create the opportunity** via `connect_create_opportunity`. Pass
+   high-level values; the MCP handles all the Connect-form wiring (server
+   int-FK lookup, HQ-API-key registration, JSON-encoded app values):
    - `organization_slug`: `ai-demo-space`
    - `program_id`: from step 1 (program.md)
    - `name`: from PDD
    - `short_description`: ≤50 chars; mobile-app-facing
    - `description`: full PDD intervention description
    - `currency` / `country`: ISO codes from the program (carry forward)
-   - `hq_server`: CommCare HQ server identifier from
-     `deployment-summary.md` (typically `prod` or the configured server FK)
-   - `api_key`: ACE's HQ API key for `connect-ace-prod` (from
-     `ACE_HQ_API_KEY` env or the deployment summary)
+   - `hq_server`: `prod` (or `india` / `eu`). The MCP resolves the human
+     label to Connect's int FK by parsing live form options.
+   - `api_key`: the **raw 40-char HQ API key** for `connect-ace-prod`
+     (read from `~/.claude/plugins/data/ace-ace/.env` → `ACE_HQ_API_KEY`).
+     The MCP registers it with Connect via `/opportunity/add_api_key/`
+     idempotently (no-op on second call) and uses the resulting Connect
+     int FK on the form. Do NOT pass an int FK directly.
    - `learn_app_domain`: HQ project space for the Learn app
-   - `learn_app`: Learn app id on HQ
-   - `learn_app_description` (optional): from PDD § Training Plan
+   - `learn_app`: bare 32-char HQ app id. The MCP fetches Connect's
+     `/hq/applications/` HTMX fragment and wraps your id in the
+     JSON-encoded `{id, name}` form-value Connect requires.
+   - `learn_app_description`: **required** (Connect form marks it `*`).
+     Pulled from PDD § Training Plan.
    - `learn_app_passing_score`: 0–100 (from PDD § Quality Floor; default 80)
    - `deliver_app_domain` / `deliver_app`: same shape, for the Deliver app
 
    Capture the returned `opportunity_id` (UUID).
+
+   **Pre-flight (post-0.9.10):** the MCP catches three former silent-500
+   failure modes — wrong-shape `hq_server`, raw vs FK `api_key`, and bare
+   vs JSON-wrapped `learn_app`/`deliver_app` — by parsing Connect's live
+   form HTML at call time. If your error message says "did not match any
+   Connect-known server" or "app id '...' not found in Connect's options",
+   the input doesn't match what Connect serves; verify the deploy summary.
 
 4. **List deliver units** via `connect_list_deliver_units` — these come
    from the Deliver app's form schema and are NOT directly creatable in
@@ -177,3 +192,4 @@ When `--dry-run` is active:
 | 2026-04-28 | Replace HITL workaround with `connect_*_opportunity` + `connect_set_verification_flags` + `connect_create_payment_unit` atoms (ace-connect 0.8.1). Verification mapped to Connect's actual toggles (`gps`, `duplicate`, `catchment_areas`, `location`); deliver units now read-only via `connect_list_deliver_units` (sourced from CommCare app schema) | ACE team |
 | 2026-04-28 | Fix `location` field description — it's a boolean toggle, not a meters threshold; threshold is currently un-settable via the MCP (0.9.4) | ACE team |
 | 2026-04-28 | Add Step 8: invite ACE test user (`${ACE_E2E_PHONE}`) and persist invite URL to `connect-state.yaml`; required for Phase 5 `app-screenshot-capture` to drive the claim-opp flow | ACE team (mobile-emulation) |
+| 2026-04-29 | Fix three silent-500 schema bugs in `connect_create_opportunity`: `hq_server` now accepts the human label "prod"/"india"/"eu" (resolves to int FK by parsing live form), `api_key` now takes the raw 40-char HQ key (registered with Connect transparently via `/opportunity/add_api_key/`), and `learn_app`/`deliver_app` now take bare HQ app ids (wrapped in the JSON form-value Connect requires by querying `/hq/applications/`). Also: `learn_app_description` is now required in the schema to match Connect's form. (0.10.1) | ACE team |

@@ -142,20 +142,30 @@ server.tool('connect_get_opportunity',
 server.tool('connect_create_opportunity',
   {
     organization_slug: z.string(),
-    program_id: z.string().optional(),
+    program_id: z.string().optional().describe('Program UUID; opp shows up under that program'),
     name: z.string(),
     short_description: z.string().max(50),
     description: z.string(),
-    currency: z.string(),
-    country: z.string(),
-    hq_server: z.string(),
-    api_key: z.string(),
-    learn_app_domain: z.string(),
-    learn_app: z.string(),
-    learn_app_description: z.string().optional(),
+    currency: z.string().describe('3-letter ISO (e.g. USD)'),
+    country: z.string().describe('3-letter ISO3 (e.g. IND)'),
+    hq_server: z.string().describe(
+      'CCHQ server label: "prod"/"india"/"eu", a server URL, or the Connect-internal int FK ' +
+      '("1" CommCareHQ, "2" India, "3" CommCareHQ EU). The MCP resolves it against Connect\'s ' +
+      'live form options, so passing the human label is the recommended form.'
+    ),
+    api_key: z.string().describe(
+      'The raw 40-char CommCare HQ API key for the user. The MCP registers it with Connect ' +
+      'idempotently via /opportunity/add_api_key/ and uses the resulting Connect-side int FK on ' +
+      'the create form. Do NOT pass the int FK directly.'
+    ),
+    learn_app_domain: z.string().describe('CCHQ project space slug (e.g. connect-ace-prod)'),
+    learn_app: z.string().describe('Bare CCHQ app id (32-char hex). The MCP wraps it in the JSON form-value Connect expects.'),
+    learn_app_description: z.string().describe(
+      'Required. Connect\'s form marks this field with a *. Pulled from PDD § Training Plan in ACE skills.'
+    ),
     learn_app_passing_score: z.coerce.number().int().min(0).max(100),
     deliver_app_domain: z.string(),
-    deliver_app: z.string(),
+    deliver_app: z.string().describe('Bare CCHQ app id (32-char hex). The MCP wraps it in the JSON form-value Connect expects.'),
   },
   async (args) => json(await serialize(async () => (await client()).createOpportunity(args)))
 );
