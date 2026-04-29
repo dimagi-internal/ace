@@ -5,6 +5,48 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.20 — 2026-04-29
+
+**Documented face-capture gate as known limitation.**
+
+### Discovered
+
+- **CommCare 2.62.0 added a `MicroImageActivity` face-capture screen.**
+  Live verification of the optimized 0.10.19 loop drove registration
+  through 28 of 30 recipe steps successfully (App Lock → PIN setup →
+  unlock → name → backup code → photo step initiates → face viewfinder
+  loads). The final two steps (`save_photo_button` after auto-shutter)
+  require a face that the AVD's emulated front camera doesn't supply
+  — `hw.camera.front=emulated` shows a moving gray test pattern, not a
+  human face, and CommCare's auto-detect-and-shutter logic never
+  triggers. `virtualscene` mode wouldn't help either; it renders an
+  empty 3D office without a person.
+
+### Documented
+
+- **`playbook/integrations/mobile-integration.md` — new "Face-capture
+  gate" gotcha** explains the barrier honestly: the phone IS registered
+  server-side at this point, but the local CommCare session is blocked.
+  Three hypothetical workarounds (host webcam, gRPC image stream,
+  server-side demo bypass) are listed with their tradeoffs; none are
+  implemented in 0.10.x.
+- **"What's not yet built" expanded** to call out the face-capture
+  bypass as a deferred item, and to note that this gate does NOT block
+  ACE Phase 5 `training-prep` (which opens deployed CommCare apps
+  directly, not via the registration flow).
+
+### Why it's fine for ACE production
+
+The Phase 5 `training-prep` use case opens a *deployed* CommCare app
+directly to capture screenshots — no registration flow, no face capture.
+The blocked path is only the one-time fresh-AVD bootstrap, which is
+documented in `commands/mobile-bootstrap.md` as needing a pre-registered
+test phone (the operator handles registration manually once or
+re-uses an existing snapshot). 0.10.18's `mobile_save_snapshot` atom is
+the durable workaround: register once on a real device or via manual
+operator-driven photo capture, snapshot the AVD, restore on every
+future run.
+
 ## 0.10.19 — 2026-04-29
 
 **Optimized mobile selector-discovery workflow.**
