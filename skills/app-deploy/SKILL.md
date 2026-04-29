@@ -13,6 +13,12 @@ HQ app IDs and URLs. The actual upload is performed by Nova
 (`/nova:upload_to_hq`); this skill orchestrates the inputs, the
 pre-flight, and the artifact writeback.
 
+**Scope:** this skill uploads apps as **draft builds**. Nova does not
+release apps by design. Connect's deliver-unit sync only reads released
+builds, so Phase 2 must run `app-release` after this skill before Phase 3
+can configure payment units. See `skills/app-release/SKILL.md` for the
+release flow + the App Editor permission prerequisite.
+
 ## Process
 
 1. **Read app summaries** from GDrive:
@@ -135,3 +141,4 @@ When `--dry-run` is active:
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-17 | Emit gate brief at `ACE/<opp-name>/gate-briefs/app-deploy.md` covering build status, Connectify flags, and workaround-path warnings for the Phase 2→3 gate | ACE team (PM scout, internal-admin lens) |
 | 2026-04-27 | Switch from manual HQ-UI upload to `/nova:upload_to_hq` via the Nova plugin. Inputs are now `nova_app_id` values read from the app summaries. New pre-flight check compares Nova's bound HQ project space against `ACE_HQ_DOMAIN`. Gate brief drops the workaround-path WARN and adds a domain-mismatch BLOCKER. | ACE team |
+| 2026-04-29 | Carve out app release into the new `app-release` skill (Step 2.5 of Phase 2). This skill now ends at "draft uploaded" — release is a separate, permission-sensitive step. Reason: Connect's `Sync Deliver Units` only enumerates units from released builds, so unreleased apps silently break Phase 3's payment-unit config. (0.10.1) | ACE team |
