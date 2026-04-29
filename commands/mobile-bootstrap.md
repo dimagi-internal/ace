@@ -110,5 +110,13 @@ order in `resolveJavaHome()`. Operators can override with
      the most likely cause is step 8 was skipped or the invite has been
      revoked. Re-verify and retry.
 
-10. **Print success summary.**
+10. **Save a `registered-test-user` snapshot (recommended).**
+    - Tool: `mcp__ace_mobile__mobile_save_snapshot`
+    - Args: `{ "avdName": "${ACE_AVD_NAME}", "name": "registered-test-user" }`
+    - Future selector-discovery sessions can `mobile_load_snapshot` to
+      this state in ~3s instead of replaying the 4-minute registration
+      flow. Skip this step if `alreadyRegistered: true` was returned in
+      step 9 — the existing snapshot is already good.
+
+11. **Print success summary.**
     - Echo: AVD name, test-user phone, Playwright user-data dir, all ACE_E2E_* var presence.

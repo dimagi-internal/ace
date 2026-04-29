@@ -147,12 +147,45 @@ the conditional is a no-op.
 
 When extending recipes, the discovery loop is:
 
-1. Drive the AVD into the state of interest by hand or via a partial recipe
-2. `adb shell uiautomator dump /sdcard/ui.xml && adb pull /sdcard/ui.xml`
-3. `grep -oE 'resource-id="[^"]+"' ui.xml | sort -u` for the selector list
-4. Add the next step to the recipe, re-run, capture next state
+1. Drive the AVD into the state of interest. **Snapshot it** with
+   `mobile_save_snapshot` once you reach a stable, costly-to-rebuild state
+   (e.g. registered test user). Subsequent iterations load the snapshot
+   in ~3s instead of replaying the whole prefix recipe.
+2. `mobile_capture_ui_dump` returns parsed elements + xml in one call —
+   prefer this over `adb shell uiautomator dump` + `adb pull` + `grep`.
+3. **Use `maestro studio` for new selector capture.** It's an interactive
+   selector picker against the live AVD: tap an element in your browser,
+   it shows you the resource-id and a copy-pasteable Maestro snippet. Far
+   faster than dump-and-grep, and it shows you the *correct* selector
+   (resource-id vs text vs id-and-bounds) for each element. Run
+   `maestro studio` after `mobile_ensure_avd_running`.
+4. Add the next 5-10 steps to the recipe in one batch (not one-at-a-time),
+   re-run, dump again at the next checkpoint.
 
-`mobile_capture_ui_dump` wraps steps 2-3 into a single tool call.
+**Anti-pattern:** screencap + Read PNG + dump + grep after every single tap.
+The PNG read is expensive in tokens and rarely necessary — almost every
+CommCare/PersonalID selector is resource-id-driven, and uiautomator XML
+has all the info. Reserve screenshots for genuinely visual states (camera
+UI, where AOSP elements lack resource-ids).
+
+### Performance & efficiency
+
+A full registration replay is ~4 minutes (Part A ~90s, Part B ~120s, plus
+CommCare cold-launch and animation waits). Selector discovery against
+fresh registration each iteration is the single biggest time sink.
+
+**Snapshot-driven discovery:**
+1. Run `mobile_register_test_user` once on a clean AVD.
+2. `mobile_save_snapshot` with name `registered-test-user`.
+3. For each new recipe (claim-opp, deliver-app navigation, etc.):
+   `mobile_load_snapshot` → drive forward from registered state → discover
+   selectors → repeat without re-registering.
+
+**Maestro flow time** is dominated by `waitForAnimationToEnd` and
+`extendedWaitUntil` timeouts. Don't tighten timeouts to "speed things up"
+— they exist because CommCare's transitions are genuinely flaky. Speed
+comes from running fewer end-to-end replays, not from making each replay
+faster.
 
 ### Maestro requires Java 17
 
