@@ -5,6 +5,37 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.17 — 2026-04-29
+
+**Live-AVD verification of the PersonalID registration flow.**
+
+- `connect-register-to-otp.yaml` and `connect-register-from-otp.yaml`
+  rewritten with real selectors discovered via uiautomator dump on
+  CommCare 2.62.0 / `ACE_Pixel_API_34_PS`. `REPLACE_*` placeholders
+  removed for every screen except the OTP-entry screen (still TODO —
+  needs a non-+7426 phone to discover).
+- Captured screens: phone entry → snackbar OK ("demo user, skip OTP")
+  → App Lock → system PIN setup → lock-screen redaction → AGREE &
+  CONTINUE → system unlock → name → backup code → photo capture.
+- `mobile-bootstrap` step 3 now checks `hw.camera.front=emulated`. The
+  default AVD config has `front=none`, which silently no-ops the photo
+  capture step (CameraX validation fails: "Camera LENS_FACING_FRONT
+  verification failed").
+- Two server/client bugs surfaced and filed during this work:
+  - **CI-643** (P2): Connect-id `/users/start_configuration` worker
+    dies with `SystemExit` when the synchronous
+    `check_number_for_existing_invites` HTTP call hangs past the
+    gunicorn worker timeout. Sentry trail `CONNECT-ID-3F`, 13 events
+    over 3 months.
+  - **CI-644** (P2): CommCare Android `PersonalIdPhoneFragment.onFailure`
+    crashes with NPE on null `sessionData` (line 472), force-stopping
+    the app whenever the upstream returns an empty body. Same root
+    cause as CI-643 — the empty body comes from the worker abort.
+- `connect-opp-setup` already documents the pre-invite mitigation
+  (Step 8). For first-time registration on a fresh `${ACE_E2E_PHONE}`,
+  pre-invite is required until CI-643 lands — without it the flow
+  hits both the server and client bugs in sequence.
+
 ## 0.10.0 — 2026-04-28
 
 **New: Phase 5 `training-prep` + ACE mobile emulation**

@@ -19,7 +19,7 @@ This command is idempotent — re-run any time you suspect drift.
    - Run: `which adb && adb version`
    - If missing: tell the user to run `brew install android-platform-tools` and stop.
 
-3. **Confirm `${ACE_AVD_NAME}` (default `ACE_Pixel_API_34`) exists.**
+3. **Confirm `${ACE_AVD_NAME}` (default `ACE_Pixel_API_34`) exists and has a front camera.**
    - Run: `emulator -list-avds`
    - If not present: print this guidance and stop —
      ```
@@ -28,6 +28,12 @@ This command is idempotent — re-run any time you suspect drift.
        System Image: API 34, ARM64 (or x86_64 if Intel Mac)
        Name: ACE_Pixel_API_34
      ```
+   - If present: verify the front camera is emulated. Run
+     `grep '^hw.camera.front' ~/.android/avd/${ACE_AVD_NAME}.avd/config.ini`.
+     If it reads `hw.camera.front=none`, the photo-capture step at the end
+     of registration silently no-ops (CameraX validation fails with
+     "Camera LENS_FACING_FRONT verification failed"). Fix by editing the
+     config to `hw.camera.front=emulated` and cold-booting the AVD.
 
 4. **Boot the AVD using `mobile_ensure_avd_running`.**
    - Tool: `mcp__ace_mobile__mobile_ensure_avd_running`
