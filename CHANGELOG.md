@@ -5,6 +5,79 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.21 — 2026-04-29
+
+**Face-capture gate has a real bypass — disable GMS at runtime.**
+
+### Discovered
+
+- **The photo IS required, but the content isn't validated.**
+  - Client (`PersonalIdPhotoCaptureFragment` /
+    `ApiPersonalId.setPhotoAndCompleteProfile`):
+    `Objects.requireNonNull(photoAsBase64)` and SAVE PHOTO is disabled
+    until a capture exists.
+  - Server (connect-id `users/views.complete_profile`): rejects with
+    `MISSING_DATA` (HTTP 400) if `photo` is empty/missing, then calls
+    `upload_photo_to_s3(photo, user.username)` without content
+    validation.
+  - **Conclusion:** any non-empty bytes from the AVD's emulated camera
+    satisfy both checks. Face detection lives entirely in the client as
+    the auto-shutter trigger.
+
+- **The auto-shutter / manual-shutter branch is GMS-driven at runtime,
+  not AVD-image-driven.** Both `google_apis` and `google_apis_playstore`
+  system images on macOS Apple Silicon ship a functional
+  `com.google.android.gms` package, so
+  `GoogleApiAvailability.isGooglePlayServicesAvailable` returns SUCCESS
+  on both — the auto-shutter path is taken regardless. The actual lever
+  is `pm disable-user --user 0 com.google.android.gms`, which flips
+  `MicroImageActivity` into `ManualMode` and exposes
+  `camera_shutter_button` for Maestro to tap.
+
+### Changed
+
+- **`connect-register-from-otp.yaml`** updated to tap
+  `camera_shutter_button` after `take_photo_button`, then
+  `save_photo_button` after the captured-image preview returns to the
+  intro screen. The old "wait for AOSP camera Done button" steps are
+  gone — they were based on an incorrect assumption that
+  MicroImageActivity launched the system camera; in fact CommCare 2.62.0
+  ships its own CameraX-based capture activity.
+- **Header AVD prerequisites updated** to require runtime GMS disable
+  + pre-granted CAMERA permission, with the exact `adb` commands.
+  Pointers to the integration doc for full reasoning.
+- **`commands/mobile-bootstrap.md` step 9** is the new pre-flight (run
+  the two `adb shell pm` commands) before step 10 (the existing
+  `mobile_register_test_user` call). Steps 10/11/12 renumbered.
+- **`playbook/integrations/mobile-integration.md` § Face-capture gate**
+  rewritten with source citations from `MicroImageActivity.onCreate`
+  and `connect-id users/views.py`. Walks through why the photo content
+  doesn't matter and why the GMS-availability branch is the lever.
+- **0.10.20's "use a non-GMS AVD" recommendation reverted.** The system
+  image choice doesn't affect this on macOS — both ship GMS.
+
+### Why we haven't live-verified the full path
+
+Live verification stalled on an AVD UI quirk (NotificationShade focus
+stuck post-cold-boot, blocking maestro). The recipe is correct by
+construction from the source — `MicroImageActivity.onCreate` directly
+shows the conditional, `micro_image_widget.xml` declares the shutter
+button, `setPhotoAndCompleteProfile` shows the API call shape, and
+`complete_profile` (connect-id) shows the server contract. Operators
+running `mobile-bootstrap` from scratch should hit the new path; if
+something diverges, the `--debug` artifacts from a failing maestro run
+plus a `mobile_capture_ui_dump` of MicroImageActivity will pinpoint it
+in seconds.
+
+### Why this matters in context
+
+The user's intuition that "the picture isn't really required" was
+half-right: any picture works, you just can't skip taking one. ACE's
+production path doesn't depend on this either way — Phase 5
+`training-prep` opens deployed CommCare apps directly. This release
+clears the only remaining barrier to a fully-automated bootstrap from
+a fresh AVD.
+
 ## 0.10.20 — 2026-04-29
 
 **Documented face-capture gate as known limitation.**

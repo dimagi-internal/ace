@@ -52,10 +52,17 @@ order in `resolveJavaHome()`. Operators can override with
        System Image: API 34, ARM64 (Apple Silicon / Linux ARM) or x86_64 (Intel/AMD)
        Name: ACE_Pixel_API_34
      ```
-   - The front-camera config check is no longer manual — `mobile_ensure_avd_running`
-     auto-patches `hw.camera.front=emulated` before booting (0.10.18+).
-     Pre-0.10.18 AVDs that were booted with the old config need a one-time
-     stop + ensure-running cycle to pick up the change.
+   - The front-camera config check is automatic —
+     `mobile_ensure_avd_running` auto-patches `hw.camera.front=emulated`
+     before booting (0.10.18+). Pre-0.10.18 AVDs that were booted with
+     the old config need a one-time stop + ensure-running cycle to pick
+     up the change.
+   - **Note on system image choice:** Both `google_apis` and
+     `google_apis_playstore` ship with a functional GMS package on
+     macOS Apple Silicon, so the choice doesn't change the face-capture
+     auto-shutter behavior. The actual face-capture bypass is a runtime
+     `pm disable-user com.google.android.gms` call (handled by
+     `mobile_ensure_avd_running` in 0.10.21+). Either image works.
 
 4. **Boot the AVD using `mobile_ensure_avd_running`.**
    - Tool: `mcp__ace_mobile__mobile_ensure_avd_running`
@@ -102,21 +109,44 @@ order in `resolveJavaHome()`. Operators can override with
    Skip this step **only** if the operator has confirmed `${ACE_E2E_PHONE}`
    already has an invite somewhere in Connect.
 
-9. **Register the ACE test user (if not already).**
-   - Tool: `mcp__ace_mobile__mobile_register_test_user`
-   - Args: `{ "avdName": "${ACE_AVD_NAME}", "phone": "${ACE_E2E_PHONE}", "phoneLocal": "${ACE_E2E_PHONE_LOCAL}", "countryCode": "${ACE_E2E_COUNTRY_CODE}", "pin": "${ACE_E2E_PIN}", "backupCode": "${ACE_E2E_BACKUP_CODE}", "name": "${ACE_E2E_NAME}" }`
-   - If `alreadyRegistered: true`, fine.
-   - If registration fails with `SystemExit` / NPE / "CommCare keeps stopping",
-     the most likely cause is step 8 was skipped or the invite has been
-     revoked. Re-verify and retry.
+9. **Pre-flight the AVD for face capture.**
 
-10. **Save a `registered-test-user` snapshot (recommended).**
+   CommCare 2.62.0's `MicroImageActivity` uses ML Kit face detection to
+   auto-trigger the shutter when Google Play Services is available, and
+   the AVD's emulated front camera never shows a face. Disable GMS so
+   `MicroImageActivity` falls back to a manual `camera_shutter_button`
+   that Maestro can tap. Also pre-grant CAMERA permission so the activity
+   doesn't bail on first launch with a permission dialog.
+
+   Run via Bash:
+   ```sh
+   adb shell pm disable-user --user 0 com.google.android.gms
+   adb shell pm grant org.commcare.dalvik android.permission.CAMERA
+   ```
+
+   Both are idempotent and persist across AVD reboots. ACE skills don't
+   depend on GMS; if you ever need it back, run `adb shell pm enable
+   com.google.android.gms`.
+
+   See `playbook/integrations/mobile-integration.md` § Face-capture gate
+   for the full reasoning (source citations from
+   `MicroImageActivity.onCreate` and `connect-id users/views.py`).
+
+10. **Register the ACE test user (if not already).**
+    - Tool: `mcp__ace_mobile__mobile_register_test_user`
+    - Args: `{ "avdName": "${ACE_AVD_NAME}", "phone": "${ACE_E2E_PHONE}", "phoneLocal": "${ACE_E2E_PHONE_LOCAL}", "countryCode": "${ACE_E2E_COUNTRY_CODE}", "pin": "${ACE_E2E_PIN}", "backupCode": "${ACE_E2E_BACKUP_CODE}", "name": "${ACE_E2E_NAME}" }`
+    - If `alreadyRegistered: true`, fine.
+    - If registration fails with `SystemExit` / NPE / "CommCare keeps stopping",
+      the most likely cause is step 8 was skipped or the invite has been
+      revoked. Re-verify and retry.
+
+11. **Save a `registered-test-user` snapshot (recommended).**
     - Tool: `mcp__ace_mobile__mobile_save_snapshot`
     - Args: `{ "avdName": "${ACE_AVD_NAME}", "name": "registered-test-user" }`
     - Future selector-discovery sessions can `mobile_load_snapshot` to
       this state in ~3s instead of replaying the 4-minute registration
       flow. Skip this step if `alreadyRegistered: true` was returned in
-      step 9 — the existing snapshot is already good.
+      step 10 — the existing snapshot is already good.
 
-11. **Print success summary.**
+12. **Print success summary.**
     - Echo: AVD name, test-user phone, Playwright user-data dir, all ACE_E2E_* var presence.
