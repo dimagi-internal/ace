@@ -134,6 +134,29 @@ calibrated rubrics.
    - `[INFO]` for each over-enforced rule (Connect enforces, PDD doesn't require).
    - `[INFO]` for unscored/unspeccable payment-rate sanity check.
 
+8. **Defect-vs-cause discipline.** When writing `auto_surfaced` and
+   `per_item.note` text:
+   - **State the observation confidently.** "X was created with all
+     fields filled but `connect_get_program` returns empty fields" is
+     a fact you saw.
+   - **Phrase causes tentatively** — "consistent with", "one possible
+     cause is", "the symptom matches a serialization or read-path
+     gap." Never assert "this is a serialization gap" unless you
+     traced it. LLM-as-Judge tends to pattern-match to the most
+     familiar root cause; that's frequently wrong.
+   - When the message includes both, separate them:
+     `Observed: <fact>. Likely cause (unverified): <hypothesis>.`
+   - Verified causes (where the rubric ran a probe, e.g. a follow-up
+     `connect_get_program` after a delay to rule out lag) may be
+     stated confidently — note "verified by <probe>".
+
+   This rule was added 0.10.6 after `connect-program-setup-eval` on
+   `turmeric-market-survey-2026-04-28` correctly flagged a real bug
+   (Program edit form fields missing post-create) but mis-attributed
+   it to a write-side serialization gap — the actual cause was a
+   read-side hydration bug in `getProgram`. The eval was right about
+   the defect, wrong about the layer.
+
 ## LLM-as-Judge Rubric
 
 Calibration target on a non-degraded smoke-run Connect setup:
@@ -189,3 +212,4 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-28 | Initial version. 5 dimensions: program_fit_decision (0.15), verification_rule_fidelity (0.25 — most load-bearing for Layer A faithfulness), delivery_unit_wiring (0.20), payment_unit_fit (0.20), active_window_status (0.20). Inflation guard at 8.5. Explicit `incomplete` verdict for degraded-mode artifacts (the Phase 3 mode that ran on smoke-20260428-1242 before ace-connect MCP shipped) — degraded mode is environment, not quality, and shouldn't deduct. Ships at provisional calibration until a non-degraded run produces ground truth. | ACE team (eval system buildout — 0.9.8) |
+| 2026-04-29 | Defect-vs-cause discipline added (step 8). Driven by the `turmeric-market-survey-2026-04-28` run mis-attributing a real read-side hydration bug to a write-side serialization gap. The rubric correctly flagged the symptom; the rubric did not constrain causal attribution. Now requires confident observation + tentative cause, with `Observed: ... Likely cause (unverified): ...` formatting when both are present. | ACE team (0.10.6) |

@@ -71,9 +71,17 @@ describe.skipIf(skip)('connect e2e (live, ai-demo-space)', () => {
     expect(out.programs[0].id).toBe(programId);
   });
 
-  it('getProgram returns the same program', async () => {
+  it('getProgram hydrates all fields from the edit form', async () => {
     const p = await backend.getProgram({ organization_slug: ORG, program_id: programId });
+    expect(p.id).toBe(programId);
     expect(p.name).toBe(PROGRAM_NAME);
+    expect(p.description).toBe('ace-connect integration test');
+    expect(p.delivery_type).toBe(13);
+    expect(p.budget).toBe(1000);
+    expect(p.currency).toBe('USD');
+    expect(p.country).toBe('USA');
+    expect(p.start_date).toBe('2026-05-01');
+    expect(p.end_date).toBe('2026-08-01');
   });
 
   it('updateProgram renames the program', async () => {

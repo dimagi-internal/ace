@@ -5,6 +5,60 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.6 — 2026-04-29
+
+**Connect MCP `getProgram` read-path fix + eval-framework calibration note.**
+
+The `connect-program-setup-eval` rubric on `turmeric-market-survey-2026-04-28`
+flagged a real bug: programs created with all fields filled at submit time
+returned empty fields when read back via `connect_get_program`. The rubric was
+correct about the defect (fields missing post-read) but mis-attributed root
+cause to a write-side serialization gap. Actual root cause was read-side: the
+playwright backend's `getProgram` wrapped `listPrograms`, and the list page
+only renders `name` + `description` — `parseProgramsList` hardcodes the rest
+to `0`/`''` with a comment "caller can hydrate via getProgram() if needed",
+but `getProgram` itself never hydrated.
+
+### Fixed
+
+- `mcp/connect/backends/playwright.ts`: `getProgram` now reads
+  `/a/<org>/program/<uuid>/edit` and hydrates via `extractFormFieldValues`,
+  mirroring the existing `getOpportunity` pattern. All 8 Program fields
+  (name, description, delivery_type, budget, currency, country, start_date,
+  end_date) now round-trip correctly.
+
+- `test/mcp/connect/integration/e2e.integration.test.ts`: integration test
+  for `getProgram` strengthened from asserting only `p.name` to asserting
+  every hydrated field. Would have caught this bug; will catch any
+  regression.
+
+### Eval rubric calibration
+
+- `skills/connect-program-setup-eval/SKILL.md`: added step-8 "Defect-vs-cause
+  discipline." When writing `auto_surfaced` and `per_item.note` text:
+  - State observations confidently (what was seen).
+  - Phrase causes tentatively ("consistent with", "one possible cause is")
+    unless verified by a probe.
+  - When both present, format as `Observed: <fact>. Likely cause
+    (unverified): <hypothesis>.`
+
+  LLM-as-Judge rubrics tend to pattern-match defects to the most familiar
+  root-cause label rather than reasoning about layer. The turmeric run made
+  exactly this error: it pattern-matched "fields empty after create" to
+  "serialization gap" — a familiar label that happened to be wrong. The
+  rubric was right about WHAT, wrong about WHY. The discipline rule
+  separates the two so future verdicts surface diagnostic value without
+  burning operator hours on the wrong layer.
+
+### Eval framework status
+
+- Connect bug #1 (the read-path hydration gap, originally framed as
+  "serialization") closed by this release.
+- Connect bug #2 (Opportunity HTTP 500) closed in 0.10.1 — three silent-500
+  root causes in `connect_create_opportunity` fixed there.
+- Both production bugs the eval framework caught on
+  `turmeric-market-survey-2026-04-28` are now resolved.
+
 ## 0.10.0 — 2026-04-28
 
 **New: Phase 5 `training-prep` + ACE mobile emulation**
