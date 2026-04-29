@@ -18,17 +18,61 @@
 
 import { z } from 'zod';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 // ── Field schemas ──────────────────────────────────────────────────
 
-export const VerdictDispositionSchema = z.enum(['pass', 'warn', 'fail']);
+/**
+ * Top-level verdict tiers.
+ *
+ * v1 (`pass` / `warn` / `fail`): graded artifact, defects (or absence) sized
+ * by the rubric's deductions.
+ *
+ * v2 additions:
+ * - `incomplete` — structural gap in the artifact prevents grading
+ *   (degraded-mode `TBD-MANUAL` ids, missing PDD, etc.). Counts as
+ *   "not gradable" in `opp-eval`'s coverage cap, not as a defect. Several
+ *   rubric SKILL.md files referenced this value before v2 — schema now
+ *   matches the prose.
+ * - `partial` — artifact looks correct on paper but live verification
+ *   probes failed at grading time (network, auth, transient 5xx). Records
+ *   the text-only score; downstream consumers should re-grade when MCP is
+ *   reachable. Caps overall at 8.5.
+ *
+ * Per-item verdicts (inside `per_item[]`) stay restricted to pass/warn/fail
+ * — the top-level tier covers gradability, but per-item entries are by
+ * definition graded.
+ */
+export const VerdictDispositionSchema = z.enum(['pass', 'warn', 'fail', 'incomplete', 'partial']);
 export type VerdictDisposition = z.infer<typeof VerdictDispositionSchema>;
+
+export const PerItemVerdictSchema = z.enum(['pass', 'warn', 'fail']);
+export type PerItemVerdict = z.infer<typeof PerItemVerdictSchema>;
 
 export const ModeSchema = z.enum(['quick', 'deep', 'monitor']);
 export type Mode = z.infer<typeof ModeSchema>;
 
-export const SeveritySchema = z.enum(['BLOCKER', 'WARN', 'INFO']);
+/**
+ * `auto_surfaced` severity tiers.
+ *
+ * v1 (`BLOCKER` / `WARN` / `INFO`): rubric-deducting tiers; WARN counts
+ * toward inflation guards.
+ *
+ * v2 additions:
+ * - `PLATFORM` — defect originates in the upstream service (Connect,
+ *   OCS), not in the skill's output. Documents the gap without penalizing
+ *   skill quality. Does NOT count toward inflation guards. Without this
+ *   tier, rubrics would deduct from skills for things the operator
+ *   cannot fix.
+ * - `DRIFT` — discrepancy between artifact text and live state probe.
+ *   Diagnostic-only; the dimension consuming either source already
+ *   deducts if either is wrong, so DRIFT does NOT count toward inflation
+ *   guards (counting would double-penalize).
+ * - `INFO-SKIPPED` — sub-check intentionally skipped because input data
+ *   is absent (e.g., payment-rate sanity when no PDD day-rate). Documents
+ *   coverage gap without penalizing.
+ */
+export const SeveritySchema = z.enum(['BLOCKER', 'WARN', 'INFO', 'PLATFORM', 'DRIFT', 'INFO-SKIPPED']);
 export type Severity = z.infer<typeof SeveritySchema>;
 
 export const DimensionSchema = z.object({
@@ -40,7 +84,7 @@ export type Dimension = z.infer<typeof DimensionSchema>;
 export const PerItemSchema = z.object({
   ref: z.string().min(1),
   score: z.number().min(0).max(10),
-  verdict: VerdictDispositionSchema,
+  verdict: PerItemVerdictSchema,
   note: z.string().optional(),
 }).passthrough(); // domain-specific extras (e.g., `prompt:` for chatbot evals)
 export type PerItem = z.infer<typeof PerItemSchema>;
@@ -75,7 +119,24 @@ export const VerdictSchema = z.object({
   capture_path: z.string().min(1),
 
   overall_score: z.number().min(0).max(10),
+  /**
+   * `overall_score_pre_cap` — what the dimensional weighted mean was before
+   * any inflation guard / verdict-tier cap bound. Records what the rubric's
+   * raw judgment was; `overall_score` is what the user sees post-cap. Both
+   * tracked so variance protocols can measure the rubric, not the cap. See
+   * `docs/eval-calibration-learnings.md § Cap collapses variance`.
+   */
+  overall_score_pre_cap: z.number().min(0).max(10).optional(),
   verdict: VerdictDispositionSchema,
+
+  /**
+   * `live_state_verified` — `true` if the rubric ran live MCP probes and
+   * cross-checked the artifact against current upstream state. `false` if
+   * probes were skipped (degraded mode), failed at grading time, or the
+   * rubric simply didn't have any. When `false` *and* the artifact is
+   * non-degraded, the verdict tier should be capped at `partial` (≤8.5).
+   */
+  live_state_verified: z.boolean().optional(),
 
   dimensions: z.record(z.string(), DimensionSchema),
 

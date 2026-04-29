@@ -5,6 +5,87 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.7 — 2026-04-29
+
+**Verdict schema v2 + connect-program-setup-eval rubric polish (5 items).**
+
+The first non-degraded `connect-program-setup-eval` run on
+`turmeric-market-survey-2026-04-28` surfaced five rubric weaknesses where
+the rubric either over-deducted, under-discriminated, or assumed inputs the
+PDD doesn't always declare. This release fixes all five and brings the
+shared verdict schema in sync with the prose contracts in rubric SKILL.md
+files (which referenced `incomplete` long before the schema accepted it).
+
+### Verdict schema v2 (`lib/verdict-schema.ts`, SCHEMA_VERSION 2)
+
+Additive enum extensions. Every v1 verdict still validates as v2.
+
+- **Top-level verdict tiers** extended from `pass | warn | fail` to
+  `pass | warn | fail | incomplete | partial`:
+  - `incomplete` — structural gap prevents grading (degraded-mode
+    `TBD-MANUAL` ids, missing PDD). Already used in rubric prose; schema
+    now matches.
+  - `partial` — artifact correct on paper, but live MCP probes failed at
+    grading time. Records the text-only score; caps overall at 8.5.
+- **Per-item verdicts** stay restricted to `pass | warn | fail` —
+  `partial`/`incomplete` are run-level concerns, not item-level.
+- **Severity tiers** extended from `BLOCKER | WARN | INFO` to add
+  `PLATFORM | DRIFT | INFO-SKIPPED`:
+  - `PLATFORM` — defect originates upstream (Connect, OCS), not in skill
+    output. Does NOT count toward inflation guards.
+  - `DRIFT` — discrepancy between artifact text and live state probe.
+    Diagnostic-only; the dimension consuming either source already
+    deducts if either is wrong, so DRIFT does NOT count toward inflation
+    guards.
+  - `INFO-SKIPPED` — sub-check bypassed because input data is absent
+    (e.g., payment-rate sanity when no PDD day-rate). Documents
+    coverage gap without penalizing.
+- **Optional `live_state_verified: boolean`** top-level field. `true` if
+  the rubric ran live MCP probes and confirmed agreement; `false`
+  otherwise. When `false` on a non-degraded artifact, verdict tier is
+  capped at `partial`.
+- **Optional `overall_score_pre_cap: number`** top-level field for
+  symmetry with the existing convention; previously implicit.
+
+`skills/README.md § Verdict YAML shape` updated to match. Six new
+schema tests cover the new tiers + per-item restriction.
+
+### `connect-program-setup-eval` rubric polish
+
+All five items from the turmeric run's first non-degraded grading:
+
+1. **Partial verdict tier.** Captures the runtime-blocked-but-not-degraded
+   case (artifact correct, live state unreachable). Different from
+   `incomplete` (structural gap). Forces re-grading when MCP recovers.
+2. **`[PLATFORM]` severity tier.** Removes the false-deduction class where
+   skills got penalized for Connect platform limits (e.g. unsupported
+   verification rules). Documents the gap without penalizing skill
+   quality.
+3. **`[DRIFT]` severity tier + live-state-drift check.** New post-grading
+   pass compares `connect-setup-summary.md` claims against
+   `connect_get_*` live reads, emits one DRIFT entry per discrepancy.
+   Diagnostic-only; never deductive (the dimension consuming either
+   source already deducts if either is wrong).
+4. **Payment threshold-sanity sub-check now conditional.** Previously
+   "rarely fires" because the PDD doesn't usually declare a regional
+   day-rate. Now: if PDD declares one, run the check; if not, emit
+   `[INFO-SKIPPED]` and skip. Never count the absence as a defect.
+5. **`live_state_verified` boolean** added to verdict schema; forces
+   verdict ≤ `partial` when false.
+
+### Why this matters for the eval framework
+
+Three of the five polish items (`PLATFORM`, `DRIFT`, `INFO-SKIPPED`) are
+about removing **false deductions** — places where the rubric was
+penalizing skills for things the operator can't fix or for noise in the
+diagnostic signal. The same pattern surfaces on `ocs-chatbot-eval`
+(widget-API source-usage cap, queued for 0.10.10) and elsewhere; the new
+severity tiers let those rubrics emit signal without burning score.
+
+Calibration gain expected on the next non-degraded run: variance should
+drop because PLATFORM/DRIFT entries no longer randomly hit the inflation
+guard depending on whether the rubric chose to surface them.
+
 ## 0.10.6 — 2026-04-29
 
 **Connect MCP `getProgram` read-path fix + eval-framework calibration note.**
