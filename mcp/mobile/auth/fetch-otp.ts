@@ -25,8 +25,30 @@ export async function fetchOtp(phone: string, opts: FetchOtpOpts): Promise<OtpRe
     const page = await context.newPage();
     await page.goto(url);
 
-    if (!page.url().startsWith('https://connect.dimagi.com/users/connect_user_otp/')) {
-      throw new OtpFetchError('AUTH_REQUIRED', phone);
+    const onOtpPage = () =>
+      page.url().startsWith('https://connect.dimagi.com/users/connect_user_otp/');
+
+    if (!onOtpPage()) {
+      if (!headed) {
+        // Headless: cookies are stale or missing; bail fast.
+        throw new OtpFetchError('AUTH_REQUIRED', phone);
+      }
+      // Headed (first-time-login flow): give the operator up to 5 minutes
+      // to sign in via Dimagi SSO. The browser is open and on the SSO page;
+      // once they finish auth, the redirect chain returns to the OTP page.
+      // Poll the URL every second.
+      process.stderr.write(
+        '[ace-mobile] Waiting for Dimagi SSO sign-in (up to 5 min)...\n' +
+          '            Sign in as ace@dimagi-ai.com (or any @dimagi.com SSO);\n' +
+          '            cookies will persist for future headless runs.\n',
+      );
+      const deadline = Date.now() + 5 * 60 * 1000;
+      while (!onOtpPage() && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      if (!onOtpPage()) {
+        throw new OtpFetchError('AUTH_REQUIRED', phone);
+      }
     }
 
     const html = await page.content();
