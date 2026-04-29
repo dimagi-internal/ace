@@ -41,9 +41,21 @@ the calibration methodology.
    (e.g. "[a] FLW safety risks…", "[b] vendor consent…"). Build a
    structured list.
 
-3. **Extract the PDD's promised dispositions.** PDDs include a
-   "Reviewer Comments — Disposition" table mapping each comment to
-   how the PDD addressed it. Build the matching list.
+   **Clean-source detection (added 0.10.9):** if idea.md contains
+   zero reviewer comments — no `[a]/[b]` footnotes, no
+   "Reviewer Comments" / "Comments" / "Feedback" section — set
+   `clean_source = true` and skip step 3. The reviewer-comment-fidelity
+   dimension will switch to the deferred-decision-discipline branch
+   (see § Dimension below). Surfaced 0.9.11 cross-opp validation:
+   `turmeric-dogfood-20260427`'s idea.md was a clean PM-authored
+   source with no review pass; the rubric's anchors at 9.5 ("all
+   comments addressed") were a poor fit because there were no
+   comments to address.
+
+3. **Extract the PDD's promised dispositions** (skip if
+   `clean_source = true`). PDDs include a "Reviewer Comments —
+   Disposition" table mapping each comment to how the PDD addressed
+   it. Build the matching list.
 
 4. **Grade across 5 dimensions.** Each dimension is 0–10. Overall
    score is the weighted mean.
@@ -51,7 +63,7 @@ the calibration methodology.
    | Dimension | Weight | Criteria |
    |---|---|---|
    | **Stress-test agreement** | 25% | Independently re-run the 5-question rubric from `skills/idea-to-pdd/SKILL.md § LLM-as-Judge Rubric` against the PDD without reading the PDD's own self-evaluation first. Then compare. **Hard ceiling 7.5 (raised from 7 in 0.9.4) if the self-eval graded 5/5 but you grade ≤4/5 on any check** — a self-eval inflation gap that big means the PDD-writing model didn't notice a real flaw. **Composition rule (clarified 0.9.4):** when the ceiling binds, ignore the per-check disagreement formula below — the ceiling is the answer. The formula only applies when the ceiling does NOT bind. Per-check disagreement scores (formula): full agreement = 10; one check off by one tier (pass → partial) = 8; one check off by two tiers (pass → fail) = 5; ≥2 checks disagreed = 3. |
-   | **Reviewer-comment fidelity** | 20% | Every reviewer comment from idea.md must have a concrete disposition in the PDD (addressed via §X / scoped out / out-of-scope-for-this-opp). **Scoring anchors (tightened 0.9.4):** all comments addressed with concrete section citation = **9.5**; addressed plus one comment that's "addressed via § X" where § X is mentioned but light = **9.0**; one comment missing disposition = **7.5**; ≥2 missing = **5.0**; one false-disposition claim ("addressed via § X" but X doesn't exist) = **4.0** (3-point deduction floor); ≥2 false claims = **fail (≤3)**. The previous wording allowed "fully addressed" to score anywhere 9.0–10; tightened to a single anchor at 9.5 to reduce inter-run variance. |
+   | **Reviewer-comment fidelity** | 20% | **Two branches by source type.** If `clean_source = false` (idea.md contains reviewer comments): every reviewer comment from idea.md must have a concrete disposition in the PDD (addressed via §X / scoped out / out-of-scope-for-this-opp). **Scoring anchors (tightened 0.9.4):** all comments addressed with concrete section citation = **9.5**; addressed plus one comment that's "addressed via § X" where § X is mentioned but light = **9.0**; one comment missing disposition = **7.5**; ≥2 missing = **5.0**; one false-disposition claim ("addressed via § X" but X doesn't exist) = **4.0** (3-point deduction floor); ≥2 false claims = **fail (≤3)**. ── **Clean-source branch (added 0.10.9, when `clean_source = true`):** the dimension grades **deferred-decision discipline** instead. Look for a PDD section explicitly handling uncertainty (Open Questions / Deferred Decisions / TBD-per-LLO / Phase-1-Discovery). Anchors: every deferred decision is concrete (named question, named owner phase, named resolution mechanism) = **9.5**; section present, decisions concrete but owner phase implicit = **8.5**; section present but decisions vague ("TBD per LLO" with no question) = **7.0**; section absent AND PDD silently spec'd things that should have been deferred to LLO discovery = **5.0**; section claims to defer something that should have been Phase-1-speccable (e.g. archetype, primary metric) = **4.0**. Surface `[INFO] clean-source branch active: graded on deferred-decision discipline` in `auto_surfaced` so the verdict is auditable. The branch swap is automatic, not an opt-out. |
    | **Structural completeness** | 15% | Required sections present: Archetype, Problem Statement, Intervention Design, Learn App Specification, Deliver App Specification, Target Population, FLW Requirements, LLO Preference, Success Metrics, Evidence Model, Timeline. Missing section is a 1-point deduction per gap. Empty/placeholder sections (a heading with TBD content) score same as missing. |
    | **Archetype coherence** | 15% | (Reduced from 20% in 0.9.4 to make room for the Numbers split + Feasibility dimension.) The spec must follow the declared archetype's pattern: `atomic-visit` shouldn't introduce inter-visit stages or multi-visit case lifecycles; `focus-group` shouldn't have a single-vendor-style Deliver form; `multi-stage` should have a Stage Gate section between stages. Pattern violations are 2-point deductions per violation. |
    | **Numbers present** | 10% | (Split out from Concreteness in 0.9.4.) Operational specs must include concrete numbers and named entities, not placeholders. Look for: FLW count (or count range), market/site count, sample target, success-metric thresholds, active-window duration, LLO scope criteria. Vague "some FLWs in a region" scores ≤4. Each missing concrete spec is a 1-point deduction. |
@@ -126,11 +138,15 @@ the calibration methodology.
    - `[BLOCKER]` if overall score is below 7.0.
    - `[WARN]` for each dimension scoring 4.0–6.9.
    - `[WARN]` for each reviewer comment without a concrete
-     disposition or with a false disposition claim.
+     disposition or with a false disposition claim (only when
+     `clean_source = false`).
    - `[WARN]` for each cross-section numerical inconsistency.
    - `[INFO]` for each reviewer comment scoped out without rationale
      (PDD says "out of scope" but the idea reviewer flagged it as
      critical).
+   - `[INFO]` `clean-source branch active: graded on deferred-decision
+     discipline` (when `clean_source = true` — auditability for
+     why the dimension scored on a different rubric than usual).
    - `[INFO]` if PDD's self-eval and this rubric's overall differ by
      ≥ 1.5 points — signal that the `idea-to-pdd` self-eval rubric
      needs tightening.
@@ -179,3 +195,4 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-28 | Initial version. 5 dimensions: stress_test_agreement (0.25), reviewer_comment_fidelity (0.20), structural_completeness (0.15), archetype_coherence (0.20), concreteness (0.20). Inflation guard at 7.5 when self-eval is 5/5 but this rubric is ≤7.5. Companion to `pdd-to-deliver-app-eval`; covers the design category for `opp-eval` aggregation. | ACE team (eval system buildout — 0.9.2) |
+| 2026-04-29 | Clean-source branch added to reviewer_comment_fidelity dimension. When idea.md has zero reviewer comments (set `clean_source = true` in step 2), the dimension switches from comment-disposition grading to deferred-decision-discipline grading: looks for an explicit Open Questions / Deferred Decisions / TBD-per-LLO section with concrete questions, owner phases, and resolution mechanisms. New anchors (9.5 → 4.0). Surfaces `[INFO] clean-source branch active` in `auto_surfaced` for auditability. Surfaced 0.9.11 cross-opp validation: `turmeric-dogfood-20260427`'s clean PM-authored idea.md scored gracefully at 9.78 by treating PDD's Open Questions as analog, but the original 9.5 anchors were a poor fit (the dimension was effectively measuring something different from what the rubric claimed). | ACE team (0.10.9) |

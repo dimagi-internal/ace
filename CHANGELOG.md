@@ -5,6 +5,46 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.9 — 2026-04-29
+
+**Clean-source branch added to `idea-to-pdd-eval` reviewer-comment-fidelity.**
+
+Second of three cross-opp validation findings from the 0.9.11 turmeric-
+dogfood run. The reviewer-comment-fidelity dimension assumed every idea.md
+contains formal `[a]/[b]` reviewer footnotes — it scored gracefully when
+the source was clean (no comments) by treating PDD's Open Questions as
+analog, but anchors at 9.5 were a poor fit because the dimension was
+effectively measuring a different thing than what the rubric claimed.
+
+### Fixed
+
+- New step-2 clean-source detection: if idea.md contains zero reviewer
+  comments — no `[a]/[b]` footnotes, no "Reviewer Comments" / "Comments"
+  / "Feedback" section — set `clean_source = true` and skip step 3.
+- Reviewer-comment-fidelity dimension now has two branches:
+  - **`clean_source = false`** (the established case): comment-disposition
+    grading, anchors unchanged from 0.9.4.
+  - **`clean_source = true`** (the new case): grades **deferred-decision
+    discipline**. Looks for Open Questions / Deferred Decisions /
+    TBD-per-LLO section with named questions, owner phases, and
+    resolution mechanisms. Anchors 9.5 → 4.0.
+- Surfaces `[INFO] clean-source branch active: graded on deferred-decision
+  discipline` in `auto_surfaced` so verdicts stay auditable across
+  branches.
+- The branch swap is automatic, not an opt-out — clean idea.md sources
+  always grade on the new dimension; reviewer-comment idea.md sources
+  always grade on the original.
+
+### Why this matters for the eval framework
+
+This is a **dimension-semantics** fix, not a deduction-tuning fix. The
+original anchors were measuring whether the PDD addressed reviewer
+comments; on a clean source, that's a vacuously-true question. The new
+branch measures whether the PDD handles uncertainty rigorously — which
+is the actually-meaningful question for clean PM-authored sources.
+Without this fix, clean-source PDDs score artificially high on a
+20%-weight dimension regardless of quality.
+
 ## 0.10.8 — 2026-04-29
 
 **HITL-stub branch added to `pdd-to-deliver-app-eval` and `pdd-to-learn-app-eval`.**
