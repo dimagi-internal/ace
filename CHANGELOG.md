@@ -5,6 +5,49 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.21 — 2026-04-29
+
+**Speed wins from e2e session review — parallel dispatch + inline phase handoffs.**
+
+Session review of today's `e2e-xw5gk` and `new-e2e-25bff` runs surfaced
+four low-risk wall-clock wins. Each is a prose-only edit to an
+agent/skill markdown file; no MCP changes, no schema changes.
+
+### Changed
+
+- **`agents/commcare-setup.md` — Step 1 hardens parallel Nova dispatch.**
+  The doc previously said the two `pdd-to-*-app` skills "can run in
+  parallel"; observed behavior was serial (~15 min Learn, then ~13 min
+  Deliver, ~7 min wasted). Step 1 now requires both `Agent` calls in a
+  single assistant message and spells out why the topology is safe
+  (each Nova architect is a level-1 subagent dispatched from the
+  inline-executed level-0 procedure). Saves ~7 min per opp.
+- **`skills/app-connect-coverage/SKILL.md` — Step 4 batches `update_form`
+  mutations.** Observed in `new-e2e-25bff`: 12 sequential
+  `nova__update_form` calls in 30s. Skill now instructs to dispatch
+  all mutations for an iteration in one message, then re-fetch all
+  forms in one message. Saves 20–40 sec per coverage pass.
+- **`agents/ace-orchestrator.md` — new "Performance Conventions"
+  section.** Codifies three rules: (1) pass PDD + previous gate brief
+  + state.yaml inline at phase handoff (kills the per-phase Drive
+  re-read churn — observed PDD doc fetched 3× in 37 min in
+  `e2e-xw5gk`); (2) pre-load common MCP atoms with one batched
+  `ToolSearch` per phase instead of 5–10 scattered lookups (observed
+  11 ToolSearch calls in one session); (3) batch independent tool
+  calls in a single assistant message. Combined ~30–90 sec wall-clock
+  + meaningful token savings per run.
+
+### Why these specifically
+
+The full review surfaced 8 findings; this release ships only the
+four whose fix is mechanically clear and confined to prose. Three
+deferred for separate PRs: batched `AskUserQuestion` audit per phase
+(needs scope review), Connect HTTP 500 surfacing in
+`mcp/connect/backends/composite.ts` (needs live probing), and Nova
+turn-0 heartbeat detection (needs a reliable signal). Total ceiling
+on shipped changes: ~10 min wall-clock + token churn per opp; ~50 min
+ceiling on the deferred items if they all land.
+
 ## 0.10.20 — 2026-04-29
 
 **Documented face-capture gate as known limitation.**

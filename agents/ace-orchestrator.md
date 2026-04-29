@@ -165,6 +165,73 @@ Phases 1–5 are "setup" — they run end-to-end with no LLO involvement, so an
 operator can review the fully configured opportunity before any outside contact.
 Phase 6 is where LLOs first hear from ACE.
 
+## Performance Conventions
+
+These conventions cut wall-clock and token cost on `/ace:run`. Apply
+them on every full-cycle invocation; they're also fine on `/ace:step`.
+
+**Pass artifacts inline at phase handoff.** When dispatching a phase
+agent, include the upstream artifacts the phase will read as inline
+prompt text — don't make the phase re-fetch them from Drive. The
+orchestrator already reads PDD content, the previous phase's gate
+brief, and `state.yaml` at level 0; piping them down avoids 3–5 Drive
+round-trips per phase. The Drive copy stays canonical (audit trail);
+phases write back to Drive at completion. If a phase agent finds the
+inline content is stale (e.g. an operator edited the PDD mid-run),
+it MAY re-fetch — but the default is "trust the inline copy."
+
+When dispatching `Agent(<phase>)`, structure the prompt with sections:
+
+```
+## Opportunity
+<opp-name>, mode=<auto|review>
+
+## Inline artifacts (do not re-fetch unless explicitly stale)
+### PDD
+<full PDD body>
+
+### Previous-phase gate brief (if any)
+<full gate-brief body>
+
+### state.yaml
+<current state.yaml contents>
+
+## Your task
+<phase-specific instructions per agent definition>
+```
+
+**Pre-load common MCP atoms at start.** Many ACE atoms are exposed as
+deferred tools that need a `ToolSearch` lookup before first use. To
+avoid 10+ ToolSearch calls scattered through a run, load the
+phase-relevant atoms once at the start of each phase dispatch. The
+high-traffic atom list:
+
+- Drive: `drive_read_file`, `drive_list_folder`, `drive_create_file`,
+  `drive_create_folder`, `drive_update_file`
+- Connect: `connect_create_program`, `connect_create_opportunity`,
+  `connect_set_verification_flags`, `connect_create_payment_unit`,
+  `connect_list_deliver_units`, `connect_list_opportunities`,
+  `connect_send_llo_invite`, `connect_activate_opportunity`,
+  `connect_get_invoice`, `connect_list_invoices`, `connect_update_opportunity`
+- OCS: `ocs_clone_chatbot`, `ocs_create_collection`,
+  `ocs_upload_collection_files`, `ocs_wait_for_collection_indexing`,
+  `ocs_set_chatbot_system_prompt`, `ocs_set_chatbot_pipeline`,
+  `ocs_attach_knowledge`, `ocs_publish_chatbot_version`,
+  `ocs_get_chatbot_embed_info`, `ocs_send_test_message`
+- Nova: `mcp__plugin_nova_nova__get_app`, `get_form`, `update_form`,
+  `validate_app`, `list_apps`
+
+When you start a phase, issue ONE `ToolSearch` with
+`select:<comma-separated names>` covering the atoms that phase uses,
+not 5–10 separate searches as you encounter each one.
+
+**Batch independent operations.** When a phase needs N independent
+tool calls (e.g. multiple `drive_read_file` reads, multiple
+`nova_update_form` mutations, multiple `connect_create_payment_unit`
+creates), dispatch them all in a single assistant message. Sequential
+single-tool messages waste the parallelism that the harness already
+supports.
+
 ## Workflow
 
 When invoked with an opportunity, execute these phases in order:
