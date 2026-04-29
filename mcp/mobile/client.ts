@@ -1,12 +1,13 @@
 // mcp/mobile/client.ts
 import * as path from 'node:path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import { AvdBackend } from './backends/avd.js';
 import { MaestroBackend } from './backends/maestro.js';
 import { fetchOtp } from './auth/fetch-otp.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, OtpResult, TestUserRegistrationResult, UiDumpResult,
 } from './types.js';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { logInfo } from './logging.js';
 
 export interface MobileClientOpts {
@@ -54,10 +55,50 @@ export class MobileClient {
   }
 
   // register_test_user and generate_recipes_from_app_summary added in later tasks.
-  registerTestUser(_args: {
-    avdName: string; phone: string; phoneLocal: string; countryCode: string;
-    pin: string; backupCode: string; name: string;
+  async registerTestUser(args: {
+    avdName: string;
+    phone: string;
+    phoneLocal: string;
+    countryCode: string;
+    pin: string;
+    backupCode: string;
+    name: string;
   }): Promise<TestUserRegistrationResult> {
-    throw new Error('not implemented yet');
+    await this.avd.ensureAvdRunning(args.avdName);
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-mobile-reg-'));
+    const toOtpRecipe = path.join(this.staticRecipesDir, 'connect-register-to-otp.yaml');
+    const fromOtpRecipe = path.join(this.staticRecipesDir, 'connect-register-from-otp.yaml');
+
+    logInfo('register_test_user: part A (to OTP)');
+    const partA = await this.maestro.runRecipe(toOtpRecipe, {
+      PHONE_LOCAL: args.phoneLocal,
+      COUNTRY_CODE: args.countryCode,
+      PIN: args.pin,
+    }, path.join(tmp, 'to-otp'));
+    if (partA.status !== 'pass') {
+      // Detect "already registered" early via a sentinel string the recipe writes on duplicate.
+      if (partA.stdout.includes('PHONE_ALREADY_REGISTERED')) {
+        return { alreadyRegistered: true, phone: args.phone };
+      }
+      throw new Error(`register_test_user part A failed: ${partA.stderr || partA.stdout}`);
+    }
+
+    logInfo('register_test_user: fetching OTP');
+    const otpResult = await this.fetchOtp(args.phone);
+
+    logInfo('register_test_user: part B (from OTP)');
+    const partB = await this.maestro.runRecipe(fromOtpRecipe, {
+      OTP: otpResult.otp,
+      NAME: args.name,
+      BACKUP_CODE: args.backupCode,
+    }, path.join(tmp, 'from-otp'));
+    if (partB.status !== 'pass') {
+      if (partB.stdout.includes('PHONE_ALREADY_REGISTERED')) {
+        return { alreadyRegistered: true, phone: args.phone };
+      }
+      throw new Error(`register_test_user part B failed: ${partB.stderr || partB.stdout}`);
+    }
+
+    return { alreadyRegistered: false, phone: args.phone, backupCode: args.backupCode };
   }
 }
