@@ -25,7 +25,7 @@ not because the orchestrator is itself dispatched.
 
 The architectural rule and full topology table live in `CLAUDE.md § Agent topology` (the canonical source — every session loads it). Summary for the orchestrator's purposes:
 
-- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 2) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other six agents (`design-review`, `connect-setup`, `ocs-setup`, `llo-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
+- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 2) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other seven agents (`design-review`, `connect-setup`, `ocs-setup`, `training-prep`, `llo-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
 - **Invocation in the procedure below:** "dispatch the X agent" means a top-level `Agent(X)` call (subagent rows in the CLAUDE.md table) or "read `agents/X.md` and execute it inline" (procedure-doc rows).
 - **Why the rule:** the `Agent` tool is unavailable to subagents; a node that nests further work cannot itself be a subagent. There are never two levels of `Agent` dispatch.
 
@@ -71,7 +71,6 @@ phases:
     pdd-to-deliver-app: pending
     app-deploy: pending
     app-test: pending
-    training-materials: pending
   connect-setup:        # Phase 3
     connect-program-setup: pending
     connect-opp-setup: pending
@@ -81,7 +80,10 @@ phases:
     ocs-chatbot-eval-quick: pending
     ocs-chatbot-qa-deep: pending
     ocs-chatbot-eval-deep: pending
-  llo-management:       # Phase 5
+  training-prep:        # Phase 5 — added 0.9.0
+    app-screenshot-capture: pending
+    training-materials: pending
+  llo-management:       # Phase 6
     llo-invite: pending               # moved here from Phase 3 on 2026-04-20
     llo-onboarding: pending
     llo-uat: pending
@@ -90,7 +92,7 @@ phases:
     flw-data-review: pending          # recurring
     ocs-chatbot-qa-monitor: pending   # recurring
     ocs-chatbot-eval-monitor: pending # recurring
-  closeout:             # Phase 6
+  closeout:             # Phase 7
     opp-closeout: pending
     llo-feedback: pending
     learnings-summary: pending
@@ -156,12 +158,12 @@ Gate steps are:
 - After `idea-to-pdd` (PDD must be approved before building apps)
 - After `app-deploy` (apps must be verified before Connect setup)
 - After `ocs-chatbot-eval --deep` (OCS quality must clear pre-launch bar — eval grades the transcript that `ocs-chatbot-qa --deep` captured)
-- After `llo-invite` (invites must be reviewed before sending; runs as Phase 5 Step 1, so this gate lives inside Phase 5 between invite prep and the first LLO-facing send)
+- After `llo-invite` (invites must be reviewed before sending; runs as Phase 6 Step 1, so this gate lives inside Phase 6 between invite prep and the first LLO-facing send)
 - After `llo-launch` (opportunity activation must be verified before monitoring begins)
 
-Phases 1–4 are "setup" — they run end-to-end with no LLO involvement, so an
+Phases 1–5 are "setup" — they run end-to-end with no LLO involvement, so an
 operator can review the fully configured opportunity before any outside contact.
-Phase 5 is where LLOs first hear from ACE.
+Phase 6 is where LLOs first hear from ACE.
 
 ## Workflow
 
@@ -179,13 +181,13 @@ dispatches the `nova:nova-architect-autonomous` subagent. That
 dispatch requires `Agent` at level 0 — running Phase 2 as a subagent
 would put Nova's dispatch at level 2 and fail. See § Agent Topology.
 
-This phase produces: Learn app, Deliver app, deployed apps on CCHQ, test results,
-training materials.
+This phase produces: Learn app, Deliver app, deployed apps on CCHQ, test results.
+(Training materials moved to Phase 5 (`training-prep`) in 0.9.0.)
 
 ### Phase 3: Connect Setup
 Dispatch to the **connect-setup** agent.
 This phase produces: Program configured, Opportunity configured with verification
-rules and delivery/payment units. LLO invite-list preparation moved to Phase 5
+rules and delivery/payment units. LLO invite-list preparation moved to Phase 6
 on 2026-04-20 — we don't commit to an invite roster until after the OCS
 chatbot has cleared its deep-eval gate.
 
@@ -199,7 +201,12 @@ captures a transcript, `ocs-chatbot-eval` grades it.
 Ends with a human-in-the-loop step to paste the widget credentials into the
 Connect opportunity until `update_opportunity` lands (CCC-301).
 
-### Phase 5: LLO Management
+### Phase 5: Training Prep
+Dispatch `Agent(training-prep)`. The agent runs `app-screenshot-capture`
+followed by `training-materials`, both reading upstream artifacts from
+Phases 1-4. No LLO contact happens here — that begins in Phase 6.
+
+### Phase 6: LLO Management
 Dispatch to the **llo-manager** agent.
 This phase produces: LLO invite list prepared (first step), LLOs onboarded
 (with widget link in the onboarding email), UAT completed, opportunity
@@ -207,7 +214,7 @@ activated (go-live), ongoing monitoring active. This phase has recurring
 skills (timeline-monitor, flw-data-review) that run on schedule during
 the active opportunity.
 
-### Phase 6: Closeout
+### Phase 7: Closeout
 Dispatch to the **closeout** agent. Triggered when the opportunity reaches its
 end date.
 This phase produces: Invoices pulled, Jira payment ticket created, LLO feedback

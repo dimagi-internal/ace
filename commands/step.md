@@ -40,7 +40,7 @@ Run a single skill for an opportunity without running the full lifecycle.
    invokes `/nova:autobuild` (Phase 2's `pdd-to-learn-app` /
    `pdd-to-deliver-app`) or otherwise dispatches a subagent. See
    `CLAUDE.md` § Agent topology.
-6. Update `state.yaml` with the result (per-phase nested map, 6-phase schema).
+6. Update `state.yaml` with the result (per-phase nested map, 7-phase schema).
 
 ## Prerequisite check
 

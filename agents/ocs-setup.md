@@ -20,7 +20,7 @@ You configure the per-opportunity OCS chatbot, quality-test it, and hand the
 widget credentials to the operator to attach to the Connect opportunity.
 
 This phase runs AFTER Connect setup (Phase 3) and BEFORE any LLO-facing
-communication (Phase 5). No LLOs interact with the bot in this phase — only
+communication (Phase 6). No LLOs interact with the bot in this phase — only
 the ACE judge does. Each quality gate is a **qa → eval pair** per the
 QA vs Eval contract in `skills/README.md`: `ocs-chatbot-qa` captures a
 transcript, `ocs-chatbot-eval` judges it.
@@ -59,7 +59,7 @@ Invoke `ocs-chatbot-qa --deep`, then `ocs-chatbot-eval --deep`.
 - eval writes:
   - `ACE/<opp-name>/verdicts/ocs-chatbot-eval-deep.yaml` (machine-readable)
   - `ACE/<opp-name>/eval-reports/YYYY-MM-DD-ocs-eval.md` (human-readable)
-  - `ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-deep.md` (for the Phase 4→5 gate)
+  - `ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-deep.md` (for the Phase 4→6 gate)
 - Tests: Connect-general + ACE-specific + opp-specific prompts from
   `ACE/<opp-name>/test-prompts.md` (produced in Phase 1 by
   `pdd-to-test-prompts`)

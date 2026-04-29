@@ -46,8 +46,8 @@ to the top.
    | `ERROR` | Any step status contains `error` or `failed` or `blocked` | Something broke; needs human |
    | `ACTION NEEDED` | Any of the 5 gates is in state `pending` or `awaiting-approval`, OR any required human-input artifact (producedBy: `external` in the manifest) is missing | Admin must decide or provide input before ACE can proceed |
    | `RUNNING` | There exists at least one non-recurring step with status `pending` in the current phase, and no gate is pending, and no errors | Auto-progressing; admin can leave it alone |
-   | `IDLE` | All non-recurring steps across phases 1–5 are `done`, only recurring steps (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`, `ocs-chatbot-eval-monitor`) remain, and Phase 6 hasn't started | Opp is live; ACE is monitoring; no action expected |
-   | `DONE` | Phase 6 `cycle-grade` is `done` | Fully closed out |
+   | `IDLE` | All non-recurring steps across phases 1–6 are `done`, only recurring steps (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`, `ocs-chatbot-eval-monitor`) remain, and Phase 7 hasn't started | Opp is live; ACE is monitoring; no action expected |
+   | `DONE` | Phase 7 `cycle-grade` is `done` | Fully closed out |
 
    **Recurring skills are never an ACTION NEEDED signal.** They run on a
    schedule after launch and a missing weekly timeline-monitor (or

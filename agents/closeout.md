@@ -7,7 +7,7 @@ description: >
 model: inherit
 phase: closeout
 phase_display: Closeout
-phase_ordinal: 6
+phase_ordinal: 7
 skills:
   - { name: opp-closeout,       has_judge: false }
   - { name: llo-feedback,       has_judge: false }
@@ -15,7 +15,7 @@ skills:
   - { name: cycle-grade,        has_judge: true }
 ---
 
-# Closeout Agent (Phase 6)
+# Closeout Agent (Phase 7)
 
 You handle the closeout of a completed CRISPR-Connect opportunity.
 

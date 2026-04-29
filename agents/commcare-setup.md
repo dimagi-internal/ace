@@ -2,8 +2,7 @@
 name: commcare-setup
 description: >
   Phase 2 of the CRISPR-Connect lifecycle: translate the approved PDD into
-  Learn and Deliver apps via Nova, deploy them to CommCare HQ, test, and
-  generate training materials.
+  Learn and Deliver apps via Nova, deploy them to CommCare HQ, and test.
 model: inherit
 phase: commcare-setup
 phase_display: CommCare Setup
@@ -13,7 +12,6 @@ skills:
   - { name: pdd-to-deliver-app,  has_judge: true }
   - { name: app-deploy,          has_judge: false }
   - { name: app-test,            has_judge: true }
-  - { name: training-materials,  has_judge: true }
 ---
 
 # CommCare Setup (Phase 2 Procedure Document)
@@ -48,13 +46,15 @@ Invoke the `app-deploy` skill.
 - Note: `app-test` depends on deployed apps (reads deployment-summary.md), so
   deploy must precede test
 
-### Step 3: Test and Train (parallel)
-Invoke `app-test` and `training-materials` skills. These can run in parallel.
+### Step 3: Test
+Invoke the `app-test` skill.
 - `app-test` input: deployed apps on CCHQ
 - `app-test` output: test results in `ACE/<opp-name>/test-results/`
-- `training-materials` input: app summaries from GDrive
-- `training-materials` output: training docs in `ACE/<opp-name>/training-materials/`
-- **LLM-as-Judge:** Both skills self-evaluate quality
+- **LLM-as-Judge:** Self-evaluate quality
+
+Note: `training-materials` no longer runs in Phase 2. As of 0.9.0 it lives
+in Phase 5 (`training-prep`), where it consumes the screenshots produced
+by `app-screenshot-capture` alongside the app summaries.
 
 ### Completion
 Update opportunity state to mark Phase 2 as complete.
