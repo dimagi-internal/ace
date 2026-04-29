@@ -10,6 +10,7 @@
     "mcp:gdrive": "npx tsx mcp/google-drive-server.ts",
     "mcp:ocs": "npx tsx mcp/ocs-server.ts",
     "mcp:connect": "npx tsx mcp/connect-server.ts",
+    "mcp:mobile": "npx tsx mcp/mobile-server.ts",
     "eval": "npx tsx test/eval/run-eval.ts",
     "eval:idd": "npx tsx test/eval/run-eval.ts"
   },

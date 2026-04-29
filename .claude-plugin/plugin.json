@@ -33,6 +33,14 @@
         "CLAUDE_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}",
         "CLAUDE_PLUGIN_ROOT_ECHO": "${CLAUDE_PLUGIN_ROOT}"
       }
+    },
+    "ace-mobile": {
+      "command": "npx",
+      "args": ["tsx", "${CLAUDE_PLUGIN_ROOT}/mcp/mobile-server.ts"],
+      "env": {
+        "CLAUDE_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}",
+        "CLAUDE_PLUGIN_ROOT_ECHO": "${CLAUDE_PLUGIN_ROOT}"
+      }
     }
   }
 }
