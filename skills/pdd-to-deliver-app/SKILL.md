@@ -28,6 +28,16 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      (1–2 sentences)
    - State the archetype framing explicitly (atomic-visit vs.
      focus-group session vs. multi-stage)
+   - **Explicitly state this is a CommCare Connect Deliver app and
+     that every form needs the appropriate `connect.deliver_unit`
+     (or `task`) block per CommCare Connect's rules.** This is
+     load-bearing language — without it, autobuild often skips the
+     per-form Connect blocks even though its system prompt knows
+     about them. The `app-connect-coverage` skill in Phase 2 Step 1.5
+     is the safety net for cases where the brief was vague, but the
+     more robust path is for this brief to be unambiguous up front.
+     See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
+     § Bug 1 for the prompt-quality dependency.
    - Describe the delivery form's structure section by section
    - List the required Connectify fields (Deliver Unit, Entity ID)
    - Reference the relevant PDD section (Evidence Model, Output

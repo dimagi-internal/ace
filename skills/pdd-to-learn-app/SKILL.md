@@ -25,6 +25,12 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    - Open with the app's purpose and target FLW persona (1–2 sentences)
    - State the archetype framing explicitly (e.g. "this is a facilitation
      training app, not a form-walkthrough app")
+   - **Explicitly state this is a CommCare Connect Learn app and that
+     every content form needs `connect.learn_module` and every quiz
+     form needs `connect.assessment` per CommCare Connect's rules.**
+     Load-bearing language — without it, autobuild often skips the
+     per-form Connect blocks. See
+     `docs/learnings/2026-04-29-nova-connect-marker-bugs.md` § Bug 1.
    - Describe each module / form, in order
    - List the required Connectify fields (Learn Module, Assessment Score)
    - Reference the relevant PDD section when it shapes Nova's choices
