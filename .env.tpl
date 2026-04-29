@@ -70,6 +70,13 @@ ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
 ACE_HQ_BASE_URL=https://www.commcarehq.org
 ACE_HQ_DOMAIN=
 
+# CommCare HQ API key for ace@dimagi-ai.com on connect-ace-prod.
+# Connect's `connect_create_opportunity` REST endpoint validates this
+# against CCHQ before it will create the opp. Item name contains
+# parentheses → use UUID reference (same pattern as OCS_API_TOKEN above).
+# If the 1Password item is ever recreated, update this UUID.
+ACE_HQ_API_KEY=op://AI-Agents/juii2ov6xju5s4n73qlz7jutli/credential
+
 # ── Connect (ace-connect MCP) ────────────────────────────────────────
 #
 # ace-connect drives connect.dimagi.com through an authenticated browser
