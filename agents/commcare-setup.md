@@ -11,6 +11,7 @@ skills:
   - { name: pdd-to-learn-app,    has_judge: true }
   - { name: pdd-to-deliver-app,  has_judge: true }
   - { name: app-deploy,          has_judge: false }
+  - { name: app-release,         has_judge: false }
   - { name: app-test,            has_judge: true }
 ---
 
@@ -41,10 +42,22 @@ Invoke `pdd-to-learn-app` and `pdd-to-deliver-app` skills. These can run in para
 ### Step 2: Deploy Apps
 Invoke the `app-deploy` skill.
 - Input: app JSON/CCZ files from GDrive
-- Output: apps uploaded to CCHQ CRISPR-Connect domain, built and published
+- Output: apps uploaded to CCHQ as **draft builds** (Nova does not release
+  by design — see Step 2.5)
 - **Gate (review mode):** Present app deployment summary for verification
-- Note: `app-test` depends on deployed apps (reads deployment-summary.md), so
-  deploy must precede test
+
+### Step 2.5: Release Apps
+Invoke the `app-release` skill.
+- Input: HQ app ids from `deployment-summary.md`
+- Output: each app has a new released build; Connect's `Sync Deliver Units`
+  can now read the form schema. Without this step, Phase 3
+  (`connect-opp-setup`) creates the opp shell but cannot configure
+  payment units (deliver-units list comes back empty).
+- **Prerequisite:** `ace@dimagi-ai.com` must have App Editor permissions on
+  the target project space. If missing, the skill halts with a clear
+  remediation pointer (admin-side fix, not auto-resolvable).
+- Note: `app-test` reads `deployment-summary.md`, so deploy + release must
+  precede test.
 
 ### Step 3: Test
 Invoke the `app-test` skill.
