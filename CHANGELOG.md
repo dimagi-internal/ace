@@ -5,6 +5,81 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.10 — 2026-04-28
+
+Operate-category rubrics added. **All 6 opp-eval categories now
+have rubrics defined** (4 strongly calibrated + 4 provisional
+pending real ground-truth artifacts).
+
+### Added
+
+- **`skills/llo-launch-eval/SKILL.md`** — most load-bearing Phase 5
+  rubric. Grades `llo-launch` activations against PDD launch
+  preconditions. 5 dimensions: uat_signoff_completeness (0.25),
+  connect_activation_correctness (0.25), app_publish_status (0.20),
+  go_live_notification_fidelity (0.15 — with the same factual-error
+  rule from OCS rubric 0.9.4), pre_launch_gate_discipline (0.15 —
+  any upstream gate not approved is a 4-point deduction). Hard-fail
+  rules: explicit LLO reject (vs pending), missing activation
+  transition, either app still in draft, gate bypass. Inflation
+  guard at 8.5. Explicit `incomplete` verdict when Phase 5
+  llo-launch hasn't run.
+
+- **`skills/flw-data-review-eval/SKILL.md`** — recurring rubric for
+  the per-cycle quality signal. Grades each weekly `flw-data-review`
+  report. 5 dimensions: signal_coverage (0.25 — calibration drift,
+  refusal rate, photo pass-rate, etc.), outlier_detection_rigor
+  (0.20 — concrete threshold rules, not vibes), recommendation_
+  actionability (0.20 — concrete remediations), evidence_citation_
+  discipline (0.15), trajectory_awareness (0.20 with N/A handling
+  for first-of-cycle). Recurring shape: produces dated verdict
+  YAMLs (`flw-data-review-eval-YYYY-MM-DD.yaml`). Calibration cheap
+  because the producing skill runs 4–8 times per opp.
+
+### Coverage frontier (all 6 categories now defined)
+
+| Category | Rubric(s) | Calibration |
+|---|---|---|
+| design | idea-to-pdd-eval | strongly |
+| commcare | pdd-to-deliver-app-eval, pdd-to-learn-app-eval | strongly (×2) |
+| connect | connect-program-setup-eval | provisional |
+| ocs | ocs-chatbot-eval | strongly |
+| operate | llo-launch-eval, flw-data-review-eval (NEW) | provisional (×2) |
+| closeout | cycle-grade-eval | provisional |
+
+8 rubrics total, 4 strongly calibrated, 4 provisional. Once real
+artifacts arrive (non-degraded Phase 3, first Phase 5 launch, first
+flw-data-review report, first closed cycle), the provisional rubrics
+calibrate via the same 3-run same-model + 3-run cross-model protocol.
+
+### Backlog still open
+
+- **3 more operate-category rubrics deferred:** `llo-invite-eval`
+  (prep-stage; lower stakes), `llo-onboarding-eval` (email send;
+  hard to grade without delivery confirmations), `llo-uat-eval`
+  (UAT signoff is gradable but lower-leverage than llo-launch).
+  Build later if needed; current 2 cover the most load-bearing
+  Phase 5 signals (the launch gate and the recurring quality
+  review).
+- **Cross-opp validation** (rubrics still trained only on
+  smoke-20260428-1242).
+- **Real artifacts** for the 4 provisional rubrics to calibrate
+  against.
+- **Operator-effort tracking** in state.yaml.
+- 3 small OCS rubric polish items.
+
+## 0.9.9 — 2026-04-28
+
+### Added
+
+- **`.env.tpl`** — `ACE_HQ_API_KEY` slot for
+  `connect_create_opportunity`. Connect's `create_opportunity` REST
+  endpoint validates the HQ API key against CCHQ before creating
+  the opp. Without `ACE_HQ_API_KEY` in env, Phase 3 Step 2 dies
+  with HTTP 500 from `/opportunity/init/` — observed on the
+  turmeric-market-survey-2026-04-28 dogfood run. (Shipped from
+  `emdash/new-e2e-25bff` via merge commit `b8dfecd`.)
+
 ## 0.9.8 — 2026-04-28
 
 Two new provisional rubrics added — covers the remaining 2 of 6
