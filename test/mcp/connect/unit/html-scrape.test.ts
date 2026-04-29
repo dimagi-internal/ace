@@ -8,6 +8,7 @@ import {
   parseDeliveryTypeOptions,
   parseProgramsList,
   parseFormErrors,
+  parseFormErrorsByField,
 } from '../../../../mcp/connect/backends/html-scrape.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -68,5 +69,76 @@ describe('parseFormErrors', () => {
   it('extracts text from errorlist', () => {
     const html = '<ul class="errorlist"><li>Name is required</li><li>Budget must be positive</li></ul>';
     expect(parseFormErrors(html)).toEqual(['Name is required', 'Budget must be positive']);
+  });
+});
+
+describe('parseFormErrorsByField', () => {
+  it('returns {} for a clean form (no errorlist)', () => {
+    expect(parseFormErrorsByField('<form><input name="x"></form>')).toEqual({});
+  });
+
+  it('keys errors by Django field name from div_id_<field>', () => {
+    const html = `
+      <form>
+        <div id="div_id_api_key" class="mb-3">
+          <label>API key</label>
+          <ul class="errorlist"><li>Select a valid choice.</li></ul>
+          <select name="api_key"></select>
+        </div>
+        <div id="div_id_hq_server" class="mb-3">
+          <ul class="errorlist"><li>This field is required.</li></ul>
+          <select name="hq_server"></select>
+        </div>
+      </form>
+    `;
+    expect(parseFormErrorsByField(html)).toEqual({
+      api_key: ['Select a valid choice.'],
+      hq_server: ['This field is required.'],
+    });
+  });
+
+  it('puts non-field (form-level) errors under __all__', () => {
+    const html = `
+      <form>
+        <ul class="errorlist nonfield"><li>Duplicate name.</li></ul>
+        <div id="div_id_name"><input name="name"></div>
+      </form>
+    `;
+    expect(parseFormErrorsByField(html)).toEqual({ __all__: ['Duplicate name.'] });
+  });
+
+  it('parses multiple errors per field', () => {
+    const html = `
+      <div id="div_id_learn_app">
+        <ul class="errorlist">
+          <li>Enter a valid JSON.</li>
+          <li>This field is required.</li>
+        </ul>
+      </div>
+    `;
+    expect(parseFormErrorsByField(html)).toEqual({
+      learn_app: ['Enter a valid JSON.', 'This field is required.'],
+    });
+  });
+
+  it('matches the live opportunity-init validation-error fixture', () => {
+    const fields = parseFormErrorsByField(fix('opportunity-init-validation-errors.html'));
+    expect(fields.api_key).toEqual([
+      'Select a valid choice. abcdef0123456789abcdef0123456789abcdef01 is not one of the available choices.',
+    ]);
+    expect(fields.hq_server).toEqual([
+      'Select a valid choice. That choice is not one of the available choices.',
+    ]);
+    expect(fields.learn_app).toEqual([
+      'Enter a valid JSON.',
+      'This field is required.',
+    ]);
+    expect(fields.__all__).toEqual([
+      'An opportunity with this name already exists for this organization.',
+    ]);
+    // Fields without errors must NOT appear in the map.
+    expect(fields.name).toBeUndefined();
+    expect(fields.short_description).toBeUndefined();
+    expect(fields.deliver_app).toBeUndefined();
   });
 });

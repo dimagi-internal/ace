@@ -1,0 +1,86 @@
+<!--
+  Captured shape of /a/<org>/opportunity/init/ when Connect's form rejects
+  the POST. Real responses come back HTTP 200 with the same template
+  re-rendered, with `<ul class="errorlist">` injected inside each invalid
+  field's `div_id_<field>` wrapper.
+
+  Real session that motivated this fixture: 2026-04-28 ACE create-opportunity
+  for "Turmeric Market Survey — 2026-04-28". Three separate payload-shape
+  errors all surfaced as identical opaque HTTP 500s because the MCP wasn't
+  parsing the form-rejection HTML — agent burned ~90 minutes diagnosing.
+
+  This fixture covers the three real failures plus a non-field error:
+   - api_key: int FK not raw key
+   - hq_server: int FK not URL
+   - learn_app: needs JSON-encoded `{id, name}` value
+   - __all__: form-level "duplicate name" error
+-->
+<form  method="post" >
+  <input type="hidden" name="csrfmiddlewaretoken" value="rejected-csrf-token-fixture-only">
+
+  <ul class="errorlist nonfield"><li>An opportunity with this name already exists for this organization.</li></ul>
+
+  <div id="div_id_name" class="mb-3">
+    <label for="id_name" class="block text-gray-700 text-sm font-bold mb-2">
+      Name<span class="asteriskField">*</span>
+    </label>
+    <input type="text" name="name" maxlength="255" required id="id_name" value="Turmeric Market Survey">
+  </div>
+
+  <div id="div_id_short_description" class="mb-3">
+    <label for="id_short_description">Short description<span class="asteriskField">*</span></label>
+    <input type="text" name="short_description" required id="id_short_description" value="Turmeric study">
+  </div>
+
+  <div id="div_id_hq_server" class="mb-3">
+    <label for="id_hq_server">HQ server<span class="asteriskField">*</span></label>
+    <ul class="errorlist"><li>Select a valid choice. That choice is not one of the available choices.</li></ul>
+    <select name="hq_server" id="id_hq_server" required>
+      <option value="">---------</option>
+      <option value="1">CommCareHQ (https://www.commcarehq.org)</option>
+      <option value="2">India (https://india.commcarehq.org)</option>
+      <option value="3">CommCareHQ EU (https://eu.commcarehq.org)</option>
+    </select>
+  </div>
+
+  <div id="div_id_api_key" class="mb-3">
+    <label for="id_api_key">CommCare HQ API key<span class="asteriskField">*</span></label>
+    <ul class="errorlist">
+      <li>Select a valid choice. abcdef0123456789abcdef0123456789abcdef01 is not one of the available choices.</li>
+    </ul>
+    <select name="api_key" id="id_api_key" required></select>
+  </div>
+
+  <div id="div_id_learn_app_domain" class="mb-3">
+    <label for="id_learn_app_domain">Learn app domain<span class="asteriskField">*</span></label>
+    <input type="text" name="learn_app_domain" id="id_learn_app_domain" value="connect-ace-prod">
+  </div>
+
+  <div id="div_id_learn_app" class="mb-3">
+    <label for="id_learn_app">Learn app<span class="asteriskField">*</span></label>
+    <ul class="errorlist">
+      <li>Enter a valid JSON.</li>
+      <li>This field is required.</li>
+    </ul>
+    <select name="learn_app" id="id_learn_app" required></select>
+  </div>
+
+  <div id="div_id_learn_app_passing_score" class="mb-3">
+    <label for="id_learn_app_passing_score">Passing score<span class="asteriskField">*</span></label>
+    <input type="number" name="learn_app_passing_score" id="id_learn_app_passing_score" value="80">
+  </div>
+
+  <div id="div_id_deliver_app_domain" class="mb-3">
+    <label for="id_deliver_app_domain">Deliver app domain<span class="asteriskField">*</span></label>
+    <input type="text" name="deliver_app_domain" id="id_deliver_app_domain" value="connect-ace-prod">
+  </div>
+
+  <div id="div_id_deliver_app" class="mb-3">
+    <label for="id_deliver_app">Deliver app<span class="asteriskField">*</span></label>
+    <select name="deliver_app" id="id_deliver_app" required>
+      <option value='{"id":"76fd5f0e2834454bb946bdf9ae9bff71","name":"Turmeric Deliver App"}' selected>Turmeric Deliver App</option>
+    </select>
+  </div>
+
+  <button type="submit">Save</button>
+</form>

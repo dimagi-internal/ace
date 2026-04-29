@@ -18,6 +18,7 @@ export class RestBackend implements ConnectClient {
   createProgram = stub('createProgram') as ConnectClient['createProgram'];
   updateProgram = stub('updateProgram') as ConnectClient['updateProgram'];
   listDeliveryTypes = stub('listDeliveryTypes') as ConnectClient['listDeliveryTypes'];
+  registerHqApiKey = stub('registerHqApiKey') as ConnectClient['registerHqApiKey'];
   listOpportunities = stub('listOpportunities') as ConnectClient['listOpportunities'];
   getOpportunity = stub('getOpportunity') as ConnectClient['getOpportunity'];
   createOpportunity = stub('createOpportunity') as ConnectClient['createOpportunity'];

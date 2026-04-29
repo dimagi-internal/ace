@@ -36,6 +36,28 @@ export interface ConnectClient {
 
   listDeliveryTypes(args: { organization_slug: string }): Promise<{ delivery_types: DeliveryType[] }>;
 
+  /**
+   * Register a CommCare HQ API key with Connect (idempotent) and return the
+   * int FK Connect's create-opportunity form expects in its `api_key` field.
+   *
+   * Background: Connect's `api_key` field on /opportunity/init/ is NOT the
+   * raw 40-char HQ key — it's the PK of an `HQApiKey` record on Connect's
+   * side. Agents must register the key first via /opportunity/add_api_key/
+   * before calling createOpportunity. This atom does that step on its own
+   * so callers can verify / debug it without driving the whole opp flow.
+   */
+  registerHqApiKey(args: {
+    organization_slug: string;
+    hq_server: string;
+    api_key: string;
+  }): Promise<{
+    organization_slug: string;
+    hq_server: string;
+    hq_server_id: string;
+    api_key_id: string;
+    truncated_label: string;
+  }>;
+
   // Opportunities (CRUD)
   listOpportunities(args: { organization_slug: string; program_id?: string; name?: string }): Promise<{ opportunities: Opportunity[] }>;
   getOpportunity(args: { organization_slug: string; opportunity_id: string }): Promise<Opportunity>;

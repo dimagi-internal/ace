@@ -28,6 +28,7 @@ import { PlaywrightBackend } from './connect/backends/playwright.js';
 import { CompositeBackend } from './connect/backends/composite.js';
 import { PlaywrightSession } from './connect/auth/playwright-session.js';
 import { createLoggingProxy, defaultFileLogger } from './connect/logging.js';
+import { ConnectValidationError } from './connect/errors.js';
 
 const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
 
@@ -80,18 +81,43 @@ async function client() {
 
 const json = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(v, null, 2) }] });
 
+/**
+ * Run an atom call and convert ConnectValidationError into a structured JSON
+ * response (with `error: 'validation_error'` and per-field `fields`) instead
+ * of letting it bubble as an unstructured "tool error" through MCP. Other
+ * exceptions still propagate so the MCP layer surfaces them as errors.
+ *
+ * Why this matters: a real ACE session burned ~90 minutes diagnosing an
+ * opaque HTTP 500 because Connect's validation errors (api_key wasn't an
+ * int FK; learn_app/deliver_app needed JSON-encoded values) all surfaced as
+ * a single `HttpError(500)` with the entire HTML page in the body. The
+ * agent had to reverse-engineer each via curl. Now Connect's own field-level
+ * messages are exposed verbatim.
+ */
+async function runAtom<T>(fn: () => Promise<T>): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  try {
+    const result = await serialize(fn);
+    return json(result);
+  } catch (err) {
+    if (err instanceof ConnectValidationError) {
+      return { ...json(err.toJSON()), isError: true };
+    }
+    throw err;
+  }
+}
+
 const server = new McpServer({ name: 'ace-connect', version: '0.1.0' });
 
 // ── Programs ──────────────────────────────────────────────────────
 
 server.tool('connect_list_programs',
   { organization_slug: z.string(), name: z.string().optional() },
-  async (args) => json(await serialize(async () => (await client()).listPrograms(args)))
+  async (args) => runAtom(async () => (await client()).listPrograms(args))
 );
 
 server.tool('connect_get_program',
   { organization_slug: z.string(), program_id: z.string() },
-  async (args) => json(await serialize(async () => (await client()).getProgram(args)))
+  async (args) => runAtom(async () => (await client()).getProgram(args))
 );
 
 server.tool('connect_create_program',
@@ -106,7 +132,7 @@ server.tool('connect_create_program',
     start_date: z.string(),
     end_date: z.string(),
   },
-  async (args) => json(await serialize(async () => (await client()).createProgram(args)))
+  async (args) => runAtom(async () => (await client()).createProgram(args))
 );
 
 server.tool('connect_update_program',
@@ -119,24 +145,39 @@ server.tool('connect_update_program',
     start_date: z.string().optional(),
     end_date: z.string().optional(),
   },
-  async (args) => json(await serialize(async () => (await client()).updateProgram(args)))
+  async (args) => runAtom(async () => (await client()).updateProgram(args))
 );
 
 server.tool('connect_list_delivery_types',
   { organization_slug: z.string() },
-  async (args) => json(await serialize(async () => (await client()).listDeliveryTypes(args)))
+  async (args) => runAtom(async () => (await client()).listDeliveryTypes(args))
+);
+
+server.tool('connect_register_hq_api_key',
+  {
+    organization_slug: z.string(),
+    hq_server: z.string().describe(
+      'CCHQ server label: "prod"/"india"/"eu", a server URL, or the int FK ' +
+      '("1"/"2"/"3"). Resolved against Connect\'s live form options.'
+    ),
+    api_key: z.string().describe(
+      'The raw 40-char CommCare HQ API key. Idempotent: if the key is already ' +
+      'registered for this hq_server, the existing record is returned.'
+    ),
+  },
+  async (args) => runAtom(async () => (await client()).registerHqApiKey(args))
 );
 
 // ── Opportunities ─────────────────────────────────────────────────
 
 server.tool('connect_list_opportunities',
   { organization_slug: z.string(), program_id: z.string().optional(), name: z.string().optional() },
-  async (args) => json(await serialize(async () => (await client()).listOpportunities(args)))
+  async (args) => runAtom(async () => (await client()).listOpportunities(args))
 );
 
 server.tool('connect_get_opportunity',
   { organization_slug: z.string(), opportunity_id: z.string() },
-  async (args) => json(await serialize(async () => (await client()).getOpportunity(args)))
+  async (args) => runAtom(async () => (await client()).getOpportunity(args))
 );
 
 server.tool('connect_create_opportunity',
@@ -167,7 +208,7 @@ server.tool('connect_create_opportunity',
     deliver_app_domain: z.string(),
     deliver_app: z.string().describe('Bare CCHQ app id (32-char hex). The MCP wraps it in the JSON form-value Connect expects.'),
   },
-  async (args) => json(await serialize(async () => (await client()).createOpportunity(args)))
+  async (args) => runAtom(async () => (await client()).createOpportunity(args))
 );
 
 server.tool('connect_update_opportunity',
@@ -180,7 +221,7 @@ server.tool('connect_update_opportunity',
     end_date: z.string().optional(),
     is_test: z.boolean().optional(),
   },
-  async (args) => json(await serialize(async () => (await client()).updateOpportunity(args)))
+  async (args) => runAtom(async () => (await client()).updateOpportunity(args))
 );
 
 // ── Per-opportunity configuration ────────────────────────────────
@@ -209,12 +250,12 @@ const VerificationFlagsZ = z.object({
 
 server.tool('connect_set_verification_flags',
   { organization_slug: z.string(), opportunity_id: z.string(), flags: VerificationFlagsZ },
-  async (args) => json(await serialize(async () => (await client()).setVerificationFlags(args)))
+  async (args) => runAtom(async () => (await client()).setVerificationFlags(args))
 );
 
 server.tool('connect_list_deliver_units',
   { organization_slug: z.string(), opportunity_id: z.string() },
-  async (args) => json(await serialize(async () => (await client()).listDeliverUnits(args)))
+  async (args) => runAtom(async () => (await client()).listDeliverUnits(args))
 );
 
 server.tool('connect_create_payment_unit',
@@ -231,17 +272,17 @@ server.tool('connect_create_payment_unit',
     required_deliver_unit_ids: z.array(z.coerce.number().int()),
     optional_deliver_unit_ids: z.array(z.coerce.number().int()).optional(),
   },
-  async (args) => json(await serialize(async () => (await client()).createPaymentUnit(args)))
+  async (args) => runAtom(async () => (await client()).createPaymentUnit(args))
 );
 
 server.tool('connect_list_payment_units',
   { organization_slug: z.string(), opportunity_id: z.string() },
-  async (args) => json(await serialize(async () => (await client()).listPaymentUnits(args)))
+  async (args) => runAtom(async () => (await client()).listPaymentUnits(args))
 );
 
 server.tool('connect_activate_opportunity',
   { organization_slug: z.string(), opportunity_id: z.string() },
-  async (args) => json(await serialize(async () => (await client()).activateOpportunity(args)))
+  async (args) => runAtom(async () => (await client()).activateOpportunity(args))
 );
 
 // ── Invites ──────────────────────────────────────────────────────
@@ -253,24 +294,24 @@ server.tool('connect_send_llo_invite',
     organization_name: z.string(),
     contact_email: z.string().email(),
   },
-  async (args) => json(await serialize(async () => (await client()).sendLloInvite(args)))
+  async (args) => runAtom(async () => (await client()).sendLloInvite(args))
 );
 
 server.tool('connect_list_invites',
   { organization_slug: z.string(), opportunity_id: z.string() },
-  async (args) => json(await serialize(async () => (await client()).listInvites(args)))
+  async (args) => runAtom(async () => (await client()).listInvites(args))
 );
 
 // ── Invoices ─────────────────────────────────────────────────────
 
 server.tool('connect_list_invoices',
   { organization_slug: z.string(), opportunity_id: z.string() },
-  async (args) => json(await serialize(async () => (await client()).listInvoices(args)))
+  async (args) => runAtom(async () => (await client()).listInvoices(args))
 );
 
 server.tool('connect_get_invoice',
   { organization_slug: z.string(), invoice_id: z.string() },
-  async (args) => json(await serialize(async () => (await client()).getInvoice(args)))
+  async (args) => runAtom(async () => (await client()).getInvoice(args))
 );
 
 await server.connect(new StdioServerTransport());
