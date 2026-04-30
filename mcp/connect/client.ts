@@ -131,6 +131,36 @@ export interface ConnectClient {
   }): Promise<Invite>;
   listInvites(args: { organization_slug: string; opportunity_id: string }): Promise<{ invites: Invite[] }>;
 
+  /**
+   * Invite one or more FLWs (by phone) to an opportunity. Mirrors what the
+   * Connect web UI does at /a/<org>/opportunity/<uuid>/user_invite/ — POSTs
+   * a newline-separated list of `+<country><digits>` phones to the
+   * `users` form field. The server queues `add_connect_users.delay(...)`
+   * so the call returns `status: 'queued'` and the actual UserInvite rows
+   * + SMS go out async.
+   *
+   * Constraints (server-side):
+   *   - Opportunity must be `is_setup_complete` (verification flags +
+   *     payment units configured). Pre-completion calls 200 back with the
+   *     form re-rendered + a ValidationError on `users`.
+   *   - Opportunity must not have ended.
+   *   - Each phone must start with `+` and otherwise be digits-only.
+   *
+   * Used by `connect-opp-setup` Step 8 to keep `${ACE_E2E_PHONE}` invited
+   * to the latest ACE-created opp; the test user's PersonalID
+   * registration depends on at least one Connect invite existing for the
+   * phone (see Sentry CONNECT-ID-3F).
+   */
+  sendFlwInvite(args: {
+    organization_slug: string;
+    opportunity_id: string;       // actual opportunity UUID
+    phone_numbers: string[];      // e.g. ['+74260000100']
+  }): Promise<{
+    opportunity_id: string;
+    phone_numbers: string[];
+    status: 'queued';
+  }>;
+
   // Invoices
   listInvoices(args: { organization_slug: string; opportunity_id: string }): Promise<{ invoices: Invoice[] }>;
   getInvoice(args: { organization_slug: string; invoice_id: string }): Promise<Invoice>;

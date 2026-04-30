@@ -6,7 +6,7 @@ export interface CapabilityRoute {
 }
 
 /**
- * The 19 atoms exposed by `ace-connect`.
+ * The 20 atoms exposed by `ace-connect`.
  *
  * History:
  * - 0.8.0 shipped 14 atoms (Programs CRUD, Opportunities CRUD, activate,
@@ -27,7 +27,7 @@ export interface CapabilityRoute {
  * 'PLAYWRIGHT' to 'REST' one line at a time.
  */
 export type Capability =
-  // Authoring (9)
+  // Authoring (10)
   | 'create_program'
   | 'update_program'
   | 'create_opportunity'
@@ -37,6 +37,7 @@ export type Capability =
   | 'create_payment_unit'
   | 'activate_opportunity'
   | 'send_llo_invite'
+  | 'send_flw_invite'
   // Observation (10)
   | 'list_programs'
   | 'get_program'
@@ -60,6 +61,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   create_payment_unit:      { backend: 'PLAYWRIGHT', restTarget: 'POST /api/opportunities/{id}/payment-units/' },
   activate_opportunity:     { backend: 'PLAYWRIGHT', restTarget: 'POST /api/opportunities/{id}/activate/' },
   send_llo_invite:          { backend: 'PLAYWRIGHT', restTarget: 'POST /api/programs/{id}/invites/' },
+  send_flw_invite:          { backend: 'PLAYWRIGHT', restTarget: 'POST /api/opportunities/{id}/user-invites/' },
 
   // Observation
   list_programs:            { backend: 'PLAYWRIGHT', restTarget: 'GET /api/programs/' },

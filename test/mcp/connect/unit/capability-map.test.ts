@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { CAPABILITY_MAP } from '../../../../mcp/connect/capability-map.js';
 
 describe('connect capability map', () => {
-  it('has 19 atoms', () => {
-    expect(Object.keys(CAPABILITY_MAP)).toHaveLength(19);
+  it('has 20 atoms', () => {
+    expect(Object.keys(CAPABILITY_MAP)).toHaveLength(20);
   });
 
   it('every atom routes to PLAYWRIGHT or REST and has a documented restTarget', () => {
@@ -13,7 +13,7 @@ describe('connect capability map', () => {
     }
   });
 
-  it('has the nine authoring atoms', () => {
+  it('has the ten authoring atoms', () => {
     const authoring = [
       'create_program', 'update_program',
       'create_opportunity', 'update_opportunity',
@@ -22,6 +22,7 @@ describe('connect capability map', () => {
       'create_payment_unit',
       'activate_opportunity',
       'send_llo_invite',
+      'send_flw_invite',
     ];
     for (const a of authoring) expect(CAPABILITY_MAP).toHaveProperty(a);
   });

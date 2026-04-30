@@ -297,6 +297,15 @@ server.tool('connect_send_llo_invite',
   async (args) => runAtom(async () => (await client()).sendLloInvite(args))
 );
 
+server.tool('connect_send_flw_invite',
+  {
+    organization_slug: z.string(),
+    opportunity_id: z.string(),
+    phone_numbers: z.array(z.string().regex(/^\+\d+$/, 'Phone must start with + and contain only digits')).min(1),
+  },
+  async (args) => runAtom(async () => (await client()).sendFlwInvite(args))
+);
+
 server.tool('connect_list_invites',
   { organization_slug: z.string(), opportunity_id: z.string() },
   async (args) => runAtom(async () => (await client()).listInvites(args))
