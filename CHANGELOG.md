@@ -5,6 +5,21 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.39 — 2026-04-30
+
+**Doc cleanup after the FLW-invite + finalize work.** Pure docs; no
+code changes.
+
+### Changed
+
+- `CLAUDE.md` — `ace-connect` atom count `18 → 21` in three places.
+  Added the program-vs-opportunity invite distinction and the
+  `connect_finalize_opportunity` requirement before FLW invites.
+- `playbook/integrations/mobile-integration.md` —
+  `connect-claim-opp.yaml` recipe table marked **verified** (was
+  partial). Removed the stale "What's not yet built" entry that
+  flagged claim-opp as REPLACE_*.
+
 ## 0.10.38 — 2026-04-30
 
 **Closes the FLW-invite + claim-flow loop end-to-end. New
