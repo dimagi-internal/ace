@@ -288,8 +288,17 @@ export class AvdBackend {
 
   async captureUiDump(avdName: string): Promise<UiDumpResult> {
     const avd = await this.ensureAvdRunning(avdName);
-    await this.shell('adb', ['-s', avd.serial, 'shell', 'uiautomator', 'dump', '/sdcard/window_dump.xml']);
-    const xmlR = await this.shell('adb', ['-s', avd.serial, 'exec-out', 'cat', '/sdcard/window_dump.xml']);
+    // Pass an explicit /data/local/tmp path. The default `uiautomator dump`
+    // (no path arg) writes "/sdcard/window_dump.xml" per its CLI help, but
+    // on API 34 Pixel AVDs `/sdcard/` is a FUSE-backed user-space mount that
+    // the `shell` user cannot read back via `cat /sdcard/...` even though
+    // the dump command reports success. Verified live in
+    // turmeric-20260429-2330 Phase 5 / D-step probe (2026-04-30):
+    // /sdcard/ → "No such file or directory" on read,
+    // /data/local/tmp/ → file readable, dump valid.
+    const dumpPath = '/data/local/tmp/window_dump.xml';
+    await this.shell('adb', ['-s', avd.serial, 'shell', 'uiautomator', 'dump', dumpPath]);
+    const xmlR = await this.shell('adb', ['-s', avd.serial, 'exec-out', 'cat', dumpPath]);
     return { xml: xmlR.stdout, elements: this.parseHierarchy(xmlR.stdout) };
   }
 

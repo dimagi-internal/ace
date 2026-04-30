@@ -7,7 +7,12 @@ import type { ShellFn } from './avd.js';
 export type LlmFn = (system: string, user: string) => Promise<string>;
 
 export interface RecipeGeneratorOpts {
-  llm: LlmFn;
+  /**
+   * The LLM callback. If omitted, falls back to the built-in Anthropic
+   * Messages API client (reads `ANTHROPIC_API_KEY` from env). Throws
+   * `AnthropicLlmConfigError` on first generation if neither path is set up.
+   */
+  llm?: LlmFn;
   maestro?: MaestroBackend;
   shell?: ShellFn;
 }
@@ -40,12 +45,24 @@ End every module recipe with assertVisible of an end-state element.
 Output the YAML and nothing else. No code fences, no commentary.`;
 
 export class RecipeGenerator {
-  private llm: LlmFn;
+  private llm?: LlmFn;
   private maestro: MaestroBackend;
 
-  constructor(opts: RecipeGeneratorOpts) {
+  constructor(opts: RecipeGeneratorOpts = {}) {
     this.llm = opts.llm;
     this.maestro = opts.maestro ?? new MaestroBackend({ shell: opts.shell });
+  }
+
+  /**
+   * Resolve the LLM function lazily. If the caller passed an `llm` arg, use
+   * it; otherwise lazy-import the built-in Anthropic-backed `LlmFn`. We
+   * lazy-import to avoid module-load-time crashes on systems where
+   * `ANTHROPIC_API_KEY` is unset but the recipe generator is never invoked.
+   */
+  private async resolveLlm(): Promise<LlmFn> {
+    if (this.llm) return this.llm;
+    const { getDefaultAnthropicLlmFn } = await import('./anthropic-llm.js');
+    return getDefaultAnthropicLlmFn();
   }
 
   /**
@@ -81,7 +98,8 @@ export class RecipeGenerator {
     appKind: 'learn' | 'deliver';
   }): Promise<string> {
     const userPrompt = `App kind: ${args.appKind}\n\nModule to walk through: ${args.moduleName}\n\nFull app summary:\n${args.summary}`;
-    const yaml = await this.llm(SYSTEM_PROMPT, userPrompt);
+    const llm = await this.resolveLlm();
+    const yaml = await llm(SYSTEM_PROMPT, userPrompt);
 
     // Validate by writing to a temp file and running validateRecipe.
     const tmp = path.join(os.tmpdir(), `mob-gen-${Date.now()}-${Math.random().toString(36).slice(2)}.yaml`);
