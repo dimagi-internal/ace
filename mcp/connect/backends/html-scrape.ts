@@ -225,13 +225,26 @@ export function parsePaymentUnitTable(html: string): PaymentUnit[] {
   return out;
 }
 
-/** Parse a Django form errorlist into [..., ...]. Returns [] if no errors. */
+/**
+ * Parse Django form errors into a flat list. Returns [] if no errors.
+ *
+ * Supports both the legacy Django `<ul class="errorlist">` markup AND the
+ * crispy-tailwind `<p id="error_N_id_FIELD" class="text-red-500…">…</p>`
+ * markup that Connect's modern templates emit. Some forms in Connect
+ * render only one or the other depending on the crispy template pack
+ * the view uses.
+ */
 export function parseFormErrors(html: string): string[] {
   const out: string[] = [];
   for (const m of html.matchAll(/<ul class="errorlist[^"]*"[^>]*>([\s\S]*?)<\/ul>/g)) {
     for (const li of m[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)) {
       out.push(li[1].replace(/<[^>]+>/g, '').trim());
     }
+  }
+  // crispy-tailwind: <p id="error_N_id_FIELD" class="text-red-500…">…</p>
+  for (const m of html.matchAll(/<p[^>]+id=["']error_\d+_id_[a-zA-Z0-9_]+["'][^>]*>([\s\S]*?)<\/p>/g)) {
+    const txt = m[1].replace(/<[^>]+>/g, '').trim();
+    if (txt) out.push(txt);
   }
   return out;
 }
@@ -292,6 +305,18 @@ export function parseFormErrorsByField(html: string): Record<string, string[]> {
     if (errs.length) {
       out['__all__'] = (out['__all__'] ?? []).concat(errs);
     }
+  }
+
+  // 3. crispy-tailwind: <p id="error_N_id_FIELD" class="text-red-500…">…</p>.
+  //    The field name lives in the id, so we don't need the surrounding
+  //    div_id_<field> wrapper to scope it. (And the wrapper-based scan above
+  //    won't catch these because the <p> sits inside the wrapper but doesn't
+  //    contain a <ul class="errorlist">.)
+  for (const m of html.matchAll(/<p[^>]+id=["']error_\d+_id_([a-zA-Z0-9_]+)["'][^>]*>([\s\S]*?)<\/p>/g)) {
+    const field = m[1];
+    const text = m[2].replace(/<[^>]+>/g, '').trim();
+    if (!text) continue;
+    out[field] = (out[field] ?? []).concat([text]);
   }
 
   return out;

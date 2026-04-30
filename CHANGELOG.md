@@ -5,6 +5,66 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.36 — 2026-04-30
+
+**Form-error parser: support crispy-tailwind `<p id="error_N_id_FIELD">`
+markup. Document `is_setup_complete` gating in `connect-opp-setup`.**
+
+Live test of `connect_send_flw_invite` against the existing turmeric
+opps surfaced two issues:
+
+1. **Parser blind spot.** Connect's modern templates render form
+   validation errors as
+   `<p id="error_1_id_users" class="text-red-500…"><strong>…</strong></p>`,
+   not the legacy `<ul class="errorlist">`. Our `parseFormErrors` /
+   `parseFormErrorsByField` helpers only knew about the legacy markup,
+   so the FLW-invite atom (and any other form-POSTing atom that hits a
+   crispy-tailwind page) returned a generic
+   `"Connect rejected request: … no errorlist found"` instead of the
+   real reason. Now both helpers also pick up the modern pattern, with
+   the field name parsed from the `id="error_N_id_FIELD"` attribute.
+   Mixed-markup pages (legacy errorlist + modern `<p>` in the same
+   response) are also supported.
+
+2. **`is_setup_complete` gating.** The new atom is verified to behave
+   correctly on every existing turmeric opp (live POSTs return
+   structured `users: ["Please finish setting up the opportunity…"]`
+   field errors), but the success branch (302 redirect) requires the
+   target opp to be `is_setup_complete`. Per the upstream model that
+   requires `total_budget` + `end_date` + every PaymentUnit having
+   `max_total` AND `max_daily`. `connect_create_opportunity` doesn't
+   set `total_budget`, `connect_update_opportunity` doesn't accept it,
+   and `/add_budget_new_users` (an HTMX endpoint) needs its own atom
+   that doesn't exist yet. Documented in `connect-opp-setup` Step 8 so
+   the next time this is debugged the gap is in front of you, not
+   buried in run-time error parsing.
+
+### Changed
+
+- `mcp/connect/backends/html-scrape.ts` — `parseFormErrors` and
+  `parseFormErrorsByField` extended to recognize the crispy-tailwind
+  `<p id="error_N_id_FIELD" class="text-red-500…">…</p>` pattern that
+  modern Connect templates use. Backward-compatible with the legacy
+  `<ul class="errorlist">` markup; both can coexist in one response.
+- `skills/connect-opp-setup/SKILL.md` Step 8 — added explicit
+  `is_setup_complete` checklist (`total_budget`, `end_date`,
+  PaymentUnit `max_total`/`max_daily`) and documented the missing
+  budget atom that blocks live FLW-invite success.
+
+### Added
+
+- `scripts/probe-flw-invite.ts` — kept as a durable reproducer for the
+  live FLW-invite call against an existing opp. Iterates a list of
+  candidate opps, dumps the response body when a 200-with-errorlist
+  comes back, and reports the first one that succeeds (302).
+- 3 new unit tests in `test/mcp/connect/unit/html-scrape.test.ts`
+  covering the crispy-tailwind error pattern, the `<p id="error_…">`
+  field-keyed scan, and the legacy + modern mixed-markup case.
+
+### Test counts
+
+42 connect unit tests pass (was 39 in 0.10.35).
+
 ## 0.10.35 — 2026-04-29
 
 **New `connect_send_flw_invite` atom + `connect-opp-setup` Step 8 fix.**

@@ -70,6 +70,10 @@ describe('parseFormErrors', () => {
     const html = '<ul class="errorlist"><li>Name is required</li><li>Budget must be positive</li></ul>';
     expect(parseFormErrors(html)).toEqual(['Name is required', 'Budget must be positive']);
   });
+  it('extracts text from crispy-tailwind <p id="error_N_id_FIELD"> markup (live FLW invite shape)', () => {
+    const html = `<p id="error_1_id_users" class="text-red-500 text-xs italic"><strong>Please finish setting up the opportunity before inviting users.</strong></p>`;
+    expect(parseFormErrors(html)).toEqual(['Please finish setting up the opportunity before inviting users.']);
+  });
 });
 
 describe('parseFormErrorsByField', () => {
@@ -118,6 +122,33 @@ describe('parseFormErrorsByField', () => {
     `;
     expect(parseFormErrorsByField(html)).toEqual({
       learn_app: ['Enter a valid JSON.', 'This field is required.'],
+    });
+  });
+
+  it('keys errors by field for crispy-tailwind <p id="error_N_id_FIELD"> markup', () => {
+    const html = `
+      <div id="div_id_users" class="mb-3">
+        <textarea name="users"></textarea>
+        <p id="error_1_id_users" class="text-red-500 text-xs italic"><strong>Please finish setting up the opportunity before inviting users.</strong></p>
+      </div>
+    `;
+    expect(parseFormErrorsByField(html)).toEqual({
+      users: ['Please finish setting up the opportunity before inviting users.'],
+    });
+  });
+
+  it('handles mixed errorlist + crispy-tailwind markup in the same response', () => {
+    const html = `
+      <div id="div_id_api_key">
+        <ul class="errorlist"><li>Select a valid choice.</li></ul>
+      </div>
+      <div id="div_id_users">
+        <p id="error_1_id_users" class="text-red-500"><strong>Phone numbers must contain only digits.</strong></p>
+      </div>
+    `;
+    expect(parseFormErrorsByField(html)).toEqual({
+      api_key: ['Select a valid choice.'],
+      users: ['Phone numbers must contain only digits.'],
     });
   });
 
