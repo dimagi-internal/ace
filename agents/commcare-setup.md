@@ -34,6 +34,40 @@ retained for tooling that introspects agent metadata, not because Phase
 
 Execute these steps in order for the given opportunity:
 
+### Step 0: Nova preconditions (HARD GATE — run before anything else)
+
+Before dispatching any architect, verify Nova is authenticated **at the
+top-level session** and bound to the expected HQ project space. Skipping
+this step is the single biggest documented time-sink in Phase 2 — see the
+turmeric-20260429-2330 e2e: the architect produced apps under its own
+auth context that were invisible to the user's Nova account, every
+`upload_to_hq` failed with "App not found", and the apps had to be
+rebuilt from scratch (~30 min wasted, plus a re-run of `validate_app`).
+
+The architect-vs-user auth split is silent — no symptom appears until
+upload_to_hq, by which point the architect has already burned its budget.
+Catch it here:
+
+1. Call `mcp__plugin_nova_nova__get_hq_connection` (no args).
+2. Read the response. Three cases:
+   - `{ configured: true, domain.name === <ACE_HQ_DOMAIN> }` → **proceed.**
+   - `{ configured: false }` or the call returns "ask the user to open this
+     URL in their browser" → halt; the parent session is not authenticated
+     to Nova. Run `mcp__plugin_nova_nova__authenticate` and surface the
+     OAuth URL to the operator. Do not dispatch the architect until the
+     operator confirms they completed the OAuth flow and a re-run of
+     `get_hq_connection` returns `configured: true`.
+   - `{ configured: true, domain.name !== <ACE_HQ_DOMAIN> }` → halt;
+     Nova is bound to the wrong project space. Tell the operator to update
+     Nova's settings page (`https://commcare.app/settings`) so the active
+     HQ API key targets `<ACE_HQ_DOMAIN>`, then re-run.
+
+Apply the same gate at the start of any later subagent dispatch in this
+phase that calls Nova MCPs (e.g. coverage retries) — but the parent's
+auth state is what matters. Subagents inherit Nova's session because Nova
+runs as a single MCP server process per session; once the parent is
+authed, every subagent dispatch sees the same `get_hq_connection` result.
+
 ### Step 1: PDD to Apps (sequential)
 Invoke `pdd-to-learn-app`, then `pdd-to-deliver-app`.
 

@@ -25,16 +25,19 @@ import { z } from 'zod';
 
 import { RestBackend } from './connect/backends/rest.js';
 import { PlaywrightBackend } from './connect/backends/playwright.js';
+import { CommCareBackend } from './connect/backends/commcare.js';
 import { CompositeBackend } from './connect/backends/composite.js';
 import { PlaywrightSession } from './connect/auth/playwright-session.js';
 import { createLoggingProxy, defaultFileLogger } from './connect/logging.js';
-import { ConnectValidationError } from './connect/errors.js';
+import { ConnectValidationError, ConnectSilentRejectError } from './connect/errors.js';
 
 const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
+const cchqBaseUrl = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
 
 const rest = new RestBackend({ baseUrl });
 
 let playwright: PlaywrightBackend | undefined;
+let commcare: CommCareBackend | undefined;
 let session: PlaywrightSession | undefined;
 let initPromise: Promise<PlaywrightBackend> | undefined;
 
@@ -65,6 +68,10 @@ async function getPlaywrightBackend(): Promise<PlaywrightBackend> {
       csrfToken: session.getCsrfToken(),
       request: ctx.request,
     });
+    commcare = new CommCareBackend({
+      baseUrl: cchqBaseUrl,
+      request: ctx.request,
+    });
     return playwright;
   })();
   try { return await initPromise; }
@@ -77,6 +84,12 @@ async function client() {
     new CompositeBackend({ rest, playwright: pw }),
     defaultFileLogger(),
   );
+}
+
+async function commcareClient(): Promise<CommCareBackend> {
+  await getPlaywrightBackend();
+  if (!commcare) throw new Error('CommCare backend not initialized — getPlaywrightBackend should have wired it');
+  return commcare;
 }
 
 const json = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(v, null, 2) }] });
@@ -100,6 +113,12 @@ async function runAtom<T>(fn: () => Promise<T>): Promise<{ content: Array<{ type
     return json(result);
   } catch (err) {
     if (err instanceof ConnectValidationError) {
+      return { ...json(err.toJSON()), isError: true };
+    }
+    if (err instanceof ConnectSilentRejectError) {
+      // Surface non-retryable signal so callers stop the 3× retry pattern
+      // observed on payment_unit/create silent drops. Marked isError so MCP
+      // returns a clean tool-error to the caller, not a thrown exception.
       return { ...json(err.toJSON()), isError: true };
     }
     throw err;
@@ -332,6 +351,43 @@ server.tool('connect_list_invoices',
 server.tool('connect_get_invoice',
   { organization_slug: z.string(), invoice_id: z.string() },
   async (args) => runAtom(async () => (await client()).getInvoice(args))
+);
+
+// ── CommCare HQ (release pipeline) ───────────────────────────────
+//
+// These atoms talk to www.commcarehq.org, not connect.dimagi.com. They
+// share the Playwright session because Connect's OAuth-via-CCHQ login
+// flow leaves valid CCHQ cookies in the same BrowserContext. They
+// promote the ad-hoc /tmp/ace-release.js scripts the orchestrator was
+// regenerating on every Phase 2 run (turmeric-20260429-2330 spent ~10
+// minutes on this) into proper MCP atoms. See
+// skills/app-release/SKILL.md § Endpoints for the verified URL contract.
+
+server.tool('commcare_make_build',
+  {
+    domain: z.string(),
+    app_id: z.string(),
+    comment: z.string().optional(),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).makeBuild(args))
+);
+
+server.tool('commcare_release_build',
+  {
+    domain: z.string(),
+    app_id: z.string(),
+    build_id: z.string(),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).releaseBuild(args))
+);
+
+server.tool('commcare_download_ccz',
+  {
+    domain: z.string(),
+    app_id: z.string(),
+    build_id: z.string().optional(),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).downloadCcz(args))
 );
 
 await server.connect(new StdioServerTransport());

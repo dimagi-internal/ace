@@ -33,15 +33,54 @@ release flow + the App Editor permission prerequisite.
    That's the HQ project space ACE expects Nova to be bound to. Nova
    reads the actual HQ project space from whichever HQ API key is
    saved on its settings page (`https://commcare.app/settings`); ACE
-   cannot pass a domain at upload time. If `ACE_HQ_DOMAIN` is unset,
-   halt with a clear error and point the operator at `.env.tpl` and
-   `playbook/integrations/nova-integration.md`.
+   cannot pass a domain at upload time. If `ACE_HQ_DOMAIN` is unset or
+   empty, default to `connect-ace-prod` (the canonical CRISPR-Connect
+   project space) with an `[INFO]` note in the gate brief — do not
+   pause to ask. Only halt if the env loader returned an explicit
+   non-empty value that looks malformed.
 
    When invoking `/nova:upload_to_hq`, Nova prints "Confirms target
    domain with the user before uploading." Watch for that confirmation
    line — if Nova reports a domain other than `ACE_HQ_DOMAIN`, abort the
    upload (Nova's settings have the wrong API key bound) and surface the
    mismatch to the operator with a pointer to update Nova settings.
+
+2.5. **XML-escape lint.** Before uploading, walk every form on the Learn
+   and Deliver Nova apps and verify no field has unescaped XML
+   metacharacters in `label`, `hint`, or `option` text. Specifically,
+   look for raw `<`, `>`, or `&` (not part of a valid `&amp;`/`&lt;`/
+   `&gt;`/`&apos;`/`&quot;` entity, and not part of a markdown-fenced
+   code block). XForm XML is the upload target; an unescaped `<` will
+   pass Nova's own `validate_app` ({"success":true}) but get rejected
+   by CCHQ's build with `Error on line N column M: not well-formed`.
+
+   Procedure:
+
+   1. Load every form in both apps with
+      `mcp__plugin_nova_nova__get_form` (one call per `(moduleIndex,
+      formIndex)`).
+   2. For each field, scan `label`, `hint`, and option `label`s with the
+      regex:
+      ```
+      /(?:&(?!(amp|lt|gt|apos|quot|#\d+|#x[0-9a-f]+);))|<(?![/!?a-zA-Z])|(?<!\\)>(?!\s)/i
+      ```
+      (A simpler heuristic that catches the common cases: any literal
+      `<`, `>`, `&` that isn't part of a recognized XML entity.)
+   3. For each hit, fix via `mcp__plugin_nova_nova__edit_field` —
+      replace `<` with `&lt;`, `>` with `&gt;`, `&` (not in an entity)
+      with `&amp;`. Document each change in
+      `ACE/<opp-name>/app-summaries/{learn,deliver}-app-summary.md` under
+      a `## XML-escape lint fixes` section.
+   4. Note: this is a **class-level preventer**, not a one-time
+      workaround. The turmeric e2e hit it on q10 with `(<2kg)` /
+      `(>10kg)` in the field label. Filed as
+      `docs/issues/nova-validate-app-misses-xml-escapes.md`. Until Nova
+      auto-escapes on `add_field`/`edit_field` (or `validate_app`
+      rejects), every Phase 2 run does this lint.
+
+   If the lint is skipped (e.g. Nova MCP unauthed at this point), log
+   `app-deploy-xml-lint: skipped-nova-unauthed` in `state.yaml` and add
+   a `[WARN]` to the gate brief.
 
 3. **Upload Learn app.** Run:
 

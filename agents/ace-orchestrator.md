@@ -583,15 +583,37 @@ When starting fresh:
    3. Sort the list: files whose name contains the slug's first
       dash-delimited token (case-insensitive) come first; within each
       group, newest `modifiedTime` first.
-   4. Take the top 5 entries and present via `AskUserQuestion`. **Always
-      prompt**, even when exactly one file matches — domain-mismatched
-      PDDs would otherwise silently drive a wrong run. Include two
-      additional options:
+   4. **Strong-match auto-confirm** (added 2026-04-30, default + auto
+      modes only — review mode still always prompts). A candidate is
+      "strong" iff:
+      - the slug's first dash-delimited token is at least 4 characters
+        long (avoids matching on stop-tokens like "v1", "test", "tmp"),
+      - exactly **one** file in the PDDs folder contains that token
+        case-insensitively, and
+      - that token appears as a contiguous substring of the filename
+        (not split across word boundaries by Drive's title rendering).
+
+      When all three hold, skip the AskUserQuestion and use the
+      strong-match file directly. Log the auto-confirm in the run
+      transcript with the slug token, the matched filename, and the
+      file id, so an operator reviewing the run can see why no prompt
+      fired. The previous policy of "always prompt" was added to
+      defend against domain-mismatched PDDs, but a uniquely-named
+      match cannot be domain-mismatched — by construction, no other
+      candidate could have driven the run instead.
+
+      In **review** mode and any case where the strong-match conditions
+      do not hold (zero matches, multiple matches, short token), fall
+      through to step 5 (the prompt). The prompt is the safety net for
+      ambiguity, not a rubber-stamp on every run.
+   5. Take the top 5 entries and present via `AskUserQuestion` (skipped
+      by step 4 in the strong-match case). Include two additional
+      options:
       - **Other — paste a Drive doc ID** (for cases where the right
         document lives outside the PDDs folder).
       - **Paste the idea inline** (free text in the "Other" field).
       - **Abort** (do not create `state.yaml`; end the run cleanly).
-   5. Fetch the chosen file via `drive_read_file`, write the body to
+   6. Fetch the chosen file via `drive_read_file`, write the body to
       `ACE/<opp-name>/idea.md` via `drive_create_file`, continue.
 
    **(d) Fallback — no PDDs folder on Drive.** Prompt with just the

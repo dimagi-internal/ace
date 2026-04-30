@@ -155,3 +155,50 @@ export class ConnectValidationError extends ConnectError {
     };
   }
 }
+
+/**
+ * The server returned a 302 success-redirect for a write, but a follow-up
+ * read confirmed the entity was not persisted. Connect's payment_unit/create
+ * is the canonical case: a missing-or-malformed required form field
+ * (e.g. unmapped `required_deliver_units` checkbox value) yields a 302 to
+ * the opp detail page with a Django-messages "Invalid Data" cookie and
+ * **no created object**. Retrying with identical args reproduces the
+ * silent drop deterministically — there is nothing transient about it.
+ *
+ * Non-retryable. The agent should surface diagnostics (form fields posted,
+ * available checkbox-value mapping) and either fix the args or fall back
+ * to the documented Playwright workaround. See
+ * `skills/connect-opp-setup/SKILL.md § payment_unit silent drop`.
+ *
+ * Added 2026-04-30 after the turmeric e2e session retried 3× on this exact
+ * shape, blocking Phase 3 for ~5 minutes before the agent gave up.
+ */
+export class ConnectSilentRejectError extends ConnectError {
+  retryable = false;
+  constructor(
+    public path: string,
+    public posted: Record<string, string | string[]>,
+    public diagnostics: string,
+  ) {
+    super(
+      `Connect ${path} silently rejected the create: 302 redirect with no persisted entity. ` +
+        `This is non-retryable — same args will reproduce. ${diagnostics}`,
+    );
+  }
+
+  toJSON(): {
+    error: 'silent_reject';
+    message: string;
+    path: string;
+    posted: Record<string, string | string[]>;
+    retryable: false;
+  } {
+    return {
+      error: 'silent_reject',
+      message: this.message,
+      path: this.path,
+      posted: this.posted,
+      retryable: false,
+    };
+  }
+}
