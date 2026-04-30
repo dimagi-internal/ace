@@ -49,11 +49,12 @@ backend that drives `connect.dimagi.com` through an authenticated session
 |---|---|
 | `connect_activate_opportunity` | `llo-launch` |
 
-### Invites (2)
+### Invites (3)
 
 | Atom | Used by |
 |---|---|
-| `connect_send_llo_invite` | `llo-onboarding` |
+| `connect_send_llo_invite` | `llo-onboarding` (invite an LLO partner org to a program) |
+| `connect_send_flw_invite` | `connect-opp-setup` Step 8 (pre-invite ACE test phone to the new opp; opportunity-level, not program-level — POSTs `users` textarea to `/a/<org>/opportunity/<uuid>/user_invite/`) |
 | `connect_list_invites` | `llo-onboarding` (status check) |
 
 ### Invoices (2)

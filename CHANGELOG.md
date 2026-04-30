@@ -5,6 +5,56 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.35 — 2026-04-29
+
+**New `connect_send_flw_invite` atom + `connect-opp-setup` Step 8 fix.**
+
+The 20th `ace-connect` atom: invite one or more FLW phones to a Connect
+opportunity. Mirrors what the Connect web UI does at
+`/a/<org>/opportunity/<uuid>/user_invite/` — POSTs a newline-separated
+list of `+<country><digits>` phones to the `users` form field. The
+server queues `add_connect_users.delay(...)` async and 302s back to
+opportunity:detail; the atom returns `status: 'queued'`.
+
+This unblocks Phase 5 `app-screenshot-capture`: previously
+`connect-opp-setup` Step 8 documented `connect_send_llo_invite` as the
+test-user pre-invite call, but that atom invites LLO partner orgs to
+*programs* (different URL, different form, different semantics) and
+couldn't actually send an FLW phone invite. The result was that every
+new opp had its FLW invite either skipped (causing PersonalID
+registration to time out — Sentry CONNECT-ID-3F) or done by hand via
+the Connect UI.
+
+Step 8 now uses the new atom end-to-end with no manual fallback.
+
+### Added
+
+- `connect_send_flw_invite` atom (`mcp/connect/`):
+  - `capability-map.ts` — atom count 19 → 20
+  - `client.ts` — `sendFlwInvite` interface method
+  - `backends/composite.ts` — Playwright routing
+  - `backends/playwright.ts` — POST to user_invite/, parses 200-with-
+    errorlist responses via the existing `validationErrorFromHtml`
+    helper so callers get a structured `ConnectValidationError` (with
+    field-keyed errors like `users: ["Phone numbers must…"]`) on
+    setup-incomplete / ended / bad-format rejections instead of an
+    opaque 200 success
+  - `connect-server.ts` — `connect_send_flw_invite` MCP tool with zod
+    validation that each phone matches `^\+\d+$`
+- Unit tests: composite-routing test and updated capability-map atom
+  count assertion
+
+### Changed
+
+- `skills/connect-opp-setup/SKILL.md` Step 8 — switched from
+  `connect_send_llo_invite` (wrong atom) to `connect_send_flw_invite`,
+  removed the "operator may need to manually invite" carve-out, and
+  documented the `is_setup_complete` constraint that requires Step 8
+  to run after Steps 4–7.
+- `playbook/integrations/connect-api.md` — Invites section bumped
+  from 2 to 3, with usage notes on which atom invites partner orgs vs
+  FLWs.
+
 ## 0.10.34 — 2026-04-30
 
 **Producer-side verdict validation script + 2 new provisional eval rubrics + HQ-domain doctor check.**

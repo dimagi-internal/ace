@@ -857,6 +857,56 @@ export class PlaywrightBackend implements ConnectClient {
     return { invites: parseInvitesList(await listRes.text(), opportunity_id) };
   };
 
+  // ── FLW invites (opportunity-level) ──────────────────────────────
+  //
+  // Mirrors the Connect web UI form at
+  // `/a/<org>/opportunity/<uuid>/user_invite/`. View
+  // `commcare_connect.opportunity.views.opportunity_user_invite` consumes
+  // an `OpportunityUserInviteForm` whose only field is `users` — a
+  // textarea with one `+<country><digits>` phone per line. On success the
+  // server queues `add_connect_users.delay(...)` and 302-redirects to
+  // `opportunity:detail`. On validation failure (bad phone format, opp
+  // ended, opp not setup-complete) the server returns 200 with the form
+  // re-rendered.
+  sendFlwInvite: ConnectClient['sendFlwInvite'] = async (args) => {
+    const invitePath = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/user_invite/`;
+    const getRes = await this.opts.request.get(invitePath);
+    if (getRes.status() !== 200) throw await httpErrorFor(getRes, invitePath);
+    const csrf = extractFormCsrfToken(await getRes.text()) ?? this.opts.csrfToken;
+
+    const usersField = args.phone_numbers.join('\n');
+    const postRes = await this.opts.request.post(invitePath, {
+      form: {
+        csrfmiddlewaretoken: csrf,
+        users: usersField,
+        submit: 'Submit',
+      },
+      maxRedirects: 0,
+      headers: {
+        Referer: `${this.opts.baseUrl}${invitePath}`,
+        'X-CSRFToken': csrf,
+      },
+    });
+
+    // 302 → success (server queued add_connect_users.delay).
+    if (postRes.status() === 302) {
+      return {
+        opportunity_id: args.opportunity_id,
+        phone_numbers: args.phone_numbers,
+        status: 'queued' as const,
+      };
+    }
+
+    // 200 → form re-rendered with validation errors. Parse via
+    // validationErrorFromHtml so callers get the structured field map
+    // (e.g. `users: ["Phone numbers must contain only digits…"]`).
+    if (postRes.status() === 200) {
+      throw validationErrorFromHtml(await postRes.text(), `FLW invite rejected (${args.opportunity_id})`);
+    }
+
+    throw await httpErrorFor(postRes, invitePath, 'POST');
+  };
+
   // ── Invoices (stub — page shape not yet probed) ─────────────────
 
   listInvoices: ConnectClient['listInvoices'] = async ({ organization_slug, opportunity_id }) => {

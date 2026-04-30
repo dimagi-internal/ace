@@ -135,22 +135,42 @@ whichever PM-side org the opportunity targets).
    not because of an integrity / OTP / SMS issue, but because of this
    server-side timeout cascade.
 
-   - Tool: `connect_send_llo_invite`
-   - Args: `{ opportunity_id: <uuid from step 3>, phone: ${ACE_E2E_PHONE} }`
-   - Capture the returned invite URL.
+   - Tool: `connect_send_flw_invite` (NOT `connect_send_llo_invite` —
+     that one invites LLO orgs to programs, which is a different flow.
+     The FLW invite atom POSTs to
+     `/a/<org>/opportunity/<uuid>/user_invite/`.)
+   - Args:
+     ```
+     {
+       organization_slug: <slug from step 1>,
+       opportunity_id: <UUID from step 3>,
+       phone_numbers: [process.env.ACE_E2E_PHONE]
+     }
+     ```
+   - The atom returns `{ status: 'queued' }` because the server invokes
+     `add_connect_users.delay(...)` async. The actual `UserInvite` row +
+     SMS go out within a few seconds. Treat `queued` as success.
    - Persist to `ACE/<opp-name>/connect-state.yaml`:
      ```yaml
-     ace_test_user_invite_url: <invite URL>
+     ace_test_user_invited_phone: ${ACE_E2E_PHONE}
+     ace_test_user_invited_at: <ISO timestamp>
      ```
    - If `ACE/<opp-name>/connect-state.yaml` doesn't exist yet, create it.
      If it does, merge — don't overwrite other fields.
-   - Mark internally with `is_ace_test_user: true` so analytics filters
-     can exclude this user later.
 
-   **For first-time setup**, the operator may need to manually invite
-   `${ACE_E2E_PHONE}` to any Connect opportunity (typically a placeholder
-   in `connect-ace-prod`) once, before `/ace:mobile-bootstrap` runs. After
-   that, every ACE-created opp keeps the invite alive.
+   **Constraint:** the opportunity must be `is_setup_complete` before
+   the FLW invite atom can succeed (Connect's
+   `OpportunityUserInviteForm.clean_users` rejects with
+   `"Please finish setting up the opportunity before inviting users."`
+   otherwise). In practice this means Step 8 must run **after** Steps
+   4–7 (deliver units listed, verification flags set, payment unit
+   created). Don't move it earlier in the skill.
+
+   **First-time setup:** if no opp has ever been created for this
+   workstation's `${ACE_E2E_PHONE}`, the very first
+   `connect-opp-setup` run bootstraps the test-user invite. Subsequent
+   opps keep it warm. Pre-existing manual invites in `connect-ace-prod`
+   are no longer required.
 
 ## Archetypes
 
@@ -188,7 +208,7 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
   - `connect_set_verification_flags`
   - `connect_create_payment_unit`
   - `connect_get_opportunity` (verify after create)
-  - `connect_send_llo_invite`
+  - `connect_send_flw_invite` (Step 8 — pre-invite the ACE test user)
 
 ## Mode Behavior
 - **Auto:** Create + configure end-to-end, proceed
@@ -216,3 +236,4 @@ When `--dry-run` is active:
 | 2026-04-28 | Add Step 8: invite ACE test user (`${ACE_E2E_PHONE}`) and persist invite URL to `connect-state.yaml`; required for Phase 5 `app-screenshot-capture` to drive the claim-opp flow | ACE team (mobile-emulation) |
 | 2026-04-29 | Fix three silent-500 schema bugs in `connect_create_opportunity`: `hq_server` now accepts the human label "prod"/"india"/"eu" (resolves to int FK by parsing live form), `api_key` now takes the raw 40-char HQ key (registered with Connect transparently via `/opportunity/add_api_key/`), and `learn_app`/`deliver_app` now take bare HQ app ids (wrapped in the JSON form-value Connect requires by querying `/hq/applications/`). Also: `learn_app_description` is now required in the schema to match Connect's form. (0.10.1) | ACE team |
 | 2026-04-29 | Step 8 docs: clarify the test-user pre-invite is structurally required for PersonalID registration, not just the claim flow. Connect-id's `/users/start_configuration` synchronously calls `check_number_for_existing_invites` and the worker dies (SystemExit) when that lookup hangs for un-invited numbers — see Sentry `CONNECT-ID-3F` and paired CommCare NPE bug. ACE must keep `${ACE_E2E_PHONE}` invited to at least one Connect opp at all times. | ACE team (mobile-emulation) |
+| 2026-04-29 | Step 8 now uses `connect_send_flw_invite` (new atom in 0.10.34) instead of `connect_send_llo_invite`. The previous text incorrectly pointed at the LLO atom (which invites partner orgs to programs); FLW phone invites are an opportunity-level form at `/a/<org>/opportunity/<uuid>/user_invite/` and need their own atom. Step 8 is now executable end-to-end with no manual Connect-UI fallback. | ACE team (mobile-emulation) |

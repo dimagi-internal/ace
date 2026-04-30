@@ -41,6 +41,7 @@ export class CompositeBackend implements ConnectClient {
 
   // Invites
   sendLloInvite = (a: Parameters<ConnectClient['sendLloInvite']>[0]) => this.opts.playwright.sendLloInvite(a);
+  sendFlwInvite = (a: Parameters<ConnectClient['sendFlwInvite']>[0]) => this.opts.playwright.sendFlwInvite(a);
   listInvites = (a: Parameters<ConnectClient['listInvites']>[0]) => this.opts.playwright.listInvites(a);
 
   // Invoices

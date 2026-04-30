@@ -1,6 +1,6 @@
 {
   "name": "ace",
-  "version": "0.10.34",
+  "version": "0.10.35",
   "description": "AI Connect Engine - orchestrator for building Connect Opps using AI",
   "type": "module",
   "scripts": {
@@ -12,8 +12,7 @@
     "mcp:connect": "npx tsx mcp/connect-server.ts",
     "mcp:mobile": "npx tsx mcp/mobile-server.ts",
     "eval": "npx tsx test/eval/run-eval.ts",
-    "eval:idd": "npx tsx test/eval/run-eval.ts",
-    "validate:verdicts": "npx tsx scripts/validate-opp-verdicts.ts"
+    "eval:idd": "npx tsx test/eval/run-eval.ts"
   },
   "keywords": [],
   "author": "",
