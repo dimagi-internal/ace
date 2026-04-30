@@ -162,9 +162,27 @@ whichever PM-side org the opportunity targets).
    the FLW invite atom can succeed (Connect's
    `OpportunityUserInviteForm.clean_users` rejects with
    `"Please finish setting up the opportunity before inviting users."`
-   otherwise). In practice this means Step 8 must run **after** Steps
-   4–7 (deliver units listed, verification flags set, payment unit
-   created). Don't move it earlier in the skill.
+   otherwise). Per the upstream model, `is_setup_complete` requires
+   **all** of:
+   - `total_budget` truthy
+   - `start_date` truthy (auto-set to `today` on creation; usually fine)
+   - `end_date` truthy
+   - At least one `PaymentUnit`
+   - Every `PaymentUnit` has `max_total` AND `max_daily` set
+
+   This means Step 8 must run **after** Steps 4–7 AND the orchestrator
+   needs to ensure the budget + dates are wired:
+   - `end_date`: set via `connect_update_opportunity` (atom supports it).
+   - `total_budget`: set via Connect's `/add_budget_new_users` endpoint
+     (HTMX form). **No atom for this yet — see
+     `run_time_followups[budget-atom]` below.** Until that ships, the
+     operator may need to set `total_budget` once via the Connect web
+     UI, or this whole `is_setup_complete` chain can be punted to Phase
+     6 once an LLO accepts and adds budget themselves.
+   - `max_daily`: pass it explicitly to `connect_create_payment_unit`.
+     Otherwise it's null and trips `is_setup_complete`.
+
+   Don't move Step 8 earlier in the skill.
 
    **First-time setup:** if no opp has ever been created for this
    workstation's `${ACE_E2E_PHONE}`, the very first
