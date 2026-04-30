@@ -32,12 +32,20 @@ Activate the opportunity and notify LLOs that they are live.
    - If blocking issues remain, halt and notify admin group
 
 4. **Activate the opportunity in Connect** via
-   `connect_activate_opportunity` (ace-connect MCP, 0.8.1+):
+   `connect_activate_opportunity` (ace-connect MCP, 0.10.47+):
    - Pass `organization_slug` and `opportunity_id` from
-     `connect-setup/opportunity.md`. The atom flips the `active`
-     checkbox on the opportunity edit form.
+     `connect-setup/opportunity.md`. The atom hits
+     `POST /api/opportunities/<id>/activate/`, which validates that:
+     (a) the opp isn't already active, (b) the opp hasn't ended, and
+     (c) at least one PaymentUnit exists. Returns
+     `{ id, opportunity_id, name, active: true }` on success.
    - Verify by calling `connect_get_opportunity` and confirming
-     `status=active`.
+     `active=true`.
+   - **If ACE deferred the test-user pre-invite** during
+     `connect-opp-setup` (because the opp was inactive at that point),
+     fire `connect_send_flw_invite` here with `${ACE_E2E_PHONE}` —
+     `connect-state.yaml` will have
+     `ace_test_user_invite_pending_until_active: true` set.
    - Payment/tracking semantics are archetype-specific — see § Archetypes
 
 5. **Confirm delivery surface readiness (archetype-specific):** see
@@ -204,9 +212,12 @@ overwrite the prior file; prior launch records stay in
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
-- Connect (`ace-connect` MCP, 0.8.1+):
-  - `connect_activate_opportunity` — flip the opportunity to active
-  - `connect_get_opportunity` — verify post-activation status
+- Connect (`ace-connect` MCP, 0.10.47+):
+  - `connect_activate_opportunity` — REST `POST /api/opportunities/<id>/activate/`
+  - `connect_get_opportunity` — verify post-activation (HTML-driven read)
+  - `connect_send_flw_invite` — REST `POST /api/opportunities/<id>/invite_users/`
+    (only if `ace_test_user_invite_pending_until_active: true` in
+    `connect-state.yaml`)
 - Email: `email-communicator` skill (sends launch notifications)
 
 ## Mode Behavior
@@ -228,3 +239,4 @@ When `--dry-run` is active:
 | 2026-04-17 | Emit gate brief at `ACE/<opp-name>/gate-briefs/llo-launch.md` *before* activation so the highest-stakes gate is approved on readiness, not retrospectively on a launch record | ACE team (PM scout, internal-admin lens) |
 | 2026-04-20 | Added `## Archetypes` with per-archetype readiness checks, Connect activation semantics, launch email subject + body, and launch-record details. `focus-group` replaces "apps published" with "Session 1 venue + recording + participant recruitment confirmed" and subject flips to "Session 1 is on the calendar" (not "You Are Live" which is FLW-coded). `multi-stage` pins activation to Stage 1 only; each stage gets its own launch run, records preserved per-stage in `launch-record-stage-N.md`. Gate-brief checklist item 3 swaps in archetype-specific bullet | ACE team |
 | 2026-04-28 | Replace HITL workaround with `connect_activate_opportunity` + `connect_get_opportunity` (ace-connect 0.8.1) | ACE team |
+| 2026-04-30 | Switch `connect_activate_opportunity` to `POST /api/opportunities/<id>/activate/` (commcare-connect PR #1135). Server-side guards now reject activation if no PaymentUnits exist or the opp has ended; clearer errors than the silent edit-form fallback. Step 4 also gains a deferred FLW pre-invite path for ACE-driven dogfood runs whose `connect-opp-setup` deferred the invite until activation. (0.10.47) | ACE team |

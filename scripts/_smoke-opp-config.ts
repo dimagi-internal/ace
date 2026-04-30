@@ -28,7 +28,7 @@ try {
 
   console.log('2. getOpportunity (hydrate from /edit)');
   const opp = await backend.getOpportunity({ organization_slug: ORG, opportunity_id: OPP });
-  console.log(`   → name=${opp.name} status=${opp.status} learn_app=${opp.learn_app} hq_server=${opp.hq_server}`);
+  console.log(`   → name=${opp.name} active=${opp.active} learn_app=${opp.learn_app?.cc_app_id ?? '(none)'} learn_domain=${opp.learn_app?.cc_domain ?? '(none)'}`);
 
   console.log('3. listDeliverUnits');
   const dus = await backend.listDeliverUnits({ organization_slug: ORG, opportunity_id: OPP });

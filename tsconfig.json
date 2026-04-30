@@ -18,6 +18,8 @@
     "mcp/ocs/**/*.ts",
     "mcp/ocs-server.ts",
     "mcp/google-drive-server.ts",
+    "mcp/connect/**/*.ts",
+    "mcp/connect-server.ts",
     "test/**/*.ts",
     "scripts/*.ts",
     "vitest.config.ts"

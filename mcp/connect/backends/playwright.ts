@@ -1,11 +1,10 @@
 import type { APIRequestContext, APIResponse } from 'playwright';
 import type { ConnectClient } from '../client.js';
-import type { Program, Opportunity, Invite, Invoice, DeliverUnit, PaymentUnit } from '../types.js';
-import { HttpError, ConnectValidationError, ConnectSilentRejectError } from '../errors.js';
+import type { Opportunity } from '../types.js';
+import { HttpError, ConnectValidationError } from '../errors.js';
 import {
   extractFormCsrfToken,
   extractFormFieldValues,
-  extractUuidFromPath,
   parseDeliveryTypeOptions,
   parseProgramsList,
   parseOpportunitiesList,
@@ -28,9 +27,6 @@ function validationErrorFromHtml(html: string, contextLabel: string): ConnectVal
   if (Object.keys(fields).length === 0 && flat.length === 0) {
     return new ConnectValidationError([`${contextLabel}; no errorlist found`]);
   }
-  // Prefer the union: every flat error is also represented under a field
-  // (or __all__) in the structured map, so flat is a strict superset for
-  // human display but the structured map is what callers branch on.
   const messages = flat.length ? flat : Object.values(fields).flat();
   return new ConnectValidationError(messages, fields);
 }
@@ -48,70 +44,19 @@ async function httpErrorFor(res: APIResponse, urlPath: string, method: string = 
   return new HttpError(res.status(), `${method} ${urlPath}`, body, contentType);
 }
 
-/**
- * Parse all <option> elements out of a select/HTMX-fragment HTML blob.
- * Used for hq_server resolution, api_key dropdown, and learn/deliver app
- * dropdowns where the value attribute is the actual form payload.
- */
-function parseSelectOptions(html: string): Array<{ value: string; text: string }> {
-  const opts: Array<{ value: string; text: string }> = [];
-  for (const m of html.matchAll(/<option[^>]*value=["']([^"']*)["'][^>]*>([^<]*)<\/option>/g)) {
-    opts.push({ value: m[1], text: m[2].trim() });
+class NotImplementedError extends Error {
+  constructor(method: string) {
+    super(
+      `${method}: not implemented in the Playwright backend — composite should route this atom to REST.`,
+    );
   }
-  return opts;
 }
+const stub = (name: string) => () => { throw new NotImplementedError(name); };
 
 /**
- * Decode HTML entities in form-value attributes (Connect's apps endpoint
- * embeds JSON in option `value`s and HTML-encodes the quotes).
- */
-function htmlDecodeAttr(s: string): string {
-  return s.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&');
-}
-
-/**
- * Resolve a caller-friendly hq_server label ("prod" / "india" / "eu" or a
- * full URL) against Connect's <select name="hq_server"> options on the
- * create-opportunity form. Returns the int FK as string (e.g. "1") or
- * undefined if no match.
- *
- * Connect's Knockout-driven form select looks like:
- *   <option value="1">CommCareHQ (https://www.commcarehq.org)</option>
- *   <option value="2">India (https://india.commcarehq.org)</option>
- *   <option value="3">CommCareHQ EU (https://eu.commcarehq.org)</option>
- *
- * We parse it from the form HTML rather than hardcoding so this tracks
- * any Connect-side server-list changes without code edits.
- */
-function resolveHqServer(formHtml: string, label: string): string | undefined {
-  const sel = formHtml.match(/<select[^>]*name=["']hq_server["'][^>]*>([\s\S]*?)<\/select>/);
-  if (!sel) return undefined;
-  const opts = parseSelectOptions(sel[1]);
-  const lc = label.toLowerCase();
-  for (const o of opts) {
-    if (!o.value || o.value === '' || o.value === 'None') continue;
-    // direct int match
-    if (o.value === label) return o.value;
-    // URL appears in option text
-    if (o.text.toLowerCase().includes(lc)) return o.value;
-    // shorthand mapping
-    if (lc === 'prod' && /www\.commcarehq\.org/i.test(o.text)) return o.value;
-    if (lc === 'india' && /india\.commcarehq\.org/i.test(o.text)) return o.value;
-    if (lc === 'eu' && /eu\.commcarehq\.org/i.test(o.text)) return o.value;
-  }
-  return undefined;
-}
-
-/**
- * Build the truncated label Connect uses to display an HQ API key in the
- * api_key dropdown: first 4 + "..." + last 4 hex chars.
- */
-function truncatedKeyLabel(rawKey: string): string {
-  return `${rawKey.slice(0, 4)}...${rawKey.slice(-4)}`;
-}
-
-/**
- * Playwright HTTP-only Connect backend.
+ * Playwright HTTP-only Connect backend — handles atoms that don't yet have
+ * REST endpoints in commcare-connect (reads, edits, verification flags,
+ * invoices, deliver/payment-unit listings).
  *
  * For mutations: GET the form page → extract CSRF + prefilled values → POST
  * the merged set. Connect's edit and config pages use Knockout/Alpine for
@@ -120,22 +65,13 @@ function truncatedKeyLabel(rawKey: string): string {
  * For reads: GET the list/detail/table page → parse with helpers from
  * html-scrape.ts.
  *
- * Key URL conventions (confirmed live 2026-04-28 against march-demo
- * opportunity dea88661-1cd6-486b-ab25-48584bf61a8e):
- *   /a/<org>/program/                              — list
- *   /a/<org>/program/init/                         — create form (POST same URL)
- *   /a/<org>/program/<uuid>/edit                   — edit form
- *   /a/<org>/program/<uuid>/invite                 — invite an LLO org to a program
- *   /a/<org>/opportunity/                          — list
- *   /a/<org>/opportunity/init/                     — create form
- *   /a/<org>/opportunity/<uuid>/edit               — edit form (toggles active/is_test)
- *   /a/<org>/opportunity/<uuid>/verification_flags_config/  — verification toggles + formsets
- *   /a/<org>/opportunity/<uuid>/payment_unit/create         — payment-unit create form
- *   /a/<org>/opportunity/<uuid>/payment_unit_table/         — payment units list
- *   /a/<org>/opportunity/<uuid>/deliver_unit_table          — delivery units list (read-only)
- *
  * Concurrency: this class assumes the caller serializes calls (the MCP
  * server uses a promise-chain serializer) so CSRF rotation can't race.
+ *
+ * History: pre-0.10.47, this backend also handled the eight write atoms
+ * that PR #1135 covered (createProgram, createOpportunity, etc.). Those
+ * moved to `rest.ts` once the automation API shipped — saving ~600 lines
+ * of HTML-form scraping.
  */
 export class PlaywrightBackend implements ConnectClient {
   constructor(private opts: PlaywrightBackendOptions) {}
@@ -152,14 +88,9 @@ export class PlaywrightBackend implements ConnectClient {
   };
 
   getProgram: ConnectClient['getProgram'] = async ({ organization_slug, program_id }) => {
-    // Hydrate from the edit form. The list page only renders name and
-    // description (parseProgramsList zeroes the rest) so going through
-    // listPrograms returns a shell — same pattern as getOpportunity.
     const editPath = `/a/${organization_slug}/program/${program_id}/edit`;
     const editRes = await this.opts.request.get(editPath);
-    if (editRes.status() === 404) {
-      throw new HttpError(404, editPath, 'program not found');
-    }
+    if (editRes.status() === 404) throw new HttpError(404, editPath, 'program not found');
     if (editRes.status() !== 200) throw await httpErrorFor(editRes, editPath);
     const v = extractFormFieldValues(await editRes.text());
     return {
@@ -181,43 +112,6 @@ export class PlaywrightBackend implements ConnectClient {
     const res = await this.opts.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
     return { delivery_types: parseDeliveryTypeOptions(await res.text()) };
-  };
-
-  createProgram: ConnectClient['createProgram'] = async (args) => {
-    const formPath = `/a/${args.organization_slug}/program/init/`;
-    const formRes = await this.opts.request.get(formPath);
-    if (formRes.status() !== 200) throw await httpErrorFor(formRes, formPath);
-    const csrf = extractFormCsrfToken(await formRes.text()) ?? this.opts.csrfToken;
-
-    const postRes = await this.opts.request.post(formPath, {
-      form: {
-        csrfmiddlewaretoken: csrf,
-        name: args.name,
-        description: args.description,
-        delivery_type: String(args.delivery_type),
-        budget: String(args.budget),
-        currency: args.currency,
-        country: args.country,
-        start_date: args.start_date,
-        end_date: args.end_date,
-      },
-      maxRedirects: 0,
-      headers: {
-        Referer: `${this.opts.baseUrl}/a/${args.organization_slug}/program/`,
-        'X-CSRFToken': csrf,
-      },
-    });
-
-    if (postRes.status() === 302) {
-      const list = await this.listPrograms({ organization_slug: args.organization_slug, name: args.name });
-      const created = list.programs[0];
-      if (!created) throw new HttpError(500, formPath, `program create succeeded (302) but "${args.name}" not found`);
-      return { ...created, ...args };
-    }
-    if (postRes.status() === 200) {
-      throw validationErrorFromHtml(await postRes.text(), 'program create rejected');
-    }
-    throw await httpErrorFor(postRes, formPath, 'POST');
   };
 
   updateProgram: ConnectClient['updateProgram'] = async (args) => {
@@ -246,7 +140,6 @@ export class PlaywrightBackend implements ConnectClient {
         'X-CSRFToken': csrf,
       },
     });
-
     if (postRes.status() === 302) {
       return await this.getProgram({ organization_slug: args.organization_slug, program_id: args.program_id });
     }
@@ -268,17 +161,9 @@ export class PlaywrightBackend implements ConnectClient {
       name: s.name,
       short_description: s.short_description,
       description: '',
-      currency: '',
-      country: '',
-      hq_server: '',
-      api_key: '',
-      learn_app_domain: '',
-      learn_app: '',
-      learn_app_passing_score: 0,
-      deliver_app_domain: '',
-      deliver_app: '',
-      status: 'draft' as const,
       organization_slug,
+      managed: true,
+      active: false,
     }));
     if (name) opportunities = opportunities.filter((o) => o.name === name);
     return { opportunities };
@@ -287,13 +172,8 @@ export class PlaywrightBackend implements ConnectClient {
   getOpportunity: ConnectClient['getOpportunity'] = async ({ organization_slug, opportunity_id }) => {
     // Hydrate from BOTH the edit form (metadata + active toggle) AND the
     // detail page (app-wire fields). The edit form does NOT expose
-    // `learn_app` / `deliver_app` / `hq_server` / `api_key` /
-    // `learn_app_passing_score` — those fields only appear on the
-    // /init/ create form and the read-only detail page. Reading from
-    // the edit form alone (the pre-0.10.41 behavior) returned empty
-    // strings for those fields even when the opp was correctly wired,
-    // which caused a multi-hour false-blocker investigation in the
-    // 2026-04-30 turmeric-20260429-2330 run.
+    // `learn_app` / `deliver_app` — those fields only appear on the
+    // /init/ create form and the read-only detail page.
     const editPath = `/a/${organization_slug}/opportunity/${opportunity_id}/edit`;
     const detailPath = `/a/${organization_slug}/opportunity/${opportunity_id}/`;
     const [editRes, detailRes] = await Promise.all([
@@ -302,16 +182,12 @@ export class PlaywrightBackend implements ConnectClient {
     ]);
     if (editRes.status() !== 200) throw await httpErrorFor(editRes, editPath);
     const v = extractFormFieldValues(await editRes.text());
-    const isActive = v['active'] === 'on' || v['active'] === 'true' || v['active'] === '';  // checkbox `value=""` when no value attr but checked
+    const isActive = v['active'] === 'on' || v['active'] === 'true' || v['active'] === '';
 
-    // Parse HQ app ids out of the detail page. Connect renders them as
-    // `/a/<hq_domain>/apps/view/<app_id>/` links inside the opp detail.
-    // First match in the page = Learn app; second = Deliver app (the
-    // detail page lays them out in that order under "Apps" tiles).
-    let learnApp = '';
-    let deliverApp = '';
     let learnAppDomain = '';
+    let learnAppId = '';
     let deliverAppDomain = '';
+    let deliverAppId = '';
     if (detailRes.status() === 200) {
       const detailHtml = await detailRes.text();
       const matches = [...detailHtml.matchAll(/\/a\/([a-z0-9_-]+)\/apps\/(?:view\/)?([a-f0-9]{32})/g)];
@@ -321,8 +197,8 @@ export class PlaywrightBackend implements ConnectClient {
         const key = `${m[1]}/${m[2]}`;
         if (!seen.has(key)) { seen.add(key); uniq.push({ domain: m[1], appId: m[2] }); }
       }
-      if (uniq[0]) { learnApp = uniq[0].appId; learnAppDomain = uniq[0].domain; }
-      if (uniq[1]) { deliverApp = uniq[1].appId; deliverAppDomain = uniq[1].domain; }
+      if (uniq[0]) { learnAppId = uniq[0].appId; learnAppDomain = uniq[0].domain; }
+      if (uniq[1]) { deliverAppId = uniq[1].appId; deliverAppDomain = uniq[1].domain; }
     }
 
     return {
@@ -330,261 +206,21 @@ export class PlaywrightBackend implements ConnectClient {
       name: v['name'] ?? '',
       short_description: v['short_description'] ?? '',
       description: v['description'] ?? '',
+      organization_slug,
+      managed: true,
+      active: isActive,
       currency: v['currency'] ?? '',
       country: v['country'] ?? '',
-      hq_server: v['hq_server'] ?? '',  // edit form: empty (display-only field, not retrievable post-create)
-      api_key: v['api_key'] ?? '',  // same: empty post-create
-      learn_app_domain: v['learn_app_domain'] || learnAppDomain,
-      learn_app: v['learn_app'] || learnApp,
-      learn_app_passing_score: Number(v['learn_app_passing_score'] ?? 0),  // assessment-form scope, not opp-page; empty post-create
-      deliver_app_domain: v['deliver_app_domain'] || deliverAppDomain,
-      deliver_app: v['deliver_app'] || deliverApp,
-      status: isActive ? 'active' : 'draft',
-      organization_slug,
+      end_date: v['end_date'] ?? '',
+      learn_app: learnAppId
+        ? { cc_domain: learnAppDomain, cc_app_id: learnAppId, name: '' }
+        : undefined,
+      deliver_app: deliverAppId
+        ? { cc_domain: deliverAppDomain, cc_app_id: deliverAppId, name: '' }
+        : undefined,
     };
   };
 
-  /**
-   * Public atom: register an HQ API key with Connect and return the structured
-   * record (org slug, hq_server label/id, key id, truncated label).
-   *
-   * Resolves the caller's hq_server label exactly the same way createOpportunity
-   * does (so passing 'prod' / 'india' / 'eu' / a URL all work). If the key is
-   * already registered, returns the existing record (idempotent).
-   */
-  registerHqApiKey: ConnectClient['registerHqApiKey'] = async ({ organization_slug, hq_server, api_key }) => {
-    // Need the create-opportunity form to (a) resolve the hq_server label and
-    // (b) pull a CSRF that's scoped to the same form view the agent flow uses.
-    const formPath = `/a/${organization_slug}/opportunity/init/`;
-    const formRes = await this.opts.request.get(formPath);
-    if (formRes.status() !== 200) throw await httpErrorFor(formRes, formPath, 'GET');
-    const formHtml = await formRes.text();
-    const csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
-    const hqServerId = resolveHqServer(formHtml, hq_server);
-    if (!hqServerId) {
-      throw new ConnectValidationError(
-        [
-          `hq_server '${hq_server}' did not match any Connect-known server. ` +
-          `Use 'prod', 'india', 'eu', a server URL, or the int FK directly.`,
-        ],
-        { hq_server: ['Unknown server label'] },
-      );
-    }
-    const apiKeyId = await this.ensureHqApiKeyRegistered({
-      organization_slug,
-      hq_server_id: hqServerId,
-      api_key,
-      csrf,
-    });
-    return {
-      organization_slug,
-      hq_server: hq_server,
-      hq_server_id: hqServerId,
-      api_key_id: apiKeyId,
-      truncated_label: truncatedKeyLabel(api_key),
-    };
-  };
-
-  /**
-   * Register an HQ API key with Connect (if not already registered) and
-   * return its Connect-side int FK as string. Idempotent: if the key is
-   * already registered for this hq_server, just looks up and returns the
-   * existing id.
-   *
-   * Background: Connect's create-opportunity form takes `api_key` as an
-   * int FK to a Connect-internal `HQApiKey` record, NOT the raw 40-char
-   * HQ API key. The user has to register the key first via the Connect
-   * UI's "+" / "Add API Key" modal. We do that for the agent here.
-   */
-  private async ensureHqApiKeyRegistered(args: {
-    organization_slug: string;
-    hq_server_id: string;
-    api_key: string;
-    csrf: string;
-  }): Promise<string> {
-    const truncated = truncatedKeyLabel(args.api_key);
-    const listPath = `/users/api_keys/?hq_server=${args.hq_server_id}`;
-
-    // First check: is this key already registered? Connect shows it in
-    // the dropdown by truncated label.
-    let listRes = await this.opts.request.get(listPath, { headers: { 'HX-Request': 'true' } });
-    if (listRes.status() === 200) {
-      const opts = parseSelectOptions(await listRes.text());
-      const found = opts.find((o) => o.text === truncated && /^\d+$/.test(o.value));
-      if (found) return found.value;
-    }
-
-    // Not registered — POST /add_api_key/. Connect's HTMX endpoint returns
-    // 200 with a re-rendered form fragment regardless of new vs duplicate.
-    const addPath = `/a/${args.organization_slug}/opportunity/add_api_key/`;
-    const addRes = await this.opts.request.post(addPath, {
-      form: {
-        csrfmiddlewaretoken: args.csrf,
-        hq_server: args.hq_server_id,
-        api_key: args.api_key,
-      },
-      headers: {
-        Referer: `${this.opts.baseUrl}/a/${args.organization_slug}/opportunity/init/`,
-        'X-CSRFToken': args.csrf,
-        'HX-Request': 'true',
-      },
-    });
-    if (addRes.status() !== 200) throw await httpErrorFor(addRes, addPath, 'POST');
-
-    // Re-query the dropdown to pick up the freshly-registered key.
-    listRes = await this.opts.request.get(listPath, { headers: { 'HX-Request': 'true' } });
-    if (listRes.status() !== 200) throw await httpErrorFor(listRes, listPath, 'GET');
-    const opts = parseSelectOptions(await listRes.text());
-    const found = opts.find((o) => o.text === truncated && /^\d+$/.test(o.value));
-    if (!found) {
-      throw new HttpError(500, addPath, `add_api_key returned 200 but ${truncated} did not appear in /users/api_keys/?hq_server=${args.hq_server_id}`);
-    }
-    return found.value;
-  }
-
-  /**
-   * Resolve a bare HQ app id (e.g. `76fd5f0e2834454bb946bdf9ae9bff71`) to the
-   * JSON-encoded form value Connect's create-opportunity form expects:
-   *   `{"id": "<id>", "name": "<full app name>"}`
-   *
-   * Connect populates the learn_app/deliver_app dropdowns via an HTMX GET
-   * to /hq/applications/?hq_server=<id>&<field>=<domain>&api_key=<id>. The
-   * `value` attribute of each <option> is the full JSON string the form
-   * expects. We GET that fragment, parse the options, and find the one
-   * whose JSON `id` matches the caller's app id.
-   */
-  private async resolveHqAppValue(args: {
-    organization_slug: string;
-    hq_server_id: string;
-    domain: string;
-    api_key_id: string;
-    app_id: string;
-    domainField: 'learn_app_domain' | 'deliver_app_domain';
-  }): Promise<string> {
-    const path = `/hq/applications/?hq_server=${encodeURIComponent(args.hq_server_id)}&${args.domainField}=${encodeURIComponent(args.domain)}&api_key=${encodeURIComponent(args.api_key_id)}`;
-    const res = await this.opts.request.get(path, { headers: { 'HX-Request': 'true' } });
-    if (res.status() !== 200) throw await httpErrorFor(res, path, 'GET');
-    const opts = parseSelectOptions(await res.text());
-    const real: Array<{ value: string; text: string; id: string }> = [];
-    for (const o of opts) {
-      if (!o.value || o.value === 'None' || o.value === '') continue;
-      try {
-        const decoded = htmlDecodeAttr(o.value);
-        const parsed = JSON.parse(decoded);
-        if (parsed?.id) real.push({ value: decoded, text: o.text, id: parsed.id });
-      } catch { /* not JSON, skip */ }
-    }
-    const match = real.find((o) => o.id === args.app_id);
-    if (!match) {
-      const available = real.length
-        ? real.map((o) => `${o.id} (${o.text})`).join(', ')
-        : '(none — domain may have no apps, or HQ key may not have access)';
-      throw new ConnectValidationError([
-        `app id '${args.app_id}' not found in Connect's options for ${args.domainField}='${args.domain}'. Available: ${available}`,
-      ]);
-    }
-    return match.value;
-  }
-
-  createOpportunity: ConnectClient['createOpportunity'] = async (args) => {
-    const formPath = `/a/${args.organization_slug}/opportunity/init/`;
-    const formRes = await this.opts.request.get(formPath);
-    if (formRes.status() !== 200) throw await httpErrorFor(formRes, formPath, 'GET');
-    const formHtml = await formRes.text();
-    const csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
-
-    // 1. Resolve hq_server label → int FK by parsing the form's options.
-    const hqServerId = resolveHqServer(formHtml, args.hq_server);
-    if (!hqServerId) {
-      throw new ConnectValidationError([
-        `hq_server '${args.hq_server}' did not match any Connect-known server. Use 'prod', 'india', 'eu', a server URL, or the int FK directly.`,
-      ]);
-    }
-
-    // 2. Register the raw HQ API key with Connect (idempotent) → int FK.
-    const apiKeyId = await this.ensureHqApiKeyRegistered({
-      organization_slug: args.organization_slug,
-      hq_server_id: hqServerId,
-      api_key: args.api_key,
-      csrf,
-    });
-
-    // 3. Resolve learn/deliver app ids → JSON-encoded form values.
-    const learnAppValue = await this.resolveHqAppValue({
-      organization_slug: args.organization_slug,
-      hq_server_id: hqServerId,
-      domain: args.learn_app_domain,
-      api_key_id: apiKeyId,
-      app_id: args.learn_app,
-      domainField: 'learn_app_domain',
-    });
-    const deliverAppValue = await this.resolveHqAppValue({
-      organization_slug: args.organization_slug,
-      hq_server_id: hqServerId,
-      domain: args.deliver_app_domain,
-      api_key_id: apiKeyId,
-      app_id: args.deliver_app,
-      domainField: 'deliver_app_domain',
-    });
-
-    // 4. Refetch CSRF — Django one-shot tokens may have rotated after
-    //    the add_api_key POST.
-    const formRes2 = await this.opts.request.get(formPath);
-    if (formRes2.status() !== 200) throw await httpErrorFor(formRes2, formPath, 'GET');
-    const csrf2 = extractFormCsrfToken(await formRes2.text()) ?? this.opts.csrfToken;
-
-    const formData: Record<string, string> = {
-      csrfmiddlewaretoken: csrf2,
-      name: args.name,
-      short_description: args.short_description,
-      description: args.description,
-      currency: args.currency,
-      country: args.country,
-      hq_server: hqServerId,
-      api_key: apiKeyId,
-      learn_app_domain: args.learn_app_domain,
-      learn_app: learnAppValue,
-      learn_app_passing_score: String(args.learn_app_passing_score),
-      learn_app_description: args.learn_app_description ?? '',
-      deliver_app_domain: args.deliver_app_domain,
-      deliver_app: deliverAppValue,
-    };
-    if (args.program_id) formData['program'] = args.program_id;
-
-    const postRes = await this.opts.request.post(formPath, {
-      form: formData,
-      maxRedirects: 0,
-      headers: {
-        Referer: `${this.opts.baseUrl}/a/${args.organization_slug}/opportunity/`,
-        'X-CSRFToken': csrf2,
-      },
-    });
-
-    if (postRes.status() === 302) {
-      const loc = postRes.headers()['location'] ?? '';
-      const directId = extractUuidFromPath(loc, 'opportunity');
-      if (directId) {
-        return await this.getOpportunity({ organization_slug: args.organization_slug, opportunity_id: directId });
-      }
-      const list = await this.listOpportunities({ organization_slug: args.organization_slug, name: args.name });
-      if (!list.opportunities[0]) {
-        throw new HttpError(500, `POST ${formPath}`, `opportunity create succeeded (302) but "${args.name}" not found in list`);
-      }
-      return list.opportunities[0];
-    }
-    if (postRes.status() === 200) {
-      throw validationErrorFromHtml(await postRes.text(), 'opportunity create rejected');
-    }
-    throw await httpErrorFor(postRes, formPath, 'POST');
-  };
-
-  /**
-   * Update an opportunity by re-POSTing the /edit form. Re-uses the form's
-   * existing values and overrides only the fields the caller passes.
-   *
-   * `is_test` is a checkbox: send `is_test=on` to enable, OMIT the field to
-   * disable.
-   */
   updateOpportunity: ConnectClient['updateOpportunity'] = async (args) => {
     return this.postEditForm(args.organization_slug, args.opportunity_id, {
       name: args.name,
@@ -593,93 +229,6 @@ export class PlaywrightBackend implements ConnectClient {
       end_date: args.end_date,
       is_test: args.is_test,
     });
-  };
-
-  /**
-   * Activate an opportunity by re-POSTing the /edit form with `active=on`.
-   * (Connect has no /activate/ URL — activation is a checkbox toggle.)
-   */
-  activateOpportunity: ConnectClient['activateOpportunity'] = async ({ organization_slug, opportunity_id }) => {
-    await this.postEditForm(organization_slug, opportunity_id, { active: true });
-    return { ok: true, status: 'active' as const };
-  };
-
-  /**
-   * Finalize an opportunity. POSTs to /finalize/ with start_date,
-   * end_date, max_users; the form computes total_budget server-side.
-   *
-   * On success Connect 302-redirects to opportunity:detail. On
-   * validation errors it 200-renders the form with crispy-tailwind
-   * `<p id="error_N_id_FIELD">` messages — surfaced via the existing
-   * validationErrorFromHtml helper as a typed ConnectValidationError.
-   */
-  finalizeOpportunity: ConnectClient['finalizeOpportunity'] = async (args) => {
-    const path = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/finalize/`;
-    const getRes = await this.opts.request.get(path);
-    if (getRes.status() !== 200) throw await httpErrorFor(getRes, path);
-    const getBody = await getRes.text();
-    const csrfMatch = getBody.match(/name=["']csrfmiddlewaretoken["']\s+value=["']([^"']+)["']/);
-    const csrf = csrfMatch?.[1] ?? this.opts.csrfToken;
-
-    // The form's total_budget field is rendered `readonly` and the JS
-    // `oninput` on max_users computes it client-side as
-    // max_users × Σ(payment_unit.amount × payment_unit.max_total).
-    // ModelForm.save() persists whatever value is POSTed, so we have to
-    // mirror that JS computation here — passing 0 leaves total_budget=0
-    // and is_setup_complete stays False. Compute from existing PUs.
-    const pus = await this.listPaymentUnits({
-      organization_slug: args.organization_slug,
-      opportunity_id: args.opportunity_id,
-    });
-    const cumulativePerUser = pus.payment_units.reduce(
-      (sum, pu) => sum + (pu.amount ?? 0) * ((pu.max_total ?? 0)),
-      0,
-    );
-    const totalBudget = cumulativePerUser * args.max_users;
-
-    const postRes = await this.opts.request.post(path, {
-      form: {
-        csrfmiddlewaretoken: csrf,
-        start_date: args.start_date,
-        end_date: args.end_date,
-        max_users: String(args.max_users),
-        total_budget: String(totalBudget),
-      },
-      maxRedirects: 0,
-      headers: {
-        Referer: `${this.opts.baseUrl}${path}`,
-        'X-CSRFToken': csrf,
-      },
-    });
-
-    if (postRes.status() === 302) {
-      // Re-fetch to read the now-set total_budget. The detail page
-      // includes it in a stat tile; for the v1 atom we just re-read
-      // the opportunity via getOpportunity to keep the parsing burden
-      // off this method.
-      const opp = await this.getOpportunity({
-        organization_slug: args.organization_slug,
-        opportunity_id: args.opportunity_id,
-      });
-      // total_budget isn't in the Opportunity type today (the listing
-      // parser doesn't read it). Return what the caller asked for plus
-      // a server-confirmed sentinel; consumers can refresh detail if
-      // they need the canonical figure.
-      void opp;
-      return {
-        opportunity_id: args.opportunity_id,
-        start_date: args.start_date,
-        end_date: args.end_date,
-        max_users: args.max_users,
-        total_budget: totalBudget,
-      };
-    }
-
-    if (postRes.status() === 200) {
-      throw validationErrorFromHtml(await postRes.text(), `Finalize rejected (${args.opportunity_id})`);
-    }
-
-    throw await httpErrorFor(postRes, path, 'POST');
   };
 
   /** Internal: re-POST the opportunity edit form with a partial override. */
@@ -708,15 +257,14 @@ export class PlaywrightBackend implements ConnectClient {
       currency: current['currency'] ?? '',
       country: current['country'] ?? '',
     };
-    // Optional fields that may or may not be in the form
     if (current['users'] != null) form['users'] = current['users'];
     if (current['learn_level'] != null) form['learn_level'] = current['learn_level'];
     if (current['delivery_level'] != null) form['delivery_level'] = current['delivery_level'];
 
     // Checkboxes: `active` and `is_test`. To toggle ON, set `=on`. To toggle
     // OFF, OMIT the field. We preserve current state if not overridden.
-    const wantActive = overrides.active ?? (current['active'] === 'on' || current['active'] === '' && editHtml.match(/name="active"[^>]*checked/));
-    const wantTest = overrides.is_test ?? (current['is_test'] === 'on' || current['is_test'] === '' && editHtml.match(/name="is_test"[^>]*checked/));
+    const wantActive = overrides.active ?? (current['active'] === 'on' || (current['active'] === '' && /name="active"[^>]*checked/.test(editHtml)));
+    const wantTest = overrides.is_test ?? (current['is_test'] === 'on' || (current['is_test'] === '' && /name="is_test"[^>]*checked/.test(editHtml)));
     if (wantActive) form['active'] = 'on';
     if (wantTest) form['is_test'] = 'on';
 
@@ -737,13 +285,15 @@ export class PlaywrightBackend implements ConnectClient {
     throw await httpErrorFor(postRes, editPath, 'POST');
   }
 
-  // ── Verification flags / payment units / deliver units ────────────
+  // ── Verification flags ────────────────────────────────────────────
 
   /**
    * Set the top-level verification toggles. v1 supports the simple flags
    * (duplicate, gps, catchment_areas, location, form_submission_*); the
    * formset-driven per-deliver-unit checks and form-field rules are sent
    * if provided but we re-post existing formset rows verbatim if not.
+   *
+   * No REST endpoint for this yet; PR #1135 didn't ship verification flags.
    */
   setVerificationFlags: ConnectClient['setVerificationFlags'] = async ({ organization_slug, opportunity_id, flags }) => {
     const path = `/a/${organization_slug}/opportunity/${opportunity_id}/verification_flags_config/`;
@@ -755,8 +305,7 @@ export class PlaywrightBackend implements ConnectClient {
 
     const form: Record<string, string> = {
       csrfmiddlewaretoken: csrf,
-      // top-level toggles (checkboxes — set `=on` to enable, omit to disable)
-      // location is REQUIRED (number, default 10m)
+      // location is a number field (default 10m)
       location: current['location'] ?? '10',
       form_submission_start: flags.form_submission_start ?? current['form_submission_start'] ?? '',
       form_submission_end: flags.form_submission_end ?? current['form_submission_end'] ?? '',
@@ -780,16 +329,11 @@ export class PlaywrightBackend implements ConnectClient {
     ]) {
       if (current[k] != null) form[k] = current[k];
     }
-    // Replay every deliver_unit-N-* and form_json-N-* field.
     for (const [k, v] of Object.entries(current)) {
-      if (/^(deliver_unit|form_json)-\d+-/.test(k)) {
-        form[k] = v;
-      }
+      if (/^(deliver_unit|form_json)-\d+-/.test(k)) form[k] = v;
     }
-    // Re-apply check_attachments toggles if the caller supplied per-unit overrides
     if (flags.deliver_unit_checks) {
       for (const c of flags.deliver_unit_checks) {
-        // Find the row index that points at this deliver_unit_id
         for (const [k, v] of Object.entries(current)) {
           if (/^deliver_unit-\d+-deliver_unit$/.test(k) && Number(v) === c.deliver_unit_id) {
             const idx = k.match(/^deliver_unit-(\d+)-/)![1];
@@ -810,12 +354,10 @@ export class PlaywrightBackend implements ConnectClient {
       },
     });
     if (postRes.status() === 302 || postRes.status() === 200) {
-      // Heuristic: 200 with errorlist is failure
       if (postRes.status() === 200) {
-        const html = await postRes.text();
-        const errs = parseFormErrors(html);
-        if (errs.length) {
-          throw validationErrorFromHtml(html, 'verification flags rejected');
+        const respHtml = await postRes.text();
+        if (parseFormErrors(respHtml).length) {
+          throw validationErrorFromHtml(respHtml, 'verification flags rejected');
         }
       }
       return { ok: true };
@@ -830,130 +372,6 @@ export class PlaywrightBackend implements ConnectClient {
     return { deliver_units: parseDeliverUnitTable(await res.text()) };
   };
 
-  createPaymentUnit: ConnectClient['createPaymentUnit'] = async (args) => {
-    const formPath = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/payment_unit/create`;
-    const getRes = await this.opts.request.get(formPath);
-    if (getRes.status() !== 200) throw await httpErrorFor(getRes, formPath);
-    const formHtml = await getRes.text();
-    const csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
-
-    // The deliver-unit checkboxes use a different id namespace than
-    // `connect_list_deliver_units` returns. The list returns a small
-    // per-opp display id (1, 2, 3...); the form-checkbox `value` is the
-    // global Connect-side DB primary key (e.g. 5112). Connect's view
-    // reads the PK form-value, NOT the display id. If we POST the
-    // display id directly, Connect 302-redirects with a Django messages
-    // cookie of "Invalid Data" — silently dropping the create.
-    //
-    // Mitigation: parse this form's `<input name="required_deliver_units"
-    // value="5112">Vendor visit</label>` checkboxes and map our caller's
-    // display ids → form values by matching against the deliver-unit
-    // table list (same opp). We look up name first, then fall back to
-    // numeric position if the names diverge.
-    const checkboxValueByName = new Map<string, string>();
-    for (const m of formHtml.matchAll(
-      /<input[^>]*name="(?:required|optional)_deliver_units"[^>]*value="(\d+)"[^>]*>\s*([^<]+)/g,
-    )) {
-      const value = m[1];
-      const label = m[2].trim();
-      if (!checkboxValueByName.has(label)) checkboxValueByName.set(label, value);
-    }
-    const list = await this.listDeliverUnits({
-      organization_slug: args.organization_slug,
-      opportunity_id: args.opportunity_id,
-    });
-    const idToFormValue = new Map<number, string>();
-    for (const du of list.deliver_units) {
-      const v = checkboxValueByName.get(du.name);
-      if (v) idToFormValue.set(du.id, v);
-    }
-    const mapId = (id: number): string => {
-      const v = idToFormValue.get(id);
-      if (v) return v;
-      // Caller may have passed a form-value PK directly; if it's a
-      // value the form actually exposes, accept it. Otherwise surface
-      // a clear error rather than silent-drop on Connect's side.
-      const idStr = String(id);
-      if ([...checkboxValueByName.values()].includes(idStr)) return idStr;
-      throw new ConnectValidationError([
-        `deliver_unit_id ${id} did not resolve to any form-value in the create-payment_unit form. ` +
-        `Available deliver units (display id → form name → form value): ` +
-        `${list.deliver_units
-          .map((du) => `${du.id} → "${du.name}" → ${idToFormValue.get(du.id) ?? '?'}`)
-          .join('; ')}`,
-      ]);
-    };
-
-    const formData = new URLSearchParams();
-    formData.append('csrfmiddlewaretoken', csrf);
-    formData.append('name', args.name);
-    formData.append('description', args.description);
-    formData.append('amount', String(args.amount));
-    // max_total + max_daily are required by Connect's live form. The atom
-    // schema forces callers to provide them; we always emit them here.
-    formData.append('max_total', String(args.max_total));
-    formData.append('max_daily', String(args.max_daily));
-    if (args.start_date) formData.append('start_date', args.start_date);
-    if (args.end_date) formData.append('end_date', args.end_date);
-    for (const id of args.required_deliver_unit_ids) formData.append('required_deliver_units', mapId(id));
-    for (const id of args.optional_deliver_unit_ids ?? []) formData.append('optional_deliver_units', mapId(id));
-
-    const postRes = await this.opts.request.post(formPath, {
-      data: formData.toString(),
-      maxRedirects: 0,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Referer: `${this.opts.baseUrl}/a/${args.organization_slug}/opportunity/${args.opportunity_id}/`,
-        'X-CSRFToken': csrf,
-      },
-    });
-
-    if (postRes.status() === 302) {
-      // Connect redirects to the opp detail / payment_unit_table; re-list to find by name.
-      const list = await this.listPaymentUnits({
-        organization_slug: args.organization_slug,
-        opportunity_id: args.opportunity_id,
-      });
-      const created = list.payment_units.find((p) => p.name === args.name);
-      if (!created) {
-        // Silent drop: 302-redirect signals form-success but no entity persisted.
-        // Reproduces deterministically with identical args; surfacing as a
-        // typed non-retryable error stops the orchestrator from retrying 3×
-        // on what's structurally a malformed POST or backend-validation reject.
-        // Diagnostics include the form fields posted and the deliver-unit
-        // checkbox-value map so the operator can spot the missing/wrong field.
-        const posted: Record<string, string | string[]> = {
-          name: args.name,
-          amount: String(args.amount),
-          required_deliver_unit_ids: args.required_deliver_unit_ids.map(String),
-          ...(args.optional_deliver_unit_ids?.length
-            ? { optional_deliver_unit_ids: args.optional_deliver_unit_ids.map(String) }
-            : {}),
-          ...(args.max_total != null ? { max_total: String(args.max_total) } : {}),
-          ...(args.max_daily != null ? { max_daily: String(args.max_daily) } : {}),
-          ...(args.start_date ? { start_date: args.start_date } : {}),
-          ...(args.end_date ? { end_date: args.end_date } : {}),
-        };
-        const checkboxMap = [...checkboxValueByName.entries()]
-          .map(([name, value]) => `"${name}"→${value}`)
-          .join(', ');
-        const diagnostics =
-          `Form-checkbox values available on the create page: {${checkboxMap}}. ` +
-          `Likely causes: (a) a required form field not in this atom's payload (e.g. parent_payment_unit), ` +
-          `(b) a deliver-unit id that doesn't map to any checkbox value, ` +
-          `(c) Connect-side validation that's not exposed via the errorlist. ` +
-          `Inspect ${this.opts.baseUrl}/a/${args.organization_slug}/opportunity/${args.opportunity_id}/ ` +
-          `for Django-messages output, or refresh the form HTML and diff fields against this payload.`;
-        throw new ConnectSilentRejectError(formPath, posted, diagnostics);
-      }
-      return created;
-    }
-    if (postRes.status() === 200) {
-      throw validationErrorFromHtml(await postRes.text(), 'payment_unit create rejected');
-    }
-    throw await httpErrorFor(postRes, formPath, 'POST');
-  };
-
   listPaymentUnits: ConnectClient['listPaymentUnits'] = async ({ organization_slug, opportunity_id }) => {
     const path = `/a/${organization_slug}/opportunity/${opportunity_id}/payment_unit_table/`;
     const res = await this.opts.request.get(path);
@@ -961,102 +379,20 @@ export class PlaywrightBackend implements ConnectClient {
     return { payment_units: parsePaymentUnitTable(await res.text()) };
   };
 
-  // ── Invites (program-level) ──────────────────────────────────────
+  // ── Invites (read-only listing; create/accept moved to REST) ──────
 
-  sendLloInvite: ConnectClient['sendLloInvite'] = async (args) => {
-    const invitePath = `/a/${args.organization_slug}/program/${args.opportunity_id}/invite`;
-    const formPath = `/a/${args.organization_slug}/program/`;
-    const listRes = await this.opts.request.get(formPath);
-    if (listRes.status() !== 200) throw await httpErrorFor(listRes, formPath);
-    const csrf = extractFormCsrfToken(await listRes.text()) ?? this.opts.csrfToken;
-
-    const postRes = await this.opts.request.post(invitePath, {
-      form: {
-        csrfmiddlewaretoken: csrf,
-        organization: args.organization_name,
-      },
-      maxRedirects: 0,
-      headers: {
-        Referer: `${this.opts.baseUrl}${formPath}`,
-        'X-CSRFToken': csrf,
-      },
-    });
-    if (postRes.status() === 302 || postRes.status() === 200) {
-      return {
-        id: 'pending',
-        opportunity_id: args.opportunity_id,
-        organization_name: args.organization_name,
-        contact_email: args.contact_email,
-        status: 'pending' as const,
-      };
-    }
-    throw await httpErrorFor(postRes, invitePath, 'POST');
-  };
-
-  listInvites: ConnectClient['listInvites'] = async ({ organization_slug, opportunity_id }) => {
+  listInvites: ConnectClient['listInvites'] = async ({ organization_slug, program_id }) => {
     const listRes = await this.opts.request.get(`/a/${organization_slug}/program/`);
     if (listRes.status() !== 200) throw await httpErrorFor(listRes, `/a/${organization_slug}/program/`);
-    return { invites: parseInvitesList(await listRes.text(), opportunity_id) };
+    return { invites: parseInvitesList(await listRes.text(), program_id) };
   };
 
-  // ── FLW invites (opportunity-level) ──────────────────────────────
-  //
-  // Mirrors the Connect web UI form at
-  // `/a/<org>/opportunity/<uuid>/user_invite/`. View
-  // `commcare_connect.opportunity.views.opportunity_user_invite` consumes
-  // an `OpportunityUserInviteForm` whose only field is `users` — a
-  // textarea with one `+<country><digits>` phone per line. On success the
-  // server queues `add_connect_users.delay(...)` and 302-redirects to
-  // `opportunity:detail`. On validation failure (bad phone format, opp
-  // ended, opp not setup-complete) the server returns 200 with the form
-  // re-rendered.
-  sendFlwInvite: ConnectClient['sendFlwInvite'] = async (args) => {
-    const invitePath = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/user_invite/`;
-    const getRes = await this.opts.request.get(invitePath);
-    if (getRes.status() !== 200) throw await httpErrorFor(getRes, invitePath);
-    const csrf = extractFormCsrfToken(await getRes.text()) ?? this.opts.csrfToken;
-
-    const usersField = args.phone_numbers.join('\n');
-    const postRes = await this.opts.request.post(invitePath, {
-      form: {
-        csrfmiddlewaretoken: csrf,
-        users: usersField,
-        submit: 'Submit',
-      },
-      maxRedirects: 0,
-      headers: {
-        Referer: `${this.opts.baseUrl}${invitePath}`,
-        'X-CSRFToken': csrf,
-      },
-    });
-
-    // 302 → success (server queued add_connect_users.delay).
-    if (postRes.status() === 302) {
-      return {
-        opportunity_id: args.opportunity_id,
-        phone_numbers: args.phone_numbers,
-        status: 'queued' as const,
-      };
-    }
-
-    // 200 → form re-rendered with validation errors. Parse via
-    // validationErrorFromHtml so callers get the structured field map
-    // (e.g. `users: ["Phone numbers must contain only digits…"]`).
-    if (postRes.status() === 200) {
-      throw validationErrorFromHtml(await postRes.text(), `FLW invite rejected (${args.opportunity_id})`);
-    }
-
-    throw await httpErrorFor(postRes, invitePath, 'POST');
-  };
-
-  // ── Invoices (stub — page shape not yet probed) ─────────────────
+  // ── Invoices (stub — page shape not yet probed) ───────────────────
 
   listInvoices: ConnectClient['listInvoices'] = async ({ organization_slug, opportunity_id }) => {
     const path = `/a/${organization_slug}/opportunity/${opportunity_id}/invoices/`;
     const res = await this.opts.request.get(path);
-    if (res.status() !== 200) {
-      return { invoices: [] };
-    }
+    if (res.status() !== 200) return { invoices: [] };
     return { invoices: [] };
   };
 
@@ -1073,4 +409,15 @@ export class PlaywrightBackend implements ConnectClient {
       status: 'draft',
     };
   };
+
+  // ── Stubs (REST-driven; never invoked in composite) ───────────────
+
+  createProgram = stub('createProgram') as ConnectClient['createProgram'];
+  createOpportunity = stub('createOpportunity') as ConnectClient['createOpportunity'];
+  createPaymentUnit = stub('createPaymentUnit') as ConnectClient['createPaymentUnit'];
+  createPaymentUnits = stub('createPaymentUnits') as ConnectClient['createPaymentUnits'];
+  activateOpportunity = stub('activateOpportunity') as ConnectClient['activateOpportunity'];
+  sendLloInvite = stub('sendLloInvite') as ConnectClient['sendLloInvite'];
+  acceptProgramApplication = stub('acceptProgramApplication') as ConnectClient['acceptProgramApplication'];
+  sendFlwInvite = stub('sendFlwInvite') as ConnectClient['sendFlwInvite'];
 }

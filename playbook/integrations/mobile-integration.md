@@ -75,7 +75,7 @@ have been live-verified against CommCare 2.62.0 on `ACE_Pixel_API_34_PS`.
 |---|---|---|
 | `connect-register-to-otp.yaml` | **verified** (0.10.17) | `${COUNTRY_CODE}`, `${PHONE_LOCAL}` |
 | `connect-register-from-otp.yaml` | **verified** (0.10.17) | `${NAME}`, `${BACKUP_CODE}`, `${PIN}` |
-| `connect-claim-opp.yaml` | **verified** (0.10.38) — driven end-to-end against `+74260000100` invited via `connect_send_flw_invite` after `connect_finalize_opportunity` | `${OPP_NAME}`, `${PIN}` |
+| `connect-claim-opp.yaml` | **verified** (0.10.38) — driven end-to-end against `+74260000100` invited via `connect_send_flw_invite` once the opp is active (the previous "create → finalize" two-step collapsed into a single `connect_create_opportunity` since 0.10.47) | `${OPP_NAME}`, `${PIN}` |
 | `connect-login.yaml` | scaffold (REPLACE_*) | — |
 
 Naming note: the `to-otp` / `from-otp` filenames are historical. Today's

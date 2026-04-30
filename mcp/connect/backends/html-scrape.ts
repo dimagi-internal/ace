@@ -110,25 +110,35 @@ export function parseOpportunitiesList(html: string): Pick<Opportunity, 'id' | '
 }
 
 /**
- * Parse Connect's per-program invites list. Row format depends on the
- * member-table HTMX endpoint; for now we parse `<tr>` rows with org slugs.
+ * Parse Connect's per-program invites list (legacy HTML table; the REST
+ * `GET /api/programs/{id}/applications/` endpoint hasn't shipped yet).
+ *
+ * The row carries the program-application UUID in `data-invite-id` /
+ * `data-membership-id`, the LLO org slug in a `data-org` cell, and a
+ * status badge. Status values map to `ProgramApplicationStatus`.
  */
-export function parseInvitesList(html: string, opportunityIdOrProgramId: string): Invite[] {
+export function parseInvitesList(html: string, programId: string): Invite[] {
   const out: Invite[] = [];
   const rowRegex = /<tr[^>]*data-(?:invite|membership)-id="([a-f0-9-]{36})"[^>]*>([\s\S]*?)<\/tr>/g;
   for (const m of html.matchAll(rowRegex)) {
     const id = m[1];
     const row = m[2];
     const orgMatch = row.match(/<td[^>]*data-org[^>]*>([\s\S]*?)<\/td>|class="org-name"[^>]*>([\s\S]*?)</);
-    const emailMatch = row.match(/<td[^>]*data-email[^>]*>([\s\S]*?)<\/td>|<a href="mailto:([^"]+)"/);
     const statusMatch = row.match(/data-status="([^"]+)"|class="badge[^"]*"[^>]*>([\s\S]*?)</);
+    const rawStatus = (statusMatch?.[1] ?? statusMatch?.[2] ?? 'invited')
+      .replace(/<[^>]+>/g, '')
+      .trim()
+      .toLowerCase();
+    const status = (['invited', 'applied', 'accepted', 'declined'] as const).includes(
+      rawStatus as 'invited' | 'applied' | 'accepted' | 'declined',
+    )
+      ? (rawStatus as Invite['status'])
+      : 'invited';
     out.push({
       id,
-      opportunity_id: opportunityIdOrProgramId,
-      organization_name: (orgMatch?.[1] ?? orgMatch?.[2] ?? '').replace(/<[^>]+>/g, '').trim(),
-      contact_email: emailMatch?.[1] ?? emailMatch?.[2] ?? '',
-      status: ((statusMatch?.[1] ?? statusMatch?.[2] ?? 'pending')
-        .replace(/<[^>]+>/g, '').trim().toLowerCase() as Invite['status']),
+      program_id: programId,
+      organization: (orgMatch?.[1] ?? orgMatch?.[2] ?? '').replace(/<[^>]+>/g, '').trim(),
+      status,
     });
   }
   return out;
@@ -216,8 +226,8 @@ export function parsePaymentUnitTable(html: string): PaymentUnit[] {
           max_total: Number.isFinite(max_total) ? max_total : undefined,
           start_date: cells[2] || undefined,
           end_date: cells[3] || undefined,
-          required_deliver_unit_ids: [],
-          optional_deliver_unit_ids: [],
+          required_deliver_units: [],
+          optional_deliver_units: [],
         });
       }
     }

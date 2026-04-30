@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { PlaywrightSession } from '../mcp/connect/auth/playwright-session.js';
-import { PlaywrightBackend } from '../mcp/connect/backends/playwright.js';
+import { RestBackend } from '../mcp/connect/backends/rest.js';
 
 const BASE_URL = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
 const ORG = 'ai-demo-space';
@@ -59,7 +59,7 @@ async function setOppBudget(ctx: { request: import('playwright').APIRequestConte
   return true;
 }
 
-async function tryInvite(backend: PlaywrightBackend, oppId: string): Promise<boolean> {
+async function tryInvite(backend: RestBackend, oppId: string): Promise<boolean> {
   console.log(`\n--- ${oppId} ---`);
   try {
     const result = await backend.sendFlwInvite({
@@ -88,37 +88,18 @@ async function main() {
     hqPassword: process.env.ACE_HQ_PASSWORD,
   });
   const ctx = await session.getContext();
-  const backend = new PlaywrightBackend({
+  const backend = new RestBackend({
     baseUrl: BASE_URL,
     csrfToken: session.getCsrfToken(),
     request: ctx.request,
   });
-
-  // 249ad8fe has a PaymentUnit (id=1, max_total=20). Finalize it to set
-  // start_date + end_date + max_users (which auto-computes total_budget).
-  const TARGET = '249ad8fe-fd4f-49c5-8808-93b1cb016860';
-  console.log('\n--- finalizing target opp ---');
-  try {
-    const fin = await backend.finalizeOpportunity({
-      organization_slug: ORG,
-      opportunity_id: TARGET,
-      start_date: new Date().toISOString().slice(0, 10),
-      end_date: '2026-09-30',
-      max_users: 5,
-    });
-    console.log('finalize ok:', JSON.stringify(fin));
-  } catch (err) {
-    if (err instanceof Error) {
-      console.log('finalize rejected:', err.message);
-      const fe = (err as { fieldErrors?: Record<string, string[]> }).fieldErrors;
-      if (fe) console.log('finalize field errors:', JSON.stringify(fe));
-    } else {
-      console.log('finalize rejected:', err);
-    }
-  }
+  // Note: pre-0.10.46 this script also exercised `finalizeOpportunity`.
+  // Connect's automation API (PR #1135) folds that into `createOpportunity`,
+  // so finalize is gone — opps now have start_date/end_date/total_budget at
+  // create time and only need to be activated before they accept FLW invites.
 
   let successOpp: string | null = null;
-  for (const oppId of [TARGET, ...OPP_IDS.filter((o) => o !== TARGET)]) {
+  for (const oppId of OPP_IDS) {
     const ok = await tryInvite(backend, oppId);
     if (ok) { successOpp = oppId; break; }
   }
@@ -135,61 +116,6 @@ async function main() {
 
 main().catch((e) => { console.error(e); process.exit(2); });
 
-// Old per-opp diagnostic kept below for reference; unused.
-async function _legacyDiagnose() {
-  const session = new PlaywrightSession({
-    baseUrl: BASE_URL,
-    hqUsername: process.env.ACE_HQ_USERNAME,
-    hqPassword: process.env.ACE_HQ_PASSWORD,
-  });
-  const ctx = await session.getContext();
-  const backend = new PlaywrightBackend({
-    baseUrl: BASE_URL,
-    csrfToken: session.getCsrfToken(),
-    request: ctx.request,
-  });
-  const invitePath = `/a/${ORG}/opportunity/${OPP_IDS[0]}/user_invite/`;
-  const getRes = await ctx.request.get(invitePath);
-  console.log(`GET ${invitePath} → ${getRes.status()}`);
-  const getBody = await getRes.text();
-  const csrfMatch = getBody.match(/name=["']csrfmiddlewaretoken["']\s+value=["']([^"']+)["']/);
-  const csrf = csrfMatch?.[1] ?? session.getCsrfToken();
-  console.log(`csrf: ${csrf?.slice(0, 16)}...`);
-
-  // Log form fields from GET response so we know the expected shape
-  const inputs = Array.from(getBody.matchAll(/<(?:input|textarea)[^>]*name=["']([^"']+)["'][^>]*>/g)).map((m) => m[1]);
-  console.log('form fields on GET page:', inputs);
-
-  const postRes = await ctx.request.post(invitePath, {
-    form: {
-      csrfmiddlewaretoken: csrf,
-      users: PHONE,
-    },
-    maxRedirects: 0,
-    headers: {
-      Referer: `${BASE_URL}${invitePath}`,
-      'X-CSRFToken': csrf,
-    },
-  });
-  console.log(`POST ${invitePath} → ${postRes.status()}`);
-  if (postRes.status() === 200) {
-    const body = await postRes.text();
-    // Look for typical Django form error markers
-    const errorlist = body.match(/<ul[^>]*class=["'][^"']*errorlist[^"']*["'][^>]*>([\s\S]*?)<\/ul>/g);
-    console.log('errorlist matches:', errorlist?.length ?? 0);
-    if (errorlist) errorlist.forEach((e) => console.log('  ', e.replace(/\s+/g, ' ').slice(0, 300)));
-    // Look for any error/alert/message divs
-    const alerts = body.match(/class=["'][^"']*(error|alert|invalid)[^"']*["']/gi);
-    console.log('error-class hits:', alerts?.slice(0, 10));
-    // Save full body for inspection
-    fs.writeFileSync('/tmp/flw-invite-resp.html', body);
-    console.log('full body → /tmp/flw-invite-resp.html');
-  } else if (postRes.status() === 302) {
-    console.log('SUCCESS: 302 redirect (server queued add_connect_users)');
-    console.log('Location:', postRes.headers()['location']);
-  } else {
-    console.log('UNEXPECTED:', postRes.status());
-    console.log((await postRes.text()).slice(0, 500));
-  }
-
-}
+// Pre-0.10.46 this script also drove the legacy `/a/<org>/opportunity/<uuid>/user_invite/`
+// HTML form directly. The REST endpoint `POST /api/opportunities/<id>/invite_users/`
+// supersedes it; both use the same `add_connect_users.delay()` task on the server.

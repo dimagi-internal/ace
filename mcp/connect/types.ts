@@ -1,49 +1,81 @@
-// Connect domain types. Field names mirror what live Connect templates use
-// (snake_case at the HTTP boundary). Confirmed via live probes 2026-04-28
-// against /a/<org>/program/init/, /opportunity/init/, and the per-opportunity
-// config endpoints (verification_flags_config, payment_unit/create,
-// deliver_unit_table, user_invite).
+// Connect domain types. Field names mirror the Connect REST API
+// (`/api/programs/`, `/api/opportunities/`, …) introduced in commcare-connect
+// PR #1135 (2026-04-30): the automation endpoints that replaced the previous
+// HTML-form-driven authoring flow.
 
 export interface Program {
-  id: string;
+  id: string;                          // UUID (Connect's `program_id`)
   name: string;
+  slug?: string;
   description: string;
-  delivery_type: number;
+  delivery_type: number | string;      // slug or int FK; the API accepts either
   budget: number;
-  currency: string;
+  currency: string;                    // ISO 4217 code
   country: string;
-  start_date: string;
-  end_date: string;
+  start_date: string;                  // YYYY-MM-DD
+  end_date: string;                    // YYYY-MM-DD
   organization_slug?: string;
 }
 
 export interface Opportunity {
-  id: string;
+  id: string;                          // UUID (`opportunity_id`)
   program_id?: string;
   name: string;
   short_description: string;
   description: string;
-  currency: string;
-  country: string;
-  hq_server: string;
-  api_key: string;
-  learn_app_domain: string;
-  learn_app: string;
-  learn_app_description?: string;
-  learn_app_passing_score: number;
-  deliver_app_domain: string;
-  deliver_app: string;
-  status: 'draft' | 'active' | 'completed' | 'cancelled';
-  organization_slug?: string;
+  organization_slug?: string;          // LLO org executing the opp (`organization` in API)
+  managed: boolean;                    // always true for ACE-created opps
+  start_date?: string;
+  end_date?: string;
+  total_budget?: number;
+  is_test?: boolean;
+  active: boolean;
+  currency?: string;
+  country?: string;
+  // App snapshots — populated by `create_opportunity` / `get_opportunity`.
+  // Empty `learn_modules` / `deliver_units` arrays mean the HQ sync hasn't
+  // run yet (or was rolled back).
+  learn_app?: AppSnapshot;
+  deliver_app?: AppSnapshot;
+}
+
+export interface AppSnapshot {
+  cc_domain: string;                   // HQ project space slug
+  cc_app_id: string;                   // bare HQ app id (32-char hex)
+  name: string;                        // human app name (resolved by Connect from HQ)
+  learn_modules?: LearnModuleSnapshot[];
+  deliver_units?: DeliverUnitSnapshot[];
+}
+
+export interface LearnModuleSnapshot {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  time_estimate: number;
+}
+
+export interface DeliverUnitSnapshot {
+  id: number;
+  slug: string;
+  name: string;
+}
+
+export type ProgramApplicationStatus = 'invited' | 'applied' | 'accepted' | 'declined';
+
+export interface ProgramApplication {
+  program_application_id: string;      // UUID
+  program: string;                     // program UUID
+  organization: string;                // LLO org slug
+  status: ProgramApplicationStatus;
 }
 
 /**
- * Verification flags as exposed by /opportunity/<id>/verification_flags_config/.
- * Each top-level toggle, plus optional formset rows for per-deliver-unit checks
- * and per-form-field rules. v1 surfaces the top-level toggles only — caller can
- * pass `deliver_unit_checks` / `form_field_rules` arrays for advanced cases but
- * the formset serialization is best-effort and will fall back to leaving prior
- * values if the array shape doesn't match Connect's expectations.
+ * Verification flags as exposed by the legacy
+ * `/opportunity/<id>/verification_flags_config/` HTML form. This page is NOT
+ * part of PR #1135's automation API — `setVerificationFlags` still goes
+ * through the session-cookie HTML POST. v1 surfaces the top-level toggles
+ * only; per-deliver-unit checks and per-form-field rules are best-effort.
  */
 export interface VerificationFlags {
   duplicate?: boolean;
@@ -64,34 +96,26 @@ export interface DeliverUnitCheck {
 }
 
 export interface FormFieldRule {
-  name: string;            // human-readable rule name
-  question_path: string;   // CommCare question path (e.g. /data/photo_taken)
-  question_value: string;  // expected value (e.g. "yes")
-  deliver_unit_id: number; // FK
+  name: string;
+  question_path: string;
+  question_value: string;
+  deliver_unit_id: number;
   id?: number;
 }
 
 export interface PaymentUnit {
   id: number;
+  payment_unit_id?: number;             // legacy display id
   name: string;
   description: string;
   amount: number;
-  // Connect's payment-unit form REQUIRES both max_total and max_daily (the
-  // form labels read "Maximum visits per user" and "Maximum visits per day"
-  // and both have the asterisk). Omitting either causes Connect's view to
-  // 302-redirect with a silent "Invalid Data" Django messages cookie — the
-  // create looks like a success at the HTTP layer but no row lands in the
-  // payment_unit_table. Verified live 2026-04-30 against
-  // turmeric-20260429-2330. Keep these required at the atom boundary so the
-  // failure surfaces at the Zod layer instead of as a downstream "row not
-  // found" mystery.
-  max_total: number;
-  max_daily: number;
+  org_amount?: number;
+  max_total?: number;
+  max_daily?: number;
   start_date?: string;
   end_date?: string;
-  required_deliver_unit_ids: number[];
-  optional_deliver_unit_ids: number[];
-  parent_payment_unit_id?: number;  // for sub-units
+  required_deliver_units: number[];     // DU ids (server snake_case)
+  optional_deliver_units: number[];
 }
 
 export interface DeliverUnit {
@@ -103,10 +127,9 @@ export interface DeliverUnit {
 
 export interface Invite {
   id: string;
-  opportunity_id: string;
-  organization_name: string;
-  contact_email: string;
-  status: 'pending' | 'accepted' | 'declined' | 'expired';
+  program_id: string;
+  organization: string;                 // LLO org slug
+  status: ProgramApplicationStatus;
   sent_at?: string;
 }
 
@@ -125,4 +148,5 @@ export interface Invoice {
 export interface DeliveryType {
   id: number;
   name: string;
+  slug?: string;
 }

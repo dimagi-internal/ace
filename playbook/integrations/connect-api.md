@@ -10,60 +10,72 @@ domain:
    the Programs/Opportunities lifecycle ACE manages.
 
 2. **`ace-connect` MCP** (in this repo, `mcp/connect-server.ts`) — Programs,
-   Opportunities, invites, invoices. Built specifically to unblock ACE's
-   `connect-program-setup`, `connect-opp-setup`, `llo-invite`, `llo-onboarding`,
-   `llo-launch`, and `opp-closeout` skills until Cal's team ships the real REST
-   APIs (CCC-301 + invite + invoice).
+   Opportunities, invites, invoices. Drives the
+   `connect-program-setup`, `connect-opp-setup`, `llo-onboarding`,
+   `llo-launch`, and `opp-closeout` skills.
 
 This document covers `ace-connect`. For `connect-labs`, see that repo's docs.
 
 ## What ace-connect exposes today
 
-Fourteen atomic capabilities. Authoring atoms create or modify records;
-observation atoms read. Today every atom routes to a Playwright HTTP-only
-backend that drives `connect.dimagi.com` through an authenticated session
-(OAuth-via-CommCareHQ as `ace@dimagi-ai.com`).
+Twenty atomic capabilities. Eight of the authoring atoms now go through the
+**REST automation API** that commcare-connect PR #1135 shipped on
+2026-04-30; the remaining atoms still drive HTML form pages via Playwright
+(reads, edits, verification flags, invoices). Both backends share the same
+authenticated session (OAuth-via-CommCareHQ as `ace@dimagi-ai.com`) — REST
+endpoints accept the Django `sessionid` cookie + CSRF token DRF's
+`SessionAuthentication` enforces.
 
-### Programs (5)
+### Programs (4)
 
-| Atom | Used by |
-|---|---|
-| `connect_create_program` | `connect-program-setup` |
-| `connect_update_program` | `connect-program-setup` |
-| `connect_list_programs` | `connect-program-setup` (idempotency check) |
-| `connect_get_program` | `connect-program-setup` |
-| `connect_list_delivery_types` | `connect-program-setup` (resolve "Nutrition" → 13) |
+| Atom | Backend | Used by |
+|---|---|---|
+| `connect_create_program` | REST `POST /api/programs/` | `connect-program-setup` |
+| `connect_update_program` | Playwright (no REST yet) | `connect-program-setup` |
+| `connect_list_programs` | Playwright | `connect-program-setup` (idempotency check) |
+| `connect_get_program` | Playwright | `connect-program-setup` |
+| `connect_list_delivery_types` | Playwright | `connect-program-setup` (resolve "Nutrition" → slug/FK) |
 
 ### Opportunities (4)
 
-| Atom | Used by |
-|---|---|
-| `connect_create_opportunity` | `connect-opp-setup` |
-| `connect_update_opportunity` | `connect-opp-setup`, `llo-launch` |
-| `connect_list_opportunities` | `connect-opp-setup` (idempotency check) |
-| `connect_get_opportunity` | `connect-opp-setup`, `llo-launch` |
+| Atom | Backend | Used by |
+|---|---|---|
+| `connect_create_opportunity` | REST `POST /api/programs/<id>/opportunities/` | `connect-opp-setup` |
+| `connect_update_opportunity` | Playwright (no REST yet) | `connect-opp-setup`, `llo-launch` |
+| `connect_list_opportunities` | Playwright | `connect-opp-setup` (idempotency check) |
+| `connect_get_opportunity` | Playwright | `connect-opp-setup`, `llo-launch` |
 
-### Lifecycle (2)
+### Per-opp configuration (4)
 
-| Atom | Used by |
-|---|---|
-| `connect_finalize_opportunity` | `connect-opp-setup` Step 8a (sets `start_date`, `end_date`, `max_users`; server auto-computes `total_budget`. Required before `is_setup_complete` returns True, which is required before FLW invites can be sent.) |
-| `connect_activate_opportunity` | `llo-launch` |
+| Atom | Backend | Used by |
+|---|---|---|
+| `connect_set_verification_flags` | Playwright (no REST yet) | `connect-opp-setup` |
+| `connect_list_deliver_units` | Playwright | `connect-opp-setup` (also returned inline by `create_opportunity`) |
+| `connect_create_payment_unit` | REST `POST /api/opportunities/<id>/payment_units/` | `connect-opp-setup` (singular wrapper) |
+| `connect_create_payment_units` | REST same endpoint | `connect-opp-setup` (atomic batch — preferred) |
+| `connect_list_payment_units` | Playwright | `connect-opp-setup` (verify after create) |
 
-### Invites (3)
+### Lifecycle (1)
 
-| Atom | Used by |
-|---|---|
-| `connect_send_llo_invite` | `llo-onboarding` (invite an LLO partner org to a program) |
-| `connect_send_flw_invite` | `connect-opp-setup` Step 8 (pre-invite ACE test phone to the new opp; opportunity-level, not program-level — POSTs `users` textarea to `/a/<org>/opportunity/<uuid>/user_invite/`) |
-| `connect_list_invites` | `llo-onboarding` (status check) |
+| Atom | Backend | Used by |
+|---|---|---|
+| `connect_activate_opportunity` | REST `POST /api/opportunities/<id>/activate/` | `llo-launch` |
+
+### Invites (4)
+
+| Atom | Backend | Used by |
+|---|---|---|
+| `connect_send_llo_invite` | REST `POST /api/programs/<id>/applications/` | `llo-onboarding` |
+| `connect_accept_program_application` | REST `POST .../accept/` | `llo-onboarding` (ACE-driven dogfood only) |
+| `connect_send_flw_invite` | REST `POST /api/opportunities/<id>/invite_users/` | `connect-opp-setup` Step 7 / `llo-launch` |
+| `connect_list_invites` | Playwright | `llo-onboarding` (status check) |
 
 ### Invoices (2)
 
-| Atom | Used by |
-|---|---|
-| `connect_list_invoices` | `opp-closeout` |
-| `connect_get_invoice` | `opp-closeout` |
+| Atom | Backend | Used by |
+|---|---|---|
+| `connect_list_invoices` | Playwright (stub — page shape not yet probed) | `opp-closeout` |
+| `connect_get_invoice` | Playwright (stub) | `opp-closeout` |
 
 ## Operator runbook
 
@@ -89,11 +101,18 @@ Two paths:
 
 `bin/ace-doctor` checks both env-var presence and session freshness.
 
+The REST atoms reuse the same `BrowserContext.request` and the same
+session-cookie + CSRF flow as the Playwright atoms — there's no separate
+token-auth path today.
+
 ### Org-admin role required
 
 For `create_program` and other write atoms to succeed, the configured account
 (`ace@dimagi-ai.com` today) must be an **Admin** in the target Connect
-organization. Demo/testing happens in `ai-demo-space`.
+organization. `create_program` additionally requires that the org be a
+*program-manager* org (`program_manager=True`) — the new automation API
+enforces this via the `IsProgramManagerAdmin` permission. Demo/testing
+happens in `ai-demo-space`.
 
 To grant admin role:
 1. As an existing org admin, open `https://connect.dimagi.com/a/<org>/organization/`
@@ -102,59 +121,31 @@ To grant admin role:
 
 Without admin role, ace@dimagi-ai.com's view defaults to the
 network-member-side ("Apply to Program" buttons) and authoring atoms will
-fail with HTTP errors or empty list scrapes.
+fail with 403.
 
 ### Re-running probes
 
-When Connect changes a template upstream, the atom that depends on the changed
-HTML breaks. Each domain has a probe script under `scripts/probe-connect-*`
-that documents the live contract; re-run the relevant probe to update the
-fixture, then update the regex in `mcp/connect/backends/html-scrape.ts` until
-its unit test passes against the new fixture.
+When Connect changes an HTML template upstream, only the *Playwright-backed*
+atoms break. Each domain has a probe script under `scripts/probe-connect-*`
+that documents the live HTML contract; re-run the relevant probe to update
+the fixture, then update the regex in `mcp/connect/backends/html-scrape.ts`
+until its unit test passes against the new fixture. REST atoms only break
+when the JSON contract on `commcare-connect` changes — much less frequent.
 
-## What's not yet implemented (deferred)
+## Adopting future REST endpoints
 
-- **Verification rules / delivery units / payment units** — the original spec
-  called for these as separate atoms, but the concept doesn't appear on
-  Connect's program/opp create or list pages today. Likely lives on a
-  post-creation configuration page we haven't located. Revisit when surfaced.
-- **Invoice atoms scrape** — the schema is present (`list_invoices`,
-  `get_invoice`) but page parsing is conservative (returns empty/stub).
-  Will be filled in as soon as the invoice page shape is observed via a
-  probe (typically only happens once an opp has actually been invoiced).
+When commcare-connect ships an additional REST endpoint that maps to one of
+the still-Playwright-backed atoms (`update_program`, `update_opportunity`,
+`set_verification_flags`, the `list_*` reads, invoices):
 
-These gaps are tracked as TODOs in `mcp/connect/backends/playwright.ts`.
+1. Implement the method in `mcp/connect/backends/rest.ts` (replaces a stub).
+2. Flip the `capability-map.ts` entry from `PLAYWRIGHT` to `REST`.
+3. Flip the dispatch line in `mcp/connect/backends/composite.ts`.
+4. Delete the corresponding `playwright.ts` method + its HTML fixture test.
+5. Bump VERSION; ship.
 
-## Migration when real REST APIs land
-
-Per the design at `docs/superpowers/specs/2026-04-28-ace-connect-mcp-design.md`:
-
-1. Implement the REST method in `mcp/connect/backends/rest.ts` (replaces a `stub()`)
-2. Flip the `capability-map.ts` entry to `backend: 'REST'`
-3. Flip the dispatch line in `mcp/connect/backends/composite.ts`
-4. Delete the corresponding `playwright.ts` method + its HTML fixture test
-5. Bump VERSION; ship
-
-When all atoms have flipped, delete `auth/`, `commands/connect-login.md`, and
-the HQ creds from `.env.tpl`. The MCP shrinks to a thin REST wrapper.
-
-## Skills no longer in HITL fallback
-
-When the `ace-connect` MCP atom for a skill ships, the skill's
-`## Current Workaround` block in `SKILL.md` is removed in the same PR as the
-atom adoption. The current state (after 0.8.0 lands the MCP — skill rewrites
-follow):
-
-| Skill | Phase | Atom(s) it consumes | Workaround removed in |
-|-------|-------|---------------------|-----------------------|
-| `connect-program-setup` | 3 | `connect_*_program*`, `connect_list_delivery_types` | TBD (skill PR) |
-| `connect-opp-setup` | 3 | `connect_*_opportunity*` | TBD (skill PR) |
-| `llo-invite` | 5 | (preparation only — no atom) | unchanged |
-| `llo-onboarding` | 5 | `connect_send_llo_invite`, `connect_list_invites` | TBD (skill PR) |
-| `llo-uat` | 5 | (uses email-communicator) | unchanged |
-| `llo-launch` | 5 | `connect_activate_opportunity`, `connect_get_opportunity` | TBD (skill PR) |
-| `llo-feedback` | 6 | (uses email-communicator) | unchanged |
-| `opp-closeout` | 6 | `connect_list_invoices`, `connect_get_invoice` | TBD (skill PR) |
+When all atoms have flipped, `auth/playwright-session.ts` can be replaced
+with token auth and the entire `playwright.ts` backend deleted.
 
 ## Staging
 
@@ -163,5 +154,5 @@ production use a name-prefix isolation pattern (`ACE-IT-<timestamp>`) to avoid
 clobbering real data, and run inside the `ai-demo-space` org which is
 explicitly provisioned for this kind of dogfood.
 
-If `ACE_SANDBOX=true` ever gets a real Connect staging URL, set
-`CONNECT_BASE_URL` in `.env` to point at it; no other code changes needed.
+If a real staging URL becomes available, set `CONNECT_BASE_URL` in `.env`
+to point at it; no other code changes needed.

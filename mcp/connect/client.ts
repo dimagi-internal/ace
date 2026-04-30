@@ -1,6 +1,7 @@
 import type {
   Program,
   Opportunity,
+  ProgramApplication,
   Invite,
   Invoice,
   DeliveryType,
@@ -17,12 +18,12 @@ export interface ConnectClient {
     organization_slug: string;
     name: string;
     description: string;
-    delivery_type: number;
+    delivery_type: number | string;     // accepts the slug or the int FK
     budget: number;
-    currency: string;
-    country: string;
-    start_date: string;
-    end_date: string;
+    currency: string;                   // ISO 4217 code (e.g. "USD")
+    country: string;                    // human country name as Connect renders it (e.g. "United States of America")
+    start_date: string;                 // YYYY-MM-DD
+    end_date: string;                   // YYYY-MM-DD
   }): Promise<Program>;
   updateProgram(args: {
     organization_slug: string;
@@ -36,47 +37,41 @@ export interface ConnectClient {
 
   listDeliveryTypes(args: { organization_slug: string }): Promise<{ delivery_types: DeliveryType[] }>;
 
-  /**
-   * Register a CommCare HQ API key with Connect (idempotent) and return the
-   * int FK Connect's create-opportunity form expects in its `api_key` field.
-   *
-   * Background: Connect's `api_key` field on /opportunity/init/ is NOT the
-   * raw 40-char HQ key — it's the PK of an `HQApiKey` record on Connect's
-   * side. Agents must register the key first via /opportunity/add_api_key/
-   * before calling createOpportunity. This atom does that step on its own
-   * so callers can verify / debug it without driving the whole opp flow.
-   */
-  registerHqApiKey(args: {
-    organization_slug: string;
-    hq_server: string;
-    api_key: string;
-  }): Promise<{
-    organization_slug: string;
-    hq_server: string;
-    hq_server_id: string;
-    api_key_id: string;
-    truncated_label: string;
-  }>;
-
-  // Opportunities (CRUD)
+  // Opportunities
+  //
+  // `createOpportunity` creates a *managed* opportunity scoped to a program
+  // — the only shape ACE needs. The server resolves HQ creds, registers the
+  // HQ API key, fetches app names, and syncs learn modules + deliver units
+  // synchronously. Returns the opp with `learn_modules` and `deliver_units`
+  // already populated, so callers don't need a follow-up `list_deliver_units`
+  // before `create_payment_units`.
   listOpportunities(args: { organization_slug: string; program_id?: string; name?: string }): Promise<{ opportunities: Opportunity[] }>;
   getOpportunity(args: { organization_slug: string; opportunity_id: string }): Promise<Opportunity>;
   createOpportunity(args: {
-    organization_slug: string;
-    program_id?: string;
+    organization_slug: string;          // PM-side org running the program
+    program_id: string;                 // program UUID — required (managed opp)
     name: string;
-    short_description: string;
+    short_description: string;          // ≤ 255 chars
     description: string;
-    currency: string;
-    country: string;
-    hq_server: string;
-    api_key: string;
-    learn_app_domain: string;
-    learn_app: string;
-    learn_app_description?: string;
-    learn_app_passing_score: number;
-    deliver_app_domain: string;
-    deliver_app: string;
+    target_organization_slug: string;   // LLO org slug (must have an ACCEPTED program application)
+    start_date: string;                 // YYYY-MM-DD; must fit inside the program's window
+    end_date: string;                   // YYYY-MM-DD
+    total_budget: number;               // must fit inside program.budget − Σ(other managed opps)
+    is_test?: boolean;                  // defaults true server-side
+    learn_app: {
+      hq_server_url: string;            // e.g. https://www.commcarehq.org
+      api_key: string;                  // raw 40-char HQ key; server creates HQApiKey if not present
+      cc_domain: string;                // HQ project space slug
+      cc_app_id: string;                // bare HQ app id
+      description: string;              // required (Connect form *)
+      passing_score: number;            // 0–100
+    };
+    deliver_app: {
+      hq_server_url: string;
+      api_key: string;                  // can be the same as learn_app.api_key
+      cc_domain: string;
+      cc_app_id: string;                // must differ from learn_app.cc_app_id
+    };
   }): Promise<Opportunity>;
   updateOpportunity(args: {
     organization_slug: string;
@@ -98,102 +93,93 @@ export interface ConnectClient {
     organization_slug: string;
     opportunity_id: string;
   }): Promise<{ deliver_units: DeliverUnit[] }>;
+
+  /**
+   * Create one or more payment units. Connect's automation API takes a list
+   * — atomic transaction across all entries — so we expose `createPaymentUnits`
+   * (plural). For convenience `createPaymentUnit` (singular) wraps a one-item
+   * call; both share the validation rules (no DU id may appear in two PUs in
+   * the same request, no DU may already be assigned to another PU, managed
+   * opps require `org_amount`).
+   */
+  createPaymentUnits(args: {
+    organization_slug: string;
+    opportunity_id: string;
+    payment_units: Array<{
+      name: string;
+      description?: string;
+      amount: number;                   // FLW pay per unit (non-negative integer)
+      org_amount?: number;              // LLO pay per unit; REQUIRED for managed opps
+      max_total: number;                // ≥ 1 — total visits per user across the opportunity
+      max_daily: number;                // ≥ 1 — visits per user per day
+      required_deliver_units?: number[]; // DU ids (Connect-side ints from `list_deliver_units`)
+      optional_deliver_units?: number[];
+      start_date?: string;              // YYYY-MM-DD; defaults to opportunity dates
+      end_date?: string;
+    }>;
+  }): Promise<{ payment_units: PaymentUnit[] }>;
   createPaymentUnit(args: {
     organization_slug: string;
     opportunity_id: string;
     name: string;
-    description: string;
+    description?: string;
     amount: number;
-    max_total?: number;
-    max_daily?: number;
+    org_amount?: number;
+    max_total: number;
+    max_daily: number;
     start_date?: string;
     end_date?: string;
-    required_deliver_unit_ids: number[];
-    optional_deliver_unit_ids?: number[];
+    required_deliver_units?: number[];
+    optional_deliver_units?: number[];
   }): Promise<PaymentUnit>;
   listPaymentUnits(args: {
     organization_slug: string;
     opportunity_id: string;
   }): Promise<{ payment_units: PaymentUnit[] }>;
 
-  /**
-   * Finalize an opportunity: set start_date, end_date, and max_users —
-   * the form auto-computes total_budget = max_users × Σ(payment_unit
-   * budget per user). After this fires, the opportunity becomes
-   * `is_setup_complete` (assuming the existing payment units have
-   * `max_total` and `max_daily` set).
-   *
-   * Mirrors the Connect web UI form at
-   * `/a/<org>/opportunity/<uuid>/finalize/`. Required to bootstrap
-   * `total_budget` on a freshly-created opp because
-   * `/add_budget_new_users` blows up with TypeError when the existing
-   * `total_budget` is None (it does `+= budget_increase`).
-   *
-   * Constraints (server-side):
-   *   - At least one PaymentUnit must exist (form computes budget from
-   *     them).
-   *   - `start_date` must be today-or-later (or unchanged if already
-   *     in the past — form auto-disables the field in that case).
-   *   - `end_date` must be after `start_date`.
-   *   - For managed opps the dates must fit inside the parent
-   *     program's start_date/end_date.
-   */
-  finalizeOpportunity(args: {
-    organization_slug: string;
-    opportunity_id: string;
-    start_date: string;       // YYYY-MM-DD
-    end_date: string;         // YYYY-MM-DD
-    max_users: number;
-  }): Promise<{
-    opportunity_id: string;
-    start_date: string;
-    end_date: string;
-    max_users: number;
-    total_budget: number;     // computed by the server
-  }>;
-
   // Lifecycle
   activateOpportunity(args: {
     organization_slug: string;
     opportunity_id: string;
-  }): Promise<{ ok: true; status: 'active' }>;
+  }): Promise<{ id: number; opportunity_id: string; name: string; active: true }>;
 
-  // Invites (program-level — invite an LLO org to a program/its opps)
+  // Program applications (LLO invite + auto-accept)
+  //
+  // `sendLloInvite` invites an LLO organization to a Program. Connect emails
+  // the LLO admins via `send_program_invite_email`; status is INVITED.
+  // `acceptProgramApplication` is the automation shortcut — moves the
+  // application from INVITED/APPLIED → ACCEPTED. Required before the LLO
+  // can be assigned as a managed opportunity's organization.
   sendLloInvite(args: {
-    organization_slug: string;
-    opportunity_id: string;       // semantically a program_id today; see Notes
-    organization_name: string;    // the LLO org's slug
-    contact_email: string;
-  }): Promise<Invite>;
-  listInvites(args: { organization_slug: string; opportunity_id: string }): Promise<{ invites: Invite[] }>;
+    organization_slug: string;          // PM-side org running the program
+    program_id: string;                 // program UUID
+    organization: string;               // LLO org slug to invite
+  }): Promise<ProgramApplication>;
+  acceptProgramApplication(args: {
+    organization_slug: string;          // PM-side org (same as program owner)
+    program_id: string;
+    application_id: string;             // ProgramApplication UUID returned by sendLloInvite
+  }): Promise<ProgramApplication>;
+  listInvites(args: { organization_slug: string; program_id: string }): Promise<{ invites: Invite[] }>;
 
   /**
-   * Invite one or more FLWs (by phone) to an opportunity. Mirrors what the
-   * Connect web UI does at /a/<org>/opportunity/<uuid>/user_invite/ — POSTs
-   * a newline-separated list of `+<country><digits>` phones to the
-   * `users` form field. The server queues `add_connect_users.delay(...)`
-   * so the call returns `status: 'queued'` and the actual UserInvite rows
-   * + SMS go out async.
+   * Invite one or more FLWs (by phone) to an opportunity. Server validates
+   * that the opportunity is active and not ended, queues
+   * `add_connect_users.delay(...)`, and returns 202 with `invited_count`.
    *
-   * Constraints (server-side):
-   *   - Opportunity must be `is_setup_complete` (verification flags +
-   *     payment units configured). Pre-completion calls 200 back with the
-   *     form re-rendered + a ValidationError on `users`.
-   *   - Opportunity must not have ended.
-   *   - Each phone must start with `+` and otherwise be digits-only.
-   *
-   * Used by `connect-opp-setup` Step 8 to keep `${ACE_E2E_PHONE}` invited
-   * to the latest ACE-created opp; the test user's PersonalID
-   * registration depends on at least one Connect invite existing for the
-   * phone (see Sentry CONNECT-ID-3F).
+   * Used by `connect-opp-setup` Step 7 to keep `${ACE_E2E_PHONE}` invited
+   * to the latest ACE-created opp; the test user's PersonalID registration
+   * depends on at least one Connect invite existing for the phone (Sentry
+   * CONNECT-ID-3F).
    */
   sendFlwInvite(args: {
     organization_slug: string;
-    opportunity_id: string;       // actual opportunity UUID
-    phone_numbers: string[];      // e.g. ['+74260000100']
+    opportunity_id: string;             // actual opportunity UUID
+    phone_numbers: string[];            // e.g. ['+74260000100']
   }): Promise<{
     opportunity_id: string;
     phone_numbers: string[];
+    invited_count: number;
     status: 'queued';
   }>;
 

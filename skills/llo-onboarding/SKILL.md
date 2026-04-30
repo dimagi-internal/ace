@@ -24,12 +24,34 @@ ACE-authored onboarding email with the widget link embedded.
      (`public_id`, `embed_key`)
 
 2. **Send Connect system invites** for each `prepared` LLO entry via
-   `connect_send_llo_invite` (ace-connect MCP, 0.8.1+). Pass the
-   program's UUID (from `connect-setup/program.md`) as `opportunity_id`
-   — Connect's invite UI is at the program level, not opportunity. The
-   `organization_name` arg is the LLO org's slug (the workspace they
-   belong to, not their display name). After each call, flip status to
-   `sent` in `invites.md`.
+   `connect_send_llo_invite` (ace-connect MCP, 0.10.47+). The atom hits
+   `POST /api/programs/<program_id>/applications/` and creates a
+   `ProgramApplication` row in `INVITED` status; Connect emails the LLO
+   workspace admins via the `send_program_invite_email` task. Args:
+   - `organization_slug`: PM-side org running the program
+   - `program_id`: program UUID (from `connect-setup/program.md`)
+   - `organization`: LLO org slug to invite (the workspace's slug, not
+     its display name)
+
+   Capture the returned `program_application_id` in `invites.md` — it's
+   needed if the orchestrator needs to auto-accept the invite for an
+   ACE-driven dogfood run (see step 2a). After each call, flip status
+   to `sent` in `invites.md`.
+
+   **2a. (Optional, ACE-driven dogfood runs only.)** If the target org
+   is an ACE-controlled fixture and there's no real LLO who will accept
+   manually, call `connect_accept_program_application` to flip the
+   application from `INVITED` → `ACCEPTED`:
+   ```
+   connect_accept_program_application({
+     organization_slug: <PM-side org>,
+     program_id: <program UUID>,
+     application_id: <program_application_id from step 2>,
+   })
+   ```
+   This is required before `connect_create_opportunity` will accept the
+   org as the managed-opportunity owner. For real-LLO runs, skip this
+   step — the LLO accepts via the Connect UI.
 
 3. **Read the PDD's `archetype:` field.** Email content — framing, "getting
    started" steps, timeline language, and which pieces of training material
@@ -145,9 +167,11 @@ criteria explicitly so the recipient knows what finishes Stage 1.
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`
-- Connect (`ace-connect` MCP, 0.8.1+):
-  - `connect_send_llo_invite` — issue the system invite to the LLO org
-  - `connect_list_invites` — verify status / detect already-invited
+- Connect (`ace-connect` MCP, 0.10.47+):
+  - `connect_send_llo_invite` — REST `POST /api/programs/<id>/applications/`
+  - `connect_accept_program_application` — REST `POST .../accept/`
+    (ACE-driven dogfood only; skip for real-LLO runs)
+  - `connect_list_invites` — verify status / detect already-invited (HTML)
 - Email: `email-communicator` skill (sends from `ace@dimagi-ai.com`)
 
 ## Mode Behavior
@@ -168,3 +192,4 @@ When `--dry-run` is active:
 | 2026-04-14 | Own Connect system invite send (moved from `llo-invite`) and include OCS widget link in onboarding email; this is the first LLO-facing step in the lifecycle | ACE team |
 | 2026-04-20 | Added `## Archetypes` section with per-archetype email framing, "getting started" steps, and timeline language. `focus-group` addresses the recipient as a facilitator-owning org (not FLW-managing), leads with question guide + audio upload, and uses session-count cadence language. `multi-stage` front-loads Stage 1 content. Prevents atomic-visit framing from landing as the first LLO-facing artifact on FGD opps | ACE team |
 | 2026-04-28 | Replace HITL workaround with `connect_send_llo_invite` (ace-connect 0.8.1). Connect's invite is program-level, so the atom takes the program UUID and an `organization` slug for the target LLO workspace | ACE team |
+| 2026-04-30 | Switch `connect_send_llo_invite` to `POST /api/programs/<id>/applications/` (commcare-connect PR #1135). Args drop `contact_email` (server emails workspace admins via `send_program_invite_email`). Add new step 2a: `connect_accept_program_application` for ACE-driven dogfood runs that need to auto-accept the invite. (0.10.47) | ACE team |

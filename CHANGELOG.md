@@ -5,6 +5,84 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.47 — 2026-04-30
+
+**Adopt commcare-connect's new automation API (PR #1135).** Eight Connect
+atoms move from HTML-form scraping to JSON REST endpoints, eliminating
+~600 lines of brittle Playwright code and folding the previous
+"create → finalize" two-step opp-creation flow into a single call. Two
+atoms removed (subsumed by the new endpoints) and one new atom added.
+
+### Changed
+
+- `mcp/connect/backends/rest.ts` — full implementation of the seven new
+  POST endpoints from [commcare-connect#1135](https://github.com/dimagi/commcare-connect/pull/1135):
+  `POST /api/programs/`, `POST /api/programs/<id>/applications/`,
+  `POST .../accept/`, `POST /api/programs/<id>/opportunities/`,
+  `POST /api/opportunities/<id>/payment_units/` (atomic batch),
+  `POST .../activate/`, `POST .../invite_users/`. Reuses the
+  authenticated `BrowserContext.request` from `PlaywrightSession`, so
+  REST atoms send the Django sessionid + CSRF the same way the
+  Playwright atoms do (DRF's `SessionAuthentication` accepts it).
+- `mcp/connect/backends/playwright.ts` — slimmed from ~1080 lines to
+  ~360 by deleting the eight write-atom implementations + the dead
+  HQ-server / api-key / app-id resolution helpers
+  (`resolveHqServer`, `ensureHqApiKeyRegistered`, `resolveHqAppValue`,
+  `truncatedKeyLabel`, `parseSelectOptions`, `htmlDecodeAttr`). What
+  remains is the read-and-edit subset Connect hasn't shipped REST
+  endpoints for yet (`update_*`, `set_verification_flags`,
+  `list_*`, invoices).
+- `mcp/connect/backends/composite.ts` — explicit per-atom routing,
+  REST vs Playwright. Capability-map labels in
+  `mcp/connect/capability-map.ts` flipped from `PLAYWRIGHT` to `REST`
+  for the seven adopted atoms; new `accept_program_application` row
+  added; `register_hq_api_key` and `finalize_opportunity` rows
+  removed.
+- `mcp/connect/client.ts` + `mcp/connect/types.ts` — contract changes
+  surfaced to skills:
+  - `createOpportunity` is now scoped to a program and takes structured
+    `learn_app` / `deliver_app` payloads with `hq_server_url`,
+    `api_key`, `cc_domain`, `cc_app_id`, `description`, `passing_score`.
+    The server registers HQApiKey records and resolves app names
+    synchronously; agents no longer drive the HQ-API-key dance or the
+    `/hq/applications/` HTMX scrape.
+  - `Opportunity` shape replaced — `learn_app` / `deliver_app` are
+    nested `AppSnapshot` objects (with `learn_modules` /
+    `deliver_units` already populated by create), and `status` is gone
+    in favour of an explicit `active: boolean`.
+  - `sendLloInvite` drops `contact_email` and `organization_name`,
+    takes `program_id` + `organization` (slug). Server emails the LLO
+    workspace admins via `send_program_invite_email`.
+  - `sendFlwInvite` returns `invited_count` (was: `phone_numbers`
+    only). The new endpoint validates that the opp is `active` and
+    not ended — clearer errors than the previous edit-form silent drop.
+  - `createPaymentUnits` (plural, atomic batch) added; singular
+    `createPaymentUnit` retained as a 1-item-list wrapper.
+- `mcp/connect-server.ts` — tool surface updated to match the new
+  contracts. New tool `connect_accept_program_application`. Removed
+  `connect_register_hq_api_key` and `connect_finalize_opportunity`.
+  `connect_create_payment_units` (plural) added alongside the singular.
+- `tsconfig.json` — added `mcp/connect/**` and `mcp/connect-server.ts`
+  to the include list (was an existing oversight; now that the surface
+  changed substantially, type-checking these files in CI matters).
+- Skills updated: `connect-program-setup`, `connect-opp-setup`,
+  `llo-onboarding`, `llo-launch`. The `connect-opp-setup` step list
+  collapsed from 8 steps to 7 — "register HQ API key", "resolve
+  hq_server", and "finalize opportunity" are now server-side concerns.
+  `connect-opp-setup`'s FLW pre-invite is now sequenced after
+  activation (the new `/invite_users/` endpoint enforces `active=true`).
+- `playbook/integrations/connect-api.md` — atom inventory rewritten
+  per backend and operator runbook updated.
+
+### Removed
+
+- `connect_register_hq_api_key` atom (the new
+  `POST /api/programs/<id>/opportunities/` registers HQ API keys
+  server-side via `get_or_create`).
+- `connect_finalize_opportunity` atom (`start_date` / `end_date` /
+  `total_budget` are now set at create time; the previous
+  `add_budget_new_users` ceremony is gone).
+
 ## 0.10.39 — 2026-04-30
 
 **Doc cleanup after the FLW-invite + finalize work.** Pure docs; no

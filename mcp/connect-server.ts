@@ -1,10 +1,12 @@
 /**
  * Connect MCP Server for ACE
  *
- * Exposes 14 atomic Connect capabilities as MCP tools. Delegates to a
- * CompositeBackend that routes each atom to either REST (when those endpoints
- * land) or Playwright (today, driving connect.dimagi.com under
- * ace@dimagi-ai.com via OAuth-via-CommCareHQ).
+ * Exposes 20 atomic Connect capabilities as MCP tools. Delegates to a
+ * CompositeBackend that routes each atom to either REST (commcare-connect
+ * PR #1135's automation API, since 0.10.47) or Playwright (HTML-form-driven
+ * — reads, edits, verification flags, invoices). Both backends share the
+ * authenticated session established by `/ace:connect-login` (OAuth-via-CCHQ
+ * as ace@dimagi-ai.com).
  *
  * See docs/superpowers/specs/2026-04-28-ace-connect-mcp-design.md
  */
@@ -34,12 +36,11 @@ import { ConnectValidationError, ConnectSilentRejectError } from './connect/erro
 const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
 const cchqBaseUrl = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
 
-const rest = new RestBackend({ baseUrl });
-
+let rest: RestBackend | undefined;
 let playwright: PlaywrightBackend | undefined;
 let commcare: CommCareBackend | undefined;
 let session: PlaywrightSession | undefined;
-let initPromise: Promise<PlaywrightBackend> | undefined;
+let initPromise: Promise<{ rest: RestBackend; playwright: PlaywrightBackend }> | undefined;
 
 let chain: Promise<unknown> = Promise.resolve();
 function serialize<T>(fn: () => Promise<T>): Promise<T> {
@@ -53,8 +54,8 @@ process.on('SIGTERM', () => { cleanup(); process.exit(0); });
 process.on('SIGINT', () => { cleanup(); process.exit(0); });
 process.on('exit', cleanup);
 
-async function getPlaywrightBackend(): Promise<PlaywrightBackend> {
-  if (playwright) return playwright;
+async function getBackends(): Promise<{ rest: RestBackend; playwright: PlaywrightBackend }> {
+  if (rest && playwright) return { rest, playwright };
   if (initPromise) return initPromise;
   initPromise = (async () => {
     session = new PlaywrightSession({
@@ -63,32 +64,27 @@ async function getPlaywrightBackend(): Promise<PlaywrightBackend> {
       hqPassword: process.env.ACE_HQ_PASSWORD,
     });
     const ctx = await session.getContext();
-    playwright = new PlaywrightBackend({
-      baseUrl,
-      csrfToken: session.getCsrfToken(),
-      request: ctx.request,
-    });
-    commcare = new CommCareBackend({
-      baseUrl: cchqBaseUrl,
-      request: ctx.request,
-    });
-    return playwright;
+    const csrfToken = session.getCsrfToken();
+    rest = new RestBackend({ baseUrl, csrfToken, request: ctx.request });
+    playwright = new PlaywrightBackend({ baseUrl, csrfToken, request: ctx.request });
+    commcare = new CommCareBackend({ baseUrl: cchqBaseUrl, request: ctx.request });
+    return { rest, playwright };
   })();
   try { return await initPromise; }
   catch (e) { initPromise = undefined; throw e; }
 }
 
 async function client() {
-  const pw = await getPlaywrightBackend();
+  const { rest, playwright } = await getBackends();
   return createLoggingProxy(
-    new CompositeBackend({ rest, playwright: pw }),
+    new CompositeBackend({ rest, playwright }),
     defaultFileLogger(),
   );
 }
 
 async function commcareClient(): Promise<CommCareBackend> {
-  await getPlaywrightBackend();
-  if (!commcare) throw new Error('CommCare backend not initialized — getPlaywrightBackend should have wired it');
+  await getBackends();
+  if (!commcare) throw new Error('CommCare backend not initialized — getBackends should have wired it');
   return commcare;
 }
 
@@ -97,15 +93,7 @@ const json = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.st
 /**
  * Run an atom call and convert ConnectValidationError into a structured JSON
  * response (with `error: 'validation_error'` and per-field `fields`) instead
- * of letting it bubble as an unstructured "tool error" through MCP. Other
- * exceptions still propagate so the MCP layer surfaces them as errors.
- *
- * Why this matters: a real ACE session burned ~90 minutes diagnosing an
- * opaque HTTP 500 because Connect's validation errors (api_key wasn't an
- * int FK; learn_app/deliver_app needed JSON-encoded values) all surfaced as
- * a single `HttpError(500)` with the entire HTML page in the body. The
- * agent had to reverse-engineer each via curl. Now Connect's own field-level
- * messages are exposed verbatim.
+ * of letting it bubble as an unstructured "tool error" through MCP.
  */
 async function runAtom<T>(fn: () => Promise<T>): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   try {
@@ -116,9 +104,6 @@ async function runAtom<T>(fn: () => Promise<T>): Promise<{ content: Array<{ type
       return { ...json(err.toJSON()), isError: true };
     }
     if (err instanceof ConnectSilentRejectError) {
-      // Surface non-retryable signal so callers stop the 3× retry pattern
-      // observed on payment_unit/create silent drops. Marked isError so MCP
-      // returns a clean tool-error to the caller, not a thrown exception.
       return { ...json(err.toJSON()), isError: true };
     }
     throw err;
@@ -141,15 +126,19 @@ server.tool('connect_get_program',
 
 server.tool('connect_create_program',
   {
-    organization_slug: z.string(),
+    organization_slug: z.string().describe('PM-side org slug (must be a program-manager org).'),
     name: z.string(),
     description: z.string(),
-    delivery_type: z.coerce.number().int(),
+    delivery_type: z.union([z.string(), z.coerce.number().int()]).describe(
+      'Delivery type slug (preferred — e.g. "nutrition") or its int FK. ' +
+      'The Connect REST API accepts the slug; pass the int FK only if you ' +
+      'already resolved it via `connect_list_delivery_types`.',
+    ),
     budget: z.coerce.number(),
-    currency: z.string(),
-    country: z.string(),
-    start_date: z.string(),
-    end_date: z.string(),
+    currency: z.string().describe('ISO 4217 code (e.g. "USD").'),
+    country: z.string().describe('Human country name as Connect renders it (e.g. "United States of America").'),
+    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   },
   async (args) => runAtom(async () => (await client()).createProgram(args))
 );
@@ -172,21 +161,6 @@ server.tool('connect_list_delivery_types',
   async (args) => runAtom(async () => (await client()).listDeliveryTypes(args))
 );
 
-server.tool('connect_register_hq_api_key',
-  {
-    organization_slug: z.string(),
-    hq_server: z.string().describe(
-      'CCHQ server label: "prod"/"india"/"eu", a server URL, or the int FK ' +
-      '("1"/"2"/"3"). Resolved against Connect\'s live form options.'
-    ),
-    api_key: z.string().describe(
-      'The raw 40-char CommCare HQ API key. Idempotent: if the key is already ' +
-      'registered for this hq_server, the existing record is returned.'
-    ),
-  },
-  async (args) => runAtom(async () => (await client()).registerHqApiKey(args))
-);
-
 // ── Opportunities ─────────────────────────────────────────────────
 
 server.tool('connect_list_opportunities',
@@ -199,33 +173,35 @@ server.tool('connect_get_opportunity',
   async (args) => runAtom(async () => (await client()).getOpportunity(args))
 );
 
+const HqAppZ = z.object({
+  hq_server_url: z.string().url().describe('HQ instance URL (e.g. https://www.commcarehq.org)'),
+  api_key: z.string().describe('Raw 40-char HQ API key. Connect creates an HQApiKey record on first use.'),
+  cc_domain: z.string().describe('HQ project space slug.'),
+  cc_app_id: z.string().describe('Bare 32-char HQ app id.'),
+});
+
 server.tool('connect_create_opportunity',
   {
-    organization_slug: z.string(),
-    program_id: z.string().optional().describe('Program UUID; opp shows up under that program'),
+    organization_slug: z.string().describe('PM-side org running the program.'),
+    program_id: z.string().describe('Program UUID — required (managed opportunity).'),
     name: z.string(),
-    short_description: z.string().max(50),
+    short_description: z.string().max(255),
     description: z.string(),
-    currency: z.string().describe('3-letter ISO (e.g. USD)'),
-    country: z.string().describe('3-letter ISO3 (e.g. IND)'),
-    hq_server: z.string().describe(
-      'CCHQ server label: "prod"/"india"/"eu", a server URL, or the Connect-internal int FK ' +
-      '("1" CommCareHQ, "2" India, "3" CommCareHQ EU). The MCP resolves it against Connect\'s ' +
-      'live form options, so passing the human label is the recommended form.'
+    target_organization_slug: z.string().describe(
+      'LLO org slug — must already have an ACCEPTED program application. ' +
+      'Use `connect_send_llo_invite` + `connect_accept_program_application` first if needed.',
     ),
-    api_key: z.string().describe(
-      'The raw 40-char CommCare HQ API key for the user. The MCP registers it with Connect ' +
-      'idempotently via /opportunity/add_api_key/ and uses the resulting Connect-side int FK on ' +
-      'the create form. Do NOT pass the int FK directly.'
+    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Must fit inside the program window.'),
+    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    total_budget: z.coerce.number().int().min(1).describe(
+      'Must fit inside `program.budget − Σ(other managed opps)`.',
     ),
-    learn_app_domain: z.string().describe('CCHQ project space slug (e.g. connect-ace-prod)'),
-    learn_app: z.string().describe('Bare CCHQ app id (32-char hex). The MCP wraps it in the JSON form-value Connect expects.'),
-    learn_app_description: z.string().describe(
-      'Required. Connect\'s form marks this field with a *. Pulled from PDD § Training Plan in ACE skills.'
-    ),
-    learn_app_passing_score: z.coerce.number().int().min(0).max(100),
-    deliver_app_domain: z.string(),
-    deliver_app: z.string().describe('Bare CCHQ app id (32-char hex). The MCP wraps it in the JSON form-value Connect expects.'),
+    is_test: z.boolean().optional().describe('Defaults true server-side.'),
+    learn_app: HqAppZ.extend({
+      description: z.string().describe('Required — Connect form marks it *.'),
+      passing_score: z.coerce.number().int().min(0).max(100),
+    }),
+    deliver_app: HqAppZ.describe('cc_app_id MUST differ from learn_app.cc_app_id.'),
   },
   async (args) => runAtom(async () => (await client()).createOpportunity(args))
 );
@@ -235,7 +211,7 @@ server.tool('connect_update_opportunity',
     organization_slug: z.string(),
     opportunity_id: z.string(),
     name: z.string().optional(),
-    short_description: z.string().max(50).optional(),
+    short_description: z.string().max(255).optional(),
     description: z.string().optional(),
     end_date: z.string().optional(),
     is_test: z.boolean().optional(),
@@ -277,19 +253,45 @@ server.tool('connect_list_deliver_units',
   async (args) => runAtom(async () => (await client()).listDeliverUnits(args))
 );
 
+const PaymentUnitItemZ = z.object({
+  name: z.string().max(255),
+  description: z.string().optional(),
+  amount: z.coerce.number().int().min(0).describe('FLW pay per unit.'),
+  org_amount: z.coerce.number().int().min(0).optional().describe('LLO pay per unit. REQUIRED for managed opportunities.'),
+  max_total: z.coerce.number().int().min(1).describe('Total visits per user across the opportunity.'),
+  max_daily: z.coerce.number().int().min(1).describe('Visits per user per day.'),
+  required_deliver_units: z.array(z.coerce.number().int()).optional(),
+  optional_deliver_units: z.array(z.coerce.number().int()).optional(),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+server.tool('connect_create_payment_units',
+  {
+    organization_slug: z.string(),
+    opportunity_id: z.string(),
+    payment_units: z.array(PaymentUnitItemZ).min(1).describe(
+      'Atomic batch — server validates DU assignments across the whole list ' +
+      'and rejects the entire request if any unit is invalid.',
+    ),
+  },
+  async (args) => runAtom(async () => (await client()).createPaymentUnits(args))
+);
+
 server.tool('connect_create_payment_unit',
   {
     organization_slug: z.string(),
     opportunity_id: z.string(),
-    name: z.string(),
-    description: z.string(),
-    amount: z.coerce.number().describe('Worker pay per visit (currency units).'),
-    max_total: z.coerce.number().int().describe('Maximum visits per user across the opportunity. REQUIRED by the live Connect form — leaving it out causes a silent 302 redirect with an "Invalid Data" Django messages cookie.'),
-    max_daily: z.coerce.number().int().describe('Maximum visits per user per day. REQUIRED by the live Connect form (same silent-drop behavior as max_total when omitted).'),
-    start_date: z.string().optional().describe('Optional. Defaults to opportunity start date when omitted.'),
-    end_date: z.string().optional().describe('Optional. Defaults to opportunity end date when omitted.'),
-    required_deliver_unit_ids: z.array(z.coerce.number().int()),
-    optional_deliver_unit_ids: z.array(z.coerce.number().int()).optional(),
+    name: z.string().max(255),
+    description: z.string().optional(),
+    amount: z.coerce.number().int().min(0),
+    org_amount: z.coerce.number().int().min(0).optional().describe('Required for managed opportunities.'),
+    max_total: z.coerce.number().int().min(1),
+    max_daily: z.coerce.number().int().min(1),
+    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    required_deliver_units: z.array(z.coerce.number().int()).optional(),
+    optional_deliver_units: z.array(z.coerce.number().int()).optional(),
   },
   async (args) => runAtom(async () => (await client()).createPaymentUnit(args))
 );
@@ -299,46 +301,45 @@ server.tool('connect_list_payment_units',
   async (args) => runAtom(async () => (await client()).listPaymentUnits(args))
 );
 
-server.tool('connect_finalize_opportunity',
-  {
-    organization_slug: z.string(),
-    opportunity_id: z.string(),
-    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    max_users: z.number().int().min(1),
-  },
-  async (args) => runAtom(async () => (await client()).finalizeOpportunity(args))
-);
-
 server.tool('connect_activate_opportunity',
   { organization_slug: z.string(), opportunity_id: z.string() },
   async (args) => runAtom(async () => (await client()).activateOpportunity(args))
 );
 
-// ── Invites ──────────────────────────────────────────────────────
+// ── Program applications (LLO invite + auto-accept) ──────────────
 
 server.tool('connect_send_llo_invite',
   {
-    organization_slug: z.string(),
-    opportunity_id: z.string(),
-    organization_name: z.string(),
-    contact_email: z.string().email(),
+    organization_slug: z.string().describe('PM-side org running the program.'),
+    program_id: z.string().describe('Program UUID — invite is program-level.'),
+    organization: z.string().describe('LLO org slug to invite.'),
   },
   async (args) => runAtom(async () => (await client()).sendLloInvite(args))
 );
 
-server.tool('connect_send_flw_invite',
+server.tool('connect_accept_program_application',
   {
     organization_slug: z.string(),
-    opportunity_id: z.string(),
-    phone_numbers: z.array(z.string().regex(/^\+\d+$/, 'Phone must start with + and contain only digits')).min(1),
+    program_id: z.string(),
+    application_id: z.string().describe('ProgramApplication UUID returned by `connect_send_llo_invite`.'),
   },
-  async (args) => runAtom(async () => (await client()).sendFlwInvite(args))
+  async (args) => runAtom(async () => (await client()).acceptProgramApplication(args))
 );
 
 server.tool('connect_list_invites',
-  { organization_slug: z.string(), opportunity_id: z.string() },
+  { organization_slug: z.string(), program_id: z.string() },
   async (args) => runAtom(async () => (await client()).listInvites(args))
+);
+
+// ── FLW invites ──────────────────────────────────────────────────
+
+server.tool('connect_send_flw_invite',
+  {
+    organization_slug: z.string(),
+    opportunity_id: z.string().describe('Opportunity must be active and not ended.'),
+    phone_numbers: z.array(z.string().regex(/^\+\d+$/, 'Phone must start with + and contain only digits')).min(1),
+  },
+  async (args) => runAtom(async () => (await client()).sendFlwInvite(args))
 );
 
 // ── Invoices ─────────────────────────────────────────────────────
@@ -357,11 +358,7 @@ server.tool('connect_get_invoice',
 //
 // These atoms talk to www.commcarehq.org, not connect.dimagi.com. They
 // share the Playwright session because Connect's OAuth-via-CCHQ login
-// flow leaves valid CCHQ cookies in the same BrowserContext. They
-// promote the ad-hoc /tmp/ace-release.js scripts the orchestrator was
-// regenerating on every Phase 2 run (turmeric-20260429-2330 spent ~10
-// minutes on this) into proper MCP atoms. See
-// skills/app-release/SKILL.md § Endpoints for the verified URL contract.
+// flow leaves valid CCHQ cookies in the same BrowserContext.
 
 server.tool('commcare_make_build',
   {

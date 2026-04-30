@@ -17,12 +17,10 @@ describe('connect capability map', () => {
     const authoring = [
       'create_program', 'update_program',
       'create_opportunity', 'update_opportunity',
-      'register_hq_api_key',
       'set_verification_flags',
-      'create_payment_unit',
-      'finalize_opportunity',
+      'create_payment_unit', 'create_payment_units',
       'activate_opportunity',
-      'send_llo_invite',
+      'send_llo_invite', 'accept_program_application',
       'send_flw_invite',
     ];
     for (const a of authoring) expect(CAPABILITY_MAP).toHaveProperty(a);
@@ -39,5 +37,22 @@ describe('connect capability map', () => {
       'list_invoices', 'get_invoice',
     ];
     for (const o of observation) expect(CAPABILITY_MAP).toHaveProperty(o);
+  });
+
+  it('routes the seven PR #1135 automation-API atoms to REST', () => {
+    const restAtoms = [
+      'create_program',
+      'create_opportunity',
+      'create_payment_unit',
+      'create_payment_units',
+      'activate_opportunity',
+      'send_llo_invite',
+      'accept_program_application',
+      'send_flw_invite',
+    ];
+    for (const a of restAtoms) {
+      const route = CAPABILITY_MAP[a as keyof typeof CAPABILITY_MAP];
+      expect(route?.backend, `${a} should be REST`).toBe('REST');
+    }
   });
 });
