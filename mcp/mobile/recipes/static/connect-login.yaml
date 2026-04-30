@@ -1,13 +1,28 @@
 # Sign in an already-registered PersonalID user (CommCare 2.62.0+ integrated
-# Connect flow). Assumes CommCare is installed but the PersonalID session is
-# fresh or expired — i.e., nav drawer shows "Sign In / Register".
+# Connect flow). Resilient to three starting states:
 #
-# If the user is already signed in, the nav drawer shows their name + a
-# "Sign Out" option instead — flow short-circuits via runFlow.when.
+#   1. First-start (fresh CommCare install, no CCZ chosen) — splash shows
+#      `str_setup_message` AND the `connect_login_button` ("GO TO CONNECT
+#      MENU"). Tap it directly; no nav drawer needed.
+#   2. Post-install signed-out — nav drawer with "Sign In / Register"
+#      button. Open drawer, tap sign-in.
+#   3. Already signed in — "New Opportunities" home is visible after either
+#      path; short-circuit with a screenshot.
 #
-# Post-login screens (PIN entry, biometric prompt, recovery flow) still need
-# final selector discovery. The first real /ace:mobile-bootstrap run that
-# successfully completes registration will surface them.
+# After landing on the phone-entry screen, this recipe:
+#   - Dismisses the Google Play Services phone-hint sheet that pops on
+#     AutoCompleteTextView focus
+#   - Enters phone + consent + Continue
+#   - Handles the +7426 demo-user snackbar bypass (taps OK)
+#   - Enters the device PIN at the OS-level BiometricPrompt that gates
+#     PersonalID unlock
+#   - Lands at the post-login Connect home
+#
+# Required env vars (pass via `mobile_run_recipe.envVars`):
+#   COUNTRY_CODE — e.g., "1", "91", "7426" (no leading +)
+#   PHONE_LOCAL  — local-part of the phone (no country code)
+#   PIN          — 4-digit device PIN for the ACE test user (from
+#                  `${ACE_E2E_PIN}` in $CLAUDE_PLUGIN_DATA/.env)
 appId: org.commcare.dalvik
 ---
 - launchApp:
@@ -19,49 +34,113 @@ appId: org.commcare.dalvik
       id: "org.commcare.dalvik:id/str_setup_message"
     timeout: 30000
 
-- tapOn:
-    point: "73,209"
+# Branch (a) first-start: tap "GO TO CONNECT MENU" directly. No nav drawer
+# present — that path doesn't exist on first-start.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/connect_login_button"
+    commands:
+      - takeScreenshot: "connect-login-first-start"
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_login_button"
 
-# Already signed in? Take a screenshot and stop.
+# Branch (b) post-install: open nav drawer + tap sign-in. Only fires when
+# the first-start `connect_login_button` was NOT visible.
 - runFlow:
     when:
       notVisible:
-        id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+        id: "org.commcare.dalvik:id/connect_login_button"
+    commands:
+      - tapOn:
+          point: "73,209"
+      - extendedWaitUntil:
+          visible:
+            id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+          timeout: 5000
+      - tapOn:
+          id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+
+# Already signed in? "New Opportunities" home is the stable post-login
+# anchor. If we landed here directly (either path bypasses to it), screenshot
+# and stop cleanly.
+- runFlow:
+    when:
+      visible:
+        text: "New Opportunities"
     commands:
       - takeScreenshot: "connect-login-already-signed-in"
       - stopApp
 
-- tapOn:
-    id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
-
+# Phone-entry path
 - extendedWaitUntil:
     visible:
       id: "org.commcare.dalvik:id/connect_primary_phone_input"
-    timeout: 10000
+    timeout: 15000
 
+# Country code: tap, dismiss the GMS phone-hint sheet if it pops, tap again, type.
+- tapOn:
+    id: "org.commcare.dalvik:id/countryCode"
+- runFlow:
+    when:
+      visible:
+        id: "com.google.android.gms:id/cancel"
+    commands:
+      - tapOn:
+          id: "com.google.android.gms:id/cancel"
 - tapOn:
     id: "org.commcare.dalvik:id/countryCode"
 - eraseText: 10
 - inputText: ${COUNTRY_CODE}
 
+# Phone: same dance — sheet WILL appear on first focus.
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_primary_phone_input"
+- runFlow:
+    when:
+      visible:
+        id: "com.google.android.gms:id/cancel"
+    commands:
+      - tapOn:
+          id: "com.google.android.gms:id/cancel"
 - tapOn:
     id: "org.commcare.dalvik:id/connect_primary_phone_input"
 - eraseText: 15
 - inputText: ${PHONE_LOCAL}
 
+# Consent + Continue
 - tapOn:
     id: "org.commcare.dalvik:id/connect_consent_check"
-
 - tapOn:
     id: "org.commcare.dalvik:id/personalid_phone_continue_button"
 
-# Post-phone screens (OTP, PIN, etc.).
-#
-# Post-login the Connect home shows the "New Opportunities" header — this is
-# the stable text anchor we use to detect we've landed (vs. a resource-id,
-# which the Connect app rebuilds change). Verified live in
-# turmeric-20260429-2330 Phase 5 / app-screenshot-capture (2026-04-30): the
-# section header text is what survived four rounds of selector churn.
+# Post-Continue:
+# - Demo-user (+7426): snackbar "I see you're a demo user, so we'll skip
+#   the OTP" with id `snackbar_action` / OK. Tap it.
+# - Real users: OTP screen would appear here. Out of scope for ACE; we
+#   deploy demo phones exclusively.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/snackbar_action"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/snackbar_action"
+
+# OS-level BiometricPrompt requesting the device PIN to unlock PersonalID.
+# This is the OS unlock surface (`com.android.systemui:id/lockPassword`),
+# not a CommCare screen.
+- runFlow:
+    when:
+      visible:
+        id: "com.android.systemui:id/lockPassword"
+    commands:
+      - tapOn:
+          id: "com.android.systemui:id/lockPassword"
+      - inputText: ${PIN}
+      - pressKey: Enter
+
+# Land at the Connect home (text-anchor; stable across APK rebuilds).
 - extendedWaitUntil:
     visible:
       text: "New Opportunities"
