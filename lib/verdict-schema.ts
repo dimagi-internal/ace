@@ -75,8 +75,15 @@ export type Mode = z.infer<typeof ModeSchema>;
 export const SeveritySchema = z.enum(['BLOCKER', 'WARN', 'INFO', 'PLATFORM', 'DRIFT', 'INFO-SKIPPED']);
 export type Severity = z.infer<typeof SeveritySchema>;
 
+/**
+ * `score` is nullable to support the umbrella `opp-eval` partial-coverage
+ * case: when no per-skill verdict exists in a category, the dimension's
+ * score is `null` and its weight is renormalized away from the overall at
+ * aggregation time. Per-skill `-eval` rubrics never emit null scores —
+ * they grade or emit `verdict: incomplete` at the top level.
+ */
 export const DimensionSchema = z.object({
-  score: z.number().min(0).max(10),
+  score: z.number().min(0).max(10).nullable(),
   weight: z.number().min(0).max(1),
 });
 export type Dimension = z.infer<typeof DimensionSchema>;
@@ -113,7 +120,13 @@ export type Gate = z.infer<typeof GateSchema>;
  */
 export const VerdictSchema = z.object({
   skill: z.string().min(1),
-  target: z.string().min(1),
+  /**
+   * `target` accepts either a string or a number — many real targets are
+   * numeric IDs (experiment_id, opportunity_id, nova_app_id) and YAML
+   * parses unquoted integers as numbers. Coerce both shapes; downstream
+   * consumers should treat target as a stringified identifier.
+   */
+  target: z.union([z.string().min(1), z.number()]),
   mode: ModeSchema.optional(),
   ran_at: z.string().min(1), // ISO timestamp; not strict — Drive YAML is hand-edited
   capture_path: z.string().min(1),

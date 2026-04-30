@@ -46,7 +46,63 @@ Run scripted Maestro flows against a local AVD, capture PNGs at every step, and 
    - Are screenshots of expected count produced (≥ 1 per `takeScreenshot` step)?
    - Are all screenshots non-zero bytes?
 
-8. **Write verdict** to `verdicts/app-screenshot-capture.yaml` with status pass/fail and per-recipe breakdown so `opp-eval` can aggregate.
+8. **Write verdict** to `verdicts/app-screenshot-capture.yaml`. The shape MUST conform to `lib/verdict-schema.ts` so `opp-eval` can aggregate.
+
+   ```yaml
+   skill: app-screenshot-capture
+   target: <opp-name>
+   ran_at: <ISO timestamp>
+   capture_path: screenshots/manifest.yaml
+
+   overall_score: 8.5             # 0.0–10.0, weighted across dimensions
+   verdict: pass | warn | fail | incomplete
+   # Use `verdict: incomplete` when env vars are unset, recipes have
+   # unfilled REPLACE_* selectors, or the AVD never booted — the
+   # rubric COULD NOT grade, not that the run was bad. NEVER use
+   # `verdict: blocked` (off-schema; not in lib/verdict-schema.ts).
+
+   dimensions:
+     coverage:           { score: 9.0, weight: 0.30 }   # every Learn module + Deliver form has a recipe
+     execution:          { score: 8.5, weight: 0.30 }   # every recipe status == pass
+     artifact_quality:   { score: 9.0, weight: 0.20 }   # every screenshot is a valid PNG, non-zero bytes
+     manifest_integrity: { score: 8.0, weight: 0.20 }   # manifest.yaml lists every screenshot actually present in Drive
+
+   per_item:
+     - ref: "connect-login.yaml"
+       score: 9.0
+       verdict: pass
+       note: "5 screenshots, all PNG, all referenced from manifest"
+     # ... one per recipe
+
+   auto_surfaced:
+     - severity: WARN
+       message: "Recipe X timed out at step Y; partial screenshots captured"
+   ```
+
+   **Incomplete-mode shape** (when blocked before grading):
+
+   ```yaml
+   skill: app-screenshot-capture
+   target: <opp-name>
+   ran_at: <ISO timestamp>
+   capture_path: phase5-block.md
+
+   overall_score: 0          # required by schema; not meaningful when incomplete
+   verdict: incomplete
+   live_state_verified: false
+
+   dimensions:
+     coverage:           { score: 0, weight: 0.30 }
+     execution:          { score: 0, weight: 0.30 }
+     artifact_quality:   { score: 0, weight: 0.20 }
+     manifest_integrity: { score: 0, weight: 0.20 }
+
+   auto_surfaced:
+     - severity: PLATFORM
+       message: "ACE_E2E_PHONE family unset in .env; mobile_register_test_user cannot run"
+     - severity: PLATFORM
+       message: "Static Maestro recipes have unfilled REPLACE_* selectors; calibrate via `maestro studio` against ~/.ace/apks/commcare-2.62.0.apk before live runs"
+   ```
 
 ## MCP Tools Used
 

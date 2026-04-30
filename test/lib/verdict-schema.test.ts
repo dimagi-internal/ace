@@ -137,4 +137,21 @@ describe('verdict schema', () => {
     const r = validateVerdict({ ...validVerdict, overall_score_pre_cap: 9.4, overall_score: 8.5 });
     expect(r.ok, JSON.stringify(r.errors)).toBe(true);
   });
+
+  it('accepts numeric target (experiment_id, nova_app_id, opportunity_id)', () => {
+    const r = validateVerdict({ ...validVerdict, target: 12027 });
+    expect(r.ok, JSON.stringify(r.errors)).toBe(true);
+  });
+
+  it('accepts null dimension scores (opp-eval partial-coverage shape)', () => {
+    const r = validateVerdict({
+      ...validVerdict,
+      dimensions: {
+        design:    { score: null, weight: 0.4 },
+        commcare:  { score: null, weight: 0.3 },
+        ocs:       { score: 8.4,  weight: 0.3 },
+      },
+    });
+    expect(r.ok, JSON.stringify(r.errors)).toBe(true);
+  });
 });
