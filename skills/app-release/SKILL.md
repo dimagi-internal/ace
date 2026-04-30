@@ -108,21 +108,34 @@ procedure below to rediscover.
 
 5. **Verify both apps show `is_released: true`** via the API.
 
-6. **Verify the released CCZ contains `<learn:deliver>` /
-   `<learn:module>` blocks.** The ultimate test of "Connect can see
-   this app" — the form XML in the CCZ must have elements in the
-   `http://commcareconnect.com/data/v1/learn` namespace. If `is_released`
-   is true but the CCZ has zero such markers, the form lacks Connect
-   metadata at the source (Nova didn't generate it). Halt with the
-   same remediation as Step 3.
+6. **Verify the released CCZ contains `<deliver>` / `<module>` /
+   `<assessment>` / `<task>` blocks in the
+   `http://commcareconnect.com/data/v1/learn` namespace.** The ultimate
+   test of "Connect can see this app" — the form XML in the CCZ must
+   have elements in that namespace. If `is_released` is true but the
+   CCZ has zero such markers, the form lacks Connect metadata at the
+   source (Nova didn't generate it). Halt with the same remediation as
+   Step 3.
+
+   **Important:** Nova emits these elements with a default `xmlns`
+   attribute, NOT a `learn:` prefix:
+
+   ```xml
+   <deliver xmlns="http://commcareconnect.com/data/v1/learn" id="vendor_visits">
+     <name>Vendor Visit</name>
+   </deliver>
+   ```
+
+   Verify with a regex that matches the default-namespace form, not
+   `<learn:deliver>`:
 
    ```bash
    curl -H "Authorization: ApiKey <user>:<key>" \
      "<base>/a/<domain>/apps/api/download_ccz/?app_id=<app_id>&latest=release" \
      -o /tmp/app.ccz
    unzip -q /tmp/app.ccz -d /tmp/app/
-   grep -rcE 'commcareconnect|<learn:(deliver|module|task|assessment)' /tmp/app/ | grep -v ':0'
-   # Must list at least one form file with markers per app
+   grep -rohE '<(deliver|module|task|assessment)[^>]*xmlns="http://commcareconnect\.com[^"]*"' /tmp/app/
+   # Must produce at least one match per app
    ```
 
 7. **Update `deployment-summary.md`** with a `releases:` block:
