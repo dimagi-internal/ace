@@ -174,7 +174,7 @@ Invoke the `app-test` skill.
 - **LLM-as-Judge:** Self-evaluate quality
 
 Note: `training-materials` no longer runs in Phase 2. As of 0.9.0 it lives
-in Phase 5 (`training-prep`), where it consumes the screenshots produced
+in Phase 5 (`qa-and-training`), where it consumes the screenshots produced
 by `app-screenshot-capture` alongside the app summaries.
 
 ### Completion

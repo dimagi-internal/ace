@@ -28,11 +28,11 @@ You run the first LLO-facing phase of a CRISPR-Connect opportunity.
 By the time this phase starts, Phases 1–5 have produced an approved PDD,
 deployed CommCare apps, a configured Connect opportunity, a quality-gated
 OCS chatbot with widget credentials already attached to the opportunity, and
-the screenshot + training-material artifacts produced by `training-prep`.
+the screenshot + training-material artifacts produced by `qa-and-training`.
 This is the first phase where LLOs actually hear from ACE.
 
 Training materials and screenshots were produced upstream in Phase 5
-(`training-prep`); this phase consumes them but does not generate them.
+(`qa-and-training`); this phase consumes them but does not generate them.
 
 The invite-list preparation (`llo-invite`) runs HERE, not in Phase 3, so
 we don't prepare a list until the OCS chatbot has cleared its deep-eval
