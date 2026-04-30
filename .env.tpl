@@ -90,10 +90,10 @@ ACE_HQ_PASSWORD=op://AI-Agents/ACE - CommCareHQ/password
 
 # ─── ACE Mobile Emulation ──────────────────────────────────────────
 # Local-Mac-only. Populated once via /ace:mobile-bootstrap.
-ACE_E2E_PHONE=op://ace/connect-test-user/phone
-ACE_E2E_PHONE_LOCAL=op://ace/connect-test-user/phone-local
-ACE_E2E_COUNTRY_CODE=op://ace/connect-test-user/country-code
-ACE_E2E_PIN=op://ace/connect-test-user/pin
-ACE_E2E_BACKUP_CODE=op://ace/connect-test-user/backup-code
+ACE_E2E_PHONE=op://AI-Agents/connect-test-user/phone
+ACE_E2E_PHONE_LOCAL=op://AI-Agents/connect-test-user/phone-local
+ACE_E2E_COUNTRY_CODE=op://AI-Agents/connect-test-user/country-code
+ACE_E2E_PIN=op://AI-Agents/connect-test-user/pin
+ACE_E2E_BACKUP_CODE=op://AI-Agents/connect-test-user/backup-code
 ACE_E2E_NAME="ACE Test"
 ACE_AVD_NAME=ACE_Pixel_API_34

@@ -5,6 +5,31 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.32 — 2026-04-29
+
+**Fix `.env.tpl` ACE_E2E_* vault reference.**
+
+The mobile-emulation block added in 0.10.0 referenced
+`op://ace/connect-test-user/...`, but the `ace` vault doesn't exist in
+Dimagi's 1Password — it was added speculatively without creating the
+backing item. `op inject` silently no-op'd those lines, leaving the
+installed `.env` without any `ACE_E2E_*` keys. New mobile sessions
+hit this on first registration: the test-user credentials are missing
+and `mobile_register_test_user` can't run.
+
+### Changed
+
+- `.env.tpl` — `ACE_E2E_PHONE`, `ACE_E2E_PHONE_LOCAL`,
+  `ACE_E2E_COUNTRY_CODE`, `ACE_E2E_PIN`, `ACE_E2E_BACKUP_CODE` now
+  point at `op://AI-Agents/connect-test-user/...` to match the
+  established pattern for all other ACE secrets. The corresponding
+  1Password item was created today in the `AI-Agents` vault with the
+  test-user credentials recovered from the prior `android-erui0`
+  session log (`+74260000100`, PIN `111111`, backup `222222`).
+  **Operator action:** re-run
+  `op inject -i .env.tpl -o ~/.claude/plugins/data/ace-ace/.env --account dimagi.1password.com -f`
+  to populate the keys.
+
 ## 0.10.31 — 2026-04-29
 
 **Three small post-e2e fixes lifted from the turmeric run.**
