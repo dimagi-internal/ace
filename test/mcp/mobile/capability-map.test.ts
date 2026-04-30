@@ -12,10 +12,12 @@ const EXPECTED_CAPS: Capability[] = [
   'run_recipe',
   'generate_recipes_from_app_summary',
   'capture_ui_dump',
+  'save_snapshot',
+  'load_snapshot',
 ];
 
 describe('mobile capability-map', () => {
-  it('declares exactly 10 capabilities', () => {
+  it('declares exactly 12 capabilities', () => {
     expect(Object.keys(CAPABILITY_MAP).sort()).toEqual([...EXPECTED_CAPS].sort());
   });
 

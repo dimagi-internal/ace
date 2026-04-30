@@ -1,36 +1,186 @@
-# SCAFFOLD ONLY — REPLACE_* selectors must be discovered via `maestro studio`.
-# Drive Connect mobile from the OTP entry screen through to home.
+# Drive CommCare PersonalID from the post-Continue state through to
+# account creation, end-to-end automated.
+#
+# This recipe assumes the +7426 demo-bypass prefix is in use (Connect-id
+# special-cases that range to skip OTP entirely). The non-demo OTP path is
+# not maintained — see CHANGELOG 0.10.x. ACE has no use case for testing
+# real-OTP delivery on a managed test phone.
+#
+# Selectors verified live on CommCare 2.62.0 on 2026-04-29.
+# Registration steps 1–28 verified against ACE_Pixel_API_34_PS (Play
+# Store image) registering +74260000100 from a fresh install. The final
+# photo-capture step (29–30) requires a non-GMS AVD — see the photo
+# section below and the Face-capture gotcha in
+# playbook/integrations/mobile-integration.md.
+#
+# Variables:
+#   ${NAME}         — display name (e.g., "ACE Test User")
+#   ${BACKUP_CODE}  — 6-digit numeric (e.g., "123456")
+#   ${PIN}          — 4-digit PIN for the device App Lock (defaults to "1234")
+#
+# AVD prerequisites:
+#   - hw.camera.front=emulated (auto-patched by mobile_ensure_avd_running
+#     in 0.10.18+; pre-0.10.18 AVDs need a manual edit).
+#   - GMS disabled at runtime via
+#       adb shell pm disable-user --user 0 com.google.android.gms
+#     Both google_apis and google_apis_playstore system images on macOS
+#     ship with functional GMS, so the choice of system image doesn't
+#     matter — the runtime disable is what flips MicroImageActivity into
+#     ManualMode (manual camera_shutter_button visible). Without this
+#     step the recipe stalls waiting for ML Kit to detect a face that
+#     the emulated front camera can never supply. See § Face-capture
+#     gate in playbook/integrations/mobile-integration.md.
+#   - CAMERA permission pre-granted to org.commcare.dalvik via
+#       adb shell pm grant org.commcare.dalvik android.permission.CAMERA
+#     so MicroImageActivity doesn't bail on first launch.
+#   commands/mobile-bootstrap.md step 9 runs both adb commands.
+
 appId: org.commcare.dalvik
 ---
-- assertVisible:
-    id: "REPLACE_otp_entry"
-- tapOn:
-    id: "REPLACE_otp_entry"
-- inputText: ${OTP}
-- tapOn:
-    id: "REPLACE_otp_verify"
 
+# Demo-user snackbar ("I see you're a demo user, so we'll skip the OTP").
+# Auto-fades after ~5s, so this is best-effort: dismiss if still up,
+# otherwise the App Lock screen wait below will catch us up.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/snackbar_action"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/snackbar_action"
+
+# App Lock screen offers Configure Fingerprint
+# and Configure PIN; AVD has no fingerprint enrolled so we use PIN.
 - extendedWaitUntil:
     visible:
-      id: "REPLACE_name_entry"
+      id: "org.commcare.dalvik:id/connect_verify_pin_button"
     timeout: 15000
 - tapOn:
-    id: "REPLACE_name_entry"
-- inputText: ${NAME}
-- tapOn:
-    id: "REPLACE_name_continue"
+    id: "org.commcare.dalvik:id/connect_verify_pin_button"
 
+# Two branches here:
+#
+#   A) Device has no screen lock yet → CommCare hands off to
+#      com.android.settings/.password.ChooseLockPassword. We pick PIN, set
+#      it, confirm it, dismiss the lock-screen redaction interstitial, then
+#      come back to the App Lock screen and tap AGREE & CONTINUE.
+#   B) Device already has a screen lock (e.g., a prior registration set the
+#      PIN globally) → Configure-PIN immediately surfaces the system unlock
+#      prompt without going through the chooser. Skip A, go straight to the
+#      unlock step further down.
+- runFlow:
+    when:
+      visible:
+        id: "com.android.settings:id/lock_pin"
+    commands:
+      - tapOn:
+          id: "com.android.settings:id/lock_pin"
+      - extendedWaitUntil:
+          visible:
+            id: "com.android.settings:id/password_entry"
+          timeout: 5000
+      - inputText: ${PIN}
+      - tapOn: "NEXT"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - inputText: ${PIN}
+      - tapOn: "CONFIRM"
+      - extendedWaitUntil:
+          visible:
+            text: "Lock screen"
+          timeout: 5000
+      - tapOn: "DONE"
+      - extendedWaitUntil:
+          visible:
+            text: "AGREE & CONTINUE"
+          timeout: 10000
+      - tapOn: "AGREE & CONTINUE"
+
+# System biometric prompt: "Unlock PersonalID" / "Please unlock to continue".
+# Enter the PIN we just set.
 - extendedWaitUntil:
     visible:
-      id: "REPLACE_backup_code_entry"
+      id: "com.android.systemui:id/lockPassword"
+    timeout: 8000
+- tapOn:
+    id: "com.android.systemui:id/lockPassword"
+- inputText: ${PIN}
+- pressKey: Enter
+
+# Second snackbar after successful unlock (same demo-user message). Some
+# CommCare builds re-show it post-unlock; runFlow.when keeps the recipe
+# working whether it appears or not.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/snackbar_action"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/snackbar_action"
+
+# Name screen
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/nameTextValue"
     timeout: 10000
 - tapOn:
-    id: "REPLACE_backup_code_entry"
-- inputText: ${BACKUP_CODE}
+    id: "org.commcare.dalvik:id/nameTextValue"
+- inputText: ${NAME}
+- hideKeyboard
 - tapOn:
-    id: "REPLACE_backup_code_continue"
+    id: "org.commcare.dalvik:id/personalid_name_continue_button"
 
+# Backup code: choose + confirm 6-digit code
 - extendedWaitUntil:
     visible:
-      id: "REPLACE_home_screen_root"
-    timeout: 30000
+      id: "org.commcare.dalvik:id/connect_backup_code_input"
+    timeout: 10000
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_backup_code_input"
+- inputText: ${BACKUP_CODE}
+- hideKeyboard
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_backup_code_repeat_input"
+- inputText: ${BACKUP_CODE}
+- hideKeyboard
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_backup_code_button"
+
+# Photo capture — final step. Two modes depending on Google Play Services:
+#
+#   * GMS-enabled AVDs (google_apis_playstore image): MicroImageActivity
+#     uses ML Kit face detection to auto-trigger the shutter when a face
+#     stabilizes in the viewfinder. The emulated front camera shows a
+#     gray test pattern — never a face — so this mode hangs forever.
+#   * Non-GMS AVDs (google_apis image): MicroImageActivity falls back to
+#     FaceCaptureView.CaptureMode.ManualMode and exposes a manual
+#     camera_shutter_button. Maestro can tap it directly.
+#
+# ACE uses a google_apis AVD (no Play Store) by default for exactly this
+# reason — see commands/mobile-bootstrap.md and the Face-capture gotcha
+# in playbook/integrations/mobile-integration.md.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/take_photo_button"
+    timeout: 10000
+- tapOn:
+    id: "org.commcare.dalvik:id/take_photo_button"
+
+# Manual shutter (non-GMS path). On GMS-enabled AVDs this selector won't
+# appear and the recipe will fail here — that's intentional, as the
+# alternative (auto-shutter) can't be driven on an AVD without a real face.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/camera_shutter_button"
+    timeout: 8000
+- tapOn:
+    id: "org.commcare.dalvik:id/camera_shutter_button"
+
+# After manual capture MicroImageActivity returns to the photo intro
+# screen with the captured image shown and save_photo_button enabled.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/save_photo_button"
+    timeout: 15000
+- tapOn:
+    id: "org.commcare.dalvik:id/save_photo_button"

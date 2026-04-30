@@ -34,8 +34,23 @@ retained for tooling that introspects agent metadata, not because Phase
 
 Execute these steps in order for the given opportunity:
 
-### Step 1: PDD to Apps (parallel)
-Invoke `pdd-to-learn-app` and `pdd-to-deliver-app` skills. These can run in parallel.
+### Step 1: PDD to Apps (parallel — REQUIRED)
+Invoke `pdd-to-learn-app` and `pdd-to-deliver-app` skills.
+
+**These MUST run in parallel.** Each skill dispatches `/nova:autobuild`
+which takes 10–15 minutes; running serially wastes ~7 minutes of
+wall-clock per opp. Dispatch both `Agent` calls in a **single assistant
+message** (two tool-use blocks side-by-side) and await both before
+proceeding to Step 1.5. Do not start Deliver after Learn returns.
+
+The two builds are fully independent — Learn reads the PDD's learning
+objectives, Deliver reads the visit/registration spec, neither depends
+on the other's `nova_app_id`. The topology rule (level-0 dispatch) is
+preserved: both Nova subagents dispatch from the top-level session.
+
+If one Nova build fails and the other succeeds, surface the failure
+without re-running the successful side.
+
 - Input: approved PDD from GDrive
 - Output: app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
 - **LLM-as-Judge:** Evaluate app quality against PDD requirements

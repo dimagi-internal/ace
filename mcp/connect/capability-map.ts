@@ -6,7 +6,7 @@ export interface CapabilityRoute {
 }
 
 /**
- * The 18 atoms exposed by `ace-connect`.
+ * The 19 atoms exposed by `ace-connect`.
  *
  * History:
  * - 0.8.0 shipped 14 atoms (Programs CRUD, Opportunities CRUD, activate,
@@ -18,16 +18,21 @@ export interface CapabilityRoute {
  *   `/opportunity/<id>/deliver_unit_table` endpoints. The activation atom
  *   also moved off the imaginary `/activate/` URL onto the `active` flag
  *   on `/<id>/edit`.
+ * - 0.10.15 added `register_hq_api_key` so agents can register / look up the
+ *   Connect-side int FK for an HQ API key without driving the whole
+ *   create-opportunity flow. Previously this was an internal step inside
+ *   `create_opportunity`, with no way to debug it independently.
  *
  * When real CCC-301 REST endpoints land, individual entries flip from
  * 'PLAYWRIGHT' to 'REST' one line at a time.
  */
 export type Capability =
-  // Authoring (10)
+  // Authoring (9)
   | 'create_program'
   | 'update_program'
   | 'create_opportunity'
   | 'update_opportunity'
+  | 'register_hq_api_key'
   | 'set_verification_flags'
   | 'create_payment_unit'
   | 'activate_opportunity'
@@ -50,6 +55,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   update_program:           { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/programs/{id}/' },
   create_opportunity:       { backend: 'PLAYWRIGHT', restTarget: 'POST /api/opportunities/' },
   update_opportunity:       { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/opportunities/{id}/' },
+  register_hq_api_key:      { backend: 'PLAYWRIGHT', restTarget: 'POST /api/hq-api-keys/' },
   set_verification_flags:   { backend: 'PLAYWRIGHT', restTarget: 'PUT /api/opportunities/{id}/verification-flags/' },
   create_payment_unit:      { backend: 'PLAYWRIGHT', restTarget: 'POST /api/opportunities/{id}/payment-units/' },
   activate_opportunity:     { backend: 'PLAYWRIGHT', restTarget: 'POST /api/opportunities/{id}/activate/' },

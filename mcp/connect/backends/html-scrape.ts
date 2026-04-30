@@ -235,3 +235,64 @@ export function parseFormErrors(html: string): string[] {
   }
   return out;
 }
+
+/**
+ * Parse Django form errors keyed by field name.
+ *
+ * Connect's crispy-rendered forms wrap each field in a div with id
+ * `div_id_<fieldname>` (e.g. `<div id="div_id_api_key" class="mb-3">…`). When
+ * the form fails validation Django re-renders the same template with a
+ * `<ul class="errorlist">` injected inside the field wrapper. We walk each
+ * `div_id_*` block and harvest the errorlist items inside it.
+ *
+ * Form-level errors (i.e. `<ul class="errorlist">` outside any field wrapper —
+ * Django renders these with `class="errorlist nonfield"`) are returned under
+ * the special key `__all__`.
+ *
+ * Returns `{}` when the response has no errorlist at all (i.e. it's not a
+ * validation-failure render).
+ */
+export function parseFormErrorsByField(html: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+
+  const errorlistRe = /<ul class="errorlist[^"]*"[^>]*>([\s\S]*?)<\/ul>/g;
+  const liRe = /<li[^>]*>([\s\S]*?)<\/li>/g;
+
+  // 1. Scan each div_id_<field> block. We greedily match up to the next
+  //    div_id_ opener (or end-of-string) to scope errorlists to a field.
+  const fieldBlockRe = /<div\s+id="div_id_([a-zA-Z0-9_]+)"[^>]*>([\s\S]*?)(?=<div\s+id="div_id_[a-zA-Z0-9_]+"|<\/form>|$)/g;
+  const consumedRanges: Array<[number, number]> = [];
+  for (const m of html.matchAll(fieldBlockRe)) {
+    const field = m[1];
+    const block = m[2];
+    const errs: string[] = [];
+    for (const e of block.matchAll(errorlistRe)) {
+      for (const li of e[1].matchAll(liRe)) {
+        errs.push(li[1].replace(/<[^>]+>/g, '').trim());
+      }
+    }
+    if (errs.length) {
+      out[field] = (out[field] ?? []).concat(errs);
+    }
+    if (m.index != null) consumedRanges.push([m.index, m.index + m[0].length]);
+  }
+
+  // 2. Form-level / non-field errors: any errorlist outside the field blocks.
+  //    Django marks these `errorlist nonfield` but we accept both for safety
+  //    (Connect's templates may not always include the modifier).
+  for (const m of html.matchAll(errorlistRe)) {
+    const start = m.index ?? -1;
+    if (start < 0) continue;
+    const inField = consumedRanges.some(([s, e]) => start >= s && start < e);
+    if (inField) continue;
+    const errs: string[] = [];
+    for (const li of m[1].matchAll(liRe)) {
+      errs.push(li[1].replace(/<[^>]+>/g, '').trim());
+    }
+    if (errs.length) {
+      out['__all__'] = (out['__all__'] ?? []).concat(errs);
+    }
+  }
+
+  return out;
+}

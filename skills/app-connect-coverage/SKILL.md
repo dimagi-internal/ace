@@ -116,13 +116,22 @@ For each form:
   - `wrong` — has `connect` but with different sub-block (e.g.
     `task` where we expected `deliver_unit`)
 
-### Step 4: Auto-fix
+### Step 4: Auto-fix (parallel dispatch)
 
 For each `missing` / `partial` / `wrong` form, call
 `mcp__plugin_nova_nova__update_form` with the expected `connect`
 object. After EVERY mutation, re-fetch via `nova_get_form` to confirm
 the change took effect (catches the "validator silently strips
 fields" failure mode — see § Known Nova bugs below).
+
+**Batch the mutations.** A typical Connect app has 5–12 forms across
+both Learn and Deliver. Dispatch all `update_form` calls for a single
+iteration in **one assistant message** (multiple tool-use blocks side
+by side), then dispatch all the `get_form` re-fetches in one message.
+Two batched roundtrips beat 24 sequential ones — saves 20–40 sec per
+coverage pass and avoids token churn from interleaved tool results.
+The mutations are independent (each targets a distinct moduleIndex/
+formIndex pair); Nova does not require ordering.
 
 ### Step 5: Validate the app
 

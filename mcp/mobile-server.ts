@@ -115,6 +115,22 @@ server.tool(
   }),
 );
 
+server.tool(
+  'mobile_save_snapshot',
+  { avdName: z.string(), snapshotName: z.string() },
+  async ({ avdName, snapshotName }) => ({
+    content: [{ type: 'text', text: JSON.stringify(await client.saveSnapshot(avdName, snapshotName), null, 2) }],
+  }),
+);
+
+server.tool(
+  'mobile_load_snapshot',
+  { avdName: z.string(), snapshotName: z.string() },
+  async ({ avdName, snapshotName }) => ({
+    content: [{ type: 'text', text: JSON.stringify(await client.loadSnapshot(avdName, snapshotName), null, 2) }],
+  }),
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);

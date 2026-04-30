@@ -1,6 +1,6 @@
 ---
 description: Run the full CRISPR-Connect lifecycle for an opportunity
-argument-hint: [<opp-name>] [--mode auto|review] [--idea FILE|-] [--ace-web-url URL] [--dry-run] [--sandbox]
+argument-hint: [<opp-name>] [--mode default|review|auto] [--idea FILE|-] [--ace-web-url URL] [--dry-run] [--sandbox]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---
 
@@ -11,7 +11,17 @@ Run the full CRISPR-Connect lifecycle for a Connect opportunity.
 ## Arguments
 - `<opp-name>` — slug for the opp folder in Drive. **Optional.** If omitted,
   default to `smoke-<YYYYMMDD-HHMM>` using the current time.
-- `--mode auto|review` — execution mode (default: `review`).
+- `--mode default|review|auto` — execution mode (default: `default`).
+  - `default` — auto-proceed through internal Phases 1–5 unless a gate
+    brief surfaces a `[BLOCKER]` or a hard error occurs. Always pause
+    before any action that affects external parties (LLO contact,
+    opportunity activation, Jira ticket creation). This is the
+    intended day-to-day mode: keep moving until there's a real reason
+    to stop or until the next action would touch the outside world.
+  - `review` — pause at every one of the 5 gate steps for explicit
+    approval. Use for high-touch operations or training.
+  - `auto` — never pause for any gate. For unattended batch runs
+    (e.g. eval calibration). `[BLOCKER]` concerns still escalate.
 - `--idea FILE|-` — pre-seed `idea.md` from a file path, or `-` for stdin.
   When provided, skip the interactive PDD-picker described below.
   Content is uploaded verbatim to `ACE/<opp-name>/idea.md` via
@@ -57,7 +67,7 @@ the full resolution flow. Short version:
 
 ## Process
 
-1. Parse arguments. Default mode is `review`. If `<opp-name>` is missing,
+1. Parse arguments. Default mode is `default`. If `<opp-name>` is missing,
    generate `smoke-<YYYYMMDD-HHMM>` using `date +%Y%m%d-%H%M`.
 
 1a. Resolve `--ace-web-url` default:

@@ -5,6 +5,523 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.26 — 2026-04-29
+
+**Auto-run face-capture prep + recover from NotificationShade quirk during AVD boot.**
+
+### Added
+
+- **`AvdBackend.runPostBootPrep` runs after every `ensureAvdRunning`
+  cold boot.** Idempotent best-effort prep that:
+  - Waits up to 90s for `sys.boot_completed=1` (the device is reachable
+    by `adb devices` long before `pm` and `dumpsys` calls succeed; the
+    earlier code raced and led to silent prep failures).
+  - Disables Google Play Services via `pm disable-user --user 0
+    com.google.android.gms` so `MicroImageActivity` falls back to
+    `ManualMode` and exposes `camera_shutter_button`. Eliminates the
+    one operator step that mobile-bootstrap.md previously asked for in
+    step 9. Re-enable manually with `pm enable com.google.android.gms`
+    if any future ACE skill needs GMS.
+  - Pre-grants `android.permission.CAMERA` to `org.commcare.dalvik` if
+    the package is installed. Skips silently if it isn't (most cold
+    boots — bootstrap installs CommCare later).
+  - Detects the post-cold-boot NotificationShade quirk
+    (`mCurrentFocus=Window{...NotificationShade}` on `google_apis*`
+    images on macOS) and recovers via `wm dismiss-keyguard` +
+    `KEYCODE_HOME`. Skips silently when focus is already on a normal
+    activity. Without this, maestro's first `launchApp` against a
+    cold-booted AVD would race against the stuck shade and time out.
+
+All four steps are best-effort — any failure logs and continues. The
+boot itself never fails just because GMS-disable couldn't run on a
+device that lacks the package, etc.
+
+### Why
+
+0.10.22's bootstrap doc told operators to run two adb commands manually
+before registration. That's an easy step to forget, and the failure
+mode (registration stalls on auto-shutter) is non-obvious — burned a
+whole session today figuring out the GMS-disable lever was the actual
+fix. Baking the prep into `ensureAvdRunning` makes the bypass
+structurally invisible: every fresh AVD boot is registration-ready
+without operator memory. Same theme as 0.10.18's `hw.camera.front`
+auto-patch — class-level preventer over instance-level fix.
+
+The NotificationShade quirk is the one thing that blocked the live
+e2e verify in 0.10.22. Codifying the recovery here means the next
+session shouldn't lose time to it again.
+
+## 0.10.25 — 2026-04-29
+
+**Connect 5xx errors now surface the real Django exception; doctor catches stale-session-after-update.**
+
+Two related fixes for the "Connect HTTP 500 retry storm" pattern
+observed in `new-e2e-25bff` (6 attempts, ~25 min lost). The root cause
+is two-part: bad error visibility on 5xx responses, and a stale-MCP
+session after `/ace:update` that surfaces as "No such tool available."
+
+### Added
+
+- **`summarizeServerErrorBody(body, contentType?)` in
+  `mcp/connect/errors.ts`.** When Connect returns a 5xx, the body is
+  typically a Django HTML page — debug stack trace in dev, generic
+  "Server Error (500)" in prod, sometimes a Sentry event id embedded
+  in JS init. The previous behavior sliced the first 200 chars of the
+  body into the error message, which surfaced
+  `<!DOCTYPE html><html><head>...` and was useless for triage.
+  The new helper extracts (in order): JSON `detail`/`error`/`message`
+  fields, Django technical-500 `<pre class="exception_value">` plus
+  exception type, generic-500 `<title>` + `<h1>` + Sentry event id,
+  or a stripped-tags fallback. Capped at ~300 chars.
+- **`HttpError` constructor accepts an optional `contentType` arg** —
+  used by the summarizer to detect JSON bodies. Backward-compatible
+  with all existing call sites (none pass the 4th arg).
+- **9 new unit tests in `test/mcp/connect/unit/errors.test.ts`**
+  covering JSON error bodies, Django technical-500 pages, generic-500
+  pages, Sentry event id extraction, character cap, plain-text
+  fallback, and the HttpError integration.
+- **`bin/ace-doctor` adds a `session_freshness` check.** Compares the
+  running plugin's `VERSION` against `installed_plugins.json`'s recorded
+  version. Mismatch surfaces as `WARN session_freshness` with the
+  actionable fix: run `/reload-plugins` or restart the session, since
+  MCP servers don't pick up a new version until reload. The canonical
+  symptom of this class is "No such tool available: connect_*" right
+  after `/ace:update` — observed in `new-e2e-25bff` at 12:10.
+
+### Changed
+
+- **`mcp/connect/backends/playwright.ts` `httpErrorFor`** now passes
+  the response Content-Type header through to `HttpError`, so the
+  summarizer can identify JSON bodies even when the body bytes don't
+  start with `{`.
+
+### Why
+
+`new-e2e-25bff` had 6 distinct `connect_create_opportunity` failures,
+each followed by a `connect_list_opportunities` recovery probe and a
+fresh retry — 4 of them on HTTP 500, plus a "tool not available" after
+a mid-session `/ace:update`. The 500 retry storm cost ~25 min of
+wall-clock; the underlying Django exception was invisible to the agent
+because the error message was just `HTTP 500 POST /a/.../opportunity/init/:
+<!DOCTYPE html><html><head><title>` with the actual exception type
+buried 4kb into the body. The agent now sees the real error and can
+make a real triage decision (retry vs reauth vs filing a Connect
+issue).
+
+The doctor `session_freshness` check is the class-level preventer for
+the post-update tool-loss symptom — same pattern as the 0.7.1
+`ocs_shared_collection_team` probe and 0.5.18 Drive Shared-Drive guard.
+
+## 0.10.24 — 2026-04-29
+
+**New default `/ace:run` mode — keep going until external communication.**
+
+Adds a third execution mode, `default`, and makes it the default for
+`/ace:run`. Replaces the old "pause at every gate" default with one
+that matches the way the team actually operates: trust the eval
+verdict for internal phases, halt only on real blockers, and stop
+unconditionally before any action that touches an outside party.
+
+### Added
+
+- **`default` mode** — the new default. Auto-proceeds through the
+  three internal gates (`idea-to-pdd`, `app-deploy`,
+  `ocs-chatbot-eval-deep`) when the gate brief contains no
+  `[BLOCKER]` concern. Always pauses at the Phase 5→6 transition
+  (the external-communication boundary) and at every Phase 6/7 step
+  whose action affects an external party — `llo-invite`,
+  `llo-onboarding`, `llo-uat`, `llo-launch`, and `opp-closeout`.
+  Hard errors halt regardless of mode.
+
+### Changed
+
+- **`commands/run.md`** — `--mode` argument now accepts
+  `default|review|auto`; default value flips from `review` to
+  `default`. Each mode's intent documented inline.
+- **`agents/ace-orchestrator.md`** — `## Execution Modes` rewritten
+  to define the three modes with concrete per-phase behavior. New
+  `## Gate Brief Contract` per-mode pause matrix table makes the
+  default vs review vs auto behavior explicit at every named gate.
+  `## Between Phases` and `## Error Handling` updated for the
+  three-mode world.
+- **State schema** — `mode: default|review|auto` (was
+  `mode: review|auto`). `state.yaml` default value flips to `default`.
+- **`commands/status.md`** — mode column displays
+  `default/review/auto` (was `auto/review`).
+
+### Why
+
+Observed in today's e2e session (`e2e-xw5gk`): a 36-minute idle gap
+mid-Phase-1 waiting for a `idea-to-pdd` gate approval. Phases 1–5
+are entirely internal — Nova builds in private Firestore,
+`app-deploy` uploads to a Dimagi-controlled project space, OCS
+chatbots are configured but not yet linked to FLWs. Operators
+historically rubber-stamped these gates 95%+ of the time when the
+eval rubric passed cleanly. `default` mode lets the eval verdict be
+the decision-maker for internal gates while preserving
+"human-in-the-loop on every external touch" for Phases 6–7. The
+existing `review` mode stays available as an opt-in for high-touch
+operations or training; `auto` stays available for unattended
+batch runs.
+
+## 0.10.22 — 2026-04-29
+
+**Face-capture gate has a real bypass — disable GMS at runtime.**
+
+### Discovered
+
+- **The photo IS required, but the content isn't validated.**
+  - Client (`PersonalIdPhotoCaptureFragment` /
+    `ApiPersonalId.setPhotoAndCompleteProfile`):
+    `Objects.requireNonNull(photoAsBase64)` and SAVE PHOTO is disabled
+    until a capture exists.
+  - Server (connect-id `users/views.complete_profile`): rejects with
+    `MISSING_DATA` (HTTP 400) if `photo` is empty/missing, then calls
+    `upload_photo_to_s3(photo, user.username)` without content
+    validation.
+  - **Conclusion:** any non-empty bytes from the AVD's emulated camera
+    satisfy both checks. Face detection lives entirely in the client as
+    the auto-shutter trigger.
+
+- **The auto-shutter / manual-shutter branch is GMS-driven at runtime,
+  not AVD-image-driven.** Both `google_apis` and `google_apis_playstore`
+  system images on macOS Apple Silicon ship a functional
+  `com.google.android.gms` package, so
+  `GoogleApiAvailability.isGooglePlayServicesAvailable` returns SUCCESS
+  on both — the auto-shutter path is taken regardless. The actual lever
+  is `pm disable-user --user 0 com.google.android.gms`, which flips
+  `MicroImageActivity` into `ManualMode` and exposes
+  `camera_shutter_button` for Maestro to tap.
+
+### Changed
+
+- **`connect-register-from-otp.yaml`** updated to tap
+  `camera_shutter_button` after `take_photo_button`, then
+  `save_photo_button` after the captured-image preview returns to the
+  intro screen. The old "wait for AOSP camera Done button" steps are
+  gone — they were based on an incorrect assumption that
+  MicroImageActivity launched the system camera; in fact CommCare 2.62.0
+  ships its own CameraX-based capture activity.
+- **Header AVD prerequisites updated** to require runtime GMS disable
+  + pre-granted CAMERA permission, with the exact `adb` commands.
+  Pointers to the integration doc for full reasoning.
+- **`commands/mobile-bootstrap.md` step 9** is the new pre-flight (run
+  the two `adb shell pm` commands) before step 10 (the existing
+  `mobile_register_test_user` call). Steps 10/11/12 renumbered.
+- **`playbook/integrations/mobile-integration.md` § Face-capture gate**
+  rewritten with source citations from `MicroImageActivity.onCreate`
+  and `connect-id users/views.py`. Walks through why the photo content
+  doesn't matter and why the GMS-availability branch is the lever.
+- **0.10.20's "use a non-GMS AVD" recommendation reverted.** The system
+  image choice doesn't affect this on macOS — both ship GMS.
+
+### Why we haven't live-verified the full path
+
+Live verification stalled on an AVD UI quirk (NotificationShade focus
+stuck post-cold-boot, blocking maestro). The recipe is correct by
+construction from the source — `MicroImageActivity.onCreate` directly
+shows the conditional, `micro_image_widget.xml` declares the shutter
+button, `setPhotoAndCompleteProfile` shows the API call shape, and
+`complete_profile` (connect-id) shows the server contract. Operators
+running `mobile-bootstrap` from scratch should hit the new path; if
+something diverges, the `--debug` artifacts from a failing maestro run
+plus a `mobile_capture_ui_dump` of MicroImageActivity will pinpoint it
+in seconds.
+
+### Why this matters in context
+
+The user's intuition that "the picture isn't really required" was
+half-right: any picture works, you just can't skip taking one. ACE's
+production path doesn't depend on this either way — Phase 5
+`training-prep` opens deployed CommCare apps directly. This release
+clears the only remaining barrier to a fully-automated bootstrap from
+a fresh AVD.
+
+## 0.10.21 — 2026-04-29
+
+**Speed wins from e2e session review — parallel dispatch + inline phase handoffs.**
+
+Session review of today's `e2e-xw5gk` and `new-e2e-25bff` runs surfaced
+four low-risk wall-clock wins. Each is a prose-only edit to an
+agent/skill markdown file; no MCP changes, no schema changes.
+
+### Changed
+
+- **`agents/commcare-setup.md` — Step 1 hardens parallel Nova dispatch.**
+  The doc previously said the two `pdd-to-*-app` skills "can run in
+  parallel"; observed behavior was serial (~15 min Learn, then ~13 min
+  Deliver, ~7 min wasted). Step 1 now requires both `Agent` calls in a
+  single assistant message and spells out why the topology is safe
+  (each Nova architect is a level-1 subagent dispatched from the
+  inline-executed level-0 procedure). Saves ~7 min per opp.
+- **`skills/app-connect-coverage/SKILL.md` — Step 4 batches `update_form`
+  mutations.** Observed in `new-e2e-25bff`: 12 sequential
+  `nova__update_form` calls in 30s. Skill now instructs to dispatch
+  all mutations for an iteration in one message, then re-fetch all
+  forms in one message. Saves 20–40 sec per coverage pass.
+- **`agents/ace-orchestrator.md` — new "Performance Conventions"
+  section.** Codifies three rules: (1) pass PDD + previous gate brief
+  + state.yaml inline at phase handoff (kills the per-phase Drive
+  re-read churn — observed PDD doc fetched 3× in 37 min in
+  `e2e-xw5gk`); (2) pre-load common MCP atoms with one batched
+  `ToolSearch` per phase instead of 5–10 scattered lookups (observed
+  11 ToolSearch calls in one session); (3) batch independent tool
+  calls in a single assistant message. Combined ~30–90 sec wall-clock
+  + meaningful token savings per run.
+
+### Why these specifically
+
+The full review surfaced 8 findings; this release ships only the
+four whose fix is mechanically clear and confined to prose. Three
+deferred for separate PRs: batched `AskUserQuestion` audit per phase
+(needs scope review), Connect HTTP 500 surfacing in
+`mcp/connect/backends/composite.ts` (needs live probing), and Nova
+turn-0 heartbeat detection (needs a reliable signal). Total ceiling
+on shipped changes: ~10 min wall-clock + token churn per opp; ~50 min
+ceiling on the deferred items if they all land.
+
+## 0.10.20 — 2026-04-29
+
+**Documented face-capture gate as known limitation.**
+
+### Discovered
+
+- **CommCare 2.62.0 added a `MicroImageActivity` face-capture screen.**
+  Live verification of the optimized 0.10.19 loop drove registration
+  through 28 of 30 recipe steps successfully (App Lock → PIN setup →
+  unlock → name → backup code → photo step initiates → face viewfinder
+  loads). The final two steps (`save_photo_button` after auto-shutter)
+  require a face that the AVD's emulated front camera doesn't supply
+  — `hw.camera.front=emulated` shows a moving gray test pattern, not a
+  human face, and CommCare's auto-detect-and-shutter logic never
+  triggers. `virtualscene` mode wouldn't help either; it renders an
+  empty 3D office without a person.
+
+### Documented
+
+- **`playbook/integrations/mobile-integration.md` — new "Face-capture
+  gate" gotcha** explains the barrier honestly: the phone IS registered
+  server-side at this point, but the local CommCare session is blocked.
+  Three hypothetical workarounds (host webcam, gRPC image stream,
+  server-side demo bypass) are listed with their tradeoffs; none are
+  implemented in 0.10.x.
+- **"What's not yet built" expanded** to call out the face-capture
+  bypass as a deferred item, and to note that this gate does NOT block
+  ACE Phase 5 `training-prep` (which opens deployed CommCare apps
+  directly, not via the registration flow).
+
+### Why it's fine for ACE production
+
+The Phase 5 `training-prep` use case opens a *deployed* CommCare app
+directly to capture screenshots — no registration flow, no face capture.
+The blocked path is only the one-time fresh-AVD bootstrap, which is
+documented in `commands/mobile-bootstrap.md` as needing a pre-registered
+test phone (the operator handles registration manually once or
+re-uses an existing snapshot). 0.10.18's `mobile_save_snapshot` atom is
+the durable workaround: register once on a real device or via manual
+operator-driven photo capture, snapshot the AVD, restore on every
+future run.
+
+## 0.10.19 — 2026-04-29
+
+**Optimized mobile selector-discovery workflow.**
+
+### Changed
+
+- **`playbook/integrations/mobile-integration.md` — selector discovery
+  loop rewritten.** Recommends `maestro studio` (interactive selector
+  picker) over the dump-and-grep loop, `mobile_capture_ui_dump` over
+  `adb shell uiautomator dump` + `adb pull` + `grep`, and snapshot-driven
+  iteration (load a `registered-test-user` snapshot in ~3s instead of
+  replaying the 4-minute registration flow). New "Performance &
+  efficiency" subsection codifies the screencap-Read PNG anti-pattern:
+  almost every CommCare/PersonalID selector is resource-id-driven, so the
+  uiautomator XML alone is enough — reserve screenshots for genuinely
+  visual states like the AOSP camera UI.
+- **`commands/mobile-bootstrap.md`** adds a recommended
+  `mobile_save_snapshot` step after first registration, so future
+  discovery sessions don't re-pay the 4-minute setup cost.
+
+### Why
+
+A self-review of the 0.10.18 live-verification session found ~15
+iterations of (screencap → Read PNG → uiautomator dump → grep → edit
+recipe → re-run). The PNG reads were the main context burn and the
+re-runs were the main wall-clock burn — both avoidable with the atoms
+already shipped in 0.10.18. This release just makes the optimized
+workflow the documented default.
+
+## 0.10.18 — 2026-04-29
+
+**End-to-end Android control: camera auto-fix, snapshots, cross-platform Java, dropped OTP path.**
+
+### Added
+
+- **`mobile_save_snapshot` / `mobile_load_snapshot` atoms.** Wraps
+  `adb emu avd snapshot save|load <name>`. Lets a register-once setup be
+  restored on every test run in seconds rather than re-driving the full
+  PersonalID flow each time. 12 atoms total now (was 10).
+- **`AvdBackend.ensureFrontCameraEmulated()` runs before every boot.**
+  Reads `~/.android/avd/<NAME>.avd/config.ini`, rewrites
+  `hw.camera.front=none` (the default Pixel 7 template ships this) to
+  `hw.camera.front=emulated`, and appends the key if missing. Idempotent —
+  returns false if already correct. Without this fix CameraX silently
+  fails LENS_FACING_FRONT validation and the photo step in CommCare
+  PersonalID registration no-ops with no UI signal. Closes Gap 1 from the
+  4/29 punch list.
+- **Platform-aware `JAVA_HOME` resolution in `defaultShell`.** Resolves a
+  JDK 17 home for macOS (`/usr/libexec/java_home -v 17`, then homebrew),
+  Linux (`/usr/lib/jvm/java-17-openjdk-*`), and Windows
+  (`%ProgramFiles%\Eclipse Adoptium\jdk-17.*`). Operator override via
+  `export JAVA_HOME=...` still wins. Closes Gap 5.
+- **`playbook/integrations/mobile-integration.md`.** Mirrors
+  `ocs-integration.md` / `connect-api.md`. Architecture, atom inventory,
+  what's verified vs. scaffolded, recipe vocabulary, the three durable
+  gotchas (pre-invite, front camera, GMS phone-hint sheet), and the
+  selector-discovery loop.
+
+### Changed
+
+- **`commands/mobile-bootstrap.md`** now has a per-platform install matrix
+  (Maestro / adb / emulator+AVD / JDK 17 / AVD home) covering macOS,
+  Linux/WSL2, and Windows native. Step 3 no longer asks the operator to
+  hand-edit `config.ini` — auto-patched by `mobile_ensure_avd_running`.
+- **`mobile_register_test_user` no longer fetches an OTP.** The +7426
+  demo-bypass is the only registration path ACE maintains; Connect-id
+  short-circuits OTP delivery for that range and surfaces a "demo user,
+  skip OTP" snackbar instead. The static `connect-register-from-otp.yaml`
+  recipe drops the `REPLACE_otp_entry` placeholder and runs straight from
+  snackbar dismiss → App Lock → name → backup code → photo.
+- **`connect-register-from-otp.yaml` handles both screen-lock branches.**
+  When the device has no screen lock, the recipe walks
+  `Configure PIN → set → confirm → DONE → AGREE & CONTINUE`. When a screen
+  lock already exists (e.g., from a prior registration on the same AVD),
+  the system jumps straight to the unlock prompt and the recipe skips the
+  setup steps via `runFlow.when`.
+
+### Verified
+
+- 219 unit tests pass (was 212; +7 covering camera auto-fix and snapshot
+  atoms).
+- All 12 capabilities declared in `capability-map.test.ts`.
+- All Phase A registration selectors live-verified end-to-end on
+  CommCare 2.62.0 / `ACE_Pixel_API_34_PS` (ARM64 google_apis_playstore).
+  Phase B (snackbar OK → App Lock → name → backup → photo) selectors
+  carried over from the live capture in 0.10.17. Photo step's CameraX
+  unblock has been verified at the config-patch level (the helper rewrites
+  `hw.camera.front=emulated` correctly) but the post-fix end-to-end
+  re-registration was blocked by an AVD secure-buffer state mid-session;
+  the next clean cold-boot is the natural verification window.
+
+### Known limitations
+
+- `connect-claim-opp.yaml` selectors still scaffolded (`REPLACE_*`) —
+  discovery deferred until a real opportunity is needed in a Phase 5 test
+  run.
+- Linux and Windows path resolution implemented and unit-tested; first
+  operator-machine run welcome.
+
+## 0.10.17 — 2026-04-29
+
+**Live-AVD verification of the PersonalID registration flow.**
+
+- `connect-register-to-otp.yaml` and `connect-register-from-otp.yaml`
+  rewritten with real selectors discovered via uiautomator dump on
+  CommCare 2.62.0 / `ACE_Pixel_API_34_PS`. `REPLACE_*` placeholders
+  removed for every screen except the OTP-entry screen (still TODO —
+  needs a non-+7426 phone to discover).
+- Captured screens: phone entry → snackbar OK ("demo user, skip OTP")
+  → App Lock → system PIN setup → lock-screen redaction → AGREE &
+  CONTINUE → system unlock → name → backup code → photo capture.
+- `mobile-bootstrap` step 3 now checks `hw.camera.front=emulated`. The
+  default AVD config has `front=none`, which silently no-ops the photo
+  capture step (CameraX validation fails: "Camera LENS_FACING_FRONT
+  verification failed").
+- Two server/client bugs surfaced and filed during this work:
+  - **CI-643** (P2): Connect-id `/users/start_configuration` worker
+    dies with `SystemExit` when the synchronous
+    `check_number_for_existing_invites` HTTP call hangs past the
+    gunicorn worker timeout. Sentry trail `CONNECT-ID-3F`, 13 events
+    over 3 months.
+  - **CI-644** (P2): CommCare Android `PersonalIdPhoneFragment.onFailure`
+    crashes with NPE on null `sessionData` (line 472), force-stopping
+    the app whenever the upstream returns an empty body. Same root
+    cause as CI-643 — the empty body comes from the worker abort.
+- `connect-opp-setup` already documents the pre-invite mitigation
+  (Step 8). For first-time registration on a fresh `${ACE_E2E_PHONE}`,
+  pre-invite is required until CI-643 lands — without it the flow
+  hits both the server and client bugs in sequence.
+
+## 0.10.16 — 2026-04-29
+
+**Connect MCP: structured form-validation errors + new `connect_register_hq_api_key` atom.**
+
+A real ACE session creating an opportunity for "Turmeric Market Survey —
+2026-04-28" burned ~90 minutes diagnosing an opaque HTTP 500. Three separate
+payload-shape bugs (hq_server expects int FK, api_key expects int FK,
+learn_app/deliver_app must be JSON-stringified `{id, name}` objects) all
+surfaced as identical opaque 500s because the Playwright backend wasn't
+parsing Connect's form-rejection HTML. The agent had to reverse-engineer each
+via curl + headed browser.
+
+### Added
+
+- `connect_register_hq_api_key` MCP atom — registers a CommCare HQ API key
+  with Connect via `/opportunity/add_api_key/` and returns the int FK that
+  `connect_create_opportunity` and Connect's other forms need. Idempotent:
+  if the key is already registered for the given hq_server, the existing
+  record is returned. Lets agents verify and debug the FK lookup
+  independently of the larger create-opp flow.
+- `parseFormErrorsByField` in `mcp/connect/backends/html-scrape.ts` — parses
+  Connect's crispy-rendered Django form into a per-field error map. Walks
+  each `<div id="div_id_<field>">` block and harvests the `<ul class="errorlist">`
+  items inside it; form-level errors land under `__all__`.
+- `ConnectValidationError.fieldErrors` — structured `{field: [msgs]}` map
+  alongside the existing flat `validationErrors` list. `toJSON()` returns
+  `{error: 'validation_error', message, errors, fields}` for MCP responses.
+- `test/fixtures/connect-html/opportunity-init-validation-errors.html` —
+  regression fixture covering the three real Turmeric-session failures
+  plus a non-field error.
+
+### Changed
+
+- `connect_create_opportunity` (and every other Playwright atom that
+  POSTs a form) now returns the structured per-field error payload
+  instead of letting an opaque HTTP 500 bubble up. Agents can branch
+  on `fields.api_key`, `fields.learn_app`, etc. directly.
+- `mcp/connect-server.ts` wraps every atom call in `runAtom`, which
+  converts `ConnectValidationError` into an MCP response with
+  `isError: true` and the structured JSON body — so the error shape
+  is consistent across all atoms.
+- `capability-map.ts` now lists 19 atoms (was 18). New entry:
+  `register_hq_api_key`.
+
+## 0.10.15 — 2026-04-29
+
+**Doc fix: name the canonical `.env` location so agents stop hunting.**
+
+CLAUDE.md told future sessions how to *generate* `.env` (`op inject`)
+and that 1Password owned the values, but never said *where the
+installed `.env` lives*. When an orchestrator session needed to inspect
+env state, it would walk through `~/.claude/plugins/cache/`, the
+worktree, and the parent shell before finding the file at
+`$CLAUDE_PLUGIN_DATA/.env`. `bin/ace-doctor` already knew the
+canonical path; only the human-readable docs lagged.
+
+### Changed
+
+- `CLAUDE.md` `## Layout` — `.env.tpl` line now names the install path
+  (`$CLAUDE_PLUGIN_DATA/.env`, legacy fallback plugin root) and the
+  full `op inject` command including `--account dimagi.1password.com`.
+- `CLAUDE.md` `## Gotchas` — new bullet parallel to the
+  `.gws-sa-key.json` one: `.env` is per-machine, lives at
+  `$CLAUDE_PLUGIN_DATA/.env`, and the in-shell env vars are normally
+  empty because values load into MCP-server subprocesses, not the
+  parent shell.
+- `agents/ace-orchestrator.md` — the `ACE_DRIVE_ROOT_FOLDER_ID unset`
+  error replaces the `<env-path>` placeholder with the concrete
+  `$CLAUDE_PLUGIN_DATA/.env` path so it matches doctor's hint verbatim.
+
 ## 0.10.13 — 2026-04-29
 
 **Class-level preventer for rubric-prose ↔ schema drift.**
@@ -327,6 +844,7 @@ but `getProgram` itself never hydrated.
   root causes in `connect_create_opportunity` fixed there.
 - Both production bugs the eval framework caught on
   `turmeric-market-survey-2026-04-28` are now resolved.
+
 
 ## 0.10.0 — 2026-04-28
 

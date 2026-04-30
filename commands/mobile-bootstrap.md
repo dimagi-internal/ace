@@ -9,15 +9,39 @@ Run this **once per workstation** before the `training-prep` phase can capture s
 
 This command is idempotent — re-run any time you suspect drift.
 
+## Supported platforms
+
+ACE mobile emulation has been live-validated on **macOS Apple Silicon** (the
+primary developer platform). Linux and Windows path resolution is implemented
+in `mobile_ensure_avd_running` but only tested via unit tests; first-run
+operator validation is welcome.
+
+The atom layer (Maestro + adb + emulator + Java) is platform-portable. The
+only OS-specific bits are the install commands for those tools and the AVD
+home directory; both are handled by the table below and `resolveJavaHome()`
+in `mcp/mobile/backends/avd.ts`.
+
+| Step prerequisite | macOS | Linux / WSL2 | Windows native |
+|---|---|---|---|
+| Maestro | `curl -Ls "https://get.maestro.mobile.dev" \| bash` | same as macOS | `iwr -useb https://get.maestro.mobile.dev/win \| iex` (PowerShell) |
+| adb | `brew install android-platform-tools` | `apt install android-tools-adb` (Debian/Ubuntu) or `dnf install android-tools` | Bundled with Android Studio's `platform-tools/`; add to `Path` |
+| emulator + AVDs | Android Studio installer | `sdkmanager "platform-tools" "emulator" "system-images;android-34;google_apis_playstore;arm64-v8a"` | Android Studio installer |
+| JDK 17 | `brew install openjdk@17` | `apt install openjdk-17-jdk` | Adoptium Temurin 17 installer |
+| AVD home | `~/.android/avd/` | `~/.android/avd/` (or `$ANDROID_AVD_HOME`) | `%USERPROFILE%\.android\avd\` |
+
+`mobile_ensure_avd_running` resolves `JAVA_HOME` automatically using the
+order in `resolveJavaHome()`. Operators can override with
+`export JAVA_HOME=/path/to/jdk17` before launching Claude Code.
+
 ## Steps the agent should execute, in order
 
 1. **Check Maestro is installed.**
-   - Run: `which maestro && maestro --version`
-   - If missing: tell the user to run `curl -Ls "https://get.maestro.mobile.dev" | bash` and stop.
+   - Run: `which maestro && maestro --version` (Unix) or `Get-Command maestro` (Windows PS).
+   - If missing: print the install command from the platform table above and stop.
 
 2. **Check `adb` is on PATH.**
-   - Run: `which adb && adb version`
-   - If missing: tell the user to run `brew install android-platform-tools` and stop.
+   - Run: `which adb && adb version` (Unix) or `Get-Command adb` (Windows PS).
+   - If missing: print the install command from the platform table above and stop.
 
 3. **Confirm `${ACE_AVD_NAME}` (default `ACE_Pixel_API_34`) exists.**
    - Run: `emulator -list-avds`
@@ -25,9 +49,20 @@ This command is idempotent — re-run any time you suspect drift.
      ```
      Create the AVD via Android Studio's AVD Manager:
        Device: Pixel 7
-       System Image: API 34, ARM64 (or x86_64 if Intel Mac)
+       System Image: API 34, ARM64 (Apple Silicon / Linux ARM) or x86_64 (Intel/AMD)
        Name: ACE_Pixel_API_34
      ```
+   - The front-camera config check is automatic —
+     `mobile_ensure_avd_running` auto-patches `hw.camera.front=emulated`
+     before booting (0.10.18+). Pre-0.10.18 AVDs that were booted with
+     the old config need a one-time stop + ensure-running cycle to pick
+     up the change.
+   - **Note on system image choice:** Both `google_apis` and
+     `google_apis_playstore` ship with a functional GMS package on
+     macOS Apple Silicon, so the choice doesn't change the face-capture
+     auto-shutter behavior. The actual face-capture bypass is a runtime
+     `pm disable-user com.google.android.gms` call (handled by
+     `mobile_ensure_avd_running` in 0.10.21+). Either image works.
 
 4. **Boot the AVD using `mobile_ensure_avd_running`.**
    - Tool: `mcp__ace_mobile__mobile_ensure_avd_running`
@@ -51,10 +86,47 @@ This command is idempotent — re-run any time you suspect drift.
 7. **Verify all `ACE_E2E_*` env vars are populated.**
    - Read each from `process.env`. Any missing → tell the user to update 1Password and re-run `op inject -i .env.tpl -o .env`, then stop.
 
-8. **Register the ACE test user (if not already).**
+8. **Verify `${ACE_E2E_PHONE}` is pre-invited to a Connect opportunity (CRITICAL).**
+
+   **DO NOT skip this check.** Connect-id's `/users/start_configuration`
+   endpoint runs `check_number_for_existing_invites(phone)` synchronously
+   and **the worker dies (SystemExit) when the number has no existing
+   invite anywhere in Connect**. CommCare then receives an empty response
+   and force-stops with NullPointerException. This isn't an integrity or
+   OTP issue — it's a server-side timeout cascade. See Sentry `CONNECT-ID-3F`.
+
+   - Sign in to https://connect.dimagi.com as a user with admin access to
+     the test program (typically `connect-ace-prod`).
+   - Navigate to any opportunity in that program.
+   - Send an invite to `${ACE_E2E_PHONE}`.
+   - The invite does NOT need to be accepted; its mere existence is what
+     `check_number_for_existing_invites` checks.
+
+   Future ACE-created opps (Phase 3 `connect-opp-setup` Step 8) will keep
+   the invite alive automatically. This bootstrap step only matters for
+   the very first registration on a fresh test user.
+
+   Skip this step **only** if the operator has confirmed `${ACE_E2E_PHONE}`
+   already has an invite somewhere in Connect.
+
+9. **Register the ACE test user (if not already).**
    - Tool: `mcp__ace_mobile__mobile_register_test_user`
    - Args: `{ "avdName": "${ACE_AVD_NAME}", "phone": "${ACE_E2E_PHONE}", "phoneLocal": "${ACE_E2E_PHONE_LOCAL}", "countryCode": "${ACE_E2E_COUNTRY_CODE}", "pin": "${ACE_E2E_PIN}", "backupCode": "${ACE_E2E_BACKUP_CODE}", "name": "${ACE_E2E_NAME}" }`
    - If `alreadyRegistered: true`, fine.
+   - If registration fails with `SystemExit` / NPE / "CommCare keeps stopping",
+     the most likely cause is step 8 was skipped or the invite has been
+     revoked. Re-verify and retry.
+   - In 0.10.23+ the GMS-disable + CAMERA-grant + NotificationShade
+     recovery all run automatically as part of `mobile_ensure_avd_running`
+     (see `AvdBackend.runPostBootPrep`); no operator action needed.
 
-9. **Print success summary.**
-   - Echo: AVD name, test-user phone, Playwright user-data dir, all ACE_E2E_* var presence.
+10. **Save a `registered-test-user` snapshot (recommended).**
+    - Tool: `mcp__ace_mobile__mobile_save_snapshot`
+    - Args: `{ "avdName": "${ACE_AVD_NAME}", "name": "registered-test-user" }`
+    - Future selector-discovery sessions can `mobile_load_snapshot` to
+      this state in ~3s instead of replaying the 4-minute registration
+      flow. Skip this step if `alreadyRegistered: true` was returned in
+      step 9 — the existing snapshot is already good.
+
+11. **Print success summary.**
+    - Echo: AVD name, test-user phone, Playwright user-data dir, all ACE_E2E_* var presence.

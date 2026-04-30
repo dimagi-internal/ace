@@ -39,7 +39,7 @@ So Connect's contract is: each deliver-unit form's XML must contain
 That XML element comes from Nova's `connect.deliver_unit` block on the
 form. Two Nova bugs prevent it from getting there:
 
-### Bug 1: Autobuild often skips the Connect markers
+### Bug 1: Autobuild *sometimes* skips the Connect markers (prompt-quality dependent)
 
 Nova's `nova-architect-autonomous` prompt (the operating instructions
 returned by `get_agent_prompt(mode="autonomous_build")`) contains an
@@ -48,14 +48,41 @@ explicit `## CommCare Connect` section:
 > **Deliver apps** track service delivery for payment. Each Connect form gets
 > `deliver_unit`, `task`, or both — they are independent sub-configs
 
-Despite this, the autobuild run for our turmeric Deliver app produced a
-blueprint with `Connect type: deliver` at the app level but no `connect`
-block on the single form. The architect agent set the high-level type
-correctly, then forgot to propagate it to the form.
+In practice the agent **only follows this rule when the user spec
+echoes it back** — i.e., the spec mentions `connect.deliver_unit`,
+`connect.task`, or directly references CommCare Connect's per-form
+rules. With a vague spec ("build a deliver app for vendor visits"),
+the agent sets `Connect type: deliver` at the app level and forgets to
+propagate to the form. With an explicit spec mentioning the rules,
+the agent produces the full structure on first try with non-empty
+`entity_id` / `entity_name` XPath expressions and a CCZ containing
+the right namespaced markers.
 
-**Reproducer**: run `/nova:autobuild` with a spec that says "Connect
-deliver app for X delivery", upload to HQ, download CCZ, grep
-`commcareconnect`. Should hit one form per service. Often hits zero.
+**Updated reproducer (2026-04-29):**
+- Vague spec → blueprint missing `connect` on every form, CCZ has zero
+  `<learn:deliver>` markers
+- Explicit spec ("This is a Connect Deliver app — every form needs the
+  appropriate `connect.deliver_unit` block per CommCare Connect's
+  rules") → blueprint has `connect.deliver_unit` AND `connect.task`
+  AND non-empty entity expressions on first try, CCZ has both
+  `<deliver>` and `<task>` elements in the right namespace, builds
+  + releases cleanly.
+
+So this is more "the prompt's CommCare Connect section is
+under-weighted" than "autobuild ignores Connect entirely." A short
+upstream fix probably looks like one of:
+- Hard-code the connect-block setup as part of the autobuild
+  completion contract whenever `Connect type` is `learn`/`deliver`
+- Or strengthen the architect prompt's CommCare Connect section so
+  it survives minimal specs.
+
+**ACE-side mitigation:** the `pdd-to-deliver-app` and
+`pdd-to-learn-app` skills should always include explicit Connect
+language verbatim in their prompt to `/nova:autobuild`, even though
+the architect prompt has it. Belt and suspenders. The
+`app-connect-coverage` skill remains as the post-build catch-all for
+the "vague spec slipped through" case — but with proper prompt
+discipline upstream it should usually be a no-op.
 
 ### Bug 2: `update_form deliver_unit` schema only accepts `name`, runtime auto-fills broken `entity_id`/`entity_name`
 
