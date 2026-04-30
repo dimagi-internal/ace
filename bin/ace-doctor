@@ -95,6 +95,31 @@ else
   warn "version_consistency: VERSION=$VER_FILE plugin.json=$VER_PLUGIN marketplace.json=$VER_MARKET package.json=$VER_PKG" "bump all four in a single commit when releasing"
 fi
 
+# --- Running session vs installed registry ---
+# After `/ace:update` lands a new cache dir, the running session keeps
+# using the OLD plugin path until the session is reloaded. Slash commands
+# get the new bodies on next invocation, but MCP servers only re-launch
+# on `/reload-plugins` or a fresh session. The canonical symptom is "No
+# such tool available: connect_<atom>" right after an update — the registry
+# points at v0.10.21 but the MCP server is still running v0.10.20's binaries.
+#
+# Detect: compare $ROOT's VERSION against the version recorded in
+# installed_plugins.json. They should match. If they don't, surface as a
+# WARN with the actionable fix (`/reload-plugins` or restart the session).
+REG_VER=""
+REG_PATH=""
+if [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then
+  REG_VER="$(node -e "try { const d=JSON.parse(require('fs').readFileSync('$HOME/.claude/plugins/installed_plugins.json','utf8')); const e=d['ace@ace']||(d.plugins&&d.plugins['ace@ace']); const v=Array.isArray(e)?e[0]:e; console.log(v&&v.version||''); } catch(_) {}" 2>/dev/null)"
+  REG_PATH="$(node -e "try { const d=JSON.parse(require('fs').readFileSync('$HOME/.claude/plugins/installed_plugins.json','utf8')); const e=d['ace@ace']||(d.plugins&&d.plugins['ace@ace']); const v=Array.isArray(e)?e[0]:e; console.log(v&&v.installPath||''); } catch(_) {}" 2>/dev/null)"
+fi
+if [ -n "$REG_VER" ] && [ "$VER_FILE" != "missing" ]; then
+  if [ "$REG_VER" = "$VER_FILE" ]; then
+    pass "session_freshness: running v$VER_FILE matches registry"
+  else
+    warn "session_freshness: running v$VER_FILE but registry has v$REG_VER at $REG_PATH" "MCP servers still use the running session's binaries — run /reload-plugins (or restart this Claude Code session) to pick up registry version. Symptom of stale state: 'No such tool available: connect_*' after /ace:update."
+  fi
+fi
+
 # --- Node / npm ---
 if command -v node >/dev/null 2>&1; then
   pass "node: $(node --version)"
