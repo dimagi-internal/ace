@@ -86,8 +86,8 @@ to the top.
      not the display name — keeps the column narrow
    - `Last touched` combines `last_actor` + humanized `last_actor_at`. For
      opps where no skill has run yet (fresh `idea.md` only), show `(none yet)`
-   - `Mode` (auto/review) is dropped from the default table — it appears in
-     the detail view. Add it back only if an admin requests it
+   - `Mode` (default/review/auto) is dropped from the default table —
+     it appears in the detail view. Add it back only if an admin requests it
 
 9. **Footer.** After the table, print a one-line summary:
 
@@ -103,7 +103,7 @@ to the top.
 2. Display:
    - `Initiated by: <email>, <timestamp>` and `Last touched by: <email>, <humanized>`
    - Current phase and step (with tag — ACTION NEEDED / RUNNING / IDLE / ERROR / DONE)
-   - Mode (auto/review)
+   - Mode (default/review/auto)
    - All completed steps with timestamps
    - Pending steps (non-recurring)
    - Recurring steps and their last run dates (pulled from `monitoring/`, `qa-reports/`)

@@ -2,9 +2,9 @@
 name: ace-orchestrator
 description: >
   Top-level ACE orchestrator. Dispatches to phase agents to run the full
-  CRISPR-Connect lifecycle for a Connect opportunity. Supports auto and
-  review modes. Use when running a full opportunity cycle or checking
-  overall status.
+  CRISPR-Connect lifecycle for a Connect opportunity. Supports default,
+  auto, and review modes. Use when running a full opportunity cycle or
+  checking overall status.
 model: inherit
 ---
 
@@ -56,7 +56,7 @@ The state file at `ACE/<opp-name>/state.yaml` tracks:
 
 ```yaml
 opportunity: <opp-name>
-mode: review|auto
+mode: default|review|auto
 created: <ISO timestamp>
 initiated_by: <email>        # set once on creation; never overwritten
 last_actor: <email>          # updated on every skill invocation
@@ -131,7 +131,7 @@ entry path that touches state must tolerate a missing `state.yaml`:
 
 1. If `ACE/<opp-name>/state.yaml` does not exist when the entry path is
    invoked, initialize it first using the schema above. Required fields:
-   `opportunity`, `mode` (default `review`), `created` (ISO now),
+   `opportunity`, `mode` (default `default`), `created` (ISO now),
    `initiated_by` (`git config user.email` or `unknown`), `last_actor` +
    `last_actor_at` (same email + timestamp), all `phases.<phase>.<skill>`
    keys set to `pending`, all `gates.<gate>` set to `pending`.
@@ -145,25 +145,74 @@ let the operator fix the state gap explicitly.
 
 ## Execution Modes
 
-**Auto mode:** Run all phases sequentially. Email the CRISPR Admin group
-(Neal, Jon, Matt, Sarvesh, Cal) at each step completion and on failures.
-Gates are logged but not enforced.
+ACE has three modes. **`default` is the default** — pick another only
+if you have a specific reason.
 
-**Review mode:** Run all phases sequentially but pause at gate steps.
-At each gate, read the gate brief written by the producing skill (see
-§ Gate Brief Contract below) and present it alongside the `AskUserQuestion`
-approval prompt, so the admin has a specific checklist and any auto-surfaced
-concerns in front of them instead of having to open the artifact cold.
-Gate steps are:
-- After `idea-to-pdd` (PDD must be approved before building apps)
-- After `app-deploy` (apps must be verified before Connect setup)
-- After `ocs-chatbot-eval --deep` (OCS quality must clear pre-launch bar — eval grades the transcript that `ocs-chatbot-qa --deep` captured)
-- After `llo-invite` (invites must be reviewed before sending; runs as Phase 6 Step 1, so this gate lives inside Phase 6 between invite prep and the first LLO-facing send)
-- After `llo-launch` (opportunity activation must be verified before monitoring begins)
+**Default mode (`default`):** *Keep going unless there's a reason to
+stop, up until the point of external communication.*
 
-Phases 1–5 are "setup" — they run end-to-end with no LLO involvement, so an
-operator can review the fully configured opportunity before any outside contact.
-Phase 6 is where LLOs first hear from ACE.
+- **Phases 1–5 (setup, internal):** auto-proceed past every gate
+  whose brief contains no `[BLOCKER]` concern and whose producing
+  skill exited cleanly. The gate brief is still written, archived,
+  and emailed in the between-phase status update — but it does NOT
+  pause the run. A `[BLOCKER]` halts immediately and surfaces the
+  brief for triage. A hard error halts immediately. A `[WARN]` is
+  logged but does NOT halt.
+- **Phase 5→6 transition:** **always pause.** This is the external-
+  communication boundary — Phase 6 is where LLOs first hear from
+  ACE. The pause shows a Phase-5-complete summary and asks "ready
+  to begin LLO contact?" before any invite goes out.
+- **Phases 6–7 (LLO contact, closeout):** behave like `review` mode
+  for any step whose action affects an external party. Specifically,
+  always pause before:
+    - `llo-invite` send (Phase 6 — invite roster review)
+    - `llo-onboarding` (Phase 6 — first email to LLOs)
+    - `llo-uat` send (Phase 6 — UAT instructions to LLOs)
+    - `llo-launch` (Phase 6 — opportunity activation in Connect)
+    - `opp-closeout` (Phase 7 — Jira payment ticket creation)
+  Steps within those phases that are purely internal (e.g.
+  `timeline-monitor` reads, `flw-data-review` analysis) auto-proceed
+  the same as Phases 1–5.
+
+**Review mode (`review`):** Pause at every one of the 5 named gate
+steps for explicit approval, regardless of blocker status. Use for
+high-touch operations, training, or when an admin wants to read every
+gate brief in front of them. Same gate-brief contract as `default`
+mode; the difference is just which gates trigger the
+`AskUserQuestion` pause.
+
+The 5 named gate steps (the full set, applied in `review`):
+- After `idea-to-pdd` (Phase 1) — PDD must be approved before building apps
+- After `app-deploy` (Phase 2) — apps must be verified before Connect setup
+- After `ocs-chatbot-eval --deep` (Phase 4) — OCS quality must clear pre-launch bar
+- After `llo-invite` (Phase 6) — invites reviewed before sending
+- After `llo-launch` (Phase 6) — activation verified before monitoring
+
+**Auto mode (`auto`):** Run all phases sequentially with no pauses,
+even at external-communication points. Email the CRISPR Admin group
+(Neal, Jon, Matt, Sarvesh, Cal) at each step completion and on
+failures. Gates are logged but not enforced. `[BLOCKER]` concerns
+still pause and escalate — auto mode buys speed, not the right to
+ship known-broken work. Use sparingly: eval calibration runs, smoke
+tests against test workspaces, and the like.
+
+### Why default mode looks like this
+
+Phases 1–5 are entirely internal to Dimagi — Nova builds apps in
+private Firestore, `app-deploy` uploads CCZs to a Dimagi-controlled
+project space, OCS chatbots are configured but not yet linked to any
+opportunity FLWs are seeing. Operators historically rubber-stamped
+these gates 95%+ of the time when nothing was wrong, which is why a
+~36-minute idle gap was observed on a recent e2e session waiting for
+an unattended `idea-to-pdd` approval. Default mode treats the eval
+verdict (`[BLOCKER]` or not) as the decision-maker and only stops the
+human for it when the model itself says something is wrong.
+
+Phase 6 onward involves real LLOs receiving real emails and real
+Connect production state changes. There is no automatic eval that
+validates "is this opp ready to send to outside parties?" — only
+human judgment can clear that bar, so default mode insists on human
+review at every external-comm point.
 
 ## Performance Conventions
 
@@ -184,7 +233,7 @@ When dispatching `Agent(<phase>)`, structure the prompt with sections:
 
 ```
 ## Opportunity
-<opp-name>, mode=<auto|review>
+<opp-name>, mode=<default|review|auto>
 
 ## Inline artifacts (do not re-fetch unless explicitly stale)
 ### PDD
@@ -291,8 +340,12 @@ collected, learnings summarized, cycle graded.
 
 After each phase completes:
 1. Update `state.yaml` in the opportunity's GDrive folder
-2. In auto mode: send status email to admin group
-3. In review mode: present summary and wait for approval to continue
+2. In `auto` mode: send status email to admin group, continue
+3. In `default` mode: continue silently for Phases 1→2, 2→3, 3→4, 4→5;
+   **at the Phase 5→6 transition, pause unconditionally** with a
+   Phase-5-complete summary and "ready to begin LLO contact?" prompt;
+   for 6→7, pause if any external-comm step still pending review
+4. In `review` mode: present summary and wait for approval to continue
 
 ## Post-Run: ace-web Transcript Upload (optional)
 
@@ -313,8 +366,12 @@ This is the only ace-web dependency in the ACE plugin. Without
 
 ## Gate Brief Contract
 
-At each of the 5 gate steps above, in review mode, the orchestrator must
-show the admin a **gate brief** before the `AskUserQuestion` approval prompt.
+At each of the 5 gate steps above, the orchestrator MAY show the admin a
+**gate brief** before an `AskUserQuestion` approval prompt — whether the
+pause fires depends on `mode` (see § Execution Modes for the per-mode
+matrix). The brief itself is always written by the producing skill; the
+mode decides whether the orchestrator pauses on it.
+
 The brief is the single place where "what am I approving, what should I
 check, and what concerns surfaced automatically" lives. Without it, gate
 approvals devolve into rubber-stamps (and the 2026-04-08 stress-test PDDs
@@ -386,12 +443,31 @@ skills that consume it and don't care about gate framing. Skills that
 produce briefs don't have to coordinate section-anchor conventions across
 each other.
 
-**Auto mode.** In `--mode auto`, skills still write the gate brief, but
-the orchestrator doesn't pause — it proceeds and the brief is archived for
-retrospective review (and to populate the admin-group status email sent
-between phases). If a `[BLOCKER]` concern appears in an auto-mode brief,
-the orchestrator should pause *anyway* and escalate to the admin group —
-admins opted into auto mode for speed, not to ship known-broken work.
+**Per-mode pause matrix.** Skills always write the gate brief; the
+orchestrator's pause behavior at each named gate is:
+
+| Gate | Phase | `default` | `review` | `auto` |
+|------|-------|-----------|----------|--------|
+| `idea-to-pdd` | 1 | pause iff `[BLOCKER]` | always pause | never pause* |
+| `app-deploy` | 2 | pause iff `[BLOCKER]` | always pause | never pause* |
+| `ocs-chatbot-eval-deep` | 4 | pause iff `[BLOCKER]` | always pause | never pause* |
+| `llo-invite` | 6 | **always pause** | always pause | never pause* |
+| `llo-launch` | 6 | **always pause** | always pause | never pause* |
+
+*`auto` still pauses on `[BLOCKER]` — see below.
+
+In addition to the 5 named gates, `default` mode pauses before any
+external-communication action that doesn't have a dedicated gate:
+`llo-onboarding` (first email to LLOs), `llo-uat` (UAT email send),
+and `opp-closeout` (Jira payment ticket creation). These were
+previously implicit `review`-mode pauses inside the producing skill;
+`default` mode makes them explicit external-comm halts.
+
+**`auto` mode and `[BLOCKER]`.** In `--mode auto`, the orchestrator
+proceeds past gate briefs without pausing, archiving each brief for
+the admin-group status email. **If any brief contains a `[BLOCKER]`
+concern, pause anyway and escalate** — admins opted into auto mode
+for speed, not to ship known-broken work.
 
 ## Umbrella Eval
 
@@ -424,8 +500,9 @@ the next run.
 
 If a skill fails:
 1. Log the error in `state.yaml`
-2. In auto mode: email the admin group with error details, continue to next step if possible
-3. In review mode: present the error and ask how to proceed (retry, skip, abort)
+2. In `auto` mode: email the admin group with error details, continue to next step if possible
+3. In `default` mode: a hard error halts the run regardless of phase — present the error and ask how to proceed (retry, skip, abort). The "keep going" principle applies to clean steps, not to errors
+4. In `review` mode: present the error and ask how to proceed (retry, skip, abort)
 
 ## Dry-Run Mode
 
@@ -433,7 +510,7 @@ When `--dry-run` is passed to `/ace:run`:
 - All skills execute normally — reading inputs, generating outputs, writing to GDrive
 - Effectful skills (those that send emails, publish apps, create tickets, or call external APIs) write their intended actions to `comms-log/dry-run-<step>.md` instead of executing
 - LLM-as-Judge evaluation still runs at each step
-- Gates still apply in review mode
+- Gates still apply per the active mode (default/review/auto)
 - `state.yaml` tracks steps as `dry-run-success` or `dry-run-blocked` instead of `success` or `blocked`
 - Pass the dry-run flag to all phase agents
 
