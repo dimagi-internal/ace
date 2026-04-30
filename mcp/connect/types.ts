@@ -76,8 +76,17 @@ export interface PaymentUnit {
   name: string;
   description: string;
   amount: number;
-  max_total?: number;
-  max_daily?: number;
+  // Connect's payment-unit form REQUIRES both max_total and max_daily (the
+  // form labels read "Maximum visits per user" and "Maximum visits per day"
+  // and both have the asterisk). Omitting either causes Connect's view to
+  // 302-redirect with a silent "Invalid Data" Django messages cookie — the
+  // create looks like a success at the HTTP layer but no row lands in the
+  // payment_unit_table. Verified live 2026-04-30 against
+  // turmeric-20260429-2330. Keep these required at the atom boundary so the
+  // failure surfaces at the Zod layer instead of as a downstream "row not
+  // found" mystery.
+  max_total: number;
+  max_daily: number;
   start_date?: string;
   end_date?: string;
   required_deliver_unit_ids: number[];
