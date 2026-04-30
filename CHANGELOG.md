@@ -5,6 +5,42 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.29 — 2026-04-29
+
+**Defensive Nova post-dispatch check + ocs-setup resumption contract.**
+
+Two follow-ups to the e2e-session review: a workaround for upstream
+Nova issue #2 (turn-0 halt), and an explicit resumption contract for
+Phase 4 to recover cheaply from mid-phase context loss.
+
+### Changed
+
+- **`agents/commcare-setup.md` Step 1** adds a "Turn-0 halt detection"
+  subsection. After every Nova `Agent` dispatch, verify a new app
+  appeared (via Agent return string or `nova:list`); if not,
+  re-dispatch once. After two failures, surface a hard error with
+  `voidcraft-labs/nova-plugin#2` in the message. Bridges until
+  upstream `/nova:autobuild` refuses to return without ≥1 tool call.
+- **`agents/ocs-setup.md`** adds a **`## Resumption Contract`** section.
+  Documents per-step "done-when" artifacts and the read-state-and-skip
+  pattern so a fresh-dispatched ocs-setup doesn't re-clone the bot,
+  re-index the RAG collection, or re-run the deep qa+eval. Motivated
+  by the 2-hour gap observed in `e2e-xw5gk` after Phase 4 was
+  abandoned and re-dispatched.
+
+### Why
+
+Nova issue #2 was filed today, but the upstream fix hasn't shipped —
+the ACE-side defensive check is a 15-line procedure-doc edit that
+costs ~30 seconds per dispatch and saves ~8 minutes per occurrence.
+
+ocs-setup's resumption contract codifies what `ocs-agent-setup` already
+documented as idempotent (Step 1) and extends it across all four
+steps. State.yaml already tracks step-level completion; the agent
+just needs to read it and skip done steps. Without the contract, a
+fresh-dispatched Phase 4 would re-do ~20–30 minutes of work that
+already completed.
+
 ## 0.10.28 — 2026-04-29
 
 **Producer-side verdict schema preventer.**
