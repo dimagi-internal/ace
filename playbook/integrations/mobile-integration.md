@@ -211,6 +211,38 @@ visible to Maestro's view tree once shown, so the recipes dismiss it via
 `runFlow.when` against `com.google.android.gms:id/cancel`. On non-GMS AVDs
 the conditional is a no-op.
 
+### Stuck-FallbackHome recovery
+
+Some `google_apis*` AVD cold boots wedge with
+`mFocusedApp=com.android.settings/.FallbackHome` and the real launcher
+(NexusLauncher) never resolves as the default `HOME` activity. Symptoms:
+`mCurrentFocus=NotificationShade`, `/sdcard` access denied to the shell
+uid even though the device says `sys.boot_completed=1`, all Maestro
+`launchApp` calls timing out.
+
+`runPostBootPrep` tries best-effort recoveries (status-bar collapse,
+keyguard dismiss, KEYCODE_HOME) but they don't always work — once
+FallbackHome is the registered home activity, only a wipe will reset
+the package manager's HOME resolution.
+
+**Recovery: cold-boot with `-wipe-data`.**
+
+```sh
+adb emu kill
+emulator -avd ACE_Pixel_API_34_PS \
+  -no-window -no-snapshot-load -no-snapshot-save -wipe-data
+```
+
+This flushes user data (so CommCare needs to be reinstalled and the
+test user re-registered after) but reliably brings up NexusLauncher
+as the default home. Verified live on `ACE_Pixel_API_34_PS` after a
+3-reboot stuck-FallbackHome cycle on 2026-04-29.
+
+For a freshly-wiped AVD, the bootstrap sequence is:
+`mobile_ensure_avd_running` → `mobile_install_apk` (CommCare) →
+`mobile_register_test_user` → `mobile_save_snapshot`. Future sessions
+can `mobile_load_snapshot` to skip the first three.
+
 ### Selector discovery loop
 
 When extending recipes, the discovery loop is:
