@@ -285,12 +285,46 @@ export class PlaywrightBackend implements ConnectClient {
   };
 
   getOpportunity: ConnectClient['getOpportunity'] = async ({ organization_slug, opportunity_id }) => {
-    // Hydrate from the edit form which has every field's current value.
+    // Hydrate from BOTH the edit form (metadata + active toggle) AND the
+    // detail page (app-wire fields). The edit form does NOT expose
+    // `learn_app` / `deliver_app` / `hq_server` / `api_key` /
+    // `learn_app_passing_score` — those fields only appear on the
+    // /init/ create form and the read-only detail page. Reading from
+    // the edit form alone (the pre-0.10.41 behavior) returned empty
+    // strings for those fields even when the opp was correctly wired,
+    // which caused a multi-hour false-blocker investigation in the
+    // 2026-04-30 turmeric-20260429-2330 run.
     const editPath = `/a/${organization_slug}/opportunity/${opportunity_id}/edit`;
-    const editRes = await this.opts.request.get(editPath);
+    const detailPath = `/a/${organization_slug}/opportunity/${opportunity_id}/`;
+    const [editRes, detailRes] = await Promise.all([
+      this.opts.request.get(editPath),
+      this.opts.request.get(detailPath),
+    ]);
     if (editRes.status() !== 200) throw await httpErrorFor(editRes, editPath);
     const v = extractFormFieldValues(await editRes.text());
     const isActive = v['active'] === 'on' || v['active'] === 'true' || v['active'] === '';  // checkbox `value=""` when no value attr but checked
+
+    // Parse HQ app ids out of the detail page. Connect renders them as
+    // `/a/<hq_domain>/apps/view/<app_id>/` links inside the opp detail.
+    // First match in the page = Learn app; second = Deliver app (the
+    // detail page lays them out in that order under "Apps" tiles).
+    let learnApp = '';
+    let deliverApp = '';
+    let learnAppDomain = '';
+    let deliverAppDomain = '';
+    if (detailRes.status() === 200) {
+      const detailHtml = await detailRes.text();
+      const matches = [...detailHtml.matchAll(/\/a\/([a-z0-9_-]+)\/apps\/(?:view\/)?([a-f0-9]{32})/g)];
+      const seen = new Set<string>();
+      const uniq: Array<{ domain: string; appId: string }> = [];
+      for (const m of matches) {
+        const key = `${m[1]}/${m[2]}`;
+        if (!seen.has(key)) { seen.add(key); uniq.push({ domain: m[1], appId: m[2] }); }
+      }
+      if (uniq[0]) { learnApp = uniq[0].appId; learnAppDomain = uniq[0].domain; }
+      if (uniq[1]) { deliverApp = uniq[1].appId; deliverAppDomain = uniq[1].domain; }
+    }
+
     return {
       id: opportunity_id,
       name: v['name'] ?? '',
@@ -298,13 +332,13 @@ export class PlaywrightBackend implements ConnectClient {
       description: v['description'] ?? '',
       currency: v['currency'] ?? '',
       country: v['country'] ?? '',
-      hq_server: v['hq_server'] ?? '',
-      api_key: v['api_key'] ?? '',
-      learn_app_domain: v['learn_app_domain'] ?? '',
-      learn_app: v['learn_app'] ?? '',
-      learn_app_passing_score: Number(v['learn_app_passing_score'] ?? 0),
-      deliver_app_domain: v['deliver_app_domain'] ?? '',
-      deliver_app: v['deliver_app'] ?? '',
+      hq_server: v['hq_server'] ?? '',  // edit form: empty (display-only field, not retrievable post-create)
+      api_key: v['api_key'] ?? '',  // same: empty post-create
+      learn_app_domain: v['learn_app_domain'] || learnAppDomain,
+      learn_app: v['learn_app'] || learnApp,
+      learn_app_passing_score: Number(v['learn_app_passing_score'] ?? 0),  // assessment-form scope, not opp-page; empty post-create
+      deliver_app_domain: v['deliver_app_domain'] || deliverAppDomain,
+      deliver_app: v['deliver_app'] || deliverApp,
       status: isActive ? 'active' : 'draft',
       organization_slug,
     };

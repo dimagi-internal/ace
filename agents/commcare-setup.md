@@ -169,6 +169,22 @@ Invoke the `app-deploy` skill.
 - Output: apps uploaded to CCHQ as **draft builds** (Nova does not release
   by design — see Step 2.5)
 - **Gate (review mode):** Present app deployment summary for verification
+- **HQ-id stability requirement (added 2026-04-30):** every `nova_upload_to_hq`
+  call creates a **fresh** HQ application document with a new id (CCHQ has no
+  atomic update API for app uploads). If Phase 2 has to re-upload an app for
+  ANY reason after the first deploy — XForm escape fixes, Connect-marker
+  patches, build-rejection iteration — the HQ ids in
+  `deployment-summary.md` must be updated, and Phase 3
+  (`connect-opp-setup`) MUST run against the FINAL post-iteration ids.
+  Phase 3's `connect_create_opportunity` writes the HQ ids into the opp's
+  app-wire fields at create time, and Connect's edit form does NOT expose
+  those fields — so re-pointing a wired opp at new HQ ids requires
+  delete-and-recreate. Surfaced 2026-04-30 (turmeric-20260429-2330): Phase 3
+  ran after the first upload; Phase 2 then re-uploaded for the Q10 escape
+  fix; the resulting opp was wired to abandoned drafts. The orchestrator's
+  Phase 2→3 transition MUST verify
+  `deployment-summary.md.released_at >= deployment-summary.md.uploaded_at`
+  AND that no subsequent re-upload happened, before dispatching Phase 3.
 
 ### Step 2.5: Release Apps
 Invoke the `app-release` skill.
