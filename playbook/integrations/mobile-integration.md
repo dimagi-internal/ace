@@ -75,7 +75,7 @@ have been live-verified against CommCare 2.62.0 on `ACE_Pixel_API_34_PS`.
 |---|---|---|
 | `connect-register-to-otp.yaml` | **verified** (0.10.17) | `${COUNTRY_CODE}`, `${PHONE_LOCAL}` |
 | `connect-register-from-otp.yaml` | **verified** (0.10.17) | `${NAME}`, `${BACKUP_CODE}`, `${PIN}` |
-| `connect-claim-opp.yaml` | **partial** (0.10.33) — first half (home → opp list) verified; opp-detail/accept-invite/handoff still REPLACE_* pending an FLW-invite to drive | `${OPP_NAME}`, `${PIN}` |
+| `connect-claim-opp.yaml` | **verified** (0.10.38) — driven end-to-end against `+74260000100` invited via `connect_send_flw_invite` after `connect_finalize_opportunity` | `${OPP_NAME}`, `${PIN}` |
 | `connect-login.yaml` | scaffold (REPLACE_*) | — |
 
 Naming note: the `to-otp` / `from-otp` filenames are historical. Today's
@@ -353,12 +353,6 @@ If the AVD/Maestro can't find a JDK, the operator override is to
 
 ## What's not yet built
 
-- `connect-claim-opp.yaml` selectors are scaffolded (REPLACE_*). Discovery
-  pass deferred — the registered-test-user state required for capture is
-  blocked by the face-capture gate (see Gotchas above). For the Phase 5
-  `training-prep` use case this isn't a blocker because the deployed
-  CommCare app is opened directly without going through PersonalID
-  registration.
 - The deliver-app navigation recipes (`generate_recipes_from_app_summary`)
   have been wired but not run live against a Nova-deployed app. The
   generator's parsing logic is unit-tested; the LLM contract isn't.
