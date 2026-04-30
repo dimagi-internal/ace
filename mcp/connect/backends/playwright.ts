@@ -44,7 +44,8 @@ export interface PlaywrightBackendOptions {
 async function httpErrorFor(res: APIResponse, urlPath: string, method: string = 'GET'): Promise<HttpError> {
   let body = '';
   try { body = await res.text(); } catch { /* swallow */ }
-  return new HttpError(res.status(), `${method} ${urlPath}`, body);
+  const contentType = res.headers()['content-type'];
+  return new HttpError(res.status(), `${method} ${urlPath}`, body, contentType);
 }
 
 /**

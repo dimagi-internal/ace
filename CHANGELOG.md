@@ -5,6 +5,67 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.25 — 2026-04-29
+
+**Connect 5xx errors now surface the real Django exception; doctor catches stale-session-after-update.**
+
+Two related fixes for the "Connect HTTP 500 retry storm" pattern
+observed in `new-e2e-25bff` (6 attempts, ~25 min lost). The root cause
+is two-part: bad error visibility on 5xx responses, and a stale-MCP
+session after `/ace:update` that surfaces as "No such tool available."
+
+### Added
+
+- **`summarizeServerErrorBody(body, contentType?)` in
+  `mcp/connect/errors.ts`.** When Connect returns a 5xx, the body is
+  typically a Django HTML page — debug stack trace in dev, generic
+  "Server Error (500)" in prod, sometimes a Sentry event id embedded
+  in JS init. The previous behavior sliced the first 200 chars of the
+  body into the error message, which surfaced
+  `<!DOCTYPE html><html><head>...` and was useless for triage.
+  The new helper extracts (in order): JSON `detail`/`error`/`message`
+  fields, Django technical-500 `<pre class="exception_value">` plus
+  exception type, generic-500 `<title>` + `<h1>` + Sentry event id,
+  or a stripped-tags fallback. Capped at ~300 chars.
+- **`HttpError` constructor accepts an optional `contentType` arg** —
+  used by the summarizer to detect JSON bodies. Backward-compatible
+  with all existing call sites (none pass the 4th arg).
+- **9 new unit tests in `test/mcp/connect/unit/errors.test.ts`**
+  covering JSON error bodies, Django technical-500 pages, generic-500
+  pages, Sentry event id extraction, character cap, plain-text
+  fallback, and the HttpError integration.
+- **`bin/ace-doctor` adds a `session_freshness` check.** Compares the
+  running plugin's `VERSION` against `installed_plugins.json`'s recorded
+  version. Mismatch surfaces as `WARN session_freshness` with the
+  actionable fix: run `/reload-plugins` or restart the session, since
+  MCP servers don't pick up a new version until reload. The canonical
+  symptom of this class is "No such tool available: connect_*" right
+  after `/ace:update` — observed in `new-e2e-25bff` at 12:10.
+
+### Changed
+
+- **`mcp/connect/backends/playwright.ts` `httpErrorFor`** now passes
+  the response Content-Type header through to `HttpError`, so the
+  summarizer can identify JSON bodies even when the body bytes don't
+  start with `{`.
+
+### Why
+
+`new-e2e-25bff` had 6 distinct `connect_create_opportunity` failures,
+each followed by a `connect_list_opportunities` recovery probe and a
+fresh retry — 4 of them on HTTP 500, plus a "tool not available" after
+a mid-session `/ace:update`. The 500 retry storm cost ~25 min of
+wall-clock; the underlying Django exception was invisible to the agent
+because the error message was just `HTTP 500 POST /a/.../opportunity/init/:
+<!DOCTYPE html><html><head><title>` with the actual exception type
+buried 4kb into the body. The agent now sees the real error and can
+make a real triage decision (retry vs reauth vs filing a Connect
+issue).
+
+The doctor `session_freshness` check is the class-level preventer for
+the post-update tool-loss symptom — same pattern as the 0.7.1
+`ocs_shared_collection_team` probe and 0.5.18 Drive Shared-Drive guard.
+
 ## 0.10.24 — 2026-04-29
 
 **New default `/ace:run` mode — keep going until external communication.**
