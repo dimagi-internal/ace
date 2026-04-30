@@ -5,7 +5,7 @@ description: One-time per-machine setup for ACE mobile emulation (Maestro, AVD, 
 
 # `/ace:mobile-bootstrap`
 
-Run this **once per workstation** before the `training-prep` phase can capture screenshots.
+Run this **once per workstation** before the `qa-and-training` phase can capture screenshots.
 
 This command is idempotent — re-run any time you suspect drift.
 

@@ -285,7 +285,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
 
   // Mobile-emulation artifacts (2026-04-28). Produced by
   // ``app-screenshot-capture`` as the first step of Phase 5
-  // (training-prep) and consumed by ``training-materials`` to embed
+  // (qa-and-training) and consumed by ``training-materials`` to embed
   // real screenshots in the FLW training guide. Marked optional
   // (``required: false``) until the fixtures backfill these paths.
   {

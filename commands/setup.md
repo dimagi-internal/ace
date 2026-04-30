@@ -221,7 +221,7 @@ Tell the user exactly what state they're in:
 
 ## Mobile emulation (optional, Mac only)
 
-If you plan to use Phase 5 `training-prep` end-to-end (screenshot capture + training docs):
+If you plan to use Phase 5 `qa-and-training` end-to-end (screenshot capture + training docs):
 
 1. Install Maestro: `curl -Ls "https://get.maestro.mobile.dev" | bash`
 2. Install `adb`: `brew install android-platform-tools`

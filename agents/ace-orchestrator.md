@@ -25,7 +25,7 @@ not because the orchestrator is itself dispatched.
 
 The architectural rule and full topology table live in `CLAUDE.md § Agent topology` (the canonical source — every session loads it). Summary for the orchestrator's purposes:
 
-- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 2) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other seven agents (`design-review`, `connect-setup`, `ocs-setup`, `training-prep`, `llo-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
+- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 2) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other seven agents (`design-review`, `connect-setup`, `ocs-setup`, `qa-and-training`, `llo-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
 - **Invocation in the procedure below:** "dispatch the X agent" means a top-level `Agent(X)` call (subagent rows in the CLAUDE.md table) or "read `agents/X.md` and execute it inline" (procedure-doc rows).
 - **Why the rule:** the `Agent` tool is unavailable to subagents; a node that nests further work cannot itself be a subagent. There are never two levels of `Agent` dispatch.
 
@@ -80,7 +80,7 @@ phases:
     ocs-chatbot-eval-quick: pending
     ocs-chatbot-qa-deep: pending
     ocs-chatbot-eval-deep: pending
-  training-prep:        # Phase 5 — added 0.9.0
+  qa-and-training:        # Phase 5 — added 0.9.0
     app-screenshot-capture: pending
     training-materials: pending
   llo-management:       # Phase 6
@@ -306,7 +306,7 @@ dispatch requires `Agent` at level 0 — running Phase 2 as a subagent
 would put Nova's dispatch at level 2 and fail. See § Agent Topology.
 
 This phase produces: Learn app, Deliver app, deployed apps on CCHQ, test results.
-(Training materials moved to Phase 5 (`training-prep`) in 0.9.0.)
+(Training materials moved to Phase 5 (`qa-and-training`) in 0.9.0.)
 
 ### Phase 3: Connect Setup
 Dispatch to the **connect-setup** agent.
@@ -325,8 +325,8 @@ captures a transcript, `ocs-chatbot-eval` grades it.
 Ends with a human-in-the-loop step to paste the widget credentials into the
 Connect opportunity until `update_opportunity` lands (CCC-301).
 
-### Phase 5: Training Prep
-Dispatch `Agent(training-prep)`. The agent runs `app-screenshot-capture`
+### Phase 5: QA and Training
+Dispatch `Agent(qa-and-training)`. The agent runs `app-screenshot-capture`
 followed by `training-materials`, both reading upstream artifacts from
 Phases 1-4. No LLO contact happens here — that begins in Phase 6.
 

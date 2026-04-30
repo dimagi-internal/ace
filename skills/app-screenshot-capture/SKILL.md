@@ -1,45 +1,64 @@
 ---
 name: app-screenshot-capture
 description: >
-  Drive the CommCare Android app (which integrates Connect/ConnectID as of
-  2.62.0) through scripted Maestro flows on a local AVD and capture one PNG
-  per recipe step into Drive. First step of Phase 5 (training-prep). Produces
-  ACE/<opp>/screenshots/ + manifest.yaml.
+  Execute the per-opp QA walkthrough recipes that `qa-plan` generated against
+  a local AVD and capture one PNG per recipe step into Drive. Step 2 of
+  Phase 5 (qa-and-training). Consumes the qa-plan manifest as its input
+  spec; produces `ACE/<opp>/screenshots/` + manifest.yaml ready for the
+  training-materials step. Captures only **per-opp** content; common Connect
+  navigation screenshots come from the standalone
+  `connect-baseline-screenshots` skill (not this one).
 ---
 
 # App Screenshot Capture
 
-Run scripted Maestro flows against a local AVD, capture PNGs at every step, and upload them to Drive.
+Run the qa-plan walkthrough recipes against a local AVD, capture PNGs at
+every `takeScreenshot` step, and upload them to Drive linked to their test
+case.
 
 ## Inputs (read from Drive)
 
 | Source | Artifact | Used for |
 |---|---|---|
+| Phase 5 Step 1 (qa-plan) | `ACE/<opp>/qa-plan/walkthrough-recipes/manifest.yaml` | recipe execution order |
+| Phase 5 Step 1 (qa-plan) | `ACE/<opp>/qa-plan/walkthrough-recipes/{learn,deliver}/module-N.yaml` | the recipes themselves |
+| Phase 5 Step 1 (qa-plan) | `ACE/<opp>/qa-plan/screenshot-manifest.yaml` | expected screenshot count + naming |
 | Phase 1 | `ACE/<opp>/pdd.md` | archetype branching only |
-| Phase 2 | `ACE/<opp>/app-summaries/learn-app-summary.md` | recipe generation |
-| Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | recipe generation |
 | Phase 2 | `ACE/<opp>/deployment-summary.md` | HQ domain for `${HQ_DOMAIN}` env var |
-| Phase 3 | `ACE/<opp>/connect-state.yaml` | `opportunity_name` + `ace_test_user_invite_url` |
+| Phase 3 (state.yaml) | `connect.opportunity.id` + ACE test user invite | `${OPP_NAME}`, `${ACE_E2E_PHONE_LOCAL}`, etc. |
 
 ## Process
 
-1. **Read upstream artifacts** from Drive. If any are missing, exit with a structured error pointing at the upstream phase.
+1. **Read upstream artifacts** from Drive, **starting with the qa-plan**. If
+   the qa-plan verdict isn't `pass` (or its artifacts are missing), exit
+   with a structured error pointing at Step 1. Do NOT generate recipes
+   independently — the qa-plan is the source of truth for what gets
+   captured.
 
-2. **Generate per-module recipes**:
-   - Call `MobileClient.generateRecipesFromAppSummary` for Learn (`'learn'`) and Deliver (`'deliver'`).
-   - Output: `ACE/<opp>/mobile-recipes/{learn,deliver}/module-N.yaml` + `manifest.yaml`.
+2. **Boot AVD + ensure apps installed** via `mobile_ensure_avd_running` and
+   `mobile_install_apk` (no-op if cached).
 
-3. **Boot AVD + ensure apps installed** via `mobile_ensure_avd_running` and `mobile_install_apk` (no-op if cached).
-
-4. **Run static recipes**:
+3. **Run static prerequisite recipes** (login + opp claim) — these set up
+   the AVD to the post-claim state the qa-plan recipes assume:
    - `connect-login.yaml` with `${ACE_E2E_PHONE_LOCAL}`, `${ACE_E2E_PIN}`.
-   - `connect-claim-opp.yaml` with `${OPP_NAME}` from `connect-state.yaml`.
+   - `connect-claim-opp.yaml` with `${OPP_NAME}` from state.yaml.
 
-5. **Run generated recipes**, in order:
-   - For each `module-N.yaml` under `mobile-recipes/learn/`, then `mobile-recipes/deliver/`.
-   - Each `mobile_run_recipe` returns a list of screenshots; upload each to `ACE/<opp>/screenshots/<recipe-stem>/<step-name>.png`.
+4. **Run the qa-plan walkthrough recipes**, in the order the qa-plan
+   manifest specifies:
+   - For each recipe under `qa-plan/walkthrough-recipes/learn/` then
+     `qa-plan/walkthrough-recipes/deliver/`, call `mobile_run_recipe`.
+   - Each call returns a list of captured screenshots; upload each to
+     `ACE/<opp>/screenshots/<recipe-stem>/<step-name>.png` via
+     `drive_upload_binary` (mime: `image/png`).
 
-6. **Write `ACE/<opp>/screenshots/manifest.yaml`** listing every recipe, every step name, every Drive path, every step label (the `takeScreenshot:` argument).
+5. **Cross-check against the qa-plan screenshot-manifest.** Every
+   manifest entry should now have a real PNG at the expected path. Flag
+   missing ones in the verdict's `auto_surfaced` (don't silently drop).
+
+6. **Write `ACE/<opp>/screenshots/manifest.yaml`** linking each captured
+   PNG back to (a) its qa-plan test-case ID, (b) its `takeScreenshot:`
+   step label, (c) its Drive path. This is the input shape
+   `training-materials` consumes.
 
 7. **Self-evaluate (LLM-as-Judge):**
    - Did every recipe complete (status: pass)?
@@ -135,3 +154,4 @@ Run scripted Maestro flows against a local AVD, capture PNGs at every step, and 
 | Date | Change | Author |
 |---|---|---|
 | 2026-04-28 | Initial version (mobile-emulation work) | ACE team |
+| 2026-04-30 | Refactored as Phase 5 Step 2 — now consumes the `qa-plan` skill's manifest as its source of truth for what to capture, instead of generating recipes itself. Captures only **per-opp** content; common Connect navigation screenshots are sourced from `ACE/_common/connect-screenshots/<connect-version>/` produced by the standalone `connect-baseline-screenshots` skill. Switched PNG upload from text-encoded `drive_create_file` to `drive_upload_binary` (0.10.43) so screenshots upload as native PNGs. (0.10.44) | ACE team |

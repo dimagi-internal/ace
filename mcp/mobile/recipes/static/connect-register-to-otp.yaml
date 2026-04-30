@@ -11,12 +11,12 @@
 # dump on ACE_Pixel_API_34_PS (google_apis_playstore arm64). The composite
 # caller continues with connect-register-from-otp.yaml from the next screen.
 #
-# Two post-Continue branches exist:
-#   - Real users: OTP entry screen (selector still REPLACE_otp_entry — needs
-#     a non-+7426 phone to discover)
-#   - Demo users (+7426 bypass prefix): snackbar "I see you're a demo user,
-#     so we'll skip the OTP" with id snackbar_action / OK button, advancing
-#     directly to the App Lock / Unlock Options screen
+# Post-Continue: ACE uses the +7426 demo-user bypass prefix exclusively, so
+# the flow lands on the demo snackbar "I see you're a demo user, so we'll
+# skip the OTP" (id snackbar_action / OK button), advancing directly to the
+# App Lock / Unlock Options screen. Real-user OTP entry is intentionally
+# out of scope — ACE deploys against demo phones throughout, and the OTP
+# scrape via /users/connect_user_otp/ is the bootstrap path for those.
 #
 # Critical pre-flight (server-side): ${PHONE} must be pre-invited to a
 # Connect opportunity. Otherwise Connect-id's start_configuration crashes
@@ -102,7 +102,7 @@ appId: org.commcare.dalvik
 - tapOn:
     id: "org.commcare.dalvik:id/personalid_phone_continue_button"
 
-# Wait for the response: either OTP entry (real) or the demo-user snackbar
-# (+7426). Caller (connect-register-from-otp.yaml) handles both branches.
+# Wait for the demo-user snackbar (+7426 bypass). Caller
+# (connect-register-from-otp.yaml) handles the rest of the demo flow.
 - waitForAnimationToEnd:
     timeout: 8000
