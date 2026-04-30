@@ -129,11 +129,13 @@ export class MobileClient {
     drive: DriveAdapter;
     driveRootId: string;
     /**
-     * Optional. When omitted, falls back to the built-in Anthropic Messages
-     * API client (reads `ANTHROPIC_API_KEY` from `${CLAUDE_PLUGIN_DATA}/.env`).
-     * Surfaced as `mobile_generate_recipe_for_module` MCP atom in 0.10.43.
+     * REQUIRED. The mobile MCP does not bundle an LLM client. Inside Claude
+     * Code, ACE skills generate Maestro YAML inline using their own LLM
+     * context and validate via `mobile_validate_recipe` — they do not call
+     * this method. This method is provided for non-Claude-Code programmatic
+     * callers (scripts, CI jobs) that supply their own LlmFn.
      */
-    llm?: LlmFn;
+    llm: LlmFn;
   }): Promise<{ recipePaths: string[]; manifestPath: string }> {
     const summaryPath = `ACE/${args.oppName}/app-summaries/${args.appKind}-app-summary.md`;
     const summary = await args.drive.readFile(args.driveRootId, summaryPath);

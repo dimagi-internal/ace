@@ -116,20 +116,25 @@ server.tool(
 );
 
 server.tool(
-  'mobile_generate_recipe_for_module',
+  'mobile_validate_recipe',
   {
-    summary: z.string().describe('The full app summary markdown — the recipe-generator parses module names from this and grounds the LLM call in it.'),
-    moduleName: z.string().describe('The specific module name to generate a recipe for (e.g. "Photo standardization", "Final assessment"). Must match one of the module names parseSummary would return for this summary, or the LLM has nothing to anchor to.'),
-    appKind: z.enum(['learn', 'deliver']).describe('Which app the module belongs to. Drives the system-prompt framing.'),
+    yaml: z.string().describe('Maestro YAML body to validate. Standard ACE-recipe shape: appId frontmatter + `---` separator + step list. Validates step-key allowlist (launchApp, tapOn, inputText, takeScreenshot, assertVisible, assertNotVisible, extendedWaitUntil, waitForAnimationToEnd, eraseText, swipe, pressKey, back, scroll, hideKeyboard, runFlow, evalScript, stopApp) and structural integrity (`---` separator present, appId in frontmatter, every step is a single-key object). Use this AFTER an ACE skill (running as a Claude Code session) writes Maestro YAML inline using its own LLM context — the mobile MCP does not bundle an LLM client, so YAML generation is the calling agent\'s responsibility, not this server\'s.'),
   },
-  async ({ summary, moduleName, appKind }) => {
-    const { RecipeGenerator } = await import('./mobile/backends/recipe-generator.js');
-    const gen = new RecipeGenerator();  // uses built-in Anthropic LlmFn (ANTHROPIC_API_KEY env)
+  async ({ yaml }) => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const tmp = path.join(os.tmpdir(), `mob-validate-${Date.now()}-${Math.random().toString(36).slice(2)}.yaml`);
+    fs.writeFileSync(tmp, yaml);
     try {
-      const yaml = await gen.generateForModule({ summary, moduleName, appKind });
-      return { content: [{ type: 'text', text: JSON.stringify({ ok: true, yaml }, null, 2) }] };
+      const { MaestroBackend } = await import('./mobile/backends/maestro.js');
+      const backend = new MaestroBackend({});
+      await backend.validateRecipe(tmp);
+      return { content: [{ type: 'text', text: JSON.stringify({ ok: true, valid: true }, null, 2) }] };
     } catch (e: any) {
-      return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: e.message }, null, 2) }], isError: true };
+      return { content: [{ type: 'text', text: JSON.stringify({ ok: false, valid: false, error: e.message }, null, 2) }], isError: true };
+    } finally {
+      try { fs.unlinkSync(tmp); } catch {}
     }
   },
 );
