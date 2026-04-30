@@ -72,15 +72,22 @@ output as authoritative:
    `created` is within the last few minutes and whose name matches
    the spec just submitted).
 2. If no new app is present, the dispatch halted at turn 0. **Re-dispatch
-   once** with the same spec (the failure is intermittent and usually
-   passes on retry).
-3. If the second attempt also produces no app, surface a hard error
-   with `nova-plugin#2` in the message — three retries is wasted
-   wall-clock; let the operator decide whether to wait for upstream
-   or escalate.
+   up to two more times** (so up to **3 total attempts**) with the same
+   spec. Empirically (turmeric-20260429-2330): two halts in a row, third
+   attempt completed cleanly — bumping the budget caps wasted wall-clock
+   at ~30 sec per halted attempt while preserving the "don't loop forever"
+   discipline.
+3. If the third attempt also produces no app, surface a hard error
+   with `nova-plugin#2` in the message — at that point the failure is
+   no longer plausibly transient; let the operator decide whether to
+   wait for upstream or escalate.
 
 Apply this check after the Learn dispatch and again after the Deliver
-dispatch — they fail independently.
+dispatch — they fail independently. Apply the same retry policy to
+**any** `nova:nova-architect-autonomous` dispatch elsewhere in this
+phase (e.g., the `app-connect-coverage` verification dispatches in
+Step 1.5), since `nova-plugin#2` affects every architect dispatch
+identically — not just builds.
 
 - Input: approved PDD from GDrive
 - Output: app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
@@ -102,10 +109,25 @@ Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
   judges grade Connectify wiring (25% weight). Running coverage first
   means evals score the auto-fixed app, not whatever Nova happened to
   emit.
-- **Failure mode:** if the skill exits `blocked` with a Nova-bug
-  pointer (`voidcraft-labs/nova-plugin#1`), halt Phase 2 — `app-deploy`
-  + `app-release` will produce a broken opp downstream. Wait for
-  upstream fix.
+- **Failure modes:**
+  - **`blocked` with `voidcraft-labs/nova-plugin#1` (Bug 2 — empty
+    `entity_id`/`entity_name` re-injected on `update_form`
+    `deliver_unit`):** halt Phase 2. The malformed bind will fail
+    CCHQ's build at `app-release`, and the eventual released CCZ
+    won't carry the markers Connect needs. Wait for upstream fix.
+  - **Coverage's architect dispatch can't get past `nova-plugin#2`
+    (bootstrap halts on all 3 attempts):** **do NOT halt Phase 2.**
+    Coverage is the upstream safety net; `app-release` (Step 2.5,
+    0.10.5+) is the actual wall — its Step 6 downloads the released
+    CCZ and greps for `<learn:deliver>` / `<learn:module>` element
+    counts, which catches Bug 2 escapes cleanly. Log the coverage
+    skip into `state.yaml` (`app-connect-coverage-{learn,deliver}:
+    skipped-nova2`), write a stub coverage report noting the skip
+    + reliance on app-release verification, and proceed to Step 2.
+    Rationale: Nova's autobuild path doesn't go through `update_form`
+    for the initial connect block, so a clean autobuild build report
+    almost always means clean markers; the only risk is a silent
+    Nova-internal regression that `app-release`'s grep catches anyway.
 
 ### Step 2: Deploy Apps
 Invoke the `app-deploy` skill.

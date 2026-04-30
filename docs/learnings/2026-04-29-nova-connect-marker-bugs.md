@@ -1,8 +1,8 @@
-# Learning: Nova autobuild silently skips CommCare Connect markers; `deliver_unit` runtime injects invalid XPath
+# Learning: Nova autobuild silently skips CommCare Connect markers; `deliver_unit` runtime injects invalid XPath; `add_fields` partial persistence
 
-**Date**: 2026-04-29
-**Context**: turmeric-market-survey-2026-04-28 dogfood. After Phase 3 Step 2 created the Connect opp, `Sync Deliver Units` returned `Delivery unit sync completed.` but `connect_list_deliver_units` came back empty. Root cause traced through Connect's source (`commcare_connect.opportunity.app_xml.get_deliver_units_for_app`) to the released CCZ's form XML lacking `<learn:deliver>` elements.
-**Status**: Active — both bugs are in `voidcraft-labs/nova-plugin` and need upstream fixes. ACE-side mitigations shipped in 0.10.5.
+**Date**: 2026-04-29 (initial), updated 2026-04-30 with Bug 3 + Bug 1 mitigation confirmation
+**Context**: turmeric-market-survey-2026-04-28 dogfood and turmeric-20260429-2330 follow-up. After Phase 3 Step 2 created the Connect opp, `Sync Deliver Units` returned `Delivery unit sync completed.` but `connect_list_deliver_units` came back empty. Root cause traced through Connect's source (`commcare_connect.opportunity.app_xml.get_deliver_units_for_app`) to the released CCZ's form XML lacking `<learn:deliver>` elements.
+**Status**: Active — bugs 1, 2, and 3 are in `voidcraft-labs/nova-plugin` and need upstream fixes. ACE-side mitigations shipped in 0.10.5; Bug 1 mitigation **confirmed working** in 2026-04-30 turmeric-20260429-2330 run (explicit Connect language in autobuild brief → markers populated on first try with non-empty entity expressions).
 
 ## Problem
 
@@ -119,6 +119,84 @@ time_estimate}` doesn't have a hidden bind that breaks. Confirmed by
 re-uploading the turmeric Learn app after `update_form` fixes — the
 released CCZ has `<learn:module>` blocks in all 10 forms.
 
+**Important scope note (added 2026-04-30):** Bug 2 is triggered by
+`update_form` mutations adding `connect.deliver_unit` *post-hoc*.
+Nova's `autobuild` path does NOT go through `update_form` for the
+initial connect block — it emits the form with the connect block
+inline at form-creation time, with non-empty entity expressions.
+Confirmed in the 2026-04-30 turmeric-20260429-2330 run: the Deliver
+build's self-report showed `connect.deliver_unit` populated with slug
+`vendor_visit` and clean entity bindings on first try. Bug 2 only
+bites when `app-connect-coverage` (the post-build safety net) issues
+`update_form` to fix a missed marker. With Bug 1 properly mitigated
+upstream — i.e., explicit Connect language in the autobuild brief,
+which `pdd-to-{learn,deliver}-app` now does — coverage is rarely a
+no-op and Bug 2 is rarely triggered.
+
+### Bug 3: `add_fields` partial persistence on first call (added 2026-04-30)
+
+Symptom: `add_fields` called with N items in `fields[]` sometimes
+persists only the **first** item; the others are silently dropped.
+Severity scales with N. Workaround: re-issue `add_fields` with the
+remaining items (the call is idempotent on already-present field IDs).
+
+**Reproducer 1 — turmeric-20260429-2330 Learn build, 2026-04-30:**
+
+```
+add_fields(form_id="form_assessment", fields=[<9 quiz questions>])
+  → ack: success
+get_form(form_id="form_assessment")
+  → questions_count: 1   ← only consent_required persisted, 8 dropped
+add_fields(form_id="form_assessment", fields=[<the same 9 questions>])
+  → ack: success
+get_form(form_id="form_assessment")
+  → questions_count: 9   ← all persisted on second call
+validate_app() → valid
+```
+
+**Reproducer 2 — turmeric-20260429-2330 Deliver build, 2026-04-30:**
+
+Same symptom, more pronounced. Building a 19-field single form
+required FIVE `add_fields` invocations:
+
+```
+add_fields(N=19) → questions_count: 1   (Q1 only)
+add_fields(N=18 remaining) → questions_count: 8  (added Q2..Q8)
+add_fields(N=11 remaining) → questions_count: 14 (added Q9..Q14)
+add_fields(N=5 remaining)  → questions_count: 18 (added Q15..Q18)
+add_fields(N=1 remaining)  → questions_count: 19 (added Q19)
+validate_app() → valid
+```
+
+The progress is monotonic and `add_fields` is idempotent on already-
+present fields, so the workaround is just "re-issue until
+`questions_count` matches expected." But the architect agent has to
+notice the mismatch via `validate_app` or `get_form`, which adds
+2–4 round trips per affected form.
+
+The Learn-build architect required only one re-issue (small array,
+small drop). The Deliver-build architect was the worst-case — 4
+re-issues for one form. Both are wasted wall-clock and produce
+noisier traces than necessary; the smaller the chunks the architect
+sends, the fewer re-issues — but small chunks waste even more wall-
+clock. The right place to fix is upstream.
+
+Suspected cause: `add_fields` is internally not atomic over the
+incoming array — likely a race between insert and validate, where
+only the first field commits before validation rejects subsequent
+ones. Or a bound on a per-call serializer buffer that truncates
+after the first record. Either way, it's not specced behavior and
+the partial result is silent.
+
+**ACE-side mitigation:** the `pdd-to-{learn,deliver}-app` skill
+prompts to nova-architect now mention this oddity explicitly so the
+architect issues `validate_app` or `get_form` immediately after each
+`add_fields` and re-issues if the count is short. This is in the
+"third-attempt" Learn-build prompt and in the Deliver-build prompt
+(where the architect handled it cleanly). Net: one extra round trip
+per affected form, no failed builds. Belt-and-suspenders only —
+upstream fix obviates this entirely.
+
 ## Fix / Key takeaway
 
 ### ACE-side mitigation (shipped 0.10.5)
@@ -142,7 +220,9 @@ error rather than a silent Phase 3 dead-end.
 1. **Bug 1:** harden the autobuild flow to actually call `update_form`
    with `connect.deliver_unit` (or `learn_module`/`assessment`) on
    every form when `Connect type` is `deliver`/`learn`. Possibly add
-   a post-build validator in Nova itself.
+   a post-build validator in Nova itself. (Workable mitigation: the
+   ACE skills now include explicit Connect language in every brief,
+   confirmed effective on 2026-04-30 turmeric-20260429-2330.)
 2. **Bug 2:** either:
    - Omit empty `entity_id`/`entity_name` from the form bind generation
      (don't emit `/data/connect_deliver/deliver/entity_id` if the value
@@ -153,6 +233,14 @@ error rather than a silent Phase 3 dead-end.
      `entity_name: case_name` or similar), OR
    - Auto-derive sensible defaults inside Nova at form-emit time,
      based on the form's case_type registration.
+3. **Bug 3 (added 2026-04-30):** make `add_fields` atomic over the
+   incoming `fields[]` array — either commit all fields or none.
+   Surface a clear error if the array hits any internal limit, rather
+   than silently truncating to the first element. If the underlying
+   issue is per-field validation racing with insertion, queue the
+   inserts and validate at the end of the call. ACE-side mitigation
+   (re-issue until count matches) is workable but produces 2–5x the
+   round trips of a clean call.
 
 ### Operational note
 
