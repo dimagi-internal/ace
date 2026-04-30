@@ -570,6 +570,84 @@ export class PlaywrightBackend implements ConnectClient {
     return { ok: true, status: 'active' as const };
   };
 
+  /**
+   * Finalize an opportunity. POSTs to /finalize/ with start_date,
+   * end_date, max_users; the form computes total_budget server-side.
+   *
+   * On success Connect 302-redirects to opportunity:detail. On
+   * validation errors it 200-renders the form with crispy-tailwind
+   * `<p id="error_N_id_FIELD">` messages — surfaced via the existing
+   * validationErrorFromHtml helper as a typed ConnectValidationError.
+   */
+  finalizeOpportunity: ConnectClient['finalizeOpportunity'] = async (args) => {
+    const path = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/finalize/`;
+    const getRes = await this.opts.request.get(path);
+    if (getRes.status() !== 200) throw await httpErrorFor(getRes, path);
+    const getBody = await getRes.text();
+    const csrfMatch = getBody.match(/name=["']csrfmiddlewaretoken["']\s+value=["']([^"']+)["']/);
+    const csrf = csrfMatch?.[1] ?? this.opts.csrfToken;
+
+    // The form's total_budget field is rendered `readonly` and the JS
+    // `oninput` on max_users computes it client-side as
+    // max_users × Σ(payment_unit.amount × payment_unit.max_total).
+    // ModelForm.save() persists whatever value is POSTed, so we have to
+    // mirror that JS computation here — passing 0 leaves total_budget=0
+    // and is_setup_complete stays False. Compute from existing PUs.
+    const pus = await this.listPaymentUnits({
+      organization_slug: args.organization_slug,
+      opportunity_id: args.opportunity_id,
+    });
+    const cumulativePerUser = pus.payment_units.reduce(
+      (sum, pu) => sum + (pu.amount ?? 0) * ((pu.max_total ?? 0)),
+      0,
+    );
+    const totalBudget = cumulativePerUser * args.max_users;
+
+    const postRes = await this.opts.request.post(path, {
+      form: {
+        csrfmiddlewaretoken: csrf,
+        start_date: args.start_date,
+        end_date: args.end_date,
+        max_users: String(args.max_users),
+        total_budget: String(totalBudget),
+      },
+      maxRedirects: 0,
+      headers: {
+        Referer: `${this.opts.baseUrl}${path}`,
+        'X-CSRFToken': csrf,
+      },
+    });
+
+    if (postRes.status() === 302) {
+      // Re-fetch to read the now-set total_budget. The detail page
+      // includes it in a stat tile; for the v1 atom we just re-read
+      // the opportunity via getOpportunity to keep the parsing burden
+      // off this method.
+      const opp = await this.getOpportunity({
+        organization_slug: args.organization_slug,
+        opportunity_id: args.opportunity_id,
+      });
+      // total_budget isn't in the Opportunity type today (the listing
+      // parser doesn't read it). Return what the caller asked for plus
+      // a server-confirmed sentinel; consumers can refresh detail if
+      // they need the canonical figure.
+      void opp;
+      return {
+        opportunity_id: args.opportunity_id,
+        start_date: args.start_date,
+        end_date: args.end_date,
+        max_users: args.max_users,
+        total_budget: totalBudget,
+      };
+    }
+
+    if (postRes.status() === 200) {
+      throw validationErrorFromHtml(await postRes.text(), `Finalize rejected (${args.opportunity_id})`);
+    }
+
+    throw await httpErrorFor(postRes, path, 'POST');
+  };
+
   /** Internal: re-POST the opportunity edit form with a partial override. */
   private async postEditForm(
     organization_slug: string,

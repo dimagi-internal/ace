@@ -36,6 +36,9 @@ export class CompositeBackend implements ConnectClient {
   createPaymentUnit = (a: Parameters<ConnectClient['createPaymentUnit']>[0]) => this.opts.playwright.createPaymentUnit(a);
   listPaymentUnits = (a: Parameters<ConnectClient['listPaymentUnits']>[0]) => this.opts.playwright.listPaymentUnits(a);
 
+  // Finalize (sets start/end/max_users, auto-computes total_budget)
+  finalizeOpportunity = (a: Parameters<ConnectClient['finalizeOpportunity']>[0]) => this.opts.playwright.finalizeOpportunity(a);
+
   // Lifecycle
   activateOpportunity = (a: Parameters<ConnectClient['activateOpportunity']>[0]) => this.opts.playwright.activateOpportunity(a);
 

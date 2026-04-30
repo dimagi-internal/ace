@@ -1,9 +1,6 @@
-# PARTIAL — first half (home → opp list) calibrated live against
-# CommCare 2.62.0 on ACE_Pixel_API_34_PS, 2026-04-29.
-# Second half (opp detail → accept → handoff) still REPLACE_* — needs
-# an active FLW invite on ${ACE_E2E_PHONE} which we don't yet have an
-# MCP atom for (program-side FLW invites are UI-only at the moment;
-# `connect_send_llo_invite` is for LLOs, not FLWs).
+# Fully calibrated against CommCare 2.62.0 on ACE_Pixel_API_34_PS,
+# 2026-04-30. Driven end-to-end with +74260000100 invited via
+# `connect_send_flw_invite` after `connect_finalize_opportunity`.
 #
 # Discovery loop notes:
 # - Post-registration the user lands on CommCare's "Welcome" screen
@@ -42,20 +39,23 @@ appId: org.commcare.dalvik
       text: ${OPP_NAME}
     timeout: 15000
 - takeScreenshot: "claim-opp-list"
+# The opp card on the list shows a "View Opportunity" button; tap it
+# to navigate to the detail screen. Card itself isn't directly tappable.
 - tapOn:
-    text: ${OPP_NAME}
-# TODO: capture below selectors live once an FLW invite for the test
-# user lands. Probable resource-ids based on CommCare's connect package
-# naming: `connect_accept_invite_button`, `connect_module_list_root`.
+    id: "org.commcare.dalvik:id/btn_view_opportunity"
 - extendedWaitUntil:
     visible:
-      id: "REPLACE_accept_invite_button"
+      id: "org.commcare.dalvik:id/btn_start"
     timeout: 10000
 - takeScreenshot: "claim-opp-detail"
 - tapOn:
-    id: "REPLACE_accept_invite_button"
+    id: "org.commcare.dalvik:id/btn_start"
+# After Start, the detail screen transitions in-place: the "Start"
+# button disappears and the Learn modules section becomes the
+# interactive entry point. tv_learn_modules_list is the stable
+# post-acceptance signal.
 - extendedWaitUntil:
     visible:
-      id: "REPLACE_commcare_handoff_or_learn_root"
+      id: "org.commcare.dalvik:id/tv_learn_modules_list"
     timeout: 30000
 - takeScreenshot: "claim-opp-handoff"

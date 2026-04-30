@@ -159,30 +159,37 @@ whichever PM-side org the opportunity targets).
      If it does, merge — don't overwrite other fields.
 
    **Constraint:** the opportunity must be `is_setup_complete` before
-   the FLW invite atom can succeed (Connect's
-   `OpportunityUserInviteForm.clean_users` rejects with
-   `"Please finish setting up the opportunity before inviting users."`
-   otherwise). Per the upstream model, `is_setup_complete` requires
-   **all** of:
-   - `total_budget` truthy
-   - `start_date` truthy (auto-set to `today` on creation; usually fine)
-   - `end_date` truthy
-   - At least one `PaymentUnit`
-   - Every `PaymentUnit` has `max_total` AND `max_daily` set
+   the FLW invite atom can succeed. Step 8 has two sub-steps:
 
-   This means Step 8 must run **after** Steps 4–7 AND the orchestrator
-   needs to ensure the budget + dates are wired:
-   - `end_date`: set via `connect_update_opportunity` (atom supports it).
-   - `total_budget`: set via Connect's `/add_budget_new_users` endpoint
-     (HTMX form). **No atom for this yet — see
-     `run_time_followups[budget-atom]` below.** Until that ships, the
-     operator may need to set `total_budget` once via the Connect web
-     UI, or this whole `is_setup_complete` chain can be punted to Phase
-     6 once an LLO accepts and adds budget themselves.
-   - `max_daily`: pass it explicitly to `connect_create_payment_unit`.
-     Otherwise it's null and trips `is_setup_complete`.
+   **8a. Finalize the opportunity.** Call
+   `connect_finalize_opportunity` to set `start_date`, `end_date`, and
+   `max_users`. The form auto-computes
+   `total_budget = max_users × Σ(payment_unit.amount × max_total)` and
+   persists it. After this fires the opportunity has all the fields
+   `is_setup_complete` needs:
+   - `total_budget` ✓ (computed by finalize)
+   - `start_date` ✓ (passed to finalize)
+   - `end_date` ✓ (passed to finalize)
+   - PaymentUnit with `max_total` ✓ (Step 6)
+   - PaymentUnit with `max_daily` — **pass this explicitly to
+     `connect_create_payment_unit` in Step 6** or the invite still
+     trips `is_setup_complete`.
 
-   Don't move Step 8 earlier in the skill.
+   ```
+   connect_finalize_opportunity({
+     organization_slug: <slug>,
+     opportunity_id: <UUID>,
+     start_date: <today, YYYY-MM-DD>,
+     end_date: <PDD end_date or +6 months, YYYY-MM-DD>,
+     max_users: <PDD's expected FLW count, default 5>,
+   })
+   ```
+
+   **8b. Invite the test user.** Then call `connect_send_flw_invite`
+   with `${ACE_E2E_PHONE}` as documented above.
+
+   Don't move Step 8 earlier in the skill — finalize requires
+   PaymentUnits to exist (it reads them to compute total_budget).
 
    **First-time setup:** if no opp has ever been created for this
    workstation's `${ACE_E2E_PHONE}`, the very first
@@ -226,7 +233,8 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
   - `connect_set_verification_flags`
   - `connect_create_payment_unit`
   - `connect_get_opportunity` (verify after create)
-  - `connect_send_flw_invite` (Step 8 — pre-invite the ACE test user)
+  - `connect_finalize_opportunity` (Step 8a — set dates + total_budget)
+  - `connect_send_flw_invite` (Step 8b — pre-invite the ACE test user)
 
 ## Mode Behavior
 - **Auto:** Create + configure end-to-end, proceed

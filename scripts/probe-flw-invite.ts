@@ -94,12 +94,28 @@ async function main() {
     request: ctx.request,
   });
 
-  // First, attempt to make 249ad8fe setup-complete by setting its budget.
-  // (end_date already set via connect_update_opportunity earlier; PU at id=1
-  // has max_total=20.)
+  // 249ad8fe has a PaymentUnit (id=1, max_total=20). Finalize it to set
+  // start_date + end_date + max_users (which auto-computes total_budget).
   const TARGET = '249ad8fe-fd4f-49c5-8808-93b1cb016860';
-  console.log('\n--- setting budget on target opp ---');
-  await setOppBudget({ request: ctx.request }, session.getCsrfToken(), TARGET, 5, 50000);
+  console.log('\n--- finalizing target opp ---');
+  try {
+    const fin = await backend.finalizeOpportunity({
+      organization_slug: ORG,
+      opportunity_id: TARGET,
+      start_date: new Date().toISOString().slice(0, 10),
+      end_date: '2026-09-30',
+      max_users: 5,
+    });
+    console.log('finalize ok:', JSON.stringify(fin));
+  } catch (err) {
+    if (err instanceof Error) {
+      console.log('finalize rejected:', err.message);
+      const fe = (err as { fieldErrors?: Record<string, string[]> }).fieldErrors;
+      if (fe) console.log('finalize field errors:', JSON.stringify(fe));
+    } else {
+      console.log('finalize rejected:', err);
+    }
+  }
 
   let successOpp: string | null = null;
   for (const oppId of [TARGET, ...OPP_IDS.filter((o) => o !== TARGET)]) {
