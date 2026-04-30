@@ -34,16 +34,17 @@ Create or select a Connect program for this opportunity.
 
 4. **Create the program** via `connect_create_program`:
    - `organization_slug`: `ai-demo-space` (or whichever PM-side org the
-     opportunity is configured for)
+     opportunity is configured for; must be a program-manager org)
    - `name`: archetype-signaling name (e.g. `"Vaccine Hesitancy Pilot
      (FGD) — Q2 2026"`)
    - `description`: PDD's intervention summary
-   - `delivery_type`: int FK from `connect_list_delivery_types` — match
-     the PDD's modality (e.g. `13` = Nutrition, `5` = Readers; call
-     `connect_list_delivery_types` if the mapping is unknown)
+   - `delivery_type`: slug (preferred — e.g. `"nutrition"`) or int FK
+     from `connect_list_delivery_types`. The new automation API accepts
+     the slug directly; the old form-driven backend required the int.
    - `budget`: total program budget from the PDD
    - `currency`: 3-letter ISO (e.g. `USD`)
-   - `country`: 3-letter ISO3 (e.g. `USA`, `KEN`)
+   - `country`: human country name as Connect renders it
+     (e.g. `"United States of America"`, not `"USA"`)
    - `start_date` / `end_date`: PDD timeline (YYYY-MM-DD)
 
 5. **Write program details** to `ACE/<opp-name>/connect-setup/program.md`:
@@ -56,10 +57,10 @@ Create or select a Connect program for this opportunity.
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
-- Connect (`ace-connect` MCP, 0.8.1+):
+- Connect (`ace-connect` MCP, 0.10.47+):
   - `connect_list_programs` — discovery
-  - `connect_list_delivery_types` — resolve human name → int FK
-  - `connect_create_program` — create
+  - `connect_list_delivery_types` — resolve human name → slug/int FK if needed
+  - `connect_create_program` — create (REST `POST /api/programs/`)
   - `connect_get_program` — verify after create
 
 ## Mode Behavior
@@ -92,3 +93,4 @@ downstream coherence:
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-28 | Replace HITL workaround with `connect_*_program` atoms (ace-connect 0.8.1) | ACE team |
+| 2026-04-30 | Switch `connect_create_program` to `POST /api/programs/` (commcare-connect PR #1135). `delivery_type` now accepts the slug; `country` is the human country name. (0.10.47) | ACE team |

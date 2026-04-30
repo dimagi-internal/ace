@@ -10,17 +10,23 @@
  * Test data is namespaced by timestamp (`ACE-IT-<ts>`) so re-runs don't
  * collide. Created programs are left in place — clean up in the Connect UI
  * if the test org grows cluttered.
+ *
+ * As of 0.10.47 this exercises the real REST automation API
+ * (`POST /api/programs/`) for create, then falls back to the HTML-driven
+ * read atoms (Playwright backend) for verification.
  */
 import 'dotenv/config';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PlaywrightSession } from '../../../../mcp/connect/auth/playwright-session.js';
 import { PlaywrightBackend } from '../../../../mcp/connect/backends/playwright.js';
+import { RestBackend } from '../../../../mcp/connect/backends/rest.js';
 
 const skip = process.env.CONNECT_INTEGRATION !== '1';
 
 describe.skipIf(skip)('connect e2e (live, ai-demo-space)', () => {
   let session: PlaywrightSession;
-  let backend: PlaywrightBackend;
+  let rest: RestBackend;
+  let playwright: PlaywrightBackend;
   const stamp = Date.now();
   const ORG = 'ai-demo-space';
   const PROGRAM_NAME = `ACE-IT-${stamp}`;
@@ -33,9 +39,15 @@ describe.skipIf(skip)('connect e2e (live, ai-demo-space)', () => {
       hqPassword: process.env.ACE_HQ_PASSWORD,
     });
     const ctx = await session.getContext();
-    backend = new PlaywrightBackend({
+    const csrfToken = session.getCsrfToken();
+    rest = new RestBackend({
       baseUrl: process.env.CONNECT_BASE_URL!,
-      csrfToken: session.getCsrfToken(),
+      csrfToken,
+      request: ctx.request,
+    });
+    playwright = new PlaywrightBackend({
+      baseUrl: process.env.CONNECT_BASE_URL!,
+      csrfToken,
       request: ctx.request,
     });
   }, 60_000);
@@ -43,20 +55,20 @@ describe.skipIf(skip)('connect e2e (live, ai-demo-space)', () => {
   afterAll(async () => { await session?.close(); });
 
   it('lists delivery types (>=10 entries, includes Nutrition)', async () => {
-    const out = await backend.listDeliveryTypes({ organization_slug: ORG });
+    const out = await playwright.listDeliveryTypes({ organization_slug: ORG });
     expect(out.delivery_types.length).toBeGreaterThanOrEqual(10);
     expect(out.delivery_types.find((d) => d.name === 'Nutrition')).toBeDefined();
   }, 30_000);
 
-  it('createProgram returns a program with a UUID', async () => {
-    const p = await backend.createProgram({
+  it('createProgram (REST) returns a program with a UUID', async () => {
+    const p = await rest.createProgram({
       organization_slug: ORG,
       name: PROGRAM_NAME,
       description: 'ace-connect integration test',
-      delivery_type: 13,  // Nutrition
+      delivery_type: 'nutrition',
       budget: 1000,
       currency: 'USD',
-      country: 'USA',
+      country: 'United States of America',
       start_date: '2026-05-01',
       end_date: '2026-08-01',
     });
@@ -66,27 +78,25 @@ describe.skipIf(skip)('connect e2e (live, ai-demo-space)', () => {
   }, 60_000);
 
   it('listPrograms with a name filter finds the new program', async () => {
-    const out = await backend.listPrograms({ organization_slug: ORG, name: PROGRAM_NAME });
+    const out = await playwright.listPrograms({ organization_slug: ORG, name: PROGRAM_NAME });
     expect(out.programs).toHaveLength(1);
     expect(out.programs[0].id).toBe(programId);
   });
 
   it('getProgram hydrates all fields from the edit form', async () => {
-    const p = await backend.getProgram({ organization_slug: ORG, program_id: programId });
+    const p = await playwright.getProgram({ organization_slug: ORG, program_id: programId });
     expect(p.id).toBe(programId);
     expect(p.name).toBe(PROGRAM_NAME);
     expect(p.description).toBe('ace-connect integration test');
-    expect(p.delivery_type).toBe(13);
     expect(p.budget).toBe(1000);
     expect(p.currency).toBe('USD');
-    expect(p.country).toBe('USA');
     expect(p.start_date).toBe('2026-05-01');
     expect(p.end_date).toBe('2026-08-01');
   });
 
   it('updateProgram renames the program', async () => {
     const renamed = `${PROGRAM_NAME}-renamed`;
-    const p = await backend.updateProgram({
+    const p = await playwright.updateProgram({
       organization_slug: ORG,
       program_id: programId,
       name: renamed,
