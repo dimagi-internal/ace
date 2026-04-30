@@ -855,8 +855,10 @@ export class PlaywrightBackend implements ConnectClient {
     formData.append('name', args.name);
     formData.append('description', args.description);
     formData.append('amount', String(args.amount));
-    if (args.max_total != null) formData.append('max_total', String(args.max_total));
-    if (args.max_daily != null) formData.append('max_daily', String(args.max_daily));
+    // max_total + max_daily are required by Connect's live form. The atom
+    // schema forces callers to provide them; we always emit them here.
+    formData.append('max_total', String(args.max_total));
+    formData.append('max_daily', String(args.max_daily));
     if (args.start_date) formData.append('start_date', args.start_date);
     if (args.end_date) formData.append('end_date', args.end_date);
     for (const id of args.required_deliver_unit_ids) formData.append('required_deliver_units', mapId(id));
