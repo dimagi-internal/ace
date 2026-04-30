@@ -5,6 +5,42 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.33 — 2026-04-29
+
+**Mobile recipe progress + two class-level gotchas documented.**
+
+Live AVD discovery pass against CommCare 2.62.0 (registered ACE test
+user on `ACE_Pixel_API_34_PS`) calibrated the first half of
+`connect-claim-opp.yaml` (home → Opportunities → opp list) and
+surfaced two class-level gotchas worth documenting now even though
+neither is fully fixable in a code change today.
+
+### Changed
+
+- `mcp/mobile/recipes/static/connect-claim-opp.yaml` —
+  `home_screen_root` → `org.commcare.dalvik:id/screen_first_start_main`,
+  `opportunities_tab` → `text: "Opportunities"`. Adds a
+  `runFlow.when` step that handles the post-registration
+  `BiometricPrompt` (system credential dialog) by entering `${PIN}`
+  when `com.android.systemui:id/lockPassword` is visible, then
+  asserts the opp-list root `connect_fragment_jobs_list`. Second
+  half (accept-invite / handoff) still REPLACE_* — needs an FLW
+  invite on `${ACE_E2E_PHONE}` to drive, and there is no MCP atom
+  for FLW program invites yet (only LLO invites via
+  `connect_send_llo_invite`).
+- `playbook/integrations/mobile-integration.md` — recipe table
+  marks `connect-claim-opp.yaml` as **partial** instead of pure
+  scaffold. New `### Unlock PersonalID gate` section documents the
+  `BiometricPrompt` cross-package transition and the recommended
+  `runFlow.when` pattern. New `### aapt is required by
+  mobile_install_apk` section documents the `build-tools` gap that
+  bites every fresh workstation: homebrew's
+  `android-commandlinetools` doesn't include `build-tools/`, so
+  `aapt` isn't on PATH and `mobile_install_apk` fails with
+  `spawn aapt ENOENT`. Quick `sdkmanager "build-tools;34.0.0"` +
+  symlink fixes it; longer-term fix is to make
+  `AvdBackend.installApk` search `$ANDROID_HOME/build-tools/*/aapt`.
+
 ## 0.10.32 — 2026-04-29
 
 **Fix `.env.tpl` ACE_E2E_* vault reference.**
