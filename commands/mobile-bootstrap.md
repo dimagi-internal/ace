@@ -109,44 +109,24 @@ order in `resolveJavaHome()`. Operators can override with
    Skip this step **only** if the operator has confirmed `${ACE_E2E_PHONE}`
    already has an invite somewhere in Connect.
 
-9. **Pre-flight the AVD for face capture.**
+9. **Register the ACE test user (if not already).**
+   - Tool: `mcp__ace_mobile__mobile_register_test_user`
+   - Args: `{ "avdName": "${ACE_AVD_NAME}", "phone": "${ACE_E2E_PHONE}", "phoneLocal": "${ACE_E2E_PHONE_LOCAL}", "countryCode": "${ACE_E2E_COUNTRY_CODE}", "pin": "${ACE_E2E_PIN}", "backupCode": "${ACE_E2E_BACKUP_CODE}", "name": "${ACE_E2E_NAME}" }`
+   - If `alreadyRegistered: true`, fine.
+   - If registration fails with `SystemExit` / NPE / "CommCare keeps stopping",
+     the most likely cause is step 8 was skipped or the invite has been
+     revoked. Re-verify and retry.
+   - In 0.10.23+ the GMS-disable + CAMERA-grant + NotificationShade
+     recovery all run automatically as part of `mobile_ensure_avd_running`
+     (see `AvdBackend.runPostBootPrep`); no operator action needed.
 
-   CommCare 2.62.0's `MicroImageActivity` uses ML Kit face detection to
-   auto-trigger the shutter when Google Play Services is available, and
-   the AVD's emulated front camera never shows a face. Disable GMS so
-   `MicroImageActivity` falls back to a manual `camera_shutter_button`
-   that Maestro can tap. Also pre-grant CAMERA permission so the activity
-   doesn't bail on first launch with a permission dialog.
-
-   Run via Bash:
-   ```sh
-   adb shell pm disable-user --user 0 com.google.android.gms
-   adb shell pm grant org.commcare.dalvik android.permission.CAMERA
-   ```
-
-   Both are idempotent and persist across AVD reboots. ACE skills don't
-   depend on GMS; if you ever need it back, run `adb shell pm enable
-   com.google.android.gms`.
-
-   See `playbook/integrations/mobile-integration.md` § Face-capture gate
-   for the full reasoning (source citations from
-   `MicroImageActivity.onCreate` and `connect-id users/views.py`).
-
-10. **Register the ACE test user (if not already).**
-    - Tool: `mcp__ace_mobile__mobile_register_test_user`
-    - Args: `{ "avdName": "${ACE_AVD_NAME}", "phone": "${ACE_E2E_PHONE}", "phoneLocal": "${ACE_E2E_PHONE_LOCAL}", "countryCode": "${ACE_E2E_COUNTRY_CODE}", "pin": "${ACE_E2E_PIN}", "backupCode": "${ACE_E2E_BACKUP_CODE}", "name": "${ACE_E2E_NAME}" }`
-    - If `alreadyRegistered: true`, fine.
-    - If registration fails with `SystemExit` / NPE / "CommCare keeps stopping",
-      the most likely cause is step 8 was skipped or the invite has been
-      revoked. Re-verify and retry.
-
-11. **Save a `registered-test-user` snapshot (recommended).**
+10. **Save a `registered-test-user` snapshot (recommended).**
     - Tool: `mcp__ace_mobile__mobile_save_snapshot`
     - Args: `{ "avdName": "${ACE_AVD_NAME}", "name": "registered-test-user" }`
     - Future selector-discovery sessions can `mobile_load_snapshot` to
       this state in ~3s instead of replaying the 4-minute registration
       flow. Skip this step if `alreadyRegistered: true` was returned in
-      step 10 — the existing snapshot is already good.
+      step 9 — the existing snapshot is already good.
 
-12. **Print success summary.**
+11. **Print success summary.**
     - Echo: AVD name, test-user phone, Playwright user-data dir, all ACE_E2E_* var presence.
