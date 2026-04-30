@@ -93,7 +93,10 @@ different rubric dimensions tuned to Learn-app concerns.
      into the underlying judge discretion.
 
 6. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/pdd-to-learn-app-eval.yaml`:
+   `ACE/<opp-name>/verdicts/pdd-to-learn-app.yaml`. The filename uses
+   the **producer** skill name (`pdd-to-learn-app`), NOT this skill's
+   name — see `agents/ace-orchestrator.md § Per-Step Eval Hook` for
+   the naming rule:
 
    ```yaml
    skill: pdd-to-learn-app-eval

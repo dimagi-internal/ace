@@ -477,6 +477,61 @@ the admin-group status email. **If any brief contains a `[BLOCKER]`
 concern, pause anyway and escalate** — admins opted into auto mode
 for speed, not to ship known-broken work.
 
+## Per-Step Eval Hook
+
+Per-step `-eval` skills run **automatically** after their producing skill
+in `/ace:run`. Each phase agent dispatches the matching `-eval` skill
+immediately after the producing skill completes, before advancing to the
+next step. Without this, the Workbench's "run → inspect → upgrade plugin
+→ rerun → compare" loop has no per-step signal, and `opp-eval` rolls up
+nothing to aggregate.
+
+**Where the wiring lives.** Each phase agent owns its own producer→eval
+pairing, listed in the agent's frontmatter `skills:` block via
+`eval_skill: <name>` (or `inline-self-eval` if the producer judges its own
+output). The orchestrator does not maintain a separate mapping table.
+
+**Verdict-file naming convention** (the rule the web reader enforces):
+
+```
+verdicts/<producer-skill>[-<mode>].yaml
+```
+
+- The stem before `-quick` / `-deep` / `-monitor` MUST match a registered
+  producer skill name (the web reader strips only those three mode
+  suffixes when attributing the verdict to a skill row).
+- `-eval` skills MUST drop the `-eval` suffix from their verdict filename.
+  `idea-to-pdd-eval` writes `verdicts/idea-to-pdd.yaml`, NOT
+  `verdicts/idea-to-pdd-eval.yaml`. Otherwise the score attributes to the
+  `-eval` row instead of the producer row.
+- Skills that ARE their own row in the registry (no producer / eval split,
+  e.g. `ocs-chatbot-eval`) keep their own name in the verdict filename:
+  `verdicts/ocs-chatbot-eval-{quick,deep,monitor}.yaml`.
+- Skills that self-evaluate inline (no separate `-eval` skill, e.g.
+  `qa-plan`, `training-materials`, `app-screenshot-capture`) write
+  `verdicts/<self>.yaml`.
+
+**Opt-out.** `/ace:run --no-evals` skips the per-step eval dispatch (the
+producing skills still write their primary artifacts). Useful for fast
+smoke iterations where the operator plans to run `/ace:eval --all`
+afterward.
+
+**Eval failures don't halt the run by default.** A per-step eval that
+returns `verdict: fail` does NOT halt the orchestrator outside the named
+gate steps — the verdict is recorded for the dashboard / `opp-eval`, and
+the run continues. The 5 named gate steps (`idea-to-pdd`, `app-deploy`,
+`ocs-chatbot-eval-deep`, `llo-invite`, `llo-launch`) still apply per the
+Per-Mode Pause Matrix above, where `[BLOCKER]` concerns from the eval do
+halt. This keeps the eval signal visible without making every rubric a
+hard gate.
+
+**Backstop.** `/ace:eval --all <opp-name>` runs every applicable
+per-step `-eval` skill against an existing opp's artifacts (the
+verdict-discovery model: for each producer skill that has an artifact
+in Drive AND a registered eval pair, dispatch the eval). Use this to
+retroactively score older opps, or to re-grade after a rubric is
+improved.
+
 ## Umbrella Eval
 
 The `opp-eval` skill (dispatched via `/ace:eval <opp-name> --mode

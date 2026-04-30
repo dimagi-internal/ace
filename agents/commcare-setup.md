@@ -8,12 +8,12 @@ phase: commcare-setup
 phase_display: CommCare Setup
 phase_ordinal: 2
 skills:
-  - { name: pdd-to-learn-app,        has_judge: true }
-  - { name: pdd-to-deliver-app,      has_judge: true }
+  - { name: pdd-to-learn-app,        has_judge: true,  eval_skill: pdd-to-learn-app-eval }
+  - { name: pdd-to-deliver-app,      has_judge: true,  eval_skill: pdd-to-deliver-app-eval }
   - { name: app-connect-coverage,    has_judge: false }
   - { name: app-deploy,              has_judge: false }
-  - { name: app-release,             has_judge: false }
-  - { name: app-test,                has_judge: true }
+  - { name: app-release,             has_judge: true,  eval_skill: app-release-eval }
+  - { name: app-test,                has_judge: true,  eval_skill: inline-self-eval }
 ---
 
 # CommCare Setup (Phase 2 Procedure Document)
@@ -125,7 +125,12 @@ identically — not just builds.
 
 - Input: approved PDD from GDrive
 - Output: app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
-- **LLM-as-Judge:** Evaluate app quality against PDD requirements
+- **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
+  `pdd-to-learn-app-eval` after the Learn build and
+  `pdd-to-deliver-app-eval` after the Deliver build. Each writes
+  `verdicts/pdd-to-learn-app.yaml` and `verdicts/pdd-to-deliver-app.yaml`
+  respectively. A `verdict: fail` here does not halt Phase 2 on its
+  own; the Phase 2→3 gate uses `gate-briefs/app-deploy.md`.
 
 ### Step 1.5: Connect-marker coverage (verify + auto-fix)
 Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
@@ -198,6 +203,8 @@ Invoke the `app-release` skill.
   includes it. The skill includes an empirical probe procedure for the
   underlying CCHQ endpoints — they're internal UI routes, not stable
   public APIs.
+- **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
+  `app-release-eval` after release. Writes `verdicts/app-release.yaml`.
 - Note: `app-test` reads `deployment-summary.md`, so deploy + release must
   precede test.
 
@@ -205,7 +212,10 @@ Invoke the `app-release` skill.
 Invoke the `app-test` skill.
 - `app-test` input: deployed apps on CCHQ
 - `app-test` output: test results in `ACE/<opp-name>/test-results/`
-- **LLM-as-Judge:** Self-evaluate quality
+- **LLM-as-Judge:** inline self-eval (no separate `-eval` skill).
+  `app-test` does not currently write a discrete `verdicts/app-test.yaml`;
+  upgrading it to do so is tracked separately so its score lands in
+  the Workbench dashboard alongside the other producer rows
 
 Note: `training-materials` no longer runs in Phase 2. As of 0.9.0 it lives
 in Phase 5 (`qa-and-training`), where it consumes the screenshots produced

@@ -90,8 +90,11 @@ the calibration methodology.
      weighted mean.
 
 5. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/idea-to-pdd-eval.yaml` using the shared
-   shape:
+   `ACE/<opp-name>/verdicts/idea-to-pdd.yaml` using the shared shape.
+   The filename uses the **producer** skill name (`idea-to-pdd`), NOT
+   this skill's name — see `agents/ace-orchestrator.md § Per-Step Eval
+   Hook` for the naming rule (the Workbench attributes verdicts by
+   filename stem to the producer skill row):
 
    ```yaml
    skill: idea-to-pdd-eval

@@ -191,16 +191,39 @@ captures to compute a trend. **`-eval` never exercises the artifact.**
 
 Every `-qa` / `-eval` pair writes to these canonical paths under
 `ACE/<opp-name>/`. Paths are uniform across skills so the umbrella
-`opp-eval` aggregator (future) can discover verdicts without per-skill
-knowledge.
+`opp-eval` aggregator can discover verdicts without per-skill knowledge.
 
 | Purpose | Path | Writer |
 |---|---|---|
 | Capture / transcript / evidence | `qa-captures/YYYY-MM-DD-<slug>.md` | `-qa` skill |
-| Structured machine-readable verdict | `verdicts/<skill>-<mode>.yaml` | `-eval` skill |
+| Structured machine-readable verdict | `verdicts/<producer-skill>[-<mode>].yaml` | `-eval` skill (or producer with inline self-eval) |
 | Human-readable eval report | `eval-reports/YYYY-MM-DD-<slug>.md` | `-eval` skill |
 | Rolling monitor trend | `eval-reports/trend.md` | `-eval` skill (`--monitor` mode only) |
 | Gate brief (if this eval gates a phase) | `gate-briefs/<skill>-<mode>.md` | `-eval` skill |
+
+**Verdict filename rule.** The stem before `-quick` / `-deep` /
+`-monitor` MUST match a registered producer skill name. The Workbench /
+ace-web reader (`apps/opps/sync.py`) strips only those three mode
+suffixes when attributing a verdict to a skill row, so the stem is the
+attribution key. Concrete consequences:
+
+- `-eval` skills MUST drop the `-eval` suffix from their verdict
+  filename. `idea-to-pdd-eval` writes
+  `ACE/<opp>/verdicts/idea-to-pdd.yaml` so the Workbench attributes the
+  score to the `idea-to-pdd` row (not the `-eval` row).
+- Recurring per-step evals use `<producer>-monitor.yaml` (e.g.
+  `verdicts/flw-data-review-monitor.yaml`).
+- Skills that self-evaluate inline (no separate `-eval` skill — e.g.
+  `qa-plan`, `training-materials`, `app-screenshot-capture`) write
+  `verdicts/<self>.yaml`.
+- Skills that ARE their own registry row (no producer/eval split, e.g.
+  `ocs-chatbot-eval`) keep their own name in the verdict filename:
+  `verdicts/ocs-chatbot-eval-{quick,deep,monitor}.yaml`.
+
+**Wiring.** Per-step `-eval` skills run automatically in `/ace:run` —
+each phase agent dispatches the matching eval after each producer skill
+completes. See `agents/ace-orchestrator.md § Per-Step Eval Hook`. Use
+`/ace:eval --all <opp>` to retroactively run evals over an existing opp.
 
 ### Verdict YAML shape
 

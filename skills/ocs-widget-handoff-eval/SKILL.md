@@ -73,8 +73,12 @@ widget paste-in until CCC-301).
    - `[INFO-SKIPPED]` for the live HTTP probe when offline-mode is requested.
 
 5. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/ocs-widget-handoff-eval.yaml`. Conforms
-   to `lib/verdict-schema.ts`.
+   `ACE/<opp-name>/verdicts/ocs-agent-setup.yaml`. The filename uses
+   the **producer** skill name (`ocs-agent-setup` — the skill that
+   produces `ocs-setup/widget-handoff.md` as one of its outputs), NOT
+   this skill's name — see `agents/ace-orchestrator.md § Per-Step
+   Eval Hook` for the naming rule. Body conforms to
+   `lib/verdict-schema.ts`.
 
    ```yaml
    skill: ocs-widget-handoff-eval

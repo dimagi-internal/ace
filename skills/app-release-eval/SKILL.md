@@ -87,8 +87,11 @@ runs). Authored 0.10.29 in response to turmeric run_time_followups item 2
      ONLY if the markers are actually missing in the XML.
 
 5. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/app-release-eval.yaml`. Conforms to
-   `lib/verdict-schema.ts` (validated by `npm run validate:verdicts`).
+   `ACE/<opp-name>/verdicts/app-release.yaml`. The filename uses the
+   **producer** skill name (`app-release`), NOT this skill's name —
+   see `agents/ace-orchestrator.md § Per-Step Eval Hook` for the
+   naming rule. Body conforms to `lib/verdict-schema.ts` (validated by
+   `npm run validate:verdicts`).
 
    ```yaml
    skill: app-release-eval

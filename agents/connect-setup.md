@@ -9,7 +9,7 @@ phase: connect-setup
 phase_display: Connect Setup
 phase_ordinal: 3
 skills:
-  - { name: connect-program-setup, has_judge: false }
+  - { name: connect-program-setup, has_judge: true,  eval_skill: connect-program-setup-eval }
   - { name: connect-opp-setup,     has_judge: false }
 ---
 
@@ -46,6 +46,9 @@ Invoke the `connect-program-setup` skill.
   `ACE/<opp-name>/connect-setup/program.md` with the program UUID.
 - **Idempotent:** if a program with the same name already exists,
   `connect_list_programs` finds it and the skill reuses it.
+- **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
+  `connect-program-setup-eval` after the program is configured. Writes
+  `verdicts/connect-program-setup.yaml`.
 
 ### Step 2: Opportunity Setup
 Invoke the `connect-opp-setup` skill.
