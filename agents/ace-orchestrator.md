@@ -274,12 +274,20 @@ When you start a phase, issue ONE `ToolSearch` with
 `select:<comma-separated names>` covering the atoms that phase uses,
 not 5–10 separate searches as you encounter each one.
 
-**Batch independent operations.** When a phase needs N independent
-tool calls (e.g. multiple `drive_read_file` reads, multiple
-`nova_update_form` mutations, multiple `connect_create_payment_unit`
-creates), dispatch them all in a single assistant message. Sequential
-single-tool messages waste the parallelism that the harness already
-supports.
+**Batch independent operations — for tool calls, not Agent dispatches.**
+When a phase needs N independent **tool calls** (e.g. multiple
+`drive_read_file` reads, multiple `nova_update_form` mutations,
+multiple `connect_create_payment_unit` creates), dispatch them all in
+a single assistant message. Sequential single-tool messages waste the
+parallelism that the harness already supports.
+
+**`Agent(...)` dispatches DO NOT parallelize the same way.** Claude
+Code does not reliably run two `Agent` calls placed in one assistant
+message in parallel; treat phase-agent and slash-command-driven agent
+dispatches (e.g. `/nova:autobuild`) as serial. Phase 2's two Nova
+builds, for instance, must run one after the other. This applies to
+any future cross-phase orchestration too — design-review, ocs-setup,
+etc. always serialize when dispatched together.
 
 ## Workflow
 

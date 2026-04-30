@@ -34,22 +34,53 @@ retained for tooling that introspects agent metadata, not because Phase
 
 Execute these steps in order for the given opportunity:
 
-### Step 1: PDD to Apps (parallel — REQUIRED)
-Invoke `pdd-to-learn-app` and `pdd-to-deliver-app` skills.
+### Step 1: PDD to Apps (sequential)
+Invoke `pdd-to-learn-app`, then `pdd-to-deliver-app`.
 
-**These MUST run in parallel.** Each skill dispatches `/nova:autobuild`
-which takes 10–15 minutes; running serially wastes ~7 minutes of
-wall-clock per opp. Dispatch both `Agent` calls in a **single assistant
-message** (two tool-use blocks side-by-side) and await both before
-proceeding to Step 1.5. Do not start Deliver after Learn returns.
+**Run these sequentially, not in parallel.** An earlier note here
+claimed they could batch in a single assistant message; that was
+incorrect — Claude Code does not reliably parallelize `Agent`
+dispatches the way it parallelizes regular tool calls, and Nova's
+`/nova:autobuild` cannot be parallelized in this environment today.
+Dispatch Learn, await its result, then dispatch Deliver. Each takes
+10–15 minutes; the two together set the lower bound on Phase 2
+wall-clock until upstream supports parallel architect runs.
 
-The two builds are fully independent — Learn reads the PDD's learning
-objectives, Deliver reads the visit/registration spec, neither depends
-on the other's `nova_app_id`. The topology rule (level-0 dispatch) is
-preserved: both Nova subagents dispatch from the top-level session.
+The two builds are otherwise independent — Learn reads the PDD's
+learning objectives, Deliver reads the visit/registration spec,
+neither depends on the other's `nova_app_id`.
 
-If one Nova build fails and the other succeeds, surface the failure
-without re-running the successful side.
+If the Learn build fails, halt before dispatching Deliver — re-running
+both wastes ~10 min and the failure is usually deterministic (PDD
+spec issue, not transient).
+
+#### Turn-0 halt detection (defensive — Nova issue #2)
+
+Nova's `/nova:autobuild` occasionally returns from
+`nova:nova-architect-autonomous` having taken zero tool actions — no
+`create_app`, no scaffold, no error, just a prose response. When this
+happens the `Agent` call appears to "succeed" but no Nova app exists.
+Filed as `voidcraft-labs/nova-plugin#2`; the right fix is upstream
+(autobuild refusing to return without ≥1 tool call). Until that lands,
+defend against it on the ACE side:
+
+After **each** Nova `Agent` dispatch returns, before treating its
+output as authoritative:
+
+1. Inspect the Agent's return string for a `nova_app_id` (or call
+   `mcp__plugin_nova_nova__list_apps` and look for an app whose
+   `created` is within the last few minutes and whose name matches
+   the spec just submitted).
+2. If no new app is present, the dispatch halted at turn 0. **Re-dispatch
+   once** with the same spec (the failure is intermittent and usually
+   passes on retry).
+3. If the second attempt also produces no app, surface a hard error
+   with `nova-plugin#2` in the message — three retries is wasted
+   wall-clock; let the operator decide whether to wait for upstream
+   or escalate.
+
+Apply this check after the Learn dispatch and again after the Deliver
+dispatch — they fail independently.
 
 - Input: approved PDD from GDrive
 - Output: app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`

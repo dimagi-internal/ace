@@ -63,8 +63,13 @@ Invoke `ocs-chatbot-qa --deep`, then `ocs-chatbot-eval --deep`.
 - Tests: Connect-general + ACE-specific + opp-specific prompts from
   `ACE/<opp-name>/test-prompts.md` (produced in Phase 1 by
   `pdd-to-test-prompts`)
-- **Gate (review mode):** Present the gate brief for approval before
-  completing the phase
+- **Gate (review mode):** Write the gate brief and stop. Do **NOT**
+  modify `gates.ocs-chatbot-eval-deep` in `state.yaml` — that field is
+  flipped by the orchestrator only, after the operator approves via the
+  Gate Brief Contract in `agents/ace-orchestrator.md`. The Phase 4
+  agent's job ends at "gate brief written, phase summary written,
+  `phases.ocs-setup.*` marked done." Auto-approving the gate violates
+  the review-mode contract and bypasses operator review.
 - Depends on: Step 2 (don't deep-test a miswired bot)
 
 ### Step 4: Stage credentials for Connect
@@ -81,6 +86,49 @@ CCC-301). When it ships, this step becomes a single API call. Until then,
 ### Completion
 Update opportunity state to mark Phase 4 as complete.
 Write phase summary to `ACE/<opp-name>/ocs-setup-summary.md`.
+
+## Resumption Contract
+
+Phase 4 is the longest-running phase observed in real e2e runs (RAG
+indexing + deep qa+eval can stretch toward an hour). On a session that
+loses context mid-phase, the orchestrator may re-dispatch this agent
+to resume. To make resumption cheap, every step is idempotent and
+artifact-checkable:
+
+| Step | Done-when artifact exists | Action when found |
+|------|---------------------------|-------------------|
+| 1. `ocs-agent-setup` | `ACE/<opp-name>/ocs-agent-config.md` with full config block | Read it; reuse `experiment_id`, `collection_id`, etc. |
+| 2. quick qa+eval | `ACE/<opp-name>/verdicts/ocs-chatbot-eval-quick.yaml` with `overall_score >= 7` | Skip; the gate already passed |
+| 3. deep qa+eval | `ACE/<opp-name>/verdicts/ocs-chatbot-eval-deep.yaml` AND `ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-deep.md` | Skip; brief is the gate output |
+| 4. credential handoff | `ACE/<opp-name>/ocs-setup/widget-handoff.md` | Phase complete |
+
+**On entry, before executing any step:**
+
+1. Read `ACE/<opp-name>/state.yaml` (the orchestrator passes this
+   inline per the orchestrator's Performance Conventions, but if it
+   isn't in the prompt, fetch it from Drive).
+2. For each step in order, check the artifact column above. If the
+   artifact exists AND the corresponding `state.yaml` field shows
+   `done`, skip that step and continue. If the artifact is missing OR
+   the state field shows `pending`/`error`, execute the step.
+3. Step 1's idempotence is special: if a chatbot named
+   `ACE - <opp-name>` exists in OCS but `ocs-agent-config.md` is
+   missing, treat the bot as authoritative and re-derive the config
+   doc from `ocs_get_chatbot` — don't clone a second bot.
+
+**State updates on resumption:** every step should still update
+`state.yaml` on completion, even if the artifact pre-existed. This
+keeps `last_actor`/`last_actor_at` accurate across the resumption
+boundary.
+
+**Why this matters:** observed in `e2e-xw5gk` (2026-04-29): a 2-hour
+gap between a `drive_create_file` for `ocs-setup/widget-handoff.md`
+preparation and the next ocs-setup tool call, after which the agent
+was fresh-dispatched. The original session had already completed
+Steps 1–3; without explicit resumption the resumed agent would have
+re-cloned the bot, re-indexed the collection (~5–10 min), and
+re-run the full deep qa+eval suite (~15–20 min). The contract above
+turns that into a single state-read + a Step 4 finish.
 
 ## Dry-Run Behavior
 

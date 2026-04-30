@@ -5,6 +5,266 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.34 — 2026-04-30
+
+**Producer-side verdict validation script + 2 new provisional eval rubrics + HQ-domain doctor check.**
+
+Round 2 of the turmeric-driven eval framework cleanup. 0.10.28 introduced
+`parseVerdictYaml` for in-test validation; 0.10.34 ships the operator-side
+counterpart (`validate-opp-verdicts.ts`) plus two new eval rubrics that
+absorb run_time_followups items 2 (CCZ regex) and 10 (widget paste-in HITL).
+
+### Added
+
+- `scripts/validate-opp-verdicts.ts` — fetches `ACE/<opp>/verdicts/`
+  from Drive and runs `parseVerdictYaml` on every YAML. Reports
+  PASS/FAIL per file. Reuses the canonical SA-key resolution pattern
+  (env → plugin-data-dir → home-data fallback → legacy) so it works
+  from a worktree, not just the cache path.
+- `bin/ace-doctor verdicts <opp-name>` sub-command — wraps the script
+  above. Operators run it after a full opp cycle to catch any verdict
+  drift before downstream consumers (opp-eval, future tooling) trip.
+- `npm run validate:verdicts -- <opp-name>` — same script, npm-script form.
+- `skills/app-release-eval/SKILL.md` — provisional rubric. 4 dimensions:
+  both_apps_released (0.35), ccz_marker_integrity (0.25),
+  build_id_traceability (0.20), deliver_units_enumerable (0.20).
+  Step 4 explicitly distinguishes CCZ-regex false-positives (skill bug,
+  surfaces as `[WARN]`) from real missing markers (real defect,
+  deducts). Absorbs run_time_followups item 2.
+- `skills/ocs-widget-handoff-eval/SKILL.md` — provisional rubric.
+  4 dimensions: widget_url_resolves (0.25), connect_opp_link (0.20),
+  operator_instructions_clarity (0.30), credential_hygiene (0.25 —
+  with auto-fail on global-secret leak). Grades the staging artifact;
+  the paste-in itself is HITL until CCC-301. Absorbs item 10.
+- `bin/ace-doctor` — new `hq_domain` env-drift check. Warns when
+  `ACE_HQ_DOMAIN` is unset or != `connect-ace-prod`. Defensive
+  complement to 0.10.31's 1Password routing (which fixed the source;
+  this catches "operator forgot to add the `domain` field to the
+  1Password item").
+
+### Schema-normalized 4 pre-existing turmeric verdicts on Drive
+
+The verdicts written during the live-run all drifted from the schema in
+different ways. Content (scores, notes, prompts) preserved verbatim;
+only structural fields normalized:
+
+- `ocs-chatbot-eval-quick.yaml` + `ocs-chatbot-eval-deep.yaml` — added
+  required `weight:` to every dimension. Reproduced canonical weights
+  from the skill spec.
+- `training-materials.yaml` — `scores:` → `dimensions:`; dropped
+  `mode: standard` (off-enum); kept content + caveats.
+- `app-screenshot-capture.yaml` — `verdict: blocked` → `verdict: incomplete`
+  (canonical for "structural gap prevents grading"); dropped `mode: blocked`
+  (also off-enum). All 8 turmeric verdicts now pass `validate:verdicts`.
+
+### Fixed (existing test breakage from 0.10.31)
+
+- `test/skills/nova-contracts.test.ts` "does not commit a literal HQ
+  project space" assertion was failing on origin/main since 0.10.31
+  routed `ACE_HQ_DOMAIN` through 1Password (`op://...` reference).
+  Updated the assertion to allow `op://...` while still rejecting
+  bare-string literals like `connect-ace-prod`.
+
+### Caught by the new validator
+
+The first run of `validate:verdicts turmeric` immediately surfaced a
+schema bug in 0.10.28's own `connect-program-setup-eval.yaml`: a
+`per_item` entry with `score: null` (used to encode INFO-SKIPPED).
+Per the schema doc, `per_item` entries are by definition graded —
+INFO-SKIPPED belongs only in `auto_surfaced`. Fixed in place; verdict
+now validates cleanly. Class-level lesson: the validator is doing what
+0.10.13's SKILL.md walker can't.
+
+### Test counts
+
+277 passing / 29 skipped (was 275 / 29 in 0.10.28). +2 from the new
+eval-skill drift checks (0.10.13 walker auto-discovers them).
+`validate:verdicts turmeric` reports 8/8 PASS.
+
+### Why this matters
+
+The chain is now end-to-end:
+- Schema: `lib/verdict-schema.ts` (single source of truth).
+- Docs: `skills/README.md § Verdict YAML shape`.
+- Doc examples: caught by 0.10.13 walker on every commit.
+- Real verdict files (test fixtures): caught by 0.10.28 unit test.
+- Real verdict files (live opp): caught by 0.10.34 `validate:verdicts`
+  / `ace-doctor verdicts <opp>` on operator demand.
+
+Future class-level preventer: pre-write validation in
+`drive_create_file` when filename matches `verdicts/*.yaml`.
+
+## 0.10.33 — 2026-04-29
+
+**Mobile recipe progress + two class-level gotchas documented.**
+
+Live AVD discovery pass against CommCare 2.62.0 (registered ACE test
+user on `ACE_Pixel_API_34_PS`) calibrated the first half of
+`connect-claim-opp.yaml` (home → Opportunities → opp list) and
+surfaced two class-level gotchas worth documenting now even though
+neither is fully fixable in a code change today.
+
+### Changed
+
+- `mcp/mobile/recipes/static/connect-claim-opp.yaml` —
+  `home_screen_root` → `org.commcare.dalvik:id/screen_first_start_main`,
+  `opportunities_tab` → `text: "Opportunities"`. Adds a
+  `runFlow.when` step that handles the post-registration
+  `BiometricPrompt` (system credential dialog) by entering `${PIN}`
+  when `com.android.systemui:id/lockPassword` is visible, then
+  asserts the opp-list root `connect_fragment_jobs_list`. Second
+  half (accept-invite / handoff) still REPLACE_* — needs an FLW
+  invite on `${ACE_E2E_PHONE}` to drive, and there is no MCP atom
+  for FLW program invites yet (only LLO invites via
+  `connect_send_llo_invite`).
+- `playbook/integrations/mobile-integration.md` — recipe table
+  marks `connect-claim-opp.yaml` as **partial** instead of pure
+  scaffold. New `### Unlock PersonalID gate` section documents the
+  `BiometricPrompt` cross-package transition and the recommended
+  `runFlow.when` pattern. New `### aapt is required by
+  mobile_install_apk` section documents the `build-tools` gap that
+  bites every fresh workstation: homebrew's
+  `android-commandlinetools` doesn't include `build-tools/`, so
+  `aapt` isn't on PATH and `mobile_install_apk` fails with
+  `spawn aapt ENOENT`. Quick `sdkmanager "build-tools;34.0.0"` +
+  symlink fixes it; longer-term fix is to make
+  `AvdBackend.installApk` search `$ANDROID_HOME/build-tools/*/aapt`.
+
+## 0.10.32 — 2026-04-29
+
+**Fix `.env.tpl` ACE_E2E_* vault reference.**
+
+The mobile-emulation block added in 0.10.0 referenced
+`op://ace/connect-test-user/...`, but the `ace` vault doesn't exist in
+Dimagi's 1Password — it was added speculatively without creating the
+backing item. `op inject` silently no-op'd those lines, leaving the
+installed `.env` without any `ACE_E2E_*` keys. New mobile sessions
+hit this on first registration: the test-user credentials are missing
+and `mobile_register_test_user` can't run.
+
+### Changed
+
+- `.env.tpl` — `ACE_E2E_PHONE`, `ACE_E2E_PHONE_LOCAL`,
+  `ACE_E2E_COUNTRY_CODE`, `ACE_E2E_PIN`, `ACE_E2E_BACKUP_CODE` now
+  point at `op://AI-Agents/connect-test-user/...` to match the
+  established pattern for all other ACE secrets. The corresponding
+  1Password item was created today in the `AI-Agents` vault with the
+  test-user credentials recovered from the prior `android-erui0`
+  session log (`+74260000100`, PIN `111111`, backup `222222`).
+  **Operator action:** re-run
+  `op inject -i .env.tpl -o ~/.claude/plugins/data/ace-ace/.env --account dimagi.1password.com -f`
+  to populate the keys.
+
+## 0.10.31 — 2026-04-29
+
+**Three small post-e2e fixes lifted from the turmeric run.**
+
+The `e2e-xw5gk` turmeric run surfaced three friction points worth
+fixing class-level so the next e2e doesn't hit them. None are bug
+fixes; all are docs / contract tightenings.
+
+### Changed
+
+- `.env.tpl` — `ACE_HQ_DOMAIN` now points at
+  `op://AI-Agents/ACE - CommCareHQ/domain` (1Password-sourced) instead
+  of being a literal-empty string. **Operator action required:** add a
+  `domain` field to that 1Password item with your deployment value
+  (e.g. `connect-ace-prod` for production), then `op inject`. The
+  turmeric run hit this as an empty-string mid-run workaround;
+  routing through 1Password keeps the convention "values live in
+  1Password, template references them."
+- `agents/ocs-setup.md` § Step 3 — explicit prohibition on the Phase 4
+  agent flipping `gates.ocs-chatbot-eval-deep` in `state.yaml`. The
+  turmeric run's Phase 4 subagent auto-approved its own gate, which
+  bypassed the operator review the gate was designed to force.
+  Subagent's job ends at "gate brief written"; the orchestrator (or
+  the operator in review/default mode) flips the gate.
+- `skills/app-release/SKILL.md` § Step 6 — fix the CCZ-marker verify
+  regex. Old pattern (`<learn:(deliver|module|task|assessment)`) looks
+  for a `learn:` namespace prefix; Nova actually emits the elements
+  with a default `xmlns="http://commcareconnect.com/data/v1/learn"`
+  attribute. New pattern matches the actual XML shape, with an
+  example block showing what the markup looks like in a released CCZ.
+  Caught during turmeric run by manual re-verify.
+
+## 0.10.30 — 2026-04-29
+
+**Correction: Agent dispatches don't parallelize — revert parallel-Nova claim.**
+
+0.10.21 (and follow-ups in 0.10.29) claimed `pdd-to-learn-app` and
+`pdd-to-deliver-app` could run in parallel by placing two `Agent`
+tool-use blocks in a single assistant message. That was wrong:
+Claude Code does not reliably parallelize `Agent` dispatches in this
+environment, so the two Nova builds must run sequentially.
+
+The "tool calls in one message run in parallel" pattern is still
+correct for regular MCP tool calls (Drive reads, `nova__update_form`,
+`connect_create_payment_unit`, etc.) — that part of the Performance
+Conventions stands. The mistake was extending it to `Agent(...)`
+dispatches, which behave differently.
+
+### Changed
+
+- **`agents/commcare-setup.md` Step 1** rewritten: Learn and Deliver
+  Nova builds run sequentially, with explicit "halt before Deliver if
+  Learn fails" guidance to avoid wasting another ~10 min of Nova time
+  on a known-bad spec. The ~7-min "wall-clock save" claimed in
+  0.10.21 is removed; sequential is now the lower bound on Phase 2.
+- **`agents/ace-orchestrator.md` § Performance Conventions** clarifies
+  the parallelism rule explicitly: regular tool calls batch in one
+  message; `Agent(...)` dispatches do not, and must be treated as
+  serial. Applies across any future cross-phase orchestration too.
+
+### Why
+
+Operator caught the mistake in review. The original e2e session
+review surfaced 8 findings; finding #4 ("parallel Nova dispatch") was
+based on observing serial Nova builds and assuming the harness
+supported batched Agent calls. It doesn't. Reverting the claim keeps
+the doc honest and stops a future operator from chasing a phantom
+"why isn't this batching?" debug session.
+
+The other 7 findings stand: ToolSearch hoisting, batched MCP tool
+calls (correct — these DO parallelize), inline phase handoffs,
+default mode, Connect 5xx surfacing, doctor session_freshness,
+ocs-setup resumption contract, defensive Nova turn-0 check.
+
+## 0.10.29 — 2026-04-29
+
+**Defensive Nova post-dispatch check + ocs-setup resumption contract.**
+
+Two follow-ups to the e2e-session review: a workaround for upstream
+Nova issue #2 (turn-0 halt), and an explicit resumption contract for
+Phase 4 to recover cheaply from mid-phase context loss.
+
+### Changed
+
+- **`agents/commcare-setup.md` Step 1** adds a "Turn-0 halt detection"
+  subsection. After every Nova `Agent` dispatch, verify a new app
+  appeared (via Agent return string or `nova:list`); if not,
+  re-dispatch once. After two failures, surface a hard error with
+  `voidcraft-labs/nova-plugin#2` in the message. Bridges until
+  upstream `/nova:autobuild` refuses to return without ≥1 tool call.
+- **`agents/ocs-setup.md`** adds a **`## Resumption Contract`** section.
+  Documents per-step "done-when" artifacts and the read-state-and-skip
+  pattern so a fresh-dispatched ocs-setup doesn't re-clone the bot,
+  re-index the RAG collection, or re-run the deep qa+eval. Motivated
+  by the 2-hour gap observed in `e2e-xw5gk` after Phase 4 was
+  abandoned and re-dispatched.
+
+### Why
+
+Nova issue #2 was filed today, but the upstream fix hasn't shipped —
+the ACE-side defensive check is a 15-line procedure-doc edit that
+costs ~30 seconds per dispatch and saves ~8 minutes per occurrence.
+
+ocs-setup's resumption contract codifies what `ocs-agent-setup` already
+documented as idempotent (Step 1) and extends it across all four
+steps. State.yaml already tracks step-level completion; the agent
+just needs to read it and skip done steps. Without the contract, a
+fresh-dispatched Phase 4 would re-do ~20–30 minutes of work that
+already completed.
+
 ## 0.10.28 — 2026-04-29
 
 **Producer-side verdict schema preventer.**

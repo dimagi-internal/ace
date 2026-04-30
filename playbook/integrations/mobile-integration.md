@@ -75,7 +75,7 @@ have been live-verified against CommCare 2.62.0 on `ACE_Pixel_API_34_PS`.
 |---|---|---|
 | `connect-register-to-otp.yaml` | **verified** (0.10.17) | `${COUNTRY_CODE}`, `${PHONE_LOCAL}` |
 | `connect-register-from-otp.yaml` | **verified** (0.10.17) | `${NAME}`, `${BACKUP_CODE}`, `${PIN}` |
-| `connect-claim-opp.yaml` | scaffold (REPLACE_*) | `${OPPORTUNITY_NAME}` |
+| `connect-claim-opp.yaml` | **partial** (0.10.33) — first half (home → opp list) verified; opp-detail/accept-invite/handoff still REPLACE_* pending an FLW-invite to drive | `${OPP_NAME}`, `${PIN}` |
 | `connect-login.yaml` | scaffold (REPLACE_*) | — |
 
 Naming note: the `to-otp` / `from-otp` filenames are historical. Today's
@@ -242,6 +242,58 @@ For a freshly-wiped AVD, the bootstrap sequence is:
 `mobile_ensure_avd_running` → `mobile_install_apk` (CommCare) →
 `mobile_register_test_user` → `mobile_save_snapshot`. Future sessions
 can `mobile_load_snapshot` to skip the first three.
+
+### Unlock PersonalID gate
+
+After registration, navigating to any Connect-protected screen
+(e.g. tapping the "Opportunities" nav-drawer item) triggers an
+Android `BiometricPrompt` with device-credential fallback. The
+prompt belongs to the `com.android.systemui` package, not
+`org.commcare.dalvik`, so a Maestro `tapOn` against the CommCare
+nav row briefly drops out of the app and the next `assertVisible`
+on a CommCare element will fail unless the recipe answers the
+prompt first.
+
+The credential is the registration PIN (`111111` for the ACE test
+user). Selector for the password field is
+`com.android.systemui:id/lockPassword`. The robust pattern in
+`connect-claim-opp.yaml` is a `runFlow.when` that fires only when
+the prompt is present:
+
+```yaml
+- runFlow:
+    when:
+      visible:
+        id: "com.android.systemui:id/lockPassword"
+    commands:
+      - tapOn:
+          id: "com.android.systemui:id/lockPassword"
+      - inputText: ${PIN}
+      - pressKey: Enter
+```
+
+This makes the recipe portable across PersonalID configurations
+that expect biometric (skipping the prompt entirely on AVDs without
+a fingerprint sensor) and configurations that fall back to PIN.
+
+### `aapt` is required by `mobile_install_apk`
+
+`AvdBackend.installApk` parses APK metadata via `aapt dump badging`
+to recover the package id and version. `aapt` ships with
+`build-tools/<version>/`, which is **not** installed by default on
+homebrew's `android-commandlinetools`.
+
+Quick fix on macOS:
+```
+yes | sdkmanager "build-tools;34.0.0"
+ln -sf /opt/homebrew/share/android-commandlinetools/build-tools/34.0.0/aapt \
+  /opt/homebrew/bin/aapt
+```
+
+If you hit `spawn aapt ENOENT` from any mobile MCP atom that
+parses APK metadata, this is the gap. Long-term fix: have the
+backend search `$ANDROID_HOME/build-tools/*/aapt` rather than
+relying on PATH. Tracked separately.
 
 ### Selector discovery loop
 

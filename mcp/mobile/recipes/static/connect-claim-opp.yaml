@@ -1,11 +1,42 @@
-# SCAFFOLD ONLY — REPLACE_* selectors must be discovered via `maestro studio`.
-# Assumes Connect mobile is already signed in and at the home screen.
+# PARTIAL — first half (home → opp list) calibrated live against
+# CommCare 2.62.0 on ACE_Pixel_API_34_PS, 2026-04-29.
+# Second half (opp detail → accept → handoff) still REPLACE_* — needs
+# an active FLW invite on ${ACE_E2E_PHONE} which we don't yet have an
+# MCP atom for (program-side FLW invites are UI-only at the moment;
+# `connect_send_llo_invite` is for LLOs, not FLWs).
+#
+# Discovery loop notes:
+# - Post-registration the user lands on CommCare's "Welcome" screen
+#   (resource-id screen_first_start_main) with a nav drawer that includes
+#   an "Opportunities" item. Tapping that item triggers a system
+#   "Unlock PersonalID" credential prompt (BiometricPrompt with device-
+#   credential fallback) — the answer is the registration PIN. The
+#   recipe will need to handle this prompt; selector is
+#   com.android.systemui:id/lockPassword.
+# - The opp-list screen is `connect_fragment_jobs_list` with an
+#   `rvJobList` RecyclerView. Empty-state shows `connect_no_jobs_text`.
+# - The toolbar exposes `action_sync` (top-right) and `action_bell`.
 appId: org.commcare.dalvik
 ---
 - assertVisible:
-    id: "REPLACE_home_screen_root"
+    id: "org.commcare.dalvik:id/screen_first_start_main"
+# Nav drawer 'Opportunities' item — text-based since multiple list_title
+# rows share the same resource-id.
 - tapOn:
-    id: "REPLACE_opportunities_tab"
+    text: "Opportunities"
+# Android system credential prompt (Unlock PersonalID). Skip if not
+# present.
+- runFlow:
+    when:
+      visible:
+        id: "com.android.systemui:id/lockPassword"
+    commands:
+      - tapOn:
+          id: "com.android.systemui:id/lockPassword"
+      - inputText: ${PIN}
+      - pressKey: Enter
+- assertVisible:
+    id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
 - extendedWaitUntil:
     visible:
       text: ${OPP_NAME}
@@ -13,6 +44,9 @@ appId: org.commcare.dalvik
 - takeScreenshot: "claim-opp-list"
 - tapOn:
     text: ${OPP_NAME}
+# TODO: capture below selectors live once an FLW invite for the test
+# user lands. Probable resource-ids based on CommCare's connect package
+# naming: `connect_accept_invite_button`, `connect_module_list_root`.
 - extendedWaitUntil:
     visible:
       id: "REPLACE_accept_invite_button"
