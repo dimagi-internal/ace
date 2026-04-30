@@ -5,6 +5,50 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.27 — 2026-04-29
+
+**Hardened post-boot prep + documented `-wipe-data` recovery for stuck-FallbackHome AVDs.**
+
+### Changed
+
+- **`AvdBackend.runPostBootPrep` storage readiness check.** The boot
+  wait now polls `test -e /storage/emulated/0` instead of
+  `test -d /sdcard`. The latter fails under Android's scoped-storage
+  permission model even when user storage is fully mounted — the
+  shell uid can't read the symlink target, only its existence. The
+  new check passes as soon as user storage is actually available,
+  which is the real readiness signal for `pm` and `dumpsys` calls.
+
+### Documented
+
+- **`playbook/integrations/mobile-integration.md` § Stuck-FallbackHome
+  recovery.** Some `google_apis*` AVD cold boots leave
+  `mFocusedApp=com.android.settings/.FallbackHome` permanently —
+  NexusLauncher never resolves as the default `HOME` activity, every
+  Maestro `launchApp` times out, and `runPostBootPrep`'s recovery
+  attempts (status-bar collapse, dismiss-keyguard, KEYCODE_HOME)
+  don't break the wedge once the package manager has registered
+  FallbackHome as the default. Recovery: cold-boot with
+  `-wipe-data -no-snapshot-load -no-snapshot-save`. Live-verified on
+  `ACE_Pixel_API_34_PS` after a 3-reboot stuck-cycle today. Costs:
+  user data wipe (CommCare uninstall + test user re-registration),
+  but `mobile_save_snapshot` after the next clean registration locks
+  the recovered state in for future sessions.
+
+### Why
+
+The 0.10.26 prep code's `test -d /sdcard` was returning false even
+on healthy boots because of scoped-storage permissions, so the
+helper was timing out at 120s when storage was actually ready in
+~10s. Switching to `/storage/emulated/0` is a no-op on healthy boots
+and correctly detects readiness on cold ones.
+
+The `-wipe-data` finding is the missing piece for "AVD got stuck,
+how do I get unstuck?" — surfacing it as a documented escape hatch
+saves the next operator the 30+ min I spent today figuring out that
+no amount of prep tweaking would bring back NexusLauncher once
+FallbackHome had latched onto the HOME intent.
+
 ## 0.10.26 — 2026-04-29
 
 **Auto-run face-capture prep + recover from NotificationShade quirk during AVD boot.**
