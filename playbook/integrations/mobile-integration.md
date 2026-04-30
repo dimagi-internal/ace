@@ -170,17 +170,17 @@ system images on macOS Apple Silicon ship with a functional
 `com.google.android.gms` package, and both return `SUCCESS` from
 `GoogleApiAvailability.isGooglePlayServicesAvailable`. Picking a
 "non-Play-Store" AVD is not sufficient. The actual lever is **runtime
-disable** before bootstrap registration:
+disable**:
 
 ```sh
 adb shell pm disable-user --user 0 com.google.android.gms
 adb shell pm grant org.commcare.dalvik android.permission.CAMERA
 ```
 
-The disable persists across AVD reboots until you re-enable with
-`adb shell pm enable com.google.android.gms`. ACE skills don't depend
-on GMS, so leaving it disabled is fine. `commands/mobile-bootstrap.md`
-runs both commands as part of step 8 (pre-registration prep).
+Both run automatically as part of `AvdBackend.runPostBootPrep` after
+every cold boot in 0.10.23+. The disable persists across AVD reboots
+until you re-enable with `adb shell pm enable com.google.android.gms`.
+ACE skills don't depend on GMS, so leaving it disabled is fine.
 
 **Why the photo content doesn't matter:**
 

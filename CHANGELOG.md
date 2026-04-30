@@ -5,6 +5,52 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.25 — 2026-04-29
+
+**Auto-run face-capture prep + recover from NotificationShade quirk during AVD boot.**
+
+### Added
+
+- **`AvdBackend.runPostBootPrep` runs after every `ensureAvdRunning`
+  cold boot.** Idempotent best-effort prep that:
+  - Waits up to 90s for `sys.boot_completed=1` (the device is reachable
+    by `adb devices` long before `pm` and `dumpsys` calls succeed; the
+    earlier code raced and led to silent prep failures).
+  - Disables Google Play Services via `pm disable-user --user 0
+    com.google.android.gms` so `MicroImageActivity` falls back to
+    `ManualMode` and exposes `camera_shutter_button`. Eliminates the
+    one operator step that mobile-bootstrap.md previously asked for in
+    step 9. Re-enable manually with `pm enable com.google.android.gms`
+    if any future ACE skill needs GMS.
+  - Pre-grants `android.permission.CAMERA` to `org.commcare.dalvik` if
+    the package is installed. Skips silently if it isn't (most cold
+    boots — bootstrap installs CommCare later).
+  - Detects the post-cold-boot NotificationShade quirk
+    (`mCurrentFocus=Window{...NotificationShade}` on `google_apis*`
+    images on macOS) and recovers via `wm dismiss-keyguard` +
+    `KEYCODE_HOME`. Skips silently when focus is already on a normal
+    activity. Without this, maestro's first `launchApp` against a
+    cold-booted AVD would race against the stuck shade and time out.
+
+All four steps are best-effort — any failure logs and continues. The
+boot itself never fails just because GMS-disable couldn't run on a
+device that lacks the package, etc.
+
+### Why
+
+0.10.22's bootstrap doc told operators to run two adb commands manually
+before registration. That's an easy step to forget, and the failure
+mode (registration stalls on auto-shutter) is non-obvious — burned a
+whole session today figuring out the GMS-disable lever was the actual
+fix. Baking the prep into `ensureAvdRunning` makes the bypass
+structurally invisible: every fresh AVD boot is registration-ready
+without operator memory. Same theme as 0.10.18's `hw.camera.front`
+auto-patch — class-level preventer over instance-level fix.
+
+The NotificationShade quirk is the one thing that blocked the live
+e2e verify in 0.10.22. Codifying the recovery here means the next
+session shouldn't lose time to it again.
+
 ## 0.10.24 — 2026-04-29
 
 **New default `/ace:run` mode — keep going until external communication.**

@@ -173,10 +173,57 @@ export class AvdBackend {
       await new Promise((r) => setTimeout(r, AVD_BOOT_POLL_MS));
       const found = await this.findRunningAvd(avdName);
       if (found) {
+        await this.runPostBootPrep(found.serial);
         return { ...found, bootTimeMs: Date.now() - start };
       }
     }
     throw new AvdBootError(avdName, `boot timeout after ${AVD_BOOT_TIMEOUT_MS}ms`);
+  }
+
+  /**
+   * Idempotent post-boot AVD prep for ACE registration:
+   *   - waits for sys.boot_completed=1
+   *   - disables Google Play Services (so MicroImageActivity falls back to
+   *     manual shutter — see Face-capture gate gotcha)
+   *   - pre-grants CAMERA permission to org.commcare.dalvik if installed
+   *   - dismisses NotificationShade if it's the focused window (a
+   *     known-quirk on cold boot of `google_apis*` images on macOS)
+   *
+   * All steps best-effort. Any single failure logs and continues — the
+   * AVD is still usable, just may need manual prep for registration.
+   */
+  private async runPostBootPrep(serial: string): Promise<void> {
+    // Wait up to 90s for sys.boot_completed; the device responds to `adb -s`
+    // long before it's actually ready for `pm` and `dumpsys` calls.
+    const bootStart = Date.now();
+    while (Date.now() - bootStart < 90_000) {
+      const r = await this.shell('adb', ['-s', serial, 'shell', 'getprop', 'sys.boot_completed']);
+      if (r.stdout.trim() === '1') break;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    // Idempotent: pm disable-user is a no-op if already disabled.
+    await this.shell('adb', ['-s', serial, 'shell', 'pm', 'disable-user', '--user', '0', 'com.google.android.gms']).catch(() => {});
+
+    // Grant CAMERA only if commcare is installed; pm grant fails noisily
+    // for missing packages, and most of the time it's not installed yet
+    // when ensure-running fires (the bootstrap installs it later).
+    const list = await this.shell('adb', ['-s', serial, 'shell', 'pm', 'list', 'packages', 'org.commcare.dalvik']).catch(() => null);
+    if (list && list.stdout.includes('package:org.commcare.dalvik')) {
+      await this.shell('adb', ['-s', serial, 'shell', 'pm', 'grant', 'org.commcare.dalvik', 'android.permission.CAMERA']).catch(() => {});
+    }
+
+    // Some `google_apis*` AVD cold boots leave SystemUI with the
+    // NotificationShade as the focused window — keys go to the shade and
+    // maestro can't drive flows. Dismissing the keyguard then HOMEing
+    // resets focus to the launcher. Only run if we detect the stuck
+    // state, since on a healthy boot this is a no-op.
+    const focus = await this.shell('adb', ['-s', serial, 'shell', 'dumpsys', 'window']).catch(() => null);
+    if (focus && /mCurrentFocus=Window\{[^}]*NotificationShade/.test(focus.stdout)) {
+      await this.shell('adb', ['-s', serial, 'shell', 'wm', 'dismiss-keyguard']).catch(() => {});
+      await this.shell('adb', ['-s', serial, 'shell', 'input', 'keyevent', 'KEYCODE_HOME']).catch(() => {});
+      await new Promise((r) => setTimeout(r, 1500));
+    }
   }
 
   async stopAvd(avdName: string): Promise<void> {
