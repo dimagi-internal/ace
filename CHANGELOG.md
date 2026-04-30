@@ -5,6 +5,38 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.31 — 2026-04-29
+
+**Three small post-e2e fixes lifted from the turmeric run.**
+
+The `e2e-xw5gk` turmeric run surfaced three friction points worth
+fixing class-level so the next e2e doesn't hit them. None are bug
+fixes; all are docs / contract tightenings.
+
+### Changed
+
+- `.env.tpl` — `ACE_HQ_DOMAIN` now points at
+  `op://AI-Agents/ACE - CommCareHQ/domain` (1Password-sourced) instead
+  of being a literal-empty string. **Operator action required:** add a
+  `domain` field to that 1Password item with your deployment value
+  (e.g. `connect-ace-prod` for production), then `op inject`. The
+  turmeric run hit this as an empty-string mid-run workaround;
+  routing through 1Password keeps the convention "values live in
+  1Password, template references them."
+- `agents/ocs-setup.md` § Step 3 — explicit prohibition on the Phase 4
+  agent flipping `gates.ocs-chatbot-eval-deep` in `state.yaml`. The
+  turmeric run's Phase 4 subagent auto-approved its own gate, which
+  bypassed the operator review the gate was designed to force.
+  Subagent's job ends at "gate brief written"; the orchestrator (or
+  the operator in review/default mode) flips the gate.
+- `skills/app-release/SKILL.md` § Step 6 — fix the CCZ-marker verify
+  regex. Old pattern (`<learn:(deliver|module|task|assessment)`) looks
+  for a `learn:` namespace prefix; Nova actually emits the elements
+  with a default `xmlns="http://commcareconnect.com/data/v1/learn"`
+  attribute. New pattern matches the actual XML shape, with an
+  example block showing what the markup looks like in a released CCZ.
+  Caught during turmeric run by manual re-verify.
+
 ## 0.10.30 — 2026-04-29
 
 **Correction: Agent dispatches don't parallelize — revert parallel-Nova claim.**

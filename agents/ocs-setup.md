@@ -63,8 +63,13 @@ Invoke `ocs-chatbot-qa --deep`, then `ocs-chatbot-eval --deep`.
 - Tests: Connect-general + ACE-specific + opp-specific prompts from
   `ACE/<opp-name>/test-prompts.md` (produced in Phase 1 by
   `pdd-to-test-prompts`)
-- **Gate (review mode):** Present the gate brief for approval before
-  completing the phase
+- **Gate (review mode):** Write the gate brief and stop. Do **NOT**
+  modify `gates.ocs-chatbot-eval-deep` in `state.yaml` — that field is
+  flipped by the orchestrator only, after the operator approves via the
+  Gate Brief Contract in `agents/ace-orchestrator.md`. The Phase 4
+  agent's job ends at "gate brief written, phase summary written,
+  `phases.ocs-setup.*` marked done." Auto-approving the gate violates
+  the review-mode contract and bypasses operator review.
 - Depends on: Step 2 (don't deep-test a miswired bot)
 
 ### Step 4: Stage credentials for Connect
