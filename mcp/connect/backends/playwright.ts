@@ -1,7 +1,7 @@
 import type { APIRequestContext, APIResponse } from 'playwright';
 import type { ConnectClient } from '../client.js';
 import type { Program, Opportunity, Invite, Invoice, DeliverUnit, PaymentUnit } from '../types.js';
-import { HttpError, ConnectValidationError } from '../errors.js';
+import { HttpError, ConnectValidationError, ConnectSilentRejectError } from '../errors.js';
 import {
   extractFormCsrfToken,
   extractFormFieldValues,
@@ -873,14 +873,42 @@ export class PlaywrightBackend implements ConnectClient {
     });
 
     if (postRes.status() === 302) {
-      // Connect redirects to the opp detail / payment_unit_table; re-list to find by name
+      // Connect redirects to the opp detail / payment_unit_table; re-list to find by name.
       const list = await this.listPaymentUnits({
         organization_slug: args.organization_slug,
         opportunity_id: args.opportunity_id,
       });
       const created = list.payment_units.find((p) => p.name === args.name);
       if (!created) {
-        throw new HttpError(500, formPath, `payment_unit create succeeded (302) but "${args.name}" not found`);
+        // Silent drop: 302-redirect signals form-success but no entity persisted.
+        // Reproduces deterministically with identical args; surfacing as a
+        // typed non-retryable error stops the orchestrator from retrying 3×
+        // on what's structurally a malformed POST or backend-validation reject.
+        // Diagnostics include the form fields posted and the deliver-unit
+        // checkbox-value map so the operator can spot the missing/wrong field.
+        const posted: Record<string, string | string[]> = {
+          name: args.name,
+          amount: String(args.amount),
+          required_deliver_unit_ids: args.required_deliver_unit_ids.map(String),
+          ...(args.optional_deliver_unit_ids?.length
+            ? { optional_deliver_unit_ids: args.optional_deliver_unit_ids.map(String) }
+            : {}),
+          ...(args.max_total != null ? { max_total: String(args.max_total) } : {}),
+          ...(args.max_daily != null ? { max_daily: String(args.max_daily) } : {}),
+          ...(args.start_date ? { start_date: args.start_date } : {}),
+          ...(args.end_date ? { end_date: args.end_date } : {}),
+        };
+        const checkboxMap = [...checkboxValueByName.entries()]
+          .map(([name, value]) => `"${name}"→${value}`)
+          .join(', ');
+        const diagnostics =
+          `Form-checkbox values available on the create page: {${checkboxMap}}. ` +
+          `Likely causes: (a) a required form field not in this atom's payload (e.g. parent_payment_unit), ` +
+          `(b) a deliver-unit id that doesn't map to any checkbox value, ` +
+          `(c) Connect-side validation that's not exposed via the errorlist. ` +
+          `Inspect ${this.opts.baseUrl}/a/${args.organization_slug}/opportunity/${args.opportunity_id}/ ` +
+          `for Django-messages output, or refresh the form HTML and diff fields against this payload.`;
+        throw new ConnectSilentRejectError(formPath, posted, diagnostics);
       }
       return created;
     }

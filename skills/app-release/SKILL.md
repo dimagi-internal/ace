@@ -196,11 +196,23 @@ just consumes its `clean | blocked` verdict.
 ## MCP Tools Used
 
 - **Google Drive MCP:** `drive_read_file`, `drive_update_file`
-- No CCHQ MCP exists today (CCHQ tools live in connect-labs MCP, separate
-  plugin). This skill uses raw `Bash` + `curl` against `ACE_HQ_BASE_URL`,
-  authenticated via the Playwright session in `~/.ace/connect-session.json`
-  (Connect-OAuth-via-CCHQ leaves valid CCHQ cookies in that file) plus the
-  `ACE_HQ_API_KEY` for the verify step.
+- **ace-connect MCP (CCHQ atoms, added 0.10.38+):**
+  - `commcare_make_build` — POST `/apps/save/<app_id>/`, returns build_id.
+  - `commcare_release_build` — POST `/apps/view/<app_id>/releases/release/<build_id>/`,
+    sets `is_released: true`.
+  - `commcare_download_ccz` — GET `/apps/api/download_ccz/?app_id=...&latest=release`,
+    returns CCZ bytes (base64) + Connect-marker counts grepped from the
+    inflated form XML.
+  These run against `ACE_HQ_BASE_URL` (default `https://www.commcarehq.org`)
+  using the same Playwright session as the Connect atoms — Connect's
+  OAuth-via-CCHQ flow leaves valid CCHQ cookies in
+  `~/.ace/connect-session.json`, so a single login covers both services.
+
+  **Prefer these atoms over raw `Bash` + `curl`.** The orchestrator used
+  to regenerate `/tmp/ace-release.js` scripts on every Phase 2 run
+  (turmeric-20260429-2330 spent ~10 min on this); the atoms eliminate
+  that loop. The bash/curl path documented earlier in this file is the
+  fallback when the URL contract shifts and a re-probe is needed.
 
 ## Mode Behavior
 - **Auto:** Pre-flight, build, release, verify, update summary, proceed.
