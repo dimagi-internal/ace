@@ -34,22 +34,25 @@ retained for tooling that introspects agent metadata, not because Phase
 
 Execute these steps in order for the given opportunity:
 
-### Step 1: PDD to Apps (parallel — REQUIRED)
-Invoke `pdd-to-learn-app` and `pdd-to-deliver-app` skills.
+### Step 1: PDD to Apps (sequential)
+Invoke `pdd-to-learn-app`, then `pdd-to-deliver-app`.
 
-**These MUST run in parallel.** Each skill dispatches `/nova:autobuild`
-which takes 10–15 minutes; running serially wastes ~7 minutes of
-wall-clock per opp. Dispatch both `Agent` calls in a **single assistant
-message** (two tool-use blocks side-by-side) and await both before
-proceeding to Step 1.5. Do not start Deliver after Learn returns.
+**Run these sequentially, not in parallel.** An earlier note here
+claimed they could batch in a single assistant message; that was
+incorrect — Claude Code does not reliably parallelize `Agent`
+dispatches the way it parallelizes regular tool calls, and Nova's
+`/nova:autobuild` cannot be parallelized in this environment today.
+Dispatch Learn, await its result, then dispatch Deliver. Each takes
+10–15 minutes; the two together set the lower bound on Phase 2
+wall-clock until upstream supports parallel architect runs.
 
-The two builds are fully independent — Learn reads the PDD's learning
-objectives, Deliver reads the visit/registration spec, neither depends
-on the other's `nova_app_id`. The topology rule (level-0 dispatch) is
-preserved: both Nova subagents dispatch from the top-level session.
+The two builds are otherwise independent — Learn reads the PDD's
+learning objectives, Deliver reads the visit/registration spec,
+neither depends on the other's `nova_app_id`.
 
-If one Nova build fails and the other succeeds, surface the failure
-without re-running the successful side.
+If the Learn build fails, halt before dispatching Deliver — re-running
+both wastes ~10 min and the failure is usually deterministic (PDD
+spec issue, not transient).
 
 #### Turn-0 halt detection (defensive — Nova issue #2)
 
@@ -76,7 +79,7 @@ output as authoritative:
    wall-clock; let the operator decide whether to wait for upstream
    or escalate.
 
-Apply this check independently to the Learn dispatch and the Deliver
+Apply this check after the Learn dispatch and again after the Deliver
 dispatch — they fail independently.
 
 - Input: approved PDD from GDrive

@@ -5,6 +5,48 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.30 — 2026-04-29
+
+**Correction: Agent dispatches don't parallelize — revert parallel-Nova claim.**
+
+0.10.21 (and follow-ups in 0.10.29) claimed `pdd-to-learn-app` and
+`pdd-to-deliver-app` could run in parallel by placing two `Agent`
+tool-use blocks in a single assistant message. That was wrong:
+Claude Code does not reliably parallelize `Agent` dispatches in this
+environment, so the two Nova builds must run sequentially.
+
+The "tool calls in one message run in parallel" pattern is still
+correct for regular MCP tool calls (Drive reads, `nova__update_form`,
+`connect_create_payment_unit`, etc.) — that part of the Performance
+Conventions stands. The mistake was extending it to `Agent(...)`
+dispatches, which behave differently.
+
+### Changed
+
+- **`agents/commcare-setup.md` Step 1** rewritten: Learn and Deliver
+  Nova builds run sequentially, with explicit "halt before Deliver if
+  Learn fails" guidance to avoid wasting another ~10 min of Nova time
+  on a known-bad spec. The ~7-min "wall-clock save" claimed in
+  0.10.21 is removed; sequential is now the lower bound on Phase 2.
+- **`agents/ace-orchestrator.md` § Performance Conventions** clarifies
+  the parallelism rule explicitly: regular tool calls batch in one
+  message; `Agent(...)` dispatches do not, and must be treated as
+  serial. Applies across any future cross-phase orchestration too.
+
+### Why
+
+Operator caught the mistake in review. The original e2e session
+review surfaced 8 findings; finding #4 ("parallel Nova dispatch") was
+based on observing serial Nova builds and assuming the harness
+supported batched Agent calls. It doesn't. Reverting the claim keeps
+the doc honest and stops a future operator from chasing a phantom
+"why isn't this batching?" debug session.
+
+The other 7 findings stand: ToolSearch hoisting, batched MCP tool
+calls (correct — these DO parallelize), inline phase handoffs,
+default mode, Connect 5xx surfacing, doctor session_freshness,
+ocs-setup resumption contract, defensive Nova turn-0 check.
+
 ## 0.10.29 — 2026-04-29
 
 **Defensive Nova post-dispatch check + ocs-setup resumption contract.**
