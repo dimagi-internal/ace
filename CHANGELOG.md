@@ -5,6 +5,58 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.24 — 2026-04-29
+
+**New default `/ace:run` mode — keep going until external communication.**
+
+Adds a third execution mode, `default`, and makes it the default for
+`/ace:run`. Replaces the old "pause at every gate" default with one
+that matches the way the team actually operates: trust the eval
+verdict for internal phases, halt only on real blockers, and stop
+unconditionally before any action that touches an outside party.
+
+### Added
+
+- **`default` mode** — the new default. Auto-proceeds through the
+  three internal gates (`idea-to-pdd`, `app-deploy`,
+  `ocs-chatbot-eval-deep`) when the gate brief contains no
+  `[BLOCKER]` concern. Always pauses at the Phase 5→6 transition
+  (the external-communication boundary) and at every Phase 6/7 step
+  whose action affects an external party — `llo-invite`,
+  `llo-onboarding`, `llo-uat`, `llo-launch`, and `opp-closeout`.
+  Hard errors halt regardless of mode.
+
+### Changed
+
+- **`commands/run.md`** — `--mode` argument now accepts
+  `default|review|auto`; default value flips from `review` to
+  `default`. Each mode's intent documented inline.
+- **`agents/ace-orchestrator.md`** — `## Execution Modes` rewritten
+  to define the three modes with concrete per-phase behavior. New
+  `## Gate Brief Contract` per-mode pause matrix table makes the
+  default vs review vs auto behavior explicit at every named gate.
+  `## Between Phases` and `## Error Handling` updated for the
+  three-mode world.
+- **State schema** — `mode: default|review|auto` (was
+  `mode: review|auto`). `state.yaml` default value flips to `default`.
+- **`commands/status.md`** — mode column displays
+  `default/review/auto` (was `auto/review`).
+
+### Why
+
+Observed in today's e2e session (`e2e-xw5gk`): a 36-minute idle gap
+mid-Phase-1 waiting for a `idea-to-pdd` gate approval. Phases 1–5
+are entirely internal — Nova builds in private Firestore,
+`app-deploy` uploads to a Dimagi-controlled project space, OCS
+chatbots are configured but not yet linked to FLWs. Operators
+historically rubber-stamped these gates 95%+ of the time when the
+eval rubric passed cleanly. `default` mode lets the eval verdict be
+the decision-maker for internal gates while preserving
+"human-in-the-loop on every external touch" for Phases 6–7. The
+existing `review` mode stays available as an opt-in for high-touch
+operations or training; `auto` stays available for unattended
+batch runs.
+
 ## 0.10.22 — 2026-04-29
 
 **Face-capture gate has a real bypass — disable GMS at runtime.**
