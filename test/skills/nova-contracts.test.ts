@@ -116,9 +116,18 @@ describe('Nova-plugin migration: .env.tpl declares HQ pre-flight vars', () => {
   });
 
   it('does not commit a literal HQ project space (operator-specific value)', () => {
-    // The committed template must not pin a particular HQ project space —
-    // only the per-deployment `.env` (gitignored) should hold the value.
-    expect(env).not.toMatch(/^ACE_HQ_DOMAIN=\S/m);
+    // The committed template must not pin a literal HQ project space — only
+    // the per-deployment `.env` (gitignored) should hold the resolved value.
+    // 0.10.31 routed ACE_HQ_DOMAIN through 1Password (op:// reference); the
+    // template still must not contain a literal domain name like
+    // `connect-ace-prod`. The op:// reference is acceptable; bare-string
+    // values (anything other than empty or starting with `op:`) are not.
+    const m = env.match(/^ACE_HQ_DOMAIN=(.*)$/m);
+    expect(m, 'ACE_HQ_DOMAIN line missing from .env.tpl').not.toBeNull();
+    const value = (m?.[1] ?? '').trim();
+    if (value !== '') {
+      expect(value, 'ACE_HQ_DOMAIN must be empty or an op:// 1Password reference, not a literal').toMatch(/^op:\/\//);
+    }
   });
 });
 

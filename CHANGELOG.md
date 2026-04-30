@@ -5,6 +5,95 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.34 — 2026-04-30
+
+**Producer-side verdict validation script + 2 new provisional eval rubrics + HQ-domain doctor check.**
+
+Round 2 of the turmeric-driven eval framework cleanup. 0.10.28 introduced
+`parseVerdictYaml` for in-test validation; 0.10.34 ships the operator-side
+counterpart (`validate-opp-verdicts.ts`) plus two new eval rubrics that
+absorb run_time_followups items 2 (CCZ regex) and 10 (widget paste-in HITL).
+
+### Added
+
+- `scripts/validate-opp-verdicts.ts` — fetches `ACE/<opp>/verdicts/`
+  from Drive and runs `parseVerdictYaml` on every YAML. Reports
+  PASS/FAIL per file. Reuses the canonical SA-key resolution pattern
+  (env → plugin-data-dir → home-data fallback → legacy) so it works
+  from a worktree, not just the cache path.
+- `bin/ace-doctor verdicts <opp-name>` sub-command — wraps the script
+  above. Operators run it after a full opp cycle to catch any verdict
+  drift before downstream consumers (opp-eval, future tooling) trip.
+- `npm run validate:verdicts -- <opp-name>` — same script, npm-script form.
+- `skills/app-release-eval/SKILL.md` — provisional rubric. 4 dimensions:
+  both_apps_released (0.35), ccz_marker_integrity (0.25),
+  build_id_traceability (0.20), deliver_units_enumerable (0.20).
+  Step 4 explicitly distinguishes CCZ-regex false-positives (skill bug,
+  surfaces as `[WARN]`) from real missing markers (real defect,
+  deducts). Absorbs run_time_followups item 2.
+- `skills/ocs-widget-handoff-eval/SKILL.md` — provisional rubric.
+  4 dimensions: widget_url_resolves (0.25), connect_opp_link (0.20),
+  operator_instructions_clarity (0.30), credential_hygiene (0.25 —
+  with auto-fail on global-secret leak). Grades the staging artifact;
+  the paste-in itself is HITL until CCC-301. Absorbs item 10.
+- `bin/ace-doctor` — new `hq_domain` env-drift check. Warns when
+  `ACE_HQ_DOMAIN` is unset or != `connect-ace-prod`. Defensive
+  complement to 0.10.31's 1Password routing (which fixed the source;
+  this catches "operator forgot to add the `domain` field to the
+  1Password item").
+
+### Schema-normalized 4 pre-existing turmeric verdicts on Drive
+
+The verdicts written during the live-run all drifted from the schema in
+different ways. Content (scores, notes, prompts) preserved verbatim;
+only structural fields normalized:
+
+- `ocs-chatbot-eval-quick.yaml` + `ocs-chatbot-eval-deep.yaml` — added
+  required `weight:` to every dimension. Reproduced canonical weights
+  from the skill spec.
+- `training-materials.yaml` — `scores:` → `dimensions:`; dropped
+  `mode: standard` (off-enum); kept content + caveats.
+- `app-screenshot-capture.yaml` — `verdict: blocked` → `verdict: incomplete`
+  (canonical for "structural gap prevents grading"); dropped `mode: blocked`
+  (also off-enum). All 8 turmeric verdicts now pass `validate:verdicts`.
+
+### Fixed (existing test breakage from 0.10.31)
+
+- `test/skills/nova-contracts.test.ts` "does not commit a literal HQ
+  project space" assertion was failing on origin/main since 0.10.31
+  routed `ACE_HQ_DOMAIN` through 1Password (`op://...` reference).
+  Updated the assertion to allow `op://...` while still rejecting
+  bare-string literals like `connect-ace-prod`.
+
+### Caught by the new validator
+
+The first run of `validate:verdicts turmeric` immediately surfaced a
+schema bug in 0.10.28's own `connect-program-setup-eval.yaml`: a
+`per_item` entry with `score: null` (used to encode INFO-SKIPPED).
+Per the schema doc, `per_item` entries are by definition graded —
+INFO-SKIPPED belongs only in `auto_surfaced`. Fixed in place; verdict
+now validates cleanly. Class-level lesson: the validator is doing what
+0.10.13's SKILL.md walker can't.
+
+### Test counts
+
+277 passing / 29 skipped (was 275 / 29 in 0.10.28). +2 from the new
+eval-skill drift checks (0.10.13 walker auto-discovers them).
+`validate:verdicts turmeric` reports 8/8 PASS.
+
+### Why this matters
+
+The chain is now end-to-end:
+- Schema: `lib/verdict-schema.ts` (single source of truth).
+- Docs: `skills/README.md § Verdict YAML shape`.
+- Doc examples: caught by 0.10.13 walker on every commit.
+- Real verdict files (test fixtures): caught by 0.10.28 unit test.
+- Real verdict files (live opp): caught by 0.10.34 `validate:verdicts`
+  / `ace-doctor verdicts <opp>` on operator demand.
+
+Future class-level preventer: pre-write validation in
+`drive_create_file` when filename matches `verdicts/*.yaml`.
+
 ## 0.10.33 — 2026-04-29
 
 **Mobile recipe progress + two class-level gotchas documented.**

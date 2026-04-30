@@ -61,6 +61,8 @@ ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
 # deployment (e.g. `connect-ace-prod` for production). For a
 # staging-domain dev workflow, point this at a different 1Password
 # field or override the resolved `.env` after `op inject`.
+# `bin/ace-doctor` warns when ACE_HQ_DOMAIN is unset or
+# != connect-ace-prod after op inject.
 
 ACE_HQ_BASE_URL=https://www.commcarehq.org
 ACE_HQ_DOMAIN=op://AI-Agents/ACE - CommCareHQ/domain
