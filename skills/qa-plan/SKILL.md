@@ -99,26 +99,56 @@ Coverage rules — emit at least one test case for each:
 
 Each test case has a stable `ID` (TC-{D|L}-NNN) used in the screenshot manifest.
 
-### Step 3: Generate per-module walkthrough recipes
+### Step 3: Compose per-module walkthrough recipes
 
-For each module in the Learn-app summary AND for the Deliver form, **write
-the Maestro YAML inline using your own reasoning** — you are a Claude
-session with the app summary, the test-matrix entries you just composed,
-and the Maestro grammar (see § Maestro grammar reference below) all in
-context.
+**Use composition, not full-recipe generation.** The mobile harness
+ships pre-calibrated navigation recipes under
+`mcp/mobile/recipes/static/` and an APK-versioned selector map at
+`mcp/mobile/selectors/connect-<apk-version>.yaml`. The consistent parts
+of every walkthrough (login, opp claim, opp launch into Learn / Deliver,
+module-tap, next-button, submit) are CODIFIED in those static recipes.
+The only opp-specific bits are the per-form question content (which
+fields to tap, what plausible answers to type, which screenshots to
+capture for the test matrix).
 
-After composing each YAML, call:
+For each module / form, **compose** by concatenating:
+
+1. **Pre-stage navigation prefix**, drawn from the static recipe
+   library:
+   - `connect-login.yaml` (skip if already covered by composite caller)
+   - `connect-claim-opp.yaml` (skip if already claimed in a prior recipe
+     of this run)
+   - `learn-launch.yaml` (post-claim → Learn-app home)
+   - `learn-tap-module.yaml` parameterized with `${MODULE_NAME}` (Learn
+     home → first form of the chosen module)
+   - For Deliver: skip Learn-launch + tap-module; use a Deliver-launch
+     recipe (TBD — same pattern, separate library entry)
+2. **LLM-generated form-question middle** — you are a Claude session
+   with the app summary + test matrix in context. Generate the per-form
+   `tapOn` / `inputText` / `takeScreenshot` block for the questions in
+   THIS module's form, including the test-case-id-named screenshots
+   (`sc-TC-D-001`, `sc-TC-D-002`, etc.). Reuse `form-advance.yaml`
+   between question blocks where a Next button advances.
+3. **Post-stage suffix**, drawn from the library:
+   - `form-submit.yaml` for Deliver final-submit + confirmation
+     screenshot
+   - Or a back-out / return-to-list step for Learn-module exit
+
+**Resolve `${SELECTOR:logical-name}` placeholders** by calling
+`mobile_resolve_selectors({ yaml, apkVersion })` AFTER composition.
+The MCP atom looks up each logical name against the APK-versioned map
+and substitutes the appropriate `id:` / `text:` / `point:` matcher.
+Surfaces unresolved or `unverified: true` selectors so the calling
+agent can flag calibration debt in the verdict.
+
+After resolution, validate via:
 
 ```
-mobile_validate_recipe({ yaml: <your-composed-YAML> })
+mobile_validate_recipe({ yaml: <resolved-YAML> })
 ```
 
-If validation fails, fix the structural issue (missing `---` separator,
-unknown step-type, malformed step shape) and re-validate before writing
-to Drive. Maestro grammar errors are the only thing this validator
-catches — semantic correctness (does this YAML actually navigate the
-right screens on the AVD?) is on you, grounded in the static recipes
-under `mcp/mobile/recipes/static/` for navigation patterns.
+If validation fails, fix the structural issue (almost always in the
+LLM-generated middle, not the static-library sections) and re-validate.
 
 The recipe should include a `takeScreenshot: "sc-<test-case-id>"` step
 matching the test-matrix entries — e.g., when a form has a required-photo
@@ -126,7 +156,15 @@ field, the recipe walks through both the happy-path photo and the
 required-empty rejection screens, with screenshots named `sc-TC-D-001`
 and `sc-TC-D-002` respectively.
 
-Write each validated recipe to:
+Why composition (not full-recipe generation): navigation glue is
+deterministic across opps and changes only when the Connect APK
+updates. Codifying it in static recipes keeps every per-opp run
+consistent, bounds the LLM's surface area to the genuinely opp-specific
+form questions, and gives APK updates a single point of repair (the
+selector map). Surfaced by turmeric-20260429-2330 e2e and the
+"using AI only for the parts that need it" architectural call.
+
+Write each composed-and-resolved-and-validated recipe to:
 
 ```
 ACE/<opp>/qa-plan/walkthrough-recipes/{learn,deliver}/module-N.yaml
@@ -261,7 +299,24 @@ prerequisites in `app-screenshot-capture` Step 3).
 
 - **`ace-gdrive`:** `drive_read_file`, `drive_list_folder`,
   `drive_create_folder`, `drive_create_file`
-- **`ace-mobile`:** `mobile_validate_recipe`
+- **`ace-mobile`:** `mobile_resolve_selectors`, `mobile_validate_recipe`
+
+## Static-recipe library (composition palette)
+
+| Recipe | Purpose | Parameters |
+|--------|---------|-----------|
+| `connect-login.yaml` | Splash → nav drawer → sign-in flow → home | `${ACE_E2E_PHONE_LOCAL}`, `${ACE_E2E_PIN}` |
+| `connect-claim-opp.yaml` | Opportunities tab → list → claim button → handoff | `${OPP_NAME}` |
+| `learn-launch.yaml` | Opp-detail handoff → "Start Learning" → Learn-app home | none |
+| `learn-tap-module.yaml` | Learn home → tap module by visible label → first form | `${MODULE_NAME}` |
+| `form-advance.yaml` | Generic Next button + screenshot | `${SCREENSHOT_NAME}` |
+| `form-submit.yaml` | Final Submit + before/after screenshots | `${SCREENSHOT_NAME_PRE_SUBMIT}`, `${SCREENSHOT_NAME_POST_SUBMIT}` |
+
+All library recipes use `${SELECTOR:logical-name}` placeholders that
+`mobile_resolve_selectors` resolves against
+`mcp/mobile/selectors/connect-<apk-version>.yaml`. APK updates trigger a
+re-baseline (run `connect-baseline-screenshots`) which updates only the
+selector map; recipes don't need editing.
 
 ## Mode behavior
 
