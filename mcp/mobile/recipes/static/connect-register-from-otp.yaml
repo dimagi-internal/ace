@@ -6,18 +6,34 @@
 # not maintained — see CHANGELOG 0.10.x. ACE has no use case for testing
 # real-OTP delivery on a managed test phone.
 #
-# Selectors verified live on CommCare 2.62.0 on 2026-04-29 against
-# ACE_Pixel_API_34_PS, registering +74260000100 from a fresh install.
+# Selectors verified live on CommCare 2.62.0 on 2026-04-29.
+# Registration steps 1–28 verified against ACE_Pixel_API_34_PS (Play
+# Store image) registering +74260000100 from a fresh install. The final
+# photo-capture step (29–30) requires a non-GMS AVD — see the photo
+# section below and the Face-capture gotcha in
+# playbook/integrations/mobile-integration.md.
 #
 # Variables:
 #   ${NAME}         — display name (e.g., "ACE Test User")
 #   ${BACKUP_CODE}  — 6-digit numeric (e.g., "123456")
 #   ${PIN}          — 4-digit PIN for the device App Lock (defaults to "1234")
 #
-# AVD prerequisite: hw.camera.front=emulated. The default AVD config has
-# hw.camera.front=none, which makes CameraX fail validation on the photo
-# capture step. mobile_ensure_avd_running auto-patches this in 0.10.18+;
-# pre-0.10.18 AVDs need a manual edit to ~/.android/avd/<NAME>.avd/config.ini.
+# AVD prerequisites:
+#   - hw.camera.front=emulated (auto-patched by mobile_ensure_avd_running
+#     in 0.10.18+; pre-0.10.18 AVDs need a manual edit).
+#   - GMS disabled at runtime via
+#       adb shell pm disable-user --user 0 com.google.android.gms
+#     Both google_apis and google_apis_playstore system images on macOS
+#     ship with functional GMS, so the choice of system image doesn't
+#     matter — the runtime disable is what flips MicroImageActivity into
+#     ManualMode (manual camera_shutter_button visible). Without this
+#     step the recipe stalls waiting for ML Kit to detect a face that
+#     the emulated front camera can never supply. See § Face-capture
+#     gate in playbook/integrations/mobile-integration.md.
+#   - CAMERA permission pre-granted to org.commcare.dalvik via
+#       adb shell pm grant org.commcare.dalvik android.permission.CAMERA
+#     so MicroImageActivity doesn't bail on first launch.
+#   commands/mobile-bootstrap.md step 9 runs both adb commands.
 
 appId: org.commcare.dalvik
 ---
@@ -130,9 +146,19 @@ appId: org.commcare.dalvik
 - tapOn:
     id: "org.commcare.dalvik:id/connect_backup_code_button"
 
-# Photo capture — final step. Requires hw.camera.front=emulated on the AVD
-# (see header). On a properly configured AVD, take_photo_button opens the
-# system camera; tap the shutter then save_photo_button submits.
+# Photo capture — final step. Two modes depending on Google Play Services:
+#
+#   * GMS-enabled AVDs (google_apis_playstore image): MicroImageActivity
+#     uses ML Kit face detection to auto-trigger the shutter when a face
+#     stabilizes in the viewfinder. The emulated front camera shows a
+#     gray test pattern — never a face — so this mode hangs forever.
+#   * Non-GMS AVDs (google_apis image): MicroImageActivity falls back to
+#     FaceCaptureView.CaptureMode.ManualMode and exposes a manual
+#     camera_shutter_button. Maestro can tap it directly.
+#
+# ACE uses a google_apis AVD (no Play Store) by default for exactly this
+# reason — see commands/mobile-bootstrap.md and the Face-capture gotcha
+# in playbook/integrations/mobile-integration.md.
 - extendedWaitUntil:
     visible:
       id: "org.commcare.dalvik:id/take_photo_button"
@@ -140,19 +166,18 @@ appId: org.commcare.dalvik
 - tapOn:
     id: "org.commcare.dalvik:id/take_photo_button"
 
-# System camera UI: shutter + done. Maestro can't drive the AOSP camera
-# reliably across versions, so this last hop is best-effort. If it fails,
-# the test user is registered enough to claim opportunities — the photo
-# requirement is a nice-to-have for the demo persona.
-- waitForAnimationToEnd:
-    timeout: 5000
-- runFlow:
-    when:
-      visible:
-        text: "Done"
-    commands:
-      - tapOn: "Done"
+# Manual shutter (non-GMS path). On GMS-enabled AVDs this selector won't
+# appear and the recipe will fail here — that's intentional, as the
+# alternative (auto-shutter) can't be driven on an AVD without a real face.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/camera_shutter_button"
+    timeout: 8000
+- tapOn:
+    id: "org.commcare.dalvik:id/camera_shutter_button"
 
+# After manual capture MicroImageActivity returns to the photo intro
+# screen with the captured image shown and save_photo_button enabled.
 - extendedWaitUntil:
     visible:
       id: "org.commcare.dalvik:id/save_photo_button"

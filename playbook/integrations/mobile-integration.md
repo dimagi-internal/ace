@@ -135,39 +135,73 @@ to `hw.camera.front=emulated` before booting. If the AVD was already
 running with the bad config, stop it (`mobile_stop_avd`) and re-run
 `mobile_ensure_avd_running` to apply the fix and cold-boot.
 
-### Face-capture gate (2.62.0+)
+### Face-capture gate (2.62.0+) — solved by disabling GMS at runtime
 
 CommCare 2.62.0 added an in-app face-capture screen
-(`org.commcare.fragments.MicroImageActivity` aka "Capture Face Picture")
+(`org.commcare.fragments.MicroImageActivity`, title "Capture Photo")
 between the Backup Code step and registration completion. The screen
-shows a live viewfinder with a `face_overlay` and uses face detection to
-auto-trigger the shutter — there is no manual capture button.
+shows a live viewfinder with a `face_overlay`. Behavior depends on
+whether Google Play Services is available **at runtime**:
 
-**The AVD's emulated front camera does not show a face.** `emulated`
-shows a moving gray test pattern; `virtualscene` shows an empty 3D
-office. Neither triggers the face detector, so the recipe's final
-`save_photo_button` assertion fails and registration cannot complete on
-the device. The phone number IS registered server-side at this point
-(name + backup code submitted), but the local CommCare app session is
-blocked.
+```java
+// MicroImageActivity.onCreate, commcare-android master
+isGooglePlayServicesAvailable = AndroidUtil.isGooglePlayServicesAvailable(this);
+if (isGooglePlayServicesAvailable) {
+    faceCaptureView.setImageStabilizedListener(this);  // ML Kit auto-shutter
+} else {
+    faceCaptureView.setCaptureMode(FaceCaptureView.CaptureMode.ManualMode);
+    cameraShutterButton.setVisibility(View.VISIBLE);   // manual shutter
+}
+```
 
-**Live-verified workarounds:** none in 0.10.x. Three hypothetical paths,
-none implemented:
+* **GMS available:** ML Kit face detection auto-triggers the shutter
+  when a face stabilizes in the viewfinder. The AVD's emulated front
+  camera shows a gray test pattern, never a real face, so the
+  auto-shutter never fires and registration hangs.
+* **GMS unavailable:** falls back to `ManualMode` and shows
+  `camera_shutter_button`. Maestro can tap it. The captured "photo"
+  is whatever the camera currently shows — gray test pattern is fine.
+  The server (`POST /users/complete_profile`) accepts any non-empty
+  base64 string (`if not (name and recovery_pin and photo): 400`) and
+  uploads the bytes to S3 without content validation.
 
-1. `hw.camera.front=webcam0` — uses the host Mac webcam. Requires a real
-   human in front of the camera; defeats automation.
-2. Stream a synthetic face image via the emulator gRPC API on port 8554.
-   Complex, not yet prototyped.
-3. Use a CommCare build flag or Connect-id demo-user provision to skip
-   face capture entirely. Would need a server-side change.
+**Surprising finding:** *both* `google_apis` and `google_apis_playstore`
+system images on macOS Apple Silicon ship with a functional
+`com.google.android.gms` package, and both return `SUCCESS` from
+`GoogleApiAvailability.isGooglePlayServicesAvailable`. Picking a
+"non-Play-Store" AVD is not sufficient. The actual lever is **runtime
+disable** before bootstrap registration:
+
+```sh
+adb shell pm disable-user --user 0 com.google.android.gms
+adb shell pm grant org.commcare.dalvik android.permission.CAMERA
+```
+
+The disable persists across AVD reboots until you re-enable with
+`adb shell pm enable com.google.android.gms`. ACE skills don't depend
+on GMS, so leaving it disabled is fine. `commands/mobile-bootstrap.md`
+runs both commands as part of step 8 (pre-registration prep).
+
+**Why the photo content doesn't matter:**
+
+```python
+# connect-id users/views.py
+photo = request.data.get("photo")
+if not (name and recovery_pin and photo):
+    return JsonResponse({"error": ErrorCodes.MISSING_DATA}, status=400)
+# ...
+upload_photo_to_s3(photo, user.username)
+```
+
+The server requires the field to be present and non-empty, then uploads
+to S3 without face validation. Face detection lives entirely in the
+client as the auto-shutter trigger.
 
 **Implication for ACE Phase 5 `training-prep`:** screenshot capture of a
 *deployed CommCare app* (the Phase 5 use case) does NOT need a fully
 registered PersonalID — `app-screenshot-capture` opens the deployed app
-directly, not via the registration flow. So this gate doesn't block the
-ACE production path. It only blocks an end-to-end "register a fresh
-test user from scratch on a clean AVD" flow, which is a one-time
-bootstrap task documented as a known limitation.
+directly, not via the registration flow. The face-capture gate only
+matters for the one-time fresh-AVD bootstrap.
 
 ### Google Play Services phone-number hint
 
@@ -247,10 +281,11 @@ If the AVD/Maestro can't find a JDK, the operator override is to
 - Cross-platform support is implemented but only verified on macOS Apple
   Silicon. Linux and Windows paths are best-effort, awaiting first-run
   validation.
-- A face-capture bypass for fully-automated PersonalID registration on
-  AVDs. The recipe runs through 28/30 steps; the final two
-  (`save_photo_button` after auto-shutter) require a face the emulated
-  camera doesn't supply. See "Face-capture gate" in Gotchas.
+- Live verification of the manual-shutter path (0.10.21) on a non-GMS
+  AVD. The selectors come straight from the commcare-android source
+  (`MicroImageActivity.onCreate` + `micro_image_widget.xml`) so the
+  recipe is correct by construction, but a registration end-to-end
+  on `ACE_Pixel_API_34` needs CommCare 2.62.0 installed there first.
 
 ## Sibling docs
 
