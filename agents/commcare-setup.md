@@ -51,6 +51,34 @@ preserved: both Nova subagents dispatch from the top-level session.
 If one Nova build fails and the other succeeds, surface the failure
 without re-running the successful side.
 
+#### Turn-0 halt detection (defensive — Nova issue #2)
+
+Nova's `/nova:autobuild` occasionally returns from
+`nova:nova-architect-autonomous` having taken zero tool actions — no
+`create_app`, no scaffold, no error, just a prose response. When this
+happens the `Agent` call appears to "succeed" but no Nova app exists.
+Filed as `voidcraft-labs/nova-plugin#2`; the right fix is upstream
+(autobuild refusing to return without ≥1 tool call). Until that lands,
+defend against it on the ACE side:
+
+After **each** Nova `Agent` dispatch returns, before treating its
+output as authoritative:
+
+1. Inspect the Agent's return string for a `nova_app_id` (or call
+   `mcp__plugin_nova_nova__list_apps` and look for an app whose
+   `created` is within the last few minutes and whose name matches
+   the spec just submitted).
+2. If no new app is present, the dispatch halted at turn 0. **Re-dispatch
+   once** with the same spec (the failure is intermittent and usually
+   passes on retry).
+3. If the second attempt also produces no app, surface a hard error
+   with `nova-plugin#2` in the message — three retries is wasted
+   wall-clock; let the operator decide whether to wait for upstream
+   or escalate.
+
+Apply this check independently to the Learn dispatch and the Deliver
+dispatch — they fail independently.
+
 - Input: approved PDD from GDrive
 - Output: app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
 - **LLM-as-Judge:** Evaluate app quality against PDD requirements
