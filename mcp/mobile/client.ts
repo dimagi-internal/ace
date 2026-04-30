@@ -128,7 +128,12 @@ export class MobileClient {
     appKind: 'learn' | 'deliver';
     drive: DriveAdapter;
     driveRootId: string;
-    llm: LlmFn;
+    /**
+     * Optional. When omitted, falls back to the built-in Anthropic Messages
+     * API client (reads `ANTHROPIC_API_KEY` from `${CLAUDE_PLUGIN_DATA}/.env`).
+     * Surfaced as `mobile_generate_recipe_for_module` MCP atom in 0.10.43.
+     */
+    llm?: LlmFn;
   }): Promise<{ recipePaths: string[]; manifestPath: string }> {
     const summaryPath = `ACE/${args.oppName}/app-summaries/${args.appKind}-app-summary.md`;
     const summary = await args.drive.readFile(args.driveRootId, summaryPath);

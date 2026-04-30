@@ -116,6 +116,25 @@ server.tool(
 );
 
 server.tool(
+  'mobile_generate_recipe_for_module',
+  {
+    summary: z.string().describe('The full app summary markdown — the recipe-generator parses module names from this and grounds the LLM call in it.'),
+    moduleName: z.string().describe('The specific module name to generate a recipe for (e.g. "Photo standardization", "Final assessment"). Must match one of the module names parseSummary would return for this summary, or the LLM has nothing to anchor to.'),
+    appKind: z.enum(['learn', 'deliver']).describe('Which app the module belongs to. Drives the system-prompt framing.'),
+  },
+  async ({ summary, moduleName, appKind }) => {
+    const { RecipeGenerator } = await import('./mobile/backends/recipe-generator.js');
+    const gen = new RecipeGenerator();  // uses built-in Anthropic LlmFn (ANTHROPIC_API_KEY env)
+    try {
+      const yaml = await gen.generateForModule({ summary, moduleName, appKind });
+      return { content: [{ type: 'text', text: JSON.stringify({ ok: true, yaml }, null, 2) }] };
+    } catch (e: any) {
+      return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: e.message }, null, 2) }], isError: true };
+    }
+  },
+);
+
+server.tool(
   'mobile_save_snapshot',
   { avdName: z.string(), snapshotName: z.string() },
   async ({ avdName, snapshotName }) => ({

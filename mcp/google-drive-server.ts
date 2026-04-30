@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 
@@ -436,6 +437,50 @@ server.tool(
       });
 
       return result({ id: fileId, name: created.data.name, webViewLink: created.data.webViewLink });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 11b. Upload a binary file (PNG, PDF, audio, etc.) to Google Drive
+server.tool(
+  'drive_upload_binary',
+  'Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Content is base64-encoded; the MCP decodes it and uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Used by ACE skills that need to upload screenshots (Phase 5 `app-screenshot-capture`), CCZs, training-material attachments, audio session recordings, etc. The parent MUST be a folder on a Shared Drive — same Service Account quota constraint as `drive_create_file` / `drive_create_folder`.',
+  {
+    name: z.string().describe('Name for the new file (include the extension — e.g., "screen-01.png", not "screen-01")'),
+    contentBase64: z.string().describe('File content, base64-encoded. For PNGs from `cat foo.png | base64`, just paste the result. The MCP decodes before upload.'),
+    mimeType: z.string().describe('MIME type of the binary content. Common ACE values: "image/png", "image/jpeg", "application/pdf", "audio/mpeg", "application/zip" (CCZ).'),
+    parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
+  },
+  async ({ name: fileName, contentBase64, mimeType, parentFolderId }) => {
+    try {
+      const guard = await assertParentOnSharedDrive(parentFolderId);
+      if (!guard.ok) return error(guard.message);
+      const buf = Buffer.from(contentBase64, 'base64');
+      if (buf.length === 0) {
+        return error('contentBase64 decoded to 0 bytes — verify the input is valid base64.');
+      }
+      const created = await drive.files.create({
+        requestBody: {
+          name: fileName,
+          mimeType,
+          parents: [parentFolderId],
+        },
+        media: {
+          mimeType,
+          body: Readable.from(buf),
+        },
+        fields: 'id, name, webViewLink, mimeType, size',
+        supportsAllDrives: true,
+      });
+      return result({
+        id: created.data.id,
+        name: created.data.name,
+        mimeType: created.data.mimeType,
+        size: created.data.size,
+        webViewLink: created.data.webViewLink,
+      });
     } catch (e: any) {
       return error(e.message);
     }

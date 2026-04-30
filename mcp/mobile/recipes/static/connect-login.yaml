@@ -55,10 +55,15 @@ appId: org.commcare.dalvik
 - tapOn:
     id: "org.commcare.dalvik:id/personalid_phone_continue_button"
 
-# Post-phone screens (OTP, PIN, etc.) — final selectors REPLACE_* pending live
-# bootstrap run.
+# Post-phone screens (OTP, PIN, etc.).
+#
+# Post-login the Connect home shows the "New Opportunities" header — this is
+# the stable text anchor we use to detect we've landed (vs. a resource-id,
+# which the Connect app rebuilds change). Verified live in
+# turmeric-20260429-2330 Phase 5 / app-screenshot-capture (2026-04-30): the
+# section header text is what survived four rounds of selector churn.
 - extendedWaitUntil:
     visible:
-      id: "REPLACE_post_login_root"
+      text: "New Opportunities"
     timeout: 30000
 - takeScreenshot: "connect-login-home"
