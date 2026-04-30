@@ -99,15 +99,3 @@ ACE_E2E_PIN=op://AI-Agents/connect-test-user/pin
 ACE_E2E_BACKUP_CODE=op://AI-Agents/connect-test-user/backup-code
 ACE_E2E_NAME="ACE Test"
 ACE_AVD_NAME=ACE_Pixel_API_34
-
-# ─── Recipe-generator LLM (mobile-server.ts) ──────────────────────
-#
-# Backs the built-in `LlmFn` used by `mobile_generate_recipe_for_module` and
-# the older programmatic `MobileClient.generateRecipesFromAppSummary` path
-# when no explicit `llm` arg is supplied. If unset, recipe generation falls
-# back to the caller-supplied `LlmFn` and throws AnthropicLlmConfigError if
-# none was provided.
-#
-# `ANTHROPIC_MOBILE_MODEL` is optional; defaults to claude-sonnet-4-6.
-ANTHROPIC_API_KEY=op://AI-Agents/Anthropic API/credential
-ANTHROPIC_MOBILE_MODEL=claude-sonnet-4-6

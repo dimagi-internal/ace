@@ -101,24 +101,32 @@ Each test case has a stable `ID` (TC-{D|L}-NNN) used in the screenshot manifest.
 
 ### Step 3: Generate per-module walkthrough recipes
 
-For each module in the Learn-app summary AND for the Deliver form, call:
+For each module in the Learn-app summary AND for the Deliver form, **write
+the Maestro YAML inline using your own reasoning** — you are a Claude
+session with the app summary, the test-matrix entries you just composed,
+and the Maestro grammar (see § Maestro grammar reference below) all in
+context.
+
+After composing each YAML, call:
 
 ```
-mobile_generate_recipe_for_module({
-  summary: <app-summary content>,
-  moduleName: <module name>,
-  appKind: 'learn' | 'deliver'
-})
+mobile_validate_recipe({ yaml: <your-composed-YAML> })
 ```
 
-The MCP atom uses the built-in Anthropic LlmFn (loaded from
-`ANTHROPIC_API_KEY` in `.env`) and returns a Maestro YAML body. **Plumb the
-test-matrix entries into the prompt** so the generated recipe captures
-screenshots aligned with the test cases — e.g., when the module's form
-has a required-photo field, the recipe should include a `takeScreenshot:
-"sc-<test-case-id>"` step matching the manifest entry.
+If validation fails, fix the structural issue (missing `---` separator,
+unknown step-type, malformed step shape) and re-validate before writing
+to Drive. Maestro grammar errors are the only thing this validator
+catches — semantic correctness (does this YAML actually navigate the
+right screens on the AVD?) is on you, grounded in the static recipes
+under `mcp/mobile/recipes/static/` for navigation patterns.
 
-Write each recipe to:
+The recipe should include a `takeScreenshot: "sc-<test-case-id>"` step
+matching the test-matrix entries — e.g., when a form has a required-photo
+field, the recipe walks through both the happy-path photo and the
+required-empty rejection screens, with screenshots named `sc-TC-D-001`
+and `sc-TC-D-002` respectively.
+
+Write each validated recipe to:
 
 ```
 ACE/<opp>/qa-plan/walkthrough-recipes/{learn,deliver}/module-N.yaml
@@ -218,38 +226,69 @@ Threshold: 7.0/10. Below threshold → halt with the score in the verdict and
 escalate. The downstream skills (app-screenshot-capture, training-materials)
 read this verdict to confirm the qa-plan was approved before consuming.
 
+## Maestro grammar reference
+
+The validator accepts these step types (the calling agent should compose
+YAML using only these):
+
+- `launchApp` (with `appId` + optional `clearState`)
+- `tapOn` (string OR object with `id` / `text` / `point`)
+- `inputText` (with `${VAR}` substitution from envVars)
+- `takeScreenshot` (kebab-case step name string)
+- `assertVisible` / `assertNotVisible` (id / text / etc.)
+- `extendedWaitUntil` (with `visible:` selector + `timeout`)
+- `waitForAnimationToEnd` (`timeout`)
+- `eraseText` (count)
+- `swipe` (from / to coordinates or directions)
+- `pressKey`, `back`, `scroll`, `hideKeyboard`
+- `runFlow` (with `when:` predicate + `commands:` block — the conditional
+  branching primitive)
+- `evalScript` (set `output.stdout` to surface a sentinel back to the
+  caller)
+- `stopApp`
+
+Frontmatter must include `appId: org.commcare.dalvik` and end with `---`.
+
+For the navigation skeleton (entering an opp, launching the Learn app,
+selecting a module), see `mcp/mobile/recipes/static/connect-login.yaml`
+and `connect-claim-opp.yaml` — those have the post-login → opp-list →
+claim flow already calibrated with stable selectors. Compose your
+per-module recipes to start FROM the post-claim Learn-app-home state
+(don't repeat the login + claim steps; those run separately as
+prerequisites in `app-screenshot-capture` Step 3).
+
 ## MCP tools used
 
 - **`ace-gdrive`:** `drive_read_file`, `drive_list_folder`,
   `drive_create_folder`, `drive_create_file`
-- **`ace-mobile`:** `mobile_generate_recipe_for_module`
+- **`ace-mobile`:** `mobile_validate_recipe`
 
 ## Mode behavior
 
 - **Auto:** generate every artifact, halt only on a `[BLOCKER]` verdict.
-- **Review:** show the test-matrix preview before walkthrough-recipe
-  generation; pause at the qa-plan verdict.
+- **Review:** show the test-matrix preview before composing walkthrough
+  recipes; pause at the qa-plan verdict.
 - **Dry-run:** generate the matrix + uat-checklist + screenshot-manifest as
-  normal but skip the `mobile_generate_recipe_for_module` calls (the LLM
-  burns tokens). Stub recipe paths in the manifest. State tracks as
-  `dry-run-success`.
+  normal but skip recipe composition. Stub recipe paths in the manifest.
+  State tracks as `dry-run-success`.
 
 ## Failure modes
 
-- **Anthropic API key missing.** `mobile_generate_recipe_for_module` returns
-  `AnthropicLlmConfigError` from `mcp/mobile/backends/anthropic-llm.ts`.
-  Halt with the operator-facing message pointing at `.env` re-injection
-  via `op inject`.
-- **App summary lacks module structure.** If neither H3 nor table format
-  parses any modules, the recipe generator returns no YAML. Halt and
+- **App summary lacks module structure.** If the summary has no parseable
+  modules (no H3 entries, no table rows, no legacy H2 headings), halt and
   surface — the upstream `app-summary` was malformed and needs a fix in
   Phase 2 before Phase 5 can run.
 - **PDD missing Evidence Model.** This skill cannot generate Layer-A /
   Layer-B test coverage without the Evidence Model table. Halt with a
   clear pointer to the missing section in pdd.md.
+- **`mobile_validate_recipe` keeps rejecting your YAML.** Typically a
+  step-type that's not in the allowlist or a malformed `runFlow` block.
+  Read the validator's error message + the static recipes for the
+  correct shape; don't push past two validate-fix iterations per recipe.
 
 ## Change log
 
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-30 | Initial version. New first-class skill in Phase 5 (qa-and-training, formerly training-prep). Generates test matrix + walkthrough recipes + screenshot manifest + UAT checklist from design docs alone. Pre-condition for `app-screenshot-capture` and `training-materials`. Surfaced by turmeric-20260429-2330 e2e: prior Phase 5 inferred the QA plan implicitly inside each downstream skill, leading to inconsistent coverage. (0.10.44) | ACE team |
+| 2026-04-30 | Recipe composition simplified (0.10.45): the calling Claude agent now writes Maestro YAML inline using its own LLM context and validates via `mobile_validate_recipe`, instead of calling out to a separate Anthropic-backed LLM atom. The mobile MCP does not bundle an LLM client; ACE running inside Claude Code is itself an LLM session. Removes the ANTHROPIC_API_KEY dependency. | ACE team |
