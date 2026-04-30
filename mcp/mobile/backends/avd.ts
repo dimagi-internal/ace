@@ -193,12 +193,23 @@ export class AvdBackend {
    * AVD is still usable, just may need manual prep for registration.
    */
   private async runPostBootPrep(serial: string): Promise<void> {
-    // Wait up to 90s for sys.boot_completed; the device responds to `adb -s`
-    // long before it's actually ready for `pm` and `dumpsys` calls.
+    // Two-phase boot wait. sys.boot_completed=1 is set early; the device
+    // is reachable by `adb -s` long before user storage and the launcher
+    // are actually ready. Wait for /sdcard to be mounted as the real
+    // signal — a stuck-on-NotificationShade boot is exactly the case
+    // where boot_completed=1 but /sdcard isn't there yet.
     const bootStart = Date.now();
     while (Date.now() - bootStart < 90_000) {
       const r = await this.shell('adb', ['-s', serial, 'shell', 'getprop', 'sys.boot_completed']);
       if (r.stdout.trim() === '1') break;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    while (Date.now() - bootStart < 120_000) {
+      // Use /storage/emulated/0 instead of /sdcard — the latter is a
+      // symlink that may not be readable by the shell uid under scoped
+      // storage even when user storage is fully mounted.
+      const r = await this.shell('adb', ['-s', serial, 'shell', 'test', '-e', '/storage/emulated/0']).catch(() => null);
+      if (r && r.exitCode === 0) break;
       await new Promise((r) => setTimeout(r, 1500));
     }
 
@@ -213,16 +224,21 @@ export class AvdBackend {
       await this.shell('adb', ['-s', serial, 'shell', 'pm', 'grant', 'org.commcare.dalvik', 'android.permission.CAMERA']).catch(() => {});
     }
 
-    // Some `google_apis*` AVD cold boots leave SystemUI with the
+    // Some `google_apis*` AVD cold boots leave SystemUI with
     // NotificationShade as the focused window — keys go to the shade and
-    // maestro can't drive flows. Dismissing the keyguard then HOMEing
-    // resets focus to the launcher. Only run if we detect the stuck
-    // state, since on a healthy boot this is a no-op.
-    const focus = await this.shell('adb', ['-s', serial, 'shell', 'dumpsys', 'window']).catch(() => null);
-    if (focus && /mCurrentFocus=Window\{[^}]*NotificationShade/.test(focus.stdout)) {
+    // maestro can't drive flows. We try every common recovery path in
+    // sequence: cmd statusbar collapse (Android 11+), service call 2
+    // (statusbar collapse legacy), wm dismiss-keyguard, KEYCODE_HOME.
+    // Only run if we detect the stuck state, since on a healthy boot
+    // this is a no-op.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const focus = await this.shell('adb', ['-s', serial, 'shell', 'dumpsys', 'window']).catch(() => null);
+      if (!focus || !/mCurrentFocus=Window\{[^}]*NotificationShade/.test(focus.stdout)) return;
+      await this.shell('adb', ['-s', serial, 'shell', 'cmd', 'statusbar', 'collapse']).catch(() => {});
+      await this.shell('adb', ['-s', serial, 'shell', 'service', 'call', 'statusbar', '2']).catch(() => {});
       await this.shell('adb', ['-s', serial, 'shell', 'wm', 'dismiss-keyguard']).catch(() => {});
       await this.shell('adb', ['-s', serial, 'shell', 'input', 'keyevent', 'KEYCODE_HOME']).catch(() => {});
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 2000));
     }
   }
 
