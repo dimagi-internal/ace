@@ -61,6 +61,25 @@ whichever PM-side org the opportunity targets).
    Connect-known server" or "app id '...' not found in Connect's options",
    the input doesn't match what Connect serves; verify the deploy summary.
 
+   **App-wire fields are write-once at create (added 2026-04-30).** Connect's
+   `/edit` form does NOT expose `learn_app` / `deliver_app` / `hq_server` /
+   `api_key` / `learn_app_passing_score` — only the `/init/` create form
+   does. Once the opp is created, those fields cannot be changed via the
+   UI's normal edit path; `connect_update_opportunity` accordingly only
+   covers `name` / `short_description` / `description` / `end_date` /
+   `is_test`. **If Phase 2 re-uploads an app after this skill ran, the
+   existing opp is wired to a stale (now-abandoned) HQ id** — the only
+   recovery is delete-and-recreate. Surfaced 2026-04-30 (turmeric-
+   20260429-2330): the operator caught the symptom downstream when the
+   AVD test user got "Failed to start learning" and a sibling opp showed
+   different HQ ids in the detail page. **Diagnostic gotcha:**
+   `connect_get_opportunity` parses the edit form for its return shape,
+   which means `learn_app` / `deliver_app` come back as empty strings even
+   when the opp IS correctly wired. Fixed in 0.10.41 by also reading the
+   detail page (which renders `/apps/view/<id>/` links). Pre-0.10.41,
+   never trust empty `learn_app` / `deliver_app` from `get_opportunity`
+   as evidence of broken wiring — verify against the detail page.
+
 4. **List deliver units** via `connect_list_deliver_units` — these come
    from the Deliver app's form schema and are NOT directly creatable in
    Connect. The list is the input space for verification flags + payment
