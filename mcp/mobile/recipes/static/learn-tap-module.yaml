@@ -1,0 +1,28 @@
+# Tap a specific module on the Learn-app module list, advancing to its
+# first form.
+#
+# Pre-state: Learn-app module-list home (output of `learn-launch.yaml`).
+# Post-state: first form of the chosen module is loaded; the form's first
+# question is the focused element.
+#
+# Parameters:
+#   ${MODULE_NAME} — the visible label of the module to tap (e.g.,
+#                    "Photo standardization", "Final assessment"). Composer
+#                    substitutes when generating per-module recipes; the
+#                    selector map's `learn-module-card` entry is itself a
+#                    text-anchor matcher that uses ${MODULE_NAME}, so no
+#                    second substitution is needed.
+appId: org.commcare.dalvik
+---
+- extendedWaitUntil:
+    visible:
+      ${SELECTOR:opp-learn-modules-list}
+    timeout: 10000
+- takeScreenshot: "learn-tap-module-list-${MODULE_NAME}"
+
+- tapOn:
+    ${SELECTOR:learn-module-card}
+
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: "learn-module-${MODULE_NAME}-first-form"

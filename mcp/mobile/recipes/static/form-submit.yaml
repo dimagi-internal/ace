@@ -1,0 +1,19 @@
+# Tap the Submit button at the end of a Deliver form + verify the
+# submission landed.
+#
+# Pre-state: last form-question screen with the Submit button visible.
+# Post-state: post-submit confirmation surface.
+#
+# Parameters:
+#   ${SCREENSHOT_NAME_PRE_SUBMIT} — screenshot before tapping Submit
+#                                   (e.g. "deliver-final-review")
+#   ${SCREENSHOT_NAME_POST_SUBMIT} — screenshot after submit confirmation
+#                                    (e.g. "deliver-submitted-confirmation")
+appId: org.commcare.dalvik
+---
+- takeScreenshot: "${SCREENSHOT_NAME_PRE_SUBMIT}"
+- tapOn:
+    ${SELECTOR:form-submit}
+- waitForAnimationToEnd:
+    timeout: 8000
+- takeScreenshot: "${SCREENSHOT_NAME_POST_SUBMIT}"

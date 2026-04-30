@@ -1,0 +1,18 @@
+# Advance to the next form question by tapping Next + capturing a
+# screenshot of the resulting screen.
+#
+# Generic single-step recipe — the qa-plan composer concatenates one of
+# these between every form-question tap+input block in the per-module
+# walkthrough.
+#
+# Parameters:
+#   ${SCREENSHOT_NAME} — name for the screenshot taken after advancing.
+#                        Composer fills with e.g. "form-q3-photo-rendered"
+#                        or "form-q11-yes-conditional-q12-shown".
+appId: org.commcare.dalvik
+---
+- tapOn:
+    ${SELECTOR:form-question-next}
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: "${SCREENSHOT_NAME}"

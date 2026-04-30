@@ -1,0 +1,34 @@
+# Drive a claimed opportunity from the post-claim handoff state into the
+# Learn-app home (module list visible).
+#
+# Pre-state assumed: `connect-claim-opp.yaml` has just completed and the
+# user is on the opp-detail screen with the "Start" / "Start Learning"
+# button visible.
+#
+# Post-state: Learn-app module-list home (the `opp-learn-modules-list`
+# RecyclerView is the stable anchor).
+#
+# Selectors are referenced by logical name; resolve against
+# `mcp/mobile/selectors/connect-<APK_VERSION>.yaml` via
+# `mobile_resolve_selectors` before passing to `mobile_run_recipe`.
+#
+# Marked `unverified: true` selectors in the map will need calibration
+# against a live AVD running the target Connect APK before this recipe
+# runs cleanly. Run `connect-baseline-screenshots` skill to surface
+# selector drift on APK update.
+appId: org.commcare.dalvik
+---
+- extendedWaitUntil:
+    visible:
+      ${SELECTOR:opp-detail-start-learning}
+    timeout: 15000
+- takeScreenshot: "learn-launch-opp-detail"
+
+- tapOn:
+    ${SELECTOR:opp-detail-start-learning}
+
+- extendedWaitUntil:
+    visible:
+      ${SELECTOR:opp-learn-modules-list}
+    timeout: 30000
+- takeScreenshot: "learn-launch-modules-home"

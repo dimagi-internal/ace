@@ -1,0 +1,229 @@
+# Connect APK 2.62.0 selector map
+#
+# Maps stable LOGICAL NAMES (used in static + generated recipes) to the
+# concrete Maestro selectors that resolve them in this APK version. When the
+# Connect APK ships a new version, copy this file to
+# `connect-<new-version>.yaml`, run `connect-baseline-screenshots` to detect
+# selector drift, and update only the rows that changed. Recipes that
+# reference logical names via `${SELECTOR:logical-name}` keep working
+# without edits.
+#
+# Conventions:
+# - PREFER text-anchor matchers — they survive minor APK rebuilds where
+#   resource-ids change but visible labels don't.
+# - Use `id:` only when the text is dynamic, the surface has multiple
+#   buttons with the same text, or when the static recipes already proved
+#   the resource-id is stable across builds.
+# - Logical names are kebab-case scoped by surface: `<surface>-<element>`.
+#   E.g., `nav-drawer-sign-in`, `opp-detail-start-learning`,
+#   `form-question-next-button`.
+#
+# To resolve placeholders in a recipe body, call
+# `mobile_resolve_selectors({yaml, apk_version})`. The MCP atom reads this
+# file (or the version the caller passes) and substitutes
+# `${SELECTOR:logical-name}` with the matcher block below.
+#
+# Substitution shape:
+#   `${SELECTOR:nav-drawer-sign-in}` →
+#       (when type=id)   `id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"`
+#       (when type=text) `text: "Start Learning"`
+#       (when type=both) `id: "org.commcare.dalvik:id/btn_start"  # text fallback: "Start"`
+
+apk_version: "2.62.0"
+captured_at: "2026-04-30"
+captured_against: "ACE_Pixel_API_34_PS (google_apis_playstore arm64)"
+
+selectors:
+  # ── App shell ────────────────────────────────────────────────────
+  app-splash-message:
+    type: id
+    value: "org.commcare.dalvik:id/str_setup_message"
+    purpose: "CommCare splash 'Setting up...' message — first stable element after launch"
+
+  nav-drawer-burger-point:
+    type: point
+    value: "73,209"
+    purpose: "Top-left nav-drawer toggle. Coordinate-based since the burger image has no resource-id."
+
+  nav-drawer-sign-in:
+    type: id
+    value: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+    purpose: "Sign In / Register button in the nav drawer (visible when the user is signed out)"
+
+  # ── PersonalID / phone entry ────────────────────────────────────
+  personalid-country-code:
+    type: id
+    value: "org.commcare.dalvik:id/countryCode"
+    purpose: "Country-code AutoCompleteTextView on the phone-entry screen"
+
+  personalid-phone-input:
+    type: id
+    value: "org.commcare.dalvik:id/connect_primary_phone_input"
+    purpose: "Phone-number AutoCompleteTextView"
+
+  personalid-consent-check:
+    type: id
+    value: "org.commcare.dalvik:id/connect_consent_check"
+    purpose: "Consent checkbox below the phone field"
+
+  personalid-phone-continue:
+    type: id
+    value: "org.commcare.dalvik:id/personalid_phone_continue_button"
+    purpose: "Continue button submitting the phone-entry form"
+
+  personalid-name-input:
+    type: id
+    value: "org.commcare.dalvik:id/nameTextValue"
+    purpose: "Name text field on the registration name-entry screen"
+
+  personalid-pin-verify:
+    type: id
+    value: "org.commcare.dalvik:id/connect_verify_pin_button"
+    purpose: "Verify PIN button on the App Lock setup / verify screen"
+
+  personalid-backup-code-input:
+    type: id
+    value: "org.commcare.dalvik:id/connect_backup_code_input"
+    purpose: "Backup-code text field"
+
+  personalid-backup-code-repeat:
+    type: id
+    value: "org.commcare.dalvik:id/connect_backup_code_repeat_input"
+    purpose: "Backup-code-repeat text field"
+
+  personalid-backup-code-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_backup_code_button"
+    purpose: "Submit button on the backup-code form"
+
+  # ── Demo-user OTP bypass ────────────────────────────────────────
+  demo-snackbar-action:
+    type: id
+    value: "org.commcare.dalvik:id/snackbar_action"
+    purpose: "OK button on the demo-user OTP-bypass snackbar (for +7426 phones)"
+
+  # ── Google Play Services phone-hint sheet ───────────────────────
+  gms-phone-hint-cancel:
+    type: id
+    value: "com.google.android.gms:id/cancel"
+    purpose: "Cancel button on the Google Play Services phone-hint bottom sheet that pops on AutoCompleteTextView focus"
+
+  # ── System unlock (after PersonalID setup imposes a device PIN) ─
+  system-lockpassword:
+    type: id
+    value: "com.android.systemui:id/lockPassword"
+    purpose: "System lockscreen PIN entry (Android-side, not CommCare)"
+
+  system-pin-entry:
+    type: id
+    value: "com.android.settings:id/lock_pin"
+    purpose: "PIN-entry field on the device-lock setup screen"
+
+  system-password-entry:
+    type: id
+    value: "com.android.settings:id/password_entry"
+    purpose: "Password-entry field on the device-lock setup screen"
+
+  # ── Post-login Connect home ─────────────────────────────────────
+  home-new-opportunities:
+    type: text
+    value: "New Opportunities"
+    purpose: "Section header on Connect home — stable text anchor; survives APK rebuilds"
+
+  home-opportunities-tab:
+    type: text
+    value: "Opportunities"
+    purpose: "Bottom-nav 'Opportunities' tab"
+
+  # ── Opportunity list / detail ───────────────────────────────────
+  opp-list-view-opportunity-button:
+    type: id
+    value: "org.commcare.dalvik:id/btn_view_opportunity"
+    purpose: "View Opportunity button on each card in the unclaimed-opp list"
+
+  opp-detail-start:
+    type: id
+    value: "org.commcare.dalvik:id/btn_start"
+    purpose: "Start button on the opp-detail page (claims the opp / advances to Learn handoff). Note: same resource-id is reused on Learn module list and Deliver — context-dependent."
+
+  opp-learn-modules-list:
+    type: id
+    value: "org.commcare.dalvik:id/tv_learn_modules_list"
+    purpose: "Modules-list TextView/RecyclerView on the Learn-app home"
+
+  # ── Photo capture ──────────────────────────────────────────────
+  camera-shutter-button:
+    type: id
+    value: "org.commcare.dalvik:id/camera_shutter_button"
+    purpose: "Shutter button when the device camera is open via a CommCare photo question"
+
+  camera-take-photo:
+    type: id
+    value: "org.commcare.dalvik:id/take_photo_button"
+    purpose: "Take Photo button on the photo-question prompt screen (before opening the camera)"
+
+  camera-save-photo:
+    type: id
+    value: "org.commcare.dalvik:id/save_photo_button"
+    purpose: "Save / Use Photo button after capturing"
+
+  # ── To calibrate (placeholders for transitions not yet captured live) ──
+  # The values below are best-guess based on the static recipes' direction
+  # of travel and the standard CommCare Connect 2.62.0 surface. Run
+  # `connect-baseline-screenshots` against a live AVD to confirm or replace.
+  # Each entry is marked `unverified: true` until a baseline run
+  # confirms it.
+
+  opp-detail-start-learning:
+    type: text
+    value: "Start Learning"
+    unverified: true
+    purpose: "Start Learning button on the opp-detail page (post-claim, when Learn app is wired). When user hasn't completed Learn assessment, this is the gate. Verify selector against opp-detail-claimed surface."
+
+  opp-detail-start-delivering:
+    type: text
+    value: "Start Delivering"
+    unverified: true
+    purpose: "Start Delivering button on the opp-detail page (post-Learn-completion). Replaces the Start Learning button once assessment is passed."
+
+  learn-module-card:
+    type: text
+    value: "${MODULE_NAME}"  # caller substitutes
+    unverified: true
+    purpose: "A single module entry in the Learn-app module list, anchored by its visible label. Composer substitutes ${MODULE_NAME} at recipe-resolution time."
+
+  form-question-next:
+    type: text
+    value: "Next"
+    unverified: true
+    purpose: "Generic Next button advancing through form questions"
+
+  form-question-finish:
+    type: text
+    value: "Finish"
+    unverified: true
+    purpose: "Generic Finish button at the end of a form / module"
+
+  form-question-back:
+    type: text
+    value: "Back"
+    unverified: true
+    purpose: "Generic Back button"
+
+  form-submit:
+    type: text
+    value: "Submit"
+    unverified: true
+    purpose: "Generic Submit button on the final form screen (Deliver app)"
+
+  assessment-result-passed:
+    type: text
+    value: "Passed"
+    unverified: true
+    purpose: "Result indicator after the Learn-app assessment scores ≥ passing threshold"
+
+  assessment-result-failed:
+    type: text
+    value: "Try Again"
+    unverified: true
+    purpose: "Retake button on a failed assessment screen"
