@@ -17,6 +17,24 @@ set +e
 SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MODE="self"
 ROOT=""
+SUBCOMMAND=""
+SUB_OPP=""
+
+# Sub-commands run before the standard check pipeline. Today only `verdicts <opp>`
+# is supported — fetches ACE/<opp>/verdicts/ from Drive and validates each YAML
+# against lib/verdict-schema.ts via parseVerdictYaml. Class-level preventer at
+# the operator boundary (test/lib/real-verdict-validation.test.ts covers fixtures;
+# this covers live opp output).
+if [ "${1:-}" = "verdicts" ]; then
+  SUBCOMMAND="verdicts"
+  shift
+  if [ -z "${1:-}" ]; then
+    echo "usage: ace-doctor verdicts <opp-name>" >&2
+    exit 2
+  fi
+  SUB_OPP="$1"
+  shift
+fi
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -64,6 +82,16 @@ if [ -z "$ROOT" ] || [ ! -f "$ROOT/.claude-plugin/plugin.json" ]; then
 fi
 
 echo "INFO plugin_root=$ROOT (mode=$MODE)"
+
+# Dispatch sub-commands. Sub-commands short-circuit the rest of the script.
+if [ "$SUBCOMMAND" = "verdicts" ]; then
+  if [ ! -f "$ROOT/scripts/validate-opp-verdicts.ts" ]; then
+    echo "FAIL verdicts_subcommand: $ROOT/scripts/validate-opp-verdicts.ts not found"
+    echo "  fix: run /ace:update to pull a version that ships the validator (>= 0.10.29)"
+    exit 0
+  fi
+  cd "$ROOT" && exec npx tsx scripts/validate-opp-verdicts.ts "$SUB_OPP"
+fi
 
 # If the user is inside a dev worktree that differs from $ROOT, flag it so they
 # know the doctor is auditing the installed copy rather than their checkout.
@@ -554,6 +582,20 @@ if [ -n "$ENV_FILE" ]; then
     [ -z "$HQ_USER" ] && cm="$cm ACE_HQ_USERNAME"
     [ -z "$HQ_PASS" ] && cm="$cm ACE_HQ_PASSWORD"
     warn "connect_env: missing or unresolved:$cm" "re-inject .env via op inject (vars added in 0.8.0)"
+  fi
+
+  # ACE_HQ_DOMAIN — the CommCare HQ project space ace@dimagi-ai.com uploads
+  # apps to. Default and only sanctioned value: connect-ace-prod. A different
+  # value silently routes Nova uploads to the wrong project space; the apps
+  # build but Phase 3 connect-setup can't bind them. Item 1 of the turmeric
+  # run_time_followups (0.10.29).
+  HQ_DOMAIN="$(get_env ACE_HQ_DOMAIN)"
+  if [ -z "$HQ_DOMAIN" ]; then
+    warn "hq_domain: ACE_HQ_DOMAIN not set (Nova app uploads will fall back; expected connect-ace-prod)" "add ACE_HQ_DOMAIN=connect-ace-prod to 1Password and re-inject .env"
+  elif [ "$HQ_DOMAIN" = "connect-ace-prod" ]; then
+    pass "hq_domain: ACE_HQ_DOMAIN=$HQ_DOMAIN"
+  else
+    warn "hq_domain: ACE_HQ_DOMAIN=$HQ_DOMAIN (expected connect-ace-prod)" "if intentional override, ignore; otherwise update .env to ACE_HQ_DOMAIN=connect-ace-prod"
   fi
 
   # Connect session file. Created by /ace:connect-login OR refreshed silently

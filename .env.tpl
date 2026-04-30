@@ -59,13 +59,8 @@ ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
 # Set this in your installed `.env` per deployment (e.g.,
 # `connect-ace-prod` for production, your own staging domain for dev).
 # Do not commit a literal value here — `op inject` would overwrite
-# operator-specific values on every refresh.
-
-#
-# Set this in your installed `.env` per deployment (e.g.,
-# `connect-ace-prod` for production, your own staging domain for dev).
-# Do not commit a literal value here — `op inject` would overwrite
-# operator-specific values on every refresh.
+# operator-specific values on every refresh. `bin/ace-doctor` warns
+# when ACE_HQ_DOMAIN is unset or != connect-ace-prod.
 
 ACE_HQ_BASE_URL=https://www.commcarehq.org
 ACE_HQ_DOMAIN=
