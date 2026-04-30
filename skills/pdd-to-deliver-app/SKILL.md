@@ -42,6 +42,17 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    - List the required Connectify fields (Deliver Unit, Entity ID)
    - Reference the relevant PDD section (Evidence Model, Output
      Specification, etc.)
+   - **Warn the architect about Nova's `add_fields` partial-persistence
+     quirk** — a single `add_fields` call with N items often persists
+     only the first; this is more pronounced for forms with many fields
+     (the 19-field turmeric Deliver form needed 5 `add_fields` calls
+     to land all questions). Suggested phrasing in the brief: *"After
+     each `add_fields` call, immediately `validate_app` or `get_form`.
+     If the persisted question count is short (Nova's known partial-
+     persistence quirk), re-issue `add_fields` with the remaining
+     items until counts match. For forms with >10 fields, plan on
+     2–5 `add_fields` invocations per form."* See
+     `docs/learnings/2026-04-29-nova-connect-marker-bugs.md` § Bug 3.
 
 4. **Invoke `/nova:autobuild "<brief>"`.** Capture from the response:
    - `app_id` — durable Nova handle, written to the summary as

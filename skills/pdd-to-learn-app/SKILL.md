@@ -34,6 +34,16 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    - Describe each module / form, in order
    - List the required Connectify fields (Learn Module, Assessment Score)
    - Reference the relevant PDD section when it shapes Nova's choices
+   - **Warn the architect about Nova's `add_fields` partial-persistence
+     quirk** — a single `add_fields` call with N items often persists
+     only the first; the architect should call `validate_app` or
+     `get_form` immediately after each `add_fields` and re-issue with
+     the remaining fields if `questions_count` is short. Suggested
+     phrasing in the brief: *"After each `add_fields` call, immediately
+     `validate_app` or `get_form`. If the persisted question count is
+     short (Nova's known partial-persistence quirk), re-issue
+     `add_fields` with the remaining items until counts match."* See
+     `docs/learnings/2026-04-29-nova-connect-marker-bugs.md` § Bug 3.
 
 4. **Invoke `/nova:autobuild "<brief>"`.** This is a one-shot autonomous
    build — Nova will not ask clarifying questions. Capture from the
