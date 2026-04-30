@@ -6,7 +6,7 @@ export interface CapabilityRoute {
 }
 
 /**
- * The 20 atoms exposed by `ace-connect`.
+ * The 21 atoms exposed by `ace-connect`.
  *
  * History:
  * - 0.8.0 shipped 14 atoms (Programs CRUD, Opportunities CRUD, activate,
@@ -27,7 +27,7 @@ export interface CapabilityRoute {
  * 'PLAYWRIGHT' to 'REST' one line at a time.
  */
 export type Capability =
-  // Authoring (10)
+  // Authoring (11)
   | 'create_program'
   | 'update_program'
   | 'create_opportunity'
@@ -35,6 +35,7 @@ export type Capability =
   | 'register_hq_api_key'
   | 'set_verification_flags'
   | 'create_payment_unit'
+  | 'finalize_opportunity'
   | 'activate_opportunity'
   | 'send_llo_invite'
   | 'send_flw_invite'
@@ -59,6 +60,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   register_hq_api_key:      { backend: 'PLAYWRIGHT', restTarget: 'POST /api/hq-api-keys/' },
   set_verification_flags:   { backend: 'PLAYWRIGHT', restTarget: 'PUT /api/opportunities/{id}/verification-flags/' },
   create_payment_unit:      { backend: 'PLAYWRIGHT', restTarget: 'POST /api/opportunities/{id}/payment-units/' },
+  finalize_opportunity:     { backend: 'PLAYWRIGHT', restTarget: 'POST /api/opportunities/{id}/finalize/' },
   activate_opportunity:     { backend: 'PLAYWRIGHT', restTarget: 'POST /api/opportunities/{id}/activate/' },
   send_llo_invite:          { backend: 'PLAYWRIGHT', restTarget: 'POST /api/programs/{id}/invites/' },
   send_flw_invite:          { backend: 'PLAYWRIGHT', restTarget: 'POST /api/opportunities/{id}/user-invites/' },

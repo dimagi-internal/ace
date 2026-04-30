@@ -5,6 +5,63 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.38 — 2026-04-30
+
+**Closes the FLW-invite + claim-flow loop end-to-end. New
+`connect_finalize_opportunity` atom + fully-calibrated
+`connect-claim-opp.yaml`.**
+
+The 21st `ace-connect` atom: finalize an opportunity by setting
+`start_date`, `end_date`, and `max_users`. The form computes
+`total_budget = max_users × Σ(payment_unit.amount × max_total)` and
+persists it server-side. After finalize, `is_setup_complete` returns
+True and `connect_send_flw_invite` can finally land an invite.
+
+**Live success against the existing `249ad8fe…` turmeric opp**:
+finalize → 302; FLW invite → 302 ("queued"); CommCare AVD opp list
+populated within seconds; "View Opportunity" → opp-detail screen
+captured live; "Start" button (`btn_start`) confirmed as the
+accept-invite primitive. The whole `connect-claim-opp.yaml` recipe
+is now calibrated against real selectors with no REPLACE_*
+placeholders.
+
+### Added
+
+- `connect_finalize_opportunity` atom (`mcp/connect/`):
+  - `capability-map.ts` — atom count 20 → 21
+  - `client.ts` — `finalizeOpportunity` interface method
+  - `backends/composite.ts` — Playwright routing
+  - `backends/playwright.ts` — POSTs to `/finalize/`. Reads existing
+    payment units to compute `total_budget` (the form's
+    `total_budget` field is rendered readonly + computed by client-
+    side JS; we mirror that JS calculation server-side so the form
+    persists a non-zero value rather than the falsy 0 that trips
+    `is_setup_complete`)
+  - `connect-server.ts` — `connect_finalize_opportunity` MCP tool
+    with zod date-format validation
+
+### Changed
+
+- `mcp/mobile/recipes/static/connect-claim-opp.yaml` — second half
+  fully calibrated. `accept_invite_button` →
+  `org.commcare.dalvik:id/btn_start`. `commcare_handoff_or_learn_root`
+  → `org.commcare.dalvik:id/tv_learn_modules_list`. Card on opp list
+  is tapped via the `btn_view_opportunity` button (cards aren't
+  directly tappable — that was the wrong assumption in the original
+  scaffold). No REPLACE_* placeholders remain in the recipe.
+- `skills/connect-opp-setup/SKILL.md` Step 8 — split into
+  Step 8a (`connect_finalize_opportunity`) and Step 8b
+  (`connect_send_flw_invite`). Documents the
+  `max_users × Σ(amount × max_total)` budget computation and the
+  `max_daily` requirement on the PaymentUnit.
+- `playbook/integrations/connect-api.md` — Lifecycle section bumped
+  from 1 to 2 atoms.
+
+### Test counts
+
+42 connect unit tests pass (atom count test bumped 20 → 21; same
+count of behavioural tests).
+
 ## 0.10.36 — 2026-04-30
 
 **Form-error parser: support crispy-tailwind `<p id="error_N_id_FIELD">`

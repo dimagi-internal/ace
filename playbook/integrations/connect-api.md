@@ -43,10 +43,11 @@ backend that drives `connect.dimagi.com` through an authenticated session
 | `connect_list_opportunities` | `connect-opp-setup` (idempotency check) |
 | `connect_get_opportunity` | `connect-opp-setup`, `llo-launch` |
 
-### Lifecycle (1)
+### Lifecycle (2)
 
 | Atom | Used by |
 |---|---|
+| `connect_finalize_opportunity` | `connect-opp-setup` Step 8a (sets `start_date`, `end_date`, `max_users`; server auto-computes `total_budget`. Required before `is_setup_complete` returns True, which is required before FLW invites can be sent.) |
 | `connect_activate_opportunity` | `llo-launch` |
 
 ### Invites (3)

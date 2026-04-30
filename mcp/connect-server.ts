@@ -280,6 +280,17 @@ server.tool('connect_list_payment_units',
   async (args) => runAtom(async () => (await client()).listPaymentUnits(args))
 );
 
+server.tool('connect_finalize_opportunity',
+  {
+    organization_slug: z.string(),
+    opportunity_id: z.string(),
+    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    max_users: z.number().int().min(1),
+  },
+  async (args) => runAtom(async () => (await client()).finalizeOpportunity(args))
+);
+
 server.tool('connect_activate_opportunity',
   { organization_slug: z.string(), opportunity_id: z.string() },
   async (args) => runAtom(async () => (await client()).activateOpportunity(args))

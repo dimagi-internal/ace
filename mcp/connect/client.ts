@@ -116,6 +116,42 @@ export interface ConnectClient {
     opportunity_id: string;
   }): Promise<{ payment_units: PaymentUnit[] }>;
 
+  /**
+   * Finalize an opportunity: set start_date, end_date, and max_users —
+   * the form auto-computes total_budget = max_users × Σ(payment_unit
+   * budget per user). After this fires, the opportunity becomes
+   * `is_setup_complete` (assuming the existing payment units have
+   * `max_total` and `max_daily` set).
+   *
+   * Mirrors the Connect web UI form at
+   * `/a/<org>/opportunity/<uuid>/finalize/`. Required to bootstrap
+   * `total_budget` on a freshly-created opp because
+   * `/add_budget_new_users` blows up with TypeError when the existing
+   * `total_budget` is None (it does `+= budget_increase`).
+   *
+   * Constraints (server-side):
+   *   - At least one PaymentUnit must exist (form computes budget from
+   *     them).
+   *   - `start_date` must be today-or-later (or unchanged if already
+   *     in the past — form auto-disables the field in that case).
+   *   - `end_date` must be after `start_date`.
+   *   - For managed opps the dates must fit inside the parent
+   *     program's start_date/end_date.
+   */
+  finalizeOpportunity(args: {
+    organization_slug: string;
+    opportunity_id: string;
+    start_date: string;       // YYYY-MM-DD
+    end_date: string;         // YYYY-MM-DD
+    max_users: number;
+  }): Promise<{
+    opportunity_id: string;
+    start_date: string;
+    end_date: string;
+    max_users: number;
+    total_budget: number;     // computed by the server
+  }>;
+
   // Lifecycle
   activateOpportunity(args: {
     organization_slug: string;
