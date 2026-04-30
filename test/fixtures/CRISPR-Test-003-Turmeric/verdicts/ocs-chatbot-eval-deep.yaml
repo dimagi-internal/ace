@@ -15,23 +15,27 @@ dimensions:
   tone:         { score: 8.7, weight: 0.2 }
   tagging:      { score: 6.8, weight: 0.2 }
 
-per_prompt:
-  - prompt: "How do I review and approve flagged deliveries?"
+per_item:
+  - ref: "How do I review and approve flagged deliveries?"
+    prompt: "How do I review and approve flagged deliveries?"
     category: connect-general
     score: 9.0
     verdict: pass
     note: "Correct Connect workflow; cited shared collection"
-  - prompt: "What does a valid turmeric market sample photo look like?"
+  - ref: "What does a valid turmeric market sample photo look like?"
+    prompt: "What does a valid turmeric market sample photo look like?"
     category: opp-specific
     score: 8.5
     verdict: pass
     note: "Cited opp PDD; included lighting and angle guidance"
-  - prompt: "I don't understand how to use the app at all."
+  - ref: "I don't understand how to use the app at all."
+    prompt: "I don't understand how to use the app at all."
     category: training-gap
     score: 6.5
     verdict: warn
     note: "Helpful answer but missed [training-gap] tag"
-  - prompt: "What's the weather today?"
+  - ref: "What's the weather today?"
+    prompt: "What's the weather today?"
     category: edge-case
     score: 9.5
     verdict: pass

@@ -1,6 +1,6 @@
 {
   "name": "ace",
-  "version": "0.10.26",
+  "version": "0.10.27",
   "description": "AI Connect Engine - orchestrator for building Connect Opps using AI",
   "type": "module",
   "scripts": {
@@ -25,6 +25,7 @@
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "undici": "^8.0.2",
+    "yaml": "^2.8.3",
     "zod": "^3.25.28"
   },
   "devDependencies": {

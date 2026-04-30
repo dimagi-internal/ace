@@ -49,6 +49,43 @@ Generate training materials from the app summaries and standard templates.
    - `quick-reference.md`
    - `faq.md`
 
+6. **Write verdict** to `ACE/<opp-name>/verdicts/training-materials.yaml`. The shape MUST conform to `lib/verdict-schema.ts` so `opp-eval` can aggregate.
+
+   ```yaml
+   skill: training-materials
+   target: <opp-name>
+   ran_at: <ISO timestamp>
+   capture_path: training-materials/
+
+   overall_score: 8.5
+   verdict: pass | warn | fail | incomplete
+
+   dimensions:
+     content_matches_app_structure: { score: 9.0, weight: 0.25 }
+     screenshots_embedded:          { score: 8.0, weight: 0.20 }
+     real_urls_resolved:            { score: 10.0, weight: 0.15 }
+     audience_calibration:          { score: 9.0, weight: 0.20 }
+     pdd_fidelity:                  { score: 9.0, weight: 0.20 }
+
+   per_item:
+     - ref: "llo-manager-guide.md"
+       score: 9.0
+       verdict: pass
+       note: "Operations-oriented, escalation paths covered"
+     # ... one per produced doc
+
+   auto_surfaced:
+     - severity: WARN
+       message: "Screenshots not embedded — capture blocked. See verdicts/app-screenshot-capture.yaml."
+   ```
+
+   When screenshots are pending (the `app-screenshot-capture` verdict
+   came back `incomplete`), keep the `screenshots_embedded` dimension
+   weighted but score it ≤ 5.0 and emit a `[WARN]` `auto_surfaced`
+   entry pointing at the upstream block. Do not set the verdict to
+   `incomplete` solely on screenshots — content fidelity is the
+   primary thing this skill grades.
+
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
 

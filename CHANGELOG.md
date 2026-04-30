@@ -5,6 +5,84 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.27 — 2026-04-29
+
+**Producer-side verdict schema preventer.**
+
+Surfaced by the `turmeric` opp e2e: the 0.10.13 preventer caught drift
+in *eval-skill SKILL.md examples*, but actual verdict YAML files
+written by the producing skills drifted in three concrete ways:
+
+1. `app-screenshot-capture/SKILL.md` had no YAML example. The producer
+   invented `verdict: blocked` and `mode: blocked` — neither in the
+   schema enum.
+2. `training-materials/SKILL.md` didn't mention verdict-writing at all.
+   The producer wrote `scores:` instead of `dimensions:`, set
+   `mode: standard` (not in `quick|deep|monitor`), and dropped required
+   `weight:` fields.
+3. The `ocs-chatbot-eval` *spec* was clean, but the actual
+   `ocs-chatbot-eval-{quick,deep}.yaml` written on Drive omitted
+   `weight:` from every dimension.
+
+The 0.10.13 walker only sees doc examples. The *real* verdicts on Drive
+were never validated by anything outside `test/lib/verdict-schema.test.ts`.
+
+### Added
+
+- `lib/parse-verdict.ts` — `parseVerdictYaml(source)` parses YAML and
+  runs `validateVerdict()`. Returns structured `{ ok, errors, parsed,
+  parseError }`. Ready for `/ace:doctor verdicts <opp>` to consume
+  against live Drive folders.
+- `test/lib/real-verdict-validation.test.ts` — walks every
+  `test/fixtures/**/verdicts/*.yaml`, asserts each passes
+  `parseVerdictYaml`. Six unit tests of the parser itself: rejects
+  `verdict: blocked`, catches missing `weight:`, accepts numeric
+  `target:` and `null` dimension scores.
+- `yaml@^2.8.3` dep — needed to parse real verdict files.
+
+### Fixed (producer SKILL.md drift)
+
+- `skills/app-screenshot-capture/SKILL.md` — added a schema-conforming
+  verdict YAML example with both graded and `incomplete`-mode forms.
+  Documents canonical 4 dimensions (`coverage`, `execution`,
+  `artifact_quality`, `manifest_integrity`). Explicit prose:
+  *NEVER use `verdict: blocked` (off-schema)*.
+- `skills/training-materials/SKILL.md` — added a verdict YAML example
+  (had no verdict-write section). 5 canonical dimensions with weights
+  + an explicit screenshots-pending branch (when
+  `app-screenshot-capture` came back `incomplete`, this skill keeps
+  grading content fidelity rather than escalating).
+
+### Schema additions
+
+- `DimensionSchema.score` nullable. Matches `opp-eval`'s documented
+  partial-coverage intent. Per-skill rubrics never emit null — they
+  grade or set top-level `verdict: incomplete`.
+- `VerdictSchema.target` accepts `string | number`. Real targets are
+  often numeric IDs (experiment_id, opportunity_id, nova_app_id);
+  YAML parses unquoted integers as numbers.
+
+### Fixed (existing fixtures)
+
+- `test/fixtures/CRISPR-Test-003-Turmeric/verdicts/ocs-chatbot-eval-deep.yaml`
+  — migrated `per_prompt:` → `per_item:` (canonical since 0.4.3).
+
+### Test counts
+
+275 passing / 29 skipped. +8 verdict-validation tests + 2 schema tests
+for nullable/numeric cases.
+
+### Why this matters
+
+Class-level preventer at the *producer* boundary. Same shape as 0.10.13
+but covers actual files, not doc examples. The chain: schema ↔ docs ↔
+SKILL.md examples (0.10.13) ↔ real verdict files (0.10.27).
+
+### Known follow-up
+
+`/ace:doctor verdicts <opp>` doesn't exist yet. Plumbing is in place;
+adding the sub-command is the natural next class-level preventer release.
+
 ## 0.10.26 — 2026-04-29
 
 **Auto-run face-capture prep + recover from NotificationShade quirk during AVD boot.**
