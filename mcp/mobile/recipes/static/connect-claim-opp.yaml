@@ -43,13 +43,17 @@ appId: org.commcare.dalvik
 # without screen_first_start_main, so branch (a) above correctly skips.
 - assertVisible:
     id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+# Wait for the first opp card to render. We DON'T match on opp name text:
+# Round 5 (2026-04-30) surfaced that the on-device card text doesn't match
+# the bare opp slug (likely the program-with-date string). Phase 5 always
+# has exactly one claimed opp on this list, so waiting for the first
+# `btn_view_opportunity` to be visible is both sufficient and more durable
+# across naming changes. Tapping that button advances to opp detail.
 - extendedWaitUntil:
     visible:
-      text: ${OPP_NAME}
+      id: "org.commcare.dalvik:id/btn_view_opportunity"
     timeout: 15000
 - takeScreenshot: "claim-opp-list"
-# The opp card on the list shows a "View Opportunity" button; tap it
-# to navigate to the detail screen. Card itself isn't directly tappable.
 - tapOn:
     id: "org.commcare.dalvik:id/btn_view_opportunity"
 - extendedWaitUntil:
