@@ -144,7 +144,7 @@ selectors:
   opp-detail-start:
     type: id
     value: "org.commcare.dalvik:id/btn_start"
-    purpose: "Pre-claim 'Start' button on the opp-detail page. CONFIRMED 2026-04-30 against ACE_Pixel_API_34_PS turmeric opp: button text is just 'Start' (not 'Start Learning'). This claims the opp; afterward the surface transitions to the post-claim opp-detail with Start Learning / Start Delivering. Note: btn_start is reused on multiple surfaces (Learn module list, Deliver) — contextually disambiguated by which screen the recipe is on."
+    purpose: "Pre-claim 'Start' button on the opp-detail page. CONFIRMED 2026-04-30 against ACE_Pixel_API_34_PS turmeric opp: button text is just 'Start' (not 'Start Learning'). RE-CONFIRMED 2026-04-30 round 4: tap is REGISTERED by Maestro (status pass) but NO surface transition occurs — same blocker as WARN-FLW-START-LEARNING-RETRY-NEEDED. Multiple consecutive taps + sync produce no toast, no snackbar, no screen change. The btn_start tap silently no-ops at the FLW-client layer. This is NOT a recipe-calibration issue; needs CommCare-client-side investigation (logs, sync state, Learn-app materialization). Recipe layer is unblocked once this is fixed."
 
   opp-learn-modules-list:
     type: id

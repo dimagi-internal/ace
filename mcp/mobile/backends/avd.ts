@@ -29,7 +29,7 @@ export interface ShellResult {
   exitCode: number;
 }
 
-export type ShellFn = (cmd: string, args: string[], opts?: { timeoutMs?: number }) => Promise<ShellResult>;
+export type ShellFn = (cmd: string, args: string[], opts?: { timeoutMs?: number; cwd?: string }) => Promise<ShellResult>;
 
 /**
  * Resolve a `JAVA_HOME` for the current platform if the user hasn't already
@@ -110,7 +110,7 @@ function shellEnv(): NodeJS.ProcessEnv {
 
 export const defaultShell: ShellFn = (cmd, args, opts = {}) =>
   new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: shellEnv() });
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: shellEnv(), cwd: opts.cwd });
     let stdout = '', stderr = '';
     child.stdout.on('data', (d) => (stdout += d.toString()));
     child.stderr.on('data', (d) => (stderr += d.toString()));
