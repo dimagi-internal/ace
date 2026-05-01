@@ -1,18 +1,19 @@
 ---
-description: Install plugin dependencies, inject .env from 1Password, verify with doctor, and optionally register auto-update
+description: Install plugin deps, fetch GWS service-account key + .env from 1Password, verify with doctor
 argument-hint: [--auto-update] [--force-install] [--force-env] [--skip-env] [--skip-doctor]
 allowed-tools: [Bash, Read]
 ---
 
 # /ace:setup
 
-One-shot installer for the ACE plugin. Drives:
+One-shot installer for the ACE plugin. Order is "cheap pre-flight checks first, slow state changes after, doctor last" so a missing 1Password signin fails in <1s instead of 60s. Drives:
 
-1. `npm install` at the plugin root
-2. Verifies the Google service-account key at `$CLAUDE_PLUGIN_DATA/gws-sa-key.json`
-3. **Injects `.env` from 1Password** (vault `AI-Agents`) via `op inject`, skipping when the existing `.env` already covers every key in `.env.tpl`
-4. Optionally registers a `SessionStart` hook that runs `bin/ace-update-check` so ACE auto-updates on every new Claude Code session (`--auto-update`)
-5. Runs `bin/ace-doctor` and surfaces remaining issues (Mobile, OCS, Connect, Drive)
+1. Verify Node/npm, then **1Password CLI is installed + authenticated (FAST FAIL)**
+2. **Fetches the Google service-account key from 1Password** (Document `ACE - Google Service Account` in vault `AI-Agents` by default; overridable via `ACE_GWS_KEY_OP_DOC`) → `$CLAUDE_PLUGIN_DATA/gws-sa-key.json`
+3. `npm install` at the plugin root (skip if `node_modules` + `tsx` present)
+4. **Injects `.env` from 1Password** (`op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env`), skipping when the existing `.env` covers every key
+5. Optionally registers a `SessionStart` hook that runs `bin/ace-update-check` so ACE auto-updates (`--auto-update`)
+6. Runs `bin/ace-doctor` and surfaces remaining issues (Mobile, OCS, Connect, Drive)
 
 **This is a rigid, scripted skill.** Run the bash block EXACTLY as written. Do not improvise. The real logic lives in `bin/ace-setup`; this launcher just locates and execs the script.
 
@@ -26,14 +27,12 @@ One-shot installer for the ACE plugin. Drives:
 
 Forward `$ARGUMENTS` to the script unchanged.
 
-## 1Password prerequisite
+## 1Password auth
 
-Before running this command:
+The script handles this — if you're not signed in, `/ace:setup` fails fast with the exact `! op signin --account dimagi.1password.com` command to type in the chat. Two supported auth paths:
 
-- **Personal sign-in (interactive):** `op signin --account dimagi.1password.com`
-- **Service account (non-interactive):** `export OP_SERVICE_ACCOUNT_TOKEN=ops_...` — the SA must have read access on the items referenced under `op://AI-Agents/...` in `.env.tpl`. Service-account mode skips the `--account` flag automatically.
-
-If neither auth path is set up, `/ace:setup` fails with the exact command to run.
+- **Interactive personal signin:** type `! op signin --account dimagi.1password.com` in the chat (the `!` prefix runs in this session). On Mac, alternatively enable 1Password.app → Settings → Developer → CLI integration for biometric unlock.
+- **Service account (non-interactive):** add `export OP_SERVICE_ACCOUNT_TOKEN=ops_...` to your shell rc and reopen the Claude Code session. The SA must have read on every item in `.env.tpl` plus the GWS-key Document.
 
 ## Step 1: Locate bin/ace-setup and run it
 
@@ -89,7 +88,10 @@ Read the script output and tell the user:
    - Otherwise → "Setup ran with N warnings — see below."
 2. For each `FAIL`, quote the line verbatim and the `fix:` hint immediately after it.
 3. For each `WARN`, list briefly. These are non-blocking but worth resolving.
-4. If everything passes:
+4. **Special-case the most common first-run FAILs** with explicit hand-holding:
+   - `FAIL op: not authenticated to 1Password` → tell the user verbatim: "Type `! op signin --account dimagi.1password.com` now (the `!` prefix runs it in this session). After it succeeds, re-run `/ace:setup`."
+   - `FAIL gws_key: missing and could not auto-fetch from 1Password` → if the script printed candidate Document items, tell the user: "Pick the right item from the candidate list above and re-run with `ACE_GWS_KEY_OP_DOC='<exact name>' /ace:setup` — or if no candidate looks right, ask Jon for the SA key JSON and drop it at the path the script printed."
+5. If everything passes:
    - **If mobile is needed (Phase 5 `qa-and-training`):** suggest `/ace:mobile-bootstrap` next.
    - **Otherwise:** suggest `/ace:status` to view opportunities, or `/ace:run --dry-run` for a safe end-to-end smoke.
 
