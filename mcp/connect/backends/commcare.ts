@@ -1,4 +1,5 @@
 import type { APIRequestContext } from 'playwright';
+import { unzipSync, strFromU8 } from 'fflate';
 
 /**
  * CommCare HQ atoms — release apps that Nova uploaded as drafts.
@@ -186,20 +187,14 @@ export class CommCareBackend {
     if (size > 25 * 1024 * 1024) {
       return { status, size_bytes: size };
     }
-    // Marker grep operates on the zip's central directory + file contents.
-    // We use a permissive regex that catches both default-namespace
-    // (`<deliver xmlns="http://commcareconnect.com/data/v1/learn">`) and
-    // prefixed (`<learn:deliver>`) forms. CCZ is a zip; we don't unzip
-    // here (no unzip in MCP runtime) — instead we scan the raw bytes,
-    // which works because the form XML inside is plain text.
-    const text = buf.toString('utf8');
-    const count = (re: RegExp) => (text.match(re) || []).length;
-    const connect_markers = {
-      deliver: count(/<(?:learn:)?deliver\b[^>]*xmlns="http:\/\/commcareconnect\.com[^"]*"|<learn:deliver\b/g),
-      module: count(/<(?:learn:)?module\b[^>]*xmlns="http:\/\/commcareconnect\.com[^"]*"|<learn:module\b/g),
-      task: count(/<(?:learn:)?task\b[^>]*xmlns="http:\/\/commcareconnect\.com[^"]*"|<learn:task\b/g),
-      assessment: count(/<(?:learn:)?assessment\b[^>]*xmlns="http:\/\/commcareconnect\.com[^"]*"|<learn:assessment\b/g),
-    };
+    // CCZ is a ZIP whose entries are typically DEFLATE-compressed; the
+    // form XML is NOT readable from the raw zip bytes. Inflate in memory
+    // (fflate.unzipSync, no temp files) and grep the decompressed XML.
+    // Pre-0.10.56 this scanned the raw zip bytes and silently returned
+    // {deliver:0,module:0,task:0,assessment:0} for every released app —
+    // see commcare-setup-summary for the leep-paint-collection 2026-05-01
+    // failure mode and the manual-decode triangulation.
+    const connect_markers = computeConnectMarkers(buf);
     return {
       status,
       size_bytes: size,
@@ -213,4 +208,51 @@ export class CommCareBackend {
     const cookie = state.cookies.find((c) => c.name === 'csrftoken' && c.domain.includes('commcarehq'));
     return cookie?.value;
   }
+}
+
+/**
+ * Count Connect-namespace marker elements inside a CCZ buffer.
+ *
+ * Scans every `*.xml` entry in the zip after inflating it in memory and
+ * matches both the default-namespace shape (Nova's autobuild output —
+ * `<deliver xmlns="http://commcareconnect.com/data/v1/learn">`) and the
+ * legacy `learn:`-prefixed shape. Files that don't decompress (corrupt
+ * entries, unsupported compression methods) are skipped silently rather
+ * than failing the whole call — a partial count is more useful than no
+ * count, and the per-form re-fetch in `app-connect-coverage` Step 4 is
+ * the actual gate.
+ *
+ * Exported for unit tests.
+ */
+export function computeConnectMarkers(cczBuf: Buffer): {
+  deliver: number;
+  module: number;
+  task: number;
+  assessment: number;
+} {
+  let combined = '';
+  try {
+    const entries = unzipSync(new Uint8Array(cczBuf), {
+      filter: (file) => file.name.endsWith('.xml'),
+    });
+    for (const name of Object.keys(entries)) {
+      try {
+        combined += strFromU8(entries[name]) + '\n';
+      } catch {
+        // Skip non-UTF8 / binary entries that slipped past the .xml filter.
+      }
+    }
+  } catch {
+    // If the buffer isn't a valid zip we return all zeros — the caller
+    // already has the size and status, and a non-CCZ payload is the
+    // diagnostic on its own.
+    return { deliver: 0, module: 0, task: 0, assessment: 0 };
+  }
+  const count = (re: RegExp) => (combined.match(re) || []).length;
+  return {
+    deliver: count(/<(?:learn:)?deliver\b[^>]*xmlns="http:\/\/commcareconnect\.com[^"]*"|<learn:deliver\b/g),
+    module: count(/<(?:learn:)?module\b[^>]*xmlns="http:\/\/commcareconnect\.com[^"]*"|<learn:module\b/g),
+    task: count(/<(?:learn:)?task\b[^>]*xmlns="http:\/\/commcareconnect\.com[^"]*"|<learn:task\b/g),
+    assessment: count(/<(?:learn:)?assessment\b[^>]*xmlns="http:\/\/commcareconnect\.com[^"]*"|<learn:assessment\b/g),
+  };
 }
