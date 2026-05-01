@@ -2,7 +2,7 @@ import { chromium, type BrowserContext, type Browser } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { SessionExpiredError } from '../errors.js';
+import { SessionExpiredError, ConnectLoginFailedError } from '../errors.js';
 import { hqOAuthLogin } from './hq-oauth-login.js';
 
 export interface SessionOptions {
@@ -55,18 +55,22 @@ export class PlaywrightSession {
     const authed = probe.status() === 302;
 
     if (!authed) {
-      if (this.opts.hqUsername && this.opts.hqPassword) {
-        await hqOAuthLogin({
-          context: this.context,
-          baseUrl: this.opts.baseUrl,
-          hqUsername: this.opts.hqUsername,
-          hqPassword: this.opts.hqPassword,
-        });
-        // Verify the OAuth flow actually established an authed session
-        const retry = await this.context.request.get('/accounts/login/', { maxRedirects: 0 });
-        if (retry.status() !== 302) throw new SessionExpiredError();
-      } else {
+      if (!this.opts.hqUsername || !this.opts.hqPassword) {
         throw new SessionExpiredError();
+      }
+      await hqOAuthLogin({
+        context: this.context,
+        baseUrl: this.opts.baseUrl,
+        hqUsername: this.opts.hqUsername,
+        hqPassword: this.opts.hqPassword,
+      });
+      // Verify the OAuth flow actually established an authed session.
+      // hqOAuthLogin throws ConnectLoginFailedError on detected creds/consent
+      // failures; this catches the rarer "OAuth completed but session didn't
+      // stick" case.
+      const retry = await this.context.request.get('/accounts/login/', { maxRedirects: 0 });
+      if (retry.status() !== 302) {
+        throw new ConnectLoginFailedError(this.opts.hqUsername, 'unknown');
       }
     }
 

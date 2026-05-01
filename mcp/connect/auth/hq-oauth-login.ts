@@ -1,4 +1,5 @@
 import type { BrowserContext } from 'playwright';
+import { ConnectLoginFailedError } from '../errors.js';
 
 export interface HqOAuthLoginOptions {
   context: BrowserContext;
@@ -55,22 +56,38 @@ export async function hqOAuthLogin(opts: HqOAuthLoginOptions): Promise<void> {
     // Wait for either: back on Connect (silent re-grant), OR the OAuth
     // authorize prompt on HQ. The match below uses URL.hostname to avoid
     // false-positives from "connect.dimagi.com" appearing in redirect_uri
-    // querystrings on the HQ side.
-    await Promise.all([
-      page.waitForURL((u) => isHostConnect(new URL(u)) || isHqAuthorize(new URL(u)), { timeout: 30_000 }),
-      signIn.click(),
-    ]);
+    // querystrings on the HQ side. If the URL never leaves the HQ login form,
+    // HQ rejected the creds — distinguish that from generic timeout.
+    try {
+      await Promise.all([
+        page.waitForURL((u) => isHostConnect(new URL(u)) || isHqAuthorize(new URL(u)), { timeout: 30_000 }),
+        signIn.click(),
+      ]);
+    } catch (err) {
+      const here = new URL(page.url());
+      if (here.hostname === 'www.commcarehq.org' && here.pathname.startsWith('/accounts/login')) {
+        throw new ConnectLoginFailedError(opts.hqUsername, 'hq-creds');
+      }
+      throw err;
+    }
 
     if (isHqAuthorize(new URL(page.url()))) {
       const approve = page.locator('input[name="allow"], button:has-text("Authorize"), button:has-text("Allow")').first();
-      await Promise.all([
-        page.waitForURL((u) => isHostConnect(new URL(u)), { timeout: 15_000 }),
-        approve.click(),
-      ]);
+      try {
+        await Promise.all([
+          page.waitForURL((u) => isHostConnect(new URL(u)), { timeout: 15_000 }),
+          approve.click(),
+        ]);
+      } catch (err) {
+        if (isHqAuthorize(new URL(page.url()))) {
+          throw new ConnectLoginFailedError(opts.hqUsername, 'oauth-consent');
+        }
+        throw err;
+      }
     }
 
     if (!isHostConnect(new URL(page.url()))) {
-      throw new Error(`HQ-OAuth login did not return to Connect; ended at ${page.url()}`);
+      throw new ConnectLoginFailedError(opts.hqUsername, 'unknown');
     }
   } finally {
     await page.close();

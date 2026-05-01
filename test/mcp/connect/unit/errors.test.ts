@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ConnectError,
   SessionExpiredError,
+  ConnectLoginFailedError,
   CsrfTokenMissingError,
   HttpError,
   ConnectValidationError,
@@ -9,11 +10,28 @@ import {
 } from '../../../../mcp/connect/errors.js';
 
 describe('connect errors', () => {
-  it('SessionExpiredError mentions the connect-login command', () => {
+  it('SessionExpiredError points at the auto-login env vars and the manual fallback', () => {
     const err = new SessionExpiredError();
     expect(err).toBeInstanceOf(ConnectError);
     expect(err.retryable).toBe(false);
-    expect(err.message).toMatch(/connect-login/);
+    expect(err.message).toMatch(/ACE_HQ_USERNAME/);
+    expect(err.message).toMatch(/ACE_HQ_PASSWORD/);
+    expect(err.message).toMatch(/ace:connect-login/);
+  });
+
+  it('ConnectLoginFailedError carries the username and stage', () => {
+    const err = new ConnectLoginFailedError('ace@dimagi-ai.com', 'hq-creds');
+    expect(err).toBeInstanceOf(ConnectError);
+    expect(err.username).toBe('ace@dimagi-ai.com');
+    expect(err.stage).toBe('hq-creds');
+    expect(err.retryable).toBe(false);
+    expect(err.message).toContain('hq-creds');
+    expect(err.message).toContain('ace@dimagi-ai.com');
+  });
+
+  it('ConnectLoginFailedError defaults stage to "unknown"', () => {
+    const err = new ConnectLoginFailedError('x@y.z');
+    expect(err.stage).toBe('unknown');
   });
 
   it('CsrfTokenMissingError is retryable', () => {
