@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   OcsError,
   SessionExpiredError,
+  OcsLoginFailedError,
   CsrfTokenMissingError,
   PipelineShapeError,
   PipelineValidationError,
@@ -31,9 +32,19 @@ describe('OcsError hierarchy', () => {
     expect(e.message).toContain('Expected 1 node, found 3');
   });
 
-  it('SessionExpiredError suggests the login command', () => {
+  it('SessionExpiredError points at the auto-login env vars and the manual fallback', () => {
     const e = new SessionExpiredError();
-    expect(e.message).toMatch(/ace ocs login/);
+    expect(e.message).toMatch(/OCS_USERNAME/);
+    expect(e.message).toMatch(/OCS_PASSWORD/);
+    expect(e.message).toMatch(/ace:ocs-login/);
+  });
+
+  it('OcsLoginFailedError names the username and is not retryable', () => {
+    const e = new OcsLoginFailedError('ace@dimagi-ai.com');
+    expect(e).toBeInstanceOf(OcsError);
+    expect(e.username).toBe('ace@dimagi-ai.com');
+    expect(e.message).toContain('ace@dimagi-ai.com');
+    expect(e.retryable).toBe(false);
   });
 
   it('CollectionIndexingTimeoutError names the collection', () => {

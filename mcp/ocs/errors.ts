@@ -8,7 +8,19 @@ export class OcsError extends Error {
 
 export class SessionExpiredError extends OcsError {
   constructor() {
-    super('OCS session expired. Run `ace ocs login` to re-authenticate.');
+    super(
+      'OCS session expired and OCS_USERNAME/OCS_PASSWORD are not set. ' +
+        'Configure them via /ace:setup, or run /ace:ocs-login for SSO/MFA accounts.',
+    );
+  }
+}
+
+export class OcsLoginFailedError extends OcsError {
+  constructor(public username: string) {
+    super(
+      `OCS auto-login failed for ${username}. ` +
+        'Verify OCS_USERNAME / OCS_PASSWORD in 1Password, or run /ace:ocs-login if the account requires SSO/MFA.',
+    );
   }
 }
 

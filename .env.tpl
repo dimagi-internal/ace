@@ -57,8 +57,8 @@ ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
 # expected domain before pushing apps.
 #
 # Sourced from 1Password — add a `domain` field to the
-# `op://AI-Agents/ACE - CommCareHQ` item with the value for your
-# deployment (e.g. `connect-ace-prod` for production). For a
+# `ACE - CommCareHQ` item in the AI-Agents vault with the value for
+# your deployment (e.g. `connect-ace-prod` for production). For a
 # staging-domain dev workflow, point this at a different 1Password
 # field or override the resolved `.env` after `op inject`.
 # `bin/ace-doctor` warns when ACE_HQ_DOMAIN is unset or
