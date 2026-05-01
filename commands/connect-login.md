@@ -1,22 +1,26 @@
 ---
 name: connect-login
 description: >
-  Interactive login flow for Connect (connect.dimagi.com). Opens a headed
+  Manual fallback login for Connect (connect.dimagi.com). Opens a headed
   Playwright browser so the user can sign in via OAuth-with-CommCareHQ
   (covers MFA / SSO edge cases), then saves the resulting session state to
-  ~/.ace/connect-session.json for headless reuse by ace-connect MCP tools.
+  ~/.ace/connect-session.json. The Playwright backend auto-logs-in via
+  ACE_HQ_USERNAME/ACE_HQ_PASSWORD by default — only use this command when
+  those credentials are unavailable or the account requires interactive auth.
 ---
 
 # /ace:connect-login
 
-Use this command to establish or refresh a Connect session for the Playwright backend used by `ace-connect` MCP tools.
+Manual fallback for Connect login. **You usually do not need to run this** — the Playwright backend auto-logs-in via the HQ-OAuth flow using `ACE_HQ_USERNAME` / `ACE_HQ_PASSWORD` from `.env` whenever the saved session is missing or expired (see `mcp/connect/auth/playwright-session.ts` and `mcp/connect/auth/hq-oauth-login.ts`).
 
 ## When to run
 
-- First time setting up `ace-connect` on a machine
-- After seeing `SessionExpiredError` from any ACE skill that touches Connect
-- After a CommCare HQ password / MFA change for `ace@dimagi-ai.com`
-- If automated HQ-OAuth login (driven from `.env` creds) ever fails
+- The HQ account requires SSO / MFA (auto-login can't drive an interactive challenge).
+- HQ rejects the auto-login credentials (you'll see `ConnectLoginFailedError` with `stage: "hq-creds"`); you want to verify by signing in manually.
+- The OAuth consent screen changed and the auto-login selectors broke (you'll see `ConnectLoginFailedError` with `stage: "oauth-consent"`).
+- You're forced through an interactive login by a security policy change.
+
+If you're hitting `SessionExpiredError`, first verify `ACE_HQ_USERNAME` and `ACE_HQ_PASSWORD` are set in `.env` — `/ace:doctor` reports `connect_session: not present (will auto-login from .env on first call)` when creds are present, in which case you don't need this command at all.
 
 ## What it does
 
