@@ -298,14 +298,10 @@ else
   warn "auto_update: hooks/hooks.json missing" "restore hooks/hooks.json at the plugin root"
 fi
 
-# --- Related repos (optional, soft warnings) ---
-if [ -d "$HOME/emdash-projects/ace-web" ] || [ -d "$HOME/ace-web" ]; then
-  pass "ace_web: local checkout detected"
-else
-  warn "ace_web: no local checkout of jjackson/ace-web found" "clone if you need the browser harness"
-fi
-
 # --- Sibling plugin installs (Phase 2 + Phase 3 dependencies) ---
+# (ace-web is a sibling repo for browser-harness work but is NOT a runtime
+# dependency of the plugin — intentionally not checked here. Sibling plugins
+# below ARE consumed by ACE skills, so they remain warned-on.)
 # Nova drives Phase 2 (commcare-setup): pdd-to-learn-app, pdd-to-deliver-app,
 # app-deploy. Without Nova installed, those skills produce stub artifacts.
 # connect-labs drives Phase 3 (connect-setup): connect-program-setup,

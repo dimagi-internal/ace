@@ -132,26 +132,26 @@ All three also auto-register via the `mcpServers` block in `.claude-plugin/plugi
 
 ## Git worktrees and merging to main
 
-This repo uses emdash which manages git worktrees. If you are in a worktree (check: `git rev-parse --git-dir` contains `/worktrees/`), then `main` is checked out in the main repo at `~/emdash-projects/ace/`. You CANNOT `git checkout main` from a worktree — it will fail.
+This repo uses emdash which manages git worktrees. If you are in a worktree (check: `git rev-parse --git-dir` contains `/worktrees/`), then `main` is checked out in the main repo at `~/emdash/repositories/ace/`. You CANNOT `git checkout main` from a worktree — it will fail.
 
 To merge to main:
 ```bash
-cd ~/emdash-projects/ace && git merge <branch-name> && git push
+cd ~/emdash/repositories/ace && git merge <branch-name> && git push
 ```
 
 If that fails with local changes, stash first:
 ```bash
-cd ~/emdash-projects/ace && git stash && git merge <branch-name> && git push
+cd ~/emdash/repositories/ace && git stash && git merge <branch-name> && git push
 ```
 
 If remote is ahead, pull first:
 ```bash
-cd ~/emdash-projects/ace && git pull --rebase && git push
+cd ~/emdash/repositories/ace && git pull --rebase && git push
 ```
 
 **Always verify the main checkout is on `main` before merging.** A leftover branch from a prior `/ship` can be checked out in the sibling repo; merging to that revives it on origin. Canonical safe form:
 ```bash
-cd ~/emdash-projects/ace && \
+cd ~/emdash/repositories/ace && \
   [ "$(git branch --show-current)" = "main" ] || git checkout main && \
   git pull --ff-only && git merge <branch> --no-ff && git push
 ```
@@ -169,7 +169,7 @@ cd ~/emdash-projects/ace && \
    ```bash
    # From a worktree:
    git add -A && git commit -m "feat/fix: description (0.9.5)"
-   cd ~/emdash-projects/ace && git merge <branch> && git push
+   cd ~/emdash/repositories/ace && git merge <branch> && git push
    ```
 4. **IMMEDIATELY after pushing**, run `/ace:update` in the current session. This is mandatory — it pulls from GitHub, creates a new cache dir, and updates `installed_plugins.json`. Without it, the current session runs stale code while other sessions get the new version on next start. Do NOT skip this step.
 
