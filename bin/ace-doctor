@@ -550,19 +550,33 @@ if [ -n "$ENV_FILE" ]; then
     fi
   fi
 
-  # OCS Playwright session — keyed by team slug. Required before any skill
-  # that hits OCS via the Playwright backend (most of Phase 4).
+  # OCS Playwright session — keyed by team slug. The Playwright backend
+  # auto-logs-in via OCS_USERNAME / OCS_PASSWORD when no saved session
+  # exists, so a missing file is fine as long as creds are configured.
+  # /ace:ocs-login is the manual fallback for SSO/MFA accounts.
   if [ -n "$OCS_TEAM" ]; then
     SESS="$HOME/.ace/ocs-session-$OCS_TEAM.json"
+    OCS_USER="$(get_env OCS_USERNAME)"
+    OCS_PASS="$(get_env OCS_PASSWORD)"
+    HAS_CREDS=0
+    [ -n "$OCS_USER" ] && [ -n "$OCS_PASS" ] && HAS_CREDS=1
     if [ -f "$SESS" ]; then
-      # freshness check: warn if > 30 days old (session cookies expire)
+      # freshness check: 30-day cookie lifetime
       if find "$SESS" -mtime +30 2>/dev/null | grep -q .; then
-        warn "ocs_session: $SESS is older than 30 days — may be expired" "/ace:ocs-login"
+        if [ "$HAS_CREDS" = "1" ]; then
+          pass "ocs_session: $SESS >30 days old — auto-login will refresh on next call"
+        else
+          warn "ocs_session: $SESS is older than 30 days — may be expired" "/ace:ocs-login"
+        fi
       else
         pass "ocs_session: $SESS present"
       fi
     else
-      warn "ocs_session: $SESS missing" "/ace:ocs-login"
+      if [ "$HAS_CREDS" = "1" ]; then
+        pass "ocs_session: not yet saved (auto-login on first call via OCS_USERNAME/OCS_PASSWORD)"
+      else
+        warn "ocs_session: $SESS missing and OCS_USERNAME/OCS_PASSWORD unset" "/ace:setup or /ace:ocs-login"
+      fi
     fi
   else
     # No team slug — can't check for a session file. Already warned on ocs_env.
