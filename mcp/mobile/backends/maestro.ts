@@ -43,12 +43,23 @@ export class MaestroBackend {
     screenshotDir: string,
   ): Promise<RecipeRunResult> {
     fs.mkdirSync(screenshotDir, { recursive: true });
+    // Maestro's `takeScreenshot: "name"` writes to `./name.png` in the
+    // process CWD, NOT to `--output` (which is for junit / debug-bundle
+    // reports, not PNGs). Setting cwd to screenshotDir is what makes
+    // `takeScreenshot: "connect-login-home"` land at
+    // `<screenshotDir>/connect-login-home.png`. Surfaced live in
+    // turmeric-20260429-2330 Phase 5 Step 2 round 4 (2026-04-30): every
+    // recipe reported `takeScreenshot ... COMPLETED` but screenshotDir
+    // ended up empty. The recipes were correct; the cwd was wrong.
     const args = ['test', '--no-ansi'];
     for (const [k, v] of Object.entries(envVars)) {
       args.push('-e', `${k}=${v}`);
     }
-    args.push('--output', screenshotDir, recipePath);
-    const r = await this.shell('maestro', args, { timeoutMs: 10 * 60 * 1000 });
+    // Resolve recipePath to absolute BEFORE the cwd-change; Maestro
+    // resolves it relative to the new cwd otherwise.
+    const absoluteRecipePath = path.isAbsolute(recipePath) ? recipePath : path.resolve(recipePath);
+    args.push('--output', screenshotDir, absoluteRecipePath);
+    const r = await this.shell('maestro', args, { timeoutMs: 10 * 60 * 1000, cwd: screenshotDir });
     const screenshots = this.collectScreenshots(screenshotDir);
     return {
       status: r.exitCode === 0 ? 'pass' : 'fail',

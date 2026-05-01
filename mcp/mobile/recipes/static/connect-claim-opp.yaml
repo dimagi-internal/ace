@@ -15,23 +15,32 @@
 # - The toolbar exposes `action_sync` (top-right) and `action_bell`.
 appId: org.commcare.dalvik
 ---
-- assertVisible:
-    id: "org.commcare.dalvik:id/screen_first_start_main"
-# Nav drawer 'Opportunities' item — text-based since multiple list_title
-# rows share the same resource-id.
-- tapOn:
-    text: "Opportunities"
-# Android system credential prompt (Unlock PersonalID). Skip if not
-# present.
+# Two valid starting surfaces after connect-login.yaml:
+#   (a) screen_first_start_main with nav drawer (cold-launch with prior session)
+#   (b) connect_fragment_jobs_list directly (warm post-login state)
+#
+# Branch (a): if first-start is visible, navigate via nav drawer + handle
+# the OS lockPassword unlock.
 - runFlow:
     when:
       visible:
-        id: "com.android.systemui:id/lockPassword"
+        id: "org.commcare.dalvik:id/screen_first_start_main"
     commands:
       - tapOn:
-          id: "com.android.systemui:id/lockPassword"
-      - inputText: ${PIN}
-      - pressKey: Enter
+          text: "Opportunities"
+      - runFlow:
+          when:
+            visible:
+              id: "com.android.systemui:id/lockPassword"
+          commands:
+            - tapOn:
+                id: "com.android.systemui:id/lockPassword"
+            - inputText: ${PIN}
+            - pressKey: Enter
+
+# Either branch lands us on the jobs list. CONFIRMED 2026-04-30 round 4:
+# post-connect-login.yaml lands directly on connect_fragment_jobs_list
+# without screen_first_start_main, so branch (a) above correctly skips.
 - assertVisible:
     id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
 - extendedWaitUntil:

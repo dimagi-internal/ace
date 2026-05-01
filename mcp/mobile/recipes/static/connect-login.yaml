@@ -80,60 +80,67 @@ appId: org.commcare.dalvik
       - takeScreenshot: "connect-login-already-signed-in"
       - stopApp
 
-# Phone-entry path
-- extendedWaitUntil:
-    visible:
-      id: "org.commcare.dalvik:id/connect_primary_phone_input"
-    timeout: 15000
-
-# Country code: tap, dismiss the GMS phone-hint sheet if it pops, tap again, type.
-- tapOn:
-    id: "org.commcare.dalvik:id/countryCode"
+# Phone-entry path — gated on the phone field being visible.
+#
+# An already-registered demo user who taps "GO TO CONNECT MENU" can skip
+# the phone-entry flow entirely and land straight on the OS BiometricPrompt
+# (PersonalID unlock). In that case `connect_primary_phone_input` never
+# appears and we want to fall through to the BiometricPrompt branch
+# below. Surfaced live in turmeric-20260429-2330 Step 2 retry round 3
+# (2026-04-30, 0.10.51 fix).
 - runFlow:
     when:
       visible:
-        id: "com.google.android.gms:id/cancel"
+        id: "org.commcare.dalvik:id/connect_primary_phone_input"
     commands:
+      # Country code: tap, dismiss GMS phone-hint sheet if it pops, tap again, type.
       - tapOn:
-          id: "com.google.android.gms:id/cancel"
-- tapOn:
-    id: "org.commcare.dalvik:id/countryCode"
-- eraseText: 10
-- inputText: ${COUNTRY_CODE}
-
-# Phone: same dance — sheet WILL appear on first focus.
-- tapOn:
-    id: "org.commcare.dalvik:id/connect_primary_phone_input"
-- runFlow:
-    when:
-      visible:
-        id: "com.google.android.gms:id/cancel"
-    commands:
+          id: "org.commcare.dalvik:id/countryCode"
+      - runFlow:
+          when:
+            visible:
+              id: "com.google.android.gms:id/cancel"
+          commands:
+            - tapOn:
+                id: "com.google.android.gms:id/cancel"
       - tapOn:
-          id: "com.google.android.gms:id/cancel"
-- tapOn:
-    id: "org.commcare.dalvik:id/connect_primary_phone_input"
-- eraseText: 15
-- inputText: ${PHONE_LOCAL}
+          id: "org.commcare.dalvik:id/countryCode"
+      - eraseText: 10
+      - inputText: ${COUNTRY_CODE}
 
-# Consent + Continue
-- tapOn:
-    id: "org.commcare.dalvik:id/connect_consent_check"
-- tapOn:
-    id: "org.commcare.dalvik:id/personalid_phone_continue_button"
-
-# Post-Continue:
-# - Demo-user (+7426): snackbar "I see you're a demo user, so we'll skip
-#   the OTP" with id `snackbar_action` / OK. Tap it.
-# - Real users: OTP screen would appear here. Out of scope for ACE; we
-#   deploy demo phones exclusively.
-- runFlow:
-    when:
-      visible:
-        id: "org.commcare.dalvik:id/snackbar_action"
-    commands:
+      # Phone: same dance — sheet WILL appear on first focus.
       - tapOn:
-          id: "org.commcare.dalvik:id/snackbar_action"
+          id: "org.commcare.dalvik:id/connect_primary_phone_input"
+      - runFlow:
+          when:
+            visible:
+              id: "com.google.android.gms:id/cancel"
+          commands:
+            - tapOn:
+                id: "com.google.android.gms:id/cancel"
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_primary_phone_input"
+      - eraseText: 15
+      - inputText: ${PHONE_LOCAL}
+
+      # Consent + Continue
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_consent_check"
+      - tapOn:
+          id: "org.commcare.dalvik:id/personalid_phone_continue_button"
+
+      # Post-Continue:
+      # - Demo-user (+7426): snackbar "I see you're a demo user, so we'll
+      #   skip the OTP" with id `snackbar_action` / OK. Tap it.
+      # - Real users: OTP screen would appear here. Out of scope for ACE;
+      #   we deploy demo phones exclusively.
+      - runFlow:
+          when:
+            visible:
+              id: "org.commcare.dalvik:id/snackbar_action"
+          commands:
+            - tapOn:
+                id: "org.commcare.dalvik:id/snackbar_action"
 
 # OS-level BiometricPrompt requesting the device PIN to unlock PersonalID.
 # This is the OS unlock surface (`com.android.systemui:id/lockPassword`),
