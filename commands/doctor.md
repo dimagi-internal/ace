@@ -31,7 +31,13 @@ fi
 if [ -z "$SCRIPT" ]; then
   REG="$HOME/.claude/plugins/installed_plugins.json"
   if [ -f "$REG" ]; then
-    INSTALL_PATH="$(node -e "try { const d=JSON.parse(require(\"fs\").readFileSync(\"$REG\",\"utf8\")); const e=d[\"ace@ace\"]; if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break;}}} else if(e&&e.installPath){console.log(e.installPath);} } catch(_) {}" 2>/dev/null)"
+    # Read installed_plugins.json. Claude Code 2.x writes a v2 schema with
+    # `{version:2, plugins:{<id>:[...]}}`; older versions wrote a flat
+    # `{<id>:{...}}` object. Handle both shapes so this command works on
+    # any reasonably current install. Reproduced as a bug on 2026-05-01:
+    # ace-web's container had v2 format and this script silently said
+    # "FAIL launcher" until the parser was widened.
+    INSTALL_PATH="$(node -e "try { const d=JSON.parse(require(\"fs\").readFileSync(\"$REG\",\"utf8\")); const e=d[\"ace@ace\"]||(d.plugins&&d.plugins[\"ace@ace\"]); if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break;}}} else if(e&&e.installPath){console.log(e.installPath);} } catch(_) {}" 2>/dev/null)"
     if [ -n "$INSTALL_PATH" ] && [ -x "$INSTALL_PATH/bin/ace-doctor" ]; then
       SCRIPT="$INSTALL_PATH/bin/ace-doctor"
     fi
