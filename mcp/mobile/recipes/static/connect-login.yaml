@@ -45,12 +45,20 @@ appId: org.commcare.dalvik
       - tapOn:
           id: "org.commcare.dalvik:id/connect_login_button"
 
-# Branch (b) post-install: open nav drawer + tap sign-in. Only fires when
-# the first-start `connect_login_button` was NOT visible.
+# Branch (b) post-install: open nav drawer + tap sign-in. Gated on the
+# splash being STILL VISIBLE — which is true on a post-install signed-out
+# state where connect_login_button is NOT present. After branch (a) taps
+# connect_login_button, the app navigates to the BiometricPrompt and the
+# splash is no longer visible, so this branch correctly skips.
+#
+# Why not `notVisible: connect_login_button`: on the BiometricPrompt
+# (post-branch-a) the connect_login_button is also not visible, which
+# made the prior gate fire incorrectly and tap a non-existent burger
+# icon. Surfaced live in turmeric-20260429-2330 Step 2 retry (2026-04-30).
 - runFlow:
     when:
-      notVisible:
-        id: "org.commcare.dalvik:id/connect_login_button"
+      visible:
+        id: "org.commcare.dalvik:id/str_setup_message"
     commands:
       - tapOn:
           point: "73,209"
