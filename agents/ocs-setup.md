@@ -9,7 +9,7 @@ phase: ocs-setup
 phase_display: OCS Setup
 phase_ordinal: 4
 skills:
-  - { name: ocs-agent-setup,    has_judge: false }
+  - { name: ocs-agent-setup,    has_judge: true,  eval_skill: ocs-widget-handoff-eval }
   - { name: ocs-chatbot-qa,     has_judge: false }
   - { name: ocs-chatbot-eval,   has_judge: true }
 ---
@@ -82,6 +82,17 @@ the Connect opportunity's widget configuration.
 **Why manual:** the Connect `update_opportunity` API is unbuilt (tracked under
 CCC-301). When it ships, this step becomes a single API call. Until then,
 `## Current Workaround` applies.
+
+### Step 5: Widget-handoff eval
+Unless `--no-evals` was passed, invoke the `ocs-widget-handoff-eval` skill.
+- Input: `ACE/<opp-name>/ocs-setup/widget-handoff.md` from Step 4 +
+  `ocs-agent-config.md` from Step 1 + the live OCS chatbot state
+- Output: `ACE/<opp-name>/verdicts/ocs-agent-setup.yaml` (the producer
+  here is `ocs-agent-setup` — the eval grades widget-handoff correctness
+  + opportunity-binding completeness, both of which are
+  `ocs-agent-setup` outputs)
+- A `verdict: fail` here does not halt the run; the Phase 4→5 gate
+  still uses `gate-briefs/ocs-chatbot-eval-deep.md`.
 
 ### Completion
 Update opportunity state to mark Phase 4 as complete.

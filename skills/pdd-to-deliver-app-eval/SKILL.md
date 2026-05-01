@@ -93,8 +93,11 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` and
    - All 5 dimensions ≥ 7 AND overall ≥ 7.5 → suite verdict `pass`.
 
 6. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/pdd-to-deliver-app-eval.yaml` using the
-   shared shape (see `skills/README.md § QA vs Eval`):
+   `ACE/<opp-name>/verdicts/pdd-to-deliver-app.yaml`. The filename uses
+   the **producer** skill name (`pdd-to-deliver-app`), NOT this skill's
+   name — see `agents/ace-orchestrator.md § Per-Step Eval Hook` for
+   the naming rule. Body uses the shared shape (see `skills/README.md §
+   QA vs Eval`):
 
    ```yaml
    skill: pdd-to-deliver-app-eval

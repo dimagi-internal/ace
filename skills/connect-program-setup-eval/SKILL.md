@@ -128,7 +128,10 @@ calibrated rubrics.
      coverage gap without penalizing.
 
 6. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/connect-program-setup-eval.yaml`:
+   `ACE/<opp-name>/verdicts/connect-program-setup.yaml`. The filename
+   uses the **producer** skill name (`connect-program-setup`), NOT
+   this skill's name — see `agents/ace-orchestrator.md § Per-Step
+   Eval Hook` for the naming rule:
 
    ```yaml
    skill: connect-program-setup-eval

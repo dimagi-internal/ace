@@ -12,7 +12,7 @@ skills:
   - { name: opp-closeout,       has_judge: false }
   - { name: llo-feedback,       has_judge: false }
   - { name: learnings-summary,  has_judge: false }
-  - { name: cycle-grade,        has_judge: true }
+  - { name: cycle-grade,        has_judge: true,  eval_skill: cycle-grade-eval }
 ---
 
 # Closeout Agent (Phase 7)
@@ -41,7 +41,9 @@ Invoke the `learnings-summary` skill.
 Invoke the `cycle-grade` skill.
 - Input: all opportunity artifacts and outcomes
 - Output: overall grade with recommendations
-- **LLM-as-Judge:** Self-evaluate grading quality
+- **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
+  `cycle-grade-eval` to independently re-grade. Writes
+  `verdicts/cycle-grade.yaml`.
 - Depends on: Step 3
 
 ### Completion

@@ -13,10 +13,10 @@ skills:
   - { name: llo-invite,      has_judge: false }
   - { name: llo-onboarding,  has_judge: false }
   - { name: llo-uat,         has_judge: false }
-  - { name: llo-launch,      has_judge: false }
+  - { name: llo-launch,      has_judge: true,  eval_skill: llo-launch-eval }
 recurring_skills:
   - { name: timeline-monitor,   has_judge: true }
-  - { name: flw-data-review,    has_judge: true }
+  - { name: flw-data-review,    has_judge: true,  eval_skill: flw-data-review-eval }
   - { name: ocs-chatbot-qa,     has_judge: false }
   - { name: ocs-chatbot-eval,   has_judge: true }
 ---
@@ -76,6 +76,8 @@ Invoke the `llo-launch` skill.
 - Input: UAT results confirming LLO sign-offs
 - Output: opportunity activated in Connect, LLOs notified of go-live
 - **Gate (review mode):** Present launch readiness summary for approval before activating
+- **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
+  `llo-launch-eval` after activation. Writes `verdicts/llo-launch.yaml`.
 - Depends on: Step 3 (UAT must pass before launch)
 
 ### Step 5: Ongoing Monitoring (recurring)
@@ -88,6 +90,9 @@ These skills run on a schedule during the active opportunity:
 **FLW Data Review** — invoke `flw-data-review` skill weekly (or as configured).
 - Analyzes FLW submission data for quality issues
 - Generates recommendations for the Auto-Connect team to relay to LLOs
+- Unless `--no-evals` was passed, follow with `flw-data-review-eval`,
+  which writes `verdicts/flw-data-review-monitor.yaml` (recurring;
+  the latest monitor verdict overwrites the prior one)
 
 **OCS Chatbot Monitoring** — invoke `ocs-chatbot-qa --monitor` then
 `ocs-chatbot-eval --monitor` weekly (qa captures transcript, eval grades).

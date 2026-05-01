@@ -1,6 +1,6 @@
 ---
 description: Run the full CRISPR-Connect lifecycle for an opportunity
-argument-hint: [<opp-name>] [--mode default|review|auto] [--idea FILE|-] [--ace-web-url URL] [--dry-run] [--sandbox]
+argument-hint: [<opp-name>] [--mode default|review|auto] [--idea FILE|-] [--ace-web-url URL] [--dry-run] [--sandbox] [--no-evals]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---
 
@@ -42,6 +42,13 @@ Run the full CRISPR-Connect lifecycle for a Connect opportunity.
   calls go to staging Connect, CommCare calls go to the staging project
   space. Requires staging URLs configured in MCP server settings. Can be
   combined with `--dry-run`.
+- `--no-evals` — skip per-step `-eval` skill dispatch. Producing skills
+  still write their primary artifacts and inline self-evals; only the
+  separate `-eval` rubrics (e.g. `idea-to-pdd-eval`,
+  `pdd-to-learn-app-eval`, `connect-program-setup-eval`) are bypassed.
+  Use for fast smoke iterations; run `/ace:eval --all <opp>` afterward
+  to backfill the verdicts. See `agents/ace-orchestrator.md §
+  Per-Step Eval Hook` for what this opts out of.
 
 ## Smart-default UX (zero-arg happy path)
 

@@ -54,8 +54,14 @@ flag that gets caught early scores higher than one caught late.
    - **Pre-cap and post-cap reporting** per `eval-calibration` § 0.9.4.
 
 4. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/flw-data-review-eval-YYYY-MM-DD.yaml`
-   (dated; one per review report).
+   `ACE/<opp-name>/verdicts/flw-data-review-monitor.yaml`. The filename
+   uses the **producer** skill name (`flw-data-review`) plus the
+   `-monitor` mode suffix (which the Workbench strips when attributing
+   the score) — see `agents/ace-orchestrator.md § Per-Step Eval Hook`
+   for the naming rule. Each recurring run overwrites the prior verdict;
+   trend history lives in `eval-reports/trend.md` (one row appended per
+   run) and the dated `eval-reports/YYYY-MM-DD-flw-data-review.md` human
+   reports.
 
    ```yaml
    skill: flw-data-review-eval
