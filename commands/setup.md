@@ -74,7 +74,12 @@ if [ -z "$SCRIPT" ]; then
   exit 1
 fi
 
-exec "$SCRIPT" '"$ARGUMENTS"'
+# Forward $ARGUMENTS via bash -c "$0" args. Claude Code substitutes
+# $ARGUMENTS literally at command-load time; the trick below makes bash
+# word-split the result safely regardless of whether ARGUMENTS is empty,
+# a single flag, or multiple flags.
+ARGS="$ARGUMENTS"
+exec "$SCRIPT" $ARGS
 '
 ```
 
