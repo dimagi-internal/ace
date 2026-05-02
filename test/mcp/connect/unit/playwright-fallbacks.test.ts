@@ -223,27 +223,436 @@ describe('PlaywrightBackend.createProgram', () => {
   });
 });
 
-// ─── createOpportunity (guarded — throws) ──────────────────────────────────
+// ─── createOpportunity (3-step HTMX fallback restored 0.10.68) ─────────────
 
 describe('PlaywrightBackend.createOpportunity', () => {
-  it('throws ConnectError pointing at the deploy / manual-create options', async () => {
+  // Fixtures we'll lean on for the init-form GET + redirect parsing.
+  const oppInitForm = fix('a-ai-demo-space-opportunity-init.html');
+  const oppEditForm = fix('opportunity-dea88661-1cd6-486b-ab25-48584bf61a8e-edit.html');
+
+  // The HTMX `/users/api_keys/?hq_server=N` endpoint returns a select-fragment.
+  // For these tests we mock both branches: "key already registered" and
+  // "key not yet registered → POST add_api_key/ → re-list → found".
+  function mkKeyDropdown(opts: Array<{ value: string; text: string }>): string {
+    return (
+      '<select name="api_key">' +
+      opts
+        .map((o) => `<option value="${o.value}">${o.text}</option>`)
+        .join('') +
+      '</select>'
+    );
+  }
+
+  // The HTMX `/hq/applications/?hq_server=&<field>=&api_key=` endpoint
+  // returns a select with JSON-encoded `value` strings.
+  function mkAppDropdown(apps: Array<{ id: string; name: string }>): string {
+    return (
+      '<select name="learn_app">' +
+      apps
+        .map((a) => {
+          const json = JSON.stringify({ id: a.id, name: a.name }).replace(/"/g, '&quot;');
+          return `<option value="${json}">${a.name}</option>`;
+        })
+        .join('') +
+      '</select>'
+    );
+  }
+
+  // Minimal payment_unit_table HTML so finalize's `listPaymentUnits` returns
+  // at least one PU with non-zero amount × max_total.
+  const puTableForFinalize =
+    '<table><tbody><tr class="even"><td>1</td><td>Visit</td><td></td><td></td><td>500</td><td>10</td></tr></tbody></table>';
+
+  // Minimal program-edit HTML for getProgram (returns currency/country).
+  const programEditHtml =
+    csrfInput +
+    '<input name="name" value="Test Program">' +
+    '<textarea name="description">desc</textarea>' +
+    '<select name="delivery_type"><option value="13" selected>Nutrition</option></select>' +
+    '<input name="budget" value="1000000">' +
+    '<select name="currency"><option value="USD" selected>USD</option></select>' +
+    '<select name="country"><option value="USA" selected>USA</option></select>' +
+    '<input name="start_date" value="2026-04-01">' +
+    '<input name="end_date" value="2026-12-31">';
+
+  // Minimal opp detail HTML so the post-create getOpportunity call returns
+  // a proper Opportunity (parser finds zero apps but that's fine).
+  const oppDetailEmpty = '<div>opp detail</div>';
+
+  it('drives the 3-step wizard: register HQ key → POST init → POST finalize → return hydrated opp', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [
+        // 1) GET /opportunity/init/ → form HTML (real fixture, has hq_server select with prod=1)
+        { status: 200, body: oppInitForm },
+        // 2) ensureHqApiKeyRegistered: GET /users/api_keys/?hq_server=1 → dropdown WITHOUT our key
+        { status: 200, body: mkKeyDropdown([{ value: '', text: '---------' }]) },
+        // 3) POST /opportunity/add_api_key/ → 200 with re-rendered fragment
+        { status: 200, body: '<div>added</div>' },
+        // 4) GET /users/api_keys/?hq_server=1 → dropdown WITH our key (truncated label "abcd...0000")
+        { status: 200, body: mkKeyDropdown([{ value: '42', text: 'abcd...0000' }]) },
+        // 5) GET /hq/applications/...&learn_app_domain=learn-domain&... → JSON-encoded options
+        {
+          status: 200,
+          body: mkAppDropdown([{ id: 'learn-app-id-32hex', name: 'Learn App' }]),
+        },
+        // 6) GET /hq/applications/...&deliver_app_domain=deliver-domain&... → JSON-encoded options
+        {
+          status: 200,
+          body: mkAppDropdown([{ id: 'deliver-app-id-32hex', name: 'Deliver App' }]),
+        },
+        // 7) GET /opportunity/init/ AGAIN (refetch CSRF before the create POST)
+        { status: 200, body: oppInitForm },
+        // 8) GET /program/<id>/edit (getProgram inside createOpportunity for currency/country)
+        { status: 200, body: programEditHtml },
+        // 9) POST /opportunity/init/ → 302 with Location of new opp UUID
+        {
+          status: 302,
+          body: '',
+          headers: {
+            location: '/a/ai-demo-space/opportunity/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/init/edit/',
+          },
+        },
+        // 10) finalize: GET /opportunity/<id>/finalize/ → form with CSRF
+        { status: 200, body: csrfInput },
+        // 11) finalize: listPaymentUnits → GET /opportunity/<id>/payment_unit_table/
+        { status: 200, body: puTableForFinalize },
+        // 12) finalize: POST /opportunity/<id>/finalize/ → 302 success
+        { status: 302, body: '' },
+        // 13) post-create getOpportunity: GET /opportunity/<id>/edit
+        { status: 200, body: oppEditForm },
+        // 14) post-create getOpportunity: GET /opportunity/<id>/ (detail)
+        { status: 200, body: oppDetailEmpty },
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    const out = await backend.createOpportunity({
+      organization_slug: 'ai-demo-space',
+      program_id: '3472fe95-d6d3-42c2-824a-55c5c7dff552',
+      name: 'Test Opp',
+      short_description: 'short',
+      description: 'longer description',
+      target_organization_slug: 'ai-demo-space',
+      start_date: '2026-05-01',
+      end_date: '2026-12-31',
+      total_budget: 100000,
+      learn_app: {
+        hq_server_url: 'https://www.commcarehq.org',
+        api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000', // truncated → "abcd...0000"
+        cc_domain: 'learn-domain',
+        cc_app_id: 'learn-app-id-32hex',
+        description: 'Learn app',
+        passing_score: 80,
+      },
+      deliver_app: {
+        hq_server_url: 'https://www.commcarehq.org',
+        api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
+        cc_domain: 'deliver-domain',
+        cc_app_id: 'deliver-app-id-32hex',
+      },
+    });
+    expect(out.id).toBe('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
+
+    const posts = captured.filter((c) => c.method === 'POST');
+    // add_api_key + opportunity/init + finalize = 3 POSTs
+    expect(posts).toHaveLength(3);
+
+    // 1) add_api_key/ POST
+    const addKeyPost = posts.find((p) => p.url.endsWith('/add_api_key/'))!;
+    expect(addKeyPost).toBeDefined();
+    const akBody = addKeyPost.body as Record<string, string>;
+    expect(akBody.hq_server).toBe('1'); // resolved from prod URL
+    expect(akBody.api_key).toBe('abcdefghijklmnopqrstuvwxyz1234567890_0000');
+    expect(addKeyPost.headers!['HX-Request']).toBe('true');
+
+    // 2) opportunity/init/ POST
+    const initPost = posts.find((p) => p.url === '/a/ai-demo-space/opportunity/init/')!;
+    expect(initPost).toBeDefined();
+    const initBody = initPost.body as Record<string, string>;
+    expect(initBody.name).toBe('Test Opp');
+    expect(initBody.short_description).toBe('short');
+    expect(initBody.description).toBe('longer description');
+    expect(initBody.hq_server).toBe('1');
+    expect(initBody.api_key).toBe('42'); // int FK from dropdown
+    expect(initBody.learn_app_domain).toBe('learn-domain');
+    expect(initBody.deliver_app_domain).toBe('deliver-domain');
+    expect(initBody.learn_app_passing_score).toBe('80');
+    expect(initBody.learn_app_description).toBe('Learn app');
+    expect(initBody.program).toBe('3472fe95-d6d3-42c2-824a-55c5c7dff552');
+    // currency/country pulled from the parent program (HTML form requires both)
+    expect(initBody.currency).toBe('USD');
+    expect(initBody.country).toBe('USA');
+    // learn_app & deliver_app are JSON strings (id+name) from /hq/applications/
+    expect(initBody.learn_app).toContain('learn-app-id-32hex');
+    expect(initBody.deliver_app).toContain('deliver-app-id-32hex');
+
+    // 3) finalize/ POST
+    const finalizePost = posts.find((p) => p.url.endsWith('/finalize/'))!;
+    expect(finalizePost).toBeDefined();
+    const fb = finalizePost.body as Record<string, string>;
+    expect(fb.start_date).toBe('2026-05-01');
+    expect(fb.end_date).toBe('2026-12-31');
+    expect(fb.total_budget).toBe('100000');
+    // max_users computed from total_budget / Σ(amount × max_total) = 100000 / (500*10) = 20
+    expect(fb.max_users).toBe('20');
+  });
+
+  it('rejects mismatched hq_server_url across learn_app and deliver_app', async () => {
     const request = makeRequestContext([], []);
     const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
     await expect(
       backend.createOpportunity({
         organization_slug: 'pm-org',
-        program_id: 'prog-uuid',
+        program_id: 'p',
         name: 'X',
-        short_description: 'short',
-        description: 'desc',
-        target_organization_slug: 'llo-org',
+        short_description: 's',
+        description: 'd',
+        target_organization_slug: 'pm-org',
         start_date: '2026-05-01',
         end_date: '2026-12-31',
-        total_budget: 100000,
+        total_budget: 1,
         learn_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'la', description: 'L', passing_score: 80 },
-        deliver_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'da' },
+        deliver_app: { hq_server_url: 'https://india.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'da' },
       }),
-    ).rejects.toThrow(/HTML opportunity-create flow is a 3-step HTMX wizard/);
+    ).rejects.toBeInstanceOf(ConnectValidationError);
+  });
+
+  it('rejects mismatched api_key across learn_app and deliver_app', async () => {
+    const request = makeRequestContext([], []);
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await expect(
+      backend.createOpportunity({
+        organization_slug: 'pm-org',
+        program_id: 'p',
+        name: 'X',
+        short_description: 's',
+        description: 'd',
+        target_organization_slug: 'pm-org',
+        start_date: '2026-05-01',
+        end_date: '2026-12-31',
+        total_budget: 1,
+        learn_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'key-A', cc_domain: 'd', cc_app_id: 'la', description: 'L', passing_score: 80 },
+        deliver_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'key-B', cc_domain: 'd', cc_app_id: 'da' },
+      }),
+    ).rejects.toBeInstanceOf(ConnectValidationError);
+  });
+
+  it('throws when hq_server_url cannot be resolved against the form options', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [
+        // GET /opportunity/init/ → form WITHOUT a matching hq_server option
+        { status: 200, body: '<select name="hq_server"><option value=""></option></select>' + csrfInput },
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await expect(
+      backend.createOpportunity({
+        organization_slug: 'ai-demo-space',
+        program_id: 'p',
+        name: 'X',
+        short_description: 's',
+        description: 'd',
+        target_organization_slug: 'ai-demo-space',
+        start_date: '2026-05-01',
+        end_date: '2026-12-31',
+        total_budget: 1,
+        learn_app: { hq_server_url: 'https://nonsense.example.com', api_key: 'k', cc_domain: 'd', cc_app_id: 'la', description: 'L', passing_score: 80 },
+        deliver_app: { hq_server_url: 'https://nonsense.example.com', api_key: 'k', cc_domain: 'd', cc_app_id: 'da' },
+      }),
+    ).rejects.toBeInstanceOf(ConnectValidationError);
+  });
+
+  it('propagates HttpError when init POST returns 5xx', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [
+        { status: 200, body: oppInitForm },
+        { status: 200, body: mkKeyDropdown([{ value: '42', text: 'abcd...0000' }]) },
+        { status: 200, body: mkAppDropdown([{ id: 'learn-app-id-32hex', name: 'Learn App' }]) },
+        { status: 200, body: mkAppDropdown([{ id: 'deliver-app-id-32hex', name: 'Deliver App' }]) },
+        { status: 200, body: oppInitForm }, // refetch CSRF
+        { status: 200, body: programEditHtml }, // getProgram for currency/country
+        { status: 500, body: 'Server Error' }, // POST /opportunity/init/ → 500
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await expect(
+      backend.createOpportunity({
+        organization_slug: 'ai-demo-space',
+        program_id: 'p',
+        name: 'X',
+        short_description: 's',
+        description: 'd',
+        target_organization_slug: 'ai-demo-space',
+        start_date: '2026-05-01',
+        end_date: '2026-12-31',
+        total_budget: 1,
+        learn_app: {
+          hq_server_url: 'https://www.commcarehq.org',
+          api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
+          cc_domain: 'd',
+          cc_app_id: 'learn-app-id-32hex',
+          description: 'L',
+          passing_score: 80,
+        },
+        deliver_app: {
+          hq_server_url: 'https://www.commcarehq.org',
+          api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
+          cc_domain: 'd',
+          cc_app_id: 'deliver-app-id-32hex',
+        },
+      }),
+    ).rejects.toBeInstanceOf(HttpError);
+  });
+
+  it('throws ConnectValidationError when init POST returns 200 with errorlist', async () => {
+    const captured: CapturedRequest[] = [];
+    const errorListHtml =
+      '<form><ul class="errorlist"><li>Name is required.</li></ul></form>';
+    const request = makeRequestContext(
+      [
+        { status: 200, body: oppInitForm },
+        { status: 200, body: mkKeyDropdown([{ value: '42', text: 'abcd...0000' }]) },
+        { status: 200, body: mkAppDropdown([{ id: 'learn-app-id-32hex', name: 'Learn App' }]) },
+        { status: 200, body: mkAppDropdown([{ id: 'deliver-app-id-32hex', name: 'Deliver App' }]) },
+        { status: 200, body: oppInitForm },
+        { status: 200, body: programEditHtml }, // getProgram for currency/country
+        { status: 200, body: errorListHtml },
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await expect(
+      backend.createOpportunity({
+        organization_slug: 'ai-demo-space',
+        program_id: 'p',
+        name: '',
+        short_description: 's',
+        description: 'd',
+        target_organization_slug: 'ai-demo-space',
+        start_date: '2026-05-01',
+        end_date: '2026-12-31',
+        total_budget: 1,
+        learn_app: {
+          hq_server_url: 'https://www.commcarehq.org',
+          api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
+          cc_domain: 'd',
+          cc_app_id: 'learn-app-id-32hex',
+          description: 'L',
+          passing_score: 80,
+        },
+        deliver_app: {
+          hq_server_url: 'https://www.commcarehq.org',
+          api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
+          cc_domain: 'd',
+          cc_app_id: 'deliver-app-id-32hex',
+        },
+      }),
+    ).rejects.toBeInstanceOf(ConnectValidationError);
+  });
+
+  it('throws ConnectError when finalize sees no payment units', async () => {
+    const captured: CapturedRequest[] = [];
+    const emptyPuTable = '<table><tbody></tbody></table>';
+    const request = makeRequestContext(
+      [
+        { status: 200, body: oppInitForm },
+        { status: 200, body: mkKeyDropdown([{ value: '42', text: 'abcd...0000' }]) },
+        { status: 200, body: mkAppDropdown([{ id: 'learn-app-id-32hex', name: 'Learn App' }]) },
+        { status: 200, body: mkAppDropdown([{ id: 'deliver-app-id-32hex', name: 'Deliver App' }]) },
+        { status: 200, body: oppInitForm },
+        { status: 200, body: programEditHtml }, // getProgram for currency/country
+        // POST /opportunity/init/ → 302 success
+        {
+          status: 302,
+          body: '',
+          headers: {
+            location: '/a/ai-demo-space/opportunity/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/init/edit/',
+          },
+        },
+        // GET /opportunity/<id>/finalize/ form
+        { status: 200, body: csrfInput },
+        // listPaymentUnits returns empty
+        { status: 200, body: emptyPuTable },
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await expect(
+      backend.createOpportunity({
+        organization_slug: 'ai-demo-space',
+        program_id: 'p',
+        name: 'X',
+        short_description: 's',
+        description: 'd',
+        target_organization_slug: 'ai-demo-space',
+        start_date: '2026-05-01',
+        end_date: '2026-12-31',
+        total_budget: 100,
+        learn_app: {
+          hq_server_url: 'https://www.commcarehq.org',
+          api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
+          cc_domain: 'd',
+          cc_app_id: 'learn-app-id-32hex',
+          description: 'L',
+          passing_score: 80,
+        },
+        deliver_app: {
+          hq_server_url: 'https://www.commcarehq.org',
+          api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
+          cc_domain: 'd',
+          cc_app_id: 'deliver-app-id-32hex',
+        },
+      }),
+    ).rejects.toThrow(/finalize requires at least one payment unit/);
+  });
+
+  it('resolveHqAppValue throws ConnectValidationError when app id is not in HQ options', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [
+        { status: 200, body: oppInitForm },
+        { status: 200, body: mkKeyDropdown([{ value: '42', text: 'abcd...0000' }]) },
+        // Learn-app HTMX returns DIFFERENT app ids
+        {
+          status: 200,
+          body: mkAppDropdown([{ id: 'some-other-app', name: 'Other App' }]),
+        },
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await expect(
+      backend.createOpportunity({
+        organization_slug: 'ai-demo-space',
+        program_id: 'p',
+        name: 'X',
+        short_description: 's',
+        description: 'd',
+        target_organization_slug: 'ai-demo-space',
+        start_date: '2026-05-01',
+        end_date: '2026-12-31',
+        total_budget: 100,
+        learn_app: {
+          hq_server_url: 'https://www.commcarehq.org',
+          api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
+          cc_domain: 'd',
+          cc_app_id: 'expected-learn-id', // NOT in the dropdown
+          description: 'L',
+          passing_score: 80,
+        },
+        deliver_app: {
+          hq_server_url: 'https://www.commcarehq.org',
+          api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
+          cc_domain: 'd',
+          cc_app_id: 'expected-deliver-id',
+        },
+      }),
+    ).rejects.toBeInstanceOf(ConnectValidationError);
   });
 });
 
@@ -298,6 +707,94 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     expect(body).toContain('required_deliver_units=3339');
     expect(body).toContain('required_deliver_units=3340');
     expect(post.headers!['Content-Type']).toBe('application/x-www-form-urlencoded');
+  });
+
+  it('regression (0.10.68): maps display-id deliver units to form-value PKs via listDeliverUnits', async () => {
+    // Pre-0.10.47 had this mapping; 0.10.64 dropped it (silent-fail regression
+    // when callers pass display ids from listDeliverUnits — Connect 302s with
+    // a Django messages cookie of "Invalid Data" and never persists the PU).
+    // Restored 0.10.68 with a probe: if the input is already a known checkbox
+    // value, pass through; otherwise, look up name → form-value via the
+    // deliver_unit_table.
+    const captured: CapturedRequest[] = [];
+    const puTableHtml = `
+      <table>
+        <tbody>
+          <tr class="even"><td>42</td><td>VendorVisit</td><td>2026-05-01</td><td>2026-12-31</td><td>500</td><td>50</td></tr>
+        </tbody>
+      </table>
+    `;
+    // The puCreateForm fixture has checkboxes with values 3339-3342 and labels
+    // "Optional Delivery", "Optional Delivery 2", etc. The deliver_unit_table
+    // displays display ids 1, 2, ... For this test we simulate a caller
+    // passing display ids 1, 2 and verify they get mapped to 3339, 3340.
+    const deliverUnitTableHtml = `
+      <table>
+        <tbody>
+          <tr class="even"><td>1</td><td>opt_del</td><td>Optional Delivery</td></tr>
+          <tr class="odd"><td>2</td><td>opt_del_2</td><td>Optional Delivery 2</td></tr>
+        </tbody>
+      </table>
+    `;
+    const request = makeRequestContext(
+      [
+        { status: 200, body: puCreateForm },           // GET PU create form
+        { status: 200, body: deliverUnitTableHtml },   // listDeliverUnits (mapping lookup)
+        { status: 302, body: '' },                     // POST → success
+        { status: 200, body: puTableHtml },            // listPaymentUnits
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    const out = await backend.createPaymentUnit({
+      organization_slug: 'march-demo',
+      opportunity_id: 'dea88661-1cd6-486b-ab25-48584bf61a8e',
+      name: 'VendorVisit',
+      description: 'A visit',
+      amount: 500,
+      max_total: 50,
+      max_daily: 10,
+      required_deliver_units: [1, 2], // display ids — must be mapped to 3339, 3340
+    });
+    expect(out.id).toBe(42);
+
+    const post = captured.find((c) => c.method === 'POST')!;
+    const body = post.body as string;
+    // Should send the mapped PKs, NOT the display ids
+    expect(body).toContain('required_deliver_units=3339');
+    expect(body).toContain('required_deliver_units=3340');
+    expect(body).not.toContain('required_deliver_units=1&');
+    expect(body).not.toContain('required_deliver_units=2&');
+  });
+
+  it('regression (0.10.68): rejects unknown deliver_unit_id with structured error', async () => {
+    const captured: CapturedRequest[] = [];
+    const deliverUnitTableHtml = `
+      <table>
+        <tbody>
+          <tr class="even"><td>1</td><td>opt_del</td><td>Optional Delivery</td></tr>
+        </tbody>
+      </table>
+    `;
+    const request = makeRequestContext(
+      [
+        { status: 200, body: puCreateForm },
+        { status: 200, body: deliverUnitTableHtml },
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await expect(
+      backend.createPaymentUnit({
+        organization_slug: 'march-demo',
+        opportunity_id: 'dea88661-1cd6-486b-ab25-48584bf61a8e',
+        name: 'X',
+        amount: 1,
+        max_total: 1,
+        max_daily: 1,
+        required_deliver_units: [9999], // not in the form, not a known display id
+      }),
+    ).rejects.toBeInstanceOf(ConnectValidationError);
   });
 
   it('createPaymentUnits loops over the input list', async () => {
@@ -631,31 +1128,43 @@ describe('CompositeBackend REST→Playwright 404 fallback', () => {
     ).rejects.toBeInstanceOf(ConnectValidationError);
   });
 
-  it('createOpportunity: REST 404 → Playwright fallback throws guarded ConnectError', async () => {
+  it('createOpportunity: REST 404 → Playwright fallback fires (no longer throws guarded error)', async () => {
+    let pwCalled = false;
     const rest = makeMock('createOpportunity', async () => {
       throw new HttpError(404, 'POST /api/programs/.../opportunities/', '<html>404</html>', 'text/html');
     });
-    const playwright = new PlaywrightBackend({
-      baseUrl,
-      csrfToken,
-      request: {} as APIRequestContext,
-    });
-    const c = new CompositeBackend({ rest, playwright });
-    await expect(
-      c.createOpportunity({
-        organization_slug: 'pm-org',
+    const playwright = makeMock('createOpportunity', async () => {
+      pwCalled = true;
+      return {
+        id: 'opp-uuid-1234',
         program_id: 'prog-uuid',
         name: 'X',
         short_description: 'short',
         description: 'desc',
-        target_organization_slug: 'llo-org',
+        organization_slug: 'pm-org',
+        managed: true,
+        active: false,
         start_date: '2026-05-01',
         end_date: '2026-12-31',
         total_budget: 100000,
-        learn_app: { hq_server_url: 'h', api_key: 'k', cc_domain: 'd', cc_app_id: 'la', description: 'L', passing_score: 80 },
-        deliver_app: { hq_server_url: 'h', api_key: 'k', cc_domain: 'd', cc_app_id: 'da' },
-      }),
-    ).rejects.toBeInstanceOf(ConnectError);
+      };
+    });
+    const c = new CompositeBackend({ rest, playwright });
+    const out = await c.createOpportunity({
+      organization_slug: 'pm-org',
+      program_id: 'prog-uuid',
+      name: 'X',
+      short_description: 'short',
+      description: 'desc',
+      target_organization_slug: 'pm-org',
+      start_date: '2026-05-01',
+      end_date: '2026-12-31',
+      total_budget: 100000,
+      learn_app: { hq_server_url: 'h', api_key: 'k', cc_domain: 'd', cc_app_id: 'la', description: 'L', passing_score: 80 },
+      deliver_app: { hq_server_url: 'h', api_key: 'k', cc_domain: 'd', cc_app_id: 'da' },
+    });
+    expect(pwCalled).toBe(true);
+    expect(out.id).toBe('opp-uuid-1234');
   });
 
   it('all eight write atoms route through tryRestThenPlaywright (REST returns first)', async () => {

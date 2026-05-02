@@ -5,6 +5,7 @@ import { HttpError, ConnectValidationError, ConnectError } from '../errors.js';
 import {
   extractFormCsrfToken,
   extractFormFieldValues,
+  extractUuidFromPath,
   parseDeliveryTypeOptions,
   parseProgramsList,
   parseOpportunitiesList,
@@ -44,15 +45,87 @@ async function httpErrorFor(res: APIResponse, urlPath: string, method: string = 
   return new HttpError(res.status(), `${method} ${urlPath}`, body, contentType);
 }
 
+/**
+ * Parse all <option> elements out of a select/HTMX-fragment HTML blob.
+ * Used for hq_server resolution, api_key dropdown, and learn/deliver app
+ * dropdowns where the value attribute is the actual form payload.
+ */
+function parseSelectOptions(html: string): Array<{ value: string; text: string }> {
+  const opts: Array<{ value: string; text: string }> = [];
+  for (const m of html.matchAll(/<option[^>]*value=["']([^"']*)["'][^>]*>([^<]*)<\/option>/g)) {
+    opts.push({ value: m[1], text: m[2].trim() });
+  }
+  return opts;
+}
+
+/**
+ * Decode HTML entities in form-value attributes (Connect's apps endpoint
+ * embeds JSON in option `value`s and HTML-encodes the quotes).
+ */
+function htmlDecodeAttr(s: string): string {
+  return s.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&');
+}
+
+/**
+ * Resolve a caller-friendly hq_server label or URL ("prod" / "india" / "eu" /
+ * full URL) against Connect's <select name="hq_server"> options on the
+ * create-opportunity form. Returns the int FK as string (e.g. "1") or
+ * undefined if no match.
+ *
+ * Connect's Knockout-driven form select looks like:
+ *   <option value="1">CommCareHQ (https://www.commcarehq.org)</option>
+ *   <option value="2">India (https://india.commcarehq.org)</option>
+ *   <option value="3">CommCareHQ EU (https://eu.commcarehq.org)</option>
+ *
+ * We parse it from the form HTML rather than hardcoding so this tracks
+ * any Connect-side server-list changes without code edits.
+ */
+function resolveHqServer(formHtml: string, label: string): string | undefined {
+  const sel = formHtml.match(/<select[^>]*name=["']hq_server["'][^>]*>([\s\S]*?)<\/select>/);
+  if (!sel) return undefined;
+  const opts = parseSelectOptions(sel[1]);
+  const lc = label.toLowerCase();
+  // Strip protocol + trailing slash to make URL inputs match the URL fragment
+  // Connect renders inside the option text (e.g. "https://www.commcarehq.org"
+  // → "www.commcarehq.org").
+  const lcHost = lc.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  for (const o of opts) {
+    if (!o.value || o.value === '' || o.value === 'None') continue;
+    // direct int match
+    if (o.value === label) return o.value;
+    // URL or hostname appears in option text
+    if (o.text.toLowerCase().includes(lcHost)) return o.value;
+    // shorthand mapping
+    if (lc === 'prod' && /www\.commcarehq\.org/i.test(o.text)) return o.value;
+    if (lc === 'india' && /india\.commcarehq\.org/i.test(o.text)) return o.value;
+    if (lc === 'eu' && /eu\.commcarehq\.org/i.test(o.text)) return o.value;
+  }
+  return undefined;
+}
+
+/**
+ * Build the truncated label Connect uses to display an HQ API key in the
+ * api_key dropdown: first 4 + "..." + last 4 hex chars.
+ */
+function truncatedKeyLabel(rawKey: string): string {
+  return `${rawKey.slice(0, 4)}...${rawKey.slice(-4)}`;
+}
+
 // Pre-0.10.47: this file kept `NotImplementedError` + a `stub()` helper for
 // the eight write atoms (`createProgram`, `createOpportunity`, etc.) that
-// the REST backend handled. Since 0.10.55 (this version) we ship real
-// HTML-form fallbacks for those atoms so the composite can recover when
-// REST returns 404 (PR #1135 not yet deployed to prod). The only one that
-// stays guarded is `createOpportunity` — Connect's managed-opp HTML wizard
-// is multi-step + HTMX-driven (see that method's docstring); it throws a
-// clear `ConnectError` until either the REST deploy lands or someone
-// invests in the full wizard driver.
+// the REST backend handled. Since 0.10.55 we ship real HTML-form fallbacks
+// for those atoms so the composite can recover when REST returns 404 (PR
+// #1135 not yet deployed to prod). 0.10.64 added 7 of the 8; createOpportunity
+// stayed guarded. 0.10.68 (this version) restores the createOpportunity
+// 3-step HTMX fallback that pre-0.10.47 ran end-to-end against live Connect:
+//   1. Register the HQ API key with Connect (HTMX add_api_key/) → int FK
+//   2. POST /a/<org>/opportunity/init/ with the resolved hq_server / api_key /
+//      learn-app / deliver-app values; capture the new opp UUID from the redirect
+//   3. POST /a/<org>/opportunity/<id>/finalize/ with start_date / end_date /
+//      max_users (derived from total_budget) / total_budget
+// Both registerHqApiKey and finalizeOpportunity are PRIVATE helpers in this
+// class — their public-atom forms were subsumed by REST's createOpportunity in
+// 0.10.47. The composite still exposes a single createOpportunity atom.
 
 /**
  * Playwright HTTP-only Connect backend — handles atoms that don't yet have
@@ -425,15 +498,14 @@ export class PlaywrightBackend implements ConnectClient {
   //   - sendLloInvite         simple form, single POST to /program/<uuid>/invite
   //   - sendFlwInvite         simple form, single POST to /opportunity/<uuid>/user_invite/
   //   - activateOpportunity   reuse postEditForm with active=true
-  //
   //   - createPaymentUnit/s   single-PU form per item (server has no batch
   //                           endpoint here); plural loops the singular
-  //   - createOpportunity     multi-step HTMX wizard — current Connect HTML
-  //                           form has hard-to-script HTMX-loaded subselects
-  //                           (api_key → domain → app pickers). Throws a
-  //                           clear error pointing at REST until Connect
-  //                           builds a single-shot HTML form for managed opps
-  //                           OR PR #1135 hits prod.
+  //   - createOpportunity     3-step HTMX wizard restored in 0.10.68: register
+  //                           HQ key → POST /opportunity/init/ → POST /finalize/.
+  //                           Internally chains the pre-0.10.47
+  //                           registerHqApiKey + finalizeOpportunity helpers
+  //                           (private — both atoms were collapsed server-side
+  //                           by PR #1135 so we don't re-expose them).
   //   - acceptProgramApplication  Connect's PM-side UI has no accept button;
   //                           accept happens on the LLO side via
   //                           /a/<llo>/program/<id>/application/<app>/accept/.
@@ -577,49 +649,378 @@ export class PlaywrightBackend implements ConnectClient {
     return await this.getProgram({ organization_slug: orgSlug, program_id: stub.id });
   }
 
-  // ── Opportunities ─────────────────────────────────────────────────
+  // ── Opportunities (3-step HTMX wizard fallback, restored 0.10.68) ──
 
   /**
-   * Connect's HTML-side managed-opportunity creation is a 3-step HTMX
-   * wizard:
-   *   1. POST `/a/<org>/opportunity/init/?program_id=<uuid>` with the
-   *      Opportunity Details form. The form's `api_key`, `learn_app_domain`,
-   *      `learn_app`, `deliver_app_domain`, `deliver_app` selects are
-   *      populated DYNAMICALLY by HTMX (`/users/api_keys/`, `/hq/domains/`,
-   *      `/hq/applications/`) — they are not present in the initial GET.
-   *   2. POST step 2 (payment_units/create)
-   *   3. POST step 3 (finalize/) for the budget
+   * Drive Connect's HTML opportunity-creation wizard end-to-end. Mirrors the
+   * pre-0.10.47 implementation that ran live against connect.dimagi.com:
    *
-   * Driving this end-to-end without a real browser requires:
-   *   - calling `/a/<org>/opportunity/add_api_key/` to get the int-FK for
-   *     the raw HQ API key the caller supplied,
-   *   - calling `/hq/domains/?hq_server=<id>&api_key=<id>` to verify the
-   *     domain is in the allowed list,
-   *   - calling `/hq/applications/?hq_server=<id>&domain=<slug>&api_key=<id>`
-   *     to fetch the JSON-encoded `{id, name}` value the form expects in
-   *     the `learn_app` / `deliver_app` selects,
-   *   - then assembling step 1's POST body, parsing the redirect to the
-   *     created opp UUID, then driving steps 2 and 3.
+   *   1. Resolve `learn_app.hq_server_url` → int FK (parsed from the
+   *      `<select name="hq_server">` on the init form).
+   *   2. Register the raw HQ API key with Connect (idempotent — if it's
+   *      already registered for this hq_server, look up the existing int FK).
+   *   3. Resolve learn / deliver app ids → the JSON-encoded `{"id","name"}`
+   *      strings Connect's form expects (HTMX endpoint
+   *      `/hq/applications/?hq_server=&<field>=&api_key=`).
+   *   4. POST `/a/<org>/opportunity/init/` with the assembled form body.
+   *      Capture the new opp UUID from the 302 redirect Location.
+   *   5. POST `/a/<org>/opportunity/<id>/finalize/` with start_date,
+   *      end_date, max_users (computed from total_budget ÷ Σ(pu.amount ×
+   *      pu.max_total)), and total_budget.
    *
-   * This is doable, but the full pipeline has ~600 lines of regex parsing
-   * + HTMX-endpoint scraping that adds significant maintenance surface for
-   * a fallback path that becomes dead code the moment PR #1135 lands. For
-   * now we throw a clear error pointing at the deployment status; once the
-   * HTML-fallback case becomes load-bearing for a real opp run, fill in
-   * the implementation. See the plan in PR comments / runs notes for the
-   * full sequence.
+   * The new public-atom shape (REST contract) takes `learn_app` and
+   * `deliver_app` as nested objects with `hq_server_url` + `api_key` +
+   * `cc_domain` + `cc_app_id`. We require both nested keys to share the
+   * same hq_server (Connect's HTML form has only ONE hq_server picker).
+   *
+   * NOTE: `target_organization_slug` (the LLO running the opp) is server-
+   * side only on REST. The HTML form has no equivalent field — it creates
+   * the opp under the calling PM org. For ACE dogfood (PM=target=ai-demo-
+   * space) this is fine; if target ≠ PM the caller must transfer
+   * ownership separately (via program-application acceptance).
+   *
+   * NOTE: Step 2 of the wizard (payment_units/create) is NOT driven here
+   * — payment-unit creation is its own atom (`createPaymentUnit(s)`) and
+   * the orchestrator runs it between createOpportunity and the implicit
+   * finalize step. We emit warnings and let finalize fail loudly if no
+   * payment units exist; that's the correct surfaced error.
    */
   createOpportunity: ConnectClient['createOpportunity'] = async (args) => {
-    void args;
-    throw new ConnectError(
-      'createOpportunity Playwright fallback is not implemented. ' +
-        'Connect\'s HTML opportunity-create flow is a 3-step HTMX wizard with ' +
-        'dynamically-populated api_key / domain / app selects (cannot be driven ' +
-        'with a single POST). Either: (a) wait for commcare-connect PR #1135 to ' +
-        'deploy to prod, or (b) create the opportunity manually via the Connect ' +
-        'web UI then continue the flow.',
-    );
+    if (
+      args.target_organization_slug &&
+      args.target_organization_slug !== args.organization_slug
+    ) {
+      // The HTML wizard creates under the PM slug. Cross-org transfer
+      // happens via program-application acceptance, which our caller is
+      // expected to do separately. Surface a non-fatal note.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[ace-connect] createOpportunity Playwright fallback: target_organization_slug='${args.target_organization_slug}' differs from organization_slug='${args.organization_slug}'. The HTML wizard cannot transfer ownership at create time; the LLO must already have an ACCEPTED program application.`,
+      );
+    }
+
+    if (args.learn_app.hq_server_url !== args.deliver_app.hq_server_url) {
+      throw new ConnectValidationError([
+        `Playwright fallback requires learn_app.hq_server_url and deliver_app.hq_server_url to match (Connect's HTML form has a single hq_server picker). Got '${args.learn_app.hq_server_url}' vs '${args.deliver_app.hq_server_url}'.`,
+      ]);
+    }
+    // Connect's HTML form similarly has a single api_key picker shared
+    // across learn + deliver. We expect both nested objects to use the
+    // same key for the fallback path.
+    if (args.learn_app.api_key !== args.deliver_app.api_key) {
+      throw new ConnectValidationError([
+        `Playwright fallback requires learn_app.api_key and deliver_app.api_key to match (Connect's HTML form has a single api_key picker).`,
+      ]);
+    }
+
+    const orgSlug = args.organization_slug;
+    const formPath = `/a/${orgSlug}/opportunity/init/`;
+
+    // 1. GET the init form → CSRF + hq_server option list.
+    const formRes = await this.opts.request.get(formPath);
+    if (formRes.status() !== 200) throw await httpErrorFor(formRes, formPath, 'GET');
+    const formHtml = await formRes.text();
+    const csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
+
+    const hqServerId = resolveHqServer(formHtml, args.learn_app.hq_server_url);
+    if (!hqServerId) {
+      throw new ConnectValidationError(
+        [
+          `hq_server_url '${args.learn_app.hq_server_url}' did not match any Connect-known server. ` +
+            `Use 'prod', 'india', 'eu', a server URL like 'https://www.commcarehq.org', or the int FK directly.`,
+        ],
+        { hq_server: ['Unknown server'] },
+      );
+    }
+
+    // 2. Register the raw HQ API key with Connect (idempotent) → int FK.
+    const apiKeyId = await this.ensureHqApiKeyRegistered({
+      organization_slug: orgSlug,
+      hq_server_id: hqServerId,
+      api_key: args.learn_app.api_key,
+      csrf,
+    });
+
+    // 3. Resolve learn/deliver app ids → JSON-encoded form values.
+    const learnAppValue = await this.resolveHqAppValue({
+      hq_server_id: hqServerId,
+      domain: args.learn_app.cc_domain,
+      api_key_id: apiKeyId,
+      app_id: args.learn_app.cc_app_id,
+      domainField: 'learn_app_domain',
+    });
+    const deliverAppValue = await this.resolveHqAppValue({
+      hq_server_id: hqServerId,
+      domain: args.deliver_app.cc_domain,
+      api_key_id: apiKeyId,
+      app_id: args.deliver_app.cc_app_id,
+      domainField: 'deliver_app_domain',
+    });
+
+    // 4. Refetch CSRF — Django one-shot tokens may have rotated after
+    //    the add_api_key POST. Also fetch the program's currency/country
+    //    (the form requires both; in REST land they're inherited server-
+    //    side from the parent program, but the HTML form needs them
+    //    explicitly).
+    const formRes2 = await this.opts.request.get(formPath);
+    if (formRes2.status() !== 200) throw await httpErrorFor(formRes2, formPath, 'GET');
+    const csrf2 = extractFormCsrfToken(await formRes2.text()) ?? this.opts.csrfToken;
+    const program = await this.getProgram({
+      organization_slug: orgSlug,
+      program_id: args.program_id,
+    });
+
+    const initBody: Record<string, string> = {
+      csrfmiddlewaretoken: csrf2,
+      name: args.name,
+      short_description: args.short_description,
+      description: args.description,
+      currency: program.currency ?? '',
+      country: program.country ?? '',
+      hq_server: hqServerId,
+      api_key: apiKeyId,
+      learn_app_domain: args.learn_app.cc_domain,
+      learn_app: learnAppValue,
+      learn_app_passing_score: String(args.learn_app.passing_score),
+      learn_app_description: args.learn_app.description ?? '',
+      deliver_app_domain: args.deliver_app.cc_domain,
+      deliver_app: deliverAppValue,
+      program: args.program_id,
+    };
+
+    const initRes = await this.opts.request.post(formPath, {
+      form: initBody,
+      maxRedirects: 0,
+      headers: {
+        Referer: `${this.opts.baseUrl}/a/${orgSlug}/opportunity/`,
+        'X-CSRFToken': csrf2,
+      },
+    });
+
+    let createdOppId: string | undefined;
+    if (initRes.status() === 302) {
+      const loc = initRes.headers()['location'] ?? '';
+      createdOppId = extractUuidFromPath(loc, 'opportunity');
+      if (!createdOppId) {
+        // Some redirects target the wizard step path
+        // (`/a/<org>/opportunity/<uuid>/init/edit/`). Try matching that too.
+        const m = loc.match(/\/opportunity\/([a-f0-9-]{36})\b/);
+        createdOppId = m?.[1];
+      }
+      if (!createdOppId) {
+        // Fall back: list opps and match by name (the most recent one wins).
+        const list = await this.listOpportunities({ organization_slug: orgSlug, name: args.name });
+        if (!list.opportunities[0]) {
+          throw new HttpError(
+            500,
+            `POST ${formPath}`,
+            `opportunity create succeeded (302) but "${args.name}" not found in list and Location='${loc}' contained no opp UUID`,
+          );
+        }
+        createdOppId = list.opportunities[0].id;
+      }
+    } else if (initRes.status() === 200) {
+      throw validationErrorFromHtml(await initRes.text(), 'opportunity init rejected');
+    } else {
+      throw await httpErrorFor(initRes, formPath, 'POST');
+    }
+
+    // 5. Finalize: POST /finalize/ with start/end/max_users/total_budget.
+    //    The form requires max_users; we derive it from the requested
+    //    total_budget and the per-PU sums.
+    await this.finalizeOpportunityForm({
+      organization_slug: orgSlug,
+      opportunity_id: createdOppId,
+      start_date: args.start_date,
+      end_date: args.end_date,
+      total_budget: args.total_budget,
+    });
+
+    return await this.getOpportunity({
+      organization_slug: orgSlug,
+      opportunity_id: createdOppId,
+    });
   };
+
+  /**
+   * Private helper (was a public atom before 0.10.47): register an HQ
+   * API key with Connect via the HTMX `/opportunity/add_api_key/` endpoint
+   * and return its Connect-side int FK as string. Idempotent: if the key
+   * is already registered for this hq_server, look up and return the
+   * existing id without re-POSTing.
+   *
+   * Background: Connect's create-opportunity form takes `api_key` as an
+   * int FK to a Connect-internal `HQApiKey` record, NOT the raw 40-char
+   * HQ API key. PR #1135's REST API does this server-side via
+   * `get_or_create`; the HTML form expects the user to register the key
+   * via the "+" / "Add API Key" modal first. We do that for the agent here.
+   */
+  private async ensureHqApiKeyRegistered(args: {
+    organization_slug: string;
+    hq_server_id: string;
+    api_key: string;
+    csrf: string;
+  }): Promise<string> {
+    const truncated = truncatedKeyLabel(args.api_key);
+    const listPath = `/users/api_keys/?hq_server=${args.hq_server_id}`;
+
+    // First check: is this key already registered? Connect shows it in
+    // the dropdown by truncated label.
+    let listRes = await this.opts.request.get(listPath, { headers: { 'HX-Request': 'true' } });
+    if (listRes.status() === 200) {
+      const opts = parseSelectOptions(await listRes.text());
+      const found = opts.find((o) => o.text === truncated && /^\d+$/.test(o.value));
+      if (found) return found.value;
+    }
+
+    // Not registered — POST /add_api_key/. Connect's HTMX endpoint returns
+    // 200 with a re-rendered form fragment regardless of new vs duplicate.
+    const addPath = `/a/${args.organization_slug}/opportunity/add_api_key/`;
+    const addRes = await this.opts.request.post(addPath, {
+      form: {
+        csrfmiddlewaretoken: args.csrf,
+        hq_server: args.hq_server_id,
+        api_key: args.api_key,
+      },
+      headers: {
+        Referer: `${this.opts.baseUrl}/a/${args.organization_slug}/opportunity/init/`,
+        'X-CSRFToken': args.csrf,
+        'HX-Request': 'true',
+      },
+    });
+    if (addRes.status() !== 200) throw await httpErrorFor(addRes, addPath, 'POST');
+
+    // Re-query the dropdown to pick up the freshly-registered key.
+    listRes = await this.opts.request.get(listPath, { headers: { 'HX-Request': 'true' } });
+    if (listRes.status() !== 200) throw await httpErrorFor(listRes, listPath, 'GET');
+    const opts = parseSelectOptions(await listRes.text());
+    const found = opts.find((o) => o.text === truncated && /^\d+$/.test(o.value));
+    if (!found) {
+      throw new HttpError(
+        500,
+        addPath,
+        `add_api_key returned 200 but ${truncated} did not appear in /users/api_keys/?hq_server=${args.hq_server_id}`,
+      );
+    }
+    return found.value;
+  }
+
+  /**
+   * Private helper: resolve a bare HQ app id (e.g.
+   * `76fd5f0e2834454bb946bdf9ae9bff71`) to the JSON-encoded form value
+   * Connect's create-opportunity form expects:
+   *   `{"id": "<id>", "name": "<full app name>"}`
+   *
+   * Connect populates the learn_app/deliver_app dropdowns via an HTMX GET
+   * to `/hq/applications/?hq_server=<id>&<field>=<domain>&api_key=<id>`.
+   * The `value` attribute of each <option> is the full JSON string the
+   * form expects. We GET that fragment, parse the options, and find the
+   * one whose JSON `id` matches the caller's app id.
+   */
+  private async resolveHqAppValue(args: {
+    hq_server_id: string;
+    domain: string;
+    api_key_id: string;
+    app_id: string;
+    domainField: 'learn_app_domain' | 'deliver_app_domain';
+  }): Promise<string> {
+    const path = `/hq/applications/?hq_server=${encodeURIComponent(args.hq_server_id)}&${args.domainField}=${encodeURIComponent(args.domain)}&api_key=${encodeURIComponent(args.api_key_id)}`;
+    const res = await this.opts.request.get(path, { headers: { 'HX-Request': 'true' } });
+    if (res.status() !== 200) throw await httpErrorFor(res, path, 'GET');
+    const opts = parseSelectOptions(await res.text());
+    const real: Array<{ value: string; text: string; id: string }> = [];
+    for (const o of opts) {
+      if (!o.value || o.value === 'None' || o.value === '') continue;
+      try {
+        const decoded = htmlDecodeAttr(o.value);
+        const parsed = JSON.parse(decoded);
+        if (parsed?.id) real.push({ value: decoded, text: o.text, id: parsed.id });
+      } catch {
+        /* not JSON, skip */
+      }
+    }
+    const match = real.find((o) => o.id === args.app_id);
+    if (!match) {
+      const available = real.length
+        ? real.map((o) => `${o.id} (${o.text})`).join(', ')
+        : '(none — domain may have no apps, or HQ key may not have access)';
+      throw new ConnectValidationError([
+        `app id '${args.app_id}' not found in Connect's options for ${args.domainField}='${args.domain}'. Available: ${available}`,
+      ]);
+    }
+    return match.value;
+  }
+
+  /**
+   * Private helper (was a public atom before 0.10.47): finalize an
+   * opportunity by POSTing the wizard step-3 `/finalize/` form. The form
+   * requires `start_date`, `end_date`, `max_users`, `total_budget`. We
+   * derive `max_users` from the caller-supplied `total_budget` and the
+   * existing payment-unit sums:
+   *
+   *   per_user = Σ (pu.amount × pu.max_total)
+   *   max_users = ceil(total_budget / per_user)
+   *
+   * If no payment units exist yet, we throw with a clear message — the
+   * orchestrator must call `createPaymentUnit(s)` first.
+   *
+   * On success Connect 302-redirects to opportunity:detail. On validation
+   * errors it 200-renders the form with crispy-tailwind
+   * `<p id="error_N_id_FIELD">` messages.
+   */
+  private async finalizeOpportunityForm(args: {
+    organization_slug: string;
+    opportunity_id: string;
+    start_date: string;
+    end_date: string;
+    total_budget: number;
+  }): Promise<void> {
+    const path = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/finalize/`;
+    const getRes = await this.opts.request.get(path);
+    if (getRes.status() !== 200) throw await httpErrorFor(getRes, path);
+    const csrf = extractFormCsrfToken(await getRes.text()) ?? this.opts.csrfToken;
+
+    const pus = await this.listPaymentUnits({
+      organization_slug: args.organization_slug,
+      opportunity_id: args.opportunity_id,
+    });
+    const cumulativePerUser = pus.payment_units.reduce(
+      (sum, pu) => sum + (pu.amount ?? 0) * (pu.max_total ?? 0),
+      0,
+    );
+    if (cumulativePerUser <= 0) {
+      throw new ConnectError(
+        `finalize requires at least one payment unit with non-zero amount × max_total. ` +
+          `Opportunity ${args.opportunity_id} has ${pus.payment_units.length} payment unit(s); ` +
+          `Σ(amount × max_total) = ${cumulativePerUser}. Call createPaymentUnit(s) first.`,
+      );
+    }
+    const maxUsers = Math.max(1, Math.ceil(args.total_budget / cumulativePerUser));
+
+    const postRes = await this.opts.request.post(path, {
+      form: {
+        csrfmiddlewaretoken: csrf,
+        start_date: args.start_date,
+        end_date: args.end_date,
+        max_users: String(maxUsers),
+        total_budget: String(args.total_budget),
+      },
+      maxRedirects: 0,
+      headers: {
+        Referer: `${this.opts.baseUrl}${path}`,
+        'X-CSRFToken': csrf,
+      },
+    });
+
+    if (postRes.status() === 302) return;
+    if (postRes.status() === 200) {
+      throw validationErrorFromHtml(
+        await postRes.text(),
+        `finalize rejected (${args.opportunity_id})`,
+      );
+    }
+    throw await httpErrorFor(postRes, path, 'POST');
+  }
 
   // ── Payment units ─────────────────────────────────────────────────
 
@@ -675,6 +1076,77 @@ export class PlaywrightBackend implements ConnectClient {
     const formHtml = await formRes.text();
     const csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
 
+    // The deliver-unit checkboxes use a different id namespace than
+    // `connect_list_deliver_units` returns. The list returns a small
+    // per-opp display id (1, 2, 3...); the form-checkbox `value` is the
+    // global Connect-side DB primary key (e.g. 5112). Connect's view
+    // reads the PK form-value, NOT the display id. If we POST the
+    // display id directly, Connect 302-redirects with a Django messages
+    // cookie of "Invalid Data" — silently dropping the create. (The
+    // 0.10.64 fallback omitted this mapping; the pre-0.10.47 code had
+    // it; restored 0.10.68.)
+    //
+    // Mitigation: parse this form's `<input name="required_deliver_units"
+    // value="5112">Vendor visit</label>` checkboxes, then map the
+    // caller's input ids → form values by matching against the deliver-
+    // unit table's name. If the input id is ALREADY a form-value PK
+    // (e.g. came from REST createOpportunity), pass it through.
+    const checkboxValueByName = new Map<string, string>();
+    const allCheckboxValues = new Set<string>();
+    for (const m of formHtml.matchAll(
+      /<input[^>]*name="(?:required|optional)_deliver_units"[^>]*value="(\d+)"[^>]*>([\s\S]*?)<\/label>/g,
+    )) {
+      const value = m[1];
+      const labelText = m[2].replace(/<[^>]+>/g, '').trim();
+      if (labelText && !checkboxValueByName.has(labelText)) {
+        checkboxValueByName.set(labelText, value);
+      }
+      allCheckboxValues.add(value);
+    }
+    // Fallback regex (some templates render label OUTSIDE the input)
+    if (checkboxValueByName.size === 0) {
+      for (const m of formHtml.matchAll(
+        /<input[^>]*name="(?:required|optional)_deliver_units"[^>]*value="(\d+)"[^>]*>\s*([^<]+)/g,
+      )) {
+        const value = m[1];
+        const labelText = m[2].trim();
+        if (labelText) checkboxValueByName.set(labelText, value);
+        allCheckboxValues.add(value);
+      }
+    }
+
+    // Pre-fetch deliver_units list once (used for display-id → name → form-value mapping).
+    let idToFormValue = new Map<number, string>();
+    const needsMapping = (args.required_deliver_units ?? []).some(
+      (id) => !allCheckboxValues.has(String(id)),
+    ) ||
+      (args.optional_deliver_units ?? []).some(
+        (id) => !allCheckboxValues.has(String(id)),
+      );
+    if (needsMapping && (args.required_deliver_units?.length || args.optional_deliver_units?.length)) {
+      const list = await this.listDeliverUnits({
+        organization_slug: args.organization_slug,
+        opportunity_id: args.opportunity_id,
+      });
+      for (const du of list.deliver_units) {
+        const v = checkboxValueByName.get(du.name);
+        if (v) idToFormValue.set(du.id, v);
+      }
+    }
+    const mapId = (id: number): string => {
+      const idStr = String(id);
+      // If the input is already a known checkbox value, accept it.
+      if (allCheckboxValues.has(idStr)) return idStr;
+      const v = idToFormValue.get(id);
+      if (v) return v;
+      throw new ConnectValidationError([
+        `deliver_unit_id ${id} did not resolve to any form-value in the create-payment_unit form. ` +
+          `Available form values: [${[...allCheckboxValues].join(', ')}]; ` +
+          `display→form mapping built from listDeliverUnits: ` +
+          `${[...idToFormValue.entries()].map(([k, v]) => `${k}→${v}`).join(', ') || '(empty)'}`,
+      ]);
+    };
+
     // Build a URLSearchParams body so we can send multi-valued checkbox
     // fields (`required_deliver_units`, `optional_deliver_units`).
     // Playwright's `form:` option only accepts scalar values; for repeating
@@ -690,10 +1162,10 @@ export class PlaywrightBackend implements ConnectClient {
     if (args.start_date) params.append('start_date', args.start_date);
     if (args.end_date) params.append('end_date', args.end_date);
     for (const id of args.required_deliver_units ?? []) {
-      params.append('required_deliver_units', String(id));
+      params.append('required_deliver_units', mapId(id));
     }
     for (const id of args.optional_deliver_units ?? []) {
-      params.append('optional_deliver_units', String(id));
+      params.append('optional_deliver_units', mapId(id));
     }
     params.append('submit', 'Submit');
 
