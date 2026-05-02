@@ -5,6 +5,34 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.85 — 2026-05-02
+
+**End-to-end validation against Turmeric fixture content.** The deck
+pipeline now has a durable reproducer that runs against realistic opp
+content (not synthetic smoke text), proving the parser + Slides API
+path handles the production shape.
+
+### Added
+
+- `scripts/test-deck-build-turmeric.ts` — durable smoke that runs the
+  full pipeline against the Turmeric fixture: 7-slide deck outline
+  derived from the fixture's `flw-training-guide.md`, every parser
+  feature exercised (multi-paragraph slides, bullets, speaker notes
+  with multi-line content). Produces a real Slides deck in
+  `ACE_DRIVE_ROOT_FOLDER_ID`.
+
+### Validated
+
+The 0.10.85 reference run produced an 8-slide deck (1 title + 7
+content) with all 24 main batchUpdate replies and all 7 speaker-notes
+replies. Reference deck:
+`https://docs.google.com/presentation/d/1gvz7vxjSgPD04uE0_cwTuRyGLNrbH_PCqHgP33CsMH0/edit`
+(remove after inspection).
+
+The pipeline is now proven on real content end-to-end. Phase 5 in a
+real opp can confidently invoke `training-deck-build` once
+`training-deck-outline` runs upstream.
+
 ## 0.10.84 — 2026-05-02
 
 **Per-artifact training split complete.** Final four extractions land,
