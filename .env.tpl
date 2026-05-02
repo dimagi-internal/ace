@@ -99,3 +99,12 @@ ACE_E2E_PIN=op://AI-Agents/connect-test-user/pin
 ACE_E2E_BACKUP_CODE=op://AI-Agents/connect-test-user/backup-code
 ACE_E2E_NAME="ACE Test"
 ACE_AVD_NAME=ACE_Pixel_API_34
+
+# ─── ACE Training Deck (Slides) ────────────────────────────────────
+# Populated by `npx tsx scripts/bootstrap-training-deck-template.ts`.
+# The template deck has stencil slides the `training-deck-build` skill
+# duplicates and fills via {{TITLE}} / {{SUBTITLE}} / {{BODY}}
+# placeholders. Iterate branding/layout in Slides directly; do NOT
+# change stencil objectIds or placeholder tokens (they're wired to
+# `lib/training-deck-spec.ts`).
+ACE_TRAINING_DECK_TEMPLATE_ID=
