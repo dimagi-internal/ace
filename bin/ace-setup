@@ -312,13 +312,30 @@ $LINT_BAD"
     pass "env: $ENV_OUT already has every .env.tpl key (use --force-env to refresh)"
   fi
 
-  # Verify no unresolved op:// references survived.
+  # Verify no unresolved op:// references survived. For each unresolved ref,
+  # run `op read` to surface the specific cause (missing item vs missing
+  # field vs no-read-permission) so the user can fix the right thing rather
+  # than guessing from a generic "grant access" message.
   if [ -f "$ENV_OUT" ]; then
     UNRESOLVED="$(grep -nE '=op://' "$ENV_OUT" 2>/dev/null)"
     if [ -n "$UNRESOLVED" ]; then
-      fail "env: unresolved 1Password references remain in $ENV_OUT" \
-           "your account/SA is missing read on these items in vault $OP_VAULT — grant access and re-run with --force-env"
-      printf '%s\n' "$UNRESOLVED" | sed 's/^/    /'
+      DIAG=""
+      while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        # line format from grep -n: "<lineno>:<KEY>=<op-ref>"
+        ref="${line#*=}"
+        ref="${ref%\"}"; ref="${ref#\"}"
+        err="$(op read "$ref" $OP_ACCOUNT_FLAG 2>&1 >/dev/null)"
+        [ -z "$err" ] && err="(op read succeeded on retry — re-run /ace:setup with --force-env)"
+        DIAG="${DIAG}    ${line}
+      → ${err}
+"
+      done <<UNRESOLVED_EOF
+$UNRESOLVED
+UNRESOLVED_EOF
+      fail "env: unresolved 1Password references in $ENV_OUT" \
+           "per-ref diagnostic below — fix each cause and re-run with --force-env:
+$DIAG"
       mark_fail
     else
       pass "env: all 1Password references resolved"

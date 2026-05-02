@@ -5,6 +5,30 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.72 — 2026-05-02
+
+**Per-ref `op read` diagnostic on unresolved 1Password references.**
+Replaces the generic "grant access" message with the actual cause from
+`op read` for each unresolved ref.
+
+### Why
+
+When `op inject` succeeds but leaves some `op://` references unresolved,
+the previous failure message lumped every cause into "your account/SA
+is missing read on these items — grant access". That was wrong roughly
+half the time: the actual cause is often a missing FIELD on an existing
+item, or a renamed item, neither of which is a permission issue. Users
+had to manually `op read` each ref to find the right fix.
+
+### Changed
+
+- **`bin/ace-setup`:** when post-inject grep finds unresolved refs, now
+  runs `op read` against each one and prints the specific error
+  (e.g. `"item not found"` vs `"field 'domain' not found on item 'ACE
+  - CommCareHQ'"` vs `"403: insufficient permissions"`). No extra cost
+  on the happy path — only triggered when an unresolved ref already
+  exists.
+
 ## 0.10.71 — 2026-05-02
 
 **Static lint of `op://` references in `.env.tpl` before `op inject`.**
