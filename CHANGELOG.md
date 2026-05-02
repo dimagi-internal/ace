@@ -5,6 +5,83 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.78 — 2026-05-02
+
+**Google Slides support — `slides_*` MCP atoms + `training-deck-build`
+skill + template bootstrap script.** Closes the markdown-to-real-deck
+gap so `training-materials` output becomes a presentable Slides URL
+the LLO admin can edit and present (or use Slides' native "Present +
+Record" for the video deliverable).
+
+### Added
+
+- `mcp/google-drive-server.ts` — three new atoms mirroring the
+  `docs_*` shape:
+  - `slides_get` — read full structured JSON of a Slides deck
+  - `slides_batch_update` — execute raw Slides API batchUpdate
+    requests (createSlide, replaceAllText, createImage, etc.)
+  - `slides_copy_template` — copy a template deck into a Shared-Drive
+    folder, with optional deck-wide `replaceAllText` pass for
+    convenience. Mirrors `docs_copy_template`.
+- `https://www.googleapis.com/auth/presentations` added to the SA
+  scopes list. **Operator action required (one-time):** enable the
+  Google Slides API on the connect-labs GCP project (502453377792)
+  via the URL Google returns on first call:
+  `https://console.developers.google.com/apis/api/slides.googleapis.com/overview?project=502453377792`.
+- `lib/training-deck-spec.ts` — pure helper module:
+  - `parseDeckOutline(md)` — strict markdown parser for
+    `training-deck-outline.md` (title slide + N content slides with
+    bullets / paragraphs / images / speaker notes)
+  - `buildSlidesRequests(spec, { stencils })` — translate parsed deck
+    into a Slides batchUpdate request stream (template-based via
+    `duplicateObject` + `replaceAllText` scoped per slide)
+  - `buildSpeakerNotesRequests` — second-phase batch for speaker
+    notes (Slides assigns `speakerNotesObjectId` lazily, can only be
+    discovered after slide creation)
+- `scripts/bootstrap-training-deck-template.ts` — one-time setup that
+  creates the ACE training-deck Slides template with two stencil
+  slides (`ace_stencil_title`, `ace_stencil_content`) and the
+  `{{TITLE}}` / `{{SUBTITLE}}` / `{{BODY}}` placeholders the build
+  code knows about. Idempotent — re-running with an existing template
+  prints the existing ID. **Operator action required (one-time after
+  enabling the API):** run `npx tsx scripts/bootstrap-training-deck-template.ts`,
+  paste the resulting `ACE_TRAINING_DECK_TEMPLATE_ID` into 1Password
+  and re-inject `.env`.
+- `skills/training-deck-build/SKILL.md` — new skill that consumes
+  `training-materials/training-deck-outline.md` + screenshot manifests
+  and produces a Slides deck. Three-mode contract (auto / review /
+  dry-run), state-trail entry under `state.yaml`, standard verdict
+  shape.
+- `.env.tpl` — `ACE_TRAINING_DECK_TEMPLATE_ID` placeholder.
+
+### Why template-based instead of code-built
+
+Branding (fonts, colors, logo, layout) lives in the template, not in
+code. Iterating the visual design is "edit the template in Slides,
+save" — not "rebuild the plugin and ship". The build code only fills
+placeholders and stacks images; everything visual is template-side.
+This was the user's explicit direction: "make one up for now but then
+we should improve it over time."
+
+### Tests
+
+- `test/lib/training-deck-spec.test.ts` — 11 tests covering parser
+  (title + slides + bullets + paragraphs + images + notes; rejection
+  paths) and request builder (replaceAllText scoping, image URL
+  construction for both Drive fileId and HTTPS, speaker-notes split).
+  340/340 tests passing across the full suite.
+
+### Out of scope
+
+- **No video generation.** Decided to skip MP4 entirely for v1 — the
+  user explicitly deferred to a separate skill. Slides' native
+  "Present + Record" gives the LLO admin a recorded MP4 with one
+  click, no TTS quality issues, no ffmpeg pipeline to maintain.
+- **Screenshot manifest resolution by alias** (e.g.,
+  `screenshot:learn-form-1-step-3`) is documented as a planned
+  extension but not implemented. v1 uses raw `drive:<fileId>` and
+  `https://...` refs only.
+
 ## 0.10.77 — 2026-05-02
 
 **Skill-side safety net for Nova `add_fields` partial persistence.**

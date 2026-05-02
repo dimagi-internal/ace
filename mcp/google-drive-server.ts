@@ -32,6 +32,7 @@ const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/documents',
+  'https://www.googleapis.com/auth/presentations',
 ];
 
 // ============================================================================
@@ -93,6 +94,7 @@ const auth = getAuth();
 const sheets = google.sheets({ version: 'v4', auth });
 const drive = google.drive({ version: 'v3', auth });
 const docs = google.docs({ version: 'v1', auth });
+const slides = google.slides({ version: 'v1', auth });
 
 // ============================================================================
 // Helper
@@ -768,6 +770,112 @@ server.tool(
 
       return result({
         id: newDocId,
+        title: copy.data.name,
+        webViewLink: copy.data.webViewLink,
+      });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// ============================================================================
+// Slides
+// ============================================================================
+//
+// Mirror of the docs_* atoms (slides_get / slides_batch_update / slides_create).
+// The Slides API has a strict separation: `presentations.create` makes a NEW
+// (empty) deck and returns its presentationId; everything else — title slide,
+// content slides, images, speaker notes — happens via batchUpdate. So the
+// 3-atom shape is the API's natural shape, not an artificial reduction.
+//
+// Drive integration: `presentations.create` writes the new deck to the Service
+// Account's My-Drive root. Service Accounts have zero My-Drive quota, so the
+// next batchUpdate would fail with a misleading quota error. Workaround:
+// create-then-move via `drive.files.update` with `addParents=<sharedDriveId>`
+// + `removeParents=root`. The `slides_create_presentation` atom does this
+// automatically when a `parentFolderId` is provided. Same Shared-Drive guard
+// (`assertParentOnSharedDrive`) the docs atoms use.
+
+// 19. Get full slides structure
+server.tool(
+  'slides_get',
+  'Read the full structured JSON of a Google Slides presentation — slides, page elements (text boxes, images, shapes), speakerNotes, masters, layouts, and all element object IDs. Use this to inspect deck structure before making edits via slides_batch_update.',
+  {
+    presentationId: z.string().describe('The Google Slides presentation ID from the URL'),
+  },
+  async ({ presentationId }) => {
+    try {
+      const resp = await slides.presentations.get({ presentationId });
+      return result(resp.data);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 20. Batch update a Google Slides deck (raw API)
+server.tool(
+  'slides_batch_update',
+  'Execute raw Google Slides API batchUpdate requests. Supports all request types: createSlide, insertText, createImage, updatePageElementTransform, updateSpeakerNotesProperties, etc. See https://developers.google.com/slides/api/reference/rest/v1/presentations/request for the full schema. For ACE training decks, the typical sequence is: createSlide (with layout) → createShape/createImage → insertText → optionally updateTextStyle.',
+  {
+    presentationId: z.string().describe('The Google Slides presentation ID'),
+    requests: z.array(z.record(z.unknown())).describe('Array of Slides API request objects, e.g. [{"createSlide": {"objectId": "slide1", "slideLayoutReference": {"predefinedLayout": "TITLE_AND_BODY"}}}]'),
+  },
+  async ({ presentationId, requests }) => {
+    try {
+      const resp = await slides.presentations.batchUpdate({
+        presentationId,
+        requestBody: { requests },
+      });
+      return result({
+        presentationId: resp.data.presentationId,
+        replies: resp.data.replies,
+      });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 21. Copy a Slides template into a Shared-Drive folder
+server.tool(
+  'slides_copy_template',
+  'Copy a Google Slides template deck into a Shared-Drive folder. Mirrors `docs_copy_template`. ACE training-deck workflow: the template contains stencil slides with placeholder text like {{TITLE}} / {{BODY}} that subsequent slides_batch_update calls fill in. Returns the new presentationId and webViewLink. Optional `replacements` runs a single deck-wide replaceAllText pass for any quick global substitutions; per-slide-scoped replacements happen via slides_batch_update.',
+  {
+    templatePresentationId: z.string().describe('The template Google Slides presentation ID to copy'),
+    title: z.string().describe('Title for the new presentation'),
+    parentFolderId: z.string().describe('Destination Shared-Drive folder ID. REQUIRED — Service Accounts cannot write to My Drive.'),
+    replacements: z.record(z.string()).optional().describe('Optional deck-wide replaceAllText map, e.g. {"{{OPP_NAME}}": "Turmeric Survey"}. For per-slide-scoped replacements use slides_batch_update with pageObjectIds.'),
+  },
+  async ({ templatePresentationId, title, parentFolderId, replacements }) => {
+    try {
+      await assertParentOnSharedDrive(parentFolderId);
+      const copy = await drive.files.copy({
+        fileId: templatePresentationId,
+        requestBody: { name: title, parents: [parentFolderId] },
+        fields: 'id, name, webViewLink',
+        supportsAllDrives: true,
+      });
+      const presentationId = copy.data.id!;
+
+      if (replacements && Object.keys(replacements).length > 0) {
+        const requests = Object.entries(replacements).map(
+          ([placeholder, replacement]) => ({
+            replaceAllText: {
+              containsText: { text: placeholder, matchCase: true },
+              replaceText: replacement,
+            },
+          }),
+        );
+        await slides.presentations.batchUpdate({
+          presentationId,
+          requestBody: { requests },
+        });
+      }
+
+      return result({
+        presentationId,
         title: copy.data.name,
         webViewLink: copy.data.webViewLink,
       });
