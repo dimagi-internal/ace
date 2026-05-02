@@ -5,6 +5,44 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.75 — 2026-05-02
+
+**New `read_personal_drive_doc` MCP tool** for reading Drive files
+shared with the human user but not the ACE service account. Backed by
+the `gog` CLI we already use for Gmail.
+
+### Why
+
+When a source document (like the LEEP data sheet) is shared only with
+the user account, the ACE agent had no first-class way to read it.
+The previous workaround was an out-of-band gog OAuth dance that the
+session-review explicitly flagged as "sketchy" and "not a recipe to
+save." This tool turns that workaround into a properly registered MCP
+capability paired with finding #13's pre-flight (idea-to-pdd now hints
+at it when the SA hits a permission wall).
+
+### Added
+
+- **`mcp/google-drive-server.ts`:** new `read_personal_drive_doc`
+  tool. Takes a `file_id` and optional `format` (`txt`/`md`/`csv`,
+  default `txt`), shells out to `gog drive download` with
+  `$ACE_GMAIL_ACCOUNT` / `$ACE_GMAIL_CLIENT` (the existing Gmail OAuth
+  identity), captures the exported content via tmpfile, and returns
+  it. On failure, surfaces the actual gog error and the exact
+  re-auth command needed when Drive scope is missing
+  (`gog login ... --services gmail,drive`).
+
+### Setup
+
+If gog hasn't been authorized for Drive on your account yet, run once:
+
+```
+gog login $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --services gmail,drive
+```
+
+The tool error message includes this command verbatim when scope is
+missing.
+
 ## 0.10.74 — 2026-05-02
 
 **Pre-flight Drive accessibility check in `idea-to-pdd`.** Before

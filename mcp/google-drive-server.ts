@@ -13,6 +13,8 @@ import { z } from 'zod';
 import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
+import { spawnSync } from 'child_process';
 import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
@@ -378,6 +380,55 @@ server.tool(
       return result({ name: meta.data.name, mimeType, content });
     } catch (e: any) {
       return error(e.message);
+    }
+  },
+);
+
+// 9b. Read a Drive file via personal OAuth (gog CLI fallback)
+server.tool(
+  'read_personal_drive_doc',
+  'Read a Google Drive document via personal OAuth (gog CLI) — fallback for files shared with the human user account but not the ACE service account. Requires gog to be installed and authorized for Drive on $ACE_GMAIL_ACCOUNT/$ACE_GMAIL_CLIENT. If the user has not yet granted Drive scope, re-run: `gog login $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --services gmail,drive`. Use only when drive_read_file fails with a permission error.',
+  {
+    file_id: z.string().describe('The Google Drive file ID'),
+    format: z.enum(['txt', 'md', 'csv']).optional().describe('Export format for Google Docs/Sheets (default: txt for Docs, csv for Sheets)'),
+  },
+  async ({ file_id, format }) => {
+    const account = process.env.ACE_GMAIL_ACCOUNT;
+    const client = process.env.ACE_GMAIL_CLIENT;
+    if (!account || !client) {
+      return error('ACE_GMAIL_ACCOUNT and ACE_GMAIL_CLIENT must be set in .env (these select the gog OAuth identity).');
+    }
+    const fmt = format ?? 'txt';
+    const tmpFile = path.join(os.tmpdir(), `ace-personal-drive-${process.pid}-${Date.now()}.${fmt}`);
+    try {
+      const args = [
+        'drive', 'download', file_id,
+        '--account', account,
+        '--client', client,
+        '--format', fmt,
+        '--out', tmpFile,
+        '--no-input',
+      ];
+      const proc = spawnSync('gog', args, { encoding: 'utf8' });
+      if (proc.error) {
+        return error(`gog binary not found or not executable: ${proc.error.message}. Install with: brew install steipete/tap/gogcli`);
+      }
+      // gog can return exit 0 even on 404; check stderr and that the file
+      // was actually written.
+      const stderr = (proc.stderr || '').trim();
+      if (proc.status !== 0 || !fs.existsSync(tmpFile) || fs.statSync(tmpFile).size === 0) {
+        const reauth = `gog login ${account} --client ${client} --services gmail,drive`;
+        return error(
+          `gog drive download failed: ${stderr || 'no output written'}. ` +
+          `If the error mentions scope/permission/insufficient, re-auth gog with Drive scope: ${reauth}`,
+        );
+      }
+      const content = fs.readFileSync(tmpFile, 'utf8');
+      return result({ file_id, format: fmt, content });
+    } catch (e: any) {
+      return error(e.message);
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
     }
   },
 );
