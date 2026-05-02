@@ -5,6 +5,45 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.83 — 2026-05-02
+
+**Per-artifact training split — `training-flw-guide` extracted.** Second
+move in the per-artifact split (after `training-deck-outline` in 0.10.79).
+
+### Added
+
+- `skills/training-flw-guide/SKILL.md` — owns
+  `flw-training-guide.md`. Reads PDD + app summaries + connect/OCS
+  state + per-opp screenshot manifest + common Connect screenshot
+  manifest, drafts the FLW-facing step-by-step guide with embedded
+  images. Layers common-pool (sign-in, claim, sync) ahead of per-opp
+  (Learn modules, Deliver form). Archetype-aware (atomic-visit,
+  focus-group, multi-stage). Self-evaluates on coverage / concreteness
+  / image hygiene / audience fit. Modes: auto / review / dry-run.
+
+### Changed
+
+- `skills/training-materials/SKILL.md` — drops the FLW Training Guide
+  subsection and embedded-screenshots step. Now produces 4 artifacts:
+  LLO Manager Guide, Quick Reference, FAQ, Onboarding Email Body.
+  Migration table updated.
+- `agents/qa-and-training.md` — Phase 5 now sequences six steps:
+  qa-plan → app-screenshot-capture → training-materials →
+  training-flw-guide → training-deck-outline → training-deck-build.
+- `lib/artifact-manifest.ts` — `training-materials/flw-training-guide.md`
+  is now `producedBy: 'training-flw-guide'`.
+
+### Roadmap (still pending)
+
+The remaining 4 artifacts each get a dedicated `training-<x>` skill in
+subsequent cycles:
+- `training-llo-guide` — `llo-manager-guide.md`
+- `training-quick-reference` — `quick-reference.md`
+- `training-faq` — `faq.md`
+- `training-onboarding-email` — `onboarding-email-body.md`
+
+After that, `training-materials` becomes a thin umbrella or is removed.
+
 ## 0.10.82 — 2026-05-02
 
 **Slides API end-to-end live; switch deck creation to Drive API route.**

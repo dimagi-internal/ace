@@ -176,7 +176,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   },
   {
     path: 'training-materials/flw-training-guide.md',
-    producedBy: 'training-materials',
+    producedBy: 'training-flw-guide',
     consumedBy: ['llo-onboarding', 'ocs-agent-setup'],
     phase: 'commcare',
     required: true,

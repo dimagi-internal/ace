@@ -40,10 +40,6 @@ Generate training materials from the app summaries and standard templates.
    - **LLO Manager Guide** — overview of the opportunity, what LLOs need to do,
      timeline, expectations, escalation contacts. Embeds qa-plan's
      `uat-checklist.md` as the "Pre-deployment UAT" section.
-   - **FLW Training Guide** — step-by-step instructions for using the Learn
-     and Deliver apps, with screenshots of each form. Layers common Connect
-     screenshots (sign-in, claim, sync) at the front; opp-specific
-     screenshots (Learn-app modules + Deliver form) in the middle.
    - **Quick Reference Card** — one-page summary of key workflows, common
      issues, OCS support widget URL.
    - **FAQ** — anticipated questions from LLOs and FLWs. Seeded from
@@ -51,15 +47,18 @@ Generate training materials from the app summaries and standard templates.
    - **Onboarding Email Body** — the email body Phase 6 `llo-onboarding`
      personalizes per LLO. Embeds the OCS widget URL.
 
-   **NOT produced here (moved to dedicated per-artifact skills as of 0.10.79):**
-   - `training-deck-outline.md` — owned by the `training-deck-outline` skill
+   **NOT produced here (moved to dedicated per-artifact skills):**
+   - `training-deck-outline.md` — owned by `training-deck-outline` (0.10.79)
+   - `flw-training-guide.md` — owned by `training-flw-guide` (0.10.83)
    - `training-video-script.md` — planned, not yet implemented (will land
      as a `training-video-script` skill paired with a future video-build skill)
 
    See § "Per-artifact split (in progress)" below for the migration roadmap.
 
-4. **Embed step-by-step screenshots** in `flw-training-guide.md`. For each
-   relevant entry in either screenshot manifest, render the screenshot
+4. **Embed step-by-step screenshots** in the LLO Manager Guide and
+   Quick Reference where relevant (FLW-specific screenshots have moved
+   to the `training-flw-guide` skill). For each relevant entry in either
+   screenshot manifest, render the screenshot
    inline with its step label and a 1–2 sentence caption.
    - Common-pool entries are referenced by their `_common/...` Drive path
    - Per-opp entries are referenced by their `ACE/<opp>/screenshots/...`
@@ -75,14 +74,14 @@ Generate training materials from the app summaries and standard templates.
 
 5. **Write to GDrive:** `ACE/<opp-name>/training-materials/`
    - `llo-manager-guide.md`
-   - `flw-training-guide.md`
    - `quick-reference.md`
    - `faq.md`
    - `onboarding-email-body.md` — Phase 6 `llo-onboarding` consumes this
 
-   `training-deck-outline.md` is produced by the sibling
-   `training-deck-outline` skill (and rendered to a real Slides deck by
-   `training-deck-build`). Don't write it here.
+   `flw-training-guide.md` is produced by the sibling `training-flw-guide`
+   skill, and `training-deck-outline.md` by `training-deck-outline` (which
+   is rendered to a real Slides deck by `training-deck-build`). Don't
+   write either here.
 
 6. **Write verdict** to `ACE/<opp-name>/verdicts/training-materials.yaml`. The shape MUST conform to `lib/verdict-schema.ts` so `opp-eval` can aggregate.
 
@@ -137,12 +136,12 @@ the deck outline has moved out:
 | Artifact | Owner skill | Status |
 |---|---|---|
 | `llo-manager-guide.md` | `training-materials` | still here |
-| `flw-training-guide.md` | `training-materials` | still here |
+| `flw-training-guide.md` | `training-flw-guide` | **moved out (0.10.83)** |
 | `quick-reference.md` | `training-materials` | still here |
 | `faq.md` | `training-materials` | still here |
 | `onboarding-email-body.md` | `training-materials` | still here |
 | `training-deck-outline.md` | `training-deck-outline` | **moved out (0.10.79)** |
-| training-deck.pptx → Google Slides | `training-deck-build` | new (0.10.78) |
+| training-deck → Google Slides | `training-deck-build` | new (0.10.78) |
 | `training-video-script.md` | (planned `training-video-script` skill) | not yet implemented |
 
 The five remaining artifacts will each get a dedicated
@@ -161,3 +160,4 @@ Don't add new artifacts to this skill — create a sibling
 | 2026-04-28 | Move skill from Phase 2 (commcare-setup) to Phase 5 (qa-and-training). Add upstream-input contract: read connect-state.yaml, ocs-state.yaml, screenshots/manifest.yaml. Embed real screenshots in flw-training-guide. | ACE team (mobile-emulation) |
 | 2026-04-30 | Phase 5 restructure (0.10.44): consume `qa-plan` (test-matrix + uat-checklist) for UAT section + FAQ seeding. Add **common-vs-opp screenshot layering**: read `ACE/_common/connect-screenshots/<connect-version>/manifest.yaml` for standard Connect navigation (sourced by the standalone `connect-baseline-screenshots` skill); per-opp screenshots remain at `ACE/<opp>/screenshots/`. Add two new outputs: `training-deck-outline.md` (slide-by-slide with screenshot refs) and `training-video-script.md` (narration + screen-cue timing). | ACE team |
 | 2026-05-02 | Per-artifact split begins (0.10.79): move `training-deck-outline.md` to its own `training-deck-outline` skill. `training-video-script.md` removed (will get its own skill later). Other 5 artifacts stay here pending the rest of the migration. | ACE team |
+| 2026-05-02 | Per-artifact split continues (0.10.83): move `flw-training-guide.md` to its own `training-flw-guide` skill. 4 artifacts remain here. | ACE team |
