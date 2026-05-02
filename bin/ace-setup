@@ -245,6 +245,33 @@ elif [ ! -f "$ENV_TPL" ]; then
   fail "env: .env.tpl not found at $ENV_TPL" "the plugin is corrupt; reinstall with /plugin install ace@ace"
   mark_fail
 else
+  # Static lint: every op:// reference must have >=3 slash-separated segments
+  # (vault/item/field). 1Password requires this and `op inject` failures are
+  # cryptic ("invalid secret reference — too few '/'"). Catch malformed refs
+  # before touching the network. Comment lines are skipped (not injected).
+  # Item/field names can contain spaces, so we read each ref to end-of-line
+  # (or the closing `}}` for wrapped refs) and trim trailing whitespace.
+  LINT_BAD="$(awk '
+    /^[[:space:]]*#/ { next }
+    {
+      if (match($0, /op:\/\/.+$/)) {
+        ref = substr($0, RSTART)
+        sub(/}}.*/, "", ref)
+        sub(/[[:space:]]+$/, "", ref)
+        path = substr(ref, 6)
+        n = split(path, _parts, "/")
+        if (n < 3) printf "    line %d: %s (got %d segment%s, need >=3 vault/item/field)\n", NR, ref, n, (n==1?"":"s")
+      }
+    }
+  ' "$ENV_TPL")"
+  if [ -n "$LINT_BAD" ]; then
+    fail "env: malformed op:// references in .env.tpl" "every reference needs vault/item/field — fix and re-run /ace:setup:
+$LINT_BAD"
+    mark_fail
+  else
+    pass "env: .env.tpl op:// refs well-formed"
+  fi
+
   # Decide whether to inject. Skip when .env already covers every key in .env.tpl.
   NEEDS_INJECT=0
   if [ "$FORCE_ENV" = "1" ]; then
@@ -269,7 +296,9 @@ else
     fi
   fi
 
-  if [ "$NEEDS_INJECT" = "1" ]; then
+  if [ "$NEEDS_INJECT" = "1" ] && [ -n "$LINT_BAD" ]; then
+    echo "INFO env: skipping op inject — fix lint failures above first"
+  elif [ "$NEEDS_INJECT" = "1" ]; then
     INJECT_OUT="$(op inject -i "$ENV_TPL" -o "$ENV_OUT" --force $OP_ACCOUNT_FLAG 2>&1)"
     INJECT_RC=$?
     if [ "$INJECT_RC" -ne 0 ]; then

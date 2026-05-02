@@ -5,6 +5,32 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.71 — 2026-05-02
+
+**Static lint of `op://` references in `.env.tpl` before `op inject`.**
+Catches malformed refs at setup time instead of surfacing a cryptic
+runtime error.
+
+### Why
+
+`/ace:setup` failed in a recent ace-setup session with `invalid secret
+reference — too few '/'` from `op inject`. Root cause: a bare
+`op://vault/item` reference (missing the `/field` suffix) had been left
+in `.env.tpl`, but `op inject` does not surface line numbers or which
+ref is malformed. Diagnosis took several minutes when it should have
+taken seconds.
+
+### Changed
+
+- **`bin/ace-setup`:** new static lint phase before `op inject`. Scans
+  every non-comment line of `.env.tpl`, finds each `op://...` reference,
+  and verifies it has at least 3 slash-separated segments
+  (`vault/item/field`). Item and field names with spaces are handled by
+  reading each ref to end-of-line (or the closing `}}` for wrapped
+  refs) and trimming. On failure, prints the offending line numbers
+  with the ref text and skips `op inject` to avoid producing a partial
+  `.env` from a broken template.
+
 ## 0.10.70 — 2026-05-01
 
 **Default `mobile_run_recipe.avdName` from `ACE_AVD_NAME` env.** Closes
