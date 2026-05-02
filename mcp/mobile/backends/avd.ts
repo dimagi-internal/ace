@@ -90,21 +90,53 @@ function resolveJavaHome(): string | null {
 }
 
 /**
+ * Locate the maestro CLI even when the operator's shell rc additions
+ * haven't propagated to the spawned MCP server. The official installer
+ * drops the launcher at `~/.maestro/bin/maestro` on macOS / Linux and
+ * `%USERPROFILE%\.maestro\bin\maestro.bat` on Windows, then tries to
+ * append `~/.maestro/bin` to the user's shell rc — which never reaches
+ * a Claude-Code-Desktop child process spawned before the install.
+ *
+ * Resolution order:
+ *   1. `MAESTRO_BIN` from process env (operator/CI override wins)
+ *   2. `~/.maestro/bin/maestro[.bat]` (official installer default)
+ *
+ * Returns the path to the bin DIRECTORY (not the binary itself) so
+ * shellEnv can prepend it to PATH, or null if nothing matched.
+ */
+function resolveMaestroBinDir(): string | null {
+  if (process.env.MAESTRO_BIN && fs.existsSync(process.env.MAESTRO_BIN)) {
+    return path.dirname(process.env.MAESTRO_BIN);
+  }
+  const homeBin = path.join(os.homedir(), '.maestro', 'bin');
+  const launcher = process.platform === 'win32' ? 'maestro.bat' : 'maestro';
+  if (fs.existsSync(path.join(homeBin, launcher))) return homeBin;
+  return null;
+}
+
+/**
  * Build a child-process env that includes a resolved JAVA_HOME and a PATH
  * that contains its bin/. Used by every shell call so maestro/avdmanager
  * Just Work even from a fresh non-login shell.
  */
 function shellEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
+  const sep = process.platform === 'win32' ? ';' : ':';
+  const prepend = (dir: string) => {
+    if (!env.PATH || !env.PATH.split(sep).includes(dir)) {
+      env.PATH = `${dir}${sep}${env.PATH ?? ''}`;
+    }
+  };
+
   const javaHome = resolveJavaHome();
   if (javaHome) {
     env.JAVA_HOME = javaHome;
-    const sep = process.platform === 'win32' ? ';' : ':';
-    const javaBin = path.join(javaHome, 'bin');
-    if (!env.PATH || !env.PATH.split(sep).includes(javaBin)) {
-      env.PATH = `${javaBin}${sep}${env.PATH ?? ''}`;
-    }
+    prepend(path.join(javaHome, 'bin'));
   }
+
+  const maestroBinDir = resolveMaestroBinDir();
+  if (maestroBinDir) prepend(maestroBinDir);
+
   return env;
 }
 
