@@ -50,19 +50,15 @@ Generate training materials from the app summaries and standard templates.
      `test-prompts.md` and qa-plan's `test-matrix.md` edge cases.
    - **Onboarding Email Body** — the email body Phase 6 `llo-onboarding`
      personalizes per LLO. Embeds the OCS widget URL.
-   - **Training Deck Outline** (`training-deck-outline.md`) — slide-by-slide
-     outline with screenshot references (both common and opp-specific) and
-     speaker notes. The format is markdown, intended to be rendered into
-     a Google Slides deck downstream (or directly used by the LLO as a
-     slide-by-slide script).
-   - **Training Video Script** (`training-video-script.md`) — narration
-     text + screen-cue timing (e.g., "[0:00–0:15] Show common-sign-in-splash;
-     narrator: 'Welcome to ACE Turmeric Survey. To start, open the Connect
-     app on your phone…'"). Cues reference both common and opp-specific
-     screenshot manifest entries by ID.
 
-4. **Embed step-by-step screenshots** in `flw-training-guide.md`,
-   `training-deck-outline.md`, and `training-video-script.md`. For each
+   **NOT produced here (moved to dedicated per-artifact skills as of 0.10.79):**
+   - `training-deck-outline.md` — owned by the `training-deck-outline` skill
+   - `training-video-script.md` — planned, not yet implemented (will land
+     as a `training-video-script` skill paired with a future video-build skill)
+
+   See § "Per-artifact split (in progress)" below for the migration roadmap.
+
+4. **Embed step-by-step screenshots** in `flw-training-guide.md`. For each
    relevant entry in either screenshot manifest, render the screenshot
    inline with its step label and a 1–2 sentence caption.
    - Common-pool entries are referenced by their `_common/...` Drive path
@@ -83,8 +79,10 @@ Generate training materials from the app summaries and standard templates.
    - `quick-reference.md`
    - `faq.md`
    - `onboarding-email-body.md` — Phase 6 `llo-onboarding` consumes this
-   - `training-deck-outline.md` — slide-by-slide deck outline w/ screenshot refs
-   - `training-video-script.md` — narration + screen-cue timing
+
+   `training-deck-outline.md` is produced by the sibling
+   `training-deck-outline` skill (and rendered to a real Slides deck by
+   `training-deck-build`). Don't write it here.
 
 6. **Write verdict** to `ACE/<opp-name>/verdicts/training-materials.yaml`. The shape MUST conform to `lib/verdict-schema.ts` so `opp-eval` can aggregate.
 
@@ -130,6 +128,31 @@ Generate training materials from the app summaries and standard templates.
 - **Auto:** Generate materials, notify admin group, proceed
 - **Review:** Present materials for review before distributing to LLOs
 
+## Per-artifact split (in progress)
+
+This skill is being decomposed into one skill per training artifact so
+each can be iterated, evaluated, and re-run independently. As of 0.10.79
+the deck outline has moved out:
+
+| Artifact | Owner skill | Status |
+|---|---|---|
+| `llo-manager-guide.md` | `training-materials` | still here |
+| `flw-training-guide.md` | `training-materials` | still here |
+| `quick-reference.md` | `training-materials` | still here |
+| `faq.md` | `training-materials` | still here |
+| `onboarding-email-body.md` | `training-materials` | still here |
+| `training-deck-outline.md` | `training-deck-outline` | **moved out (0.10.79)** |
+| training-deck.pptx → Google Slides | `training-deck-build` | new (0.10.78) |
+| `training-video-script.md` | (planned `training-video-script` skill) | not yet implemented |
+
+The five remaining artifacts will each get a dedicated
+`training-<artifact>` skill in a future migration cycle. After that,
+this skill becomes a thin umbrella (or is removed and the Phase 5
+orchestrator dispatches the children directly).
+
+Don't add new artifacts to this skill — create a sibling
+`training-<x>` skill instead.
+
 ## Change Log
 
 | Date | Change | Author |
@@ -137,3 +160,4 @@ Generate training materials from the app summaries and standard templates.
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-28 | Move skill from Phase 2 (commcare-setup) to Phase 5 (qa-and-training). Add upstream-input contract: read connect-state.yaml, ocs-state.yaml, screenshots/manifest.yaml. Embed real screenshots in flw-training-guide. | ACE team (mobile-emulation) |
 | 2026-04-30 | Phase 5 restructure (0.10.44): consume `qa-plan` (test-matrix + uat-checklist) for UAT section + FAQ seeding. Add **common-vs-opp screenshot layering**: read `ACE/_common/connect-screenshots/<connect-version>/manifest.yaml` for standard Connect navigation (sourced by the standalone `connect-baseline-screenshots` skill); per-opp screenshots remain at `ACE/<opp>/screenshots/`. Add two new outputs: `training-deck-outline.md` (slide-by-slide with screenshot refs) and `training-video-script.md` (narration + screen-cue timing). | ACE team |
+| 2026-05-02 | Per-artifact split begins (0.10.79): move `training-deck-outline.md` to its own `training-deck-outline` skill. `training-video-script.md` removed (will get its own skill later). Other 5 artifacts stay here pending the rest of the migration. | ACE team |
