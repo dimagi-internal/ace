@@ -1,163 +1,127 @@
 ---
 name: training-materials
 description: >
-  Generate training materials for LLOs and FLWs from app summaries and
-  template collateral. Output guides, quick-reference cards, and onboarding docs.
+  Thin umbrella that dispatches the six per-artifact training skills in
+  the right order. As of 0.10.84, this skill no longer produces any
+  artifact directly — every output is owned by a dedicated
+  `training-<artifact>` skill. Kept as an entry point so existing
+  Phase 5 orchestration and `/ace:step training-materials` invocations
+  keep working; will be removed once those callers migrate.
 ---
 
-# Training Materials
+# Training Materials (umbrella)
 
-Generate training materials from the app summaries and standard templates.
+Dispatches the six per-artifact training skills. This skill no longer
+produces any output of its own — call the per-artifact skills directly
+or invoke this umbrella to run the full sequence.
 
-## Inputs (read from Drive)
+## Per-artifact skills (the real work)
 
-| Source | Artifact | Used for |
-|---|---|---|
-| Phase 1 | `ACE/<opp>/pdd.md` | overall framing, opp goals, archetype |
-| Phase 1 | `ACE/<opp>/test-prompts.md` | seed FAQ entries |
-| Phase 2 | `ACE/<opp>/app-summaries/learn-app-summary.md` | content + form names in FLW guide |
-| Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | content + form names in FLW guide |
-| Phase 2 | `ACE/<opp>/deployment-summary.md` | HQ domain quoted in LLO Manager Guide |
-| Phase 3 (state.yaml) | `connect.opportunity` + `connect.payment_units` + `connect.finalize` | payment + verification details in LLO Manager Guide |
-| Phase 4 | `ACE/<opp>/ocs-agent-config.md` + `widget-handoff.md` (`widget_url`) | "where to ask questions" link in FLW Training Guide, Quick Reference, and onboarding-email body |
-| Phase 5 Step 1 (qa-plan) | `ACE/<opp>/qa-plan/test-matrix.md` + `uat-checklist.md` | UAT-acceptance section of LLO Manager Guide; FAQ entries |
-| Phase 5 Step 2 (this phase) | `ACE/<opp>/screenshots/manifest.yaml` + per-opp PNGs | embed per-opp step-by-step screenshots in FLW Training Guide + training deck/video |
-| **Common assets** | `ACE/_common/connect-screenshots/<connect-version>/manifest.yaml` + the PNGs it points to | embed common Connect-navigation screenshots (sign-in, claim opp, sync, payments) — sourced from the standalone `connect-baseline-screenshots` skill |
+| Artifact | Owner skill |
+|---|---|
+| `flw-training-guide.md` | `training-flw-guide` |
+| `llo-manager-guide.md` | `training-llo-guide` |
+| `quick-reference.md` | `training-quick-reference` |
+| `faq.md` | `training-faq` |
+| `onboarding-email-body.md` | `training-onboarding-email` |
+| `training-deck-outline.md` | `training-deck-outline` |
+| The Slides deck itself | `training-deck-build` |
+
+The 5 per-artifact text skills are independent — order doesn't matter
+between them. `training-onboarding-email` MUST come last because it
+links to the others. `training-deck-outline` and `training-deck-build`
+form an outline-then-render pair (outline first, build second).
 
 ## Process
 
-1. **Read inputs from GDrive** as listed above. Template collateral from `templates/` directory (if available).
+1. Dispatch all 5 text-artifact skills in parallel (they're
+   independent):
+   - `training-flw-guide`
+   - `training-llo-guide`
+   - `training-quick-reference`
+   - `training-faq`
+   - `training-onboarding-email` *(actually dispatch LAST — see
+     dependency note below)*
 
-2. **Resolve the common-screenshots set.** Read the latest manifest under
-   `ACE/_common/connect-screenshots/`. Pick the version directory that
-   matches the live Connect APK version (from
-   `state.yaml`'s deployment summary or `ACE_CONNECT_APK_VERSION` env);
-   if none matches exactly, pick the most recent one and emit an INFO
-   note in the verdict. This pool covers the standard Connect navigation
-   surfaces (sign-in, claim opp, sync, payments) — not opp-specific.
+2. Once `training-flw-guide` and the screenshot manifest are both
+   ready, dispatch:
+   - `training-deck-outline`
 
-3. **Generate training materials:**
-   - **LLO Manager Guide** — overview of the opportunity, what LLOs need to do,
-     timeline, expectations, escalation contacts. Embeds qa-plan's
-     `uat-checklist.md` as the "Pre-deployment UAT" section.
-   - **Quick Reference Card** — one-page summary of key workflows, common
-     issues, OCS support widget URL.
-   - **FAQ** — anticipated questions from LLOs and FLWs. Seeded from
-     `test-prompts.md` and qa-plan's `test-matrix.md` edge cases.
-   - **Onboarding Email Body** — the email body Phase 6 `llo-onboarding`
-     personalizes per LLO. Embeds the OCS widget URL.
+3. Once `training-deck-outline` is done, dispatch:
+   - `training-deck-build` (only if `ACE_TRAINING_DECK_TEMPLATE_ID`
+     is set; otherwise skip with an INFO note)
 
-   **NOT produced here (moved to dedicated per-artifact skills):**
-   - `training-deck-outline.md` — owned by `training-deck-outline` (0.10.79)
-   - `flw-training-guide.md` — owned by `training-flw-guide` (0.10.83)
-   - `training-video-script.md` — planned, not yet implemented (will land
-     as a `training-video-script` skill paired with a future video-build skill)
+4. Dispatch `training-onboarding-email` LAST — it links to the other
+   docs by Drive URL and they have to exist.
 
-   See § "Per-artifact split (in progress)" below for the migration roadmap.
+5. Aggregate the verdicts. The umbrella's own verdict at
+   `verdicts/training-materials.yaml` is the union of the 6 child
+   verdicts; `passed: true` iff every child passed (or skipped
+   cleanly, in the case of training-deck-build without a template).
 
-4. **Embed step-by-step screenshots** in the LLO Manager Guide and
-   Quick Reference where relevant (FLW-specific screenshots have moved
-   to the `training-flw-guide` skill). For each relevant entry in either
-   screenshot manifest, render the screenshot
-   inline with its step label and a 1–2 sentence caption.
-   - Common-pool entries are referenced by their `_common/...` Drive path
-   - Per-opp entries are referenced by their `ACE/<opp>/screenshots/...`
-     Drive path
-   - Both use the same markdown image syntax — the layered approach is
-     transparent to the final renderer.
+## Dependency rules
 
-4. **Self-evaluate (LLM-as-Judge):**
-   - Are instructions clear enough for someone with no prior context?
-   - Do the materials match the actual app structure?
-   - Are all key workflows covered?
-   - Is the language appropriate for the target audience?
+- `training-onboarding-email` reads the Drive URLs of
+  `flw-training-guide.md`, `llo-manager-guide.md`,
+  `quick-reference.md` — those must exist before it runs
+- `training-deck-outline` reads the screenshot manifest from
+  `app-screenshot-capture` (Phase 5 Step 2) — that must run earlier
+  in the phase
+- `training-deck-build` reads `training-deck-outline.md` — outline
+  must run first
+- The 5 text-artifact skills are otherwise independent
 
-5. **Write to GDrive:** `ACE/<opp-name>/training-materials/`
-   - `llo-manager-guide.md`
-   - `quick-reference.md`
-   - `faq.md`
-   - `onboarding-email-body.md` — Phase 6 `llo-onboarding` consumes this
+Phase 5 sequencing in `agents/qa-and-training.md` enforces these
+rules. Direct `/ace:step training-materials` invocations honor them
+too via this dispatch order.
 
-   `flw-training-guide.md` is produced by the sibling `training-flw-guide`
-   skill, and `training-deck-outline.md` by `training-deck-outline` (which
-   is rendered to a real Slides deck by `training-deck-build`). Don't
-   write either here.
+## Why an umbrella exists at all
 
-6. **Write verdict** to `ACE/<opp-name>/verdicts/training-materials.yaml`. The shape MUST conform to `lib/verdict-schema.ts` so `opp-eval` can aggregate.
+Three reasons we kept this skill instead of removing it outright:
 
-   ```yaml
-   skill: training-materials
-   target: <opp-name>
-   ran_at: <ISO timestamp>
-   capture_path: training-materials/
+1. **`/ace:step training-materials`** — operator muscle memory and
+   existing scripts call this command. Removing the skill name
+   would break those.
+2. **`opp-eval` aggregation** — the per-skill verdicts roll up into
+   a `training-materials` summary in the standard verdict-aggregation
+   shape. The umbrella's verdict gives `opp-eval` a single
+   per-phase-step reading.
+3. **One-call dispatch** — if you want all training docs regenerated
+   in one go (e.g., after a PDD edit), this is the entry point.
 
-   overall_score: 8.5
-   verdict: pass | warn | fail | incomplete
-
-   dimensions:
-     content_matches_app_structure: { score: 9.0, weight: 0.25 }
-     screenshots_embedded:          { score: 8.0, weight: 0.20 }
-     real_urls_resolved:            { score: 10.0, weight: 0.15 }
-     audience_calibration:          { score: 9.0, weight: 0.20 }
-     pdd_fidelity:                  { score: 9.0, weight: 0.20 }
-
-   per_item:
-     - ref: "llo-manager-guide.md"
-       score: 9.0
-       verdict: pass
-       note: "Operations-oriented, escalation paths covered"
-     # ... one per produced doc
-
-   auto_surfaced:
-     - severity: WARN
-       message: "Screenshots not embedded — capture blocked. See verdicts/app-screenshot-capture.yaml."
-   ```
-
-   When screenshots are pending (the `app-screenshot-capture` verdict
-   came back `incomplete`), keep the `screenshots_embedded` dimension
-   weighted but score it ≤ 5.0 and emit a `[WARN]` `auto_surfaced`
-   entry pointing at the upstream block. Do not set the verdict to
-   `incomplete` solely on screenshots — content fidelity is the
-   primary thing this skill grades.
+The umbrella will be removed once these constraints relax (most
+likely once `opp-eval` aggregates per-skill verdicts directly without
+a parent grouping).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file`, `drive_create_file`
+
+None directly. Each child skill manages its own MCP usage.
+
+## Outputs
+
+None directly. Children produce:
+- `ACE/<opp>/training-materials/{llo-manager-guide,flw-training-guide,quick-reference,faq,onboarding-email-body,training-deck-outline}.md`
+- A Google Slides deck under the same folder (if template configured)
+- `ACE/<opp>/verdicts/training-{flw-guide,llo-guide,quick-reference,faq,onboarding-email,deck-outline}.yaml`
+- `ACE/<opp>/verdicts/training-materials.yaml` — the umbrella verdict
 
 ## Mode Behavior
-- **Auto:** Generate materials, notify admin group, proceed
-- **Review:** Present materials for review before distributing to LLOs
 
-## Per-artifact split (in progress)
-
-This skill is being decomposed into one skill per training artifact so
-each can be iterated, evaluated, and re-run independently. As of 0.10.79
-the deck outline has moved out:
-
-| Artifact | Owner skill | Status |
-|---|---|---|
-| `llo-manager-guide.md` | `training-materials` | still here |
-| `flw-training-guide.md` | `training-flw-guide` | **moved out (0.10.83)** |
-| `quick-reference.md` | `training-materials` | still here |
-| `faq.md` | `training-materials` | still here |
-| `onboarding-email-body.md` | `training-materials` | still here |
-| `training-deck-outline.md` | `training-deck-outline` | **moved out (0.10.79)** |
-| training-deck → Google Slides | `training-deck-build` | new (0.10.78) |
-| `training-video-script.md` | (planned `training-video-script` skill) | not yet implemented |
-
-The five remaining artifacts will each get a dedicated
-`training-<artifact>` skill in a future migration cycle. After that,
-this skill becomes a thin umbrella (or is removed and the Phase 5
-orchestrator dispatches the children directly).
-
-Don't add new artifacts to this skill — create a sibling
-`training-<x>` skill instead.
+- **Auto:** Dispatch all 6 children in dependency order, aggregate,
+  proceed.
+- **Review:** Run children in `auto` mode but pause after each child's
+  verdict for human inspection before continuing. Useful when an LLO
+  wants to review materials before invites go out.
+- **Dry-run:** Run each child in `dry-run` mode. Aggregate verdict
+  with `dry_run: true`.
 
 ## Change Log
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-03 | Initial version | ACE team |
-| 2026-04-28 | Move skill from Phase 2 (commcare-setup) to Phase 5 (qa-and-training). Add upstream-input contract: read connect-state.yaml, ocs-state.yaml, screenshots/manifest.yaml. Embed real screenshots in flw-training-guide. | ACE team (mobile-emulation) |
-| 2026-04-30 | Phase 5 restructure (0.10.44): consume `qa-plan` (test-matrix + uat-checklist) for UAT section + FAQ seeding. Add **common-vs-opp screenshot layering**: read `ACE/_common/connect-screenshots/<connect-version>/manifest.yaml` for standard Connect navigation (sourced by the standalone `connect-baseline-screenshots` skill); per-opp screenshots remain at `ACE/<opp>/screenshots/`. Add two new outputs: `training-deck-outline.md` (slide-by-slide with screenshot refs) and `training-video-script.md` (narration + screen-cue timing). | ACE team |
-| 2026-05-02 | Per-artifact split begins (0.10.79): move `training-deck-outline.md` to its own `training-deck-outline` skill. `training-video-script.md` removed (will get its own skill later). Other 5 artifacts stay here pending the rest of the migration. | ACE team |
-| 2026-05-02 | Per-artifact split continues (0.10.83): move `flw-training-guide.md` to its own `training-flw-guide` skill. 4 artifacts remain here. | ACE team |
+| 2026-04-03 | Initial monolith. Produced 7 docs in one LLM call. | ACE team |
+| 2026-04-28 | Move from Phase 2 to Phase 5. | ACE team |
+| 2026-04-30 | Add common-vs-opp screenshot layering + 2 new outputs. | ACE team |
+| 2026-05-02 | Per-artifact split begins (0.10.79): `training-deck-outline.md` extracted to `training-deck-outline` skill. | ACE team |
+| 2026-05-02 | Continue split (0.10.83): `flw-training-guide.md` extracted to `training-flw-guide` skill. | ACE team |
+| 2026-05-02 | Complete split (0.10.84): remaining 4 artifacts extracted to `training-llo-guide`, `training-quick-reference`, `training-faq`, `training-onboarding-email`. This skill becomes a thin umbrella. | ACE team |
