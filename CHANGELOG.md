@@ -5,6 +5,59 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.69 — 2026-05-01
+
+**Three-path recipe for `connect-register-from-otp` + doctor's
+multi-user adb warning + Maestro detection fix.** Continuing the
+mobile-bootstrap reliability sweep that started in 0.10.65.
+
+### connect-register-from-otp.yaml
+
+Live MCP smoke-test against the patched 0.10.68 build hit a third
+path that the Account-Recovered branch added in 0.10.68 didn't
+cover: server-account / no-local-data (post `-wipe-data`) goes
+through Name → Backup Code → "Welcome back" + re-enter Backup Code →
+"Account Recovered". CommCare 2.62.0 also removed the
+`connect_backup_code_repeat_input` field entirely — both fresh and
+recovery flows now share a single `connect_backup_code_input` +
+`connect_backup_code_button` widget pair, with `welcome_back` text as
+the differentiator. The recipe is now linear with sequential
+`runFlow.when` blocks:
+
+1. Optional Name screen (skipped on snapshot reload + already-registered)
+2. Backup Code (single field, always entered)
+3. Optional "Welcome back" re-confirm (skipped on truly-fresh)
+4. Optional "Account Recovered" dialog (skipped on truly-fresh)
+5. Optional Photo capture (skipped on recovery)
+
+Each branch's anchor is unique so paths don't accidentally double-fire.
+`waitForAnimationToEnd` interleaved between branches gives the network
++ UI animations time to settle before the next visibility check.
+
+### bin/ace-doctor
+
+- **Maestro detection.** Doctor previously reported `MISSING` on a
+  perfectly-working install because the bare `command -v maestro`
+  didn't see `~/.maestro/bin/maestro` (the official installer only
+  patches the user's interactive shell rc). Now mirrors the
+  `resolveMaestroBinDir()` logic in `mcp/mobile/backends/avd.ts` —
+  checks `$MAESTRO_BIN`, `command -v`, then `~/.maestro/bin/maestro`,
+  and resolves `JAVA_HOME` so `--version` doesn't print "Unable to
+  locate a Java Runtime".
+- **Multi-user adb warning.** Detects the dadb-1.2.10 listDadbs
+  landmine class — emits a `WARN adb_unauthorized` line when any
+  `emulator-NNNN` entry in your local `adb devices` shows
+  `unauthorized`. Notes that ACE recipes themselves work via the
+  0.10.65 `--host`/`--port` workaround, but plain `adb shell` calls
+  without `-s` may still pick the wrong device.
+
+### playbook/integrations/mobile-integration.md
+
+Documents the 0.10.65 `--host`/`--port` workaround pattern (when to
+use, why dadb 1.2.10 needs it) and updates the Face-capture gotcha
+section to reflect the 0.10.68 recipe-pair-boundary GMS toggle (was:
+post-boot blanket disable).
+
 ## 0.10.68 — 2026-05-01
 
 **`registerTestUser` now handles the Account-Recovered branch and the
