@@ -116,6 +116,12 @@ export class MobileClient {
     const toContinue = path.join(this.staticRecipesDir, 'connect-register-to-otp.yaml');
     const fromContinue = path.join(this.staticRecipesDir, 'connect-register-from-otp.yaml');
 
+    // GMS is enabled here so CommCare 2.62.0's launch check passes. We
+    // disable it between part A and part B so the in-app face-capture
+    // step (only reached on the fresh-registration branch of part B)
+    // can fall back to ManualMode. See `AvdBackend.setGmsEnabled`.
+    await this.avd.setGmsEnabled(args.avdName, true);
+
     logInfo('register_test_user: part A (launch → Continue)');
     const partA = await this.maestro.runRecipe(toContinue, {
       PHONE_LOCAL: args.phoneLocal,
@@ -128,6 +134,11 @@ export class MobileClient {
       }
       throw new Error(`register_test_user part A failed: ${partA.stderr || partA.stdout}`);
     }
+
+    // Disable GMS so face-capture in part B picks ManualMode. CommCare
+    // already passed its launch check above, and doesn't re-check GMS
+    // mid-session.
+    await this.avd.setGmsEnabled(args.avdName, false);
 
     logInfo('register_test_user: part B (post-Continue → registered)');
     const partB = await this.maestro.runRecipe(fromContinue, {

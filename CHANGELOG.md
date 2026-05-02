@@ -5,6 +5,84 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.68 — 2026-05-01
+
+**`registerTestUser` now handles the Account-Recovered branch and the
+GMS launch-block.** Two failure modes that bit live during the 0.10.65
+bootstrap retest are now structurally prevented.
+
+### Why
+
+Two separate issues both surfaced the moment the test phone was
+already registered against Connect-id (the steady-state for ACE's
+permanently-registered `+74260000100`):
+
+1. **`connect-register-from-otp.yaml` only modeled the fresh-user
+   flow.** Returning users land on a "Welcome back ACE Test" screen
+   with a single pre-filled backup-code field and a CONTINUE button,
+   followed by an "Account Recovered" success dialog — not the Name
+   screen → repeat-backup-code → photo flow the recipe expected.
+   Result: Maestro miss on `connect_backup_code_repeat_input` and a
+   dead recipe even though Connect-id had already accepted the
+   registration.
+2. **`AvdBackend.runPostBootPrep` blanket-disabled GMS** for
+   face-capture's ManualMode fallback. CommCare 2.62.0 tightened its
+   launch-time GMS check; a disabled GMS now triggers a blocking
+   "Enable Google Play services" dialog before the recipe ever
+   reaches phone entry. Manually re-enabling GMS got past the launch
+   but defeated the original face-capture intent.
+
+### Changed
+
+- `mcp/mobile/recipes/static/connect-register-from-otp.yaml` —
+  post-PIN flow now branches on screen anchor:
+  - `welcome_back` visible → returning-user path: re-enter backup
+    code, tap CONTINUE, dismiss the "Account Recovered" dialog.
+  - `nameTextValue` visible → existing fresh-user path (Name → Backup
+    + repeat → Photo capture), wrapped in a `runFlow.when` so it skips
+    cleanly under the returning-user branch. Recipe is now idempotent
+    across re-runs on the same AVD.
+- `mcp/mobile/backends/avd.ts` —
+  - `runPostBootPrep` no longer disables GMS. Launch must succeed
+    before the in-app face-capture step needs ManualMode.
+  - New `setGmsEnabled(avdName, enabled)` method that toggles
+    `pm enable` / `pm disable-user --user 0 com.google.android.gms`
+    against the running AVD. Best-effort; idempotent.
+- `mcp/mobile/client.ts` `registerTestUser` —
+  - Calls `setGmsEnabled(true)` before part A so CommCare launches
+    cleanly.
+  - Calls `setGmsEnabled(false)` between part A and part B so the
+    in-app face-capture step (only reached on the fresh-user branch)
+    picks up ManualMode. CommCare doesn't re-check GMS mid-session,
+    so the late disable doesn't relaunch the dialog.
+
+### Tests
+
+- `AvdBackend.adbPortFromSerial` — covers `emulator-NNNN` parsing,
+  null on `host:port` and USB serials, null on empty.
+- `AvdBackend.setGmsEnabled` — pm enable / disable-user shells, and
+  the not-running no-op.
+- `MaestroBackend.runRecipe` — `--host`/`--port` prepend test added
+  in 0.10.65.
+- `AvdBackend.captureUiDump` — fixture path corrected to
+  `/data/local/tmp/window_dump.xml` (the impl path since 0.10.something
+  but the test was still on the legacy `/sdcard/` path; this was the
+  one stale failing test in the suite). All 329 tests now pass.
+
+### Out of scope
+
+- The CommCare app launch dialog ("Enable Google Play services") is
+  still shown if some other code path leaves GMS disabled before
+  CommCare launches outside of `registerTestUser`. The
+  `connect-baseline-screenshots` walkthrough flows don't touch GMS
+  state today; if they grow to need ManualMode, they should follow
+  the same enable-launch / disable-pre-capture pattern.
+- The bootstrap recipe bug that caused the original 0.10.65 manual
+  patch-through is now the recipe's own responsibility, but the
+  `runPostBootPrep` change affects every AVD ensure-running call —
+  callers that previously relied on the post-prep GMS-disable should
+  call `setGmsEnabled(false)` themselves.
+
 ## 0.10.65 — 2026-05-01
 
 **Bypass dadb-1.2.10's listDadbs bug on shared workstations.** Maestro

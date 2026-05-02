@@ -245,8 +245,21 @@ export class AvdBackend {
       await new Promise((r) => setTimeout(r, 1500));
     }
 
-    // Idempotent: pm disable-user is a no-op if already disabled.
-    await this.shell('adb', ['-s', serial, 'shell', 'pm', 'disable-user', '--user', '0', 'com.google.android.gms']).catch(() => {});
+    // GMS state is NOT touched here. Older versions of this prep
+    // unconditionally `pm disable-user com.google.android.gms` so that
+    // CommCare's MicroImageActivity falls back to ManualMode for face
+    // capture. CommCare 2.62.0 tightened its launch-time GMS check —
+    // a disabled GMS now triggers a blocking "Enable Google Play
+    // services" dialog that has only an ENABLE button, killing the
+    // recipe before phone entry. Live-reproduced 2026-05-01 on a
+    // freshly `-wipe-data`'d AVD.
+    //
+    // Resolution: orchestrate GMS state at the recipe-pair boundary
+    // instead. `MobileClient.registerTestUser` ensures GMS is enabled
+    // before part A (so CommCare launches), then disables it between
+    // part A and part B (so the in-app face-capture path picks up
+    // ManualMode). Doing this here at boot would re-introduce the
+    // launch-block class. See `setGmsEnabled` below.
 
     // Grant CAMERA only if commcare is installed; pm grant fails noisily
     // for missing packages, and most of the time it's not installed yet
@@ -272,6 +285,29 @@ export class AvdBackend {
       await this.shell('adb', ['-s', serial, 'shell', 'input', 'keyevent', 'KEYCODE_HOME']).catch(() => {});
       await new Promise((r) => setTimeout(r, 2000));
     }
+  }
+
+  /**
+   * Toggle Google Play Services on a running AVD. ACE registration
+   * recipes need GMS *enabled* during CommCare launch (CommCare 2.62.0+
+   * shows a blocking "Enable Google Play services" dialog if it sees
+   * GMS disabled at startup) and *disabled* during face-capture (so
+   * MicroImageActivity falls back to FaceCaptureView.CaptureMode.ManualMode
+   * — the emulated front camera can never satisfy ML Kit face detection).
+   *
+   * `pm enable` and `pm disable-user --user 0` are both idempotent, so
+   * calling this with the same value twice is a no-op. Best-effort:
+   * failures are swallowed to keep the registration flow moving (a
+   * stale GMS state will surface as a maestro selector miss, not a
+   * silent corruption).
+   */
+  async setGmsEnabled(avdName: string, enabled: boolean): Promise<void> {
+    const found = await this.findRunningAvd(avdName);
+    if (!found) return;
+    const args = enabled
+      ? ['-s', found.serial, 'shell', 'pm', 'enable', 'com.google.android.gms']
+      : ['-s', found.serial, 'shell', 'pm', 'disable-user', '--user', '0', 'com.google.android.gms'];
+    await this.shell('adb', args).catch(() => {});
   }
 
   async stopAvd(avdName: string): Promise<void> {
