@@ -410,6 +410,17 @@ if [ -n "$ENV_FILE" ]; then
     warn "drive_root: ACE_DRIVE_ROOT_FOLDER_ID not set (PDD auto-discovery disabled)" "re-inject .env via op inject (var added in 0.5.3)"
   fi
 
+  # ACE_TRAINING_DECK_TEMPLATE_ID gates the training-deck-build skill.
+  # The skill is non-blocking (Phase 6 doesn't require the Slides deck), so
+  # a missing template is WARN, not FAIL — but operators should know the
+  # training-deck workflow won't produce a deck until they bootstrap it.
+  TDID="$(get_env ACE_TRAINING_DECK_TEMPLATE_ID)"
+  if [ -n "$TDID" ]; then
+    pass "training_deck_template: ACE_TRAINING_DECK_TEMPLATE_ID=$TDID"
+  else
+    warn "training_deck_template: ACE_TRAINING_DECK_TEMPLATE_ID not set" "run 'npx tsx scripts/bootstrap-training-deck-template.ts' to create the template, then add the ID to 1Password and re-inject .env (training-deck-build skips silently without it)"
+  fi
+
   # Shared-Drive canary: the configured root MUST live on a Google Shared Drive.
   # Service Accounts have zero My-Drive quota, so a My-Drive-parented root means
   # every artifact write fails with "user storage quota exceeded" on the FIRST

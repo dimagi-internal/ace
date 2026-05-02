@@ -4,8 +4,9 @@ description: >
   Execute the per-opp QA walkthrough recipes that `qa-plan` generated against
   a local AVD and capture one PNG per recipe step into Drive. Step 2 of
   Phase 5 (qa-and-training). Consumes the qa-plan manifest as its input
-  spec; produces `ACE/<opp>/screenshots/` + manifest.yaml ready for the
-  training-materials step. Captures only **per-opp** content; common Connect
+  spec; produces `ACE/<opp>/screenshots/` + manifest.yaml consumed by
+  the per-artifact training skills (`training-flw-guide`,
+  `training-deck-outline`). Captures only **per-opp** content; common Connect
   navigation screenshots come from the standalone
   `connect-baseline-screenshots` skill (not this one).
 ---
@@ -57,8 +58,9 @@ case.
 
 6. **Write `ACE/<opp>/screenshots/manifest.yaml`** linking each captured
    PNG back to (a) its qa-plan test-case ID, (b) its `takeScreenshot:`
-   step label, (c) its Drive path. This is the input shape
-   `training-materials` consumes.
+   step label, (c) its Drive path. This is the input shape the
+   per-artifact training skills (`training-flw-guide`,
+   `training-deck-outline`) consume.
 
 7. **Self-evaluate (LLM-as-Judge):**
    - Did every recipe complete (status: pass)?
