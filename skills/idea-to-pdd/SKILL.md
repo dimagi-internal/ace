@@ -140,6 +140,75 @@ Follows the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`
   five categories graded `pass`, write "None — all auto-checks passed."
 - **Recommended Disposition:** `Approve` if 0 `[BLOCKER]` and ≤1 `[WARN]`;
   `Iterate` if any `[BLOCKER]` appears; `Approve with caveats` otherwise
+- **Open Questions Doc:** if the skill produced an Open Questions doc
+  (see `## Open Questions Convention` below), include its full Drive
+  URL on its own line at the top of the gate brief, prefixed
+  `Open Questions: <url>`. If no Open Questions doc was needed, omit
+  this line entirely.
+
+## Open Questions Convention
+
+When step 3 (Research and expand) or step 5 (Self-evaluate) surfaces a
+question the skill cannot resolve from `idea.md` alone, do **not** bury
+the question in PDD prose. Instead, create a structured Open Questions
+doc so (a) the e2e orchestrator can find sensible defaults to proceed
+unblocked, and (b) the human reviewer can scan the questions in 30
+seconds.
+
+### When to create
+
+- Stress-test rubric grades `partial` or `fail` on any dimension AND
+  the underlying gap requires information that isn't in `idea.md`
+- Step 3 surfaces a missing parameter (e.g. recruitment cap, language,
+  consent process) where reasonable defaults exist but the call is the
+  human's to make
+
+If every question has a `pass`-quality answer in `idea.md`, **do not
+create an Open Questions doc**. The doc has overhead — only spend it
+when you'd otherwise force the orchestrator to halt or guess silently.
+
+### File location and shape
+
+Create `ACE/<opp-name>/open-questions.md` via `drive_create_file` as a
+**Google Doc** (not plain text — the structured table renders properly
+in Docs and reviewers actually read it). The body must be a table with
+exactly four columns:
+
+| # | Question | Default | Source |
+|---|----------|---------|--------|
+| 1 | What is the upper bound on visits per FLW per day? | 8 visits/day | idea.md §2; archetype default for `atomic-visit` |
+| 2 | What language(s) should the Learn app support? | English only (single-LLO scope) | idea.md does not specify; LLO directory shows English speakers |
+
+**Required for every row:**
+
+- **#:** monotonically increasing, stable across iterations
+- **Question:** one specific question per row, no compounds
+- **Default:** the value the e2e orchestrator should use if no human
+  responds before the next phase. Tagged `[Default]` inline in any
+  prose elsewhere referencing this question. **Required, even if the
+  default is "halt — human must answer."** That last value is fine for
+  load-bearing decisions; the point is to make the default explicit so
+  the orchestrator knows whether to proceed.
+- **Source:** specific citation (e.g. `idea.md §2.1`, `archetype
+  default`, `stress-test executability dimension`). No vague
+  "research" or "common practice."
+
+### Linking from the PDD and gate brief
+
+- In the PDD body, cite the doc once near the top:
+  `> **Open questions:** <drive-url>` (kept short — full content lives
+  in the linked doc, not duplicated in PDD prose).
+- In the gate brief, emit the `Open Questions: <url>` line per the
+  contract above.
+
+### Why `[Default]`
+
+The e2e orchestrator (`/ace:run`) drives the full pipeline without
+human pauses. Without a Default convention it has no signal for
+"proceed with X" vs "halt for input." The `[Default]` tag is a
+machine-readable contract: orchestrator picks the default in `--auto`
+mode and surfaces the question + default in the run summary so the
+human can correct after the fact if the default was wrong.
 
 ## Archetypes
 

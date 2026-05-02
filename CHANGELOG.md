@@ -5,6 +5,34 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.76 — 2026-05-02
+
+**Open Questions doc convention in `idea-to-pdd`** — structured Google
+Docs table with `[Default]` column so the e2e orchestrator can proceed
+unblocked, plus a top-of-gate-brief link.
+
+### Why
+
+A recent design-review session created an Open Questions doc as a
+plain-text Drive file with no structure and no defaults. Result: the
+e2e orchestrator stalled on questions that had sensible defaults
+(e.g. "FLW daily visit cap") because there was no machine-readable
+"proceed with X" signal. The Open Questions also weren't linked from
+the gate brief, so the human reviewer never saw them in the 60-second
+scan window.
+
+### Changed
+
+- **`skills/idea-to-pdd/SKILL.md`:** new `## Open Questions
+  Convention` section. Specifies *when* to create the doc (only when
+  unresolved questions remain after `idea.md` + stress-test), the
+  required four-column shape (`# | Question | Default | Source`), and
+  the `[Default]` semantics — every question must have an explicit
+  default the orchestrator can use in `--auto` mode (or "halt —
+  human must answer" for load-bearing decisions). Gate brief now
+  emits an `Open Questions: <url>` line at the top when the doc
+  exists.
+
 ## 0.10.75 — 2026-05-02
 
 **New `read_personal_drive_doc` MCP tool** for reading Drive files
