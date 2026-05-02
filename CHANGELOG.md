@@ -5,6 +5,50 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.86 — 2026-05-02
+
+**Post-split cleanup: opp-eval, manifest, doctor, and Drive janitorial.**
+Sweep of references and downstream wiring after the per-artifact training
+split. No new artifacts; everything here is alignment with the post-0.10.84
+state.
+
+### Changed
+
+- `skills/opp-eval/SKILL.md` — `commcare` category now covers all six
+  per-artifact training skills (`training-llo-guide`,
+  `training-flw-guide`, `training-quick-reference`, `training-faq`,
+  `training-onboarding-email`, `training-deck-outline`) plus the
+  `training-materials` umbrella. Each writes its own verdict; opp-eval
+  rolls them all into the commcare category mean.
+- `lib/artifact-manifest.ts` — `pdd.md`, `learn-app-summary.md`, and
+  `deliver-app-summary.md` `consumedBy` lists now route to the
+  per-artifact training skills instead of the dropped `training-materials`
+  reference. Six new consumer entries each.
+- `skills/app-screenshot-capture/SKILL.md` — description and process
+  step language now points at the per-artifact training skills
+  (`training-flw-guide`, `training-deck-outline`) as the consumers of
+  the screenshot manifest, not the umbrella.
+- `skills/connect-baseline-screenshots/SKILL.md` — same update for the
+  common-pool consumer reference.
+- `bin/ace-doctor` — new `training_deck_template` check. Reports
+  `ACE_TRAINING_DECK_TEMPLATE_ID` value when set, WARNs with a
+  bootstrap-script pointer when unset (the deck-build skill skips
+  silently without it; doctor surfaces that an operator should know).
+
+### Janitorial
+
+- `scripts/cleanup-smoke-decks.ts` — durable cleanup script that scans
+  `ACE_DRIVE_ROOT_FOLDER_ID` for disposable smoke / probe decks
+  matching well-known name patterns and trashes them. Falls back to
+  `files.update({ trashed: true })` when `files.delete` returns 404 (a
+  Shared Drive perm quirk where SA can list but can't hard-delete).
+
+### Cleaned up this run
+
+The 0.10.85 reference smoke deck, Turmeric end-to-end deck, and probe
+artifact are all trashed. Drive root is back to its pre-validation
+state.
+
 ## 0.10.85 — 2026-05-02
 
 **End-to-end validation against Turmeric fixture content.** The deck

@@ -59,7 +59,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     producedBy: 'idea-to-pdd',
     consumedBy: [
       'pdd-to-test-prompts', 'pdd-to-learn-app', 'pdd-to-deliver-app', 'app-test',
-      'training-materials', 'connect-program-setup', 'connect-opp-setup',
+      'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
+      'training-faq', 'training-onboarding-email', 'training-deck-outline',
+      'connect-program-setup', 'connect-opp-setup',
       'llo-invite', 'ocs-agent-setup', 'timeline-monitor', 'flw-data-review',
       'cycle-grade', 'learnings-summary',
     ],
@@ -113,7 +115,12 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'app-summaries/learn-app-summary.md',
     producedBy: 'pdd-to-learn-app',
-    consumedBy: ['app-deploy', 'app-test', 'training-materials', 'ocs-agent-setup', 'flw-data-review'],
+    consumedBy: [
+      'app-deploy', 'app-test',
+      'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
+      'training-faq', 'training-deck-outline',
+      'ocs-agent-setup', 'flw-data-review',
+    ],
     phase: 'commcare',
     required: true,
     description: 'Learn app structure summary for downstream skills. Required frontmatter: `nova_app_id`, `nova_app_url`, `archetype`. `app-deploy` reads `nova_app_id` from here to feed `/nova:upload_to_hq`.',
@@ -121,7 +128,12 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'app-summaries/deliver-app-summary.md',
     producedBy: 'pdd-to-deliver-app',
-    consumedBy: ['app-deploy', 'app-test', 'training-materials', 'ocs-agent-setup', 'flw-data-review'],
+    consumedBy: [
+      'app-deploy', 'app-test',
+      'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
+      'training-faq', 'training-deck-outline',
+      'ocs-agent-setup', 'flw-data-review',
+    ],
     phase: 'commcare',
     required: true,
     description: 'Deliver app structure summary for downstream skills. Required frontmatter: `nova_app_id`, `nova_app_url`, `archetype`, `delivery_unit`. `app-deploy` reads `nova_app_id` from here.',

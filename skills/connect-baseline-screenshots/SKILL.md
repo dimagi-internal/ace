@@ -7,7 +7,8 @@ description: >
   when the Connect APK ships an update and the existing common-screenshot
   set goes stale. Output lives at
   `ACE/_common/connect-screenshots/<connect-version>/` and is read by
-  `training-materials` for layering into the per-opp deck.
+  the per-artifact training skills (`training-flw-guide`,
+  `training-deck-outline`) for layering into the per-opp deck.
 ---
 
 # Connect Baseline Screenshots
@@ -30,7 +31,7 @@ ACE training decks layer two pools of screenshots:
 Without this layering, every Phase 5 burns AVD time re-capturing the same
 20+ Connect-navigation screenshots. With it, those screenshots are captured
 once per Connect version, sit at a stable Drive path, and the per-opp
-training-materials skill embeds them by reference.
+training-flw-guide / training-deck-outline skills embed them by reference.
 
 ## When to run
 
