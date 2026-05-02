@@ -5,6 +5,39 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.70 — 2026-05-01
+
+**Default `mobile_run_recipe.avdName` from `ACE_AVD_NAME` env.** Closes
+the last reliability gap on the dadb-1.2.10 listDadbs workaround.
+
+### Why
+
+0.10.65 added `--host`/`--port` plumbing to bypass the dadb bug that
+aborts maestro's device enumeration on shared workstations. The
+plumbing was opt-in: callers had to pass `avdName` to
+`mobile_run_recipe` for the bypass to engage. Two existing skills
+(`app-screenshot-capture`, `connect-baseline-screenshots`) didn't
+pass it — they would silently regress to the broken auto-discovery
+path the moment another user's emulator showed `unauthorized` in
+your local `adb devices`.
+
+### Changed
+
+- `mcp/mobile-server.ts` `mobile_run_recipe` — when the caller
+  doesn't provide `avdName`, default to `process.env.ACE_AVD_NAME`.
+  Doctor already verifies that env var is set, and the bootstrap
+  fails closed if it isn't, so this default is safe in practice.
+  Behavior is now opt-out: explicit `avdName: ""` (or unsetting
+  `ACE_AVD_NAME` before launching Claude Code) reverts to maestro's
+  auto-discovery path.
+
+### Compatibility
+
+`MobileClient.runRecipe` and `MaestroBackend.runRecipe` signatures
+unchanged. The default-from-env logic lives at the MCP boundary so
+direct programmatic callers (tests, scripts) keep their explicit
+behavior.
+
 ## 0.10.69 — 2026-05-01
 
 **Three-path recipe for `connect-register-from-otp` + doctor's
