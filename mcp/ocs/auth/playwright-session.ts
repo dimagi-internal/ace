@@ -77,8 +77,15 @@ export class PlaywrightSession {
   }
 
   private async isAuthenticated(context: BrowserContext): Promise<boolean> {
-    const res = await context.request.get(`/a/${this.opts.teamSlug}/chatbots/`);
-    return res.status() === 200;
+    // maxRedirects:0 is load-bearing. Without it Playwright follows the
+    // 302→/accounts/login/→200 chain and we incorrectly return true on
+    // expired sessions, gating out the auto-relogin path. The URL guard
+    // is belt-and-braces in case Playwright behavior changes. Surfaced
+    // 2026-05-02 in leep-paint-collection Phase 4.
+    const res = await context.request.get(`/a/${this.opts.teamSlug}/chatbots/`, {
+      maxRedirects: 0,
+    });
+    return res.status() === 200 && !res.url().includes('/accounts/login/');
   }
 
   // Drives the OCS login form at /accounts/login/ headlessly. The form has
