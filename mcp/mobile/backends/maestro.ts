@@ -41,6 +41,7 @@ export class MaestroBackend {
     recipePath: string,
     envVars: Record<string, string>,
     screenshotDir: string,
+    opts: { adbPort?: number } = {},
   ): Promise<RecipeRunResult> {
     fs.mkdirSync(screenshotDir, { recursive: true });
     // Maestro's `takeScreenshot: "name"` writes to `./name.png` in the
@@ -51,7 +52,25 @@ export class MaestroBackend {
     // turmeric-20260429-2330 Phase 5 Step 2 round 4 (2026-04-30): every
     // recipe reported `takeScreenshot ... COMPLETED` but screenshotDir
     // ended up empty. The recipes were correct; the cwd was wrong.
-    const args = ['test', '--no-ansi'];
+    const args: string[] = [];
+    // When the caller knows the target emulator's adb port, prefer
+    // Maestro's hidden top-level `--host` / `--port` flags over relying on
+    // device auto-discovery. With these set, `DeviceService.listAndroidDevices`
+    // takes the `Dadb.create(host, port)` direct-TCP path and never touches
+    // `Dadb.list` / the local `adb` server. That bypasses a dadb-1.2.10
+    // bug where `AdbServer.listDadbs` aborts the entire device enumeration
+    // on the first `unauthorized` device — fatal on shared workstations
+    // where another user's emulators are visible to your adb server but
+    // not authorized for your adbkey. Verified live 2026-05-01: dropping
+    // these flags makes maestro report 0 connected devices any time a
+    // sibling user's emulator is up; restoring them lets it talk to our
+    // emulator directly. The flags are picocli-defined on `App.class` but
+    // omitted from `--help`, so they are effectively undocumented; pinning
+    // them to a known-stable form here.
+    if (typeof opts.adbPort === 'number') {
+      args.push('--host=localhost', `--port=${opts.adbPort}`);
+    }
+    args.push('test', '--no-ansi');
     for (const [k, v] of Object.entries(envVars)) {
       args.push('-e', `${k}=${v}`);
     }

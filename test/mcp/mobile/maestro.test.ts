@@ -35,6 +35,21 @@ describe('MaestroBackend.runRecipe', () => {
     );
   });
 
+  it('prepends --host/--port when adbPort is given (bypasses adb-server)', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-'));
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n');
+
+    const shell = fakeShell({
+      [`maestro --host=localhost --port=5559 test --no-ansi --output ${tmp} ${recipePath}`]: {
+        stdout: 'OK\n', code: 0,
+      },
+    });
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.runRecipe(recipePath, {}, tmp, { adbPort: 5559 });
+    expect(r.status).toBe('pass');
+  });
+
   it('returns fail status with non-zero exit code', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-'));
     const recipePath = path.join(tmp, 'flow.yaml');

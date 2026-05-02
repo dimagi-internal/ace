@@ -5,6 +5,62 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.65 — 2026-05-01
+
+**Bypass dadb-1.2.10's listDadbs bug on shared workstations.** Maestro
+recipes now run against the target emulator's adb port directly (via
+Maestro's hidden `--host`/`--port` top-level flags) instead of through
+the local adb server, sidestepping a class of failure that bites any
+Mac with multiple developer accounts running emulators concurrently.
+
+### Why
+
+`dadb-1.2.10` (bundled with Maestro 2.3.0–2.5.1) does NOT wrap the
+per-device `createDadb()` call inside `AdbServer.listDadbs` in a
+try/catch. The first device in the local adb-server's list that
+returns "device unauthorized" throws an `IOException`, aborting the
+entire enumeration. Result: Maestro reports zero connected devices any
+time another user's emulator is visible to your adb server but not
+authorized for your `~/.android/adbkey`. Surfaced live 2026-05-01 on a
+multi-user Mac where user A had two emulators running and user B's
+`maestro --udid emulator-5558 hierarchy` failed with "Device with id
+emulator-5558 is not connected" even though `adb -s emulator-5558` was
+fully functional. The cause was user A's `emulator-5554` showing as
+unauthorized in user B's adb device list — that single entry crashed
+dadb's enumeration before it ever reached user B's own emulator.
+
+### Changed
+
+- `mcp/mobile/backends/maestro.ts` — `runRecipe` now accepts an
+  `opts.adbPort` parameter. When set, prepends `--host=localhost
+  --port=<adbPort>` to the maestro args before the `test` subcommand.
+  These are picocli-defined options on `App.class` that don't appear
+  in `--help` (effectively undocumented), but they are stable across
+  2.3.0 → 2.5.1 and route through `DeviceService.listAndroidDevices`'s
+  `Dadb.create(host, port)` direct-TCP path, completely bypassing
+  `Dadb.list` / the local adb server.
+- `mcp/mobile/backends/avd.ts` — new `AvdBackend.adbPortFromSerial`
+  static helper. Android emulators use port pairs (`NNNN` console,
+  `NNNN+1` adbd) so deriving the dadb port from the serial is a
+  single-line conversion. `findRunningAvd` is now public so callers
+  can resolve a serial → port without running `adb devices` themselves.
+- `mcp/mobile/client.ts` — `runRecipe` and `registerTestUser` resolve
+  the AVD's adb port and forward it through to maestro.
+- `mcp/mobile-server.ts` — `mobile_run_recipe` MCP tool gains an
+  optional `avdName` parameter.
+
+### Out of scope
+
+- The dadb upstream fix (a one-line try/catch) is not landed here;
+  this works around it at the maestro-invocation layer rather than
+  forking dadb. If maestro ever ships a newer dadb that handles
+  unauthorized devices gracefully, the workaround stays harmless
+  (direct connect is faster anyway).
+- Recovering an emulator whose adb auth got desynchronized from the
+  host's `~/.android/adbkey` (e.g., adbkey regenerated after the
+  emulator's first boot) still requires a `-wipe-data` cold boot. The
+  recovery path is documented in `playbook/integrations/mobile-integration.md`.
+
 ## 0.10.47 — 2026-04-30
 
 **Adopt commcare-connect's new automation API (PR #1135).** Eight Connect
