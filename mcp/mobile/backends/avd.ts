@@ -302,7 +302,21 @@ export class AvdBackend {
     return { packageId: m[1], versionCode: parseInt(m[2], 10), versionName: m[3], path: apkPath };
   }
 
-  private async findRunningAvd(avdName: string): Promise<AvdInfo | null> {
+  /**
+   * Derive the adbd TCP port from an `emulator-NNNN` serial. The Android
+   * emulator uses port pairs: `NNNN` is the qemu console port (telnet),
+   * `NNNN+1` is the adbd port that dadb / adb client speak the wire
+   * protocol against. Used to wire `maestro --host=localhost --port=<X>`
+   * for direct-dadb runs that bypass the local adb server. Returns null
+   * if the serial doesn't match `emulator-<digits>`.
+   */
+  static adbPortFromSerial(serial: string): number | null {
+    const m = serial.match(/^emulator-(\d+)$/);
+    if (!m) return null;
+    return parseInt(m[1], 10) + 1;
+  }
+
+  async findRunningAvd(avdName: string): Promise<AvdInfo | null> {
     const devices = await this.shell('adb', ['devices']);
     const serials = devices.stdout
       .split('\n')

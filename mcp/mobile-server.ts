@@ -104,9 +104,17 @@ server.tool(
     recipePath: z.string(),
     envVars: z.record(z.string()).default({}),
     screenshotDir: z.string(),
+    // Optional: when provided, ACE looks up the running AVD's adb port
+    // and runs maestro with `--host=localhost --port=<X>` so dadb talks
+    // to the emulator directly. Without it, Maestro auto-discovers via
+    // the local adb server, which fails on shared workstations where
+    // another user's emulator shows up `unauthorized` in your adb
+    // device list (dadb-1.2.10 aborts the whole enumeration on the
+    // first unauthorized device).
+    avdName: z.string().optional(),
   },
-  async ({ recipePath, envVars, screenshotDir }) => ({
-    content: [{ type: 'text', text: JSON.stringify(await client.runRecipe(recipePath, envVars, screenshotDir), null, 2) }],
+  async ({ recipePath, envVars, screenshotDir, avdName }) => ({
+    content: [{ type: 'text', text: JSON.stringify(await client.runRecipe(recipePath, envVars, screenshotDir, avdName), null, 2) }],
   }),
 );
 

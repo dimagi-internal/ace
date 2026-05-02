@@ -64,8 +64,29 @@ export class MobileClient {
     return fetchOtp(phone, { userDataDir: this.playwrightUserDataDir, headed });
   }
 
-  runRecipe(recipePath: string, env: Record<string, string>, screenshotDir: string): Promise<RecipeRunResult> {
-    return this.maestro.runRecipe(recipePath, env, screenshotDir);
+  /**
+   * When `avdName` is provided, the recipe runs against that emulator's
+   * adb port directly via `maestro --host=localhost --port=<adbd>`,
+   * which sidesteps the dadb-1.2.10 listDadbs bug that aborts on any
+   * unauthorized device in the local adb-server's device list (see
+   * `MaestroBackend.runRecipe`). Without `avdName` we fall back to
+   * Maestro's default device auto-discovery for backward compatibility.
+   */
+  async runRecipe(
+    recipePath: string,
+    env: Record<string, string>,
+    screenshotDir: string,
+    avdName?: string,
+  ): Promise<RecipeRunResult> {
+    const adbPort = avdName ? await this.resolveAdbPort(avdName) : undefined;
+    return this.maestro.runRecipe(recipePath, env, screenshotDir, { adbPort });
+  }
+
+  private async resolveAdbPort(avdName: string): Promise<number | undefined> {
+    const found = await this.avd.findRunningAvd(avdName);
+    if (!found) return undefined;
+    const port = AvdBackend.adbPortFromSerial(found.serial);
+    return port ?? undefined;
   }
 
   /**
@@ -89,7 +110,8 @@ export class MobileClient {
     backupCode: string;
     name: string;
   }): Promise<TestUserRegistrationResult> {
-    await this.avd.ensureAvdRunning(args.avdName);
+    const avd = await this.avd.ensureAvdRunning(args.avdName);
+    const adbPort = AvdBackend.adbPortFromSerial(avd.serial) ?? undefined;
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-mobile-reg-'));
     const toContinue = path.join(this.staticRecipesDir, 'connect-register-to-otp.yaml');
     const fromContinue = path.join(this.staticRecipesDir, 'connect-register-from-otp.yaml');
@@ -99,7 +121,7 @@ export class MobileClient {
       PHONE_LOCAL: args.phoneLocal,
       COUNTRY_CODE: args.countryCode,
       PIN: args.pin,
-    }, path.join(tmp, 'part-a'));
+    }, path.join(tmp, 'part-a'), { adbPort });
     if (partA.status !== 'pass') {
       if (partA.stdout.includes('PHONE_ALREADY_REGISTERED')) {
         return { alreadyRegistered: true, phone: args.phone };
@@ -112,7 +134,7 @@ export class MobileClient {
       NAME: args.name,
       BACKUP_CODE: args.backupCode,
       PIN: args.pin,
-    }, path.join(tmp, 'part-b'));
+    }, path.join(tmp, 'part-b'), { adbPort });
     if (partB.status !== 'pass') {
       if (partB.stdout.includes('PHONE_ALREADY_REGISTERED')) {
         return { alreadyRegistered: true, phone: args.phone };
