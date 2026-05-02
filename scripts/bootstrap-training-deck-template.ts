@@ -104,22 +104,28 @@ async function main() {
     return;
   }
 
-  console.log('Step 1: presentations.create');
-  const created = await slides.presentations.create({
-    requestBody: { title: TEMPLATE_NAME },
-  });
-  const presentationId = created.data.presentationId!;
-  const initialSlideId = created.data.slides?.[0]?.objectId!;
-  console.log(`  presentationId=${presentationId}`);
-
-  console.log('Step 2: drive.files.update — move to Shared Drive');
-  await drive.files.update({
-    fileId: presentationId,
-    addParents: parentFolderId,
-    removeParents: 'root',
+  // Slides API's `presentations.create` always writes to My Drive root and
+  // has no `parents` field, but Service Accounts can't write there
+  // (PERMISSION_DENIED, not just quota). Use Drive API's `files.create` with
+  // `mimeType: application/vnd.google-apps.presentation` and `parents:
+  // [sharedDriveFolder]` instead — the deck lands directly in the Shared
+  // Drive in one call. Verified live 2026-05-02 via probe-slides-create-via-drive.ts.
+  console.log('Step 1: drive.files.create with Slides mimeType into Shared Drive');
+  const created = await drive.files.create({
+    requestBody: {
+      name: TEMPLATE_NAME,
+      mimeType: 'application/vnd.google-apps.presentation',
+      parents: [parentFolderId],
+    },
     fields: 'id, name, parents',
     supportsAllDrives: true,
   });
+  const presentationId = created.data.id!;
+  console.log(`  presentationId=${presentationId}`);
+
+  console.log('Step 2: slides.presentations.get — discover default slide objectId');
+  const initial = await slides.presentations.get({ presentationId });
+  const initialSlideId = initial.data.slides?.[0]?.objectId!;
 
   console.log('Step 3: batchUpdate — convert default slide to title stencil + add content stencil');
   // Strategy: rename the default slide's objectId to STENCIL_TITLE_OBJECT_ID,
