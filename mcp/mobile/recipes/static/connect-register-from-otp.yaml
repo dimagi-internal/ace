@@ -118,53 +118,32 @@ appId: org.commcare.dalvik
       - tapOn:
           id: "org.commcare.dalvik:id/snackbar_action"
 
-# Two flow branches diverge here based on Connect-id's view of the phone:
+# Three flow paths to handle (CommCare 2.62.0):
 #
-#   A) Fresh registration (Connect-id has no prior account for this phone):
-#      Name screen → Backup Code (with repeat field) → Photo capture.
+#   Fresh user, never seen server-side:
+#     Name → Backup Code → Photo capture → home
 #
-#   B) Account Recovered (Connect-id has a prior account — common for the
-#      ACE test phone +74260000100, which is permanently registered server-
-#      side and gets the "Welcome back ACE Test" treatment after every
-#      `-wipe-data` cold boot): single Backup Code field already pre-filled
-#      with the device-stored value → CONTINUE → "Account Recovered"
-#      success dialog → OK → CommCare home. No name entry, no repeat-code,
-#      no photo capture.
+#   Server account, no local data (post `-wipe-data` cold boot):
+#     Name (transient) → Backup Code → "Welcome Back" + re-enter Backup
+#     Code → "Account Recovered" → home
 #
-# We branch with two `runFlow.when` blocks. Whichever screen materializes
-# matches its branch; the other branch sees its anchor missing and skips.
-# This also makes the recipe idempotent across re-runs on the same AVD.
+#   Server account + local data (e.g., snapshot reload, demo-bypass phone):
+#     Skip Name → "Welcome Back" + Backup Code → "Account Recovered" → home
+#
+# CommCare 2.62.0 removed the `connect_backup_code_repeat_input` field that
+# older recipes relied on. Both flows now share a single
+# `connect_backup_code_input` + `connect_backup_code_button` widget pair;
+# the differentiator is whether the "Welcome back ACE Test" header
+# (`welcome_back`) appears as a re-confirmation step. We sequence
+# `runFlow.when` checks so each path matches at most one branch and the
+# others skip cleanly. Live-verified 2026-05-01.
 
-# Branch B — Account Recovered (returning user)
-- runFlow:
-    when:
-      visible:
-        id: "org.commcare.dalvik:id/welcome_back"
-    commands:
-      # The backup-code input is pre-filled. Re-enter to be deterministic.
-      - tapOn:
-          id: "org.commcare.dalvik:id/connect_backup_code_input"
-      - eraseText: 6
-      - inputText: ${BACKUP_CODE}
-      - hideKeyboard
-      - tapOn:
-          id: "org.commcare.dalvik:id/connect_backup_code_button"
-      # "Account Recovered" success dialog → OK → home.
-      - extendedWaitUntil:
-          visible:
-            id: "org.commcare.dalvik:id/connect_message_button"
-          timeout: 15000
-      - tapOn:
-          id: "org.commcare.dalvik:id/connect_message_button"
-
-# Branch A — fresh registration. Wrapped in `runFlow.when` keyed on the
-# Name screen anchor so it skips entirely under Branch B.
+# Optional Name screen (skipped on snapshot-reload + already-registered).
 - runFlow:
     when:
       visible:
         id: "org.commcare.dalvik:id/nameTextValue"
     commands:
-      # Name screen
       - tapOn:
           id: "org.commcare.dalvik:id/nameTextValue"
       - inputText: ${NAME}
@@ -172,57 +151,78 @@ appId: org.commcare.dalvik
       - tapOn:
           id: "org.commcare.dalvik:id/personalid_name_continue_button"
 
-      # Backup code: choose + confirm 6-digit code
-      - extendedWaitUntil:
-          visible:
-            id: "org.commcare.dalvik:id/connect_backup_code_input"
-          timeout: 10000
+# Backup Code screen — single field, both fresh and recovery enter here at
+# least once. erase a generous 12 chars so a pre-filled value doesn't get
+# concatenated.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/connect_backup_code_input"
+    timeout: 15000
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_backup_code_input"
+- eraseText: 12
+- inputText: ${BACKUP_CODE}
+- hideKeyboard
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_backup_code_button"
+
+# Some recovery flows re-prompt with "Welcome back" + the same backup-code
+# field as a confirmation step. Animation latency between screens means
+# the next check needs a beat to settle.
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/welcome_back"
+    commands:
       - tapOn:
           id: "org.commcare.dalvik:id/connect_backup_code_input"
-      - inputText: ${BACKUP_CODE}
-      - hideKeyboard
-      - tapOn:
-          id: "org.commcare.dalvik:id/connect_backup_code_repeat_input"
+      - eraseText: 12
       - inputText: ${BACKUP_CODE}
       - hideKeyboard
       - tapOn:
           id: "org.commcare.dalvik:id/connect_backup_code_button"
 
-      # Photo capture — final step. Two modes depending on Google Play Services:
-      #
-      #   * GMS-enabled AVDs (google_apis_playstore image): MicroImageActivity
-      #     uses ML Kit face detection to auto-trigger the shutter when a face
-      #     stabilizes in the viewfinder. The emulated front camera shows a
-      #     gray test pattern — never a face — so this mode hangs forever.
-      #   * Non-GMS AVDs (google_apis image): MicroImageActivity falls back to
-      #     FaceCaptureView.CaptureMode.ManualMode and exposes a manual
-      #     camera_shutter_button. Maestro can tap it directly.
-      #
-      # 0.10.66 changes the GMS-disable timing: instead of disabling GMS at
-      # AVD post-boot (which makes CommCare 2.62.0's launch check show a
-      # blocking dialog), client.ts disables GMS BETWEEN part A and part B
-      # so the launch already passed under enabled-GMS. See
-      # `MobileClient.registerTestUser` and the Face-capture gotcha in
-      # playbook/integrations/mobile-integration.md.
-      - extendedWaitUntil:
-          visible:
-            id: "org.commcare.dalvik:id/take_photo_button"
-          timeout: 10000
+# "Account Recovered" success dialog (every recovery path lands here).
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/connect_message_button"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_message_button"
+
+# Photo capture (only truly-fresh registration reaches this — server has
+# no prior account, so neither welcome_back nor connect_message_button
+# fired above). Two modes depending on Google Play Services:
+#
+#   * GMS-enabled: MicroImageActivity uses ML Kit face detection to
+#     auto-trigger the shutter when a face stabilizes in the viewfinder.
+#     The AVD's emulated front camera shows a gray test pattern, never a
+#     real face, so this mode hangs forever.
+#   * GMS-disabled: falls back to FaceCaptureView.CaptureMode.ManualMode
+#     and exposes a manual `camera_shutter_button`. Maestro can tap it.
+#
+# 0.10.68 moved GMS toggling to `MobileClient.registerTestUser` —
+# enabled before part A so CommCare's launch check passes, disabled
+# between parts so face-capture in part B picks ManualMode. See the
+# Face-capture gotcha in playbook/integrations/mobile-integration.md.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/take_photo_button"
+    commands:
       - tapOn:
           id: "org.commcare.dalvik:id/take_photo_button"
-
-      # Manual shutter (non-GMS path). On GMS-enabled AVDs this selector won't
-      # appear and the recipe will fail here — that's intentional, as the
-      # alternative (auto-shutter) can't be driven on an AVD without a real face.
       - extendedWaitUntil:
           visible:
             id: "org.commcare.dalvik:id/camera_shutter_button"
           timeout: 8000
       - tapOn:
           id: "org.commcare.dalvik:id/camera_shutter_button"
-
-      # After manual capture MicroImageActivity returns to the photo intro
-      # screen with the captured image shown and save_photo_button enabled.
       - extendedWaitUntil:
           visible:
             id: "org.commcare.dalvik:id/save_photo_button"
