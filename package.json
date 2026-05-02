@@ -1,6 +1,10 @@
 {
   "name": "ace",
-  "version": "0.10.60",
+<<<<<<< HEAD
+  "version": "0.10.61",
+=======
+  "version": "0.10.61",
+>>>>>>> emdash/mobile-7aloq
   "description": "AI Connect Engine - orchestrator for building Connect Opps using AI",
   "type": "module",
   "scripts": {
