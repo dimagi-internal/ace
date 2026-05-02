@@ -21,6 +21,31 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
    prompted for it; re-run `/ace:run <opp-name>` so it captures the idea."
    Do not invent an idea or proceed without this file.
 
+1a. **Pre-flight Drive accessibility for any referenced source documents.**
+    Before doing any analysis work, scan the just-read `idea.md` content for
+    Google Drive references — URLs matching
+    `https://(docs|drive)\.google\.com/(document|spreadsheets|presentation|file)/d/<file_id>/`
+    or bare file IDs explicitly tagged as Drive. For each one, attempt
+    `drive_read_file(file_id=<id>, mime_type="text/plain")` (metadata-only
+    where supported) to verify the ACE service account has read access.
+
+    If any read fails with a permission error, **stop and return an
+    actionable error listing every inaccessible doc**:
+    "`<file_id>` is not accessible to the ACE service account. Share it
+    with `ace-service-account@connect-labs.iam.gserviceaccount.com`
+    (Viewer is sufficient) and re-run /ace:step idea-to-pdd. If the doc
+    is shared only with your personal account and cannot be re-shared
+    with the service account, use `read_personal_drive_doc` (when
+    available) as a fallback."
+
+    Why: a recent design-review session was cancelled mid-run because the
+    LEEP data sheet wasn't shared with the SA. Surfacing the permission
+    issue upfront turns a session-interrupting OAuth dance into a
+    30-second share-with-the-SA fix.
+
+    If `idea.md` references no external Drive docs, skip this step
+    silently.
+
 2. **Determine the delivery archetype** (see `## Archetypes` below). The archetype shapes the section list and the questions you ask in step 3. If the idea spans multiple delivery patterns (e.g., focus groups in Stage 1, atomic visits in Stage 2), pick `multi-stage` and assign an archetype to each stage.
 
 3. **Research and expand** the idea:

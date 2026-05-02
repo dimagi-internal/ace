@@ -5,6 +5,34 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.74 — 2026-05-02
+
+**Pre-flight Drive accessibility check in `idea-to-pdd`.** Before
+starting analysis, the skill now probes every Drive doc referenced by
+`idea.md` and surfaces permission failures upfront with the SA email
+to share with.
+
+### Why
+
+A recent design-review session was cancelled mid-run because the LEEP
+data sheet wasn't shared with the ACE service account. The agent
+discovered the permission failure deep into analysis, requiring a
+session-interrupting OAuth dance and a cancel-and-redispatch.
+Surfacing the issue at the top of the skill turns it into a
+30-second share-with-the-SA fix before any analysis cost.
+
+### Changed
+
+- **`skills/idea-to-pdd/SKILL.md`:** new step 1a between reading
+  `idea.md` and determining the archetype. Scans for Google Drive
+  URLs / explicit file IDs in `idea.md` and `drive_read_file`s each
+  one. On permission failure, stops with an actionable error naming
+  the inaccessible doc(s) and the share-with email
+  (`ace-service-account@connect-labs.iam.gserviceaccount.com`).
+  Falls back to a hint about `read_personal_drive_doc` when SA
+  re-share is impossible (paired with the upcoming tool that
+  supports that path).
+
 ## 0.10.73 — 2026-05-02
 
 **Diagnose macOS launchd-env mismatch on `op` auth failure.** When
