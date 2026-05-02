@@ -89,6 +89,11 @@ describe('CRISPR-Test-001 fixture', () => {
       'gate-briefs/app-deploy.md',
       // gate-briefs/llo-invite.md moved to Phase 5 (operate) as of
       // 2026-04-20 — no longer required at the ``connect`` cutoff.
+      // 0.10.84: per-artifact training split landed
+      // onboarding-email-body.md as a required `commcare`-phase artifact
+      // owned by training-onboarding-email. Test-001 fixture doesn't
+      // need it (only covers ocs-agent-setup inputs).
+      'training-materials/onboarding-email-body.md',
     ];
     const files = listFiles(fixtureDir);
     const result = validateFixture(files, 'connect', ['README.md']);

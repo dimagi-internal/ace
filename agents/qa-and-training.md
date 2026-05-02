@@ -11,12 +11,15 @@ phase: qa-and-training
 phase_display: QA and Training
 phase_ordinal: 5
 skills:
-  - { name: qa-plan,                 has_judge: true }
-  - { name: app-screenshot-capture,  has_judge: true }
-  - { name: training-materials,      has_judge: true }
-  - { name: training-flw-guide,      has_judge: true }
-  - { name: training-deck-outline,   has_judge: true }
-  - { name: training-deck-build,     has_judge: false }
+  - { name: qa-plan,                    has_judge: true }
+  - { name: app-screenshot-capture,     has_judge: true }
+  - { name: training-llo-guide,         has_judge: true }
+  - { name: training-flw-guide,         has_judge: true }
+  - { name: training-quick-reference,   has_judge: true }
+  - { name: training-faq,               has_judge: true }
+  - { name: training-deck-outline,      has_judge: true }
+  - { name: training-deck-build,        has_judge: false }
+  - { name: training-onboarding-email,  has_judge: true }
 ---
 
 # QA and Training Agent (Phase 5)
@@ -92,67 +95,59 @@ Invoke the `app-screenshot-capture` skill.
 - Halts the phase on non-pass verdict — Phase 6 must not start without
   the per-opp screenshots
 
-### Step 3: Training Materials (LLO + supplementary text)
-Invoke the `training-materials` skill.
+### Step 3: Per-artifact training skills (5 in parallel + 2 sequential)
 
-- **Input:** PDD + qa-plan + app summaries + connect state + ocs config
-  + per-opp screenshots from Step 2 + common screenshots from
-  `ACE/_common/connect-screenshots/<connect-version>/`
-- **Output:**
-  - `ACE/<opp>/training-materials/llo-manager-guide.md`
-  - `ACE/<opp>/training-materials/quick-reference.md`
-  - `ACE/<opp>/training-materials/faq.md`
-  - `ACE/<opp>/training-materials/onboarding-email-body.md` (Phase 6 input)
+The training-materials monolith was decomposed into 6 per-artifact
+skills + 1 deck-render skill across versions 0.10.79–0.10.84. The
+phase dispatches them in dependency order:
 
-  Per-artifact split is in progress: `training-deck-outline.md` moved to
-  `training-deck-outline` (0.10.79); `flw-training-guide.md` moved to
-  `training-flw-guide` (0.10.83). The remaining 4 artifacts will move in
-  subsequent migration cycles.
-- **LLM-as-Judge:** verify content matches app structure, common +
-  opp-specific screenshots embedded correctly, real URLs resolved
-- Halts the phase on non-pass verdict
+**3a. Parallel — five text artifacts (independent, run concurrently):**
 
-### Step 4: Training FLW Guide
-Invoke the `training-flw-guide` skill.
+- `training-llo-guide` → `llo-manager-guide.md`
+- `training-flw-guide` → `flw-training-guide.md`
+- `training-quick-reference` → `quick-reference.md`
+- `training-faq` → `faq.md`
+- `training-deck-outline` → `training-deck-outline.md`
 
-- **Input:** PDD + Learn/Deliver app summaries + connect state + ocs
-  widget URL + per-opp screenshot manifest + common Connect screenshot
-  manifest
-- **Output:** `ACE/<opp>/training-materials/flw-training-guide.md` —
-  step-by-step FLW-facing walkthrough with embedded screenshots
-- **LLM-as-Judge:** coverage (every Learn module + Deliver form
-  referenced), concreteness (real button/field names), image hygiene
-  (no fabricated fileIds), audience fit (high-school reading level)
-- Halts the phase on non-pass verdict
+Each skill reads PDD + app summaries + connect/OCS state + (where
+applicable) per-opp + common screenshot manifests. Each writes its
+single artifact under `ACE/<opp>/training-materials/`. Each
+self-evaluates against four criteria specific to its audience and
+writes a verdict YAML.
 
-### Step 5: Training Deck Outline
-Invoke the `training-deck-outline` skill.
+Halt the phase on any non-pass verdict.
 
-- **Input:** PDD + app summaries + per-opp screenshot manifest +
-  common screenshot manifest + (optional) `flw-training-guide.md`
-  for caption phrasing alignment
-- **Output:** `ACE/<opp>/training-materials/training-deck-outline.md`
-  — slide-by-slide markdown matching `parseDeckOutline` contract in
-  `lib/training-deck-spec.ts`
-- **LLM-as-Judge:** coverage (every Learn module + Deliver form
-  referenced), concreteness (speaker notes opp-specific not boilerplate),
-  image hygiene (zero unresolved screenshot refs), length (8-15 slides)
-- Halts the phase on non-pass verdict — Step 5 needs a valid outline
+**3b. Sequential — deck render (after `training-deck-outline`):**
 
-### Step 6: Training Deck Build
-Invoke the `training-deck-build` skill.
+- `training-deck-build` reads `training-deck-outline.md` + the
+  `ACE_TRAINING_DECK_TEMPLATE_ID` env var, copies the template into
+  the opp folder, fills via `slides_batch_update`, returns the
+  Slides URL.
+- Skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` is unset (with a clear
+  pointer to `scripts/bootstrap-training-deck-template.ts`). Phase 6
+  doesn't depend on the Slides deck — `onboarding-email-body.md` is
+  the load-bearing Phase 6 input — so a missing template doesn't
+  block go-live.
 
-- **Input:** `training-deck-outline.md` + `ACE_TRAINING_DECK_TEMPLATE_ID`
-  env var (set once via `scripts/bootstrap-training-deck-template.ts`)
-- **Output:** A real Google Slides deck in
-  `ACE/<opp>/training-materials/`, plus a `training_deck:` block in
-  `state.yaml` with the deck URL
-- **No LLM-as-Judge** — this is a deterministic render; the upstream
-  outline judge already gated content quality
-- Skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` is empty (with a clear
-  pointer to the bootstrap script). Phase 6 doesn't depend on the
-  Slides deck — onboarding-email-body is the load-bearing Phase 6
-  input — so a missing template doesn't block go-live.
+**3c. Sequential — onboarding email (after the other 5 text artifacts):**
+
+- `training-onboarding-email` → `onboarding-email-body.md`. Must run
+  LAST because it links by Drive URL to the LLO guide, FLW guide, and
+  quick-reference.
+
+### Why six text skills instead of one
+
+Each skill has its own audience, its own four-criterion self-eval,
+and its own re-run semantics. Re-running the FAQ after a PDD edit
+doesn't re-emit the LLO guide; tweaking the deck outline prompt
+doesn't risk regressing the quick-reference word budget. The
+monolith's failures cascaded — one missed Layer-A signal in the LLO
+guide failed the whole skill. Six independent skills make
+quality issues localized and fixable.
+
+The umbrella `training-materials` skill still exists as a thin
+dispatcher for `/ace:step training-materials` callers and `opp-eval`
+verdict aggregation.
 
 ## Outputs
 

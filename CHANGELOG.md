@@ -5,6 +5,77 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.84 — 2026-05-02
+
+**Per-artifact training split complete.** Final four extractions land,
+and `training-materials` becomes a thin umbrella that dispatches the
+six per-artifact skills.
+
+### Added
+
+- `skills/training-llo-guide/SKILL.md` — owns `llo-manager-guide.md`.
+  Operations-tone, embeds `qa-plan/uat-checklist.md` verbatim, quotes
+  hard numbers from `connect.payment_units` + `connect.verification_flags`.
+  Self-evals on hard-number fidelity / coverage / audience fit / UAT
+  completeness.
+- `skills/training-quick-reference/SKILL.md` — owns
+  `quick-reference.md`. Word budget ≤ 280 (single printable page).
+  Imperative voice. Self-evals on word budget / hard-number fidelity /
+  imperative voice / coverage.
+- `skills/training-faq/SKILL.md` — owns `faq.md`. Seeded from
+  `test-prompts.md` (Phase 1) + `qa-plan/test-matrix.md` edge cases
+  (Phase 5). 20-30 Q&A pairs, each tagged `[LLO]` or `[FLW]`. Self-evals
+  on coverage / tag fidelity / answer authority / audience split.
+- `skills/training-onboarding-email/SKILL.md` — owns
+  `onboarding-email-body.md`. The Phase 6 `llo-onboarding` input.
+  Subject-line + token discipline (`{{LLO_NAME}}`, `{{LLO_FIRST_NAME}}`,
+  `{{LLO_ORG}}`). Word budget 200-400. Must run LAST in Phase 5
+  because it links to the other 5 artifacts by Drive URL.
+
+### Changed
+
+- `skills/training-materials/SKILL.md` — fully drained. No longer
+  produces any artifact. Now a thin umbrella that dispatches the 6
+  per-artifact skills in dependency order. Kept for
+  `/ace:step training-materials` callers and `opp-eval` verdict
+  aggregation; will be removed once those constraints relax.
+- `agents/qa-and-training.md` — Phase 5 dispatches 5 text-artifact
+  skills in parallel (LLO guide, FLW guide, quick-reference, FAQ,
+  deck-outline), then `training-deck-build` (sequential after
+  deck-outline), then `training-onboarding-email` (sequential after the
+  other 5 text artifacts). 9 skills total in the phase.
+- `lib/artifact-manifest.ts` — every `training-materials/*.md`
+  artifact's `producedBy` updated to point at its dedicated skill;
+  `consumedBy` lists updated to include `training-onboarding-email`
+  for the docs it links by URL. New entry for
+  `onboarding-email-body.md`.
+
+### Test fixtures
+
+- `test/fixtures/CRISPR-Test-003-Turmeric/training-materials/onboarding-email-body.md`
+  added — realistic Turmeric content matching the new
+  `training-onboarding-email` SKILL.md format spec. Used by the
+  artifact-manifest tests to validate the complete-fixture invariant.
+- `test/fixtures/artifact-manifest.test.ts` — partial fixture's
+  expected-missing list now includes `onboarding-email-body.md`
+  (CRISPR-Test-001 cuts at `connect` phase, before training is run).
+
+### Operator action
+
+`ACE_TRAINING_DECK_TEMPLATE_ID` is staged in the local `.env` (this
+machine only). For other environments, run
+`scripts/bootstrap-training-deck-template.ts` to create the template
+in that environment and stash the ID in 1Password.
+
+### Why this matters
+
+`training-materials` was a single 7-artifact LLM call. Six artifacts
+now each get their own LLM context, their own four-criterion
+self-eval, and their own re-run semantics. Iterating the FAQ prompt
+no longer risks regressing the LLO guide. Re-running the FLW guide
+after a screenshot manifest update doesn't re-emit the onboarding
+email. Each verdict stays scoped to one audience and one quality bar.
+
 ## 0.10.83 — 2026-05-02
 
 **Per-artifact training split — `training-flw-guide` extracted.** Second
