@@ -5,6 +5,39 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.82 — 2026-05-02
+
+**Slides API end-to-end live; switch deck creation to Drive API route.**
+First-run validation surfaced that `slides.presentations.create` returns
+PERMISSION_DENIED for Service Accounts — it always writes to My Drive
+root, where SAs can't write (no quota AND no create permission).
+
+### Fixed
+
+- `scripts/bootstrap-training-deck-template.ts` — creates the template
+  via `drive.files.create({ mimeType: 'application/vnd.google-apps.presentation',
+  parents: [sharedDriveFolder] })` instead of `slides.presentations.create`.
+  The deck lands directly in the Shared Drive in one call; subsequent
+  `slides.get` discovers the auto-generated initial slide objectId
+  before the stencil-setup batchUpdate.
+- `scripts/test-deck-build-smoke.ts` — same fix in the inline
+  template-creation path.
+
+### Added
+
+- `scripts/probe-slides-create-via-drive.ts` — durable reproducer for
+  the Drive-API-route create pattern (same convention as the other
+  `probe-*.ts` scripts; safe to re-run).
+
+### Validated
+
+End-to-end smoke run produced a 5-slide deck with all replaceAllText
+hits, all 3 speaker notes inserted, and stencil objectIds preserved
+across `drive.files.copy`. The template is now live at
+`1GCgBgolgcWBs9h_Rva9OK2bm0G3IVmJu6v1MYeGFlNI` — set
+`ACE_TRAINING_DECK_TEMPLATE_ID` to that value (1Password + re-inject
+`.env`, or edit `.env` directly for a one-machine test).
+
 ## 0.10.79 — 2026-05-02
 
 **Per-artifact training skill split begins.** The `training-materials`
