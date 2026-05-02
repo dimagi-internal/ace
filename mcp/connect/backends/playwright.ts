@@ -115,17 +115,21 @@ function truncatedKeyLabel(rawKey: string): string {
 // the eight write atoms (`createProgram`, `createOpportunity`, etc.) that
 // the REST backend handled. Since 0.10.55 we ship real HTML-form fallbacks
 // for those atoms so the composite can recover when REST returns 404 (PR
-// #1135 not yet deployed to prod). 0.10.64 added 7 of the 8; createOpportunity
-// stayed guarded. 0.10.68 (this version) restores the createOpportunity
-// 3-step HTMX fallback that pre-0.10.47 ran end-to-end against live Connect:
+// #1135 not yet deployed to prod).
+//
+// 0.10.82 rewired `createOpportunity` against a live HTMX probe of
+// connect.dimagi.com (the prior 0.10.81 implementation 500'd because it
+// sent a `program` field the form doesn't accept and tried to drive a
+// `/finalize/` step that requires payment units which don't exist yet at
+// create time). The current implementation is single-step:
 //   1. Register the HQ API key with Connect (HTMX add_api_key/) → int FK
-//   2. POST /a/<org>/opportunity/init/ with the resolved hq_server / api_key /
-//      learn-app / deliver-app values; capture the new opp UUID from the redirect
-//   3. POST /a/<org>/opportunity/<id>/finalize/ with start_date / end_date /
-//      max_users (derived from total_budget) / total_budget
-// Both registerHqApiKey and finalizeOpportunity are PRIVATE helpers in this
-// class — their public-atom forms were subsumed by REST's createOpportunity in
-// 0.10.47. The composite still exposes a single createOpportunity atom.
+//   2. Resolve learn/deliver app ids via GET /hq/applications/...
+//   3. POST /a/<org>/opportunity/init/ with the resolved values; capture
+//      the new opp UUID from the 302 redirect (target is the wizard's
+//      next step `/payment_units/create`).
+// `registerHqApiKey` lives as a private helper. Payment-unit creation,
+// dates / budget, and activation are handled by separate atoms that the
+// orchestrator runs after this one.
 
 /**
  * Playwright HTTP-only Connect backend — handles atoms that don't yet have
@@ -500,12 +504,16 @@ export class PlaywrightBackend implements ConnectClient {
   //   - activateOpportunity   reuse postEditForm with active=true
   //   - createPaymentUnit/s   single-PU form per item (server has no batch
   //                           endpoint here); plural loops the singular
-  //   - createOpportunity     3-step HTMX wizard restored in 0.10.68: register
-  //                           HQ key → POST /opportunity/init/ → POST /finalize/.
-  //                           Internally chains the pre-0.10.47
-  //                           registerHqApiKey + finalizeOpportunity helpers
-  //                           (private — both atoms were collapsed server-side
-  //                           by PR #1135 so we don't re-expose them).
+  //   - createOpportunity     HTMX init-form fallback rewired in 0.10.82:
+  //                           register HQ key → resolve learn/deliver app
+  //                           values → POST /opportunity/init/ → return
+  //                           the new opp UUID. Does NOT drive the
+  //                           wizard's payment-units or finalize steps —
+  //                           those are separate atoms. The pre-0.10.81
+  //                           code attempted to POST /finalize/ inline,
+  //                           which 500s because the form doesn't accept
+  //                           a `program` field and finalize requires PUs
+  //                           that don't yet exist at create time.
   //   - acceptProgramApplication  Connect's PM-side UI has no accept button;
   //                           accept happens on the LLO side via
   //                           /a/<llo>/program/<id>/application/<app>/accept/.
@@ -649,53 +657,79 @@ export class PlaywrightBackend implements ConnectClient {
     return await this.getProgram({ organization_slug: orgSlug, program_id: stub.id });
   }
 
-  // ── Opportunities (3-step HTMX wizard fallback, restored 0.10.68) ──
+  // ── Opportunities (HTMX init-form fallback, rewired 0.10.82) ──
 
   /**
-   * Drive Connect's HTML opportunity-creation wizard end-to-end. Mirrors the
-   * pre-0.10.47 implementation that ran live against connect.dimagi.com:
+   * Drive Connect's HTML opportunity-creation form. Live-probed against
+   * connect.dimagi.com 2026-05-02; the prior 0.10.81 implementation
+   * 500-failed because it sent a `program` field the form doesn't accept
+   * AND tried to drive a `/finalize/` step inside this atom that the
+   * server can only accept once payment units exist.
    *
-   *   1. Resolve `learn_app.hq_server_url` → int FK (parsed from the
-   *      `<select name="hq_server">` on the init form).
-   *   2. Register the raw HQ API key with Connect (idempotent — if it's
-   *      already registered for this hq_server, look up the existing int FK).
-   *   3. Resolve learn / deliver app ids → the JSON-encoded `{"id","name"}`
-   *      strings Connect's form expects (HTMX endpoint
-   *      `/hq/applications/?hq_server=&<field>=&api_key=`).
-   *   4. POST `/a/<org>/opportunity/init/` with the assembled form body.
-   *      Capture the new opp UUID from the 302 redirect Location.
-   *   5. POST `/a/<org>/opportunity/<id>/finalize/` with start_date,
-   *      end_date, max_users (computed from total_budget ÷ Σ(pu.amount ×
-   *      pu.max_total)), and total_budget.
+   * What the live wizard actually looks like (probed 2026-05-02):
    *
-   * The new public-atom shape (REST contract) takes `learn_app` and
-   * `deliver_app` as nested objects with `hq_server_url` + `api_key` +
-   * `cc_domain` + `cc_app_id`. We require both nested keys to share the
-   * same hq_server (Connect's HTML form has only ONE hq_server picker).
+   *   1. The /opportunity/init/ form is the ONLY create endpoint on
+   *      connect.dimagi.com. It produces standalone (un-managed)
+   *      opportunities — there is NO `program` field on the HTML form.
+   *      Sending one is silently ignored. Program binding for downstream
+   *      EOI / multi-LLO routing happens via the REST automation API
+   *      ([commcare-connect#1135](https://github.com/dimagi/commcare-connect/pull/1135));
+   *      this fallback only fires when REST 404s, so the resulting opp
+   *      is necessarily standalone.
    *
-   * NOTE: `target_organization_slug` (the LLO running the opp) is server-
-   * side only on REST. The HTML form has no equivalent field — it creates
-   * the opp under the calling PM org. For ACE dogfood (PM=target=ai-demo-
-   * space) this is fine; if target ≠ PM the caller must transfer
-   * ownership separately (via program-application acceptance).
+   *   2. The form is HTMX-cascaded. Endpoints (no `/a/<org>/` prefix —
+   *      they hang off the global `/users/...` and `/hq/...` routes):
+   *        - `GET /users/api_keys/?hq_server=<int_fk>`
+   *            → `<select>` of registered HQ API keys (truncated label →
+   *               int FK as value)
+   *        - `GET /hq/domains/?hq_server=<id>&api_key=<id>`
+   *            → `<select>` of HQ project-spaces the key has access to
+   *        - `GET /hq/applications/?hq_server=<id>&<learn|deliver>_app_domain=<d>&api_key=<id>`
+   *            → `<select>` whose `value` attribute is a JSON string
+   *               `{"id":"<32hex>","name":"<status> - <app name>"}`. The
+   *               status prefix in `name` is informational only — Connect
+   *               currently labels everything as "Unreleased" regardless
+   *               of HQ-side release state. Sending the JSON verbatim
+   *               (including the prefix) is what the form expects.
    *
-   * NOTE: Step 2 of the wizard (payment_units/create) is NOT driven here
-   * — payment-unit creation is its own atom (`createPaymentUnit(s)`) and
-   * the orchestrator runs it between createOpportunity and the implicit
-   * finalize step. We emit warnings and let finalize fail loudly if no
-   * payment units exist; that's the correct surfaced error.
+   *   3. `POST /a/<org>/opportunity/add_api_key/` registers a new HQ key
+   *      against an `hq_server`; the key shows up in subsequent
+   *      `/users/api_keys/` lookups by truncated label.
+   *
+   *   4. `POST /a/<org>/opportunity/init/` with the assembled form body
+   *      302-redirects to `/a/<org>/opportunity/<uuid>/payment_units/create`
+   *      on success. Validation errors return 200 with crispy-tailwind
+   *      `<p id="error_N_id_<field>">` markers.
+   *
+   * What the wizard does NOT do here:
+   *   - The init step does NOT take dates or budget. Those are wizard
+   *     step 3 (`/finalize/`), which requires payment units to exist
+   *     first. PUs are a separate atom (`createPaymentUnit(s)`) and the
+   *     orchestrator runs them after this atom returns. The opportunity
+   *     becomes runnable when a separate `activateOpportunity` call
+   *     toggles `active=on` on the edit form (server-side guards reject
+   *     activation if PUs / dates / budget are missing — that's the
+   *     correct surfaced error).
+   *   - There is no `target_organization_slug` field on the HTML form —
+   *     standalone opps live under the calling PM org. Cross-org
+   *     transfer is REST-only.
+   *   - The `program` field is NOT sent (form doesn't accept it).
+   *
+   * The shared learn/deliver `hq_server_url` + `api_key` invariant still
+   * holds — Connect's form has a single picker for each.
    */
   createOpportunity: ConnectClient['createOpportunity'] = async (args) => {
     if (
       args.target_organization_slug &&
       args.target_organization_slug !== args.organization_slug
     ) {
-      // The HTML wizard creates under the PM slug. Cross-org transfer
-      // happens via program-application acceptance, which our caller is
-      // expected to do separately. Surface a non-fatal note.
+      // The HTML form creates under the PM slug. There is no equivalent
+      // field for `target_organization_slug` — that's REST-only. Surface
+      // a non-fatal note so the caller knows ownership transfer needs a
+      // separate (out-of-band) acceptance step.
       // eslint-disable-next-line no-console
       console.warn(
-        `[ace-connect] createOpportunity Playwright fallback: target_organization_slug='${args.target_organization_slug}' differs from organization_slug='${args.organization_slug}'. The HTML wizard cannot transfer ownership at create time; the LLO must already have an ACCEPTED program application.`,
+        `[ace-connect] createOpportunity Playwright fallback: target_organization_slug='${args.target_organization_slug}' differs from organization_slug='${args.organization_slug}'. The HTML form creates a standalone opp under the PM org; cross-org transfer is REST-only.`,
       );
     }
 
@@ -758,25 +792,30 @@ export class PlaywrightBackend implements ConnectClient {
     });
 
     // 4. Refetch CSRF — Django one-shot tokens may have rotated after
-    //    the add_api_key POST. Also fetch the program's currency/country
-    //    (the form requires both; in REST land they're inherited server-
-    //    side from the parent program, but the HTML form needs them
-    //    explicitly).
+    //    the add_api_key POST. The HTML init form requires currency +
+    //    country (it does NOT have a `program` field, so it can't
+    //    inherit them server-side the way the REST API does). We still
+    //    look up the parent program to source those two values, even
+    //    though we never POST a `program=<uuid>` field.
     const formRes2 = await this.opts.request.get(formPath);
     if (formRes2.status() !== 200) throw await httpErrorFor(formRes2, formPath, 'GET');
-    const csrf2 = extractFormCsrfToken(await formRes2.text()) ?? this.opts.csrfToken;
+    const formHtml2 = await formRes2.text();
+    const csrf2 = extractFormCsrfToken(formHtml2) ?? this.opts.csrfToken;
     const program = await this.getProgram({
       organization_slug: orgSlug,
       program_id: args.program_id,
     });
+    // Resolve country from the form's <select> options (the form expects
+    // ISO-3 codes; the program may store the human-readable name).
+    const resolvedCountry = await this.resolveCountryCode(formHtml2, program.country ?? 'USA');
 
     const initBody: Record<string, string> = {
       csrfmiddlewaretoken: csrf2,
       name: args.name,
       short_description: args.short_description,
       description: args.description,
-      currency: program.currency ?? '',
-      country: program.country ?? '',
+      currency: PlaywrightBackend.normalizeCurrency(program.currency ?? 'USD'),
+      country: resolvedCountry || 'USA',
       hq_server: hqServerId,
       api_key: apiKeyId,
       learn_app_domain: args.learn_app.cc_domain,
@@ -785,14 +824,13 @@ export class PlaywrightBackend implements ConnectClient {
       learn_app_description: args.learn_app.description ?? '',
       deliver_app_domain: args.deliver_app.cc_domain,
       deliver_app: deliverAppValue,
-      program: args.program_id,
     };
 
     const initRes = await this.opts.request.post(formPath, {
       form: initBody,
       maxRedirects: 0,
       headers: {
-        Referer: `${this.opts.baseUrl}/a/${orgSlug}/opportunity/`,
+        Referer: `${this.opts.baseUrl}/a/${orgSlug}/opportunity/init/`,
         'X-CSRFToken': csrf2,
       },
     });
@@ -800,15 +838,17 @@ export class PlaywrightBackend implements ConnectClient {
     let createdOppId: string | undefined;
     if (initRes.status() === 302) {
       const loc = initRes.headers()['location'] ?? '';
-      createdOppId = extractUuidFromPath(loc, 'opportunity');
+      // Live success redirects to /a/<org>/opportunity/<uuid>/payment_units/create
+      // (the wizard's step-2 page). Earlier templates may redirect to
+      // /opportunity/<uuid>/init/edit/ — both forms include the UUID we want.
+      const m = loc.match(/\/opportunity\/([a-f0-9-]{36})\b/);
+      createdOppId = m?.[1];
       if (!createdOppId) {
-        // Some redirects target the wizard step path
-        // (`/a/<org>/opportunity/<uuid>/init/edit/`). Try matching that too.
-        const m = loc.match(/\/opportunity\/([a-f0-9-]{36})\b/);
-        createdOppId = m?.[1];
+        // extractUuidFromPath looks for `/<keyword>/<uuid>/` shape.
+        createdOppId = extractUuidFromPath(loc, 'opportunity');
       }
       if (!createdOppId) {
-        // Fall back: list opps and match by name (the most recent one wins).
+        // Last resort: list opps and match by name (most recent wins).
         const list = await this.listOpportunities({ organization_slug: orgSlug, name: args.name });
         if (!list.opportunities[0]) {
           throw new HttpError(
@@ -825,17 +865,11 @@ export class PlaywrightBackend implements ConnectClient {
       throw await httpErrorFor(initRes, formPath, 'POST');
     }
 
-    // 5. Finalize: POST /finalize/ with start/end/max_users/total_budget.
-    //    The form requires max_users; we derive it from the requested
-    //    total_budget and the per-PU sums.
-    await this.finalizeOpportunityForm({
-      organization_slug: orgSlug,
-      opportunity_id: createdOppId,
-      start_date: args.start_date,
-      end_date: args.end_date,
-      total_budget: args.total_budget,
-    });
-
+    // 5. Hydrate. The opp won't have start/end/budget/active set yet —
+    //    those are configured via separate atoms (createPaymentUnit(s),
+    //    then activateOpportunity which toggles `active=on` on the edit
+    //    form, which itself triggers Connect's payment-unit / dates /
+    //    budget guards).
     return await this.getOpportunity({
       organization_slug: orgSlug,
       opportunity_id: createdOppId,
@@ -949,77 +983,6 @@ export class PlaywrightBackend implements ConnectClient {
       ]);
     }
     return match.value;
-  }
-
-  /**
-   * Private helper (was a public atom before 0.10.47): finalize an
-   * opportunity by POSTing the wizard step-3 `/finalize/` form. The form
-   * requires `start_date`, `end_date`, `max_users`, `total_budget`. We
-   * derive `max_users` from the caller-supplied `total_budget` and the
-   * existing payment-unit sums:
-   *
-   *   per_user = Σ (pu.amount × pu.max_total)
-   *   max_users = ceil(total_budget / per_user)
-   *
-   * If no payment units exist yet, we throw with a clear message — the
-   * orchestrator must call `createPaymentUnit(s)` first.
-   *
-   * On success Connect 302-redirects to opportunity:detail. On validation
-   * errors it 200-renders the form with crispy-tailwind
-   * `<p id="error_N_id_FIELD">` messages.
-   */
-  private async finalizeOpportunityForm(args: {
-    organization_slug: string;
-    opportunity_id: string;
-    start_date: string;
-    end_date: string;
-    total_budget: number;
-  }): Promise<void> {
-    const path = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/finalize/`;
-    const getRes = await this.opts.request.get(path);
-    if (getRes.status() !== 200) throw await httpErrorFor(getRes, path);
-    const csrf = extractFormCsrfToken(await getRes.text()) ?? this.opts.csrfToken;
-
-    const pus = await this.listPaymentUnits({
-      organization_slug: args.organization_slug,
-      opportunity_id: args.opportunity_id,
-    });
-    const cumulativePerUser = pus.payment_units.reduce(
-      (sum, pu) => sum + (pu.amount ?? 0) * (pu.max_total ?? 0),
-      0,
-    );
-    if (cumulativePerUser <= 0) {
-      throw new ConnectError(
-        `finalize requires at least one payment unit with non-zero amount × max_total. ` +
-          `Opportunity ${args.opportunity_id} has ${pus.payment_units.length} payment unit(s); ` +
-          `Σ(amount × max_total) = ${cumulativePerUser}. Call createPaymentUnit(s) first.`,
-      );
-    }
-    const maxUsers = Math.max(1, Math.ceil(args.total_budget / cumulativePerUser));
-
-    const postRes = await this.opts.request.post(path, {
-      form: {
-        csrfmiddlewaretoken: csrf,
-        start_date: args.start_date,
-        end_date: args.end_date,
-        max_users: String(maxUsers),
-        total_budget: String(args.total_budget),
-      },
-      maxRedirects: 0,
-      headers: {
-        Referer: `${this.opts.baseUrl}${path}`,
-        'X-CSRFToken': csrf,
-      },
-    });
-
-    if (postRes.status() === 302) return;
-    if (postRes.status() === 200) {
-      throw validationErrorFromHtml(
-        await postRes.text(),
-        `finalize rejected (${args.opportunity_id})`,
-      );
-    }
-    throw await httpErrorFor(postRes, path, 'POST');
   }
 
   // ── Payment units ─────────────────────────────────────────────────

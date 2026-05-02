@@ -258,11 +258,6 @@ describe('PlaywrightBackend.createOpportunity', () => {
     );
   }
 
-  // Minimal payment_unit_table HTML so finalize's `listPaymentUnits` returns
-  // at least one PU with non-zero amount × max_total.
-  const puTableForFinalize =
-    '<table><tbody><tr class="even"><td>1</td><td>Visit</td><td></td><td></td><td>500</td><td>10</td></tr></tbody></table>';
-
   // Minimal program-edit HTML for getProgram (returns currency/country).
   const programEditHtml =
     csrfInput +
@@ -279,7 +274,7 @@ describe('PlaywrightBackend.createOpportunity', () => {
   // a proper Opportunity (parser finds zero apps but that's fine).
   const oppDetailEmpty = '<div>opp detail</div>';
 
-  it('drives the 3-step wizard: register HQ key → POST init → POST finalize → return hydrated opp', async () => {
+  it('drives the init wizard: register HQ key → resolve apps → POST init → return hydrated opp (no finalize)', async () => {
     const captured: CapturedRequest[] = [];
     const request = makeRequestContext(
       [
@@ -301,27 +296,21 @@ describe('PlaywrightBackend.createOpportunity', () => {
           status: 200,
           body: mkAppDropdown([{ id: 'deliver-app-id-32hex', name: 'Deliver App' }]),
         },
-        // 7) GET /opportunity/init/ AGAIN (refetch CSRF before the create POST)
+        // 7) GET /opportunity/init/ AGAIN (refetch CSRF + country select before the create POST)
         { status: 200, body: oppInitForm },
         // 8) GET /program/<id>/edit (getProgram inside createOpportunity for currency/country)
         { status: 200, body: programEditHtml },
-        // 9) POST /opportunity/init/ → 302 with Location of new opp UUID
+        // 9) POST /opportunity/init/ → 302 to /payment_units/create (real prod redirect)
         {
           status: 302,
           body: '',
           headers: {
-            location: '/a/ai-demo-space/opportunity/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/init/edit/',
+            location: '/a/ai-demo-space/opportunity/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/payment_units/create',
           },
         },
-        // 10) finalize: GET /opportunity/<id>/finalize/ → form with CSRF
-        { status: 200, body: csrfInput },
-        // 11) finalize: listPaymentUnits → GET /opportunity/<id>/payment_unit_table/
-        { status: 200, body: puTableForFinalize },
-        // 12) finalize: POST /opportunity/<id>/finalize/ → 302 success
-        { status: 302, body: '' },
-        // 13) post-create getOpportunity: GET /opportunity/<id>/edit
+        // 10) post-create getOpportunity: GET /opportunity/<id>/edit
         { status: 200, body: oppEditForm },
-        // 14) post-create getOpportunity: GET /opportunity/<id>/ (detail)
+        // 11) post-create getOpportunity: GET /opportunity/<id>/ (detail)
         { status: 200, body: oppDetailEmpty },
       ],
       captured,
@@ -355,8 +344,8 @@ describe('PlaywrightBackend.createOpportunity', () => {
     expect(out.id).toBe('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
 
     const posts = captured.filter((c) => c.method === 'POST');
-    // add_api_key + opportunity/init + finalize = 3 POSTs
-    expect(posts).toHaveLength(3);
+    // add_api_key + opportunity/init = 2 POSTs (no finalize anymore)
+    expect(posts).toHaveLength(2);
 
     // 1) add_api_key/ POST
     const addKeyPost = posts.find((p) => p.url.endsWith('/add_api_key/'))!;
@@ -379,7 +368,9 @@ describe('PlaywrightBackend.createOpportunity', () => {
     expect(initBody.deliver_app_domain).toBe('deliver-domain');
     expect(initBody.learn_app_passing_score).toBe('80');
     expect(initBody.learn_app_description).toBe('Learn app');
-    expect(initBody.program).toBe('3472fe95-d6d3-42c2-824a-55c5c7dff552');
+    // 0.10.82: program field is NOT sent (form doesn't accept it; sending
+    // it was silently ignored on success and tripped a 500 path on edge cases).
+    expect(initBody.program).toBeUndefined();
     // currency/country pulled from the parent program (HTML form requires both)
     expect(initBody.currency).toBe('USD');
     expect(initBody.country).toBe('USA');
@@ -387,15 +378,11 @@ describe('PlaywrightBackend.createOpportunity', () => {
     expect(initBody.learn_app).toContain('learn-app-id-32hex');
     expect(initBody.deliver_app).toContain('deliver-app-id-32hex');
 
-    // 3) finalize/ POST
-    const finalizePost = posts.find((p) => p.url.endsWith('/finalize/'))!;
-    expect(finalizePost).toBeDefined();
-    const fb = finalizePost.body as Record<string, string>;
-    expect(fb.start_date).toBe('2026-05-01');
-    expect(fb.end_date).toBe('2026-12-31');
-    expect(fb.total_budget).toBe('100000');
-    // max_users computed from total_budget / Σ(amount × max_total) = 100000 / (500*10) = 20
-    expect(fb.max_users).toBe('20');
+    // 0.10.82: NO finalize/ POST happens inside createOpportunity. The
+    // wizard's finalize step requires payment units to exist first; PUs
+    // are a separate atom (createPaymentUnit/s) and the orchestrator
+    // runs them after this atom returns. Activation is a third atom.
+    expect(posts.find((p) => p.url.endsWith('/finalize/'))).toBeUndefined();
   });
 
   it('rejects mismatched hq_server_url across learn_app and deliver_app', async () => {
@@ -555,9 +542,16 @@ describe('PlaywrightBackend.createOpportunity', () => {
     ).rejects.toBeInstanceOf(ConnectValidationError);
   });
 
-  it('throws ConnectError when finalize sees no payment units', async () => {
+  // 0.10.82: dropped the inline finalize step from createOpportunity, so the
+  // legacy "throws when finalize sees no payment units" test no longer
+  // applies. Finalize is now an out-of-band concern handled by separate
+  // atoms (createPaymentUnit/s + activateOpportunity).
+
+  it('extracts the new opp UUID from the live /payment_units/create redirect', async () => {
+    // 0.10.82: live POST /opportunity/init/ 302-redirects to
+    // /a/<org>/opportunity/<uuid>/payment_units/create (the wizard's
+    // step-2 page). Verify the regex picks up the UUID from that shape.
     const captured: CapturedRequest[] = [];
-    const emptyPuTable = '<table><tbody></tbody></table>';
     const request = makeRequestContext(
       [
         { status: 200, body: oppInitForm },
@@ -565,50 +559,48 @@ describe('PlaywrightBackend.createOpportunity', () => {
         { status: 200, body: mkAppDropdown([{ id: 'learn-app-id-32hex', name: 'Learn App' }]) },
         { status: 200, body: mkAppDropdown([{ id: 'deliver-app-id-32hex', name: 'Deliver App' }]) },
         { status: 200, body: oppInitForm },
-        { status: 200, body: programEditHtml }, // getProgram for currency/country
-        // POST /opportunity/init/ → 302 success
+        { status: 200, body: programEditHtml },
+        // 302 to the live wizard step-2 path
         {
           status: 302,
           body: '',
           headers: {
-            location: '/a/ai-demo-space/opportunity/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/init/edit/',
+            location:
+              '/a/ai-demo-space/opportunity/12345678-1234-1234-1234-123456789012/payment_units/create',
           },
         },
-        // GET /opportunity/<id>/finalize/ form
-        { status: 200, body: csrfInput },
-        // listPaymentUnits returns empty
-        { status: 200, body: emptyPuTable },
+        { status: 200, body: oppEditForm },
+        { status: 200, body: oppDetailEmpty },
       ],
       captured,
     );
     const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
-    await expect(
-      backend.createOpportunity({
-        organization_slug: 'ai-demo-space',
-        program_id: 'p',
-        name: 'X',
-        short_description: 's',
-        description: 'd',
-        target_organization_slug: 'ai-demo-space',
-        start_date: '2026-05-01',
-        end_date: '2026-12-31',
-        total_budget: 100,
-        learn_app: {
-          hq_server_url: 'https://www.commcarehq.org',
-          api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
-          cc_domain: 'd',
-          cc_app_id: 'learn-app-id-32hex',
-          description: 'L',
-          passing_score: 80,
-        },
-        deliver_app: {
-          hq_server_url: 'https://www.commcarehq.org',
-          api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
-          cc_domain: 'd',
-          cc_app_id: 'deliver-app-id-32hex',
-        },
-      }),
-    ).rejects.toThrow(/finalize requires at least one payment unit/);
+    const out = await backend.createOpportunity({
+      organization_slug: 'ai-demo-space',
+      program_id: 'p',
+      name: 'X',
+      short_description: 's',
+      description: 'd',
+      target_organization_slug: 'ai-demo-space',
+      start_date: '2026-05-01',
+      end_date: '2026-12-31',
+      total_budget: 100,
+      learn_app: {
+        hq_server_url: 'https://www.commcarehq.org',
+        api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
+        cc_domain: 'd',
+        cc_app_id: 'learn-app-id-32hex',
+        description: 'L',
+        passing_score: 80,
+      },
+      deliver_app: {
+        hq_server_url: 'https://www.commcarehq.org',
+        api_key: 'abcdefghijklmnopqrstuvwxyz1234567890_0000',
+        cc_domain: 'd',
+        cc_app_id: 'deliver-app-id-32hex',
+      },
+    });
+    expect(out.id).toBe('12345678-1234-1234-1234-123456789012');
   });
 
   it('resolveHqAppValue throws ConnectValidationError when app id is not in HQ options', async () => {
