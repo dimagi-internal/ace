@@ -1,10 +1,6 @@
 {
   "name": "ace",
-<<<<<<< HEAD
   "version": "0.10.61",
-=======
-  "version": "0.10.61",
->>>>>>> emdash/mobile-7aloq
   "description": "AI Connect Engine — orchestrates the CRISPR-Connect lifecycle from idea through app building, Connect setup, LLO management, and closeout",
   "author": {
     "name": "Jonathan Jackson",
