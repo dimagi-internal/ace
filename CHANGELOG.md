@@ -5,6 +5,56 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.79 — 2026-05-02
+
+**Per-artifact training skill split begins.** The `training-materials`
+monolith produced 7 outputs in one LLM call. Splitting by artifact gives
+each output its own skill, LLM context, self-eval, and re-run semantics
+— re-running the FAQ no longer re-emits the LLO guide.
+
+This release moves only the deck outline and removes the unimplemented
+video script. The five other text artifacts stay in `training-materials`
+pending follow-up migration cycles.
+
+### Added
+
+- `skills/training-deck-outline/SKILL.md` — owns
+  `training-materials/training-deck-outline.md`. Reads PDD + app summaries
+  + screenshot manifests, drafts the slide-by-slide markdown matching
+  `parseDeckOutline` in `lib/training-deck-spec.ts`. Self-evaluates on
+  coverage / concreteness / image hygiene / length. Modes: auto /
+  review / dry-run.
+
+### Changed
+
+- `skills/training-materials/SKILL.md` — drops deck-outline and
+  video-script subsections. Adds a "Per-artifact split (in progress)"
+  section with the migration roadmap. Now produces 5 artifacts.
+- `agents/qa-and-training.md` — Phase 5 sequences five steps:
+  qa-plan → app-screenshot-capture → training-materials →
+  training-deck-outline → training-deck-build. Step 5 is non-blocking.
+- `lib/artifact-manifest.ts` — adds
+  `training-materials/training-deck-outline.md` as
+  `producedBy: 'training-deck-outline'`, `consumedBy:
+  ['training-deck-build']`, `required: false`.
+
+### Roadmap (not in this release)
+
+The remaining 5 artifacts each get a dedicated `training-<x>` skill in
+subsequent cycles: `training-llo-guide`, `training-flw-guide`,
+`training-quick-reference`, `training-faq`, `training-onboarding-email`.
+After that, `training-materials` becomes a thin umbrella or is removed.
+
+### Why incremental, not big-bang
+
+- `training-materials` is consumed by Phases 4 and 6 via specific
+  paths. Path-by-path splitting is safe but changes the verdict surface
+  `opp-eval` aggregates. One artifact per release lets each migration
+  bake before the next.
+- `training-deck-build` is not yet end-to-end-tested (Slides API enable
+  + bootstrap pending). Stacking more skills behind it before that
+  gate clears would compound risk.
+
 ## 0.10.78 — 2026-05-02
 
 **Google Slides support — `slides_*` MCP atoms + `training-deck-build`

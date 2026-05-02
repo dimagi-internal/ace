@@ -14,6 +14,8 @@ skills:
   - { name: qa-plan,                 has_judge: true }
   - { name: app-screenshot-capture,  has_judge: true }
   - { name: training-materials,      has_judge: true }
+  - { name: training-deck-outline,   has_judge: true }
+  - { name: training-deck-build,     has_judge: false }
 ---
 
 # QA and Training Agent (Phase 5)
@@ -89,7 +91,7 @@ Invoke the `app-screenshot-capture` skill.
 - Halts the phase on non-pass verdict — Phase 6 must not start without
   the per-opp screenshots
 
-### Step 3: Training Materials
+### Step 3: Training Materials (text guides)
 Invoke the `training-materials` skill.
 
 - **Input:** PDD + qa-plan + app summaries + connect state + ocs config
@@ -101,13 +103,43 @@ Invoke the `training-materials` skill.
   - `ACE/<opp>/training-materials/quick-reference.md`
   - `ACE/<opp>/training-materials/faq.md`
   - `ACE/<opp>/training-materials/onboarding-email-body.md` (Phase 6 input)
-  - `ACE/<opp>/training-materials/training-deck-outline.md` — slide-by-slide
-    with per-opp + common screenshot references
-  - `ACE/<opp>/training-materials/training-video-script.md` — narration
-    + screen-cue timing
+
+  Per-artifact split is in progress (0.10.79+) — `training-deck-outline.md`
+  has moved to its own skill (Step 4); the remaining 5 artifacts will follow
+  in subsequent migration cycles. Until then, `training-materials` stays a
+  monolith for these 5.
 - **LLM-as-Judge:** verify content matches app structure, common +
   opp-specific screenshots embedded correctly, real URLs resolved
 - Halts the phase on non-pass verdict
+
+### Step 4: Training Deck Outline
+Invoke the `training-deck-outline` skill.
+
+- **Input:** PDD + app summaries + per-opp screenshot manifest +
+  common screenshot manifest + (optional) `flw-training-guide.md`
+  for caption phrasing alignment
+- **Output:** `ACE/<opp>/training-materials/training-deck-outline.md`
+  — slide-by-slide markdown matching `parseDeckOutline` contract in
+  `lib/training-deck-spec.ts`
+- **LLM-as-Judge:** coverage (every Learn module + Deliver form
+  referenced), concreteness (speaker notes opp-specific not boilerplate),
+  image hygiene (zero unresolved screenshot refs), length (8-15 slides)
+- Halts the phase on non-pass verdict — Step 5 needs a valid outline
+
+### Step 5: Training Deck Build
+Invoke the `training-deck-build` skill.
+
+- **Input:** `training-deck-outline.md` + `ACE_TRAINING_DECK_TEMPLATE_ID`
+  env var (set once via `scripts/bootstrap-training-deck-template.ts`)
+- **Output:** A real Google Slides deck in
+  `ACE/<opp>/training-materials/`, plus a `training_deck:` block in
+  `state.yaml` with the deck URL
+- **No LLM-as-Judge** — this is a deterministic render; the upstream
+  outline judge already gated content quality
+- Skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` is empty (with a clear
+  pointer to the bootstrap script). Phase 6 doesn't depend on the
+  Slides deck — onboarding-email-body is the load-bearing Phase 6
+  input — so a missing template doesn't block go-live.
 
 ## Outputs
 
@@ -116,7 +148,8 @@ Invoke the `training-materials` skill.
 - `ACE/<opp>/qa-plan/screenshot-manifest.yaml`
 - `ACE/<opp>/qa-plan/uat-checklist.md`
 - `ACE/<opp>/screenshots/<recipe>/<step>.png` + `ACE/<opp>/screenshots/manifest.yaml`
-- `ACE/<opp>/training-materials/{llo-manager-guide,flw-training-guide,quick-reference,faq,onboarding-email-body,training-deck-outline,training-video-script}.md`
+- `ACE/<opp>/training-materials/{llo-manager-guide,flw-training-guide,quick-reference,faq,onboarding-email-body,training-deck-outline}.md`
+- A Google Slides deck under the same folder (when template is configured)
 - `verdicts/qa-plan.yaml`
 - `verdicts/app-screenshot-capture.yaml`
 - `verdicts/training-materials.yaml`

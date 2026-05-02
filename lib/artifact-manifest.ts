@@ -198,6 +198,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     required: true,
     description: 'Frequently asked questions for LLOs and FLWs',
   },
+  {
+    path: 'training-materials/training-deck-outline.md',
+    producedBy: 'training-deck-outline',
+    consumedBy: ['training-deck-build'],
+    phase: 'commcare',
+    required: false,
+    description: 'Slide-by-slide markdown outline for the training deck. Format contract is parsed by `lib/training-deck-spec.ts` `parseDeckOutline`. Rendered to a Google Slides deck by `training-deck-build`.',
+  },
 
   // ── Connect phase (Phase 3) ────────────────────────────────────
 
