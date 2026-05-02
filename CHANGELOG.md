@@ -5,6 +5,38 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.73 — 2026-05-02
+
+**Diagnose macOS launchd-env mismatch on `op` auth failure.** When
+`OP_SERVICE_ACCOUNT_TOKEN` is missing from the current process but
+defined in a shell rc, point the user at `~/.zshenv` instead of
+"set the var".
+
+### Why
+
+A recent /ace:setup session burned ~10 minutes diagnosing why `op`
+wasn't authenticated even though `OP_SERVICE_ACCOUNT_TOKEN` was set in
+`~/.zshrc`. Root cause: macOS GUI apps inherit env from launchd, which
+doesn't read `~/.zshrc`. The fix is to put the export in `~/.zshenv`
+(zsh reads this even for non-interactive launchd-spawned shells), but
+the failure mode looked identical to "you forgot to set the token" and
+the user followed the wrong instructions.
+
+### Changed
+
+- **`bin/ace-setup`:** when op auth fails on macOS, scans `~/.zshrc`,
+  `~/.bashrc`, `~/.zprofile`, `~/.bash_profile`, `~/.profile` for an
+  `OP_SERVICE_ACCOUNT_TOKEN` definition. If found, appends a "GUI
+  app launchd-inheritance" hint to the failure message with the
+  exact one-liner to copy the export into `~/.zshenv`.
+
+### Not done
+
+- Auto-writing `~/.zshenv` or installing a LaunchAgent plist. Both
+  cross into "destructive write to user config" territory; the
+  detect-and-hint approach addresses the actual friction (diagnosing
+  the mismatch) without invasive automation.
+
 ## 0.10.72 — 2026-05-02
 
 **Per-ref `op read` diagnostic on unresolved 1Password references.**

@@ -143,11 +143,33 @@ if [ "$AUTH_OK" = "0" ]; then
 fi
 
 if [ "$AUTH_OK" = "0" ]; then
+  # On macOS, GUI apps inherit env from launchd — not from ~/.zshrc — so
+  # OP_SERVICE_ACCOUNT_TOKEN can be defined in shell rc and still be unset
+  # for a Claude Code session opened from the dock. Detect that case so the
+  # user knows the fix is "move it to ~/.zshenv" instead of "set the var".
+  GUI_HINT=""
+  if [ "$(uname -s)" = "Darwin" ] && [ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
+    SHELL_RC_HIT=""
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.zprofile" "$HOME/.bash_profile" "$HOME/.profile"; do
+      if [ -f "$rc" ] && grep -qE '^[[:space:]]*(export[[:space:]]+)?OP_SERVICE_ACCOUNT_TOKEN=' "$rc"; then
+        SHELL_RC_HIT="$rc"; break
+      fi
+    done
+    if [ -n "$SHELL_RC_HIT" ]; then
+      GUI_HINT="
+       NOTE: OP_SERVICE_ACCOUNT_TOKEN is defined in $SHELL_RC_HIT but not visible
+       to this process. macOS GUI apps inherit env from launchd (not ~/.zshrc).
+       Move the export to ~/.zshenv so launchd-spawned zsh sees it too, then
+       quit and reopen Claude Code from the dock:
+         grep '^[[:space:]]*\(export[[:space:]]\+\)\?OP_SERVICE_ACCOUNT_TOKEN=' $SHELL_RC_HIT >> ~/.zshenv
+         # then: Cmd-Q Claude Code, reopen from dock, re-run /ace:setup"
+    fi
+  fi
   fail "op: not authenticated to 1Password" "type one of these in the chat (the \`!\` prefix runs in this session):
        ! op signin --account dimagi.1password.com   # interactive personal signin
        ! eval \$(op signin --account dimagi.1password.com)   # if you need session env exported
        (or set OP_SERVICE_ACCOUNT_TOKEN=ops_... in your shell rc and reopen the session)
-       (Mac alt: open the 1Password.app, Settings → Developer → enable CLI integration)
+       (Mac alt: open the 1Password.app, Settings → Developer → enable CLI integration)$GUI_HINT
      Then re-run /ace:setup."
   exit 1
 fi
