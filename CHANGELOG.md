@@ -5,6 +5,37 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.77 — 2026-05-02
+
+**Skill-side safety net for Nova `add_fields` partial persistence.**
+Promotes the existing architect-brief warning to a `REQUIRED:`
+verbatim paragraph and adds a post-autobuild verify+fix step the
+skill itself runs (bounded loop, max 3 iterations).
+
+### Why
+
+Nova's `add_fields` has a known quirk where a single call with N items
+often only persists the first few. The architect-brief told the agent
+to verify-then-retry, but the previous wording was a sub-bullet in a
+long list and mid-build sessions have shipped forms that look complete
+in the build summary but render with missing questions. The
+architect's manual retry stays in the brief (faster path), and the
+skill itself now re-checks every form's field count after autobuild
+returns and dispatches a `/nova:edit` for any short forms — bounded
+loop, same pattern as `app-connect-coverage`.
+
+### Changed
+
+- **`skills/pdd-to-deliver-app/SKILL.md`** and
+  **`skills/pdd-to-learn-app/SKILL.md`:** the partial-persistence
+  warning is promoted to a top-level `REQUIRED:` paragraph the
+  architect must include verbatim in the brief. New step 4a
+  ("Post-build field-count verification") runs after autobuild —
+  enumerates every form via `get_app` + `get_form`, cross-references
+  field counts against the PDD spec, dispatches `/nova:edit` for any
+  short forms, and loops up to 3 iterations before surfacing a
+  failure.
+
 ## 0.10.76 — 2026-05-02
 
 **Open Questions doc convention in `idea-to-pdd`** — structured Google
