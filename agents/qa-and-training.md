@@ -14,6 +14,7 @@ skills:
   - { name: qa-plan,                 has_judge: true }
   - { name: app-screenshot-capture,  has_judge: true }
   - { name: training-materials,      has_judge: true }
+  - { name: training-flw-guide,      has_judge: true }
   - { name: training-deck-outline,   has_judge: true }
   - { name: training-deck-build,     has_judge: false }
 ---
@@ -91,7 +92,7 @@ Invoke the `app-screenshot-capture` skill.
 - Halts the phase on non-pass verdict — Phase 6 must not start without
   the per-opp screenshots
 
-### Step 3: Training Materials (text guides)
+### Step 3: Training Materials (LLO + supplementary text)
 Invoke the `training-materials` skill.
 
 - **Input:** PDD + qa-plan + app summaries + connect state + ocs config
@@ -99,20 +100,32 @@ Invoke the `training-materials` skill.
   `ACE/_common/connect-screenshots/<connect-version>/`
 - **Output:**
   - `ACE/<opp>/training-materials/llo-manager-guide.md`
-  - `ACE/<opp>/training-materials/flw-training-guide.md`
   - `ACE/<opp>/training-materials/quick-reference.md`
   - `ACE/<opp>/training-materials/faq.md`
   - `ACE/<opp>/training-materials/onboarding-email-body.md` (Phase 6 input)
 
-  Per-artifact split is in progress (0.10.79+) — `training-deck-outline.md`
-  has moved to its own skill (Step 4); the remaining 5 artifacts will follow
-  in subsequent migration cycles. Until then, `training-materials` stays a
-  monolith for these 5.
+  Per-artifact split is in progress: `training-deck-outline.md` moved to
+  `training-deck-outline` (0.10.79); `flw-training-guide.md` moved to
+  `training-flw-guide` (0.10.83). The remaining 4 artifacts will move in
+  subsequent migration cycles.
 - **LLM-as-Judge:** verify content matches app structure, common +
   opp-specific screenshots embedded correctly, real URLs resolved
 - Halts the phase on non-pass verdict
 
-### Step 4: Training Deck Outline
+### Step 4: Training FLW Guide
+Invoke the `training-flw-guide` skill.
+
+- **Input:** PDD + Learn/Deliver app summaries + connect state + ocs
+  widget URL + per-opp screenshot manifest + common Connect screenshot
+  manifest
+- **Output:** `ACE/<opp>/training-materials/flw-training-guide.md` —
+  step-by-step FLW-facing walkthrough with embedded screenshots
+- **LLM-as-Judge:** coverage (every Learn module + Deliver form
+  referenced), concreteness (real button/field names), image hygiene
+  (no fabricated fileIds), audience fit (high-school reading level)
+- Halts the phase on non-pass verdict
+
+### Step 5: Training Deck Outline
 Invoke the `training-deck-outline` skill.
 
 - **Input:** PDD + app summaries + per-opp screenshot manifest +
@@ -126,7 +139,7 @@ Invoke the `training-deck-outline` skill.
   image hygiene (zero unresolved screenshot refs), length (8-15 slides)
 - Halts the phase on non-pass verdict — Step 5 needs a valid outline
 
-### Step 5: Training Deck Build
+### Step 6: Training Deck Build
 Invoke the `training-deck-build` skill.
 
 - **Input:** `training-deck-outline.md` + `ACE_TRAINING_DECK_TEMPLATE_ID`
@@ -148,7 +161,9 @@ Invoke the `training-deck-build` skill.
 - `ACE/<opp>/qa-plan/screenshot-manifest.yaml`
 - `ACE/<opp>/qa-plan/uat-checklist.md`
 - `ACE/<opp>/screenshots/<recipe>/<step>.png` + `ACE/<opp>/screenshots/manifest.yaml`
-- `ACE/<opp>/training-materials/{llo-manager-guide,flw-training-guide,quick-reference,faq,onboarding-email-body,training-deck-outline}.md`
+- `ACE/<opp>/training-materials/{llo-manager-guide,quick-reference,faq,onboarding-email-body}.md` (training-materials)
+- `ACE/<opp>/training-materials/flw-training-guide.md` (training-flw-guide)
+- `ACE/<opp>/training-materials/training-deck-outline.md` (training-deck-outline)
 - A Google Slides deck under the same folder (when template is configured)
 - `verdicts/qa-plan.yaml`
 - `verdicts/app-screenshot-capture.yaml`
