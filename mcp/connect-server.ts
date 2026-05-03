@@ -387,4 +387,29 @@ server.tool('commcare_download_ccz',
   async (args) => runAtom(async () => (await commcareClient()).downloadCcz(args))
 );
 
+// commcare_patch_xform — surgical CommCare HQ form-XML patch endpoint.
+//
+// TEMPORARY workaround for nova-plugin#5 (compile_app emits empty
+// `<user_score/>`) and nova-plugin#6 (`connect: null` is auto-restored on
+// quiz forms). Both upstream blockers gate ACE Phase 3 e2e for any
+// Nova-built Connect Learn app with the standard quiz scaffold. When
+// Nova ships fixes for both, the `commcare-form-patch` skill — and this
+// atom along with it — should be deleted (verified by re-running
+// leep-paint-collection Phase 3 with no patches needed).
+//
+// Endpoint: POST /a/<domain>/apps/edit_form_attr/<app_id>/<form_unique_id>/xform/
+// Auth: same `@login_or_digest` Playwright session as other commcare_* atoms.
+// Note: this patches the **draft** only — caller must follow with
+// `commcare_make_build` + `commcare_release_build` to ship the change.
+server.tool('commcare_patch_xform',
+  {
+    domain: z.string(),
+    app_id: z.string(),
+    form_unique_id: z.string().regex(/^[0-9a-f]{32}$/, 'unique_id is a 32-char hex string from suite.xml or the delete_form action URL'),
+    new_xform_xml: z.string().min(1),
+    sha1: z.string().optional().describe('Optional concurrency token; CCHQ rejects with XformConflictError on mismatch.'),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).patchXform(args))
+);
+
 await server.connect(new StdioServerTransport());
