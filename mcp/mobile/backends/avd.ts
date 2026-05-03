@@ -205,11 +205,69 @@ export class AvdBackend {
       await new Promise((r) => setTimeout(r, AVD_BOOT_POLL_MS));
       const found = await this.findRunningAvd(avdName);
       if (found) {
+        await this.assertSerialAuthorized(found.serial);
         await this.runPostBootPrep(found.serial);
         return { ...found, bootTimeMs: Date.now() - start };
       }
     }
     throw new AvdBootError(avdName, `boot timeout after ${AVD_BOOT_TIMEOUT_MS}ms`);
+  }
+
+  /**
+   * After boot reports complete, verify the device shows up as `device`
+   * (authorized) in `adb devices` rather than `unauthorized`. The unauthorized
+   * state is its own diagnostic maze: an adb-server holding stale RSA keys
+   * (e.g. spawned by a different shell or a previous user on a shared box)
+   * sees the freshly-booted emulator's new keys as untrusted, returns
+   * `unauthorized`, and silently breaks every downstream `adb -s` call.
+   *
+   * Self-healing: kill+restart adb-server ONCE and re-check. The restarted
+   * server picks up the current user's `~/.android/adbkey` and the emulator's
+   * `~/.android/emulator-console-auth-token` and the auth flips to `device`.
+   * If a single restart doesn't clear it, we surface a clear actionable error
+   * — the operator either has to accept the RSA prompt on the emulator screen
+   * or kill a stale emulator owned by a different user.
+   */
+  private async assertSerialAuthorized(serial: string): Promise<void> {
+    const status = await this.adbDeviceStatus(serial);
+    if (status === 'device') return;
+    if (status === 'unauthorized') {
+      // One self-heal attempt: kill and restart adb-server, then re-check.
+      await this.shell('adb', ['kill-server']).catch(() => {});
+      await this.shell('adb', ['start-server']).catch(() => {});
+      // Give the new server a beat to enumerate.
+      await new Promise((r) => setTimeout(r, 1500));
+      const recheck = await this.adbDeviceStatus(serial);
+      if (recheck === 'device') return;
+      if (recheck === 'unauthorized') {
+        throw new AvdBootError(
+          serial,
+          `adb device unauthorized — accept the RSA prompt on the emulator screen, ` +
+            `or check that no other user has a stale emulator running on this host. ` +
+            `Restart of adb-server did not clear the unauthorized state.`,
+        );
+      }
+      // Anything else (offline, missing, etc.) — fall through to the generic
+      // error below with whatever the recheck returned.
+      throw new AvdBootError(serial, `adb device state after restart: ${recheck ?? 'missing'}`);
+    }
+    // status is 'offline', null, or some other unexpected value — don't try
+    // to "fix" it, just surface what we saw so the operator can act.
+    throw new AvdBootError(serial, `adb device state: ${status ?? 'missing'}`);
+  }
+
+  /**
+   * Look up a single emulator's authorization state. Returns the second
+   * column from `adb devices` for that serial — typically `device` (good),
+   * `unauthorized`, or `offline`. Returns null if the serial isn't listed.
+   */
+  private async adbDeviceStatus(serial: string): Promise<string | null> {
+    const r = await this.shell('adb', ['devices']);
+    for (const line of r.stdout.split('\n').slice(1)) {
+      const parts = line.split('\t').map((s) => s.trim());
+      if (parts[0] === serial) return parts[1] ?? null;
+    }
+    return null;
   }
 
   /**

@@ -33,15 +33,52 @@ in `mcp/mobile/backends/avd.ts`.
 order in `resolveJavaHome()`. Operators can override with
 `export JAVA_HOME=/path/to/jdk17` before launching Claude Code.
 
+## Where to put throwaway probe scripts
+
+If any step below needs a one-off Playwright / adb / shell probe (e.g. to
+sanity-check a cookie jar or selector), **write it to `./tmp/ace-debug/<name>.ts`
+in the current git worktree** — never to `~/.claude/plugins/cache/`. The
+plugin cache is managed by `/ace:update`; writing into it is the "local
+patching" anti-pattern that ACE's CLAUDE.md explicitly forbids and creates
+version drift that's hard to diagnose later.
+
+`./tmp/` is gitignored at the repo root, so probes won't accidentally end
+up in a commit. A `git status` in the worktree should still come back clean
+after a successful run — see Step 12 below for cleanup.
+
+Durable, repeatable probes belong under `scripts/` and get committed; only
+true one-shot debugging artifacts go to `./tmp/ace-debug/`.
+
 ## Steps the agent should execute, in order
 
-1. **Check Maestro is installed.**
+1. **Check Maestro is installed; auto-install on macOS/Linux if missing.**
    - Run: `which maestro && maestro --version` (Unix) or `Get-Command maestro` (Windows PS).
-   - If missing: print the install command from the platform table above and stop.
+   - Also accept `~/.maestro/bin/maestro` as installed (the official installer
+     lands here without always patching the active shell's PATH for the
+     current process). Add `~/.maestro/bin` to `PATH` for the rest of this
+     session if it exists: `export PATH="$HOME/.maestro/bin:$PATH"`.
+   - If still missing AND the platform is macOS or Linux, attempt the
+     auto-install once:
+     ```bash
+     curl -Ls "https://get.maestro.mobile.dev" | bash
+     export PATH="$HOME/.maestro/bin:$PATH"
+     ```
+     Re-run `maestro --version`. If it succeeds, proceed. If the installer
+     itself fails (network, sudo, disk), surface the installer's stderr and
+     stop — do NOT loop or retry silently.
+   - On Windows, or if the auto-install failed, print the install command
+     from the platform table above and stop.
 
-2. **Check `adb` is on PATH.**
+2. **Check `adb` is on PATH; auto-install Java prerequisite on macOS if missing.**
    - Run: `which adb && adb version` (Unix) or `Get-Command adb` (Windows PS).
    - If missing: print the install command from the platform table above and stop.
+     adb itself is part of the Android platform-tools / Studio install — we
+     don't auto-install it because the right install path depends on whether
+     the operator already has a Studio setup.
+   - Then check Java: `java -version 2>&1`. If Java is missing AND the platform
+     is macOS AND `which brew` succeeds, attempt `brew install openjdk` once,
+     then re-check `java -version`. If Java still fails or auto-install errored,
+     surface the stderr and stop with the platform table's manual command.
 
 3. **Confirm `${ACE_AVD_NAME}` (default `ACE_Pixel_API_34`) exists.**
    - Run: `emulator -list-avds`
@@ -147,3 +184,11 @@ order in `resolveJavaHome()`. Operators can override with
 
 11. **Print success summary.**
     - Echo: AVD name, test-user phone, Playwright user-data dir, all ACE_E2E_* var presence.
+
+12. **Clean up `./tmp/ace-debug/`.**
+    - Run: `rm -rf ./tmp/ace-debug` from the worktree root.
+    - This removes any one-off probe scripts written during the run. Skip
+      with no error if the directory doesn't exist (steady-state case where
+      no probes were needed).
+    - Confirm with `git status` — the working tree should be clean apart
+      from any intentional edits the operator made.
