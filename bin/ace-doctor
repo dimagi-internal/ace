@@ -110,6 +110,7 @@ fi
 pass() { printf 'PASS %s\n' "$1"; }
 warn() { printf 'WARN %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
 fail() { printf 'FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
+# No _log() abstraction in this script; mirrors the pass/warn/fail printf pattern.
 info() { printf 'INFO %s\n' "$1"; }
 
 # --- Version consistency ---
@@ -492,19 +493,32 @@ if [ -n "$ENV_FILE" ]; then
             q: \`'\${opp.id}' in parents and name='inputs' and mimeType='application/vnd.google-apps.folder' and trashed=false\`,
             fields: 'files(id)', supportsAllDrives: true, includeItemsFromAllDrives: true,
           });
-          if ((inputs.data.files || []).length > 0) count += 1;
+          const inputsFolders = inputs.data.files || [];
+          if (inputsFolders.length === 0) continue;
+          const inputsId = inputsFolders[0].id;
+          const pddCheck = await drive.files.list({
+            q: \`'\${inputsId}' in parents and trashed=false\`,
+            fields: 'files(id,name)', supportsAllDrives: true, includeItemsFromAllDrives: true, pageSize: 50,
+          });
+          const hasPdd = (pddCheck.data.files || []).some(f =>
+            f.name === 'pdd.md' || f.name === 'pdd.gdoc' || /pdd/i.test(f.name)
+          );
+          if (hasPdd) count += 1;
         }
         console.log(JSON.stringify({ ok: true, count }));
       } catch (e) { console.log(JSON.stringify({ ok: false, message: String(e.message || e) })); }
     " 2>/dev/null)"
     INPUTS_OK="$(printf '%s' "$INPUTS_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.ok?'1':'0'); } catch { console.log('?'); }" 2>/dev/null)"
     INPUTS_COUNT="$(printf '%s' "$INPUTS_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.count||0); } catch { console.log('0'); }" 2>/dev/null)"
+    INPUTS_MSG="$(printf '%s' "$INPUTS_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.message||''); } catch { console.log(''); }" 2>/dev/null)"
     if [ "$INPUTS_OK" = "1" ]; then
       if [ "$INPUTS_COUNT" -gt 0 ] 2>/dev/null; then
         pass "input_packs: $INPUTS_COUNT opp(s) under \$ACE_DRIVE_ROOT_FOLDER_ID have an inputs/ subfolder"
       else
         info "input_packs: no opps with inputs/ found yet — first-time setup, see /ace:run for the new-layout howto"
       fi
+    else
+      warn "input_packs: could not probe ACE_DRIVE_ROOT_FOLDER_ID for inputs/: $INPUTS_MSG" "verify the SA has Editor access to the Drive root and re-run /ace:doctor"
     fi
   fi
 
