@@ -297,6 +297,33 @@ builds, for instance, must run one after the other. This applies to
 any future cross-phase orchestration too — design-review, ocs-setup,
 etc. always serialize when dispatched together.
 
+**Resolve `.env` in one shot, not by probing.** ACE's installed `.env`
+lives at `${CLAUDE_PLUGIN_DATA}/.env` with one documented fallback at
+`<plugin-root>/.env` for dev checkouts. Run a single bash that prints
+the resolved path:
+
+```bash
+[ -f "$CLAUDE_PLUGIN_DATA/.env" ] && echo "$CLAUDE_PLUGIN_DATA/.env" || \
+  ([ -f "$(dirname "$0" 2>/dev/null)/../.env" ] && echo "$(dirname "$0")/../.env") || \
+  echo "MISSING"
+```
+
+(or, equivalently, derive the path from
+`installed_plugins.json["plugins"]["ace@ace"][0]["installPath"]`.) Do
+NOT fan out 3–4 separate `ls`/`test -f` probes across `~/.claude/`,
+the worktree, and `.gws-sa-key.json`-adjacent paths — that's
+30s of latency for a value `bin/ace-doctor` already publishes as
+`env_file:` in its output.
+
+**Issue all phase TaskCreate calls in one parallel block.** When you
+set up the run-level task list (one `TaskCreate` per phase plus the
+external-comm pause), emit them as a single assistant message with
+multiple `TaskCreate` tool-use blocks. Sequential
+`TaskCreate → TaskCreate → TaskCreate` over 7+ turns burns ~30s of
+unnecessary model-output time at run start. The whole task list is
+known up-front from the workflow below — there's no dependency on
+prior responses.
+
 ## Workflow
 
 When invoked with an opportunity, execute these phases in order:
@@ -629,11 +656,32 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
 
    **(a) `<opp>` was passed explicitly** (positional or via `parseOppRef`):
    skip discovery, use that opp. If the folder doesn't exist under
-   `ACE_DRIVE_ROOT_FOLDER_ID`, create it (`drive_create_folder`); the
-   operator is creating a new opp in this case. Do not auto-create
-   `inputs/` — the operator must do that step manually so they actively
-   choose what goes in. If after this step the opp folder lacks an
-   `inputs/` subfolder, stop with the new-layout error message (see § Fallback below).
+   `ACE_DRIVE_ROOT_FOLDER_ID`, **first check for a typo**: list the
+   ACE root, compute Levenshtein distance from the requested slug to
+   each existing opp folder name, and:
+
+   - if exactly one existing opp is at distance ≤ 2 (and the requested
+     slug is at least 4 characters), surface a one-question
+     `AskUserQuestion`: "Did you mean `<best-match>`? [Yes / No, create
+     `<requested>` anyway]". On "Yes", switch to the matched opp and
+     continue; on "No", proceed to create the new folder.
+   - if zero existing opps are at distance ≤ 2, create the new folder
+     with no prompt (genuinely new opp).
+   - if 2+ existing opps tie at the lowest distance ≤ 2, surface them
+     as a multi-option `AskUserQuestion` plus an "Other — create
+     `<requested>` as a new opp" option.
+
+   This costs 1 `drive_list_folder` call and catches the
+   "tumeric → turmeric" class of typo without a full re-invocation of
+   `/ace:run`. Skip the check on review mode only if the operator
+   explicitly passed `--no-fuzzy-opp` (currently unsupported; reserve
+   the flag name).
+
+   After resolving the opp, do not auto-create `inputs/` — the
+   operator must do that step manually so they actively choose what
+   goes in. If after this step the opp folder lacks an `inputs/`
+   subfolder, stop with the new-layout error message (see § Fallback
+   below).
 
    **(b) `--idea FILE|-` was passed**: scripted-seed flow. If `<opp>`
    was also provided, use it; otherwise auto-generate a fresh slug
@@ -705,8 +753,14 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
      - else stop with `multiple files in inputs/, none named pdd.md —
        rename the canonical PDD to pdd.md and retry`.
 
-     `drive_read_file` on the chosen file, then `drive_create_file`
-     the body to `<opp>/runs/<runId>/idea.md`.
+     **Use `drive_copy_file` for the copy** — `sourceFileId =` the chosen
+     PDD file, `parentFolderId =` the run folder, `name = "idea.md"`. Do
+     NOT use `drive_read_file + drive_create_file`: ferrying ~6KB of PDD
+     body through model tokens adds minutes of serialization latency to
+     every run-init for zero benefit. `drive_copy_file` is one
+     server-side `files.copy()` and preserves the source mimeType so
+     downstream `drive_read_file(idea.md)` works the same way regardless
+     of whether the PDD was a Google Doc or plain text.
 
 6. **Initialize `state.yaml`** at `<opp>/runs/<runId>/state.yaml` with:
    - `mode`, `created` (ISO timestamp), all steps as `pending`
@@ -732,6 +786,17 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
    If present, update only `last_run_id` and append `<runId>` to a
    running list under `runs:` (optional — primarily for ace-web's
    ergonomics; ace-web can also derive it from `runs/`).
+
+   **Concurrency: pair the read+write with `revisionVersion` CAS.**
+   `drive_read_file` returns a `revisionVersion` in its result; pass
+   that exact string as `ifMatchRevisionId` to the subsequent
+   `drive_update_file`. If the update returns
+   `Error: revision_conflict: …`, another writer (likely a parallel
+   `/ace:run`) modified opp.yaml in between — re-read, re-merge,
+   re-write **once**. If a second conflict fires, log it and continue
+   (the run is still safe; only the runs list is best-effort). This
+   replaces the previous read-merge-overwrite pattern, which silently
+   dropped a run-id when two `/ace:run` invocations raced.
 
 8. **Log the run setup explicitly.** Emit a log line in this exact form
    so transcript readers and ace-web's ingest can pick it up:

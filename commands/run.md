@@ -40,6 +40,21 @@ Run the full CRISPR-Connect lifecycle for a Connect opportunity.
   `https://labs.connect.dimagi.com/ace`. If the env var is not set,
   skip the upload silently. Explicit `--ace-web-url` always wins
   (including `--ace-web-url ''` to force-disable).
+
+  **Pre-flight gate (when `--ace-web-url` is set explicitly).** Before
+  starting Phase 1, verify `ACE_E2E_AUTH_TOKEN` is present and
+  non-empty in the resolved `.env`. If missing, stop the run with:
+
+  > `--ace-web-url` was set but `ACE_E2E_AUTH_TOKEN` is unset in
+  > `<resolved-env-path>`. The post-run upload would fail with an
+  > authentication error after the full lifecycle had already burned
+  > runtime. Either re-inject the token from 1Password (`op inject
+  > -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --account
+  > dimagi.1password.com`) or drop `--ace-web-url`.
+
+  This is the explicit-flag case only. The smart-default path silently
+  skips the upload when the token is missing — it's not user-asked,
+  so the run shouldn't error.
 - `--dry-run` — execute all skills but log effectful actions to
   `comms-log/dry-run-<step>.md` instead of performing them. Emails are
   not sent, apps are not published, tickets are not created. LLM-as-Judge

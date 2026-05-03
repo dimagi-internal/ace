@@ -347,15 +347,20 @@ server.tool(
 // 9. Read a Drive file
 server.tool(
   'drive_read_file',
-  'Read the text content of a file in Google Drive. Works with Google Docs (exported as plain text) and plain text files.',
+  'Read the text content of a file in Google Drive. Works with Google Docs (exported as plain text) and plain text files. Returns revisionVersion so callers can pair the read with an optimistic-concurrency `ifMatchRevisionId` on `drive_update_file` (read-modify-write without lost updates).',
   {
     fileId: z.string().describe('The Google Drive file ID'),
   },
   async ({ fileId }) => {
     try {
-      const meta = await drive.files.get({ fileId, fields: 'mimeType, name, shortcutDetails', supportsAllDrives: true });
+      // Drive API exposes the monotonic revision counter as `version` (a string in
+      // the wire format). It IS populated for Docs Editors files (which is most of
+      // ACE's writes) — unlike `headRevisionId`, which is binary-files-only. We
+      // surface it as `revisionVersion` to make its role obvious to callers.
+      const meta = await drive.files.get({ fileId, fields: 'mimeType, name, shortcutDetails, version', supportsAllDrives: true });
       let resolvedId = fileId;
       let mimeType = meta.data.mimeType || '';
+      let revisionVersion = (meta.data as any).version as string | undefined;
 
       // If the file is a Drive shortcut, resolve to the target file.
       // Shortcuts have their own mimeType (application/vnd.google-apps.shortcut)
@@ -368,6 +373,10 @@ server.tool(
         }
         resolvedId = targetId;
         mimeType = targetMimeType || '';
+        // Re-fetch the resolved file's metadata to get its current version
+        // (the shortcut's version is not the target's version).
+        const targetMeta = await drive.files.get({ fileId: resolvedId, fields: 'version', supportsAllDrives: true });
+        revisionVersion = (targetMeta.data as any).version as string | undefined;
       }
 
       let content: string;
@@ -379,7 +388,7 @@ server.tool(
         content = resp.data as string;
       }
 
-      return result({ name: meta.data.name, mimeType, content });
+      return result({ name: meta.data.name, mimeType, content, revisionVersion });
     } catch (e: any) {
       return error(e.message);
     }
@@ -438,20 +447,42 @@ server.tool(
 // 10. Update a Drive file's content
 server.tool(
   'drive_update_file',
-  'Update the text content of an existing Google Doc in Drive. Use for updating PDDs, summaries, and other docs as ACE skills produce new content.',
+  'Update the text content of an existing Google Doc in Drive. Use for updating PDDs, summaries, and other docs as ACE skills produce new content. Pass `ifMatchRevisionId` (from a prior `drive_read_file`) to opt into optimistic-concurrency CAS — the write is rejected with a typed `revision_conflict` error if another writer changed the file in between, so the caller can re-read and retry without overwriting concurrent edits. Required pattern for any read-modify-write on a shared file (e.g., opp.yaml updates from concurrent /ace:run invocations).',
   {
     fileId: z.string().describe('The Google Drive file ID'),
     content: z.string().describe('The new text content to write'),
+    ifMatchRevisionId: z.string().optional().describe('Optional. The revisionVersion returned by the prior drive_read_file. If supplied and the file\'s current revisionVersion no longer matches, the update is rejected with a revision_conflict error instead of overwriting the change.'),
   },
-  async ({ fileId, content: newContent }) => {
+  async ({ fileId, content: newContent, ifMatchRevisionId }) => {
     try {
+      // Optimistic concurrency: re-read the file's `version` and compare. Drive's
+      // files.update has no native If-Match equivalent, so we do the check
+      // server-side here. This narrows but does not eliminate the race; for
+      // ACE's concurrent /ace:run scenario the window is one Drive round-trip,
+      // small enough that the retry-once strategy in the orchestrator is
+      // sufficient.
+      if (ifMatchRevisionId) {
+        const meta = await drive.files.get({ fileId, fields: 'version', supportsAllDrives: true });
+        const current = (meta.data as any).version as string | undefined;
+        if (current && current !== ifMatchRevisionId) {
+          return error(
+            `revision_conflict: file ${fileId} revisionVersion is ${current}, expected ${ifMatchRevisionId}. ` +
+              `Re-read and retry.`,
+          );
+        }
+      }
       const resp = await drive.files.update({
         fileId,
         media: { mimeType: 'text/plain', body: newContent },
-        fields: 'id, name, modifiedTime',
+        fields: 'id, name, modifiedTime, version',
         supportsAllDrives: true,
       });
-      return result({ id: resp.data.id, name: resp.data.name, modifiedTime: resp.data.modifiedTime });
+      return result({
+        id: resp.data.id,
+        name: resp.data.name,
+        modifiedTime: resp.data.modifiedTime,
+        revisionVersion: (resp.data as any).version,
+      });
     } catch (e: any) {
       return error(e.message);
     }
@@ -490,6 +521,39 @@ server.tool(
       });
 
       return result({ id: fileId, name: created.data.name, webViewLink: created.data.webViewLink });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 11a. Copy an existing Drive file server-side
+server.tool(
+  'drive_copy_file',
+  'Copy an existing Google Drive file server-side into a parent folder, optionally with a new name. Wraps Drive\'s native files.copy(), so a Google Doc copy stays a Google Doc, a markdown copy stays markdown, etc. — preserves mimeType and content without ferrying bytes through the model. Use this instead of drive_read_file + drive_create_file whenever the goal is "copy file X to folder Y" — it saves a full content round-trip (~6KB+ per PDD-sized doc and ~minutes of model serialization latency). The destination parent MUST live on a Shared Drive — same Service Account quota constraint as drive_create_file.',
+  {
+    sourceFileId: z.string().describe('The Drive file ID to copy from'),
+    parentFolderId: z.string().min(1).describe('Required. Destination folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
+    name: z.string().optional().describe('Optional name for the copy (defaults to the source file\'s name).'),
+  },
+  async ({ sourceFileId, parentFolderId, name: copyName }) => {
+    try {
+      const guard = await assertParentOnSharedDrive(parentFolderId);
+      if (!guard.ok) return error(guard.message);
+      const requestBody: Record<string, unknown> = { parents: [parentFolderId] };
+      if (copyName) requestBody.name = copyName;
+      const resp = await drive.files.copy({
+        fileId: sourceFileId,
+        requestBody,
+        fields: 'id, name, mimeType, webViewLink',
+        supportsAllDrives: true,
+      });
+      return result({
+        id: resp.data.id,
+        name: resp.data.name,
+        mimeType: resp.data.mimeType,
+        webViewLink: resp.data.webViewLink,
+      });
     } catch (e: any) {
       return error(e.message);
     }
