@@ -23,7 +23,7 @@ of other training skills.
 |---|---|---|
 | Phase 1 | `ACE/<opp>/pdd.md` | per-visit step list, daily caps, key safety rules |
 | Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | exact required-field list (so the ref says what the form actually asks) |
-| Phase 3 (`state.yaml`) | `connect.opportunity` + `connect.payment_units` | max-per-day numbers |
+| Phase 3 (`run_state.yaml`) | `connect.opportunity` + `connect.payment_units` | max-per-day numbers |
 | Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | OCS widget URL printed at the bottom |
 
 ## Output
@@ -73,7 +73,7 @@ LLO contact: <name from connect-setup/opportunity.md>
 - **Numbered for delivery steps, bulleted otherwise.** Numbers imply
   sequence; bullets imply "any one applies."
 - **Real numbers, not paraphrased.** The `<X>` and `<Y>` are quoted
-  from `state.yaml`'s payment-unit max counts, not summarized.
+  from `run_state.yaml`'s payment-unit max counts, not summarized.
 - **Imperative voice.** "Submit." not "You should submit when ready."
 - **No screenshots.** This is a printed card — graphics blow the
   budget. Save those for the `flw-training-guide`.
@@ -82,7 +82,7 @@ LLO contact: <name from connect-setup/opportunity.md>
 
 1. **Read inputs.** Drive paths in the table above.
 
-2. **Read state.yaml for hard numbers.** `connect.payment_units` →
+2. **Read run_state.yaml for hard numbers.** `connect.payment_units` →
    max-per-day numbers; `connect.opportunity.max_visits_per_day` →
    total cap.
 
@@ -110,7 +110,7 @@ LLO contact: <name from connect-setup/opportunity.md>
 7. **Self-evaluate (LLM-as-Judge).** Four criteria:
    - **Word budget:** ≤ 280 words
    - **Hard-number fidelity:** caps + payment numbers match
-     `state.yaml`
+     `run_state.yaml`
    - **Imperative voice:** all delivery-step lines start with a verb
    - **Coverage:** every per-visit step + every escalation trigger
      present

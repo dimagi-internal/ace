@@ -26,7 +26,7 @@ case.
 | Phase 5 Step 1 (qa-plan) | `ACE/<opp>/qa-plan/screenshot-manifest.yaml` | expected screenshot count + naming |
 | Phase 1 | `ACE/<opp>/pdd.md` | archetype branching only |
 | Phase 2 | `ACE/<opp>/deployment-summary.md` | HQ domain for `${HQ_DOMAIN}` env var |
-| Phase 3 (state.yaml) | `connect.opportunity.id` + ACE test user invite | `${OPP_NAME}`, `${ACE_E2E_PHONE_LOCAL}`, etc. |
+| Phase 3 (run_state.yaml) | `connect.opportunity.id` + ACE test user invite | `${OPP_NAME}`, `${ACE_E2E_PHONE_LOCAL}`, etc. |
 
 ## Process
 
@@ -42,7 +42,7 @@ case.
 3. **Run static prerequisite recipes** (login + opp claim) — these set up
    the AVD to the post-claim state the qa-plan recipes assume:
    - `connect-login.yaml` with `${ACE_E2E_PHONE_LOCAL}`, `${ACE_E2E_PIN}`.
-   - `connect-claim-opp.yaml` with `${OPP_NAME}` from state.yaml.
+   - `connect-claim-opp.yaml` with `${OPP_NAME}` from run_state.yaml.
 
 4. **Run the qa-plan walkthrough recipes**, in the order the qa-plan
    manifest specifies:

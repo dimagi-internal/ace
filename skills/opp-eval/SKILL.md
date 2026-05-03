@@ -46,9 +46,9 @@ If no mode is passed, default to `--quick`.
    exactly the point of `--quick`). Emit `[INFO] pdd.md not found —
    recommendations will be archetype-agnostic` and continue.
 
-2. **Read `state.yaml`** from `ACE/<opp-name>/state.yaml` to determine
+2. **Read `run_state.yaml`** from `ACE/<opp-name>/run_state.yaml` to determine
    the opp's current phase. This drives which manifest entries to check
-   in step 3. If `state.yaml` is missing, assume `design` phase (only
+   in step 3. If `run_state.yaml` is missing, assume `design` phase (only
    the earliest required artifacts are expected).
 
 3. **Structural check (runs in every mode).** For each required,
@@ -288,7 +288,7 @@ recommendations:
 # Opportunity Eval — Quick
 Opportunity: <opp-name>
 Generated: <ISO timestamp>
-Current phase (from state.yaml): <phase>
+Current phase (from run_state.yaml): <phase>
 
 ## Structural check
 
@@ -299,7 +299,7 @@ Current phase (from state.yaml): <phase>
 ## Notes
 
 <One line per INFO from the structural scan. Concrete examples:
-  [INFO] state.yaml missing — assumed design phase (default)
+  [INFO] run_state.yaml missing — assumed design phase (default)
   [INFO] 2 unexpected files are operator-maintained (improvement-backlog.md, iteration-log.md); safe to ignore
   [INFO] pdd.md archetype: focus-group — deep-mode recommendations will use FGD vocabulary
 If no INFOs to surface, write "None.">

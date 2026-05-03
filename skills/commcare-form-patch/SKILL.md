@@ -84,10 +84,10 @@ When that's true: remove `skills/commcare-form-patch/`,
 `test/mcp/connect/unit/commcare-patch-xform.test.ts` suite, and the
 `test/fixtures/cchq/leep-quiz-form-empty-user-score.xml` fixture. Drop
 the per-opp `commcare-patches.yaml` files and the `phase_3_backlog`
-entry tracking this in each affected opp's `state.yaml`.
+entry tracking this in each affected opp's `run_state.yaml`.
 
 The `phase_3_backlog` entry tracking removal in the leep opp's
-`state.yaml` is the load-bearing TODO; if it goes stale, the skill
+`run_state.yaml` is the load-bearing TODO; if it goes stale, the skill
 will drift out of the codebase silently while the bugs are still open.
 
 ## Process
@@ -215,7 +215,7 @@ quiz forms in scope for nova-plugin#5).
    ```
    List every (module, form, unique_id) row with before/after status.
 
-9. **Update `state.yaml`.** Set
+9. **Update `run_state.yaml`.** Set
    `phases.commcare-setup.commcare-form-patch: done`,
    `cchq_apps.<app>_build_id` to the new release build_id, and
    `phase_3_backlog` with the removal-criteria reminder if not already

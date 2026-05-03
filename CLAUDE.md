@@ -200,7 +200,7 @@ git config core.hooksPath scripts/hooks
 
 ## Improvement cycles & canopy
 
-This repo is dogfooded by the `canopy` plugin. **Per-opp evidence lives in Drive (`ACE/<opp>/state.yaml`, `verdicts/`, `gate-briefs/`, `comms-log/observations.md`, `eval-calibration/`); cross-opp strategy lives in `.claude/pm/runs/<date>-<lens>.md`.** The opp `observations.md` is the evidence log; the run log is the synthesis that cites it. ACE skills don't read run logs; canopy and humans do.
+This repo is dogfooded by the `canopy` plugin. **Per-run evidence lives in Drive (`ACE/<opp>/runs/<run-id>/run_state.yaml`, `verdicts/`, `gate-briefs/`, `comms-log/observations.md`, `eval-calibration/`); cross-opp strategy lives in `.claude/pm/runs/<date>-<lens>.md`.** The opp `observations.md` is the evidence log; the run log is the synthesis that cites it. ACE skills don't read run logs; canopy and humans do. (`run_state.yaml` was renamed from `state.yaml` in 0.11.3 to make per-run scope explicit; opp-level metadata lives in `ACE/<opp>/opp.yaml`.)
 
 **Re-entering the project:** run `/canopy:pm-status` (or read the most recent file in `.claude/pm/runs/`) — it surfaces the current lens, backlog, and last cycle's findings. Don't ask the orchestrator "what should I do next?" — phase agents only see per-opp state.
 

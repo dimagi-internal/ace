@@ -27,7 +27,7 @@ have the OCS test prompts to seed FLW-asked questions).
 | Phase 1 | `ACE/<opp>/test-prompts.md` | seed Q's that the OCS bot was tested on (high-confidence "FLWs will ask this") |
 | Phase 2 | `ACE/<opp>/app-summaries/learn-app-summary.md` | content-clarification questions |
 | Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | per-form field-clarification questions |
-| Phase 3 (`state.yaml`) | `connect.payment_units` + `connect.verification_flags` | "why was my submission flagged?" answers |
+| Phase 3 (`run_state.yaml`) | `connect.payment_units` + `connect.verification_flags` | "why was my submission flagged?" answers |
 | Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | "how do I ask?" answer |
 | Phase 5 Step 1 (`qa-plan`) | `ACE/<opp>/qa-plan/test-matrix.md` (edge cases section) | seed Q's about boundary conditions |
 
@@ -106,7 +106,7 @@ which rule triggered, what to do>
    (e.g., test row "GPS fence at 51m" → FAQ Q "Why did my submission
    fail when I was just outside the market?").
 
-4. **Add LLO-operations Q's from PDD § Escalation + state.yaml verification flags.**
+4. **Add LLO-operations Q's from PDD § Escalation + run_state.yaml verification flags.**
 
 5. **Categorize into 4 sections.** Vendor/Subject Interaction, App/
    Device, Payment & Verification, Logistics. (For `focus-group`
@@ -118,7 +118,7 @@ which rule triggered, what to do>
 7. **Self-check before write.** Verify:
    - 20-30 Q&A pairs total
    - Every Q has `[LLO]` or `[FLW]` tag
-   - Every payment / verification number quoted matches `state.yaml`
+   - Every payment / verification number quoted matches `run_state.yaml`
    - At least 4 Q's seeded from `test-prompts.md`
    - At least 2 Q's seeded from `qa-plan/test-matrix.md` edge cases
 

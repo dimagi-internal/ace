@@ -64,7 +64,7 @@ Invoke `ocs-chatbot-qa --deep`, then `ocs-chatbot-eval --deep`.
   `ACE/<opp-name>/test-prompts.md` (produced in Phase 1 by
   `pdd-to-test-prompts`)
 - **Gate (review mode):** Write the gate brief and stop. Do **NOT**
-  modify `gates.ocs-chatbot-eval-deep` in `state.yaml` — that field is
+  modify `gates.ocs-chatbot-eval-deep` in `run_state.yaml` — that field is
   flipped by the orchestrator only, after the operator approves via the
   Gate Brief Contract in `agents/ace-orchestrator.md`. The Phase 4
   agent's job ends at "gate brief written, phase summary written,
@@ -115,11 +115,11 @@ artifact-checkable:
 
 **On entry, before executing any step:**
 
-1. Read `ACE/<opp-name>/state.yaml` (the orchestrator passes this
+1. Read `ACE/<opp-name>/run_state.yaml` (the orchestrator passes this
    inline per the orchestrator's Performance Conventions, but if it
    isn't in the prompt, fetch it from Drive).
 2. For each step in order, check the artifact column above. If the
-   artifact exists AND the corresponding `state.yaml` field shows
+   artifact exists AND the corresponding `run_state.yaml` field shows
    `done`, skip that step and continue. If the artifact is missing OR
    the state field shows `pending`/`error`, execute the step.
 3. Step 1's idempotence is special: if a chatbot named
@@ -128,7 +128,7 @@ artifact-checkable:
    doc from `ocs_get_chatbot` — don't clone a second bot.
 
 **State updates on resumption:** every step should still update
-`state.yaml` on completion, even if the artifact pre-existed. This
+`run_state.yaml` on completion, even if the artifact pre-existed. This
 keeps `last_actor`/`last_actor_at` accurate across the resumption
 boundary.
 

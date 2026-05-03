@@ -42,7 +42,7 @@ Opportunity state lives in Google Drive under `ACE/<opp-name>/`. Use the Google 
 MCP tools (`sheets_read`, `drive_read_file`, `drive_list_folder`, etc.) to read and
 write state.
 
-The state file at `ACE/<opp-name>/state.yaml` tracks:
+The state file at `ACE/<opp-name>/run_state.yaml` tracks:
 - Current phase and step
 - Mode (auto or review)
 - Timestamps for each completed step
@@ -52,7 +52,7 @@ The state file at `ACE/<opp-name>/state.yaml` tracks:
 
 ## State Schema
 
-`state.yaml` top-level fields (added in 0.3.3 for admin-group legibility):
+`run_state.yaml` top-level fields (added in 0.3.3 for admin-group legibility):
 
 ```yaml
 opportunity: <opp-name>
@@ -121,15 +121,15 @@ The operator identity is *captured*, not *enforced*. There is no
 authorization check — a git config mismatch just means `/ace:status --mine`
 won't find the opp. Keep it that way.
 
-**Defensive `state.yaml` init on bypass paths.** `/ace:run` initializes
-`state.yaml` as part of "Starting a New Opportunity." But operators can
+**Defensive `run_state.yaml` init on bypass paths.** `/ace:run` initializes
+`run_state.yaml` as part of "Starting a New Opportunity." But operators can
 bypass the orchestrator (via `/ace:step <skill> <opp>`, or by dispatching
 a phase agent directly with the `Agent` tool — only valid for the phase
 agents that are subagents per § Agent Topology; `commcare-setup` cannot
 be dispatched this way and must be invoked inline at top-level). Every
-entry path that touches state must tolerate a missing `state.yaml`:
+entry path that touches state must tolerate a missing `run_state.yaml`:
 
-1. If `ACE/<opp-name>/state.yaml` does not exist when the entry path is
+1. If `ACE/<opp-name>/run_state.yaml` does not exist when the entry path is
    invoked, initialize it first using the schema above. Required fields:
    `opportunity`, `mode` (default `default`), `created` (ISO now),
    `initiated_by` (`git config user.email` or `unknown`), `last_actor` +
@@ -139,7 +139,7 @@ entry path that touches state must tolerate a missing `state.yaml`:
 
 `commands/step.md` owns this defensive init for the `/ace:step` path.
 Agent-tool dispatches are expert paths and assumed to know what they're
-doing — but phase agents should still not crash on a missing `state.yaml`
+doing — but phase agents should still not crash on a missing `run_state.yaml`
 read; they should skip the status update with a single-line warning and
 let the operator fix the state gap explicitly.
 
@@ -223,7 +223,7 @@ them on every full-cycle invocation; they're also fine on `/ace:step`.
 agent, include the upstream artifacts the phase will read as inline
 prompt text — don't make the phase re-fetch them from Drive. The
 orchestrator already reads PDD content, the previous phase's gate
-brief, and `state.yaml` at level 0; piping them down avoids 3–5 Drive
+brief, and `run_state.yaml` at level 0; piping them down avoids 3–5 Drive
 round-trips per phase. The Drive copy stays canonical (audit trail);
 phases write back to Drive at completion. If a phase agent finds the
 inline content is stale (e.g. an operator edited the PDD mid-run),
@@ -242,8 +242,8 @@ When dispatching `Agent(<phase>)`, structure the prompt with sections:
 ### Previous-phase gate brief (if any)
 <full gate-brief body>
 
-### state.yaml
-<current state.yaml contents>
+### run_state.yaml
+<current run_state.yaml contents>
 
 ## Your task
 <phase-specific instructions per agent definition>
@@ -347,7 +347,7 @@ collected, learnings summarized, cycle graded.
 ## Between Phases
 
 After each phase completes:
-1. Update `state.yaml` in the opportunity's GDrive folder
+1. Update `run_state.yaml` in the opportunity's GDrive folder
 2. In `auto` mode: send status email to admin group, continue
 3. In `default` mode: continue silently for Phases 1→2, 2→3, 3→4, 4→5;
    **at the Phase 5→6 transition, pause unconditionally** with a
@@ -562,7 +562,7 @@ the next run.
 ## Error Handling
 
 If a skill fails:
-1. Log the error in `state.yaml`
+1. Log the error in `run_state.yaml`
 2. In `auto` mode: email the admin group with error details, continue to next step if possible
 3. In `default` mode: a hard error halts the run regardless of phase — present the error and ask how to proceed (retry, skip, abort). The "keep going" principle applies to clean steps, not to errors
 4. In `review` mode: present the error and ask how to proceed (retry, skip, abort)
@@ -574,7 +574,7 @@ When `--dry-run` is passed to `/ace:run`:
 - Effectful skills (those that send emails, publish apps, create tickets, or call external APIs) write their intended actions to `comms-log/dry-run-<step>.md` instead of executing
 - LLM-as-Judge evaluation still runs at each step
 - Gates still apply per the active mode (default/review/auto)
-- `state.yaml` tracks steps as `dry-run-success` or `dry-run-blocked` instead of `success` or `blocked`
+- `run_state.yaml` tracks steps as `dry-run-success` or `dry-run-blocked` instead of `success` or `blocked`
 - Pass the dry-run flag to all phase agents
 
 ## Sandbox Mode
@@ -667,7 +667,7 @@ When starting fresh:
       - **Other — paste a Drive doc ID** (for cases where the right
         document lives outside the PDDs folder).
       - **Paste the idea inline** (free text in the "Other" field).
-      - **Abort** (do not create `state.yaml`; end the run cleanly).
+      - **Abort** (do not create `run_state.yaml`; end the run cleanly).
    6. Fetch the chosen file via `drive_read_file`, write the body to
       `ACE/<opp-name>/idea.md` via `drive_create_file`, continue.
 
@@ -678,7 +678,7 @@ When starting fresh:
    input, not an effectful action. In `--sandbox` mode, idea capture is
    unchanged.
 
-3. **Initialize `state.yaml`** with:
+3. **Initialize `run_state.yaml`** with:
    - `mode`, `created` (ISO timestamp), all steps as `pending`
    - `initiated_by: <email>` from `git config user.email` (fallback: `unknown`)
    - `last_actor: <email>` and `last_actor_at: <ISO timestamp>` — same email,
@@ -689,7 +689,7 @@ When starting fresh:
 ## Touching State — Operator Capture
 
 Every skill invocation, whether via `/ace:run` or `/ace:step`, must update
-`last_actor` and `last_actor_at` in `state.yaml` *before* dispatching the
+`last_actor` and `last_actor_at` in `run_state.yaml` *before* dispatching the
 skill. This is a two-line write:
 
 ```yaml

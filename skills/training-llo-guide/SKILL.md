@@ -27,7 +27,7 @@ rebuilds only `llo-manager-guide.md`.
 | Phase 2 | `ACE/<opp>/app-summaries/learn-app-summary.md` | LLO context on what FLWs are learning |
 | Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | LLO context on per-visit data shape |
 | Phase 2 | `ACE/<opp>/deployment-summary.md` | HQ domain quoted in the "where the data lives" section |
-| Phase 3 (`state.yaml`) | `connect.opportunity` + `connect.payment_units` + `connect.verification_flags` | payment per visit, max-per-day, verification rules |
+| Phase 3 (`run_state.yaml`) | `connect.opportunity` + `connect.payment_units` + `connect.verification_flags` | payment per visit, max-per-day, verification rules |
 | Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | "where to ask questions" link |
 | Phase 5 Step 1 (`qa-plan`) | `ACE/<opp>/qa-plan/uat-checklist.md` | embedded as "Pre-deployment UAT" section |
 | Phase 5 Step 2 (`app-screenshot-capture`) | `ACE/<opp>/screenshots/manifest.yaml` | optional — embed key screenshots in the "what FLWs see" section |
@@ -88,7 +88,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
 - **Operations-tone, not training-tone.** This is for someone running
   the field — assume experienced. The FLW-facing detail belongs in
   `training-flw-guide.md`.
-- **Quote real numbers from `state.yaml`.** Payment amounts, max
+- **Quote real numbers from `run_state.yaml`.** Payment amounts, max
   counts, GPS fence values come from the actual Connect config — don't
   paraphrase or round.
 - **Embed `uat-checklist.md` verbatim** as the Pre-deployment UAT
@@ -98,7 +98,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
 
 1. **Read inputs.** Drive paths in the table above.
 
-2. **Read connect state for hard numbers.** Open `state.yaml` and pull
+2. **Read connect state for hard numbers.** Open `run_state.yaml` and pull
    `connect.opportunity.{name, max_visits_per_day, claim_limit_total}`,
    `connect.payment_units[].{unit_name, amount, max_visits_per_day,
    max_total_visits}`, `connect.verification_flags`. These are the
@@ -117,7 +117,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
    exact list to tick through before go-live.
 
 6. **Self-check before write.** Verify:
-   - Every payment-unit number quoted matches `state.yaml` exactly
+   - Every payment-unit number quoted matches `run_state.yaml` exactly
    - Every escalation trigger from PDD § Escalation is referenced
    - The UAT checklist section has at least 5 line items (real
      checklists do)
@@ -128,7 +128,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
 
 8. **Self-evaluate (LLM-as-Judge).** Four criteria:
    - **Hard-number fidelity:** every payment / cap / GPS-fence number
-     matches `state.yaml`
+     matches `run_state.yaml`
    - **Coverage:** every Layer-A verification rule + every PDD
      escalation trigger referenced
    - **Audience fit:** operations-tone, not FLW-walkthrough-tone

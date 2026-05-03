@@ -26,7 +26,7 @@ widget paste-in until CCC-301).
    - `ACE/<opp-name>/ocs-setup/widget-handoff.md` — staging artifact.
    - `ACE/<opp-name>/ocs-agent-config.md` — for cross-checking embed_key,
      experiment_id, public_id.
-   - `ACE/<opp-name>/state.yaml` — for `connect_opportunity.url`.
+   - `ACE/<opp-name>/run_state.yaml` — for `connect_opportunity.url`.
 
 2. **Detect missing artifacts.** If `widget-handoff.md` is missing,
    emit `verdict: incomplete` with `[INFO] widget-handoff.md not
@@ -38,7 +38,7 @@ widget paste-in until CCC-301).
    | Dimension | Weight | Criteria |
    |---|---|---|
    | **Widget URL resolves** | 25% | The widget URL in widget-handoff.md must (a) include the bot's `public_id`, (b) include a non-empty `embed_key`, (c) actually return a 200 from the OCS widget endpoint when fetched. URL-shape-correct but unreachable = ≤6 (server-side issue, [PLATFORM]). URL-shape-broken = ≤3. |
-   | **Connect opp link** | 20% | widget-handoff.md must reference the Connect opportunity URL the LLO needs to paste INTO. Mismatch with state.yaml's `connect_opportunity.url` = 4-point deduction. Missing = ≤4. |
+   | **Connect opp link** | 20% | widget-handoff.md must reference the Connect opportunity URL the LLO needs to paste INTO. Mismatch with run_state.yaml's `connect_opportunity.url` = 4-point deduction. Missing = ≤4. |
    | **Operator instructions clarity** | 30% | The handoff must tell a non-technical LLO (a) where to paste (Connect opp config tab, specific field name), (b) what to paste (the widget URL or just the embed_key, depending on Connect's UI), and (c) how to verify (chat-test prompt). Each missing element = 2-point deduction. |
    | **Credential hygiene** | 25% | embed_key is opp-specific, NOT a global API key. Surface a [WARN] if the handoff includes any global secret (OCS_TEAM_SLUG, OCS_GOLDEN_TEMPLATE_ID, etc.) — those should never appear in an LLO-facing artifact. |
 
@@ -68,7 +68,7 @@ widget paste-in until CCC-301).
      API (the entire reason this hop is HITL today). One canonical
      entry per verdict; ties to CCC-301.
    - `[DRIFT]` per widget-handoff claim ↔ live ocs_get_chatbot or
-     state.yaml disagreement.
+     run_state.yaml disagreement.
    - `[INFO]` for "widget URL fetched OK; LLO can paste."
    - `[INFO-SKIPPED]` for the live HTTP probe when offline-mode is requested.
 
@@ -106,7 +106,7 @@ widget paste-in until CCC-301).
      - ref: "Connect opp link"
        score: 9.5
        verdict: pass
-       note: "Matches state.yaml connect_opportunity.url for 249ad8fe-...; 'paste into Configuration → Chatbot Widget' instruction present."
+       note: "Matches run_state.yaml connect_opportunity.url for 249ad8fe-...; 'paste into Configuration → Chatbot Widget' instruction present."
 
    auto_surfaced:
      - severity: PLATFORM

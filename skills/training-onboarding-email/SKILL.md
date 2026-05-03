@@ -29,7 +29,7 @@ personalization tokens at send time.
 |---|---|---|
 | Phase 1 | `ACE/<opp>/pdd.md` | one-paragraph opp framing for the email body |
 | Phase 3 | `ACE/<opp>/connect-setup/opportunity.md` | opportunity name + URL |
-| Phase 3 (`state.yaml`) | `connect.payment_units` | payment-summary line |
+| Phase 3 (`run_state.yaml`) | `connect.payment_units` | payment-summary line |
 | Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | widget link in the email |
 | Phase 5 (`training-materials` siblings) | `training-materials/llo-manager-guide.md`, `flw-training-guide.md`, `quick-reference.md` | links to the docs LLO will use |
 

@@ -84,7 +84,7 @@ under human control.
 8. **Apply speaker notes** via `buildSpeakerNotesRequests` + a second
    `slides_batch_update`.
 
-9. **Write a state-trail entry** to `state.yaml` under the opp:
+9. **Write a state-trail entry** to `run_state.yaml` under the opp:
    ```yaml
    training_deck:
      presentation_id: <new id>
@@ -104,7 +104,7 @@ under human control.
   - `slides_copy_template` (copy the template into the opp folder)
   - `slides_get` (discover stencil + notes object IDs)
   - `slides_batch_update` (the main fill-in batch and the speaker-notes batch)
-  - `drive_create_file` (write `state.yaml` updates if needed)
+  - `drive_create_file` (write `run_state.yaml` updates if needed)
 
 ## Mode Behavior
 
@@ -119,7 +119,7 @@ under human control.
 ## Outputs
 
 - The Google Slides deck itself (in Drive)
-- `ACE/<opp>/state.yaml` updated with `training_deck:` block
+- `ACE/<opp>/run_state.yaml` updated with `training_deck:` block
 - `ACE/<opp>/verdicts/training-deck-build.yaml` — standard verdict shape
   (see `lib/verdict-schema.ts`); `summary.deck_url` set; `passed:` true if
   parse + both batchUpdates succeeded

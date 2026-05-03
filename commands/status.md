@@ -9,7 +9,7 @@ allowed-tools: [Read, Bash, Glob, Grep]
 Show the current status of a CRISPR-Connect opportunity.
 
 Primary use case: a Dimagi admin opens Claude Code and needs to answer
-"which of my opps need me right now?" without opening every state.yaml by
+"which of my opps need me right now?" without opening every run_state.yaml by
 hand. The list view derives a per-opp status tag and sorts ACTION NEEDED
 to the top.
 
@@ -32,7 +32,7 @@ to the top.
 
 2. Use `drive_list_folder` on `ACE/` to list opportunity folders.
 
-3. For each folder, read `state.yaml` and compute the per-opp fields the
+3. For each folder, read `run_state.yaml` and compute the per-opp fields the
    list view renders. Pull directly from the schema:
    - `initiated_by`, `last_actor`, `last_actor_at` (added 0.3.3; see
      agents/ace-orchestrator.md § State Schema)
@@ -82,7 +82,7 @@ to the top.
    IDLE           bednet-pilot       llo-management     —                    sarvesh@dimagi.com, 1w ago
    ```
 
-   - `Phase` is the current *phase key* from `state.yaml` (e.g., `ocs-setup`),
+   - `Phase` is the current *phase key* from `run_state.yaml` (e.g., `ocs-setup`),
      not the display name — keeps the column narrow
    - `Last touched` combines `last_actor` + humanized `last_actor_at`. For
      opps where no skill has run yet (fresh `idea.md` only), show `(none yet)`
@@ -99,7 +99,7 @@ to the top.
 
 ## Detailed status (with opp-name)
 
-1. Read `ACE/<opp-name>/state.yaml` from GDrive.
+1. Read `ACE/<opp-name>/run_state.yaml` from GDrive.
 2. Display:
    - `Initiated by: <email>, <timestamp>` and `Last touched by: <email>, <humanized>`
    - Current phase and step (with tag — ACTION NEEDED / RUNNING / IDLE / ERROR / DONE)
