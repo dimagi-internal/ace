@@ -110,6 +110,7 @@ fi
 pass() { printf 'PASS %s\n' "$1"; }
 warn() { printf 'WARN %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
 fail() { printf 'FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
+info() { printf 'INFO %s\n' "$1"; }
 
 # --- Version consistency ---
 VER_FILE="$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null || echo missing)"
@@ -410,6 +411,19 @@ if [ -n "$ENV_FILE" ]; then
     warn "drive_root: ACE_DRIVE_ROOT_FOLDER_ID not set (PDD auto-discovery disabled)" "re-inject .env via op inject (var added in 0.5.3)"
   fi
 
+  # ACE_E2E_AUTH_TOKEN gates the /auth/e2e-login/ shared-secret automation
+  # path on labs. Without it, scripted tools like
+  # tools/walkthrough/run_chat_e2e.py and the upload-transcript skill
+  # cannot drive the deployed ace-web. Token rotates via AWS Secrets
+  # Manager; mirrored into deploy/aws/task-definition.json AND should be
+  # in .env so local tools and the doctor agree on the value.
+  E2E_TOKEN="$(get_env ACE_E2E_AUTH_TOKEN)"
+  if [ -n "$E2E_TOKEN" ]; then
+    pass "e2e_auth_token: ACE_E2E_AUTH_TOKEN is set (${#E2E_TOKEN} chars)"
+  else
+    warn "e2e_auth_token: ACE_E2E_AUTH_TOKEN not set" "add to .env (mirror from deploy/aws/task-definition.json or AWS Secrets Manager); needed by tools/walkthrough/run_chat_e2e.py and skills/upload-transcript"
+  fi
+
   # ACE_TRAINING_DECK_TEMPLATE_ID gates the training-deck-build skill.
   # The skill is non-blocking (Phase 6 doesn't require the Slides deck), so
   # a missing template is WARN, not FAIL — but operators should know the
@@ -454,6 +468,43 @@ if [ -n "$ENV_FILE" ]; then
       fi
     elif [ -n "$PROBE_MSG" ]; then
       warn "drive_shared: could not probe ACE_DRIVE_ROOT_FOLDER_ID: $PROBE_MSG" "verify the SA has Editor access to the folder; re-inject .env if the ID is stale"
+    fi
+  fi
+
+  # Multi-run layout sanity: at least one <opp>/inputs/pdd.md should
+  # exist under the Drive root. Without one, /ace:run zero-arg fires
+  # the new-layout setup error. INFO (not WARN) — first-time installs
+  # legitimately have nothing yet.
+  if [ -n "$DRIVE_ROOT" ] && [ -n "$KEY" ] && [ -d "$ROOT/node_modules/googleapis" ]; then
+    INPUTS_PROBE="$(GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+      import { google } from 'googleapis';
+      const auth = new google.auth.GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/drive'] });
+      const drive = google.drive({ version: 'v3', auth });
+      try {
+        const root = '$DRIVE_ROOT';
+        const opps = await drive.files.list({
+          q: \`'\${root}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false\`,
+          fields: 'files(id,name)', supportsAllDrives: true, includeItemsFromAllDrives: true, pageSize: 100,
+        });
+        let count = 0;
+        for (const opp of opps.data.files || []) {
+          const inputs = await drive.files.list({
+            q: \`'\${opp.id}' in parents and name='inputs' and mimeType='application/vnd.google-apps.folder' and trashed=false\`,
+            fields: 'files(id)', supportsAllDrives: true, includeItemsFromAllDrives: true,
+          });
+          if ((inputs.data.files || []).length > 0) count += 1;
+        }
+        console.log(JSON.stringify({ ok: true, count }));
+      } catch (e) { console.log(JSON.stringify({ ok: false, message: String(e.message || e) })); }
+    " 2>/dev/null)"
+    INPUTS_OK="$(printf '%s' "$INPUTS_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.ok?'1':'0'); } catch { console.log('?'); }" 2>/dev/null)"
+    INPUTS_COUNT="$(printf '%s' "$INPUTS_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.count||0); } catch { console.log('0'); }" 2>/dev/null)"
+    if [ "$INPUTS_OK" = "1" ]; then
+      if [ "$INPUTS_COUNT" -gt 0 ] 2>/dev/null; then
+        pass "input_packs: $INPUTS_COUNT opp(s) under \$ACE_DRIVE_ROOT_FOLDER_ID have an inputs/ subfolder"
+      else
+        info "input_packs: no opps with inputs/ found yet — first-time setup, see /ace:run for the new-layout howto"
+      fi
     fi
   fi
 
