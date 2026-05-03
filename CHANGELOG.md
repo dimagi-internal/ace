@@ -5,6 +5,63 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.91 — 2026-05-02
+
+**Hardening pass — Slides knowledge consolidated, Phase 5 pre-flight
+checklist, CLAUDE.md updated.** Captures everything learned in the
+0.10.78–0.10.90 build cycle into discoverable, durable docs so a
+fresh session can run Phase 5 end-to-end without re-discovering the
+gotchas.
+
+### Added
+
+- `playbook/integrations/slides-integration.md` — single-source-of-truth
+  integration doc mirroring the mobile/ocs/connect/nova pattern.
+  Covers:
+  - The 3 Slides MCP atoms + the bootstrap script + the helper module
+  - Template lifecycle (stencil objectIds, placeholder tokens, what's
+    safe to edit)
+  - **All four critical gotchas** with code-level preventers:
+    1. SA can't `slides.presentations.create` (PERMISSION_DENIED) —
+       use `drive.files.create` with the Slides mimeType
+    2. `createImage` needs `anyone-with-link` permission — Slides
+       fetches without caller auth
+    3. `notesPage.notesProperties.speakerNotesObjectId` is assigned
+       lazily — two-phase batchUpdate required
+    4. `drive.files.delete` returns 404 on Shared Drive files even
+       when they exist — fall back to `update({trashed: true})`
+  - Plus the `op inject` `{{...}}` parsing gotcha and the build
+    request-order invariants
+  - Phase 5 invocation chain
+  - Pre-flight checklist for a fresh GCP project / 1Password vault
+
+### Changed
+
+- `CLAUDE.md` — adds the per-artifact training split summary to the
+  `skills/` section, the Slides atom inventory to the `mcp/` section,
+  and `slides-integration.md` to the `playbook/integrations/` list.
+  A fresh session reading the project guide now sees the Slides
+  pipeline exists and where to learn more.
+- `agents/qa-and-training.md` — new "Pre-flight checklist" section
+  before the workflow steps. Six items, each tied to a class of
+  silent failure learned from real dogfood (AVD authorized, CommCare
+  installed, opp invite sent, template configured, Slides API enabled,
+  no other-user adb conflicts). Halts the phase before Step 1 if any
+  fail.
+
+### Why this matters for the next E2E session
+
+A fresh Claude session running `/ace:run` against an opp will:
+1. Read CLAUDE.md → know the per-artifact training split exists and
+   where the Slides docs live.
+2. Read `agents/qa-and-training.md` → see the pre-flight checklist
+   before dispatching anything.
+3. If a Slides issue surfaces, find it in
+   `playbook/integrations/slides-integration.md` — searchable, single
+   place, with the working fix and the durable reproducer script.
+
+No grep across CHANGELOG entries to reconstruct the contract.
+
 ## 0.10.90 — 2026-05-02
 
 **Real screenshot → Slides loop proven end-to-end on live device output.**

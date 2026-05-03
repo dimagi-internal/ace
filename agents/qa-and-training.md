@@ -63,6 +63,41 @@ common content is referenced by file path and only re-captured when the
 Connect APK actually updates. This keeps Phase 5 runtime predictable and
 avoids burning AVD time on screenshots that don't change.
 
+## Pre-flight checklist
+
+Before dispatching Step 1, verify these. Each one is a class of
+silent-failure prevention learned from earlier real-world dogfood.
+
+- [ ] **AVD is booted and authorized.** `adb -s ${ACE_AVD_NAME serial}
+      shell echo hi` returns "hi". `bin/ace-doctor` reports the
+      Mobile section as PASS.
+- [ ] **CommCare 2.62.0+ is installed on the AVD.** `adb shell pm
+      list packages org.commcare.dalvik` returns the package. The
+      `mobile-bootstrap` command handles this.
+- [ ] **The opp-specific Learn + Deliver apps are claimable on the
+      AVD via the test user.** Phase 3 `connect-opp-setup` should
+      have pre-invited `${ACE_E2E_PHONE}`. Without an opp invite,
+      `app-screenshot-capture` recipes that try to claim or interact
+      with the app will fail.
+- [ ] **`ACE_TRAINING_DECK_TEMPLATE_ID` is set** if you want a Slides
+      deck. `bin/ace-doctor` reports it. If unset, `training-deck-build`
+      skips silently — Phase 5 still completes, just without the
+      Slides deliverable.
+- [ ] **Slides API is enabled** on the GCP project. Only matters if
+      `training-deck-build` will run. First call returns the enable
+      URL with a 1-minute propagation if it's off. See
+      `playbook/integrations/slides-integration.md`.
+- [ ] **`adb devices` shows no other-user `unauthorized` entries.**
+      ACE recipes since 0.10.65 bypass dadb auto-discovery via
+      `--host`/`--port` so this isn't fatal — but doctor WARNs and
+      ad-hoc `adb shell` without `-s` may pick the wrong device. See
+      `playbook/integrations/mobile-integration.md` "Multi-user dadb
+      landmine."
+
+If any check fails, halt before Step 1 — running through with a
+broken precondition wastes AVD time and produces verdicts that look
+like real failures but are actually setup gaps.
+
 ## Workflow
 
 ### Step 1: QA Plan
