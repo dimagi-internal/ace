@@ -56,6 +56,7 @@ The state file at `ACE/<opp-name>/state.yaml` tracks:
 
 ```yaml
 opportunity: <opp-name>
+run_id: <YYYYMMDD-HHMM>     # multi-run layout (v0.11.0+); the run folder name
 mode: default|review|auto
 created: <ISO timestamp>
 initiated_by: <email>        # set once on creation; never overwritten
@@ -637,7 +638,7 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
    **(b) `--idea FILE|-` was passed**: scripted-seed flow. If `<opp>`
    was also provided, use it; otherwise auto-generate a fresh slug
    `smoke-<YYYYMMDD-HHMM>` (today's behavior). Write the idea body
-   directly into `runs/<run-id>/idea.md` after step 5 — this path
+   directly into `runs/<run-id>/idea.md` at step 5 — this path
    bypasses `inputs/` entirely (scripted runs are non-interactive by
    design). No `inputs/pdd.md` write.
 
@@ -676,7 +677,9 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
 
    - **Resume mode** — `<opp>/<run-id>` was passed: load existing
      `state.yaml` from `<opp>/runs/<run-id>/state.yaml` and continue
-     from its `step:` field. No new folder is created. Skip steps 4–6.
+     from its `step:` field. No new folder is created. Skip steps 4–7.
+     State.yaml exists; opp.yaml's last_run_id and runs: list already
+     record this run.
 
    - **Fresh mode** — `runId` is null: generate
      `runId = generateRunId(new Date())` (= `YYYYMMDD-HHMM` local time).
@@ -710,8 +713,9 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
    - `initiated_by: <email>` from `git config user.email` (fallback: `unknown`)
    - `last_actor: <email>` and `last_actor_at: <ISO timestamp>` — same email,
      same timestamp at creation
-   - `opp: <opp>`, `run_id: <runId>` — recorded so a transcript reader
-     can identify the run from state.yaml alone.
+   - `opportunity: <opp>` (matches the State Schema field name) and
+     `run_id: <runId>` — recorded so a transcript reader can identify
+     the run from state.yaml alone.
 
 7. **Update `<opp>/opp.yaml`.** Read it (`drive_read_file`); if missing,
    create with:
@@ -741,14 +745,15 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
 
 9. **Begin Phase 1.**
 
-### Fallback — no opp has an `inputs/` folder
+### Fallback — opp is missing an `inputs/` subfolder
 
-Stop with this message (do NOT silently fall back to the legacy `PDD/`
-picker):
+Stop with this message (covers both zero-arg-no-candidates and
+explicit-opp-without-inputs cases — do NOT silently fall back to the
+legacy `PDD/` picker):
 
-> No opps with an `inputs/` subfolder found under your ACE Drive root.
+> Opp is missing its `inputs/` subfolder under the ACE Drive root.
 >
-> Create one: in Drive, make `ACE/<your-opp-slug>/inputs/`, drop your
+> Create one: in Drive, make `ACE/<opp-slug>/inputs/`, drop your
 > PDD as `pdd.md` (and any supporting docs), then re-run `/ace:run`.
 > See docs/superpowers/specs/2026-05-02-ace-run-multi-run-revival-design.md
 > for the full layout.
@@ -760,6 +765,13 @@ The legacy `PDD/` flat folder is kept readable by ace-web for back-compat
 viewing of legacy opps, but is no longer consulted for new runs.
 
 ## Touching State — Operator Capture
+
+**Path note (multi-run layout, v0.11.0+):** `state.yaml` lives at
+`ACE/<opp>/runs/<run-id>/state.yaml`, not at the opp root. The
+run-id is established by the orchestrator's "Starting a New
+Opportunity" step 3; phase agents and skill dispatches inherit it.
+The `/ace:step` bypass path receives `<opp>/<run-id>` from its
+positional arg (see `commands/step.md`).
 
 Every skill invocation, whether via `/ace:run` or `/ace:step`, must update
 `last_actor` and `last_actor_at` in `state.yaml` *before* dispatching the
