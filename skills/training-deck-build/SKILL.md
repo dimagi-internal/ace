@@ -52,12 +52,23 @@ under human control.
 3. **Resolve image refs.** For each `BodyBlock` of kind `image`:
    - `drive:<fileId>` refs are passed through unchanged. The
      `createImage` request will use
-     `https://drive.google.com/uc?export=view&id=<fileId>` — the SA
-     reads via its existing Drive permissions.
+     `https://drive.google.com/uc?export=view&id=<fileId>`.
    - `https://...` URLs are passed through unchanged.
    - `screenshot:<alias>` refs (planned, not yet implemented in the
      parser) would resolve via the screenshot manifest — emit a clean
      "unknown ref scheme" error if encountered.
+
+   **CRITICAL:** every Drive fileId used by `createImage` MUST be
+   shared `anyone-with-link` (role: reader). Slides' `createImage`
+   fetches the URL via Google's image-import service, NOT via the
+   caller's auth — even though the SA owns the file, Slides itself
+   needs HTTPS read access. Without this permission, `createImage`
+   returns "image cannot be reached" and the slide ends up with no
+   image. `app-screenshot-capture` should set this permission at
+   upload time; this skill must verify it before building the request
+   stream and warn loudly (or set the permission inline) if any
+   referenced fileId is SA-only. Verified live 2026-05-02 via
+   `scripts/test-screenshot-to-slides-e2e.ts`.
 
 4. **Copy the template.** Call `slides_copy_template` with:
    - `templatePresentationId`: from `ACE_TRAINING_DECK_TEMPLATE_ID`

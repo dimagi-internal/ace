@@ -5,6 +5,46 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.90 — 2026-05-02
+
+**Real screenshot → Slides loop proven end-to-end on live device output.**
+Surfaces a previously-undocumented Slides API contract: createImage
+fetches via HTTPS without caller auth, so PNGs need
+`anyone-with-link` permission.
+
+### What's new
+
+- `scripts/test-screenshot-to-slides-e2e.ts` — durable reproducer that
+  exercises the full chain on real device output:
+  1. Maestro recipe → captures CommCare home-screen PNG via the
+     patched `--host`/`--port` dadb-direct path
+  2. `drive.files.create` → upload to a fresh per-opp folder
+  3. `permissions.create` `anyone-with-link` → make it Slides-fetchable
+  4. `parseDeckOutline` + `buildSlidesRequests` → fill template
+  5. Verify the resulting deck contains an embedded image (count
+     check, not just "no errors")
+
+  Reference run produced
+  https://docs.google.com/presentation/d/18rUN9SofhSnIqhQl1nNqVIAEeoC_BJJ4L_ToNjeSZxs/edit
+  with 1 verified embedded image.
+
+### Documented contract
+
+`createImage` fetches the image URL via Google's image-import service,
+which does NOT carry the SA's auth — even though the SA owns the file.
+Result: `drive:<fileId>` refs work only if the file is shared
+`anyone-with-link`. Without it, `createImage` returns "image cannot be
+reached" silently and the deck builds without errors but slides come
+out blank.
+
+This is captured in two places:
+- `skills/training-deck-build/SKILL.md` — verifies the permission
+  before building the request stream; warns / fixes inline.
+- `skills/app-screenshot-capture/SKILL.md` — sets the permission at
+  upload time, so deck-build never has to retrofit.
+
+Both reference the durable reproducer.
+
 ## 0.10.89 — 2026-05-02
 
 **Per-artifact training split: complete cleanup.** Three remaining
