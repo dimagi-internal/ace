@@ -601,105 +601,163 @@ When `--sandbox` is passed to `/ace:run`:
 
 ## Starting a New Opportunity
 
-When starting fresh:
+`/ace:run` resolves an opp + run-id from its arguments before any skill
+fires. The shape of the Drive folder hierarchy:
 
-1. **Ensure the opportunity folder exists in GDrive.**
-   - Use `drive_list_folder` on `ACE/` to see if `ACE/<opp-name>/` already exists.
-   - If it does not, create it with `drive_create_folder`.
+```
+ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
+├── <opp>/                        (folder name = opp slug)
+│   ├── inputs/                   (canonical input pack — read-only here)
+│   │   ├── pdd.md                (the PDD — required)
+│   │   └── *.{pdf,md,...}        (optional supporting docs)
+│   ├── runs/
+│   │   └── <run-id>/             (e.g. "20260502-1830")
+│   │       ├── idea.md           (copy of inputs/pdd.md, written at run start)
+│   │       ├── state.yaml
+│   │       ├── pdd.md            (output of idea-to-pdd; distinct from inputs/pdd.md)
+│   │       └── ... (all skill-output subfolders)
+│   └── opp.yaml                  (display_name, last_run_id, tags, ...)
+```
 
-2. **Ensure `idea.md` exists in the folder.** This is the single required human
-   input — it's the raw idea or opportunity brief that `idea-to-pdd` iterates
-   into a PDD. It is listed in `lib/artifact-manifest.ts` as
-   `producedBy: 'external'`.
+### Resolution
 
-   Resolution order (first match wins):
+1. **Read the positional argument** (if any). Use `parseOppRef(arg)` from
+   `lib/run-paths.ts` to split `<opp>` vs `<opp>/<run-id>`.
 
-   **(a) Already present.** `drive_list_folder` on `ACE/<opp-name>/`;
-   if `idea.md` is there, continue to step 3.
+2. **Resolve the opp.**
 
-   **(b) `--idea FILE|-` passed to `/ace:run`.** The command has already
-   loaded the body (from file or stdin). Write it verbatim to
-   `ACE/<opp-name>/idea.md` with `drive_create_file` and continue. No
-   prompt fires on this path — scripted runs are non-interactive by design.
+   **(a) `<opp>` was passed explicitly** (positional or via `parseOppRef`):
+   skip discovery, use that opp. If the folder doesn't exist under
+   `ACE_DRIVE_ROOT_FOLDER_ID`, create it (`drive_create_folder`); the
+   operator is creating a new opp in this case. Do not auto-create
+   `inputs/` — the operator must do that step manually so they actively
+   choose what goes in. If after this step the opp folder lacks an
+   `inputs/` subfolder, stop with the new-layout error message (see § Fallback below).
 
-   **(c) Auto-discover a PDD on Drive** (default when neither (a) nor (b)
-   applies). Smart-default flow:
+   **(b) `--idea FILE|-` was passed**: scripted-seed flow. If `<opp>`
+   was also provided, use it; otherwise auto-generate a fresh slug
+   `smoke-<YYYYMMDD-HHMM>` (today's behavior). Write the idea body
+   directly into `runs/<run-id>/idea.md` after step 5 — this path
+   bypasses `inputs/` entirely (scripted runs are non-interactive by
+   design). No `inputs/pdd.md` write.
 
-   0. Read `ACE_DRIVE_ROOT_FOLDER_ID` from the environment. If it is
-      **unset or empty**, stop and emit an explicit error:
+   **(c) Zero-arg discovery** (default when neither (a) nor (b)):
+
+   1. Read `ACE_DRIVE_ROOT_FOLDER_ID`. If unset/empty, error:
       `ACE_DRIVE_ROOT_FOLDER_ID is not set in your .env (expected at
       $CLAUDE_PLUGIN_DATA/.env); re-inject from .env.tpl via "op inject
       -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --account
-      dimagi.1password.com" and retry, or pass --idea FILE|- to bypass
-      the picker.` Do NOT silently fall through to (d) — the "no PDDs
-      folder" fallback is for the case where the folder legitimately
-      doesn't exist, not for missing configuration. (Run `/ace:doctor`;
-      a WARN on `drive_root` or `env_drift` points to this.)
+      dimagi.1password.com" and retry.`
 
-      **Shared-Drive precondition.** The configured root MUST live on a
-      Google Shared Drive — Service Accounts have zero My-Drive quota,
-      so a My-Drive-parented root means every artifact write fails with
-      a misleading "user storage quota exceeded" error. As of 0.5.18
-      `drive_create_file` and `drive_create_folder` pre-flight this on
-      every call and reject with a typed message; `/ace:doctor` reports
-      `drive_shared` PASS/FAIL up-front so you see the wall before you
-      hit it. If `/ace:doctor` shows `drive_shared FAIL`, fix that first
-      — re-running `/ace:run` won't get you past idea capture.
-   1. `drive_list_folder` on `ACE_DRIVE_ROOT_FOLDER_ID`. Look for a
-      sub-folder whose name matches `/PDD/i` or `/Program Design Doc/i`
-      (case-insensitive). If none is found, fall through to (d).
-   2. `drive_list_folder` on that PDDs folder. Collect all files that
-      look like documents (`.md`, `.txt`, or Google Doc MIME).
-   3. Sort the list: files whose name contains the slug's first
-      dash-delimited token (case-insensitive) come first; within each
-      group, newest `modifiedTime` first.
-   4. **Strong-match auto-confirm** (added 2026-04-30, default + auto
-      modes only — review mode still always prompts). A candidate is
-      "strong" iff:
-      - the slug's first dash-delimited token is at least 4 characters
-        long (avoids matching on stop-tokens like "v1", "test", "tmp"),
-      - exactly **one** file in the PDDs folder contains that token
-        case-insensitively, and
-      - that token appears as a contiguous substring of the filename
-        (not split across word boundaries by Drive's title rendering).
+   2. **Shared-Drive precondition** (unchanged from prior version) — if
+      the root is on My Drive instead of a Shared Drive, every artifact
+      write fails. `drive_create_file` and `drive_create_folder`
+      pre-flight this; `/ace:doctor` reports `drive_shared` PASS/FAIL.
 
-      When all three hold, skip the AskUserQuestion and use the
-      strong-match file directly. Log the auto-confirm in the run
-      transcript with the slug token, the matched filename, and the
-      file id, so an operator reviewing the run can see why no prompt
-      fired. The previous policy of "always prompt" was added to
-      defend against domain-mismatched PDDs, but a uniquely-named
-      match cannot be domain-mismatched — by construction, no other
-      candidate could have driven the run instead.
+   3. `drive_list_folder` on the ACE root. Filter to subfolders that
+      contain an `inputs/` subfolder (one extra `drive_list_folder`
+      call per candidate to confirm). The `PDD/` folder, any other
+      flat docs, and legacy flat opps without an `inputs/` subfolder
+      are ignored.
 
-      In **review** mode and any case where the strong-match conditions
-      do not hold (zero matches, multiple matches, short token), fall
-      through to step 5 (the prompt). The prompt is the safety net for
-      ambiguity, not a rubber-stamp on every run.
-   5. Take the top 5 entries and present via `AskUserQuestion` (skipped
-      by step 4 in the strong-match case). Include two additional
-      options:
-      - **Other — paste a Drive doc ID** (for cases where the right
-        document lives outside the PDDs folder).
-      - **Paste the idea inline** (free text in the "Other" field).
-      - **Abort** (do not create `state.yaml`; end the run cleanly).
-   6. Fetch the chosen file via `drive_read_file`, write the body to
-      `ACE/<opp-name>/idea.md` via `drive_create_file`, continue.
+   4. For each candidate opp, compute `mtime` = newest of:
+      - the `inputs/` folder's `modifiedTime`
+      - every direct child of `inputs/`'s `modifiedTime`
 
-   **(d) Fallback — no PDDs folder on Drive.** Prompt with just the
-   inline/paste/abort options from (c)'s extras.
+      Pick the candidate with the latest `mtime`. Tiebreak alphabetical
+      on opp name.
 
-   In `--dry-run` mode, still write `idea.md` to Drive — it's a human
-   input, not an effectful action. In `--sandbox` mode, idea capture is
-   unchanged.
+   5. If no candidate exists (no folder under `ACE/` has an `inputs/`
+      subfolder), stop with the new-layout fallback message — see
+      § Fallback below. Do NOT silently fall through to the legacy
+      `PDD/` picker.
 
-3. **Initialize `state.yaml`** with:
+3. **Resolve the run-id.**
+
+   - **Resume mode** — `<opp>/<run-id>` was passed: load existing
+     `state.yaml` from `<opp>/runs/<run-id>/state.yaml` and continue
+     from its `step:` field. No new folder is created. Skip steps 4–6.
+
+   - **Fresh mode** — `runId` is null: generate
+     `runId = generateRunId(new Date())` (= `YYYYMMDD-HHMM` local time).
+     If `<opp>/runs/<runId>/` already exists, append `-2`, `-3`, … until
+     unused.
+
+4. **Create the run folder.**
+   `drive_create_folder` `<opp>/runs/<runId>/`. Capture the resulting
+   folder ID; this is the **run folder ID** that gets passed to every
+   downstream skill in place of the previous "opp folder ID".
+
+5. **Seed `idea.md` inside the run folder.**
+
+   - If `--idea FILE|-` was passed, the command has loaded the body.
+     Write it verbatim to `<opp>/runs/<runId>/idea.md` via
+     `drive_create_file`.
+
+   - Otherwise (zero-arg or `<opp>`-only), find the PDD inside
+     `<opp>/inputs/`:
+     - prefer file named `pdd.md` or `pdd.gdoc` (case-sensitive),
+     - else first file matching `*pdd*` (case-insensitive),
+     - else if exactly one document file is present, use it,
+     - else stop with `multiple files in inputs/, none named pdd.md —
+       rename the canonical PDD to pdd.md and retry`.
+
+     `drive_read_file` on the chosen file, then `drive_create_file`
+     the body to `<opp>/runs/<runId>/idea.md`.
+
+6. **Initialize `state.yaml`** at `<opp>/runs/<runId>/state.yaml` with:
    - `mode`, `created` (ISO timestamp), all steps as `pending`
    - `initiated_by: <email>` from `git config user.email` (fallback: `unknown`)
    - `last_actor: <email>` and `last_actor_at: <ISO timestamp>` — same email,
      same timestamp at creation
+   - `opp: <opp>`, `run_id: <runId>` — recorded so a transcript reader
+     can identify the run from state.yaml alone.
 
-4. **Begin Phase 1.**
+7. **Update `<opp>/opp.yaml`.** Read it (`drive_read_file`); if missing,
+   create with:
+
+   ```yaml
+   display_name: <opp>          # default to slug; operator can edit later
+   slug: <opp>
+   last_run_id: <runId>
+   tags: []
+   created_at: <ISO timestamp>
+   created_by: <email>
+   ```
+
+   If present, update only `last_run_id` and append `<runId>` to a
+   running list under `runs:` (optional — primarily for ace-web's
+   ergonomics; ace-web can also derive it from `runs/`).
+
+8. **Log the run setup explicitly.** Emit a log line in this exact form
+   so transcript readers and ace-web's ingest can pick it up:
+
+   ```
+   [orchestrator] starting opp=<opp> run_id=<runId> mode=<mode>
+     inputs_folder=<opp>/inputs (read-only)
+     run_folder=<opp>/runs/<runId>
+     idea.md ← inputs/pdd.md (or --idea FILE)
+   ```
+
+9. **Begin Phase 1.**
+
+### Fallback — no opp has an `inputs/` folder
+
+Stop with this message (do NOT silently fall back to the legacy `PDD/`
+picker):
+
+> No opps with an `inputs/` subfolder found under your ACE Drive root.
+>
+> Create one: in Drive, make `ACE/<your-opp-slug>/inputs/`, drop your
+> PDD as `pdd.md` (and any supporting docs), then re-run `/ace:run`.
+> See docs/superpowers/specs/2026-05-02-ace-run-multi-run-revival-design.md
+> for the full layout.
+>
+> If you want to keep using the legacy flat layout for one more run,
+> pass `--idea FILE|-` to bypass discovery.
+
+The legacy `PDD/` flat folder is kept readable by ace-web for back-compat
+viewing of legacy opps, but is no longer consulted for new runs.
 
 ## Touching State — Operator Capture
 
