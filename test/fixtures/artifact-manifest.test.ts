@@ -81,6 +81,10 @@ describe('CRISPR-Test-001 fixture', () => {
     // handle is `nova_app_id` in the app summaries — so validateFixture no
     // longer flags them as missing.
     const expectedMissing = [
+      // inputs/ is an opp-level required artifact; CRISPR-Test-001 is a
+      // partial fixture scoped to ocs-agent-setup inputs and doesn't model
+      // the full opp folder layout, so inputs/ is intentionally absent here.
+      'inputs/',
       'test-prompts.md',
       'test-results/test-plan.md',
       'test-results/test-results.md',

@@ -2,8 +2,12 @@
  * Canonical artifact manifest for ACE opportunities.
  *
  * Every file that an ACE skill reads from or writes to Google Drive under
- * `ACE/<opp-name>/` is listed here. This module is the single source of truth
- * for:
+ * `ACE/<opp>/runs/<run-id>/` is listed here. Two opp-level files
+ * (`opp.yaml` and the `inputs/` folder) sit at `ACE/<opp>/` itself,
+ * one level above the run folder; they are flagged with `phase: 'design'`
+ * and `producedBy: 'orchestrator'` (or 'external' for inputs).
+ *
+ * This module is the single source of truth for:
  *   - What artifacts exist at each lifecycle phase
  *   - Which skill produces each artifact
  *   - Which skills consume each artifact
@@ -12,10 +16,11 @@
  * Skills are SKILL.md prompt files and cannot import this module at runtime.
  * The manifest is used by:
  *   - Test fixture validation (does the fixture have the right files?)
- *   - Future ace:doctor checks on live opportunity Drive folders
+ *   - ace:doctor checks on live opportunity Drive folders
  *   - Documentation generation
+ *   - ace-web's structured-layout reader (apps/opps/sync.py)
  *
- * To audit: grep -r 'ACE/<opp-name>' skills/ agents/
+ * To audit: grep -r 'ACE/<opp>/runs/' skills/ agents/
  */
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -44,6 +49,25 @@ export const PHASES = ['design', 'commcare', 'connect', 'ocs', 'operate', 'close
 // ── Manifest ───────────────────────────────────────────────────────
 
 export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
+  // ── Opp-level artifacts (NOT under runs/<run-id>/) ─────────────
+
+  {
+    path: 'inputs/',
+    producedBy: 'external',
+    consumedBy: ['ace-orchestrator', 'idea-to-pdd'],
+    phase: 'design',
+    required: true,
+    description: 'Canonical input pack for the opp. Contains pdd.md (required) and any supporting docs (sample paper forms, interview guides, notes). Read at run start; the PDD body is copied into runs/<run-id>/idea.md.',
+  },
+  {
+    path: 'opp.yaml',
+    producedBy: 'ace-orchestrator',
+    consumedBy: ['ace-orchestrator'],
+    phase: 'design',
+    required: false,
+    description: 'Opp-level metadata: display_name, slug, last_run_id, tags, created_at, created_by. Created lazily on the first run; updated on every run to bump last_run_id.',
+  },
+
   // ── Design phase (Phase 1) ─────────────────────────────────────
 
   {
@@ -584,17 +608,32 @@ export function validateFixture(
   const knownPaths = new Set(
     expected.map((a) => a.path),
   );
+  // Directory entries (trailing slash) cover any file under that prefix.
+  const knownDirPrefixes = [...knownPaths].filter((p) => p.endsWith('/'));
 
   const present: string[] = [];
   const unexpected: string[] = [];
+  // Track which directory entries have been satisfied by at least one file.
+  const satisfiedDirs = new Set<string>();
 
   for (const fp of filePaths) {
     if (exempt.includes(fp)) continue;
     if (knownPaths.has(fp)) {
       present.push(fp);
     } else {
-      unexpected.push(fp);
+      const matchingDir = knownDirPrefixes.find((d) => fp.startsWith(d));
+      if (matchingDir) {
+        satisfiedDirs.add(matchingDir);
+        // Files under a known directory prefix are "known" — not unexpected.
+      } else {
+        unexpected.push(fp);
+      }
     }
+  }
+
+  // Directory entries are present if at least one file matched their prefix.
+  for (const dir of satisfiedDirs) {
+    present.push(dir);
   }
 
   const presentSet = new Set(present);
