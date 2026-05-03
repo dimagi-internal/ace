@@ -5,6 +5,43 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.11.0 — 2026-05-02
+
+**Multi-run-per-opp revival + canonical input packs.**
+
+The Drive layout changes from one folder per `/ace:run` to one folder
+per opp containing `inputs/` (canonical input pack — PDD plus
+supporting docs) and `runs/<YYYYMMDD-HHMM>/` (one folder per fresh
+run). `/ace:run` zero-arg now picks the most-recently-touched opp by
+`inputs/` mtime and starts a fresh run on it; no PDD-picker prompt
+fires for fresh runs. `/ace:run <opp>/<run-id>` resumes a specific run.
+
+### Added
+
+- `lib/run-paths.ts` helpers, `inputs/` and `opp.yaml` artifact
+  manifest entries, `ACE_E2E_AUTH_TOKEN` and `input_packs` checks in
+  `bin/ace-doctor`.
+
+### Changed
+
+- `agents/ace-orchestrator.md § Starting a New Opportunity` rewritten
+  for the new layout; `commands/run.md` argument grammar grew
+  `<opp>/<run-id>` resume; `commands/status.md` now groups runs under
+  their opp; `skills/upload-transcript` documents the `opp_run_id`
+  payload field.
+
+### Removed
+
+- In `agents/`: the `smoke-<timestamp>` auto-slug fallback; the legacy
+  `PDD/` picker is no longer consulted for new runs (it remains
+  readable for back-compat viewing of legacy opps in ace-web).
+
+Spec: `docs/superpowers/specs/2026-05-02-ace-run-multi-run-revival-design.md`.
+Plan: `docs/superpowers/plans/2026-05-02-ace-run-multi-run-revival.md`.
+
+ace-web companion change required to read the new layout — see ace-web
+branch `multi-run-revival`.
+
 ## 0.10.91 — 2026-05-02
 
 **Hardening pass — Slides knowledge consolidated, Phase 5 pre-flight
