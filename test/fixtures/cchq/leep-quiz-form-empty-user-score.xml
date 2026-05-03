@@ -1,0 +1,168 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <h:title>Quiz — Why this survey exists</h:title>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/9f6ca47d769d5f4c" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="1" name="quiz_why_this_survey_exists">
+          <quiz_intro/>
+          <q1/>
+          <q2/>
+          <q3/>
+          <q1_correct/>
+          <q2_correct/>
+          <q3_correct/>
+          <total_score/>
+          <module_1_why_this_survey_exists_quiz_why_this_survey_exists>
+            <assessment xmlns="http://commcareconnect.com/data/v1/learn" id="module_1_why_this_survey_exists_quiz_why_this_survey_exists">
+              <user_score/>
+            </assessment>
+          </module_1_why_this_survey_exists_quiz_why_this_survey_exists>
+          <meta xmlns="http://openrosa.org/jr/xforms" xmlns:cc="http://commcarehq.org/xforms">
+            <deviceID/>
+            <timeStart/>
+            <timeEnd/>
+            <username/>
+            <userID/>
+            <instanceID/>
+            <cc:appVersion/>
+            <drift/>
+            <cc:location/>
+          </meta>
+        </data>
+      </instance>
+      <instance id="commcaresession" src="jr://instance/session"/>
+      <bind nodeset="/data/quiz_intro"/>
+      <bind nodeset="/data/q1" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/q2" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/q3" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/q1_correct" type="xsd:string" calculate="if(/data/q1 = 'b', 1, 0)"/>
+      <bind nodeset="/data/q2_correct" type="xsd:string" calculate="if(/data/q2 = 'b', 1, 0)"/>
+      <bind nodeset="/data/q3_correct" type="xsd:string" calculate="if(/data/q3 = 'b', 1, 0)"/>
+      <bind nodeset="/data/total_score" type="xsd:string" calculate="/data/q1_correct + /data/q2_correct + /data/q3_correct"/>
+      <bind nodeset="/data/module_1_why_this_survey_exists_quiz_why_this_survey_exists"/>
+      <bind nodeset="/data/module_1_why_this_survey_exists_quiz_why_this_survey_exists/assessment/user_score" calculate="/data/total_score"/>
+      <itext>
+        <translation lang="en" default="">
+          <text id="quiz_intro-label">
+            <value># Quiz — Why this survey exists
+
+Three quick questions. You need at least **2 out of 3** correct to pass.</value>
+            <value form="markdown"># Quiz — Why this survey exists
+
+Three quick questions. You need at least **2 out of 3** correct to pass.</value>
+          </text>
+          <text id="q1-label">
+            <value>**Q1.** Why does LEEP focus on oil-based decorative paints rather than water-based paints?</value>
+            <value form="markdown">**Q1.** Why does LEEP focus on oil-based decorative paints rather than water-based paints?</value>
+          </text>
+          <text id="q1-a-label">
+            <value>Oil-based paints are cheaper to buy</value>
+            <value form="markdown">Oil-based paints are cheaper to buy</value>
+          </text>
+          <text id="q1-b-label">
+            <value>Oil-based paints often contain lead compounds; water-based paints generally do not</value>
+            <value form="markdown">Oil-based paints often contain lead compounds; water-based paints generally do not</value>
+          </text>
+          <text id="q1-c-label">
+            <value>Oil-based paints are easier to photograph</value>
+            <value form="markdown">Oil-based paints are easier to photograph</value>
+          </text>
+          <text id="q2-label">
+            <value>**Q2.** Who is most at risk from lead in paint?</value>
+            <value form="markdown">**Q2.** Who is most at risk from lead in paint?</value>
+          </text>
+          <text id="q2-a-label">
+            <value>Adults who paint houses for a living</value>
+            <value form="markdown">Adults who paint houses for a living</value>
+          </text>
+          <text id="q2-b-label">
+            <value>Young children, because lead damages developing brains</value>
+            <value form="markdown">Young children, because lead damages developing brains</value>
+          </text>
+          <text id="q2-c-label">
+            <value>Only people who eat paint chips on purpose</value>
+            <value form="markdown">Only people who eat paint chips on purpose</value>
+          </text>
+          <text id="q3-label">
+            <value>**Q3.** What will LEEP do with the paint cans you purchase?</value>
+            <value form="markdown">**Q3.** What will LEEP do with the paint cans you purchase?</value>
+          </text>
+          <text id="q3-a-label">
+            <value>Resell them to recover costs</value>
+            <value form="markdown">Resell them to recover costs</value>
+          </text>
+          <text id="q3-b-label">
+            <value>Send them to a laboratory to measure their lead content, to support advocacy and regulation</value>
+            <value form="markdown">Send them to a laboratory to measure their lead content, to support advocacy and regulation</value>
+          </text>
+          <text id="q3-c-label">
+            <value>Store them for the worker's personal use</value>
+            <value form="markdown">Store them for the worker's personal use</value>
+          </text>
+        </translation>
+      </itext>
+      <setvalue ref="/data/meta/deviceID" value="instance('commcaresession')/session/context/deviceid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/timeStart" value="now()" event="xforms-ready"/>
+      <bind nodeset="/data/meta/timeStart" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/timeEnd" value="now()" event="xforms-revalidate"/>
+      <bind nodeset="/data/meta/timeEnd" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/username" value="instance('commcaresession')/session/context/username" event="xforms-ready"/>
+      <setvalue ref="/data/meta/userID" value="instance('commcaresession')/session/context/userid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/instanceID" value="uuid()" event="xforms-ready"/>
+      <setvalue ref="/data/meta/appVersion" value="instance('commcaresession')/session/context/appversion" event="xforms-ready"/>
+      <setvalue ref="/data/meta/drift" value="if(count(instance('commcaresession')/session/context/drift) = 1, instance('commcaresession')/session/context/drift, '')" event="xforms-revalidate"/>
+      <ns0:pollsensor xmlns:ns0="http://openrosa.org/jr/xforms" event="xforms-ready" ref="/data/meta/location"/>
+      <bind nodeset="/data/meta/location" type="geopoint"/>
+    </model>
+  </h:head>
+  <h:body>
+    <trigger ref="/data/quiz_intro" appearance="minimal">
+      <label ref="jr:itext('quiz_intro-label')"/>
+    </trigger>
+    <select1 ref="/data/q1">
+      <label ref="jr:itext('q1-label')"/>
+      <item>
+        <label ref="jr:itext('q1-a-label')"/>
+        <value>a</value>
+      </item>
+      <item>
+        <label ref="jr:itext('q1-b-label')"/>
+        <value>b</value>
+      </item>
+      <item>
+        <label ref="jr:itext('q1-c-label')"/>
+        <value>c</value>
+      </item>
+    </select1>
+    <select1 ref="/data/q2">
+      <label ref="jr:itext('q2-label')"/>
+      <item>
+        <label ref="jr:itext('q2-a-label')"/>
+        <value>a</value>
+      </item>
+      <item>
+        <label ref="jr:itext('q2-b-label')"/>
+        <value>b</value>
+      </item>
+      <item>
+        <label ref="jr:itext('q2-c-label')"/>
+        <value>c</value>
+      </item>
+    </select1>
+    <select1 ref="/data/q3">
+      <label ref="jr:itext('q3-label')"/>
+      <item>
+        <label ref="jr:itext('q3-a-label')"/>
+        <value>a</value>
+      </item>
+      <item>
+        <label ref="jr:itext('q3-b-label')"/>
+        <value>b</value>
+      </item>
+      <item>
+        <label ref="jr:itext('q3-c-label')"/>
+        <value>c</value>
+      </item>
+    </select1>
+  </h:body>
+</h:html>
