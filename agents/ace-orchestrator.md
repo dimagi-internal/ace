@@ -80,9 +80,16 @@ phases:
     ocs-chatbot-eval-quick: pending
     ocs-chatbot-qa-deep: pending
     ocs-chatbot-eval-deep: pending
-  qa-and-training:        # Phase 5 — added 0.9.0
+  qa-and-training:        # Phase 5 — added 0.9.0; per-artifact training split 0.10.79–0.10.84
+    qa-plan: pending
     app-screenshot-capture: pending
-    training-materials: pending
+    training-llo-guide: pending
+    training-flw-guide: pending
+    training-quick-reference: pending
+    training-faq: pending
+    training-deck-outline: pending
+    training-deck-build: pending          # skipped if ACE_TRAINING_DECK_TEMPLATE_ID unset
+    training-onboarding-email: pending    # last — links to other docs by URL
   llo-management:       # Phase 6
     llo-invite: pending               # moved here from Phase 3 on 2026-04-20
     llo-onboarding: pending
@@ -326,9 +333,14 @@ Ends with a human-in-the-loop step to paste the widget credentials into the
 Connect opportunity until `update_opportunity` lands (CCC-301).
 
 ### Phase 5: QA and Training
-Dispatch `Agent(qa-and-training)`. The agent runs `app-screenshot-capture`
-followed by `training-materials`, both reading upstream artifacts from
-Phases 1-4. No LLO contact happens here — that begins in Phase 6.
+Dispatch `Agent(qa-and-training)`. The agent runs `qa-plan` →
+`app-screenshot-capture` → 5 per-artifact training skills in parallel
+(`training-llo-guide`, `training-flw-guide`, `training-quick-reference`,
+`training-faq`, `training-deck-outline`) → `training-deck-build` (sequential
+after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) →
+`training-onboarding-email` (LAST — links by URL to other docs). All
+skills read upstream artifacts from Phases 1-4. No LLO contact happens
+here — that begins in Phase 6.
 
 ### Phase 6: LLO Management
 Dispatch to the **llo-manager** agent.
@@ -508,7 +520,10 @@ verdicts/<producer-skill>[-<mode>].yaml
   e.g. `ocs-chatbot-eval`) keep their own name in the verdict filename:
   `verdicts/ocs-chatbot-eval-{quick,deep,monitor}.yaml`.
 - Skills that self-evaluate inline (no separate `-eval` skill, e.g.
-  `qa-plan`, `training-materials`, `app-screenshot-capture`) write
+  `qa-plan`, `app-screenshot-capture`, every per-artifact training
+  skill (`training-llo-guide`, `training-flw-guide`,
+  `training-quick-reference`, `training-faq`,
+  `training-onboarding-email`, `training-deck-outline`)) write
   `verdicts/<self>.yaml`.
 
 **Opt-out.** `/ace:run --no-evals` skips the per-step eval dispatch (the

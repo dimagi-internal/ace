@@ -335,7 +335,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'screenshots/manifest.yaml',
     producedBy: 'app-screenshot-capture',
-    consumedBy: ['training-materials'],
+    consumedBy: ['training-flw-guide', 'training-deck-outline'],
     phase: 'operate',
     required: false,
     description: 'Manifest of every captured screenshot with step labels and Drive paths.',

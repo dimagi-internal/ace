@@ -20,6 +20,10 @@ skills:
   - { name: training-deck-outline,      has_judge: true }
   - { name: training-deck-build,        has_judge: false }
   - { name: training-onboarding-email,  has_judge: true }
+# Note: `training-materials` umbrella was removed in 0.10.87. The
+# Phase 5 agent dispatches each per-artifact skill directly; the
+# umbrella's only remaining role (verdict aggregation) is now opp-eval's
+# job via per-skill verdicts in the `commcare` category.
 ---
 
 # QA and Training Agent (Phase 5)
@@ -145,9 +149,11 @@ monolith's failures cascaded — one missed Layer-A signal in the LLO
 guide failed the whole skill. Six independent skills make
 quality issues localized and fixable.
 
-The umbrella `training-materials` skill still exists as a thin
-dispatcher for `/ace:step training-materials` callers and `opp-eval`
-verdict aggregation.
+The umbrella `training-materials` skill was removed in 0.10.87. Phase
+5 dispatches each per-artifact skill directly; opp-eval aggregates
+their per-skill verdicts in the `commcare` category. `/ace:step
+training-materials` callers should switch to running individual
+training skills (or invoke `qa-and-training` for the full sequence).
 
 ## Outputs
 
