@@ -72,7 +72,7 @@ omit `opp_run_id`. The ace-web ingest endpoint accepts either shape.
    - `-H "Referer: <base-url>/"`
    - `-F "file=@<transcript_path>;type=application/x-ndjson"`
    - `-F "opp_slug=<slug>"` (if provided)
-   - `-F "opp_run_id=<run_id>"` (if provided; usually `r1`)
+   - `-F "opp_run_id=<run_id>"` (if provided; format `YYYYMMDD-HHMM` for multi-run opps)
    - `-F "opp_step_skill=<skill>"` (if provided)
    - `-F "ace_root_folder_id=<id>"` (if `$ACE_DRIVE_ROOT_FOLDER_ID` is
      set; omit the field entirely if not — never send empty)

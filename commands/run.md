@@ -136,7 +136,8 @@ See `agents/ace-orchestrator.md` for full detail.
      - `opp_slug=<opp>` so the uploaded Session is linked under the
        opp in the Workbench's linked-chats panel (strongly recommended
        — without it the transcript is an orphan upload)
-     - `opp_run_id=r1` (current single-run convention)
+     - `opp_run_id=<run-id>` (the run-id the orchestrator generated;
+       see `agents/ace-orchestrator.md § Starting a New Opportunity` step 3)
    - Log the returned `session_slug` and the viewable URL
      (`<URL>/chat/<session_slug>`) to the operator's console.
 
