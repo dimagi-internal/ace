@@ -102,12 +102,12 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Opp-specific Q&A pairs derived from the PDD; each entry has an expected-answer summary that ocs-chatbot-qa embeds in the transcript and ocs-chatbot-eval grades against',
   },
   {
-    path: 'state.yaml',
+    path: 'run_state.yaml',
     producedBy: 'ace-orchestrator',
     consumedBy: ['timeline-monitor'],
     phase: 'design',
     required: true,
-    description: 'Opportunity lifecycle state: phase, step, mode, gate approvals, initiated_by / last_actor / last_actor_at',
+    description: 'Per-run lifecycle state: phase, step, mode, gate approvals, initiated_by / last_actor / last_actor_at. Lives at `runs/<run-id>/run_state.yaml` (renamed from `state.yaml` in 0.11.3 to make per-run scope explicit).',
   },
   {
     path: 'gate-briefs/idea-to-pdd.md',

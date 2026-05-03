@@ -29,7 +29,7 @@ the per-opp screenshots. Independent of `training-llo-guide`,
 | Phase 1 | `ACE/<opp>/pdd.md` | opp framing, archetype, target FLW persona |
 | Phase 2 | `ACE/<opp>/app-summaries/learn-app-summary.md` | Learn modules + assessment threshold |
 | Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | Deliver form structure (the "what to do here" section) |
-| Phase 3 (`state.yaml`) | `connect.opportunity` (claim flow), `connect.payment_units` | "what FLWs get paid for" framing |
+| Phase 3 (`run_state.yaml`) | `connect.opportunity` (claim flow), `connect.payment_units` | "what FLWs get paid for" framing |
 | Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | "where to get help" section |
 | Phase 5 Step 1 (`qa-plan`) | `ACE/<opp>/qa-plan/screenshot-manifest.yaml` | which screenshots exist + alias → path |
 | Phase 5 Step 2 (`app-screenshot-capture`) | `ACE/<opp>/screenshots/manifest.yaml` + per-opp PNGs | embed step-by-step Learn/Deliver screenshots |
@@ -71,7 +71,7 @@ from PDD's Evidence Model.>
 <bullet list pulled from PDD stress-test appendix + qa-plan edge cases>
 
 ## What you get paid for
-<short framing from connect.payment_units in state.yaml>
+<short framing from connect.payment_units in run_state.yaml>
 
 ## Where to get help
 - The OCS chat widget is available at all times: <widget_url>
@@ -103,7 +103,7 @@ from PDD's Evidence Model.>
 
 2. **Resolve the common-screenshots set.** Read the latest manifest
    under `ACE/_common/connect-screenshots/`. Pick the version directory
-   matching the live Connect APK version (from `state.yaml`'s
+   matching the live Connect APK version (from `run_state.yaml`'s
    deployment summary or `ACE_CONNECT_APK_VERSION`); if none matches
    exactly, use the most recent and emit an INFO note in the verdict.
 

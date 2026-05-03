@@ -48,7 +48,7 @@ Read all of the following from Drive:
    conditional-skip rules, required flags
 5. `ACE/<opp>/deployment-summary.md` — released-build HQ ids, project-space
    domain
-6. `ACE/<opp>/state.yaml` — Connect opp id, OCS chatbot id + widget URL,
+6. `ACE/<opp>/run_state.yaml` — Connect opp id, OCS chatbot id + widget URL,
    ACE test-user phone, finalize parameters
 
 ### Step 2: Generate the test matrix

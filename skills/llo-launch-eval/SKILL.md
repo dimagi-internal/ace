@@ -31,9 +31,9 @@ the first 4 strongly-calibrated rubrics.
    - `uat-results.md` (or `gate-briefs/llo-uat.md`) — UAT sign-offs
      the launch should have verified
    - `deployment-summary.md` — app-publish status the launch verified
-   - `state.yaml` — gate states (`gates.llo-launch`, `gates.llo-invite`)
+   - `run_state.yaml` — gate states (`gates.llo-launch`, `gates.llo-invite`)
 
-2. **Detect "phase not run" mode.** If `state.yaml` shows
+2. **Detect "phase not run" mode.** If `run_state.yaml` shows
    `phases.llo-management.llo-launch` not `done` or the launch
    artifact is missing, emit `verdict: incomplete` immediately with
    `[INFO] Phase 5 llo-launch not run; not gradable yet`.
@@ -87,7 +87,7 @@ the first 4 strongly-calibrated rubrics.
      - ref: "Connect activation: draft → active"
        score: 9.5
        verdict: pass
-       note: "Activation timestamp recorded in state.yaml; verification rules unchanged from Phase 3."
+       note: "Activation timestamp recorded in run_state.yaml; verification rules unchanged from Phase 3."
      # ... per check
 
    auto_surfaced:

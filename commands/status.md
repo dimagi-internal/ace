@@ -20,7 +20,7 @@ Show the current state of opps and their runs.
    are legacy flat opps, surface them under a separate "Legacy" section).
 2. For each opp, `drive_list_folder` on `<opp>/runs/`. Sort runs newest
    first by folder name (run-id is sortable as a string).
-3. For each run, `drive_read_file` `<opp>/runs/<run-id>/state.yaml` and
+3. For each run, `drive_read_file` `<opp>/runs/<run-id>/run_state.yaml` and
    pull `phase`, `step`, `mode`, `last_actor`, `last_actor_at`.
 4. Print:
 
@@ -35,7 +35,7 @@ Show the current state of opps and their runs.
    ```
 
 5. After the new-layout opps, if any legacy flat opps exist (folder
-   under `ACE/` with `state.yaml` at root, no `runs/` subfolder), print
+   under `ACE/` with `run_state.yaml` at root, no `runs/` subfolder), print
    a section header `## Legacy (delete when ready)` and list them with
    the same per-run line format.
 
@@ -43,5 +43,5 @@ Show the current state of opps and their runs.
 
 1. If `<opp>` only: print the per-run summary from list mode for that
    opp's runs, then dump `<opp>/opp.yaml` body.
-2. If `<opp>/<run-id>`: print that run's `state.yaml` body verbatim, plus
+2. If `<opp>/<run-id>`: print that run's `run_state.yaml` body verbatim, plus
    any `gates:` / verdicts referenced.

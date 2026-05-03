@@ -79,7 +79,7 @@ release flow + the App Editor permission prerequisite.
       rejects), every Phase 2 run does this lint.
 
    If the lint is skipped (e.g. Nova MCP unauthed at this point), log
-   `app-deploy-xml-lint: skipped-nova-unauthed` in `state.yaml` and add
+   `app-deploy-xml-lint: skipped-nova-unauthed` in `run_state.yaml` and add
    a `[WARN]` to the gate brief.
 
 3. **Upload Learn app.** Run:

@@ -30,14 +30,14 @@ the first 4 strongly-calibrated rubrics.
 1. **Read inputs from GDrive:**
    - `cycle-grade.md` — the artifact under judgment.
    - `learnings-summary.md` — Phase 6 learnings doc.
-   - `pdd.md` and `state.yaml` — for cycle-arc context.
+   - `pdd.md` and `run_state.yaml` — for cycle-arc context.
    - `comms-log/observations.md` — the per-opp evidence log
      `cycle-grade` should have synthesized.
    - `verdicts/*.yaml` — every per-skill verdict from the cycle.
      `cycle-grade` should reference the trajectory; if it didn't,
      that's a defect.
 
-2. **Detect "cycle didn't close" mode.** If `state.yaml` shows Phase 6
+2. **Detect "cycle didn't close" mode.** If `run_state.yaml` shows Phase 6
    incomplete (no `closeout.cycle-grade: done`, no
    `cycle-grade.md`), emit `verdict: incomplete` immediately with
    `[INFO] Phase 6 not run; cycle-grade-eval not gradable yet`. Do

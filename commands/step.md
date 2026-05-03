@@ -20,8 +20,8 @@ Run a single skill for an opportunity without running the full lifecycle.
    the skill, confirm all of its required prior artifacts are present in
    `ACE/<opp-name>/`. See "Prerequisite check" below. If any are missing,
    stop with an actionable error — do not invoke the skill.
-4. **Ensure `state.yaml` exists, then update operator identity.** If
-   `ACE/<opp-name>/state.yaml` is missing (orchestrator was bypassed —
+4. **Ensure `run_state.yaml` exists, then update operator identity.** If
+   `ACE/<opp-name>/run_state.yaml` is missing (orchestrator was bypassed —
    typical when an admin runs `/ace:step idea-to-pdd <opp>` without a
    prior `/ace:run`), initialize it first using the schema in
    `agents/ace-orchestrator.md § State Schema` and the identity-capture
@@ -30,7 +30,7 @@ Run a single skill for an opportunity without running the full lifecycle.
    - `last_actor_at: <ISO timestamp>`
 
    See `agents/ace-orchestrator.md` § Touching State — Operator Capture
-   and § Defensive `state.yaml` init on bypass paths. Defensive init runs
+   and § Defensive `run_state.yaml` init on bypass paths. Defensive init runs
    on every `/ace:step` call so the bypass path is robust and
    `/ace:status` shows accurate hand-off attribution even when admins
    skip the orchestrator.
@@ -40,7 +40,7 @@ Run a single skill for an opportunity without running the full lifecycle.
    invokes `/nova:autobuild` (Phase 2's `pdd-to-learn-app` /
    `pdd-to-deliver-app`) or otherwise dispatches a subagent. See
    `CLAUDE.md` § Agent topology.
-6. Update `state.yaml` with the result (per-phase nested map, 7-phase schema).
+6. Update `run_state.yaml` with the result (per-phase nested map, 7-phase schema).
 
 ## Prerequisite check
 

@@ -160,7 +160,7 @@ Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
     0.10.5+) is the actual wall — its Step 6 downloads the released
     CCZ and greps for `<learn:deliver>` / `<learn:module>` element
     counts, which catches Bug 2 escapes cleanly. Log the coverage
-    skip into `state.yaml` (`app-connect-coverage-{learn,deliver}:
+    skip into `run_state.yaml` (`app-connect-coverage-{learn,deliver}:
     skipped-nova2`), write a stub coverage report noting the skip
     + reliance on app-release verification, and proceed to Step 2.
     Rationale: Nova's autobuild path doesn't go through `update_form`
