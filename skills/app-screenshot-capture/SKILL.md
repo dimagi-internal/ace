@@ -51,6 +51,16 @@ case.
    - Each call returns a list of captured screenshots; upload each to
      `ACE/<opp>/screenshots/<recipe-stem>/<step-name>.png` via
      `drive_upload_binary` (mime: `image/png`).
+   - **CRITICAL:** after uploading each PNG, set its sharing
+     permission to `anyone-with-link` (role: reader) via
+     `drive.permissions.create`. Slides' `createImage` (used by
+     `training-deck-build` downstream) fetches PNGs via Google's
+     image-import service, which doesn't carry the SA's auth — so an
+     SA-only file gets "image cannot be reached" and the deck slide
+     comes out blank. Setting anyone-with-link at upload time avoids
+     a class of "deck builds without errors but slides are empty"
+     bugs. Verified live 2026-05-02 via
+     `scripts/test-screenshot-to-slides-e2e.ts`.
 
 5. **Cross-check against the qa-plan screenshot-manifest.** Every
    manifest entry should now have a real PNG at the expected path. Flag
