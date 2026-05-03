@@ -5,6 +5,67 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.89 — 2026-05-02
+
+**Per-artifact training split: complete cleanup.** Three remaining
+"ideal end state" items addressed.
+
+### 1. 1Password rotation for `ACE_TRAINING_DECK_TEMPLATE_ID`
+
+- Added `training_deck_template_id` field to the `ACE - Open Chat
+  Studio` 1Password item (Config section).
+- `.env.tpl` now references it via
+  `op://AI-Agents/ACE - Open Chat Studio/Config/training_deck_template_id`.
+- Verified the full `op inject` roundtrip resolves to the template ID
+  in `.env`. Other environments can rotate by bootstrapping their own
+  template and updating the 1Password field.
+- Sidebar gotcha: `op inject` parses double-curly tokens as
+  ref-delimiters even inside comments. The Slides-template
+  documentation in `.env.tpl` says "TITLE / SUBTITLE / BODY
+  placeholders (double-curly tokens)" instead of using the literal
+  syntax — otherwise op inject fails parsing the template comment.
+
+### 2. `training-materials` umbrella removed
+
+The umbrella was kept after 0.10.84 for three reasons (operator
+muscle-memory, opp-eval aggregation, one-call dispatch). All three
+are addressable:
+
+- **opp-eval**: per-artifact verdicts now roll up directly into the
+  `commcare` category (10.86 wired the registry; 10.89 drops the
+  umbrella line).
+- **`/ace:step training-materials`**: the agent now dispatches each
+  per-artifact skill directly. Operators who used the umbrella step
+  switch to `/ace:step training-flw-guide` (etc.) or run the whole
+  Phase 5 via `qa-and-training`.
+- **One-call dispatch**: `Agent(qa-and-training)` already iterates
+  the per-artifact skills in dependency order (parallel for the 5
+  text artifacts, sequential for deck-build and onboarding-email).
+
+Files affected:
+- `skills/training-materials/SKILL.md` — DELETED.
+- `agents/qa-and-training.md` — drops the umbrella from the skills
+  list; prose updated.
+- `agents/ace-orchestrator.md` — phase-step list updated to enumerate
+  the 9 per-artifact skills; verdict-aggregation prose updated.
+- `lib/artifact-manifest.ts` — `screenshots/manifest.yaml` consumedBy
+  routes to `training-flw-guide` + `training-deck-outline` (was
+  `training-materials`).
+- `skills/opp-eval/SKILL.md` — drops the umbrella from the commcare
+  category list.
+
+### 3. Plugin internal-consistency tests
+
+- New `test/lib/plugin-consistency.test.ts` (4 tests) catches the
+  class of bug where a SKILL.md, agent.md, or artifact-manifest entry
+  references a skill name that no longer exists. Without this guard,
+  the plugin loads cleanly but breaks at run-time when a skill is
+  dispatched by name. Allowlists the `external` sentinel and all
+  agent names (`ocs-setup`, `ace-orchestrator`, etc.) as valid
+  non-skill producers.
+
+Test count: 344/344 (was 340).
+
 ## 0.10.86 — 2026-05-02
 
 **Post-split cleanup: opp-eval, manifest, doctor, and Drive janitorial.**

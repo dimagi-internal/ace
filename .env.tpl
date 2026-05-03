@@ -101,17 +101,12 @@ ACE_E2E_NAME="ACE Test"
 ACE_AVD_NAME=ACE_Pixel_API_34
 
 # ─── ACE Training Deck (Slides) ────────────────────────────────────
-# Populated by `npx tsx scripts/bootstrap-training-deck-template.ts`.
-# The template deck has stencil slides the `training-deck-build` skill
-# duplicates and fills via Mustache-style TITLE / SUBTITLE / BODY
-# placeholder tokens (see `lib/training-deck-spec.ts` for the exact
-# token list). Iterate branding/layout in Slides directly; do NOT
-# change stencil objectIds or placeholder tokens.
-#
-# NOTE: literal Mustache-brace examples are deliberately omitted
-# from this comment because `op inject` parses the entire file
-# (comments included) and rejects any unescaped double-curly-brace
-# block that isn't a valid 1Password secret reference or quoted
-# string. See commit b07a0a5 for the prior secret-reference-in-comment
-# incident (same root cause, different syntax).
-ACE_TRAINING_DECK_TEMPLATE_ID=
+# Populated once per environment by `npx tsx scripts/bootstrap-training-deck-template.ts`,
+# stashed in 1Password, and re-injected via `op inject`. The template
+# deck has stencil slides the `training-deck-build` skill duplicates
+# and fills via TITLE / SUBTITLE / BODY placeholders (double-curly
+# tokens — left undescribed inline because op inject parses double-
+# curlies as ref delimiters even inside comments). Iterate
+# branding/layout in Slides directly; do NOT change stencil objectIds
+# or placeholder tokens (they're wired to `lib/training-deck-spec.ts`).
+ACE_TRAINING_DECK_TEMPLATE_ID=op://AI-Agents/ACE - Open Chat Studio/Config/training_deck_template_id

@@ -82,7 +82,7 @@ If no mode is passed, default to `--quick`.
    | Category | Weight | Covers skills |
    |---|---|---|
    | `design`    | 0.20 | `idea-to-pdd`, `pdd-to-test-prompts` |
-   | `commcare`  | 0.20 | `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-test`, `training-materials` (umbrella), `training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-onboarding-email`, `training-deck-outline` |
+   | `commcare`  | 0.20 | `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-test`, `training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-onboarding-email`, `training-deck-outline` |
    | `connect`   | 0.15 | `connect-program-setup`, `connect-opp-setup`, `llo-invite` |
    | `ocs`       | 0.20 | `ocs-agent-setup`, `ocs-chatbot-eval-quick`, `ocs-chatbot-eval-deep` |
    | `operate`   | 0.15 | `llo-onboarding`, `llo-uat`, `llo-launch`, `ocs-chatbot-eval-monitor`, `flw-data-review`, `timeline-monitor` |
