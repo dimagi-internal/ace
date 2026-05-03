@@ -135,6 +135,55 @@ case.
        message: "Static Maestro recipes have unfilled REPLACE_* selectors; calibrate via `maestro studio` against ~/.ace/apks/commcare-2.62.0.apk before live runs"
    ```
 
+## CSRF token handling (when seeding ace-web prod sessions)
+
+If a sub-step here needs to POST to a Django-backed endpoint (the ACE
+web app's `/api/ingest/upload`, an OCS / Connect write, etc.) from inside
+a Playwright browser context, **never use `page.request.post()`**. The
+Playwright request context has its own cookie jar that doesn't share
+the page's session cookies, so Django rejects the write with HTTP 403
+("CSRF cookie not set" or "CSRF token missing or incorrect"). This is
+the same class of bug `mcp/connect/backends/playwright.ts` and
+`mcp/ocs-server.ts` already work around in production (search those
+files for `X-CSRFToken` for the canonical examples).
+
+The two-step pattern is: **read the CSRF cookie from `document.cookie`,
+then issue the fetch from inside the page** so the browser's own cookie
+jar travels with the request:
+
+```ts
+// Inside the Playwright session, after a GET has warmed csrftoken_ace:
+const csrf = await page.evaluate(() => {
+  const m = document.cookie.match(/(?:^|;\s*)csrftoken_ace=([^;]+)/);
+  return m ? m[1] : null;
+});
+if (!csrf) throw new Error('csrftoken_ace not set — GET base URL first to warm it');
+
+const response = await page.evaluate(
+  async ([url, csrf, body]) => {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrf as string, 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(body),
+    });
+    return { status: r.status, body: await r.text() };
+  },
+  [endpoint, csrf, payload],
+);
+```
+
+Notes:
+- Cookie name is `csrftoken_ace` on the ACE web app (`ace-web`); on the
+  OCS / Connect Django backends it's plain `csrftoken`. Pick the right
+  one for the host you're targeting.
+- The cookie isn't set until *some* view rendered by `CsrfViewMiddleware`
+  has been hit — a single `await page.goto(baseUrl)` first is enough to
+  warm it. See `skills/upload-transcript/SKILL.md` § Shell reference for
+  the curl-cookie-jar equivalent of the same pattern.
+- The header MUST be `X-CSRFToken` (capital T-O-K-E-N), not `X-CSRF-Token`.
+  Django's `CsrfViewMiddleware` only honors the former.
+
 ## MCP Tools Used
 
 - `ace-gdrive`: `drive_read_file`, `drive_create_file`, `drive_list_folder`.
