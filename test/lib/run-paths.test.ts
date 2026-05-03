@@ -32,6 +32,14 @@ describe('parseOppRef', () => {
   it('rejects empty', () => {
     expect(() => parseOppRef('')).toThrow(/empty/);
   });
+
+  it('rejects leading slash', () => {
+    expect(() => parseOppRef('/turmeric')).toThrow(/empty opp slug/);
+  });
+
+  it('rejects trailing slash', () => {
+    expect(() => parseOppRef('turmeric/')).toThrow(/empty run-id/);
+  });
 });
 
 describe('runFolderPath', () => {

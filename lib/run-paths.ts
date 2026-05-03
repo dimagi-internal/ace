@@ -40,14 +40,17 @@ export function generateRunId(now: Date): string {
  * Rejects multi-segment paths and empty strings.
  */
 export function parseOppRef(arg: string): OppRef {
-  if (!arg || arg.length === 0) {
+  if (!arg) {
     throw new Error('parseOppRef: empty argument');
   }
   const parts = arg.split('/');
   if (parts.length === 1) {
+    if (!parts[0]) throw new Error('parseOppRef: empty opp slug');
     return { opp: parts[0], runId: null };
   }
   if (parts.length === 2) {
+    if (!parts[0]) throw new Error('parseOppRef: empty opp slug');
+    if (!parts[1]) throw new Error('parseOppRef: empty run-id');
     return { opp: parts[0], runId: parts[1] };
   }
   throw new Error(
