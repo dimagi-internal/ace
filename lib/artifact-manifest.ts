@@ -5,7 +5,7 @@
  * `ACE/<opp>/runs/<run-id>/` is listed here. Two opp-level files
  * (`opp.yaml` and the `inputs/` folder) sit at `ACE/<opp>/` itself,
  * one level above the run folder; they are flagged with `phase: 'design'`
- * and `producedBy: 'orchestrator'` (or 'external' for inputs).
+ * and `producedBy: 'ace-orchestrator'` (or 'external' for inputs).
  *
  * This module is the single source of truth for:
  *   - What artifacts exist at each lifecycle phase
