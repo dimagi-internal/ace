@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { planMoves } from '../../scripts/migrate-drive-layout.js';
+import { planMoves, executeMoves, type PlannedMove } from '../../scripts/migrate-drive-layout.js';
 
 const FOLDER = 'application/vnd.google-apps.folder';
 const DOC = 'application/vnd.google-apps.document';
@@ -199,5 +199,190 @@ describe('planMoves', () => {
     expect(b?.runFolderId).toBe('run-B-id');
     expect(a?.to).toBe('1-design/idea-to-pdd.md');
     expect(b?.to).toBe('1-design/idea-to-pdd.md');
+  });
+});
+
+// ── executeMoves ─────────────────────────────────────────────────
+//
+// executeMoves talks to a googleapis-style `Drive` client, not the simpler
+// DriveLike used by planMoves. Mock `files.list / files.create / files.update
+// / files.delete / files.get`.
+
+function makeFakeGoogleDrive() {
+  return {
+    files: {
+      list: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      get: vi.fn(),
+    },
+  };
+}
+
+describe('executeMoves', () => {
+  it('single move: ensures phase folder exists, then files.update with addParents/removeParents', async () => {
+    const d = makeFakeGoogleDrive();
+    // No existing 1-design/ folder under run-1-id
+    d.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    // Folder create returns its id
+    d.files.create.mockResolvedValueOnce({
+      data: { id: 'phase-1-id', name: '1-design' },
+    });
+    // The file move: get the current parents, then update
+    d.files.get.mockResolvedValueOnce({
+      data: { parents: ['run-1-id'] },
+    });
+    d.files.update.mockResolvedValueOnce({
+      data: { id: 'pdd-id', name: 'idea-to-pdd.md' },
+    });
+
+    const moves: PlannedMove[] = [{
+      fileId: 'pdd-id',
+      from: 'pdd.md',
+      to: '1-design/idea-to-pdd.md',
+      action: 'move',
+      runFolderId: 'run-1-id',
+    }];
+
+    const result = await executeMoves('opp-id', moves, d as any);
+
+    expect(d.files.create).toHaveBeenCalledOnce();
+    const folderCreateArgs = d.files.create.mock.calls[0]![0];
+    expect(folderCreateArgs.requestBody.name).toBe('1-design');
+    expect(folderCreateArgs.requestBody.parents).toEqual(['run-1-id']);
+    expect(folderCreateArgs.requestBody.mimeType).toBe('application/vnd.google-apps.folder');
+
+    // Then update the file: addParents=phase-1-id, removeParents=run-1-id, name=new leaf
+    expect(d.files.update).toHaveBeenCalledOnce();
+    const updateArgs = d.files.update.mock.calls[0]![0];
+    expect(updateArgs.fileId).toBe('pdd-id');
+    expect(updateArgs.addParents).toBe('phase-1-id');
+    expect(updateArgs.removeParents).toBe('run-1-id');
+    expect(updateArgs.requestBody.name).toBe('idea-to-pdd.md');
+
+    expect(result.executed).toBe(1);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('move into a new phase folder: files.create folder first, then files.update for the file', async () => {
+    const d = makeFakeGoogleDrive();
+    d.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    d.files.create.mockResolvedValueOnce({
+      data: { id: 'phase-2-id', name: '2-commcare' },
+    });
+    d.files.get.mockResolvedValueOnce({ data: { parents: ['run-1-id'] } });
+    d.files.update.mockResolvedValueOnce({
+      data: { id: 'app-summary-id', name: 'pdd-to-learn-app_summary.md' },
+    });
+
+    const moves: PlannedMove[] = [{
+      fileId: 'app-summary-id',
+      from: 'app-summaries/learn-app-summary.md',
+      to: '2-commcare/pdd-to-learn-app_summary.md',
+      action: 'move',
+      runFolderId: 'run-1-id',
+    }];
+
+    await executeMoves('opp-id', moves, d as any);
+
+    // create-then-update ordering
+    const createCallOrder = d.files.create.mock.invocationCallOrder[0]!;
+    const updateCallOrder = d.files.update.mock.invocationCallOrder[0]!;
+    expect(createCallOrder).toBeLessThan(updateCallOrder);
+  });
+
+  it('coalesce-folder: moves children of dup into canonical, then deletes the dup', async () => {
+    const d = makeFakeGoogleDrive();
+    // Coalesce action: list both same-name siblings via list-of-siblings query
+    // Two `verdicts/` siblings: verdicts-a (canonical, lex-min) and verdicts-b (dup)
+    d.files.list
+      // First list: find both `verdicts` folders under runFolderId to determine canonical
+      .mockResolvedValueOnce({
+        data: {
+          files: [
+            { id: 'verdicts-b', name: 'verdicts', mimeType: 'application/vnd.google-apps.folder' },
+            { id: 'verdicts-a', name: 'verdicts', mimeType: 'application/vnd.google-apps.folder' },
+          ],
+        },
+      })
+      // Then list children of dup (verdicts-b)
+      .mockResolvedValueOnce({
+        data: {
+          files: [
+            { id: 'child-1-id', name: 'foo.yaml', mimeType: 'application/x-yaml' },
+          ],
+        },
+      });
+
+    // Move child: get its parents, then update
+    d.files.get.mockResolvedValueOnce({ data: { parents: ['verdicts-b'] } });
+    d.files.update.mockResolvedValueOnce({
+      data: { id: 'child-1-id', name: 'foo.yaml' },
+    });
+    // Delete the dup
+    d.files.delete.mockResolvedValueOnce({ data: {} });
+
+    const moves: PlannedMove[] = [{
+      fileId: 'verdicts-b',
+      from: 'verdicts/',
+      to: 'verdicts/',
+      action: 'coalesce-folder',
+      runFolderId: 'run-1-id',
+    }];
+
+    await executeMoves('opp-id', moves, d as any);
+
+    // Child moved: addParents=verdicts-a (canonical), removeParents=verdicts-b
+    const updateArgs = d.files.update.mock.calls[0]![0];
+    expect(updateArgs.fileId).toBe('child-1-id');
+    expect(updateArgs.addParents).toBe('verdicts-a');
+    expect(updateArgs.removeParents).toBe('verdicts-b');
+
+    // Dup deleted last
+    expect(d.files.delete).toHaveBeenCalledWith({
+      fileId: 'verdicts-b',
+      supportsAllDrives: true,
+    });
+  });
+
+  it('folder cache: two moves into the same phase folder only call files.create once', async () => {
+    const d = makeFakeGoogleDrive();
+    // First lookup of 2-commcare/ — empty
+    d.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    // Folder create: returns id once
+    d.files.create.mockResolvedValueOnce({
+      data: { id: 'phase-2-id', name: '2-commcare' },
+    });
+    // Two file gets + two file updates
+    d.files.get
+      .mockResolvedValueOnce({ data: { parents: ['run-1-id'] } })
+      .mockResolvedValueOnce({ data: { parents: ['run-1-id'] } });
+    d.files.update
+      .mockResolvedValueOnce({ data: { id: 'a-id', name: 'a.md' } })
+      .mockResolvedValueOnce({ data: { id: 'b-id', name: 'b.md' } });
+
+    const moves: PlannedMove[] = [
+      {
+        fileId: 'a-id',
+        from: 'app-summaries/learn-app-summary.md',
+        to: '2-commcare/pdd-to-learn-app_summary.md',
+        action: 'move',
+        runFolderId: 'run-1-id',
+      },
+      {
+        fileId: 'b-id',
+        from: 'app-summaries/deliver-app-summary.md',
+        to: '2-commcare/pdd-to-deliver-app_summary.md',
+        action: 'move',
+        runFolderId: 'run-1-id',
+      },
+    ];
+
+    await executeMoves('opp-id', moves, d as any);
+
+    // Cache hit: files.create only called once for the folder
+    expect(d.files.create).toHaveBeenCalledOnce();
+    expect(d.files.update).toHaveBeenCalledTimes(2);
   });
 });

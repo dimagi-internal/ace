@@ -333,6 +333,273 @@ export async function planMoves(oppFolderId: string, drive: DriveLike): Promise<
   return out;
 }
 
+// ── executeMoves ───────────────────────────────────────────────────
+
+/**
+ * Result shape for `executeMoves` — counts and per-action errors.
+ */
+export interface ExecuteResult {
+  executed: number;
+  errors: Array<{ move: PlannedMove; message: string }>;
+}
+
+/**
+ * Find-or-create a folder by name under a parent. Inlined here (not pulled
+ * from the MCP) so this script stays a plain `npx tsx` runnable without
+ * importing MCP-server modules.
+ */
+async function findOrCreateFolder(
+  driveClient: any,
+  name: string,
+  parentFolderId: string,
+): Promise<string> {
+  const escaped = name.replace(/'/g, "\\'");
+  const list = await driveClient.files.list({
+    q: `mimeType='${FOLDER_MIME}' and name='${escaped}' and '${parentFolderId}' in parents and trashed=false`,
+    fields: 'files(id, name)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  const existing = list.data.files?.[0];
+  if (existing?.id) return existing.id;
+  const created = await driveClient.files.create({
+    requestBody: {
+      name,
+      mimeType: FOLDER_MIME,
+      parents: [parentFolderId],
+    },
+    fields: 'id, name',
+    supportsAllDrives: true,
+  });
+  return created.data.id!;
+}
+
+/**
+ * Walk segments of a target path under `runFolderId`, find-or-creating each
+ * intermediate folder. Returns the leaf folder ID. Uses `cache` to avoid
+ * repeat lookups; cache key is the path relative to runFolderId.
+ */
+async function ensureFolderPath(
+  driveClient: any,
+  runFolderId: string,
+  segments: string[],
+  cache: Map<string, string>,
+): Promise<string> {
+  let parentId = runFolderId;
+  let acc = '';
+  for (const seg of segments) {
+    acc = acc ? `${acc}/${seg}` : seg;
+    const cached = cache.get(acc);
+    if (cached) {
+      parentId = cached;
+      continue;
+    }
+    const folderId = await findOrCreateFolder(driveClient, seg, parentId);
+    cache.set(acc, folderId);
+    parentId = folderId;
+  }
+  return parentId;
+}
+
+/**
+ * Walk segments of `to` to find the existing file ID under `runFolderId`.
+ * Used for `create-shortcut` to resolve the target the shortcut should point at.
+ * Returns null if any segment doesn't exist.
+ */
+async function resolveTargetIdByPath(
+  driveClient: any,
+  runFolderId: string,
+  segments: string[],
+): Promise<string | null> {
+  let parentId = runFolderId;
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]!;
+    const escaped = seg.replace(/'/g, "\\'");
+    const list = await driveClient.files.list({
+      q: `name='${escaped}' and '${parentId}' in parents and trashed=false`,
+      fields: 'files(id, name, mimeType)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    const match = list.data.files?.[0];
+    if (!match?.id) return null;
+    parentId = match.id;
+  }
+  return parentId;
+}
+
+/**
+ * Execute a list of PlannedMove actions against the live Drive client.
+ * Per-action errors are collected and returned (not thrown) — partial-success
+ * is recoverable, so the caller can re-run after fixing whatever went wrong.
+ *
+ * Cache scope: per-call. Each opp's moves get a fresh cache so stale entries
+ * from another opp can't poison the lookup.
+ */
+export async function executeMoves(
+  oppFolderId: string,
+  moves: PlannedMove[],
+  driveClient: any,
+): Promise<ExecuteResult> {
+  void oppFolderId; // Reserved for future per-opp identity actions; unused today.
+  const folderCache = new Map<string, string>();
+  // Cache key prefix per run so two runs of the same name don't collide.
+  // Format: `${runFolderId}::${relPath}`
+  const runScopedCache = new Map<string, string>();
+  const result: ExecuteResult = { executed: 0, errors: [] };
+
+  for (const move of moves) {
+    try {
+      if (move.action === 'move') {
+        const segments = move.to.split('/');
+        const newName = segments.pop()!;
+        // Build a cache facade scoped to this run.
+        const runCache = new Map<string, string>();
+        for (const [k, v] of runScopedCache) {
+          if (k.startsWith(`${move.runFolderId}::`)) {
+            runCache.set(k.slice(move.runFolderId.length + 2), v);
+          }
+        }
+        const parentId = await ensureFolderPath(driveClient, move.runFolderId, segments, runCache);
+        // Sync the run-scoped cache back.
+        for (const [k, v] of runCache) {
+          runScopedCache.set(`${move.runFolderId}::${k}`, v);
+        }
+        // Get current parents to remove.
+        const meta = await driveClient.files.get({
+          fileId: move.fileId,
+          fields: 'parents',
+          supportsAllDrives: true,
+        });
+        const previousParents = (meta.data.parents ?? []).join(',');
+        await driveClient.files.update({
+          fileId: move.fileId,
+          addParents: parentId,
+          removeParents: previousParents,
+          requestBody: { name: newName },
+          fields: 'id, name',
+          supportsAllDrives: true,
+        });
+        console.log(`✓ move ${move.from} → ${move.to}`);
+        result.executed += 1;
+        void folderCache; // satisfy linter for the per-opp cache (kept for future use)
+      } else if (move.action === 'coalesce-folder') {
+        // Find both same-named siblings under the run.
+        // The folder name is the segment between leading and trailing slashes.
+        const folderName = move.from.replace(/\/$/, '').split('/').pop()!;
+        const escaped = folderName.replace(/'/g, "\\'");
+        const sibList = await driveClient.files.list({
+          q: `mimeType='${FOLDER_MIME}' and name='${escaped}' and '${move.runFolderId}' in parents and trashed=false`,
+          fields: 'files(id, name)',
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+        });
+        const siblings = (sibList.data.files ?? []) as Array<{ id: string; name: string }>;
+        if (siblings.length < 2) {
+          console.log(`✗ coalesce-folder ${move.from}: expected 2+ siblings, found ${siblings.length}`);
+          continue;
+        }
+        // Canonical = lex-min file id (stable ordering rule).
+        const sorted = [...siblings].sort((a, b) => a.id.localeCompare(b.id));
+        const canonical = sorted[0]!;
+        const dups = sorted.slice(1);
+        for (const dup of dups) {
+          // Move every child of dup into canonical.
+          const childList = await driveClient.files.list({
+            q: `'${dup.id}' in parents and trashed=false`,
+            fields: 'files(id, name)',
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+          });
+          for (const child of (childList.data.files ?? []) as Array<{ id: string; name: string }>) {
+            const childMeta = await driveClient.files.get({
+              fileId: child.id,
+              fields: 'parents',
+              supportsAllDrives: true,
+            });
+            const childPrev = (childMeta.data.parents ?? []).join(',');
+            await driveClient.files.update({
+              fileId: child.id,
+              addParents: canonical.id,
+              removeParents: childPrev,
+              fields: 'id, name',
+              supportsAllDrives: true,
+            });
+          }
+          // Delete the now-empty dup.
+          await driveClient.files.delete({
+            fileId: dup.id,
+            supportsAllDrives: true,
+          });
+        }
+        console.log(`✓ coalesce-folder ${move.from} (canonical=${canonical.id})`);
+        result.executed += 1;
+      } else if (move.action === 'create-shortcut') {
+        // Resolve the target file ID by walking `to` segments under runFolderId.
+        const targetSegments = move.to.split('/');
+        const targetId = await resolveTargetIdByPath(driveClient, move.runFolderId, targetSegments);
+        if (!targetId) {
+          console.log(`✗ create-shortcut ${move.from}: target ${move.to} not found under run`);
+          result.errors.push({ move, message: `target path not found: ${move.to}` });
+          continue;
+        }
+        // Ensure `<opp>/current/` exists.
+        const currentFolderId = await findOrCreateFolder(driveClient, 'current', oppFolderId);
+        // Delete any same-name child of current/ first (findOrReplace semantics).
+        const escapedName = move.from.replace(/'/g, "\\'");
+        const existingList = await driveClient.files.list({
+          q: `name='${escapedName}' and '${currentFolderId}' in parents and trashed=false`,
+          fields: 'files(id)',
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+        });
+        for (const existing of (existingList.data.files ?? []) as Array<{ id: string }>) {
+          await driveClient.files.delete({
+            fileId: existing.id,
+            supportsAllDrives: true,
+          });
+        }
+        await driveClient.files.create({
+          requestBody: {
+            name: move.from,
+            mimeType: 'application/vnd.google-apps.shortcut',
+            parents: [currentFolderId],
+            shortcutDetails: { targetId },
+          },
+          fields: 'id, name',
+          supportsAllDrives: true,
+        });
+        console.log(`✓ create-shortcut ${move.from} → ${move.to}`);
+        result.executed += 1;
+      } else if (move.action === 'delete-empty') {
+        // Defensive re-list — only delete if confirmed empty.
+        const childList = await driveClient.files.list({
+          q: `'${move.fileId}' in parents and trashed=false`,
+          fields: 'files(id)',
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+        });
+        const remaining = (childList.data.files ?? []).length;
+        if (remaining > 0) {
+          console.log(`✗ delete-empty ${move.from}: skipped (${remaining} children appeared after plan)`);
+          continue;
+        }
+        await driveClient.files.delete({
+          fileId: move.fileId,
+          supportsAllDrives: true,
+        });
+        console.log(`✓ delete-empty ${move.from}`);
+        result.executed += 1;
+      }
+    } catch (e: any) {
+      console.log(`✗ ${move.action} ${move.from}: ${e.message}`);
+      result.errors.push({ move, message: e.message });
+    }
+  }
+
+  return result;
+}
+
 // ── CLI dispatcher ─────────────────────────────────────────────────
 
 function pass(msg: string) { console.log(`PASS ${msg}`); }
@@ -428,11 +695,6 @@ function printOppPlan(oppName: string, moves: PlannedMove[]): void {
 async function main() {
   const { apply, oppFilter } = parseArgs(process.argv.slice(2));
 
-  if (apply) {
-    console.log('ERROR: --apply not yet wired (lands in 0.12.0 Tasks 11-12)');
-    process.exit(2);
-  }
-
   loadEnv();
 
   const rootId = process.env.ACE_DRIVE_ROOT_FOLDER_ID;
@@ -471,27 +733,55 @@ async function main() {
     return;
   }
 
-  console.log(`Planning Drive layout migration (dry-run, --check)`);
+  const modeLabel = apply ? 'apply' : 'dry-run, --check';
+  console.log(`Planning Drive layout migration (${modeLabel})`);
   console.log(`Root folder: ${rootId}`);
   console.log(`Found ${oppFolders.length} opp folder${oppFolders.length === 1 ? '' : 's'}`);
 
   let totalMoves = 0;
-  const perOppCounts: Array<{ name: string; count: number }> = [];
+  let totalExecuted = 0;
+  let totalErrors = 0;
+  const perOppCounts: Array<{ name: string; count: number; executed?: number; errors?: number }> = [];
   for (const opp of oppFolders) {
     const moves = await planMoves(opp.id, drive);
     totalMoves += moves.length;
-    perOppCounts.push({ name: opp.name, count: moves.length });
+    const summary: { name: string; count: number; executed?: number; errors?: number } = { name: opp.name, count: moves.length };
     printOppPlan(opp.name, moves);
+    if (apply && moves.length > 0) {
+      console.log('');
+      console.log(`  Applying ${moves.length} action${moves.length === 1 ? '' : 's'} for ${opp.name}…`);
+      const r = await executeMoves(opp.id, moves, driveClient);
+      summary.executed = r.executed;
+      summary.errors = r.errors.length;
+      totalExecuted += r.executed;
+      totalErrors += r.errors.length;
+    }
+    perOppCounts.push(summary);
   }
 
   console.log('');
   console.log('── Summary ──');
-  for (const { name, count } of perOppCounts) {
-    console.log(`  ${name}: ${count} planned action${count === 1 ? '' : 's'}`);
+  for (const { name, count, executed, errors } of perOppCounts) {
+    if (apply) {
+      console.log(`  ${name}: ${executed ?? 0}/${count} applied${errors ? ` (${errors} errors)` : ''}`);
+    } else {
+      console.log(`  ${name}: ${count} planned action${count === 1 ? '' : 's'}`);
+    }
   }
-  console.log(`  total: ${totalMoves} planned action${totalMoves === 1 ? '' : 's'} across ${oppFolders.length} opp${oppFolders.length === 1 ? '' : 's'}`);
-  console.log('');
-  pass('Dry-run mode (--check). Re-run with --apply to execute.');
+  if (apply) {
+    console.log(`  total: applied ${totalExecuted} moves across ${oppFolders.length} opp${oppFolders.length === 1 ? '' : 's'}; ${totalErrors} errors`);
+    console.log('');
+    if (totalErrors === 0) {
+      pass(`Apply mode complete. ${totalExecuted} of ${totalMoves} planned actions executed.`);
+    } else {
+      warn(`Apply mode complete with errors. ${totalExecuted} executed, ${totalErrors} failed. Re-run after fixing root cause.`);
+      process.exit(1);
+    }
+  } else {
+    console.log(`  total: ${totalMoves} planned action${totalMoves === 1 ? '' : 's'} across ${oppFolders.length} opp${oppFolders.length === 1 ? '' : 's'}`);
+    console.log('');
+    pass('Dry-run mode (--check). Re-run with --apply to execute.');
+  }
 }
 
 // CLI guard: only run main() when invoked directly, not when imported by tests.
