@@ -151,6 +151,48 @@ doing — but phase agents should still not crash on a missing `run_state.yaml`
 read; they should skip the status update with a single-line warning and
 let the operator fix the state gap explicitly.
 
+## Scope boundaries — what goes in `run_state.yaml`
+
+`run_state.yaml` is **per-run, per-opp**. Skills must keep it scoped to
+this opp's lifecycle and not let plugin-wide concerns leak in.
+
+**In scope** (write to `run_state.yaml`):
+- This opp's phase + step status, gate decisions, mode.
+- Pointers to this opp's artifacts (Drive file IDs, app IDs, opp UUID,
+  experiment ID).
+- Open questions that are **about this opp** — pricing for this
+  funder, country list for this rollout, LLO contacts for this program.
+- Eval verdicts for this opp's runs.
+- `phase_X_backlog` items that block **this opp** — a stuck Phase 3,
+  a stub LLO invite that needs follow-up, a deferred screenshot capture.
+
+**Out of scope** (do NOT write to `run_state.yaml` — they belong elsewhere):
+- Bug reports about MCP atoms, skills, or tooling (write to GitHub
+  issues on jjackson/ace; mention them in the resolving PR's
+  CHANGELOG entry).
+- Upstream service bugs (Nova, Connect, OCS) — file as issues on the
+  upstream repo (e.g. voidcraft-labs/nova-plugin#7), reference from
+  the patch skill's removal-criteria block.
+- Cross-opp learnings or pattern observations — write to the canopy
+  run log (`.claude/pm/runs/<date>-<lens>.md`).
+- Recurring sweeps or cleanup tasks that apply to every opp — those
+  are skill-design or doctor-lint asks, not per-opp state.
+
+**Why this matters:** new sessions reading `run_state.yaml` should see
+what's open *for this opp*. Mixing in plugin-wide findings creates
+noise that operators have to mentally subtract on every read, and the
+findings rot in place because no skill is responsible for plugin-wide
+follow-up. The 0.11.4 LEEP rename surfaced 3 such entries in
+`phase_X_backlog` that described MCP bugs, all already resolved
+upstream — kept in the per-opp log for "audit," but actually
+unreadable signal.
+
+**Doctor lint (added 0.11.6).** `/ace:doctor` now scans every opp's
+`run_state.yaml` `phase_X_backlog` entries and warns when an entry's
+`location` field references files outside `ACE/<opp>/` (e.g.
+`mcp/connect/backends/...`, `skills/<name>/`, `lib/<name>.ts`) — those
+should live in GitHub issues, not per-opp state.
+
 ## Execution Modes
 
 ACE has three modes. **`default` is the default** — pick another only

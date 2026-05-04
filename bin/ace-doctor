@@ -34,6 +34,15 @@ if [ "${1:-}" = "verdicts" ]; then
   fi
   SUB_OPP="$1"
   shift
+elif [ "${1:-}" = "state-yaml-lint" ]; then
+  SUBCOMMAND="state-yaml-lint"
+  shift
+  if [ -z "${1:-}" ]; then
+    echo "usage: ace-doctor state-yaml-lint <opp-name>" >&2
+    exit 2
+  fi
+  SUB_OPP="$1"
+  shift
 fi
 
 while [ $# -gt 0 ]; do
@@ -91,6 +100,15 @@ if [ "$SUBCOMMAND" = "verdicts" ]; then
     exit 0
   fi
   cd "$ROOT" && exec npx tsx scripts/validate-opp-verdicts.ts "$SUB_OPP"
+fi
+
+if [ "$SUBCOMMAND" = "state-yaml-lint" ]; then
+  if [ ! -f "$ROOT/scripts/lint-opp-state.ts" ]; then
+    echo "FAIL state-yaml-lint_subcommand: $ROOT/scripts/lint-opp-state.ts not found"
+    echo "  fix: run /ace:update to pull a version that ships the lint (>= 0.11.6)"
+    exit 0
+  fi
+  cd "$ROOT" && exec npx tsx scripts/lint-opp-state.ts "$SUB_OPP"
 fi
 
 # If the user is inside a dev worktree that differs from $ROOT, flag it so they
