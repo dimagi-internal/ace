@@ -32,6 +32,32 @@ rationale and artifact-path contract.
 
 If no mode is passed, default to `--quick`.
 
+## Wall-Clock Budget
+
+This skill is **synchronous and time-boxed**. Phase 4's deep capture
+once spun for 3+ hours waiting on a fictional "background task" — that
+pattern is banned (see `agents/ace-orchestrator.md § Long-Running
+Skills — No Fake Background Tasks`). Concrete budget:
+
+- **Per-prompt timeout:** 90s. If a poll loop hasn't returned
+  `status: complete` in 90s, abort that prompt, write
+  `structural_pass: false` with `structural_notes: "timeout @ 90s"`,
+  and continue to the next prompt.
+- **Suite wall-clock cap:** `min(90s × N_prompts, 30 min)`. Track
+  elapsed with `date +%s` checkpoints around the chat loop. If the cap
+  is reached mid-suite, stop sending new prompts, write the transcript
+  with `complete: false` + `prompts_captured: <N>` / `prompts_remaining:
+  <M>`, return.
+- **Three-prompt failure circuit-breaker.** If three consecutive
+  prompts fail (timeout or error response), abort the suite — OCS is
+  unhealthy, and burning the rest of the budget produces noise. Write
+  the partial transcript with a `[BLOCKER]` `auto_surfaced` entry
+  for the eval skill.
+- **Never call `ScheduleWakeup` from inside this skill.** Phase 4 is
+  foreground sequential work; deferring the agent doesn't background
+  the chat loop. If you can't finish in budget, fail loud and write
+  the partial — the orchestrator decides whether to re-dispatch.
+
 ## Process
 
 1. **Resolve the target bot's embed credentials:**
@@ -51,7 +77,40 @@ If no mode is passed, default to `--quick`.
    this for interactive `/ace:*` slash commands; manual invocations
    need an explicit `source $CLAUDE_PLUGIN_DATA/.env` (or equivalent).
 
-2. **Build the test prompt suite by mode:**
+2. **Liveness probe before the suite (mandatory).** Before sending
+   any suite prompt, send a single 1-token smoke probe via
+   `ocs_send_test_message(public_id, embed_key, "ping")` and time it.
+   - **Pass:** response received in <5s with non-empty content. Proceed.
+   - **Slow (5–30s):** continue, but flag `auto_surfaced: WARN "OCS
+     ping responded in <Ns>; suite may run slow"` for the eval. Don't
+     halt — the suite cap will catch a true stall.
+   - **Empty / error / >30s:** halt with a hard error before burning
+     budget on a dead session. Common causes: expired session
+     (`/ace:ocs-login`), OCS rate limit, dead chatbot
+     (`is_archived: true`). Surface the cause in the error message.
+
+   The probe takes ~2s when healthy. It's the cheapest pre-flight that
+   distinguishes "OCS is responsive" from "absence of output" — which
+   was the single biggest observability gap in the 0.11.5-era Phase 4
+   capture loop.
+
+3. **Resume from partial capture (idempotent re-runs).** Check for an
+   existing transcript at the destination path
+   (`ACE/<opp-name>/qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md`).
+   - **If absent:** fresh capture. Continue.
+   - **If present and `complete: true` in the header:** the suite
+     already ran cleanly. Skip the chat loop entirely; the caller can
+     re-dispatch the eval against the existing transcript.
+   - **If present and `complete: false`:** parse the entries already
+     captured. Build the remaining-prompts list as `<full suite> -
+     <captured-prompt-strings>`. The chat loop in Step 5 picks up at
+     the next uncaptured prompt; the file is appended-to in place.
+
+   This makes a re-dispatch after timeout / circuit-break / kill cheap:
+   captured prompts aren't re-sent. The skill is idempotent against the
+   transcript file regardless of how many times it's invoked.
+
+4. **Build the test prompt suite by mode:**
 
    ### `--quick` suite (5 questions — fast fail)
    - "Who should I contact if you can't answer my question?"
@@ -96,16 +155,37 @@ If no mode is passed, default to `--quick`.
    ### `--monitor` suite
    - Same as `--deep` but skips the edge-case extras (they're stable).
 
-3. **Chat with the bot:**
+5. **Chat with the bot — incremental, time-boxed:**
    - Start an anonymous session via `POST /api/chat/start/`
-     with `X-Embed-Key` header and the `Referer` set to the allowed origin
-   - For each prompt:
-     - Send via `POST /api/chat/{session_id}/message/`
-     - Poll `GET /api/chat/{session_id}/{task_id}/poll/` until `status: "complete"`
-     - Capture the response content, cited_files, and tags
-   - Timeout: 120 seconds per response (LLM + retrieval can be slow)
+     with `X-Embed-Key` header and the `Referer` set to the allowed origin.
+   - Record the suite start timestamp (`SUITE_START = $(date +%s)`).
+   - **For each prompt** (skipping any already in the partial transcript
+     from Step 3):
+     1. Record the per-prompt start timestamp (`PROMPT_START = $(date +%s)`).
+     2. Send via `POST /api/chat/{session_id}/message/`.
+     3. Poll `GET /api/chat/{session_id}/{task_id}/poll/` until
+        `status: "complete"` OR per-prompt timeout (**90s**) elapses.
+        On timeout: capture an empty response, set
+        `structural_pass: false`, `structural_notes: "timeout @ 90s"`.
+     4. Capture the response content, cited_files, tags, and elapsed time.
+     5. **Run structural checks (Step 6) on this response inline.**
+     6. **Append the entry to the transcript file** via
+        `drive_update_file` with `ifMatchRevisionId` from the prior
+        read (revisionVersion CAS, added 0.11.3). The transcript file
+        was created on first prompt with the `complete: false` header;
+        each subsequent entry is appended in place. Update the header's
+        `prompts_captured` counter on every write.
+     7. **Wall-clock cap check.** If
+        `($(date +%s) - SUITE_START) > min(90 × N_prompts, 1800)` —
+        stop the loop. Don't send another prompt. Continue to Step 7.
+     8. **Circuit breaker.** If the last 3 consecutive entries have
+        `structural_pass: false` (timeout or error), stop the loop.
+        OCS is unhealthy; burning the rest of the budget produces
+        noise.
+   - At loop exit (clean finish, cap-hit, or circuit-break), proceed to
+     Step 7 to flush metadata.
 
-4. **Run structural checks on each response** (cheap, deterministic —
+6. **Run structural checks on each response** (cheap, deterministic —
    these are qa-side checks, not LLM judgment):
    - `response_received`: non-empty string within timeout
    - `no_error`: no error marker in the response (e.g., not a "sorry,
@@ -115,9 +195,17 @@ If no mode is passed, default to `--quick`.
    - Set per-prompt `structural_pass: true | false` and a `structural_notes`
      string for the judge (and humans) to read
 
-5. **Write the transcript capture** to
-   `ACE/<opp-name>/qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md`. If no
-   `opp_name` is provided (golden-template-no-opp runs), use
+7. **Final transcript metadata flush.** The entries themselves were
+   appended incrementally during Step 5 — this is just the closing
+   metadata write. Update the header to:
+   - `complete: true | false` (true on clean loop exit; false on
+     wall-clock cap hit or circuit-break)
+   - `prompts_captured: <N>` and `prompts_remaining: <M>` if partial
+   - `structural_pass_rate: <X/N>`
+   - `suite_elapsed_seconds: <total wall clock>`
+
+   Path: `ACE/<opp-name>/qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md`.
+   If no `opp_name` is provided (golden-template-no-opp runs), use
    `ACE/golden-template/` as the path root — this is the canonical
    fallback. `ocs-chatbot-eval` reads from the same path convention so
    the skills compose correctly even without an opp. For `--quick`
@@ -132,6 +220,10 @@ If no mode is passed, default to `--quick`.
    Mode: quick | deep | monitor
    Capture method: widget       # widget | openai-compat
    Suite size: N prompts
+   Prompts captured: N         # may be < suite size if budget hit
+   Prompts remaining: 0        # >0 means partial; eval handles partials
+   Complete: true              # false = budget hit or circuit-break
+   Suite elapsed: 142s
    Structural pass rate: <X/N>
 
    ## Entries
@@ -158,15 +250,18 @@ If no mode is passed, default to `--quick`.
 
    The transcript is the machine-readable + human-readable input to
    `ocs-chatbot-eval`. Keep every entry's `expected_*` fields populated so
-   the judge can grade without re-deriving.
+   the judge can grade without re-deriving. Partial transcripts
+   (`Complete: false`) are still graded — eval reports them as
+   `incomplete-coverage` rather than failing.
 
-6. **Return structural summary:**
-   - `total_prompts`, `structural_pass_count`, `structural_fail_count`,
-     `capture_path`
+8. **Return structural summary:**
+   - `total_prompts`, `prompts_captured`, `structural_pass_count`,
+     `structural_fail_count`, `capture_path`, `complete: true | false`,
+     `suite_elapsed_seconds`
    - On `--quick`, also print to stdout so the agent can see it without
      reading the capture file
 
-7. **Structural gate (mode-dependent):**
+9. **Structural gate (mode-dependent):**
    - `--quick`: structural fail rate > 0 → escalate (the bot is miswired,
      not a judgment call). Eval is skipped.
    - `--deep` / `--monitor`: never block at the qa layer. Even a partially
@@ -176,18 +271,22 @@ If no mode is passed, default to `--quick`.
 
 ## MCP Tools Used
 
-- OCS: `ocs_get_chatbot_embed_info` (to resolve `experiment_id` → embed
-  credentials)
-- No other MCP tools — the chat is done via raw HTTP to the anonymous
-  widget endpoint (`POST /api/chat/start/` → `POST /api/chat/{session_id}/message/`
-  → `GET /api/chat/{session_id}/{task_id}/poll/`), not through the MCP
-  server. This is load-bearing: the MCP alternative
-  `ocs_send_test_message` returns only the response text and misses
-  `cited_files`, `tags`, `session_id`, and `elapsed_ms` that the
-  transcript schema requires. **Do not substitute the MCP tool for the
-  raw widget calls** — doing so produces a structurally incomplete
-  transcript that `ocs-chatbot-eval` has to grade around (citations and
-  tagging dimensions become ungradable).
+- OCS: `ocs_get_chatbot_embed_info` (Step 1 — resolve `experiment_id`
+  → embed credentials).
+- OCS: `ocs_send_test_message` (Step 2 ONLY — single 1-token liveness
+  probe before the suite). **Do not use `ocs_send_test_message` for the
+  suite itself** — it strips `cited_files`, `tags`, `session_id`, and
+  `elapsed_ms` from its return shape, which makes the transcript
+  structurally ungradable for the citation and tagging dimensions of
+  `ocs-chatbot-eval`. The suite uses raw widget HTTP.
+- Raw widget HTTP (Step 5 — the actual suite): `POST /api/chat/start/`
+  → `POST /api/chat/{session_id}/message/` → `GET
+  /api/chat/{session_id}/{task_id}/poll/`. This path returns the full
+  transcript schema.
+- Google Drive: `drive_create_file` (Step 5 first write),
+  `drive_update_file` with `ifMatchRevisionId` (Step 5 incremental
+  appends + Step 7 metadata flush), `drive_read_file` (Step 3
+  resume-from-partial).
 
 ## Mode Behavior
 
@@ -214,3 +313,4 @@ When `--dry-run` is active:
 | 2026-04-19 | **QA/eval split.** Removed LLM-as-Judge; this skill now captures transcripts + structural checks only. Writes to `qa-captures/` (renamed from embedded report). Gate brief ownership moved to new `ocs-chatbot-eval` skill. See `skills/README.md § QA vs Eval — the two-phase pattern` | ACE team (qa/eval split refactor) |
 | 2026-04-19 | Document `ACE/golden-template/` as the canonical no-opp fallback path; make env-source of `$OCS_GOLDEN_TEMPLATE_ID` explicit (`$CLAUDE_PLUGIN_DATA/.env`); call out that `ocs_send_test_message` MCP tool is structurally incomplete for the transcript schema — stick to raw widget HTTP. Surfaced during first real qa/eval split exercise against the golden template | ACE team (qa/eval iteration loop) |
 | 2026-04-29 | Added `Capture method:` header field to the transcript schema (`widget` for the anonymous widget endpoint this skill uses today; `openai-compat` reserved for the OpenAI-compatible endpoint when capture for that endpoint lands). `ocs-chatbot-eval` branches its source-usage rubric on this field — without it, the rubric can't tell whether an empty `cited_files` indicates a real grounding gap (openai-compat path) or a measurement limitation (widget path, where the API never returns inline citations regardless). | ACE team (0.10.10) |
+| 2026-05-03 | **Time-box, incremental writes, resume-from-partial, liveness probe.** Added `## Wall-Clock Budget` (per-prompt 90s, suite-cap `min(90s × N, 30 min)`, 3-prompt circuit-breaker, no `ScheduleWakeup`). Renumbered Process: new Step 2 mandatory `ocs_send_test_message` liveness probe before suite (catches dead session before budget burns); new Step 3 reads any existing transcript and skips already-captured prompts (idempotent re-runs); Step 5 chat loop now writes each entry to Drive incrementally via `drive_update_file` + `revisionVersion` CAS so a mid-loop kill doesn't lose data; Step 7 is a metadata-only flush. Header schema gains `Prompts captured`, `Prompts remaining`, `Complete`, `Suite elapsed` fields; partial transcripts are graded by eval as `incomplete-coverage` rather than failing. Surfaced after the `turmeric-20260503-0835` deep capture spun for 3+ hours on a fictional bg task; the prior all-or-nothing write meant zero recoverable evidence. | ACE team (0.11.6) |

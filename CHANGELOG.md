@@ -5,6 +5,86 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.11.7 — 2026-05-03
+
+**Long-running-skill contract: no fake background tasks, wall-clock
+budgets, incremental writes, resume-from-partial.**
+
+Phase 4 deep capture for `turmeric-20260503-0835` spun for 3+ hours on
+a fictional background task before being escalated. The "bg task
+bu9y9y9s5" was an in-conversation label; no work was running. Each
+polling agent saw an empty `qa-captures/` folder, inferred "still
+capturing" from absence, and rescheduled — ~14 wakeups, ~700K tokens,
+zero progress. Root causes (multiple, layered): no real bg-task
+primitive in ACE; transcript written once-at-end (mid-loop kill loses
+everything); no suite-level wall-clock cap; no liveness probe on
+resume; no `run_state.yaml` heartbeat. This release ships the
+class-level fixes.
+
+### Added
+
+- `agents/ace-orchestrator.md § Long-Running Skills — No Fake
+  Background Tasks` — phase-internal sequential skills run synchronously
+  to completion with a hard wall-clock budget. `ScheduleWakeup` is
+  reserved for cron-recurring skills (`timeline-monitor`,
+  `flw-data-review`, `ocs-chatbot-qa --monitor`). Documents the five
+  guardrails every long-running skill needs: wall-clock budget,
+  liveness probe, incremental writes, resume-from-partial,
+  three-strike circuit breaker. Distinguishes legitimate polling (with
+  bounded retry) from fake-bg-task self-deferral.
+- `agents/ace-orchestrator.md § Touching State → State-as-canary
+  contract` — every skill writes `<step>: in_progress` with fresh
+  `last_actor_at` BEFORE work and `done` AFTER. Resume agents that see
+  `in_progress` + `last_actor_at` > 15 min treat the step as dead, not
+  "still running." 15-min threshold balances "let a slow but live
+  skill finish" against "don't wait on a dead one."
+- `skills/README.md § Long-running skills — no fake background tasks`
+  — skill-author convention covering all six guardrails plus a pointer
+  to `skills/ocs-chatbot-qa/SKILL.md` as the canonical example.
+- `skills/ocs-chatbot-qa/SKILL.md § Wall-Clock Budget` — per-prompt
+  90s, suite-cap `min(90s × N_prompts, 30 min)`, three-prompt circuit
+  breaker, explicit no-`ScheduleWakeup` rule.
+
+### Changed
+
+- `skills/ocs-chatbot-qa/SKILL.md § Process` renumbered to 9 steps:
+  - Step 2 NEW: liveness probe via `ocs_send_test_message` (<5s
+    smoke; halt loud on dead session before the budget burns).
+  - Step 3 NEW: resume-from-partial — read existing transcript at
+    destination path, skip already-captured prompts. Idempotent
+    re-runs.
+  - Step 5 (chat): per-prompt timeout dropped 120s → 90s; entries
+    appended to the transcript via `drive_update_file` +
+    `ifMatchRevisionId` CAS as each completes (no more "build in
+    memory, flush at end"); wall-clock cap check after each prompt;
+    three-strike circuit breaker on consecutive structural fails.
+  - Step 7 (was Step 5): collapsed to a metadata-only flush —
+    `complete: true|false`, `prompts_captured`, `prompts_remaining`,
+    `suite_elapsed_seconds`, `structural_pass_rate`. The entries
+    themselves were already written by Step 5.
+  - Header schema gains `Prompts captured`, `Prompts remaining`,
+    `Complete`, `Suite elapsed` fields. Partial transcripts
+    (`Complete: false`) are still graded by `ocs-chatbot-eval` —
+    reported as `incomplete-coverage` rather than failing.
+- `agents/ocs-setup.md § Resumption Contract` strengthened to forbid
+  mid-phase `ScheduleWakeup`. Resume agents apply the state-canary
+  rule from the orchestrator (in-progress + stale `last_actor_at`
+  ≥ 15 min = dead, not "still running"). Step 3 (deep qa+eval)
+  explicitly resumes from a partial transcript when one exists.
+
+### Notes
+
+- `ocs-chatbot-qa` now uses `ocs_send_test_message` for the Step 2
+  liveness probe ONLY — the suite itself still runs through raw
+  widget HTTP for the full transcript schema (citations, tags,
+  session_id, elapsed_ms). The skill's MCP Tools Used section
+  documents this split explicitly.
+- Future scope (separate PR): apply the same contract to
+  `app-screenshot-capture` (mobile recipes can stall),
+  `app-release` (CCHQ build polling), and `qa-plan`. Add a doctor
+  probe for "stale `in_progress` steps across opps" as a class-level
+  preventer.
+
 ## 0.11.0 — 2026-05-02
 
 **Multi-run-per-opp revival + canonical input packs.**

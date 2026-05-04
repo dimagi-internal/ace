@@ -103,8 +103,10 @@ Write phase summary to `ACE/<opp-name>/ocs-setup-summary.md`.
 Phase 4 is the longest-running phase observed in real e2e runs (RAG
 indexing + deep qa+eval can stretch toward an hour). On a session that
 loses context mid-phase, the orchestrator may re-dispatch this agent
-to resume. To make resumption cheap, every step is idempotent and
-artifact-checkable:
+to resume. Resumption is **artifact-driven**, not polling-based —
+see `agents/ace-orchestrator.md § Long-Running Skills — No Fake
+Background Tasks` for the rule. To make resumption cheap, every step
+is idempotent and artifact-checkable:
 
 | Step | Done-when artifact exists | Action when found |
 |------|---------------------------|-------------------|
@@ -118,11 +120,25 @@ artifact-checkable:
 1. Read `ACE/<opp-name>/run_state.yaml` (the orchestrator passes this
    inline per the orchestrator's Performance Conventions, but if it
    isn't in the prompt, fetch it from Drive).
-2. For each step in order, check the artifact column above. If the
+2. **Apply the state-canary rule** from
+   `agents/ace-orchestrator.md § Touching State — Operator Capture →
+   State-as-canary contract`:
+   - If a step shows `in_progress` AND `last_actor_at` ≤ 15 min ago,
+     halt with a "another session appears to be working this opp"
+     message — do not race.
+   - If a step shows `in_progress` AND `last_actor_at` > 15 min ago,
+     treat as **dead** and re-dispatch the step. Do NOT wait for a
+     phantom completion.
+3. For each step in order, check the artifact column above. If the
    artifact exists AND the corresponding `run_state.yaml` field shows
    `done`, skip that step and continue. If the artifact is missing OR
-   the state field shows `pending`/`error`, execute the step.
-3. Step 1's idempotence is special: if a chatbot named
+   the state field shows `pending`/`error`/`in_progress` (with stale
+   `last_actor_at`), execute the step. **For Step 3 (deep qa+eval),
+   a partial transcript with `Complete: false` is also a valid resume
+   point** — `ocs-chatbot-qa` reads it and skips already-captured
+   prompts (idempotent re-run; see `skills/ocs-chatbot-qa/SKILL.md
+   § Process` Step 3).
+4. Step 1's idempotence is special: if a chatbot named
    `ACE - <opp-name>` exists in OCS but `ocs-agent-config.md` is
    missing, treat the bot as authoritative and re-derive the config
    doc from `ocs_get_chatbot` — don't clone a second bot.
@@ -130,7 +146,17 @@ artifact-checkable:
 **State updates on resumption:** every step should still update
 `run_state.yaml` on completion, even if the artifact pre-existed. This
 keeps `last_actor`/`last_actor_at` accurate across the resumption
-boundary.
+boundary. Skills must also write `<step>: in_progress` with a fresh
+`last_actor_at` BEFORE doing work — that's the heartbeat the resume
+canary depends on.
+
+**No `ScheduleWakeup` mid-phase.** The Phase 4 agent must NOT
+self-schedule a wakeup to "wait for the deep capture to finish." That
+pattern produced the `turmeric-20260503-0835` failure (3+ hour stall,
+no transcript, no recoverable evidence — fictional bg task). If
+`ocs-chatbot-qa --deep` exceeds its wall-clock budget, it returns a
+partial transcript with `Complete: false`; the orchestrator
+re-dispatches this agent, and Step 3 above resumes from the partial.
 
 **Why this matters:** observed in `e2e-xw5gk` (2026-04-29): a 2-hour
 gap between a `drive_create_file` for `ocs-setup/widget-handoff.md`

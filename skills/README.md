@@ -316,6 +316,51 @@ the source of truth if this prose drifts.
   gate-bound. As more per-skill `-eval` skills gain rubrics and start
   writing to `verdicts/`, opp-eval automatically picks them up.
 
+## Long-running skills — no fake background tasks
+
+If a skill's work loop runs for more than ~30 seconds (chat suites,
+multi-form mobile recipes, multi-build releases, multi-page screenshot
+captures), it must follow the long-running-skill contract from
+`agents/ace-orchestrator.md § Long-Running Skills — No Fake Background
+Tasks`. Concretely:
+
+1. **Add a `## Wall-Clock Budget` section** declaring per-unit and
+   suite-level caps. Track elapsed with `date +%s` checkpoints.
+2. **Add a liveness probe** as the first step inside `## Process`
+   (after credential resolution). One cheap (<5s) call against the
+   upstream service. Fail loud if it doesn't respond — don't burn
+   budget on a dead session.
+3. **Write artifacts incrementally.** Every captured unit (prompt,
+   form, screenshot) lands in the artifact file as it completes,
+   typically via `drive_update_file` with `ifMatchRevisionId`
+   (revision-CAS, available since 0.11.3). "Build everything in
+   memory and flush at the end" is banned — a mid-loop kill loses
+   the work.
+4. **Resume from partial.** First step inside `## Process` (after
+   liveness) reads any existing artifact and skips already-completed
+   units. Re-running the skill is idempotent.
+5. **Three-strike circuit breaker.** Three consecutive unit failures
+   (timeout, error response) abort the suite. Burning the rest of
+   the budget produces noise.
+6. **Heartbeat `run_state.yaml`.** Write `<step>: in_progress` with a
+   fresh `last_actor_at` BEFORE work, `done` AFTER. Resume agents
+   treat `in_progress` + `last_actor_at` > 15 min as dead (see
+   `agents/ace-orchestrator.md § State-as-canary contract`).
+7. **No `ScheduleWakeup` from inside a phase-internal skill.** That
+   primitive defers the agent without backgrounding the work. It's
+   reserved for cron-recurring skills (`timeline-monitor`,
+   `flw-data-review`, `ocs-chatbot-qa --monitor`) — never for
+   foreground sequential work.
+
+**Canonical example:** `skills/ocs-chatbot-qa/SKILL.md`. See its
+`## Wall-Clock Budget` section and the Process steps for liveness
+probe (Step 2), resume-from-partial (Step 3), incremental writes
+(Step 5), and metadata-only flush (Step 7).
+
+This convention landed in 0.11.6 after the `turmeric-20260503-0835`
+deep capture stalled for 3+ hours on a fictional background task and
+produced no recoverable transcript.
+
 ## How the PDD `## Evidence Model` flows through skills
 
 The PDD template (`templates/pdd-template.md`) declares an `## Evidence Model` section with three layers:
