@@ -29,8 +29,8 @@ rebuilds only `llo-manager-guide.md`.
 | Phase 2 | `ACE/<opp>/deployment-summary.md` | HQ domain quoted in the "where the data lives" section |
 | Phase 3 (`run_state.yaml`) | `connect.opportunity` + `connect.payment_units` + `connect.verification_flags` | payment per visit, max-per-day, verification rules |
 | Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | "where to ask questions" link |
-| Phase 5 Step 1 (`qa-plan`) | `ACE/<opp>/qa-plan/uat-checklist.md` | embedded as "Pre-deployment UAT" section |
-| Phase 5 Step 2 (`app-screenshot-capture`) | `ACE/<opp>/screenshots/manifest.yaml` | optional — embed key screenshots in the "what FLWs see" section |
+| Phase 1 | `ACE/<opp>/expected-journeys.md` | seed the "Pre-deployment UAT" section from per-journey pass criteria |
+| Phase 5 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/screenshots/manifest.yaml` | optional — embed key screenshots in the "what FLWs see" section |
 
 ## Output
 
@@ -69,7 +69,8 @@ For LLO operators overseeing FLW deployment of this opportunity.
   detection window, etc.>
 
 ## Pre-deployment UAT (do this before inviting FLWs)
-<embed `uat-checklist.md` content verbatim>
+<derive a checklist from each journey's pass criteria in
+`expected-journeys.md` — one tickable line per criterion>
 
 ## Where the data lives
 - HQ domain: <ACE_HQ_DOMAIN from deployment-summary.md>
@@ -91,8 +92,10 @@ For LLO operators overseeing FLW deployment of this opportunity.
 - **Quote real numbers from `run_state.yaml`.** Payment amounts, max
   counts, GPS fence values come from the actual Connect config — don't
   paraphrase or round.
-- **Embed `uat-checklist.md` verbatim** as the Pre-deployment UAT
-  section. The LLO needs the same checks the qa-plan judge applies.
+- **Derive the Pre-deployment UAT checklist from per-journey
+  `pass_criteria` in `expected-journeys.md`.** Every journey's
+  pass-criterion line becomes a tickable item. Don't paraphrase —
+  paste the criterion verbatim with a leading `- [ ]`.
 
 ## Process
 
@@ -111,10 +114,11 @@ For LLO operators overseeing FLW deployment of this opportunity.
 
 4. **Draft the guide** following the structure above.
 
-5. **Embed UAT checklist verbatim.** Read
-   `ACE/<opp>/qa-plan/uat-checklist.md` and inline it under the
-   Pre-deployment UAT section. Don't summarize — the LLO needs the
-   exact list to tick through before go-live.
+5. **Derive UAT checklist from journey pass criteria.** Read
+   `ACE/<opp>/expected-journeys.md` and convert each journey's
+   `pass_criteria` lines into checkbox items under the
+   Pre-deployment UAT section. The LLO ticks through every journey
+   before go-live.
 
 6. **Self-check before write.** Verify:
    - Every payment-unit number quoted matches `run_state.yaml` exactly
@@ -132,8 +136,10 @@ For LLO operators overseeing FLW deployment of this opportunity.
    - **Coverage:** every Layer-A verification rule + every PDD
      escalation trigger referenced
    - **Audience fit:** operations-tone, not FLW-walkthrough-tone
-   - **UAT completeness:** the embedded UAT checklist is verbatim
-     from `qa-plan` (no editorial dropping of items)
+   - **UAT completeness:** every journey in `expected-journeys.md`
+     is represented by at least one checklist item, and each item's
+     wording matches the journey's `pass_criteria` (no editorial
+     dropping)
 
    Verdict to `ACE/<opp>/verdicts/training-llo-guide.yaml`.
 

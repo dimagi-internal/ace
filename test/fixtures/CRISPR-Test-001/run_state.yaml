@@ -22,8 +22,7 @@ phases:
     pdd-to-learn-app: pending
     pdd-to-deliver-app: pending
     app-deploy: pending
-    app-test: pending
-    training-materials: pending
+    app-test-cases: pending
   connect-setup:        # Phase 3
     connect-program-setup: pending
     connect-opp-setup: pending

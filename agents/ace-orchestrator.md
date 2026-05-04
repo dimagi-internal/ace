@@ -71,18 +71,15 @@ phases:
     pdd-to-learn-app: pending
     pdd-to-deliver-app: pending
     app-deploy: pending
-    app-test: pending
+    app-test-cases: pending
   connect-setup:        # Phase 3
     connect-program-setup: pending
     connect-opp-setup: pending
-  ocs-setup:            # Phase 4 — qa/eval split in 0.3.5
+  ocs-setup:            # Phase 4 — qa/eval split in 0.3.5; deep moved to /ace:qa-deep
     ocs-agent-setup: pending
     ocs-chatbot-qa-quick: pending
     ocs-chatbot-eval-quick: pending
-    ocs-chatbot-qa-deep: pending
-    ocs-chatbot-eval-deep: pending
-  qa-and-training:        # Phase 5 — added 0.9.0; per-artifact training split 0.10.79–0.10.84
-    qa-plan: pending
+  qa-and-training:        # Phase 5 — added 0.9.0; per-artifact training split 0.10.79–0.10.84; qa-plan retired in shallow/deep QA split
     app-screenshot-capture: pending
     training-llo-guide: pending
     training-flw-guide: pending
@@ -109,7 +106,7 @@ phases:
 gates:
   idea-to-pdd: approved|pending|rejected
   app-deploy: pending
-  ocs-chatbot-eval-deep: pending    # renamed from ocs-chatbot-qa-deep in 0.3.5
+  ocs-chatbot-eval-quick: pending   # Phase 4 gate; deep eval moved to /ace:qa-deep
   llo-invite: pending
   llo-launch: pending
 ```
@@ -382,7 +379,7 @@ jobs that run independent of any particular run**:
 
 These are legitimately parallel-to-the-main-run; they don't gate any
 phase. Phase-internal work (`ocs-chatbot-qa --quick` / `--deep`,
-`app-screenshot-capture`, `qa-plan`, etc.) is foreground sequential
+`app-screenshot-capture`, etc.) is foreground sequential
 and is NOT eligible for this pattern.
 
 ### When polling IS appropriate
@@ -533,8 +530,9 @@ Ends with a human-in-the-loop step to paste the widget credentials into the
 Connect opportunity until `update_opportunity` lands (CCC-301).
 
 ### Phase 5: QA and Training
-Dispatch `Agent(qa-and-training)`. The agent runs `qa-plan` →
-`app-screenshot-capture` → 5 per-artifact training skills in parallel
+Dispatch `Agent(qa-and-training)`. The agent runs
+`app-screenshot-capture` (executor — runs the smoke recipes from
+Phase 2's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel
 (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`,
 `training-faq`, `training-deck-outline`) → `training-deck-build` (sequential
 after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) →
@@ -605,7 +603,7 @@ after writing its primary artifact. The 5 expected files are:
 ```
 ACE/<opp-name>/gate-briefs/idea-to-pdd.md
 ACE/<opp-name>/gate-briefs/app-deploy.md
-ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-deep.md
+ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-quick.md
 ACE/<opp-name>/gate-briefs/llo-invite.md
 ACE/<opp-name>/gate-briefs/llo-launch.md
 ```
@@ -670,7 +668,7 @@ orchestrator's pause behavior at each named gate is:
 |------|-------|-----------|----------|--------|
 | `idea-to-pdd` | 1 | pause iff `[BLOCKER]` | always pause | never pause* |
 | `app-deploy` | 2 | pause iff `[BLOCKER]` | always pause | never pause* |
-| `ocs-chatbot-eval-deep` | 4 | pause iff `[BLOCKER]` | always pause | never pause* |
+| `ocs-chatbot-eval-quick` | 4 | pause iff `[BLOCKER]` | always pause | never pause* |
 | `llo-invite` | 6 | **always pause** | always pause | never pause* |
 | `llo-launch` | 6 | **always pause** | always pause | never pause* |
 
@@ -720,7 +718,7 @@ verdicts/<producer-skill>[-<mode>].yaml
   e.g. `ocs-chatbot-eval`) keep their own name in the verdict filename:
   `verdicts/ocs-chatbot-eval-{quick,deep,monitor}.yaml`.
 - Skills that self-evaluate inline (no separate `-eval` skill, e.g.
-  `qa-plan`, `app-screenshot-capture`, every per-artifact training
+  `app-screenshot-capture`, every per-artifact training
   skill (`training-llo-guide`, `training-flw-guide`,
   `training-quick-reference`, `training-faq`,
   `training-onboarding-email`, `training-deck-outline`)) write
@@ -735,7 +733,7 @@ afterward.
 returns `verdict: fail` does NOT halt the orchestrator outside the named
 gate steps — the verdict is recorded for the dashboard / `opp-eval`, and
 the run continues. The 5 named gate steps (`idea-to-pdd`, `app-deploy`,
-`ocs-chatbot-eval-deep`, `llo-invite`, `llo-launch`) still apply per the
+`ocs-chatbot-eval-quick`, `llo-invite`, `llo-launch`) still apply per the
 Per-Mode Pause Matrix above, where `[BLOCKER]` concerns from the eval do
 halt. This keeps the eval signal visible without making every rubric a
 hard gate.

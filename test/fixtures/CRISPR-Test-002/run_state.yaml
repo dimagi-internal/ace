@@ -9,8 +9,7 @@ steps:
   pdd-to-learn-app: pending
   pdd-to-deliver-app: pending
   app-deploy: pending
-  app-test: pending
-  training-materials: pending
+  app-test-cases: pending
   connect-program-setup: pending
   connect-opp-setup: pending
   llo-invite: pending

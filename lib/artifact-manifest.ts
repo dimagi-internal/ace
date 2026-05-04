@@ -82,7 +82,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'pdd.md',
     producedBy: 'idea-to-pdd',
     consumedBy: [
-      'pdd-to-test-prompts', 'pdd-to-learn-app', 'pdd-to-deliver-app', 'app-test',
+      'pdd-to-test-prompts', 'pdd-to-learn-app', 'pdd-to-deliver-app',
       'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
       'training-faq', 'training-onboarding-email', 'training-deck-outline',
       'connect-program-setup', 'connect-opp-setup',
@@ -104,10 +104,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'expected-journeys.md',
     producedBy: 'pdd-to-app-journeys',
-    // Truncated until consuming skills land: app-test-cases re-adds itself
-    // in Task 2 of the shallow-deep-qa-split plan; app-ux-eval in Task 3.
-    // See: docs/superpowers/plans/2026-05-04-shallow-deep-qa-split.md
-    consumedBy: ['app-screenshot-capture'],
+    consumedBy: ['app-test-cases', 'app-ux-eval', 'app-screenshot-capture'],
     phase: 'design',
     required: true,
     description: 'PDD-derived user journeys + UX edge cases. Ground truth for app-test-cases (Phase 2) and app-ux-eval (deep). Each journey carries a goal, happy-path narrative, edge cases phrased as UX outcomes, and pass criteria.',
@@ -151,7 +148,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'app-summaries/learn-app-summary.md',
     producedBy: 'pdd-to-learn-app',
     consumedBy: [
-      'app-deploy', 'app-test',
+      'app-deploy', 'app-test-cases',
       'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
       'training-faq', 'training-deck-outline',
       'ocs-agent-setup', 'flw-data-review',
@@ -164,7 +161,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'app-summaries/deliver-app-summary.md',
     producedBy: 'pdd-to-deliver-app',
     consumedBy: [
-      'app-deploy', 'app-test',
+      'app-deploy', 'app-test-cases',
       'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
       'training-faq', 'training-deck-outline',
       'ocs-agent-setup', 'flw-data-review',
@@ -176,10 +173,18 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'deployment-summary.md',
     producedBy: 'app-deploy',
-    consumedBy: ['app-test', 'connect-opp-setup', 'llo-uat', 'llo-launch'],
+    consumedBy: ['connect-opp-setup', 'llo-uat', 'llo-launch'],
     phase: 'commcare',
     required: true,
     description: 'App deployment details: IDs, URLs, build status',
+  },
+  {
+    path: 'app-test-cases.yaml',
+    producedBy: 'app-test-cases',
+    consumedBy: ['app-screenshot-capture', 'app-ux-eval'],
+    phase: 'commcare',
+    required: true,
+    description: 'Bindings of expected-journeys.md to Phase-2-built app structure: per-journey form/field IDs, Maestro recipe paths, smoke flags, structural pass criteria. Phase 5 shallow uses is_smoke: true entries; /ace:qa-deep uses all entries.',
   },
   {
     path: 'gate-briefs/app-deploy.md',
@@ -188,30 +193,6 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'commcare',
     required: true,
     description: 'Gate brief for the Phase 2→3 gate: build status, Connectify flags, and an HQ-domain-mismatch BLOCKER if Nova is bound to the wrong project space',
-  },
-  {
-    path: 'test-results/test-plan.md',
-    producedBy: 'app-test',
-    consumedBy: ['learnings-summary', 'cycle-grade'],
-    phase: 'commcare',
-    required: true,
-    description: 'Full test plan with Evidence Model cross-references',
-  },
-  {
-    path: 'test-results/test-results.md',
-    producedBy: 'app-test',
-    consumedBy: ['learnings-summary', 'cycle-grade'],
-    phase: 'commcare',
-    required: true,
-    description: 'Test execution results: pass/fail per test case',
-  },
-  {
-    path: 'test-results/bugs.md',
-    producedBy: 'app-test',
-    consumedBy: ['learnings-summary', 'cycle-grade'],
-    phase: 'commcare',
-    required: true,
-    description: 'Bugs found during testing with severity and repro steps',
   },
   {
     path: 'training-materials/llo-manager-guide.md',
@@ -316,8 +297,8 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     producedBy: 'ocs-chatbot-qa',
     consumedBy: ['ocs-chatbot-eval'],
     phase: 'ocs',
-    required: true,
-    description: 'Transcript from the --deep suite (Connect-general + ACE-specific + opp-specific + edge cases): structured transcript input to ocs-chatbot-eval --deep',
+    required: false,
+    description: 'Transcript from the --deep suite (Connect-general + ACE-specific + opp-specific + edge cases): structured transcript input to ocs-chatbot-eval --deep. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
   },
   {
     path: 'verdicts/ocs-chatbot-eval-quick.yaml',
@@ -332,48 +313,59 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     producedBy: 'ocs-chatbot-eval',
     consumedBy: [],
     phase: 'ocs',
+    required: false,
+    description: 'Machine-readable verdict from --deep LLM-as-Judge grading; read by opp-eval (future) for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
+  },
+  {
+    path: 'gate-briefs/ocs-chatbot-eval-quick.md',
+    producedBy: 'ocs-chatbot-eval',
+    consumedBy: ['ace-orchestrator'],
+    phase: 'ocs',
     required: true,
-    description: 'Machine-readable verdict from --deep LLM-as-Judge grading; read by opp-eval (future) for cross-skill aggregation',
+    description: 'Gate brief for the Phase 4→5 gate (post-Task-6 shallow gate): scorecard from --quick eval (3 prompts × 1 dim), pass/fail verdict, single auto-surfaced concern if any prompt < 2/3.',
   },
   {
     path: 'gate-briefs/ocs-chatbot-eval-deep.md',
     producedBy: 'ocs-chatbot-eval',
     consumedBy: ['ace-orchestrator'],
     phase: 'ocs',
-    required: true,
-    description: 'Gate brief for the Phase 4→5 gate: deep-eval scorecard, failing prompts, dimension weak spots',
+    required: false,
+    description: 'Gate brief for the deep-eval activation gate: scorecard, failing prompts, dimension weak spots. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
   },
 
   // ── Operate phase (Phase 5) ────────────────────────────────────
 
-  // Mobile-emulation artifacts (2026-04-28). Produced by
-  // ``app-screenshot-capture`` as the first step of Phase 5
-  // (qa-and-training) and consumed by ``training-materials`` to embed
-  // real screenshots in the FLW training guide. Marked optional
-  // (``required: false``) until the fixtures backfill these paths.
-  {
-    path: 'mobile-recipes/learn/manifest.yaml',
-    producedBy: 'app-screenshot-capture',
-    consumedBy: ['app-screenshot-capture'],
-    phase: 'operate',
-    required: false,
-    description: 'Manifest of generated Learn-app Maestro recipes (one per module).',
-  },
-  {
-    path: 'mobile-recipes/deliver/manifest.yaml',
-    producedBy: 'app-screenshot-capture',
-    consumedBy: ['app-screenshot-capture'],
-    phase: 'operate',
-    required: false,
-    description: 'Manifest of generated Deliver-app Maestro recipes (one per module).',
-  },
   {
     path: 'screenshots/manifest.yaml',
     producedBy: 'app-screenshot-capture',
-    consumedBy: ['training-flw-guide', 'training-deck-outline'],
+    consumedBy: ['training-flw-guide', 'training-deck-outline', 'app-ux-eval'],
     phase: 'operate',
     required: false,
     description: 'Manifest of every captured screenshot with step labels and Drive paths.',
+  },
+  {
+    path: 'verdicts/app-ux-eval-deep.yaml',
+    producedBy: 'app-ux-eval',
+    consumedBy: ['llo-launch', 'opp-eval'],
+    phase: 'operate',
+    required: false,
+    description: 'Machine-readable verdict from app-ux-eval (deep). Read by llo-launch (Phase 6 activation gate) for freshness check vs. latest released CommCare build, and by opp-eval for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
+  },
+  {
+    path: 'verdicts/app-screenshot-capture-shallow.yaml',
+    producedBy: 'app-screenshot-capture',
+    consumedBy: ['opp-eval'],
+    phase: 'operate',
+    required: true,
+    description: 'Shallow smoke verdict from /ace:run Phase 5 — smoke recipe pass/fail + thin UX judge ≥ 2/3 per app. Always present after a successful /ace:run.',
+  },
+  {
+    path: 'verdicts/app-screenshot-capture.yaml',
+    producedBy: 'app-screenshot-capture',
+    consumedBy: ['opp-eval'],
+    phase: 'operate',
+    required: true,
+    description: 'Structural verdict from app-screenshot-capture: smoke recipe pass/fail status + screenshot capture integrity. Always present after a successful Phase 5 run.',
   },
 
   // Path kept as ``connect-setup/invites.md`` rather than renamed to

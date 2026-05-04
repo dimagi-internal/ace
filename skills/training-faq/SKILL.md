@@ -2,9 +2,9 @@
 name: training-faq
 description: >
   Generate `faq.md` — anticipated questions from LLOs and FLWs with
-  authoritative answers. Seeded from `test-prompts.md` and `qa-plan`'s
-  edge cases. Owns one artifact only. Fifth of the per-artifact
-  training skills.
+  authoritative answers. Seeded from `test-prompts.md` and the
+  Phase 1 `expected-journeys.md` edge cases. Owns one artifact only.
+  Fifth of the per-artifact training skills.
 ---
 
 # Training FAQ
@@ -15,9 +15,10 @@ who's mid-task and stuck, scanning for their question.
 
 ## When to run
 
-Phase 5 (`qa-and-training`), after `qa-plan` (so we have the
-test-matrix edge cases) and `pdd-to-test-prompts` from Phase 1 (so we
-have the OCS test prompts to seed FLW-asked questions).
+Phase 5 (`qa-and-training`). Reads upstream Phase 1 artifacts —
+`pdd-to-app-journeys`'s `expected-journeys.md` for journey edge cases
+and `pdd-to-test-prompts`'s `test-prompts.md` for OCS-side seed
+questions.
 
 ## Inputs (read from Drive)
 
@@ -29,7 +30,7 @@ have the OCS test prompts to seed FLW-asked questions).
 | Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | per-form field-clarification questions |
 | Phase 3 (`run_state.yaml`) | `connect.payment_units` + `connect.verification_flags` | "why was my submission flagged?" answers |
 | Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | "how do I ask?" answer |
-| Phase 5 Step 1 (`qa-plan`) | `ACE/<opp>/qa-plan/test-matrix.md` (edge cases section) | seed Q's about boundary conditions |
+| Phase 1 | `ACE/<opp>/expected-journeys.md` (edge cases per journey) | seed Q's about boundary conditions |
 
 ## Output
 
@@ -100,11 +101,12 @@ which rule triggered, what to do>
    ones an FLW or LLO would actually ask outside the OCS chat
    context (most will).
 
-3. **Add edge-case Q's from qa-plan/test-matrix.md.** For each
-   "boundary value" or "edge case" row in the matrix, generate a
+3. **Add edge-case Q's from expected-journeys.md.** For each
+   journey's `edge_cases` block (UX-outcome phrasing), generate a
    question framed as the failure mode the FLW would encounter
-   (e.g., test row "GPS fence at 51m" → FAQ Q "Why did my submission
-   fail when I was just outside the market?").
+   (e.g., edge case "FLW understands why a submission outside the
+   GPS fence was rejected" → FAQ Q "Why did my submission fail when
+   I was just outside the market?").
 
 4. **Add LLO-operations Q's from PDD § Escalation + run_state.yaml verification flags.**
 
@@ -120,7 +122,7 @@ which rule triggered, what to do>
    - Every Q has `[LLO]` or `[FLW]` tag
    - Every payment / verification number quoted matches `run_state.yaml`
    - At least 4 Q's seeded from `test-prompts.md`
-   - At least 2 Q's seeded from `qa-plan/test-matrix.md` edge cases
+   - At least 2 Q's seeded from `expected-journeys.md` edge cases
 
 8. **Write** to `ACE/<opp>/training-materials/faq.md` via
    `drive_create_file`.

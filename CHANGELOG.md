@@ -5,6 +5,75 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.11.10 — 2026-05-04
+
+**Shallow / deep QA split.** `/ace:run` now does shallow QA only; deep
+grading is opt-in via the new `/ace:qa-deep <opp>` command. Cuts
+shallow-cycle LLM judge calls from ~90 to ~5; deep grading runs once
+pre-launch and remains as costly as before. The QA test plan synthesis
+moved upstream from Phase 5 (`qa-plan`) to Phase 1
+(`pdd-to-app-journeys`) and Phase 2 (`app-test-cases`); Phase 5 is now
+an executor. Phase 6 `llo-launch` refuses activation without fresh,
+passing deep verdicts (override available with audit reason). Spec:
+`docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`.
+
+### Added
+
+- `pdd-to-app-journeys` (Phase 1) — produces `expected-journeys.md`,
+  the UX-intent ground truth for app-side QA. Mirror of
+  `pdd-to-test-prompts` for the apps.
+- `app-test-cases` (Phase 2) — binds Phase 1 journeys to Nova's
+  built-app structure; writes `app-test-cases.yaml` plus per-journey
+  Maestro recipe stubs under `app-test-cases/recipes/`.
+- `app-ux-eval` — deep, manual UX rubric run from `/ace:qa-deep`.
+  Writes `verdicts/app-ux-eval-deep.yaml`.
+- `/ace:qa-deep <opp>` — manual deep quality command. Runs the OCS
+  deep eval suite and the per-journey UX eval; populates the deep
+  verdict files Phase 6 gates on.
+- `migrations/0.11.10-shallow-deep-qa.md` — operator notes for
+  in-flight opps mid-`/ace:run` when this version lands.
+- `verdicts/app-screenshot-capture-shallow.yaml` — new shallow smoke
+  verdict (~2 LLM calls per run); always present after a successful
+  `/ace:run`.
+
+### Changed
+
+- `ModeSchema` (`lib/verdict-schema.ts`) gained `shallow` as a fourth
+  mode value alongside `quick`/`deep`/`monitor`. Used by the new
+  `app-screenshot-capture-shallow.yaml` verdict.
+- `ocs-chatbot-qa --quick` thinned to 3 prompts × 1 dimension
+  (down from 5×4). Quick mode is for smoke; multi-dimensional grading
+  moved to deep-only.
+- `app-screenshot-capture` (Phase 5) now consumes
+  `expected-journeys.md` (Phase 1) and `app-test-cases.yaml`
+  (Phase 2) instead of synthesizing recipes from scratch. Runs only
+  the `is_smoke: true` recipes (one per app) and emits a thin per-app
+  UX smoke judge.
+- `agents/qa-and-training.md` is now an executor: drops `qa-plan`
+  from the skills frontmatter; reads pre-composed recipes from
+  Phase 2.
+- `agents/commcare-setup.md` lost the `app-test` Step 3; Phase 2's QA
+  contribution is now Step 2.6's `app-test-cases.yaml`.
+- `lib/artifact-manifest.ts` lost `qa-plan/*` and `test-results/*`
+  entries; gained `expected-journeys.md`, `app-test-cases.yaml`,
+  `verdicts/app-ux-eval-deep.yaml`,
+  `verdicts/app-screenshot-capture-shallow.yaml`.
+- Test fixtures `CRISPR-Test-001` (partial) and
+  `CRISPR-Test-003-Turmeric` (complete E2E) updated for the new
+  artifact set; `test-results/*` removed.
+
+### Retired
+
+- `qa-plan` skill and its `qa-plan/*` artifacts (replaced by
+  `pdd-to-app-journeys` + `app-test-cases`).
+- `app-test` skill and its `test-results/*` artifacts (replaced by
+  `app-test-cases` + `app-screenshot-capture` shallow + `app-ux-eval`
+  deep).
+
+### Migration
+
+See `migrations/0.11.10-shallow-deep-qa.md` for in-flight opp guidance.
+
 ## 0.11.9 — 2026-05-04
 
 **Drive layout class-level preventers — find-or-create folders + doctor

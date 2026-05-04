@@ -1,0 +1,26 @@
+# Synthetic shallow smoke verdict for CRISPR-Test-003-Turmeric.
+# Phase 5 shallow gate: per-app smoke recipe + thin UX judge.
+skill: app-screenshot-capture
+target: CRISPR-Test-003-Turmeric
+mode: shallow
+ran_at: 2026-04-16T17:30:00Z
+capture_path: screenshots/manifest.yaml
+
+overall_score: 2.5             # mean of per-app smoke-judge scores (0-3 scale)
+verdict: pass
+# pass iff every per-app smoke-judge score >= 2/3.
+
+dimensions:
+  ux_smoke: { score: 2.5, weight: 1.00 }   # mean of per-app smoke judge
+
+per_item:
+  - ref: "learn"
+    score: 3
+    verdict: pass
+    note: "Module reads cleanly, assessment passable, confirmation visible"
+  - ref: "deliver"
+    score: 2
+    verdict: pass
+    note: "Mostly clear; one screen has a developer-named field but recoverable"
+
+auto_surfaced: []

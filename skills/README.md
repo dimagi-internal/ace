@@ -14,7 +14,7 @@ skills/
     └── SKILL.md
 ```
 
-`<skill-name>` is kebab-case and matches the `name:` frontmatter field exactly. Multi-word names use single hyphens, not underscores. Names should be verbs or verb phrases ("idea-to-pdd", "app-test", "llo-onboarding"), not nouns.
+`<skill-name>` is kebab-case and matches the `name:` frontmatter field exactly. Multi-word names use single hyphens, not underscores. Names should be verbs or verb phrases ("idea-to-pdd", "app-deploy", "llo-onboarding"), not nouns.
 
 If a skill needs supporting files (templates, scripts, prompt fragments), they go alongside `SKILL.md` in the same directory.
 
@@ -111,7 +111,7 @@ Each archetype is a `### <archetype-name>` subheading with a short description a
 <how the skill handles multi-stage PDDs — typically dispatches per stage>
 ```
 
-The 9 archetype-aware skills today are: `idea-to-pdd`, `pdd-to-test-prompts`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-test`, `connect-opp-setup`, `llo-invite`, `flw-data-review`, `cycle-grade`.
+The 9 archetype-aware skills today are: `idea-to-pdd`, `pdd-to-test-prompts`, `pdd-to-app-journeys`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `connect-opp-setup`, `llo-invite`, `flw-data-review`, `cycle-grade`.
 
 ### `## LLM-as-Judge Rubric` (when the skill self-evaluates or is an eval skill)
 
@@ -214,7 +214,7 @@ attribution key. Concrete consequences:
 - Recurring per-step evals use `<producer>-monitor.yaml` (e.g.
   `verdicts/flw-data-review-monitor.yaml`).
 - Skills that self-evaluate inline (no separate `-eval` skill — e.g.
-  `qa-plan`, `training-materials`, `app-screenshot-capture`) write
+  `app-screenshot-capture`, every per-artifact training skill) write
   `verdicts/<self>.yaml`.
 - Skills that ARE their own registry row (no producer/eval split, e.g.
   `ocs-chatbot-eval`) keep their own name in the verdict filename:
@@ -365,8 +365,8 @@ produced no recoverable transcript.
 
 The PDD template (`templates/pdd-template.md`) declares an `## Evidence Model` section with three layers:
 
-- **Layer A — Delivery proof** (the thing happened): drives **verification rules** in `connect-opp-setup` and **capture-path tests** in `app-test`. Hard gates.
-- **Layer B — Content proof** (it was done properly): drives **content-quality tests** in `app-test` and **per-delivery review** in `flw-data-review`. Soft flags.
+- **Layer A — Delivery proof** (the thing happened): drives **verification rules** in `connect-opp-setup` and **structural pass criteria** in `app-test-cases`. Hard gates.
+- **Layer B — Content proof** (it was done properly): drives **per-journey UX pass criteria** in `pdd-to-app-journeys` / `app-ux-eval` and **per-delivery review** in `flw-data-review`. Soft flags.
 - **Layer C — Cross-delivery quality** (the data is useful): drives **cross-delivery synthesis** in `flw-data-review` and **Intervention Effectiveness / Research Quality grading** in `cycle-grade`. Soft flags.
 
 If you're writing a skill that sets up verification, runs tests, reviews data, or grades quality, you almost certainly want to read the Evidence Model in your skill's first or second process step and use it as the spec rather than re-deriving from the PDD body. **If the PDD has no Evidence Model section, fail loudly** — that's a sign `idea-to-pdd` skipped or short-circuited the stress-test rubric and the PDD shouldn't be propagating.
@@ -377,7 +377,7 @@ The 3 current archetypes are `atomic-visit`, `focus-group`, and `multi-stage`. A
 
 1. **`templates/pdd-template.md`** — add the new archetype to the `Archetype:` enum description and to the archetype-guidance block at the top of the template.
 2. **`skills/idea-to-pdd/SKILL.md`** — add a `### <new-archetype>` subheading inside `## Archetypes` describing the additional questions to ask in step 3 and the archetype-specific sections to draft in step 4.
-3. **The 8 other archetype-aware skills** (`pdd-to-test-prompts`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-test`, `connect-opp-setup`, `llo-invite`, `flw-data-review`, `cycle-grade`) — add a `### <new-archetype>` subheading inside `## Archetypes` describing how the skill behaves for the new archetype.
+3. **The 8 other archetype-aware skills** (`pdd-to-test-prompts`, `pdd-to-app-journeys`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `connect-opp-setup`, `llo-invite`, `flw-data-review`, `cycle-grade`) — add a `### <new-archetype>` subheading inside `## Archetypes` describing how the skill behaves for the new archetype.
 
 Do **not** create a new skill per archetype. The whole point of the archetype mechanism is to avoid forking the framework — a new archetype is an additive change inside the existing 9 skills, not a fan-out of new skill files. (See Lesson 9 of the canopy `product-management` skill: *"Framework changes mean variation points, not new components."*)
 
@@ -397,7 +397,6 @@ When in doubt, copy from the closest existing skill:
 
 - **`skills/idea-to-pdd/SKILL.md`** — canonical example of `## LLM-as-Judge Rubric` (the 5-question stress-test rubric with calibrated grading anchors) and `## Archetypes` (3 archetypes with required-section additions).
 - **`skills/connect-opp-setup/SKILL.md`** — canonical example of an Evidence-Model-consuming skill (reads Layer A in step 2, errors if missing) with archetype branching and a Current Workaround block.
-- **`skills/app-test/SKILL.md`** — canonical example of an Evidence-Model-consuming skill with archetype branching but no Current Workaround.
 - **`skills/cycle-grade/SKILL.md`** — canonical example of archetype branching that adds a 7th grading dimension (`Research Quality`) for one specific archetype.
 - **`skills/llo-onboarding/SKILL.md`** — canonical example of a simple skill with no archetype branching and no Evidence Model consumption.
 

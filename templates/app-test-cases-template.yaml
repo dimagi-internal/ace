@@ -1,0 +1,34 @@
+# app-test-cases.yaml — bindings of Phase 1 journeys to Phase 2 built structure.
+# Producer: app-test-cases (Phase 2)
+# Consumers: app-screenshot-capture (Phase 5 shallow), /ace:qa-deep (manual deep)
+
+opp: {{opp_name}}
+run_id: {{run_id}}
+generated_at: {{ISO}}
+nova_apps:
+  learn: {{learn_nova_app_id}}
+  deliver: {{deliver_nova_app_id}}
+
+# Each entry binds one Journey from expected-journeys.md to:
+#   - the actual forms/fields it exercises (real IDs, not placeholders)
+#   - a Maestro recipe filled with concrete selectors (no REPLACE_*)
+#   - the structural pass criteria (boot, no crash, submit confirmation)
+#
+# `is_smoke: true` marks the recipe Phase 5 runs in shallow mode (one
+# per app — the cheapest representative happy path).
+
+journeys:
+  - id: J1
+    name: {{journey_name from expected-journeys.md}}
+    app: deliver  # or learn
+    is_smoke: false
+    forms_exercised:
+      - {{form_id_or_name}}
+    fields_exercised:
+      - {{field_id}}
+    recipe_path: app-test-cases/recipes/J1.yaml
+    structural_pass_criteria:
+      - app_boots
+      - no_crash
+      - submission_confirmed   # or "assessment_complete" for Learn
+    pdd_time_budget_seconds: {{from PDD if specified, else null}}
