@@ -90,7 +90,20 @@ function getAuth() {
   });
 }
 
-const auth = getAuth();
+// Auth init is tolerant of missing credentials so the module is importable in
+// tests that mock the Drive client entirely (no real Google calls). Production
+// MCP server runs always have a valid SA key — `/ace:doctor` flags missing keys
+// before any tool call, and the underlying `googleapis` calls would surface a
+// clear auth error if the key were missing at runtime.
+let auth: ReturnType<typeof getAuth> | undefined;
+try {
+  auth = getAuth();
+} catch {
+  // Leave undefined; downstream `drive`/`sheets`/etc. clients will be unusable
+  // until a real key is in place. Tests inject mocked Drive clients directly
+  // into the exported handlers (e.g. handleCreateFolder) and never touch the
+  // module-level `drive`.
+}
 const sheets = google.sheets({ version: 'v4', auth });
 const drive = google.drive({ version: 'v3', auth });
 const docs = google.docs({ version: 'v1', auth });
@@ -129,9 +142,10 @@ function error(msg: string) {
  */
 async function assertParentOnSharedDrive(
   parentFolderId: string,
+  driveClient: typeof drive = drive,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
-    const meta = await drive.files.get({
+    const meta = await driveClient.files.get({
       fileId: parentFolderId,
       fields: 'id, name, driveId, mimeType',
       supportsAllDrives: true,
@@ -604,28 +618,63 @@ server.tool(
   },
 );
 
+/**
+ * Create-folder handler, exported for unit testing with a mocked Drive client.
+ *
+ * Default behavior is find-or-create: if a folder with the same `name` already
+ * exists under `parentFolderId` (non-trashed), return that one instead of
+ * creating a duplicate. This closes a class of silent bug where parallel skill
+ * writes each created a fresh same-named folder under a run root (observed:
+ * two `verdicts/` folders under `leep-paint-collection/runs/20260503-2128/`).
+ *
+ * Pass `findOrCreate: false` to opt out — only do this when you specifically
+ * need a separate sibling.
+ */
+export async function handleCreateFolder(
+  args: { name: string; parentFolderId: string; findOrCreate?: boolean },
+  driveClient: typeof drive = drive,
+): Promise<{ id: string; name: string; webViewLink?: string }> {
+  const { name, parentFolderId, findOrCreate = true } = args;
+  const guard = await assertParentOnSharedDrive(parentFolderId, driveClient);
+  if (!guard.ok) throw new Error(guard.message);
+  if (findOrCreate) {
+    const escaped = name.replace(/'/g, "\\'");
+    const list = await driveClient.files.list({
+      q: `mimeType='application/vnd.google-apps.folder' and name='${escaped}' and '${parentFolderId}' in parents and trashed=false`,
+      fields: 'files(id, name, webViewLink)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    const existing = list.data.files?.[0];
+    if (existing?.id) {
+      return { id: existing.id, name: existing.name!, webViewLink: existing.webViewLink ?? undefined };
+    }
+  }
+  const resp = await driveClient.files.create({
+    requestBody: {
+      name,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: [parentFolderId],
+    },
+    fields: 'id, name, webViewLink',
+    supportsAllDrives: true,
+  });
+  return { id: resp.data.id!, name: resp.data.name!, webViewLink: resp.data.webViewLink ?? undefined };
+}
+
 // 12. Create a folder in Google Drive
 server.tool(
   'drive_create_folder',
-  'Create a new folder in Google Drive, inside the given parent folder. The parent MUST be a folder on a Shared Drive — when the parent is in My Drive (or unset), the new folder lands in the SA\'s My Drive root and every subsequent file write into it fails with a "user storage quota exceeded" error. ACE uses this to set up the per-opportunity folder structure (ACE/<opp-name>/).',
+  'Create a new folder in Google Drive, inside the given parent folder. By default, find-or-create: if a same-named folder already exists under the parent, that folder is returned instead of creating a duplicate (closes the duplicate-`verdicts/` class of bug from parallel skill writes). Pass findOrCreate:false to force a new sibling. The parent MUST be a folder on a Shared Drive — when the parent is in My Drive (or unset), the new folder lands in the SA\'s My Drive root and every subsequent file write into it fails with a "user storage quota exceeded" error. ACE uses this to set up the per-opportunity folder structure (ACE/<opp-name>/).',
   {
     name: z.string().describe('Name for the new folder'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
+    findOrCreate: z.boolean().optional().describe('When true (default), reuse an existing same-named folder under the parent if one exists; otherwise always create. Default: true. Set to false only when you specifically want a separate sibling.'),
   },
-  async ({ name: folderName, parentFolderId }) => {
+  async ({ name: folderName, parentFolderId, findOrCreate }) => {
     try {
-      const guard = await assertParentOnSharedDrive(parentFolderId);
-      if (!guard.ok) return error(guard.message);
-      const resp = await drive.files.create({
-        requestBody: {
-          name: folderName,
-          mimeType: 'application/vnd.google-apps.folder',
-          parents: [parentFolderId],
-        },
-        fields: 'id, name, webViewLink',
-        supportsAllDrives: true,
-      });
-      return result({ id: resp.data.id, name: resp.data.name, webViewLink: resp.data.webViewLink });
+      const r = await handleCreateFolder({ name: folderName, parentFolderId, findOrCreate }, drive);
+      return result(r);
     } catch (e: any) {
       return error(e.message);
     }
