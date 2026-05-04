@@ -104,10 +104,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'expected-journeys.md',
     producedBy: 'pdd-to-app-journeys',
-    // Truncated until consuming skills land: app-test-cases re-adds itself
-    // in Task 2 of the shallow-deep-qa-split plan; app-ux-eval in Task 3.
+    // app-ux-eval is added in Task 3 of the shallow-deep-qa-split plan.
     // See: docs/superpowers/plans/2026-05-04-shallow-deep-qa-split.md
-    consumedBy: ['app-screenshot-capture'],
+    consumedBy: ['app-test-cases', 'app-screenshot-capture'],
     phase: 'design',
     required: true,
     description: 'PDD-derived user journeys + UX edge cases. Ground truth for app-test-cases (Phase 2) and app-ux-eval (deep). Each journey carries a goal, happy-path narrative, edge cases phrased as UX outcomes, and pass criteria.',
@@ -151,7 +150,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'app-summaries/learn-app-summary.md',
     producedBy: 'pdd-to-learn-app',
     consumedBy: [
-      'app-deploy', 'app-test',
+      'app-deploy', 'app-test', 'app-test-cases',
       'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
       'training-faq', 'training-deck-outline',
       'ocs-agent-setup', 'flw-data-review',
@@ -164,7 +163,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'app-summaries/deliver-app-summary.md',
     producedBy: 'pdd-to-deliver-app',
     consumedBy: [
-      'app-deploy', 'app-test',
+      'app-deploy', 'app-test', 'app-test-cases',
       'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
       'training-faq', 'training-deck-outline',
       'ocs-agent-setup', 'flw-data-review',
@@ -180,6 +179,18 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'commcare',
     required: true,
     description: 'App deployment details: IDs, URLs, build status',
+  },
+  {
+    path: 'app-test-cases.yaml',
+    producedBy: 'app-test-cases',
+    // app-ux-eval is added to consumedBy in Task 3 of the
+    // shallow-deep-qa-split plan; until then only Phase 5 shallow
+    // (app-screenshot-capture) reads this file.
+    // See: docs/superpowers/plans/2026-05-04-shallow-deep-qa-split.md
+    consumedBy: ['app-screenshot-capture'],
+    phase: 'commcare',
+    required: true,
+    description: 'Bindings of expected-journeys.md to Phase-2-built app structure: per-journey form/field IDs, Maestro recipe paths, smoke flags, structural pass criteria. Phase 5 shallow uses is_smoke: true entries; /ace:qa-deep uses all entries. (app-ux-eval will be added to consumedBy in Task 3.)',
   },
   {
     path: 'gate-briefs/app-deploy.md',

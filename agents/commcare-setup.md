@@ -12,6 +12,7 @@ skills:
   - { name: pdd-to-deliver-app,      has_judge: true,  eval_skill: pdd-to-deliver-app-eval }
   - { name: app-connect-coverage,    has_judge: false }
   - { name: app-deploy,              has_judge: false }
+  - { name: app-test-cases,          has_judge: false }
   - { name: app-release,             has_judge: true,  eval_skill: app-release-eval }
   - { name: app-test,                has_judge: true,  eval_skill: inline-self-eval }
 ---
@@ -156,7 +157,7 @@ Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
     won't carry the markers Connect needs. Wait for upstream fix.
   - **Coverage's architect dispatch can't get past `nova-plugin#2`
     (bootstrap halts on all 3 attempts):** **do NOT halt Phase 2.**
-    Coverage is the upstream safety net; `app-release` (Step 2.5,
+    Coverage is the upstream safety net; `app-release` (Step 2.7,
     0.10.5+) is the actual wall — its Step 6 downloads the released
     CCZ and greps for `<learn:deliver>` / `<learn:module>` element
     counts, which catches Bug 2 escapes cleanly. Log the coverage
@@ -172,7 +173,7 @@ Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
 Invoke the `app-deploy` skill.
 - Input: app JSON/CCZ files from GDrive
 - Output: apps uploaded to CCHQ as **draft builds** (Nova does not release
-  by design — see Step 2.5)
+  by design — see Step 2.7)
 - **Gate (review mode):** Present app deployment summary for verification
 - **HQ-id stability requirement (added 2026-04-30):** every `nova_upload_to_hq`
   call creates a **fresh** HQ application document with a new id (CCHQ has no
@@ -191,7 +192,25 @@ Invoke the `app-deploy` skill.
   `deployment-summary.md.released_at >= deployment-summary.md.uploaded_at`
   AND that no subsequent re-upload happened, before dispatching Phase 3.
 
-### Step 2.5: Release Apps
+### Step 2.6: Generate app-test-cases.yaml
+
+Dispatch `app-test-cases`:
+- Reads: expected-journeys.md, both app summaries, Nova blueprints
+- Writes: app-test-cases.yaml + recipes/J*.yaml under app-test-cases/
+- Halts on missing inputs or recipe-validation failure
+
+Phase 5 shallow runs the smoke recipes; /ace:qa-deep runs them all.
+
+This step runs **after** `app-deploy` (so the Nova blueprints are
+finalized and the HQ ids are stable) and **before** `app-release` (so
+the recipes are in place by the time Phase 5 needs them, and so the
+journey-to-form bindings are captured against the apps as built — not a
+later re-build). Nova builds are uploaded via `app-deploy`, so the
+blueprint IDs we read here are the same ones the released CCZ will
+carry; `app-release` is when we can no longer rebuild the apps cheaply,
+so it's the natural cutoff for "the apps are now what they are."
+
+### Step 2.7: Release Apps
 Invoke the `app-release` skill.
 - Input: HQ app ids from `deployment-summary.md`
 - Output: each app has a new released build; Connect's `Sync Deliver Units`
