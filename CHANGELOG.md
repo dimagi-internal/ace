@@ -5,6 +5,49 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.11.9 — 2026-05-04
+
+**Drive layout class-level preventers — find-or-create folders + doctor
+audit for duplicate folders and stray opp-root files.**
+
+Walking the live `leep-paint-collection/runs/20260503-2128/` run folder
+surfaced two duplicate `verdicts/` folders (parallel skill writes each
+created a fresh sibling instead of reusing) plus a stray
+`2026-05-03-connect-opp-setup-attempt-3.md` written at opp root rather
+than inside any run. This release ships the class-level fixes — silent
+duplicates can no longer happen going forward, and the doctor surfaces
+existing instances so they can be cleaned up. Phase A of the
+`docs/superpowers/plans/2026-05-03-run-folder-readability.md` plan; the
+Phase B+ rename to phase-prefixed paths follows in 0.12.0.
+
+### Added
+
+- **`drive_create_folder` `findOrCreate` mode (default true).** Lists
+  same-named folder children under `parentFolderId` before creating; if
+  any exist, returns the first match instead. New optional MCP arg;
+  back-compat for callers (default reuses; `findOrCreate=false` forces
+  a new sibling). Closes the duplicate-`verdicts/` class of bug.
+  (`mcp/google-drive-server.ts`, `test/mcp/gdrive/find-or-create.test.ts`)
+- **`bin/ace-doctor [Drive layout]` section.** Walks every opp under
+  `ACE_DRIVE_ROOT_FOLDER_ID`, runs two new audits per opp:
+  - `detectDuplicateFolders` — flags folder names appearing 2+ times
+    under any `runs/<run-id>/`.
+  - `detectStrayOppRootFiles` — flags any opp-root entry outside the
+    whitelist (`opp.yaml`, `current/`, `inputs/`, `runs/`).
+  Skips non-opp shared-resource folders at the Drive root via
+  `isOppFolder` (folder must contain `inputs/` or `opp.yaml` to count).
+  WARN-not-FAIL — runtime layout drift, not install drift.
+  (`lib/doctor-drive-layout.ts`, `scripts/doctor-drive-layout.ts`,
+  `bin/ace-doctor`, `test/lib/doctor-drive-layout.test.ts`)
+
+### Fixed
+
+- Module-level Google auth init in `mcp/google-drive-server.ts` is now
+  test-tolerant — wrapped in try/catch so the module is importable in
+  vitest cases that inject a mocked `drive` client. Production runs
+  unaffected (key still required at first API call; gated by
+  `/ace:doctor`).
+
 ## 0.11.7 — 2026-05-03
 
 **Long-running-skill contract: no fake background tasks, wall-clock

@@ -843,4 +843,12 @@ for v in ACE_E2E_PHONE ACE_E2E_PIN ACE_E2E_BACKUP_CODE ACE_AVD_NAME; do
 done
 
 echo ""
+echo "[Drive layout]"
+if [ -f "$ROOT/scripts/doctor-drive-layout.ts" ]; then
+  cd "$ROOT" && npx tsx scripts/doctor-drive-layout.ts 2>&1
+else
+  warn "drive_layout: scripts/doctor-drive-layout.ts not present" "run /ace:update to pull a version that ships the audit (>= 0.11.9)"
+fi
+
+echo ""
 echo "STATUS: COMPLETE"
