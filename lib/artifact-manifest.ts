@@ -82,7 +82,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'pdd.md',
     producedBy: 'idea-to-pdd',
     consumedBy: [
-      'pdd-to-test-prompts', 'pdd-to-learn-app', 'pdd-to-deliver-app', 'app-test',
+      'pdd-to-test-prompts', 'pdd-to-learn-app', 'pdd-to-deliver-app',
       'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
       'training-faq', 'training-onboarding-email', 'training-deck-outline',
       'connect-program-setup', 'connect-opp-setup',
@@ -148,7 +148,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'app-summaries/learn-app-summary.md',
     producedBy: 'pdd-to-learn-app',
     consumedBy: [
-      'app-deploy', 'app-test', 'app-test-cases',
+      'app-deploy', 'app-test-cases',
       'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
       'training-faq', 'training-deck-outline',
       'ocs-agent-setup', 'flw-data-review',
@@ -161,7 +161,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: 'app-summaries/deliver-app-summary.md',
     producedBy: 'pdd-to-deliver-app',
     consumedBy: [
-      'app-deploy', 'app-test', 'app-test-cases',
+      'app-deploy', 'app-test-cases',
       'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
       'training-faq', 'training-deck-outline',
       'ocs-agent-setup', 'flw-data-review',
@@ -173,7 +173,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'deployment-summary.md',
     producedBy: 'app-deploy',
-    consumedBy: ['app-test', 'connect-opp-setup', 'llo-uat', 'llo-launch'],
+    consumedBy: ['connect-opp-setup', 'llo-uat', 'llo-launch'],
     phase: 'commcare',
     required: true,
     description: 'App deployment details: IDs, URLs, build status',
@@ -193,30 +193,6 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'commcare',
     required: true,
     description: 'Gate brief for the Phase 2→3 gate: build status, Connectify flags, and an HQ-domain-mismatch BLOCKER if Nova is bound to the wrong project space',
-  },
-  {
-    path: 'test-results/test-plan.md',
-    producedBy: 'app-test',
-    consumedBy: ['learnings-summary', 'cycle-grade'],
-    phase: 'commcare',
-    required: true,
-    description: 'Full test plan with Evidence Model cross-references',
-  },
-  {
-    path: 'test-results/test-results.md',
-    producedBy: 'app-test',
-    consumedBy: ['learnings-summary', 'cycle-grade'],
-    phase: 'commcare',
-    required: true,
-    description: 'Test execution results: pass/fail per test case',
-  },
-  {
-    path: 'test-results/bugs.md',
-    producedBy: 'app-test',
-    consumedBy: ['learnings-summary', 'cycle-grade'],
-    phase: 'commcare',
-    required: true,
-    description: 'Bugs found during testing with severity and repro steps',
   },
   {
     path: 'training-materials/llo-manager-guide.md',
@@ -351,27 +327,6 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
 
   // ── Operate phase (Phase 5) ────────────────────────────────────
 
-  // Mobile-emulation artifacts (2026-04-28). Produced by
-  // ``app-screenshot-capture`` as the first step of Phase 5
-  // (qa-and-training) and consumed by ``training-materials`` to embed
-  // real screenshots in the FLW training guide. Marked optional
-  // (``required: false``) until the fixtures backfill these paths.
-  {
-    path: 'mobile-recipes/learn/manifest.yaml',
-    producedBy: 'app-screenshot-capture',
-    consumedBy: ['app-screenshot-capture'],
-    phase: 'operate',
-    required: false,
-    description: 'Manifest of generated Learn-app Maestro recipes (one per module).',
-  },
-  {
-    path: 'mobile-recipes/deliver/manifest.yaml',
-    producedBy: 'app-screenshot-capture',
-    consumedBy: ['app-screenshot-capture'],
-    phase: 'operate',
-    required: false,
-    description: 'Manifest of generated Deliver-app Maestro recipes (one per module).',
-  },
   {
     path: 'screenshots/manifest.yaml',
     producedBy: 'app-screenshot-capture',
@@ -387,6 +342,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'operate',
     required: false,
     description: 'Machine-readable verdict from app-ux-eval (deep). Read by llo-launch (Phase 6 activation gate) for freshness check vs. latest released CommCare build, and by opp-eval for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
+  },
+  {
+    path: 'verdicts/app-screenshot-capture-shallow.yaml',
+    producedBy: 'app-screenshot-capture',
+    consumedBy: ['opp-eval'],
+    phase: 'operate',
+    required: true,
+    description: 'Shallow smoke verdict from /ace:run Phase 5 — smoke recipe pass/fail + thin UX judge ≥ 2/3 per app. Always present after a successful /ace:run.',
   },
 
   // Path kept as ``connect-setup/invites.md`` rather than renamed to
