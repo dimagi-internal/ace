@@ -11,6 +11,7 @@ phase_ordinal: 1
 skills:
   - { name: idea-to-pdd,         has_judge: true,  eval_skill: idea-to-pdd-eval }
   - { name: pdd-to-test-prompts, has_judge: false }
+  - { name: pdd-to-app-journeys, has_judge: false }
 ---
 
 # Design Review Agent (Phase 1)
@@ -46,6 +47,16 @@ Invoke the `pdd-to-test-prompts` skill.
   summaries derived from the PDD. These are the ground truth for the OCS
   deep QA gate in Phase 4
 - No LLO-facing artifacts are produced in this phase
+
+### Step 3: Generate expected user journeys
+
+Dispatch `pdd-to-app-journeys`:
+- Reads: `pdd.md`
+- Writes: `expected-journeys.md`
+- Halts on missing/empty PDD or missing target-FLW persona section
+
+This skill is the UX-intent ground truth for downstream app QA. Phase 5
+shallow execution and `/ace:qa-deep` both read it.
 
 ### Completion
 Update opportunity state to mark Phase 1 as complete.
