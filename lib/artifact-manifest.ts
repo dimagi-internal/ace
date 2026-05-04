@@ -104,9 +104,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'expected-journeys.md',
     producedBy: 'pdd-to-app-journeys',
-    // app-ux-eval is added in Task 3 of the shallow-deep-qa-split plan.
-    // See: docs/superpowers/plans/2026-05-04-shallow-deep-qa-split.md
-    consumedBy: ['app-test-cases', 'app-screenshot-capture'],
+    consumedBy: ['app-test-cases', 'app-ux-eval', 'app-screenshot-capture'],
     phase: 'design',
     required: true,
     description: 'PDD-derived user journeys + UX edge cases. Ground truth for app-test-cases (Phase 2) and app-ux-eval (deep). Each journey carries a goal, happy-path narrative, edge cases phrased as UX outcomes, and pass criteria.',
@@ -183,14 +181,10 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'app-test-cases.yaml',
     producedBy: 'app-test-cases',
-    // app-ux-eval is added to consumedBy in Task 3 of the
-    // shallow-deep-qa-split plan; until then only Phase 5 shallow
-    // (app-screenshot-capture) reads this file.
-    // See: docs/superpowers/plans/2026-05-04-shallow-deep-qa-split.md
-    consumedBy: ['app-screenshot-capture'],
+    consumedBy: ['app-screenshot-capture', 'app-ux-eval'],
     phase: 'commcare',
     required: true,
-    description: 'Bindings of expected-journeys.md to Phase-2-built app structure: per-journey form/field IDs, Maestro recipe paths, smoke flags, structural pass criteria. Phase 5 shallow uses is_smoke: true entries; /ace:qa-deep uses all entries. (app-ux-eval will be added to consumedBy in Task 3.)',
+    description: 'Bindings of expected-journeys.md to Phase-2-built app structure: per-journey form/field IDs, Maestro recipe paths, smoke flags, structural pass criteria. Phase 5 shallow uses is_smoke: true entries; /ace:qa-deep uses all entries.',
   },
   {
     path: 'gate-briefs/app-deploy.md',
@@ -381,10 +375,18 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'screenshots/manifest.yaml',
     producedBy: 'app-screenshot-capture',
-    consumedBy: ['training-flw-guide', 'training-deck-outline'],
+    consumedBy: ['training-flw-guide', 'training-deck-outline', 'app-ux-eval'],
     phase: 'operate',
     required: false,
     description: 'Manifest of every captured screenshot with step labels and Drive paths.',
+  },
+  {
+    path: 'verdicts/app-ux-eval-deep.yaml',
+    producedBy: 'app-ux-eval',
+    consumedBy: ['llo-launch', 'opp-eval'],
+    phase: 'operate',
+    required: false,
+    description: 'Machine-readable verdict from app-ux-eval (deep). Read by llo-launch (Phase 6 activation gate) for freshness check vs. latest released CommCare build, and by opp-eval for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
   },
 
   // Path kept as ``connect-setup/invites.md`` rather than renamed to
