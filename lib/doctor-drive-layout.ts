@@ -48,3 +48,14 @@ export async function detectStrayOppRootFiles(
     .filter((c) => !OPP_ROOT_WHITELIST.has(c.name))
     .map((c) => ({ id: c.id, name: c.name }));
 }
+
+/** Heuristic: a Drive folder is an "opp folder" if it contains either
+ *  an `inputs/` subfolder or an `opp.yaml` entry. Used by the doctor
+ *  dispatcher to skip non-opp shared-resource folders at the Drive root.
+ */
+export async function isOppFolder(folderId: string, drive: DriveLike): Promise<boolean> {
+  const children = await drive.list(folderId);
+  return children.some(
+    (c) => c.name === 'opp.yaml' || (c.name === 'inputs' && c.mimeType === FOLDER_MIME),
+  );
+}

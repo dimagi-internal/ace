@@ -21,6 +21,7 @@ import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import {
   detectDuplicateFolders,
   detectStrayOppRootFiles,
+  isOppFolder,
   type DriveEntry,
 } from '../lib/doctor-drive-layout.js';
 
@@ -105,9 +106,17 @@ async function main() {
   const driveClient = google.drive({ version: 'v3', auth });
   const drive = { list: (id: string) => listFolder(driveClient, id) };
 
-  const oppFolders = (await drive.list(rootId)).filter(
+  const candidateFolders = (await drive.list(rootId)).filter(
     (c) => c.mimeType === FOLDER_MIME,
   );
+  const oppFolders: typeof candidateFolders = [];
+  for (const c of candidateFolders) {
+    if (await isOppFolder(c.id, drive)) {
+      oppFolders.push(c);
+    } else {
+      info(`drive_layout: skipping '${c.name}' (no inputs/ or opp.yaml — not an opp folder)`);
+    }
+  }
 
   let totalDups = 0;
   let totalStrays = 0;

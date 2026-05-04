@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   detectDuplicateFolders,
   detectStrayOppRootFiles,
+  isOppFolder,
 } from '../../lib/doctor-drive-layout.js';
 
 const FOLDER = 'application/vnd.google-apps.folder';
@@ -78,5 +79,45 @@ describe('detectStrayOppRootFiles', () => {
     };
     const r = await detectStrayOppRootFiles('opp-folder-id', drive as any);
     expect(r.map((x) => x.name)).toContain('commcare-patches');
+  });
+});
+
+describe('isOppFolder', () => {
+  it('returns true when folder contains opp.yaml', async () => {
+    const drive = {
+      list: vi.fn().mockResolvedValue([
+        { id: 'a', name: 'opp.yaml', mimeType: DOC },
+        { id: 'b', name: 'inputs', mimeType: FOLDER },
+      ]),
+    };
+    expect(await isOppFolder('opp', drive as any)).toBe(true);
+  });
+
+  it('returns true when folder contains an inputs/ subfolder (no opp.yaml yet)', async () => {
+    const drive = {
+      list: vi.fn().mockResolvedValue([
+        { id: 'b', name: 'inputs', mimeType: FOLDER },
+      ]),
+    };
+    expect(await isOppFolder('opp', drive as any)).toBe(true);
+  });
+
+  it('returns false when folder has neither marker (e.g. PDD shared folder)', async () => {
+    const drive = {
+      list: vi.fn().mockResolvedValue([
+        { id: 'a', name: 'pdd-vaccine.gdoc', mimeType: DOC },
+        { id: 'b', name: 'pdd-turmeric.gdoc', mimeType: DOC },
+      ]),
+    };
+    expect(await isOppFolder('shared', drive as any)).toBe(false);
+  });
+
+  it('treats a file named "inputs" (not folder) as non-marker', async () => {
+    const drive = {
+      list: vi.fn().mockResolvedValue([
+        { id: 'b', name: 'inputs', mimeType: DOC },  // doc, not folder
+      ]),
+    };
+    expect(await isOppFolder('opp', drive as any)).toBe(false);
   });
 });
