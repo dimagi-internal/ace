@@ -595,7 +595,61 @@ server.tool(
   },
 );
 
-// 14. Transfer ownership of a Drive file or folder
+// 14. Rename a file or folder (just changes the name; parents unchanged)
+server.tool(
+  'drive_rename_file',
+  'Rename an existing file or folder in Google Drive. Only the display name changes — file ID, parents, content, and web link stay the same. Useful for in-place file renames (e.g. state.yaml → run_state.yaml during the 0.11.4 migration).',
+  {
+    fileId: z.string().describe('The file or folder ID to rename'),
+    newName: z.string().min(1).describe('The new file/folder name'),
+  },
+  async ({ fileId, newName }) => {
+    try {
+      const resp = await drive.files.update({
+        fileId,
+        requestBody: { name: newName },
+        fields: 'id, name, webViewLink, mimeType',
+        supportsAllDrives: true,
+      });
+      return result({
+        id: resp.data.id,
+        name: resp.data.name,
+        mimeType: resp.data.mimeType,
+        webViewLink: resp.data.webViewLink,
+      });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 15. Move a file or folder to the Drive bin (recoverable for 30 days)
+server.tool(
+  'drive_trash_file',
+  'Move a file or folder to the Google Drive bin. Recoverable for 30 days via the Drive UI; after that, Drive permanently deletes it. Use this for cleanup paths where you want the operation reversible — e.g. removing the stub `state.yaml` files left after the 0.11.4 → run_state.yaml migration. Sets `trashed: true` via files.update; does NOT call files.delete (which is irreversible).',
+  {
+    fileId: z.string().describe('The file or folder ID to trash'),
+  },
+  async ({ fileId }) => {
+    try {
+      const resp = await drive.files.update({
+        fileId,
+        requestBody: { trashed: true },
+        fields: 'id, name, trashed',
+        supportsAllDrives: true,
+      });
+      return result({
+        id: resp.data.id,
+        name: resp.data.name,
+        trashed: resp.data.trashed,
+      });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 16. Transfer ownership of a Drive file or folder
 server.tool(
   'drive_transfer_ownership',
   'Transfer ownership of a file or folder to another Google account',
