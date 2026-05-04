@@ -297,8 +297,8 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     producedBy: 'ocs-chatbot-qa',
     consumedBy: ['ocs-chatbot-eval'],
     phase: 'ocs',
-    required: true,
-    description: 'Transcript from the --deep suite (Connect-general + ACE-specific + opp-specific + edge cases): structured transcript input to ocs-chatbot-eval --deep',
+    required: false,
+    description: 'Transcript from the --deep suite (Connect-general + ACE-specific + opp-specific + edge cases): structured transcript input to ocs-chatbot-eval --deep. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
   },
   {
     path: 'verdicts/ocs-chatbot-eval-quick.yaml',
@@ -313,16 +313,24 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     producedBy: 'ocs-chatbot-eval',
     consumedBy: [],
     phase: 'ocs',
+    required: false,
+    description: 'Machine-readable verdict from --deep LLM-as-Judge grading; read by opp-eval (future) for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
+  },
+  {
+    path: 'gate-briefs/ocs-chatbot-eval-quick.md',
+    producedBy: 'ocs-chatbot-eval',
+    consumedBy: ['ace-orchestrator'],
+    phase: 'ocs',
     required: true,
-    description: 'Machine-readable verdict from --deep LLM-as-Judge grading; read by opp-eval (future) for cross-skill aggregation',
+    description: 'Gate brief for the Phase 4→5 gate (post-Task-6 shallow gate): scorecard from --quick eval (3 prompts × 1 dim), pass/fail verdict, single auto-surfaced concern if any prompt < 2/3.',
   },
   {
     path: 'gate-briefs/ocs-chatbot-eval-deep.md',
     producedBy: 'ocs-chatbot-eval',
     consumedBy: ['ace-orchestrator'],
     phase: 'ocs',
-    required: true,
-    description: 'Gate brief for the Phase 4→5 gate: deep-eval scorecard, failing prompts, dimension weak spots',
+    required: false,
+    description: 'Gate brief for the deep-eval activation gate: scorecard, failing prompts, dimension weak spots. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
   },
 
   // ── Operate phase (Phase 5) ────────────────────────────────────
@@ -350,6 +358,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'operate',
     required: true,
     description: 'Shallow smoke verdict from /ace:run Phase 5 — smoke recipe pass/fail + thin UX judge ≥ 2/3 per app. Always present after a successful /ace:run.',
+  },
+  {
+    path: 'verdicts/app-screenshot-capture.yaml',
+    producedBy: 'app-screenshot-capture',
+    consumedBy: ['opp-eval'],
+    phase: 'operate',
+    required: true,
+    description: 'Structural verdict from app-screenshot-capture: smoke recipe pass/fail status + screenshot capture integrity. Always present after a successful Phase 5 run.',
   },
 
   // Path kept as ``connect-setup/invites.md`` rather than renamed to

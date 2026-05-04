@@ -28,7 +28,7 @@ the table below.
 
 | Mode | Transcript source | Rubric | Gate | Writes |
 |---|---|---|---|---|
-| `--quick` | `qa-captures/YYYY-MM-DD-ocs-chat-quick.md` | 1 dimension (`overall_quality_0_to_3`) | every prompt ≥ 2/3; retry signal otherwise | stdout summary + `verdicts/ocs-chatbot-eval-quick.yaml` |
+| `--quick` | `qa-captures/YYYY-MM-DD-ocs-chat-quick.md` | 1 dimension (`overall_quality_0_to_3`) | every prompt ≥ 2/3; retry signal otherwise | stdout summary + `verdicts/ocs-chatbot-eval-quick.yaml` + `gate-briefs/ocs-chatbot-eval-quick.md` |
 | `--deep` | `qa-captures/YYYY-MM-DD-ocs-chat-deep.md` | 5 dimensions (full rubric below) | overall ≥ 7 AND zero Fail verdicts | `verdicts/` + `eval-reports/YYYY-MM-DD-ocs-eval.md` + `gate-briefs/ocs-chatbot-eval-deep.md` |
 | `--monitor` | `qa-captures/YYYY-MM-DD-ocs-chat-monitor.md` | 5 dimensions (full rubric below) | none — trend only | `verdicts/` + `eval-reports/YYYY-MM-DD-ocs-eval.md` + append to `eval-reports/trend.md` |
 
@@ -252,16 +252,27 @@ rubric is improving over time, not just changing.
    `ACE/<opp-name>/eval-reports/trend.md` with date, overall score, and
    dimension breakdown so drift is visible at a glance.
 
-8. **Write the gate brief** (only for `--deep` mode) to
-   `ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-deep.md` using the shape
-   from `agents/ace-orchestrator.md § Gate Brief Contract`. See `## Gate
-   Brief` below for the exact fields.
+8. **Write the gate brief** (for `--quick` and `--deep` modes; skipped for
+   `--monitor`) to:
+   - `--quick` → `ACE/<opp-name>/runs/<run-id>/gate-briefs/ocs-chatbot-eval-quick.md`
+   - `--deep`  → `ACE/<opp-name>/runs/<run-id>/gate-briefs/ocs-chatbot-eval-deep.md`
+
+   Use the shape from `agents/ace-orchestrator.md § Gate Brief Contract`.
+   See `## Gate Brief` below for the exact fields per mode. The
+   `--quick` brief is intentionally minimal (single dimension, 3
+   prompts) and feeds the Phase 4→5 shallow gate the orchestrator looks
+   for at `gate-briefs/ocs-chatbot-eval-quick.md`. The `--deep` brief is
+   produced from `/ace:qa-deep` and feeds the Phase 6 `llo-launch`
+   activation gate.
 
 ## Gate Brief
 
-*Applies to `--deep` mode only.* Summarizes the verdict so the admin can
-decide whether the bot is ready for Phase 5 without reading the full
-transcript.
+*Applies to `--quick` (Phase 4 gate, post-Task-6) and `--deep`
+(post-`/ace:qa-deep`).* Summarizes the verdict so the admin can decide
+whether the bot is ready to advance without reading the full transcript.
+`--monitor` does not produce a gate brief.
+
+### Deep mode gate brief shape
 
 - **Artifact Under Review:** path to the dated report under
   `ACE/<opp-name>/eval-reports/`; summary is
@@ -289,6 +300,52 @@ transcript.
   any `[BLOCKER]` (bot not ready); `Iterate` to re-run prompt/RAG and
   retry qa + eval
 
+### Quick mode gate brief shape
+
+The `--quick` brief is intentionally thin: one dimension
+(`overall_quality_0_to_3`), 3 prompts, pass criterion `every prompt ≥
+2/3`. There is no multi-dimensional breakdown to surface.
+
+- **Artifact Under Review:** path to the quick verdict YAML under
+  `ACE/<opp-name>/runs/<run-id>/verdicts/ocs-chatbot-eval-quick.yaml`;
+  summary is `<overall-score>/3 across <N> prompts, <P> Pass / <F> Fail`
+- **What to Check** (emit these 3 items verbatim):
+  - Every prompt's `overall_quality` ≥ 2/3 (the shallow pass criterion)
+  - No fabricated answers, role leakage, or structural error responses
+    on the 3 smoke prompts (any of which scores 0 and forces a fail)
+  - The 3 prompts represent the smoke set defined by `pdd-to-test-prompts`
+    — spot-check that the bot produced an answer for each and didn't
+    silently drop one
+- **Auto-Surfaced Concerns:** one line per signal:
+  - `[BLOCKER]` for each prompt scoring 0 or 1 (include prompt snippet + reason)
+  - "None — all auto-checks passed." if every prompt scored ≥ 2/3
+- **Recommended Disposition:** `Approve` if zero `[BLOCKER]`; `Iterate`
+  if any `[BLOCKER]` (caller re-runs `ocs-agent-setup`'s prompt-patch
+  once before escalating, per Process step 5)
+
+Example (quick):
+
+```markdown
+# Gate Brief — ocs-chatbot-eval-quick
+Opportunity: <opp-name>
+Generated: 2026-05-04T18:30:00Z
+
+## Artifact Under Review
+- Path: `ACE/<opp-name>/runs/<run-id>/verdicts/ocs-chatbot-eval-quick.yaml`
+- Summary: 2.7/3 across 3 prompts, 3 Pass / 0 Fail.
+
+## What to Check
+- Every prompt's `overall_quality` ≥ 2/3 (the shallow pass criterion)
+- No fabricated answers, role leakage, or structural error responses on the 3 smoke prompts
+- The 3 prompts represent the smoke set defined by `pdd-to-test-prompts` — spot-check that the bot produced an answer for each and didn't silently drop one
+
+## Auto-Surfaced Concerns
+None — all auto-checks passed.
+
+## Recommended Disposition
+Approve — zero [BLOCKER]; shallow gate cleared.
+```
+
 ## MCP Tools Used
 
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`
@@ -315,3 +372,4 @@ When `--dry-run` is active:
 | 2026-04-19 | Rename per-item verdict key `per_prompt` → `per_item` (canonical per `skills/README.md § QA vs Eval`); add `prompt:` as domain-specific subkey inside each entry; document `ACE/golden-template/` no-opp fallback path; document `auto_surfaced:` block contract (inputs to the gate brief) | ACE team (qa/eval iteration loop) |
 | 2026-04-29 | Source-usage dimension now branches on the transcript's `Capture method:` header. Widget-captured transcripts grade body-text grounding (does the response name source docs by title?) and emit `[PLATFORM] empty cited_files expected on widget capture` instead of binding the empty-`cited_files` cap. OpenAI-compat captures keep the existing two-tier cap. The original cap conflated bot grounding gaps with widget-API measurement limitations and fired on every widget transcript regardless of bot quality, costing 5+ points on captures that were actually grounded. Surfaced 0.9.11 cross-opp validation against `turmeric-dogfood-20260427`. | ACE team (0.10.10) |
 | 2026-05-04 | **Thinned `--quick` to a single-dimension rubric.** `--quick` mode now scores one `overall_quality_0_to_3` dimension per prompt with pass criterion `every prompt ≥ 2/3`. `--deep` and `--monitor` still use the calibrated 5-dimension rubric. Phase 4 cost reduction: 3 prompts × 1 dim = 3 LLM judge calls (vs 5 prompts × 5 dims = ~25). Multi-dimensional judging moves to deep-only — the `--deep` mode is now invoked only from `/ace:qa-deep` and gates Phase 6 `llo-launch` activation. Verdict file path unchanged (`verdicts/ocs-chatbot-eval-quick.yaml`); the `dimensions` array now has 1 entry. | ACE team |
+| 2026-05-04 | **`--quick` now writes a gate brief.** `--quick` mode emits `gate-briefs/ocs-chatbot-eval-quick.md` so the orchestrator's Phase 4→5 gate lookup resolves (post-Task-6 contract). Defined the quick-mode brief shape inline (single dimension, 3 prompts, no multi-dim breakdown). `--monitor` still does not produce a gate brief. Final-review followup to the shallow/deep QA split. | ACE team |

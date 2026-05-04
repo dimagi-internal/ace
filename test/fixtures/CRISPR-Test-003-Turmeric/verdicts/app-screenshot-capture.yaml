@@ -1,0 +1,27 @@
+# Synthetic structural verdict for CRISPR-Test-003-Turmeric.
+# Phase 5 structural verdict: smoke recipe pass/fail + screenshot capture integrity.
+skill: app-screenshot-capture
+target: CRISPR-Test-003-Turmeric
+ran_at: 2026-04-16T17:30:00Z
+capture_path: screenshots/manifest.yaml
+
+overall_score: 8.7
+verdict: pass
+
+dimensions:
+  coverage:           { score: 9.0, weight: 0.30 }   # both smoke journeys covered
+  execution:          { score: 8.5, weight: 0.30 }   # every smoke recipe status == pass
+  artifact_quality:   { score: 9.0, weight: 0.20 }   # every screenshot is a valid PNG, non-zero bytes
+  manifest_integrity: { score: 8.5, weight: 0.20 }   # manifest.yaml lists every screenshot present in Drive
+
+per_item:
+  - ref: "J1.yaml"
+    score: 9.0
+    verdict: pass
+    note: "5 screenshots, all PNG, all referenced from manifest"
+  - ref: "J2.yaml"
+    score: 8.5
+    verdict: pass
+    note: "4 screenshots, all PNG, manifest matches Drive listing"
+
+auto_surfaced: []
