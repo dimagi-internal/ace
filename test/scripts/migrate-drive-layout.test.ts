@@ -46,7 +46,8 @@ describe('planMoves', () => {
       { id: 'pdd-id', name: 'pdd.md', mimeType: DOC },
     ]);
     const moves = await planMoves('opp-id', drive as any);
-    expect(moves).toEqual([
+    const fileMoves = moves.filter((m) => m.action === 'move');
+    expect(fileMoves).toEqual([
       {
         fileId: 'pdd-id',
         from: 'pdd.md',
@@ -62,7 +63,7 @@ describe('planMoves', () => {
       { id: 'state-id', name: 'run_state.yaml', mimeType: YAML },
     ]);
     const moves = await planMoves('opp-id', drive as any);
-    expect(moves).toEqual([]);
+    expect(moves.filter((m) => m.action === 'move')).toEqual([]);
   });
 
   it('emits coalesce-folder for duplicate sibling folder names under a run', async () => {
@@ -192,9 +193,10 @@ describe('planMoves', () => {
       ],
     });
     const moves = await planMoves('opp-id', drive as any);
-    expect(moves).toHaveLength(2);
-    const a = moves.find((m) => m.fileId === 'pdd-A-id');
-    const b = moves.find((m) => m.fileId === 'pdd-B-id');
+    const fileMoves = moves.filter((m) => m.action === 'move');
+    expect(fileMoves).toHaveLength(2);
+    const a = fileMoves.find((m) => m.fileId === 'pdd-A-id');
+    const b = fileMoves.find((m) => m.fileId === 'pdd-B-id');
     expect(a?.runFolderId).toBe('run-A-id');
     expect(b?.runFolderId).toBe('run-B-id');
     expect(a?.to).toBe('1-design/idea-to-pdd.md');
@@ -384,5 +386,196 @@ describe('executeMoves', () => {
     // Cache hit: files.create only called once for the folder
     expect(d.files.create).toHaveBeenCalledOnce();
     expect(d.files.update).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ── Task 12: planner emissions for create-shortcut + delete-empty ──
+
+describe('planMoves: create-shortcut emissions', () => {
+  it('emits one create-shortcut per CURRENT_TARGETS pointing at the lex-largest run', async () => {
+    const drive = fakeDrive({
+      'opp-id': [{ id: 'runs-id', name: 'runs', mimeType: FOLDER }],
+      'runs-id': [
+        { id: 'run-A-id', name: '20260501-1000', mimeType: FOLDER },
+        { id: 'run-B-id', name: '20260503-1234', mimeType: FOLDER }, // latest by lex
+      ],
+      'run-A-id': [],
+      'run-B-id': [],
+    });
+    const moves = await planMoves('opp-id', drive as any);
+    const shortcuts = moves.filter((m) => m.action === 'create-shortcut');
+    // Three CURRENT_TARGETS expected per the plan.
+    expect(shortcuts).toHaveLength(3);
+    // All point at the latest run (run-B-id).
+    for (const s of shortcuts) {
+      expect(s.runFolderId).toBe('run-B-id');
+      expect(s.fileId).toBe('run-B-id');
+    }
+    // Spot-check the names + targets we expect.
+    const byName = new Map(shortcuts.map((s) => [s.from, s.to]));
+    expect(byName.get('connect-opp-summary.md')).toBe('3-connect/connect-opp-setup.md');
+    expect(byName.get('connect-program-summary.md')).toBe('3-connect/connect-program-setup.md');
+    expect(byName.get('ocs-agent-config.md')).toBe('4-ocs/ocs-agent-setup.md');
+  });
+
+  it('emits no create-shortcut actions when no runs exist', async () => {
+    const drive = fakeDrive({
+      'opp-id': [{ id: 'runs-id', name: 'runs', mimeType: FOLDER }],
+      'runs-id': [],
+    });
+    const moves = await planMoves('opp-id', drive as any);
+    expect(moves.filter((m) => m.action === 'create-shortcut')).toHaveLength(0);
+  });
+});
+
+describe('planMoves: delete-empty emissions', () => {
+  it('emits delete-empty for known legacy folders that will have no children after moves', async () => {
+    // verdicts/ contains a single file that will move out → folder becomes empty.
+    const drive = fakeDrive({
+      'opp-id': [{ id: 'runs-id', name: 'runs', mimeType: FOLDER }],
+      'runs-id': [{ id: 'run-1-id', name: 'run-1', mimeType: FOLDER }],
+      'run-1-id': [
+        { id: 'verdicts-id', name: 'verdicts', mimeType: FOLDER },
+      ],
+      'verdicts-id': [
+        { id: 'v-itp-id', name: 'idea-to-pdd.yaml', mimeType: YAML },
+      ],
+    });
+    const moves = await planMoves('opp-id', drive as any);
+    const deletes = moves.filter((m) => m.action === 'delete-empty');
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]).toMatchObject({
+      action: 'delete-empty',
+      fileId: 'verdicts-id',
+      from: 'verdicts/',
+      runFolderId: 'run-1-id',
+    });
+  });
+
+  it('does NOT emit delete-empty for unknown folder names', async () => {
+    // `random-junk/` is not in the legacy list.
+    const drive = fakeDrive({
+      'opp-id': [{ id: 'runs-id', name: 'runs', mimeType: FOLDER }],
+      'runs-id': [{ id: 'run-1-id', name: 'run-1', mimeType: FOLDER }],
+      'run-1-id': [
+        { id: 'rj-id', name: 'random-junk', mimeType: FOLDER },
+      ],
+      'rj-id': [],
+    });
+    const moves = await planMoves('opp-id', drive as any);
+    expect(moves.filter((m) => m.action === 'delete-empty')).toHaveLength(0);
+  });
+
+  it('does NOT emit delete-empty when the legacy folder has children remaining after moves', async () => {
+    // `verdicts/` has an unmapped file that won't move (no migration target).
+    // The folder is still non-empty after the planned moves, so we should not delete.
+    const drive = fakeDrive({
+      'opp-id': [{ id: 'runs-id', name: 'runs', mimeType: FOLDER }],
+      'runs-id': [{ id: 'run-1-id', name: 'run-1', mimeType: FOLDER }],
+      'run-1-id': [
+        { id: 'verdicts-id', name: 'verdicts', mimeType: FOLDER },
+      ],
+      'verdicts-id': [
+        { id: 'orphan-id', name: 'mystery-verdict.yaml', mimeType: YAML },
+      ],
+    });
+    const moves = await planMoves('opp-id', drive as any);
+    expect(moves.filter((m) => m.action === 'delete-empty')).toHaveLength(0);
+  });
+});
+
+describe('executeMoves: create-shortcut + delete-empty handlers', () => {
+  it('create-shortcut: walks segments to resolve targetId, ensures current/, deletes prior, creates shortcut', async () => {
+    const d = makeFakeGoogleDrive();
+    // 1. resolveTargetIdByPath: walks "3-connect" → "connect-opp-setup.md"
+    d.files.list
+      .mockResolvedValueOnce({
+        data: { files: [{ id: 'phase-3-id', name: '3-connect', mimeType: 'application/vnd.google-apps.folder' }] },
+      })
+      .mockResolvedValueOnce({
+        data: { files: [{ id: 'opp-summary-id', name: 'connect-opp-setup.md', mimeType: 'application/vnd.google-apps.document' }] },
+      })
+      // 2. find-or-create current/ folder under opp-id
+      .mockResolvedValueOnce({ data: { files: [] } })
+      // 3. list existing same-name shortcuts under current/
+      .mockResolvedValueOnce({ data: { files: [{ id: 'old-shortcut-id' }] } });
+
+    // current/ folder create
+    d.files.create
+      .mockResolvedValueOnce({ data: { id: 'current-folder-id', name: 'current' } })
+      // shortcut create
+      .mockResolvedValueOnce({ data: { id: 'new-shortcut-id', name: 'connect-opp-summary.md' } });
+
+    // delete the prior same-name shortcut
+    d.files.delete.mockResolvedValueOnce({ data: {} });
+
+    const moves: PlannedMove[] = [{
+      fileId: 'run-B-id',
+      from: 'connect-opp-summary.md',
+      to: '3-connect/connect-opp-setup.md',
+      action: 'create-shortcut',
+      runFolderId: 'run-B-id',
+    }];
+
+    const result = await executeMoves('opp-id', moves, d as any);
+    expect(result.executed).toBe(1);
+    expect(result.errors).toHaveLength(0);
+
+    // The prior same-name was deleted.
+    expect(d.files.delete).toHaveBeenCalledWith({
+      fileId: 'old-shortcut-id',
+      supportsAllDrives: true,
+    });
+
+    // Shortcut was created under current-folder-id with the resolved target.
+    const shortcutCreate = d.files.create.mock.calls.find(
+      (c) => c[0].requestBody?.mimeType === 'application/vnd.google-apps.shortcut',
+    );
+    expect(shortcutCreate).toBeDefined();
+    expect(shortcutCreate![0].requestBody.parents).toEqual(['current-folder-id']);
+    expect(shortcutCreate![0].requestBody.shortcutDetails).toEqual({ targetId: 'opp-summary-id' });
+    expect(shortcutCreate![0].requestBody.name).toBe('connect-opp-summary.md');
+  });
+
+  it('delete-empty: re-lists; deletes only when confirmed empty', async () => {
+    const d = makeFakeGoogleDrive();
+    // Defensive re-list returns no children.
+    d.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    d.files.delete.mockResolvedValueOnce({ data: {} });
+
+    const moves: PlannedMove[] = [{
+      fileId: 'verdicts-id',
+      from: 'verdicts/',
+      to: 'verdicts/',
+      action: 'delete-empty',
+      runFolderId: 'run-1-id',
+    }];
+
+    const result = await executeMoves('opp-id', moves, d as any);
+    expect(result.executed).toBe(1);
+    expect(d.files.delete).toHaveBeenCalledWith({
+      fileId: 'verdicts-id',
+      supportsAllDrives: true,
+    });
+  });
+
+  it('delete-empty: skips deletion when re-list shows children appeared after plan', async () => {
+    const d = makeFakeGoogleDrive();
+    // Defensive re-list shows a child appeared.
+    d.files.list.mockResolvedValueOnce({
+      data: { files: [{ id: 'late-arrival-id' }] },
+    });
+
+    const moves: PlannedMove[] = [{
+      fileId: 'verdicts-id',
+      from: 'verdicts/',
+      to: 'verdicts/',
+      action: 'delete-empty',
+      runFolderId: 'run-1-id',
+    }];
+
+    const result = await executeMoves('opp-id', moves, d as any);
+    expect(result.executed).toBe(0);
+    expect(d.files.delete).not.toHaveBeenCalled();
   });
 });

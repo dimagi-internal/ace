@@ -159,6 +159,46 @@ const RUN_LEVEL_IDENTITY = new Set<string>([
   'run_state.yaml',
 ]);
 
+/**
+ * `current/` shortcut targets — one shortcut per entry, parented at the opp
+ * root, pointing into the latest run. Refreshed by the orchestrator (Task 28)
+ * after each phase completes; the migration planner emits one-shot creates
+ * here so existing opps land on the new layout in a single sweep.
+ */
+const CURRENT_TARGETS: Array<{ name: string; target: string }> = [
+  { name: 'connect-opp-summary.md', target: '3-connect/connect-opp-setup.md' },
+  { name: 'connect-program-summary.md', target: '3-connect/connect-program-setup.md' },
+  { name: 'ocs-agent-config.md', target: '4-ocs/ocs-agent-setup.md' },
+];
+
+/**
+ * Folder names that the new layout retires entirely. After all in-folder files
+ * have been moved out, the folder itself is deleted (defensively re-listed
+ * before deletion in case state changed mid-migration). Only top-level legacy
+ * folders are listed here; nested folders inside `qa-plan/`, `screenshots/`,
+ * etc. survive in the new layout.
+ */
+const LEGACY_DEAD_FOLDERS = new Set<string>([
+  'gate-briefs',
+  'verdicts',
+  'app-summaries',
+  'app-coverage',
+  'test-results',
+  'connect-setup',
+  'comms-log',
+  'uat',
+  'launch',
+  'eval-reports',
+  'closeout',
+  'qa-captures',
+  'monitoring',
+  'data-reviews',
+  'scorecards',
+  'training-materials',
+  'ocs-setup',
+  'apps',
+]);
+
 // Files that are dropped wholesale in the new layout — no migration target.
 // Detected via prefix match; the planner skips them silently.
 const DROPPED_PREFIXES = [
@@ -260,10 +300,24 @@ function computeNewPath(oldPath: string): string | null {
 // ── Recursive walker ───────────────────────────────────────────────
 
 /**
+ * Per-run side-effect collector for the second-pass emissions (delete-empty).
+ * Keyed by relative folder path under the run; tracks total file count and
+ * the move-out count so we can decide if the folder ends up empty.
+ */
+interface FolderStat {
+  id: string;
+  totalFiles: number;
+  movedOutFiles: number;
+  hasSubfolders: boolean;
+}
+
+/**
  * Recursively walk a run folder, emitting a PlannedMove for every file
  * whose path differs from its computed new path. Also emits one
  * `coalesce-folder` action per duplicate sibling-folder name found at
- * any level (the executor — Task 11 — does the actual merge).
+ * any level. The `topLevelFolderStats` map is populated as a side effect
+ * so `planMoves` can later emit `delete-empty` actions for legacy folders
+ * that end up with no children after all moves.
  */
 async function walkAndPlan(
   folderId: string,
@@ -271,6 +325,7 @@ async function walkAndPlan(
   runFolderId: string,
   drive: DriveLike,
   out: PlannedMove[],
+  topLevelFolderStats: Map<string, FolderStat>,
 ): Promise<void> {
   const children = await drive.list(folderId);
 
@@ -299,9 +354,21 @@ async function walkAndPlan(
   for (const child of children) {
     const childPath = `${pathPrefix}${child.name}`;
     if (child.mimeType === FOLDER_MIME) {
+      // Track top-level folders for the post-move delete-empty pass.
+      // Only direct children of the run folder count — nested folders
+      // (e.g. screenshots/learn/) survive in the new layout under their
+      // legacy parent's new home.
+      if (pathPrefix === '') {
+        topLevelFolderStats.set(child.name, {
+          id: child.id,
+          totalFiles: 0,
+          movedOutFiles: 0,
+          hasSubfolders: false,
+        });
+      }
       // Recurse into folders. The folder itself doesn't get a move action —
       // its files do.
-      await walkAndPlan(child.id, `${childPath}/`, runFolderId, drive, out);
+      await walkAndPlan(child.id, `${childPath}/`, runFolderId, drive, out, topLevelFolderStats);
     } else {
       const newPath = computeNewPath(childPath);
       if (newPath && newPath !== childPath) {
@@ -313,13 +380,44 @@ async function walkAndPlan(
           runFolderId,
         });
       }
+      // Track file counts for the top-level folder this file lives under.
+      if (pathPrefix !== '') {
+        const top = pathPrefix.split('/')[0]!;
+        const stat = topLevelFolderStats.get(top);
+        if (stat) {
+          stat.totalFiles += 1;
+          if (newPath && newPath !== childPath) stat.movedOutFiles += 1;
+        }
+      }
+    }
+  }
+
+  // After processing children, if we recursed into a top-level legacy folder
+  // and found subfolders (not just files), mark it so we don't emit delete-empty
+  // for a folder whose children are themselves folders we'd have to delete first.
+  if (pathPrefix !== '') {
+    const top = pathPrefix.split('/')[0]!;
+    const stat = topLevelFolderStats.get(top);
+    if (stat) {
+      const subFolders = children.filter((c) => c.mimeType === FOLDER_MIME);
+      if (subFolders.length > 0 && pathPrefix.split('/').filter(Boolean).length === 1) {
+        stat.hasSubfolders = true;
+      }
     }
   }
 }
 
 /**
  * Plan moves for every run folder under one opp folder. Walks `opp/runs/`
- * and recurses into each `run-<id>/` subfolder.
+ * and recurses into each `run-<id>/` subfolder. After all moves are planned,
+ * a second pass emits two derived action types:
+ *
+ *  - `delete-empty` for any top-level legacy folder (LEGACY_DEAD_FOLDERS)
+ *    whose files all moved out and that had no nested subfolders to keep.
+ *
+ *  - `create-shortcut` for each CURRENT_TARGETS entry, parented at the opp
+ *    root, pointing into the lex-largest run (the "latest" run by the
+ *    YYYYMMDD-HHMM naming convention). Emitted once per opp, not per run.
  */
 export async function planMoves(oppFolderId: string, drive: DriveLike): Promise<PlannedMove[]> {
   const out: PlannedMove[] = [];
@@ -328,8 +426,37 @@ export async function planMoves(oppFolderId: string, drive: DriveLike): Promise<
   if (!runsFolder) return out;
   const runs = (await drive.list(runsFolder.id)).filter((c) => c.mimeType === FOLDER_MIME);
   for (const run of runs) {
-    await walkAndPlan(run.id, '', run.id, drive, out);
+    const stats = new Map<string, FolderStat>();
+    await walkAndPlan(run.id, '', run.id, drive, out, stats);
+    // Per-run delete-empty emissions.
+    for (const [name, stat] of stats) {
+      if (!LEGACY_DEAD_FOLDERS.has(name)) continue;
+      if (stat.hasSubfolders) continue;
+      if (stat.totalFiles === 0 || stat.movedOutFiles < stat.totalFiles) continue;
+      out.push({
+        fileId: stat.id,
+        from: `${name}/`,
+        to: `${name}/`,
+        action: 'delete-empty',
+        runFolderId: run.id,
+      });
+    }
   }
+
+  // Per-opp create-shortcut emissions for the latest run.
+  if (runs.length > 0) {
+    const latest = [...runs].sort((a, b) => b.name.localeCompare(a.name))[0]!;
+    for (const target of CURRENT_TARGETS) {
+      out.push({
+        fileId: latest.id,
+        from: target.name,
+        to: target.target,
+        action: 'create-shortcut',
+        runFolderId: latest.id,
+      });
+    }
+  }
+
   return out;
 }
 
