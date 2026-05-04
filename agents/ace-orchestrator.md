@@ -264,6 +264,69 @@ validates "is this opp ready to send to outside parties?" — only
 human judgment can clear that bar, so default mode insists on human
 review at every external-comm point.
 
+## Long-Running Skills — No Fake Background Tasks
+
+ACE has no real background-task primitive for phase-internal work.
+`ScheduleWakeup` defers the *agent*; it doesn't background actual work
+on a side thread. Treating it as backgrounding produces an
+unobservable, unrecoverable, unbounded loop — which is exactly what
+killed the `turmeric-20260503-0835` deep capture (3+ hours, ~700K
+tokens, zero progress, no recoverable transcript). The rule is:
+
+**Phase-internal sequential skills run synchronously to completion,
+with a hard wall-clock budget. They do NOT call `ScheduleWakeup`.**
+
+If a skill cannot finish in budget, it fails loud — writes a partial
+artifact, returns a `[BLOCKER]` `auto_surfaced` entry, and lets the
+orchestrator decide whether to re-dispatch (idempotent re-runs are the
+recovery mechanism, not deferred wakeups).
+
+Concrete shape every long-running skill must have:
+
+1. **Wall-clock budget**, declared in a `## Wall-Clock Budget` section.
+   Both per-unit (per-prompt, per-form, per-screenshot) and suite-level
+   caps. Track elapsed with `date +%s` checkpoints.
+2. **Liveness probe before the work loop.** A cheap (<5s) one-shot
+   call against the upstream service that distinguishes "service is
+   responsive" from "absence of output." Catches dead sessions before
+   the budget burns.
+3. **Incremental writes for recovery.** Every captured unit goes to
+   the artifact file as it completes. Never "build everything in
+   memory and write at the end" — a mid-loop kill that way loses
+   everything.
+4. **Resume-from-partial at start.** Read any existing artifact and
+   skip already-completed units. Re-running the skill is cheap and
+   idempotent.
+5. **Three-strike circuit breaker.** If three consecutive units fail
+   (timeout, error response), abort the loop — burning the rest of
+   the budget produces noise, not signal.
+
+### When background IS appropriate
+
+`ScheduleWakeup` and cron-style scheduling are reserved for **recurring
+jobs that run independent of any particular run**:
+
+- `timeline-monitor` — recurring during active opp, fires per LLO
+  milestone calendar
+- `flw-data-review` — recurring during active opp, fires per FLW
+  submission window
+- `ocs-chatbot-qa --monitor` / `ocs-chatbot-eval --monitor` —
+  recurring during active opp for drift detection
+
+These are legitimately parallel-to-the-main-run; they don't gate any
+phase. Phase-internal work (`ocs-chatbot-qa --quick` / `--deep`,
+`app-screenshot-capture`, `qa-plan`, etc.) is foreground sequential
+and is NOT eligible for this pattern.
+
+### When polling IS appropriate
+
+Some skills legitimately wait on upstream state changes (RAG indexing
+in `ocs-agent-setup`, CCHQ build completion in `app-release`). For
+those, poll the upstream service's status endpoint directly with a
+**bounded retry policy**: max attempts, exponential backoff, hard
+timeout, fail loud on exhaustion. Do not invent a "background task ID"
+that the orchestrator can't actually verify is alive.
+
 ## Performance Conventions
 
 These conventions cut wall-clock and token cost on `/ace:run`. Apply
@@ -895,3 +958,43 @@ the skills they actually drove, not buried behind the initiator.
 
 If `git config user.email` is unset, write the literal `unknown`. Do not
 block the run.
+
+### State-as-canary contract
+
+`run_state.yaml` is the orchestrator's heartbeat. Every skill must
+mark its progress so resumption logic can distinguish "in progress"
+from "stalled" without inferring from artifact absence.
+
+**Before starting work**, the skill (or the dispatcher invoking it)
+writes:
+
+```yaml
+phases:
+  <phase>:
+    <step>: in_progress
+last_actor: <git config user.email>
+last_actor_at: <ISO timestamp>
+```
+
+**On clean completion**, write `<step>: done`.
+
+**On hard failure or timeout**, write `<step>: error` (with optional
+`<step>_error: <one-line>` adjacent) — never leave it in `in_progress`.
+
+**Resume agents** that read `run_state.yaml` and find a step in
+`in_progress` apply this rule:
+
+- `last_actor_at` ≤ 15 min ago → assume the prior session is still
+  alive; re-entering would race. Halt with a clear "another session
+  appears to be working this opp" message and the offending field.
+- `last_actor_at` > 15 min ago → treat as **dead**, not "still
+  running." The skill is idempotent (per § Long-Running Skills —
+  No Fake Background Tasks); re-dispatch from the artifact-checkable
+  resumption point. Do NOT poll-wait for a phantom completion.
+
+This rule is the single biggest preventer of the
+`turmeric-20260503-0835` failure mode: an `in_progress` field that
+nobody updates becomes an unbounded waiting loop. The 15-min
+threshold balances "let a slow but live skill finish" against "don't
+wait on a dead one." Tighten or loosen per skill if needed via a
+documented exception in the skill's SKILL.md.
