@@ -35,3 +35,16 @@ export async function detectDuplicateFolders(
     .filter(([_, ids]) => ids.length > 1)
     .map(([name, ids]) => ({ name, ids }));
 }
+
+const OPP_ROOT_WHITELIST = new Set(['opp.yaml', 'inputs', 'runs', 'current']);
+
+/** List opp-root entries (files or folders) that are NOT in the whitelist. */
+export async function detectStrayOppRootFiles(
+  oppFolderId: string,
+  drive: DriveLike,
+): Promise<Array<{ id: string; name: string }>> {
+  const children = await drive.list(oppFolderId);
+  return children
+    .filter((c) => !OPP_ROOT_WHITELIST.has(c.name))
+    .map((c) => ({ id: c.id, name: c.name }));
+}
