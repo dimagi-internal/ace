@@ -193,7 +193,74 @@ unreadable signal.
 `mcp/connect/backends/...`, `skills/<name>/`, `lib/<name>.ts`) — those
 should live in GitHub issues, not per-opp state.
 
-## Execution Modes
+## Cruft management — `archive:` block convention
+
+`open_questions:` and `phase_X_backlog:` accumulate **resolved
+entries** because the long-standing convention has been to annotate
+them in place ("RESOLVED 2026-05-03 by ACE 0.10.91 — …") rather than
+remove them. Net effect: a 12-entry `open_questions:` list where 4
+are actually open and 8 are historical record dressed as work items.
+
+**The convention (added 0.11.7):** when a skill resolves an entry, it
+**moves** the entry to a top-level `archive:` block instead of
+annotating in place. The archive preserves the audit trail without
+polluting the live work list.
+
+`archive:` shape mirrors the source:
+
+```yaml
+archive:
+  open_questions:
+    - id: createOpportunity-mcp-backend
+      summary: …  (preserved verbatim)
+      owner: …
+      resolution_phase: resolved-in-0.10.91
+      default_in_use: …
+      resolved_at: 2026-05-03T15:30:00Z   # added when moving to archive
+      resolved_by: ace-engineering         # who resolved it (skill, agent, or operator)
+      resolution_note: …                   # one-sentence summary of the fix
+  phase_2_backlog:
+    - id: commcare-download-ccz-marker-counter-bug
+      …  (same shape; original location field preserved)
+      resolved_at: …
+      resolved_by: …
+      resolution_note: …
+  phase_3_backlog: [...]
+  # phase_4_backlog, phase_5_backlog, phase_6_backlog as needed
+```
+
+The three `resolved_*` fields are **the only fields added** when
+moving an entry from live to archive — nothing else changes, so the
+audit trail is intact and grep-able.
+
+**Consumers:** `/ace:status`, opp-eval, the orchestrator's "what's
+open" sweeps, and any skill computing per-opp readiness must IGNORE
+the `archive:` block. Treat it as a frozen historical record, not as
+work-in-progress signal.
+
+**Doctor lint (added 0.11.7).** `/ace:doctor state-yaml-cruft <opp>`
+scans `run_state.yaml` for entries that look resolved but still live
+in the active list — heuristics: `resolution_phase: resolved-in-…`,
+`default_in_use:` starts with `(resolved`, `summary:` begins with
+`RESOLVED ` or contains a `RESOLVED in <version>` marker. Surfaces
+each one as a candidate for the operator to move into `archive:`.
+This is a NUDGE lint, not auto-fix — the operator decides what's
+truly resolved vs partially-resolved.
+
+**When to write to `archive:` directly vs annotate-then-move:** if a
+skill resolves an entry as part of its run (e.g. `connect-opp-setup`
+finishes and resolves the `createOpportunity-mcp-backend` open
+question), it MAY move the entry directly to `archive:` with the
+three `resolved_*` fields populated. If the resolution happens
+ad-hoc (operator notices a stale entry in a future session), the
+operator runs the cruft lint, decides which to archive, and moves
+them.
+
+**Why the lint NUDGES rather than auto-archives:** "RESOLVED in
+0.10.67" markers can apply to a fix that hasn't been verified
+end-to-end on this opp yet — auto-archiving would lose that signal.
+The operator is the one who knows whether a marked-resolved entry is
+truly closed in this opp's context.
 
 ACE has three modes. **`default` is the default** — pick another only
 if you have a specific reason.

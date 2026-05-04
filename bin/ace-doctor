@@ -43,6 +43,15 @@ elif [ "${1:-}" = "state-yaml-lint" ]; then
   fi
   SUB_OPP="$1"
   shift
+elif [ "${1:-}" = "state-yaml-cruft" ]; then
+  SUBCOMMAND="state-yaml-cruft"
+  shift
+  if [ -z "${1:-}" ]; then
+    echo "usage: ace-doctor state-yaml-cruft <opp-name>" >&2
+    exit 2
+  fi
+  SUB_OPP="$1"
+  shift
 fi
 
 while [ $# -gt 0 ]; do
@@ -109,6 +118,15 @@ if [ "$SUBCOMMAND" = "state-yaml-lint" ]; then
     exit 0
   fi
   cd "$ROOT" && exec npx tsx scripts/lint-opp-state.ts "$SUB_OPP"
+fi
+
+if [ "$SUBCOMMAND" = "state-yaml-cruft" ]; then
+  if [ ! -f "$ROOT/scripts/lint-opp-cruft.ts" ]; then
+    echo "FAIL state-yaml-cruft_subcommand: $ROOT/scripts/lint-opp-cruft.ts not found"
+    echo "  fix: run /ace:update to pull a version that ships the lint (>= 0.11.7)"
+    exit 0
+  fi
+  cd "$ROOT" && exec npx tsx scripts/lint-opp-cruft.ts "$SUB_OPP"
 fi
 
 # If the user is inside a dev worktree that differs from $ROOT, flag it so they
