@@ -207,7 +207,7 @@ from `agents/training-prep.md` to `agents/qa-and-training.md`; the new
 
 ## Executor pivot (2026-05-04)
 
-In 0.x.0 (shallow/deep QA split) the QA-plan synthesis moved upstream to
+In 0.11.10 (shallow/deep QA split) the QA-plan synthesis moved upstream to
 Phase 1 (`pdd-to-app-journeys`) and Phase 2 (`app-test-cases`). Phase 5
 became an executor: it reads the pre-composed smoke recipes from
 `app-test-cases.yaml`, runs them, captures screenshots, and runs a thin

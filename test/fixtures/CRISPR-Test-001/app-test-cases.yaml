@@ -1,0 +1,48 @@
+# app-test-cases.yaml — bindings of Phase 1 journeys to Phase 2 built structure.
+# Producer: app-test-cases (Phase 2)
+# Consumers: app-screenshot-capture (Phase 5 shallow), /ace:qa-deep (manual deep)
+#
+# Synthetic stub for CRISPR-Test-001 fixture.
+
+opp: CRISPR-Test-001
+run_id: synthetic-fixture
+generated_at: 2026-04-03T00:00:00Z
+nova_apps:
+  learn: nova-fake-learn-001
+  deliver: nova-fake-deliver-001
+
+journeys:
+  - id: J1
+    name: Complete a household visit
+    app: deliver
+    is_smoke: true
+    forms_exercised:
+      - household_visit
+    fields_exercised:
+      - household_name
+      - household_phone
+      - gps_reading
+      - id_card_photo
+    recipe_path: app-test-cases/recipes/J1.yaml
+    structural_pass_criteria:
+      - app_boots
+      - no_crash
+      - submission_confirmed
+    pdd_time_budget_seconds: 180
+
+  - id: J2
+    name: Pass the Learn assessment
+    app: learn
+    is_smoke: true
+    forms_exercised:
+      - module_1_assessment
+    fields_exercised:
+      - assessment_q1
+      - assessment_q2
+      - assessment_q3
+    recipe_path: app-test-cases/recipes/J2.yaml
+    structural_pass_criteria:
+      - app_boots
+      - no_crash
+      - assessment_complete
+    pdd_time_budget_seconds: 600

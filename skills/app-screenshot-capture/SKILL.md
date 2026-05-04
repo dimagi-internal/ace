@@ -181,6 +181,7 @@ skill: app-screenshot-capture
 target: <opp-name>
 mode: shallow
 ran_at: <ISO timestamp>
+capture_path: screenshots/manifest.yaml
 
 overall_score: 2.5             # average of per-app smoke-judge scores (0-3 scale)
 verdict: pass | fail | incomplete

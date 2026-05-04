@@ -28,8 +28,7 @@ duplicating analysis). Upstream of `training-deck-build`.
 | Phase 1 | `ACE/<opp>/pdd.md` | opp framing, archetype, audience |
 | Phase 2 | `ACE/<opp>/app-summaries/learn-app-summary.md` | Learn app modules → "what FLWs will see" slides |
 | Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | Deliver app forms → walkthrough slides |
-| Phase 5 Step 1 (`qa-plan`) | `ACE/<opp>/qa-plan/screenshot-manifest.yaml` | which screenshots exist + their Drive fileIds |
-| Phase 5 Step 2 (`app-screenshot-capture`) | `ACE/<opp>/screenshots/manifest.yaml` | per-opp PNG fileIds |
+| Phase 5 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/screenshots/manifest.yaml` | per-opp PNG fileIds |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` | sign-in, claim-opp, sync, payments — common across opps |
 | Phase 5 Step 3 (`training-materials`, sibling) | `ACE/<opp>/training-materials/flw-training-guide.md` | optional: pull caption phrasing forward so the deck and guide say the same thing |
 
@@ -95,9 +94,9 @@ clear error — that's intentional, the parser is opinionated.
    `{ alias → drive_file_id }` from the per-opp manifest and the
    common-pool manifest. Use this during slide drafting so every
    `![](drive:...)` ref in the output is a real fileId, not a guess.
-   If `qa-plan/screenshot-manifest.yaml` lists a screenshot the actual
-   `screenshots/manifest.yaml` is missing, emit a `[WARN]` line in the
-   verdict — don't reference a nonexistent fileId.
+   If a screenshot referenced by an `app-test-cases` recipe is missing
+   from the actual `screenshots/manifest.yaml`, emit a `[WARN]` line
+   in the verdict — don't reference a nonexistent fileId.
 
 3. **Draft the deck.** Default structure for `atomic-visit` archetype:
 

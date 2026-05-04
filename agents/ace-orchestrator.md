@@ -71,7 +71,7 @@ phases:
     pdd-to-learn-app: pending
     pdd-to-deliver-app: pending
     app-deploy: pending
-    app-test: pending
+    app-test-cases: pending
   connect-setup:        # Phase 3
     connect-program-setup: pending
     connect-opp-setup: pending
@@ -79,8 +79,7 @@ phases:
     ocs-agent-setup: pending
     ocs-chatbot-qa-quick: pending
     ocs-chatbot-eval-quick: pending
-  qa-and-training:        # Phase 5 — added 0.9.0; per-artifact training split 0.10.79–0.10.84
-    qa-plan: pending
+  qa-and-training:        # Phase 5 — added 0.9.0; per-artifact training split 0.10.79–0.10.84; qa-plan retired in shallow/deep QA split
     app-screenshot-capture: pending
     training-llo-guide: pending
     training-flw-guide: pending
@@ -380,7 +379,7 @@ jobs that run independent of any particular run**:
 
 These are legitimately parallel-to-the-main-run; they don't gate any
 phase. Phase-internal work (`ocs-chatbot-qa --quick` / `--deep`,
-`app-screenshot-capture`, `qa-plan`, etc.) is foreground sequential
+`app-screenshot-capture`, etc.) is foreground sequential
 and is NOT eligible for this pattern.
 
 ### When polling IS appropriate
@@ -531,8 +530,9 @@ Ends with a human-in-the-loop step to paste the widget credentials into the
 Connect opportunity until `update_opportunity` lands (CCC-301).
 
 ### Phase 5: QA and Training
-Dispatch `Agent(qa-and-training)`. The agent runs `qa-plan` →
-`app-screenshot-capture` → 5 per-artifact training skills in parallel
+Dispatch `Agent(qa-and-training)`. The agent runs
+`app-screenshot-capture` (executor — runs the smoke recipes from
+Phase 2's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel
 (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`,
 `training-faq`, `training-deck-outline`) → `training-deck-build` (sequential
 after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) →
@@ -718,7 +718,7 @@ verdicts/<producer-skill>[-<mode>].yaml
   e.g. `ocs-chatbot-eval`) keep their own name in the verdict filename:
   `verdicts/ocs-chatbot-eval-{quick,deep,monitor}.yaml`.
 - Skills that self-evaluate inline (no separate `-eval` skill, e.g.
-  `qa-plan`, `app-screenshot-capture`, every per-artifact training
+  `app-screenshot-capture`, every per-artifact training
   skill (`training-llo-guide`, `training-flw-guide`,
   `training-quick-reference`, `training-faq`,
   `training-onboarding-email`, `training-deck-outline`)) write

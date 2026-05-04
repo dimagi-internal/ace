@@ -24,8 +24,7 @@ phases:
     pdd-to-learn-app: done
     pdd-to-deliver-app: done
     app-deploy: done
-    app-test: done
-    training-materials: done
+    app-test-cases: done
   connect-setup:
     connect-program-setup: done
     connect-opp-setup: done

@@ -14,7 +14,6 @@ skills:
   - { name: app-deploy,              has_judge: false }
   - { name: app-test-cases,          has_judge: false }
   - { name: app-release,             has_judge: true,  eval_skill: app-release-eval }
-  - { name: app-test,                has_judge: true,  eval_skill: inline-self-eval }
 ---
 
 # CommCare Setup (Phase 2 Procedure Document)
@@ -224,17 +223,13 @@ Invoke the `app-release` skill.
   public APIs.
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `app-release-eval` after release. Writes `verdicts/app-release.yaml`.
-- Note: `app-test` reads `deployment-summary.md`, so deploy + release must
-  precede test.
 
-### Step 3: Test
-Invoke the `app-test` skill.
-- `app-test` input: deployed apps on CCHQ
-- `app-test` output: test results in `ACE/<opp-name>/test-results/`
-- **LLM-as-Judge:** inline self-eval (no separate `-eval` skill).
-  `app-test` does not currently write a discrete `verdicts/app-test.yaml`;
-  upgrading it to do so is tracked separately so its score lands in
-  the Workbench dashboard alongside the other producer rows
+Note: the `app-test` skill was retired in the shallow/deep QA split
+(0.11.10). Phase 2's QA contribution is now Step 2.6's
+`app-test-cases.yaml`; the actual smoke runs happen in Phase 5
+(`app-screenshot-capture`) and the deep grading runs from
+`/ace:qa-deep` (`app-ux-eval`). Spec:
+`docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`.
 
 Note: `training-materials` no longer runs in Phase 2. As of 0.9.0 it lives
 in Phase 5 (`qa-and-training`), where it consumes the screenshots produced

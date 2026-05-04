@@ -71,7 +71,6 @@ describe('CRISPR-Test-001 fixture', () => {
     // CRISPR-Test-001 provides inputs for ocs-agent-setup, not a complete
     // opportunity folder. These artifacts are intentionally absent:
     // test-prompts.md is consumed by ocs-chatbot-qa (not ocs-agent-setup);
-    // test-results live in Phase 2 and aren't needed for OCS config;
     // gate-briefs/* are produced during gate pauses that this fixture never
     // reached (state.yaml shows every phase as pending, so no skill has run).
     //
@@ -80,15 +79,18 @@ describe('CRISPR-Test-001 fixture', () => {
     // the Nova plugin. Those JSON snapshots are now optional — the canonical
     // handle is `nova_app_id` in the app summaries — so validateFixture no
     // longer flags them as missing.
+    //
+    // Note: test-results/{test-plan,test-results,bugs}.md were dropped on
+    // 2026-05-04 (shallow/deep QA split) when the `app-test` skill was
+    // retired. The fixture gained `expected-journeys.md` (Phase 1) and
+    // `app-test-cases.yaml` (Phase 2) in the same release; both ship in
+    // the fixture so they don't appear in expectedMissing.
     const expectedMissing = [
       // inputs/ is an opp-level required artifact; CRISPR-Test-001 is a
       // partial fixture scoped to ocs-agent-setup inputs and doesn't model
       // the full opp folder layout, so inputs/ is intentionally absent here.
       'inputs/',
       'test-prompts.md',
-      'test-results/test-plan.md',
-      'test-results/test-results.md',
-      'test-results/bugs.md',
       'gate-briefs/idea-to-pdd.md',
       'gate-briefs/app-deploy.md',
       // gate-briefs/llo-invite.md moved to Phase 5 (operate) as of

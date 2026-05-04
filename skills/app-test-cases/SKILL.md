@@ -41,9 +41,10 @@ visit/delivery behavior (Deliver). Multi-stage opps may have both.
 
 ### Step 3: For each journey, compose the Maestro recipe
 
-Use the same composition pattern as the retired `qa-plan` skill (read
-`skills/qa-plan/SKILL.md` § Step 3 for the static-recipe palette).
-Differences:
+Compose each recipe using the static palette pattern (one Maestro
+step per UI interaction, with `${SELECTOR:logical-name}`
+placeholders resolved at write time, and `takeScreenshot` calls
+between major form sections):
 
 - Recipes here are journey-keyed, not module-keyed (`J1.yaml`, `J2.yaml`)
 - Each journey's recipe MUST include a final
