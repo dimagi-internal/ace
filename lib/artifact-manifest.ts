@@ -102,6 +102,17 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Opp-specific Q&A pairs derived from the PDD; each entry has an expected-answer summary that ocs-chatbot-qa embeds in the transcript and ocs-chatbot-eval grades against',
   },
   {
+    path: 'expected-journeys.md',
+    producedBy: 'pdd-to-app-journeys',
+    // Truncated until consuming skills land: app-test-cases re-adds itself
+    // in Task 2 of the shallow-deep-qa-split plan; app-ux-eval in Task 3.
+    // See: docs/superpowers/plans/2026-05-04-shallow-deep-qa-split.md
+    consumedBy: ['app-screenshot-capture'],
+    phase: 'design',
+    required: true,
+    description: 'PDD-derived user journeys + UX edge cases. Ground truth for app-test-cases (Phase 2) and app-ux-eval (deep). Each journey carries a goal, happy-path narrative, edge cases phrased as UX outcomes, and pass criteria.',
+  },
+  {
     path: 'run_state.yaml',
     producedBy: 'ace-orchestrator',
     consumedBy: ['timeline-monitor'],
