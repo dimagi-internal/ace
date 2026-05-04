@@ -75,12 +75,10 @@ phases:
   connect-setup:        # Phase 3
     connect-program-setup: pending
     connect-opp-setup: pending
-  ocs-setup:            # Phase 4 — qa/eval split in 0.3.5
+  ocs-setup:            # Phase 4 — qa/eval split in 0.3.5; deep moved to /ace:qa-deep
     ocs-agent-setup: pending
     ocs-chatbot-qa-quick: pending
     ocs-chatbot-eval-quick: pending
-    ocs-chatbot-qa-deep: pending
-    ocs-chatbot-eval-deep: pending
   qa-and-training:        # Phase 5 — added 0.9.0; per-artifact training split 0.10.79–0.10.84
     qa-plan: pending
     app-screenshot-capture: pending
@@ -109,7 +107,7 @@ phases:
 gates:
   idea-to-pdd: approved|pending|rejected
   app-deploy: pending
-  ocs-chatbot-eval-deep: pending    # renamed from ocs-chatbot-qa-deep in 0.3.5
+  ocs-chatbot-eval-quick: pending   # Phase 4 gate; deep eval moved to /ace:qa-deep
   llo-invite: pending
   llo-launch: pending
 ```
@@ -605,7 +603,7 @@ after writing its primary artifact. The 5 expected files are:
 ```
 ACE/<opp-name>/gate-briefs/idea-to-pdd.md
 ACE/<opp-name>/gate-briefs/app-deploy.md
-ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-deep.md
+ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-quick.md
 ACE/<opp-name>/gate-briefs/llo-invite.md
 ACE/<opp-name>/gate-briefs/llo-launch.md
 ```
@@ -670,7 +668,7 @@ orchestrator's pause behavior at each named gate is:
 |------|-------|-----------|----------|--------|
 | `idea-to-pdd` | 1 | pause iff `[BLOCKER]` | always pause | never pause* |
 | `app-deploy` | 2 | pause iff `[BLOCKER]` | always pause | never pause* |
-| `ocs-chatbot-eval-deep` | 4 | pause iff `[BLOCKER]` | always pause | never pause* |
+| `ocs-chatbot-eval-quick` | 4 | pause iff `[BLOCKER]` | always pause | never pause* |
 | `llo-invite` | 6 | **always pause** | always pause | never pause* |
 | `llo-launch` | 6 | **always pause** | always pause | never pause* |
 
@@ -735,7 +733,7 @@ afterward.
 returns `verdict: fail` does NOT halt the orchestrator outside the named
 gate steps — the verdict is recorded for the dashboard / `opp-eval`, and
 the run continues. The 5 named gate steps (`idea-to-pdd`, `app-deploy`,
-`ocs-chatbot-eval-deep`, `llo-invite`, `llo-launch`) still apply per the
+`ocs-chatbot-eval-quick`, `llo-invite`, `llo-launch`) still apply per the
 Per-Mode Pause Matrix above, where `[BLOCKER]` concerns from the eval do
 halt. This keeps the eval signal visible without making every rubric a
 hard gate.

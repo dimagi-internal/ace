@@ -2,9 +2,11 @@
 name: ocs-chatbot-eval
 description: >
   Judge an OCS chatbot transcript with LLM-as-Judge. Reads a transcript
-  captured by `ocs-chatbot-qa`, scores each response across 4 dimensions
-  (correctness, source usage, tone, tagging), writes a verdict YAML and
-  human-readable report, and emits the Phase 4 gate brief in --deep mode.
+  captured by `ocs-chatbot-qa`. In `--quick` mode (Phase 4 default,
+  shallow), scores a single overall_quality_0_to_3 dimension per prompt
+  for fast pass/fail. In `--deep` and `--monitor`, scores 5 dimensions
+  (correctness, source usage, refusal correctness, tone, tagging) and
+  emits the gate brief that Phase 6 `llo-launch` enforces on activation.
 ---
 
 # OCS Chatbot Eval
@@ -19,14 +21,16 @@ framework rationale and artifact-path contract.
 
 ## Modes
 
-The mode is inherited from the transcript being judged. The same 4-dimension
-rubric applies in every mode; what changes is suite size and gate behavior.
+The mode is inherited from the transcript being judged. `--quick`
+uses a single-dimension shallow rubric (`overall_quality_0_to_3`);
+`--deep` and `--monitor` use the calibrated 5-dimension rubric. See
+the table below.
 
-| Mode | Transcript source | Gate | Writes |
-|---|---|---|---|
-| `--quick` | `qa-captures/YYYY-MM-DD-ocs-chat-quick.md` | overall ≥ 7 passes; retry signal otherwise | stdout summary + `verdicts/ocs-chatbot-eval-quick.yaml` |
-| `--deep` | `qa-captures/YYYY-MM-DD-ocs-chat-deep.md` | overall ≥ 7 AND zero Fail verdicts | `verdicts/` + `eval-reports/YYYY-MM-DD-ocs-eval.md` + `gate-briefs/ocs-chatbot-eval-deep.md` |
-| `--monitor` | `qa-captures/YYYY-MM-DD-ocs-chat-monitor.md` | none — trend only | `verdicts/` + `eval-reports/YYYY-MM-DD-ocs-eval.md` + append to `eval-reports/trend.md` |
+| Mode | Transcript source | Rubric | Gate | Writes |
+|---|---|---|---|---|
+| `--quick` | `qa-captures/YYYY-MM-DD-ocs-chat-quick.md` | 1 dimension (`overall_quality_0_to_3`) | every prompt ≥ 2/3; retry signal otherwise | stdout summary + `verdicts/ocs-chatbot-eval-quick.yaml` |
+| `--deep` | `qa-captures/YYYY-MM-DD-ocs-chat-deep.md` | 5 dimensions (full rubric below) | overall ≥ 7 AND zero Fail verdicts | `verdicts/` + `eval-reports/YYYY-MM-DD-ocs-eval.md` + `gate-briefs/ocs-chatbot-eval-deep.md` |
+| `--monitor` | `qa-captures/YYYY-MM-DD-ocs-chat-monitor.md` | 5 dimensions (full rubric below) | none — trend only | `verdicts/` + `eval-reports/YYYY-MM-DD-ocs-eval.md` + append to `eval-reports/trend.md` |
 
 If no mode is passed, default to `--quick`.
 
@@ -59,9 +63,33 @@ If no mode is passed, default to `--quick`.
    - `response_received` — structural flag from qa-side checks
    - `elapsed_ms`
 
-3. **Grade each response (LLM-as-Judge).** For each entry, score across 5
-   dimensions. The rubric is calibrated against `eval-calibration` ground
-   truth — see `## Calibration` below.
+3. **Grade each response (LLM-as-Judge).** Branches on mode:
+
+   ### `--quick` rubric (single dimension)
+
+   For each entry, score a single `overall_quality_0_to_3` dimension on
+   a 0–3 scale:
+
+   | Score | Meaning |
+   |-------|---------|
+   | 3 | Clearly correct, useful, on-topic, properly grounded answer |
+   | 2 | Acceptable answer — minor issues but the FLW would be served |
+   | 1 | Significantly off — wrong info, missed the question, or unhelpful |
+   | 0 | Hard fail — fabricated, role leakage, or a structural error |
+
+   Pass criterion: **every prompt's `overall_quality` ≥ 2/3**. Any 0 or
+   1 → suite fails → caller (`ocs-setup`) re-runs `ocs-agent-setup`'s
+   prompt-patch once before escalating.
+
+   The single-dimension rubric is intentionally minimal — `--quick` is
+   the Phase 4 → 5 shallow gate (3 prompts × 1 dim = 3 LLM judge
+   calls). Multi-dimensional grading lives in `--deep` and `--monitor`,
+   which is where the calibrated rubric below applies.
+
+   ### `--deep` and `--monitor` rubric (5 dimensions)
+
+   For each entry, score across 5 dimensions. The rubric is calibrated
+   against `eval-calibration` ground truth — see `## Calibration` below.
 
    | Dimension | Weight | Criteria |
    |-----------|--------|----------|
@@ -105,12 +133,14 @@ rubric is improving over time, not just changing.
    `ACE/<opp-name>/verdicts/ocs-chatbot-eval-<mode>.yaml`. Uses the shared
    verdict shape (see `skills/README.md § QA vs Eval — the two-phase
    pattern` for the contract — every `-eval` skill writes the same shape so
-   `opp-eval` can aggregate uniformly):
+   `opp-eval` can aggregate uniformly).
+
+   ### `--deep` / `--monitor` shape (5-dim rubric)
 
    ```yaml
    skill: ocs-chatbot-eval
    target: <experiment_id>
-   mode: quick | deep | monitor
+   mode: deep | monitor
    ran_at: <ISO timestamp>
    capture_path: qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md
 
@@ -142,12 +172,50 @@ rubric is improving over time, not just changing.
      disposition: approve | reject | iterate
    ```
 
+   ### `--quick` shape (single-dim rubric)
+
+   Same envelope, single-entry `dimensions` array, gate threshold is
+   `2/3` instead of `7/10`:
+
+   ```yaml
+   skill: ocs-chatbot-eval
+   target: <experiment_id>
+   mode: quick
+   ran_at: <ISO timestamp>
+   capture_path: qa-captures/YYYY-MM-DD-ocs-chat-quick.md
+
+   overall_score: 2.7        # mean of per-prompt overall_quality (0-3)
+   verdict: pass | fail
+
+   dimensions:
+     overall_quality:     { score: 2.7, weight: 1.0, scale: "0-3" }
+
+   per_item:
+     - ref: "How do I claim an opportunity?"
+       prompt: "How do I claim an opportunity?"
+       category: connect-general
+       score: 3
+       verdict: pass
+       note: "Correct workflow, named the source doc"
+     - ...
+
+   auto_surfaced: []
+
+   gate:
+     threshold: 2          # per-prompt minimum on 0-3 scale
+     disposition: approve | iterate
+   ```
+
 5. **Apply the gate (mode-dependent):**
-   - `--quick`: overall ≥ 7 passes. On fail, return a retry signal so the
-     caller (`ocs-setup` agent) can re-run `ocs-agent-setup`'s prompt-patch
-     once before escalating.
+   - `--quick`: every per-prompt `overall_quality` ≥ 2/3 passes. On
+     fail (any prompt scoring 0 or 1), return a retry signal so the
+     caller (`ocs-setup` agent) can re-run `ocs-agent-setup`'s
+     prompt-patch once before escalating. This is the only Phase 4
+     OCS gate now — `--deep` no longer runs in Phase 4.
    - `--deep`: overall ≥ 7 AND every Fail verdict resolved. On fail,
-     escalate to admin group with the report attached.
+     escalate to admin group with the report attached. **Runs only
+     from `/ace:qa-deep`** (manual, pre-launch); the verdict feeds
+     the Phase 6 `llo-launch` activation gate.
    - `--monitor`: no gate — write verdict + report, append to trend file.
      If overall drops > 1.5 points from the previous monitor verdict, email
      the admin group with the delta.
@@ -246,3 +314,4 @@ When `--dry-run` is active:
 | 2026-04-19 | Initial version — split out from `ocs-chatbot-qa` as the judge half of the qa/eval pair. Reads transcripts from `qa-captures/`, writes `verdicts/`, `eval-reports/`, `gate-briefs/ocs-chatbot-eval-deep.md`. Gate now sits on eval, not qa | ACE team (qa/eval split refactor) |
 | 2026-04-19 | Rename per-item verdict key `per_prompt` → `per_item` (canonical per `skills/README.md § QA vs Eval`); add `prompt:` as domain-specific subkey inside each entry; document `ACE/golden-template/` no-opp fallback path; document `auto_surfaced:` block contract (inputs to the gate brief) | ACE team (qa/eval iteration loop) |
 | 2026-04-29 | Source-usage dimension now branches on the transcript's `Capture method:` header. Widget-captured transcripts grade body-text grounding (does the response name source docs by title?) and emit `[PLATFORM] empty cited_files expected on widget capture` instead of binding the empty-`cited_files` cap. OpenAI-compat captures keep the existing two-tier cap. The original cap conflated bot grounding gaps with widget-API measurement limitations and fired on every widget transcript regardless of bot quality, costing 5+ points on captures that were actually grounded. Surfaced 0.9.11 cross-opp validation against `turmeric-dogfood-20260427`. | ACE team (0.10.10) |
+| 2026-05-04 | **Thinned `--quick` to a single-dimension rubric.** `--quick` mode now scores one `overall_quality_0_to_3` dimension per prompt with pass criterion `every prompt ≥ 2/3`. `--deep` and `--monitor` still use the calibrated 5-dimension rubric. Phase 4 cost reduction: 3 prompts × 1 dim = 3 LLM judge calls (vs 5 prompts × 5 dims = ~25). Multi-dimensional judging moves to deep-only — the `--deep` mode is now invoked only from `/ace:qa-deep` and gates Phase 6 `llo-launch` activation. Verdict file path unchanged (`verdicts/ocs-chatbot-eval-quick.yaml`); the `dimensions` array now has 1 entry. | ACE team |
