@@ -213,7 +213,7 @@ const DROPPED_PREFIXES = [
  * run folder root). Returns null when no migration is needed (identity
  * skip OR already-prefixed path) or when the file is a dropped artifact.
  */
-function computeNewPath(oldPath: string): string | null {
+export function computeNewPath(oldPath: string): string | null {
   // Already in new phase-prefixed shape — `<N>-<phase>/...`
   if (/^\d-[a-z][a-z0-9-]*\//.test(oldPath)) return null;
 
