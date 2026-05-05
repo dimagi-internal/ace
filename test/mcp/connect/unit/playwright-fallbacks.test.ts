@@ -668,6 +668,8 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     const request = makeRequestContext(
       [
         { status: 200, body: puCreateForm },           // GET form
+        { status: 200, body: '' },                     // POST sync_deliver_units (precondition, 0.11.12)
+        { status: 200, body: puCreateForm },           // GET form refresh after sync
         { status: 302, body: '', headers: { location: '/a/m/opportunity/dea88661.../payment_unit_table/' } }, // POST → redirect
         { status: 200, body: puTableHtml },             // GET payment_unit_table
       ],
@@ -688,7 +690,10 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     expect(out.name).toBe('Visit');
     expect(out.required_deliver_units).toEqual([3339, 3340]);
 
-    const post = captured.find((c) => c.method === 'POST')!;
+    // Filter to the create POST (the sync_deliver_units precondition POST also captures).
+    const post = captured.find(
+      (c) => c.method === 'POST' && c.url.endsWith('/payment_unit/create'),
+    )!;
     expect(post.url).toBe('/a/march-demo/opportunity/dea88661-1cd6-486b-ab25-48584bf61a8e/payment_unit/create');
     // URLSearchParams body — repeated names for multi-value
     const body = post.body as string;
@@ -731,6 +736,8 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     const request = makeRequestContext(
       [
         { status: 200, body: puCreateForm },           // GET PU create form
+        { status: 200, body: '' },                     // POST sync_deliver_units (precondition, 0.11.12)
+        { status: 200, body: puCreateForm },           // GET form refresh after sync
         { status: 200, body: deliverUnitTableHtml },   // listDeliverUnits (mapping lookup)
         { status: 302, body: '' },                     // POST → success
         { status: 200, body: puTableHtml },            // listPaymentUnits
@@ -750,7 +757,10 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     });
     expect(out.id).toBe(42);
 
-    const post = captured.find((c) => c.method === 'POST')!;
+    // Filter to the create POST (the sync_deliver_units precondition POST also captures).
+    const post = captured.find(
+      (c) => c.method === 'POST' && c.url.endsWith('/payment_unit/create'),
+    )!;
     const body = post.body as string;
     // Should send the mapped PKs, NOT the display ids
     expect(body).toContain('required_deliver_units=3339');
@@ -771,6 +781,8 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     const request = makeRequestContext(
       [
         { status: 200, body: puCreateForm },
+        { status: 200, body: '' },                     // POST sync_deliver_units (precondition, 0.11.12)
+        { status: 200, body: puCreateForm },           // GET form refresh after sync
         { status: 200, body: deliverUnitTableHtml },
       ],
       captured,
@@ -787,6 +799,78 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
         required_deliver_units: [9999], // not in the form, not a known display id
       }),
     ).rejects.toBeInstanceOf(ConnectValidationError);
+  });
+
+  it('regression (0.11.12): fires sync_deliver_units precondition + form refresh when DUs requested', async () => {
+    // Connect's create-PU form leaves the deliver-unit checkbox list empty
+    // until an HTMX-driven Sync Deliver Units button is fired. This precondition
+    // POST runs before the form is scraped so DU checkboxes are populated. See
+    // mcp/connect/backends/playwright.ts § Sync-deliver-units precondition.
+    const captured: CapturedRequest[] = [];
+    const puTableHtml = `<table><tbody><tr class="even"><td>1</td><td>X</td><td></td><td></td><td>500</td><td>50</td></tr></tbody></table>`;
+    const request = makeRequestContext(
+      [
+        { status: 200, body: puCreateForm }, // GET form (initial)
+        { status: 200, body: '' },           // POST sync_deliver_units (precondition)
+        { status: 200, body: puCreateForm }, // GET form (refresh)
+        { status: 302, body: '' },           // POST → redirect
+        { status: 200, body: puTableHtml },  // GET payment_unit_table
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await backend.createPaymentUnit({
+      organization_slug: 'march-demo',
+      opportunity_id: 'dea88661-1cd6-486b-ab25-48584bf61a8e',
+      name: 'X',
+      amount: 500,
+      max_total: 50,
+      max_daily: 10,
+      required_deliver_units: [3339],
+    });
+    // Confirm the sync POST fired before the create POST. The fixture's hx-post
+    // attribute encodes opp_int_id=1237.
+    const syncPost = captured.find(
+      (c) => c.method === 'POST' && c.url.endsWith('/sync_deliver_units/'),
+    );
+    expect(syncPost).toBeDefined();
+    expect(syncPost!.url).toBe('/a/march-demo/opportunity/1237/sync_deliver_units/');
+    expect(syncPost!.headers!['HX-Request']).toBe('true');
+    // And the form was re-fetched after sync (GETs to /payment_unit/create
+    // appear at indices 0 and 2 in the captured stream).
+    const formGets = captured.filter(
+      (c) => c.method === 'GET' && c.url.endsWith('/payment_unit/create'),
+    );
+    expect(formGets).toHaveLength(2);
+  });
+
+  it('regression (0.11.12): skips sync_deliver_units precondition when no DUs requested', async () => {
+    // The sync-DUs precondition only fires when required/optional_deliver_units
+    // are non-empty. PUs created without DU assignment skip the precondition
+    // (one less HTTP call).
+    const captured: CapturedRequest[] = [];
+    const puTableHtml = `<table><tbody><tr class="even"><td>1</td><td>NoDUs</td><td></td><td></td><td>10</td><td>1</td></tr></tbody></table>`;
+    const request = makeRequestContext(
+      [
+        { status: 200, body: puCreateForm }, // GET form
+        { status: 302, body: '' },           // POST → redirect
+        { status: 200, body: puTableHtml },  // GET payment_unit_table
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await backend.createPaymentUnit({
+      organization_slug: 'march-demo',
+      opportunity_id: 'dea88661-1cd6-486b-ab25-48584bf61a8e',
+      name: 'NoDUs',
+      amount: 10,
+      max_total: 1,
+      max_daily: 1,
+    });
+    const syncPost = captured.find(
+      (c) => c.method === 'POST' && c.url.endsWith('/sync_deliver_units/'),
+    );
+    expect(syncPost).toBeUndefined();
   });
 
   it('createPaymentUnits loops over the input list', async () => {
