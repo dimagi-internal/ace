@@ -1,4 +1,4 @@
-# test/fixtures/CRISPR-Test-004-KMC-multimedia/expected-multimedia-candidates-learn.yaml
+# test/fixtures/CRISPR-Test-005-KMC-multimedia/expected-multimedia-candidates-learn.yaml
 #
 # PLACEHOLDER. Real golden ground-truth captured after the first live
 # `app-multimedia-coverage` run against this fixture (Task 14).

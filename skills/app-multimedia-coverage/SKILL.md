@@ -59,7 +59,7 @@ when ALL of:
    `commcare/multimedia/image/...` and writes the matching `<image>`
    itext entries into form XML.
 3. A clean `/ace:run` against the smoke fixture
-   `CRISPR-Test-004-KMC-multimedia` produces images-attached apps
+   `CRISPR-Test-005-KMC-multimedia` produces images-attached apps
    without this skill firing.
 4. Each affected opp's `run_state.yaml` has empty
    `phase_2_backlog.app-multimedia-coverage`.
