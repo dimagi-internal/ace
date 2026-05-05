@@ -776,6 +776,80 @@ if [ -n "$ENV_FILE" ]; then
     warn "connect_session: $CONNECT_SESS missing and no HQ creds in .env" "/ace:connect-login OR set ACE_HQ_USERNAME/PASSWORD"
   fi
 
+  # Connect REST CSRF probe (added 0.13.17, CL-2). After 0.13.15's
+  # bottom-out reauth shipped, the leep-paint-collection 2026-05-05 e2e
+  # run STILL hit `403 CSRF Failed` on `POST /api/programs/<uuid>/opportunities/`
+  # even after a full session.invalidate() + hqOAuthLogin rebuild
+  # (runs/20260505-1505/3-connect/connect-opp-setup_BLOCKED.md). That
+  # means the bottoming-out invariant the 0.13.15 retry promised is
+  # violated for some Connect-side state we don't yet understand.
+  #
+  # This probe deliberately POSTs an EMPTY body to /api/programs/ with
+  # the live session's sessionid + csrftoken (cookie + X-CSRFToken
+  # header). A healthy session should return 400 (DRF validation
+  # error: missing required fields). If the response is 403 with a
+  # body that mentions CSRF, the same class of failure that blocked
+  # leep is live RIGHT NOW — surface it loudly at /ace:doctor time so
+  # the operator doesn't burn a phase debugging it.
+  #
+  # WARN-level (not FAIL): doctor-green should NOT require live Connect
+  # auth on every install; this only runs when the session file exists.
+  if [ -f "$CONNECT_SESS" ] && [ -n "$CONNECT_BASE" ] && command -v curl >/dev/null 2>&1; then
+    CONNECT_PROBE_HEADERS="$(node -e "
+      try {
+        const s = JSON.parse(require('fs').readFileSync('$CONNECT_SESS','utf8'));
+        const host = new URL('$CONNECT_BASE').hostname;
+        const sid = (s.cookies || []).find(c => c.name === 'sessionid' && (c.domain || '').includes(host));
+        const csrf = (s.cookies || []).find(c => c.name === 'csrftoken' && (c.domain || '').includes(host));
+        if (!sid || !csrf) { process.exit(0); }
+        const cookieHdr = 'sessionid=' + sid.value + '; csrftoken=' + csrf.value;
+        process.stdout.write(JSON.stringify({ cookie: cookieHdr, csrf: csrf.value }));
+      } catch(_) {}
+    " 2>/dev/null)"
+    if [ -n "$CONNECT_PROBE_HEADERS" ]; then
+      PROBE_COOKIE="$(printf '%s' "$CONNECT_PROBE_HEADERS" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); process.stdout.write(d.cookie||''); } catch(_) {}")"
+      PROBE_CSRF="$(printf '%s' "$CONNECT_PROBE_HEADERS" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); process.stdout.write(d.csrf||''); } catch(_) {}")"
+      # POST empty body. Healthy: 400 (DRF "this field is required"). Bug: 403 + CSRF.
+      PROBE_TMP="$(mktemp -t ace-doctor-connect-probe.XXXXXX 2>/dev/null || mktemp)"
+      PROBE_STATUS="$(curl -sS -o "$PROBE_TMP" -w '%{http_code}' --max-time 5 \
+        -X POST \
+        -H "Cookie: $PROBE_COOKIE" \
+        -H "X-CSRFToken: $PROBE_CSRF" \
+        -H "Referer: $CONNECT_BASE/" \
+        -H "Content-Type: application/json" \
+        -d '{}' \
+        "$CONNECT_BASE/api/programs/" 2>/dev/null || echo "000")"
+      PROBE_BODY="$(head -c 200 "$PROBE_TMP" 2>/dev/null)"
+      rm -f "$PROBE_TMP" 2>/dev/null
+      case "$PROBE_STATUS" in
+        400)
+          pass "connect_csrf_probe: POST /api/programs/ (empty body) → 400 (session healthy, CSRF accepted)"
+          ;;
+        403)
+          if printf '%s' "$PROBE_BODY" | grep -qi 'CSRF'; then
+            fail "connect_csrf_probe: POST /api/programs/ → 403 CSRF — same shape as leep-20260505-1505 BLOCKED. Body: ${PROBE_BODY:0:200}" "/ace:connect-login to manually rebuild session; if that doesn't recover, the 0.13.15 bottom-out invariant is violated and the MCP retry path won't self-heal"
+          else
+            warn "connect_csrf_probe: POST /api/programs/ → 403 (non-CSRF body — likely permission denial). Body: ${PROBE_BODY:0:200}" "verify ace@dimagi-ai.com is still in a program-manager org"
+          fi
+          ;;
+        401)
+          warn "connect_csrf_probe: POST /api/programs/ → 401 (session anon). Body: ${PROBE_BODY:0:200}" "/ace:connect-login to rebuild session"
+          ;;
+        000)
+          warn "connect_csrf_probe: cannot reach $CONNECT_BASE/api/programs/ (network/timeout)" "verify $CONNECT_BASE reachable"
+          ;;
+        2*|201)
+          # Unlikely (we sent an empty body), but if Connect somehow accepted
+          # it, surface as INFO — still indicates session+CSRF were accepted.
+          info "connect_csrf_probe: POST /api/programs/ → $PROBE_STATUS (unexpected success on empty body — session accepted CSRF)"
+          ;;
+        *)
+          info "connect_csrf_probe: POST /api/programs/ → $PROBE_STATUS (not 400/403/401; non-diagnostic). Body: ${PROBE_BODY:0:200}"
+          ;;
+      esac
+    fi
+  fi
+
   # ── Connect Labs (solicitations / reviews / awards) ──────────────────
   # ACE consumes labs.connect.dimagi.com/mcp/ via the connect-labs stdio
   # proxy (mcp/connect-labs-server.ts). Three checks:

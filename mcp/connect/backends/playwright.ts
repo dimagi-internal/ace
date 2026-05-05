@@ -2,6 +2,7 @@ import type { APIRequestContext, APIResponse } from 'playwright';
 import type { ConnectClient } from '../client.js';
 import type { Opportunity, PaymentUnit, Program, ProgramApplication } from '../types.js';
 import { HttpError, ConnectValidationError, ConnectError } from '../errors.js';
+import type { PlaywrightSession } from '../auth/playwright-session.js';
 import {
   extractFormCsrfToken,
   extractFormFieldValues,
@@ -36,6 +37,18 @@ export interface PlaywrightBackendOptions {
   baseUrl: string;
   csrfToken: string;
   request: APIRequestContext;
+  /**
+   * Optional session reference. When supplied (the production wiring),
+   * the backend resolves `request` lazily from `session.getContext()` on
+   * every call so a `RestBackend.reauth()`-driven `session.invalidate()`
+   * (which closes the underlying BrowserContext) doesn't leave THIS
+   * backend holding a dead `APIRequestContext`. Pre-0.13.17 the
+   * constructor-bound `opts.request` went stale on every reauth and
+   * subsequent Playwright reads failed with `apiRequestContext.get:
+   * Target page, context or browser has been closed`. Tests can omit
+   * it; the lazy resolver falls back to the constructor-bound handle.
+   */
+  session?: PlaywrightSession;
 }
 
 async function httpErrorFor(res: APIResponse, urlPath: string, method: string = 'GET'): Promise<HttpError> {
@@ -176,11 +189,28 @@ function truncatedKeyLabel(rawKey: string): string {
 export class PlaywrightBackend implements ConnectClient {
   constructor(private opts: PlaywrightBackendOptions) {}
 
+  /**
+   * Lazily resolved `APIRequestContext`. When wired to a session
+   * (production), returns the session's current request handle so that
+   * `RestBackend.reauth()` (which closes the underlying BrowserContext
+   * via `session.invalidate()` and then rebuilds via
+   * `session.getContext()`) doesn't strand THIS backend on a dead
+   * handle. Pre-0.13.17 the constructor cached `opts.request` as a
+   * private field, and any reauth path silently broke every subsequent
+   * Playwright read with `apiRequestContext.get: Target page, context
+   * or browser has been closed`. Falls back to the constructor-bound
+   * handle when no session was supplied (the test path).
+   */
+  private get request(): APIRequestContext {
+    const live = this.opts.session?.peekRequest();
+    return live ?? this.opts.request;
+  }
+
   // ── Programs ─────────────────────────────────────────────────────
 
   listPrograms: ConnectClient['listPrograms'] = async ({ organization_slug, name }) => {
     const path = `/a/${organization_slug}/program/`;
-    const res = await this.opts.request.get(path);
+    const res = await this.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
     let programs = parseProgramsList(await res.text()).map((p) => ({ ...p, organization_slug }));
     if (name) programs = programs.filter((p) => p.name === name);
@@ -189,7 +219,7 @@ export class PlaywrightBackend implements ConnectClient {
 
   getProgram: ConnectClient['getProgram'] = async ({ organization_slug, program_id }) => {
     const editPath = `/a/${organization_slug}/program/${program_id}/edit`;
-    const editRes = await this.opts.request.get(editPath);
+    const editRes = await this.request.get(editPath);
     if (editRes.status() === 404) throw new HttpError(404, editPath, 'program not found');
     if (editRes.status() !== 200) throw await httpErrorFor(editRes, editPath);
     const v = extractFormFieldValues(await editRes.text());
@@ -209,20 +239,20 @@ export class PlaywrightBackend implements ConnectClient {
 
   listDeliveryTypes: ConnectClient['listDeliveryTypes'] = async ({ organization_slug }) => {
     const path = `/a/${organization_slug}/program/init/`;
-    const res = await this.opts.request.get(path);
+    const res = await this.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
     return { delivery_types: parseDeliveryTypeOptions(await res.text()) };
   };
 
   updateProgram: ConnectClient['updateProgram'] = async (args) => {
     const editPath = `/a/${args.organization_slug}/program/${args.program_id}/edit`;
-    const editRes = await this.opts.request.get(editPath);
+    const editRes = await this.request.get(editPath);
     if (editRes.status() !== 200) throw await httpErrorFor(editRes, editPath);
     const editHtml = await editRes.text();
     const csrf = extractFormCsrfToken(editHtml) ?? this.opts.csrfToken;
     const current = extractFormFieldValues(editHtml);
 
-    const postRes = await this.opts.request.post(editPath, {
+    const postRes = await this.request.post(editPath, {
       form: {
         csrfmiddlewaretoken: csrf,
         name: args.name ?? current['name'] ?? '',
@@ -253,7 +283,7 @@ export class PlaywrightBackend implements ConnectClient {
 
   listOpportunities: ConnectClient['listOpportunities'] = async ({ organization_slug, name }) => {
     const path = `/a/${organization_slug}/opportunity/`;
-    const res = await this.opts.request.get(path);
+    const res = await this.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
     const stubs = parseOpportunitiesList(await res.text());
     let opportunities: Opportunity[] = stubs.map((s) => ({
@@ -277,8 +307,8 @@ export class PlaywrightBackend implements ConnectClient {
     const editPath = `/a/${organization_slug}/opportunity/${opportunity_id}/edit`;
     const detailPath = `/a/${organization_slug}/opportunity/${opportunity_id}/`;
     const [editRes, detailRes] = await Promise.all([
-      this.opts.request.get(editPath),
-      this.opts.request.get(detailPath),
+      this.request.get(editPath),
+      this.request.get(detailPath),
     ]);
     if (editRes.status() !== 200) throw await httpErrorFor(editRes, editPath);
     const v = extractFormFieldValues(await editRes.text());
@@ -341,7 +371,7 @@ export class PlaywrightBackend implements ConnectClient {
     },
   ): Promise<Opportunity> {
     const editPath = `/a/${organization_slug}/opportunity/${opportunity_id}/edit`;
-    const editRes = await this.opts.request.get(editPath);
+    const editRes = await this.request.get(editPath);
     if (editRes.status() !== 200) throw await httpErrorFor(editRes, editPath);
     const editHtml = await editRes.text();
     const csrf = extractFormCsrfToken(editHtml) ?? this.opts.csrfToken;
@@ -368,7 +398,7 @@ export class PlaywrightBackend implements ConnectClient {
     if (wantActive) form['active'] = 'on';
     if (wantTest) form['is_test'] = 'on';
 
-    const postRes = await this.opts.request.post(editPath, {
+    const postRes = await this.request.post(editPath, {
       form,
       maxRedirects: 0,
       headers: {
@@ -397,7 +427,7 @@ export class PlaywrightBackend implements ConnectClient {
    */
   setVerificationFlags: ConnectClient['setVerificationFlags'] = async ({ organization_slug, opportunity_id, flags }) => {
     const path = `/a/${organization_slug}/opportunity/${opportunity_id}/verification_flags_config/`;
-    const getRes = await this.opts.request.get(path);
+    const getRes = await this.request.get(path);
     if (getRes.status() !== 200) throw await httpErrorFor(getRes, path);
     const html = await getRes.text();
     const csrf = extractFormCsrfToken(html) ?? this.opts.csrfToken;
@@ -445,7 +475,7 @@ export class PlaywrightBackend implements ConnectClient {
       }
     }
 
-    const postRes = await this.opts.request.post(path, {
+    const postRes = await this.request.post(path, {
       form,
       maxRedirects: 0,
       headers: {
@@ -467,14 +497,14 @@ export class PlaywrightBackend implements ConnectClient {
 
   listDeliverUnits: ConnectClient['listDeliverUnits'] = async ({ organization_slug, opportunity_id }) => {
     const path = `/a/${organization_slug}/opportunity/${opportunity_id}/deliver_unit_table`;
-    const res = await this.opts.request.get(path);
+    const res = await this.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
     return { deliver_units: parseDeliverUnitTable(await res.text()) };
   };
 
   listPaymentUnits: ConnectClient['listPaymentUnits'] = async ({ organization_slug, opportunity_id }) => {
     const path = `/a/${organization_slug}/opportunity/${opportunity_id}/payment_unit_table/`;
-    const res = await this.opts.request.get(path);
+    const res = await this.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
     return { payment_units: parsePaymentUnitTable(await res.text()) };
   };
@@ -482,7 +512,7 @@ export class PlaywrightBackend implements ConnectClient {
   // ── Invites (read-only listing; create/accept moved to REST) ──────
 
   listInvites: ConnectClient['listInvites'] = async ({ organization_slug, program_id }) => {
-    const listRes = await this.opts.request.get(`/a/${organization_slug}/program/`);
+    const listRes = await this.request.get(`/a/${organization_slug}/program/`);
     if (listRes.status() !== 200) throw await httpErrorFor(listRes, `/a/${organization_slug}/program/`);
     return { invites: parseInvitesList(await listRes.text(), program_id) };
   };
@@ -491,14 +521,14 @@ export class PlaywrightBackend implements ConnectClient {
 
   listInvoices: ConnectClient['listInvoices'] = async ({ organization_slug, opportunity_id }) => {
     const path = `/a/${organization_slug}/opportunity/${opportunity_id}/invoices/`;
-    const res = await this.opts.request.get(path);
+    const res = await this.request.get(path);
     if (res.status() !== 200) return { invoices: [] };
     return { invoices: [] };
   };
 
   getInvoice: ConnectClient['getInvoice'] = async ({ organization_slug, invoice_id }) => {
     const path = `/a/${organization_slug}/invoice/${invoice_id}/`;
-    const res = await this.opts.request.get(path);
+    const res = await this.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
     return {
       id: invoice_id,
@@ -611,7 +641,7 @@ export class PlaywrightBackend implements ConnectClient {
   createProgram: ConnectClient['createProgram'] = async (args) => {
     const orgSlug = args.organization_slug;
     const formPath = `/a/${orgSlug}/program/init/`;
-    const formRes = await this.opts.request.get(formPath);
+    const formRes = await this.request.get(formPath);
     if (formRes.status() !== 200) throw await httpErrorFor(formRes, formPath);
     const formHtml = await formRes.text();
     const csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
@@ -628,7 +658,7 @@ export class PlaywrightBackend implements ConnectClient {
       end_date: args.end_date,
     };
 
-    const postRes = await this.opts.request.post(formPath, {
+    const postRes = await this.request.post(formPath, {
       form,
       maxRedirects: 0,
       headers: {
@@ -773,7 +803,7 @@ export class PlaywrightBackend implements ConnectClient {
     const formPath = `/a/${orgSlug}/opportunity/init/`;
 
     // 1. GET the init form → CSRF + hq_server option list.
-    const formRes = await this.opts.request.get(formPath);
+    const formRes = await this.request.get(formPath);
     if (formRes.status() !== 200) throw await httpErrorFor(formRes, formPath, 'GET');
     const formHtml = await formRes.text();
     const csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
@@ -819,7 +849,7 @@ export class PlaywrightBackend implements ConnectClient {
     //    inherit them server-side the way the REST API does). We still
     //    look up the parent program to source those two values, even
     //    though we never POST a `program=<uuid>` field.
-    const formRes2 = await this.opts.request.get(formPath);
+    const formRes2 = await this.request.get(formPath);
     if (formRes2.status() !== 200) throw await httpErrorFor(formRes2, formPath, 'GET');
     const formHtml2 = await formRes2.text();
     const csrf2 = extractFormCsrfToken(formHtml2) ?? this.opts.csrfToken;
@@ -848,7 +878,7 @@ export class PlaywrightBackend implements ConnectClient {
       deliver_app: deliverAppValue,
     };
 
-    const initRes = await this.opts.request.post(formPath, {
+    const initRes = await this.request.post(formPath, {
       form: initBody,
       maxRedirects: 0,
       headers: {
@@ -922,7 +952,7 @@ export class PlaywrightBackend implements ConnectClient {
 
     // First check: is this key already registered? Connect shows it in
     // the dropdown by truncated label.
-    let listRes = await this.opts.request.get(listPath, { headers: { 'HX-Request': 'true' } });
+    let listRes = await this.request.get(listPath, { headers: { 'HX-Request': 'true' } });
     if (listRes.status() === 200) {
       const opts = parseSelectOptions(await listRes.text());
       const found = opts.find((o) => o.text === truncated && /^\d+$/.test(o.value));
@@ -932,7 +962,7 @@ export class PlaywrightBackend implements ConnectClient {
     // Not registered — POST /add_api_key/. Connect's HTMX endpoint returns
     // 200 with a re-rendered form fragment regardless of new vs duplicate.
     const addPath = `/a/${args.organization_slug}/opportunity/add_api_key/`;
-    const addRes = await this.opts.request.post(addPath, {
+    const addRes = await this.request.post(addPath, {
       form: {
         csrfmiddlewaretoken: args.csrf,
         hq_server: args.hq_server_id,
@@ -947,7 +977,7 @@ export class PlaywrightBackend implements ConnectClient {
     if (addRes.status() !== 200) throw await httpErrorFor(addRes, addPath, 'POST');
 
     // Re-query the dropdown to pick up the freshly-registered key.
-    listRes = await this.opts.request.get(listPath, { headers: { 'HX-Request': 'true' } });
+    listRes = await this.request.get(listPath, { headers: { 'HX-Request': 'true' } });
     if (listRes.status() !== 200) throw await httpErrorFor(listRes, listPath, 'GET');
     const opts = parseSelectOptions(await listRes.text());
     const found = opts.find((o) => o.text === truncated && /^\d+$/.test(o.value));
@@ -981,7 +1011,7 @@ export class PlaywrightBackend implements ConnectClient {
     domainField: 'learn_app_domain' | 'deliver_app_domain';
   }): Promise<string> {
     const path = `/hq/applications/?hq_server=${encodeURIComponent(args.hq_server_id)}&${args.domainField}=${encodeURIComponent(args.domain)}&api_key=${encodeURIComponent(args.api_key_id)}`;
-    const res = await this.opts.request.get(path, { headers: { 'HX-Request': 'true' } });
+    const res = await this.request.get(path, { headers: { 'HX-Request': 'true' } });
     if (res.status() !== 200) throw await httpErrorFor(res, path, 'GET');
     const opts = parseSelectOptions(await res.text());
     const real: Array<{ value: string; text: string; id: string }> = [];
@@ -1056,7 +1086,7 @@ export class PlaywrightBackend implements ConnectClient {
     optional_deliver_units?: number[];
   }): Promise<PaymentUnit> {
     const path = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/payment_unit/create`;
-    let formRes = await this.opts.request.get(path);
+    let formRes = await this.request.get(path);
     if (formRes.status() !== 200) throw await httpErrorFor(formRes, path);
     let formHtml = await formRes.text();
     let csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
@@ -1091,7 +1121,7 @@ export class PlaywrightBackend implements ConnectClient {
       const oppIntId = extractOppIntIdFromForm(formHtml);
       if (oppIntId !== null) {
         const syncPath = `/a/${args.organization_slug}/opportunity/${oppIntId}/sync_deliver_units/`;
-        const syncRes = await this.opts.request.post(syncPath, {
+        const syncRes = await this.request.post(syncPath, {
           headers: {
             'X-CSRFToken': csrf,
             'HX-Request': 'true',
@@ -1101,7 +1131,7 @@ export class PlaywrightBackend implements ConnectClient {
         const syncStatus = syncRes.status();
         if (syncStatus === 200 || syncStatus === 204 || syncStatus === 302) {
           // Re-fetch the form so the DU checkboxes are populated.
-          formRes = await this.opts.request.get(path);
+          formRes = await this.request.get(path);
           if (formRes.status() !== 200) throw await httpErrorFor(formRes, path);
           formHtml = await formRes.text();
           csrf = extractFormCsrfToken(formHtml) ?? csrf;
@@ -1214,7 +1244,7 @@ export class PlaywrightBackend implements ConnectClient {
     }
     params.append('submit', 'Submit');
 
-    const postRes = await this.opts.request.post(path, {
+    const postRes = await this.request.post(path, {
       data: params.toString(),
       maxRedirects: 0,
       headers: {
@@ -1301,11 +1331,11 @@ export class PlaywrightBackend implements ConnectClient {
    */
   sendLloInvite: ConnectClient['sendLloInvite'] = async (args) => {
     const path = `/a/${args.organization_slug}/program/${args.program_id}/invite`;
-    const formRes = await this.opts.request.get(`/a/${args.organization_slug}/program/`);
+    const formRes = await this.request.get(`/a/${args.organization_slug}/program/`);
     if (formRes.status() !== 200) throw await httpErrorFor(formRes, `/a/${args.organization_slug}/program/`);
     const csrf = extractFormCsrfToken(await formRes.text()) ?? this.opts.csrfToken;
 
-    const postRes = await this.opts.request.post(path, {
+    const postRes = await this.request.post(path, {
       form: {
         csrfmiddlewaretoken: csrf,
         organization: args.organization,
@@ -1371,11 +1401,11 @@ export class PlaywrightBackend implements ConnectClient {
 
     const path = `/a/${lloSlug}/program/${args.program_id}/application/${args.application_id}/accept/`;
     // Need a CSRF token from a same-origin GET — ANY page works for the cookie.
-    const seedRes = await this.opts.request.get(`/a/${lloSlug}/opportunity/`);
+    const seedRes = await this.request.get(`/a/${lloSlug}/opportunity/`);
     const seedHtml = seedRes.status() === 200 ? await seedRes.text() : '';
     const csrf = extractFormCsrfToken(seedHtml) ?? this.opts.csrfToken;
 
-    const postRes = await this.opts.request.post(path, {
+    const postRes = await this.request.post(path, {
       form: { csrfmiddlewaretoken: csrf },
       maxRedirects: 0,
       headers: {
@@ -1414,11 +1444,11 @@ export class PlaywrightBackend implements ConnectClient {
    */
   sendFlwInvite: ConnectClient['sendFlwInvite'] = async (args) => {
     const path = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/user_invite/`;
-    const formRes = await this.opts.request.get(path);
+    const formRes = await this.request.get(path);
     if (formRes.status() !== 200) throw await httpErrorFor(formRes, path);
     const csrf = extractFormCsrfToken(await formRes.text()) ?? this.opts.csrfToken;
 
-    const postRes = await this.opts.request.post(path, {
+    const postRes = await this.request.post(path, {
       form: {
         csrfmiddlewaretoken: csrf,
         users: args.phone_numbers.join('\n'),
