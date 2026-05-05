@@ -5,6 +5,38 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.15 — 2026-05-05
+
+**fix(connect): bottom-out 403 CSRF recovery via full re-auth.**
+
+Closes the loop on the 0.13.8 → 0.13.14 self-heal series. Previous
+fixes recovered the *cookie* state but couldn't recover the
+*server-side session* state — when `sessionid` itself rotated
+upstream, even a correct csrftoken got rejected and the run halted.
+
+Fix in `mcp/connect/backends/rest.ts`:
+
+- `RestBackend` now keeps mutable `request` and `csrf` fields (csrf
+  was already mutable in 0.13.9; this brings `request` along for the
+  ride). Constructor seeds them from `opts`.
+- New `reauth()` private method: calls `session.invalidate()` to drop
+  the cached BrowserContext + on-disk state file, then
+  `session.getContext()` to rebuild via `hqOAuthLogin`, and updates
+  the backend's own `request`/`csrf` fields with the fresh handles.
+- `post()` 403-CSRF handler now has TWO stages:
+  1. Refresh csrftoken from cookie jar and retry (was the 0.13.9 path).
+  2. If retry STILL returns 403 CSRF, call `reauth()` and try once more.
+
+Three total attempts (initial + cookie-refresh + full re-auth).
+The bottom-out invariant: any 403 CSRF that's mechanically a
+session-staleness issue self-heals without operator intervention.
+The only remaining manual-recovery case is bad upstream credentials,
+which fail loud at `hqOAuthLogin` itself.
+
+Same pattern as 0.13.8's `commcare.ts` retry, but for a different
+failure shape — together they cover both the CCHQ-side 302-to-login
+and the Connect-side 403-CSRF.
+
 ## 0.13.14 — 2026-05-05
 
 **fix(connect): force Connect to issue its own `csrftoken` after OAuth.**
