@@ -132,6 +132,35 @@ and plugin auth.
   form — that's what `/nova:edit` is for. ACE does not yet use this
   in the default flow but should once `app-test` finds bugs.
 
+## Gotchas
+
+- **`mcp-needs-auth-cache.json` can shadow live refresh tokens across
+  sessions.** When Claude Code's MCP host hits a "needs auth" condition,
+  it writes an entry to `~/.claude/mcp-needs-auth-cache.json` and skips
+  reconnection attempts for that server on subsequent session starts —
+  even when refresh tokens would actually still work. The session log
+  surfaces it as `"Skipping connection (cached needs-auth)"`. The entry
+  TTL is generous, so an entry written on Monday can suppress Tuesday's
+  refresh-token attempts. Phase 2's commcare-setup `Step 0a` now prunes
+  stale entries (> 1h old) before probing Nova; if you're debugging
+  Nova-auth-related halts elsewhere, that file is the first thing to
+  inspect.
+- **`mcp__plugin_nova_nova__authenticate` clears stored tokens before
+  starting a new flow.** Calling it on a recoverable cache-staleness
+  condition destroys the very refresh token that would have let the
+  MCP host self-recover. Treat `authenticate` as a last resort, not a
+  diagnostic. See `agents/commcare-setup.md § Step 0c` for the layered
+  recovery procedure.
+- **No ACE-side Playwright auto-login for Nova exists yet.** Connect
+  has `mcp/connect/auth/hq-oauth-login.ts` because CCHQ is
+  Dimagi-controlled and ACE has `ACE_HQ_USERNAME` / `ACE_HQ_PASSWORD`
+  in `.env`. The Nova OAuth flow bounces through `commcare.app` →
+  Google; driving Google's login form programmatically is brittle
+  (fingerprinting, step-up auth) and `.env.tpl` does not currently
+  carry an `ACE_GMAIL_PASSWORD`. A future `mcp/nova/auth/playwright-oauth-login.ts`
+  could close this gap, but the cache-prune fix likely covers most
+  practical "Nova won't auth" cases.
+
 ## What is NOT here
 
 - A Nova fork or self-hosted Nova. Earlier design notes considered

@@ -11,7 +11,12 @@ describeFn('PlaywrightBackend integration (requires OCS_INTEGRATION=1 + live ses
   const teamSlug = process.env.OCS_TEAM_SLUG ?? 'dimagi';
   const templateId = Number(process.env.OCS_GOLDEN_TEMPLATE_ID ?? 0);
 
-  const session = new PlaywrightSession({ baseUrl, teamSlug });
+  const session = new PlaywrightSession({
+    baseUrl,
+    teamSlug,
+    username: process.env.OCS_USERNAME,
+    password: process.env.OCS_PASSWORD,
+  });
 
   afterAll(async () => { await session.close(); });
 
@@ -27,16 +32,30 @@ describeFn('PlaywrightBackend integration (requires OCS_INTEGRATION=1 + live ses
     }
     const ctx = await session.getContext();
     const csrfToken = session.getCsrfToken();
-    const request: RequestFn = async (method, url, body) => {
+    // Mirror the production RequestFn shape from mcp/ocs-server.ts so the
+    // backend's body-encoding hints (formEncoded / multipart) round-trip
+    // correctly. Without formEncoded, Django form views fall through to a
+    // deceptively-successful 200 that silently fails downstream.
+    const request: RequestFn = async (method, url, body, options) => {
+      const maxRedirects = options?.followRedirects === false ? 0 : undefined;
+      const headers = { 'X-CSRFToken': csrfToken, Referer: baseUrl };
+      let res;
       if (method === 'GET') {
-        const res = await ctx.request.get(url);
-        return { ok: res.ok(), json: async () => await res.json() };
+        res = await ctx.request.get(url, { maxRedirects });
+      } else if (options?.multipart) {
+        res = await ctx.request.post(url, { headers, multipart: options.multipart, maxRedirects });
+      } else if (options?.formEncoded) {
+        res = await ctx.request.post(url, { headers, form: body as Record<string, string>, maxRedirects });
+      } else {
+        res = await ctx.request.post(url, { headers, data: body, maxRedirects });
       }
-      const res = await ctx.request.post(url, {
-        headers: { 'X-CSRFToken': csrfToken, Referer: baseUrl },
-        data: body,
-      });
-      return { ok: res.ok(), json: async () => await res.json() };
+      return {
+        ok: res.ok(),
+        status: res.status(),
+        headers: res.headers(),
+        text: async () => await res.text(),
+        json: async () => await res.json(),
+      };
     };
     const backend = new PlaywrightBackend({ teamSlug, baseUrl, csrfToken, request });
 

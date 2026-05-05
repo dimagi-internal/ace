@@ -19,10 +19,10 @@ You set up the Connect platform for a CRISPR-Connect opportunity end-to-end.
 
 This phase runs after CommCare apps are deployed (Phase 2) and before OCS
 setup (Phase 4). The OCS chatbot's embed credentials are produced in Phase 4
-and surfaced to LLOs via the onboarding email in Phase 6; they are not
+and surfaced to LLOs via the onboarding email in Phase 7; they are not
 attached to the Connect opportunity record itself today.
 
-LLO invitation list preparation lives in Phase 6 (`llo-manager`) — we don't
+LLO invitation list preparation lives in Phase 6 (`solicitation-management`) — we don't
 commit to an invite roster until the OCS chatbot has cleared its deep-eval
 gate. This phase produces only the Connect program + opportunity + initial
 configuration; no LLO-facing artifacts.
@@ -43,7 +43,7 @@ Invoke the `connect-program-setup` skill.
   defaults to `ai-demo-space` (or whichever PM-side org the opportunity
   is configured for).
 - **Output:** Connect program created or reused; details in
-  `ACE/<opp-name>/connect-setup/program.md` with the program UUID.
+  `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup.md` with the program UUID.
 - **Idempotent:** if a program with the same name already exists,
   `connect_list_programs` finds it and the skill reuses it.
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
@@ -56,17 +56,17 @@ Invoke the `connect-opp-setup` skill.
 - **Input:** program UUID from Step 1; PDD; deployment summary from Phase 2.
 - **Output:** Opportunity created in `draft` state with verification
   flags + payment units configured. Details in
-  `ACE/<opp-name>/connect-setup/opportunity.md` with the opportunity
+  `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md` with the opportunity
   UUID.
 - **Depends on:** Step 1 (needs program UUID); Phase 2 outputs (needs
   CommCare app metadata).
 - **Activation:** the opportunity is created in `draft` and stays there
-  until `llo-launch` (Phase 6) flips it to `active` after UAT.
+  until `llo-launch` (Phase 7) flips it to `active` after UAT.
 
 ### Completion
 
 Update opportunity state. Write phase summary to
-`ACE/<opp-name>/connect-setup-summary.md` with:
+`ACE/<opp-name>/runs/<run-id>/3-connect/connect-setup_summary.md` with:
 - Program: name, UUID, reused-or-created flag
 - Opportunity: name, UUID, status (`draft`)
 - Verification flags as configured

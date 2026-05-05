@@ -20,7 +20,13 @@ function findVerdictYamls(root: string): string[] {
       const p = join(dir, entry.name);
       if (entry.isDirectory()) {
         walk(p);
-      } else if (entry.isFile() && entry.name.endsWith('.yaml') && dir.endsWith('verdicts')) {
+      } else if (
+        entry.isFile() &&
+        entry.name.endsWith('.yaml') &&
+        // 0.13.0 layout: <skill>_verdict[-mode].yaml inside a phase folder.
+        // Also retain the legacy `verdicts/` folder match for backward compat.
+        (/_verdict(-[a-z]+)?\.yaml$/.test(entry.name) || dir.endsWith('verdicts'))
+      ) {
         out.push(p);
       }
     }

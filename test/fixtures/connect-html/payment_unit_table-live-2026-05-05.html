@@ -1,0 +1,186 @@
+
+<div class="table-responsive">
+  
+
+
+
+<div class="table-container flex flex-col gap-2 mb-1">
+  
+  <div class="w-full overflow-x-auto overflow-y-auto block max-h-[70vh]">
+    <table class="base-table" class="table table-bordered mb-0">
+      
+      
+      <thead class="">
+        <tr>
+          
+          <th>
+            
+            <span>#</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>Payment Unit Name</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>Start date</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>End date</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>Total Deliveries</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>Max daily</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>Delivery Units</span>
+            
+          </th>
+          
+        </tr>
+      </thead>
+      
+      
+
+          
+            <tbody>
+            <div style="overflow:hidden; border-radius:8px;">
+              
+                
+                  <tr class="even" class="group">
+                    
+                      <td >
+                        
+                          1
+                        
+                      </td>
+                    
+                      <td >
+                        
+                          Vendor Visit (consented)
+                        
+                      </td>
+                    
+                      <td >
+                        
+                          05/19/2026
+                        
+                      </td>
+                    
+                      <td >
+                        
+                          07/14/2026
+                        
+                      </td>
+                    
+                      <td >
+                        
+                          100
+                        
+                      </td>
+                    
+                      <td >
+                        
+                          20
+                        
+                      </td>
+                    
+                      <td >
+                        
+                          
+
+<div class="flex justify-between items-center">
+    <span>1</span>
+    <div x-data="{ expanded: false }">
+        
+            <a href="/a/ai-demo-space/opportunity/f116865a-7480-4d80-89e1-862f45424980/payment_unit/f4d62c39-7b5f-4633-9ce5-68308ac3b538/edit"><i class="fa-solid fa-pencil me-2"></i></a>
+        
+        <button
+                @click="expanded = true; $el.closest('tr').insertAdjacentHTML('afterend', $refs.detailRow.innerHTML)"
+                x-show="!expanded">
+            <i class="fa-solid fa-chevron-down"></i>
+        </button>
+        <button
+                @click.prevent="
+                    const detailRow = $el.closest('tr').nextElementSibling;
+                    if (detailRow && detailRow.classList.contains('detail-row')) {
+                        detailRow.remove();
+                    }
+                    expanded = false
+                "
+                x-show="expanded">
+            <i class="fa-solid fa-chevron-up"></i>
+        </button>
+        <template x-ref="detailRow">
+            <tr class="detail-row">
+                <td colspan="8">
+                    <div class="p-3 bg-slate-100 rounded-lg">
+                        <div class="mb-4 font-bold">Deliver Units</div>
+                        <div class="flex flex-col gap-2">
+                            
+                                <div class="w-full">
+                                    <span>Vendor Visit</span>
+                                    
+                                </div>
+                            
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        </template>
+    </div>
+</div>
+
+                        
+                      </td>
+                    
+                  </tr>
+                
+                
+              
+              
+              
+            </div>
+            </tbody>
+          
+
+
+    </table>
+  </div>
+  
+  
+  
+
+  
+</div>
+
+
+
+<script>
+    function goToPage(param, value) {
+        const url = new URL(window.location.href);
+        url.searchParams.set(param, value);
+        window.location.href = url.toString();
+    }
+</script>
+
+
+</div>

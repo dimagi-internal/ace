@@ -1,8 +1,9 @@
 ---
 name: llo-launch
 description: >
-  Activate the opportunity for live use. Verify UAT sign-offs, activate the
-  opportunity in Connect, confirm apps are published, and notify LLOs of go-live.
+  Activate the opportunity for live use. Verify UAT sign-offs, enforce the
+  deep-QA verdict freshness gate (OCS + apps), activate the opportunity in
+  Connect, confirm apps are published, and notify LLOs of go-live.
 ---
 
 # LLO Launch (Go-Live)
@@ -12,11 +13,11 @@ Activate the opportunity and notify LLOs that they are live.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - UAT results: `ACE/<opp-name>/uat/uat-results.md` (includes archetype)
-   - Deployment summary: `ACE/<opp-name>/deployment-summary.md` (atomic-visit)
-   - Opportunity config: `ACE/<opp-name>/connect-setup/opportunity.md`
-   - LLO contacts: `ACE/<opp-name>/connect-setup/invites.md`
-   - PDD: `ACE/<opp-name>/pdd.md` (fallback archetype source)
+   - UAT results: `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-uat_results.md` (includes archetype)
+   - Deployment summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` (atomic-visit)
+   - Opportunity config: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
+   - Awarded LLO: `opp.yaml.selected_llo` (populated by Phase 6 `solicitation-review`)
+   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (fallback archetype source)
 
 2. **Read the `archetype:` field.** Go-live semantics differ per
    archetype — "deliveries count toward payment now" is atomic-visit
@@ -31,7 +32,73 @@ Activate the opportunity and notify LLOs that they are live.
      issues
    - If blocking issues remain, halt and notify admin group
 
-4. **Activate the opportunity in Connect** via
+4. **Verify deep-QA verdicts before activation.** This is the
+   highest-stakes gate in the pipeline; activation flips the opp from
+   draft to live and deliveries start counting toward payment. Read
+   both deep verdicts from `ACE/<opp-name>/runs/<run-id>/`:
+   - `verdicts/ocs-chatbot-eval-deep.yaml`
+   - `verdicts/app-ux-eval-deep.yaml`
+
+   For each verdict, require:
+
+   1. **File exists.** If missing, the operator skipped `/ace:qa-deep`
+      for that side.
+   2. **`verdict: pass`** at the top level. (Canonical schema is
+      `verdict:`, not `status:`. Per-item entries use the same key.)
+   3. **Verdict is newer than the artifact it grades:**
+      - **OCS verdict freshness:** call `ocs_get_chatbot` with the
+        verdict's `target` (an `experiment_id` UUID) and confirm the
+        chatbot's current `version_number` matches the verdict's
+        `artifact_refs.version_number`. If the chatbot has been
+        re-published since the verdict was written, the deep eval is
+        stale.
+      - **App verdict freshness:** read `learn_build_id` and
+        `deliver_build_id` from `verdicts/app-ux-eval-deep.yaml`'s
+        `artifact_refs:` block, then read `deployment-summary.md`'s
+        `releases:` block. The verdict's build IDs must match the
+        latest released build IDs in `deployment-summary.md`. If
+        either app has been re-released since the verdict was written,
+        the screenshots that grounded the eval are out of date.
+
+   If ANY check fails, halt with `[BLOCKER]` and emit:
+
+   > `[BLOCKER]` Deep QA verdicts missing or stale.
+   > Run `/ace:qa-deep <opp>` before activation.
+   > Missing or stale: <list of failing checks>
+
+   List one entry per failing check (e.g. `ocs-chatbot-eval-deep.yaml
+   missing`, `app-ux-eval-deep.yaml verdict=fail`, `OCS chatbot
+   re-published since verdict written (verdict v3, current v4)`,
+   `learn app re-released since verdict written (verdict build
+   abc..., current build xyz...)`).
+
+5. **Override (operator-only, audited).** If this skill was invoked
+   with `--override-deep-qa-gate=<reason>`, skip the gate above and
+   proceed to activation. Constraints:
+   - The flag must include a non-empty `<reason>` (e.g.
+     `--override-deep-qa-gate="emergency-patch-cve-2026-001"`). An
+     empty or missing reason is a hard error — do not activate.
+   - **`/ace:run` cannot pass this flag.** It is reachable only via
+     `/ace:step llo-launch <opp> --override-deep-qa-gate=<reason>`.
+     If `--override-deep-qa-gate` arrives through `/ace:run` (e.g.
+     embedded in run-mode args), refuse and instruct the operator to
+     re-invoke via `/ace:step`.
+   - Append an audit entry to
+     `ACE/<opp-name>/comms-log/observations.md`:
+
+     ```
+     YYYY-MM-DD HH:MM TZ — Deep-QA gate overridden during activation.
+     Reason: <reason>. Operator: <ace user from $(git config user.email)
+     or env, fallback "unknown">. Verdicts at time of override:
+     <ocs-status> / <app-status>.
+     ```
+
+     `<ocs-status>` and `<app-status>` are short tags like `missing`,
+     `verdict=fail`, `stale (chatbot v3→v4)`, or `pass`. Both must
+     appear in the audit line so a reader can reconstruct *what was
+     overridden*, not just *that an override happened*.
+
+6. **Activate the opportunity in Connect** via
    `connect_activate_opportunity` (ace-connect MCP, 0.10.47+):
    - Pass `organization_slug` and `opportunity_id` from
      `connect-setup/opportunity.md`. The atom hits
@@ -48,12 +115,12 @@ Activate the opportunity and notify LLOs that they are live.
      `ace_test_user_invite_pending_until_active: true` set.
    - Payment/tracking semantics are archetype-specific — see § Archetypes
 
-5. **Confirm delivery surface readiness (archetype-specific):** see
+7. **Confirm delivery surface readiness (archetype-specific):** see
    `## Archetypes`. For atomic-visit this is app-build verification;
    for focus-group this is Session 1 logistics confirmation; for
    multi-stage this is Stage-1-specific.
 
-6. **Send launch notification to each LLO (archetype-aware body):**
+8. **Send launch notification to each LLO (archetype-aware body):**
    - From: ace@dimagi-ai.com
    - CC: CRISPR Admin Dimagi Google Group
    - Subject: archetype-specific — see `## Archetypes`
@@ -61,7 +128,7 @@ Activate the opportunity and notify LLOs that they are live.
      activation confirmation, key contacts, support channels, training
      material links
 
-7. **Write launch record** to `ACE/<opp-name>/launch/launch-record.md`:
+9. **Write launch record** to `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_record.md`:
    - Archetype (recorded explicitly so `timeline-monitor` applies the
      right cadence and milestones)
    - Activation timestamp
@@ -71,7 +138,7 @@ Activate the opportunity and notify LLOs that they are live.
      number + next-stage kickoff window for multi-stage)
    - Any outstanding non-blocking issues
 
-8. **Write the gate brief** to `ACE/<opp-name>/gate-briefs/llo-launch.md`
+10. **Write the gate brief** to `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md`
    using the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`.
    The brief is written *before* activation so the admin approves based on
    readiness, not on a record of something that already happened. See
@@ -80,7 +147,7 @@ Activate the opportunity and notify LLOs that they are live.
 
 ## Gate Brief
 
-The gate brief at `ACE/<opp-name>/gate-briefs/llo-launch.md` is the final
+The gate brief at `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md` is the final
 approval point before the opportunity flips from test/draft to active in
 Connect — after this, deliveries count toward real payment and FLWs are
 live. This is the single highest-stakes gate in the pipeline.
@@ -104,6 +171,12 @@ live. This is the single highest-stakes gate in the pipeline.
     name, dates, and support channel (ace@dimagi-ai.com)
   - Training materials and the OCS widget link are accessible to LLOs
 - **Auto-Surfaced Concerns:** one line per signal:
+  - `[BLOCKER]` if `verdicts/ocs-chatbot-eval-deep.yaml` is missing,
+    `verdict: fail`, or stale (chatbot version_number has advanced
+    since the verdict was written) — see Step 4 above
+  - `[BLOCKER]` if `verdicts/app-ux-eval-deep.yaml` is missing,
+    `verdict: fail`, or stale (a learn or deliver build was released
+    since the verdict was written) — see Step 4 above
   - `[BLOCKER]` for any LLO with UAT sign-off status ≠ `signed-off` and a
     blocking issue recorded
   - `[BLOCKER]` if any app has a build status that is not `success`
@@ -236,7 +309,8 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
-| 2026-04-17 | Emit gate brief at `ACE/<opp-name>/gate-briefs/llo-launch.md` *before* activation so the highest-stakes gate is approved on readiness, not retrospectively on a launch record | ACE team (PM scout, internal-admin lens) |
+| 2026-04-17 | Emit gate brief at `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md` *before* activation so the highest-stakes gate is approved on readiness, not retrospectively on a launch record | ACE team (PM scout, internal-admin lens) |
 | 2026-04-20 | Added `## Archetypes` with per-archetype readiness checks, Connect activation semantics, launch email subject + body, and launch-record details. `focus-group` replaces "apps published" with "Session 1 venue + recording + participant recruitment confirmed" and subject flips to "Session 1 is on the calendar" (not "You Are Live" which is FLW-coded). `multi-stage` pins activation to Stage 1 only; each stage gets its own launch run, records preserved per-stage in `launch-record-stage-N.md`. Gate-brief checklist item 3 swaps in archetype-specific bullet | ACE team |
 | 2026-04-28 | Replace HITL workaround with `connect_activate_opportunity` + `connect_get_opportunity` (ace-connect 0.8.1) | ACE team |
 | 2026-04-30 | Switch `connect_activate_opportunity` to `POST /api/opportunities/<id>/activate/` (commcare-connect PR #1135). Server-side guards now reject activation if no PaymentUnits exist or the opp has ended; clearer errors than the silent edit-form fallback. Step 4 also gains a deferred FLW pre-invite path for ACE-driven dogfood runs whose `connect-opp-setup` deferred the invite until activation. (0.10.47) | ACE team |
+| 2026-05-04 | Add the deep-QA verdict freshness gate (new Step 4) before activation: refuse to activate unless `verdicts/ocs-chatbot-eval-deep.yaml` and `verdicts/app-ux-eval-deep.yaml` exist, both pass, and both are newer than the artifacts they grade (OCS chatbot `version_number`; learn/deliver `build_id` from `deployment-summary.md`). Add `--override-deep-qa-gate=<reason>` operator escape hatch with a required reason and an audit trail to `comms-log/observations.md`; reachable only via `/ace:step llo-launch`, never `/ace:run`. Gate-brief auto-surfaced concerns gain two `[BLOCKER]` rows mirroring the gate. Part of the shallow/deep QA split refactor (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`). | ACE team |

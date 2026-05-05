@@ -177,10 +177,53 @@ adb shell pm disable-user --user 0 com.google.android.gms
 adb shell pm grant org.commcare.dalvik android.permission.CAMERA
 ```
 
-Both run automatically as part of `AvdBackend.runPostBootPrep` after
-every cold boot in 0.10.23+. The disable persists across AVD reboots
-until you re-enable with `adb shell pm enable com.google.android.gms`.
-ACE skills don't depend on GMS, so leaving it disabled is fine.
+The CAMERA grant runs as part of `AvdBackend.runPostBootPrep`. The
+GMS disable used to live there too, but **0.10.68 moved it** to the
+recipe-pair boundary inside `MobileClient.registerTestUser`:
+
+* Before part A: `setGmsEnabled(true)` so CommCare 2.62.0's launch
+  check passes (a disabled GMS at app start triggers a blocking
+  "Enable Google Play services" dialog with no dismiss option).
+* Between part A and part B: `setGmsEnabled(false)` so face-capture
+  in part B picks ManualMode. CommCare doesn't re-check GMS
+  mid-session, so the late disable doesn't relaunch the dialog.
+
+Doing this at boot — or leaving GMS persistently disabled — broke
+CommCare 2.62.0 launch in any flow outside `registerTestUser` (e.g.,
+`connect-baseline-screenshots`). If you're writing a new recipe that
+needs ManualMode face-capture, follow the same enable-launch /
+disable-pre-capture pattern.
+
+### Multi-user dadb landmine (0.10.65 workaround)
+
+dadb-1.2.10 (bundled with Maestro 2.3.0–2.5.1) does NOT wrap the
+per-device `createDadb()` call inside `AdbServer.listDadbs` in a
+try/catch. The first device returned by `adb devices` that the local
+adb-server flags as "unauthorized" throws an `IOException` that
+aborts the whole device enumeration. Result: on a shared Mac where
+user A's emulator is up and user B's adbkey isn't authorized on it,
+user B's `maestro test` reports zero connected devices — even when
+`adb -s emulator-NNNN shell` works fine for user B (the adb server's
+session-cached transport still works, but dadb does its own AUTH on
+a fresh direct connection and fails on user A's emulator first).
+
+Workaround: ACE invokes `maestro --host=localhost --port=<adbd>` for
+every recipe run since 0.10.65. With both flags set Maestro takes
+the `Dadb.create(host, port)` direct-TCP path, never touching
+`Dadb.list` / the local adb server. Plumbing lives in
+`MaestroBackend.runRecipe` (accepts `opts.adbPort`) and
+`MobileClient.runRecipe` / `MobileClient.registerTestUser`
+(resolve the running AVD's serial via `findRunningAvd`, derive
+`adbPort = consolePort + 1` via `AvdBackend.adbPortFromSerial`).
+The `--host`/`--port` flags are picocli-defined on `App.class` but
+omitted from `--help` — effectively undocumented, but stable across
+2.3.0 → 2.5.1.
+
+`bin/ace-doctor` flags any `unauthorized` `emulator-NNNN` entries in
+your `adb devices` output as a WARN with a fix hint. The
+0.10.65 patch keeps ACE recipes working under that condition; the
+WARN exists because plain `adb shell` calls without `-s` may still
+pick the wrong device.
 
 **Why the photo content doesn't matter:**
 

@@ -1,0 +1,56 @@
+# Synthetic deep app-UX verdict for CRISPR-Test-003-Turmeric.
+# Phase 6 activation gate (llo-launch) reads this verdict and refuses
+# to proceed without it being fresh + passing — so the complete fixture
+# ships a passing one with `artifact_refs` matching the build IDs in
+# `deployment-summary.md`.
+#
+# Timestamp is newer than `deployment-summary.md` (2026-04-16) so the
+# freshness check passes against the latest released CommCare build.
+skill: app-ux-eval
+target: CRISPR-Test-003-Turmeric
+mode: deep
+ran_at: 2026-04-30T18:00:00Z
+capture_path: screenshots/manifest.yaml
+
+# `artifact_refs` lets the Phase 6 gate timestamp-compare the verdict
+# against the latest released CommCare build IDs in deployment-summary.md.
+artifact_refs:
+  learn_build_id: LRN-TURMERIC-SYN-0001
+  deliver_build_id: DEL-TURMERIC-SYN-0001
+
+overall_score: 8.5
+overall_score_pre_cap: 8.5
+verdict: pass
+
+dimensions:
+  clarity:             { score: 9.0, weight: 0.20 }
+  flow_predictability: { score: 8.5, weight: 0.20 }
+  error_recovery:      { score: 7.5, weight: 0.20 }
+  time_budget:         { score: 9.0, weight: 0.20 }
+  journey_completion:  { score: 8.5, weight: 0.20 }
+
+per_item:
+  - ref: "J1 — Survey one vendor"
+    journey: "J1 — Survey one vendor"
+    is_smoke: true
+    score: 9.0
+    verdict: pass
+    note: "Final screenshot shows submission confirmation; intake form labels match vendor-survey persona; MTN-card photo prompt is unambiguous."
+  - ref: "J2 — Capture vendor education outcome"
+    journey: "J2 — Capture vendor education outcome"
+    is_smoke: false
+    score: 8.0
+    verdict: pass
+    note: "Skip-path for vendor refusal works as expected; partial-note draft persistence verified across app close/reopen."
+  - ref: "J3 — Pass the Learn assessment"
+    journey: "J3 — Pass the Learn assessment"
+    is_smoke: true
+    score: 8.5
+    verdict: pass
+    note: "Module reads cleanly, passing threshold visible before assessment starts, fail-and-retake routes back to module without losing progress."
+
+auto_surfaced: []
+
+gate:
+  threshold: 7.0
+  disposition: approve

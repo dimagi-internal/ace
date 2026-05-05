@@ -60,6 +60,16 @@
 - Preferred LLOs: [names, if known]
 - LLO criteria: [what capabilities are needed]
 
+## Solicitation
+> Phase 6 (Solicitation Management) reads this section to publish a solicitation
+> on labs.connect.dimagi.com that LLOs respond to. All fields below are optional
+> — defaults apply if omitted, and the long-term flow (where ACE doesn't pre-name
+> LLOs) leaves Preferred LLOs above empty so the solicitation goes to the public
+> labs portal.
+- Solicitation type: [EOI | RFP — default EOI]
+- Response window: [number of days; default 14]
+- Response template: [optional list of questions for responders; if empty, falls back to a default 6-question template covering experience, recruitment, timeline, supervision, language capacity, and budget]
+
 ## Success Metrics
 | Metric | Target | Measurement Method |
 |--------|--------|--------------------|

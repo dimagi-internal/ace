@@ -7,7 +7,7 @@ description: >
 model: inherit
 phase: closeout
 phase_display: Closeout
-phase_ordinal: 7
+phase_ordinal: 8
 skills:
   - { name: opp-closeout,       has_judge: false }
   - { name: llo-feedback,       has_judge: false }
@@ -15,7 +15,7 @@ skills:
   - { name: cycle-grade,        has_judge: true,  eval_skill: cycle-grade-eval }
 ---
 
-# Closeout Agent (Phase 7)
+# Closeout Agent (Phase 8)
 
 You handle the closeout of a completed CRISPR-Connect opportunity.
 
@@ -48,5 +48,5 @@ Invoke the `cycle-grade` skill.
 
 ### Completion
 Update opportunity state to "closed". Write final summary to
-`ACE/<opp-name>/closeout/final-summary.md`.
+`ACE/<opp-name>/runs/<run-id>/8-closeout/closeout_summary.md`.
 Email admin group with closeout report.

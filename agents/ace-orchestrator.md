@@ -25,7 +25,7 @@ not because the orchestrator is itself dispatched.
 
 The architectural rule and full topology table live in `CLAUDE.md § Agent topology` (the canonical source — every session loads it). Summary for the orchestrator's purposes:
 
-- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 2) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other seven agents (`design-review`, `connect-setup`, `ocs-setup`, `qa-and-training`, `llo-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
+- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 2) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other seven agents (`design-review`, `connect-setup`, `ocs-setup`, `qa-and-training`, `execution-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
 - **Invocation in the procedure below:** "dispatch the X agent" means a top-level `Agent(X)` call (subagent rows in the CLAUDE.md table) or "read `agents/X.md` and execute it inline" (procedure-doc rows).
 - **Why the rule:** the `Agent` tool is unavailable to subagents; a node that nests further work cannot itself be a subagent. There are never two levels of `Agent` dispatch.
 
@@ -42,7 +42,7 @@ Opportunity state lives in Google Drive under `ACE/<opp-name>/`. Use the Google 
 MCP tools (`sheets_read`, `drive_read_file`, `drive_list_folder`, etc.) to read and
 write state.
 
-The state file at `ACE/<opp-name>/state.yaml` tracks:
+The state file at `ACE/<opp-name>/run_state.yaml` tracks:
 - Current phase and step
 - Mode (auto or review)
 - Timestamps for each completed step
@@ -52,10 +52,11 @@ The state file at `ACE/<opp-name>/state.yaml` tracks:
 
 ## State Schema
 
-`state.yaml` top-level fields (added in 0.3.3 for admin-group legibility):
+`run_state.yaml` top-level fields (added in 0.3.3 for admin-group legibility):
 
 ```yaml
 opportunity: <opp-name>
+run_id: <YYYYMMDD-HHMM>     # multi-run layout (v0.11.0+); the run folder name
 mode: default|review|auto
 created: <ISO timestamp>
 initiated_by: <email>        # set once on creation; never overwritten
@@ -70,29 +71,37 @@ phases:
     pdd-to-learn-app: pending
     pdd-to-deliver-app: pending
     app-deploy: pending
-    app-test: pending
+    app-test-cases: pending
   connect-setup:        # Phase 3
     connect-program-setup: pending
     connect-opp-setup: pending
-  ocs-setup:            # Phase 4 — qa/eval split in 0.3.5
+  ocs-setup:            # Phase 4 — qa/eval split in 0.3.5; deep moved to /ace:qa-deep
     ocs-agent-setup: pending
     ocs-chatbot-qa-quick: pending
     ocs-chatbot-eval-quick: pending
-    ocs-chatbot-qa-deep: pending
-    ocs-chatbot-eval-deep: pending
-  qa-and-training:        # Phase 5 — added 0.9.0
+  qa-and-training:        # Phase 5 — added 0.9.0; per-artifact training split 0.10.79–0.10.84; qa-plan retired in shallow/deep QA split
     app-screenshot-capture: pending
-    training-materials: pending
-  llo-management:       # Phase 6
-    llo-invite: pending               # moved here from Phase 3 on 2026-04-20
-    llo-onboarding: pending
+    training-llo-guide: pending
+    training-flw-guide: pending
+    training-quick-reference: pending
+    training-faq: pending
+    training-deck-outline: pending
+    training-deck-build: pending          # skipped if ACE_TRAINING_DECK_TEMPLATE_ID unset
+    training-onboarding-email: pending    # last — links to other docs by URL
+  solicitation-management:  # Phase 6 — added 0.12.0
+    solicitation-create: pending
+    llo-invite: pending               # repurposed 0.12.0: emails solicitation URL to PDD-named candidates
+    solicitation-monitor: pending     # recurring (post-/ace:run, while solicitation open)
+    solicitation-review: pending      # manual (HITL gate before award_response; only path that unblocks Phase 7)
+  execution-management: # Phase 7 (renamed from llo-management 0.12.0)
+    llo-onboarding: pending           # reads opp.yaml.selected_llo (populated by Phase 6 solicitation-review)
     llo-uat: pending
     llo-launch: pending
     timeline-monitor: pending         # recurring
     flw-data-review: pending          # recurring
     ocs-chatbot-qa-monitor: pending   # recurring
     ocs-chatbot-eval-monitor: pending # recurring
-  closeout:             # Phase 7
+  closeout:             # Phase 8 (was Phase 7)
     opp-closeout: pending
     llo-feedback: pending
     learnings-summary: pending
@@ -101,7 +110,7 @@ phases:
 gates:
   idea-to-pdd: approved|pending|rejected
   app-deploy: pending
-  ocs-chatbot-eval-deep: pending    # renamed from ocs-chatbot-qa-deep in 0.3.5
+  ocs-chatbot-eval-quick: pending   # Phase 4 gate; deep eval moved to /ace:qa-deep
   llo-invite: pending
   llo-launch: pending
 ```
@@ -121,15 +130,15 @@ The operator identity is *captured*, not *enforced*. There is no
 authorization check — a git config mismatch just means `/ace:status --mine`
 won't find the opp. Keep it that way.
 
-**Defensive `state.yaml` init on bypass paths.** `/ace:run` initializes
-`state.yaml` as part of "Starting a New Opportunity." But operators can
+**Defensive `run_state.yaml` init on bypass paths.** `/ace:run` initializes
+`run_state.yaml` as part of "Starting a New Opportunity." But operators can
 bypass the orchestrator (via `/ace:step <skill> <opp>`, or by dispatching
 a phase agent directly with the `Agent` tool — only valid for the phase
 agents that are subagents per § Agent Topology; `commcare-setup` cannot
 be dispatched this way and must be invoked inline at top-level). Every
-entry path that touches state must tolerate a missing `state.yaml`:
+entry path that touches state must tolerate a missing `run_state.yaml`:
 
-1. If `ACE/<opp-name>/state.yaml` does not exist when the entry path is
+1. If `ACE/<opp-name>/run_state.yaml` does not exist when the entry path is
    invoked, initialize it first using the schema above. Required fields:
    `opportunity`, `mode` (default `default`), `created` (ISO now),
    `initiated_by` (`git config user.email` or `unknown`), `last_actor` +
@@ -139,11 +148,120 @@ entry path that touches state must tolerate a missing `state.yaml`:
 
 `commands/step.md` owns this defensive init for the `/ace:step` path.
 Agent-tool dispatches are expert paths and assumed to know what they're
-doing — but phase agents should still not crash on a missing `state.yaml`
+doing — but phase agents should still not crash on a missing `run_state.yaml`
 read; they should skip the status update with a single-line warning and
 let the operator fix the state gap explicitly.
 
-## Execution Modes
+## Scope boundaries — what goes in `run_state.yaml`
+
+`run_state.yaml` is **per-run, per-opp**. Skills must keep it scoped to
+this opp's lifecycle and not let plugin-wide concerns leak in.
+
+**In scope** (write to `run_state.yaml`):
+- This opp's phase + step status, gate decisions, mode.
+- Pointers to this opp's artifacts (Drive file IDs, app IDs, opp UUID,
+  experiment ID).
+- Open questions that are **about this opp** — pricing for this
+  funder, country list for this rollout, LLO contacts for this program.
+- Eval verdicts for this opp's runs.
+- `phase_X_backlog` items that block **this opp** — a stuck Phase 3,
+  a stub LLO invite that needs follow-up, a deferred screenshot capture.
+
+**Out of scope** (do NOT write to `run_state.yaml` — they belong elsewhere):
+- Bug reports about MCP atoms, skills, or tooling (write to GitHub
+  issues on jjackson/ace; mention them in the resolving PR's
+  CHANGELOG entry).
+- Upstream service bugs (Nova, Connect, OCS) — file as issues on the
+  upstream repo (e.g. voidcraft-labs/nova-plugin#7), reference from
+  the patch skill's removal-criteria block.
+- Cross-opp learnings or pattern observations — write to the canopy
+  run log (`.claude/pm/runs/<date>-<lens>.md`).
+- Recurring sweeps or cleanup tasks that apply to every opp — those
+  are skill-design or doctor-lint asks, not per-opp state.
+
+**Why this matters:** new sessions reading `run_state.yaml` should see
+what's open *for this opp*. Mixing in plugin-wide findings creates
+noise that operators have to mentally subtract on every read, and the
+findings rot in place because no skill is responsible for plugin-wide
+follow-up. The 0.11.4 LEEP rename surfaced 3 such entries in
+`phase_X_backlog` that described MCP bugs, all already resolved
+upstream — kept in the per-opp log for "audit," but actually
+unreadable signal.
+
+**Doctor lint (added 0.11.6).** `/ace:doctor` now scans every opp's
+`run_state.yaml` `phase_X_backlog` entries and warns when an entry's
+`location` field references files outside `ACE/<opp>/` (e.g.
+`mcp/connect/backends/...`, `skills/<name>/`, `lib/<name>.ts`) — those
+should live in GitHub issues, not per-opp state.
+
+## Cruft management — `archive:` block convention
+
+`open_questions:` and `phase_X_backlog:` accumulate **resolved
+entries** because the long-standing convention has been to annotate
+them in place ("RESOLVED 2026-05-03 by ACE 0.10.91 — …") rather than
+remove them. Net effect: a 12-entry `open_questions:` list where 4
+are actually open and 8 are historical record dressed as work items.
+
+**The convention (added 0.11.7):** when a skill resolves an entry, it
+**moves** the entry to a top-level `archive:` block instead of
+annotating in place. The archive preserves the audit trail without
+polluting the live work list.
+
+`archive:` shape mirrors the source:
+
+```yaml
+archive:
+  open_questions:
+    - id: createOpportunity-mcp-backend
+      summary: …  (preserved verbatim)
+      owner: …
+      resolution_phase: resolved-in-0.10.91
+      default_in_use: …
+      resolved_at: 2026-05-03T15:30:00Z   # added when moving to archive
+      resolved_by: ace-engineering         # who resolved it (skill, agent, or operator)
+      resolution_note: …                   # one-sentence summary of the fix
+  phase_2_backlog:
+    - id: commcare-download-ccz-marker-counter-bug
+      …  (same shape; original location field preserved)
+      resolved_at: …
+      resolved_by: …
+      resolution_note: …
+  phase_3_backlog: [...]
+  # phase_4_backlog, phase_5_backlog, phase_6_backlog as needed
+```
+
+The three `resolved_*` fields are **the only fields added** when
+moving an entry from live to archive — nothing else changes, so the
+audit trail is intact and grep-able.
+
+**Consumers:** `/ace:status`, opp-eval, the orchestrator's "what's
+open" sweeps, and any skill computing per-opp readiness must IGNORE
+the `archive:` block. Treat it as a frozen historical record, not as
+work-in-progress signal.
+
+**Doctor lint (added 0.11.7).** `/ace:doctor state-yaml-cruft <opp>`
+scans `run_state.yaml` for entries that look resolved but still live
+in the active list — heuristics: `resolution_phase: resolved-in-…`,
+`default_in_use:` starts with `(resolved`, `summary:` begins with
+`RESOLVED ` or contains a `RESOLVED in <version>` marker. Surfaces
+each one as a candidate for the operator to move into `archive:`.
+This is a NUDGE lint, not auto-fix — the operator decides what's
+truly resolved vs partially-resolved.
+
+**When to write to `archive:` directly vs annotate-then-move:** if a
+skill resolves an entry as part of its run (e.g. `connect-opp-setup`
+finishes and resolves the `createOpportunity-mcp-backend` open
+question), it MAY move the entry directly to `archive:` with the
+three `resolved_*` fields populated. If the resolution happens
+ad-hoc (operator notices a stale entry in a future session), the
+operator runs the cruft lint, decides which to archive, and moves
+them.
+
+**Why the lint NUDGES rather than auto-archives:** "RESOLVED in
+0.10.67" markers can apply to a fix that hasn't been verified
+end-to-end on this opp yet — auto-archiving would lose that signal.
+The operator is the one who knows whether a marked-resolved entry is
+truly closed in this opp's context.
 
 ACE has three modes. **`default` is the default** — pick another only
 if you have a specific reason.
@@ -158,21 +276,32 @@ stop, up until the point of external communication.*
   pause the run. A `[BLOCKER]` halts immediately and surfaces the
   brief for triage. A hard error halts immediately. A `[WARN]` is
   logged but does NOT halt.
-- **Phase 5→6 transition:** **always pause.** This is the external-
-  communication boundary — Phase 6 is where LLOs first hear from
-  ACE. The pause shows a Phase-5-complete summary and asks "ready
-  to begin LLO contact?" before any invite goes out.
-- **Phases 6–7 (LLO contact, closeout):** behave like `review` mode
-  for any step whose action affects an external party. Specifically,
+- **Phase 5→6 transition:** **no longer a mandatory pause.** Phase 6
+  publishes a public solicitation on labs.connect.dimagi.com and emails
+  PDD-named candidate LLOs the public URL — passive listing, not active
+  outreach to specific individuals. The active-comms boundary moved to
+  Phase 6→7 (where Phase 7 sends an inbound onboarding email to the
+  awardee).
+- **Phase 6→7 transition:** **always pause.** This is the new external-
+  communication boundary — Phase 7 is where the awarded LLO first hears
+  from ACE on a one-to-one basis. `/ace:run` halts here in default mode
+  and remains halted until the human runs `/ace:step solicitation-review`,
+  which (after a HITL approval gate) calls `award_response` and populates
+  `opp.yaml.selected_llo`. Phase 7 cannot start while
+  `selected_llo.org_slug` is null.
+- **Phases 7–8 (Execution Management, Closeout):** behave like `review`
+  mode for any step whose action affects an external party. Specifically,
   always pause before:
-    - `llo-invite` send (Phase 6 — invite roster review)
-    - `llo-onboarding` (Phase 6 — first email to LLOs)
-    - `llo-uat` send (Phase 6 — UAT instructions to LLOs)
-    - `llo-launch` (Phase 6 — opportunity activation in Connect)
-    - `opp-closeout` (Phase 7 — Jira payment ticket creation)
+    - `llo-onboarding` (Phase 7 — first 1-1 email to the awardee)
+    - `llo-uat` send (Phase 7 — UAT instructions to the awardee)
+    - `llo-launch` (Phase 7 — opportunity activation in Connect)
+    - `opp-closeout` (Phase 8 — Jira payment ticket creation)
   Steps within those phases that are purely internal (e.g.
   `timeline-monitor` reads, `flw-data-review` analysis) auto-proceed
   the same as Phases 1–5.
+- **Inside `solicitation-review` (Phase 6 manual):** HITL gate before
+  `award_response` is called (irreversible). Skill waits for explicit
+  `award <response_id> $<amount>` reply before the labs call.
 
 **Review mode (`review`):** Pause at every one of the 5 named gate
 steps for explicit approval, regardless of blocker status. Use for
@@ -181,12 +310,13 @@ gate brief in front of them. Same gate-brief contract as `default`
 mode; the difference is just which gates trigger the
 `AskUserQuestion` pause.
 
-The 5 named gate steps (the full set, applied in `review`):
+The 6 named gate steps (the full set, applied in `review`):
 - After `idea-to-pdd` (Phase 1) — PDD must be approved before building apps
 - After `app-deploy` (Phase 2) — apps must be verified before Connect setup
 - After `ocs-chatbot-eval --deep` (Phase 4) — OCS quality must clear pre-launch bar
-- After `llo-invite` (Phase 6) — invites reviewed before sending
-- After `llo-launch` (Phase 6) — activation verified before monitoring
+- After `llo-invite` (Phase 6) — solicitation invitations reviewed before sending (when PDD names candidates)
+- Phase 6→7 boundary — `/ace:run` halts in default mode regardless; review mode confirms `selected_llo` populated before dispatching execution-manager
+- After `llo-launch` (Phase 7) — activation verified before monitoring
 
 **Auto mode (`auto`):** Run all phases sequentially with no pauses,
 even at external-communication points. Email the CRISPR Admin group
@@ -208,11 +338,128 @@ an unattended `idea-to-pdd` approval. Default mode treats the eval
 verdict (`[BLOCKER]` or not) as the decision-maker and only stops the
 human for it when the model itself says something is wrong.
 
-Phase 6 onward involves real LLOs receiving real emails and real
+Phase 7 onward involves real LLOs receiving real emails and real
 Connect production state changes. There is no automatic eval that
 validates "is this opp ready to send to outside parties?" — only
 human judgment can clear that bar, so default mode insists on human
 review at every external-comm point.
+
+## Long-Running Skills — No Fake Background Tasks
+
+ACE has no real background-task primitive for phase-internal work.
+`ScheduleWakeup` defers the *agent*; it doesn't background actual work
+on a side thread. Treating it as backgrounding produces an
+unobservable, unrecoverable, unbounded loop — which is exactly what
+killed the `turmeric-20260503-0835` deep capture (3+ hours, ~700K
+tokens, zero progress, no recoverable transcript). The rule is:
+
+**Phase-internal sequential skills run synchronously to completion,
+with a hard wall-clock budget. They do NOT call `ScheduleWakeup`.**
+
+If a skill cannot finish in budget, it fails loud — writes a partial
+artifact, returns a `[BLOCKER]` `auto_surfaced` entry, and lets the
+orchestrator decide whether to re-dispatch (idempotent re-runs are the
+recovery mechanism, not deferred wakeups).
+
+Concrete shape every long-running skill must have:
+
+1. **Wall-clock budget**, declared in a `## Wall-Clock Budget` section.
+   Both per-unit (per-prompt, per-form, per-screenshot) and suite-level
+   caps. Track elapsed with `date +%s` checkpoints.
+2. **Liveness probe before the work loop.** A cheap (<5s) one-shot
+   call against the upstream service that distinguishes "service is
+   responsive" from "absence of output." Catches dead sessions before
+   the budget burns.
+3. **Incremental writes for recovery.** Every captured unit goes to
+   the artifact file as it completes. Never "build everything in
+   memory and write at the end" — a mid-loop kill that way loses
+   everything.
+4. **Resume-from-partial at start.** Read any existing artifact and
+   skip already-completed units. Re-running the skill is cheap and
+   idempotent.
+5. **Three-strike circuit breaker.** If three consecutive units fail
+   (timeout, error response), abort the loop — burning the rest of
+   the budget produces noise, not signal.
+
+### When background IS appropriate
+
+`ScheduleWakeup` and cron-style scheduling are reserved for **recurring
+jobs that run independent of any particular run**:
+
+- `timeline-monitor` — recurring during active opp, fires per LLO
+  milestone calendar
+- `flw-data-review` — recurring during active opp, fires per FLW
+  submission window
+- `ocs-chatbot-qa --monitor` / `ocs-chatbot-eval --monitor` —
+  recurring during active opp for drift detection
+
+These are legitimately parallel-to-the-main-run; they don't gate any
+phase. Phase-internal work (`ocs-chatbot-qa --quick` / `--deep`,
+`app-screenshot-capture`, etc.) is foreground sequential
+and is NOT eligible for this pattern.
+
+### When polling IS appropriate
+
+Some skills legitimately wait on upstream state changes (RAG indexing
+in `ocs-agent-setup`, CCHQ build completion in `app-release`). For
+those, poll the upstream service's status endpoint directly with a
+**bounded retry policy**: max attempts, exponential backoff, hard
+timeout, fail loud on exhaustion. Do not invent a "background task ID"
+that the orchestrator can't actually verify is alive.
+
+## External Mutations — Verify After Create
+
+Every external-system write must be followed by a read-back. The
+write's response alone is not authoritative — Connect, CCHQ, OCS, and
+Nova all have classes of bug where the create endpoint accepts the
+payload, returns 201, but the stored row diverges from what was sent
+(wrong field mapping, silent overrides, server-side defaults
+clobbering, async hydration gaps). Skills that don't read-back hand
+silently-corrupted state to downstream phases.
+
+The rule:
+
+1. **Write** via the mutating atom (`connect_create_opportunity`,
+   `connect_create_payment_units`, `commcare_make_build`,
+   `ocs_set_chatbot_pipeline`, etc.).
+2. **Read** via the matching getter (`connect_get_opportunity`,
+   `connect_list_payment_units`, `commcare_download_ccz`,
+   `ocs_get_chatbot`).
+3. **Compare** every field the skill set against the read-back
+   response.
+4. **Halt loud on mismatch.** Mismatch on a load-bearing field
+   (dates, app ids, amounts, required-relations) is a `[BLOCKER]` —
+   write the diff (sent vs. stored) to `comms-log/observations.md`,
+   surface in the gate brief, do NOT proceed. Mismatch on a
+   cosmetic/display field (descriptions, tags) is `[INFO]` — log and
+   proceed.
+
+The `turmeric-20260503-0835` Phase 3 run is the canonical example: a
+malformed `connect_create_payment_unit` shipped values that didn't
+match what was sent (`amount=500` vs sent `1.50`,
+`required_deliver_units=[]` vs sent `[Vendor Visit]`). The skill
+returned cleanly, Phase 3 graded `warn` on the eval, the orchestrator
+auto-proceeded — and the malformation cascaded through
+`is_setup_complete` to silently break Phase 6 invites and Phase 5
+screenshot capture. A read-back at the producer would have converted
+that multi-phase cascade into a single-skill halt with an obvious
+field-diff in the gate brief.
+
+**Canonical example:** `skills/connect-opp-setup/SKILL.md` Steps 4
+and 6 (added 0.11.11). Every skill that creates external state should
+follow this pattern.
+
+**When read-back is overkill:** for read-only or write-once-read-once
+operations (a single `drive_create_file` whose content is the artifact
+itself, a one-shot status flip whose state is naturally observed
+downstream), the read-back collapses into the next skill's natural
+input read. The rule is "every write before a state-dependent
+downstream skill" — not literally every write.
+
+This rule is the producer-side complement to the per-skill `-eval`
+rubrics in `skills/<*>-eval/SKILL.md`. The eval correctly grades the
+captured artifact post-hoc; verify-after-create catches the same
+class of bug at the source, before the bad state ships downstream.
 
 ## Performance Conventions
 
@@ -223,7 +470,7 @@ them on every full-cycle invocation; they're also fine on `/ace:step`.
 agent, include the upstream artifacts the phase will read as inline
 prompt text — don't make the phase re-fetch them from Drive. The
 orchestrator already reads PDD content, the previous phase's gate
-brief, and `state.yaml` at level 0; piping them down avoids 3–5 Drive
+brief, and `run_state.yaml` at level 0; piping them down avoids 3–5 Drive
 round-trips per phase. The Drive copy stays canonical (audit trail);
 phases write back to Drive at completion. If a phase agent finds the
 inline content is stale (e.g. an operator edited the PDD mid-run),
@@ -242,8 +489,8 @@ When dispatching `Agent(<phase>)`, structure the prompt with sections:
 ### Previous-phase gate brief (if any)
 <full gate-brief body>
 
-### state.yaml
-<current state.yaml contents>
+### run_state.yaml
+<current run_state.yaml contents>
 
 ## Your task
 <phase-specific instructions per agent definition>
@@ -289,6 +536,107 @@ builds, for instance, must run one after the other. This applies to
 any future cross-phase orchestration too — design-review, ocs-setup,
 etc. always serialize when dispatched together.
 
+**Resolve `.env` in one shot, not by probing.** ACE's installed `.env`
+lives at `${CLAUDE_PLUGIN_DATA}/.env` with one documented fallback at
+`<plugin-root>/.env` for dev checkouts. Run a single bash that prints
+the resolved path:
+
+```bash
+[ -f "$CLAUDE_PLUGIN_DATA/.env" ] && echo "$CLAUDE_PLUGIN_DATA/.env" || \
+  ([ -f "$(dirname "$0" 2>/dev/null)/../.env" ] && echo "$(dirname "$0")/../.env") || \
+  echo "MISSING"
+```
+
+(or, equivalently, derive the path from
+`installed_plugins.json["plugins"]["ace@ace"][0]["installPath"]`.) Do
+NOT fan out 3–4 separate `ls`/`test -f` probes across `~/.claude/`,
+the worktree, and `.gws-sa-key.json`-adjacent paths — that's
+30s of latency for a value `bin/ace-doctor` already publishes as
+`env_file:` in its output.
+
+**Issue all phase TaskCreate calls in one parallel block.** When you
+set up the run-level task list (one `TaskCreate` per phase plus the
+external-comm pause), emit them as a single assistant message with
+multiple `TaskCreate` tool-use blocks. Sequential
+`TaskCreate → TaskCreate → TaskCreate` over 7+ turns burns ~30s of
+unnecessary model-output time at run start. The whole task list is
+known up-front from the workflow below — there's no dependency on
+prior responses.
+
+## Per-Phase Folder Lifecycle
+
+Per-run artifacts live under `runs/<runId>/<N>-<phase>/...` (the 0.13.0
+phase-prefixed layout). The orchestrator is responsible for materializing
+each `<N>-<phase>/` folder before its phase agent runs, threading the
+resulting `phaseFolderId` into the dispatch prompt, and refreshing the
+run's `README.md` index after the phase completes.
+
+Before dispatching each phase agent (`Agent(design-review)`,
+`Agent(commcare-setup)` (inline procedure doc — same rule applies),
+`Agent(connect-setup)`, `Agent(ocs-setup)`, `Agent(qa-and-training)`,
+`Agent(solicitation-management)`, `Agent(execution-manager)`,
+`Agent(closeout)`), the orchestrator MUST:
+
+1. Look up the phase folder slug from `lib/artifact-manifest-roles.ts`
+   `PHASE_FOLDERS`:
+   - `design` → `1-design`
+   - `commcare` → `2-commcare`
+   - `connect` → `3-connect`
+   - `ocs` → `4-ocs`
+   - `qa-and-training` → `5-qa-and-training`
+   - `solicitation-management` → `6-solicitation-management`
+   - `execution-management` → `7-execution-manager`
+   - `closeout` → `8-closeout`
+
+2. Call `drive_create_folder(name='<N>-<phase>',
+   parentFolderId=<runFolderId>, findOrCreate=true)`. The
+   `findOrCreate=true` mode (default since 0.11.9) reuses an existing
+   same-named folder; this is safe to call repeatedly across resumed
+   runs.
+
+3. Capture the resulting folder ID as `phaseFolderId`.
+
+4. Dispatch the phase agent with BOTH `runFolderId` AND `phaseFolderId`
+   in its prompt. Phase agents pass `phaseFolderId` to their skills as
+   the `parentFolderId` for writes.
+
+Skills that write artifacts under the phase folder use `phaseFolderId`
+as their write parent. Skills that READ artifacts from earlier phases
+need only the `runFolderId` plus the path relative to it (e.g.
+`1-design/idea-to-pdd.md`); they walk the folder tree to find the
+file.
+
+After a phase completes, regenerate `README.md` with the updated
+`phaseStatus` (e.g. `{ design: 'done', commcare: 'in-progress', ... }`)
+via `generateRunReadme(runId, phaseStatus)` and write back to
+`runs/<runId>/README.md` via `drive_update_file`. The README is the
+operator's single-glance view of run state; keep it fresh.
+
+### Current/ shortcut refresh (Phase 3 + Phase 4 completion)
+
+**After Phase 3 completes** — refresh shortcuts pointing at this run's
+Phase 3 outputs. For each:
+
+- `connect-opp-summary.md` → `runs/<runId>/3-connect/connect-opp-setup.md`
+- `connect-program-summary.md` → `runs/<runId>/3-connect/connect-program-setup.md`
+
+Steps:
+1. Resolve the target file ID via `drive_list_folder` on
+   `runs/<runId>/3-connect/` and find the matching filename.
+2. Ensure `<opp>/current/` folder exists via
+   `drive_create_folder(name='current', parentFolderId=<oppFolderId>,
+   findOrCreate=true)`.
+3. Call `drive_create_shortcut(name='<shortcut-name>',
+   parentFolderId=<currentFolderId>, targetId=<resolved-target-file-id>,
+   findOrReplace=true)`. The `findOrReplace=true` mode deletes any
+   prior same-name shortcut before creating, so each new run cleanly
+   overwrites the prior pointer.
+
+**After Phase 4 completes** — same pattern for
+`ocs-agent-config.md` → `runs/<runId>/4-ocs/ocs-agent-setup.md`.
+
+The `drive_create_shortcut` MCP atom shipped in 0.13.0.
+
 ## Workflow
 
 When invoked with an opportunity, execute these phases in order:
@@ -311,7 +659,7 @@ This phase produces: Learn app, Deliver app, deployed apps on CCHQ, test results
 ### Phase 3: Connect Setup
 Dispatch to the **connect-setup** agent.
 This phase produces: Program configured, Opportunity configured with verification
-rules and delivery/payment units. LLO invite-list preparation moved to Phase 6
+rules and delivery/payment units. LLO invite-list preparation moved to Phase 7
 on 2026-04-20 — we don't commit to an invite roster until after the OCS
 chatbot has cleared its deep-eval gate.
 
@@ -326,19 +674,46 @@ Ends with a human-in-the-loop step to paste the widget credentials into the
 Connect opportunity until `update_opportunity` lands (CCC-301).
 
 ### Phase 5: QA and Training
-Dispatch `Agent(qa-and-training)`. The agent runs `app-screenshot-capture`
-followed by `training-materials`, both reading upstream artifacts from
-Phases 1-4. No LLO contact happens here — that begins in Phase 6.
+Dispatch `Agent(qa-and-training)`. The agent runs
+`app-screenshot-capture` (executor — runs the smoke recipes from
+Phase 2's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel
+(`training-llo-guide`, `training-flw-guide`, `training-quick-reference`,
+`training-faq`, `training-deck-outline`) → `training-deck-build` (sequential
+after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) →
+`training-onboarding-email` (LAST — links by URL to other docs). All
+skills read upstream artifacts from Phases 1-4. No 1-1 LLO contact
+happens here — that begins in Phase 7.
 
-### Phase 6: LLO Management
-Dispatch to the **llo-manager** agent.
-This phase produces: LLO invite list prepared (first step), LLOs onboarded
-(with widget link in the onboarding email), UAT completed, opportunity
-activated (go-live), ongoing monitoring active. This phase has recurring
-skills (timeline-monitor, flw-data-review) that run on schedule during
-the active opportunity.
+### Phase 6: Solicitation Management
+Dispatch `Agent(solicitation-management)`. The agent runs
+`solicitation-create` → `llo-invite` (default run, both auto). Publishes
+a solicitation derived from the PDD on labs.connect.dimagi.com via the
+`connect-labs` MCP, then emails PDD-named candidate LLOs the public URL
+(no-op if the PDD names no candidates — long-term flow).
 
-### Phase 7: Closeout
+After this phase completes, `/ace:run` HALTS at the new external-comms
+boundary (Phase 6→7). Phase 7 cannot start until
+`opp.yaml.selected_llo.org_slug` is populated, which only happens via
+the manual `/ace:step solicitation-review` (HITL-gated; calls
+`award_response`).
+
+The recurring `solicitation-monitor` skill polls labs for responses
+while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual
+dispatch).
+
+### Phase 7: Execution Management
+Dispatch to the **execution-manager** agent. Phase 7 entry is gated on
+`opp.yaml.selected_llo.org_slug` being populated by Phase 6's
+`solicitation-review`.
+
+This phase produces: the awarded LLO onboarded (Connect program-level
+invite + ACE onboarding email with widget link), UAT completed,
+opportunity activated (go-live), ongoing monitoring active. This phase
+has recurring skills (timeline-monitor, flw-data-review,
+ocs-chatbot-qa-monitor, ocs-chatbot-eval-monitor) that run on schedule
+during the active opportunity.
+
+### Phase 8: Closeout
 Dispatch to the **closeout** agent. Triggered when the opportunity reaches its
 end date.
 This phase produces: Invoices pulled, Jira payment ticket created, LLO feedback
@@ -347,7 +722,7 @@ collected, learnings summarized, cycle graded.
 ## Between Phases
 
 After each phase completes:
-1. Update `state.yaml` in the opportunity's GDrive folder
+1. Update `run_state.yaml` in the opportunity's GDrive folder
 2. In `auto` mode: send status email to admin group, continue
 3. In `default` mode: continue silently for Phases 1→2, 2→3, 3→4, 4→5;
    **at the Phase 5→6 transition, pause unconditionally** with a
@@ -388,15 +763,20 @@ bare "Approve the PDD?" prompt).
 
 **Where the brief lives.** Each gate-producing skill writes
 `ACE/<opp-name>/gate-briefs/<gate-name>.md` as its final step, immediately
-after writing its primary artifact. The 5 expected files are:
+after writing its primary artifact. The 4 expected files are:
 
 ```
-ACE/<opp-name>/gate-briefs/idea-to-pdd.md
-ACE/<opp-name>/gate-briefs/app-deploy.md
-ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-deep.md
-ACE/<opp-name>/gate-briefs/llo-invite.md
-ACE/<opp-name>/gate-briefs/llo-launch.md
+ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md
+ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_gate-brief.md
+ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-quick.md
+ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md
 ```
+
+(0.12.0: `gate-briefs/llo-invite.md` was removed — the new Phase 6
+`llo-invite` sends solicitation-invite emails (non-binding "please
+apply" notes) and does not write a gate brief. The Phase 6→7 boundary
+itself is the gate that replaces it; halt logic is in the orchestrator,
+not a per-skill brief.)
 
 **Required structure** (every brief uses this shape — no free-form prose):
 
@@ -458,13 +838,17 @@ orchestrator's pause behavior at each named gate is:
 |------|-------|-----------|----------|--------|
 | `idea-to-pdd` | 1 | pause iff `[BLOCKER]` | always pause | never pause* |
 | `app-deploy` | 2 | pause iff `[BLOCKER]` | always pause | never pause* |
-| `ocs-chatbot-eval-deep` | 4 | pause iff `[BLOCKER]` | always pause | never pause* |
-| `llo-invite` | 6 | **always pause** | always pause | never pause* |
-| `llo-launch` | 6 | **always pause** | always pause | never pause* |
+| `ocs-chatbot-eval-quick` | 4 | pause iff `[BLOCKER]` | always pause | never pause* |
+| `llo-invite` | 6 | never pause (passive solicitation invites) | always pause | never pause* |
+| Phase 6→7 boundary | 6→7 | **always pause** (waits for `selected_llo`) | always pause | always pause |
+| `llo-launch` | 7 | **always pause** | always pause | never pause* |
 
-*`auto` still pauses on `[BLOCKER]` — see below.
+*`auto` still pauses on `[BLOCKER]` — see below. The Phase 6→7 boundary
+is unconditional in all modes because Phase 7 cannot start without
+`opp.yaml.selected_llo.org_slug` (populated by manual
+`solicitation-review`).
 
-In addition to the 5 named gates, `default` mode pauses before any
+In addition to the named gates, `default` mode pauses before any
 external-communication action that doesn't have a dedicated gate:
 `llo-onboarding` (first email to LLOs), `llo-uat` (UAT email send),
 and `opp-closeout` (Jira payment ticket creation). These were
@@ -508,7 +892,10 @@ verdicts/<producer-skill>[-<mode>].yaml
   e.g. `ocs-chatbot-eval`) keep their own name in the verdict filename:
   `verdicts/ocs-chatbot-eval-{quick,deep,monitor}.yaml`.
 - Skills that self-evaluate inline (no separate `-eval` skill, e.g.
-  `qa-plan`, `training-materials`, `app-screenshot-capture`) write
+  `app-screenshot-capture`, every per-artifact training
+  skill (`training-llo-guide`, `training-flw-guide`,
+  `training-quick-reference`, `training-faq`,
+  `training-onboarding-email`, `training-deck-outline`)) write
   `verdicts/<self>.yaml`.
 
 **Opt-out.** `/ace:run --no-evals` skips the per-step eval dispatch (the
@@ -520,7 +907,7 @@ afterward.
 returns `verdict: fail` does NOT halt the orchestrator outside the named
 gate steps — the verdict is recorded for the dashboard / `opp-eval`, and
 the run continues. The 5 named gate steps (`idea-to-pdd`, `app-deploy`,
-`ocs-chatbot-eval-deep`, `llo-invite`, `llo-launch`) still apply per the
+`ocs-chatbot-eval-quick`, `llo-invite`, `llo-launch`) still apply per the
 Per-Mode Pause Matrix above, where `[BLOCKER]` concerns from the eval do
 halt. This keeps the eval signal visible without making every rubric a
 hard gate.
@@ -562,7 +949,7 @@ the next run.
 ## Error Handling
 
 If a skill fails:
-1. Log the error in `state.yaml`
+1. Log the error in `run_state.yaml`
 2. In `auto` mode: email the admin group with error details, continue to next step if possible
 3. In `default` mode: a hard error halts the run regardless of phase — present the error and ask how to proceed (retry, skip, abort). The "keep going" principle applies to clean steps, not to errors
 4. In `review` mode: present the error and ask how to proceed (retry, skip, abort)
@@ -574,7 +961,7 @@ When `--dry-run` is passed to `/ace:run`:
 - Effectful skills (those that send emails, publish apps, create tickets, or call external APIs) write their intended actions to `comms-log/dry-run-<step>.md` instead of executing
 - LLM-as-Judge evaluation still runs at each step
 - Gates still apply per the active mode (default/review/auto)
-- `state.yaml` tracks steps as `dry-run-success` or `dry-run-blocked` instead of `success` or `blocked`
+- `run_state.yaml` tracks steps as `dry-run-success` or `dry-run-blocked` instead of `success` or `blocked`
 - Pass the dry-run flag to all phase agents
 
 ## Sandbox Mode
@@ -586,110 +973,224 @@ When `--sandbox` is passed to `/ace:run`:
 
 ## Starting a New Opportunity
 
-When starting fresh:
+`/ace:run` resolves an opp + run-id from its arguments before any skill
+fires. The shape of the Drive folder hierarchy:
 
-1. **Ensure the opportunity folder exists in GDrive.**
-   - Use `drive_list_folder` on `ACE/` to see if `ACE/<opp-name>/` already exists.
-   - If it does not, create it with `drive_create_folder`.
+```
+ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
+├── <opp>/                        (folder name = opp slug)
+│   ├── inputs/                   (canonical input pack — read-only here)
+│   │   ├── pdd.md                (the PDD — required)
+│   │   └── *.{pdf,md,...}        (optional supporting docs)
+│   ├── runs/
+│   │   └── <run-id>/             (e.g. "20260502-1830")
+│   │       ├── idea.md           (copy of inputs/pdd.md, written at run start)
+│   │       ├── run_state.yaml
+│   │       ├── pdd.md            (output of idea-to-pdd; distinct from inputs/pdd.md)
+│   │       └── ... (all skill-output subfolders)
+│   └── opp.yaml                  (display_name, last_run_id, tags, ...)
+```
 
-2. **Ensure `idea.md` exists in the folder.** This is the single required human
-   input — it's the raw idea or opportunity brief that `idea-to-pdd` iterates
-   into a PDD. It is listed in `lib/artifact-manifest.ts` as
-   `producedBy: 'external'`.
+### Resolution
 
-   Resolution order (first match wins):
+1. **Read the positional argument** (if any). Use `parseOppRef(arg)` from
+   `lib/run-paths.ts` to split `<opp>` vs `<opp>/<run-id>`.
 
-   **(a) Already present.** `drive_list_folder` on `ACE/<opp-name>/`;
-   if `idea.md` is there, continue to step 3.
+2. **Resolve the opp.**
 
-   **(b) `--idea FILE|-` passed to `/ace:run`.** The command has already
-   loaded the body (from file or stdin). Write it verbatim to
-   `ACE/<opp-name>/idea.md` with `drive_create_file` and continue. No
-   prompt fires on this path — scripted runs are non-interactive by design.
+   **(a) `<opp>` was passed explicitly** (positional or via `parseOppRef`):
+   skip discovery, use that opp. If the folder doesn't exist under
+   `ACE_DRIVE_ROOT_FOLDER_ID`, **first check for a typo**: list the
+   ACE root, compute Levenshtein distance from the requested slug to
+   each existing opp folder name, and:
 
-   **(c) Auto-discover a PDD on Drive** (default when neither (a) nor (b)
-   applies). Smart-default flow:
+   - if exactly one existing opp is at distance ≤ 2 (and the requested
+     slug is at least 4 characters), surface a one-question
+     `AskUserQuestion`: "Did you mean `<best-match>`? [Yes / No, create
+     `<requested>` anyway]". On "Yes", switch to the matched opp and
+     continue; on "No", proceed to create the new folder.
+   - if zero existing opps are at distance ≤ 2, create the new folder
+     with no prompt (genuinely new opp).
+   - if 2+ existing opps tie at the lowest distance ≤ 2, surface them
+     as a multi-option `AskUserQuestion` plus an "Other — create
+     `<requested>` as a new opp" option.
 
-   0. Read `ACE_DRIVE_ROOT_FOLDER_ID` from the environment. If it is
-      **unset or empty**, stop and emit an explicit error:
+   This costs 1 `drive_list_folder` call and catches the
+   "tumeric → turmeric" class of typo without a full re-invocation of
+   `/ace:run`. Skip the check on review mode only if the operator
+   explicitly passed `--no-fuzzy-opp` (currently unsupported; reserve
+   the flag name).
+
+   After resolving the opp, do not auto-create `inputs/` — the
+   operator must do that step manually so they actively choose what
+   goes in. If after this step the opp folder lacks an `inputs/`
+   subfolder, stop with the new-layout error message (see § Fallback
+   below).
+
+   **(b) `--idea FILE|-` was passed**: scripted-seed flow. If `<opp>`
+   was also provided, use it; otherwise auto-generate a fresh slug
+   `smoke-<YYYYMMDD-HHMM>` (today's behavior). Write the idea body
+   directly into `runs/<run-id>/idea.md` at step 5 — this path
+   bypasses `inputs/` entirely (scripted runs are non-interactive by
+   design). No `inputs/pdd.md` write.
+
+   **(c) Zero-arg discovery** (default when neither (a) nor (b)):
+
+   1. Read `ACE_DRIVE_ROOT_FOLDER_ID`. If unset/empty, error:
       `ACE_DRIVE_ROOT_FOLDER_ID is not set in your .env (expected at
       $CLAUDE_PLUGIN_DATA/.env); re-inject from .env.tpl via "op inject
       -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --account
-      dimagi.1password.com" and retry, or pass --idea FILE|- to bypass
-      the picker.` Do NOT silently fall through to (d) — the "no PDDs
-      folder" fallback is for the case where the folder legitimately
-      doesn't exist, not for missing configuration. (Run `/ace:doctor`;
-      a WARN on `drive_root` or `env_drift` points to this.)
+      dimagi.1password.com" and retry.`
 
-      **Shared-Drive precondition.** The configured root MUST live on a
-      Google Shared Drive — Service Accounts have zero My-Drive quota,
-      so a My-Drive-parented root means every artifact write fails with
-      a misleading "user storage quota exceeded" error. As of 0.5.18
-      `drive_create_file` and `drive_create_folder` pre-flight this on
-      every call and reject with a typed message; `/ace:doctor` reports
-      `drive_shared` PASS/FAIL up-front so you see the wall before you
-      hit it. If `/ace:doctor` shows `drive_shared FAIL`, fix that first
-      — re-running `/ace:run` won't get you past idea capture.
-   1. `drive_list_folder` on `ACE_DRIVE_ROOT_FOLDER_ID`. Look for a
-      sub-folder whose name matches `/PDD/i` or `/Program Design Doc/i`
-      (case-insensitive). If none is found, fall through to (d).
-   2. `drive_list_folder` on that PDDs folder. Collect all files that
-      look like documents (`.md`, `.txt`, or Google Doc MIME).
-   3. Sort the list: files whose name contains the slug's first
-      dash-delimited token (case-insensitive) come first; within each
-      group, newest `modifiedTime` first.
-   4. **Strong-match auto-confirm** (added 2026-04-30, default + auto
-      modes only — review mode still always prompts). A candidate is
-      "strong" iff:
-      - the slug's first dash-delimited token is at least 4 characters
-        long (avoids matching on stop-tokens like "v1", "test", "tmp"),
-      - exactly **one** file in the PDDs folder contains that token
-        case-insensitively, and
-      - that token appears as a contiguous substring of the filename
-        (not split across word boundaries by Drive's title rendering).
+   2. **Shared-Drive precondition** (unchanged from prior version) — if
+      the root is on My Drive instead of a Shared Drive, every artifact
+      write fails. `drive_create_file` and `drive_create_folder`
+      pre-flight this; `/ace:doctor` reports `drive_shared` PASS/FAIL.
 
-      When all three hold, skip the AskUserQuestion and use the
-      strong-match file directly. Log the auto-confirm in the run
-      transcript with the slug token, the matched filename, and the
-      file id, so an operator reviewing the run can see why no prompt
-      fired. The previous policy of "always prompt" was added to
-      defend against domain-mismatched PDDs, but a uniquely-named
-      match cannot be domain-mismatched — by construction, no other
-      candidate could have driven the run instead.
+   3. `drive_list_folder` on the ACE root. Filter to subfolders that
+      contain an `inputs/` subfolder (one extra `drive_list_folder`
+      call per candidate to confirm). The `PDD/` folder, any other
+      flat docs, and legacy flat opps without an `inputs/` subfolder
+      are ignored.
 
-      In **review** mode and any case where the strong-match conditions
-      do not hold (zero matches, multiple matches, short token), fall
-      through to step 5 (the prompt). The prompt is the safety net for
-      ambiguity, not a rubber-stamp on every run.
-   5. Take the top 5 entries and present via `AskUserQuestion` (skipped
-      by step 4 in the strong-match case). Include two additional
-      options:
-      - **Other — paste a Drive doc ID** (for cases where the right
-        document lives outside the PDDs folder).
-      - **Paste the idea inline** (free text in the "Other" field).
-      - **Abort** (do not create `state.yaml`; end the run cleanly).
-   6. Fetch the chosen file via `drive_read_file`, write the body to
-      `ACE/<opp-name>/idea.md` via `drive_create_file`, continue.
+   4. For each candidate opp, compute `mtime` = newest of:
+      - the `inputs/` folder's `modifiedTime`
+      - every direct child of `inputs/`'s `modifiedTime`
 
-   **(d) Fallback — no PDDs folder on Drive.** Prompt with just the
-   inline/paste/abort options from (c)'s extras.
+      Pick the candidate with the latest `mtime`. Tiebreak alphabetical
+      on opp name.
 
-   In `--dry-run` mode, still write `idea.md` to Drive — it's a human
-   input, not an effectful action. In `--sandbox` mode, idea capture is
-   unchanged.
+   5. If no candidate exists (no folder under `ACE/` has an `inputs/`
+      subfolder), stop with the new-layout fallback message — see
+      § Fallback below. Do NOT silently fall through to the legacy
+      `PDD/` picker.
 
-3. **Initialize `state.yaml`** with:
+3. **Resolve the run-id.**
+
+   - **Resume mode** — `<opp>/<run-id>` was passed: load existing
+     `run_state.yaml` from `<opp>/runs/<run-id>/run_state.yaml` and continue
+     from its `step:` field. No new folder is created. Skip steps 4–7.
+     State.yaml exists; opp.yaml's last_run_id and runs: list already
+     record this run.
+
+   - **Fresh mode** — `runId` is null: generate
+     `runId = generateRunId(new Date())` (= `YYYYMMDD-HHMM` local time).
+     If `<opp>/runs/<runId>/` already exists, append `-2`, `-3`, … until
+     unused.
+
+4. **Create the run folder.**
+   `drive_create_folder` `<opp>/runs/<runId>/`. Capture the resulting
+   folder ID; this is the **run folder ID** that gets passed to every
+   downstream skill in place of the previous "opp folder ID".
+
+5. **Seed `idea.md` inside the run folder.**
+
+   - If `--idea FILE|-` was passed, the command has loaded the body.
+     Write it verbatim to `<opp>/runs/<runId>/idea.md` via
+     `drive_create_file`.
+
+   - Otherwise (zero-arg or `<opp>`-only), find the PDD inside
+     `<opp>/inputs/`:
+     - prefer file named `pdd.md` or `pdd.gdoc` (case-sensitive),
+     - else first file matching `*pdd*` (case-insensitive),
+     - else if exactly one document file is present, use it,
+     - else stop with `multiple files in inputs/, none named pdd.md —
+       rename the canonical PDD to pdd.md and retry`.
+
+     **Use `drive_copy_file` for the copy** — `sourceFileId =` the chosen
+     PDD file, `parentFolderId =` the run folder, `name = "idea.md"`. Do
+     NOT use `drive_read_file + drive_create_file`: ferrying ~6KB of PDD
+     body through model tokens adds minutes of serialization latency to
+     every run-init for zero benefit. `drive_copy_file` is one
+     server-side `files.copy()` and preserves the source mimeType so
+     downstream `drive_read_file(idea.md)` works the same way regardless
+     of whether the PDD was a Google Doc or plain text.
+
+6. **Initialize `run_state.yaml`** at `<opp>/runs/<runId>/run_state.yaml` with:
    - `mode`, `created` (ISO timestamp), all steps as `pending`
    - `initiated_by: <email>` from `git config user.email` (fallback: `unknown`)
    - `last_actor: <email>` and `last_actor_at: <ISO timestamp>` — same email,
      same timestamp at creation
+   - `opportunity: <opp>` (matches the State Schema field name) and
+     `run_id: <runId>` — recorded so a transcript reader can identify
+     the run from run_state.yaml alone.
 
-4. **Begin Phase 1.**
+7. **Update `<opp>/opp.yaml`.** Read it (`drive_read_file`); if missing,
+   create with:
+
+   ```yaml
+   display_name: <opp>          # default to slug; operator can edit later
+   slug: <opp>
+   last_run_id: <runId>
+   tags: []
+   created_at: <ISO timestamp>
+   created_by: <email>
+   ```
+
+   If present, update only `last_run_id` and append `<runId>` to a
+   running list under `runs:` (optional — primarily for ace-web's
+   ergonomics; ace-web can also derive it from `runs/`).
+
+   **Concurrency: pair the read+write with `revisionVersion` CAS.**
+   `drive_read_file` returns a `revisionVersion` in its result; pass
+   that exact string as `ifMatchRevisionId` to the subsequent
+   `drive_update_file`. If the update returns
+   `Error: revision_conflict: …`, another writer (likely a parallel
+   `/ace:run`) modified opp.yaml in between — re-read, re-merge,
+   re-write **once**. If a second conflict fires, log it and continue
+   (the run is still safe; only the runs list is best-effort). This
+   replaces the previous read-merge-overwrite pattern, which silently
+   dropped a run-id when two `/ace:run` invocations raced.
+
+7b. **Write the per-run `README.md` index.** Generate the markdown via
+   `generateRunReadme(runId, {})` from `lib/run-readme.ts` (all phases
+   default to `pending` at this point) and write it to
+   `<opp>/runs/<runId>/README.md` via `drive_create_file`. The README
+   gets refreshed after every phase completes — see § Per-Phase Folder
+   Lifecycle.
+
+8. **Log the run setup explicitly.** Emit a log line in this exact form
+   so transcript readers and ace-web's ingest can pick it up:
+
+   ```
+   [orchestrator] starting opp=<opp> run_id=<runId> mode=<mode>
+     inputs_folder=<opp>/inputs (read-only)
+     run_folder=<opp>/runs/<runId>
+     idea.md ← inputs/pdd.md (or --idea FILE)
+   ```
+
+9. **Begin Phase 1.**
+
+### Fallback — opp is missing an `inputs/` subfolder
+
+Stop with this message (covers both zero-arg-no-candidates and
+explicit-opp-without-inputs cases — do NOT silently fall back to the
+legacy `PDD/` picker):
+
+> Opp is missing its `inputs/` subfolder under the ACE Drive root.
+>
+> Create one: in Drive, make `ACE/<opp-slug>/inputs/`, drop your
+> PDD as `pdd.md` (and any supporting docs), then re-run `/ace:run`.
+> See docs/superpowers/specs/2026-05-02-ace-run-multi-run-revival-design.md
+> for the full layout.
+>
+> If you want to keep using the legacy flat layout for one more run,
+> pass `--idea FILE|-` to bypass discovery.
+
+The legacy `PDD/` flat folder is kept readable by ace-web for back-compat
+viewing of legacy opps, but is no longer consulted for new runs.
 
 ## Touching State — Operator Capture
 
+**Path note (multi-run layout, v0.11.0+):** `run_state.yaml` lives at
+`ACE/<opp>/runs/<run-id>/run_state.yaml`, not at the opp root. The
+run-id is established by the orchestrator's "Starting a New
+Opportunity" step 3; phase agents and skill dispatches inherit it.
+The `/ace:step` bypass path receives `<opp>/<run-id>` from its
+positional arg (see `commands/step.md`).
+
 Every skill invocation, whether via `/ace:run` or `/ace:step`, must update
-`last_actor` and `last_actor_at` in `state.yaml` *before* dispatching the
+`last_actor` and `last_actor_at` in `run_state.yaml` *before* dispatching the
 skill. This is a two-line write:
 
 ```yaml
@@ -703,3 +1204,43 @@ the skills they actually drove, not buried behind the initiator.
 
 If `git config user.email` is unset, write the literal `unknown`. Do not
 block the run.
+
+### State-as-canary contract
+
+`run_state.yaml` is the orchestrator's heartbeat. Every skill must
+mark its progress so resumption logic can distinguish "in progress"
+from "stalled" without inferring from artifact absence.
+
+**Before starting work**, the skill (or the dispatcher invoking it)
+writes:
+
+```yaml
+phases:
+  <phase>:
+    <step>: in_progress
+last_actor: <git config user.email>
+last_actor_at: <ISO timestamp>
+```
+
+**On clean completion**, write `<step>: done`.
+
+**On hard failure or timeout**, write `<step>: error` (with optional
+`<step>_error: <one-line>` adjacent) — never leave it in `in_progress`.
+
+**Resume agents** that read `run_state.yaml` and find a step in
+`in_progress` apply this rule:
+
+- `last_actor_at` ≤ 15 min ago → assume the prior session is still
+  alive; re-entering would race. Halt with a clear "another session
+  appears to be working this opp" message and the offending field.
+- `last_actor_at` > 15 min ago → treat as **dead**, not "still
+  running." The skill is idempotent (per § Long-Running Skills —
+  No Fake Background Tasks); re-dispatch from the artifact-checkable
+  resumption point. Do NOT poll-wait for a phantom completion.
+
+This rule is the single biggest preventer of the
+`turmeric-20260503-0835` failure mode: an `in_progress` field that
+nobody updates becomes an unbounded waiting loop. The 15-min
+threshold balances "let a slow but live skill finish" against "don't
+wait on a dead one." Tighten or loosen per skill if needed via a
+documented exception in the skill's SKILL.md.

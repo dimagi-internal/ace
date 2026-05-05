@@ -5,6 +5,1637 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.4 — 2026-05-05
+
+**ace-gdrive efficiency: `drive_read_file` transient-5xx retry + new `update_yaml_file` tool.**
+
+Two changes to `mcp/google-drive-server.ts` motivated by recent end-to-end
+`/ace:run` sessions wasting time on Drive flake and on the read+CAS-write
+boilerplate:
+
+1. **`drive_read_file` now retries transient 5xx internally** (3 attempts,
+   1s/2s/4s backoff). Caller bugs (4xx — bad ID, perm denied) still surface
+   immediately with no retry. The handler is exported as `handleReadFile`
+   and the backoff sleep is injectable so the retry path is unit-testable
+   without real waits.
+2. **New `update_yaml_file(fileId, patch)` tool.** Previously the
+   read-modify-write pattern for `run_state.yaml` / `opp.yaml` was 2 MCP
+   round-trips (`drive_read_file` then `drive_update_file` with
+   `ifMatchRevisionId`) AND ferried the entire YAML body through the model
+   context window. The new tool collapses that to one call: server reads,
+   parses YAML, shallow-merges `patch` into the top level (replace, NOT
+   deep-merge — predictable), serializes, writes with optimistic-concurrency
+   gated on the just-read revision; on `revision_conflict` it retries once
+   with the freshly-observed revision. Saves a round-trip per state
+   transition AND keeps the model from re-shipping the full YAML body each
+   time.
+
+Tests: `test/mcp/gdrive/read-file-retry.test.ts` (5 cases),
+`test/mcp/gdrive/update-yaml-file.test.ts` (5 cases).
+
+## 0.13.3 — 2026-05-05
+
+**`solicitation-create` payload-shape correction + atom-inventory fix.**
+
+Live testing against labs prod (token freshly provisioned via
+`/ace:labs-token-mint`) found two contract bugs in the 0.12.0
+solicitation-create skill:
+
+1. **Wrong payload shape.** The skill SKILL.md and integration test
+   sent `create_solicitation` arguments as flat top-level fields
+   (`{program_id, title, solicitation_type, ...}`). The actual labs
+   tool schema is `{program_id (string) | organization_id (string),
+   data: {...application fields...}}`. Top-level flat fields are
+   dropped by the labs adapter.
+2. **Non-existent atom.** Skill called
+   `mcp__connect-labs__generate_criteria` to derive evaluation criteria.
+   That atom is not exposed in the labs MCP today (the underlying
+   `/api/generate-criteria/` HTTP endpoint exists but isn't surfaced
+   as a tool — verified by `tools/list` against live labs).
+
+### Changed
+
+- **`skills/solicitation-create/SKILL.md`**: rewrote the payload-build
+  step to wrap application fields inside `data: {}`. Replaced the
+  `generate_criteria` MCP call with a local archetype-aware criteria
+  composition step (atomic-visit → FLW deployment scale; focus-group →
+  facilitator skill / language fit; multi-stage → stage-gate
+  discipline). When labs ever exposes `generate_criteria` as a tool,
+  the skill swaps the local step for the MCP call without restructuring.
+- **`test/mcp/connect-labs/integration/e2e.integration.test.ts`**: the
+  third `create_solicitation` smoke now sends the correct
+  `{program_id, data: {...}}` shape.
+- **`CLAUDE.md`** atom inventory updated: 9 atoms consumed
+  (`create_solicitation`, `list_solicitations`, `get_solicitation`,
+  `update_solicitation`, `list_responses`, `get_response`,
+  `award_response`, `create_review`, `list_reviews`). The earlier
+  10-atom claim listed `generate_criteria` which doesn't exist as an
+  MCP tool.
+
+### Known issue
+
+Live `create_solicitation` against labs prod still returns
+`-32603 Internal error` from the labs adapter even with the corrected
+shape (write path against existing experiment ids fails server-side).
+This is opaque from the MCP client — no detail surfaced through the
+JSON-RPC envelope. Investigation needs labs server logs to
+distinguish: per-user write permissions, payload validation gap, or
+upstream Connect API rejection. **Read paths (`list_solicitations`,
+`get_solicitation`) work cleanly** — the doctor probes and integration
+tests 1+2 pass against live labs.
+
+Tracking the live-write issue belongs to a connect-labs follow-up
+once the error envelope disambiguation is in place (the second item
+in `Appendix A` of `docs/superpowers/specs/2026-05-04-ace-solicitations-phase-design.md`).
+
+## 0.13.2 — 2026-05-05
+
+**`/ace:labs-token-mint` — headless Labs PAT minter.**
+
+Adds a slash command + backing script that drives the full
+Labs → Connect → CommCareHQ OAuth chain headlessly with `ACE_HQ_USERNAME`
+/ `ACE_HQ_PASSWORD`, navigates to the new self-service tokens UI at
+`labs.connect.dimagi.com/labs/mcp/tokens/` (shipped in connect-labs
+PR #151), submits the create form, and prints the raw token to stdout.
+
+Replaces the multi-step manual provisioning workflow that 0.12.0
+required (sign in to labs in browser → click create → copy → paste
+into 1Password). Provisioning a new machine collapses to a single
+script run + `op item edit` + `op inject`.
+
+### Added
+
+- **`/ace:labs-token-mint` slash command** at
+  `commands/labs-token-mint.md` — usage docs + 1Password integration
+  recipe.
+- **`scripts/labs-mint-token.ts`** — headless Playwright script. Args:
+  `[name=ACE-plugin] [ttl_days=0]`. Reads creds from
+  `${CLAUDE_PLUGIN_DATA}/.env`. Prints the raw token to stdout
+  (pipeable); diagnostics on stderr.
+- **CLAUDE.md command count** bumped 12 → 13.
+
+### Notes
+
+The script leans on the same OAuth-with-CommCareHQ selectors as
+`mcp/connect/auth/hq-oauth-login.ts` (Connect's "Login with
+CommCareHQ" button → CCHQ's `auth-username`/`auth-password` form). If
+those selectors drift, this script breaks the same way Connect's
+backend Playwright does.
+
+## 0.13.0 — 2026-05-05
+
+**BREAKING: Drive layout — phase-prefixed folders + skill-named artifacts on top of the 0.12.0 8-phase topology.**
+
+Restructures `ACE/<opp>/runs/<run-id>/` so every artifact lives under a
+phase folder (`1-design/`, `2-commcare/`, `3-connect/`, `4-ocs/`,
+`5-qa-and-training/`, `6-solicitation-management/`,
+`7-execution-manager/`, `8-closeout/`) and is named
+`<producing-skill>[_<role>].<ext>`. Existing opps must be migrated via
+`npx tsx scripts/migrate-drive-layout.ts --apply`.
+
+This is the reconciliation of the in-flight phase-prefixed-Drive-layout
+work (originally targeted 0.12.0) with the 0.12.0 Solicitation Management
+phase that landed on main concurrently. Folder numbers shift up by one
+for Phase 7 (was llo-manager → now execution-manager) and Phase 8 (was
+closeout at 7 → now at 8); Phase 6 is the new solicitation-management.
+
+See `docs/superpowers/specs/2026-05-03-run-folder-readability-design.md`
+for the design + `docs/superpowers/plans/2026-05-03-run-folder-readability.md`
+for the 33-task implementation plan.
+
+### Added
+
+- `lib/artifact-manifest-roles.ts` — `PHASE_FOLDERS` (8 phases) and
+  `ROLE_VOCAB` as the single source of truth for the new naming
+  convention. `baseRole()` helper handles multi-word qualifiers cleanly.
+- `<opp>/current/` shortcut layer pointing at the latest run's canonical
+  artifacts (`connect-opp-summary.md`, `connect-program-summary.md`,
+  `ocs-agent-config.md`). `drive_create_shortcut(findOrReplace=true)`
+  MCP atom backs it.
+- `<opp>/runs/<run-id>/README.md` — auto-generated phase→artifact→
+  producing-skill→status table. `lib/run-readme.ts` has the helper.
+- `scripts/migrate-drive-layout.ts` — one-shot Drive migrator. `--check`
+  dry-runs and prints planned moves; `--apply` executes. Handles
+  `move`, `coalesce-folder`, `delete-empty`, `create-shortcut` actions.
+  Includes 0.12.0→0.13.0 prefix renames so any opp already migrated
+  under 0.12.0's `6-llo-manager/` + `7-closeout/` lands cleanly with
+  one more `--apply`.
+- `scripts/migrate-fixture-layout.ts` — local-FS analog for test
+  fixtures.
+- Manifest lint at `test/lib/artifact-manifest-lint.test.ts` — every
+  path conforms; every skill exists; every role in vocab; phase tags
+  match folders; no dups.
+- Cross-check at `test/lib/skill-path-references.test.ts` — every
+  `ACE/<opp...>/...` reference in skills/agents/commands prose
+  resolves to a manifest entry.
+
+### Changed (BREAKING)
+
+- `Phase` enum expanded to 8 values:
+  `'design' | 'commcare' | 'connect' | 'ocs' | 'qa-and-training' | 'solicitation-management' | 'execution-management' | 'closeout'`
+- Every manifest path rewritten to `<N>-<phase>/<skill>[_<role>].<ext>`
+  form. 17 per-skill verdict files renamed to `<X>-eval_verdict.yaml`
+  so filename = producer (Option α). Self-emitted verdicts where no
+  `*-eval` skill exists today (`qa-plan-eval`, all 7 training-* evals)
+  use `<source-skill>_verdict.yaml` (Option β) per spec invariant.
+- 30 new manifest entries from the orphan-triage audit
+  (`docs/superpowers/notes/manifest-orphans-2026-05-03.md`):
+  - 5 phase-summary docs (per-phase agent at completion); the closeout
+    summary uses the `summary` role (not `final-summary`).
+  - 4 qa-plan outputs (now retired in 0.11.10; legacy paths preserved
+    in OLD_TO_NEW for migration).
+  - 17 per-skill `<X>-eval_verdict.yaml` entries.
+  - 3 opp-level entries (`connect-state.yaml`, `open-questions.md`,
+    `eval-calibration/known-issues.md`) — kept at opp root, not under
+    any phase folder.
+  - 1 dry-run log.
+
+### Migration
+
+```bash
+# 1. Update plugin (pulls 0.13.0)
+/ace:update
+
+# 2. Restart Claude Code session to load new MCP code
+/reload-plugins   # or restart the session
+
+# 3. Dry-run the Drive migration
+npx tsx ~/.claude/plugins/cache/ace/ace/0.13.0/scripts/migrate-drive-layout.ts --check
+
+# 4. Apply when ready
+npx tsx ~/.claude/plugins/cache/ace/ace/0.13.0/scripts/migrate-drive-layout.ts --apply
+```
+
+The migration is idempotent. File IDs are preserved through moves, so
+webViewLinks stay valid. Coalesce-folder actions move children of
+duplicate same-named folders into the canonical sibling and delete the
+empty dup. Delete-empty actions re-list the folder before deleting.
+
+### Known follow-ups (deferred to a 0.13.x patch)
+
+- Per-skill SKILL.md path references not yet updated for 8-phase
+  numbering everywhere — Phase F orchestrator threading uses
+  `phaseFolderId` from the manifest at runtime, so writes go to the
+  right place; SKILL prose docs are read-only docs and lag the
+  manifest.
+- Fixture stub backfill for Phase 6 (solicitation-management),
+  Phase 7 (execution-manager), Phase 8 (closeout) phase-summary docs
+  in `CRISPR-Test-003-Turmeric` so `expectedMissing` is empty.
+- The orchestrator's `ace-orchestrator.md` got the new
+  `## Per-Phase Folder Lifecycle` section (Task 26) and the run-start
+  README write (Task 27); the legacy phase-loop prose still references
+  some old paths that didn't conflict with the renumber.
+
+## 0.12.1 — 2026-05-04
+
+**`connect_create_payment_unit(s)` Playwright fallback fix —
+sync-deliver-units precondition.**
+
+The `turmeric-20260503-0835` Phase 3 produced a malformed payment unit
+because `connect_create_payment_unit(s)`'s Playwright fallback (the
+REST→Playwright path the composite uses when REST 404s) scraped the
+create-PU form HTML before the form's deliver-unit checkbox list was
+populated. Probing on 2026-05-04 confirmed: the form structurally has
+`<div id="div_id_required_deliver_units">` but **zero
+`<input name="required_deliver_units">` checkboxes** — Connect's UI
+keeps the list empty until an HTMX-driven `Sync Deliver Units` button
+fires, even when `connect_create_opportunity` has already synced the
+DUs into the opp's `deliver_units` table on the server.
+
+Two caches diverge: `connect_list_deliver_units` reads the
+`deliver_units` table (returns DUs cleanly), but the create-PU form's
+checkbox list reads a UI-level cache that's only populated by the
+sync button. Without firing it, any `required_deliver_units` arg
+fails to map.
+
+### Fixed
+
+- `mcp/connect/backends/playwright.ts` `postPaymentUnitForm`: when
+  `required_deliver_units` or `optional_deliver_units` is non-empty,
+  POST `/a/<org>/opportunity/<int_id>/sync_deliver_units/` with
+  `HX-Request: true` between the initial form GET and the checkbox
+  scrape, then re-fetch the form HTML so the checkboxes are
+  populated. The opp's integer FK is extracted from the initial
+  form HTML's `hx-post` URL on the Sync Deliver Units button — no
+  separate lookup atom needed.
+- `mcp/connect/backends/playwright.ts` new top-level helper
+  `extractOppIntIdFromForm(html)` — parses `hx-post=".../<int_id>/
+  sync_deliver_units/"` from form HTML, returns `null` if absent
+  (Connect UI changed; caller skips the precondition rather than
+  halting).
+- Failure handling: if the sync POST returns non-2xx/302, log a
+  warning and proceed with the original form HTML — the existing
+  checkbox-mapping `ConnectValidationError` will surface a clean
+  diagnostic without halting on a precondition that wasn't there
+  before.
+
+### Added
+
+- `test/mcp/connect/unit/playwright-fallbacks.test.ts` regression
+  tests: "fires sync_deliver_units precondition + form refresh when
+  DUs requested" and "skips sync_deliver_units precondition when no
+  DUs requested." Existing tests updated to accept the new
+  precondition-then-refresh request shape.
+
+### Notes
+
+- The 0.11.11 verify-after-create guard remains the producer-side
+  defense in depth — even if Connect's UI changes again and the new
+  precondition silently fails, the read-back will catch the
+  resulting field divergence and halt with a clear diff.
+- The composite's REST→Playwright fallback policy is unchanged.
+  Falling back is correct; the bug was that the fallback's HTML
+  scrape was missing a precondition. REST should still be tried
+  first; Playwright remains the always-works belt-and-suspenders
+  backup. Investigating why REST is 404'ing for
+  `POST /api/opportunities/<id>/payment_units/` is separate scope —
+  may be deployment lag against PR #1135 or an auth flag.
+- Future scope: when the same form-cache divergence hits other
+  Connect HTMX-driven forms (verification flags, payment-unit edit),
+  document the same precondition pattern and apply it.
+
+## 0.12.0 — 2026-05-04
+
+**Solicitation Management — new Phase 6.**
+
+ACE's lifecycle gains a Solicitation Management phase between
+qa-and-training and the renamed Execution Management (was llo-management,
+Phase 6). Closeout shifts to Phase 8.
+
+**Phase topology (8 phases):**
+
+1. design-review
+2. commcare-setup
+3. connect-setup
+4. ocs-setup
+5. qa-and-training
+6. **solicitation-management** ← NEW
+7. **execution-management** ← was llo-management
+8. closeout
+
+**Why.** The PDD won't always name the LLO ahead of time, and even when
+it does we want them to fill out a solicitation as a functional test of
+the path real LLOs will take. Long-term: ACE always asks LLOs to fill
+out a solicitation before being awarded an opportunity.
+
+### Added
+
+- **New `solicitation-management` subagent (Phase 6).** Owns four
+  skills: `solicitation-create` (auto, default run; publishes a
+  solicitation derived from the PDD via labs's `create_solicitation`),
+  `llo-invite` (auto, repurposed; emails PDD-named candidates the
+  public solicitation URL), `solicitation-monitor` (recurring while
+  solicitation open; pulls responses), `solicitation-review` (manual,
+  HITL-gated; scores responses, calls `award_response`, populates
+  `opp.yaml.selected_llo`).
+- **New `connect-labs` MCP wiring.** `mcp/connect-labs-server.ts` is a
+  thin stdio proxy that forwards JSON-RPC to
+  `https://labs.connect.dimagi.com/mcp/` and injects `LABS_MCP_TOKEN`
+  (Bearer PAT). 10 atoms consumed: `create_solicitation`,
+  `list_solicitations`, `get_solicitation`, `update_solicitation`,
+  `list_responses`, `get_response`, `award_response`, `create_review`,
+  `list_reviews`, `generate_criteria`. Plugin.json wires it as a
+  standard stdio mcpServers entry.
+- **Three optional PDD fields** (additive, defaults apply):
+  Solicitation type (EOI|RFP), Response window (days), Response
+  template (questions). Drives `solicitation-create`.
+- **`opp.yaml.solicitation` and `opp.yaml.selected_llo` blocks.**
+  `solicitation` is the audit trail. `selected_llo` is the narrow
+  contract Phase 7 reads — populated only by `solicitation-review` on
+  successful award. Phase 7's `llo-onboarding` halts fast if
+  `selected_llo.org_slug` is null.
+- **`/ace:doctor` `[Connect Labs]` section.** Three checks:
+  `connect_labs_env`, `connect_labs_mcp_reachable`,
+  `connect_labs_connect_oauth`. Distinguishes PAT-level 401 from
+  tool-level PERMISSION_DENIED (Connect OAuth missing on the labs
+  account).
+- **Two provisional eval rubrics:** `solicitation-create-eval`,
+  `solicitation-review-eval`. Calibration TBD until 3+ real
+  solicitations / awards have shipped (per
+  `skills/eval-calibration/SKILL.md`).
+- **`opp-eval` adds the `solicitation` category** as the 7th
+  run-level dimension. Coverage tier "full" lifts from 4 → 5
+  categories.
+- **`CRISPR-Test-004-Solicitation` fixture** with all three new PDD
+  fields populated and a Phase-6-stage `opp.yaml`.
+- **`LABS_INTEGRATION` e2e test** at
+  `test/mcp/connect-labs/integration/e2e.integration.test.ts`. Gated
+  like `OCS_INTEGRATION` — does not run in default `npm test`.
+
+### Changed
+
+- **Phase 6 → 7 boundary is the new external-comms pause-point.**
+  `/ace:run` halts here in default mode (Phase 7 cannot start until
+  `selected_llo.org_slug` is populated by manual `solicitation-review`).
+  Phase 5 → 6 is no longer a mandatory pause (publishing a public
+  solicitation is passive, not active 1-1 outreach).
+- **`llo-manager` agent → `execution-manager`.** Frontmatter rewrite,
+  body rewrite (drops the multi-LLO roster model), no-longer-needed
+  `llo-invite` step removed (moves to Phase 6).
+- **`llo-invite` skill repurposed.** Was: prepared a Connect-side
+  invite roster for Phase 7 onboarding. Now: emails PDD-named
+  candidates a link to the public solicitation URL. Makes no Connect
+  API calls.
+- **`llo-onboarding` reads `opp.yaml.selected_llo`** instead of
+  iterating `connect-setup/invites.md`. Single-org onboarding.
+- **`run_state.yaml` schema renamed:** `phases.llo_management.*` →
+  `phases.execution_management.*`; `phase_6_backlog` →
+  `phase_7_backlog`; `phase_7_backlog` → `phase_8_backlog`. New
+  `phase_6_backlog` for solicitation-management. **No migration
+  script** — in-flight opps finish on the old code; new opps use the
+  new schema.
+- **Cycle-grade-eval bug fix:** previously labelled `cycle-grade` as a
+  "Phase 6 skill" (it's actually in closeout). Updated to Phase 8 (the
+  new closeout number).
+
+### Removed
+
+- **`connect-setup/invites.md` and `gate-briefs/llo-invite.md`** from
+  the artifact manifest. The new `llo-invite` writes
+  `solicitation/invitations.md` instead. Existing fixtures
+  (CRISPR-Test-003-Turmeric) had these files; they're gone too.
+
+### Notes
+
+- Connect-Labs MCP auth is **PAT-only on the wire today**. The OAuth
+  bridge happens server-side inside labs's tool handlers
+  (`require_connect_token(user)` after PAT identifies the user). When
+  labs ships OAuth on the wire, ACE swaps the `connect-labs` mcpServers
+  entry for an `auth: { type: oauth }` block in a single config change.
+- A prompt for the connect-labs team requesting service-account UX
+  improvements (self-serve PAT UI, `whoami` atom, error envelope
+  disambiguation) lives at the bottom of
+  `docs/superpowers/specs/2026-05-04-ace-solicitations-phase-design.md`.
+
+## 0.11.11 — 2026-05-04
+
+**Verify-after-create discipline for external mutations.**
+
+The `turmeric-20260503-0835` Phase 3 run created a payment unit whose
+stored values diverged from the request payload (`amount=500` vs sent
+`1.50`, `max_total=20` vs sent `500`, `required_deliver_units=[]` vs
+sent `[Vendor Visit]`). The producing skill's response alone was
+authoritative — there was no read-back to catch the divergence. The
+malformation cascaded through `is_setup_complete` to silently break
+Phase 6 `connect_send_flw_invite` and Phase 5
+`app-screenshot-capture`. The `connect-program-setup-eval` rubric
+correctly graded the bad output (`payment_unit_fit: 5.0`, overall
+6.93 warn), but by then Phase 3 had already handed off corrupted
+state to downstream.
+
+Class-level fix: every external-system write must be followed by a
+read-back of the same fields, with a hard `[BLOCKER]` halt on
+field-misalignment.
+
+### Added
+
+- `agents/ace-orchestrator.md § External Mutations — Verify After
+  Create` — class-level rule for every skill that mutates external
+  state (Connect, CCHQ, OCS, Nova). Write → read → compare → halt loud
+  on mismatch on load-bearing fields. Cosmetic mismatches log INFO.
+  Documents when read-back is overkill (write-once-read-once flows
+  whose check collapses into the next skill's input read).
+- `skills/connect-opp-setup/SKILL.md` Step 4 verify-after-create:
+  immediate `connect_get_opportunity` after create. Compares `name`,
+  `short_description`, `description`, `start_date`, `end_date`,
+  `total_budget`, `is_test`, `learn_app.cc_app_id`,
+  `deliver_app.cc_app_id`, `passing_score`. Date or app-id drift =
+  BLOCKER (catches the `end_date` write/read drift seen on the
+  turmeric run). Description/score drift = INFO.
+- `skills/connect-opp-setup/SKILL.md` Step 6 verify-after-create:
+  immediate `connect_list_payment_units` after create. Per-unit field
+  match on `name`, `amount`, `org_amount`, `max_total`, `max_daily`,
+  `required_deliver_units` (length + ids), `optional_deliver_units`.
+  Any mismatch = BLOCKER, do not proceed to Step 7.
+
+### Changed
+
+- `skills/connect-opp-setup/SKILL.md` Step 4 `short_description` cap:
+  documented as **≤50 chars** (server-enforced; was wrongly documented
+  as ≤255 — Phase 3 of the turmeric run hit the real cap).
+- `skills/connect-opp-setup/SKILL.md` Step 6 `amount` integer
+  constraint: pinned three options (round + INFO-log, convert to
+  smaller currency unit, or refuse fractional inputs). Banned silent
+  truncation (`$1.50 → $1` was the prior behavior class).
+- `skills/connect-opp-setup/SKILL.md` Step 6 `required_deliver_units`:
+  documented that empty array blocks `is_setup_complete`, which
+  cascades to Phase 6 invites and Phase 5 screenshots.
+- `skills/connect-opp-setup/SKILL.md` § MCP Tools Used: added
+  `connect_get_opportunity` and `connect_list_payment_units` with
+  read-back-purpose annotations.
+
+### Notes
+
+- `commcare-connect` commit `4c430de3` (merged via PR #1135 on
+  2026-04-30) loosened `org_amount` validation for managed opps and
+  added missing-claim-limits creation. That fix addresses adjacent
+  symptoms (managed-opp `org_amount=0` validation false-positive,
+  missing claim-limits cascade) but does NOT fix the value-misalignment
+  class. The verify-after-create rule in this release catches both
+  fixed-upstream and not-yet-fixed-upstream symptoms at the source.
+- Future scope (separate PR): apply the verify-after-create pattern
+  to `connect-program-setup` (program create),
+  `app-deploy`/`app-release` (CCHQ build/release), and
+  `ocs-agent-setup` (chatbot publish). Each has the same
+  write→hand-off pattern and would benefit from the same read-back
+  guard.
+
+## 0.11.10 — 2026-05-04
+
+**Shallow / deep QA split.** `/ace:run` now does shallow QA only; deep
+grading is opt-in via the new `/ace:qa-deep <opp>` command. Cuts
+shallow-cycle LLM judge calls from ~90 to ~5; deep grading runs once
+pre-launch and remains as costly as before. The QA test plan synthesis
+moved upstream from Phase 5 (`qa-plan`) to Phase 1
+(`pdd-to-app-journeys`) and Phase 2 (`app-test-cases`); Phase 5 is now
+an executor. Phase 6 `llo-launch` refuses activation without fresh,
+passing deep verdicts (override available with audit reason). Spec:
+`docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`.
+
+### Added
+
+- `pdd-to-app-journeys` (Phase 1) — produces `expected-journeys.md`,
+  the UX-intent ground truth for app-side QA. Mirror of
+  `pdd-to-test-prompts` for the apps.
+- `app-test-cases` (Phase 2) — binds Phase 1 journeys to Nova's
+  built-app structure; writes `app-test-cases.yaml` plus per-journey
+  Maestro recipe stubs under `app-test-cases/recipes/`.
+- `app-ux-eval` — deep, manual UX rubric run from `/ace:qa-deep`.
+  Writes `verdicts/app-ux-eval-deep.yaml`.
+- `/ace:qa-deep <opp>` — manual deep quality command. Runs the OCS
+  deep eval suite and the per-journey UX eval; populates the deep
+  verdict files Phase 6 gates on.
+- `migrations/0.11.10-shallow-deep-qa.md` — operator notes for
+  in-flight opps mid-`/ace:run` when this version lands.
+- `verdicts/app-screenshot-capture-shallow.yaml` — new shallow smoke
+  verdict (~2 LLM calls per run); always present after a successful
+  `/ace:run`.
+
+### Changed
+
+- `ModeSchema` (`lib/verdict-schema.ts`) gained `shallow` as a fourth
+  mode value alongside `quick`/`deep`/`monitor`. Used by the new
+  `app-screenshot-capture-shallow.yaml` verdict.
+- `ocs-chatbot-qa --quick` thinned to 3 prompts × 1 dimension
+  (down from 5×4). Quick mode is for smoke; multi-dimensional grading
+  moved to deep-only.
+- `app-screenshot-capture` (Phase 5) now consumes
+  `expected-journeys.md` (Phase 1) and `app-test-cases.yaml`
+  (Phase 2) instead of synthesizing recipes from scratch. Runs only
+  the `is_smoke: true` recipes (one per app) and emits a thin per-app
+  UX smoke judge.
+- `agents/qa-and-training.md` is now an executor: drops `qa-plan`
+  from the skills frontmatter; reads pre-composed recipes from
+  Phase 2.
+- `agents/commcare-setup.md` lost the `app-test` Step 3; Phase 2's QA
+  contribution is now Step 2.6's `app-test-cases.yaml`.
+- `lib/artifact-manifest.ts` lost `qa-plan/*` and `test-results/*`
+  entries; gained `expected-journeys.md`, `app-test-cases.yaml`,
+  `verdicts/app-ux-eval-deep.yaml`,
+  `verdicts/app-screenshot-capture-shallow.yaml`.
+- Test fixtures `CRISPR-Test-001` (partial) and
+  `CRISPR-Test-003-Turmeric` (complete E2E) updated for the new
+  artifact set; `test-results/*` removed.
+
+### Retired
+
+- `qa-plan` skill and its `qa-plan/*` artifacts (replaced by
+  `pdd-to-app-journeys` + `app-test-cases`).
+- `app-test` skill and its `test-results/*` artifacts (replaced by
+  `app-test-cases` + `app-screenshot-capture` shallow + `app-ux-eval`
+  deep).
+
+### Migration
+
+See `migrations/0.11.10-shallow-deep-qa.md` for in-flight opp guidance.
+
+## 0.11.9 — 2026-05-04
+
+**Drive layout class-level preventers — find-or-create folders + doctor
+audit for duplicate folders and stray opp-root files.**
+
+Walking the live `leep-paint-collection/runs/20260503-2128/` run folder
+surfaced two duplicate `verdicts/` folders (parallel skill writes each
+created a fresh sibling instead of reusing) plus a stray
+`2026-05-03-connect-opp-setup-attempt-3.md` written at opp root rather
+than inside any run. This release ships the class-level fixes — silent
+duplicates can no longer happen going forward, and the doctor surfaces
+existing instances so they can be cleaned up. Phase A of the
+`docs/superpowers/plans/2026-05-03-run-folder-readability.md` plan; the
+Phase B+ rename to phase-prefixed paths follows in 0.12.0.
+
+### Added
+
+- **`drive_create_folder` `findOrCreate` mode (default true).** Lists
+  same-named folder children under `parentFolderId` before creating; if
+  any exist, returns the first match instead. New optional MCP arg;
+  back-compat for callers (default reuses; `findOrCreate=false` forces
+  a new sibling). Closes the duplicate-`verdicts/` class of bug.
+  (`mcp/google-drive-server.ts`, `test/mcp/gdrive/find-or-create.test.ts`)
+- **`bin/ace-doctor [Drive layout]` section.** Walks every opp under
+  `ACE_DRIVE_ROOT_FOLDER_ID`, runs two new audits per opp:
+  - `detectDuplicateFolders` — flags folder names appearing 2+ times
+    under any `runs/<run-id>/`.
+  - `detectStrayOppRootFiles` — flags any opp-root entry outside the
+    whitelist (`opp.yaml`, `current/`, `inputs/`, `runs/`).
+  Skips non-opp shared-resource folders at the Drive root via
+  `isOppFolder` (folder must contain `inputs/` or `opp.yaml` to count).
+  WARN-not-FAIL — runtime layout drift, not install drift.
+  (`lib/doctor-drive-layout.ts`, `scripts/doctor-drive-layout.ts`,
+  `bin/ace-doctor`, `test/lib/doctor-drive-layout.test.ts`)
+
+### Fixed
+
+- Module-level Google auth init in `mcp/google-drive-server.ts` is now
+  test-tolerant — wrapped in try/catch so the module is importable in
+  vitest cases that inject a mocked `drive` client. Production runs
+  unaffected (key still required at first API call; gated by
+  `/ace:doctor`).
+
+## 0.11.7 — 2026-05-03
+
+**Long-running-skill contract: no fake background tasks, wall-clock
+budgets, incremental writes, resume-from-partial.**
+
+Phase 4 deep capture for `turmeric-20260503-0835` spun for 3+ hours on
+a fictional background task before being escalated. The "bg task
+bu9y9y9s5" was an in-conversation label; no work was running. Each
+polling agent saw an empty `qa-captures/` folder, inferred "still
+capturing" from absence, and rescheduled — ~14 wakeups, ~700K tokens,
+zero progress. Root causes (multiple, layered): no real bg-task
+primitive in ACE; transcript written once-at-end (mid-loop kill loses
+everything); no suite-level wall-clock cap; no liveness probe on
+resume; no `run_state.yaml` heartbeat. This release ships the
+class-level fixes.
+
+### Added
+
+- `agents/ace-orchestrator.md § Long-Running Skills — No Fake
+  Background Tasks` — phase-internal sequential skills run synchronously
+  to completion with a hard wall-clock budget. `ScheduleWakeup` is
+  reserved for cron-recurring skills (`timeline-monitor`,
+  `flw-data-review`, `ocs-chatbot-qa --monitor`). Documents the five
+  guardrails every long-running skill needs: wall-clock budget,
+  liveness probe, incremental writes, resume-from-partial,
+  three-strike circuit breaker. Distinguishes legitimate polling (with
+  bounded retry) from fake-bg-task self-deferral.
+- `agents/ace-orchestrator.md § Touching State → State-as-canary
+  contract` — every skill writes `<step>: in_progress` with fresh
+  `last_actor_at` BEFORE work and `done` AFTER. Resume agents that see
+  `in_progress` + `last_actor_at` > 15 min treat the step as dead, not
+  "still running." 15-min threshold balances "let a slow but live
+  skill finish" against "don't wait on a dead one."
+- `skills/README.md § Long-running skills — no fake background tasks`
+  — skill-author convention covering all six guardrails plus a pointer
+  to `skills/ocs-chatbot-qa/SKILL.md` as the canonical example.
+- `skills/ocs-chatbot-qa/SKILL.md § Wall-Clock Budget` — per-prompt
+  90s, suite-cap `min(90s × N_prompts, 30 min)`, three-prompt circuit
+  breaker, explicit no-`ScheduleWakeup` rule.
+
+### Changed
+
+- `skills/ocs-chatbot-qa/SKILL.md § Process` renumbered to 9 steps:
+  - Step 2 NEW: liveness probe via `ocs_send_test_message` (<5s
+    smoke; halt loud on dead session before the budget burns).
+  - Step 3 NEW: resume-from-partial — read existing transcript at
+    destination path, skip already-captured prompts. Idempotent
+    re-runs.
+  - Step 5 (chat): per-prompt timeout dropped 120s → 90s; entries
+    appended to the transcript via `drive_update_file` +
+    `ifMatchRevisionId` CAS as each completes (no more "build in
+    memory, flush at end"); wall-clock cap check after each prompt;
+    three-strike circuit breaker on consecutive structural fails.
+  - Step 7 (was Step 5): collapsed to a metadata-only flush —
+    `complete: true|false`, `prompts_captured`, `prompts_remaining`,
+    `suite_elapsed_seconds`, `structural_pass_rate`. The entries
+    themselves were already written by Step 5.
+  - Header schema gains `Prompts captured`, `Prompts remaining`,
+    `Complete`, `Suite elapsed` fields. Partial transcripts
+    (`Complete: false`) are still graded by `ocs-chatbot-eval` —
+    reported as `incomplete-coverage` rather than failing.
+- `agents/ocs-setup.md § Resumption Contract` strengthened to forbid
+  mid-phase `ScheduleWakeup`. Resume agents apply the state-canary
+  rule from the orchestrator (in-progress + stale `last_actor_at`
+  ≥ 15 min = dead, not "still running"). Step 3 (deep qa+eval)
+  explicitly resumes from a partial transcript when one exists.
+
+### Notes
+
+- `ocs-chatbot-qa` now uses `ocs_send_test_message` for the Step 2
+  liveness probe ONLY — the suite itself still runs through raw
+  widget HTTP for the full transcript schema (citations, tags,
+  session_id, elapsed_ms). The skill's MCP Tools Used section
+  documents this split explicitly.
+- Future scope (separate PR): apply the same contract to
+  `app-screenshot-capture` (mobile recipes can stall),
+  `app-release` (CCHQ build polling), and `qa-plan`. Add a doctor
+  probe for "stale `in_progress` steps across opps" as a class-level
+  preventer.
+
+## 0.11.0 — 2026-05-02
+
+**Multi-run-per-opp revival + canonical input packs.**
+
+The Drive layout changes from one folder per `/ace:run` to one folder
+per opp containing `inputs/` (canonical input pack — PDD plus
+supporting docs) and `runs/<YYYYMMDD-HHMM>/` (one folder per fresh
+run). `/ace:run` zero-arg now picks the most-recently-touched opp by
+`inputs/` mtime and starts a fresh run on it; no PDD-picker prompt
+fires for fresh runs. `/ace:run <opp>/<run-id>` resumes a specific run.
+
+### Added
+
+- `lib/run-paths.ts` helpers, `inputs/` and `opp.yaml` artifact
+  manifest entries, `ACE_E2E_AUTH_TOKEN` and `input_packs` checks in
+  `bin/ace-doctor`.
+
+### Changed
+
+- `agents/ace-orchestrator.md § Starting a New Opportunity` rewritten
+  for the new layout; `commands/run.md` argument grammar grew
+  `<opp>/<run-id>` resume; `commands/status.md` now groups runs under
+  their opp; `skills/upload-transcript` documents the `opp_run_id`
+  payload field.
+
+### Removed
+
+- In `agents/`: the `smoke-<timestamp>` auto-slug fallback; the legacy
+  `PDD/` picker is no longer consulted for new runs (it remains
+  readable for back-compat viewing of legacy opps in ace-web).
+
+Spec: `docs/superpowers/specs/2026-05-02-ace-run-multi-run-revival-design.md`.
+Plan: `docs/superpowers/plans/2026-05-02-ace-run-multi-run-revival.md`.
+
+ace-web companion change required to read the new layout — see ace-web
+branch `multi-run-revival`.
+
+## 0.10.91 — 2026-05-02
+
+**Hardening pass — Slides knowledge consolidated, Phase 5 pre-flight
+checklist, CLAUDE.md updated.** Captures everything learned in the
+0.10.78–0.10.90 build cycle into discoverable, durable docs so a
+fresh session can run Phase 5 end-to-end without re-discovering the
+gotchas.
+
+### Added
+
+- `playbook/integrations/slides-integration.md` — single-source-of-truth
+  integration doc mirroring the mobile/ocs/connect/nova pattern.
+  Covers:
+  - The 3 Slides MCP atoms + the bootstrap script + the helper module
+  - Template lifecycle (stencil objectIds, placeholder tokens, what's
+    safe to edit)
+  - **All four critical gotchas** with code-level preventers:
+    1. SA can't `slides.presentations.create` (PERMISSION_DENIED) —
+       use `drive.files.create` with the Slides mimeType
+    2. `createImage` needs `anyone-with-link` permission — Slides
+       fetches without caller auth
+    3. `notesPage.notesProperties.speakerNotesObjectId` is assigned
+       lazily — two-phase batchUpdate required
+    4. `drive.files.delete` returns 404 on Shared Drive files even
+       when they exist — fall back to `update({trashed: true})`
+  - Plus the `op inject` `{{...}}` parsing gotcha and the build
+    request-order invariants
+  - Phase 5 invocation chain
+  - Pre-flight checklist for a fresh GCP project / 1Password vault
+
+### Changed
+
+- `CLAUDE.md` — adds the per-artifact training split summary to the
+  `skills/` section, the Slides atom inventory to the `mcp/` section,
+  and `slides-integration.md` to the `playbook/integrations/` list.
+  A fresh session reading the project guide now sees the Slides
+  pipeline exists and where to learn more.
+- `agents/qa-and-training.md` — new "Pre-flight checklist" section
+  before the workflow steps. Six items, each tied to a class of
+  silent failure learned from real dogfood (AVD authorized, CommCare
+  installed, opp invite sent, template configured, Slides API enabled,
+  no other-user adb conflicts). Halts the phase before Step 1 if any
+  fail.
+
+### Why this matters for the next E2E session
+
+A fresh Claude session running `/ace:run` against an opp will:
+1. Read CLAUDE.md → know the per-artifact training split exists and
+   where the Slides docs live.
+2. Read `agents/qa-and-training.md` → see the pre-flight checklist
+   before dispatching anything.
+3. If a Slides issue surfaces, find it in
+   `playbook/integrations/slides-integration.md` — searchable, single
+   place, with the working fix and the durable reproducer script.
+
+No grep across CHANGELOG entries to reconstruct the contract.
+
+## 0.10.90 — 2026-05-02
+
+**Real screenshot → Slides loop proven end-to-end on live device output.**
+Surfaces a previously-undocumented Slides API contract: createImage
+fetches via HTTPS without caller auth, so PNGs need
+`anyone-with-link` permission.
+
+### What's new
+
+- `scripts/test-screenshot-to-slides-e2e.ts` — durable reproducer that
+  exercises the full chain on real device output:
+  1. Maestro recipe → captures CommCare home-screen PNG via the
+     patched `--host`/`--port` dadb-direct path
+  2. `drive.files.create` → upload to a fresh per-opp folder
+  3. `permissions.create` `anyone-with-link` → make it Slides-fetchable
+  4. `parseDeckOutline` + `buildSlidesRequests` → fill template
+  5. Verify the resulting deck contains an embedded image (count
+     check, not just "no errors")
+
+  Reference run produced
+  https://docs.google.com/presentation/d/18rUN9SofhSnIqhQl1nNqVIAEeoC_BJJ4L_ToNjeSZxs/edit
+  with 1 verified embedded image.
+
+### Documented contract
+
+`createImage` fetches the image URL via Google's image-import service,
+which does NOT carry the SA's auth — even though the SA owns the file.
+Result: `drive:<fileId>` refs work only if the file is shared
+`anyone-with-link`. Without it, `createImage` returns "image cannot be
+reached" silently and the deck builds without errors but slides come
+out blank.
+
+This is captured in two places:
+- `skills/training-deck-build/SKILL.md` — verifies the permission
+  before building the request stream; warns / fixes inline.
+- `skills/app-screenshot-capture/SKILL.md` — sets the permission at
+  upload time, so deck-build never has to retrofit.
+
+Both reference the durable reproducer.
+
+## 0.10.89 — 2026-05-02
+
+**Per-artifact training split: complete cleanup.** Three remaining
+"ideal end state" items addressed.
+
+### 1. 1Password rotation for `ACE_TRAINING_DECK_TEMPLATE_ID`
+
+- Added `training_deck_template_id` field to the `ACE - Open Chat
+  Studio` 1Password item (Config section).
+- `.env.tpl` now references it via
+  `op://AI-Agents/ACE - Open Chat Studio/Config/training_deck_template_id`.
+- Verified the full `op inject` roundtrip resolves to the template ID
+  in `.env`. Other environments can rotate by bootstrapping their own
+  template and updating the 1Password field.
+- Sidebar gotcha: `op inject` parses double-curly tokens as
+  ref-delimiters even inside comments. The Slides-template
+  documentation in `.env.tpl` says "TITLE / SUBTITLE / BODY
+  placeholders (double-curly tokens)" instead of using the literal
+  syntax — otherwise op inject fails parsing the template comment.
+
+### 2. `training-materials` umbrella removed
+
+The umbrella was kept after 0.10.84 for three reasons (operator
+muscle-memory, opp-eval aggregation, one-call dispatch). All three
+are addressable:
+
+- **opp-eval**: per-artifact verdicts now roll up directly into the
+  `commcare` category (10.86 wired the registry; 10.89 drops the
+  umbrella line).
+- **`/ace:step training-materials`**: the agent now dispatches each
+  per-artifact skill directly. Operators who used the umbrella step
+  switch to `/ace:step training-flw-guide` (etc.) or run the whole
+  Phase 5 via `qa-and-training`.
+- **One-call dispatch**: `Agent(qa-and-training)` already iterates
+  the per-artifact skills in dependency order (parallel for the 5
+  text artifacts, sequential for deck-build and onboarding-email).
+
+Files affected:
+- `skills/training-materials/SKILL.md` — DELETED.
+- `agents/qa-and-training.md` — drops the umbrella from the skills
+  list; prose updated.
+- `agents/ace-orchestrator.md` — phase-step list updated to enumerate
+  the 9 per-artifact skills; verdict-aggregation prose updated.
+- `lib/artifact-manifest.ts` — `screenshots/manifest.yaml` consumedBy
+  routes to `training-flw-guide` + `training-deck-outline` (was
+  `training-materials`).
+- `skills/opp-eval/SKILL.md` — drops the umbrella from the commcare
+  category list.
+
+### 3. Plugin internal-consistency tests
+
+- New `test/lib/plugin-consistency.test.ts` (4 tests) catches the
+  class of bug where a SKILL.md, agent.md, or artifact-manifest entry
+  references a skill name that no longer exists. Without this guard,
+  the plugin loads cleanly but breaks at run-time when a skill is
+  dispatched by name. Allowlists the `external` sentinel and all
+  agent names (`ocs-setup`, `ace-orchestrator`, etc.) as valid
+  non-skill producers.
+
+Test count: 344/344 (was 340).
+
+## 0.10.86 — 2026-05-02
+
+**Post-split cleanup: opp-eval, manifest, doctor, and Drive janitorial.**
+Sweep of references and downstream wiring after the per-artifact training
+split. No new artifacts; everything here is alignment with the post-0.10.84
+state.
+
+### Changed
+
+- `skills/opp-eval/SKILL.md` — `commcare` category now covers all six
+  per-artifact training skills (`training-llo-guide`,
+  `training-flw-guide`, `training-quick-reference`, `training-faq`,
+  `training-onboarding-email`, `training-deck-outline`) plus the
+  `training-materials` umbrella. Each writes its own verdict; opp-eval
+  rolls them all into the commcare category mean.
+- `lib/artifact-manifest.ts` — `pdd.md`, `learn-app-summary.md`, and
+  `deliver-app-summary.md` `consumedBy` lists now route to the
+  per-artifact training skills instead of the dropped `training-materials`
+  reference. Six new consumer entries each.
+- `skills/app-screenshot-capture/SKILL.md` — description and process
+  step language now points at the per-artifact training skills
+  (`training-flw-guide`, `training-deck-outline`) as the consumers of
+  the screenshot manifest, not the umbrella.
+- `skills/connect-baseline-screenshots/SKILL.md` — same update for the
+  common-pool consumer reference.
+- `bin/ace-doctor` — new `training_deck_template` check. Reports
+  `ACE_TRAINING_DECK_TEMPLATE_ID` value when set, WARNs with a
+  bootstrap-script pointer when unset (the deck-build skill skips
+  silently without it; doctor surfaces that an operator should know).
+
+### Janitorial
+
+- `scripts/cleanup-smoke-decks.ts` — durable cleanup script that scans
+  `ACE_DRIVE_ROOT_FOLDER_ID` for disposable smoke / probe decks
+  matching well-known name patterns and trashes them. Falls back to
+  `files.update({ trashed: true })` when `files.delete` returns 404 (a
+  Shared Drive perm quirk where SA can list but can't hard-delete).
+
+### Cleaned up this run
+
+The 0.10.85 reference smoke deck, Turmeric end-to-end deck, and probe
+artifact are all trashed. Drive root is back to its pre-validation
+state.
+
+## 0.10.85 — 2026-05-02
+
+**End-to-end validation against Turmeric fixture content.** The deck
+pipeline now has a durable reproducer that runs against realistic opp
+content (not synthetic smoke text), proving the parser + Slides API
+path handles the production shape.
+
+### Added
+
+- `scripts/test-deck-build-turmeric.ts` — durable smoke that runs the
+  full pipeline against the Turmeric fixture: 7-slide deck outline
+  derived from the fixture's `flw-training-guide.md`, every parser
+  feature exercised (multi-paragraph slides, bullets, speaker notes
+  with multi-line content). Produces a real Slides deck in
+  `ACE_DRIVE_ROOT_FOLDER_ID`.
+
+### Validated
+
+The 0.10.85 reference run produced an 8-slide deck (1 title + 7
+content) with all 24 main batchUpdate replies and all 7 speaker-notes
+replies. Reference deck:
+`https://docs.google.com/presentation/d/1gvz7vxjSgPD04uE0_cwTuRyGLNrbH_PCqHgP33CsMH0/edit`
+(remove after inspection).
+
+The pipeline is now proven on real content end-to-end. Phase 5 in a
+real opp can confidently invoke `training-deck-build` once
+`training-deck-outline` runs upstream.
+
+## 0.10.84 — 2026-05-02
+
+**Per-artifact training split complete.** Final four extractions land,
+and `training-materials` becomes a thin umbrella that dispatches the
+six per-artifact skills.
+
+### Added
+
+- `skills/training-llo-guide/SKILL.md` — owns `llo-manager-guide.md`.
+  Operations-tone, embeds `qa-plan/uat-checklist.md` verbatim, quotes
+  hard numbers from `connect.payment_units` + `connect.verification_flags`.
+  Self-evals on hard-number fidelity / coverage / audience fit / UAT
+  completeness.
+- `skills/training-quick-reference/SKILL.md` — owns
+  `quick-reference.md`. Word budget ≤ 280 (single printable page).
+  Imperative voice. Self-evals on word budget / hard-number fidelity /
+  imperative voice / coverage.
+- `skills/training-faq/SKILL.md` — owns `faq.md`. Seeded from
+  `test-prompts.md` (Phase 1) + `qa-plan/test-matrix.md` edge cases
+  (Phase 5). 20-30 Q&A pairs, each tagged `[LLO]` or `[FLW]`. Self-evals
+  on coverage / tag fidelity / answer authority / audience split.
+- `skills/training-onboarding-email/SKILL.md` — owns
+  `onboarding-email-body.md`. The Phase 6 `llo-onboarding` input.
+  Subject-line + token discipline (`{{LLO_NAME}}`, `{{LLO_FIRST_NAME}}`,
+  `{{LLO_ORG}}`). Word budget 200-400. Must run LAST in Phase 5
+  because it links to the other 5 artifacts by Drive URL.
+
+### Changed
+
+- `skills/training-materials/SKILL.md` — fully drained. No longer
+  produces any artifact. Now a thin umbrella that dispatches the 6
+  per-artifact skills in dependency order. Kept for
+  `/ace:step training-materials` callers and `opp-eval` verdict
+  aggregation; will be removed once those constraints relax.
+- `agents/qa-and-training.md` — Phase 5 dispatches 5 text-artifact
+  skills in parallel (LLO guide, FLW guide, quick-reference, FAQ,
+  deck-outline), then `training-deck-build` (sequential after
+  deck-outline), then `training-onboarding-email` (sequential after the
+  other 5 text artifacts). 9 skills total in the phase.
+- `lib/artifact-manifest.ts` — every `training-materials/*.md`
+  artifact's `producedBy` updated to point at its dedicated skill;
+  `consumedBy` lists updated to include `training-onboarding-email`
+  for the docs it links by URL. New entry for
+  `onboarding-email-body.md`.
+
+### Test fixtures
+
+- `test/fixtures/CRISPR-Test-003-Turmeric/training-materials/onboarding-email-body.md`
+  added — realistic Turmeric content matching the new
+  `training-onboarding-email` SKILL.md format spec. Used by the
+  artifact-manifest tests to validate the complete-fixture invariant.
+- `test/fixtures/artifact-manifest.test.ts` — partial fixture's
+  expected-missing list now includes `onboarding-email-body.md`
+  (CRISPR-Test-001 cuts at `connect` phase, before training is run).
+
+### Operator action
+
+`ACE_TRAINING_DECK_TEMPLATE_ID` is staged in the local `.env` (this
+machine only). For other environments, run
+`scripts/bootstrap-training-deck-template.ts` to create the template
+in that environment and stash the ID in 1Password.
+
+### Why this matters
+
+`training-materials` was a single 7-artifact LLM call. Six artifacts
+now each get their own LLM context, their own four-criterion
+self-eval, and their own re-run semantics. Iterating the FAQ prompt
+no longer risks regressing the LLO guide. Re-running the FLW guide
+after a screenshot manifest update doesn't re-emit the onboarding
+email. Each verdict stays scoped to one audience and one quality bar.
+
+## 0.10.83 — 2026-05-02
+
+**Per-artifact training split — `training-flw-guide` extracted.** Second
+move in the per-artifact split (after `training-deck-outline` in 0.10.79).
+
+### Added
+
+- `skills/training-flw-guide/SKILL.md` — owns
+  `flw-training-guide.md`. Reads PDD + app summaries + connect/OCS
+  state + per-opp screenshot manifest + common Connect screenshot
+  manifest, drafts the FLW-facing step-by-step guide with embedded
+  images. Layers common-pool (sign-in, claim, sync) ahead of per-opp
+  (Learn modules, Deliver form). Archetype-aware (atomic-visit,
+  focus-group, multi-stage). Self-evaluates on coverage / concreteness
+  / image hygiene / audience fit. Modes: auto / review / dry-run.
+
+### Changed
+
+- `skills/training-materials/SKILL.md` — drops the FLW Training Guide
+  subsection and embedded-screenshots step. Now produces 4 artifacts:
+  LLO Manager Guide, Quick Reference, FAQ, Onboarding Email Body.
+  Migration table updated.
+- `agents/qa-and-training.md` — Phase 5 now sequences six steps:
+  qa-plan → app-screenshot-capture → training-materials →
+  training-flw-guide → training-deck-outline → training-deck-build.
+- `lib/artifact-manifest.ts` — `training-materials/flw-training-guide.md`
+  is now `producedBy: 'training-flw-guide'`.
+
+### Roadmap (still pending)
+
+The remaining 4 artifacts each get a dedicated `training-<x>` skill in
+subsequent cycles:
+- `training-llo-guide` — `llo-manager-guide.md`
+- `training-quick-reference` — `quick-reference.md`
+- `training-faq` — `faq.md`
+- `training-onboarding-email` — `onboarding-email-body.md`
+
+After that, `training-materials` becomes a thin umbrella or is removed.
+
+## 0.10.82 — 2026-05-02
+
+**Slides API end-to-end live; switch deck creation to Drive API route.**
+First-run validation surfaced that `slides.presentations.create` returns
+PERMISSION_DENIED for Service Accounts — it always writes to My Drive
+root, where SAs can't write (no quota AND no create permission).
+
+### Fixed
+
+- `scripts/bootstrap-training-deck-template.ts` — creates the template
+  via `drive.files.create({ mimeType: 'application/vnd.google-apps.presentation',
+  parents: [sharedDriveFolder] })` instead of `slides.presentations.create`.
+  The deck lands directly in the Shared Drive in one call; subsequent
+  `slides.get` discovers the auto-generated initial slide objectId
+  before the stencil-setup batchUpdate.
+- `scripts/test-deck-build-smoke.ts` — same fix in the inline
+  template-creation path.
+
+### Added
+
+- `scripts/probe-slides-create-via-drive.ts` — durable reproducer for
+  the Drive-API-route create pattern (same convention as the other
+  `probe-*.ts` scripts; safe to re-run).
+
+### Validated
+
+End-to-end smoke run produced a 5-slide deck with all replaceAllText
+hits, all 3 speaker notes inserted, and stencil objectIds preserved
+across `drive.files.copy`. The template is now live at
+`1GCgBgolgcWBs9h_Rva9OK2bm0G3IVmJu6v1MYeGFlNI` — set
+`ACE_TRAINING_DECK_TEMPLATE_ID` to that value (1Password + re-inject
+`.env`, or edit `.env` directly for a one-machine test).
+
+## 0.10.79 — 2026-05-02
+
+**Per-artifact training skill split begins.** The `training-materials`
+monolith produced 7 outputs in one LLM call. Splitting by artifact gives
+each output its own skill, LLM context, self-eval, and re-run semantics
+— re-running the FAQ no longer re-emits the LLO guide.
+
+This release moves only the deck outline and removes the unimplemented
+video script. The five other text artifacts stay in `training-materials`
+pending follow-up migration cycles.
+
+### Added
+
+- `skills/training-deck-outline/SKILL.md` — owns
+  `training-materials/training-deck-outline.md`. Reads PDD + app summaries
+  + screenshot manifests, drafts the slide-by-slide markdown matching
+  `parseDeckOutline` in `lib/training-deck-spec.ts`. Self-evaluates on
+  coverage / concreteness / image hygiene / length. Modes: auto /
+  review / dry-run.
+
+### Changed
+
+- `skills/training-materials/SKILL.md` — drops deck-outline and
+  video-script subsections. Adds a "Per-artifact split (in progress)"
+  section with the migration roadmap. Now produces 5 artifacts.
+- `agents/qa-and-training.md` — Phase 5 sequences five steps:
+  qa-plan → app-screenshot-capture → training-materials →
+  training-deck-outline → training-deck-build. Step 5 is non-blocking.
+- `lib/artifact-manifest.ts` — adds
+  `training-materials/training-deck-outline.md` as
+  `producedBy: 'training-deck-outline'`, `consumedBy:
+  ['training-deck-build']`, `required: false`.
+
+### Roadmap (not in this release)
+
+The remaining 5 artifacts each get a dedicated `training-<x>` skill in
+subsequent cycles: `training-llo-guide`, `training-flw-guide`,
+`training-quick-reference`, `training-faq`, `training-onboarding-email`.
+After that, `training-materials` becomes a thin umbrella or is removed.
+
+### Why incremental, not big-bang
+
+- `training-materials` is consumed by Phases 4 and 6 via specific
+  paths. Path-by-path splitting is safe but changes the verdict surface
+  `opp-eval` aggregates. One artifact per release lets each migration
+  bake before the next.
+- `training-deck-build` is not yet end-to-end-tested (Slides API enable
+  + bootstrap pending). Stacking more skills behind it before that
+  gate clears would compound risk.
+
+## 0.10.78 — 2026-05-02
+
+**Google Slides support — `slides_*` MCP atoms + `training-deck-build`
+skill + template bootstrap script.** Closes the markdown-to-real-deck
+gap so `training-materials` output becomes a presentable Slides URL
+the LLO admin can edit and present (or use Slides' native "Present +
+Record" for the video deliverable).
+
+### Added
+
+- `mcp/google-drive-server.ts` — three new atoms mirroring the
+  `docs_*` shape:
+  - `slides_get` — read full structured JSON of a Slides deck
+  - `slides_batch_update` — execute raw Slides API batchUpdate
+    requests (createSlide, replaceAllText, createImage, etc.)
+  - `slides_copy_template` — copy a template deck into a Shared-Drive
+    folder, with optional deck-wide `replaceAllText` pass for
+    convenience. Mirrors `docs_copy_template`.
+- `https://www.googleapis.com/auth/presentations` added to the SA
+  scopes list. **Operator action required (one-time):** enable the
+  Google Slides API on the connect-labs GCP project (502453377792)
+  via the URL Google returns on first call:
+  `https://console.developers.google.com/apis/api/slides.googleapis.com/overview?project=502453377792`.
+- `lib/training-deck-spec.ts` — pure helper module:
+  - `parseDeckOutline(md)` — strict markdown parser for
+    `training-deck-outline.md` (title slide + N content slides with
+    bullets / paragraphs / images / speaker notes)
+  - `buildSlidesRequests(spec, { stencils })` — translate parsed deck
+    into a Slides batchUpdate request stream (template-based via
+    `duplicateObject` + `replaceAllText` scoped per slide)
+  - `buildSpeakerNotesRequests` — second-phase batch for speaker
+    notes (Slides assigns `speakerNotesObjectId` lazily, can only be
+    discovered after slide creation)
+- `scripts/bootstrap-training-deck-template.ts` — one-time setup that
+  creates the ACE training-deck Slides template with two stencil
+  slides (`ace_stencil_title`, `ace_stencil_content`) and the
+  `{{TITLE}}` / `{{SUBTITLE}}` / `{{BODY}}` placeholders the build
+  code knows about. Idempotent — re-running with an existing template
+  prints the existing ID. **Operator action required (one-time after
+  enabling the API):** run `npx tsx scripts/bootstrap-training-deck-template.ts`,
+  paste the resulting `ACE_TRAINING_DECK_TEMPLATE_ID` into 1Password
+  and re-inject `.env`.
+- `skills/training-deck-build/SKILL.md` — new skill that consumes
+  `training-materials/training-deck-outline.md` + screenshot manifests
+  and produces a Slides deck. Three-mode contract (auto / review /
+  dry-run), state-trail entry under `state.yaml`, standard verdict
+  shape.
+- `.env.tpl` — `ACE_TRAINING_DECK_TEMPLATE_ID` placeholder.
+
+### Why template-based instead of code-built
+
+Branding (fonts, colors, logo, layout) lives in the template, not in
+code. Iterating the visual design is "edit the template in Slides,
+save" — not "rebuild the plugin and ship". The build code only fills
+placeholders and stacks images; everything visual is template-side.
+This was the user's explicit direction: "make one up for now but then
+we should improve it over time."
+
+### Tests
+
+- `test/lib/training-deck-spec.test.ts` — 11 tests covering parser
+  (title + slides + bullets + paragraphs + images + notes; rejection
+  paths) and request builder (replaceAllText scoping, image URL
+  construction for both Drive fileId and HTTPS, speaker-notes split).
+  340/340 tests passing across the full suite.
+
+### Out of scope
+
+- **No video generation.** Decided to skip MP4 entirely for v1 — the
+  user explicitly deferred to a separate skill. Slides' native
+  "Present + Record" gives the LLO admin a recorded MP4 with one
+  click, no TTS quality issues, no ffmpeg pipeline to maintain.
+- **Screenshot manifest resolution by alias** (e.g.,
+  `screenshot:learn-form-1-step-3`) is documented as a planned
+  extension but not implemented. v1 uses raw `drive:<fileId>` and
+  `https://...` refs only.
+
+## 0.10.77 — 2026-05-02
+
+**Skill-side safety net for Nova `add_fields` partial persistence.**
+Promotes the existing architect-brief warning to a `REQUIRED:`
+verbatim paragraph and adds a post-autobuild verify+fix step the
+skill itself runs (bounded loop, max 3 iterations).
+
+### Why
+
+Nova's `add_fields` has a known quirk where a single call with N items
+often only persists the first few. The architect-brief told the agent
+to verify-then-retry, but the previous wording was a sub-bullet in a
+long list and mid-build sessions have shipped forms that look complete
+in the build summary but render with missing questions. The
+architect's manual retry stays in the brief (faster path), and the
+skill itself now re-checks every form's field count after autobuild
+returns and dispatches a `/nova:edit` for any short forms — bounded
+loop, same pattern as `app-connect-coverage`.
+
+### Changed
+
+- **`skills/pdd-to-deliver-app/SKILL.md`** and
+  **`skills/pdd-to-learn-app/SKILL.md`:** the partial-persistence
+  warning is promoted to a top-level `REQUIRED:` paragraph the
+  architect must include verbatim in the brief. New step 4a
+  ("Post-build field-count verification") runs after autobuild —
+  enumerates every form via `get_app` + `get_form`, cross-references
+  field counts against the PDD spec, dispatches `/nova:edit` for any
+  short forms, and loops up to 3 iterations before surfacing a
+  failure.
+
+## 0.10.76 — 2026-05-02
+
+**Open Questions doc convention in `idea-to-pdd`** — structured Google
+Docs table with `[Default]` column so the e2e orchestrator can proceed
+unblocked, plus a top-of-gate-brief link.
+
+### Why
+
+A recent design-review session created an Open Questions doc as a
+plain-text Drive file with no structure and no defaults. Result: the
+e2e orchestrator stalled on questions that had sensible defaults
+(e.g. "FLW daily visit cap") because there was no machine-readable
+"proceed with X" signal. The Open Questions also weren't linked from
+the gate brief, so the human reviewer never saw them in the 60-second
+scan window.
+
+### Changed
+
+- **`skills/idea-to-pdd/SKILL.md`:** new `## Open Questions
+  Convention` section. Specifies *when* to create the doc (only when
+  unresolved questions remain after `idea.md` + stress-test), the
+  required four-column shape (`# | Question | Default | Source`), and
+  the `[Default]` semantics — every question must have an explicit
+  default the orchestrator can use in `--auto` mode (or "halt —
+  human must answer" for load-bearing decisions). Gate brief now
+  emits an `Open Questions: <url>` line at the top when the doc
+  exists.
+
+## 0.10.75 — 2026-05-02
+
+**New `read_personal_drive_doc` MCP tool** for reading Drive files
+shared with the human user but not the ACE service account. Backed by
+the `gog` CLI we already use for Gmail.
+
+### Why
+
+When a source document (like the LEEP data sheet) is shared only with
+the user account, the ACE agent had no first-class way to read it.
+The previous workaround was an out-of-band gog OAuth dance that the
+session-review explicitly flagged as "sketchy" and "not a recipe to
+save." This tool turns that workaround into a properly registered MCP
+capability paired with finding #13's pre-flight (idea-to-pdd now hints
+at it when the SA hits a permission wall).
+
+### Added
+
+- **`mcp/google-drive-server.ts`:** new `read_personal_drive_doc`
+  tool. Takes a `file_id` and optional `format` (`txt`/`md`/`csv`,
+  default `txt`), shells out to `gog drive download` with
+  `$ACE_GMAIL_ACCOUNT` / `$ACE_GMAIL_CLIENT` (the existing Gmail OAuth
+  identity), captures the exported content via tmpfile, and returns
+  it. On failure, surfaces the actual gog error and the exact
+  re-auth command needed when Drive scope is missing
+  (`gog login ... --services gmail,drive`).
+
+### Setup
+
+If gog hasn't been authorized for Drive on your account yet, run once:
+
+```
+gog login $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --services gmail,drive
+```
+
+The tool error message includes this command verbatim when scope is
+missing.
+
+## 0.10.74 — 2026-05-02
+
+**Pre-flight Drive accessibility check in `idea-to-pdd`.** Before
+starting analysis, the skill now probes every Drive doc referenced by
+`idea.md` and surfaces permission failures upfront with the SA email
+to share with.
+
+### Why
+
+A recent design-review session was cancelled mid-run because the LEEP
+data sheet wasn't shared with the ACE service account. The agent
+discovered the permission failure deep into analysis, requiring a
+session-interrupting OAuth dance and a cancel-and-redispatch.
+Surfacing the issue at the top of the skill turns it into a
+30-second share-with-the-SA fix before any analysis cost.
+
+### Changed
+
+- **`skills/idea-to-pdd/SKILL.md`:** new step 1a between reading
+  `idea.md` and determining the archetype. Scans for Google Drive
+  URLs / explicit file IDs in `idea.md` and `drive_read_file`s each
+  one. On permission failure, stops with an actionable error naming
+  the inaccessible doc(s) and the share-with email
+  (`ace-service-account@connect-labs.iam.gserviceaccount.com`).
+  Falls back to a hint about `read_personal_drive_doc` when SA
+  re-share is impossible (paired with the upcoming tool that
+  supports that path).
+
+## 0.10.73 — 2026-05-02
+
+**Diagnose macOS launchd-env mismatch on `op` auth failure.** When
+`OP_SERVICE_ACCOUNT_TOKEN` is missing from the current process but
+defined in a shell rc, point the user at `~/.zshenv` instead of
+"set the var".
+
+### Why
+
+A recent /ace:setup session burned ~10 minutes diagnosing why `op`
+wasn't authenticated even though `OP_SERVICE_ACCOUNT_TOKEN` was set in
+`~/.zshrc`. Root cause: macOS GUI apps inherit env from launchd, which
+doesn't read `~/.zshrc`. The fix is to put the export in `~/.zshenv`
+(zsh reads this even for non-interactive launchd-spawned shells), but
+the failure mode looked identical to "you forgot to set the token" and
+the user followed the wrong instructions.
+
+### Changed
+
+- **`bin/ace-setup`:** when op auth fails on macOS, scans `~/.zshrc`,
+  `~/.bashrc`, `~/.zprofile`, `~/.bash_profile`, `~/.profile` for an
+  `OP_SERVICE_ACCOUNT_TOKEN` definition. If found, appends a "GUI
+  app launchd-inheritance" hint to the failure message with the
+  exact one-liner to copy the export into `~/.zshenv`.
+
+### Not done
+
+- Auto-writing `~/.zshenv` or installing a LaunchAgent plist. Both
+  cross into "destructive write to user config" territory; the
+  detect-and-hint approach addresses the actual friction (diagnosing
+  the mismatch) without invasive automation.
+
+## 0.10.72 — 2026-05-02
+
+**Per-ref `op read` diagnostic on unresolved 1Password references.**
+Replaces the generic "grant access" message with the actual cause from
+`op read` for each unresolved ref.
+
+### Why
+
+When `op inject` succeeds but leaves some `op://` references unresolved,
+the previous failure message lumped every cause into "your account/SA
+is missing read on these items — grant access". That was wrong roughly
+half the time: the actual cause is often a missing FIELD on an existing
+item, or a renamed item, neither of which is a permission issue. Users
+had to manually `op read` each ref to find the right fix.
+
+### Changed
+
+- **`bin/ace-setup`:** when post-inject grep finds unresolved refs, now
+  runs `op read` against each one and prints the specific error
+  (e.g. `"item not found"` vs `"field 'domain' not found on item 'ACE
+  - CommCareHQ'"` vs `"403: insufficient permissions"`). No extra cost
+  on the happy path — only triggered when an unresolved ref already
+  exists.
+
+## 0.10.71 — 2026-05-02
+
+**Static lint of `op://` references in `.env.tpl` before `op inject`.**
+Catches malformed refs at setup time instead of surfacing a cryptic
+runtime error.
+
+### Why
+
+`/ace:setup` failed in a recent ace-setup session with `invalid secret
+reference — too few '/'` from `op inject`. Root cause: a bare
+`op://vault/item` reference (missing the `/field` suffix) had been left
+in `.env.tpl`, but `op inject` does not surface line numbers or which
+ref is malformed. Diagnosis took several minutes when it should have
+taken seconds.
+
+### Changed
+
+- **`bin/ace-setup`:** new static lint phase before `op inject`. Scans
+  every non-comment line of `.env.tpl`, finds each `op://...` reference,
+  and verifies it has at least 3 slash-separated segments
+  (`vault/item/field`). Item and field names with spaces are handled by
+  reading each ref to end-of-line (or the closing `}}` for wrapped
+  refs) and trimming. On failure, prints the offending line numbers
+  with the ref text and skips `op inject` to avoid producing a partial
+  `.env` from a broken template.
+
+## 0.10.70 — 2026-05-01
+
+**Default `mobile_run_recipe.avdName` from `ACE_AVD_NAME` env.** Closes
+the last reliability gap on the dadb-1.2.10 listDadbs workaround.
+
+### Why
+
+0.10.65 added `--host`/`--port` plumbing to bypass the dadb bug that
+aborts maestro's device enumeration on shared workstations. The
+plumbing was opt-in: callers had to pass `avdName` to
+`mobile_run_recipe` for the bypass to engage. Two existing skills
+(`app-screenshot-capture`, `connect-baseline-screenshots`) didn't
+pass it — they would silently regress to the broken auto-discovery
+path the moment another user's emulator showed `unauthorized` in
+your local `adb devices`.
+
+### Changed
+
+- `mcp/mobile-server.ts` `mobile_run_recipe` — when the caller
+  doesn't provide `avdName`, default to `process.env.ACE_AVD_NAME`.
+  Doctor already verifies that env var is set, and the bootstrap
+  fails closed if it isn't, so this default is safe in practice.
+  Behavior is now opt-out: explicit `avdName: ""` (or unsetting
+  `ACE_AVD_NAME` before launching Claude Code) reverts to maestro's
+  auto-discovery path.
+
+### Compatibility
+
+`MobileClient.runRecipe` and `MaestroBackend.runRecipe` signatures
+unchanged. The default-from-env logic lives at the MCP boundary so
+direct programmatic callers (tests, scripts) keep their explicit
+behavior.
+
+## 0.10.69 — 2026-05-01
+
+**Three-path recipe for `connect-register-from-otp` + doctor's
+multi-user adb warning + Maestro detection fix.** Continuing the
+mobile-bootstrap reliability sweep that started in 0.10.65.
+
+### connect-register-from-otp.yaml
+
+Live MCP smoke-test against the patched 0.10.68 build hit a third
+path that the Account-Recovered branch added in 0.10.68 didn't
+cover: server-account / no-local-data (post `-wipe-data`) goes
+through Name → Backup Code → "Welcome back" + re-enter Backup Code →
+"Account Recovered". CommCare 2.62.0 also removed the
+`connect_backup_code_repeat_input` field entirely — both fresh and
+recovery flows now share a single `connect_backup_code_input` +
+`connect_backup_code_button` widget pair, with `welcome_back` text as
+the differentiator. The recipe is now linear with sequential
+`runFlow.when` blocks:
+
+1. Optional Name screen (skipped on snapshot reload + already-registered)
+2. Backup Code (single field, always entered)
+3. Optional "Welcome back" re-confirm (skipped on truly-fresh)
+4. Optional "Account Recovered" dialog (skipped on truly-fresh)
+5. Optional Photo capture (skipped on recovery)
+
+Each branch's anchor is unique so paths don't accidentally double-fire.
+`waitForAnimationToEnd` interleaved between branches gives the network
++ UI animations time to settle before the next visibility check.
+
+### bin/ace-doctor
+
+- **Maestro detection.** Doctor previously reported `MISSING` on a
+  perfectly-working install because the bare `command -v maestro`
+  didn't see `~/.maestro/bin/maestro` (the official installer only
+  patches the user's interactive shell rc). Now mirrors the
+  `resolveMaestroBinDir()` logic in `mcp/mobile/backends/avd.ts` —
+  checks `$MAESTRO_BIN`, `command -v`, then `~/.maestro/bin/maestro`,
+  and resolves `JAVA_HOME` so `--version` doesn't print "Unable to
+  locate a Java Runtime".
+- **Multi-user adb warning.** Detects the dadb-1.2.10 listDadbs
+  landmine class — emits a `WARN adb_unauthorized` line when any
+  `emulator-NNNN` entry in your local `adb devices` shows
+  `unauthorized`. Notes that ACE recipes themselves work via the
+  0.10.65 `--host`/`--port` workaround, but plain `adb shell` calls
+  without `-s` may still pick the wrong device.
+
+### playbook/integrations/mobile-integration.md
+
+Documents the 0.10.65 `--host`/`--port` workaround pattern (when to
+use, why dadb 1.2.10 needs it) and updates the Face-capture gotcha
+section to reflect the 0.10.68 recipe-pair-boundary GMS toggle (was:
+post-boot blanket disable).
+
+## 0.10.68 — 2026-05-01
+
+**`registerTestUser` now handles the Account-Recovered branch and the
+GMS launch-block.** Two failure modes that bit live during the 0.10.65
+bootstrap retest are now structurally prevented.
+
+### Why
+
+Two separate issues both surfaced the moment the test phone was
+already registered against Connect-id (the steady-state for ACE's
+permanently-registered `+74260000100`):
+
+1. **`connect-register-from-otp.yaml` only modeled the fresh-user
+   flow.** Returning users land on a "Welcome back ACE Test" screen
+   with a single pre-filled backup-code field and a CONTINUE button,
+   followed by an "Account Recovered" success dialog — not the Name
+   screen → repeat-backup-code → photo flow the recipe expected.
+   Result: Maestro miss on `connect_backup_code_repeat_input` and a
+   dead recipe even though Connect-id had already accepted the
+   registration.
+2. **`AvdBackend.runPostBootPrep` blanket-disabled GMS** for
+   face-capture's ManualMode fallback. CommCare 2.62.0 tightened its
+   launch-time GMS check; a disabled GMS now triggers a blocking
+   "Enable Google Play services" dialog before the recipe ever
+   reaches phone entry. Manually re-enabling GMS got past the launch
+   but defeated the original face-capture intent.
+
+### Changed
+
+- `mcp/mobile/recipes/static/connect-register-from-otp.yaml` —
+  post-PIN flow now branches on screen anchor:
+  - `welcome_back` visible → returning-user path: re-enter backup
+    code, tap CONTINUE, dismiss the "Account Recovered" dialog.
+  - `nameTextValue` visible → existing fresh-user path (Name → Backup
+    + repeat → Photo capture), wrapped in a `runFlow.when` so it skips
+    cleanly under the returning-user branch. Recipe is now idempotent
+    across re-runs on the same AVD.
+- `mcp/mobile/backends/avd.ts` —
+  - `runPostBootPrep` no longer disables GMS. Launch must succeed
+    before the in-app face-capture step needs ManualMode.
+  - New `setGmsEnabled(avdName, enabled)` method that toggles
+    `pm enable` / `pm disable-user --user 0 com.google.android.gms`
+    against the running AVD. Best-effort; idempotent.
+- `mcp/mobile/client.ts` `registerTestUser` —
+  - Calls `setGmsEnabled(true)` before part A so CommCare launches
+    cleanly.
+  - Calls `setGmsEnabled(false)` between part A and part B so the
+    in-app face-capture step (only reached on the fresh-user branch)
+    picks up ManualMode. CommCare doesn't re-check GMS mid-session,
+    so the late disable doesn't relaunch the dialog.
+
+### Tests
+
+- `AvdBackend.adbPortFromSerial` — covers `emulator-NNNN` parsing,
+  null on `host:port` and USB serials, null on empty.
+- `AvdBackend.setGmsEnabled` — pm enable / disable-user shells, and
+  the not-running no-op.
+- `MaestroBackend.runRecipe` — `--host`/`--port` prepend test added
+  in 0.10.65.
+- `AvdBackend.captureUiDump` — fixture path corrected to
+  `/data/local/tmp/window_dump.xml` (the impl path since 0.10.something
+  but the test was still on the legacy `/sdcard/` path; this was the
+  one stale failing test in the suite). All 329 tests now pass.
+
+### Out of scope
+
+- The CommCare app launch dialog ("Enable Google Play services") is
+  still shown if some other code path leaves GMS disabled before
+  CommCare launches outside of `registerTestUser`. The
+  `connect-baseline-screenshots` walkthrough flows don't touch GMS
+  state today; if they grow to need ManualMode, they should follow
+  the same enable-launch / disable-pre-capture pattern.
+- The bootstrap recipe bug that caused the original 0.10.65 manual
+  patch-through is now the recipe's own responsibility, but the
+  `runPostBootPrep` change affects every AVD ensure-running call —
+  callers that previously relied on the post-prep GMS-disable should
+  call `setGmsEnabled(false)` themselves.
+
+## 0.10.65 — 2026-05-01
+
+**Bypass dadb-1.2.10's listDadbs bug on shared workstations.** Maestro
+recipes now run against the target emulator's adb port directly (via
+Maestro's hidden `--host`/`--port` top-level flags) instead of through
+the local adb server, sidestepping a class of failure that bites any
+Mac with multiple developer accounts running emulators concurrently.
+
+### Why
+
+`dadb-1.2.10` (bundled with Maestro 2.3.0–2.5.1) does NOT wrap the
+per-device `createDadb()` call inside `AdbServer.listDadbs` in a
+try/catch. The first device in the local adb-server's list that
+returns "device unauthorized" throws an `IOException`, aborting the
+entire enumeration. Result: Maestro reports zero connected devices any
+time another user's emulator is visible to your adb server but not
+authorized for your `~/.android/adbkey`. Surfaced live 2026-05-01 on a
+multi-user Mac where user A had two emulators running and user B's
+`maestro --udid emulator-5558 hierarchy` failed with "Device with id
+emulator-5558 is not connected" even though `adb -s emulator-5558` was
+fully functional. The cause was user A's `emulator-5554` showing as
+unauthorized in user B's adb device list — that single entry crashed
+dadb's enumeration before it ever reached user B's own emulator.
+
+### Changed
+
+- `mcp/mobile/backends/maestro.ts` — `runRecipe` now accepts an
+  `opts.adbPort` parameter. When set, prepends `--host=localhost
+  --port=<adbPort>` to the maestro args before the `test` subcommand.
+  These are picocli-defined options on `App.class` that don't appear
+  in `--help` (effectively undocumented), but they are stable across
+  2.3.0 → 2.5.1 and route through `DeviceService.listAndroidDevices`'s
+  `Dadb.create(host, port)` direct-TCP path, completely bypassing
+  `Dadb.list` / the local adb server.
+- `mcp/mobile/backends/avd.ts` — new `AvdBackend.adbPortFromSerial`
+  static helper. Android emulators use port pairs (`NNNN` console,
+  `NNNN+1` adbd) so deriving the dadb port from the serial is a
+  single-line conversion. `findRunningAvd` is now public so callers
+  can resolve a serial → port without running `adb devices` themselves.
+- `mcp/mobile/client.ts` — `runRecipe` and `registerTestUser` resolve
+  the AVD's adb port and forward it through to maestro.
+- `mcp/mobile-server.ts` — `mobile_run_recipe` MCP tool gains an
+  optional `avdName` parameter.
+
+### Out of scope
+
+- The dadb upstream fix (a one-line try/catch) is not landed here;
+  this works around it at the maestro-invocation layer rather than
+  forking dadb. If maestro ever ships a newer dadb that handles
+  unauthorized devices gracefully, the workaround stays harmless
+  (direct connect is faster anyway).
+- Recovering an emulator whose adb auth got desynchronized from the
+  host's `~/.android/adbkey` (e.g., adbkey regenerated after the
+  emulator's first boot) still requires a `-wipe-data` cold boot. The
+  recovery path is documented in `playbook/integrations/mobile-integration.md`.
+
 ## 0.10.47 — 2026-04-30
 
 **Adopt commcare-connect's new automation API (PR #1135).** Eight Connect

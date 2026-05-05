@@ -34,6 +34,33 @@ if [ "${1:-}" = "verdicts" ]; then
   fi
   SUB_OPP="$1"
   shift
+elif [ "${1:-}" = "state-yaml-lint" ]; then
+  SUBCOMMAND="state-yaml-lint"
+  shift
+  if [ -z "${1:-}" ]; then
+    echo "usage: ace-doctor state-yaml-lint <opp-name>" >&2
+    exit 2
+  fi
+  SUB_OPP="$1"
+  shift
+elif [ "${1:-}" = "state-yaml-cruft" ]; then
+  SUBCOMMAND="state-yaml-cruft"
+  shift
+  if [ -z "${1:-}" ]; then
+    echo "usage: ace-doctor state-yaml-cruft <opp-name>" >&2
+    exit 2
+  fi
+  SUB_OPP="$1"
+  shift
+elif [ "${1:-}" = "deep-qa-freshness" ]; then
+  SUBCOMMAND="deep-qa-freshness"
+  shift
+  if [ -z "${1:-}" ]; then
+    echo "usage: ace-doctor deep-qa-freshness <opp-name>" >&2
+    exit 2
+  fi
+  SUB_OPP="$1"
+  shift
 fi
 
 while [ $# -gt 0 ]; do
@@ -93,6 +120,39 @@ if [ "$SUBCOMMAND" = "verdicts" ]; then
   cd "$ROOT" && exec npx tsx scripts/validate-opp-verdicts.ts "$SUB_OPP"
 fi
 
+if [ "$SUBCOMMAND" = "state-yaml-lint" ]; then
+  if [ ! -f "$ROOT/scripts/lint-opp-state.ts" ]; then
+    echo "FAIL state-yaml-lint_subcommand: $ROOT/scripts/lint-opp-state.ts not found"
+    echo "  fix: run /ace:update to pull a version that ships the lint (>= 0.11.6)"
+    exit 0
+  fi
+  cd "$ROOT" && exec npx tsx scripts/lint-opp-state.ts "$SUB_OPP"
+fi
+
+if [ "$SUBCOMMAND" = "state-yaml-cruft" ]; then
+  if [ ! -f "$ROOT/scripts/lint-opp-cruft.ts" ]; then
+    echo "FAIL state-yaml-cruft_subcommand: $ROOT/scripts/lint-opp-cruft.ts not found"
+    echo "  fix: run /ace:update to pull a version that ships the lint (>= 0.11.7)"
+    exit 0
+  fi
+  cd "$ROOT" && exec npx tsx scripts/lint-opp-cruft.ts "$SUB_OPP"
+fi
+
+# `deep-qa-freshness <opp>` — advisory check that mirrors the Phase 6
+# llo-launch deep-QA verdict gate. Reads the newest run's verdicts/ folder,
+# checks both deep verdicts exist + pass + (for apps) match the current
+# build IDs in deployment-summary.md. WARN-level: the actual blocker is in
+# the gate itself; this is the "see the wall before you hit it" preventer.
+# Shipped with the shallow/deep QA split refactor.
+if [ "$SUBCOMMAND" = "deep-qa-freshness" ]; then
+  if [ ! -f "$ROOT/scripts/check-deep-qa-freshness.ts" ]; then
+    echo "FAIL deep-qa-freshness_subcommand: $ROOT/scripts/check-deep-qa-freshness.ts not found"
+    echo "  fix: run /ace:update to pull a version that ships the check (shallow/deep QA split refactor)"
+    exit 0
+  fi
+  cd "$ROOT" && exec npx tsx scripts/check-deep-qa-freshness.ts "$SUB_OPP"
+fi
+
 # If the user is inside a dev worktree that differs from $ROOT, flag it so they
 # know the doctor is auditing the installed copy rather than their checkout.
 PWD_MATCH=""
@@ -110,6 +170,8 @@ fi
 pass() { printf 'PASS %s\n' "$1"; }
 warn() { printf 'WARN %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
 fail() { printf 'FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
+# No _log() abstraction in this script; mirrors the pass/warn/fail printf pattern.
+info() { printf 'INFO %s\n' "$1"; }
 
 # --- Version consistency ---
 VER_FILE="$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null || echo missing)"
@@ -298,14 +360,10 @@ else
   warn "auto_update: hooks/hooks.json missing" "restore hooks/hooks.json at the plugin root"
 fi
 
-# --- Related repos (optional, soft warnings) ---
-if [ -d "$HOME/emdash-projects/ace-web" ] || [ -d "$HOME/ace-web" ]; then
-  pass "ace_web: local checkout detected"
-else
-  warn "ace_web: no local checkout of jjackson/ace-web found" "clone if you need the browser harness"
-fi
-
 # --- Sibling plugin installs (Phase 2 + Phase 3 dependencies) ---
+# (ace-web is a sibling repo for browser-harness work but is NOT a runtime
+# dependency of the plugin — intentionally not checked here. Sibling plugins
+# below ARE consumed by ACE skills, so they remain warned-on.)
 # Nova drives Phase 2 (commcare-setup): pdd-to-learn-app, pdd-to-deliver-app,
 # app-deploy. Without Nova installed, those skills produce stub artifacts.
 # connect-labs drives Phase 3 (connect-setup): connect-program-setup,
@@ -414,6 +472,30 @@ if [ -n "$ENV_FILE" ]; then
     warn "drive_root: ACE_DRIVE_ROOT_FOLDER_ID not set (PDD auto-discovery disabled)" "re-inject .env via op inject (var added in 0.5.3)"
   fi
 
+  # ACE_E2E_AUTH_TOKEN gates the /auth/e2e-login/ shared-secret automation
+  # path on labs. Without it, scripted tools like
+  # tools/walkthrough/run_chat_e2e.py and the upload-transcript skill
+  # cannot drive the deployed ace-web. Token rotates via AWS Secrets
+  # Manager; mirrored into deploy/aws/task-definition.json AND should be
+  # in .env so local tools and the doctor agree on the value.
+  E2E_TOKEN="$(get_env ACE_E2E_AUTH_TOKEN)"
+  if [ -n "$E2E_TOKEN" ]; then
+    pass "e2e_auth_token: ACE_E2E_AUTH_TOKEN is set (${#E2E_TOKEN} chars)"
+  else
+    warn "e2e_auth_token: ACE_E2E_AUTH_TOKEN not set" "add to .env (mirror from deploy/aws/task-definition.json or AWS Secrets Manager); needed by tools/walkthrough/run_chat_e2e.py and skills/upload-transcript"
+  fi
+
+  # ACE_TRAINING_DECK_TEMPLATE_ID gates the training-deck-build skill.
+  # The skill is non-blocking (Phase 7 doesn't require the Slides deck), so
+  # a missing template is WARN, not FAIL — but operators should know the
+  # training-deck workflow won't produce a deck until they bootstrap it.
+  TDID="$(get_env ACE_TRAINING_DECK_TEMPLATE_ID)"
+  if [ -n "$TDID" ]; then
+    pass "training_deck_template: ACE_TRAINING_DECK_TEMPLATE_ID=$TDID"
+  else
+    warn "training_deck_template: ACE_TRAINING_DECK_TEMPLATE_ID not set" "run 'npx tsx scripts/bootstrap-training-deck-template.ts' to create the template, then add the ID to 1Password and re-inject .env (training-deck-build skips silently without it)"
+  fi
+
   # Shared-Drive canary: the configured root MUST live on a Google Shared Drive.
   # Service Accounts have zero My-Drive quota, so a My-Drive-parented root means
   # every artifact write fails with "user storage quota exceeded" on the FIRST
@@ -447,6 +529,56 @@ if [ -n "$ENV_FILE" ]; then
       fi
     elif [ -n "$PROBE_MSG" ]; then
       warn "drive_shared: could not probe ACE_DRIVE_ROOT_FOLDER_ID: $PROBE_MSG" "verify the SA has Editor access to the folder; re-inject .env if the ID is stale"
+    fi
+  fi
+
+  # Multi-run layout sanity: at least one <opp>/inputs/pdd.md should
+  # exist under the Drive root. Without one, /ace:run zero-arg fires
+  # the new-layout setup error. INFO (not WARN) — first-time installs
+  # legitimately have nothing yet.
+  if [ -n "$DRIVE_ROOT" ] && [ -n "$KEY" ] && [ -d "$ROOT/node_modules/googleapis" ]; then
+    INPUTS_PROBE="$(GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+      import { google } from 'googleapis';
+      const auth = new google.auth.GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/drive'] });
+      const drive = google.drive({ version: 'v3', auth });
+      try {
+        const root = '$DRIVE_ROOT';
+        const opps = await drive.files.list({
+          q: \`'\${root}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false\`,
+          fields: 'files(id,name)', supportsAllDrives: true, includeItemsFromAllDrives: true, pageSize: 100,
+        });
+        let count = 0;
+        for (const opp of opps.data.files || []) {
+          const inputs = await drive.files.list({
+            q: \`'\${opp.id}' in parents and name='inputs' and mimeType='application/vnd.google-apps.folder' and trashed=false\`,
+            fields: 'files(id)', supportsAllDrives: true, includeItemsFromAllDrives: true,
+          });
+          const inputsFolders = inputs.data.files || [];
+          if (inputsFolders.length === 0) continue;
+          const inputsId = inputsFolders[0].id;
+          const pddCheck = await drive.files.list({
+            q: \`'\${inputsId}' in parents and trashed=false\`,
+            fields: 'files(id,name)', supportsAllDrives: true, includeItemsFromAllDrives: true, pageSize: 50,
+          });
+          const hasPdd = (pddCheck.data.files || []).some(f =>
+            f.name === 'pdd.md' || f.name === 'pdd.gdoc' || /pdd/i.test(f.name)
+          );
+          if (hasPdd) count += 1;
+        }
+        console.log(JSON.stringify({ ok: true, count }));
+      } catch (e) { console.log(JSON.stringify({ ok: false, message: String(e.message || e) })); }
+    " 2>/dev/null)"
+    INPUTS_OK="$(printf '%s' "$INPUTS_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.ok?'1':'0'); } catch { console.log('?'); }" 2>/dev/null)"
+    INPUTS_COUNT="$(printf '%s' "$INPUTS_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.count||0); } catch { console.log('0'); }" 2>/dev/null)"
+    INPUTS_MSG="$(printf '%s' "$INPUTS_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.message||''); } catch { console.log(''); }" 2>/dev/null)"
+    if [ "$INPUTS_OK" = "1" ]; then
+      if [ "$INPUTS_COUNT" -gt 0 ] 2>/dev/null; then
+        pass "input_packs: $INPUTS_COUNT opp(s) under \$ACE_DRIVE_ROOT_FOLDER_ID have an inputs/ subfolder"
+      else
+        info "input_packs: no opps with inputs/ found yet — first-time setup, see /ace:run for the new-layout howto"
+      fi
+    else
+      warn "input_packs: could not probe ACE_DRIVE_ROOT_FOLDER_ID for inputs/: $INPUTS_MSG" "verify the SA has Editor access to the Drive root and re-run /ace:doctor"
     fi
   fi
 
@@ -550,19 +682,33 @@ if [ -n "$ENV_FILE" ]; then
     fi
   fi
 
-  # OCS Playwright session — keyed by team slug. Required before any skill
-  # that hits OCS via the Playwright backend (most of Phase 4).
+  # OCS Playwright session — keyed by team slug. The Playwright backend
+  # auto-logs-in via OCS_USERNAME / OCS_PASSWORD when no saved session
+  # exists, so a missing file is fine as long as creds are configured.
+  # /ace:ocs-login is the manual fallback for SSO/MFA accounts.
   if [ -n "$OCS_TEAM" ]; then
     SESS="$HOME/.ace/ocs-session-$OCS_TEAM.json"
+    OCS_USER="$(get_env OCS_USERNAME)"
+    OCS_PASS="$(get_env OCS_PASSWORD)"
+    HAS_CREDS=0
+    [ -n "$OCS_USER" ] && [ -n "$OCS_PASS" ] && HAS_CREDS=1
     if [ -f "$SESS" ]; then
-      # freshness check: warn if > 30 days old (session cookies expire)
+      # freshness check: 30-day cookie lifetime
       if find "$SESS" -mtime +30 2>/dev/null | grep -q .; then
-        warn "ocs_session: $SESS is older than 30 days — may be expired" "/ace:ocs-login"
+        if [ "$HAS_CREDS" = "1" ]; then
+          pass "ocs_session: $SESS >30 days old — auto-login will refresh on next call"
+        else
+          warn "ocs_session: $SESS is older than 30 days — may be expired" "/ace:ocs-login"
+        fi
       else
         pass "ocs_session: $SESS present"
       fi
     else
-      warn "ocs_session: $SESS missing" "/ace:ocs-login"
+      if [ "$HAS_CREDS" = "1" ]; then
+        pass "ocs_session: not yet saved (auto-login on first call via OCS_USERNAME/OCS_PASSWORD)"
+      else
+        warn "ocs_session: $SESS missing and OCS_USERNAME/OCS_PASSWORD unset" "/ace:setup or /ace:ocs-login"
+      fi
     fi
   else
     # No team slug — can't check for a session file. Already warned on ocs_env.
@@ -614,23 +760,116 @@ if [ -n "$ENV_FILE" ]; then
   else
     warn "connect_session: $CONNECT_SESS missing and no HQ creds in .env" "/ace:connect-login OR set ACE_HQ_USERNAME/PASSWORD"
   fi
+
+  # ── Connect Labs (solicitations / reviews / awards) ──────────────────
+  # ACE consumes labs.connect.dimagi.com/mcp/ via the connect-labs stdio
+  # proxy (mcp/connect-labs-server.ts). Three checks:
+  #   1. LABS_MCP_TOKEN present in .env (drift detection)
+  #   2. Labs MCP reachable + PAT accepted (initialize JSON-RPC frame)
+  #   3. Connect OAuth bridge live (list_solicitations distinguishes
+  #      PAT-level 401 from tool-level PERMISSION_DENIED)
+  LABS_TOKEN="$(get_env LABS_MCP_TOKEN)"
+  LABS_URL="${LABS_MCP_URL:-https://labs.connect.dimagi.com/mcp/}"
+  if [ -z "$LABS_TOKEN" ]; then
+    warn "connect_labs_env: LABS_MCP_TOKEN missing or unresolved" "re-inject .env via op inject (ACE - Connect Labs item in 1Password)"
+  else
+    pass "connect_labs_env: LABS_MCP_TOKEN present"
+    # Probe 1: PAT validity. POST an initialize frame; expect 200 (or any 2xx).
+    # 401 means PAT bad/revoked; timeout means labs is down.
+    LABS_REACH_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+      -X POST \
+      -H "Authorization: Bearer $LABS_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ace-doctor","version":"1"}}}' \
+      "$LABS_URL" 2>/dev/null || echo "000")"
+    case "$LABS_REACH_CODE" in
+      2*)
+        pass "connect_labs_mcp_reachable: $LABS_URL (HTTP $LABS_REACH_CODE)"
+        # Probe 2: Connect OAuth bridge. Call list_solicitations and look at
+        # the response body for tool-level PERMISSION_DENIED (which means
+        # PAT is good but the labs user hasn't completed Connect OAuth).
+        LABS_OAUTH_BODY="$(curl -sS --max-time 5 \
+          -X POST \
+          -H "Authorization: Bearer $LABS_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_solicitations","arguments":{}}}' \
+          "$LABS_URL" 2>/dev/null || echo "")"
+        if echo "$LABS_OAUTH_BODY" | grep -q "PERMISSION_DENIED\|connect_oauth\|ConnectTokenError"; then
+          warn "connect_labs_connect_oauth: PAT accepted but Connect OAuth bridge missing for ace@dimagi-ai.com" "have ace@dimagi-ai.com sign into labs once and authorize Connect"
+        elif echo "$LABS_OAUTH_BODY" | grep -q '"error"'; then
+          warn "connect_labs_connect_oauth: list_solicitations returned an error" "inspect response: $LABS_OAUTH_BODY"
+        else
+          pass "connect_labs_connect_oauth: list_solicitations responded (Connect OAuth bridge live)"
+        fi
+        ;;
+      401)
+        warn "connect_labs_mcp_reachable: HTTP 401 — PAT invalid or revoked" "rotate via mcp_create_token --user ace@dimagi-ai.com --name ACE-plugin --ttl-days 0"
+        ;;
+      000)
+        warn "connect_labs_mcp_reachable: cannot reach $LABS_URL (network/DNS/timeout)" "verify labs.connect.dimagi.com is up and reachable from this network"
+        ;;
+      *)
+        warn "connect_labs_mcp_reachable: $LABS_URL returned HTTP $LABS_REACH_CODE" "investigate labs MCP health"
+        ;;
+    esac
+  fi
 else
   # No .env at all — individual env-derived checks would all warn the same way.
   # Emit one consolidated pointer instead of three duplicates.
-  warn "runtime_env: ocs_env, gmail_config, ocs_session, connect_env all skipped (no .env)" "resolve env_file warning above first"
+  warn "runtime_env: ocs_env, gmail_config, ocs_session, connect_env, connect_labs_env all skipped (no .env)" "resolve env_file warning above first"
 fi
 
 echo ""
 echo "[Mobile]"
 
-if command -v maestro >/dev/null 2>&1; then
-  echo "  Maestro:                $(which maestro)    $(maestro --version 2>/dev/null | head -1)    OK"
+# Resolve the maestro launcher even when ~/.maestro/bin isn't on PATH.
+# Mirrors `resolveMaestroBinDir()` in mcp/mobile/backends/avd.ts: the official
+# installer drops it at ~/.maestro/bin/maestro on macOS/Linux but only patches
+# the user's interactive shell rc, so a non-login shell (or doctor invoked
+# from Claude Code) never sees it. Without this fallback doctor reports
+# MISSING on a perfectly working install.
+MAESTRO_BIN=""
+for candidate in \
+    "${MAESTRO_BIN:-}" \
+    "$(command -v maestro 2>/dev/null)" \
+    "${HOME}/.maestro/bin/maestro"; do
+  [ -n "$candidate" ] && [ -x "$candidate" ] && MAESTRO_BIN="$candidate" && break
+done
+if [ -n "$MAESTRO_BIN" ]; then
+  # JAVA_HOME may not be set in doctor's shell; resolve it like avd.ts does
+  # so `--version` doesn't print "Unable to locate a Java Runtime".
+  if [ -z "${JAVA_HOME:-}" ] && [ -x /usr/libexec/java_home ]; then
+    export JAVA_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null)"
+  fi
+  if [ -z "${JAVA_HOME:-}" ] && [ -d /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home ]; then
+    export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+  fi
+  MAESTRO_VER="$("$MAESTRO_BIN" --version 2>/dev/null | tail -1)"
+  echo "  Maestro:                $MAESTRO_BIN    ${MAESTRO_VER:-unknown}    OK"
 else
   echo "  Maestro:                MISSING — install with curl -Ls 'https://get.maestro.mobile.dev' | bash"
 fi
 
 if command -v adb >/dev/null 2>&1; then
   echo "  adb:                    $(which adb)    $(adb version | head -1)    OK"
+  # Detect the multi-user-shared-adb-server pattern that breaks Maestro
+  # auto-discovery. dadb-1.2.10 (bundled with Maestro 2.3.0–2.5.1) aborts
+  # `Dadb.list` on the first `unauthorized` device returned by `adb devices`,
+  # and on a shared workstation that bites any operator whose `~/.android/adbkey`
+  # isn't authorized on a sibling user's emulator. Diagnosed live 2026-05-01;
+  # workaround landed in 0.10.65 (`MaestroBackend.runRecipe` adds
+  # `--host`/`--port` so dadb takes the direct-TCP path), but a leftover
+  # unauthorized entry still surfaces other footguns (e.g., `adb shell` calls
+  # without -s pick the wrong device). WARN-level: ACE registration works
+  # via the 0.10.65 patch, but the operator should know.
+  UNAUTH_DEVS="$(adb devices 2>/dev/null | awk '/^emulator-/ && $2=="unauthorized" {print $1}' | tr '\n' ' ' | sed 's/ $//')"
+  if [ -n "$UNAUTH_DEVS" ]; then
+    echo "  WARN adb_unauthorized: $UNAUTH_DEVS"
+    echo "    fix: another user on this machine has emulators visible to your adb server."
+    echo "    ACE bypasses this since 0.10.65, but unrelated 'adb shell' calls without -s may"
+    echo "    pick the wrong device. Disconnect with 'adb disconnect <serial>' (transient)"
+    echo "    or run a per-user adb server (ANDROID_ADB_SERVER_PORT=5038 adb start-server)."
+  fi
 else
   echo "  adb:                    MISSING — install with brew install android-platform-tools"
 fi
@@ -679,6 +918,14 @@ for v in ACE_E2E_PHONE ACE_E2E_PIN ACE_E2E_BACKUP_CODE ACE_AVD_NAME; do
     echo "  ${v}:    MISSING — populate via 1Password + op inject"
   fi
 done
+
+echo ""
+echo "[Drive layout]"
+if [ -f "$ROOT/scripts/doctor-drive-layout.ts" ]; then
+  cd "$ROOT" && npx tsx scripts/doctor-drive-layout.ts 2>&1
+else
+  warn "drive_layout: scripts/doctor-drive-layout.ts not present" "run /ace:update to pull a version that ships the audit (>= 0.11.9)"
+fi
 
 echo ""
 echo "STATUS: COMPLETE"

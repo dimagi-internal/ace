@@ -57,8 +57,8 @@ ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
 # expected domain before pushing apps.
 #
 # Sourced from 1Password — add a `domain` field to the
-# `op://AI-Agents/ACE - CommCareHQ` item with the value for your
-# deployment (e.g. `connect-ace-prod` for production). For a
+# `ACE - CommCareHQ` item in the AI-Agents vault with the value for
+# your deployment (e.g. `connect-ace-prod` for production). For a
 # staging-domain dev workflow, point this at a different 1Password
 # field or override the resolved `.env` after `op inject`.
 # `bin/ace-doctor` warns when ACE_HQ_DOMAIN is unset or
@@ -90,6 +90,16 @@ CONNECT_BASE_URL=https://connect.dimagi.com
 ACE_HQ_USERNAME=op://AI-Agents/ACE - CommCareHQ/username
 ACE_HQ_PASSWORD=op://AI-Agents/ACE - CommCareHQ/password
 
+# ── Connect Labs (solicitations / reviews / awards) ─────────────────
+#
+# Bearer PAT for the labs MCP at labs.connect.dimagi.com/mcp/. ACE's
+# connect-labs stdio proxy reads this and injects it as the
+# Authorization header on every JSON-RPC frame forwarded to labs.
+# To rotate: a labs admin runs:
+#   python manage.py mcp_create_token --user ace@dimagi-ai.com --name ACE-plugin --ttl-days 0
+# then drops the printed token into the 1Password item below.
+LABS_MCP_TOKEN=op://AI-Agents/ACE - Connect Labs/mcp_token
+
 # ─── ACE Mobile Emulation ──────────────────────────────────────────
 # Local-Mac-only. Populated once via /ace:mobile-bootstrap.
 ACE_E2E_PHONE=op://AI-Agents/connect-test-user/phone
@@ -99,3 +109,14 @@ ACE_E2E_PIN=op://AI-Agents/connect-test-user/pin
 ACE_E2E_BACKUP_CODE=op://AI-Agents/connect-test-user/backup-code
 ACE_E2E_NAME="ACE Test"
 ACE_AVD_NAME=ACE_Pixel_API_34
+
+# ─── ACE Training Deck (Slides) ────────────────────────────────────
+# Populated once per environment by `npx tsx scripts/bootstrap-training-deck-template.ts`,
+# stashed in 1Password, and re-injected via `op inject`. The template
+# deck has stencil slides the `training-deck-build` skill duplicates
+# and fills via TITLE / SUBTITLE / BODY placeholders (double-curly
+# tokens — left undescribed inline because op inject parses double-
+# curlies as ref delimiters even inside comments). Iterate
+# branding/layout in Slides directly; do NOT change stencil objectIds
+# or placeholder tokens (they're wired to `lib/training-deck-spec.ts`).
+ACE_TRAINING_DECK_TEMPLATE_ID=op://AI-Agents/ACE - Open Chat Studio/Config/training_deck_template_id

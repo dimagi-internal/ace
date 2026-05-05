@@ -8,7 +8,37 @@ export class ConnectError extends Error {
 
 export class SessionExpiredError extends ConnectError {
   constructor() {
-    super('Connect session expired. Run `/ace:connect-login` to re-authenticate.');
+    super(
+      'Connect session expired and ACE_HQ_USERNAME/ACE_HQ_PASSWORD are not set. ' +
+        'Configure them via /ace:setup, or run /ace:connect-login for SSO/MFA accounts.',
+    );
+  }
+}
+
+/**
+ * Connect HQ-OAuth auto-login was attempted with credentials but failed.
+ *
+ * `stage` distinguishes WHERE in the OAuth dance it broke:
+ *   - `hq-creds`: HQ rejected the username/password (still on HQ login form
+ *     after submit) — almost always a wrong-creds issue.
+ *   - `oauth-consent`: HQ accepted creds and redirected to /oauth/authorize/
+ *     but the consent click never returned to Connect — selector drift, or
+ *     a new consent screen.
+ *   - `unknown`: pre-existing flow break before we could classify it.
+ *
+ * Distinguished from `SessionExpiredError` so callers can tell "you have no
+ * creds configured" from "your creds are wrong" — the fix differs.
+ */
+export class ConnectLoginFailedError extends ConnectError {
+  constructor(
+    public username: string,
+    public stage: 'hq-creds' | 'oauth-consent' | 'unknown' = 'unknown',
+  ) {
+    super(
+      `Connect HQ-OAuth login failed at stage "${stage}" for ${username}. ` +
+        'Verify ACE_HQ_USERNAME / ACE_HQ_PASSWORD in 1Password, ' +
+        'or run /ace:connect-login if the account requires SSO/MFA.',
+    );
   }
 }
 

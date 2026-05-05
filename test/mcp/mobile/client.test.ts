@@ -8,6 +8,8 @@ function fakeMaestroAndAvd(opts: {
 }) {
   const avd = {
     ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+    findRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+    setGmsEnabled: vi.fn().mockResolvedValue(undefined),
   } as any;
   const runRecipe = vi.fn().mockImplementation(async (recipePath: string) => {
     if (recipePath.endsWith('connect-register-to-otp.yaml')) {
@@ -37,6 +39,8 @@ describe('MobileClient.registerTestUser', () => {
     });
     expect(r.alreadyRegistered).toBe(false);
     expect(r.phone).toBe('+74260000001');
+    expect(avd.setGmsEnabled).toHaveBeenCalledWith('AVD', true);
+    expect(avd.setGmsEnabled).toHaveBeenCalledWith('AVD', false);
   });
 
   it('detects PHONE_ALREADY_REGISTERED and returns alreadyRegistered=true', async () => {

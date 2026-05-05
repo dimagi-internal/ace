@@ -1,0 +1,423 @@
+#!/usr/bin/env bash
+# ace-setup — one-shot installer for the ACE plugin.
+#
+# Order is "cheap pre-flight checks first, slow state changes after,
+# verification last", so the user never waits through npm install just
+# to find out 1Password isn't signed in.
+#
+# Steps:
+#   1. Detect plugin root + data dir
+#   2. Verify Node/npm
+#   3. Verify 1Password CLI is installed and authenticated (FAST FAIL)
+#   4. Fetch the Google service-account key from 1Password if missing
+#   5. npm install (skip if node_modules + tsx present)
+#   6. Inject .env from 1Password (skip if .env covers all .env.tpl keys)
+#   7. Optionally register the SessionStart auto-update hook
+#   8. Run bin/ace-doctor and surface remaining issues
+#
+# Flags:
+#   --auto-update      register SessionStart hook for /ace:update
+#   --force-install    re-run npm install even if node_modules is present
+#   --force-env        re-run `op inject` even if .env covers all keys
+#   --skip-env         skip .env injection entirely
+#   --skip-doctor      skip the trailing doctor pass
+#
+# Env overrides:
+#   ACE_GWS_KEY_OP_DOC  1Password Document item name for the GWS service-account
+#                       key (default: "ACE - Google Service Account")
+#   ACE_OP_VAULT        1Password vault that holds ACE secrets (default: "AI-Agents")
+#   OP_SERVICE_ACCOUNT_TOKEN  if set, op uses this and skips --account flag
+#
+# Exit status: 0 on success, 1 on any FAIL the user must fix.
+set +e
+
+# ---- arg parsing
+AUTO_UPDATE=0
+FORCE_INSTALL=0
+FORCE_ENV=0
+SKIP_ENV=0
+SKIP_DOCTOR=0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --auto-update)   AUTO_UPDATE=1 ;;
+    --force-install) FORCE_INSTALL=1 ;;
+    --force-env)     FORCE_ENV=1 ;;
+    --skip-env)      SKIP_ENV=1 ;;
+    --skip-doctor)   SKIP_DOCTOR=1 ;;
+    -h|--help)
+      sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *) echo "ace-setup: unknown arg: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+# ---- helpers
+pass() { printf 'PASS %s\n' "$1"; }
+warn() { printf 'WARN %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
+fail() { printf 'FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
+
+EXIT_CODE=0
+mark_fail() { EXIT_CODE=1; }
+
+# ---- defaults / config
+OP_VAULT="${ACE_OP_VAULT:-AI-Agents}"
+GWS_DOC_NAME="${ACE_GWS_KEY_OP_DOC:-ACE - Google Service Account}"
+
+# ---- plugin root detection (matches bin/ace-doctor self-mode logic)
+SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT=""
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json" ]; then
+  ROOT="$CLAUDE_PLUGIN_ROOT"
+fi
+if [ -z "$ROOT" ]; then
+  D="$PWD"
+  while [ "$D" != "/" ]; do
+    if [ -f "$D/.claude-plugin/plugin.json" ] && grep -q '"name": "ace"' "$D/.claude-plugin/plugin.json" 2>/dev/null; then
+      ROOT="$D"; break
+    fi
+    D="$(dirname "$D")"
+  done
+fi
+if [ -z "$ROOT" ]; then ROOT="$SELF_DIR"; fi
+if [ -z "$ROOT" ] || [ ! -f "$ROOT/.claude-plugin/plugin.json" ]; then
+  fail "plugin_root: could not locate ACE plugin" "run from an ACE checkout, or after /plugin install ace@ace"
+  exit 1
+fi
+echo "INFO plugin_root=$ROOT"
+
+# ---- data dir (per-machine, persistent across plugin updates)
+if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+  DATA_DIR="$CLAUDE_PLUGIN_DATA"
+else
+  DATA_DIR="$HOME/.claude/plugins/data/ace-ace"
+fi
+mkdir -p "$DATA_DIR"
+echo "INFO data_dir=$DATA_DIR"
+
+# =====================================================================
+# Phase 1 — Cheap pre-flight checks (fast fail)
+# =====================================================================
+
+# ---- Node / npm
+if command -v node >/dev/null 2>&1; then
+  pass "node: $(node --version)"
+else
+  fail "node: not on PATH" "install Node.js v18+ (https://nodejs.org)"
+  exit 1
+fi
+if command -v npm >/dev/null 2>&1; then
+  pass "npm: $(npm --version)"
+else
+  fail "npm: not on PATH" "install Node.js v18+ (bundles npm)"
+  exit 1
+fi
+
+# ---- 1Password CLI installed?
+if ! command -v op >/dev/null 2>&1; then
+  fail "op: 1Password CLI not installed" \
+       "install with: brew install 1password-cli (or https://developer.1password.com/docs/cli/get-started/)"
+  exit 1
+fi
+pass "op: 1Password CLI v$(op --version 2>/dev/null)"
+
+# ---- 1Password authenticated?
+# Prefer service-account token if present, else require interactive signin.
+AUTH_OK=0
+AUTH_MODE=""
+OP_ACCOUNT_FLAG=""
+if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
+  if op whoami >/dev/null 2>&1; then
+    AUTH_OK=1
+    AUTH_MODE="service-account"
+  fi
+fi
+if [ "$AUTH_OK" = "0" ]; then
+  if op whoami --account dimagi.1password.com >/dev/null 2>&1; then
+    AUTH_OK=1
+    AUTH_MODE="dimagi.1password.com (interactive)"
+    OP_ACCOUNT_FLAG="--account dimagi.1password.com"
+  fi
+fi
+
+if [ "$AUTH_OK" = "0" ]; then
+  # On macOS, GUI apps inherit env from launchd — not from ~/.zshrc — so
+  # OP_SERVICE_ACCOUNT_TOKEN can be defined in shell rc and still be unset
+  # for a Claude Code session opened from the dock. Detect that case so the
+  # user knows the fix is "move it to ~/.zshenv" instead of "set the var".
+  GUI_HINT=""
+  if [ "$(uname -s)" = "Darwin" ] && [ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
+    SHELL_RC_HIT=""
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.zprofile" "$HOME/.bash_profile" "$HOME/.profile"; do
+      if [ -f "$rc" ] && grep -qE '^[[:space:]]*(export[[:space:]]+)?OP_SERVICE_ACCOUNT_TOKEN=' "$rc"; then
+        SHELL_RC_HIT="$rc"; break
+      fi
+    done
+    if [ -n "$SHELL_RC_HIT" ]; then
+      GUI_HINT="
+       NOTE: OP_SERVICE_ACCOUNT_TOKEN is defined in $SHELL_RC_HIT but not visible
+       to this process. macOS GUI apps inherit env from launchd (not ~/.zshrc).
+       Move the export to ~/.zshenv so launchd-spawned zsh sees it too, then
+       quit and reopen Claude Code from the dock:
+         grep '^[[:space:]]*\(export[[:space:]]\+\)\?OP_SERVICE_ACCOUNT_TOKEN=' $SHELL_RC_HIT >> ~/.zshenv
+         # then: Cmd-Q Claude Code, reopen from dock, re-run /ace:setup"
+    fi
+  fi
+  fail "op: not authenticated to 1Password" "type one of these in the chat (the \`!\` prefix runs in this session):
+       ! op signin --account dimagi.1password.com   # interactive personal signin
+       ! eval \$(op signin --account dimagi.1password.com)   # if you need session env exported
+       (or set OP_SERVICE_ACCOUNT_TOKEN=ops_... in your shell rc and reopen the session)
+       (Mac alt: open the 1Password.app, Settings → Developer → enable CLI integration)$GUI_HINT
+     Then re-run /ace:setup."
+  exit 1
+fi
+pass "op: authenticated as $AUTH_MODE"
+
+# =====================================================================
+# Phase 2 — Slow state changes (only run if pre-flight passed)
+# =====================================================================
+
+# ---- Google service-account key (canonical = $DATA_DIR/gws-sa-key.json)
+CANONICAL_KEY="$DATA_DIR/gws-sa-key.json"
+LEGACY_KEY="$ROOT/.gws-sa-key.json"
+KEY=""
+KEY_LOC=""
+if [ -f "$CANONICAL_KEY" ] && [ -r "$CANONICAL_KEY" ]; then
+  KEY="$CANONICAL_KEY"; KEY_LOC="canonical"
+elif [ -f "$LEGACY_KEY" ] && [ -r "$LEGACY_KEY" ]; then
+  KEY="$LEGACY_KEY"; KEY_LOC="legacy"
+fi
+
+if [ -z "$KEY" ]; then
+  # Try to fetch from 1Password as a Document item.
+  echo "INFO gws_key: missing — attempting fetch from 1Password vault $OP_VAULT, document \"$GWS_DOC_NAME\""
+  GET_OUT="$(op document get "$GWS_DOC_NAME" --vault "$OP_VAULT" --output "$CANONICAL_KEY" --force $OP_ACCOUNT_FLAG 2>&1)"
+  GET_RC=$?
+  if [ "$GET_RC" -eq 0 ] && [ -s "$CANONICAL_KEY" ]; then
+    # Validate JSON and chmod 600
+    CLIENT_EMAIL="$(node -e "try { console.log(JSON.parse(require('fs').readFileSync('$CANONICAL_KEY','utf8')).client_email); } catch(e) { console.log('NOT_JSON'); }" 2>/dev/null)"
+    if [ "$CLIENT_EMAIL" = "NOT_JSON" ] || [ -z "$CLIENT_EMAIL" ]; then
+      fail "gws_key: fetched document is not valid JSON" "verify \"$GWS_DOC_NAME\" in 1Password is the SA key file, then re-run /ace:setup"
+      mark_fail
+    else
+      chmod 600 "$CANONICAL_KEY" 2>/dev/null
+      KEY="$CANONICAL_KEY"; KEY_LOC="canonical"
+      pass "gws_key: fetched $CLIENT_EMAIL from 1Password to $CANONICAL_KEY"
+    fi
+  else
+    # Discovery: surface candidate Document items so the user can pick the right one.
+    echo "INFO gws_key: \"$GWS_DOC_NAME\" not found in $OP_VAULT. Listing Document items that might be the SA key..."
+    CANDIDATES="$(op item list --vault "$OP_VAULT" --categories Document --format json $OP_ACCOUNT_FLAG 2>/dev/null \
+                  | node -e "
+                    try {
+                      const items = JSON.parse(require('fs').readFileSync(0,'utf8'));
+                      const re = /(google|gws|service[\\s.]account|sa[\\s._-]?key|gcp|drive)/i;
+                      for (const it of items) {
+                        if (re.test(it.title || '')) console.log('  - ' + it.title);
+                      }
+                    } catch(_) {}
+                  " 2>/dev/null)"
+    fail "gws_key: missing and could not auto-fetch from 1Password" "options:
+       (a) set ACE_GWS_KEY_OP_DOC=<exact item name> and re-run /ace:setup
+       (b) drop the key manually at $CANONICAL_KEY (mkdir -p \"$DATA_DIR\" && mv key.json \"$CANONICAL_KEY\" && chmod 600 \"$CANONICAL_KEY\")
+       (c) ask Jon for the ACE Google service-account JSON
+     candidate Document items in vault $OP_VAULT (set ACE_GWS_KEY_OP_DOC to one):
+$([ -n "$CANDIDATES" ] && printf '%s\n' "$CANDIDATES" || echo "       (none matched 'google|gws|service account|sa key|gcp|drive')")
+     1Password error from the attempted fetch:
+$(printf '%s\n' "$GET_OUT" | sed 's/^/       /')"
+    mark_fail
+  fi
+elif [ "$KEY_LOC" = "legacy" ]; then
+  CLIENT_EMAIL="$(node -e "try { console.log(JSON.parse(require('fs').readFileSync('$KEY','utf8')).client_email); } catch(e) { console.log('unreadable'); }" 2>/dev/null)"
+  warn "gws_key: $CLIENT_EMAIL at LEGACY path $LEGACY_KEY" \
+       "migrate so it survives plugin updates: mv \"$LEGACY_KEY\" \"$CANONICAL_KEY\" && chmod 600 \"$CANONICAL_KEY\""
+else
+  CLIENT_EMAIL="$(node -e "try { console.log(JSON.parse(require('fs').readFileSync('$KEY','utf8')).client_email); } catch(e) { console.log('unreadable'); }" 2>/dev/null)"
+  if [ "$CLIENT_EMAIL" = "unreadable" ]; then
+    fail "gws_key: $KEY is not valid JSON" "re-drop the service-account key (or unset to re-fetch from 1Password)"
+    mark_fail
+  else
+    pass "gws_key: $CLIENT_EMAIL at $CANONICAL_KEY"
+  fi
+fi
+
+# ---- npm install (only after pre-flight passed)
+cd "$ROOT" || { fail "cd $ROOT failed"; exit 1; }
+if [ "$FORCE_INSTALL" = "1" ] || [ ! -d node_modules ] || [ ! -x node_modules/.bin/tsx ]; then
+  echo "INFO running npm install (may take 30-60s)..."
+  npm install --silent 2>&1 | tail -10
+  if [ ! -x node_modules/.bin/tsx ]; then
+    fail "deps: npm install completed but tsx still missing" "investigate npm install output above"
+    mark_fail
+  fi
+fi
+if [ -x node_modules/.bin/tsx ]; then
+  pass "deps: tsx=$(node_modules/.bin/tsx --version 2>&1 | head -1)"
+fi
+
+# ---- .env injection from 1Password
+ENV_OUT="$DATA_DIR/.env"
+ENV_TPL="$ROOT/.env.tpl"
+
+if [ "$SKIP_ENV" = "1" ]; then
+  warn "env: skipped (--skip-env)" "re-run without --skip-env to populate $ENV_OUT"
+elif [ ! -f "$ENV_TPL" ]; then
+  fail "env: .env.tpl not found at $ENV_TPL" "the plugin is corrupt; reinstall with /plugin install ace@ace"
+  mark_fail
+else
+  # Static lint: every op:// reference must have >=3 slash-separated segments
+  # (vault/item/field). 1Password requires this and `op inject` failures are
+  # cryptic ("invalid secret reference — too few '/'"). Catch malformed refs
+  # before touching the network. Comment lines are skipped (not injected).
+  # Item/field names can contain spaces, so we read each ref to end-of-line
+  # (or the closing `}}` for wrapped refs) and trim trailing whitespace.
+  LINT_BAD="$(awk '
+    /^[[:space:]]*#/ { next }
+    {
+      if (match($0, /op:\/\/.+$/)) {
+        ref = substr($0, RSTART)
+        sub(/}}.*/, "", ref)
+        sub(/[[:space:]]+$/, "", ref)
+        path = substr(ref, 6)
+        n = split(path, _parts, "/")
+        if (n < 3) printf "    line %d: %s (got %d segment%s, need >=3 vault/item/field)\n", NR, ref, n, (n==1?"":"s")
+      }
+    }
+  ' "$ENV_TPL")"
+  if [ -n "$LINT_BAD" ]; then
+    fail "env: malformed op:// references in .env.tpl" "every reference needs vault/item/field — fix and re-run /ace:setup:
+$LINT_BAD"
+    mark_fail
+  else
+    pass "env: .env.tpl op:// refs well-formed"
+  fi
+
+  # Decide whether to inject. Skip when .env already covers every key in .env.tpl.
+  NEEDS_INJECT=0
+  if [ "$FORCE_ENV" = "1" ]; then
+    NEEDS_INJECT=1
+    echo "INFO env: --force-env, re-injecting"
+  elif [ ! -f "$ENV_OUT" ]; then
+    NEEDS_INJECT=1
+    echo "INFO env: $ENV_OUT does not exist, injecting"
+  else
+    TPL_KEYS="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_TPL" | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
+    ENV_KEYS="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_OUT" | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
+    DIFF="$(comm -23 <(printf '%s\n' "$TPL_KEYS") <(printf '%s\n' "$ENV_KEYS") | tr '\n' ' ' | sed 's/ *$//')"
+    if [ -n "$DIFF" ]; then
+      NEEDS_INJECT=1
+      echo "INFO env: drift detected (missing keys: $DIFF), re-injecting"
+    else
+      UNRESOLVED_EXISTING="$(grep -cE '=op://' "$ENV_OUT" 2>/dev/null || echo 0)"
+      if [ "$UNRESOLVED_EXISTING" -gt 0 ]; then
+        NEEDS_INJECT=1
+        echo "INFO env: $UNRESOLVED_EXISTING unresolved op:// refs in $ENV_OUT, re-injecting"
+      fi
+    fi
+  fi
+
+  if [ "$NEEDS_INJECT" = "1" ] && [ -n "$LINT_BAD" ]; then
+    echo "INFO env: skipping op inject — fix lint failures above first"
+  elif [ "$NEEDS_INJECT" = "1" ]; then
+    INJECT_OUT="$(op inject -i "$ENV_TPL" -o "$ENV_OUT" --force $OP_ACCOUNT_FLAG 2>&1)"
+    INJECT_RC=$?
+    if [ "$INJECT_RC" -ne 0 ]; then
+      fail "env: op inject failed (exit $INJECT_RC)" "see error below — usually means your account/SA is missing read on one of the items in vault $OP_VAULT"
+      printf '%s\n' "$INJECT_OUT" | sed 's/^/    /'
+      mark_fail
+    else
+      pass "env: op inject wrote $ENV_OUT"
+    fi
+  else
+    pass "env: $ENV_OUT already has every .env.tpl key (use --force-env to refresh)"
+  fi
+
+  # Verify no unresolved op:// references survived. For each unresolved ref,
+  # run `op read` to surface the specific cause (missing item vs missing
+  # field vs no-read-permission) so the user can fix the right thing rather
+  # than guessing from a generic "grant access" message.
+  if [ -f "$ENV_OUT" ]; then
+    UNRESOLVED="$(grep -nE '=op://' "$ENV_OUT" 2>/dev/null)"
+    if [ -n "$UNRESOLVED" ]; then
+      DIAG=""
+      while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        # line format from grep -n: "<lineno>:<KEY>=<op-ref>"
+        ref="${line#*=}"
+        ref="${ref%\"}"; ref="${ref#\"}"
+        err="$(op read "$ref" $OP_ACCOUNT_FLAG 2>&1 >/dev/null)"
+        [ -z "$err" ] && err="(op read succeeded on retry — re-run /ace:setup with --force-env)"
+        DIAG="${DIAG}    ${line}
+      → ${err}
+"
+      done <<UNRESOLVED_EOF
+$UNRESOLVED
+UNRESOLVED_EOF
+      fail "env: unresolved 1Password references in $ENV_OUT" \
+           "per-ref diagnostic below — fix each cause and re-run with --force-env:
+$DIAG"
+      mark_fail
+    else
+      pass "env: all 1Password references resolved"
+    fi
+  fi
+fi
+
+# ---- Auto-update hook (opt-in)
+if [ "$AUTO_UPDATE" = "1" ]; then
+  HOOK_SCRIPT="$ROOT/bin/ace-update-check"
+  if [ ! -x "$HOOK_SCRIPT" ]; then
+    warn "auto_update: $HOOK_SCRIPT not executable" "chmod +x $HOOK_SCRIPT"
+  else
+    SETTINGS="$HOME/.claude/settings.json"
+    mkdir -p "$(dirname "$SETTINGS")"
+    [ -f "$SETTINGS" ] || echo "{}" > "$SETTINGS"
+    HOOK_RESULT="$(python3 - "$SETTINGS" "$HOOK_SCRIPT" <<'PY' 2>&1
+import json, sys
+path, hook_cmd = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception as e:
+    print(f"ERROR: could not parse {path}: {e}")
+    sys.exit(1)
+hooks = data.setdefault("hooks", {})
+session_start = hooks.setdefault("SessionStart", [])
+session_start = [h for h in session_start if "ace-update-check" not in json.dumps(h)]
+session_start.append({
+    "matcher": "*",
+    "hooks": [{"type": "command", "command": hook_cmd, "async": True}],
+})
+hooks["SessionStart"] = session_start
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+print("OK")
+PY
+)"
+    if [ "$HOOK_RESULT" = "OK" ]; then
+      pass "auto_update: SessionStart hook registered ($HOOK_SCRIPT)"
+    else
+      warn "auto_update: failed to register hook" "$HOOK_RESULT"
+    fi
+  fi
+fi
+
+# =====================================================================
+# Phase 3 — Verification (run doctor)
+# =====================================================================
+if [ "$SKIP_DOCTOR" = "0" ]; then
+  echo ""
+  echo "===== /ace:doctor ====="
+  if [ -x "$ROOT/bin/ace-doctor" ]; then
+    "$ROOT/bin/ace-doctor"
+  else
+    warn "doctor: $ROOT/bin/ace-doctor not executable, skipping" "chmod +x $ROOT/bin/ace-doctor"
+  fi
+fi
+
+echo ""
+echo "STATUS: COMPLETE"
+exit $EXIT_CODE

@@ -7,7 +7,8 @@ description: >
   when the Connect APK ships an update and the existing common-screenshot
   set goes stale. Output lives at
   `ACE/_common/connect-screenshots/<connect-version>/` and is read by
-  `training-materials` for layering into the per-opp deck.
+  the per-artifact training skills (`training-flw-guide`,
+  `training-deck-outline`) for layering into the per-opp deck.
 ---
 
 # Connect Baseline Screenshots
@@ -30,7 +31,7 @@ ACE training decks layer two pools of screenshots:
 Without this layering, every Phase 5 burns AVD time re-capturing the same
 20+ Connect-navigation screenshots. With it, those screenshots are captured
 once per Connect version, sit at a stable Drive path, and the per-opp
-training-materials skill embeds them by reference.
+training-flw-guide / training-deck-outline skills embed them by reference.
 
 ## When to run
 
@@ -170,6 +171,55 @@ Threshold 7.0/10.
 - **Dry-run:** run recipes locally (capturing PNGs to /tmp) but skip the
   Drive upload. State tracks `dry-run-success`.
 
+## CSRF token handling (when seeding ace-web prod sessions)
+
+If a step in this skill needs to POST to a Django-backed endpoint (the
+ACE web app's `/api/ingest/upload`, an OCS / Connect write, etc.) from
+inside a Playwright browser context, **never use `page.request.post()`**.
+The Playwright request context has its own cookie jar that doesn't share
+the page's session cookies, so Django rejects the write with HTTP 403
+("CSRF cookie not set" or "CSRF token missing or incorrect"). This is
+the same class of bug `mcp/connect/backends/playwright.ts` and
+`mcp/ocs-server.ts` already work around in production (search those
+files for `X-CSRFToken` for the canonical examples).
+
+The two-step pattern is: **read the CSRF cookie from `document.cookie`,
+then issue the fetch from inside the page** so the browser's own cookie
+jar travels with the request:
+
+```ts
+// Inside the Playwright session, after a GET has warmed csrftoken_ace:
+const csrf = await page.evaluate(() => {
+  const m = document.cookie.match(/(?:^|;\s*)csrftoken_ace=([^;]+)/);
+  return m ? m[1] : null;
+});
+if (!csrf) throw new Error('csrftoken_ace not set — GET base URL first to warm it');
+
+const response = await page.evaluate(
+  async ([url, csrf, body]) => {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrf as string, 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(body),
+    });
+    return { status: r.status, body: await r.text() };
+  },
+  [endpoint, csrf, payload],
+);
+```
+
+Notes:
+- Cookie name is `csrftoken_ace` on the ACE web app (`ace-web`); on the
+  OCS / Connect Django backends it's plain `csrftoken`. Pick the right
+  one for the host you're targeting.
+- The cookie isn't set until *some* view rendered by `CsrfViewMiddleware`
+  has been hit — a single `await page.goto(baseUrl)` first is enough to
+  warm it. See `skills/upload-transcript/SKILL.md` § Shell reference for
+  the curl-cookie-jar equivalent of the same pattern.
+- The header MUST be `X-CSRFToken` (capital T-O-K-E-N), not `X-CSRF-Token`.
+  Django's `CsrfViewMiddleware` only honors the former.
+
 ## Failure modes
 
 - **AVD not running / test user not signed in.** Halt with a pointer at
@@ -180,6 +230,9 @@ Threshold 7.0/10.
   re-running this skill.
 - **Drive upload fails (Shared-Drive guard).** Verify `ACE/_common/` lives
   on a Shared Drive; SA quota is 0 in My Drive.
+- **HTTP 403 "CSRF token missing" when seeding a Django session.** You
+  used `page.request.post()` instead of `page.evaluate(fetch, ...)`. See
+  the CSRF token handling section above.
 
 ## Change log
 

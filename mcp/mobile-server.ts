@@ -104,10 +104,25 @@ server.tool(
     recipePath: z.string(),
     envVars: z.record(z.string()).default({}),
     screenshotDir: z.string(),
+    // Optional override. Default = `process.env.ACE_AVD_NAME`. When set,
+    // ACE looks up the running AVD's adb port and runs maestro with
+    // `--host=localhost --port=<X>` so dadb talks to the emulator
+    // directly. This bypasses the dadb-1.2.10 listDadbs bug that aborts
+    // the whole device enumeration on the first `unauthorized` entry —
+    // fatal on shared workstations where another user's emulator is
+    // visible to your adb server. Defaulting from env makes the
+    // workaround opt-out instead of opt-in, so screenshot-capture and
+    // baseline skills don't silently regress when they forget to pass
+    // it. Set explicitly to a different name only if running against
+    // multiple concurrent AVDs.
+    avdName: z.string().optional(),
   },
-  async ({ recipePath, envVars, screenshotDir }) => ({
-    content: [{ type: 'text', text: JSON.stringify(await client.runRecipe(recipePath, envVars, screenshotDir), null, 2) }],
-  }),
+  async ({ recipePath, envVars, screenshotDir, avdName }) => {
+    const resolvedAvd = avdName ?? process.env.ACE_AVD_NAME;
+    return {
+      content: [{ type: 'text', text: JSON.stringify(await client.runRecipe(recipePath, envVars, screenshotDir, resolvedAvd), null, 2) }],
+    };
+  },
 );
 
 server.tool(

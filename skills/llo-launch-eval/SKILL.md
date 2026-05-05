@@ -26,15 +26,15 @@ the first 4 strongly-calibrated rubrics.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - PDD: `ACE/<opp-name>/pdd.md`
+   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
    - `llo-launch.md` or `launch-summary.md` — the activation record
    - `uat-results.md` (or `gate-briefs/llo-uat.md`) — UAT sign-offs
      the launch should have verified
    - `deployment-summary.md` — app-publish status the launch verified
-   - `state.yaml` — gate states (`gates.llo-launch`, `gates.llo-invite`)
+   - `run_state.yaml` — gate states (`gates.llo-launch`, `gates.llo-invite`)
 
-2. **Detect "phase not run" mode.** If `state.yaml` shows
-   `phases.llo-management.llo-launch` not `done` or the launch
+2. **Detect "phase not run" mode.** If `run_state.yaml` shows
+   `phases.execution-management.llo-launch` not `done` or the launch
    artifact is missing, emit `verdict: incomplete` immediately with
    `[INFO] Phase 5 llo-launch not run; not gradable yet`.
 
@@ -60,7 +60,7 @@ the first 4 strongly-calibrated rubrics.
      guidance.
 
 4. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/llo-launch.yaml`. The filename uses the
+   `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch-eval_verdict.yaml`. The filename uses the
    **producer** skill name (`llo-launch`), NOT this skill's name —
    see `agents/ace-orchestrator.md § Per-Step Eval Hook` for the
    naming rule:
@@ -87,7 +87,7 @@ the first 4 strongly-calibrated rubrics.
      - ref: "Connect activation: draft → active"
        score: 9.5
        verdict: pass
-       note: "Activation timestamp recorded in state.yaml; verification rules unchanged from Phase 3."
+       note: "Activation timestamp recorded in run_state.yaml; verification rules unchanged from Phase 3."
      # ... per check
 
    auto_surfaced:

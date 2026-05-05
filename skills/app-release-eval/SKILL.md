@@ -22,9 +22,9 @@ runs). Authored 0.10.29 in response to turmeric run_time_followups item 2
 ## Process
 
 1. **Read inputs from GDrive:**
-   - `ACE/<opp-name>/deployment-summary.md` — the artifact app-release
+   - `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` — the artifact app-release
      updates with `releases:` block.
-   - `ACE/<opp-name>/state.yaml` — for cross-check on `hq_app_id` /
+   - `ACE/<opp-name>/run_state.yaml` — for cross-check on `hq_app_id` /
      `hq_build_id` per-app entries under `learn_app_summary` /
      `deliver_app_summary`.
 
@@ -40,7 +40,7 @@ runs). Authored 0.10.29 in response to turmeric run_time_followups item 2
    |---|---|---|
    | **Both apps released** | 35% | Both Learn and Deliver have `is_released: true` and a `latest_released_version` ≥ 1 in the deployment-summary `releases:` block. Either app missing release = ≤3 (fail). One app released, the other still draft = ≤6 (warn). |
    | **CCZ-marker integrity** | 25% | CCZ verification (Step 6 of app-release) confirms each released build has the canonical Connect markers (`connect.learn_module` / `connect.deliver_unit` / `connect.assessment`). Missing markers = ≤4 deduction per missing class. (Note: this is the dimension that catches turmeric run_time_followups item 2 — the CCZ regex bug that uses `<learn:` prefix instead of the actual `xmlns` attribute. A regex bug that mis-reports a perfectly-marked app as missing markers should surface as a [PLATFORM] entry on the CCZ-checker side, not a deduction here.) |
-   | **Build-id traceability** | 20% | The `hq_build_id` recorded in state.yaml (post-release) matches the `_id` returned by the CCHQ `apps/save` step and the `latest_released_version` matches what `releases/release/<build_id>/` returned. Mismatch = 4-point deduction. |
+   | **Build-id traceability** | 20% | The `hq_build_id` recorded in run_state.yaml (post-release) matches the `_id` returned by the CCHQ `apps/save` step and the `latest_released_version` matches what `releases/release/<build_id>/` returned. Mismatch = 4-point deduction. |
    | **Connect deliver-units enumerable** | 20% | After release, Connect's `Sync Deliver Units` should successfully enumerate at least one deliver unit per Deliver-app form. Verified by checking `connect-setup-summary.md` (Phase 3) for the `Sync Deliver Units enumerated:` line; OR if Phase 3 hasn't run yet, by `connect_list_deliver_units` MCP probe against the opp. Empty enumeration = 4-point deduction (release didn't actually unblock Phase 3). |
 
    **Deduction rules:**
@@ -75,7 +75,7 @@ runs). Authored 0.10.29 in response to turmeric run_time_followups item 2
    `xmlns` attributes. The bug is in app-release (the skill that
    does the check), not in the build itself.
    - When running this eval and the CCZ check reports missing markers,
-     ALSO read the build's actual XML (via state.yaml's hq_build_id +
+     ALSO read the build's actual XML (via run_state.yaml's hq_build_id +
      the CCHQ build endpoint) and verify whether markers are really
      missing. If markers are present in the XML but the CCZ check
      mis-reports them, surface as `[WARN] CCZ regex false-positive in
@@ -87,7 +87,7 @@ runs). Authored 0.10.29 in response to turmeric run_time_followups item 2
      ONLY if the markers are actually missing in the XML.
 
 5. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/app-release.yaml`. The filename uses the
+   `ACE/<opp-name>/runs/<run-id>/2-commcare/app-release-eval_verdict.yaml`. The filename uses the
    **producer** skill name (`app-release`), NOT this skill's name —
    see `agents/ace-orchestrator.md § Per-Step Eval Hook` for the
    naming rule. Body conforms to `lib/verdict-schema.ts` (validated by
@@ -172,7 +172,7 @@ The first 3 calibration runs should specifically include:
 - ace-connect MCP (when Phase 3 has run): `connect_list_deliver_units`
   to verify Connect can enumerate deliver units from the released build.
 - CCHQ HTTP probe (no MCP yet): `GET /a/<domain>/apps/view/<app_id>/`
-  to verify is_released against the build_id in state.yaml.
+  to verify is_released against the build_id in run_state.yaml.
 
 ## Mode Behavior
 

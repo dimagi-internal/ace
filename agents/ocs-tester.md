@@ -60,7 +60,7 @@ and runs the LLM-as-Judge rubric.
 - `experiment_id` (integer) — the OCS chatbot to test. If omitted, tests
   the golden template from `$OCS_GOLDEN_TEMPLATE_ID`.
 - `opp_name` (optional) — if set, loads opp-specific test prompts from
-  `ACE/<opp-name>/test-prompts.md` (expected questions + ground-truth
+  `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-test-prompts.md` (expected questions + ground-truth
   answers from the PDD). If unset, only runs Connect-general prompts.
 - `--quick` / `--deep` / `--monitor` flag — passed through to both
   skills. Defaults to `--quick`.
@@ -74,4 +74,4 @@ and runs the LLM-as-Judge rubric.
 - `ACE/<opp-name>/verdicts/ocs-chatbot-eval-<mode>.yaml` — verdict
 - `ACE/<opp-name>/eval-reports/YYYY-MM-DD-ocs-eval.md` — eval report
   (skipped for `--quick` stdout mode)
-- `ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-deep.md` — only in `--deep`
+- `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-deep.md` — only in `--deep`

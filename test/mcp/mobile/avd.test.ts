@@ -188,8 +188,8 @@ describe('AvdBackend.captureUiDump', () => {
     const shell = fakeShell({
       'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
       'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
-      'adb -s emulator-5554 shell uiautomator dump /sdcard/window_dump.xml': { stdout: 'UI hierarchy dumped\n' },
-      'adb -s emulator-5554 exec-out cat /sdcard/window_dump.xml': { stdout: xml },
+      'adb -s emulator-5554 shell uiautomator dump /data/local/tmp/window_dump.xml': { stdout: 'UI hierarchy dumped\n' },
+      'adb -s emulator-5554 exec-out cat /data/local/tmp/window_dump.xml': { stdout: xml },
     });
     const backend = new AvdBackend({ shell });
     const r = await backend.captureUiDump('ACE_Pixel_API_34');
@@ -197,5 +197,52 @@ describe('AvdBackend.captureUiDump', () => {
     expect(r.elements).toContainEqual(
       expect.objectContaining({ id: 'login_btn', text: 'Sign in', class: 'android.widget.Button' }),
     );
+  });
+});
+
+describe('AvdBackend.adbPortFromSerial', () => {
+  it('derives the adbd port for a standard emulator serial', () => {
+    expect(AvdBackend.adbPortFromSerial('emulator-5554')).toBe(5555);
+    expect(AvdBackend.adbPortFromSerial('emulator-5558')).toBe(5559);
+  });
+
+  it('returns null for non-emulator serials', () => {
+    expect(AvdBackend.adbPortFromSerial('127.0.0.1:5555')).toBeNull();
+    expect(AvdBackend.adbPortFromSerial('R5CMA0BARRP')).toBeNull();
+    expect(AvdBackend.adbPortFromSerial('')).toBeNull();
+  });
+});
+
+describe('AvdBackend.setGmsEnabled', () => {
+  it('runs `pm enable` against the matching device when enabled=true', async () => {
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
+      'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+      'adb -s emulator-5554 shell pm enable com.google.android.gms': {
+        stdout: 'Package com.google.android.gms new state: enabled\n',
+      },
+    });
+    const backend = new AvdBackend({ shell });
+    await expect(backend.setGmsEnabled('ACE_Pixel_API_34', true)).resolves.toBeUndefined();
+  });
+
+  it('runs `pm disable-user --user 0` when enabled=false', async () => {
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
+      'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+      'adb -s emulator-5554 shell pm disable-user --user 0 com.google.android.gms': {
+        stdout: 'Package com.google.android.gms new state: disabled-user\n',
+      },
+    });
+    const backend = new AvdBackend({ shell });
+    await expect(backend.setGmsEnabled('ACE_Pixel_API_34', false)).resolves.toBeUndefined();
+  });
+
+  it('is a no-op when the AVD is not running', async () => {
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\n' },
+    });
+    const backend = new AvdBackend({ shell });
+    await expect(backend.setGmsEnabled('ACE_Pixel_API_34', true)).resolves.toBeUndefined();
   });
 });

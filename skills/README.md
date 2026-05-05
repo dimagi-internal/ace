@@ -14,7 +14,7 @@ skills/
     └── SKILL.md
 ```
 
-`<skill-name>` is kebab-case and matches the `name:` frontmatter field exactly. Multi-word names use single hyphens, not underscores. Names should be verbs or verb phrases ("idea-to-pdd", "app-test", "llo-onboarding"), not nouns.
+`<skill-name>` is kebab-case and matches the `name:` frontmatter field exactly. Multi-word names use single hyphens, not underscores. Names should be verbs or verb phrases ("idea-to-pdd", "app-deploy", "llo-onboarding"), not nouns.
 
 If a skill needs supporting files (templates, scripts, prompt fragments), they go alongside `SKILL.md` in the same directory.
 
@@ -111,7 +111,7 @@ Each archetype is a `### <archetype-name>` subheading with a short description a
 <how the skill handles multi-stage PDDs — typically dispatches per stage>
 ```
 
-The 9 archetype-aware skills today are: `idea-to-pdd`, `pdd-to-test-prompts`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-test`, `connect-opp-setup`, `llo-invite`, `flw-data-review`, `cycle-grade`.
+The 9 archetype-aware skills today are: `idea-to-pdd`, `pdd-to-test-prompts`, `pdd-to-app-journeys`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `connect-opp-setup`, `llo-invite`, `flw-data-review`, `cycle-grade`.
 
 ### `## LLM-as-Judge Rubric` (when the skill self-evaluates or is an eval skill)
 
@@ -209,12 +209,12 @@ attribution key. Concrete consequences:
 
 - `-eval` skills MUST drop the `-eval` suffix from their verdict
   filename. `idea-to-pdd-eval` writes
-  `ACE/<opp>/verdicts/idea-to-pdd.yaml` so the Workbench attributes the
+  `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd-eval_verdict.yaml` so the Workbench attributes the
   score to the `idea-to-pdd` row (not the `-eval` row).
 - Recurring per-step evals use `<producer>-monitor.yaml` (e.g.
   `verdicts/flw-data-review-monitor.yaml`).
 - Skills that self-evaluate inline (no separate `-eval` skill — e.g.
-  `qa-plan`, `training-materials`, `app-screenshot-capture`) write
+  `app-screenshot-capture`, every per-artifact training skill) write
   `verdicts/<self>.yaml`.
 - Skills that ARE their own registry row (no producer/eval split, e.g.
   `ocs-chatbot-eval`) keep their own name in the verdict filename:
@@ -316,12 +316,57 @@ the source of truth if this prose drifts.
   gate-bound. As more per-skill `-eval` skills gain rubrics and start
   writing to `verdicts/`, opp-eval automatically picks them up.
 
+## Long-running skills — no fake background tasks
+
+If a skill's work loop runs for more than ~30 seconds (chat suites,
+multi-form mobile recipes, multi-build releases, multi-page screenshot
+captures), it must follow the long-running-skill contract from
+`agents/ace-orchestrator.md § Long-Running Skills — No Fake Background
+Tasks`. Concretely:
+
+1. **Add a `## Wall-Clock Budget` section** declaring per-unit and
+   suite-level caps. Track elapsed with `date +%s` checkpoints.
+2. **Add a liveness probe** as the first step inside `## Process`
+   (after credential resolution). One cheap (<5s) call against the
+   upstream service. Fail loud if it doesn't respond — don't burn
+   budget on a dead session.
+3. **Write artifacts incrementally.** Every captured unit (prompt,
+   form, screenshot) lands in the artifact file as it completes,
+   typically via `drive_update_file` with `ifMatchRevisionId`
+   (revision-CAS, available since 0.11.3). "Build everything in
+   memory and flush at the end" is banned — a mid-loop kill loses
+   the work.
+4. **Resume from partial.** First step inside `## Process` (after
+   liveness) reads any existing artifact and skips already-completed
+   units. Re-running the skill is idempotent.
+5. **Three-strike circuit breaker.** Three consecutive unit failures
+   (timeout, error response) abort the suite. Burning the rest of
+   the budget produces noise.
+6. **Heartbeat `run_state.yaml`.** Write `<step>: in_progress` with a
+   fresh `last_actor_at` BEFORE work, `done` AFTER. Resume agents
+   treat `in_progress` + `last_actor_at` > 15 min as dead (see
+   `agents/ace-orchestrator.md § State-as-canary contract`).
+7. **No `ScheduleWakeup` from inside a phase-internal skill.** That
+   primitive defers the agent without backgrounding the work. It's
+   reserved for cron-recurring skills (`timeline-monitor`,
+   `flw-data-review`, `ocs-chatbot-qa --monitor`) — never for
+   foreground sequential work.
+
+**Canonical example:** `skills/ocs-chatbot-qa/SKILL.md`. See its
+`## Wall-Clock Budget` section and the Process steps for liveness
+probe (Step 2), resume-from-partial (Step 3), incremental writes
+(Step 5), and metadata-only flush (Step 7).
+
+This convention landed in 0.11.6 after the `turmeric-20260503-0835`
+deep capture stalled for 3+ hours on a fictional background task and
+produced no recoverable transcript.
+
 ## How the PDD `## Evidence Model` flows through skills
 
 The PDD template (`templates/pdd-template.md`) declares an `## Evidence Model` section with three layers:
 
-- **Layer A — Delivery proof** (the thing happened): drives **verification rules** in `connect-opp-setup` and **capture-path tests** in `app-test`. Hard gates.
-- **Layer B — Content proof** (it was done properly): drives **content-quality tests** in `app-test` and **per-delivery review** in `flw-data-review`. Soft flags.
+- **Layer A — Delivery proof** (the thing happened): drives **verification rules** in `connect-opp-setup` and **structural pass criteria** in `app-test-cases`. Hard gates.
+- **Layer B — Content proof** (it was done properly): drives **per-journey UX pass criteria** in `pdd-to-app-journeys` / `app-ux-eval` and **per-delivery review** in `flw-data-review`. Soft flags.
 - **Layer C — Cross-delivery quality** (the data is useful): drives **cross-delivery synthesis** in `flw-data-review` and **Intervention Effectiveness / Research Quality grading** in `cycle-grade`. Soft flags.
 
 If you're writing a skill that sets up verification, runs tests, reviews data, or grades quality, you almost certainly want to read the Evidence Model in your skill's first or second process step and use it as the spec rather than re-deriving from the PDD body. **If the PDD has no Evidence Model section, fail loudly** — that's a sign `idea-to-pdd` skipped or short-circuited the stress-test rubric and the PDD shouldn't be propagating.
@@ -332,7 +377,7 @@ The 3 current archetypes are `atomic-visit`, `focus-group`, and `multi-stage`. A
 
 1. **`templates/pdd-template.md`** — add the new archetype to the `Archetype:` enum description and to the archetype-guidance block at the top of the template.
 2. **`skills/idea-to-pdd/SKILL.md`** — add a `### <new-archetype>` subheading inside `## Archetypes` describing the additional questions to ask in step 3 and the archetype-specific sections to draft in step 4.
-3. **The 8 other archetype-aware skills** (`pdd-to-test-prompts`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-test`, `connect-opp-setup`, `llo-invite`, `flw-data-review`, `cycle-grade`) — add a `### <new-archetype>` subheading inside `## Archetypes` describing how the skill behaves for the new archetype.
+3. **The 8 other archetype-aware skills** (`pdd-to-test-prompts`, `pdd-to-app-journeys`, `pdd-to-learn-app`, `pdd-to-deliver-app`, `connect-opp-setup`, `llo-invite`, `flw-data-review`, `cycle-grade`) — add a `### <new-archetype>` subheading inside `## Archetypes` describing how the skill behaves for the new archetype.
 
 Do **not** create a new skill per archetype. The whole point of the archetype mechanism is to avoid forking the framework — a new archetype is an additive change inside the existing 9 skills, not a fan-out of new skill files. (See Lesson 9 of the canopy `product-management` skill: *"Framework changes mean variation points, not new components."*)
 
@@ -352,7 +397,6 @@ When in doubt, copy from the closest existing skill:
 
 - **`skills/idea-to-pdd/SKILL.md`** — canonical example of `## LLM-as-Judge Rubric` (the 5-question stress-test rubric with calibrated grading anchors) and `## Archetypes` (3 archetypes with required-section additions).
 - **`skills/connect-opp-setup/SKILL.md`** — canonical example of an Evidence-Model-consuming skill (reads Layer A in step 2, errors if missing) with archetype branching and a Current Workaround block.
-- **`skills/app-test/SKILL.md`** — canonical example of an Evidence-Model-consuming skill with archetype branching but no Current Workaround.
 - **`skills/cycle-grade/SKILL.md`** — canonical example of archetype branching that adds a 7th grading dimension (`Research Quality`) for one specific archetype.
 - **`skills/llo-onboarding/SKILL.md`** — canonical example of a simple skill with no archetype branching and no Evidence Model consumption.
 

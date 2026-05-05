@@ -39,16 +39,16 @@ If no mode is passed, default to `--quick`.
 ## Process
 
 1. **Read the PDD for archetype context (best-effort, not required).**
-   Look up `ACE/<opp-name>/pdd.md`. If present, read the `archetype:`
+   Look up `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`. If present, read the `archetype:`
    field and `## Evidence Model` section and keep them in scope for
    recommendation phrasing. **If the PDD is missing, do not fail** —
    opp-eval is designed to work on partially-completed opps (that's
    exactly the point of `--quick`). Emit `[INFO] pdd.md not found —
    recommendations will be archetype-agnostic` and continue.
 
-2. **Read `state.yaml`** from `ACE/<opp-name>/state.yaml` to determine
+2. **Read `run_state.yaml`** from `ACE/<opp-name>/run_state.yaml` to determine
    the opp's current phase. This drives which manifest entries to check
-   in step 3. If `state.yaml` is missing, assume `design` phase (only
+   in step 3. If `run_state.yaml` is missing, assume `design` phase (only
    the earliest required artifacts are expected).
 
 3. **Structural check (runs in every mode).** For each required,
@@ -77,16 +77,17 @@ If no mode is passed, default to `--quick`.
    The aggregator must surface gaps, not hide behind them.
 
 6. **Group verdicts into skill categories.** Map each verdict's `skill`
-   to one of six run-level dimensions:
+   to one of seven run-level dimensions:
 
    | Category | Weight | Covers skills |
    |---|---|---|
-   | `design`    | 0.20 | `idea-to-pdd`, `pdd-to-test-prompts` |
-   | `commcare`  | 0.20 | `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-test`, `training-materials` |
-   | `connect`   | 0.15 | `connect-program-setup`, `connect-opp-setup`, `llo-invite` |
-   | `ocs`       | 0.20 | `ocs-agent-setup`, `ocs-chatbot-eval-quick`, `ocs-chatbot-eval-deep` |
-   | `operate`   | 0.15 | `llo-onboarding`, `llo-uat`, `llo-launch`, `ocs-chatbot-eval-monitor`, `flw-data-review`, `timeline-monitor` |
-   | `closeout`  | 0.10 | `opp-closeout`, `llo-feedback`, `learnings-summary`, `cycle-grade` |
+   | `design`        | 0.20 | `idea-to-pdd`, `pdd-to-test-prompts` |
+   | `commcare`      | 0.18 | `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-test-cases`, `training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-onboarding-email`, `training-deck-outline` |
+   | `connect`       | 0.13 | `connect-program-setup`, `connect-opp-setup` |
+   | `ocs`           | 0.18 | `ocs-agent-setup`, `ocs-chatbot-eval-quick`, `ocs-chatbot-eval-deep` |
+   | `solicitation`  | 0.10 | `solicitation-create`, `solicitation-review` (added 0.12.0 — Phase 6) |
+   | `operate`       | 0.13 | `llo-onboarding`, `llo-uat`, `llo-launch`, `ocs-chatbot-eval-monitor`, `flw-data-review`, `timeline-monitor` |
+   | `closeout`      | 0.08 | `opp-closeout`, `llo-feedback`, `learnings-summary`, `cycle-grade` |
 
    Category weights sum to 1.0. Per-category score is the simple mean
    of all verdicts that map into the category, **excluding any verdict
@@ -123,8 +124,9 @@ If no mode is passed, default to `--quick`.
    | 0 | none     | `incomplete` | Nothing to grade |
    | 1 | thin     | `incomplete` | Single-category score isn't a run grade — flag `[INFO]` |
    | 2 | partial  | `warn` (max) | One cross-skill signal exists but most of the run is unmeasured |
-   | 3 | adequate | `pass` if raw ≥ 7 | Half-coverage; raw score governs |
-   | 4+ | full    | `pass` if raw ≥ 7; `warn` 4.0–6.9; `fail` <4.0 | Cross-skill view is real |
+   | 3 | adequate | `pass` if raw ≥ 7 | Less than half-coverage; raw score governs |
+   | 4 | adequate | `pass` if raw ≥ 7 | Half-coverage; raw score governs |
+   | 5+ | full   | `pass` if raw ≥ 7; `warn` 4.0–6.9; `fail` <4.0 | Cross-skill view is real |
 
    The verdict cap applies AFTER the raw score: a 9.5 raw with
    1-category coverage emits `incomplete`, not a misleading PASS.
@@ -171,7 +173,7 @@ If no mode is passed, default to `--quick`.
     documented in § Scorecard Output below.
 
 13. **Write the gate brief (uniform contract).** For `--deep` and
-    `--monitor`, emit `ACE/<opp-name>/gate-briefs/opp-eval-deep.md`
+    `--monitor`, emit `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/opp-eval_gate-brief-deep.md`
     (same path used by both modes — latest wins) using the shape in
     `agents/ace-orchestrator.md § Gate Brief Contract`. opp-eval does
     **not** gate any phase today; the brief exists for contract
@@ -179,7 +181,7 @@ If no mode is passed, default to `--quick`.
     case. See § Gate Brief below.
 
 14. **In `--monitor` mode**, append a single-line entry to
-    `ACE/<opp-name>/scorecards/trend.md` with date, overall score,
+    `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/trend.md` with date, overall score,
     each non-null category score, and the number of verdicts
     aggregated. One row per run so drift is visible at a glance.
 
@@ -288,7 +290,7 @@ recommendations:
 # Opportunity Eval — Quick
 Opportunity: <opp-name>
 Generated: <ISO timestamp>
-Current phase (from state.yaml): <phase>
+Current phase (from run_state.yaml): <phase>
 
 ## Structural check
 
@@ -299,7 +301,7 @@ Current phase (from state.yaml): <phase>
 ## Notes
 
 <One line per INFO from the structural scan. Concrete examples:
-  [INFO] state.yaml missing — assumed design phase (default)
+  [INFO] run_state.yaml missing — assumed design phase (default)
   [INFO] 2 unexpected files are operator-maintained (improvement-backlog.md, iteration-log.md); safe to ignore
   [INFO] pdd.md archetype: focus-group — deep-mode recommendations will use FGD vocabulary
 If no INFOs to surface, write "None.">
@@ -361,7 +363,7 @@ opp-eval does **not** gate any phase today. The brief is written for
 contract uniformity so future automation (or ad-hoc operator review)
 can consume it with the same reader used for the 5 real gate briefs.
 
-Location: `ACE/<opp-name>/gate-briefs/opp-eval-deep.md` (single path
+Location: `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/opp-eval_gate-brief-deep.md` (single path
 for both `--deep` and `--monitor`; latest invocation wins).
 
 Shape follows `agents/ace-orchestrator.md § Gate Brief Contract`:

@@ -64,8 +64,29 @@ export class MobileClient {
     return fetchOtp(phone, { userDataDir: this.playwrightUserDataDir, headed });
   }
 
-  runRecipe(recipePath: string, env: Record<string, string>, screenshotDir: string): Promise<RecipeRunResult> {
-    return this.maestro.runRecipe(recipePath, env, screenshotDir);
+  /**
+   * When `avdName` is provided, the recipe runs against that emulator's
+   * adb port directly via `maestro --host=localhost --port=<adbd>`,
+   * which sidesteps the dadb-1.2.10 listDadbs bug that aborts on any
+   * unauthorized device in the local adb-server's device list (see
+   * `MaestroBackend.runRecipe`). Without `avdName` we fall back to
+   * Maestro's default device auto-discovery for backward compatibility.
+   */
+  async runRecipe(
+    recipePath: string,
+    env: Record<string, string>,
+    screenshotDir: string,
+    avdName?: string,
+  ): Promise<RecipeRunResult> {
+    const adbPort = avdName ? await this.resolveAdbPort(avdName) : undefined;
+    return this.maestro.runRecipe(recipePath, env, screenshotDir, { adbPort });
+  }
+
+  private async resolveAdbPort(avdName: string): Promise<number | undefined> {
+    const found = await this.avd.findRunningAvd(avdName);
+    if (!found) return undefined;
+    const port = AvdBackend.adbPortFromSerial(found.serial);
+    return port ?? undefined;
   }
 
   /**
@@ -89,17 +110,24 @@ export class MobileClient {
     backupCode: string;
     name: string;
   }): Promise<TestUserRegistrationResult> {
-    await this.avd.ensureAvdRunning(args.avdName);
+    const avd = await this.avd.ensureAvdRunning(args.avdName);
+    const adbPort = AvdBackend.adbPortFromSerial(avd.serial) ?? undefined;
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-mobile-reg-'));
     const toContinue = path.join(this.staticRecipesDir, 'connect-register-to-otp.yaml');
     const fromContinue = path.join(this.staticRecipesDir, 'connect-register-from-otp.yaml');
+
+    // GMS is enabled here so CommCare 2.62.0's launch check passes. We
+    // disable it between part A and part B so the in-app face-capture
+    // step (only reached on the fresh-registration branch of part B)
+    // can fall back to ManualMode. See `AvdBackend.setGmsEnabled`.
+    await this.avd.setGmsEnabled(args.avdName, true);
 
     logInfo('register_test_user: part A (launch → Continue)');
     const partA = await this.maestro.runRecipe(toContinue, {
       PHONE_LOCAL: args.phoneLocal,
       COUNTRY_CODE: args.countryCode,
       PIN: args.pin,
-    }, path.join(tmp, 'part-a'));
+    }, path.join(tmp, 'part-a'), { adbPort });
     if (partA.status !== 'pass') {
       if (partA.stdout.includes('PHONE_ALREADY_REGISTERED')) {
         return { alreadyRegistered: true, phone: args.phone };
@@ -107,12 +135,17 @@ export class MobileClient {
       throw new Error(`register_test_user part A failed: ${partA.stderr || partA.stdout}`);
     }
 
+    // Disable GMS so face-capture in part B picks ManualMode. CommCare
+    // already passed its launch check above, and doesn't re-check GMS
+    // mid-session.
+    await this.avd.setGmsEnabled(args.avdName, false);
+
     logInfo('register_test_user: part B (post-Continue → registered)');
     const partB = await this.maestro.runRecipe(fromContinue, {
       NAME: args.name,
       BACKUP_CODE: args.backupCode,
       PIN: args.pin,
-    }, path.join(tmp, 'part-b'));
+    }, path.join(tmp, 'part-b'), { adbPort });
     if (partB.status !== 'pass') {
       if (partB.stdout.includes('PHONE_ALREADY_REGISTERED')) {
         return { alreadyRegistered: true, phone: args.phone };

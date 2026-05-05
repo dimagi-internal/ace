@@ -32,7 +32,7 @@ Produce a final grade and assessment of the complete CRISPR-Connect cycle.
    - Top 3 things to improve (for next cycle)
    - Specific recommendations for each ACE skill that was used
 
-5. **Write final report** to `ACE/<opp-name>/closeout/cycle-grade.md`.
+5. **Write final report** to `ACE/<opp-name>/runs/<run-id>/8-closeout/cycle-grade.md`.
 
 6. **Email admin group** with the full cycle grade report.
 

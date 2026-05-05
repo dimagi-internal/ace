@@ -23,7 +23,8 @@ Optional:
   the resulting Session is surfaced under the opp in the Workbench's
   "linked chats" panel for that step. Strongly recommended when invoked
   from `/ace:run --ace-web-url`.
-- `opp_run_id` — currently always `r1`; reserved for multi-run.
+- `opp_run_id` — the run-id (e.g. `20260502-1830`) for multi-run layout opps;
+  omit for legacy flat opps (see `## Payload fields` below).
 - `opp_step_skill` — if the transcript is scoped to a single skill
   invocation (e.g. just the `idea-to-pdd` run, not the full `/ace:run`
   lifecycle), set this so the linkage points at the specific step.
@@ -33,6 +34,20 @@ Optional:
   ace-web side, the upload is attributed to that workspace and
   appears in its linked-chats panel. If absent, the upload is stored
   as an orphan (workspace=NULL) — functional but not attributed.
+
+## Payload fields
+
+When invoked from the orchestrator with both `<opp>` and `<run-id>` in
+context (the multi-run layout introduced 2026-05-02 — see
+`docs/superpowers/specs/2026-05-02-ace-run-multi-run-revival-design.md`),
+send BOTH:
+
+- `opp_slug`: the opp folder name (e.g. `turmeric`).
+- `opp_run_id`: the run-id (e.g. `20260502-1830`).
+- `opp_step_skill` (optional): the skill that triggered the upload.
+
+For legacy flat opps (no `runs/` subfolder), send `opp_slug` only and
+omit `opp_run_id`. The ace-web ingest endpoint accepts either shape.
 
 ## Steps
 
@@ -57,7 +72,7 @@ Optional:
    - `-H "Referer: <base-url>/"`
    - `-F "file=@<transcript_path>;type=application/x-ndjson"`
    - `-F "opp_slug=<slug>"` (if provided)
-   - `-F "opp_run_id=<run_id>"` (if provided; usually `r1`)
+   - `-F "opp_run_id=<run_id>"` (if provided; format `YYYYMMDD-HHMM` for multi-run opps)
    - `-F "opp_step_skill=<skill>"` (if provided)
    - `-F "ace_root_folder_id=<id>"` (if `$ACE_DRIVE_ROOT_FOLDER_ID` is
      set; omit the field entirely if not — never send empty)

@@ -27,8 +27,8 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` and
 ## Process
 
 1. **Read inputs from GDrive:**
-   - PDD: `ACE/<opp-name>/pdd.md`
-   - Deliver app summary: `ACE/<opp-name>/app-summaries/deliver-app-summary.md`
+   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
+   - Deliver app summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md`
      (contains the `nova_app_id` and the human-readable summary).
    - Optionally fetch the live blueprint via Nova MCP
      `get_app({app_id: <nova_app_id>})` — provides the authoritative
@@ -93,7 +93,7 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` and
    - All 5 dimensions ≥ 7 AND overall ≥ 7.5 → suite verdict `pass`.
 
 6. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/pdd-to-deliver-app.yaml`. The filename uses
+   `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-deliver-app-eval_verdict.yaml`. The filename uses
    the **producer** skill name (`pdd-to-deliver-app`), NOT this skill's
    name — see `agents/ace-orchestrator.md § Per-Step Eval Hook` for
    the naming rule. Body uses the shared shape (see `skills/README.md §

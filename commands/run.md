@@ -1,6 +1,6 @@
 ---
 description: Run the full CRISPR-Connect lifecycle for an opportunity
-argument-hint: [<opp-name>] [--mode default|review|auto] [--idea FILE|-] [--ace-web-url URL] [--dry-run] [--sandbox] [--no-evals]
+argument-hint: [<opp>[/<run-id>]] [--mode default|review|auto] [--idea FILE|-] [--ace-web-url URL] [--dry-run] [--sandbox] [--no-evals]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---
 
@@ -8,9 +8,21 @@ allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 
 Run the full CRISPR-Connect lifecycle for a Connect opportunity.
 
+- Phase 4 (OCS) and Phase 5 (apps) run **shallow** QA only. Deep
+  quality assessment is a separate command — see /ace:qa-deep <opp>.
+  Phase 6 activation will refuse to proceed without fresh deep
+  verdicts (run /ace:qa-deep before go-live).
+
 ## Arguments
-- `<opp-name>` — slug for the opp folder in Drive. **Optional.** If omitted,
-  default to `smoke-<YYYYMMDD-HHMM>` using the current time.
+- `<opp>` or `<opp>/<run-id>` — **optional positional**.
+  - Bare `<opp>` (e.g., `turmeric`): use that opp; create a fresh
+    `runs/<run-id>/` folder.
+  - `<opp>/<run-id>` (e.g., `turmeric/20260502-1830`): resume that
+    specific run by reading its existing `state.yaml`.
+  - **Omitted (zero-arg)**: discover the opp whose `inputs/` folder
+    has the newest mtime, fresh run there. See
+    `agents/ace-orchestrator.md § Starting a New Opportunity` for the
+    full discovery flow.
 - `--mode default|review|auto` — execution mode (default: `default`).
   - `default` — auto-proceed through internal Phases 1–5 unless a gate
     brief surfaces a `[BLOCKER]` or a hard error occurs. Always pause
@@ -24,7 +36,7 @@ Run the full CRISPR-Connect lifecycle for a Connect opportunity.
     (e.g. eval calibration). `[BLOCKER]` concerns still escalate.
 - `--idea FILE|-` — pre-seed `idea.md` from a file path, or `-` for stdin.
   When provided, skip the interactive PDD-picker described below.
-  Content is uploaded verbatim to `ACE/<opp-name>/idea.md` via
+  Content is uploaded verbatim to `ACE/<opp>/runs/<run-id>/1-design/idea.md` via
   `drive_create_file`.
 - `--ace-web-url URL` — after the orchestrator completes, invoke the
   `upload-transcript` skill to POST the run's stream-json transcript to
@@ -33,6 +45,21 @@ Run the full CRISPR-Connect lifecycle for a Connect opportunity.
   `https://labs.connect.dimagi.com/ace`. If the env var is not set,
   skip the upload silently. Explicit `--ace-web-url` always wins
   (including `--ace-web-url ''` to force-disable).
+
+  **Pre-flight gate (when `--ace-web-url` is set explicitly).** Before
+  starting Phase 1, verify `ACE_E2E_AUTH_TOKEN` is present and
+  non-empty in the resolved `.env`. If missing, stop the run with:
+
+  > `--ace-web-url` was set but `ACE_E2E_AUTH_TOKEN` is unset in
+  > `<resolved-env-path>`. The post-run upload would fail with an
+  > authentication error after the full lifecycle had already burned
+  > runtime. Either re-inject the token from 1Password (`op inject
+  > -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --account
+  > dimagi.1password.com`) or drop `--ace-web-url`.
+
+  This is the explicit-flag case only. The smart-default path silently
+  skips the upload when the token is missing — it's not user-asked,
+  so the run shouldn't error.
 - `--dry-run` — execute all skills but log effectful actions to
   `comms-log/dry-run-<step>.md` instead of performing them. Emails are
   not sent, apps are not published, tickets are not created. LLM-as-Judge
@@ -52,30 +79,36 @@ Run the full CRISPR-Connect lifecycle for a Connect opportunity.
 
 ## Smart-default UX (zero-arg happy path)
 
-The intended minimum invocation is literally `/ace:run` (or
-`/ace:run <slug>`). When no `--idea` is provided, the orchestration
-procedure discovers a PDD on Drive and prompts the operator to confirm.
-See § Starting a New Opportunity in `agents/ace-orchestrator.md` for
-the full resolution flow. Short version:
+The intended minimum invocation is literally `/ace:run`. With no args,
+the orchestrator picks the most-recently-touched opp (by `inputs/`
+mtime under the ACE Drive root) and starts a fresh run on it. No PDD
+picker prompt fires — the operator chose what goes in `inputs/`
+once, and zero-arg trusts that choice.
 
-1. Resolve slug (from arg, or auto-generate `smoke-<timestamp>`).
-2. Read `ACE_DRIVE_ROOT_FOLDER_ID` from the environment. If unset/empty,
-   stop with an actionable error pointing at `op inject` (see
-   `agents/ace-orchestrator.md` § Starting a New Opportunity step 2(c).0).
-   Do not silently fall through to inline/paste.
-3. Locate the PDDs folder under `ACE_DRIVE_ROOT_FOLDER_ID` (matches
-   `/PDD/i` or `/Program Design Doc/i`).
-4. List files in that folder, sort by slug-stem match then modifiedTime.
-5. `AskUserQuestion` with the top ~5 options + "Other: paste Drive doc
-   ID" + "Abort". **Confirmation is always shown** — even when exactly
-   one file matches — to guard against domain-mismatched PDDs.
-6. Fetch the chosen PDD via `drive_read_file`, write it to
-   `ACE/<slug>/idea.md`, continue the lifecycle.
+Resolution:
+
+1. If `--idea FILE|-` was passed, scripted-seed flow: write the idea
+   body to `runs/<run-id>/idea.md` directly. Skip discovery.
+2. Else read `ACE_DRIVE_ROOT_FOLDER_ID`. Stop with an actionable error
+   if unset.
+3. List `ACE/`. Find subfolders containing an `inputs/` subfolder.
+4. Pick the candidate with the newest `inputs/` mtime; folder name = `<opp>`.
+5. If no candidate exists, stop with the new-layout setup message.
+6. Generate `runId` = `YYYYMMDD-HHMM` (collision-suffixed).
+7. `mkdir <opp>/runs/<runId>/`; copy `inputs/pdd.md` body → `runs/<runId>/idea.md`.
+8. Init `state.yaml`; update `opp.yaml.last_run_id`.
+9. Begin Phase 1.
+
+See `agents/ace-orchestrator.md` for full detail.
 
 ## Process
 
-1. Parse arguments. Default mode is `default`. If `<opp-name>` is missing,
-   generate `smoke-<YYYYMMDD-HHMM>` using `date +%Y%m%d-%H%M`.
+1. Parse arguments. Default mode is `default`. The positional argument
+   may be `<opp>`, `<opp>/<run-id>`, or omitted; pass it through to the
+   orchestrator's discovery step (see `agents/ace-orchestrator.md
+   § Starting a New Opportunity`). The orchestrator handles slug
+   generation and resume-detection — `commands/run.md` does NOT
+   pre-generate a slug here.
 
 1a. Resolve `--ace-web-url` default:
    - If the flag was explicitly passed (including an empty string),
@@ -120,10 +153,11 @@ the full resolution flow. Short version:
    - Dispatch the `upload-transcript` skill with:
      - `base_url=<URL>`
      - `transcript_path=<resolved-path>`
-     - `opp_slug=<opp-name>` so the uploaded Session is linked under the
+     - `opp_slug=<opp>` so the uploaded Session is linked under the
        opp in the Workbench's linked-chats panel (strongly recommended
        — without it the transcript is an orphan upload)
-     - `opp_run_id=r1` (current single-run convention)
+     - `opp_run_id=<run-id>` (the run-id the orchestrator generated;
+       see `agents/ace-orchestrator.md § Starting a New Opportunity` step 3)
    - Log the returned `session_slug` and the viewable URL
      (`<URL>/chat/<session_slug>`) to the operator's console.
 

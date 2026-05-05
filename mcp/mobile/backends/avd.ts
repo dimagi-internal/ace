@@ -90,21 +90,53 @@ function resolveJavaHome(): string | null {
 }
 
 /**
+ * Locate the maestro CLI even when the operator's shell rc additions
+ * haven't propagated to the spawned MCP server. The official installer
+ * drops the launcher at `~/.maestro/bin/maestro` on macOS / Linux and
+ * `%USERPROFILE%\.maestro\bin\maestro.bat` on Windows, then tries to
+ * append `~/.maestro/bin` to the user's shell rc — which never reaches
+ * a Claude-Code-Desktop child process spawned before the install.
+ *
+ * Resolution order:
+ *   1. `MAESTRO_BIN` from process env (operator/CI override wins)
+ *   2. `~/.maestro/bin/maestro[.bat]` (official installer default)
+ *
+ * Returns the path to the bin DIRECTORY (not the binary itself) so
+ * shellEnv can prepend it to PATH, or null if nothing matched.
+ */
+function resolveMaestroBinDir(): string | null {
+  if (process.env.MAESTRO_BIN && fs.existsSync(process.env.MAESTRO_BIN)) {
+    return path.dirname(process.env.MAESTRO_BIN);
+  }
+  const homeBin = path.join(os.homedir(), '.maestro', 'bin');
+  const launcher = process.platform === 'win32' ? 'maestro.bat' : 'maestro';
+  if (fs.existsSync(path.join(homeBin, launcher))) return homeBin;
+  return null;
+}
+
+/**
  * Build a child-process env that includes a resolved JAVA_HOME and a PATH
  * that contains its bin/. Used by every shell call so maestro/avdmanager
  * Just Work even from a fresh non-login shell.
  */
 function shellEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
+  const sep = process.platform === 'win32' ? ';' : ':';
+  const prepend = (dir: string) => {
+    if (!env.PATH || !env.PATH.split(sep).includes(dir)) {
+      env.PATH = `${dir}${sep}${env.PATH ?? ''}`;
+    }
+  };
+
   const javaHome = resolveJavaHome();
   if (javaHome) {
     env.JAVA_HOME = javaHome;
-    const sep = process.platform === 'win32' ? ';' : ':';
-    const javaBin = path.join(javaHome, 'bin');
-    if (!env.PATH || !env.PATH.split(sep).includes(javaBin)) {
-      env.PATH = `${javaBin}${sep}${env.PATH ?? ''}`;
-    }
+    prepend(path.join(javaHome, 'bin'));
   }
+
+  const maestroBinDir = resolveMaestroBinDir();
+  if (maestroBinDir) prepend(maestroBinDir);
+
   return env;
 }
 
@@ -173,11 +205,69 @@ export class AvdBackend {
       await new Promise((r) => setTimeout(r, AVD_BOOT_POLL_MS));
       const found = await this.findRunningAvd(avdName);
       if (found) {
+        await this.assertSerialAuthorized(found.serial);
         await this.runPostBootPrep(found.serial);
         return { ...found, bootTimeMs: Date.now() - start };
       }
     }
     throw new AvdBootError(avdName, `boot timeout after ${AVD_BOOT_TIMEOUT_MS}ms`);
+  }
+
+  /**
+   * After boot reports complete, verify the device shows up as `device`
+   * (authorized) in `adb devices` rather than `unauthorized`. The unauthorized
+   * state is its own diagnostic maze: an adb-server holding stale RSA keys
+   * (e.g. spawned by a different shell or a previous user on a shared box)
+   * sees the freshly-booted emulator's new keys as untrusted, returns
+   * `unauthorized`, and silently breaks every downstream `adb -s` call.
+   *
+   * Self-healing: kill+restart adb-server ONCE and re-check. The restarted
+   * server picks up the current user's `~/.android/adbkey` and the emulator's
+   * `~/.android/emulator-console-auth-token` and the auth flips to `device`.
+   * If a single restart doesn't clear it, we surface a clear actionable error
+   * — the operator either has to accept the RSA prompt on the emulator screen
+   * or kill a stale emulator owned by a different user.
+   */
+  private async assertSerialAuthorized(serial: string): Promise<void> {
+    const status = await this.adbDeviceStatus(serial);
+    if (status === 'device') return;
+    if (status === 'unauthorized') {
+      // One self-heal attempt: kill and restart adb-server, then re-check.
+      await this.shell('adb', ['kill-server']).catch(() => {});
+      await this.shell('adb', ['start-server']).catch(() => {});
+      // Give the new server a beat to enumerate.
+      await new Promise((r) => setTimeout(r, 1500));
+      const recheck = await this.adbDeviceStatus(serial);
+      if (recheck === 'device') return;
+      if (recheck === 'unauthorized') {
+        throw new AvdBootError(
+          serial,
+          `adb device unauthorized — accept the RSA prompt on the emulator screen, ` +
+            `or check that no other user has a stale emulator running on this host. ` +
+            `Restart of adb-server did not clear the unauthorized state.`,
+        );
+      }
+      // Anything else (offline, missing, etc.) — fall through to the generic
+      // error below with whatever the recheck returned.
+      throw new AvdBootError(serial, `adb device state after restart: ${recheck ?? 'missing'}`);
+    }
+    // status is 'offline', null, or some other unexpected value — don't try
+    // to "fix" it, just surface what we saw so the operator can act.
+    throw new AvdBootError(serial, `adb device state: ${status ?? 'missing'}`);
+  }
+
+  /**
+   * Look up a single emulator's authorization state. Returns the second
+   * column from `adb devices` for that serial — typically `device` (good),
+   * `unauthorized`, or `offline`. Returns null if the serial isn't listed.
+   */
+  private async adbDeviceStatus(serial: string): Promise<string | null> {
+    const r = await this.shell('adb', ['devices']);
+    for (const line of r.stdout.split('\n').slice(1)) {
+      const parts = line.split('\t').map((s) => s.trim());
+      if (parts[0] === serial) return parts[1] ?? null;
+    }
+    return null;
   }
 
   /**
@@ -213,8 +303,21 @@ export class AvdBackend {
       await new Promise((r) => setTimeout(r, 1500));
     }
 
-    // Idempotent: pm disable-user is a no-op if already disabled.
-    await this.shell('adb', ['-s', serial, 'shell', 'pm', 'disable-user', '--user', '0', 'com.google.android.gms']).catch(() => {});
+    // GMS state is NOT touched here. Older versions of this prep
+    // unconditionally `pm disable-user com.google.android.gms` so that
+    // CommCare's MicroImageActivity falls back to ManualMode for face
+    // capture. CommCare 2.62.0 tightened its launch-time GMS check —
+    // a disabled GMS now triggers a blocking "Enable Google Play
+    // services" dialog that has only an ENABLE button, killing the
+    // recipe before phone entry. Live-reproduced 2026-05-01 on a
+    // freshly `-wipe-data`'d AVD.
+    //
+    // Resolution: orchestrate GMS state at the recipe-pair boundary
+    // instead. `MobileClient.registerTestUser` ensures GMS is enabled
+    // before part A (so CommCare launches), then disables it between
+    // part A and part B (so the in-app face-capture path picks up
+    // ManualMode). Doing this here at boot would re-introduce the
+    // launch-block class. See `setGmsEnabled` below.
 
     // Grant CAMERA only if commcare is installed; pm grant fails noisily
     // for missing packages, and most of the time it's not installed yet
@@ -240,6 +343,29 @@ export class AvdBackend {
       await this.shell('adb', ['-s', serial, 'shell', 'input', 'keyevent', 'KEYCODE_HOME']).catch(() => {});
       await new Promise((r) => setTimeout(r, 2000));
     }
+  }
+
+  /**
+   * Toggle Google Play Services on a running AVD. ACE registration
+   * recipes need GMS *enabled* during CommCare launch (CommCare 2.62.0+
+   * shows a blocking "Enable Google Play services" dialog if it sees
+   * GMS disabled at startup) and *disabled* during face-capture (so
+   * MicroImageActivity falls back to FaceCaptureView.CaptureMode.ManualMode
+   * — the emulated front camera can never satisfy ML Kit face detection).
+   *
+   * `pm enable` and `pm disable-user --user 0` are both idempotent, so
+   * calling this with the same value twice is a no-op. Best-effort:
+   * failures are swallowed to keep the registration flow moving (a
+   * stale GMS state will surface as a maestro selector miss, not a
+   * silent corruption).
+   */
+  async setGmsEnabled(avdName: string, enabled: boolean): Promise<void> {
+    const found = await this.findRunningAvd(avdName);
+    if (!found) return;
+    const args = enabled
+      ? ['-s', found.serial, 'shell', 'pm', 'enable', 'com.google.android.gms']
+      : ['-s', found.serial, 'shell', 'pm', 'disable-user', '--user', '0', 'com.google.android.gms'];
+    await this.shell('adb', args).catch(() => {});
   }
 
   async stopAvd(avdName: string): Promise<void> {
@@ -270,7 +396,21 @@ export class AvdBackend {
     return { packageId: m[1], versionCode: parseInt(m[2], 10), versionName: m[3], path: apkPath };
   }
 
-  private async findRunningAvd(avdName: string): Promise<AvdInfo | null> {
+  /**
+   * Derive the adbd TCP port from an `emulator-NNNN` serial. The Android
+   * emulator uses port pairs: `NNNN` is the qemu console port (telnet),
+   * `NNNN+1` is the adbd port that dadb / adb client speak the wire
+   * protocol against. Used to wire `maestro --host=localhost --port=<X>`
+   * for direct-dadb runs that bypass the local adb server. Returns null
+   * if the serial doesn't match `emulator-<digits>`.
+   */
+  static adbPortFromSerial(serial: string): number | null {
+    const m = serial.match(/^emulator-(\d+)$/);
+    if (!m) return null;
+    return parseInt(m[1], 10) + 1;
+  }
+
+  async findRunningAvd(avdName: string): Promise<AvdInfo | null> {
     const devices = await this.shell('adb', ['devices']);
     const serials = devices.stdout
       .split('\n')
