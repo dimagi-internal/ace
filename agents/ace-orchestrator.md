@@ -391,6 +391,60 @@ those, poll the upstream service's status endpoint directly with a
 timeout, fail loud on exhaustion. Do not invent a "background task ID"
 that the orchestrator can't actually verify is alive.
 
+## External Mutations — Verify After Create
+
+Every external-system write must be followed by a read-back. The
+write's response alone is not authoritative — Connect, CCHQ, OCS, and
+Nova all have classes of bug where the create endpoint accepts the
+payload, returns 201, but the stored row diverges from what was sent
+(wrong field mapping, silent overrides, server-side defaults
+clobbering, async hydration gaps). Skills that don't read-back hand
+silently-corrupted state to downstream phases.
+
+The rule:
+
+1. **Write** via the mutating atom (`connect_create_opportunity`,
+   `connect_create_payment_units`, `commcare_make_build`,
+   `ocs_set_chatbot_pipeline`, etc.).
+2. **Read** via the matching getter (`connect_get_opportunity`,
+   `connect_list_payment_units`, `commcare_download_ccz`,
+   `ocs_get_chatbot`).
+3. **Compare** every field the skill set against the read-back
+   response.
+4. **Halt loud on mismatch.** Mismatch on a load-bearing field
+   (dates, app ids, amounts, required-relations) is a `[BLOCKER]` —
+   write the diff (sent vs. stored) to `comms-log/observations.md`,
+   surface in the gate brief, do NOT proceed. Mismatch on a
+   cosmetic/display field (descriptions, tags) is `[INFO]` — log and
+   proceed.
+
+The `turmeric-20260503-0835` Phase 3 run is the canonical example: a
+malformed `connect_create_payment_unit` shipped values that didn't
+match what was sent (`amount=500` vs sent `1.50`,
+`required_deliver_units=[]` vs sent `[Vendor Visit]`). The skill
+returned cleanly, Phase 3 graded `warn` on the eval, the orchestrator
+auto-proceeded — and the malformation cascaded through
+`is_setup_complete` to silently break Phase 6 invites and Phase 5
+screenshot capture. A read-back at the producer would have converted
+that multi-phase cascade into a single-skill halt with an obvious
+field-diff in the gate brief.
+
+**Canonical example:** `skills/connect-opp-setup/SKILL.md` Steps 4
+and 6 (added 0.11.11). Every skill that creates external state should
+follow this pattern.
+
+**When read-back is overkill:** for read-only or write-once-read-once
+operations (a single `drive_create_file` whose content is the artifact
+itself, a one-shot status flip whose state is naturally observed
+downstream), the read-back collapses into the next skill's natural
+input read. The rule is "every write before a state-dependent
+downstream skill" — not literally every write.
+
+This rule is the producer-side complement to the per-skill `-eval`
+rubrics in `skills/<*>-eval/SKILL.md`. The eval correctly grades the
+captured artifact post-hoc; verify-after-create catches the same
+class of bug at the source, before the bad state ships downstream.
+
 ## Performance Conventions
 
 These conventions cut wall-clock and token cost on `/ace:run`. Apply
