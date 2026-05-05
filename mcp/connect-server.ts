@@ -421,4 +421,39 @@ server.tool('commcare_patch_xform',
   async (args) => runAtom(async () => (await commcareClient()).patchXform(args))
 );
 
+// commcare_upload_multimedia — POST a binary multimedia asset to CCHQ.
+// Required companion to commcare_patch_xform: the form-XML patch makes the
+// build *reference* the asset; this atom puts the *bytes* into CouchDB so
+// CCHQ's clean_paths() doesn't prune the reference on the next make_build.
+//
+// Endpoint: POST /a/<domain>/apps/<app_id>/multimedia/uploaded/<media_type>/
+//   <media_type> derives from content_type MIME prefix.
+// Auth: same Playwright session as commcare_patch_xform; X-CSRFToken header.
+// Returns: { multimedia_id, file_hash_md5 } — see backends/commcare.ts.
+//
+// CRITICAL ORDER OF OPERATIONS:
+//   1. patch form XML to reference jr://file/commcare/<type>/<filename>
+//   2. commcare_upload_multimedia (this atom)
+//   3. commcare_make_build + commcare_release_build
+// Reversing 1 and 2 still works (uploads are idempotent), but skipping
+// step 1 means the upload is silently no-op for FLW devices because
+// CCHQ's clean_paths() prunes orphaned media on every build.
+server.tool('commcare_upload_multimedia',
+  {
+    domain: z.string(),
+    app_id: z.string().regex(/^[0-9a-f]{32}$/, '32-char hex'),
+    media_path: z.string().regex(/^jr:\/\/file\/commcare\/(image|audio|video|text)\/[^\/]+$/),
+    file_bytes_base64: z.string().min(1).describe('Asset bytes, base64-encoded'),
+    content_type: z.string().regex(/^(image|audio|video|text)\//),
+  },
+  async (args) =>
+    runAtom(async () => {
+      const { file_bytes_base64, ...rest } = args;
+      return (await commcareClient()).uploadMultimedia({
+        ...rest,
+        file_bytes: Buffer.from(file_bytes_base64, 'base64'),
+      });
+    }),
+);
+
 await server.connect(new StdioServerTransport());
