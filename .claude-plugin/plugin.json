@@ -41,6 +41,14 @@
         "CLAUDE_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}",
         "CLAUDE_PLUGIN_ROOT_ECHO": "${CLAUDE_PLUGIN_ROOT}"
       }
+    },
+    "connect-labs": {
+      "command": "npx",
+      "args": ["tsx", "${CLAUDE_PLUGIN_ROOT}/mcp/connect-labs-server.ts"],
+      "env": {
+        "CLAUDE_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}",
+        "CLAUDE_PLUGIN_ROOT_ECHO": "${CLAUDE_PLUGIN_ROOT}"
+      }
     }
   }
 }

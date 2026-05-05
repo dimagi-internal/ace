@@ -90,6 +90,16 @@ CONNECT_BASE_URL=https://connect.dimagi.com
 ACE_HQ_USERNAME=op://AI-Agents/ACE - CommCareHQ/username
 ACE_HQ_PASSWORD=op://AI-Agents/ACE - CommCareHQ/password
 
+# ── Connect Labs (solicitations / reviews / awards) ─────────────────
+#
+# Bearer PAT for the labs MCP at labs.connect.dimagi.com/mcp/. ACE's
+# connect-labs stdio proxy reads this and injects it as the
+# Authorization header on every JSON-RPC frame forwarded to labs.
+# To rotate: a labs admin runs:
+#   python manage.py mcp_create_token --user ace@dimagi-ai.com --name ACE-plugin --ttl-days 0
+# then drops the printed token into the 1Password item below.
+LABS_MCP_TOKEN=op://AI-Agents/ACE - Connect Labs/mcp_token
+
 # ─── ACE Mobile Emulation ──────────────────────────────────────────
 # Local-Mac-only. Populated once via /ace:mobile-bootstrap.
 ACE_E2E_PHONE=op://AI-Agents/connect-test-user/phone
