@@ -75,8 +75,19 @@ export class RestBackend implements ConnectClient {
    */
   private csrf: string;
 
+  /**
+   * Latest authenticated request handle. Initialized from
+   * `opts.request`; rebuilt on `session.invalidate()` recovery so a
+   * full re-auth produces a fresh `APIRequestContext` that subsequent
+   * calls actually use (0.13.15 — pre-0.13.15, the constructor-bound
+   * `opts.request` went stale after invalidate and the retry kept
+   * using the dead context).
+   */
+  private request: APIRequestContext;
+
   constructor(private opts: RestBackendOptions) {
     this.csrf = opts.csrfToken;
+    this.request = opts.request;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────
@@ -117,31 +128,68 @@ export class RestBackend implements ConnectClient {
     }
   }
 
+  /**
+   * Bottom-out recovery: drop the entire session (cached
+   * BrowserContext + on-disk state file) and rebuild via fresh
+   * `hqOAuthLogin`. After this, the cookie jar has fresh sessionid
+   * AND fresh both-domain csrftokens, so a stale-server-side-session
+   * recovers transparently. Updates this backend's own `request` and
+   * `csrf` fields so subsequent calls use the new context, not the
+   * dead one bound at constructor time.
+   */
+  private async reauth(): Promise<void> {
+    if (!this.opts.session) return;
+    await this.opts.session.invalidate();
+    const ctx = await this.opts.session.getContext();
+    this.request = ctx.request;
+    this.csrf = this.opts.session.getCsrfToken();
+  }
+
   private async post<T>(path: string, body: unknown): Promise<{ status: number; data: T | undefined; raw: APIResponse }> {
-    let res = await this.opts.request.post(path, {
+    let res = await this.request.post(path, {
       data: body,
       headers: this.headers(),
       maxRedirects: 0,
     });
 
-    // 403-CSRF self-heal: refresh the token from the cookie jar and
-    // retry once. With 0.13.12's domain filtering in
-    // `extractCsrfToken`, the cookie-jar read now returns the
-    // *connect-domain* csrftoken (was unfiltered pre-0.13.12, picking
-    // the HQ token instead and producing 403 on every Connect POST).
-    // The retry sends a token that actually matches the connect.dimagi.com
-    // cookie the server validates against. Playwright's `res.text()`
-    // caches the body, so reading it here doesn't break the caller's
-    // `raiseForStatus` re-read on the non-CSRF 403 path.
+    // Two-stage 403-CSRF self-heal:
+    //
+    //   1. Refresh `csrftoken` from the cookie jar (cheap; fixes the
+    //      common case where the client-side cookie went stale or
+    //      was rotated server-side and Playwright synced the new
+    //      value via Set-Cookie).
+    //   2. If retry STILL gets 403 CSRF, the underlying server-side
+    //      session is stale (sessionid expired/rotated upstream).
+    //      Drop the session entirely and re-auth via hqOAuthLogin.
+    //      The third attempt sends a guaranteed-fresh token from a
+    //      guaranteed-fresh session.
+    //
+    // Three total attempts (initial + cookie-refresh + full re-auth).
+    // Closes the loop on every CSRF-shaped failure mode the
+    // turmeric-20260505-1024 run surfaced across 0.13.8 → 0.13.14.
     if (res.status() === 403 && this.opts.session) {
       const bodyText = await res.text();
       if (RestBackend.isCsrfFailure(res.status(), bodyText)) {
         await this.refreshCsrf();
-        res = await this.opts.request.post(path, {
+        res = await this.request.post(path, {
           data: body,
           headers: this.headers(),
           maxRedirects: 0,
         });
+
+        // Stage 2: still 403 CSRF after cookie refresh? The session
+        // itself is stale. Bottom out at a full re-auth.
+        if (res.status() === 403) {
+          const retryBody = await res.text();
+          if (RestBackend.isCsrfFailure(res.status(), retryBody)) {
+            await this.reauth();
+            res = await this.request.post(path, {
+              data: body,
+              headers: this.headers(),
+              maxRedirects: 0,
+            });
+          }
+        }
       }
     }
 
