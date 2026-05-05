@@ -50,6 +50,13 @@ Create or select a Connect program for this opportunity.
 5. **Write program details** to `ACE/<opp-name>/connect-setup/program.md`:
    - Program ID (UUID)
    - Program name
+   - **URL** — the program detail page on Connect (mirrors the URL line
+     `connect-opp-setup` writes for the opportunity). Pattern:
+     `https://connect.dimagi.com/a/<organization_slug>/program/<program-uuid>/view`
+     (note: `program/` singular, matching upstream
+     `commcare-connect/program/urls.py`'s `<slug:pk>/view` pattern). Format
+     as `**URL:** <url>` so downstream readers (ace-web's public
+     summary page) can extract it the same way they do the opportunity URL.
    - Archetype declared at program creation (if new)
    - Whether reused or newly created; note any archetype mismatch if reused
    - Configuration details (delivery_type name + id, budget, currency,
