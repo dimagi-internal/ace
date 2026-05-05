@@ -662,6 +662,52 @@ export async function handleCreateFolder(
   return { id: resp.data.id!, name: resp.data.name!, webViewLink: resp.data.webViewLink ?? undefined };
 }
 
+/**
+ * Create-shortcut handler, exported for unit testing with a mocked Drive client.
+ *
+ * Creates a Google Drive shortcut (mimeType `application/vnd.google-apps.shortcut`)
+ * pointing at `targetId`, parented under `parentFolderId`. With `findOrReplace=true`,
+ * any prior same-name file/shortcut under the parent is deleted first — semantically
+ * "replace the old pointer with a new one." Used by the orchestrator (Task 28 of
+ * the run-folder-readability plan) to refresh `<opp>/current/` shortcuts after
+ * each phase completes.
+ */
+export async function handleCreateShortcut(
+  args: { name: string; parentFolderId: string; targetId: string; findOrReplace?: boolean },
+  driveClient: typeof drive = drive,
+): Promise<{ id: string; name: string; webViewLink?: string }> {
+  const { name, parentFolderId, targetId, findOrReplace = false } = args;
+  const guard = await assertParentOnSharedDrive(parentFolderId, driveClient);
+  if (!guard.ok) throw new Error(guard.message);
+  if (findOrReplace) {
+    const escaped = name.replace(/'/g, "\\'");
+    const list = await driveClient.files.list({
+      q: `name='${escaped}' and '${parentFolderId}' in parents and trashed=false`,
+      fields: 'files(id)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    for (const existing of list.data.files ?? []) {
+      await driveClient.files.delete({ fileId: existing.id!, supportsAllDrives: true });
+    }
+  }
+  const created = await driveClient.files.create({
+    requestBody: {
+      name,
+      mimeType: 'application/vnd.google-apps.shortcut',
+      parents: [parentFolderId],
+      shortcutDetails: { targetId },
+    },
+    fields: 'id, name, webViewLink',
+    supportsAllDrives: true,
+  });
+  return {
+    id: created.data.id!,
+    name: created.data.name!,
+    webViewLink: created.data.webViewLink ?? undefined,
+  };
+}
+
 // 12. Create a folder in Google Drive
 server.tool(
   'drive_create_folder',
@@ -674,6 +720,26 @@ server.tool(
   async ({ name: folderName, parentFolderId, findOrCreate }) => {
     try {
       const r = await handleCreateFolder({ name: folderName, parentFolderId, findOrCreate }, drive);
+      return result(r);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 12b. Create a Drive shortcut pointing at an existing file/folder
+server.tool(
+  'drive_create_shortcut',
+  'Create a Google Drive shortcut (mimeType application/vnd.google-apps.shortcut) under `parentFolderId` pointing at `targetId`. The orchestrator uses this to refresh `<opp>/current/` shortcuts after each phase completes — e.g. `<opp>/current/connect-opp-summary.md → runs/<latest>/3-connect/connect-opp-setup.md`. With findOrReplace=true, any prior file/shortcut with the same `name` under the parent is deleted before the new shortcut is created (semantics: "swap the pointer atomically"). Default findOrReplace=false because Drive permits multiple same-named entries; only set it to true when you intend the shortcut to be a single canonical pointer. The parent MUST live on a Shared Drive — same Service Account quota constraint as drive_create_file / drive_create_folder.',
+  {
+    name: z.string().min(1).describe('Display name for the shortcut (include the extension to mirror the target — e.g., "connect-opp-summary.md").'),
+    parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
+    targetId: z.string().min(1).describe('The file or folder ID the shortcut should point at.'),
+    findOrReplace: z.boolean().optional().describe('When true, delete any prior same-name file/shortcut under `parentFolderId` before creating. Default: false. Use true to make `current/` pointers idempotent.'),
+  },
+  async ({ name: shortcutName, parentFolderId, targetId, findOrReplace }) => {
+    try {
+      const r = await handleCreateShortcut({ name: shortcutName, parentFolderId, targetId, findOrReplace }, drive);
       return result(r);
     } catch (e: any) {
       return error(e.message);

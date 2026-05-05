@@ -5,6 +5,110 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.0 — 2026-05-05
+
+**BREAKING: Drive layout — phase-prefixed folders + skill-named artifacts on top of the 0.12.0 8-phase topology.**
+
+Restructures `ACE/<opp>/runs/<run-id>/` so every artifact lives under a
+phase folder (`1-design/`, `2-commcare/`, `3-connect/`, `4-ocs/`,
+`5-qa-and-training/`, `6-solicitation-management/`,
+`7-execution-manager/`, `8-closeout/`) and is named
+`<producing-skill>[_<role>].<ext>`. Existing opps must be migrated via
+`npx tsx scripts/migrate-drive-layout.ts --apply`.
+
+This is the reconciliation of the in-flight phase-prefixed-Drive-layout
+work (originally targeted 0.12.0) with the 0.12.0 Solicitation Management
+phase that landed on main concurrently. Folder numbers shift up by one
+for Phase 7 (was llo-manager → now execution-manager) and Phase 8 (was
+closeout at 7 → now at 8); Phase 6 is the new solicitation-management.
+
+See `docs/superpowers/specs/2026-05-03-run-folder-readability-design.md`
+for the design + `docs/superpowers/plans/2026-05-03-run-folder-readability.md`
+for the 33-task implementation plan.
+
+### Added
+
+- `lib/artifact-manifest-roles.ts` — `PHASE_FOLDERS` (8 phases) and
+  `ROLE_VOCAB` as the single source of truth for the new naming
+  convention. `baseRole()` helper handles multi-word qualifiers cleanly.
+- `<opp>/current/` shortcut layer pointing at the latest run's canonical
+  artifacts (`connect-opp-summary.md`, `connect-program-summary.md`,
+  `ocs-agent-config.md`). `drive_create_shortcut(findOrReplace=true)`
+  MCP atom backs it.
+- `<opp>/runs/<run-id>/README.md` — auto-generated phase→artifact→
+  producing-skill→status table. `lib/run-readme.ts` has the helper.
+- `scripts/migrate-drive-layout.ts` — one-shot Drive migrator. `--check`
+  dry-runs and prints planned moves; `--apply` executes. Handles
+  `move`, `coalesce-folder`, `delete-empty`, `create-shortcut` actions.
+  Includes 0.12.0→0.13.0 prefix renames so any opp already migrated
+  under 0.12.0's `6-llo-manager/` + `7-closeout/` lands cleanly with
+  one more `--apply`.
+- `scripts/migrate-fixture-layout.ts` — local-FS analog for test
+  fixtures.
+- Manifest lint at `test/lib/artifact-manifest-lint.test.ts` — every
+  path conforms; every skill exists; every role in vocab; phase tags
+  match folders; no dups.
+- Cross-check at `test/lib/skill-path-references.test.ts` — every
+  `ACE/<opp...>/...` reference in skills/agents/commands prose
+  resolves to a manifest entry.
+
+### Changed (BREAKING)
+
+- `Phase` enum expanded to 8 values:
+  `'design' | 'commcare' | 'connect' | 'ocs' | 'qa-and-training' | 'solicitation-management' | 'execution-management' | 'closeout'`
+- Every manifest path rewritten to `<N>-<phase>/<skill>[_<role>].<ext>`
+  form. 17 per-skill verdict files renamed to `<X>-eval_verdict.yaml`
+  so filename = producer (Option α). Self-emitted verdicts where no
+  `*-eval` skill exists today (`qa-plan-eval`, all 7 training-* evals)
+  use `<source-skill>_verdict.yaml` (Option β) per spec invariant.
+- 30 new manifest entries from the orphan-triage audit
+  (`docs/superpowers/notes/manifest-orphans-2026-05-03.md`):
+  - 5 phase-summary docs (per-phase agent at completion); the closeout
+    summary uses the `summary` role (not `final-summary`).
+  - 4 qa-plan outputs (now retired in 0.11.10; legacy paths preserved
+    in OLD_TO_NEW for migration).
+  - 17 per-skill `<X>-eval_verdict.yaml` entries.
+  - 3 opp-level entries (`connect-state.yaml`, `open-questions.md`,
+    `eval-calibration/known-issues.md`) — kept at opp root, not under
+    any phase folder.
+  - 1 dry-run log.
+
+### Migration
+
+```bash
+# 1. Update plugin (pulls 0.13.0)
+/ace:update
+
+# 2. Restart Claude Code session to load new MCP code
+/reload-plugins   # or restart the session
+
+# 3. Dry-run the Drive migration
+npx tsx ~/.claude/plugins/cache/ace/ace/0.13.0/scripts/migrate-drive-layout.ts --check
+
+# 4. Apply when ready
+npx tsx ~/.claude/plugins/cache/ace/ace/0.13.0/scripts/migrate-drive-layout.ts --apply
+```
+
+The migration is idempotent. File IDs are preserved through moves, so
+webViewLinks stay valid. Coalesce-folder actions move children of
+duplicate same-named folders into the canonical sibling and delete the
+empty dup. Delete-empty actions re-list the folder before deleting.
+
+### Known follow-ups (deferred to a 0.13.x patch)
+
+- Per-skill SKILL.md path references not yet updated for 8-phase
+  numbering everywhere — Phase F orchestrator threading uses
+  `phaseFolderId` from the manifest at runtime, so writes go to the
+  right place; SKILL prose docs are read-only docs and lag the
+  manifest.
+- Fixture stub backfill for Phase 6 (solicitation-management),
+  Phase 7 (execution-manager), Phase 8 (closeout) phase-summary docs
+  in `CRISPR-Test-003-Turmeric` so `expectedMissing` is empty.
+- The orchestrator's `ace-orchestrator.md` got the new
+  `## Per-Phase Folder Lifecycle` section (Task 26) and the run-start
+  README write (Task 27); the legacy phase-loop prose still references
+  some old paths that didn't conflict with the renumber.
+
 ## 0.12.1 — 2026-05-04
 
 **`connect_create_payment_unit(s)` Playwright fallback fix —

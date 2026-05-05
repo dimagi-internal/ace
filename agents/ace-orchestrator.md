@@ -563,6 +563,80 @@ unnecessary model-output time at run start. The whole task list is
 known up-front from the workflow below — there's no dependency on
 prior responses.
 
+## Per-Phase Folder Lifecycle
+
+Per-run artifacts live under `runs/<runId>/<N>-<phase>/...` (the 0.13.0
+phase-prefixed layout). The orchestrator is responsible for materializing
+each `<N>-<phase>/` folder before its phase agent runs, threading the
+resulting `phaseFolderId` into the dispatch prompt, and refreshing the
+run's `README.md` index after the phase completes.
+
+Before dispatching each phase agent (`Agent(design-review)`,
+`Agent(commcare-setup)` (inline procedure doc — same rule applies),
+`Agent(connect-setup)`, `Agent(ocs-setup)`, `Agent(qa-and-training)`,
+`Agent(solicitation-management)`, `Agent(execution-manager)`,
+`Agent(closeout)`), the orchestrator MUST:
+
+1. Look up the phase folder slug from `lib/artifact-manifest-roles.ts`
+   `PHASE_FOLDERS`:
+   - `design` → `1-design`
+   - `commcare` → `2-commcare`
+   - `connect` → `3-connect`
+   - `ocs` → `4-ocs`
+   - `qa-and-training` → `5-qa-and-training`
+   - `solicitation-management` → `6-solicitation-management`
+   - `execution-management` → `7-execution-manager`
+   - `closeout` → `8-closeout`
+
+2. Call `drive_create_folder(name='<N>-<phase>',
+   parentFolderId=<runFolderId>, findOrCreate=true)`. The
+   `findOrCreate=true` mode (default since 0.11.9) reuses an existing
+   same-named folder; this is safe to call repeatedly across resumed
+   runs.
+
+3. Capture the resulting folder ID as `phaseFolderId`.
+
+4. Dispatch the phase agent with BOTH `runFolderId` AND `phaseFolderId`
+   in its prompt. Phase agents pass `phaseFolderId` to their skills as
+   the `parentFolderId` for writes.
+
+Skills that write artifacts under the phase folder use `phaseFolderId`
+as their write parent. Skills that READ artifacts from earlier phases
+need only the `runFolderId` plus the path relative to it (e.g.
+`1-design/idea-to-pdd.md`); they walk the folder tree to find the
+file.
+
+After a phase completes, regenerate `README.md` with the updated
+`phaseStatus` (e.g. `{ design: 'done', commcare: 'in-progress', ... }`)
+via `generateRunReadme(runId, phaseStatus)` and write back to
+`runs/<runId>/README.md` via `drive_update_file`. The README is the
+operator's single-glance view of run state; keep it fresh.
+
+### Current/ shortcut refresh (Phase 3 + Phase 4 completion)
+
+**After Phase 3 completes** — refresh shortcuts pointing at this run's
+Phase 3 outputs. For each:
+
+- `connect-opp-summary.md` → `runs/<runId>/3-connect/connect-opp-setup.md`
+- `connect-program-summary.md` → `runs/<runId>/3-connect/connect-program-setup.md`
+
+Steps:
+1. Resolve the target file ID via `drive_list_folder` on
+   `runs/<runId>/3-connect/` and find the matching filename.
+2. Ensure `<opp>/current/` folder exists via
+   `drive_create_folder(name='current', parentFolderId=<oppFolderId>,
+   findOrCreate=true)`.
+3. Call `drive_create_shortcut(name='<shortcut-name>',
+   parentFolderId=<currentFolderId>, targetId=<resolved-target-file-id>,
+   findOrReplace=true)`. The `findOrReplace=true` mode deletes any
+   prior same-name shortcut before creating, so each new run cleanly
+   overwrites the prior pointer.
+
+**After Phase 4 completes** — same pattern for
+`ocs-agent-config.md` → `runs/<runId>/4-ocs/ocs-agent-setup.md`.
+
+The `drive_create_shortcut` MCP atom shipped in 0.13.0.
+
 ## Workflow
 
 When invoked with an opportunity, execute these phases in order:
@@ -1067,6 +1141,13 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
    (the run is still safe; only the runs list is best-effort). This
    replaces the previous read-merge-overwrite pattern, which silently
    dropped a run-id when two `/ace:run` invocations raced.
+
+7b. **Write the per-run `README.md` index.** Generate the markdown via
+   `generateRunReadme(runId, {})` from `lib/run-readme.ts` (all phases
+   default to `pending` at this point) and write it to
+   `<opp>/runs/<runId>/README.md` via `drive_create_file`. The README
+   gets refreshed after every phase completes — see § Per-Phase Folder
+   Lifecycle.
 
 8. **Log the run setup explicitly.** Emit a log line in this exact form
    so transcript readers and ace-web's ingest can pick it up:
