@@ -23,9 +23,35 @@ export interface SessionOptions {
   hqPassword?: string;
 }
 
-export interface Cookie { name: string; value: string }
+export interface Cookie { name: string; value: string; domain?: string }
 
-export function extractCsrfToken(cookies: readonly Cookie[]): string | undefined {
+/**
+ * Extract a `csrftoken` cookie value from a cookie jar, optionally
+ * filtered by a domain substring. After OAuth-via-CCHQ login completes,
+ * the BrowserContext jar carries TWO `csrftoken` cookies — one for
+ * `connect.dimagi.com` and one for `www.commcarehq.org` — set by the
+ * different views the OAuth flow walked through. They are NOT
+ * interchangeable: each Django app validates the header against its own
+ * domain's cookie, and a token from the wrong domain produces an
+ * indistinguishable `403 CSRF Failed` (turmeric-20260505-1024 Phase 3
+ * Step 2 hit this — `RestBackend` was sending the HQ csrftoken on
+ * `connect.dimagi.com` POSTs).
+ *
+ * `domainFilter` is a substring; pass `'connect.dimagi.com'` for Connect
+ * REST/UI calls or `'commcarehq'` for CCHQ. When omitted, the first
+ * `csrftoken` cookie wins, which is unsafe in multi-domain contexts —
+ * present only for backwards compat with the pre-0.13.12 callers.
+ */
+export function extractCsrfToken(
+  cookies: readonly Cookie[],
+  domainFilter?: string,
+): string | undefined {
+  if (domainFilter) {
+    const match = cookies.find(
+      (c) => c.name === 'csrftoken' && c.domain?.includes(domainFilter),
+    );
+    if (match) return match.value;
+  }
   return cookies.find((c) => c.name === 'csrftoken')?.value;
 }
 
@@ -110,13 +136,64 @@ export class PlaywrightSession {
       }
     }
 
+    // Force Connect to issue a `csrftoken` cookie for its own domain.
+    // The OAuth-via-CCHQ bounce can leave the jar with ONLY a CCHQ
+    // `csrftoken` (verified live on turmeric-20260505-1024 — `jq` over
+    // the saved storageState confirmed exactly one csrftoken row, on
+    // www.commcarehq.org, and zero on connect.dimagi.com), so the
+    // domain-filter selection silently fell back to the wrong-domain
+    // token and every Connect REST POST 403'd. GET-ing
+    // `/accounts/login/` with redirect-following lands on the authed
+    // org dashboard (`/a/<org>/opportunity/`), which renders through
+    // Django's CSRF middleware and sets `csrftoken` for
+    // connect.dimagi.com via Set-Cookie. Playwright's BrowserContext
+    // syncs the cookie automatically; the read below then has a real
+    // Connect-domain row to pick up. Pre-0.13.14 this was a `maxRedirects:0`
+    // probe that intentionally short-circuited the redirect for the
+    // authed-state probe — the new follow-the-redirect call is purely
+    // for CSRF cookie hydration and is run AFTER the authed-state
+    // determination is already settled.
+    try {
+      await this.context.request.get('/accounts/login/');
+    } catch {
+      // Best-effort: if the hydration GET fails, fall through to read
+      // whatever's in the jar. The next REST POST will surface the
+      // failure if we still don't have a Connect csrftoken.
+    }
     const cookies = await this.context.cookies();
-    this.csrfToken = extractCsrfToken(cookies);
+    // Capture the connect.dimagi.com csrftoken specifically. CCHQ-bound
+    // atoms in `commcare.ts` filter independently via their own
+    // `csrfFromCookies()` helper.
+    this.csrfToken = extractCsrfToken(cookies, this.connectDomain());
+    if (!this.csrfToken) {
+      // Loud-fail rather than fall back to the wrong-domain token. The
+      // unfiltered fallback in `extractCsrfToken` was the silent footgun
+      // that hid this bug for four dispatches; refusing to ship without
+      // a domain-matching cookie surfaces the real problem on attempt 1.
+      throw new Error(
+        `csrftoken cookie missing for ${this.connectDomain()} after CSRF hydration GET. ` +
+          'OAuth completed but Connect did not set a same-domain csrftoken; ' +
+          'check whether `/accounts/login/` still renders an authed dashboard ' +
+          'with `@ensure_csrf_cookie` semantics, or `/ace:connect-login` to recover manually.',
+      );
+    }
 
     fs.mkdirSync(path.dirname(statePath), { recursive: true });
     await this.context.storageState({ path: statePath });
 
     return this.context;
+  }
+
+  /**
+   * Domain substring used to filter the multi-domain cookie jar down to
+   * the Connect-platform `csrftoken`. Derived from `opts.baseUrl`.
+   */
+  private connectDomain(): string {
+    try {
+      return new URL(this.opts.baseUrl).hostname;
+    } catch {
+      return 'connect.dimagi.com';
+    }
   }
 
   /**
@@ -133,26 +210,22 @@ export class PlaywrightSession {
 
   async refreshCsrfToken(): Promise<string> {
     if (!this.context) throw new Error('No context — call getContext() first');
-    // Force server-side csrftoken rotation by hitting a Django CSRF-issuing
-    // view first. `/accounts/login/` is `@ensure_csrf_cookie`-decorated;
-    // GET-ing it causes Django to (re-)set the `csrftoken` cookie via
-    // Set-Cookie. Playwright's BrowserContext auto-syncs the cookie jar
-    // from Set-Cookie headers, so the next `cookies()` read sees the new
-    // value. Without this GET, the cached cookie value persists and the
-    // 0.13.9 retry path resends the same stale token the server just
-    // rejected (turmeric-20260505-1024 Phase 3 hit this — both retries
-    // failed identically because the cookie jar had no opportunity to
-    // refresh in between). Pre-0.13.11 this was a cookie-jar-only read.
+    // GET an authed Connect view that renders through CSRF middleware so
+    // a fresh `Set-Cookie: csrftoken` is issued for connect.dimagi.com.
+    // 0.13.11 used `/accounts/login/` with `maxRedirects:0` — but for an
+    // authed session that 302s BEFORE rendering, so no Set-Cookie was
+    // emitted. 0.13.14 follows the redirect to `/a/<org>/opportunity/`,
+    // which DOES render and DOES set csrftoken. Same path used in
+    // `getContext()` for initial cookie hydration; reusing it here keeps
+    // the recovery semantics consistent.
     try {
-      await this.context.request.get('/accounts/login/', { maxRedirects: 0 });
+      await this.context.request.get('/accounts/login/');
     } catch {
-      // If the GET fails, fall through to the cookie-jar read. The
-      // recovery may still succeed if a parallel call already updated
-      // the cookie; if not, the caller's retry will surface the failure.
+      // Best-effort: fall through to a cookie-jar read.
     }
     const cookies = await this.context.cookies();
-    const t = extractCsrfToken(cookies);
-    if (!t) throw new Error('csrftoken cookie missing after refresh');
+    const t = extractCsrfToken(cookies, this.connectDomain());
+    if (!t) throw new Error('csrftoken cookie missing for ' + this.connectDomain() + ' after refresh');
     this.csrfToken = t;
     return t;
   }

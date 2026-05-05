@@ -5,6 +5,114 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.15 — 2026-05-05
+
+**fix(connect): bottom-out 403 CSRF recovery via full re-auth.**
+
+Closes the loop on the 0.13.8 → 0.13.14 self-heal series. Previous
+fixes recovered the *cookie* state but couldn't recover the
+*server-side session* state — when `sessionid` itself rotated
+upstream, even a correct csrftoken got rejected and the run halted.
+
+Fix in `mcp/connect/backends/rest.ts`:
+
+- `RestBackend` now keeps mutable `request` and `csrf` fields (csrf
+  was already mutable in 0.13.9; this brings `request` along for the
+  ride). Constructor seeds them from `opts`.
+- New `reauth()` private method: calls `session.invalidate()` to drop
+  the cached BrowserContext + on-disk state file, then
+  `session.getContext()` to rebuild via `hqOAuthLogin`, and updates
+  the backend's own `request`/`csrf` fields with the fresh handles.
+- `post()` 403-CSRF handler now has TWO stages:
+  1. Refresh csrftoken from cookie jar and retry (was the 0.13.9 path).
+  2. If retry STILL returns 403 CSRF, call `reauth()` and try once more.
+
+Three total attempts (initial + cookie-refresh + full re-auth).
+The bottom-out invariant: any 403 CSRF that's mechanically a
+session-staleness issue self-heals without operator intervention.
+The only remaining manual-recovery case is bad upstream credentials,
+which fail loud at `hqOAuthLogin` itself.
+
+Same pattern as 0.13.8's `commcare.ts` retry, but for a different
+failure shape — together they cover both the CCHQ-side 302-to-login
+and the Connect-side 403-CSRF.
+
+## 0.13.14 — 2026-05-05
+
+**fix(connect): force Connect to issue its own `csrftoken` after OAuth.**
+
+The 0.13.13 domain filter was correct but discovered an even more
+surprising cookie-jar state on `turmeric-20260505-1024`: after
+OAuth-via-CCHQ completed, the BrowserContext jar held EXACTLY ONE
+`csrftoken` cookie — for `www.commcarehq.org` only. There was NO
+`connect.dimagi.com` csrftoken to filter to, so the fallback path
+silently picked the HQ token again. Verified live via `jq` over
+`~/.ace/connect-session.json`. The OAuth callback evidently passed
+through Connect URLs that don't render via Django's CSRF middleware
+(or do, but don't carry `@ensure_csrf_cookie` semantics).
+
+Fix in `mcp/connect/auth/playwright-session.ts`:
+
+- After `hqOAuthLogin()` (and on every `refreshCsrfToken()`),
+  GET `/accounts/login/` *with redirect-following* — for an authed
+  session it 302s onward to `/a/<org>/opportunity/`, which DOES render
+  through `@csrf_protect`+`CsrfViewMiddleware` and emits the missing
+  `Set-Cookie: csrftoken` header. Playwright's `BrowserContext`
+  auto-syncs the cookie jar; the subsequent `extractCsrfToken()` read
+  returns a real Connect-domain token.
+- `getContext()` now refuses to ship without a Connect-domain
+  csrftoken — throws explicitly instead of silently falling back to
+  the HQ token. The unfiltered fallback in 0.13.13's
+  `extractCsrfToken` was the silent footgun that masked this bug for
+  four dispatches.
+
+This is the actual fix; 0.13.8/0.13.9/0.13.11/0.13.12/0.13.13 were
+all on the right diagnostic axis but underestimated how thoroughly
+the OAuth bounce can leave the Connect side without ever issuing
+`csrftoken`. The bottoming-out is "render an authed Connect page,
+let Django set the cookie" — same primitive any browser session
+would naturally hit on first navigation, but the headless OAuth
+sequence skipped past it.
+
+## 0.13.13 — 2026-05-05
+
+**fix(connect): csrftoken cookie selection now domain-filtered.**
+
+`turmeric-20260505-1024` Phase 3 Step 2 hit `403 CSRF Failed` on every
+`connect_create_opportunity` POST across three dispatches. The 0.13.9
+detect-and-retry path fired correctly, but the retry kept resending
+the same wrong token. Root cause was deeper than 0.13.11 assumed:
+
+After the OAuth-via-CCHQ login flow, the `BrowserContext` cookie jar
+holds **two** `csrftoken` cookies — one for `connect.dimagi.com` and
+one for `www.commcarehq.org`. They are NOT interchangeable: each
+Django app validates the `X-CSRFToken` header against its own
+domain's cookie. `extractCsrfToken()` had no domain filter and
+returned the *first* match, which (after a CCHQ-bound login)
+turned out to be the HQ token. `RestBackend` then sent the HQ
+token on every `connect.dimagi.com` POST, producing an
+indistinguishable 403 for every retry.
+
+Fix in `mcp/connect/auth/playwright-session.ts`:
+
+- `extractCsrfToken(cookies, domainFilter?)` now takes an optional
+  domain substring and prefers cookies whose `domain` matches.
+- `PlaywrightSession.getContext()` and `refreshCsrfToken()` pass the
+  derived connect-domain (from `opts.baseUrl`) into the extractor, so
+  `RestBackend` sees the right-domain token from the start.
+- The 0.13.11 `/accounts/login/` GET-before-rotation hack was a
+  no-op for authed sessions (the view 302s before rendering, so no
+  `Set-Cookie` is ever emitted); reverted to a plain cookie-jar read.
+
+`commcare.ts` already domain-filtered via its own
+`csrfFromCookies()` helper, which is why `commcare_make_build` and
+`commcare_release_build` worked even before this fix — they were
+already requesting the HQ-domain cookie.
+
+Closes the 0.13.8 → 0.13.11 self-heal series. The pattern now bottoms
+out correctly: the cookie that matches the server's expected token is
+the one we send, on the first attempt.
+
 ## 0.13.12 — 2026-05-05
 
 **Phase 1 input contract: PDD is an output, not an input.**
