@@ -34,7 +34,7 @@ the first 4 strongly-calibrated rubrics.
    - `run_state.yaml` — gate states (`gates.llo-launch`, `gates.llo-invite`)
 
 2. **Detect "phase not run" mode.** If `run_state.yaml` shows
-   `phases.llo-management.llo-launch` not `done` or the launch
+   `phases.execution-management.llo-launch` not `done` or the launch
    artifact is missing, emit `verdict: incomplete` immediately with
    `[INFO] Phase 5 llo-launch not run; not gradable yet`.
 

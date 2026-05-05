@@ -462,7 +462,7 @@ if [ -n "$ENV_FILE" ]; then
   fi
 
   # ACE_TRAINING_DECK_TEMPLATE_ID gates the training-deck-build skill.
-  # The skill is non-blocking (Phase 6 doesn't require the Slides deck), so
+  # The skill is non-blocking (Phase 7 doesn't require the Slides deck), so
   # a missing template is WARN, not FAIL — but operators should know the
   # training-deck workflow won't produce a deck until they bootstrap it.
   TDID="$(get_env ACE_TRAINING_DECK_TEMPLATE_ID)"

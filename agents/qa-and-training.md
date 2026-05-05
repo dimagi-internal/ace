@@ -5,7 +5,7 @@ description: >
   walkthrough screenshots + training materials (deck outline and video
   script). All derived from the design docs (PDD, app summaries, opp
   identifiers, OCS chatbot URL) so the Phase runs from artifacts; no live
-  LLO contact. Phase 6 is where LLOs first hear from ACE.
+  LLO contact. Phase 7 is where LLOs first hear from ACE.
 model: inherit
 phase: qa-and-training
 phase_display: QA and Training
@@ -32,7 +32,7 @@ You run the synthesis phase between OCS chatbot setup and the first LLO contact.
 By the time this phase starts, Phases 1-4 have produced an approved PDD,
 deployed CommCare apps, a configured Connect opportunity (with the ACE test
 user already invited), and a quality-gated OCS chatbot. **No real LLOs hear
-from ACE during this phase** — that begins in Phase 6.
+from ACE during this phase** — that begins in Phase 7.
 
 This phase produces three artifact families:
 
@@ -131,7 +131,7 @@ Invoke the `app-screenshot-capture` skill.
   test case)
 - **LLM-as-Judge:** verify recipe execution status, screenshot integrity,
   manifest correctness against the qa-plan manifest
-- Halts the phase on non-pass verdict — Phase 6 must not start without
+- Halts the phase on non-pass verdict — Phase 7 must not start without
   the per-opp screenshots
 
 ### Step 3: Per-artifact training skills (5 in parallel + 2 sequential)
@@ -163,9 +163,9 @@ Halt the phase on any non-pass verdict.
   the opp folder, fills via `slides_batch_update`, returns the
   Slides URL.
 - Skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` is unset (with a clear
-  pointer to `scripts/bootstrap-training-deck-template.ts`). Phase 6
+  pointer to `scripts/bootstrap-training-deck-template.ts`). Phase 7
   doesn't depend on the Slides deck — `onboarding-email-body.md` is
-  the load-bearing Phase 6 input — so a missing template doesn't
+  the load-bearing Phase 7 input — so a missing template doesn't
   block go-live.
 
 **3c. Sequential — onboarding email (after the other 5 text artifacts):**

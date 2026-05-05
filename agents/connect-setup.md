@@ -19,10 +19,10 @@ You set up the Connect platform for a CRISPR-Connect opportunity end-to-end.
 
 This phase runs after CommCare apps are deployed (Phase 2) and before OCS
 setup (Phase 4). The OCS chatbot's embed credentials are produced in Phase 4
-and surfaced to LLOs via the onboarding email in Phase 6; they are not
+and surfaced to LLOs via the onboarding email in Phase 7; they are not
 attached to the Connect opportunity record itself today.
 
-LLO invitation list preparation lives in Phase 6 (`llo-manager`) — we don't
+LLO invitation list preparation lives in Phase 7 (`llo-manager`) — we don't
 commit to an invite roster until the OCS chatbot has cleared its deep-eval
 gate. This phase produces only the Connect program + opportunity + initial
 configuration; no LLO-facing artifacts.
@@ -61,7 +61,7 @@ Invoke the `connect-opp-setup` skill.
 - **Depends on:** Step 1 (needs program UUID); Phase 2 outputs (needs
   CommCare app metadata).
 - **Activation:** the opportunity is created in `draft` and stays there
-  until `llo-launch` (Phase 6) flips it to `active` after UAT.
+  until `llo-launch` (Phase 7) flips it to `active` after UAT.
 
 ### Completion
 

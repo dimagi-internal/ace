@@ -1,7 +1,7 @@
 ---
 name: training-onboarding-email
 description: >
-  Generate `onboarding-email-body.md` — the email body Phase 6
+  Generate `onboarding-email-body.md` — the email body Phase 7
   `llo-onboarding` personalizes per LLO and sends from
   ace@dimagi-ai.com when the opportunity is ready for FLW invites.
   Owns one artifact only. Sixth and final of the per-artifact training
@@ -10,7 +10,7 @@ description: >
 
 # Training Onboarding Email
 
-Produce the onboarding email body — the message Phase 6
+Produce the onboarding email body — the message Phase 7
 `llo-onboarding` sends to each LLO admin once the opportunity is
 configured and ready. Audience: an LLO admin opening their inbox who
 needs to (a) understand they have a new opportunity, (b) know how to
@@ -19,7 +19,7 @@ accept and start, (c) know where to ask questions.
 ## When to run
 
 Phase 5 (`qa-and-training`), after the Connect opportunity exists
-(Phase 3) and the OCS widget is configured (Phase 4). Phase 6
+(Phase 3) and the OCS widget is configured (Phase 4). Phase 7
 (`llo-onboarding`) reads this file and substitutes per-LLO
 personalization tokens at send time.
 
@@ -39,7 +39,7 @@ Single file: `ACE/<opp>/training-materials/onboarding-email-body.md`.
 
 ## Format
 
-Markdown email body. Phase 6 substitutes these tokens at send time:
+Markdown email body. Phase 7 substitutes these tokens at send time:
 
 - `{{LLO_NAME}}` — the LLO admin's display name
 - `{{LLO_FIRST_NAME}}` — first name only, for the greeting
@@ -97,7 +97,7 @@ ace@dimagi-ai.com
 
 ## Format rules
 
-- **Personalization tokens use `{{TOKEN}}` syntax** so Phase 6 can
+- **Personalization tokens use `{{TOKEN}}` syntax** so Phase 7 can
   substitute. The set is fixed: `LLO_NAME`, `LLO_FIRST_NAME`,
   `LLO_ORG`. Don't introduce new tokens without coordinating a
   Phase-6-side update.
@@ -105,7 +105,7 @@ ace@dimagi-ai.com
   All inputs are available at the time this skill runs.
 - **One paragraph per section.** This is an email, not a manual; LLOs
   scan and click.
-- **Subject line on the first line, prefixed `Subject:`** so Phase 6
+- **Subject line on the first line, prefixed `Subject:`** so Phase 7
   can extract.
 - **Word count: 200-400.** Longer emails get skimmed and key links
   missed; shorter feels dismissive.
@@ -174,9 +174,9 @@ enforces this.
 
 ## Why a separate skill
 
-The onboarding email is consumed by Phase 6, not Phase 5. Pulling it
-into its own skill makes the Phase-5 → Phase-6 boundary cleaner: this
-skill produces the artifact Phase 6 reads, with no other Phase-5
+The onboarding email is consumed by Phase 7, not Phase 5. Pulling it
+into its own skill makes the Phase-5 → Phase-7 boundary cleaner: this
+skill produces the artifact Phase 7 reads, with no other Phase-5
 side effects.
 
 Sixth and final of the per-artifact training skills. After this lands,

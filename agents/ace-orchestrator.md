@@ -276,17 +276,17 @@ stop, up until the point of external communication.*
   brief for triage. A hard error halts immediately. A `[WARN]` is
   logged but does NOT halt.
 - **Phase 5→6 transition:** **always pause.** This is the external-
-  communication boundary — Phase 6 is where LLOs first hear from
+  communication boundary — Phase 7 is where LLOs first hear from
   ACE. The pause shows a Phase-5-complete summary and asks "ready
   to begin LLO contact?" before any invite goes out.
-- **Phases 6–7 (LLO contact, closeout):** behave like `review` mode
+- **Phases 7–8 (LLO contact, closeout):** behave like `review` mode
   for any step whose action affects an external party. Specifically,
   always pause before:
-    - `llo-invite` send (Phase 6 — invite roster review)
-    - `llo-onboarding` (Phase 6 — first email to LLOs)
-    - `llo-uat` send (Phase 6 — UAT instructions to LLOs)
-    - `llo-launch` (Phase 6 — opportunity activation in Connect)
-    - `opp-closeout` (Phase 7 — Jira payment ticket creation)
+    - `llo-invite` send (Phase 7 — invite roster review)
+    - `llo-onboarding` (Phase 7 — first email to LLOs)
+    - `llo-uat` send (Phase 7 — UAT instructions to LLOs)
+    - `llo-launch` (Phase 7 — opportunity activation in Connect)
+    - `opp-closeout` (Phase 8 — Jira payment ticket creation)
   Steps within those phases that are purely internal (e.g.
   `timeline-monitor` reads, `flw-data-review` analysis) auto-proceed
   the same as Phases 1–5.
@@ -302,8 +302,8 @@ The 5 named gate steps (the full set, applied in `review`):
 - After `idea-to-pdd` (Phase 1) — PDD must be approved before building apps
 - After `app-deploy` (Phase 2) — apps must be verified before Connect setup
 - After `ocs-chatbot-eval --deep` (Phase 4) — OCS quality must clear pre-launch bar
-- After `llo-invite` (Phase 6) — invites reviewed before sending
-- After `llo-launch` (Phase 6) — activation verified before monitoring
+- After `llo-invite` (Phase 7) — invites reviewed before sending
+- After `llo-launch` (Phase 7) — activation verified before monitoring
 
 **Auto mode (`auto`):** Run all phases sequentially with no pauses,
 even at external-communication points. Email the CRISPR Admin group
@@ -325,7 +325,7 @@ an unattended `idea-to-pdd` approval. Default mode treats the eval
 verdict (`[BLOCKER]` or not) as the decision-maker and only stops the
 human for it when the model itself says something is wrong.
 
-Phase 6 onward involves real LLOs receiving real emails and real
+Phase 7 onward involves real LLOs receiving real emails and real
 Connect production state changes. There is no automatic eval that
 validates "is this opp ready to send to outside parties?" — only
 human judgment can clear that bar, so default mode insists on human
@@ -518,7 +518,7 @@ This phase produces: Learn app, Deliver app, deployed apps on CCHQ, test results
 ### Phase 3: Connect Setup
 Dispatch to the **connect-setup** agent.
 This phase produces: Program configured, Opportunity configured with verification
-rules and delivery/payment units. LLO invite-list preparation moved to Phase 6
+rules and delivery/payment units. LLO invite-list preparation moved to Phase 7
 on 2026-04-20 — we don't commit to an invite roster until after the OCS
 chatbot has cleared its deep-eval gate.
 
@@ -540,9 +540,9 @@ Dispatch `Agent(qa-and-training)`. The agent runs `qa-plan` →
 after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) →
 `training-onboarding-email` (LAST — links by URL to other docs). All
 skills read upstream artifacts from Phases 1-4. No LLO contact happens
-here — that begins in Phase 6.
+here — that begins in Phase 7.
 
-### Phase 6: LLO Management
+### Phase 7: LLO Management
 Dispatch to the **llo-manager** agent.
 This phase produces: LLO invite list prepared (first step), LLOs onboarded
 (with widget link in the onboarding email), UAT completed, opportunity
@@ -550,7 +550,7 @@ activated (go-live), ongoing monitoring active. This phase has recurring
 skills (timeline-monitor, flw-data-review) that run on schedule during
 the active opportunity.
 
-### Phase 7: Closeout
+### Phase 8: Closeout
 Dispatch to the **closeout** agent. Triggered when the opportunity reaches its
 end date.
 This phase produces: Invoices pulled, Jira payment ticket created, LLO feedback

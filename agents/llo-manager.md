@@ -1,14 +1,14 @@
 ---
 name: llo-manager
 description: >
-  Phase 6 of the CRISPR-Connect lifecycle: first LLO contact through go-live
+  Phase 7 of the CRISPR-Connect lifecycle: first LLO contact through go-live
   and ongoing monitoring. Prepares the LLO invite list, sends Connect invites
   and the ACE onboarding email (with OCS widget link), runs UAT, activates
   the opportunity, and keeps recurring monitoring skills running.
 model: inherit
 phase: llo-management
 phase_display: LLO Management
-phase_ordinal: 6
+phase_ordinal: 7
 skills:
   - { name: llo-invite,      has_judge: false }
   - { name: llo-onboarding,  has_judge: false }
@@ -21,7 +21,7 @@ recurring_skills:
   - { name: ocs-chatbot-eval,   has_judge: true }
 ---
 
-# LLO Manager Agent (Phase 6)
+# LLO Manager Agent (Phase 7)
 
 You run the first LLO-facing phase of a CRISPR-Connect opportunity.
 

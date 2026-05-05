@@ -20,7 +20,7 @@ You configure the per-opportunity OCS chatbot, quality-test it, and hand the
 widget credentials to the operator to attach to the Connect opportunity.
 
 This phase runs AFTER Connect setup (Phase 3) and BEFORE any LLO-facing
-communication (Phase 6). No LLOs interact with the bot in this phase — only
+communication (Phase 7). No LLOs interact with the bot in this phase — only
 the ACE judge does. Each quality gate is a **qa → eval pair** per the
 QA vs Eval contract in `skills/README.md`: `ocs-chatbot-qa` captures a
 transcript, `ocs-chatbot-eval` judges it.
