@@ -392,6 +392,7 @@ server.tool('commcare_download_ccz',
     domain: z.string(),
     app_id: z.string(),
     build_id: z.string().optional(),
+    include_multimedia: z.boolean().optional().describe('If true, request the full CCZ with multimedia binaries inlined under commcare/multimedia/...; default false returns the lite manifest-only response.'),
   },
   async (args) => runAtom(async () => (await commcareClient()).downloadCcz(args))
 );

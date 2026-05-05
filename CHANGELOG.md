@@ -5,6 +5,20 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.18 — fix(connect): commcare_download_ccz include_multimedia flag
+
+- Add `include_multimedia: boolean` option to the `commcare_download_ccz`
+  atom (default `false`). The default lite response is manifest-only;
+  passing `true` returns the full CCZ with multimedia binaries inlined
+  under `commcare/multimedia/...` (live shape: `commcare/image/<filename>`,
+  etc.).
+- Fixes a false-negative in `app-multimedia-coverage`'s verify step (10):
+  the SKILL was using the default lite response and reporting "asset
+  missing" even when the upload had succeeded.
+- Smoke script `scripts/smoke-app-multimedia-coverage.ts` simplified to
+  use the typed flag instead of the previous hardcoded query-string
+  workaround.
+
 ## 0.13.17 — app-multimedia-coverage skill
 
 - New skill `app-multimedia-coverage` (manual gate, post-Phase 2):
