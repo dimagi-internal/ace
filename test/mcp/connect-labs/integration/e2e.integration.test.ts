@@ -68,6 +68,115 @@ describeFn('connect-labs MCP — live integration (requires LABS_INTEGRATION=1 +
   });
 
   it.runIf(TEST_PROGRAM_ID)(
+    'private solicitation round-trips when program_id is passed (regression for labs PR #156)',
+    async () => {
+      // Create a private (is_public=false) solicitation. Without program_id
+      // on the read path, prod's LabsRecord API filters to public-only and
+      // this record is invisible — the bug labs PR #156 fixed.
+      const createReply = await forward(
+        {
+          jsonrpc: '2.0',
+          id: 100,
+          method: 'tools/call',
+          params: {
+            name: 'create_solicitation',
+            arguments: {
+              program_id: String(TEST_PROGRAM_ID),
+              data: {
+                title: `ACE private round-trip ${new Date().toISOString()}`,
+                solicitation_type: 'EOI',
+                description: 'private round-trip test — please ignore',
+                scope_of_work: 'integration test',
+                budget: 1,
+                deadline: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+                evaluation_criteria: [{ id: 'fit', weight: 1.0, scale: 10 }],
+                questions: [{ id: 'q1', text: 'Why?', type: 'text', required: false }],
+                status: 'draft',
+                is_public: false,
+              },
+            },
+          },
+        },
+        { token: TOKEN, url: URL },
+      );
+      expect(createReply.error).toBeUndefined();
+
+      const created = (createReply.result as { content?: Array<{ text?: string }> })
+        ?.content?.[0]?.text;
+      const createdParsed = created ? JSON.parse(created) : (createReply.result as Record<string, unknown>);
+      const solicitationId = (createdParsed as { id?: number }).id;
+      expect(solicitationId).toBeTypeOf('number');
+
+      // get_solicitation with program_id — must return the private record.
+      const getReply = await forward(
+        {
+          jsonrpc: '2.0',
+          id: 101,
+          method: 'tools/call',
+          params: {
+            name: 'get_solicitation',
+            arguments: {
+              solicitation_id: solicitationId,
+              program_id: String(TEST_PROGRAM_ID),
+            },
+          },
+        },
+        { token: TOKEN, url: URL },
+      );
+      expect(getReply.error).toBeUndefined();
+      const got = (getReply.result as { content?: Array<{ text?: string }> })
+        ?.content?.[0]?.text;
+      const gotParsed = got ? JSON.parse(got) : (getReply.result as Record<string, unknown>);
+      expect((gotParsed as { id?: number }).id).toBe(solicitationId);
+
+      // list_solicitations with program_id — must include the private record.
+      const listReply = await forward(
+        {
+          jsonrpc: '2.0',
+          id: 102,
+          method: 'tools/call',
+          params: {
+            name: 'list_solicitations',
+            arguments: { program_id: String(TEST_PROGRAM_ID) },
+          },
+        },
+        { token: TOKEN, url: URL },
+      );
+      expect(listReply.error).toBeUndefined();
+      const listed = (listReply.result as { content?: Array<{ text?: string }> })
+        ?.content?.[0]?.text;
+      const listedParsed = listed
+        ? JSON.parse(listed)
+        : (listReply.result as Record<string, unknown>);
+      const items =
+        (listedParsed as { results?: Array<{ id: number }>; items?: Array<{ id: number }> })
+          .results ??
+        (listedParsed as { items?: Array<{ id: number }> }).items ??
+        [];
+      expect(items.some((s) => s.id === solicitationId)).toBe(true);
+
+      // update_solicitation with program_id — read-then-merge needs scope.
+      const updateReply = await forward(
+        {
+          jsonrpc: '2.0',
+          id: 103,
+          method: 'tools/call',
+          params: {
+            name: 'update_solicitation',
+            arguments: {
+              solicitation_id: solicitationId,
+              program_id: String(TEST_PROGRAM_ID),
+              update_data: { status: 'closed' },
+            },
+          },
+        },
+        { token: TOKEN, url: URL },
+      );
+      expect(updateReply.error).toBeUndefined();
+    },
+  );
+
+  it.runIf(TEST_PROGRAM_ID)(
     'create_solicitation smoke (draft, never published)',
     async () => {
       const reply = await forward(

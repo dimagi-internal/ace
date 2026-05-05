@@ -115,7 +115,26 @@ post-publish via the labs UI without affecting responses.
    `${LABS_BASE_URL}/labs/solicitations/<id>/`. Manage URL pattern:
    `${LABS_BASE_URL}/labs/solicitations/<id>/edit/`.
 
-6. **Write `published.md`.** Save:
+6. **Verify the round-trip.** Immediately after publish, call:
+
+   ```
+   mcp__connect-labs__get_solicitation(
+     solicitation_id: <returned id>,
+     program_id: <same program_id used on create>,
+   )
+   ```
+
+   This catches the silent-misconfig class where the create succeeds but
+   the record is unreachable on subsequent reads. Without `program_id`,
+   the labs `LabsRecord` API filters to `is_public=true` only — so a
+   newly-created `is_public: false` solicitation (or any future change in
+   default visibility) would round-trip as "not found." Always pass
+   `program_id` on read so the prod-side membership check authorizes the
+   private record. If the verification call returns no record or a
+   different `id`, halt and surface the mismatch — do not proceed to
+   write `published.md` or mutate `opp.yaml`.
+
+7. **Write `published.md`.** Save:
 
    ```
    ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md
@@ -126,7 +145,7 @@ post-publish via the labs UI without affecting responses.
    `solicitation-review` and `solicitation-monitor` have the rubric
    without re-fetching from labs).
 
-7. **Update `opp.yaml`.** Add a `solicitation:` block:
+8. **Update `opp.yaml`.** Add a `solicitation:` block:
 
    ```yaml
    solicitation:
@@ -183,7 +202,8 @@ post-publish via the labs UI without affecting responses.
 
 ## MCP Tools Used
 
-- `connect-labs`: `generate_criteria`, `create_solicitation`
+- `connect-labs`: `create_solicitation`, `get_solicitation` (round-trip
+  verification — pass `program_id`)
 - `ace-gdrive`: `drive_create_file`, `drive_read_file`, `drive_update_file`
 
 ## Mode Behavior

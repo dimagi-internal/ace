@@ -22,6 +22,11 @@ only skill that populates `opp.yaml.selected_llo` (which gates Phase 7).
 
 - `opp.yaml.solicitation.solicitation_id`
 - `opp.yaml.solicitation.public_url`
+- `opp.yaml.program_id` — required for any `get_solicitation` /
+  `list_solicitations` / `update_solicitation` call. Labs's `LabsRecord`
+  read path filters to `is_public=true` without scope, and
+  `update_solicitation` runs an underlying read first — so private
+  solicitations 404 on every call until `program_id` is passed.
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md` (rubric)
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-monitor_responses/*.md` (all responses)
 
@@ -106,18 +111,36 @@ only skill that populates `opp.yaml.selected_llo` (which gates Phase 7).
    `awarded_org_name`, `awarded_contact_email`, `award_amount`. On
    labs-side error: `status: failed` + the error envelope.
 
-9. **Populate `opp.yaml.selected_llo`.** Only on a successful award:
+9. **Flip the labs-side status to `awarded`.** Call:
 
-   ```yaml
-   selected_llo:
-     org_slug: <returned>
-     contact_email: <returned>
-     source: solicitation
-     response_id: <chosen>
+   ```
+   mcp__connect-labs__update_solicitation(
+     solicitation_id: <id>,
+     program_id: <opp.yaml.program_id>,
+     update_data: { status: 'awarded' },
+   )
    ```
 
-   Also flip `opp.yaml.solicitation.status: awarded` and populate the
-   `solicitation.awarded.*` block with full award details.
+   `update_solicitation` does a read-then-merge under the hood, so
+   `program_id` is mandatory for non-public records — without it the
+   underlying `get_record_by_id` returns no row and the merge fails.
+   Treat 4xx here as non-fatal: `award_response` already succeeded, so
+   write a `status_update_failed` note into `award-record.md` and
+   continue. The award is durable; the labs-side status flip can be
+   retried out-of-band via the labs UI.
+
+10. **Populate `opp.yaml.selected_llo`.** Only on a successful award:
+
+    ```yaml
+    selected_llo:
+      org_slug: <returned>
+      contact_email: <returned>
+      source: solicitation
+      response_id: <chosen>
+    ```
+
+    Also flip `opp.yaml.solicitation.status: awarded` (local mirror) and
+    populate the `solicitation.awarded.*` block with full award details.
 
 ## Error handling
 
@@ -147,6 +170,7 @@ only skill that populates `opp.yaml.selected_llo` (which gates Phase 7).
 ## MCP Tools Used
 
 - `connect-labs`: `list_responses`, `get_response`, `list_reviews`,
-  `create_review`, `award_response`
+  `create_review`, `award_response`, `update_solicitation` (status flip
+  to `awarded` — pass `program_id`)
 - `ace-gdrive`: `drive_create_file`, `drive_update_file`,
   `drive_read_file`, `drive_list_folder`
