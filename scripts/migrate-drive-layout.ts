@@ -70,6 +70,7 @@ export const OLD_TO_NEW: Record<string, string> = {
   'idea.md': '1-design/idea.md',
   'pdd.md': '1-design/idea-to-pdd.md',
   'test-prompts.md': '1-design/pdd-to-test-prompts.md',
+  'expected-journeys.md': '1-design/pdd-to-app-journeys.md',
   'gate-briefs/idea-to-pdd.md': '1-design/idea-to-pdd_gate-brief.md',
   'verdicts/idea-to-pdd.yaml': '1-design/idea-to-pdd-eval_verdict.yaml',
   'design-review-summary.md': '1-design/design-review_summary.md',
@@ -81,6 +82,7 @@ export const OLD_TO_NEW: Record<string, string> = {
   'app-coverage/learn-connect-coverage.md': '2-commcare/app-connect-coverage_learn.md',
   'app-coverage/deliver-connect-coverage.md': '2-commcare/app-connect-coverage_deliver.md',
   'deployment-summary.md': '2-commcare/app-deploy_summary.md',
+  'app-test-cases.yaml': '2-commcare/app-test-cases.yaml',
   'gate-briefs/app-deploy.md': '2-commcare/app-deploy_gate-brief.md',
   'verdicts/pdd-to-learn-app.yaml': '2-commcare/pdd-to-learn-app-eval_verdict.yaml',
   'verdicts/pdd-to-deliver-app.yaml': '2-commcare/pdd-to-deliver-app-eval_verdict.yaml',
@@ -98,6 +100,7 @@ export const OLD_TO_NEW: Record<string, string> = {
   'verdicts/ocs-chatbot-eval-quick.yaml': '4-ocs/ocs-chatbot-eval_verdict-quick.yaml',
   'verdicts/ocs-chatbot-eval-deep.yaml': '4-ocs/ocs-chatbot-eval_verdict-deep.yaml',
   'verdicts/ocs-agent-setup.yaml': '4-ocs/ocs-widget-handoff-eval_verdict.yaml',
+  'gate-briefs/ocs-chatbot-eval-quick.md': '4-ocs/ocs-chatbot-eval_gate-brief-quick.md',
   'gate-briefs/ocs-chatbot-eval-deep.md': '4-ocs/ocs-chatbot-eval_gate-brief-deep.md',
   'comms-log/dry-run-ocs-agent-setup.md': '4-ocs/ocs-agent-setup_dry-run-log.md',
   'ocs-setup-summary.md': '4-ocs/ocs-setup_summary.md',
@@ -109,8 +112,10 @@ export const OLD_TO_NEW: Record<string, string> = {
   'training-materials/onboarding-email-body.md': '5-qa-and-training/training-onboarding-email.md',
   'training-materials/training-deck-outline.md': '5-qa-and-training/training-deck-outline.md',
   'screenshots/manifest.yaml': '5-qa-and-training/app-screenshot-capture_manifest.yaml',
+  'verdicts/app-screenshot-capture.yaml': '5-qa-and-training/app-screenshot-capture_verdict.yaml',
+  'verdicts/app-screenshot-capture-shallow.yaml': '5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',
+  'verdicts/app-ux-eval-deep.yaml': '5-qa-and-training/app-ux-eval_verdict-deep.yaml',
   // Self-emitted Phase 5 verdicts (Option β) — verdicts named after producer
-  'verdicts/qa-plan.yaml': '5-qa-and-training/qa-plan_verdict.yaml',
   'verdicts/training-deck-build.yaml': '5-qa-and-training/training-deck-build_verdict.yaml',
   'verdicts/training-deck-outline.yaml': '5-qa-and-training/training-deck-outline_verdict.yaml',
   'verdicts/training-faq.yaml': '5-qa-and-training/training-faq_verdict.yaml',
@@ -118,39 +123,42 @@ export const OLD_TO_NEW: Record<string, string> = {
   'verdicts/training-llo-guide.yaml': '5-qa-and-training/training-llo-guide_verdict.yaml',
   'verdicts/training-onboarding-email.yaml': '5-qa-and-training/training-onboarding-email_verdict.yaml',
   'verdicts/training-quick-reference.yaml': '5-qa-and-training/training-quick-reference_verdict.yaml',
-  // LLO Manager (Phase 6) — connect-setup/invites.md goes HERE because llo-invite is now Phase 6
-  'connect-setup/invites.md': '6-llo-manager/llo-invite_list.md',
-  'gate-briefs/llo-invite.md': '6-llo-manager/llo-invite_gate-brief.md',
-  'comms-log/onboarding-emails.md': '6-llo-manager/llo-onboarding_comms-log.md',
-  'uat/uat-results.md': '6-llo-manager/llo-uat_results.md',
-  'launch/launch-record.md': '6-llo-manager/llo-launch_record.md',
-  'gate-briefs/llo-launch.md': '6-llo-manager/llo-launch_gate-brief.md',
-  'verdicts/llo-launch.yaml': '6-llo-manager/llo-launch-eval_verdict.yaml',
-  'verdicts/flw-data-review-monitor.yaml': '6-llo-manager/flw-data-review-eval_verdict-monitor.yaml',
-  'verdicts/ocs-chatbot-eval-monitor.yaml': '6-llo-manager/ocs-chatbot-eval_verdict-monitor.yaml',
-  'eval-reports/trend.md': '6-llo-manager/ocs-chatbot-eval_trend.md',
-  // app-test outputs (Phase 2). Old shape was a sibling test-results/ folder
-  // per skills/app-test/SKILL.md; new shape is nested under 2-commcare/app-test/.
-  'test-results/test-plan.md': '2-commcare/app-test/test-plan.md',
-  'test-results/test-results.md': '2-commcare/app-test/test-results.md',
-  'test-results/bugs.md': '2-commcare/app-test/bugs.md',
-  // qa-plan flat outputs (single-level leaves coalesce into _-joined names;
-  // walkthrough-recipes/ stays nested via the folder-prefix rule).
-  'qa-plan/screenshot-manifest.yaml': '5-qa-and-training/qa-plan_screenshot-manifest.yaml',
-  'qa-plan/test-matrix.md': '5-qa-and-training/qa-plan_test-matrix.md',
-  'qa-plan/uat-checklist.md': '5-qa-and-training/qa-plan_uat-checklist.md',
-  // Closeout (Phase 7)
-  'closeout/invoices.md': '7-closeout/opp-closeout_invoices.md',
-  'closeout/llo-feedback.md': '7-closeout/llo-feedback.md',
-  'closeout/learnings.md': '7-closeout/learnings-summary.md',
-  'closeout/new-pdd.md': '7-closeout/learnings-summary_new-pdd.md',
-  'closeout/cycle-grade.md': '7-closeout/cycle-grade.md',
-  'closeout/final-summary.md': '7-closeout/closeout_summary.md',
-  'verdicts/cycle-grade.yaml': '7-closeout/cycle-grade-eval_verdict.yaml',
-  'verdicts/opp-eval-deep.yaml': '7-closeout/opp-eval/opp-eval_verdict-deep.yaml',
-  'verdicts/opp-eval-monitor.yaml': '7-closeout/opp-eval/opp-eval_verdict-monitor.yaml',
-  'gate-briefs/opp-eval-deep.md': '7-closeout/opp-eval/opp-eval_gate-brief-deep.md',
-  'scorecards/trend.md': '7-closeout/opp-eval/trend.md',
+  // Solicitation Management (Phase 6) — new in 0.12.0
+  'solicitation/draft.md': '6-solicitation-management/solicitation-create_draft.md',
+  'solicitation/published.md': '6-solicitation-management/solicitation-create_published.md',
+  'solicitation/invitations.md': '6-solicitation-management/llo-invite_invitations.md',
+  'solicitation/review/scoring-rubric.md': '6-solicitation-management/solicitation-review_scoring-rubric.md',
+  'solicitation/review/recommendation.md': '6-solicitation-management/solicitation-review_recommendation.md',
+  'solicitation/award-record.md': '6-solicitation-management/solicitation-review_award-record.md',
+  'verdicts/solicitation-create.yaml': '6-solicitation-management/solicitation-create-eval_verdict.yaml',
+  'verdicts/solicitation-review.yaml': '6-solicitation-management/solicitation-review-eval_verdict.yaml',
+  // Execution Management (Phase 7) — was llo-manager (was Phase 6) renamed in 0.12.0
+  // Renumbered from 6-llo-manager/ to 7-execution-manager/ in 0.13.0.
+  'connect-setup/invites.md': '7-execution-manager/llo-invite_list.md', // legacy pre-0.12.0 invite-list path
+  'gate-briefs/llo-invite.md': '7-execution-manager/llo-invite_gate-brief.md',
+  'comms-log/onboarding-emails.md': '7-execution-manager/llo-onboarding_comms-log.md',
+  'uat/uat-results.md': '7-execution-manager/llo-uat_results.md',
+  'launch/launch-record.md': '7-execution-manager/llo-launch_record.md',
+  'gate-briefs/llo-launch.md': '7-execution-manager/llo-launch_gate-brief.md',
+  'verdicts/llo-launch.yaml': '7-execution-manager/llo-launch-eval_verdict.yaml',
+  'verdicts/flw-data-review-monitor.yaml': '7-execution-manager/flw-data-review-eval_verdict-monitor.yaml',
+  'verdicts/ocs-chatbot-eval-monitor.yaml': '7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml',
+  'eval-reports/trend.md': '7-execution-manager/ocs-chatbot-eval_trend.md',
+  // 0.12.0 → 0.13.0 in-place renames for files under previously-migrated
+  // 6-llo-manager/ and 7-closeout/ folders are handled by the prefix block
+  // in `computeNewPath` (no exact-match leaf entry possible).
+  // Closeout (Phase 8) — was Phase 7 in 0.12.0; renumbered in 0.13.0.
+  'closeout/invoices.md': '8-closeout/opp-closeout_invoices.md',
+  'closeout/llo-feedback.md': '8-closeout/llo-feedback.md',
+  'closeout/learnings.md': '8-closeout/learnings-summary.md',
+  'closeout/new-pdd.md': '8-closeout/learnings-summary_new-pdd.md',
+  'closeout/cycle-grade.md': '8-closeout/cycle-grade.md',
+  'closeout/final-summary.md': '8-closeout/closeout_summary.md',
+  'verdicts/cycle-grade.yaml': '8-closeout/cycle-grade-eval_verdict.yaml',
+  'verdicts/opp-eval-deep.yaml': '8-closeout/opp-eval/opp-eval_verdict-deep.yaml',
+  'verdicts/opp-eval-monitor.yaml': '8-closeout/opp-eval/opp-eval_verdict-monitor.yaml',
+  'gate-briefs/opp-eval-deep.md': '8-closeout/opp-eval/opp-eval_gate-brief-deep.md',
+  'scorecards/trend.md': '8-closeout/opp-eval/trend.md',
 };
 
 // Run-scoped paths that should NOT move (already in new shape, or
@@ -197,6 +205,9 @@ const LEGACY_DEAD_FOLDERS = new Set<string>([
   'training-materials',
   'ocs-setup',
   'apps',
+  'solicitation',     // 0.12.0 flat solicitation/ → 6-solicitation-management/
+  '6-llo-manager',    // 0.13.0 renumber: 6-llo-manager/ → 7-execution-manager/
+  '7-closeout',       // 0.13.0 renumber: 7-closeout/   → 8-closeout/
 ]);
 
 // Files that are dropped wholesale in the new layout — no migration target.
@@ -214,6 +225,16 @@ const DROPPED_PREFIXES = [
  * skip OR already-prefixed path) or when the file is a dropped artifact.
  */
 export function computeNewPath(oldPath: string): string | null {
+  // 0.12.0 → 0.13.0 in-place renames: file lives under one of the prefix
+  // names that got renumbered. Handle BEFORE the "already-prefixed skip"
+  // check below so the rename actually happens.
+  if (oldPath.startsWith('6-llo-manager/')) {
+    return `7-execution-manager/${oldPath.slice('6-llo-manager/'.length)}`;
+  }
+  if (oldPath.startsWith('7-closeout/')) {
+    return `8-closeout/${oldPath.slice('7-closeout/'.length)}`;
+  }
+
   // Already in new phase-prefixed shape — `<N>-<phase>/...`
   if (/^\d-[a-z][a-z0-9-]*\//.test(oldPath)) return null;
 
@@ -235,12 +256,6 @@ export function computeNewPath(oldPath: string): string | null {
 
   // Folder-prefix rules. The order matters; longest/most-specific first.
 
-  // qa-plan/walkthrough-recipes/<rest> → 5-qa-and-training/qa-plan/walkthrough-recipes/<rest>
-  // (also covers any other unmapped file under qa-plan/)
-  if (oldPath.startsWith('qa-plan/')) {
-    return `5-qa-and-training/${oldPath}`;
-  }
-
   // mobile-recipes/<rest> → 5-qa-and-training/mobile-recipes/<rest>
   if (oldPath.startsWith('mobile-recipes/')) {
     return `5-qa-and-training/${oldPath}`;
@@ -252,15 +267,21 @@ export function computeNewPath(oldPath: string): string | null {
     return `5-qa-and-training/${oldPath}`;
   }
 
+  // solicitation/responses/<rest> → 6-solicitation-management/solicitation-monitor_responses/<rest>
+  if (oldPath.startsWith('solicitation/responses/')) {
+    const leaf = oldPath.slice('solicitation/responses/'.length);
+    return `6-solicitation-management/solicitation-monitor_responses/${leaf}`;
+  }
+
   // qa-captures/<YYYY-MM-DD>-<...>-<mode>.md →
   //   - quick/deep → 4-ocs/ocs-chatbot-qa_transcript-<mode>.md  (Phase 4 gate)
-  //   - monitor    → 6-llo-manager/ocs-chatbot-qa_transcript-monitor.md  (Phase 6 recurring)
+  //   - monitor    → 7-execution-manager/ocs-chatbot-qa_transcript-monitor.md (Phase 7 recurring)
   if (oldPath.startsWith('qa-captures/')) {
     const leaf = oldPath.slice('qa-captures/'.length);
     const m = leaf.match(/-(quick|deep|monitor)\.md$/);
     if (m) {
       const mode = m[1];
-      if (mode === 'monitor') return `6-llo-manager/ocs-chatbot-qa_transcript-monitor.md`;
+      if (mode === 'monitor') return `7-execution-manager/ocs-chatbot-qa_transcript-monitor.md`;
       return `4-ocs/ocs-chatbot-qa_transcript-${mode}.md`;
     }
     // Unparseable date pattern — skip with WARN signal (caller decides);
@@ -268,25 +289,25 @@ export function computeNewPath(oldPath: string): string | null {
     return null;
   }
 
-  // monitoring/<rest> → 6-llo-manager/timeline-monitor/<rest>
+  // monitoring/<rest> → 7-execution-manager/timeline-monitor/<rest>
   if (oldPath.startsWith('monitoring/')) {
     const leaf = oldPath.slice('monitoring/'.length);
-    return `6-llo-manager/timeline-monitor/${leaf}`;
+    return `7-execution-manager/timeline-monitor/${leaf}`;
   }
 
-  // data-reviews/<rest> → 6-llo-manager/flw-data-review/<rest>
+  // data-reviews/<rest> → 7-execution-manager/flw-data-review/<rest>
   if (oldPath.startsWith('data-reviews/')) {
     const leaf = oldPath.slice('data-reviews/'.length);
-    return `6-llo-manager/flw-data-review/${leaf}`;
+    return `7-execution-manager/flw-data-review/${leaf}`;
   }
 
-  // scorecards/<YYYY-MM-DD>-<...>-<mode>.md → 7-closeout/opp-eval/opp-eval_scorecard-<mode>.md
+  // scorecards/<YYYY-MM-DD>-<...>-<mode>.md → 8-closeout/opp-eval/opp-eval_scorecard-<mode>.md
   if (oldPath.startsWith('scorecards/')) {
     const leaf = oldPath.slice('scorecards/'.length);
-    if (leaf === 'trend.md') return '7-closeout/opp-eval/trend.md'; // already in OLD_TO_NEW
+    if (leaf === 'trend.md') return '8-closeout/opp-eval/trend.md'; // already in OLD_TO_NEW
     const m = leaf.match(/-(quick|deep|monitor)\.md$/);
     if (m) {
-      return `7-closeout/opp-eval/opp-eval_scorecard-${m[1]}.md`;
+      return `8-closeout/opp-eval/opp-eval_scorecard-${m[1]}.md`;
     }
     // Best-effort: skip unparseable scorecard names; operator can move by hand.
     return null;

@@ -109,25 +109,22 @@ describe('planMoves', () => {
     });
   });
 
-  it('preserves nested folder hierarchy for qa-plan/walkthrough-recipes', async () => {
+  it('renames 0.12.0 6-llo-manager/ leaves to 7-execution-manager/ in 0.13.0', async () => {
     const drive = fakeDrive({
       'opp-id': [{ id: 'runs-id', name: 'runs', mimeType: FOLDER }],
       'runs-id': [{ id: 'run-1-id', name: 'run-1', mimeType: FOLDER }],
       'run-1-id': [
-        { id: 'qp-id', name: 'qa-plan', mimeType: FOLDER },
+        { id: 'lm-id', name: '6-llo-manager', mimeType: FOLDER },
       ],
-      'qp-id': [
-        { id: 'wr-id', name: 'walkthrough-recipes', mimeType: FOLDER },
-      ],
-      'wr-id': [
-        { id: 'lm-id', name: 'learn-module-1.yaml', mimeType: YAML },
+      'lm-id': [
+        { id: 'rec-id', name: 'llo-launch_record.md', mimeType: DOC },
       ],
     });
     const moves = await planMoves('opp-id', drive as any);
     expect(moves).toContainEqual({
-      fileId: 'lm-id',
-      from: 'qa-plan/walkthrough-recipes/learn-module-1.yaml',
-      to: '5-qa-and-training/qa-plan/walkthrough-recipes/learn-module-1.yaml',
+      fileId: 'rec-id',
+      from: '6-llo-manager/llo-launch_record.md',
+      to: '7-execution-manager/llo-launch_record.md',
       action: 'move',
       runFolderId: 'run-1-id',
     });
