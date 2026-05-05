@@ -637,15 +637,20 @@ bare "Approve the PDD?" prompt).
 
 **Where the brief lives.** Each gate-producing skill writes
 `ACE/<opp-name>/gate-briefs/<gate-name>.md` as its final step, immediately
-after writing its primary artifact. The 5 expected files are:
+after writing its primary artifact. The 4 expected files are:
 
 ```
 ACE/<opp-name>/gate-briefs/idea-to-pdd.md
 ACE/<opp-name>/gate-briefs/app-deploy.md
 ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-deep.md
-ACE/<opp-name>/gate-briefs/llo-invite.md
 ACE/<opp-name>/gate-briefs/llo-launch.md
 ```
+
+(0.12.0: `gate-briefs/llo-invite.md` was removed — the new Phase 6
+`llo-invite` sends solicitation-invite emails (non-binding "please
+apply" notes) and does not write a gate brief. The Phase 6→7 boundary
+itself is the gate that replaces it; halt logic is in the orchestrator,
+not a per-skill brief.)
 
 **Required structure** (every brief uses this shape — no free-form prose):
 
@@ -708,12 +713,16 @@ orchestrator's pause behavior at each named gate is:
 | `idea-to-pdd` | 1 | pause iff `[BLOCKER]` | always pause | never pause* |
 | `app-deploy` | 2 | pause iff `[BLOCKER]` | always pause | never pause* |
 | `ocs-chatbot-eval-deep` | 4 | pause iff `[BLOCKER]` | always pause | never pause* |
-| `llo-invite` | 6 | **always pause** | always pause | never pause* |
-| `llo-launch` | 6 | **always pause** | always pause | never pause* |
+| `llo-invite` | 6 | never pause (passive solicitation invites) | always pause | never pause* |
+| Phase 6→7 boundary | 6→7 | **always pause** (waits for `selected_llo`) | always pause | always pause |
+| `llo-launch` | 7 | **always pause** | always pause | never pause* |
 
-*`auto` still pauses on `[BLOCKER]` — see below.
+*`auto` still pauses on `[BLOCKER]` — see below. The Phase 6→7 boundary
+is unconditional in all modes because Phase 7 cannot start without
+`opp.yaml.selected_llo.org_slug` (populated by manual
+`solicitation-review`).
 
-In addition to the 5 named gates, `default` mode pauses before any
+In addition to the named gates, `default` mode pauses before any
 external-communication action that doesn't have a dedicated gate:
 `llo-onboarding` (first email to LLOs), `llo-uat` (UAT email send),
 and `opp-closeout` (Jira payment ticket creation). These were

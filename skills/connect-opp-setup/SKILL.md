@@ -17,8 +17,8 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    - PDD: `ACE/<opp-name>/pdd.md`
    - Program details: `ACE/<opp-name>/connect-setup/program.md`
      (program UUID; the opp is created scoped to it)
-   - Opportunity contact list: `ACE/<opp-name>/connect-setup/invites.md`
-     (target LLO org slug — must be the slug of an org that already has an
+   - Awarded LLO: `opp.yaml.selected_llo.org_slug` (populated by Phase 6
+     `solicitation-review` — must be the slug of an org that already has an
      ACCEPTED `ProgramApplication` for the program. See § Pre-flight.)
    - App deployment details: `ACE/<opp-name>/deployment-summary.md`
      (`hq_server`, `learn_app` ID, `deliver_app` ID, HQ project space slug)

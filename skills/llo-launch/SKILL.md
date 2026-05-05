@@ -15,7 +15,7 @@ Activate the opportunity and notify LLOs that they are live.
    - UAT results: `ACE/<opp-name>/uat/uat-results.md` (includes archetype)
    - Deployment summary: `ACE/<opp-name>/deployment-summary.md` (atomic-visit)
    - Opportunity config: `ACE/<opp-name>/connect-setup/opportunity.md`
-   - LLO contacts: `ACE/<opp-name>/connect-setup/invites.md`
+   - Awarded LLO: `opp.yaml.selected_llo` (populated by Phase 6 `solicitation-review`)
    - PDD: `ACE/<opp-name>/pdd.md` (fallback archetype source)
 
 2. **Read the `archetype:` field.** Go-live semantics differ per

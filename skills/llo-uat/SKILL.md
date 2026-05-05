@@ -15,7 +15,7 @@ Coordinate UAT with LLOs before the opportunity goes live.
    - Deployment summary: `ACE/<opp-name>/deployment-summary.md`
    - Training materials: `ACE/<opp-name>/training-materials/`
    - Opportunity config: `ACE/<opp-name>/connect-setup/opportunity.md`
-   - LLO contacts: `ACE/<opp-name>/connect-setup/invites.md`
+   - Awarded LLO: `opp.yaml.selected_llo` (populated by Phase 6 `solicitation-review`)
    - PDD: `ACE/<opp-name>/pdd.md` (reads `archetype:`)
 
 2. **Read the PDD's `archetype:` field.** The entire "what to test" list
