@@ -5,6 +5,45 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.13 — 2026-05-05
+
+**fix(connect): csrftoken cookie selection now domain-filtered.**
+
+`turmeric-20260505-1024` Phase 3 Step 2 hit `403 CSRF Failed` on every
+`connect_create_opportunity` POST across three dispatches. The 0.13.9
+detect-and-retry path fired correctly, but the retry kept resending
+the same wrong token. Root cause was deeper than 0.13.11 assumed:
+
+After the OAuth-via-CCHQ login flow, the `BrowserContext` cookie jar
+holds **two** `csrftoken` cookies — one for `connect.dimagi.com` and
+one for `www.commcarehq.org`. They are NOT interchangeable: each
+Django app validates the `X-CSRFToken` header against its own
+domain's cookie. `extractCsrfToken()` had no domain filter and
+returned the *first* match, which (after a CCHQ-bound login)
+turned out to be the HQ token. `RestBackend` then sent the HQ
+token on every `connect.dimagi.com` POST, producing an
+indistinguishable 403 for every retry.
+
+Fix in `mcp/connect/auth/playwright-session.ts`:
+
+- `extractCsrfToken(cookies, domainFilter?)` now takes an optional
+  domain substring and prefers cookies whose `domain` matches.
+- `PlaywrightSession.getContext()` and `refreshCsrfToken()` pass the
+  derived connect-domain (from `opts.baseUrl`) into the extractor, so
+  `RestBackend` sees the right-domain token from the start.
+- The 0.13.11 `/accounts/login/` GET-before-rotation hack was a
+  no-op for authed sessions (the view 302s before rendering, so no
+  `Set-Cookie` is ever emitted); reverted to a plain cookie-jar read.
+
+`commcare.ts` already domain-filtered via its own
+`csrfFromCookies()` helper, which is why `commcare_make_build` and
+`commcare_release_build` worked even before this fix — they were
+already requesting the HQ-domain cookie.
+
+Closes the 0.13.8 → 0.13.11 self-heal series. The pattern now bottoms
+out correctly: the cookie that matches the server's expected token is
+the one we send, on the first attempt.
+
 ## 0.13.12 — 2026-05-05
 
 **Phase 1 input contract: PDD is an output, not an input.**

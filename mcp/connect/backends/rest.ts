@@ -125,14 +125,13 @@ export class RestBackend implements ConnectClient {
     });
 
     // 403-CSRF self-heal: refresh the token from the cookie jar and
-    // retry once. Django rotates `csrftoken` on certain server-side
-    // state transitions (notably after auth refresh and some admin
-    // mutations); the cached process-wide token in 0.13.7 went stale
-    // mid-session and surfaced as opaque "403 CSRF Failed" with no
-    // recovery path. Mirrors the 0.13.8 commcare.ts session retry
-    // pattern but for a different failure shape — 403 + CSRF body
-    // instead of 302 to login. Playwright's `res.text()` caches the
-    // body, so reading it here doesn't break the caller's
+    // retry once. With 0.13.12's domain filtering in
+    // `extractCsrfToken`, the cookie-jar read now returns the
+    // *connect-domain* csrftoken (was unfiltered pre-0.13.12, picking
+    // the HQ token instead and producing 403 on every Connect POST).
+    // The retry sends a token that actually matches the connect.dimagi.com
+    // cookie the server validates against. Playwright's `res.text()`
+    // caches the body, so reading it here doesn't break the caller's
     // `raiseForStatus` re-read on the non-CSRF 403 path.
     if (res.status() === 403 && this.opts.session) {
       const bodyText = await res.text();
