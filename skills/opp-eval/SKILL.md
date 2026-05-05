@@ -77,16 +77,17 @@ If no mode is passed, default to `--quick`.
    The aggregator must surface gaps, not hide behind them.
 
 6. **Group verdicts into skill categories.** Map each verdict's `skill`
-   to one of six run-level dimensions:
+   to one of seven run-level dimensions:
 
    | Category | Weight | Covers skills |
    |---|---|---|
-   | `design`    | 0.20 | `idea-to-pdd`, `pdd-to-test-prompts` |
-   | `commcare`  | 0.20 | `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-test`, `training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-onboarding-email`, `training-deck-outline` |
-   | `connect`   | 0.15 | `connect-program-setup`, `connect-opp-setup`, `llo-invite` |
-   | `ocs`       | 0.20 | `ocs-agent-setup`, `ocs-chatbot-eval-quick`, `ocs-chatbot-eval-deep` |
-   | `operate`   | 0.15 | `llo-onboarding`, `llo-uat`, `llo-launch`, `ocs-chatbot-eval-monitor`, `flw-data-review`, `timeline-monitor` |
-   | `closeout`  | 0.10 | `opp-closeout`, `llo-feedback`, `learnings-summary`, `cycle-grade` |
+   | `design`        | 0.20 | `idea-to-pdd`, `pdd-to-test-prompts` |
+   | `commcare`      | 0.18 | `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-test`, `training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-onboarding-email`, `training-deck-outline` |
+   | `connect`       | 0.13 | `connect-program-setup`, `connect-opp-setup` |
+   | `ocs`           | 0.18 | `ocs-agent-setup`, `ocs-chatbot-eval-quick`, `ocs-chatbot-eval-deep` |
+   | `solicitation`  | 0.10 | `solicitation-create`, `solicitation-review` (added 0.12.0 — Phase 6) |
+   | `operate`       | 0.13 | `llo-onboarding`, `llo-uat`, `llo-launch`, `ocs-chatbot-eval-monitor`, `flw-data-review`, `timeline-monitor` |
+   | `closeout`      | 0.08 | `opp-closeout`, `llo-feedback`, `learnings-summary`, `cycle-grade` |
 
    Category weights sum to 1.0. Per-category score is the simple mean
    of all verdicts that map into the category, **excluding any verdict
@@ -123,8 +124,9 @@ If no mode is passed, default to `--quick`.
    | 0 | none     | `incomplete` | Nothing to grade |
    | 1 | thin     | `incomplete` | Single-category score isn't a run grade — flag `[INFO]` |
    | 2 | partial  | `warn` (max) | One cross-skill signal exists but most of the run is unmeasured |
-   | 3 | adequate | `pass` if raw ≥ 7 | Half-coverage; raw score governs |
-   | 4+ | full    | `pass` if raw ≥ 7; `warn` 4.0–6.9; `fail` <4.0 | Cross-skill view is real |
+   | 3 | adequate | `pass` if raw ≥ 7 | Less than half-coverage; raw score governs |
+   | 4 | adequate | `pass` if raw ≥ 7 | Half-coverage; raw score governs |
+   | 5+ | full   | `pass` if raw ≥ 7; `warn` 4.0–6.9; `fail` <4.0 | Cross-skill view is real |
 
    The verdict cap applies AFTER the raw score: a 9.5 raw with
    1-category coverage emits `incomplete`, not a misleading PASS.
