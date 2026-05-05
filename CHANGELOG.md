@@ -51,6 +51,44 @@ turns a silent "create succeeded but the record is unreachable"
 misconfig into a hard halt at the boundary, so future visibility-default
 changes can't reintroduce the same regression downstream.
 
+## 0.13.9 — 2026-05-05
+
+**fix(connect): CSRF rotation now self-heals on 403; companion to 0.13.8.**
+
+The `turmeric-20260505-1024` run halted again at Phase 3 Step 2 with a
+**different** session-related failure shape than 0.13.8 caught:
+`connect_create_opportunity` returned `403 CSRF Failed: CSRF token from
+the 'X-Csrftoken' HTTP header incorrect.` The 0.13.8 self-heal triggers
+on `302 → /login/`, so a 403 + CSRF body went past the wrapper unhandled.
+The cookie's `csrftoken` had rotated server-side after the OAuth refresh
+that 0.13.8 itself triggered, but the `RestBackend` cached the static
+init-time token in its constructor and never re-read it.
+
+Fix in `mcp/connect/backends/rest.ts`:
+
+- `RestBackendOptions` gains `session?: PlaywrightSession`. Wired
+  through in `connect-server.ts`.
+- `RestBackend` keeps a mutable `csrf` field initialized from the static
+  token. `headers()` reads from that field, not `opts.csrfToken`, so a
+  refreshed token is picked up by every subsequent call.
+- The `post()` helper checks for `403 + body matching /CSRF/i`. On match,
+  calls `session.refreshCsrfToken()` (re-reads `csrftoken` from the live
+  cookie jar — Playwright's `BrowserContext` updates it automatically
+  on `Set-Cookie` headers) and retries the POST once. The retry is
+  bounded (one attempt) and only fires on the CSRF-shaped failure;
+  non-CSRF 403s still surface to the caller's `raiseForStatus` path
+  unchanged.
+
+Mirrors the 0.13.8 `commcare.ts` pattern but on a different failure
+shape: 0.13.8 catches login-redirect (auth lost), 0.13.9 catches CSRF
+rotation (auth fine, token stale). Both are part of the same broader
+"static-snapshot at MCP boot doesn't survive long-running sessions"
+class of bug that the user flagged in 0.13.7.
+
+`PlaywrightBackend` (which owns the HTML-form-driven Connect read paths)
+shares the same arch but has not yet surfaced the bug; migration is
+YAGNI until it does.
+
 ## 0.13.8 — 2026-05-05
 
 **fix(connect): CCHQ session expiry now self-recovers; transparent retry on
