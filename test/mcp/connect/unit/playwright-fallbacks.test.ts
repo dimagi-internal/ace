@@ -658,10 +658,15 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
   it('POSTs to /payment_unit/create with multi-valued required_deliver_units', async () => {
     const captured: CapturedRequest[] = [];
     // Mock payment_unit_table response with one matching PU
+    // 7-column payment_unit_table fixture (verified against live Connect HTML
+    // 2026-05-05): id, name, start_date, end_date, max_total ("Total Deliveries"
+    // column), max_daily ("Max daily" column), delivery_units count.
+    // Server does NOT render `amount` in this table — see
+    // `parsePaymentUnitTable` jsdoc.
     const puTableHtml = `
       <table>
         <tbody>
-          <tr class="even"><td>42</td><td>Visit</td><td>2026-05-01</td><td>2026-12-31</td><td>500</td><td>50</td></tr>
+          <tr class="even"><td>42</td><td>Visit</td><td>2026-05-01</td><td>2026-12-31</td><td>50</td><td>10</td><td>2</td></tr>
         </tbody>
       </table>
     `;
@@ -689,6 +694,11 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     expect(out.id).toBe(42);
     expect(out.name).toBe('Visit');
     expect(out.required_deliver_units).toEqual([3339, 3340]);
+    // Parser-corrected values round-trip from the table (max_total/max_daily)
+    // and from args (amount, since it isn't rendered in the table).
+    expect(out.amount).toBe(500);
+    expect(out.max_total).toBe(50);
+    expect(out.max_daily).toBe(10);
 
     // Filter to the create POST (the sync_deliver_units precondition POST also captures).
     const post = captured.find(
@@ -717,7 +727,7 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     const puTableHtml = `
       <table>
         <tbody>
-          <tr class="even"><td>42</td><td>VendorVisit</td><td>2026-05-01</td><td>2026-12-31</td><td>500</td><td>50</td></tr>
+          <tr class="even"><td>42</td><td>VendorVisit</td><td>2026-05-01</td><td>2026-12-31</td><td>50</td><td>10</td><td>1</td></tr>
         </tbody>
       </table>
     `;
@@ -807,7 +817,7 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     // POST runs before the form is scraped so DU checkboxes are populated. See
     // mcp/connect/backends/playwright.ts § Sync-deliver-units precondition.
     const captured: CapturedRequest[] = [];
-    const puTableHtml = `<table><tbody><tr class="even"><td>1</td><td>X</td><td></td><td></td><td>500</td><td>50</td></tr></tbody></table>`;
+    const puTableHtml = `<table><tbody><tr class="even"><td>1</td><td>X</td><td></td><td></td><td>50</td><td>10</td><td>1</td></tr></tbody></table>`;
     const request = makeRequestContext(
       [
         { status: 200, body: puCreateForm }, // GET form (initial)
@@ -849,7 +859,7 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     // are non-empty. PUs created without DU assignment skip the precondition
     // (one less HTTP call).
     const captured: CapturedRequest[] = [];
-    const puTableHtml = `<table><tbody><tr class="even"><td>1</td><td>NoDUs</td><td></td><td></td><td>10</td><td>1</td></tr></tbody></table>`;
+    const puTableHtml = `<table><tbody><tr class="even"><td>1</td><td>NoDUs</td><td></td><td></td><td>1</td><td>1</td><td>0</td></tr></tbody></table>`;
     const request = makeRequestContext(
       [
         { status: 200, body: puCreateForm }, // GET form
@@ -875,8 +885,8 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
 
   it('createPaymentUnits loops over the input list', async () => {
     const captured: CapturedRequest[] = [];
-    const puTableHtml1 = `<table><tbody><tr class="even"><td>1</td><td>PU-1</td><td></td><td></td><td>100</td><td>1</td></tr></tbody></table>`;
-    const puTableHtml2 = `<table><tbody><tr class="even"><td>1</td><td>PU-1</td><td></td><td></td><td>100</td><td>1</td></tr><tr class="odd"><td>2</td><td>PU-2</td><td></td><td></td><td>200</td><td>1</td></tr></tbody></table>`;
+    const puTableHtml1 = `<table><tbody><tr class="even"><td>1</td><td>PU-1</td><td></td><td></td><td>1</td><td>1</td><td>0</td></tr></tbody></table>`;
+    const puTableHtml2 = `<table><tbody><tr class="even"><td>1</td><td>PU-1</td><td></td><td></td><td>1</td><td>1</td><td>0</td></tr><tr class="odd"><td>2</td><td>PU-2</td><td></td><td></td><td>1</td><td>1</td><td>0</td></tr></tbody></table>`;
     const request = makeRequestContext(
       [
         { status: 200, body: puCreateForm },
