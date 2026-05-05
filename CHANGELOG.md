@@ -5,6 +5,79 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.11.11 — 2026-05-04
+
+**Verify-after-create discipline for external mutations.**
+
+The `turmeric-20260503-0835` Phase 3 run created a payment unit whose
+stored values diverged from the request payload (`amount=500` vs sent
+`1.50`, `max_total=20` vs sent `500`, `required_deliver_units=[]` vs
+sent `[Vendor Visit]`). The producing skill's response alone was
+authoritative — there was no read-back to catch the divergence. The
+malformation cascaded through `is_setup_complete` to silently break
+Phase 6 `connect_send_flw_invite` and Phase 5
+`app-screenshot-capture`. The `connect-program-setup-eval` rubric
+correctly graded the bad output (`payment_unit_fit: 5.0`, overall
+6.93 warn), but by then Phase 3 had already handed off corrupted
+state to downstream.
+
+Class-level fix: every external-system write must be followed by a
+read-back of the same fields, with a hard `[BLOCKER]` halt on
+field-misalignment.
+
+### Added
+
+- `agents/ace-orchestrator.md § External Mutations — Verify After
+  Create` — class-level rule for every skill that mutates external
+  state (Connect, CCHQ, OCS, Nova). Write → read → compare → halt loud
+  on mismatch on load-bearing fields. Cosmetic mismatches log INFO.
+  Documents when read-back is overkill (write-once-read-once flows
+  whose check collapses into the next skill's input read).
+- `skills/connect-opp-setup/SKILL.md` Step 4 verify-after-create:
+  immediate `connect_get_opportunity` after create. Compares `name`,
+  `short_description`, `description`, `start_date`, `end_date`,
+  `total_budget`, `is_test`, `learn_app.cc_app_id`,
+  `deliver_app.cc_app_id`, `passing_score`. Date or app-id drift =
+  BLOCKER (catches the `end_date` write/read drift seen on the
+  turmeric run). Description/score drift = INFO.
+- `skills/connect-opp-setup/SKILL.md` Step 6 verify-after-create:
+  immediate `connect_list_payment_units` after create. Per-unit field
+  match on `name`, `amount`, `org_amount`, `max_total`, `max_daily`,
+  `required_deliver_units` (length + ids), `optional_deliver_units`.
+  Any mismatch = BLOCKER, do not proceed to Step 7.
+
+### Changed
+
+- `skills/connect-opp-setup/SKILL.md` Step 4 `short_description` cap:
+  documented as **≤50 chars** (server-enforced; was wrongly documented
+  as ≤255 — Phase 3 of the turmeric run hit the real cap).
+- `skills/connect-opp-setup/SKILL.md` Step 6 `amount` integer
+  constraint: pinned three options (round + INFO-log, convert to
+  smaller currency unit, or refuse fractional inputs). Banned silent
+  truncation (`$1.50 → $1` was the prior behavior class).
+- `skills/connect-opp-setup/SKILL.md` Step 6 `required_deliver_units`:
+  documented that empty array blocks `is_setup_complete`, which
+  cascades to Phase 6 invites and Phase 5 screenshots.
+- `skills/connect-opp-setup/SKILL.md` § MCP Tools Used: added
+  `connect_get_opportunity` and `connect_list_payment_units` with
+  read-back-purpose annotations.
+
+### Notes
+
+- `commcare-connect` commit `4c430de3` (merged via PR #1135 on
+  2026-04-30) loosened `org_amount` validation for managed opps and
+  added missing-claim-limits creation. That fix addresses adjacent
+  symptoms (managed-opp `org_amount=0` validation false-positive,
+  missing claim-limits cascade) but does NOT fix the value-misalignment
+  class. The verify-after-create rule in this release catches both
+  fixed-upstream and not-yet-fixed-upstream symptoms at the source.
+- Future scope (separate PR): apply the verify-after-create pattern
+  to `connect-program-setup` (program create),
+  `app-deploy`/`app-release` (CCHQ build/release), and
+  `ocs-agent-setup` (chatbot publish). Each has the same
+  write→hand-off pattern and would benefit from the same read-back
+  guard.
+
 ## 0.11.10 — 2026-05-04
 
 **Shallow / deep QA split.** `/ace:run` now does shallow QA only; deep
