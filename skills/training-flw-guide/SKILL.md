@@ -31,8 +31,7 @@ the per-opp screenshots. Independent of `training-llo-guide`,
 | Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | Deliver form structure (the "what to do here" section) |
 | Phase 3 (`run_state.yaml`) | `connect.opportunity` (claim flow), `connect.payment_units` | "what FLWs get paid for" framing |
 | Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | "where to get help" section |
-| Phase 5 Step 1 (`qa-plan`) | `ACE/<opp>/qa-plan/screenshot-manifest.yaml` | which screenshots exist + alias → path |
-| Phase 5 Step 2 (`app-screenshot-capture`) | `ACE/<opp>/screenshots/manifest.yaml` + per-opp PNGs | embed step-by-step Learn/Deliver screenshots |
+| Phase 5 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/screenshots/manifest.yaml` + per-opp PNGs | embed step-by-step Learn/Deliver screenshots |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` + PNGs | embed common Connect navigation (sign-in, claim opp, sync, payments) |
 
 ## Output
@@ -68,7 +67,7 @@ with a screenshot. Includes "what good looks like" guidance pulled
 from PDD's Evidence Model.>
 
 ## Common pitfalls
-<bullet list pulled from PDD stress-test appendix + qa-plan edge cases>
+<bullet list pulled from PDD stress-test appendix + expected-journeys.md edge cases>
 
 ## What you get paid for
 <short framing from connect.payment_units in run_state.yaml>

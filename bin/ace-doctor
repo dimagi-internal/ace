@@ -52,6 +52,15 @@ elif [ "${1:-}" = "state-yaml-cruft" ]; then
   fi
   SUB_OPP="$1"
   shift
+elif [ "${1:-}" = "deep-qa-freshness" ]; then
+  SUBCOMMAND="deep-qa-freshness"
+  shift
+  if [ -z "${1:-}" ]; then
+    echo "usage: ace-doctor deep-qa-freshness <opp-name>" >&2
+    exit 2
+  fi
+  SUB_OPP="$1"
+  shift
 fi
 
 while [ $# -gt 0 ]; do
@@ -127,6 +136,21 @@ if [ "$SUBCOMMAND" = "state-yaml-cruft" ]; then
     exit 0
   fi
   cd "$ROOT" && exec npx tsx scripts/lint-opp-cruft.ts "$SUB_OPP"
+fi
+
+# `deep-qa-freshness <opp>` — advisory check that mirrors the Phase 6
+# llo-launch deep-QA verdict gate. Reads the newest run's verdicts/ folder,
+# checks both deep verdicts exist + pass + (for apps) match the current
+# build IDs in deployment-summary.md. WARN-level: the actual blocker is in
+# the gate itself; this is the "see the wall before you hit it" preventer.
+# Shipped with the shallow/deep QA split refactor.
+if [ "$SUBCOMMAND" = "deep-qa-freshness" ]; then
+  if [ ! -f "$ROOT/scripts/check-deep-qa-freshness.ts" ]; then
+    echo "FAIL deep-qa-freshness_subcommand: $ROOT/scripts/check-deep-qa-freshness.ts not found"
+    echo "  fix: run /ace:update to pull a version that ships the check (shallow/deep QA split refactor)"
+    exit 0
+  fi
+  cd "$ROOT" && exec npx tsx scripts/check-deep-qa-freshness.ts "$SUB_OPP"
 fi
 
 # If the user is inside a dev worktree that differs from $ROOT, flag it so they

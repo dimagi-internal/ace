@@ -25,5 +25,5 @@
 
 ## Notes
 This is a synthetic deployment record used to feed downstream skills
-(`app-test`, `connect-opp-setup`, `llo-uat`, `llo-launch`) without
-requiring a live CCHQ round-trip. All IDs and URLs are fake.
+(`connect-opp-setup`, `llo-uat`, `llo-launch`) without requiring a
+live CCHQ round-trip. All IDs and URLs are fake.

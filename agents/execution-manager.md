@@ -68,6 +68,20 @@ Invoke the `llo-launch` skill.
 - **Gate (review mode):** Present launch readiness summary for approval before activating
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `llo-launch-eval` after activation. Writes `verdicts/llo-launch.yaml`.
+- **Note:** `llo-launch` enforces a deep-QA-verdict freshness gate
+  before activation as part of the shallow/deep QA split refactor.
+  It refuses to activate unless both
+  `verdicts/ocs-chatbot-eval-deep.yaml` and
+  `verdicts/app-ux-eval-deep.yaml` exist, pass, and are newer than
+  the artifacts they grade (OCS chatbot `version_number`; learn /
+  deliver build IDs in `deployment-summary.md`). If `/ace:qa-deep`
+  hasn't been run since the most recent app release / chatbot
+  publish, `llo-launch` halts with `[BLOCKER]` and the operator must
+  run `/ace:qa-deep <opp>` before resuming. The
+  `--override-deep-qa-gate=<reason>` flag bypasses with audit trail
+  to `comms-log/observations.md`, but only via `/ace:step llo-launch`
+  — `/ace:run` cannot pass the override. See
+  `skills/llo-launch/SKILL.md` § Step 3 (Verify deep-QA verdicts).
 - Depends on: Step 2 (UAT must pass before launch)
 
 ### Step 4: Ongoing Monitoring (recurring)

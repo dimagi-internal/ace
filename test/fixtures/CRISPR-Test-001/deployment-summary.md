@@ -1,6 +1,6 @@
 # Deployment Summary — CRISPR-Test-001
 
-> Synthetic deployment-summary stub. Written by `app-deploy` after the Learn + Deliver apps are uploaded to CommCare HQ. Used downstream by `app-test` and `connect-opp-setup`. For the test fixture, all IDs and URLs are fake.
+> Synthetic deployment-summary stub. Written by `app-deploy` after the Learn + Deliver apps are uploaded to CommCare HQ. Used downstream by `connect-opp-setup`, `llo-uat`, and `llo-launch`. For the test fixture, all IDs and URLs are fake.
 
 ## Deployed apps
 

@@ -9,7 +9,7 @@ allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 Run a single skill for an opportunity without running the full lifecycle.
 
 ## Arguments
-- `<skill-name>` — name of the skill to invoke (e.g., `idea-to-pdd`, `app-test`)
+- `<skill-name>` — name of the skill to invoke (e.g., `idea-to-pdd`, `app-deploy`)
 - `<opp-name>` — name of the opportunity
 
 ## Process

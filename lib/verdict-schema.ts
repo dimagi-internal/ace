@@ -49,8 +49,12 @@ export type VerdictDisposition = z.infer<typeof VerdictDispositionSchema>;
 export const PerItemVerdictSchema = z.enum(['pass', 'warn', 'fail']);
 export type PerItemVerdict = z.infer<typeof PerItemVerdictSchema>;
 
-export const ModeSchema = z.enum(['quick', 'deep', 'monitor']);
+export const ModeSchema = z.enum(['quick', 'deep', 'monitor', 'shallow']);
 export type Mode = z.infer<typeof ModeSchema>;
+// `shallow` was added 2026-05-04 with the shallow/deep QA split — Phase 5
+// `app-screenshot-capture` writes a shallow smoke verdict that's distinct
+// from the OCS quick/deep/monitor cadence. Spec:
+// docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md.
 
 /**
  * `auto_surfaced` severity tiers.

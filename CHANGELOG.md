@@ -118,6 +118,148 @@ out a solicitation before being awarded an opportunity.
   disambiguation) lives at the bottom of
   `docs/superpowers/specs/2026-05-04-ace-solicitations-phase-design.md`.
 
+## 0.11.11 — 2026-05-04
+
+**Verify-after-create discipline for external mutations.**
+
+The `turmeric-20260503-0835` Phase 3 run created a payment unit whose
+stored values diverged from the request payload (`amount=500` vs sent
+`1.50`, `max_total=20` vs sent `500`, `required_deliver_units=[]` vs
+sent `[Vendor Visit]`). The producing skill's response alone was
+authoritative — there was no read-back to catch the divergence. The
+malformation cascaded through `is_setup_complete` to silently break
+Phase 6 `connect_send_flw_invite` and Phase 5
+`app-screenshot-capture`. The `connect-program-setup-eval` rubric
+correctly graded the bad output (`payment_unit_fit: 5.0`, overall
+6.93 warn), but by then Phase 3 had already handed off corrupted
+state to downstream.
+
+Class-level fix: every external-system write must be followed by a
+read-back of the same fields, with a hard `[BLOCKER]` halt on
+field-misalignment.
+
+### Added
+
+- `agents/ace-orchestrator.md § External Mutations — Verify After
+  Create` — class-level rule for every skill that mutates external
+  state (Connect, CCHQ, OCS, Nova). Write → read → compare → halt loud
+  on mismatch on load-bearing fields. Cosmetic mismatches log INFO.
+  Documents when read-back is overkill (write-once-read-once flows
+  whose check collapses into the next skill's input read).
+- `skills/connect-opp-setup/SKILL.md` Step 4 verify-after-create:
+  immediate `connect_get_opportunity` after create. Compares `name`,
+  `short_description`, `description`, `start_date`, `end_date`,
+  `total_budget`, `is_test`, `learn_app.cc_app_id`,
+  `deliver_app.cc_app_id`, `passing_score`. Date or app-id drift =
+  BLOCKER (catches the `end_date` write/read drift seen on the
+  turmeric run). Description/score drift = INFO.
+- `skills/connect-opp-setup/SKILL.md` Step 6 verify-after-create:
+  immediate `connect_list_payment_units` after create. Per-unit field
+  match on `name`, `amount`, `org_amount`, `max_total`, `max_daily`,
+  `required_deliver_units` (length + ids), `optional_deliver_units`.
+  Any mismatch = BLOCKER, do not proceed to Step 7.
+
+### Changed
+
+- `skills/connect-opp-setup/SKILL.md` Step 4 `short_description` cap:
+  documented as **≤50 chars** (server-enforced; was wrongly documented
+  as ≤255 — Phase 3 of the turmeric run hit the real cap).
+- `skills/connect-opp-setup/SKILL.md` Step 6 `amount` integer
+  constraint: pinned three options (round + INFO-log, convert to
+  smaller currency unit, or refuse fractional inputs). Banned silent
+  truncation (`$1.50 → $1` was the prior behavior class).
+- `skills/connect-opp-setup/SKILL.md` Step 6 `required_deliver_units`:
+  documented that empty array blocks `is_setup_complete`, which
+  cascades to Phase 6 invites and Phase 5 screenshots.
+- `skills/connect-opp-setup/SKILL.md` § MCP Tools Used: added
+  `connect_get_opportunity` and `connect_list_payment_units` with
+  read-back-purpose annotations.
+
+### Notes
+
+- `commcare-connect` commit `4c430de3` (merged via PR #1135 on
+  2026-04-30) loosened `org_amount` validation for managed opps and
+  added missing-claim-limits creation. That fix addresses adjacent
+  symptoms (managed-opp `org_amount=0` validation false-positive,
+  missing claim-limits cascade) but does NOT fix the value-misalignment
+  class. The verify-after-create rule in this release catches both
+  fixed-upstream and not-yet-fixed-upstream symptoms at the source.
+- Future scope (separate PR): apply the verify-after-create pattern
+  to `connect-program-setup` (program create),
+  `app-deploy`/`app-release` (CCHQ build/release), and
+  `ocs-agent-setup` (chatbot publish). Each has the same
+  write→hand-off pattern and would benefit from the same read-back
+  guard.
+
+## 0.11.10 — 2026-05-04
+
+**Shallow / deep QA split.** `/ace:run` now does shallow QA only; deep
+grading is opt-in via the new `/ace:qa-deep <opp>` command. Cuts
+shallow-cycle LLM judge calls from ~90 to ~5; deep grading runs once
+pre-launch and remains as costly as before. The QA test plan synthesis
+moved upstream from Phase 5 (`qa-plan`) to Phase 1
+(`pdd-to-app-journeys`) and Phase 2 (`app-test-cases`); Phase 5 is now
+an executor. Phase 6 `llo-launch` refuses activation without fresh,
+passing deep verdicts (override available with audit reason). Spec:
+`docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`.
+
+### Added
+
+- `pdd-to-app-journeys` (Phase 1) — produces `expected-journeys.md`,
+  the UX-intent ground truth for app-side QA. Mirror of
+  `pdd-to-test-prompts` for the apps.
+- `app-test-cases` (Phase 2) — binds Phase 1 journeys to Nova's
+  built-app structure; writes `app-test-cases.yaml` plus per-journey
+  Maestro recipe stubs under `app-test-cases/recipes/`.
+- `app-ux-eval` — deep, manual UX rubric run from `/ace:qa-deep`.
+  Writes `verdicts/app-ux-eval-deep.yaml`.
+- `/ace:qa-deep <opp>` — manual deep quality command. Runs the OCS
+  deep eval suite and the per-journey UX eval; populates the deep
+  verdict files Phase 6 gates on.
+- `migrations/0.11.10-shallow-deep-qa.md` — operator notes for
+  in-flight opps mid-`/ace:run` when this version lands.
+- `verdicts/app-screenshot-capture-shallow.yaml` — new shallow smoke
+  verdict (~2 LLM calls per run); always present after a successful
+  `/ace:run`.
+
+### Changed
+
+- `ModeSchema` (`lib/verdict-schema.ts`) gained `shallow` as a fourth
+  mode value alongside `quick`/`deep`/`monitor`. Used by the new
+  `app-screenshot-capture-shallow.yaml` verdict.
+- `ocs-chatbot-qa --quick` thinned to 3 prompts × 1 dimension
+  (down from 5×4). Quick mode is for smoke; multi-dimensional grading
+  moved to deep-only.
+- `app-screenshot-capture` (Phase 5) now consumes
+  `expected-journeys.md` (Phase 1) and `app-test-cases.yaml`
+  (Phase 2) instead of synthesizing recipes from scratch. Runs only
+  the `is_smoke: true` recipes (one per app) and emits a thin per-app
+  UX smoke judge.
+- `agents/qa-and-training.md` is now an executor: drops `qa-plan`
+  from the skills frontmatter; reads pre-composed recipes from
+  Phase 2.
+- `agents/commcare-setup.md` lost the `app-test` Step 3; Phase 2's QA
+  contribution is now Step 2.6's `app-test-cases.yaml`.
+- `lib/artifact-manifest.ts` lost `qa-plan/*` and `test-results/*`
+  entries; gained `expected-journeys.md`, `app-test-cases.yaml`,
+  `verdicts/app-ux-eval-deep.yaml`,
+  `verdicts/app-screenshot-capture-shallow.yaml`.
+- Test fixtures `CRISPR-Test-001` (partial) and
+  `CRISPR-Test-003-Turmeric` (complete E2E) updated for the new
+  artifact set; `test-results/*` removed.
+
+### Retired
+
+- `qa-plan` skill and its `qa-plan/*` artifacts (replaced by
+  `pdd-to-app-journeys` + `app-test-cases`).
+- `app-test` skill and its `test-results/*` artifacts (replaced by
+  `app-test-cases` + `app-screenshot-capture` shallow + `app-ux-eval`
+  deep).
+
+### Migration
+
+See `migrations/0.11.10-shallow-deep-qa.md` for in-flight opp guidance.
+
 ## 0.11.9 — 2026-05-04
 
 **Drive layout class-level preventers — find-or-create folders + doctor

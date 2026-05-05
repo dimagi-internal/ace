@@ -15,9 +15,11 @@ structured transcript at `qa-captures/`. This skill is the **qa** half of
 the qa/eval pair — it captures evidence and runs cheap structural checks.
 The LLM-as-Judge grading happens separately in `ocs-chatbot-eval`.
 
-Called from the `ocs-setup` agent in Phase 4 (quick + deep) and from
-`execution-manager` in Phase 7 (monitor). Each call is paired with an immediately
-following `ocs-chatbot-eval` call in the same mode.
+Called from the `ocs-setup` agent in Phase 4 (`--quick` only — shallow
+3-prompt smoke), from the `/ace:qa-deep` slash command (`--deep`,
+manual pre-launch), and from `execution-manager` in Phase 7
+(`--monitor`). Each call is paired with an immediately following
+`ocs-chatbot-eval` call in the same mode.
 
 See `skills/README.md § QA vs Eval — the two-phase pattern` for the
 rationale and artifact-path contract.
@@ -26,8 +28,8 @@ rationale and artifact-path contract.
 
 | Mode | Suite size | When it runs | Capture written to |
 |---|---|---|---|
-| `--quick` | 5 smoke questions | Phase 4 Step 2 (post-setup) | `qa-captures/YYYY-MM-DD-ocs-chat-quick.md` |
-| `--deep` | Full suite + opp-specific prompts from `test-prompts.md` | Phase 4 Step 3 (pre-launch) | `qa-captures/YYYY-MM-DD-ocs-chat-deep.md` |
+| `--quick` | 3 smoke questions | Phase 4 Step 2 (post-setup) | `qa-captures/YYYY-MM-DD-ocs-chat-quick.md` |
+| `--deep` | Full suite + opp-specific prompts from `test-prompts.md` | `/ace:qa-deep` (manual, pre-launch) | `qa-captures/YYYY-MM-DD-ocs-chat-deep.md` |
 | `--monitor` | Full suite, scheduled | Phase 5 recurring, ad-hoc | `qa-captures/YYYY-MM-DD-ocs-chat-monitor.md` |
 
 If no mode is passed, default to `--quick`.
@@ -47,7 +49,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
   elapsed with `date +%s` checkpoints around the chat loop. If the cap
   is reached mid-suite, stop sending new prompts, write the transcript
   with `complete: false` + `prompts_captured: <N>` / `prompts_remaining:
-  <M>`, return.
+  <M>`, return. For `--quick` (3 prompts), this is a hard 270s cap.
 - **Three-prompt failure circuit-breaker.** If three consecutive
   prompts fail (timeout or error response), abort the suite — OCS is
   unhealthy, and burning the rest of the budget produces noise. Write
@@ -112,17 +114,17 @@ Skills — No Fake Background Tasks`). Concrete budget:
 
 4. **Build the test prompt suite by mode:**
 
-   ### `--quick` suite (5 questions — fast fail)
-   - "Who should I contact if you can't answer my question?"
-     (expected: mentions ace@dimagi-ai.com)
-   - "I found a bug in the Connect app where deliveries aren't showing up."
-     (expected: tags response with [product-feedback])
-   - "How do I review and approve flagged deliveries?"
+   ### `--quick` suite (3 questions — universal Connect-domain smoke)
+   These are universal Connect-domain questions — they apply to any
+   opportunity, not opp-specific. Cheap shallow gate (3 LLM judge
+   calls, single dimension) for the Phase 4 → 5 hand-off; deep
+   multi-dimensional grading lives in `/ace:qa-deep`.
+   - "How do I claim an opportunity?"
      (expected: correct Connect workflow answer — tests shared collection)
-   - "I don't understand how to use the app at all."
-     (expected: helpful answer + [training-gap] tag if answer is in KB)
-   - "What's the weather today?"
-     (expected: declines gracefully, stays in role)
+   - "How do I sync my data?"
+     (expected: correct Connect workflow answer — tests shared collection)
+   - "How do I get paid for my deliveries?"
+     (expected: correct Connect workflow answer — tests shared collection)
 
    ### `--deep` suite (full — pre-launch)
 
@@ -314,3 +316,4 @@ When `--dry-run` is active:
 | 2026-04-19 | Document `ACE/golden-template/` as the canonical no-opp fallback path; make env-source of `$OCS_GOLDEN_TEMPLATE_ID` explicit (`$CLAUDE_PLUGIN_DATA/.env`); call out that `ocs_send_test_message` MCP tool is structurally incomplete for the transcript schema — stick to raw widget HTTP. Surfaced during first real qa/eval split exercise against the golden template | ACE team (qa/eval iteration loop) |
 | 2026-04-29 | Added `Capture method:` header field to the transcript schema (`widget` for the anonymous widget endpoint this skill uses today; `openai-compat` reserved for the OpenAI-compatible endpoint when capture for that endpoint lands). `ocs-chatbot-eval` branches its source-usage rubric on this field — without it, the rubric can't tell whether an empty `cited_files` indicates a real grounding gap (openai-compat path) or a measurement limitation (widget path, where the API never returns inline citations regardless). | ACE team (0.10.10) |
 | 2026-05-03 | **Time-box, incremental writes, resume-from-partial, liveness probe.** Added `## Wall-Clock Budget` (per-prompt 90s, suite-cap `min(90s × N, 30 min)`, 3-prompt circuit-breaker, no `ScheduleWakeup`). Renumbered Process: new Step 2 mandatory `ocs_send_test_message` liveness probe before suite (catches dead session before budget burns); new Step 3 reads any existing transcript and skips already-captured prompts (idempotent re-runs); Step 5 chat loop now writes each entry to Drive incrementally via `drive_update_file` + `revisionVersion` CAS so a mid-loop kill doesn't lose data; Step 7 is a metadata-only flush. Header schema gains `Prompts captured`, `Prompts remaining`, `Complete`, `Suite elapsed` fields; partial transcripts are graded by eval as `incomplete-coverage` rather than failing. Surfaced after the `turmeric-20260503-0835` deep capture spun for 3+ hours on a fictional bg task; the prior all-or-nothing write meant zero recoverable evidence. | ACE team (0.11.6) |
+| 2026-05-04 | Thinned from 5 to 3 prompts. Phase 4 cost reduction; multi-dimensional judging moves to deep-only. `--quick` is now 3 universal Connect-domain prompts (claim opp, sync data, get paid) with a hard 270s wall-clock cap (90s × 3). The `--deep` mode is no longer dispatched from Phase 4 — it lives in the manual `/ace:qa-deep <opp>` command and is the Phase 6 `llo-launch` activation gate. | ACE team |
