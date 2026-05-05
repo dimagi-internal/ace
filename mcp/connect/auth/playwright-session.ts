@@ -133,6 +133,23 @@ export class PlaywrightSession {
 
   async refreshCsrfToken(): Promise<string> {
     if (!this.context) throw new Error('No context — call getContext() first');
+    // Force server-side csrftoken rotation by hitting a Django CSRF-issuing
+    // view first. `/accounts/login/` is `@ensure_csrf_cookie`-decorated;
+    // GET-ing it causes Django to (re-)set the `csrftoken` cookie via
+    // Set-Cookie. Playwright's BrowserContext auto-syncs the cookie jar
+    // from Set-Cookie headers, so the next `cookies()` read sees the new
+    // value. Without this GET, the cached cookie value persists and the
+    // 0.13.9 retry path resends the same stale token the server just
+    // rejected (turmeric-20260505-1024 Phase 3 hit this — both retries
+    // failed identically because the cookie jar had no opportunity to
+    // refresh in between). Pre-0.13.11 this was a cookie-jar-only read.
+    try {
+      await this.context.request.get('/accounts/login/', { maxRedirects: 0 });
+    } catch {
+      // If the GET fails, fall through to the cookie-jar read. The
+      // recovery may still succeed if a parallel call already updated
+      // the cookie; if not, the caller's retry will surface the failure.
+    }
     const cookies = await this.context.cookies();
     const t = extractCsrfToken(cookies);
     if (!t) throw new Error('csrftoken cookie missing after refresh');
