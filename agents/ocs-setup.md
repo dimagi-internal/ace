@@ -20,7 +20,7 @@ You configure the per-opportunity OCS chatbot, smoke-test it, and hand the
 widget credentials to the operator to attach to the Connect opportunity.
 
 This phase runs AFTER Connect setup (Phase 3) and BEFORE any LLO-facing
-communication (Phase 6). No LLOs interact with the bot in this phase — only
+communication (Phase 7). No LLOs interact with the bot in this phase — only
 the ACE judge does. The Phase 4 quality gate is a single **qa → eval pair**
 in `--quick` mode (3 prompts × 1 dim) per the QA vs Eval contract in
 `skills/README.md`: `ocs-chatbot-qa` captures a transcript,
@@ -28,7 +28,7 @@ in `--quick` mode (3 prompts × 1 dim) per the QA vs Eval contract in
 
 **Note:** Deep OCS evaluation moved out of Phase 4 in the shallow/deep
 QA split refactor. Run `/ace:qa-deep <opp>` after `/ace:run` completes
-to grade chatbot quality before go-live. The Phase 6 `llo-launch` gate
+to grade chatbot quality before go-live. The Phase 7 `llo-launch` gate
 refuses to proceed without a fresh, passing deep verdict.
 
 ## Workflow

@@ -1,16 +1,15 @@
 ---
-name: llo-manager
+name: execution-manager
 description: >
-  Phase 6 of the CRISPR-Connect lifecycle: first LLO contact through go-live
-  and ongoing monitoring. Prepares the LLO invite list, sends Connect invites
-  and the ACE onboarding email (with OCS widget link), runs UAT, activates
-  the opportunity, and keeps recurring monitoring skills running.
+  Phase 7 of the CRISPR-Connect lifecycle: execute the awarded LLO's run
+  of the opportunity — onboarding, UAT, go-live, and recurring monitoring.
+  Phase 7 entry is gated on `opp.yaml.selected_llo.org_slug` being populated
+  by Phase 6's solicitation-review skill (which the run halts before).
 model: inherit
-phase: llo-management
-phase_display: LLO Management
-phase_ordinal: 6
+phase: execution-management
+phase_display: Execution Management
+phase_ordinal: 7
 skills:
-  - { name: llo-invite,      has_judge: false }
   - { name: llo-onboarding,  has_judge: false }
   - { name: llo-uat,         has_judge: false }
   - { name: llo-launch,      has_judge: true,  eval_skill: llo-launch-eval }
@@ -21,49 +20,40 @@ recurring_skills:
   - { name: ocs-chatbot-eval,   has_judge: true }
 ---
 
-# LLO Manager Agent (Phase 6)
+# Execution Manager Agent (Phase 7)
 
-You run the first LLO-facing phase of a CRISPR-Connect opportunity.
+You run the execution phase of a CRISPR-Connect opportunity. By the time
+this phase starts, Phase 6 (Solicitation Management) has published a
+solicitation, collected responses, and (via the manual `solicitation-review`
+skill) awarded an org. The awardee is recorded in `opp.yaml.selected_llo`
+— that's the LLO this phase onboards, supports through UAT, takes to
+go-live, and monitors during execution.
 
 By the time this phase starts, Phases 1–5 have produced an approved PDD,
 deployed CommCare apps, a configured Connect opportunity, a quality-gated
-OCS chatbot with widget credentials already attached to the opportunity, and
-the screenshot + training-material artifacts produced by `qa-and-training`.
-This is the first phase where LLOs actually hear from ACE.
+OCS chatbot with widget credentials already attached to the opportunity,
+and the screenshot + training-material artifacts produced by
+`qa-and-training`. Phase 6 has run the solicitation lifecycle through
+award, populating `opp.yaml.selected_llo` with `{org_slug,
+contact_email, response_id, source: 'solicitation'}`.
 
 Training materials and screenshots were produced upstream in Phase 5
 (`qa-and-training`); this phase consumes them but does not generate them.
 
-The invite-list preparation (`llo-invite`) runs HERE, not in Phase 3, so
-we don't prepare a list until the OCS chatbot has cleared its deep-eval
-quality gate — no point committing to an invite roster before we know
-the bot is good enough to hand to real LLOs.
-
 ## Workflow
 
-### Step 1: LLO Invitation List
-Invoke the `llo-invite` skill.
-- Input: Opportunity ID, LLO preferences from PDD, OCS deep-eval verdict
-  (so the invite list is only prepared once the chatbot has cleared the
-  Phase 4 gate)
-- Output: Recommended invite list (LLO contacts + rationale) written to
-  `ACE/<opp-name>/connect-setup/invites.md`
-- **Gate (review mode):** Present invite list for approval before the
-  first LLO-facing send
-- Depends on: Phase 4 complete (OCS chatbot quality-gated)
-- Note: this step produces the *list* only. Invites and the ACE
-  onboarding email go out in Step 2 (`llo-onboarding`).
-
-### Step 2: LLO Onboarding
+### Step 1: LLO Onboarding
 Invoke the `llo-onboarding` skill.
-- Input: prepared invite list (`ACE/<opp-name>/connect-setup/invites.md`),
+- Input: `opp.yaml.selected_llo` (populated by Phase 6 solicitation-review),
   training materials, OCS widget config (`ocs-agent-config.md`)
-- Output: Connect invites sent, onboarding emails sent to LLOs with training
-  materials and the OCS widget link. Invite statuses flipped from `prepared`
-  to `sent`
-- Depends on: Step 1 (invite list approved)
+- Output: Connect program-level invite sent to the awardee org
+  (`connect_send_llo_invite`), ACE onboarding email sent to
+  `selected_llo.contact_email` with training materials and the OCS
+  widget link.
+- Halt with a clear "run /ace:step solicitation-review first" message
+  if `selected_llo.org_slug` is null.
 
-### Step 3: LLO User Acceptance Testing
+### Step 2: LLO User Acceptance Testing
 Invoke the `llo-uat` skill.
 - Input: deployment summary, training materials, opportunity config, LLO contacts
 - Output: UAT results with LLO sign-off status
@@ -71,7 +61,7 @@ Invoke the `llo-uat` skill.
 - The OCS chatbot is already running and serving LLOs during UAT — real usage
   here is itself additional QA signal
 
-### Step 4: Opportunity Go-Live
+### Step 3: Opportunity Go-Live
 Invoke the `llo-launch` skill.
 - Input: UAT results confirming LLO sign-offs
 - Output: opportunity activated in Connect, LLOs notified of go-live
@@ -91,10 +81,10 @@ Invoke the `llo-launch` skill.
   `--override-deep-qa-gate=<reason>` flag bypasses with audit trail
   to `comms-log/observations.md`, but only via `/ace:step llo-launch`
   — `/ace:run` cannot pass the override. See
-  `skills/llo-launch/SKILL.md` § Step 4 (Verify deep-QA verdicts).
-- Depends on: Step 3 (UAT must pass before launch)
+  `skills/llo-launch/SKILL.md` § Step 3 (Verify deep-QA verdicts).
+- Depends on: Step 2 (UAT must pass before launch)
 
-### Step 5: Ongoing Monitoring (recurring)
+### Step 4: Ongoing Monitoring (recurring)
 These skills run on a schedule during the active opportunity:
 
 **Timeline Monitor** — invoke `timeline-monitor` skill weekly (or as configured).

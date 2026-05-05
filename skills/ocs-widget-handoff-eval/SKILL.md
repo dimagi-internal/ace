@@ -11,7 +11,7 @@ description: >
 # OCS Widget Handoff Eval
 
 The OCS widget is staged at the end of Phase 4 (`ocs-setup`) for the LLO
-to paste into Connect's opportunity-config UI in Phase 6 (`llo-onboarding`).
+to paste into Connect's opportunity-config UI in Phase 7 (`llo-onboarding`).
 Until CCC-301 ships an `update_opportunity` API for widget-config, this
 hop is HITL. This rubric grades the staging artifact (`ocs-setup/widget-handoff.md`)
 to make sure the operator has everything they need: a real widget URL, a

@@ -25,7 +25,7 @@ not because the orchestrator is itself dispatched.
 
 The architectural rule and full topology table live in `CLAUDE.md § Agent topology` (the canonical source — every session loads it). Summary for the orchestrator's purposes:
 
-- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 2) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other seven agents (`design-review`, `connect-setup`, `ocs-setup`, `qa-and-training`, `llo-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
+- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 2) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other seven agents (`design-review`, `connect-setup`, `ocs-setup`, `qa-and-training`, `execution-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
 - **Invocation in the procedure below:** "dispatch the X agent" means a top-level `Agent(X)` call (subagent rows in the CLAUDE.md table) or "read `agents/X.md` and execute it inline" (procedure-doc rows).
 - **Why the rule:** the `Agent` tool is unavailable to subagents; a node that nests further work cannot itself be a subagent. There are never two levels of `Agent` dispatch.
 
@@ -88,16 +88,20 @@ phases:
     training-deck-outline: pending
     training-deck-build: pending          # skipped if ACE_TRAINING_DECK_TEMPLATE_ID unset
     training-onboarding-email: pending    # last — links to other docs by URL
-  llo-management:       # Phase 6
-    llo-invite: pending               # moved here from Phase 3 on 2026-04-20
-    llo-onboarding: pending
+  solicitation-management:  # Phase 6 — added 0.12.0
+    solicitation-create: pending
+    llo-invite: pending               # repurposed 0.12.0: emails solicitation URL to PDD-named candidates
+    solicitation-monitor: pending     # recurring (post-/ace:run, while solicitation open)
+    solicitation-review: pending      # manual (HITL gate before award_response; only path that unblocks Phase 7)
+  execution-management: # Phase 7 (renamed from llo-management 0.12.0)
+    llo-onboarding: pending           # reads opp.yaml.selected_llo (populated by Phase 6 solicitation-review)
     llo-uat: pending
     llo-launch: pending
     timeline-monitor: pending         # recurring
     flw-data-review: pending          # recurring
     ocs-chatbot-qa-monitor: pending   # recurring
     ocs-chatbot-eval-monitor: pending # recurring
-  closeout:             # Phase 7
+  closeout:             # Phase 8 (was Phase 7)
     opp-closeout: pending
     llo-feedback: pending
     learnings-summary: pending
@@ -272,21 +276,32 @@ stop, up until the point of external communication.*
   pause the run. A `[BLOCKER]` halts immediately and surfaces the
   brief for triage. A hard error halts immediately. A `[WARN]` is
   logged but does NOT halt.
-- **Phase 5→6 transition:** **always pause.** This is the external-
-  communication boundary — Phase 6 is where LLOs first hear from
-  ACE. The pause shows a Phase-5-complete summary and asks "ready
-  to begin LLO contact?" before any invite goes out.
-- **Phases 6–7 (LLO contact, closeout):** behave like `review` mode
-  for any step whose action affects an external party. Specifically,
+- **Phase 5→6 transition:** **no longer a mandatory pause.** Phase 6
+  publishes a public solicitation on labs.connect.dimagi.com and emails
+  PDD-named candidate LLOs the public URL — passive listing, not active
+  outreach to specific individuals. The active-comms boundary moved to
+  Phase 6→7 (where Phase 7 sends an inbound onboarding email to the
+  awardee).
+- **Phase 6→7 transition:** **always pause.** This is the new external-
+  communication boundary — Phase 7 is where the awarded LLO first hears
+  from ACE on a one-to-one basis. `/ace:run` halts here in default mode
+  and remains halted until the human runs `/ace:step solicitation-review`,
+  which (after a HITL approval gate) calls `award_response` and populates
+  `opp.yaml.selected_llo`. Phase 7 cannot start while
+  `selected_llo.org_slug` is null.
+- **Phases 7–8 (Execution Management, Closeout):** behave like `review`
+  mode for any step whose action affects an external party. Specifically,
   always pause before:
-    - `llo-invite` send (Phase 6 — invite roster review)
-    - `llo-onboarding` (Phase 6 — first email to LLOs)
-    - `llo-uat` send (Phase 6 — UAT instructions to LLOs)
-    - `llo-launch` (Phase 6 — opportunity activation in Connect)
-    - `opp-closeout` (Phase 7 — Jira payment ticket creation)
+    - `llo-onboarding` (Phase 7 — first 1-1 email to the awardee)
+    - `llo-uat` send (Phase 7 — UAT instructions to the awardee)
+    - `llo-launch` (Phase 7 — opportunity activation in Connect)
+    - `opp-closeout` (Phase 8 — Jira payment ticket creation)
   Steps within those phases that are purely internal (e.g.
   `timeline-monitor` reads, `flw-data-review` analysis) auto-proceed
   the same as Phases 1–5.
+- **Inside `solicitation-review` (Phase 6 manual):** HITL gate before
+  `award_response` is called (irreversible). Skill waits for explicit
+  `award <response_id> $<amount>` reply before the labs call.
 
 **Review mode (`review`):** Pause at every one of the 5 named gate
 steps for explicit approval, regardless of blocker status. Use for
@@ -295,12 +310,13 @@ gate brief in front of them. Same gate-brief contract as `default`
 mode; the difference is just which gates trigger the
 `AskUserQuestion` pause.
 
-The 5 named gate steps (the full set, applied in `review`):
+The 6 named gate steps (the full set, applied in `review`):
 - After `idea-to-pdd` (Phase 1) — PDD must be approved before building apps
 - After `app-deploy` (Phase 2) — apps must be verified before Connect setup
 - After `ocs-chatbot-eval --deep` (Phase 4) — OCS quality must clear pre-launch bar
-- After `llo-invite` (Phase 6) — invites reviewed before sending
-- After `llo-launch` (Phase 6) — activation verified before monitoring
+- After `llo-invite` (Phase 6) — solicitation invitations reviewed before sending (when PDD names candidates)
+- Phase 6→7 boundary — `/ace:run` halts in default mode regardless; review mode confirms `selected_llo` populated before dispatching execution-manager
+- After `llo-launch` (Phase 7) — activation verified before monitoring
 
 **Auto mode (`auto`):** Run all phases sequentially with no pauses,
 even at external-communication points. Email the CRISPR Admin group
@@ -322,7 +338,7 @@ an unattended `idea-to-pdd` approval. Default mode treats the eval
 verdict (`[BLOCKER]` or not) as the decision-maker and only stops the
 human for it when the model itself says something is wrong.
 
-Phase 6 onward involves real LLOs receiving real emails and real
+Phase 7 onward involves real LLOs receiving real emails and real
 Connect production state changes. There is no automatic eval that
 validates "is this opp ready to send to outside parties?" — only
 human judgment can clear that bar, so default mode insists on human
@@ -569,7 +585,7 @@ This phase produces: Learn app, Deliver app, deployed apps on CCHQ, test results
 ### Phase 3: Connect Setup
 Dispatch to the **connect-setup** agent.
 This phase produces: Program configured, Opportunity configured with verification
-rules and delivery/payment units. LLO invite-list preparation moved to Phase 6
+rules and delivery/payment units. LLO invite-list preparation moved to Phase 7
 on 2026-04-20 — we don't commit to an invite roster until after the OCS
 chatbot has cleared its deep-eval gate.
 
@@ -591,18 +607,39 @@ Phase 2's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel
 `training-faq`, `training-deck-outline`) → `training-deck-build` (sequential
 after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) →
 `training-onboarding-email` (LAST — links by URL to other docs). All
-skills read upstream artifacts from Phases 1-4. No LLO contact happens
-here — that begins in Phase 6.
+skills read upstream artifacts from Phases 1-4. No 1-1 LLO contact
+happens here — that begins in Phase 7.
 
-### Phase 6: LLO Management
-Dispatch to the **llo-manager** agent.
-This phase produces: LLO invite list prepared (first step), LLOs onboarded
-(with widget link in the onboarding email), UAT completed, opportunity
-activated (go-live), ongoing monitoring active. This phase has recurring
-skills (timeline-monitor, flw-data-review) that run on schedule during
-the active opportunity.
+### Phase 6: Solicitation Management
+Dispatch `Agent(solicitation-management)`. The agent runs
+`solicitation-create` → `llo-invite` (default run, both auto). Publishes
+a solicitation derived from the PDD on labs.connect.dimagi.com via the
+`connect-labs` MCP, then emails PDD-named candidate LLOs the public URL
+(no-op if the PDD names no candidates — long-term flow).
 
-### Phase 7: Closeout
+After this phase completes, `/ace:run` HALTS at the new external-comms
+boundary (Phase 6→7). Phase 7 cannot start until
+`opp.yaml.selected_llo.org_slug` is populated, which only happens via
+the manual `/ace:step solicitation-review` (HITL-gated; calls
+`award_response`).
+
+The recurring `solicitation-monitor` skill polls labs for responses
+while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual
+dispatch).
+
+### Phase 7: Execution Management
+Dispatch to the **execution-manager** agent. Phase 7 entry is gated on
+`opp.yaml.selected_llo.org_slug` being populated by Phase 6's
+`solicitation-review`.
+
+This phase produces: the awarded LLO onboarded (Connect program-level
+invite + ACE onboarding email with widget link), UAT completed,
+opportunity activated (go-live), ongoing monitoring active. This phase
+has recurring skills (timeline-monitor, flw-data-review,
+ocs-chatbot-qa-monitor, ocs-chatbot-eval-monitor) that run on schedule
+during the active opportunity.
+
+### Phase 8: Closeout
 Dispatch to the **closeout** agent. Triggered when the opportunity reaches its
 end date.
 This phase produces: Invoices pulled, Jira payment ticket created, LLO feedback
@@ -652,15 +689,20 @@ bare "Approve the PDD?" prompt).
 
 **Where the brief lives.** Each gate-producing skill writes
 `ACE/<opp-name>/gate-briefs/<gate-name>.md` as its final step, immediately
-after writing its primary artifact. The 5 expected files are:
+after writing its primary artifact. The 4 expected files are:
 
 ```
 ACE/<opp-name>/gate-briefs/idea-to-pdd.md
 ACE/<opp-name>/gate-briefs/app-deploy.md
 ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-quick.md
-ACE/<opp-name>/gate-briefs/llo-invite.md
 ACE/<opp-name>/gate-briefs/llo-launch.md
 ```
+
+(0.12.0: `gate-briefs/llo-invite.md` was removed — the new Phase 6
+`llo-invite` sends solicitation-invite emails (non-binding "please
+apply" notes) and does not write a gate brief. The Phase 6→7 boundary
+itself is the gate that replaces it; halt logic is in the orchestrator,
+not a per-skill brief.)
 
 **Required structure** (every brief uses this shape — no free-form prose):
 
@@ -723,12 +765,16 @@ orchestrator's pause behavior at each named gate is:
 | `idea-to-pdd` | 1 | pause iff `[BLOCKER]` | always pause | never pause* |
 | `app-deploy` | 2 | pause iff `[BLOCKER]` | always pause | never pause* |
 | `ocs-chatbot-eval-quick` | 4 | pause iff `[BLOCKER]` | always pause | never pause* |
-| `llo-invite` | 6 | **always pause** | always pause | never pause* |
-| `llo-launch` | 6 | **always pause** | always pause | never pause* |
+| `llo-invite` | 6 | never pause (passive solicitation invites) | always pause | never pause* |
+| Phase 6→7 boundary | 6→7 | **always pause** (waits for `selected_llo`) | always pause | always pause |
+| `llo-launch` | 7 | **always pause** | always pause | never pause* |
 
-*`auto` still pauses on `[BLOCKER]` — see below.
+*`auto` still pauses on `[BLOCKER]` — see below. The Phase 6→7 boundary
+is unconditional in all modes because Phase 7 cannot start without
+`opp.yaml.selected_llo.org_slug` (populated by manual
+`solicitation-review`).
 
-In addition to the 5 named gates, `default` mode pauses before any
+In addition to the named gates, `default` mode pauses before any
 external-communication action that doesn't have a dedicated gate:
 `llo-onboarding` (first email to LLOs), `llo-uat` (UAT email send),
 and `opp-closeout` (Jira payment ticket creation). These were

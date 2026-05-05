@@ -134,6 +134,33 @@ describe('CRISPR-Test-002 fixture', () => {
   });
 });
 
+describe('CRISPR-Test-004-Solicitation fixture (Phase 6)', () => {
+  const fixtureDir = path.join(FIXTURES_DIR, 'CRISPR-Test-004-Solicitation');
+
+  it('fixture directory exists', () => {
+    expect(fs.existsSync(fixtureDir)).toBe(true);
+  });
+
+  it('PDD has all three optional Solicitation fields', () => {
+    const pddPath = path.join(fixtureDir, 'inputs', 'pdd.md');
+    const pdd = fs.readFileSync(pddPath, 'utf8');
+    expect(pdd).toMatch(/## Solicitation/);
+    expect(pdd).toMatch(/Solicitation type:/);
+    expect(pdd).toMatch(/Response window:/);
+    expect(pdd).toMatch(/Response template:/);
+  });
+
+  it('opp.yaml has solicitation block + stubbed selected_llo', () => {
+    const oppYaml = fs.readFileSync(path.join(fixtureDir, 'opp.yaml'), 'utf8');
+    expect(oppYaml).toMatch(/solicitation:/);
+    expect(oppYaml).toMatch(/solicitation_id:/);
+    expect(oppYaml).toMatch(/public_url:/);
+    expect(oppYaml).toMatch(/selected_llo:/);
+    // selected_llo stays stubbed (null org_slug) until solicitation-review awards.
+    expect(oppYaml).toMatch(/org_slug: null/);
+  });
+});
+
 describe('CRISPR-Test-003-Turmeric fixture (complete E2E)', () => {
   const fixtureDir = path.join(FIXTURES_DIR, 'CRISPR-Test-003-Turmeric');
 

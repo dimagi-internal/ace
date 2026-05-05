@@ -5,6 +5,119 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.12.0 — 2026-05-04
+
+**Solicitation Management — new Phase 6.**
+
+ACE's lifecycle gains a Solicitation Management phase between
+qa-and-training and the renamed Execution Management (was llo-management,
+Phase 6). Closeout shifts to Phase 8.
+
+**Phase topology (8 phases):**
+
+1. design-review
+2. commcare-setup
+3. connect-setup
+4. ocs-setup
+5. qa-and-training
+6. **solicitation-management** ← NEW
+7. **execution-management** ← was llo-management
+8. closeout
+
+**Why.** The PDD won't always name the LLO ahead of time, and even when
+it does we want them to fill out a solicitation as a functional test of
+the path real LLOs will take. Long-term: ACE always asks LLOs to fill
+out a solicitation before being awarded an opportunity.
+
+### Added
+
+- **New `solicitation-management` subagent (Phase 6).** Owns four
+  skills: `solicitation-create` (auto, default run; publishes a
+  solicitation derived from the PDD via labs's `create_solicitation`),
+  `llo-invite` (auto, repurposed; emails PDD-named candidates the
+  public solicitation URL), `solicitation-monitor` (recurring while
+  solicitation open; pulls responses), `solicitation-review` (manual,
+  HITL-gated; scores responses, calls `award_response`, populates
+  `opp.yaml.selected_llo`).
+- **New `connect-labs` MCP wiring.** `mcp/connect-labs-server.ts` is a
+  thin stdio proxy that forwards JSON-RPC to
+  `https://labs.connect.dimagi.com/mcp/` and injects `LABS_MCP_TOKEN`
+  (Bearer PAT). 10 atoms consumed: `create_solicitation`,
+  `list_solicitations`, `get_solicitation`, `update_solicitation`,
+  `list_responses`, `get_response`, `award_response`, `create_review`,
+  `list_reviews`, `generate_criteria`. Plugin.json wires it as a
+  standard stdio mcpServers entry.
+- **Three optional PDD fields** (additive, defaults apply):
+  Solicitation type (EOI|RFP), Response window (days), Response
+  template (questions). Drives `solicitation-create`.
+- **`opp.yaml.solicitation` and `opp.yaml.selected_llo` blocks.**
+  `solicitation` is the audit trail. `selected_llo` is the narrow
+  contract Phase 7 reads — populated only by `solicitation-review` on
+  successful award. Phase 7's `llo-onboarding` halts fast if
+  `selected_llo.org_slug` is null.
+- **`/ace:doctor` `[Connect Labs]` section.** Three checks:
+  `connect_labs_env`, `connect_labs_mcp_reachable`,
+  `connect_labs_connect_oauth`. Distinguishes PAT-level 401 from
+  tool-level PERMISSION_DENIED (Connect OAuth missing on the labs
+  account).
+- **Two provisional eval rubrics:** `solicitation-create-eval`,
+  `solicitation-review-eval`. Calibration TBD until 3+ real
+  solicitations / awards have shipped (per
+  `skills/eval-calibration/SKILL.md`).
+- **`opp-eval` adds the `solicitation` category** as the 7th
+  run-level dimension. Coverage tier "full" lifts from 4 → 5
+  categories.
+- **`CRISPR-Test-004-Solicitation` fixture** with all three new PDD
+  fields populated and a Phase-6-stage `opp.yaml`.
+- **`LABS_INTEGRATION` e2e test** at
+  `test/mcp/connect-labs/integration/e2e.integration.test.ts`. Gated
+  like `OCS_INTEGRATION` — does not run in default `npm test`.
+
+### Changed
+
+- **Phase 6 → 7 boundary is the new external-comms pause-point.**
+  `/ace:run` halts here in default mode (Phase 7 cannot start until
+  `selected_llo.org_slug` is populated by manual `solicitation-review`).
+  Phase 5 → 6 is no longer a mandatory pause (publishing a public
+  solicitation is passive, not active 1-1 outreach).
+- **`llo-manager` agent → `execution-manager`.** Frontmatter rewrite,
+  body rewrite (drops the multi-LLO roster model), no-longer-needed
+  `llo-invite` step removed (moves to Phase 6).
+- **`llo-invite` skill repurposed.** Was: prepared a Connect-side
+  invite roster for Phase 7 onboarding. Now: emails PDD-named
+  candidates a link to the public solicitation URL. Makes no Connect
+  API calls.
+- **`llo-onboarding` reads `opp.yaml.selected_llo`** instead of
+  iterating `connect-setup/invites.md`. Single-org onboarding.
+- **`run_state.yaml` schema renamed:** `phases.llo_management.*` →
+  `phases.execution_management.*`; `phase_6_backlog` →
+  `phase_7_backlog`; `phase_7_backlog` → `phase_8_backlog`. New
+  `phase_6_backlog` for solicitation-management. **No migration
+  script** — in-flight opps finish on the old code; new opps use the
+  new schema.
+- **Cycle-grade-eval bug fix:** previously labelled `cycle-grade` as a
+  "Phase 6 skill" (it's actually in closeout). Updated to Phase 8 (the
+  new closeout number).
+
+### Removed
+
+- **`connect-setup/invites.md` and `gate-briefs/llo-invite.md`** from
+  the artifact manifest. The new `llo-invite` writes
+  `solicitation/invitations.md` instead. Existing fixtures
+  (CRISPR-Test-003-Turmeric) had these files; they're gone too.
+
+### Notes
+
+- Connect-Labs MCP auth is **PAT-only on the wire today**. The OAuth
+  bridge happens server-side inside labs's tool handlers
+  (`require_connect_token(user)` after PAT identifies the user). When
+  labs ships OAuth on the wire, ACE swaps the `connect-labs` mcpServers
+  entry for an `auth: { type: oauth }` block in a single config change.
+- A prompt for the connect-labs team requesting service-account UX
+  improvements (self-serve PAT UI, `whoami` atom, error envelope
+  disambiguation) lives at the bottom of
+  `docs/superpowers/specs/2026-05-04-ace-solicitations-phase-design.md`.
+
 ## 0.11.11 — 2026-05-04
 
 **Verify-after-create discipline for external mutations.**

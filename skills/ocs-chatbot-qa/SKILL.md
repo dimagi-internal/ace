@@ -17,9 +17,9 @@ The LLM-as-Judge grading happens separately in `ocs-chatbot-eval`.
 
 Called from the `ocs-setup` agent in Phase 4 (`--quick` only — shallow
 3-prompt smoke), from the `/ace:qa-deep` slash command (`--deep`,
-manual pre-launch), and from `llo-manager` in Phase 5 (`--monitor`).
-Each call is paired with an immediately following `ocs-chatbot-eval`
-call in the same mode.
+manual pre-launch), and from `execution-manager` in Phase 7
+(`--monitor`). Each call is paired with an immediately following
+`ocs-chatbot-eval` call in the same mode.
 
 See `skills/README.md § QA vs Eval — the two-phase pattern` for the
 rationale and artifact-path contract.
@@ -293,7 +293,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
 ## Mode Behavior
 
 - **Auto:** Run the selected mode, write the transcript, return structural
-  summary. Caller (`ocs-setup` or `llo-manager`) dispatches
+  summary. Caller (`ocs-setup` or `execution-manager`) dispatches
   `ocs-chatbot-eval` next.
 - **Review:** Pause after the chat phase to show raw responses before
   writing the capture

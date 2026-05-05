@@ -5,7 +5,7 @@ description: >
   walkthrough screenshots + training materials (deck outline and video
   script). All derived from the design docs (PDD, app summaries, opp
   identifiers, OCS chatbot URL) so the Phase runs from artifacts; no live
-  LLO contact. Phase 6 is where LLOs first hear from ACE.
+  LLO contact. Phase 7 is where LLOs first hear from ACE.
 model: inherit
 phase: qa-and-training
 phase_display: QA and Training
@@ -31,7 +31,10 @@ You run the executor phase between OCS chatbot setup and the first LLO
 contact. By the time this phase starts, Phases 1-4 have produced an
 approved PDD, deployed CommCare apps, a configured Connect opportunity
 (with the ACE test user already invited), and a quality-gated OCS chatbot.
-**No real LLOs hear from ACE during this phase** — that begins in Phase 6.
+**No real 1-1 LLO contact happens during this phase** — that begins in
+Phase 7. Phase 6 (Solicitation Management) sits between this phase and
+Phase 7; it publishes a public solicitation but does not contact specific
+individuals unless the PDD names preferred candidates.
 
 Phase 5 is intentionally an **executor**, not a synthesizer. The QA test
 plan was synthesized upstream:
@@ -120,7 +123,7 @@ total) asking whether the persona-matching FLW could complete the
 journey without confusion. Threshold ≥ 2/3 per app.
 
 Deep, per-journey UX grading is `app-ux-eval`, run manually from
-`/ace:qa-deep` before Phase 6 activation. The Phase 6 `llo-launch` gate
+`/ace:qa-deep` before Phase 7 activation. The Phase 7 `llo-launch` gate
 refuses activation without a fresh, passing
 `verdicts/app-ux-eval-deep.yaml`.
 
@@ -153,9 +156,9 @@ Halt the phase on any non-pass verdict.
   the opp folder, fills via `slides_batch_update`, returns the
   Slides URL.
 - Skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` is unset (with a clear
-  pointer to `scripts/bootstrap-training-deck-template.ts`). Phase 6
+  pointer to `scripts/bootstrap-training-deck-template.ts`). Phase 7
   doesn't depend on the Slides deck — `onboarding-email-body.md` is
-  the load-bearing Phase 6 input — so a missing template doesn't
+  the load-bearing Phase 7 input — so a missing template doesn't
   block go-live.
 
 **2c. Sequential — onboarding email (after the other 5 text artifacts):**

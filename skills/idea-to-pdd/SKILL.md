@@ -67,6 +67,7 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
    - **Target Population** — beneficiary criteria, expected reach
    - **FLW Requirements** — number of FLWs, skills needed, geographic distribution
    - **LLO Preference** — preferred or known LLOs to execute, from LLO Directory
+   - **Solicitation** — Phase 6 publishes a solicitation to labs.connect.dimagi.com so LLOs respond. All three fields are optional; defaults apply if omitted. Always ask once: "do you want a custom solicitation type (EOI vs RFP), a non-default deadline (default 14 days), or a custom response template?" If not, leave the section with default placeholders (the `solicitation-create` skill reads them as defaults).
    - **Success Metrics** — how to measure if the intervention worked
    - **Evidence Model** — Layer A / B / C verification plan (see `## Evidence Model` in `templates/pdd-template.md`)
    - **Timeline** — expected duration of the opportunity

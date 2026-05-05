@@ -18,7 +18,7 @@ that's a separate skill, planned but not implemented.
 
 After `training-materials` has written `training-deck-outline.md` for
 the opportunity. Typically the last step of Phase 5
-(`qa-and-training`), before LLO onboarding in Phase 6.
+(`qa-and-training`), before LLO onboarding in Phase 7.
 
 ## Inputs (read from Drive)
 

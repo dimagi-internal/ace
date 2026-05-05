@@ -17,8 +17,8 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    - PDD: `ACE/<opp-name>/pdd.md`
    - Program details: `ACE/<opp-name>/connect-setup/program.md`
      (program UUID; the opp is created scoped to it)
-   - Opportunity contact list: `ACE/<opp-name>/connect-setup/invites.md`
-     (target LLO org slug — must be the slug of an org that already has an
+   - Awarded LLO: `opp.yaml.selected_llo.org_slug` (populated by Phase 6
+     `solicitation-review` — must be the slug of an org that already has an
      ACCEPTED `ProgramApplication` for the program. See § Pre-flight.)
    - App deployment details: `ACE/<opp-name>/deployment-summary.md`
      (`hq_server`, `learn_app` ID, `deliver_app` ID, HQ project space slug)
@@ -33,7 +33,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
 3. **Pre-flight (LLO program-application must be ACCEPTED).** The new
    `POST /api/programs/<id>/opportunities/` endpoint validates that the
    target LLO org has an `ACCEPTED` `ProgramApplication` for the program.
-   For ACE-driven dogfood runs, the orchestrator handles this in Phase 6
+   For ACE-driven dogfood runs, the orchestrator handles this in Phase 7
    (`llo-onboarding` → optionally `connect_accept_program_application`)
    *before* this skill runs. For real-LLO runs, the LLO accepts manually
    and this skill simply waits. If the application is still INVITED/APPLIED
@@ -236,7 +236,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    **Constraint:** the new `POST /api/opportunities/<id>/invite_users/`
    endpoint validates that the opp is **active** and not ended. So the
    pre-invite must happen *after* `connect_activate_opportunity`, which is
-   handled by `llo-launch` (Phase 6). For ACE-driven dogfood runs that need
+   handled by `llo-launch` (Phase 7). For ACE-driven dogfood runs that need
    the test user invited *before* an LLO actually exists (the common case),
    either:
 

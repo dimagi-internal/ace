@@ -178,11 +178,11 @@ The Nova MCP does not exist yet — see `playbook/integrations/nova-integration.
 
 ## Architecture
 
-- **8 agents** — `ace-orchestrator` + 6 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `llo-manager`, `closeout`) + `ocs-tester` (ad-hoc QA+Eval)
-- **24 skills** — one per process step, each a SKILL.md that Claude executes. Evaluation is a two-phase `-qa` / `-eval` pattern (see `skills/README.md § QA vs Eval`), with the `opp-eval` umbrella aggregator rolling per-skill verdicts into a run-level scorecard
-- **10 commands** — `run`, `step`, `status`, `eval`, `docs`, `ocs-login`, `ocs-bootstrap-template`, `setup`, `update`, `doctor`
-- **2 MCP servers** — Google Drive (`ace-gdrive`), OCS (`ace-ocs`)
-- **6 phases** — design-review → commcare-setup → connect-setup → ocs-setup → llo-manager → closeout (Phases 1–4 run end-to-end before any LLO contact)
+- **10 agents** — `ace-orchestrator` + 8 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `qa-and-training`, `solicitation-management`, `execution-manager`, `closeout`) + `ocs-tester` (ad-hoc QA+Eval)
+- **~50 skills** — one per process step, each a SKILL.md that Claude executes. Evaluation is a two-phase `-qa` / `-eval` pattern (see `skills/README.md § QA vs Eval`), with the `opp-eval` umbrella aggregator rolling per-skill verdicts into a run-level scorecard across 7 categories (design, commcare, connect, ocs, solicitation, operate, closeout)
+- **12 commands** — `run`, `step`, `status`, `eval`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `connect-login`, `mobile-bootstrap`, `ocs-bootstrap-template`
+- **5 MCP servers** — Google Drive (`ace-gdrive`), OCS (`ace-ocs`), Connect (`ace-connect`), Mobile (`ace-mobile`), Connect Labs (`connect-labs`, stdio proxy to `labs.connect.dimagi.com/mcp/`)
+- **8 phases** — design-review → commcare-setup → connect-setup → ocs-setup → qa-and-training → solicitation-management → execution-manager → closeout (Phases 1–6 run end-to-end before any 1-1 LLO contact; Phase 7 onboards the awardee selected by Phase 6's solicitation flow)
 - **2 execution modes** — auto (hands-off) and review (pauses at gates)
 
 ## Documentation
