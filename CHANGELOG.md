@@ -5,6 +5,67 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.12 — 2026-05-05
+
+**Phase 1 input contract: PDD is an output, not an input.**
+
+Surfaced during a `/ace:run leep` session against the
+`leep-paint-collection` opp: `inputs/` had four supporting files (LEEP
+SOP PDF, market-research questionnaire, paint-data spreadsheet
+template, Neal+Claude draft Connect adaptation) but no `pdd.md`. The
+orchestrator's discovery rule (prefer `pdd.md` → first `*pdd*` →
+single-doc fallback → halt with "rename to pdd.md") would have halted
+the run on what was actually a healthy multi-doc evidence pack. The
+"required `pdd.md` in inputs/" framing also conflated source material
+(human-curated reference docs) with the formal Program Design
+Document (which is the synthesized output of `idea-to-pdd`, not an
+input to it).
+
+**Refactor: inputs/ is now a freeform evidence pack, no required filename.**
+
+- **Orchestrator** (`agents/ace-orchestrator.md` § Starting a New
+  Opportunity step 5): replace single-PDD discovery with manifest
+  capture. At run start, write `runs/<runId>/inputs-manifest.yaml`
+  listing every direct child of `inputs/` as
+  `{file_id, name, mime_type}` — a frozen pointer-set so a human
+  re-arranging `inputs/` mid-run won't shift ground beneath
+  `idea-to-pdd`. Manifest lives at the run-folder root alongside
+  `run_state.yaml`; both are run-level metadata, scoped beyond any
+  single phase. The `--idea FILE|-` flag still seeds an optional
+  `runs/<runId>/idea.md` at the run root; most runs won't need it.
+- **idea-to-pdd skill** (`skills/idea-to-pdd/SKILL.md`): Step 1
+  rewritten to read the manifest and pull each file's text via
+  `drive_read_file` (Google Docs, PDFs, plain text, Word formats).
+  Non-text formats (xlsx, images, audio) are noted by name in the
+  synthesis as "supporting file present in inputs/" without halting.
+  Step 1a's pre-flight Drive-permission check now covers every
+  manifest entry, surfacing inaccessible-file lists in one error
+  pass before any synthesis work.
+- **idea-to-pdd-eval skill** (`skills/idea-to-pdd-eval/SKILL.md`):
+  "source idea" now means the union of the manifest's contents +
+  `idea.md` (if present). Step 2's reviewer-comment extraction
+  scans across all source files; clean-source detection requires
+  zero comments in the *entire pack*, not just `idea.md`.
+- **Fallback message** (orchestrator + commands/run.md): "missing
+  inputs/" reframed as "inputs/ is the human-curated evidence pack;
+  drop in any combination of source docs — there is no required
+  filename."
+- **Artifact manifest** (`lib/artifact-manifest.ts`): added
+  `inputs-manifest.yaml` (run-root, producedBy `ace-orchestrator`,
+  consumedBy `idea-to-pdd`) and run-root `idea.md` (optional,
+  `--idea FILE` only). Both `required: false` for now —
+  existing fixtures predate this refactor and would fail validation
+  if forced. Legacy `1-design/idea.md` path retained as
+  back-compat-only.
+- **Lint exemptions** (`test/lib/artifact-manifest-lint.test.ts`):
+  `inputs-manifest.yaml` and `idea.md` added to `RUN_LEVEL_EXEMPT`
+  (they live at the run-folder root, not under any phase folder).
+
+The output filename `1-design/idea-to-pdd.md` is unchanged — many
+downstream skills consume it by that name. Renaming to
+`1-design/pdd.md` would be a cleaner semantic match but is a
+larger refactor; deferred.
+
 ## 0.13.11 — 2026-05-05
 
 **fix(connect): CSRF self-heal now actually rotates the cookie.**

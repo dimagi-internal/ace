@@ -990,17 +990,23 @@ fires. The shape of the Drive folder hierarchy:
 ```
 ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
 ├── <opp>/                        (folder name = opp slug)
-│   ├── inputs/                   (canonical input pack — read-only here)
-│   │   ├── pdd.md                (the PDD — required)
-│   │   └── *.{pdf,md,...}        (optional supporting docs)
+│   ├── inputs/                   (human-curated evidence pack — read-only)
+│   │   └── *.{pdf,md,docx,xlsx,gdoc,...}   (any source material; no required filename)
 │   ├── runs/
 │   │   └── <run-id>/             (e.g. "20260502-1830")
-│   │       ├── idea.md           (copy of inputs/pdd.md, written at run start)
 │   │       ├── run_state.yaml
-│   │       ├── pdd.md            (output of idea-to-pdd; distinct from inputs/pdd.md)
-│   │       └── ... (all skill-output subfolders)
+│   │       ├── inputs-manifest.yaml  (frozen file_id list captured at run start)
+│   │       ├── idea.md           (optional — only present when --idea FILE|- was passed)
+│   │       └── 1-design/
+│   │           ├── idea-to-pdd.md         (the formal PDD — Phase 1 output)
+│   │           └── ... (other Phase 1 outputs)
 │   └── opp.yaml                  (display_name, last_run_id, tags, ...)
 ```
+
+The PDD is **not** an input — it's the formal output of Phase 1
+(`idea-to-pdd`), synthesized from whatever the human dropped into
+`inputs/`. The orchestrator's job at run-start is to record what was
+in `inputs/` (the manifest), not to pick one canonical PDD file.
 
 ### Resolution
 
@@ -1094,28 +1100,59 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
    folder ID; this is the **run folder ID** that gets passed to every
    downstream skill in place of the previous "opp folder ID".
 
-5. **Seed `idea.md` inside the run folder.**
+5. **Capture the inputs manifest and (optionally) seed `idea.md`.**
 
-   - If `--idea FILE|-` was passed, the command has loaded the body.
-     Write it verbatim to `<opp>/runs/<runId>/idea.md` via
-     `drive_create_file`.
+   The PDD is the formal output of Phase 1, not an input. The
+   orchestrator's job here is to record what was in `inputs/` at
+   run-start so `idea-to-pdd` can synthesize from a frozen pointer-set
+   (a human re-arranging `inputs/` mid-run won't shift ground beneath
+   the skill).
 
-   - Otherwise (zero-arg or `<opp>`-only), find the PDD inside
-     `<opp>/inputs/`:
-     - prefer file named `pdd.md` or `pdd.gdoc` (case-sensitive),
-     - else first file matching `*pdd*` (case-insensitive),
-     - else if exactly one document file is present, use it,
-     - else stop with `multiple files in inputs/, none named pdd.md —
-       rename the canonical PDD to pdd.md and retry`.
+   **Always** write the inputs manifest at the run-folder root,
+   alongside `run_state.yaml` — both are run-level metadata, scoped
+   beyond any single phase:
 
-     **Use `drive_copy_file` for the copy** — `sourceFileId =` the chosen
-     PDD file, `parentFolderId =` the run folder, `name = "idea.md"`. Do
-     NOT use `drive_read_file + drive_create_file`: ferrying ~6KB of PDD
-     body through model tokens adds minutes of serialization latency to
-     every run-init for zero benefit. `drive_copy_file` is one
-     server-side `files.copy()` and preserves the source mimeType so
-     downstream `drive_read_file(idea.md)` works the same way regardless
-     of whether the PDD was a Google Doc or plain text.
+   - List `<opp>/inputs/` via `drive_list_folder`. For each direct
+     child file (skip subfolders), capture
+     `{file_id, name, mime_type}`.
+   - Write the result as `runs/<runId>/inputs-manifest.yaml` via
+     `drive_create_file`:
+
+     ```yaml
+     opportunity: <opp>
+     run_id: <runId>
+     captured_at: <ISO timestamp>
+     inputs:
+       - file_id: <id>
+         name: <name>
+         mime_type: <mime>
+       - ...
+     ```
+
+   - If `<opp>/inputs/` is missing OR contains zero files, halt with
+     the fallback message in § Fallback below. Subfolders inside
+     `inputs/` don't count as files; if every direct child is a
+     subfolder the manifest is empty and the same fallback fires.
+
+   Phase agents materialize their own `<N>-<phase>/` folders when
+   they run (see § Per-Phase Folder Lifecycle). The orchestrator does
+   NOT pre-create `1-design/` here.
+
+   **If `--idea FILE|-` was passed**, the command has loaded the body.
+   Write it verbatim to `runs/<runId>/idea.md` via `drive_create_file`
+   — this is the operator's free-text seed and stands alongside the
+   manifest as supplementary intent. `idea-to-pdd` reads both.
+
+   **Otherwise**, do NOT seed an `idea.md`. The manifest alone is
+   sufficient — `idea-to-pdd` reads each file in the manifest as the
+   evidence pack and synthesizes the PDD from there.
+
+   The previous single-file `pdd.md` discovery (`pdd.md` exact,
+   `*pdd*` glob, lone-doc fallback, multi-doc error) is removed
+   entirely. There is no longer a copy of any input file into the run
+   folder — `inputs/` is the canonical read-only seed pack and
+   `idea-to-pdd` reads its files directly via the manifest's
+   `file_id`s.
 
 6. **Initialize `run_state.yaml`** at `<opp>/runs/<runId>/run_state.yaml` with:
    - `mode`, `created` (ISO timestamp), all steps as `pending`
@@ -1165,28 +1202,33 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
 
    ```
    [orchestrator] starting opp=<opp> run_id=<runId> mode=<mode>
-     inputs_folder=<opp>/inputs (read-only)
+     inputs_folder=<opp>/inputs (read-only, <N> files in manifest)
      run_folder=<opp>/runs/<runId>
-     idea.md ← inputs/pdd.md (or --idea FILE)
+     manifest=<opp>/runs/<runId>/inputs-manifest.yaml
+     idea.md=<present|absent>   # present only when --idea FILE|- was passed
    ```
 
 9. **Begin Phase 1.**
 
-### Fallback — opp is missing an `inputs/` subfolder
+### Fallback — opp is missing an `inputs/` subfolder OR `inputs/` is empty
 
 Stop with this message (covers both zero-arg-no-candidates and
 explicit-opp-without-inputs cases — do NOT silently fall back to the
 legacy `PDD/` picker):
 
-> Opp is missing its `inputs/` subfolder under the ACE Drive root.
+> Opp `<opp>` has no source material in `inputs/`.
 >
-> Create one: in Drive, make `ACE/<opp-slug>/inputs/`, drop your
-> PDD as `pdd.md` (and any supporting docs), then re-run `/ace:run`.
-> See docs/superpowers/specs/2026-05-02-ace-run-multi-run-revival-design.md
-> for the full layout.
+> `inputs/` is the human-curated evidence pack that seeds the PDD.
+> Drop in any combination of source docs, SOPs, questionnaires,
+> spreadsheets, prior-pass drafts, or notes — there is no required
+> filename. Phase 1 (`idea-to-pdd`) reads everything in `inputs/`
+> and synthesizes a formal PDD as the Phase 1 output.
 >
-> If you want to keep using the legacy flat layout for one more run,
-> pass `--idea FILE|-` to bypass discovery.
+> Create the folder under `ACE/<opp>/inputs/`, drop the source
+> material in, and re-run `/ace:run <opp>`.
+>
+> Or pass `--idea FILE|-` to seed a free-text idea directly without
+> using `inputs/`.
 
 The legacy `PDD/` flat folder is kept readable by ace-web for back-compat
 viewing of legacy opps, but is no longer consulted for new runs.
