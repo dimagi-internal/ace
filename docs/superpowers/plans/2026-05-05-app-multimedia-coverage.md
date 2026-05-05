@@ -1060,7 +1060,29 @@ git commit -m "feat(lib): multimedia-xform-patch — add <image> itext entries"
 - Test: `test/mcp/connect/unit/commcare-upload-multimedia.test.ts`
 - Integration test: `test/mcp/connect/integration/commcare-upload-multimedia.test.ts`
 
-Use the live contract documented in Task 2 step 4. The fragments below assume the endpoint is `/a/<domain>/apps/<app_id>/multimedia/uploaded/` and the form fields are `Filedata`, `media_type`, `file_name`. Adjust to match what Task 2 actually probed.
+**Live contract** (probed 2026-05-05; see `scripts/probe-multimedia-upload.ts` header):
+
+- **Method**: `POST`
+- **Path**: `/a/<domain>/apps/<app_id>/multimedia/uploaded/<media_type>/` where `<media_type>` ∈ `{image, audio, video, text}` derived from the `content_type` MIME prefix
+- **Body**: multipart/form-data; **required** `Filedata` (bytes) and `path` (`jr://file/commcare/<media_type>/<filename>.<ext>`); **optional** `originalPath`, `shared='t'`, `license`, `author`, `attribution-notes`
+- **Headers**: `X-CSRFToken` (from session cookie), `Referer: <baseUrl>/a/<domain>/apps/view/<app_id>/`
+- **Response 200**: `Content-Type: text/html` (lies; body is JSON):
+  ```json
+  {
+    "ref": {
+      "path": "jr://file/commcare/image/foo.png",
+      "uid":  "<32-hex md5>",        // → file_hash_md5 (CCHQ dedupes on this)
+      "m_id": "<32-hex couch _id>",  // → multimedia_id
+      "url":  "/hq/multimedia/file/CommCareImage/<m_id>/",
+      "updated": false,
+      "media_type": "Image"
+    },
+    "errors": []
+  }
+  ```
+- **Failure**: `400` with non-empty `errors[]`; `302 → /accounts/login/` on session expiry; `403` on CSRF miss
+
+**CRITICAL gotcha — orphan pruning.** CCHQ's `clean_paths()` strips multimedia entries that no form references on the next `make_build`. So this atom alone does NOT bundle the file into the released CCZ — the form-XML must already reference the `jr://...` path before `make_build` runs. The skill (Task 12) is responsible for ordering: patch form XML → upload media → make_build → release. The atom only owns the upload step.
 
 - [ ] **Step 1: Write the failing unit test**
 
@@ -1069,42 +1091,96 @@ Use the live contract documented in Task 2 step 4. The fragments below assume th
 import { describe, it, expect, vi } from 'vitest';
 import { CommcareBackend } from '../../../../mcp/connect/backends/commcare.js';
 
-function fakeRequest(handler: (path: string, init: any) => { status: number; body: string }) {
+function fakeRequest(handler: (url: string, init: any) => { status: number; body: string; contentType?: string }) {
   return {
-    get: vi.fn().mockImplementation(async (url: string) => ({
+    get: vi.fn().mockImplementation(async () => ({
       status: () => 200, text: async () => '<html></html>', headers: () => new Headers(),
     })),
     post: vi.fn().mockImplementation(async (url: string, init: any) => {
       const r = handler(url, init);
-      return { status: () => r.status, text: async () => r.body, headers: () => new Headers() };
+      const headers = new Headers({ 'content-type': r.contentType ?? 'text/html' });
+      return { status: () => r.status, text: async () => r.body, headers: () => headers };
     }),
     storageState: async () => ({ cookies: [{ name: 'csrftoken', value: 'TOKEN' }] }),
   };
 }
 
+const SUCCESS_BODY = JSON.stringify({
+  ref: {
+    path: 'jr://file/commcare/image/x.png',
+    uid: 'd'.repeat(32),       // md5 hex
+    m_id: '9'.repeat(32),
+    url: '/hq/multimedia/file/CommCareImage/' + '9'.repeat(32) + '/',
+    updated: false,
+    media_type: 'Image',
+  },
+  errors: [],
+});
+
 describe('commcare uploadMultimedia', () => {
-  it('POSTs multipart with PNG bytes and returns multimedia_id + sha1', async () => {
-    const fake = fakeRequest((url) => ({
-      status: 200,
-      body: JSON.stringify({ multimedia_id: 'mm_abc', sha1: 'd'.repeat(40) }),
-    }));
-    const backend = new CommcareBackend({ request: fake as any, baseUrl: 'https://test.cchq' });
-    const out = await backend.uploadMultimedia({
-      domain: 'demo',
-      app_id: 'a'.repeat(32),
-      media_path: 'jr://file/commcare/image/x.png',
-      file_bytes: Buffer.from('PNG'),
-      content_type: 'image/png',
+  it('POSTs to /multimedia/uploaded/image/ for image content types', async () => {
+    let postedUrl = '';
+    const fake = fakeRequest((url) => {
+      postedUrl = url;
+      return { status: 200, body: SUCCESS_BODY };
     });
-    expect(out.multimedia_id).toBe('mm_abc');
-    expect(out.sha1).toBe('d'.repeat(40));
-    expect(fake.post).toHaveBeenCalledOnce();
-    const init = fake.post.mock.calls[0][1];
-    expect(init.headers['X-CSRFToken']).toBe('TOKEN');
+    const backend = new CommcareBackend({ request: fake as any, baseUrl: 'https://test.cchq' });
+    await backend.uploadMultimedia({
+      domain: 'demo', app_id: 'a'.repeat(32),
+      media_path: 'jr://file/commcare/image/x.png',
+      file_bytes: Buffer.from('PNG'), content_type: 'image/png',
+    });
+    expect(postedUrl).toBe('https://test.cchq/a/demo/apps/' + 'a'.repeat(32) + '/multimedia/uploaded/image/');
   });
 
-  it('throws with the response body slice on non-200', async () => {
-    const fake = fakeRequest(() => ({ status: 500, body: 'server error' }));
+  it('returns multimedia_id (m_id) and file_hash_md5 (uid) from ref', async () => {
+    const fake = fakeRequest(() => ({ status: 200, body: SUCCESS_BODY }));
+    const backend = new CommcareBackend({ request: fake as any, baseUrl: 'https://test.cchq' });
+    const out = await backend.uploadMultimedia({
+      domain: 'demo', app_id: 'a'.repeat(32),
+      media_path: 'jr://file/commcare/image/x.png',
+      file_bytes: Buffer.from('PNG'), content_type: 'image/png',
+    });
+    expect(out.multimedia_id).toBe('9'.repeat(32));
+    expect(out.file_hash_md5).toBe('d'.repeat(32));
+  });
+
+  it('routes audio content types to /multimedia/uploaded/audio/', async () => {
+    let postedUrl = '';
+    const fake = fakeRequest((url) => {
+      postedUrl = url;
+      return { status: 200, body: SUCCESS_BODY };
+    });
+    const backend = new CommcareBackend({ request: fake as any, baseUrl: 'https://test.cchq' });
+    await backend.uploadMultimedia({
+      domain: 'd', app_id: 'a'.repeat(32),
+      media_path: 'jr://file/commcare/audio/x.mp3',
+      file_bytes: Buffer.from('MP3'), content_type: 'audio/mpeg',
+    });
+    expect(postedUrl).toMatch(/\/multimedia\/uploaded\/audio\/$/);
+  });
+
+  it('sets X-CSRFToken from cookies and uses the app-view page as Referer', async () => {
+    let init: any = null;
+    const fake = fakeRequest((_url, _init) => {
+      init = _init;
+      return { status: 200, body: SUCCESS_BODY };
+    });
+    const backend = new CommcareBackend({ request: fake as any, baseUrl: 'https://test.cchq' });
+    await backend.uploadMultimedia({
+      domain: 'demo', app_id: 'a'.repeat(32),
+      media_path: 'jr://file/commcare/image/x.png',
+      file_bytes: Buffer.from('PNG'), content_type: 'image/png',
+    });
+    expect(init.headers['X-CSRFToken']).toBe('TOKEN');
+    expect(init.headers.Referer).toBe('https://test.cchq/a/demo/apps/view/' + 'a'.repeat(32) + '/');
+  });
+
+  it('throws with errors[] payload when CCHQ returns 400', async () => {
+    const fake = fakeRequest(() => ({
+      status: 400,
+      body: JSON.stringify({ ref: null, errors: ['File extension does not match content_type'] }),
+    }));
     const backend = new CommcareBackend({ request: fake as any, baseUrl: 'https://test.cchq' });
     await expect(
       backend.uploadMultimedia({
@@ -1112,7 +1188,19 @@ describe('commcare uploadMultimedia', () => {
         media_path: 'jr://file/commcare/image/x.png',
         file_bytes: Buffer.from('x'), content_type: 'image/png',
       }),
-    ).rejects.toThrow(/500/);
+    ).rejects.toThrow(/extension does not match/);
+  });
+
+  it('throws on 302 redirect (session expired)', async () => {
+    const fake = fakeRequest(() => ({ status: 302, body: '<html>login</html>' }));
+    const backend = new CommcareBackend({ request: fake as any, baseUrl: 'https://test.cchq' });
+    await expect(
+      backend.uploadMultimedia({
+        domain: 'd', app_id: 'a'.repeat(32),
+        media_path: 'jr://file/commcare/image/x.png',
+        file_bytes: Buffer.from('x'), content_type: 'image/png',
+      }),
+    ).rejects.toThrow(/302|session/i);
   });
 });
 ```
@@ -1133,34 +1221,35 @@ In `mcp/connect/backends/commcare.ts`, add (place after `patchXform` around line
 export interface UploadMultimediaArgs {
   domain: string;
   app_id: string;
-  media_path: string;          // e.g. "jr://file/commcare/image/foo.png"
+  media_path: string;          // jr://file/commcare/<image|audio|video|text>/<filename>.<ext>
   file_bytes: Buffer;
-  content_type: string;        // "image/png" | "image/jpeg" | ...
+  content_type: string;        // "image/png" | "image/jpeg" | "audio/mpeg" | ...
 }
 
 export interface UploadMultimediaResult {
-  multimedia_id: string;
-  sha1: string;
+  multimedia_id: string;       // CouchDB doc _id (CCHQ's ref.m_id)
+  file_hash_md5: string;       // md5 hex of the file bytes (CCHQ's ref.uid)
 }
 
 // Inside CommcareBackend class:
 async uploadMultimedia(args: UploadMultimediaArgs): Promise<UploadMultimediaResult> {
-  const filename = args.media_path.replace(/^jr:\/\/file\/commcare\/image\//, '');
-  const path = `/a/${args.domain}/apps/${args.app_id}/multimedia/uploaded/`;
+  const mediaType = mediaTypeFromContentType(args.content_type);
+  const path = `/a/${args.domain}/apps/${args.app_id}/multimedia/uploaded/${mediaType}/`;
+  const refreshPath = `/a/${args.domain}/apps/view/${args.app_id}/`;
 
   // Refresh CSRF + session via the app view page (same pattern as patchXform).
-  const refreshPath = `/a/${args.domain}/apps/view/${args.app_id}/`;
   await this.opts.request.get(`${this.opts.baseUrl}${refreshPath}`);
   const csrf = await this.csrfFromCookies();
 
+  // Derive filename from media_path (last URI segment).
+  const filename = args.media_path.split('/').pop() ?? 'unnamed';
+
   const form = new FormData();
   form.set('Filedata', new Blob([args.file_bytes], { type: args.content_type }), filename);
-  form.set('media_type', mediaTypeFromContentType(args.content_type));
-  form.set('file_name', filename);
-  form.set('replace_existing', 'true');
+  form.set('path', args.media_path);
 
   const res = await this.opts.request.post(`${this.opts.baseUrl}${path}`, {
-    multipart: form,
+    multipart: form as any,
     headers: {
       'X-CSRFToken': csrf ?? '',
       Referer: `${this.opts.baseUrl}${refreshPath}`,
@@ -1169,29 +1258,50 @@ async uploadMultimedia(args: UploadMultimediaArgs): Promise<UploadMultimediaResu
   });
   const status = res.status();
   const body = await res.text();
-  if (status !== 200) {
+
+  if (status === 302) {
     throw new Error(
-      `commcare_upload_multimedia POST ${path} returned ${status}: ${body.slice(0, 300)}`,
+      `commcare_upload_multimedia POST ${path} returned 302 — session expired. Re-run /ace:connect-login.`,
+    );
+  }
+  if (status !== 200) {
+    let errs: string[] = [];
+    try {
+      const j = JSON.parse(body);
+      if (Array.isArray(j?.errors)) errs = j.errors;
+    } catch { /* fall through */ }
+    const errMsg = errs.length ? errs.join('; ') : body.slice(0, 300);
+    throw new Error(
+      `commcare_upload_multimedia POST ${path} returned ${status}: ${errMsg}`,
     );
   }
 
-  let parsed: { multimedia_id?: string; sha1?: string } = {};
+  let parsed: { ref?: { m_id?: string; uid?: string }; errors?: string[] } = {};
   try {
     parsed = JSON.parse(body);
   } catch {
     throw new Error(`commcare_upload_multimedia non-JSON response: ${body.slice(0, 200)}`);
   }
-  if (!parsed.multimedia_id || !parsed.sha1) {
-    throw new Error(`commcare_upload_multimedia response missing multimedia_id/sha1: ${body.slice(0, 200)}`);
+  if (parsed.errors && parsed.errors.length > 0) {
+    throw new Error(`commcare_upload_multimedia errors: ${parsed.errors.join('; ')}`);
   }
-  return { multimedia_id: parsed.multimedia_id, sha1: parsed.sha1 };
+  if (!parsed.ref?.m_id || !parsed.ref?.uid) {
+    throw new Error(
+      `commcare_upload_multimedia response missing ref.m_id / ref.uid: ${body.slice(0, 200)}`,
+    );
+  }
+  return {
+    multimedia_id: parsed.ref.m_id,
+    file_hash_md5: parsed.ref.uid,
+  };
 }
 
-function mediaTypeFromContentType(ct: string): string {
+function mediaTypeFromContentType(ct: string): 'image' | 'audio' | 'video' | 'text' {
   if (ct.startsWith('image/')) return 'image';
   if (ct.startsWith('audio/')) return 'audio';
   if (ct.startsWith('video/')) return 'video';
-  return 'image';
+  if (ct.startsWith('text/'))  return 'text';
+  throw new Error(`commcare_upload_multimedia: unsupported content_type ${ct}`);
 }
 ```
 
@@ -1201,12 +1311,19 @@ function mediaTypeFromContentType(ct: string): string {
 npm test -- test/mcp/connect/unit/commcare-upload-multimedia.test.ts
 ```
 
-Expected: PASS (2 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 5: Add integration test**
 
 ```typescript
 // test/mcp/connect/integration/commcare-upload-multimedia.test.ts
+//
+// Verifies the upload atom against a live CCHQ project. NOTE: this test
+// only verifies the upload step (200 + parseable response). It does NOT
+// build or release because orphan multimedia (no form reference) gets
+// pruned by clean_paths() — that's expected CCHQ behavior, not a bug.
+// Bundling-into-CCZ is the skill's responsibility, exercised end-to-end
+// in Task 14's live smoke test.
 import { describe, it, expect } from 'vitest';
 import { commcareClient } from '../../../../mcp/connect/backends/commcare.js';
 
@@ -1218,9 +1335,9 @@ const TINY_PNG = Buffer.from(
 );
 
 describe.skipIf(!RUN)('commcare_upload_multimedia (integration)', () => {
-  it('uploads a tiny PNG to a smoke app and round-trips via download_ccz', async () => {
+  it('uploads a tiny PNG and returns multimedia_id + file_hash_md5', async () => {
     const domain = process.env.ACE_HQ_DOMAIN!;
-    const appId = process.env.ACE_SMOKE_APP_ID!;     // exported by integration setup
+    const appId = process.env.ACE_SMOKE_APP_ID!;
     expect(domain).toBeTruthy();
     expect(appId).toBeTruthy();
 
@@ -1231,26 +1348,43 @@ describe.skipIf(!RUN)('commcare_upload_multimedia (integration)', () => {
       media_path: `jr://file/commcare/image/${filename}`,
       file_bytes: TINY_PNG, content_type: 'image/png',
     });
-    expect(out.multimedia_id).toMatch(/.+/);
-    expect(out.sha1).toMatch(/^[0-9a-f]{40}$/);
+    expect(out.multimedia_id).toMatch(/^[0-9a-f]{32}$/);
+    expect(out.file_hash_md5).toMatch(/^[0-9a-f]{32}$/);
+  }, 30_000);
 
-    // Build & release, then re-download CCZ and confirm the file is there.
-    const build = await c.makeBuild({ domain, app_id: appId });
-    await c.releaseBuild({ domain, app_id: appId, build_id: build.build_id });
-    const ccz = await c.downloadCcz({ domain, app_id: appId, build_id: build.build_id });
-    expect(ccz.entries.some(e => e.path === `commcare/multimedia/image/${filename}`)).toBe(true);
-  }, 60_000);
+  it('is idempotent — same bytes return the same multimedia_id', async () => {
+    const domain = process.env.ACE_HQ_DOMAIN!;
+    const appId = process.env.ACE_SMOKE_APP_ID!;
+    const c = await commcareClient();
+    const filename = `probe-idem-${Date.now()}.png`;
+    const a = await c.uploadMultimedia({
+      domain, app_id: appId,
+      media_path: `jr://file/commcare/image/${filename}`,
+      file_bytes: TINY_PNG, content_type: 'image/png',
+    });
+    const b = await c.uploadMultimedia({
+      domain, app_id: appId,
+      media_path: `jr://file/commcare/image/${filename}`,
+      file_bytes: TINY_PNG, content_type: 'image/png',
+    });
+    expect(b.multimedia_id).toBe(a.multimedia_id);
+    expect(b.file_hash_md5).toBe(a.file_hash_md5);
+  }, 30_000);
 });
 ```
 
 - [ ] **Step 6: Run integration test (gated)**
 
 ```bash
-CONNECT_INTEGRATION=1 ACE_SMOKE_APP_ID=<from a recent deploy summary> \
+CONNECT_INTEGRATION=1 \
+  ACE_HQ_DOMAIN=connect-ace-prod \
+  ACE_SMOKE_APP_ID=4e20ddf5beca42278c4d2c20383eb943 \
   npm test -- test/mcp/connect/integration/commcare-upload-multimedia.test.ts
 ```
 
-Expected: PASS. If it fails because of an endpoint shape mismatch, adjust per the Task 2 probe findings and re-run. **Iterate to convergence here** — the live contract is the source of truth.
+(Domain + app_id values above are from the live probe in Task 2; replace with current smoke target if those are stale.)
+
+Expected: PASS. If it fails because the contract has drifted, re-run the probe script to confirm the live shape and adjust the atom + test together.
 
 - [ ] **Step 7: Commit**
 
@@ -1275,30 +1409,39 @@ git commit -m "feat(connect): commcare_upload_multimedia atom backend"
 In `mcp/connect-server.ts`, after the `commcare_patch_xform` block (line ~413), add:
 
 ```typescript
-// commcare_upload_multimedia — bundle a binary asset into the CCZ multimedia
-// directory. Required companion to commcare_patch_xform when patches reference
-// jr://file/commcare/<media_type>/... URIs that didn't ship in the original
-// build.
+// commcare_upload_multimedia — POST a binary multimedia asset to CCHQ.
+// Required companion to commcare_patch_xform: the form-XML patch makes the
+// build *reference* the asset; this atom puts the *bytes* into CouchDB so
+// CCHQ's clean_paths() doesn't prune the reference on the next make_build.
 //
-// Endpoint: POST /a/<domain>/apps/<app_id>/multimedia/uploaded/
-// Auth: same Playwright session as commcare_patch_xform.
-// Note: writes to the **draft** only — caller must follow with
-// `commcare_make_build` + `commcare_release_build` to ship.
+// Endpoint: POST /a/<domain>/apps/<app_id>/multimedia/uploaded/<media_type>/
+//   <media_type> derives from content_type MIME prefix.
+// Auth: same Playwright session as commcare_patch_xform; X-CSRFToken header.
+// Returns: { multimedia_id, file_hash_md5 } — see backends/commcare.ts.
+//
+// CRITICAL ORDER OF OPERATIONS:
+//   1. patch form XML to reference jr://file/commcare/<type>/<filename>
+//   2. commcare_upload_multimedia (this atom)
+//   3. commcare_make_build + commcare_release_build
+// Reversing 1 and 2 still works (uploads are idempotent), but skipping
+// step 1 means the upload is silently no-op for FLW devices because
+// CCHQ's clean_paths() prunes orphaned media on every build.
 server.tool('commcare_upload_multimedia',
   {
     domain: z.string(),
     app_id: z.string().regex(/^[0-9a-f]{32}$/, '32-char hex'),
-    media_path: z.string().regex(/^jr:\/\/file\/commcare\/(image|audio|video)\/[^\/]+$/),
-    file_bytes_base64: z.string().min(1).describe('PNG / JPEG / etc bytes, base64-encoded'),
-    content_type: z.string().regex(/^(image|audio|video)\//),
+    media_path: z.string().regex(/^jr:\/\/file\/commcare\/(image|audio|video|text)\/[^\/]+$/),
+    file_bytes_base64: z.string().min(1).describe('Asset bytes, base64-encoded'),
+    content_type: z.string().regex(/^(image|audio|video|text)\//),
   },
   async (args) =>
-    runAtom(async () =>
-      (await commcareClient()).uploadMultimedia({
-        ...args,
-        file_bytes: Buffer.from(args.file_bytes_base64, 'base64'),
-      }),
-    ),
+    runAtom(async () => {
+      const { file_bytes_base64, ...rest } = args;
+      return (await commcareClient()).uploadMultimedia({
+        ...rest,
+        file_bytes: Buffer.from(file_bytes_base64, 'base64'),
+      });
+    }),
 );
 ```
 
@@ -1473,15 +1616,24 @@ For each app in scope:
    - `commcare_patch_xform` to POST the patched XML.
    - Re-fetch via `commcare_download_ccz` to confirm the patch stuck.
 
+   **WHY this happens before the upload:** CCHQ's `clean_paths()` prunes
+   any multimedia binary that no form references on the next
+   `make_build`. The form-XML reference is what causes CCHQ to retain
+   the asset in the build's multimedia map. Reverse this order and the
+   asset lands in CouchDB but never reaches FLW devices.
+
 8. **Upload multimedia to CCHQ** via `commcare_upload_multimedia` per
-   image. Record returned `multimedia_id` + `sha1` into the manifest.
+   image. Record returned `multimedia_id` (CCHQ couch _id) and
+   `file_hash_md5` (CCHQ's md5 of the bytes) into the manifest.
 
 9. **Build + release** — `commcare_make_build` then
    `commcare_release_build`. Capture new `build_id` + `version`.
 
 10. **Verify** — re-download the released CCZ. Assert every manifest
     image is at `commcare/multimedia/image/<filename>` AND every patched
-    form XML references its `jr://file/...` URI. Halt on mismatch.
+    form XML references its `jr://file/...` URI. Halt on mismatch — if
+    the file is missing despite a successful upload, the most likely
+    cause is step 7 didn't land before step 9 (orphan-prune).
 
 11. **Report.** Write
     `2-commcare/app-multimedia-coverage_report-<YYYY-MM-DD>.md`
