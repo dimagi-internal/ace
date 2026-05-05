@@ -23,16 +23,16 @@ into a well-specified PDD that the rest of the pipeline builds on.
 
 ### Step 1: Idea to PDD
 Invoke the `idea-to-pdd` skill.
-- Input: initial idea (from Neal or the opportunity brief) at `ACE/<opp-name>/idea.md`
-- Output: `ACE/<opp-name>/pdd.md`
+- Input: initial idea (from Neal or the opportunity brief) at `ACE/<opp-name>/runs/<run-id>/1-design/idea.md`
+- Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
 - **Gate (review mode):** Present the PDD for approval before continuing
 - **LLM-as-Judge (inline self-eval):** the producing skill's own
   5-question stress-test rubric runs as part of writing the PDD
 
 ### Step 1.5: Idea-to-PDD eval (independent re-grade)
 Unless `--no-evals` was passed, invoke the `idea-to-pdd-eval` skill.
-- Input: `ACE/<opp-name>/idea.md` + `ACE/<opp-name>/pdd.md`
-- Output: `ACE/<opp-name>/verdicts/idea-to-pdd.yaml` (machine-readable
+- Input: `ACE/<opp-name>/runs/<run-id>/1-design/idea.md` + `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
+- Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-eval_verdict.yaml` (machine-readable
   verdict in the shared shape — see `skills/README.md § QA vs Eval`)
 - This is the independent grader for `idea-to-pdd`'s self-eval. A
   `verdict: fail` here does NOT halt the run on its own — the Phase 1→2
@@ -43,7 +43,7 @@ Unless `--no-evals` was passed, invoke the `idea-to-pdd-eval` skill.
 ### Step 2: PDD to Test Prompts
 Invoke the `pdd-to-test-prompts` skill.
 - Input: approved PDD from GDrive
-- Output: `ACE/<opp-name>/test-prompts.md` — Q&A pairs with expected-answer
+- Output: `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-test-prompts.md` — Q&A pairs with expected-answer
   summaries derived from the PDD. These are the ground truth for the OCS
   deep QA gate in Phase 4
 - No LLO-facing artifacts are produced in this phase
@@ -60,4 +60,4 @@ shallow execution and `/ace:qa-deep` both read it.
 
 ### Completion
 Update opportunity state to mark Phase 1 as complete.
-Write phase summary to `ACE/<opp-name>/design-review-summary.md`.
+Write phase summary to `ACE/<opp-name>/runs/<run-id>/1-design/design-review_summary.md`.

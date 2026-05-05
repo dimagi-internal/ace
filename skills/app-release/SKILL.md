@@ -83,7 +83,7 @@ procedure below to rediscover.
 ## Process
 
 1. **Read app ids from the deployment summary.**
-   - `ACE/<opp-name>/deployment-summary.md` frontmatter has `learn_app_id`
+   - `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` frontmatter has `learn_app_id`
      and `deliver_app_id` — the 32-char HQ app IDs Nova wrote there.
    - Also read `hq_domain` (typically `connect-ace-prod`) and `hq_base_url`.
 

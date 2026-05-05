@@ -36,7 +36,7 @@ Run the full CRISPR-Connect lifecycle for a Connect opportunity.
     (e.g. eval calibration). `[BLOCKER]` concerns still escalate.
 - `--idea FILE|-` — pre-seed `idea.md` from a file path, or `-` for stdin.
   When provided, skip the interactive PDD-picker described below.
-  Content is uploaded verbatim to `ACE/<opp>/idea.md` via
+  Content is uploaded verbatim to `ACE/<opp>/runs/<run-id>/1-design/idea.md` via
   `drive_create_file`.
 - `--ace-web-url URL` — after the orchestrator completes, invoke the
   `upload-transcript` skill to POST the run's stream-json transcript to

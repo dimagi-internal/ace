@@ -249,7 +249,7 @@ rubric is improving over time, not just changing.
    ```
 
 7. **In `--monitor` mode**, append a single-line entry to
-   `ACE/<opp-name>/eval-reports/trend.md` with date, overall score, and
+   `ACE/<opp-name>/runs/<run-id>/7-execution-manager/ocs-chatbot-eval_trend.md` with date, overall score, and
    dimension breakdown so drift is visible at a glance.
 
 8. **Write the gate brief** (for `--quick` and `--deep` modes; skipped for

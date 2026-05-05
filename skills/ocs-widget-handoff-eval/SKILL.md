@@ -23,8 +23,8 @@ widget paste-in until CCC-301).
 ## Process
 
 1. **Read inputs from GDrive:**
-   - `ACE/<opp-name>/ocs-setup/widget-handoff.md` — staging artifact.
-   - `ACE/<opp-name>/ocs-agent-config.md` — for cross-checking embed_key,
+   - `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` — staging artifact.
+   - `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md` — for cross-checking embed_key,
      experiment_id, public_id.
    - `ACE/<opp-name>/run_state.yaml` — for `connect_opportunity.url`.
 
@@ -73,7 +73,7 @@ widget paste-in until CCC-301).
    - `[INFO-SKIPPED]` for the live HTTP probe when offline-mode is requested.
 
 5. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/ocs-agent-setup.yaml`. The filename uses
+   `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-widget-handoff-eval_verdict.yaml`. The filename uses
    the **producer** skill name (`ocs-agent-setup` — the skill that
    produces `ocs-setup/widget-handoff.md` as one of its outputs), NOT
    this skill's name — see `agents/ace-orchestrator.md § Per-Step

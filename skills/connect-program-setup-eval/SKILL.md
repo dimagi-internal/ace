@@ -29,10 +29,10 @@ calibrated rubrics.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - PDD: `ACE/<opp-name>/pdd.md`
-   - Connect setup summary: `ACE/<opp-name>/connect-setup-summary.md`
+   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
+   - Connect setup summary: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-setup_summary.md`
      (or `connect-setup/program.md` + `connect-setup/opportunity.md`).
-   - Deployment summary: `ACE/<opp-name>/deployment-summary.md` (for
+   - Deployment summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` (for
      verifying the linked HQ apps match what Connect actually points
      at).
 
@@ -128,7 +128,7 @@ calibrated rubrics.
      coverage gap without penalizing.
 
 6. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/connect-program-setup.yaml`. The filename
+   `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup-eval_verdict.yaml`. The filename
    uses the **producer** skill name (`connect-program-setup`), NOT
    this skill's name — see `agents/ace-orchestrator.md § Per-Step
    Eval Hook` for the naming rule:

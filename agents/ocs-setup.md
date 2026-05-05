@@ -37,7 +37,7 @@ refuses to proceed without a fresh, passing deep verdict.
 Invoke the `ocs-agent-setup` skill.
 - Input: `ACE/<opp-name>/` — PDD, training materials, app summaries, opportunity config
 - Output: cloned chatbot with opp system prompt, RAG collection indexed,
-  version published. `ACE/<opp-name>/ocs-agent-config.md` written with
+  version published. `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md` written with
   `{experiment_id, public_id, embed_key, collection_id, pipeline_id, version_number}`
 - Idempotent: if a bot named `"ACE - <opp-name>"` already exists, resumes from
   existing config
@@ -48,7 +48,7 @@ Invoke `ocs-chatbot-qa --quick`, then `ocs-chatbot-eval --quick`.
 - qa captures: 3-prompt transcript (universal Connect-domain questions
   — claim opp, sync data, get paid) with structural checks
 - eval grades: single-dimension `overall_quality_0_to_3` per prompt;
-  writes verdict to `ACE/<opp-name>/verdicts/ocs-chatbot-eval-quick.yaml`
+  writes verdict to `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_verdict-quick.yaml`
 - Tests: shared-collection retrieval against universal Connect prompts.
   Fast fail if the bot is miswired (qa-side structural fail) or any
   prompt scores < 2/3 (eval-side)
@@ -63,7 +63,7 @@ Invoke `ocs-chatbot-qa --quick`, then `ocs-chatbot-eval --quick`.
 Present `{public_id, embed_key}` and instruct the operator to paste them into
 the Connect opportunity's widget configuration.
 - Input: `ocs-agent-config.md` from Step 1
-- Output: `ACE/<opp-name>/ocs-setup/widget-handoff.md` with the creds,
+- Output: `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` with the creds,
   target Connect URL, and exact paste instructions
 
 **Why manual:** the Connect `update_opportunity` API is unbuilt (tracked under
@@ -72,9 +72,9 @@ CCC-301). When it ships, this step becomes a single API call. Until then,
 
 ### Step 4: Widget-handoff eval
 Unless `--no-evals` was passed, invoke the `ocs-widget-handoff-eval` skill.
-- Input: `ACE/<opp-name>/ocs-setup/widget-handoff.md` from Step 3 +
+- Input: `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` from Step 3 +
   `ocs-agent-config.md` from Step 1 + the live OCS chatbot state
-- Output: `ACE/<opp-name>/verdicts/ocs-agent-setup.yaml` (the producer
+- Output: `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-widget-handoff-eval_verdict.yaml` (the producer
   here is `ocs-agent-setup` — the eval grades widget-handoff correctness
   + opportunity-binding completeness, both of which are
   `ocs-agent-setup` outputs)
@@ -83,7 +83,7 @@ Unless `--no-evals` was passed, invoke the `ocs-widget-handoff-eval` skill.
 
 ### Completion
 Update opportunity state to mark Phase 4 as complete.
-Write phase summary to `ACE/<opp-name>/ocs-setup-summary.md`.
+Write phase summary to `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_summary.md`.
 
 ## Resumption Contract
 
@@ -97,9 +97,9 @@ is idempotent and artifact-checkable:
 
 | Step | Done-when artifact exists | Action when found |
 |------|---------------------------|-------------------|
-| 1. `ocs-agent-setup` | `ACE/<opp-name>/ocs-agent-config.md` with full config block | Read it; reuse `experiment_id`, `collection_id`, etc. |
-| 2. quick qa+eval | `ACE/<opp-name>/verdicts/ocs-chatbot-eval-quick.yaml` with every per-prompt `overall_quality >= 2` | Skip; the gate already passed |
-| 3. credential handoff | `ACE/<opp-name>/ocs-setup/widget-handoff.md` | Phase complete |
+| 1. `ocs-agent-setup` | `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md` with full config block | Read it; reuse `experiment_id`, `collection_id`, etc. |
+| 2. quick qa+eval | `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_verdict-quick.yaml` with every per-prompt `overall_quality >= 2` | Skip; the gate already passed |
+| 3. credential handoff | `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` | Phase complete |
 
 **On entry, before executing any step:**
 

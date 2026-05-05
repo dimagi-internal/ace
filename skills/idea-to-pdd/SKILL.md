@@ -12,10 +12,10 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 
 ## Process
 
-1. **Read the initial idea** from `ACE/<opp-name>/idea.md` in GDrive.
+1. **Read the initial idea** from `ACE/<opp-name>/runs/<run-id>/1-design/idea.md` in GDrive.
 
    If the file is missing, **stop and return an actionable error**:
-   "`ACE/<opp-name>/idea.md` not found — this is the human-supplied brief
+   "`ACE/<opp-name>/runs/<run-id>/1-design/idea.md` not found — this is the human-supplied brief
    that seeds the PDD. If you're running `/ace:step idea-to-pdd`, create the
    file first. If you're running `/ace:run`, the orchestrator should have
    prompted for it; re-run `/ace:run <opp-name>` so it captures the idea."
@@ -74,9 +74,9 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 
 5. **Self-evaluate (LLM-as-Judge) — Stress-Test Rubric.** Run the rubric defined in `## LLM-as-Judge Rubric` below against the drafted PDD. If **two or more** checks grade other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run before proceeding.
 
-6. **Write the PDD** to `ACE/<opp-name>/pdd.md` via Google Drive MCP. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the PDD, so downstream skills (and humans) can see what was caught and what was waived.
+6. **Write the PDD** to `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` via Google Drive MCP. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the PDD, so downstream skills (and humans) can see what was caught and what was waived.
 
-7. **Write the gate brief** to `ACE/<opp-name>/gate-briefs/idea-to-pdd.md` using the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`. See `## Gate Brief` below for the exact fields this skill populates.
+7. **Write the gate brief** to `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md` using the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`. See `## Gate Brief` below for the exact fields this skill populates.
 
 ## LLM-as-Judge Rubric
 
@@ -119,11 +119,11 @@ Both PDDs fail the rubric in their current form. Surface specific failures and e
 
 ## Gate Brief
 
-The gate brief at `ACE/<opp-name>/gate-briefs/idea-to-pdd.md` translates the
+The gate brief at `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md` translates the
 PDD stress-test output into a shape the admin can act on in 60 seconds.
 Follows the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`.
 
-- **Artifact Under Review:** path `ACE/<opp-name>/pdd.md`; summary is the
+- **Artifact Under Review:** path `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`; summary is the
   PDD's archetype + problem-statement one-liner
 - **What to Check** (emit these 4 items verbatim):
   - Archetype declared in frontmatter matches the idea (`atomic-visit` /
@@ -257,7 +257,7 @@ The PDD has two or more sequenced stages with different archetypes. Treat the ba
 
 ## Dry-Run Behavior
 When `--dry-run` is active:
-- Write the PDD to `ACE/<opp-name>/pdd.md` as normal
+- Write the PDD to `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` as normal
 - Write the admin email summary (recipients, subject, body) to `comms-log/dry-run-idea-to-pdd.md`
 - Do not send emails to the admin group
 - State tracks as `dry-run-success`
@@ -269,5 +269,5 @@ When `--dry-run` is active:
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-08 | Replace weak self-eval with 5-question stress-test rubric (executability, verifiability, measurability, stage-gate clarity, resource realism); block at ≥2 non-pass; include grading anchors from vaccine-hesitancy and turmeric example PDDs; emit stress-test results as PDD appendix | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-15 | Fail fast with actionable error if `idea.md` is missing instead of improvising an idea | ACE team (PM scout, end-to-end UX lens) |
-| 2026-04-17 | Emit gate brief at `ACE/<opp-name>/gate-briefs/idea-to-pdd.md` so the review-mode gate presents a checklist + stress-test concerns instead of a bare "approve PDD?" prompt | ACE team (PM scout, internal-admin lens) |
+| 2026-04-17 | Emit gate brief at `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md` so the review-mode gate presents a checklist + stress-test concerns instead of a bare "approve PDD?" prompt | ACE team (PM scout, internal-admin lens) |
 | 2026-04-20 | Extract stress-test rubric from Process step 5 into standalone `## LLM-as-Judge Rubric` section per author contract; process step now references the section | ACE team (skills review) |

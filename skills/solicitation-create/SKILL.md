@@ -64,7 +64,7 @@ post-publish via the labs UI without affecting responses.
    AI-derived rubric to:
 
    ```
-   ACE/<opp-name>/solicitation/draft.md
+   ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md
    ```
 
    Include all fields from the payload as a structured YAML-frontmatter +
@@ -81,7 +81,7 @@ post-publish via the labs UI without affecting responses.
 6. **Write `published.md`.** Save:
 
    ```
-   ACE/<opp-name>/solicitation/published.md
+   ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md
    ```
 
    Body: full payload as written, returned IDs/URLs, deadline in absolute
@@ -139,8 +139,8 @@ post-publish via the labs UI without affecting responses.
 
 ## Output
 
-- `ACE/<opp-name>/solicitation/draft.md` (audit)
-- `ACE/<opp-name>/solicitation/published.md` (live state)
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md` (audit)
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md` (live state)
 - `opp.yaml.solicitation.{solicitation_id, public_url, deadline, status: open}` populated
 - `opp.yaml.selected_llo.*` stubbed (null until award)
 

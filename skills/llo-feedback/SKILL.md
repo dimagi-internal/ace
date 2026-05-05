@@ -34,7 +34,7 @@ Collect feedback from LLOs about the completed opportunity.
 
 5. **Monitor for responses** via OCS transcripts or email.
 
-6. **Document feedback** to `ACE/<opp-name>/closeout/llo-feedback.md`:
+6. **Document feedback** to `ACE/<opp-name>/runs/<run-id>/8-closeout/llo-feedback.md`:
    - Archetype recorded explicitly so `learnings-summary` and
      `cycle-grade` know how to aggregate
    - Responses from each LLO

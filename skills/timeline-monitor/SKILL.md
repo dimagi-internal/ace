@@ -45,7 +45,7 @@ stuck or going quiet between milestone checks. Uses these MCP atoms:
 - `ocs_add_session_tags({ session_id, tags: ['ace-reviewed', 'needs-followup'] })` — mark reviewed sessions so they aren't re-processed
 
 The `experiment_id` and `public_id` for this opportunity's chatbot come from
-`ACE/<opp-name>/ocs-agent-config.md`, written by the `ocs-agent-setup` skill.
+`ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`, written by the `ocs-agent-setup` skill.
 
 ### Heuristics
 

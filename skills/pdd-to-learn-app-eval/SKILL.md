@@ -23,8 +23,8 @@ different rubric dimensions tuned to Learn-app concerns.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - PDD: `ACE/<opp-name>/pdd.md`
-   - Learn app summary: `ACE/<opp-name>/app-summaries/learn-app-summary.md`
+   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
+   - Learn app summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md`
      (contains `nova_app_id` and human-readable summary).
    - Optionally fetch live blueprint via Nova MCP
      `get_app({app_id: <nova_app_id>})` for authoritative module
@@ -93,7 +93,7 @@ different rubric dimensions tuned to Learn-app concerns.
      into the underlying judge discretion.
 
 6. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/pdd-to-learn-app.yaml`. The filename uses
+   `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-learn-app-eval_verdict.yaml`. The filename uses
    the **producer** skill name (`pdd-to-learn-app`), NOT this skill's
    name — see `agents/ace-orchestrator.md § Per-Step Eval Hook` for
    the naming rule:

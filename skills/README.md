@@ -209,7 +209,7 @@ attribution key. Concrete consequences:
 
 - `-eval` skills MUST drop the `-eval` suffix from their verdict
   filename. `idea-to-pdd-eval` writes
-  `ACE/<opp>/verdicts/idea-to-pdd.yaml` so the Workbench attributes the
+  `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd-eval_verdict.yaml` so the Workbench attributes the
   score to the `idea-to-pdd` row (not the `-eval` row).
 - Recurring per-step evals use `<producer>-monitor.yaml` (e.g.
   `verdicts/flw-data-review-monitor.yaml`).

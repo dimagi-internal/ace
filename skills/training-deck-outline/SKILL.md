@@ -3,7 +3,7 @@ name: training-deck-outline
 description: >
   Generate the slide-by-slide markdown outline that `training-deck-build`
   renders into a Google Slides deck. Owns one artifact only:
-  `ACE/<opp>/training-materials/training-deck-outline.md`. First of the
+  `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md`. First of the
   per-artifact training skills — siblings (FLW guide, LLO guide,
   quick-reference, FAQ, onboarding email, video script) follow the same
   one-skill-per-artifact pattern.
@@ -25,16 +25,16 @@ duplicating analysis). Upstream of `training-deck-build`.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `ACE/<opp>/pdd.md` | opp framing, archetype, audience |
-| Phase 2 | `ACE/<opp>/app-summaries/learn-app-summary.md` | Learn app modules → "what FLWs will see" slides |
-| Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | Deliver app forms → walkthrough slides |
-| Phase 5 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/screenshots/manifest.yaml` | per-opp PNG fileIds |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | opp framing, archetype, audience |
+| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md` | Learn app modules → "what FLWs will see" slides |
+| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md` | Deliver app forms → walkthrough slides |
+| Phase 5 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml` | per-opp PNG fileIds |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` | sign-in, claim-opp, sync, payments — common across opps |
-| Phase 5 Step 3 (`training-materials`, sibling) | `ACE/<opp>/training-materials/flw-training-guide.md` | optional: pull caption phrasing forward so the deck and guide say the same thing |
+| Phase 5 Step 3 (`training-materials`, sibling) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md` | optional: pull caption phrasing forward so the deck and guide say the same thing |
 
 ## Output
 
-Single file: `ACE/<opp>/training-materials/training-deck-outline.md`.
+Single file: `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md`.
 
 The format is the **strict contract** that `training-deck-build` parses
 via `parseDeckOutline` in `lib/training-deck-spec.ts`. Producing
@@ -129,7 +129,7 @@ clear error — that's intentional, the parser is opinionated.
    - Every slide with `> Speaker notes:` has at least one sentence
 
 5. **Write the output** to
-   `ACE/<opp>/training-materials/training-deck-outline.md` via
+   `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md` via
    `drive_create_file` (overwrite if it already exists).
 
 6. **Self-evaluate (LLM-as-Judge inline).** A 4-criterion check:
@@ -143,7 +143,7 @@ clear error — that's intentional, the parser is opinionated.
      long for one training session
 
    Write a verdict YAML to
-   `ACE/<opp>/verdicts/training-deck-outline.yaml` in the standard
+   `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline_verdict.yaml` in the standard
    shape (see `lib/verdict-schema.ts`). `passed: true` only if all
    four criteria pass.
 
@@ -167,9 +167,9 @@ Slides side is `training-deck-build`'s job.
 
 ## Outputs
 
-- `ACE/<opp>/training-materials/training-deck-outline.md` — the deck
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md` — the deck
   outline markdown
-- `ACE/<opp>/verdicts/training-deck-outline.yaml` — self-eval verdict
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline_verdict.yaml` — self-eval verdict
 
 ## Known limitations (and the fix path)
 

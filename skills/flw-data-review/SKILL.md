@@ -82,7 +82,7 @@ to build a full picture of LLO and FLW experience. Uses these MCP atoms:
   - `'data-quality-issue'` — relates to a known data quality pattern from the CommCare analysis
 
 The `experiment_id` for this opportunity comes from
-`ACE/<opp-name>/ocs-agent-config.md`.
+`ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`.
 
 ### Cross-referencing with CommCare data
 

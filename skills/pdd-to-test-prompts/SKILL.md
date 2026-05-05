@@ -17,7 +17,7 @@ right after `idea-to-pdd`.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - PDD: `ACE/<opp-name>/pdd.md`
+   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
 
 2. **Read the PDD's `Archetype:` field.** This skill branches on archetype
    — `atomic-visit` uses visit-centric categories, `focus-group` uses
@@ -63,7 +63,7 @@ right after `idea-to-pdd`.
      correctly, NOT walk through how to bypass it.
 
 4. **Write the test prompt file** to
-   `ACE/<opp-name>/test-prompts.md`:
+   `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-test-prompts.md`:
 
    ```markdown
    # OCS Test Prompts — <opp-name>

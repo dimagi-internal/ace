@@ -22,8 +22,8 @@ release flow + the App Editor permission prerequisite.
 ## Process
 
 1. **Read app summaries** from GDrive:
-   - `ACE/<opp-name>/app-summaries/learn-app-summary.md`
-   - `ACE/<opp-name>/app-summaries/deliver-app-summary.md`
+   - `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md`
+   - `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md`
 
    Extract `nova_app_id` from each frontmatter. These are the inputs to
    `/nova:upload_to_hq`.
@@ -98,7 +98,7 @@ release flow + the App Editor permission prerequisite.
 4. **Upload Deliver app.** Same shape — `/nova:upload_to_hq <deliver_app_id>`.
 
 5. **Write the deployment summary** to
-   `ACE/<opp-name>/deployment-summary.md`:
+   `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md`:
 
    ```yaml
    ---
@@ -120,7 +120,7 @@ release flow + the App Editor permission prerequisite.
    link to each HQ app.
 
 6. **Write the gate brief** to
-   `ACE/<opp-name>/gate-briefs/app-deploy.md` using the shape defined in
+   `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_gate-brief.md` using the shape defined in
    `agents/ace-orchestrator.md § Gate Brief Contract`. See
    `## Gate Brief` below for the exact fields this skill populates.
 
@@ -131,7 +131,7 @@ actually live before Phase 3 starts building Connect opps on top of
 them.
 
 - **Artifact Under Review:** path
-  `ACE/<opp-name>/deployment-summary.md`; summary is "Learn + Deliver
+  `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md`; summary is "Learn + Deliver
   apps deployed to <hq_domain>".
 - **What to Check** (emit these 4 items verbatim):
   - Both `learn_app_id` and `deliver_app_id` are populated and resolve
@@ -178,6 +178,6 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
-| 2026-04-17 | Emit gate brief at `ACE/<opp-name>/gate-briefs/app-deploy.md` covering build status, Connectify flags, and workaround-path warnings for the Phase 2→3 gate | ACE team (PM scout, internal-admin lens) |
+| 2026-04-17 | Emit gate brief at `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_gate-brief.md` covering build status, Connectify flags, and workaround-path warnings for the Phase 2→3 gate | ACE team (PM scout, internal-admin lens) |
 | 2026-04-27 | Switch from manual HQ-UI upload to `/nova:upload_to_hq` via the Nova plugin. Inputs are now `nova_app_id` values read from the app summaries. New pre-flight check compares Nova's bound HQ project space against `ACE_HQ_DOMAIN`. Gate brief drops the workaround-path WARN and adds a domain-mismatch BLOCKER. | ACE team |
 | 2026-04-29 | Carve out app release into the new `app-release` skill (Step 2.5 of Phase 2). This skill now ends at "draft uploaded" — release is a separate, permission-sensitive step. Reason: Connect's `Sync Deliver Units` only enumerates units from released builds, so unreleased apps silently break Phase 3's payment-unit config. (0.10.1) | ACE team |

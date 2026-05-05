@@ -185,10 +185,10 @@ training skills (or invoke `qa-and-training` for the full sequence).
 
 ## Outputs
 
-- `ACE/<opp>/screenshots/<journey-id>/<step>.png` + `ACE/<opp>/screenshots/manifest.yaml`
+- `ACE/<opp>/screenshots/<journey-id>/<step>.png` + `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml`
 - `ACE/<opp>/training-materials/{llo-manager-guide,quick-reference,faq,onboarding-email-body}.md` (training-materials)
-- `ACE/<opp>/training-materials/flw-training-guide.md` (training-flw-guide)
-- `ACE/<opp>/training-materials/training-deck-outline.md` (training-deck-outline)
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md` (training-flw-guide)
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md` (training-deck-outline)
 - A Google Slides deck under the same folder (when template is configured)
 - `verdicts/app-screenshot-capture.yaml` (structural verdict)
 - `verdicts/app-screenshot-capture-shallow.yaml` (smoke-judge verdict)

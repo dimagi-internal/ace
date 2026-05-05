@@ -48,5 +48,5 @@ Invoke the `cycle-grade` skill.
 
 ### Completion
 Update opportunity state to "closed". Write final summary to
-`ACE/<opp-name>/closeout/final-summary.md`.
+`ACE/<opp-name>/runs/<run-id>/8-closeout/closeout_summary.md`.
 Email admin group with closeout report.

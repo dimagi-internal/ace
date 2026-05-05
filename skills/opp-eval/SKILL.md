@@ -39,7 +39,7 @@ If no mode is passed, default to `--quick`.
 ## Process
 
 1. **Read the PDD for archetype context (best-effort, not required).**
-   Look up `ACE/<opp-name>/pdd.md`. If present, read the `archetype:`
+   Look up `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`. If present, read the `archetype:`
    field and `## Evidence Model` section and keep them in scope for
    recommendation phrasing. **If the PDD is missing, do not fail** —
    opp-eval is designed to work on partially-completed opps (that's
@@ -173,7 +173,7 @@ If no mode is passed, default to `--quick`.
     documented in § Scorecard Output below.
 
 13. **Write the gate brief (uniform contract).** For `--deep` and
-    `--monitor`, emit `ACE/<opp-name>/gate-briefs/opp-eval-deep.md`
+    `--monitor`, emit `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/opp-eval_gate-brief-deep.md`
     (same path used by both modes — latest wins) using the shape in
     `agents/ace-orchestrator.md § Gate Brief Contract`. opp-eval does
     **not** gate any phase today; the brief exists for contract
@@ -181,7 +181,7 @@ If no mode is passed, default to `--quick`.
     case. See § Gate Brief below.
 
 14. **In `--monitor` mode**, append a single-line entry to
-    `ACE/<opp-name>/scorecards/trend.md` with date, overall score,
+    `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/trend.md` with date, overall score,
     each non-null category score, and the number of verdicts
     aggregated. One row per run so drift is visible at a glance.
 
@@ -363,7 +363,7 @@ opp-eval does **not** gate any phase today. The brief is written for
 contract uniformity so future automation (or ad-hoc operator review)
 can consume it with the same reader used for the 5 real gate briefs.
 
-Location: `ACE/<opp-name>/gate-briefs/opp-eval-deep.md` (single path
+Location: `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/opp-eval_gate-brief-deep.md` (single path
 for both `--deep` and `--monitor`; latest invocation wins).
 
 Shape follows `agents/ace-orchestrator.md § Gate Brief Contract`:

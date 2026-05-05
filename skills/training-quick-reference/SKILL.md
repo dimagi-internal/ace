@@ -21,14 +21,14 @@ of other training skills.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `ACE/<opp>/pdd.md` | per-visit step list, daily caps, key safety rules |
-| Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | exact required-field list (so the ref says what the form actually asks) |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | per-visit step list, daily caps, key safety rules |
+| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md` | exact required-field list (so the ref says what the form actually asks) |
 | Phase 3 (`run_state.yaml`) | `connect.opportunity` + `connect.payment_units` | max-per-day numbers |
-| Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | OCS widget URL printed at the bottom |
+| Phase 4 | `ACE/<opp>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | OCS widget URL printed at the bottom |
 
 ## Output
 
-Single file: `ACE/<opp>/training-materials/quick-reference.md`.
+Single file: `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-quick-reference.md`.
 
 ## Format
 
@@ -104,7 +104,7 @@ LLO contact: <name from connect-setup/opportunity.md>
    - Every escalation trigger from PDD § Escalation is referenced
    - The widget URL renders as a real URL, not a placeholder
 
-6. **Write** to `ACE/<opp>/training-materials/quick-reference.md`
+6. **Write** to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-quick-reference.md`
    via `drive_create_file`.
 
 7. **Self-evaluate (LLM-as-Judge).** Four criteria:
@@ -115,7 +115,7 @@ LLO contact: <name from connect-setup/opportunity.md>
    - **Coverage:** every per-visit step + every escalation trigger
      present
 
-   Verdict to `ACE/<opp>/verdicts/training-quick-reference.yaml`.
+   Verdict to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-quick-reference_verdict.yaml`.
 
 8. **Hand off.** Print Drive URL + verdict summary.
 
@@ -131,8 +131,8 @@ LLO contact: <name from connect-setup/opportunity.md>
 
 ## Outputs
 
-- `ACE/<opp>/training-materials/quick-reference.md`
-- `ACE/<opp>/verdicts/training-quick-reference.yaml`
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-quick-reference.md`
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-quick-reference_verdict.yaml`
 
 ## Known limitations
 

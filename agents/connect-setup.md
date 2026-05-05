@@ -43,7 +43,7 @@ Invoke the `connect-program-setup` skill.
   defaults to `ai-demo-space` (or whichever PM-side org the opportunity
   is configured for).
 - **Output:** Connect program created or reused; details in
-  `ACE/<opp-name>/connect-setup/program.md` with the program UUID.
+  `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup.md` with the program UUID.
 - **Idempotent:** if a program with the same name already exists,
   `connect_list_programs` finds it and the skill reuses it.
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
@@ -56,7 +56,7 @@ Invoke the `connect-opp-setup` skill.
 - **Input:** program UUID from Step 1; PDD; deployment summary from Phase 2.
 - **Output:** Opportunity created in `draft` state with verification
   flags + payment units configured. Details in
-  `ACE/<opp-name>/connect-setup/opportunity.md` with the opportunity
+  `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md` with the opportunity
   UUID.
 - **Depends on:** Step 1 (needs program UUID); Phase 2 outputs (needs
   CommCare app metadata).
@@ -66,7 +66,7 @@ Invoke the `connect-opp-setup` skill.
 ### Completion
 
 Update opportunity state. Write phase summary to
-`ACE/<opp-name>/connect-setup-summary.md` with:
+`ACE/<opp-name>/runs/<run-id>/3-connect/connect-setup_summary.md` with:
 - Program: name, UUID, reused-or-created flag
 - Opportunity: name, UUID, status (`draft`)
 - Verification flags as configured

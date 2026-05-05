@@ -14,7 +14,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
 ## Process
 
-1. **Read the PDD** from `ACE/<opp-name>/pdd.md` via Google Drive MCP.
+1. **Read the PDD** from `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` via Google Drive MCP.
 
 2. **Extract the Deliver app spec** from the PDD. Pay special attention
    to the **delivery unit** — this is the most archetype-sensitive part
@@ -108,7 +108,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    - Are verification criteria encoded in form questions?
 
 7. **Write the summary** to
-   `ACE/<opp-name>/app-summaries/deliver-app-summary.md` with required
+   `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md` with required
    frontmatter:
 
    ```yaml
