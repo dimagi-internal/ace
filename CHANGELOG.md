@@ -5,6 +5,32 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.11 — 2026-05-05
+
+**fix(connect): CSRF self-heal now actually rotates the cookie.**
+
+The 0.13.9 self-heal correctly detected `403 + /CSRF/i` and called
+`session.refreshCsrfToken()`, but `refreshCsrfToken()` only re-read
+the cookie jar — without giving Django a chance to issue a new
+`Set-Cookie`, the read returned the same stale value the server had
+just rejected. The retry POST resent the unchanged token and got the
+identical 403. Both attempts in `turmeric-20260505-1024` Phase 3
+Step 2 failed for this reason.
+
+Fix in `mcp/connect/auth/playwright-session.ts`:
+
+`refreshCsrfToken()` now GET-s `/accounts/login/` *before* re-reading
+the cookie jar. The view is `@ensure_csrf_cookie`-decorated, so Django
+re-sets `csrftoken` via `Set-Cookie`; Playwright's `BrowserContext`
+auto-syncs it; the subsequent `cookies()` read sees the rotated value.
+The 0.13.9 retry path (in `RestBackend.post()`) is unchanged — it now
+gets a token that's actually different from the one the server
+rejected, and the retried POST goes through.
+
+Companion to 0.13.8 (CCHQ session expiry) and 0.13.9 (REST CSRF
+detection) — same family of "static-snapshot at MCP boot doesn't
+survive long-running sessions" class fixes.
+
 ## 0.13.10 — 2026-05-05
 
 **fix(solicitations): thread `program_id` through labs read/update calls so
