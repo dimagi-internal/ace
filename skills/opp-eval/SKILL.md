@@ -28,11 +28,16 @@ aggregator reads.
 
 ## Modes
 
+All paths below are run-scoped under
+`ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/` (opp-eval's own
+subfolder — it writes more than one artifact and per-run isolation
+keeps re-runs clean).
+
 | Mode | What it does | LLM cost | Writes |
 |---|---|---|---|
-| `--quick` | Structural-only: walk the artifact manifest for the opp's current phase, confirm every required (non-dated) artifact exists in the Drive folder. No verdict aggregation. | None | stdout summary + `scorecards/YYYY-MM-DD-opp-eval-quick.md` |
-| `--deep` | Structural check **plus** aggregation: discover every `verdicts/*.yaml`, roll scores into skill-category dimensions, compute run-level verdict, emit per-skill narrative + improvement recommendations | LLM-as-Judge (recommendation drafting) | `scorecards/YYYY-MM-DD-opp-eval-deep.md` (human) + `verdicts/opp-eval-deep.yaml` (machine) + `gate-briefs/opp-eval-deep.md` (uniform contract; does not gate a phase today) |
-| `--monitor` | Same as `--deep`, plus append a one-liner to `scorecards/trend.md` | LLM-as-Judge | Same as `--deep` + trend append |
+| `--quick` | Structural-only: walk the artifact manifest for the opp's current phase, confirm every required (non-dated) artifact exists in the run folder. No verdict aggregation. | None | stdout summary + `8-closeout/opp-eval/opp-eval_scorecard-quick.md` |
+| `--deep` | Structural check **plus** aggregation: discover every `runs/<run-id>/<phase>/*_verdict*.yaml`, roll scores into skill-category dimensions, compute run-level verdict, emit per-skill narrative + improvement recommendations | LLM-as-Judge (recommendation drafting) | `8-closeout/opp-eval/opp-eval_scorecard-deep.md` (human) + `8-closeout/opp-eval/opp-eval_verdict-deep.yaml` (machine) + `8-closeout/opp-eval/opp-eval_gate-brief-deep.md` (uniform contract; does not gate a phase today) |
+| `--monitor` | Same as `--deep`, plus append a one-liner to `8-closeout/opp-eval/opp-eval_trend.md` | LLM-as-Judge | Same as `--deep` + trend append |
 
 If no mode is passed, default to `--quick`.
 
@@ -64,7 +69,14 @@ If no mode is passed, default to `--quick`.
    (`present/expected artifacts, N missing`), and stop. Do not read any
    verdict files. No LLM calls.
 
-5. **Discover verdicts.** List `ACE/<opp-name>/verdicts/*.yaml`. For
+5. **Discover verdicts.** Walk each phase folder under
+   `ACE/<opp-name>/runs/<run-id>/` (`1-design/`, `2-commcare/`,
+   `3-connect/`, `4-ocs/`, `5-qa-and-training/`,
+   `6-solicitation-management/`, `7-execution-manager/`,
+   `8-closeout/`) and collect every file matching
+   `*_verdict*.yaml`. Also descend one level into
+   `8-closeout/opp-eval/` for the umbrella's own verdicts (excluded
+   from aggregation by `skill: opp-eval` filter — see step 6). For
    each file, parse as YAML. Expected top-level keys per
    `skills/README.md § QA vs Eval — the two-phase pattern`:
    `skill`, `target`, `mode`, `ran_at`, `capture_path`,
@@ -164,13 +176,13 @@ If no mode is passed, default to `--quick`.
     template prompt"`.
 
 11. **Write the machine-readable verdict** to
-    `ACE/<opp-name>/verdicts/opp-eval-<mode>.yaml` (only for `--deep`
-    and `--monitor`). Uses the shared verdict shape — see § Verdict
-    YAML Shape below.
+    `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/opp-eval_verdict-<mode>.yaml`
+    (only for `--deep` and `--monitor`). Uses the shared verdict shape
+    — see § Verdict YAML Shape below.
 
 12. **Write the human-readable scorecard** to
-    `ACE/<opp-name>/scorecards/YYYY-MM-DD-opp-eval-<mode>.md`. Shape
-    documented in § Scorecard Output below.
+    `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/opp-eval_scorecard-<mode>.md`.
+    Shape documented in § Scorecard Output below.
 
 13. **Write the gate brief (uniform contract).** For `--deep` and
     `--monitor`, emit `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/opp-eval_gate-brief-deep.md`
@@ -181,9 +193,10 @@ If no mode is passed, default to `--quick`.
     case. See § Gate Brief below.
 
 14. **In `--monitor` mode**, append a single-line entry to
-    `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/trend.md` with date, overall score,
-    each non-null category score, and the number of verdicts
-    aggregated. One row per run so drift is visible at a glance.
+    `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/opp-eval_trend.md`
+    with date, overall score, each non-null category score, and the
+    number of verdicts aggregated. One row per run so drift is visible
+    at a glance.
 
 ## LLM-as-Judge Rubric
 
@@ -236,8 +249,9 @@ archetype-agnostic.
 
 ## Verdict YAML Shape
 
-Written to `ACE/<opp-name>/verdicts/opp-eval-<mode>.yaml` in `--deep`
-and `--monitor` modes. Follows the shared shape from
+Written to
+`ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/opp-eval_verdict-<mode>.yaml`
+in `--deep` and `--monitor` modes. Follows the shared shape from
 `skills/README.md § QA vs Eval — the two-phase pattern`:
 
 ```yaml
@@ -245,7 +259,7 @@ skill: opp-eval
 target: <opp-name>
 mode: deep | monitor
 ran_at: <ISO timestamp>
-capture_path: verdicts/   # opp-eval reads a directory, not a single file
+capture_path: runs/<run-id>/   # opp-eval reads a run directory, not a single file
 
 overall_score: 0.0-10.0    # weighted, renormalized across non-null categories
 verdict: pass | warn | fail
@@ -262,7 +276,7 @@ dimensions:
   closeout:     { score: X.X | null, weight: 0.10 }
 
 per_item:
-  # One entry per verdict file discovered under verdicts/
+  # One entry per verdict file discovered under runs/<run-id>/
   - ref: ocs-chatbot-eval-deep
     score: 8.4
     verdict: pass
@@ -284,7 +298,7 @@ recommendations:
 
 ## Scorecard Output
 
-### Quick-mode (`scorecards/YYYY-MM-DD-opp-eval-quick.md`)
+### Quick-mode (`8-closeout/opp-eval/opp-eval_scorecard-quick.md`)
 
 ```markdown
 # Opportunity Eval — Quick
@@ -315,7 +329,7 @@ opp-eval <mode>: <P>/<M> present, <K> missing, <U> unexpected (phase: <phase>)
 ```
 Example: `opp-eval quick: 4/5 present, 1 missing, 2 unexpected (phase: design)`
 
-### Deep / monitor (`scorecards/YYYY-MM-DD-opp-eval-<mode>.md`)
+### Deep / monitor (`8-closeout/opp-eval/opp-eval_scorecard-<mode>.md`)
 
 ```markdown
 # Opportunity Eval — <mode>
@@ -368,8 +382,9 @@ for both `--deep` and `--monitor`; latest invocation wins).
 
 Shape follows `agents/ace-orchestrator.md § Gate Brief Contract`:
 
-- **Artifact Under Review:** path to the scorecard under
-  `ACE/<opp-name>/scorecards/`; summary is
+- **Artifact Under Review:** path to the scorecard at
+  `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/opp-eval_scorecard-<mode>.md`;
+  summary is
   `<overall-score>/10 across <N> verdicts, run-level verdict <pass|warn|fail>`
 - **What to Check** (emit these 4 items verbatim):
   - Overall score ≥ 7.0 and no category-level score below 5.0
@@ -420,3 +435,4 @@ for dry-run purposes (same convention as `ocs-chatbot-eval`).
 |------|--------|--------|
 | 2026-04-19 | Initial version — umbrella eval aggregator. Three modes (`--quick` / `--deep` / `--monitor`); rolls every `verdicts/*.yaml` into a run-level scorecard across 6 skill-category dimensions, emits improvement recommendations, and writes a uniform-contract gate brief (advisory; does not gate a phase). | ACE team (opp-eval rollout) |
 | 2026-04-19 | Quick-mode template: add `Unexpected:` row (skill was already surfacing unexpected files but the template omitted it); tighten Notes wording with three concrete examples; specify stdout summary format including unexpected count. Surfaced in first run against a real partial opp (cosmetics-fgd-pilot) | ACE team (qa/eval iteration loop) |
+| 2026-05-05 | **Path-scheme migration on the umbrella aggregator.** Discovery (Step 5) walks each phase folder under `runs/<run-id>/` collecting `*_verdict*.yaml` (instead of `ACE/<opp>/verdicts/*.yaml`, which is gone). Outputs land under `8-closeout/opp-eval/`: scorecard (`opp-eval_scorecard-<mode>.md`), verdict (`opp-eval_verdict-<mode>.yaml`), gate brief (`opp-eval_gate-brief-deep.md`), and `--monitor` trend (`opp-eval_trend.md`). Verdict YAML `capture_path` field updated to `runs/<run-id>/`. Wiring fix — prior glob would have found zero verdicts on a fresh run. No behavior change beyond paths. | ACE team |

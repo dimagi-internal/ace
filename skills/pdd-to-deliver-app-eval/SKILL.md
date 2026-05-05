@@ -137,7 +137,7 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` and
    ```
 
 7. **Write the human-readable report** to
-   `ACE/<opp-name>/eval-reports/YYYY-MM-DD-pdd-to-deliver-eval.md`:
+   `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-deliver-app-eval_report.md`:
 
    ```markdown
    # PDD-to-Deliver App Eval Report
@@ -238,3 +238,4 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-04-28 | Initial version. Cross-artifact rubric: 5 dimensions (field_count_match, question_order_match, gate_semantics_match, conditional_logic_match, connectify_wiring). Calibrated against `eval-calibration/known-issues.md`. Template for future cross-artifact evals. | ACE team (eval system buildout) |
 | 2026-04-29 | Added step-2 HITL-pending stub detection. If the deliver app summary has no `nova_app_id`, has `TBD`/`null`, is explicitly marked HITL-pending, or carries only skeleton structure, emit `verdict: incomplete` immediately. Surfaced 0.9.11 cross-opp validation against `turmeric-dogfood-20260427`: trying to grade a HITL-pending summary made 2 of 5 dimensions ungradable (field-order, conditional-logic) and inflated the others. The early-return pattern mirrors `connect-program-setup-eval`'s degraded-mode detection — both treat upstream environmental gaps as `incomplete`, not as quality defects. | ACE team (0.10.8) |
+| 2026-05-05 | Step 7 report path migrated to `runs/<run-id>/2-commcare/pdd-to-deliver-app-eval_report.md` (was opp-level `eval-reports/YYYY-MM-DD-pdd-to-deliver-eval.md`). No methodology change. | ACE team |

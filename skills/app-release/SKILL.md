@@ -138,7 +138,7 @@ procedure below to rediscover.
    # Must produce at least one match per app
    ```
 
-7. **Update `deployment-summary.md`** with a `releases:` block:
+7. **Update `2-commcare/app-deploy_summary.md`** with a `releases:` block:
    ```yaml
    releases:
      learn_app:  { build_id: <id>, version: <n>, released_at: <iso>, connect_markers: <count> }
@@ -170,7 +170,7 @@ serialize as invalid XPath). The `app-connect-coverage` skill (Phase 2
 Step 1.5) is the place that detects and reports these — this skill
 just consumes its `clean | blocked` verdict.
 
-5. **Update deployment-summary.md.**
+5. **Update 2-commcare/app-deploy_summary.md.**
    Append a `releases` block to the frontmatter with the new build IDs and
    release timestamps:
 

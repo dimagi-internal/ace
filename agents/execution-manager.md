@@ -74,7 +74,7 @@ Invoke the `llo-launch` skill.
   `verdicts/ocs-chatbot-eval-deep.yaml` and
   `verdicts/app-ux-eval-deep.yaml` exist, pass, and are newer than
   the artifacts they grade (OCS chatbot `version_number`; learn /
-  deliver build IDs in `deployment-summary.md`). If `/ace:qa-deep`
+  deliver build IDs in `2-commcare/app-deploy_summary.md`). If `/ace:qa-deep`
   hasn't been run since the most recent app release / chatbot
   publish, `llo-launch` halts with `[BLOCKER]` and the operator must
   run `/ace:qa-deep <opp>` before resuming. The
@@ -95,16 +95,18 @@ These skills run on a schedule during the active opportunity:
 - Analyzes FLW submission data for quality issues
 - Generates recommendations for the Auto-Connect team to relay to LLOs
 - Unless `--no-evals` was passed, follow with `flw-data-review-eval`,
-  which writes `verdicts/flw-data-review-monitor.yaml` (recurring;
-  the latest monitor verdict overwrites the prior one)
+  which writes `7-execution-manager/flw-data-review-eval_verdict-monitor.yaml`
+  (recurring; the latest monitor verdict overwrites the prior one)
 
 **OCS Chatbot Monitoring** — invoke `ocs-chatbot-qa --monitor` then
 `ocs-chatbot-eval --monitor` weekly (qa captures transcript, eval grades).
 - Periodic quality check against the live bot to catch retrieval drift
   (e.g., after the shared Connect collection auto-syncs new Confluence pages)
-- qa writes `qa-captures/YYYY-MM-DD-ocs-chat-monitor.md`; eval writes
-  `verdicts/ocs-chatbot-eval-monitor.yaml`, `eval-reports/YYYY-MM-DD-ocs-eval.md`,
-  and appends a line to `eval-reports/trend.md`
+- qa writes `7-execution-manager/ocs-chatbot-qa_transcript-monitor.md`;
+  eval writes
+  `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` +
+  `7-execution-manager/ocs-chatbot-eval_report-monitor.md`, and appends
+  a row to `7-execution-manager/ocs-chatbot-eval_trend.md`
 - If eval's overall score drops more than 1.5 points from the previous
   monitor verdict, eval emails the admin group
 

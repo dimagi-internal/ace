@@ -27,11 +27,14 @@ the first 4 strongly-calibrated rubrics.
 
 1. **Read inputs from GDrive:**
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
-   - `llo-launch.md` or `launch-summary.md` — the activation record
-   - `uat-results.md` (or `gate-briefs/llo-uat.md`) — UAT sign-offs
-     the launch should have verified
-   - `deployment-summary.md` — app-publish status the launch verified
-   - `run_state.yaml` — gate states (`gates.llo-launch`, `gates.llo-invite`)
+   - `runs/<run-id>/7-execution-manager/llo-launch_record.md` — the
+     activation record
+   - `runs/<run-id>/7-execution-manager/llo-uat_results.md` — UAT
+     sign-offs the launch should have verified
+   - `runs/<run-id>/2-commcare/app-deploy_summary.md` — app-publish
+     status the launch verified
+   - `runs/<run-id>/run_state.yaml` — gate states (`gates.llo-launch`,
+     `gates.llo-invite`)
 
 2. **Detect "phase not run" mode.** If `run_state.yaml` shows
    `phases.execution-management.llo-launch` not `done` or the launch
@@ -45,7 +48,7 @@ the first 4 strongly-calibrated rubrics.
    |---|---|---|
    | **UAT sign-off completeness** | 25% | Every UAT participant from `llo-uat`'s sign-off list must have signed off (or have a documented blocker). Missing sign-offs = 3-point deduction per missing LLO. **Hard block:** a launch that fired with ≥1 LLO who explicitly did NOT sign off (vs simply pending) is a fail (≤3) — the producing skill missed a real veto. |
    | **Connect activation correctness** | 25% | Connect Opportunity status must transition from `draft` to `active`. Verification rules and payment units configured by Phase 3 must still match the PDD spec at activation time (no silent drift between Phase 3 and Phase 5). Missing activation transition = fail (≤3). Drift between Phase 3 and Phase 5 config = 2-point deduction per drift. |
-   | **App-publish status** | 20% | Both Learn and Deliver apps must be published (not draft) on the configured HQ project space. App-publish status is read from `deployment-summary.md` and confirmed via Nova MCP at launch. Either app still in draft = fail (≤3). |
+   | **App-publish status** | 20% | Both Learn and Deliver apps must be published (not draft) on the configured HQ project space. App-publish status is read from `2-commcare/app-deploy_summary.md` and confirmed via Nova MCP at launch. Either app still in draft = fail (≤3). |
    | **Go-live notification fidelity** | 15% | The go-live notification email to LLOs must include: app links, calibration-gate threshold reminder (10/12 for atomic-visit calibrated rubrics), safety-plan summary if applicable, support-channel contact (`ace@dimagi-ai.com`). Missing required content = 1-point deduction per gap. **Factual error rule (mirrors OCS rubric 0.9.4):** wrong contact email, wrong threshold, wrong app link = 1-point Correctness deduction per occurrence with hard ceiling 7 on the affected email. |
    | **Pre-launch gate discipline** | 15% | All upstream gates must be `approved` before activation: `idea-to-pdd`, `app-deploy`, `ocs-chatbot-eval-deep`, `llo-invite`. Activating with any upstream gate still `pending` or `rejected` is a 4-point deduction (gate bypass). Activating with `gates.llo-launch` itself still `pending` (the producing skill skipped its own gate brief) is also a 4-point deduction. |
 
@@ -146,7 +149,7 @@ where Phase 5 hasn't reached llo-launch.
 
 When `--dry-run` is active:
 - Read inputs normally — read-only.
-- Skip live Connect/Nova MCP verification (use `deployment-summary.md`
+- Skip live Connect/Nova MCP verification (use `2-commcare/app-deploy_summary.md`
   as the single source).
 - Write verdict + report.
 - State tracks as `dry-run-success`.

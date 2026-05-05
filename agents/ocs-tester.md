@@ -46,12 +46,16 @@ and runs the LLM-as-Judge rubric.
    - Polls for each response
    - Runs structural checks (response received, no error, citations
      present where expected)
-   - Writes the transcript to `qa-captures/`
+   - Writes the transcript to the run-scoped path
+     `<phase>/ocs-chatbot-qa_transcript-<mode>.md` (`4-ocs/` for
+     `--quick`/`--deep`; `7-execution-manager/` for `--monitor`)
 3. **Dispatches `ocs-chatbot-eval`** (judge phase):
    - Reads the transcript written by step 2
-   - Scores each response on Correctness / Source usage / Tone / Tagging
-   - Writes the verdict YAML to `verdicts/` and (for `--deep`/`--monitor`)
-     a human-readable report to `eval-reports/`
+   - Scores each response on Correctness / Source usage / Refusal correctness / Tone / Tagging
+   - Writes the verdict YAML to
+     `<phase>/ocs-chatbot-eval_verdict-<mode>.yaml` and (for
+     `--deep`/`--monitor`) a human-readable report to
+     `<phase>/ocs-chatbot-eval_report-<mode>.md`
 4. **Reports results** with a per-question breakdown and the overall score
    from the verdict.
 
@@ -68,10 +72,12 @@ and runs the LLM-as-Judge rubric.
 ## Outputs
 
 - Console summary with pass/warn/fail per question
-- Quality score from the eval's verdict: 0–10 weighted average across 4
-  dimensions
-- `ACE/<opp-name>/qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md` — transcript
-- `ACE/<opp-name>/verdicts/ocs-chatbot-eval-<mode>.yaml` — verdict
-- `ACE/<opp-name>/eval-reports/YYYY-MM-DD-ocs-eval.md` — eval report
-  (skipped for `--quick` stdout mode)
+- Quality score from the eval's verdict: 0–10 weighted average across 5
+  dimensions (Correctness, Source usage, Refusal correctness, Tone, Tagging)
+- `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-qa_transcript-<mode>.md` —
+  transcript (`4-ocs/` for quick/deep; `7-execution-manager/` for monitor)
+- `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_verdict-<mode>.yaml` —
+  verdict (same phase rule)
+- `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_report-<mode>.md` —
+  eval report (skipped for `--quick` stdout-only mode; same phase rule)
 - `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-deep.md` — only in `--deep`

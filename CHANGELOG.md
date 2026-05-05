@@ -5,6 +5,72 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.6 — 2026-05-05
+
+**Path-scheme cleanup: align all per-run artifacts to the run-scoped layout.**
+
+Sweep across skills, agents, and commands to retire opp-level
+`qa-captures/` / `verdicts/` / `eval-reports/` / `gate-briefs/` /
+`scorecards/` directories. Every per-run artifact now lives at
+`ACE/<opp-name>/runs/<run-id>/<phase>/<skill>_<artifact>[-<mode>].<ext>`
+— the layout the artifact manifest and the run fixtures already
+encode. Two prior parallel efforts (the audit-ocs-skills session and
+0.13.0's perl-substitution sweep) each got partway here; this release
+finishes the job.
+
+**Critical wiring fixes** (skill behavior was wrong against current
+main, not just doc drift):
+
+- `skills/llo-launch/SKILL.md` — deep-QA verdict freshness gate (Step
+  4) now reads `4-ocs/ocs-chatbot-eval_verdict-deep.yaml` and
+  `5-qa-and-training/app-ux-eval_verdict-deep.yaml` per the manifest;
+  build IDs come from `2-commcare/app-deploy_summary.md`. Without
+  this, the gate would always fail with "verdict missing" against any
+  real run.
+- `skills/opp-eval/SKILL.md` — verdict discovery walks each phase
+  folder under `runs/<run-id>/` collecting `*_verdict*.yaml` (was
+  globbing the now-extinct `ACE/<opp>/verdicts/*.yaml`). Outputs land
+  under `8-closeout/opp-eval/`.
+
+**OCS skills migrated** to the run-scoped scheme: `ocs-chatbot-qa`
+writes transcripts at `4-ocs/ocs-chatbot-qa_transcript-<mode>.md`
+(`7-execution-manager/...` for `--monitor`); `ocs-chatbot-eval`
+writes verdicts, reports, gate briefs, and trend at the matching
+phase paths. The single surviving use of dated `qa-captures/` is the
+golden-template no-opp fallback (`ACE/golden-template/qa-captures/<dated>.md`)
+— no run-id is available in that case.
+
+**Other eval skills** brought into line: `app-ux-eval`,
+`app-screenshot-capture`, `pdd-to-deliver-app-eval`,
+`flw-data-review-eval`, `llo-launch-eval` repointed to the canonical
+run-scoped paths. Inputs (`pdd-to-app-journeys.md`,
+`app-test-cases.yaml`, `app-deploy_summary.md`) corrected to their
+phase-prefixed locations.
+
+**Caller doc lies cleared** in `agents/ace-orchestrator.md` (gate
+brief read paths + opp-eval discovery prose),
+`agents/execution-manager.md` (monitor paths),
+`agents/ocs-tester.md` (transcript / verdict / report paths + 5-dim
+list), `agents/commcare-setup.md`, `agents/design-review.md`,
+`commands/qa-deep.md`, `commands/eval.md`, `commands/step.md`.
+
+**Contract update:** `skills/README.md` § Artifact-path contract now
+declares the run-scoped scheme as canonical, with the
+golden-template exception called out explicitly. Verdict-filename
+section rewritten to drop the stale "drop the -eval suffix" rule —
+producer attribution now happens via the eval→producer pairing
+declared in each phase agent's frontmatter, not by parsing
+filenames.
+
+**Ancillary:** `lib/artifact-manifest.ts` description corrected from
+"5 smoke prompts" → "3" (audit caught this); `deployment-summary.md`
+references in `app-release`, `app-release-eval`, `commcare-form-patch`,
+`llo-launch-eval`, `training-llo-guide`, `agents/execution-manager.md`,
+`agents/commcare-setup.md` updated to `2-commcare/app-deploy_summary.md`
+(stragglers from 0.13.0's rename sweep).
+
+Tests: 477 passed / 32 skipped / 0 failed (unchanged).
+
 ## 0.13.4 — 2026-05-05
 
 **ace-gdrive efficiency: `drive_read_file` transient-5xx retry + new `update_yaml_file` tool.**

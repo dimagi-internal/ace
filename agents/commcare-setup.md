@@ -221,9 +221,11 @@ identically — not just builds.
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `pdd-to-learn-app-eval` after the Learn build and
   `pdd-to-deliver-app-eval` after the Deliver build. Each writes
-  `verdicts/pdd-to-learn-app.yaml` and `verdicts/pdd-to-deliver-app.yaml`
+  `runs/<run-id>/2-commcare/pdd-to-learn-app-eval_verdict.yaml` and
+  `runs/<run-id>/2-commcare/pdd-to-deliver-app-eval_verdict.yaml`
   respectively. A `verdict: fail` here does not halt Phase 2 on its
-  own; the Phase 2→3 gate uses `gate-briefs/app-deploy.md`.
+  own; the Phase 2→3 gate uses
+  `runs/<run-id>/2-commcare/app-deploy_gate-brief.md`.
 
 ### Step 1.5: Connect-marker coverage (verify + auto-fix)
 Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
@@ -272,7 +274,7 @@ Invoke the `app-deploy` skill.
   atomic update API for app uploads). If Phase 2 has to re-upload an app for
   ANY reason after the first deploy — XForm escape fixes, Connect-marker
   patches, build-rejection iteration — the HQ ids in
-  `deployment-summary.md` must be updated, and Phase 3
+  `2-commcare/app-deploy_summary.md` must be updated, and Phase 3
   (`connect-opp-setup`) MUST run against the FINAL post-iteration ids.
   Phase 3's `connect_create_opportunity` writes the HQ ids into the opp's
   app-wire fields at create time, and Connect's edit form does NOT expose
@@ -281,7 +283,7 @@ Invoke the `app-deploy` skill.
   ran after the first upload; Phase 2 then re-uploaded for the Q10 escape
   fix; the resulting opp was wired to abandoned drafts. The orchestrator's
   Phase 2→3 transition MUST verify
-  `deployment-summary.md.released_at >= deployment-summary.md.uploaded_at`
+  `2-commcare/app-deploy_summary.md.released_at >= 2-commcare/app-deploy_summary.md.uploaded_at`
   AND that no subsequent re-upload happened, before dispatching Phase 3.
 
 ### Step 2.6: Generate app-test-cases.yaml
@@ -304,7 +306,7 @@ so it's the natural cutoff for "the apps are now what they are."
 
 ### Step 2.7: Release Apps
 Invoke the `app-release` skill.
-- Input: HQ app ids from `deployment-summary.md`
+- Input: HQ app ids from `2-commcare/app-deploy_summary.md`
 - Output: each app has a new released build; Connect's `Sync Deliver Units`
   can now read the form schema. Without this step, Phase 3
   (`connect-opp-setup`) creates the opp shell but cannot configure

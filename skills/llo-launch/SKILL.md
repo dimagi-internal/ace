@@ -36,8 +36,8 @@ Activate the opportunity and notify LLOs that they are live.
    highest-stakes gate in the pipeline; activation flips the opp from
    draft to live and deliveries start counting toward payment. Read
    both deep verdicts from `ACE/<opp-name>/runs/<run-id>/`:
-   - `verdicts/ocs-chatbot-eval-deep.yaml`
-   - `verdicts/app-ux-eval-deep.yaml`
+   - `4-ocs/ocs-chatbot-eval_verdict-deep.yaml`
+   - `5-qa-and-training/app-ux-eval_verdict-deep.yaml`
 
    For each verdict, require:
 
@@ -53,12 +53,14 @@ Activate the opportunity and notify LLOs that they are live.
         re-published since the verdict was written, the deep eval is
         stale.
       - **App verdict freshness:** read `learn_build_id` and
-        `deliver_build_id` from `verdicts/app-ux-eval-deep.yaml`'s
-        `artifact_refs:` block, then read `deployment-summary.md`'s
-        `releases:` block. The verdict's build IDs must match the
-        latest released build IDs in `deployment-summary.md`. If
-        either app has been re-released since the verdict was written,
-        the screenshots that grounded the eval are out of date.
+        `deliver_build_id` from
+        `5-qa-and-training/app-ux-eval_verdict-deep.yaml`'s
+        `artifact_refs:` block, then read
+        `2-commcare/app-deploy_summary.md`'s `releases:` block. The
+        verdict's build IDs must match the latest released build IDs.
+        If either app has been re-released since the verdict was
+        written, the screenshots that grounded the eval are out of
+        date.
 
    If ANY check fails, halt with `[BLOCKER]` and emit:
 
@@ -66,11 +68,12 @@ Activate the opportunity and notify LLOs that they are live.
    > Run `/ace:qa-deep <opp>` before activation.
    > Missing or stale: <list of failing checks>
 
-   List one entry per failing check (e.g. `ocs-chatbot-eval-deep.yaml
-   missing`, `app-ux-eval-deep.yaml verdict=fail`, `OCS chatbot
-   re-published since verdict written (verdict v3, current v4)`,
-   `learn app re-released since verdict written (verdict build
-   abc..., current build xyz...)`).
+   List one entry per failing check (e.g.
+   `4-ocs/ocs-chatbot-eval_verdict-deep.yaml missing`,
+   `5-qa-and-training/app-ux-eval_verdict-deep.yaml verdict=fail`, `OCS
+   chatbot re-published since verdict written (verdict v3, current v4)`,
+   `learn app re-released since verdict written (verdict build abc...,
+   current build xyz...)`).
 
 5. **Override (operator-only, audited).** If this skill was invoked
    with `--override-deep-qa-gate=<reason>`, skip the gate above and
@@ -171,12 +174,12 @@ live. This is the single highest-stakes gate in the pipeline.
     name, dates, and support channel (ace@dimagi-ai.com)
   - Training materials and the OCS widget link are accessible to LLOs
 - **Auto-Surfaced Concerns:** one line per signal:
-  - `[BLOCKER]` if `verdicts/ocs-chatbot-eval-deep.yaml` is missing,
-    `verdict: fail`, or stale (chatbot version_number has advanced
-    since the verdict was written) — see Step 4 above
-  - `[BLOCKER]` if `verdicts/app-ux-eval-deep.yaml` is missing,
-    `verdict: fail`, or stale (a learn or deliver build was released
-    since the verdict was written) — see Step 4 above
+  - `[BLOCKER]` if `4-ocs/ocs-chatbot-eval_verdict-deep.yaml` is
+    missing, `verdict: fail`, or stale (chatbot version_number has
+    advanced since the verdict was written) — see Step 4 above
+  - `[BLOCKER]` if `5-qa-and-training/app-ux-eval_verdict-deep.yaml` is
+    missing, `verdict: fail`, or stale (a learn or deliver build was
+    released since the verdict was written) — see Step 4 above
   - `[BLOCKER]` for any LLO with UAT sign-off status ≠ `signed-off` and a
     blocking issue recorded
   - `[BLOCKER]` if any app has a build status that is not `success`
@@ -276,12 +279,15 @@ stages_total: N, stage_1_protocol, stage_transition_criteria,
 next_stage_kickoff_window}`
 
 **Important:** `llo-launch` may be invoked MULTIPLE times across a
-multi-stage opp's lifetime — once per stage transition. Each invocation
-re-emits a stage-specific gate brief + launch record. The gate brief
-path is the same (`gate-briefs/llo-launch.md`) — subsequent runs
-overwrite the prior file; prior launch records stay in
-`launch/launch-record-stage-N.md` so history is preserved. (The
-`launch/launch-record.md` entry tracks the latest/current stage.)
+multi-stage opp's lifetime — once per stage transition. Each
+invocation re-emits a stage-specific gate brief + launch record. The
+gate brief path is the same
+(`runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md`) —
+subsequent runs overwrite the prior file; prior launch records stay
+in `runs/<run-id>/7-execution-manager/llo-launch_record-stage-N.md` so
+history is preserved. (The
+`runs/<run-id>/7-execution-manager/llo-launch_record.md` entry tracks
+the latest/current stage.)
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
@@ -314,3 +320,4 @@ When `--dry-run` is active:
 | 2026-04-28 | Replace HITL workaround with `connect_activate_opportunity` + `connect_get_opportunity` (ace-connect 0.8.1) | ACE team |
 | 2026-04-30 | Switch `connect_activate_opportunity` to `POST /api/opportunities/<id>/activate/` (commcare-connect PR #1135). Server-side guards now reject activation if no PaymentUnits exist or the opp has ended; clearer errors than the silent edit-form fallback. Step 4 also gains a deferred FLW pre-invite path for ACE-driven dogfood runs whose `connect-opp-setup` deferred the invite until activation. (0.10.47) | ACE team |
 | 2026-05-04 | Add the deep-QA verdict freshness gate (new Step 4) before activation: refuse to activate unless `verdicts/ocs-chatbot-eval-deep.yaml` and `verdicts/app-ux-eval-deep.yaml` exist, both pass, and both are newer than the artifacts they grade (OCS chatbot `version_number`; learn/deliver `build_id` from `deployment-summary.md`). Add `--override-deep-qa-gate=<reason>` operator escape hatch with a required reason and an audit trail to `comms-log/observations.md`; reachable only via `/ace:step llo-launch`, never `/ace:run`. Gate-brief auto-surfaced concerns gain two `[BLOCKER]` rows mirroring the gate. Part of the shallow/deep QA split refactor (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`). | ACE team |
+| 2026-05-05 | **Path-scheme migration on the deep-QA gate.** Step 4 verdict reads, error messages, and gate-brief BLOCKER rows now reference `4-ocs/ocs-chatbot-eval_verdict-deep.yaml` and `5-qa-and-training/app-ux-eval_verdict-deep.yaml` (per the manifest); freshness check pulls build IDs from `2-commcare/app-deploy_summary.md`. Wiring fix — the prior `verdicts/...` paths no longer exist on disk, so the gate would always fail with "verdict missing" against current main. No behavior change beyond paths. | ACE team |
