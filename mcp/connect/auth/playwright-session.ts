@@ -1,4 +1,4 @@
-import { chromium, type BrowserContext, type Browser } from 'playwright';
+import { chromium, type BrowserContext, type Browser, type APIRequestContext } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -228,6 +228,20 @@ export class PlaywrightSession {
     if (!t) throw new Error('csrftoken cookie missing for ' + this.connectDomain() + ' after refresh');
     this.csrfToken = t;
     return t;
+  }
+
+  /**
+   * Synchronous accessor for the current authenticated `APIRequestContext`,
+   * if one is cached. Returns undefined when no context has been
+   * established yet (pre-`getContext()`) or when `invalidate()` has dropped
+   * it. Used by `PlaywrightBackend` (0.13.17) to lazily resolve a
+   * fresh request handle on every call rather than caching a constructor-
+   * bound one — which goes stale on `RestBackend.reauth()` and then fails
+   * subsequent reads with `apiRequestContext.get: Target page, context or
+   * browser has been closed`.
+   */
+  peekRequest(): APIRequestContext | undefined {
+    return this.context?.request;
   }
 
   /**

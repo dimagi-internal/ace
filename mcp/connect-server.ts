@@ -72,7 +72,15 @@ async function getBackends(): Promise<{ rest: RestBackend; playwright: Playwrigh
     // and one retry. Mirrors the 0.13.8 commcare.ts pattern but for
     // a different failure shape than CCHQ's 302-to-login.
     rest = new RestBackend({ baseUrl, csrfToken, request: ctx.request, session });
-    playwright = new PlaywrightBackend({ baseUrl, csrfToken, request: ctx.request });
+    // PlaywrightBackend takes the session reference too (added 0.13.17) so
+    // its lazy `request` getter can resolve a fresh handle from
+    // `session.peekRequest()` on every call. Without this, a
+    // `RestBackend.reauth()` on the OTHER backend closed the shared
+    // BrowserContext and stranded PlaywrightBackend on a dead
+    // `APIRequestContext` — every subsequent Playwright read failed with
+    // `apiRequestContext.get: Target page, context or browser has been
+    // closed`. Mirrors the 0.13.15 RestBackend wiring.
+    playwright = new PlaywrightBackend({ baseUrl, csrfToken, request: ctx.request, session });
     // CommCareBackend takes the session itself (not a bare APIRequestContext)
     // so each atom can pull a fresh request and recover from CCHQ-side
     // session expiry that the boot-time probe missed (0.13.8).

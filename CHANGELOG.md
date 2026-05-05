@@ -5,6 +5,79 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.18 — 2026-05-05
+
+**fix(connect): two class-level preventers around the 0.13.15 reauth path.**
+
+Surfaced during the leep-paint-collection 2026-05-05 e2e run, which
+halted at Phase 3 connect-opp-setup (see
+`runs/20260505-1505/3-connect/connect-opp-setup_BLOCKED.md`). Two
+cooperating bugs in `mcp/connect/`:
+
+**CL-1 — `PlaywrightBackend.request` went stale on `RestBackend.reauth()`.**
+
+Pre-0.13.17, `connect-server.ts` constructed `PlaywrightBackend` with
+`request: ctx.request` at MCP boot. That handle was never updated.
+When `RestBackend.reauth()` (shipped in 0.13.15) called
+`session.invalidate()` to drop the cached `BrowserContext` and
+rebuilt via `hqOAuthLogin`, the new context produced a fresh
+`APIRequestContext` — but `PlaywrightBackend` kept holding the dead
+one. Every subsequent Playwright read failed with
+`apiRequestContext.get: Target page, context or browser has been
+closed`. Collateral damage on every reauth path; the 0.13.15
+bottom-out shipped this regression silently.
+
+Fix:
+
+- `PlaywrightSession.peekRequest()`: synchronous accessor that returns
+  the cached context's `APIRequestContext`, or undefined if no
+  context is cached (transient window between `invalidate()` and the
+  next `getContext()`).
+- `PlaywrightBackend` now accepts an optional `session` and resolves
+  `request` lazily via a private getter:
+  `session?.peekRequest() ?? opts.request`. Production wiring passes
+  the session through; tests omit it and the lazy getter falls back
+  to the constructor-bound static handle.
+- `connect-server.ts` passes `session` into both backends, mirroring
+  the 0.13.15 RestBackend wiring.
+
+Class-level preventer: any future "drop the cached
+BrowserContext + rebuild" path automatically propagates to every
+backend that holds a session reference, instead of silently
+stranding handles bound at constructor time.
+
+Unit-tested in `test/mcp/connect/unit/playwright-backend-refresh.test.ts`
+(4 tests covering: session preferred over constructor handle,
+post-reauth pickup of the new handle, no-session fallback, transient
+peekRequest=undefined fallback).
+
+**CL-2 — `bin/ace-doctor` now probes "post-reauth REST 403 CSRF" pre-emptively.**
+
+Even after CL-1, the OTHER half of the leep blocker remains: the run
+hit `403 CSRF` on `POST /api/programs/<uuid>/opportunities/` *after*
+a clean `reauth()` rebuild. That violates the bottom-out invariant
+0.13.15 promised for some Connect-side state we don't yet
+understand. Until we can identify and fix the upstream cause,
+`/ace:doctor` now catches the same failure shape pre-emptively:
+
+- New `connect_csrf_probe` check at the end of the `[Connect]` section
+- POSTs an empty body to `/api/programs/` with the live session's
+  sessionid + csrftoken (cookie + X-CSRFToken header)
+- Healthy session: 400 (DRF validation — the empty body is missing
+  required fields). Bug: 403 with body containing `CSRF`. Probe
+  classifies the result and emits PASS / FAIL / WARN with first
+  ~200 chars of the response body for diagnosis
+- Runs only when `~/.ace/connect-session.json` exists; no live-Connect
+  requirement on installs that don't use Phase 3+
+
+Class-level preventer: surfaces the same failure mode operators
+otherwise discover mid-run by burning a Phase-3 dispatch.
+
+Manual verify line: run `/ace:doctor` against a healthy Connect
+session and confirm `PASS connect_csrf_probe: POST /api/programs/
+(empty body) → 400 (session healthy, CSRF accepted)`. The leep-style
+bug surfaces as `FAIL connect_csrf_probe`.
+
 ## 0.13.17 — app-multimedia-coverage skill
 
 - New skill `app-multimedia-coverage` (manual gate, post-Phase 2):
