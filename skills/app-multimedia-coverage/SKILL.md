@@ -136,9 +136,10 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
      `2-commcare/app-multimedia-coverage_generated/<app>/<form_unique_id>/<field_id>__<prompt_hash>.png`,
      skip.
    - Cache miss: call
-     `lib/content-generator-client.ts::generateImage` (60s timeout,
-     single 5xx retry with a fixed delay, hard-fail on auth
-     errors), save the PNG to the path above, update
+     `lib/content-generator-client.ts::generateImage` (180s timeout,
+     single 5xx retry with a fixed delay, hard-fail on auth errors;
+     live wall-clock ~68s for low-res, longer with `upscale: true`),
+     save the PNG to the path above, update
      `app-multimedia-coverage_manifest.yaml` via
      `lib/multimedia-manifest.ts`.
    - Default execution: serial. Bounded parallelism is a follow-up

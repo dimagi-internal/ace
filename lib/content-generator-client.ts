@@ -40,7 +40,7 @@ export class ContentGeneratorClient {
     private opts: {
       url: string;
       apiKey: string;
-      timeoutMs?: number;       // default 60_000
+      timeoutMs?: number;       // default 180_000 (live wall-clock ~68s low-res; upscale runs longer)
       retryDelayMs?: number;    // default 1_000
     },
   ) {}
@@ -65,7 +65,7 @@ export class ContentGeneratorClient {
       init?: RequestInit,
     ): Promise<Response> => {
       const ac = new AbortController();
-      const t = setTimeout(() => ac.abort(), this.opts.timeoutMs ?? 60_000);
+      const t = setTimeout(() => ac.abort(), this.opts.timeoutMs ?? 180_000);
       try {
         return await fetch(url, { ...init, signal: ac.signal });
       } finally {
