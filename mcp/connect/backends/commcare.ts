@@ -92,6 +92,29 @@ export interface PatchXformArgs {
   sha1?: string;
 }
 
+export interface UploadMultimediaArgs {
+  domain: string;
+  app_id: string;
+  /** jr://file/commcare/<image|audio|video|text>/<filename>.<ext> */
+  media_path: string;
+  /** Raw file bytes — image/audio/video/text payload. */
+  file_bytes: Buffer;
+  /** Standard MIME type — `image/png`, `image/jpeg`, `audio/mpeg`, … */
+  content_type: string;
+}
+
+export interface UploadMultimediaResult {
+  /** CouchDB doc `_id` (CCHQ's `ref.m_id`) of the multimedia document. */
+  multimedia_id: string;
+  /**
+   * MD5 hex of the file bytes (CCHQ's `ref.uid`). Named `file_hash_md5`
+   * deliberately — CCHQ's `CommCareMultimedia.file_hash` field is md5,
+   * NOT sha1 (verified live 2026-05-05; see scripts/probe-multimedia-upload.ts).
+   * CCHQ dedupes uploads on this hash.
+   */
+  file_hash_md5: string;
+}
+
 export interface PatchXformResult {
   /** HTTP status from `edit_form_attr/.../xform/`. */
   status: number;
@@ -449,11 +472,145 @@ export class CommCareBackend {
     });
   }
 
+  /**
+   * POST /a/<domain>/apps/<app_id>/multimedia/uploaded/<media_type>/
+   *
+   * Upload binary multimedia (PNG, JPEG, MP3, …) into the app's
+   * `multimedia_map` so subsequent `make_build` bundles it into the
+   * generated CCZ. Endpoint mounted on
+   * `corehq/apps/hqmedia/views.py::ProcessImageFileUploadView` (and sibling
+   * audio/video/text variants); see `corehq/apps/hqmedia/urls.py`.
+   *
+   * Required form fields:
+   *   `Filedata` — file bytes (field name fixed by
+   *                BaseProcessUploadedView.upload_filename = 'Filedata').
+   *   `path`     — `jr://file/commcare/<media_type>/<filename>.<ext>`.
+   *                File extension MUST match the uploaded payload, else
+   *                `validate_file` raises BadMediaFileException → 400.
+   *
+   * Auth: `@require_permission(HqPermissions.edit_apps)` — accepts the
+   * same Playwright session-cookie auth as `patchXform`. CSRF read from
+   * the cookie jar after a refresh GET to `/apps/view/<app_id>/`.
+   *
+   * Response (verified live 2026-05-05 against connect-ace-prod):
+   *   200 OK with `Content-Type: text/html` (CCHQ uses `HttpResponse(json.dumps(...))`
+   *   which defaults the type to text/html — the body IS valid JSON).
+   *   `{ "ref": { "path", "uid"<md5>, "m_id"<couch _id>, "url", "updated", "media_type" }, "errors": [] }`
+   *
+   * **Important orphan-pruning gotcha (skill-side, NOT this atom).** CCHQ's
+   * `clean_paths()` strips multimedia entries that no form references on
+   * the next `make_build`. The skill must patch the form XML to reference
+   * `jr://...` BEFORE calling this atom and `make_build`. The atom only
+   * owns the upload step.
+   */
+  async uploadMultimedia(args: UploadMultimediaArgs): Promise<UploadMultimediaResult> {
+    return this.runWithSessionRetry(async (request) => {
+      const mediaType = mediaTypeFromContentType(args.content_type);
+      const path = `/a/${args.domain}/apps/${args.app_id}/multimedia/uploaded/${mediaType}/`;
+      const refreshPath = `/a/${args.domain}/apps/view/${args.app_id}/`;
+
+      // Refresh CSRF + session via the app view page (mirrors patchXform).
+      const refreshRes = await request.get(`${this.opts.baseUrl}${refreshPath}`, {
+        maxRedirects: 0,
+      });
+      if (refreshRes.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(
+          refreshRes,
+          `commcare_upload_multimedia GET ${refreshPath}`,
+        );
+      }
+      const csrf = await this.csrfFromCookies(request);
+
+      // Derive filename from media_path (last URI segment).
+      const filename = args.media_path.split('/').pop() ?? 'unnamed';
+
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        multipart: {
+          Filedata: {
+            name: filename,
+            mimeType: args.content_type,
+            buffer: args.file_bytes,
+          },
+          path: args.media_path,
+        },
+        headers: {
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${refreshPath}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(
+          res,
+          `commcare_upload_multimedia POST ${path}`,
+        );
+      }
+      const status = res.status();
+      const body = await res.text();
+
+      if (status !== 200) {
+        // Try to surface CCHQ's `errors[]` array first; fall back to body slice.
+        let errs: string[] = [];
+        try {
+          const j = JSON.parse(body) as { errors?: string[] };
+          if (Array.isArray(j?.errors)) errs = j.errors;
+        } catch {
+          /* fall through to body slice */
+        }
+        const errMsg = errs.length ? errs.join('; ') : body.slice(0, 300);
+        throw new Error(
+          `commcare_upload_multimedia POST ${path} returned ${status}: ${errMsg}`,
+        );
+      }
+
+      // 200 path. Body is JSON despite the text/html content-type CCHQ sends.
+      let parsed: { ref?: { m_id?: string; uid?: string }; errors?: string[] } = {};
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        throw new Error(
+          `commcare_upload_multimedia POST ${path} returned 200 but body was not JSON: ${body.slice(0, 200)}`,
+        );
+      }
+      if (parsed.errors && parsed.errors.length > 0) {
+        throw new Error(
+          `commcare_upload_multimedia errors: ${parsed.errors.join('; ')}`,
+        );
+      }
+      if (!parsed.ref?.m_id || !parsed.ref?.uid) {
+        throw new Error(
+          `commcare_upload_multimedia response missing ref.m_id / ref.uid: ${body.slice(0, 200)}`,
+        );
+      }
+      return {
+        multimedia_id: parsed.ref.m_id,
+        file_hash_md5: parsed.ref.uid,
+      };
+    });
+  }
+
   private async csrfFromCookies(request: APIRequestContext): Promise<string | undefined> {
     const state = await request.storageState();
     const cookie = state.cookies.find((c) => c.name === 'csrftoken' && c.domain.includes('commcarehq'));
     return cookie?.value;
   }
+}
+
+/**
+ * Map a standard MIME type to the CCHQ media-type URL segment used by
+ * `/a/<domain>/apps/<app_id>/multimedia/uploaded/<media_type>/`. CCHQ's
+ * `corehq/apps/hqmedia/urls.py` mounts four sibling views (image, audio,
+ * video, text) on the same `BaseProcessFileUploadView` shape — only the
+ * URL segment + the `media_class` differ.
+ *
+ * Exported for unit tests + future skill-side validation.
+ */
+export function mediaTypeFromContentType(ct: string): 'image' | 'audio' | 'video' | 'text' {
+  if (ct.startsWith('image/')) return 'image';
+  if (ct.startsWith('audio/')) return 'audio';
+  if (ct.startsWith('video/')) return 'video';
+  if (ct.startsWith('text/')) return 'text';
+  throw new Error(`commcare_upload_multimedia: unsupported content_type ${ct}`);
 }
 
 /**

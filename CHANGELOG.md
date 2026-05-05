@@ -5,6 +5,30 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.17 — app-multimedia-coverage skill
+
+- New skill `app-multimedia-coverage` (manual gate, post-Phase 2):
+  attaches display-only images to Connect Learn / Deliver app questions
+  via Dimagi's Content Generator + post-Nova CCZ patching. Manual
+  invocation only; not part of `/ace:run`.
+- New CCHQ atom `commcare_upload_multimedia` to bundle binary assets
+  into the released CCZ. Live contract probed against
+  `connect-ace-prod`; integration tests gated on `CONNECT_INTEGRATION=1`.
+- New helpers under `lib/`: `multimedia-judge`, `content-generator-client`,
+  `multimedia-manifest`, `multimedia-prompt-hash`, `multimedia-xform-patch`.
+- New `.env.tpl` keys: `CONTENT_GENERATOR_URL`,
+  `CONTENT_GENERATOR_API_KEY` (sourced from 1Password "Content
+  Generator API"). `/ace:doctor` reports both.
+- Filed Nova feature request `voidcraft-labs/nova-plugin#8` for
+  field-level multimedia; this skill has explicit removal criteria.
+- (Latent fix) `vitest.config.ts` now picks up co-located
+  `lib/**/*.test.ts` — unblocks 13 pre-existing dormant test files.
+- Live end-to-end smoke ran clean (one-image validation against LEEP
+  Learn `connect-ace-prod`/`4e20ddf5...`, build version 33). Probe
+  scripts `scripts/probe-content-generator.ts` and
+  `scripts/probe-multimedia-upload.ts` retained as durable
+  reproducers.
+
 ## 0.13.16 — 2026-05-05
 
 **`/ace:nova-login` slash command — automated Nova OAuth recovery.**

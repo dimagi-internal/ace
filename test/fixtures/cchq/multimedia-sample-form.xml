@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms"
+        xmlns:jr="http://openrosa.org/javarosa">
+  <h:head>
+    <h:title>KMC positioning</h:title>
+    <model>
+      <instance>
+        <data id="kmc_positioning" xmlns="">
+          <kmc_position_demo/>
+        </data>
+      </instance>
+      <itext>
+        <translation lang="en" default="">
+          <text id="kmc_position_demo-label">
+            <value>Show the mother how to support the baby's head and neck.</value>
+          </text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/kmc_position_demo" type="xsd:string"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/data/kmc_position_demo">
+      <label ref="jr:itext('kmc_position_demo-label')"/>
+    </input>
+  </h:body>
+</h:html>
