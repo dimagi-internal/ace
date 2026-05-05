@@ -204,8 +204,36 @@ export function parseDeliverUnitTable(html: string): DeliverUnit[] {
 }
 
 /**
- * Parse Connect's payment_unit_table HTML. Columns observed live:
- * id, name, start_date, end_date, amount, max_total.
+ * Parse Connect's payment_unit_table HTML. Column order verified live
+ * 2026-05-05 against connect.dimagi.com against an active opp's
+ * `payment_unit_table/` page (see
+ * `test/fixtures/connect-html/payment_unit_table-live-2026-05-05.html`):
+ *
+ *   #            (cells[0]) — display id
+ *   Payment Unit Name (cells[1])
+ *   Start date   (cells[2])
+ *   End date     (cells[3])
+ *   Total Deliveries  (cells[4]) — server field `max_total`
+ *   Max daily    (cells[5])      — server field `max_daily`
+ *   Delivery Units (cells[6])    — count + Alpine.js detail row
+ *
+ * The table does NOT display `amount`, `description`, `org_amount`, or
+ * the per-PU `required_deliver_units` ids in a parseable form. They
+ * remain `undefined`/`""`/`[]` here; callers that need them must read
+ * the per-PU edit form (`/payment_unit/<uuid>/edit`) or — once shipped —
+ * the REST `GET /api/opportunities/{id}/payment_units/` endpoint.
+ *
+ * Bug history (the reason this comment is so explicit):
+ *
+ *   Pre-0.13.2 the comment claimed columns were `id, name, start, end,
+ *   amount, max_total` and code read `cells[4] → amount`,
+ *   `cells[5] → max_total`. That was WRONG — Connect renders no `amount`
+ *   column. The off-by-one read produced a "field-shift defect" that
+ *   blocked turmeric-20260429-2330, turmeric-20260503-0835, and
+ *   turmeric-20260504-2304 at Phase 3 verify-after-create. Live HTML
+ *   inspection on 2026-05-05 against `f116865a-…/payment_unit/.../edit`
+ *   confirmed the server-side data was correct on all three runs; the
+ *   "field-shift" was entirely in this parser.
  */
 export function parsePaymentUnitTable(html: string): PaymentUnit[] {
   const out: PaymentUnit[] = [];
@@ -213,20 +241,21 @@ export function parsePaymentUnitTable(html: string): PaymentUnit[] {
   for (const m of html.matchAll(rowRegex)) {
     const cells = [...m[1].matchAll(/<td\s*[^>]*>([\s\S]*?)<\/td>/g)]
       .map((c) => c[1].replace(/<[^>]+>/g, '').trim());
-    if (cells.length >= 5) {
+    if (cells.length >= 6) {
       const id = Number(cells[0]);
-      const amount = Number(cells[4]);
-      const max_total = Number(cells[5] ?? 0);
+      const max_total = Number(cells[4]);
+      const max_daily = Number(cells[5]);
       if (Number.isFinite(id)) {
         out.push({
           id,
           name: cells[1],
-          description: '',
-          amount: Number.isFinite(amount) ? amount : 0,
+          description: '',                 // not rendered in this table
+          // amount intentionally omitted — see PaymentUnit.amount jsdoc
           max_total: Number.isFinite(max_total) ? max_total : undefined,
+          max_daily: Number.isFinite(max_daily) ? max_daily : undefined,
           start_date: cells[2] || undefined,
           end_date: cells[3] || undefined,
-          required_deliver_units: [],
+          required_deliver_units: [],      // not parseable from this table
           optional_deliver_units: [],
         });
       }

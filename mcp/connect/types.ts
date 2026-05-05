@@ -108,7 +108,17 @@ export interface PaymentUnit {
   payment_unit_id?: number;             // legacy display id
   name: string;
   description: string;
-  amount: number;
+  /**
+   * Per-delivery amount paid to the FLW. Required at create time, but the
+   * Connect `payment_unit_table` HTML does NOT display this column — only
+   * Total Deliveries and Max Daily are shown. So `listPaymentUnits` cannot
+   * round-trip `amount` from the table parse alone; it returns `undefined`
+   * for this field. Read-side recovery needs the per-PU edit form (TODO)
+   * or a future REST GET endpoint. Producers (REST `createPaymentUnits`,
+   * Playwright `postPaymentUnitForm`) preserve `amount` on the returned
+   * shape because they have it from the input args.
+   */
+  amount?: number;
   org_amount?: number;
   max_total?: number;
   max_daily?: number;

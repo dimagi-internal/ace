@@ -1241,9 +1241,13 @@ export class PlaywrightBackend implements ConnectClient {
       if (found) {
         return {
           ...found,
-          // listPaymentUnits doesn't currently surface description/org_amount/
-          // deliver_units; include the args we posted so the response shape
-          // matches REST as closely as we can without an extra GET.
+          // listPaymentUnits parses the payment_unit_table HTML, which
+          // does not render `amount`, `description`, `org_amount`, or the
+          // per-PU `required_deliver_units` ids. Echo what we posted so
+          // the returned shape matches the REST `createPaymentUnits`
+          // response. `max_total` and `max_daily` ARE in the table and
+          // come back populated from `found`.
+          amount: args.amount,
           description: args.description ?? found.description,
           org_amount: args.org_amount ?? found.org_amount,
           required_deliver_units: args.required_deliver_units ?? found.required_deliver_units,

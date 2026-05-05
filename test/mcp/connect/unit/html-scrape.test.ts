@@ -9,6 +9,7 @@ import {
   parseProgramsList,
   parseFormErrors,
   parseFormErrorsByField,
+  parsePaymentUnitTable,
 } from '../../../../mcp/connect/backends/html-scrape.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -171,5 +172,73 @@ describe('parseFormErrorsByField', () => {
     expect(fields.name).toBeUndefined();
     expect(fields.short_description).toBeUndefined();
     expect(fields.deliver_app).toBeUndefined();
+  });
+});
+
+describe('parsePaymentUnitTable', () => {
+  // Live-captured 2026-05-05 from connect.dimagi.com against an active opp.
+  // The opp's PU was created with `amount=2, max_total=100, max_daily=20,
+  // required_deliver_units=[1]` (verified via the per-PU /edit page). The
+  // fixture is the table view for the SAME PU. Until 0.13.2 the parser
+  // mis-aligned columns and produced `amount=100, max_total=20` — the
+  // "field-shift defect" that blocked three Phase 3 runs. This test pins
+  // the corrected mapping against real Connect HTML.
+  const live = fix('payment_unit_table-live-2026-05-05.html');
+
+  it('parses 7-column live HTML with correct column→field mapping', () => {
+    const out = parsePaymentUnitTable(live);
+    expect(out).toHaveLength(1);
+    const pu = out[0];
+    expect(pu.id).toBe(1);
+    expect(pu.name).toBe('Vendor Visit (consented)');
+    expect(pu.start_date).toBe('05/19/2026');
+    expect(pu.end_date).toBe('07/14/2026');
+    // "Total Deliveries" column → max_total (server stored 100)
+    expect(pu.max_total).toBe(100);
+    // "Max daily" column → max_daily (server stored 20)
+    expect(pu.max_daily).toBe(20);
+    // amount is NOT rendered in the table — listPaymentUnits cannot
+    // round-trip it. Producers (createPaymentUnit) must echo args.amount.
+    expect(pu.amount).toBeUndefined();
+    // description / required_deliver_units are also unparseable from the
+    // table; callers needing those must hit the per-PU edit form or REST.
+    expect(pu.description).toBe('');
+    expect(pu.required_deliver_units).toEqual([]);
+    expect(pu.optional_deliver_units).toEqual([]);
+  });
+
+  it('regression: rejects pre-0.13.2 reading where cells[4] was treated as amount', () => {
+    // The old parser would have returned amount=100 (from cells[4], the
+    // "Total Deliveries" column) and max_total=20 (from cells[5], the
+    // "Max daily" column), incorrectly identifying the column meanings.
+    // The new mapping must NOT produce those values.
+    const out = parsePaymentUnitTable(live);
+    expect(out[0].amount).not.toBe(100);
+    // max_total should be 100 (the actual Total Deliveries cap), not 20.
+    expect(out[0].max_total).toBe(100);
+  });
+
+  it('handles synthetic 7-column rows (no <thead>)', () => {
+    const html = `<table><tbody>
+      <tr class="even"><td>3</td><td>Probe</td><td>2026-01-01</td><td>2026-12-31</td><td>500</td><td>50</td><td>2</td></tr>
+    </tbody></table>`;
+    const out = parsePaymentUnitTable(html);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      id: 3,
+      name: 'Probe',
+      start_date: '2026-01-01',
+      end_date: '2026-12-31',
+      max_total: 500,
+      max_daily: 50,
+    });
+    expect(out[0].amount).toBeUndefined();
+  });
+
+  it('skips rows without a numeric id', () => {
+    const html = `<table><tbody>
+      <tr class="even"><td>—</td><td>Header</td><td></td><td></td><td>0</td><td>0</td><td>0</td></tr>
+    </tbody></table>`;
+    expect(parsePaymentUnitTable(html)).toEqual([]);
   });
 });
