@@ -5,6 +5,60 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.16 — 2026-05-05
+
+**`/ace:nova-login` slash command — automated Nova OAuth recovery.**
+
+Surfaced during the same `/ace:run leep` session that produced 0.13.12:
+Phase 2 Step 0 halted on Nova `needs-auth` after the cache prune
+didn't recover. The procedure doc's existing path was "surface the
+OAuth URL to the operator manually," and the (formerly future-tense)
+note about an `ace:nova-login` helper made it clear the gap had been
+known. User asked: "we have your ace login... why does this need to
+be manual?"
+
+The actual constraint, surfaced by probing
+`commcare.app/api/auth/oauth2/authorize`: the Nova OAuth landing page
+has nothing but a "Sign in with Google" button — no username/password
+form. `ACE_HQ_USERNAME`/`ACE_HQ_PASSWORD` (CommCareHQ creds) don't
+apply; we don't carry `ACE_GMAIL_PASSWORD` and even if we did, Google
+sign-in is hostile to programmatic drive (anti-bot, step-up auth, OTP
+prompts). The right answer is one interactive sign-in per
+refresh-token lifetime (~30 days), full automation in between.
+
+What `/ace:nova-login` does:
+
+1. **Pre-checks** `~/.claude/.credentials.json` for the
+   `mcpOAuth.plugin:nova:nova|*` entry — if `expiresAt > now() + 60s`,
+   no-op with "tokens look fresh; run `/reload-plugins`".
+2. **Refresh-first** (no UI): if a `refreshToken` exists, POST it to
+   `commcare.app`'s OAuth token endpoint with `grant_type=refresh_token`.
+   Most "needs-auth" states are just expired access tokens the MCP host
+   should have refreshed itself — this skips the interactive flow when
+   it'd be wasteful.
+3. **Headed Playwright fallback** if the refresh fails: invokes
+   `mcp__plugin_nova_nova__authenticate` (which starts a fresh OAuth
+   flow with an active localhost listener), launches Chromium pointing
+   at the issued URL, and waits for the localhost callback. Once the
+   callback fires, the MCP host's listener captures the code and
+   persists tokens to `.credentials.json` — operator only had to
+   complete the Google sign-in.
+4. **Verifies** the token write and **backs up** the entry to
+   `~/.ace/nova-credentials-backup.json` for emergency restore (so a
+   future `.credentials.json` corruption doesn't force another OAuth
+   round).
+
+`agents/commcare-setup.md` Step 0c rewritten to point at
+`/ace:nova-login` as the canonical recovery skill, with the legacy
+manual path retained as a fallback only for the case where the skill
+itself is broken.
+
+The skill is a Claude-driven procedure (the slash-command body
+interleaves Bash blocks with MCP tool calls), modeled on
+`/ace:connect-login` and `/ace:ocs-login` but adapted to Nova's
+HTTP-based OAuth (vs. the Playwright-cookie-jar pattern those use for
+session-based auth).
+
 ## 0.13.15 — 2026-05-05
 
 **fix(connect): bottom-out 403 CSRF recovery via full re-auth.**

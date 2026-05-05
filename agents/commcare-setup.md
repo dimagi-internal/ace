@@ -105,39 +105,59 @@ result:
   the MCP server returns a 401-ish "not authenticated" error → fall
   through to Step 0c (auth path).
 
-#### Step 0c: Auth path (LAST resort)
+#### Step 0c: Auth path — invoke `/ace:nova-login`
 
 Reaching here means: the cache prune in 0a did not unblock the
 connection, and Nova still reports unauthenticated in 0b. Refresh tokens
 are either missing or rejected.
 
-1. **(Future, not yet implemented.)** Try the saved-state Playwright
-   recovery via an `ace:nova-login`-shaped helper — a
-   `mcp/nova/auth/playwright-oauth-login.ts` module mirroring
-   `mcp/connect/auth/hq-oauth-login.ts`. The Connect equivalent works
-   because CCHQ is Dimagi-controlled (we own the selectors and have
-   `ACE_HQ_USERNAME`/`ACE_HQ_PASSWORD` in `.env`). For Nova, the OAuth
-   bounces through `commcare.app` → Google; driving Google's login form
-   programmatically is brittle (fingerprinting, step-up auth) and
-   `.env.tpl` does not currently carry `ACE_GMAIL_PASSWORD`. Until that
-   module exists, this step is a no-op.
+**Invoke `/ace:nova-login`.** It is the canonical recovery skill for
+this state. It:
 
-2. **Surface the OAuth URL to the operator (current production path).**
-   Run `mcp__plugin_nova_nova__authenticate`. The call returns an
-   authorization URL of the form
-   `https://commcare.app/api/auth/oauth2/authorize?...prompt=consent...`
-   — present it verbatim and explain the two outcomes:
-   - Browser lands on a success page → reply "done"; orchestrator
-     re-probes `get_hq_connection` to confirm.
-   - Browser shows a localhost connection error on the redirect → ask
-     the operator to copy the full `localhost:<port>/callback?code=…&state=…`
-     URL from the address bar; pass it to
-     `mcp__plugin_nova_nova__complete_authentication`.
+1. Pre-checks `~/.claude/.credentials.json` for the Nova OAuth entry's
+   `expiresAt` and `refreshToken`.
+2. Tries a refresh-token POST against `commcare.app`'s OAuth token
+   endpoint first — most "needs-auth" states are just an expired
+   access token the MCP host should have refreshed but didn't. If the
+   refresh succeeds, no UI involvement; the access token is rewritten
+   and the operator only needs `/reload-plugins`.
+3. Falls back to a headed Playwright flow if the refresh fails.
+   `authenticate` is called inside the skill (NOT here in
+   commcare-setup) so its 5-minute localhost-listener timeout starts
+   when the operator is actually about to interact.
+4. Verifies post-flow that tokens were persisted and writes a backup
+   to `~/.ace/nova-credentials-backup.json` for future emergency
+   restore.
 
-3. Do NOT dispatch the architect until `get_hq_connection` returns
-   `configured: true` against `<ACE_HQ_DOMAIN>`. The 5-minute auth
-   timeout in the MCP server means surfacing the URL and walking away
-   silently fails the run; keep the operator in the loop.
+**After `/ace:nova-login` returns:**
+
+- Tell the operator to run `/reload-plugins` so the MCP host picks up
+  the fresh tokens.
+- Re-probe `mcp__plugin_nova_nova__get_hq_connection` to confirm
+  `configured: true` against `<ACE_HQ_DOMAIN>`.
+- Only then dispatch the architect (Step 1).
+
+**Why we don't drive Google login programmatically.** The OAuth landing
+page at `commcare.app/api/auth/oauth2/authorize` has nothing but a
+"Sign in with Google" button — no username/password form (verified
+via `curl -L` 2026-05-05). `ACE_HQ_USERNAME`/`ACE_HQ_PASSWORD` are
+CommCareHQ creds (different domain) and don't apply. Driving Google
+sign-in programmatically would require `ACE_GMAIL_PASSWORD` in `.env`
+PLUS reliable handling of bot-detection, step-up auth, OTP prompts —
+not realistic for a per-machine credential storage. The headed
+Playwright path is the right answer: one interactive sign-in per
+refresh-token lifetime (~30 days), full automation in between.
+
+**Legacy manual path (fallback if `/ace:nova-login` itself breaks).**
+Run `mcp__plugin_nova_nova__authenticate` directly, present the URL to
+the operator, and either wait for the success-page reply or use
+`mcp__plugin_nova_nova__complete_authentication` with the
+`localhost:<port>/callback?code=…&state=…` URL from the address bar.
+This is what `/ace:nova-login` automates; only do it by hand if the
+skill itself is broken.
+
+Do NOT dispatch the architect until `get_hq_connection` returns
+`configured: true` against `<ACE_HQ_DOMAIN>`.
 
 #### Why this layering
 
