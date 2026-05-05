@@ -365,24 +365,67 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Manifest of every captured screenshot with step labels and Drive paths.',
   },
 
-  // Path kept as ``connect-setup/invites.md`` rather than renamed to
-  // ``invites/…`` so existing opps don't orphan their prior invite
-  // lists on the phase-reassignment date (2026-04-20).
+  // ── Solicitation Management (Phase 6) ──────────────────────────
+  // llo-invite was repurposed in 0.12.0: previously prepared a Connect-side
+  // invite roster (connect-setup/invites.md) for Phase 7 onboarding; now
+  // sends solicitation invitations to PDD-named candidates by email.
+  // Phase 6's awarded-org handoff to Phase 7 happens via opp.yaml.selected_llo
+  // (managed by ace-orchestrator), not a Drive artifact.
   {
-    path: 'connect-setup/invites.md',
-    producedBy: 'llo-invite',
-    consumedBy: ['llo-onboarding', 'llo-uat', 'llo-launch', 'llo-feedback'],
+    path: 'solicitation/draft.md',
+    producedBy: 'solicitation-create',
+    consumedBy: ['solicitation-create-eval'],
     phase: 'operate',
-    required: true,
-    description: 'LLO invite list (prepared and sent within Phase 5)',
+    required: false,
+    description: 'Solicitation payload pre-publish: title, type, scope, criteria, response template, deadline. Audit trail for what solicitation-create proposed before posting to labs.',
   },
   {
-    path: 'gate-briefs/llo-invite.md',
-    producedBy: 'llo-invite',
-    consumedBy: ['ace-orchestrator'],
+    path: 'solicitation/published.md',
+    producedBy: 'solicitation-create',
+    consumedBy: ['solicitation-monitor', 'solicitation-review', 'solicitation-create-eval', 'llo-invite'],
     phase: 'operate',
-    required: true,
-    description: 'Gate brief for the Phase 5 invite-list gate (blocks llo-onboarding): invite-list completeness, duplicates, count drift',
+    required: false,
+    description: 'Snapshot of the published solicitation: solicitation_id, public_url, manage_url, deadline, criteria. Read by every downstream Phase 6 skill and by llo-invite for the URL to email.',
+  },
+  {
+    path: 'solicitation/invitations.md',
+    producedBy: 'llo-invite',
+    consumedBy: ['solicitation-monitor', 'solicitation-review-eval'],
+    phase: 'operate',
+    required: false,
+    description: 'Per-recipient log: who got emailed the solicitation URL, when, and send status. Empty when PDD has no preferred_llos (long-term solicitation flow).',
+  },
+  {
+    path: 'solicitation/responses/',
+    producedBy: 'solicitation-monitor',
+    consumedBy: ['solicitation-review'],
+    phase: 'operate',
+    required: false,
+    description: 'One file per solicitation response, written incrementally as responses arrive. Each file contains the response content plus metadata returned by labs.',
+  },
+  {
+    path: 'solicitation/review/scoring-rubric.md',
+    producedBy: 'solicitation-review',
+    consumedBy: ['solicitation-review-eval'],
+    phase: 'operate',
+    required: false,
+    description: 'Per-response, per-criterion scores produced by solicitation-review.',
+  },
+  {
+    path: 'solicitation/review/recommendation.md',
+    producedBy: 'solicitation-review',
+    consumedBy: ['solicitation-review-eval'],
+    phase: 'operate',
+    required: false,
+    description: 'Ranked candidates + reasoning. Input to the HITL gate before award_response is called.',
+  },
+  {
+    path: 'solicitation/award-record.md',
+    producedBy: 'solicitation-review',
+    consumedBy: ['solicitation-review-eval', 'opp-closeout'],
+    phase: 'operate',
+    required: false,
+    description: 'Written when award_response is called (success or failure). Includes response_id, awarded_at, awarded_org_slug, and any error envelope on failure.',
   },
   {
     path: 'comms-log/onboarding-emails.md',
