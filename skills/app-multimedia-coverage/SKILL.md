@@ -65,10 +65,9 @@ when ALL of:
    `phase_2_backlog.app-multimedia-coverage`.
 
 When that's true: drop the skill directory, remove the atom backend +
-tool registration + capability-map entry, drop the `lib/multimedia-*`
-helpers + their unit tests, drop the `commcare_upload_multimedia`
-integration test, and remove the smoke fixture if it served only this
-skill. The `phase_2_backlog.app-multimedia-coverage` entry in each
+tool registration, drop the `lib/multimedia-*` helpers + their unit
+tests, drop the `commcare_upload_multimedia` integration test, and
+remove the smoke fixture if it served only this skill. The `phase_2_backlog.app-multimedia-coverage` entry in each
 affected opp's `run_state.yaml` is the load-bearing TODO; if it goes
 stale, the skill will drift out of the codebase silently while the
 Nova schema is still missing.
@@ -131,14 +130,14 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
 
 6. **Generate images.** For each `generate: true` candidate:
    - Compute `prompt_hash` via
-     `lib/multimedia-prompt-hash.ts::computePromptHash` over
+     `lib/multimedia-prompt-hash.ts::promptHash` over
      `(app_context, field_text, directive)`.
    - Cache check: if a PNG exists at
      `2-commcare/app-multimedia-coverage_generated/<app>/<form_unique_id>/<field_id>__<prompt_hash>.png`,
      skip.
    - Cache miss: call
      `lib/content-generator-client.ts::generateImage` (60s timeout,
-     single 5xx retry with exponential backoff, hard-fail on auth
+     single 5xx retry with a fixed delay, hard-fail on auth
      errors), save the PNG to the path above, update
      `app-multimedia-coverage_manifest.yaml` via
      `lib/multimedia-manifest.ts`.
@@ -171,11 +170,13 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
 
 8. **Upload multimedia to CCHQ** via `commcare_upload_multimedia`,
    one call per generated image. Path is
-   `jr://file/commcare/<media_type>/<filename>`. Record the returned
-   `multimedia_id` (CCHQ couch `_id`) and `file_hash_md5` (CCHQ's md5
-   of the bytes; CCHQ dedupes on this) into the manifest. CCHQ does
-   not return sha1 despite earlier draft notes — md5 is the source of
-   truth.
+   `jr://file/commcare/<media_type>/<filename>`. (The MCP atom expects
+   `file_bytes_base64` — the skill base64-encodes the PNG bytes before
+   invoking it; the backend decodes back to a Buffer for the multipart
+   POST.) Record the returned `multimedia_id` (CCHQ couch `_id`) and
+   `file_hash_md5` (CCHQ's md5 of the bytes; CCHQ dedupes on this)
+   into the manifest. CCHQ does not return sha1 despite earlier draft
+   notes — md5 is the source of truth.
 
 9. **Build + release.** `commcare_make_build` followed by
    `commcare_release_build` per app. Capture the new `build_id` and
@@ -245,7 +246,7 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
 | Mode | Cause | Behavior |
 |---|---|---|
 | `judge.error` for ≥1 field | LLM output failed Zod validation in `lib/multimedia-judge.ts` | Skip that field, log `judge.error` to candidates YAML, continue. Skill exits `partial` if any field errored. |
-| Content Generator 5xx | Service hiccup | One retry with exponential backoff, then halt the skill. |
+| Content Generator 5xx | Service hiccup | One retry with a fixed delay, then halt the skill. |
 | `ContentGeneratorAuthError` | Bad / missing API key | Halt immediately and point operator at `/ace:doctor` (verifies `CONTENT_GENERATOR_URL` + `CONTENT_GENERATOR_API_KEY` env-drift). |
 | `XformConflictError` in step 7 | CCHQ's live form sha1 disagrees with the caller-supplied sha1 (concurrent edit) | Halt the form, surface live sha1, operator re-fetches and retries. Non-retryable in the same form-state. |
 | `commcare_upload_multimedia` HTTP 500 | CCHQ rejected the binary (size, content-type mismatch, malformed multipart) | Halt the skill, surface the response body slice. |
@@ -281,7 +282,7 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
   - `lib/multimedia-judge.ts::judgeField` — Anthropic SDK
     (Sonnet 4.6) per-field judgment with prompt-cached
     Application Context.
-  - `lib/multimedia-prompt-hash.ts::computePromptHash` —
+  - `lib/multimedia-prompt-hash.ts::promptHash` —
     content-addressed cache key.
   - `lib/multimedia-manifest.ts` — Zod schema + YAML I/O for the
     generated-image manifest.

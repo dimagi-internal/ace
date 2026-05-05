@@ -79,7 +79,10 @@ export async function judgeField(
     messages: [{ role: 'user', content: JSON.stringify(userPayload) }],
   });
 
-  const text = (res.content[0] as { type: string; text?: string }).text ?? '';
+  const textBlock = (res.content as Array<{ type: string; text?: string }>).find(
+    b => b.type === 'text',
+  );
+  const text = textBlock?.text ?? '';
   const trimmed = text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
   let parsed: unknown;
   try {

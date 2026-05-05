@@ -1,11 +1,12 @@
 //
 // Wrapper around Dimagi's internal Content Generator API.
 //
-// LIVE CONTRACT: PARTIAL — the route path and auth header shape are
-// inherited from CONTENT_GENERATOR_URL (treated as opaque) and the
-// `auth` option (defaults to `Bearer`). Both may need adjustment when
-// the CTO documents the live API. The signed-URL fallback path is
-// already handled.
+// LIVE CONTRACT: PARTIAL — the route path is inherited from
+// CONTENT_GENERATOR_URL (treated as opaque). The auth header is
+// currently hardcoded as `Authorization: Bearer ${apiKey}`; if the
+// CTO documents a different scheme when the live API is finalized,
+// extend this client with an `auth` option. The signed-URL fallback
+// path is already handled.
 
 export class ContentGeneratorAuthError extends Error {
   constructor(public status: number, body: string) {
@@ -35,23 +36,28 @@ export class ContentGeneratorClient {
       image_directives: input.imageDirectives ?? '',
     };
 
-    const attempt = async (): Promise<Response> => {
+    const fetchWithTimeout = async (
+      url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
       const ac = new AbortController();
       const t = setTimeout(() => ac.abort(), this.opts.timeoutMs ?? 60_000);
       try {
-        return await fetch(this.opts.url, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.opts.apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(body),
-          signal: ac.signal,
-        });
+        return await fetch(url, { ...init, signal: ac.signal });
       } finally {
         clearTimeout(t);
       }
     };
+
+    const attempt = async (): Promise<Response> =>
+      fetchWithTimeout(this.opts.url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.opts.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
 
     let res = await attempt();
     if (res.status >= 500 || res.status === 408 || res.status === 429) {
@@ -74,7 +80,7 @@ export class ContentGeneratorClient {
       // Live contract may return {url: signed} — fetch it inline.
       const j = await res.json();
       if (typeof j?.url === 'string') {
-        const r2 = await fetch(j.url);
+        const r2 = await fetchWithTimeout(j.url);
         if (r2.status !== 200) throw new Error(`signed URL fetch ${r2.status}`);
         return Buffer.from(await r2.arrayBuffer());
       }
