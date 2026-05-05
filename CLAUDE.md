@@ -18,8 +18,8 @@ either way (everything lives under `agents/`), but the wiring differs:
 | `connect-setup` (Phase 3) | no | subagent | `Agent(connect-setup)` from level 0 |
 | `ocs-setup` (Phase 4) | no | subagent | `Agent(ocs-setup)` from level 0 |
 | `qa-and-training` (Phase 5) | no | subagent | `Agent(qa-and-training)` from level 0 |
-| `llo-manager` (Phase 6) | no | subagent | `Agent(llo-manager)` from level 0 |
-| `closeout` (Phase 7) | no | subagent | `Agent(closeout)` from level 0 |
+| `execution-manager` (Phase 7) | no | subagent | `Agent(execution-manager)` from level 0 |
+| `closeout` (Phase 8) | no | subagent | `Agent(closeout)` from level 0 |
 | `ocs-tester` | no — leaf qa+eval pair | subagent | `Agent(ocs-tester)` ad-hoc |
 
 There are never two levels of `Agent` dispatch — that's the invariant.
@@ -38,7 +38,7 @@ call originates at level 0.
 
 ## Layout
 
-- `agents/` — 9 agents total. Two are procedure docs (`ace-orchestrator`, `commcare-setup`); seven are subagents (`design-review`, `connect-setup`, `ocs-setup`, `qa-and-training`, `llo-manager`, `closeout`, `ocs-tester`). See § Agent topology above for the rule. Phases 1–5 run end-to-end with zero LLO involvement; Phase 6 is where LLOs first hear from ACE.
+- `agents/` — 9 agents total. Two are procedure docs (`ace-orchestrator`, `commcare-setup`); seven are subagents (`design-review`, `connect-setup`, `ocs-setup`, `qa-and-training`, `execution-manager`, `closeout`, `ocs-tester`). See § Agent topology above for the rule. Phases 1–5 run end-to-end with zero LLO involvement; Phase 7 is where LLOs first hear from ACE (Phase 6 publishes a public solicitation but does not contact specific LLOs unless the PDD names preferred candidates).
 - `skills/` — ~36 skills, one directory per skill, each with a single `SKILL.md`. Skills are stateless; opportunity state lives in Google Drive under `ACE/<opp-name>/`. See `skills/README.md` for the author contract, including the `## QA vs Eval — the two-phase pattern` section that governs `-qa` / `-eval` skill pairs and the `opp-eval` umbrella-aggregator pattern. Per-skill `-eval` rubrics are calibrated against ground-truth catalogues — see `skills/eval-calibration/SKILL.md`.
 
   **Phase 5 per-artifact training split (0.10.79–0.10.89):** the previous `training-materials` monolith was decomposed into one skill per artifact: `training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-onboarding-email`, `training-deck-outline`. Plus `training-deck-build` which renders the deck-outline markdown into a real Google Slides deck. The umbrella was removed entirely in 0.10.89; Phase 5 dispatches each per-artifact skill directly. See `playbook/integrations/slides-integration.md` for the Slides API contract + gotchas.

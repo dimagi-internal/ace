@@ -25,7 +25,7 @@ not because the orchestrator is itself dispatched.
 
 The architectural rule and full topology table live in `CLAUDE.md § Agent topology` (the canonical source — every session loads it). Summary for the orchestrator's purposes:
 
-- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 2) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other seven agents (`design-review`, `connect-setup`, `ocs-setup`, `qa-and-training`, `llo-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
+- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 2) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other seven agents (`design-review`, `connect-setup`, `ocs-setup`, `qa-and-training`, `execution-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
 - **Invocation in the procedure below:** "dispatch the X agent" means a top-level `Agent(X)` call (subagent rows in the CLAUDE.md table) or "read `agents/X.md` and execute it inline" (procedure-doc rows).
 - **Why the rule:** the `Agent` tool is unavailable to subagents; a node that nests further work cannot itself be a subagent. There are never two levels of `Agent` dispatch.
 
@@ -542,8 +542,8 @@ after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) →
 skills read upstream artifacts from Phases 1-4. No LLO contact happens
 here — that begins in Phase 7.
 
-### Phase 7: LLO Management
-Dispatch to the **llo-manager** agent.
+### Phase 7: Execution Management
+Dispatch to the **execution-manager** agent.
 This phase produces: LLO invite list prepared (first step), LLOs onboarded
 (with widget link in the onboarding email), UAT completed, opportunity
 activated (go-live), ongoing monitoring active. This phase has recurring

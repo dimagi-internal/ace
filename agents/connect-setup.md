@@ -22,7 +22,7 @@ setup (Phase 4). The OCS chatbot's embed credentials are produced in Phase 4
 and surfaced to LLOs via the onboarding email in Phase 7; they are not
 attached to the Connect opportunity record itself today.
 
-LLO invitation list preparation lives in Phase 7 (`llo-manager`) — we don't
+LLO invitation list preparation lives in Phase 6 (`solicitation-management`) — we don't
 commit to an invite roster until the OCS chatbot has cleared its deep-eval
 gate. This phase produces only the Connect program + opportunity + initial
 configuration; no LLO-facing artifacts.
