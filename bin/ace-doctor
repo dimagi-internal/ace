@@ -496,6 +496,21 @@ if [ -n "$ENV_FILE" ]; then
     warn "training_deck_template: ACE_TRAINING_DECK_TEMPLATE_ID not set" "run 'npx tsx scripts/bootstrap-training-deck-template.ts' to create the template, then add the ID to 1Password and re-inject .env (training-deck-build skips silently without it)"
   fi
 
+  # Content Generator API — gates the multimedia-generation skill family.
+  # Passive present/non-empty check only; no live HTTP ping (image generation
+  # is too slow and costly to run on every doctor invocation, and the API
+  # contract is still being verified). Both keys are 1Password-backed.
+  CG_URL="$(get_env CONTENT_GENERATOR_URL)"
+  CG_KEY="$(get_env CONTENT_GENERATOR_API_KEY)"
+  if [ -n "$CG_URL" ] && [ -n "$CG_KEY" ]; then
+    pass "content_generator: CONTENT_GENERATOR_URL=$CG_URL CONTENT_GENERATOR_API_KEY set (${#CG_KEY} chars)"
+  else
+    cg_missing=""
+    [ -z "$CG_URL" ] && cg_missing="$cg_missing CONTENT_GENERATOR_URL"
+    [ -z "$CG_KEY" ] && cg_missing="$cg_missing CONTENT_GENERATOR_API_KEY"
+    warn "content_generator: missing or unresolved:$cg_missing (multimedia generation will be unavailable)" "re-inject .env via op inject (vars added in 0.13.x)"
+  fi
+
   # Shared-Drive canary: the configured root MUST live on a Google Shared Drive.
   # Service Accounts have zero My-Drive quota, so a My-Drive-parented root means
   # every artifact write fails with "user storage quota exceeded" on the FIRST
