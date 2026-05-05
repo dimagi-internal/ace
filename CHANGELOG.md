@@ -5,6 +5,52 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.10 — 2026-05-05
+
+**fix(solicitations): thread `program_id` through labs read/update calls so
+private (`is_public=false`) solicitations round-trip end-to-end.**
+
+Labs PR #156 (merge SHA `fe7e0a4e`) shipped a corresponding prod-side fix:
+`list_solicitations`, `get_solicitation`, and `update_solicitation` now
+accept optional `program_id` / `organization_id` inputs that thread scope
+into the prod-side membership check. **Without scope, the labs
+`LabsRecord` API silently filters to `is_public=true` records only** — so
+any ACE skill that creates a private solicitation and then re-reads or
+updates it gets "not found" on every subsequent call. The 0.13.3 fix
+corrected the create-payload shape but didn't propagate `program_id` onto
+subsequent reads; this release closes that gap.
+
+Verified live against program 130: pre-fix solicitation 2836
+(`is_public=false`) was created OK but invisible to all read paths; post-
+deploy the same record reads/updates fine when `program_id=130` is passed.
+
+ACE-side changes:
+- **`skills/solicitation-create/SKILL.md`** — new step 6 calls
+  `get_solicitation(solicitation_id, program_id)` immediately after publish
+  to verify the round-trip. Halts before writing `published.md` or
+  mutating `opp.yaml` if the record isn't reachable. Catches future
+  visibility-default flips structurally rather than at the next skill.
+- **`skills/solicitation-monitor/SKILL.md`** — documents that any
+  `list_solicitations` / `get_solicitation` call (e.g. parent-record
+  refresh) must thread `program_id` from `opp.yaml.program_id`.
+  `list_responses` is a child query and remains scope-free.
+- **`skills/solicitation-review/SKILL.md`** — adds explicit step 9 that
+  flips the labs-side solicitation status to `awarded` via
+  `update_solicitation(program_id=...)` after `award_response` succeeds.
+  Treats the labs-side update as non-fatal so a transient 4xx doesn't
+  rollback a durable award. Inputs section now lists `program_id` as
+  required.
+- **`test/mcp/connect-labs/integration/e2e.integration.test.ts`** — adds
+  a regression test for labs PR #156: creates a private (`is_public:
+  false`) solicitation, then asserts `get_solicitation`,
+  `list_solicitations`, and `update_solicitation` all round-trip when
+  `program_id` is passed.
+
+Class-level preventer (per CLAUDE.md): the round-trip verification step
+turns a silent "create succeeded but the record is unreachable"
+misconfig into a hard halt at the boundary, so future visibility-default
+changes can't reintroduce the same regression downstream.
+
 ## 0.13.8 — 2026-05-05
 
 **fix(connect): CCHQ session expiry now self-recovers; transparent retry on

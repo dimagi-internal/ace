@@ -27,6 +27,10 @@ Mirrors the `ocs-chatbot-qa` recurring pattern (`--quick`/`--monitor`).
 
 - `opp.yaml.solicitation.solicitation_id`
 - `opp.yaml.solicitation.deadline`
+- `opp.yaml.program_id` — required for any `list_solicitations` /
+  `get_solicitation` call (without scope, labs's `LabsRecord` API filters
+  to `is_public=true` only, so the parent record of a private
+  solicitation is invisible)
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/llo-invite_invitations.md` (optional; for outstanding-
   invitee tracking)
 
@@ -37,6 +41,15 @@ Mirrors the `ocs-chatbot-qa` recurring pattern (`--quick`/`--monitor`).
    ```
    mcp__connect-labs__list_responses(solicitation_id: <id>)
    ```
+
+   `list_responses` is a child query keyed by `solicitation_id` and does
+   not require `program_id` scoping. **However**, if this skill ever
+   needs to verify the parent record (e.g. `get_solicitation` to refresh
+   the deadline or status from labs), the call **must** thread
+   `program_id: <opp.yaml.program_id>` (or `organization_id` if program-
+   less). Without scope, labs's prod-side filter strips non-public
+   records and the parent appears missing — see the 0.13.4 fix note in
+   `CHANGELOG.md` and labs PR #156.
 
 2. **Diff against local state.** Read existing files in
    `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-monitor_responses/` (each is named
