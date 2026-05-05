@@ -53,7 +53,7 @@ Delete `skills/app-multimedia-coverage/`, the
 when ALL of:
 
 1. Nova ships a field-level `media: { image_url, alt_text, image_directives }`
-   schema (see `voidcraft-labs/nova-plugin#<TBD>`) and round-trips it
+   schema (see `voidcraft-labs/nova-plugin#8`) and round-trips it
    through `compile_app`.
 2. Nova's `compile_app` bundles linked media into the produced CCZ at
    `commcare/multimedia/image/...` and writes the matching `<image>`
@@ -294,4 +294,4 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-05 | Initial version. Manual gate, sibling of `commcare-form-patch` and `app-connect-coverage`. Closes the display-only image gap left by Nova until `voidcraft-labs/nova-plugin#<TBD>` ships field-level media. Backed by the new `commcare_upload_multimedia` atom and the `lib/multimedia-*` helper family. Pipeline order (patch-form-XML BEFORE upload BEFORE build) is load-bearing because CCHQ's `clean_paths()` prunes orphan multimedia from the build's multimedia map — verified live during the implementation probe. Removal criteria documented. | ACE team |
+| 2026-05-05 | Initial version. Manual gate, sibling of `commcare-form-patch` and `app-connect-coverage`. Closes the display-only image gap left by Nova until `voidcraft-labs/nova-plugin#8` ships field-level media. Backed by the new `commcare_upload_multimedia` atom and the `lib/multimedia-*` helper family. Pipeline order (patch-form-XML BEFORE upload BEFORE build) is load-bearing because CCHQ's `clean_paths()` prunes orphan multimedia from the build's multimedia map — verified live during the implementation probe. Removal criteria documented. | ACE team |
