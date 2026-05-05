@@ -5,6 +5,43 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.14 — 2026-05-05
+
+**fix(connect): force Connect to issue its own `csrftoken` after OAuth.**
+
+The 0.13.13 domain filter was correct but discovered an even more
+surprising cookie-jar state on `turmeric-20260505-1024`: after
+OAuth-via-CCHQ completed, the BrowserContext jar held EXACTLY ONE
+`csrftoken` cookie — for `www.commcarehq.org` only. There was NO
+`connect.dimagi.com` csrftoken to filter to, so the fallback path
+silently picked the HQ token again. Verified live via `jq` over
+`~/.ace/connect-session.json`. The OAuth callback evidently passed
+through Connect URLs that don't render via Django's CSRF middleware
+(or do, but don't carry `@ensure_csrf_cookie` semantics).
+
+Fix in `mcp/connect/auth/playwright-session.ts`:
+
+- After `hqOAuthLogin()` (and on every `refreshCsrfToken()`),
+  GET `/accounts/login/` *with redirect-following* — for an authed
+  session it 302s onward to `/a/<org>/opportunity/`, which DOES render
+  through `@csrf_protect`+`CsrfViewMiddleware` and emits the missing
+  `Set-Cookie: csrftoken` header. Playwright's `BrowserContext`
+  auto-syncs the cookie jar; the subsequent `extractCsrfToken()` read
+  returns a real Connect-domain token.
+- `getContext()` now refuses to ship without a Connect-domain
+  csrftoken — throws explicitly instead of silently falling back to
+  the HQ token. The unfiltered fallback in 0.13.13's
+  `extractCsrfToken` was the silent footgun that masked this bug for
+  four dispatches.
+
+This is the actual fix; 0.13.8/0.13.9/0.13.11/0.13.12/0.13.13 were
+all on the right diagnostic axis but underestimated how thoroughly
+the OAuth bounce can leave the Connect side without ever issuing
+`csrftoken`. The bottoming-out is "render an authed Connect page,
+let Django set the cookie" — same primitive any browser session
+would naturally hit on first navigation, but the headless OAuth
+sequence skipped past it.
+
 ## 0.13.13 — 2026-05-05
 
 **fix(connect): csrftoken cookie selection now domain-filtered.**
