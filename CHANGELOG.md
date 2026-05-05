@@ -5,6 +5,40 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.2 — 2026-05-05
+
+**`/ace:labs-token-mint` — headless Labs PAT minter.**
+
+Adds a slash command + backing script that drives the full
+Labs → Connect → CommCareHQ OAuth chain headlessly with `ACE_HQ_USERNAME`
+/ `ACE_HQ_PASSWORD`, navigates to the new self-service tokens UI at
+`labs.connect.dimagi.com/labs/mcp/tokens/` (shipped in connect-labs
+PR #151), submits the create form, and prints the raw token to stdout.
+
+Replaces the multi-step manual provisioning workflow that 0.12.0
+required (sign in to labs in browser → click create → copy → paste
+into 1Password). Provisioning a new machine collapses to a single
+script run + `op item edit` + `op inject`.
+
+### Added
+
+- **`/ace:labs-token-mint` slash command** at
+  `commands/labs-token-mint.md` — usage docs + 1Password integration
+  recipe.
+- **`scripts/labs-mint-token.ts`** — headless Playwright script. Args:
+  `[name=ACE-plugin] [ttl_days=0]`. Reads creds from
+  `${CLAUDE_PLUGIN_DATA}/.env`. Prints the raw token to stdout
+  (pipeable); diagnostics on stderr.
+- **CLAUDE.md command count** bumped 12 → 13.
+
+### Notes
+
+The script leans on the same OAuth-with-CommCareHQ selectors as
+`mcp/connect/auth/hq-oauth-login.ts` (Connect's "Login with
+CommCareHQ" button → CCHQ's `auth-username`/`auth-password` form). If
+those selectors drift, this script breaks the same way Connect's
+backend Playwright does.
+
 ## 0.13.0 — 2026-05-05
 
 **BREAKING: Drive layout — phase-prefixed folders + skill-named artifacts on top of the 0.12.0 8-phase topology.**
