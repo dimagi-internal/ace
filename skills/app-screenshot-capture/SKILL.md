@@ -4,13 +4,16 @@ description: >
   Execute the smoke recipes from `app-test-cases.yaml` against a local AVD,
   capture one PNG per recipe step into Drive, and run a thin per-app UX
   smoke judge. Step 1 of Phase 5 (qa-and-training) — Phase 5 is now an
-  executor, not a synthesizer. Reads `expected-journeys.md` (Phase 1) and
-  `app-test-cases.yaml` (Phase 2) as inputs. Produces `ACE/<opp>/runs/<run-id>/screenshots/`
-  + manifest.yaml consumed by the per-artifact training skills
-  (`training-flw-guide`, `training-deck-outline`) plus a shallow smoke
-  verdict (`verdicts/app-screenshot-capture-shallow.yaml`). Captures only
-  **per-opp** content; common Connect navigation screenshots come from the
-  standalone `connect-baseline-screenshots` skill (not this one).
+  executor, not a synthesizer. Reads `1-design/pdd-to-app-journeys.md`
+  (Phase 1) and `2-commcare/app-test-cases.yaml` (Phase 2) as inputs.
+  Produces `5-qa-and-training/screenshots/` + the
+  `5-qa-and-training/app-screenshot-capture_manifest.yaml` index
+  consumed by the per-artifact training skills (`training-flw-guide`,
+  `training-deck-outline`) plus a shallow smoke verdict
+  (`5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml`).
+  Captures only **per-opp** content; common Connect navigation
+  screenshots come from the standalone `connect-baseline-screenshots`
+  skill (not this one).
 ---
 
 # App Screenshot Capture
@@ -25,10 +28,10 @@ built apps are usable end-to-end. Deep, per-journey UX grading lives in
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 (`pdd-to-app-journeys`) | `ACE/<opp>/runs/<run-id>/expected-journeys.md` | persona summary for the UX judge prompt; archetype context |
-| Phase 2 (`app-test-cases`) | `ACE/<opp>/runs/<run-id>/app-test-cases.yaml` | smoke-recipe selection (`is_smoke: true`) + recipe paths |
-| Phase 1 | `ACE/<opp>/runs/<run-id>/pdd.md` | persona-summary fallback if not embedded in expected-journeys |
-| Phase 2 | `ACE/<opp>/runs/<run-id>/deployment-summary.md` | HQ domain for `${HQ_DOMAIN}` env var |
+| Phase 1 (`pdd-to-app-journeys`) | `ACE/<opp>/runs/<run-id>/1-design/pdd-to-app-journeys.md` | persona summary for the UX judge prompt; archetype context |
+| Phase 2 (`app-test-cases`) | `ACE/<opp>/runs/<run-id>/2-commcare/app-test-cases.yaml` | smoke-recipe selection (`is_smoke: true`) + recipe paths |
+| Phase 1 | `ACE/<opp>/inputs/pdd.md` | persona-summary fallback if not embedded in pdd-to-app-journeys |
+| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/app-deploy_summary.md` | HQ domain for `${HQ_DOMAIN}` env var |
 | Phase 3 (run_state.yaml) | `connect.opportunity.id` + ACE test user invite | `${OPP_NAME}`, `${ACE_E2E_PHONE_LOCAL}`, etc. |
 
 Recipes are read by path from the entries in `app-test-cases.yaml`
@@ -41,12 +44,12 @@ point at `app-test-cases`.
 
 ### Step 1: Read upstream artifacts
 
-Read `expected-journeys.md` and `app-test-cases.yaml` from Drive. If
-either is missing or empty, halt with a structured error pointing at
-the upstream phase:
+Read `1-design/pdd-to-app-journeys.md` and
+`2-commcare/app-test-cases.yaml` from Drive. If either is missing or
+empty, halt with a structured error pointing at the upstream phase:
 
-- Missing `expected-journeys.md` → Phase 1 (`pdd-to-app-journeys`)
-- Missing `app-test-cases.yaml` → Phase 2 (`app-test-cases`)
+- Missing `1-design/pdd-to-app-journeys.md` → Phase 1 (`pdd-to-app-journeys`)
+- Missing `2-commcare/app-test-cases.yaml` → Phase 2 (`app-test-cases`)
 
 Do NOT generate recipes or test cases independently — Phase 5 is an
 executor, not a synthesizer.
@@ -65,8 +68,8 @@ halt with a clear pointer to re-run `/ace:step app-test-cases <opp>`
 manual edits could violate it).
 
 Resolve each smoke journey's `recipe_path` to a real file under
-`ACE/<opp>/runs/<run-id>/app-test-cases/recipes/`. If any path doesn't resolve,
-halt with the same upstream pointer.
+`ACE/<opp>/runs/<run-id>/2-commcare/recipes/`. If any path doesn't
+resolve, halt with the same upstream pointer.
 
 ### Step 3: Boot AVD + ensure apps installed
 
@@ -86,8 +89,8 @@ For each of the two smoke journeys (Learn first, then Deliver), call
 `mobile_run_recipe` with the resolved recipe path:
 
 - Each call returns a list of captured screenshots; upload each to
-  `ACE/<opp>/runs/<run-id>/screenshots/<journey-id>/<step-name>.png` via
-  `drive_upload_binary` (mime: `image/png`).
+  `ACE/<opp>/runs/<run-id>/5-qa-and-training/screenshots/<journey-id>/<step-name>.png`
+  via `drive_upload_binary` (mime: `image/png`).
 - **CRITICAL:** after uploading each PNG, set its sharing permission
   to `anyone-with-link` (role: reader) via
   `drive.permissions.create`. Slides' `createImage` (used by
@@ -99,11 +102,11 @@ For each of the two smoke journeys (Learn first, then Deliver), call
   Verified live 2026-05-02 via
   `scripts/test-screenshot-to-slides-e2e.ts`.
 
-If a smoke recipe fails (status != pass), halt — Phase 6 must not
-start without working smoke screenshots, and a smoke failure means the
-app is broken in a basic way.
+If a smoke recipe fails (status != pass), halt — downstream phases
+must not start without working smoke screenshots, and a smoke failure
+means the app is broken in a basic way.
 
-### Step 6: Write `screenshots/manifest.yaml`
+### Step 6: Write `5-qa-and-training/app-screenshot-capture_manifest.yaml`
 
 Link each captured PNG back to (a) its journey id (`J<n>`), (b) its
 `takeScreenshot:` step label, (c) its Drive path. This is the input
@@ -137,17 +140,18 @@ For the structural-quality dimensions:
 ### Step 9: Write verdicts
 
 Write the canonical structural verdict to
-`verdicts/app-screenshot-capture.yaml` AND the shallow smoke verdict
-to `verdicts/app-screenshot-capture-shallow.yaml`. Both shapes
-conform to `lib/verdict-schema.ts` so `opp-eval` can aggregate.
+`5-qa-and-training/app-screenshot-capture_verdict.yaml` AND the
+shallow smoke verdict to
+`5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml`. Both
+shapes conform to `lib/verdict-schema.ts` so `opp-eval` can aggregate.
 
-**Structural verdict** (`verdicts/app-screenshot-capture.yaml`):
+**Structural verdict** (`5-qa-and-training/app-screenshot-capture_verdict.yaml`):
 
 ```yaml
 skill: app-screenshot-capture
 target: <opp-name>
 ran_at: <ISO timestamp>
-capture_path: screenshots/manifest.yaml
+capture_path: 5-qa-and-training/app-screenshot-capture_manifest.yaml
 
 overall_score: 8.5             # 0.0–10.0, weighted across dimensions
 verdict: pass | warn | fail | incomplete
@@ -174,14 +178,14 @@ auto_surfaced:
     message: "Recipe X timed out at step Y; partial screenshots captured"
 ```
 
-**Shallow smoke verdict** (`verdicts/app-screenshot-capture-shallow.yaml`):
+**Shallow smoke verdict** (`5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml`):
 
 ```yaml
 skill: app-screenshot-capture
 target: <opp-name>
 mode: shallow
 ran_at: <ISO timestamp>
-capture_path: screenshots/manifest.yaml
+capture_path: 5-qa-and-training/app-screenshot-capture_manifest.yaml
 
 overall_score: 2.5             # average of per-app smoke-judge scores (0-3 scale)
 verdict: pass | fail | incomplete
@@ -312,3 +316,4 @@ Notes:
 | 2026-04-28 | Initial version (mobile-emulation work) | ACE team |
 | 2026-04-30 | Refactored as Phase 5 Step 2 — now consumes the `qa-plan` skill's manifest as its source of truth for what to capture, instead of generating recipes itself. Captures only **per-opp** content; common Connect navigation screenshots are sourced from `ACE/_common/connect-screenshots/<connect-version>/` produced by the standalone `connect-baseline-screenshots` skill. Switched PNG upload from text-encoded `drive_create_file` to `drive_upload_binary` (0.10.43) so screenshots upload as native PNGs. (0.10.44) | ACE team |
 | 2026-05-04 | Phase 5 executor pivot — drops `qa-plan` synthesis. Now reads `expected-journeys.md` (Phase 1) and `app-test-cases.yaml` (Phase 2) as inputs, runs only the two `is_smoke: true` recipes (one per app), and adds a thin per-app UX smoke judge (~2 LLM calls). Writes a new shallow verdict at `verdicts/app-screenshot-capture-shallow.yaml`. Deep, per-journey UX grading moves to `app-ux-eval` running from `/ace:qa-deep`. Spec: docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md | ACE team |
+| 2026-05-05 | **Path-scheme migration.** Inputs repointed to `1-design/pdd-to-app-journeys.md`, `2-commcare/app-test-cases.yaml`, `2-commcare/app-deploy_summary.md`, `2-commcare/recipes/`. Outputs repointed to `5-qa-and-training/screenshots/<journey-id>/<step-name>.png`, `5-qa-and-training/app-screenshot-capture_manifest.yaml`, `5-qa-and-training/app-screenshot-capture_verdict.yaml`, `5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (per manifest). Both verdict YAML examples' `capture_path` updated. No behavior change beyond paths. | ACE team |

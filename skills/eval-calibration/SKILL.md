@@ -45,7 +45,7 @@ human-confirmed flaw the rubric must detect:
 ```markdown
 # Known Issues — <opp-name>
 
-## OCS chatbot deep transcript (qa-captures/2026-04-28-ocs-chat-deep.md)
+## OCS chatbot deep transcript (4-ocs/ocs-chatbot-qa_transcript-deep.md)
 
 - **[factual]** Bot wrote `ace@dimagi.com` (missing `-ai`) in entries
   19, 22, 25. Detection target: ≥1-point Correctness deduction per
@@ -229,3 +229,4 @@ ground-truth set, captured in an auditable run-record.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-28 | Initial version. Defines the ground-truth catalogue, multi-run variance protocol, detection-rate metric, and iteration loop. Companion to `pdd-to-deliver-app-eval` and the tightened `ocs-chatbot-eval` rubric, both of which cite this skill as their calibration source. | ACE team (eval system buildout) |
+| 2026-05-05 | Refresh the OCS-transcript example header in the known-issues template to match the new run-scoped path scheme (`4-ocs/ocs-chatbot-qa_transcript-deep.md` instead of the dated `qa-captures/...`). Cosmetic; no methodology change. | ACE team |

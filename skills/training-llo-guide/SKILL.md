@@ -73,7 +73,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
 `expected-journeys.md` — one tickable line per criterion>
 
 ## Where the data lives
-- HQ domain: <ACE_HQ_DOMAIN from deployment-summary.md>
+- HQ domain: <ACE_HQ_DOMAIN from 2-commcare/app-deploy_summary.md>
 - Connect opportunity URL: <opportunity URL from connect-setup/opportunity.md>
 - Submission audit: <how LLO can review FLW submissions from Connect>
 
