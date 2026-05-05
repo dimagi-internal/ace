@@ -17,6 +17,7 @@ import os from 'os';
 import { spawnSync } from 'child_process';
 import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
+import YAML from 'yaml';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -361,48 +362,14 @@ server.tool(
 // 9. Read a Drive file
 server.tool(
   'drive_read_file',
-  'Read the text content of a file in Google Drive. Works with Google Docs (exported as plain text) and plain text files. Returns revisionVersion so callers can pair the read with an optimistic-concurrency `ifMatchRevisionId` on `drive_update_file` (read-modify-write without lost updates).',
+  'Read the text content of a file in Google Drive. Works with Google Docs (exported as plain text) and plain text files. Returns revisionVersion so callers can pair the read with an optimistic-concurrency `ifMatchRevisionId` on `drive_update_file` (read-modify-write without lost updates). Transient 5xx responses from the Drive API are retried internally (3 attempts, 1s/2s/4s backoff) so callers do not need to wrap each read in their own retry loop.',
   {
     fileId: z.string().describe('The Google Drive file ID'),
   },
   async ({ fileId }) => {
     try {
-      // Drive API exposes the monotonic revision counter as `version` (a string in
-      // the wire format). It IS populated for Docs Editors files (which is most of
-      // ACE's writes) — unlike `headRevisionId`, which is binary-files-only. We
-      // surface it as `revisionVersion` to make its role obvious to callers.
-      const meta = await drive.files.get({ fileId, fields: 'mimeType, name, shortcutDetails, version', supportsAllDrives: true });
-      let resolvedId = fileId;
-      let mimeType = meta.data.mimeType || '';
-      let revisionVersion = (meta.data as any).version as string | undefined;
-
-      // If the file is a Drive shortcut, resolve to the target file.
-      // Shortcuts have their own mimeType (application/vnd.google-apps.shortcut)
-      // and store the target's ID and mimeType in shortcutDetails.
-      if (mimeType === 'application/vnd.google-apps.shortcut') {
-        const targetId = (meta.data as any).shortcutDetails?.targetId;
-        const targetMimeType = (meta.data as any).shortcutDetails?.targetMimeType;
-        if (!targetId) {
-          return error('Shortcut has no target file ID');
-        }
-        resolvedId = targetId;
-        mimeType = targetMimeType || '';
-        // Re-fetch the resolved file's metadata to get its current version
-        // (the shortcut's version is not the target's version).
-        const targetMeta = await drive.files.get({ fileId: resolvedId, fields: 'version', supportsAllDrives: true });
-        revisionVersion = (targetMeta.data as any).version as string | undefined;
-      }
-
-      let content: string;
-      if (mimeType === 'application/vnd.google-apps.document') {
-        const resp = await drive.files.export({ fileId: resolvedId, mimeType: 'text/plain' }, { responseType: 'text' });
-        content = resp.data as string;
-      } else {
-        const resp = await drive.files.get({ fileId: resolvedId, alt: 'media', supportsAllDrives: true }, { responseType: 'text' });
-        content = resp.data as string;
-      }
-
-      return result({ name: meta.data.name, mimeType, content, revisionVersion });
+      const r = await handleReadFile({ fileId }, drive);
+      return result(r);
     } catch (e: any) {
       return error(e.message);
     }
@@ -497,6 +464,24 @@ server.tool(
         modifiedTime: resp.data.modifiedTime,
         revisionVersion: (resp.data as any).version,
       });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 10a. Patch a YAML file server-side (read+merge+CAS-write in one call)
+server.tool(
+  'update_yaml_file',
+  'Patch a YAML-content Google Doc in one MCP call: the server reads the current content + revisionVersion, parses it as YAML (treating empty/missing as `{}`), shallow-merges `patch` into the top-level keys (replace, NOT deep-merge — predictable), serializes back to YAML, and writes with optimistic-concurrency. On a `revision_conflict` (a concurrent writer landed between read and write) the call retries once with the freshly-observed revision. Use this for run_state.yaml / opp.yaml updates instead of pairing drive_read_file + drive_update_file by hand: it saves one round-trip per state transition AND keeps the full file content out of the model context (the model only sends the diff). For arbitrary text files use drive_update_file instead.',
+  {
+    fileId: z.string().describe('The Google Drive file ID of the YAML doc'),
+    patch: z.record(z.unknown()).describe('Object whose top-level keys are merged into the existing YAML (replace, not deep-merge). Use a nested object only when you intend to fully replace that subtree.'),
+  },
+  async ({ fileId, patch }) => {
+    try {
+      const r = await handleUpdateYamlFile({ fileId, patch }, drive);
+      return result(r);
     } catch (e: any) {
       return error(e.message);
     }
@@ -617,6 +602,157 @@ server.tool(
     }
   },
 );
+
+/**
+ * Classify an error thrown by the googleapis client as a transient 5xx that
+ * should be retried, vs a permanent error (4xx, auth, malformed args) that
+ * should not. We accept either a numeric `code` (modern client) or a string
+ * message that names the failure mode (older client / network errors).
+ */
+function isTransientDriveError(e: any): boolean {
+  const code = typeof e?.code === 'number' ? e.code : Number(e?.code);
+  if (Number.isFinite(code) && code >= 500 && code < 600) return true;
+  const msg = String(e?.message || '').toLowerCase();
+  if (/internal error|backend error|service unavailable|gateway|timeout|econnreset|etimedout/.test(msg)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Run `op` with up to N attempts on transient 5xx errors. Backoff schedule
+ * is 1s, 2s, 4s; a `sleep` injection lets tests skip the actual wait. The
+ * final failure rethrows so the caller still surfaces it.
+ */
+async function withTransientRetry<T>(
+  op: () => Promise<T>,
+  opts: { maxAttempts?: number; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<T> {
+  const maxAttempts = opts.maxAttempts ?? 3;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  let lastErr: any;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await op();
+    } catch (e: any) {
+      lastErr = e;
+      if (!isTransientDriveError(e)) throw e;
+      if (attempt < maxAttempts) {
+        const backoffMs = 1000 * Math.pow(2, attempt - 1);
+        await sleep(backoffMs);
+      }
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Read-file handler, exported for unit testing with a mocked Drive client.
+ *
+ * Each underlying Drive API call is wrapped in `withTransientRetry` so that a
+ * single 503 / 500 / "Backend Error" doesn't force the caller to handle a
+ * retry by hand. 4xx responses (404, 403, etc.) are not retried — those
+ * indicate caller bugs, not transient infrastructure flakes.
+ */
+export async function handleReadFile(
+  args: { fileId: string },
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{ name: string | undefined; mimeType: string; content: string; revisionVersion: string | undefined }> {
+  const { fileId } = args;
+  const retry = <T>(op: () => Promise<T>) => withTransientRetry(op, opts);
+
+  // Drive API exposes the monotonic revision counter as `version` (a string in
+  // the wire format). It IS populated for Docs Editors files (which is most of
+  // ACE's writes) — unlike `headRevisionId`, which is binary-files-only. We
+  // surface it as `revisionVersion` to make its role obvious to callers.
+  const meta = await retry(() =>
+    driveClient.files.get({ fileId, fields: 'mimeType, name, shortcutDetails, version', supportsAllDrives: true }),
+  );
+  let resolvedId = fileId;
+  let mimeType = (meta.data as any).mimeType || '';
+  let revisionVersion = (meta.data as any).version as string | undefined;
+
+  // If the file is a Drive shortcut, resolve to the target file. Shortcuts
+  // have their own mimeType and store the target's ID/mimeType in
+  // shortcutDetails; the shortcut's version is not the target's version.
+  if (mimeType === 'application/vnd.google-apps.shortcut') {
+    const targetId = (meta.data as any).shortcutDetails?.targetId;
+    const targetMimeType = (meta.data as any).shortcutDetails?.targetMimeType;
+    if (!targetId) throw new Error('Shortcut has no target file ID');
+    resolvedId = targetId;
+    mimeType = targetMimeType || '';
+    const targetMeta = await retry(() =>
+      driveClient.files.get({ fileId: resolvedId, fields: 'version', supportsAllDrives: true }),
+    );
+    revisionVersion = (targetMeta.data as any).version as string | undefined;
+  }
+
+  let content: string;
+  if (mimeType === 'application/vnd.google-apps.document') {
+    const resp = await retry(() =>
+      driveClient.files.export({ fileId: resolvedId, mimeType: 'text/plain' }, { responseType: 'text' }),
+    );
+    content = resp.data as string;
+  } else {
+    const resp = await retry(() =>
+      driveClient.files.get({ fileId: resolvedId, alt: 'media', supportsAllDrives: true }, { responseType: 'text' }),
+    );
+    content = resp.data as string;
+  }
+
+  return { name: (meta.data as any).name, mimeType, content, revisionVersion };
+}
+
+/**
+ * Patch-yaml-file handler, exported for unit testing with a mocked Drive client.
+ *
+ * Reads `fileId` (Google Doc, plain text export), parses as YAML (empty
+ * file = `{}`), shallow-merges `patch` into the top level (top-level keys are
+ * replaced outright, not deep-merged), serializes, writes with
+ * `ifMatchRevisionId = revisionVersion-just-read`. On `revision_conflict` we
+ * retry once with the freshly-observed revision (covers the common case of a
+ * concurrent writer landing between our read and our write); a second
+ * conflict surfaces to the caller.
+ */
+export async function handleUpdateYamlFile(
+  args: { fileId: string; patch: Record<string, unknown> },
+  driveClient: typeof drive = drive,
+): Promise<{ id: string; name: string; modifiedTime: string; revisionVersion: string | undefined }> {
+  const { fileId, patch } = args;
+  const maxAttempts = 2;
+  let lastErr: any;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const current = await handleReadFile({ fileId }, driveClient);
+    const parsed = current.content && current.content.trim() ? YAML.parse(current.content) : {};
+    const base: Record<string, unknown> = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+    const merged: Record<string, unknown> = { ...base };
+    for (const [k, v] of Object.entries(patch)) merged[k] = v;
+    const newContent = YAML.stringify(merged);
+
+    try {
+      const resp = await driveClient.files.update({
+        fileId,
+        media: { mimeType: 'text/plain', body: newContent },
+        fields: 'id, name, modifiedTime, version',
+        supportsAllDrives: true,
+      } as any);
+      return {
+        id: (resp.data as any).id,
+        name: (resp.data as any).name,
+        modifiedTime: (resp.data as any).modifiedTime,
+        revisionVersion: (resp.data as any).version,
+      };
+    } catch (e: any) {
+      lastErr = e;
+      const msg = String(e?.message || '');
+      if (!/revision_conflict/i.test(msg)) throw e;
+      // fall through to next attempt: re-read, re-merge, re-write
+    }
+  }
+  throw lastErr;
+}
 
 /**
  * Create-folder handler, exported for unit testing with a mocked Drive client.

@@ -5,6 +5,34 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.4 — 2026-05-05
+
+**ace-gdrive efficiency: `drive_read_file` transient-5xx retry + new `update_yaml_file` tool.**
+
+Two changes to `mcp/google-drive-server.ts` motivated by recent end-to-end
+`/ace:run` sessions wasting time on Drive flake and on the read+CAS-write
+boilerplate:
+
+1. **`drive_read_file` now retries transient 5xx internally** (3 attempts,
+   1s/2s/4s backoff). Caller bugs (4xx — bad ID, perm denied) still surface
+   immediately with no retry. The handler is exported as `handleReadFile`
+   and the backoff sleep is injectable so the retry path is unit-testable
+   without real waits.
+2. **New `update_yaml_file(fileId, patch)` tool.** Previously the
+   read-modify-write pattern for `run_state.yaml` / `opp.yaml` was 2 MCP
+   round-trips (`drive_read_file` then `drive_update_file` with
+   `ifMatchRevisionId`) AND ferried the entire YAML body through the model
+   context window. The new tool collapses that to one call: server reads,
+   parses YAML, shallow-merges `patch` into the top level (replace, NOT
+   deep-merge — predictable), serializes, writes with optimistic-concurrency
+   gated on the just-read revision; on `revision_conflict` it retries once
+   with the freshly-observed revision. Saves a round-trip per state
+   transition AND keeps the model from re-shipping the full YAML body each
+   time.
+
+Tests: `test/mcp/gdrive/read-file-retry.test.ts` (5 cases),
+`test/mcp/gdrive/update-yaml-file.test.ts` (5 cases).
+
 ## 0.13.3 — 2026-05-05
 
 **`solicitation-create` payload-shape correction + atom-inventory fix.**
