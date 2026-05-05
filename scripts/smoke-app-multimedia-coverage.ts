@@ -192,21 +192,13 @@ try {
 
   // Step 6: Build + release + verify.
   //
-  // FINDING (2026-05-05 live smoke): the default `download_ccz` endpoint
-  // returns the *manifest-only* CCZ — media_suite.xml registers each
-  // resource with two locations (./commcare/image/<f> + the remote
-  // /hq/multimedia/file/CommCareImage/<m_id>/ URL), but the binary itself
-  // is NOT inlined. The Android client lazy-fetches it from the remote
-  // URL on demand. To get a fully self-contained CCZ (binary inlined
-  // under commcare/image/<filename>), append `&include_multimedia=true`.
-  //
-  // Without this flag the multimedia verify step is misleading — the
-  // form references the jr:// path correctly, the upload landed in
-  // CouchDB correctly, and devices CAN fetch it at runtime — but the
-  // binary won't appear in the lite CCZ. The skill's step 10 verify
-  // and the `commcare_download_ccz` atom both default to the lite shape
-  // today; if downstream consumers need the bytes inlined they need a
-  // future atom enhancement (DownloadCczArgs.include_multimedia: boolean).
+  // The default `download_ccz` endpoint returns the *manifest-only* CCZ:
+  // media_suite.xml registers each resource with two locations
+  // (./commcare/image/<f> + the remote /hq/multimedia/file/CommCareImage/<m_id>/
+  // URL), but the binary itself is NOT inlined — the Android client lazy-fetches
+  // it from the remote URL on demand. To get a self-contained CCZ (binary
+  // inlined under commcare/image/<filename>), pass `include_multimedia: true`
+  // through the typed atom flag (added 0.13.18, F1).
   let end6 = stepStart(6, 'Building + releasing + verifying CCZ');
   const build = await c.makeBuild({
     domain,
@@ -217,18 +209,21 @@ try {
   const release = await c.releaseBuild({ domain, app_id: appId, build_id: build.build_id });
   console.log(`       released=${release.is_released}`);
 
-  // Verify with include_multimedia=true (direct request — atom doesn't
-  // yet expose this flag, see comment above).
-  const ctx = await session.getContext();
-  const verifyUrl =
-    `${cchqBaseUrl}/a/${domain}/apps/api/download_ccz/?app_id=${build.build_id}&include_multimedia=true`;
-  const verifyRes = await ctx.request.get(verifyUrl);
+  // Verify via the atom's typed include_multimedia flag. Use the explicit
+  // build_id branch (atom routes build_id into the app_id slot, omits
+  // latest=release).
+  const ccz2 = await c.downloadCcz({
+    domain,
+    app_id: appId,
+    build_id: build.build_id,
+    include_multimedia: true,
+  });
   const t6 = end6();
-  if (verifyRes.status() !== 200) {
-    console.error(`verify GET ${verifyUrl} -> status=${verifyRes.status()}`);
+  if (ccz2.status !== 200 || !ccz2.ccz_base64) {
+    console.error(`verify download_ccz status=${ccz2.status} size=${ccz2.size_bytes}`);
     process.exit(2);
   }
-  const buf2 = await verifyRes.body();
+  const buf2 = Buffer.from(ccz2.ccz_base64, 'base64');
   const entries2 = unzipSync(new Uint8Array(buf2));
   console.log(`       full CCZ size=${buf2.byteLength} entries=${Object.keys(entries2).length}`);
 

@@ -60,6 +60,19 @@ export interface DownloadCczArgs {
   app_id: string;
   /** Optional explicit build id; if omitted, downloads `latest=release`. */
   build_id?: string;
+  /**
+   * If true, append `?include_multimedia=true` so CCHQ returns the full,
+   * self-contained CCZ with multimedia binaries inlined under
+   * `commcare/multimedia/...` (live shape: `commcare/image/<filename>`,
+   * `commcare/audio/<filename>`, etc.). Default `false` returns the lite
+   * manifest-only response — faster, but multimedia entries are NOT
+   * inlined; the Android client lazy-fetches them from the remote
+   * `/hq/multimedia/file/...` URL. The `app-multimedia-coverage` SKILL's
+   * verify step (10) needs `true` to confirm a freshly-uploaded asset
+   * is bundled in the released CCZ; without it the verify silently
+   * false-negatives every successful upload.
+   */
+  include_multimedia?: boolean;
 }
 
 export interface DownloadCczResult {
@@ -324,6 +337,9 @@ export class CommCareBackend {
         qs.set('app_id', args.build_id); // download_ccz takes either app_id or build_id
       } else {
         qs.set('latest', 'release');
+      }
+      if (args.include_multimedia === true) {
+        qs.set('include_multimedia', 'true');
       }
       const path = `/a/${args.domain}/apps/api/download_ccz/?${qs.toString()}`;
       const res = await request.get(`${this.opts.baseUrl}${path}`, { maxRedirects: 0 });
