@@ -12,39 +12,86 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 
 ## Process
 
-1. **Read the initial idea** from `ACE/<opp-name>/runs/<run-id>/1-design/idea.md` in GDrive.
+1. **Read source material** for the PDD.
 
-   If the file is missing, **stop and return an actionable error**:
-   "`ACE/<opp-name>/runs/<run-id>/1-design/idea.md` not found — this is the human-supplied brief
-   that seeds the PDD. If you're running `/ace:step idea-to-pdd`, create the
-   file first. If you're running `/ace:run`, the orchestrator should have
-   prompted for it; re-run `/ace:run <opp-name>` so it captures the idea."
-   Do not invent an idea or proceed without this file.
+   Phase 1 synthesizes a PDD from whatever the human curated into
+   `ACE/<opp-name>/inputs/`. The orchestrator captures a frozen
+   pointer-set at run-start as
+   `runs/<run-id>/inputs-manifest.yaml`. There is no
+   required filename inside `inputs/` — anything goes (PDFs, docx,
+   sheets, markdown notes, prior-pass drafts).
 
-1a. **Pre-flight Drive accessibility for any referenced source documents.**
-    Before doing any analysis work, scan the just-read `idea.md` content for
-    Google Drive references — URLs matching
-    `https://(docs|drive)\.google\.com/(document|spreadsheets|presentation|file)/d/<file_id>/`
-    or bare file IDs explicitly tagged as Drive. For each one, attempt
-    `drive_read_file(file_id=<id>, mime_type="text/plain")` (metadata-only
-    where supported) to verify the ACE service account has read access.
+   Read `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml`
+   first via `drive_read_file`. The manifest shape is:
 
-    If any read fails with a permission error, **stop and return an
-    actionable error listing every inaccessible doc**:
-    "`<file_id>` is not accessible to the ACE service account. Share it
-    with `ace-service-account@connect-labs.iam.gserviceaccount.com`
-    (Viewer is sufficient) and re-run /ace:step idea-to-pdd. If the doc
-    is shared only with your personal account and cannot be re-shared
-    with the service account, use `read_personal_drive_doc` (when
-    available) as a fallback."
+   ```yaml
+   opportunity: <opp>
+   run_id: <runId>
+   captured_at: <ISO>
+   inputs:
+     - file_id: <id>
+       name: <name>
+       mime_type: <mime>
+   ```
 
-    Why: a recent design-review session was cancelled mid-run because the
-    LEEP data sheet wasn't shared with the SA. Surfacing the permission
-    issue upfront turns a session-interrupting OAuth dance into a
+   For each entry, read the file's content via
+   `drive_read_file(file_id=<id>)` — Drive extracts text from Google
+   Docs, PDFs, plain text/markdown, and most Word formats. Track each
+   read's success/failure. For inherently non-text formats
+   (spreadsheets, images, audio), `drive_read_file` will return
+   limited or empty text; log the file by name in your synthesis as
+   "supporting file present in `inputs/` — reference by name in the
+   PDD where the content matters" and continue. **Do not halt on
+   non-text files** — the human dropped them in for downstream skills
+   (e.g. data spreadsheet templates for FLW reference).
+
+   Additionally, if `ACE/<opp-name>/runs/<run-id>/idea.md` exists
+   (operator-supplied free-text seed via `--idea FILE|-`), read it
+   too and treat its body as the operator's primary intent — it
+   stands alongside the manifest's evidence pack.
+
+   If `inputs-manifest.yaml` is missing AND no `idea.md` exists at
+   the run root, **stop and return an actionable error**:
+
+   "Phase 1 has no source material — `inputs-manifest.yaml` (at the run-folder root)
+   is missing and no operator-supplied `idea.md` was found at the
+   run root. The orchestrator should have written the manifest at
+   run-start. Re-run `/ace:run <opp-name>` so the manifest is
+   captured from `ACE/<opp-name>/inputs/`. If you intentionally want
+   a free-text-only seed, pass `--idea FILE|-`."
+
+   Do not invent source material or proceed without source content.
+
+1a. **Pre-flight Drive accessibility — halt on permission failures.**
+
+    The reads in step 1 surface permission failures implicitly, but
+    surface them ALL as a single actionable error before any
+    synthesis work — a session-interrupting OAuth dance turns into a
     30-second share-with-the-SA fix.
 
-    If `idea.md` references no external Drive docs, skip this step
-    silently.
+    Track every entry from `inputs-manifest.yaml` whose
+    `drive_read_file` returned a permission error. Additionally, if
+    `idea.md` is present, scan its body for Drive URLs matching
+    `https://(docs|drive)\.google\.com/(document|spreadsheets|presentation|file)/d/<file_id>/`
+    and attempt to read each.
+
+    If any read failed with a permission error, **stop and return an
+    actionable error listing every inaccessible doc**:
+
+    "The following files are not accessible to the ACE service
+    account:
+      - `<file_id>` (`<name>` from inputs/)
+      - `<file_id>` (`<name>` referenced in idea.md)
+      - …
+    Share each with
+    `ace-service-account@connect-labs.iam.gserviceaccount.com`
+    (Viewer is sufficient) and re-run `/ace:step idea-to-pdd
+    <opp>/<run-id>`. If a doc is shared only with your personal
+    account and cannot be re-shared with the service account, use
+    `read_personal_drive_doc` (when available) as a fallback."
+
+    Why: a recent design-review session was cancelled mid-run
+    because the LEEP data sheet wasn't shared with the SA.
 
 2. **Determine the delivery archetype** (see `## Archetypes` below). The archetype shapes the section list and the questions you ask in step 3. If the idea spans multiple delivery patterns (e.g., focus groups in Stage 1, atomic visits in Stage 2), pick `multi-stage` and assign an archetype to each stage.
 
@@ -271,3 +318,4 @@ When `--dry-run` is active:
 | 2026-04-15 | Fail fast with actionable error if `idea.md` is missing instead of improvising an idea | ACE team (PM scout, end-to-end UX lens) |
 | 2026-04-17 | Emit gate brief at `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md` so the review-mode gate presents a checklist + stress-test concerns instead of a bare "approve PDD?" prompt | ACE team (PM scout, internal-admin lens) |
 | 2026-04-20 | Extract stress-test rubric from Process step 5 into standalone `## LLM-as-Judge Rubric` section per author contract; process step now references the section | ACE team (skills review) |
+| 2026-05-05 | Replace single-`idea.md` input contract with multi-doc evidence-pack model: read `inputs-manifest.yaml` (at the run-folder root) (orchestrator-emitted) and synthesize the PDD from every file under `inputs/`. Optional `idea.md` at the run root is now a `--idea FILE\|-` operator seed only. The PDD is the formal output of Phase 1, never an input. | ACE team (LEEP run; user observation that PDD is an output not an input) |

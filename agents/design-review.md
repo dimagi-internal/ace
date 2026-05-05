@@ -23,15 +23,24 @@ into a well-specified PDD that the rest of the pipeline builds on.
 
 ### Step 1: Idea to PDD
 Invoke the `idea-to-pdd` skill.
-- Input: initial idea (from Neal or the opportunity brief) at `ACE/<opp-name>/runs/<run-id>/1-design/idea.md`
+- Inputs:
+  - `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml`
+    (frozen pointer-set captured by the orchestrator from `<opp>/inputs/`)
+  - Each file referenced in the manifest (read inline)
+  - Optional: `ACE/<opp-name>/runs/<run-id>/idea.md` if `--idea FILE|-`
+    was passed (operator free-text seed; stands alongside the manifest)
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
+  (the formal PDD — Phase 1's primary artifact)
 - **Gate (review mode):** Present the PDD for approval before continuing
 - **LLM-as-Judge (inline self-eval):** the producing skill's own
   5-question stress-test rubric runs as part of writing the PDD
 
 ### Step 1.5: Idea-to-PDD eval (independent re-grade)
 Unless `--no-evals` was passed, invoke the `idea-to-pdd-eval` skill.
-- Input: `ACE/<opp-name>/runs/<run-id>/1-design/idea.md` + `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
+- Inputs: the same source material `idea-to-pdd` consumed
+  (`inputs-manifest.yaml` + each manifest entry, plus run-root
+  `idea.md` if present) + the produced PDD at
+  `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-eval_verdict.yaml` (machine-readable
   verdict in the shared shape — see `skills/README.md § QA vs Eval`)
 - This is the independent grader for `idea-to-pdd`'s self-eval. A

@@ -34,10 +34,12 @@ Run the full CRISPR-Connect lifecycle for a Connect opportunity.
     approval. Use for high-touch operations or training.
   - `auto` — never pause for any gate. For unattended batch runs
     (e.g. eval calibration). `[BLOCKER]` concerns still escalate.
-- `--idea FILE|-` — pre-seed `idea.md` from a file path, or `-` for stdin.
-  When provided, skip the interactive PDD-picker described below.
-  Content is uploaded verbatim to `ACE/<opp>/runs/<run-id>/1-design/idea.md` via
-  `drive_create_file`.
+- `--idea FILE|-` — pre-seed a free-text `idea.md` from a file path, or `-`
+  for stdin. Operator-supplied seed; stands alongside the inputs/
+  evidence-pack manifest as supplementary intent. Content is uploaded
+  verbatim to `ACE/<opp>/runs/<run-id>/idea.md` via `drive_create_file`.
+  Most runs do not need this flag — the inputs/ evidence pack alone is
+  sufficient seed material for `idea-to-pdd`.
 - `--ace-web-url URL` — after the orchestrator completes, invoke the
   `upload-transcript` skill to POST the run's stream-json transcript to
   `<URL>/api/ingest/upload`. **Smart default:** if this flag is omitted
@@ -83,20 +85,25 @@ The intended minimum invocation is literally `/ace:run`. With no args,
 the orchestrator picks the most-recently-touched opp (by `inputs/`
 mtime under the ACE Drive root) and starts a fresh run on it. No PDD
 picker prompt fires — the operator chose what goes in `inputs/`
-once, and zero-arg trusts that choice.
+once, and zero-arg trusts that choice. Anything in `inputs/` becomes
+seed material for the PDD; there is no required filename.
 
 Resolution:
 
 1. If `--idea FILE|-` was passed, scripted-seed flow: write the idea
-   body to `runs/<run-id>/idea.md` directly. Skip discovery.
+   body to `runs/<run-id>/idea.md` directly (operator free-text seed).
+   Manifest capture still runs from `inputs/` if it exists.
 2. Else read `ACE_DRIVE_ROOT_FOLDER_ID`. Stop with an actionable error
    if unset.
 3. List `ACE/`. Find subfolders containing an `inputs/` subfolder.
 4. Pick the candidate with the newest `inputs/` mtime; folder name = `<opp>`.
 5. If no candidate exists, stop with the new-layout setup message.
 6. Generate `runId` = `YYYYMMDD-HHMM` (collision-suffixed).
-7. `mkdir <opp>/runs/<runId>/`; copy `inputs/pdd.md` body → `runs/<runId>/idea.md`.
-8. Init `state.yaml`; update `opp.yaml.last_run_id`.
+7. `mkdir <opp>/runs/<runId>/`; capture
+   `runs/<runId>/inputs-manifest.yaml` (frozen pointer-set of every
+   direct child file under `inputs/`). No input file is copied — the
+   PDD is synthesized at Phase 1 from the manifest.
+8. Init `run_state.yaml`; update `opp.yaml.last_run_id`.
 9. Begin Phase 1.
 
 See `agents/ace-orchestrator.md` for full detail.

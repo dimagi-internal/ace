@@ -31,26 +31,41 @@ the calibration methodology.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - Source idea: `ACE/<opp-name>/runs/<run-id>/1-design/idea.md`
+   - Source material — read all of these as the "source idea pack":
+     - `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml`, then each
+       `file_id` it lists (the orchestrator's frozen evidence-pack
+       pointer-set, captured at run start)
+     - `ACE/<opp-name>/runs/<run-id>/idea.md` if present (operator
+       free-text seed via `--idea FILE|-`; absent on most runs)
    - PDD (the artifact under judgment): `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
    - Optionally the gate brief if present:
      `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md`.
 
-2. **Extract the source idea's reviewer-comment list.** idea.md
-   bodies generally include footnoted or sectioned reviewer comments
-   (e.g. "[a] FLW safety risks…", "[b] vendor consent…"). Build a
-   structured list.
+   The "source idea" referenced throughout the rest of this skill is
+   the union of the manifest's contents + `idea.md` (if present),
+   treated as one synthesized seed. When grading dimensions that
+   reference "idea.md" below, treat them as referencing the full
+   source-idea pack — early-2026 versions of this rubric assumed a
+   single `idea.md`; the multi-doc evidence-pack model arrived in the
+   2026-05-05 idea-to-pdd refactor.
 
-   **Clean-source detection (added 0.10.9):** if idea.md contains
-   zero reviewer comments — no `[a]/[b]` footnotes, no
-   "Reviewer Comments" / "Comments" / "Feedback" section — set
-   `clean_source = true` and skip step 3. The reviewer-comment-fidelity
-   dimension will switch to the deferred-decision-discipline branch
-   (see § Dimension below). Surfaced 0.9.11 cross-opp validation:
-   `turmeric-dogfood-20260427`'s idea.md was a clean PM-authored
-   source with no review pass; the rubric's anchors at 9.5 ("all
-   comments addressed") were a poor fit because there were no
-   comments to address.
+2. **Extract the source idea's reviewer-comment list.** Source-idea
+   bodies (any file in the manifest, plus `idea.md` if present)
+   generally include footnoted or sectioned reviewer comments
+   (e.g. "[a] FLW safety risks…", "[b] vendor consent…"). Build a
+   structured list across all source files.
+
+   **Clean-source detection (added 0.10.9):** if the entire source
+   pack contains zero reviewer comments — no `[a]/[b]` footnotes, no
+   "Reviewer Comments" / "Comments" / "Feedback" section in any of
+   the manifest entries or `idea.md` — set `clean_source = true` and
+   skip step 3. The reviewer-comment-fidelity dimension will switch
+   to the deferred-decision-discipline branch (see § Dimension
+   below). Surfaced 0.9.11 cross-opp validation:
+   `turmeric-dogfood-20260427`'s source idea was clean PM-authored
+   with no review pass; the rubric's anchors at 9.5 ("all comments
+   addressed") were a poor fit because there were no comments to
+   address.
 
 3. **Extract the PDD's promised dispositions** (skip if
    `clean_source = true`). PDDs include a "Reviewer Comments —

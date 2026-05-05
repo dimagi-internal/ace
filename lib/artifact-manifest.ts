@@ -88,7 +88,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['ace-orchestrator', 'idea-to-pdd'],
     phase: 'design',
     required: true,
-    description: 'Canonical input pack for the opp. Contains pdd.md (required) and any supporting docs (sample paper forms, interview guides, notes). Read at run start; the PDD body is copied into runs/<run-id>/1-design/idea.md.',
+    description: 'Human-curated evidence pack for the opp — any combination of source docs, SOPs, questionnaires, spreadsheets, prior-pass drafts, or notes. No required filename. The orchestrator captures a frozen pointer-set as 1-design/inputs-manifest.yaml at run start; idea-to-pdd reads each manifest entry to synthesize the PDD.',
   },
   {
     path: 'opp.yaml',
@@ -132,12 +132,28 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   // ── Design phase (Phase 1) ─────────────────────────────────────
 
   {
+    path: 'inputs-manifest.yaml',
+    producedBy: 'ace-orchestrator',
+    consumedBy: ['idea-to-pdd'],
+    phase: 'design',
+    required: false,
+    description: 'Frozen pointer-set captured at run start: every direct child file under inputs/ as {file_id, name, mime_type}. idea-to-pdd reads each entry to synthesize the PDD. Lives at the run-folder root alongside run_state.yaml — both are run-level metadata, scoped beyond any single phase. Pointing at file_ids (not paths) means a human re-arranging inputs/ mid-run does not shift the source pack out from under Phase 1. NOT YET required: existing fixtures predate the 2026-05-05 evidence-pack refactor; flip to required=true once the next round of fixture updates lands.',
+  },
+  {
+    path: 'idea.md',
+    producedBy: 'external',
+    consumedBy: ['idea-to-pdd'],
+    phase: 'design',
+    required: false,
+    description: 'Optional operator-supplied free-text seed at the run-folder root. Only present when /ace:run was invoked with --idea FILE|-. Read by idea-to-pdd alongside the inputs-manifest. Most runs do not have this file — the inputs/ evidence pack is sufficient.',
+  },
+  {
     path: '1-design/idea.md',
     producedBy: 'external',
     consumedBy: ['idea-to-pdd'],
     phase: 'design',
-    required: true,
-    description: 'Initial opportunity idea or brief (copy of inputs/pdd.md or hand-written brief, snapshotted at run start)',
+    required: false,
+    description: 'Legacy path — pre-2026-05-05 the orchestrator copied inputs/pdd.md into 1-design/idea.md as the seed for idea-to-pdd. New runs do not write this file (the manifest at 1-design/inputs-manifest.yaml replaces it; --idea seeds the run-root idea.md). Kept in the manifest so older fixtures and resumed legacy runs validate cleanly.',
   },
   {
     path: '1-design/idea-to-pdd.md',

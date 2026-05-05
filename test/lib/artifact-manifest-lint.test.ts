@@ -34,7 +34,9 @@ const OPP_LEVEL_EXEMPT = new Set([
 // Run-level paths: live at runs/<run-id>/, but NOT under any phase folder.
 const RUN_LEVEL_EXEMPT = new Set([
   'run_state.yaml',
-  '1-design/idea.md', // input copy; not produced by a skill
+  'inputs-manifest.yaml', // frozen pointer-set captured at run start (orchestrator-emitted)
+  'idea.md',              // optional operator free-text seed via --idea FILE|-
+  '1-design/idea.md',     // legacy pre-2026-05-05 input-copy path; kept for back-compat
 ]);
 
 // Structural sub-folders allowed as the SECOND segment under a phase folder
