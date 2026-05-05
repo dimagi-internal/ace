@@ -17,10 +17,10 @@ in `solicitation/award-record.md`.
 
 ## Inputs
 
-- `ACE/<opp-name>/solicitation/review/scoring-rubric.md`
-- `ACE/<opp-name>/solicitation/review/recommendation.md`
-- `ACE/<opp-name>/solicitation/award-record.md`
-- `ACE/<opp-name>/solicitation/published.md` (rubric reference)
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_scoring-rubric.md`
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_recommendation.md`
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_award-record.md`
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md` (rubric reference)
 
 ## Rubric
 

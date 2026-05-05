@@ -22,8 +22,8 @@ only skill that populates `opp.yaml.selected_llo` (which gates Phase 7).
 
 - `opp.yaml.solicitation.solicitation_id`
 - `opp.yaml.solicitation.public_url`
-- `ACE/<opp-name>/solicitation/published.md` (rubric)
-- `ACE/<opp-name>/solicitation/responses/*.md` (all responses)
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md` (rubric)
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-monitor_responses/*.md` (all responses)
 
 ## Process
 
@@ -60,7 +60,7 @@ only skill that populates `opp.yaml.selected_llo` (which gates Phase 7).
    scores to:
 
    ```
-   ACE/<opp-name>/solicitation/review/scoring-rubric.md
+   ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_scoring-rubric.md
    ```
 
    Markdown table per response, with columns: criterion, weight, score
@@ -69,7 +69,7 @@ only skill that populates `opp.yaml.selected_llo` (which gates Phase 7).
 5. **Write `recommendation.md`.** Save:
 
    ```
-   ACE/<opp-name>/solicitation/review/recommendation.md
+   ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_recommendation.md
    ```
 
    Body: ranked list of candidates with reasoning. Top candidate gets a
@@ -99,7 +99,7 @@ only skill that populates `opp.yaml.selected_llo` (which gates Phase 7).
 8. **Write `award-record.md`.**
 
    ```
-   ACE/<opp-name>/solicitation/award-record.md
+   ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_award-record.md
    ```
 
    Body: `response_id`, `awarded_at`, `awarded_org_slug`,
@@ -138,9 +138,9 @@ only skill that populates `opp.yaml.selected_llo` (which gates Phase 7).
 
 ## Output
 
-- `ACE/<opp-name>/solicitation/review/scoring-rubric.md`
-- `ACE/<opp-name>/solicitation/review/recommendation.md`
-- `ACE/<opp-name>/solicitation/award-record.md`
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_scoring-rubric.md`
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_recommendation.md`
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_award-record.md`
 - `opp.yaml.selected_llo.*` populated (only on success)
 - `opp.yaml.solicitation.status: awarded` (only on success)
 

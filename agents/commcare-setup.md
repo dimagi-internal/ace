@@ -237,4 +237,4 @@ by `app-screenshot-capture` alongside the app summaries.
 
 ### Completion
 Update opportunity state to mark Phase 2 as complete.
-Write phase summary to `ACE/<opp-name>/commcare-setup-summary.md`.
+Write phase summary to `ACE/<opp-name>/runs/<run-id>/2-commcare/commcare-setup_summary.md`.

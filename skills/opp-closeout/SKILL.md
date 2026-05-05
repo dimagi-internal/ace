@@ -12,7 +12,7 @@ Process the financial closeout of a completed opportunity.
 ## Process
 
 1. **Read opportunity details** from GDrive:
-   - Opportunity config: `ACE/<opp-name>/connect-setup/opportunity.md`
+   - Opportunity config: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
    - Delivery/payment unit config
 
 2. **Pull invoices** from Connect for this opportunity via
@@ -32,7 +32,7 @@ Process the financial closeout of a completed opportunity.
    - Description: invoice details, amount, LLO banking info reference
    - Attach invoice documents
 
-4. **Write closeout record** to `ACE/<opp-name>/closeout/invoices.md`:
+4. **Write closeout record** to `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-closeout_invoices.md`:
    - Invoice details
    - Total amount
    - Jira ticket link

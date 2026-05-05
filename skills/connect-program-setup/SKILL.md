@@ -11,7 +11,7 @@ Create or select a Connect program for this opportunity.
 
 ## Process
 
-1. **Read the PDD** from `ACE/<opp-name>/pdd.md`, including the
+1. **Read the PDD** from `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`, including the
    `archetype:` field. Program shape is mostly archetype-agnostic, but
    program NAME and DESCRIPTION should signal archetype so future opps
    under the same program can be grouped coherently. See
@@ -47,7 +47,7 @@ Create or select a Connect program for this opportunity.
      (e.g. `"United States of America"`, not `"USA"`)
    - `start_date` / `end_date`: PDD timeline (YYYY-MM-DD)
 
-5. **Write program details** to `ACE/<opp-name>/connect-setup/program.md`:
+5. **Write program details** to `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup.md`:
    - Program ID (UUID)
    - Program name
    - Archetype declared at program creation (if new)

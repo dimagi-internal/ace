@@ -20,8 +20,8 @@ shipped — see `skills/eval-calibration/SKILL.md`.
 ## Inputs
 
 - `ACE/<opp-name>/inputs/pdd.md`
-- `ACE/<opp-name>/solicitation/draft.md`
-- `ACE/<opp-name>/solicitation/published.md`
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md`
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md`
 
 ## Rubric
 

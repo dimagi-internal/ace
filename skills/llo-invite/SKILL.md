@@ -34,7 +34,7 @@ fires only for the awardee.
    declare all three; missing fields disqualify the entry).
 
 2. **If empty (or all entries malformed):** write
-   `ACE/<opp-name>/solicitation/invitations.md`:
+   `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/llo-invite_invitations.md`:
 
    ```markdown
    # Solicitation Invitations
@@ -79,7 +79,7 @@ fires only for the awardee.
    account `ace@dimagi-ai.com`).
 
 4. **Log every send** to
-   `ACE/<opp-name>/solicitation/invitations.md`:
+   `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/llo-invite_invitations.md`:
 
    ```markdown
    # Solicitation Invitations
@@ -117,7 +117,7 @@ applying" notes, not commitments).
 
 ## Output
 
-- `ACE/<opp-name>/solicitation/invitations.md` — recipient log
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/llo-invite_invitations.md` — recipient log
 
 ## MCP Tools Used
 

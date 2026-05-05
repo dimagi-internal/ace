@@ -13,11 +13,11 @@ Activate the opportunity and notify LLOs that they are live.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - UAT results: `ACE/<opp-name>/uat/uat-results.md` (includes archetype)
-   - Deployment summary: `ACE/<opp-name>/deployment-summary.md` (atomic-visit)
-   - Opportunity config: `ACE/<opp-name>/connect-setup/opportunity.md`
+   - UAT results: `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-uat_results.md` (includes archetype)
+   - Deployment summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` (atomic-visit)
+   - Opportunity config: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
    - Awarded LLO: `opp.yaml.selected_llo` (populated by Phase 6 `solicitation-review`)
-   - PDD: `ACE/<opp-name>/pdd.md` (fallback archetype source)
+   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (fallback archetype source)
 
 2. **Read the `archetype:` field.** Go-live semantics differ per
    archetype — "deliveries count toward payment now" is atomic-visit
@@ -128,7 +128,7 @@ Activate the opportunity and notify LLOs that they are live.
      activation confirmation, key contacts, support channels, training
      material links
 
-9. **Write launch record** to `ACE/<opp-name>/launch/launch-record.md`:
+9. **Write launch record** to `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_record.md`:
    - Archetype (recorded explicitly so `timeline-monitor` applies the
      right cadence and milestones)
    - Activation timestamp
@@ -138,7 +138,7 @@ Activate the opportunity and notify LLOs that they are live.
      number + next-stage kickoff window for multi-stage)
    - Any outstanding non-blocking issues
 
-10. **Write the gate brief** to `ACE/<opp-name>/gate-briefs/llo-launch.md`
+10. **Write the gate brief** to `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md`
    using the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`.
    The brief is written *before* activation so the admin approves based on
    readiness, not on a record of something that already happened. See
@@ -147,7 +147,7 @@ Activate the opportunity and notify LLOs that they are live.
 
 ## Gate Brief
 
-The gate brief at `ACE/<opp-name>/gate-briefs/llo-launch.md` is the final
+The gate brief at `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md` is the final
 approval point before the opportunity flips from test/draft to active in
 Connect — after this, deliveries count toward real payment and FLWs are
 live. This is the single highest-stakes gate in the pipeline.
@@ -309,7 +309,7 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
-| 2026-04-17 | Emit gate brief at `ACE/<opp-name>/gate-briefs/llo-launch.md` *before* activation so the highest-stakes gate is approved on readiness, not retrospectively on a launch record | ACE team (PM scout, internal-admin lens) |
+| 2026-04-17 | Emit gate brief at `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md` *before* activation so the highest-stakes gate is approved on readiness, not retrospectively on a launch record | ACE team (PM scout, internal-admin lens) |
 | 2026-04-20 | Added `## Archetypes` with per-archetype readiness checks, Connect activation semantics, launch email subject + body, and launch-record details. `focus-group` replaces "apps published" with "Session 1 venue + recording + participant recruitment confirmed" and subject flips to "Session 1 is on the calendar" (not "You Are Live" which is FLW-coded). `multi-stage` pins activation to Stage 1 only; each stage gets its own launch run, records preserved per-stage in `launch-record-stage-N.md`. Gate-brief checklist item 3 swaps in archetype-specific bullet | ACE team |
 | 2026-04-28 | Replace HITL workaround with `connect_activate_opportunity` + `connect_get_opportunity` (ace-connect 0.8.1) | ACE team |
 | 2026-04-30 | Switch `connect_activate_opportunity` to `POST /api/opportunities/<id>/activate/` (commcare-connect PR #1135). Server-side guards now reject activation if no PaymentUnits exist or the opp has ended; clearer errors than the silent edit-form fallback. Step 4 also gains a deferred FLW pre-invite path for ACE-driven dogfood runs whose `connect-opp-setup` deferred the invite until activation. (0.10.47) | ACE team |

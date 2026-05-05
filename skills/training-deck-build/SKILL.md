@@ -24,8 +24,8 @@ the opportunity. Typically the last step of Phase 5
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 5 (`training-materials`) | `ACE/<opp>/training-materials/training-deck-outline.md` | parsed via `parseDeckOutline` |
-| Phase 5 (`app-screenshot-capture`) | `ACE/<opp>/screenshots/manifest.yaml` | screenshot fileId resolution for `drive:` image refs by alias |
+| Phase 5 (`training-materials`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md` | parsed via `parseDeckOutline` |
+| Phase 5 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml` | screenshot fileId resolution for `drive:` image refs by alias |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` | same, for cross-opp screenshots |
 
 ## Inputs (env)
@@ -131,7 +131,7 @@ under human control.
 
 - The Google Slides deck itself (in Drive)
 - `ACE/<opp>/run_state.yaml` updated with `training_deck:` block
-- `ACE/<opp>/verdicts/training-deck-build.yaml` — standard verdict shape
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-build_verdict.yaml` — standard verdict shape
   (see `lib/verdict-schema.ts`); `summary.deck_url` set; `passed:` true if
   parse + both batchUpdates succeeded
 

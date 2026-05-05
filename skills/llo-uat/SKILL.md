@@ -12,11 +12,11 @@ Coordinate UAT with LLOs before the opportunity goes live.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - Deployment summary: `ACE/<opp-name>/deployment-summary.md`
+   - Deployment summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md`
    - Training materials: `ACE/<opp-name>/training-materials/`
-   - Opportunity config: `ACE/<opp-name>/connect-setup/opportunity.md`
+   - Opportunity config: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
    - Awarded LLO: `opp.yaml.selected_llo` (populated by Phase 6 `solicitation-review`)
-   - PDD: `ACE/<opp-name>/pdd.md` (reads `archetype:`)
+   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (reads `archetype:`)
 
 2. **Read the PDD's `archetype:` field.** The entire "what to test" list
    and the sign-off criteria differ by archetype — FGD LLOs aren't
@@ -48,7 +48,7 @@ Coordinate UAT with LLOs before the opportunity goes live.
    - LLO sign-off status (signed off / pending / blocked)
    - If blocking issues found: log them and notify admin group
 
-7. **Write UAT results** to `ACE/<opp-name>/uat/uat-results.md`:
+7. **Write UAT results** to `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-uat_results.md`:
    - Per-LLO sign-off status
    - Issues found and resolution status
    - Overall UAT verdict (pass / blocked)

@@ -766,10 +766,10 @@ bare "Approve the PDD?" prompt).
 after writing its primary artifact. The 4 expected files are:
 
 ```
-ACE/<opp-name>/gate-briefs/idea-to-pdd.md
-ACE/<opp-name>/gate-briefs/app-deploy.md
-ACE/<opp-name>/gate-briefs/ocs-chatbot-eval-quick.md
-ACE/<opp-name>/gate-briefs/llo-launch.md
+ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md
+ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_gate-brief.md
+ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-quick.md
+ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md
 ```
 
 (0.12.0: `gate-briefs/llo-invite.md` was removed — the new Phase 6

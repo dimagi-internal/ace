@@ -25,7 +25,7 @@ flag that gets caught early scores higher than one caught late.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - PDD: `ACE/<opp-name>/pdd.md` (for opp-spec context)
+   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (for opp-spec context)
    - The dated `flw-data-review-YYYY-MM-DD.md` report — the artifact
      under judgment.
    - Prior `flw-data-review-*.md` reports — for trajectory framing.
@@ -54,7 +54,7 @@ flag that gets caught early scores higher than one caught late.
    - **Pre-cap and post-cap reporting** per `eval-calibration` § 0.9.4.
 
 4. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/flw-data-review-monitor.yaml`. The filename
+   `ACE/<opp-name>/runs/<run-id>/7-execution-manager/flw-data-review-eval_verdict-monitor.yaml`. The filename
    uses the **producer** skill name (`flw-data-review`) plus the
    `-monitor` mode suffix (which the Workbench strips when attributing
    the score) — see `agents/ace-orchestrator.md § Per-Step Eval Hook`

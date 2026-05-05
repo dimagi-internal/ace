@@ -3,7 +3,7 @@ name: solicitation-monitor
 description: >
   Phase 6 recurring skill. Polls labs for new responses while the
   solicitation is open, writes one file per response to
-  ACE/<opp>/solicitation/responses/, and appends a tick line to the
+  ACE/<opp>/runs/<run-id>/6-solicitation-management/solicitation-monitor_responses/, and appends a tick line to the
   observation log. Three modes: --quick (count only), --monitor (full
   pull, default), --close (final pull when deadline passes).
 ---
@@ -27,7 +27,7 @@ Mirrors the `ocs-chatbot-qa` recurring pattern (`--quick`/`--monitor`).
 
 - `opp.yaml.solicitation.solicitation_id`
 - `opp.yaml.solicitation.deadline`
-- `ACE/<opp-name>/solicitation/invitations.md` (optional; for outstanding-
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/llo-invite_invitations.md` (optional; for outstanding-
   invitee tracking)
 
 ## Process (--monitor)
@@ -39,7 +39,7 @@ Mirrors the `ocs-chatbot-qa` recurring pattern (`--quick`/`--monitor`).
    ```
 
 2. **Diff against local state.** Read existing files in
-   `ACE/<opp-name>/solicitation/responses/` (each is named
+   `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-monitor_responses/` (each is named
    `<response_id>.md`). For each new response:
 
    ```
@@ -85,7 +85,7 @@ orchestrator. The next tick retries.
 
 ## Output
 
-- New files in `ACE/<opp-name>/solicitation/responses/`
+- New files in `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-monitor_responses/`
 - Tick line in `ACE/<opp-name>/comms-log/observations.md`
 - (`--close` only) `opp.yaml.solicitation.status: closed`
 

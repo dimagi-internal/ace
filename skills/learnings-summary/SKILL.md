@@ -17,7 +17,7 @@ Synthesize all information from the completed opportunity into actionable learni
    - Monitoring reports from `ACE/<opp-name>/monitoring/`
    - Data reviews from `ACE/<opp-name>/data-reviews/`
    - OCS transcripts (LLO questions and issues)
-   - LLO feedback from `ACE/<opp-name>/closeout/llo-feedback.md`
+   - LLO feedback from `ACE/<opp-name>/runs/<run-id>/8-closeout/llo-feedback.md`
    - Comms log
 
 2. **Analyze against original PDD:**
@@ -37,8 +37,8 @@ Synthesize all information from the completed opportunity into actionable learni
    - This new PDD can trigger another CRISPR-Connect cycle
 
 5. **Write to GDrive:**
-   - `ACE/<opp-name>/closeout/learnings.md` — full learnings document
-   - `ACE/<opp-name>/closeout/new-pdd.md` — new PDD if iteration warranted
+   - `ACE/<opp-name>/runs/<run-id>/8-closeout/learnings-summary.md` — full learnings document
+   - `ACE/<opp-name>/runs/<run-id>/8-closeout/learnings-summary_new-pdd.md` — new PDD if iteration warranted
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`

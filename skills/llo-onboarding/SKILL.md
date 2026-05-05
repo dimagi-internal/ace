@@ -34,12 +34,12 @@ solicitation and selecting one winner, Phase 7 onboards exactly one org.
      `response_id`. Halt with the FATAL message above if `org_slug` is
      null or empty.
    - Training materials: `ACE/<opp-name>/training-materials/`
-   - Opportunity details: `ACE/<opp-name>/connect-setup/opportunity.md`
-   - Program details: `ACE/<opp-name>/connect-setup/program.md` (program
+   - Opportunity details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
+   - Program details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup.md` (program
      UUID for the Connect invite)
-   - OCS widget config: `ACE/<opp-name>/ocs-agent-config.md`
+   - OCS widget config: `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`
      (`public_id`, `embed_key`)
-   - Award record: `ACE/<opp-name>/solicitation/award-record.md` (for
+   - Award record: `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_award-record.md` (for
      the awarded amount and award context to mention in the onboarding
      email)
 
@@ -98,7 +98,7 @@ solicitation and selecting one winner, Phase 7 onboards exactly one org.
 
 5. **Send the email** via the `email-communicator` skill (or draft for review).
 
-6. **Log communications** to `ACE/<opp-name>/comms-log/onboarding-emails.md`.
+6. **Log communications** to `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-onboarding_comms-log.md`.
 
 ## Archetypes
 

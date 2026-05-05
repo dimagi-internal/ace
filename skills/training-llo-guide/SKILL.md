@@ -23,18 +23,18 @@ rebuilds only `llo-manager-guide.md`.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `ACE/<opp>/pdd.md` | opp framing, archetype, target FLW persona, escalation triggers |
-| Phase 2 | `ACE/<opp>/app-summaries/learn-app-summary.md` | LLO context on what FLWs are learning |
-| Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | LLO context on per-visit data shape |
-| Phase 2 | `ACE/<opp>/deployment-summary.md` | HQ domain quoted in the "where the data lives" section |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | opp framing, archetype, target FLW persona, escalation triggers |
+| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md` | LLO context on what FLWs are learning |
+| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md` | LLO context on per-visit data shape |
+| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/app-deploy_summary.md` | HQ domain quoted in the "where the data lives" section |
 | Phase 3 (`run_state.yaml`) | `connect.opportunity` + `connect.payment_units` + `connect.verification_flags` | payment per visit, max-per-day, verification rules |
-| Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | "where to ask questions" link |
-| Phase 1 | `ACE/<opp>/expected-journeys.md` | seed the "Pre-deployment UAT" section from per-journey pass criteria |
-| Phase 5 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/screenshots/manifest.yaml` | optional — embed key screenshots in the "what FLWs see" section |
+| Phase 4 | `ACE/<opp>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "where to ask questions" link |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd_expected-journeys.md` | seed the "Pre-deployment UAT" section from per-journey pass criteria |
+| Phase 5 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml` | optional — embed key screenshots in the "what FLWs see" section |
 
 ## Output
 
-Single file: `ACE/<opp>/training-materials/llo-manager-guide.md`.
+Single file: `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-llo-guide.md`.
 
 ## Format
 
@@ -115,7 +115,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
 4. **Draft the guide** following the structure above.
 
 5. **Derive UAT checklist from journey pass criteria.** Read
-   `ACE/<opp>/expected-journeys.md` and convert each journey's
+   `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd_expected-journeys.md` and convert each journey's
    `pass_criteria` lines into checkbox items under the
    Pre-deployment UAT section. The LLO ticks through every journey
    before go-live.
@@ -127,7 +127,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
      checklists do)
    - Word count 500-1200 — operations docs should be scannable
 
-7. **Write** to `ACE/<opp>/training-materials/llo-manager-guide.md`
+7. **Write** to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-llo-guide.md`
    via `drive_create_file`. Overwrite if it exists.
 
 8. **Self-evaluate (LLM-as-Judge).** Four criteria:
@@ -141,7 +141,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
      wording matches the journey's `pass_criteria` (no editorial
      dropping)
 
-   Verdict to `ACE/<opp>/verdicts/training-llo-guide.yaml`.
+   Verdict to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-llo-guide_verdict.yaml`.
 
 9. **Hand off.** Print Drive URL + verdict summary.
 
@@ -159,8 +159,8 @@ For LLO operators overseeing FLW deployment of this opportunity.
 
 ## Outputs
 
-- `ACE/<opp>/training-materials/llo-manager-guide.md`
-- `ACE/<opp>/verdicts/training-llo-guide.yaml`
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-llo-guide.md`
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-llo-guide_verdict.yaml`
 
 ## Why a separate skill
 

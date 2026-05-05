@@ -23,9 +23,9 @@ no inline self-eval.
 ## Process
 
 1. **Read opportunity context from GDrive:**
-   - PDD: `ACE/<opp-name>/pdd.md`
+   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
    - Training materials: `ACE/<opp-name>/training-materials/`
-   - Opportunity details: `ACE/<opp-name>/connect-setup/opportunity.md`
+   - Opportunity details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
    - App summaries: `ACE/<opp-name>/app-summaries/`
 
 2. **Check for existing chatbot** (idempotency):
@@ -77,7 +77,7 @@ no inline self-eval.
     - `ocs_get_chatbot_embed_info({ experiment_id })`
     - Capture `{public_id, embed_key}`
 
-11. **Write state file:** `ACE/<opp-name>/ocs-agent-config.md`
+11. **Write state file:** `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`
     - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`
     - On re-run, this file is the source of truth; skip to step 10 if present
 
@@ -105,7 +105,7 @@ required.
 ## Dry-Run Behavior
 
 When `--dry-run` is active:
-- Every MCP atom call is logged to `ACE/<opp-name>/comms-log/dry-run-ocs-agent-setup.md` with atom name + args
+- Every MCP atom call is logged to `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup_dry-run-log.md` with atom name + args
 - No HTTP goes out; atom responses are stubbed
 - State tracks as `dry-run-success`
 

@@ -13,7 +13,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
 ## Process
 
-1. **Read the PDD** from `ACE/<opp-name>/pdd.md` via Google Drive MCP.
+1. **Read the PDD** from `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` via Google Drive MCP.
 
 2. **Extract the Learn app spec** from the PDD. The spec drives the Nova
    brief; what to extract depends on `archetype:` (see `## Archetypes` below).
@@ -94,7 +94,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      rather than form completion?
 
 7. **Write the summary** to
-   `ACE/<opp-name>/app-summaries/learn-app-summary.md`. Required
+   `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md`. Required
    frontmatter:
 
    ```yaml

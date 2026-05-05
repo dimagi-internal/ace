@@ -107,9 +107,9 @@ entry guard halts with an actionable message if
 
 ## Outputs at phase end (default run)
 
-- `ACE/<opp-name>/solicitation/draft.md`
-- `ACE/<opp-name>/solicitation/published.md`
-- `ACE/<opp-name>/solicitation/invitations.md`
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md`
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md`
+- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/llo-invite_invitations.md`
 - `opp.yaml.solicitation.{solicitation_id, public_url, deadline, status: open}`
 - `opp.yaml.selected_llo.*` (stubbed, null until award)
 - `verdicts/solicitation-create.yaml` (unless `--no-evals`)

@@ -27,15 +27,15 @@ personalization tokens at send time.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `ACE/<opp>/pdd.md` | one-paragraph opp framing for the email body |
-| Phase 3 | `ACE/<opp>/connect-setup/opportunity.md` | opportunity name + URL |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | one-paragraph opp framing for the email body |
+| Phase 3 | `ACE/<opp>/runs/<run-id>/3-connect/connect-opp-setup.md` | opportunity name + URL |
 | Phase 3 (`run_state.yaml`) | `connect.payment_units` | payment-summary line |
-| Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | widget link in the email |
+| Phase 4 | `ACE/<opp>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | widget link in the email |
 | Phase 5 (`training-materials` siblings) | `training-materials/llo-manager-guide.md`, `flw-training-guide.md`, `quick-reference.md` | links to the docs LLO will use |
 
 ## Output
 
-Single file: `ACE/<opp>/training-materials/onboarding-email-body.md`.
+Single file: `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-onboarding-email.md`.
 
 ## Format
 
@@ -132,7 +132,7 @@ ace@dimagi-ai.com
    - The three personalization tokens are used (none more, none
      fewer)
 
-5. **Write** to `ACE/<opp>/training-materials/onboarding-email-body.md`
+5. **Write** to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-onboarding-email.md`
    via `drive_create_file`.
 
 6. **Self-evaluate (LLM-as-Judge).** Four criteria:
@@ -144,7 +144,7 @@ ace@dimagi-ai.com
    - **Audience fit:** professional but warm; no jargon-heavy
      phrasing
 
-   Verdict to `ACE/<opp>/verdicts/training-onboarding-email.yaml`.
+   Verdict to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-onboarding-email_verdict.yaml`.
 
 7. **Hand off.** Print Drive URL + verdict summary.
 
@@ -161,8 +161,8 @@ ace@dimagi-ai.com
 
 ## Outputs
 
-- `ACE/<opp>/training-materials/onboarding-email-body.md`
-- `ACE/<opp>/verdicts/training-onboarding-email.yaml`
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-onboarding-email.md`
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-onboarding-email_verdict.yaml`
 
 ## Phase-ordering invariant
 

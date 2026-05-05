@@ -66,7 +66,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
    - If `experiment_id` is provided, call `ocs_get_chatbot_embed_info` to
      get `public_id` + `embed_key`
    - Otherwise, if `opp_name` is provided, read
-     `ACE/<opp-name>/ocs-agent-config.md`
+     `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`
    - Otherwise, use `$OCS_GOLDEN_TEMPLATE_ID` from the env
    - The `embed_key` and `public_id` are needed for the anonymous chat API
 
@@ -144,7 +144,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
      (expected: tags response with [training-gap] if the answer IS in the KB)
 
    **Opp-specific prompts** (only if `opp_name` is provided):
-   - Loaded from `ACE/<opp-name>/test-prompts.md` — produced in Phase 1 by
+   - Loaded from `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-test-prompts.md` — produced in Phase 1 by
      the `pdd-to-test-prompts` skill. Each entry has a question + an
      expected-answer summary that `ocs-chatbot-eval` uses as ground truth
 
@@ -311,7 +311,7 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-04-10 | Initial version | ACE team |
 | 2026-04-14 | Added --quick / --deep / --monitor modes; --quick replaces the inline self-eval previously in `ocs-agent-setup`; --deep is the pre-launch gate in Phase 4; --monitor runs recurring in Phase 5 | ACE team |
-| 2026-04-17 | `--deep` emits gate brief at `ACE/<opp-name>/gate-briefs/ocs-chatbot-qa-deep.md`; `--quick` and `--monitor` do not | ACE team (PM scout, internal-admin lens) |
+| 2026-04-17 | `--deep` emits gate brief at `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-deep.md`; `--quick` and `--monitor` do not | ACE team (PM scout, internal-admin lens) |
 | 2026-04-19 | **QA/eval split.** Removed LLM-as-Judge; this skill now captures transcripts + structural checks only. Writes to `qa-captures/` (renamed from embedded report). Gate brief ownership moved to new `ocs-chatbot-eval` skill. See `skills/README.md § QA vs Eval — the two-phase pattern` | ACE team (qa/eval split refactor) |
 | 2026-04-19 | Document `ACE/golden-template/` as the canonical no-opp fallback path; make env-source of `$OCS_GOLDEN_TEMPLATE_ID` explicit (`$CLAUDE_PLUGIN_DATA/.env`); call out that `ocs_send_test_message` MCP tool is structurally incomplete for the transcript schema — stick to raw widget HTTP. Surfaced during first real qa/eval split exercise against the golden template | ACE team (qa/eval iteration loop) |
 | 2026-04-29 | Added `Capture method:` header field to the transcript schema (`widget` for the anonymous widget endpoint this skill uses today; `openai-compat` reserved for the OpenAI-compatible endpoint when capture for that endpoint lands). `ocs-chatbot-eval` branches its source-usage rubric on this field — without it, the rubric can't tell whether an empty `cited_files` indicates a real grounding gap (openai-compat path) or a measurement limitation (widget path, where the API never returns inline citations regardless). | ACE team (0.10.10) |

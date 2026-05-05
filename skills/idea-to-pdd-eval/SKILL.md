@@ -31,10 +31,10 @@ the calibration methodology.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - Source idea: `ACE/<opp-name>/idea.md`
-   - PDD (the artifact under judgment): `ACE/<opp-name>/pdd.md`
+   - Source idea: `ACE/<opp-name>/runs/<run-id>/1-design/idea.md`
+   - PDD (the artifact under judgment): `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
    - Optionally the gate brief if present:
-     `ACE/<opp-name>/gate-briefs/idea-to-pdd.md`.
+     `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md`.
 
 2. **Extract the source idea's reviewer-comment list.** idea.md
    bodies generally include footnoted or sectioned reviewer comments
@@ -90,7 +90,7 @@ the calibration methodology.
      weighted mean.
 
 5. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/idea-to-pdd.yaml` using the shared shape.
+   `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-eval_verdict.yaml` using the shared shape.
    The filename uses the **producer** skill name (`idea-to-pdd`), NOT
    this skill's name — see `agents/ace-orchestrator.md § Per-Step Eval
    Hook` for the naming rule (the Workbench attributes verdicts by

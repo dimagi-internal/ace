@@ -14,13 +14,13 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
 ## Process
 
 1. **Read inputs from GDrive:**
-   - PDD: `ACE/<opp-name>/pdd.md`
-   - Program details: `ACE/<opp-name>/connect-setup/program.md`
+   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
+   - Program details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup.md`
      (program UUID; the opp is created scoped to it)
    - Awarded LLO: `opp.yaml.selected_llo.org_slug` (populated by Phase 6
      `solicitation-review` — must be the slug of an org that already has an
      ACCEPTED `ProgramApplication` for the program. See § Pre-flight.)
-   - App deployment details: `ACE/<opp-name>/deployment-summary.md`
+   - App deployment details: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md`
      (`hq_server`, `learn_app` ID, `deliver_app` ID, HQ project space slug)
 
 2. **Read the PDD's `archetype:` and `## Evidence Model` section.**
@@ -267,7 +267,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    `ace_test_user_invite_pending_until_active: true` and re-call
    `connect_send_flw_invite` from `llo-launch` after the opp is active.
 
-8. **Write config summary** to `ACE/<opp-name>/connect-setup/opportunity.md`:
+8. **Write config summary** to `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`:
    - Opportunity ID (UUID) and URL
      (`<CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/`)
    - All configuration details (dates, total_budget, target LLO org)

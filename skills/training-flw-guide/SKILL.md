@@ -26,17 +26,17 @@ the per-opp screenshots. Independent of `training-llo-guide`,
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `ACE/<opp>/pdd.md` | opp framing, archetype, target FLW persona |
-| Phase 2 | `ACE/<opp>/app-summaries/learn-app-summary.md` | Learn modules + assessment threshold |
-| Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | Deliver form structure (the "what to do here" section) |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | opp framing, archetype, target FLW persona |
+| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md` | Learn modules + assessment threshold |
+| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md` | Deliver form structure (the "what to do here" section) |
 | Phase 3 (`run_state.yaml`) | `connect.opportunity` (claim flow), `connect.payment_units` | "what FLWs get paid for" framing |
-| Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | "where to get help" section |
-| Phase 5 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/screenshots/manifest.yaml` + per-opp PNGs | embed step-by-step Learn/Deliver screenshots |
+| Phase 4 | `ACE/<opp>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "where to get help" section |
+| Phase 5 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml` + per-opp PNGs | embed step-by-step Learn/Deliver screenshots |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` + PNGs | embed common Connect navigation (sign-in, claim opp, sync, payments) |
 
 ## Output
 
-Single file: `ACE/<opp>/training-materials/flw-training-guide.md`.
+Single file: `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md`.
 
 ## Format
 
@@ -108,7 +108,7 @@ from PDD's Evidence Model.>
 
 3. **Build the screenshot resolution map.** Two pools merged into one
    `{ alias → drive_file_id }`:
-   - Per-opp aliases from `ACE/<opp>/screenshots/manifest.yaml` (e.g.,
+   - Per-opp aliases from `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml` (e.g.,
      `learn-mod-1-step-3`, `deliver-form-photo-step-1`)
    - Common-pool aliases from
      `ACE/_common/connect-screenshots/<v>/manifest.yaml` (e.g.,
@@ -141,7 +141,7 @@ from PDD's Evidence Model.>
    - Word count is 600-1500 — shorter feels skeletal, longer is
      unrealistic for a field worker to absorb
 
-7. **Write** to `ACE/<opp>/training-materials/flw-training-guide.md`
+7. **Write** to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md`
    via `drive_create_file`. Overwrite if it already exists.
 
 8. **Self-evaluate (LLM-as-Judge).** Four criteria:
@@ -155,7 +155,7 @@ from PDD's Evidence Model.>
      jargon without explanation
 
    Write a verdict YAML to
-   `ACE/<opp>/verdicts/training-flw-guide.yaml` in the standard shape
+   `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide_verdict.yaml` in the standard shape
    (see `lib/verdict-schema.ts`). `passed: true` only if all four
    pass.
 
@@ -180,8 +180,8 @@ existing per-opp + common-pool artifacts.
 
 ## Outputs
 
-- `ACE/<opp>/training-materials/flw-training-guide.md`
-- `ACE/<opp>/verdicts/training-flw-guide.yaml`
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md`
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide_verdict.yaml`
 
 ## Known limitations
 

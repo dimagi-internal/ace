@@ -24,17 +24,17 @@ questions.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `ACE/<opp>/pdd.md` | escalation triggers, evidence model rules, opp framing |
-| Phase 1 | `ACE/<opp>/test-prompts.md` | seed Q's that the OCS bot was tested on (high-confidence "FLWs will ask this") |
-| Phase 2 | `ACE/<opp>/app-summaries/learn-app-summary.md` | content-clarification questions |
-| Phase 2 | `ACE/<opp>/app-summaries/deliver-app-summary.md` | per-form field-clarification questions |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | escalation triggers, evidence model rules, opp framing |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/pdd-to-test-prompts.md` | seed Q's that the OCS bot was tested on (high-confidence "FLWs will ask this") |
+| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md` | content-clarification questions |
+| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md` | per-form field-clarification questions |
 | Phase 3 (`run_state.yaml`) | `connect.payment_units` + `connect.verification_flags` | "why was my submission flagged?" answers |
-| Phase 4 | `ACE/<opp>/ocs-setup/widget-handoff.md` (`widget_url`) | "how do I ask?" answer |
-| Phase 1 | `ACE/<opp>/expected-journeys.md` (edge cases per journey) | seed Q's about boundary conditions |
+| Phase 4 | `ACE/<opp>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "how do I ask?" answer |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd_expected-journeys.md` (edge cases per journey) | seed Q's about boundary conditions |
 
 ## Output
 
-Single file: `ACE/<opp>/training-materials/faq.md`.
+Single file: `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq.md`.
 
 ## Format
 
@@ -124,7 +124,7 @@ which rule triggered, what to do>
    - At least 4 Q's seeded from `test-prompts.md`
    - At least 2 Q's seeded from `expected-journeys.md` edge cases
 
-8. **Write** to `ACE/<opp>/training-materials/faq.md` via
+8. **Write** to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq.md` via
    `drive_create_file`.
 
 9. **Self-evaluate (LLM-as-Judge).** Four criteria:
@@ -136,7 +136,7 @@ which rule triggered, what to do>
    - **Audience split:** at least 30% LLO Q's and at least 30% FLW
      Q's (otherwise the doc is over-skewed)
 
-   Verdict to `ACE/<opp>/verdicts/training-faq.yaml`.
+   Verdict to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq_verdict.yaml`.
 
 10. **Hand off.** Print Drive URL + verdict summary.
 
@@ -153,8 +153,8 @@ which rule triggered, what to do>
 
 ## Outputs
 
-- `ACE/<opp>/training-materials/faq.md`
-- `ACE/<opp>/verdicts/training-faq.yaml`
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq.md`
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq_verdict.yaml`
 
 ## Why a separate skill
 
