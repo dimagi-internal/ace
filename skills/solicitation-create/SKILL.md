@@ -25,9 +25,12 @@ post-publish via the labs UI without affecting responses.
    `## Solicitation` section is optional; defaults apply when fields are
    missing or use placeholder values like `[EOI | RFP — default EOI]`.
 
-2. **Build the solicitation payload:**
+2. **Build the solicitation `data` payload.** All fields below go inside
+   the `data` object that wraps the application-level body of the labs
+   record. Scoping (`program_id` / `organization_id`) is sibling-level,
+   not inside `data` — see step 4.
 
-   | Field | Source |
+   | data-object field | Source |
    |---|---|
    | `title` | `<solicitation_type>: <pdd.title> — <pdd.archetype>` |
    | `solicitation_type` | PDD `## Solicitation` → `Solicitation type` (default `EOI`) |
@@ -35,22 +38,32 @@ post-publish via the labs UI without affecting responses.
    | `scope_of_work` | PDD `## Learn App Specification` + `## Deliver App Specification` + `## Success Metrics` (concatenated) |
    | `budget` | PDD `## Budget` → `Estimated cost` value, parsed as a number |
    | `deadline` | `now() + (response_window_days || 14)` days, ISO-8601 UTC |
-   | `evaluation_criteria` | derived by `generate_criteria` (see step 3) |
-   | `response_template` | PDD `## Solicitation` → `Response template` list, or the default 6-question set if empty |
-   | `status` | `published` |
-   | `program_id` | `opp.yaml.program_id` |
+   | `evaluation_criteria` | composed locally — see step 3 |
+   | `questions` | PDD `## Solicitation` → `Response template`, mapped to `[{id, text, type: 'text', required: false}]`, or the default 6-question set if empty |
+   | `status` | `'active'` (publishes immediately; `'draft'` for dry-run mode) |
+   | `is_public` | `true` (so unsolicited orgs can find it on the public list) |
 
-3. **Derive evaluation criteria.** Call:
+3. **Compose evaluation criteria locally.** Read the PDD's archetype,
+   intervention summary, and success criteria. Draft a structured rubric
+   inline using the same archetype-aware judgment that
+   `solicitation-create-eval` would apply:
 
-   ```
-   mcp__connect-labs__generate_criteria(
-     scope_text: <description + scope_of_work>,
-     archetype: <pdd.archetype>
-   )
-   ```
+   - **`atomic-visit`**: emphasize FLW deployment scale, geographic-fit,
+     supervision model, data-quality track record.
+   - **`focus-group`**: emphasize facilitator skill, language/cultural
+     fit, audio-equipment access, transcription/synthesis capability.
+   - **`multi-stage`**: emphasize stage-gate discipline, archetype
+     fluency across stages, transition-management.
 
-   Capture the structured rubric (criteria + weights) into the payload's
-   `evaluation_criteria` field.
+   Default rubric shape: `[{ id, label, weight: 0..1, scale: 10 }, ...]`
+   summing to 1.0.
+
+   **Note (0.13.3):** the earlier 0.12.0 SKILL.md called
+   `mcp__connect-labs__generate_criteria` here. That atom does not exist
+   in the labs MCP today (the underlying `/api/generate-criteria/` HTTP
+   endpoint exists but isn't surfaced as a tool). When labs does expose
+   it, we can swap this local composition step for an MCP call without
+   changing the rest of the skill.
 
    **Default 6-question response template** (used when PDD doesn't
    override): "Describe your prior experience deploying CHW programs in
@@ -73,10 +86,34 @@ post-publish via the labs UI without affecting responses.
 5. **Publish.** Call:
 
    ```
-   mcp__connect-labs__create_solicitation(<payload>)
+   mcp__connect-labs__create_solicitation(
+     program_id: <opp.yaml.program_id as string>,
+     data: {
+       title: ...,
+       solicitation_type: ...,
+       description: ...,
+       scope_of_work: ...,
+       budget: ...,
+       deadline: ...,
+       evaluation_criteria: [...],
+       questions: [...],
+       status: 'active',
+       is_public: true,
+     }
+   )
    ```
 
-   Capture the returned `solicitation_id`, `public_url`, and `manage_url`.
+   The atom requires `data` (object) and at least one of `program_id` /
+   `organization_id` (both strings). Application-level fields go inside
+   `data` — flat top-level fields (e.g. just sending `title` next to
+   `program_id`) get dropped by the labs adapter and the create returns
+   without the values being persisted.
+
+   Capture the returned `id` (the labs record id) into `solicitation_id`.
+   The response also includes `experiment` (echo of the program_id) and
+   the data object as written. Public URL pattern:
+   `${LABS_BASE_URL}/labs/solicitations/<id>/`. Manage URL pattern:
+   `${LABS_BASE_URL}/labs/solicitations/<id>/edit/`.
 
 6. **Write `published.md`.** Save:
 

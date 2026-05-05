@@ -78,16 +78,23 @@ describeFn('connect-labs MCP — live integration (requires LABS_INTEGRATION=1 +
           params: {
             name: 'create_solicitation',
             arguments: {
-              program_id: Number(TEST_PROGRAM_ID),
-              title: `ACE integration test ${new Date().toISOString()}`,
-              solicitation_type: 'EOI',
-              description: 'integration test — please ignore',
-              scope_of_work: 'integration test',
-              budget: 1,
-              deadline: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
-              evaluation_criteria: [{ id: 'fit', weight: 1.0, scale: 10 }],
-              response_template: ['Why are you interested?'],
-              status: 'draft', // never publish from a test
+              // Schema is { program_id (string) | organization_id (string),
+              // data: { ...application fields... } } — application fields go
+              // inside `data`, NOT at the top level. Top-level flat fields
+              // get dropped by the labs adapter.
+              program_id: String(TEST_PROGRAM_ID),
+              data: {
+                title: `ACE integration test ${new Date().toISOString()}`,
+                solicitation_type: 'EOI',
+                description: 'integration test — please ignore',
+                scope_of_work: 'integration test',
+                budget: 1,
+                deadline: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+                evaluation_criteria: [{ id: 'fit', weight: 1.0, scale: 10 }],
+                questions: [{ id: 'q1', text: 'Why are you interested?', type: 'text', required: false }],
+                status: 'draft',  // never publish from a test
+                is_public: false,
+              },
             },
           },
         },

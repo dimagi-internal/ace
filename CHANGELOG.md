@@ -5,6 +5,61 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.3 — 2026-05-05
+
+**`solicitation-create` payload-shape correction + atom-inventory fix.**
+
+Live testing against labs prod (token freshly provisioned via
+`/ace:labs-token-mint`) found two contract bugs in the 0.12.0
+solicitation-create skill:
+
+1. **Wrong payload shape.** The skill SKILL.md and integration test
+   sent `create_solicitation` arguments as flat top-level fields
+   (`{program_id, title, solicitation_type, ...}`). The actual labs
+   tool schema is `{program_id (string) | organization_id (string),
+   data: {...application fields...}}`. Top-level flat fields are
+   dropped by the labs adapter.
+2. **Non-existent atom.** Skill called
+   `mcp__connect-labs__generate_criteria` to derive evaluation criteria.
+   That atom is not exposed in the labs MCP today (the underlying
+   `/api/generate-criteria/` HTTP endpoint exists but isn't surfaced
+   as a tool — verified by `tools/list` against live labs).
+
+### Changed
+
+- **`skills/solicitation-create/SKILL.md`**: rewrote the payload-build
+  step to wrap application fields inside `data: {}`. Replaced the
+  `generate_criteria` MCP call with a local archetype-aware criteria
+  composition step (atomic-visit → FLW deployment scale; focus-group →
+  facilitator skill / language fit; multi-stage → stage-gate
+  discipline). When labs ever exposes `generate_criteria` as a tool,
+  the skill swaps the local step for the MCP call without restructuring.
+- **`test/mcp/connect-labs/integration/e2e.integration.test.ts`**: the
+  third `create_solicitation` smoke now sends the correct
+  `{program_id, data: {...}}` shape.
+- **`CLAUDE.md`** atom inventory updated: 9 atoms consumed
+  (`create_solicitation`, `list_solicitations`, `get_solicitation`,
+  `update_solicitation`, `list_responses`, `get_response`,
+  `award_response`, `create_review`, `list_reviews`). The earlier
+  10-atom claim listed `generate_criteria` which doesn't exist as an
+  MCP tool.
+
+### Known issue
+
+Live `create_solicitation` against labs prod still returns
+`-32603 Internal error` from the labs adapter even with the corrected
+shape (write path against existing experiment ids fails server-side).
+This is opaque from the MCP client — no detail surfaced through the
+JSON-RPC envelope. Investigation needs labs server logs to
+distinguish: per-user write permissions, payload validation gap, or
+upstream Connect API rejection. **Read paths (`list_solicitations`,
+`get_solicitation`) work cleanly** — the doctor probes and integration
+tests 1+2 pass against live labs.
+
+Tracking the live-write issue belongs to a connect-labs follow-up
+once the error envelope disambiguation is in place (the second item
+in `Appendix A` of `docs/superpowers/specs/2026-05-04-ace-solicitations-phase-design.md`).
+
 ## 0.13.2 — 2026-05-05
 
 **`/ace:labs-token-mint` — headless Labs PAT minter.**
