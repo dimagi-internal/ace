@@ -383,7 +383,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['ocs-chatbot-eval'],
     phase: 'ocs',
     required: false,
-    description: 'Transcript from the --quick suite (5 smoke prompts): each entry has prompt + response + cited_files + expected_answer_summary + structural-pass flag. Input to ocs-chatbot-eval --quick',
+    description: 'Transcript from the --quick suite (3 smoke prompts): each entry has prompt + response + cited_files + expected_answer_summary + structural-pass flag. Input to ocs-chatbot-eval --quick',
   },
   {
     path: '4-ocs/ocs-chatbot-qa_transcript-deep.md',

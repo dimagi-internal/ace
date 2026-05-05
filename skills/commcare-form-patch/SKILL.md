@@ -100,7 +100,7 @@ This skill targets ONE app at a time *per patches.yaml entry*. The
 default LEEP-style invocation patches the Learn app (which has all 6
 quiz forms in scope for nova-plugin#5).
 
-1. **Read `deployment-summary.md`.** Pull `hq_domain`, `learn_app_id`,
+1. **Read `2-commcare/app-deploy_summary.md`.** Pull `hq_domain`, `learn_app_id`,
    `deliver_app_id`, and the latest `releases.{learn,deliver}.build_id`
    from the frontmatter. These are the source of truth for which CCHQ
    project + apps to patch.
@@ -269,7 +269,7 @@ When `--dry-run` is active:
   rejected it, OR the build/release step picked up an older draft.
   Halt with the per-form before/after dump.
 - **`commcare-patches.yaml` references an app not in
-  `deployment-summary.md`** — operator added a stale or incorrect
+  `2-commcare/app-deploy_summary.md`** — operator added a stale or incorrect
   entry. Fail loudly rather than guess.
 
 ## Change Log

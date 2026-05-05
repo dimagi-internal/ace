@@ -58,10 +58,11 @@ flag that gets caught early scores higher than one caught late.
    uses the **producer** skill name (`flw-data-review`) plus the
    `-monitor` mode suffix (which the Workbench strips when attributing
    the score) — see `agents/ace-orchestrator.md § Per-Step Eval Hook`
-   for the naming rule. Each recurring run overwrites the prior verdict;
-   trend history lives in `eval-reports/trend.md` (one row appended per
-   run) and the dated `eval-reports/YYYY-MM-DD-flw-data-review.md` human
-   reports.
+   for the naming rule. Each recurring run overwrites the prior
+   verdict; trend history lives in
+   `runs/<run-id>/7-execution-manager/flw-data-review-eval_trend.md`
+   (one row appended per run) alongside the latest human report at
+   `runs/<run-id>/7-execution-manager/flw-data-review-eval_report-monitor.md`.
 
    ```yaml
    skill: flw-data-review-eval

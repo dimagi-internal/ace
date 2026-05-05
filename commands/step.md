@@ -71,14 +71,15 @@ Implementation steps the agent (or a thin Bash wrapper) must perform:
 4. Exit without invoking the skill. The user fixes the gap and retries.
 
 **Why this exists.** Without the check, `/ace:step ocs-chatbot-qa my-opp --deep`
-silently fails when `test-prompts.md` hasn't been produced yet (because
-`pdd-to-test-prompts` hasn't run), and `/ace:step ocs-chatbot-eval my-opp
---deep` silently fails when no `qa-captures/` transcript exists yet
-(because `ocs-chatbot-qa --deep` hasn't run). Per ACE's fail-loudly
-contract: skills that read upstream-produced artifacts must error when
-those artifacts are missing, not improvise content. The check belongs in
-`/ace:step` so any bypass of the orchestrator (which otherwise runs skills
-in dependency order) still enforces the contract.
+silently fails when `1-design/pdd-to-test-prompts.md` hasn't been
+produced yet (because `pdd-to-test-prompts` hasn't run), and
+`/ace:step ocs-chatbot-eval my-opp --deep` silently fails when no
+`4-ocs/ocs-chatbot-qa_transcript-deep.md` exists yet (because
+`ocs-chatbot-qa --deep` hasn't run). Per ACE's fail-loudly contract:
+skills that read upstream-produced artifacts must error when those
+artifacts are missing, not improvise content. The check belongs in
+`/ace:step` so any bypass of the orchestrator (which otherwise runs
+skills in dependency order) still enforces the contract.
 
 **What NOT to check:**
 - Dated / recurring artifacts (paths containing `YYYY-MM-DD`) — these are
@@ -94,20 +95,22 @@ in dependency order) still enforces the contract.
 
 ```text
 /ace:step idea-to-pdd my-opp
-  → Reads idea.md (required, producedBy: external). OK → invoke skill.
+  → Reads inputs/idea.md (required, producedBy: external). OK → invoke skill.
 
 /ace:step ocs-chatbot-qa my-opp
-  → Required: test-prompts.md. Missing.
-  → Error: "cannot run — missing required inputs: test-prompts.md
-    (produced by: pdd-to-test-prompts)."
+  → Required: 1-design/pdd-to-test-prompts.md. Missing.
+  → Error: "cannot run — missing required inputs:
+    1-design/pdd-to-test-prompts.md (produced by: pdd-to-test-prompts)."
 
 /ace:step ocs-chatbot-eval my-opp --deep
-  → Required: qa-captures/*-ocs-chat-deep.md. Missing.
-  → Error: "cannot run — missing required inputs: qa-captures transcript
-    for mode 'deep' (produced by: ocs-chatbot-qa --deep)."
+  → Required: 4-ocs/ocs-chatbot-qa_transcript-deep.md. Missing.
+  → Error: "cannot run — missing required inputs:
+    4-ocs/ocs-chatbot-qa_transcript-deep.md
+    (produced by: ocs-chatbot-qa --deep)."
 
 /ace:step connect-opp-setup my-opp
-  → Required: program.md, pdd.md, deployment-summary.md. All present.
+  → Required: 3-connect/connect-program-setup.md, inputs/pdd.md,
+    2-commcare/app-deploy_summary.md. All present.
   → OK → invoke skill.
 ```
 

@@ -33,12 +33,14 @@ and what should I improve?"
   - `--quick` — structural artifact check only. Confirms every
     required, non-dated artifact for the opp's current phase exists
     in Drive. No LLM cost. Stdout summary + scorecard.
-  - `--deep` — structural check **plus** aggregation: walk
-    `verdicts/*.yaml`, compute category-level + run-level scores,
-    draft improvement recommendations. Writes scorecard, verdict
-    YAML, and an advisory gate brief.
+  - `--deep` — structural check **plus** aggregation: walk every phase
+    folder under `runs/<run-id>/` collecting `*_verdict*.yaml`, compute
+    category-level + run-level scores, draft improvement
+    recommendations. Writes scorecard, verdict YAML, and an advisory
+    gate brief into `8-closeout/opp-eval/`.
   - `--monitor` — same as `--deep` plus append a one-liner to
-    `scorecards/trend.md` so drift is visible run-over-run.
+    `8-closeout/opp-eval/opp-eval_trend.md` so drift is visible
+    run-over-run.
 - `--all` — fan-out mode. Walks every phase-agent's
   `skills:` block, finds entries with an `eval_skill: <name>` (i.e.
   the producer has a registered `-eval` pair), confirms the producer's
@@ -61,12 +63,14 @@ and what should I improve?"
    where `<name>` is not `inline-self-eval`:
 
    a. Read the producer's primary artifact path from Drive (e.g.
-      `pdd.md` for `idea-to-pdd`, `connect-setup/program.md` for
-      `connect-program-setup`). If absent, skip with an `[INFO]`
-      log line; do not error.
+      `1-design/idea-to-pdd.md` for `idea-to-pdd`,
+      `3-connect/connect-program-setup.md` for
+      `connect-program-setup`). If absent, skip with an `[INFO]` log
+      line; do not error.
    b. Dispatch the eval skill via `/ace:step <eval-skill> <opp-name>`.
       Each eval writes its verdict YAML to
-      `verdicts/<producer>[-<mode>].yaml` per the naming convention.
+      `runs/<run-id>/<phase>/<producer>-eval_verdict[-<mode>].yaml`
+      per the naming convention.
    c. Continue on individual eval failures — log them, do not abort
       the fan-out. The umbrella step at the end will surface coverage
       gaps via `[INFO]` notes.
@@ -81,26 +85,30 @@ aggregation, recommendations, and all file writes. See
 
 ## Output
 
-- `scorecards/YYYY-MM-DD-opp-eval-<mode>.md` (human-readable)
-- `verdicts/opp-eval-<mode>.yaml` (machine-readable; `--deep` /
+All under `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/`:
+
+- `opp-eval_scorecard-<mode>.md` (human-readable)
+- `opp-eval_verdict-<mode>.yaml` (machine-readable; `--deep` /
   `--monitor` only)
-- `gate-briefs/opp-eval-deep.md` (advisory; `--deep` / `--monitor`
+- `opp-eval_gate-brief-deep.md` (advisory; `--deep` / `--monitor`
   only — does not gate a phase)
-- `scorecards/trend.md` (append; `--monitor` only)
+- `opp-eval_trend.md` (append; `--monitor` only)
 
 ## Examples
 
 ```text
 /ace:eval my-opp
   → --quick (default). Structural check only. Prints a one-line
-    summary and writes scorecards/YYYY-MM-DD-opp-eval-quick.md.
+    summary and writes 8-closeout/opp-eval/opp-eval_scorecard-quick.md.
 
 /ace:eval my-opp --mode deep
-  → Walk verdicts/*.yaml, compute run-level score across 6 categories,
-    draft recommendations. Writes scorecard + verdict + gate brief.
+  → Walk runs/<run-id>/<phase>/*_verdict*.yaml, compute run-level
+    score across 7 categories, draft recommendations. Writes
+    scorecard + verdict + gate brief under 8-closeout/opp-eval/.
 
 /ace:eval my-opp --mode monitor
-  → Same as --deep plus append a trend row to scorecards/trend.md.
+  → Same as --deep plus append a trend row to
+    8-closeout/opp-eval/opp-eval_trend.md.
 
 /ace:eval my-opp --all
   → Fan every applicable per-step `-eval` skill out across my-opp's

@@ -761,9 +761,11 @@ approvals devolve into rubber-stamps (and the 2026-04-08 stress-test PDDs
 are the evidence — both failed the rubric and would have sailed through a
 bare "Approve the PDD?" prompt).
 
-**Where the brief lives.** Each gate-producing skill writes
-`ACE/<opp-name>/gate-briefs/<gate-name>.md` as its final step, immediately
-after writing its primary artifact. The 4 expected files are:
+**Where the brief lives.** Each gate-producing skill writes its gate
+brief alongside its primary artifact in the run-scoped phase folder
+(`ACE/<opp-name>/runs/<run-id>/<phase>/<skill>_gate-brief[-<mode>].md`)
+as its final step, immediately after writing the primary artifact. The
+4 expected files are:
 
 ```
 ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md
@@ -772,7 +774,7 @@ ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-quick.md
 ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md
 ```
 
-(0.12.0: `gate-briefs/llo-invite.md` was removed — the new Phase 6
+(0.12.0: `llo-invite_gate-brief.md` was removed — the new Phase 6
 `llo-invite` sends solicitation-invite emails (non-binding "please
 apply" notes) and does not write a gate brief. The Phase 6→7 boundary
 itself is the gate that replaces it; halt logic is in the orchestrator,
@@ -812,9 +814,11 @@ If the producing skill has nothing to surface, write the literal line
 
 **Orchestrator responsibilities at a gate:**
 
-1. Read `ACE/<opp-name>/gate-briefs/<gate-name>.md`. If it is missing,
-   fail loudly with an error naming the skill that should have produced it
-   — do not invent a brief.
+1. Read the gate brief from
+   `ACE/<opp-name>/runs/<run-id>/<phase>/<skill>_gate-brief[-<mode>].md`
+   (the 4 paths listed above). If it is missing, fail loudly with an
+   error naming the skill that should have produced it — do not invent
+   a brief.
 2. Display the full brief content verbatim to the admin.
 3. Follow with `AskUserQuestion` offering four options:
    - **Approve** — mark `gates.<gate-name>: approved`, continue
@@ -878,25 +882,31 @@ output). The orchestrator does not maintain a separate mapping table.
 **Verdict-file naming convention** (the rule the web reader enforces):
 
 ```
-verdicts/<producer-skill>[-<mode>].yaml
+runs/<run-id>/<phase>/<producer-skill>[-eval]_verdict[-<mode>].yaml
 ```
 
-- The stem before `-quick` / `-deep` / `-monitor` MUST match a registered
-  producer skill name (the web reader strips only those three mode
-  suffixes when attributing the verdict to a skill row).
-- `-eval` skills MUST drop the `-eval` suffix from their verdict filename.
-  `idea-to-pdd-eval` writes `verdicts/idea-to-pdd.yaml`, NOT
-  `verdicts/idea-to-pdd-eval.yaml`. Otherwise the score attributes to the
-  `-eval` row instead of the producer row.
-- Skills that ARE their own row in the registry (no producer / eval split,
-  e.g. `ocs-chatbot-eval`) keep their own name in the verdict filename:
-  `verdicts/ocs-chatbot-eval-{quick,deep,monitor}.yaml`.
-- Skills that self-evaluate inline (no separate `-eval` skill, e.g.
-  `app-screenshot-capture`, every per-artifact training
-  skill (`training-llo-guide`, `training-flw-guide`,
+Each producer skill (and each `-eval` partner) writes its verdict next
+to its primary artifact in the phase folder. The web reader matches on
+the segment immediately before `_verdict` to attribute scores to the
+producer skill row.
+
+- `-eval` skills include `-eval` in their filename so the verdict is
+  attributable to the eval partner: `idea-to-pdd-eval` writes
+  `1-design/idea-to-pdd-eval_verdict.yaml`, NOT
+  `1-design/idea-to-pdd_verdict.yaml`. The reader rolls eval scores up
+  to the producer (`idea-to-pdd`) row by walking the eval→producer
+  pair declared in the producing phase agent's frontmatter, not by
+  parsing the filename.
+- Skills that ARE their own row in the registry (no producer / eval
+  split, e.g. `ocs-chatbot-eval`) keep their own name and a mode
+  suffix: `4-ocs/ocs-chatbot-eval_verdict-{quick,deep}.yaml`,
+  `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml`.
+- Skills that self-evaluate inline (no separate `-eval` skill — e.g.
+  `app-screenshot-capture` and every per-artifact training skill
+  (`training-llo-guide`, `training-flw-guide`,
   `training-quick-reference`, `training-faq`,
   `training-onboarding-email`, `training-deck-outline`)) write
-  `verdicts/<self>.yaml`.
+  `<phase>/<self>_verdict[-<mode>].yaml`.
 
 **Opt-out.** `/ace:run --no-evals` skips the per-step eval dispatch (the
 producing skills still write their primary artifacts). Useful for fast
@@ -924,9 +934,10 @@ improved.
 The `opp-eval` skill (dispatched via `/ace:eval <opp-name> --mode
 quick|deep|monitor`) is an **umbrella aggregator** that rolls every
 per-skill `-eval` verdict for an opportunity into a single run-level
-scorecard and drafts improvement recommendations. It reads
-`ACE/<opp-name>/verdicts/*.yaml`, groups scores into 6 skill-category
-dimensions (design, commcare, connect, ocs, operate, closeout), and
+scorecard and drafts improvement recommendations. It walks every
+phase folder under `ACE/<opp-name>/runs/<run-id>/` collecting
+`*_verdict*.yaml`, groups scores into 7 skill-category dimensions
+(design, commcare, connect, ocs, solicitation, operate, closeout), and
 writes a human scorecard + machine verdict + advisory gate brief.
 
 opp-eval is **ad-hoc**, not part of the `--mode review` auto-pause

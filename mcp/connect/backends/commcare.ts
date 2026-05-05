@@ -1,5 +1,7 @@
-import type { APIRequestContext } from 'playwright';
+import type { APIRequestContext, APIResponse } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
+import { PlaywrightSession } from '../auth/playwright-session.js';
+import { SessionExpiredError } from '../errors.js';
 
 /**
  * CommCare HQ atoms — release apps that Nova uploaded as drafts.
@@ -9,6 +11,16 @@ import { unzipSync, strFromU8 } from 'fflate';
  * flow that authenticates Connect leaves valid CCHQ cookies in the same
  * BrowserContext, so a single APIRequestContext drives both services.
  *
+ * **Auth lifecycle (added 0.13.8).** CCHQ cookies expire on a separate
+ * clock from connect.dimagi.com cookies, so this backend takes a
+ * `PlaywrightSession` reference (not a bare APIRequestContext) and pulls
+ * a fresh `request` from it on every call. Each mutating call is wrapped
+ * in `runWithSessionRetry`: if the response is a 302 to `/login/`, the
+ * session is invalidated (drops cached context + on-disk state), a fresh
+ * `getContext()` triggers full hqOAuthLogin, and the call is retried
+ * once. Without this, mid-session expiry surfaces as an opaque "302" to
+ * the operator with no recovery path (turmeric-20260505-1024).
+ *
  * Endpoint contracts verified live 2026-04-29 + 2026-04-30 against
  * connect-ace-prod (see scripts/probe-cchq-release.ts and
  * skills/app-release/SKILL.md § Endpoints).
@@ -16,7 +28,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 
 export interface CommCareBackendOptions {
   baseUrl: string;
-  request: APIRequestContext;
+  session: PlaywrightSession;
 }
 
 export interface MakeBuildArgs {
@@ -123,54 +135,105 @@ export class CommCareBackend {
   constructor(private opts: CommCareBackendOptions) {}
 
   /**
+   * Run an MCP atom with one-shot recovery on session expiry. If the inner
+   * function throws SessionExpiredError (raised by `assertNotLoginRedirect`
+   * when CCHQ 302s to `/login/`), invalidate the cached session, force a
+   * fresh `hqOAuthLogin`, and retry once. Subsequent failures bubble to the
+   * caller unchanged.
+   */
+  private async runWithSessionRetry<T>(
+    fn: (request: APIRequestContext) => Promise<T>,
+  ): Promise<T> {
+    const ctx = await this.opts.session.getContext();
+    try {
+      return await fn(ctx.request);
+    } catch (err) {
+      if (!(err instanceof SessionExpiredError)) throw err;
+      await this.opts.session.invalidate();
+      const ctx2 = await this.opts.session.getContext();
+      return await fn(ctx2.request);
+    }
+  }
+
+  /**
+   * Throw `SessionExpiredError` if a Playwright `APIResponse` is a 302
+   * redirect whose `Location` points at a CCHQ login URL. This is the
+   * mid-session-expiry signal — CCHQ won't return a fresh login form on
+   * an authenticated POST, only a redirect. Caller wraps the throw in
+   * `runWithSessionRetry` to recover transparently.
+   */
+  private static assertNotLoginRedirect(res: APIResponse, label: string): void {
+    if (res.status() !== 302) return;
+    const location = res.headers()['location'] || '';
+    if (/\/login\/?(\?|$)/.test(location)) {
+      throw new SessionExpiredError();
+    }
+    // Non-login 302: surface generically, caller decides how to handle.
+    throw new Error(`${label} returned 302 to ${location || '<no location header>'}`);
+  }
+
+  /**
    * POST /a/<domain>/apps/save/<app_id>/ with an empty body — CCHQ creates
    * a new versioned build doc and returns its `_id`. The CSRF token is read
    * from the cookie jar (ctx.request inherits cookies from the BrowserContext).
    */
   async makeBuild(args: MakeBuildArgs): Promise<MakeBuildResult> {
-    const path = `/a/${args.domain}/apps/save/${args.app_id}/`;
-    // GET the releases page first so the cookie/csrf is fresh
-    const refreshPath = `/a/${args.domain}/apps/view/${args.app_id}/releases/`;
-    await this.opts.request.get(`${this.opts.baseUrl}${refreshPath}`);
-    const csrf = await this.csrfFromCookies();
-    const res = await this.opts.request.post(`${this.opts.baseUrl}${path}`, {
-      data: args.comment ? `comment=${encodeURIComponent(args.comment)}` : '',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-CSRFToken': csrf ?? '',
-        Referer: `${this.opts.baseUrl}${refreshPath}`,
-      },
-      maxRedirects: 0,
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${args.domain}/apps/save/${args.app_id}/`;
+      // GET the releases page first so the cookie/csrf is fresh. Use
+      // maxRedirects:0 here too — a 302 here means the session expired
+      // mid-call and we want the retry path, not a silently-followed
+      // redirect to a login page that pollutes the csrftoken cookie.
+      const refreshPath = `/a/${args.domain}/apps/view/${args.app_id}/releases/`;
+      const refreshRes = await request.get(`${this.opts.baseUrl}${refreshPath}`, {
+        maxRedirects: 0,
+      });
+      if (refreshRes.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(refreshRes, `commcare_make_build GET ${refreshPath}`);
+      }
+      const csrf = await this.csrfFromCookies(request);
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: args.comment ? `comment=${encodeURIComponent(args.comment)}` : '',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${refreshPath}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_make_build POST ${path}`);
+      }
+      if (res.status() !== 200) {
+        throw new Error(
+          `commcare_make_build POST ${path} returned ${res.status()}: ` +
+            (await res.text()).slice(0, 300),
+        );
+      }
+      let parsed: any;
+      try {
+        parsed = JSON.parse(await res.text());
+      } catch {
+        throw new Error(
+          `commcare_make_build POST ${path} returned 200 but body was not JSON. ` +
+            `Empty-body POST is the supported invocation; if CCHQ now requires a full app-state JSON, ` +
+            `re-discover the endpoint via skills/app-release/SKILL.md § Probe procedure.`,
+        );
+      }
+      const build = parsed?.saved_app ?? parsed;
+      const build_id = build?._id ?? build?.id;
+      if (!build_id) {
+        throw new Error(
+          `commcare_make_build POST ${path} returned 200 but no build _id in saved_app. ` +
+            `This shape changes when the app fails XForm well-formedness — body: ${JSON.stringify(parsed).slice(0, 400)}`,
+        );
+      }
+      return {
+        build_id: String(build_id),
+        version: typeof build.version === 'number' ? build.version : null,
+        built_on: typeof build.built_on === 'string' ? build.built_on : null,
+      };
     });
-    if (res.status() !== 200) {
-      throw new Error(
-        `commcare_make_build POST ${path} returned ${res.status()}: ` +
-          (await res.text()).slice(0, 300),
-      );
-    }
-    let parsed: any;
-    try {
-      parsed = JSON.parse(await res.text());
-    } catch {
-      throw new Error(
-        `commcare_make_build POST ${path} returned 200 but body was not JSON. ` +
-          `Empty-body POST is the supported invocation; if CCHQ now requires a full app-state JSON, ` +
-          `re-discover the endpoint via skills/app-release/SKILL.md § Probe procedure.`,
-      );
-    }
-    const build = parsed?.saved_app ?? parsed;
-    const build_id = build?._id ?? build?.id;
-    if (!build_id) {
-      throw new Error(
-        `commcare_make_build POST ${path} returned 200 but no build _id in saved_app. ` +
-          `This shape changes when the app fails XForm well-formedness — body: ${JSON.stringify(parsed).slice(0, 400)}`,
-      );
-    }
-    return {
-      build_id: String(build_id),
-      version: typeof build.version === 'number' ? build.version : null,
-      built_on: typeof build.built_on === 'string' ? build.built_on : null,
-    };
   }
 
   /**
@@ -178,40 +241,50 @@ export class CommCareBackend {
    * Body: ajax=true&is_released=true
    */
   async releaseBuild(args: ReleaseBuildArgs): Promise<ReleaseBuildResult> {
-    const path = `/a/${args.domain}/apps/view/${args.app_id}/releases/release/${args.build_id}/`;
-    const refreshPath = `/a/${args.domain}/apps/view/${args.app_id}/releases/`;
-    await this.opts.request.get(`${this.opts.baseUrl}${refreshPath}`);
-    const csrf = await this.csrfFromCookies();
-    const res = await this.opts.request.post(`${this.opts.baseUrl}${path}`, {
-      data: 'ajax=true&is_released=true',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-CSRFToken': csrf ?? '',
-        Referer: `${this.opts.baseUrl}${refreshPath}`,
-      },
-      maxRedirects: 0,
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${args.domain}/apps/view/${args.app_id}/releases/release/${args.build_id}/`;
+      const refreshPath = `/a/${args.domain}/apps/view/${args.app_id}/releases/`;
+      const refreshRes = await request.get(`${this.opts.baseUrl}${refreshPath}`, {
+        maxRedirects: 0,
+      });
+      if (refreshRes.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(refreshRes, `commcare_release_build GET ${refreshPath}`);
+      }
+      const csrf = await this.csrfFromCookies(request);
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: 'ajax=true&is_released=true',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${refreshPath}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_release_build POST ${path}`);
+      }
+      if (res.status() !== 200) {
+        throw new Error(
+          `commcare_release_build POST ${path} returned ${res.status()}: ` +
+            (await res.text()).slice(0, 300),
+        );
+      }
+      let parsed: any;
+      try {
+        parsed = JSON.parse(await res.text());
+      } catch {
+        // Some CCHQ versions return 200+HTML on success; treat absence of error as success
+        parsed = { is_released: true };
+      }
+      return {
+        build_id: args.build_id,
+        is_released: parsed.is_released === true,
+        latest_released_version:
+          typeof parsed.latest_released_version === 'number'
+            ? parsed.latest_released_version
+            : null,
+      };
     });
-    if (res.status() !== 200) {
-      throw new Error(
-        `commcare_release_build POST ${path} returned ${res.status()}: ` +
-          (await res.text()).slice(0, 300),
-      );
-    }
-    let parsed: any;
-    try {
-      parsed = JSON.parse(await res.text());
-    } catch {
-      // Some CCHQ versions return 200+HTML on success; treat absence of error as success
-      parsed = { is_released: true };
-    }
-    return {
-      build_id: args.build_id,
-      is_released: parsed.is_released === true,
-      latest_released_version:
-        typeof parsed.latest_released_version === 'number'
-          ? parsed.latest_released_version
-          : null,
-    };
   }
 
   /**
@@ -222,40 +295,45 @@ export class CommCareBackend {
    * regardless of session staleness.
    */
   async downloadCcz(args: DownloadCczArgs): Promise<DownloadCczResult> {
-    const qs = new URLSearchParams({ app_id: args.app_id });
-    if (args.build_id) {
-      qs.set('app_id', args.build_id); // download_ccz takes either app_id or build_id
-    } else {
-      qs.set('latest', 'release');
-    }
-    const path = `/a/${args.domain}/apps/api/download_ccz/?${qs.toString()}`;
-    const res = await this.opts.request.get(`${this.opts.baseUrl}${path}`);
-    const status = res.status();
-    if (status !== 200) {
-      return { status, size_bytes: 0 };
-    }
-    const buf = await res.body();
-    const size = buf.byteLength;
-    // Skip base64 round-trip + marker grep on > 25 MB CCZs to keep MCP
-    // responses small. If the operator needs the bytes for a larger app,
-    // they should download via curl directly.
-    if (size > 25 * 1024 * 1024) {
-      return { status, size_bytes: size };
-    }
-    // CCZ is a ZIP whose entries are typically DEFLATE-compressed; the
-    // form XML is NOT readable from the raw zip bytes. Inflate in memory
-    // (fflate.unzipSync, no temp files) and grep the decompressed XML.
-    // Pre-0.10.56 this scanned the raw zip bytes and silently returned
-    // {deliver:0,module:0,task:0,assessment:0} for every released app —
-    // see commcare-setup-summary for the leep-paint-collection 2026-05-01
-    // failure mode and the manual-decode triangulation.
-    const connect_markers = computeConnectMarkers(buf);
-    return {
-      status,
-      size_bytes: size,
-      ccz_base64: buf.toString('base64'),
-      connect_markers,
-    };
+    return this.runWithSessionRetry(async (request) => {
+      const qs = new URLSearchParams({ app_id: args.app_id });
+      if (args.build_id) {
+        qs.set('app_id', args.build_id); // download_ccz takes either app_id or build_id
+      } else {
+        qs.set('latest', 'release');
+      }
+      const path = `/a/${args.domain}/apps/api/download_ccz/?${qs.toString()}`;
+      const res = await request.get(`${this.opts.baseUrl}${path}`, { maxRedirects: 0 });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_download_ccz GET ${path}`);
+      }
+      const status = res.status();
+      if (status !== 200) {
+        return { status, size_bytes: 0 };
+      }
+      const buf = await res.body();
+      const size = buf.byteLength;
+      // Skip base64 round-trip + marker grep on > 25 MB CCZs to keep MCP
+      // responses small. If the operator needs the bytes for a larger app,
+      // they should download via curl directly.
+      if (size > 25 * 1024 * 1024) {
+        return { status, size_bytes: size };
+      }
+      // CCZ is a ZIP whose entries are typically DEFLATE-compressed; the
+      // form XML is NOT readable from the raw zip bytes. Inflate in memory
+      // (fflate.unzipSync, no temp files) and grep the decompressed XML.
+      // Pre-0.10.56 this scanned the raw zip bytes and silently returned
+      // {deliver:0,module:0,task:0,assessment:0} for every released app —
+      // see commcare-setup-summary for the leep-paint-collection 2026-05-01
+      // failure mode and the manual-decode triangulation.
+      const connect_markers = computeConnectMarkers(buf);
+      return {
+        status,
+        size_bytes: size,
+        ccz_base64: buf.toString('base64'),
+        connect_markers,
+      };
+    });
   }
 
   /**
@@ -287,82 +365,92 @@ export class CommCareBackend {
    * form discoverable downstream (Connect, FLW devices).
    */
   async patchXform(args: PatchXformArgs): Promise<PatchXformResult> {
-    const path = `/a/${args.domain}/apps/edit_form_attr/${args.app_id}/${args.form_unique_id}/xform/`;
-    // Refresh CSRF + cookie via the form's edit page (mirrors makeBuild's
-    // refresh-the-releases-page-first pattern). The view URL also exercises
-    // the same `@login_or_digest` auth so a 302 here surfaces an expired
-    // session up front rather than waiting for the POST to return HTML.
-    const refreshPath = `/a/${args.domain}/apps/view/${args.app_id}/`;
-    await this.opts.request.get(`${this.opts.baseUrl}${refreshPath}`);
-    const csrf = await this.csrfFromCookies();
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${args.domain}/apps/edit_form_attr/${args.app_id}/${args.form_unique_id}/xform/`;
+      // Refresh CSRF + cookie via the form's edit page (mirrors makeBuild's
+      // refresh-the-releases-page-first pattern). The view URL also exercises
+      // the same `@login_or_digest` auth so a 302 here surfaces an expired
+      // session up front rather than waiting for the POST to return HTML.
+      const refreshPath = `/a/${args.domain}/apps/view/${args.app_id}/`;
+      const refreshRes = await request.get(`${this.opts.baseUrl}${refreshPath}`, {
+        maxRedirects: 0,
+      });
+      if (refreshRes.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(refreshRes, `commcare_patch_xform GET ${refreshPath}`);
+      }
+      const csrf = await this.csrfFromCookies(request);
 
-    // Build the form-encoded body. Using URLSearchParams ensures the XForm
-    // XML's `&`, `<`, `>`, `+`, `=`, and `#` are all percent-escaped.
-    const form = new URLSearchParams();
-    form.set('xform', args.new_xform_xml);
-    if (args.sha1) form.set('sha1', args.sha1);
+      // Build the form-encoded body. Using URLSearchParams ensures the XForm
+      // XML's `&`, `<`, `>`, `+`, `=`, and `#` are all percent-escaped.
+      const form = new URLSearchParams();
+      form.set('xform', args.new_xform_xml);
+      if (args.sha1) form.set('sha1', args.sha1);
 
-    const res = await this.opts.request.post(`${this.opts.baseUrl}${path}`, {
-      data: form.toString(),
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-CSRFToken': csrf ?? '',
-        Referer: `${this.opts.baseUrl}${refreshPath}`,
-      },
-      maxRedirects: 0,
-    });
-    const status = res.status();
-    const body = await res.text();
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: form.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${refreshPath}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_patch_xform POST ${path}`);
+      }
+      const status = res.status();
+      const body = await res.text();
 
-    // sha1 mismatch — when the caller passed a sha1 and CCHQ rejects
-    // with the standard JSON-body conflict shape, surface as typed err.
-    if ((status === 409 || status === 422) && args.sha1) {
-      let parsed: { message?: string; sha1?: string } = {};
+      // sha1 mismatch — when the caller passed a sha1 and CCHQ rejects
+      // with the standard JSON-body conflict shape, surface as typed err.
+      if ((status === 409 || status === 422) && args.sha1) {
+        let parsed: { message?: string; sha1?: string } = {};
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          /* fall through to generic error */
+        }
+        if (parsed.sha1) {
+          throw new XformConflictError(parsed.sha1, args.sha1);
+        }
+      }
+
+      if (status !== 200) {
+        throw new Error(
+          `commcare_patch_xform POST ${path} returned ${status}: ${body.slice(0, 300)}`,
+        );
+      }
+
+      let parsed: {
+        corrections?: Record<string, unknown>;
+        update?: { 'app-version'?: number };
+      } = {};
       try {
         parsed = JSON.parse(body);
       } catch {
-        /* fall through to generic error */
+        throw new Error(
+          `commcare_patch_xform POST ${path} returned 200 but body was not JSON. ` +
+            'Endpoint likely changed; re-probe via dimagi/commcare-hq forms.py.',
+        );
       }
-      if (parsed.sha1) {
-        throw new XformConflictError(parsed.sha1, args.sha1);
+      const appVersion = parsed.update?.['app-version'];
+      if (typeof appVersion !== 'number') {
+        throw new Error(
+          `commcare_patch_xform POST ${path} returned 200 but JSON body had no update.app-version: ${body.slice(0, 300)}`,
+        );
       }
-    }
-
-    if (status !== 200) {
-      throw new Error(
-        `commcare_patch_xform POST ${path} returned ${status}: ${body.slice(0, 300)}`,
-      );
-    }
-
-    let parsed: {
-      corrections?: Record<string, unknown>;
-      update?: { 'app-version'?: number };
-    } = {};
-    try {
-      parsed = JSON.parse(body);
-    } catch {
-      throw new Error(
-        `commcare_patch_xform POST ${path} returned 200 but body was not JSON. ` +
-          'Endpoint likely changed; re-probe via dimagi/commcare-hq forms.py.',
-      );
-    }
-    const appVersion = parsed.update?.['app-version'];
-    if (typeof appVersion !== 'number') {
-      throw new Error(
-        `commcare_patch_xform POST ${path} returned 200 but JSON body had no update.app-version: ${body.slice(0, 300)}`,
-      );
-    }
-    return {
-      status,
-      app_version: appVersion,
-      ...(parsed.corrections && Object.keys(parsed.corrections).length > 0
-        ? { corrections: parsed.corrections }
-        : {}),
-    };
+      return {
+        status,
+        app_version: appVersion,
+        ...(parsed.corrections && Object.keys(parsed.corrections).length > 0
+          ? { corrections: parsed.corrections }
+          : {}),
+      };
+    });
   }
 
-  private async csrfFromCookies(): Promise<string | undefined> {
-    const state = await this.opts.request.storageState();
+  private async csrfFromCookies(request: APIRequestContext): Promise<string | undefined> {
+    const state = await request.storageState();
     const cookie = state.cookies.find((c) => c.name === 'csrftoken' && c.domain.includes('commcarehq'));
     return cookie?.value;
   }

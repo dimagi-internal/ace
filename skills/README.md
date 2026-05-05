@@ -119,9 +119,17 @@ Some skills self-evaluate their output before passing it downstream; dedicated `
 
 The rubric should be concrete enough to grade on — bullet points with grading anchors, or a numbered checklist with pass/fail conditions. See `skills/idea-to-pdd/SKILL.md` for the canonical example (the 5-question stress-test rubric with worked anchors from the example PDDs). See `skills/ocs-chatbot-eval/SKILL.md` for the 4-dimension weighted-score pattern that dedicated `-eval` skills follow.
 
-### `## Gate Brief` (when the skill ends a phase with a `gate-briefs/<gate>.md` artifact)
+### `## Gate Brief` (when the skill ends a phase with a `<skill>_gate-brief[-<mode>].md` artifact)
 
-Required for any skill that writes `gate-briefs/<gate>.md` — the canonical artifact the orchestrator reads at a `--mode review` pause. Place this section **immediately after** `## LLM-as-Judge Rubric` (if present) and **immediately before** `## Archetypes` (if present) or `## MCP Tools Used` (if neither). Document the four fields the gate brief populates (Artifact Under Review, What to Check, Auto-Surfaced Concerns, Recommended Disposition) using the canonical shape from `agents/ace-orchestrator.md § Gate Brief Contract`.
+Required for any skill that writes a gate brief at
+`runs/<run-id>/<phase>/<skill>_gate-brief[-<mode>].md` — the canonical
+artifact the orchestrator reads at a `--mode review` pause. Place this
+section **immediately after** `## LLM-as-Judge Rubric` (if present)
+and **immediately before** `## Archetypes` (if present) or `## MCP
+Tools Used` (if neither). Document the four fields the gate brief
+populates (Artifact Under Review, What to Check, Auto-Surfaced
+Concerns, Recommended Disposition) using the canonical shape from
+`agents/ace-orchestrator.md § Gate Brief Contract`.
 
 The 5 gate-owning skills today are: `idea-to-pdd` (Phase 1→2), `app-deploy` (Phase 2→3), `ocs-chatbot-eval` (Phase 4→5), `llo-invite` (Phase 5 invite-list), `llo-launch` (Phase 5 launch). `opp-eval` also writes a Gate Brief section but its brief is advisory (does not gate any phase).
 
@@ -189,36 +197,61 @@ captures to compute a trend. **`-eval` never exercises the artifact.**
 
 ### Artifact-path contract
 
-Every `-qa` / `-eval` pair writes to these canonical paths under
-`ACE/<opp-name>/`. Paths are uniform across skills so the umbrella
-`opp-eval` aggregator can discover verdicts without per-skill knowledge.
+**The rule (one path scheme for all per-run artifacts):**
+
+> Every per-run artifact lives at
+> `ACE/<opp-name>/runs/<run-id>/<phase>/<skill>_<artifact>[-<mode>].<ext>`.
+
+Phase folders are `1-design/`, `2-commcare/`, `3-connect/`, `4-ocs/`,
+`5-qa-and-training/`, `6-solicitation-management/`,
+`7-execution-manager/`, `8-closeout/`. Skills choose the phase that
+matches **when the work runs** (so `--monitor` mode for OCS lands
+under `7-execution-manager/`, not `4-ocs/`, because monitoring is
+Phase 7 work). The canonical inventory is in `lib/artifact-manifest.ts`
+— that file is the source of truth when prose and code drift.
+
+**No opp-level `qa-captures/`, `verdicts/`, `eval-reports/`,
+`gate-briefs/`, `scorecards/` directories.** No `YYYY-MM-DD-` filename
+prefixes (the run-id encodes time). The single durable exception is
+golden-template no-opp runs, which keep
+`ACE/golden-template/qa-captures/<dated>.md` because there is no
+run-id to slot into — used only by `ocs-chatbot-qa` /
+`ocs-chatbot-eval` when invoked without an `opp_name`.
 
 | Purpose | Path | Writer |
 |---|---|---|
-| Capture / transcript / evidence | `qa-captures/YYYY-MM-DD-<slug>.md` | `-qa` skill |
-| Structured machine-readable verdict | `verdicts/<producer-skill>[-<mode>].yaml` | `-eval` skill (or producer with inline self-eval) |
-| Human-readable eval report | `eval-reports/YYYY-MM-DD-<slug>.md` | `-eval` skill |
-| Rolling monitor trend | `eval-reports/trend.md` | `-eval` skill (`--monitor` mode only) |
-| Gate brief (if this eval gates a phase) | `gate-briefs/<skill>-<mode>.md` | `-eval` skill |
+| Capture / transcript / evidence | `<phase>/<producer>_transcript[-<mode>].md` | `-qa` skill |
+| Structured machine-readable verdict | `<phase>/<producer>[-eval]_verdict[-<mode>].yaml` | `-eval` skill (or producer with inline self-eval) |
+| Human-readable eval report | `<phase>/<eval-skill>_report[-<mode>].md` | `-eval` skill |
+| Rolling monitor trend | `<phase>/<eval-skill>_trend.md` | `-eval` skill (`--monitor` mode only) |
+| Gate brief (if this eval gates a phase) | `<phase>/<skill>_gate-brief[-<mode>].md` | `-eval` skill |
 
-**Verdict filename rule.** The stem before `-quick` / `-deep` /
-`-monitor` MUST match a registered producer skill name. The Workbench /
-ace-web reader (`apps/opps/sync.py`) strips only those three mode
-suffixes when attributing a verdict to a skill row, so the stem is the
-attribution key. Concrete consequences:
+Paths are uniform across skills so the umbrella `opp-eval` aggregator
+can discover verdicts by walking phase folders without per-skill
+knowledge.
 
-- `-eval` skills MUST drop the `-eval` suffix from their verdict
-  filename. `idea-to-pdd-eval` writes
-  `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd-eval_verdict.yaml` so the Workbench attributes the
-  score to the `idea-to-pdd` row (not the `-eval` row).
-- Recurring per-step evals use `<producer>-monitor.yaml` (e.g.
-  `verdicts/flw-data-review-monitor.yaml`).
+**Verdict filename rule.** The segment immediately before `_verdict`
+identifies the eval that wrote it. The Workbench / ace-web reader
+maps eval names back to producer rows via the eval→producer pairing
+declared in each phase agent's frontmatter, not by parsing the
+filename. Concrete consequences:
+
+- `-eval` skills include `-eval` in their filename (e.g.
+  `1-design/idea-to-pdd-eval_verdict.yaml`).
+- Recurring per-step evals append a mode suffix:
+  `7-execution-manager/flw-data-review-eval_verdict-monitor.yaml`.
 - Skills that self-evaluate inline (no separate `-eval` skill — e.g.
   `app-screenshot-capture`, every per-artifact training skill) write
-  `verdicts/<self>.yaml`.
-- Skills that ARE their own registry row (no producer/eval split, e.g.
-  `ocs-chatbot-eval`) keep their own name in the verdict filename:
-  `verdicts/ocs-chatbot-eval-{quick,deep,monitor}.yaml`.
+  `<phase>/<self>_verdict[-<mode>].yaml`.
+- Skills that ARE their own registry row (no producer/eval split,
+  e.g. `ocs-chatbot-eval`) keep their own name and a mode suffix:
+  `4-ocs/ocs-chatbot-eval_verdict-{quick,deep}.yaml`,
+  `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml`.
+- The umbrella `opp-eval` writes into its own subfolder under
+  `8-closeout/`:
+  `8-closeout/opp-eval/opp-eval_verdict-deep.yaml` (and matching
+  scorecard / gate-brief / trend siblings) so re-runs and the
+  per-skill verdicts don't collide.
 
 **Wiring.** Per-step `-eval` skills run automatically in `/ace:run` —
 each phase agent dispatches the matching eval after each producer skill
@@ -235,7 +268,7 @@ skill: <eval-skill-name>       # e.g., ocs-chatbot-eval
 target: <what-was-judged>      # e.g., experiment_id, pdd-path
 mode: quick | deep | monitor   # or omit if the eval has one mode
 ran_at: <ISO timestamp>
-capture_path: qa-captures/<path>  # or inline-self-eval if the skill is its own producer
+capture_path: <phase>/<producer>_transcript[-<mode>].md  # relative to runs/<run-id>/, or "inline-self-eval" if the skill is its own producer
 
 overall_score: 0.0-10.0           # weighted, post-cap
 overall_score_pre_cap: 0.0-10.0   # optional; raw weighted mean before any cap binds
@@ -310,11 +343,12 @@ the source of truth if this prose drifts.
   the skill as a self-check before writing the PDD.
 - `skills/opp-eval/SKILL.md` — the canonical **umbrella eval**. Distinct
   from a per-skill `-eval`: it does not grade any individual artifact
-  itself, it aggregates every discovered `verdicts/*.yaml` file for an
-  opportunity into a run-level scorecard across 6 skill-category
-  dimensions and drafts improvement recommendations. Ad-hoc, not
-  gate-bound. As more per-skill `-eval` skills gain rubrics and start
-  writing to `verdicts/`, opp-eval automatically picks them up.
+  itself, it walks every phase folder under `runs/<run-id>/` collecting
+  `*_verdict*.yaml` files for an opportunity and rolls them into a
+  run-level scorecard across 7 skill-category dimensions plus
+  improvement recommendations. Ad-hoc, not gate-bound. As more
+  per-skill `-eval` skills gain rubrics and start writing verdicts,
+  opp-eval automatically picks them up.
 
 ## Long-running skills — no fake background tasks
 
@@ -413,7 +447,7 @@ Before committing a new SKILL.md, verify:
 - [ ] All five required sections present in order: `# <Display Name>` → `## Process` → `## MCP Tools Used` → `## Mode Behavior` → `## Change Log`
 - [ ] Process steps are numbered sequentially (`grep -nE '^[0-9]+\.' SKILL.md`)
 - [ ] If the skill branches on PDD archetype, `## Archetypes` is present with all 3 archetypes covered
-- [ ] If the skill writes a `gate-briefs/<gate>.md` artifact (one of the 5 phase gates), `## Gate Brief` is present, placed after `## LLM-as-Judge Rubric` (if any) and before `## Archetypes`/`## MCP Tools Used`
+- [ ] If the skill writes a `<skill>_gate-brief[-<mode>].md` artifact (one of the 5 phase gates), `## Gate Brief` is present, placed after `## LLM-as-Judge Rubric` (if any) and before `## Archetypes`/`## MCP Tools Used`
 - [ ] If the skill consumes the PDD's Evidence Model, an explicit early process step reads it and errors if missing
 - [ ] If the skill has external side effects, `## Dry-Run Behavior` is present
 - [ ] If the skill is blocked on un-built APIs, `## Current Workaround` is present

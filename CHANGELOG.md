@@ -5,6 +5,273 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.11 — 2026-05-05
+
+**fix(connect): CSRF self-heal now actually rotates the cookie.**
+
+The 0.13.9 self-heal correctly detected `403 + /CSRF/i` and called
+`session.refreshCsrfToken()`, but `refreshCsrfToken()` only re-read
+the cookie jar — without giving Django a chance to issue a new
+`Set-Cookie`, the read returned the same stale value the server had
+just rejected. The retry POST resent the unchanged token and got the
+identical 403. Both attempts in `turmeric-20260505-1024` Phase 3
+Step 2 failed for this reason.
+
+Fix in `mcp/connect/auth/playwright-session.ts`:
+
+`refreshCsrfToken()` now GET-s `/accounts/login/` *before* re-reading
+the cookie jar. The view is `@ensure_csrf_cookie`-decorated, so Django
+re-sets `csrftoken` via `Set-Cookie`; Playwright's `BrowserContext`
+auto-syncs it; the subsequent `cookies()` read sees the rotated value.
+The 0.13.9 retry path (in `RestBackend.post()`) is unchanged — it now
+gets a token that's actually different from the one the server
+rejected, and the retried POST goes through.
+
+Companion to 0.13.8 (CCHQ session expiry) and 0.13.9 (REST CSRF
+detection) — same family of "static-snapshot at MCP boot doesn't
+survive long-running sessions" class fixes.
+
+## 0.13.10 — 2026-05-05
+
+**fix(solicitations): thread `program_id` through labs read/update calls so
+private (`is_public=false`) solicitations round-trip end-to-end.**
+
+Labs PR #156 (merge SHA `fe7e0a4e`) shipped a corresponding prod-side fix:
+`list_solicitations`, `get_solicitation`, and `update_solicitation` now
+accept optional `program_id` / `organization_id` inputs that thread scope
+into the prod-side membership check. **Without scope, the labs
+`LabsRecord` API silently filters to `is_public=true` records only** — so
+any ACE skill that creates a private solicitation and then re-reads or
+updates it gets "not found" on every subsequent call. The 0.13.3 fix
+corrected the create-payload shape but didn't propagate `program_id` onto
+subsequent reads; this release closes that gap.
+
+Verified live against program 130: pre-fix solicitation 2836
+(`is_public=false`) was created OK but invisible to all read paths; post-
+deploy the same record reads/updates fine when `program_id=130` is passed.
+
+ACE-side changes:
+- **`skills/solicitation-create/SKILL.md`** — new step 6 calls
+  `get_solicitation(solicitation_id, program_id)` immediately after publish
+  to verify the round-trip. Halts before writing `published.md` or
+  mutating `opp.yaml` if the record isn't reachable. Catches future
+  visibility-default flips structurally rather than at the next skill.
+- **`skills/solicitation-monitor/SKILL.md`** — documents that any
+  `list_solicitations` / `get_solicitation` call (e.g. parent-record
+  refresh) must thread `program_id` from `opp.yaml.program_id`.
+  `list_responses` is a child query and remains scope-free.
+- **`skills/solicitation-review/SKILL.md`** — adds explicit step 9 that
+  flips the labs-side solicitation status to `awarded` via
+  `update_solicitation(program_id=...)` after `award_response` succeeds.
+  Treats the labs-side update as non-fatal so a transient 4xx doesn't
+  rollback a durable award. Inputs section now lists `program_id` as
+  required.
+- **`test/mcp/connect-labs/integration/e2e.integration.test.ts`** — adds
+  a regression test for labs PR #156: creates a private (`is_public:
+  false`) solicitation, then asserts `get_solicitation`,
+  `list_solicitations`, and `update_solicitation` all round-trip when
+  `program_id` is passed.
+
+Class-level preventer (per CLAUDE.md): the round-trip verification step
+turns a silent "create succeeded but the record is unreachable"
+misconfig into a hard halt at the boundary, so future visibility-default
+changes can't reintroduce the same regression downstream.
+
+## 0.13.9 — 2026-05-05
+
+**fix(connect): CSRF rotation now self-heals on 403; companion to 0.13.8.**
+
+The `turmeric-20260505-1024` run halted again at Phase 3 Step 2 with a
+**different** session-related failure shape than 0.13.8 caught:
+`connect_create_opportunity` returned `403 CSRF Failed: CSRF token from
+the 'X-Csrftoken' HTTP header incorrect.` The 0.13.8 self-heal triggers
+on `302 → /login/`, so a 403 + CSRF body went past the wrapper unhandled.
+The cookie's `csrftoken` had rotated server-side after the OAuth refresh
+that 0.13.8 itself triggered, but the `RestBackend` cached the static
+init-time token in its constructor and never re-read it.
+
+Fix in `mcp/connect/backends/rest.ts`:
+
+- `RestBackendOptions` gains `session?: PlaywrightSession`. Wired
+  through in `connect-server.ts`.
+- `RestBackend` keeps a mutable `csrf` field initialized from the static
+  token. `headers()` reads from that field, not `opts.csrfToken`, so a
+  refreshed token is picked up by every subsequent call.
+- The `post()` helper checks for `403 + body matching /CSRF/i`. On match,
+  calls `session.refreshCsrfToken()` (re-reads `csrftoken` from the live
+  cookie jar — Playwright's `BrowserContext` updates it automatically
+  on `Set-Cookie` headers) and retries the POST once. The retry is
+  bounded (one attempt) and only fires on the CSRF-shaped failure;
+  non-CSRF 403s still surface to the caller's `raiseForStatus` path
+  unchanged.
+
+Mirrors the 0.13.8 `commcare.ts` pattern but on a different failure
+shape: 0.13.8 catches login-redirect (auth lost), 0.13.9 catches CSRF
+rotation (auth fine, token stale). Both are part of the same broader
+"static-snapshot at MCP boot doesn't survive long-running sessions"
+class of bug that the user flagged in 0.13.7.
+
+`PlaywrightBackend` (which owns the HTML-form-driven Connect read paths)
+shares the same arch but has not yet surfaced the bug; migration is
+YAGNI until it does.
+
+## 0.13.8 — 2026-05-05
+
+**fix(connect): CCHQ session expiry now self-recovers; transparent retry on
+mid-run 302.**
+
+The `ace-connect` MCP's Playwright session was caching its `BrowserContext`
+for the process lifetime, with a boot-time auth probe that only checked
+`connect.dimagi.com`. CCHQ cookies expire on a separate clock — when they
+went stale mid-run, every `commcare_*` atom 302'd to `/login/` and surfaced
+an opaque `returned 302:` error with no recovery path. The
+`turmeric-20260505-1024` run halted Phase 2 at `app-release` because of
+this; the operator had to restart Claude Code (to drop the cached context)
+even though refresh tokens were intact.
+
+Two complementary fixes turn this from a class of bug into a transient
+that self-heals:
+
+**1. CCHQ-side probe in `playwright-session.ts`.** When `cchqBaseUrl` is
+supplied, `getContext()` runs a second authed probe against
+`${cchqBaseUrl}/accounts/login/` after the Connect probe. If CCHQ is
+stale (200 instead of 302) even though Connect cookies look valid, the
+context is closed, the browser is restarted, and `hqOAuthLogin` runs
+fresh — re-establishing both services' cookies in one OAuth bounce.
+Catches stale-on-disk state at boot.
+
+**2. One-shot retry on mid-session 302 in `commcare.ts`.** A new
+`PlaywrightSession.invalidate()` method drops the cached context, csrf
+token, and on-disk session file. `CommCareBackend` now takes a
+`PlaywrightSession` reference (not a bare `APIRequestContext`) and pulls
+a fresh `request` from it on every call. Each method is wrapped in
+`runWithSessionRetry`: a 302 to `/login/` throws `SessionExpiredError`,
+which the wrapper catches once, calls `session.invalidate()`, and retries
+the call against a freshly-authenticated context. Catches mid-run
+expiry that the boot-time probe missed.
+
+Affects `commcare_make_build`, `commcare_release_build`,
+`commcare_download_ccz`, `commcare_patch_xform`. The REST and Playwright
+backends pointed at `connect.dimagi.com` use the same architecture and
+remain on the boot-time probe — they have not surfaced this class of
+bug yet, and migrating them is YAGNI until they do.
+
+## 0.13.7 — 2026-05-05
+
+**OCS skill efficiency: idempotency, write strategy, rubric structure.**
+
+Three improvements to the OCS skills surfaced by the audit-ocs-skills
+session, separate from the path-cleanup that shipped in 0.13.6:
+
+**1. `ocs-agent-setup` gains a Step 0 short-circuit + `--prompt-patch` mode.**
+Step 0 reads the local state file (`runs/<run-id>/4-ocs/ocs-agent-setup.md`)
+**before** any OCS call. A normal re-run with the state file present
+skips straight to embed retrieval (no `ocs_list_chatbots` round-trip).
+The new `--prompt-patch` mode reuses the existing chatbot, collection,
+and uploaded files; only recomposes the system prompt → calls
+`ocs_set_chatbot_pipeline` → publishes a new version. Skips clone,
+collection create, file upload, and the **5–10 minute re-index** that
+re-running the full pipeline would re-fire. This is the canonical
+Phase 4 retry path after `ocs-chatbot-eval --quick` flags a prompt
+issue. The `ocs-setup` agent's Phase 4 → 5 gate now dispatches
+`ocs-agent-setup --prompt-patch` (was: re-running the full skill).
+
+The prior skill prose said the agent should "retry prompt-patch" but
+no such mode existed — re-runs walked the full pipeline silently,
+burning the indexing minutes for what should be a prompt-only edit.
+
+**2. `ocs-chatbot-qa --quick` switched to single-shot writes.**
+For a 3-prompt suite with a 270s hard wall-clock cap, per-prompt CAS
+writes cost 4–5 Drive RTTs (read+write per prompt + metadata flush)
+for resume-from-partial value that's negligible against the cap.
+`--quick` now buffers entries in memory and calls `drive_create_file`
+once at suite end. **1 Drive RTT instead of 5.** The incremental
+CAS-write strategy still applies on `--deep` / `--monitor` where
+15–30 min runtimes make resume-from-partial worth the bookkeeping.
+Step 3 (resume-from-partial) is a `--deep` / `--monitor`-only step
+now.
+
+**3. `ocs-chatbot-eval` rubric extracted into labeled subsections.**
+The 5-dimension table cells in the rubric were ~600 words each (one
+in particular packed two capture-method branches with three caps and
+five rules into a single cell). LLM judges miss rules buried in dense
+prose. The dimension table is now a one-line summary plus a pointer
+to a new `## Rubric Rules` section that breaks each dimension out:
+Correctness, Source usage (with `openai-compat` / `widget` branches
+as separate sub-subsections), Refusal correctness (with tiered cap
+table), Tone, Tagging, plus a Suite-level subsection for Inflation
+guard and Pre/post-cap reporting. **Same grading semantics — every
+existing rule, deduction, cap, and historical reasoning is preserved
+verbatim under its own heading**, just visible.
+
+Tests: 477 passed / 32 skipped / 0 failed (unchanged).
+
+## 0.13.6 — 2026-05-05
+
+**Path-scheme cleanup: align all per-run artifacts to the run-scoped layout.**
+
+Sweep across skills, agents, and commands to retire opp-level
+`qa-captures/` / `verdicts/` / `eval-reports/` / `gate-briefs/` /
+`scorecards/` directories. Every per-run artifact now lives at
+`ACE/<opp-name>/runs/<run-id>/<phase>/<skill>_<artifact>[-<mode>].<ext>`
+— the layout the artifact manifest and the run fixtures already
+encode. Two prior parallel efforts (the audit-ocs-skills session and
+0.13.0's perl-substitution sweep) each got partway here; this release
+finishes the job.
+
+**Critical wiring fixes** (skill behavior was wrong against current
+main, not just doc drift):
+
+- `skills/llo-launch/SKILL.md` — deep-QA verdict freshness gate (Step
+  4) now reads `4-ocs/ocs-chatbot-eval_verdict-deep.yaml` and
+  `5-qa-and-training/app-ux-eval_verdict-deep.yaml` per the manifest;
+  build IDs come from `2-commcare/app-deploy_summary.md`. Without
+  this, the gate would always fail with "verdict missing" against any
+  real run.
+- `skills/opp-eval/SKILL.md` — verdict discovery walks each phase
+  folder under `runs/<run-id>/` collecting `*_verdict*.yaml` (was
+  globbing the now-extinct `ACE/<opp>/verdicts/*.yaml`). Outputs land
+  under `8-closeout/opp-eval/`.
+
+**OCS skills migrated** to the run-scoped scheme: `ocs-chatbot-qa`
+writes transcripts at `4-ocs/ocs-chatbot-qa_transcript-<mode>.md`
+(`7-execution-manager/...` for `--monitor`); `ocs-chatbot-eval`
+writes verdicts, reports, gate briefs, and trend at the matching
+phase paths. The single surviving use of dated `qa-captures/` is the
+golden-template no-opp fallback (`ACE/golden-template/qa-captures/<dated>.md`)
+— no run-id is available in that case.
+
+**Other eval skills** brought into line: `app-ux-eval`,
+`app-screenshot-capture`, `pdd-to-deliver-app-eval`,
+`flw-data-review-eval`, `llo-launch-eval` repointed to the canonical
+run-scoped paths. Inputs (`pdd-to-app-journeys.md`,
+`app-test-cases.yaml`, `app-deploy_summary.md`) corrected to their
+phase-prefixed locations.
+
+**Caller doc lies cleared** in `agents/ace-orchestrator.md` (gate
+brief read paths + opp-eval discovery prose),
+`agents/execution-manager.md` (monitor paths),
+`agents/ocs-tester.md` (transcript / verdict / report paths + 5-dim
+list), `agents/commcare-setup.md`, `agents/design-review.md`,
+`commands/qa-deep.md`, `commands/eval.md`, `commands/step.md`.
+
+**Contract update:** `skills/README.md` § Artifact-path contract now
+declares the run-scoped scheme as canonical, with the
+golden-template exception called out explicitly. Verdict-filename
+section rewritten to drop the stale "drop the -eval suffix" rule —
+producer attribution now happens via the eval→producer pairing
+declared in each phase agent's frontmatter, not by parsing
+filenames.
+
+**Ancillary:** `lib/artifact-manifest.ts` description corrected from
+"5 smoke prompts" → "3" (audit caught this); `deployment-summary.md`
+references in `app-release`, `app-release-eval`, `commcare-form-patch`,
+`llo-launch-eval`, `training-llo-guide`, `agents/execution-manager.md`,
+`agents/commcare-setup.md` updated to `2-commcare/app-deploy_summary.md`
+(stragglers from 0.13.0's rename sweep).
+
+Tests: 477 passed / 32 skipped / 0 failed (unchanged).
+
 ## 0.13.4 — 2026-05-05
 
 **ace-gdrive efficiency: `drive_read_file` transient-5xx retry + new `update_yaml_file` tool.**

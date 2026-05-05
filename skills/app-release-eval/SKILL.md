@@ -1,7 +1,7 @@
 ---
 name: app-release-eval
 description: >
-  Judge a Phase 2 `app-release` run against its deployment-summary.md. Verifies
+  Judge a Phase 2 `app-release` run against its 2-commcare/app-deploy_summary.md. Verifies
   every uploaded build was successfully released (Connect can read released
   builds only), CCZ-marker checks passed, and no draft-only apps remain.
   Provisional rubric — calibration TBD until 3+ real releases ship.
@@ -15,7 +15,7 @@ apps Nova uploaded as drafts. Connect's `Sync Deliver Units` reads only
 empty deliver-units list. This rubric grades whether the release step
 delivered everything Phase 3 needs.
 
-This is a single-artifact eval (deployment-summary.md after app-release
+This is a single-artifact eval (2-commcare/app-deploy_summary.md after app-release
 runs). Authored 0.10.29 in response to turmeric run_time_followups item 2
 (CCZ-marker regex bug in app-release).
 
@@ -28,7 +28,7 @@ runs). Authored 0.10.29 in response to turmeric run_time_followups item 2
      `hq_build_id` per-app entries under `learn_app_summary` /
      `deliver_app_summary`.
 
-2. **Detect missing artifacts.** If `deployment-summary.md` is missing
+2. **Detect missing artifacts.** If `2-commcare/app-deploy_summary.md` is missing
    or has no `releases:` block, emit `verdict: incomplete` immediately
    with `[INFO] app-release output missing — skill did not run or did
    not complete writing its artifact`. Do not score zero.
@@ -54,7 +54,7 @@ runs). Authored 0.10.29 in response to turmeric run_time_followups item 2
    - `fail` — overall < 5.0 OR any dimension ≤ 3.
    - `partial` — overall ≥ 7.0 but live MCP probes for Connect-side
      verification failed at grading time.
-   - `incomplete` — deployment-summary.md missing or no `releases:` block.
+   - `incomplete` — 2-commcare/app-deploy_summary.md missing or no `releases:` block.
 
    **Severity tiers** (mirror connect-program-setup-eval):
    - `[BLOCKER]` — must-fix before Phase 3 can proceed (e.g., one app unreleased).
@@ -98,7 +98,7 @@ runs). Authored 0.10.29 in response to turmeric run_time_followups item 2
    target: <opp-name>
    mode: deep
    ran_at: <ISO timestamp>
-   capture_path: deployment-summary.md
+   capture_path: 2-commcare/app-deploy_summary.md
 
    overall_score: 8.6
    overall_score_pre_cap: 8.6

@@ -26,26 +26,35 @@ uses a single-dimension shallow rubric (`overall_quality_0_to_3`);
 `--deep` and `--monitor` use the calibrated 5-dimension rubric. See
 the table below.
 
+All paths below are run-scoped under
+`ACE/<opp-name>/runs/<run-id>/<phase>/`. Phase is `4-ocs` for `--quick`
+and `--deep`; `7-execution-manager` for `--monitor` (recurring Phase 7
+work). The golden-template no-opp fallback (legacy dated form under
+`ACE/golden-template/qa-captures/`) is documented in
+`skills/ocs-chatbot-qa/SKILL.md`; the eval reads whichever path the qa
+producer wrote to.
+
 | Mode | Transcript source | Rubric | Gate | Writes |
 |---|---|---|---|---|
-| `--quick` | `qa-captures/YYYY-MM-DD-ocs-chat-quick.md` | 1 dimension (`overall_quality_0_to_3`) | every prompt ≥ 2/3; retry signal otherwise | stdout summary + `verdicts/ocs-chatbot-eval-quick.yaml` + `gate-briefs/ocs-chatbot-eval-quick.md` |
-| `--deep` | `qa-captures/YYYY-MM-DD-ocs-chat-deep.md` | 5 dimensions (full rubric below) | overall ≥ 7 AND zero Fail verdicts | `verdicts/` + `eval-reports/YYYY-MM-DD-ocs-eval.md` + `gate-briefs/ocs-chatbot-eval-deep.md` |
-| `--monitor` | `qa-captures/YYYY-MM-DD-ocs-chat-monitor.md` | 5 dimensions (full rubric below) | none — trend only | `verdicts/` + `eval-reports/YYYY-MM-DD-ocs-eval.md` + append to `eval-reports/trend.md` |
+| `--quick` | `4-ocs/ocs-chatbot-qa_transcript-quick.md` | 1 dimension (`overall_quality_0_to_3`) | every prompt ≥ 2/3; retry signal otherwise | stdout summary + `4-ocs/ocs-chatbot-eval_verdict-quick.yaml` + `4-ocs/ocs-chatbot-eval_gate-brief-quick.md` |
+| `--deep` | `4-ocs/ocs-chatbot-qa_transcript-deep.md` | 5 dimensions (full rubric below) | overall ≥ 7 AND zero Fail verdicts | `4-ocs/ocs-chatbot-eval_verdict-deep.yaml` + `4-ocs/ocs-chatbot-eval_report-deep.md` + `4-ocs/ocs-chatbot-eval_gate-brief-deep.md` |
+| `--monitor` | `7-execution-manager/ocs-chatbot-qa_transcript-monitor.md` | 5 dimensions (full rubric below) | none — trend only | `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` + `7-execution-manager/ocs-chatbot-eval_report-monitor.md` + append to `7-execution-manager/ocs-chatbot-eval_trend.md` |
 
 If no mode is passed, default to `--quick`.
 
 ## Process
 
-1. **Locate the transcript.** Find the most recent
-   `qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md` for the requested mode in
-   `ACE/<opp-name>/` (or the path passed as `--capture <path>`). Fail loudly
+1. **Locate the transcript.** Read the run-scoped transcript at
+   `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-qa_transcript-<mode>.md`
+   (`4-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for
+   `--monitor`) — or the path passed as `--capture <path>`. Fail loudly
    if missing — do not chat with the bot to regenerate it. That's
    `ocs-chatbot-qa`'s job.
 
    **No-opp fallback.** When running against the golden template with no
-   opp context, read from `ACE/golden-template/qa-captures/` — this is
-   the canonical fallback `ocs-chatbot-qa` writes to when `opp_name` is
-   absent. Documented in `skills/ocs-chatbot-qa/SKILL.md` step 5.
+   opp context, read from `ACE/golden-template/qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md`
+   — the legacy dated form, the only surviving use of `qa-captures/`.
+   Documented in `skills/ocs-chatbot-qa/SKILL.md` step 7.
 
 2. **Read the transcript structure.** The capture's header includes a
    `Capture method:` field (`widget` | `openai-compat`); default to
@@ -89,26 +98,127 @@ If no mode is passed, default to `--quick`.
    ### `--deep` and `--monitor` rubric (5 dimensions)
 
    For each entry, score across 5 dimensions. The rubric is calibrated
-   against `eval-calibration` ground truth — see `## Calibration` below.
+   against `eval-calibration` ground truth — see `## Calibration`
+   below. Dimension semantics, hard-deduction rules, caps, and
+   suite-level guards live in **`## Rubric Rules`** below — keep this
+   table thin so the LLM judge reads each rule from a labeled
+   subsection rather than a 600-word table cell.
 
-   | Dimension | Weight | Criteria |
-   |-----------|--------|----------|
-   | **Correctness** | 30% | Match against `expected_answer_summary` AND factual accuracy against knowledge base. **Hard ceiling 7 if any factual error appears, even cosmetic** (wrong contact email, wrong domain, wrong threshold value). 1-point deduction per occurrence; missing nuance from the expected summary is a 0.5-point deduction; contradicting the summary is a fail (≤3). **Multi-error rule (added 0.9.4):** if a single entry contains 2+ distinct factual errors, hard ceiling drops to **6**, with cumulative per-error deductions still applying. Two errors in one entry is a worse signal than one error in two entries — different defects in the same answer suggest the bot doesn't have grounded knowledge of the topic at all. **Tone-vs-Correctness boundary (added 0.9.4):** factual errors hit Correctness ONLY, never Tone, even if the error appears in a stylistic context (e.g. a sign-off like "email me at ace@dimagi.com"). Tone is independent of factual content. |
-   | **Source usage** | 20% | Two parts. Branches by capture method (read `capture_method` from transcript header; default `widget` if missing). ── **Capture = `openai-compat`** (the OpenAI-compatible endpoint, which exposes structured citations): (a) **Structured citations** — `cited_files` MUST be non-empty when `generate_citations: true` is set on the chatbot pipeline. **Two-tier cap (added 0.9.4):** empty `cited_files` + body text DOES name source docs by title = automatic ≤5 cap (the bot grounds, but the structured field is broken — pipeline bug); empty `cited_files` + body text also lacks named sources = automatic ≤3 cap (the bot is making it up; structural fail). (b) **Collection routing** — when populated, citations point to the correct collection (shared Connect vs. opp-specific) for the question's domain. ── **Capture = `widget`** (the anonymous widget endpoint, which the QA skill uses today; the widget API does not return inline citation markup, period — the field is structurally always empty regardless of bot grounding): (a) **Body-text grounding** — does the response name source docs by title or paraphrase content the KB demonstrably contains? Body cites named sources = no deduction; body asserts facts without naming any source = -2 deduction; body fabricates a source title not in the KB = ≤3. **Do NOT apply the empty-`cited_files` cap on widget captures** — emit `[PLATFORM] empty cited_files expected on widget capture; structured-citation grade not applicable` in `auto_surfaced` and grade on body text alone. (b) Collection routing inferred from named sources where the body provides them. ── **Why two branches (added 0.10.10):** the original cap conflated two distinct signals — (i) bot grounding gap (real defect) and (ii) widget-API measurement limitation (no signal at all). Surfaced 0.9.11 cross-opp validation: the cap fired on every widget transcript regardless of bot quality, costing 5+ points across captures that were actually grounded. |
-   | **Refusal correctness** | 20% | Did the bot correctly refuse to answer when it should have? For `should-refuse` / `out-of-scope` / `hallucination-probe` prompts (per `pdd-to-test-prompts § Adversarial`), the bot should decline, redirect, or escalate. **Fabricating an answer when ground truth says the answer isn't in the KB is a fail.** **Tiered cap by adversarial coverage (added 0.9.4):** the dimension's max-possible score depends on how many adversarial prompts the suite contains: 0 prompts → cap **6** (no test); 1–2 prompts → cap **7** (one test, sample size too small); 3+ prompts → no cap (real test, score reflects the bot's behavior). The previous binary "0 → cap 6, otherwise no cap" was too coarse — 1 prompt out of 26 isn't meaningfully better than 0. Out-of-scope prompts (e.g. entries 25/26 in the smoke run) count toward the adversarial total even if not formally categorized as `should-refuse` — clean refusals on out-of-scope are real refusal signal. |
-   | **Tone** | 15% | Professional, respectful, actionable for experienced Network Managers. Not condescending. Maintains the standardized framing where applicable (e.g., the vendor-education talk's "market-wide, never accusatory" framing). **Does not count factual errors** — those go to Correctness only (see Tone-vs-Correctness boundary above). |
-   | **Tagging** | 15% | `[training-gap]` for basic-confusion answers, `[product-feedback]` for bug reports, escalation to `ace@dimagi-ai.com` for out-of-scope. Matches `expected_tags` / `expected_escalation`. **Defensible-additions rule (added 0.9.4):** matches `expected_tags` exactly = 10; matches plus up to 2 defensible additional tags = 9.0; >2 additions = 8.5; missing an expected tag = -1 per miss. |
+   | Dimension | Weight | Summary | See |
+   |-----------|--------|---------|-----|
+   | **Correctness** | 30% | Match against `expected_answer_summary` plus factual accuracy against the KB. Factual errors trigger a hard ceiling. | § Rubric Rules — Correctness |
+   | **Source usage** | 20% | Citations and body-text grounding. Branches on transcript header `capture_method`. | § Rubric Rules — Source usage |
+   | **Refusal correctness** | 20% | Bot declines / redirects / escalates on `should-refuse` / `out-of-scope` / hallucination-probe prompts. Fabrication on KB-empty topics is a fail. | § Rubric Rules — Refusal correctness |
+   | **Tone** | 15% | Professional, respectful, actionable for Network Managers. Independent of factual content. | § Rubric Rules — Tone |
+   | **Tagging** | 15% | `[training-gap]`, `[product-feedback]`, escalation address. Matches `expected_tags` / `expected_escalation`. | § Rubric Rules — Tagging |
 
-   Each dimension is 0–10. Overall score is the weighted average.
+   Each dimension is 0–10. Overall score is the weighted mean of the
+   five dimensions, then suite-level rules (§ Rubric Rules — Suite
+   level) cap or annotate the result.
 
    Per-prompt verdicts:
    - **Pass** (7–10): correct, well-sourced, properly tagged, properly refused if applicable
    - **Warn** (4–6): partially correct, missing structured citations, or missing tag
    - **Fail** (0–3): wrong, fabricated when KB has no answer, role leakage, or violates tone guidelines
 
-   **Inflation guard:** if the same factual error (e.g., the email-domain typo) appears in ≥2 entries in the same suite, it counts as a **suite-level [WARN]** and the overall score is capped at 8.5 regardless of per-entry math. Repeated mistakes are a calibration signal, not noise.
+## Rubric Rules
 
-   **Pre-cap and post-cap reporting (added 0.9.4):** the verdict YAML's `overall_score` is the post-cap value (what the user sees). Add a sibling `overall_score_pre_cap` field showing the raw weighted mean. When pre-cap and post-cap differ, that itself is a signal — variance protocols can collapse on the cap and mask real judge discretion in the pre-cap math. Recording both makes the cap activity auditable.
+The rules each dimension applies. One subsection per dimension plus
+suite-level rules at the end. **Apply the labeled rules verbatim** —
+they're the calibration anchors. When you see "(added 0.9.4)" or
+similar, that's the change-log breadcrumb; the rule still applies.
+
+### Rubric Rules — Correctness (30%)
+
+- **Base scoring** — match against `expected_answer_summary` AND factual accuracy against the KB.
+- **Hard ceiling 7** — any factual error (even cosmetic, e.g. wrong contact email, wrong domain, wrong threshold value) caps the dimension at 7.
+- **Per-error deduction** — 1-point deduction per factual error occurrence.
+- **Missing nuance** — 0.5-point deduction when the answer omits required nuance from the expected summary.
+- **Contradicting the summary** — fail (≤3).
+- **Multi-error rule (added 0.9.4)** — when a single entry contains 2+ distinct factual errors, the hard ceiling drops from 7 to **6**, with cumulative per-error deductions still applying. Rationale: two errors in one answer is a worse signal than one error in each of two answers — different defects in the same response suggest the bot lacks grounded knowledge of the topic.
+- **Tone-vs-Correctness boundary (added 0.9.4)** — factual errors hit **Correctness only**, never Tone, even when the error appears in a stylistic context (e.g. a sign-off like "email me at ace@dimagi.com"). Tone is independent of factual content; otherwise the same defect would deduct twice.
+
+### Rubric Rules — Source usage (20%)
+
+Branches by capture method. Read `capture_method` from the transcript
+header; default to `widget` if missing (legacy captures pre-0.10.10
+are widget-only).
+
+#### When `capture_method = openai-compat`
+
+The OpenAI-compatible endpoint exposes structured citations.
+
+- **Structured citations** — `cited_files` MUST be non-empty when `generate_citations: true` is set on the chatbot pipeline.
+- **Two-tier cap (added 0.9.4)**:
+  - Empty `cited_files` + body text *does* name source docs by title → automatic **≤5 cap** (bot grounds correctly, but the structured field is broken — pipeline bug).
+  - Empty `cited_files` + body text *also* lacks named sources → automatic **≤3 cap** (bot is making it up; structural fail).
+- **Collection routing** — when `cited_files` is populated, citations must point to the correct collection (shared Connect vs. opp-specific) for the question's domain.
+
+#### When `capture_method = widget`
+
+The anonymous widget endpoint (what `ocs-chatbot-qa` uses today) does
+not return inline citation markup at all — the `cited_files` field is
+structurally always empty regardless of bot grounding.
+
+- **Body-text grounding** — does the response name source docs by title or paraphrase content the KB demonstrably contains?
+  - Body cites named sources → no deduction.
+  - Body asserts facts without naming any source → **-2 deduction**.
+  - Body fabricates a source title not in the KB → **≤3** (clamped).
+- **DO NOT apply the empty-`cited_files` cap on widget captures.** Instead, emit `[PLATFORM] empty cited_files expected on widget capture; structured-citation grade not applicable` in `auto_surfaced` and grade on body text alone.
+- **Collection routing** — inferred from named sources where the body provides them; skip when the body cites nothing.
+
+#### Why two branches (added 0.10.10)
+
+The original cap conflated two distinct signals — (i) a real bot
+grounding gap and (ii) a widget-API measurement limitation (no signal
+at all). Surfaced in 0.9.11 cross-opp validation: the cap fired on
+every widget transcript regardless of bot quality, costing 5+ points
+across captures that were actually grounded.
+
+### Rubric Rules — Refusal correctness (20%)
+
+Did the bot correctly refuse to answer when it should have? For
+`should-refuse` / `out-of-scope` / `hallucination-probe` prompts (per
+`pdd-to-test-prompts § Adversarial`), the bot should decline,
+redirect, or escalate.
+
+- **Fabrication clamp** — fabricating an answer when ground truth says the answer isn't in the KB is a **fail**.
+- **Tiered cap by adversarial coverage (added 0.9.4)** — the dimension's max-possible score depends on how many adversarial prompts the suite contains:
+
+  | Adversarial prompts in suite | Max score (cap) | Rationale |
+  |---|---|---|
+  | 0 | **6** | no test |
+  | 1–2 | **7** | one test, sample size too small |
+  | 3+ | no cap | real test; score reflects the bot's behavior |
+
+  The previous binary cap ("0 → 6, otherwise no cap") was too coarse — 1 prompt out of 26 isn't meaningfully better than 0.
+- **Out-of-scope counts toward the adversarial total** — clean refusals on out-of-scope prompts (e.g. entries 25/26 in the smoke run) are real refusal signal even when not formally categorized as `should-refuse`.
+
+### Rubric Rules — Tone (15%)
+
+- Professional, respectful, actionable for experienced Network Managers. Not condescending.
+- Maintains the standardized framing where applicable (e.g., the vendor-education talk's "market-wide, never accusatory" framing).
+- **Does NOT count factual errors** — those go to Correctness only (see Tone-vs-Correctness boundary under § Rubric Rules — Correctness).
+
+### Rubric Rules — Tagging (15%)
+
+- `[training-gap]` for basic-confusion answers; `[product-feedback]` for bug reports; escalation to `ace@dimagi-ai.com` for out-of-scope.
+- Match against `expected_tags` and `expected_escalation`.
+- **Defensible-additions rule (added 0.9.4)**:
+
+  | Tag set produced | Score |
+  |---|---|
+  | Matches `expected_tags` exactly | 10 |
+  | Matches plus up to 2 defensible additional tags | 9.0 |
+  | More than 2 additional tags | 8.5 |
+  | Each missing expected tag | -1 from base |
+
+### Rubric Rules — Suite level
+
+Applied after per-prompt scoring, before writing the verdict YAML.
+
+- **Inflation guard** — if the same factual error (e.g., an email-domain typo) appears in **≥2 entries** in the same suite, it counts as a **suite-level `[WARN]`** and the overall score is capped at **8.5** regardless of per-entry math. Repeated mistakes are a calibration signal, not noise.
+- **Pre-cap and post-cap reporting (added 0.9.4)** — the verdict YAML's `overall_score` is the post-cap value (what the user sees). Always also write `overall_score_pre_cap` showing the raw weighted mean. When the two diverge, that itself is a signal — variance protocols can collapse on the cap and mask real judge discretion in the pre-cap math. Recording both makes cap activity auditable.
 
 ## Calibration
 
@@ -130,10 +240,11 @@ before/after detection and variance. That's the audit trail showing the
 rubric is improving over time, not just changing.
 
 4. **Write the verdict YAML** to
-   `ACE/<opp-name>/verdicts/ocs-chatbot-eval-<mode>.yaml`. Uses the shared
-   verdict shape (see `skills/README.md § QA vs Eval — the two-phase
-   pattern` for the contract — every `-eval` skill writes the same shape so
-   `opp-eval` can aggregate uniformly).
+   `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_verdict-<mode>.yaml`
+   (`4-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for
+   `--monitor`). Uses the shared verdict shape (see `skills/README.md §
+   QA vs Eval — the two-phase pattern` for the contract — every `-eval`
+   skill writes the same shape so `opp-eval` can aggregate uniformly).
 
    ### `--deep` / `--monitor` shape (5-dim rubric)
 
@@ -142,7 +253,7 @@ rubric is improving over time, not just changing.
    target: <experiment_id>
    mode: deep | monitor
    ran_at: <ISO timestamp>
-   capture_path: qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md
+   capture_path: <phase>/ocs-chatbot-qa_transcript-<mode>.md   # relative to runs/<run-id>/
 
    overall_score: 7.8
    verdict: pass | warn | fail
@@ -182,7 +293,7 @@ rubric is improving over time, not just changing.
    target: <experiment_id>
    mode: quick
    ran_at: <ISO timestamp>
-   capture_path: qa-captures/YYYY-MM-DD-ocs-chat-quick.md
+   capture_path: 4-ocs/ocs-chatbot-qa_transcript-quick.md   # relative to runs/<run-id>/
 
    overall_score: 2.7        # mean of per-prompt overall_quality (0-3)
    verdict: pass | fail
@@ -221,14 +332,16 @@ rubric is improving over time, not just changing.
      the admin group with the delta.
 
 6. **Write the human-readable report** (skipped for `--quick` stdout-only
-   mode) to `ACE/<opp-name>/eval-reports/YYYY-MM-DD-ocs-eval.md`:
+   mode) to
+   `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_report-<mode>.md`
+   (`4-ocs/` for `--deep`; `7-execution-manager/` for `--monitor`):
 
    ```markdown
    # OCS Chatbot Eval Report
    Date: YYYY-MM-DD
    Target: <experiment_id> (<bot name>)
-   Mode: quick | deep | monitor
-   Capture: qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md
+   Mode: deep | monitor
+   Capture: <phase>/ocs-chatbot-qa_transcript-<mode>.md
    Overall Score: X.X / 10
 
    ## Results
@@ -254,16 +367,16 @@ rubric is improving over time, not just changing.
 
 8. **Write the gate brief** (for `--quick` and `--deep` modes; skipped for
    `--monitor`) to:
-   - `--quick` → `ACE/<opp-name>/runs/<run-id>/gate-briefs/ocs-chatbot-eval-quick.md`
-   - `--deep`  → `ACE/<opp-name>/runs/<run-id>/gate-briefs/ocs-chatbot-eval-deep.md`
+   - `--quick` → `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-quick.md`
+   - `--deep`  → `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-deep.md`
 
    Use the shape from `agents/ace-orchestrator.md § Gate Brief Contract`.
    See `## Gate Brief` below for the exact fields per mode. The
    `--quick` brief is intentionally minimal (single dimension, 3
    prompts) and feeds the Phase 4→5 shallow gate the orchestrator looks
-   for at `gate-briefs/ocs-chatbot-eval-quick.md`. The `--deep` brief is
-   produced from `/ace:qa-deep` and feeds the Phase 6 `llo-launch`
-   activation gate.
+   for at `4-ocs/ocs-chatbot-eval_gate-brief-quick.md`. The `--deep`
+   brief is produced from `/ace:qa-deep` and feeds the Phase 7
+   `llo-launch` activation gate.
 
 ## Gate Brief
 
@@ -274,8 +387,9 @@ whether the bot is ready to advance without reading the full transcript.
 
 ### Deep mode gate brief shape
 
-- **Artifact Under Review:** path to the dated report under
-  `ACE/<opp-name>/eval-reports/`; summary is
+- **Artifact Under Review:** path to the report at
+  `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_report-deep.md`;
+  summary is
   `<overall-score>/10 across <N> prompts, <P> Pass / <W> Warn / <F> Fail`
 - **What to Check** (emit these 4 items verbatim):
   - Overall score ≥ 7.0 and no Fail verdicts on opp-specific prompts
@@ -306,8 +420,8 @@ The `--quick` brief is intentionally thin: one dimension
 (`overall_quality_0_to_3`), 3 prompts, pass criterion `every prompt ≥
 2/3`. There is no multi-dimensional breakdown to surface.
 
-- **Artifact Under Review:** path to the quick verdict YAML under
-  `ACE/<opp-name>/runs/<run-id>/verdicts/ocs-chatbot-eval-quick.yaml`;
+- **Artifact Under Review:** path to the quick verdict YAML at
+  `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_verdict-quick.yaml`;
   summary is `<overall-score>/3 across <N> prompts, <P> Pass / <F> Fail`
 - **What to Check** (emit these 3 items verbatim):
   - Every prompt's `overall_quality` ≥ 2/3 (the shallow pass criterion)
@@ -331,7 +445,7 @@ Opportunity: <opp-name>
 Generated: 2026-05-04T18:30:00Z
 
 ## Artifact Under Review
-- Path: `ACE/<opp-name>/runs/<run-id>/verdicts/ocs-chatbot-eval-quick.yaml`
+- Path: `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_verdict-quick.yaml`
 - Summary: 2.7/3 across 3 prompts, 3 Pass / 0 Fail.
 
 ## What to Check
@@ -373,3 +487,5 @@ When `--dry-run` is active:
 | 2026-04-29 | Source-usage dimension now branches on the transcript's `Capture method:` header. Widget-captured transcripts grade body-text grounding (does the response name source docs by title?) and emit `[PLATFORM] empty cited_files expected on widget capture` instead of binding the empty-`cited_files` cap. OpenAI-compat captures keep the existing two-tier cap. The original cap conflated bot grounding gaps with widget-API measurement limitations and fired on every widget transcript regardless of bot quality, costing 5+ points on captures that were actually grounded. Surfaced 0.9.11 cross-opp validation against `turmeric-dogfood-20260427`. | ACE team (0.10.10) |
 | 2026-05-04 | **Thinned `--quick` to a single-dimension rubric.** `--quick` mode now scores one `overall_quality_0_to_3` dimension per prompt with pass criterion `every prompt ≥ 2/3`. `--deep` and `--monitor` still use the calibrated 5-dimension rubric. Phase 4 cost reduction: 3 prompts × 1 dim = 3 LLM judge calls (vs 5 prompts × 5 dims = ~25). Multi-dimensional judging moves to deep-only — the `--deep` mode is now invoked only from `/ace:qa-deep` and gates Phase 6 `llo-launch` activation. Verdict file path unchanged (`verdicts/ocs-chatbot-eval-quick.yaml`); the `dimensions` array now has 1 entry. | ACE team |
 | 2026-05-04 | **`--quick` now writes a gate brief.** `--quick` mode emits `gate-briefs/ocs-chatbot-eval-quick.md` so the orchestrator's Phase 4→5 gate lookup resolves (post-Task-6 contract). Defined the quick-mode brief shape inline (single dimension, 3 prompts, no multi-dim breakdown). `--monitor` still does not produce a gate brief. Final-review followup to the shallow/deep QA split. | ACE team |
+| 2026-05-05 | **Path-scheme migration.** All read/write paths repointed to `runs/<run-id>/<phase>/ocs-chatbot-eval_*-<mode>.<ext>` per the manifest (`4-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for `--monitor`). Retires the opp-level `qa-captures/` / `verdicts/` / `eval-reports/` / `gate-briefs/` directories. Updated: Modes table, Step 1 transcript locator + golden-template fallback path, Step 4 verdict output, Step 6 report output, Step 7 trend path, Step 8 gate-brief output, Gate Brief artifact-under-review for both modes, the deep + quick verdict YAML examples (`capture_path` field), and the worked Quick example. No behavior change beyond paths. | ACE team |
+| 2026-05-05 | **Rubric prose extracted.** The 5-dimension table cells were ~600 words each, packing per-dimension criteria with hard deductions, multi-tier caps, capture-method branches, and suite-level rules into single rows. The dimension table now carries a one-line summary plus a pointer to a new `## Rubric Rules` section that breaks each dimension into labeled subsections (Correctness, Source usage with `openai-compat` / `widget` branches, Refusal correctness with tiered cap table, Tone, Tagging) plus a Suite level subsection (Inflation guard, Pre/post-cap reporting). Same grading semantics — every existing rule, deduction, and cap is preserved verbatim under its own heading. Rationale: LLM judges miss rules buried in dense prose; labeled subsections give the rubric visible structure. | ACE team |

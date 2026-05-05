@@ -35,10 +35,11 @@ Unless `--no-evals` was passed, invoke the `idea-to-pdd-eval` skill.
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-eval_verdict.yaml` (machine-readable
   verdict in the shared shape — see `skills/README.md § QA vs Eval`)
 - This is the independent grader for `idea-to-pdd`'s self-eval. A
-  `verdict: fail` here does NOT halt the run on its own — the Phase 1→2
-  gate still uses the producing skill's `gate-briefs/idea-to-pdd.md`,
-  and `[BLOCKER]` concerns from either source pause per the
-  orchestrator's Per-Mode Pause Matrix.
+  `verdict: fail` here does NOT halt the run on its own — the Phase
+  1→2 gate still uses the producing skill's
+  `runs/<run-id>/1-design/idea-to-pdd_gate-brief.md`, and `[BLOCKER]`
+  concerns from either source pause per the orchestrator's Per-Mode
+  Pause Matrix.
 
 ### Step 2: PDD to Test Prompts
 Invoke the `pdd-to-test-prompts` skill.
