@@ -53,10 +53,14 @@ Invoke `ocs-chatbot-qa --quick`, then `ocs-chatbot-eval --quick`.
   Fast fail if the bot is miswired (qa-side structural fail) or any
   prompt scores < 2/3 (eval-side)
 - **Gate (Phase 4 → 5):** if qa structural pass rate < 100% OR any
-  per-prompt `overall_quality` < 2/3, retry `ocs-agent-setup`
-  prompt-patch once; if still failing, escalate to admin group. This
-  is the only OCS gate Phase 4 enforces — deep multi-dimensional
-  judging now lives in `/ace:qa-deep` and gates Phase 6 activation.
+  per-prompt `overall_quality` < 2/3, dispatch
+  `ocs-agent-setup --prompt-patch` once (recomposes the prompt and
+  re-saves the pipeline; skips the 5–10 min re-index because the RAG
+  content didn't change), then re-run `ocs-chatbot-qa --quick` and
+  `ocs-chatbot-eval --quick`. If still failing, escalate to admin
+  group. This is the only OCS gate Phase 4 enforces — deep
+  multi-dimensional judging now lives in `/ace:qa-deep` and gates
+  Phase 7 activation.
 - Depends on: Step 1
 
 ### Step 3: Stage credentials for Connect
@@ -167,7 +171,7 @@ When `--dry-run` is active:
 - **Step 2 qa structural fails** — bot is miswired (no response, error
   fallback). Re-run `ocs-agent-setup`, verify embed credentials.
 - **Step 2 eval fails repeatedly** — any per-prompt `overall_quality`
-  < 2/3 after one prompt-patch retry → escalate to admin; probable
+  < 2/3 after one `--prompt-patch` retry → escalate to admin; probable
   prompt-engineering issue in the golden template or opp-specific
   prompt composition. Deep multi-dimensional regressions (e.g.
   retrieval / indexing problems on opp-specific prompts) surface in
