@@ -98,9 +98,10 @@ Skills — No Fake Background Tasks`). Concrete budget:
    was the single biggest observability gap in the 0.11.5-era Phase 4
    capture loop.
 
-3. **Resume from partial capture (idempotent re-runs).** Check for an
-   existing transcript at the destination path
-   (`ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-qa_transcript-<mode>.md`).
+3. **Resume from partial capture** — `--deep` / `--monitor` only.
+   Check for an existing transcript at the destination path
+   (`ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-qa_transcript-<mode>.md`,
+   or `7-execution-manager/...` for `--monitor`).
    - **If absent:** fresh capture. Continue.
    - **If present and `complete: true` in the header:** the suite
      already ran cleanly. Skip the chat loop entirely; the caller can
@@ -110,9 +111,11 @@ Skills — No Fake Background Tasks`). Concrete budget:
      <captured-prompt-strings>`. The chat loop in Step 5 picks up at
      the next uncaptured prompt; the file is appended-to in place.
 
-   This makes a re-dispatch after timeout / circuit-break / kill cheap:
-   captured prompts aren't re-sent. The skill is idempotent against the
-   transcript file regardless of how many times it's invoked.
+   `--quick` skips this step entirely. The 270s wall-clock cap is
+   small enough that resume-from-partial doesn't pay for itself —
+   re-running burns at most one cap-bound suite. Step 5's `--quick`
+   write strategy is single-shot at suite end, so there is no partial
+   transcript to resume from.
 
 4. **Build the test prompt suite by mode:**
 
@@ -159,12 +162,28 @@ Skills — No Fake Background Tasks`). Concrete budget:
    ### `--monitor` suite
    - Same as `--deep` but skips the edge-case extras (they're stable).
 
-5. **Chat with the bot — incremental, time-boxed:**
+5. **Chat with the bot — time-boxed, write strategy branches on mode:**
    - Start an anonymous session via `POST /api/chat/start/`
      with `X-Embed-Key` header and the `Referer` set to the allowed origin.
    - Record the suite start timestamp (`SUITE_START = $(date +%s)`).
-   - **For each prompt** (skipping any already in the partial transcript
-     from Step 3):
+
+   **Write strategy:**
+   - `--quick` — **buffer in memory, single write at suite end.** 3
+     prompts × 90s = 270s hard cap; the suite either finishes or is
+     deterministically aborted in a small window. Per-prompt CAS writes
+     would cost N+1 Drive RTTs (~5 calls for 3 prompts including the
+     metadata flush) for recovery value that's negligible against a
+     270s cap. Build entries in memory; Step 7 does one
+     `drive_create_file` for the entire transcript.
+   - `--deep` / `--monitor` — **incremental writes with CAS.** Suites
+     run 15–30 minutes; resume-from-partial after a kill is real
+     value. Each entry gets appended via `drive_update_file` with
+     `ifMatchRevisionId` (revisionVersion CAS, added 0.11.3) so the
+     transcript file is durable mid-loop.
+
+   **For each prompt** (skipping any already in the partial transcript
+   from Step 3 — `--deep`/`--monitor` only; `--quick` always starts
+   fresh because nothing is persisted mid-loop):
      1. Record the per-prompt start timestamp (`PROMPT_START = $(date +%s)`).
      2. Send via `POST /api/chat/{session_id}/message/`.
      3. Poll `GET /api/chat/{session_id}/{task_id}/poll/` until
@@ -173,12 +192,13 @@ Skills — No Fake Background Tasks`). Concrete budget:
         `structural_pass: false`, `structural_notes: "timeout @ 90s"`.
      4. Capture the response content, cited_files, tags, and elapsed time.
      5. **Run structural checks (Step 6) on this response inline.**
-     6. **Append the entry to the transcript file** via
-        `drive_update_file` with `ifMatchRevisionId` from the prior
-        read (revisionVersion CAS, added 0.11.3). The transcript file
-        was created on first prompt with the `complete: false` header;
-        each subsequent entry is appended in place. Update the header's
-        `prompts_captured` counter on every write.
+     6. **Persist the entry per the write strategy:**
+        - `--quick`: append to in-memory buffer.
+        - `--deep` / `--monitor`: `drive_update_file` with
+          `ifMatchRevisionId` from the prior read. The transcript was
+          created on first prompt with the `complete: false` header;
+          each subsequent entry is appended in place. Update the
+          header's `prompts_captured` counter on every write.
      7. **Wall-clock cap check.** If
         `($(date +%s) - SUITE_START) > min(90 × N_prompts, 1800)` —
         stop the loop. Don't send another prompt. Continue to Step 7.
@@ -187,7 +207,8 @@ Skills — No Fake Background Tasks`). Concrete budget:
         OCS is unhealthy; burning the rest of the budget produces
         noise.
    - At loop exit (clean finish, cap-hit, or circuit-break), proceed to
-     Step 7 to flush metadata.
+     Step 7 (which handles both write strategies — single create for
+     `--quick`, metadata flush for `--deep`/`--monitor`).
 
 6. **Run structural checks on each response** (cheap, deterministic —
    these are qa-side checks, not LLM judgment):
@@ -199,9 +220,16 @@ Skills — No Fake Background Tasks`). Concrete budget:
    - Set per-prompt `structural_pass: true | false` and a `structural_notes`
      string for the judge (and humans) to read
 
-7. **Final transcript metadata flush.** The entries themselves were
-   appended incrementally during Step 5 — this is just the closing
-   metadata write. Update the header to:
+7. **Final transcript write (mode-dependent):**
+   - `--quick`: **single create.** Build the full transcript in memory
+     from the in-memory buffer + completed metadata, then call
+     `drive_create_file` once with the assembled content. One Drive
+     RTT.
+   - `--deep` / `--monitor`: **metadata-only flush.** Entries were
+     written incrementally during Step 5 — `drive_update_file` here
+     just updates the header.
+
+   In both cases, the closing metadata is:
    - `complete: true | false` (true on clean loop exit; false on
      wall-clock cap hit or circuit-break)
    - `prompts_captured: <N>` and `prompts_remaining: <M>` if partial
@@ -289,10 +317,14 @@ Skills — No Fake Background Tasks`). Concrete budget:
   → `POST /api/chat/{session_id}/message/` → `GET
   /api/chat/{session_id}/{task_id}/poll/`. This path returns the full
   transcript schema.
-- Google Drive: `drive_create_file` (Step 5 first write),
-  `drive_update_file` with `ifMatchRevisionId` (Step 5 incremental
-  appends + Step 7 metadata flush), `drive_read_file` (Step 3
-  resume-from-partial).
+- Google Drive:
+  - `drive_create_file` — Step 7 single transcript write on `--quick`;
+    Step 5 first-write on `--deep`/`--monitor`.
+  - `drive_update_file` with `ifMatchRevisionId` — Step 5 incremental
+    appends and Step 7 metadata flush on `--deep`/`--monitor` only.
+    Not used on `--quick`.
+  - `drive_read_file` — Step 3 resume-from-partial on
+    `--deep`/`--monitor` only.
 
 ## Mode Behavior
 
@@ -322,3 +354,4 @@ When `--dry-run` is active:
 | 2026-05-03 | **Time-box, incremental writes, resume-from-partial, liveness probe.** Added `## Wall-Clock Budget` (per-prompt 90s, suite-cap `min(90s × N, 30 min)`, 3-prompt circuit-breaker, no `ScheduleWakeup`). Renumbered Process: new Step 2 mandatory `ocs_send_test_message` liveness probe before suite (catches dead session before budget burns); new Step 3 reads any existing transcript and skips already-captured prompts (idempotent re-runs); Step 5 chat loop now writes each entry to Drive incrementally via `drive_update_file` + `revisionVersion` CAS so a mid-loop kill doesn't lose data; Step 7 is a metadata-only flush. Header schema gains `Prompts captured`, `Prompts remaining`, `Complete`, `Suite elapsed` fields; partial transcripts are graded by eval as `incomplete-coverage` rather than failing. Surfaced after the `turmeric-20260503-0835` deep capture spun for 3+ hours on a fictional bg task; the prior all-or-nothing write meant zero recoverable evidence. | ACE team (0.11.6) |
 | 2026-05-04 | Thinned from 5 to 3 prompts. Phase 4 cost reduction; multi-dimensional judging moves to deep-only. `--quick` is now 3 universal Connect-domain prompts (claim opp, sync data, get paid) with a hard 270s wall-clock cap (90s × 3). The `--deep` mode is no longer dispatched from Phase 4 — it lives in the manual `/ace:qa-deep <opp>` command and is the Phase 6 `llo-launch` activation gate. | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Transcripts now write to `runs/<run-id>/4-ocs/ocs-chatbot-qa_transcript-<mode>.md` (or `7-execution-manager/...` for `--monitor`), per the manifest. The opp-level `qa-captures/` directory is retired; the only surviving use of the dated `qa-captures/` form is the golden-template no-opp fallback (`ACE/golden-template/qa-captures/<dated>.md`). Resume-from-partial check (Step 3) re-pointed at the new path. No behavior change beyond paths. | ACE team |
+| 2026-05-05 | **`--quick` switched to single-shot write.** Buffer entries in memory and call `drive_create_file` once at suite end (Step 7). Reduces Drive RTTs on `--quick` from N+1 (read+write per prompt + metadata) to 1. The incremental CAS-write strategy still applies on `--deep`/`--monitor` where 15–30 min suite runtimes make resume-from-partial worth the cost. Step 3 resume-from-partial is a `--deep`/`--monitor`-only step now (`--quick`'s 270s cap is short enough that re-running is cheaper than the resume bookkeeping). | ACE team |

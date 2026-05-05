@@ -20,7 +20,43 @@ quality gating via the `ocs-chatbot-qa` → `ocs-chatbot-eval` pair (quick
 + deep) in subsequent steps, so this skill is now purely configuration —
 no inline self-eval.
 
+## Modes
+
+- **Default (full setup).** Run every step end-to-end. Re-runs against
+  an opp that already has a state file short-circuit at Step 0 — they
+  skip to Step 10 (retrieve embed) with zero OCS calls.
+- **`--prompt-patch`** (cheap iteration after `ocs-chatbot-eval --quick`
+  fails). Reuses the existing chatbot, collection, and uploaded files;
+  recomposes the system prompt against the latest PDD, calls
+  `ocs_set_chatbot_pipeline` with the new prompt, and publishes a new
+  version. Skips clone (Step 3), create collection (Step 4), upload
+  (Step 5), and the 5–10 minute re-index (Step 6). Use this when the
+  RAG content didn't change but the prompt needs a tweak — the typical
+  outcome of a `--quick` quality fail.
+
 ## Process
+
+0. **Idempotency short-circuit (read state file first — runs before any
+   OCS call).** Read `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`.
+   - **State file absent.** Fresh setup. Continue to Step 1.
+   - **State file present, `--prompt-patch` flag set.** Reuse the
+     existing `experiment_id`, `collection_id`, and `pipeline_id`.
+     Skip to Step 7 (recompose prompt) → Step 8
+     (`ocs_set_chatbot_pipeline` with the new prompt and the existing
+     collection list) → Step 9 (publish) → Step 10 (retrieve embed) →
+     Step 11 (overwrite state file with the new `version_number`).
+   - **State file present, no flag.** The chatbot is already
+     configured; just refresh embed credentials. Skip to Step 10. Do
+     NOT call `ocs_list_chatbots`, do NOT re-clone — the state file is
+     authoritative.
+
+   This step exists because Step 2's `ocs_list_chatbots` filter is the
+   second-line idempotency check, not the first. A live OCS list call
+   on every re-run wastes ~1s when the local artifact already has the
+   answer; on a `--prompt-patch` re-run it would also walk the full
+   pipeline (clone is a no-op when the bot exists, but the create
+   collection / upload / wait-for-indexing branches re-fire and burn
+   5–10 min) before the existing state would even be consulted.
 
 1. **Read opportunity context from GDrive:**
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
@@ -28,9 +64,10 @@ no inline self-eval.
    - Opportunity details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
    - App summaries: `ACE/<opp-name>/app-summaries/`
 
-2. **Check for existing chatbot** (idempotency):
+2. **Check for existing chatbot via OCS list** (second-line idempotency
+   — only reachable when Step 0 found no state file):
    - Call `ocs_list_chatbots` and filter by `name == "ACE - <opp-name>"`
-   - If found, **read the integer `experiment_id` from the matched entry** (returned alongside the UUID `id` as of 0.5.19) and skip to step 11. Do NOT clone — re-cloning leaves the prior bot orphaned in OCS, which has no MCP-side cleanup atom. The previous (pre-0.5.19) skill version had to clone a `-resume` variant because the integer id wasn't reachable from list results; that footgun is closed.
+   - If found, **read the integer `experiment_id` from the matched entry** (returned alongside the UUID `id` as of 0.5.19), reconstruct the state file from `ocs_get_chatbot` to populate `collection_id` / `pipeline_id`, and skip to step 11. Do NOT clone — re-cloning leaves the prior bot orphaned in OCS, which has no MCP-side cleanup atom. The previous (pre-0.5.19) skill version had to clone a `-resume` variant because the integer id wasn't reachable from list results; that footgun is closed.
    - Otherwise continue to step 3
 
 3. **Clone the golden template:**
@@ -78,8 +115,8 @@ no inline self-eval.
     - Capture `{public_id, embed_key}`
 
 11. **Write state file:** `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`
-    - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`
-    - On re-run, this file is the source of truth; skip to step 10 if present
+    - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`, optional `last_prompt_patched_at` (set by `--prompt-patch` re-runs)
+    - This file is the source of truth for idempotency — Step 0 reads it before any OCS call
 
 Quality gating (quick + deep qa→eval pairs) and Connect widget handoff
 happen in subsequent steps of the `ocs-setup` agent, not in this skill.
@@ -117,8 +154,10 @@ When `--dry-run` is active:
 - `HttpError 4xx` on clone — verify `OCS_GOLDEN_TEMPLATE_ID` and `OCS_TEAM_SLUG` env vars.
 - Quality gate failure downstream — if `ocs-chatbot-eval --quick` or
   `--deep` scores below threshold in Phase 4, the usual fix is prompt
-  engineering in step 7's composition. Re-run this skill with the revised
-  prompt, then re-run qa + eval.
+  engineering in step 7's composition. Re-run with `--prompt-patch`
+  (skips the 5–10 min re-index since the RAG content didn't change),
+  then re-run qa + eval. The `ocs-setup` agent's Phase 4 retry loop
+  uses this mode automatically.
 
 ## Change Log
 
@@ -130,3 +169,4 @@ When `--dry-run` is active:
 | 2026-04-27 | Step 2 idempotency uses the integer `experiment_id` returned by `ocs_list_chatbots` (0.5.19 — no more orphan re-clones). Step 7 explicitly requires `{collection_index_summaries}` in the system prompt; MCP `ocs_attach_knowledge` pre-flights this and fails with a typed error otherwise. | ACE team |
 | 2026-04-28 | Step 8 collapsed into a single `ocs_set_chatbot_pipeline` call (0.6.4 — transactional save). Closes the chicken-and-egg surfaced in the 2026-04-27 dogfood where `set_chatbot_system_prompt` followed by `attach_knowledge` (or vice versa) hit OCS cross-field validation on the intermediate save. | ACE team |
 | 2026-04-28 | Step 7 prompt rule corrected (0.6.10): `{collection_index_summaries}` is required iff `collection_index_ids.length >= 2` (verified via live OCS probe — see `scripts/probe-n1-cross-test.ts`). Single-collection clones must NOT include the variable; multi-collection clones MUST. The 0.6.4 framing (variable iff non-empty) was wrong. | ACE team |
+| 2026-05-05 | **Two idempotency improvements.** (1) New Step 0 reads the local state file (`runs/<run-id>/4-ocs/ocs-agent-setup.md`) before any OCS call — saves ~1s on a normal re-run and avoids the silent-pipeline-walk on `--prompt-patch` re-runs. (2) New `--prompt-patch` mode reuses the existing chatbot/collection/files, skipping clone + create-collection + upload + 5–10 min indexing wait, and just recomposes the prompt → calls `ocs_set_chatbot_pipeline` → publishes. This is the canonical Phase 4 retry path after `ocs-chatbot-eval --quick` flags a prompt issue (the previous skill prose said the agent should "retry prompt-patch" but no such mode existed — re-runs walked the full pipeline). | ACE team |

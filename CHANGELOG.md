@@ -5,6 +5,56 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.7 — 2026-05-05
+
+**OCS skill efficiency: idempotency, write strategy, rubric structure.**
+
+Three improvements to the OCS skills surfaced by the audit-ocs-skills
+session, separate from the path-cleanup that shipped in 0.13.6:
+
+**1. `ocs-agent-setup` gains a Step 0 short-circuit + `--prompt-patch` mode.**
+Step 0 reads the local state file (`runs/<run-id>/4-ocs/ocs-agent-setup.md`)
+**before** any OCS call. A normal re-run with the state file present
+skips straight to embed retrieval (no `ocs_list_chatbots` round-trip).
+The new `--prompt-patch` mode reuses the existing chatbot, collection,
+and uploaded files; only recomposes the system prompt → calls
+`ocs_set_chatbot_pipeline` → publishes a new version. Skips clone,
+collection create, file upload, and the **5–10 minute re-index** that
+re-running the full pipeline would re-fire. This is the canonical
+Phase 4 retry path after `ocs-chatbot-eval --quick` flags a prompt
+issue. The `ocs-setup` agent's Phase 4 → 5 gate now dispatches
+`ocs-agent-setup --prompt-patch` (was: re-running the full skill).
+
+The prior skill prose said the agent should "retry prompt-patch" but
+no such mode existed — re-runs walked the full pipeline silently,
+burning the indexing minutes for what should be a prompt-only edit.
+
+**2. `ocs-chatbot-qa --quick` switched to single-shot writes.**
+For a 3-prompt suite with a 270s hard wall-clock cap, per-prompt CAS
+writes cost 4–5 Drive RTTs (read+write per prompt + metadata flush)
+for resume-from-partial value that's negligible against the cap.
+`--quick` now buffers entries in memory and calls `drive_create_file`
+once at suite end. **1 Drive RTT instead of 5.** The incremental
+CAS-write strategy still applies on `--deep` / `--monitor` where
+15–30 min runtimes make resume-from-partial worth the bookkeeping.
+Step 3 (resume-from-partial) is a `--deep` / `--monitor`-only step
+now.
+
+**3. `ocs-chatbot-eval` rubric extracted into labeled subsections.**
+The 5-dimension table cells in the rubric were ~600 words each (one
+in particular packed two capture-method branches with three caps and
+five rules into a single cell). LLM judges miss rules buried in dense
+prose. The dimension table is now a one-line summary plus a pointer
+to a new `## Rubric Rules` section that breaks each dimension out:
+Correctness, Source usage (with `openai-compat` / `widget` branches
+as separate sub-subsections), Refusal correctness (with tiered cap
+table), Tone, Tagging, plus a Suite-level subsection for Inflation
+guard and Pre/post-cap reporting. **Same grading semantics — every
+existing rule, deduction, cap, and historical reasoning is preserved
+verbatim under its own heading**, just visible.
+
+Tests: 477 passed / 32 skipped / 0 failed (unchanged).
+
 ## 0.13.6 — 2026-05-05
 
 **Path-scheme cleanup: align all per-run artifacts to the run-scoped layout.**
