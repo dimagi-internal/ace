@@ -67,6 +67,28 @@ function htmlDecodeAttr(s: string): string {
 }
 
 /**
+ * Extract the opp's integer FK from a form HTML's HTMX `Sync Deliver Units`
+ * button. Connect's UI uses two id namespaces for the same opportunity:
+ * a UUID exposed in REST URLs and the JSON-API responses, and an integer
+ * primary key embedded in HTMX hx-* attributes. This helper finds the
+ * int id from the create-PU form's sync button without needing a separate
+ * lookup atom.
+ *
+ * Looks for the canonical pattern:
+ *   <button ... hx-post="/a/<org>/opportunity/<int_id>/sync_deliver_units/">
+ *
+ * Returns null if the button isn't present (Connect UI changed, or this
+ * isn't a create-PU form). Callers should treat null as a soft signal —
+ * skip the sync precondition rather than halting.
+ */
+function extractOppIntIdFromForm(html: string): number | null {
+  const m = html.match(/hx-post="\/a\/[^"\/]+\/opportunity\/(\d+)\/sync_deliver_units\//);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/**
  * Resolve a caller-friendly hq_server label or URL ("prod" / "india" / "eu" /
  * full URL) against Connect's <select name="hq_server"> options on the
  * create-opportunity form. Returns the int FK as string (e.g. "1") or
@@ -1034,10 +1056,70 @@ export class PlaywrightBackend implements ConnectClient {
     optional_deliver_units?: number[];
   }): Promise<PaymentUnit> {
     const path = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/payment_unit/create`;
-    const formRes = await this.opts.request.get(path);
+    let formRes = await this.opts.request.get(path);
     if (formRes.status() !== 200) throw await httpErrorFor(formRes, path);
-    const formHtml = await formRes.text();
-    const csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
+    let formHtml = await formRes.text();
+    let csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
+
+    // Sync-deliver-units precondition (added 0.11.12).
+    //
+    // Connect's create-PU form leaves the deliver-unit checkbox list
+    // empty until an HTMX-driven `Sync Deliver Units` button is fired,
+    // even when `connect_create_opportunity` already synced the DUs
+    // into the opp's `deliver_units` table on the server side. The two
+    // caches are separate — `connect_list_deliver_units` reads the
+    // table directly (returns the DUs cleanly), but the create-PU
+    // form's checkbox list reads a UI-level cache that's only
+    // populated by clicking the sync button. Without this precondition,
+    // the regex below scrapes zero DU options and any
+    // `required_deliver_units` arg fails to map.
+    //
+    // Diagnosed `turmeric-20260503-0835` Phase 3 by reading the live
+    // form HTML on 2026-05-04: the form structurally has
+    // `<div id="div_id_required_deliver_units">` but no
+    // `<input name="required_deliver_units">` checkboxes; the form
+    // also embeds `<button id="sync-button" hx-post=".../sync_deliver_units/">`.
+    //
+    // Failure mode: if the sync POST fails (auth, 5xx, etc), log and
+    // proceed with the original form — the existing checkbox-mapping
+    // error below surfaces a clean diagnostic, which is better than
+    // halting on a precondition that wasn't there before.
+    const needsDuSync =
+      (args.required_deliver_units?.length ?? 0) > 0 ||
+      (args.optional_deliver_units?.length ?? 0) > 0;
+    if (needsDuSync) {
+      const oppIntId = extractOppIntIdFromForm(formHtml);
+      if (oppIntId !== null) {
+        const syncPath = `/a/${args.organization_slug}/opportunity/${oppIntId}/sync_deliver_units/`;
+        const syncRes = await this.opts.request.post(syncPath, {
+          headers: {
+            'X-CSRFToken': csrf,
+            'HX-Request': 'true',
+            Referer: `${this.opts.baseUrl}${path}`,
+          },
+        });
+        const syncStatus = syncRes.status();
+        if (syncStatus === 200 || syncStatus === 204 || syncStatus === 302) {
+          // Re-fetch the form so the DU checkboxes are populated.
+          formRes = await this.opts.request.get(path);
+          if (formRes.status() !== 200) throw await httpErrorFor(formRes, path);
+          formHtml = await formRes.text();
+          csrf = extractFormCsrfToken(formHtml) ?? csrf;
+        } else {
+          // Log and continue with the original form — the mapping
+          // error below will surface a clean diagnostic.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[connect] sync_deliver_units precondition POST returned ${syncStatus} for opp_int_id=${oppIntId}; proceeding without DU sync.`,
+          );
+        }
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[connect] could not extract opp int_id from create-PU form HTML; skipping sync_deliver_units precondition. Connect UI may have changed; check the hx-post URL on the Sync Deliver Units button.`,
+        );
+      }
+    }
 
     // The deliver-unit checkboxes use a different id namespace than
     // `connect_list_deliver_units` returns. The list returns a small

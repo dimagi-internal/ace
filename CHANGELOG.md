@@ -5,6 +5,74 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.12.1 — 2026-05-04
+
+**`connect_create_payment_unit(s)` Playwright fallback fix —
+sync-deliver-units precondition.**
+
+The `turmeric-20260503-0835` Phase 3 produced a malformed payment unit
+because `connect_create_payment_unit(s)`'s Playwright fallback (the
+REST→Playwright path the composite uses when REST 404s) scraped the
+create-PU form HTML before the form's deliver-unit checkbox list was
+populated. Probing on 2026-05-04 confirmed: the form structurally has
+`<div id="div_id_required_deliver_units">` but **zero
+`<input name="required_deliver_units">` checkboxes** — Connect's UI
+keeps the list empty until an HTMX-driven `Sync Deliver Units` button
+fires, even when `connect_create_opportunity` has already synced the
+DUs into the opp's `deliver_units` table on the server.
+
+Two caches diverge: `connect_list_deliver_units` reads the
+`deliver_units` table (returns DUs cleanly), but the create-PU form's
+checkbox list reads a UI-level cache that's only populated by the
+sync button. Without firing it, any `required_deliver_units` arg
+fails to map.
+
+### Fixed
+
+- `mcp/connect/backends/playwright.ts` `postPaymentUnitForm`: when
+  `required_deliver_units` or `optional_deliver_units` is non-empty,
+  POST `/a/<org>/opportunity/<int_id>/sync_deliver_units/` with
+  `HX-Request: true` between the initial form GET and the checkbox
+  scrape, then re-fetch the form HTML so the checkboxes are
+  populated. The opp's integer FK is extracted from the initial
+  form HTML's `hx-post` URL on the Sync Deliver Units button — no
+  separate lookup atom needed.
+- `mcp/connect/backends/playwright.ts` new top-level helper
+  `extractOppIntIdFromForm(html)` — parses `hx-post=".../<int_id>/
+  sync_deliver_units/"` from form HTML, returns `null` if absent
+  (Connect UI changed; caller skips the precondition rather than
+  halting).
+- Failure handling: if the sync POST returns non-2xx/302, log a
+  warning and proceed with the original form HTML — the existing
+  checkbox-mapping `ConnectValidationError` will surface a clean
+  diagnostic without halting on a precondition that wasn't there
+  before.
+
+### Added
+
+- `test/mcp/connect/unit/playwright-fallbacks.test.ts` regression
+  tests: "fires sync_deliver_units precondition + form refresh when
+  DUs requested" and "skips sync_deliver_units precondition when no
+  DUs requested." Existing tests updated to accept the new
+  precondition-then-refresh request shape.
+
+### Notes
+
+- The 0.11.11 verify-after-create guard remains the producer-side
+  defense in depth — even if Connect's UI changes again and the new
+  precondition silently fails, the read-back will catch the
+  resulting field divergence and halt with a clear diff.
+- The composite's REST→Playwright fallback policy is unchanged.
+  Falling back is correct; the bug was that the fallback's HTML
+  scrape was missing a precondition. REST should still be tried
+  first; Playwright remains the always-works belt-and-suspenders
+  backup. Investigating why REST is 404'ing for
+  `POST /api/opportunities/<id>/payment_units/` is separate scope —
+  may be deployment lag against PR #1135 or an auth flag.
+- Future scope: when the same form-cache divergence hits other
+  Connect HTMX-driven forms (verification flags, payment-unit edit),
+  document the same precondition pattern and apply it.
+
 ## 0.12.0 — 2026-05-04
 
 **Solicitation Management — new Phase 6.**

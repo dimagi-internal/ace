@@ -1,6 +1,6 @@
 {
   "name": "ace",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "AI Connect Engine — orchestrates the CRISPR-Connect lifecycle from idea through app building, Connect setup, LLO management, and closeout",
   "author": {
     "name": "Jonathan Jackson",
@@ -37,14 +37,6 @@
     "ace-mobile": {
       "command": "npx",
       "args": ["tsx", "${CLAUDE_PLUGIN_ROOT}/mcp/mobile-server.ts"],
-      "env": {
-        "CLAUDE_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}",
-        "CLAUDE_PLUGIN_ROOT_ECHO": "${CLAUDE_PLUGIN_ROOT}"
-      }
-    },
-    "connect-labs": {
-      "command": "npx",
-      "args": ["tsx", "${CLAUDE_PLUGIN_ROOT}/mcp/connect-labs-server.ts"],
       "env": {
         "CLAUDE_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}",
         "CLAUDE_PLUGIN_ROOT_ECHO": "${CLAUDE_PLUGIN_ROOT}"
