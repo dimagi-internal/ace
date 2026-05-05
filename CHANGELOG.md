@@ -5,6 +5,47 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.8 — 2026-05-05
+
+**fix(connect): CCHQ session expiry now self-recovers; transparent retry on
+mid-run 302.**
+
+The `ace-connect` MCP's Playwright session was caching its `BrowserContext`
+for the process lifetime, with a boot-time auth probe that only checked
+`connect.dimagi.com`. CCHQ cookies expire on a separate clock — when they
+went stale mid-run, every `commcare_*` atom 302'd to `/login/` and surfaced
+an opaque `returned 302:` error with no recovery path. The
+`turmeric-20260505-1024` run halted Phase 2 at `app-release` because of
+this; the operator had to restart Claude Code (to drop the cached context)
+even though refresh tokens were intact.
+
+Two complementary fixes turn this from a class of bug into a transient
+that self-heals:
+
+**1. CCHQ-side probe in `playwright-session.ts`.** When `cchqBaseUrl` is
+supplied, `getContext()` runs a second authed probe against
+`${cchqBaseUrl}/accounts/login/` after the Connect probe. If CCHQ is
+stale (200 instead of 302) even though Connect cookies look valid, the
+context is closed, the browser is restarted, and `hqOAuthLogin` runs
+fresh — re-establishing both services' cookies in one OAuth bounce.
+Catches stale-on-disk state at boot.
+
+**2. One-shot retry on mid-session 302 in `commcare.ts`.** A new
+`PlaywrightSession.invalidate()` method drops the cached context, csrf
+token, and on-disk session file. `CommCareBackend` now takes a
+`PlaywrightSession` reference (not a bare `APIRequestContext`) and pulls
+a fresh `request` from it on every call. Each method is wrapped in
+`runWithSessionRetry`: a 302 to `/login/` throws `SessionExpiredError`,
+which the wrapper catches once, calls `session.invalidate()`, and retries
+the call against a freshly-authenticated context. Catches mid-run
+expiry that the boot-time probe missed.
+
+Affects `commcare_make_build`, `commcare_release_build`,
+`commcare_download_ccz`, `commcare_patch_xform`. The REST and Playwright
+backends pointed at `connect.dimagi.com` use the same architecture and
+remain on the boot-time probe — they have not surfaced this class of
+bug yet, and migrating them is YAGNI until they do.
+
 ## 0.13.7 — 2026-05-05
 
 **OCS skill efficiency: idempotency, write strategy, rubric structure.**

@@ -253,7 +253,7 @@ function fakeRequest(opts: {
     request: {
       get: vi.fn(async (url: string) => {
         calls.push({ method: 'get', url });
-        return { status: () => 200, text: async () => '' } as FakeResponse;
+        return { status: () => 200, text: async () => '', headers: () => ({}) } as FakeResponse;
       }),
       post: vi.fn(async (url: string, init: { data?: string; headers?: Record<string, string> }) => {
         calls.push({ method: 'post', url, init });
@@ -261,6 +261,7 @@ function fakeRequest(opts: {
         return {
           status: () => opts.postStatus,
           text: async () => opts.postBody,
+          headers: () => ({}),
         } as FakeResponse;
       }),
       storageState: vi.fn(async () => ({
@@ -270,6 +271,20 @@ function fakeRequest(opts: {
       })),
     },
   };
+}
+
+/**
+ * Wrap a fakeRequest in a stub `PlaywrightSession` so the new
+ * session-aware CommCareBackend constructor accepts it. `getContext()`
+ * returns just enough of a BrowserContext for the backend's lookups
+ * (a `request` plus a no-op cookies()/close() set); `invalidate()` is a
+ * no-op since unit tests never trigger the retry path.
+ */
+function fakeSession(request: unknown) {
+  return {
+    getContext: async () => ({ request }),
+    invalidate: async () => {},
+  } as never;
 }
 
 describe('CommCareBackend.patchXform', () => {
@@ -298,7 +313,7 @@ describe('CommCareBackend.patchXform', () => {
         capturedInit = init;
       },
     });
-    const backend = new CommCareBackend({ baseUrl, request: fake.request as never });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
     const out = await backend.patchXform(args);
 
     expect(capturedUrl).toBe(
@@ -325,7 +340,7 @@ describe('CommCareBackend.patchXform', () => {
         capturedInit = init;
       },
     });
-    const backend = new CommCareBackend({ baseUrl, request: fake.request as never });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
 
     const { sha1, ...noSha } = args;
     void sha1; // intentionally unused
@@ -341,7 +356,7 @@ describe('CommCareBackend.patchXform', () => {
       postStatus: 200,
       postBody: okBody,
     });
-    const backend = new CommCareBackend({ baseUrl, request: fake.request as never });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
     await backend.patchXform(args);
     expect(fake.calls[0]).toEqual({
       method: 'get',
@@ -358,7 +373,7 @@ describe('CommCareBackend.patchXform', () => {
         update: { 'app-version': 9 },
       }),
     });
-    const backend = new CommCareBackend({ baseUrl, request: fake.request as never });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
     const out = await backend.patchXform(args);
     expect(out.corrections).toEqual({ 'my-form': 'normalized whitespace' });
     expect(out.app_version).toBe(9);
@@ -369,7 +384,7 @@ describe('CommCareBackend.patchXform', () => {
       postStatus: 409,
       postBody: JSON.stringify({ message: 'sha1 mismatch', sha1: 'c'.repeat(40) }),
     });
-    const backend = new CommCareBackend({ baseUrl, request: fake.request as never });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
     await expect(backend.patchXform(args)).rejects.toMatchObject({
       name: 'XformConflictError',
       liveSha1: 'c'.repeat(40),
@@ -382,7 +397,7 @@ describe('CommCareBackend.patchXform', () => {
       postStatus: 409,
       postBody: JSON.stringify({ message: 'whatever', sha1: 'c'.repeat(40) }),
     });
-    const backend = new CommCareBackend({ baseUrl, request: fake.request as never });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
     const { sha1, ...noSha } = args;
     void sha1;
     await expect(backend.patchXform(noSha)).rejects.toThrow(/returned 409/);
@@ -393,7 +408,7 @@ describe('CommCareBackend.patchXform', () => {
       postStatus: 500,
       postBody: '<html>Internal Server Error</html>',
     });
-    const backend = new CommCareBackend({ baseUrl, request: fake.request as never });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
     await expect(backend.patchXform(args)).rejects.toThrow(/returned 500/);
   });
 
@@ -402,7 +417,7 @@ describe('CommCareBackend.patchXform', () => {
       postStatus: 200,
       postBody: '<html>OK?</html>',
     });
-    const backend = new CommCareBackend({ baseUrl, request: fake.request as never });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
     await expect(backend.patchXform(args)).rejects.toThrow(/not JSON/);
   });
 
@@ -411,7 +426,7 @@ describe('CommCareBackend.patchXform', () => {
       postStatus: 200,
       postBody: JSON.stringify({ corrections: {} }),
     });
-    const backend = new CommCareBackend({ baseUrl, request: fake.request as never });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
     await expect(backend.patchXform(args)).rejects.toThrow(/no update.app-version/);
   });
 
@@ -428,7 +443,7 @@ describe('CommCareBackend.patchXform', () => {
         bodyXform = new URLSearchParams(init.data ?? '').get('xform') ?? '';
       },
     });
-    const backend = new CommCareBackend({ baseUrl, request: fake.request as never });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
     const out = await backend.patchXform({ ...args, new_xform_xml: patchedXml });
 
     expect(out.app_version).toBe(8);
