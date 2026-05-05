@@ -8,6 +8,7 @@ import type {
   PaymentUnit,
 } from '../types.js';
 import { HttpError, ConnectValidationError } from '../errors.js';
+import type { PlaywrightSession } from '../auth/playwright-session.js';
 
 /**
  * REST backend for the eight write atoms covered by commcare-connect PR
@@ -38,8 +39,23 @@ import { HttpError, ConnectValidationError } from '../errors.js';
  */
 export interface RestBackendOptions {
   baseUrl: string;
+  /**
+   * Initial CSRF token snapshot at backend init. Kept as a fast-path so
+   * the first POST per atom doesn't pay a cookie-jar read; refreshed
+   * lazily via `session.refreshCsrfToken()` if a 403 CSRF response comes
+   * back (Django rotates `csrftoken` on certain server-side state
+   * transitions; the static header would otherwise stay stale until
+   * process restart).
+   */
   csrfToken: string;
   request: APIRequestContext;
+  /**
+   * Optional session reference. When supplied (the production wiring),
+   * `post()` self-heals 403 CSRF failures by refreshing the token from
+   * the cookie jar and retrying once. Tests can omit it and the helper
+   * falls back to the static `csrfToken`.
+   */
+  session?: PlaywrightSession;
 }
 
 class NotImplementedError extends Error {
@@ -52,25 +68,84 @@ class NotImplementedError extends Error {
 const stub = (name: string) => () => { throw new NotImplementedError(name); };
 
 export class RestBackend implements ConnectClient {
-  constructor(private opts: RestBackendOptions) {}
+  /**
+   * Latest CSRF token. Initialized from `opts.csrfToken`; rotated on
+   * 403-CSRF self-heal so subsequent calls don't pay the cookie-jar
+   * read on every invocation.
+   */
+  private csrf: string;
+
+  constructor(private opts: RestBackendOptions) {
+    this.csrf = opts.csrfToken;
+  }
 
   // ── Helpers ──────────────────────────────────────────────────────
 
   private headers(referer?: string): Record<string, string> {
     return {
-      'X-CSRFToken': this.opts.csrfToken,
+      'X-CSRFToken': this.csrf,
       Referer: referer ?? `${this.opts.baseUrl}/`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
     };
   }
 
+  /**
+   * Detect a Django CSRF rejection. Django returns 403 with
+   * `Forbidden (CSRF token from the 'X-Csrftoken' HTTP header incorrect.)`
+   * (or similar phrasing) in the body. Status 403 alone is ambiguous
+   * (could be a permission denial), so we match on the body shape too.
+   */
+  private static isCsrfFailure(status: number, bodyText: string): boolean {
+    if (status !== 403) return false;
+    return /CSRF/i.test(bodyText);
+  }
+
+  /**
+   * Refresh CSRF from the live cookie jar. Used by the 403-CSRF retry
+   * path. No-op falls back to the cached token if no session is wired
+   * (test paths).
+   */
+  private async refreshCsrf(): Promise<void> {
+    if (!this.opts.session) return;
+    try {
+      this.csrf = await this.opts.session.refreshCsrfToken();
+    } catch {
+      // If the cookie went missing entirely, leave the cached value
+      // alone — the retry will fail predictably and the caller surfaces
+      // the original error.
+    }
+  }
+
   private async post<T>(path: string, body: unknown): Promise<{ status: number; data: T | undefined; raw: APIResponse }> {
-    const res = await this.opts.request.post(path, {
+    let res = await this.opts.request.post(path, {
       data: body,
       headers: this.headers(),
       maxRedirects: 0,
     });
+
+    // 403-CSRF self-heal: refresh the token from the cookie jar and
+    // retry once. Django rotates `csrftoken` on certain server-side
+    // state transitions (notably after auth refresh and some admin
+    // mutations); the cached process-wide token in 0.13.7 went stale
+    // mid-session and surfaced as opaque "403 CSRF Failed" with no
+    // recovery path. Mirrors the 0.13.8 commcare.ts session retry
+    // pattern but for a different failure shape — 403 + CSRF body
+    // instead of 302 to login. Playwright's `res.text()` caches the
+    // body, so reading it here doesn't break the caller's
+    // `raiseForStatus` re-read on the non-CSRF 403 path.
+    if (res.status() === 403 && this.opts.session) {
+      const bodyText = await res.text();
+      if (RestBackend.isCsrfFailure(res.status(), bodyText)) {
+        await this.refreshCsrf();
+        res = await this.opts.request.post(path, {
+          data: body,
+          headers: this.headers(),
+          maxRedirects: 0,
+        });
+      }
+    }
+
     const status = res.status();
     const contentType = res.headers()['content-type'] ?? '';
     let data: T | undefined;

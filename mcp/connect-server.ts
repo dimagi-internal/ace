@@ -66,7 +66,12 @@ async function getBackends(): Promise<{ rest: RestBackend; playwright: Playwrigh
     });
     const ctx = await session.getContext();
     const csrfToken = session.getCsrfToken();
-    rest = new RestBackend({ baseUrl, csrfToken, request: ctx.request });
+    // RestBackend takes a session reference (added 0.13.9) so its
+    // `post()` helper can self-heal Django CSRF rotation:
+    // 403 + body containing "CSRF" triggers `session.refreshCsrfToken()`
+    // and one retry. Mirrors the 0.13.8 commcare.ts pattern but for
+    // a different failure shape than CCHQ's 302-to-login.
+    rest = new RestBackend({ baseUrl, csrfToken, request: ctx.request, session });
     playwright = new PlaywrightBackend({ baseUrl, csrfToken, request: ctx.request });
     // CommCareBackend takes the session itself (not a bare APIRequestContext)
     // so each atom can pull a fresh request and recover from CCHQ-side
