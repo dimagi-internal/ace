@@ -1445,9 +1445,20 @@ server.tool('commcare_upload_multimedia',
 );
 ```
 
-- [ ] **Step 2: Add capability entry**
+- [ ] **Step 2: (skipped) capability-map**
 
-In `mcp/connect/capability-map.ts`, add `'upload_multimedia'` to the `Capability` union and to whatever routing table is alongside it. Backend: `'PLAYWRIGHT'`. Look at the existing entry for `'patch_xform'` and copy the shape exactly.
+`mcp/connect/capability-map.ts` is **Connect-side-only** — it lists the
+21 atoms targeting `connect.dimagi.com`. The four CommCare atoms
+(`make_build`, `release_build`, `download_ccz`, `patch_xform`) all
+target `commcarehq.org` via the separate `commcareClient()` factory
+and are NOT tracked in capability-map. Adding an `'upload_multimedia'`
+entry there would either break the typed `Record<Capability, ...>` or
+imply wrong routing.
+
+Earlier draft of this plan said "add a parallel entry" based on an
+incorrect read of capability-map's scope. **No edit to capability-map
+is needed for CommCare atoms.** Tool registration in `connect-server.ts`
+(Step 1 above) is sufficient.
 
 - [ ] **Step 3: Smoke-test the MCP server boots**
 
