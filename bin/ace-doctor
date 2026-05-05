@@ -736,10 +736,63 @@ if [ -n "$ENV_FILE" ]; then
   else
     warn "connect_session: $CONNECT_SESS missing and no HQ creds in .env" "/ace:connect-login OR set ACE_HQ_USERNAME/PASSWORD"
   fi
+
+  # ── Connect Labs (solicitations / reviews / awards) ──────────────────
+  # ACE consumes labs.connect.dimagi.com/mcp/ via the connect-labs stdio
+  # proxy (mcp/connect-labs-server.ts). Three checks:
+  #   1. LABS_MCP_TOKEN present in .env (drift detection)
+  #   2. Labs MCP reachable + PAT accepted (initialize JSON-RPC frame)
+  #   3. Connect OAuth bridge live (list_solicitations distinguishes
+  #      PAT-level 401 from tool-level PERMISSION_DENIED)
+  LABS_TOKEN="$(get_env LABS_MCP_TOKEN)"
+  LABS_URL="${LABS_MCP_URL:-https://labs.connect.dimagi.com/mcp/}"
+  if [ -z "$LABS_TOKEN" ]; then
+    warn "connect_labs_env: LABS_MCP_TOKEN missing or unresolved" "re-inject .env via op inject (ACE - Connect Labs item in 1Password)"
+  else
+    pass "connect_labs_env: LABS_MCP_TOKEN present"
+    # Probe 1: PAT validity. POST an initialize frame; expect 200 (or any 2xx).
+    # 401 means PAT bad/revoked; timeout means labs is down.
+    LABS_REACH_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+      -X POST \
+      -H "Authorization: Bearer $LABS_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ace-doctor","version":"1"}}}' \
+      "$LABS_URL" 2>/dev/null || echo "000")"
+    case "$LABS_REACH_CODE" in
+      2*)
+        pass "connect_labs_mcp_reachable: $LABS_URL (HTTP $LABS_REACH_CODE)"
+        # Probe 2: Connect OAuth bridge. Call list_solicitations and look at
+        # the response body for tool-level PERMISSION_DENIED (which means
+        # PAT is good but the labs user hasn't completed Connect OAuth).
+        LABS_OAUTH_BODY="$(curl -sS --max-time 5 \
+          -X POST \
+          -H "Authorization: Bearer $LABS_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_solicitations","arguments":{}}}' \
+          "$LABS_URL" 2>/dev/null || echo "")"
+        if echo "$LABS_OAUTH_BODY" | grep -q "PERMISSION_DENIED\|connect_oauth\|ConnectTokenError"; then
+          warn "connect_labs_connect_oauth: PAT accepted but Connect OAuth bridge missing for ace@dimagi-ai.com" "have ace@dimagi-ai.com sign into labs once and authorize Connect"
+        elif echo "$LABS_OAUTH_BODY" | grep -q '"error"'; then
+          warn "connect_labs_connect_oauth: list_solicitations returned an error" "inspect response: $LABS_OAUTH_BODY"
+        else
+          pass "connect_labs_connect_oauth: list_solicitations responded (Connect OAuth bridge live)"
+        fi
+        ;;
+      401)
+        warn "connect_labs_mcp_reachable: HTTP 401 — PAT invalid or revoked" "rotate via mcp_create_token --user ace@dimagi-ai.com --name ACE-plugin --ttl-days 0"
+        ;;
+      000)
+        warn "connect_labs_mcp_reachable: cannot reach $LABS_URL (network/DNS/timeout)" "verify labs.connect.dimagi.com is up and reachable from this network"
+        ;;
+      *)
+        warn "connect_labs_mcp_reachable: $LABS_URL returned HTTP $LABS_REACH_CODE" "investigate labs MCP health"
+        ;;
+    esac
+  fi
 else
   # No .env at all — individual env-derived checks would all warn the same way.
   # Emit one consolidated pointer instead of three duplicates.
-  warn "runtime_env: ocs_env, gmail_config, ocs_session, connect_env all skipped (no .env)" "resolve env_file warning above first"
+  warn "runtime_env: ocs_env, gmail_config, ocs_session, connect_env, connect_labs_env all skipped (no .env)" "resolve env_file warning above first"
 fi
 
 echo ""
