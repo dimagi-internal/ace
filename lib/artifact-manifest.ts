@@ -2,10 +2,11 @@
  * Canonical artifact manifest for ACE opportunities.
  *
  * Every file that an ACE skill reads from or writes to Google Drive under
- * `ACE/<opp>/runs/<run-id>/` is listed here. Two opp-level files
- * (`opp.yaml` and the `inputs/` folder) sit at `ACE/<opp>/` itself,
- * one level above the run folder; they are flagged with `phase: 'design'`
- * and `producedBy: 'ace-orchestrator'` (or 'external' for inputs).
+ * `ACE/<opp>/runs/<run-id>/` is listed here. A handful of opp-level files
+ * (`opp.yaml`, the `inputs/` folder, plus `connect-state.yaml`,
+ * `open-questions.md`, and `eval-calibration/known-issues.md`) sit at
+ * `ACE/<opp>/` itself, one level above the run folder; they survive
+ * across runs and are flagged with `phase: 'design'` for sort order.
  *
  * This module is the single source of truth for:
  *   - What artifacts exist at each lifecycle phase
@@ -20,18 +21,39 @@
  *   - Documentation generation
  *   - ace-web's structured-layout reader (apps/opps/sync.py)
  *
+ * Path convention (0.13.0+): per-run artifacts live under
+ * `<N>-<phase>/<skill>[_<role>].<ext>` where `N-phase` matches
+ * `PHASE_FOLDERS` in `lib/artifact-manifest-roles.ts` and `<role>` is
+ * an entry in `ROLE_VOCAB` (or omitted when one skill emits one file).
+ *
+ * 0.13.0: Renumbered to 8 phases when 0.12.0 introduced
+ * `solicitation-management` (Phase 6). Old `llo-manager` (Phase 6) is
+ * now `execution-management` (Phase 7); `closeout` moved 7 → 8.
+ *
  * To audit: grep -r 'ACE/<opp>/runs/' skills/ agents/
  */
 
 // ── Types ──────────────────────────────────────────────────────────
 
-export type Phase = 'design' | 'commcare' | 'connect' | 'ocs' | 'operate' | 'closeout';
+export type Phase =
+  | 'design'
+  | 'commcare'
+  | 'connect'
+  | 'ocs'
+  | 'qa-and-training'
+  | 'solicitation-management'
+  | 'execution-management'
+  | 'closeout';
 
 export interface ArtifactEntry {
-  /** Relative path under ACE/<opp-name>/, e.g. "pdd.md" or "apps/learn-app.json" */
+  /** Relative path under ACE/<opp-name>/, e.g. "1-design/idea-to-pdd.md" */
   path: string;
-  /** Skill that creates this artifact (or "external" for human-provided inputs) */
+  /** Skill (or agent) that creates this artifact (or "external" for human-provided inputs) */
   producedBy: string;
+  /** Optional role suffix when one skill emits multiple artifacts.
+   *  Vocabulary in lib/artifact-manifest-roles.ts.
+   */
+  role?: string;
   /** Skills that read this artifact as input */
   consumedBy: string[];
   /** Lifecycle phase when this artifact is produced */
@@ -44,7 +66,16 @@ export interface ArtifactEntry {
 
 // ── Phase ordering ─────────────────────────────────────────────────
 
-export const PHASES = ['design', 'commcare', 'connect', 'ocs', 'operate', 'closeout'] as const;
+export const PHASES = [
+  'design',
+  'commcare',
+  'connect',
+  'ocs',
+  'qa-and-training',
+  'solicitation-management',
+  'execution-management',
+  'closeout',
+] as const;
 
 // ── Manifest ───────────────────────────────────────────────────────
 
@@ -57,44 +88,77 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['ace-orchestrator', 'idea-to-pdd'],
     phase: 'design',
     required: true,
-    description: 'Canonical input pack for the opp. Contains pdd.md (required) and any supporting docs (sample paper forms, interview guides, notes). Read at run start; the PDD body is copied into runs/<run-id>/idea.md.',
+    description: 'Canonical input pack for the opp. Contains pdd.md (required) and any supporting docs (sample paper forms, interview guides, notes). Read at run start; the PDD body is copied into runs/<run-id>/1-design/idea.md.',
   },
   {
     path: 'opp.yaml',
     producedBy: 'ace-orchestrator',
+    consumedBy: ['ace-orchestrator', 'llo-onboarding', 'solicitation-review'],
+    phase: 'design',
+    required: false,
+    description: 'Opp-level metadata: display_name, slug, last_run_id, tags, created_at, created_by, plus selected_llo (populated by solicitation-review at the Phase 6→7 boundary; read by llo-onboarding to identify the awardee). Created lazily on the first run; updated on every run to bump last_run_id.',
+  },
+  {
+    path: 'connect-state.yaml',
+    producedBy: 'connect-opp-setup',
+    consumedBy: ['llo-launch', 'llo-uat', 'app-screenshot-capture'],
+    phase: 'design',
+    required: false,
+    description: 'Cross-run Connect state: program UUID, opportunity UUID, ACE-test-user invite URL. Written by connect-opp-setup (Phase 3); read by Phase 5/7 skills that need to drive activation, UAT, or the emulator-driven test-user claim flow without knowing which run created the opp. Opp-level (NOT under runs/<run-id>/) so subsequent runs reuse the same Connect entities.',
+  },
+  {
+    path: 'open-questions.md',
+    producedBy: 'idea-to-pdd',
     consumedBy: ['ace-orchestrator'],
     phase: 'design',
     required: false,
-    description: 'Opp-level metadata: display_name, slug, last_run_id, tags, created_at, created_by. Created lazily on the first run; updated on every run to bump last_run_id.',
+    description: 'Per-opp deferred-question doc. Written by idea-to-pdd when stress-test grades partial/fail and a default reasonable-pick is taken; phase agents append unresolved questions here at end-of-run for human review (per the feedback_phase_open_questions user-memory item). Opp-level (NOT under runs/<run-id>/) so questions survive across runs until answered.',
+  },
+  {
+    path: 'eval-calibration/known-issues.md',
+    producedBy: 'eval-calibration',
+    consumedBy: [
+      'app-release-eval', 'connect-program-setup-eval', 'cycle-grade-eval',
+      'flw-data-review-eval', 'idea-to-pdd-eval', 'llo-launch-eval',
+      'ocs-chatbot-eval', 'ocs-widget-handoff-eval',
+      'pdd-to-deliver-app-eval', 'pdd-to-learn-app-eval',
+      'solicitation-create-eval', 'solicitation-review-eval',
+    ],
+    phase: 'design',
+    required: false,
+    description: 'Per-opp ground-truth catalogue: the deliberately-injected defects each -eval rubric is calibrated to detect. Read by every -eval skill at grade time. Opp-level audit trail — survives across runs.',
   },
 
   // ── Design phase (Phase 1) ─────────────────────────────────────
 
   {
-    path: 'idea.md',
+    path: '1-design/idea.md',
     producedBy: 'external',
     consumedBy: ['idea-to-pdd'],
     phase: 'design',
     required: true,
-    description: 'Initial opportunity idea or brief',
+    description: 'Initial opportunity idea or brief (copy of inputs/pdd.md or hand-written brief, snapshotted at run start)',
   },
   {
-    path: 'pdd.md',
+    path: '1-design/idea-to-pdd.md',
     producedBy: 'idea-to-pdd',
     consumedBy: [
-      'pdd-to-test-prompts', 'pdd-to-learn-app', 'pdd-to-deliver-app',
+      'pdd-to-test-prompts', 'pdd-to-app-journeys',
+      'pdd-to-learn-app', 'pdd-to-deliver-app',
+      'app-test-cases', 'app-ux-eval',
       'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
       'training-faq', 'training-onboarding-email', 'training-deck-outline',
       'connect-program-setup', 'connect-opp-setup',
-      'llo-invite', 'ocs-agent-setup', 'timeline-monitor', 'flw-data-review',
+      'solicitation-create', 'llo-invite',
+      'ocs-agent-setup', 'timeline-monitor', 'flw-data-review',
       'cycle-grade', 'learnings-summary',
     ],
     phase: 'design',
     required: true,
-    description: 'Program Design Document with archetype, Evidence Model, and stress-test appendix',
+    description: 'Program Design Document with archetype, Evidence Model, Solicitation block, and stress-test appendix (the canonical pdd.md, renamed to match its producer)',
   },
   {
-    path: 'test-prompts.md',
+    path: '1-design/pdd-to-test-prompts.md',
     producedBy: 'pdd-to-test-prompts',
     consumedBy: ['ocs-chatbot-qa'],
     phase: 'design',
@@ -102,7 +166,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Opp-specific Q&A pairs derived from the PDD; each entry has an expected-answer summary that ocs-chatbot-qa embeds in the transcript and ocs-chatbot-eval grades against',
   },
   {
-    path: 'expected-journeys.md',
+    path: '1-design/pdd-to-app-journeys.md',
     producedBy: 'pdd-to-app-journeys',
     consumedBy: ['app-test-cases', 'app-ux-eval', 'app-screenshot-capture'],
     phase: 'design',
@@ -118,37 +182,59 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-run lifecycle state: phase, step, mode, gate approvals, initiated_by / last_actor / last_actor_at. Lives at `runs/<run-id>/run_state.yaml` (renamed from `state.yaml` in 0.11.3 to make per-run scope explicit).',
   },
   {
-    path: 'gate-briefs/idea-to-pdd.md',
+    path: '1-design/idea-to-pdd_gate-brief.md',
     producedBy: 'idea-to-pdd',
+    role: 'gate-brief',
     consumedBy: ['ace-orchestrator'],
     phase: 'design',
     required: true,
     description: 'Gate brief for the Phase 1→2 gate: checklist + stress-test concerns for the PDD',
   },
+  {
+    path: '1-design/idea-to-pdd-eval_verdict.yaml',
+    producedBy: 'idea-to-pdd-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'design',
+    required: false,
+    description: 'Per-skill -eval verdict for idea-to-pdd: structural completeness, archetype coherence, concreteness, reviewer-comment fidelity, stress-test agreement. Shape matches skills/README.md § QA vs Eval.',
+  },
+  {
+    path: '1-design/design-review_summary.md',
+    producedBy: 'design-review',
+    role: 'summary',
+    consumedBy: [],
+    phase: 'design',
+    required: true,
+    description: 'Phase 1 (design-review) end-of-phase summary written by the design-review subagent. Captures the agreed PDD highlights and gate disposition handed back to the orchestrator.',
+  },
 
   // ── CommCare phase (Phase 2) ───────────────────────────────────
 
   {
-    path: 'apps/learn-app.json',
+    path: '2-commcare/pdd-to-learn-app_snapshot.json',
     producedBy: 'pdd-to-learn-app',
+    role: 'snapshot',
     consumedBy: [],
     phase: 'commcare',
     required: false,
     description: 'Optional historical snapshot of the Learn app structure (output of `/nova:show <id>`). Not required: Nova is the system of record for the app, and the canonical handle is `nova_app_id` in the summary frontmatter (see 2026-04-27 Nova-plugin migration note).',
   },
   {
-    path: 'apps/deliver-app.json',
+    path: '2-commcare/pdd-to-deliver-app_snapshot.json',
     producedBy: 'pdd-to-deliver-app',
+    role: 'snapshot',
     consumedBy: [],
     phase: 'commcare',
     required: false,
     description: 'Optional historical snapshot of the Deliver app structure (output of `/nova:show <id>`). Not required — see Learn equivalent above.',
   },
   {
-    path: 'app-summaries/learn-app-summary.md',
+    path: '2-commcare/pdd-to-learn-app_summary.md',
     producedBy: 'pdd-to-learn-app',
+    role: 'summary',
     consumedBy: [
-      'app-deploy', 'app-test-cases',
+      'app-deploy', 'app-test-cases', 'app-ux-eval',
       'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
       'training-faq', 'training-deck-outline',
       'ocs-agent-setup', 'flw-data-review',
@@ -158,10 +244,11 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Learn app structure summary for downstream skills. Required frontmatter: `nova_app_id`, `nova_app_url`, `archetype`. `app-deploy` reads `nova_app_id` from here to feed `/nova:upload_to_hq`.',
   },
   {
-    path: 'app-summaries/deliver-app-summary.md',
+    path: '2-commcare/pdd-to-deliver-app_summary.md',
     producedBy: 'pdd-to-deliver-app',
+    role: 'summary',
     consumedBy: [
-      'app-deploy', 'app-test-cases',
+      'app-deploy', 'app-test-cases', 'app-ux-eval',
       'training-llo-guide', 'training-flw-guide', 'training-quick-reference',
       'training-faq', 'training-deck-outline',
       'ocs-agent-setup', 'flw-data-review',
@@ -171,82 +258,72 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Deliver app structure summary for downstream skills. Required frontmatter: `nova_app_id`, `nova_app_url`, `archetype`, `delivery_unit`. `app-deploy` reads `nova_app_id` from here.',
   },
   {
-    path: 'deployment-summary.md',
+    path: '2-commcare/app-deploy_summary.md',
     producedBy: 'app-deploy',
+    role: 'summary',
     consumedBy: ['connect-opp-setup', 'llo-uat', 'llo-launch'],
     phase: 'commcare',
     required: true,
     description: 'App deployment details: IDs, URLs, build status',
   },
   {
-    path: 'app-test-cases.yaml',
+    path: '2-commcare/app-test-cases.yaml',
     producedBy: 'app-test-cases',
     consumedBy: ['app-screenshot-capture', 'app-ux-eval'],
     phase: 'commcare',
     required: true,
-    description: 'Bindings of expected-journeys.md to Phase-2-built app structure: per-journey form/field IDs, Maestro recipe paths, smoke flags, structural pass criteria. Phase 5 shallow uses is_smoke: true entries; /ace:qa-deep uses all entries.',
+    description: 'Bindings of pdd-to-app-journeys.md to Phase-2-built app structure: per-journey form/field IDs, Maestro recipe paths, smoke flags, structural pass criteria. Phase 5 shallow uses is_smoke: true entries; /ace:qa-deep uses all entries.',
   },
   {
-    path: 'gate-briefs/app-deploy.md',
+    path: '2-commcare/app-deploy_gate-brief.md',
     producedBy: 'app-deploy',
+    role: 'gate-brief',
     consumedBy: ['ace-orchestrator'],
     phase: 'commcare',
     required: true,
     description: 'Gate brief for the Phase 2→3 gate: build status, Connectify flags, and an HQ-domain-mismatch BLOCKER if Nova is bound to the wrong project space',
   },
   {
-    path: 'training-materials/llo-manager-guide.md',
-    producedBy: 'training-llo-guide',
-    consumedBy: ['llo-onboarding', 'ocs-agent-setup', 'training-onboarding-email'],
-    phase: 'commcare',
-    required: true,
-    description: 'LLO Manager guide for overseeing FLW deployment',
-  },
-  {
-    path: 'training-materials/flw-training-guide.md',
-    producedBy: 'training-flw-guide',
-    consumedBy: ['llo-onboarding', 'ocs-agent-setup', 'training-onboarding-email'],
-    phase: 'commcare',
-    required: true,
-    description: 'Step-by-step FLW training guide for app usage and protocols',
-  },
-  {
-    path: 'training-materials/quick-reference.md',
-    producedBy: 'training-quick-reference',
-    consumedBy: ['llo-onboarding', 'ocs-agent-setup', 'training-onboarding-email'],
-    phase: 'commcare',
-    required: true,
-    description: 'One-page laminated pocket card for FLWs in the field',
-  },
-  {
-    path: 'training-materials/faq.md',
-    producedBy: 'training-faq',
-    consumedBy: ['llo-onboarding', 'ocs-agent-setup'],
-    phase: 'commcare',
-    required: true,
-    description: 'Frequently asked questions for LLOs and FLWs',
-  },
-  {
-    path: 'training-materials/onboarding-email-body.md',
-    producedBy: 'training-onboarding-email',
-    consumedBy: ['llo-onboarding'],
-    phase: 'commcare',
-    required: true,
-    description: 'Phase 6 onboarding email template, with {{LLO_NAME}}/{{LLO_FIRST_NAME}}/{{LLO_ORG}} tokens',
-  },
-  {
-    path: 'training-materials/training-deck-outline.md',
-    producedBy: 'training-deck-outline',
-    consumedBy: ['training-deck-build'],
+    path: '2-commcare/pdd-to-learn-app-eval_verdict.yaml',
+    producedBy: 'pdd-to-learn-app-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
     phase: 'commcare',
     required: false,
-    description: 'Slide-by-slide markdown outline for the training deck. Format contract is parsed by `lib/training-deck-spec.ts` `parseDeckOutline`. Rendered to a Google Slides deck by `training-deck-build`.',
+    description: 'Per-skill -eval verdict for pdd-to-learn-app: module count, order, Connectify Assessment Score wiring, gating thresholds, content coverage match against the PDD.',
+  },
+  {
+    path: '2-commcare/pdd-to-deliver-app-eval_verdict.yaml',
+    producedBy: 'pdd-to-deliver-app-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'commcare',
+    required: false,
+    description: 'Per-skill -eval verdict for pdd-to-deliver-app: field count, ordering, conditional logic, Connectify wiring, required-field rules match against the PDD.',
+  },
+  {
+    path: '2-commcare/app-release-eval_verdict.yaml',
+    producedBy: 'app-release-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'commcare',
+    required: false,
+    description: 'Per-skill -eval verdict for app-release: every uploaded build successfully released, CCZ-marker checks passed, no draft-only apps remain.',
+  },
+  {
+    path: '2-commcare/commcare-setup_summary.md',
+    producedBy: 'commcare-setup',
+    role: 'summary',
+    consumedBy: [],
+    phase: 'commcare',
+    required: true,
+    description: 'Phase 2 (commcare-setup) end-of-phase summary written by the commcare-setup procedure-doc agent. Captures app IDs, deploy/release status, and gate disposition handed back to the orchestrator.',
   },
 
   // ── Connect phase (Phase 3) ────────────────────────────────────
 
   {
-    path: 'connect-setup/program.md',
+    path: '3-connect/connect-program-setup.md',
     producedBy: 'connect-program-setup',
     consumedBy: ['connect-opp-setup'],
     phase: 'connect',
@@ -254,22 +331,36 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Connect Program ID, name, config details',
   },
   {
-    path: 'connect-setup/opportunity.md',
+    path: '3-connect/connect-opp-setup.md',
     producedBy: 'connect-opp-setup',
-    consumedBy: ['llo-invite', 'llo-onboarding', 'llo-uat', 'llo-launch', 'ocs-agent-setup', 'opp-closeout'],
+    consumedBy: ['llo-onboarding', 'llo-uat', 'llo-launch', 'ocs-agent-setup', 'opp-closeout'],
     phase: 'connect',
     required: true,
     description: 'Connect Opportunity ID, verification rules, delivery/payment unit config',
   },
-  // llo-invite artifacts moved to Phase 5 (operate) on 2026-04-20 — see
-  // the "Operate phase" block below. invite-list prep no longer blocks
-  // Phase 3→4; it now runs as the first step of Phase 5 after the OCS
-  // chatbot has cleared its deep-eval gate.
+  {
+    path: '3-connect/connect-program-setup-eval_verdict.yaml',
+    producedBy: 'connect-program-setup-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'connect',
+    required: false,
+    description: 'Per-skill -eval verdict for the Connect program/opportunity setup: program-fit decision (reuse vs create), opportunity verification rules, delivery units, payment units, entity-id wiring against PDD spec.',
+  },
+  {
+    path: '3-connect/connect-setup_summary.md',
+    producedBy: 'connect-setup',
+    role: 'summary',
+    consumedBy: ['app-release-eval', 'connect-program-setup-eval', 'llo-launch-eval'],
+    phase: 'connect',
+    required: true,
+    description: 'Phase 3 (connect-setup) end-of-phase summary written by the connect-setup subagent. Captures program/opp IDs, payment-unit config, and gate disposition. Read by 3 downstream -eval skills as ground truth for grading.',
+  },
 
   // ── OCS phase (Phase 4) ────────────────────────────────────────
 
   {
-    path: 'ocs-agent-config.md',
+    path: '4-ocs/ocs-agent-setup.md',
     producedBy: 'ocs-agent-setup',
     consumedBy: ['ocs-chatbot-qa', 'ocs-chatbot-eval', 'llo-onboarding', 'timeline-monitor', 'flw-data-review'],
     phase: 'ocs',
@@ -277,252 +368,470 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'OCS chatbot config: experiment_id, public_id, embed_key, collection_id',
   },
   {
-    path: 'ocs-setup/widget-handoff.md',
+    path: '4-ocs/ocs-setup_widget-handoff.md',
     producedBy: 'ocs-setup',
-    consumedBy: ['llo-onboarding'],
+    role: 'widget-handoff',
+    consumedBy: ['llo-onboarding', 'ocs-widget-handoff-eval'],
     phase: 'ocs',
     required: true,
     description: 'Operator-facing handoff doc: creds + paste instructions for the Connect opportunity widget (until update_opportunity API lands)',
   },
   {
-    path: 'qa-captures/YYYY-MM-DD-ocs-chat-quick.md',
+    path: '4-ocs/ocs-chatbot-qa_transcript-quick.md',
     producedBy: 'ocs-chatbot-qa',
+    role: 'transcript',
     consumedBy: ['ocs-chatbot-eval'],
     phase: 'ocs',
     required: false,
     description: 'Transcript from the --quick suite (5 smoke prompts): each entry has prompt + response + cited_files + expected_answer_summary + structural-pass flag. Input to ocs-chatbot-eval --quick',
   },
   {
-    path: 'qa-captures/YYYY-MM-DD-ocs-chat-deep.md',
+    path: '4-ocs/ocs-chatbot-qa_transcript-deep.md',
     producedBy: 'ocs-chatbot-qa',
+    role: 'transcript',
     consumedBy: ['ocs-chatbot-eval'],
     phase: 'ocs',
     required: false,
     description: 'Transcript from the --deep suite (Connect-general + ACE-specific + opp-specific + edge cases): structured transcript input to ocs-chatbot-eval --deep. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
   },
   {
-    path: 'verdicts/ocs-chatbot-eval-quick.yaml',
+    path: '4-ocs/ocs-chatbot-eval_verdict-quick.yaml',
     producedBy: 'ocs-chatbot-eval',
-    consumedBy: [],
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
     phase: 'ocs',
     required: false,
     description: 'Machine-readable verdict from --quick LLM-as-Judge grading: overall_score, per-dimension scores, per-prompt verdicts, gate disposition. Shape matches skills/README.md § QA vs Eval',
   },
   {
-    path: 'verdicts/ocs-chatbot-eval-deep.yaml',
+    path: '4-ocs/ocs-chatbot-eval_verdict-deep.yaml',
     producedBy: 'ocs-chatbot-eval',
-    consumedBy: [],
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
     phase: 'ocs',
     required: false,
-    description: 'Machine-readable verdict from --deep LLM-as-Judge grading; read by opp-eval (future) for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
+    description: 'Machine-readable verdict from --deep LLM-as-Judge grading; read by opp-eval for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
   },
   {
-    path: 'gate-briefs/ocs-chatbot-eval-quick.md',
+    path: '4-ocs/ocs-chatbot-eval_gate-brief-quick.md',
     producedBy: 'ocs-chatbot-eval',
+    role: 'gate-brief',
     consumedBy: ['ace-orchestrator'],
     phase: 'ocs',
     required: true,
     description: 'Gate brief for the Phase 4→5 gate (post-Task-6 shallow gate): scorecard from --quick eval (3 prompts × 1 dim), pass/fail verdict, single auto-surfaced concern if any prompt < 2/3.',
   },
   {
-    path: 'gate-briefs/ocs-chatbot-eval-deep.md',
+    path: '4-ocs/ocs-chatbot-eval_gate-brief-deep.md',
     producedBy: 'ocs-chatbot-eval',
+    role: 'gate-brief',
     consumedBy: ['ace-orchestrator'],
     phase: 'ocs',
     required: false,
     description: 'Gate brief for the deep-eval activation gate: scorecard, failing prompts, dimension weak spots. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
   },
+  {
+    path: '4-ocs/ocs-chatbot-eval_report-deep.md',
+    producedBy: 'ocs-chatbot-eval',
+    role: 'report',
+    consumedBy: [],
+    phase: 'ocs',
+    required: false,
+    description: 'Human-readable eval report from the Phase 4 --deep gate. Complements the machine-readable verdict YAML.',
+  },
+  {
+    path: '4-ocs/ocs-widget-handoff-eval_verdict.yaml',
+    producedBy: 'ocs-widget-handoff-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'ocs',
+    required: false,
+    description: 'Per-skill -eval verdict for ocs-widget-handoff: widget URL correctness, embed key staging, opportunity-binding completeness, HITL operator handoff hygiene. Filename uses the eval skill (ocs-widget-handoff-eval) rather than the agent name (ocs-agent-setup) — see 0.12.0 Option-α naming rule.',
+  },
+  {
+    path: '4-ocs/ocs-agent-setup_dry-run-log.md',
+    producedBy: 'ocs-agent-setup',
+    role: 'dry-run-log',
+    consumedBy: [],
+    phase: 'ocs',
+    required: false,
+    description: 'Log of every MCP atom call ocs-agent-setup would issue when invoked with --dry-run. Companion to ocs-agent-setup.md from real runs; surfaced for operator review before a live run.',
+  },
+  {
+    path: '4-ocs/ocs-setup_summary.md',
+    producedBy: 'ocs-setup',
+    role: 'summary',
+    consumedBy: [],
+    phase: 'ocs',
+    required: true,
+    description: 'Phase 4 (ocs-setup) end-of-phase summary written by the ocs-setup subagent. Captures chatbot config (experiment_id, embed key), publish status, and gate disposition handed back to the orchestrator.',
+  },
 
-  // ── Operate phase (Phase 5) ────────────────────────────────────
+  // ── QA + Training phase (Phase 5) ──────────────────────────────
 
   {
-    path: 'screenshots/manifest.yaml',
+    path: '5-qa-and-training/app-screenshot-capture_manifest.yaml',
     producedBy: 'app-screenshot-capture',
+    role: 'manifest',
     consumedBy: ['training-flw-guide', 'training-deck-outline', 'app-ux-eval'],
-    phase: 'operate',
+    phase: 'qa-and-training',
     required: false,
     description: 'Manifest of every captured screenshot with step labels and Drive paths.',
   },
   {
-    path: 'verdicts/app-ux-eval-deep.yaml',
-    producedBy: 'app-ux-eval',
-    consumedBy: ['llo-launch', 'opp-eval'],
-    phase: 'operate',
-    required: false,
-    description: 'Machine-readable verdict from app-ux-eval (deep). Read by llo-launch (Phase 6 activation gate) for freshness check vs. latest released CommCare build, and by opp-eval for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
-  },
-  {
-    path: 'verdicts/app-screenshot-capture-shallow.yaml',
+    path: '5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',
     producedBy: 'app-screenshot-capture',
+    role: 'verdict',
     consumedBy: ['opp-eval'],
-    phase: 'operate',
+    phase: 'qa-and-training',
     required: true,
     description: 'Shallow smoke verdict from /ace:run Phase 5 — smoke recipe pass/fail + thin UX judge ≥ 2/3 per app. Always present after a successful /ace:run.',
   },
   {
-    path: 'verdicts/app-screenshot-capture.yaml',
+    path: '5-qa-and-training/app-screenshot-capture_verdict.yaml',
     producedBy: 'app-screenshot-capture',
+    role: 'verdict',
     consumedBy: ['opp-eval'],
-    phase: 'operate',
+    phase: 'qa-and-training',
     required: true,
     description: 'Structural verdict from app-screenshot-capture: smoke recipe pass/fail status + screenshot capture integrity. Always present after a successful Phase 5 run.',
   },
-
-  // ── Solicitation Management (Phase 6) ──────────────────────────
-  // llo-invite was repurposed in 0.12.0: previously prepared a Connect-side
-  // invite roster (connect-setup/invites.md) for Phase 7 onboarding; now
-  // sends solicitation invitations to PDD-named candidates by email.
-  // Phase 6's awarded-org handoff to Phase 7 happens via opp.yaml.selected_llo
-  // (managed by ace-orchestrator), not a Drive artifact.
   {
-    path: 'solicitation/draft.md',
+    path: '5-qa-and-training/app-ux-eval_verdict-deep.yaml',
+    producedBy: 'app-ux-eval',
+    role: 'verdict',
+    consumedBy: ['llo-launch', 'opp-eval'],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Machine-readable verdict from app-ux-eval (deep). Read by llo-launch (Phase 7 activation gate) for freshness check vs. latest released CommCare build, and by opp-eval for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
+  },
+  {
+    path: '5-qa-and-training/training-llo-guide.md',
+    producedBy: 'training-llo-guide',
+    consumedBy: ['llo-onboarding', 'ocs-agent-setup', 'training-onboarding-email'],
+    phase: 'qa-and-training',
+    required: true,
+    description: 'LLO Manager guide for overseeing FLW deployment',
+  },
+  {
+    path: '5-qa-and-training/training-flw-guide.md',
+    producedBy: 'training-flw-guide',
+    consumedBy: ['llo-onboarding', 'ocs-agent-setup', 'training-onboarding-email'],
+    phase: 'qa-and-training',
+    required: true,
+    description: 'Step-by-step FLW training guide for app usage and protocols',
+  },
+  {
+    path: '5-qa-and-training/training-quick-reference.md',
+    producedBy: 'training-quick-reference',
+    consumedBy: ['llo-onboarding', 'ocs-agent-setup', 'training-onboarding-email'],
+    phase: 'qa-and-training',
+    required: true,
+    description: 'One-page laminated pocket card for FLWs in the field',
+  },
+  {
+    path: '5-qa-and-training/training-faq.md',
+    producedBy: 'training-faq',
+    consumedBy: ['llo-onboarding', 'ocs-agent-setup'],
+    phase: 'qa-and-training',
+    required: true,
+    description: 'Frequently asked questions for LLOs and FLWs',
+  },
+  {
+    path: '5-qa-and-training/training-onboarding-email.md',
+    producedBy: 'training-onboarding-email',
+    consumedBy: ['llo-onboarding'],
+    phase: 'qa-and-training',
+    required: true,
+    description: 'Phase 7 onboarding email template, with {{LLO_NAME}}/{{LLO_FIRST_NAME}}/{{LLO_ORG}} tokens',
+  },
+  {
+    path: '5-qa-and-training/training-deck-outline.md',
+    producedBy: 'training-deck-outline',
+    consumedBy: ['training-deck-build'],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Slide-by-slide markdown outline for the training deck. Format contract is parsed by `lib/training-deck-spec.ts` `parseDeckOutline`. Rendered to a Google Slides deck by `training-deck-build`.',
+  },
+  {
+    path: '5-qa-and-training/training-deck-build_verdict.yaml',
+    producedBy: 'training-deck-build',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted verdict — no separate `training-deck-build-eval` skill exists; rename to `training-deck-build-eval_verdict.yaml` if/when one ships. Filename matches producer per Option β.',
+  },
+  {
+    path: '5-qa-and-training/training-deck-outline_verdict.yaml',
+    producedBy: 'training-deck-outline',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted verdict — no separate `training-deck-outline-eval` skill exists; rename to `training-deck-outline-eval_verdict.yaml` if/when one ships. Filename matches producer per Option β.',
+  },
+  {
+    path: '5-qa-and-training/training-faq_verdict.yaml',
+    producedBy: 'training-faq',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted verdict — no separate `training-faq-eval` skill exists; rename to `training-faq-eval_verdict.yaml` if/when one ships. Filename matches producer per Option β.',
+  },
+  {
+    path: '5-qa-and-training/training-flw-guide_verdict.yaml',
+    producedBy: 'training-flw-guide',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted verdict — no separate `training-flw-guide-eval` skill exists; rename to `training-flw-guide-eval_verdict.yaml` if/when one ships. Filename matches producer per Option β.',
+  },
+  {
+    path: '5-qa-and-training/training-llo-guide_verdict.yaml',
+    producedBy: 'training-llo-guide',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted verdict — no separate `training-llo-guide-eval` skill exists; rename to `training-llo-guide-eval_verdict.yaml` if/when one ships. Filename matches producer per Option β.',
+  },
+  {
+    path: '5-qa-and-training/training-onboarding-email_verdict.yaml',
+    producedBy: 'training-onboarding-email',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted verdict — no separate `training-onboarding-email-eval` skill exists; rename to `training-onboarding-email-eval_verdict.yaml` if/when one ships. Filename matches producer per Option β.',
+  },
+  {
+    path: '5-qa-and-training/training-quick-reference_verdict.yaml',
+    producedBy: 'training-quick-reference',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted verdict — no separate `training-quick-reference-eval` skill exists; rename to `training-quick-reference-eval_verdict.yaml` if/when one ships. Filename matches producer per Option β.',
+  },
+
+  // ── Solicitation Management phase (Phase 6) ────────────────────
+  // New in 0.12.0; renumbered + rerooted into 6-solicitation-management/ in 0.13.0.
+
+  {
+    path: '6-solicitation-management/solicitation-create_draft.md',
     producedBy: 'solicitation-create',
+    role: 'draft',
     consumedBy: ['solicitation-create-eval'],
-    phase: 'operate',
+    phase: 'solicitation-management',
     required: false,
     description: 'Solicitation payload pre-publish: title, type, scope, criteria, response template, deadline. Audit trail for what solicitation-create proposed before posting to labs.',
   },
   {
-    path: 'solicitation/published.md',
+    path: '6-solicitation-management/solicitation-create_published.md',
     producedBy: 'solicitation-create',
+    role: 'published',
     consumedBy: ['solicitation-monitor', 'solicitation-review', 'solicitation-create-eval', 'llo-invite'],
-    phase: 'operate',
+    phase: 'solicitation-management',
     required: false,
     description: 'Snapshot of the published solicitation: solicitation_id, public_url, manage_url, deadline, criteria. Read by every downstream Phase 6 skill and by llo-invite for the URL to email.',
   },
   {
-    path: 'solicitation/invitations.md',
+    path: '6-solicitation-management/llo-invite_invitations.md',
     producedBy: 'llo-invite',
+    role: 'invitations',
     consumedBy: ['solicitation-monitor', 'solicitation-review-eval'],
-    phase: 'operate',
+    phase: 'solicitation-management',
     required: false,
     description: 'Per-recipient log: who got emailed the solicitation URL, when, and send status. Empty when PDD has no preferred_llos (long-term solicitation flow).',
   },
   {
-    path: 'solicitation/responses/',
+    path: '6-solicitation-management/solicitation-monitor_responses/',
     producedBy: 'solicitation-monitor',
     consumedBy: ['solicitation-review'],
-    phase: 'operate',
+    phase: 'solicitation-management',
     required: false,
     description: 'One file per solicitation response, written incrementally as responses arrive. Each file contains the response content plus metadata returned by labs.',
   },
   {
-    path: 'solicitation/review/scoring-rubric.md',
+    path: '6-solicitation-management/solicitation-review_scoring-rubric.md',
     producedBy: 'solicitation-review',
+    role: 'scoring-rubric',
     consumedBy: ['solicitation-review-eval'],
-    phase: 'operate',
+    phase: 'solicitation-management',
     required: false,
     description: 'Per-response, per-criterion scores produced by solicitation-review.',
   },
   {
-    path: 'solicitation/review/recommendation.md',
+    path: '6-solicitation-management/solicitation-review_recommendation.md',
     producedBy: 'solicitation-review',
+    role: 'recommendation',
     consumedBy: ['solicitation-review-eval'],
-    phase: 'operate',
+    phase: 'solicitation-management',
     required: false,
     description: 'Ranked candidates + reasoning. Input to the HITL gate before award_response is called.',
   },
   {
-    path: 'solicitation/award-record.md',
+    path: '6-solicitation-management/solicitation-review_award-record.md',
     producedBy: 'solicitation-review',
+    role: 'award-record',
     consumedBy: ['solicitation-review-eval', 'opp-closeout'],
-    phase: 'operate',
+    phase: 'solicitation-management',
     required: false,
     description: 'Written when award_response is called (success or failure). Includes response_id, awarded_at, awarded_org_slug, and any error envelope on failure.',
   },
   {
-    path: 'comms-log/onboarding-emails.md',
+    path: '6-solicitation-management/solicitation-create-eval_verdict.yaml',
+    producedBy: 'solicitation-create-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'solicitation-management',
+    required: false,
+    description: 'Per-skill -eval verdict for solicitation-create: PDD-fidelity, criteria coverage, deadline plausibility, response-template clarity.',
+  },
+  {
+    path: '6-solicitation-management/solicitation-review-eval_verdict.yaml',
+    producedBy: 'solicitation-review-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'solicitation-management',
+    required: false,
+    description: 'Per-skill -eval verdict for solicitation-review: scoring rigor, recommendation justification, alignment with award outcome.',
+  },
+  {
+    path: '6-solicitation-management/solicitation-management_summary.md',
+    producedBy: 'solicitation-management',
+    role: 'summary',
+    consumedBy: [],
+    phase: 'solicitation-management',
+    required: true,
+    description: 'Phase 6 (solicitation-management) end-of-phase summary written by the solicitation-management subagent. Captures published solicitation URL, invitation count, and gate disposition handed back to the orchestrator.',
+  },
+
+  // ── Execution Management phase (Phase 7) ───────────────────────
+  // Renamed from llo-manager (was Phase 6) in 0.12.0; renumbered to Phase 7 in 0.13.0.
+
+  {
+    path: '7-execution-manager/llo-onboarding_comms-log.md',
     producedBy: 'llo-onboarding',
+    role: 'comms-log',
     consumedBy: ['learnings-summary'],
-    phase: 'operate',
+    phase: 'execution-management',
     required: true,
     description: 'Onboarding email records with recipients, subject, body, timestamp',
   },
   {
-    path: 'uat/uat-results.md',
+    path: '7-execution-manager/llo-uat_results.md',
     producedBy: 'llo-uat',
+    role: 'results',
     consumedBy: ['llo-launch'],
-    phase: 'operate',
+    phase: 'execution-management',
     required: true,
     description: 'Per-LLO sign-off status, issues found, overall UAT verdict',
   },
   {
-    path: 'launch/launch-record.md',
+    path: '7-execution-manager/llo-launch_record.md',
     producedBy: 'llo-launch',
+    role: 'record',
     consumedBy: ['timeline-monitor'],
-    phase: 'operate',
+    phase: 'execution-management',
     required: true,
     description: 'Activation timestamp, LLO notifications, app URLs, outstanding issues',
   },
   {
-    path: 'gate-briefs/llo-launch.md',
+    path: '7-execution-manager/llo-launch_gate-brief.md',
     producedBy: 'llo-launch',
+    role: 'gate-brief',
     consumedBy: ['ace-orchestrator'],
-    phase: 'operate',
+    phase: 'execution-management',
     required: true,
-    description: 'Gate brief for the Phase 5 launch gate: UAT sign-offs, app build status, launch-readiness',
+    description: 'Gate brief for the Phase 7 launch gate: UAT sign-offs, app build status, launch-readiness',
   },
   {
-    path: 'qa-captures/YYYY-MM-DD-ocs-chat-monitor.md',
+    path: '7-execution-manager/ocs-chatbot-qa_transcript-monitor.md',
     producedBy: 'ocs-chatbot-qa',
+    role: 'transcript',
     consumedBy: ['ocs-chatbot-eval'],
-    phase: 'operate',
+    phase: 'execution-management',
     required: false,
     description: 'Transcript from recurring --monitor runs; structured input to ocs-chatbot-eval --monitor',
   },
   {
-    path: 'verdicts/ocs-chatbot-eval-monitor.yaml',
+    path: '7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml',
     producedBy: 'ocs-chatbot-eval',
+    role: 'verdict',
     consumedBy: [],
-    phase: 'operate',
+    phase: 'execution-management',
     required: false,
-    description: 'Machine-readable verdict from recurring --monitor runs. Latest-wins file; see eval-reports/trend.md for history',
+    description: 'Machine-readable verdict from recurring --monitor runs. Latest-wins file; see 7-execution-manager/ocs-chatbot-eval_trend.md for history',
   },
   {
-    path: 'eval-reports/YYYY-MM-DD-ocs-eval.md',
+    path: '7-execution-manager/ocs-chatbot-eval_trend.md',
     producedBy: 'ocs-chatbot-eval',
     consumedBy: [],
-    phase: 'ocs',
-    required: false,
-    description: 'Human-readable eval report (Phase 4 deep gate + Phase 5 recurring monitor). Complements the machine-readable verdicts/ yaml',
-  },
-  {
-    path: 'eval-reports/trend.md',
-    producedBy: 'ocs-chatbot-eval',
-    consumedBy: [],
-    phase: 'operate',
+    phase: 'execution-management',
     required: false,
     description: 'Rolling trend of OCS eval scores from --monitor runs; one line per run',
   },
   {
-    path: 'monitoring/YYYY-MM-DD-timeline-check.md',
+    path: '7-execution-manager/timeline-monitor/YYYY-MM-DD.md',
     producedBy: 'timeline-monitor',
     consumedBy: ['learnings-summary', 'cycle-grade'],
-    phase: 'operate',
+    phase: 'execution-management',
     required: false,
     description: 'Weekly timeline status, progress indicators, prompting email drafts',
   },
   {
-    path: 'data-reviews/YYYY-MM-DD-review.md',
+    path: '7-execution-manager/flw-data-review/YYYY-MM-DD.md',
     producedBy: 'flw-data-review',
-    consumedBy: ['learnings-summary', 'cycle-grade'],
-    phase: 'operate',
+    consumedBy: ['learnings-summary', 'cycle-grade', 'flw-data-review-eval'],
+    phase: 'execution-management',
     required: false,
     description: 'FLW data quality assessment: per-delivery (Layer B) and cross-delivery (Layer C)',
   },
+  {
+    path: '7-execution-manager/flw-data-review-eval_verdict-monitor.yaml',
+    producedBy: 'flw-data-review-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'execution-management',
+    required: false,
+    description: 'Per-skill -eval verdict for the recurring --monitor mode of flw-data-review: signal coverage, outlier-detection rigor, recommendation actionability, evidence citation, trajectory awareness.',
+  },
+  {
+    path: '7-execution-manager/llo-launch-eval_verdict.yaml',
+    producedBy: 'llo-launch-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'execution-management',
+    required: false,
+    description: 'Per-skill -eval verdict for llo-launch: UAT sign-off completeness, Connect activation correctness, app-publish status, go-live notification fidelity, pre-launch gate-discipline. The most load-bearing Phase 7 rubric because go-live is the production gate.',
+  },
+  {
+    path: '7-execution-manager/execution-manager_summary.md',
+    producedBy: 'execution-manager',
+    role: 'summary',
+    consumedBy: [],
+    phase: 'execution-management',
+    required: true,
+    description: 'Phase 7 (execution-manager) end-of-phase summary written by the execution-manager subagent. Captures activation status, monitoring config, and gate disposition handed back to the orchestrator.',
+  },
 
-  // ── Closeout phase ─────────────────────────────────────────────
+  // ── Closeout phase (Phase 8) ───────────────────────────────────
 
   {
-    path: 'closeout/invoices.md',
+    path: '8-closeout/opp-closeout_invoices.md',
     producedBy: 'opp-closeout',
+    role: 'invoices',
     consumedBy: [],
     phase: 'closeout',
     required: true,
     description: 'Invoice details, total payment amount, Jira ticket link',
   },
   {
-    path: 'closeout/llo-feedback.md',
+    path: '8-closeout/llo-feedback.md',
     producedBy: 'llo-feedback',
     consumedBy: ['learnings-summary', 'cycle-grade'],
     phase: 'closeout',
@@ -530,7 +839,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-LLO feedback responses, common themes, improvement suggestions',
   },
   {
-    path: 'closeout/learnings.md',
+    path: '8-closeout/learnings-summary.md',
     producedBy: 'learnings-summary',
     consumedBy: ['cycle-grade'],
     phase: 'closeout',
@@ -538,50 +847,72 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Process/content/technical/relationship learnings against original PDD',
   },
   {
-    path: 'closeout/new-pdd.md',
+    path: '8-closeout/learnings-summary_new-pdd.md',
     producedBy: 'learnings-summary',
+    role: 'new-pdd',
     consumedBy: [],
     phase: 'closeout',
     required: false,
     description: 'New PDD incorporating learnings (only if iteration warranted)',
   },
   {
-    path: 'closeout/cycle-grade.md',
+    path: '8-closeout/cycle-grade.md',
     producedBy: 'cycle-grade',
-    consumedBy: [],
+    consumedBy: ['cycle-grade-eval'],
     phase: 'closeout',
     required: true,
     description: '6/7-dimension grades with evidence, recommendations, narrative assessment',
   },
+  {
+    path: '8-closeout/cycle-grade-eval_verdict.yaml',
+    producedBy: 'cycle-grade-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'closeout',
+    required: false,
+    description: 'Per-skill -eval verdict for cycle-grade: independent re-grade detecting self-eval inflation, missing learnings, recommendation vagueness.',
+  },
+  {
+    path: '8-closeout/closeout_summary.md',
+    producedBy: 'closeout',
+    role: 'summary',
+    consumedBy: [],
+    phase: 'closeout',
+    required: true,
+    description: 'Phase 8 (closeout) summary written by the closeout subagent at lifecycle completion. The canonical "what shipped, how it landed, what to do next" doc for the opp.',
+  },
 
-  // ── Umbrella eval (opp-eval) — ad-hoc, opt-in; not part of the default 6-phase pipeline ──
+  // ── Umbrella eval (opp-eval) — ad-hoc, opt-in; not part of the default 8-phase pipeline ──
 
   {
-    path: 'scorecards/YYYY-MM-DD-opp-eval-quick.md',
+    path: '8-closeout/opp-eval/opp-eval_scorecard-quick.md',
     producedBy: 'opp-eval',
+    role: 'scorecard',
     consumedBy: [],
     phase: 'closeout',
     required: false,
     description: 'Human-readable quick scorecard from opp-eval --quick (structural artifact check only, no LLM cost)',
   },
   {
-    path: 'scorecards/YYYY-MM-DD-opp-eval-deep.md',
+    path: '8-closeout/opp-eval/opp-eval_scorecard-deep.md',
     producedBy: 'opp-eval',
+    role: 'scorecard',
     consumedBy: [],
     phase: 'closeout',
     required: false,
     description: 'Human-readable run-level scorecard from opp-eval --deep: category breakdown, per-skill results, improvement recommendations',
   },
   {
-    path: 'scorecards/YYYY-MM-DD-opp-eval-monitor.md',
+    path: '8-closeout/opp-eval/opp-eval_scorecard-monitor.md',
     producedBy: 'opp-eval',
+    role: 'scorecard',
     consumedBy: [],
     phase: 'closeout',
     required: false,
     description: 'Human-readable scorecard from opp-eval --monitor runs; same shape as --deep plus a trend-file append',
   },
   {
-    path: 'scorecards/trend.md',
+    path: '8-closeout/opp-eval/trend.md',
     producedBy: 'opp-eval',
     consumedBy: [],
     phase: 'closeout',
@@ -589,24 +920,27 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Rolling trend of run-level opp-eval scores from --monitor runs; one line per run with date, overall, and category breakdown',
   },
   {
-    path: 'verdicts/opp-eval-deep.yaml',
+    path: '8-closeout/opp-eval/opp-eval_verdict-deep.yaml',
     producedBy: 'opp-eval',
+    role: 'verdict',
     consumedBy: [],
     phase: 'closeout',
     required: false,
-    description: 'Machine-readable run-level verdict from opp-eval --deep: 6-category aggregation of every per-skill verdict found under verdicts/, plus improvement recommendations. Shape matches skills/README.md § QA vs Eval',
+    description: 'Machine-readable run-level verdict from opp-eval --deep: 7-category aggregation of every per-skill verdict found under <phase>/...-eval_verdict.yaml, plus improvement recommendations. Shape matches skills/README.md § QA vs Eval',
   },
   {
-    path: 'verdicts/opp-eval-monitor.yaml',
+    path: '8-closeout/opp-eval/opp-eval_verdict-monitor.yaml',
     producedBy: 'opp-eval',
+    role: 'verdict',
     consumedBy: [],
     phase: 'closeout',
     required: false,
-    description: 'Machine-readable run-level verdict from opp-eval --monitor runs; latest-wins file (history lives in scorecards/trend.md)',
+    description: 'Machine-readable run-level verdict from opp-eval --monitor runs; latest-wins file (history lives in 8-closeout/opp-eval/trend.md)',
   },
   {
-    path: 'gate-briefs/opp-eval-deep.md',
+    path: '8-closeout/opp-eval/opp-eval_gate-brief-deep.md',
     producedBy: 'opp-eval',
+    role: 'gate-brief',
     consumedBy: [],
     phase: 'closeout',
     required: false,
