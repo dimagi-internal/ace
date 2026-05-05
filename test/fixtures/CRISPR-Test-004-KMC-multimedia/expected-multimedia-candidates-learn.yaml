@@ -1,0 +1,34 @@
+# test/fixtures/CRISPR-Test-004-KMC-multimedia/expected-multimedia-candidates-learn.yaml
+#
+# PLACEHOLDER. Real golden ground-truth captured after the first live
+# `app-multimedia-coverage` run against this fixture (Task 14).
+# Used to spot regressions in the LLM judge prompt over time. If Nova's
+# field naming changes, regenerate from a known-good run.
+#
+# Expected shape on first run (8–12 candidates total):
+# - "What is KMC" intro screen → generate=true (FLW shows mother)
+# - Positioning step labels (3–5 of them) → generate=true (FLW demonstrates)
+# - Danger sign visual cues (jaundice, apnea, hypothermia) → generate=true
+# - "Knowledge check" quiz stems → mostly generate=false unless the question
+#   text references a visual concept that an image clarifies
+# - "Mother's name" text field (Deliver) → generate=false
+# - "Baby weight" numeric (Deliver) → generate=false
+# - "Follow-up date" (Deliver) → generate=false
+#
+# Schema (filled in after the first live run):
+# app: learn
+# app_id: <hex>
+# app_context_hash: <sha256>
+# candidates:
+#   - form_unique_id: <32-char hex>
+#     module: <int>
+#     form: <int>
+#     field_id: <string>
+#     kind: label | text | int | single_select | multi_select | image | ...
+#     field_text: <string>
+#     judge:
+#       generate: bool
+#       use_case: flw_self_use | flw_shows_client | both
+#       why: <≤200 char rationale>
+#       directive: <≤500 char Image Directive>
+#     operator_override: null
