@@ -2,8 +2,8 @@
 name: training-deck-build
 description: >
   Render training-deck-outline.md into a Google Slides deck using the
-  ACE template. Use as the last step of Phase 5 to produce a Slides URL
-  the LLO can edit before recording.
+  ACE template. Produces a presentable Slides URL.
+disable-model-invocation: true
 ---
 
 # Training Deck Build

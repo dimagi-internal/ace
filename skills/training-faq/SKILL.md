@@ -1,10 +1,9 @@
 ---
 name: training-faq
 description: >
-  Generate `faq.md` — anticipated questions from LLOs and FLWs with
-  authoritative answers. Seeded from `test-prompts.md` and the
-  Phase 1 `expected-journeys.md` edge cases. Owns one artifact only.
-  Fifth of the per-artifact training skills.
+  Generate anticipated LLO + FLW questions with authoritative answers.
+  Owns one artifact: faq.md.
+disable-model-invocation: true
 ---
 
 # Training FAQ

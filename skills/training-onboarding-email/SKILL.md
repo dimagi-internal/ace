@@ -1,11 +1,9 @@
 ---
 name: training-onboarding-email
 description: >
-  Generate `onboarding-email-body.md` — the email body Phase 7
-  `llo-onboarding` personalizes per LLO and sends from
-  ace@dimagi-ai.com when the opportunity is ready for FLW invites.
-  Owns one artifact only. Sixth and final of the per-artifact training
-  skills.
+  Generate the LLO onboarding email body, consumed by llo-onboarding
+  and personalized per LLO at send time. Owns one artifact.
+disable-model-invocation: true
 ---
 
 # Training Onboarding Email

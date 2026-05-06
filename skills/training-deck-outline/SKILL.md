@@ -1,12 +1,9 @@
 ---
 name: training-deck-outline
 description: >
-  Generate the slide-by-slide markdown outline that `training-deck-build`
-  renders into a Google Slides deck. Owns one artifact only:
-  `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md`. First of the
-  per-artifact training skills — siblings (FLW guide, LLO guide,
-  quick-reference, FAQ, onboarding email, video script) follow the same
-  one-skill-per-artifact pattern.
+  Generate the slide-by-slide markdown outline that training-deck-build
+  renders into a Google Slides deck. Owns one artifact.
+disable-model-invocation: true
 ---
 
 # Training Deck Outline

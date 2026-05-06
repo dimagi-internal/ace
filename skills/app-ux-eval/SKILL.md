@@ -1,12 +1,9 @@
 ---
 name: app-ux-eval
 description: >
-  LLM-as-Judge over captured screenshots + pdd-to-app-journeys.md.
-  Per-journey verdict on UX dimensions: clarity, flow_predictability,
-  error_recovery, time_budget, journey_completion. Deep-only — runs from
-  /ace:qa-deep, never from /ace:run. Writes
-  5-qa-and-training/app-ux-eval_verdict-deep.yaml in the uniform
-  verdict shape so opp-eval can aggregate.
+  Grade the FLW experience of the built apps via LLM-as-Judge over
+  captured screenshots. Deep-only — runs from /ace:qa-deep.
+disable-model-invocation: true
 ---
 
 # App UX Eval
@@ -19,8 +16,20 @@ cases) so the rubric isn't unmoored.
 This skill is the **eval** half of the app deep-QA pair — it does not
 drive the AVD or capture screenshots. For the capture half, see
 `app-screenshot-capture` (run as part of `/ace:qa-deep`). See
-`skills/README.md § QA vs Eval — the two-phase pattern` for the
-framework rationale and artifact-path contract.
+`skills/_eval-template.md` for shared verdict / severity / stock-block
+contracts.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 | `1-design/pdd-to-app-journeys.md` | UX-intent ground truth (goal, happy-path narrative, edge cases, pass criteria, `pdd_time_budget_seconds`) |
+| Phase 2 | `2-commcare/app-test-cases.yaml` | journey↔recipe bindings, smoke flag, forms exercised |
+| Phase 5 | `5-qa-and-training/screenshots/<journey>/` + `5-qa-and-training/app-screenshot-capture_manifest.yaml` | captured PNGs to grade |
+
+## Outputs
+
+- `5-qa-and-training/app-ux-eval_verdict-deep.yaml` — per-journey verdict on UX dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion)
 
 ## Process
 
