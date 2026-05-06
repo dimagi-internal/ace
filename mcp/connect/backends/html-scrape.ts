@@ -11,10 +11,41 @@
 
 import type { DeliveryType, Program, Opportunity, Invite, DeliverUnit, PaymentUnit } from '../types.js';
 
-/** Extract the csrfmiddlewaretoken value from a Django form HTML. */
+/**
+ * Extract Connect's CSRF token from a rendered HTML page.
+ *
+ * Connect runs Django with `CSRF_USE_SESSIONS=True` (no `Set-Cookie:
+ * csrftoken=...` header), so the token must come from the body. Two
+ * shapes have shipped, in order of recency:
+ *
+ *   1. **`hx-headers` on `<body>`** (current, verified 2026-05-06): every
+ *      HTMX request inherits a `X-CSRFToken` header from a body-level
+ *      attribute. Connect's templates moved here at some point between
+ *      0.13.24 (when this function shipped) and 0.13.30. This is the
+ *      canonical path now: any authed page renders `<body
+ *      hx-headers='{"X-CSRFToken": "..."}'>` and the token is good for
+ *      every form on that page and for the `X-CSRFToken` header that
+ *      ACE's REST backend sends.
+ *
+ *   2. **`<input type="hidden" name="csrfmiddlewaretoken">`** (legacy):
+ *      Django's `{% csrf_token %}` template tag's default rendering.
+ *      Some fixture-era pages still match this; kept as a fallback so
+ *      pre-template-migration fixtures continue to verify.
+ *
+ * Returns the first match, hx-headers preferred. Surfaced 2026-05-06
+ * via `csrfmiddlewaretoken not found in Connect HTML after auth` on a
+ * clean machine — the 0.13.24 single-pattern match didn't see the new
+ * shape.
+ */
 export function extractFormCsrfToken(html: string): string | undefined {
-  const m = html.match(/name="csrfmiddlewaretoken"\s+value="([^"]+)"/);
-  return m?.[1];
+  // Pattern 1 (current): hx-headers='{"X-CSRFToken": "<value>"}' on <body>.
+  // Tolerant of either outer quote style; Connect uses single-quote outer
+  // + double-quote JSON keys, but template authors could flip these.
+  const hxMatch = html.match(/hx-headers\s*=\s*['"][^'"]*"X-CSRFToken"\s*:\s*"([^"]+)"/);
+  if (hxMatch) return hxMatch[1];
+  // Pattern 2 (legacy): csrfmiddlewaretoken hidden input.
+  const formMatch = html.match(/name="csrfmiddlewaretoken"\s+value="([^"]+)"/);
+  return formMatch?.[1];
 }
 
 /** Extract a UUID from a redirect Location like `/a/<org>/program/<uuid>/...`. */

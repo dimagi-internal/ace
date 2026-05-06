@@ -17,15 +17,33 @@ const fix = (name: string) =>
   fs.readFileSync(path.join(__dirname, '../../../fixtures/connect-html', name), 'utf8');
 
 describe('extractFormCsrfToken', () => {
-  it('extracts the value', () => {
+  it('extracts the value from a legacy csrfmiddlewaretoken input', () => {
     const html = '<input type="hidden" name="csrfmiddlewaretoken" value="abc123def">';
     expect(extractFormCsrfToken(html)).toBe('abc123def');
   });
-  it('returns undefined if missing', () => {
+  it('extracts the value from <body hx-headers> (current Connect template)', () => {
+    // Connect's templates now expose the CSRF token on <body hx-headers='...'>
+    // instead of as a hidden input on each form. Verified 2026-05-06 against
+    // /a/<org>/opportunity/ on prod. Both quote orientations are tolerated.
+    const html = `<body hx-headers='{"X-CSRFToken": "Tk1Bc-hxstyle-xyz"}' x-data="{}">`;
+    expect(extractFormCsrfToken(html)).toBe('Tk1Bc-hxstyle-xyz');
+  });
+  it('prefers hx-headers when both patterns are present', () => {
+    const html =
+      `<body hx-headers='{"X-CSRFToken": "FROM_BODY"}'>` +
+      `<input type="hidden" name="csrfmiddlewaretoken" value="FROM_FORM">`;
+    expect(extractFormCsrfToken(html)).toBe('FROM_BODY');
+  });
+  it('returns undefined if neither pattern is present', () => {
     expect(extractFormCsrfToken('<div>nope</div>')).toBeUndefined();
   });
-  it('finds it in the live program-init form', () => {
+  it('finds it in the live program-init form (legacy fixture)', () => {
     expect(extractFormCsrfToken(fix('a-ai-demo-space-program-init.html'))).toMatch(/^[A-Za-z0-9]{40,}$/);
+  });
+  it('finds it in the live authed dashboard hx-headers fixture', () => {
+    expect(extractFormCsrfToken(fix('jjackson-opportunity-htmx-csrf.html'))).toBe(
+      'FAKE_HX_CSRF_TOKEN_PLACEHOLDER_FOR_TEST',
+    );
   });
 });
 
