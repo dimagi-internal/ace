@@ -30,7 +30,7 @@ the plugin is installed. Required environment: see `.env.tpl` for
 
 ## Capability map
 
-`ace-mobile` ships **12 atoms**, plus a programmatic-only generator atom
+`ace-mobile` ships **11 atoms**, plus a programmatic-only generator atom
 that's invoked from skill code rather than via MCP (it requires a Drive
 adapter + LLM function as inputs).
 
@@ -53,12 +53,11 @@ adapter + LLM function as inputs).
 | `mobile_run_recipe` | maestro | `maestro test <recipe.yaml>` with env vars + screenshot dir |
 | `mobile_capture_ui_dump` | adb | `adb shell uiautomator dump` + element parse — primary tool for selector discovery |
 
-### Composite (2 atoms)
+### Composite (1 atom)
 
 | Atom | Backend | Description |
 |---|---|---|
 | `mobile_register_test_user` | maestro + Playwright | Two-recipe flow that drives PersonalID registration end-to-end against the `+7426` demo-bypass phone range |
-| `mobile_fetch_otp` | Playwright | Scrape OTP from connect.dimagi.com inbox (kept for legacy uses; the demo-user path skips OTP entirely) |
 
 ### Programmatic-only (1, not registered as an MCP tool)
 

@@ -91,14 +91,6 @@ server.tool(
 );
 
 server.tool(
-  'mobile_fetch_otp',
-  { phone: z.string(), headed: z.boolean().default(false) },
-  async ({ phone, headed }) => ({
-    content: [{ type: 'text', text: JSON.stringify(await client.fetchOtp(phone, headed), null, 2) }],
-  }),
-);
-
-server.tool(
   'mobile_run_recipe',
   {
     recipePath: z.string(),

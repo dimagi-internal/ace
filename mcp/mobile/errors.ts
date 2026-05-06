@@ -19,19 +19,6 @@ export class AvdBootError extends MobileError {
   }
 }
 
-export class OtpFetchError extends MobileError {
-  constructor(reason: 'AUTH_REQUIRED' | 'NOT_FOUND' | 'STALE' | 'UNKNOWN', phone: string) {
-    const code = `OTP_${reason}`;
-    const remediation =
-      reason === 'AUTH_REQUIRED'
-        ? 'Run with PHASE9_HEADED=1 to sign in to Dimagi SSO once; cookies will persist.'
-        : reason === 'NOT_FOUND'
-          ? 'Verify the phone is registered and within 60s of OTP issuance.'
-          : 'Re-fetch; OTP may have rotated.';
-    super(code, `OTP fetch (${reason}) for ${phone}`, remediation);
-  }
-}
-
 export class RecipeValidationError extends MobileError {
   constructor(recipePath: string, reason: string) {
     super('RECIPE_INVALID', `Invalid Maestro recipe at ${recipePath}: ${reason}`);

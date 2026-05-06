@@ -28,12 +28,6 @@ export interface ScreenshotEntry {
   bytes: number;
 }
 
-export interface OtpResult {
-  phone: string;
-  otp: string;
-  fetchedAt: string;
-}
-
 export interface TestUserRegistrationResult {
   alreadyRegistered: boolean;
   phone: string;

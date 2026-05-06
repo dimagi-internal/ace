@@ -909,6 +909,196 @@ else
 fi
 
 echo ""
+echo "[Auth liveness]"
+# Single-screen view of "which MCPs can actually authenticate right now?"
+# Each probe issues ONE cheap, idempotent HTTP call against the live system
+# the MCP talks to. PASS = the cred works today. WARN = expired/missing —
+# remediation hint names the exact command to fix it. Useful for the
+# 2-machine workflow where session cookies are per-machine and need
+# re-login on each workstation, but the static `.env` is 1Password-backed.
+#
+# Existing live probes elsewhere in this output (drive_shared, ocs_shared_collection_team,
+# connect_csrf_probe, connect_labs_mcp_reachable, connect_labs_connect_oauth)
+# stay where they are — those are context-specific. This block is the
+# always-on per-MCP auth liveness summary.
+
+# 1. ace-gdrive — service-account about.get
+# Always on if SA key is present; doesn't depend on ACE_DRIVE_ROOT_FOLDER_ID.
+if [ -n "$KEY" ] && [ -d "$ROOT/node_modules/googleapis" ]; then
+  # cd "$ROOT" so the inline `import { google } from 'googleapis'` resolves
+  # against the plugin's node_modules instead of whatever CWD doctor was
+  # invoked from. Without this, an /ace:doctor run from outside the plugin
+  # dir silently fails the import (stderr suppressed by 2>/dev/null) and
+  # the probe falls through with an empty error message.
+  GDRIVE_AUTH_PROBE="$(cd "$ROOT" && GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+    import { google } from 'googleapis';
+    const auth = new google.auth.GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/drive.metadata.readonly'] });
+    const drive = google.drive({ version: 'v3', auth });
+    try {
+      const r = await drive.about.get({ fields: 'user(emailAddress)' });
+      console.log(JSON.stringify({ ok: true, email: r.data.user?.emailAddress || '' }));
+    } catch (e) {
+      console.log(JSON.stringify({ ok: false, message: e.message }));
+    }
+  " 2>/dev/null)"
+  GDRIVE_OK="$(printf '%s' "$GDRIVE_AUTH_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.ok?'1':'0'); } catch { console.log('?'); }" 2>/dev/null)"
+  GDRIVE_EMAIL="$(printf '%s' "$GDRIVE_AUTH_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.email||''); } catch { console.log(''); }" 2>/dev/null)"
+  GDRIVE_MSG="$(printf '%s' "$GDRIVE_AUTH_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.message||''); } catch { console.log(''); }" 2>/dev/null)"
+  if [ "$GDRIVE_OK" = "1" ]; then
+    pass "gdrive_auth: ace-gdrive authed as $GDRIVE_EMAIL (drive.about.get)"
+  else
+    warn "gdrive_auth: drive.about.get failed: $GDRIVE_MSG" "rotate gws-sa-key.json in 1Password and re-run /ace:setup; verify the SA hasn't been disabled in Google Cloud Console"
+  fi
+else
+  warn "gdrive_auth: skipped — gws_key missing or node_modules/googleapis not installed" "see gws_key warning above; npm ci if deps are missing"
+fi
+
+# 2. ace-ocs — GET /a/<team>/chatbots/ with session cookies, --max-redirs 0
+# Same probe shape as mcp/ocs/auth/playwright-session.ts:isAuthenticated().
+# 200 (and not /accounts/login/) = authed. 302 = expired.
+if [ -n "$OCS_BASE" ] && [ -n "$OCS_TEAM" ]; then
+  OCS_SESS="$HOME/.ace/ocs-session-$OCS_TEAM.json"
+  if [ -f "$OCS_SESS" ]; then
+    OCS_COOKIES="$(node -e "
+      try {
+        const s = JSON.parse(require('fs').readFileSync('$OCS_SESS','utf8'));
+        const cs = (s.cookies || []).filter(c => c.name === 'sessionid' || c.name === 'csrftoken');
+        process.stdout.write(cs.map(c => c.name + '=' + c.value).join('; '));
+      } catch(_) {}
+    " 2>/dev/null)"
+    if [ -n "$OCS_COOKIES" ]; then
+      OCS_AUTH_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 --max-redirs 0 \
+        -b "$OCS_COOKIES" "$OCS_BASE/a/$OCS_TEAM/chatbots/" 2>/dev/null || echo "000")"
+      case "$OCS_AUTH_STATUS" in
+        200)
+          pass "ocs_auth: ace-ocs authed against team $OCS_TEAM (GET /a/$OCS_TEAM/chatbots/ → 200)"
+          ;;
+        301|302)
+          warn "ocs_auth: ace-ocs session expired (HTTP $OCS_AUTH_STATUS — redirect to login)" "/ace:ocs-login (or set OCS_USERNAME/OCS_PASSWORD in .env so MCP auto-relogins)"
+          ;;
+        000)
+          warn "ocs_auth: cannot reach $OCS_BASE (network/DNS/timeout)" "verify $OCS_BASE is reachable from this network"
+          ;;
+        *)
+          warn "ocs_auth: GET /a/$OCS_TEAM/chatbots/ → HTTP $OCS_AUTH_STATUS" "/ace:ocs-login if this persists"
+          ;;
+      esac
+    else
+      warn "ocs_auth: $OCS_SESS exists but contains no sessionid/csrftoken cookies" "/ace:ocs-login to rebuild the session"
+    fi
+  else
+    warn "ocs_auth: $OCS_SESS missing (no live probe possible)" "/ace:ocs-login (or set OCS_USERNAME/OCS_PASSWORD for headless auto-login)"
+  fi
+else
+  warn "ocs_auth: skipped — OCS_BASE_URL or OCS_TEAM_SLUG not set in .env" "see ocs_env warning above"
+fi
+
+# 3. ace-connect — GET /accounts/login/ with connect.dimagi.com cookies, --max-redirs 0
+# Mirrors mcp/connect/auth/playwright-session.ts:getContext() probe.
+# 302 = authed (Connect bounces authed users away from the login form).
+# 200 = anon (login form rendered).
+if [ -n "$CONNECT_BASE" ] && [ -f "$CONNECT_SESS" ]; then
+  CONNECT_HOST="$(printf '%s' "$CONNECT_BASE" | node -e "try { console.log(new URL(require('fs').readFileSync(0,'utf8').trim()).hostname); } catch { console.log(''); }" 2>/dev/null)"
+  CONNECT_AUTH_COOKIES="$(node -e "
+    try {
+      const s = JSON.parse(require('fs').readFileSync('$CONNECT_SESS','utf8'));
+      const host = '$CONNECT_HOST';
+      const cs = (s.cookies || []).filter(c =>
+        (c.name === 'sessionid' || c.name === 'csrftoken') &&
+        (c.domain || '').includes(host)
+      );
+      process.stdout.write(cs.map(c => c.name + '=' + c.value).join('; '));
+    } catch(_) {}
+  " 2>/dev/null)"
+  if [ -n "$CONNECT_AUTH_COOKIES" ]; then
+    CONNECT_AUTH_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 --max-redirs 0 \
+      -b "$CONNECT_AUTH_COOKIES" "$CONNECT_BASE/accounts/login/" 2>/dev/null || echo "000")"
+    case "$CONNECT_AUTH_STATUS" in
+      301|302)
+        pass "connect_auth: ace-connect authed (GET /accounts/login/ → $CONNECT_AUTH_STATUS, bounced away)"
+        ;;
+      200)
+        warn "connect_auth: ace-connect session expired (login form rendered → anon)" "/ace:connect-login (or set ACE_HQ_USERNAME/PASSWORD for OAuth auto-relogin)"
+        ;;
+      000)
+        warn "connect_auth: cannot reach $CONNECT_BASE (network/DNS/timeout)" "verify $CONNECT_BASE is reachable"
+        ;;
+      *)
+        warn "connect_auth: GET $CONNECT_BASE/accounts/login/ → HTTP $CONNECT_AUTH_STATUS" "/ace:connect-login if this persists"
+        ;;
+    esac
+  else
+    warn "connect_auth: $CONNECT_SESS exists but contains no connect.dimagi.com sessionid/csrftoken" "/ace:connect-login to rebuild"
+  fi
+else
+  if [ -z "$CONNECT_BASE" ]; then
+    warn "connect_auth: skipped — CONNECT_BASE_URL not set in .env" "see connect_env warning above"
+  else
+    warn "connect_auth: skipped — $CONNECT_SESS missing" "/ace:connect-login OR set ACE_HQ_USERNAME/PASSWORD for headless OAuth"
+  fi
+fi
+
+# 4. ace-connect (CCHQ side) — separate cookie jar, separate expiry clock.
+# turmeric-20260505-1024 surfaced this: Connect cookies fresh while CCHQ
+# rejected every commcare_* atom mid-run. Probe both independently.
+if [ -f "$CONNECT_SESS" ]; then
+  CCHQ_BASE="https://www.commcarehq.org"
+  CCHQ_AUTH_COOKIES="$(node -e "
+    try {
+      const s = JSON.parse(require('fs').readFileSync('$CONNECT_SESS','utf8'));
+      const cs = (s.cookies || []).filter(c =>
+        (c.name === 'sessionid' || c.name === 'csrftoken') &&
+        (c.domain || '').includes('commcarehq')
+      );
+      process.stdout.write(cs.map(c => c.name + '=' + c.value).join('; '));
+    } catch(_) {}
+  " 2>/dev/null)"
+  if [ -n "$CCHQ_AUTH_COOKIES" ]; then
+    CCHQ_AUTH_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 --max-redirs 0 \
+      -b "$CCHQ_AUTH_COOKIES" "$CCHQ_BASE/accounts/login/" 2>/dev/null || echo "000")"
+    case "$CCHQ_AUTH_STATUS" in
+      301|302)
+        pass "cchq_auth: CCHQ session authed (GET $CCHQ_BASE/accounts/login/ → $CCHQ_AUTH_STATUS)"
+        ;;
+      200)
+        warn "cchq_auth: CCHQ session expired even though Connect may be fresh (separate cookie clock)" "/ace:connect-login (the OAuth-via-CCHQ flow re-establishes both)"
+        ;;
+      000)
+        warn "cchq_auth: cannot reach $CCHQ_BASE (network/DNS/timeout)" "verify CCHQ is reachable"
+        ;;
+      *)
+        warn "cchq_auth: GET $CCHQ_BASE/accounts/login/ → HTTP $CCHQ_AUTH_STATUS" "/ace:connect-login if this persists"
+        ;;
+    esac
+  else
+    info "cchq_auth: no commcarehq cookies in $CONNECT_SESS (only Connect cookies — commcare_* atoms unavailable until /ace:connect-login runs the OAuth-via-CCHQ flow)"
+  fi
+else
+  : # already warned above under connect_auth
+fi
+
+# 5. ace-connect-labs — already covered by connect_labs_mcp_reachable +
+# connect_labs_connect_oauth above; reference here so the auth-liveness
+# block reads as a complete inventory.
+if [ -n "$LABS_TOKEN" ]; then
+  info "labs_auth: see connect_labs_mcp_reachable + connect_labs_connect_oauth above (live PAT + OAuth-bridge probes already run)"
+else
+  warn "labs_auth: skipped — LABS_MCP_TOKEN not set" "see connect_labs_env warning above; mint via /ace:labs-token-mint and re-inject .env"
+fi
+
+# 6. ace-mobile — local-only MCP (Maestro + adb + AVD + APK). It does not
+# authenticate against any remote service at runtime, so there is no
+# "live auth probe" distinct from the others. The auth-adjacent things
+# the mobile workflow depends on are covered elsewhere:
+#   - Operator's Connect session (e.g. for probe-find-phone-invite.ts) →
+#     connect_auth above
+#   - AVD / Maestro / adb / APK / ACE_E2E_* env vars → [Mobile] block below
+# The previous OTP-page probe in 0.13.25 was a leftover from the
+# deprecated fetchOtp path (mobile-bootstrap.md step 6 explicitly notes
+# OTP fetching is no longer the recommended flow); removed in 0.13.26.
+info "mobile_auth: ace-mobile is local — see connect_auth above for Connect-side state and [Mobile] block below for AVD / Maestro / cookies"
+
+echo ""
 echo "[Mobile]"
 
 # Resolve the maestro launcher even when ~/.maestro/bin isn't on PATH.
