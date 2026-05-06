@@ -49,6 +49,25 @@ contract and connect-labs MCP atom inventory.
    | `status` | `'active'` (publishes immediately; `'draft'` for dry-run mode) |
    | `is_public` | `true` (so unsolicited orgs can find it on the public list) |
 
+   **`is_public: true` flips the server-side public ACL flag** (the
+   field the `/solicitations/` marketplace query actually filters on).
+   That means the title, description, scope_of_work, and questions
+   become readable by any unauthenticated visitor. Before calling
+   `create_solicitation`, scan the composed payload and confirm:
+
+   - `description` contains no names, dates of birth, phone numbers,
+     addresses, or health data
+   - `scope_of_work` references the LLO target population in
+     aggregate terms (e.g. "households in Kerala") rather than naming
+     specific people, facilities, or identifiable program participants
+   - `questions` ask for capability self-disclosure, not for PII
+
+   If the PDD body itself contains PII that would propagate into the
+   solicitation, halt and surface a `[BLOCKER]` naming the offending
+   field — do NOT publish a redacted version silently, because the
+   PDD is the operator's source of truth and they need to know it
+   needs scrubbing.
+
 3. **Compose evaluation criteria locally.** Read the PDD's archetype,
    intervention summary, and success criteria. Draft a structured rubric
    inline using the same archetype-aware judgment that
