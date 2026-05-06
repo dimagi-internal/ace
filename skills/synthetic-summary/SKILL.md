@@ -22,8 +22,9 @@ narrative-plan output; this skill grows to bundle them then.
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 6 | `6-synthetic/synthetic-data-generate.md` | labs URL, GDrive folder ID, record counts |
-| Phase 6 | `6-synthetic/synthetic-data-generate_manifest.yaml` | FLW personas, cohort size, anomalies, timeline (for the narrative paragraphs) |
-| Drive | `ACE/<opp>/opp.yaml` | `display_name`, `slug`, opp-level context |
+| Phase 6 | `6-synthetic/synthetic-data-generate_manifest.yaml` OR `6-synthetic/synthetic-narrative-plan.yaml` | FLW personas, cohort size, anomalies, timeline (for the narrative paragraphs) |
+| Phase 6 (optional) | `6-synthetic/synthetic-narrative-plan.md` | richer prose narrative — preferred over the manifest's bare data when present |
+| Drive | `ACE/<opp>/opp.yaml` | `display_name`, `slug`, opp-level context, `synthetic.walkthroughs[]` (Stage 2) |
 
 ## Outputs
 
@@ -39,14 +40,20 @@ narrative-plan output; this skill grows to bundle them then.
 
    - `synthetic-data-generate.md` — labs URL, GDrive folder ID, record
      counts, any warnings
-   - `synthetic-data-generate_manifest.yaml` — manifest the operator
-     generated against (FLW personas, cohort, timeline, anomalies)
+   - The active manifest: prefer `synthetic-narrative-plan.yaml` (Stage 2)
+     when present; fall back to `synthetic-data-generate_manifest.yaml`
+     (Stage 1).
+   - `synthetic-narrative-plan.md` (Stage 2, optional) — its prose seeds
+     the "What you'll see" paragraphs more directly than the manifest
+     can. Skip if absent.
 
    If `synthetic-data-generate.md` is absent, halt with: "run
    `/ace:step synthetic-data-generate --opp <slug> --opp-int-id <int>` first
    — this skill aggregates its output."
 
-   Also read `ACE/<opp>/opp.yaml` for `display_name` and `slug`.
+   Also read `ACE/<opp>/opp.yaml` for `display_name`, `slug`, and the
+   `synthetic.walkthroughs[]` list (Stage 2 — empty in Stage 1, populated
+   per-persona by `synthetic-walkthrough-run`).
 
 2. **Compose the summary** at
    `ACE/<opp>/runs/<last_run_id>/6-synthetic/synthetic-summary.md`. Shape:
@@ -85,6 +92,23 @@ narrative-plan output; this skill grows to bundle them then.
    (default Stage 1 manifest), be honest: "This is a baseline dataset —
    no anomalies seeded yet. Add them by editing the manifest and
    re-running synthetic-data-generate."
+
+   ## Persona walkthroughs (Stage 2)
+
+   Render this section ONLY when `opp.yaml.synthetic.walkthroughs[]` is
+   non-empty. For each entry:
+
+   - **<persona display name>** — `<eval_score>/5` average · captured
+     `<run_at>`
+     [Open slideshow](<webViewLink of slideshow_artifact>)
+
+   Group by persona; if a persona has multiple runs (re-captures), list
+   the most recent first and show older runs collapsed under "Earlier
+   captures."
+
+   If `walkthroughs[]` is empty, omit this entire section — don't emit
+   "no walkthroughs yet." A stakeholder reading a Stage 1 summary
+   shouldn't see promises about Stage 2 deliverables that didn't run.
 
    ## What's next
 
@@ -150,3 +174,4 @@ external side effects in this skill anyway). State tracks as
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-06 | Initial Stage 1 MVP skill — three-paragraph reviewer summary aggregating data-generate output | ACE team (Plan B Stage 1) |
+| 2026-05-06 | Stage 2: prefer `synthetic-narrative-plan.{md,yaml}` when present; render Persona Walkthroughs section from `opp.yaml.synthetic.walkthroughs[]`. Section is omitted entirely when empty (Stage 1 summaries unchanged). | ACE team (Plan B Stage 2) |
