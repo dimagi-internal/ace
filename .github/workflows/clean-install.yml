@@ -1,0 +1,37 @@
+name: Clean install + dep check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  clean-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # `npm ci` wipes node_modules and installs strictly from package-lock.json.
+      # `npm ls` then fails non-zero if the installed tree has any package that
+      # is missing, extraneous, or invalid versus the declared dependencies in
+      # package.json. This is the specific check that catches dropped deps from
+      # bad merge-conflict resolution — declared deps lost from package.json
+      # while still present in package-lock.json show up as "extraneous"; deps
+      # present in package.json but missing from the lockfile fail npm ci itself.
+      - name: Clean install from lockfile
+        run: npm ci
+
+      - name: Verify declared deps match installed tree
+        run: npm ls
+
+      # Catches imports of undeclared packages — the secondary form of the same
+      # bug class, where code references a package that never made it into
+      # package.json. tsc reports as "Cannot find module".
+      - name: Type-check
+        run: npx tsc --noEmit
