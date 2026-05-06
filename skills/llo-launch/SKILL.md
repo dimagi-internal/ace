@@ -1,9 +1,9 @@
 ---
 name: llo-launch
 description: >
-  Activate the opportunity for live use. Verify UAT sign-offs, enforce the
-  deep-QA verdict freshness gate (OCS + apps), activate the opportunity in
-  Connect, confirm apps are published, and notify LLOs of go-live.
+  Activate the opportunity for live use. Verifies UAT sign-offs and
+  deep-QA verdicts, activates in Connect, notifies LLOs of go-live.
+disable-model-invocation: true
 ---
 
 # LLO Launch (Go-Live)

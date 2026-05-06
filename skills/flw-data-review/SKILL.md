@@ -1,9 +1,9 @@
 ---
 name: flw-data-review
 description: >
-  Analyze FLW submission data to identify quality issues, trends, and
-  improvement opportunities. Generate recommendations for the team.
-  Runs recurring during active opp.
+  Analyze FLW submissions to identify quality issues, trends, and
+  improvement opportunities. Recurring during active opp.
+disable-model-invocation: true
 ---
 
 # FLW Data Review

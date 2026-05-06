@@ -1,10 +1,9 @@
 ---
 name: email-communicator
 description: >
-  Send and receive email via the GOG CLI using the ACE Gmail account.
-  Handles composing, sending, searching, reading, and replying to email
-  for any skill that needs email communication (onboarding, LLO comms,
-  feedback collection, etc.).
+  Send/receive email via GOG CLI using the ACE Gmail account. Utility
+  skill — other skills delegate here for any Gmail operation.
+disable-model-invocation: true
 ---
 
 # Email Communicator

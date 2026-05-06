@@ -1,6 +1,9 @@
 ---
 name: upload-transcript
-description: Upload a Claude CLI stream-json transcript (.jsonl) to a deployed ace-web via /api/ingest/upload. Authenticates as ace@dimagi-ai.com via /auth/e2e-login/ using $ACE_E2E_AUTH_TOKEN (no personal bearer token required). Used by /ace:run --ace-web-url, or invoked directly for ad-hoc transcript uploads.
+description: >
+  Upload a Claude CLI stream-json transcript (.jsonl) to a deployed
+  ace-web via /api/ingest/upload. Used by /ace:run --ace-web-url.
+disable-model-invocation: true
 ---
 
 # upload-transcript

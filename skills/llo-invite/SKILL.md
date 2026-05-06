@@ -1,11 +1,9 @@
 ---
 name: llo-invite
 description: >
-  Phase 6 step 2 (auto, default run). For each PDD-named candidate LLO,
-  send an invitation email with the public solicitation URL. No-op when
-  the PDD has no preferred_llos (long-term solicitation flow). Makes no
-  Connect API calls — those happen for the awardee only, in
-  llo-onboarding (Phase 7).
+  Email each PDD-named candidate LLO the public solicitation URL.
+  No-op when PDD has no preferred_llos.
+disable-model-invocation: true
 ---
 
 # LLO Invite

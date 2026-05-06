@@ -1,10 +1,9 @@
 ---
 name: solicitation-review-eval
 description: >
-  Provisional LLM-as-Judge rubric for solicitation-review. Compares ACE's
-  top-ranked recommendation against the human's actual award decision.
-  Detection-rate metric: did ACE's recommended awardee match the human's
-  pick? Calibrated per skills/eval-calibration once 3+ awards have shipped.
+  Compare ACE's top-ranked solicitation recommendation against the
+  human's actual award. Detection-rate metric.
+disable-model-invocation: true
 ---
 
 # Solicitation Review — Eval

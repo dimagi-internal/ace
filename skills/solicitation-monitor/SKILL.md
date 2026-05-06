@@ -1,11 +1,9 @@
 ---
 name: solicitation-monitor
 description: >
-  Phase 6 recurring skill. Polls labs for new responses while the
-  solicitation is open, writes one file per response to
-  ACE/<opp>/runs/<run-id>/6-solicitation-management/solicitation-monitor_responses/, and appends a tick line to the
-  observation log. Three modes: --quick (count only), --monitor (full
-  pull, default), --close (final pull when deadline passes).
+  Recurring poll for solicitation responses. Modes: --quick (count
+  only) / --monitor (full pull, default) / --close (final pull).
+disable-model-invocation: true
 ---
 
 # Solicitation Monitor

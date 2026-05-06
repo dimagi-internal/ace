@@ -1,12 +1,9 @@
 ---
 name: llo-launch-eval
 description: >
-  Judge a Phase 5 `llo-launch` activation against the PDD's launch
-  preconditions. Cross-skill LLM-as-Judge eval — checks UAT sign-off
-  completeness, Connect activation correctness, app-publish status,
-  go-live notification fidelity, and pre-launch gate-discipline. The
-  most load-bearing Phase 5 rubric because go-live is the production
-  gate. Writes a verdict YAML in the shared QA/eval shape.
+  Grade an llo-launch activation against PDD launch preconditions —
+  UAT sign-off, Connect activation, app-publish, go-live notify.
+disable-model-invocation: true
 ---
 
 # LLO Launch Eval

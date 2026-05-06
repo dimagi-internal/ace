@@ -1,10 +1,9 @@
 ---
 name: solicitation-review
 description: >
-  Phase 6 manual skill. Reads all solicitation responses, scores each
-  against the published rubric, presents a recommendation to the human,
-  and (after explicit HITL approval) calls award_response and populates
-  opp.yaml.selected_llo. The only path that unblocks Phase 7.
+  Score solicitation responses, recommend an awardee, and (after HITL
+  approval) call award_response and populate opp.yaml.selected_llo.
+disable-model-invocation: true
 ---
 
 # Solicitation Review

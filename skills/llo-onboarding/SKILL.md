@@ -1,9 +1,9 @@
 ---
 name: llo-onboarding
 description: >
-  First LLO-facing step. Issues the Connect system invite and sends the ACE
-  onboarding email (training materials, getting-started, OCS widget link).
-  Uses ace@dimagi-ai.com as sender.
+  Issue the Connect program invite and send the awarded LLO the ACE
+  onboarding email with training materials and OCS widget link.
+disable-model-invocation: true
 ---
 
 # LLO Onboarding
