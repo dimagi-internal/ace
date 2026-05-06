@@ -54,22 +54,38 @@ empty, halt with a structured error pointing at the upstream phase:
 Do NOT generate recipes or test cases independently — Phase 5 is an
 executor, not a synthesizer.
 
-### Step 2: Select smoke recipes only
+### Step 2: Input completeness pre-flight
+
+Before booting the AVD, verify the upstream Phase 2 outputs are
+**structurally complete**. Phase 2's `app-test-cases` SKILL contracts
+BOTH the master yaml AND a per-journey Maestro recipe (see
+`skills/app-test-cases/SKILL.md § Outputs`). Half-emitted state — the
+master yaml present but recipes missing — is the canonical "upstream
+incomplete output" failure mode. Catch it here before AVD wall-clock
+burns.
 
 Read `app-test-cases.yaml`. Filter `journeys[]` to entries with
-`is_smoke: true`, then group by the `app:` field. There MUST be:
+`is_smoke: true`, then group by the `app:` field. Run these checks
+in order. Halt at the first failure with a structured PLATFORM-tag
+auto_surfaced entry naming the exact remediation command:
 
-- exactly ONE entry with `app: learn`, `is_smoke: true`
-- exactly ONE entry with `app: deliver`, `is_smoke: true`
+| Failure mode | PLATFORM message | Remediation |
+|---|---|---|
+| Master yaml has zero `is_smoke: true` journeys | `app-test-cases.yaml has no is_smoke:true journeys; upstream Phase 2 (app-test-cases) emitted no smoke set` | `/ace:step app-test-cases <opp>/<run-id>` |
+| `app: learn` smoke count != 1 OR `app: deliver` smoke count != 1 | `app-test-cases.yaml smoke set malformed: expected exactly one is_smoke:true journey per app, got learn=N deliver=M` | `/ace:step app-test-cases <opp>/<run-id>` |
+| `2-commcare/recipes/` subfolder does not exist on Drive | `app-test-cases.yaml declares is_smoke:true journeys but 2-commcare/recipes/ subfolder is missing — upstream Phase 2 produced incomplete output (master yaml without per-journey recipes)` | `/ace:step app-test-cases <opp>/<run-id>` BEFORE retrying this skill |
+| One or more smoke journeys' `recipe_path` doesn't resolve to a real file | `recipe_path J<n>.yaml referenced by app-test-cases.yaml does not resolve under 2-commcare/recipes/ — upstream Phase 2 produced an incomplete output set` | `/ace:step app-test-cases <opp>/<run-id>` BEFORE retrying |
 
-If either is missing, OR if either app has more than one smoke entry,
-halt with a clear pointer to re-run `/ace:step app-test-cases <opp>`
-(the smoke-flag rule is enforced at app-test-cases write time, but
-manual edits could violate it).
+Each of these halts writes the **incomplete-mode verdict shape** (see
+Step 9 below) with `verdict: incomplete` and the matching PLATFORM
+auto_surfaced entry. Do not write `verdict: fail` for these — fail is
+reserved for cases where the recipes ran but a smoke recipe broke.
+Upstream gaps are `incomplete`, not `fail`.
 
-Resolve each smoke journey's `recipe_path` to a real file under
-`ACE/<opp>/runs/<run-id>/2-commcare/recipes/`. If any path doesn't
-resolve, halt with the same upstream pointer.
+The agent-level pre-flight (`agents/qa-and-training.md § Pre-flight
+checklist`) catches the same class of gap before the skill is
+dispatched. This skill-level check is the second line of defense for
+direct `/ace:step app-screenshot-capture` invocations.
 
 ### Step 3: Boot AVD + ensure apps installed
 
@@ -317,3 +333,4 @@ Notes:
 | 2026-04-30 | Refactored as Phase 5 Step 2 — now consumes the `qa-plan` skill's manifest as its source of truth for what to capture, instead of generating recipes itself. Captures only **per-opp** content; common Connect navigation screenshots are sourced from `ACE/_common/connect-screenshots/<connect-version>/` produced by the standalone `connect-baseline-screenshots` skill. Switched PNG upload from text-encoded `drive_create_file` to `drive_upload_binary` (0.10.43) so screenshots upload as native PNGs. (0.10.44) | ACE team |
 | 2026-05-04 | Phase 5 executor pivot — drops `qa-plan` synthesis. Now reads `expected-journeys.md` (Phase 1) and `app-test-cases.yaml` (Phase 2) as inputs, runs only the two `is_smoke: true` recipes (one per app), and adds a thin per-app UX smoke judge (~2 LLM calls). Writes a new shallow verdict at `verdicts/app-screenshot-capture-shallow.yaml`. Deep, per-journey UX grading moves to `app-ux-eval` running from `/ace:qa-deep`. Spec: docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Inputs repointed to `1-design/pdd-to-app-journeys.md`, `2-commcare/app-test-cases.yaml`, `2-commcare/app-deploy_summary.md`, `2-commcare/recipes/`. Outputs repointed to `5-qa-and-training/screenshots/<journey-id>/<step-name>.png`, `5-qa-and-training/app-screenshot-capture_manifest.yaml`, `5-qa-and-training/app-screenshot-capture_verdict.yaml`, `5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (per manifest). Both verdict YAML examples' `capture_path` updated. No behavior change beyond paths. | ACE team |
+| 2026-05-06 | **Step 2 input-completeness pre-flight** — restructured the post-Step-1 logic into an explicit failure-mode table that distinguishes upstream Phase 2 incomplete output (master yaml without recipes) from smoke-flag malformation. Each failure halts with a named PLATFORM auto_surfaced message + the exact `/ace:step` remediation command, and writes `verdict: incomplete` (not `fail` — upstream gaps aren't smoke failures). Surfaced by leep-paint-collection run 20260506-1440 where a Phase 2 dispatch paraphrased the `app-test-cases` SKILL contract and elided the per-journey recipe outputs; `app-screenshot-capture` halted correctly but the operator-facing message conflated the failure mode with general "missing input" diagnostics. See jjackson/ace#106 finding #3 + #16. | ACE team |
