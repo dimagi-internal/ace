@@ -228,8 +228,12 @@ This repo is dogfooded by the `canopy` plugin. **Per-run evidence lives in Drive
 ACE has two classes of credential state, and confusing them is the #1 source of friction when working across multiple workstations. The split is intentional — session cookies are bound to TLS fingerprints and CSRF rotation, so copying them between machines is *worse* than re-login (intermittent, hard to debug). Don't try to sync `~/.ace/` via 1Password or git.
 
 **1Password-backed (set up once per machine, then static):**
-- `${CLAUDE_PLUGIN_DATA}/.env` — every `ACE_*`, `OCS_*`, `CONNECT_*`, `LABS_MCP_TOKEN`, `ACE_E2E_*` variable. Source of truth. Rotate values in 1Password and re-run `op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env` to propagate.
+- `${CLAUDE_PLUGIN_DATA}/.env` — every key declared in `.env.tpl` (most `ACE_*`, `OCS_*`, `CONNECT_*`, `LABS_MCP_TOKEN`, etc.). Source of truth lives in 1Password vault `AI-Agents`. Rotate values there and re-run `op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --force` (or `/ace:setup --force-env`) to propagate.
 - `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` — Google service-account key for `ace-gdrive`. Static (SA keys don't expire). Drop it once via `/ace:setup`.
+
+**Local-only secrets in `${CLAUDE_PLUGIN_DATA}/.env` (preserved across op inject since 0.13.34):**
+- `ACE_E2E_AUTH_TOKEN` — shared automation token for labs's `/auth/e2e-login/` shared-secret path. Mirror from `~/emdash/repositories/ace-web/deploy/aws/task-definition.json` (or AWS Secrets Manager) into `.env` once. Not stored in 1Password by convention — it's a deploy secret, not a per-user credential.
+- Any other key an operator adds to `.env` that isn't in `.env.tpl` will be preserved automatically. `bin/ace-setup` snapshots non-template keys before each `op inject` and re-appends them in a marker block (`# --- ACE local-only secrets ...`) at the end of the regenerated `.env`. Keys that appear in `.env.tpl` always take precedence (1P is authoritative for declared keys).
 
 **Per-machine (re-login required on each workstation):**
 - `~/.ace/ocs-session-<team>.json` — OCS Playwright cookies. Auto-relogin from `OCS_USERNAME/PASSWORD` if those are in `.env`; otherwise `/ace:ocs-login`.

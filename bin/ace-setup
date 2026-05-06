@@ -321,6 +321,33 @@ $LINT_BAD"
   if [ "$NEEDS_INJECT" = "1" ] && [ -n "$LINT_BAD" ]; then
     echo "INFO env: skipping op inject — fix lint failures above first"
   elif [ "$NEEDS_INJECT" = "1" ]; then
+    # Capture local-only secrets — keys present in $ENV_OUT but not in
+    # $ENV_TPL — before op inject overwrites the file. These are values
+    # the operator added manually for things that aren't 1Password-backed
+    # (e.g. ACE_E2E_AUTH_TOKEN, mirrored from ace-web's
+    # deploy/aws/task-definition.json or AWS Secrets Manager). Without this
+    # preservation, every op inject wipes them and operators have to
+    # re-mirror by hand. We only preserve keys NOT in .env.tpl, so a 1P
+    # value in .env.tpl always wins over any stale local override.
+    LOCAL_SECRETS=""
+    LOCAL_SECRET_COUNT=0
+    if [ -f "$ENV_OUT" ]; then
+      TPL_KEYS_PRE="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_TPL" | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
+      ENV_KEYS_PRE="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_OUT" | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
+      EXTRA_KEYS="$(comm -23 <(printf '%s\n' "$ENV_KEYS_PRE") <(printf '%s\n' "$TPL_KEYS_PRE"))"
+      while IFS= read -r key; do
+        [ -z "$key" ] && continue
+        line="$(grep -E "^[[:space:]]*${key}=" "$ENV_OUT" | head -1)"
+        if [ -n "$line" ]; then
+          LOCAL_SECRETS="${LOCAL_SECRETS}${line}
+"
+          LOCAL_SECRET_COUNT=$((LOCAL_SECRET_COUNT + 1))
+        fi
+      done <<EOF_KEYS
+$EXTRA_KEYS
+EOF_KEYS
+    fi
+
     INJECT_OUT="$(op inject -i "$ENV_TPL" -o "$ENV_OUT" --force $OP_ACCOUNT_FLAG 2>&1)"
     INJECT_RC=$?
     if [ "$INJECT_RC" -ne 0 ]; then
@@ -328,7 +355,21 @@ $LINT_BAD"
       printf '%s\n' "$INJECT_OUT" | sed 's/^/    /'
       mark_fail
     else
-      pass "env: op inject wrote $ENV_OUT"
+      # Re-append preserved local-only secrets after the inject succeeded.
+      # Block-marker comment makes the boundary obvious to operators
+      # eyeballing .env, and lets a future maintenance script find/refresh
+      # this region cleanly.
+      if [ "$LOCAL_SECRET_COUNT" -gt 0 ]; then
+        {
+          printf '\n# --- ACE local-only secrets (preserved across op inject) ---\n'
+          printf '# Set by operator, NOT 1Password-backed. Keys here must NOT appear in .env.tpl;\n'
+          printf '# bin/ace-setup auto-preserves them on re-inject. Edit values directly in this file.\n'
+          printf '%s' "$LOCAL_SECRETS"
+        } >> "$ENV_OUT"
+        pass "env: op inject wrote $ENV_OUT (preserved $LOCAL_SECRET_COUNT local-only secret(s))"
+      else
+        pass "env: op inject wrote $ENV_OUT"
+      fi
     fi
   else
     pass "env: $ENV_OUT already has every .env.tpl key (use --force-env to refresh)"
