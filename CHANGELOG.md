@@ -5,6 +5,35 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.29 — 2026-05-06
+
+**multimedia followups: atom file-path mode + form-walk wrapper +
+cost-preview wording.**
+
+Three concerns surfaced during the live skill drive (PR #85). Bundled
+into one PR.
+
+- `commcare_patch_xform` and `commcare_upload_multimedia` atoms now
+  accept `new_xform_xml_path` / `file_bytes_path` as alternatives to
+  the inline string args. Tool-call wrappers with practical inline
+  arg-size limits (12K+ chars on real forms, ~1.6 MB base64 for a
+  typical PNG) can now invoke these atoms with arbitrarily large
+  payloads. Atoms enforce "exactly one of (inline, path)" via a
+  shared `lib/atom-payload-resolver.ts` helper; backend method
+  signatures are unchanged.
+- New `scripts/run-form-walk.ts` wrapper: downloads a released CCZ
+  and emits a structured field inventory (form_unique_id + per-field
+  kind/label/options). Replaces the inline `npx tsx -e "..."` scripts
+  the live skill drive used. Exports pure helpers
+  (`parseSuiteFormResources`, `walkFormFields`, `walkCcz`) so unit
+  tests can exercise the walk without live CCHQ.
+- `skills/app-multimedia-coverage/SKILL.md` cost-preview wording
+  updated from `~30s each` to `~30-60s each` to reflect live-measured
+  wall-clock (23–53s, avg ~42s). Steps 7 + 8 now reference the new
+  file-path atom args as the recommended path for large XML / large
+  PNG payloads. Step 3 references `scripts/run-form-walk.ts` as the
+  canonical way to obtain the field inventory.
+
 ## 0.13.24 — 2026-05-06
 
 **fix(connect): Connect uses CSRF_USE_SESSIONS=True; extract token from

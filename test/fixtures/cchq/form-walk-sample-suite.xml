@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suite version="1">
+  <xform>
+    <resource id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">
+      <location authority="local">./modules-0/forms-0.xml</location>
+      <location authority="remote">/a/test-domain/apps/v1/00000000000000000000000000000000/forms/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/</location>
+    </resource>
+    <resource id="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb">
+      <location authority="local">./modules-0/forms-1.xml</location>
+      <location authority="remote">/a/test-domain/apps/v1/00000000000000000000000000000000/forms/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/</location>
+    </resource>
+  </xform>
+</suite>

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms"
+        xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa">
+  <h:head>
+    <h:title>Visit summary</h:title>
+    <model>
+      <instance>
+        <data id="visit_summary" xmlns="">
+          <intro/>
+          <client_name/>
+          <client_age/>
+          <main_concern/>
+          <symptoms/>
+          <calc_only/>
+          <next_visit_at/>
+        </data>
+      </instance>
+      <bind nodeset="/data/intro"/>
+      <bind nodeset="/data/client_name" type="xsd:string"/>
+      <bind nodeset="/data/client_age" type="xsd:int"/>
+      <bind nodeset="/data/main_concern" type="xsd:string"/>
+      <bind nodeset="/data/symptoms" type="xsd:string"/>
+      <bind nodeset="/data/calc_only" type="xsd:string" calculate="concat(/data/client_name, ' ', /data/client_age)"/>
+      <bind nodeset="/data/next_visit_at" type="xsd:dateTime"/>
+      <itext>
+        <translation lang="en" default="">
+          <text id="intro-label">
+            <value>Welcome — confirm with the mother that you are ready to start the visit.</value>
+          </text>
+          <text id="client_name-label">
+            <value>Client name</value>
+          </text>
+          <text id="client_age-label">
+            <value>Client age (years)</value>
+          </text>
+          <text id="main_concern-label">
+            <value>Main concern today</value>
+          </text>
+          <text id="main_concern-fever-label">
+            <value>Fever</value>
+          </text>
+          <text id="main_concern-cough-label">
+            <value>Cough</value>
+          </text>
+          <text id="main_concern-other-label">
+            <value>Other</value>
+          </text>
+          <text id="symptoms-label">
+            <value>Symptoms observed (check all that apply)</value>
+          </text>
+          <text id="symptoms-rash-label">
+            <value>Rash</value>
+          </text>
+          <text id="symptoms-vomiting-label">
+            <value>Vomiting</value>
+          </text>
+          <text id="next_visit_at-label">
+            <value>Schedule next visit</value>
+          </text>
+        </translation>
+      </itext>
+    </model>
+  </h:head>
+  <h:body>
+    <trigger ref="/data/intro">
+      <label ref="jr:itext('intro-label')"/>
+    </trigger>
+    <input ref="/data/client_name">
+      <label ref="jr:itext('client_name-label')"/>
+    </input>
+    <input ref="/data/client_age">
+      <label ref="jr:itext('client_age-label')"/>
+    </input>
+    <select1 ref="/data/main_concern">
+      <label ref="jr:itext('main_concern-label')"/>
+      <item>
+        <label ref="jr:itext('main_concern-fever-label')"/>
+        <value>fever</value>
+      </item>
+      <item>
+        <label ref="jr:itext('main_concern-cough-label')"/>
+        <value>cough</value>
+      </item>
+      <item>
+        <label ref="jr:itext('main_concern-other-label')"/>
+        <value>other</value>
+      </item>
+    </select1>
+    <select ref="/data/symptoms">
+      <label ref="jr:itext('symptoms-label')"/>
+      <item>
+        <label ref="jr:itext('symptoms-rash-label')"/>
+        <value>rash</value>
+      </item>
+      <item>
+        <label ref="jr:itext('symptoms-vomiting-label')"/>
+        <value>vomiting</value>
+      </item>
+    </select>
+    <input ref="/data/next_visit_at">
+      <label ref="jr:itext('next_visit_at-label')"/>
+    </input>
+  </h:body>
+</h:html>

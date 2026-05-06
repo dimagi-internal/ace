@@ -107,8 +107,17 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
    back to that path so the operator can edit and re-run.
 
 3. **Judge each visible field.** Walk every form's fields; skip kinds
-   `hidden` and `calculate`; skip kinds with no displayed label. For
-   each remaining field, decide using the operator-LLM's own reasoning
+   `hidden` and `calculate`; skip kinds with no displayed label. The
+   canonical way to obtain the field inventory is
+   `npx tsx scripts/run-form-walk.ts <hq_domain> <app_id> [--build-id <hex>] --out <path>`
+   — it downloads the released CCZ, parses `suite.xml` to map each
+   form path to its `form_unique_id`, and emits one JSON row per
+   visible body field with `field_id`, `kind`
+   (`label|text|int|single_select|multi_select|date|datetime|trigger|unknown`),
+   `label`, and `options[]` (for selects). Edge-case body shapes
+   surface as `kind: unknown` — treat unknowns conservatively
+   (default: skip). For each remaining field, decide using the
+   operator-LLM's own reasoning
    — read the field id / kind / label / hint / select-option labels
    plus ±2 surrounding fields for context, hold the Application
    Context (step 2) constant for every field in the opp so directives
@@ -162,10 +171,12 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
    judge with `--rejudge` to refresh.
 
 5. **Cost preview.** Print
-   `Will generate {N} images for <app>; ~30s each ≈ M minutes.`. If
-   `N > --max-images`, halt before any generation so a runaway opp
-   can't burn 30 minutes unannounced. Operator raises the cap or
-   trims the candidates YAML.
+   `Will generate {N} images for <app>; ~30-60s each ≈ M minutes.`
+   (live-measured wall-clock 2026-05-05: 23–53s per image, avg ~42s,
+   so use the upper bound when computing M — e.g. N=8 images ≈ 8
+   minutes, N=20 ≈ 20 minutes). If `N > --max-images`, halt before
+   any generation so a runaway opp can't burn the full budget
+   unannounced. Operator raises the cap or trims the candidates YAML.
 
 6. **Generate images.** For each `generate: true` candidate:
    - Compute `prompt_hash` as SHA-256 over the trimmed
@@ -248,7 +259,13 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
      definition for text ID '<field>-label' and form 'image'`. `notFound`
      listing any field id means the form-XML walk in step 3 disagreed
      with the live released form — halt and re-discover.
-   - `commcare_patch_xform` to POST the patched XML.
+   - `commcare_patch_xform` to POST the patched XML. **Pass the
+     patched file via `new_xform_xml_path` (preferred for any real
+     form — typical patched XML is 12K+ chars and blows past tool-call
+     arg-size limits when passed inline).** The atom reads the file
+     and forwards its contents to the backend. The legacy
+     `new_xform_xml` inline arg is still accepted for tiny patches
+     and unit-test convenience; pass exactly one.
    - Re-fetch via `commcare_download_ccz` to confirm the patch stuck
      (per-mutation re-fetch gate, same shape as
      `app-connect-coverage`). On `XformConflictError`, halt the form
@@ -267,13 +284,17 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
 
 8. **Upload multimedia to CCHQ** via `commcare_upload_multimedia`,
    one call per generated image. Path is
-   `jr://file/commcare/<media_type>/<filename>`. (The MCP atom expects
-   `file_bytes_base64` — the skill base64-encodes the PNG bytes before
-   invoking it; the backend decodes back to a Buffer for the multipart
-   POST.) Record the returned `multimedia_id` (CCHQ couch `_id`) and
-   `file_hash_md5` (CCHQ's md5 of the bytes; CCHQ dedupes on this)
-   into the manifest. CCHQ does not return sha1 despite earlier draft
-   notes — md5 is the source of truth.
+   `jr://file/commcare/<media_type>/<filename>`. **Pass the binary
+   via `file_bytes_path` (preferred for any real PNG — a typical
+   1.2 MB image becomes ~1.6 MB base64 and blows past tool-call
+   arg-size limits when inlined as `file_bytes_base64`).** The atom
+   reads the file as raw bytes and forwards a Buffer to the backend
+   for the multipart POST. The legacy `file_bytes_base64` inline arg
+   is still accepted for tiny test assets and unit-test convenience;
+   pass exactly one. Record the returned `multimedia_id` (CCHQ couch
+   `_id`) and `file_hash_md5` (CCHQ's md5 of the bytes; CCHQ dedupes
+   on this) into the manifest. CCHQ does not return sha1 despite
+   earlier draft notes — md5 is the source of truth.
 
 9. **Build + release.** `commcare_make_build` followed by
    `commcare_release_build` per app. Capture the new `build_id` and
@@ -360,11 +381,16 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
     discover form unique_ids, walk current form XML, and verify the
     post-release multimedia map.
   - `commcare_patch_xform` — POST the patched XForm XML adding the
-    `<image>` itext entries.
-  - `commcare_upload_multimedia` (new in this release) — POST the
-    PNG bytes to
+    `<image>` itext entries. Two payload modes: `new_xform_xml`
+    (inline string) or `new_xform_xml_path` (filesystem path —
+    preferred for real forms; sidesteps tool-call arg-size limits).
+    Pass exactly one.
+  - `commcare_upload_multimedia` — POST the PNG bytes to
     `/a/<domain>/apps/<app_id>/multimedia/uploaded/<media_type>/`.
-    Returns `{ multimedia_id, file_hash_md5 }`.
+    Returns `{ multimedia_id, file_hash_md5 }`. Two payload modes:
+    `file_bytes_base64` (inline) or `file_bytes_path` (filesystem
+    path — preferred for any real PNG; sidesteps the ~1.6 MB base64
+    inline-arg limit). Pass exactly one.
   - `commcare_make_build` — POST `/apps/save/<app_id>/`, returns the
     new build id.
   - `commcare_release_build` — POST
