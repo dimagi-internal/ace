@@ -124,40 +124,34 @@ export class PlaywrightSession {
     // form, NOT from a Set-Cookie header.
     //
     // Connect runs Django with `CSRF_USE_SESSIONS=True` (verified live
-    // 2026-05-06 against the prod deploy). Under that setting, Django
-    // stores the CSRF token in `request.session['_csrftoken']` rather
-    // than a cookie — `Set-Cookie: csrftoken=...` headers are NEVER
-    // sent. The token is exposed only via the `csrfmiddlewaretoken`
-    // hidden input that Django's `{% csrf_token %}` template tag
-    // renders into every CSRF-protected form. CsrfViewMiddleware then
-    // accepts that token (via the `csrfmiddlewaretoken` form field on
-    // multipart/x-www-form-urlencoded POSTs OR the `X-CSRFToken`
-    // header on JSON POSTs) and compares it against the
-    // session-stored value.
+    // against the prod deploy). Under that setting, Django stores the
+    // CSRF token in `request.session['_csrftoken']` rather than a
+    // cookie — `Set-Cookie: csrftoken=...` headers are NEVER sent.
+    // CsrfViewMiddleware accepts the token via either the
+    // `csrfmiddlewaretoken` form field (multipart/x-www-form-urlencoded
+    // POSTs) or the `X-CSRFToken` header (JSON POSTs) and compares it
+    // against the session-stored value.
     //
-    // Pre-0.13.24 this entire module looked for a cookie that doesn't
-    // exist on Connect's deploy. Every cookie-based CSRF self-heal
-    // (0.13.13 cookie rotation, 0.13.14 forced cookie issuance,
-    // 0.13.15 bottom-out reauth, 0.13.22 silent-fallback removal) was
-    // chasing the wrong abstraction. The fix is to GET an HTML page
-    // that renders a form, regex out the `csrfmiddlewaretoken` value,
-    // and cache that as `this.csrfToken` for `RestBackend` to send via
-    // `X-CSRFToken`.
+    // Pre-0.13.24 this module looked for a cookie that doesn't exist
+    // on Connect's deploy. Every cookie-based CSRF self-heal (0.13.13
+    // cookie rotation, 0.13.14 forced cookie issuance, 0.13.15
+    // bottom-out reauth, 0.13.22 silent-fallback removal) was chasing
+    // the wrong abstraction. The 0.13.24 fix shipped HTML scraping for
+    // the `csrfmiddlewaretoken` hidden input that Django's
+    // `{% csrf_token %}` template tag renders into forms.
     //
-    // `/accounts/login/` is the most reliable form-rendering URL: it
-    // 200s for authed and anon users alike (allauth re-renders the
-    // login form with a fresh CSRF token even after auth — the response
-    // body still includes the form), and the form ALWAYS has a
-    // `csrfmiddlewaretoken` input. We could also use any authed view
-    // with a form (e.g. the org settings page), but `/accounts/login/`
-    // is universal across orgs and auth states.
-    //
-    // Empirical proof: same-session GET `/accounts/login/` → extract
-    // token → POST `/api/programs/<uuid>/opportunities/` with
-    // `X-CSRFToken: <token>` returned `401 "Authentication credentials
-    // were not provided"` (CSRF check passed; auth failed because the
-    // session was anon). Pre-fix it returned `403 "CSRF Failed: CSRF
-    // token missing"`. The 403→401 transition is the goalpost.
+    // 0.13.31 update — Connect's templates moved the token off per-form
+    // hidden inputs and onto a single `<body hx-headers='{"X-CSRFToken":
+    // "..."}'>` attribute (HTMX's idiomatic pattern: every HTMX request
+    // descended from <body> inherits the header automatically).
+    // Verified 2026-05-06 — a fresh /ace:connect-login on a clean
+    // machine threw `csrfmiddlewaretoken not found in Connect HTML
+    // after auth` because `/accounts/login/` (authed) redirects to
+    // `/a/<org>/opportunity/` which has the new shape, not the legacy
+    // input. `extractFormCsrfToken` now handles both patterns,
+    // hx-headers preferred. Hydration URLs unchanged: `/accounts/login/`
+    // still works because following its 302 lands on a body that
+    // carries `hx-headers`.
     const hydrationUrls = ['/accounts/login/', '/'];
     let lastStatus: number | undefined;
     for (const url of hydrationUrls) {
@@ -190,14 +184,17 @@ export class PlaywrightSession {
         .join(', ');
       try { fs.unlinkSync(statePath); } catch { /* ignore */ }
       throw new Error(
-        `csrfmiddlewaretoken not found in Connect HTML after auth. ` +
+        `Connect CSRF token not found in HTML after auth. ` +
           `Tried [${hydrationUrls.join(', ')}], last response status=${lastStatus ?? 'n/a'}. ` +
           `Cookies in jar: [${summary}]. ` +
           'Connect uses CSRF_USE_SESSIONS=True (no cookie) — token must be ' +
-          'extracted from the csrfmiddlewaretoken hidden input on a ' +
-          'rendered form. If that input is missing, Connect changed the ' +
-          'CSRF mechanism upstream and this skill needs a new probe URL. ' +
-          'Stale storageState dropped; next getContext() will run a fresh OAuth flow.',
+          'extracted from rendered HTML, either the <body hx-headers> ' +
+          "attribute (current Connect templates) or a legacy " +
+          '<input name="csrfmiddlewaretoken"> hidden field. If neither ' +
+          'is present, Connect changed the CSRF mechanism upstream and ' +
+          'mcp/connect/backends/html-scrape.ts:extractFormCsrfToken needs ' +
+          'a new pattern. Stale storageState dropped; next getContext() ' +
+          'will run a fresh OAuth flow.',
       );
     }
 

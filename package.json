@@ -1,6 +1,6 @@
 {
   "name": "ace",
-  "version": "0.13.31",
+  "version": "0.13.32",
   "description": "AI Connect Engine - orchestrator for building Connect Opps using AI",
   "type": "module",
   "scripts": {
@@ -18,9 +18,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.94.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@xmldom/xmldom": "^0.9.10",
     "dotenv": "^17.4.1",
     "fflate": "^0.8.2",
     "googleapis": "^171.4.0",
