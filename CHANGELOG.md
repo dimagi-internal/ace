@@ -5,6 +5,28 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.43 — 2026-05-06
+
+**fix(deps): re-add @anthropic-ai/sdk (4th time) + enable branch
+protection on main.**
+
+The 0.13.42 merge (`emdash/new-qa-tpafr`) was based on a pre-0.13.41
+main and stripped `@anthropic-ai/sdk` from `package.json` again — 4th
+instance of the merge-conflict-drop class of bug. The clean-install
+CI workflow correctly flagged it, but `main` had no branch protection
+configured so the merge went through anyway.
+
+Two fixes shipped in this PR:
+1. `@anthropic-ai/sdk@^0.94.0` re-added to `package.json` (and lockfile).
+2. Branch protection enabled on `main` requiring `clean-install` status
+   check to pass before merging. Configured via `gh api -X PUT
+   repos/jjackson/ace/branches/main/protection` with admin bypass
+   allowed (so emergency hotfixes still work). This is a class-level
+   preventer — drops can no longer reach main silently.
+
+Verified clean: npm install succeeds, npm test reports 570 passed /
+35 skipped / 0 failed.
+
 ## 0.13.41 — 2026-05-06
 
 **fix(deps): re-add @xmldom/xmldom + @anthropic-ai/sdk to package.json.**
