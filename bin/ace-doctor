@@ -518,7 +518,12 @@ if [ -n "$ENV_FILE" ]; then
   # files in My Drive don't. One files.get probe catches the entire class.
   # (2026-04-27, after dogfood run #1 surfaced this as a silent My-Drive fallback.)
   if [ -n "$DRIVE_ROOT" ] && [ -n "$KEY" ] && [ -d "$ROOT/node_modules/googleapis" ]; then
-    DRIVE_ROOT_PROBE="$(GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+    # cd "$ROOT" so the inline `import { google } from 'googleapis'` resolves
+    # against the plugin's node_modules instead of doctor's CWD. Same fix as
+    # gdrive_auth in the [Auth liveness] block (0.13.25); without it, doctor
+    # invocations from outside the plugin dir silently fail the import (stderr
+    # suppressed by 2>/dev/null) and the probe falls through with no output.
+    DRIVE_ROOT_PROBE="$(cd "$ROOT" && GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
       import { google } from 'googleapis';
       const auth = new google.auth.GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/drive'] });
       const drive = google.drive({ version: 'v3', auth });
@@ -552,7 +557,8 @@ if [ -n "$ENV_FILE" ]; then
   # the new-layout setup error. INFO (not WARN) — first-time installs
   # legitimately have nothing yet.
   if [ -n "$DRIVE_ROOT" ] && [ -n "$KEY" ] && [ -d "$ROOT/node_modules/googleapis" ]; then
-    INPUTS_PROBE="$(GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+    # cd "$ROOT" — see DRIVE_ROOT_PROBE above for the explanation.
+    INPUTS_PROBE="$(cd "$ROOT" && GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
       import { google } from 'googleapis';
       const auth = new google.auth.GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/drive'] });
       const drive = google.drive({ version: 'v3', auth });
