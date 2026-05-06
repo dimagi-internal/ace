@@ -1,6 +1,6 @@
 {
   "name": "ace",
-  "version": "0.13.21",
+  "version": "0.13.23",
   "description": "AI Connect Engine — orchestrates the CRISPR-Connect lifecycle from idea through app building, Connect setup, LLO management, and closeout",
   "author": {
     "name": "Jonathan Jackson",

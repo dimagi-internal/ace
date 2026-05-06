@@ -1,34 +1,1528 @@
-# test/fixtures/CRISPR-Test-005-KMC-multimedia/expected-multimedia-candidates-learn.yaml
+# Captured 2026-05-05 from a live skill run against
+# connect-ace-prod / 4e20ddf5beca42278c4d2c20383eb943 (LEEP Learn app).
+# Used as ground truth for spotting regressions in the LLM judge prompt
+# over time. If Nova's field naming changes structurally, regenerate
+# from a known-good run.
 #
-# PLACEHOLDER. Real golden ground-truth captured after the first live
-# `app-multimedia-coverage` run against this fixture (Task 14).
-# Used to spot regressions in the LLM judge prompt over time. If Nova's
-# field naming changes, regenerate from a known-good run.
+# Actual app: LEEP paint can survey (Learn). 6 modules x (Lesson + Quiz),
+# 83 visible fields total. With --max-images=3 cap, the judge picked:
+#   - m4f0/three_photos       (front/back/batch reference diagram)
+#   - m4f0/worked_example     (acceptable vs unacceptable photos grid)
+#   - m3f0/prefer_one_litre   (1L vs 4L can size visual)
 #
-# Expected shape on first run (8–12 candidates total):
-# - "What is KMC" intro screen → generate=true (FLW shows mother)
-# - Positioning step labels (3–5 of them) → generate=true (FLW demonstrates)
-# - Danger sign visual cues (jaundice, apnea, hypothermia) → generate=true
-# - "Knowledge check" quiz stems → mostly generate=false unless the question
-#   text references a visual concept that an image clarifies
-# - "Mother's name" text field (Deliver) → generate=false
-# - "Baby weight" numeric (Deliver) → generate=false
-# - "Follow-up date" (Deliver) → generate=false
-#
-# Schema (filled in after the first live run):
-# app: learn
-# app_id: <hex>
-# app_context_hash: <sha256>
-# candidates:
-#   - form_unique_id: <32-char hex>
-#     module: <int>
-#     form: <int>
-#     field_id: <string>
-#     kind: label | text | int | single_select | multi_select | image | ...
-#     field_text: <string>
-#     judge:
-#       generate: bool
-#       use_case: flw_self_use | flw_shows_client | both
-#       why: <≤200 char rationale>
-#       directive: <≤500 char Image Directive>
-#     operator_override: null
+# Live build verified end-to-end: build_id=7744a1612ce546e29cc07c193ea06e9a
+# v42, all 3 images bundled at commcare/image/<file>.png AND form-XML
+# references confirmed.
+app: learn
+app_id: 4e20ddf5beca42278c4d2c20383eb943
+app_context: The users of the app being trained are field researchers — local data collectors hired by LEEP (the Lead
+  Exposure Elimination Project) to visit decorative-paint shops in low- and middle-income countries, interview
+  shopkeepers in modest settings, and purchase a small sample of paint cans for laboratory analysis. People should be
+  dressed modestly. All of the users and participants should be representative of the context — neighborhood paint shops
+  in countries where lead-pigment regulations are weak (think shopfronts in South Asia, sub-Saharan Africa, or Latin
+  America), with shopkeepers, painters, and field workers shown realistically rather than idealized.
+app_context_hash: 6889cfff0414ce4b128f44467bd0e21503512ea967f0d476ce5099fa73abb20f
+candidates:
+  - form_unique_id: 8c86b898b74c4438aecfafb47e431997
+    module: 0
+    form: 0
+    field_id: acknowledge_read
+    kind: select1
+    field_text: I have read and understood this lesson.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: 8c86b898b74c4438aecfafb47e431997
+    module: 0
+    form: 0
+    field_id: intro_header
+    kind: trigger
+    field_text: |-
+      # Why this survey exists
+
+      Welcome. This short lesson explains why LEEP is doing this work and what your role is.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 8c86b898b74c4438aecfafb47e431997
+    module: 0
+    form: 0
+    field_id: health_context
+    kind: trigger
+    field_text: >-
+      ## 1. Lead in paint is a serious health problem
+
+
+      - Lead in decorative paints is a major source of childhood lead exposure worldwide.
+
+      - Children are most at risk: lead damages their developing brains, lowers IQ, and causes lifelong learning and
+      behaviour problems.
+
+      - Even small amounts of lead are harmful. There is **no safe level** of lead exposure for a child.
+
+      - When old paint chips, peels, or turns to dust, children swallow or breathe it in — especially from toys,
+      furniture, walls, and play equipment.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 8c86b898b74c4438aecfafb47e431997
+    module: 0
+    form: 0
+    field_id: oil_based_focus
+    kind: trigger
+    field_text: >-
+      ## 2. Why we focus on oil-based decorative paint
+
+
+      - Oil-based (solvent-based) paints often contain lead compounds added as **drying agents** and **colour
+      pigments**.
+
+      - These paints are most often used on metal surfaces, doors, window frames, furniture, and — critically —
+      children's play equipment.
+
+      - Water-based (emulsion) paints generally contain little or no added lead, so they are NOT the focus of this
+      survey.
+
+      - Your job is to find and document the oil-based decorative paints that are sold in your country.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 8c86b898b74c4438aecfafb47e431997
+    module: 0
+    form: 0
+    field_id: leep_purpose
+    kind: trigger
+    field_text: |-
+      ## 3. What LEEP will do with the data
+
+      - LEEP (the Lead Exposure Elimination Project) will send the cans you purchase to a laboratory.
+      - The lab will measure the lead content of each can.
+      - LEEP uses these results to:
+        - Show governments and regulators the true scale of lead in paint sold today.
+        - Push for enforceable lead-paint standards.
+        - Work with manufacturers to reformulate their products.
+      - **Your fieldwork is the foundation of this advocacy.** Without your data, none of it is possible.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 8c86b898b74c4438aecfafb47e431997
+    module: 0
+    form: 0
+    field_id: your_role
+    kind: trigger
+    field_text: >-
+      ## 4. Your role in one paragraph
+
+
+      You will visit roughly 20 paint shops over a few days in 1–3 cities. At each shop you will (a) interview the
+      seller using a 15-question guide, (b) purchase about 6 oil-based paint cans, and (c) photograph each can. The cans
+      will be stored until LEEP collects them. **You are not selling, marketing, or promoting anything.** You are a
+      researcher gathering honest information about the paint market.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 8c86b898b74c4438aecfafb47e431997
+    module: 0
+    form: 0
+    field_id: continue_to_quiz
+    kind: trigger
+    field_text: |-
+      ---
+
+      When you are ready, tap **Next** to mark this lesson as read and continue to the short quiz.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: 6f3d3ad3ed9d44e5b4107c0a1210dd10
+    module: 0
+    form: 1
+    field_id: q1
+    kind: select1
+    field_text: "**Q1.** Why does LEEP focus on oil-based decorative paints rather than water-based paints?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: 6f3d3ad3ed9d44e5b4107c0a1210dd10
+    module: 0
+    form: 1
+    field_id: q2
+    kind: select1
+    field_text: "**Q2.** Who is most at risk from lead in paint?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: 6f3d3ad3ed9d44e5b4107c0a1210dd10
+    module: 0
+    form: 1
+    field_id: q3
+    kind: select1
+    field_text: "**Q3.** What will LEEP do with the paint cans you purchase?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: 6f3d3ad3ed9d44e5b4107c0a1210dd10
+    module: 0
+    form: 1
+    field_id: quiz_intro
+    kind: trigger
+    field_text: |-
+      # Quiz — Why this survey exists
+
+      Three quick questions. You need at least **2 out of 3** correct to pass.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: e4af74cfb930467a9b997db965c00703
+    module: 1
+    form: 0
+    field_id: acknowledge_read
+    kind: select1
+    field_text: I have read and understood this lesson.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: e4af74cfb930467a9b997db965c00703
+    module: 1
+    form: 0
+    field_id: intro_header
+    kind: trigger
+    field_text: >-
+      # Shop selection and approach
+
+
+      Before you walk into a shop, you need to know two things: **is this shop in scope?** and **what will you say?**
+      This lesson covers both.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: e4af74cfb930467a9b997db965c00703
+    module: 1
+    form: 0
+    field_id: in_scope_shop
+    kind: trigger
+    field_text: >-
+      ## 1. What counts as an in-scope shop
+
+
+      A shop is **in scope** if it sells **oil-based decorative paint** to **retail customers** — that is, ordinary
+      people walking in off the street, painters buying for a job, or small contractors.
+
+
+      - It is fine if the shop also sells water-based paints, brushes, or other hardware.
+
+      - A shop that ONLY sells industrial paints to factories is **out of scope**.
+
+      - A shop that ONLY sells water-based emulsion paints is **out of scope**.
+
+      - A wholesaler who refuses to sell single cans to walk-in customers is **out of scope**.
+
+
+      If you are unsure, politely ask: *"Do you sell oil-based paints to individual customers?"* If yes, the shop is in
+      scope.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: e4af74cfb930467a9b997db965c00703
+    module: 1
+    form: 0
+    field_id: approach
+    kind: trigger
+    field_text: >-
+      ## 2. How to approach the seller
+
+
+      - Dress neatly. You represent a research project.
+
+      - Walk in calmly. Greet the shopkeeper using the local greeting.
+
+      - Ask politely to speak to **the owner or the most knowledgeable seller** — someone who can answer questions about
+      brands, suppliers, and customers.
+
+      - Wait until they are not serving another customer. Be patient.
+
+      - Be friendly but professional. You are not there to make small talk for an hour.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: e4af74cfb930467a9b997db965c00703
+    module: 1
+    form: 0
+    field_id: intro_script
+    kind: trigger
+    field_text: >-
+      ## 3. The introduction script
+
+
+      Use this script (translate naturally into the local language and tone):
+
+
+      > *"Hello. My name is [your name]. I work with a research project called LEEP that studies the paint market. We
+      are doing market research on oil-based paints. The interview takes about 30 to 60 minutes. Your participation is
+      completely voluntary. We will also buy a few cans of paint from you at the normal price. Would you be willing to
+      take part?"*
+
+
+      Key points to communicate, even if you change the wording:
+
+
+      - Who you are and who you work with (LEEP / market research).
+
+      - Roughly how long it will take (**30–60 minutes**).
+
+      - That participation is **voluntary**.
+
+      - That you will **purchase cans at normal price** — you are not asking for free product.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: e4af74cfb930467a9b997db965c00703
+    module: 1
+    form: 0
+    field_id: refusal_handling
+    kind: trigger
+    field_text: >-
+      ## 4. Handling a refusal
+
+
+      Some sellers will say no. That is their right.
+
+
+      - Thank them politely for their time. Do not argue, plead, or offer extra incentives.
+
+      - Do not show disappointment.
+
+      - Make a quick note on your phone of the shop name (if visible) so you do not return.
+
+      - Move on to the next shop on your list.
+
+
+      If a seller agrees to talk but refuses one specific question during the interview, that is also fine — record
+      their refusal in the form (you will learn how in Module 3) and move to the next question.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: e4af74cfb930467a9b997db965c00703
+    module: 1
+    form: 0
+    field_id: continue_to_quiz
+    kind: trigger
+    field_text: |-
+      ---
+
+      When you are ready, tap **Next** to continue to the quiz.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: 3956b7ad438a4ffc9484d4ce373108f8
+    module: 1
+    form: 1
+    field_id: q1
+    kind: select1
+    field_text: "**Q1.** A shop sells brushes, water-based emulsion paint, and **no oil-based paint at all**. Is this shop
+      in scope?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: 3956b7ad438a4ffc9484d4ce373108f8
+    module: 1
+    form: 1
+    field_id: q2
+    kind: select1
+    field_text: "**Q2.** Which of these things should the introduction script make clear?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: 3956b7ad438a4ffc9484d4ce373108f8
+    module: 1
+    form: 1
+    field_id: q3
+    kind: select1
+    field_text: "**Q3.** A seller says \"No, I don't want to take part.\" What should you do?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: 3956b7ad438a4ffc9484d4ce373108f8
+    module: 1
+    form: 1
+    field_id: quiz_intro
+    kind: trigger
+    field_text: |-
+      # Quiz — Shop selection and approach
+
+      Three questions. You need at least **2 out of 3** correct to pass.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: acknowledge_read
+    kind: select1
+    field_text: I have read and understood this lesson.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: intro_header
+    kind: trigger
+    field_text: >-
+      # Conducting the 15-question seller interview
+
+
+      This is the heart of your visit. You will ask the seller 15 questions about the paint market. The interview takes
+      **20–30 minutes** when it is going well — longer if the seller has a lot to share. Let them talk.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: neutral_framing
+    kind: trigger
+    field_text: >-
+      ## Before you begin: how to ask the questions
+
+
+      - **Be neutral.** Do not lead the seller toward an answer. Ask the question, then stop talking and listen.
+
+      - **Don't anchor.** If the seller's first answer is brand X, do not assume the rest of the answer is also about
+      brand X. Probe gently: *"Are there other brands?"*
+
+      - **Capture exact words for "don't know" and "declined".** If the seller says they don't know, write **"don't
+      know"** in the answer field. If they refuse to answer, write **"declined"**. **Never invent or guess.**
+
+      - **Long answers are OK.** The form has free-text fields. Your phone's voice-to-text feature works in those fields
+      and is the fastest way to capture long answers. (Voice-to-text is your phone's feature, not part of CommCare.)
+
+      - **Probing is encouraged.** Use phrases like *"Can you tell me more?"*, *"What else?"*, *"Why is that?"* — these
+      are neutral.
+
+      - **Avoid leading phrases** like *"So you mostly sell brand X, right?"* That puts an answer in the seller's mouth.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: questions_header
+    kind: trigger
+    field_text: >-
+      ## The 15 questions
+
+
+      Below is each question you will ask, with a short note on what to listen for. The full question text is what the
+      seller will hear; the note in italics is for **you**, the worker.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q1_brands
+    kind: trigger
+    field_text: >-
+      ### Q1. Which brands of oil-based paint do you sell? Which are decorative (architectural) and which are
+      industrial?
+
+
+      *Listen for: brand names, and a clear split between decorative-use brands (houses, furniture, doors) vs industrial
+      brands (factories, machinery). Probe: "Any others?" until they stop adding.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q2_other_brands
+    kind: trigger
+    field_text: >-
+      ### Q2. What other brands of oil-based paint are available in this country, even if you don't sell them?
+
+
+      *Listen for: brands the seller has seen elsewhere or knows by reputation. This expands the brand list beyond just
+      this shop.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q3_market_share
+    kind: trigger
+    field_text: >-
+      ### Q3. By production volume, which brands have the biggest market share? Which are the most popular?
+
+
+      *Listen for: a ranking. Probe: "Which is number one?", "What about number two and three?" Do not push if they
+      don't know.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q4_oil_vs_water
+    kind: trigger
+    field_text: >-
+      ### Q4. Of every 100 cans you sell, how many are oil-based and how many are water-based? If possible, give the
+      split for your top brand.
+
+
+      *Listen for: a ratio (e.g. "70 water-based, 30 oil-based"). It is fine if the seller answers in approximate terms.
+      Capture verbatim.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q5_colours
+    kind: trigger
+    field_text: >-
+      ### Q5. What are the most popular colours of oil-based paints? If possible, give the most popular colours for your
+      top brand.
+
+
+      *Listen for: specific colour names. Bright yellows, reds, greens, and white are particularly important to flag
+      because they often contain lead pigments.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q6_shelf_time
+    kind: trigger
+    field_text: >-
+      ### Q6. How long do oil-based paint cans typically sit on shelves before being purchased? What is the longest a
+      can has sat?
+
+
+      *Listen for: weeks, months, sometimes years. This tells us how old the cans we sample really are. Probe gently for
+      the longest stretch.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q7_industrial_use
+    kind: trigger
+    field_text: >-
+      ### Q7. Are industrial paints sold here alongside decorative paints? Are industrial paints ever used to paint
+      houses or furniture? In what situations, and why?
+
+
+      *Listen for: cross-over use. Probe specifically on **durability vs price** — are people choosing industrial paint
+      because it is tougher, or because it is cheaper?*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q8_informal_market
+    kind: trigger
+    field_text: >-
+      ### Q8. Are there painters who mix their own paint informally? Where would I find them?
+
+
+      *Listen for: street markets, specific neighbourhoods, particular trades. Informal mixers are a known source of
+      high-lead paint in many countries.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q9_rural_market
+    kind: trigger
+    field_text: >-
+      ### Q9. What does the rural paint market look like? Or do people in rural areas buy all their paint from towns and
+      cities?
+
+
+      *Listen for: rural shops, mobile traders, or 'people just travel to town'. Capture verbatim.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q10_manufacture_or_buy
+    kind: trigger
+    field_text: >-
+      ### Q10. Do you manufacture any of the paint yourself? If yes, walk me through the process. If no, where do you
+      buy your paint from?
+
+
+      *Listen for: "we just buy it from X distributor" vs "we mix the bases here". If they manufacture, ask them to walk
+      through the process step by step.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q11_raw_materials
+    kind: trigger
+    field_text: >-
+      ### Q11. (If they manufacture.) Where do you source the raw materials — the pigments, driers, solvents?
+
+
+      *Only ask if Q10 said they manufacture. Listen for: country names, supplier names, port names. This is sensitive —
+      do not push if they get uncomfortable.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q12_export
+    kind: trigger
+    field_text: |-
+      ### Q12. Do you export paint to other countries? If yes, which countries?
+
+      *Listen for: country names. This helps LEEP trace cross-border movement.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q13_tints
+    kind: trigger
+    field_text: >-
+      ### Q13. Do you sell tints? If yes, which brands and which colours?
+
+
+      *Tints are concentrated colourants used to mix custom colours. They are a known lead source. Listen for: brand and
+      specific colours — yellow and red tints are particularly important.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q14_mix_paints
+    kind: trigger
+    field_text: >-
+      ### Q14. Do you mix paints in the shop — for example, to make a custom colour for a customer? If yes, do you mix
+      by hand or with a machine?
+
+
+      *Listen for: hand-mixing vs machine. Hand-mixed custom colours can carry significantly more lead than the original
+      cans.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: q15_childrens_equipment
+    kind: trigger
+    field_text: >-
+      ### Q15. Which of the paints you sell are typically used to paint children's play equipment — swings, slides,
+      jungle gyms, school furniture, toys?
+
+
+      *This is the most important question for prioritising your can purchases. Listen carefully and capture the exact
+      brand names. You will use this answer later to choose which cans to buy.*
+    judge:
+      generate: false
+      use_case: null
+      why: Open-ended interview script the FLW reads aloud; an image would bias the seller toward a primed answer rather than
+        capture their real view.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: free_text_capture
+    kind: trigger
+    field_text: >-
+      ## Capturing long answers
+
+
+      - The Deliver app has a **free-text answer field for each question**. Write the seller's answer in their words,
+      not your interpretation.
+
+      - For long answers, tap the field and use your phone's **voice-to-text microphone button** — this is your phone's
+      feature, not part of CommCare. It will transcribe what you and the seller say. Review and clean up the text before
+      saving.
+
+      - If the seller answers a later question while you are on an earlier one (this happens often), capture it in the
+      right field even if the order shifts.
+
+      - If they say *"I don't know"* or *"I'd rather not say"*, write **"don't know"** or **"declined"** literally. Do
+      not leave the field blank.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: d0ac274f1c0242fb891a91ca5de9abb4
+    module: 2
+    form: 0
+    field_id: continue_to_quiz
+    kind: trigger
+    field_text: |-
+      ---
+
+      When you are ready, tap **Next** to continue to the quiz.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: bee891410b9f4ccc833c93ab8252bd9e
+    module: 2
+    form: 1
+    field_id: q1
+    kind: select1
+    field_text: "**Q1.** A seller answers your first question with *\"I don't know.\"* What should you write in the answer field?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: bee891410b9f4ccc833c93ab8252bd9e
+    module: 2
+    form: 1
+    field_id: q2
+    kind: select1
+    field_text: "**Q2.** Which of these is a **leading** question that you should AVOID?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: bee891410b9f4ccc833c93ab8252bd9e
+    module: 2
+    form: 1
+    field_id: q3
+    kind: select1
+    field_text: '**Q3.** **Scenario.** You ask Q1 ("Which brands of oil-based paint do you sell?"). The seller says *"Mostly
+      brand X."* What is the best next thing to do?'
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: bee891410b9f4ccc833c93ab8252bd9e
+    module: 2
+    form: 1
+    field_id: quiz_intro
+    kind: trigger
+    field_text: |-
+      # Quiz — Conducting the 15-question seller interview
+
+      Three questions, including one scenario. You need at least **2 out of 3** correct to pass.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: 216e135a163c4455a626de4af8c8388a
+    module: 3
+    form: 0
+    field_id: acknowledge_read
+    kind: select1
+    field_text: I have read and understood this lesson.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: 216e135a163c4455a626de4af8c8388a
+    module: 3
+    form: 0
+    field_id: intro_header
+    kind: trigger
+    field_text: >-
+      # Selecting and purchasing cans
+
+
+      At the end of the interview you will buy roughly **6 cans of oil-based paint** from the shop. This lesson covers
+      **which cans to choose** and **how to record the price**.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 216e135a163c4455a626de4af8c8388a
+    module: 3
+    form: 0
+    field_id: target_six
+    kind: trigger
+    field_text: |-
+      ## 1. Target: about 6 cans per shop
+
+      - Aim for **~6 cans** per shop. A little more or less is fine if the shop's stock makes 6 hard.
+      - Spread your 6 cans across the **brands the seller mentioned as popular** in Q1 and Q3 of the interview.
+      - Do not buy 6 cans of the same brand and colour. Variety is more useful than duplication.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 216e135a163c4455a626de4af8c8388a
+    module: 3
+    form: 0
+    field_id: prefer_one_litre
+    kind: trigger
+    field_text: |-
+      ## 2. Prefer 1-litre cans
+
+      - **1 litre** is the smallest standard size for most decorative oil-based paints. It keeps cost and weight down.
+      - If 1-litre is not available, take the next smallest size the brand offers (typically a quart or half-litre).
+      - Avoid large 4-litre or 20-litre tins unless that is the **only** size the shop sells for that brand.
+    judge:
+      generate: true
+      use_case: flw_self_use
+      why: "Size-comparison visual: 1L preferred vs 4L/20L tins. A side-by-side line-up gives FLWs an immediate visual cue
+        while standing in a paint shop."
+      directive: 'A clean side-by-side photographic line-up of three oil-based decorative paint containers on a neutral shop
+        counter: a small 1-litre can (front and centre, highlighted), a mid-size quart, and a large 4-litre tin. Subtle
+        "PREFER" arrow pointing to the 1-litre can. Modest shop interior background, retail context typical of South
+        Asia or sub-Saharan Africa. No people. Daylight. Crisp, photographic, instructional.'
+    operator_override: null
+  - form_unique_id: 216e135a163c4455a626de4af8c8388a
+    module: 3
+    form: 0
+    field_id: mix_colours
+    kind: trigger
+    field_text: >-
+      ## 3. Mix colours
+
+
+      - Across your 6 cans, try to capture a mix of colours. Bright **yellows, reds, greens, and white** are
+      particularly important — these are the colours that historically carry the most lead.
+
+      - If the seller said a particular colour is most popular (Q5), include at least one can of that colour.
+
+      - A single all-white sample of 6 cans is much less useful than 6 cans across 5 different colours.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 216e135a163c4455a626de4af8c8388a
+    module: 3
+    form: 0
+    field_id: childrens_priority
+    kind: trigger
+    field_text: >-
+      ## 4. Prioritise children's-play-equipment paints
+
+
+      - Look at the seller's answer to Q15 ("which paints are used on children's play equipment").
+
+      - **At least one or two** of your 6 cans should be brands and colours from that answer. These are the
+      highest-priority cans for LEEP's lab analysis.
+
+      - If the seller did not name any specific paints for children's equipment, prioritise the brightest colours of the
+      most popular oil-based brands instead.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 216e135a163c4455a626de4af8c8388a
+    module: 3
+    form: 0
+    field_id: price_documentation
+    kind: trigger
+    field_text: >-
+      ## 5. Price and receipt documentation
+
+
+      For each can you buy:
+
+
+      - **Always**: capture the **price you paid** in the per-can field on the form. This is required.
+
+      - **If the shop issues a receipt**: photograph the receipt with the optional receipt-photo field. One receipt
+      photo for the whole purchase is fine — you do not need a separate photo per can.
+
+      - **If the shop does not issue a receipt**: it is OK to skip the receipt photo. Many small shops do not give
+      receipts; this is expected.
+
+
+      Pay the normal price. Do not haggle for a discount and do not pay over the asking price.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 216e135a163c4455a626de4af8c8388a
+    module: 3
+    form: 0
+    field_id: continue_to_quiz
+    kind: trigger
+    field_text: |-
+      ---
+
+      When you are ready, tap **Next** to continue to the quiz.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: db2b5b3781a7405bbed837f06f1fb9c0
+    module: 3
+    form: 1
+    field_id: q1
+    kind: select1
+    field_text: "**Q1.** What size paint can should you prefer to buy when it is available?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: db2b5b3781a7405bbed837f06f1fb9c0
+    module: 3
+    form: 1
+    field_id: q2
+    kind: select1
+    field_text: "**Q2.** Which of these is the BEST set of 6 cans to take from a single shop?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: db2b5b3781a7405bbed837f06f1fb9c0
+    module: 3
+    form: 1
+    field_id: q3
+    kind: select1
+    field_text: "**Q3.** A small shop sells you 6 cans but does not issue a receipt. What should you do?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: db2b5b3781a7405bbed837f06f1fb9c0
+    module: 3
+    form: 1
+    field_id: quiz_intro
+    kind: trigger
+    field_text: |-
+      # Quiz — Selecting and purchasing cans
+
+      Three questions. You need at least **2 out of 3** correct to pass.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: f23140e087cc4f798479689298ef3718
+    module: 4
+    form: 0
+    field_id: acknowledge_read
+    kind: select1
+    field_text: I have read and understood this lesson.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: f23140e087cc4f798479689298ef3718
+    module: 4
+    form: 0
+    field_id: intro_header
+    kind: trigger
+    field_text: >-
+      # Photographing each can
+
+
+      For every can you buy, you will take **three photos** in the Deliver app. The lab needs all three to do its work.
+      The form will not let you save the can entry until all three photos are present.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: f23140e087cc4f798479689298ef3718
+    module: 4
+    form: 0
+    field_id: three_photos
+    kind: trigger
+    field_text: >-
+      ## 1. The three required photos per can
+
+
+      For each can:
+
+
+      1. **Front label** — the main face of the can. The **brand name**, **colour name**, and **product name** must all
+      be clearly readable.
+
+      2. **Back / ingredient label** — the side or back of the can showing the ingredients, hazard statements, and any
+      lead warnings (if present).
+
+      3. **Batch / lot identifier** — the printed or stamped code that identifies this specific production batch. This
+      is usually on the **lid** or the **bottom** of the can. It often looks like a row of numbers and letters (e.g.
+      *L24A0317*).
+
+
+      If you cannot find the batch code, look on the rim of the lid, the underside, and around the seam. If it is
+      genuinely not there, photograph the area where it would normally appear so the lab knows you looked.
+    judge:
+      generate: true
+      use_case: flw_self_use
+      why: "Explicit FLW reference: a three-panel diagram (front label / back ingredient label / batch code) is the canonical
+        visual checklist FLWs need at every can."
+      directive: 'A neat three-panel illustrated diagram of a single 1-litre oil-based decorative paint can, viewed from three
+        angles: (1) front showing the colour name and brand label, (2) back/side showing an ingredient and hazard panel,
+        (3) close-up of the lid showing a printed batch/lot code like "L24A0317". Plain neutral background, even
+        daylight, modest realistic shop lighting. South-Asian / sub-Saharan-African retail-paint context. No people in
+        frame. Crisp, photographic, instructional style.'
+    operator_override: null
+  - form_unique_id: f23140e087cc4f798479689298ef3718
+    module: 4
+    form: 0
+    field_id: lighting
+    kind: trigger
+    field_text: |-
+      ## 2. Lighting
+
+      - **Daylight is best.** Take the photos outside or near a window in the shade.
+      - **Even artificial light is fine** — a normal indoor ceiling light works.
+      - **Avoid direct sunlight on a glossy can.** It causes harsh reflections that wash out the label text.
+      - If the photo looks too dark on screen, move closer to a window or turn on a light.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: f23140e087cc4f798479689298ef3718
+    module: 4
+    form: 0
+    field_id: distance_framing
+    kind: trigger
+    field_text: >-
+      ## 3. Distance and framing
+
+
+      - Hold the camera about **30 cm** (one forearm's length) from the can.
+
+      - The label should fill most of the frame but not be cropped at the edges.
+
+      - Use a **plain background** if possible — a clean tabletop, a sheet of paper, or a wall. A cluttered background
+      distracts the lab from the label.
+
+      - Hold the phone steady and tap to focus on the text before taking the shot.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: f23140e087cc4f798479689298ef3718
+    module: 4
+    form: 0
+    field_id: worked_example
+    kind: trigger
+    field_text: >-
+      ## 4. Worked example: acceptable vs unacceptable
+
+
+      Imagine four photos of the **front label** of the same can:
+
+
+      - **Photo A.** Brand name, colour, and product name all crisp and readable, daylight, plain background.
+      **Acceptable.**
+
+      - **Photo B.** Photo is blurry; brand name unreadable. **Unacceptable** — retake with steady hands and
+      tap-to-focus.
+
+      - **Photo C.** Half the label is cut off at the edge; the colour name is missing. **Unacceptable** — reframe so
+      the whole label is visible.
+
+      - **Photo D.** Bright sunlight reflecting off the can creates a glare strip across the brand name.
+      **Unacceptable** — move to shade or even artificial light.
+
+
+      If in doubt, retake. A second photo costs nothing.
+    judge:
+      generate: true
+      use_case: flw_self_use
+      why: "Worked-example field: acceptable vs unacceptable label photos (sharp / blurry / cropped / glare). Visual contrast
+        grid is exactly the kind of reference an FLW glances at before re-shooting."
+      directive: "A 2x2 photo-quality reference grid showing four photos of the same paint-can front label. Top-left:
+        ACCEPTABLE — crisp, daylight, plain background, all text readable. Top-right: UNACCEPTABLE blurry. Bottom-left:
+        UNACCEPTABLE cropped at edge with colour name missing. Bottom-right: UNACCEPTABLE direct-sunlight glare strip
+        across brand name. Each panel labelled clearly. Modest neighborhood-shop background context. Instructional
+        poster style."
+    operator_override: null
+  - form_unique_id: f23140e087cc4f798479689298ef3718
+    module: 4
+    form: 0
+    field_id: save_blocking
+    kind: trigger
+    field_text: >-
+      ## 5. The form blocks save until all three photos are taken
+
+
+      In the Deliver app, the per-can entry has three photo fields and **all three are required**. If you try to save
+      with only one or two photos, the form will not let you. This is by design — the lab cannot work with incomplete
+      cans.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: f23140e087cc4f798479689298ef3718
+    module: 4
+    form: 0
+    field_id: continue_to_quiz
+    kind: trigger
+    field_text: |-
+      ---
+
+      When you are ready, tap **Next** to continue to the quiz.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: cc7acf8b54cd485ea04b77e39f919a4e
+    module: 4
+    form: 1
+    field_id: q1
+    kind: select1
+    field_text: "**Q1.** What are the three required photos per can?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: cc7acf8b54cd485ea04b77e39f919a4e
+    module: 4
+    form: 1
+    field_id: q2
+    kind: select1
+    field_text: "**Q2.** Which lighting is BEST for a label photo?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: cc7acf8b54cd485ea04b77e39f919a4e
+    module: 4
+    form: 1
+    field_id: q3
+    kind: select1
+    field_text: "**Q3.** Roughly how far from the can should you hold the camera?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: cc7acf8b54cd485ea04b77e39f919a4e
+    module: 4
+    form: 1
+    field_id: q4
+    kind: select1
+    field_text: "**Q4.** **Worked example.** You take a front-label photo. Half the label is cut off at the edge of the
+      frame and the colour name is missing. Is this photo acceptable?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: cc7acf8b54cd485ea04b77e39f919a4e
+    module: 4
+    form: 1
+    field_id: quiz_intro
+    kind: trigger
+    field_text: |-
+      # Quiz — Photographing each can
+
+      Four questions, including a worked-example judgement. You need at least **3 out of 4** correct to pass.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: 49ab681f12e64aaa94bb376b423c0f8d
+    module: 5
+    form: 0
+    field_id: acknowledge_read
+    kind: select1
+    field_text: I have read and understood this lesson.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: 49ab681f12e64aaa94bb376b423c0f8d
+    module: 5
+    form: 0
+    field_id: intro_header
+    kind: trigger
+    field_text: >-
+      # Storing the cans for later collection
+
+
+      Once you leave the shop, the cans need to be **labelled** and **stored safely** until LEEP collects them. This is
+      the last step of each visit.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 49ab681f12e64aaa94bb376b423c0f8d
+    module: 5
+    form: 0
+    field_id: keep_dry
+    kind: trigger
+    field_text: |-
+      ## 1. Keep the cans dry
+
+      - Store cans **indoors**, out of rain.
+      - Avoid extreme heat (do not leave them in a hot car all day).
+      - Stand cans **upright** so they do not leak.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 49ab681f12e64aaa94bb376b423c0f8d
+    module: 5
+    form: 0
+    field_id: label_each_can
+    kind: trigger
+    field_text: >-
+      ## 2. Label each can with the shop name and the visit date
+
+
+      - Use a marker, masking tape, or a sticker. Write the **shop name** and the **visit date** on every can (or on the
+      bag the cans are in).
+
+      - This is the **field-side link** between the can and your form submission. Without it, the lab cannot tell which
+      can came from which shop.
+
+      - The **batch / lot photo** you took in Module 5 is the **lab-side link**. Together, the physical label and the
+      batch photo let LEEP match every lab result back to a specific shop visit.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 49ab681f12e64aaa94bb376b423c0f8d
+    module: 5
+    form: 0
+    field_id: store_securely
+    kind: trigger
+    field_text: >-
+      ## 3. Store the cans securely
+
+
+      - Keep cans somewhere **children cannot reach them**. The whole point of this work is to protect children from
+      lead — do not create a hazard.
+
+      - A locked cupboard, a closed storage room, or a secured corner of your home is fine.
+
+      - Group cans by shop where possible. This makes the LEEP collection easier.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 49ab681f12e64aaa94bb376b423c0f8d
+    module: 5
+    form: 0
+    field_id: leep_collects
+    kind: trigger
+    field_text: |-
+      ## 4. LEEP handles shipment — not you
+
+      - You do **not** ship the cans to a lab. LEEP arranges collection and shipment.
+      - A LEEP staff member or courier will contact you to arrange a pickup time.
+      - Have your cans labelled, dry, and ready when they arrive.
+    judge:
+      generate: false
+      use_case: null
+      why: Concrete narrative text; meaning is unambiguous from the prose alone — no FLW workflow step or shopkeeper-facing
+        visual choice depends on a picture here.
+      directive: null
+    operator_override: null
+  - form_unique_id: 49ab681f12e64aaa94bb376b423c0f8d
+    module: 5
+    form: 0
+    field_id: continue_to_quiz
+    kind: trigger
+    field_text: |-
+      ---
+
+      When you are ready, tap **Next** to continue to the quiz.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
+  - form_unique_id: 607efb2e6fe44b6f89f4d3059ce532bf
+    module: 5
+    form: 1
+    field_id: q1
+    kind: select1
+    field_text: "**Q1.** What information should you write on each can (or its bag) before storing it?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: 607efb2e6fe44b6f89f4d3059ce532bf
+    module: 5
+    form: 1
+    field_id: q2
+    kind: select1
+    field_text: "**Q2.** Where should you store the cans before LEEP collects them?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: 607efb2e6fe44b6f89f4d3059ce532bf
+    module: 5
+    form: 1
+    field_id: q3
+    kind: select1
+    field_text: "**Q3.** Who is responsible for shipping the cans to the lab?"
+    judge:
+      generate: false
+      use_case: null
+      why: Knowledge-check quiz item; the question text and option labels are unambiguous text-only — adding an image risks
+        priming a particular answer.
+      directive: null
+    operator_override: null
+  - form_unique_id: 607efb2e6fe44b6f89f4d3059ce532bf
+    module: 5
+    form: 1
+    field_id: quiz_intro
+    kind: trigger
+    field_text: |-
+      # Quiz — Storing the cans for later collection
+
+      Three questions. You need at least **2 out of 3** correct to pass.
+    judge:
+      generate: false
+      use_case: null
+      why: Procedural / acknowledgement step; no concrete visual concept that would help an FLW or a shopkeeper.
+      directive: null
+    operator_override: null
