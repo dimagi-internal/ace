@@ -33,7 +33,7 @@ solicitation and selecting one winner, Phase 7 onboards exactly one org.
      Must contain `org_slug`, `contact_email`, `source: 'solicitation'`,
      `response_id`. Halt with the FATAL message above if `org_slug` is
      null or empty.
-   - Training materials: `ACE/<opp-name>/training-materials/`
+   - Training materials: `ACE/<opp-name>/runs/<run-id>/5-qa-and-training/`
    - Opportunity details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
    - Program details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup.md` (program
      UUID for the Connect invite)
@@ -146,9 +146,10 @@ running discussions, not visits.
    48 hours
 
 **Materials to foreground:** facilitator guide, question guide, consent
-form, audio-upload instructions. These live under `training-materials/`
-but paths differ per archetype — if an FGD-specific training bundle
-isn't present, link the atomic-visit materials with a note that the
+form, audio-upload instructions. These live under
+`runs/<run-id>/5-qa-and-training/` but paths differ per archetype — if
+an FGD-specific training bundle isn't present, link the atomic-visit
+materials with a note that the
 team should adapt the framing for discussion sessions (flag as an
 open-question for the admin group).
 

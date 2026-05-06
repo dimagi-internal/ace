@@ -31,7 +31,7 @@ personalization tokens at send time.
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-connect/connect-opp-setup.md` | opportunity name + URL |
 | Phase 3 (`run_state.yaml`) | `connect.payment_units` | payment-summary line |
 | Phase 4 | `ACE/<opp>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | widget link in the email |
-| Phase 5 (`training-materials` siblings) | `training-materials/llo-manager-guide.md`, `flw-training-guide.md`, `quick-reference.md` | links to the docs LLO will use |
+| Phase 5 (per-artifact training siblings) | `5-qa-and-training/llo-manager-guide.md`, `flw-training-guide.md`, `quick-reference.md` | links to the docs LLO will use |
 
 ## Output
 
@@ -117,8 +117,9 @@ ace@dimagi-ai.com
 2. **Resolve sibling-doc Drive URLs.** For each of llo-manager-guide,
    flw-training-guide, quick-reference, look up the file's
    webViewLink via `drive_list_folder` on
-   `ACE/<opp>/training-materials/`. If any of them doesn't exist
-   yet, that's a phase-ordering bug — fail with a clear pointer.
+   `ACE/<opp>/runs/<run-id>/5-qa-and-training/`. If any of them
+   doesn't exist yet, that's a phase-ordering bug — fail with a clear
+   pointer.
 
 3. **Compose the email body** using the format above. Keep it tight.
 
@@ -166,11 +167,10 @@ ace@dimagi-ai.com
 
 ## Phase-ordering invariant
 
-This skill must run **after** the other 5 training skills
-(`training-materials`, `training-flw-guide`, `training-quick-reference`,
-`training-faq`, `training-llo-guide`) because the email body links to
-their outputs. Phase 5 sequencing in `agents/qa-and-training.md`
-enforces this.
+This skill must run **after** the other per-artifact training skills
+(`training-llo-guide`, `training-flw-guide`, `training-quick-reference`,
+`training-faq`) because the email body links to their outputs. Phase 5
+sequencing in `agents/qa-and-training.md` enforces this.
 
 ## Why a separate skill
 
@@ -179,9 +179,9 @@ into its own skill makes the Phase-5 → Phase-7 boundary cleaner: this
 skill produces the artifact Phase 7 reads, with no other Phase-5
 side effects.
 
-Sixth and final of the per-artifact training skills. After this lands,
-`training-materials` becomes a thin umbrella (or is removed and Phase
-5 dispatches the children directly).
+Sixth and final of the per-artifact training skills. The legacy
+`training-materials` umbrella was removed in 0.10.89; the Phase 5
+agent now dispatches each child directly.
 
 ## Change Log
 

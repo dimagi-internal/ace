@@ -60,9 +60,9 @@ no inline self-eval.
 
 1. **Read opportunity context from GDrive:**
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
-   - Training materials: `ACE/<opp-name>/training-materials/`
+   - Training materials: `ACE/<opp-name>/runs/<run-id>/5-qa-and-training/`
    - Opportunity details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
-   - App summaries: `ACE/<opp-name>/app-summaries/`
+   - App summaries: `ACE/<opp-name>/runs/<run-id>/2-commcare/`
 
 2. **Check for existing chatbot via OCS list** (second-line idempotency
    — only reachable when Step 0 found no state file):

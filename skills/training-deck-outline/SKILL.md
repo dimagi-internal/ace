@@ -17,9 +17,10 @@ into a real Google Slides deck. Single artifact, single concern.
 ## When to run
 
 Phase 5 (`qa-and-training`), after `app-screenshot-capture` has uploaded
-the per-opp screenshots and after `training-materials` has produced the
-LLO/FLW guides (so you can pull a few framing lines forward without
-duplicating analysis). Upstream of `training-deck-build`.
+the per-opp screenshots and after the per-artifact training skills
+(`training-llo-guide`, `training-flw-guide`) have produced the LLO/FLW
+guides (so you can pull a few framing lines forward without duplicating
+analysis). Upstream of `training-deck-build`.
 
 ## Inputs (read from Drive)
 
@@ -30,7 +31,7 @@ duplicating analysis). Upstream of `training-deck-build`.
 | Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md` | Deliver app forms → walkthrough slides |
 | Phase 5 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml` | per-opp PNG fileIds |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` | sign-in, claim-opp, sync, payments — common across opps |
-| Phase 5 Step 3 (`training-materials`, sibling) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md` | optional: pull caption phrasing forward so the deck and guide say the same thing |
+| Phase 5 (`training-flw-guide` sibling) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md` | optional: pull caption phrasing forward so the deck and guide say the same thing |
 
 ## Output
 
@@ -183,24 +184,23 @@ Slides side is `training-deck-build`'s job.
   `![alt](drive:fileId#side-by-side)` that `training-deck-build` lays
   out as two columns.
 
-## Why a separate skill (and where the rest are headed)
+## Why a separate skill
 
-`training-materials` was a single skill emitting 7 artifacts at once.
-Splitting per artifact gives independent iteration, eval, and rerun:
-each output gets its own LLM context, its own self-check, its own
-verdict. Re-running the FAQ doesn't re-emit the entire LLO guide.
+The legacy `training-materials` umbrella emitted 7 artifacts at once
+in a single LLM call. Splitting per artifact gives independent
+iteration, eval, and rerun: each output gets its own context, its own
+self-check, its own verdict. Re-running the FAQ doesn't re-emit the
+entire LLO guide. The umbrella was removed in 0.10.89; the Phase 5
+agent now dispatches each per-artifact skill directly.
 
-This skill is the **first of the per-artifact training skills**.
-Planned siblings (next migration cycle):
+Sibling per-artifact skills:
 - `training-llo-guide` — `llo-manager-guide.md`
 - `training-flw-guide` — `flw-training-guide.md`
 - `training-quick-reference` — `quick-reference.md`
 - `training-faq` — `faq.md`
 - `training-onboarding-email` — `onboarding-email-body.md`
-
-After all six exist, `training-materials` becomes a thin umbrella that
-dispatches them (or is removed entirely; orchestrator dispatches
-each child directly).
+- `training-deck-build` — renders this skill's outline into a
+  Google Slides deck.
 
 ## Change Log
 

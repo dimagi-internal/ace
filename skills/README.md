@@ -26,16 +26,59 @@ Every SKILL.md begins with YAML frontmatter:
 ---
 name: <skill-name>
 description: >
-  One-to-three-sentence description of what the skill does. This is what
-  /ace:docs renders into the generated playbook, so it must be readable
-  in isolation. Lead with the verb. Mention key inputs and outputs.
+  <verb> <object>. Use when <distinguishing condition>.
+disable-model-invocation: true
 ---
 ```
 
-- **`name`** (required) — must match the directory name
-- **`description`** (required) — readable standalone, 1–3 sentences, leads with the verb. The generated playbook (`docs/generated/playbook.md`) renders this verbatim, so it should be self-contained.
+### `name` (required)
 
-No other frontmatter fields are required. Don't add `version:`, `author:`, or similar — git is the source of truth for authorship and history.
+Must match the directory name exactly.
+
+### `description` (required, ≤200 chars, target ~120)
+
+The description appears in the harness skill catalog at session start —
+ACE plus other plugins competes for an aggregate budget around 8K-16K
+chars across all installed plugins, and Claude Code silently drops
+overflow. Keep descriptions tight. Two clauses: `<verb> <object>. Use
+when <distinguishing condition>.` Don't lead with the skill name.
+
+**Banned patterns in `description:`**
+
+The following information belongs in the body, not the description.
+The CI lint (planned) fails if any of these match:
+
+| Pattern | Where to put it |
+|---|---|
+| `Phase N` / `Step N of Phase M` | Body intro paragraph |
+| File paths (`*.yaml`, `*.md`, `ACE/<opp>/...`) | `## Inputs` / `## Outputs` |
+| `reads X, writes Y` | `## Inputs` / `## Outputs` |
+| `Sibling of` / `Successor to` / `Mirror of` | `## Related skills` |
+| `TEMPORARY`, `Provisional`, `Delete this skill when…` | `## Removal criteria` |
+| 3+ trigger-phrase paraphrases (`or "X"`, `or "Y"`) | Cut entirely; the harness routes by intent, not by exact phrase match |
+| `skills/<name>/SKILL.md` paths | Body cross-references |
+
+The generated playbook (`docs/generated/playbook.md`) renders the
+description verbatim, so a tight description doubles as a tight
+playbook entry.
+
+### `disable-model-invocation` (recommended)
+
+Default for ACE skills is `disable-model-invocation: true`. ACE skills
+are dispatched by the orchestrator and phase agents by exact name —
+they do not need to compete for the routing-index budget. Setting this
+flag removes the skill from the harness catalog entirely without
+affecting `Skill(name)` invocation by name.
+
+Carve out an exception (omit the flag, default `false`) only if a
+human user is plausibly going to free-text invoke the skill rather
+than going through `/ace:run` or `/ace:step`. As of 2026-05, no ACE
+skill currently meets that bar.
+
+### Other fields
+
+No other frontmatter fields are used. Don't add `version:`, `author:`,
+or similar — git is the source of truth for authorship and history.
 
 ## Required sections
 
@@ -45,13 +88,44 @@ Every SKILL.md must have these sections, in this order:
 
 The h1 is the human-readable display name (e.g., "Idea to PDD"), not the kebab-case `name`. One short paragraph after the h1 restates the skill's purpose in plain language for someone who hasn't read the frontmatter.
 
-### 2. `## Process`
+### 2. `## Inputs`
+
+A bullet list (or table) of every artifact the skill reads. Each entry
+gives the source phase, the path, and what the input is used for.
+Inputs are the explicit contract between this skill and its upstream
+producers — keeping them in one section means a phase agent can
+verify the contract without reading the full procedure.
+
+```markdown
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 | `1-design/idea-to-pdd.md` | archetype, framing, FLW count |
+| Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` | nova_app_id, module list |
+```
+
+### 3. `## Outputs`
+
+A bullet list of every artifact the skill writes. Same contract
+discipline as `## Inputs`. Path uses the artifact-path scheme
+defined under `## QA vs Eval — the two-phase pattern` below.
+
+```markdown
+## Outputs
+
+- `<phase>/<skill>_summary.md` — primary artifact
+- `<phase>/<skill>_verdict[-<mode>].yaml` — verdict YAML (when self-evaluating)
+- `<phase>/<skill>_gate-brief[-<mode>].md` — gate brief (when this skill gates a phase)
+```
+
+### 4. `## Process`
 
 A numbered list of steps the skill executes. Each step is a single imperative sentence in **bold**, optionally followed by a sub-bulleted breakdown of what the step entails. Steps should be sequential and the numbering must be sequential — if you insert a step in the middle of the list, renumber every step after it. Use `grep -nE '^[0-9]+\.' SKILL.md` to verify after edits.
 
 If the skill reads from the PDD's `archetype:` and/or `## Evidence Model` section, that read should be an explicit early step. Don't bury it in prose — it's load-bearing for downstream behavior.
 
-### 3. `## MCP Tools Used`
+### 5. `## MCP Tools Used`
 
 A bullet list of MCP tools the skill calls, grouped by server. For each tool, indicate whether it's built or "NOT YET BUILT" (with the relevant ticket number when applicable). Example:
 
@@ -63,7 +137,7 @@ A bullet list of MCP tools the skill calls, grouped by server. For each tool, in
 
 **Drive parent contract.** Every `drive_create_file` and `drive_create_folder` call MUST pass an explicit `parentFolderId` rooted in the opportunity's `ACE/<opp-name>/` folder. Service Accounts have zero My-Drive quota; the MCP rejects calls whose parent isn't on a Shared Drive (typed error from `assertParentOnSharedDrive`, added 0.5.18). Never call these tools without `parentFolderId`, and never rely on a "default to root" fallback — there is no safe root for an SA.
 
-### 4. `## Mode Behavior`
+### 6. `## Mode Behavior`
 
 How the skill behaves in **Auto** vs **Review** mode. One bullet per mode. Both modes execute the same steps; only the gating and human-handoff differs.
 
@@ -73,7 +147,7 @@ How the skill behaves in **Auto** vs **Review** mode. One bullet per mode. Both 
 - **Review:** <action>, present for human approval, wait
 ```
 
-### 5. `## Change Log`
+### 7. `## Change Log`
 
 A markdown table of dated changes. Append at the bottom on every non-trivial edit. Don't delete history. Format:
 
@@ -87,6 +161,32 @@ A markdown table of dated changes. Append at the bottom on every non-trivial edi
 ```
 
 Trivial typo fixes don't need a change log entry; behavior changes do. When in doubt, append.
+
+## Body templates (`_*.md` reference docs)
+
+Three reference documents extract shared boilerplate so individual
+skills don't duplicate it:
+
+- **`skills/_eval-template.md`** — for `*-eval` skills. Defines the
+  verdict YAML contract, auto-surfaced severity rules, inflation guard
+  pattern, and stock blocks for `## MCP Tools Used / ## Mode Behavior /
+  ## Dry-Run Behavior`. Every `*-eval` skill body should reference
+  this file's "Verdict YAML contract" instead of inlining the YAML
+  schema.
+- **`skills/_training-template.md`** — for `training-*` skills. Defines
+  the per-artifact decomposition rationale, sibling map, common Drive
+  paths, and shared verdict shape (which itself references
+  `_eval-template.md`). Per-skill format rules and audience-specific
+  concerns stay in each skill's own file.
+- **`skills/_solicitation-template.md`** — for the Phase 6 solicitation
+  family. Defines the `opp.yaml.solicitation` and `opp.yaml.selected_llo`
+  contract, the connect-labs MCP atom inventory per skill, and the
+  Phase 6 → Phase 7 boundary rule.
+
+These files start with `_` so they are excluded from the skill catalog
+(they aren't skills — they're reference docs). When you add a new
+skill in one of the three families, copy the skeleton from the matching
+template and reference shared sections rather than duplicating them.
 
 ## Optional sections
 
@@ -443,14 +543,17 @@ When in doubt, copy from the closest existing skill:
 Before committing a new SKILL.md, verify:
 
 - [ ] Directory name matches frontmatter `name`
-- [ ] Frontmatter has `name:` and `description:`; description leads with a verb and is readable in isolation
-- [ ] All five required sections present in order: `# <Display Name>` → `## Process` → `## MCP Tools Used` → `## Mode Behavior` → `## Change Log`
+- [ ] Frontmatter has `name:`, `description:`, `disable-model-invocation: true` (omit only with explicit justification)
+- [ ] Description ≤200 chars (target ~120), follows `<verb> <object>. Use when <condition>.` format
+- [ ] Description does NOT contain banned patterns (phase labels, file paths, sibling/successor refs, `TEMPORARY`/`Provisional`, trigger-phrase enumeration)
+- [ ] All seven required sections present in order: `# <Display Name>` → `## Inputs` → `## Outputs` → `## Process` → `## MCP Tools Used` → `## Mode Behavior` → `## Change Log`
 - [ ] Process steps are numbered sequentially (`grep -nE '^[0-9]+\.' SKILL.md`)
+- [ ] If the skill is in the `*-eval` / `training-*` / `solicitation-*` family, the body references `skills/_eval-template.md` / `_training-template.md` / `_solicitation-template.md` for shared contracts instead of inlining them
 - [ ] If the skill branches on PDD archetype, `## Archetypes` is present with all 3 archetypes covered
 - [ ] If the skill writes a `<skill>_gate-brief[-<mode>].md` artifact (one of the 5 phase gates), `## Gate Brief` is present, placed after `## LLM-as-Judge Rubric` (if any) and before `## Archetypes`/`## MCP Tools Used`
 - [ ] If the skill consumes the PDD's Evidence Model, an explicit early process step reads it and errors if missing
 - [ ] If the skill has external side effects, `## Dry-Run Behavior` is present
-- [ ] If the skill is blocked on un-built APIs, `## Current Workaround` is present
+- [ ] If the skill is blocked on un-built APIs, `## Current Workaround` is present (and gets removed when the API ships)
 - [ ] Initial change log entry exists with the date and author
 - [ ] If the skill is archetype-aware and a focus-group fixture exists, the `test/fixtures/CRISPR-Test-002/README.md` regression spec covers it
 
