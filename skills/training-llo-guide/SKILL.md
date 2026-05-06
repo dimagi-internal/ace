@@ -1,9 +1,9 @@
 ---
 name: training-llo-guide
 description: >
-  Generate `llo-manager-guide.md` — the LLO-facing operations document
-  for overseeing FLW deployment of this opportunity. Owns one artifact
-  only. Third of the per-artifact training skills.
+  Generate the LLO-facing operations document for overseeing FLW
+  deployment. Owns one artifact: llo-manager-guide.md.
+disable-model-invocation: true
 ---
 
 # Training LLO Guide

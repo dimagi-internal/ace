@@ -1,19 +1,9 @@
 ---
 name: app-screenshot-capture
 description: >
-  Execute the smoke recipes from `app-test-cases.yaml` against a local AVD,
-  capture one PNG per recipe step into Drive, and run a thin per-app UX
-  smoke judge. Step 1 of Phase 5 (qa-and-training) — Phase 5 is now an
-  executor, not a synthesizer. Reads `1-design/pdd-to-app-journeys.md`
-  (Phase 1) and `2-commcare/app-test-cases.yaml` (Phase 2) as inputs.
-  Produces `5-qa-and-training/screenshots/` + the
-  `5-qa-and-training/app-screenshot-capture_manifest.yaml` index
-  consumed by the per-artifact training skills (`training-flw-guide`,
-  `training-deck-outline`) plus a shallow smoke verdict
-  (`5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml`).
-  Captures only **per-opp** content; common Connect navigation
-  screenshots come from the standalone `connect-baseline-screenshots`
-  skill (not this one).
+  Run app smoke recipes against a local AVD and capture per-step
+  screenshots for the training deck. Per-opp content only.
+disable-model-invocation: true
 ---
 
 # App Screenshot Capture
@@ -39,6 +29,16 @@ Recipes are read by path from the entries in `app-test-cases.yaml`
 `app-test-cases` skill — this skill does NOT compose or validate
 recipes itself. If a smoke recipe is missing or malformed, halt and
 point at `app-test-cases`.
+
+## Outputs
+
+- `5-qa-and-training/screenshots/<journey-id>/<step-name>.png` — per-step PNGs (anyone-with-link permission set at upload for Slides ingest)
+- `5-qa-and-training/app-screenshot-capture_manifest.yaml` — fileId/alias index consumed by `training-flw-guide` and `training-deck-outline`
+- `5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` — thin per-app UX smoke verdict
+
+Per-opp content only. Common Connect navigation screenshots come from
+the standalone `connect-baseline-screenshots` skill (NOT a Phase 5
+dispatch).
 
 ## Process
 

@@ -5,6 +5,29 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.38 — 2026-05-06
+
+**Skills audit PR 4 — Phase 5 skill rewrites (11 skills).**
+
+Phase 5 (`qa-and-training`):
+- `app-screenshot-capture`, `app-test-cases`, `app-ux-eval`
+- 6 per-artifact training skills: `training-llo-guide`,
+  `training-flw-guide`, `training-quick-reference`, `training-faq`,
+  `training-deck-outline`, `training-onboarding-email`
+- `training-deck-build` (renderer)
+- `connect-baseline-screenshots` (cross-opp standalone)
+
+Per-skill changes follow the established pattern: description ≤150
+chars, `disable-model-invocation: true`, required `## Inputs` and
+`## Outputs` sections, eval skills reference `_eval-template.md`.
+
+`app-screenshot-capture` and `connect-baseline-screenshots` had the
+two largest descriptions in the repo at 800 and 510 chars respectively
+— both now at ~120.
+
+Char delta this PR: 11,638 → 9,450 (-2,188).
+Cumulative since baseline: -6,384 / -3,000 (~40% reduction).
+
 ## 0.13.37 — 2026-05-06
 
 **Skills audit PR 3 — Phase 3 + Phase 4 skill rewrites (7 skills).**

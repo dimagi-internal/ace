@@ -1,11 +1,9 @@
 ---
 name: training-flw-guide
 description: >
-  Generate `flw-training-guide.md` — the field-worker-facing
-  step-by-step instructions for using the Learn and Deliver apps.
-  Embeds common Connect-navigation screenshots at the front and
-  opp-specific Learn/Deliver screenshots through the body. Owns one
-  artifact only. Second of the per-artifact training skills.
+  Generate the FLW-facing step-by-step guide for the Learn and Deliver
+  apps. Owns one artifact: flw-training-guide.md.
+disable-model-invocation: true
 ---
 
 # Training FLW Guide

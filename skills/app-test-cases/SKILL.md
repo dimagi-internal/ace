@@ -4,6 +4,7 @@ description: >
   Bind each PDD user journey to the Nova-built app structure and emit a
   Maestro recipe per journey with real selectors. Use after Nova
   finishes building, before app-release.
+disable-model-invocation: true
 ---
 
 # App Test Cases
@@ -18,6 +19,20 @@ Phase 5 needs them.
 - **Consumes:** `expected-journeys.md` from `pdd-to-app-journeys` (Phase 1).
 - **Consumed by:** `app-screenshot-capture` (Phase 5, shallow) and
   `/ace:qa-deep` (full execution).
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 | `1-design/pdd-to-app-journeys.md` | journey list + persona + per-journey pass criteria |
+| Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` and `pdd-to-deliver-app_summary.md` | nova_app_id per app |
+| Nova MCP | `get_app({app_id: <nova_app_id>})` | authoritative form/field IDs to resolve into real Maestro selectors |
+| Static | `mcp/mobile/recipes/static/` | recipe palette / templates |
+
+## Outputs
+
+- `2-commcare/app-test-cases.yaml` — per-journey test entries (one per journey, exactly one `is_smoke: true` per app)
+- `2-commcare/recipes/J<n>.yaml` — one Maestro recipe per journey (real selectors, no `REPLACE_*` placeholders)
 
 ## Process
 

@@ -1,9 +1,9 @@
 ---
 name: training-quick-reference
 description: >
-  Generate `quick-reference.md` — the one-page laminated-pocket-card
-  summary for FLWs in the field. Owns one artifact only. Fourth of the
-  per-artifact training skills.
+  Generate the one-page printable pocket-card summary for FLWs in the
+  field. Owns one artifact: quick-reference.md.
+disable-model-invocation: true
 ---
 
 # Training Quick Reference

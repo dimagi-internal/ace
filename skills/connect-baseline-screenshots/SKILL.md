@@ -1,14 +1,9 @@
 ---
 name: connect-baseline-screenshots
 description: >
-  Capture the standard "how Connect works" walkthrough screenshots — sign-in,
-  claim an opportunity, sync, view payments, etc. — that every ACE training
-  deck reuses. Standalone skill (NOT part of any phase); invoked manually
-  when the Connect APK ships an update and the existing common-screenshot
-  set goes stale. Output lives at
-  `ACE/_common/connect-screenshots/<connect-version>/` and is read by
-  the per-artifact training skills (`training-flw-guide`,
-  `training-deck-outline`) for layering into the per-opp deck.
+  Capture the per-Connect-version baseline of "how Connect works"
+  screenshots reused across every training deck. Manual, cross-opp.
+disable-model-invocation: true
 ---
 
 # Connect Baseline Screenshots
@@ -16,6 +11,18 @@ description: >
 Capture the per-Connect-version baseline of "how Connect works" screenshots
 that every ACE opp's training deck reuses. **NOT a per-opp skill** — runs
 once when the Connect APK updates and the previous baseline goes stale.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Operator | Connect APK version | invocation trigger; new baseline captured per APK version |
+| Static | `mcp/mobile/recipes/static/connect-flow*.yaml` | recipe palette for the standard walkthrough |
+
+## Outputs
+
+- `ACE/_common/connect-screenshots/<connect-version>/*.png` — per-Connect-version PNGs (stable cross-opp path)
+- `ACE/_common/connect-screenshots/<connect-version>/manifest.yaml` — fileId/alias index consumed by `training-flw-guide` and `training-deck-outline`
 
 ## Why this skill exists
 
