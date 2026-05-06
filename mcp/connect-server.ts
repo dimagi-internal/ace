@@ -32,6 +32,10 @@ import { CompositeBackend } from './connect/backends/composite.js';
 import { PlaywrightSession } from './connect/auth/playwright-session.js';
 import { createLoggingProxy, defaultFileLogger } from './connect/logging.js';
 import { ConnectValidationError, ConnectSilentRejectError } from './connect/errors.js';
+import {
+  resolvePatchXformXml,
+  resolveUploadMultimediaBytes,
+} from '../lib/atom-payload-resolver.js';
 
 const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
 const cchqBaseUrl = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
@@ -419,15 +423,35 @@ server.tool('commcare_download_ccz',
 // Auth: same `@login_or_digest` Playwright session as other commcare_* atoms.
 // Note: this patches the **draft** only — caller must follow with
 // `commcare_make_build` + `commcare_release_build` to ship the change.
+//
+// XML payload — two-arg shape (added 0.13.29):
+//   - `new_xform_xml`        — inline XForm XML string. Easy for short
+//                              patches but practical tool-call wrappers
+//                              hit arg-size limits on real forms (12K+).
+//   - `new_xform_xml_path`   — local filesystem path to the XForm XML.
+//                              The handler reads the file as UTF-8 and
+//                              forwards the contents to the backend
+//                              method, which still takes a string. Use
+//                              this when the patched XML is too large
+//                              for inline arg passing (the typical
+//                              app-multimedia-coverage case).
+//   Exactly one of the two must be supplied — Zod refines to a
+//   usage error when both or neither are given.
 server.tool('commcare_patch_xform',
   {
     domain: z.string(),
     app_id: z.string(),
     form_unique_id: z.string().regex(/^[0-9a-f]{32}$/, 'unique_id is a 32-char hex string from suite.xml or the delete_form action URL'),
-    new_xform_xml: z.string().min(1),
+    new_xform_xml: z.string().min(1).optional().describe('Inline XForm XML (mutually exclusive with new_xform_xml_path).'),
+    new_xform_xml_path: z.string().optional().describe('Local path to the XForm XML file (mutually exclusive with new_xform_xml). Use this for large patched XML that blows past tool-call arg-size limits.'),
     sha1: z.string().optional().describe('Optional concurrency token; CCHQ rejects with XformConflictError on mismatch.'),
   },
-  async (args) => runAtom(async () => (await commcareClient()).patchXform(args))
+  async (args) =>
+    runAtom(async () => {
+      const { new_xform_xml, new_xform_xml_path, ...rest } = args;
+      const xml = resolvePatchXformXml({ new_xform_xml, new_xform_xml_path });
+      return (await commcareClient()).patchXform({ ...rest, new_xform_xml: xml });
+    }),
 );
 
 // commcare_upload_multimedia — POST a binary multimedia asset to CCHQ.
@@ -447,20 +471,37 @@ server.tool('commcare_patch_xform',
 // Reversing 1 and 2 still works (uploads are idempotent), but skipping
 // step 1 means the upload is silently no-op for FLW devices because
 // CCHQ's clean_paths() prunes orphaned media on every build.
+//
+// File-bytes payload — two-arg shape (added 0.13.29):
+//   - `file_bytes_base64`  — inline base64-encoded payload. Convenient
+//                            for tiny test assets but a typical PNG
+//                            (~1.2 MB → ~1.6 MB base64) blows past
+//                            practical tool-call arg-size limits.
+//   - `file_bytes_path`    — local filesystem path to the binary
+//                            payload. Handler reads the file as raw
+//                            bytes and forwards a Buffer to the
+//                            backend (which already takes a Buffer);
+//                            no backend signature change.
+//   Exactly one of the two must be supplied.
 server.tool('commcare_upload_multimedia',
   {
     domain: z.string(),
     app_id: z.string().regex(/^[0-9a-f]{32}$/, '32-char hex'),
     media_path: z.string().regex(/^jr:\/\/file\/commcare\/(image|audio|video|text)\/[^\/]+$/),
-    file_bytes_base64: z.string().min(1).describe('Asset bytes, base64-encoded'),
+    file_bytes_base64: z.string().min(1).optional().describe('Asset bytes, base64-encoded (mutually exclusive with file_bytes_path).'),
+    file_bytes_path: z.string().optional().describe('Local path to the binary payload (mutually exclusive with file_bytes_base64). Use this for typical-sized PNGs that blow past tool-call arg-size limits.'),
     content_type: z.string().regex(/^(image|audio|video|text)\//),
   },
   async (args) =>
     runAtom(async () => {
-      const { file_bytes_base64, ...rest } = args;
+      const { file_bytes_base64, file_bytes_path, ...rest } = args;
+      const file_bytes = resolveUploadMultimediaBytes({
+        file_bytes_base64,
+        file_bytes_path,
+      });
       return (await commcareClient()).uploadMultimedia({
         ...rest,
-        file_bytes: Buffer.from(file_bytes_base64, 'base64'),
+        file_bytes,
       });
     }),
 );
