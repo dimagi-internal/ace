@@ -5,6 +5,31 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.44 — 2026-05-06
+
+**docs(generated): regenerate playbook.md to reflect 8-phase orchestration
+and post-audit skill descriptions.**
+
+`docs/generated/playbook.md` was last regenerated at 0.2.0 (6-phase
+model). Refreshed via `/ace:docs` to incorporate:
+
+- 8-phase orchestration (added solicitation-management as Phase 6 and
+  renamed Phase 7 to execution-manager since 0.12.0)
+- All 54 post-audit skill descriptions (≤200 chars each, all carry
+  `disable-model-invocation: true`)
+- Updated agent topology (procedure-doc vs subagent rule, since 0.7.0)
+- Per-phase skill dispatch order from the phase-agent frontmatter
+  `skills:` blocks
+- Cross-cutting skills (opp-eval, eval-calibration, email-communicator,
+  upload-transcript) called out as a separate group
+- Reference docs (`skills/_*-template.md`) called out as a separate
+  group (skills catalog excludes them)
+- Integration summary section refreshed with current MCP atom counts
+  and authentication notes
+
+Pure derived artifact — regenerated via `/ace:docs` reading
+`agents/*.md` + `skills/*/SKILL.md` + `playbook/integrations/*.md`.
+
 ## 0.13.43 — 2026-05-06
 
 **fix(deps): re-add @anthropic-ai/sdk (4th time) + enable branch
