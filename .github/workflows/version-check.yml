@@ -13,33 +13,40 @@ jobs:
           fetch-depth: 0
 
       - name: Check VERSION was bumped
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
+          # Compare against the PR's captured base commit, NOT floating origin/main.
+          # Using origin/main causes a race: if main advances (e.g. another PR merges,
+          # or this PR itself merges) between when the workflow is queued and when it
+          # executes, MAIN_VERSION sees the post-merge value and the check fails
+          # spuriously. base.sha is fixed at PR-open / synchronize time.
           PR_VERSION=$(cat VERSION | tr -d '[:space:]')
-          MAIN_VERSION=$(git show origin/main:VERSION | tr -d '[:space:]')
+          BASE_VERSION=$(git show "$BASE_SHA:VERSION" | tr -d '[:space:]')
 
           echo "PR version:   $PR_VERSION"
-          echo "Main version: $MAIN_VERSION"
+          echo "Base version: $BASE_VERSION (from $BASE_SHA)"
 
-          if [ "$PR_VERSION" = "$MAIN_VERSION" ]; then
+          if [ "$PR_VERSION" = "$BASE_VERSION" ]; then
             echo ""
             echo "::error::VERSION file was not bumped. Update VERSION before merging."
             echo ""
-            echo "Current main version: $MAIN_VERSION"
+            echo "Base version: $BASE_VERSION"
             echo "Bump to the next patch/minor/major as appropriate."
             exit 1
           fi
 
-          # Verify it's a valid semver and actually higher
+          # Verify it's a valid semver and actually higher than base
           IFS='.' read -r pr_major pr_minor pr_patch <<< "$PR_VERSION"
-          IFS='.' read -r main_major main_minor main_patch <<< "$MAIN_VERSION"
+          IFS='.' read -r base_major base_minor base_patch <<< "$BASE_VERSION"
 
-          if [ "$pr_major" -lt "$main_major" ] 2>/dev/null || \
-             ([ "$pr_major" -eq "$main_major" ] && [ "$pr_minor" -lt "$main_minor" ]) 2>/dev/null || \
-             ([ "$pr_major" -eq "$main_major" ] && [ "$pr_minor" -eq "$main_minor" ] && [ "$pr_patch" -le "$main_patch" ]) 2>/dev/null; then
+          if [ "$pr_major" -lt "$base_major" ] 2>/dev/null || \
+             ([ "$pr_major" -eq "$base_major" ] && [ "$pr_minor" -lt "$base_minor" ]) 2>/dev/null || \
+             ([ "$pr_major" -eq "$base_major" ] && [ "$pr_minor" -eq "$base_minor" ] && [ "$pr_patch" -le "$base_patch" ]) 2>/dev/null; then
             echo ""
-            echo "::error::VERSION ($PR_VERSION) is not higher than main ($MAIN_VERSION)."
+            echo "::error::VERSION ($PR_VERSION) is not higher than base ($BASE_VERSION)."
             exit 1
           fi
 
           echo ""
-          echo "✓ Version bump verified: $MAIN_VERSION → $PR_VERSION"
+          echo "✓ Version bump verified: $BASE_VERSION → $PR_VERSION"
