@@ -1,8 +1,19 @@
 import { chromium, type BrowserContext, type Browser } from 'playwright';
-import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { SessionExpiredError, OcsLoginFailedError } from '../errors.js';
+import {
+  defaultStateDir,
+  extractCsrfToken,
+  persistStorageState,
+  resolveSavedStorageState,
+  type Cookie,
+} from '../../lib/playwright-session.js';
+
+// Re-export the shared cookie type and CSRF extractor so existing import
+// paths (`from '.../mcp/ocs/auth/playwright-session'`) keep resolving.
+// Tests import these from this module by name; centralising the impl in
+// `mcp/lib` is internal plumbing.
+export { extractCsrfToken, type Cookie };
 
 export interface SessionOptions {
   baseUrl: string;
@@ -10,16 +21,6 @@ export interface SessionOptions {
   stateDir?: string;
   username?: string;
   password?: string;
-}
-
-// Minimal cookie shape (matches both Playwright's Cookie and our test fixtures)
-export interface Cookie {
-  name: string;
-  value: string;
-}
-
-export function extractCsrfToken(cookies: readonly Cookie[]): string | undefined {
-  return cookies.find((c) => c.name === 'csrftoken')?.value;
 }
 
 export class PlaywrightSession {
@@ -30,7 +31,7 @@ export class PlaywrightSession {
   constructor(private opts: SessionOptions) {}
 
   private stateFile(): string {
-    const dir = this.opts.stateDir ?? path.join(os.homedir(), '.ace');
+    const dir = this.opts.stateDir ?? defaultStateDir();
     return path.join(dir, `ocs-session-${this.opts.teamSlug}.json`);
   }
 
@@ -65,15 +66,16 @@ export class PlaywrightSession {
     const cookies = await this.context.cookies();
     this.csrfToken = extractCsrfToken(cookies);
 
-    fs.mkdirSync(path.dirname(statePath), { recursive: true });
-    await this.context.storageState({ path: statePath });
+    await persistStorageState(this.context, statePath);
 
     return this.context;
   }
 
   private async openContextWithSavedState(statePath: string): Promise<BrowserContext> {
-    const storageState = fs.existsSync(statePath) ? statePath : undefined;
-    return this.browser!.newContext({ storageState, baseURL: this.opts.baseUrl });
+    return this.browser!.newContext({
+      storageState: resolveSavedStorageState(statePath),
+      baseURL: this.opts.baseUrl,
+    });
   }
 
   private async isAuthenticated(context: BrowserContext): Promise<boolean> {

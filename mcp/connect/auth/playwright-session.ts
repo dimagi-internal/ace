@@ -1,10 +1,23 @@
 import { chromium, type BrowserContext, type Browser, type APIRequestContext } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { SessionExpiredError, ConnectLoginFailedError } from '../errors.js';
 import { hqOAuthLogin } from './hq-oauth-login.js';
 import { extractFormCsrfToken } from '../backends/html-scrape.js';
+import {
+  defaultStateDir,
+  extractCsrfToken,
+  persistStorageState,
+  resolveSavedStorageState,
+  type Cookie,
+} from '../../lib/playwright-session.js';
+
+// Re-export the shared cookie type and CSRF extractor so existing import
+// paths (`from '.../mcp/connect/auth/playwright-session'`) keep resolving
+// — particularly `test/mcp/connect/unit/csrf-extraction.test.ts` and
+// callers under `mcp/connect/backends/`. Centralising the impl in
+// `mcp/lib` is internal plumbing.
+export { extractCsrfToken, type Cookie };
 
 export interface SessionOptions {
   baseUrl: string;
@@ -24,46 +37,6 @@ export interface SessionOptions {
   hqPassword?: string;
 }
 
-export interface Cookie { name: string; value: string; domain?: string }
-
-/**
- * Extract a `csrftoken` cookie value from a cookie jar, optionally
- * filtered by a domain substring. After OAuth-via-CCHQ login completes,
- * the BrowserContext jar carries TWO `csrftoken` cookies — one for
- * `connect.dimagi.com` and one for `www.commcarehq.org` — set by the
- * different views the OAuth flow walked through. They are NOT
- * interchangeable: each Django app validates the header against its own
- * domain's cookie, and a token from the wrong domain produces an
- * indistinguishable `403 CSRF Failed` (turmeric-20260505-1024 Phase 3
- * Step 2 hit this — `RestBackend` was sending the HQ csrftoken on
- * `connect.dimagi.com` POSTs).
- *
- * `domainFilter` is a substring; pass `'connect.dimagi.com'` for Connect
- * REST/UI calls or `'commcarehq'` for CCHQ. **When provided and no
- * matching cookie is found, returns `undefined`** — the call site is
- * responsible for surfacing the failure. The pre-0.13.19 implementation
- * silently fell back to the first csrftoken regardless of domain, which
- * defeated the throw guard in `getContext()` (it saw a truthy
- * wrong-domain token and didn't fire) and let every Connect REST POST
- * 403 with the HQ csrftoken in the header. Surfaced live on
- * leep-paint-collection-20260505-1505 Phase 3 Step 2; the `extractCsrfToken`
- * fallback was the silent footgun behind the documented bug class.
- *
- * When `domainFilter` is omitted, the first `csrftoken` cookie wins —
- * present only for backwards compat with the pre-0.13.12 callers.
- */
-export function extractCsrfToken(
-  cookies: readonly Cookie[],
-  domainFilter?: string,
-): string | undefined {
-  if (domainFilter) {
-    return cookies.find(
-      (c) => c.name === 'csrftoken' && c.domain?.includes(domainFilter),
-    )?.value;
-  }
-  return cookies.find((c) => c.name === 'csrftoken')?.value;
-}
-
 export class PlaywrightSession {
   private browser?: Browser;
   private context?: BrowserContext;
@@ -72,7 +45,7 @@ export class PlaywrightSession {
   constructor(private opts: SessionOptions) {}
 
   private stateFile(): string {
-    const dir = this.opts.stateDir ?? path.join(os.homedir(), '.ace');
+    const dir = this.opts.stateDir ?? defaultStateDir();
     return path.join(dir, 'connect-session.json');
   }
 
@@ -91,10 +64,12 @@ export class PlaywrightSession {
   async getContext(): Promise<BrowserContext> {
     if (this.context) return this.context;
     const statePath = this.stateFile();
-    const storageState = fs.existsSync(statePath) ? statePath : undefined;
 
     this.browser = await chromium.launch({ headless: true });
-    this.context = await this.browser.newContext({ storageState, baseURL: this.opts.baseUrl });
+    this.context = await this.browser.newContext({
+      storageState: resolveSavedStorageState(statePath),
+      baseURL: this.opts.baseUrl,
+    });
 
     // Authed-state probe: GET /accounts/login/. If we're already authed,
     // Connect 302s us to /a/<org>/opportunity/. If anon, 200 with the form.
@@ -226,8 +201,7 @@ export class PlaywrightSession {
       );
     }
 
-    fs.mkdirSync(path.dirname(statePath), { recursive: true });
-    await this.context.storageState({ path: statePath });
+    await persistStorageState(this.context, statePath);
 
     return this.context;
   }
