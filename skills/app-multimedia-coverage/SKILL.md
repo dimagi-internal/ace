@@ -49,7 +49,8 @@ surface, but no glue. This skill is the glue.
 Delete `skills/app-multimedia-coverage/`, the
 `commcare_upload_multimedia` atom, `lib/multimedia-judge.ts`,
 `lib/multimedia-prompt-hash.ts`, `lib/multimedia-manifest.ts`,
-`lib/multimedia-xform-patch.ts`, and `lib/content-generator-client.ts`
+`lib/multimedia-xform-patch.ts`, `lib/content-generator-client.ts`,
+`scripts/run-content-generator.ts`, and `scripts/run-xform-patch.ts`
 when ALL of:
 
 1. Nova ships a field-level `media: { image_url, alt_text, image_directives }`
@@ -66,11 +67,14 @@ when ALL of:
 
 When that's true: drop the skill directory, remove the atom backend +
 tool registration, drop the `lib/multimedia-*` helpers + their unit
-tests, drop the `commcare_upload_multimedia` integration test, and
-remove the smoke fixture if it served only this skill. The `phase_2_backlog.app-multimedia-coverage` entry in each
-affected opp's `run_state.yaml` is the load-bearing TODO; if it goes
-stale, the skill will drift out of the codebase silently while the
-Nova schema is still missing.
+tests, drop the `scripts/run-content-generator.ts` and
+`scripts/run-xform-patch.ts` wrappers + their tests, drop the
+`commcare_upload_multimedia` integration test, and remove the smoke
+fixture if it served only this skill. The
+`phase_2_backlog.app-multimedia-coverage` entry in each affected opp's
+`run_state.yaml` is the load-bearing TODO; if it goes stale, the skill
+will drift out of the codebase silently while the Nova schema is still
+missing.
 
 ## Process
 
@@ -102,17 +106,52 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
    representative of the context."). Write the synthesized version
    back to that path so the operator can edit and re-run.
 
-3. **LLM-judge each visible field** via
-   `lib/multimedia-judge.ts::judgeField`. Walk every form's fields;
-   skip kinds `hidden` and `calculate`; skip kinds with no displayed
-   label. Per-field input includes the field id / kind / label / hint
-   / select-option labels plus ±2 surrounding fields for context. The
-   Application Context block is identical for every field in the opp,
-   so it goes in a `cache_control: { type: "ephemeral" }` block —
-   prompt cache hits on every per-field call after the first.
-   Decision criterion (verbatim): *would the FLW use this image
-   themselves to do their job OR show it to a client to communicate
-   something? If either, return `generate: true`.*
+3. **Judge each visible field.** Walk every form's fields; skip kinds
+   `hidden` and `calculate`; skip kinds with no displayed label. For
+   each remaining field, decide using the operator-LLM's own reasoning
+   — read the field id / kind / label / hint / select-option labels
+   plus ±2 surrounding fields for context, hold the Application
+   Context (step 2) constant for every field in the opp so directives
+   stay tonally consistent, then apply the criterion below:
+
+   > **Criterion (verbatim):** *Would the FLW use this image themselves
+   > to do their job (e.g. step-by-step demonstration, labeled diagram
+   > of an anatomy or device) OR show it to a client to communicate
+   > something (e.g. visual choice card, "what does X look like"
+   > reference)? If either, return `generate: true`.*
+
+   Skip if the question is purely numeric (weight, age), date/time, or
+   a yes/no without ambiguity. Skip if the question's text alone is
+   unambiguous and concrete.
+
+   Output one row per visible field in the candidates YAML (step 4)
+   with shape:
+
+   ```yaml
+   - form_unique_id: <hex>
+     module: <int>
+     form: <int>
+     field_id: <id>
+     kind: label | text | int | single_select | multi_select | image | ...
+     field_text: "<label>"
+     judge:
+       generate: true | false
+       use_case: flw_self_use | flw_shows_client | both | null
+       why: "<≤200-char rationale>"
+       directive: "<≤500-char Image Directive draft, or null when generate=false>"
+     operator_override: null
+   ```
+
+   The Image Directive should be specific about subject, action,
+   environment, lighting, and any modesty/representation cues from the
+   Application Context — it is passed verbatim to the generator in
+   step 6.
+
+   (Note: `lib/multimedia-judge.ts::judgeField` ships a tested rubric
+   implementation if a non-LLM caller wants to drive the judge
+   programmatically. Skills do the judging in-LLM directly because
+   it's cheaper than spawning a separate Anthropic call and the
+   criterion is short enough to inline.)
 
 4. **Write candidates YAML** to
    `2-commcare/app-multimedia-coverage_candidates-<app>.yaml`. One row
@@ -129,29 +168,86 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
    trims the candidates YAML.
 
 6. **Generate images.** For each `generate: true` candidate:
-   - Compute `prompt_hash` via
-     `lib/multimedia-prompt-hash.ts::promptHash` over
-     `(app_context, field_text, directive)`.
+   - Compute `prompt_hash` as SHA-256 over the trimmed
+     `(app_context, field_text, directive)` joined by single spaces.
+     One-liner — strip leading/trailing whitespace per field, treat
+     null/missing directive as the empty string, then:
+
+     ```bash
+     prompt_hash=$(printf '%s %s %s' "$app_context_trimmed" "$field_text_trimmed" "$directive_trimmed" \
+       | shasum -a 256 | cut -d' ' -f1)
+     ```
+
+     (`lib/multimedia-prompt-hash.ts::promptHash` is the canonical
+     implementation; it normalizes via `s.trim()` then joins with `' '`.
+     The Bash one-liner above matches that contract.)
    - Cache check: if a PNG exists at
      `2-commcare/app-multimedia-coverage_generated/<app>/<form_unique_id>/<field_id>__<prompt_hash>.png`,
      skip.
-   - Cache miss: call
-     `lib/content-generator-client.ts::generateImage` (180s timeout,
-     single 5xx retry with a fixed delay, hard-fail on auth errors;
-     live wall-clock ~68s for low-res, longer with `upscale: true`),
-     save the PNG to the path above, update
-     `app-multimedia-coverage_manifest.yaml` via
-     `lib/multimedia-manifest.ts`.
-   - Default execution: serial. Bounded parallelism is a follow-up
-     if wall-clock pain shows up.
+   - Cache miss: write a per-field input JSON file like:
+
+     ```json
+     {
+       "applicationContext": "<step 2 paragraph>",
+       "formText": "<field label, hint, options joined>",
+       "imageDirectives": "<judge.directive from step 3>",
+       "upscale": false
+     }
+     ```
+
+     Then call:
+
+     ```bash
+     npx tsx scripts/run-content-generator.ts <input.json> <output.png>
+     ```
+
+     The wrapper reads `CONTENT_GENERATOR_URL` and
+     `CONTENT_GENERATOR_API_KEY` from the env, POSTs to the gateway,
+     decodes the base64 PNG, writes it to `<output.png>`, and prints a
+     JSON line to stdout: `{ image_path, prompt_used, elapsed_ms, bytes }`.
+     Live wall-clock is ~68s for low-res (`upscale: false`); longer
+     with `upscale: true`. The wrapper exits non-zero on any
+     Content-Generator failure (auth, validation, 5xx) — surface the
+     stderr message and halt the skill on a hard failure (one retry on
+     5xx is built into the underlying client).
+   - Append a row to
+     `2-commcare/app-multimedia-coverage_manifest.yaml` matching the
+     schema in `lib/multimedia-manifest.ts` (Zod-validated; YAML keys:
+     `app`, `form_unique_id`, `field_id`, `prompt_hash`, `file_path`,
+     `ccz_filename`, `cchq_multimedia_id` (null until step 8),
+     `cchq_file_hash_md5` (null until step 8), `generated_at`).
+     Top-level fields: `app_context_hash` (SHA-256 of the Application
+     Context paragraph) and `images: [...]`.
+   - Default execution: serial. Bounded parallelism is a follow-up if
+     wall-clock pain shows up.
 
 7. **Patch form XML.** For each form with ≥1 image:
-   - `commcare_download_ccz` to fetch the released form XML.
-   - `lib/multimedia-xform-patch.ts::addImageItext` to add a
-     `<value form="image">jr://file/commcare/image/<filename></value>`
-     under `itext/translation/text[@id="<field_id>-label"]`. The
-     existing label binding stays unchanged — CommCare renders the
-     image alongside the existing text.
+   - `commcare_download_ccz` to fetch the released form XML; save it
+     to a temp path like `/tmp/ace-mm-<form_unique_id>.xml`.
+   - Build a bindings JSON file listing every field on this form that
+     got an image:
+
+     ```json
+     [
+       { "fieldId": "kmc_position_demo", "cczFilename": "kmc_position_demo.png" },
+       { "fieldId": "kmc_warning_signs", "cczFilename": "kmc_warning_signs.png" }
+     ]
+     ```
+
+   - Run the patcher:
+
+     ```bash
+     npx tsx scripts/run-xform-patch.ts /tmp/ace-mm-<form_unique_id>.xml /tmp/bindings-<form_unique_id>.json [--replace-existing] -o /tmp/patched-<form_unique_id>.xml
+     ```
+
+     Patched XML lands at the `-o` path; a JSON summary
+     `{ patched, applied, skipped, notFound }` is written to stderr.
+     Pass `--replace-existing` when re-running the skill on a form
+     that already has an attached image with a different filename —
+     without it, CCHQ's build validator rejects with `duplicate
+     definition for text ID '<field>-label' and form 'image'`. `notFound`
+     listing any field id means the form-XML walk in step 3 disagreed
+     with the live released form — halt and re-discover.
    - `commcare_patch_xform` to POST the patched XML.
    - Re-fetch via `commcare_download_ccz` to confirm the patch stuck
      (per-mutation re-fetch gate, same shape as
@@ -246,9 +342,9 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
 
 | Mode | Cause | Behavior |
 |---|---|---|
-| `judge.error` for ≥1 field | LLM output failed Zod validation in `lib/multimedia-judge.ts` | Skip that field, log `judge.error` to candidates YAML, continue. Skill exits `partial` if any field errored. |
-| Content Generator 5xx | Service hiccup | One retry with a fixed delay, then halt the skill. |
-| `ContentGeneratorAuthError` | Bad / missing API key | Halt immediately and point operator at `/ace:doctor` (verifies `CONTENT_GENERATOR_URL` + `CONTENT_GENERATOR_API_KEY` env-drift). |
+| `judge.error` for ≥1 field | Operator-LLM output for the field couldn't be coerced into the documented row shape (e.g. invalid `use_case`, missing `why`) | Skip that field, log `judge.error` to candidates YAML, continue. Skill exits `partial` if any field errored. |
+| Content Generator 5xx | Service hiccup | One retry with a fixed delay (built into the client called by `scripts/run-content-generator.ts`), then halt the skill. |
+| `ContentGeneratorAuthError` | Bad / missing API key | `scripts/run-content-generator.ts` exits with the wrapped auth error to stderr. Halt immediately and point operator at `/ace:doctor` (verifies `CONTENT_GENERATOR_URL` + `CONTENT_GENERATOR_API_KEY` env-drift). |
 | `XformConflictError` in step 7 | CCHQ's live form sha1 disagrees with the caller-supplied sha1 (concurrent edit) | Halt the form, surface live sha1, operator re-fetches and retries. Non-retryable in the same form-state. |
 | `commcare_upload_multimedia` HTTP 500 | CCHQ rejected the binary (size, content-type mismatch, malformed multipart) | Halt the skill, surface the response body slice. |
 | Verify step (10) finds missing file | Most likely cause: step 7 didn't land before step 9, so CCHQ's `clean_paths()` pruned the orphan binary out of the build's multimedia map on `make_build`. Less likely: the upload itself was rejected silently or the form-XML patch was reverted. | Halt with per-form before/after diff. Status `blocked`. Operator re-runs step 7 against the released form, then step 9 + step 10 again. |
@@ -279,21 +375,39 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
   `mcp__plugin_nova_nova__get_form`,
   `mcp__plugin_nova_nova__get_field` — for field metadata when the
   blueprint is reachable.
-- **Lib helpers (in-process, not MCP):**
-  - `lib/multimedia-judge.ts::judgeField` — Anthropic SDK
-    (Sonnet 4.6) per-field judgment with prompt-cached
-    Application Context.
-  - `lib/multimedia-prompt-hash.ts::promptHash` —
-    content-addressed cache key.
-  - `lib/multimedia-manifest.ts` — Zod schema + YAML I/O for the
-    generated-image manifest.
-  - `lib/multimedia-xform-patch.ts::addImageItext` — pure XForm
-    patcher adding the `<image>` itext value.
-  - `lib/content-generator-client.ts::generateImage` — typed
-    wrapper over Dimagi's Content Generator API.
+- **CLI wrappers (skill-runtime, called via Bash):**
+  - `scripts/run-content-generator.ts` — wraps
+    `lib/content-generator-client.ts::ContentGeneratorClient.generateImage`.
+    Reads request JSON from a file, writes the decoded PNG to the
+    target path, prints `{ image_path, prompt_used, elapsed_ms, bytes }`
+    to stdout. Reads `CONTENT_GENERATOR_URL` and
+    `CONTENT_GENERATOR_API_KEY` from the env. 180s timeout, single
+    5xx retry, hard-fail on auth errors.
+  - `scripts/run-xform-patch.ts` — wraps
+    `lib/multimedia-xform-patch.ts::addImageItext`. Reads form XML
+    + bindings JSON, writes patched XML to stdout (or `-o <path>`),
+    writes `{ patched, applied, skipped, notFound }` JSON to stderr.
+    Pass `--replace-existing` when re-running on a form that already
+    has an attached image with a different filename.
+- **Lib helpers (rubric reference, in-process for non-LLM callers):**
+  - `lib/multimedia-judge.ts::judgeField` — Zod-typed Anthropic SDK
+    rubric implementation. Skills do per-field judging in-LLM
+    directly (cheaper than spawning a separate Anthropic call and the
+    criterion is short enough to inline); this lib is the tested
+    reference if a non-LLM caller (e.g. a CI batch tool) wants the
+    same judge programmatically.
+  - `lib/multimedia-prompt-hash.ts::promptHash` — content-addressed
+    cache key. Skills compute the same hash inline via `shasum -a 256`
+    over the trimmed-and-space-joined fields; this lib is the
+    canonical normalization implementation for non-Bash callers.
+  - `lib/multimedia-manifest.ts` — Zod schema for the
+    generated-image manifest. Skills write the YAML directly per the
+    documented shape; this lib is the validator + parser for non-LLM
+    callers.
 
 ## Change log
 
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-05 | Initial version. Manual gate, sibling of `commcare-form-patch` and `app-connect-coverage`. Closes the display-only image gap left by Nova until `voidcraft-labs/nova-plugin#8` ships field-level media. Backed by the new `commcare_upload_multimedia` atom and the `lib/multimedia-*` helper family. Pipeline order (patch-form-XML BEFORE upload BEFORE build) is load-bearing because CCHQ's `clean_paths()` prunes orphan multimedia from the build's multimedia map — verified live during the implementation probe. Removal criteria documented. | ACE team |
+| 2026-05-05 | Made the skill operator-runnable. Added `scripts/run-content-generator.ts` and `scripts/run-xform-patch.ts` CLI wrappers for the two helpers that need shell-callable surfaces (image generation, form-XML patching). Per-field judge step now uses operator-LLM reasoning directly with the verbatim criterion (cheaper than a separate Anthropic call). Prompt hashing uses inline `shasum -a 256`; manifest written directly per the `lib/multimedia-manifest.ts` schema. Lib code unchanged — `lib/multimedia-*.ts` remain as tested rubric implementations for non-LLM callers. | ACE team |
