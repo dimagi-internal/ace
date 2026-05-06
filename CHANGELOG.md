@@ -5,6 +5,24 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.23 — test(fixture): capture golden judge YAML from live skill run
+
+First operator-runnable end-to-end pass of `app-multimedia-coverage`
+post-PR-#84 wrapper-rewrite. Drove the skill manually against
+`connect-ace-prod` / LEEP Learn (`4e20ddf5beca42278c4d2c20383eb943`),
+3 images, ~3.5 min wall-clock. Verified the released CCZ contains all
+bundled assets and matching form-XML references. Build 42 / build_id
+`7744a1612ce546e29cc07c193ea06e9a`.
+
+The judge picked, with `--max-images=3`:
+- `m4f0/three_photos` — front/back/batch reference diagram
+- `m4f0/worked_example` — acceptable vs unacceptable photos grid
+- `m3f0/prefer_one_litre` — 1L vs 4L can size visual
+
+Captured the 83-row candidates YAML into the smoke fixture as
+ground-truth for future regression detection. Replaces the placeholder
+shipped in PR #81.
+
 ## 0.13.22 — 2026-05-05
 
 **fix(connect): `extractCsrfToken` silent fallback was the root of the
@@ -53,6 +71,31 @@ that caused the leep halt.
 
 The 0.13.18 cross-backend Playwright/REST refresh shipped is
 orthogonal to this fix and remains correct.
+
+## 0.13.21 — fix(skill): app-multimedia-coverage operator-runnable
+
+The `skills/app-multimedia-coverage/SKILL.md` previously referenced
+TypeScript functions in `lib/` that aren't directly callable from a
+skill prompt. Two new CLI wrappers + a SKILL.md rewrite make the skill
+actually operator-runnable.
+
+- New: `scripts/run-content-generator.ts` — CLI wrapper for
+  `ContentGeneratorClient.generateImage`. Reads input JSON, writes PNG.
+- New: `scripts/run-xform-patch.ts` — CLI wrapper for `addImageItext`.
+  Reads form XML + bindings JSON, writes patched XML.
+- Rewritten: `skills/app-multimedia-coverage/SKILL.md`. Each
+  `lib/...::function` reference now resolves to either a Bash
+  invocation of one of the new wrappers, an MCP atom, a Bash one-liner
+  (prompt-hash via `shasum -a 256`), or operator-LLM reasoning (the
+  per-field judge). The Application Context, Removal criteria, and
+  orphan-pruning gotcha are all preserved.
+- Lib code unchanged — `lib/multimedia-*.ts` remain as tested rubric
+  implementations for non-LLM callers.
+- Tests: 10 new unit tests under `test/scripts/` cover the wrapper
+  contracts (XML on stdout, JSON summary on stderr, `--replace-existing`
+  honored, exit codes for usage / missing-env / bad-input paths).
+  Live-API smoke confirmed `run-content-generator.ts` produces a
+  valid PNG end-to-end (~66s for `upscale: false`).
 
 ## 0.13.20 — fix(lib): addImageItext replaceExisting option
 
