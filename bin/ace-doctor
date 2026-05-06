@@ -1086,28 +1086,17 @@ else
   warn "labs_auth: skipped — LABS_MCP_TOKEN not set" "see connect_labs_env warning above; mint via /ace:labs-token-mint and re-inject .env"
 fi
 
-# 6. ace-mobile — Playwright cookies live in a chromium persistent profile
-# (SQLite, OS-keychain-encrypted on macOS); we can't curl them directly the
-# way the others do. Delegate to scripts/doctor-mobile-auth.ts which spins
-# the same launchPersistentContext that mcp/mobile/auth/fetch-otp.ts uses,
-# probes /users/connect_user_otp/ once with maxRedirects:0, and prints JSON.
-if [ -f "$ROOT/scripts/doctor-mobile-auth.ts" ] && [ -d "$ROOT/node_modules/playwright" ]; then
-  MOBILE_AUTH_RAW="$(cd "$ROOT" && npx tsx scripts/doctor-mobile-auth.ts 2>/dev/null | tail -1)"
-  if [ -n "$MOBILE_AUTH_RAW" ]; then
-    MOBILE_OK="$(printf '%s' "$MOBILE_AUTH_RAW" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.ok?'1':'0'); } catch { console.log('?'); }" 2>/dev/null)"
-    MOBILE_STATUS="$(printf '%s' "$MOBILE_AUTH_RAW" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.status||''); } catch { console.log(''); }" 2>/dev/null)"
-    MOBILE_MSG="$(printf '%s' "$MOBILE_AUTH_RAW" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.message||''); } catch { console.log(''); }" 2>/dev/null)"
-    if [ "$MOBILE_OK" = "1" ]; then
-      pass "mobile_auth: ace-mobile Playwright cookies valid (GET /accounts/login/ → ${MOBILE_STATUS:-302}, bounced away)"
-    else
-      warn "mobile_auth: ace-mobile Playwright cookies stale or missing (${MOBILE_MSG:-no detail}, status=${MOBILE_STATUS:-none})" "/ace:mobile-bootstrap (step 6 re-seeds cookies via headed Playwright login)"
-    fi
-  else
-    warn "mobile_auth: doctor-mobile-auth.ts produced no output" "verify $ROOT/scripts/doctor-mobile-auth.ts is executable and node_modules/playwright is installed"
-  fi
-else
-  warn "mobile_auth: skipped — scripts/doctor-mobile-auth.ts missing or playwright not installed" "/ace:update to pull a version that ships the helper, then npm ci"
-fi
+# 6. ace-mobile — local-only MCP (Maestro + adb + AVD + APK). It does not
+# authenticate against any remote service at runtime, so there is no
+# "live auth probe" distinct from the others. The auth-adjacent things
+# the mobile workflow depends on are covered elsewhere:
+#   - Operator's Connect session (e.g. for probe-find-phone-invite.ts) →
+#     connect_auth above
+#   - AVD / Maestro / adb / APK / ACE_E2E_* env vars → [Mobile] block below
+# The previous OTP-page probe in 0.13.25 was a leftover from the
+# deprecated fetchOtp path (mobile-bootstrap.md step 6 explicitly notes
+# OTP fetching is no longer the recommended flow); removed in 0.13.26.
+info "mobile_auth: ace-mobile is local — see connect_auth above for Connect-side state and [Mobile] block below for AVD / Maestro / cookies"
 
 echo ""
 echo "[Mobile]"
