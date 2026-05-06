@@ -1,13 +1,9 @@
 ---
 name: connect-program-setup-eval
 description: >
-  Judge a Connect Program/Opportunity configuration against the PDD that
-  drove it. Cross-artifact LLM-as-Judge eval — checks program-fit
-  decision (reuse vs create), opportunity verification rules, delivery
-  units, payment units, and entity-id wiring against PDD spec. Writes a
-  verdict YAML in the shared QA/eval shape so opp-eval can aggregate it.
-  Covers the `connect` category for opp-eval (4th category, lifts
-  coverage tier from adequate → full).
+  Grade Connect Program + Opportunity configuration against the PDD —
+  reuse-vs-create, verification rules, delivery units, payment units.
+disable-model-invocation: true
 ---
 
 # Connect Program Setup Eval
@@ -19,17 +15,28 @@ Connectify modules; the verification rules in the PDD's Evidence Model
 become Connect's Layer A delivery-proof rules. This skill grades whether
 that translation was faithful.
 
-This is a **cross-artifact eval** in the same family as
-`pdd-to-deliver-app-eval`, `pdd-to-learn-app-eval`, and
-`idea-to-pdd-eval`. See `skills/eval-calibration/SKILL.md` for the
-calibration methodology, and `docs/eval-calibration-learnings.md` for
-patterns and anti-patterns observed building the first 4 strongly-
-calibrated rubrics.
+Sibling rubric to `pdd-to-deliver-app-eval`, `pdd-to-learn-app-eval`,
+and `idea-to-pdd-eval`. See `skills/_eval-template.md` for shared
+contracts, `skills/eval-calibration/SKILL.md` for calibration
+methodology, and `docs/eval-calibration-learnings.md` for patterns
+and anti-patterns from the first calibrated rubrics.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 | `1-design/idea-to-pdd.md` | source PDD; Evidence Model + verification spec drive expectation |
+| Phase 3 | `3-connect/connect-program-setup.md` and `3-connect/connect-opp-setup.md` | program + opportunity config under judgment |
+| Phase 2 | `2-commcare/app-deploy_summary.md` | HQ app IDs for cross-check on Connectify wiring |
+
+## Outputs
+
+- `3-connect/connect-program-setup-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 
 ## Process
 
-1. **Read inputs from GDrive:**
-   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
+1. **Read inputs from GDrive** (paths in `## Inputs` above).
+   Additional sources read on demand:
    - Connect setup summary: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-setup_summary.md`
      (or `connect-setup/program.md` + `connect-setup/opportunity.md`).
    - Deployment summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` (for
@@ -128,56 +135,23 @@ calibrated rubrics.
      coverage gap without penalizing.
 
 6. **Write the verdict YAML** to
-   `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup-eval_verdict.yaml`. The filename
-   uses the **producer** skill name (`connect-program-setup`), NOT
-   this skill's name — see `agents/ace-orchestrator.md § Per-Step
-   Eval Hook` for the naming rule:
+   `3-connect/connect-program-setup-eval_verdict.yaml` using the shape
+   from `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
 
    ```yaml
-   skill: connect-program-setup-eval
-   target: <connect_opportunity_id>
-   mode: deep
-   ran_at: <ISO timestamp>
-   capture_path: connect-setup-summary.md
-
-   overall_score: 8.4
-   overall_score_pre_cap: 8.4
-   verdict: pass | partial | warn | fail | incomplete
-   live_state_verified: true   # false if connect_get_* probes failed
-                               # or were skipped (forces verdict ≤ partial)
-
    dimensions:
-     program_fit_decision:        { score: 10.0, weight: 0.15 }
-     verification_rule_fidelity:  { score: 8.0, weight: 0.25 }
-     delivery_unit_wiring:        { score: 9.0, weight: 0.20 }
-     payment_unit_fit:            { score: 8.0, weight: 0.20 }
-     active_window_status:        { score: 9.0, weight: 0.20 }
-
-   per_item:
-     - ref: "Program creation: Food Safety Market Survey"
-       score: 10.0
-       verdict: pass
-       note: "Created new program — no existing program shared both food-safety domain AND atomic-visit archetype shape per Phase 3's labs_context survey of 58 programs."
-     # ... per check
-
-   auto_surfaced:
-     - severity: WARN
-       message: "Layer A market-hours window (LLO-configured per district) not yet enforced in Connect verification rules — left to Phase 5 UAT to populate."
-     - severity: DRIFT
-       message: "connect-setup-summary claims budget=USD 4500; connect_get_program returned budget=USD 5000. Authoritative source is live state."
-     - severity: PLATFORM
-       message: "Connect's verification_flags_config has no field for market-hours window; rule must move to Phase 5 LLO-time enforcement."
-     - severity: INFO-SKIPPED
-       message: "payment-rate sanity: PDD declares no regional day-rate; sub-check skipped."
-
-   gate:
-     threshold: 7.5
-     disposition: approve | reject | iterate
+     program_fit_decision:        { weight: 0.15 }
+     verification_rule_fidelity:  { weight: 0.25 }
+     delivery_unit_wiring:        { weight: 0.20 }
+     payment_unit_fit:            { weight: 0.20 }
+     active_window_status:        { weight: 0.20 }
    ```
 
-7. **Auto-surfaced concerns:**
-   - `[BLOCKER]` for any dimension scoring ≤ 3.
-   - `[BLOCKER]` if overall is below 7.0.
+   Always set `live_state_verified` based on whether `connect_get_*`
+   probes succeeded — false forces verdict ≤ partial.
+
+7. **Auto-surfaced concerns** (per `_eval-template.md § Auto-surfaced
+   severity rules`, plus skill-specific surfaces):
    - `[WARN]` for each PDD Layer A rule missing from Connect verification
      where Connect *could* enforce it.
    - `[WARN]` for Delivery Unit name or Entity ID composite mismatch.
@@ -249,8 +223,8 @@ future grading.
 
 ## MCP Tools Used
 
-- Google Drive: `drive_read_file`, `drive_create_file`,
-  `drive_list_folder`
+See `skills/_eval-template.md § MCP Tools Used (stock)` for the Drive
+block. Plus:
 - ace-connect MCP (when `connect_program_id` and `connect_opportunity_id`
   are real, not TBD): `connect_get_program`, `connect_get_opportunity`,
   `connect_list_payment_units`, `connect_list_deliver_units`. These
@@ -260,18 +234,13 @@ future grading.
 
 ## Mode Behavior
 
-- **Auto:** Grade, write verdict + report, return overall and
-  disposition.
-- **Review:** Pause after grading.
+See `skills/_eval-template.md § Mode Behavior (stock)`.
 
 ## Dry-Run Behavior
 
-When `--dry-run` is active:
-- Read PDD and connect-setup artifacts normally — read-only.
-- Skip the live `connect_get_*` MCP calls (they're read-only too,
-  but `--dry-run` keeps the exercise fully offline).
-- Write verdict + report (human-facing artifacts).
-- State tracks as `dry-run-success`.
+Per `skills/_eval-template.md § Dry-Run Behavior (stock)`, plus skip
+the live `connect_get_*` MCP calls (read-only but treated as offline-
+unsafe under `--dry-run`).
 
 ## Change Log
 

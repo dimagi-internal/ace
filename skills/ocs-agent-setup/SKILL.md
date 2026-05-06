@@ -1,10 +1,9 @@
 ---
 name: ocs-agent-setup
 description: >
-  Create and configure an OCS chatbot for this opportunity. Clones the ACE
-  golden template, uploads PDD + training + app summaries as a RAG Collection,
-  patches the system prompt with opp-specific framing, publishes a version,
-  and returns the embed credentials for Connect to store on the Opportunity.
+  Clone the ACE OCS template into a per-opp chatbot, attach a RAG
+  collection from PDD + training + app summaries, publish, return embed credentials.
+disable-model-invocation: true
 ---
 
 # OCS Agent Setup
@@ -19,6 +18,20 @@ Runs in Phase 4 as Step 1 under the `ocs-setup` agent. The agent handles
 quality gating via the `ocs-chatbot-qa` → `ocs-chatbot-eval` pair (quick
 + deep) in subsequent steps, so this skill is now purely configuration —
 no inline self-eval.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 | `1-design/idea-to-pdd.md` | RAG content + system prompt framing |
+| Phase 5 | `runs/<run-id>/5-qa-and-training/` (per-artifact training docs) | RAG content (LLO/FLW guides, FAQ, quick-reference) |
+| Phase 2 | `runs/<run-id>/2-commcare/` (app summaries) | RAG content (app structure for the chatbot to answer "where do I find X" questions) |
+| Phase 3 | `3-connect/connect-opp-setup.md` | opp framing for system prompt |
+
+## Outputs
+
+- `4-ocs/ocs-agent-setup.md` — chatbot identifiers (`experiment_id`, `version_number`, embed `public_id` + `embed_key`)
+- `4-ocs/ocs-setup_widget-handoff.md` — widget URL + embed credentials staged for Connect HITL paste-in
 
 ## Modes
 
