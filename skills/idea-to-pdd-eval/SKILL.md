@@ -1,12 +1,9 @@
 ---
 name: idea-to-pdd-eval
 description: >
-  Judge a PDD against the source idea.md it was derived from.
-  Cross-artifact LLM-as-Judge eval — checks structural completeness,
-  archetype coherence, concreteness, reviewer-comment fidelity, and
-  stress-test agreement (independent re-grade of the self-evaluation
-  to catch over-confident self-grading). Writes a verdict YAML in the
-  shared QA/eval shape so opp-eval can aggregate it.
+  Independently grade a PDD against the source idea pack — re-runs the
+  stress test from outside and cross-checks reviewer-comment fidelity.
+disable-model-invocation: true
 ---
 
 # Idea-to-PDD Eval
@@ -24,9 +21,27 @@ This skill is the independent grader. It re-runs the stress test from
 outside, cross-checks against the source idea, and surfaces
 inconsistencies the self-eval missed.
 
-This is a **cross-artifact eval** in the same family as
-`pdd-to-deliver-app-eval`. See `skills/eval-calibration/SKILL.md` for
-the calibration methodology.
+Cross-artifact eval — see `skills/_eval-template.md` for shared
+contracts (verdict YAML shape, severity rules, inflation guard,
+stock blocks). See `skills/eval-calibration/SKILL.md` for the
+calibration methodology.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 source | `inputs-manifest.yaml` + each `file_id` in it | source idea pack (the full pack is what the PDD is graded against) |
+| Phase 1 source (optional) | `runs/<run-id>/idea.md` | operator free-text seed if present |
+| Phase 1 producer | `1-design/idea-to-pdd.md` | the PDD under judgment |
+| Phase 1 producer (optional) | `1-design/idea-to-pdd_gate-brief.md` | gate brief if present |
+
+## Outputs
+
+- `1-design/idea-to-pdd-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
+
+Note: the verdict filename uses `idea-to-pdd-eval` (this skill's name)
+not `idea-to-pdd` (the producer) — see `_eval-template.md` for the
+filename rule.
 
 ## Process
 
@@ -105,56 +120,24 @@ the calibration methodology.
      weighted mean.
 
 5. **Write the verdict YAML** to
-   `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-eval_verdict.yaml` using the shared shape.
-   The filename uses the **producer** skill name (`idea-to-pdd`), NOT
-   this skill's name — see `agents/ace-orchestrator.md § Per-Step Eval
-   Hook` for the naming rule (the Workbench attributes verdicts by
-   filename stem to the producer skill row):
+   `1-design/idea-to-pdd-eval_verdict.yaml` using the shape defined in
+   `skills/_eval-template.md § Verdict YAML contract`. Dimensions for
+   this rubric (sum to 1.0):
 
    ```yaml
-   skill: idea-to-pdd-eval
-   target: <opp-name>
-   mode: deep
-   ran_at: <ISO timestamp>
-   capture_path: pdd.md
-
-   overall_score: 8.4
-   verdict: pass | warn | fail | incomplete
-
    dimensions:
-     stress_test_agreement:        { score: 9.0, weight: 0.25 }
-     reviewer_comment_fidelity:    { score: 9.5, weight: 0.20 }
-     structural_completeness:      { score: 9.5, weight: 0.15 }
-     archetype_coherence:          { score: 9.0, weight: 0.15 }
-     numbers_present:              { score: 9.0, weight: 0.10 }
-     numbers_consistent:           { score: 6.5, weight: 0.10 }  # cross-section inconsistencies caught
-     feasibility_headline_metrics: { score: 8.0, weight: 0.05 }
-
-   per_item:
-     - ref: "Stress test re-grade"
-       score: 9.0
-       verdict: pass
-       note: "Independent re-grade agreed on 4/5 checks; minor disagreement on Verifiability (PDD scored pass; this rubric scored partial — Layer B 'AI-assisted photo content check' is aspirational, not concretely speccable today)"
-     - ref: "Reviewer comment: FLW safety"
-       score: 9.0
-       verdict: pass
-       note: "Addressed via § FLW Safety Plan with concrete buddy-pair rule, go/no-go criteria, escalation lines"
-     # ... one per check + comment
-
-   auto_surfaced:
-     - severity: WARN
-       message: "Pre-deploy section mentions 10/12 calibration only; Learn App spec also gates on 8/10 final MCQ. Inconsistency."
-
-   gate:
-     threshold: 7.5
-     disposition: approve | reject | iterate
+     stress_test_agreement:        { weight: 0.25 }
+     reviewer_comment_fidelity:    { weight: 0.20 }
+     structural_completeness:      { weight: 0.15 }
+     archetype_coherence:          { weight: 0.15 }
+     numbers_present:              { weight: 0.10 }
+     numbers_consistent:           { weight: 0.10 }
+     feasibility_headline_metrics: { weight: 0.05 }
    ```
 
-6. **Auto-surfaced concerns** feed the gate brief (when invoked from
-   the Phase 1→2 gate, alongside the producing skill's gate brief):
-   - `[BLOCKER]` for any dimension scoring ≤ 3.
-   - `[BLOCKER]` if overall score is below 7.0.
-   - `[WARN]` for each dimension scoring 4.0–6.9.
+6. **Auto-surfaced concerns.** Severity rules per
+   `skills/_eval-template.md § Auto-surfaced severity rules`. Skill-
+   specific surfaces beyond the standard contract:
    - `[WARN]` for each reviewer comment without a concrete
      disposition or with a false disposition claim (only when
      `clean_source = false`).
@@ -190,23 +173,15 @@ This rubric's calibration target on the smoke-20260428-1242 PDD:
 
 ## MCP Tools Used
 
-- Google Drive: `drive_read_file`, `drive_create_file`,
-  `drive_list_folder`
-- No OCS calls
+See `skills/_eval-template.md § MCP Tools Used (stock)`.
 
 ## Mode Behavior
 
-- **Auto:** Grade, write verdict + report, return overall score and
-  disposition.
-- **Review:** Pause after grading to let a human eyeball the verdict
-  before the gate brief propagates.
+See `skills/_eval-template.md § Mode Behavior (stock)`.
 
 ## Dry-Run Behavior
 
-When `--dry-run` is active:
-- Read PDD and idea.md normally — these are read-only inputs.
-- Write the verdict + report to Drive (human-facing artifacts).
-- State tracks as `dry-run-success`.
+See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 
 ## Change Log
 

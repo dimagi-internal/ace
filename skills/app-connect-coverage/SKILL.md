@@ -1,10 +1,9 @@
 ---
 name: app-connect-coverage
 description: >
-  Verify a Nova-built Learn or Deliver app has the right CommCare Connect
-  markers on every form, auto-fix via Nova edits if missing, loop until
-  clean. First skill in the post-Nova verify+fix family — same pattern
-  will extend to multimedia, localization, and other post-build concerns.
+  Verify every form in a Nova-built Learn or Deliver app has the right
+  CommCare Connect markers, auto-fix via Nova edits, loop until clean.
+disable-model-invocation: true
 ---
 
 # App Connect Coverage
@@ -15,6 +14,17 @@ Connect's runtime needs to enumerate `LearnModule`, `Assessment`,
 skip these even when its system prompt knows about them, and a future
 edit (e.g. adding a question, splitting a module) can drop them again.
 Don't trust first-pass output — verify and fix in a loop.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` or `pdd-to-deliver-app_summary.md` | source `nova_app_id` |
+| Nova MCP | `get_app({app_id: <nova_app_id>})` | live blueprint (form list, marker presence) |
+
+## Outputs
+
+- `2-commcare/app-connect-coverage_summary.md` — per-form marker coverage report and any Nova edits applied
 
 ## Why this skill exists
 

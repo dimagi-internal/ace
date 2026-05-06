@@ -1,12 +1,9 @@
 ---
 name: pdd-to-learn-app-eval
 description: >
-  Judge a Nova-built Learn app against the PDD that specified it.
-  Cross-artifact LLM-as-Judge eval — checks that module count, order,
-  Connectify Assessment Score wiring, gating thresholds, and content
-  coverage in the built app actually match what the PDD asked for.
-  Mirror of `pdd-to-deliver-app-eval` for the Learn side. Writes a
-  verdict YAML in the shared QA/eval shape so opp-eval can aggregate.
+  Grade a Nova-built Learn app against the PDD that specified it —
+  module count, order, Assessment Score wiring, content coverage.
+disable-model-invocation: true
 ---
 
 # PDD-to-Learn-App Eval
@@ -17,18 +14,25 @@ Connectify Assessment Score gates that govern when an FLW unlocks the
 Deliver app. This skill grades whether the Nova-built Learn app
 matches that spec.
 
-Mirror of `pdd-to-deliver-app-eval`. Same calibration methodology,
-different rubric dimensions tuned to Learn-app concerns.
+Sibling rubric to `pdd-to-deliver-app-eval`. Same calibration
+methodology, different dimensions tuned to Learn-app concerns. See
+`skills/_eval-template.md` for shared contracts.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Learn App Specification drive expectation |
+| Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` | Learn-app structure summary (`nova_app_id`, modules) |
+| Nova MCP (optional) | `get_app({app_id: <nova_app_id>})` | authoritative live blueprint (recommended over summary) |
+
+## Outputs
+
+- `2-commcare/pdd-to-learn-app-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 
 ## Process
 
-1. **Read inputs from GDrive:**
-   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
-   - Learn app summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md`
-     (contains `nova_app_id` and human-readable summary).
-   - Optionally fetch live blueprint via Nova MCP
-     `get_app({app_id: <nova_app_id>})` for authoritative module
-     structure.
+1. **Read inputs from GDrive** (paths in `## Inputs` above).
 
 2. **Detect HITL-pending stub.** If the learn app summary contains
    any of:
@@ -93,51 +97,20 @@ different rubric dimensions tuned to Learn-app concerns.
      into the underlying judge discretion.
 
 6. **Write the verdict YAML** to
-   `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-learn-app-eval_verdict.yaml`. The filename uses
-   the **producer** skill name (`pdd-to-learn-app`), NOT this skill's
-   name — see `agents/ace-orchestrator.md § Per-Step Eval Hook` for
-   the naming rule:
+   `2-commcare/pdd-to-learn-app-eval_verdict.yaml` using the shape from
+   `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
 
    ```yaml
-   skill: pdd-to-learn-app-eval
-   target: <nova_app_id>
-   mode: deep
-   ran_at: <ISO timestamp>
-   capture_path: app-summaries/learn-app-summary.md
-
-   overall_score: 8.6
-   verdict: pass | warn | fail | incomplete
-
    dimensions:
-     module_count_match:        { score: 9.5, weight: 0.15 }
-     module_order_match:        { score: 10.0, weight: 0.10 }
-     assessment_score_wiring:   { score: 9.0, weight: 0.30 }
-     content_topic_coverage:    { score: 8.0, weight: 0.25 }
-     archetype_coherence:       { score: 8.5, weight: 0.20 }
-
-   per_item:
-     - ref: "Module 5 calibration gate (10/12)"
-       score: 9.5
-       verdict: pass
-       note: "Connectify Assessment Score wired to #form/calibration_score with 10/12 threshold; matches PDD exactly"
-     - ref: "Final certification check"
-       score: 8.5
-       verdict: pass
-       note: "Nova split into 8th module (assessment-only) so Connect sees a distinct gate. PDD specified an embedded check; the split is a defensible UX deviation but does change the module count."
-     # ... per check
-
-   auto_surfaced:
-     - severity: WARN
-       message: "Module 5 calibration uses 12 placeholder reference photos with stub expected_color_*/expected_shininess_* values. The whole gate is meaningless until the LLO populates the curated reference set."
-     - severity: WARN
-       message: "Module 6 escalation phone numbers are placeholders pending LLO supervisor + local incident-line."
-
-   gate:
-     threshold: 7.5
-     disposition: approve | reject | iterate
+     module_count_match:        { weight: 0.15 }
+     module_order_match:        { weight: 0.10 }
+     assessment_score_wiring:   { weight: 0.30 }
+     content_topic_coverage:    { weight: 0.25 }
+     archetype_coherence:       { weight: 0.20 }
    ```
 
-7. **Auto-surfaced concerns:**
+7. **Auto-surfaced concerns** (per `_eval-template.md § Auto-surfaced
+   severity rules`, plus skill-specific surfaces):
    - `[BLOCKER]` for any dimension scoring ≤ 3.
    - `[BLOCKER]` if overall is below 7.0.
    - `[WARN]` for each placeholder-content gap that the LLO MUST
@@ -170,22 +143,17 @@ Calibration target on the smoke-20260428-1242 Learn build:
 
 ## MCP Tools Used
 
-- Google Drive: `drive_read_file`, `drive_create_file`,
-  `drive_list_folder`
+See `skills/_eval-template.md § MCP Tools Used (stock)` for the Drive
+block. Plus:
 - Nova MCP: `get_app` (authoritative blueprint, recommended)
 
 ## Mode Behavior
 
-- **Auto:** Grade, write verdict + report, return overall and
-  disposition.
-- **Review:** Pause after grading.
+See `skills/_eval-template.md § Mode Behavior (stock)`.
 
 ## Dry-Run Behavior
 
-When `--dry-run` is active:
-- Read PDD and app summary normally — read-only inputs.
-- Write verdict + report (human-facing artifacts).
-- State tracks as `dry-run-success`.
+See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 
 ## Change Log
 

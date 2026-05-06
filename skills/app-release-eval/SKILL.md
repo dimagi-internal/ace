@@ -1,32 +1,37 @@
 ---
 name: app-release-eval
 description: >
-  Judge a Phase 2 `app-release` run against its 2-commcare/app-deploy_summary.md. Verifies
-  every uploaded build was successfully released (Connect can read released
-  builds only), CCZ-marker checks passed, and no draft-only apps remain.
-  Provisional rubric — calibration TBD until 3+ real releases ship.
+  Verify every Learn + Deliver build was actually released so Connect
+  can read deliver units. Provisional rubric pending 3+ real releases.
+disable-model-invocation: true
 ---
 
 # App Release Eval
 
 `app-release` makes versioned + released builds for the Learn and Deliver
 apps Nova uploaded as drafts. Connect's `Sync Deliver Units` reads only
-*released* builds, so an unreleased app silently breaks Phase 3 with an
-empty deliver-units list. This rubric grades whether the release step
-delivered everything Phase 3 needs.
+*released* builds, so an unreleased app silently breaks the next phase
+with an empty deliver-units list. This rubric grades whether the
+release step delivered everything downstream needs.
 
-This is a single-artifact eval (2-commcare/app-deploy_summary.md after app-release
-runs). Authored 0.10.29 in response to turmeric run_time_followups item 2
+Single-artifact eval. Sees `_eval-template.md` for shared contracts.
+Authored 0.10.29 in response to turmeric run_time_followups item 2
 (CCZ-marker regex bug in app-release).
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 2 | `2-commcare/app-deploy_summary.md` | the artifact `app-release` updates with `releases:` block |
+| Per-run | `runs/<run-id>/run_state.yaml` | cross-check `hq_app_id` / `hq_build_id` under `learn_app_summary` / `deliver_app_summary` |
+
+## Outputs
+
+- `2-commcare/app-release-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 
 ## Process
 
-1. **Read inputs from GDrive:**
-   - `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` — the artifact app-release
-     updates with `releases:` block.
-   - `ACE/<opp-name>/run_state.yaml` — for cross-check on `hq_app_id` /
-     `hq_build_id` per-app entries under `learn_app_summary` /
-     `deliver_app_summary`.
+1. **Read inputs from GDrive** (paths in `## Inputs` above).
 
 2. **Detect missing artifacts.** If `2-commcare/app-deploy_summary.md` is missing
    or has no `releases:` block, emit `verdict: incomplete` immediately
@@ -87,54 +92,21 @@ runs). Authored 0.10.29 in response to turmeric run_time_followups item 2
      ONLY if the markers are actually missing in the XML.
 
 5. **Write the verdict YAML** to
-   `ACE/<opp-name>/runs/<run-id>/2-commcare/app-release-eval_verdict.yaml`. The filename uses the
-   **producer** skill name (`app-release`), NOT this skill's name —
-   see `agents/ace-orchestrator.md § Per-Step Eval Hook` for the
-   naming rule. Body conforms to `lib/verdict-schema.ts` (validated by
-   `npm run validate:verdicts`).
+   `2-commcare/app-release-eval_verdict.yaml` using the shape from
+   `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
 
    ```yaml
-   skill: app-release-eval
-   target: <opp-name>
-   mode: deep
-   ran_at: <ISO timestamp>
-   capture_path: 2-commcare/app-deploy_summary.md
-
-   overall_score: 8.6
-   overall_score_pre_cap: 8.6
-   verdict: pass | warn | fail | incomplete | partial
-   live_state_verified: true
-
    dimensions:
-     both_apps_released:           { score: 10.0, weight: 0.35 }
-     ccz_marker_integrity:         { score: 8.0,  weight: 0.25 }
-     build_id_traceability:        { score: 9.0,  weight: 0.20 }
-     deliver_units_enumerable:     { score: 9.5,  weight: 0.20 }
-
-   per_item:
-     - ref: "Learn app release"
-       score: 10.0
-       verdict: pass
-       note: "hq_app_id 3377db1906...; hq_build_id 981e44b71...; latest_released_version 1; is_released true."
-     - ref: "Deliver app release"
-       score: 10.0
-       verdict: pass
-       note: "hq_app_id c1e89a25e9...; hq_build_id 1ae25d80a...; latest_released_version 1; is_released true."
-
-   auto_surfaced:
-     - severity: WARN
-       message: "CCZ regex false-positive in app-release Step 6 — Observed: app-release reported 'no <learn:...> tag found' but xmlns inspection shows xmlns:vellum=...; markers present. Likely cause (unverified): regex matches a literal '<learn:' prefix that CCHQ no longer emits."
-
-   gate:
-     threshold: 7.5
-     disposition: approve | reject | iterate
+     both_apps_released:        { weight: 0.35 }
+     ccz_marker_integrity:      { weight: 0.25 }
+     build_id_traceability:     { weight: 0.20 }
+     deliver_units_enumerable:  { weight: 0.20 }
    ```
 
 ## Auto-surfaced concerns
 
-- `[BLOCKER]` for any dimension ≤ 3 (e.g., one app unreleased blocks Phase 3).
-- `[BLOCKER]` if overall < 7.0.
-- `[WARN]` per dimension scoring 4.0–6.9.
+Per `_eval-template.md § Auto-surfaced severity rules`, plus skill-
+specific surfaces:
 - `[WARN]` per CCZ regex false-positive that mis-flagged a clean build.
 - `[PLATFORM]` per CCHQ 5xx, Nova upload-shape change, or CCZ format
   change requiring app-release update.
@@ -168,7 +140,8 @@ The first 3 calibration runs should specifically include:
 
 ## MCP Tools Used
 
-- Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`
+See `skills/_eval-template.md § MCP Tools Used (stock)` for the Drive
+block. Plus:
 - ace-connect MCP (when Phase 3 has run): `connect_list_deliver_units`
   to verify Connect can enumerate deliver units from the released build.
 - CCHQ HTTP probe (no MCP yet): `GET /a/<domain>/apps/view/<app_id>/`
@@ -176,15 +149,13 @@ The first 3 calibration runs should specifically include:
 
 ## Mode Behavior
 
-- **Auto:** Grade, write verdict.
-- **Review:** Pause after grading.
+See `skills/_eval-template.md § Mode Behavior (stock)`.
 
 ## Dry-Run Behavior
 
-- Read deployment-summary normally.
-- Skip live CCHQ + Connect probes.
-- Write verdict (human-facing artifact).
-- State tracks as `dry-run-success`.
+Per `skills/_eval-template.md § Dry-Run Behavior (stock)`, plus: skip
+live CCHQ + Connect probes (read-only inputs OK; live probes treated
+as effectful).
 
 ## Change Log
 

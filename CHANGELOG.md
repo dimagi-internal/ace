@@ -5,6 +5,46 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.36 — 2026-05-06
+
+**Skills audit PR 2 — Phase 1 + Phase 2 skill rewrites (14 skills).**
+
+Continuation of the multi-PR skill cleanup that started in PR 1
+(0.13.34). Findings doc:
+`docs/superpowers/specs/2026-05-06-skills-audit-findings.md`.
+
+### Phase 1 skills (4)
+
+- `idea-to-pdd`, `idea-to-pdd-eval`, `pdd-to-test-prompts`,
+  `pdd-to-app-journeys`: description rewritten to ≤150 chars (was
+  174-378), added `disable-model-invocation: true`, added required
+  `## Inputs` and `## Outputs` sections.
+- `idea-to-pdd-eval`: verdict YAML schema + severity rules + stock
+  blocks (MCP / Mode / Dry-Run) replaced with references to
+  `skills/_eval-template.md`. Reduces ~60 lines of inlined boilerplate.
+- `pdd-to-app-journeys`: stale `pdd.md` path corrected to
+  `1-design/idea-to-pdd.md`.
+
+Phase 1 description-char delta: 1,097 → 550 (-547).
+
+### Phase 2 skills (10)
+
+- `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-release`,
+  `app-connect-coverage`, `app-multimedia-coverage`,
+  `commcare-form-patch`: description rewrites to ≤150 chars (was
+  167-770), added `disable-model-invocation: true`, added `## Inputs`
+  and `## Outputs` sections.
+- `pdd-to-learn-app-eval`, `pdd-to-deliver-app-eval`,
+  `app-release-eval`: same plus collapsed inlined verdict YAML +
+  severity rules + stock blocks to `_eval-template.md` references.
+
+Phase 2 description-char delta: 3,444 → 1,327 (-2,117).
+
+### Aggregate
+
+Total ACE description chars: 15,509 → 12,845 (-2,664). Combined with
+PR 1, total reduction is now -2,989 from baseline 15,834.
+
 ## 0.13.34 — 2026-05-06
 
 **Skill audit + PR 1 (P0 fixes + body templates + conventions update).**

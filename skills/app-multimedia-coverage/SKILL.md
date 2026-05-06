@@ -1,18 +1,9 @@
 ---
 name: app-multimedia-coverage
 description: >
-  Post-Phase-2 enhancement that attaches display-only images to Connect
-  Learn / Deliver app questions where they meaningfully help frontline
-  workers. LLM-judges every visible field against the criterion *"would
-  the FLW use this image themselves OR show it to a client?"*, generates
-  the chosen images via Dimagi's Content Generator API, patches each
-  affected form's XML to add `<image>` itext entries, uploads the
-  binaries to CCHQ via `commcare_upload_multimedia`, and re-builds +
-  re-releases the apps so Connect can ingest the enriched CCZ. Manual
-  gate; not part of `/ace:run`. Sibling of `commcare-form-patch` and
-  `app-connect-coverage`. Delete this skill (and the supporting helpers
-  + atom) once Nova ships first-class field-level display media — see
-  § Removal criteria.
+  Attach display-only images to Connect app questions where they
+  meaningfully help FLWs. Manual gate; not part of /ace:run.
+disable-model-invocation: true
 ---
 
 # App Multimedia Coverage
@@ -23,6 +14,24 @@ Nova doesn't today: schema for media on a field, asset generation,
 form-XML reference, CCZ bundling, and a release. Mirrors the
 end-to-end pattern of `commcare-form-patch` — surgical post-Nova
 patch, then build + release + verify.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` and `pdd-to-deliver-app_summary.md` | source `nova_app_id`s |
+| Operator (manual invocation) | per-opp confirmation gate | required — this skill is NOT part of `/ace:run`; invoke via `/ace:step app-multimedia-coverage <opp>` |
+
+## Outputs
+
+- `2-commcare/app-multimedia-coverage_summary.md` — per-field judge decisions, images attached, build/release IDs
+
+## Removal criteria
+
+Delete this skill (and the supporting helpers + atom) once Nova ships
+first-class field-level display media — tracked at
+`voidcraft-labs/nova-plugin#8`. See § Removal criteria below for the
+exact removal checklist.
 
 ## Why this skill exists
 

@@ -1,9 +1,9 @@
 ---
 name: app-deploy
 description: >
-  Push the Learn and Deliver apps from Nova to the CRISPR-Connect HQ
-  project space using `/nova:upload_to_hq`, then write the deployment
-  summary and the Phase 2→3 gate brief.
+  Upload Nova-built Learn + Deliver apps to CommCare HQ as draft
+  builds via /nova:upload_to_hq. Captures HQ app IDs and writes a deploy summary.
+disable-model-invocation: true
 ---
 
 # App Deploy
@@ -15,16 +15,25 @@ pre-flight, and the artifact writeback.
 
 **Scope:** this skill uploads apps as **draft builds**. Nova does not
 release apps by design. Connect's deliver-unit sync only reads released
-builds, so Phase 2 must run `app-release` after this skill before Phase 3
-can configure payment units. See `skills/app-release/SKILL.md` for the
+builds, so `app-release` must run after this skill before any Connect
+payment-unit configuration. See `skills/app-release/SKILL.md` for the
 release flow + the App Editor permission prerequisite.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` | `nova_app_id` for Learn app |
+| Phase 2 | `2-commcare/pdd-to-deliver-app_summary.md` | `nova_app_id` for Deliver app |
+
+## Outputs
+
+- `2-commcare/app-deploy_summary.md` — HQ app IDs + URLs for both apps
+- `2-commcare/app-deploy_gate-brief.md` — Phase 2 → 3 gate brief
 
 ## Process
 
-1. **Read app summaries** from GDrive:
-   - `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md`
-   - `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md`
-
+1. **Read app summaries** from GDrive (paths in `## Inputs` above).
    Extract `nova_app_id` from each frontmatter. These are the inputs to
    `/nova:upload_to_hq`.
 

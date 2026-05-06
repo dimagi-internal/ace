@@ -1,14 +1,28 @@
 ---
 name: idea-to-pdd
 description: >
-  Iterate on an idea to produce a well-specified Program Design Doc (PDD)
-  for a Connect application. Defines the intervention, target FLWs, visit
-  structure, and preferred LLOs.
+  Develop a Program Design Doc (PDD) for a Connect intervention from
+  source material. Iterates a 5-question stress-test rubric until approved.
+disable-model-invocation: true
 ---
 
 # Idea to PDD
 
 Take an initial idea and iterate on it to produce a complete Program Design Doc (PDD) that specifies a Connect application.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Operator | `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml` | frozen pointer-set to source material captured at run-start |
+| Operator | each `file_id` in the manifest | source content (PDFs, docs, sheets, markdown) |
+| Operator (optional) | `ACE/<opp-name>/runs/<run-id>/idea.md` | free-text seed via `--idea FILE\|-` |
+
+## Outputs
+
+- `1-design/idea-to-pdd.md` — the PDD
+- `1-design/idea-to-pdd_gate-brief.md` — gate brief consumed at the Phase 1 → 2 review pause
+- `ACE/<opp-name>/open-questions.md` (Google Doc, optional) — when stress-test rubric surfaces unresolved questions
 
 ## Process
 
