@@ -1,11 +1,9 @@
 ---
 name: eval-calibration
 description: >
-  Calibrate ACE's per-skill `-eval` rubrics so their scores are
-  trustworthy. Defines the ground-truth catalogue per opp, the multi-run
-  variance protocol, the detection-rate metric, and the iteration loop
-  that turns a noisy rubric into a calibrated one. Read this before
-  trusting any LLM-as-Judge score in production.
+  Methodology reference for calibrating ACE's per-skill -eval rubrics —
+  ground-truth catalogues, variance protocol, detection-rate metric.
+disable-model-invocation: true
 ---
 
 # Eval Calibration

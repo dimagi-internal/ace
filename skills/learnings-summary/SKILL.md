@@ -1,8 +1,9 @@
 ---
 name: learnings-summary
 description: >
-  Summarize learnings from the completed opportunity and create a new PDD
-  if iteration is warranted. Can trigger another CRISPR-Connect cycle.
+  Synthesize learnings from a completed opportunity. Drafts a new PDD
+  to seed the next cycle when iteration is warranted.
+disable-model-invocation: true
 ---
 
 # Learnings Summary

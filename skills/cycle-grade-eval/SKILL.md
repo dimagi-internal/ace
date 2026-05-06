@@ -1,11 +1,9 @@
 ---
 name: cycle-grade-eval
 description: >
-  Independently re-grade a closed CRISPR-Connect cycle's `cycle-grade`
-  output — the existing self-evaluation that the producing skill writes.
-  Cross-skill LLM-as-Judge eval covering the closeout category. Detects
-  cycle-grade self-eval inflation, missing learnings, and recommendation
-  vagueness. Writes a verdict YAML in the shared QA/eval shape.
+  Independently re-grade a closed cycle's cycle-grade output. Detects
+  self-eval inflation, missing learnings, vague recommendations.
+disable-model-invocation: true
 ---
 
 # Cycle-Grade Eval
