@@ -223,6 +223,27 @@ This repo is dogfooded by the `canopy` plugin. **Per-run evidence lives in Drive
 
 **Canopy commands:** `/canopy:pm-status` (re-entry), `/canopy:pm-scout` (run a scout cycle), `/canopy:improve` (full improve loop), `/canopy:patterns` (cross-session friction).
 
+## Auth model: per-machine vs 1Password-backed
+
+ACE has two classes of credential state, and confusing them is the #1 source of friction when working across multiple workstations. The split is intentional — session cookies are bound to TLS fingerprints and CSRF rotation, so copying them between machines is *worse* than re-login (intermittent, hard to debug). Don't try to sync `~/.ace/` via 1Password or git.
+
+**1Password-backed (set up once per machine, then static):**
+- `${CLAUDE_PLUGIN_DATA}/.env` — every `ACE_*`, `OCS_*`, `CONNECT_*`, `LABS_MCP_TOKEN`, `ACE_E2E_*` variable. Source of truth. Rotate values in 1Password and re-run `op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env` to propagate.
+- `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` — Google service-account key for `ace-gdrive`. Static (SA keys don't expire). Drop it once via `/ace:setup`.
+
+**Per-machine (re-login required on each workstation):**
+- `~/.ace/ocs-session-<team>.json` — OCS Playwright cookies. Auto-relogin from `OCS_USERNAME/PASSWORD` if those are in `.env`; otherwise `/ace:ocs-login`.
+- `~/.ace/connect-session.json` — Connect + CCHQ Playwright cookies (separate cookie jars in one storageState). Auto-relogin from `ACE_HQ_USERNAME/PASSWORD`; manual fallback `/ace:connect-login`.
+- `~/.ace/playwright-userdata/` — chromium persistent profile used by mobile-bootstrap step 6 for Connect probe scripts. Re-seed via `scripts/seed-connect-cookies.ts`.
+- AVD state, `~/.android/avd/`, registered-test-user snapshots — driven by `/ace:mobile-bootstrap` (12-step ritual; only do mobile work that needs them).
+
+**Single check that surfaces what's missing:** `/ace:doctor`'s `[Auth liveness]` block runs one live HTTP call per MCP and names the exact remediation command per failure. Run this first when picking up work on a new machine — it answers "which logins do I need to redo here?" in one screen.
+
+**Two-machine workflow (typical recipe):**
+1. On each machine: `/ace:setup` (installs deps, fetches `.env` + SA key from 1Password).
+2. On each machine: `/ace:doctor` → look at `[Auth liveness]` → run the `fix:` command for any WARN.
+3. Mobile work only: `/ace:mobile-bootstrap` per machine (creates AVD, registers test user, seeds Playwright cookies).
+
 ## Gotchas
 
 - **`.gws-sa-key.json` is per-machine and gitignored.** Located at `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` (legacy fallback: plugin root). `ace-gdrive` won't start without it. `/ace:doctor` reports `GWS_KEY: MISSING` and prints the expected path.
