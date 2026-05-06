@@ -3,6 +3,7 @@ name: opp-closeout
 description: >
   Pull invoices from the completed opportunity and create a Jira ticket
   to issue payment to the LLO.
+disable-model-invocation: true
 ---
 
 # Opportunity Closeout

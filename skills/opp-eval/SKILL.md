@@ -1,11 +1,9 @@
 ---
 name: opp-eval
 description: >
-  Umbrella judge that rolls every per-skill `-eval` verdict for an
-  opportunity into a single run-level scorecard and emits improvement
-  recommendations. Three modes: --quick (structural artifact check,
-  no LLM cost), --deep (aggregate verdicts + scorecard + recommendations),
-  --monitor (same as --deep plus append a trend line).
+  Umbrella aggregator that rolls every per-skill -eval verdict into a
+  run-level scorecard. Modes: --quick / --deep / --monitor.
+disable-model-invocation: true
 ---
 
 # Opportunity Eval

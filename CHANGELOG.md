@@ -5,6 +5,41 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.40 — 2026-05-06
+
+**Skills audit PR 6 — Phase 8 + cross-cutting (6 skills). FINAL audit PR.**
+
+Phase 8 (3): `opp-closeout`, `learnings-summary`, `cycle-grade`.
+
+Cross-cutting (3): `cycle-grade-eval`, `opp-eval`, `eval-calibration`.
+
+Per-skill changes follow the established pattern: description ≤140 chars,
+`disable-model-invocation: true`. Eval skills reference
+`_eval-template.md` for shared contracts.
+
+### Aggregate result across all 6 audit PRs
+
+| PR | Total chars | Δ |
+|---|---:|---:|
+| Baseline | 15,834 | — |
+| PR 1 (P0 + templates + conventions) | 15,509 | -325 |
+| PR 2 (Phase 1+2, 14 skills) | 12,845 | -2,664 |
+| PR 3 (Phase 3+4, 7 skills) | 11,638 | -1,207 |
+| PR 4 (Phase 5, 11 skills) | 9,450 | -2,188 |
+| PR 5 (Phase 6+7, 16 skills) | 7,469 | -1,981 |
+| **PR 6 (Phase 8 + xcut, 6 skills)** | **6,877** | **-592** |
+
+**Final reduction: -8,957 chars (-56.5%)**.
+
+All 54 ACE skills now ship with `disable-model-invocation: true`,
+removing them from the harness routing-index entirely. ACE's
+contribution to the global skill-catalog budget is effectively zero.
+
+PR 7 (originally planned for Stage 0 + Stage 4) is now scoped down:
+the budget-cleanup half is implicit in the per-phase PRs (every skill
+already has the flag); only the Stage 4 lint guardrail remains, and
+it's optional given the audit's coverage.
+
 ## 0.13.39 — 2026-05-06
 
 **Skills audit PR 5 — Phase 6 + Phase 7 skill rewrites (16 skills).**

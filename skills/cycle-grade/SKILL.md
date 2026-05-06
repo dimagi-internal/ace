@@ -1,8 +1,9 @@
 ---
 name: cycle-grade
 description: >
-  Grade the overall CRISPR-Connect cycle with recommendations for
-  improvements and next steps.
+  Grade the closed CRISPR-Connect cycle end-to-end with concrete
+  improvement recommendations for the next cycle.
+disable-model-invocation: true
 ---
 
 # Cycle Grade
