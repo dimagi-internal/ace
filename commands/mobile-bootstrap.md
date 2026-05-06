@@ -33,6 +33,23 @@ in `mcp/mobile/backends/avd.ts`.
 order in `resolveJavaHome()`. Operators can override with
 `export JAVA_HOME=/path/to/jdk17` before launching Claude Code.
 
+## Multi-user macOS hosts
+
+When two Mac user accounts share one machine and both run ACE, the default
+adb server (port 5037) and the default emulator console pair (5554/5555)
+collide. Pin both per user in each account's `.env`
+(`${CLAUDE_PLUGIN_DATA}/.env`):
+
+| Var | User A | User B | Notes |
+|---|---|---|---|
+| `ANDROID_ADB_SERVER_PORT` | unset (5037) | `5038` | Honored natively by `adb` + `emulator`; ACE inherits via `process.env`. |
+| `ACE_MOBILE_EMULATOR_PORT` | unset (5554) | `5580` | Wired through `mcp/mobile/backends/avd.ts` as `emulator -port <N>`. Serial becomes `emulator-<port>`. |
+
+`.env` is per-user on macOS (`${CLAUDE_PLUGIN_DATA}` resolves under
+`~/Library/...`), so each account's `op inject` lands in a separate file.
+Re-run `/ace:doctor` after editing — its `[Mobile]` block confirms adb +
+emulator wake on the pinned ports.
+
 ## Where to put throwaway probe scripts
 
 If any step below needs a one-off Playwright / adb / shell probe (e.g. to

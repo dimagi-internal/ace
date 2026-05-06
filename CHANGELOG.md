@@ -5,6 +5,29 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.43 — feat(mobile): per-user emulator/adb port pinning for shared Mac hosts
+
+Two Mac user accounts sharing one machine couldn't both run `qa-and-training`
+without their adb servers (port 5037) and emulator console pairs (5554/5555)
+colliding. Each user's adb-server binds a system-wide TCP port and each
+user's emulator gets auto-assigned the next free console pair, so concurrent
+runs raced over device serials.
+
+Two new env vars in `.env.tpl`, both unset by default (single-user behavior
+unchanged):
+
+- `ANDROID_ADB_SERVER_PORT` — standard Android var, honored natively by `adb`
+  and `emulator`; ACE just inherits `process.env` into spawned children. Pin
+  to e.g. `5038` for the second user.
+- `ACE_MOBILE_EMULATOR_PORT` — new ACE var. `mcp/mobile/backends/avd.ts` reads
+  it and appends `-port <N>` to the `emulator` spawn args. Pin to e.g. `5580`
+  for the second user. Serial becomes `emulator-<port>`; existing serial-
+  detection (`findRunningAvd`) doesn't assume 5554.
+
+`.env` lives under `${CLAUDE_PLUGIN_DATA}/.env`, which on macOS resolves to a
+per-user path — so each account's `op inject` lands in a separate file. The
+`commands/mobile-bootstrap.md` doc gains a short multi-user table.
+
 ## 0.13.41 — 2026-05-06
 
 **fix(deps): re-add @xmldom/xmldom + @anthropic-ai/sdk to package.json.**
@@ -34,7 +57,6 @@ Verified by:
 - `rm -rf node_modules package-lock.json && npm install` succeeds
 - `npx tsc --noEmit` returns clean
 - `npm test` reports 570 passed / 35 skipped / 0 failed
-
 ## 0.13.40 — 2026-05-06
 
 **Skills audit PR 6 — Phase 8 + cross-cutting (6 skills). FINAL audit PR.**
@@ -237,7 +259,6 @@ to exclude from the skill catalog:
 Description aggregate: 15,834 → 15,509 chars (-325). Most of the
 ~10,000 char savings will land in PR 2-6 when the per-phase
 description rewrites and `disable-model-invocation` flips happen.
-
 ## 0.13.30 — fix(deps): re-add @anthropic-ai/sdk to package.json
 
 `@anthropic-ai/sdk` was added in 0.13.17 (PR #81's C1 review fix) so
