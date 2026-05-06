@@ -360,18 +360,25 @@ else
   warn "auto_update: hooks/hooks.json missing" "restore hooks/hooks.json at the plugin root"
 fi
 
-# --- Sibling plugin installs (Phase 2 + Phase 3 dependencies) ---
+# --- Sibling plugin installs (Phase 2 dependency only) ---
 # (ace-web is a sibling repo for browser-harness work but is NOT a runtime
-# dependency of the plugin — intentionally not checked here. Sibling plugins
-# below ARE consumed by ACE skills, so they remain warned-on.)
+# dependency of the plugin — intentionally not checked here.)
 # Nova drives Phase 2 (commcare-setup): pdd-to-learn-app, pdd-to-deliver-app,
 # app-deploy. Without Nova installed, those skills produce stub artifacts.
-# connect-labs drives Phase 3 (connect-setup): connect-program-setup,
-# connect-opp-setup. Without it, the skills can't actually create programs
-# or opportunities. Both failure modes are silent — the skills run, write
-# something, and the operator only notices days later when nothing works.
-# The signal we can check from here is simple and authoritative: is the
-# plugin listed in ~/.claude/plugins/installed_plugins.json?
+# This failure mode is silent — the skill runs, writes something, and the
+# operator only notices days later. The signal we can check from here is
+# simple and authoritative: is the plugin listed in
+# ~/.claude/plugins/installed_plugins.json?
+#
+# (Phase 3's connect-labs dependency claim is gone in 0.13.33 — Phase 3
+# skills moved off the connect-labs Claude Code plugin in 0.10.47 when
+# ace-connect adopted commcare-connect's REST automation API. The labs
+# MCP itself is still consumed but via the stdio proxy at
+# mcp/connect-labs-server.ts, which is independently verified by
+# `connect_labs_mcp_reachable` and `connect_labs_connect_oauth` below.
+# The dropped check was actively misleading: its WARN ran on every
+# install because no `connect-labs` Claude Code plugin actually exists
+# in any known marketplace.)
 PLUGIN_REG="$HOME/.claude/plugins/installed_plugins.json"
 
 probe_plugin() {
@@ -397,14 +404,8 @@ else
   warn "nova_plugin: not installed (Phase 2 commcare-setup degrades to HITL stubs — pdd-to-learn-app, pdd-to-deliver-app, app-deploy will not produce real apps)" "/plugin install nova@nova-marketplace, then sign in via OAuth on first /nova:autobuild"
 fi
 
-CL_KEY="$(probe_plugin connect-labs)"
-if [ -n "$CL_KEY" ]; then
-  pass "connect_labs_plugin: $CL_KEY installed"
-else
-  warn "connect_labs_plugin: not installed (Phase 3 connect-setup degrades to HITL — connect-program-setup, connect-opp-setup cannot create programs or opportunities)" "install the connect-labs plugin from its marketplace"
-fi
-
-# Local checkout is still useful for development; keep as a soft hint.
+# Local connect-labs checkout is still useful for development of the
+# server-side labs app itself; keep as a soft hint, no warning.
 if [ -d "$HOME/emdash-projects/connect-labs" ]; then
   pass "connect_labs_repo: local checkout detected (dev mode)"
 fi
