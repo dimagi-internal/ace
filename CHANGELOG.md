@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.20 — fix(lib): addImageItext replaceExisting option
+
+- `lib/multimedia-xform-patch.ts::addImageItext` accepts an
+  optional `{ replaceExisting: boolean }` argument. When `true`, the
+  helper strips any existing `<value form="image">` children from the
+  matching itext text node before adding the new one. Default `false`
+  preserves append-only idempotency on identical URLs.
+- Avoids CCHQ build-validator rejection (`duplicate definition for
+  text ID '<field>-label' and form 'image'`) when the
+  `app-multimedia-coverage` skill is re-run on a form that already
+  has an attached image with a different filename.
+
 ## 0.13.19 — fix(connect): commcare_download_ccz include_multimedia flag
 
 - Add `include_multimedia: boolean` option to the `commcare_download_ccz`
