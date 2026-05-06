@@ -5,6 +5,62 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.24 — 2026-05-06
+
+**fix(connect): Connect uses CSRF_USE_SESSIONS=True; extract token from
+HTML body, not from cookies.**
+
+Closes the entire 0.13.13 → 0.13.22 self-heal series with the actual
+root cause. The `leep-paint-collection-20260505-1505` Phase 3 Step 2
+dispatch persistently 403'd on `POST /api/programs/<uuid>/opportunities/`
+even after every cookie-based fix. Direct probing today (live HTTP
+against connect.dimagi.com) revealed:
+
+- Connect's `/accounts/login/` GET response carries the form HTML with
+  `<input type="hidden" name="csrfmiddlewaretoken" value="...">` —
+  but **no `Set-Cookie: csrftoken=...` header**, on any URL we tried,
+  authed or anon, regardless of Origin/User-Agent/Accept headers.
+- This is consistent with Django's `CSRF_USE_SESSIONS=True` setting:
+  CSRF token is stored in `request.session['_csrftoken']` (server-side),
+  exposed only via the `csrfmiddlewaretoken` form field. The
+  `csrftoken` cookie is never set.
+- Empirical proof: same anon session + token extracted from HTML →
+  `POST /api/programs/<uuid>/opportunities/` with `X-CSRFToken: <token>`
+  returned `401 "Authentication credentials were not provided"` (CSRF
+  check passed; auth failed because the session was anon). Pre-fix
+  the same call returned `403 "CSRF Failed: CSRF token missing"`.
+
+Every cookie-based fix in the 0.13.13 → 0.13.22 series was the wrong
+abstraction:
+- 0.13.13 — Set-Cookie rotation (no Set-Cookie ever sent)
+- 0.13.14 — forced csrftoken cookie issuance (Connect doesn't issue one)
+- 0.13.15 — bottom-out reauth (reauth doesn't change session-bound CSRF)
+- 0.13.18 — cross-backend handle refresh (orthogonal — still useful)
+- 0.13.22 — silent-fallback removal (made the failure visible but the
+  cookie was always going to be missing)
+
+**The fix in 0.13.24:**
+
+`mcp/connect/auth/playwright-session.ts` — both `getContext()` and
+`refreshCsrfToken()` now extract the CSRF token from the HTML body of
+a rendered form, not from the cookie jar. Reuses the existing
+`extractFormCsrfToken` helper from `backends/html-scrape.ts` (which
+the Playwright UI-form-post path has been doing correctly all along —
+which is why those code paths kept working through every regression).
+The hydration sequence GETs `/accounts/login/` (universal, always
+renders a form), falls back to `/`. On failure, throws with diagnostic
+data + drops the stale state file.
+
+Verified by `npm test` — all 540 unit tests pass, including the
+existing `csrf-extraction.test.ts` suite (still useful for the CCHQ
+side which DOES issue csrftoken cookies). The cookie-based
+`extractCsrfToken` helper is retained for `commcare.ts`'s CCHQ
+filter — CCHQ uses the standard cookie mechanism.
+
+Surfaced via `runs/20260505-1505/3-connect/connect-opp-setup_BLOCKED.md`
++ `_BLOCKED_attempt2.md`. Tested via direct HTTP probe; integration
+test against the live API will follow in the next leep run dispatch.
+
 ## 0.13.23 — test(fixture): capture golden judge YAML from live skill run
 
 First operator-runnable end-to-end pass of `app-multimedia-coverage`
