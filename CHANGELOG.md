@@ -5,6 +5,36 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.41 — 2026-05-06
+
+**fix(deps): re-add @xmldom/xmldom + @anthropic-ai/sdk to package.json.**
+
+Both deps got dropped during merge-conflict resolutions and were
+missing from `package.json` despite being imported by checked-in code:
+
+- `lib/multimedia-xform-patch.ts` and `scripts/run-form-walk.ts` import
+  `@xmldom/xmldom@^0.9.10` (used by `app-multimedia-coverage` and
+  CCZ form walking).
+- `lib/multimedia-judge.ts` has a type-only `import type Anthropic
+  from '@anthropic-ai/sdk'` (used by the multimedia-coverage judge).
+
+The `@xmldom/xmldom` drop broke 6 tests on a clean `npm install`
+(`vitest run` failed with "Cannot find package '@xmldom/xmldom'").
+The `@anthropic-ai/sdk` drop only fails strict `tsc --noEmit` checks
+since the import is type-only — the runtime callers stub the client.
+
+`@anthropic-ai/sdk` was re-added in 0.13.30 (PR #89) but a subsequent
+merge dropped it again. This is the third instance of the same
+class-of-bug noted in the brief — the clean-install dep guard added
+in 0.13.31 was meant to catch it but evidently isn't running on every
+PR. Worth a separate follow-up to verify the CI guard is wired
+correctly.
+
+Verified by:
+- `rm -rf node_modules package-lock.json && npm install` succeeds
+- `npx tsc --noEmit` returns clean
+- `npm test` reports 570 passed / 35 skipped / 0 failed
+
 ## 0.13.40 — 2026-05-06
 
 **Skills audit PR 6 — Phase 8 + cross-cutting (6 skills). FINAL audit PR.**
