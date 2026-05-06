@@ -1,12 +1,9 @@
 ---
 name: app-test-cases
 description: >
-  After Nova builds the Learn and Deliver apps, bind each user journey
-  from expected-journeys.md to the actual built structure, emit a
-  Maestro recipe stub per journey with real selectors (not REPLACE_*),
-  and write the consolidated app-test-cases.yaml. Phase 5 reads this
-  for shallow execution; /ace:qa-deep reads it for full execution.
-  Successor to qa-plan (which is retired in this same release).
+  Bind each PDD user journey to the Nova-built app structure and emit a
+  Maestro recipe per journey with real selectors. Use after Nova
+  finishes building, before app-release.
 ---
 
 # App Test Cases
@@ -14,6 +11,13 @@ description: >
 Binds Phase 1 UX intent to Phase 2 built structure. Runs after Nova
 finishes both apps, before `app-release` — so the recipes exist when
 Phase 5 needs them.
+
+## Related skills
+
+- **Successor to:** `qa-plan` (retired in 0.10.x, replaced by this skill).
+- **Consumes:** `expected-journeys.md` from `pdd-to-app-journeys` (Phase 1).
+- **Consumed by:** `app-screenshot-capture` (Phase 5, shallow) and
+  `/ace:qa-deep` (full execution).
 
 ## Process
 

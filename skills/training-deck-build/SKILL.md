@@ -1,30 +1,29 @@
 ---
 name: training-deck-build
 description: >
-  Render an opportunity's `training-deck-outline.md` into a Google Slides
-  deck by copying the ACE training-deck template and filling its stencils
-  via batchUpdate. Output is a presentable Slides URL the LLO can edit
-  before recording. Phase 5 follow-up to `training-materials`.
+  Render training-deck-outline.md into a Google Slides deck using the
+  ACE template. Use as the last step of Phase 5 to produce a Slides URL
+  the LLO can edit before recording.
 ---
 
 # Training Deck Build
 
-Turn the markdown `training-deck-outline.md` (produced by
-`training-materials`) into a real Google Slides deck the LLO can present
-or use as a recording source. The skill does NOT generate a video —
-that's a separate skill, planned but not implemented.
+Turn the markdown `training-deck-outline.md` (produced by the
+`training-deck-outline` skill) into a real Google Slides deck the LLO
+can present or use as a recording source. The skill does NOT generate a
+video — that's a separate skill, planned but not implemented.
 
 ## When to run
 
-After `training-materials` has written `training-deck-outline.md` for
-the opportunity. Typically the last step of Phase 5
-(`qa-and-training`), before LLO onboarding in Phase 7.
+After `training-deck-outline` has written its artifact for the
+opportunity. Typically the last step of Phase 5 (`qa-and-training`),
+before LLO onboarding in Phase 7.
 
 ## Inputs (read from Drive)
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 5 (`training-materials`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md` | parsed via `parseDeckOutline` |
+| Phase 5 (`training-deck-outline`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md` | parsed via `parseDeckOutline` |
 | Phase 5 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml` | screenshot fileId resolution for `drive:` image refs by alias |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` | same, for cross-opp screenshots |
 
@@ -41,8 +40,9 @@ under human control.
 
 ## Process
 
-1. **Read** `training-materials/training-deck-outline.md` from Drive.
-   If missing, fail with a hint to run `training-materials` first.
+1. **Read** `5-qa-and-training/training-deck-outline.md` from Drive.
+   If missing, fail with a hint to run the `training-deck-outline`
+   skill first.
 
 2. **Parse** the outline via `parseDeckOutline` in `lib/training-deck-spec.ts`.
    The parser is strict — a malformed outline (missing `# Title`, a
@@ -73,7 +73,7 @@ under human control.
 4. **Copy the template.** Call `slides_copy_template` with:
    - `templatePresentationId`: from `ACE_TRAINING_DECK_TEMPLATE_ID`
    - `title`: `<opp> — Training Deck`
-   - `parentFolderId`: the opp's `training-materials/` folder
+   - `parentFolderId`: the opp's `5-qa-and-training/` folder
    Capture the new `presentationId` and `webViewLink`.
 
 5. **Discover stencil objectIds.** Call `slides_get` on the new

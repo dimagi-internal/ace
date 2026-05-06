@@ -24,13 +24,16 @@ Collect feedback from LLOs about the completed opportunity.
    `## Archetypes` below. Fall back to `atomic-visit` if unspecified.
 
 3. **Compose feedback request email (archetype-aware):**
-   - From: ace@dimagi-ai.com
-   - CC: admin group
+   - From: `$ACE_GMAIL_ACCOUNT` (via `email-communicator` skill)
+   - To: each LLO contact email
+   - CC: CRISPR Admin Dimagi Google Group
    - Questions branch per archetype — see `## Archetypes`. Keep the
      core envelope consistent (support experience, suggestions, future
      interest) across all archetypes.
 
-4. **Send feedback request** to each LLO.
+4. **Send the feedback request emails** via the `email-communicator`
+   skill (or draft for review). Log message IDs to the opp's comms log
+   for response correlation.
 
 5. **Monitor for responses** via OCS transcripts or email.
 
@@ -116,12 +119,7 @@ all 3 in a single response.
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
 - OCS: `ocs_list_sessions` for monitoring responses
-
-## Current Workaround
-1. Generate feedback request email drafts
-2. Write to `ACE/<opp-name>/closeout/feedback-request-drafts/`
-3. Ask user to send and collect responses
-4. Document responses when provided
+- Email: `email-communicator` skill (sends from `ace@dimagi-ai.com`)
 
 ## Mode Behavior
 - **Auto:** Send feedback requests, monitor and document responses

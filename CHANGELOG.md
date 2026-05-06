@@ -5,6 +5,74 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.34 — 2026-05-06
+
+**Skill audit + PR 1 (P0 fixes + body templates + conventions update).**
+
+Stage 1 of a multi-PR audit + improvement effort across all 54 ACE
+skills, motivated by routing-budget overflow (ACE alone contributes
+~16K of the global ~30K char skill-description budget; Claude Code
+silently drops overflow at ~8K-16K). Findings doc:
+`docs/superpowers/specs/2026-05-06-skills-audit-findings.md`. The full
+plan ships across 7 PRs over multiple sessions. This is PR 1.
+
+### P0 functional fixes
+
+- `llo-uat` and `llo-feedback` now delegate email send to the
+  `email-communicator` skill (matches the `llo-onboarding` pattern).
+  The stale `## Current Workaround` blocks asking the operator to
+  send drafts manually are removed — they predated the
+  `email-communicator` skill (PR #20) and were no longer needed.
+- `training-deck-build`, `training-deck-outline`,
+  `training-onboarding-email` updated to remove stale references to
+  the `training-materials` umbrella skill (removed in 0.10.89). The
+  `ACE/<opp-name>/training-materials/` legacy paths are repointed to
+  the per-run `runs/<run-id>/5-qa-and-training/` scheme everywhere.
+  Same fix for `llo-onboarding`, `llo-uat`, `ocs-agent-setup`.
+- `app-test-cases` description: `Successor to qa-plan` reference moved
+  out of frontmatter into a `## Related skills` section in the body
+  (banned `successor-to` pattern under the new description rules).
+
+### Body templates
+
+Three reference docs added under `skills/_*-template.md` to extract
+shared boilerplate from related skill families. Each starts with `_`
+to exclude from the skill catalog:
+
+- `skills/_eval-template.md` — verdict YAML contract, auto-surfaced
+  severity rules (BLOCKER/WARN/INFO), inflation guard pattern, and
+  stock blocks for `## MCP Tools Used / ## Mode Behavior /
+  ## Dry-Run Behavior`. The 12 `*-eval` skills will reference this
+  in subsequent PRs instead of inlining ~30-50 lines of boilerplate.
+- `skills/_training-template.md` — per-artifact decomposition
+  rationale, sibling map, common Drive paths. The 7 `training-*` /
+  `training-deck-*` skills will reference it.
+- `skills/_solicitation-template.md` — `opp.yaml.solicitation` and
+  `opp.yaml.selected_llo` contract, connect-labs MCP atom inventory,
+  Phase 6 → Phase 7 boundary rule. The 5 `solicitation-*` /
+  `llo-invite` skills will reference it.
+
+### Conventions update (skills/README.md)
+
+- New description rules: target ≤120 chars, hard cap 200, banned
+  patterns enumerated (phase labels, file paths, sibling/successor
+  refs, TEMPORARY/Provisional, trigger-phrase enumeration).
+- New required body sections: `## Inputs` and `## Outputs` upgraded
+  from optional to required. Section order is now seven sections:
+  `# Display Name` → `## Inputs` → `## Outputs` → `## Process` →
+  `## MCP Tools Used` → `## Mode Behavior` → `## Change Log`.
+- `disable-model-invocation: true` is the recommended default for
+  ACE skills going forward (ACE skills are dispatched by orchestrator
+  and phase agents by exact name; they don't need routing-index
+  visibility).
+- Body templates referenced; new-skill checklist updated.
+
+### Char budget delta
+
+Description aggregate: 15,834 → 15,509 chars (-325). Most of the
+~10,000 char savings will land in PR 2-6 when the per-phase
+description rewrites and `disable-model-invocation` flips happen.
+
 ## 0.13.30 — fix(deps): re-add @anthropic-ai/sdk to package.json
 
 `@anthropic-ai/sdk` was added in 0.13.17 (PR #81's C1 review fix) so

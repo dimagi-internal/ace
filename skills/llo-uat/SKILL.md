@@ -13,7 +13,7 @@ Coordinate UAT with LLOs before the opportunity goes live.
 
 1. **Read inputs from GDrive:**
    - Deployment summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md`
-   - Training materials: `ACE/<opp-name>/training-materials/`
+   - Training materials: `ACE/<opp-name>/runs/<run-id>/5-qa-and-training/`
    - Opportunity config: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
    - Awarded LLO: `opp.yaml.selected_llo` (populated by Phase 6 `solicitation-review`)
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (reads `archetype:`)
@@ -25,7 +25,8 @@ Coordinate UAT with LLOs before the opportunity goes live.
    `atomic-visit` if unspecified.
 
 3. **Compose UAT instruction email for each onboarded LLO:**
-   - From: ace@dimagi-ai.com
+   - From: `$ACE_GMAIL_ACCOUNT` (via `email-communicator` skill)
+   - To: each LLO contact email
    - CC: CRISPR Admin Dimagi Google Group
    - Subject: "[Opportunity Name] — Please Test Before Go-Live"
    - Body (archetype-aware — see `## Archetypes`):
@@ -36,7 +37,9 @@ Coordinate UAT with LLOs before the opportunity goes live.
      - UAT deadline (from opportunity timeline)
      - What "sign-off" means — archetype-specific criterion
 
-4. **Send UAT instruction emails** (or draft for review).
+4. **Send the UAT instruction emails** via the `email-communicator`
+   skill (or draft for review). Log message IDs to the opp's comms log
+   for later correlation with replies.
 
 5. **Monitor for LLO feedback** during UAT window:
    - Check OCS transcripts for reported issues
@@ -101,7 +104,8 @@ conditions — enough that you'd hand the phone to an FLW tomorrow."*
   works, incentive-distribution mechanism works.
 
 **How to access:** question guide, facilitator guide, consent form,
-audio-upload instructions from the training-materials bundle.
+audio-upload instructions from the per-artifact training docs in
+`ACE/<opp-name>/runs/<run-id>/5-qa-and-training/`.
 Explicitly do NOT ask them to "download an app" — there isn't one for
 this archetype.
 
@@ -135,13 +139,7 @@ go-live decision.
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`
 - OCS: `ocs_list_sessions`, `ocs_get_session`
-
-## Current Workaround
-1. Generate UAT instruction emails as drafts
-2. Write to `ACE/<opp-name>/comms-log/uat-instruction-drafts/`
-3. Ask the user to send the emails from ace@dimagi-ai.com
-4. Ask the user to collect LLO feedback and sign-offs
-5. Document results when provided
+- Email: `email-communicator` skill (sends from `ace@dimagi-ai.com`)
 
 ## Mode Behavior
 - **Auto:** Send UAT instructions, monitor for results, proceed when all LLOs sign off or UAT window closes
