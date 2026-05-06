@@ -1,9 +1,9 @@
 ---
 name: connect-opp-setup
 description: >
-  Create and configure an Opportunity in Connect — including the opp shell
-  (managed under a program), verification flags, payment units, and the
-  pre-invite that makes ACE's emulator-driven mobile testing work.
+  Create and fully configure a Connect Opportunity — opp shell, verification
+  flags, payment units, ACE test-user pre-invite for emulator testing.
+disable-model-invocation: true
 ---
 
 # Connect Opportunity Setup
@@ -11,17 +11,23 @@ description: >
 Create and fully configure a Connect managed opportunity in `ai-demo-space`
 (or whichever PM-side org owns the parent program).
 
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 | `1-design/idea-to-pdd.md` | archetype + Evidence Model (Layer A → verification flags) |
+| Phase 3 | `3-connect/connect-program-setup.md` | program UUID (opp is scoped to it) |
+| Phase 6 | `opp.yaml.selected_llo.org_slug` | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
+| Phase 2 | `2-commcare/app-deploy_summary.md` | `hq_server`, `learn_app`/`deliver_app` IDs, HQ project space slug |
+
+## Outputs
+
+- `3-connect/connect-opp-setup.md` — opp UUID, verification flags, payment units, ACE test-user invite URL
+- `connect-state.yaml` — `ace_test_user_invite_pending_until_active` flag for `app-screenshot-capture`
+
 ## Process
 
-1. **Read inputs from GDrive:**
-   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
-   - Program details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup.md`
-     (program UUID; the opp is created scoped to it)
-   - Awarded LLO: `opp.yaml.selected_llo.org_slug` (populated by Phase 6
-     `solicitation-review` — must be the slug of an org that already has an
-     ACCEPTED `ProgramApplication` for the program. See § Pre-flight.)
-   - App deployment details: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md`
-     (`hq_server`, `learn_app` ID, `deliver_app` ID, HQ project space slug)
+1. **Read inputs from GDrive** (paths in `## Inputs` above).
 
 2. **Read the PDD's `archetype:` and `## Evidence Model` section.**
    These are the inputs for steps 4–5. The Evidence Model's Layer A column

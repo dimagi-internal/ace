@@ -1,13 +1,25 @@
 ---
 name: connect-program-setup
 description: >
-  Create or configure a Program in Connect for the CRISPR-Connect opportunity.
-  Checks if an existing program fits before creating a new one.
+  Create or reuse a Connect Program for the opportunity, archetype-matched
+  to the PDD. Captures program_id for downstream skills.
+disable-model-invocation: true
 ---
 
 # Connect Program Setup
 
 Create or select a Connect program for this opportunity.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 | `1-design/idea-to-pdd.md` | archetype-aware program naming + domain match |
+| Connect MCP | `connect_list_programs({organization_slug})` | reuse-vs-create decision |
+
+## Outputs
+
+- `3-connect/connect-program-setup.md` — program-id, decision rationale (reuse / create), admin program URL
 
 ## Process
 

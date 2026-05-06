@@ -1,11 +1,9 @@
 ---
 name: ocs-widget-handoff-eval
 description: >
-  Judge a Phase 4 `ocs-setup/widget-handoff.md` against the live OCS chatbot
-  + Connect opportunity. Grades widget URL correctness, embed key staging,
-  opportunity-binding completeness, and HITL operator handoff hygiene. The
-  widget paste-in itself is HITL today (CCC-301 pending); this rubric grades
-  the staging artifact, not the paste-in completion.
+  Grade the OCS widget-handoff staging artifact for HITL paste-in —
+  widget URL, embed key, opportunity-binding instructions.
+disable-model-invocation: true
 ---
 
 # OCS Widget Handoff Eval
@@ -17,16 +15,25 @@ hop is HITL. This rubric grades the staging artifact (`ocs-setup/widget-handoff.
 to make sure the operator has everything they need: a real widget URL, a
 real embed key, and the right opportunity-binding instructions.
 
-Authored 0.10.29 to absorb turmeric run_time_followups item 10 (HITL
-widget paste-in until CCC-301).
+See `skills/_eval-template.md` for shared contracts. Authored 0.10.29 to
+absorb turmeric run_time_followups item 10 (HITL widget paste-in until
+CCC-301).
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 4 | `4-ocs/ocs-setup_widget-handoff.md` | staging artifact under judgment |
+| Phase 4 | `4-ocs/ocs-agent-setup.md` | cross-check `embed_key`, `experiment_id`, `public_id` |
+| Per-run | `runs/<run-id>/run_state.yaml` | `connect_opportunity.url` |
+
+## Outputs
+
+- `4-ocs/ocs-widget-handoff-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 
 ## Process
 
-1. **Read inputs from GDrive:**
-   - `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` — staging artifact.
-   - `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md` — for cross-checking embed_key,
-     experiment_id, public_id.
-   - `ACE/<opp-name>/run_state.yaml` — for `connect_opportunity.url`.
+1. **Read inputs from GDrive** (paths in `## Inputs` above).
 
 2. **Detect missing artifacts.** If `widget-handoff.md` is missing,
    emit `verdict: incomplete` with `[INFO] widget-handoff.md not

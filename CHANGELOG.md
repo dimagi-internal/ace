@@ -5,6 +5,23 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.37 — 2026-05-06
+
+**Skills audit PR 3 — Phase 3 + Phase 4 skill rewrites (7 skills).**
+
+- Phase 3 (3): `connect-program-setup`, `connect-program-setup-eval`,
+  `connect-opp-setup`
+- Phase 4 (4): `ocs-agent-setup`, `ocs-chatbot-qa`, `ocs-chatbot-eval`,
+  `ocs-widget-handoff-eval`
+
+Per-skill changes follow the established PR 2 pattern: description
+≤150 chars, `disable-model-invocation: true`, required `## Inputs`
+and `## Outputs` sections, eval skills reference `_eval-template.md`
+for shared verdict shape + severity rules + stock blocks.
+
+Char delta this PR: 12,845 → 11,638 (-1,207).
+Cumulative since baseline: -4,196 / -3,000 (~26% reduction).
+
 ## 0.13.36 — 2026-05-06
 
 **Skills audit PR 2 — Phase 1 + Phase 2 skill rewrites (14 skills).**

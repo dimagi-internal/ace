@@ -1,12 +1,9 @@
 ---
 name: ocs-chatbot-eval
 description: >
-  Judge an OCS chatbot transcript with LLM-as-Judge. Reads a transcript
-  captured by `ocs-chatbot-qa`. In `--quick` mode (Phase 4 default,
-  shallow), scores a single overall_quality_0_to_3 dimension per prompt
-  for fast pass/fail. In `--deep` and `--monitor`, scores 5 dimensions
-  (correctness, source usage, refusal correctness, tone, tagging) and
-  emits the gate brief that Phase 6 `llo-launch` enforces on activation.
+  LLM-as-Judge grader for OCS chatbot transcripts. Modes: --quick (1-dim
+  smoke), --deep / --monitor (5-dim calibrated; emits gate brief).
+disable-model-invocation: true
 ---
 
 # OCS Chatbot Eval
@@ -16,8 +13,22 @@ produce the machine-readable verdict that upstream gates (and the umbrella
 `opp-eval`) consume. This skill is the **eval** half of the qa/eval pair —
 it does not talk to the bot. For the capture half, see `ocs-chatbot-qa`.
 
-See `skills/README.md § QA vs Eval — the two-phase pattern` for the
-framework rationale and artifact-path contract.
+See `skills/_eval-template.md` for shared verdict-shape, severity-rule,
+and stock-block contracts. See `skills/README.md § QA vs Eval — the
+two-phase pattern` for the framework rationale and artifact-path contract.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 4 (`ocs-chatbot-qa`) | `4-ocs/ocs-chatbot-qa_transcript-<mode>.md` | transcript under judgment |
+| Phase 1 (`--deep` only) | `1-design/pdd-to-test-prompts.md` | per-prompt expected-answer summaries (ground truth) |
+
+## Outputs
+
+- `4-ocs/ocs-chatbot-eval_verdict-<mode>.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
+- `4-ocs/ocs-chatbot-eval_gate-brief-<mode>.md` (`--deep` only) — Phase 4 → 5 gate brief
+- `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` — recurring monitor verdict (when `--monitor`)
 
 ## Modes
 

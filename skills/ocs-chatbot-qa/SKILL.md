@@ -1,11 +1,9 @@
 ---
 name: ocs-chatbot-qa
 description: >
-  Exercise an ACE OCS chatbot through the anonymous widget endpoint and
-  capture a structured transcript. Runs structural checks (response
-  received, no errors, citations present). Produces the transcript that
-  `ocs-chatbot-eval` then judges. Three modes: --quick (smoke), --deep
-  (pre-launch), --monitor (recurring).
+  Exercise the per-opp OCS chatbot via its anonymous widget and capture
+  a transcript with structural checks. Modes: --quick / --deep / --monitor.
+disable-model-invocation: true
 ---
 
 # OCS Chatbot QA
@@ -16,6 +14,17 @@ structured transcript at
 the **qa** half of
 the qa/eval pair — it captures evidence and runs cheap structural checks.
 The LLM-as-Judge grading happens separately in `ocs-chatbot-eval`.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 4 | `4-ocs/ocs-agent-setup.md` | `experiment_id`, widget URL, embed credentials |
+| Phase 1 (`--deep` only) | `1-design/pdd-to-test-prompts.md` | opp-specific prompt suite + expected-answer summaries |
+
+## Outputs
+
+- `4-ocs/ocs-chatbot-qa_transcript-<mode>.md` — chat transcript with structural checks (response received, no errors, citations present)
 
 Called from the `ocs-setup` agent in Phase 4 (`--quick` only — shallow
 3-prompt smoke), from the `/ace:qa-deep` slash command (`--deep`,
