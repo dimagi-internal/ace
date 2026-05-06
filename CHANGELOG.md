@@ -5,6 +5,22 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.30 — fix(deps): re-add @anthropic-ai/sdk to package.json
+
+`@anthropic-ai/sdk` was added in 0.13.17 (PR #81's C1 review fix) so
+that `lib/multimedia-judge.ts`'s `import type Anthropic from
+'@anthropic-ai/sdk'` resolves on a fresh `npm install`. It was
+silently dropped during a merge-conflict resolution somewhere between
+0.13.17 and 0.13.18 (parallel work on the connect-auth path). Local
+checkouts that had run `npm install --save @anthropic-ai/sdk`
+previously kept the package as `extraneous` in node_modules, masking
+the loss locally; fresh checkouts would `tsc --noEmit`-fail on the
+type-only import.
+
+This re-adds the dep + updates `package-lock.json`. No behavior
+change at runtime — the affected code path is type-only and the
+runtime callers all stub the Anthropic client.
+
 ## 0.13.29 — 2026-05-06
 
 **multimedia followups: atom file-path mode + form-walk wrapper +
