@@ -1,14 +1,9 @@
 ---
 name: commcare-form-patch
 description: >
-  TEMPORARY workaround for nova-plugin#5 + nova-plugin#6 — apply surgical
-  CommCare HQ form-XML patches when Nova's compile_app produces output that
-  Connect's runtime rejects and Nova's blueprint API can't fix from inside
-  Nova. Reads a per-opp `commcare-patches.yaml` declaring patch classes,
-  patches each affected form via `commcare_patch_xform`, then re-builds and
-  re-releases the app so Connect can ingest the corrected CCZ. Delete this
-  skill (and the backing `commcare_patch_xform` atom) once nova-plugin#5 +
-  #6 ship and a clean LEEP-style Phase 3 e2e succeeds without it.
+  Apply surgical CCHQ form-XML patches when Nova's compile_app emits
+  output Connect rejects, then re-build + re-release. Workaround skill.
+disable-model-invocation: true
 ---
 
 # CommCare Form Patch (TEMPORARY)
@@ -18,7 +13,24 @@ two known-broken render shapes that Connect's `/opportunity/init/`
 rejects with HTTP 500, and Nova's blueprint API gives ACE no way to
 correct them upstream. The skill patches the resulting CommCare HQ
 form XML directly, then re-builds and re-releases the app so the next
-Phase 3 attempt sees a Connect-compatible CCZ.
+Connect setup attempt sees a Connect-compatible CCZ.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Operator-authored | `commcare-patches.yaml` (per-opp) | declarative patch-class list to apply |
+| Phase 2 | `2-commcare/app-deploy_summary.md` | HQ app IDs to target |
+
+## Outputs
+
+- `2-commcare/commcare-form-patch_summary.md` — patches applied per form, re-built/re-released build IDs
+
+## Removal criteria
+
+Delete this skill (and the backing `commcare_patch_xform` atom) once
+nova-plugin#5 + #6 ship and a clean LEEP-style Connect-setup e2e
+succeeds without it.
 
 ## Bugs this skill works around
 

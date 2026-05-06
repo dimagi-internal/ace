@@ -1,16 +1,25 @@
 ---
 name: app-release
 description: >
-  Release the Learn and Deliver CommCare apps that Nova uploaded as drafts.
-  Required between `app-deploy` (Phase 2) and `connect-opp-setup` (Phase 3) —
-  Connect's `Sync Deliver Units` only enumerates units from *released* HQ
-  builds, so unreleased apps make Phase 3 silently impossible.
+  Build and release the Learn + Deliver CommCare apps on CCHQ so Connect
+  can read their form schema and surface deliver units.
+disable-model-invocation: true
 ---
 
 # App Release
 
 Make a new build of each app on CCHQ and mark it as **Released**, so Connect
 can read its form schema and surface deliver units to the opportunity.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 2 | `2-commcare/app-deploy_summary.md` | HQ app IDs for Learn + Deliver apps |
+
+## Outputs
+
+- `2-commcare/app-release_summary.md` — released build IDs + version numbers per app
 
 ## Why this skill exists
 

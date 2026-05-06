@@ -1,11 +1,9 @@
 ---
 name: pdd-to-deliver-app-eval
 description: >
-  Judge a Nova-built Deliver app against the PDD that specified it.
-  Cross-artifact LLM-as-Judge eval — checks that field count, ordering,
-  conditional logic, Connectify wiring, and required-field rules in the
-  built app actually match what the PDD asked for. Writes a verdict YAML
-  in the shared QA/eval shape so opp-eval can aggregate it.
+  Grade a Nova-built Deliver app against the PDD that specified it —
+  field count, ordering, conditional logic, Connectify wiring.
+disable-model-invocation: true
 ---
 
 # PDD-to-Deliver-App Eval
@@ -15,24 +13,25 @@ specifies a precise field count, order, conditional logic, and gate
 semantics, and the Nova build either matches them or doesn't. This
 skill grades that match.
 
-This is a **cross-artifact eval** — it judges agreement between two
-artifacts (`pdd.md` and the Nova-built deliver app) rather than the
-quality of one artifact in isolation. It's the template for future
-cross-artifact rubrics (`pdd-to-learn-app-eval`,
-`learn-vs-deliver-eval`, `connect-opp-vs-pdd-eval`).
+Sibling rubric to `pdd-to-learn-app-eval`. See `skills/_eval-template.md`
+for shared contracts (verdict shape, severity rules, stock blocks)
+and `skills/eval-calibration/SKILL.md` for calibration methodology.
 
-See `skills/README.md § QA vs Eval — the two-phase pattern` and
-`skills/eval-calibration/SKILL.md` for the calibration methodology.
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Deliver App Specification + delivery unit drive expectation |
+| Phase 2 | `2-commcare/pdd-to-deliver-app_summary.md` | Deliver-app structure summary (`nova_app_id`, forms, fields) |
+| Nova MCP (optional) | `get_app({app_id: <nova_app_id>})` | authoritative field-by-field blueprint (recommended) |
+
+## Outputs
+
+- `2-commcare/pdd-to-deliver-app-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 
 ## Process
 
-1. **Read inputs from GDrive:**
-   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
-   - Deliver app summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md`
-     (contains the `nova_app_id` and the human-readable summary).
-   - Optionally fetch the live blueprint via Nova MCP
-     `get_app({app_id: <nova_app_id>})` — provides the authoritative
-     field-by-field structure, not the human summary.
+1. **Read inputs from GDrive** (paths in `## Inputs` above).
 
 2. **Detect HITL-pending stub.** If the deliver app summary contains
    any of:
@@ -93,86 +92,25 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` and
    - All 5 dimensions ≥ 7 AND overall ≥ 7.5 → suite verdict `pass`.
 
 6. **Write the verdict YAML** to
-   `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-deliver-app-eval_verdict.yaml`. The filename uses
-   the **producer** skill name (`pdd-to-deliver-app`), NOT this skill's
-   name — see `agents/ace-orchestrator.md § Per-Step Eval Hook` for
-   the naming rule. Body uses the shared shape (see `skills/README.md §
-   QA vs Eval`):
+   `2-commcare/pdd-to-deliver-app-eval_verdict.yaml` using the shape
+   from `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
 
    ```yaml
-   skill: pdd-to-deliver-app-eval
-   target: <nova_app_id>
-   mode: deep
-   ran_at: <ISO timestamp>
-   capture_path: app-summaries/deliver-app-summary.md  # the snapshot judged
-
-   overall_score: 8.4
-   verdict: pass | warn | fail | incomplete
-
    dimensions:
-     field_count_match:        { score: 9.0, weight: 0.20 }
-     question_order_match:     { score: 9.5, weight: 0.15 }
-     gate_semantics_match:     { score: 8.5, weight: 0.25 }
-     conditional_logic_match:  { score: 7.5, weight: 0.15 }
-     connectify_wiring:        { score: 8.0, weight: 0.25 }
-
-   per_item:
-     - ref: "Q20 consent gate"
-       score: 8.5
-       verdict: pass
-       note: "Present, first in form order, correct short-circuit branch on Q20=no"
-     - ref: "Field count"
-       score: 9.0
-       verdict: pass
-       note: "21 LLO-numbered fields present; 2 hidden computed (case_name, entity_id) and 1 sub-question (Q21b for 'other' reason) added beyond spec"
-     # ... one per check
-
-   auto_surfaced:
-     - severity: WARN
-       message: "Q8 split into Q8 + Q8b in the build (not in PDD spec). Defensible but worth flagging — recheck PDD intent."
-
-   gate:
-     threshold: 7.5
-     disposition: approve | reject | iterate
+     field_count_match:        { weight: 0.20 }
+     question_order_match:     { weight: 0.15 }
+     gate_semantics_match:     { weight: 0.25 }
+     conditional_logic_match:  { weight: 0.15 }
+     connectify_wiring:        { weight: 0.25 }
    ```
 
 7. **Write the human-readable report** to
-   `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-deliver-app-eval_report.md`:
+   `2-commcare/pdd-to-deliver-app-eval_report.md` summarizing each
+   dimension's score, surfaced discrepancies (WARN/INFO table), and
+   suggested Nova edits to bring the build into spec.
 
-   ```markdown
-   # PDD-to-Deliver App Eval Report
-   Date: YYYY-MM-DD
-   PDD: pdd.md
-   Built app: <nova_app_id>
-   Overall Score: X.X / 10
-   Verdict: PASS | WARN | FAIL
-
-   ## Dimension Breakdown
-   - Field-count match: X.X / 10
-   - Question-order match: X.X / 10
-   - Gate semantics match: X.X / 10
-   - Conditional logic match: X.X / 10
-   - Connectify wiring: X.X / 10
-
-   ## Discrepancies surfaced
-
-   | Severity | Detail |
-   |---|---|
-   | WARN | Q8 split into Q8 + Q8b in the build (not in PDD spec) |
-   | INFO | Operational caps documented in form intro copy as expected; enforcement is server-side |
-
-   ## Suggested Nova edits
-   <One bullet per actionable discrepancy. Imperative voice. e.g.
-   "Combine Q8 and Q8b into a single optional numeric field with a
-   `not_disclosed` skip option to match the PDD spec." Skip if no
-   actionable edits.>
-   ```
-
-8. **Auto-surfaced concerns** feed the gate brief (when invoked from
-   the Phase 2→3 gate):
-   - `[BLOCKER]` for any dimension scoring ≤ 3.
-   - `[BLOCKER]` if overall score is below 7.0.
-   - `[WARN]` for each dimension scoring 4.0–6.9.
+8. **Auto-surfaced concerns** (per `_eval-template.md § Auto-surfaced
+   severity rules`, plus skill-specific surfaces):
    - `[WARN]` for each user-facing field present in the build but not
      in the PDD spec.
    - `[INFO]` for hidden/computed fields added beyond spec (case_name,
@@ -210,27 +148,18 @@ run.
 
 ## MCP Tools Used
 
-- Google Drive: `drive_read_file`, `drive_create_file`,
-  `drive_list_folder`
+See `skills/_eval-template.md § MCP Tools Used (stock)` for the Drive
+block. Plus:
 - Nova MCP: `get_app` (authoritative blueprint, recommended over the
   human summary alone)
-- No OCS calls — this skill judges artifacts, not chatbot responses
 
 ## Mode Behavior
 
-- **Auto:** Grade, write verdict + report, return overall score and
-  disposition to the caller (the orchestrator's commcare-setup
-  procedure).
-- **Review:** Pause after grading to let a human eyeball the verdict
-  before the gate brief propagates.
+See `skills/_eval-template.md § Mode Behavior (stock)`.
 
 ## Dry-Run Behavior
 
-When `--dry-run` is active:
-- Read the PDD and app summary normally — these are read-only inputs.
-- Write the verdict + report to Drive (human-facing artifacts; not
-  treated as effectful).
-- State tracks as `dry-run-success`.
+See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 
 ## Change Log
 

@@ -2,9 +2,8 @@
 name: pdd-to-app-journeys
 description: >
   Derive opp-specific expected user journeys from an approved PDD.
-  Output is `expected-journeys.md`, the UX-intent ground truth for
-  `app-test-cases` (Phase 2) and `app-ux-eval` (deep QA). Mirrors
-  pdd-to-test-prompts but for the apps, not the chatbot.
+  Produces the UX-intent ground truth consumed by app-test-cases and app-ux-eval.
+disable-model-invocation: true
 ---
 
 # PDD to App Journeys
@@ -15,24 +14,25 @@ parallel with `pdd-to-test-prompts`. The chatbot side gets Q&A ground
 truth from `pdd-to-test-prompts`; the app side gets UX-intent ground
 truth here.
 
-`expected-journeys.md` is read by:
+## Inputs
 
-- `app-test-cases` (Phase 2) — turns each journey into a concrete
-  per-form test matrix once Nova has built the apps.
-- `app-ux-eval` (deep QA) — LLM-as-Judge over captured screenshots +
-  transcripts, scoring each journey's pass criteria and edge-case
-  recovery.
-- `app-screenshot-capture` (Phase 5) — uses the journey list to decide
-  which step sequences to walk through on the AVD.
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Target FLW persona drive journey generation |
+
+## Outputs
+
+- `1-design/pdd-to-app-journeys.md` — opp-specific expected-user-journey set ("expected-journeys" for short)
+
+Consumers:
+- `app-test-cases` (Phase 2) — turns each journey into a concrete per-form test matrix once Nova has built the apps.
+- `app-ux-eval` (deep QA) — LLM-as-Judge over captured screenshots + transcripts, scoring each journey's pass criteria and edge-case recovery.
+- `app-screenshot-capture` (Phase 5) — uses the journey list to decide which step sequences to walk through on the AVD.
 
 ## Process
 
 1. **Read inputs from GDrive:**
-   > **Note:** This skill uses run-scoped paths (`ACE/<opp>/runs/<run-id>/…`)
-   > per the multi-run revival spec. Some legacy Phase-1 skills still use
-   > opp-scoped paths; the manifest stores the path opp-relative either way.
-
-   - PDD: `ACE/<opp-name>/runs/<run-id>/pdd.md`
+   - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
 
 2. **Read the PDD's `Archetype:` field.** This skill branches on
    archetype — `atomic-visit` uses visit-flow journeys, `focus-group`

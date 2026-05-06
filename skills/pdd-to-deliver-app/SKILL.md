@@ -1,9 +1,9 @@
 ---
 name: pdd-to-deliver-app
 description: >
-  Pass an PDD to Nova (via the `nova` Claude Code plugin) to generate the
-  Deliver app. Capture `nova_app_id` and write a structure summary to
-  GDrive for downstream skills.
+  Build the CommCare Deliver (service-delivery) app from the PDD via
+  Nova's /nova:autobuild. Captures nova_app_id and writes a structure summary.
+disable-model-invocation: true
 ---
 
 # PDD to Deliver App
@@ -11,6 +11,16 @@ description: >
 Generate the Deliver (service delivery) app from the PDD using the Nova
 plugin (`voidcraft-labs/nova-marketplace`, slash command
 `/nova:autobuild`).
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Deliver App Specification + delivery unit drive the Nova brief |
+
+## Outputs
+
+- `2-commcare/pdd-to-deliver-app_summary.md` — Deliver-app structure summary (forms, fields, `nova_app_id`)
 
 ## Process
 
