@@ -22,5 +22,4 @@ flow added in 0.12.0. Synthetic — do not run live skills against it.
   HITL-gated `solicitation-review` step).
 - Phases 1-5 prior artifacts (no Nova app summaries, no Connect
   opportunity, no OCS chatbot config). This fixture is scoped to
-  Phase 6 only — pair with CRISPR-Test-003-Turmeric for a complete
-  pipeline view.
+  Phase 6 only.
