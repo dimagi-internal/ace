@@ -5,6 +5,55 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.22 — 2026-05-05
+
+**fix(connect): `extractCsrfToken` silent fallback was the root of the
+"403 CSRF Failed" runaround.**
+
+The `leep-paint-collection-20260505-1505` Phase 3 Step 2 dispatch
+halted on `403 CSRF Failed: CSRF token missing` from
+`POST /api/programs/<uuid>/opportunities/`. The 0.13.13–0.13.18
+self-heal series each treated the symptom (cookie rotation, full
+re-auth, cross-backend handle refresh) but the actual blocker was a
+fallback in `extractCsrfToken(cookies, domainFilter)` — when the
+domain filter found NO matching csrftoken, the function silently fell
+through to an unfiltered `find` and returned the first csrftoken in
+the jar regardless of domain (typically the `www.commcarehq.org` one
+left over from the OAuth-via-CCHQ bounce). The throw guard in
+`getContext()` (added 0.13.14 specifically to prevent saving without a
+same-domain token) saw a truthy wrong-domain value and didn't fire.
+The broken state got persisted to `~/.ace/connect-session.json`. Every
+subsequent REST POST sent the HQ csrftoken in `X-CSRFToken` against
+`connect.dimagi.com` → 403 CSRF Failed.
+
+The same-domain warning was literally documented in the function's
+own docstring; the implementation contradicted the docstring.
+
+**Fixes:**
+
+1. `extractCsrfToken` — when `domainFilter` is provided and no match
+   exists, return `undefined`. Never fall back. The unfiltered branch
+   remains for callers that omit the filter (legacy back-compat).
+2. `getContext()` and `refreshCsrfToken()` — widen the hydration step
+   from a single `/accounts/login/` GET to a sequence (`/accounts/login/`,
+   `/`, `/api/programs/`) that retries until a `connect.dimagi.com`
+   csrftoken lands in the jar. Stop early on first match.
+3. The hydration-failure throw now includes the cookies actually in
+   the jar (names + domains, no values) and the last response status
+   so the next investigation has data instead of a generic message.
+4. On hydration failure, the stale on-disk state file is dropped so
+   the next `getContext()` runs a fresh OAuth flow rather than
+   reloading the broken state.
+
+Surfaced via `runs/20260505-1505/3-connect/connect-opp-setup_BLOCKED.md`
+(Drive). Test added at
+`test/mcp/connect/unit/csrf-extraction.test.ts` covering all four
+branches of the domain-filter contract — including the regression
+that caused the leep halt.
+
+The 0.13.18 cross-backend Playwright/REST refresh shipped is
+orthogonal to this fix and remains correct.
+
 ## 0.13.20 — fix(lib): addImageItext replaceExisting option
 
 - `lib/multimedia-xform-patch.ts::addImageItext` accepts an
