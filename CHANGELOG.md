@@ -5,6 +5,32 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.20 — fix(lib): addImageItext replaceExisting option
+
+- `lib/multimedia-xform-patch.ts::addImageItext` accepts an
+  optional `{ replaceExisting: boolean }` argument. When `true`, the
+  helper strips any existing `<value form="image">` children from the
+  matching itext text node before adding the new one. Default `false`
+  preserves append-only idempotency on identical URLs.
+- Avoids CCHQ build-validator rejection (`duplicate definition for
+  text ID '<field>-label' and form 'image'`) when the
+  `app-multimedia-coverage` skill is re-run on a form that already
+  has an attached image with a different filename.
+
+## 0.13.19 — fix(connect): commcare_download_ccz include_multimedia flag
+
+- Add `include_multimedia: boolean` option to the `commcare_download_ccz`
+  atom (default `false`). The default lite response is manifest-only;
+  passing `true` returns the full CCZ with multimedia binaries inlined
+  under `commcare/multimedia/...` (live shape: `commcare/image/<filename>`,
+  etc.).
+- Fixes a false-negative in `app-multimedia-coverage`'s verify step (10):
+  the SKILL was using the default lite response and reporting "asset
+  missing" even when the upload had succeeded.
+- Smoke script `scripts/smoke-app-multimedia-coverage.ts` simplified to
+  use the typed flag instead of the previous hardcoded query-string
+  workaround.
+
 ## 0.13.18 — 2026-05-05
 
 **fix(connect): two class-level preventers around the 0.13.15 reauth path.**
@@ -77,6 +103,30 @@ Manual verify line: run `/ace:doctor` against a healthy Connect
 session and confirm `PASS connect_csrf_probe: POST /api/programs/
 (empty body) → 400 (session healthy, CSRF accepted)`. The leep-style
 bug surfaces as `FAIL connect_csrf_probe`.
+
+## 0.13.17 — app-multimedia-coverage skill
+
+- New skill `app-multimedia-coverage` (manual gate, post-Phase 2):
+  attaches display-only images to Connect Learn / Deliver app questions
+  via Dimagi's Content Generator + post-Nova CCZ patching. Manual
+  invocation only; not part of `/ace:run`.
+- New CCHQ atom `commcare_upload_multimedia` to bundle binary assets
+  into the released CCZ. Live contract probed against
+  `connect-ace-prod`; integration tests gated on `CONNECT_INTEGRATION=1`.
+- New helpers under `lib/`: `multimedia-judge`, `content-generator-client`,
+  `multimedia-manifest`, `multimedia-prompt-hash`, `multimedia-xform-patch`.
+- New `.env.tpl` keys: `CONTENT_GENERATOR_URL`,
+  `CONTENT_GENERATOR_API_KEY` (sourced from 1Password "Content
+  Generator API"). `/ace:doctor` reports both.
+- Filed Nova feature request `voidcraft-labs/nova-plugin#8` for
+  field-level multimedia; this skill has explicit removal criteria.
+- (Latent fix) `vitest.config.ts` now picks up co-located
+  `lib/**/*.test.ts` — unblocks 13 pre-existing dormant test files.
+- Live end-to-end smoke ran clean (one-image validation against LEEP
+  Learn `connect-ace-prod`/`4e20ddf5...`, build version 33). Probe
+  scripts `scripts/probe-content-generator.ts` and
+  `scripts/probe-multimedia-upload.ts` retained as durable
+  reproducers.
 
 ## 0.13.16 — 2026-05-05
 

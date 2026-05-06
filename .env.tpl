@@ -110,6 +110,19 @@ ACE_E2E_BACKUP_CODE=op://AI-Agents/connect-test-user/backup-code
 ACE_E2E_NAME="ACE Test"
 ACE_AVD_NAME=ACE_Pixel_API_34
 
+# ── Content Generator (image gen for app-multimedia-coverage) ───────
+#
+# Dimagi's internal image-generation service (Cloud Run, Gemini-3-Flash).
+# Used by the app-multimedia-coverage skill to attach display-only images
+# to CommCare app questions.
+#
+# 1Password item: "Content Generator API" in AI-Agents vault.
+#   - hostname  → CONTENT_GENERATOR_URL
+#   - credential → CONTENT_GENERATOR_API_KEY (Google Cloud API key)
+
+CONTENT_GENERATOR_URL=op://AI-Agents/Content Generator API/hostname
+CONTENT_GENERATOR_API_KEY=op://AI-Agents/Content Generator API/credential
+
 # ─── ACE Training Deck (Slides) ────────────────────────────────────
 # Populated once per environment by `npx tsx scripts/bootstrap-training-deck-template.ts`,
 # stashed in 1Password, and re-injected via `op inject`. The template
