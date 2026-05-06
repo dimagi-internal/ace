@@ -123,10 +123,7 @@ true one-shot debugging artifacts go to `./tmp/ace-debug/`.
      count is ≥ 5 (covers `connect.dimagi.com`, `www.commcarehq.org`,
      `.commcarehq.org`).
    - **Fallback only if HQ creds fail or the account requires interactive
-     SSO/MFA:** `/ace:connect-login` (headed Playwright). The previous
-     `fetchOtp` headed one-liner is no longer the recommended path — it
-     conflates cookie-seeding with OTP-fetching, blocked on user click,
-     and timed out after 5 min.
+     SSO/MFA:** `/ace:connect-login` (headed Playwright).
 
 7. **Verify all `ACE_E2E_*` env vars are populated.**
    - Read each from `process.env`. Any missing → tell the user to update 1Password and re-run `op inject -i .env.tpl -o .env`, then stop.

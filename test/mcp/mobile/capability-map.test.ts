@@ -8,7 +8,6 @@ const EXPECTED_CAPS: Capability[] = [
   'install_apk',
   'uninstall_apk',
   'register_test_user',
-  'fetch_otp',
   'run_recipe',
   'generate_recipes_from_app_summary',
   'capture_ui_dump',
@@ -17,7 +16,7 @@ const EXPECTED_CAPS: Capability[] = [
 ];
 
 describe('mobile capability-map', () => {
-  it('declares exactly 12 capabilities', () => {
+  it('declares exactly 11 capabilities', () => {
     expect(Object.keys(CAPABILITY_MAP).sort()).toEqual([...EXPECTED_CAPS].sort());
   });
 
@@ -27,8 +26,7 @@ describe('mobile capability-map', () => {
     }
   });
 
-  it('routes register_test_user and fetch_otp through COMPOSITE', () => {
+  it('routes register_test_user through COMPOSITE', () => {
     expect(CAPABILITY_MAP.register_test_user.backend).toBe('COMPOSITE');
-    expect(CAPABILITY_MAP.fetch_otp.backend).toBe('COMPOSITE');
   });
 });

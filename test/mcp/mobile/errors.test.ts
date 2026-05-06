@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  MobileError, AvdBootError, OtpFetchError, RecipeValidationError, AdbError, MaestroError
+  MobileError, AvdBootError, RecipeValidationError, AdbError, MaestroError
 } from '../../../mcp/mobile/errors.js';
 
 describe('mobile errors', () => {
@@ -10,15 +10,6 @@ describe('mobile errors', () => {
     expect(err.code).toBe('AVD_BOOT_FAILED');
     expect(err.remediation).toMatch(/ace:mobile-bootstrap/);
     expect(err.message).toContain('ACE_Pixel_API_34');
-  });
-
-  it('OtpFetchError distinguishes signed-out vs not-found', () => {
-    const signedOut = new OtpFetchError('AUTH_REQUIRED', '+74260000001');
-    expect(signedOut.code).toBe('OTP_AUTH_REQUIRED');
-    expect(signedOut.remediation).toMatch(/PHASE9_HEADED|headed/i);
-
-    const notFound = new OtpFetchError('NOT_FOUND', '+74260000099');
-    expect(notFound.code).toBe('OTP_NOT_FOUND');
   });
 
   it('RecipeValidationError includes the offending YAML path', () => {

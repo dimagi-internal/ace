@@ -28,10 +28,9 @@ function fakeMaestroAndAvd(opts: {
 }
 
 describe('MobileClient.registerTestUser', () => {
-  it('runs to-otp, fetches OTP, runs from-otp, returns success', async () => {
+  it('runs to-otp then from-otp recipes and returns success', async () => {
     const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'pass', otp: '123456' });
-    const client = new MobileClient({ avd, maestro, staticRecipesDir: '/static', playwrightUserDataDir: '/ud' });
-    (client as any).fetchOtp = vi.fn().mockResolvedValue({ phone: '+74260000001', otp: '123456', fetchedAt: 't' });
+    const client = new MobileClient({ avd, maestro, staticRecipesDir: '/static' });
 
     const r = await client.registerTestUser({
       avdName: 'AVD', phone: '+74260000001', phoneLocal: '4260000001', countryCode: '+7',
@@ -45,8 +44,7 @@ describe('MobileClient.registerTestUser', () => {
 
   it('detects PHONE_ALREADY_REGISTERED and returns alreadyRegistered=true', async () => {
     const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'already', otp: '123456' });
-    const client = new MobileClient({ avd, maestro, staticRecipesDir: '/static', playwrightUserDataDir: '/ud' });
-    (client as any).fetchOtp = vi.fn().mockResolvedValue({ phone: '+74260000001', otp: '123456', fetchedAt: 't' });
+    const client = new MobileClient({ avd, maestro, staticRecipesDir: '/static' });
 
     const r = await client.registerTestUser({
       avdName: 'AVD', phone: '+74260000001', phoneLocal: '4260000001', countryCode: '+7',

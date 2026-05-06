@@ -4,10 +4,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { AvdBackend } from './backends/avd.js';
 import { MaestroBackend } from './backends/maestro.js';
-import { fetchOtp } from './auth/fetch-otp.js';
 import { RecipeGenerator, type LlmFn } from './backends/recipe-generator.js';
 import type {
-  AvdInfo, ApkInfo, RecipeRunResult, OtpResult, TestUserRegistrationResult, UiDumpResult,
+  AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
   SnapshotResult,
 } from './types.js';
 import { logInfo } from './logging.js';
@@ -16,13 +15,9 @@ export interface MobileClientOpts {
   avd?: AvdBackend;
   maestro?: MaestroBackend;
   staticRecipesDir?: string;
-  playwrightUserDataDir?: string;
 }
 
 const DEFAULT_STATIC_DIR = new URL('./recipes/static/', import.meta.url).pathname;
-const DEFAULT_PLAYWRIGHT_DIR =
-  process.env.ACE_PLAYWRIGHT_USER_DATA_DIR ||
-  path.join(process.env.HOME ?? '', '.ace', 'playwright-userdata');
 
 export interface DriveAdapter {
   readFile(driveId: string, filePath: string): Promise<string>;
@@ -34,13 +29,11 @@ export class MobileClient {
   readonly avd: AvdBackend;
   readonly maestro: MaestroBackend;
   readonly staticRecipesDir: string;
-  readonly playwrightUserDataDir: string;
 
   constructor(opts: MobileClientOpts = {}) {
     this.avd = opts.avd ?? new AvdBackend();
     this.maestro = opts.maestro ?? new MaestroBackend();
     this.staticRecipesDir = opts.staticRecipesDir ?? DEFAULT_STATIC_DIR;
-    this.playwrightUserDataDir = opts.playwrightUserDataDir ?? DEFAULT_PLAYWRIGHT_DIR;
   }
 
   // ---- Atom-level methods (one per capability) ----
@@ -58,10 +51,6 @@ export class MobileClient {
   }
   loadSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
     return this.avd.loadSnapshot(avdName, snapshotName);
-  }
-
-  fetchOtp(phone: string, headed = false): Promise<OtpResult> {
-    return fetchOtp(phone, { userDataDir: this.playwrightUserDataDir, headed });
   }
 
   /**
