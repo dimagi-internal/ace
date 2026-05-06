@@ -5,6 +5,24 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.23 — test(fixture): capture golden judge YAML from live skill run
+
+First operator-runnable end-to-end pass of `app-multimedia-coverage`
+post-PR-#84 wrapper-rewrite. Drove the skill manually against
+`connect-ace-prod` / LEEP Learn (`4e20ddf5beca42278c4d2c20383eb943`),
+3 images, ~3.5 min wall-clock. Verified the released CCZ contains all
+bundled assets and matching form-XML references. Build 42 / build_id
+`7744a1612ce546e29cc07c193ea06e9a`.
+
+The judge picked, with `--max-images=3`:
+- `m4f0/three_photos` — front/back/batch reference diagram
+- `m4f0/worked_example` — acceptable vs unacceptable photos grid
+- `m3f0/prefer_one_litre` — 1L vs 4L can size visual
+
+Captured the 83-row candidates YAML into the smoke fixture as
+ground-truth for future regression detection. Replaces the placeholder
+shipped in PR #81.
+
 ## 0.13.22 — 2026-05-05
 
 **fix(connect): `extractCsrfToken` silent fallback was the root of the
