@@ -5,6 +5,31 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.21 — fix(skill): app-multimedia-coverage operator-runnable
+
+The `skills/app-multimedia-coverage/SKILL.md` previously referenced
+TypeScript functions in `lib/` that aren't directly callable from a
+skill prompt. Two new CLI wrappers + a SKILL.md rewrite make the skill
+actually operator-runnable.
+
+- New: `scripts/run-content-generator.ts` — CLI wrapper for
+  `ContentGeneratorClient.generateImage`. Reads input JSON, writes PNG.
+- New: `scripts/run-xform-patch.ts` — CLI wrapper for `addImageItext`.
+  Reads form XML + bindings JSON, writes patched XML.
+- Rewritten: `skills/app-multimedia-coverage/SKILL.md`. Each
+  `lib/...::function` reference now resolves to either a Bash
+  invocation of one of the new wrappers, an MCP atom, a Bash one-liner
+  (prompt-hash via `shasum -a 256`), or operator-LLM reasoning (the
+  per-field judge). The Application Context, Removal criteria, and
+  orphan-pruning gotcha are all preserved.
+- Lib code unchanged — `lib/multimedia-*.ts` remain as tested rubric
+  implementations for non-LLM callers.
+- Tests: 10 new unit tests under `test/scripts/` cover the wrapper
+  contracts (XML on stdout, JSON summary on stderr, `--replace-existing`
+  honored, exit codes for usage / missing-env / bad-input paths).
+  Live-API smoke confirmed `run-content-generator.ts` produces a
+  valid PNG end-to-end (~66s for `upscale: false`).
+
 ## 0.13.20 — fix(lib): addImageItext replaceExisting option
 
 - `lib/multimedia-xform-patch.ts::addImageItext` accepts an
