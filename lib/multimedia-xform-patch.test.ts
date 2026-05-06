@@ -52,4 +52,35 @@ describe('addImageItext', () => {
     expect(out.xml).toContain('jr://file/commcare/image/a.png');
     expect(out.xml).toContain('jr://file/commcare/image/b.png');
   });
+
+  it('with replaceExisting=true, replaces a prior <image> entry instead of appending', () => {
+    // Apply once with filename A, then once with filename B + replaceExisting
+    const first = addImageItext(FIXTURE, [
+      { fieldId: 'kmc_position_demo', cczFilename: 'A.png' },
+    ]);
+    const second = addImageItext(
+      first.xml,
+      [{ fieldId: 'kmc_position_demo', cczFilename: 'B.png' }],
+      { replaceExisting: true },
+    );
+
+    expect(second.patched).toBe(true);
+    // Only the new asset should remain; the old one is gone.
+    expect(second.xml).toContain('jr://file/commcare/image/B.png');
+    expect(second.xml).not.toContain('jr://file/commcare/image/A.png');
+    // The original label text must remain intact.
+    expect(second.xml).toContain("Show the mother how to support the baby's head and neck.");
+    // applied should reflect the field that was modified.
+    expect(second.applied).toContain('kmc_position_demo');
+  });
+
+  it('default (replaceExisting unset) preserves the existing append-only behavior', () => {
+    // No regression on the case the existing tests already cover —
+    // just adding a sentinel test so the change is intentional.
+    const out = addImageItext(FIXTURE, [
+      { fieldId: 'kmc_position_demo', cczFilename: 'fresh.png' },
+    ]);
+    expect(out.patched).toBe(true);
+    expect(out.xml).toContain('jr://file/commcare/image/fresh.png');
+  });
 });

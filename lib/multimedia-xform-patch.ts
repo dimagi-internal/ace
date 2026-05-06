@@ -25,11 +25,30 @@ export interface PatchResult {
   notFound: string[]; // field ids with no matching itext text
 }
 
-export function addImageItext(xml: string, bindings: ImageBinding[]): PatchResult {
+export interface AddImageItextOptions {
+  /**
+   * If true, strip any existing `<value form="image">` children from the
+   * matching itext text node before adding the new one. Default `false`
+   * preserves append-only idempotency on identical URLs.
+   *
+   * Use this when re-running the multimedia-coverage skill on a form that
+   * already has an attached image with a different filename — without it,
+   * CCHQ's build validator rejects with `duplicate definition for text ID
+   * '<field>-label' and form 'image'`.
+   */
+  replaceExisting?: boolean;
+}
+
+export function addImageItext(
+  xml: string,
+  bindings: ImageBinding[],
+  options?: AddImageItextOptions,
+): PatchResult {
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
   const applied: string[] = [];
   const skipped: string[] = [];
   const notFound: string[] = [];
+  const replaceExisting = options?.replaceExisting === true;
 
   // Find every <text id="..."> node anywhere; loose match handles
   // multi-translation forms (each <translation lang="..."> has its own copy).
@@ -46,6 +65,15 @@ export function addImageItext(xml: string, bindings: ImageBinding[]): PatchResul
     const jrUrl = `jr://file/commcare/image/${b.cczFilename}`;
     let modifiedThisField = false;
     for (const t of matches) {
+      if (replaceExisting) {
+        Array.from(t.getElementsByTagName('value'))
+          .filter((v) => v.getAttribute('form') === 'image')
+          .forEach((v) => {
+            v.parentNode?.removeChild(v);
+            modifiedThisField = true;
+          });
+      }
+
       const existing = Array.from(t.getElementsByTagName('value')).some(
         (v) => v.getAttribute('form') === 'image' && (v.textContent ?? '').trim() === jrUrl,
       );
