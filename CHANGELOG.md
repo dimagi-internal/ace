@@ -5,6 +5,26 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.39 — 2026-05-06
+
+**Skills audit PR 5 — Phase 6 + Phase 7 skill rewrites (16 skills).**
+
+Phase 6 (5): `solicitation-create`, `solicitation-create-eval`,
+`solicitation-monitor`, `solicitation-review`, `solicitation-review-eval`.
+
+Phase 7 (11): `llo-invite`, `llo-onboarding`, `llo-uat`, `llo-launch`,
+`llo-launch-eval`, `llo-feedback`, `flw-data-review`,
+`flw-data-review-eval`, `timeline-monitor`, `email-communicator`,
+`upload-transcript`.
+
+Per-skill changes follow the established pattern: description ≤140
+chars, `disable-model-invocation: true`. Phase 6 skills reference
+`_solicitation-template.md`; eval skills reference `_eval-template.md`.
+
+Char delta this PR: 9,450 → 7,469 (-1,981).
+Cumulative since baseline: -8,365 / -3,000 (~53% reduction). **ACE
+description budget is now under the conservative 8K aggregate cap.**
+
 ## 0.13.38 — 2026-05-06
 
 **Skills audit PR 4 — Phase 5 skill rewrites (11 skills).**

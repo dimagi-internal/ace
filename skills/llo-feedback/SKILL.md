@@ -1,8 +1,9 @@
 ---
 name: llo-feedback
 description: >
-  Prompt LLOs for feedback about the application, process, and suggestions
-  for next steps. Collect and document responses.
+  Prompt LLOs for feedback on application, process, and next-step
+  suggestions. Collect and document responses for closeout.
+disable-model-invocation: true
 ---
 
 # LLO Feedback

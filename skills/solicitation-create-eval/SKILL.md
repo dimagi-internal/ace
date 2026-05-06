@@ -1,13 +1,17 @@
 ---
 name: solicitation-create-eval
 description: >
-  Provisional LLM-as-Judge rubric for solicitation-create. Grades whether
-  the published solicitation faithfully reflects the PDD's intervention
-  scope, has complete fields, and ships a sensible deadline. Calibrated
-  per skills/eval-calibration once 3+ real solicitations have shipped.
+  Grade a published solicitation against its source PDD — scope
+  fidelity, field completeness, deadline sensibility.
+disable-model-invocation: true
 ---
 
 # Solicitation Create — Eval
+
+See `skills/_eval-template.md` for shared verdict / severity / stock-block
+contracts. See `skills/_solicitation-template.md` for the labs-MCP atom
+inventory. Calibrated per `skills/eval-calibration/SKILL.md` once 3+
+real solicitations have shipped (provisional today).
 
 Cross-artifact LLM-as-Judge eval. Reads the source PDD plus
 `solicitation/draft.md` and `solicitation/published.md`, scores the

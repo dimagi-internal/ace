@@ -1,11 +1,9 @@
 ---
 name: solicitation-create
 description: >
-  Phase 6 step 1 (auto, default run). Translate the approved PDD into a
-  solicitation payload, derive evaluation criteria via labs's
-  generate_criteria endpoint, and publish the solicitation via the
-  connect-labs MCP. Captures solicitation_id and public_url for downstream
-  skills.
+  Translate the PDD into a solicitation payload, derive evaluation
+  criteria, and publish via connect-labs MCP. Captures solicitation_id.
+disable-model-invocation: true
 ---
 
 # Solicitation Create
@@ -14,10 +12,18 @@ Phase 6 default-run skill. Builds and publishes the solicitation in one
 shot — ACE always publishes, never drafts. The solicitation can be edited
 post-publish via the labs UI without affecting responses.
 
+See `skills/_solicitation-template.md` for the shared `opp.yaml.solicitation`
+contract and connect-labs MCP atom inventory.
+
 ## Inputs
 
 - `ACE/<opp-name>/inputs/pdd.md` — approved PDD (intervention, scope, success criteria, total_budget, optional Solicitation section)
 - `ACE/<opp-name>/opp.yaml` — program_id, archetype, opp display name
+
+## Outputs
+
+- `6-solicitation-management/solicitation-create_summary.md` — solicitation_id, public_url, deadline, audit trail
+- `opp.yaml.solicitation` block populated (id, public_url, deadline, status: open)
 
 ## Process
 

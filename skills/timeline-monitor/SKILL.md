@@ -1,8 +1,9 @@
 ---
 name: timeline-monitor
 description: >
-  Monitor whether LLOs are hitting expected milestones on schedule.
-  Send prompting emails if behind. Runs recurring during active opp.
+  Watch whether LLOs are hitting expected milestones on schedule.
+  Email prompts when behind. Recurring during active opp.
+disable-model-invocation: true
 ---
 
 # Timeline Monitor

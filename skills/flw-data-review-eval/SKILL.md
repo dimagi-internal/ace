@@ -1,12 +1,9 @@
 ---
 name: flw-data-review-eval
 description: >
-  Judge a recurring `flw-data-review` report's quality. Cross-skill
-  LLM-as-Judge eval — checks signal coverage, outlier-detection
-  rigor, recommendation actionability, evidence citation, and
-  trajectory awareness. Recurring rubric — runs once per
-  flw-data-review report during active opp. Writes a verdict YAML
-  in the shared QA/eval shape.
+  Grade an flw-data-review report — signal coverage, outlier rigor,
+  recommendation actionability, evidence citation, trajectory awareness.
+disable-model-invocation: true
 ---
 
 # FLW Data Review Eval
