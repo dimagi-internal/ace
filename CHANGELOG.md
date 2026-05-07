@@ -5,7 +5,7 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.13.64 — 2026-05-06
+## 0.13.66 — 2026-05-06
 
 **Fix #129: swap `googleapis` for per-API subpackages — node_modules drops 332 MB → 141 MB.**
 
