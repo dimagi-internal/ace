@@ -5,6 +5,31 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.66 — 2026-05-06
+
+**Fix #129: swap `googleapis` for per-API subpackages — node_modules drops 332 MB → 141 MB.**
+
+`googleapis` is a meta-package that bundles auto-generated types for every Google API in existence (~194 MB). ACE only uses 4 of them (Drive, Docs, Sheets, Slides) plus the auth client. Every `/ace:update` was paying the full 194 MB whether it used 4 APIs or 400, and across 60+ historical versions on one operator's machine that came to 22 GB of stale cache.
+
+Swap `googleapis` (194 MB) for the per-API subpackages plus `google-auth-library`:
+
+| Before | After |
+|---|---|
+| `googleapis` 194 MB | `@googleapis/drive` 2.3 MB |
+|   | `@googleapis/docs` 488 KB |
+|   | `@googleapis/sheets` 772 KB |
+|   | `@googleapis/slides` 412 KB |
+|   | `google-auth-library` 776 KB |
+| **194 MB** | **~4.7 MB** |
+
+`node_modules/` total: **332 MB → 141 MB** (-58%). Per-cache footprint: ~330 MB → ~150 MB.
+
+Migration uses a one-line shim (`lib/google-shim.ts`) that re-exports `{ drive, docs, sheets, slides, auth }` so the existing `import { google } from '…'` call shape is preserved across all 16 call sites in `mcp/` + `scripts/`. Only the import path changes per file — no `google.drive(…)` / `new google.auth.GoogleAuth(…)` usage rewrite. Smaller diff, easier to revert.
+
+Tests: 234/234 pass. Typecheck clean. `mcp/google-drive-server.ts` boots cleanly under the shim (verified via stdio smoke).
+
+
+
 ## 0.13.58 — 2026-05-06
 
 **Fix #116: codify the phase write-back contract + add an orchestrator-side verifier.**

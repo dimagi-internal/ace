@@ -5,7 +5,7 @@
  *
  * Safe to re-run; idempotent.
  */
-import { google } from 'googleapis';
+import { google } from '../lib/google-shim.js';
 import * as fs from 'node:fs';
 
 const KEY_FILE = `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
