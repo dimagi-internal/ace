@@ -37,8 +37,24 @@
  *
  * What that leaves: the failure is in either (a) Connect's mobile API
  * when the AVD calls "start learning", or (b) the CommCare Android
- * runtime trying to launch the app. Both need adb logcat from a live
- * AVD reproduction to diagnose.
+ * runtime trying to launch the app.
+ *
+ * 2026-05-07 follow-up: ROOT CAUSE FOUND. The released Learn CCZ has
+ * Nova-emitted `<module xmlns="…connect…">` + `<assessment xmlns="…connect…">`
+ * wrapper elements in form XML — 16 wrapper references across 16 forms
+ * for LEEP Learn vs ZERO references in the canonical-working Turmeric
+ * Learn CCZ (`76fd5f0e2834454bb946bdf9ae9bff71`). The wrappers used to
+ * break Connect's `/opportunity/init/` (HTTP 500) until Connect was
+ * patched server-side; they still break the AVD's CommCare runtime at
+ * Learn-app launch time. ACE has a workaround skill `commcare-form-patch`
+ * (`assessment-removal` patch class) that strips them, but it was a
+ * MANUAL skill not part of `/ace:run`. As of 0.13.66 Phase 2's Step 2.8
+ * invokes it automatically. Tracking: voidcraft-labs/nova-plugin#7,
+ * jjackson/ace#115 finding 1.
+ *
+ * The probe still has diagnostic value when the wrapper-bearing app
+ * isn't the cause — adb logcat will confirm whether you're hitting the
+ * wrapper class or something else.
  *
  * Usage:
  *
