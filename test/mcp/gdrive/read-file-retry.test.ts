@@ -124,4 +124,54 @@ describe('drive_read_file: retry on transient 5xx', () => {
     expect(r.content).toBe('doc body');
     expect(delays).toEqual([1000]);
   });
+
+  // Background: jjackson/ace#106 finding 4 — drive_read_file used to return
+  // raw binary as a JSON-corrupted "string" for non-text mimetypes (PDF,
+  // docx, xlsx, etc.). Now refuses with a typed error pointing at
+  // drive_download_binary.
+  describe('binary-mimetype rejection (regression: #106 finding 4)', () => {
+    const cases: Array<[string, string]> = [
+      ['application/pdf', 'PDF'],
+      ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'DOCX'],
+      ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'XLSX'],
+      ['image/png', 'PNG'],
+      ['application/zip', 'ZIP/CCZ'],
+      ['audio/mpeg', 'audio'],
+    ];
+
+    for (const [mimeType, label] of cases) {
+      it(`refuses ${label} (mimeType=${mimeType}) with unsupported_binary_mimetype`, async () => {
+        fake.queueGet(() => ({ data: { mimeType, name: `f.${label.toLowerCase()}`, version: '1' } }));
+        const { sleep } = makeRecordingSleep();
+        await expect(handleReadFile({ fileId: 'f1' }, fake as any, { sleep })).rejects.toThrow(
+          /unsupported_binary_mimetype/,
+        );
+      });
+    }
+
+    it('error message names drive_download_binary as the right tool', async () => {
+      fake.queueGet(() => ({ data: { mimeType: 'application/pdf', name: 'a.pdf', version: '1' } }));
+      const { sleep } = makeRecordingSleep();
+      await expect(handleReadFile({ fileId: 'f1' }, fake as any, { sleep })).rejects.toThrow(
+        /drive_download_binary/,
+      );
+    });
+
+    it('still accepts text/markdown', async () => {
+      fake.queueGet(() => ({ data: { mimeType: 'text/markdown', name: 'a.md', version: '1' } }));
+      fake.queueGet(() => ({ data: '# heading\n' }));
+      const { sleep } = makeRecordingSleep();
+      const r = await handleReadFile({ fileId: 'f1' }, fake as any, { sleep });
+      expect(r.mimeType).toBe('text/markdown');
+      expect(r.content).toBe('# heading\n');
+    });
+
+    it('still accepts application/json', async () => {
+      fake.queueGet(() => ({ data: { mimeType: 'application/json', name: 'a.json', version: '1' } }));
+      fake.queueGet(() => ({ data: '{"k":"v"}' }));
+      const { sleep } = makeRecordingSleep();
+      const r = await handleReadFile({ fileId: 'f1' }, fake as any, { sleep });
+      expect(r.content).toBe('{"k":"v"}');
+    });
+  });
 });

@@ -362,7 +362,7 @@ server.tool(
 // 9. Read a Drive file
 server.tool(
   'drive_read_file',
-  'Read the text content of a file in Google Drive. Works with Google Docs (exported as plain text) and plain text files. Returns revisionVersion so callers can pair the read with an optimistic-concurrency `ifMatchRevisionId` on `drive_update_file` (read-modify-write without lost updates). Transient 5xx responses from the Drive API are retried internally (3 attempts, 1s/2s/4s backoff) so callers do not need to wrap each read in their own retry loop.',
+  'Read the text content of a file in Google Drive. Works with Google Docs (exported as plain text), text/* files (markdown, plain text, etc.), and JSON/YAML/XML/CSV variants. Refuses non-text mimetypes (PDF, docx/xlsx/pptx, images, audio, zip) with a typed `unsupported_binary_mimetype` error pointing at `drive_download_binary` — pre-#106-finding-4 the read returned raw binary as a JSON-corrupted string and silently fed garbage into callers. Returns revisionVersion so callers can pair the read with an optimistic-concurrency `ifMatchRevisionId` on `drive_update_file` (read-modify-write without lost updates). Transient 5xx responses are retried internally (3 attempts, 1s/2s/4s backoff).',
   {
     fileId: z.string().describe('The Google Drive file ID'),
   },
@@ -443,7 +443,9 @@ server.tool(
       // small enough that the retry-once strategy in the orchestrator is
       // sufficient.
       if (ifMatchRevisionId) {
-        const meta = await drive.files.get({ fileId, fields: 'version', supportsAllDrives: true });
+        const meta = await withTransientRetry(() =>
+          drive.files.get({ fileId, fields: 'version', supportsAllDrives: true }),
+        );
         const current = (meta.data as any).version as string | undefined;
         if (current && current !== ifMatchRevisionId) {
           return error(
@@ -452,12 +454,12 @@ server.tool(
           );
         }
       }
-      const resp = await drive.files.update({
+      const resp = await withTransientRetry(() => drive.files.update({
         fileId,
         media: { mimeType: 'text/plain', body: newContent },
         fields: 'id, name, modifiedTime, version',
         supportsAllDrives: true,
-      });
+      }));
       return result({
         id: resp.data.id,
         name: resp.data.name,
@@ -585,6 +587,23 @@ server.tool(
   },
 );
 
+// 11c. Download a binary file (PDF, DOCX, XLSX, image, etc.) from Drive
+server.tool(
+  'drive_download_binary',
+  'Download a binary or non-Google-Doc file from Google Drive and return its bytes base64-encoded. The companion atom to `drive_upload_binary`. Use for PDFs, docx/xlsx/pptx, images, audio, zip (CCZ), etc. — any mimeType that `drive_read_file` rejects with `unsupported_binary_mimetype`. Returns `{ id, name, mimeType, size, content_base64 }`. Caller is responsible for decoding (e.g. `Buffer.from(content_base64, "base64")` in JS or `base64.b64decode` in Python). Skills that need extracted text from PDF/DOCX/XLSX should pair this with their own extractor — server-side text extraction is intentionally NOT done here so this stays a pure transport atom. Transient 5xx responses retried internally (3 attempts, 1s/2s/4s backoff). Tracking: jjackson/ace#106 finding 4.',
+  {
+    fileId: z.string().describe('The Google Drive file ID. Resolves Drive shortcuts transparently.'),
+  },
+  async ({ fileId }) => {
+    try {
+      const r = await handleDownloadBinary({ fileId }, drive);
+      return result(r);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
 /**
  * Classify an error thrown by the googleapis client as a transient 5xx that
  * should be retried, vs a permanent error (4xx, auth, malformed args) that
@@ -676,14 +695,117 @@ export async function handleReadFile(
       driveClient.files.export({ fileId: resolvedId, mimeType: 'text/plain' }, { responseType: 'text' }),
     );
     content = resp.data as string;
-  } else {
+  } else if (isTextMimeType(mimeType)) {
     const resp = await retry(() =>
       driveClient.files.get({ fileId: resolvedId, alt: 'media', supportsAllDrives: true }, { responseType: 'text' }),
     );
     content = resp.data as string;
+  } else {
+    // Non-Google-Doc, non-text mimetype (PDF, docx, xlsx, image, audio,
+    // zip, etc.). The pre-#106-finding-4 code path returned the raw bytes
+    // as a JSON-corrupted "string", which (a) blew past the inline-content
+    // token budget on big PDFs, (b) survived JSON encoding by mangling
+    // multi-byte sequences, and (c) silently fed garbage into callers.
+    // Refuse loudly with a typed error pointing at the right tool — same
+    // class of fix as the OCS `{collection_index_summaries}` invariant
+    // (boundary-rejecting silent-failure modes). Tracking: jjackson/ace#106
+    // finding 4.
+    throw new Error(
+      `unsupported_binary_mimetype: drive_read_file cannot return raw binary content (mimeType=${mimeType}). ` +
+        `Use drive_download_binary for binary file types (PDF, docx, xlsx, images, audio, zip). ` +
+        `For Google Sheets / Slides, drive_read_file does not currently support text export — ` +
+        `download via drive_download_binary or open the file in Drive directly.`,
+    );
   }
 
   return { name: (meta.data as any).name, mimeType, content, revisionVersion };
+}
+
+/**
+ * Download-binary handler, exported for unit testing with a mocked Drive
+ * client. Returns `{ id, name, mimeType, size, content_base64 }`. Resolves
+ * Drive shortcuts transparently to the same target the read path follows.
+ * Each underlying Drive API call is wrapped in `withTransientRetry`.
+ */
+export async function handleDownloadBinary(
+  args: { fileId: string },
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{ id: string; name: string; mimeType: string; size: number; content_base64: string }> {
+  const { fileId } = args;
+  const retry = <T>(op: () => Promise<T>) => withTransientRetry(op, opts);
+
+  const meta = await retry(() =>
+    driveClient.files.get({
+      fileId,
+      fields: 'id, name, mimeType, size, shortcutDetails',
+      supportsAllDrives: true,
+    }),
+  );
+  let resolvedId = (meta.data as any).id || fileId;
+  let mimeType = (meta.data as any).mimeType || '';
+  let name = (meta.data as any).name || '';
+
+  if (mimeType === 'application/vnd.google-apps.shortcut') {
+    const targetId = (meta.data as any).shortcutDetails?.targetId;
+    if (!targetId) throw new Error('Shortcut has no target file ID');
+    const targetMeta = await retry(() =>
+      driveClient.files.get({
+        fileId: targetId,
+        fields: 'id, name, mimeType, size',
+        supportsAllDrives: true,
+      }),
+    );
+    resolvedId = targetId;
+    mimeType = (targetMeta.data as any).mimeType || '';
+    name = (targetMeta.data as any).name || name;
+  }
+
+  if (mimeType.startsWith('application/vnd.google-apps.')) {
+    throw new Error(
+      `cannot_download_native_google_doc: file ${resolvedId} is a native Google Doc/Sheet/Slides ` +
+        `(mimeType=${mimeType}). Native Docs editors files have no binary representation. ` +
+        `Use drive_read_file to text-export Docs, or open the file in Drive to download a converted format.`,
+    );
+  }
+
+  const resp = await retry(() =>
+    driveClient.files.get(
+      { fileId: resolvedId, alt: 'media', supportsAllDrives: true },
+      { responseType: 'arraybuffer' },
+    ),
+  );
+  const buf = Buffer.from(resp.data as ArrayBuffer);
+  return {
+    id: resolvedId,
+    name,
+    mimeType,
+    size: buf.length,
+    content_base64: buf.toString('base64'),
+  };
+}
+
+/**
+ * Mimetypes that drive_read_file safely returns inline as text. Anything
+ * else either round-trips as a Google Doc export (text/plain) or, if it's
+ * a true binary, surfaces as `unsupported_binary_mimetype`.
+ *
+ * The list intentionally errs on the side of "safe to return" — omitting
+ * a mimetype means a fail-closed error rather than silently corrupting
+ * the read.
+ */
+function isTextMimeType(mimeType: string): boolean {
+  if (!mimeType) return false;
+  if (mimeType.startsWith('text/')) return true;
+  // Common JSON / YAML / CSV variants that masquerade as application/* but
+  // are textual on the wire.
+  return [
+    'application/json',
+    'application/yaml',
+    'application/x-yaml',
+    'application/xml',
+    'application/csv',
+  ].includes(mimeType);
 }
 
 /**
@@ -714,12 +836,12 @@ export async function handleUpdateYamlFile(
     const newContent = YAML.stringify(merged);
 
     try {
-      const resp = await driveClient.files.update({
+      const resp = await withTransientRetry(() => driveClient.files.update({
         fileId,
         media: { mimeType: 'text/plain', body: newContent },
         fields: 'id, name, modifiedTime, version',
         supportsAllDrives: true,
-      } as any);
+      } as any));
       return {
         id: (resp.data as any).id,
         name: (resp.data as any).name,
@@ -751,24 +873,26 @@ export async function handleUpdateYamlFile(
 export async function handleCreateFolder(
   args: { name: string; parentFolderId: string; findOrCreate?: boolean },
   driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<{ id: string; name: string; webViewLink?: string }> {
   const { name, parentFolderId, findOrCreate = true } = args;
+  const retry = <T>(op: () => Promise<T>) => withTransientRetry(op, opts);
   const guard = await assertParentOnSharedDrive(parentFolderId, driveClient);
   if (!guard.ok) throw new Error(guard.message);
   if (findOrCreate) {
     const escaped = name.replace(/'/g, "\\'");
-    const list = await driveClient.files.list({
+    const list = await retry(() => driveClient.files.list({
       q: `mimeType='application/vnd.google-apps.folder' and name='${escaped}' and '${parentFolderId}' in parents and trashed=false`,
       fields: 'files(id, name, webViewLink)',
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
-    });
+    }));
     const existing = list.data.files?.[0];
     if (existing?.id) {
       return { id: existing.id, name: existing.name!, webViewLink: existing.webViewLink ?? undefined };
     }
   }
-  const resp = await driveClient.files.create({
+  const resp = await retry(() => driveClient.files.create({
     requestBody: {
       name,
       mimeType: 'application/vnd.google-apps.folder',
@@ -776,7 +900,7 @@ export async function handleCreateFolder(
     },
     fields: 'id, name, webViewLink',
     supportsAllDrives: true,
-  });
+  }));
   return { id: resp.data.id!, name: resp.data.name!, webViewLink: resp.data.webViewLink ?? undefined };
 }
 
@@ -802,8 +926,10 @@ export async function handleCreateFolder(
 export async function handleCreateFile(
   args: { name: string; content: string; parentFolderId: string; findOrCreate?: boolean },
   driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<{ id: string; name: string; webViewLink?: string; reused?: boolean }> {
   const { name, content, parentFolderId, findOrCreate = true } = args;
+  const retry = <T>(op: () => Promise<T>) => withTransientRetry(op, opts);
   const guard = await assertParentOnSharedDrive(parentFolderId, driveClient);
   if (!guard.ok) throw new Error(guard.message);
 
@@ -815,22 +941,22 @@ export async function handleCreateFile(
 
   if (findOrCreate) {
     const escaped = name.replace(/'/g, "\\'");
-    const list = await driveClient.files.list({
+    const list = await retry(() => driveClient.files.list({
       q: `name='${escaped}' and '${parentFolderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`,
       fields: 'files(id, name, webViewLink)',
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
-    });
+    }));
     const existing = list.data.files?.[0];
     if (existing?.id) {
       // Update content of existing file and return its id — no new file
       // gets created.
-      await driveClient.files.update({
-        fileId: existing.id,
+      await retry(() => driveClient.files.update({
+        fileId: existing.id!,
         media: bodyMedia,
         fields: 'id',
         supportsAllDrives: true,
-      });
+      }));
       return {
         id: existing.id,
         name: existing.name!,
@@ -840,7 +966,7 @@ export async function handleCreateFile(
     }
   }
 
-  const created = await driveClient.files.create({
+  const created = await retry(() => driveClient.files.create({
     requestBody: {
       name,
       mimeType: 'application/vnd.google-apps.document',
@@ -848,15 +974,15 @@ export async function handleCreateFile(
     },
     fields: 'id, name, webViewLink',
     supportsAllDrives: true,
-  });
+  }));
   const fileId = created.data.id!;
 
-  await driveClient.files.update({
+  await retry(() => driveClient.files.update({
     fileId,
     media: bodyMedia,
     fields: 'id',
     supportsAllDrives: true,
-  });
+  }));
 
   return {
     id: fileId,
