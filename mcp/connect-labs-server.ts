@@ -86,6 +86,20 @@ function loadToken(): string {
   return '';
 }
 
+/**
+ * JSON-RPC notifications have no `id` and MUST NOT receive a reply.
+ * The MCP host sends `notifications/initialized` after the
+ * `initialize` request — if the proxy writes anything back to stdout
+ * for it, the host treats the unsolicited message as a protocol
+ * violation and stops trusting the connection (manifests as
+ * "ToolSearch can't see this MCP's tools" since the host disables
+ * tool discovery on a misbehaving stdio peer). Tracking:
+ * jjackson/ace#106 finding 8.
+ */
+export function isNotification(frame: JsonRpcFrame): boolean {
+  return frame.id === undefined || frame.id === null;
+}
+
 async function main() {
   const token = loadToken();
   const url = process.env.LABS_MCP_URL || 'https://labs.connect.dimagi.com/mcp/';
@@ -98,6 +112,11 @@ async function main() {
     try {
       frame = JSON.parse(trimmed) as JsonRpcFrame;
     } catch (e) {
+      // Parse errors on a request must surface as an error reply with
+      // id=null per JSON-RPC. We can't distinguish a malformed
+      // notification from a malformed request, so we follow the
+      // request convention; the host will discard a stray error if it
+      // wasn't expecting one.
       process.stdout.write(JSON.stringify({
         jsonrpc: '2.0',
         id: null,
@@ -105,15 +124,28 @@ async function main() {
       }) + '\n');
       continue;
     }
+    const isNotif = isNotification(frame);
     try {
       const reply = await forward(frame, { token, url });
-      process.stdout.write(JSON.stringify(reply) + '\n');
+      // Notifications must not produce a stdout reply, even if the
+      // upstream server volunteered one (e.g. labs replying with
+      // "Method not found" to `notifications/initialized` — that's
+      // labs being strict, but the MCP wire protocol says no reply
+      // for notifications regardless).
+      if (!isNotif) {
+        process.stdout.write(JSON.stringify(reply) + '\n');
+      }
     } catch (e) {
-      process.stdout.write(JSON.stringify({
-        jsonrpc: '2.0',
-        id: frame.id ?? null,
-        error: { code: -32000, message: (e as Error).message },
-      }) + '\n');
+      // Same rule applies on transport failures: don't write an error
+      // reply for a notification; the host has nothing to correlate
+      // it against.
+      if (!isNotif) {
+        process.stdout.write(JSON.stringify({
+          jsonrpc: '2.0',
+          id: frame.id ?? null,
+          error: { code: -32000, message: (e as Error).message },
+        }) + '\n');
+      }
     }
   }
 }
