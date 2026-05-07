@@ -10,7 +10,7 @@
  *   # canonical env-var path:
  *   GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json npx tsx scripts/test-sa-create.ts
  */
-import { google } from 'googleapis';
+import { google } from '../lib/google-shim.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

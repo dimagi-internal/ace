@@ -127,11 +127,11 @@ means the app is broken in a basic way.
 naming the specific failure + remediation rather than a generic
 "smoke recipe failed" message):
 
-| Recipe error contains | Failure mode | Likely root cause | Diagnostic next step |
-|---|---|---|---|
-| `Failed to start learning` | Connect → Learn handoff broken | (a) CCHQ App-Editor permission gap on Connect's API key user, (b) released CCZ format mismatch, (c) Connect cached stale Learn-app metadata. Tracking: [#115 finding 1](https://github.com/jjackson/ace/issues/115). | Run `scripts/probe-connect-learn-handoff.ts <opp_uuid>` for a structured diagnostic + adb logcat capture |
-| `extendedWaitUntil` timeout on `connect_fragment_jobs_list` | Claim flow didn't reach jobs list | LLO program-application not ACCEPTED, or Connect session expired on the AVD | Re-run `connect-login.yaml` and verify `connect_get_opportunity` returns the expected opp |
-| `assertVisible(text: ${OPP_NAME})` failure | Right opp card not on screen | Operator passed wrong `OPP_NAME` env var, OR opp not yet claimed by the test user | Confirm `OPP_NAME` matches the display name (not the slug — see [#115 finding 4](https://github.com/jjackson/ace/issues/115)) |
+| Recipe error contains | Failure mode + root cause | Remediation |
+|---|---|---|
+| `Failed to start learning` | Released Learn CCZ has Nova `<module xmlns="…connect…">` + `<assessment xmlns="…connect…">` wrappers that the AVD's CommCare runtime can't launch. Confirmed live 2026-05-07 against leep-paint-collection: turmeric Learn (working) has 0 wrapper refs; LEEP Learn (broken) has 16. Tracking: [voidcraft-labs/nova-plugin#7](https://github.com/voidcraft-labs/nova-plugin/issues/7), [jjackson/ace#115 finding 1](https://github.com/jjackson/ace/issues/115). | As of 0.13.66 Phase 2's Step 2.8 invokes `commcare-form-patch` automatically — re-run `/ace:run <opp>` and Phase 5 should pick up the patched Learn release. For an in-flight opp that already shipped Phase 2 without the patch: `/ace:step commcare-form-patch <opp>` then re-run Phase 5. Diagnostic probe: `npx tsx scripts/probe-connect-learn-handoff.ts <opp_uuid>` + adb logcat. |
+| `extendedWaitUntil` timeout on `connect_fragment_jobs_list` | Claim flow didn't reach jobs list. LLO program-application not ACCEPTED, or Connect session expired on the AVD. | Re-run `connect-login.yaml` and verify `connect_get_opportunity` returns the expected opp. |
+| `assertVisible(text: ${OPP_NAME})` failure | Right opp card not on screen. Wrong `OPP_NAME` env var, OR opp not yet claimed by the test user. | Confirm `OPP_NAME` matches the display name (not the slug — see [#115 finding 4](https://github.com/jjackson/ace/issues/115)). |
 
 ### Step 6: Write `5-qa-and-training/app-screenshot-capture_manifest.yaml`
 

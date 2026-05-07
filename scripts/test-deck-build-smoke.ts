@@ -22,7 +22,7 @@
  * template itself is reused.
  */
 
-import { google } from 'googleapis';
+import { google } from '../lib/google-shim.js';
 import * as fs from 'node:fs';
 import {
   parseDeckOutline,
