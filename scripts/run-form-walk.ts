@@ -80,8 +80,33 @@ export interface FormWalkOutput {
   domain: string;
   app_id: string;
   build_id: string | null;
+  /**
+   * Where the per-form `form_unique_id` came from:
+   *   - 'draft_api' — the draft-app API at /a/<domain>/api/v0.5/application/<app_id>/.
+   *     This is the value the `commcare_patch_xform` atom expects.
+   *   - 'suite_xml' — the released CCZ's suite.xml `<resource id="...">` blocks.
+   *     CCHQ rewrites the unique_id when serializing suite.xml (chars 11+
+   *     diverge from the draft uid), so this value will be REJECTED by
+   *     `commcare_patch_xform` with a 400/"Form not found" error.
+   *
+   * The CLI prefers 'draft_api' when `ACE_HQ_USERNAME` + `ACE_HQ_API_KEY`
+   * are set in the env; otherwise it falls back to 'suite_xml' with a
+   * stderr warning.
+   */
+  form_unique_id_source: 'draft_api' | 'suite_xml';
   forms: WalkedForm[];
 }
+
+/**
+ * Per-module-form unique-id map derived from CCHQ's draft-app API
+ * (/a/<domain>/api/v0.5/application/<app_id>/). The shape mirrors the
+ * suite.xml `parseSuiteFormResources` output for drop-in overlay:
+ *   key   = "modules-N/forms-M.xml"
+ *   value = 32-hex form_unique_id from the draft module's forms[M].unique_id
+ *
+ * Exported for unit tests.
+ */
+export type DraftFormUidMap = Map<string, string>;
 
 // ── Pure helpers (testable without live CCHQ) ─────────────────────
 
@@ -346,6 +371,11 @@ function mapXsdType(t?: string): FieldKind {
  * Build the form-walk output from a raw CCZ buffer + identifying
  * domain/app_id/build_id triple. Pure: no I/O, no auth.
  *
+ * Always returns `form_unique_id_source: 'suite_xml'` because CCZ-only
+ * walking can't see the draft API. The CLI's `main()` overlays draft uids
+ * via `mergeDraftFormUids` when the env has API credentials; tests can
+ * feed in a draft map directly.
+ *
  * Exported so the unit tests can feed in a CCZ-shaped fixture
  * (zip-of-XMLs) without going through CommCare auth.
  */
@@ -380,8 +410,117 @@ export function walkCcz(args: {
     domain: args.domain,
     app_id: args.app_id,
     build_id: args.build_id,
+    form_unique_id_source: 'suite_xml',
     forms,
   };
+}
+
+/**
+ * Parse the draft-app API JSON response (from
+ * /a/<domain>/api/v0.5/application/<app_id>/) into a map of form path
+ * → 32-hex form_unique_id. The path key matches what the CCZ entries
+ * use, so this map can drop-in overlay onto `parseSuiteFormResources`'s
+ * output.
+ *
+ * Tolerates partial/malformed responses: rows without a `unique_id` or
+ * a non-32-hex one are skipped silently. The caller decides what to do
+ * when the map comes back empty (CLI's main warns and falls back to
+ * suite.xml).
+ *
+ * Exported for unit tests.
+ */
+export function parseDraftAppFormUids(draftJson: unknown): DraftFormUidMap {
+  const out: DraftFormUidMap = new Map();
+  const modules = (draftJson as { modules?: unknown[] } | null)?.modules;
+  if (!Array.isArray(modules)) return out;
+  for (let mi = 0; mi < modules.length; mi++) {
+    const mod = modules[mi] as { forms?: unknown[] } | null;
+    if (!mod || !Array.isArray(mod.forms)) continue;
+    for (let fi = 0; fi < mod.forms.length; fi++) {
+      const form = mod.forms[fi] as { unique_id?: unknown } | null;
+      const uid = typeof form?.unique_id === 'string' ? form.unique_id : null;
+      if (!uid || !/^[0-9a-f]{32}$/.test(uid)) continue;
+      out.set(`modules-${mi}/forms-${fi}.xml`, uid);
+    }
+  }
+  return out;
+}
+
+/**
+ * Overlay draft-API form_unique_ids onto a `walkCcz` output, replacing
+ * each form's `form_unique_id` with the draft variant when present.
+ * Forms whose path isn't in the draft map keep their suite.xml value
+ * (and the source flag flips to 'suite_xml' if any form falls through).
+ *
+ * If `draftMap` is empty, the input is returned with no changes.
+ *
+ * Exported for unit tests.
+ */
+export function mergeDraftFormUids(
+  walked: FormWalkOutput,
+  draftMap: DraftFormUidMap,
+): FormWalkOutput {
+  if (draftMap.size === 0) return walked;
+  let allCovered = true;
+  const forms = walked.forms.map((f) => {
+    const draft = draftMap.get(f.form_path);
+    if (draft) return { ...f, form_unique_id: draft };
+    allCovered = false;
+    return f;
+  });
+  return {
+    ...walked,
+    form_unique_id_source: allCovered ? 'draft_api' : walked.form_unique_id_source,
+    forms,
+  };
+}
+
+/**
+ * Fetch CCHQ's draft-app representation via the read-only
+ * /api/v0.5/application/<app_id>/ endpoint, using ApiKey auth from
+ * `ACE_HQ_USERNAME` + `ACE_HQ_API_KEY`. Returns an empty map (and
+ * logs a warning to stderr) if env vars are missing or the request
+ * fails — callers fall back to suite.xml uids and warn loudly.
+ *
+ * Kept inline here (rather than added to CommCareBackend) because the
+ * draft API accepts ApiKey directly without the Playwright session
+ * bring-up — adding a backend method would force the cookie-auth path
+ * for a read that has a perfectly good keyed alternative.
+ */
+async function fetchDraftFormUidsViaApiKey(args: {
+  domain: string;
+  app_id: string;
+  baseUrl: string;
+}): Promise<DraftFormUidMap> {
+  const user = process.env.ACE_HQ_USERNAME;
+  const key = process.env.ACE_HQ_API_KEY;
+  if (!user || !key) {
+    console.error(
+      '[run-form-walk] ACE_HQ_USERNAME / ACE_HQ_API_KEY not set; falling back to suite.xml form_unique_ids. ' +
+        'These will be REJECTED by commcare_patch_xform — see issue #108.',
+    );
+    return new Map();
+  }
+  const url = `${args.baseUrl}/a/${args.domain}/api/v0.5/application/${args.app_id}/`;
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { Authorization: `ApiKey ${user}:${key}` } });
+  } catch (e) {
+    console.error(`[run-form-walk] draft-app API fetch failed: ${(e as Error).message}`);
+    return new Map();
+  }
+  if (!res.ok) {
+    console.error(`[run-form-walk] draft-app API returned ${res.status}; falling back to suite.xml`);
+    return new Map();
+  }
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch (e) {
+    console.error(`[run-form-walk] draft-app API JSON parse failed: ${(e as Error).message}`);
+    return new Map();
+  }
+  return parseDraftAppFormUids(body);
 }
 
 // ── CLI entrypoint ────────────────────────────────────────────────
@@ -452,12 +591,24 @@ async function main(): Promise<number> {
   }
 
   const cczBuf = Buffer.from(ccz.ccz_base64, 'base64');
-  const result = walkCcz({
+  const walked = walkCcz({
     cczBuf,
     domain: args.domain,
     app_id: args.app_id,
     build_id: args.build_id ?? null,
   });
+
+  // Overlay draft-API form_unique_ids onto the walk output. The CCZ's
+  // suite.xml-derived uids are a CCHQ-build-only variant that the
+  // commcare_patch_xform endpoint rejects (see issue #108) — the draft
+  // API has the canonical values. Falls back silently to suite.xml uids
+  // when ACE_HQ_USERNAME/ACE_HQ_API_KEY are missing (with a warning).
+  const draftMap = await fetchDraftFormUidsViaApiKey({
+    domain: args.domain,
+    app_id: args.app_id,
+    baseUrl: cchqBaseUrl,
+  });
+  const result = mergeDraftFormUids(walked, draftMap);
 
   const text = JSON.stringify(result, null, 2);
   if (args.out) {
