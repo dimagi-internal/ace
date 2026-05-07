@@ -77,6 +77,42 @@ endpoints accept the Django `sessionid` cookie + CSRF token DRF's
 | `connect_list_invoices` | Playwright (stub — page shape not yet probed) | `opp-closeout` |
 | `connect_get_invoice` | Playwright (stub) | `opp-closeout` |
 
+## Data model gotchas
+
+### Deliver-unit granularity is module-level, not form-level
+
+When `connect_create_opportunity` syncs a Deliver app from CommCareHQ, it
+creates **one Connect deliver unit per Deliver app module**, not per form.
+A 5-form Deliver app split across 3 modules (e.g. Stage 1: F1+F2+F3,
+Stage 2: F4, Shipments: F5) lands in Connect as 3 deliver units, not 5.
+Verified live 2026-05-06 against `leep-paint-collection` (see
+[#106 finding 12](https://github.com/jjackson/ace/issues/106)).
+
+Practical implications:
+
+- `payment_unit.required_deliver_units` and `payment_unit.optional_deliver_units`
+  must reason about modules-as-units. Per-form differentiation isn't
+  expressible at this layer — F1's submission and F2's submission both
+  count toward the same Stage-1 deliver unit.
+- `verification_flags.form_field_rules.deliver_unit_id` is bound to the
+  module's deliver unit. A flag like "MUAC ≤ 11.5 cm on F2" applies
+  whenever ANY form in the module is submitted; you can't constrain it
+  to F2 alone via `form_field_rules`. Per-form gating belongs in the
+  CommCareHQ form's `<bind>` constraint logic, not in Connect's
+  verification flags.
+- Nova's Deliver app blueprint should map "one Connect-paid unit type"
+  to "one module". If a PDD's Success Metrics distinguish between
+  per-form payments (e.g. "$1 per F2 submission, $0.50 per F3
+  submission"), Nova should split those into separate modules so each
+  becomes its own deliver unit.
+
+This is intentional today (mirrors how Connect models module-as-task in
+its Django data model), not a limitation. Documented here so the next
+maintainer doesn't try to "fix" it by attempting form-level granularity
+in the verification-flags layer. If Connect ships per-form deliver units
+in a future release, update this section and Nova's deliver-unit
+guidance together.
+
 ## Operator runbook
 
 ### Required env vars (all 1Password-backed in `.env.tpl`)

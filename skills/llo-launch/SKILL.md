@@ -103,14 +103,28 @@ Activate the opportunity and notify LLOs that they are live.
 
 6. **Activate the opportunity in Connect** via
    `connect_activate_opportunity` (ace-connect MCP, 0.10.47+):
-   - Pass `organization_slug` and `opportunity_id` from
-     `connect-setup/opportunity.md`. The atom hits
-     `POST /api/opportunities/<id>/activate/`, which validates that:
-     (a) the opp isn't already active, (b) the opp hasn't ended, and
-     (c) at least one PaymentUnit exists. Returns
+   - **Idempotency check first.** Call `connect_get_opportunity` and
+     read `active`. If `active=true` already (and `opportunity_id`
+     matches what we expect), skip the activate call entirely and log
+     an `[INFO]` line to `comms-log/observations.md`:
+     `<ISO> llo-launch: opp <id> already active; skipping activate
+     call (idempotent path).`
+     Connect's managed-opp create flow auto-activates as a side effect
+     when `total_budget`/dates are populated up front, so a clean run
+     of `connect-opp-setup` lands the opp already-active.
+     `connect_activate_opportunity` itself **rejects already-active
+     opps** as a validation error — without this pre-check, a clean
+     Phase 3 cascades into a Phase 7 failure for no real reason.
+     Tracking: jjackson/ace#106 finding 9.
+   - **Otherwise activate.** Pass `organization_slug` and
+     `opportunity_id` from `connect-setup/opportunity.md`. The atom
+     hits `POST /api/opportunities/<id>/activate/`, which validates
+     that: (a) the opp isn't already active, (b) the opp hasn't
+     ended, and (c) at least one PaymentUnit exists. Returns
      `{ id, opportunity_id, name, active: true }` on success.
    - Verify by calling `connect_get_opportunity` and confirming
-     `active=true`.
+     `active=true` (whether we activated this run or skipped because
+     it was already active).
    - **If ACE deferred the test-user pre-invite** during
      `connect-opp-setup` (because the opp was inactive at that point),
      fire `connect_send_flw_invite` here with `${ACE_E2E_PHONE}` —
