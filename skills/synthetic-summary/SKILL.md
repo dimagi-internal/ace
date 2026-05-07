@@ -185,3 +185,5 @@ external side effects in this skill anyway). State tracks as
 | 2026-05-06 | Initial Stage 1 MVP skill — three-paragraph reviewer summary aggregating data-generate output | ACE team (Plan B Stage 1) |
 | 2026-05-06 | Stage 2: prefer `synthetic-narrative-plan.{md,yaml}` when present; render Persona Walkthroughs section from `opp.yaml.synthetic.walkthroughs[]`. Section is omitted entirely when empty (Stage 1 summaries unchanged). | ACE team (Plan B Stage 2) |
 | 2026-05-07 | Stage 3+: render Demonstrative Workflows section from `opp.yaml.synthetic.workflows.{llo_weekly_review_id, program_admin_audit_id}`; surface saved-runs Week-1/Week-2 trend (Stage 3b) + polish patch count + visual-judge scores (post canopy:visual-judge wire-up). Replace the static "What's next" block with conditional gap-detection so the summary self-describes which stages haven't run for this opp. | ACE team (Plan B Stage 3+) |
+
+<!-- audit-fix marker for 0.13.76 -->
