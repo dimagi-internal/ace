@@ -318,3 +318,4 @@ extend it.
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-06 | Initial Stage 3a skill — workflow seeding via SEED templates + config wiring + coaching tasks. Saved-runs deferred to labs PR. | ACE team (Plan B Stage 3) |
+
