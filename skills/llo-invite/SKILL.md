@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # LLO Invite
 
-Phase 6 default-run skill. Runs after `solicitation-create` has captured
+Phase 7 default-run skill. Runs after `solicitation-create` has captured
 `opp.yaml.solicitation.public_url`. Sends each PDD-named candidate LLO an
 email containing the solicitation URL, deadline, and a scope summary.
 
@@ -98,7 +98,7 @@ fires only for the awardee.
 
 If invoked under `/ace:run --review` mode, present the prepared email
 list to the human before sending and pause. Default mode sends without
-a gate (the orchestrator's external-comms gate is the Phase 6→7
+a gate (the orchestrator's external-comms gate is the Phase 7→8
 boundary, not here — these emails are non-binding "please consider
 applying" notes, not commitments).
 

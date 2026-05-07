@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # Solicitation Create
 
-Phase 6 default-run skill. Builds and publishes the solicitation in one
+Phase 7 default-run skill. Builds and publishes the solicitation in one
 shot — ACE always publishes, never drafts. The solicitation can be edited
 post-publish via the labs UI without affecting responses.
 

@@ -41,7 +41,7 @@ Manual: /ace:qa-deep <opp>
   → deep OCS eval + deep app UX eval against expected-journeys.md
   → writes verdicts/*-deep.yaml (uniform shape, fed to opp-eval)
 
-Phase 6 (llo-manager / llo-launch)
+Phase 7 (llo-manager / llo-launch)
   → activation gated on fresh, passing deep verdicts for both OCS and apps
 ```
 
@@ -206,7 +206,7 @@ run log in `eval-calibration/` so calibration metrics keep accumulating.
 - No re-running of Phase 5 training materials. Deep QA is purely
   quality assessment, not artifact regeneration.
 - No CommCare app rebuild. If apps are stale, user runs `/ace:run` first.
-- No Phase 6 activation side-effects. Pure read-and-grade.
+- No Phase 7 activation side-effects. Pure read-and-grade.
 
 **Implementation shape:**
 
@@ -218,13 +218,13 @@ The `--since` flag is optional in v1 if it complicates the
 implementation. AVD execution is the wall-clock dominator, so the
 ergonomics win is real but can defer.
 
-## 6. Phase 6 deep-verdict gate (safety net)
+## 6. Phase 7 deep-verdict gate (safety net)
 
 Without a gate, someone could run `/ace:run` then activate an
 opportunity for real LLOs without ever running deep QA. This is the
 class-level preventer.
 
-**Where:** `llo-launch` skill in Phase 6 (`llo-manager`), immediately
+**Where:** `llo-launch` skill in Phase 7 (`llo-manager`), immediately
 before `connect_activate_opportunity`.
 
 **Gate logic:**
@@ -279,11 +279,11 @@ depends on opp size; OCS deep alone dropping out saves up to 30 min.
 2. Add `app-test-cases` skill + `app-test-cases.yaml` artifact.
    Phase 2 starts emitting; `qa-plan` still runs.
 3. Add `app-ux-eval` skill + `/ace:qa-deep` command. Both can be used
-   manually before they're wired into Phase 6.
+   manually before they're wired into Phase 7.
 4. Switch Phase 5 to executor-only: `qa-plan` removed,
    `app-screenshot-capture` reads the new yaml. Test on a fresh `/ace:run`.
 5. Thin OCS `--quick` to 3 prompts × 1 dim. Drop Phase 4 `--deep` gate.
-6. Wire Phase 6 gate. Last step — until this lands, deep QA is
+6. Wire Phase 7 gate. Last step — until this lands, deep QA is
    advisory, not enforced.
 7. Retire `qa-plan` and `app-test` skills + their references.
 
@@ -297,7 +297,7 @@ backfill option (re-run Phase 1 just for the new artifact).
 - `/ace:doctor` warns if a skill exists but its retired sibling is
   still being referenced elsewhere.
 - `opp-eval` checks for verdict freshness against artifact timestamps
-  (mirrors the Phase 6 gate logic).
+  (mirrors the Phase 7 gate logic).
 
 ## Open questions
 

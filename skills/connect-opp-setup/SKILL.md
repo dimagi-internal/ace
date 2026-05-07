@@ -17,14 +17,14 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | archetype + Evidence Model (Layer A → verification flags) |
 | Phase 3 | `3-connect/connect-program-setup.md` | program UUID (opp is scoped to it) |
-| Phase 6 | `opp.yaml.selected_llo.org_slug` | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
+| Phase 7 | `opp.yaml.selected_llo.org_slug` | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
 | Phase 2 | `2-commcare/app-deploy_summary.md` | `hq_server`, `learn_app`/`deliver_app` IDs, HQ project space slug |
 
 ## Outputs
 
 - `3-connect/connect-opp-setup.md` — opp UUID, verification flags, payment units, ACE test-user invite URL, labs_int_id (when recoverable)
 - `connect-state.yaml` — `ace_test_user_invite_pending_until_active` flag for `app-screenshot-capture`
-- `opp.yaml.connect.opportunity.labs_int_id` (when recoverable; null otherwise) — Phase 6 default for `synthetic-data-generate --opp-int-id`
+- `opp.yaml.connect.opportunity.labs_int_id` (when recoverable; null otherwise) — Phase 7 default for `synthetic-data-generate --opp-int-id`
 
 ## Process
 
@@ -40,7 +40,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
 3. **Pre-flight (LLO program-application must be ACCEPTED).** The new
    `POST /api/programs/<id>/opportunities/` endpoint validates that the
    target LLO org has an `ACCEPTED` `ProgramApplication` for the program.
-   For ACE-driven dogfood runs, the orchestrator handles this in Phase 7
+   For ACE-driven dogfood runs, the orchestrator handles this in Phase 8
    (`llo-onboarding` → optionally `connect_accept_program_application`)
    *before* this skill runs. For real-LLO runs, the LLO accepts manually
    and this skill simply waits. If the application is still INVITED/APPLIED
@@ -56,10 +56,10 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    and resolve:
 
    1. Compare `organization_slug` and `target_organization_slug`. If
-      they differ, this is the LLO-distinct path — Phase 7 already
+      they differ, this is the LLO-distinct path — Phase 8 already
       handled the round-trip; skip this sub-step.
    2. Same-org case: call `connect_list_program_applications` (or read
-      `connect-setup/llo-invite_invitations.md` if Phase 6 ran). If an
+      `connect-setup/llo-invite_invitations.md` if Phase 7 ran). If an
       `ACCEPTED` application already exists for `organization_slug` on
       `program_id`, capture its `program_application_id` and continue.
    3. No accepted application → run the round-trip inline:
@@ -116,7 +116,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    opp "<old-name>" (id=<old-uuid>) — same program, same accepted
    application. Confirm intent or close prior opps first.`
 
-   The auto-mode default is to proceed (matches current Phase 7
+   The auto-mode default is to proceed (matches current Phase 8
    gate-brief auto-approval). Review-mode pauses for explicit operator
    confirmation. An idempotent-resume path that detects an existing
    matching opp and asks before recreating is tracked as future work.
@@ -262,7 +262,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    - `required_deliver_units`: which DU ids (from step 4) MUST be completed
      for this payment to trigger. **At least one required DU is necessary**
      for the opp to pass `is_setup_complete`; an empty `required_deliver_units`
-     blocks Phase 6 `connect_send_flw_invite` and Phase 5 mobile screenshot
+     blocks Phase 7 `connect_send_flw_invite` and Phase 5 mobile screenshot
      capture (the FLW can't claim the opp).
    - `optional_deliver_units`: which DUs are bonus/optional. **No DU id
      may appear in `required` and `optional` of the same unit, AND no DU
@@ -288,7 +288,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    the full sent payload AND the full server response to
    `comms-log/observations.md`. Do NOT proceed to Step 7 — a malformed
    PU cascades through `is_setup_complete` and silently breaks every
-   downstream skill (Phase 6 invites, Phase 5 screenshots). Operator
+   downstream skill (Phase 7 invites, Phase 5 screenshots). Operator
    recovery is delete + recreate via the Connect web UI; there is no
    `connect_delete_payment_unit` atom yet.
 
@@ -323,7 +323,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    **Constraint:** the new `POST /api/opportunities/<id>/invite_users/`
    endpoint validates that the opp is **active** and not ended. So the
    pre-invite must happen *after* `connect_activate_opportunity`, which is
-   handled by `llo-launch` (Phase 7). For ACE-driven dogfood runs that need
+   handled by `llo-launch` (Phase 8). For ACE-driven dogfood runs that need
    the test user invited *before* an LLO actually exists (the common case),
    either:
 
@@ -365,14 +365,14 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    - **Labs int_id** (from step 9 below; may be `null` if labs lookup failed
      or labs hadn't yet observed the new opp)
 
-9. **Recover the labs-side integer opportunity ID** (Phase 6 prerequisite).
+9. **Recover the labs-side integer opportunity ID** (Phase 7 prerequisite).
 
-   Phase 6's `synthetic-data-generate` calls
+   Phase 7's `synthetic-data-generate` calls
    `synthetic_generate_from_manifest(opportunity_id=<int>, ...)` against
    the labs MCP, which addresses opps by labs's local integer primary
    key — a different identifier from the Connect UUID this skill just
    minted. Plan B Stage 1 deferred the lookup to operator-typed
-   `--opp-int-id`; Stage 4.5 automates it here so Phase 6 is invokable
+   `--opp-int-id`; Stage 4.5 automates it here so Phase 7 is invokable
    end-to-end without the operator hunting through the labs UI.
 
    **Important contract note:** the labs integer ID is NOT exposed by
@@ -401,7 +401,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    3. If exactly one match, capture its integer `id` as `labs_int_id`.
    4. If zero matches, log `[WARN]` to `comms-log/observations.md`:
       "labs has not yet observed Connect opp `<uuid>` — labs_int_id
-      unrecoverable from this skill. Phase 6 operator must
+      unrecoverable from this skill. Phase 7 operator must
       pass `--opp-int-id` manually." Continue (don't halt — labs sync
       can lag behind Connect by a few seconds; operator can re-run
       this skill or look up manually).
@@ -431,7 +431,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
     a fresh top-level key on first run; on re-runs the shallow-merge
     cleanly replaces it.
 
-    Phase 6's `synthetic-data-generate` reads
+    Phase 7's `synthetic-data-generate` reads
     `opp.yaml.connect.opportunity.labs_int_id` as the default for its
     `--opp-int-id` flag. When `labs_int_id` is null, the skill
     surfaces a `[WARN]` and asks the operator to pass `--opp-int-id`
@@ -478,7 +478,7 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
   - `connect_create_payment_units` — REST `POST /api/opportunities/<id>/payment_units/` (atomic list)
   - `connect_list_payment_units` — verify after create (Step 6
     verify-after-create — this is the canary that catches PU
-    malformation before it cascades to Phase 6 invites)
+    malformation before it cascades to Phase 7 invites)
   - `connect_send_flw_invite` — REST `POST /api/opportunities/<id>/invite_users/`
 
 ## Mode Behavior
@@ -505,6 +505,6 @@ When `--dry-run` is active:
 | 2026-04-28 | Replace HITL workaround with `connect_*_opportunity` + `connect_set_verification_flags` + `connect_create_payment_unit` atoms (ace-connect 0.8.1). | ACE team |
 | 2026-04-28 | Add Step 8: invite ACE test user (`${ACE_E2E_PHONE}`) and persist invite URL to `connect-state.yaml`; required for Phase 5 `app-screenshot-capture` to drive the claim-opp flow | ACE team (mobile-emulation) |
 | 2026-04-30 | Adopt commcare-connect PR #1135's automation API (0.10.47). `connect_create_opportunity` is now `POST /api/programs/<id>/opportunities/`, takes structured `learn_app`/`deliver_app` payloads + dates + total_budget upfront. Eliminates the two-step "create → finalize" flow and the silent-500 schema bugs around `hq_server` resolution + `api_key` registration + `learn_app`/`deliver_app` JSON wrapping (the server now does all of it). `register_hq_api_key` and `finalize_opportunity` atoms removed. `connect_create_payment_units` (plural) added for atomic-batch creation. FLW pre-invite now requires opp to be active first — coordinate with `llo-launch`. | ACE team |
-| 2026-05-04 | **Verify-after-create discipline** added to Step 4 (opportunity) and Step 6 (payment units) — every external write is now followed by an immediate read-back, with `[BLOCKER]` halt on field misalignment. Catches the class of bug `turmeric-20260503-0835` hit: PU created with shifted values (`amount=500` vs sent `1.50`, `max_total=20` vs sent `500`, `required_deliver_units=[]` vs sent `[Vendor Visit]`), which cascaded through `is_setup_complete` to break Phase 6 invites and Phase 5 screenshot capture. Catching at the source converts a multi-phase cascade into a single-skill halt. Also: `short_description` cap doc fix (≤50 chars server-enforced, was wrongly documented as ≤255); `amount` integer-rounding behavior pinned (recommended: round + INFO-log, never silent truncate); empty `required_deliver_units` flagged as a downstream cascade trigger. See `agents/ace-orchestrator.md § External Mutations — Verify After Create` for the cross-skill rule. | ACE team (0.11.11) |
+| 2026-05-04 | **Verify-after-create discipline** added to Step 4 (opportunity) and Step 6 (payment units) — every external write is now followed by an immediate read-back, with `[BLOCKER]` halt on field misalignment. Catches the class of bug `turmeric-20260503-0835` hit: PU created with shifted values (`amount=500` vs sent `1.50`, `max_total=20` vs sent `500`, `required_deliver_units=[]` vs sent `[Vendor Visit]`), which cascaded through `is_setup_complete` to break Phase 7 invites and Phase 5 screenshot capture. Catching at the source converts a multi-phase cascade into a single-skill halt. Also: `short_description` cap doc fix (≤50 chars server-enforced, was wrongly documented as ≤255); `amount` integer-rounding behavior pinned (recommended: round + INFO-log, never silent truncate); empty `required_deliver_units` flagged as a downstream cascade trigger. See `agents/ace-orchestrator.md § External Mutations — Verify After Create` for the cross-skill rule. | ACE team (0.11.11) |
 
 <!-- Stage 4.5 of Plan B: post-create labs_context lookup for labs_int_id (0.13.59) -->

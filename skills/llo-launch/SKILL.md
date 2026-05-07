@@ -16,7 +16,7 @@ Activate the opportunity and notify LLOs that they are live.
    - UAT results: `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-uat_results.md` (includes archetype)
    - Deployment summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` (atomic-visit)
    - Opportunity config: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
-   - Awarded LLO: `opp.yaml.selected_llo` (populated by Phase 6 `solicitation-review`)
+   - Awarded LLO: `opp.yaml.selected_llo` (populated by Phase 7 `solicitation-review`)
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (fallback archetype source)
 
 2. **Read the `archetype:` field.** Go-live semantics differ per
@@ -114,7 +114,7 @@ Activate the opportunity and notify LLOs that they are live.
      of `connect-opp-setup` lands the opp already-active.
      `connect_activate_opportunity` itself **rejects already-active
      opps** as a validation error — without this pre-check, a clean
-     Phase 3 cascades into a Phase 7 failure for no real reason.
+     Phase 3 cascades into a Phase 8 failure for no real reason.
      Tracking: jjackson/ace#106 finding 9.
    - **Otherwise activate.** Pass `organization_slug` and
      `opportunity_id` from `connect-setup/opportunity.md`. The atom

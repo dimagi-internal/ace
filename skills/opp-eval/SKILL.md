@@ -95,7 +95,7 @@ If no mode is passed, default to `--quick`.
    | `commcare`      | 0.18 | `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-test-cases`, `training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-onboarding-email`, `training-deck-outline` |
    | `connect`       | 0.13 | `connect-program-setup`, `connect-opp-setup` |
    | `ocs`           | 0.18 | `ocs-agent-setup`, `ocs-chatbot-eval-quick`, `ocs-chatbot-eval-deep` |
-   | `solicitation`  | 0.10 | `solicitation-create`, `solicitation-review` (added 0.12.0 — Phase 6) |
+   | `solicitation`  | 0.10 | `solicitation-create`, `solicitation-review` (added 0.12.0 — Phase 7) |
    | `operate`       | 0.13 | `llo-onboarding`, `llo-uat`, `llo-launch`, `ocs-chatbot-eval-monitor`, `flw-data-review`, `timeline-monitor` |
    | `closeout`      | 0.08 | `opp-closeout`, `llo-feedback`, `learnings-summary`, `cycle-grade` |
 

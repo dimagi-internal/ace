@@ -1578,7 +1578,7 @@ git commit -m "feat(mobile): register_test_user composite (Maestro+OTP)"
 
 ---
 
-## Phase 6 — Static recipes
+## Phase 7 — Static recipes
 
 ### Task 6.1: Author the four static Maestro YAMLs against the Connect Android app
 
@@ -1812,7 +1812,7 @@ git commit -m "feat(mobile): four static Maestro recipes (register, login, claim
 
 ---
 
-## Phase 7 — Recipe generator
+## Phase 8 — Recipe generator
 
 ### Task 7.1: LLM-driven recipe generator (TDD with mock LLM)
 
@@ -2073,7 +2073,7 @@ git commit -m "feat(mobile): generateRecipesFromAppSummary writes per-module YAM
 
 ---
 
-## Phase 8 — MCP server wiring
+## Phase 9 — MCP server wiring
 
 ### Task 8.1: Create mobile-server.ts
 
@@ -2458,13 +2458,13 @@ name: training-prep
 description: >
   Phase 5 of the CRISPR-Connect lifecycle: generate per-opp training material
   artifacts (screenshots + guides) without LLO contact. Runs after ocs-setup
-  (Phase 4) and before llo-manager (Phase 6).
+  (Phase 4) and before llo-manager (Phase 7).
 ---
 
 # Phase 5 — Training Prep
 
 This phase synthesizes everything Phases 1–4 produced into training material
-that Phase 6 (`llo-manager`) hands to LLOs and FLWs. **No LLO contact happens
+that Phase 7 (`llo-manager`) hands to LLOs and FLWs. **No LLO contact happens
 here.**
 
 ## Upstream artifacts read
@@ -2477,7 +2477,7 @@ See `skills/app-screenshot-capture/SKILL.md` § Inputs and `skills/training-mate
 
 2. **`training-materials`** — read every upstream artifact + the new screenshots manifest, write `ACE/<opp>/training-materials/{llo-manager-guide,flw-training-guide,quick-reference,faq}.md`.
 
-If either skill returns a non-pass verdict, halt — Phase 6 must not start.
+If either skill returns a non-pass verdict, halt — Phase 7 must not start.
 
 ## Outputs
 
@@ -2523,8 +2523,8 @@ Replace the phase rows in the topology table with:
 | `connect-setup` (Phase 3) | no | subagent | `Agent(connect-setup)` from level 0 |
 | `ocs-setup` (Phase 4) | no | subagent | `Agent(ocs-setup)` from level 0 |
 | `training-prep` (Phase 5) | no | subagent | `Agent(training-prep)` from level 0 |
-| `llo-manager` (Phase 6) | no | subagent | `Agent(llo-manager)` from level 0 |
-| `closeout` (Phase 7) | no | subagent | `Agent(closeout)` from level 0 |
+| `llo-manager` (Phase 7) | no | subagent | `Agent(llo-manager)` from level 0 |
+| `closeout` (Phase 8) | no | subagent | `Agent(closeout)` from level 0 |
 | `ocs-tester` | no — leaf qa+eval pair | subagent | `Agent(ocs-tester)` ad-hoc |
 ```
 
@@ -2536,7 +2536,7 @@ Replace `**Orchestration restructured into 6 phases (0.2.0).**` with `**Orchestr
 (1) design-review → (2) commcare-setup → (3) connect-setup → (4) ocs-setup → (5) training-prep → (6) llo-manager → (7) closeout.
 ```
 
-Append: `Phase 5 training-prep (added 0.9.0) owns the relocated training-materials skill plus the new app-screenshot-capture skill, restoring the "Phases 1-N agent-only" invariant — Phase 6 is now the first LLO contact.`
+Append: `Phase 5 training-prep (added 0.9.0) owns the relocated training-materials skill plus the new app-screenshot-capture skill, restoring the "Phases 1-N agent-only" invariant — Phase 7 is now the first LLO contact.`
 
 - [ ] **Step 4: Verify the layout section**
 
@@ -2571,10 +2571,10 @@ Dispatch `Agent(training-prep)` with the opp name. The agent runs:
 1. `app-screenshot-capture`
 2. `training-materials`
 
-If either child skill emits a non-pass verdict, halt; do not dispatch Phase 6.
+If either child skill emits a non-pass verdict, halt; do not dispatch Phase 7.
 ```
 
-Renumber the existing "Phase 5: LLO management" → "Phase 6: LLO management" and "Phase 6: Closeout" → "Phase 7: Closeout".
+Renumber the existing "Phase 5: LLO management" → "Phase 7: LLO management" and "Phase 7: Closeout" → "Phase 8: Closeout".
 
 - [ ] **Step 3: Commit**
 
@@ -2599,7 +2599,7 @@ grep -n "training-materials" agents/llo-manager/AGENT.md
 Delete the step that invokes `training-materials`. Add a one-line note:
 
 ```markdown
-> **Phase 6 note:** training materials are now produced upstream in Phase 5 (`training-prep`). This phase consumes them but does not generate them.
+> **Phase 7 note:** training materials are now produced upstream in Phase 5 (`training-prep`). This phase consumes them but does not generate them.
 ```
 
 - [ ] **Step 3: Commit**
@@ -2624,8 +2624,8 @@ grep -n "Phase\|phase 5\|phase 6\|llo-manager\|closeout" commands/*.md
 
 For each command, find the phase listing/enumeration and update:
 - Add `training-prep` as Phase 5
-- Renumber `llo-manager` to Phase 6
-- Renumber `closeout` to Phase 7
+- Renumber `llo-manager` to Phase 7
+- Renumber `closeout` to Phase 8
 
 - [ ] **Step 3: Commit**
 
@@ -3188,7 +3188,7 @@ The plan author runs this checklist. Tick when verified.
 - [ ] **No placeholders:** no `TBD`, `TODO`, `implement later`, "appropriate error handling" in any task. Selectors in static recipes use `REPLACE_*` markers explicitly to be filled during the discovery task — not hidden.
 - [ ] **Type consistency:** `ApkInfo`, `AvdInfo`, `RecipeRunResult`, etc., used identically in `types.ts`, `client.ts`, and tests.
 - [ ] **No undefined references:** every method called in tests is defined by the same task or earlier.
-- [ ] **Bite-sized steps:** each task's steps are 2–5 minutes. Phase 6 Task 6.1 is the largest by content (4 YAML files in one task) — accepted because they share discovery context.
+- [ ] **Bite-sized steps:** each task's steps are 2–5 minutes. Phase 7 Task 6.1 is the largest by content (4 YAML files in one task) — accepted because they share discovery context.
 
 ## Execution Handoff
 

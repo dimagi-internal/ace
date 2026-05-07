@@ -39,7 +39,7 @@ the table below.
 
 All paths below are run-scoped under
 `ACE/<opp-name>/runs/<run-id>/<phase>/`. Phase is `4-ocs` for `--quick`
-and `--deep`; `7-execution-manager` for `--monitor` (recurring Phase 7
+and `--deep`; `7-execution-manager` for `--monitor` (recurring Phase 8
 work). The golden-template no-opp fallback (legacy dated form under
 `ACE/golden-template/qa-captures/`) is documented in
 `skills/ocs-chatbot-qa/SKILL.md`; the eval reads whichever path the qa
@@ -337,7 +337,7 @@ rubric is improving over time, not just changing.
    - `--deep`: overall ≥ 7 AND every Fail verdict resolved. On fail,
      escalate to admin group with the report attached. **Runs only
      from `/ace:qa-deep`** (manual, pre-launch); the verdict feeds
-     the Phase 6 `llo-launch` activation gate.
+     the Phase 7 `llo-launch` activation gate.
    - `--monitor`: no gate — write verdict + report, append to trend file.
      If overall drops > 1.5 points from the previous monitor verdict, email
      the admin group with the delta.
@@ -386,7 +386,7 @@ rubric is improving over time, not just changing.
    `--quick` brief is intentionally minimal (single dimension, 3
    prompts) and feeds the Phase 4→5 shallow gate the orchestrator looks
    for at `4-ocs/ocs-chatbot-eval_gate-brief-quick.md`. The `--deep`
-   brief is produced from `/ace:qa-deep` and feeds the Phase 7
+   brief is produced from `/ace:qa-deep` and feeds the Phase 8
    `llo-launch` activation gate.
 
 ## Gate Brief
@@ -496,7 +496,7 @@ When `--dry-run` is active:
 | 2026-04-19 | Initial version — split out from `ocs-chatbot-qa` as the judge half of the qa/eval pair. Reads transcripts from `qa-captures/`, writes `verdicts/`, `eval-reports/`, `gate-briefs/ocs-chatbot-eval-deep.md`. Gate now sits on eval, not qa | ACE team (qa/eval split refactor) |
 | 2026-04-19 | Rename per-item verdict key `per_prompt` → `per_item` (canonical per `skills/README.md § QA vs Eval`); add `prompt:` as domain-specific subkey inside each entry; document `ACE/golden-template/` no-opp fallback path; document `auto_surfaced:` block contract (inputs to the gate brief) | ACE team (qa/eval iteration loop) |
 | 2026-04-29 | Source-usage dimension now branches on the transcript's `Capture method:` header. Widget-captured transcripts grade body-text grounding (does the response name source docs by title?) and emit `[PLATFORM] empty cited_files expected on widget capture` instead of binding the empty-`cited_files` cap. OpenAI-compat captures keep the existing two-tier cap. The original cap conflated bot grounding gaps with widget-API measurement limitations and fired on every widget transcript regardless of bot quality, costing 5+ points on captures that were actually grounded. Surfaced 0.9.11 cross-opp validation against `turmeric-dogfood-20260427`. | ACE team (0.10.10) |
-| 2026-05-04 | **Thinned `--quick` to a single-dimension rubric.** `--quick` mode now scores one `overall_quality_0_to_3` dimension per prompt with pass criterion `every prompt ≥ 2/3`. `--deep` and `--monitor` still use the calibrated 5-dimension rubric. Phase 4 cost reduction: 3 prompts × 1 dim = 3 LLM judge calls (vs 5 prompts × 5 dims = ~25). Multi-dimensional judging moves to deep-only — the `--deep` mode is now invoked only from `/ace:qa-deep` and gates Phase 6 `llo-launch` activation. Verdict file path unchanged (`verdicts/ocs-chatbot-eval-quick.yaml`); the `dimensions` array now has 1 entry. | ACE team |
+| 2026-05-04 | **Thinned `--quick` to a single-dimension rubric.** `--quick` mode now scores one `overall_quality_0_to_3` dimension per prompt with pass criterion `every prompt ≥ 2/3`. `--deep` and `--monitor` still use the calibrated 5-dimension rubric. Phase 4 cost reduction: 3 prompts × 1 dim = 3 LLM judge calls (vs 5 prompts × 5 dims = ~25). Multi-dimensional judging moves to deep-only — the `--deep` mode is now invoked only from `/ace:qa-deep` and gates Phase 7 `llo-launch` activation. Verdict file path unchanged (`verdicts/ocs-chatbot-eval-quick.yaml`); the `dimensions` array now has 1 entry. | ACE team |
 | 2026-05-04 | **`--quick` now writes a gate brief.** `--quick` mode emits `gate-briefs/ocs-chatbot-eval-quick.md` so the orchestrator's Phase 4→5 gate lookup resolves (post-Task-6 contract). Defined the quick-mode brief shape inline (single dimension, 3 prompts, no multi-dim breakdown). `--monitor` still does not produce a gate brief. Final-review followup to the shallow/deep QA split. | ACE team |
 | 2026-05-05 | **Path-scheme migration.** All read/write paths repointed to `runs/<run-id>/<phase>/ocs-chatbot-eval_*-<mode>.<ext>` per the manifest (`4-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for `--monitor`). Retires the opp-level `qa-captures/` / `verdicts/` / `eval-reports/` / `gate-briefs/` directories. Updated: Modes table, Step 1 transcript locator + golden-template fallback path, Step 4 verdict output, Step 6 report output, Step 7 trend path, Step 8 gate-brief output, Gate Brief artifact-under-review for both modes, the deep + quick verdict YAML examples (`capture_path` field), and the worked Quick example. No behavior change beyond paths. | ACE team |
 | 2026-05-05 | **Rubric prose extracted.** The 5-dimension table cells were ~600 words each, packing per-dimension criteria with hard deductions, multi-tier caps, capture-method branches, and suite-level rules into single rows. The dimension table now carries a one-line summary plus a pointer to a new `## Rubric Rules` section that breaks each dimension into labeled subsections (Correctness, Source usage with `openai-compat` / `widget` branches, Refusal correctness with tiered cap table, Tone, Tagging) plus a Suite level subsection (Inflation guard, Pre/post-cap reporting). Same grading semantics — every existing rule, deduction, and cap is preserved verbatim under its own heading. Rationale: LLM judges miss rules buried in dense prose; labeled subsections give the rubric visible structure. | ACE team |
