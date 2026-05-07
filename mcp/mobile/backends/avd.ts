@@ -193,7 +193,14 @@ export class AvdBackend {
     this.ensureFrontCameraEmulated(avdName);
 
     // Boot in detached background process; do NOT await it.
-    const child = spawn('emulator', ['-avd', avdName, '-no-window', '-no-snapshot-save'], {
+    // ACE_MOBILE_EMULATOR_PORT pins the emulator's console port (and adb-bridge
+    // at port+1, serial `emulator-<port>`). Lets two Mac users share one host
+    // without their emulators colliding on the auto-incremented 5554/5555 pair.
+    // Unset → emulator picks the default 5554 / next-free.
+    const args = ['-avd', avdName, '-no-window', '-no-snapshot-save'];
+    const port = process.env.ACE_MOBILE_EMULATOR_PORT?.trim();
+    if (port) args.push('-port', port);
+    const child = spawn('emulator', args, {
       detached: true,
       stdio: 'ignore',
       env: shellEnv(),
