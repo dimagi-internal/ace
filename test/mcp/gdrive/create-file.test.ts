@@ -145,4 +145,78 @@ describe('drive_create_file', () => {
       expect(updateCall.media.body).toBe(body);
     });
   });
+
+  // Background: jjackson/ace#106 finding 13 — `drive_create_file` for small
+  // (<=2KB) files hit transient `Internal Error` 5xx's and the surface had
+  // no retry. `drive_read_file` already had `withTransientRetry`; this
+  // extends the same wrapper to the write paths so a single 503/500 doesn't
+  // force callers to roll their own retry. Same backoff as reads (1s/2s/4s,
+  // 3 attempts max).
+  describe('5xx transient retry (regression: #106 finding 13)', () => {
+    function makeRecordingSleep() {
+      const delays: number[] = [];
+      return {
+        sleep: async (ms: number) => {
+          delays.push(ms);
+        },
+        delays,
+      };
+    }
+
+    it('retries handleCreateFile on transient 5xx and succeeds on the second attempt', async () => {
+      const transient = Object.assign(new Error('Internal Error'), { code: 500 });
+      // First list attempt fails 500, second succeeds with empty result.
+      fakeDrive.files.list
+        .mockRejectedValueOnce(transient)
+        .mockResolvedValueOnce({ data: { files: [] } });
+      fakeDrive.files.create.mockResolvedValue({
+        data: { id: 'new-id', name: 'a.md', webViewLink: 'https://x/a' },
+      });
+      fakeDrive.files.update.mockResolvedValue({ data: { id: 'new-id' } });
+
+      const { sleep, delays } = makeRecordingSleep();
+      const r = await handleCreateFile(
+        { name: 'a.md', content: 'body', parentFolderId: 'parent-1' },
+        fakeDrive as any,
+        { sleep },
+      );
+
+      expect(r.id).toBe('new-id');
+      expect(fakeDrive.files.list).toHaveBeenCalledTimes(2);
+      expect(delays).toEqual([1000]); // one backoff before the second attempt
+    });
+
+    it('caps at 3 attempts and rethrows the final 5xx', async () => {
+      const transient = Object.assign(new Error('Backend Error'), { code: 503 });
+      fakeDrive.files.list.mockRejectedValue(transient);
+
+      const { sleep, delays } = makeRecordingSleep();
+      await expect(
+        handleCreateFile(
+          { name: 'a.md', content: 'body', parentFolderId: 'parent-1' },
+          fakeDrive as any,
+          { sleep },
+        ),
+      ).rejects.toThrow(/Backend Error/);
+      // 2 sleeps before attempts 2 and 3; no sleep after the final failure.
+      expect(delays).toEqual([1000, 2000]);
+      expect(fakeDrive.files.list).toHaveBeenCalledTimes(3);
+    });
+
+    it('does NOT retry permanent 4xx errors (rethrows immediately)', async () => {
+      const permanent = Object.assign(new Error('Forbidden'), { code: 403 });
+      fakeDrive.files.list.mockRejectedValue(permanent);
+
+      const { sleep, delays } = makeRecordingSleep();
+      await expect(
+        handleCreateFile(
+          { name: 'a.md', content: 'body', parentFolderId: 'parent-1' },
+          fakeDrive as any,
+          { sleep },
+        ),
+      ).rejects.toThrow(/Forbidden/);
+      expect(fakeDrive.files.list).toHaveBeenCalledTimes(1);
+      expect(delays).toEqual([]); // no sleep — not a transient class
+    });
+  });
 });
