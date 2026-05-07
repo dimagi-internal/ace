@@ -103,9 +103,11 @@ Invoke `synthetic-workflow-seed`.
 - Populates the LLO review's pipeline schema fields from the manifest.
 - Spawns synthetic OCS coaching tasks (one per `coaching_arcs[]`
   entry).
-- Halts short of saved-runs creation — `workflow_save_snapshot`
-  needs a `run_id` integer and labs MCP doesn't yet expose
-  `workflow_create_run` (Plan B Task 3.3, separate connect-labs PR).
+- Creates Week 1 + Week 2 workflow runs via `workflow_create_run` and
+  saves snapshots via `workflow_save_snapshot` (both atoms shipped
+  in connect-labs PR #168, 2026-05-07). The audit workflow reads the
+  LLO weekly review's snapshots automatically — no separate
+  saved-runs loop needed for the audit.
 - **LLM-as-Judge:** `synthetic-workflow-seed-eval` (Stage 4).
 
 ### Step 4: Workflow Polish
@@ -265,7 +267,7 @@ synthetic:
 | Labs gdrive parent not shared with ACE SA | Step 2 [WARN] | Skill continues; per-file fixture verification skipped. Add `ace-service-account@connect-labs.iam.gserviceaccount.com` as Reader on the labs synthetic Shared Drive. |
 | `synthetic_generate_from_manifest` returns INVALID_SCHEMA | Step 2 halt | Edit the manifest (error body written to `_error.md`) and re-invoke `/ace:step synthetic-data-generate`. |
 | Connect opp has no payment units | Step 2 [WARN] | `completed_works` / `completed_module` will be 0. Add payment units via `connect-opp-setup` and regenerate, OR accept (visit-based dashboards still work). |
-| `workflow_save_snapshot` blocked on missing `workflow_create_run` | Step 3 [WAITING ON LABS] | Manual: open the workflow in labs UI, click "Run" + "Save snapshot" twice for Week 1 + Week 2. Automatic when labs ships the missing primitive. |
+| `workflow_create_run` or `workflow_save_snapshot` returns transport error | Step 3 partial | Capture the labs error in the run summary; re-run `/ace:step synthetic-workflow-seed` after the transient resolves. Note: re-runs create NEW workflow definitions (no idempotency labs-side); use `workflow_delete` to retire stale ones first OR finish the snapshot manually in the labs UI. |
 | canopy:walkthrough browser crash | Step 6 partial | Per-persona retry via `/ace:step synthetic-walkthrough-run --persona <name>`. Other personas in the original run are preserved. |
 | Operator wants different cast / story | Step 1 review | Edit `synthetic-narrative-plan.yaml` directly in Drive, then re-run from Step 2 onwards. The narrative plan is meant to be operator-tunable. |
 
