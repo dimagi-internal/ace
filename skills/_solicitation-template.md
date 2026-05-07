@@ -57,6 +57,11 @@ solicitation:
   public_url: https://labs.connect.dimagi.com/grants/solicitation/<id>/
   deadline: <ISO date>
   status: open | closed | awarded
+  # ACE-side bookkeeping — the Connect program / opp this solicitation
+  # is INTENDED to feed into. Labs has no foreign-key link to either.
+  # Free to update at any time without touching labs.
+  connect_program_id: <Connect program UUID>
+  connect_opportunity_id: <Connect opp UUID, may change pre-award if the opp is repointed>
   awarded:
     response_id: <labs response UUID>
     awardee_org_slug: <Connect workspace slug>
@@ -97,6 +102,40 @@ integer id (as a string) to labs MCP, never the Connect UUID.
 `solicitation.status == 'awarded'` and a human approved the award via
 `solicitation-review`. Phase 8's `llo-onboarding` halts immediately if
 this invariant is violated.
+
+### Labs scoping invariant (load-bearing)
+
+A labs solicitation is scoped to **one labs program** (`labs_program_id`)
+and that's the only labs-side foreign key. There is **no** labs-side
+foreign key to a specific Connect opportunity. The
+`connect_opportunity_id` and `connect_program_id` fields under
+`opp.yaml.solicitation` are **ACE-side bookkeeping** — ACE's record of
+which Connect opp the solicitation is *intended* to feed into. Labs
+neither knows nor cares.
+
+**Practical consequences:**
+
+- The same solicitation is sometimes published *before* the Connect opp
+  exists. `solicitation-create` fires when the program is set; the
+  Connect opp wires up later in the same run or a later run.
+- Repointing the Connect opp pre-award (e.g., `connect-opp-setup`
+  delete-and-recreate to refresh app-wire fields after a Phase 2
+  re-upload) **does not orphan or affect the labs solicitation**. The
+  public solicitation URL keeps working, the deadline keeps counting
+  down, and pending responses are unaffected. ACE just updates the
+  `connect_opportunity_id` bookkeeping field.
+- `solicitation-review` reads `connect_opportunity_id` at the moment of
+  award and writes the awardee onto **that** opp via Phase 8. It does
+  not require the value to have been stable since the solicitation was
+  published.
+- Skills that worry about "the labs solicitation will 404 if I delete
+  the Connect opp" are wrong. Re-check the assumption against this
+  invariant before treating opp delete-and-recreate as expensive.
+
+This invariant is the source of truth for downstream skill logic that
+touches the solicitation/opp boundary. If you find yourself writing a
+guard like "halt because the solicitation is wired to the opp,"
+re-read this section.
 
 ## Atom inventory (connect-labs MCP)
 

@@ -300,12 +300,28 @@ Invoke the `app-deploy` skill.
   Phase 3's `connect_create_opportunity` writes the HQ ids into the opp's
   app-wire fields at create time, and Connect's edit form does NOT expose
   those fields — so re-pointing a wired opp at new HQ ids requires
-  delete-and-recreate. Surfaced 2026-04-30 (turmeric-20260429-2330): Phase 3
-  ran after the first upload; Phase 2 then re-uploaded for the Q10 escape
-  fix; the resulting opp was wired to abandoned drafts. The orchestrator's
-  Phase 2→3 transition MUST verify
-  `2-commcare/app-deploy_summary.md.released_at >= 2-commcare/app-deploy_summary.md.uploaded_at`
+  delete-and-recreate **of the Connect opportunity** (CCC-301 will
+  eventually expose `update_opportunity({learn_app, deliver_app})` and
+  retire this dance). The orchestrator's Phase 2→3 transition MUST
+  verify `2-commcare/app-deploy_summary.md.released_at >= 2-commcare/app-deploy_summary.md.uploaded_at`
   AND that no subsequent re-upload happened, before dispatching Phase 3.
+
+  **What delete-and-recreate of the Connect opportunity does NOT touch:**
+  any labs solicitation already published for this opp. Per
+  `skills/solicitation-create/SKILL.md`, solicitations are scoped to a
+  labs `program_id`, NOT to a specific Connect opportunity UUID — the
+  `connect_opportunity_id` field under `opp.yaml.solicitation` is
+  ACE-side bookkeeping that records ACE's intended target, not a
+  labs-side foreign key. The public solicitation URL keeps working, the
+  deadline keeps counting down, candidate LLO views and applications
+  continue uninterrupted. The recovery is one
+  `connect_delete_opportunity` + `connect_create_opportunity` against
+  canonical HQ ids + an `opp.yaml.solicitation.connect_opportunity_id`
+  bookkeeping update. **Repointing the Connect opp pre-Phase-8 is
+  therefore a low-cost recovery, not a destructive one.** Phase 8
+  onboarding then targets the new opp UUID from `opp.yaml`. Surfaced
+  2026-04-30 (turmeric-20260429-2330) and re-confirmed cheaply
+  2026-05-07 (turmeric-20260507-1733).
 
 ### Step 2.6: Generate app-test-cases.yaml
 
