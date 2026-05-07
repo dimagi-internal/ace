@@ -93,10 +93,36 @@ no inline self-eval.
    - Use `is_remote_index: false` (local index) — remote indexes crash with 500 on the connect-ace team
    - Capture `collection_id`
 
-5. **Upload RAG files:**
-   - For each file in the opportunity's context (PDD, training PDFs, app summary markdown), base64-encode the content
+5. **Upload RAG files (PDD + source inputs + training + summaries).**
+
+   The canonical KB recipe is **PDD + inputs + training + app summaries**
+   (per [#106 finding 15](https://github.com/jjackson/ace/issues/106)).
+   Indexing the source PDFs/spreadsheets directly alongside the
+   synthesized PDD gives the bot procedural fidelity for SOP-level
+   questions where the PDD summary may have lost detail. The pre-fix
+   recipe was PDD-only; that lost the original SOP wording.
+
+   Files to gather:
+   - `runs/<run-id>/1-design/idea-to-pdd.md` — synthesized PDD
+   - `inputs/*` — every file in the opp's `inputs/` folder (SOPs,
+     questionnaire templates, data spreadsheets, evidence packs).
+     Use `drive_list_folder` + `drive_download_binary` for binary
+     types (PDF, docx, xlsx — see also [#106 finding 4](https://github.com/jjackson/ace/issues/106));
+     use `drive_read_file` for text files (markdown, plain text).
+   - `runs/<run-id>/5-qa-and-training/*` — per-artifact training docs
+     (LLO/FLW guides, FAQ, quick-reference)
+   - `runs/<run-id>/2-commcare/*` — app structure summaries
+
+   For each file, base64-encode the content (the upload atom takes
+   base64). Upload in one call:
+
    - `ocs_upload_collection_files({ collection_id, files: [...] })`
    - Capture `file_ids`
+
+   Note on PDF token cost: source PDFs can be large. OCS's indexer
+   chunks them, but the embedding cost scales with content. If the
+   inputs/ folder has >200 KB of PDF content, log an `[INFO]` line
+   to `comms-log/observations.md` so the operator can audit.
 
 6. **Wait for indexing:**
    - `ocs_wait_for_collection_indexing({ collection_id, timeout_sec: 300 })`
@@ -117,6 +143,30 @@ no inline self-eval.
    - Build the collection list:
      - `[$OCS_SHARED_COLLECTION_ID, collection_id]` if the env var is set (multi — prompt MUST have the variable per step 7)
      - `[collection_id]` if the env var is unset (single — prompt MUST NOT have the variable per step 7)
+
+   **Shared-collection bleed warning** (per [#106 finding 14](https://github.com/jjackson/ace/issues/106)).
+   When `$OCS_SHARED_COLLECTION_ID` is set, the shared collection (e.g.
+   the Connect-general "NM Bot" collection 350) competes with the
+   opp-specific collection for retrieval slots. On generic prompts
+   ("how do I claim this opportunity?"), shared often outweighs
+   opp-specific — the bot answers from the shared collection's stale
+   exemplar opp ("6 modules") rather than the LEEP-specific Learn app
+   ("8 modules"). The prompt SHOULD therefore explicitly steer
+   retrieval toward opp-specific content for any
+   identifier-bearing question:
+   - In step 7's prompt, after the `{collection_index_summaries}`
+     section, add: *"When answering questions about THIS specific
+     opportunity (visit counts, module structure, payment unit
+     details, FLW eligibility), prefer information from the
+     opp-specific knowledge collection over the shared
+     CommCare-Connect collection. The shared collection is for
+     cross-opp Connect-product questions only."*
+   - Future fix tracks: dropping the shared collection entirely for
+     opp-specific bots is one option (would require recomposing the
+     prompt to drop the variable per the cross-field invariant); a
+     retrieval-weight knob in OCS is another. Until either ships, the
+     prompt-side hint is the only ACE-side lever.
+
    - `ocs_set_chatbot_pipeline({ experiment_id, prompt, collection_index_ids: <built above>, max_results: 20, generate_citations: true })`
      One transactional save, prompt + collections in one POST. The bundled atom pre-flights the OCS cross-field rule (`{collection_index_summaries}` iff length>=2); a typed `PipelineValidationError` is raised if the merged state would violate it.
 

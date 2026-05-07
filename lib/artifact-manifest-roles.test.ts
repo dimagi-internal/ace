@@ -2,16 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { PHASE_FOLDERS, ROLE_VOCAB, baseRole } from './artifact-manifest-roles.js';
 
 describe('PHASE_FOLDERS', () => {
-  it('maps all 8 phase enum values to N-<phase> folder slugs', () => {
+  it('maps all 9 phase enum values to N-<phase> folder slugs', () => {
     expect(PHASE_FOLDERS).toEqual({
       'design': '1-design',
       'commcare': '2-commcare',
       'connect': '3-connect',
       'ocs': '4-ocs',
       'qa-and-training': '5-qa-and-training',
-      'solicitation-management': '6-solicitation-management',
-      'execution-management': '7-execution-manager',
-      'closeout': '8-closeout',
+      'synthetic-data-and-workflows': '6-synthetic',
+      'solicitation-management': '7-solicitation-management',
+      'execution-management': '8-execution-manager',
+      'closeout': '9-closeout',
     });
   });
 

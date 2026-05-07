@@ -38,7 +38,7 @@ describe('artifact manifest', () => {
     expect(dupes).toEqual([]);
   });
 
-  it('has all eight phases represented', () => {
+  it('has all nine phases represented', () => {
     const phases = new Set(ARTIFACT_MANIFEST.map((a) => a.phase));
     expect(phases).toEqual(new Set([
       'design',
@@ -46,6 +46,7 @@ describe('artifact manifest', () => {
       'connect',
       'ocs',
       'qa-and-training',
+      'synthetic-data-and-workflows',
       'solicitation-management',
       'execution-management',
       'closeout',

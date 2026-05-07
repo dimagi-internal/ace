@@ -106,16 +106,17 @@ For each of the two smoke journeys (Learn first, then Deliver), call
 
 - Each call returns a list of captured screenshots; upload each to
   `ACE/<opp>/runs/<run-id>/5-qa-and-training/screenshots/<journey-id>/<step-name>.png`
-  via `drive_upload_binary` (mime: `image/png`).
-- **CRITICAL:** after uploading each PNG, set its sharing permission
-  to `anyone-with-link` (role: reader) via
-  `drive.permissions.create`. Slides' `createImage` (used by
-  `training-deck-build` downstream) fetches PNGs via Google's
-  image-import service, which doesn't carry the SA's auth — so an
-  SA-only file gets "image cannot be reached" and the deck slide
-  comes out blank. Setting anyone-with-link at upload time avoids a
-  class of "deck builds without errors but slides are empty" bugs.
-  Verified live 2026-05-02 via
+  via `drive_upload_binary` with `shareAnyoneWithLink: true` AND
+  `mimeType: "image/png"`.
+- **CRITICAL:** the `shareAnyoneWithLink: true` flag is required.
+  Slides' `createImage` (used by `training-deck-build` downstream)
+  fetches PNGs via Google's image-import service, which doesn't carry
+  the SA's auth — so an SA-only file gets "image cannot be reached"
+  and the deck slide comes out blank. Setting anyone-with-link at
+  upload time avoids a class of "deck builds without errors but
+  slides are empty" bugs. The standalone `drive_set_anyone_with_link`
+  atom exists for retroactively sharing a file that was uploaded
+  without the flag. Verified live 2026-05-02 via
   `scripts/test-screenshot-to-slides-e2e.ts`.
 
 If a smoke recipe fails (status != pass), halt — downstream phases
@@ -334,3 +335,4 @@ Notes:
 | 2026-05-04 | Phase 5 executor pivot — drops `qa-plan` synthesis. Now reads `expected-journeys.md` (Phase 1) and `app-test-cases.yaml` (Phase 2) as inputs, runs only the two `is_smoke: true` recipes (one per app), and adds a thin per-app UX smoke judge (~2 LLM calls). Writes a new shallow verdict at `verdicts/app-screenshot-capture-shallow.yaml`. Deep, per-journey UX grading moves to `app-ux-eval` running from `/ace:qa-deep`. Spec: docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Inputs repointed to `1-design/pdd-to-app-journeys.md`, `2-commcare/app-test-cases.yaml`, `2-commcare/app-deploy_summary.md`, `2-commcare/recipes/`. Outputs repointed to `5-qa-and-training/screenshots/<journey-id>/<step-name>.png`, `5-qa-and-training/app-screenshot-capture_manifest.yaml`, `5-qa-and-training/app-screenshot-capture_verdict.yaml`, `5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (per manifest). Both verdict YAML examples' `capture_path` updated. No behavior change beyond paths. | ACE team |
 | 2026-05-06 | **Step 2 input-completeness pre-flight** — restructured the post-Step-1 logic into an explicit failure-mode table that distinguishes upstream Phase 2 incomplete output (master yaml without recipes) from smoke-flag malformation. Each failure halts with a named PLATFORM auto_surfaced message + the exact `/ace:step` remediation command, and writes `verdict: incomplete` (not `fail` — upstream gaps aren't smoke failures). Surfaced by leep-paint-collection run 20260506-1440 where a Phase 2 dispatch paraphrased the `app-test-cases` SKILL contract and elided the per-journey recipe outputs; `app-screenshot-capture` halted correctly but the operator-facing message conflated the failure mode with general "missing input" diagnostics. See jjackson/ace#106 finding #3 + #16. | ACE team |
+| 2026-05-07 | **Step 5 anyone-with-link via `drive_upload_binary({shareAnyoneWithLink: true})`** — replaces the previous unfulfillable contract (the SKILL named `drive.permissions.create` but no MCP atom implemented it). The new flag sets `role: reader, type: anyone` atomically at upload time, eliminating the "deck builds without errors but slides are empty" failure mode. Standalone `drive_set_anyone_with_link({fileId})` atom also added for retroactive sharing. See jjackson/ace#115 finding #3. | ACE team |

@@ -7,7 +7,7 @@ description: >
 model: inherit
 phase: closeout
 phase_display: Closeout
-phase_ordinal: 8
+phase_ordinal: 9
 skills:
   - { name: opp-closeout,       has_judge: false }
   - { name: llo-feedback,       has_judge: false }

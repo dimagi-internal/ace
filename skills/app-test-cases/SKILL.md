@@ -73,7 +73,16 @@ between major form sections):
   before validating
 - Validate via `mobile_validate_recipe` before writing
 
-Write recipes to `ACE/<opp>/runs/<run-id>/app-test-cases/recipes/J<n>.yaml`.
+**Write recipes to `ACE/<opp>/runs/<run-id>/2-commcare/recipes/J<n>.yaml`**
+(NOT `app-test-cases/recipes/` — earlier drafts of this SKILL.md had
+the wrong path and the recipes silently weren't being created;
+[#106 finding 3](https://github.com/jjackson/ace/issues/106) fixed
+this. The path must mirror the output spec at the top of the file so
+Phase 5's `app-screenshot-capture` can find them.)
+
+Create the `2-commcare/recipes/` subfolder via `drive_create_folder`
+(idempotent — `findOrCreate: true` is the default) BEFORE writing the
+first recipe.
 
 ### Step 4: Emit the consolidated yaml
 
@@ -85,13 +94,23 @@ in `templates/app-test-cases-template.yaml`.
 (Same shape as pdd-to-test-prompts.) Verify:
 - Every journey from `expected-journeys.md` has a binding
 - Exactly one `is_smoke: true` per app
+- **Every `is_smoke: true` journey has a `recipes/J<n>.yaml` file
+  written under `2-commcare/recipes/`.** Confirm via
+  `drive_list_folder` against the recipes folder — count must equal
+  the number of `is_smoke: true` journeys. Phase 5's
+  `app-screenshot-capture` reads from this folder; a missing recipe
+  silently degrades the deck-build to placeholder screenshots
+  ([#106 finding 3](https://github.com/jjackson/ace/issues/106) — the
+  leep-paint-collection run hit this exact gap and required two
+  manual `/ace:step` retries to recover).
 - Every recipe passes `mobile_validate_recipe`
 - Every `forms_exercised` entry resolves to a real Nova form ID
 
-If any check fails, return to the relevant step and fix before writing
-the yaml. This is a pre-write structural gate — no verdict file is
-emitted (no LLM-as-Judge in this skill; the deep UX judging happens
-later in `app-ux-eval`).
+**If any check fails, halt with a `[BLOCKER]` in the gate brief.**
+Do NOT write `app-test-cases.yaml` until the recipe coverage matches
+the `is_smoke` count. This is a pre-write structural gate — no
+verdict file is emitted (no LLM-as-Judge in this skill; the deep UX
+judging happens later in `app-ux-eval`).
 
 ## Mode behavior
 

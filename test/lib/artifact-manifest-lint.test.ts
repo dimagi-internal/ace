@@ -45,9 +45,10 @@ const RUN_LEVEL_EXEMPT = new Set([
 const STRUCTURAL_SUB_FOLDERS = new Set([
   'mobile-recipes',   // 5-qa-and-training/mobile-recipes/{learn,deliver}/manifest.yaml
   'screenshots',      // 5-qa-and-training/screenshots/...
-  'timeline-monitor', // 7-execution-manager/timeline-monitor/YYYY-MM-DD.md
-  'flw-data-review',  // 7-execution-manager/flw-data-review/YYYY-MM-DD.md
-  'opp-eval',         // 8-closeout/opp-eval/...
+  'walkthroughs',     // 6-synthetic/walkthroughs/<persona>-<timestamp>/slideshow.html
+  'timeline-monitor', // 8-execution-manager/timeline-monitor/YYYY-MM-DD.md
+  'flw-data-review',  // 8-execution-manager/flw-data-review/YYYY-MM-DD.md
+  'opp-eval',         // 9-closeout/opp-eval/...
 ]);
 
 const phaseFolderSet: Set<string> = new Set(Object.values(PHASE_FOLDERS));

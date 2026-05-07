@@ -46,13 +46,87 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    when this skill calls `create_opportunity`, the API rejects with
    `Organization must have an accepted application for this program.`
 
-4. **Create the opportunity** via `connect_create_opportunity`. The new
-   endpoint is `POST /api/programs/<program_id>/opportunities/` and takes
-   the full opp config in one shot — including dates, total_budget, and
+   **3a. Self-managed opp pre-flight (added per #106 finding 10).**
+   "Self-managed" means the `target_organization_slug` equals the
+   program's `organization_slug` (the LLO is the same org running the
+   program — typical for ACE dogfood opps in `ai-demo-space`). For
+   this pattern, no human-mediated invite-and-accept happens upstream,
+   so the application doesn't yet exist when this skill runs. Detect
+   and resolve:
+
+   1. Compare `organization_slug` and `target_organization_slug`. If
+      they differ, this is the LLO-distinct path — Phase 7 already
+      handled the round-trip; skip this sub-step.
+   2. Same-org case: call `connect_list_program_applications` (or read
+      `connect-setup/llo-invite_invitations.md` if Phase 6 ran). If an
+      `ACCEPTED` application already exists for `organization_slug` on
+      `program_id`, capture its `program_application_id` and continue.
+   3. No accepted application → run the round-trip inline:
+
+      ```
+      mcp__plugin_ace_ace-connect__connect_send_llo_invite(
+        organization_slug,
+        program_id,
+        target_organization_slug: organization_slug,  // same org
+      )
+      mcp__plugin_ace_ace-connect__connect_accept_program_application(
+        target_organization_slug: organization_slug,
+        program_application_id: <returned>,
+      )
+      ```
+
+      Capture `program_application_id` from the create response;
+      `create_opportunity` may want it as a conditionally-required
+      input depending on Connect's contract evolution. (The original
+      `POST /api/programs/<id>/opportunities/` derives it server-side
+      from `target_organization_slug` + `program_id`, but newer
+      versions may require it explicitly — passing it doesn't hurt.)
+
+   4. Log the round-trip result to `comms-log/observations.md` so the
+      operator can audit the silent state mutation. This is the only
+      Phase 3 step that mutates Connect state outside the opp
+      itself.
+
+4. **Create the opportunity** via `connect_create_opportunity`.
+
+   **⚠️ Single-active-opp invariant (per-program, per-application).**
+   Connect enforces "one active managed opportunity per accepted
+   `ProgramApplication`." Creating a new managed opp on a program where
+   a prior opp is currently `active=true` (under the same accepted
+   application) will *deactivate* the prior opp as a side effect of
+   the accept-application step in 3a. This was a silent surprise in
+   the leep-paint-collection run (see #106 finding 11) — the prior
+   `LEEP Paint Surveillance — India v1` opp flipped from active to
+   inactive without warning when this skill recreated the opp.
+
+   Before calling `create_opportunity`, list active opps for this
+   program and surface a `[WARN]` line in the gate brief if any
+   exist:
+
+   ```
+   mcp__plugin_ace_ace-connect__connect_list_opportunities({
+     organization_slug,
+     program_id,
+   })
+   ```
+
+   For each opp where `active=true`, write to the gate brief:
+   `[WARN] Creating opp "<new-name>" will deactivate prior active
+   opp "<old-name>" (id=<old-uuid>) — same program, same accepted
+   application. Confirm intent or close prior opps first.`
+
+   The auto-mode default is to proceed (matches current Phase 7
+   gate-brief auto-approval). Review-mode pauses for explicit operator
+   confirmation. An idempotent-resume path that detects an existing
+   matching opp and asks before recreating is tracked as future work.
+
+   **Endpoint:** the new endpoint is
+   `POST /api/programs/<program_id>/opportunities/` and takes the
+   full opp config in one shot — including dates, total_budget, and
    structured `learn_app` / `deliver_app` payloads. The server resolves
-   HQ creds, registers HQApiKey records as needed, fetches app names from
-   CommCareHQ synchronously, and syncs learn modules + deliver units in
-   the same transaction. Args:
+   HQ creds, registers HQApiKey records as needed, fetches app names
+   from CommCareHQ synchronously, and syncs learn modules + deliver
+   units in the same transaction. Args:
 
    - `organization_slug`: PM-side org (e.g. `ai-demo-space`)
    - `program_id`: from step 1 (program.md)
@@ -62,7 +136,13 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
      `Ensure this field has no more than 50 characters` error).
      Truncate the PDD's intervention summary to a one-line headline
      and stash the long-form intent in `description`. Mobile-app-facing.
-   - `description`: full PDD intervention description
+   - `description`: **default to ≤250 chars** — a single-paragraph
+     headline. The Connect server has an undocumented length threshold
+     where HTTP 500s start firing intermittently around ~700 chars;
+     trimming to ~250 cleared the path on leep-paint-collection (see
+     #106 finding 7). Stash the full PDD intervention prose in the
+     opp's Drive summary doc and link to it from the headline. When
+     the server-side length cap is widened safely, drop this guidance.
    - `target_organization_slug`: LLO org slug (must be ACCEPTED — see step 3)
    - `start_date` / `end_date`: opportunity dates (YYYY-MM-DD; must fit
      inside the program window)

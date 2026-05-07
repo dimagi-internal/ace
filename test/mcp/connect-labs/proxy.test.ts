@@ -63,4 +63,41 @@ describe('connect-labs-server (stdio → HTTP proxy)', () => {
       forward({ jsonrpc: '2.0', id: 3, method: 'tools/list' }, { token: '', url: 'https://labs.example/mcp/' }),
     ).rejects.toThrow(/LABS_MCP_TOKEN/);
   });
+
+  // Background: jjackson/ace#106 finding 8 — `notifications/initialized`
+  // (a JSON-RPC notification with no `id`) was being forwarded to the
+  // labs server, which replied with "Method not found"; the proxy then
+  // wrote that error to stdout. The MCP host treats unsolicited messages
+  // as a protocol violation and disables tool discovery, so ToolSearch
+  // couldn't see any `mcp__connect-labs__*` tools. The fix detects
+  // notifications and suppresses any reply.
+  describe('isNotification (regression: ToolSearch tool discovery)', () => {
+    it('frames without an id are notifications', async () => {
+      const { isNotification } = await import('../../../mcp/connect-labs-server');
+      expect(
+        isNotification({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+      ).toBe(true);
+    });
+
+    it('frames with explicit null id are notifications', async () => {
+      const { isNotification } = await import('../../../mcp/connect-labs-server');
+      expect(
+        isNotification({ jsonrpc: '2.0', id: null, method: 'notifications/cancelled' }),
+      ).toBe(true);
+    });
+
+    it('frames with numeric id are requests, not notifications', async () => {
+      const { isNotification } = await import('../../../mcp/connect-labs-server');
+      expect(
+        isNotification({ jsonrpc: '2.0', id: 7, method: 'tools/list', params: {} }),
+      ).toBe(false);
+    });
+
+    it('frames with string id are requests, not notifications', async () => {
+      const { isNotification } = await import('../../../mcp/connect-labs-server');
+      expect(
+        isNotification({ jsonrpc: '2.0', id: 'abc', method: 'tools/list' }),
+      ).toBe(false);
+    });
+  });
 });
