@@ -115,7 +115,7 @@ For each of the two smoke journeys (Learn first, then Deliver), call
   and the deck slide comes out blank. Setting anyone-with-link at
   upload time avoids a class of "deck builds without errors but
   slides are empty" bugs. The flag was added to `drive_upload_binary`
-  in 0.13.54 alongside the standalone `drive_set_anyone_with_link`
+  in 0.13.57 alongside the standalone `drive_set_anyone_with_link`
   atom (use the standalone atom only when retroactively sharing a
   file that was uploaded without the flag). Verified live 2026-05-02
   via `scripts/test-screenshot-to-slides-e2e.ts`.
