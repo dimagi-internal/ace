@@ -193,6 +193,11 @@ Before Step 1, verify:
 - [ ] **`opp.yaml.connect.opportunity` exists** (Phase 3 ran).
   Without an opportunity in Connect, the labs MCP has no opp to
   scope `synthetic_generate_from_manifest` against.
+- [ ] **`opp.yaml.connect.opportunity.labs_int_id` populated**
+  (Stage 4.5 of Plan B; `connect-opp-setup` recovers it via
+  `labs_context` post-create). When null, Phase 6 falls back to
+  operator-typed `--opp-int-id`. Re-run `connect-opp-setup` if labs
+  hadn't observed the opp at first-create time.
 - [ ] **`LABS_MCP_TOKEN` set** in `${CLAUDE_PLUGIN_DATA}/.env`.
   Required by every connect-labs MCP call. `bin/ace-doctor` reports
   the labs section.
