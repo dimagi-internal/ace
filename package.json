@@ -1,6 +1,10 @@
 {
   "name": "ace",
+<<<<<<< HEAD
   "version": "0.13.58",
+=======
+  "version": "0.13.59",
+>>>>>>> 0993ea8 (feat(synthetic): Phase 6 Stage 4.5 — UUID→int automation in connect-opp-setup (0.13.59))
   "description": "AI Connect Engine - orchestrator for building Connect Opps using AI",
   "type": "module",
   "scripts": {
