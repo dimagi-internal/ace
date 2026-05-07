@@ -189,26 +189,61 @@ pipeline schemas populated with KPI fields. The polish step
    The audit workflow reads the watched workflow's saved runs and
    renders a week-over-week compliance dashboard.
 
-8. **Skip the saved-runs progression — gated on labs PR.**
+8. **Saved-runs progression — Week 1 + Week 2 snapshots.**
 
    Plan B's Task 3.1 calls for a Week 1 + Week 2 saved-runs progression
-   to make the demo show week-over-week deltas. This requires
-   `workflow_save_snapshot`, which takes a run_id (an integer
-   identifying a specific workflow run). The connect-labs MCP
-   **does not currently expose** a way to programmatically create a
-   workflow run — the existing snapshot tool needs a pre-existing
-   run_id, and runs are created via the labs UI today.
+   to make the demo show week-over-week deltas. The connect-labs MCP
+   shipped `workflow_create_run` + a fixed `workflow_save_snapshot`
+   (with `opportunity_id` scope) to support this loop programmatically.
 
-   This skill stops short of saved-runs creation. The two workflows
-   exist and can be opened in labs; an operator can manually click
-   "Run" + "Save snapshot" twice to get the week-over-week saved-runs
-   progression. Stage 3b (a connect-labs PR) ships
-   `workflow_create_run(definition_id, opportunity_id)`; once that
-   atom exists, this skill can be extended with two extra steps:
-   create run, save snapshot.
+   Derive Week 1 and Week 2 windows from the manifest's `timeline`:
 
-   Surface this in the run summary as `[WAITING ON LABS]
-   workflow_create_run`.
+   ```python
+   start = manifest.timeline.start_date            # ISO date
+   week_1_end = start + 7 days
+   week_2_start = start + 7 days
+   week_2_end = start + 14 days
+   ```
+
+   Then for each week, do create-then-snapshot against the LLO weekly
+   review workflow (the audit workflow's saved-runs come for free as
+   it reads the LLO weekly review's snapshots):
+
+   ```
+   # Week 1
+   r1 = mcp__connect-labs__workflow_create_run(
+     definition_id: <llo_weekly_review_id>,
+     opportunity_id: <synthetic.labs_opp_id>,
+     period_start: <start>,
+     period_end:   <week_1_end>,
+   )
+   mcp__connect-labs__workflow_save_snapshot(
+     run_id:         r1.run_id,
+     opportunity_id: <synthetic.labs_opp_id>,    # required since labs PR #168
+     snapshot_name:  "Week 1",
+     captured_at:    "<week_1_end>T23:59:59Z",
+   )
+
+   # Week 2 — same shape with bumped dates
+   ```
+
+   Capture both run IDs and snapshot timestamps for the run summary.
+
+   **Per-week try/except:** if Week 1 succeeds but Week 2's create or
+   snapshot fails (e.g. transient labs error), surface the partial
+   completion in the run summary and continue. Operator can re-run
+   `/ace:step synthetic-workflow-seed` to retry — but note that re-runs
+   create NEW workflows + duplicate runs (no idempotency on labs side
+   yet); operator should use `workflow_delete` to retire stale ones
+   before retrying.
+
+   **Why Week 1 + Week 2 specifically:** the program admin audit
+   workflow renders week-over-week LLO-process compliance from
+   *multiple* snapshots. Two weeks is the minimum for a "trend"; more
+   weeks add noise to the demo without meaningful narrative gain.
+   Operators wanting a longer run can edit the manifest's timeline to
+   N weeks, then call `workflow_create_run` + `workflow_save_snapshot`
+   N times via direct MCP calls.
 
 9. **Write the run summary** to
    `6-synthetic/synthetic-workflow-seed.md` via `drive_create_file`
@@ -217,7 +252,9 @@ pipeline schemas populated with KPI fields. The polish step
    - Workflow IDs: `llo_weekly_review_id`, `program_admin_audit_id`
    - Public labs URLs: `${LABS_BASE_URL}/labs/workflow/<id>/`
    - KPI count, coaching-task count, scaffold-suitability flag
-   - Saved-runs status: `[WAITING ON LABS] workflow_create_run`
+   - Saved-runs: `Week 1 run_id=<int>`, `Week 2 run_id=<int>`,
+     `<n>/2 snapshots saved` (when both land cleanly), or partial-week
+     failures with the labs error verbatim
    - Any per-arc failures from step 5
 
 10. **Update `opp.yaml`** via `update_yaml_file`:
@@ -262,6 +299,8 @@ pipeline schemas populated with KPI fields. The polish step
 - `mcp__connect-labs__pipeline_update_schema`
 - `mcp__connect-labs__pipeline_get` (on `VERSION_CONFLICT` retry)
 - `mcp__connect-labs__task_create_synthetic`
+- `mcp__connect-labs__workflow_create_run` (step 8 — Week 1 + Week 2 saved-runs)
+- `mcp__connect-labs__workflow_save_snapshot` (step 8 — completes each week)
 - `mcp__plugin_ace_ace-gdrive__drive_read_file`
 - `mcp__plugin_ace_ace-gdrive__drive_create_file` (find-or-update)
 - `mcp__plugin_ace_ace-gdrive__drive_update_file` (run_state read-merge-write)
@@ -292,7 +331,8 @@ tracks as `dry-run-success`.
 | `workflow_create_from_template` returns 4xx | step 2 halt | Surface the labs error verbatim. Common cases: caller not a member of the opp's organization (check `labs_context`); template_key typo. |
 | `kpi_config` empty in manifest | step 3 warn | The workflow gets created with no KPIs and the per-FLW table renders empty. Edit the manifest to add at least one KPI then re-run. |
 | One coaching arc fails | step 5 partial | Other arcs proceed; failure recorded in run summary. Re-run with `--skip-coaching-tasks` then create individually via `task_create_synthetic` if desired. |
-| `workflow_save_snapshot` blocked on labs PR | step 8 [WAITING ON LABS] | Open the workflow in labs UI, click "Run" → "Save snapshot" manually for Week 1 + Week 2. Re-run this skill once labs ships `workflow_create_run` to automate. |
+| `workflow_create_run` or `workflow_save_snapshot` returns transport error | step 8 partial | Capture the labs error in the run summary; re-run `/ace:step synthetic-workflow-seed` after the transient resolves. Idempotency caveat: re-runs create NEW workflow definitions; use `workflow_delete` to retire stale ones first OR open the just-failed workflow in labs UI and finish the snapshot manually. |
+| `workflow_save_snapshot` returns INVALID_SCHEMA cross-check error | step 8 halt | The run's `opportunity_id` doesn't match the param. Should never fire if step 8's loop is built correctly (uses the same `synthetic.labs_opp_id` for both create and snapshot). If it does, the run record was created against a different opp than the skill thinks — investigate via `workflow_get`. |
 | Re-run on existing workflows | step 2 idempotency | `workflow_create_from_template` always creates a NEW workflow (no find-or-create on labs side). Re-runs append to opp.yaml; old workflow_ids are orphaned in labs and need manual cleanup. Use `workflow_delete` directly if you need to retire a stale instance. |
 
 ## Related skills
@@ -307,15 +347,15 @@ tracks as `dry-run-success`.
 
 ## Removal criteria
 
-This skill is permanent. The `[WAITING ON LABS]` deferral on saved-runs
-is a small lift in connect-labs (~50 LoC + tests for a
-`workflow_create_run` MCP tool); when that ships, extend step 8 here
-with the run-create + snapshot-save loop. Don't delete the skill;
-extend it.
+This skill is permanent. Saved-runs creation (step 8) was deferred to a
+labs PR at first ship; that gap closed in 0.13.64 once labs shipped
+`workflow_create_run` + the `workflow_save_snapshot` opp-scope fix
+(connect-labs PR #168). No remaining `[WAITING ON LABS]` items.
 
 ## Change Log
 
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-06 | Initial Stage 3a skill — workflow seeding via SEED templates + config wiring + coaching tasks. Saved-runs deferred to labs PR. | ACE team (Plan B Stage 3) |
+| 2026-05-07 | Step 8 wires the full Week 1 + Week 2 saved-runs loop via `workflow_create_run` + `workflow_save_snapshot` (now scoped to `opportunity_id` per labs PR #168). Removes the last `[WAITING ON LABS]` deferral in Phase 6. Live-smoked against turmeric (workflow 2847, run_ids 2859 + 2860, both snapshots saved cleanly). | ACE team (Plan B Stage 3b) |
 

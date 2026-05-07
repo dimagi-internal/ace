@@ -2,7 +2,7 @@
 name: synthetic-workflow-seed-eval
 description: >
   Grade synthetic-workflow-seed's run summary for workflow wiring, KPI
-  population, coaching-task creation, and saved-runs deferral honesty.
+  population, coaching-task creation, and saved-runs completion.
 disable-model-invocation: true
 ---
 
@@ -14,8 +14,8 @@ contracts. Provisional rubric.
 Stage 4 of ACE Phase 6 (Plan B). Grades whether the seed step landed
 two correctly-wired workflows on labs (LLO weekly review + program
 admin audit), populated their pipeline schemas with KPI-derived fields,
-spawned coaching tasks per `coaching_arcs[]`, and surfaced the
-`workflow_create_run` deferral honestly.
+spawned coaching tasks per `coaching_arcs[]`, and landed the Week 1
++ Week 2 saved-runs snapshots cleanly.
 
 **Status:** Provisional.
 
@@ -53,10 +53,12 @@ Score each dimension 0–10.
    (`avg`, `count`, `count_distinct`, etc.), the summary documents
    the mapping. Silent substitution is a fail.
 
-5. **Saved-runs deferral honesty (weight 0.15).** The summary
-   surfaces `[WAITING ON LABS] workflow_create_run` (or the equivalent)
-   so the operator knows snapshots are deferred. Hard-deduct -5 if the
-   summary claims snapshots ran when they didn't.
+5. **Saved-runs completion (weight 0.15).** Both Week 1 and Week 2
+   runs must have `run_id` recorded AND a snapshot at the
+   week-boundary date. `n/2 snapshots saved` should equal `2/2` for a
+   full-credit score. Hard-deduct -3 per missing snapshot; -5 if the
+   summary claims snapshots ran when the underlying labs records
+   contradict it.
 
 ## Hard-deduct triggers
 
@@ -90,7 +92,7 @@ dimensions:
   kpi_population:                { score: <0-10>, weight: 0.25 }
   coaching_task_creation:        { score: <0-10>, weight: 0.20 }
   aggregation_mapping_honesty:   { score: <0-10>, weight: 0.10 }
-  saved_runs_deferral_honesty:   { score: <0-10>, weight: 0.15 }
+  saved_runs_completion:   { score: <0-10>, weight: 0.15 }
 
 hard_deduct_triggered: [ ... ]
 auto_surfaced: [ ... ]
@@ -109,3 +111,4 @@ Provisional. Calibrate once 3+ runs have shipped — see
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-06 | Initial provisional rubric — Stage 4 of Plan B. | ACE team |
+| 2026-05-07 | "saved-runs deferral honesty" → "saved-runs completion" after labs PR #168 unblocked the run-create + snapshot loop. Now grades whether both weeks landed cleanly instead of whether the deferral was disclosed. | ACE team (Stage 3b) |

@@ -110,6 +110,18 @@ ACE_E2E_BACKUP_CODE=op://AI-Agents/connect-test-user/backup-code
 ACE_E2E_NAME="ACE Test"
 ACE_AVD_NAME=ACE_Pixel_API_34
 
+# Multi-user macOS hosts only — leave both unset for a single-user box.
+# When two Mac users share one machine, an adb-server on the default port
+# (5037) and an emulator on the default console pair (5554/5555) collide.
+# Pin both per user so each `/ace:run` gets an isolated adb + emulator.
+#   User A: leave both unset (defaults: adb 5037, emulator 5554/5555)
+#   User B: ANDROID_ADB_SERVER_PORT=5038, ACE_MOBILE_EMULATOR_PORT=5580
+# ANDROID_ADB_SERVER_PORT is honored natively by adb + emulator; ACE just
+# inherits process.env into spawned children. ACE_MOBILE_EMULATOR_PORT is
+# wired through `mcp/mobile/backends/avd.ts` as `emulator -port <N>`.
+# ANDROID_ADB_SERVER_PORT=
+# ACE_MOBILE_EMULATOR_PORT=
+
 # ── Content Generator (image gen for app-multimedia-coverage) ───────
 #
 # Dimagi's internal image-generation service (Cloud Run, Gemini-3-Flash).
