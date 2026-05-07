@@ -104,8 +104,29 @@ export interface FormFieldRule {
 }
 
 export interface PaymentUnit {
+  /**
+   * **HTML-scraped path (`listPaymentUnits`):** display index from
+   * the `payment_unit_table` page (1, 2, 3...) — *not* the server
+   * integer ID. The server integer ID is not rendered in the
+   * listing. The `payment_unit_uuid` field (below) is the only stable
+   * identifier scrapable from the table (extracted from the row's
+   * `payment_unit/<UUID>/edit` href; verified live 2026-05-06).
+   *
+   * **REST path:** server integer ID.
+   *
+   * Issue tracking: jjackson/ace#106 finding 5.
+   */
   id: number;
   payment_unit_id?: number;             // legacy display id
+  /**
+   * UUID extracted from the row's edit link in the `payment_unit_table`
+   * HTML (e.g. `aece2d58-bc28-41c0-ba77-5b4155652202`). Populated only
+   * by the HTML-scrape path (`listPaymentUnits`). Useful for
+   * downstream lookups against `/payment_unit/<uuid>/edit/` and as a
+   * stable cross-run identifier when the integer server ID isn't
+   * available. Undefined on the REST path.
+   */
+  payment_unit_uuid?: string;
   name: string;
   description: string;
   /**
@@ -129,6 +150,23 @@ export interface PaymentUnit {
 }
 
 export interface DeliverUnit {
+  /**
+   * **HTML-scraped path (`listDeliverUnits`):** display index from
+   * the `deliver_unit_table` page (1, 2, 3...) — *not* the server
+   * integer ID. Connect's HTML for this listing does not expose the
+   * server ID anywhere on the page (verified live 2026-05-06 against
+   * leep-paint-collection opp `f14d8c5d-…` — no data-* attrs, no
+   * hrefs, no hidden inputs). Skills that need the server ID for
+   * `payment_unit.required_deliver_units` must use the integer
+   * returned by the create-time response of `connect_create_payment_unit`,
+   * which is the only reliable source today.
+   *
+   * **REST path:** server integer ID (when this type is populated by
+   * a future REST endpoint).
+   *
+   * Issue tracking: jjackson/ace#106 finding 5 (server-side fix
+   * needed to expose IDs in the listing).
+   */
   id: number;
   name: string;
   slug?: string;
