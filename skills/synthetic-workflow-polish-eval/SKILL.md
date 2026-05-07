@@ -254,3 +254,5 @@ Dimensions 6+7 (visual judge) calibrate against
 |---|---|---|
 | 2026-05-06 | Initial provisional rubric — Stage 4 of Plan B. Vision-model dimensions deferred. | ACE team |
 | 2026-05-07 | Add `visual_hierarchy` (0.10) + `brand_fit` (0.05) dimensions; weights re-normalize from the 5-dim original. New § Process steps 6+7: capture screenshot via gstack browse, dispatch `canopy:visual-judge` with polish-specific rubric. Removes the deferral. canopy v0.2.79 ships the underlying judge. | ACE team |
+
+<!-- 0.13.73 ships canopy:visual-judge wire-up. -->
