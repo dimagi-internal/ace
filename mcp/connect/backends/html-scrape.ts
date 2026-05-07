@@ -216,8 +216,18 @@ export function extractFormFieldValues(html: string): Record<string, string> {
  * Parse Connect's deliver_unit_table HTML into typed rows.
  *
  * The page renders a plain `<table>` whose `<tr>` rows have whitespace-padded
- * `<td>` cells in this order: id, slug, name. Confirmed live 2026-04-28
- * against march-demo opp dea88661-1cd6-486b-ab25-48584bf61a8e.
+ * `<td>` cells in this order: display index, slug, name. Confirmed live
+ * 2026-04-28 against march-demo opp dea88661-… and re-verified 2026-05-06
+ * against leep-paint-collection opp f14d8c5d-… (fixture
+ * `deliver_unit_table-live-2026-05-06.html`).
+ *
+ * **`id` is the display index (1, 2, 3…), not the server integer ID.**
+ * The HTML page does not render server IDs anywhere — no data-* attrs,
+ * no hrefs in row cells, no hidden inputs. Skills that need the
+ * server integer for `payment_unit.required_deliver_units` MUST use
+ * the value returned by `connect_create_payment_unit` at create time,
+ * not values from this listing. Tracked at jjackson/ace#106 finding 5
+ * (server-side fix needed in commcare-connect to expose IDs).
  */
 export function parseDeliverUnitTable(html: string): DeliverUnit[] {
   const out: DeliverUnit[] = [];
@@ -270,15 +280,25 @@ export function parsePaymentUnitTable(html: string): PaymentUnit[] {
   const out: PaymentUnit[] = [];
   const rowRegex = /<tr class="(?:even|odd)"[^>]*>([\s\S]*?)<\/tr>/g;
   for (const m of html.matchAll(rowRegex)) {
-    const cells = [...m[1].matchAll(/<td\s*[^>]*>([\s\S]*?)<\/td>/g)]
+    const rowHtml = m[1];
+    const cells = [...rowHtml.matchAll(/<td\s*[^>]*>([\s\S]*?)<\/td>/g)]
       .map((c) => c[1].replace(/<[^>]+>/g, '').trim());
     if (cells.length >= 6) {
       const id = Number(cells[0]);
       const max_total = Number(cells[4]);
       const max_daily = Number(cells[5]);
+      // Extract the payment-unit UUID from the edit link, when present.
+      // Live HTML on 2026-05-06 (leep-paint-collection) has each row
+      // containing `<a href="…/payment_unit/<UUID>/edit">…`. This is the
+      // only stable identifier scrapable from this listing — `id`
+      // (cells[0]) is the display index, not the server integer ID.
+      // Issue tracking: jjackson/ace#106 finding 5.
+      const editMatch = rowHtml.match(/payment_unit\/([0-9a-f-]{36})\/edit/);
+      const payment_unit_uuid = editMatch ? editMatch[1] : undefined;
       if (Number.isFinite(id)) {
         out.push({
           id,
+          payment_unit_uuid,
           name: cells[1],
           description: '',                 // not rendered in this table
           // amount intentionally omitted — see PaymentUnit.amount jsdoc

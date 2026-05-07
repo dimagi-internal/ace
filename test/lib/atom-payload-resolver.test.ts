@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import {
   resolvePatchXformXml,
   resolveUploadMultimediaBytes,
+  resolveEnvSubstitution,
   AtomArgUsageError,
 } from '../../lib/atom-payload-resolver.js';
 
@@ -120,5 +121,76 @@ describe('resolveUploadMultimediaBytes', () => {
   it('throws AtomArgUsageError when neither is given', () => {
     expect(() => resolveUploadMultimediaBytes({})).toThrow(AtomArgUsageError);
     expect(() => resolveUploadMultimediaBytes({})).toThrow(/must supply one/);
+  });
+});
+
+describe('resolveEnvSubstitution', () => {
+  // Background: jjackson/ace#106 finding 6 — `connect_create_opportunity`
+  // used to forward the literal string `${ACE_HQ_API_KEY}` to Connect,
+  // surfacing as the misleading "Failed to fetch apps from CommCare HQ"
+  // validation error.
+
+  it('passes through strings without ${VAR} unchanged', () => {
+    expect(resolveEnvSubstitution('hello world', {})).toBe('hello world');
+    expect(resolveEnvSubstitution('', {})).toBe('');
+    expect(resolveEnvSubstitution('value with $ and { but no var', {})).toBe(
+      'value with $ and { but no var',
+    );
+  });
+
+  it('substitutes ${VAR} from the supplied env', () => {
+    expect(
+      resolveEnvSubstitution('${ACE_HQ_API_KEY}', { ACE_HQ_API_KEY: 'secret-40chars' }),
+    ).toBe('secret-40chars');
+  });
+
+  it('substitutes ${VAR} embedded in a larger string', () => {
+    expect(
+      resolveEnvSubstitution('Bearer ${TOKEN}', { TOKEN: 'abc123' }),
+    ).toBe('Bearer abc123');
+  });
+
+  it('substitutes multiple ${VAR} occurrences in one call', () => {
+    expect(
+      resolveEnvSubstitution('${A}-${B}-${A}', { A: 'x', B: 'y' }),
+    ).toBe('x-y-x');
+  });
+
+  it('throws when a referenced env var is missing', () => {
+    expect(() => resolveEnvSubstitution('${UNSET_VAR}', {})).toThrow(AtomArgUsageError);
+    expect(() => resolveEnvSubstitution('${UNSET_VAR}', {})).toThrow(/UNSET_VAR/);
+  });
+
+  it('throws when a referenced env var is empty', () => {
+    // Empty-string env vars are treated as unset — better to fail loudly
+    // than to send an empty API key to Connect.
+    expect(() => resolveEnvSubstitution('${API_KEY}', { API_KEY: '' })).toThrow(/API_KEY/);
+  });
+
+  it('aggregates multiple missing vars into one error message', () => {
+    expect(() => resolveEnvSubstitution('${A}-${B}', {})).toThrow(/A.*B|B.*A/);
+  });
+
+  it('preserves a literal `${VAR}` when escaped with a backslash', () => {
+    // Edge case: caller actually wants the literal string `${X}` in
+    // their payload (e.g. documenting an env var pattern in a
+    // description). `\${X}` is the escape hatch.
+    expect(resolveEnvSubstitution('\\${X}', { X: 'should-not-substitute' })).toBe('${X}');
+  });
+
+  it('mixes substituted and escaped patterns in the same string', () => {
+    expect(
+      resolveEnvSubstitution('${REAL} and \\${LITERAL}', { REAL: 'x', LITERAL: 'unused' }),
+    ).toBe('x and ${LITERAL}');
+  });
+
+  it('lower-case names are not substituted (matches typical env var conventions)', () => {
+    // Convention: env vars are UPPER_SNAKE_CASE. Lower-case `${var}`
+    // patterns pass through to avoid clashing with template syntaxes
+    // like JavaScript template-literal placeholders that callers
+    // might be storing in ACE artifacts.
+    expect(resolveEnvSubstitution('${lower_case}', { lower_case: 'x' })).toBe(
+      '${lower_case}',
+    );
   });
 });

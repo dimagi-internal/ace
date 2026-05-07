@@ -35,6 +35,7 @@ import { ConnectValidationError, ConnectSilentRejectError } from './connect/erro
 import {
   resolvePatchXformXml,
   resolveUploadMultimediaBytes,
+  resolveEnvSubstitution,
 } from '../lib/atom-payload-resolver.js';
 
 const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
@@ -196,7 +197,12 @@ server.tool('connect_get_opportunity',
 
 const HqAppZ = z.object({
   hq_server_url: z.string().url().describe('HQ instance URL (e.g. https://www.commcarehq.org)'),
-  api_key: z.string().describe('Raw 40-char HQ API key. Connect creates an HQApiKey record on first use.'),
+  api_key: z.string().describe(
+    'Raw 40-char HQ API key. Connect creates an HQApiKey record on first use. ' +
+      'Accepts `${VAR}` syntax to substitute from the MCP server\'s env (e.g. ' +
+      '`${ACE_HQ_API_KEY}`); the env var must be set in $CLAUDE_PLUGIN_DATA/.env. ' +
+      'Use `\\${VAR}` to pass the literal string.',
+  ),
   cc_domain: z.string().describe('HQ project space slug.'),
   cc_app_id: z.string().describe('Bare 32-char HQ app id.'),
 });
@@ -224,7 +230,20 @@ server.tool('connect_create_opportunity',
     }),
     deliver_app: HqAppZ.describe('cc_app_id MUST differ from learn_app.cc_app_id.'),
   },
-  async (args) => runAtom(async () => (await client()).createOpportunity(args))
+  async (args) =>
+    runAtom(async () => {
+      // Resolve `${VAR}` patterns in API keys before forwarding to
+      // Connect — see jjackson/ace#106 finding 6. The atom historically
+      // sent the literal `${ACE_HQ_API_KEY}` string verbatim, which
+      // surfaced server-side as a misleading "Failed to fetch apps from
+      // CommCare HQ" validation error.
+      const resolved = {
+        ...args,
+        learn_app: { ...args.learn_app, api_key: resolveEnvSubstitution(args.learn_app.api_key) },
+        deliver_app: { ...args.deliver_app, api_key: resolveEnvSubstitution(args.deliver_app.api_key) },
+      };
+      return (await client()).createOpportunity(resolved);
+    })
 );
 
 server.tool('connect_update_opportunity',
