@@ -15,9 +15,17 @@ HTML slideshow + scored screenshots to the run folder. Each invocation
 appends to `opp.yaml.synthetic.walkthroughs[]` so a project history
 accumulates.
 
-The `canopy:walkthrough` skill is the source of truth for browser
-automation, AI scoring, and HTML deck generation — this skill is a thin
-orchestrator that wires its inputs and outputs into the ACE convention.
+The `canopy:walkthrough` skill is the source of truth for the
+walkthrough orchestration — scene loop, browse capture, deck
+generation. As of canopy v0.2.79, per-scene scoring lives in
+`canopy:visual-judge` (the Tough Judge methodology + walkthrough's
+5-dimension rubric in `walkthrough/rubric.yaml`); walkthrough
+dispatches `visual-judge` per scene and aggregates scores into the
+HTML deck JSON. This ACE skill is a thin orchestrator that wires
+walkthrough's inputs and outputs into the ACE convention — it does
+not interact with `canopy:visual-judge` directly. (Polish-eval
+DOES dispatch `canopy:visual-judge` directly, with a different
+rubric — see `synthetic-workflow-polish-eval/SKILL.md` step 7.)
 
 ## Inputs
 
@@ -116,8 +124,11 @@ by `--persona` / `--personas`):
    ```
 
    The canopy skill handles auth (via the spec's `auth.command` block —
-   which calls `walkthrough_auth_login.sh`), browser setup, scene
-   capture, AI scoring, deck generation, and writes:
+   which calls `bin/ace-labs-walkthrough-login`, since canopy v0.2.79
+   walkthroughs targeting labs URLs use ACE's labs-OAuth helper, not
+   ace-web's `/auth/e2e-login/` shared-secret bypass), browser setup,
+   scene capture, per-scene `canopy:visual-judge` dispatch (5-dim
+   Tough Judge scoring per scene), deck generation, and writes:
 
    - `screenshots/walkthroughs/<spec.name>.html` (deck)
    - `screenshots/walkthroughs/<spec.name>.json` (sidecar with scores)
@@ -240,3 +251,4 @@ flow-testing without browser load.
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-06 | Initial Stage 2 skill — canopy:walkthrough orchestration with per-persona append-only history | ACE team (Plan B Stage 2) |
+| 2026-05-07 | Refresh prose to reflect canopy v0.2.79's `canopy:visual-judge` extraction: per-scene scoring is now via the visual-judge dispatch (not inline Tough Judge methodology). Note that polish-eval dispatches `canopy:visual-judge` directly with a different rubric — this skill itself stays a thin orchestrator that doesn't interact with `visual-judge` directly (canopy:walkthrough handles that internally per scene). | ACE team |

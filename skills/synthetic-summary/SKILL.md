@@ -67,6 +67,21 @@ narrative-plan output; this skill grows to bundle them then.
 
    **Fixture folder (read-only, for review):** <GDrive folder URL from synthetic-data-generate.md>
 
+   ## Demonstrative workflows (Stage 3)
+
+   Render this section ONLY when `opp.yaml.synthetic.workflows.{llo_weekly_review_id, program_admin_audit_id}` are populated. For each:
+
+   - **LLO Weekly Review** — `${LABS_BASE_URL}/labs/workflow/<llo_weekly_review_id>/?opportunity_id=<labs_opp_id>` (clickable)
+     - Saved-runs progression (when `synthetic-workflow-seed.md` records `Week 1 run_id` + `Week 2 run_id`): "Week 1 → Week 2 trend visible: <one-line description from the manifest's `coaching_arcs[]` or `anomalies[]`>".
+   - **Program Admin Audit** — `${LABS_BASE_URL}/labs/workflow/<program_admin_audit_id>/?opportunity_id=<labs_opp_id>` (clickable)
+     - "Reads the LLO Weekly Review's saved runs to render week-over-week LLO process compliance."
+
+   If polish ran (`synthetic-workflow-polish.md` exists), append: "Per-opp visuals applied: <patches_applied count> patches across hero / FLW cards / anomaly callouts / domain branding."
+
+   If polish-eval's verdict scored visual-judge dimensions, append: "Visual-judge: hierarchy=<score>, brand-fit=<score>." Skip if either is null (capture failure).
+
+   When `synthetic.workflows` is empty, omit this section.
+
    ## What you'll see
 
    <Paragraph 1 — opp context.>
@@ -112,20 +127,14 @@ narrative-plan output; this skill grows to bundle them then.
 
    ## What's next
 
-   Stage 1 of ACE Phase 6 ships data only. Later stages will add:
+   Phase 6 ships in stages — emit only the lines that match THIS opp's state:
 
-   - **Narrative plan + richer manifests** — LLM-authored personas
-     with names, anomalies, and coaching arcs (Stage 2)
-   - **Per-persona walkthrough decks** — stakeholder-ready HTML
-     slideshows tuned for prospective LLOs and funders (Stage 2)
-   - **Demonstrative workflows** — LLO weekly review + program admin
-     audit, instantiated against the synthetic data (Stage 3)
+   - When `opp.yaml.synthetic.workflows` is empty: "Stage 3 (demonstrative workflows) hasn't run for this opp — `/ace:step synthetic-workflow-seed` instantiates the LLO weekly review + program admin audit."
+   - When `synthetic.workflows` exists but `synthetic-workflow-polish.md` is absent: "Stage 3.2 (polish) hasn't run — `/ace:step synthetic-workflow-polish` applies hero panels + named FLW cards + anomaly callouts."
+   - When `synthetic.walkthroughs[]` is empty: "Stage 2.6 (persona walkthroughs) hasn't run — `/ace:step synthetic-walkthrough-run` produces stakeholder-ready slideshows. Requires `/ace:labs-login` first."
+   - Always: "To regenerate this opp's data with a different manifest, run `/ace:step synthetic-data-generate --opp <slug>`. To fully disable synthetic mode, call `mcp__connect-labs__synthetic_disable(opportunity_id=<int>)`."
 
-   To regenerate this opp's data with a different manifest, run
-   `/ace:step synthetic-data-generate --opp <slug> --opp-int-id <int>
-   --manifest <path>`. To fully disable synthetic mode for this opp,
-   call `synthetic_disable(<opp-int-id>)` directly via the connect-labs
-   MCP (no skill yet).
+   Skip the entire section if all three stage gaps are filled (the demo is complete).
    ```
 
    Write via `mcp__plugin_ace_ace-gdrive__drive_create_file`. If the file
@@ -175,3 +184,4 @@ external side effects in this skill anyway). State tracks as
 |---|---|---|
 | 2026-05-06 | Initial Stage 1 MVP skill — three-paragraph reviewer summary aggregating data-generate output | ACE team (Plan B Stage 1) |
 | 2026-05-06 | Stage 2: prefer `synthetic-narrative-plan.{md,yaml}` when present; render Persona Walkthroughs section from `opp.yaml.synthetic.walkthroughs[]`. Section is omitted entirely when empty (Stage 1 summaries unchanged). | ACE team (Plan B Stage 2) |
+| 2026-05-07 | Stage 3+: render Demonstrative Workflows section from `opp.yaml.synthetic.workflows.{llo_weekly_review_id, program_admin_audit_id}`; surface saved-runs Week-1/Week-2 trend (Stage 3b) + polish patch count + visual-judge scores (post canopy:visual-judge wire-up). Replace the static "What's next" block with conditional gap-detection so the summary self-describes which stages haven't run for this opp. | ACE team (Plan B Stage 3+) |
