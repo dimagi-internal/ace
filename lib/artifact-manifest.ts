@@ -716,6 +716,53 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'One-page reviewer-facing summary a Dimagi staffer forwards to a stakeholder. Labs URL + workflow URLs + per-persona slideshow links + 3-paragraph narrative.',
   },
 
+  // Phase 6 eval verdicts (Stage 4 of Plan B).
+  {
+    path: '6-synthetic/synthetic-narrative-plan-eval_verdict.yaml',
+    producedBy: 'synthetic-narrative-plan-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'LLM-as-Judge verdict on the narrative plan: PDD anchoring, cast realism, anomaly+coaching coherence, manifest schema validity, stakeholder narrative quality.',
+  },
+  {
+    path: '6-synthetic/synthetic-data-generate-eval_verdict.yaml',
+    producedBy: 'synthetic-data-generate-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'LLM-as-Judge verdict on the data-generate run: record-count health, form schema coverage, warning honesty, manifest provenance, operator next steps.',
+  },
+  {
+    path: '6-synthetic/synthetic-workflow-seed-eval_verdict.yaml',
+    producedBy: 'synthetic-workflow-seed-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'LLM-as-Judge verdict on workflow seeding: workflow wiring, KPI population, coaching-task creation, aggregation-mapping honesty, saved-runs deferral honesty.',
+  },
+  {
+    path: '6-synthetic/synthetic-workflow-polish-eval_verdict.yaml',
+    producedBy: 'synthetic-workflow-polish-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'LLM-as-Judge verdict on workflow polish: narrative-data coherence, patch quality, smoke-render success, domain-language fit, mode honesty. Strictest gate (threshold 7.5) — polish is the headline.',
+  },
+  {
+    path: '6-synthetic/synthetic-walkthrough-spec-eval_verdict_<persona>.yaml',
+    producedBy: 'synthetic-walkthrough-spec-eval',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'LLM-as-Judge verdict per persona spec: persona-priority coverage, wow_moment specificity, ai_quality falsifiability, anomaly-to-scene mapping, turn-off avoidance.',
+  },
+
   // ── Solicitation Management phase (Phase 7) ────────────────────
   // New in 0.12.0; renumbered + rerooted into 7-solicitation-management/ in 0.13.5x.
 
