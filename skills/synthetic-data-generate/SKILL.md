@@ -26,7 +26,7 @@ deferred to later stages. This skill is the data plumbing only.
 | Source | Artifact | Used for |
 |---|---|---|
 | Operator (CLI) | `--opp <slug>` | opp folder under `ACE/` |
-| Operator (CLI) | `--opp-int-id <integer>` | labs-side integer opportunity ID (required for v1; UUID→int automation is deferred) |
+| Operator (CLI, optional) | `--opp-int-id <integer>` | labs-side integer opportunity ID — **defaults to `opp.yaml.connect.opportunity.labs_int_id`** since Stage 4.5 (auto-recovered by `connect-opp-setup`). Pass explicitly to override. |
 | Operator (CLI, optional) | `--manifest <drive-path>` | pre-authored manifest YAML; if omitted, the skill writes a default and pauses |
 | Operator (CLI, optional) | `--no-pause` | skip the manifest-review pause when accepting the default |
 | Phase 1 | `inputs/pdd.md` | (default-manifest mode) primary measurement field for the KPI |
@@ -58,8 +58,15 @@ deferred to later stages. This skill is the data plumbing only.
    - `connect.opportunity.url` if present — informational
    - `last_run_id` — required; if missing, halt with "run `/ace:run <opp>` first to bootstrap a run folder"
 
-   Halt if `--opp-int-id` is missing — Stage 1 requires the operator to provide
-   the labs-side integer manually. (UUID→int automation is Stage 4.)
+   **Resolve the labs int ID:**
+   1. If `--opp-int-id <N>` is passed, use it (operator override).
+   2. Else read `opp.yaml.connect.opportunity.labs_int_id` (auto-recovered
+      by Stage 4.5's `connect-opp-setup` enhancement).
+   3. If both are missing, halt with: "labs int_id not in opp.yaml and no
+      `--opp-int-id` passed. Either re-run `/ace:step connect-opp-setup`
+      to retry the labs lookup (it sometimes lags Connect by a few
+      seconds on first creation), or pass `--opp-int-id <N>` explicitly
+      after looking up the int in the labs UI synthetic dropdown."
 
    Construct the run folder path:
    `ACE/<opp>/runs/<last_run_id>/6-synthetic/`. Create it via
@@ -370,7 +377,7 @@ When `--dry-run` is active:
 
 | Failure | Detection | Recovery |
 |---|---|---|
-| `--opp-int-id` not provided | step 1 halt | Operator finds the integer in the labs synthetic UI dropdown and re-runs. Stage 4 will automate via `connect-opp-setup`. |
+| `--opp-int-id` not provided AND `opp.yaml.connect.opportunity.labs_int_id` missing | step 1 halt | Re-run `/ace:step connect-opp-setup` to retry the labs lookup (sometimes lags Connect by seconds), OR pass `--opp-int-id <N>` after looking up the int in the labs synthetic UI. (Stage 4.5 automated this — pre-Stage-4.5 opps lack the `connect:` block in opp.yaml.) |
 | `opp.yaml` missing `last_run_id` | step 1 halt | Run `/ace:run <opp>` first so the orchestrator bootstraps a run folder. |
 | PDD missing primary measurement field | step 2 warn | Default manifest emits `kpi_config: []`; operator adds KPIs in the pause. |
 | `INVALID_SCHEMA` from labs | step 3 halt | Operator edits the manifest (error body written to `_error.md`) and re-invokes. |

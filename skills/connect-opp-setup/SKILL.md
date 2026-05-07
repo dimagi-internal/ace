@@ -22,8 +22,9 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
 
 ## Outputs
 
-- `3-connect/connect-opp-setup.md` — opp UUID, verification flags, payment units, ACE test-user invite URL
+- `3-connect/connect-opp-setup.md` — opp UUID, verification flags, payment units, ACE test-user invite URL, labs_int_id (when recoverable)
 - `connect-state.yaml` — `ace_test_user_invite_pending_until_active` flag for `app-screenshot-capture`
+- `opp.yaml.connect.opportunity.labs_int_id` (when recoverable; null otherwise) — Phase 6 default for `synthetic-data-generate --opp-int-id`
 
 ## Process
 
@@ -361,6 +362,81 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
      from defaults vs. set explicitly)
    - Deliver units (from create response) and Payment units (from step 6)
    - Whether the FLW pre-invite landed or is deferred until activation
+   - **Labs int_id** (from step 9 below; may be `null` if labs lookup failed
+     or labs hadn't yet observed the new opp)
+
+9. **Recover the labs-side integer opportunity ID** (Phase 6 prerequisite).
+
+   Phase 6's `synthetic-data-generate` calls
+   `synthetic_generate_from_manifest(opportunity_id=<int>, ...)` against
+   the labs MCP, which addresses opps by labs's local integer primary
+   key — a different identifier from the Connect UUID this skill just
+   minted. Plan B Stage 1 deferred the lookup to operator-typed
+   `--opp-int-id`; Stage 4.5 automates it here so Phase 6 is invokable
+   end-to-end without the operator hunting through the labs UI.
+
+   **Important contract note:** the labs integer ID is NOT exposed by
+   `connect_list_opportunities` — Connect's REST API returns UUID-only
+   payloads (verified live 2026-05-06 against `ai-demo-space`). The
+   integer lives only in the labs DB. The lookup goes via the labs
+   MCP, not the Connect MCP. Plan B's option B was wrong on this
+   point; option A (this skill recovering the int) is the right path.
+
+   Call:
+
+   ```
+   mcp__connect-labs__labs_context()
+   ```
+
+   The response is a tree:
+   `{ organizations: [{ slug, opportunities: [{ id, name, ... }, ...], programs: [{ id, opportunities: [...] }, ...] }, ...] }`.
+
+   Find the matching labs opp:
+   1. Filter `organizations[]` to `slug === <organization_slug>`.
+   2. Within that org, search both the org-level `opportunities[]` and
+      every program's nested `opportunities[]` for a row whose `name`
+      matches the opp name passed to `connect_create_opportunity` in
+      step 4. Names are unique per org (Connect-side enforcement +
+      observation).
+   3. If exactly one match, capture its integer `id` as `labs_int_id`.
+   4. If zero matches, log `[WARN]` to `comms-log/observations.md`:
+      "labs has not yet observed Connect opp `<uuid>` — labs_int_id
+      unrecoverable from this skill. Phase 6 operator must
+      pass `--opp-int-id` manually." Continue (don't halt — labs sync
+      can lag behind Connect by a few seconds; operator can re-run
+      this skill or look up manually).
+   5. If 2+ matches, log `[BLOCKER]` and halt — this is the
+      duplicate-name class that the single-active-opp invariant
+      should have prevented. Operator must rename the duplicate.
+
+   Don't halt the phase on labs unavailability — labs is a downstream
+   convenience, not a Phase 3 contract requirement. If `labs_context`
+   returns transport errors, treat as a `[WARN]` lookup failure
+   identical to the zero-match case.
+
+10. **Update `opp.yaml`** with the connect block including labs_int_id:
+
+    ```yaml
+    connect:
+      program:
+        id: <UUID>
+        url: <CONNECT_BASE_URL>/a/<org>/program/<uuid>/
+      opportunity:
+        id: <UUID>
+        url: <CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/
+        labs_int_id: <integer | null>
+    ```
+
+    Use `mcp__plugin_ace_ace-gdrive__update_yaml_file` — `connect:` is
+    a fresh top-level key on first run; on re-runs the shallow-merge
+    cleanly replaces it.
+
+    Phase 6's `synthetic-data-generate` reads
+    `opp.yaml.connect.opportunity.labs_int_id` as the default for its
+    `--opp-int-id` flag. When `labs_int_id` is null, the skill
+    surfaces a `[WARN]` and asks the operator to pass `--opp-int-id`
+    explicitly OR re-run `connect-opp-setup` to retry the labs
+    lookup.
 
 ## Archetypes
 
@@ -391,7 +467,9 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
   on the same opportunity, depending on the PDD's stage-overlap pattern).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file`, `drive_create_file`
+- Google Drive: `drive_read_file`, `drive_create_file`, `update_yaml_file`
+- Connect-Labs (`ace-connect-labs`):
+  - `labs_context` — Step 9 labs-int-id lookup (post-create, idempotent re-call ok)
 - Connect (`ace-connect` MCP, 0.10.47+):
   - `connect_create_opportunity` — REST `POST /api/programs/<id>/opportunities/`
   - `connect_get_opportunity` — verify after create (HTML-driven read,
@@ -428,3 +506,5 @@ When `--dry-run` is active:
 | 2026-04-28 | Add Step 8: invite ACE test user (`${ACE_E2E_PHONE}`) and persist invite URL to `connect-state.yaml`; required for Phase 5 `app-screenshot-capture` to drive the claim-opp flow | ACE team (mobile-emulation) |
 | 2026-04-30 | Adopt commcare-connect PR #1135's automation API (0.10.47). `connect_create_opportunity` is now `POST /api/programs/<id>/opportunities/`, takes structured `learn_app`/`deliver_app` payloads + dates + total_budget upfront. Eliminates the two-step "create → finalize" flow and the silent-500 schema bugs around `hq_server` resolution + `api_key` registration + `learn_app`/`deliver_app` JSON wrapping (the server now does all of it). `register_hq_api_key` and `finalize_opportunity` atoms removed. `connect_create_payment_units` (plural) added for atomic-batch creation. FLW pre-invite now requires opp to be active first — coordinate with `llo-launch`. | ACE team |
 | 2026-05-04 | **Verify-after-create discipline** added to Step 4 (opportunity) and Step 6 (payment units) — every external write is now followed by an immediate read-back, with `[BLOCKER]` halt on field misalignment. Catches the class of bug `turmeric-20260503-0835` hit: PU created with shifted values (`amount=500` vs sent `1.50`, `max_total=20` vs sent `500`, `required_deliver_units=[]` vs sent `[Vendor Visit]`), which cascaded through `is_setup_complete` to break Phase 6 invites and Phase 5 screenshot capture. Catching at the source converts a multi-phase cascade into a single-skill halt. Also: `short_description` cap doc fix (≤50 chars server-enforced, was wrongly documented as ≤255); `amount` integer-rounding behavior pinned (recommended: round + INFO-log, never silent truncate); empty `required_deliver_units` flagged as a downstream cascade trigger. See `agents/ace-orchestrator.md § External Mutations — Verify After Create` for the cross-skill rule. | ACE team (0.11.11) |
+
+<!-- Stage 4.5 of Plan B: post-create labs_context lookup for labs_int_id (0.13.59) -->
