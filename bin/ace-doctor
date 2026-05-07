@@ -230,6 +230,53 @@ else
   fail "deps: node_modules missing or tsx not installed at $ROOT" "run /ace:setup (or 'npm install' in $ROOT)"
 fi
 
+# --- Playwright Chromium browser binary ---
+# Every login/seeding flow that drives a browser (/ace:ocs-login,
+# /ace:connect-login, /ace:labs-login, /ace:labs-token-mint,
+# scripts/seed-connect-cookies.ts) needs the Chromium binary that
+# `npx playwright install chromium` lands in an OS-specific cache dir.
+# Without it the symptom is a vague "browser doesn't open" — surface it
+# explicitly here so a new colleague gets the right fix command on day one.
+if [ -d "$ROOT/node_modules/playwright" ]; then
+  PW_PROBE="$(cd "$ROOT" && node -e "
+    try {
+      const { chromium } = require('playwright');
+      const fs = require('fs');
+      const p = chromium.executablePath();
+      console.log(JSON.stringify({ path: p, exists: fs.existsSync(p) }));
+    } catch (e) {
+      console.log(JSON.stringify({ error: e.message }));
+    }
+  " 2>/dev/null)"
+  PW_EXISTS="$(printf '%s' "$PW_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.exists?'1':'0'); } catch { console.log('?'); }" 2>/dev/null)"
+  PW_PATH="$(printf '%s' "$PW_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.path||''); } catch { console.log(''); }" 2>/dev/null)"
+  if [ "$PW_EXISTS" = "1" ]; then
+    pass "playwright_chromium: $PW_PATH"
+  elif [ -n "$PW_PATH" ]; then
+    warn "playwright_chromium: expected at $PW_PATH but not present" "cd \"$ROOT\" && npx playwright install chromium"
+  else
+    warn "playwright_chromium: could not resolve expected path (playwright module unhappy)" "cd \"$ROOT\" && npm install && npx playwright install chromium"
+  fi
+fi
+
+# --- Stale plugin cache dirs ---
+# /ace:update creates ~/.claude/plugins/cache/ace/ace/<version>/ on every
+# upgrade and does not purge old ones. Each cached version is ~150MB
+# (most of which is node_modules). Surface the cleanup so colleagues
+# don't accumulate gigabytes of stale cache silently.
+CACHE_PARENT="$HOME/.claude/plugins/cache/ace/ace"
+if [ -d "$CACHE_PARENT" ]; then
+  CACHE_COUNT="$(ls -1d "$CACHE_PARENT"/*/ 2>/dev/null | wc -l | tr -d '[:space:]')"
+  if [ "${CACHE_COUNT:-0}" -gt 3 ]; then
+    KEEP=2
+    DROP=$((CACHE_COUNT - KEEP))
+    APPROX_MB=$((CACHE_COUNT * 150))
+    warn "stale_cache: $CACHE_COUNT cached versions in $CACHE_PARENT (~${APPROX_MB}MB total at ~150MB each)" "ls -1d $CACHE_PARENT/*/ | sort -V | head -n $DROP | xargs rm -rf  # drops oldest $DROP, keeps newest $KEEP"
+  else
+    pass "stale_cache: $CACHE_COUNT cached version(s) in $CACHE_PARENT"
+  fi
+fi
+
 # --- Google service-account key ---
 # Canonical: $CLAUDE_PLUGIN_DATA/gws-sa-key.json — survives plugin updates.
 # Legacy: $ROOT/.gws-sa-key.json — for pre-migration installs.
@@ -915,6 +962,36 @@ else
   # No .env at all — individual env-derived checks would all warn the same way.
   # Emit one consolidated pointer instead of three duplicates.
   warn "runtime_env: ocs_env, gmail_config, ocs_session, connect_env, connect_labs_env all skipped (no .env)" "resolve env_file warning above first"
+fi
+
+echo ""
+echo "[Network reachability]"
+# Anonymous probes against each host ACE talks to. Catches corporate
+# VPN/proxy issues before they masquerade as auth bugs in the
+# [Auth liveness] block below. Each probe is a single GET with a 3s
+# timeout. We accept any HTTP status (4xx/5xx still proves DNS+TLS work);
+# only a literal 000 (curl couldn't connect) is a failure here.
+if command -v curl >/dev/null 2>&1; then
+  for entry in \
+      "openchatstudio:https://www.openchatstudio.com/" \
+      "connect:https://connect.dimagi.com/" \
+      "commcarehq:https://www.commcarehq.org/" \
+      "labs:https://labs.connect.dimagi.com/" \
+      "googleapis:https://www.googleapis.com/"; do
+    name="${entry%%:*}"
+    url="${entry#*:}"
+    status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "$url" 2>/dev/null || echo "000")"
+    case "$status" in
+      000)
+        warn "net_$name: cannot reach $url (timeout/DNS/connection refused)" "check VPN/proxy; if you're on a corp network, ask IT to allow $url"
+        ;;
+      *)
+        pass "net_$name: $url → HTTP $status (reachable)"
+        ;;
+    esac
+  done
+else
+  warn "net_reachability: curl not on PATH — skipped" "install curl"
 fi
 
 echo ""

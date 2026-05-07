@@ -4,6 +4,20 @@ Orchestrates the CRISPR-Connect lifecycle for Connect opportunities, from idea t
 
 ACE is a Claude Code plugin with the same architecture as canopy: agents orchestrate skills, skills are prompt-based capability definitions, and MCP servers provide programmatic access to external systems.
 
+## Prerequisites
+
+Before `/ace:setup` will succeed, you need:
+
+- **Node.js v18+** with `npm` (https://nodejs.org). Apple Silicon: `brew install node`.
+- **1Password CLI** (`op`). Mac: `brew install 1password-cli`. Other platforms: https://developer.1password.com/docs/cli/get-started/.
+  - On Mac, also enable 1Password.app → Settings → Developer → "Connect with 1Password CLI" for biometric unlock — that's the smoothest auth path. Alternative: `op signin --account dimagi.1password.com` interactively when `/ace:setup` prompts.
+- **1Password account** at `dimagi.1password.com`, with **read access to the `AI-Agents` vault**. Ask Jon (or whoever owns the vault) to grant access — without it, `op inject` will fail with cryptic permission errors. The full set of items ACE reads from `AI-Agents`: `ACE - Google Service Account` (Document), `ACE - Open Chat Studio`, `ACE - CommCareHQ`, `ACE - Connect Labs`, `Content Generator API`, `connect-test-user`, plus two UUID-referenced API-key items (linked from `.env.tpl`).
+- **GitHub access to `jjackson/ace`** (currently public; no extra step needed). `gh auth login` is not required unless you plan to push.
+- **Network reachability** to `openchatstudio.com`, `connect.dimagi.com`, `commcarehq.org`, `labs.connect.dimagi.com`, `googleapis.com`. Corp VPNs and proxies sometimes block these — `/ace:doctor` reports an explicit status per host.
+- **Playwright Chromium** browser binary. Auto-installed on first use; if you hit "browser doesn't open" errors, run `npx playwright install chromium`.
+
+**Mobile (Phase 5 only) is currently Mac-only.** Phases 1–4 and 6–9 work on Mac, Linux, and Windows. Phase 5 (mobile screenshot capture against an Android emulator) has only been live-validated on macOS Apple Silicon — the Linux/Windows installer commands in `commands/mobile-bootstrap.md` exist but haven't been tested end-to-end. If you're on Windows, you can run everything except Phase 5; ask Jon for the workaround.
+
 ## Quick Start
 
 ```
@@ -32,49 +46,51 @@ Stop at any step that fails — the next step won't work.
 1. **Install the plugin** — `/plugin marketplace add jjackson/ace` then
    `/plugin install ace@ace`.
 
-2. **Run `/ace:setup`** — installs npm deps, verifies tsx and the MCP
-   manifest. It will tell you where to drop the Google service-account key
-   if it's missing.
+2. **Run `/ace:setup`** — does almost everything for you in one shot:
+   verifies Node + `op` + 1Password signin, fetches the GWS service-account
+   key from the `AI-Agents` vault into `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json`,
+   runs `npm install`, injects `.env` from `1Password`, and finishes by
+   running `/ace:doctor`.
+   - If `op` isn't signed in, the script prints the exact
+     `! op signin --account dimagi.1password.com` line — type it in the
+     chat (the `!` prefix runs the command in this session), then re-run
+     `/ace:setup`.
+   - If 1Password can't find the SA-key Document, the script lists
+     candidate items in `AI-Agents` so you can pick the right one with
+     `ACE_GWS_KEY_OP_DOC=...`. Worst case, ask Jon for the JSON and drop
+     it manually at the path the script printed.
 
-3. **Drop the GWS service-account key** — `/ace:setup` prints the exact
-   `mkdir -p … && mv … && chmod 600 …` line when `GWS_KEY: MISSING`. Ask Jon
-   for the key (service account:
-   `ace-service-account@connect-labs.iam.gserviceaccount.com`). Re-run
-   `/ace:setup` to confirm `GWS_KEY: ok`.
-
-4. **Generate `.env`** from the 1Password-backed template:
-   ```
-   op inject -i .env.tpl -o ~/.claude/plugins/data/ace-ace/.env --account dimagi.1password.com
-   ```
-   This populates OCS credentials, the Gmail account, and the shared
-   collection IDs. For a local dev checkout, write to `./.env` instead.
-
-5. **Authenticate to OCS** — `/ace:ocs-login` opens a headed browser so you
+3. **Authenticate to OCS** — `/ace:ocs-login` opens a headed browser so you
    can sign in (SSO/MFA included). Session state is saved to
    `~/.ace/ocs-session-<team>.json` for headless reuse.
+   - Most colleagues won't need this step: if `OCS_USERNAME` /
+     `OCS_PASSWORD` resolved into `.env` (they do by default for
+     `ace@dimagi-ai.com`), the MCP backend auto-logs-in on first call.
+     `/ace:ocs-login` is the manual fallback for SSO/MFA edge cases.
 
-6. **Bootstrap the OCS golden template** (one time per ACE environment) —
-   `/ace:ocs-bootstrap-template`. This creates the chatbot that
-   `ocs-agent-setup` clones from for every new opportunity. The script
-   prints two commands to run: one `op item edit` to record the new
-   template id in 1Password (the source of truth), and a second
-   `op inject` to regenerate your local `.env`. Copy-paste both, then
-   `/reload-plugins`.
+4. **Verify with `/ace:doctor`** — all checks should be PASS or WARN. Any
+   FAIL line is a hard blocker; any WARN tells you what's missing for a
+   particular phase (e.g., mobile bootstrap, training-deck template).
 
-7. **Verify with `/ace:doctor`** — all checks should be PASS. Any WARN line
-   tells you what's still missing (e.g., `.env` not found, OCS session
-   expired, golden template not configured).
-
-8. **Try a dry run** — `/ace:run --dry-run` (zero-arg smart defaults), or
+5. **Try a dry run** — `/ace:run --dry-run` (zero-arg smart defaults), or
    `/ace:run <opp-name> --dry-run` if you want a specific slug. With no
    arguments, ACE auto-generates `smoke-<timestamp>` and walks you through
    a Drive-based PDD picker. All effectful actions (emails, publishes,
    tickets) are logged to `comms-log/dry-run-<step>.md` instead of
    executing.
 
-After step 8 passes, you're ready to run a real opportunity with
+After step 5 passes, you're ready to run a real opportunity with
 `/ace:run --mode review` (or `/ace:run <opp-name> --mode review` for a
 named slug).
+
+> **Note for new colleagues:** `/ace:ocs-bootstrap-template` is a *one-time
+> per ACE environment* setup, not a per-colleague step. The shared OCS
+> golden template ID lives in 1Password (`OCS_GOLDEN_TEMPLATE_ID`) and
+> resolves into your `.env` automatically. You only run it if you're
+> standing up ACE against a new OCS team or refreshing the template's
+> system prompt. If `/ace:doctor` says
+> `ocs_env: ... OCS_GOLDEN_TEMPLATE_ID ... missing`, fix the 1Password
+> reference first — don't run the bootstrap.
 
 ## Setup
 
@@ -166,23 +182,37 @@ work — they detect the repo by walking up from `$PWD` looking for
 
 ### Other MCP servers
 
-The OCS MCP (`mcp/ocs-server.ts`) is wired into `plugin.json` `mcpServers`
-as `ace-ocs`. It is partially implemented — see
-`playbook/integrations/ocs-integration.md` and the `mcp/ocs/` backends.
-Authenticate with `/ace:ocs-login` before calling any tool that hits the
-live service.
+All five MCP servers are wired inline in `.claude-plugin/plugin.json`
+under `mcpServers` and auto-register on plugin install:
 
-The CommCare and Connect MCPs live in the `connect-labs` repo, not in this plugin. To use them in a Claude Code session today, install the connect-labs MCP separately. ACE skills that depend on them have `## Current Workaround` sections that degrade to human-in-the-loop until those servers are also wired into a Claude Code plugin manifest.
+- **`ace-gdrive`** — Google Drive + Docs + Slides + Sheets. Authenticated
+  via the service-account key dropped by `/ace:setup`.
+- **`ace-ocs`** — Open Chat Studio (composite REST + Playwright backend).
+  Authenticate with `/ace:ocs-login` for SSO/MFA edge cases; otherwise
+  the MCP auto-logs-in from `OCS_USERNAME` / `OCS_PASSWORD` in `.env`.
+- **`ace-connect`** — `connect.dimagi.com` (composite REST + Playwright).
+  Includes 5 `commcare_*` atoms for app release / multimedia. Authenticate
+  with `/ace:connect-login` for MFA; otherwise auto-logs-in from
+  `ACE_HQ_USERNAME` / `ACE_HQ_PASSWORD` via OAuth-with-CommCareHQ.
+- **`ace-mobile`** — local Maestro + AVD for Phase 5 (Mac-only today).
+  Bootstrap with `/ace:mobile-bootstrap`.
+- **`connect-labs`** — stdio proxy forwarding JSON-RPC to
+  `https://labs.connect.dimagi.com/mcp/`. Used by Phase 7 (solicitations).
+  Mint a PAT with `/ace:labs-token-mint` if `/ace:doctor` flags
+  `LABS_MCP_TOKEN` as missing.
 
-The Nova MCP does not exist yet — see `playbook/integrations/nova-integration.md`.
+Nova ships as a sibling Claude Code plugin (not part of ACE). Install
+once with `/plugin install nova@nova-marketplace`; ACE's Phase 2
+delegates app-build to `/nova:autobuild`. See
+`playbook/integrations/nova-integration.md` for the integration contract.
 
 ## Architecture
 
-- **10 agents** — `ace-orchestrator` + 8 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `qa-and-training`, `solicitation-management`, `execution-manager`, `closeout`) + `ocs-tester` (ad-hoc QA+Eval)
-- **~50 skills** — one per process step, each a SKILL.md that Claude executes. Evaluation is a two-phase `-qa` / `-eval` pattern (see `skills/README.md § QA vs Eval`), with the `opp-eval` umbrella aggregator rolling per-skill verdicts into a run-level scorecard across 7 categories (design, commcare, connect, ocs, solicitation, operate, closeout)
-- **12 commands** — `run`, `step`, `status`, `eval`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `connect-login`, `mobile-bootstrap`, `ocs-bootstrap-template`
+- **11 agents** — `ace-orchestrator` + 9 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `qa-and-training`, `synthetic-data-and-workflows`, `solicitation-management`, `execution-manager`, `closeout`) + `ocs-tester` (ad-hoc QA+Eval)
+- **~65 skills** — one per process step, each a SKILL.md that Claude executes. Evaluation is a two-phase `-qa` / `-eval` pattern (see `skills/README.md § QA vs Eval`), with the `opp-eval` umbrella aggregator rolling per-skill verdicts into a run-level scorecard
+- **16 commands** — `run`, `step`, `status`, `eval`, `qa-deep`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `connect-login`, `nova-login`, `labs-login`, `labs-token-mint`, `mobile-bootstrap`, `ocs-bootstrap-template`
 - **5 MCP servers** — Google Drive (`ace-gdrive`), OCS (`ace-ocs`), Connect (`ace-connect`), Mobile (`ace-mobile`), Connect Labs (`connect-labs`, stdio proxy to `labs.connect.dimagi.com/mcp/`)
-- **8 phases** — design-review → commcare-setup → connect-setup → ocs-setup → qa-and-training → solicitation-management → execution-manager → closeout (Phases 1–6 run end-to-end before any 1-1 LLO contact; Phase 7 onboards the awardee selected by Phase 6's solicitation flow)
+- **9 phases** — design-review → commcare-setup → connect-setup → ocs-setup → qa-and-training → synthetic-data-and-workflows → solicitation-management → execution-manager → closeout (Phases 1–6 run end-to-end with zero LLO involvement; Phase 7 publishes a public solicitation; Phase 8 is the first 1-1 contact with the awarded LLO)
 - **2 execution modes** — auto (hands-off) and review (pauses at gates)
 
 ## Documentation
