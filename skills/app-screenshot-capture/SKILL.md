@@ -123,6 +123,16 @@ If a smoke recipe fails (status != pass), halt — downstream phases
 must not start without working smoke screenshots, and a smoke failure
 means the app is broken in a basic way.
 
+**Recognized failure modes** (write a `[BLOCKER]` to the gate brief
+naming the specific failure + remediation rather than a generic
+"smoke recipe failed" message):
+
+| Recipe error contains | Failure mode | Likely root cause | Diagnostic next step |
+|---|---|---|---|
+| `Failed to start learning` | Connect → Learn handoff broken | (a) CCHQ App-Editor permission gap on Connect's API key user, (b) released CCZ format mismatch, (c) Connect cached stale Learn-app metadata. Tracking: [#115 finding 1](https://github.com/jjackson/ace/issues/115). | Run `scripts/probe-connect-learn-handoff.ts <opp_uuid>` for a structured diagnostic + adb logcat capture |
+| `extendedWaitUntil` timeout on `connect_fragment_jobs_list` | Claim flow didn't reach jobs list | LLO program-application not ACCEPTED, or Connect session expired on the AVD | Re-run `connect-login.yaml` and verify `connect_get_opportunity` returns the expected opp |
+| `assertVisible(text: ${OPP_NAME})` failure | Right opp card not on screen | Operator passed wrong `OPP_NAME` env var, OR opp not yet claimed by the test user | Confirm `OPP_NAME` matches the display name (not the slug — see [#115 finding 4](https://github.com/jjackson/ace/issues/115)) |
+
 ### Step 6: Write `5-qa-and-training/app-screenshot-capture_manifest.yaml`
 
 Link each captured PNG back to (a) its journey id (`J<n>`), (b) its

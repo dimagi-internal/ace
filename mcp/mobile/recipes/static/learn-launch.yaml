@@ -27,6 +27,17 @@ appId: org.commcare.dalvik
 - tapOn:
     ${SELECTOR:opp-detail-start-learning}
 
+# Detect the "Failed to start learning" failure mode early. Connect
+# surfaces this banner within ~2 seconds when its CCHQ Learn-app fetch
+# fails — typically (a) the API key user lacks app-edit access on the
+# released build, (b) the released CCZ format mismatches what Connect
+# expects, or (c) Connect cached stale Learn-app metadata from a
+# prior run. Without this assertion the recipe would time out 30s
+# later on `extendedWaitUntil(modules-list)` with no diagnostic clue.
+# Tracking: jjackson/ace#115 finding 1.
+- assertNotVisible:
+    text: "Failed to start learning"
+
 - extendedWaitUntil:
     visible:
       ${SELECTOR:opp-learn-modules-list}
