@@ -93,9 +93,13 @@ the `synthetic-walkthrough-run` skill.
 
    auth:
      type: command
-     check: "bash ~/emdash/repositories/ace-web/tools/walkthrough/walkthrough_auth_check.sh"
-     login: "bash ~/emdash/repositories/ace-web/tools/walkthrough/walkthrough_auth_login.sh"
-     inject_url: "/auth/e2e-login/?token={token}"
+     check: "test -f ~/.ace/labs-session.json && bash ~/.claude/plugins/cache/ace/ace/$(cat ~/.claude/plugins/marketplaces/ace/VERSION)/bin/ace-labs-walkthrough-login"
+     login: "bash ~/.claude/plugins/cache/ace/ace/$(cat ~/.claude/plugins/marketplaces/ace/VERSION)/bin/ace-labs-walkthrough-login"
+     # NOTE: labs has no /auth/e2e-login/ shared-secret bypass (only ace-web does).
+     # The login script drives the full Connect-OAuth + labs-OAuth click-through
+     # via Playwright, reusing mcp/connect/auth/hq-oauth-login.ts. After login,
+     # cookies are imported into the gstack browse profile so canopy:walkthrough
+     # picks them up. State persisted to ~/.ace/labs-session.json.
 
    personas:
      <persona-key>:
