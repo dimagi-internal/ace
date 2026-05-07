@@ -722,13 +722,146 @@ collected, learnings summarized, cycle graded.
 ## Between Phases
 
 After each phase completes:
-1. Update `run_state.yaml` in the opportunity's GDrive folder
-2. In `auto` mode: send status email to admin group, continue
-3. In `default` mode: continue silently for Phases 1→2, 2→3, 3→4, 4→5;
+1. Update `run_state.yaml` per § Phase Write-Back Contract below
+2. **Verify the dispatched phase actually wrote its block** per § Phase
+   Write-Back Verifier below (catches drift; orchestrator stubs in a
+   minimal block + flips the gate if the agent forgot)
+3. In `auto` mode: send status email to admin group, continue
+4. In `default` mode: continue silently for Phases 1→2, 2→3, 3→4, 4→5;
    **at the Phase 5→6 transition, pause unconditionally** with a
    Phase-5-complete summary and "ready to begin LLO contact?" prompt;
    for 6→7, pause if any external-comm step still pending review
-4. In `review` mode: present summary and wait for approval to continue
+5. In `review` mode: present summary and wait for approval to continue
+
+## Phase Write-Back Contract
+
+Every phase agent (subagent or procedure doc) MUST update
+`run_state.yaml` on completion with the per-phase block shape below.
+Without this, `/ace:status` misreports the run state, `opp-eval`'s
+phase-rollup walks empty, and resume-after-interrupt logic can't tell
+which phases already shipped.
+
+**Required shape.** Each phase writes its own top-level
+`phases.<phase-name>` block:
+
+```yaml
+phases:
+  <phase-name>:
+    status: in_progress | done | error
+    started_at: <ISO timestamp>            # when the dispatch fired
+    completed_at: <ISO timestamp>          # required when status: done
+    verdict: pass | proceed | proceed-with-warn | reject | halt-at-…
+                                            # phase-specific terminal disposition
+    summary_artifact: <Drive fileId>        # required if the phase produces a summary doc
+    steps:
+      <skill-name>:
+        status: done | error | incomplete
+        verdict: pass | warn | fail | incomplete | <skill-specific>
+        started_at: <ISO>
+        completed_at: <ISO>
+        artifacts:                          # whatever Drive fileIds the skill produced
+          <name>: <fileId>
+```
+
+**Plus the matching gate flip.** The 6 named gates enumerated in
+§ Per-Mode Pause Matrix correspond to specific phases. When a phase's
+gate-step finishes, the phase agent MUST flip the matching
+`gates.<gate-name>` entry from `pending` to its terminal state. The
+mapping (load-bearing — keep this in sync with the matrix):
+
+| Phase | Gate to flip | Target value on success |
+|-------|--------------|-------------------------|
+| design-review (Phase 1) | `gates.idea-to-pdd` | `approved` (review mode) or `pass` |
+| commcare-setup (Phase 2) | `gates.app-deploy` | `pass` |
+| ocs-setup (Phase 4) | `gates.ocs-chatbot-eval-quick` | `pass` |
+| solicitation-management (Phase 6) | `gates.llo-invite` | `pass` (named-LLO sends) or `no-op-no-named-llos` |
+| Phase 6→7 boundary | `gates.solicitation-review` | stays `pending` until manual `/ace:step solicitation-review` |
+| execution-management (Phase 7) | `gates.llo-launch` | `pass` after `llo-launch` activates the opp |
+
+`gates.solicitation-review` is the canonical Phase 6→7 halt and stays
+`pending` for the run's lifetime — `/ace:run` does not flip it.
+
+**Use `update_yaml_file` for the patch.** Each phase agent's write
+should look like:
+
+```
+update_yaml_file({
+  fileId: <run_state.yaml fileId>,
+  patch: {
+    phases: { <phase-name>: { status, started_at, completed_at, verdict, summary_artifact, steps } },
+    gates: { <named-gate>: <terminal-value> },          # only the gate this phase owns
+    last_actor: <git config user.email>,
+    last_actor_at: <ISO timestamp>,
+  },
+})
+```
+
+`update_yaml_file` does a top-level shallow merge — sibling top-level
+keys are preserved automatically. The agent should NOT read the full
+`phases:` block, mutate it locally, and write it back; that races with
+the orchestrator and other concurrent writers. Patch only the keys
+this phase owns.
+
+**Failure modes the contract prevents.**
+
+- Phase agent says "done" in its return summary but the orchestrator's
+  `/ace:status` view shows the phase as `pending` (run-state drift —
+  observed in turmeric run 20260506-1304 on Phase 2 + Phase 3, filed as
+  `jjackson/ace#116`).
+- `opp-eval` rollup misses the phase entirely because there's no
+  `phases.<phase>.steps.*.verdict` to walk.
+- Resume after interrupt re-dispatches a phase that already shipped,
+  because the orchestrator can't tell from artifact existence alone
+  whether the phase was meant to complete that work or whether it was
+  in-progress and crashed.
+
+## Phase Write-Back Verifier
+
+After each phase dispatch returns, the orchestrator (i.e., the
+top-level Claude Code session running this procedure doc) MUST verify
+the dispatched phase wrote its block back. This is the load-bearing
+backstop — even if the phase agent's prose says "I updated state",
+verify that the bytes landed.
+
+**Procedure.** After each `Agent(<phase>)` dispatch (subagent) or each
+inline procedure-doc completion (commcare-setup):
+
+1. `drive_read_file(<run_state.yaml fileId>)`.
+2. Check `phases.<phase>.status`. Expected: `done` (or `error` on
+   failure paths). If absent or stuck at `pending` / `in_progress`:
+   the agent forgot to write back. Fall through to step 3.
+3. Write a fallback stub via `update_yaml_file`:
+
+   ```yaml
+   phases:
+     <phase>:
+       status: done                         # or error if the dispatch returned error
+       completed_at: <now>
+       verdict: <best-guess from agent's return text, or "unknown">
+       summary_artifact: <fileId if the agent reported one in its return>
+       write_back_warning: |
+         Phase agent did not write phases.<phase> block on its own;
+         orchestrator filled in this stub. The phase actually completed
+         (artifacts in Drive prove it), but per-step verdicts and
+         intermediate state are unrecoverable. See agents/ace-orchestrator.md
+         § Phase Write-Back Contract.
+   gates:
+     <named-gate-if-this-phase-owns-one>: <terminal-value-best-guess>
+   ```
+
+4. Continue to the next phase.
+
+This is a NUDGE, not a halt — the run continues. The
+`write_back_warning` field surfaces the contract violation for
+follow-up (and for `/ace:doctor state-yaml-cruft` to grep on). The
+class-level fix is to tighten the agent's `### Completion` section
+(see each `agents/<phase>.md` for the contract reference).
+
+**Why "loud-but-non-fatal".** The phase actually shipped its
+artifacts to Drive — the run's deliverable is intact. Halting on a
+write-back gap would convert a cosmetic issue into a hard failure
+that the operator has to manually resume past, which is a worse
+operator experience than auto-stub + warning.
 
 ## Post-Run: ace-web Transcript Upload (optional)
 
