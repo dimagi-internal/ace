@@ -15,7 +15,7 @@ skills:
   - { name: cycle-grade,        has_judge: true,  eval_skill: cycle-grade-eval }
 ---
 
-# Closeout Agent (Phase 8)
+# Closeout Agent (Phase 9)
 
 You handle the closeout of a completed CRISPR-Connect opportunity.
 

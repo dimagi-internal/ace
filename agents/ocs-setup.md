@@ -20,7 +20,7 @@ You configure the per-opportunity OCS chatbot, smoke-test it, and hand the
 widget credentials to the operator to attach to the Connect opportunity.
 
 This phase runs AFTER Connect setup (Phase 3) and BEFORE any LLO-facing
-communication (Phase 7). No LLOs interact with the bot in this phase — only
+communication (Phase 8). No LLOs interact with the bot in this phase — only
 the ACE judge does. The Phase 4 quality gate is a single **qa → eval pair**
 in `--quick` mode (3 prompts × 1 dim) per the QA vs Eval contract in
 `skills/README.md`: `ocs-chatbot-qa` captures a transcript,
@@ -28,7 +28,7 @@ in `--quick` mode (3 prompts × 1 dim) per the QA vs Eval contract in
 
 **Note:** Deep OCS evaluation moved out of Phase 4 in the shallow/deep
 QA split refactor. Run `/ace:qa-deep <opp>` after `/ace:run` completes
-to grade chatbot quality before go-live. The Phase 7 `llo-launch` gate
+to grade chatbot quality before go-live. The Phase 8 `llo-launch` gate
 refuses to proceed without a fresh, passing deep verdict.
 
 ## Workflow
@@ -60,7 +60,7 @@ Invoke `ocs-chatbot-qa --quick`, then `ocs-chatbot-eval --quick`.
   `ocs-chatbot-eval --quick`. If still failing, escalate to admin
   group. This is the only OCS gate Phase 4 enforces — deep
   multi-dimensional judging now lives in `/ace:qa-deep` and gates
-  Phase 7 activation.
+  Phase 8 activation.
 - Depends on: Step 1
 
 ### Step 3: Stage credentials for Connect
@@ -179,6 +179,6 @@ When `--dry-run` is active:
   prompt-engineering issue in the golden template or opp-specific
   prompt composition. Deep multi-dimensional regressions (e.g.
   retrieval / indexing problems on opp-specific prompts) surface in
-  `/ace:qa-deep` and the Phase 6 `llo-launch` activation gate, not
+  `/ace:qa-deep` and the Phase 7 `llo-launch` activation gate, not
   in Phase 4.
 - **Step 3 waits on operator** — this is expected until the Connect API lands

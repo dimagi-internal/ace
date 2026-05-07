@@ -15,7 +15,7 @@ Manual skill — never runs in default `/ace:run`. Only via:
 ```
 
 This is the only skill that calls `award_response` (irreversible) and the
-only skill that populates `opp.yaml.selected_llo` (which gates Phase 7).
+only skill that populates `opp.yaml.selected_llo` (which gates Phase 8).
 
 ## Inputs
 
@@ -156,7 +156,7 @@ only skill that populates `opp.yaml.selected_llo` (which gates Phase 7).
 - **Human replies `cancel`**: halt; do not write `award-record.md`.
 - **`award_response` returns 4xx after approval**: write `award-record.md`
   with `status: failed` and the error envelope. **Do not** populate
-  `selected_llo` (Phase 7 stays gated). Surface the error to the human
+  `selected_llo` (Phase 8 stays gated). Surface the error to the human
   and suggest contacting a labs admin if the award call must succeed
   out-of-band.
 - **`list_reviews` shows ACE already reviewed all responses**: skip the

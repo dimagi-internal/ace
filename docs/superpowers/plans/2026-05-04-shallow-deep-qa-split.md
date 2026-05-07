@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `/ace:run` shallow-by-default (~5 LLM judge calls vs ~90 today), introduce a manual `/ace:qa-deep` command for quality assessment, and move QA-plan generation upstream to phases that know design intent (Phase 1) and built structure (Phase 2). Add a Phase 6 gate that prevents activation without fresh deep verdicts.
+**Goal:** Make `/ace:run` shallow-by-default (~5 LLM judge calls vs ~90 today), introduce a manual `/ace:qa-deep` command for quality assessment, and move QA-plan generation upstream to phases that know design intent (Phase 1) and built structure (Phase 2). Add a Phase 7 gate that prevents activation without fresh deep verdicts.
 
 **Architecture:** Add two new artifact-producing skills upstream (`pdd-to-app-journeys` in Phase 1, `app-test-cases` in Phase 2) so Phase 5 can become a thin executor. Add one new eval skill (`app-ux-eval`) plus a top-level `/ace:qa-deep` command that wraps deep OCS + deep app eval. Thin OCS `--quick` to a 3-prompt × 1-dimension smoke check. Drop Phase 4's `--deep` gate. Wire the deep-verdict requirement into `llo-launch` so go-live can't ship without it. Retire `qa-plan` and `app-test` once their successors are live.
 
@@ -403,7 +403,7 @@ Spec: docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md"
 
 ## Task 3: New deep eval skill — `app-ux-eval`
 
-**Goal:** New LLM-as-Judge skill that grades captured screenshots against `expected-journeys.md`. Deep-only — no `--quick` mode. Used by `/ace:qa-deep` (Task 4) and the Phase 6 gate (Task 7).
+**Goal:** New LLM-as-Judge skill that grades captured screenshots against `expected-journeys.md`. Deep-only — no `--quick` mode. Used by `/ace:qa-deep` (Task 4) and the Phase 7 gate (Task 7).
 
 **Files:**
 - Create: `skills/app-ux-eval/SKILL.md`
@@ -479,7 +479,7 @@ uniform verdict shape (see `skills/README.md § Eval verdict shape` or
 - mode: deep
 - timestamp: ISO with timezone
 - artifact_refs: { learn_build_id, deliver_build_id } — read from
-  deployment-summary.md so the Phase 6 gate can timestamp-compare
+  deployment-summary.md so the Phase 7 gate can timestamp-compare
 - dimensions: per-dimension scores + reasons
 - per_unit_verdicts: per-journey verdicts
 - overall_score, status (pass | fail), failing_units
@@ -508,7 +508,7 @@ calibration metrics keep accumulating.
 
 | Date | Change | Author |
 |------|--------|--------|
-| {{today}} | Initial version. Deep-only LLM-as-Judge for app UX. Used by /ace:qa-deep and the Phase 6 gate. | ACE team |
+| {{today}} | Initial version. Deep-only LLM-as-Judge for app UX. Used by /ace:qa-deep and the Phase 7 gate. | ACE team |
 ```
 
 - [ ] **Step 3: Add to artifact manifest**
@@ -522,7 +522,7 @@ Modify `lib/artifact-manifest.ts`. Add to the operate phase block (mirroring `ve
   consumedBy: ['llo-launch', 'opp-eval'],
   phase: 'operate',
   required: false,
-  description: 'Machine-readable verdict from app-ux-eval (deep). Read by llo-launch (Phase 6 activation gate) for freshness check vs. latest released CommCare build, and by opp-eval for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
+  description: 'Machine-readable verdict from app-ux-eval (deep). Read by llo-launch (Phase 7 activation gate) for freshness check vs. latest released CommCare build, and by opp-eval for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
 },
 ```
 
@@ -543,7 +543,7 @@ git commit -m "feat: add app-ux-eval skill for deep app UX grading
 LLM-as-Judge over captured screenshots + expected-journeys.md. Five
 dimensions (clarity, flow_predictability, error_recovery, time_budget,
 journey_completion), each with a hard-deduction rule. Deep-only —
-called from /ace:qa-deep (next task) and gated by Phase 6 in Task 7.
+called from /ace:qa-deep (next task) and gated by Phase 7 in Task 7.
 
 Spec: docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md"
 ```
@@ -619,16 +619,16 @@ Writes:
 
 ## What this does NOT do
 
-- No /ace:run side effects. No Phase 6 activation, no app rebuild, no
+- No /ace:run side effects. No Phase 7 activation, no app rebuild, no
   training-material regeneration.
 - No FLW invites, no LLO emails.
 
 ## After completion
 
-Both verdicts go to `verdicts/*-deep.yaml`. The Phase 6 `llo-launch`
+Both verdicts go to `verdicts/*-deep.yaml`. The Phase 7 `llo-launch`
 gate reads them and refuses activation if either is missing or stale.
 
-If you ran this and want to proceed to go-live, re-enter Phase 6 via
+If you ran this and want to proceed to go-live, re-enter Phase 7 via
 /ace:step llo-launch $1 (or let /ace:run resume from where it left off).
 ```
 
@@ -639,7 +639,7 @@ Find the "What this does" section. Add a single bullet noting the change:
 ```markdown
 - Phase 4 (OCS) and Phase 5 (apps) run **shallow** QA only. Deep
   quality assessment is a separate command — see /ace:qa-deep <opp>.
-  Phase 6 activation will refuse to proceed without fresh deep
+  Phase 7 activation will refuse to proceed without fresh deep
   verdicts (run /ace:qa-deep before go-live).
 ```
 
@@ -833,7 +833,7 @@ Add a paragraph at the end of the agent's overview:
 ```markdown
 **Note:** Deep OCS evaluation moved out of Phase 4 in 0.x.0. Run
 /ace:qa-deep <opp> after /ace:run completes to grade chatbot quality
-before go-live. The Phase 6 llo-launch gate refuses to proceed
+before go-live. The Phase 7 llo-launch gate refuses to proceed
 without a fresh, passing deep verdict.
 ```
 
@@ -860,7 +860,7 @@ Spec: docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md"
 
 ---
 
-## Task 7: Wire Phase 6 deep-verdict gate
+## Task 7: Wire Phase 7 deep-verdict gate
 
 **Goal:** `llo-launch` reads both deep verdicts before activation. Refuses if missing, stale, or failing. Adds an override flag with audit trail.
 
@@ -1035,7 +1035,7 @@ the old shape:
   Safe to leave.
 - For deep QA, run `/ace:qa-deep <opp>` to populate the new verdicts.
 
-## Activation gate (Phase 6)
+## Activation gate (Phase 7)
 
 Existing opps that completed Phase 5 on the old shape but have NOT yet
 been activated will hit the new deep-QA gate. Run `/ace:qa-deep <opp>`
@@ -1080,7 +1080,7 @@ Add a section at the top:
 - New: pdd-to-app-journeys (Phase 1), app-test-cases (Phase 2),
   app-ux-eval (deep) skills
 - Changed: /ace:run does shallow QA only — ~5 LLM judge calls vs ~90
-  before. Phase 6 llo-launch refuses activation without fresh deep
+  before. Phase 7 llo-launch refuses activation without fresh deep
   verdicts (override available with audit reason).
 - Retired: qa-plan, app-test skills (replaced by upstream producers)
 - Migration: see migrations/0.x.0-shallow-deep-qa.md
@@ -1178,7 +1178,7 @@ After writing this plan I checked it against the spec:
 - §3 Shallow path (OCS + apps) → Tasks 5, 6
 - §4 Deep app UX rubric → Task 3
 - §5 /ace:qa-deep → Task 4
-- §6 Phase 6 deep-verdict gate → Task 7
+- §6 Phase 7 deep-verdict gate → Task 7
 - Migration / rollout → Task 8
 - Open questions (1)–(4) noted in the spec are intentionally not
   blockers; they get iterated post-ship.
@@ -1195,7 +1195,7 @@ After writing this plan I checked it against the spec:
 - Tasks 1–4 are additive and don't break the running pipeline
 - Task 5 swaps Phase 5 over to the new artifacts — depends on Tasks 1, 2, 3 having shipped first
 - Task 6 thins OCS — independent of Tasks 1–5; can run in any order after Task 4
-- Task 7 wires Phase 6 — depends on Task 3 (verdict producer must exist) and Task 4 (gate references /ace:qa-deep in error messages)
+- Task 7 wires Phase 7 — depends on Task 3 (verdict producer must exist) and Task 4 (gate references /ace:qa-deep in error messages)
 - Task 8 retires dead code — must come last
 - Task 9 verifies — must come last
 

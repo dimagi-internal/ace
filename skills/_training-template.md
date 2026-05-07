@@ -91,7 +91,7 @@ favor of one skill per artifact. The decomposition gives:
 - **Independent context budget.** Each LLM call sees only the inputs
   it needs (FAQ doesn't need deck-outline context).
 - **Phase-7 boundary.** `training-onboarding-email` is consumed by
-  Phase 7 LLO onboarding; isolating it from Phase-5-only siblings
+  Phase 8 LLO onboarding; isolating it from Phase-5-only siblings
   makes the cross-phase dependency explicit.
 
 ## Sibling map
@@ -103,7 +103,7 @@ favor of one skill per artifact. The decomposition gives:
 | `training-quick-reference` | `quick-reference.md` | FLWs (printed pocket card) | Step 2 (parallel) |
 | `training-faq` | `faq.md` | LLOs and FLWs | Step 2 (parallel) |
 | `training-deck-outline` | `training-deck-outline.md` | Phase 5 internal (input to deck-build) | Step 2 (parallel) |
-| `training-onboarding-email` | `training-onboarding-email.md` | Phase 7 (consumed at LLO onboarding) | Step 3 (sequential, after siblings) |
+| `training-onboarding-email` | `training-onboarding-email.md` | Phase 8 (consumed at LLO onboarding) | Step 3 (sequential, after siblings) |
 | `training-deck-build` | Google Slides URL | LLO (presents to FLWs / records) | Step 4 (sequential, after deck-outline) |
 
 `agents/qa-and-training.md` enforces the sequencing.

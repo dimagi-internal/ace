@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # Cycle-Grade Eval
 
-`cycle-grade` is the Phase 8 skill that produces a final cycle
+`cycle-grade` is the Phase 9 skill that produces a final cycle
 scorecard with recommendations for next steps. Like every other
 self-evaluating skill in ACE, it has a structural generosity bias —
 the same model that ran the cycle is grading whether the cycle went
@@ -27,7 +27,7 @@ the first 4 strongly-calibrated rubrics.
 
 1. **Read inputs from GDrive:**
    - `cycle-grade.md` — the artifact under judgment.
-   - `learnings-summary.md` — Phase 8 learnings doc.
+   - `learnings-summary.md` — Phase 9 learnings doc.
    - `pdd.md` and `run_state.yaml` — for cycle-arc context.
    - `comms-log/observations.md` — the per-opp evidence log
      `cycle-grade` should have synthesized.
@@ -35,10 +35,10 @@ the first 4 strongly-calibrated rubrics.
      `cycle-grade` should reference the trajectory; if it didn't,
      that's a defect.
 
-2. **Detect "cycle didn't close" mode.** If `run_state.yaml` shows Phase 8
+2. **Detect "cycle didn't close" mode.** If `run_state.yaml` shows Phase 9
    incomplete (no `closeout.cycle-grade: done`, no
    `cycle-grade.md`), emit `verdict: incomplete` immediately with
-   `[INFO] Phase 8 not run; cycle-grade-eval not gradable yet`. Do
+   `[INFO] Phase 9 not run; cycle-grade-eval not gradable yet`. Do
    not score zero — it's a structural state, not a defect.
 
 3. **Grade across 5 dimensions.** Each dimension is 0–10. Overall
@@ -126,7 +126,7 @@ Calibration target on a closed cycle:
 
 This rubric ships at **provisional** until a real closed cycle
 provides ground truth. Until then, it correctly emits `incomplete`
-on opps where Phase 8 hasn't run.
+on opps where Phase 9 hasn't run.
 
 ## Archetypes
 
@@ -158,4 +158,4 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-28 | Initial version. 5 dimensions: self_eval_agreement (0.25), learnings_concreteness (0.25), recommendation_specificity (0.20), evidence_citation_discipline (0.15), trajectory_framing (0.15). Inflation guard at 8.5. Explicit `incomplete` verdict for opps where Phase 8 hasn't run. Ships at provisional calibration until a closed cycle produces ground truth. Together with connect-program-setup-eval (0.9.8), gives the eval framework rubrics ready for all 6 opp-eval categories — once a cycle runs end-to-end through Phase 8, opp-eval can produce a fully-covered verdict (4+ tier). | ACE team (eval system buildout — 0.9.8) |
+| 2026-04-28 | Initial version. 5 dimensions: self_eval_agreement (0.25), learnings_concreteness (0.25), recommendation_specificity (0.20), evidence_citation_discipline (0.15), trajectory_framing (0.15). Inflation guard at 8.5. Explicit `incomplete` verdict for opps where Phase 9 hasn't run. Ships at provisional calibration until a closed cycle produces ground truth. Together with connect-program-setup-eval (0.9.8), gives the eval framework rubrics ready for all 6 opp-eval categories — once a cycle runs end-to-end through Phase 9, opp-eval can produce a fully-covered verdict (4+ tier). | ACE team (eval system buildout — 0.9.8) |

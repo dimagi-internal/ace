@@ -10,7 +10,7 @@ Run the full CRISPR-Connect lifecycle for a Connect opportunity.
 
 - Phase 4 (OCS) and Phase 5 (apps) run **shallow** QA only. Deep
   quality assessment is a separate command — see /ace:qa-deep <opp>.
-  Phase 6 activation will refuse to proceed without fresh deep
+  Phase 7 activation will refuse to proceed without fresh deep
   verdicts (run /ace:qa-deep before go-live).
 
 ## Arguments

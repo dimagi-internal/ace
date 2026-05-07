@@ -49,7 +49,7 @@ contracts.
 - `inputs/pdd.md` — for persona context (the FLW the rubric is judging
   "good experience" against; pulled from the "Target FLW" section)
 - `2-commcare/app-deploy_summary.md` — for the `learn_build_id` and
-  `deliver_build_id` that go into `artifact_refs` so the Phase 7 gate
+  `deliver_build_id` that go into `artifact_refs` so the Phase 8 gate
   can compare verdict freshness against the latest released CommCare
   build
 
@@ -157,7 +157,7 @@ Required top-level fields:
 - `mode: deep`
 - `ran_at` — ISO timestamp with timezone
 - `artifact_refs: { learn_build_id, deliver_build_id }` — read from
-  `2-commcare/app-deploy_summary.md` so the Phase 7 gate can
+  `2-commcare/app-deploy_summary.md` so the Phase 8 gate can
   timestamp-compare against the currently released builds
 - `dimensions` — per-dimension scores + reasons (5 dimensions, equal
   0.20 weights)
@@ -180,7 +180,7 @@ calibration metrics keep growing per
 - Any non-smoke failure with overall ≥ 7.0 = `iterate` (the operator
   can decide whether to fix and re-run vs. proceed)
 
-The Phase 7 gate (`llo-launch`) reads this verdict and adds its own
+The Phase 8 gate (`llo-launch`) reads this verdict and adds its own
 freshness check (verdict's `artifact_refs` must match the latest
 released build IDs — see Task 7 in the shallow/deep split plan).
 
@@ -189,7 +189,7 @@ released build IDs — see Task 7 in the shallow/deep split plan).
 - **Deep only.** There is no `--quick` mode. The shallow Phase 5
   smoke (`app-screenshot-capture` running just the `is_smoke: true`
   recipes) does NOT invoke this skill — it's structural-only.
-  This skill is invoked exclusively by `/ace:qa-deep` and the Phase 7
+  This skill is invoked exclusively by `/ace:qa-deep` and the Phase 8
   go-live gate.
 
 ## Failure modes
@@ -208,7 +208,7 @@ released build IDs — see Task 7 in the shallow/deep split plan).
   stale; halt with `[BLOCKER]` and instruct the operator to re-run
   `/ace:qa-deep` against the current build.
 - **`2-commcare/app-deploy_summary.md` missing the build IDs** → halt;
-  the Phase 7 gate needs `artifact_refs` to compare freshness, and
+  the Phase 8 gate needs `artifact_refs` to compare freshness, and
   partial verdicts can't be timestamp-checked.
 
 ## MCP tools used
@@ -222,5 +222,5 @@ released build IDs — see Task 7 in the shallow/deep split plan).
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-04 | Initial version. Deep-only LLM-as-Judge for app UX. Five dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion) with hard-deductions. Used by /ace:qa-deep and the Phase 6 gate. Introduced as part of the shallow/deep QA split (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`). | ACE team |
+| 2026-05-04 | Initial version. Deep-only LLM-as-Judge for app UX. Five dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion) with hard-deductions. Used by /ace:qa-deep and the Phase 7 gate. Introduced as part of the shallow/deep QA split (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`). | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Inputs repointed to `1-design/pdd-to-app-journeys.md`, `2-commcare/app-test-cases.yaml`, `5-qa-and-training/screenshots/` + `5-qa-and-training/app-screenshot-capture_manifest.yaml`, `2-commcare/app-deploy_summary.md`. Verdict output is now `5-qa-and-training/app-ux-eval_verdict-deep.yaml` (per manifest). Calibration audit trail at `ACE/<opp>/eval-calibration/app-ux-eval-runs.md` corrected to opp-level (was incorrectly under `runs/<run-id>/`). Phase references updated 6 → 7 to match the 8-phase topology. No behavior change beyond paths. | ACE team |
