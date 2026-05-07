@@ -41,6 +41,7 @@ export type Phase =
   | 'connect'
   | 'ocs'
   | 'qa-and-training'
+  | 'synthetic-data-and-workflows'
   | 'solicitation-management'
   | 'execution-management'
   | 'closeout';
@@ -72,6 +73,7 @@ export const PHASES = [
   'connect',
   'ocs',
   'qa-and-training',
+  'synthetic-data-and-workflows',
   'solicitation-management',
   'execution-management',
   'closeout',
@@ -633,11 +635,92 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Self-emitted verdict — no separate `training-quick-reference-eval` skill exists; rename to `training-quick-reference-eval_verdict.yaml` if/when one ships. Filename matches producer per Option β.',
   },
 
-  // ── Solicitation Management phase (Phase 6) ────────────────────
-  // New in 0.12.0; renumbered + rerooted into 6-solicitation-management/ in 0.13.0.
+  // ── Synthetic Data and Workflows phase (Phase 6) ───────────────
+  // New in 0.13.x via Plan B Stages 1–4. The connect-labs synthetic
+  // generator + SEED workflows + canopy:walkthrough decks light up an
+  // opp's data story between training and solicitation.
 
   {
-    path: '6-solicitation-management/solicitation-create_draft.md',
+    path: '6-synthetic/synthetic-narrative-plan.md',
+    producedBy: 'synthetic-narrative-plan',
+    consumedBy: ['synthetic-data-generate', 'synthetic-walkthrough-spec', 'synthetic-summary'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'Human-readable narrative explaining the synthetic-data story (cast, anomalies, week-by-week arc). Companion to the manifest YAML.',
+  },
+  {
+    path: '6-synthetic/synthetic-narrative-plan.yaml',
+    producedBy: 'synthetic-narrative-plan',
+    role: 'manifest',
+    consumedBy: ['synthetic-data-generate', 'synthetic-workflow-seed', 'synthetic-walkthrough-spec', 'synthetic-summary'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'Richer manifest authored from PDD + journeys + connect setup: named FLW personas, deliberate anomalies, coaching arcs, KPI thresholds. Schema identical to synthetic-data-generate_manifest.yaml.',
+  },
+  {
+    path: '6-synthetic/synthetic-data-generate_manifest.yaml',
+    producedBy: 'synthetic-data-generate',
+    role: 'manifest',
+    consumedBy: ['synthetic-summary'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'Stage 1 default manifest (5 FLWs, 4-week timeline, no anomalies) — used when `synthetic-narrative-plan.yaml` is absent. Sent verbatim to labs `synthetic_generate_from_manifest`.',
+  },
+  {
+    path: '6-synthetic/synthetic-data-generate.md',
+    producedBy: 'synthetic-data-generate',
+    consumedBy: ['synthetic-walkthrough-spec', 'synthetic-summary'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'Run summary: labs opp_id, fixture folder URL, record counts, form_schema_questions, payment-unit pre-flight + share-gap warnings, labs URL.',
+  },
+  {
+    path: '6-synthetic/synthetic-workflow-seed.md',
+    producedBy: 'synthetic-workflow-seed',
+    consumedBy: ['synthetic-workflow-polish', 'synthetic-walkthrough-spec', 'synthetic-summary'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'Run summary: workflow_ids (llo_weekly_review + program_admin_audit), pipeline_id, KPI count, coaching-task IDs, scaffold_unsuitable flag, saved-runs status (waiting on labs PR).',
+  },
+  {
+    path: '6-synthetic/synthetic-workflow-polish.md',
+    producedBy: 'synthetic-workflow-polish',
+    consumedBy: ['synthetic-summary'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'Run summary: per-workflow patches applied (intent label per patch), final render_code_versions, smoke-render result, L2-rewrite flag.',
+  },
+  {
+    path: '6-synthetic/synthetic-walkthrough-spec_<persona>.yaml',
+    producedBy: 'synthetic-walkthrough-spec',
+    consumedBy: ['synthetic-walkthrough-run'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'Per-persona canopy:walkthrough spec — ordered scenes (URL hint, show, impressive_because, ai_quality). One file per canned + opp-overlay persona.',
+  },
+  {
+    path: '6-synthetic/walkthroughs/<persona>-<timestamp>/slideshow.html',
+    producedBy: 'synthetic-walkthrough-run',
+    consumedBy: ['synthetic-summary'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'HTML deck produced by canopy:walkthrough — scored screenshots, narration, AI evaluations. New timestamped folder per persona run; opp.yaml.synthetic.walkthroughs[] tracks history.',
+  },
+  {
+    path: '6-synthetic/synthetic-summary.md',
+    producedBy: 'synthetic-summary',
+    role: 'summary',
+    consumedBy: [],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description: 'One-page reviewer-facing summary a Dimagi staffer forwards to a stakeholder. Labs URL + workflow URLs + per-persona slideshow links + 3-paragraph narrative.',
+  },
+
+  // ── Solicitation Management phase (Phase 7) ────────────────────
+  // New in 0.12.0; renumbered + rerooted into 7-solicitation-management/ in 0.13.5x.
+
+  {
+    path: '7-solicitation-management/solicitation-create_draft.md',
     producedBy: 'solicitation-create',
     role: 'draft',
     consumedBy: ['solicitation-create-eval'],
@@ -646,7 +729,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Solicitation payload pre-publish: title, type, scope, criteria, response template, deadline. Audit trail for what solicitation-create proposed before posting to labs.',
   },
   {
-    path: '6-solicitation-management/solicitation-create_published.md',
+    path: '7-solicitation-management/solicitation-create_published.md',
     producedBy: 'solicitation-create',
     role: 'published',
     consumedBy: ['solicitation-monitor', 'solicitation-review', 'solicitation-create-eval', 'llo-invite'],
@@ -655,7 +738,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Snapshot of the published solicitation: solicitation_id, public_url, manage_url, deadline, criteria. Read by every downstream Phase 6 skill and by llo-invite for the URL to email.',
   },
   {
-    path: '6-solicitation-management/llo-invite_invitations.md',
+    path: '7-solicitation-management/llo-invite_invitations.md',
     producedBy: 'llo-invite',
     role: 'invitations',
     consumedBy: ['solicitation-monitor', 'solicitation-review-eval'],
@@ -664,7 +747,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-recipient log: who got emailed the solicitation URL, when, and send status. Empty when PDD has no preferred_llos (long-term solicitation flow).',
   },
   {
-    path: '6-solicitation-management/solicitation-monitor_responses/',
+    path: '7-solicitation-management/solicitation-monitor_responses/',
     producedBy: 'solicitation-monitor',
     consumedBy: ['solicitation-review'],
     phase: 'solicitation-management',
@@ -672,7 +755,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'One file per solicitation response, written incrementally as responses arrive. Each file contains the response content plus metadata returned by labs.',
   },
   {
-    path: '6-solicitation-management/solicitation-review_scoring-rubric.md',
+    path: '7-solicitation-management/solicitation-review_scoring-rubric.md',
     producedBy: 'solicitation-review',
     role: 'scoring-rubric',
     consumedBy: ['solicitation-review-eval'],
@@ -681,7 +764,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-response, per-criterion scores produced by solicitation-review.',
   },
   {
-    path: '6-solicitation-management/solicitation-review_recommendation.md',
+    path: '7-solicitation-management/solicitation-review_recommendation.md',
     producedBy: 'solicitation-review',
     role: 'recommendation',
     consumedBy: ['solicitation-review-eval'],
@@ -690,7 +773,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Ranked candidates + reasoning. Input to the HITL gate before award_response is called.',
   },
   {
-    path: '6-solicitation-management/solicitation-review_award-record.md',
+    path: '7-solicitation-management/solicitation-review_award-record.md',
     producedBy: 'solicitation-review',
     role: 'award-record',
     consumedBy: ['solicitation-review-eval', 'opp-closeout'],
@@ -699,7 +782,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Written when award_response is called (success or failure). Includes response_id, awarded_at, awarded_org_slug, and any error envelope on failure.',
   },
   {
-    path: '6-solicitation-management/solicitation-create-eval_verdict.yaml',
+    path: '7-solicitation-management/solicitation-create-eval_verdict.yaml',
     producedBy: 'solicitation-create-eval',
     role: 'verdict',
     consumedBy: ['opp-eval'],
@@ -708,7 +791,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-skill -eval verdict for solicitation-create: PDD-fidelity, criteria coverage, deadline plausibility, response-template clarity.',
   },
   {
-    path: '6-solicitation-management/solicitation-review-eval_verdict.yaml',
+    path: '7-solicitation-management/solicitation-review-eval_verdict.yaml',
     producedBy: 'solicitation-review-eval',
     role: 'verdict',
     consumedBy: ['opp-eval'],
@@ -717,7 +800,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-skill -eval verdict for solicitation-review: scoring rigor, recommendation justification, alignment with award outcome.',
   },
   {
-    path: '6-solicitation-management/solicitation-management_summary.md',
+    path: '7-solicitation-management/solicitation-management_summary.md',
     producedBy: 'solicitation-management',
     role: 'summary',
     consumedBy: [],
@@ -730,7 +813,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   // Renamed from llo-manager (was Phase 6) in 0.12.0; renumbered to Phase 7 in 0.13.0.
 
   {
-    path: '7-execution-manager/llo-onboarding_comms-log.md',
+    path: '8-execution-manager/llo-onboarding_comms-log.md',
     producedBy: 'llo-onboarding',
     role: 'comms-log',
     consumedBy: ['learnings-summary'],
@@ -739,7 +822,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Onboarding email records with recipients, subject, body, timestamp',
   },
   {
-    path: '7-execution-manager/llo-uat_results.md',
+    path: '8-execution-manager/llo-uat_results.md',
     producedBy: 'llo-uat',
     role: 'results',
     consumedBy: ['llo-launch'],
@@ -748,7 +831,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-LLO sign-off status, issues found, overall UAT verdict',
   },
   {
-    path: '7-execution-manager/llo-launch_record.md',
+    path: '8-execution-manager/llo-launch_record.md',
     producedBy: 'llo-launch',
     role: 'record',
     consumedBy: ['timeline-monitor'],
@@ -757,7 +840,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Activation timestamp, LLO notifications, app URLs, outstanding issues',
   },
   {
-    path: '7-execution-manager/llo-launch_gate-brief.md',
+    path: '8-execution-manager/llo-launch_gate-brief.md',
     producedBy: 'llo-launch',
     role: 'gate-brief',
     consumedBy: ['ace-orchestrator'],
@@ -766,7 +849,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Gate brief for the Phase 7 launch gate: UAT sign-offs, app build status, launch-readiness',
   },
   {
-    path: '7-execution-manager/ocs-chatbot-qa_transcript-monitor.md',
+    path: '8-execution-manager/ocs-chatbot-qa_transcript-monitor.md',
     producedBy: 'ocs-chatbot-qa',
     role: 'transcript',
     consumedBy: ['ocs-chatbot-eval'],
@@ -775,7 +858,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Transcript from recurring --monitor runs; structured input to ocs-chatbot-eval --monitor',
   },
   {
-    path: '7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml',
+    path: '8-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml',
     producedBy: 'ocs-chatbot-eval',
     role: 'verdict',
     consumedBy: [],
@@ -784,7 +867,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Machine-readable verdict from recurring --monitor runs. Latest-wins file; see 7-execution-manager/ocs-chatbot-eval_trend.md for history',
   },
   {
-    path: '7-execution-manager/ocs-chatbot-eval_trend.md',
+    path: '8-execution-manager/ocs-chatbot-eval_trend.md',
     producedBy: 'ocs-chatbot-eval',
     consumedBy: [],
     phase: 'execution-management',
@@ -792,7 +875,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Rolling trend of OCS eval scores from --monitor runs; one line per run',
   },
   {
-    path: '7-execution-manager/timeline-monitor/YYYY-MM-DD.md',
+    path: '8-execution-manager/timeline-monitor/YYYY-MM-DD.md',
     producedBy: 'timeline-monitor',
     consumedBy: ['learnings-summary', 'cycle-grade'],
     phase: 'execution-management',
@@ -800,7 +883,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Weekly timeline status, progress indicators, prompting email drafts',
   },
   {
-    path: '7-execution-manager/flw-data-review/YYYY-MM-DD.md',
+    path: '8-execution-manager/flw-data-review/YYYY-MM-DD.md',
     producedBy: 'flw-data-review',
     consumedBy: ['learnings-summary', 'cycle-grade', 'flw-data-review-eval'],
     phase: 'execution-management',
@@ -808,7 +891,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'FLW data quality assessment: per-delivery (Layer B) and cross-delivery (Layer C)',
   },
   {
-    path: '7-execution-manager/flw-data-review-eval_verdict-monitor.yaml',
+    path: '8-execution-manager/flw-data-review-eval_verdict-monitor.yaml',
     producedBy: 'flw-data-review-eval',
     role: 'verdict',
     consumedBy: ['opp-eval'],
@@ -817,7 +900,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-skill -eval verdict for the recurring --monitor mode of flw-data-review: signal coverage, outlier-detection rigor, recommendation actionability, evidence citation, trajectory awareness.',
   },
   {
-    path: '7-execution-manager/llo-launch-eval_verdict.yaml',
+    path: '8-execution-manager/llo-launch-eval_verdict.yaml',
     producedBy: 'llo-launch-eval',
     role: 'verdict',
     consumedBy: ['opp-eval'],
@@ -826,7 +909,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-skill -eval verdict for llo-launch: UAT sign-off completeness, Connect activation correctness, app-publish status, go-live notification fidelity, pre-launch gate-discipline. The most load-bearing Phase 7 rubric because go-live is the production gate.',
   },
   {
-    path: '7-execution-manager/execution-manager_summary.md',
+    path: '8-execution-manager/execution-manager_summary.md',
     producedBy: 'execution-manager',
     role: 'summary',
     consumedBy: [],
@@ -838,7 +921,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   // ── Closeout phase (Phase 8) ───────────────────────────────────
 
   {
-    path: '8-closeout/opp-closeout_invoices.md',
+    path: '9-closeout/opp-closeout_invoices.md',
     producedBy: 'opp-closeout',
     role: 'invoices',
     consumedBy: [],
@@ -847,7 +930,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Invoice details, total payment amount, Jira ticket link',
   },
   {
-    path: '8-closeout/llo-feedback.md',
+    path: '9-closeout/llo-feedback.md',
     producedBy: 'llo-feedback',
     consumedBy: ['learnings-summary', 'cycle-grade'],
     phase: 'closeout',
@@ -855,7 +938,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-LLO feedback responses, common themes, improvement suggestions',
   },
   {
-    path: '8-closeout/learnings-summary.md',
+    path: '9-closeout/learnings-summary.md',
     producedBy: 'learnings-summary',
     consumedBy: ['cycle-grade'],
     phase: 'closeout',
@@ -863,7 +946,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Process/content/technical/relationship learnings against original PDD',
   },
   {
-    path: '8-closeout/learnings-summary_new-pdd.md',
+    path: '9-closeout/learnings-summary_new-pdd.md',
     producedBy: 'learnings-summary',
     role: 'new-pdd',
     consumedBy: [],
@@ -872,7 +955,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'New PDD incorporating learnings (only if iteration warranted)',
   },
   {
-    path: '8-closeout/cycle-grade.md',
+    path: '9-closeout/cycle-grade.md',
     producedBy: 'cycle-grade',
     consumedBy: ['cycle-grade-eval'],
     phase: 'closeout',
@@ -880,7 +963,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: '6/7-dimension grades with evidence, recommendations, narrative assessment',
   },
   {
-    path: '8-closeout/cycle-grade-eval_verdict.yaml',
+    path: '9-closeout/cycle-grade-eval_verdict.yaml',
     producedBy: 'cycle-grade-eval',
     role: 'verdict',
     consumedBy: ['opp-eval'],
@@ -889,7 +972,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-skill -eval verdict for cycle-grade: independent re-grade detecting self-eval inflation, missing learnings, recommendation vagueness.',
   },
   {
-    path: '8-closeout/closeout_summary.md',
+    path: '9-closeout/closeout_summary.md',
     producedBy: 'closeout',
     role: 'summary',
     consumedBy: [],
@@ -901,7 +984,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   // ── Umbrella eval (opp-eval) — ad-hoc, opt-in; not part of the default 8-phase pipeline ──
 
   {
-    path: '8-closeout/opp-eval/opp-eval_scorecard-quick.md',
+    path: '9-closeout/opp-eval/opp-eval_scorecard-quick.md',
     producedBy: 'opp-eval',
     role: 'scorecard',
     consumedBy: [],
@@ -910,7 +993,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Human-readable quick scorecard from opp-eval --quick (structural artifact check only, no LLM cost)',
   },
   {
-    path: '8-closeout/opp-eval/opp-eval_scorecard-deep.md',
+    path: '9-closeout/opp-eval/opp-eval_scorecard-deep.md',
     producedBy: 'opp-eval',
     role: 'scorecard',
     consumedBy: [],
@@ -919,7 +1002,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Human-readable run-level scorecard from opp-eval --deep: category breakdown, per-skill results, improvement recommendations',
   },
   {
-    path: '8-closeout/opp-eval/opp-eval_scorecard-monitor.md',
+    path: '9-closeout/opp-eval/opp-eval_scorecard-monitor.md',
     producedBy: 'opp-eval',
     role: 'scorecard',
     consumedBy: [],
@@ -928,7 +1011,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Human-readable scorecard from opp-eval --monitor runs; same shape as --deep plus a trend-file append',
   },
   {
-    path: '8-closeout/opp-eval/trend.md',
+    path: '9-closeout/opp-eval/trend.md',
     producedBy: 'opp-eval',
     consumedBy: [],
     phase: 'closeout',
@@ -936,7 +1019,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Rolling trend of run-level opp-eval scores from --monitor runs; one line per run with date, overall, and category breakdown',
   },
   {
-    path: '8-closeout/opp-eval/opp-eval_verdict-deep.yaml',
+    path: '9-closeout/opp-eval/opp-eval_verdict-deep.yaml',
     producedBy: 'opp-eval',
     role: 'verdict',
     consumedBy: [],
@@ -945,7 +1028,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Machine-readable run-level verdict from opp-eval --deep: 7-category aggregation of every per-skill verdict found under <phase>/...-eval_verdict.yaml, plus improvement recommendations. Shape matches skills/README.md § QA vs Eval',
   },
   {
-    path: '8-closeout/opp-eval/opp-eval_verdict-monitor.yaml',
+    path: '9-closeout/opp-eval/opp-eval_verdict-monitor.yaml',
     producedBy: 'opp-eval',
     role: 'verdict',
     consumedBy: [],
@@ -954,7 +1037,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Machine-readable run-level verdict from opp-eval --monitor runs; latest-wins file (history lives in 8-closeout/opp-eval/trend.md)',
   },
   {
-    path: '8-closeout/opp-eval/opp-eval_gate-brief-deep.md',
+    path: '9-closeout/opp-eval/opp-eval_gate-brief-deep.md',
     producedBy: 'opp-eval',
     role: 'gate-brief',
     consumedBy: [],

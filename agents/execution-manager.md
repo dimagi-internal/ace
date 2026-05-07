@@ -8,7 +8,7 @@ description: >
 model: inherit
 phase: execution-management
 phase_display: Execution Management
-phase_ordinal: 7
+phase_ordinal: 8
 skills:
   - { name: llo-onboarding,  has_judge: false }
   - { name: llo-uat,         has_judge: false }

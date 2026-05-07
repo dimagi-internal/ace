@@ -10,7 +10,7 @@ description: >
 model: inherit
 phase: solicitation-management
 phase_display: Solicitation Management
-phase_ordinal: 6
+phase_ordinal: 7
 skills:
   - { name: solicitation-create, has_judge: true,  eval_skill: solicitation-create-eval }
   - { name: llo-invite,          has_judge: false }
