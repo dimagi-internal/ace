@@ -2735,7 +2735,7 @@ git add -A && git commit -m "fix(mcp): resolve module load issues in ocs-server"
 
 ---
 
-## Phase 6 — Interactive login command
+## Phase 7 — Interactive login command
 
 ### Task 19: ace ocs login command
 
@@ -2852,7 +2852,7 @@ git commit -m "feat(commands): add /ocs:login interactive Playwright login helpe
 
 ---
 
-## Phase 7 — Integration tests (gated)
+## Phase 8 — Integration tests (gated)
 
 ### Task 20: REST integration test
 
@@ -2991,7 +2991,7 @@ git commit -m "test(mcp): add gated Playwright backend integration tests"
 
 ---
 
-## Phase 8 — Skill updates
+## Phase 9 — Skill updates
 
 ### Task 22: Rewrite skills/ocs-agent-setup/SKILL.md
 

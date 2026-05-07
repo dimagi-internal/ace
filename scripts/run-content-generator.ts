@@ -22,10 +22,11 @@
 // Exit codes:
 //   0 — success
 //   1 — bad CLI usage
-//   2 — bad input JSON or missing env
+//   2 — bad input JSON, missing env, or output dir doesn't exist
 //   3 — Content Generator request failed (auth, validation, 5xx, etc.)
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { ContentGeneratorClient } from '../lib/content-generator-client.js';
 
 async function main(): Promise<number> {
@@ -65,6 +66,20 @@ async function main(): Promise<number> {
   }
   if (input.upscale !== undefined && typeof input.upscale !== 'boolean') {
     console.error('input.json upscale must be a boolean when present.');
+    return 2;
+  }
+
+  // Ensure the output directory exists BEFORE we burn a generator call.
+  // Class-level preventer for the heredoc-collision footgun: callers that
+  // pass an output path with a non-existent parent dir (e.g. when bash ate
+  // a `$(dirname ...)` substitution and produced `mkdir -p .` instead) used
+  // to silently get an ENOENT post-API, wasting the generator quota and
+  // leaving the wrapper's success-shaped JSON output as misleading
+  // evidence. mkdirSync({recursive:true}) is idempotent and ~free.
+  try {
+    mkdirSync(dirname(outputPath), { recursive: true });
+  } catch (e) {
+    console.error(`Cannot create output directory for ${outputPath}: ${(e as Error).message}`);
     return 2;
   }
 

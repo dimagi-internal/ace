@@ -72,3 +72,47 @@ export function resolveUploadMultimediaBytes(args: {
   if (file_bytes_path) return readFileSync(file_bytes_path);
   return Buffer.from(file_bytes_base64!, 'base64');
 }
+
+/**
+ * Substitute `${VAR}` patterns with values from `env` (defaults to
+ * `process.env`). Returns the resolved string. Used by atoms that take
+ * secrets as args — e.g. `connect_create_opportunity.learn_app.api_key`
+ * — so callers can pass `${ACE_HQ_API_KEY}` literally instead of having
+ * to expand env vars in their own composition layer.
+ *
+ * Behavior:
+ *   - `${VAR}` → `env.VAR` if defined, else `${VAR}` is left intact and
+ *     the function throws `AtomArgUsageError` (so an unset env var is a
+ *     loud failure, not a silent empty string).
+ *   - `\${VAR}` → literal `${VAR}` (escape hatch when callers actually
+ *     mean the literal sequence).
+ *   - non-`${VAR}` strings pass through unchanged.
+ *
+ * Issue tracking: jjackson/ace#106 finding 6 — atoms used to send
+ * `${ACE_HQ_API_KEY}` verbatim to Connect, which surfaced as the
+ * unhelpful "Failed to fetch apps from CommCare HQ" error.
+ */
+export function resolveEnvSubstitution(value: string, env: NodeJS.ProcessEnv = process.env): string {
+  if (typeof value !== 'string' || !value.includes('$')) return value;
+  // Replace escape sequences first with a sentinel so the next regex
+  // doesn't see them.
+  const ESCAPE_SENTINEL = '';
+  const escaped = value.replace(/\\\$\{([A-Z_][A-Z0-9_]*)\}/g, (_m, name) => `${ESCAPE_SENTINEL}${name}}`);
+  const missing: string[] = [];
+  const resolved = escaped.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (_m, name) => {
+    const v = env[name];
+    if (v == null || v === '') {
+      missing.push(name);
+      return _m;
+    }
+    return v;
+  });
+  if (missing.length > 0) {
+    throw new AtomArgUsageError(
+      `env var(s) not set in MCP server process: ${missing.join(', ')}. ` +
+        `Either set them in $CLAUDE_PLUGIN_DATA/.env (visible to the server) ` +
+        `or expand the value in the calling skill before invoking the atom.`,
+    );
+  }
+  return resolved.replace(new RegExp(`${ESCAPE_SENTINEL}([A-Z_][A-Z0-9_]*)\\}`, 'g'), '${$1}');
+}

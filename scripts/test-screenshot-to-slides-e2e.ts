@@ -18,7 +18,7 @@
  *   - CommCare 2.62.0 installed (mobile-bootstrap step 5)
  *   - ACE_TRAINING_DECK_TEMPLATE_ID set (Slides template exists)
  */
-import { google } from 'googleapis';
+import { google } from '../lib/google-shim.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';

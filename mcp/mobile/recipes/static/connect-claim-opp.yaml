@@ -13,6 +13,16 @@
 # - The opp-list screen is `connect_fragment_jobs_list` with an
 #   `rvJobList` RecyclerView. Empty-state shows `connect_no_jobs_text`.
 # - The toolbar exposes `action_sync` (top-right) and `action_bell`.
+# Required env vars (pass via `mobile_run_recipe.envVars`):
+#   PIN      — 4-digit device PIN for the ACE test user
+#              (from `${ACE_E2E_PIN}` in $CLAUDE_PLUGIN_DATA/.env)
+#   OPP_NAME — display name of the opportunity to claim. Must match the
+#              substring rendered on the opp card in
+#              `connect_fragment_jobs_list`. With multiple claimed opps
+#              (e.g. a real run alongside stale dogfood opps from prior
+#              runs), tapping the first card grabs whichever sorts
+#              first — silently the wrong one. Pinning to text avoids
+#              that. Tracking: jjackson/ace#115 finding 4.
 appId: org.commcare.dalvik
 ---
 # Two valid starting surfaces after connect-login.yaml:
@@ -43,19 +53,29 @@ appId: org.commcare.dalvik
 # without screen_first_start_main, so branch (a) above correctly skips.
 - assertVisible:
     id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
-# Wait for the first opp card to render. We DON'T match on opp name text:
-# Round 5 (2026-04-30) surfaced that the on-device card text doesn't match
-# the bare opp slug (likely the program-with-date string). Phase 5 always
-# has exactly one claimed opp on this list, so waiting for the first
-# `btn_view_opportunity` to be visible is both sufficient and more durable
-# across naming changes. Tapping that button advances to opp detail.
+
+# Wait for the jobs list to populate any opp card.
 - extendedWaitUntil:
     visible:
       id: "org.commcare.dalvik:id/btn_view_opportunity"
     timeout: 15000
 - takeScreenshot: "claim-opp-list"
+
+# Pin to OPP_NAME instead of the first card. With multiple claimed opps
+# (real runs alongside stale dogfood opps), tapping the first
+# `btn_view_opportunity` grabs whichever the RecyclerView sorts first —
+# silently wrong. Match on the card text directly.
+#
+# The opp card's display text is the program/opp's display name (NOT the
+# bare slug — round 5 of the 2026-04-30 calibration round confirmed
+# this). Pass the display name as `OPP_NAME` to mobile_run_recipe.
+# `visibilityPercentage: 30` so the matcher hits even if the card text
+# wraps across multiple lines.
+- assertVisible:
+    text: ${OPP_NAME}
 - tapOn:
-    id: "org.commcare.dalvik:id/btn_view_opportunity"
+    text: ${OPP_NAME}
+    visibilityPercentage: 30
 - extendedWaitUntil:
     visible:
       id: "org.commcare.dalvik:id/btn_start"

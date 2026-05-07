@@ -1,0 +1,404 @@
+<html><head></head><body><div class="table-responsive">
+  
+
+
+
+<div class="table-container flex flex-col gap-2 mb-1">
+  
+  <div class="w-full overflow-x-auto overflow-y-auto block max-h-[70vh]">
+    <div style="overflow:hidden; border-radius:8px;">
+              
+                
+                  </div><table class="base-table">
+      
+      
+      <thead class="">
+        <tr>
+          
+          <th>
+            
+            <span>#</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>Payment Unit Name</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>Start date</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>End date</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>Worker pay per delivery</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>Org pay per delivery</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>Total Deliveries</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>Max daily</span>
+            
+          </th>
+          
+          <th>
+            
+            <span>Delivery Units</span>
+            
+          </th>
+          
+        </tr>
+      </thead>
+      
+      
+
+          
+            <tbody>
+            <tr class="even">
+                    
+                      <td>
+                        
+                          1
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          Shop Registration &amp; Inventory
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          —
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          —
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          10
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          3
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          20
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          12
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          
+
+<div class="flex justify-between items-center">
+    <span>1</span>
+    <div x-data="{ expanded: false }">
+        
+            <a href="/a/ai-demo-space/opportunity/f14d8c5d-8859-4d0c-8952-8a6a30d06c43/payment_unit/aece2d58-bc28-41c0-ba77-5b4155652202/edit"><i class="fa-solid fa-pencil me-2"></i></a>
+        
+        <button @click="expanded = true; $el.closest('tr').insertAdjacentHTML('afterend', $refs.detailRow.innerHTML)" x-show="!expanded">
+            <i class="fa-solid fa-chevron-down"></i>
+        </button>
+        <button @click.prevent="
+                    const detailRow = $el.closest('tr').nextElementSibling;
+                    if (detailRow &amp;&amp; detailRow.classList.contains('detail-row')) {
+                        detailRow.remove();
+                    }
+                    expanded = false
+                " x-show="expanded">
+            <i class="fa-solid fa-chevron-up"></i>
+        </button>
+        <template x-ref="detailRow">
+            <tr class="detail-row">
+                <td colspan="8">
+                    <div class="p-3 bg-slate-100 rounded-lg">
+                        <div class="mb-4 font-bold">Deliver Units</div>
+                        <div class="flex flex-col gap-2">
+                            
+                                <div class="w-full">
+                                    <span>Shop Registration</span>
+                                    
+                                </div>
+                            
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        </template>
+    </div>
+</div>
+
+                        
+                      </td>
+                    
+                  </tr>
+                
+                
+                
+                  <tr class="odd">
+                    
+                      <td>
+                        
+                          2
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          Sample Preparation
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          —
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          —
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          25
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          7
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          60
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          15
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          
+
+<div class="flex justify-between items-center">
+    <span>1</span>
+    <div x-data="{ expanded: false }">
+        
+            <a href="/a/ai-demo-space/opportunity/f14d8c5d-8859-4d0c-8952-8a6a30d06c43/payment_unit/519450e1-6c46-42bd-84bb-a6cdb3890791/edit"><i class="fa-solid fa-pencil me-2"></i></a>
+        
+        <button @click="expanded = true; $el.closest('tr').insertAdjacentHTML('afterend', $refs.detailRow.innerHTML)" x-show="!expanded">
+            <i class="fa-solid fa-chevron-down"></i>
+        </button>
+        <button @click.prevent="
+                    const detailRow = $el.closest('tr').nextElementSibling;
+                    if (detailRow &amp;&amp; detailRow.classList.contains('detail-row')) {
+                        detailRow.remove();
+                    }
+                    expanded = false
+                " x-show="expanded">
+            <i class="fa-solid fa-chevron-up"></i>
+        </button>
+        <template x-ref="detailRow">
+            <tr class="detail-row">
+                <td colspan="8">
+                    <div class="p-3 bg-slate-100 rounded-lg">
+                        <div class="mb-4 font-bold">Deliver Units</div>
+                        <div class="flex flex-col gap-2">
+                            
+                                <div class="w-full">
+                                    <span>Sample Preparation</span>
+                                    
+                                </div>
+                            
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        </template>
+    </div>
+</div>
+
+                        
+                      </td>
+                    
+                  </tr>
+                
+                
+                
+                  <tr class="even">
+                    
+                      <td>
+                        
+                          3
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          Shipment
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          —
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          —
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          40
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          10
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          5
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          1
+                        
+                      </td>
+                    
+                      <td>
+                        
+                          
+
+<div class="flex justify-between items-center">
+    <span>1</span>
+    <div x-data="{ expanded: false }">
+        
+            <a href="/a/ai-demo-space/opportunity/f14d8c5d-8859-4d0c-8952-8a6a30d06c43/payment_unit/abb52212-0601-4f61-8026-731a009729a0/edit"><i class="fa-solid fa-pencil me-2"></i></a>
+        
+        <button @click="expanded = true; $el.closest('tr').insertAdjacentHTML('afterend', $refs.detailRow.innerHTML)" x-show="!expanded">
+            <i class="fa-solid fa-chevron-down"></i>
+        </button>
+        <button @click.prevent="
+                    const detailRow = $el.closest('tr').nextElementSibling;
+                    if (detailRow &amp;&amp; detailRow.classList.contains('detail-row')) {
+                        detailRow.remove();
+                    }
+                    expanded = false
+                " x-show="expanded">
+            <i class="fa-solid fa-chevron-up"></i>
+        </button>
+        <template x-ref="detailRow">
+            <tr class="detail-row">
+                <td colspan="8">
+                    <div class="p-3 bg-slate-100 rounded-lg">
+                        <div class="mb-4 font-bold">Deliver Units</div>
+                        <div class="flex flex-col gap-2">
+                            
+                                <div class="w-full">
+                                    <span>Shipment</span>
+                                    
+                                </div>
+                            
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        </template>
+    </div>
+</div>
+
+                        
+                      </td>
+                    
+                  </tr>
+                
+                
+              
+              
+              
+            
+            </tbody>
+          
+
+
+    </table>
+  </div>
+  
+  
+  
+
+  
+</div>
+
+
+
+<script>
+    function goToPage(param, value) {
+        const url = new URL(window.location.href);
+        url.searchParams.set(param, value);
+        window.location.href = url.toString();
+    }
+</script>
+
+
+</div>
+</body></html>

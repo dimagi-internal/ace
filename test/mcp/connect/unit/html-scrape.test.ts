@@ -10,6 +10,7 @@ import {
   parseFormErrors,
   parseFormErrorsByField,
   parsePaymentUnitTable,
+  parseDeliverUnitTable,
 } from '../../../../mcp/connect/backends/html-scrape.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -258,5 +259,78 @@ describe('parsePaymentUnitTable', () => {
       <tr class="even"><td>—</td><td>Header</td><td></td><td></td><td>0</td><td>0</td><td>0</td></tr>
     </tbody></table>`;
     expect(parsePaymentUnitTable(html)).toEqual([]);
+  });
+
+  // Live-captured 2026-05-06 from leep-paint-collection
+  // (https://github.com/jjackson/ace/issues/106 finding 5). The opp had
+  // 3 payment units active at scrape time. The fixture exercises:
+  //   - extracting payment_unit_uuid from the row's edit href
+  //     (`/payment_unit/<UUID>/edit`)
+  //   - confirming `id` (cells[0]) is the display index 1/2/3, not a
+  //     server integer ID (which is not rendered in this listing)
+  describe('with payment_unit_uuid extraction (live 2026-05-06)', () => {
+    const live2 = fix('payment_unit_table-live-2026-05-06.html');
+    const out = parsePaymentUnitTable(live2);
+
+    it('parses three rows with display-index ids', () => {
+      expect(out).toHaveLength(3);
+      expect(out.map((pu) => pu.id)).toEqual([1, 2, 3]);
+    });
+
+    it('extracts payment_unit_uuid from each row edit link', () => {
+      // The three UUIDs from the live HTML edit hrefs.
+      expect(out.map((pu) => pu.payment_unit_uuid)).toEqual([
+        'aece2d58-bc28-41c0-ba77-5b4155652202',
+        '519450e1-6c46-42bd-84bb-a6cdb3890791',
+        'abb52212-0601-4f61-8026-731a009729a0',
+      ]);
+    });
+
+    it('synthetic row without an edit href yields undefined uuid', () => {
+      const html = `<table><tbody>
+        <tr class="even"><td>1</td><td>NoLink</td><td>2026-01-01</td><td>2026-12-31</td><td>10</td><td>5</td><td>0</td></tr>
+      </tbody></table>`;
+      expect(parsePaymentUnitTable(html)[0].payment_unit_uuid).toBeUndefined();
+    });
+  });
+});
+
+describe('parseDeliverUnitTable', () => {
+  // Live-captured 2026-05-06 from leep-paint-collection
+  // (https://github.com/jjackson/ace/issues/106 finding 5). The HTML
+  // for this listing genuinely does NOT expose server integer IDs —
+  // no data-* attrs, no hrefs, no hidden inputs. The fixture pins
+  // that observation so we don't regress to claiming `cells[0]` is
+  // the server ID.
+  const live = fix('deliver_unit_table-live-2026-05-06.html');
+
+  it('parses three rows with display-index ids and slug+name', () => {
+    const out = parseDeliverUnitTable(live);
+    expect(out).toHaveLength(3);
+    expect(out.map((du) => du.id)).toEqual([1, 2, 3]);
+    expect(out.map((du) => du.slug)).toEqual([
+      'shipments',
+      'stage_1_market_analysis',
+      'stage_2_sampling',
+    ]);
+    expect(out.map((du) => du.name)).toEqual([
+      'Shipment',
+      'Shop Registration',
+      'Sample Preparation',
+    ]);
+  });
+
+  it('regression: ids are display indices 1..N, NOT server integer IDs', () => {
+    // Server integer IDs for these deliver units (from the create-time
+    // response when they were synced) are 5355/5356/5357. The HTML
+    // listing does not render them — we get back 1/2/3 instead. This
+    // test pins that observation so a future "fix" doesn't silently
+    // start returning real server IDs without the type signal being
+    // updated. When commcare-connect ships server-side IDs in the
+    // listing (data-id="5355"), update parseDeliverUnitTable AND the
+    // jsdoc on DeliverUnit.id together.
+    const out = parseDeliverUnitTable(live);
+    expect(out[0].id).toBe(1);
+    expect(out[0].id).not.toBe(5355);
   });
 });

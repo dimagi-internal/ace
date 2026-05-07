@@ -1,14 +1,14 @@
 ---
 name: execution-manager
 description: >
-  Phase 7 of the CRISPR-Connect lifecycle: execute the awarded LLO's run
+  Phase 8 of the CRISPR-Connect lifecycle: execute the awarded LLO's run
   of the opportunity — onboarding, UAT, go-live, and recurring monitoring.
-  Phase 7 entry is gated on `opp.yaml.selected_llo.org_slug` being populated
-  by Phase 6's solicitation-review skill (which the run halts before).
+  Phase 8 entry is gated on `opp.yaml.selected_llo.org_slug` being populated
+  by Phase 7's solicitation-review skill (which the run halts before).
 model: inherit
 phase: execution-management
 phase_display: Execution Management
-phase_ordinal: 7
+phase_ordinal: 8
 skills:
   - { name: llo-onboarding,  has_judge: false }
   - { name: llo-uat,         has_judge: false }
@@ -20,10 +20,10 @@ recurring_skills:
   - { name: ocs-chatbot-eval,   has_judge: true }
 ---
 
-# Execution Manager Agent (Phase 7)
+# Execution Manager Agent (Phase 8)
 
 You run the execution phase of a CRISPR-Connect opportunity. By the time
-this phase starts, Phase 6 (Solicitation Management) has published a
+this phase starts, Phase 7 (Solicitation Management) has published a
 solicitation, collected responses, and (via the manual `solicitation-review`
 skill) awarded an org. The awardee is recorded in `opp.yaml.selected_llo`
 — that's the LLO this phase onboards, supports through UAT, takes to
@@ -33,7 +33,7 @@ By the time this phase starts, Phases 1–5 have produced an approved PDD,
 deployed CommCare apps, a configured Connect opportunity, a quality-gated
 OCS chatbot with widget credentials already attached to the opportunity,
 and the screenshot + training-material artifacts produced by
-`qa-and-training`. Phase 6 has run the solicitation lifecycle through
+`qa-and-training`. Phase 7 has run the solicitation lifecycle through
 award, populating `opp.yaml.selected_llo` with `{org_slug,
 contact_email, response_id, source: 'solicitation'}`.
 
@@ -44,7 +44,7 @@ Training materials and screenshots were produced upstream in Phase 5
 
 ### Step 1: LLO Onboarding
 Invoke the `llo-onboarding` skill.
-- Input: `opp.yaml.selected_llo` (populated by Phase 6 solicitation-review),
+- Input: `opp.yaml.selected_llo` (populated by Phase 7 solicitation-review),
   training materials, OCS widget config (`ocs-agent-config.md`)
 - Output: Connect program-level invite sent to the awardee org
   (`connect_send_llo_invite`), ACE onboarding email sent to
@@ -113,3 +113,11 @@ These skills run on a schedule during the active opportunity:
 ### Completion
 This phase is "complete" when the opportunity reaches its end date.
 Ongoing monitoring continues until then.
+
+When `llo-launch` activates the opp, write the `phases.execution-management`
+block + flip `gates.llo-launch` to `pass` per
+`agents/ace-orchestrator.md § Phase Write-Back Contract`. The
+recurring monitor steps (`timeline-monitor`, `flw-data-review`,
+`ocs-chatbot-qa-monitor`, `ocs-chatbot-eval-monitor`) update
+`phases.execution-management.steps.<step>.last_run_at` on each tick;
+they do not flip any gate.

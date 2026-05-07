@@ -7,7 +7,7 @@ description: >
 model: inherit
 phase: closeout
 phase_display: Closeout
-phase_ordinal: 8
+phase_ordinal: 9
 skills:
   - { name: opp-closeout,       has_judge: false }
   - { name: llo-feedback,       has_judge: false }
@@ -15,7 +15,7 @@ skills:
   - { name: cycle-grade,        has_judge: true,  eval_skill: cycle-grade-eval }
 ---
 
-# Closeout Agent (Phase 8)
+# Closeout Agent (Phase 9)
 
 You handle the closeout of a completed CRISPR-Connect opportunity.
 
@@ -47,6 +47,12 @@ Invoke the `cycle-grade` skill.
 - Depends on: Step 3
 
 ### Completion
-Update opportunity state to "closed". Write final summary to
-`ACE/<opp-name>/runs/<run-id>/8-closeout/closeout_summary.md`.
+Write final summary to
+`ACE/<opp-name>/runs/<run-id>/8-closeout/closeout_summary.md`,
+then write the `phases.closeout` block per
+`agents/ace-orchestrator.md § Phase Write-Back Contract`. Closeout has
+no named gate (it's the terminal phase), so the patch sets
+`phases.closeout.status: done` + `phases.closeout.verdict: closed`
+without a `gates` field. Required top-level keys: `phases`,
+`last_actor`, `last_actor_at`.
 Email admin group with closeout report.

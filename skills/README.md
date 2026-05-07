@@ -178,10 +178,10 @@ skills don't duplicate it:
   paths, and shared verdict shape (which itself references
   `_eval-template.md`). Per-skill format rules and audience-specific
   concerns stay in each skill's own file.
-- **`skills/_solicitation-template.md`** — for the Phase 6 solicitation
+- **`skills/_solicitation-template.md`** — for the Phase 7 solicitation
   family. Defines the `opp.yaml.solicitation` and `opp.yaml.selected_llo`
   contract, the connect-labs MCP atom inventory per skill, and the
-  Phase 6 → Phase 7 boundary rule.
+  Phase 7 → Phase 8 boundary rule.
 
 These files start with `_` so they are excluded from the skill catalog
 (they aren't skills — they're reference docs). When you add a new
@@ -231,7 +231,7 @@ populates (Artifact Under Review, What to Check, Auto-Surfaced
 Concerns, Recommended Disposition) using the canonical shape from
 `agents/ace-orchestrator.md § Gate Brief Contract`.
 
-The 5 gate-owning skills today are: `idea-to-pdd` (Phase 1→2), `app-deploy` (Phase 2→3), `ocs-chatbot-eval` (Phase 4→5), `llo-invite` (Phase 5 invite-list), `llo-launch` (Phase 5 launch). `opp-eval` also writes a Gate Brief section but its brief is advisory (does not gate any phase).
+The 5 gate-owning skills today are: `idea-to-pdd` (Phase 1→2), `app-deploy` (Phase 2→3), `ocs-chatbot-eval` (Phase 4→5), `llo-invite` (Phase 7 invite-list), `llo-launch` (Phase 8 launch). `opp-eval` also writes a Gate Brief section but its brief is advisory (does not gate any phase).
 
 ### `## Current Workaround` (when the skill is blocked on un-built APIs)
 
@@ -307,7 +307,7 @@ Phase folders are `1-design/`, `2-commcare/`, `3-connect/`, `4-ocs/`,
 `7-execution-manager/`, `8-closeout/`. Skills choose the phase that
 matches **when the work runs** (so `--monitor` mode for OCS lands
 under `7-execution-manager/`, not `4-ocs/`, because monitoring is
-Phase 7 work). The canonical inventory is in `lib/artifact-manifest.ts`
+Phase 8 work). The canonical inventory is in `lib/artifact-manifest.ts`
 — that file is the source of truth when prose and code drift.
 
 **No opp-level `qa-captures/`, `verdicts/`, `eval-reports/`,

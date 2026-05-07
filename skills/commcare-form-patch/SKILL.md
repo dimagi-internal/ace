@@ -131,11 +131,23 @@ quiz forms in scope for nova-plugin#5).
        #   - { module: 0, form: 1, form_unique_id: 6f3d3ad3ed9d44e5b4107c0a1210dd10 }
    ```
 
-   For the leep-paint-collection case, generate this file as part of
-   the run if it doesn't exist: one entry, `app: learn`, `app_id` from
-   the deployment summary, `patch_class: assessment-removal`,
-   `targets: auto`. Write it to Drive so subsequent runs are explicit
-   and re-runnable.
+   **Default behavior (auto-generate when missing).** When this skill
+   runs as Step 2.8 of `/ace:run` and `commcare-patches.yaml` doesn't
+   exist on Drive, write a single-entry default:
+   `app: learn`, `app_id` from the deployment summary,
+   `patch_class: assessment-removal`, `targets: auto`. This is the
+   correct shape for every Nova-built Learn app today. The yaml lands
+   on Drive so subsequent runs are explicit and re-runnable.
+
+   **No-op contract.** With `targets: auto`, the skill scans the
+   released Learn CCZ for wrapper-bearing forms. If the count is
+   zero — which will be the case as soon as nova-plugin#7 ships and
+   `compile_app` stops emitting wrappers — the skill writes a single
+   `[INFO] commcare-form-patch: 0 wrapper-bearing forms found in
+   released Learn CCZ; no-op` line to `comms-log/observations.md`,
+   skips the build/release cycle, and exits cleanly. So adding this
+   skill to `/ace:run` doesn't impose a wall-clock cost on opps whose
+   Learn apps are already clean.
 
 3. **Resolve form unique_ids per patch entry.** Call
    `commcare_download_ccz({domain, app_id, build_id})` for the entry's

@@ -50,7 +50,7 @@ Writes:
 
 ## What this does NOT do
 
-- No /ace:run side effects. No Phase 7 activation, no app rebuild, no
+- No /ace:run side effects. No Phase 8 activation, no app rebuild, no
   training-material regeneration.
 - No FLW invites, no LLO emails.
 
@@ -58,11 +58,11 @@ Writes:
 
 Both verdicts land at the run-scoped paths above
 (`4-ocs/ocs-chatbot-eval_verdict-deep.yaml` and
-`5-qa-and-training/app-ux-eval_verdict-deep.yaml`). The Phase 7
+`5-qa-and-training/app-ux-eval_verdict-deep.yaml`). The Phase 8
 `llo-launch` gate reads them and refuses activation if either is
 missing or stale.
 
-If you ran this and want to proceed to go-live, re-enter Phase 7 via
+If you ran this and want to proceed to go-live, re-enter Phase 8 via
 /ace:step llo-launch $1. /ace:qa-deep only writes verdicts and
 screenshots — it does not touch `run_state.yaml`, so `/ace:run` resume
 will pick up at whatever phase the run last halted at.

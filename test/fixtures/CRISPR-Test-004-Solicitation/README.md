@@ -10,8 +10,10 @@ flow added in 0.12.0. Synthetic — do not run live skills against it.
   `Response template` (5 questions).
 - Two `Preferred LLOs` so `llo-invite` (the new Phase 6 step 2) has
   recipients to email.
-- An `opp.yaml` with `program_id` so `solicitation-create` can call
-  `mcp__connect-labs__create_solicitation`.
+- An `opp.yaml` with both `program_id` (Connect UUID) and
+  `solicitation.labs_program_id` (labs integer) so `solicitation-create`
+  can skip the `labs_context` resolution lookup and call
+  `mcp__connect-labs__create_solicitation` directly.
 - A pre-populated `solicitation/published.md` and `responses/` so
   downstream tests for `solicitation-monitor` and `solicitation-review`
   have realistic inputs without round-tripping through labs.

@@ -47,17 +47,19 @@ describe('generateRunReadme', () => {
     const idx3Connect = md.indexOf('| 3-connect |');
     const idx4Ocs = md.indexOf('| 4-ocs |');
     const idx5Qa = md.indexOf('| 5-qa-and-training |');
-    const idx6Solicitation = md.indexOf('| 6-solicitation-management |');
-    const idx7Execution = md.indexOf('| 7-execution-manager |');
-    const idx8Closeout = md.indexOf('| 8-closeout |');
+    const idx6Synthetic = md.indexOf('| 6-synthetic |');
+    const idx7Solicitation = md.indexOf('| 7-solicitation-management |');
+    const idx8Execution = md.indexOf('| 8-execution-manager |');
+    const idx9Closeout = md.indexOf('| 9-closeout |');
     expect(idx1Design).toBeGreaterThan(0);
     expect(idx2Commcare).toBeGreaterThan(idx1Design);
     expect(idx3Connect).toBeGreaterThan(idx2Commcare);
     expect(idx4Ocs).toBeGreaterThan(idx3Connect);
     expect(idx5Qa).toBeGreaterThan(idx4Ocs);
-    expect(idx6Solicitation).toBeGreaterThan(idx5Qa);
-    expect(idx7Execution).toBeGreaterThan(idx6Solicitation);
-    expect(idx8Closeout).toBeGreaterThan(idx7Execution);
+    expect(idx6Synthetic).toBeGreaterThan(idx5Qa);
+    expect(idx7Solicitation).toBeGreaterThan(idx6Synthetic);
+    expect(idx8Execution).toBeGreaterThan(idx7Solicitation);
+    expect(idx9Closeout).toBeGreaterThan(idx8Execution);
   });
 
   it('status defaults to "pending" when not provided', () => {

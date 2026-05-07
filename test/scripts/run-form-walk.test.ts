@@ -23,6 +23,8 @@ import {
   parseSuiteFormResources,
   walkFormFields,
   walkCcz,
+  parseDraftAppFormUids,
+  mergeDraftFormUids,
 } from '../../scripts/run-form-walk.js';
 
 const FIXTURE_DIR = path.join(__dirname, '..', 'fixtures', 'cchq');
@@ -225,5 +227,108 @@ describe('walkCcz — end-to-end against an in-memory CCZ', () => {
     expect(result.forms[0].form_unique_id).toBeNull();
     // Field walk still works.
     expect(result.forms[0].fields.length).toBeGreaterThan(0);
+  });
+
+  it('defaults form_unique_id_source to suite_xml (CLI overlays draft_api)', () => {
+    const suite = loadFixture('form-walk-sample-suite.xml');
+    const form0 = loadFixture('form-walk-sample-form.xml');
+    const cczBuf = Buffer.from(
+      zipSync({
+        'suite.xml': strToU8(suite),
+        'modules-0/forms-0.xml': strToU8(form0),
+      }),
+    );
+    const result = walkCcz({ cczBuf, domain: 'd', app_id: '0'.repeat(32), build_id: null });
+    expect(result.form_unique_id_source).toBe('suite_xml');
+  });
+});
+
+describe('parseDraftAppFormUids — draft-app /api/v0.5/application/ JSON', () => {
+  it('maps modules[N].forms[M].unique_id to modules-N/forms-M.xml', () => {
+    const draft = {
+      modules: [
+        { forms: [{ unique_id: 'a'.repeat(32) }, { unique_id: 'b'.repeat(32) }] },
+        { forms: [{ unique_id: 'c'.repeat(32) }] },
+      ],
+    };
+    const map = parseDraftAppFormUids(draft);
+    expect(map.get('modules-0/forms-0.xml')).toBe('a'.repeat(32));
+    expect(map.get('modules-0/forms-1.xml')).toBe('b'.repeat(32));
+    expect(map.get('modules-1/forms-0.xml')).toBe('c'.repeat(32));
+    expect(map.size).toBe(3);
+  });
+
+  it('skips forms with missing or non-32-hex unique_id', () => {
+    const draft = {
+      modules: [
+        {
+          forms: [
+            { unique_id: 'a'.repeat(32) },
+            { unique_id: 'short' },
+            { unique_id: undefined },
+            {},
+            { unique_id: 'd'.repeat(32) },
+          ],
+        },
+      ],
+    };
+    const map = parseDraftAppFormUids(draft);
+    expect(map.size).toBe(2);
+    expect(map.get('modules-0/forms-0.xml')).toBe('a'.repeat(32));
+    expect(map.get('modules-0/forms-4.xml')).toBe('d'.repeat(32));
+  });
+
+  it('returns empty map for malformed input', () => {
+    expect(parseDraftAppFormUids(null).size).toBe(0);
+    expect(parseDraftAppFormUids({}).size).toBe(0);
+    expect(parseDraftAppFormUids({ modules: 'not-an-array' }).size).toBe(0);
+    expect(parseDraftAppFormUids({ modules: [{ no_forms: true }] }).size).toBe(0);
+  });
+});
+
+describe('mergeDraftFormUids — overlay draft uids onto walkCcz output', () => {
+  function makeWalked(): ReturnType<typeof walkCcz> {
+    const suite = loadFixture('form-walk-sample-suite.xml');
+    const form0 = loadFixture('form-walk-sample-form.xml');
+    const cczBuf = Buffer.from(
+      zipSync({
+        'suite.xml': strToU8(suite),
+        'modules-0/forms-0.xml': strToU8(form0),
+        'modules-0/forms-1.xml': strToU8(form0),
+      }),
+    );
+    return walkCcz({ cczBuf, domain: 'd', app_id: '0'.repeat(32), build_id: null });
+  }
+
+  it('replaces each form_unique_id with the draft variant when present', () => {
+    const walked = makeWalked();
+    // suite.xml-derived uids start as 'a'×32 and 'b'×32.
+    expect(walked.forms[0].form_unique_id).toBe('a'.repeat(32));
+    expect(walked.forms[1].form_unique_id).toBe('b'.repeat(32));
+    expect(walked.form_unique_id_source).toBe('suite_xml');
+
+    const draftMap = new Map([
+      ['modules-0/forms-0.xml', '1'.repeat(32)],
+      ['modules-0/forms-1.xml', '2'.repeat(32)],
+    ]);
+    const merged = mergeDraftFormUids(walked, draftMap);
+    expect(merged.forms[0].form_unique_id).toBe('1'.repeat(32));
+    expect(merged.forms[1].form_unique_id).toBe('2'.repeat(32));
+    expect(merged.form_unique_id_source).toBe('draft_api');
+  });
+
+  it('keeps form_unique_id_source as suite_xml when any form is missing from draft', () => {
+    const walked = makeWalked();
+    const draftMap = new Map([['modules-0/forms-0.xml', '1'.repeat(32)]]);
+    const merged = mergeDraftFormUids(walked, draftMap);
+    expect(merged.forms[0].form_unique_id).toBe('1'.repeat(32));
+    expect(merged.forms[1].form_unique_id).toBe('b'.repeat(32)); // unchanged
+    expect(merged.form_unique_id_source).toBe('suite_xml'); // partial coverage
+  });
+
+  it('returns input unchanged when draft map is empty (fallback path)', () => {
+    const walked = makeWalked();
+    const merged = mergeDraftFormUids(walked, new Map());
+    expect(merged).toEqual(walked);
   });
 });

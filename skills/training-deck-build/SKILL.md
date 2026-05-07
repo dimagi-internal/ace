@@ -17,7 +17,7 @@ video — that's a separate skill, planned but not implemented.
 
 After `training-deck-outline` has written its artifact for the
 opportunity. Typically the last step of Phase 5 (`qa-and-training`),
-before LLO onboarding in Phase 7.
+before LLO onboarding in Phase 8.
 
 ## Inputs (read from Drive)
 

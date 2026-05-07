@@ -5,28 +5,109 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.13.43 — feat(mobile): per-user emulator/adb port pinning for shared Mac hosts
+## 0.13.66 — 2026-05-06
 
-Two Mac user accounts sharing one machine couldn't both run `qa-and-training`
-without their adb servers (port 5037) and emulator console pairs (5554/5555)
-colliding. Each user's adb-server binds a system-wide TCP port and each
-user's emulator gets auto-assigned the next free console pair, so concurrent
-runs raced over device serials.
+**Fix #129: swap `googleapis` for per-API subpackages — node_modules drops 332 MB → 141 MB.**
 
-Two new env vars in `.env.tpl`, both unset by default (single-user behavior
-unchanged):
+`googleapis` is a meta-package that bundles auto-generated types for every Google API in existence (~194 MB). ACE only uses 4 of them (Drive, Docs, Sheets, Slides) plus the auth client. Every `/ace:update` was paying the full 194 MB whether it used 4 APIs or 400, and across 60+ historical versions on one operator's machine that came to 22 GB of stale cache.
 
-- `ANDROID_ADB_SERVER_PORT` — standard Android var, honored natively by `adb`
-  and `emulator`; ACE just inherits `process.env` into spawned children. Pin
-  to e.g. `5038` for the second user.
-- `ACE_MOBILE_EMULATOR_PORT` — new ACE var. `mcp/mobile/backends/avd.ts` reads
-  it and appends `-port <N>` to the `emulator` spawn args. Pin to e.g. `5580`
-  for the second user. Serial becomes `emulator-<port>`; existing serial-
-  detection (`findRunningAvd`) doesn't assume 5554.
+Swap `googleapis` (194 MB) for the per-API subpackages plus `google-auth-library`:
 
-`.env` lives under `${CLAUDE_PLUGIN_DATA}/.env`, which on macOS resolves to a
-per-user path — so each account's `op inject` lands in a separate file. The
-`commands/mobile-bootstrap.md` doc gains a short multi-user table.
+| Before | After |
+|---|---|
+| `googleapis` 194 MB | `@googleapis/drive` 2.3 MB |
+|   | `@googleapis/docs` 488 KB |
+|   | `@googleapis/sheets` 772 KB |
+|   | `@googleapis/slides` 412 KB |
+|   | `google-auth-library` 776 KB |
+| **194 MB** | **~4.7 MB** |
+
+`node_modules/` total: **332 MB → 141 MB** (-58%). Per-cache footprint: ~330 MB → ~150 MB.
+
+Migration uses a one-line shim (`lib/google-shim.ts`) that re-exports `{ drive, docs, sheets, slides, auth }` so the existing `import { google } from '…'` call shape is preserved across all 16 call sites in `mcp/` + `scripts/`. Only the import path changes per file — no `google.drive(…)` / `new google.auth.GoogleAuth(…)` usage rewrite. Smaller diff, easier to revert.
+
+Tests: 234/234 pass. Typecheck clean. `mcp/google-drive-server.ts` boots cleanly under the shim (verified via stdio smoke).
+
+
+
+## 0.13.58 — 2026-05-06
+
+**Fix #116: codify the phase write-back contract + add an orchestrator-side verifier.**
+
+Doc-only change to phase agent definitions. `/ace:run turmeric/20260506-1304` (and earlier `/ace:run leep-paint-collection/20260506-1440`, observed independently) showed `phases.commcare-setup` and `phases.connect-setup` blocks missing from `run_state.yaml` even though both phases shipped real artifacts (apps released, Connect program/opp/PU created). 4 of 6 phase agents wrote back; 2 didn't. Root cause: vague `### Completion` sections that say "Update opportunity state to mark Phase N as complete" with no canonical contract on what "update state" means.
+
+Two changes:
+
+1. **`agents/ace-orchestrator.md` gains two new sections.**
+   - `## Phase Write-Back Contract` — defines the exact `phases.<phase>` block shape (status / started_at / completed_at / verdict / summary_artifact / steps) and the gate-flip mapping table. Mandates `update_yaml_file` patches with the four top-level keys (`phases`, `gates`, `last_actor`, `last_actor_at`) so shallow merges preserve sibling phases.
+   - `## Phase Write-Back Verifier` — orchestrator-side backstop. After every phase dispatch returns, the orchestrator re-reads `run_state.yaml` and confirms the phase wrote its block. If missing, it writes a minimal stub with `write_back_warning` + flips the gate. Loud-but-non-fatal so the run continues.
+
+2. **Per-phase-agent `### Completion` sections** updated to reference the contract instead of repeating vague "update state" language. Tightened across all 8 phase agents: design-review, commcare-setup, connect-setup, ocs-setup, qa-and-training, solicitation-management, execution-manager, closeout.
+
+Doc-only — no behavior changes for phase agents that were already writing back correctly. The verifier section instructs future orchestrator runs to backstop the gap.
+
+## 0.13.49 — 2026-05-06
+
+**Fix #108 (3 multimedia-coverage findings) + ship the print-URL nova-login rewrite.**
+
+Four targeted fixes from the turmeric run 20260506-1304 surfaced as issue #108. All cherry-pickable; no behaviour changes for happy paths that were already working.
+
+1. **`scripts/run-form-walk.ts` now emits draft-API form_unique_ids by default.** The CCZ's `suite.xml` `<resource id="…">` blocks carry a build-only variant of the unique_id (chars 11+ diverge from the draft id) that `commcare_patch_xform` rejects with a 400 / "Form not found". The CLI now overlays uids from `/a/<domain>/api/v0.5/application/<app_id>/` (ApiKey auth from `ACE_HQ_USERNAME` + `ACE_HQ_API_KEY`) onto the walked output before writing. New top-level field `form_unique_id_source` reads `draft_api` (overlay succeeded — uids are patch-endpoint-safe) or `suite_xml` (env vars missing or API call failed — uids will be rejected). Two new exported pure helpers (`parseDraftAppFormUids`, `mergeDraftFormUids`) tested in isolation; `walkCcz` is unchanged for direct callers.
+
+2. **`scripts/run-content-generator.ts` creates the output parent directory before calling the generator.** Class-level preventer for the heredoc-collision footgun: callers whose bash ate `$(dirname …)` before Python ever saw it (`mkdir -p $()` collapsing to `mkdir -p .`) used to silently get `ENOENT` *after* the API call, wasting the generator quota and leaving the wrapper's success-shaped JSON line as misleading evidence. `mkdirSync({recursive:true})` is idempotent and ~free.
+
+3. **`skills/app-multimedia-coverage/SKILL.md` corrects the CCZ multimedia path.** SKILL.md's verify step said `commcare/multimedia/image/<filename>`; CCHQ's actual layout (verified live during the turmeric run) is `commcare/<media_type>/<filename>` — i.e. `commcare/image/<filename>`. The form-XML `jr://file/commcare/image/<filename>` URI is unchanged. SKILL.md step 3 also gains a halt-rule when `form_unique_id_source: 'suite_xml'` so future operators don't blindly proceed into a known-rejected patch.
+
+4. **`commands/nova-login.md` replaces the headed-Playwright fallback with a print-URL flow.** When refresh-token recovery fails, the skill now surfaces the OAuth authorize URL plainly so the operator opens it in their existing browser (where their Google session, password manager, and account picker already live) instead of getting a profile-less Chromium they have to sign into from scratch. The MCP host's localhost listener captures the callback regardless of which browser opens the URL. Polling `~/.claude/.credentials.json` for fresh tokens replaces the Playwright `page.waitForURL` callback detection. Eliminates the Playwright-not-installed / esbuild-top-level-await failure modes on top of the real auth question.
+
+Tests: 219/219 pass (22 new tests covering `parseDraftAppFormUids` and `mergeDraftFormUids`). No live-API integration tests touched.
+
+## 0.13.44 — 2026-05-06
+
+**docs(generated): regenerate playbook.md to reflect 8-phase orchestration
+and post-audit skill descriptions.**
+
+`docs/generated/playbook.md` was last regenerated at 0.2.0 (6-phase
+model). Refreshed via `/ace:docs` to incorporate:
+
+- 8-phase orchestration (added solicitation-management as Phase 6 and
+  renamed Phase 7 to execution-manager since 0.12.0)
+- All 54 post-audit skill descriptions (≤200 chars each, all carry
+  `disable-model-invocation: true`)
+- Updated agent topology (procedure-doc vs subagent rule, since 0.7.0)
+- Per-phase skill dispatch order from the phase-agent frontmatter
+  `skills:` blocks
+- Cross-cutting skills (opp-eval, eval-calibration, email-communicator,
+  upload-transcript) called out as a separate group
+- Reference docs (`skills/_*-template.md`) called out as a separate
+  group (skills catalog excludes them)
+- Integration summary section refreshed with current MCP atom counts
+  and authentication notes
+
+Pure derived artifact — regenerated via `/ace:docs` reading
+`agents/*.md` + `skills/*/SKILL.md` + `playbook/integrations/*.md`.
+
+## 0.13.43 — 2026-05-06
+
+**fix(deps): re-add @anthropic-ai/sdk (4th time) + enable branch
+protection on main.**
+
+The 0.13.42 merge (`emdash/new-qa-tpafr`) was based on a pre-0.13.41
+main and stripped `@anthropic-ai/sdk` from `package.json` again — 4th
+instance of the merge-conflict-drop class of bug. The clean-install
+CI workflow correctly flagged it, but `main` had no branch protection
+configured so the merge went through anyway.
+
+Two fixes shipped in this PR:
+1. `@anthropic-ai/sdk@^0.94.0` re-added to `package.json` (and lockfile).
+2. Branch protection enabled on `main` requiring `clean-install` status
+   check to pass before merging. Configured via `gh api -X PUT
+   repos/jjackson/ace/branches/main/protection` with admin bypass
+   allowed (so emergency hotfixes still work). This is a class-level
+   preventer — drops can no longer reach main silently.
+
+Verified clean: npm install succeeds, npm test reports 570 passed /
+35 skipped / 0 failed.
 
 ## 0.13.41 — 2026-05-06
 
@@ -57,6 +138,7 @@ Verified by:
 - `rm -rf node_modules package-lock.json && npm install` succeeds
 - `npx tsc --noEmit` returns clean
 - `npm test` reports 570 passed / 35 skipped / 0 failed
+
 ## 0.13.40 — 2026-05-06
 
 **Skills audit PR 6 — Phase 8 + cross-cutting (6 skills). FINAL audit PR.**
@@ -259,6 +341,7 @@ to exclude from the skill catalog:
 Description aggregate: 15,834 → 15,509 chars (-325). Most of the
 ~10,000 char savings will land in PR 2-6 when the per-phase
 description rewrites and `disable-model-invocation` flips happen.
+
 ## 0.13.30 — fix(deps): re-add @anthropic-ai/sdk to package.json
 
 `@anthropic-ai/sdk` was added in 0.13.17 (PR #81's C1 review fix) so

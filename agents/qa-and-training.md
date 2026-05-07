@@ -5,7 +5,7 @@ description: >
   walkthrough screenshots + training materials (deck outline and video
   script). All derived from the design docs (PDD, app summaries, opp
   identifiers, OCS chatbot URL) so the Phase runs from artifacts; no live
-  LLO contact. Phase 7 is where LLOs first hear from ACE.
+  LLO contact. Phase 8 is where LLOs first hear from ACE.
 model: inherit
 phase: qa-and-training
 phase_display: QA and Training
@@ -32,8 +32,8 @@ contact. By the time this phase starts, Phases 1-4 have produced an
 approved PDD, deployed CommCare apps, a configured Connect opportunity
 (with the ACE test user already invited), and a quality-gated OCS chatbot.
 **No real 1-1 LLO contact happens during this phase** — that begins in
-Phase 7. Phase 6 (Solicitation Management) sits between this phase and
-Phase 7; it publishes a public solicitation but does not contact specific
+Phase 8. Phase 7 (Solicitation Management) sits between this phase and
+Phase 8; it publishes a public solicitation but does not contact specific
 individuals unless the PDD names preferred candidates.
 
 Phase 5 is intentionally an **executor**, not a synthesizer. The QA test
@@ -49,7 +49,7 @@ Phase 5 produces two artifact families:
 1. **Per-opp screenshots** from running the smoke recipes — used in the
    training deck and a thin per-app UX smoke judge (~2 LLM calls total).
    Deep, per-journey UX grading lives in `/ace:qa-deep` →
-   `app-ux-eval`, run manually before Phase 6 activation.
+   `app-ux-eval`, run manually before Phase 7 activation.
 2. **Training materials** — LLO playbook, FLW guide, quick-reference, FAQ,
    onboarding email body, training deck outline, training video script.
 
@@ -102,6 +102,22 @@ silent-failure prevention learned from earlier real-world dogfood.
       ad-hoc `adb shell` without `-s` may pick the wrong device. See
       `playbook/integrations/mobile-integration.md` "Multi-user dadb
       landmine."
+- [ ] **Phase 2 produced the per-journey Maestro recipes alongside
+      `app-test-cases.yaml`.** For each `is_smoke: true` journey in
+      `2-commcare/app-test-cases.yaml`, the journey's `recipe_path`
+      must resolve to a real file under
+      `2-commcare/recipes/J<n>.yaml`. The `app-test-cases` SKILL
+      contracts BOTH outputs — the master yaml AND per-journey
+      recipes (see `skills/app-test-cases/SKILL.md § Outputs`).
+      Master-yaml-without-recipes is the canonical "upstream Phase 2
+      produced incomplete output" failure mode (observed
+      2026-05-06 leep-paint-collection run 20260506-1440 — surfaced
+      because a Phase 2 dispatch paraphrased the SKILL contract and
+      elided the recipe outputs). If recipes are missing, halt
+      with a clear pointer to re-run
+      `/ace:step app-test-cases <opp>/<run-id>` BEFORE running
+      `/ace:step app-screenshot-capture <opp>/<run-id>`. Skip this
+      check and you waste AVD-boot wall-clock for nothing.
 
 If any check fails, halt before Step 1 — running through with a
 broken precondition wastes AVD time and produces verdicts that look
@@ -123,7 +139,7 @@ total) asking whether the persona-matching FLW could complete the
 journey without confusion. Threshold ≥ 2/3 per app.
 
 Deep, per-journey UX grading is `app-ux-eval`, run manually from
-`/ace:qa-deep` before Phase 7 activation. The Phase 7 `llo-launch` gate
+`/ace:qa-deep` before Phase 8 activation. The Phase 8 `llo-launch` gate
 refuses activation without a fresh, passing
 `verdicts/app-ux-eval-deep.yaml`.
 
@@ -156,9 +172,9 @@ Halt the phase on any non-pass verdict.
   the opp folder, fills via `slides_batch_update`, returns the
   Slides URL.
 - Skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` is unset (with a clear
-  pointer to `scripts/bootstrap-training-deck-template.ts`). Phase 7
+  pointer to `scripts/bootstrap-training-deck-template.ts`). Phase 8
   doesn't depend on the Slides deck — `onboarding-email-body.md` is
-  the load-bearing Phase 7 input — so a missing template doesn't
+  the load-bearing Phase 8 input — so a missing template doesn't
   block go-live.
 
 **2c. Sequential — onboarding email (after the other 5 text artifacts):**
@@ -194,6 +210,16 @@ training skills (or invoke `qa-and-training` for the full sequence).
 - `verdicts/app-screenshot-capture-shallow.yaml` (smoke-judge verdict)
 - Per-training-skill verdicts (`verdicts/training-*.yaml`)
 
+## Completion
+
+After Step 2 finishes, write the `phases.qa-and-training` block per
+`agents/ace-orchestrator.md § Phase Write-Back Contract`. Phase 5 has
+no named gate (`/ace:qa-deep` is the actual quality gate, run
+separately before Phase 8 `llo-launch`), so the patch sets
+`phases.qa-and-training.status: done` + a verdict like `proceed` or
+`proceed-with-warn` without flipping any `gates.<gate>` entry.
+Required top-level keys: `phases`, `last_actor`, `last_actor_at`.
+
 ## Topology note
 
 This is a subagent dispatched from level 0 by `ace-orchestrator`. It runs
@@ -215,7 +241,7 @@ Phase 1 (`pdd-to-app-journeys`) and Phase 2 (`app-test-cases`). Phase 5
 became an executor: it reads the pre-composed smoke recipes from
 `app-test-cases.yaml`, runs them, captures screenshots, and runs a thin
 per-app UX smoke judge. Deep, per-journey UX grading is `app-ux-eval`,
-manually triggered via `/ace:qa-deep` before Phase 6 activation. The
+manually triggered via `/ace:qa-deep` before Phase 7 activation. The
 `qa-plan` skill is retired and the agent's `skills:` frontmatter no
 longer lists it. Spec:
 `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`.

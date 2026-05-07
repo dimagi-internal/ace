@@ -30,7 +30,7 @@
  * `.env` as `ACE_TRAINING_DECK_TEMPLATE_ID`.
  */
 
-import { google } from 'googleapis';
+import { google } from '../lib/google-shim.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {

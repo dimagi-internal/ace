@@ -25,7 +25,7 @@
  * one line per finding so the doctor can surface them inline.
  */
 
-import { google } from 'googleapis';
+import { google } from '../lib/google-shim.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

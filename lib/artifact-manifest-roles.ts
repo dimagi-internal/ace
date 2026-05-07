@@ -26,9 +26,10 @@ export const PHASE_FOLDERS = {
   'connect': '3-connect',
   'ocs': '4-ocs',
   'qa-and-training': '5-qa-and-training',
-  'solicitation-management': '6-solicitation-management',
-  'execution-management': '7-execution-manager',
-  'closeout': '8-closeout',
+  'synthetic-data-and-workflows': '6-synthetic',
+  'solicitation-management': '7-solicitation-management',
+  'execution-management': '8-execution-manager',
+  'closeout': '9-closeout',
 } as const;
 
 export type PhaseFolder = typeof PHASE_FOLDERS[keyof typeof PHASE_FOLDERS];

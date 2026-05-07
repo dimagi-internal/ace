@@ -20,7 +20,7 @@ This is not a cross-platform mobile testing framework, a CI gate, a regression s
 
 1. Add an `ace-mobile` MCP server exposing ten atomic capabilities (device, app, test-user, recipe-execution, debug) backed by a single Maestro implementation.
 2. Ship four static reusable Maestro flows (`connect-register-to-otp`, `connect-register-from-otp`, `connect-login`, `connect-claim-opp`) plus an LLM-driven generator that produces per-Learn-module / per-Deliver-form recipes from existing `app-summaries/*.md` artifacts.
-3. Add a new **Phase 5 `training-prep` agent** between current Phase 4 (`ocs-setup`) and current Phase 5 (`llo-manager`). The phase contains the new `app-screenshot-capture` skill plus the existing `training-materials` skill (relocated from current Phase 5). It runs end-to-end automated with no LLO contact, restoring the "Phases 1–N agent-only, then LLO contact" invariant. Existing `llo-manager` becomes Phase 6, existing `closeout` becomes Phase 7.
+3. Add a new **Phase 5 `training-prep` agent** between current Phase 4 (`ocs-setup`) and current Phase 5 (`llo-manager`). The phase contains the new `app-screenshot-capture` skill plus the existing `training-materials` skill (relocated from current Phase 5). It runs end-to-end automated with no LLO contact, restoring the "Phases 1–N agent-only, then LLO contact" invariant. Existing `llo-manager` becomes Phase 7, existing `closeout` becomes Phase 8.
 4. Make the new `training-prep` phase a true synthesis step: it consumes artifacts from **every prior phase** (PDD + test prompts + archetype from Phase 1, app summaries + deployment URLs from Phase 2, opp identifiers + invite URL + payment/delivery details from Phase 3, OCS chatbot embed URL + token from Phase 4) so the screenshots reference the right opp and the training docs include real URLs and context.
 5. Reuse the `+7426` ConnectID test-prefix and Dimagi SSO OTP scrape as a **one-time bootstrap** (`/ace:mobile-bootstrap`), entirely within ACE — no shared state with `commcare-ios`.
 6. Make every dependency surface introspectable by `/ace:doctor` (Maestro version, AVD presence, Playwright cookies, env-var resolution, APK install state).
@@ -354,7 +354,7 @@ ACE's phases shift to make room for the new training-prep phase:
 | 4 | `ocs-setup` | unchanged |
 | **5** | **`training-prep`** | **NEW — owns `app-screenshot-capture` and the relocated `training-materials` skill** |
 | 6 | `llo-manager` | was Phase 5; loses `training-materials` (now upstream); first LLO contact still here |
-| 7 | `closeout` | was Phase 6; otherwise unchanged |
+| 7 | `closeout` | was Phase 7; otherwise unchanged |
 
 The new agent lives at `agents/training-prep/AGENT.md`, follows the subagent topology rule (no nested `Agent` dispatches), and is invoked from the level-0 orchestrator the same way every other phase agent is. CLAUDE.md's phase-topology table, `/ace:status`, `/ace:eval`, and the orchestrator procedure doc all need touch-ups; the implementation plan sequences these.
 
@@ -406,7 +406,7 @@ If any of these inputs are missing, `training-prep` exits with a structured erro
 
 ### Failure isolation
 
-If `training-prep` fails (AVD wouldn't boot, login broke, recipe generation produced invalid YAML, missing upstream artifact), Phase 6 halts before any LLO contact. The phase emits structured verdicts (`verdicts/app-screenshot-capture.yaml` and `verdicts/training-materials.yaml`) so `opp-eval` rolls them up. **No real LLO ever sees an opp where training prep failed silently.**
+If `training-prep` fails (AVD wouldn't boot, login broke, recipe generation produced invalid YAML, missing upstream artifact), Phase 7 halts before any LLO contact. The phase emits structured verdicts (`verdicts/app-screenshot-capture.yaml` and `verdicts/training-materials.yaml`) so `opp-eval` rolls them up. **No real LLO ever sees an opp where training prep failed silently.**
 
 ---
 
@@ -517,7 +517,7 @@ A separate implementation plan (`docs/superpowers/plans/2026-04-28-ace-mobile-em
 6. Recipe generator + LLM prompt + validation.
 7. `app-screenshot-capture` skill.
 8. New `training-prep` phase agent at `agents/training-prep/AGENT.md`; relocate `training-materials` skill into it; teach `training-materials` to consume the new upstream artifacts (screenshots manifest + chatbot URL + invite URL + payment details).
-9. Renumber `llo-manager` → Phase 6, `closeout` → Phase 7. Update CLAUDE.md phase-topology table, `agents/ace-orchestrator/`, `commands/{run,step,status,eval}.md`, and the orchestrator procedure doc accordingly.
+9. Renumber `llo-manager` → Phase 7, `closeout` → Phase 8. Update CLAUDE.md phase-topology table, `agents/ace-orchestrator/`, `commands/{run,step,status,eval}.md`, and the orchestrator procedure doc accordingly.
 10. Phase 3 wiring — invite ACE test user during `connect-setup`; persist invite URL to `connect-state.yaml`.
 11. `/ace:setup` and `/ace:doctor` updates.
 12. Tests (unit, integration, recipe-gen evals).

@@ -14,6 +14,7 @@ skills:
   - { name: app-deploy,              has_judge: false }
   - { name: app-test-cases,          has_judge: false }
   - { name: app-release,             has_judge: true,  eval_skill: app-release-eval }
+  - { name: commcare-form-patch,     has_judge: false }
 ---
 
 # CommCare Setup (Phase 2 Procedure Document)
@@ -350,6 +351,40 @@ Note: `training-materials` no longer runs in Phase 2. As of 0.9.0 it lives
 in Phase 5 (`qa-and-training`), where it consumes the screenshots produced
 by `app-screenshot-capture` alongside the app summaries.
 
+### Step 2.8: Strip Connect wrappers from Learn forms
+
+Invoke the `commcare-form-patch` skill (default `targets: auto`,
+`patch_class: assessment-removal`, `app: learn`).
+
+Background: Nova's `compile_app` emits `<module xmlns="…connect…">` /
+`<assessment xmlns="…connect…">` wrapper elements in Learn-app form
+XML. Connect's `/opportunity/init/` *now* tolerates these (post-2026-04
+server fix), so Phase 3 succeeds. **But the AVD's CommCare runtime
+still chokes on them at Learn-app launch time** — the user sees a
+"Failed to start learning" banner with no diagnostic, which blocks
+Phase 5 (`app-screenshot-capture`). Tracking: jjackson/ace#115
+finding 1, voidcraft-labs/nova-plugin#7.
+
+The skill is **idempotent + safe to run unconditionally**: `targets:
+auto` scans the released Learn CCZ for wrapper-bearing forms; if zero
+match (e.g. Nova fix has shipped, or this opp's Learn app was never
+broken), the skill no-ops with an `[INFO]` log. When wrappers are
+present, the skill patches the form XML, re-builds, and re-releases —
+producing a Connect-runtime-compatible Learn CCZ that Phase 5 can
+launch. **Apply to Learn apps only** — patching Deliver forms via
+`edit_form_attr` triggers a CCHQ "Cannot use Case Management UI if you
+already have a case block" build error.
+
+Removal criteria: when nova-plugin#7 ships and a clean `/ace:run` end-
+to-end produces zero wrapper refs in the released Learn CCZ, drop
+this step + the entire `commcare-form-patch` skill (per its own
+SKILL.md § Removal criteria).
+
 ### Completion
-Update opportunity state to mark Phase 2 as complete.
-Write phase summary to `ACE/<opp-name>/runs/<run-id>/2-commcare/commcare-setup_summary.md`.
+Write phase summary to `ACE/<opp-name>/runs/<run-id>/2-commcare/commcare-setup_summary.md`,
+then write the `phases.commcare-setup` block + flip `gates.app-deploy`
+per `agents/ace-orchestrator.md § Phase Write-Back Contract`. Phase 2
+is a procedure doc executed by the top-level orchestrator session
+inline (see § Agent Topology), so the orchestrator owns this write.
+Required top-level keys on the patch: `phases`, `gates`, `last_actor`,
+`last_actor_at`.
