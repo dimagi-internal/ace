@@ -99,6 +99,17 @@ deferred to later stages. This skill is the data plumbing only.
    **If `--manifest <path>` is supplied:** read that file via `drive_read_file`
    and use the body verbatim as `manifest_yaml`. Skip to step 3.
 
+   **Otherwise, look for the narrative-plan manifest first.** If
+   `6-synthetic/synthetic-narrative-plan.yaml` exists in the run folder
+   (Stage 2 of Plan B's `synthetic-narrative-plan` skill produces it),
+   read it and use it as `manifest_yaml`. Skip to step 3.
+
+   When the narrative-plan manifest is consumed, log "consuming
+   narrative-plan manifest from `<path>`" so the operator sees which
+   source drove the run. The narrative plan's named FLWs / anomalies /
+   coaching arcs flow through verbatim — `synthetic-data-generate` is a
+   thin wrapper around the labs MCP, not a re-author.
+
    **Otherwise (default-manifest mode):** read the PDD at
    `ACE/<opp>/inputs/pdd.md` and the connect setup summary at
    `ACE/<opp>/runs/<last_run_id>/3-connect/connect-opp-setup.md`. Use them
