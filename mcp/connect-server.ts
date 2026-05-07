@@ -213,7 +213,15 @@ server.tool('connect_create_opportunity',
     program_id: z.string().describe('Program UUID — required (managed opportunity).'),
     name: z.string(),
     short_description: z.string().max(255),
-    description: z.string(),
+    description: z.string().describe(
+      'Full opportunity description. Server has an upper bound around ~250 ' +
+        'chars before HTTP 500s start firing intermittently (verified 2026-05-06 ' +
+        'on leep-paint-collection — see jjackson/ace#106 finding 7). Default to ' +
+        'a one-paragraph headline (≤250 chars). Stash the long-form prose in the ' +
+        'opp\'s Drive summary doc and link to it from the headline. Once the ' +
+        'server-side fix lands and the cap can be raised safely, this note ' +
+        'should be removed.',
+    ),
     target_organization_slug: z.string().describe(
       'LLO org slug — must already have an ACCEPTED program application. ' +
       'Use `connect_send_llo_invite` + `connect_accept_program_application` first if needed.',
