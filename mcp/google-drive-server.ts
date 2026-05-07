@@ -491,35 +491,17 @@ server.tool(
 // 11. Create a file in Google Drive
 server.tool(
   'drive_create_file',
-  'Create a new Google Doc in Drive with the given name and content, inside the given parent folder. The parent MUST be a folder on a Shared Drive — Service Accounts have zero My-Drive quota, so files created in My Drive fail with a misleading "user storage quota exceeded" error. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.',
+  'Create a new Google Doc in Drive with the given name and content, inside the given parent folder. By default, find-or-update: if a same-name file already exists under the parent (non-trashed), its content is replaced with `content` and its id is returned — no duplicate is created. Pass `findOrCreate:false` to force a new sibling. Body is uploaded as `text/plain; charset=utf-8` so non-ASCII text (em-dashes, accents, smart quotes) round-trips correctly. The parent MUST be a folder on a Shared Drive — Service Accounts have zero My-Drive quota, so files created in My Drive fail with a misleading "user storage quota exceeded" error. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.',
   {
     name: z.string().describe('Name for the new file'),
     content: z.string().describe('Text content for the file'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
+    findOrCreate: z.boolean().optional().describe('When true (default), reuse an existing same-name file under the parent and overwrite its content; otherwise always create a new sibling. Default: true. Set to false only when you specifically want a separate sibling each call.'),
   },
-  async ({ name: fileName, content: fileContent, parentFolderId }) => {
+  async ({ name: fileName, content: fileContent, parentFolderId, findOrCreate }) => {
     try {
-      const guard = await assertParentOnSharedDrive(parentFolderId);
-      if (!guard.ok) return error(guard.message);
-      const created = await drive.files.create({
-        requestBody: {
-          name: fileName,
-          mimeType: 'application/vnd.google-apps.document',
-          parents: [parentFolderId],
-        },
-        fields: 'id, name, webViewLink',
-        supportsAllDrives: true,
-      });
-      const fileId = created.data.id!;
-
-      await drive.files.update({
-        fileId,
-        media: { mimeType: 'text/plain', body: fileContent },
-        fields: 'id',
-        supportsAllDrives: true,
-      });
-
-      return result({ id: fileId, name: created.data.name, webViewLink: created.data.webViewLink });
+      const r = await handleCreateFile({ name: fileName, content: fileContent, parentFolderId, findOrCreate }, drive);
+      return result(r);
     } catch (e: any) {
       return error(e.message);
     }
@@ -796,6 +778,92 @@ export async function handleCreateFolder(
     supportsAllDrives: true,
   });
   return { id: resp.data.id!, name: resp.data.name!, webViewLink: resp.data.webViewLink ?? undefined };
+}
+
+/**
+ * Create-file handler, exported for unit testing with a mocked Drive client.
+ *
+ * Uploads `content` as a Google Doc body via Drive's two-step
+ * (create-then-import) flow. Body is sent with explicit
+ * `text/plain; charset=utf-8` so non-ASCII text (em-dashes, accented
+ * characters, smart quotes, etc.) round-trips correctly — without the
+ * charset hint Drive's import path mis-decodes the bytes and the upload
+ * fails with `Internal Error` (observed during ACE Phase 6 Stage 1
+ * synthetic-data-generate smoke on 2026-05-06).
+ *
+ * Default behavior is find-or-update: if a same-name file exists under
+ * `parentFolderId` (non-trashed), the existing file's content is replaced
+ * with `content` and its id is returned — no duplicate is created. This
+ * matches `handleCreateFolder`'s find-or-create semantics and closes the
+ * duplicate-Drive-file class of bug from transient 5xx retries (the call
+ * actually succeeded server-side but the model retried, creating a
+ * second copy). Pass `findOrCreate: false` to opt out.
+ */
+export async function handleCreateFile(
+  args: { name: string; content: string; parentFolderId: string; findOrCreate?: boolean },
+  driveClient: typeof drive = drive,
+): Promise<{ id: string; name: string; webViewLink?: string; reused?: boolean }> {
+  const { name, content, parentFolderId, findOrCreate = true } = args;
+  const guard = await assertParentOnSharedDrive(parentFolderId, driveClient);
+  if (!guard.ok) throw new Error(guard.message);
+
+  // Body upload — explicit charset closes the non-ASCII Internal Error
+  // class. `text/plain; charset=utf-8` makes Drive's Doc-import path
+  // decode the body as UTF-8 instead of falling through to a default
+  // that mis-handles multi-byte sequences.
+  const bodyMedia = { mimeType: 'text/plain; charset=utf-8', body: content };
+
+  if (findOrCreate) {
+    const escaped = name.replace(/'/g, "\\'");
+    const list = await driveClient.files.list({
+      q: `name='${escaped}' and '${parentFolderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`,
+      fields: 'files(id, name, webViewLink)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    const existing = list.data.files?.[0];
+    if (existing?.id) {
+      // Update content of existing file and return its id — no new file
+      // gets created.
+      await driveClient.files.update({
+        fileId: existing.id,
+        media: bodyMedia,
+        fields: 'id',
+        supportsAllDrives: true,
+      });
+      return {
+        id: existing.id,
+        name: existing.name!,
+        webViewLink: existing.webViewLink ?? undefined,
+        reused: true,
+      };
+    }
+  }
+
+  const created = await driveClient.files.create({
+    requestBody: {
+      name,
+      mimeType: 'application/vnd.google-apps.document',
+      parents: [parentFolderId],
+    },
+    fields: 'id, name, webViewLink',
+    supportsAllDrives: true,
+  });
+  const fileId = created.data.id!;
+
+  await driveClient.files.update({
+    fileId,
+    media: bodyMedia,
+    fields: 'id',
+    supportsAllDrives: true,
+  });
+
+  return {
+    id: fileId,
+    name: created.data.name!,
+    webViewLink: created.data.webViewLink ?? undefined,
+    reused: false,
+  };
 }
 
 /**

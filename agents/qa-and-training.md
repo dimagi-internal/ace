@@ -102,6 +102,22 @@ silent-failure prevention learned from earlier real-world dogfood.
       ad-hoc `adb shell` without `-s` may pick the wrong device. See
       `playbook/integrations/mobile-integration.md` "Multi-user dadb
       landmine."
+- [ ] **Phase 2 produced the per-journey Maestro recipes alongside
+      `app-test-cases.yaml`.** For each `is_smoke: true` journey in
+      `2-commcare/app-test-cases.yaml`, the journey's `recipe_path`
+      must resolve to a real file under
+      `2-commcare/recipes/J<n>.yaml`. The `app-test-cases` SKILL
+      contracts BOTH outputs — the master yaml AND per-journey
+      recipes (see `skills/app-test-cases/SKILL.md § Outputs`).
+      Master-yaml-without-recipes is the canonical "upstream Phase 2
+      produced incomplete output" failure mode (observed
+      2026-05-06 leep-paint-collection run 20260506-1440 — surfaced
+      because a Phase 2 dispatch paraphrased the SKILL contract and
+      elided the recipe outputs). If recipes are missing, halt
+      with a clear pointer to re-run
+      `/ace:step app-test-cases <opp>/<run-id>` BEFORE running
+      `/ace:step app-screenshot-capture <opp>/<run-id>`. Skip this
+      check and you waste AVD-boot wall-clock for nothing.
 
 If any check fails, halt before Step 1 — running through with a
 broken precondition wastes AVD time and produces verdicts that look
