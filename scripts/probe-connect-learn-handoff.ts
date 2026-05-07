@@ -7,42 +7,44 @@
  * user). Phase 5's `app-screenshot-capture` halts; both Learn and
  * Deliver smoke journeys depend on entering the Learn app first.
  *
- * Hypotheses (ranked by likelihood):
- *   1. CCHQ App-Editor permission gap on Connect's API-key user (Connect
- *      can't fetch the released build because the user lacks
- *      `edit_apps` on `connect-ace-prod`).
- *   2. Released CCZ format/version mismatch — Nova-built CCZ is missing
- *      a header field Connect uses to dispatch the launch.
- *   3. Connect cached the Learn-app metadata from an earlier run and
- *      now points at a stale build.
- *   4. The released build is a multi-app upload artifact (each
- *      `nova_upload_to_hq` mints a fresh HQ app id; if anything
- *      re-uploaded between Phase 2 and Phase 5, the opp's stored
- *      cc_app_id is stale).
+ * Hypotheses (ranked by likelihood when issue was filed):
+ *   1. CCHQ App-Editor permission gap on Connect's API-key user.
+ *   2. Released CCZ format/version mismatch.
+ *   3. Connect cached stale Learn-app metadata from earlier run.
+ *   4. Multi-app upload race (cc_app_id stale in opp record).
  *
- * What this probe does (no AVD required — pure HTTP/REST checks):
+ * 2026-05-07 probe results against leep-paint-collection
+ * (f14d8c5d-8859-4d0c-8952-8a6a30d06c43):
+ *   - hypothesis 1 RULED OUT: CCHQ API auth works, app metadata fetches
+ *     200, CCZ download fetches 200 (49KB Learn, 19KB Deliver). The
+ *     `/apps/api/download_ccz/?app_id=<id>&latest=release` endpoint is
+ *     even publicly accessible (anonymous request returns 200).
+ *   - hypothesis 2 PARTIALLY RULED OUT: CCZ structure is valid (8
+ *     modules, 16 forms, profile.ccpr + suite.xml present, requires
+ *     CommCare 2.62.0 which the AVD has). Learn forms have
+ *     `<module xmlns="http://commcareconnect.com/data/v1/learn">`
+ *     correctly. **HOWEVER**: Deliver forms have
+ *     `<deliver xmlns="http://commcareconnect.com/data/v1/learn">`
+ *     — the namespace says "learn" on what should be deliver elements.
+ *     Possible Nova autobuild bug; file separately if it reproduces
+ *     across other opps' Deliver apps.
+ *   - hypothesis 3 RULED OUT: Connect's PM-side learn_module_table view
+ *     shows all 8 modules correctly with the right names + descriptions.
+ *     Connect's database has the freshly-released metadata, not stale.
+ *   - hypothesis 4 RULED OUT: opp record's cc_app_ids match the just-
+ *     released build's source-app id, and the build's `built_on`
+ *     timestamp matches Phase 2's release time.
  *
- *   1. Reads the opp's stored `learn_app.cc_app_id` and `deliver_app.cc_app_id`
- *      via `connect_get_opportunity` (uses the existing Connect session).
- *   2. Tries to fetch each app's released CCZ from CCHQ via the same
- *      API key Connect uses (read from `$CLAUDE_PLUGIN_DATA/.env` →
- *      `ACE_HQ_API_KEY` for the user `ACE_HQ_USERNAME`). 200 = the
- *      auth is sufficient; 401/403 = permission gap (hypothesis 1).
- *   3. Inspects the CCZ archive for the expected Connect-required
- *      header fields. Reports any missing field (hypothesis 2).
- *   4. Lists recent app-versions for the cc_app_id and compares the
- *      latest build_id to what Connect has stored (hypothesis 3 + 4).
+ * What that leaves: the failure is in either (a) Connect's mobile API
+ * when the AVD calls "start learning", or (b) the CommCare Android
+ * runtime trying to launch the app. Both need adb logcat from a live
+ * AVD reproduction to diagnose.
  *
  * Usage:
  *
  *   npx tsx scripts/probe-connect-learn-handoff.ts <opp_uuid> [<organization_slug>]
  *
  * Default `organization_slug` is `ai-demo-space`.
- *
- * Output: structured diagnostic + a list of next-step adb logcat
- * commands the operator can run on the AVD to capture the runtime
- * exception class. The pure-HTTP checks here narrow the search space
- * before the operator boots an emulator.
  */
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -66,71 +68,96 @@ if (!OPP_ID) {
 }
 
 async function main() {
-  console.log(`\n=== Probing Connect→Learn handoff for opp ${OPP_ID} (org ${ORG_SLUG}) ===\n`);
+  console.log(`\n=== Connect → Learn handoff probe — opp ${OPP_ID} (org ${ORG_SLUG}) ===\n`);
 
-  // Step 1: read the opp's stored app ids via Connect.
+  // Step 1: scrape cc_app_ids from the Connect opp detail page. The IDs
+  // live in `apps/view/<id>` URLs inside Alpine x-tooltip attrs on the
+  // Learn/Deliver tabs (NOT in the form fields, which is the edit-page
+  // path).
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({ storageState: sessionFile });
   const oppUrl = `${connectBaseUrl}/a/${ORG_SLUG}/opportunity/${OPP_ID}/`;
   const page = await ctx.newPage();
   const oppRes = await page.goto(oppUrl);
-  console.log(`[step 1] Connect opp page: HTTP ${oppRes?.status()}`);
+  console.log(`[1] Connect opp page: HTTP ${oppRes?.status()}`);
   const html = await page.content();
-  // Connect's edit form has hidden inputs for cc_app_id; scrape them.
-  const learnId = html.match(/name="learn_app_cc_app_id"[^>]*value="([0-9a-f]+)"/)?.[1];
-  const deliverId = html.match(/name="deliver_app_cc_app_id"[^>]*value="([0-9a-f]+)"/)?.[1];
-  const cchqDomain = html.match(/name="cc_domain"[^>]*value="([^"]+)"/)?.[1] ?? 'connect-ace-prod';
-  console.log(`  Connect-stored learn_app.cc_app_id  = ${learnId ?? '(NOT FOUND)'}`);
-  console.log(`  Connect-stored deliver_app.cc_app_id= ${deliverId ?? '(NOT FOUND)'}`);
-  console.log(`  cc_domain                           = ${cchqDomain}`);
+  const ccDomain = html.match(/commcarehq\.org\/a\/([a-z0-9_-]+)\/apps\/view\//)?.[1] ?? 'connect-ace-prod';
+  const appIds = [...html.matchAll(/commcarehq\.org\/a\/[a-z0-9_-]+\/apps\/view\/([0-9a-f]{32})/g)].map(m => m[1]);
+  const learnId = appIds[0];
+  const deliverId = appIds[1];
+  console.log(`    cc_domain                  = ${ccDomain}`);
+  console.log(`    learn_app.cc_app_id        = ${learnId ?? '(NOT FOUND)'}`);
+  console.log(`    deliver_app.cc_app_id      = ${deliverId ?? '(NOT FOUND)'}`);
   await browser.close();
 
   if (!learnId) {
-    console.error('\n[BLOCKER] Could not scrape learn_app.cc_app_id from the Connect opp page. Verify the URL is reachable and the session is fresh (run /ace:connect-login).');
+    console.error('\n[BLOCKER] Could not scrape cc_app_id from Connect opp page. Run /ace:connect-login if the session looks stale.');
     process.exit(1);
   }
 
-  // Step 2: try to fetch each app's released CCZ via the Connect API user.
   const apiUser = process.env.ACE_HQ_USERNAME;
   const apiKey = process.env.ACE_HQ_API_KEY;
   if (!apiUser || !apiKey) {
-    console.error('\n[step 2] Skipping CCZ fetch — ACE_HQ_USERNAME/ACE_HQ_API_KEY not set in $CLAUDE_PLUGIN_DATA/.env.');
-  } else {
-    for (const [label, ccAppId] of [['learn', learnId], ['deliver', deliverId]] as const) {
-      if (!ccAppId) continue;
-      const cczUrl = `${cchqBaseUrl}/a/${cchqDomain}/apps/api/v0.5/application/${ccAppId}/?format=json`;
-      const r = await fetch(cczUrl, {
-        headers: { Authorization: `ApiKey ${apiUser}:${apiKey}` },
-      });
-      console.log(`[step 2] HQ ${label} app metadata: HTTP ${r.status} (${cczUrl})`);
-      if (r.status === 401 || r.status === 403) {
-        console.error(`  ↳ Hypothesis 1 LIKELY: ACE_HQ_USERNAME=${apiUser} lacks app-edit access on ${cchqDomain}. Grant the role on HQ Project Settings → Users → Roles.`);
-      }
-      if (r.status === 200) {
-        const meta = (await r.json()) as any;
-        console.log(`  ↳ HQ name        = ${meta.name}`);
-        console.log(`  ↳ HQ doc_type    = ${meta.doc_type}`);
-        console.log(`  ↳ HQ version     = ${meta.version} (latest released build)`);
-      }
-    }
+    console.error('\n[skipped] CCHQ checks need ACE_HQ_USERNAME/ACE_HQ_API_KEY in $CLAUDE_PLUGIN_DATA/.env.');
+    return;
   }
 
-  // Step 3 + 4: deferred — would require pulling the CCZ bytes and inspecting
-  // the manifest, plus listing all app versions. Both are out of scope here;
-  // the structured output above is enough to disambiguate hypothesis 1 vs
-  // hypotheses 2/3/4.
+  // Step 2: app metadata (auth health + release state).
+  console.log(`\n[2] HQ app metadata for both apps (auth + release state):`);
+  for (const [label, ccAppId] of [['learn', learnId], ['deliver', deliverId]] as const) {
+    if (!ccAppId) continue;
+    const r = await fetch(
+      `${cchqBaseUrl}/a/${ccDomain}/api/application/v1/${ccAppId}/`,
+      { headers: { Authorization: `ApiKey ${apiUser}:${apiKey}` } },
+    );
+    if (r.status === 401 || r.status === 403) {
+      console.log(`    ${label.padEnd(7)}: HTTP ${r.status} — HYPOTHESIS 1 LIKELY (CCHQ permission gap on ${apiUser})`);
+      continue;
+    }
+    if (r.status !== 200) {
+      console.log(`    ${label.padEnd(7)}: HTTP ${r.status} — unexpected; investigate`);
+      continue;
+    }
+    const j = (await r.json()) as any;
+    console.log(`    ${label.padEnd(7)}: HTTP 200  modules=${j.modules?.length ?? 0}  version=${j.version}  is_released=${j.is_released}`);
+  }
 
-  console.log(`\n=== Next steps (run on the AVD to narrow remaining hypotheses) ===\n`);
-  console.log('1. Reproduce the failure with logcat capture:');
-  console.log('   adb logcat -c && \\');
-  console.log('     # tap Start on the opp detail screen, then:');
-  console.log('   adb logcat -d > /tmp/connect-learn-handoff-logcat.txt');
-  console.log('   grep -iE "exception|error|failed to start|ccapp|ccz" /tmp/connect-learn-handoff-logcat.txt');
-  console.log('');
-  console.log('2. If logcat shows a 401/403, hypothesis 1 confirmed (CCHQ permission).');
-  console.log('   If logcat shows a parse error, hypothesis 2 (CCZ format).');
-  console.log('   If logcat shows "no such app" or stale ids, hypothesis 3 or 4.');
-  console.log('');
+  // Step 3: CCZ download (the actual runtime path Connect's mobile client uses).
+  console.log(`\n[3] CCZ download (?app_id=<id>&latest=release):`);
+  for (const [label, ccAppId] of [['learn', learnId], ['deliver', deliverId]] as const) {
+    if (!ccAppId) continue;
+    const url = `${cchqBaseUrl}/a/${ccDomain}/apps/api/download_ccz/?app_id=${ccAppId}&latest=release`;
+    const r = await fetch(url, { headers: { Authorization: `ApiKey ${apiUser}:${apiKey}` }, redirect: 'follow' });
+    const buf = await r.arrayBuffer();
+    const ct = r.headers.get('content-type') ?? '';
+    const looksZip = ct.includes('zip') && buf.byteLength > 100;
+    console.log(`    ${label.padEnd(7)}: HTTP ${r.status}  ${buf.byteLength} bytes  ${ct}  ${looksZip ? '✓ valid zip' : '✗ NOT a zip — see body for clue'}`);
+  }
+
+  // Step 4: Connect's PM-side learn_module_table — what the SERVER thinks the apps look like.
+  const browser2 = await chromium.launch({ headless: true });
+  const ctx2 = await browser2.newContext({ storageState: sessionFile });
+  const page2 = await ctx2.newPage();
+  const lmtUrl = `${connectBaseUrl}/a/${ORG_SLUG}/opportunity/${OPP_ID}/learn_module_table`;
+  const lmtRes = await page2.goto(lmtUrl);
+  const lmtHtml = await page2.content();
+  await browser2.close();
+  const moduleRows = (lmtHtml.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) ?? []).filter(r => /<td/.test(r)).length;
+  console.log(`\n[4] Connect learn_module_table (PM-side view): HTTP ${lmtRes?.status()}  ${moduleRows} module rows`);
+
+  console.log(`\n=== Diagnosis ===\n`);
+  console.log('If CCZ download succeeded (HTTP 200 + valid zip) and module count > 0,');
+  console.log('the failure is NOT in Connect/CCHQ permissions, the build state, or stale');
+  console.log('metadata. The remaining suspects are:');
+  console.log('  (a) Connect mobile-API endpoint that the AVD calls on Start tap');
+  console.log('  (b) CommCare Android runtime parse error');
+  console.log('  (c) AVD-side device/account state issue\n');
+  console.log('Capture adb logcat to disambiguate:');
+  console.log('  adb logcat -c && \\');
+  console.log('    # tap Start on the opp detail screen on the AVD, then within ~30s:');
+  console.log('  adb logcat -d > /tmp/connect-learn-handoff.log');
+  console.log('  grep -iE "exception|failed to start|ccapp|ccz|http/[12]" /tmp/connect-learn-handoff.log');
+  console.log();
 }
 
 main().catch((e) => {
