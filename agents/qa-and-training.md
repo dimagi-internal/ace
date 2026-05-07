@@ -63,7 +63,7 @@ Training materials draw from two asset pools:
   captured once per Connect-app version by the standalone
   `connect-baseline-screenshots` skill (NOT part of Phase 5; invoked
   manually when the Connect APK ships an update).
-- **Per-opp assets** at `ACE/<opp>/screenshots/...` — captured fresh each
+- **Per-opp assets** at `ACE/<opp>/runs/<run-id>/5-qa-and-training/screenshots/...` — captured fresh each
   cycle for THIS opp's actual Learn-app modules and Deliver form.
 
 `training-materials` stitches both pools into the final deck outline and
@@ -159,7 +159,7 @@ phase dispatches them in dependency order:
 
 Each skill reads PDD + app summaries + connect/OCS state + (where
 applicable) per-opp + common screenshot manifests. Each writes its
-single artifact under `ACE/<opp>/training-materials/`. Each
+single artifact under `ACE/<opp>/runs/<run-id>/5-qa-and-training/`. Each
 self-evaluates against four criteria specific to its audience and
 writes a verdict YAML.
 
@@ -201,14 +201,14 @@ training skills (or invoke `qa-and-training` for the full sequence).
 
 ## Outputs
 
-- `ACE/<opp>/screenshots/<journey-id>/<step>.png` + `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml`
-- `ACE/<opp>/training-materials/{llo-manager-guide,quick-reference,faq,onboarding-email-body}.md` (training-materials)
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/screenshots/<journey-id>/<step>.png` + `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml`
+- `ACE/<opp>/runs/<run-id>/5-qa-and-training/{llo-manager-guide,quick-reference,faq,onboarding-email-body}.md` (training-materials)
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md` (training-flw-guide)
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md` (training-deck-outline)
 - A Google Slides deck under the same folder (when template is configured)
-- `verdicts/app-screenshot-capture.yaml` (structural verdict)
-- `verdicts/app-screenshot-capture-shallow.yaml` (smoke-judge verdict)
-- Per-training-skill verdicts (`verdicts/training-*.yaml`)
+- `runs/<run-id>/5-qa-and-training/app-screenshot-capture_verdict.yaml` (structural verdict)
+- `runs/<run-id>/5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (smoke-judge verdict)
+- Per-training-skill verdicts (`runs/<run-id>/5-qa-and-training/training-*_verdict.yaml`)
 
 ## Completion
 

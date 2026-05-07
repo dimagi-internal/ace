@@ -90,7 +90,7 @@ from PDD's Evidence Model.>
   under `ACE/_common/connect-screenshots/<v>/`.
 - **Per-opp screenshots come second** (Learn modules, Deliver form
   walkthrough) — these are unique to this opp and live under
-  `ACE/<opp>/screenshots/`.
+  `ACE/<opp>/runs/<run-id>/5-qa-and-training/screenshots/`.
 - **Speaker-style prose, not bullet-list-only.** A working FLW guide
   has narrative connecting the bullets, not just a flat checklist.
 
@@ -214,3 +214,4 @@ This is the **second of the per-artifact training skills**, after
 
 - v1 (0.10.83): Initial skill. Owns `flw-training-guide.md` only.
   Common + per-opp screenshot layering. Archetype-aware structure.
+- 2026-05-07: Per-opp screenshot path corrected from `ACE/<opp>/screenshots/` to `ACE/<opp>/runs/<run-id>/5-qa-and-training/screenshots/` to match the runs/<run-id>/<phase>/ scheme producers actually use. Doc-only fix; matches what `app-screenshot-capture` writes.
