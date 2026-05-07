@@ -81,14 +81,9 @@ All five MCPs auto-register via `mcpServers` in `.claude-plugin/plugin.json` whe
 
 This repo uses emdash. If you're in a worktree (`git rev-parse --git-dir` contains `/worktrees/`), `main` is checked out at `~/emdash/repositories/ace/`. You CANNOT `git checkout main` from a worktree.
 
-**Always verify the main checkout is on `main` before merging.** A leftover branch from a prior `/ship` can be checked out in the sibling repo; merging to it revives that branch on origin. Canonical safe form:
-```bash
-cd ~/emdash/repositories/ace && \
-  [ "$(git branch --show-current)" = "main" ] || git checkout main && \
-  git pull --ff-only && git merge <branch> --no-ff && git push
-```
+**`main` is branch-protected** (`clean-install` status check required) — direct push is rejected. Ship via PR: `bash scripts/version-bump.sh`, commit, `git push -u origin <branch>`, `gh pr create`, wait for CI, `gh pr merge <pr> --merge`. Then immediately `/ace:update` + `/reload-plugins` in this session.
 
-If local changes block: `git stash` first. If remote is ahead: `git pull --rebase` first.
+Version-collision recipe (multiple worktrees bumped in parallel — common): `git fetch origin main && git rebase origin/main`; on conflict, `git checkout --ours VERSION package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json`, re-run `scripts/version-bump.sh`, `git add -A && git rebase --continue`, `git push --force-with-lease`.
 
 ## Plugin updates — NEVER locally patch
 
@@ -97,8 +92,8 @@ If local changes block: `git stash` first. If remote is ahead: `git pull --rebas
 ### Update workflow (the ONLY way)
 1. Make changes in the repo.
 2. Bump version. **Recommended (worktree-safe):** run `scripts/version-bump.sh` — fetches `origin/main` and picks `max(local, origin) + patch+1`, writing all 4 files atomically. Removes the deterministic VERSION/plugin.json/marketplace.json/package.json rebase conflict that hits when several worktrees bump in parallel. Manual fallback: edit `VERSION` only; pre-commit hook syncs `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`.
-3. Commit, merge to main, push.
-4. **IMMEDIATELY after pushing**, run `/ace:update` in the current session. Mandatory — without it, this session runs stale code while new sessions get the bump on startup.
+3. Commit on the worktree branch, push, open a PR, wait for `clean-install`, merge via `gh pr merge` or the PR UI. (`main` is branch-protected — direct push is rejected.) See § Git worktrees and merging to main for the canonical block, including the version-collision rebase recipe.
+4. **IMMEDIATELY after the PR merges**, run `/ace:update` in the current session. Mandatory — without it, this session runs stale code while new sessions get the bump on startup.
 
 Hook setup if needed: `git config core.hooksPath scripts/hooks`.
 
