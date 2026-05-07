@@ -5,6 +5,22 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.48 — 2026-05-06
+
+**Fix #108 (3 multimedia-coverage findings) + ship the print-URL nova-login rewrite.**
+
+Four targeted fixes from the turmeric run 20260506-1304 surfaced as issue #108. All cherry-pickable; no behaviour changes for happy paths that were already working.
+
+1. **`scripts/run-form-walk.ts` now emits draft-API form_unique_ids by default.** The CCZ's `suite.xml` `<resource id="…">` blocks carry a build-only variant of the unique_id (chars 11+ diverge from the draft id) that `commcare_patch_xform` rejects with a 400 / "Form not found". The CLI now overlays uids from `/a/<domain>/api/v0.5/application/<app_id>/` (ApiKey auth from `ACE_HQ_USERNAME` + `ACE_HQ_API_KEY`) onto the walked output before writing. New top-level field `form_unique_id_source` reads `draft_api` (overlay succeeded — uids are patch-endpoint-safe) or `suite_xml` (env vars missing or API call failed — uids will be rejected). Two new exported pure helpers (`parseDraftAppFormUids`, `mergeDraftFormUids`) tested in isolation; `walkCcz` is unchanged for direct callers.
+
+2. **`scripts/run-content-generator.ts` creates the output parent directory before calling the generator.** Class-level preventer for the heredoc-collision footgun: callers whose bash ate `$(dirname …)` before Python ever saw it (`mkdir -p $()` collapsing to `mkdir -p .`) used to silently get `ENOENT` *after* the API call, wasting the generator quota and leaving the wrapper's success-shaped JSON line as misleading evidence. `mkdirSync({recursive:true})` is idempotent and ~free.
+
+3. **`skills/app-multimedia-coverage/SKILL.md` corrects the CCZ multimedia path.** SKILL.md's verify step said `commcare/multimedia/image/<filename>`; CCHQ's actual layout (verified live during the turmeric run) is `commcare/<media_type>/<filename>` — i.e. `commcare/image/<filename>`. The form-XML `jr://file/commcare/image/<filename>` URI is unchanged. SKILL.md step 3 also gains a halt-rule when `form_unique_id_source: 'suite_xml'` so future operators don't blindly proceed into a known-rejected patch.
+
+4. **`commands/nova-login.md` replaces the headed-Playwright fallback with a print-URL flow.** When refresh-token recovery fails, the skill now surfaces the OAuth authorize URL plainly so the operator opens it in their existing browser (where their Google session, password manager, and account picker already live) instead of getting a profile-less Chromium they have to sign into from scratch. The MCP host's localhost listener captures the callback regardless of which browser opens the URL. Polling `~/.claude/.credentials.json` for fresh tokens replaces the Playwright `page.waitForURL` callback detection. Eliminates the Playwright-not-installed / esbuild-top-level-await failure modes on top of the real auth question.
+
+Tests: 219/219 pass (22 new tests covering `parseDraftAppFormUids` and `mergeDraftFormUids`). No live-API integration tests touched.
+
 ## 0.13.44 — 2026-05-06
 
 **docs(generated): regenerate playbook.md to reflect 8-phase orchestration

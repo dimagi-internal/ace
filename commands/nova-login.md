@@ -2,11 +2,11 @@
 name: nova-login
 description: >
   Recover Nova MCP authentication. Tries refresh-token first (no UI); on
-  refresh failure, opens a headed Playwright browser so the operator can
-  complete Nova's Google-SSO OAuth once interactively, after which the
-  MCP host's localhost listener captures fresh tokens to
-  ~/.claude/.credentials.json. Used as the manual fallback when Phase 2
-  Step 0 of `/ace:run` finds Nova in `needs-auth` state.
+  refresh failure, prints the OAuth authorize URL for the operator to
+  open in their own browser (where they're already signed into Google),
+  then polls `~/.claude/.credentials.json` until the MCP host's
+  localhost listener captures fresh tokens. Used as the manual fallback
+  when Phase 2 Step 0 of `/ace:run` finds Nova in `needs-auth` state.
 ---
 
 # /ace:nova-login
@@ -27,14 +27,28 @@ interactive sign-in:
    entry with a non-empty `refreshToken`, POST it to the OAuth refresh
    endpoint. If the refresh succeeds, write new tokens back and exit;
    no UI involvement.
-2. **Headed-Playwright interactive flow** — only if the refresh attempt
-   fails. Launches Chromium pointing at a fresh `authenticate`-issued
-   OAuth URL; the operator signs in once; the MCP host's localhost
-   listener captures the callback and persists tokens.
+2. **Print-URL interactive flow** — only if the refresh attempt fails.
+   Calls `authenticate` to get a fresh OAuth URL, prints it plainly so
+   the operator opens it in their own browser (where they're already
+   signed into the right Google account), and polls
+   `~/.claude/.credentials.json` for fresh tokens. The MCP host's
+   localhost listener captures the callback regardless of which browser
+   opens the URL.
 
 Always end with a backup write to `~/.ace/nova-credentials-backup.json`
 so a future `.credentials.json` corruption doesn't force another
 interactive flow.
+
+**Why we no longer launch Playwright for the manual flow.** Playwright
+opens a fresh, profile-less Chromium that doesn't carry the operator's
+Google session, password manager, or account picker — turning a
+3-second "click Sign in with Google in my regular browser" into a
+multi-minute "type my email and password and clear MFA from scratch"
+ordeal. It also adds failure modes (Playwright not installed, esbuild
+top-level-await issues with `npx tsx`) on top of the real auth
+question. Print the URL; the user knows how to use a browser.
+Reserve headed Playwright for flows we genuinely automate end-to-end
+(Connect / OCS / mobile-bootstrap), where credentials live in `.env`.
 
 ## When to run
 
@@ -161,11 +175,13 @@ Branch on exit code:
   (interactive flow). The refresh token is no longer valid; only
   fresh OAuth recovers.
 
-### Step 3: Interactive Playwright flow
+### Step 3: Print-URL interactive flow
 
-Refresh didn't work. Trigger a fresh OAuth flow and drive it with
-headed Chromium so the operator only has to interact with the Google
-sign-in form (the rest is automatic).
+Refresh didn't work. Trigger a fresh OAuth flow, surface the URL to the
+operator, and poll for completion. They open the URL in their own
+browser (where their Google session, password manager, and account
+picker already live); we do NOT launch a headed browser on their
+behalf.
 
 **3a.** Call the MCP tool to start a fresh OAuth flow:
 
@@ -174,61 +190,69 @@ mcp__plugin_nova_nova__authenticate (no args)
 ```
 
 The response includes a line of the form
-`https://commcare.app/api/auth/oauth2/authorize?...`. Capture that URL
-verbatim — pass it to the Playwright helper as the `NOVA_OAUTH_URL`
-env var. The MCP host has now also opened a localhost listener on the
-port encoded in `redirect_uri`; do NOT delay before launching
-Playwright (the listener has a 5-minute timeout).
+`https://commcare.app/api/auth/oauth2/authorize?...`. The MCP host has
+now opened a localhost listener on the port encoded in `redirect_uri`;
+the listener has a ~5-minute timeout, so don't delay between calling
+`authenticate` and showing the URL to the operator.
 
-**3b.** Launch headed Chromium pointing at the URL. Playwright detects
-the localhost callback automatically; once the redirect fires, the
-script exits and the MCP host's listener captures the code.
+**3b.** Show the URL to the operator. Print it as a fenced code block
+so it's clearly selectable, with a one-line instruction. Example
+template:
+
+> Open this URL in your browser (you should already be signed into the
+> right Google account — `ace@dimagi-ai.com`):
+>
+> ```
+> https://commcare.app/api/auth/oauth2/authorize?response_type=code&client_id=...
+> ```
+>
+> Click "Sign in with Google", finish the flow. The redirect to
+> `http://localhost:<port>/callback` may show a connection-error page
+> in your browser — that's expected and harmless; the MCP host's
+> listener has already captured the callback before the page tried to
+> render. The localhost listener has a ~5-minute timeout, so do this
+> within the next few minutes.
+
+Do NOT launch Playwright. Do NOT prompt the user to confirm before
+they click — they don't need a confirmation, they need the URL.
+
+**3c.** Poll `~/.claude/.credentials.json` until fresh tokens land or
+the listener times out (~5 min). The MCP host writes new tokens
+synchronously in its callback handler, so checking `expiresAt > now +
+60s` is sufficient — no need to also re-call `authenticate`.
 
 ```bash
-NOVA_OAUTH_URL="<paste the URL from the authenticate response>" \
-NOVA_LOGIN_TIMEOUT_MS="${NOVA_LOGIN_TIMEOUT_MS:-300000}" \
-npx tsx <(cat <<'EOF'
-import { chromium } from 'playwright';
+deadline=$(( $(date +%s) + 300 ))
+while [ "$(date +%s)" -lt "$deadline" ]; do
+  python3 -c '
+import json, time, os, sys
+home = os.path.expanduser("~")
+try:
+    with open(f"{home}/.claude/.credentials.json") as f:
+        d = json.load(f)
+except Exception:
+    sys.exit(1)
+oauth = d.get("mcpOAuth", {})
+ks = [k for k in oauth if k.startswith("plugin:nova:nova")]
+if not ks: sys.exit(1)
+e = oauth[ks[0]]
+delta = (e.get("expiresAt", 0) - int(time.time() * 1000)) / 1000
+sys.exit(0 if delta > 60 else 1)
+' && { echo "[nova-login] fresh tokens detected"; break; }
+  sleep 3
+done
 
-const url = process.env.NOVA_OAUTH_URL;
-if (!url) {
-  console.error('NOVA_OAUTH_URL is required (the authorize URL from `authenticate`)');
-  process.exit(1);
-}
-const timeoutMs = Number(process.env.NOVA_LOGIN_TIMEOUT_MS);
-
-const browser = await chromium.launch({ headless: false });
-const context = await browser.newContext();
-const page = await context.newPage();
-
-console.log('[nova-login] navigating to authorize URL');
-await page.goto(url);
-console.log('[nova-login] sign in with Google in the browser window');
-console.log('[nova-login] waiting for localhost callback (max', timeoutMs / 1000, 's)');
-
-try {
-  await page.waitForURL((u) => /localhost:\d+\/callback/.test(String(u)), {
-    timeout: timeoutMs,
-  });
-  const finalUrl = page.url();
-  console.log('[nova-login] callback detected:', finalUrl.replace(/code=[^&]+/, 'code=***'));
-  // The MCP host's listener has captured the code by now; give it a beat
-  // to write tokens to .credentials.json before we close the browser.
-  await new Promise((r) => setTimeout(r, 2000));
-  console.log('[nova-login] tokens should be persisted; closing');
-} catch (err) {
-  console.error('[nova-login] timed out waiting for callback. The operator did not complete sign-in within', timeoutMs / 1000, 's.');
-  process.exitCode = 2;
-} finally {
-  await browser.close();
-}
-EOF
-)
+if [ "$(date +%s)" -ge "$deadline" ]; then
+  echo "[nova-login] timed out after 5 minutes — operator did not complete sign-in"
+  exit 2
+fi
 ```
 
-If the bash exits non-zero, the operator did not complete the
-sign-in. Tell them clearly: "Nova OAuth was not completed. Re-run
-`/ace:nova-login` when you have time to sign in." STOP.
+Run this poll as a foreground bash (it's just sleep+stat, no token
+budget concern). If the poll succeeds (fresh tokens detected), fall
+through to Step 4. If it times out, tell the operator: "Nova OAuth
+was not completed within the listener window. Re-run `/ace:nova-login`
+when you have a moment to sign in." STOP.
 
 ### Step 4: Verify and backup
 
@@ -301,11 +325,14 @@ needed Nova (e.g., re-run `/ace:run <opp>`)."
   expired access tokens that the MCP host should have refreshed itself
   but didn't. Trying refresh manually skips the interactive flow when
   it's not needed.
-- **Headed Playwright** for the fallback — Google's anti-bot
+- **Print-URL fallback, not Playwright** — Google's anti-bot
   protection rules out programmatic sign-in for `ace@dimagi-ai.com`,
-  so we surface a real browser. The MCP host's localhost listener
-  handles the callback automatically (no manual "paste the callback
-  URL" step the bare `complete_authentication` flow needed).
+  so the user has to drive the sign-in themselves either way. Their
+  own browser is faster (Google session, password manager, account
+  picker, MFA all already there) and more reliable (no Chromium
+  install / esbuild / npx issues) than a headed Playwright window.
+  The MCP host's localhost listener captures the callback regardless
+  of which browser opens the URL.
 - **Tokens stay where the MCP host expects them** — we don't try to
   store auth state in our own format. The MCP host owns
   `.credentials.json`; we backup a copy to `~/.ace/` so we have a
@@ -328,20 +355,22 @@ noted this; making it concrete:
   to try, and adding it would be a security regression since it'd live
   on every operator's machine just to support a fragile automation.
 
-The headed-Playwright path is the right structural answer: one
-interactive sign-in per refresh-token lifetime (~30 days), then full
-automation in between.
+The print-URL path is the right structural answer for the manual
+fallback: one interactive sign-in per refresh-token lifetime (~30
+days), in the user's own browser, then full automation in between.
 
 ## Troubleshooting
 
-- **Playwright doesn't launch:** `npx playwright install chromium`.
-- **Browser opens but sign-in stalls:** check that you're signed into
-  the correct Google account (`ace@dimagi-ai.com`) — Chrome may pick
-  the wrong default. Use the account picker.
-- **Sign-in succeeds but localhost callback shows
-  `ERR_CONNECTION_REFUSED`:** the MCP host's listener timed out.
-  Re-run `/ace:nova-login` (it'll issue a fresh URL with a fresh
-  listener).
+- **Browser shows "connection refused" on the redirect page:** that's
+  expected and harmless. The redirect URL is `http://localhost:<port>`
+  served by the MCP host's listener, which closes the socket as soon
+  as it has the auth code — by the time the browser tries to render
+  the page, the listener is already gone. The tokens are persisted
+  before the page renders. The poll in Step 3c will detect them.
+- **Sign-in succeeds but the poll times out:** the user signed in to
+  the wrong Google account, or the URL went stale before they got to
+  it. Re-run `/ace:nova-login` to issue a fresh URL with a fresh
+  listener.
 - **`STATE: fresh` but `/reload-plugins` doesn't recover:** restart
   Claude Code. The MCP host's tool inventory is set at session start
   and doesn't always refresh on `/reload-plugins`.

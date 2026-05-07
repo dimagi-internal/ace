@@ -36,7 +36,7 @@ exact removal checklist.
 ## Why this skill exists
 
 CommCare apps render images on questions via standard `<image>` itext
-references and CCZ-bundled assets at `commcare/multimedia/image/...`.
+references and CCZ-bundled assets at `commcare/image/...`.
 Nova has no schema for it: its `image`/`audio`/`video` field kinds are
 *input capture* (FLW takes a photo), not *display-only* media on a
 question label. There is no field-level `media` property and
@@ -66,7 +66,7 @@ when ALL of:
    schema (see `voidcraft-labs/nova-plugin#8`) and round-trips it
    through `compile_app`.
 2. Nova's `compile_app` bundles linked media into the produced CCZ at
-   `commcare/multimedia/image/...` and writes the matching `<image>`
+   `commcare/image/...` and writes the matching `<image>`
    itext entries into form XML.
 3. A clean `/ace:run` against the smoke fixture
    `CRISPR-Test-005-KMC-multimedia` produces images-attached apps
@@ -119,9 +119,17 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
    `hidden` and `calculate`; skip kinds with no displayed label. The
    canonical way to obtain the field inventory is
    `npx tsx scripts/run-form-walk.ts <hq_domain> <app_id> [--build-id <hex>] --out <path>`
-   — it downloads the released CCZ, parses `suite.xml` to map each
-   form path to its `form_unique_id`, and emits one JSON row per
-   visible body field with `field_id`, `kind`
+   — it downloads the released CCZ, walks the form XML, and overlays
+   each form's `form_unique_id` from CCHQ's draft-app API (because the
+   suite.xml-derived uid is a build-only variant that
+   `commcare_patch_xform` rejects — see issue #108). Output's
+   `form_unique_id_source` field reads `draft_api` when overlay
+   succeeded, `suite_xml` when the env lacks `ACE_HQ_USERNAME` /
+   `ACE_HQ_API_KEY` and the script fell back. **Halt step 7 if
+   `form_unique_id_source: 'suite_xml'`** — patches against those uids
+   will fail; re-run with API creds or pass the draft uid explicitly.
+
+   Each output row carries `field_id`, `kind`
    (`label|text|int|single_select|multi_select|date|datetime|trigger|unknown`),
    `label`, and `options[]` (for selects). Edge-case body shapes
    surface as `kind: unknown` — treat unknowns conservatively
@@ -313,7 +321,7 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
 
 10. **Verify the release.** `commcare_download_ccz` against the new
     build, decode, and assert per manifest image that:
-    - The PNG is present at `commcare/multimedia/image/<filename>`
+    - The PNG is present at `commcare/image/<filename>`
       inside the CCZ.
     - The patched form XML still references its expected
       `jr://file/commcare/image/<filename>` URI.
