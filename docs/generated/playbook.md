@@ -65,11 +65,19 @@ rule and history.
 
 Standalone skills (not part of the default `/ace:run`):
 - `app-multimedia-coverage` — manual post-Phase-2, attaches display images
-- `commcare-form-patch` — workaround for nova-plugin#5/#6 form-XML drift
 - `connect-baseline-screenshots` — cross-opp Connect-walkthrough capture
 - `ocs-tester` (agent) — ad-hoc OCS quality probe
 - `email-communicator` — utility skill, called by other skills
 - `upload-transcript` — uploads CLI stream-json to ace-web
+
+In-flow skills with a removal trigger:
+- `commcare-form-patch` — Phase 2 Step 2.8 workaround for
+  voidcraft-labs/nova-plugin#7 (Nova emits `<module>`/`<assessment>`
+  wrappers in Learn-app form XML that break the AVD's CommCare
+  runtime). Idempotent + no-op when zero wrappers found. Whole skill
+  + the backing `commcare_patch_xform` MCP atom self-delete the day
+  nova-plugin#7 ships and a clean `/ace:run` produces a wrapper-free
+  Learn CCZ.
 
 ---
 
@@ -151,9 +159,13 @@ read deliver units. Provisional rubric pending 3+ real releases.
 Attach display-only images to Connect app questions where they
 meaningfully help FLWs. Manual gate; not part of /ace:run.
 
-#### commcare-form-patch (workaround, not part of /ace:run)
-Apply surgical CCHQ form-XML patches when Nova's compile_app emits output
-Connect rejects, then re-build + re-release. Workaround skill.
+#### commcare-form-patch (Phase 2 Step 2.8, removal-tracked)
+Apply surgical CCHQ form-XML patches when Nova's `compile_app` emits
+output the AVD's CommCare runtime can't parse, then re-build + re-release.
+Wired into Phase 2 as Step 2.8 in 0.13.66 — auto-runs after `app-release`
+with `targets: auto` (no-op when zero wrappers in the released Learn CCZ).
+Whole skill self-deletes when voidcraft-labs/nova-plugin#7 ships per its
+own `## Removal criteria`. Workaround for jjackson/ace#115 finding 1.
 
 ---
 
