@@ -16,7 +16,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
-import { google } from 'googleapis';
+import { google } from '../lib/google-shim.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import {
   detectDuplicateFolders,

@@ -25,7 +25,7 @@
  * Exit status: 0 if clean, 1 if any candidate found, 2 on harness error.
  */
 
-import { google } from 'googleapis';
+import { google } from '../lib/google-shim.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
