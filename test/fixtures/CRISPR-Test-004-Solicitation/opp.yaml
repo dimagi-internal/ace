@@ -1,6 +1,9 @@
 display_name: "Niger Maternal Health Pilot"
 slug: niger-maternal-health-pilot
-program_id: 42
+# Connect program UUID (placeholder; real opps have a UUID like cae9f0f5-...).
+# Used by Connect-side skills (llo-onboarding, llo-launch, etc.).
+program_id: 00000000-0000-0000-0000-00000000002a
+organization_slug: ai-demo-space
 created_at: 2026-05-04T12:00:00Z
 created_by: ace@dimagi-ai.com
 last_run_id: null
@@ -9,6 +12,10 @@ tags: [solicitation-fixture, atomic-visit]
 # Phase 6 (Solicitation Management) artifacts:
 solicitation:
   solicitation_id: 1247
+  # labs's integer program id (resolved by solicitation-create via labs_context).
+  # Distinct from the Connect program UUID at top-level program_id — labs
+  # int()-parses this field. Cached here so monitor/review skip the lookup.
+  labs_program_id: 42
   public_url: https://labs.connect.dimagi.com/a/dimagi/solicitations/1247/
   manage_url: https://labs.connect.dimagi.com/a/dimagi/solicitations/1247/edit/
   type: EOI
