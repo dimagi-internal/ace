@@ -5,6 +5,22 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.58 — 2026-05-06
+
+**Fix #116: codify the phase write-back contract + add an orchestrator-side verifier.**
+
+Doc-only change to phase agent definitions. `/ace:run turmeric/20260506-1304` (and earlier `/ace:run leep-paint-collection/20260506-1440`, observed independently) showed `phases.commcare-setup` and `phases.connect-setup` blocks missing from `run_state.yaml` even though both phases shipped real artifacts (apps released, Connect program/opp/PU created). 4 of 6 phase agents wrote back; 2 didn't. Root cause: vague `### Completion` sections that say "Update opportunity state to mark Phase N as complete" with no canonical contract on what "update state" means.
+
+Two changes:
+
+1. **`agents/ace-orchestrator.md` gains two new sections.**
+   - `## Phase Write-Back Contract` — defines the exact `phases.<phase>` block shape (status / started_at / completed_at / verdict / summary_artifact / steps) and the gate-flip mapping table. Mandates `update_yaml_file` patches with the four top-level keys (`phases`, `gates`, `last_actor`, `last_actor_at`) so shallow merges preserve sibling phases.
+   - `## Phase Write-Back Verifier` — orchestrator-side backstop. After every phase dispatch returns, the orchestrator re-reads `run_state.yaml` and confirms the phase wrote its block. If missing, it writes a minimal stub with `write_back_warning` + flips the gate. Loud-but-non-fatal so the run continues.
+
+2. **Per-phase-agent `### Completion` sections** updated to reference the contract instead of repeating vague "update state" language. Tightened across all 8 phase agents: design-review, commcare-setup, connect-setup, ocs-setup, qa-and-training, solicitation-management, execution-manager, closeout.
+
+Doc-only — no behavior changes for phase agents that were already writing back correctly. The verifier section instructs future orchestrator runs to backstop the gap.
+
 ## 0.13.49 — 2026-05-06
 
 **Fix #108 (3 multimedia-coverage findings) + ship the print-URL nova-login rewrite.**

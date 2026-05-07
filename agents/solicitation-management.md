@@ -120,6 +120,15 @@ The phase is "complete" in the orchestrator's sense after Step 2. The
 recurring monitor and manual review are NOT part of phase completion —
 they happen post-`/ace:run` and gate Phase 7 entry.
 
+After Step 2, write the `phases.solicitation-management` block + flip
+`gates.llo-invite` (to `pass` if named LLOs were emailed, or
+`no-op-no-named-llos` if the PDD listed none) per
+`agents/ace-orchestrator.md § Phase Write-Back Contract`. Set
+`phases.solicitation-management.verdict: halt-at-phase-6-to-7-boundary`
+to mark the orchestrator's halt point. Do NOT flip
+`gates.solicitation-review` — that stays `pending` until manual
+`/ace:step solicitation-review` runs after the deadline.
+
 ## MCP Tools Used (across all skills in this phase)
 
 - `connect-labs`: `create_solicitation`, `generate_criteria`,

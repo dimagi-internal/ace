@@ -210,6 +210,16 @@ training skills (or invoke `qa-and-training` for the full sequence).
 - `verdicts/app-screenshot-capture-shallow.yaml` (smoke-judge verdict)
 - Per-training-skill verdicts (`verdicts/training-*.yaml`)
 
+## Completion
+
+After Step 2 finishes, write the `phases.qa-and-training` block per
+`agents/ace-orchestrator.md § Phase Write-Back Contract`. Phase 5 has
+no named gate (`/ace:qa-deep` is the actual quality gate, run
+separately before Phase 7 `llo-launch`), so the patch sets
+`phases.qa-and-training.status: done` + a verdict like `proceed` or
+`proceed-with-warn` without flipping any `gates.<gate>` entry.
+Required top-level keys: `phases`, `last_actor`, `last_actor_at`.
+
 ## Topology note
 
 This is a subagent dispatched from level 0 by `ace-orchestrator`. It runs

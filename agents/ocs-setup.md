@@ -86,8 +86,12 @@ Unless `--no-evals` was passed, invoke the `ocs-widget-handoff-eval` skill.
   uses `verdicts/ocs-chatbot-eval-quick.yaml` (Step 2).
 
 ### Completion
-Update opportunity state to mark Phase 4 as complete.
-Write phase summary to `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_summary.md`.
+Write phase summary to `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_summary.md`,
+then write the `phases.ocs-setup` block + flip
+`gates.ocs-chatbot-eval-quick` per
+`agents/ace-orchestrator.md § Phase Write-Back Contract`. Required
+top-level keys on the patch: `phases`, `gates`, `last_actor`,
+`last_actor_at`.
 
 ## Resumption Contract
 

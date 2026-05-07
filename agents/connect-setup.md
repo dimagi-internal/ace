@@ -65,7 +65,7 @@ Invoke the `connect-opp-setup` skill.
 
 ### Completion
 
-Update opportunity state. Write phase summary to
+Write phase summary to
 `ACE/<opp-name>/runs/<run-id>/3-connect/connect-setup_summary.md` with:
 - Program: name, UUID, reused-or-created flag
 - Opportunity: name, UUID, status (`draft`)

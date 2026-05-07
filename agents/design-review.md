@@ -69,5 +69,7 @@ This skill is the UX-intent ground truth for downstream app QA. Phase 5
 shallow execution and `/ace:qa-deep` both read it.
 
 ### Completion
-Update opportunity state to mark Phase 1 as complete.
-Write phase summary to `ACE/<opp-name>/runs/<run-id>/1-design/design-review_summary.md`.
+Write phase summary to `ACE/<opp-name>/runs/<run-id>/1-design/design-review_summary.md`,
+then write the `phases.design-review` block + flip `gates.idea-to-pdd`
+per `agents/ace-orchestrator.md § Phase Write-Back Contract`. Required
+top-level keys on the patch: `phases`, `gates`, `last_actor`, `last_actor_at`.

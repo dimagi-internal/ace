@@ -351,5 +351,10 @@ in Phase 5 (`qa-and-training`), where it consumes the screenshots produced
 by `app-screenshot-capture` alongside the app summaries.
 
 ### Completion
-Update opportunity state to mark Phase 2 as complete.
-Write phase summary to `ACE/<opp-name>/runs/<run-id>/2-commcare/commcare-setup_summary.md`.
+Write phase summary to `ACE/<opp-name>/runs/<run-id>/2-commcare/commcare-setup_summary.md`,
+then write the `phases.commcare-setup` block + flip `gates.app-deploy`
+per `agents/ace-orchestrator.md § Phase Write-Back Contract`. Phase 2
+is a procedure doc executed by the top-level orchestrator session
+inline (see § Agent Topology), so the orchestrator owns this write.
+Required top-level keys on the patch: `phases`, `gates`, `last_actor`,
+`last_actor_at`.
