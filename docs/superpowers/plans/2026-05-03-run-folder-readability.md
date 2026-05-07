@@ -1843,7 +1843,7 @@ git add agents/qa-and-training.md skills/qa-plan skills/app-screenshot-capture s
 git commit -m "refactor(skills): point Phase 5 prose at new phase-prefixed paths"
 ```
 
-## Task 23: Update Phase 6 (llo-manager) — llo-manager agent + llo skills
+## Task 23: Update Phase 7 (llo-manager) — llo-manager agent + llo skills
 
 **Files:**
 - Modify: `agents/llo-manager.md`
@@ -1860,10 +1860,10 @@ Expected: No matches.
 
 ```bash
 git add agents/llo-manager.md skills/llo-invite skills/llo-onboarding skills/llo-uat skills/llo-launch skills/llo-feedback skills/timeline-monitor skills/flw-data-review skills/flw-data-review-eval skills/llo-launch-eval skills/email-communicator
-git commit -m "refactor(skills): point Phase 6 prose at new phase-prefixed paths"
+git commit -m "refactor(skills): point Phase 7 prose at new phase-prefixed paths"
 ```
 
-## Task 24: Update Phase 7 (closeout) — closeout agent + closeout skills + opp-eval
+## Task 24: Update Phase 8 (closeout) — closeout agent + closeout skills + opp-eval
 
 **Files:**
 - Modify: `agents/closeout.md`
@@ -1880,7 +1880,7 @@ Expected: No matches.
 
 ```bash
 git add agents/closeout.md skills/opp-closeout skills/learnings-summary skills/cycle-grade skills/cycle-grade-eval skills/opp-eval
-git commit -m "refactor(skills): point Phase 7 prose at new phase-prefixed paths"
+git commit -m "refactor(skills): point Phase 8 prose at new phase-prefixed paths"
 ```
 
 ## Task 25: Update commands and re-enable the cross-check test

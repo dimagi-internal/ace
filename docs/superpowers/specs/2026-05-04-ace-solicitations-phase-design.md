@@ -7,22 +7,22 @@
 
 ## Problem
 
-Today ACE's lifecycle assumes the PDD already names which LLO will run an opportunity. Phase 6 (`llo-management`) opens with an `llo-invite` skill that builds a candidate roster from the PDD's preferred-LLO list and pushes the opportunity directly to those orgs.
+Today ACE's lifecycle assumes the PDD already names which LLO will run an opportunity. Phase 7 (`llo-management`) opens with an `llo-invite` skill that builds a candidate roster from the PDD's preferred-LLO list and pushes the opportunity directly to those orgs.
 
 That assumption holds for the early dogfood opps but does not hold long-term. The product direction is: **ACE always asks LLOs to fill out a solicitation before being awarded an opportunity**. We won't know who the LLO is until a solicitation closes and a winner is awarded. Even when we *do* know who we want short-term, we want them to go through the solicitation flow as a functional test of the path real LLOs will take.
 
 The current pipeline can't represent that:
 1. There is no place in the agent topology where a solicitation is published.
 2. The Connect API surface ACE talks to (`connect.dimagi.com` via `ace-connect`) does not own solicitations — they live in Connect Labs at `labs.connect.dimagi.com`, a separate Django deployment.
-3. Phase 6's `llo-invite` is wired to push opportunities directly to a known roster, not invitations to a public solicitation.
+3. Phase 7's `llo-invite` is wired to push opportunities directly to a known roster, not invitations to a public solicitation.
 
 ## Goal
 
-Insert a new **Phase 6 — Solicitation Management** between Phase 5 (qa-and-training) and the existing LLO-management work. Renumber: existing Phase 6 becomes Phase 7 (renamed **Execution Management**); existing Phase 7 becomes Phase 8 (Closeout, unchanged).
+Insert a new **Phase 7 — Solicitation Management** between Phase 5 (qa-and-training) and the existing LLO-management work. Renumber: existing Phase 7 becomes Phase 8 (renamed **Execution Management**); existing Phase 8 becomes Phase 9 (Closeout, unchanged).
 
-Phase 6 publishes a solicitation derived from the PDD, optionally invites PDD-named LLO candidates to the solicitation by email, and stops there in default `/ace:run` mode. The review-and-award lifecycle continues via manually-invoked skills, gated by a hard human-in-the-loop checkpoint before the irreversible `award_response` call.
+Phase 7 publishes a solicitation derived from the PDD, optionally invites PDD-named LLO candidates to the solicitation by email, and stops there in default `/ace:run` mode. The review-and-award lifecycle continues via manually-invoked skills, gated by a hard human-in-the-loop checkpoint before the irreversible `award_response` call.
 
-Phase 7 (Execution Management) consumes the awarded org from `opp.yaml` and proceeds with onboarding, UAT, go-live, and recurring monitoring — the same skills it has today, minus `llo-invite` (moved to Phase 6).
+Phase 8 (Execution Management) consumes the awarded org from `opp.yaml` and proceeds with onboarding, UAT, go-live, and recurring monitoring — the same skills it has today, minus `llo-invite` (moved to Phase 7).
 
 **Non-goals:**
 - Extending `ace-connect` with solicitation atoms. Solicitations live in connect-labs; ACE consumes the existing remote MCP at `labs.connect.dimagi.com/mcp/` rather than re-implementing the surface.
@@ -38,8 +38,8 @@ Phase 7 (Execution Management) consumes the awarded org from `opp.yaml` and proc
 4. ocs-setup                (unchanged)
 5. qa-and-training          (unchanged)
 6. solicitation-management  ← NEW
-7. execution-management     ← was llo-management (Phase 6)
-8. closeout                 (was Phase 7)
+7. execution-management     ← was llo-management (Phase 7)
+8. closeout                 (was Phase 8)
 ```
 
 **Agent forms** (per the level-0 dispatch invariant in `CLAUDE.md` § Agent topology):
@@ -48,11 +48,11 @@ Phase 7 (Execution Management) consumes the awarded org from `opp.yaml` and proc
 - No procedure-doc agents added.
 
 **Pause-points (updated `pause-points` framework in `ace-orchestrator.md`):**
-- Phase 5 → 6: no longer a mandatory pause. The CLAUDE.md prose flagging Phase 5→6 as "always pause / external-communication boundary" moves to Phase 6→7.
-- **Phase 6 runs autonomously start to finish** (publish solicitation + send invites). No internal HITL gate.
-- Phase 6 → 7: **the new external-communication boundary**. `/ace:run` halts here in default mode. Phase 7 will not start until `opp.yaml.selected_llo.org_slug` is populated, which only happens via the manual `solicitation-review` skill.
+- Phase 5 → 6: no longer a mandatory pause. The CLAUDE.md prose flagging Phase 5→6 as "always pause / external-communication boundary" moves to Phase 7→8.
+- **Phase 7 runs autonomously start to finish** (publish solicitation + send invites). No internal HITL gate.
+- Phase 7 → 7: **the new external-communication boundary**. `/ace:run` halts here in default mode. Phase 8 will not start until `opp.yaml.selected_llo.org_slug` is populated, which only happens via the manual `solicitation-review` skill.
 - After `solicitation-review`: HITL gate before `award_response` is called. (Manual flow only — not in default `/ace:run`.)
-- Phase 7 internal pauses (`llo-launch`) unchanged.
+- Phase 8 internal pauses (`llo-launch`) unchanged.
 
 ## Architecture & MCP integration
 
@@ -126,7 +126,7 @@ LABS_MCP_TOKEN=op://Dimagi/labs-mcp-pat-ace/credential
 | `description` | PDD `intervention_summary` + `target_flw_profile` | full prose |
 | `scope_of_work` | PDD `visit_structure` + `success_criteria` | what the LLO must execute |
 | `budget` | PDD `total_budget` | already used by Connect opp setup |
-| `deadline` | new PDD field `solicitation_deadline_days: int` | default 14; Phase 6 computes `now() + N` |
+| `deadline` | new PDD field `solicitation_deadline_days: int` | default 14; Phase 7 computes `now() + N` |
 | `evaluation_criteria` | derived via `generate_criteria` | structured rubric (criteria + weights), then included in payload |
 | `response_template` | PDD `llo_questions` (new field) | falls back to a default 6-question template |
 | `status` | hardcoded `published` | ACE always publishes |
@@ -152,14 +152,14 @@ solicitation:
     awarded_contact_email: null
     award_amount: null
 
-selected_llo:                           # narrow contract Phase 7 reads
+selected_llo:                           # narrow contract Phase 8 reads
   org_slug: null
   contact_email: null
   source: null                          # 'solicitation' (only path today; reserved for future alternates)
   response_id: null
 ```
 
-`solicitation` is the audit trail. `selected_llo` is the stable, narrow contract Phase 7 reads. They are separate so a future alternate selection path (e.g. closed-bid named-LLO mode) can populate `selected_llo` without producing fake `solicitation` metadata. Only `source: 'solicitation'` is implemented now — the field is included as a forward-compatibility hint.
+`solicitation` is the audit trail. `selected_llo` is the stable, narrow contract Phase 8 reads. They are separate so a future alternate selection path (e.g. closed-bid named-LLO mode) can populate `selected_llo` without producing fake `solicitation` metadata. Only `source: 'solicitation'` is implemented now — the field is included as a forward-compatibility hint.
 
 ### `run_state.yaml` (per-run)
 
@@ -190,7 +190,7 @@ ACE/<opp>/solicitation/
 
 All registered in `lib/artifact-manifest.ts` (which skill produces, which skills consume).
 
-## New skills (Phase 6)
+## New skills (Phase 7)
 
 Four skills under `skills/<name>/SKILL.md`. Two run automatically in default `/ace:run`; one is recurring; one is manual. All stateless per the convention in `skills/README.md`.
 
@@ -210,7 +210,7 @@ Four skills under `skills/<name>/SKILL.md`. Two run automatically in default `/a
 
 **Eval companion:** `solicitation-create-eval` — provisional rubric. Mirrors `connect-program-setup-eval` shape. Grades PDD-fidelity (do scope/criteria match the PDD substance?), field completeness, deadline sanity. Calibrated per `eval-calibration` once 3+ real solicitations have shipped.
 
-### `llo-invite` (auto, default run — moved from Phase 7, transformed)
+### `llo-invite` (auto, default run — moved from Phase 8, transformed)
 
 **Behavior change:** previously identified PDD-named candidates and prepared a Connect-side invite roster. Now identifies the same candidates and emails each one a link to the public solicitation URL. **Makes no Connect API calls.** The Connect program-level invite (`connect_send_llo_invite`) is no longer this skill's responsibility — it fires only for the awardee inside `llo-onboarding`.
 
@@ -228,7 +228,7 @@ Four skills under `skills/<name>/SKILL.md`. Two run automatically in default `/a
 
 ### `solicitation-monitor` (recurring while solicitation open)
 
-**Trigger:** runs while `opp.yaml.solicitation.status == open`. Mirrors the recurring-skill pattern in current Phase 6 (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa`).
+**Trigger:** runs while `opp.yaml.solicitation.status == open`. Mirrors the recurring-skill pattern in current Phase 7 (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa`).
 
 **Inputs:** `solicitation_id`.
 
@@ -257,13 +257,13 @@ Four skills under `skills/<name>/SKILL.md`. Two run automatically in default `/a
 
 **Eval companion:** `solicitation-review-eval` — provisional. Compares ACE's top-ranked recommendation against the human's actual award decision over time (detection-rate metric). Calibrated per `eval-calibration` once 3+ awards have shipped.
 
-## Phase 7 (Execution Management) changes
+## Phase 8 (Execution Management) changes
 
 **Agent rename:** `agents/llo-manager.md` → `agents/execution-manager.md`.
 
-Frontmatter: `name: execution-manager`, `phase: execution-management`, `phase_display: Execution Management`, `phase_ordinal: 7`. Description rewritten — Phase 7 is no longer "first LLO contact"; it is "execute the awarded LLO's run of the opportunity."
+Frontmatter: `name: execution-manager`, `phase: execution-management`, `phase_display: Execution Management`, `phase_ordinal: 7`. Description rewritten — Phase 8 is no longer "first LLO contact"; it is "execute the awarded LLO's run of the opportunity."
 
-**Skill list inside Phase 7:**
+**Skill list inside Phase 8:**
 - `llo-onboarding` — **modified**. Reads `opp.yaml.selected_llo`, fails fast with a "run /ace:step solicitation-review first" message if empty. Otherwise sends Connect program-level invite (`connect_send_llo_invite`) + ACE onboarding email to `selected_llo.contact_email`. Replaces the old roster-based flow.
 - `llo-uat` — unchanged.
 - `llo-launch` — unchanged.
@@ -272,7 +272,7 @@ Frontmatter: `name: execution-manager`, `phase: execution-management`, `phase_di
 **Phase entry guard:** the orchestrator's pre-Phase-7 check enforces `opp.yaml.selected_llo.org_slug != null`. If empty, `/ace:run` halts at the 6→7 boundary with a message pointing to `solicitation-review`.
 
 **Eval rubric updates:**
-- `llo-launch-eval` — pure rename/renumber (Phase 6 → Phase 7 in references). No rubric content change.
+- `llo-launch-eval` — pure rename/renumber (Phase 7 → Phase 8 in references). No rubric content change.
 - `cycle-grade-eval` — same.
 
 ## Renaming/renumbering blast radius
@@ -281,19 +281,19 @@ Concrete file touches:
 
 **Agents (5 files):**
 - `agents/ace-orchestrator.md` — phase order, pause-points, `phases:` block.
-- `agents/connect-setup.md` — Phase 6/7 references.
-- `agents/ocs-setup.md` — Phase 6/7 references.
-- `agents/qa-and-training.md` — Phase 6/7 references; the "Phase 5→6 always pause" note moves.
+- `agents/connect-setup.md` — Phase 7/7 references.
+- `agents/ocs-setup.md` — Phase 7/7 references.
+- `agents/qa-and-training.md` — Phase 7/7 references; the "Phase 5→6 always pause" note moves.
 - `agents/llo-manager.md` → renamed to `agents/execution-manager.md`.
 - New `agents/solicitation-management.md`.
 
-**Skills (6 files containing Phase 6/7 strings, plus moves and additions):**
+**Skills (6 files containing Phase 7/7 strings, plus moves and additions):**
 - `skills/training-onboarding-email/SKILL.md` — Phase number references.
 - `skills/training-deck-build/SKILL.md` — same.
 - `skills/llo-launch-eval/SKILL.md` — phase ordinal.
 - `skills/cycle-grade-eval/SKILL.md` — phase ordinal.
-- `skills/connect-opp-setup/SKILL.md` — Phase 6 references.
-- `skills/ocs-widget-handoff-eval/SKILL.md` — Phase 6/7 references.
+- `skills/connect-opp-setup/SKILL.md` — Phase 7 references.
+- `skills/ocs-widget-handoff-eval/SKILL.md` — Phase 7/7 references.
 - `skills/llo-invite/SKILL.md` — substantial rewrite + phase reassignment.
 - New: `skills/solicitation-create/`, `skills/solicitation-monitor/`, `skills/solicitation-review/`, `skills/solicitation-create-eval/`, `skills/solicitation-review-eval/`.
 
@@ -349,7 +349,7 @@ Approximate count: ~25 files modified, 1 file renamed, 5 skill directories added
 
 **`solicitation-review`:**
 - HITL gate timeout → no award call, no state mutation.
-- `award_response` 4xx after approval → write `award-record.md` with `status: failed` and the error envelope; **do not** populate `selected_llo` (Phase 7 stays gated). Hard-deduct in eval rubric for any path that sets `selected_llo` when the award did not succeed.
+- `award_response` 4xx after approval → write `award-record.md` with `status: failed` and the error envelope; **do not** populate `selected_llo` (Phase 8 stays gated). Hard-deduct in eval rubric for any path that sets `selected_llo` when the award did not succeed.
 
 ## Future work (out of scope)
 
