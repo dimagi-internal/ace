@@ -25,7 +25,7 @@ orchestrator that wires its inputs and outputs into the ACE convention.
 |---|---|---|
 | Phase 6 | `6-synthetic/synthetic-walkthrough-spec_<persona>.yaml` (one per persona) | the spec dispatched to canopy:walkthrough |
 | Drive | `ACE/<opp>/opp.yaml` | `display_name`, `slug`, `synthetic.labs_opp_id`, `last_run_id` |
-| Env | `${CLAUDE_PLUGIN_DATA}/.env` → `ACE_E2E_AUTH_TOKEN` | shared-secret labs auth (used by `walkthrough_auth_login.sh`) |
+| Env | `${CLAUDE_PLUGIN_DATA}/.env` → `ACE_HQ_USERNAME` / `ACE_HQ_PASSWORD` | CommCareHQ creds for the headless OAuth-via-CCHQ flow used by `bin/ace-labs-walkthrough-login` (which reuses `mcp/connect/auth/hq-oauth-login.ts`) |
 | Operator (CLI, optional) | `--persona <name>` | run a single persona instead of all |
 | Operator (CLI, optional) | `--personas <comma-list>` | run a subset of personas |
 
@@ -62,25 +62,25 @@ Before dispatching anything:
 
    If `NEEDS_SETUP`, halt with the bootstrap instruction.
 
-3. **Verify `ACE_E2E_AUTH_TOKEN` is set.** Read
-   `${CLAUDE_PLUGIN_DATA}/.env`. If unset/empty:
+3. **Verify `ACE_HQ_USERNAME` / `ACE_HQ_PASSWORD` are set.** Read
+   `${CLAUDE_PLUGIN_DATA}/.env`. If either is unset:
 
-   "Labs e2e-login auth token is not configured. Mirror the value from
-   `~/emdash/repositories/ace-web/deploy/aws/task-definition.json` (or
-   AWS Secrets Manager) into `$CLAUDE_PLUGIN_DATA/.env` as
-   `ACE_E2E_AUTH_TOKEN`, then retry."
+   "CommCareHQ creds are not configured. Inject from 1Password via
+   `op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --account dimagi.1password.com`
+   (or `/ace:setup --force-env`) and retry. The labs walkthrough login
+   uses these creds to drive the headless OAuth-via-CCHQ flow."
 
-4. **Verify `walkthrough_auth_login.sh` is reachable.** Run:
+4. **Verify `bin/ace-labs-walkthrough-login` is reachable.** Run:
 
    ```bash
-   ls ~/emdash/repositories/ace-web/tools/walkthrough/walkthrough_auth_login.sh
+   ls ~/.claude/plugins/cache/ace/ace/$(cat ~/.claude/plugins/marketplaces/ace/VERSION)/bin/ace-labs-walkthrough-login
    ```
 
-   If missing, the operator hasn't checked out `ace-web` locally. Halt
-   with: "ace-web checkout not found at `~/emdash/repositories/ace-web`.
-   The persona walkthrough auth flow uses `walkthrough_auth_login.sh`
-   from that repo. Clone it (or update the spec's auth.login path) and
-   retry."
+   If missing, the installed plugin cache is stale. Run `/ace:update`
+   and retry. (This script reuses `mcp/connect/auth/hq-oauth-login.ts`
+   for the Connect side and `mcp/connect-labs/auth/labs-oauth-login.ts`
+   for the labs OAuth click-through — same Playwright session lib used
+   by every other ACE login flow.)
 
 ## Process
 
@@ -220,7 +220,7 @@ flow-testing without browser load.
 |---|---|---|
 | canopy plugin not installed | pre-flight halt | Install canopy plugin and retry. |
 | `browse` binary missing | pre-flight halt | Run `cd ~/.claude/skills/browse && ./setup` and retry. |
-| `ACE_E2E_AUTH_TOKEN` unset | pre-flight halt | Mirror the secret from `ace-web` deploy env. |
+| `ACE_HQ_USERNAME`/`PASSWORD` unset | pre-flight halt | Inject from 1Password via `op inject` (or `/ace:setup --force-env`). |
 | Persona spec missing | step 1 warn → skip persona | Run `synthetic-walkthrough-spec` first or check that the persona name matches a written spec. |
 | `canopy:walkthrough` returns non-zero (browser crash, auth failed, AI judge malformed) | step 3 surface + skip persona | Read the canopy output verbatim; common cases are stale browse session (kill and retry) or expired token (re-mirror). |
 | One persona fails but others succeed | step 4 partial | Run summary marks `status: partial` and lists which personas need a retry. Re-run with `--persona <name>` to fix individually. |
