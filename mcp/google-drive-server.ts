@@ -546,14 +546,15 @@ server.tool(
 // 11b. Upload a binary file (PNG, PDF, audio, etc.) to Google Drive
 server.tool(
   'drive_upload_binary',
-  'Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Content is base64-encoded; the MCP decodes it and uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Used by ACE skills that need to upload screenshots (Phase 5 `app-screenshot-capture`), CCZs, training-material attachments, audio session recordings, etc. The parent MUST be a folder on a Shared Drive — same Service Account quota constraint as `drive_create_file` / `drive_create_folder`.',
+  'Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Content is base64-encoded; the MCP decodes it and uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Used by ACE skills that need to upload screenshots (Phase 5 `app-screenshot-capture`), CCZs, training-material attachments, audio session recordings, etc. Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file — required for downstream Slides `createImage` ingest (Slides\' image-import service does NOT carry the SA\'s auth, so an SA-only PNG renders as an empty image in the deck). The parent MUST be a folder on a Shared Drive — same Service Account quota constraint as `drive_create_file` / `drive_create_folder`.',
   {
     name: z.string().describe('Name for the new file (include the extension — e.g., "screen-01.png", not "screen-01")'),
     contentBase64: z.string().describe('File content, base64-encoded. For PNGs from `cat foo.png | base64`, just paste the result. The MCP decodes before upload.'),
     mimeType: z.string().describe('MIME type of the binary content. Common ACE values: "image/png", "image/jpeg", "application/pdf", "audio/mpeg", "application/zip" (CCZ).'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
+    shareAnyoneWithLink: z.boolean().optional().describe('When true, after a successful upload set sharing to `role: reader, type: anyone` (anyone-with-link). Required for any PNG that downstream Slides `createImage` will fetch — Slides\' image-import service does not carry the SA\'s auth. Default: false.'),
   },
-  async ({ name: fileName, contentBase64, mimeType, parentFolderId }) => {
+  async ({ name: fileName, contentBase64, mimeType, parentFolderId, shareAnyoneWithLink }) => {
     try {
       const guard = await assertParentOnSharedDrive(parentFolderId);
       if (!guard.ok) return error(guard.message);
@@ -574,12 +575,22 @@ server.tool(
         fields: 'id, name, webViewLink, mimeType, size',
         supportsAllDrives: true,
       });
+      let sharing: 'anyone-with-link' | 'sa-only' = 'sa-only';
+      if (shareAnyoneWithLink && created.data.id) {
+        await drive.permissions.create({
+          fileId: created.data.id,
+          supportsAllDrives: true,
+          requestBody: { role: 'reader', type: 'anyone' },
+        });
+        sharing = 'anyone-with-link';
+      }
       return result({
         id: created.data.id,
         name: created.data.name,
         mimeType: created.data.mimeType,
         size: created.data.size,
         webViewLink: created.data.webViewLink,
+        sharing,
       });
     } catch (e: any) {
       return error(e.message);
@@ -598,6 +609,27 @@ server.tool(
     try {
       const r = await handleDownloadBinary({ fileId }, drive);
       return result(r);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 11d. Set anyone-with-link sharing on an existing Drive file
+server.tool(
+  'drive_set_anyone_with_link',
+  'Grant `role: reader, type: anyone` (anyone-with-link) on an existing Drive file. Required for any PNG that downstream Slides `createImage` will fetch — Slides\' image-import service does NOT carry the SA\'s auth, so an SA-only file renders as a blank image in the deck. `drive_upload_binary` accepts a `shareAnyoneWithLink` flag that does this inline at upload time; use this atom when the file already exists or was uploaded without the flag. Idempotent: Drive ignores duplicate `type: anyone` permission grants.',
+  {
+    fileId: z.string().min(1).describe('The Drive file ID to share. Must be a file the SA can access.'),
+  },
+  async ({ fileId }) => {
+    try {
+      const resp = await drive.permissions.create({
+        fileId,
+        supportsAllDrives: true,
+        requestBody: { role: 'reader', type: 'anyone' },
+      });
+      return result({ fileId, permissionId: resp.data.id, sharing: 'anyone-with-link' });
     } catch (e: any) {
       return error(e.message);
     }
