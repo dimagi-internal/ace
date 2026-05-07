@@ -25,10 +25,14 @@ Mirrors the `ocs-chatbot-qa` recurring pattern (`--quick`/`--monitor`).
 
 - `opp.yaml.solicitation.solicitation_id`
 - `opp.yaml.solicitation.deadline`
-- `opp.yaml.program_id` — required for any `list_solicitations` /
-  `get_solicitation` call (without scope, labs's `LabsRecord` API filters
-  to `is_public=true` only, so the parent record of a private
-  solicitation is invisible)
+- `opp.yaml.solicitation.labs_program_id` — labs **integer** program ID
+  cached by `solicitation-create`. Required for any `list_solicitations`
+  / `get_solicitation` call (without scope, labs's `LabsRecord` API
+  filters to `is_public=true` only, so the parent record of a private
+  solicitation is invisible). Note: this is **not** the Connect program
+  UUID at `opp.yaml.program_id` — labs `int()`-parses the field. If the
+  cached value is missing, fall back to the resolution recipe in
+  `solicitation-create` step 5 (`labs_context` lookup by program name).
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/llo-invite_invitations.md` (optional; for outstanding-
   invitee tracking)
 
@@ -44,10 +48,12 @@ Mirrors the `ocs-chatbot-qa` recurring pattern (`--quick`/`--monitor`).
    not require `program_id` scoping. **However**, if this skill ever
    needs to verify the parent record (e.g. `get_solicitation` to refresh
    the deadline or status from labs), the call **must** thread
-   `program_id: <opp.yaml.program_id>` (or `organization_id` if program-
-   less). Without scope, labs's prod-side filter strips non-public
-   records and the parent appears missing — see the 0.13.4 fix note in
-   `CHANGELOG.md` and labs PR #156.
+   `program_id: <opp.yaml.solicitation.labs_program_id>` (or
+   `organization_id` if program-less). Without scope, labs's prod-side
+   filter strips non-public records and the parent appears missing —
+   see the 0.13.4 fix note in `CHANGELOG.md` and labs PR #156. Pass the
+   labs **integer** id, not the Connect UUID — labs `int()`-parses
+   the field server-side.
 
 2. **Diff against local state.** Read existing files in
    `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-monitor_responses/` (each is named

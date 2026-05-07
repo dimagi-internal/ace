@@ -53,6 +53,7 @@ solicitation:
   # Audit trail — populated by solicitation-create, updated by
   # solicitation-monitor, finalized by solicitation-review.
   id: <labs solicitation UUID>
+  labs_program_id: <integer — labs's program id, NOT the Connect UUID>
   public_url: https://labs.connect.dimagi.com/grants/solicitation/<id>/
   deadline: <ISO date>
   status: open | closed | awarded
@@ -71,6 +72,26 @@ selected_llo:
   source: solicitation
   response_id: <labs response UUID>
 ```
+
+### `program_id` vs `labs_program_id`
+
+Labs and Connect use different identifiers for the same program:
+
+- `opp.yaml.program_id` (top-level) — the **Connect** program UUID
+  (e.g. `cae9f0f5-...`). Written by `connect-program-setup` in Phase 3
+  and consumed by Connect-side skills (`llo-onboarding`, `llo-launch`,
+  etc.).
+- `opp.yaml.solicitation.labs_program_id` — the **labs** integer
+  program ID (e.g. `138`). Resolved by `solicitation-create` via a
+  one-time `labs_context()` name match against the Connect program
+  name, then cached. Consumed by all three Phase 6 skills
+  (`solicitation-create`, `solicitation-monitor`, `solicitation-review`)
+  whenever they call labs MCP atoms that need program scope.
+
+Despite the labs MCP schema declaring `program_id: string`, labs's
+server-side `LabsRecord` adapter calls `int()` on it and rejects UUIDs
+with `ValueError: invalid literal for int()`. Always pass the labs
+integer id (as a string) to labs MCP, never the Connect UUID.
 
 **Invariant:** `selected_llo.org_slug` is set if and only if
 `solicitation.status == 'awarded'` and a human approved the award via

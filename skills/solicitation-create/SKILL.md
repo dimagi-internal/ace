@@ -18,7 +18,11 @@ contract and connect-labs MCP atom inventory.
 ## Inputs
 
 - `ACE/<opp-name>/inputs/pdd.md` — approved PDD (intervention, scope, success criteria, total_budget, optional Solicitation section)
-- `ACE/<opp-name>/opp.yaml` — program_id, archetype, opp display name
+- `ACE/<opp-name>/opp.yaml` — program_id (Connect UUID), archetype, opp
+  display name, organization_slug, optional cached `solicitation.labs_program_id`
+- `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup.md` —
+  the Connect program **name** (used to resolve the labs integer
+  program_id via `labs_context`; see Step 5)
 
 ## Outputs
 
@@ -48,6 +52,25 @@ contract and connect-labs MCP atom inventory.
    | `questions` | PDD `## Solicitation` → `Response template`, mapped to `[{id, text, type: 'text', required: false}]`, or the default 6-question set if empty |
    | `status` | `'active'` (publishes immediately; `'draft'` for dry-run mode) |
    | `is_public` | `true` (so unsolicited orgs can find it on the public list) |
+
+   **`is_public: true` flips the server-side public ACL flag** (the
+   field the `/solicitations/` marketplace query actually filters on).
+   That means the title, description, scope_of_work, and questions
+   become readable by any unauthenticated visitor. Before calling
+   `create_solicitation`, scan the composed payload and confirm:
+
+   - `description` contains no names, dates of birth, phone numbers,
+     addresses, or health data
+   - `scope_of_work` references the LLO target population in
+     aggregate terms (e.g. "households in Kerala") rather than naming
+     specific people, facilities, or identifiable program participants
+   - `questions` ask for capability self-disclosure, not for PII
+
+   If the PDD body itself contains PII that would propagate into the
+   solicitation, halt and surface a `[BLOCKER]` naming the offending
+   field — do NOT publish a redacted version silently, because the
+   PDD is the operator's source of truth and they need to know it
+   needs scrubbing.
 
 3. **Compose evaluation criteria locally.** Read the PDD's archetype,
    intervention summary, and success criteria. Draft a structured rubric
@@ -89,11 +112,36 @@ contract and connect-labs MCP atom inventory.
    Include all fields from the payload as a structured YAML-frontmatter +
    prose body, so the `solicitation-create-eval` rubric can re-read it.
 
-5. **Publish.** Call:
+5. **Resolve the labs program_id (integer).** The labs MCP expects the
+   labs **integer** program ID, *not* the Connect program UUID. Despite
+   the schema's `program_id: string`, labs `int()`-parses it internally
+   and rejects UUIDs with `ValueError: invalid literal for int()`.
+
+   Resolve in this order:
+
+   1. **Fast path:** if `opp.yaml.solicitation.labs_program_id` is set
+      (cached from a prior run), use it directly.
+   2. **Lookup:** call `mcp__connect-labs__labs_context()`. Find the
+      organization by `opp.yaml.organization_slug` (default
+      `ai-demo-space`); within it, find the program whose `name` matches
+      the Connect program name from
+      `runs/<run-id>/3-connect/connect-program-setup.md` (the markdown
+      summary written by `connect-program-setup`). Capture the
+      program's integer `id`.
+   3. **Cache:** persist the result as
+      `opp.yaml.solicitation.labs_program_id` (so subsequent
+      `solicitation-monitor` / `solicitation-review` calls and re-runs
+      don't re-query labs_context). Phase 3 stays free of labs concerns.
+   4. **Halt** with a `[BLOCKER]` if no name match — likely the Connect
+      program exists but was never mirrored to labs (labs creates
+      shadow programs on first opportunity sync). Surface the Connect
+      program name and the list of labs programs the caller can see.
+
+6. **Publish.** Call:
 
    ```
    mcp__connect-labs__create_solicitation(
-     program_id: <opp.yaml.program_id as string>,
+     program_id: <resolved labs_program_id as string>,
      data: {
        title: ...,
        solicitation_type: ...,
@@ -121,12 +169,12 @@ contract and connect-labs MCP atom inventory.
    `${LABS_BASE_URL}/labs/solicitations/<id>/`. Manage URL pattern:
    `${LABS_BASE_URL}/labs/solicitations/<id>/edit/`.
 
-6. **Verify the round-trip.** Immediately after publish, call:
+7. **Verify the round-trip.** Immediately after publish, call:
 
    ```
    mcp__connect-labs__get_solicitation(
      solicitation_id: <returned id>,
-     program_id: <same program_id used on create>,
+     program_id: <same labs_program_id used on create>,
    )
    ```
 
@@ -140,7 +188,7 @@ contract and connect-labs MCP atom inventory.
    different `id`, halt and surface the mismatch — do not proceed to
    write `published.md` or mutate `opp.yaml`.
 
-7. **Write `published.md`.** Save:
+8. **Write `published.md`.** Save:
 
    ```
    ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md
@@ -151,11 +199,12 @@ contract and connect-labs MCP atom inventory.
    `solicitation-review` and `solicitation-monitor` have the rubric
    without re-fetching from labs).
 
-8. **Update `opp.yaml`.** Add a `solicitation:` block:
+9. **Update `opp.yaml`.** Add a `solicitation:` block:
 
    ```yaml
    solicitation:
      solicitation_id: <returned>
+     labs_program_id: <integer resolved in step 5; cached for monitor/review>
      public_url: <returned>
      manage_url: <returned>
      type: <EOI|RFP>
@@ -196,8 +245,18 @@ contract and connect-labs MCP atom inventory.
   `needs-review` in `published.md`, still publish. Criteria are editable
   post-publish via labs UI without losing responses.
 - **`opp.yaml.program_id` missing**: halt with "run Phase 3
-  (`connect-setup`) first to register a Connect program." `program_id` is
-  required by labs's `create_solicitation`.
+  (`connect-setup`) first to register a Connect program." The Connect
+  UUID is the upstream evidence that a labs-side program will exist;
+  without it there is nothing to look up in `labs_context`.
+- **`labs_context` returns no name match for the Connect program**:
+  halt. Surface the Connect program name we tried to match plus the list
+  of labs programs visible under the org. The remediation is usually
+  one of: (a) labs's program shadow was created with a different
+  display name (rename via the labs UI); (b) the Connect program was
+  created in an org the caller can't see in labs_context (PAT scope
+  mismatch); (c) the program was created so recently that labs hasn't
+  synced yet — wait a minute and re-run. Do **not** publish a
+  solicitation under a guessed labs_program_id.
 
 ## Output
 
@@ -208,9 +267,12 @@ contract and connect-labs MCP atom inventory.
 
 ## MCP Tools Used
 
-- `connect-labs`: `create_solicitation`, `get_solicitation` (round-trip
-  verification — pass `program_id`)
-- `ace-gdrive`: `drive_create_file`, `drive_read_file`, `drive_update_file`
+- `connect-labs`: `labs_context` (resolve Connect program name → labs
+  integer program_id, when not cached), `create_solicitation`,
+  `get_solicitation` (round-trip verification — pass `program_id`)
+- `ace-gdrive`: `drive_create_file`, `drive_read_file`,
+  `drive_update_file`, `update_yaml_file` (cache `labs_program_id` on
+  `opp.yaml.solicitation`)
 
 ## Mode Behavior
 
