@@ -8,7 +8,7 @@
  * This duplicates the helper inline so the script can run standalone without
  * importing from the MCP server module (which is structured for stdio).
  */
-import { google } from 'googleapis';
+import { google } from '../lib/google-shim.js';
 import fs from 'fs';
 
 const ROOT_FOLDER_ID = '1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz';

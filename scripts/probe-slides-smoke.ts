@@ -4,7 +4,7 @@
  * gws-sa-key has the new presentations scope and that create-then-move-to-
  * Shared-Drive works.
  */
-import { google } from 'googleapis';
+import { google } from '../lib/google-shim.js';
 
 const KEY_FILE = `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 const SHARED_DRIVE_FOLDER = '1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz';

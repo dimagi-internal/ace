@@ -10,7 +10,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { google } from 'googleapis';
+import { google } from '../lib/google-shim.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
