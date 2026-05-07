@@ -73,6 +73,27 @@ between major form sections):
   before validating
 - Validate via `mobile_validate_recipe` before writing
 
+**Use live labels from Nova's `get_form` response, not the PDD
+brief's labels** (per [#115 finding 2](https://github.com/jjackson/ace/issues/115)).
+The PDD brief uses pre-build naming conventions (`L0 — Why this
+matters`, `F1 — Shop Registration`, `Stage 1 — Market Analysis`)
+that Nova's autobuild and CommCare's app-editor rewrite into different
+strings on the live device (`1. Why this matters`, `Stage 1: shop
+visits & interviews`, etc.). `tapOn:text` matchers calibrated against
+the brief never hit live screens.
+
+For every `tapOn:text` matcher in a recipe:
+- Read the label from `mcp__plugin_nova_nova__get_form({app_id, form_id})`'s
+  response — Nova returns each form's `label` and each field's `label`
+  exactly as CommCare will render them after autobuild's scaffold pass.
+- Use that string verbatim in the recipe's `tapOn:text` matcher.
+- For module-list / form-list screens, read the parent module's `label`
+  from `mcp__plugin_nova_nova__get_module` and apply the same rule.
+
+`mobile_validate_recipe` is a static lint that accepts any
+syntactically-valid string — it cannot detect a brief-vs-live drift.
+Step 4 (below) adds a runtime smoke check that catches it.
+
 **Write recipes to `ACE/<opp>/runs/<run-id>/2-commcare/recipes/J<n>.yaml`**
 (NOT `app-test-cases/recipes/` — earlier drafts of this SKILL.md had
 the wrong path and the recipes silently weren't being created;
@@ -83,6 +104,41 @@ Phase 5's `app-screenshot-capture` can find them.)
 Create the `2-commcare/recipes/` subfolder via `drive_create_folder`
 (idempotent — `findOrCreate: true` is the default) BEFORE writing the
 first recipe.
+
+### Step 3.5 (optional): Runtime smoke validator
+
+Static `mobile_validate_recipe` cannot detect brief-vs-live label drift
+(see Step 3). The runtime smoke validator catches it by attempting each
+`is_smoke: true` recipe against a live AVD and confirming every
+`tapOn:text` matcher resolves on a real screen.
+
+**Run only when the operator has mobile bootstrap healthy and opts in.**
+Set `--smoke-validate` to enable; default is OFF so non-mobile-bootstrapped
+operators can run Phase 2 to completion without an AVD. When the flag is
+set:
+
+1. Confirm bootstrap health via `mobile_ensure_avd_running()`. If it
+   returns `running: false` and the AVD can't auto-start, log
+   `[INFO] smoke validator skipped: AVD unavailable` and continue —
+   don't fail Phase 2 over a dev-machine state issue.
+2. For each `is_smoke: true` journey's recipe, call:
+
+   ```
+   mcp__plugin_ace_ace-mobile__mobile_run_recipe({
+     recipe_path: <path/to/J<n>.yaml>,
+     dry_run_selectors: true,   // resolve every selector, don't actuate
+     env_vars: { OPP_NAME, ... },
+   })
+   ```
+
+3. If `dry_run_selectors: true` returns any unresolved `tapOn:text`
+   matcher, halt with a `[BLOCKER]` naming the offending recipe + step
+   + the missing string. The fix is usually to swap the brief label
+   for the live `get_form`-derived label per Step 3.
+
+This is a deferred fix — `mobile_run_recipe` doesn't ship a
+`dry_run_selectors` mode today. Until it does, this step is a no-op
+warning. Tracking: jjackson/ace#115 finding 2.
 
 ### Step 4: Emit the consolidated yaml
 
