@@ -283,3 +283,37 @@ contract and connect-labs MCP atom inventory.
   external call. If review rejects, the human can call labs's
   `update_solicitation` to draft or close the solicitation.)
 - **Dry-run:** Steps 1-4, skip steps 5-7. Verdict with `dry_run: true`.
+
+## Decisions Log
+
+This skill writes load-bearing defaults to the per-run
+`ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The bar criterion and
+schema live in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`
+(canonical authority); anchors below are the phase-specific subset
+load-bearing for downstream eval rubrics.
+
+### Anchor decisions
+
+| ID | Question | Map to surface |
+|---|---|---|
+| `solicitation-type` | EOI vs RFP vs custom? | `solicitation-create-eval`; affects who applies and at what fidelity |
+| `response-deadline` | Days from publish to deadline (default 14)? | `solicitation-create` schema; gates Phase 7→8 timing |
+| `response-template-choice` | Stock template vs opp-custom response form? | `solicitation-create` content; downstream `solicitation-review` rubric input |
+
+### Beyond anchors
+
+Append additional rows whenever the skill applies a load-bearing default
+meeting the bar criterion (load-bearing + maps to known surface). The
+orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
+§ Phase Write-Back Contract § Decisions log clause) enforces the
+contract; the renderer (`skills/decisions-render`) regenerates the gdoc
+at end of every phase.
+
+Each row this skill writes uses `phase: 7-solicitation-management` and
+`skill: solicitation-create`.
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (solicitation-type, response-deadline, response-template-choice) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
