@@ -1,12 +1,14 @@
 {
   "name": "ace",
-  "version": "0.13.85",
+  "version": "0.13.86",
   "description": "AI Connect Engine - orchestrator for building Connect Opps using AI",
   "type": "module",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "OCS_INTEGRATION=${OCS_INTEGRATION:-0} MOBILE_INTEGRATION=${MOBILE_INTEGRATION:-0} vitest run",
+    "test:skills": "vitest run test/skills",
+    "test:calibration": "vitest run test/calibration",
     "mcp:gdrive": "npx tsx mcp/google-drive-server.ts",
     "mcp:ocs": "npx tsx mcp/ocs-server.ts",
     "mcp:connect": "npx tsx mcp/connect-server.ts",
