@@ -815,6 +815,18 @@ this phase owns.
   whether the phase was meant to complete that work or whether it was
   in-progress and crashed.
 
+**Decisions log clause (added 2026-05-08).** Every phase MUST also
+append rows to `ACE/<opp>/runs/<run-id>/decisions.yaml` for any
+load-bearing default the phase applied that meets the bar criterion
+(see [`docs/superpowers/specs/2026-05-08-decisions-log-design.md`](../docs/superpowers/specs/2026-05-08-decisions-log-design.md) §
+Scope and `skills/idea-to-pdd/SKILL.md` § Decisions Log Convention §
+Bar criterion). Each phase's primary writing skill owns the rows it
+writes. The orchestrator stub-fills + warns post-phase if a phase
+wrote zero rows AND the calibration set for that phase has any
+required rows. PR #1 covers Phase 1 (`idea-to-pdd`); Phase 2–9 writes
+ship in PR #3 of the decisions-log series. Schema and YAML helpers
+live in `lib/decisions-schema.ts`.
+
 ## Phase Write-Back Verifier
 
 After each phase dispatch returns, the orchestrator (i.e., the
