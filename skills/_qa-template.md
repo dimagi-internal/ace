@@ -6,6 +6,8 @@ This is a **reference document**, not a skill. It is excluded from the skill cat
 
 See `skills/README.md § QA vs Eval` for the full principle. This file documents the QA-specific contract.
 
+For per-skill QA status — which producers have a `-qa` companion, which deliberately don't, and which are pending — see [`_qa-decisions.md`](./_qa-decisions.md). That file is the registry; this one is the contract.
+
 ## What QA checks
 
 A QA check answers: **"is the artifact structurally correct enough to grade?"** It does NOT answer: "is the artifact good?" — that's eval's job.
@@ -30,6 +32,22 @@ The line is: if the AI can typically fix the issue by re-reading inputs and tryi
 - "Are dispositions concrete vs hand-waved?" → eval
 - "Does the budget cover the implied labor at recruitment-realistic rates?" → eval
 - "Does the archetype match the spirit, not just the declaration?" → eval
+
+## When to skip QA
+
+Some producers don't benefit from QA at all. The decision to skip QA is deliberate, not the absence of one — it's recorded per-skill in [`_qa-decisions.md`](./_qa-decisions.md) so future audits can tell "we skipped this on purpose" from "we haven't gotten to it yet."
+
+Default to **`NO QA`** when **all three** are true:
+
+1. **Downstream consumers are LLM-driven.** They read the artifact as prose context, not via regex/parser. The LLM doesn't care about exact label punctuation.
+2. **No code path branches on the artifact's structure.** No CI check, no orchestrator decision, no skill that dispatches differently based on which sections are present.
+3. **Quality is what matters, and the eval grades it.** The companion `-eval` skill's dimensions cover the substantive concerns — specificity, recoverability, measurability, etc.
+
+When this triple holds, a QA skill enforcing label format / section presence is *fake QA*: it can fail on perfectly usable artifacts (period vs colon punctuation), and it adds zero value the eval doesn't already provide. Worse, it creates regression risk during refactors — anyone tightening the producer's output format has to chase the QA's regex too.
+
+The worked example (`pdd-to-app-journeys-qa`, dropped in PR #160) is documented in [`docs/learnings/2026-05-08-fake-qa-detection.md`](../docs/learnings/2026-05-08-fake-qa-detection.md).
+
+When you decide to skip QA for a new producer, add a row to `_qa-decisions.md` with rationale + revisit conditions. Don't just leave it absent — absence is indistinguishable from "not yet migrated."
 
 ## Static vs LLM
 

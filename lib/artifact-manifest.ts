@@ -220,21 +220,12 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: '1-design/pdd-to-app-journeys.md',
     producedBy: 'pdd-to-app-journeys',
     consumedBy: [
-      'pdd-to-app-journeys-qa', 'pdd-to-app-journeys-eval',
+      'pdd-to-app-journeys-eval',
       'app-test-cases', 'app-ux-eval', 'app-screenshot-capture',
     ],
     phase: 'design',
     required: true,
     description: 'PDD-derived user journeys + UX edge cases. Ground truth for app-test-cases (Phase 2) and app-ux-eval (deep). Each journey carries a goal, happy-path narrative, edge cases phrased as UX outcomes, and pass criteria.',
-  },
-  {
-    path: '1-design/pdd-to-app-journeys-qa_result.yaml',
-    producedBy: 'pdd-to-app-journeys-qa',
-    role: 'qa-result',
-    consumedBy: ['ace-orchestrator', 'pdd-to-app-journeys-eval'],
-    phase: 'design',
-    required: false,
-    description: 'Structural QA verdict on pdd-to-app-journeys.md. Gates pdd-to-app-journeys-eval — eval is skipped if QA fails irrecoverably.',
   },
   {
     path: '1-design/pdd-to-app-journeys-eval_verdict.yaml',

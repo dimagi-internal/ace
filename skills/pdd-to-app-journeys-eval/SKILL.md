@@ -10,9 +10,9 @@ disable-model-invocation: true
 
 # PDD-to-App-Journeys Eval
 
-Quality grader for the `pdd-to-app-journeys.md` artifact. Runs after `pdd-to-app-journeys-qa` confirms the doc is structurally correct (sections present, journeys well-formed). This skill grades whether the journey set is *good*, not whether it's *complete*.
+Quality grader for the `pdd-to-app-journeys.md` artifact. This skill grades whether the journey set is *good*.
 
-If QA verdict is `fail` or `incomplete`, this eval is skipped (`verdict: incomplete`). See `skills/_eval-template.md` for the shared contract.
+There is **no companion QA skill** for this artifact — see `skills/_qa-decisions.md` for the rationale (downstream consumers `app-test-cases` and `app-ux-eval` are LLM-driven and grade content, not bold-label punctuation, so structural QA gates nothing real). See `skills/_eval-template.md` for the shared eval contract.
 
 ## Inputs
 
@@ -30,9 +30,8 @@ If QA verdict is `fail` or `incomplete`, this eval is skipped (`verdict: incompl
 1. **Read inputs from Drive:**
    - `runs/<run-id>/1-design/pdd-to-app-journeys.md` (artifact under judgment)
    - `runs/<run-id>/1-design/idea-to-pdd.md` (PDD; for archetype + Target FLW reference)
-   - Optionally `runs/<run-id>/1-design/pdd-to-app-journeys-qa_result.yaml` (skip if `verdict: fail`)
 
-2. **If QA verdict is `fail` or `incomplete`**, emit `verdict: incomplete` immediately with `[INFO] QA gate failed; eval skipped`.
+2. **Halt on missing inputs.** If `pdd-to-app-journeys.md` is absent or empty, emit `verdict: incomplete` with `[INFO] producer artifact missing; eval skipped`. (No QA gate replaces this fast-path; the eval itself short-circuits when there's nothing to grade.)
 
 3. **Grade across 6 dimensions.** Each 0–10. Overall = weighted mean.
 
@@ -109,3 +108,4 @@ When `--dry-run`: read inputs and write verdict normally (verdict is an internal
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-08 | Initial skill. Phase 1 PR #2 of the QA/Eval split migration (greenfield — pdd-to-app-journeys had neither QA nor eval before this PR). 6 quality dimensions; gates on pdd-to-app-journeys-qa. Provisional calibration. | ACE team (0.13.89) |
+| 2026-05-08 | Companion `pdd-to-app-journeys-qa` removed (downstream consumers are LLM-driven; structural QA gates nothing real — see `skills/_qa-decisions.md`). Eval no longer reads a QA verdict; halts itself on missing/empty producer artifact. | ACE team |
