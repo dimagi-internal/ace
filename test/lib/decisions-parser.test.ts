@@ -5,7 +5,7 @@ import type { DecisionsLog } from "../../lib/decisions-schema.js";
 
 function makeDoc(
   paragraphs: Array<{ text: string; style?: string; bullet?: boolean }>,
-): { body: { content: unknown[] } } {
+): Parameters<typeof parseDocumentStructure>[0] {
   return {
     body: {
       content: paragraphs.map((p) => ({
@@ -141,7 +141,9 @@ describe("parseDocumentStructure", () => {
   });
 });
 
-function simulateDocument(requests: any[]): { body: { content: any[] } } {
+function simulateDocument(
+  requests: any[],
+): Parameters<typeof parseDocumentStructure>[0] {
   let text = "";
   for (const r of requests) {
     if ("insertText" in r) text += r.insertText.text;
