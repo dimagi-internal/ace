@@ -117,35 +117,43 @@ procedure below to rediscover.
 
 5. **Verify both apps show `is_released: true`** via the API.
 
-6. **Verify the released CCZ contains `<deliver>` / `<module>` /
-   `<assessment>` / `<task>` blocks in the
-   `http://commcareconnect.com/data/v1/learn` namespace.** The ultimate
-   test of "Connect can see this app" — the form XML in the CCZ must
-   have elements in that namespace. If `is_released` is true but the
-   CCZ has zero such markers, the form lacks Connect metadata at the
-   source (Nova didn't generate it). Halt with the same remediation as
-   Step 3.
+6. **Verify the released CCZ via `commcare_download_ccz` projection.**
+   Call `commcare_download_ccz(domain, app_id, build_id, include_multimedia=false)`
+   and read both fields on the response:
 
-   **Important:** Nova emits these elements with a default `xmlns`
-   attribute, NOT a `learn:` prefix:
+   - **`projected_connect_state.collision_count`** — MUST be `0`.
+     This is a deterministic projection of what Connect's HQ→Connect
+     sync will produce: every `<learn:deliver>` / `<learn:module>` /
+     `<learn:task>` / `<learn:assessment>` element across every form,
+     deduplicated by `(app, slug)` exactly like
+     `commcare-connect/opportunity/tasks.py:sync_learn_modules_and_deliver_units`.
+     A non-zero count means N forms emit the same `id` attribute and
+     Connect will silently collapse them, leaving the non-first forms
+     unwired to any payment_unit and unpaid in production.
+   - **Per-type record counts** (`projected_connect_state.deliver_units.length`
+     etc.) MUST be > 0 for the app type — Learn apps have ≥ 1 module,
+     Deliver apps have ≥ 1 deliver_unit. Zero means the form lacks
+     Connect metadata at the source (Nova didn't generate it).
 
-   ```xml
-   <deliver xmlns="http://commcareconnect.com/data/v1/learn" id="vendor_visits">
-     <name>Vendor Visit</name>
-   </deliver>
-   ```
+   On `collision_count > 0`, halt with `[BLOCKER]` in
+   `app-release_gate-brief.md`. The brief MUST name every
+   `collisions.deliver_units[].slug` + the `kept` form + each `dropped`
+   form so the operator can grep the source. Concrete remediation:
+   re-build the affected app (typically Deliver) with **one form per
+   module**, since Nova's `compile_app` emits the module slug as
+   `<learn:deliver id>` for every form in a module, and the only
+   reliable way to get N unique slugs is N modules. See
+   `feedback_connect_deliver_unit_per_module` memory for full mechanism.
 
-   Verify with a regex that matches the default-namespace form, not
-   `<learn:deliver>`:
+   On `< 1` records of the expected type, halt with the same Step 3
+   remediation (re-run coverage; this is a Nova autobuild marker-skip,
+   not a slug collision).
 
-   ```bash
-   curl -H "Authorization: ApiKey <user>:<key>" \
-     "<base>/a/<domain>/apps/api/download_ccz/?app_id=<app_id>&latest=release" \
-     -o /tmp/app.ccz
-   unzip -q /tmp/app.ccz -d /tmp/app/
-   grep -rohE '<(deliver|module|task|assessment)[^>]*xmlns="http://commcareconnect\.com[^"]*"' /tmp/app/
-   # Must produce at least one match per app
-   ```
+   **Pre-0.13.81 fallback** (legacy `connect_markers` count, retained
+   for one release): if the response only has `connect_markers` and not
+   `projected_connect_state`, fall back to the old shape — count > 0
+   per type, but cannot detect slug collisions. Treat that path as a
+   degraded build (operator has not pulled the projection-aware MCP).
 
 7. **Update `2-commcare/app-deploy_summary.md`** with a `releases:` block:
    ```yaml
