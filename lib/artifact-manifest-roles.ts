@@ -47,6 +47,7 @@ export const ROLE_VOCAB = new Set<string>([
   'summary',
   'gate-brief',
   'verdict',
+  'qa-result',  // for <producer>-qa_result.yaml — binary structural QA output (PR #146 / 0.13.88)
   'report',
   'transcript',
   'scorecard',
@@ -83,6 +84,7 @@ export const ROLE_VOCAB = new Set<string>([
  */
 const MULTI_WORD_BASES = new Set([
   'gate-brief',
+  'qa-result',
   'comms-log',
   'new-pdd',
   'widget-handoff',

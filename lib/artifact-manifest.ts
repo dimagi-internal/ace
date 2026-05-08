@@ -161,6 +161,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: '1-design/idea-to-pdd.md',
     producedBy: 'idea-to-pdd',
     consumedBy: [
+      'idea-to-pdd-qa',
       'pdd-to-test-prompts', 'pdd-to-app-journeys',
       'pdd-to-learn-app', 'pdd-to-deliver-app',
       'app-test-cases', 'app-ux-eval',
@@ -174,6 +175,15 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'design',
     required: true,
     description: 'Program Design Document with archetype, Evidence Model, Solicitation block, and stress-test appendix (the canonical pdd.md, renamed to match its producer)',
+  },
+  {
+    path: '1-design/idea-to-pdd-qa_result.yaml',
+    producedBy: 'idea-to-pdd-qa',
+    role: 'qa-result',
+    consumedBy: ['ace-orchestrator', 'idea-to-pdd-eval'],
+    phase: 'design',
+    required: false,
+    description: 'Structural QA verdict on idea-to-pdd.md (binary pass/fail per lib/qa-types.ts schema). Gates idea-to-pdd-eval — eval is skipped (verdict: incomplete) if QA fails irrecoverably. Produced by the new idea-to-pdd-qa skill; first migration of the QA/Eval split principle (PR #146).',
   },
   {
     path: '1-design/pdd-to-test-prompts.md',
