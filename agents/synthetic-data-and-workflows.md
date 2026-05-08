@@ -67,7 +67,7 @@ Skills run sequentially. Each is independently re-runnable via
 ### Step 1: Narrative Plan
 
 Invoke `synthetic-narrative-plan`.
-- Reads PDD, expected-journeys, app-deploy summary, connect setup,
+- Reads PDD, pdd-to-app-journeys, app-deploy summary, connect setup,
   opp.yaml.
 - Produces `6-synthetic/synthetic-narrative-plan.md` (human narrative)
   and `6-synthetic/synthetic-narrative-plan.yaml` (the manifest).

@@ -15,7 +15,7 @@ who's mid-task and stuck, scanning for their question.
 ## When to run
 
 Phase 5 (`qa-and-training`). Reads upstream Phase 1 artifacts —
-`pdd-to-app-journeys`'s `expected-journeys.md` for journey edge cases
+`pdd-to-app-journeys`'s `pdd-to-app-journeys.md` for journey edge cases
 and `pdd-to-test-prompts`'s `test-prompts.md` for OCS-side seed
 questions.
 
@@ -29,7 +29,7 @@ questions.
 | Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md` | per-form field-clarification questions |
 | Phase 3 (`run_state.yaml`) | `connect.payment_units` + `connect.verification_flags` | "why was my submission flagged?" answers |
 | Phase 4 | `ACE/<opp>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "how do I ask?" answer |
-| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd_expected-journeys.md` (edge cases per journey) | seed Q's about boundary conditions |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/pdd-to-app-journeys.md` (edge cases per journey) | seed Q's about boundary conditions |
 
 ## Output
 
@@ -100,7 +100,7 @@ which rule triggered, what to do>
    ones an FLW or LLO would actually ask outside the OCS chat
    context (most will).
 
-3. **Add edge-case Q's from expected-journeys.md.** For each
+3. **Add edge-case Q's from pdd-to-app-journeys.md.** For each
    journey's `edge_cases` block (UX-outcome phrasing), generate a
    question framed as the failure mode the FLW would encounter
    (e.g., edge case "FLW understands why a submission outside the
@@ -121,7 +121,7 @@ which rule triggered, what to do>
    - Every Q has `[LLO]` or `[FLW]` tag
    - Every payment / verification number quoted matches `run_state.yaml`
    - At least 4 Q's seeded from `test-prompts.md`
-   - At least 2 Q's seeded from `expected-journeys.md` edge cases
+   - At least 2 Q's seeded from `pdd-to-app-journeys.md` edge cases
 
 8. **Write** to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq.md` via
    `drive_create_file`.

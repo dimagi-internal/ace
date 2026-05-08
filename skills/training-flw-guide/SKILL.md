@@ -65,7 +65,7 @@ with a screenshot. Includes "what good looks like" guidance pulled
 from PDD's Evidence Model.>
 
 ## Common pitfalls
-<bullet list pulled from PDD stress-test appendix + expected-journeys.md edge cases>
+<bullet list pulled from PDD stress-test appendix + pdd-to-app-journeys.md edge cases>
 
 ## What you get paid for
 <short framing from connect.payment_units in run_state.yaml>

@@ -77,8 +77,8 @@ Consumers:
    If any rule is missed, go back to step 4 and add.
 
 6. **Write the journeys file** to
-   `ACE/<opp-name>/runs/<run-id>/expected-journeys.md`. Use the
-   template at `templates/expected-journeys-template.md` as the
+   `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-app-journeys.md`. Use
+   the template at `templates/expected-journeys-template.md` as the
    skeleton.
 
 ## Archetypes
@@ -211,8 +211,8 @@ output but proceed.
 
 When `--dry-run` is active:
 - Generate the journey file content as normal.
-- Write to `comms-log/dry-run-expected-journeys.md` instead of
-  `expected-journeys.md`.
+- Write to `comms-log/dry-run-pdd-to-app-journeys.md` instead of
+  `1-design/pdd-to-app-journeys.md`.
 - State tracks as `dry-run-success`.
 
 ## Failure Modes
@@ -239,3 +239,4 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-04 | Initial version — Phase 1 producer of `expected-journeys.md`, the UX-intent ground truth that `app-test-cases` (Phase 2) and `app-ux-eval` (deep QA) consume. Mirror of `pdd-to-test-prompts` for the app side. Introduced as part of the shallow/deep QA split (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`) | ACE team |
+| 2026-05-08 | Output path corrected to `1-design/pdd-to-app-journeys.md` (was `expected-journeys.md` at the run root). Aligns with `lib/artifact-manifest.ts:220`, the QA + eval skills, and `agents/design-review.md`. Consumers (`app-test-cases`, `app-ux-eval`, training cluster, `synthetic-narrative-plan`) updated in the same PR. | ACE team |

@@ -245,7 +245,7 @@ Invoke the `app-deploy` skill.
 ### Step 2.6: Generate app-test-cases.yaml
 
 Dispatch `app-test-cases`:
-- Reads: expected-journeys.md, both app summaries, Nova blueprints
+- Reads: pdd-to-app-journeys.md, both app summaries, Nova blueprints
 - Writes: app-test-cases.yaml + recipes/J*.yaml under app-test-cases/
 - Halts on missing inputs or recipe-validation failure
 

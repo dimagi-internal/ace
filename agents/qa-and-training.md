@@ -39,7 +39,7 @@ individuals unless the PDD names preferred candidates.
 Phase 5 is intentionally an **executor**, not a synthesizer. The QA test
 plan was synthesized upstream:
 
-- `expected-journeys.md` (Phase 1, `pdd-to-app-journeys`) — UX-intent ground truth
+- `pdd-to-app-journeys.md` (Phase 1, `pdd-to-app-journeys`) — UX-intent ground truth
 - `app-test-cases.yaml` (Phase 2, `app-test-cases`) — bindings of journeys to
   built structure with pre-composed Maestro recipes (one `is_smoke: true`
   recipe per app)
@@ -128,7 +128,7 @@ like real failures but are actually setup gaps.
 ### Step 1: Capture smoke screenshots + thin UX judge
 
 Dispatch `app-screenshot-capture`:
-- Reads: expected-journeys.md (Phase 1), app-test-cases.yaml (Phase 2)
+- Reads: pdd-to-app-journeys.md (Phase 1), app-test-cases.yaml (Phase 2)
 - Writes: screenshots/J*/*.png + verdicts/app-screenshot-capture-shallow.yaml
 - Halts on smoke-recipe failure or UX judge < 2/3
 
