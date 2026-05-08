@@ -958,10 +958,22 @@ if [ -n "$ENV_FILE" ]; then
         ;;
     esac
   fi
+
+  # ── Nova (CommCare app builder MCP) ──────────────────────────────────
+  # Presence check only — live HTTP probe runs in [Auth liveness] below.
+  # Drift detection: if NOVA_API_KEY is missing or unresolved (still
+  # `op://...`), bin/ace-setup's user-scope MCP override will be skipped
+  # and /nova:* falls back to OAuth — broken under concurrent worktrees.
+  NOVA_KEY_VAL="$(get_env NOVA_API_KEY)"
+  if [ -z "$NOVA_KEY_VAL" ]; then
+    warn "nova_env: NOVA_API_KEY missing or unresolved" "mint at https://commcare.app/settings as the ACE Gmail identity, save to 1Password item \"ACE - Nova\" / field \`api_key\`, then /ace:setup --force-env"
+  else
+    pass "nova_env: NOVA_API_KEY present"
+  fi
 else
   # No .env at all — individual env-derived checks would all warn the same way.
   # Emit one consolidated pointer instead of three duplicates.
-  warn "runtime_env: ocs_env, gmail_config, ocs_session, connect_env, connect_labs_env all skipped (no .env)" "resolve env_file warning above first"
+  warn "runtime_env: ocs_env, gmail_config, ocs_session, connect_env, connect_labs_env, nova_env all skipped (no .env)" "resolve env_file warning above first"
 fi
 
 echo ""
@@ -977,6 +989,7 @@ if command -v curl >/dev/null 2>&1; then
       "connect:https://connect.dimagi.com/" \
       "commcarehq:https://www.commcarehq.org/" \
       "labs:https://labs.connect.dimagi.com/" \
+      "nova_mcp:https://mcp.commcare.app/" \
       "googleapis:https://www.googleapis.com/"; do
     name="${entry%%:*}"
     url="${entry#*:}"
@@ -1173,7 +1186,38 @@ else
   warn "labs_auth: skipped — LABS_MCP_TOKEN not set" "see connect_labs_env warning above; mint via /ace:labs-token-mint and re-inject .env"
 fi
 
-# 6. ace-mobile — local-only MCP (Maestro + adb + AVD + APK). It does not
+# 6. nova — POST initialize JSON-RPC frame to https://mcp.commcare.app/mcp
+# with bearer auth. 200 = bearer accepted (the user-scope override
+# bin/ace-setup registered is alive). 401 = key invalid/revoked. The
+# Accept header includes text/event-stream because Nova returns SSE
+# frames for the response body even though the request is plain JSON.
+if [ -n "$NOVA_KEY_VAL" ]; then
+  NOVA_REACH_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+    -X POST \
+    -H "Authorization: Bearer $NOVA_KEY_VAL" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ace-doctor","version":"1"}}}' \
+    "https://mcp.commcare.app/mcp" 2>/dev/null || echo "000")"
+  case "$NOVA_REACH_CODE" in
+    2*)
+      pass "nova_auth: ace-nova authed (POST initialize → HTTP $NOVA_REACH_CODE)"
+      ;;
+    401)
+      warn "nova_auth: HTTP 401 — NOVA_API_KEY invalid or revoked" "rotate at https://commcare.app/settings, update 1Password item \"ACE - Nova\" / field \`api_key\`, then /ace:setup --force-env"
+      ;;
+    000)
+      warn "nova_auth: cannot reach https://mcp.commcare.app/mcp (network/DNS/timeout)" "check VPN/proxy; net_nova_mcp probe above should also flag this"
+      ;;
+    *)
+      warn "nova_auth: POST https://mcp.commcare.app/mcp → HTTP $NOVA_REACH_CODE" "investigate Nova MCP health; if persists, /ace:setup --force-env to re-register the user-scope override"
+      ;;
+  esac
+else
+  warn "nova_auth: skipped — NOVA_API_KEY not set" "see nova_env warning above; mint at https://commcare.app/settings"
+fi
+
+# 7. ace-mobile — local-only MCP (Maestro + adb + AVD + APK). It does not
 # authenticate against any remote service at runtime, so there is no
 # "live auth probe" distinct from the others. The auth-adjacent things
 # the mobile workflow depends on are covered elsewhere:
