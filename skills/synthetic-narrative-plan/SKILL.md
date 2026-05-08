@@ -212,8 +212,37 @@ skill); state tracks as `dry-run-success`.
 - `synthetic-walkthrough-spec` — Stage 2 sibling that turns this skill's
   narrative + manifest into per-persona walkthrough specs.
 
+## Decisions Log
+
+This skill writes load-bearing defaults to the per-run
+`ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The bar criterion and
+schema live in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`
+(canonical authority); anchors below are the phase-specific subset
+load-bearing for downstream eval rubrics.
+
+### Anchor decisions
+
+| ID | Question | Map to surface |
+|---|---|---|
+| `persona-count` | How many personas does the synthetic data narrative cover? | `synthetic-narrative-plan-eval` persona-coverage dimension |
+| `scenario-count` | How many distinct scenarios per persona? | `synthetic-narrative-plan-eval` scenario-density |
+| `narrative-arc-shape` | Linear, branching, or stage-gated story arc? | `synthetic-narrative-plan-eval` narrative-coherence; archetype alignment |
+
+### Beyond anchors
+
+Append additional rows whenever the skill applies a load-bearing default
+meeting the bar criterion (load-bearing + maps to known surface). The
+orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
+§ Phase Write-Back Contract § Decisions log clause) enforces the
+contract; the renderer (`skills/decisions-render`) regenerates the gdoc
+at end of every phase.
+
+Each row this skill writes uses `phase: 6-synthetic-data-and-workflows` and
+`skill: synthetic-narrative-plan`.
+
 ## Change Log
 
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-06 | Initial Stage 2 skill — LLM-authored manifest + narrative companion | ACE team (Plan B Stage 2) |
+| 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (persona-count, scenario-count, narrative-arc-shape) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
