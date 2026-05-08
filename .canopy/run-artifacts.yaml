@@ -1,0 +1,67 @@
+# Run artifacts produced by ACE.
+#
+# This file describes WHAT the system produces when it runs — the outputs
+# canopy lenses read to find issues. Two scopes:
+#
+#   - per_run: artifacts written under runs/<run-id>/, scoped to one /ace:run cycle
+#   - opp_level: artifacts at the opp root, persistent across runs of an opp
+#
+# Source code targets (skills/, agents/, lib/) are NOT in this file — canopy
+# resolves the repo root via orchestrator.repo_paths and uses Glob from there.
+# Session transcripts are NOT in this file — canopy handles those natively.
+
+backend: gdrive
+backend_config:
+  drive_root_env: ACE_DRIVE_ROOT_FOLDER_ID
+  opp_path_template: "{opp_name}/"
+  read_tool: mcp__plugin_ace_ace-gdrive__drive_read_file
+  list_tool: mcp__plugin_ace_ace-gdrive__drive_list_folder
+
+# Per-run artifacts (bound by run_id at lens-dispatch time)
+per_run:
+  run_state:
+    path: "runs/{run_id}/run_state.yaml"
+    schema: ace_run_state_v2
+    description: Phase status, gate decisions, last_actor, timestamps, errors.
+  inputs_manifest:
+    path: "runs/{run_id}/inputs-manifest.yaml"
+    schema: ace_inputs_manifest_v1
+    description: Frozen pointer set to source-idea pack files (PDFs, docx, etc).
+  readme:
+    path: "runs/{run_id}/README.md"
+    description: Human-readable run summary written by orchestrator.
+  verdicts:
+    glob: "runs/{run_id}/**/*-eval_verdict*.yaml"
+    glob_secondary: "runs/{run_id}/**/*_verdict*.yaml"  # producer-self-eval inline verdicts
+    schema: ace_verdict_v2
+    description: Per-skill eval verdicts. Uniform shape (lib/verdict-schema.ts).
+  gate_briefs:
+    glob: "runs/{run_id}/**/*_gate-brief*.md"
+    description: Human-readable gate briefs at phase boundaries.
+  artifacts:
+    derive_from: verdicts.capture_path
+    description: The producer artifact each verdict judged. Read via gdrive read_tool.
+  phase_summaries:
+    glob: "runs/{run_id}/**/*_summary.md"
+    description: Per-phase summary docs.
+
+# Opp-level artifacts (constant across runs of an opp)
+opp_level:
+  opp_yaml:
+    path: "opp.yaml"
+  comms_log:
+    path: "comms-log/observations.md"
+    description: Human-curated cross-run evidence log.
+  open_questions:
+    path: "open-questions.md"
+    optional: true
+  connect_state:
+    path: "connect-state.yaml"
+    optional: true
+  commcare_patches:
+    path: "commcare-patches/commcare-patches.yaml"
+    optional: true
+  eval_calibration:
+    glob: "eval-calibration/*.md"
+    optional: true
+    description: Per-rubric ground-truth catalogues + iteration logs.
