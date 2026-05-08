@@ -56,6 +56,21 @@ signals:
       that ties the surfaced concern to a dimension drop.
     probe: surface_vs_score_correlation
 
+  - id: rubric_blind_spot
+    description: >
+      The rubric isn't asking the right questions. An adversarial PM-style
+      read of the same artifact surfaces critical concerns the rubric scored
+      8+ on. The remediation is ADD a new dimension, not tighten an existing
+      one — the rubric's scope is too narrow. This is the most important
+      signal in the lens because it catches scope problems that cross-model
+      variance is structurally blind to (3 models reading the same lenient
+      rubric all agree on a lenient score).
+    probe: holistic_adversarial
+    threshold:
+      score_gap: 2.0          # rubric_score - holistic_viability_score
+      critical_uncaught: 1     # ≥1 critical-severity concern with rubric_caught_it=no
+      named_blind_spots: 3     # ≥3 named blind spots in holistic_evidence.rubric_blind_spots
+
 # Verification — how to test a proposed fix BEFORE merging
 verify:
   type: re_grade
@@ -83,18 +98,59 @@ proposes:
   edit_targets:
     - file_pattern: "skills/{eval_skill}/SKILL.md"
       section: "## LLM-as-Judge Rubric"
-      max_lines_changed: 30
+      max_lines_changed: 30  # tightening anchors / inflation rules
+    - file_pattern: "skills/{eval_skill}/SKILL.md"
+      section: "## LLM-as-Judge Rubric"
+      max_lines_changed: 80  # rubric_blind_spot path: adding a new dimension
+      applies_to_signal: rubric_blind_spot
   forbidden_changes:
     - rename_skill
     - change_dimension_weights_total  # weights must still sum to 1.0
     - delete_dimension                 # additive only in v1
 
+# Holistic adversarial probe customization (consumed by canopy's holistic_adversarial probe)
+holistic_prompt_addendum: >
+  This is an ACE Program Design Document. Apply ACE-specific scrutiny:
+  - Demand reality: is there a named downstream consumer (regulator, lab,
+    policy partner) with a documented pre-committed action on the output?
+  - Layer A/B/C verification: are the verification mechanisms named in the
+    Evidence Model real validation harnesses, or do they collapse to upstream
+    proxies (e.g. "photo is well-framed" when mission is "detect adulteration")?
+  - Budget vs labor: does per-task pay × visits-per-FLW × duration imply a
+    rate that's recruitable in the named geography after LLO overhead,
+    transport, and training are subtracted?
+  - Pre-activation pilot calibration: if the PDD claims an AI/ML threshold
+    will be calibrated during a pilot, is the pilot sample size statistically
+    sufficient (typically 100s of labeled samples, not 30)?
+
+holistic_output_schema: >
+  YAML with keys: top_concerns (severity/concern/evidence/likely_failure_mode/
+  mitigation_in_pdd/rubric_caught_it), demand_reality, budget_consistency,
+  technical_feasibility, stakeholder_commitment, ten_k_bet (odds_youd_take/
+  reasoning), overall_viability_score (0-10), rubric_blind_spots (list of
+  named gaps).
+
 # Auto-merge gate
 auto_merge:
-  enabled: true
-  conditions:
-    - verification_passed
-    - changes_confined_to_section: true
-    - lines_changed_lte: 30
-    - no_dimension_regressed: true
-  human_review_otherwise: true
+  # Anchor-tightening edits (signals: rubric_ambiguity, inflation_guard_binds,
+  # dimension_inert, auto_surfaced_unscored) auto-merge after re-grade verifies
+  # better detection / variance.
+  anchor_tightening:
+    enabled: true
+    conditions:
+      - verification_passed
+      - changes_confined_to_section: true
+      - lines_changed_lte: 30
+      - no_dimension_regressed: true
+    human_review_otherwise: true
+
+  # Rubric expansion (signal: rubric_blind_spot) is structurally bigger —
+  # adding a new dimension changes how every future PDD is judged. Always
+  # human-review for v1.
+  rubric_expansion:
+    enabled: false
+    human_review_required: true
+    reason: >
+      Adding a new rubric dimension changes the score distribution of every
+      future PDD. Effects on existing fixtures should be reviewed by a human
+      before merging, not auto-merged on a single-run signal.
