@@ -37,6 +37,8 @@ const RUN_LEVEL_EXEMPT = new Set([
   'inputs-manifest.yaml', // frozen pointer-set captured at run start (orchestrator-emitted)
   'idea.md',              // optional operator free-text seed via --idea FILE|-
   '1-design/idea.md',     // legacy pre-2026-05-05 input-copy path; kept for back-compat
+  'decisions.yaml',       // per-run structured decisions log (rows accumulate across all phases)
+  'decisions.gdoc',       // prose Google Doc rendering of decisions.yaml (one stable URL per run)
 ]);
 
 // Structural sub-folders allowed as the SECOND segment under a phase folder
