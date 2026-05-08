@@ -66,7 +66,7 @@ release flow + the App Editor permission prerequisite.
    Procedure:
 
    1. Load every form in both apps with
-      `mcp__plugin_nova_nova__get_form` (one call per `(moduleIndex,
+      `get_form` (one call per `(moduleIndex,
       formIndex)`).
    2. For each field, scan `label`, `hint`, and option `label`s with the
       regex:
@@ -75,7 +75,7 @@ release flow + the App Editor permission prerequisite.
       ```
       (A simpler heuristic that catches the common cases: any literal
       `<`, `>`, `&` that isn't part of a recognized XML entity.)
-   3. For each hit, fix via `mcp__plugin_nova_nova__edit_field` —
+   3. For each hit, fix via `edit_field` —
       replace `<` with `&lt;`, `>` with `&gt;`, `&` (not in an entity)
       with `&amp;`. Document each change in
       `ACE/<opp-name>/app-summaries/{learn,deliver}-app-summary.md` under

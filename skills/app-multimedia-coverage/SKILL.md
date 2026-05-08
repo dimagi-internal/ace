@@ -414,9 +414,9 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
     `/apps/view/<app_id>/releases/release/<build_id>/`, sets
     `is_released: true`.
 - **Nova (read-only, when MCP available):**
-  `mcp__plugin_nova_nova__get_app`,
-  `mcp__plugin_nova_nova__get_form`,
-  `mcp__plugin_nova_nova__get_field` — for field metadata when the
+  `get_app`,
+  `get_form`,
+  `get_field` — for field metadata when the
   blueprint is reachable.
 - **CLI wrappers (skill-runtime, called via Bash):**
   - `scripts/run-content-generator.ts` — wraps

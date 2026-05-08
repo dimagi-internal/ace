@@ -41,7 +41,7 @@ Phase 5 needs them.
 - `expected-journeys.md`
 - `app-summaries/learn-app-summary.md`
 - `app-summaries/deliver-app-summary.md`
-- The Nova blueprints (call `mcp__plugin_nova_nova__get_app` with each
+- The Nova blueprints (call `get_app` with each
   app id) for real form/field IDs
 - The static-recipe library at `mcp/mobile/recipes/static/`
 
@@ -83,12 +83,12 @@ visits & interviews`, etc.). `tapOn:text` matchers calibrated against
 the brief never hit live screens.
 
 For every `tapOn:text` matcher in a recipe:
-- Read the label from `mcp__plugin_nova_nova__get_form({app_id, form_id})`'s
+- Read the label from `get_form({app_id, form_id})`'s
   response — Nova returns each form's `label` and each field's `label`
   exactly as CommCare will render them after autobuild's scaffold pass.
 - Use that string verbatim in the recipe's `tapOn:text` matcher.
 - For module-list / form-list screens, read the parent module's `label`
-  from `mcp__plugin_nova_nova__get_module` and apply the same rule.
+  from `get_module` and apply the same rule.
 
 `mobile_validate_recipe` is a static lint that accepts any
 syntactically-valid string — it cannot detect a brief-vs-live drift.
@@ -187,7 +187,7 @@ judging happens later in `app-ux-eval`).
 
 - ace-gdrive: drive_read_file, drive_create_file, drive_create_folder
 - ace-mobile: mobile_resolve_selectors, mobile_validate_recipe
-- nova: mcp__plugin_nova_nova__get_app
+- nova: get_app
 
 ## Change log
 

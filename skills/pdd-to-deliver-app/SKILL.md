@@ -112,9 +112,9 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     the case where the agent finished without enforcing it. After
     autobuild returns, **the in-context LLM running this skill** must:
 
-    1. Call `mcp__plugin_nova_nova__get_app({app_id})` and enumerate
+    1. Call `get_app({app_id})` and enumerate
        every form across every module.
-    2. For each form, call `mcp__plugin_nova_nova__get_form` and count
+    2. For each form, call `get_form` and count
        the persisted fields.
     3. Cross-reference each form's count against the PDD's expected
        field list (from §Forms / §Output Specification, depending on
@@ -138,7 +138,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     layout is what Connect's sync will consume cleanly. Cheap check;
     fires before any HQ upload.
 
-    1. Call `mcp__plugin_nova_nova__get_app({app_id})` and enumerate
+    1. Call `get_app({app_id})` and enumerate
        modules + forms.
     2. Count forms tagged with `connect.deliver_unit` (or `connect.task`)
        across the app. Call this `intended_paid_form_count`.
