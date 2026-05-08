@@ -22,7 +22,7 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 
 - `1-design/idea-to-pdd.md` — the PDD
 - `1-design/idea-to-pdd_gate-brief.md` — gate brief consumed at the Phase 1 → 2 review pause
-- `ACE/<opp-name>/open-questions.md` (Google Doc, optional) — when stress-test rubric surfaces unresolved questions
+- `ACE/<opp-name>/runs/<run-id>/decisions.yaml` — structured per-run decisions log (always emitted; see `## Decisions Log Convention` below)
 
 ## Process
 
@@ -117,7 +117,20 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
    - What services need to be delivered (Deliver app)?
    - For non–`atomic-visit` archetypes, also work through the archetype-specific questions in `## Archetypes`.
 
-4. **Draft the PDD** with the **base sections** below, plus **archetype-specific additions** from `## Archetypes`:
+3a. **Author the decisions log.** Before drafting the PDD, populate
+    `ACE/<opp-name>/runs/<run-id>/decisions.yaml` with the Phase 1 row
+    set defined in `## Decisions Log Convention` below. Each row records
+    a load-bearing default the skill is about to apply when drafting the
+    PDD. Use the AI's best inference from the source material for each
+    `default` value; mark `status: open` for any default the AI flags
+    for human attention while still proceeding.
+
+    The skill MUST emit a complete decisions.yaml even when source
+    material answers most questions explicitly — every load-bearing row
+    in the calibration set appears, with `status: applied` and the
+    source-material citation.
+
+4. **Draft the PDD** with the **base sections** below, plus **archetype-specific additions** from `## Archetypes`. Use the values selected in step 3a's `decisions.yaml` as authoritative — every numeric or named-entity in the PDD body should match the corresponding row's `default`. If a re-run reads a `decisions.yaml` from a prior run with `status: overridden` rows (human edited via the renderer + sync skills landing in PRs #2–#4), use those overridden values instead.
 
    **Base sections (all archetypes):**
    - **Archetype** — declared in frontmatter, repeated as the first heading
@@ -200,77 +213,101 @@ Follows the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`
   category name and the specific failure-mode hint from the rubric (e.g.,
   `[BLOCKER] Executability — recruitment criteria unspecified`). If all
   five categories graded `pass`, write "None — all auto-checks passed."
+  - **Open-status decisions:** every row in `decisions.yaml` with
+    `status: open` produces a `[WARN]` entry naming the row's `id` and
+    one-line `notes`. Example: `[WARN] named-downstream-consumer — no
+    consumer named in idea.md; flag for human edit before Phase 7.`
 - **Recommended Disposition:** `Approve` if 0 `[BLOCKER]` and ≤1 `[WARN]`;
   `Iterate` if any `[BLOCKER]` appears; `Approve with caveats` otherwise
-- **Open Questions Doc:** if the skill produced an Open Questions doc
-  (see `## Open Questions Convention` below), include its full Drive
-  URL on its own line at the top of the gate brief, prefixed
-  `Open Questions: <url>`. If no Open Questions doc was needed, omit
-  this line entirely.
+- **Decisions Log:** the skill always emits `decisions.yaml`. Include
+  its full Drive URL on its own line at the top of the gate brief,
+  prefixed `Decisions Log: <url>`. (The renderer skill landing in
+  PR #2 will also produce a human-readable gdoc rendering at one stable
+  URL per run; until that lands, link the YAML directly.)
 
-## Open Questions Convention
+## Decisions Log Convention
 
-When step 3 (Research and expand) or step 5 (Self-evaluate) surfaces a
-question the skill cannot resolve from `idea.md` alone, do **not** bury
-the question in PDD prose. Instead, create a structured Open Questions
-doc so (a) the e2e orchestrator can find sensible defaults to proceed
-unblocked, and (b) the human reviewer can scan the questions in 30
-seconds.
+Every Phase 1 run emits `ACE/<opp-name>/runs/<run-id>/decisions.yaml`
+with a calibrated set of load-bearing default-decisions the skill applied
+while drafting the PDD. The log is the per-run audit trail and the
+human-iteration surface — humans edit it (via the renderer + sync skills
+landing in PRs #2–#4) to redirect a subsequent run's PDD draft.
 
-### When to create
+### Bar criterion — what counts as a row
 
-- Stress-test rubric grades `partial` or `fail` on any dimension AND
-  the underlying gap requires information that isn't in `idea.md`
-- Step 3 surfaces a missing parameter (e.g. recruitment cap, language,
-  consent process) where reasonable defaults exist but the call is the
-  human's to make
+Two filters, both must be true:
 
-If every question has a `pass`-quality answer in `idea.md`, **do not
-create an Open Questions doc**. The doc has overhead — only spend it
-when you'd otherwise force the orchestrator to halt or guess silently.
+1. **Load-bearing.** A reasonable person could pick differently AND it
+   materially shapes downstream phases or eval scores.
+2. **Maps to a known surface.** The default ties to one of: an
+   `*-eval` rubric dimension, an `*-qa` structural check, a Phase
+   Write-Back field that downstream phases read, or a numeric / named
+   entity surfaced in the PDD body.
 
-### File location and shape
+Form-field-level choices, Connect program slugs, email copy, font sizes
+— below the bar.
 
-Create `ACE/<opp-name>/open-questions.md` via `drive_create_file` as a
-**Google Doc** (not plain text — the structured table renders properly
-in Docs and reviewers actually read it). The body must be a table with
-exactly four columns:
+### Required Phase 1 row set
 
-| # | Question | Default | Source |
-|---|----------|---------|--------|
-| 1 | What is the upper bound on visits per FLW per day? | 8 visits/day | idea.md §2; archetype default for `atomic-visit` |
-| 2 | What language(s) should the Learn app support? | English only (single-LLO scope) | idea.md does not specify; LLO directory shows English speakers |
+Every Phase 1 run MUST emit at least the rows below (calibrated
+2026-05-08; ground truth fixture at
+`test/skills/idea-to-pdd/fixtures/turmeric-decisions.yaml`). The
+calibration set aligns with the four viability dimensions from PR #144
+(`demand_reality`, `resource_realism`, `mission_alignment`,
+`fallback_validates_primary`) plus the existing structural / archetype
+dimensions.
 
-**Required for every row:**
+| ID | Question | Map to surface |
+|---|---|---|
+| `archetype-selection` | Which delivery archetype best fits? | `archetype_coherence` eval dimension |
+| `flw-count` | How many FLWs? | PDD `FLW Requirements` numeric |
+| `budget-plausibility` | Is the budget plausible for implied labor + AI infra? | `resource_realism` (PR #144) |
+| `payment-rate` | Per-visit payment rate to FLW? | PDD `FLW Requirements` numeric |
+| `pilot-sample-size` | Pilot sample size for AI calibration? | `verifiability` rubric |
+| `ai-photo-threshold` | AI auto-accept confidence threshold? | `verifiability` rubric |
+| `ai-fallback-design` | True validation harness or parallel sampling? | `fallback_validates_primary` (PR #144) |
+| `named-downstream-consumer` | Pre-committed downstream consumer? | `demand_reality` (PR #144) |
+| `primary-metric-vs-goal` | Direct goal vs upstream proxy? | `mission_alignment` (PR #144) |
+| `working-language` | Working language(s)? | PDD `Learn App Specification` named entity |
+| `verification-layers` | Which evidence-model layers in scope? | PDD `Evidence Model` section |
+| `solicitation-type` | Solicitation type (EOI/RFP/custom)? | PDD `Solicitation` section default |
+| `solicitation-deadline` | Solicitation deadline? | PDD `Solicitation` section default |
+| `candidate-llo-roster` | Named candidates or public-only? | `LLO Preference` named entity |
 
-- **#:** monotonically increasing, stable across iterations
-- **Question:** one specific question per row, no compounds
-- **Default:** the value the e2e orchestrator should use if no human
-  responds before the next phase. Tagged `[Default]` inline in any
-  prose elsewhere referencing this question. **Required, even if the
-  default is "halt — human must answer."** That last value is fine for
-  load-bearing decisions; the point is to make the default explicit so
-  the orchestrator knows whether to proceed.
-- **Source:** specific citation (e.g. `idea.md §2.1`, `archetype
-  default`, `stress-test executability dimension`). No vague
-  "research" or "common practice."
+Skill body MAY add extra rows beyond this set when source material
+surfaces additional load-bearing defaults; SHOULD NOT skip any row in
+the required set. If a row is genuinely irrelevant for an opp (rare),
+emit it with `status: applied` and a `notes` line explaining why the
+default is structural rather than a real choice.
 
-### Linking from the PDD and gate brief
+### Schema and write semantics
 
-- In the PDD body, cite the doc once near the top:
-  `> **Open questions:** <drive-url>` (kept short — full content lives
-  in the linked doc, not duplicated in PDD prose).
-- In the gate brief, emit the `Open Questions: <url>` line per the
-  contract above.
+Schema is defined in `lib/decisions-schema.ts` (`DecisionsLogSchema`).
+Required fields per row: `id`, `phase` (always `1-design` for this skill),
+`skill` (always `idea-to-pdd`), `question`, `default`, `options_considered`,
+`source`, `status`. Optional `notes`.
 
-### Why `[Default]`
+`status` values:
+- `applied` — default in use; the AI's best inference from source material.
+- `overridden` — human edited via renderer + sync skills (PRs #2–#4); not produced directly by this skill.
+- `open` — load-bearing, the AI proceeded with a default but flags for human attention. Surfaces as `[WARN]` in the gate brief's `Auto-Surfaced Concerns`.
 
-The e2e orchestrator (`/ace:run`) drives the full pipeline without
-human pauses. Without a Default convention it has no signal for
-"proceed with X" vs "halt for input." The `[Default]` tag is a
-machine-readable contract: orchestrator picks the default in `--auto`
-mode and surfaces the question + default in the run summary so the
-human can correct after the fact if the default was wrong.
+Write via `drive_create_file` (find-or-update semantics) at
+`ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The Drive MCP's parent
+folder is the run-folder file ID resolved at run start.
+
+### Status: `open` policy
+
+A row is marked `status: open` when a load-bearing default exists but the
+AI judges it likely-wrong without human confirmation. Examples:
+
+- `named-downstream-consumer` is `none-named-proceed-with-caveat` AND
+  the opp will publish a public solicitation in Phase 7.
+- `ai-fallback-design` is `parallel-sampling-N-percent` AND the program
+  needs ground-truth per-decision accuracy.
+
+The AI proceeds with the default in either mode; review-mode pauses for
+edit, default-mode ships the gate brief with `[WARN]` entries.
 
 ## Archetypes
 
@@ -313,8 +350,17 @@ The PDD has two or more sequenced stages with different archetypes. Treat the ba
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_update_file`
 
 ## Mode Behavior
-- **Auto:** Write PDD, email summary to admin group, proceed
-- **Review:** Write PDD, present for human review, wait for approval
+
+- **Default (auto):** Author `decisions.yaml` (step 3a), draft PDD using
+  those defaults, write PDD + gate brief, email summary to admin group,
+  proceed. The decisions.yaml ships with the run; humans review post-hoc
+  and re-run via `/ace:step idea-to-pdd <opp>/<run-id>` after editing if
+  they want a different PDD.
+- **Review:** Author `decisions.yaml` (step 3a), then **pause** before
+  drafting the PDD. Emit an interim gate brief stating "Decisions log
+  written; edit any defaults you want changed, then resume." On resume,
+  re-read `decisions.yaml` and draft the PDD using the (possibly edited)
+  values. Continue to PDD-final gate brief as today.
 
 ## Dry-Run Behavior
 When `--dry-run` is active:
@@ -333,3 +379,4 @@ When `--dry-run` is active:
 | 2026-04-17 | Emit gate brief at `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md` so the review-mode gate presents a checklist + stress-test concerns instead of a bare "approve PDD?" prompt | ACE team (PM scout, internal-admin lens) |
 | 2026-04-20 | Extract stress-test rubric from Process step 5 into standalone `## LLM-as-Judge Rubric` section per author contract; process step now references the section | ACE team (skills review) |
 | 2026-05-05 | Replace single-`idea.md` input contract with multi-doc evidence-pack model: read `inputs-manifest.yaml` (at the run-folder root) (orchestrator-emitted) and synthesize the PDD from every file under `inputs/`. Optional `idea.md` at the run root is now a `--idea FILE\|-` operator seed only. The PDD is the formal output of Phase 1, never an input. | ACE team (LEEP run; user observation that PDD is an output not an input) |
+| 2026-05-08 | Replace `## Open Questions Convention` with `## Decisions Log Convention`. Skill always emits `decisions.yaml` with the 14-row calibrated Phase 1 set covering archetype, FLW count, budget plausibility, payment rate, pilot size, AI threshold, AI fallback design, named consumer, primary-metric-vs-goal, language, evidence layers, solicitation defaults, candidate roster. Schema defined in `lib/decisions-schema.ts`; ground-truth fixture in `test/skills/idea-to-pdd/fixtures/turmeric-decisions.yaml`. Renderer + round-trip ship in PRs #2–#4. | ACE team |
