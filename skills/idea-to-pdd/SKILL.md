@@ -118,17 +118,19 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
    - For non–`atomic-visit` archetypes, also work through the archetype-specific questions in `## Archetypes`.
 
 3a. **Author the decisions log.** Before drafting the PDD, populate
-    `ACE/<opp-name>/runs/<run-id>/decisions.yaml` with the Phase 1 row
-    set defined in `## Decisions Log Convention` below. Each row records
-    a load-bearing default the skill is about to apply when drafting the
-    PDD. Use the AI's best inference from the source material for each
-    `default` value; mark `status: open` for any default the AI flags
-    for human attention while still proceeding.
+    `ACE/<opp-name>/runs/<run-id>/decisions.yaml` with rows that meet the
+    bar criterion in `## Decisions Log Convention` below. Each row
+    records a load-bearing default the skill is about to apply when
+    drafting the PDD. Use the AI's best inference from the source
+    material for each `default` value; mark `status: open` for any
+    default the AI flags for human attention while still proceeding.
 
-    The skill MUST emit a complete decisions.yaml even when source
-    material answers most questions explicitly — every load-bearing row
-    in the calibration set appears, with `status: applied` and the
-    source-material citation.
+    The skill MUST emit every anchor row from
+    `## Decisions Log Convention § Anchor decisions` whenever the anchor
+    applies to the opp (handle inapplicable cases by emitting the row with
+    `status: applied` and a notes-line explanation). Beyond the anchor set,
+    the skill emits whatever additional rows meet the bar criterion. The
+    bar is the filter; the recommended-additional list is illustrative.
 
 4. **Draft the PDD** with the **base sections** below, plus **archetype-specific additions** from `## Archetypes`. Use the values selected in step 3a's `decisions.yaml` as authoritative — every numeric or named-entity in the PDD body should match the corresponding row's `default`. If a re-run reads a `decisions.yaml` from a prior run with `status: overridden` rows (human edited via the renderer + sync skills landing in PRs #2–#4), use those overridden values instead.
 
@@ -151,6 +153,14 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 6. **Write the PDD** to `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` via Google Drive MCP. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the PDD, so downstream skills (and humans) can see what was caught and what was waived.
 
 7. **Write the gate brief** to `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md` using the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`. See `## Gate Brief` below for the exact fields this skill populates.
+
+8. **Render the decisions log to a human-readable Google Doc** by
+   invoking the `decisions-render` skill against the run-id. The
+   renderer produces `ACE/<opp-name>/runs/<run-id>/decisions.gdoc`
+   at one stable URL; humans review and iterate on this doc, not the
+   YAML. The orchestrator also invokes the renderer at end of every
+   subsequent phase, so the gdoc stays current as later phases append
+   rows.
 
 ## LLM-as-Judge Rubric
 
@@ -219,11 +229,12 @@ Follows the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`
     consumer named in idea.md; flag for human edit before Phase 7.`
 - **Recommended Disposition:** `Approve` if 0 `[BLOCKER]` and ≤1 `[WARN]`;
   `Iterate` if any `[BLOCKER]` appears; `Approve with caveats` otherwise
-- **Decisions Log:** the skill always emits `decisions.yaml`. Include
-  its full Drive URL on its own line at the top of the gate brief,
-  prefixed `Decisions Log: <url>`. (The renderer skill landing in
-  PR #2 will also produce a human-readable gdoc rendering at one stable
-  URL per run; until that lands, link the YAML directly.)
+- **Decisions Log:** the skill always emits `decisions.yaml` and invokes
+  `decisions-render` to produce a prose Google Doc rendering at one
+  stable URL. Include the gdoc URL on its own line at the top of the
+  gate brief, prefixed `Decisions Log: <gdoc-url>`. The YAML lives at
+  `ACE/<opp-name>/runs/<run-id>/decisions.yaml`; the gdoc is its
+  human-friendly rendering and is regenerated after every phase.
 
 ## Decisions Log Convention
 
@@ -247,38 +258,46 @@ Two filters, both must be true:
 Form-field-level choices, Connect program slugs, email copy, font sizes
 — below the bar.
 
-### Required Phase 1 row set
+### Anchor decisions (rows the eval rubric depends on)
 
-Every Phase 1 run MUST emit at least the rows below (calibrated
-2026-05-08; ground truth fixture at
-`test/skills/idea-to-pdd/fixtures/turmeric-decisions.yaml`). The
-calibration set aligns with the four viability dimensions from PR #144
-(`demand_reality`, `resource_realism`, `mission_alignment`,
-`fallback_validates_primary`) plus the existing structural / archetype
-dimensions.
+A small set of decisions are load-bearing for specific eval rubric dimensions
+— their absence means the rubric grades a missing input and the verdict is
+unreliable. The skill SHOULD emit these rows whenever they apply to the opp:
+
+| ID | Question | Eval rubric anchor |
+|---|---|---|
+| `archetype-selection` | Which delivery archetype best fits? | `archetype_coherence` |
+| `budget-plausibility` | Is the budget plausible for implied labor + AI infra? | `resource_realism` (PR #144) |
+| `named-downstream-consumer` | Pre-committed downstream consumer? | `demand_reality` (PR #144) |
+| `primary-metric-vs-goal` | Direct goal vs upstream proxy? | `mission_alignment` (PR #144) |
+| `ai-fallback-design` | True validation harness or parallel sampling? | `fallback_validates_primary` (PR #144) |
+
+If an anchor is genuinely irrelevant for the opp (rare — usually applies
+only when the question is structurally inapplicable), emit it with
+`status: applied` and a `notes` line explaining why the default is
+structural rather than a real choice. Do not silently omit.
+
+### Recommended additional rows (illustrative, non-binding)
+
+These rows often qualify under the bar criterion. They are examples of
+what the criterion typically catches, not requirements. Skip when not
+applicable; add others not listed when they meet the bar.
 
 | ID | Question | Map to surface |
 |---|---|---|
-| `archetype-selection` | Which delivery archetype best fits? | `archetype_coherence` eval dimension |
 | `flw-count` | How many FLWs? | PDD `FLW Requirements` numeric |
-| `budget-plausibility` | Is the budget plausible for implied labor + AI infra? | `resource_realism` (PR #144) |
 | `payment-rate` | Per-visit payment rate to FLW? | PDD `FLW Requirements` numeric |
 | `pilot-sample-size` | Pilot sample size for AI calibration? | `verifiability` rubric |
 | `ai-photo-threshold` | AI auto-accept confidence threshold? | `verifiability` rubric |
-| `ai-fallback-design` | True validation harness or parallel sampling? | `fallback_validates_primary` (PR #144) |
-| `named-downstream-consumer` | Pre-committed downstream consumer? | `demand_reality` (PR #144) |
-| `primary-metric-vs-goal` | Direct goal vs upstream proxy? | `mission_alignment` (PR #144) |
-| `working-language` | Working language(s)? | PDD `Learn App Specification` named entity |
+| `working-language` | Working language(s)? | PDD `Learn App Specification` |
 | `verification-layers` | Which evidence-model layers in scope? | PDD `Evidence Model` section |
-| `solicitation-type` | Solicitation type (EOI/RFP/custom)? | PDD `Solicitation` section default |
-| `solicitation-deadline` | Solicitation deadline? | PDD `Solicitation` section default |
+| `solicitation-type` | Solicitation type (EOI/RFP/custom)? | PDD `Solicitation` section |
+| `solicitation-deadline` | Solicitation deadline? | PDD `Solicitation` section |
 | `candidate-llo-roster` | Named candidates or public-only? | `LLO Preference` named entity |
 
-Skill body MAY add extra rows beyond this set when source material
-surfaces additional load-bearing defaults; SHOULD NOT skip any row in
-the required set. If a row is genuinely irrelevant for an opp (rare),
-emit it with `status: applied` and a `notes` line explaining why the
-default is structural rather than a real choice.
+The bar criterion alone determines what rows belong in the log. The
+anchor list above is the only required surface; everything else is the
+LLM's judgment per the criterion.
 
 ### Schema and write semantics
 
@@ -380,3 +399,4 @@ When `--dry-run` is active:
 | 2026-04-20 | Extract stress-test rubric from Process step 5 into standalone `## LLM-as-Judge Rubric` section per author contract; process step now references the section | ACE team (skills review) |
 | 2026-05-05 | Replace single-`idea.md` input contract with multi-doc evidence-pack model: read `inputs-manifest.yaml` (at the run-folder root) (orchestrator-emitted) and synthesize the PDD from every file under `inputs/`. Optional `idea.md` at the run root is now a `--idea FILE\|-` operator seed only. The PDD is the formal output of Phase 1, never an input. | ACE team (LEEP run; user observation that PDD is an output not an input) |
 | 2026-05-08 | Replace `## Open Questions Convention` with `## Decisions Log Convention`. Skill always emits `decisions.yaml` with the 14-row calibrated Phase 1 set covering archetype, FLW count, budget plausibility, payment rate, pilot size, AI threshold, AI fallback design, named consumer, primary-metric-vs-goal, language, evidence layers, solicitation defaults, candidate roster. Schema defined in `lib/decisions-schema.ts`; ground-truth fixture in `test/skills/idea-to-pdd/fixtures/turmeric-decisions.yaml`. Renderer + round-trip ship in PRs #2–#4. | ACE team |
+| 2026-05-08 | Retrofit: replace `### Required Phase 1 row set` (14 hardcoded rows) with `### Anchor decisions` (5 rows tied to specific eval rubric dimensions) + `### Recommended additional rows` (illustrative, non-binding). Bar criterion is the sole filter; anchors are the only required surface. Process step adds renderer invocation; gate brief links the gdoc rendering instead of the YAML. | ACE team (decisions-log PR #2) |
