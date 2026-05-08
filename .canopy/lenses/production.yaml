@@ -1,0 +1,90 @@
+name: production
+description: >
+  Improve producer skills (the prompts that generate PDDs, app builds,
+  Connect setups, training materials, etc.) based on what their evals
+  surfaced. Sandbox-regen verifies a proposed prompt edit by re-running
+  the producer against the same inputs and re-grading the new artifact.
+
+scope: per_run
+
+evidence:
+  primary: per_run.verdicts
+  derived:
+    - per_run.artifacts          # the artifact judged
+    - source.producer_skills     # the producer prompt (proposal target)
+    - per_run.inputs_manifest    # what the producer read (sandbox regen input)
+    - per_run.run_state          # which producer ran when, with what status
+  optional:
+    - per_run.gate_briefs        # human-readable summaries of producer issues
+
+# Signal detectors
+signals:
+  - id: consistent_warn_across_models
+    description: >
+      All cross-model probes flag the SAME WARN/BLOCKER on the same artifact.
+      That's not rubric ambiguity — it's a real producer-side gap. Propose
+      an edit to the producer skill's prompt to address the gap directly.
+    probe: cross_model_consensus_on_concern
+
+  - id: low_score_low_variance
+    description: >
+      A dimension scores low (<= 6) with low cross-model variance (< 0.5).
+      The artifact really has the issue; the rubric agreed across models.
+      Producer prompt should address the dimension's criteria explicitly.
+    probe: low_score_low_variance
+    threshold:
+      score: 6
+      variance: 0.5
+
+  - id: missing_section_recurring
+    description: >
+      structural_completeness or equivalent dimension flags a missing
+      required section/field that the producer's prompt didn't tell it
+      to include. Add explicit instruction to the producer.
+    probe: structural_gap_attribution
+
+# Verification — sandbox regen
+verify:
+  type: sandbox_regen
+  description: >
+    Apply the proposed producer-skill prompt edit in-memory. Dispatch the
+    edited producer against the SAME inputs the original run used. Write
+    output to a sandbox path under runs/<run-id>/8-closeout/eval-improve/
+    sandbox/<skill>/. Re-dispatch the matching -eval skill against the
+    sandbox artifact. Compare verdicts.
+  steps:
+    - load_producer_skill_md
+    - apply_proposed_edit_in_memory
+    - resolve_producer_inputs_from_inputs_manifest
+    - dispatch_producer_with_edited_prompt_to_sandbox
+    - re_dispatch_eval_against_sandbox_artifact
+    - compare_verdicts_old_vs_new
+  pass_criteria:
+    - new_verdict.overall_score >= original.overall_score
+    - new_verdict.targeted_dimension > original.targeted_dimension
+    - no_other_dimension_regressed_more_than: 0.5
+    - flagged_concern_no_longer_in_auto_surfaced: true
+
+  cost_warning: >
+    Sandbox regen costs one producer-skill LLM call per proposal. For PDD/
+    Learn/Deliver app producers this is non-trivial (multi-thousand tokens).
+    Cap proposals per lens-run to a reasonable number (default 3) to bound
+    cost.
+
+proposes:
+  edit_targets:
+    - file_pattern: "skills/{producer_skill}/SKILL.md"
+      section: "## Process"  # producer prompt is mostly in Process section
+      max_lines_changed: 50
+  forbidden_changes:
+    - rename_skill
+    - delete_required_section
+    - change_skill_inputs   # inputs are contracts; changes need orchestrator coordination
+
+auto_merge:
+  enabled: false   # producer changes are irreversible-on-future-opps; always human review
+  human_review_required: true
+  reason: >
+    Unlike judge fixes (re-graded the same artifact, deterministic), producer
+    fixes affect every future /ace:run. Human approves the prompt edit before
+    it ships.

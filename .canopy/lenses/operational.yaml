@@ -1,0 +1,95 @@
+name: operational
+description: >
+  Improve the system itself — orchestrator, agent contracts, MCP atoms,
+  state management, error handling. Operates on session evidence (the
+  Claude Code transcript of /ace:run) plus run_state.yaml. Mostly leans
+  on canopy's existing session-review infrastructure, just augmented with
+  ACE-specific evidence ingestion.
+
+scope: per_run
+
+evidence:
+  primary: sessions.recent
+  ace_augmentation:
+    - per_run.run_state          # phase status, gate decisions, errors, retries
+    - per_run.gate_briefs        # what gates fired and why
+    - per_run.readme             # human-readable run summary
+    - opp_level.comms_log        # human-curated cross-run notes
+  derived:
+    - source.orchestrator        # where most operational fixes land
+    - source.agents              # phase agents
+    - source.artifact_manifest   # input/output contracts
+
+# Signal detectors — these are mostly canopy:improve's existing taxonomy
+# (friction, gap, pattern, missing_capability) but specialized for ACE.
+signals:
+  - id: phase_failed_silently
+    description: >
+      A phase reports complete in run_state but its expected outputs are
+      missing or malformed. The orchestrator's write-back contract isn't
+      catching the failure. Propose orchestrator-side defense.
+    probe: phase_status_vs_artifact_presence
+
+  - id: mcp_atom_retried
+    description: >
+      Same MCP atom called >= 3 times with errors before success (or
+      ultimate failure). Either the atom needs better retry/error
+      semantics, or the calling skill needs different inputs.
+    probe: tool_call_retry_clusters
+    threshold:
+      retry_count: 3
+
+  - id: gate_brief_not_read
+    description: >
+      A gate fired a [WARN] or [BLOCKER] in default mode and was logged
+      but never surfaced to the human. The gate's auto-surface logic
+      didn't escalate. Propose orchestrator-side surfacing.
+    probe: gate_severity_vs_user_visibility
+
+  - id: skill_dispatch_drift
+    description: >
+      A skill was dispatched with arguments that diverge from the skill's
+      declared input contract (artifact-manifest mismatch). Propose
+      tightening the orchestrator's input-validation step.
+    probe: dispatch_args_vs_manifest
+
+  - id: state_yaml_corruption
+    description: >
+      run_state.yaml has missing/malformed fields that the orchestrator's
+      schema validator should have caught. Propose schema validation
+      hardening.
+    probe: state_schema_validation
+
+# Verification — observational
+verify:
+  type: observational
+  description: >
+    Operational fixes affect runtime behavior across all future /ace:runs.
+    Cannot be verified deterministically without another run. v1 verification:
+    static review (does the proposed change make sense given the surfaced
+    failure?), test suite green, doctor probe passes if applicable.
+  steps:
+    - apply_change_locally
+    - run_npm_test
+    - run_ace_doctor
+    - manual_inspection_of_diff
+  pass_criteria:
+    - existing_tests_pass
+    - doctor_no_new_failures
+    - diff_targets_only_declared_files
+
+proposes:
+  edit_targets:
+    - file_pattern: "agents/ace-orchestrator.md"
+    - file_pattern: "agents/{phase}.md"
+    - file_pattern: "mcp/{server}/**/*.ts"
+    - file_pattern: "lib/{lib}.ts"
+    - file_pattern: "bin/ace-doctor"
+
+auto_merge:
+  enabled: false   # operational changes affect all future runs; always human review
+  human_review_required: true
+  reason: >
+    Operational changes have the largest blast radius (every future /ace:run
+    is affected) and the weakest verification protocol (observational only,
+    no deterministic before/after). Always human review.

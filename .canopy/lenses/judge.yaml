@@ -1,0 +1,100 @@
+name: judge
+description: >
+  Improve eval rubrics that grade producer artifacts. Cross-model probe
+  identifies ambiguous rubric language; re-grade with edits verifies fixes.
+
+# Single-run scope for v1. Cross-run aggregation deferred until ACE state stabilizes.
+scope: per_run
+
+# Which evidence the lens reads
+evidence:
+  primary: per_run.verdicts
+  derived:
+    - per_run.artifacts        # the artifact each verdict judged (re-grade input)
+    - source.evaluator_skills  # the rubric being applied (proposal target)
+  optional:
+    - opp_level.eval_calibration  # ground-truth if it exists for this opp
+
+# Signal detectors — what the lens looks for
+signals:
+  - id: rubric_ambiguity
+    description: >
+      Cross-model variance > 1.0 on a single dimension means the rubric language
+      is ambiguous; different models reading the same rubric reach different
+      grades on the same artifact. The fix is to tighten the rubric's deduction
+      anchors, not the producer.
+    probe: cross_model
+    probe_args:
+      models: [sonnet, opus, haiku]
+    threshold:
+      variance: 1.0
+
+  - id: inflation_guard_binds
+    description: >
+      Pre-cap and post-cap scores diverge by >= 0.5 — the inflation guard is
+      binding. The rubric is producing scores high enough to need capping,
+      which means it's lenient on real defects. Tighten deduction rules.
+    probe: pre_cap_vs_post_cap
+    threshold:
+      gap: 0.5
+
+  - id: dimension_inert
+    description: >
+      A dimension consistently scores within ±0.5 of the same value across
+      runs/models. It isn't discriminating — either the criterion is so
+      narrow it always passes, or so broad it always partially passes.
+      Either way the rubric is wasting weight.
+    probe: dimension_distribution
+    threshold:
+      stdev: 0.5
+
+  - id: auto_surfaced_unscored
+    description: >
+      A WARN or BLOCKER appears in auto_surfaced, but the dimension that
+      should have penalized it didn't (score >= 8). The rubric's auto-surface
+      logic is decoupled from its scoring. Fix by adding a deduction rule
+      that ties the surfaced concern to a dimension drop.
+    probe: surface_vs_score_correlation
+
+# Verification — how to test a proposed fix BEFORE merging
+verify:
+  type: re_grade
+  description: >
+    Apply the proposed rubric edit (in-memory text replacement on the eval
+    skill's LLM-as-Judge Rubric section), re-dispatch the eval against the
+    same captured artifact, compare new verdict to original.
+  steps:
+    - load_eval_skill_md
+    - apply_proposed_edit_in_memory
+    - dispatch_eval_with_edited_prompt
+    - compare_verdicts:
+        - overall_score
+        - dimension_scores
+        - cross_model_variance
+        - auto_surfaced_count_by_severity
+  pass_criteria:
+    - detection_rate >= original         # didn't lose a real catch
+    - cross_model_variance <= original + 0.3
+    - no_dimension_regressed_more_than: 0.5
+    - artifact_unchanged: true            # lens didn't touch the artifact
+
+# What the lens proposes (constrains the analyzer)
+proposes:
+  edit_targets:
+    - file_pattern: "skills/{eval_skill}/SKILL.md"
+      section: "## LLM-as-Judge Rubric"
+      max_lines_changed: 30
+  forbidden_changes:
+    - rename_skill
+    - change_dimension_weights_total  # weights must still sum to 1.0
+    - delete_dimension                 # additive only in v1
+
+# Auto-merge gate
+auto_merge:
+  enabled: true
+  conditions:
+    - verification_passed
+    - changes_confined_to_section: true
+    - lines_changed_lte: 30
+    - no_dimension_regressed: true
+  human_review_otherwise: true
