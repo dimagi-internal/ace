@@ -861,7 +861,18 @@ inline procedure-doc completion (commcare-setup):
      <named-gate-if-this-phase-owns-one>: <terminal-value-best-guess>
    ```
 
-4. Continue to the next phase.
+4. **Re-render the decisions log gdoc.** After verifying the phase
+   wrote back its rows to `decisions.yaml` (see § Phase Write-Back
+   Contract § Decisions log clause), invoke `Skill(decisions-render)`
+   against the run-id. The renderer produces
+   `ACE/<opp>/runs/<run-id>/decisions.gdoc` — a prose Google Doc at
+   one stable URL — and is idempotent across re-runs. Capture the
+   gdoc's `webViewLink` and inject it into the next gate brief's
+   `Decisions Log:` line. The renderer is fast (one batchUpdate
+   call); failure is `[WARN]` not `[BLOCKER]` — the YAML is the
+   source of truth, the gdoc is just the rendering.
+
+5. Continue to the next phase.
 
 This is a NUDGE, not a halt — the run continues. The
 `write_back_warning` field surfaces the contract violation for
