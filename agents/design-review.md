@@ -9,9 +9,9 @@ phase: design-review
 phase_display: Design Review
 phase_ordinal: 1
 skills:
-  - { name: idea-to-pdd,         has_judge: true,  qa_skill: idea-to-pdd-qa, eval_skill: idea-to-pdd-eval }
+  - { name: idea-to-pdd,         has_judge: true,  qa_skill: idea-to-pdd-qa,         eval_skill: idea-to-pdd-eval }
   - { name: pdd-to-test-prompts, has_judge: false }
-  - { name: pdd-to-app-journeys, has_judge: false }
+  - { name: pdd-to-app-journeys, has_judge: true,  qa_skill: pdd-to-app-journeys-qa, eval_skill: pdd-to-app-journeys-eval }
 ---
 
 # Design Review Agent (Phase 1)
@@ -66,12 +66,29 @@ Invoke the `pdd-to-test-prompts` skill.
 ### Step 3: Generate expected user journeys
 
 Dispatch `pdd-to-app-journeys`:
-- Reads: `pdd.md`
-- Writes: `expected-journeys.md`
+- Reads: `1-design/idea-to-pdd.md`
+- Writes: `1-design/pdd-to-app-journeys.md`
 - Halts on missing/empty PDD or missing target-FLW persona section
 
 This skill is the UX-intent ground truth for downstream app QA. Phase 5
 shallow execution and `/ace:qa-deep` both read it.
+
+### Step 3.4: PDD-to-app-journeys QA (structural pass/fail)
+
+Invoke the `pdd-to-app-journeys-qa` skill — runs 7 static checks (persona block, archetype declaration, ≥2 journeys, each journey has Goal/Happy-path/Edge-cases/Pass-criteria).
+
+- Input: `runs/<run-id>/1-design/pdd-to-app-journeys.md`
+- Output: `runs/<run-id>/1-design/pdd-to-app-journeys-qa_result.yaml`
+- **QA gates eval:** on `verdict: fail`, attempt up to 2 auto-fix retries; halt with `incomplete` after bounded attempts.
+
+### Step 3.5: PDD-to-app-journeys eval (quality grade)
+
+Unless `--no-evals` was passed AND QA verdict is `pass`, invoke `pdd-to-app-journeys-eval`.
+
+- Inputs: the journeys doc + the source PDD (for archetype + Target FLW reference)
+- Output: `runs/<run-id>/1-design/pdd-to-app-journeys-eval_verdict.yaml`
+- 6 quality dimensions: persona specificity, archetype alignment, coverage completeness, happy-path narrative voice, edge-case recoverability, pass-criteria measurability.
+- Skipped (verdict: incomplete) if QA failed.
 
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/1-design/design-review_summary.md`,
