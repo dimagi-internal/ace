@@ -10,7 +10,7 @@ phase_display: Design Review
 phase_ordinal: 1
 skills:
   - { name: idea-to-pdd,         has_judge: true,  qa_skill: idea-to-pdd-qa,         eval_skill: idea-to-pdd-eval }
-  - { name: pdd-to-test-prompts, has_judge: false }
+  - { name: pdd-to-test-prompts, has_judge: true,  qa_skill: pdd-to-test-prompts-qa, eval_skill: pdd-to-test-prompts-eval }
   - { name: pdd-to-app-journeys, has_judge: true,  qa_skill: pdd-to-app-journeys-qa, eval_skill: pdd-to-app-journeys-eval }
 ---
 
@@ -62,6 +62,23 @@ Invoke the `pdd-to-test-prompts` skill.
   summaries derived from the PDD. These are the ground truth for the OCS
   deep QA gate in Phase 4
 - No LLO-facing artifacts are produced in this phase
+
+### Step 2.4: PDD-to-test-prompts QA (structural pass/fail)
+
+Invoke the `pdd-to-test-prompts-qa` skill — runs 8 static checks (header + total count, ≥8 prompts, each prompt has all required fields, all 5 adversarial categories present, ≥15% adversarial share, training-gap / product-feedback / escalation prompts).
+
+- Input: `runs/<run-id>/1-design/pdd-to-test-prompts.md`
+- Output: `runs/<run-id>/1-design/pdd-to-test-prompts-qa_result.yaml`
+- **QA gates eval:** on `verdict: fail`, attempt up to 2 auto-fix retries; halt with `incomplete` after bounded attempts.
+
+### Step 2.5: PDD-to-test-prompts eval (quality grade)
+
+Unless `--no-evals` was passed AND QA verdict is `pass`, invoke `pdd-to-test-prompts-eval`.
+
+- Inputs: the test-prompts doc + the source PDD
+- Output: `runs/<run-id>/1-design/pdd-to-test-prompts-eval_verdict.yaml`
+- 6 quality dimensions: expected-answer specificity, adversarial-prompt quality, archetype coverage, prompt phrasing realism, expected-tag correctness, escalation-prompt quality.
+- Skipped (verdict: incomplete) if QA failed.
 
 ### Step 3: Generate expected user journeys
 
