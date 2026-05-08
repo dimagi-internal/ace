@@ -1,0 +1,156 @@
+schema_version: 1
+opportunity: turmeric
+run_id: 20260507-1733
+generated_at: "2026-05-07T17:33:00Z"
+
+decisions:
+  - id: archetype-selection
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Which delivery archetype best fits the intervention?
+    default: atomic-visit
+    options_considered: ["atomic-visit", "focus-group", "multi-stage"]
+    source: idea.md §1; one-FLW-one-delivery pattern
+    status: applied
+    notes: Single per-FLW visit producing one structured delivery.
+
+  - id: flw-count
+    phase: 1-design
+    skill: idea-to-pdd
+    question: How many FLWs should the program target?
+    default: "5–8"
+    options_considered: ["3–5", "5–8", "10–15", "20+"]
+    source: idea.md §2; atomic-visit archetype norm at this geographic scope
+    status: applied
+
+  - id: budget-plausibility
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Is the stated budget plausible for the implied labor + AI infra?
+    default: plausible
+    options_considered: ["plausible", "too-low", "too-high"]
+    source: idea-to-pdd-eval `resource_realism` dimension (PR #144)
+    status: applied
+    notes: |
+      $1,500 / 8 FLWs / 30 visits ≈ $6.25/visit gross — covers stated $3 payment
+      with margin for LLO ops + AI infra at recruitment-realistic rates.
+
+  - id: payment-rate
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Per-visit payment rate to FLW?
+    default: "$3.00"
+    options_considered: ["$2.00", "$3.00", "$5.00"]
+    source: idea.md §3; payment-rate convention for atomic-visit market surveys
+    status: applied
+
+  - id: pilot-sample-size
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Pilot sample size for AI calibration before full rollout?
+    default: "30 photos"
+    options_considered: ["20 photos", "30 photos", "50 photos", "100 photos"]
+    source: stress-test verifiability dimension; calibration-set norm
+    status: applied
+
+  - id: ai-photo-threshold
+    phase: 1-design
+    skill: idea-to-pdd
+    question: AI auto-accept confidence threshold for photo verification?
+    default: "≥90%"
+    options_considered: ["≥85%", "≥90%", "≥95%"]
+    source: idea-to-pdd-eval `verifiability` rubric; Layer-B AI-check norm
+    status: applied
+
+  - id: ai-fallback-design
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Fallback for AI auto-reject — true validation harness or parallel sampling?
+    default: parallel-sampling-N-percent
+    options_considered:
+      - "parallel-sampling-N-percent"
+      - "stratified-validation-of-AI-output"
+      - "no-fallback"
+    source: idea-to-pdd-eval `fallback_validates_primary` dimension (PR #144)
+    status: open
+    notes: |
+      Default is parallel sampling (N% human review of all submissions, independent
+      of AI's classification). NOT a true validation harness — it samples a different
+      population than the AI saw, so it doesn't validate per-decision accuracy.
+      Flagged in gate brief; human edit recommended if ground-truth metrics matter.
+
+  - id: named-downstream-consumer
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Is there a named downstream consumer with pre-committed action?
+    default: none-named-proceed-with-caveat
+    options_considered:
+      - "named-consumer-with-MOU"
+      - "named-consumer-no-MOU"
+      - "none-named-proceed-with-caveat"
+      - "none-named-halt"
+    source: idea-to-pdd-eval `demand_reality` dimension (PR #144)
+    status: open
+    notes: |
+      No consumer named in idea.md. Proceeding with default; flag in gate brief.
+      Human edit recommended before Phase 7 solicitation publishes.
+
+  - id: primary-metric-vs-goal
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Primary success metric — direct goal measurement or upstream proxy?
+    default: proxy-of-goal
+    options_considered: ["direct-goal", "proxy-of-goal", "tbd-during-pilot"]
+    source: idea-to-pdd-eval `mission_alignment` dimension (PR #144)
+    status: applied
+    notes: Photo-quality pass rate is a proxy for "AI replaces human verification"; not the goal itself.
+
+  - id: working-language
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Working language(s) for Learn + Deliver apps?
+    default: "English only"
+    options_considered: ["English only", "English + 1 local", "Multilingual (3+)"]
+    source: idea.md does not specify; LLO directory shows English-fluent candidates
+    status: applied
+
+  - id: verification-layers
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Which evidence-model layers are in scope?
+    default: "A + B"
+    options_considered: ["A only", "A + B", "A + B + C"]
+    source: pdd-template.md `## Evidence Model` section
+    status: applied
+    notes: Layer A self-report + Layer B AI photo-verification. Layer C (independent audit) deferred to Phase 8.
+
+  - id: solicitation-type
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Solicitation type for Phase 7 publication?
+    default: EOI
+    options_considered: ["EOI", "RFP", "custom"]
+    source: skills/idea-to-pdd `## Solicitation` section default
+    status: applied
+
+  - id: solicitation-deadline
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Solicitation response deadline (days from publish)?
+    default: "14 days"
+    options_considered: ["7 days", "14 days", "21 days", "30 days"]
+    source: skills/idea-to-pdd `## Solicitation` section default
+    status: applied
+
+  - id: candidate-llo-roster
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Are PDD-named candidate LLOs in scope for direct invitation?
+    default: any-LLO-via-public-solicitation
+    options_considered:
+      - "named-candidates-direct-invite"
+      - "named-candidates-plus-public-solicitation"
+      - "any-LLO-via-public-solicitation"
+    source: idea.md §LLO Preference; LLO directory
+    status: applied
+    notes: idea.md does not name specific candidates; defaulting to public solicitation.
