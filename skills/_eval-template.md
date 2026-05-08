@@ -9,6 +9,16 @@ duplicating ~30-50 lines of setup.
 This is a **reference document**, not a skill. It is not invoked. It
 is excluded from the skill catalog because the filename starts with `_`.
 
+## Relationship to QA
+
+Eval grades **quality** (soft 0-10 scores via LLM-as-Judge). QA grades **structural correctness** (binary pass/fail). They run on every artifact and are orthogonal — QA gates eval.
+
+- **In an eval rubric, every dimension should be a quality / semantic / value judgment** that requires LLM reasoning. NOT structural completeness, weight-sum arithmetic, or section-presence checks — those belong in `*-qa` skills (see `_qa-template.md`).
+- **Eval reads QA's output** as a precondition (eval is skipped if QA failed irrecoverably) but does not re-check structural concerns.
+- **No hardcoded cross-eval cap rules.** An eval's rubric can reference upstream evals' verdicts as context when forming a judgment, but the rubric's own anchors must be the basis for scoring. Each eval stands on its own.
+
+If a dimension you're considering could be checked by static code or a Python script, it belongs in QA. If it could become a 0-10 score that genuinely uses the full range, it belongs in eval. See `skills/README.md § QA vs Eval` for the full guidance and the migration path for existing rubrics that mix the two.
+
 ## Skeleton
 
 Every `*-eval` skill follows this body skeleton:

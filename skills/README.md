@@ -258,42 +258,74 @@ See `docs/superpowers/specs/2026-04-01-ace-design.md` § "Testing and Dry-Run St
 
 Optional. Use it to enumerate named errors and recovery hints — the kind of thing an operator wants to grep when a skill stops cold. Bullet list of `<ErrorName>` → recovery hint. Place this section **after** `## Dry-Run Behavior` (if present) or `## Mode Behavior` (if not), and **before** `## Change Log`. Canonical examples: `skills/ocs-agent-setup/SKILL.md`, `skills/pdd-to-test-prompts/SKILL.md`.
 
-## QA vs Eval — the two-phase pattern
+## QA vs Eval — the two-axis pattern
 
-Evaluation in ACE splits into two orthogonal phases so evidence can be
-captured once and graded many times (including by different rubrics, or
-re-graded after a rubric improves without re-exercising the artifact).
+Every producer artifact is checked along two **orthogonal** axes. Both run on every artifact (separately or inline); QA gates eval.
 
-**`-qa` skills (capture).** Exercise the artifact and produce structured
-evidence. Sometimes the work is mechanical — send a prompt suite and
-collect responses (`ocs-chatbot-qa`), read FLW submissions and verify
-delivery proof (`flw-data-review`). Sometimes the evidence comes from the
-field — FGD audio captured by a facilitator, a sample photo sent by an
-FLW. Either way, a `-qa` skill writes a transcript/capture artifact to a
-known path and runs cheap structural checks (response received, audio
-length ≥ threshold, all required fields present). **`-qa` never runs
-LLM-as-Judge.**
+- **QA = structural correctness.** Binary pass/fail. Hard do-not-pass-go failures. Mostly static checks; LLM use is allowed but discouraged unless static can't capture the rule. Reference: `skills/_qa-template.md`.
+- **Eval = quality judgment.** Soft 0-10 scores via LLM-as-Judge. Always uses LLM. Surfaces gate-brief BLOCKERs that halt phases, plus WARN/INFO advisory signals. Reference: `skills/_eval-template.md`.
 
-**`-eval` skills (judge).** Read a capture artifact, apply an LLM-as-Judge
-rubric, and write a machine-readable verdict plus a human-readable report.
-Because the evidence is already captured, `-eval` can be re-run anytime
-— against the same transcript with an improved rubric, or across many
-captures to compute a trend. **`-eval` never exercises the artifact.**
+### The line between them
 
-### When to use which
+Rule of thumb: **if the AI can typically fix the issue by re-reading inputs and trying again, it's QA. If fixing requires substantive design decisions or value judgments, it's eval.**
 
-- **Most skills produce their own evidence inline.** The skill writes its
-  primary artifact (`pdd.md`, `learn-app.json`, `connect-setup/opportunity.md`)
-  and optionally includes a self-eval step (e.g., `idea-to-pdd`'s 5-question
-  stress-test rubric). No separate `-qa` or `-eval` skills needed.
-- **A standalone `-qa` skill exists when exercising the artifact requires
-  runtime work the producing skill didn't do** — chatting with a deployed
-  bot, running an app through its UI, facilitating a group session,
-  reviewing submitted deliveries. The `-qa` skill writes a capture; the
-  `-eval` skill grades it.
-- **Avoid `-qa` skills that are just `-eval` under a different name.** If
-  nothing runtime is happening between "produce the artifact" and "judge
-  it," the producing skill's inline self-eval is the right place.
+| Issue | Why | Lives in |
+|---|---|---|
+| Required section missing | AI re-reads upstream, writes the section | QA |
+| Section is empty / placeholder | Same | QA |
+| Reviewer-comment table missing rows for [a]–[d] | Same | QA |
+| Verdict YAML weights don't sum to 1.0 | Arithmetic; AI normalizes | QA |
+| Number consistency (regex same value formatted same way) | Mechanical | QA |
+| Archetype declared and matches the enum | Static schema check | QA |
+| **Reviewer dispositions are concrete vs hand-waved** | Substantive judgment | Eval |
+| **Archetype matches the *spirit*, not just the declaration** | Semantic | Eval |
+| **Named downstream consumer is committed vs vague** | Judgment | Eval |
+| **Budget covers labor at recruitment-realistic rates** | Domain judgment | Eval |
+| **Primary metrics measure goal vs upstream proxy** | Semantic | Eval |
+
+### QA: hard fails, AI-fixable, mostly static
+
+A QA check is a **do-not-pass-go check**. There is no "this is bad but okay to continue" tier in QA — that pattern belongs in eval. When QA fails:
+
+1. Orchestrator attempts automated remediation (regenerate the artifact with explicit instructions to address each failed check, using the `auto_fix_hint` per failure).
+2. Re-run QA. If now passing, proceed to eval.
+3. If after a bounded number of auto-fix attempts QA still fails, **halt** with `verdict: incomplete` and surface the failed checks + auto-fix hints to the operator. Never silently proceed.
+
+**Tooling.** Static checks (regex, parsing, schema validation, file existence, count thresholds, arithmetic) are preferred. LLM use IS allowed when the check requires semantic interpretation that's still hard-fail-shaped — e.g. "is this section actually about X or just labeled X?" But static is cheaper and more reliable; reach for LLM only when static can't capture the rule.
+
+**QA is necessary but not sufficient.** Orchestrator-level meta-judgment still applies. QA can't be comprehensive; it catches what we know how to check, but the producer (or a human reviewer) may still flag things QA missed. QA passing ≠ artifact is good — it just means the artifact is gradable.
+
+### Eval: soft scores, LLM, quality-only
+
+Eval applies LLM-as-Judge rubrics to grade *quality* dimensions, given QA has confirmed the artifact is structurally correct. Eval:
+
+- **Always** runs LLM-as-judge.
+- **Never** re-checks structural concerns QA already covered.
+- Produces 0-10 dimension scores + weighted overall.
+- Surfaces gate-brief BLOCKERs that halt phases (different from QA hard fails — these are quality concerns severe enough to stop, not structural failures).
+- Soft signals (WARN/INFO) inform reviewers but don't auto-halt.
+- Can read upstream evals' verdicts as **context** when forming judgments, but should NOT have hardcoded cross-eval cap rules. Each eval stands on its own.
+
+### Coverage rule: every producer has both
+
+- Every producer skill has either a `-qa` companion skill OR an inline QA step.
+- Every producer skill has either an `-eval` companion skill OR an inline self-eval.
+- QA always runs. Eval gates on QA — if QA fails irrecoverably, eval is skipped (`verdict: incomplete`).
+- Producer skills CAN inline both for simple artifacts; the contract is that QA checks are still binary hard fails (vs eval's soft scores) even when inline.
+
+### When the QA work requires runtime
+
+Some artifacts can only be checked by running something — a deployed chatbot must be exercised before structural checks (response received, citation field populated, latency under threshold) can run. In that case, the QA skill exercises the artifact and writes a capture/transcript alongside its QA result. The eval skill reads the capture as input. This is the original "QA captures evidence" pattern; it remains valid for runtime-exercise artifacts. Reference example: `ocs-chatbot-qa` + `ocs-chatbot-eval`.
+
+### Migration
+
+Many existing rubrics mix structural dimensions (e.g. `structural_completeness`, `numbers_present`) with quality dimensions (e.g. `demand_reality`, `mission_alignment`). They're being restructured one at a time. Pattern:
+
+1. Extract structural dimensions to a `-qa` skill (or inline QA step). Convert tier deductions to binary pass/fail with `auto_fix_hint`.
+2. Leave quality dimensions in `-eval`. Tighten anchors to span the full 0-10 range now that the rubric isn't anchored by easy-to-pass structural checks.
+3. Update artifact paths: `<phase>/<producer>-qa_result.yaml` (new) alongside `<phase>/<producer>-eval_verdict.yaml` (existing).
+
+The `idea-to-pdd-eval` rubric (post-0.13.84) is the next migration target; `ocs-chatbot-qa` + `ocs-chatbot-eval` is the runtime-exercise reference pattern.
 
 ### Artifact-path contract
 
