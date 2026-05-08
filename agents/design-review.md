@@ -9,7 +9,7 @@ phase: design-review
 phase_display: Design Review
 phase_ordinal: 1
 skills:
-  - { name: idea-to-pdd,         has_judge: true,  eval_skill: idea-to-pdd-eval }
+  - { name: idea-to-pdd,         has_judge: true,  qa_skill: idea-to-pdd-qa, eval_skill: idea-to-pdd-eval }
   - { name: pdd-to-test-prompts, has_judge: false }
   - { name: pdd-to-app-journeys, has_judge: false }
 ---
@@ -35,20 +35,25 @@ Invoke the `idea-to-pdd` skill.
 - **LLM-as-Judge (inline self-eval):** the producing skill's own
   5-question stress-test rubric runs as part of writing the PDD
 
-### Step 1.5: Idea-to-PDD eval (independent re-grade)
-Unless `--no-evals` was passed, invoke the `idea-to-pdd-eval` skill.
+### Step 1.4: Idea-to-PDD QA (structural pass/fail)
+
+Invoke the `idea-to-pdd-qa` skill — runs 6 static structural checks against the produced PDD (sections present, archetype declared, stress-test appendix, success-metrics table populated, evidence-model layered, reviewer-comment table if referenced).
+
+- Input: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
+- Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-qa_result.yaml`
+- **QA gates eval:** if `verdict: fail`, attempt up to 2 auto-fix retries (regenerate PDD with `failures[].auto_fix_hint` instructions, re-run QA). After bounded retries, halt with `verdict: incomplete` for Phase 1 and surface failures to operator. NEVER silently proceed to eval when QA failed.
+- **QA passing means the PDD is gradable, NOT that it's good** — eval (Step 1.5) grades quality.
+
+### Step 1.5: Idea-to-PDD eval (independent quality re-grade)
+Unless `--no-evals` was passed AND QA verdict is `pass`, invoke the `idea-to-pdd-eval` skill.
 - Inputs: the same source material `idea-to-pdd` consumed
   (`inputs-manifest.yaml` + each manifest entry, plus run-root
   `idea.md` if present) + the produced PDD at
   `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-eval_verdict.yaml` (machine-readable
   verdict in the shared shape — see `skills/README.md § QA vs Eval`)
-- This is the independent grader for `idea-to-pdd`'s self-eval. A
-  `verdict: fail` here does NOT halt the run on its own — the Phase
-  1→2 gate still uses the producing skill's
-  `runs/<run-id>/1-design/idea-to-pdd_gate-brief.md`, and `[BLOCKER]`
-  concerns from either source pause per the orchestrator's Per-Mode
-  Pause Matrix.
+- This is the independent QUALITY grader (post-0.13.88 the rubric is quality-only — structural correctness lives in QA above). A `verdict: fail` here does NOT halt the run on its own — the Phase 1→2 gate still uses the producing skill's `runs/<run-id>/1-design/idea-to-pdd_gate-brief.md`, and `[BLOCKER]` concerns from either source pause per the orchestrator's Per-Mode Pause Matrix.
+- If QA verdict was `incomplete`, this step is **skipped** (eval emits `verdict: incomplete` mirroring QA's outcome).
 
 ### Step 2: PDD to Test Prompts
 Invoke the `pdd-to-test-prompts` skill.

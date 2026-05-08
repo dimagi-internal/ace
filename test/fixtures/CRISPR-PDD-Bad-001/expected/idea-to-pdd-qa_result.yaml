@@ -1,0 +1,31 @@
+# Expected QA result for CRISPR-PDD-Bad-001.
+#
+# Documented contract for what idea-to-pdd-qa should catch on this fixture.
+# The integration test loads this and asserts the actual QA result matches.
+# When QA logic changes, update this file alongside the change.
+
+skill: idea-to-pdd-qa
+verdict: fail
+
+# Five checks should fail; one should pass.
+expected_failures:
+  - check: all_required_sections_present
+    detail_contains: Target Population
+
+  - check: archetype_declared_and_valid
+    detail_contains: no archetype declared
+
+  - check: stress_test_appendix_present
+    detail_contains: missing § Stress Test Results
+
+  - check: success_metrics_table_populated
+    detail_contains: no populated data rows
+
+  - check: evidence_model_layered
+    detail_contains: Layer B
+
+# This check passes — there are no [a]/[b] markers and no Reviewer Comments
+# section, so it correctly returns pass with detail "no reviewer comments
+# referenced (clean source pack)".
+expected_passes:
+  - reviewer_comment_table_if_referenced

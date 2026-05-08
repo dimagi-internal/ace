@@ -18,7 +18,7 @@ import {
   QAFailure,
   QAPassedSchema,
   QAResult,
-} from '../../lib/qa-types';
+} from './qa-types';
 import { z } from 'zod';
 
 export interface RunChecksOptions {

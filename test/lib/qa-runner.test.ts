@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test } from 'vitest';
-import { runChecks } from './qa-runner';
+import { runChecks } from '../../lib/qa-runner';
 import { QACheck, validateQAResult } from '../../lib/qa-types';
 import { expectQAPass, expectQAFail, expectQAFailWithCheck, expectQAFailureCount, expectQACheckNotFailed } from './qa-asserts';
 
