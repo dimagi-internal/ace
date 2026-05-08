@@ -16,7 +16,7 @@ Phase 5 needs them.
 ## Related skills
 
 - **Successor to:** `qa-plan` (retired in 0.10.x, replaced by this skill).
-- **Consumes:** `expected-journeys.md` from `pdd-to-app-journeys` (Phase 1).
+- **Consumes:** `pdd-to-app-journeys.md` from `pdd-to-app-journeys` (Phase 1).
 - **Consumed by:** `app-screenshot-capture` (Phase 5, shallow) and
   `/ace:qa-deep` (full execution).
 
@@ -38,7 +38,7 @@ Phase 5 needs them.
 
 ### Step 1: Read inputs
 
-- `expected-journeys.md`
+- `pdd-to-app-journeys.md`
 - `app-summaries/learn-app-summary.md`
 - `app-summaries/deliver-app-summary.md`
 - The Nova blueprints (call `get_app` with each
@@ -47,7 +47,7 @@ Phase 5 needs them.
 
 ### Step 2: For each journey, decide its app + smoke flag
 
-Map each journey from `expected-journeys.md` to either Learn or Deliver
+Map each journey from `pdd-to-app-journeys.md` to either Learn or Deliver
 based on whether the journey describes assessment behavior (Learn) or
 visit/delivery behavior (Deliver). Multi-stage opps may have both.
 
@@ -148,7 +148,7 @@ in `templates/app-test-cases-template.yaml`.
 ### Step 5: Self-evaluate coverage
 
 (Same shape as pdd-to-test-prompts.) Verify:
-- Every journey from `expected-journeys.md` has a binding
+- Every journey from `pdd-to-app-journeys.md` has a binding
 - Exactly one `is_smoke: true` per app
 - **Every `is_smoke: true` journey has a `recipes/J<n>.yaml` file
   written under `2-commcare/recipes/`.** Confirm via
@@ -177,7 +177,7 @@ judging happens later in `app-ux-eval`).
 
 ## Failure modes
 
-- expected-journeys.md missing or empty → Phase 1 hasn't completed; halt
+- pdd-to-app-journeys.md missing or empty → Phase 1 hasn't completed; halt
 - Nova blueprint missing for one of the apps → Phase 2 build hasn't
   succeeded; halt with pointer to upstream skill
 - mobile_validate_recipe rejects more than 2× per journey → escalate
@@ -193,4 +193,4 @@ judging happens later in `app-ux-eval`).
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-04 | Initial version. Phase 2 producer for app-test-cases.yaml; binds expected-journeys.md to Nova-built structure with Maestro recipe stubs. Successor to qa-plan (retired in same release). | ACE team |
+| 2026-05-04 | Initial version. Phase 2 producer for app-test-cases.yaml; binds pdd-to-app-journeys.md to Nova-built structure with Maestro recipe stubs. Successor to qa-plan (retired in same release). | ACE team |

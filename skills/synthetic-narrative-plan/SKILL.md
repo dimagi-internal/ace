@@ -25,7 +25,7 @@ this skill runs first, `synthetic-data-generate` consumes
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `inputs/pdd.md` | intervention design, archetype, success metrics, evidence model |
-| Phase 1 | `runs/<run-id>/1-design/expected-journeys.md` | FLW journey shape, edge cases worth seeding as anomalies |
+| Phase 1 | `runs/<run-id>/1-design/pdd-to-app-journeys.md` | FLW journey shape, edge cases worth seeding as anomalies |
 | Phase 2 | `runs/<run-id>/2-commcare/app-deploy_summary.md` | deliver-app form structure (field paths, types) |
 | Phase 2 (optional) | `runs/<run-id>/2-commcare/app-test-cases.yaml` | test-case anomalies that double as plausible field anomalies |
 | Phase 3 | `runs/<run-id>/3-connect/connect-opp-setup.md` | payment units, deliver units, verification flags |
@@ -47,7 +47,7 @@ this skill runs first, `synthetic-data-generate` consumes
    **Required:** PDD + opp.yaml. If either is missing, halt with a clear
    error pointing the operator at the missing file.
 
-   **Recommended:** expected-journeys, app-deploy summary, connect-opp-setup.
+   **Recommended:** pdd-to-app-journeys, app-deploy summary, connect-opp-setup.
    If any are missing, degrade gracefully — note the gap in the narrative
    ("FLW journey detail not available; manifest uses generic atomic-visit
    shape") and continue. Don't halt.
