@@ -254,6 +254,22 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Per-run lifecycle state: phase, step, mode, gate approvals, initiated_by / last_actor / last_actor_at. Lives at `runs/<run-id>/run_state.yaml` (renamed from `state.yaml` in 0.11.3 to make per-run scope explicit).',
   },
   {
+    path: 'decisions.yaml',
+    producedBy: 'idea-to-pdd',
+    consumedBy: ['decisions-render', 'idea-to-pdd'],
+    phase: 'design',
+    required: false,
+    description: 'Per-run structured log of load-bearing defaults applied across the lifecycle. Phase 1 (idea-to-pdd) writes its rows when authoring the PDD; subsequent phases append rows as they apply load-bearing defaults (Phase 2-9 writes ship in the next PR of the decisions-log series). Schema enforced via lib/decisions-schema.ts. Re-runs honor status: overridden rows from prior runs as authoritative inputs. Lives at the run-folder root alongside run_state.yaml — both are run-level metadata.',
+  },
+  {
+    path: 'decisions.gdoc',
+    producedBy: 'decisions-render',
+    consumedBy: ['ace-orchestrator'],
+    phase: 'design',
+    required: false,
+    description: 'Prose Google Doc rendering of decisions.yaml at one stable URL per run. Find-or-update semantics; existing content cleared and replaced on every invocation. Re-rendered by the orchestrator at end of every phase via skills/decisions-render. Humans review and iterate on this gdoc rather than the YAML; the gdoc URL appears in each gate brief as the Decisions Log: line.',
+  },
+  {
     path: '1-design/idea-to-pdd_gate-brief.md',
     producedBy: 'idea-to-pdd',
     role: 'gate-brief',
