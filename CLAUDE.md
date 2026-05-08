@@ -32,7 +32,7 @@ Phases 1–6 run end-to-end with zero LLO involvement. Phase 7 publishes a publi
 
 - `agents/` — 11 agents. Two procedure docs (`ace-orchestrator`, `commcare-setup`); nine subagents.
 - `skills/` — 66 skills, one dir per skill (`SKILL.md`). Stateless; per-opp state lives in Drive `ACE/<opp-name>/`. See `skills/README.md` for the author contract, the `## QA vs Eval` two-phase pattern, and `opp-eval` aggregator. Per-skill `-eval` rubrics calibrated against ground truth — see `skills/eval-calibration/SKILL.md`.
-- `commands/` — 16 slash commands: `run`, `step`, `status`, `eval`, `qa-deep`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `connect-login`, `nova-login`, `labs-login`, `labs-token-mint`, `mobile-bootstrap`, `ocs-bootstrap-template`.
+- `commands/` — 15 slash commands: `run`, `step`, `status`, `eval`, `qa-deep`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `connect-login`, `labs-login`, `labs-token-mint`, `mobile-bootstrap`, `ocs-bootstrap-template`.
 - `mcp/` — 5 MCP servers wired inline in `.claude-plugin/plugin.json` `mcpServers` (inline since 0.5.16 to work around [anthropics/claude-code#9427](https://github.com/anthropics/claude-code/issues/9427)):
   - `ace-gdrive` (`google-drive-server.ts`) — Drive + Docs + Slides + Sheets.
   - `ace-ocs` (`ocs-server.ts`) — Open Chat Studio composite, 23 atoms (Authoring 11 + Observation 12). Source under `mcp/ocs/`.

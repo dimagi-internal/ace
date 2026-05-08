@@ -210,7 +210,7 @@ delegates app-build to `/nova:autobuild`. See
 
 - **11 agents** — `ace-orchestrator` + 9 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `qa-and-training`, `synthetic-data-and-workflows`, `solicitation-management`, `execution-manager`, `closeout`) + `ocs-tester` (ad-hoc QA+Eval)
 - **~65 skills** — one per process step, each a SKILL.md that Claude executes. Evaluation is a two-phase `-qa` / `-eval` pattern (see `skills/README.md § QA vs Eval`), with the `opp-eval` umbrella aggregator rolling per-skill verdicts into a run-level scorecard
-- **16 commands** — `run`, `step`, `status`, `eval`, `qa-deep`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `connect-login`, `nova-login`, `labs-login`, `labs-token-mint`, `mobile-bootstrap`, `ocs-bootstrap-template`
+- **15 commands** — `run`, `step`, `status`, `eval`, `qa-deep`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `connect-login`, `labs-login`, `labs-token-mint`, `mobile-bootstrap`, `ocs-bootstrap-template`
 - **5 MCP servers** — Google Drive (`ace-gdrive`), OCS (`ace-ocs`), Connect (`ace-connect`), Mobile (`ace-mobile`), Connect Labs (`connect-labs`, stdio proxy to `labs.connect.dimagi.com/mcp/`)
 - **9 phases** — design-review → commcare-setup → connect-setup → ocs-setup → qa-and-training → synthetic-data-and-workflows → solicitation-management → execution-manager → closeout (Phases 1–6 run end-to-end with zero LLO involvement; Phase 7 publishes a public solicitation; Phase 8 is the first 1-1 contact with the awarded LLO)
 - **2 execution modes** — auto (hands-off) and review (pauses at gates)
