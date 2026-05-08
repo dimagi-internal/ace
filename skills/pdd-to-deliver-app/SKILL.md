@@ -48,6 +48,31 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      more robust path is for this brief to be unambiguous up front.
      See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
      § Bug 1 for the prompt-quality dependency.
+   - **REQUIRED — every form that needs its own paid deliver_unit
+     MUST live in its own module.** Nova's `compile_app` emits the
+     module slug as the `<learn:deliver id="...">` attribute for
+     every form in the module, and Connect's HQ→Connect sync dedups
+     deliver_units by `(app, slug)`. Two forms in one module produce
+     ONE deliver_unit (named after the first form, second form
+     silently unpaid in production). Architect each module with
+     exactly one paid form. Insert this paragraph **verbatim** into
+     the brief, in its own paragraph, prefixed `REQUIRED:`:
+
+     > REQUIRED: Every form that needs its own paid deliver_unit
+     > MUST live in its own module. Connect's HQ→Connect sync
+     > dedups DeliverUnit records by `(app, slug)` and Nova's
+     > `compile_app` reuses the module slug as the
+     > `<learn:deliver id>` for every form in that module. The
+     > result: two forms in one module collapse into ONE
+     > deliver_unit with the first form's name, leaving the second
+     > form's submissions silently unpaid because no payment_unit
+     > can be wired to a non-existent deliver_unit. The default
+     > Nova choice — group related forms into one module — does
+     > not transfer to Deliver apps. Use exactly one paid form per
+     > module.
+
+     See `feedback_connect_deliver_unit_per_module` memory for the
+     full mechanism + reproduction history.
    - Describe the delivery form's structure section by section
    - List the required Connectify fields (Deliver Unit, Entity ID)
    - Reference the relevant PDD section (Evidence Model, Output
@@ -107,6 +132,46 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     `add_fields`); the skill-side check is the safety net for cases
     where the architect skipped it. Same pattern as
     `app-connect-coverage` — verify+fix in a bounded loop, post-Nova.
+
+4b. **Structural pre-flight: one form per module (deliver_unit slug
+    uniqueness).** After field counts match, verify the module/form
+    layout is what Connect's sync will consume cleanly. Cheap check;
+    fires before any HQ upload.
+
+    1. Call `mcp__plugin_nova_nova__get_app({app_id})` and enumerate
+       modules + forms.
+    2. Count forms tagged with `connect.deliver_unit` (or `connect.task`)
+       across the app. Call this `intended_paid_form_count`.
+    3. Count modules whose form set contains ≥ 1 paid form. Call this
+       `paid_module_count`.
+    4. **Assert** `paid_module_count === intended_paid_form_count`.
+       If not, every multi-paid-form module will collapse to one
+       deliver_unit at Connect's sync (Nova reuses the module slug as
+       `<learn:deliver id>` per form; Connect dedups by slug). The
+       collapsed-but-non-first forms reach production silently unpaid.
+
+    On mismatch, dispatch:
+
+    ```
+    /nova:edit <app_id> "Split module <X> so that each of its paid
+    forms (<form-Y>, <form-Z>) lives in its own module. Connect dedups
+    deliver_units by slug and Nova currently emits the module slug as
+    the <learn:deliver id> for every form in that module, so multi-form
+    modules collapse to one deliver_unit at sync. After the edit, every
+    form with connect.deliver_unit set must be the only form in its
+    module."
+    ```
+
+    Re-fetch and re-assert. **Bounded loop, max 3 iterations.** If
+    still mismatched after 3, surface a clear failure listing each
+    offending module + the forms that need separating, and do not
+    write the success summary.
+
+    See `feedback_connect_deliver_unit_per_module` memory for the
+    upstream Nova bug that necessitates this — when Nova's
+    `compile_app` learns to slug `<learn:deliver id>` per-form, this
+    check becomes a one-form-per-module preference rather than a
+    correctness requirement and the brief language above can soften.
 
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check structure against the PDD before writing the summary.
