@@ -222,6 +222,34 @@ When `--dry-run` is active:
   then re-run qa + eval. The `ocs-setup` agent's Phase 4 retry loop
   uses this mode automatically.
 
+## Decisions Log
+
+This skill writes load-bearing defaults to the per-run
+`ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The bar criterion and
+schema live in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`
+(canonical authority); anchors below are the phase-specific subset
+load-bearing for downstream eval rubrics.
+
+### Anchor decisions
+
+| ID | Question | Map to surface |
+|---|---|---|
+| `system-prompt-baseline` | What baseline system prompt does the per-opp chatbot inherit (golden template default vs. customized for archetype)? | `ocs-chatbot-eval` rubric coverage |
+| `rag-collection-scope` | What documents land in the per-opp RAG collection (golden defaults vs. opp-specific additions)? | `ocs-chatbot-eval` retrieval-quality dimension |
+| `test-prompt-count` | How many test prompts feed the smoke-eval gate (default 5 quick, 90 deep)? | `pdd-to-test-prompts` output cardinality; deep vs shallow QA split |
+
+### Beyond anchors
+
+Append additional rows whenever the skill applies a load-bearing default
+meeting the bar criterion (load-bearing + maps to known surface). The
+orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
+§ Phase Write-Back Contract § Decisions log clause) enforces the
+contract; the renderer (`skills/decisions-render`) regenerates the gdoc
+at end of every phase.
+
+Each row this skill writes uses `phase: 4-ocs` and
+`skill: ocs-agent-setup`.
+
 ## Change Log
 
 | Date | Change | Author |
@@ -233,3 +261,4 @@ When `--dry-run` is active:
 | 2026-04-28 | Step 8 collapsed into a single `ocs_set_chatbot_pipeline` call (0.6.4 — transactional save). Closes the chicken-and-egg surfaced in the 2026-04-27 dogfood where `set_chatbot_system_prompt` followed by `attach_knowledge` (or vice versa) hit OCS cross-field validation on the intermediate save. | ACE team |
 | 2026-04-28 | Step 7 prompt rule corrected (0.6.10): `{collection_index_summaries}` is required iff `collection_index_ids.length >= 2` (verified via live OCS probe — see `scripts/probe-n1-cross-test.ts`). Single-collection clones must NOT include the variable; multi-collection clones MUST. The 0.6.4 framing (variable iff non-empty) was wrong. | ACE team |
 | 2026-05-05 | **Two idempotency improvements.** (1) New Step 0 reads the local state file (`runs/<run-id>/4-ocs/ocs-agent-setup.md`) before any OCS call — saves ~1s on a normal re-run and avoids the silent-pipeline-walk on `--prompt-patch` re-runs. (2) New `--prompt-patch` mode reuses the existing chatbot/collection/files, skipping clone + create-collection + upload + 5–10 min indexing wait, and just recomposes the prompt → calls `ocs_set_chatbot_pipeline` → publishes. This is the canonical Phase 4 retry path after `ocs-chatbot-eval --quick` flags a prompt issue (the previous skill prose said the agent should "retry prompt-patch" but no such mode existed — re-runs walked the full pipeline). | ACE team |
+| 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (system-prompt-baseline, rag-collection-scope, test-prompt-count) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |

@@ -324,6 +324,35 @@ When `--dry-run` is active:
 - Do not activate the opportunity or send emails
 - State tracks as `dry-run-success`
 
+## Decisions Log
+
+This skill writes load-bearing defaults to the per-run
+`ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The bar criterion and
+schema live in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`
+(canonical authority); anchors below are the phase-specific subset
+load-bearing for the `llo-launch-eval` viability axis (PR #145).
+
+### Anchor decisions
+
+| ID | Question | Map to surface |
+|---|---|---|
+| `llo-capacity-actual` | Did the LLO actually recruit the team they promised? | `llo-launch-eval` `llo_capacity_actual` dimension (PR #145) |
+| `day-one-readiness` | Are FLWs actually ready Day 1 (training complete, devices provisioned, accounts activated)? | `llo-launch-eval` `day_one_readiness` dimension (PR #145) |
+| `downstream-handoff-alignment` | Is the named downstream consumer ready to receive data on the agreed cadence? | `llo-launch-eval` `downstream_handoff_alignment` dimension (PR #145) |
+| `stop-loss-planning` | Is there a documented halt condition (data-quality floor, recruitment failure, etc.)? | `llo-launch-eval` `stop_loss_planning` dimension (PR #145) |
+
+### Beyond anchors
+
+Append additional rows whenever the skill applies a load-bearing default
+meeting the bar criterion (load-bearing + maps to known surface). The
+orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
+§ Phase Write-Back Contract § Decisions log clause) enforces the
+contract; the renderer (`skills/decisions-render`) regenerates the gdoc
+at end of every phase.
+
+Each row this skill writes uses `phase: 8-execution-management` and
+`skill: llo-launch`.
+
 ## Change Log
 
 | Date | Change | Author |
@@ -335,3 +364,4 @@ When `--dry-run` is active:
 | 2026-04-30 | Switch `connect_activate_opportunity` to `POST /api/opportunities/<id>/activate/` (commcare-connect PR #1135). Server-side guards now reject activation if no PaymentUnits exist or the opp has ended; clearer errors than the silent edit-form fallback. Step 4 also gains a deferred FLW pre-invite path for ACE-driven dogfood runs whose `connect-opp-setup` deferred the invite until activation. (0.10.47) | ACE team |
 | 2026-05-04 | Add the deep-QA verdict freshness gate (new Step 4) before activation: refuse to activate unless `verdicts/ocs-chatbot-eval-deep.yaml` and `verdicts/app-ux-eval-deep.yaml` exist, both pass, and both are newer than the artifacts they grade (OCS chatbot `version_number`; learn/deliver `build_id` from `deployment-summary.md`). Add `--override-deep-qa-gate=<reason>` operator escape hatch with a required reason and an audit trail to `comms-log/observations.md`; reachable only via `/ace:step llo-launch`, never `/ace:run`. Gate-brief auto-surfaced concerns gain two `[BLOCKER]` rows mirroring the gate. Part of the shallow/deep QA split refactor (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`). | ACE team |
 | 2026-05-05 | **Path-scheme migration on the deep-QA gate.** Step 4 verdict reads, error messages, and gate-brief BLOCKER rows now reference `4-ocs/ocs-chatbot-eval_verdict-deep.yaml` and `5-qa-and-training/app-ux-eval_verdict-deep.yaml` (per the manifest); freshness check pulls build IDs from `2-commcare/app-deploy_summary.md`. Wiring fix — the prior `verdicts/...` paths no longer exist on disk, so the gate would always fail with "verdict missing" against current main. No behavior change beyond paths. | ACE team |
+| 2026-05-08 | Add `## Decisions Log` section: 4 anchor rows mapped 1:1 to `llo-launch-eval`'s viability axis (llo-capacity-actual, day-one-readiness, downstream-handoff-alignment, stop-loss-planning) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
