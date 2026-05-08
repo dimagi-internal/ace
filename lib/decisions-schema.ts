@@ -1,4 +1,5 @@
 import { z } from "zod";
+import yaml from "yaml";
 
 /**
  * Canonical schema version for the decisions log. Bump when introducing
@@ -62,3 +63,41 @@ export const DecisionsLogSchema = z
   });
 
 export type DecisionsLog = z.infer<typeof DecisionsLogSchema>;
+
+/**
+ * Parse a YAML string into a validated DecisionsLog.
+ * Throws an Error whose message lists the dot-paths of each offending
+ * field (e.g. "decisions.0.id") if validation fails.
+ * Throws YAMLParseError if the YAML itself is unparseable.
+ */
+export function parseDecisionsYaml(input: string): DecisionsLog {
+  const raw = yaml.parse(input);
+  const result = DecisionsLogSchema.safeParse(raw);
+  if (!result.success) {
+    const paths = result.error.issues
+      .map((issue) => issue.path.join("."))
+      .join(", ");
+    throw new Error(`decisions log validation failed: ${paths}`);
+  }
+  return result.data;
+}
+
+/**
+ * Serialize a DecisionsLog into a YAML string suitable for writing to
+ * ACE/<opp>/runs/<run-id>/decisions.yaml.
+ *
+ * - lineWidth: 0 — the `yaml` package disables block-scalar folding when
+ *   lineWidth is 0 or negative; long `notes` paragraphs stay one-line so
+ *   diffs are readable.
+ * - aliasDuplicateObjects: false — suppresses `&ref_0`/`*ref_0` YAML
+ *   anchors when two decisions share an identical `notes` or option
+ *   string. Anchors are valid YAML but unreadable for human reviewers.
+ */
+export function serializeDecisionsLog(log: DecisionsLog): string {
+  // Validate before emitting — catches caller errors before we write.
+  DecisionsLogSchema.parse(log);
+  return yaml.stringify(log, null, {
+    lineWidth: 0,
+    aliasDuplicateObjects: false,
+  });
+}

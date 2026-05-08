@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { DecisionRowSchema, DecisionsLogSchema } from "../../lib/decisions-schema.js";
+import {
+  DecisionRowSchema,
+  DecisionsLogSchema,
+  parseDecisionsYaml,
+  serializeDecisionsLog,
+} from "../../lib/decisions-schema.js";
 
 describe("DecisionRowSchema", () => {
   it("accepts a minimal valid row", () => {
@@ -181,5 +186,116 @@ describe("DecisionsLogSchema", () => {
       ],
     };
     expect(() => DecisionsLogSchema.parse(log)).toThrow(/duplicate/i);
+  });
+});
+
+describe("parseDecisionsYaml", () => {
+  it("parses a valid YAML string into a DecisionsLog", () => {
+    const yaml = `
+schema_version: 1
+opportunity: turmeric
+run_id: 20260507-1733
+generated_at: "2026-05-07T17:33:00Z"
+decisions:
+  - id: flw-count
+    phase: 1-design
+    skill: idea-to-pdd
+    question: How many FLWs?
+    default: "5–8"
+    options_considered: ["3–5", "10–15"]
+    source: idea.md §2
+    status: applied
+`;
+    const log = parseDecisionsYaml(yaml);
+    expect(log.opportunity).toBe("turmeric");
+    expect(log.decisions).toHaveLength(1);
+    expect(log.decisions[0]!.id).toBe("flw-count");
+  });
+
+  it("throws a typed error on schema violation", () => {
+    const yaml = `
+schema_version: 1
+opportunity: turmeric
+run_id: 20260507-1733
+generated_at: "2026-05-07T17:33:00Z"
+decisions:
+  - id: ""  # empty id violates schema
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Q?
+    default: x
+    options_considered: []
+    source: x
+    status: applied
+`;
+    expect(() => parseDecisionsYaml(yaml)).toThrow(/decisions\.0\.id/);
+  });
+
+  it("throws on unparseable YAML", () => {
+    expect(() => parseDecisionsYaml("not: : valid: yaml")).toThrow();
+  });
+});
+
+describe("serializeDecisionsLog", () => {
+  it("round-trips through parse with no data loss", () => {
+    const log = {
+      schema_version: 1 as const,
+      opportunity: "turmeric",
+      run_id: "20260507-1733",
+      generated_at: "2026-05-07T17:33:00Z",
+      decisions: [
+        {
+          id: "flw-count",
+          phase: "1-design",
+          skill: "idea-to-pdd",
+          question: "How many FLWs?",
+          default: "5–8",
+          options_considered: ["3–5", "10–15"],
+          source: "idea.md §2",
+          status: "applied" as const,
+        },
+      ],
+    };
+    const yaml = serializeDecisionsLog(log);
+    const parsed = parseDecisionsYaml(yaml);
+    expect(parsed).toEqual(log);
+  });
+
+  it("preserves non-ASCII characters (em dashes, en dashes)", () => {
+    const log = {
+      schema_version: 1 as const,
+      opportunity: "turmeric",
+      run_id: "20260507-1733",
+      generated_at: "2026-05-07T17:33:00Z",
+      decisions: [
+        {
+          id: "ai-photo-threshold",
+          phase: "1-design",
+          skill: "idea-to-pdd",
+          question: "AI auto-accept confidence threshold?",
+          default: "≥90%",
+          options_considered: ["≥85%", "≥95%"],
+          source: "stress-test verifiability dimension",
+          status: "applied" as const,
+        },
+      ],
+    };
+    const yaml = serializeDecisionsLog(log);
+    expect(yaml).toContain("≥90%");
+    const parsed = parseDecisionsYaml(yaml);
+    expect(parsed.decisions[0]!.default).toBe("≥90%");
+  });
+
+  it("round-trips an empty decisions array", () => {
+    const log = {
+      schema_version: 1 as const,
+      opportunity: "turmeric",
+      run_id: "20260507-1733",
+      generated_at: "2026-05-07T17:33:00Z",
+      decisions: [],
+    };
+    const yaml = serializeDecisionsLog(log);
+    const parsed = parseDecisionsYaml(yaml);
+    expect(parsed).toEqual(log);
   });
 });
