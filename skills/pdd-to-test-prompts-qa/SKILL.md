@@ -37,7 +37,7 @@ The companion `pdd-to-test-prompts-eval` grades quality (specificity of expected
 | 7 | `product_feedback_prompt_present` | static | ≥1 prompt declares Expected tags: [product-feedback] | add a prompt that should be tagged product-feedback |
 | 8 | `escalation_prompt_present` | static | ≥1 prompt has non-trivial Expected escalation | add a prompt that should trigger bot escalation |
 
-The static check functions live at `skills/pdd-to-test-prompts-qa/checks.ts` as importable TS. Same dispatch pattern as `idea-to-pdd-qa` (PR #149) and `pdd-to-app-journeys-qa` (PR #150).
+The static check functions live at `skills/pdd-to-test-prompts-qa/checks.ts` as importable TS. Same dispatch pattern as `idea-to-pdd-qa` (PR #149).
 
 ## Process
 

@@ -262,8 +262,10 @@ Optional. Use it to enumerate named errors and recovery hints — the kind of th
 
 Every producer artifact is checked along two **orthogonal** axes. Both run on every artifact (separately or inline); QA gates eval.
 
-- **QA = structural correctness.** Binary pass/fail. Hard do-not-pass-go failures. Mostly static checks; LLM use is allowed but discouraged unless static can't capture the rule. Reference: `skills/_qa-template.md`.
+- **QA = structural correctness.** Binary pass/fail. Hard do-not-pass-go failures. Mostly static checks; LLM use is allowed but discouraged unless static can't capture the rule. Reference: `skills/_qa-template.md`. **Some producers explicitly opt out** of QA when downstream is LLM-driven and structural format gates nothing real — see `skills/_qa-template.md § When to skip QA`.
 - **Eval = quality judgment.** Soft 0-10 scores via LLM-as-Judge. Always uses LLM. Surfaces gate-brief BLOCKERs that halt phases, plus WARN/INFO advisory signals. Reference: `skills/_eval-template.md`.
+
+For per-skill QA status (which producers have a `-qa` companion, which deliberately don't, which are pending), see `skills/_qa-decisions.md`.
 
 ### The line between them
 
