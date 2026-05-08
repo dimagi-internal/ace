@@ -263,6 +263,34 @@ When `--dry-run` is active:
   yet).
 - State tracks as `dry-run-success`.
 
+## Decisions Log
+
+This skill writes load-bearing defaults to the per-run
+`ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The bar criterion and
+schema live in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`
+(canonical authority); anchors below are the phase-specific subset
+load-bearing for downstream eval rubrics.
+
+### Anchor decisions
+
+| ID | Question | Map to surface |
+|---|---|---|
+| `deliver-unit-count` | How many distinct deliver units (modules × forms) does the Deliver app expose? | PDD `Deliver App Specification` numeric |
+| `one-form-per-module-workaround` | Are we one-form-per-module to dodge Nova's CCZ marker bug? | `pdd-to-deliver-app-eval` connect-marker-coverage dimension; CLAUDE.md gotcha |
+| `multimedia-coverage-strategy` | What multimedia (text vs voice prompts vs both) does the Deliver app surface? | `app-multimedia-coverage` skill output; PDD multimedia note |
+
+### Beyond anchors
+
+Append additional rows whenever the skill applies a load-bearing default
+meeting the bar criterion (load-bearing + maps to known surface). The
+orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
+§ Phase Write-Back Contract § Decisions log clause) enforces the
+contract; the renderer (`skills/decisions-render`) regenerates the gdoc
+at end of every phase.
+
+Each row this skill writes uses `phase: 2-commcare` and
+`skill: pdd-to-deliver-app`.
+
 ## Change Log
 
 | Date | Change | Author |
@@ -270,3 +298,4 @@ When `--dry-run` is active:
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-08 | Add `## Archetypes` section: `atomic-visit` (per-beneficiary form), `focus-group` (per-session documentation form, segment-level case), `multi-stage` (per-stage branching) | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-27 | Switch from manual Nova UI handoff to `/nova:autobuild` via the Nova plugin. Output is now `nova_app_id` written to the summary, not a JSON file. The `apps/deliver-app.json` snapshot is no longer required. | ACE team |
+| 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (deliver-unit-count, one-form-per-module-workaround, multimedia-coverage-strategy) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
