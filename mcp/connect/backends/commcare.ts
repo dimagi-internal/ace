@@ -87,6 +87,70 @@ export interface DownloadCczResult {
     task: number;
     assessment: number;
   };
+  /**
+   * Deterministic projection of what Connect's HQ→Connect sync will create
+   * after this CCZ is released. Direct port of `commcare-connect`'s
+   * `commcare_connect/opportunity/{app_xml,tasks}.py` extract + sync logic:
+   * iterate every form's `<learn:deliver>`/`<learn:module>`/`<learn:task>`/
+   * `<learn:assessment>` blocks, dedup via `get_or_create(app, slug)`
+   * (DeliverUnit/Task/Assessment) or `update_or_create(app, slug)`
+   * (LearnModule). First-seen `name` wins on dedup collisions.
+   *
+   * If `collision_count > 0`, that's exactly the number of slug groups
+   * where two or more forms emit the same `id`. The dropped forms'
+   * markers are silently discarded by Connect — DeliverUnit collisions
+   * mean those forms cannot be wired to a payment_unit and submissions
+   * against them go unpaid in production. Hard-gate this at the
+   * producing-skill boundary (`pdd-to-deliver-app` Step 4a) and at the
+   * release-time boundary (`app-release` Step 6).
+   *
+   * Reference: see jjackson/ace's `feedback_connect_deliver_unit_per_module`
+   * memory and the upstream Nova compile_app slug-emission bug
+   * (Nova reuses the module slug as `<learn:deliver id>` for every form
+   * in a multi-form module — workaround on the ACE side is one form per
+   * module).
+   */
+  projected_connect_state?: ConnectSyncProjection;
+}
+
+/** A single record Connect's sync will create. */
+export interface ProjectedRecord {
+  /** `id` attribute on the `<learn:*>` element — Connect's `slug`. */
+  slug: string;
+  /** `<learn:name>` text. First-seen value wins on slug collision. */
+  name?: string;
+  /** Form path (`modules-N/forms-M.xml`) where this record was first seen. */
+  first_seen_in: string;
+  /** `<learn:description>` text (modules + tasks only). */
+  description?: string;
+  /** `<learn:time_estimate>` value (modules only). */
+  time_estimate?: number;
+}
+
+/** A slug group where ≥ 2 forms emit the same `id` for a given block type. */
+export interface ProjectedCollision {
+  slug: string;
+  kept: { name?: string; form: string };
+  dropped: { name?: string; form: string }[];
+  /** All forms (kept + dropped), in extraction order. */
+  forms: string[];
+}
+
+export interface ConnectSyncProjection {
+  /** What Connect WILL create — one record per distinct slug per type. */
+  deliver_units: ProjectedRecord[];
+  learn_modules: ProjectedRecord[];
+  task_units: ProjectedRecord[];
+  assessments: ProjectedRecord[];
+  /** Slug-collision groups per block type. Empty arrays when clean. */
+  collisions: {
+    deliver_units: ProjectedCollision[];
+    learn_modules: ProjectedCollision[];
+    task_units: ProjectedCollision[];
+    assessments: ProjectedCollision[];
+  };
+  /** Sum of all collision-group counts across types. 0 = clean projection. */
+  collision_count: number;
 }
 
 export interface PatchXformArgs {
@@ -366,11 +430,19 @@ export class CommCareBackend {
       // see commcare-setup-summary for the leep-paint-collection 2026-05-01
       // failure mode and the manual-decode triangulation.
       const connect_markers = computeConnectMarkers(buf);
+      // `projected_connect_state` is the deterministic projection of
+      // what Connect's HQ→Connect sync will create from this CCZ.
+      // `connect_markers` is the legacy count-only output retained for
+      // one release; PR-2 gates `app-release` Step 6 + `pdd-to-deliver-app`
+      // Step 4a on `projected_connect_state.collision_count === 0`. See
+      // `DownloadCczResult` for full mechanism.
+      const projected_connect_state = simulateConnectSync(buf);
       return {
         status,
         size_bytes: size,
         ccz_base64: buf.toString('base64'),
         connect_markers,
+        projected_connect_state,
       };
     });
   }
@@ -674,6 +746,221 @@ export function computeConnectMarkers(cczBuf: Buffer): {
     task: count(/<(?:learn:)?task\b[^>]*xmlns="http:\/\/commcareconnect\.com[^"]*"|<learn:task\b/g),
     assessment: count(/<(?:learn:)?assessment\b[^>]*xmlns="http:\/\/commcareconnect\.com[^"]*"|<learn:assessment\b/g),
   };
+}
+
+/**
+ * Project the exact set of LearnModule/DeliverUnit/TaskUnit/Assessment
+ * records Connect's `sync_learn_modules_and_deliver_units` will create
+ * after this CCZ is released, plus the slug-collision groups Connect
+ * will silently dedup.
+ *
+ * Direct port of `commcare-connect`'s logic:
+ *   - `commcare_connect/opportunity/app_xml.py:extract_*` walks every
+ *     form XML and yields one record per `<learn:deliver>` /
+ *     `<learn:module>` / `<learn:task>` / `<learn:assessment>` block.
+ *   - `commcare_connect/opportunity/tasks.py:sync_learn_modules_and_deliver_units`
+ *     calls `DeliverUnit.objects.get_or_create(app=app, slug=block.id, ...)`
+ *     and `LearnModule.objects.update_or_create(app=app, slug=block.id, ...)`.
+ *
+ * Implication: the `(app, slug)` pair is the unique key. Two forms
+ * emitting the same `id` collapse into ONE record on Connect's side,
+ * with the first-seen `name` winning. For DeliverUnits this is a
+ * billing-correctness bug — every collapsed-but-non-first form's
+ * submissions go unpaid because there's no payment_unit pointing at it.
+ *
+ * Form-XML failures (corrupt entries, unsupported compression methods)
+ * are skipped silently — same shape as `computeConnectMarkers`. A
+ * partial projection plus structured collision detail is more useful
+ * than a hard fail.
+ *
+ * Exported for unit tests + future skill-side validation.
+ */
+export function simulateConnectSync(cczBuf: Buffer): ConnectSyncProjection {
+  // Per block type: ordered map slug -> first-seen record (mirrors
+  // get_or_create semantics — the first form to claim a slug wins).
+  const records = {
+    deliver: new Map<string, ProjectedRecord>(),
+    module: new Map<string, ProjectedRecord>(),
+    task: new Map<string, ProjectedRecord>(),
+    assessment: new Map<string, ProjectedRecord>(),
+  };
+  // Per block type: every hit, in extraction order, for collision detection.
+  const hits = {
+    deliver: [] as { slug: string; name?: string; form: string }[],
+    module: [] as { slug: string; name?: string; form: string }[],
+    task: [] as { slug: string; name?: string; form: string }[],
+    assessment: [] as { slug: string; name?: string; form: string }[],
+  };
+
+  let entries: Record<string, Uint8Array> = {};
+  try {
+    entries = unzipSync(new Uint8Array(cczBuf), {
+      filter: (file) => /^modules-\d+\/forms-\d+\.xml$/.test(file.name),
+    });
+  } catch {
+    // Same fallback as computeConnectMarkers — return empty projection.
+    return emptyProjection();
+  }
+
+  // Walk forms in lexicographic order so first-seen is deterministic
+  // across runs (mirrors what Connect's sync sees from CCHQ's CCZ stream).
+  const formPaths = Object.keys(entries).sort();
+
+  for (const path of formPaths) {
+    let xml: string;
+    try {
+      xml = strFromU8(entries[path]);
+    } catch {
+      continue;
+    }
+    extractBlocks(xml, path, records, hits);
+  }
+
+  const collisions = {
+    deliver_units: collisionsFor(hits.deliver),
+    learn_modules: collisionsFor(hits.module),
+    task_units: collisionsFor(hits.task),
+    assessments: collisionsFor(hits.assessment),
+  };
+  const collision_count =
+    collisions.deliver_units.length +
+    collisions.learn_modules.length +
+    collisions.task_units.length +
+    collisions.assessments.length;
+
+  return {
+    deliver_units: Array.from(records.deliver.values()),
+    learn_modules: Array.from(records.module.values()),
+    task_units: Array.from(records.task.values()),
+    assessments: Array.from(records.assessment.values()),
+    collisions,
+    collision_count,
+  };
+}
+
+function emptyProjection(): ConnectSyncProjection {
+  return {
+    deliver_units: [],
+    learn_modules: [],
+    task_units: [],
+    assessments: [],
+    collisions: {
+      deliver_units: [],
+      learn_modules: [],
+      task_units: [],
+      assessments: [],
+    },
+    collision_count: 0,
+  };
+}
+
+/**
+ * Match every `<learn:foo>` or default-namespace `<foo xmlns="...connect...">`
+ * element of the four block types. Captures the `id` attribute and the
+ * inner content (so we can pull `<learn:name>`, `<learn:description>`,
+ * `<learn:time_estimate>` text).
+ *
+ * Two regex shapes per type — same as `computeConnectMarkers` — to handle
+ * Nova's autobuild output (default-namespace) and the legacy `learn:`-
+ * prefixed shape simultaneously.
+ */
+const BLOCK_PATTERNS: Record<keyof typeof TYPE_KEYS, RegExp> = {
+  deliver: makePattern('deliver'),
+  module: makePattern('module'),
+  task: makePattern('task'),
+  assessment: makePattern('assessment'),
+};
+// Type alias keys; declared after the regex map for readability.
+const TYPE_KEYS = { deliver: 1, module: 1, task: 1, assessment: 1 } as const;
+
+function makePattern(name: string): RegExp {
+  // Matches either `<learn:NAME ... id="X" ...>...</learn:NAME>` OR
+  // `<NAME xmlns="...connect..." ... id="X" ...>...</NAME>`. The `[^>]*?`
+  // sequences are deliberately non-greedy so attribute order doesn't
+  // matter (id can come before or after xmlns).
+  return new RegExp(
+    `<(?:learn:)?${name}\\b[^>]*\\bid="([^"]+)"[^>]*xmlns="http:\\/\\/commcareconnect\\.com[^"]*"[^>]*>([\\s\\S]*?)<\\/(?:learn:)?${name}>` +
+      `|<learn:${name}\\b[^>]*\\bid="([^"]+)"[^>]*>([\\s\\S]*?)<\\/learn:${name}>` +
+      `|<(?:learn:)?${name}\\b[^>]*xmlns="http:\\/\\/commcareconnect\\.com[^"]*"[^>]*\\bid="([^"]+)"[^>]*>([\\s\\S]*?)<\\/(?:learn:)?${name}>`,
+    'g',
+  );
+}
+
+function extractInner(inner: string, tag: string): string | undefined {
+  const m = inner.match(
+    new RegExp(`<(?:learn:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:learn:)?${tag}>`),
+  );
+  return m ? m[1].trim() : undefined;
+}
+
+function extractBlocks(
+  xml: string,
+  formPath: string,
+  records: {
+    deliver: Map<string, ProjectedRecord>;
+    module: Map<string, ProjectedRecord>;
+    task: Map<string, ProjectedRecord>;
+    assessment: Map<string, ProjectedRecord>;
+  },
+  hits: {
+    deliver: { slug: string; name?: string; form: string }[];
+    module: { slug: string; name?: string; form: string }[];
+    task: { slug: string; name?: string; form: string }[];
+    assessment: { slug: string; name?: string; form: string }[];
+  },
+): void {
+  for (const type of Object.keys(TYPE_KEYS) as (keyof typeof TYPE_KEYS)[]) {
+    const re = new RegExp(BLOCK_PATTERNS[type].source, 'g');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(xml)) !== null) {
+      // The pattern has 3 alternative groups, each yielding (id, inner).
+      // Whichever alternative matched, exactly one (id, inner) pair is set.
+      const slug = m[1] ?? m[3] ?? m[5];
+      const inner = m[2] ?? m[4] ?? m[6] ?? '';
+      if (!slug) continue;
+      const name = extractInner(inner, 'name');
+      const description = extractInner(inner, 'description');
+      const timeStr = extractInner(inner, 'time_estimate');
+      const time_estimate = timeStr !== undefined && timeStr !== '' ? Number(timeStr) : undefined;
+
+      hits[type].push({ slug, name, form: formPath });
+      if (!records[type].has(slug)) {
+        // First-seen wins (matches get_or_create / update_or_create semantics).
+        const rec: ProjectedRecord = { slug, first_seen_in: formPath };
+        if (name !== undefined) rec.name = name;
+        if (type === 'module' || type === 'task') {
+          if (description !== undefined) rec.description = description;
+        }
+        if (type === 'module' && time_estimate !== undefined && !Number.isNaN(time_estimate)) {
+          rec.time_estimate = time_estimate;
+        }
+        records[type].set(slug, rec);
+      }
+    }
+  }
+}
+
+function collisionsFor(
+  hits: { slug: string; name?: string; form: string }[],
+): ProjectedCollision[] {
+  const bySlug = new Map<string, { slug: string; name?: string; form: string }[]>();
+  for (const h of hits) {
+    const arr = bySlug.get(h.slug) ?? [];
+    arr.push(h);
+    bySlug.set(h.slug, arr);
+  }
+  const out: ProjectedCollision[] = [];
+  for (const [slug, hs] of bySlug) {
+    if (hs.length < 2) continue;
+    const [kept, ...dropped] = hs;
+    out.push({
+      slug,
+      kept: { name: kept.name, form: kept.form },
+      dropped: dropped.map((h) => ({ name: h.name, form: h.form })),
+      forms: hs.map((h) => h.form),
+    });
+  }
+  return out;
 }
 
 /**
