@@ -37,149 +37,68 @@ Execute these steps in order for the given opportunity:
 
 ### Step 0: Nova preconditions (HARD GATE — run before anything else)
 
-Before dispatching any architect, verify Nova is authenticated **at the
-top-level session** and bound to the expected HQ project space. Skipping
-this step is the single biggest documented time-sink in Phase 2 — see the
-turmeric-20260429-2330 e2e: the architect produced apps under its own
-auth context that were invisible to the user's Nova account, every
-`upload_to_hq` failed with "App not found", and the apps had to be
-rebuilt from scratch (~30 min wasted, plus a re-run of `validate_app`).
+Before dispatching any architect, verify Nova is bound to the expected
+HQ project space. Skipping this step is the single biggest documented
+time-sink in Phase 2 — see the turmeric-20260429-2330 e2e: the
+architect produced apps under its own auth context that were invisible
+to the user's Nova account, every `upload_to_hq` failed with "App not
+found", and the apps had to be rebuilt from scratch (~30 min wasted,
+plus a re-run of `validate_app`).
 
 The architect-vs-user auth split is silent — no symptom appears until
-upload_to_hq, by which point the architect has already burned its budget.
-Catch it here.
+upload_to_hq, by which point the architect has already burned its
+budget. Catch it here.
 
-#### Step 0a: Stale needs-auth-cache preflight (before probing Nova)
+#### Step 0a: Verify Nova auth liveness
 
-Claude Code maintains a per-MCP-server "needs auth" cache at
-`~/.claude/mcp-needs-auth-cache.json`. When an entry exists for
-`plugin:nova:nova`, the MCP host **silently skips reconnecting** to Nova
-on session start — the session log shows
-`"Skipping connection (cached needs-auth)"` lines and refresh tokens are
-never tried. The entry is meant to short-circuit retries within a session
-but persists across sessions and routinely outlives the auth condition
-that caused it. Prune it before probing:
+Run `/ace:doctor` and confirm the `nova_auth` line passes:
 
-```bash
-node -e '
-  const fs = require("fs"), path = require("path"), os = require("os");
-  const f = path.join(os.homedir(), ".claude", "mcp-needs-auth-cache.json");
-  if (!fs.existsSync(f)) { console.log("no needs-auth cache"); process.exit(0); }
-  const c = JSON.parse(fs.readFileSync(f, "utf8"));
-  const e = c["plugin:nova:nova"];
-  if (!e) { console.log("no plugin:nova:nova entry"); process.exit(0); }
-  const ageMs = Date.now() - e.timestamp;
-  if (ageMs > 60 * 60 * 1000) {  // 1h
-    delete c["plugin:nova:nova"];
-    fs.writeFileSync(f, JSON.stringify(c));
-    console.log(`pruned stale needs-auth entry (age ${Math.round(ageMs/60000)} min)`);
-  } else {
-    console.log(`needs-auth entry is fresh (age ${Math.round(ageMs/60000)} min) — leaving`);
-  }
-'
-```
+    PASS nova_auth: ace-nova authed (POST initialize → HTTP 200)
 
-If a stale entry was pruned, **the MCP host needs a chance to retry the
-connection.** A no-op MCP call (e.g., `mcp__plugin_nova_nova__list_apps`)
-triggers a reconnect attempt against the saved refresh token; if the
-refresh succeeds, Nova is authed without OAuth involvement. If the cache
-entry was already fresh, skip ahead to Step 0b — the cache is reflecting
-real state and pruning won't help.
+If it fails:
 
-**Do NOT call `mcp__plugin_nova_nova__authenticate` as part of this
-preflight.** `authenticate` clears any stored tokens before starting a
-new flow; calling it on a recoverable cache-staleness condition destroys
-the very refresh token that would have let the MCP host self-recover.
-`authenticate` is the LAST resort in 0c, not the first probe.
+- `nova_env: NOVA_API_KEY missing or unresolved` → operator hasn't
+  minted a key yet. Mint at `https://commcare.app/settings` as the ACE
+  Gmail identity, save to 1Password item `ACE - Nova` / field
+  `api_key`, then run `/ace:setup --force-env`.
+- `nova_auth: HTTP 401` → key invalid or revoked. Rotate at
+  `commcare.app/settings`, update the 1Password item in place, then
+  `/ace:setup --force-env`.
+- `nova_auth` not present → `bin/ace-setup`'s user-scope MCP override
+  hasn't been registered. Re-run `/ace:setup --force-env`.
 
-#### Step 0b: Probe Nova
+Halt Phase 2 until `nova_auth` is green. Authentication uses the
+long-lived API-key path (voidcraft-labs/nova-plugin#9) — there is no
+OAuth refresh-token rotation, no per-session sign-in, no needs-auth
+cache to manage, and Claude Code's `~/.claude/.credentials.json` does
+not hold Nova credentials under this path.
 
-Call `mcp__plugin_nova_nova__get_hq_connection` (no args). Branch on the
-result:
+#### Step 0b: Probe HQ binding
 
-- `{ configured: true, domain.name === <ACE_HQ_DOMAIN> }` → **proceed to Step 1.**
-- `{ configured: true, domain.name !== <ACE_HQ_DOMAIN> }` → halt; Nova is
-  bound to the wrong project space. Tell the operator to update Nova's
-  settings page (`https://commcare.app/settings`) so the active HQ API
-  key targets `<ACE_HQ_DOMAIN>`, then re-run.
-- `{ configured: false }` OR the call surfaces an authorization URL OR
-  the MCP server returns a 401-ish "not authenticated" error → fall
-  through to Step 0c (auth path).
+Call Nova's `get_hq_connection` (no args). Branch on the result:
 
-#### Step 0c: Auth path — invoke `/ace:nova-login`
-
-Reaching here means: the cache prune in 0a did not unblock the
-connection, and Nova still reports unauthenticated in 0b. Refresh tokens
-are either missing or rejected.
-
-**Invoke `/ace:nova-login`.** It is the canonical recovery skill for
-this state. It:
-
-1. Pre-checks `~/.claude/.credentials.json` for the Nova OAuth entry's
-   `expiresAt` and `refreshToken`.
-2. Tries a refresh-token POST against `commcare.app`'s OAuth token
-   endpoint first — most "needs-auth" states are just an expired
-   access token the MCP host should have refreshed but didn't. If the
-   refresh succeeds, no UI involvement; the access token is rewritten
-   and the operator only needs `/reload-plugins`.
-3. Falls back to a headed Playwright flow if the refresh fails.
-   `authenticate` is called inside the skill (NOT here in
-   commcare-setup) so its 5-minute localhost-listener timeout starts
-   when the operator is actually about to interact.
-4. Verifies post-flow that tokens were persisted and writes a backup
-   to `~/.ace/nova-credentials-backup.json` for future emergency
-   restore.
-
-**After `/ace:nova-login` returns:**
-
-- Tell the operator to run `/reload-plugins` so the MCP host picks up
-  the fresh tokens.
-- Re-probe `mcp__plugin_nova_nova__get_hq_connection` to confirm
-  `configured: true` against `<ACE_HQ_DOMAIN>`.
-- Only then dispatch the architect (Step 1).
-
-**Why we don't drive Google login programmatically.** The OAuth landing
-page at `commcare.app/api/auth/oauth2/authorize` has nothing but a
-"Sign in with Google" button — no username/password form (verified
-via `curl -L` 2026-05-05). `ACE_HQ_USERNAME`/`ACE_HQ_PASSWORD` are
-CommCareHQ creds (different domain) and don't apply. Driving Google
-sign-in programmatically would require `ACE_GMAIL_PASSWORD` in `.env`
-PLUS reliable handling of bot-detection, step-up auth, OTP prompts —
-not realistic for a per-machine credential storage. The headed
-Playwright path is the right answer: one interactive sign-in per
-refresh-token lifetime (~30 days), full automation in between.
-
-**Legacy manual path (fallback if `/ace:nova-login` itself breaks).**
-Run `mcp__plugin_nova_nova__authenticate` directly, present the URL to
-the operator, and either wait for the success-page reply or use
-`mcp__plugin_nova_nova__complete_authentication` with the
-`localhost:<port>/callback?code=…&state=…` URL from the address bar.
-This is what `/ace:nova-login` automates; only do it by hand if the
-skill itself is broken.
+- `{ configured: true, domain.name === <ACE_HQ_DOMAIN> }` → **proceed
+  to Step 1.**
+- `{ configured: true, domain.name !== <ACE_HQ_DOMAIN> }` → halt; Nova
+  is bound to the wrong project space. Tell the operator to visit
+  `https://commcare.app/settings` and update the active HQ API key so
+  it targets `<ACE_HQ_DOMAIN>`, then re-run.
+- `{ configured: false }` → halt; Nova has no HQ key bound. The
+  operator needs to paste an HQ API key (generated under the ACE Gmail
+  identity at `<ACE_HQ_BASE_URL>/account/api_keys/`) into Nova's
+  settings page once. Note: this is independent from `NOVA_API_KEY` —
+  that one authenticates ACE → Nova; this one binds Nova → CommCareHQ.
 
 Do NOT dispatch the architect until `get_hq_connection` returns
 `configured: true` against `<ACE_HQ_DOMAIN>`.
 
-#### Why this layering
-
-The 0.13.0 turmeric-20260504-2304 run halted at 0c because 0a/0b didn't
-exist. The session log showed `"Skipping connection (cached needs-auth)"`
-three times before the orchestrator ever invoked `authenticate` — a
-plain cache prune would have likely recovered the session, since
-refresh tokens were intact at that moment. Calling `authenticate`
-*cleared* those tokens (`"Cleared stored tokens"` in the log) and forced
-a full interactive OAuth round-trip. The 5-minute window then expired
-because the operator was on a different terminal. Net cost: one wasted
-authenticate call plus a forced halt that the cache prune would have
-avoided.
-
 #### Subagent inheritance
 
-Apply the same gate at the start of any later subagent dispatch in this
-phase that calls Nova MCPs (e.g. coverage retries) — but the parent's
-auth state is what matters. Subagents inherit Nova's session because
-Nova runs as a single MCP server process per session; once the parent
-is authed, every subagent dispatch sees the same `get_hq_connection`
+Apply the same gate at the start of any later subagent dispatch in
+this phase that calls Nova tools (e.g. coverage retries) — but the
+parent's auth state is what matters. Subagents inherit Nova's MCP
+connection because the user-scope override registers it once for the
+session; every subagent dispatch sees the same `get_hq_connection`
 result.
 
 ### Step 1: PDD to Apps (sequential)
@@ -216,7 +135,7 @@ After **each** Nova `Agent` dispatch returns, before treating its
 output as authoritative:
 
 1. Inspect the Agent's return string for a `nova_app_id` (or call
-   `mcp__plugin_nova_nova__list_apps` and look for an app whose
+   `list_apps` and look for an app whose
    `created` is within the last few minutes and whose name matches
    the spec just submitted).
 2. If no new app is present, the dispatch halted at turn 0. **Re-dispatch
