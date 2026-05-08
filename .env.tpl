@@ -90,6 +90,28 @@ CONNECT_BASE_URL=https://connect.dimagi.com
 ACE_HQ_USERNAME=op://AI-Agents/ACE - CommCareHQ/username
 ACE_HQ_PASSWORD=op://AI-Agents/ACE - CommCareHQ/password
 
+# ── Nova (CommCare app builder MCP) ──────────────────────────────────
+#
+# Nova's MCP server lives at https://mcp.commcare.app/mcp. The Nova
+# Claude Code plugin defaults to OAuth (Google SSO) on first use, but
+# concurrent ACE worktrees on one service identity trip an upstream
+# refresh-token cascade in @better-auth/oauth-provider that wipes
+# tokens for the (userId, clientId) pair and forces interactive sign-in
+# every ~30 minutes. See voidcraft-labs/nova-plugin#9.
+#
+# Resolution: API-key auth at the same URL. ACE registers a user-scope
+# MCP override carrying this bearer token (Claude Code's URL-signature
+# dedup suppresses the plugin's OAuth entry when both are present).
+#
+# Mint a key at https://commcare.app/settings → Sign in as the ACE
+# Gmail identity → API Keys → New (Read+Write floor; HQ scopes are
+# required for /nova:upload_to_hq). Save the `sk-nova-v1-…` value to
+# the 1Password item "ACE - Nova" / field `api_key`.
+#
+# Re-running /ace:setup after rotation re-registers the user-scope
+# override with the new key.
+NOVA_API_KEY=op://AI-Agents/ACE - Nova/api_key
+
 # ── Connect Labs (solicitations / reviews / awards) ─────────────────
 #
 # Bearer PAT for the labs MCP at labs.connect.dimagi.com/mcp/. ACE's
