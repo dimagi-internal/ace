@@ -514,7 +514,7 @@ high-traffic atom list:
   `ocs_set_chatbot_system_prompt`, `ocs_set_chatbot_pipeline`,
   `ocs_attach_knowledge`, `ocs_publish_chatbot_version`,
   `ocs_get_chatbot_embed_info`, `ocs_send_test_message`
-- Nova: `mcp__plugin_nova_nova__get_app`, `get_form`, `update_form`,
+- Nova: `get_app`, `get_form`, `update_form`,
   `validate_app`, `list_apps`
 
 When you start a phase, issue ONE `ToolSearch` with

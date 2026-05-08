@@ -76,9 +76,9 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     the agent finished without enforcing it. After autobuild returns,
     **the in-context LLM running this skill** must:
 
-    1. Call `mcp__plugin_nova_nova__get_app({app_id})` and enumerate
+    1. Call `get_app({app_id})` and enumerate
        every form across every module.
-    2. For each form, call `mcp__plugin_nova_nova__get_form` and count
+    2. For each form, call `get_form` and count
        the persisted fields.
     3. Cross-reference each form's count against the PDD's expected
        field list (from the module/form descriptions).

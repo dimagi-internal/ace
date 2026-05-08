@@ -80,7 +80,7 @@ prevent infinite Nova loops.
 
 ### Step 1: Read the blueprint
 
-Call `mcp__plugin_nova_nova__get_app({app_id})`. Extract:
+Call `get_app({app_id})`. Extract:
 - `connect_type` ("learn", "deliver", or "none" — abort with a clear
   error if "none" but the PDD/skill caller expected a Connect app)
 - Module list with form indices
@@ -117,7 +117,7 @@ ambiguous:
 ### Step 3: Per-form verification
 
 For each form:
-- Call `mcp__plugin_nova_nova__get_form({app_id, moduleIndex, formIndex})`
+- Call `get_form({app_id, moduleIndex, formIndex})`
 - Compare actual `form.connect` to expected
 - Classify:
   - `match` — actual matches expected
@@ -129,7 +129,7 @@ For each form:
 ### Step 4: Auto-fix (parallel dispatch)
 
 For each `missing` / `partial` / `wrong` form, call
-`mcp__plugin_nova_nova__update_form` with the expected `connect`
+`update_form` with the expected `connect`
 object. After EVERY mutation, re-fetch via `nova_get_form` to confirm
 the change took effect (catches the "validator silently strips
 fields" failure mode — see § Known Nova bugs below).
@@ -145,7 +145,7 @@ formIndex pair); Nova does not require ordering.
 
 ### Step 5: Validate the app
 
-Call `mcp__plugin_nova_nova__validate_app({app_id})`. This is Nova's
+Call `validate_app({app_id})`. This is Nova's
 own platform-rule validator — it catches CommCare-side issues like
 broken XPath, schema mismatches, missing required references.
 Surface any errors directly.
@@ -271,7 +271,7 @@ verify+fix discipline is reliable across concerns.
 ## MCP tools used
 
 - Google Drive: `drive_read_file`, `drive_create_file`
-- Nova: `mcp__plugin_nova_nova__get_app`, `get_form`, `update_form`,
+- Nova: `get_app`, `get_form`, `update_form`,
   `validate_app`
 
 ## Change log
