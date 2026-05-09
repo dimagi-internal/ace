@@ -87,7 +87,10 @@ describe('verdict schema', () => {
     expect(r.ok, JSON.stringify(r.errors)).toBe(true);
   });
 
-  it('exports VerdictSchema as a Zod schema', () => {
+  // audit: tests that the named export exists and parses one valid input;
+  // import statement already validates the export, and 'accepts a fully-populated
+  // valid verdict' covers the parse case. weak-assertion / redundant-with-sibling.
+  it.skip('exports VerdictSchema as a Zod schema', () => {
     expect(VerdictSchema.safeParse(validVerdict).success).toBe(true);
   });
 
