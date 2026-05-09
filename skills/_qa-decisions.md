@@ -67,22 +67,22 @@ The shape distinction:
 | `pdd-to-deliver-app` | **inline QA** | Inline checks in `skills/pdd-to-deliver-app/SKILL.md § Process steps 4a + 4b`. 4a: same field-count verify-and-retry as Learn. 4b: structural pre-flight asserting `paid_module_count === intended_paid_form_count` (every paid form lives in its own module — works around Nova's per-module slug reuse that would silently collapse multi-form modules into one Connect deliver_unit). Bounded retry via `/nova:edit`, max 3 iterations. Connect markers delegated to `app-connect-coverage`. |
 | `app-deploy` | **inline QA** | Inline checks in `skills/app-deploy/SKILL.md`. § Step 2 — domain match (Nova's bound HQ project space === `ACE_HQ_DOMAIN`). § Step 2.5 — XML-escape lint walking every form, catches `<`/`>`/`&` in field labels that Nova's `validate_app` says ok but CCHQ build rejects. § Steps 3–4 — build-status check on each upload. Class-level preventer per `docs/issues/nova-validate-app-misses-xml-escapes.md`. |
 | `app-release` | **inline QA** | Inline checks in `skills/app-release/SKILL.md`. § Step 3 — Connect-coverage pre-flight gate consuming `app-connect-coverage` verdict. § Step 5 — released-state verification via CCHQ read-only API. § Step 6 — CCZ verification: `commcare_download_ccz` projection MUST have `collision_count: 0` (no slug collisions Connect would silently dedup) AND per-type record counts > 0 (Connect markers present in CCZ). On any fail, halt with `[BLOCKER]` naming each colliding slug + kept/dropped forms. Replaces what would have been most of `app-release-qa`. |
-| `app-multimedia-coverage` | not yet migrated | Manual sibling of `commcare-form-patch`; Phase 2 reach when its inline shape is reviewed. |
-| `commcare-form-patch` | not yet migrated | Manual fix-loop skill; likely `inline QA` candidate. Review when reached. |
+| `app-multimedia-coverage` | **inline QA** | Manual gate (not part of `/ace:run`). Tight Nova + CCHQ iteration: schema for media on field → asset generation → form-XML reference → CCZ bundling → release verification. Same surgical-patch shape as `commcare-form-patch`. Producer's loop is the right place. |
+| `commcare-form-patch` | **inline QA** | Workaround skill — patches CCHQ form XML directly when Nova's `compile_app` emits Connect-rejecting render shapes, then re-builds + re-releases. Tight CCHQ-HTTP iteration; producer verifies the re-released CCZ is Connect-compatible inline. (Skill is explicitly TEMPORARY — when Nova fixes its render shape upstream, this skill retires entirely.) |
 | `app-connect-coverage` | **inline QA** | This skill IS the verify-and-fix QA for Connect-marker coverage on Nova-built apps. Inline loop in `skills/app-connect-coverage/SKILL.md` checks every form for required `connect.deliver_unit`/`learn_module`/`assessment` block, dispatches `/nova:edit` to fix missing ones, bounded retry, writes `clean | blocked` verdict that `app-release` consumes. Effectively a dedicated QA skill for a sibling concern; the `-qa` naming would be redundant. |
 
 ### Phase 3 — connect-setup
 
 | Producer | QA status | QA skill / rationale |
 |---|---|---|
-| `connect-program-setup` | not yet migrated | Phase 5 standalone migration per spec — critical Connect setup chain. |
-| `connect-opp-setup` | not yet migrated | Phase 5 standalone migration per spec. |
+| `connect-program-setup` | **inline QA** | Tight Connect MCP iteration. Reuse-or-create flow via `connect_list_programs` then `connect_create_program`; producer verifies the program-id resolves before writing the artifact. External system is Connect REST API; iteration belongs in producer. |
+| `connect-opp-setup` | **inline QA** | Tight Connect MCP iteration. Creates opp shell via `connect_create_opportunity`, sets verification flags via `connect_set_verification_flags`, configures payment units via `connect_create_payment_units`, pre-invites ACE test user. Each step is round-trip-verified inline; failures cause structured halt. |
 
 ### Phase 4 — ocs-setup
 
 | Producer | QA status | QA skill / rationale |
 |---|---|---|
-| `ocs-agent-setup` | not yet migrated | Phase 5 standalone migration per spec — chatbot creation. |
+| `ocs-agent-setup` | **inline QA** | Tight OCS MCP iteration. Clones template (`ocs_clone_chatbot`), attaches RAG collection (`ocs_create_collection` + `ocs_upload_collection_files` + `ocs_wait_for_collection_indexing`), publishes (`ocs_publish_chatbot_version`), captures embed credentials. Each step verified inline. Quality of the deployed bot is graded separately by the runtime QA pair (`ocs-chatbot-qa` + `ocs-chatbot-eval`) — the configuration loop and the runtime QA are correctly split. |
 | `ocs-chatbot-qa` (runtime) | **has QA** | Reference example for runtime-exercise QA pattern. Pairs with `ocs-chatbot-eval`. The "producer" here is the deployed chatbot (runtime artifact), not a Drive document — `ocs-chatbot-qa` exercises it via probes and writes a transcript. See `_qa-template.md § When QA work requires runtime`. |
 
 ### Phase 5 — qa-and-training
@@ -116,29 +116,29 @@ The shape distinction:
 
 | Producer | QA status | QA skill / rationale |
 |---|---|---|
-| `solicitation-create` | not yet migrated | Phase 5 standalone migration per spec. |
-| `solicitation-monitor` | not yet migrated | Recurring; state-tracking QA only — no quality eval per spec. |
-| `solicitation-review` | not yet migrated | Phase 5 standalone — gates Phase 6→7 award decision; needs both QA + strong eval. |
+| `solicitation-create` | **inline QA** | Tight Connect-Labs MCP iteration. Builds payload from PDD, calls `create_solicitation`, captures `solicitation_id` + `public_url` to `opp.yaml.solicitation`. Producer's loop is the right place — extracting QA loses the Connect-Labs context. |
+| `solicitation-monitor` | **inline QA** | Recurring state-tracking skill. Modes (`--quick` / `--monitor` / `--close`) all iterate over Connect-Labs `list_responses` and write per-response markdown files. Per migration spec: "state-tracking QA only — no quality eval." Producer's recurring loop IS the QA. |
+| `solicitation-review` | not yet migrated | **Has-QA candidate, deferred — but distinct case.** Phase 7→8 gate; manual HITL skill that calls `award_response` (irreversible). Migration spec calls for "both QA + strong eval." Structural QA candidates: scoring rubric applied to all responses, recommendation has named awardee + reasoning, criteria-coverage checklist complete. Defer until: (a) we have a few human-reviewed recommendation runs to calibrate against (avoid premature schema), AND (b) the human-in-the-loop checkpoint catches something a QA could have caught. The HITL gate is currently the safety net; QA would shift some work earlier. |
 
 ### Phase 8 — execution-management
 
 | Producer | QA status | QA skill / rationale |
 |---|---|---|
-| `llo-onboarding` | not yet migrated | Phase 6 reach. |
-| `llo-launch` | not yet migrated | Phase 5 standalone — Phase 8 entry gate; QA needs extracting. |
-| `llo-invite` | not yet migrated | Phase 6 reach. |
-| `llo-uat` | not yet migrated | Phase 6 reach. |
-| `flw-data-review` | not yet migrated | Recurring — state-tracking QA only. |
-| `timeline-monitor` | not yet migrated | Recurring — state-tracking QA only. |
+| `llo-onboarding` | **inline QA** | First LLO contact, Phase 8 entry. Halts immediately if `opp.yaml.selected_llo.org_slug` is null (entry-guard inline). Tight Connect MCP + email-communicator iteration: `connect_send_llo_invite` then send onboarding email with widget link. Each step verified inline before write to comms-log. |
+| `llo-launch` | **inline QA** | Tight Connect MCP iteration. Reads UAT results (`llo-uat_results.md`) + deep-QA verdicts inline; activates opp via `connect_activate_opportunity`; notifies LLOs via email-communicator. Pre-flight halt if UAT verdicts missing or deep-QA stale. The "QA needs extracting" note in the migration spec was written before the inline-vs-separate heuristic was codified. |
+| `llo-invite` | **inline QA** | Email send loop over PDD's `preferred_llos`. Tight email-communicator iteration; per-email send-and-verify. No-op when PDD has no preferred_llos (graceful inline degradation). |
+| `llo-uat` | **inline QA** | Long-running coordination skill. Sends UAT instructions via email-communicator, polls for responses, compiles `llo-uat_results.md` consumed by `llo-launch`. Producer's coordination loop verifies each LLO's sign-off inline. The results format is parser-stable enough that `llo-launch` can read it directly without a separate QA layer. |
+| `flw-data-review` | **inline QA** | Recurring; analyzes FLW submissions via Connect data API. State-tracking inline (last-reviewed cursor + recommendations log). No structural artifact QA adds value; the recurring loop IS the QA. |
+| `timeline-monitor` | **inline QA** | Recurring; checks LLO milestones against PDD timeline. State-tracking inline (cursor on milestone). Same shape as `flw-data-review` — recurring producer loop is the QA. |
 
 ### Phase 9 — closeout
 
 | Producer | QA status | QA skill / rationale |
 |---|---|---|
-| `opp-closeout` | not yet migrated | Phase 6 reach. |
-| `llo-feedback` | not yet migrated | Phase 6 reach. |
-| `learnings-summary` | not yet migrated | Phase 6 reach. |
-| `cycle-grade` | not yet migrated | Phase 6 reach. |
+| `opp-closeout` | **inline QA** | Tight Connect MCP + Jira iteration. Pulls invoices via `connect_list_invoices` + `connect_get_invoice`, creates Jira payment ticket. Each step verified inline before writing closeout summary. |
+| `llo-feedback` | **inline QA** | Tight email-communicator + response-collection iteration. Producer surveys awarded LLO, polls for response, compiles into closeout artifact. Coordination loop is the QA. |
+| `learnings-summary` | **NO QA** | LLM-authored synthesis document. Reads all opp artifacts, drafts a markdown summary, optionally seeds a new PDD for the next cycle. Consumed by humans (closeout review) and optionally by the next cycle's `idea-to-pdd` (which itself is LLM-driven and reads as prose context). Fake-QA heuristic applies. |
+| `cycle-grade` | **NO QA** | Final cycle grade and recommendations document. Consumed by humans for the closeout review. The grade itself is the artifact's quality signal — extracting structural QA over the grade's format adds nothing. The companion `cycle-grade-eval` does the soft-score calibration on the grading consistency. |
 
 ### Utility / cross-cutting (no per-opp artifact)
 
@@ -164,3 +164,4 @@ The shape distinction:
 | 2026-05-09 | Added 4th status `inline QA` for producers whose structural checks are correctly placed in the producer's own loop (typically tight iteration with an external system — Nova MCP, CCHQ HTTP, Mobile, OCS configure). Phase 2 Nova builders (`pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-release`, `app-connect-coverage`) flipped from `not yet migrated` to `inline QA` with pointers to the SKILL.md sections doing the inline work — they were never going to need separate `-qa` skills. Heuristic added to `_qa-template.md § When QA belongs inline`. | ACE team |
 | 2026-05-09 | Phase 3 (qa-and-training) classified end-to-end. Five training-doc producers (`training-faq`, `training-llo-guide`, `training-flw-guide`, `training-onboarding-email`, `training-quick-reference`) flipped to `NO QA` per the fake-QA heuristic — consumed by humans + Phase 8 link-emailer, no machine consumer parses them, eval covers the quality concerns. Four producers (`app-screenshot-capture`, `app-test-cases`, `training-deck-outline`, `training-deck-build`) flipped to `inline QA` — tight iteration with external systems (AVD/Maestro, Nova MCP, the deck parser, Slides API). `connect-baseline-screenshots` flipped to `not applicable` (cross-opp utility). Net: third batch in a row that produced zero new `-qa` skills. The heuristics are doing their job. | ACE team |
 | 2026-05-09 | Phase 4 (synthetic-data-and-workflows) classified. Four producers flipped to `inline QA` (`synthetic-data-generate`, `synthetic-walkthrough-run`, `synthetic-workflow-seed`, `synthetic-workflow-polish` — all tight Connect-Labs MCP / canopy:walkthrough iteration). One `NO QA` (`synthetic-summary` — pure aggregator for human consumption). Two stayed `not yet migrated` as deferred has-QA candidates (`synthetic-narrative-plan`, `synthetic-walkthrough-spec`) — both produce YAMLs that Connect-Labs / canopy validate at the boundary; building local QA would require TS Zod schemas mirroring those validators. Defer until consumer-side rejections become a recurring signal. | ACE team |
+| 2026-05-09 | **Registry complete.** All remaining producers classified: Phase 2 leftovers (`app-multimedia-coverage`, `commcare-form-patch` → `inline QA`), Phase 3 connect-setup (`connect-program-setup`, `connect-opp-setup` → `inline QA`), Phase 4 ocs-setup (`ocs-agent-setup` → `inline QA`), Phase 7 solicitation (`solicitation-create`, `solicitation-monitor` → `inline QA`; `solicitation-review` deferred has-QA candidate — Phase 7→8 HITL gate is the current safety net), Phase 8 execution (`llo-onboarding`, `llo-launch`, `llo-invite`, `llo-uat`, `flw-data-review`, `timeline-monitor` → `inline QA`), Phase 9 closeout (`opp-closeout`, `llo-feedback` → `inline QA`; `learnings-summary`, `cycle-grade` → `NO QA` — LLM-authored synthesis docs for humans). Final tally across all 47 producers: **3 has QA, 24 inline QA, 12 NO QA, 4 not applicable, 4 not yet migrated (all explicit deferred has-QA candidates with stated revisit conditions).** No producer left ambiguously classified; missing-from-table is now a true contract violation. | ACE team |
