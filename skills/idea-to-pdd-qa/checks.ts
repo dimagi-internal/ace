@@ -29,6 +29,33 @@ const REQUIRED_SECTIONS = [
   'Timeline',
 ] as const;
 
+/**
+ * Per-section purpose strings, mirrored from `skills/idea-to-pdd/SKILL.md § Process step 4`.
+ *
+ * Used in the auto_fix_hint when a section is missing — so a producer
+ * regenerating the PDD knows what content the section should contain,
+ * not just what heading text to add. Without this, the static check
+ * could be satisfied by a stub paragraph under the right heading.
+ *
+ * Keep in sync with `skills/idea-to-pdd/SKILL.md`. Out-of-sync rows are
+ * a doc-drift class detectable by future audits — see
+ * `docs/learnings/2026-04-28-mcp-vs-skill-doc-drift.md` for the broader
+ * pattern.
+ */
+const SECTION_PURPOSES: Record<(typeof REQUIRED_SECTIONS)[number], string> = {
+  'Archetype': 'declared in frontmatter, repeated as the first heading; one of {atomic-visit, focus-group, multi-stage}',
+  'Problem Statement': 'what problem this opportunity solves',
+  'Intervention Design': 'how the intervention works end-to-end',
+  'Learn App Specification': 'what FLWs need to learn (data collection, facilitation, etc., depending on archetype)',
+  'Deliver App Specification': 'what FLWs deliver (forms, sessions, etc., depending on archetype)',
+  'Target Population': 'beneficiary criteria, geographic scope, expected reach',
+  'FLW Requirements': 'number of FLWs, skills needed, geographic distribution',
+  'LLO Preference': 'preferred or known LLOs to execute, from the LLO Directory',
+  'Success Metrics': 'how to measure if the intervention worked — populated table with Metric / Target / Method / Layer columns',
+  'Evidence Model': 'Layer A (delivery proof), Layer B (content proof), Layer C (cross-delivery quality) verification plan',
+  'Timeline': 'expected duration of the opportunity, key milestones',
+};
+
 const VALID_ARCHETYPES = ['atomic-visit', 'focus-group', 'multi-stage'] as const;
 
 function escapeRegExp(s: string): string {
@@ -38,13 +65,21 @@ function escapeRegExp(s: string): string {
 /**
  * Check 1: All 11 required PDD sections are present (as `## Section Name` headings).
  *
- * Tolerates `## Section`, `## **Section**`, `## Section Name (notes)`. Skips matching
- * inside frontmatter. Section name match is case-insensitive on the first letter to
- * tolerate "Llo Preference" / "LLO Preference" variation.
+ * Heading-match tolerance (intentional — real PDDs vary):
+ *   ✓ canonical:        `## Target Population`
+ *   ✓ case variants:    `## target population`, `## TARGET POPULATION`  (i flag)
+ *   ✓ bold-wrapped:     `## **Target Population**`                      (`(?:\\*\\*)?`)
+ *   ✓ trailing notes:   `## Target Population (TBD)`                    (`\\b` ends after the section name)
+ *   ✓ trailing context: `## Target Population — addressing comment [a]`
+ *   ✗ truncated:        `## Target Pop`                                 (no word boundary at the right place)
+ *   ✗ synonyms:         `## Target Audience`                            (different word entirely)
+ *
+ * Skips matching inside YAML frontmatter so "title:" lines etc. don't false-positive.
+ * Tolerance is documented in the auto_fix_hint so producers know what counts.
  */
 export function checkAllRequiredSectionsPresent(pdd: string): QACheckResult {
   const body = stripFrontmatter(pdd);
-  const missing: string[] = [];
+  const missing: (typeof REQUIRED_SECTIONS)[number][] = [];
   for (const section of REQUIRED_SECTIONS) {
     // Match `##\s+(optional **)<section>` at start of a line, case-insensitive.
     const re = new RegExp(`^##\\s+(?:\\*\\*)?${escapeRegExp(section)}\\b`, 'mi');
@@ -53,10 +88,20 @@ export function checkAllRequiredSectionsPresent(pdd: string): QACheckResult {
     }
   }
   if (missing.length === 0) return { pass: true };
+  const purposeLines = missing
+    .map((s) => `  • § ${s} — ${SECTION_PURPOSES[s]}`)
+    .join('\n');
   return {
     pass: false,
     detail: `missing required section(s): ${missing.map((s) => `§ ${s}`).join(', ')}`,
-    auto_fix_hint: `regenerate the PDD with explicit instructions to include each missing section: ${missing.join(', ')}. The full required list is in skills/idea-to-pdd/SKILL.md § Process step 4.`,
+    auto_fix_hint:
+      `regenerate the PDD with explicit instructions to include each missing section. ` +
+      `For each section, write substantive content matching its purpose — a stub paragraph ` +
+      `under the correct heading would satisfy this static check but fail the eval's quality grade. ` +
+      `Missing sections + their required content:\n${purposeLines}\n` +
+      `Heading match tolerates case variation, bold wrapping (\`## **X**\`), and trailing parentheticals (\`## X (notes)\`); ` +
+      `the section name itself must appear intact (no truncation, no synonyms). ` +
+      `The full required-section list is in skills/idea-to-pdd/SKILL.md § Process step 4.`,
   };
 }
 
