@@ -125,12 +125,10 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
     material for each `default` value; mark `status: open` for any
     default the AI flags for human attention while still proceeding.
 
-    The skill MUST emit every anchor row from
-    `## Decisions Log Convention § Anchor decisions` whenever the anchor
-    applies to the opp (handle inapplicable cases by emitting the row with
-    `status: applied` and a notes-line explanation). Beyond the anchor set,
-    the skill emits whatever additional rows meet the bar criterion. The
-    bar is the filter; the recommended-additional list is illustrative.
+    See `## Decisions Log Convention § Common load-bearing decisions for
+    Phase 1` for a working template of decisions that often qualify under
+    the bar. Use it to guide judgment, not as a checklist — emit what
+    meets the bar, skip what doesn't, add others when warranted.
 
 4. **Draft the PDD** with the **base sections** below, plus **archetype-specific additions** from `## Archetypes`. Use the values selected in step 3a's `decisions.yaml` as authoritative — every numeric or named-entity in the PDD body should match the corresponding row's `default`. If a re-run reads a `decisions.yaml` from a prior run with `status: overridden` rows (human edited via the renderer + sync skills landing in PRs #2–#4), use those overridden values instead.
 
@@ -258,33 +256,24 @@ Two filters, both must be true:
 Form-field-level choices, Connect program slugs, email copy, font sizes
 — below the bar.
 
-### Anchor decisions (rows the eval rubric depends on)
+### Common load-bearing decisions for Phase 1
 
-A small set of decisions are load-bearing for specific eval rubric dimensions
-— their absence means the rubric grades a missing input and the verdict is
-unreliable. The skill SHOULD emit these rows whenever they apply to the opp:
-
-| ID | Question | Eval rubric anchor |
-|---|---|---|
-| `archetype-selection` | Which delivery archetype best fits? | `archetype_coherence` |
-| `budget-plausibility` | Is the budget plausible for implied labor + AI infra? | `resource_realism` (PR #144) |
-| `named-downstream-consumer` | Pre-committed downstream consumer? | `demand_reality` (PR #144) |
-| `primary-metric-vs-goal` | Direct goal vs upstream proxy? | `mission_alignment` (PR #144) |
-| `ai-fallback-design` | True validation harness or parallel sampling? | `fallback_validates_primary` (PR #144) |
-
-If an anchor is genuinely irrelevant for the opp (rare — usually applies
-only when the question is structurally inapplicable), emit it with
-`status: applied` and a `notes` line explaining why the default is
-structural rather than a real choice. Do not silently omit.
-
-### Recommended additional rows (illustrative, non-binding)
-
-These rows often qualify under the bar criterion. They are examples of
-what the criterion typically catches, not requirements. Skip when not
-applicable; add others not listed when they meet the bar.
+These rows commonly qualify under the bar criterion for Phase 1 — a
+working template, not a required set. The skill applies the bar
+criterion and emits whatever rows meet it; this catalog is a teaching
+device that improves over time as we learn from runs. Five rows are
+marked `(eval input)` because `idea-to-pdd-eval`'s viability axis
+(PR #144) grades on those specific decisions — when they're present in
+the log, the rubric has structured input instead of grading on PDD
+prose.
 
 | ID | Question | Map to surface |
 |---|---|---|
+| `archetype-selection` | Which delivery archetype best fits? | `archetype_coherence` (eval input) |
+| `budget-plausibility` | Is the budget plausible for implied labor + AI infra? | `resource_realism` (eval input, PR #144) |
+| `named-downstream-consumer` | Pre-committed downstream consumer? | `demand_reality` (eval input, PR #144) |
+| `primary-metric-vs-goal` | Direct goal vs upstream proxy? | `mission_alignment` (eval input, PR #144) |
+| `ai-fallback-design` | True validation harness or parallel sampling? | `fallback_validates_primary` (eval input, PR #144) |
 | `flw-count` | How many FLWs? | PDD `FLW Requirements` numeric |
 | `payment-rate` | Per-visit payment rate to FLW? | PDD `FLW Requirements` numeric |
 | `pilot-sample-size` | Pilot sample size for AI calibration? | `verifiability` rubric |
@@ -295,9 +284,9 @@ applicable; add others not listed when they meet the bar.
 | `solicitation-deadline` | Solicitation deadline? | PDD `Solicitation` section |
 | `candidate-llo-roster` | Named candidates or public-only? | `LLO Preference` named entity |
 
-The bar criterion alone determines what rows belong in the log. The
-anchor list above is the only required surface; everything else is the
-LLM's judgment per the criterion.
+Skip a row when it's not applicable to the opp; add others not listed
+when they meet the bar. The bar criterion alone determines what rows
+belong in the log.
 
 ### Schema and write semantics
 
@@ -400,3 +389,4 @@ When `--dry-run` is active:
 | 2026-05-05 | Replace single-`idea.md` input contract with multi-doc evidence-pack model: read `inputs-manifest.yaml` (at the run-folder root) (orchestrator-emitted) and synthesize the PDD from every file under `inputs/`. Optional `idea.md` at the run root is now a `--idea FILE\|-` operator seed only. The PDD is the formal output of Phase 1, never an input. | ACE team (LEEP run; user observation that PDD is an output not an input) |
 | 2026-05-08 | Replace `## Open Questions Convention` with `## Decisions Log Convention`. Skill always emits `decisions.yaml` with the 14-row calibrated Phase 1 set covering archetype, FLW count, budget plausibility, payment rate, pilot size, AI threshold, AI fallback design, named consumer, primary-metric-vs-goal, language, evidence layers, solicitation defaults, candidate roster. Schema defined in `lib/decisions-schema.ts`; ground-truth fixture in `test/skills/idea-to-pdd/fixtures/turmeric-decisions.yaml`. Renderer + round-trip ship in PRs #2–#4. | ACE team |
 | 2026-05-08 | Retrofit: replace `### Required Phase 1 row set` (14 hardcoded rows) with `### Anchor decisions` (5 rows tied to specific eval rubric dimensions) + `### Recommended additional rows` (illustrative, non-binding). Bar criterion is the sole filter; anchors are the only required surface. Process step adds renderer invocation; gate brief links the gdoc rendering instead of the YAML. | ACE team (decisions-log PR #2) |
+| 2026-05-08 | Retire the "anchor" framing: collapse the two sub-sections into a single `### Common load-bearing decisions for Phase 1` template (14 rows, 5 of which feed `idea-to-pdd-eval`'s viability axis). Soften "MUST emit" wording in process step 3a — bar criterion is the sole filter; the catalog is a teaching template that improves over time. | ACE team (decisions-log PR #5) |
