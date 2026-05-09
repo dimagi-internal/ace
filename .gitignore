@@ -16,3 +16,8 @@ scripts/tmp/
 # Claude Code session-local settings (per-developer, not shared state)
 .claude/settings.local.json
 .gstack/
+
+# Per-run test-audit artifacts from /canopy:test-audit. These are large
+# (corpus.yaml is megabytes) and re-generatable; the audit-report.md /
+# architecture-review.md content lives in the PR body.
+.canopy/test-audits/
