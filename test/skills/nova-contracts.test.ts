@@ -4,12 +4,22 @@
  * The three skills that drive CommCare app generation + deploy
  * (`pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`) were rewritten
  * to invoke the Nova plugin's slash commands instead of a manual
- * Nova-UI / HQ-UI handoff. These tests pin the new contract so a
- * future edit can't silently regress to the workaround flow.
+ * Nova-UI / HQ-UI handoff.
  *
- * They also pin the `.env.tpl` and app-summary fixtures the new flow
- * depends on: `ACE_HQ_DOMAIN` for `app-deploy`'s pre-flight, and
- * `nova_app_id` frontmatter in every `app-summaries/*.md` fixture.
+ * Originally this file also contained 15 regex-on-prose tests against
+ * SKILL.md and .env.tpl files (e.g. `expect(body).toMatch(/\/nova:autobuild/)`).
+ * Those were dropped 2026-05-09 after a /canopy:test-audit pass:
+ *   - Brittle to meaning-preserving rewords (renaming "invokes" to "calls"
+ *     would break the test without changing skill behavior)
+ *   - Vacuous when over-specific (3 "does not retain Current Workaround"
+ *     post-migration scarecrows that pass forever once removed)
+ *   - Don't actually exercise the skill at runtime
+ * Skill-prose drift would surface in real usage instead. If a CI signal
+ * is wanted back, prefer end-to-end skill exercise over text-grep.
+ *
+ * What remains: tests against ARTIFACT_MANIFEST data structure, and
+ * fixture-frontmatter shape tests — both validate concrete contracts the
+ * runtime depends on, not editorial choices in skill prose.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -23,113 +33,6 @@ import {
 } from '../../lib/artifact-manifest.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-
-function readSkill(name: string): string {
-  return fs.readFileSync(path.join(REPO_ROOT, 'skills', name, 'SKILL.md'), 'utf-8');
-}
-
-function readEnvTemplate(): string {
-  return fs.readFileSync(path.join(REPO_ROOT, '.env.tpl'), 'utf-8');
-}
-
-describe('Nova-plugin migration: skill contracts', () => {
-  describe('pdd-to-learn-app', () => {
-    const body = readSkill('pdd-to-learn-app');
-
-    it('invokes /nova:autobuild', () => {
-      expect(body).toMatch(/\/nova:autobuild/);
-    });
-
-    it('does not retain the pre-Nova "Current Workaround" section', () => {
-      expect(body).not.toMatch(/##\s*Current Workaround/);
-    });
-
-    it('records nova_app_id and nova_app_url in the summary frontmatter contract', () => {
-      expect(body).toMatch(/nova_app_id:/);
-      expect(body).toMatch(/nova_app_url:/);
-    });
-
-    it('writes the app summary to GDrive', () => {
-      expect(body).toMatch(/app-summaries\/learn-app-summary\.md/);
-    });
-  });
-
-  describe('pdd-to-deliver-app', () => {
-    const body = readSkill('pdd-to-deliver-app');
-
-    it('invokes /nova:autobuild', () => {
-      expect(body).toMatch(/\/nova:autobuild/);
-    });
-
-    it('does not retain the pre-Nova "Current Workaround" section', () => {
-      expect(body).not.toMatch(/##\s*Current Workaround/);
-    });
-
-    it('records nova_app_id, nova_app_url, and delivery_unit in the summary frontmatter', () => {
-      expect(body).toMatch(/nova_app_id:/);
-      expect(body).toMatch(/nova_app_url:/);
-      expect(body).toMatch(/delivery_unit:/);
-    });
-
-    it('writes the app summary to GDrive', () => {
-      expect(body).toMatch(/app-summaries\/deliver-app-summary\.md/);
-    });
-  });
-
-  describe('app-deploy', () => {
-    const body = readSkill('app-deploy');
-
-    it('invokes /nova:upload_to_hq', () => {
-      expect(body).toMatch(/\/nova:upload_to_hq/);
-    });
-
-    it('does not retain the pre-Nova "Current Workaround" section', () => {
-      expect(body).not.toMatch(/##\s*Current Workaround/);
-    });
-
-    it('reads nova_app_id from app summaries (not from apps/*.json)', () => {
-      expect(body).toMatch(/nova_app_id/);
-      // No instruction to read from the JSON snapshots — those are
-      // optional historical artifacts, not inputs to the upload call.
-      expect(body).not.toMatch(/Read app files .* apps\/learn-app\.json/);
-    });
-
-    it('pre-flights ACE_HQ_DOMAIN before calling Nova', () => {
-      expect(body).toMatch(/ACE_HQ_DOMAIN/);
-    });
-
-    it('gate brief surfaces a domain-mismatch BLOCKER', () => {
-      expect(body).toMatch(/BLOCKER.*domain/i);
-    });
-  });
-});
-
-describe('Nova-plugin migration: .env.tpl declares HQ pre-flight vars', () => {
-  const env = readEnvTemplate();
-
-  it('mentions ACE_HQ_DOMAIN (declared or documented; operator-set per deployment)', () => {
-    expect(env).toMatch(/ACE_HQ_DOMAIN/);
-  });
-
-  it('declares ACE_HQ_BASE_URL pointing at the HQ origin', () => {
-    expect(env).toMatch(/^ACE_HQ_BASE_URL=https:\/\/www\.commcarehq\.org\b/m);
-  });
-
-  it('does not commit a literal HQ project space (operator-specific value)', () => {
-    // The committed template must not pin a literal HQ project space — only
-    // the per-deployment `.env` (gitignored) should hold the resolved value.
-    // 0.10.31 routed ACE_HQ_DOMAIN through 1Password (op:// reference); the
-    // template still must not contain a literal domain name like
-    // `connect-ace-prod`. The op:// reference is acceptable; bare-string
-    // values (anything other than empty or starting with `op:`) are not.
-    const m = env.match(/^ACE_HQ_DOMAIN=(.*)$/m);
-    expect(m, 'ACE_HQ_DOMAIN line missing from .env.tpl').not.toBeNull();
-    const value = (m?.[1] ?? '').trim();
-    if (value !== '') {
-      expect(value, 'ACE_HQ_DOMAIN must be empty or an op:// 1Password reference, not a literal').toMatch(/^op:\/\//);
-    }
-  });
-});
 
 describe('Nova-plugin migration: artifact manifest reflects new contract', () => {
   it('snapshot JSON paths (now under 2-commcare/) are optional (Nova owns app storage)', () => {

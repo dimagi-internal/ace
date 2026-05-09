@@ -187,11 +187,4 @@ describe('CHECKS array', () => {
       'escalation_prompt_present',
     ]);
   });
-
-  // audit: Same shape as the idea-to-pdd-qa version. Snapshot of incidental state, not a contract.
-  test.skip('all checks are static type', () => {
-    for (const c of CHECKS) {
-      expect(c.type).toBe('static');
-    }
-  });
 });

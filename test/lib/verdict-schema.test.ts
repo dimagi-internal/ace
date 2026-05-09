@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateVerdict, VerdictSchema } from '../../lib/verdict-schema.js';
+import { validateVerdict } from '../../lib/verdict-schema.js';
 
 const validVerdict = {
   skill: 'ocs-chatbot-eval',
@@ -85,13 +85,6 @@ describe('verdict schema', () => {
     };
     const r = validateVerdict(withExtras);
     expect(r.ok, JSON.stringify(r.errors)).toBe(true);
-  });
-
-  // audit: tests that the named export exists and parses one valid input;
-  // import statement already validates the export, and 'accepts a fully-populated
-  // valid verdict' covers the parse case. weak-assertion / redundant-with-sibling.
-  it.skip('exports VerdictSchema as a Zod schema', () => {
-    expect(VerdictSchema.safeParse(validVerdict).success).toBe(true);
   });
 
   it('accepts v2 verdict tiers (incomplete, partial)', () => {

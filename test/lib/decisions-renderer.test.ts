@@ -23,13 +23,6 @@ const MINIMAL_LOG: DecisionsLog = {
 };
 
 describe("renderDecisionsLog", () => {
-  // audit: expect(arr.length).toBeGreaterThan(0). The very next test ('includes an insertText request for the title') makes a stronger structural claim
-  it.skip("returns a non-empty array of Docs API requests", () => {
-    const requests = renderDecisionsLog(MINIMAL_LOG);
-    expect(Array.isArray(requests)).toBe(true);
-    expect(requests.length).toBeGreaterThan(0);
-  });
-
   it("includes an insertText request for the title", () => {
     const requests = renderDecisionsLog(MINIMAL_LOG);
     const titleInsert = requests.find(

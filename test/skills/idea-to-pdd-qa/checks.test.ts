@@ -84,17 +84,6 @@ describe('checkAllRequiredSectionsPresent', () => {
     expect(r.auto_fix_hint).toBeTruthy();
   });
 
-  // audit: Same code path as 'fails when one section is missing'. Multi-missing is the same loop running twice. Keeper: 'fails when one section is miss
-  test.skip('fails when multiple sections missing', () => {
-    const pdd = SECTIONS_FULL
-      .replace('## Target Population\n\nx', '')
-      .replace('## FLW Requirements\n\nx', '');
-    const r = checkAllRequiredSectionsPresent(pdd);
-    expect(r.pass).toBe(false);
-    expect(r.detail).toContain('Target Population');
-    expect(r.detail).toContain('FLW Requirements');
-  });
-
   test('tolerates frontmatter without false-positives', () => {
     const pdd = `---\narchetype: atomic-visit\n---\n${SECTIONS_FULL}`;
     expect(checkAllRequiredSectionsPresent(pdd).pass).toBe(true);
@@ -248,22 +237,5 @@ describe('CHECKS array', () => {
       'evidence_model_layered',
       'reviewer_comment_table_if_referenced',
     ]);
-  });
-
-  // audit: TypeScript enforces these fields at compile time (via the QACheck interface). Test passes vacuously for a well-typed module; provides no run
-  test.skip('every check has type, description, and run', () => {
-    for (const c of CHECKS) {
-      expect(c.id).toBeTruthy();
-      expect(['static', 'llm']).toContain(c.type);
-      expect(c.description).toBeTruthy();
-      expect(typeof c.run).toBe('function');
-    }
-  });
-
-  // audit: Snapshot of the current implementation, not a contract. If a future LLM check is added, this test breaks but the system is still correct. Te
-  test.skip('every check is type: static (no LLM checks for idea-to-pdd-qa)', () => {
-    for (const c of CHECKS) {
-      expect(c.type).toBe('static');
-    }
   });
 });
