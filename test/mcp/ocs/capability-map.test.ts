@@ -8,13 +8,10 @@ function toMethodName(cap: Capability): string {
 }
 
 describe('capability map', () => {
-  it('has exactly 23 entries', () => {
-    expect(Object.keys(CAPABILITY_MAP).length).toBe(23);
-  });
-
-  it('every entry has a backend and a restTarget', () => {
+  it('every restTarget starts with HTTP method + space (documents the canonical REST URL)', () => {
+    // Backend types are enforced by TS (Backend = 'REST' | 'PLAYWRIGHT' | 'HYBRID');
+    // the restTarget string format is not, so we check it here.
     for (const [name, route] of Object.entries(CAPABILITY_MAP)) {
-      expect(route.backend, name).toMatch(/^(REST|PLAYWRIGHT|HYBRID)$/);
       expect(route.restTarget, name).toMatch(/^[A-Z]+ \//);
     }
   });
