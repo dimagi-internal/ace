@@ -1,0 +1,303 @@
+/**
+ * Unit tests for static QA checks in skills/synthetic-narrative-plan-qa/checks.ts.
+ *
+ * Each check is a pure function. Tests use small inline YAML strings (no
+ * fixtures) to exercise individual branches.
+ */
+
+import { describe, expect, test } from 'vitest';
+import {
+  checkManifestYamlParses,
+  checkRequiredKeysPresent,
+  checkFlwPersonasWellFormed,
+  checkKpiFieldPathsResolvable,
+  checkAnomaliesTraceable,
+  checkCoachingArcsMatchPersonas,
+  checkRandomSeedPresent,
+  checkTimelineDatesConsistent,
+  CHECKS,
+} from '../../../skills/synthetic-narrative-plan-qa/checks';
+
+const VALID_MANIFEST = `opportunity_id: 42
+opportunity_name: "Test Opp"
+random_seed: 20260509
+
+timeline:
+  start_date: "2026-04-11"
+  end_date: "2026-05-09"
+  weeks: 4
+
+flw_personas:
+  - id: "asha"
+    display_name: "Asha M."
+    archetype: "rockstar"
+  - id: "bao"
+    display_name: "Bao N."
+    archetype: "steady"
+  - id: "carla"
+    display_name: "Carla R."
+    archetype: "steady"
+  - id: "dinesh"
+    display_name: "Dinesh P."
+    archetype: "struggling"
+  - id: "esi"
+    display_name: "Esi K."
+    archetype: "new_hire"
+
+beneficiary_cohorts:
+  - id: "primary"
+    size: 50
+
+anomalies:
+  - flw_id: "dinesh"
+    week: 3
+    field_path: "form.product_grp.price"
+    detection_path: "form.product_grp.price"
+
+coaching_arcs:
+  - flw_id: "dinesh"
+    week_triggered: 3
+
+kpi_config:
+  - kpi: "accuracy"
+    field_path: "form.product_grp.price"
+    aggregation: "validated_rate"
+    threshold_underperform: 0.75
+    threshold_target: 0.90
+`;
+
+describe('checkManifestYamlParses', () => {
+  test('passes on valid manifest', () => {
+    expect(checkManifestYamlParses(VALID_MANIFEST).pass).toBe(true);
+  });
+
+  test('fails on garbage YAML', () => {
+    const r = checkManifestYamlParses('::: not yaml :::\n  - oops\n[\n');
+    expect(r.pass).toBe(false);
+    expect(r.auto_fix_hint).toBeTruthy();
+  });
+
+  test('fails when top level is a sequence, not a mapping', () => {
+    const r = checkManifestYamlParses('- a\n- b\n');
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/mapping/);
+  });
+
+  test('fails on empty file', () => {
+    expect(checkManifestYamlParses('').pass).toBe(false);
+  });
+});
+
+describe('checkRequiredKeysPresent', () => {
+  test('passes when all required keys present', () => {
+    expect(checkRequiredKeysPresent(VALID_MANIFEST).pass).toBe(true);
+  });
+
+  test('fails when timeline missing', () => {
+    const m = VALID_MANIFEST.replace(/timeline:[\s\S]*?weeks: 4/m, '');
+    const r = checkRequiredKeysPresent(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('timeline');
+    expect(r.auto_fix_hint).toBeTruthy();
+  });
+
+  test('fails when multiple keys missing', () => {
+    const m = `opportunity_id: 42\nrandom_seed: 1\n`;
+    const r = checkRequiredKeysPresent(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('timeline');
+    expect(r.detail).toContain('flw_personas');
+  });
+});
+
+describe('checkFlwPersonasWellFormed', () => {
+  test('passes on default 5-persona cast', () => {
+    const r = checkFlwPersonasWellFormed(VALID_MANIFEST);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toContain('5');
+  });
+
+  test('fails on empty flw_personas', () => {
+    const m = VALID_MANIFEST.replace(/flw_personas:[\s\S]*?archetype: "new_hire"/m, 'flw_personas: []');
+    const r = checkFlwPersonasWellFormed(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/empty|missing|not an array/);
+  });
+
+  test('fails on invalid archetype value', () => {
+    const m = VALID_MANIFEST.replace('archetype: "rockstar"', 'archetype: "godlike"');
+    const r = checkFlwPersonasWellFormed(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('#0');
+  });
+
+  test('fails when persona has neither id nor display_name', () => {
+    const m = `opportunity_id: 1
+random_seed: 1
+timeline: { start_date: "2026-01-01", end_date: "2026-02-01", weeks: 4 }
+flw_personas:
+  - archetype: "steady"
+beneficiary_cohorts:
+  - { id: "p", size: 1 }
+kpi_config: []
+`;
+    const r = checkFlwPersonasWellFormed(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/missing both 'id' and 'display_name'/);
+  });
+});
+
+describe('checkKpiFieldPathsResolvable', () => {
+  test('passes (INFO) when no deliver-summary context provided', () => {
+    const r = checkKpiFieldPathsResolvable(VALID_MANIFEST);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/skipped/);
+  });
+
+  test('passes when all field_paths appear in summary', () => {
+    const summary = 'Form has fields: form.product_grp.price, form.weight_kg';
+    const r = checkKpiFieldPathsResolvable(VALID_MANIFEST, { deliver_summary: summary });
+    expect(r.pass).toBe(true);
+  });
+
+  test('fails when a field_path is not in the summary', () => {
+    const summary = 'Form has fields: form.weight_kg only';
+    const r = checkKpiFieldPathsResolvable(VALID_MANIFEST, { deliver_summary: summary });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('form.product_grp.price');
+  });
+});
+
+describe('checkAnomaliesTraceable', () => {
+  test('passes on absent anomalies', () => {
+    const m = VALID_MANIFEST.replace(/anomalies:[\s\S]*?detection_path: "form\.product_grp\.price"/m, '');
+    expect(checkAnomaliesTraceable(m).pass).toBe(true);
+  });
+
+  test('passes when all anomalies are traceable', () => {
+    expect(checkAnomaliesTraceable(VALID_MANIFEST).pass).toBe(true);
+  });
+
+  test('fails on anomaly without detection_path or field_path', () => {
+    const m = `opportunity_id: 1
+random_seed: 1
+timeline: { start_date: "2026-01-01", end_date: "2026-02-01", weeks: 4 }
+flw_personas:
+  - id: "asha"
+    archetype: "rockstar"
+beneficiary_cohorts:
+  - { id: "p", size: 1 }
+kpi_config: []
+anomalies:
+  - flw_id: "asha"
+    week: 2
+`;
+    const r = checkAnomaliesTraceable(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/field_path|detection_path/);
+  });
+
+  test('fails on anomaly missing flw_id', () => {
+    const m = `opportunity_id: 1
+random_seed: 1
+timeline: { start_date: "2026-01-01", end_date: "2026-02-01", weeks: 4 }
+flw_personas:
+  - id: "asha"
+    archetype: "rockstar"
+beneficiary_cohorts:
+  - { id: "p", size: 1 }
+kpi_config: []
+anomalies:
+  - week: 2
+    field_path: "form.x"
+`;
+    const r = checkAnomaliesTraceable(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('flw_id');
+  });
+});
+
+describe('checkCoachingArcsMatchPersonas', () => {
+  test('passes when arcs map to personas', () => {
+    expect(checkCoachingArcsMatchPersonas(VALID_MANIFEST).pass).toBe(true);
+  });
+
+  test('passes when coaching_arcs absent or empty', () => {
+    const m = VALID_MANIFEST.replace(/coaching_arcs:[\s\S]*?week_triggered: 3/m, 'coaching_arcs: []');
+    expect(checkCoachingArcsMatchPersonas(m).pass).toBe(true);
+  });
+
+  test('fails when arc references unknown flw_id', () => {
+    const m = VALID_MANIFEST.replace(
+      'coaching_arcs:\n  - flw_id: "dinesh"\n    week_triggered: 3',
+      'coaching_arcs:\n  - flw_id: "ghost"\n    week_triggered: 3',
+    );
+    const r = checkCoachingArcsMatchPersonas(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('ghost');
+  });
+});
+
+describe('checkRandomSeedPresent', () => {
+  test('passes on positive integer', () => {
+    expect(checkRandomSeedPresent('random_seed: 20260509\n').pass).toBe(true);
+  });
+
+  test('fails on missing seed', () => {
+    expect(checkRandomSeedPresent('opportunity_id: 1\n').pass).toBe(false);
+  });
+
+  test('fails on negative seed', () => {
+    expect(checkRandomSeedPresent('random_seed: -1\n').pass).toBe(false);
+  });
+
+  test('fails on non-integer seed', () => {
+    expect(checkRandomSeedPresent('random_seed: "today"\n').pass).toBe(false);
+  });
+});
+
+describe('checkTimelineDatesConsistent', () => {
+  test('passes on valid timeline', () => {
+    expect(checkTimelineDatesConsistent(VALID_MANIFEST).pass).toBe(true);
+  });
+
+  test('fails when start >= end', () => {
+    const m = VALID_MANIFEST
+      .replace('start_date: "2026-04-11"', 'start_date: "2026-06-09"');
+    const r = checkTimelineDatesConsistent(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('precede');
+  });
+
+  test('fails when weeks < 1', () => {
+    const m = VALID_MANIFEST.replace('weeks: 4', 'weeks: 0');
+    const r = checkTimelineDatesConsistent(m);
+    expect(r.pass).toBe(false);
+  });
+
+  test('fails when timeline missing', () => {
+    const m = `random_seed: 1\n`;
+    const r = checkTimelineDatesConsistent(m);
+    expect(r.pass).toBe(false);
+  });
+});
+
+describe('CHECKS array', () => {
+  test('exports eight checks in stable order', () => {
+    expect(CHECKS).toHaveLength(8);
+    expect(CHECKS.map((c) => c.id)).toEqual([
+      'manifest_yaml_parses',
+      'required_keys_present',
+      'flw_personas_well_formed',
+      'kpi_field_paths_resolvable',
+      'anomalies_traceable',
+      'coaching_arcs_match_personas',
+      'random_seed_present',
+      'timeline_dates_consistent',
+    ]);
+  });
+
+  test('every check has type=static', () => {
+    for (const c of CHECKS) expect(c.type).toBe('static');
+  });
+});
