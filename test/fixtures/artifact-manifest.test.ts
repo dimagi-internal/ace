@@ -32,7 +32,8 @@ function listFiles(dir: string, root: string = dir): string[] {
 }
 
 describe('artifact manifest', () => {
-  it('manifest has no duplicate paths', () => {
+  // audit: Identical body to test/lib/artifact-manifest-lint.test.ts::no duplicate paths. Cross-file duplicate. The lint file owns invariant tests; dro
+  it.skip('manifest has no duplicate paths', () => {
     const paths = ARTIFACT_MANIFEST.map((a) => a.path);
     const dupes = paths.filter((p, i) => paths.indexOf(p) !== i);
     expect(dupes).toEqual([]);
