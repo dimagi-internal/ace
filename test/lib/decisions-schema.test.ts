@@ -220,10 +220,10 @@ describe("serializeDecisionsLog", () => {
     },
   ];
 
-  it.each([
+  it.each<[string, typeof oneDecision]>([
     ["one decision", oneDecision],
     ["empty array", []],
-  ] as const)("round-trips through parse with no data loss (%s)", (_label, decisions) => {
+  ])("round-trips through parse with no data loss (%s)", (_label, decisions) => {
     const log = {
       schema_version: 1 as const,
       opportunity: "turmeric",
