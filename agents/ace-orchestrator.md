@@ -141,7 +141,9 @@ entry path that touches state must tolerate a missing `run_state.yaml`:
    `opportunity`, `mode` (default `default`), `created` (ISO now),
    `initiated_by` (`git config user.email` or `unknown`), `last_actor` +
    `last_actor_at` (same email + timestamp), all `phases.<phase>.<skill>`
-   keys set to `pending`, all `gates.<gate>` set to `pending`.
+   keys set to `pending`. (Pre-0.13.116 init also seeded a top-level
+   `gates:` map; that field was removed when the gate concept was
+   replaced by Pause Points — see § Pause Points.)
 2. Then proceed with the skill dispatch.
 
 `commands/step.md` owns this defensive init for the `/ace:step` path.
@@ -156,7 +158,7 @@ let the operator fix the state gap explicitly.
 this opp's lifecycle and not let plugin-wide concerns leak in.
 
 **In scope** (write to `run_state.yaml`):
-- This opp's phase + step status, gate decisions, mode.
+- This opp's phase + step status, mode.
 - Pointers to this opp's artifacts (Drive file IDs, app IDs, opp UUID,
   experiment ID).
 - Open questions that are **about this opp** — pricing for this
@@ -260,6 +262,59 @@ them.
 end-to-end on this opp yet — auto-archiving would lose that signal.
 The operator is the one who knows whether a marked-resolved entry is
 truly closed in this opp's context.
+
+## Populated opps are the norm — do NOT pause to ask "are you sure?"
+
+ACE is built around running **many cycles per opp** — that's how both the
+opp's design and ACE itself improve. So most `/ace:run` invocations land
+on an opp that already has substantial prior-run state: a live Connect
+program/opportunity, a published OCS chatbot, an open solicitation, prior
+PDDs, prior CommCare apps. **This is the expected baseline, not an edge
+case.**
+
+The orchestrator's contract on a populated opp:
+
+- **Do not pause to confirm "do you want to overwrite live state?"** —
+  `--mode default` already encodes the answer. The named Pause Points
+  (see § Pause Points) plus the Phase 7→8 boundary are the only
+  sanctioned pause locations. A populated-opp confirmation prompt is
+  **off-spec** — if you find yourself wanting to add one, the right
+  fix is to push the reuse-vs-rebuild decision down into the affected
+  phase agent's skill logic instead.
+- **Reuse-vs-rebuild is owned by each phase agent's skills**, not by
+  the orchestrator. Examples that already exist in skills today:
+  - `connect-program-setup` reuses an existing program when
+    `opp.yaml.connect.program.id` is set + verified live.
+  - `connect-opp-setup` reuses an existing opp when
+    `opp.yaml.connect.opportunity.id` is set, status is non-terminal,
+    and HQ ids on the opp match the current
+    `2-commcare/app-deploy_summary.md` (delete-and-recreate only on
+    HQ-id mismatch — see commcare-setup § Step 2).
+  - `ocs-agent-setup` reuses the chatbot in
+    `opp.yaml.ocs_chatbot.experiment_id` when shape matches; otherwise
+    re-clones from the golden template.
+  - `solicitation-create` no-ops with `[INFO]` if a published
+    solicitation already exists for this opp's labs `program_id` —
+    rebuilds only if the prior one is closed/expired.
+- **Each new run gets its own `runs/<run-id>/<N>-<phase>/` artifact
+  set** — prior-run artifacts stay frozen in their own run folders.
+  Reuse means "phase agent skipped the rebuild step and pointed at
+  the prior live entity"; it does NOT mean "wrote into the prior
+  run's folder." The new run still produces a clean per-phase
+  summary in its own slot, even when the underlying live entity
+  wasn't recreated.
+- **Solicitations are scoped to a labs `program_id`, not to the
+  Connect opportunity UUID.** Re-pointing a Connect opp at fresh HQ
+  ids (delete-and-recreate of the Connect opportunity) does NOT
+  invalidate the live solicitation. The public URL keeps working,
+  the deadline keeps counting down. See commcare-setup § Step 2 for
+  the recovery contract.
+
+If you (the orchestrator session) genuinely encounter prior state
+that you can't classify as "reuse vs rebuild" by inspecting
+`opp.yaml`, that is a **skill bug** — file an issue against the
+relevant phase agent's skills, don't add an orchestrator-level
+confirmation prompt.
 
 ACE has three modes. **`default` is the default** — pick another only
 if you have a specific reason.
@@ -556,6 +611,73 @@ unnecessary model-output time at run start. The whole task list is
 known up-front from the workflow below — there's no dependency on
 prior responses.
 
+## Practical limits — when to split a /ace:run across sessions
+
+A full end-to-end `/ace:run` (Phases 1–7) executed inline at level 0
+exceeds practical model context on most cycles. The high-cost phases
+in token budget are:
+
+- **Phase 2 (commcare-setup):** two `/nova:autobuild` dispatches, each
+  10–15 minutes wall-clock and producing substantial tool-call
+  transcripts that bubble up to the orchestrator session, plus
+  app-deploy / app-release / commcare-form-patch with their own
+  CCHQ-side tool chatter.
+- **Phase 4 (ocs-setup):** OCS clone + RAG collection upload +
+  indexing wait + smoke-eval transcripts.
+- **Phase 6 (synthetic-data-and-workflows):** synthetic data
+  generation + walkthrough HTML rendering for each persona.
+
+In one continuous session, the orchestrator cannot reliably hold all
+of these plus the inline-artifact threading required by §
+Performance Conventions without either compaction kicking in or the
+user hitting a context wall mid-Phase-5.
+
+**Recommended split for full lifecycle runs on populated opps:**
+
+1. **First session — `/ace:run <opp>`** runs from Phase 1 through
+   Phase 2 (commcare-setup). The Nova dispatches MUST happen here
+   because they require `Agent` at level 0 and `commcare-setup` is a
+   procedure doc executed inline. Stop after Phase 2's write-back
+   verifier confirms `phases.commcare-setup.status: done`.
+2. **Subsequent sessions — `/ace:step <skill-or-phase> <opp>/<run-id>`**
+   pick up Phase 3 onward one phase at a time. The phase agents for
+   3, 4, 5, 6, 7, 8, 9 are subagents (not procedure docs) — they can
+   be dispatched by `/ace:step`'s own top-level session without
+   running into the Agent-tool-at-level-0 constraint, and each
+   per-phase session starts with a clean context window.
+3. **Resumption is by `<opp>/<run-id>`**, not `<opp>` — passing only
+   `<opp>` would create a fresh `runs/<new-id>/` folder. The full
+   form (`/ace:run <opp>/<run-id>` or `/ace:step <skill>
+   <opp>/<run-id>`) loads the existing `run_state.yaml` and continues
+   from its `phases:` block.
+
+**When inline `/ace:run` end-to-end IS appropriate:**
+
+- Smoke runs against a fresh opp with empty inputs/ — Phases 2–4
+  produce smaller artifacts when the PDD is minimal, and the run
+  doesn't have to push past Phase 2's heavy Nova phase before
+  exhausting context.
+- `--mode auto` calibration runs where the operator is willing to
+  tolerate one in three runs hitting context limits and re-running
+  from `<opp>/<run-id>`.
+- `--no-evals` smoke runs for lifecycle plumbing checks (no per-step
+  eval transcripts to thread through).
+
+**Anti-pattern — what NOT to do.** When mid-`/ace:run` you (the
+orchestrator session) feel context pressure, do NOT try to
+"summarize and continue" — the inline-artifact contract breaks if
+the next phase's PDD is paraphrased rather than passed verbatim. The
+right escape is: write back `phases.<current>.status: done` (or
+`error` with a one-line note), tell the operator the run halted at
+phase X for context reasons, and let them resume via `/ace:step` in
+a fresh session.
+
+This is a known limitation, not a design intent. If a future model
+ships with materially larger context AND inline-artifact threading
+becomes cheaper, the inline end-to-end pattern becomes practical
+again — at which point the recommended split above relaxes from
+"required for populated opps" to "still useful for parallelism."
+
 ## Per-Phase Folder Lifecycle
 
 Per-run artifacts live under `runs/<runId>/<N>-<phase>/...` (the 0.13.0
@@ -571,15 +693,20 @@ Before dispatching each phase agent (`Agent(design-review)`,
 `Agent(closeout)`), the orchestrator MUST:
 
 1. Look up the phase folder slug from `lib/artifact-manifest-roles.ts`
-   `PHASE_FOLDERS`:
+   `PHASE_FOLDERS`. **`PHASE_FOLDERS` in TypeScript is the source of
+   truth — if this prose copy ever drifts, the TypeScript wins.**
+   (Drift between this listing and the TS const has shipped at least
+   once; if you find new drift, fix it here AND consider promoting the
+   prose listing to a generated table.):
    - `design` → `1-design`
    - `commcare` → `2-commcare`
    - `connect` → `3-connect`
    - `ocs` → `4-ocs`
    - `qa-and-training` → `5-qa-and-training`
-   - `solicitation-management` → `6-solicitation-management`
-   - `execution-management` → `7-execution-manager`
-   - `closeout` → `8-closeout`
+   - `synthetic-data-and-workflows` → `6-synthetic`
+   - `solicitation-management` → `7-solicitation-management`
+   - `execution-management` → `8-execution-manager`
+   - `closeout` → `9-closeout`
 
 2. Call `drive_create_folder(name='<N>-<phase>',
    parentFolderId=<runFolderId>, findOrCreate=true)`. The
@@ -677,6 +804,23 @@ after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) →
 skills read upstream artifacts from Phases 1-4. No 1-1 LLO contact
 happens here — that begins in Phase 8.
 
+### Phase 6: Synthetic Data and Workflows
+Dispatch `Agent(synthetic-data-and-workflows)`. The agent authors a
+story-coherent synthetic-data manifest from the PDD, generates fixture
+data via the connect-labs MCP, instantiates the LLO weekly review +
+program admin audit workflows, polishes them per-opp, and runs persona
+walkthroughs that produce stakeholder-ready HTML decks.
+
+This phase produces: synthetic narrative manifest, fixture FLW/visit/payment
+data, two demonstrative workflows (`llo_weekly_review`,
+`program_admin_audit`), per-persona walkthrough HTML decks, and a single
+one-page summary linking everything (`6-synthetic/synthetic-summary.md`).
+**No irreversible external action** — the connect-labs `SyntheticOpportunity`
+row is reversible via `synthetic_disable`; workflows can be deleted via
+`workflow_delete`. **No phase pause** — `/ace:run` proceeds straight from
+Phase 6 to Phase 7 without halting. See
+`agents/synthetic-data-and-workflows.md`.
+
 ### Phase 7: Solicitation Management
 Dispatch `Agent(solicitation-management)`. The agent runs
 `solicitation-create` → `llo-invite` (default run, both auto). Publishes
@@ -764,8 +908,8 @@ the per-skill verdict files (`<phase>/<producer>-qa_result.yaml` and
 `/ace:step solicitation-review` — that mechanism preserves the HITL
 checkpoint without needing a `gates.solicitation-review` field.)
 
-**Use `update_yaml_file` for the patch.** Each phase agent's write
-should look like:
+**Use `update_yaml_file` with `merge: 'two-level'` for the patch.**
+Each phase agent's write should look like:
 
 ```
 update_yaml_file({
@@ -775,14 +919,35 @@ update_yaml_file({
     last_actor: <git config user.email>,
     last_actor_at: <ISO timestamp>,
   },
+  merge: 'two-level',
 })
 ```
 
-`update_yaml_file` does a top-level shallow merge — sibling top-level
-keys are preserved automatically. The agent should NOT read the full
-`phases:` block, mutate it locally, and write it back; that races with
-the orchestrator and other concurrent writers. Patch only the keys
-this phase owns.
+**Why `two-level`, not the default `shallow`.** `update_yaml_file`'s
+default `shallow` mode replaces each top-level key wholesale —
+patching `phases: { 'design-review': {...} }` would clobber every
+other phase's entry under `phases:`, which is exactly the wrong
+outcome when each phase agent owns one entry. `merge: 'two-level'`
+recurses one level into object-valued top-level keys (`phases:`), so
+each phase's patch leaves sibling phases' blocks intact. The
+optimistic-concurrency CAS retry inside `update_yaml_file` handles
+the race between concurrent writers (a second writer's first attempt
+hits `revision_conflict`, re-reads, re-merges, re-writes once).
+Top-level scalar keys (`last_actor`, `last_actor_at`) still replace
+as expected — `two-level` only recurses where both base and patch
+have an object at that key.
+
+Phase agents MAY also use `update_yaml_file` with the default
+`shallow` mode for one-shot whole-subtree replacements (e.g.,
+`opp.yaml.connect = {...}` to fully overwrite the connect block when
+the Connect opp was deleted-and-recreated). The contract above is
+specifically for incremental run_state.yaml writes during a `/ace:run`.
+
+Do NOT pair a manual `drive_read_file` + `drive_update_file` to
+read-modify-write `run_state.yaml` from the agent — `update_yaml_file`
+already does the read internally and its CAS retry is the
+race-correctness mechanism. Skipping the tool to do it by hand
+re-introduces the lost-update class of bug.
 
 **Failure modes the contract prevents.**
 
@@ -957,7 +1122,7 @@ producer skill row.
 - Skills that ARE their own row in the registry (no producer / eval
   split, e.g. `ocs-chatbot-eval`) keep their own name and a mode
   suffix: `4-ocs/ocs-chatbot-eval_verdict-{quick,deep}.yaml`,
-  `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml`.
+  `8-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml`.
 - Skills that self-evaluate inline (no separate `-eval` skill — e.g.
   `app-screenshot-capture` and every per-artifact training skill
   (`training-llo-guide`, `training-flw-guide`,
