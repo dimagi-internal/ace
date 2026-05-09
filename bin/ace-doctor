@@ -970,6 +970,22 @@ if [ -n "$ENV_FILE" ]; then
   else
     pass "nova_env: NOVA_API_KEY present"
   fi
+
+  # ── CommCare HQ REST API key (used by ace-connect for CCHQ atoms) ────
+  # Presence check only — live HTTP probe runs in [Auth liveness] below.
+  # Distinct from NOVA_API_KEY (which is the Nova MCP bearer) and from
+  # connect_session cookies (which are OAuth-via-CCHQ session state).
+  # ACE_HQ_API_KEY is the long-lived REST key Connect's
+  # `connect_create_opportunity` and friends use to read app metadata
+  # from CCHQ during opportunity wiring. Pre-0.13.122 the dead-key
+  # class was invisible until two phases deep into a /ace:run; the
+  # liveness probe below catches it pre-flight.
+  HQ_KEY_VAL="$(get_env ACE_HQ_API_KEY)"
+  if [ -z "$HQ_KEY_VAL" ]; then
+    warn "hq_api_key_env: ACE_HQ_API_KEY missing or unresolved" "mint at https://www.commcarehq.org/account/api_keys/ as ace@dimagi-ai.com, save to 1Password item \"ACE - CommCare HQ API Key (connect-ace-prod)\" / field \`credential\`, then op inject -i .env.tpl -o \$CLAUDE_PLUGIN_DATA/.env --force --account dimagi.1password.com"
+  else
+    pass "hq_api_key_env: ACE_HQ_API_KEY present"
+  fi
 else
   # No .env at all — individual env-derived checks would all warn the same way.
   # Emit one consolidated pointer instead of three duplicates.
@@ -1177,7 +1193,42 @@ else
   : # already warned above under connect_auth
 fi
 
-# 5. ace-connect-labs — already covered by connect_labs_mcp_reachable +
+# 5. ace-connect (CCHQ REST API key) — separate auth mechanism from
+# the cookies probed in #3+#4. ACE_HQ_API_KEY is the long-lived REST
+# key Connect's `connect_create_opportunity` uses to fetch HQ app
+# metadata when wiring an opp. Failure mode this catches: dead/rotated
+# key produces "Failed to fetch apps from CommCare HQ." two phases
+# into a /ace:run (~30 min wall-clock burn, observed turmeric
+# 20260509-0455). One GET against CCHQ's application list endpoint:
+# 200 = key valid, 401 = invalid/revoked, anything else = transport
+# issue (covered by net_cchq probe above).
+if [ -n "$HQ_KEY_VAL" ] && [ -n "$HQ_DOMAIN" ] && [ -n "$HQ_USER" ]; then
+  HQ_API_PROBE_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+    -H "Authorization: ApiKey $HQ_USER:$HQ_KEY_VAL" \
+    "https://www.commcarehq.org/a/$HQ_DOMAIN/api/v0.5/application/?limit=1" 2>/dev/null || echo "000")"
+  case "$HQ_API_PROBE_CODE" in
+    2*)
+      pass "hq_api_key_auth: ACE_HQ_API_KEY authed against $HQ_DOMAIN (GET /api/v0.5/application/ → HTTP $HQ_API_PROBE_CODE)"
+      ;;
+    401|403)
+      warn "hq_api_key_auth: HTTP $HQ_API_PROBE_CODE — ACE_HQ_API_KEY invalid, revoked, or scoped to wrong domain ($HQ_DOMAIN). Connect's create_opportunity / set_verification_flags will fail mid-Phase-3 with \"Failed to fetch apps from CommCare HQ.\"" "mint a new HQ API key at https://www.commcarehq.org/account/api_keys/ as ace@dimagi-ai.com, update 1Password item \"ACE - CommCare HQ API Key (connect-ace-prod)\" field \`credential\`, then op inject -i .env.tpl -o \$CLAUDE_PLUGIN_DATA/.env --force --account dimagi.1password.com AND /reload-plugins so the ace-connect MCP picks up the new env"
+      ;;
+    000)
+      warn "hq_api_key_auth: cannot reach https://www.commcarehq.org (network/DNS/timeout)" "verify CCHQ is reachable; net_cchq probe above should also flag this"
+      ;;
+    *)
+      warn "hq_api_key_auth: GET /a/$HQ_DOMAIN/api/v0.5/application/ → HTTP $HQ_API_PROBE_CODE" "investigate; if persists, rotate the key per the recovery recipe above"
+      ;;
+  esac
+elif [ -z "$HQ_KEY_VAL" ]; then
+  warn "hq_api_key_auth: skipped — ACE_HQ_API_KEY not set" "see hq_api_key_env warning above"
+elif [ -z "$HQ_DOMAIN" ]; then
+  warn "hq_api_key_auth: skipped — ACE_HQ_DOMAIN not set" "see hq_domain warning above"
+else
+  warn "hq_api_key_auth: skipped — ACE_HQ_USERNAME not set" "see connect_env warning above"
+fi
+
+# 6. ace-connect-labs — already covered by connect_labs_mcp_reachable +
 # connect_labs_connect_oauth above; reference here so the auth-liveness
 # block reads as a complete inventory.
 if [ -n "$LABS_TOKEN" ]; then
@@ -1186,7 +1237,7 @@ else
   warn "labs_auth: skipped — LABS_MCP_TOKEN not set" "see connect_labs_env warning above; mint via /ace:labs-token-mint and re-inject .env"
 fi
 
-# 6. nova — POST initialize JSON-RPC frame to https://mcp.commcare.app/mcp
+# 7. nova — POST initialize JSON-RPC frame to https://mcp.commcare.app/mcp
 # with bearer auth. 200 = bearer accepted (the user-scope override
 # bin/ace-setup registered is alive). 401 = key invalid/revoked. The
 # Accept header includes text/event-stream because Nova returns SSE
@@ -1217,7 +1268,7 @@ else
   warn "nova_auth: skipped — NOVA_API_KEY not set" "see nova_env warning above; mint at https://commcare.app/settings"
 fi
 
-# 7. ace-mobile — local-only MCP (Maestro + adb + AVD + APK). It does not
+# 8. ace-mobile — local-only MCP (Maestro + adb + AVD + APK). It does not
 # authenticate against any remote service at runtime, so there is no
 # "live auth probe" distinct from the others. The auth-adjacent things
 # the mobile workflow depends on are covered elsewhere:
