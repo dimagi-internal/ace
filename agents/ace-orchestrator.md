@@ -1314,27 +1314,21 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
 2. **Resolve the opp.**
 
    **(a) `<opp>` was passed explicitly** (positional or via `parseOppRef`):
-   skip discovery, use that opp. If the folder doesn't exist under
-   `ACE_DRIVE_ROOT_FOLDER_ID`, **first check for a typo**: list the
-   ACE root, compute Levenshtein distance from the requested slug to
-   each existing opp folder name, and:
+   if a folder with that exact name exists under
+   `ACE_DRIVE_ROOT_FOLDER_ID`, use it. Otherwise list the ACE root and
+   evaluate the existing opp folder names against the requested slug:
 
-   - if exactly one existing opp is at distance ≤ 2 (and the requested
-     slug is at least 4 characters), surface a one-question
-     `AskUserQuestion`: "Did you mean `<best-match>`? [Yes / No, create
-     `<requested>` anyway]". On "Yes", switch to the matched opp and
-     continue; on "No", proceed to create the new folder.
-   - if zero existing opps are at distance ≤ 2, create the new folder
-     with no prompt (genuinely new opp).
-   - if 2+ existing opps tie at the lowest distance ≤ 2, surface them
-     as a multi-option `AskUserQuestion` plus an "Other — create
-     `<requested>` as a new opp" option.
+   - If exactly one existing opp is a confident match (case/punctuation
+     variant, abbreviation, reordering, substring, etc.), use it and
+     proceed without prompting.
+   - If multiple plausible candidates exist, surface them with
+     `AskUserQuestion` plus an "Other — create `<requested>` as a new
+     opp" option.
+   - If no existing opp is a plausible match, create the new folder
+     without prompting (genuinely new opp).
 
-   This costs 1 `drive_list_folder` call and catches the
-   "tumeric → turmeric" class of typo without a full re-invocation of
-   `/ace:run`. Skip the check on review mode only if the operator
-   explicitly passed `--no-fuzzy-opp` (currently unsupported; reserve
-   the flag name).
+   This costs 1 `drive_list_folder` call. The match is an LLM judgment
+   on the listed folder names — no rules ladder.
 
    After resolving the opp, do not auto-create `inputs/` — the
    operator must do that step manually so they actively choose what
