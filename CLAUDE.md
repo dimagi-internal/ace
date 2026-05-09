@@ -79,7 +79,7 @@ All five MCPs auto-register via `mcpServers` in `.claude-plugin/plugin.json` whe
 
 ## Git worktrees and merging to main
 
-This repo uses emdash. If you're in a worktree (`git rev-parse --git-dir` contains `/worktrees/`), `main` is checked out at `~/emdash/repositories/ace/`. You CANNOT `git checkout main` from a worktree.
+This repo uses emdash. If you're in a worktree (`git rev-parse --git-dir` contains `/worktrees/`), `main` is checked out at `~/emdash-projects/ace/` (run `git worktree list` from any worktree to confirm the exact path on this machine). You CANNOT `git checkout main` from a worktree.
 
 **`main` is branch-protected** (`clean-install` status check required) — direct push is rejected. Ship via PR: `bash scripts/version-bump.sh`, commit, `git push -u origin <branch>`, `gh pr create`, wait for CI, `gh pr merge <pr> --merge`. Then immediately `/ace:update` + `/reload-plugins` in this session.
 
