@@ -157,6 +157,28 @@ ACE_AVD_NAME=ACE_Pixel_API_34
 CONTENT_GENERATOR_URL=op://AI-Agents/Content Generator API/hostname
 CONTENT_GENERATOR_API_KEY=op://AI-Agents/Content Generator API/credential
 
+# ── ace-web Personal Access Token (per-human, per-machine) ─────────
+#
+# NOT 1Password-backed. Minted via /ace:ace-web-pat-mint (gh-style
+# loopback flow); written by that script to the local-only-secrets
+# marker block at the bottom of the resolved .env. `bin/ace-setup`
+# preserves keys not declared in this template across `op inject`, so
+# the value survives env re-injection.
+#
+# Replaces the deployment-wide ACE_E2E_AUTH_TOKEN shared secret. Token
+# represents the actual human operator (whoever signs in to ace-web in
+# their browser at mint time), not the ace@dimagi-ai.com service
+# account — so ace-web actions are attributable to a real person.
+#
+# Consumers: skills/upload-transcript, /ace:run --ace-web-url. Doctor
+# verifies presence + Bearer-auth liveness in the [Auth liveness]
+# block.
+#
+# This commented declaration is intentional: it documents the key for
+# operators reading the template without forcing an `op inject`
+# resolution (the script writes the real value below the marker).
+# ACE_WEB_PAT_TOKEN=  # populated by /ace:ace-web-pat-mint
+
 # ─── ACE Training Deck (Slides) ────────────────────────────────────
 # Populated once per environment by `npx tsx scripts/bootstrap-training-deck-template.ts`,
 # stashed in 1Password, and re-injected via `op inject`. The template

@@ -129,7 +129,7 @@ ACE has two classes of credential state — confusing them is the #1 source of f
 - `${CLAUDE_PLUGIN_DATA}/.env` — every key in `.env.tpl` (most `ACE_*`, `OCS_*`, `CONNECT_*`, `LABS_MCP_TOKEN`, etc.). Source of truth: 1Password vault `AI-Agents`. Rotate there and re-run `op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --force` (or `/ace:setup --force-env`).
 - `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` — Google SA key. Static (SA keys don't expire).
 
-**Local-only secrets in `.env` (preserved across `op inject` since 0.13.34):** `ACE_E2E_AUTH_TOKEN` and any other key not in `.env.tpl`. `bin/ace-setup` snapshots non-template keys before each `op inject` and re-appends them in a marker block (`# --- ACE local-only secrets ...`). Template keys always win — 1P is authoritative for declared keys.
+**Local-only secrets in `.env` (preserved across `op inject` since 0.13.34):** `ACE_WEB_PAT_TOKEN` (per-human, minted via `/ace:ace-web-pat-mint`) and any other key not in `.env.tpl`. `bin/ace-setup` snapshots non-template keys before each `op inject` and re-appends them in a marker block (`# --- ACE local-only secrets ...`). Template keys always win — 1P is authoritative for declared keys.
 
 **Per-machine (re-login required per workstation):**
 - `~/.ace/ocs-session-<team>.json` — OCS Playwright cookies. Auto-relogin via `OCS_USERNAME/PASSWORD`; manual: `/ace:ocs-login`.

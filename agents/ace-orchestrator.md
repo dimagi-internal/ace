@@ -895,8 +895,9 @@ provided base URL. This is a best-effort hook — an upload failure is
 logged but does not alter the run's success/failure status.
 
 Requirements:
-- `ACE_E2E_AUTH_TOKEN` must be set in the environment. If absent, log a
-  warning and skip the upload.
+- `ACE_WEB_PAT_TOKEN` must be set in the environment (per-human PAT
+  minted via `/ace:ace-web-pat-mint`). If absent, log a warning and
+  skip the upload.
 - The transcript path is whatever the operator is writing stream-json to
   (typically `$JSONL_PATH` in a scripted run). If not resolvable, skip.
 
