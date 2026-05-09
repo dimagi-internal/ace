@@ -643,72 +643,50 @@ unnecessary model-output time at run start. The whole task list is
 known up-front from the workflow below — there's no dependency on
 prior responses.
 
-## Practical limits — when to split a /ace:run across sessions
+## Resuming after a halt
 
-A full end-to-end `/ace:run` (Phases 1–7) executed inline at level 0
-exceeds practical model context on most cycles. The high-cost phases
-in token budget are:
+`/ace:run` is designed to run end-to-end inline. **The orchestrator
+should NOT proactively halt, split, or recommend splitting runs based
+on perceived context cost** (rich PDD, "populated opp," many phases
+ahead, etc.). The model has a 1M-token context window and most cycles
+do not come close. Trust the model; let the harness surface real
+context exhaustion if it happens.
 
-- **Phase 2 (commcare-setup):** two `/nova:autobuild` dispatches, each
-  10–15 minutes wall-clock and producing substantial tool-call
-  transcripts that bubble up to the orchestrator session, plus
-  app-deploy / app-release / commcare-form-patch with their own
-  CCHQ-side tool chatter.
-- **Phase 4 (ocs-setup):** OCS clone + RAG collection upload +
-  indexing wait + smoke-eval transcripts.
-- **Phase 6 (synthetic-data-and-workflows):** synthetic data
-  generation + walkthrough HTML rendering for each persona.
+If the harness DOES signal context exhaustion (or the operator
+explicitly halts the run), the resume mechanism is:
 
-In one continuous session, the orchestrator cannot reliably hold all
-of these plus the inline-artifact threading required by §
-Performance Conventions without either compaction kicking in or the
-user hitting a context wall mid-Phase-5.
+- `/ace:run <opp>/<run-id>` — resume the same run; the orchestrator
+  reads `run_state.yaml`, identifies the next pending phase, and
+  picks up from there. The path form (`<opp>/<run-id>`, not bare
+  `<opp>`) is what triggers resume — passing only `<opp>` would
+  create a fresh `runs/<new-id>/` folder.
+- `/ace:step <skill> <opp>/<run-id>` — re-dispatch a single phase or
+  skill, useful for retrying a specific failure or backfilling a step
+  that was previously inlined or skipped.
 
-**Recommended split for full lifecycle runs on populated opps:**
+Phase agents 3–9 are subagents (each gets a fresh context window per
+dispatch); the only inline constraint is Phase 2 (`commcare-setup`),
+which dispatches Nova at level-0. That constraint is structural, not
+context-cost-driven.
 
-1. **First session — `/ace:run <opp>`** runs from Phase 1 through
-   Phase 2 (commcare-setup). The Nova dispatches MUST happen here
-   because they require `Agent` at level 0 and `commcare-setup` is a
-   procedure doc executed inline. Stop after Phase 2's write-back
-   verifier confirms `phases.commcare-setup.status: done`.
-2. **Subsequent sessions — `/ace:step <skill-or-phase> <opp>/<run-id>`**
-   pick up Phase 3 onward one phase at a time. The phase agents for
-   3, 4, 5, 6, 7, 8, 9 are subagents (not procedure docs) — they can
-   be dispatched by `/ace:step`'s own top-level session without
-   running into the Agent-tool-at-level-0 constraint, and each
-   per-phase session starts with a clean context window.
-3. **Resumption is by `<opp>/<run-id>`**, not `<opp>` — passing only
-   `<opp>` would create a fresh `runs/<new-id>/` folder. The full
-   form (`/ace:run <opp>/<run-id>` or `/ace:step <skill>
-   <opp>/<run-id>`) loads the existing `run_state.yaml` and continues
-   from its `phases:` block.
+**Anti-pattern — do NOT "summarize and continue."** The inline-artifact
+contract (§ Performance Conventions) breaks if the next phase's PDD is
+paraphrased rather than passed verbatim. If you genuinely need to
+halt, write back `phases.<current>.status: done` (or `error` with a
+one-line note) and let the operator resume via
+`/ace:run <opp>/<run-id>` in a fresh session. Never try to compress
+your own context to keep going — the cure is worse than the disease.
 
-**When inline `/ace:run` end-to-end IS appropriate:**
-
-- Smoke runs against a fresh opp with empty inputs/ — Phases 2–4
-  produce smaller artifacts when the PDD is minimal, and the run
-  doesn't have to push past Phase 2's heavy Nova phase before
-  exhausting context.
-- `--mode auto` calibration runs where the operator is willing to
-  tolerate one in three runs hitting context limits and re-running
-  from `<opp>/<run-id>`.
-- `--no-evals` smoke runs for lifecycle plumbing checks (no per-step
-  eval transcripts to thread through).
-
-**Anti-pattern — what NOT to do.** When mid-`/ace:run` you (the
-orchestrator session) feel context pressure, do NOT try to
-"summarize and continue" — the inline-artifact contract breaks if
-the next phase's PDD is paraphrased rather than passed verbatim. The
-right escape is: write back `phases.<current>.status: done` (or
-`error` with a one-line note), tell the operator the run halted at
-phase X for context reasons, and let them resume via `/ace:step` in
-a fresh session.
-
-This is a known limitation, not a design intent. If a future model
-ships with materially larger context AND inline-artifact threading
-becomes cheaper, the inline end-to-end pattern becomes practical
-again — at which point the recommended split above relaxes from
-"required for populated opps" to "still useful for parallelism."
+**History note.** Earlier versions of this section instructed the
+orchestrator to recommend splitting runs across sessions on
+"populated opps" or "rich-PDD runs." That heuristic over-fit on a
+200K-context era and produced unnecessary operator friction in the
+1M-context era — sessions self-halted at Phase 2 when they could
+have completed end-to-end. Removed 0.13.122. If a future failure
+class genuinely warrants proactive splitting, reintroduce the
+guidance with concrete evidence (a class of runs that demonstrably
+cannot complete inline even with 1M context), not heuristic
+extrapolation from token-budget anxiety.
 
 ## Per-Phase Folder Lifecycle
 
