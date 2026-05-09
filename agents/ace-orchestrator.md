@@ -1276,7 +1276,7 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
 │   │       └── 1-design/
 │   │           ├── idea-to-pdd.md         (the formal PDD — Phase 1 output)
 │   │           └── ... (other Phase 1 outputs)
-│   └── opp.yaml                  (display_name, last_run_id, tags, ...)
+│   └── opp.yaml                  (display_name, tags, selected_llo, ...)
 ```
 
 The PDD is **not** an input — it's the formal output of Phase 1
@@ -1357,8 +1357,10 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    - **Resume mode** — `<opp>/<run-id>` was passed: load existing
      `run_state.yaml` from `<opp>/runs/<run-id>/run_state.yaml` and continue
      from its `step:` field. No new folder is created. Skip steps 4–7.
-     State.yaml exists; opp.yaml's last_run_id and runs: list already
-     record this run.
+     run_state.yaml exists and is the source of truth for which run we're
+     resuming. ace-web doesn't read opp.yaml.last_run_id / opp.yaml.runs
+     (it scans the runs/ folder directly), so we don't update them here
+     either.
 
    - **Fresh mode** — `runId` is null: generate
      `runId = generateRunId(new Date())` (= `YYYYMMDD-HHMM` local time).
@@ -1433,32 +1435,34 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `run_id: <runId>` — recorded so a transcript reader can identify
      the run from run_state.yaml alone.
 
-7. **Update `<opp>/opp.yaml`.** Read it (`drive_read_file`); if missing,
-   create with:
+7. **Ensure `<opp>/opp.yaml` exists.** Read it (`drive_read_file`); if
+   missing, create with:
 
    ```yaml
    display_name: <opp>          # default to slug; operator can edit later
    slug: <opp>
-   last_run_id: <runId>
    tags: []
    created_at: <ISO timestamp>
    created_by: <email>
    ```
 
-   If present, update only `last_run_id` and append `<runId>` to a
-   running list under `runs:` (optional — primarily for ace-web's
-   ergonomics; ace-web can also derive it from `runs/`).
+   If opp.yaml already exists, leave it alone — none of its fields are
+   keyed off the current run. The previous version of this step bumped
+   `last_run_id` and appended to a `runs:` list with a revisionVersion
+   CAS dance, but neither field is read by anyone:
 
-   **Concurrency: pair the read+write with `revisionVersion` CAS.**
-   `drive_read_file` returns a `revisionVersion` in its result; pass
-   that exact string as `ifMatchRevisionId` to the subsequent
-   `drive_update_file`. If the update returns
-   `Error: revision_conflict: …`, another writer (likely a parallel
-   `/ace:run`) modified opp.yaml in between — re-read, re-merge,
-   re-write **once**. If a second conflict fires, log it and continue
-   (the run is still safe; only the runs list is best-effort). This
-   replaces the previous read-merge-overwrite pattern, which silently
-   dropped a run-id when two `/ace:run` invocations raced.
+   - ace-web scans the filesystem (`runs/` folder listing) to enumerate
+     runs, so it never consults `opp.yaml.runs` or `last_run_id`.
+   - The orchestrator's only structural use of opp.yaml is
+     `selected_llo.org_slug` (Phase 7→8 gate, populated by
+     `solicitation-review`) plus the metadata fields above.
+   - When the user manually deletes a run subfolder, `last_run_id` and
+     `runs:` accumulate dangling references — purely cosmetic, but
+     misleading enough to worry a reader who notices.
+
+   So we just drop the bump. Skip this step entirely on existing opps
+   unless a Phase 7/8 skill needs to write `selected_llo` /
+   `solicitation` (those have their own write paths).
 
 7b. **Write the per-run `README.md` index.** Generate the markdown via
    `generateRunReadme(runId, {})` from `lib/run-readme.ts` (all phases
