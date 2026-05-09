@@ -59,7 +59,7 @@ describe('update_yaml_file: server-side patch+CAS', () => {
     expect(YAML.parse(fake.state.content)).toEqual({ phase: 'design-review' });
   });
 
-  it('top-level replace, not deep merge', async () => {
+  it('top-level replace, not deep merge (default = shallow)', async () => {
     const yaml = YAML.stringify({ connect: { opportunity_id: 1, payment_units: [{ name: 'a' }] } });
     const fake = makeFakeDriveWithDoc(yaml, '1');
 
@@ -70,6 +70,80 @@ describe('update_yaml_file: server-side patch+CAS', () => {
 
     // Replace, not merge: payment_units is gone.
     expect(YAML.parse(fake.state.content)).toEqual({ connect: { opportunity_id: 2 } });
+  });
+
+  it('two-level merge: object-valued top-level keys merge one level deeper, sibling child keys preserved', async () => {
+    // Simulates the run_state.yaml write-back flow: two phase agents
+    // each own one entry under `phases:` and must not clobber the other.
+    const yaml = YAML.stringify({
+      opportunity: 'leep-paint-collection',
+      phases: { 'design-review': { status: 'done', verdict: 'pass' } },
+      gates: { 'idea-to-pdd': 'approved' },
+    });
+    const fake = makeFakeDriveWithDoc(yaml, '5');
+
+    await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        patch: {
+          phases: { 'commcare-setup': { status: 'done', verdict: 'pass' } },
+          gates: { 'app-deploy': 'pass' },
+          last_actor: 'jjackson@dimagi.com',
+        },
+        merge: 'two-level',
+      },
+      fake as any,
+    );
+
+    expect(YAML.parse(fake.state.content)).toEqual({
+      opportunity: 'leep-paint-collection',
+      phases: {
+        'design-review': { status: 'done', verdict: 'pass' },        // preserved
+        'commcare-setup': { status: 'done', verdict: 'pass' },        // added
+      },
+      gates: {
+        'idea-to-pdd': 'approved',                                    // preserved
+        'app-deploy': 'pass',                                         // added
+      },
+      last_actor: 'jjackson@dimagi.com',                              // top-level scalar, replaced as usual
+    });
+  });
+
+  it('two-level merge: child-key conflict — patch wins (replaces just that child)', async () => {
+    const yaml = YAML.stringify({
+      phases: { 'design-review': { status: 'in_progress', verdict: null } },
+    });
+    const fake = makeFakeDriveWithDoc(yaml, '1');
+
+    await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        patch: { phases: { 'design-review': { status: 'done', verdict: 'pass' } } },
+        merge: 'two-level',
+      },
+      fake as any,
+    );
+
+    expect(YAML.parse(fake.state.content)).toEqual({
+      phases: { 'design-review': { status: 'done', verdict: 'pass' } },
+    });
+  });
+
+  it('two-level merge: non-object values still replace (arrays, scalars), and missing-on-base falls through to shallow', async () => {
+    const yaml = YAML.stringify({ tags: ['a', 'b'], counter: 1 });
+    const fake = makeFakeDriveWithDoc(yaml, '1');
+
+    await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        patch: { tags: ['c'], counter: 2, new_obj: { x: 1 } },
+        merge: 'two-level',
+      },
+      fake as any,
+    );
+
+    // Arrays and scalars replace; brand-new top-level keys land as-is.
+    expect(YAML.parse(fake.state.content)).toEqual({ tags: ['c'], counter: 2, new_obj: { x: 1 } });
   });
 
   it('retries once on revision_conflict (concurrent writer wins, we re-read)', async () => {
