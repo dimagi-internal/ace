@@ -161,4 +161,25 @@ describe('artifact manifest lint', () => {
     const dupes = paths.filter((p, i) => paths.indexOf(p) !== i);
     expect(dupes).toEqual([]);
   });
+
+  it('all nine phases represented', () => {
+    const phases = new Set(ARTIFACT_MANIFEST.map((a) => a.phase));
+    expect(phases).toEqual(new Set([
+      'design',
+      'commcare',
+      'connect',
+      'ocs',
+      'qa-and-training',
+      'synthetic-data-and-workflows',
+      'solicitation-management',
+      'execution-management',
+      'closeout',
+    ]));
+  });
+
+  it('every artifact has at least a producedBy', () => {
+    for (const a of ARTIFACT_MANIFEST) {
+      expect(a.producedBy, `${a.path} missing producedBy`).toBeTruthy();
+    }
+  });
 });

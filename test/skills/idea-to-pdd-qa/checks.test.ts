@@ -149,9 +149,13 @@ describe('checkStressTestAppendixPresent', () => {
 });
 
 describe('checkSuccessMetricsTablePopulated', () => {
-  test('passes when section has populated table', () => {
-    const pdd = `## Success Metrics\n\n| Metric | Target |\n|---|---|\n| Visits | ≥ 10 |\n`;
-    expect(checkSuccessMetricsTablePopulated(pdd).pass).toBe(true);
+  test.each([
+    ['1 metric',  `## Success Metrics\n\n| Metric | Target |\n|---|---|\n| Visits | ≥ 10 |\n`, '1 metric'],
+    ['2 metrics', `## Success Metrics\n\n| Metric | Target |\n|---|---|\n| A | ≥ 1 |\n| B | ≥ 2 |\n`, '2 metric'],
+  ])('passes with %s populated', (_label, pdd, detailContains) => {
+    const r = checkSuccessMetricsTablePopulated(pdd);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toContain(detailContains);
   });
 
   test('fails when section missing', () => {
@@ -163,13 +167,6 @@ describe('checkSuccessMetricsTablePopulated', () => {
     const r = checkSuccessMetricsTablePopulated(pdd);
     expect(r.pass).toBe(false);
     expect(r.detail).toContain('no populated data rows');
-  });
-
-  test('passes with multiple data rows', () => {
-    const pdd = `## Success Metrics\n\n| Metric | Target |\n|---|---|\n| A | ≥ 1 |\n| B | ≥ 2 |\n`;
-    const r = checkSuccessMetricsTablePopulated(pdd);
-    expect(r.pass).toBe(true);
-    expect(r.detail).toContain('2 metric');
   });
 });
 

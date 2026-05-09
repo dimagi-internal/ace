@@ -300,10 +300,12 @@ You have access to two knowledge collections:
 - Keep answers concise but complete
 - Always cite which knowledge source informed your answer when possible`;
 
-    await backend.setChatbotSystemPrompt({
-      experiment_id: clonedExperimentId,
-      prompt,
-    });
+    await expect(
+      backend.setChatbotSystemPrompt({
+        experiment_id: clonedExperimentId,
+        prompt,
+      }),
+    ).resolves.toBeUndefined();
     console.log('  system prompt set');
   }, 15_000);
 
@@ -315,12 +317,14 @@ You have access to two knowledge collections:
       ? [sharedCollectionId, collectionId]
       : [sharedCollectionId];
 
-    await backend.attachKnowledge({
-      experiment_id: clonedExperimentId,
-      collection_index_ids: collectionIds,
-      max_results: 20,
-      generate_citations: true,
-    });
+    await expect(
+      backend.attachKnowledge({
+        experiment_id: clonedExperimentId,
+        collection_index_ids: collectionIds,
+        max_results: 20,
+        generate_citations: true,
+      }),
+    ).resolves.toBeUndefined();
     console.log(`  attached collections: [${collectionIds.join(', ')}]`);
   }, 15_000);
 
@@ -452,6 +456,7 @@ You have access to two knowledge collections:
       `/a/${teamSlug}/documents/collections/${collectionId}`,
       { headers: { 'X-CSRFToken': csrfToken, Referer: baseUrl } },
     );
+    expect([200, 204, 404]).toContain(res.status());
     if (res.status() === 200 || res.status() === 204) {
       console.log(`  collection ${collectionId} deleted`);
       collectionId = undefined; // prevent double-cleanup in afterAll

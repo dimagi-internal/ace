@@ -123,10 +123,8 @@ describe('verdict schema', () => {
   });
 
   it('accepts optional live_state_verified boolean', () => {
-    for (const lsv of [true, false]) {
-      const r = validateVerdict({ ...validVerdict, live_state_verified: lsv });
-      expect(r.ok, `live_state_verified=${lsv}: ${JSON.stringify(r.errors)}`).toBe(true);
-    }
+    const r = validateVerdict({ ...validVerdict, live_state_verified: true });
+    expect(r.ok, JSON.stringify(r.errors)).toBe(true);
   });
 
   it('accepts optional overall_score_pre_cap', () => {

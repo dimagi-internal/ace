@@ -11,7 +11,6 @@ import * as path from 'node:path';
 import {
   validateFixture,
   artifactsConsumedBy,
-  ARTIFACT_MANIFEST,
 } from '../../lib/artifact-manifest.js';
 
 const FIXTURES_DIR = path.resolve(import.meta.dirname, '.');
@@ -30,29 +29,6 @@ function listFiles(dir: string, root: string = dir): string[] {
   }
   return files;
 }
-
-describe('artifact manifest', () => {
-  it('has all nine phases represented', () => {
-    const phases = new Set(ARTIFACT_MANIFEST.map((a) => a.phase));
-    expect(phases).toEqual(new Set([
-      'design',
-      'commcare',
-      'connect',
-      'ocs',
-      'qa-and-training',
-      'synthetic-data-and-workflows',
-      'solicitation-management',
-      'execution-management',
-      'closeout',
-    ]));
-  });
-
-  it('every artifact has at least a producedBy', () => {
-    for (const a of ARTIFACT_MANIFEST) {
-      expect(a.producedBy, `${a.path} missing producedBy`).toBeTruthy();
-    }
-  });
-});
 
 describe('CRISPR-Test-001 fixture', () => {
   const fixtureDir = path.join(FIXTURES_DIR, 'CRISPR-Test-001');

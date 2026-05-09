@@ -43,16 +43,6 @@ describe("renderDecisionsLog", () => {
     expect(h1).toBeDefined();
   });
 
-  it("includes a HEADING_2 paragraph style update for each phase header", () => {
-    const requests = renderDecisionsLog(MINIMAL_LOG);
-    const h2 = requests.filter(
-      (r: any) =>
-        "updateParagraphStyle" in r &&
-        r.updateParagraphStyle?.paragraphStyle?.namedStyleType === "HEADING_2",
-    );
-    expect(h2).toHaveLength(1);
-  });
-
   it("includes a HEADING_3 paragraph style update for each decision id", () => {
     const requests = renderDecisionsLog(MINIMAL_LOG);
     const h3 = requests.filter(
@@ -69,22 +59,24 @@ describe("renderDecisionsLog", () => {
     expect(bullets).toBeDefined();
   });
 
-  it("groups decisions by phase with a HEADING_2 per phase", () => {
-    const multiPhaseLog: DecisionsLog = {
+  it.each([
+    ["1 phase, 1 decision (MINIMAL_LOG)", () => MINIMAL_LOG, 1],
+    ["2 phases, 3 decisions", () => ({
       ...MINIMAL_LOG,
       decisions: [
         { ...MINIMAL_LOG.decisions[0]!, id: "row-a", phase: "1-design" },
         { ...MINIMAL_LOG.decisions[0]!, id: "row-b", phase: "1-design" },
         { ...MINIMAL_LOG.decisions[0]!, id: "row-c", phase: "2-commcare" },
       ],
-    };
-    const requests = renderDecisionsLog(multiPhaseLog);
+    } as DecisionsLog), 2],
+  ] as const)("emits one HEADING_2 per distinct phase (%s)", (_label, build, expected) => {
+    const requests = renderDecisionsLog(build());
     const h2 = requests.filter(
       (r: any) =>
         "updateParagraphStyle" in r &&
         r.updateParagraphStyle?.paragraphStyle?.namedStyleType === "HEADING_2",
     );
-    expect(h2).toHaveLength(2);
+    expect(h2).toHaveLength(expected);
   });
 
   it("returns just the title block for an empty decisions array", () => {
