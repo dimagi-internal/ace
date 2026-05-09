@@ -234,9 +234,12 @@ phases:
       synthetic-summary:        { status: done, ... }
 ```
 
-Each step uses the read-merge-write pattern via `drive_update_file` —
-NOT `update_yaml_file`'s shallow-merge, which would clobber sibling
-phases.
+Each step uses `update_yaml_file({..., merge: 'two-level'})` — the
+two-level mode (added 0.13.118) recurses one level into object-valued
+top-level keys, so each phase's patch leaves sibling phases' blocks
+intact while still threading the read+CAS internally. The legacy
+read-merge-write pattern via `drive_update_file` is no longer needed
+for this case and should not be reintroduced.
 
 `opp.yaml.synthetic` accumulates (cross-run state):
 
