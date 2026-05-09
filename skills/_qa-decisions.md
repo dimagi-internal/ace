@@ -89,16 +89,16 @@ The shape distinction:
 
 | Producer | QA status | QA skill / rationale |
 |---|---|---|
-| `app-screenshot-capture` | not yet migrated | Has internal manifest verification today; could become a proper `-qa` companion in Phase 3 batch. |
-| `app-test-cases` | not yet migrated | Phase 3 batch — bindings YAML schema, recipe-ID resolution. |
-| `training-faq` | not yet migrated | Phase 3 batch (training cluster) — shared `training-qa` helper proposed. Likely candidate for `NO QA` per the heuristic — review during Phase 3. |
-| `training-llo-guide` | not yet migrated | Phase 3 batch — shared `training-qa`. Likely `NO QA` candidate. |
-| `training-flw-guide` | not yet migrated | Phase 3 batch — shared `training-qa`. Likely `NO QA` candidate. |
-| `training-onboarding-email` | not yet migrated | Phase 3 batch — shared `training-qa`. Likely `NO QA` candidate. |
-| `training-quick-reference` | not yet migrated | Phase 3 batch — shared `training-qa`. Likely `NO QA` candidate. |
-| `training-deck-outline` | not yet migrated | Phase 3 batch. Slide-spec consumer is LLM-driven; likely `NO QA`. |
-| `training-deck-build` | not yet migrated | Phase 3 batch. Renders deck via Slides API; QA could verify structural slide count. |
-| `connect-baseline-screenshots` | not yet migrated | Standalone skill; QA scope tbd. |
+| `app-screenshot-capture` | **inline QA** | Tight Maestro+AVD iteration with bounded smoke-recipe failure handling + per-PNG verification at upload time. Manifest write is verified inline before `verdicts/app-screenshot-capture-shallow.yaml` ships. Extracting QA would force re-dispatch through the AVD agent context. |
+| `app-test-cases` | **inline QA** | Tight Nova-MCP iteration. Pre-emit bindings are validated against `mcp__plugin_ace_ace-mobile__mobile_validate_recipe` per generated recipe; failures cause bounded retry against `get_app` to re-resolve form/field IDs. The inline validator runs against the same Nova app the producer just built — separate dispatch loses that context. |
+| `training-faq` | **NO QA** | Markdown FAQ document. Consumed by humans (LLOs/FLWs) and by Phase 8 `llo-onboarding` which emails it as a link. No machine consumer regex-parses internal structure. Quality (comprehensiveness, accuracy, scannability) belongs in eval. **Revisit if:** a future skill regex-extracts FAQ entries (e.g. for an OCS prompt-augmentation pipeline). |
+| `training-llo-guide` | **NO QA** | LLO-facing operations document. Consumed by human admins and Phase 8 `llo-onboarding` link-emailer. Same rationale as `training-faq`. |
+| `training-flw-guide` | **NO QA** | FLW-facing step-by-step guide with embedded screenshots. Producer resolves screenshot fileIds at write time (consumer doesn't); rendered output is a Drive doc humans read. No machine consumer parses internal structure. Same rationale. |
+| `training-onboarding-email` | **NO QA** | Email body with Phase-8-substituted personalization tokens. `llo-onboarding` does string substitution (token list is opaque to QA), then sends. No structural QA over the body itself adds value. |
+| `training-quick-reference` | **NO QA** | One-page printable pocket card. Consumed by humans. Same rationale. |
+| `training-deck-outline` | **inline QA** | Process step 4 self-checks the in-memory draft via `parseDeckOutline()` (the same validator `training-deck-build` uses) before calling `drive_create_file`. Producer is its own structural validator using the consumer's parser — extracting QA would duplicate the parse. |
+| `training-deck-build` | **inline QA** | Tight Slides API iteration (`slides_copy_template` + `slides_batch_update`). Render success is verified inline against the produced Slides doc; failures cause bounded retry. Slides API is the external system; producer's loop is the right place. |
+| `connect-baseline-screenshots` | not applicable | Cross-opp utility — captures Connect APK screenshots once per Connect version into `ACE/_common/connect-screenshots/<version>/`, not per-opp. Outside the per-opp QA scope (same shape as the Utility section below). Listed here historically; consider moving to Utility on the next registry refresh. |
 
 ### Phase 6 — synthetic-data-and-workflows
 
@@ -162,3 +162,4 @@ The shape distinction:
 |---|---|---|
 | 2026-05-08 | Initial registry (PR #160). Captures three `has QA` (idea-to-pdd, pdd-to-test-prompts, ocs-chatbot runtime) + first `NO QA` (pdd-to-app-journeys, with rationale). Remaining 40+ producers marked `not yet migrated` per the migration spec's phase plan. | ACE team |
 | 2026-05-09 | Added 4th status `inline QA` for producers whose structural checks are correctly placed in the producer's own loop (typically tight iteration with an external system — Nova MCP, CCHQ HTTP, Mobile, OCS configure). Phase 2 Nova builders (`pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-release`, `app-connect-coverage`) flipped from `not yet migrated` to `inline QA` with pointers to the SKILL.md sections doing the inline work — they were never going to need separate `-qa` skills. Heuristic added to `_qa-template.md § When QA belongs inline`. | ACE team |
+| 2026-05-09 | Phase 3 (qa-and-training) classified end-to-end. Five training-doc producers (`training-faq`, `training-llo-guide`, `training-flw-guide`, `training-onboarding-email`, `training-quick-reference`) flipped to `NO QA` per the fake-QA heuristic — consumed by humans + Phase 8 link-emailer, no machine consumer parses them, eval covers the quality concerns. Four producers (`app-screenshot-capture`, `app-test-cases`, `training-deck-outline`, `training-deck-build`) flipped to `inline QA` — tight iteration with external systems (AVD/Maestro, Nova MCP, the deck parser, Slides API). `connect-baseline-screenshots` flipped to `not applicable` (cross-opp utility). Net: third batch in a row that produced zero new `-qa` skills. The heuristics are doing their job. | ACE team |
