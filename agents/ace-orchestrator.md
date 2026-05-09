@@ -454,6 +454,38 @@ those, poll the upstream service's status endpoint directly with a
 timeout, fail loud on exhaustion. Do not invent a "background task ID"
 that the orchestrator can't actually verify is alive.
 
+## Skill Invocation Discipline
+
+When a procedure step says "Invoke X" or "Dispatch X", that means
+**call the skill via `Skill(<name>)` (or `/ace:step <name>
+<opp>/<run-id>` from a fresh session)**. Never compose a producer
+skill's outputs inline from upstream artifacts even when you have
+enough context to plausibly do so — and especially under context-budget
+pressure across a long `/ace:run` where shortcutting any one step looks
+cheap. Skills with multi-file output contracts (a master file plus a
+sibling folder of per-item files; a yaml plus a recipes/ tree; a doc
+plus a `verdicts/` entry) bind downstream skills to the on-disk layout,
+not to the master file's content. The downstream pre-flight halts when
+the sibling files are missing — by which time the inline shortcut is
+several phases upstream and harder to attribute.
+
+The canonical reproduction: turmeric run 20260509-0455. The orchestrator
+inline-composed `2-commcare/app-test-cases.yaml` from the PDD + app
+summaries instead of invoking `Skill(app-test-cases)`, which would have
+emitted the per-journey recipe files (`app-test-cases/J*.yaml`) that
+Phase 5's `app-screenshot-capture` reads. Phase 5 halted at pre-flight
+with `incomplete`, no AVD time burned but five training docs rendered
+without screenshots and had to be re-run.
+
+The Phase 2 procedure doc (commcare-setup) is the highest-risk surface
+because it executes inline at level-0 — there's no subagent boundary
+between "the orchestrator decides what to do" and "the skill produces
+the artifact." When in doubt, dispatch.
+
+The post-phase artifact verifier in § Between Phases enforces this rule
+mechanically; the rule itself is here so authors of new procedure docs
+know not to design around it.
+
 ## External Mutations — Verify After Create
 
 Every external-system write must be followed by a read-back. The
@@ -863,12 +895,58 @@ After each phase completes:
 2. **Verify the dispatched phase actually wrote its block** per § Phase
    Write-Back Verifier below (catches drift; orchestrator stubs in a
    minimal block + flips the gate if the agent forgot)
-3. In `auto` mode: send status email to admin group, continue
-4. In `default` mode: continue silently for Phases 1→2, 2→3, 3→4, 4→5;
+3. **Verify producer artifacts landed** per § Producer Artifact Verifier
+   below (catches the inline-composition class of bug at the source
+   phase rather than three phases later at a consumer's pre-flight)
+4. In `auto` mode: send status email to admin group, continue
+5. In `default` mode: continue silently for Phases 1→2, 2→3, 3→4, 4→5;
    **at the Phase 5→6 transition, pause unconditionally** with a
    Phase-5-complete summary and "ready to begin LLO contact?" prompt;
    for 6→7, pause if any external-comm step still pending review
-5. In `review` mode: present summary and wait for approval to continue
+6. In `review` mode: present summary and wait for approval to continue
+
+## Producer Artifact Verifier
+
+After each phase completes (and write-back is verified), the
+orchestrator MUST confirm every dispatched step actually produced the
+files it declares in the artifact manifest. This is the structural
+backstop for § Skill Invocation Discipline: even if the orchestrator
+shortcuts a producer skill, the discipline violation surfaces at the
+producing phase boundary instead of cascading into a downstream
+consumer's pre-flight.
+
+**Procedure.** For each step recorded in `phases.<phase>.steps`:
+
+1. Call `artifactsProducedBy(<skill-name>)` from
+   `lib/artifact-manifest.ts`.
+2. For each returned entry where `required: true` AND the path does
+   NOT contain `YYYY-MM-DD` (dated/recurring artifacts are skipped),
+   list the run folder's phase subfolder (`drive_list_folder` on
+   `<runFolderId>/<N>-<phase>/`) and confirm the path exists. For
+   directory entries (paths ending in `/`), confirm at least one file
+   lives under the prefix.
+3. If any required path is missing, halt loud with:
+
+   > `[BLOCKER]` `<skill>` step recorded as done in
+   > `phases.<phase>.steps.<skill>` but did not produce required
+   > artifact `<path>`. Likely cause: orchestrator inlined an artifact
+   > instead of invoking the skill (see § Skill Invocation Discipline).
+   > Recovery: `/ace:step <skill> <opp>/<run-id>` and re-run the
+   > orchestrator from this point.
+
+**Skips.** Steps with `status: skipped`, `status: error`, or
+`status: incomplete` are not checked — they are explicit non-completions
+and downstream phases will surface their own gaps. Optional artifacts
+(`required: false`) and dated/recurring artifacts (`YYYY-MM-DD` in the
+path) are also skipped.
+
+**Why halt rather than warn.** A missing required artifact at a phase
+boundary means the orchestrator's record of "what shipped" disagrees
+with the on-disk reality. Continuing past that point hands divergent
+state to downstream phases, which compounds the diagnosis cost. The
+blocker message names the producing skill and gives the one-liner
+recovery — `/ace:step` will re-run the producer cleanly because skills
+are idempotent.
 
 ## Phase Write-Back Contract
 

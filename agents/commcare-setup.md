@@ -244,7 +244,16 @@ Invoke the `app-deploy` skill.
 
 ### Step 2.6: Generate app-test-cases.yaml
 
-Dispatch `app-test-cases`:
+Invoke `app-test-cases` via `Skill(app-test-cases)` (or `/ace:step
+app-test-cases <opp>/<run-id>` from a fresh session). **Do NOT compose
+its outputs inline.** This skill's contract is multi-file: it emits a
+master `2-commcare/app-test-cases.yaml` AND per-journey recipe files
+(`2-commcare/app-test-cases/J*.yaml`) which Phase 5's
+`app-screenshot-capture` requires for pre-flight. An inline-composed
+master file with no per-recipe siblings will halt Phase 5 at
+pre-flight (real failure mode from turmeric run 20260509-0455). See
+`agents/ace-orchestrator.md § Skill Invocation Discipline`.
+
 - Reads: pdd-to-app-journeys.md, both app summaries, Nova blueprints
 - Writes: app-test-cases.yaml + recipes/J*.yaml under app-test-cases/
 - Halts on missing inputs or recipe-validation failure
