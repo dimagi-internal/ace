@@ -105,6 +105,7 @@ Unless `--no-evals` was passed, invoke `pdd-to-app-journeys-eval`.
 
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/1-design/design-review_summary.md`,
-then write the `phases.design-review` block + flip `gates.idea-to-pdd`
-per `agents/ace-orchestrator.md § Phase Write-Back Contract`. Required
-top-level keys on the patch: `phases`, `gates`, `last_actor`, `last_actor_at`.
+then write the `phases.design-review` block per `agents/ace-orchestrator.md § Phase
+Write-Back Contract`. Required top-level keys on the patch: `phases`, `last_actor`,
+`last_actor_at`. (0.13.116: the legacy `gates.idea-to-pdd` flip is no longer required —
+pause-point status is derived from `phases.<phase>.status` + per-skill verdicts.)

@@ -72,18 +72,16 @@ describe('CRISPR-Test-001 fixture', () => {
       'inputs/',
       // Phase 1 outputs missing in this fixture.
       '1-design/pdd-to-test-prompts.md',
-      '1-design/idea-to-pdd_gate-brief.md',
       '1-design/design-review_summary.md',
       // Phase 2 outputs missing in this fixture.
-      '2-commcare/app-deploy_gate-brief.md',
       '2-commcare/commcare-setup_summary.md',
       // Phase 3 summary missing.
       '3-connect/connect-setup_summary.md',
       // Phase 4 OCS artifacts (the fixture covers earlier phases only).
       '4-ocs/ocs-agent-setup.md',
-      '4-ocs/ocs-chatbot-eval_gate-brief-quick.md',
       '4-ocs/ocs-setup_summary.md',
       '4-ocs/ocs-setup_widget-handoff.md',
+      // 0.13.116: gate-brief artifacts removed across all phases.
       // Phase 5 verdicts + onboarding email (training docs are present;
       // verdicts and the onboarding email are not).
       '5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',

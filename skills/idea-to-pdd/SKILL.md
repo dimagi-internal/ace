@@ -21,7 +21,10 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 ## Outputs
 
 - `1-design/idea-to-pdd.md` — the PDD
-- `1-design/idea-to-pdd_gate-brief.md` — gate brief consumed at the Phase 1 → 2 review pause
+<!-- 0.13.116: legacy `1-design/idea-to-pdd_gate-brief.md` removed.
+Pause-time summary at the Phase 1 → 2 Pause Point is composed by the
+orchestrator from the per-skill QA + eval verdicts on the fly. -->
+
 - `ACE/<opp-name>/runs/<run-id>/decisions.yaml` — structured per-run decisions log (always emitted; see `## Decisions Log Convention` below)
 
 ## Process
@@ -150,7 +153,10 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 
 6. **Write the PDD** to `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` via Google Drive MCP. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the PDD, so downstream skills (and humans) can see what was caught and what was waived.
 
-7. **Write the gate brief** to `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md` using the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`. See `## Gate Brief` below for the exact fields this skill populates.
+<!-- 0.13.116: gate-brief write step removed. The orchestrator composes a
+pause-time summary from this skill's QA verdict (idea-to-pdd-qa) +
+eval verdict (idea-to-pdd-eval) at the Phase 1 → 2 Pause Point. -->
+
 
 8. **Render the decisions log to a human-readable Google Doc** by
    invoking the `decisions-render` skill against the run-id. The
@@ -199,40 +205,21 @@ The turmeric-market-survey PDD at `docs/examples/pdd-turmeric-market-survey.md` 
 
 Both PDDs fail the rubric in their current form. Surface specific failures and either (a) iterate on the PDD to fix them, or (b) in review mode, hand off to a human with the failure list attached.
 
-## Gate Brief
+<!-- 0.13.116: ## Gate Brief section removed. The orchestrator composes
+a pause-time summary at the Phase 1 → 2 Pause Point from this skill's
+QA verdict + eval verdict directly (per `agents/ace-orchestrator.md §
+Pause Points`). The producer no longer authors a separate gate-brief
+artifact. -->
 
-The gate brief at `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md` translates the
-PDD stress-test output into a shape the admin can act on in 60 seconds.
-Follows the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`.
+## Decisions Log (rendered)
 
-- **Artifact Under Review:** path `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`; summary is the
-  PDD's archetype + problem-statement one-liner
-- **What to Check** (emit these 4 items verbatim):
-  - Archetype declared in frontmatter matches the idea (`atomic-visit` /
-    `focus-group` / `multi-stage`)
-  - `## Evidence Model` section exists with Layer A / B / C populated
-    (downstream skills fail loudly if any is empty)
-  - `LLO Preference` section names at least one candidate LLO or a
-    defensible "any LLO in region X" scope
-  - Any Stress Test categories graded `partial` or `fail` have a
-    human-readable explanation in the appendix (not just a grade)
-- **Auto-Surfaced Concerns:** one line per stress-test category graded
-  `partial` (→ `[WARN]`) or `fail` (→ `[BLOCKER]`). For each, include the
-  category name and the specific failure-mode hint from the rubric (e.g.,
-  `[BLOCKER] Executability — recruitment criteria unspecified`). If all
-  five categories graded `pass`, write "None — all auto-checks passed."
-  - **Open-status decisions:** every row in `decisions.yaml` with
-    `status: open` produces a `[WARN]` entry naming the row's `id` and
-    one-line `notes`. Example: `[WARN] named-downstream-consumer — no
-    consumer named in idea.md; flag for human edit before Phase 7.`
-- **Recommended Disposition:** `Approve` if 0 `[BLOCKER]` and ≤1 `[WARN]`;
-  `Iterate` if any `[BLOCKER]` appears; `Approve with caveats` otherwise
-- **Decisions Log:** the skill always emits `decisions.yaml` and invokes
-  `decisions-render` to produce a prose Google Doc rendering at one
-  stable URL. Include the gdoc URL on its own line at the top of the
-  gate brief, prefixed `Decisions Log: <gdoc-url>`. The YAML lives at
-  `ACE/<opp-name>/runs/<run-id>/decisions.yaml`; the gdoc is its
-  human-friendly rendering and is regenerated after every phase.
+The skill always emits `decisions.yaml` and invokes `decisions-render`
+to produce a prose Google Doc rendering at one stable URL
+(`ACE/<opp-name>/runs/<run-id>/decisions.gdoc`). The YAML lives at
+`ACE/<opp-name>/runs/<run-id>/decisions.yaml`; the gdoc is its
+human-friendly rendering and is regenerated after every phase. The
+orchestrator's pause-time summary at the Phase 1 → 2 Pause Point
+includes a `Decisions Log: <gdoc-url>` line.
 
 ## Decisions Log Convention
 

@@ -87,11 +87,11 @@ Unless `--no-evals` was passed, invoke the `ocs-widget-handoff-eval` skill.
 
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_summary.md`,
-then write the `phases.ocs-setup` block + flip
-`gates.ocs-chatbot-eval-quick` per
-`agents/ace-orchestrator.md § Phase Write-Back Contract`. Required
-top-level keys on the patch: `phases`, `gates`, `last_actor`,
-`last_actor_at`.
+then write the `phases.ocs-setup` block per `agents/ace-orchestrator.md §
+Phase Write-Back Contract`. Required top-level keys on the patch: `phases`,
+`last_actor`, `last_actor_at`. (0.13.116: legacy
+`gates.ocs-chatbot-eval-quick` flip dropped — pause-point status derived
+from phases.ocs-setup.status + per-skill verdicts.)
 
 ## Resumption Contract
 

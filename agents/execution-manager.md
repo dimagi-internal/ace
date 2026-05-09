@@ -115,9 +115,9 @@ This phase is "complete" when the opportunity reaches its end date.
 Ongoing monitoring continues until then.
 
 When `llo-launch` activates the opp, write the `phases.execution-management`
-block + flip `gates.llo-launch` to `pass` per
-`agents/ace-orchestrator.md § Phase Write-Back Contract`. The
-recurring monitor steps (`timeline-monitor`, `flw-data-review`,
-`ocs-chatbot-qa-monitor`, `ocs-chatbot-eval-monitor`) update
-`phases.execution-management.steps.<step>.last_run_at` on each tick;
-they do not flip any gate.
+block per `agents/ace-orchestrator.md § Phase Write-Back Contract`. (0.13.116:
+legacy `gates.llo-launch` flip dropped — pause-point status derived from
+phases.execution-management.status + per-skill verdicts.) The recurring
+monitor steps (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`,
+`ocs-chatbot-eval-monitor`) update `phases.execution-management.steps.<step>.last_run_at`
+on each tick.

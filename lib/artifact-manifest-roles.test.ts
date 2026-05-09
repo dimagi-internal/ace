@@ -26,7 +26,7 @@ describe('PHASE_FOLDERS', () => {
 describe('ROLE_VOCAB', () => {
   it('contains all base roles used by the manifest', () => {
     expect(ROLE_VOCAB.has('summary')).toBe(true);
-    expect(ROLE_VOCAB.has('gate-brief')).toBe(true);
+    // 0.13.116: 'gate-brief' role retired; per-skill QA + eval verdicts replace it.
     expect(ROLE_VOCAB.has('verdict')).toBe(true);
     expect(ROLE_VOCAB.has('report')).toBe(true);
     expect(ROLE_VOCAB.has('transcript')).toBe(true);

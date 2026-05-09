@@ -155,58 +155,19 @@ Activate the opportunity and notify LLOs that they are live.
      number + next-stage kickoff window for multi-stage)
    - Any outstanding non-blocking issues
 
-10. **Write the gate brief** to `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md`
-   using the shape defined in `agents/ace-orchestrator.md § Gate Brief Contract`.
-   The brief is written *before* activation so the admin approves based on
-   readiness, not on a record of something that already happened. See
-   `## Gate Brief` below. Gate-brief checks also branch on archetype —
-   don't check "apps are published" on an FGD opp.
+<!-- 0.13.116: gate-brief write step + ## Gate Brief section removed.
+The Phase 8 "Before llo-launch" Pause Point is unconditional in all
+modes (always pauses — the highest-stakes activation in the pipeline).
+At pause time, the orchestrator composes the pause-time summary from:
+- this skill's eval verdict (`llo-launch-eval`)
+- the deep-QA verdicts (`ocs-chatbot-eval_verdict-deep.yaml`,
+  `app-ux-eval_verdict-deep.yaml`) including freshness checks vs
+  current build IDs
+- the UAT results (`llo-uat_results.md`)
+- archetype-specific readiness signals from this skill's pre-activation
+  checks (per § Archetypes below)
+The producer no longer authors a separate gate-brief artifact. -->
 
-## Gate Brief
-
-The gate brief at `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md` is the final
-approval point before the opportunity flips from test/draft to active in
-Connect — after this, deliveries count toward real payment and FLWs are
-live. This is the single highest-stakes gate in the pipeline.
-
-- **Artifact Under Review:** draft launch record and pending activation;
-  summary is `Opportunity <opp-name> ready for activation — <N> LLOs
-  signed off via UAT`
-- **What to Check** (5 items; third item is archetype-specific):
-  - UAT results show zero blocking issues across all LLOs who participated
-  - Connect opportunity is in a state that can transition to active
-    (not draft-incomplete, not paused)
-  - **Archetype-specific delivery-surface check** — swap in the matching
-    bullet from `## Archetypes`:
-    - `atomic-visit`: All apps (Learn + Deliver) are built, published,
-      and downloadable
-    - `focus-group`: Session 1 venue, recording equipment, participant
-      recruitment, and consent logistics confirmed in UAT results
-    - `multi-stage`: Stage-1 delivery surface ready per stage's
-      protocol (one of the above two, pinned to Stage 1)
-  - The launch notification email body references the correct opportunity
-    name, dates, and support channel (ace@dimagi-ai.com)
-  - Training materials and the OCS widget link are accessible to LLOs
-- **Auto-Surfaced Concerns:** one line per signal:
-  - `[BLOCKER]` if `4-ocs/ocs-chatbot-eval_verdict-deep.yaml` is
-    missing, `verdict: fail`, or stale (chatbot version_number has
-    advanced since the verdict was written) — see Step 4 above
-  - `[BLOCKER]` if `5-qa-and-training/app-ux-eval_verdict-deep.yaml` is
-    missing, `verdict: fail`, or stale (a learn or deliver build was
-    released since the verdict was written) — see Step 4 above
-  - `[BLOCKER]` for any LLO with UAT sign-off status ≠ `signed-off` and a
-    blocking issue recorded
-  - `[BLOCKER]` if any app has a build status that is not `success`
-  - `[WARN]` for each LLO with `signed-off` status but >0 non-blocking
-    issues noted — worth the admin's attention before go-live
-  - `[WARN]` if UAT window is still open and activating now would cut it
-    short
-  - `[INFO]` if any notification is queued for sending via the Current
-    Workaround (manual send) instead of automated email
-  - "None — all auto-checks passed." if the opp is clean to launch
-- **Recommended Disposition:** `Approve` only if zero `[BLOCKER]`; `Reject`
-  if any `[BLOCKER]` (activation would go live with known-broken state);
-  `Iterate` if UAT needs more time or apps need a rebuild
 
 ## Archetypes
 

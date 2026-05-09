@@ -260,15 +260,10 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     required: false,
     description: 'Prose Google Doc rendering of decisions.yaml at one stable URL per run. Find-or-update semantics; existing content cleared and replaced on every invocation. Re-rendered by the orchestrator at end of every phase via skills/decisions-render. Humans review and iterate on this gdoc rather than the YAML; the gdoc URL appears in each gate brief as the Decisions Log: line.',
   },
-  {
-    path: '1-design/idea-to-pdd_gate-brief.md',
-    producedBy: 'idea-to-pdd',
-    role: 'gate-brief',
-    consumedBy: ['ace-orchestrator'],
-    phase: 'design',
-    required: true,
-    description: 'Gate brief for the Phase 1→2 gate: checklist + stress-test concerns for the PDD',
-  },
+  // 0.13.116: gate-brief artifacts removed across all phases. The
+  // orchestrator composes pause-time summaries from per-skill QA + eval
+  // verdicts on the fly at Pause Points (see agents/ace-orchestrator.md
+  // § Pause Points).
   {
     path: '1-design/idea-to-pdd-eval_verdict.yaml',
     producedBy: 'idea-to-pdd-eval',
@@ -352,15 +347,6 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'commcare',
     required: true,
     description: 'Bindings of pdd-to-app-journeys.md to Phase-2-built app structure: per-journey form/field IDs, Maestro recipe paths, smoke flags, structural pass criteria. Phase 5 shallow uses is_smoke: true entries; /ace:qa-deep uses all entries.',
-  },
-  {
-    path: '2-commcare/app-deploy_gate-brief.md',
-    producedBy: 'app-deploy',
-    role: 'gate-brief',
-    consumedBy: ['ace-orchestrator'],
-    phase: 'commcare',
-    required: true,
-    description: 'Gate brief for the Phase 2→3 gate: build status, Connectify flags, and an HQ-domain-mismatch BLOCKER if Nova is bound to the wrong project space',
   },
   {
     path: '2-commcare/pdd-to-learn-app-eval_verdict.yaml',
@@ -490,24 +476,6 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'ocs',
     required: false,
     description: 'Machine-readable verdict from --deep LLM-as-Judge grading; read by opp-eval for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
-  },
-  {
-    path: '4-ocs/ocs-chatbot-eval_gate-brief-quick.md',
-    producedBy: 'ocs-chatbot-eval',
-    role: 'gate-brief',
-    consumedBy: ['ace-orchestrator'],
-    phase: 'ocs',
-    required: true,
-    description: 'Gate brief for the Phase 4→5 gate (post-Task-6 shallow gate): scorecard from --quick eval (3 prompts × 1 dim), pass/fail verdict, single auto-surfaced concern if any prompt < 2/3.',
-  },
-  {
-    path: '4-ocs/ocs-chatbot-eval_gate-brief-deep.md',
-    producedBy: 'ocs-chatbot-eval',
-    role: 'gate-brief',
-    consumedBy: ['ace-orchestrator'],
-    phase: 'ocs',
-    required: false,
-    description: 'Gate brief for the deep-eval activation gate: scorecard, failing prompts, dimension weak spots. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
   },
   {
     path: '4-ocs/ocs-chatbot-eval_report-deep.md',
@@ -956,15 +924,6 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Activation timestamp, LLO notifications, app URLs, outstanding issues',
   },
   {
-    path: '8-execution-manager/llo-launch_gate-brief.md',
-    producedBy: 'llo-launch',
-    role: 'gate-brief',
-    consumedBy: ['ace-orchestrator'],
-    phase: 'execution-management',
-    required: true,
-    description: 'Gate brief for the Phase 7 launch gate: UAT sign-offs, app build status, launch-readiness',
-  },
-  {
     path: '8-execution-manager/ocs-chatbot-qa_transcript-monitor.md',
     producedBy: 'ocs-chatbot-qa',
     role: 'transcript',
@@ -1151,15 +1110,6 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'closeout',
     required: false,
     description: 'Machine-readable run-level verdict from opp-eval --monitor runs; latest-wins file (history lives in 8-closeout/opp-eval/trend.md)',
-  },
-  {
-    path: '9-closeout/opp-eval/opp-eval_gate-brief-deep.md',
-    producedBy: 'opp-eval',
-    role: 'gate-brief',
-    consumedBy: [],
-    phase: 'closeout',
-    required: false,
-    description: 'Advisory brief from opp-eval --deep / --monitor. Written for contract uniformity with the 5 real gate briefs; does NOT gate any phase today (opp-eval is ad-hoc, not part of --mode review auto-pause flow)',
   },
 ] as const;
 
