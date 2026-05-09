@@ -24,7 +24,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   list_avds: { backend: 'AVD', description: 'List AVDs known to avdmanager' },
   install_apk: { backend: 'AVD', description: 'adb install -r' },
   uninstall_apk: { backend: 'AVD', description: 'adb uninstall' },
-  register_test_user: { backend: 'COMPOSITE', description: 'Maestro + Playwright registration flow' },
+  register_test_user: { backend: 'COMPOSITE', description: 'Two-part Maestro registration via +7426 demo-bypass prefix (no OTP)' },
   run_recipe: { backend: 'MAESTRO', description: 'maestro test <recipe>' },
   generate_recipes_from_app_summary: { backend: 'MAESTRO', description: 'LLM emits Maestro YAML from app summary' },
   capture_ui_dump: { backend: 'AVD', description: 'adb shell uiautomator dump' },
