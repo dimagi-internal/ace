@@ -16,6 +16,7 @@
  * Mirrors the unit-test plumbing pattern from commcare-patch-xform.test.ts.
  */
 import { describe, it, expect, vi } from 'vitest';
+import * as fs from 'node:fs';
 import { CommCareBackend } from '../../../../mcp/connect/backends/commcare.js';
 
 interface FakeResponse {
@@ -117,6 +118,25 @@ describe('CommCareBackend.downloadCcz — include_multimedia flag', () => {
 
     const u = new URL(capturedUrl);
     expect(u.searchParams.has('include_multimedia')).toBe(false);
+  });
+
+  it('writes the CCZ to disk and returns a path; never inlines base64 (0.13.116)', async () => {
+    const fake = fakeRequest({ getStatus: 200, getBody: emptyZip });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
+    const r = await backend.downloadCcz({ ...args });
+
+    // The bytes belong on disk, NOT in the response.
+    expect((r as any).ccz_base64).toBeUndefined();
+    expect(r.ccz_path).toBeDefined();
+    expect(r.ccz_sha256).toMatch(/^[0-9a-f]{64}$/);
+
+    // File actually exists at the returned path and matches input bytes.
+    const onDisk = fs.readFileSync(r.ccz_path!);
+    expect(onDisk.equals(emptyZip)).toBe(true);
+
+    // Path includes the cache directory + filename includes sha8.
+    expect(r.ccz_path).toContain('ccz-cache');
+    expect(r.ccz_path).toContain(r.ccz_sha256!.slice(0, 8));
   });
 
   it('threads include_multimedia alongside an explicit build_id', async () => {

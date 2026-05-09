@@ -101,6 +101,23 @@ connection because the plugin's MCP entry expands `${NOVA_API_KEY}`
 once per session start; every subagent dispatch sees the same
 `get_hq_connection` result.
 
+#### Recovery: orphan apps from architect-vs-PAT identity split
+
+If `upload_app_to_hq` returns `error_type: not_found` for an `app_id`
+that the architect just successfully reported building, the architect
+ran under a different Nova identity than the level-0 PAT — the app
+exists in Nova storage but is owned by an account whose PAT is not
+visible to the level-0 session, so the upload tool can't find it.
+(Filed upstream as voidcraft-labs/nova-plugin#13.)
+
+Recovery is to re-dispatch the architect from level 0. The fresh
+dispatch uses the post-fix MCP context, which expands `${NOVA_API_KEY}`
+to the level-0 PAT identity; the rebuild and the upload then run under
+the same identity. Cost: ~10–15 min to rebuild each app. Canonical
+instance: `turmeric/20260508-1951` Phase 2 — both Learn and Deliver
+apps were orphaned and had to be rebuilt before `upload_app_to_hq`
+could find them.
+
 ### Step 1: PDD to Apps (sequential)
 Invoke `pdd-to-learn-app`, then `pdd-to-deliver-app`.
 

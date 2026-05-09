@@ -102,6 +102,118 @@ describe('update_yaml_file: server-side patch+CAS', () => {
     expect(fake.files.update).toHaveBeenCalledTimes(2);
   });
 
+  it('shallow mode wipes siblings under the patched key (the bug)', async () => {
+    const yaml = YAML.stringify({
+      phases: {
+        'design-review': { status: 'done', verdict: 'pass' },
+        'commcare-setup': { status: 'in_progress' },
+      },
+    });
+    const fake = makeFakeDriveWithDoc(yaml, '1');
+
+    await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        patch: { phases: { 'commcare-setup': { steps: { 'commcare-form-patch': { status: 'done' } } } } },
+      },
+      fake as any,
+    );
+
+    // Bug: design-review entirely wiped; commcare-setup.status also wiped.
+    expect(YAML.parse(fake.state.content)).toEqual({
+      phases: {
+        'commcare-setup': { steps: { 'commcare-form-patch': { status: 'done' } } },
+      },
+    });
+  });
+
+  it('deep mode preserves siblings at every nesting level', async () => {
+    const yaml = YAML.stringify({
+      phases: {
+        'design-review': { status: 'done', verdict: 'pass' },
+        'commcare-setup': { status: 'in_progress', steps: { 'app-build': { status: 'done' } } },
+      },
+    });
+    const fake = makeFakeDriveWithDoc(yaml, '1');
+
+    await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        patch: { phases: { 'commcare-setup': { steps: { 'commcare-form-patch': { status: 'done' } } } } },
+        mergeMode: 'deep',
+      },
+      fake as any,
+    );
+
+    expect(YAML.parse(fake.state.content)).toEqual({
+      phases: {
+        'design-review': { status: 'done', verdict: 'pass' },
+        'commcare-setup': {
+          status: 'in_progress',
+          steps: {
+            'app-build': { status: 'done' },
+            'commcare-form-patch': { status: 'done' },
+          },
+        },
+      },
+    });
+  });
+
+  it('deep mode replaces arrays (does not concat)', async () => {
+    const yaml = YAML.stringify({
+      connect: { payment_units: [{ name: 'a' }, { name: 'b' }] },
+    });
+    const fake = makeFakeDriveWithDoc(yaml, '1');
+
+    await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        patch: { connect: { payment_units: [{ name: 'c' }] } },
+        mergeMode: 'deep',
+      },
+      fake as any,
+    );
+
+    expect(YAML.parse(fake.state.content)).toEqual({
+      connect: { payment_units: [{ name: 'c' }] },
+    });
+  });
+
+  it('deep mode replaces on object-vs-non-object mismatch', async () => {
+    const yaml = YAML.stringify({
+      gates: { 'app-deploy': { passed: true, evidence: 'foo' } },
+    });
+    const fake = makeFakeDriveWithDoc(yaml, '1');
+
+    // Replace object with primitive
+    await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        patch: { gates: { 'app-deploy': 'closed' } },
+        mergeMode: 'deep',
+      },
+      fake as any,
+    );
+
+    expect(YAML.parse(fake.state.content)).toEqual({
+      gates: { 'app-deploy': 'closed' },
+    });
+
+    // And primitive replaced with object
+    await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        patch: { gates: { 'app-deploy': { reopened: true } } },
+        mergeMode: 'deep',
+      },
+      fake as any,
+    );
+
+    expect(YAML.parse(fake.state.content)).toEqual({
+      gates: { 'app-deploy': { reopened: true } },
+    });
+  });
+
   it('gives up after 1 retry on persistent revision_conflict', async () => {
     const yaml = YAML.stringify({ x: 1 });
     const fake = makeFakeDriveWithDoc(yaml, '1');

@@ -5,6 +5,27 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.116 — 2026-05-08
+
+**`commcare_download_ccz` now writes the CCZ to disk and returns a path. Inline `ccz_base64` removed (BREAKING for any caller that reads the field).**
+
+The MCP transport silently truncates large base64 payloads — a 29 KB CCZ came back ~2.5 KB short of the original, and `unzip` rejected the corrupted ZIP. Default `MAX_MCP_OUTPUT_TOKENS` is ~10K tokens; ~40 KB of base64 is ~20 K tokens, well over the cap. Workaround during `turmeric/20260508-1951` was to call `CommCareBackend.downloadCcz` directly via tsx.
+
+- `mcp/connect/backends/commcare.ts` — `downloadCcz()` now writes bytes to `${CLAUDE_PLUGIN_DATA}/ccz-cache/<id>-<status>-<sha8>.ccz`, returning `{status, size_bytes, ccz_path, ccz_sha256, connect_markers, projected_connect_state}`. The `ccz_base64` field is gone. CCZs > 25 MB still get written + return the path; only the in-memory inflate (`connect_markers` / `projected_connect_state`) is skipped.
+- `mcp/connect-server.ts` — tool description updated to lead with the new contract.
+- `skills/commcare-form-patch/SKILL.md`, `skills/app-release/SKILL.md` — patched to reference `ccz_path` instead of `ccz_base64`.
+- `test/mcp/connect/unit/commcare-download-ccz.test.ts` — added a unit test verifying file is written, path is returned, sha256 matches, and `ccz_base64` is absent.
+
+**Operator/caller action on update:** anything that decoded `ccz_base64` must now `fs.readFileSync(result.ccz_path)`. Cache files persist across calls — clean up `${CLAUDE_PLUGIN_DATA}/ccz-cache/` if disk usage matters.
+
+**Other improvements in this version:**
+
+- `mcp/google-drive-server.ts` `update_yaml_file` — added `mergeMode: 'shallow' | 'deep'` parameter (default `'shallow'`, backward-compat). The default top-level shallow merge wiped sibling keys when patching nested structures (`phases.commcare-setup.steps.X` would replace the entire `phases` block, wiping `phases.design-review`); pass `mergeMode: 'deep'` to recursively merge plain objects (arrays/primitives still replace). Hit in `turmeric/20260508-1951` requiring manual `phases.design-review` restoration.
+- `bin/ace-doctor` — added `nova_scopes` probe immediately after `nova_auth` to validate per-tool scopes (`nova.hq.read` for `get_hq_connection`, `nova.hq.write` for `upload_app_to_hq`). Pre-0.13.116 a scope-missing key passed `nova_auth` and only failed mid-Phase-2.
+- `skills/commcare-form-patch/SKILL.md` — clarified `assessment-removal` patch class strips any `commcareconnect`-namespaced wrapper (including `<module xmlns=...>`), not just `<assessment>`.
+- `skills/app-test-cases/SKILL.md` — clarified `mobile_resolve_selectors` is a static lookup; no AVD/APK required.
+- `agents/commcare-setup.md` — added "Recovery: orphan apps from architect-vs-PAT identity split" subsection (voidcraft-labs/nova-plugin#13).
+
 ## 0.13.111 — 2026-05-09
 
 **Drop the Nova MCP user-scope-override workaround now that the Nova plugin reads `NOVA_API_KEY` natively (voidcraft-labs/nova-plugin#11).**

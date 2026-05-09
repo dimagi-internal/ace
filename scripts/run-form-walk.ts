@@ -41,7 +41,7 @@
  *
  * Shipped 0.13.29.
  */
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 import { unzipSync, strFromU8 } from 'fflate';
 import { DOMParser } from '@xmldom/xmldom';
 
@@ -585,12 +585,12 @@ async function main(): Promise<number> {
     build_id: args.build_id,
     include_multimedia: false,
   });
-  if (ccz.status !== 200 || !ccz.ccz_base64) {
+  if (ccz.status !== 200 || !ccz.ccz_path) {
     console.error(`download_ccz failed: status=${ccz.status} bytes=${ccz.size_bytes}`);
     return 2;
   }
 
-  const cczBuf = Buffer.from(ccz.ccz_base64, 'base64');
+  const cczBuf = readFileSync(ccz.ccz_path);
   const walked = walkCcz({
     cczBuf,
     domain: args.domain,

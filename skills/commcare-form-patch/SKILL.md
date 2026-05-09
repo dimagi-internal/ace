@@ -55,12 +55,19 @@ succeeds without it.
 
 | Class | Selector | Action | When to use |
 |-------|----------|--------|-------------|
-| **`assessment-removal`** *(recommended)* | Form contains a wrapper element whose body is exactly one `<assessment xmlns="…connect…">…</assessment>` block | Strip the wrapper element + its `<bind>` references entirely | Default for Connect Learn apps. Matches the working Turmeric pattern; unblocks `/opportunity/init/`. |
+| **`assessment-removal`** *(recommended)* | Form contains a wrapper element whose body is exactly one `commcareconnect`-namespaced block — `<assessment xmlns="…connect…">` OR `<module xmlns="…connect…">` (or any other connect-namespaced wrapper) | Strip the wrapper element + its `<bind>` references entirely | Default for Connect Learn apps. Matches the working Turmeric pattern; unblocks `/opportunity/init/`. |
 | `user-score` | Form contains an empty `<user_score/>` inside a `commcareconnect`-namespaced `<assessment>` block | Rewrite to `<user_score>/data/total_score</user_score>` | Legacy class. Necessary but not sufficient — Connect rejects the wrapper element regardless. Kept for diagnostic use; prefer `assessment-removal`. |
 
 `assessment-removal` is a strict superset: any form fixed by `user-score`
 is also fixed by `assessment-removal`, plus assessment-removal removes the
 wrapper element that Connect was already going to reject.
+
+**Scope clarification (0.13.116):** Despite the class name, the matcher
+strips ANY `commcareconnect`-namespaced wrapper element at the form body
+level — not just `<assessment>`. In `turmeric/20260508-1951` 12 Learn
+forms were patched (a mix of `<assessment xmlns=...>` and `<module xmlns=...>`
+wrappers), not the 6 the older docs implied. The class name is preserved
+for backward compatibility with caller patch entries; do NOT rename.
 
 **Apply assessment-removal to LEARN apps only.** Connect's
 `/opportunity/init/` parser only chokes on Learn-side connect markup;
@@ -151,7 +158,9 @@ quiz forms in scope for nova-plugin#5).
 
 3. **Resolve form unique_ids per patch entry.** Call
    `commcare_download_ccz({domain, app_id, build_id})` for the entry's
-   app, decode the base64 CCZ, parse `suite.xml`, and read every
+   app, read the CCZ from the returned `ccz_path` (the atom writes the
+   bytes to `$CLAUDE_PLUGIN_DATA/ccz-cache/`; inline `ccz_base64` was
+   removed in 0.13.116), parse `suite.xml`, and read every
    `<xform><resource id="...">` for the bare `unique_id`. The `id` IS
    the 32-char hex form unique_id used by `edit_form_attr`. Map each
    `./modules-N/forms-M.xml` location back to a `(module, form)`

@@ -218,8 +218,10 @@ just consumes its `clean | blocked` verdict.
   - `commcare_release_build` — POST `/apps/view/<app_id>/releases/release/<build_id>/`,
     sets `is_released: true`.
   - `commcare_download_ccz` — GET `/apps/api/download_ccz/?app_id=...&latest=release`,
-    returns CCZ bytes (base64) + Connect-marker counts grepped from the
-    inflated form XML.
+    writes the CCZ to `$CLAUDE_PLUGIN_DATA/ccz-cache/` and returns
+    `{ccz_path, ccz_sha256, connect_markers, projected_connect_state}`.
+    (Inline `ccz_base64` was removed in 0.13.116 — MCP transport silently
+    truncated large base64 payloads. Read bytes from `ccz_path`.)
   These run against `ACE_HQ_BASE_URL` (default `https://www.commcarehq.org`)
   using the same Playwright session as the Connect atoms — Connect's
   OAuth-via-CCHQ flow leaves valid CCHQ cookies in

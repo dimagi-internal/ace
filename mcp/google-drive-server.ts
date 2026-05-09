@@ -475,14 +475,15 @@ server.tool(
 // 10a. Patch a YAML file server-side (read+merge+CAS-write in one call)
 server.tool(
   'update_yaml_file',
-  'Patch a YAML-content Google Doc in one MCP call: the server reads the current content + revisionVersion, parses it as YAML (treating empty/missing as `{}`), shallow-merges `patch` into the top-level keys (replace, NOT deep-merge — predictable), serializes back to YAML, and writes with optimistic-concurrency. On a `revision_conflict` (a concurrent writer landed between read and write) the call retries once with the freshly-observed revision. Use this for run_state.yaml / opp.yaml updates instead of pairing drive_read_file + drive_update_file by hand: it saves one round-trip per state transition AND keeps the full file content out of the model context (the model only sends the diff). For arbitrary text files use drive_update_file instead.',
+  '**Top-level shallow merge by default** — passing `phases: {commcare-setup: {...}}` REPLACES the entire `phases` key. Pass `mergeMode: \'deep\'` to recursively merge plain objects. Patch a YAML-content Google Doc in one MCP call: the server reads the current content + revisionVersion, parses it as YAML (treating empty/missing as `{}`), merges `patch` into the existing structure, serializes back to YAML, and writes with optimistic-concurrency. On a `revision_conflict` (a concurrent writer landed between read and write) the call retries once with the freshly-observed revision. Use this for run_state.yaml / opp.yaml updates instead of pairing drive_read_file + drive_update_file by hand: it saves one round-trip per state transition AND keeps the full file content out of the model context (the model only sends the diff). For arbitrary text files use drive_update_file instead.',
   {
     fileId: z.string().describe('The Google Drive file ID of the YAML doc'),
-    patch: z.record(z.unknown()).describe('Object whose top-level keys are merged into the existing YAML (replace, not deep-merge). Use a nested object only when you intend to fully replace that subtree.'),
+    patch: z.record(z.unknown()).describe('Object merged into the existing YAML. With `mergeMode: \'shallow\'` (default), top-level keys are replaced wholesale. With `mergeMode: \'deep\'`, plain objects are merged recursively (arrays/primitives still replace).'),
+    mergeMode: z.enum(['shallow', 'deep']).optional().describe("Merge strategy. 'shallow' (default) replaces top-level keys (backward-compatible, but DESTRUCTIVE at the top-level key it touches). Use 'deep' when patch keys nest into existing structure (e.g. phases.X.steps.Y); 'shallow' would wipe sibling keys at every level above your patch."),
   },
-  async ({ fileId, patch }) => {
+  async ({ fileId, patch, mergeMode }) => {
     try {
-      const r = await handleUpdateYamlFile({ fileId, patch }, drive);
+      const r = await handleUpdateYamlFile({ fileId, patch, mergeMode }, drive);
       return result(r);
     } catch (e: any) {
       return error(e.message);
@@ -851,11 +852,47 @@ function isTextMimeType(mimeType: string): boolean {
  * concurrent writer landing between our read and our write); a second
  * conflict surfaces to the caller.
  */
+/**
+ * Plain-object detection: only true for `{}`-style records. Class instances,
+ * arrays, null, primitives all return false. Used by deepMerge to decide
+ * whether to recurse vs. replace.
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
+}
+
+/**
+ * Recursively merge `source` into `target`. Plain objects merge key-by-key;
+ * arrays and non-object values replace (matches lodash _.merge semantics for
+ * plain objects, but does NOT concat arrays). Object-vs-non-object mismatch
+ * at a path: replace.
+ */
+function deepMerge(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...target };
+  for (const [k, v] of Object.entries(source)) {
+    const existing = out[k];
+    if (isPlainObject(existing) && isPlainObject(v)) {
+      out[k] = deepMerge(existing, v);
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
 export async function handleUpdateYamlFile(
-  args: { fileId: string; patch: Record<string, unknown> },
+  args: { fileId: string; patch: Record<string, unknown>; mergeMode?: 'shallow' | 'deep' },
   driveClient: typeof drive = drive,
 ): Promise<{ id: string; name: string; modifiedTime: string; revisionVersion: string | undefined }> {
-  const { fileId, patch } = args;
+  const { fileId, patch, mergeMode = 'shallow' } = args;
   const maxAttempts = 2;
   let lastErr: any;
 
@@ -863,8 +900,13 @@ export async function handleUpdateYamlFile(
     const current = await handleReadFile({ fileId }, driveClient);
     const parsed = current.content && current.content.trim() ? YAML.parse(current.content) : {};
     const base: Record<string, unknown> = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
-    const merged: Record<string, unknown> = { ...base };
-    for (const [k, v] of Object.entries(patch)) merged[k] = v;
+    let merged: Record<string, unknown>;
+    if (mergeMode === 'deep') {
+      merged = deepMerge(base, patch);
+    } else {
+      merged = { ...base };
+      for (const [k, v] of Object.entries(patch)) merged[k] = v;
+    }
     const newContent = YAML.stringify(merged);
 
     try {

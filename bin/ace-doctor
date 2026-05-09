@@ -1218,6 +1218,95 @@ else
   warn "nova_auth: skipped — NOVA_API_KEY not set" "see nova_env warning above; mint at https://commcare.app/settings"
 fi
 
+# 6a. nova_scopes — validate the PAT actually has the per-tool scopes ACE
+# needs. `nova_auth` only confirms the bearer is accepted at the transport
+# layer; a key without `nova.hq.read` / `nova.hq.write` will pass nova_auth
+# and only fail mid-Phase-2 / app-deploy with a misleading "scope_missing".
+# Probe by calling `get_hq_connection` (the cheapest read tool that exercises
+# `nova.hq.read`) and parse the response — branches:
+#   - 2xx + configured:true + domain.name → pass (read scope + HQ key bound)
+#   - 2xx + configured:false             → warn (read scope OK, no HQ key in Nova)
+#   - 2xx + error_type:scope_missing     → fail (rotate / regrant scope)
+#   - other                              → warn (unexpected response)
+if [ -n "$NOVA_KEY_VAL" ]; then
+  NOVA_SCOPE_BODY="$(curl -sS --max-time 5 \
+    -X POST \
+    -H "Authorization: Bearer $NOVA_KEY_VAL" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_hq_connection","arguments":{}}}' \
+    "https://mcp.commcare.app/mcp" 2>/dev/null || echo "")"
+  NOVA_SCOPE_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+    -X POST \
+    -H "Authorization: Bearer $NOVA_KEY_VAL" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_hq_connection","arguments":{}}}' \
+    "https://mcp.commcare.app/mcp" 2>/dev/null || echo "000")"
+  # The body may be SSE-wrapped (lines like "data: {...}"); strip the
+  # `data: ` prefix on the JSON-RPC frame line before parsing. python3 is
+  # ubiquitous on macOS + most Linux; jq isn't always present.
+  NOVA_SCOPE_PARSED="$(printf '%s' "$NOVA_SCOPE_BODY" | python3 -c '
+import sys, json, re
+raw = sys.stdin.read()
+# Pull JSON object from SSE-style "data: {...}" or plain JSON.
+m = re.search(r"data:\s*(\{.*\})", raw)
+payload = m.group(1) if m else raw.strip()
+try:
+    obj = json.loads(payload)
+except Exception:
+    print("PARSE_ERROR")
+    sys.exit(0)
+# JSON-RPC tools/call wraps the actual result in result.content[0].text
+# as a JSON string. Unwrap it.
+inner = None
+try:
+    inner_raw = obj.get("result", {}).get("content", [{}])[0].get("text", "")
+    inner = json.loads(inner_raw) if inner_raw else None
+except Exception:
+    inner = obj.get("result") or obj
+target = inner if isinstance(inner, dict) else (obj.get("result") if isinstance(obj.get("result"), dict) else obj)
+err_type = target.get("error_type") if isinstance(target, dict) else None
+required = target.get("required_scope") if isinstance(target, dict) else None
+configured = target.get("configured") if isinstance(target, dict) else None
+domain_name = None
+if isinstance(target, dict):
+    d = target.get("domain")
+    if isinstance(d, dict):
+        domain_name = d.get("name")
+print(f"err_type={err_type}\nrequired={required}\nconfigured={configured}\ndomain_name={domain_name}")
+' 2>/dev/null || echo "PARSE_ERROR")"
+  NOVA_ERR_TYPE="$(printf '%s' "$NOVA_SCOPE_PARSED" | sed -n 's/^err_type=//p')"
+  NOVA_REQUIRED_SCOPE="$(printf '%s' "$NOVA_SCOPE_PARSED" | sed -n 's/^required=//p')"
+  NOVA_CONFIGURED="$(printf '%s' "$NOVA_SCOPE_PARSED" | sed -n 's/^configured=//p')"
+  NOVA_DOMAIN_NAME="$(printf '%s' "$NOVA_SCOPE_PARSED" | sed -n 's/^domain_name=//p')"
+
+  case "$NOVA_SCOPE_CODE" in
+    2*)
+      if [ "$NOVA_ERR_TYPE" = "scope_missing" ]; then
+        REQ_TXT="${NOVA_REQUIRED_SCOPE:-unknown}"
+        fail "nova_scopes: NOVA_API_KEY missing scope $REQ_TXT" "edit at https://commcare.app/settings → API tokens → grant HQ Read + HQ Write"
+      elif [ "$NOVA_CONFIGURED" = "True" ] && [ -n "$NOVA_DOMAIN_NAME" ] && [ "$NOVA_DOMAIN_NAME" != "None" ]; then
+        pass "nova_scopes: HQ Read scope granted; bound to $NOVA_DOMAIN_NAME"
+      elif [ "$NOVA_CONFIGURED" = "False" ]; then
+        warn "nova_scopes: HQ Read granted but no HQ key bound in Nova settings" "paste an HQ API key at https://commcare.app/settings before /ace:run"
+      else
+        TRUNC="$(printf '%s' "$NOVA_SCOPE_BODY" | head -c 200)"
+        warn "nova_scopes: unexpected response $TRUNC" "investigate Nova MCP response shape"
+      fi
+      ;;
+    000)
+      warn "nova_scopes: cannot reach https://mcp.commcare.app/mcp (network/DNS/timeout)" "check VPN/proxy; see nova_auth above"
+      ;;
+    *)
+      TRUNC="$(printf '%s' "$NOVA_SCOPE_BODY" | head -c 200)"
+      warn "nova_scopes: HTTP $NOVA_SCOPE_CODE — $TRUNC" "investigate Nova MCP health; if persists, rotate the key"
+      ;;
+  esac
+else
+  warn "nova_scopes: skipped — NOVA_API_KEY not set" "see nova_env warning above; mint at https://commcare.app/settings"
+fi
+
 # 7. ace-mobile — local-only MCP (Maestro + adb + AVD + APK). It does not
 # authenticate against any remote service at runtime, so there is no
 # "live auth probe" distinct from the others. The auth-adjacent things

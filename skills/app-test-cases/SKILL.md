@@ -70,7 +70,10 @@ between major form sections):
   `takeScreenshot: "sc-J<n>-final"` for the deep UX judge to grade
 - Resolve any `${SELECTOR:logical-name}` placeholders via
   `mobile_resolve_selectors` against the current APK selector map
-  before validating
+  before validating. **This is a static lookup, not live introspection** —
+  the atom reads `mcp/mobile/selectors/connect-<apk-version>.yaml` and
+  substitutes; no AVD or APK is required to run this step. AVD is only
+  needed for actual recipe execution in Phase 5 / `/ace:qa-deep`.
 - Validate via `mobile_validate_recipe` before writing
 
 **Use live labels from Nova's `get_form` response, not the PDD

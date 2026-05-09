@@ -427,6 +427,7 @@ server.tool('commcare_release_build',
 );
 
 server.tool('commcare_download_ccz',
+  'Writes the CCZ to `$CLAUDE_PLUGIN_DATA/ccz-cache/` and returns `ccz_path` for the caller to open. Inline `ccz_base64` was removed in 0.13.116 because the MCP transport silently truncated large base64 payloads — a 29 KB CCZ came back missing 2.5 KB of trailing bytes. Returns `{status, size_bytes, ccz_path, ccz_sha256, connect_markers, projected_connect_state}`. CCZs > 25 MB still get written to disk + return the path, but skip the in-memory inflate (so `connect_markers` and `projected_connect_state` are absent). Use `connect_markers` and `projected_connect_state` for cheap server-side validation; read the file at `ccz_path` only when you need the raw bytes.',
   {
     domain: z.string(),
     app_id: z.string(),

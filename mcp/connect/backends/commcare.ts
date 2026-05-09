@@ -1,7 +1,12 @@
 import type { APIRequestContext, APIResponse } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import { createHash } from 'node:crypto';
 import { PlaywrightSession } from '../auth/playwright-session.js';
 import { SessionExpiredError } from '../errors.js';
+import { resolvePluginDataDir } from '../../../lib/plugin-data-dir.js';
 
 /**
  * CommCare HQ atoms — release apps that Nova uploaded as drafts.
@@ -78,8 +83,17 @@ export interface DownloadCczArgs {
 export interface DownloadCczResult {
   status: number;
   size_bytes: number;
-  /** Base64-encoded CCZ bytes. Capped at 25 MB; larger CCZs return size_bytes only. */
-  ccz_base64?: string;
+  /**
+   * Absolute path to the on-disk CCZ. Written under
+   * `${CLAUDE_PLUGIN_DATA}/ccz-cache/<build_id|app_id>-<status>-<sha8>.ccz`.
+   * Replaces the pre-0.13.116 inline `ccz_base64` payload, which the MCP
+   * transport silently truncated above ~10K-token responses.
+   * Callers should open this path directly. The file is left in place;
+   * callers are responsible for cleanup if they need it.
+   */
+  ccz_path?: string;
+  /** Hex-encoded sha256 of the CCZ bytes. Useful for de-dup / cache invalidation. */
+  ccz_sha256?: string;
   /** Per-namespace marker counts grepped from the inflated CCZ (when fetched). */
   connect_markers?: {
     deliver: number;
@@ -416,11 +430,22 @@ export class CommCareBackend {
       }
       const buf = await res.body();
       const size = buf.byteLength;
-      // Skip base64 round-trip + marker grep on > 25 MB CCZs to keep MCP
-      // responses small. If the operator needs the bytes for a larger app,
-      // they should download via curl directly.
+      // Always persist bytes to disk and return a path. Inline base64 was
+      // removed in 0.13.116 because the MCP transport silently truncated
+      // large base64 payloads (~10K-token cap) — a 29 KB CCZ came back
+      // missing 2.5 KB of trailing bytes, which made every `unzip` reject
+      // the file. Callers now read from `ccz_path`.
+      const sha = createHash('sha256').update(buf).digest('hex');
+      const sha8 = sha.slice(0, 8);
+      const idForName = args.build_id ?? args.app_id;
+      const status_label = args.build_id ? 'build' : 'release';
+      const ccz_path = writeCczToCache(buf, `${idForName}-${status_label}-${sha8}.ccz`);
+
+      // Skip marker grep on > 25 MB CCZs (cheap CCZ-on-disk; expensive
+      // inflate). The caller still gets `ccz_path` and can inspect the
+      // archive directly if needed.
       if (size > 25 * 1024 * 1024) {
-        return { status, size_bytes: size };
+        return { status, size_bytes: size, ccz_path, ccz_sha256: sha };
       }
       // CCZ is a ZIP whose entries are typically DEFLATE-compressed; the
       // form XML is NOT readable from the raw zip bytes. Inflate in memory
@@ -440,7 +465,8 @@ export class CommCareBackend {
       return {
         status,
         size_bytes: size,
-        ccz_base64: buf.toString('base64'),
+        ccz_path,
+        ccz_sha256: sha,
         connect_markers,
         projected_connect_state,
       };
@@ -699,6 +725,23 @@ export function mediaTypeFromContentType(ct: string): 'image' | 'audio' | 'video
   if (ct.startsWith('video/')) return 'video';
   if (ct.startsWith('text/')) return 'text';
   throw new Error(`commcare_upload_multimedia: unsupported content_type ${ct}`);
+}
+
+/**
+ * Resolve the on-disk cache directory for downloaded CCZs and write
+ * `buf` to `<cache>/<filename>`. Falls back to `os.tmpdir()/ace-ccz-cache`
+ * when `${CLAUDE_PLUGIN_DATA}` is unresolvable (test environments). Creates
+ * the directory recursively. Returns the absolute path written.
+ *
+ * Exported for unit tests.
+ */
+export function writeCczToCache(buf: Buffer, filename: string): string {
+  const dataDir = resolvePluginDataDir(import.meta.url) ?? path.join(os.tmpdir(), 'ace-ccz-cache-fallback');
+  const cacheDir = path.join(dataDir, 'ccz-cache');
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const out = path.join(cacheDir, filename);
+  fs.writeFileSync(out, buf);
+  return out;
 }
 
 /**

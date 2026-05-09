@@ -32,6 +32,7 @@
 
 import { config as dotenvConfig } from 'dotenv';
 import * as path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { unzipSync, strFromU8 } from 'fflate';
 
 import { ContentGeneratorClient } from '../lib/content-generator-client.js';
@@ -87,10 +88,10 @@ try {
   let end = stepStart(1, 'Downloading current CCZ');
   const ccz1 = await c.downloadCcz({ domain, app_id: appId });
   const t1 = end();
-  if (ccz1.status !== 200 || !ccz1.ccz_base64) {
+  if (ccz1.status !== 200 || !ccz1.ccz_path) {
     throw new Error(`download_ccz #1 status=${ccz1.status} size=${ccz1.size_bytes}`);
   }
-  const buf1 = Buffer.from(ccz1.ccz_base64, 'base64');
+  const buf1 = readFileSync(ccz1.ccz_path);
   const entries1 = unzipSync(new Uint8Array(buf1));
   const formPath = `modules-${moduleIdx}/forms-${formIdx}.xml`;
   if (!entries1[formPath]) {
@@ -219,11 +220,11 @@ try {
     include_multimedia: true,
   });
   const t6 = end6();
-  if (ccz2.status !== 200 || !ccz2.ccz_base64) {
+  if (ccz2.status !== 200 || !ccz2.ccz_path) {
     console.error(`verify download_ccz status=${ccz2.status} size=${ccz2.size_bytes}`);
     process.exit(2);
   }
-  const buf2 = Buffer.from(ccz2.ccz_base64, 'base64');
+  const buf2 = readFileSync(ccz2.ccz_path);
   const entries2 = unzipSync(new Uint8Array(buf2));
   console.log(`       full CCZ size=${buf2.byteLength} entries=${Object.keys(entries2).length}`);
 
