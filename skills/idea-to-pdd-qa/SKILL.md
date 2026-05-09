@@ -29,7 +29,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 
 | # | id | type | description | auto-fix on fail |
 |---|---|---|---|---|
-| 1 | `all_required_sections_present` | static | All 11 required PDD sections present (Archetype, Problem Statement, Intervention Design, Learn App Specification, Deliver App Specification, Target Population, FLW Requirements, LLO Preference, Success Metrics, Evidence Model, Timeline) | regenerate PDD with explicit instructions to include each missing section |
+| 1 | `all_required_sections_present` | static | All 11 required PDD sections present (Archetype, Problem Statement, Intervention Design, Learn App Specification, Deliver App Specification, Target Population, FLW Requirements, LLO Preference, Success Metrics, Evidence Model, Timeline). Heading match tolerates case variation, bold-wrapping, and trailing parentheticals — see `checks.ts § checkAllRequiredSectionsPresent` for the full tolerance contract. | regenerate the missing section(s) with substantive content matching each section's purpose (auto_fix_hint enumerates per-section purpose in the failure detail) |
 | 2 | `archetype_declared_and_valid` | static | Archetype declared in frontmatter or body; value is one of {atomic-visit, focus-group, multi-stage} | add `archetype:` to frontmatter + matching body declaration |
 | 3 | `stress_test_appendix_present` | static | PDD has a `## Stress Test Results` appendix with the 5-question self-eval grades | add the appendix per skills/idea-to-pdd/SKILL.md § Process step 6 |
 | 4 | `success_metrics_table_populated` | static | `## Success Metrics` section contains a markdown table with at least one data row | fill the table with at least one metric row |
