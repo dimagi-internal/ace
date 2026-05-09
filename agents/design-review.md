@@ -41,7 +41,7 @@ Invoke the `idea-to-pdd-qa` skill — runs 6 static structural checks against th
 
 - Input: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-qa_result.yaml`
-- **QA gates eval:** if `verdict: fail`, attempt up to 2 auto-fix retries (regenerate PDD with `failures[].auto_fix_hint` instructions, re-run QA). After bounded retries, halt with `verdict: incomplete` for Phase 1 and surface failures to operator. NEVER silently proceed to eval when QA failed.
+- **QA gates eval:** if `verdict: fail`, dispatch the producer with each `failures[].auto_fix_hint`, then re-run QA. Keep looping while the producer is making progress (the new attempt's `failures[].check` set is different from the previous attempt's). Halt with `verdict: incomplete` when the producer can no longer make progress on the same failures, and surface the unresolved failures + per-attempt trace to the operator. NEVER silently proceed to eval when QA failed.
 - **QA passing means the PDD is gradable, NOT that it's good** — eval (Step 1.5) grades quality.
 
 ### Step 1.5: Idea-to-PDD eval (independent quality re-grade)
@@ -69,7 +69,7 @@ Invoke the `pdd-to-test-prompts-qa` skill — runs 8 static checks (header + tot
 
 - Input: `runs/<run-id>/1-design/pdd-to-test-prompts.md`
 - Output: `runs/<run-id>/1-design/pdd-to-test-prompts-qa_result.yaml`
-- **QA gates eval:** on `verdict: fail`, attempt up to 2 auto-fix retries; halt with `incomplete` after bounded attempts.
+- **QA gates eval:** on `verdict: fail`, dispatch the producer with each `failures[].auto_fix_hint`, re-run QA, keep looping while the failure set changes; halt with `incomplete` when the producer stops making progress.
 
 ### Step 2.5: PDD-to-test-prompts eval (quality grade)
 
