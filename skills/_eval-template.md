@@ -9,6 +9,8 @@ duplicating ~30-50 lines of setup.
 This is a **reference document**, not a skill. It is not invoked. It
 is excluded from the skill catalog because the filename starts with `_`.
 
+For per-skill eval status — which producers have an `-eval` companion, which use inline self-eval, which deliberately don't, and which are pending — see [`_eval-decisions.md`](./_eval-decisions.md). That file is the registry; this one is the contract.
+
 ## Relationship to QA
 
 Eval grades **quality** (soft 0-10 scores via LLM-as-Judge). QA grades **structural correctness** (binary pass/fail). They run on every artifact and are orthogonal — QA gates eval.
