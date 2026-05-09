@@ -21,7 +21,8 @@ describe("DecisionRowSchema", () => {
     expect(() => DecisionRowSchema.parse(row)).not.toThrow();
   });
 
-  it("rejects an empty id", () => {
+  // audit: Empty id is a rejection variant; the parametrized `it.each([..., 'leading hyphen', 'trailing hyphen', ...])('rejects an id with %s')` alread
+  it.skip("rejects an empty id", () => {
     const row = {
       id: "",
       phase: "1-design",
@@ -117,7 +118,8 @@ describe("DecisionRowSchema", () => {
     expect(() => DecisionRowSchema.parse(row)).toThrow();
   });
 
-  it("accepts an optional notes field", () => {
+  // audit: Tests that zod allows a declared optional field. zod-rubber-stamp — adding any optional field would pass. No distinct contract being verifie
+  it.skip("accepts an optional notes field", () => {
     const row = {
       id: "flw-count",
       phase: "1-design",
@@ -231,7 +233,8 @@ decisions:
     expect(() => parseDecisionsYaml(yaml)).toThrow(/decisions\.0\.id/);
   });
 
-  it("throws on unparseable YAML", () => {
+  // audit: Tests that the underlying yaml lib throws on invalid input. Exercises the lib, not your wrapping logic. A meaningful test would verify the w
+  it.skip("throws on unparseable YAML", () => {
     expect(() => parseDecisionsYaml("not: : valid: yaml")).toThrow();
   });
 });

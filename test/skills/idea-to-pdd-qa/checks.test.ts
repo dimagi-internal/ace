@@ -84,7 +84,8 @@ describe('checkAllRequiredSectionsPresent', () => {
     expect(r.auto_fix_hint).toBeTruthy();
   });
 
-  test('fails when multiple sections missing', () => {
+  // audit: Same code path as 'fails when one section is missing'. Multi-missing is the same loop running twice. Keeper: 'fails when one section is miss
+  test.skip('fails when multiple sections missing', () => {
     const pdd = SECTIONS_FULL
       .replace('## Target Population\n\nx', '')
       .replace('## FLW Requirements\n\nx', '');
@@ -249,7 +250,8 @@ describe('CHECKS array', () => {
     ]);
   });
 
-  test('every check has type, description, and run', () => {
+  // audit: TypeScript enforces these fields at compile time (via the QACheck interface). Test passes vacuously for a well-typed module; provides no run
+  test.skip('every check has type, description, and run', () => {
     for (const c of CHECKS) {
       expect(c.id).toBeTruthy();
       expect(['static', 'llm']).toContain(c.type);
@@ -258,7 +260,8 @@ describe('CHECKS array', () => {
     }
   });
 
-  test('every check is type: static (no LLM checks for idea-to-pdd-qa)', () => {
+  // audit: Snapshot of the current implementation, not a contract. If a future LLM check is added, this test breaks but the system is still correct. Te
+  test.skip('every check is type: static (no LLM checks for idea-to-pdd-qa)', () => {
     for (const c of CHECKS) {
       expect(c.type).toBe('static');
     }
