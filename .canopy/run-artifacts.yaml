@@ -35,9 +35,13 @@ per_run:
     glob_secondary: "runs/{run_id}/**/*_verdict*.yaml"  # producer-self-eval inline verdicts
     schema: ace_verdict_v2
     description: Per-skill eval verdicts. Uniform shape (lib/verdict-schema.ts).
+  qa_results:
+    glob: "runs/{run_id}/**/*-qa_result.yaml"
+    schema: ace_qa_result_v1
+    description: Per-skill QA result YAMLs (lib/qa-types.ts). Binary verdict produced by `<producer>-qa` skills.
   gate_briefs:
     glob: "runs/{run_id}/**/*_gate-brief*.md"
-    description: Human-readable gate briefs at phase boundaries.
+    description: Human-readable gate briefs at phase boundaries. (0.13.116: gate-brief artifact retired; glob remains for pre-0.13.116 runs.)
   artifacts:
     derive_from: verdicts.capture_path
     description: The producer artifact each verdict judged. Read via gdrive read_tool.
@@ -65,3 +69,29 @@ opp_level:
     glob: "eval-calibration/*.md"
     optional: true
     description: Per-rubric ground-truth catalogues + iteration logs.
+
+# Source-level evidence (resolved relative to repo root; not per-opp).
+# Lenses reference these via `evidence.derived` or `evidence.primary`.
+source:
+  qa_eval_registries:
+    paths:
+      - "skills/_qa-decisions.md"
+      - "skills/_eval-decisions.md"
+    description: Per-skill registries — every producer's QA + eval status with rationale + revisit triggers.
+  qa_template:
+    path: "skills/_qa-template.md"
+    description: QA author contract; canonical home for fake-QA / inline-QA / MCP-boundary heuristics.
+  eval_template:
+    path: "skills/_eval-template.md"
+    description: Eval author contract.
+  artifact_manifest:
+    path: "lib/artifact-manifest.ts"
+    description: Truth source for `producedBy` — lens reads this to enumerate producers needing registry rows.
+  producer_skills:
+    glob: "skills/*/SKILL.md"
+    exclude: "skills/_*"
+    description: Producer SKILL.md bodies — read to validate inline-QA citations from registry rows.
+  mcp_improvement_list:
+    path: "skills/_qa-decisions.md"
+    section: "MCP-improvement candidates surfaced by the audit"
+    description: Tracked upstream MCP gaps. Lens checks if any have been closed (e.g. Nova upstream PR landed).

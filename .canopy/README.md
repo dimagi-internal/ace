@@ -6,7 +6,7 @@ This directory declares ACE's shape for canopy-driven self-improvement loops. Ca
 
 Canopy stays domain-agnostic. ACE-specific knowledge — what a verdict YAML looks like, which skills are producers vs evaluators, where to find run state — lives here, version-controlled with the rest of ACE. When ACE's shape evolves, this directory evolves in the same PR. Other projects (canopy itself, ace-web, etc.) declare their own `.canopy/` and get the same machinery for free.
 
-## Three lenses, three loops
+## Four lenses, four loops
 
 Each lens is its own loop, dispatched independently. Run them in parallel from the same human session — they don't share state and can't deadlock each other.
 
@@ -15,6 +15,7 @@ Each lens is its own loop, dispatched independently. Run them in parallel from t
 | **operational** | Did the system run cleanly? Phases complete, gates fire correctly, MCP atoms succeed, state coherent? | Observational only — fixes affect runtime, hard to verify without another run | Human review |
 | **production** | Did producer skills generate good artifacts? | Sandbox-regen — re-run producer with edited prompt against same inputs, re-grade the sandbox artifact, compare verdicts | Human review |
 | **judge** | Are evals catching real flaws and only real flaws? | Re-grade — apply rubric edit, re-dispatch eval against original artifact, compare verdicts | Auto-merge eligible (deterministic, reversible) |
+| **qa-eval-system** | Are the per-skill QA + Eval registries still accurate, the heuristics still applied, and the MCP-improvement candidates still tracked? Does any deferred-row trigger evidence appear in the run? | Observational — registry/template edits affect classification but no runtime test. CI lint (`registries-coverage.test.ts`) + cited-section verification | Human review |
 
 ## Layout
 
@@ -25,7 +26,8 @@ Each lens is its own loop, dispatched independently. Run them in parallel from t
 └── lenses/
     ├── operational.yaml      (instance of canopy's `operational` lens type)
     ├── production.yaml       (instance of canopy's `production` lens type)
-    └── judge.yaml            (instance of canopy's `judge` lens type)
+    ├── judge.yaml            (instance of canopy's `judge` lens type)
+    └── qa-eval-system.yaml   (instance of canopy's `operational` lens type, scoped to QA/eval registry health)
 ```
 
 `run-artifacts.yaml` describes what the system *produces* — verdicts, run state, gate briefs, summaries, opp-level cross-run state. Lens descriptors reference its entries (e.g. `per_run.verdicts`).

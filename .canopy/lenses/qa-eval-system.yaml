@@ -1,0 +1,147 @@
+name: qa-eval-system
+description: >
+  Audit the per-skill QA + Eval registries (`skills/_qa-decisions.md`,
+  `skills/_eval-decisions.md`) against current code, producer SKILL.md
+  bodies, and the MCP-improvement candidates list. Surfaces registry
+  drift, fake-QA candidates that snuck in, and deferred-row triggers
+  that have fired. Scoped per-run because /ace:run is the natural
+  trigger for "did this run violate the registries?"; signals also
+  catch drift between runs.
+
+# Per-run scope so canopy v1 dispatch works. Run is the trigger; signals
+# audit registry coverage + heuristic application, which is registry-shaped.
+scope: per_run
+
+# Evidence the lens reads
+evidence:
+  primary: source.qa_eval_registries
+  ace_augmentation:
+    - per_run.verdicts             # per-skill eval verdicts produced this run
+    - per_run.qa_results           # per-skill QA result YAMLs (`<phase>/<producer>-qa_result.yaml`)
+    - per_run.run_state            # which producers ran, which produced artifacts
+  derived:
+    - source.artifact_manifest     # `producedBy` truth source
+    - source.producer_skills       # `skills/<producer>/SKILL.md` for inline-QA citation checks
+    - source.qa_template           # `skills/_qa-template.md` (heuristic source of truth)
+    - source.eval_template         # `skills/_eval-template.md` (heuristic source of truth)
+    - source.mcp_improvement_list  # `_qa-decisions.md § MCP-improvement candidates`
+
+# Signal detectors — what the lens looks for
+signals:
+  - id: registry_row_drift
+    description: >
+      A registry row (`_qa-decisions.md` or `_eval-decisions.md`) claims
+      a producer is `inline QA` and cites a specific SKILL.md section
+      (e.g. "Step 4a"), but the cited section no longer has the inline
+      checks the row claims. Or the row's rationale references a
+      filepath/skill name that's since been renamed or removed. Propose
+      updating the registry row to match current code.
+    probe: registry_citation_validation
+
+  - id: fake_qa_introduced
+    description: >
+      A producer skill (or its eval rubric) added a structural check
+      that violates the fake-QA heuristic: downstream consumer is
+      LLM-driven AND no code-path branches on the artifact's structure
+      AND the companion eval already grades the quality concern. The
+      check is fake QA. Propose dropping it; flip the producer's row
+      to `NO QA` if the change shows producers gaining structural
+      checks they shouldn't have.
+    probe: fake_qa_pattern_match
+
+  - id: mcp_gap_closed
+    description: >
+      An MCP-improvement candidate listed in `_qa-decisions.md §
+      MCP-improvement candidates` has shipped its upstream fix (e.g.
+      Nova's `validate_app` gained Connect-marker checking; CCHQ build
+      added Connect-compatibility validation). The corresponding
+      `inline QA` producer should flip to `NO QA` (covered by the
+      now-improved MCP). Propose the row update + the inline-check
+      removal from the producer's SKILL.md.
+    probe: mcp_capability_diff
+
+  - id: deferred_trigger_fired
+    description: >
+      A `not yet migrated` row (deferred has-QA candidate) has had its
+      revisit condition met. Examples from current registry:
+      - `solicitation-review` — HITL review caught a structural issue a
+        QA could have caught
+      - `synthetic-narrative-plan` — Connect-Labs MCP rejected a
+        manifest in a recent run
+      - `synthetic-walkthrough-spec` — canopy:walkthrough rejected a
+        spec in a recent run
+      Propose flipping the row to `has QA` and shipping the actual
+      `<producer>-qa` skill with a TS Zod schema as the QA primitive.
+    probe: deferred_trigger_evidence_search
+
+  - id: missing_registry_row
+    description: >
+      A `producedBy` value in `lib/artifact-manifest.ts` doesn't have a
+      row in `_qa-decisions.md` or `_eval-decisions.md`. The CI lint
+      (`test/lib/registries-coverage.test.ts`) catches this on PR;
+      this signal catches it during audit if the lint was bypassed or
+      a producer was added without artifact-manifest registration. Propose
+      adding the missing row(s) with one of the 4 statuses + rationale.
+    probe: producer_registry_coverage
+
+  - id: heuristic_drift
+    description: >
+      A producer's classification rationale (e.g. "downstream consumer
+      is LLM-driven") no longer matches reality (e.g. a new `app-*`
+      consumer was added that regex-parses the artifact). Or a row
+      cites an MCP boundary that no longer validates what it used to.
+      Propose updating the rationale + reclassifying if the heuristic
+      no longer applies.
+    probe: heuristic_application_audit
+
+# Verification — observational (registry/documentation; no deterministic
+# runtime before/after)
+verify:
+  type: observational
+  description: >
+    Registry/heuristic changes affect how future audits classify producers.
+    Cannot be verified via runtime test. v1 verification: static review
+    (does the proposed registry edit match current code? does the
+    heuristic application hold?), CI lint passes (`test/lib/registries-coverage`),
+    and verdict-discovery ground-truthing (does the proposed edit align
+    with what real producers do in recent runs?).
+  steps:
+    - apply_change_locally
+    - run_npm_test
+    - run_registry_coverage_lint
+    - read_cited_skill_md_sections
+    - manual_inspection_of_diff
+  pass_criteria:
+    - registry_coverage_lint_passes
+    - cited_skill_md_sections_match_row_claims
+    - diff_targets_only_registry_or_template_files
+
+proposes:
+  edit_targets:
+    - file_pattern: "skills/_qa-decisions.md"
+    - file_pattern: "skills/_eval-decisions.md"
+    - file_pattern: "skills/_qa-template.md"
+    - file_pattern: "skills/_eval-template.md"
+    - file_pattern: "skills/{producer}/SKILL.md"  # for inline-QA section updates flagged by drift signals
+    - file_pattern: "docs/learnings/{date}-{topic}.md"  # for new heuristic learnings the audit surfaces
+
+auto_merge:
+  enabled: false  # registry/heuristic edits affect classification of all future producers
+  human_review_required: true
+  reason: >
+    Registry classifications are load-bearing for which producers ship
+    -qa/-eval skills, which inline checks live where, and which MCP
+    improvements are tracked. A wrong classification cascades to wasted
+    skill-build effort or missed real bugs. Always human review.
+
+# How to run
+invocation_examples:
+  - /canopy:improve-lens --lens qa-eval-system --project ace --run 20260507-1733
+  - /canopy:improve-lens --lens qa-eval-system --project ace --mode observe
+  - /canopy:improve-lens --lens qa-eval-system --project ace --mode dry-run --max-proposals 5
+
+# Recommended cadence
+cadence:
+  triggered: after each /ace:run completes (catches drift introduced by the run)
+  periodic: monthly (catches MCP-improvement-candidate progress + heuristic drift)
+  ad_hoc: before any major QA/eval registry edit (sanity-check current state)
