@@ -102,10 +102,12 @@ describeFn('OCS E2E integration (requires OCS_INTEGRATION=1 + live session)', ()
 
   it('sets the system prompt via pipeline patch', async () => {
     if (!clonedExperimentId) return;
-    await backend.setChatbotSystemPrompt({
-      experiment_id: clonedExperimentId,
-      prompt: 'You are an E2E test bot. Answer every question with exactly: "E2E test response OK".',
-    });
+    await expect(
+      backend.setChatbotSystemPrompt({
+        experiment_id: clonedExperimentId,
+        prompt: 'You are an E2E test bot. Answer every question with exactly: "E2E test response OK".',
+      }),
+    ).resolves.toBeUndefined();
     console.log('  prompt patched');
   }, 15_000);
 
@@ -114,12 +116,14 @@ describeFn('OCS E2E integration (requires OCS_INTEGRATION=1 + live session)', ()
       console.log('  skipped — OCS_SHARED_COLLECTION_ID not set');
       return;
     }
-    await backend.attachKnowledge({
-      experiment_id: clonedExperimentId,
-      collection_index_ids: [sharedCollectionId],
-      max_results: 10,
-      generate_citations: true,
-    });
+    await expect(
+      backend.attachKnowledge({
+        experiment_id: clonedExperimentId,
+        collection_index_ids: [sharedCollectionId],
+        max_results: 10,
+        generate_citations: true,
+      }),
+    ).resolves.toBeUndefined();
     console.log(`  attached shared collection ${sharedCollectionId}`);
   }, 15_000);
 

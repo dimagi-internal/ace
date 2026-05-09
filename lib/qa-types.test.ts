@@ -38,14 +38,6 @@ describe('QAResultSchema', () => {
     ],
   };
 
-  test('accepts a valid pass result', () => {
-    expect(() => QAResultSchema.parse(validPass)).not.toThrow();
-  });
-
-  test('accepts a valid fail result', () => {
-    expect(() => QAResultSchema.parse(validFail)).not.toThrow();
-  });
-
   test('accepts incomplete verdict', () => {
     const incomplete = { ...validPass, verdict: 'incomplete', failures: [] };
     expect(() => QAResultSchema.parse(incomplete)).not.toThrow();
@@ -88,10 +80,13 @@ describe('QAResultSchema', () => {
     ).toThrow();
   });
 
-  test('validateQAResult helper round-trips', () => {
-    const out = validateQAResult(validPass);
-    expect(out.verdict).toBe('pass');
-    expect(out.stats.checks_passed).toBe(11);
+  test.each([
+    ['pass', () => validPass, 'pass', 11],
+    ['fail', () => validFail, 'fail', 10],
+  ] as const)('validateQAResult round-trips a valid %s result', (_label, build, verdict, passed) => {
+    const out = validateQAResult(build());
+    expect(out.verdict).toBe(verdict);
+    expect(out.stats.checks_passed).toBe(passed);
   });
 });
 

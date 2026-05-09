@@ -138,22 +138,12 @@ describe('resolveEnvSubstitution', () => {
     );
   });
 
-  it('substitutes ${VAR} from the supplied env', () => {
-    expect(
-      resolveEnvSubstitution('${ACE_HQ_API_KEY}', { ACE_HQ_API_KEY: 'secret-40chars' }),
-    ).toBe('secret-40chars');
-  });
-
-  it('substitutes ${VAR} embedded in a larger string', () => {
-    expect(
-      resolveEnvSubstitution('Bearer ${TOKEN}', { TOKEN: 'abc123' }),
-    ).toBe('Bearer abc123');
-  });
-
-  it('substitutes multiple ${VAR} occurrences in one call', () => {
-    expect(
-      resolveEnvSubstitution('${A}-${B}-${A}', { A: 'x', B: 'y' }),
-    ).toBe('x-y-x');
+  it.each([
+    ['standalone',                  '${ACE_HQ_API_KEY}',  { ACE_HQ_API_KEY: 'secret-40chars' }, 'secret-40chars'],
+    ['embedded in larger string',   'Bearer ${TOKEN}',    { TOKEN: 'abc123' },                  'Bearer abc123'],
+    ['multiple occurrences',        '${A}-${B}-${A}',     { A: 'x', B: 'y' },                   'x-y-x'],
+  ] as const)('substitutes ${VAR} (%s)', (_label, input, env, expected) => {
+    expect(resolveEnvSubstitution(input, env)).toBe(expected);
   });
 
   it('throws when a referenced env var is missing', () => {
