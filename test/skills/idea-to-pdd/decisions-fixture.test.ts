@@ -7,7 +7,12 @@ import { parseDecisionsYaml } from "../../../lib/decisions-schema.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = resolve(__dirname, "fixtures/turmeric-decisions.yaml");
 
-const ANCHOR_IDS = [
+// Five Phase 1 decisions feed `idea-to-pdd-eval`'s viability axis
+// (PR #144). When a fixture covers them, the eval rubric has structured
+// input for those dimensions instead of grading on PDD prose. They are
+// NOT required by the schema or the runtime — this is a fixture-quality
+// check that the turmeric fixture is a useful template.
+const VIABILITY_AXIS_INPUTS = [
   "ai-fallback-design",
   "archetype-selection",
   "budget-plausibility",
@@ -31,10 +36,12 @@ describe("turmeric calibration fixture", () => {
     }
   });
 
-  it("contains every anchor row from the Phase 1 anchor list", () => {
+  it("covers the 5 viability-axis decisions idea-to-pdd-eval grades on", () => {
+    // Fixture-quality check: a useful Phase 1 fixture surfaces the
+    // decisions the eval rubric grades on. Not a runtime invariant.
     const ids = new Set(log.decisions.map((d) => d.id));
-    for (const anchor of ANCHOR_IDS) {
-      expect(ids.has(anchor)).toBe(true);
+    for (const id of VIABILITY_AXIS_INPUTS) {
+      expect(ids.has(id)).toBe(true);
     }
   });
 

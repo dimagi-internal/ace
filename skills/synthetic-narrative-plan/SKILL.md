@@ -217,10 +217,12 @@ skill); state tracks as `dry-run-success`.
 This skill writes load-bearing defaults to the per-run
 `ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The bar criterion and
 schema live in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`
-(canonical authority); anchors below are the phase-specific subset
-load-bearing for downstream eval rubrics.
+(canonical authority). The list below catalogs decisions that commonly
+qualify under the bar for this phase — a working template, not a
+required set. The skill applies the bar criterion and emits whatever
+rows meet it; the catalog is a teaching device that improves over time.
 
-### Anchor decisions
+### Common load-bearing decisions for Phase 6
 
 | ID | Question | Map to surface |
 |---|---|---|
@@ -228,11 +230,7 @@ load-bearing for downstream eval rubrics.
 | `scenario-count` | How many distinct scenarios per persona? | `synthetic-narrative-plan-eval` scenario-density |
 | `narrative-arc-shape` | Linear, branching, or stage-gated story arc? | `synthetic-narrative-plan-eval` narrative-coherence; archetype alignment |
 
-### Beyond anchors
-
-Append additional rows whenever the skill applies a load-bearing default
-meeting the bar criterion (load-bearing + maps to known surface). The
-orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
+The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 § Phase Write-Back Contract § Decisions log clause) enforces the
 contract; the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.

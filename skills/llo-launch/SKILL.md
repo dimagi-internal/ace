@@ -329,23 +329,21 @@ When `--dry-run` is active:
 This skill writes load-bearing defaults to the per-run
 `ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The bar criterion and
 schema live in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`
-(canonical authority); anchors below are the phase-specific subset
-load-bearing for the `llo-launch-eval` viability axis (PR #145).
+(canonical authority). The four rows below map 1:1 to `llo-launch-eval`'s
+viability axis (PR #145) — when they're present in the log, the rubric
+has structured input for those dimensions instead of grading on prose.
+The list is a working template; the bar criterion is the sole filter.
 
-### Anchor decisions
+### Common load-bearing decisions for Phase 8
 
 | ID | Question | Map to surface |
 |---|---|---|
-| `llo-capacity-actual` | Did the LLO actually recruit the team they promised? | `llo-launch-eval` `llo_capacity_actual` dimension (PR #145) |
-| `day-one-readiness` | Are FLWs actually ready Day 1 (training complete, devices provisioned, accounts activated)? | `llo-launch-eval` `day_one_readiness` dimension (PR #145) |
-| `downstream-handoff-alignment` | Is the named downstream consumer ready to receive data on the agreed cadence? | `llo-launch-eval` `downstream_handoff_alignment` dimension (PR #145) |
-| `stop-loss-planning` | Is there a documented halt condition (data-quality floor, recruitment failure, etc.)? | `llo-launch-eval` `stop_loss_planning` dimension (PR #145) |
+| `llo-capacity-actual` | Did the LLO actually recruit the team they promised? | `llo-launch-eval` `llo_capacity_actual` (eval input, PR #145) |
+| `day-one-readiness` | Are FLWs actually ready Day 1 (training complete, devices provisioned, accounts activated)? | `llo-launch-eval` `day_one_readiness` (eval input, PR #145) |
+| `downstream-handoff-alignment` | Is the named downstream consumer ready to receive data on the agreed cadence? | `llo-launch-eval` `downstream_handoff_alignment` (eval input, PR #145) |
+| `stop-loss-planning` | Is there a documented halt condition (data-quality floor, recruitment failure, etc.)? | `llo-launch-eval` `stop_loss_planning` (eval input, PR #145) |
 
-### Beyond anchors
-
-Append additional rows whenever the skill applies a load-bearing default
-meeting the bar criterion (load-bearing + maps to known surface). The
-orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
+The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 § Phase Write-Back Contract § Decisions log clause) enforces the
 contract; the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.
