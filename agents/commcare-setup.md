@@ -317,9 +317,9 @@ SKILL.md § Removal criteria).
 
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/2-commcare/commcare-setup_summary.md`,
-then write the `phases.commcare-setup` block + flip `gates.app-deploy`
-per `agents/ace-orchestrator.md § Phase Write-Back Contract`. Phase 2
-is a procedure doc executed by the top-level orchestrator session
-inline (see § Agent Topology), so the orchestrator owns this write.
-Required top-level keys on the patch: `phases`, `gates`, `last_actor`,
-`last_actor_at`.
+then write the `phases.commcare-setup` block per `agents/ace-orchestrator.md
+§ Phase Write-Back Contract`. Phase 2 is a procedure doc executed by the
+top-level orchestrator session inline (see § Agent Topology), so the
+orchestrator owns this write. Required top-level keys on the patch:
+`phases`, `last_actor`, `last_actor_at`. (0.13.116: legacy `gates.app-deploy`
+flip dropped — derived from phases.commcare-setup.status + per-skill verdicts.)

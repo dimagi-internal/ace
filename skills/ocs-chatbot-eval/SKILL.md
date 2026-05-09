@@ -376,18 +376,14 @@ rubric is improving over time, not just changing.
    `ACE/<opp-name>/runs/<run-id>/7-execution-manager/ocs-chatbot-eval_trend.md` with date, overall score, and
    dimension breakdown so drift is visible at a glance.
 
-8. **Write the gate brief** (for `--quick` and `--deep` modes; skipped for
-   `--monitor`) to:
-   - `--quick` → `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-quick.md`
-   - `--deep`  → `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-deep.md`
+<!-- 0.13.116: gate-brief write step removed. The orchestrator composes
+the pause-time summary at the Phase 4 → 5 Pause Point (`--quick`) and
+the Phase 8 `llo-launch` Pause Point (`--deep`) directly from this
+skill's verdict files (`ocs-chatbot-eval_verdict-{quick,deep}.yaml`).
+The `## Gate Brief` documentation section below stays as a historical
+reference — its contents describe what the orchestrator now synthesizes
+from the verdict YAMLs. -->
 
-   Use the shape from `agents/ace-orchestrator.md § Gate Brief Contract`.
-   See `## Gate Brief` below for the exact fields per mode. The
-   `--quick` brief is intentionally minimal (single dimension, 3
-   prompts) and feeds the Phase 4→5 shallow gate the orchestrator looks
-   for at `4-ocs/ocs-chatbot-eval_gate-brief-quick.md`. The `--deep`
-   brief is produced from `/ace:qa-deep` and feeds the Phase 8
-   `llo-launch` activation gate.
 
 ## Gate Brief
 

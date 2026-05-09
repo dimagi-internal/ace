@@ -29,7 +29,10 @@ release flow + the App Editor permission prerequisite.
 ## Outputs
 
 - `2-commcare/app-deploy_summary.md` — HQ app IDs + URLs for both apps
-- `2-commcare/app-deploy_gate-brief.md` — Phase 2 → 3 gate brief
+<!-- 0.13.116: legacy `2-commcare/app-deploy_gate-brief.md` removed.
+Pause-time summary at the Phase 2 → 3 Pause Point is composed by the
+orchestrator from per-skill QA + eval verdicts. -->
+
 
 ## Process
 
@@ -128,39 +131,12 @@ release flow + the App Editor permission prerequisite.
    Body: human-readable narrative including any Nova warnings and a
    link to each HQ app.
 
-6. **Write the gate brief** to
-   `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_gate-brief.md` using the shape defined in
-   `agents/ace-orchestrator.md § Gate Brief Contract`. See
-   `## Gate Brief` below for the exact fields this skill populates.
-
-## Gate Brief
-
-The gate brief gives the admin a fast read on whether both apps are
-actually live before Phase 3 starts building Connect opps on top of
-them.
-
-- **Artifact Under Review:** path
-  `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md`; summary is "Learn + Deliver
-  apps deployed to <hq_domain>".
-- **What to Check** (emit these 4 items verbatim):
-  - Both `learn_app_id` and `deliver_app_id` are populated and resolve
-    to built releases on CCHQ (not just drafts).
-  - The Connectify feature flags (Learn Module, Assessment Score,
-    Deliver Unit, Entity ID) are present on the forms the admin named
-    in the PDD's Learn/Deliver specs.
-  - Each `*_app_url` returns a CCZ and not a 404 / redirect.
-  - `hq_domain` matches `ACE_HQ_DOMAIN` and the LLO targets named in
-    the PDD can access that project space.
-- **Auto-Surfaced Concerns:** one line per item:
-  - `[BLOCKER]` if either app's build status is anything other than
-    `success` (e.g., `errored`, `pending`, `missing`).
-  - `[BLOCKER]` if `hq_domain` differs from `ACE_HQ_DOMAIN` — Nova's
-    settings have the wrong HQ API key bound.
-  - `[INFO]` if any non-blocking cosmetic fields are empty (e.g. the
-    short description).
-- **Recommended Disposition:** `Approve` if both apps built
-  successfully and URLs resolve; `Reject` if either app failed to
-  build or the domain mismatch fires.
+<!-- 0.13.116: gate-brief write step + ## Gate Brief section removed.
+At the Phase 2 → 3 Pause Point, the orchestrator composes the
+pause-time summary from this skill's eval verdict
+(`app-release-eval`) + downstream `app-connect-coverage` verdict +
+the deploy/release status fields in `app-deploy_summary.md`. The
+producer no longer authors a separate gate-brief artifact. -->
 
 ## MCP Tools Used
 
@@ -168,10 +144,10 @@ them.
 - **Nova plugin slash commands:** `/nova:upload_to_hq`, `/nova:show`
 
 ## Mode Behavior
-- **Auto:** Pre-flight, upload, write summary + gate brief, notify
-  admin, proceed.
-- **Review:** Same, but pause after writing the gate brief and present
-  it for the Phase 2→3 gate.
+- **Auto:** Pre-flight, upload, write summary, notify admin, proceed.
+- **Review:** Same, but pause at the Phase 2→3 Pause Point (per
+  `agents/ace-orchestrator.md § Pause Points`); orchestrator presents
+  the per-skill verdicts.
 
 ## Dry-Run Behavior
 When `--dry-run` is active:

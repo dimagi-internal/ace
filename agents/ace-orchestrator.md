@@ -107,13 +107,11 @@ phases:
     learnings-summary: pending
     cycle-grade: pending
 
-gates:
-  idea-to-pdd: approved|pending|rejected
-  app-deploy: pending
-  ocs-chatbot-eval-quick: pending   # Phase 4 gate; deep eval moved to /ace:qa-deep
-  llo-invite: pending
-  llo-launch: pending
 ```
+
+(0.13.116: the legacy `gates:` top-level field was removed. Pause-point
+status is derived from `phases.<phase>.status` + per-skill verdict
+files at runtime; no separate field carries it. See § Pause Points.)
 
 **`initiated_by`** — the operator who kicked off the opp. Set once in
 "Starting a New Opportunity" from `git config user.email`. Never overwritten.
@@ -303,28 +301,22 @@ stop, up until the point of external communication.*
   `award_response` is called (irreversible). Skill waits for explicit
   `award <response_id> $<amount>` reply before the labs call.
 
-**Review mode (`review`):** Pause at every one of the 5 named gate
-steps for explicit approval, regardless of blocker status. Use for
-high-touch operations, training, or when an admin wants to read every
-gate brief in front of them. Same gate-brief contract as `default`
-mode; the difference is just which gates trigger the
-`AskUserQuestion` pause.
-
-The 6 named gate steps (the full set, applied in `review`):
-- After `idea-to-pdd` (Phase 1) — PDD must be approved before building apps
-- After `app-deploy` (Phase 2) — apps must be verified before Connect setup
-- After `ocs-chatbot-eval --deep` (Phase 4) — OCS quality must clear pre-launch bar
-- After `llo-invite` (Phase 7) — solicitation invitations reviewed before sending (when PDD names candidates)
-- Phase 7→8 boundary — `/ace:run` halts in default mode regardless; review mode confirms `selected_llo` populated before dispatching execution-manager
-- After `llo-launch` (Phase 8) — activation verified before monitoring
+**Review mode (`review`):** Pause at every Pause Point (see § Pause
+Points below) for explicit approval, regardless of blocker status. Use
+for high-touch operations, training, or when an admin wants to inspect
+every step's verdicts in front of them. The orchestrator synthesizes a
+pause-time summary from the per-skill QA + eval verdicts at each Pause
+Point — same content default mode would surface on `[BLOCKER]`,
+presented unconditionally.
 
 **Auto mode (`auto`):** Run all phases sequentially with no pauses,
-even at external-communication points. Email the CRISPR Admin group
-(Neal, Jon, Matt, Sarvesh, Cal) at each step completion and on
-failures. Gates are logged but not enforced. `[BLOCKER]` concerns
-still pause and escalate — auto mode buys speed, not the right to
-ship known-broken work. Use sparingly: eval calibration runs, smoke
-tests against test workspaces, and the like.
+even at external-communication points except the unconditional ones
+(Phase 7→8 boundary, Phase 8 external-comms steps, Phase 9 closeout).
+Email the CRISPR Admin group (Neal, Jon, Matt, Sarvesh, Cal) at each
+step completion and on failures. `[BLOCKER]` concerns still pause and
+escalate — auto mode buys speed, not the right to ship known-broken
+work. Use sparingly: eval calibration runs, smoke tests against test
+workspaces, and the like.
 
 ### Why default mode looks like this
 
@@ -486,8 +478,9 @@ When dispatching `Agent(<phase>)`, structure the prompt with sections:
 ### PDD
 <full PDD body>
 
-### Previous-phase gate brief (if any)
-<full gate-brief body>
+### Previous-phase verdicts (if any)
+<concatenation of `<phase>/<producer>-qa_result.yaml` and
+ `<phase>/<producer>-eval_verdict.yaml` files from the prior phase>
 
 ### run_state.yaml
 <current run_state.yaml contents>
@@ -763,23 +756,13 @@ phases:
           <name>: <fileId>
 ```
 
-**Plus the matching gate flip.** The 6 named gates enumerated in
-§ Per-Mode Pause Matrix correspond to specific phases. When a phase's
-gate-step finishes, the phase agent MUST flip the matching
-`gates.<gate-name>` entry from `pending` to its terminal state. The
-mapping (load-bearing — keep this in sync with the matrix):
-
-| Phase | Gate to flip | Target value on success |
-|-------|--------------|-------------------------|
-| design-review (Phase 1) | `gates.idea-to-pdd` | `approved` (review mode) or `pass` |
-| commcare-setup (Phase 2) | `gates.app-deploy` | `pass` |
-| ocs-setup (Phase 4) | `gates.ocs-chatbot-eval-quick` | `pass` |
-| solicitation-management (Phase 7) | `gates.llo-invite` | `pass` (named-LLO sends) or `no-op-no-named-llos` |
-| Phase 7→8 boundary | `gates.solicitation-review` | stays `pending` until manual `/ace:step solicitation-review` |
-| execution-management (Phase 8) | `gates.llo-launch` | `pass` after `llo-launch` activates the opp |
-
-`gates.solicitation-review` is the canonical Phase 7→8 halt and stays
-`pending` for the run's lifetime — `/ace:run` does not flip it.
+(0.13.116: there is no longer a separate `gates.<name>` flip step.
+Pause-point status at runtime is derived from `phases.<phase>.status` +
+the per-skill verdict files (`<phase>/<producer>-qa_result.yaml` and
+`<phase>/<producer>-eval_verdict.yaml`). The Phase 7→8 halt is gated on
+`opp.yaml.selected_llo.org_slug` being non-null, populated by manual
+`/ace:step solicitation-review` — that mechanism preserves the HITL
+checkpoint without needing a `gates.solicitation-review` field.)
 
 **Use `update_yaml_file` for the patch.** Each phase agent's write
 should look like:
@@ -789,7 +772,6 @@ update_yaml_file({
   fileId: <run_state.yaml fileId>,
   patch: {
     phases: { <phase-name>: { status, started_at, completed_at, verdict, summary_artifact, steps } },
-    gates: { <named-gate>: <terminal-value> },          # only the gate this phase owns
     last_actor: <git config user.email>,
     last_actor_at: <ISO timestamp>,
   },
@@ -857,8 +839,6 @@ inline procedure-doc completion (commcare-setup):
          (artifacts in Drive prove it), but per-step verdicts and
          intermediate state are unrecoverable. See agents/ace-orchestrator.md
          § Phase Write-Back Contract.
-   gates:
-     <named-gate-if-this-phase-owns-one>: <terminal-value-best-guess>
    ```
 
 4. **Re-render the decisions log gdoc.** After verifying the phase
@@ -867,8 +847,9 @@ inline procedure-doc completion (commcare-setup):
    against the run-id. The renderer produces
    `ACE/<opp>/runs/<run-id>/decisions.gdoc` — a prose Google Doc at
    one stable URL — and is idempotent across re-runs. Capture the
-   gdoc's `webViewLink` and inject it into the next gate brief's
-   `Decisions Log:` line. The renderer is fast (one batchUpdate
+   gdoc's `webViewLink` and inject it into the next pause-time
+   summary's `Decisions Log:` line (when a Pause Point fires). The
+   renderer is fast (one batchUpdate
    call); failure is `[WARN]` not `[BLOCKER]` — the YAML is the
    source of truth, the gdoc is just the rendering.
 
@@ -904,123 +885,42 @@ Requirements:
 This is the only ace-web dependency in the ACE plugin. Without
 `--ace-web-url` the plugin is entirely standalone.
 
-## Gate Brief Contract
+## Pause Points
 
-At each of the 5 gate steps above, the orchestrator MAY show the admin a
-**gate brief** before an `AskUserQuestion` approval prompt — whether the
-pause fires depends on `mode` (see § Execution Modes for the per-mode
-matrix). The brief itself is always written by the producing skill; the
-mode decides whether the orchestrator pauses on it.
+`/ace:run` may pause at named points where the next action affects external parties or where a phase boundary needs operator-level review. There is **no separate "gate-brief" artifact** — at each pause, the orchestrator reads the per-skill QA verdict (`<phase>/<producer>-qa_result.yaml`) + eval verdict (`<phase>/<producer>-eval_verdict.yaml`) directly and synthesizes a pause-time summary on the fly. The verdict files are the source of truth; the orchestrator is just the renderer.
 
-The brief is the single place where "what am I approving, what should I
-check, and what concerns surfaced automatically" lives. Without it, gate
-approvals devolve into rubber-stamps (and the 2026-04-08 stress-test PDDs
-are the evidence — both failed the rubric and would have sailed through a
-bare "Approve the PDD?" prompt).
+**Pause points and per-mode behavior:**
 
-**Where the brief lives.** Each gate-producing skill writes its gate
-brief alongside its primary artifact in the run-scoped phase folder
-(`ACE/<opp-name>/runs/<run-id>/<phase>/<skill>_gate-brief[-<mode>].md`)
-as its final step, immediately after writing the primary artifact. The
-4 expected files are:
-
-```
-ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md
-ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_gate-brief.md
-ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-quick.md
-ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md
-```
-
-(0.12.0: `llo-invite_gate-brief.md` was removed — the new Phase 7
-`llo-invite` sends solicitation-invite emails (non-binding "please
-apply" notes) and does not write a gate brief. The Phase 7→8 boundary
-itself is the gate that replaces it; halt logic is in the orchestrator,
-not a per-skill brief.)
-
-**Required structure** (every brief uses this shape — no free-form prose):
-
-```markdown
-# Gate Brief — <skill-name>
-Opportunity: <opp-name>
-Generated: <ISO timestamp>
-
-## Artifact Under Review
-- Path: `ACE/<opp-name>/<artifact-path>`
-- Summary: <one sentence describing what the artifact is>
-
-## What to Check
-- <skill-specific checklist item 1 — imperative, concrete>
-- <skill-specific checklist item 2>
-- <skill-specific checklist item 3>
-- (3–5 items; see each skill's `## Gate Brief` section for the exact list)
-
-## Auto-Surfaced Concerns
-<Pulled from the producing skill's LLM-as-Judge / stress-test / QA output.
-List each concern on its own line prefixed with a severity tag:
-  [BLOCKER] — rubric fail, QA score below threshold, error state, etc.
-  [WARN]    — rubric partial, low-but-passing score, rationale gaps
-  [INFO]    — "noted for context, not a problem"
-If the producing skill has nothing to surface, write the literal line
-"None — all auto-checks passed." Do not leave this section empty.>
-
-## Recommended Disposition
-<One sentence from the producing skill's own read of its output. Example:
-"Approve — stress test passed 5/5 with no waivers." or
-"Reject — stress test failed on Executability and Verifiability.">
-```
-
-**Orchestrator responsibilities at a gate:**
-
-1. Read the gate brief from
-   `ACE/<opp-name>/runs/<run-id>/<phase>/<skill>_gate-brief[-<mode>].md`
-   (the 4 paths listed above). If it is missing, fail loudly with an
-   error naming the skill that should have produced it — do not invent
-   a brief.
-2. Display the full brief content verbatim to the admin.
-3. Follow with `AskUserQuestion` offering four options:
-   - **Approve** — mark `gates.<gate-name>: approved`, continue
-   - **Reject** — mark `gates.<gate-name>: rejected`, stop the run, log
-     the admin's reason
-   - **Iterate** — hand the brief's concerns back to the producing skill
-     for another pass (equivalent to re-running the upstream skill)
-   - **Inspect** — open the artifact path printed in the brief for a
-     deeper look, then re-prompt the same question
-
-**Why the brief lives in its own file (not inlined in the artifact).**
-Keeps the artifact (PDD, deployment-summary, etc.) clean for downstream
-skills that consume it and don't care about gate framing. Skills that
-produce briefs don't have to coordinate section-anchor conventions across
-each other.
-
-**Per-mode pause matrix.** Skills always write the gate brief; the
-orchestrator's pause behavior at each named gate is:
-
-| Gate | Phase | `default` | `review` | `auto` |
+| Pause point | Phase | `default` | `review` | `auto` |
 |------|-------|-----------|----------|--------|
-| `idea-to-pdd` | 1 | pause iff `[BLOCKER]` | always pause | never pause* |
-| `app-deploy` | 2 | pause iff `[BLOCKER]` | always pause | never pause* |
-| `ocs-chatbot-eval-quick` | 4 | pause iff `[BLOCKER]` | always pause | never pause* |
-| `llo-invite` | 7 | never pause (passive solicitation invites) | always pause | never pause* |
-| Phase 7→8 boundary | 7→8 | **always pause** (waits for `selected_llo`) | always pause | always pause |
-| `llo-launch` | 8 | **always pause** | always pause | never pause* |
+| After `idea-to-pdd` | 1 | pause iff any `[BLOCKER]` from QA or eval | always pause | never pause* |
+| After `app-deploy` | 2 | pause iff any `[BLOCKER]` | always pause | never pause* |
+| After `ocs-chatbot-eval --quick` | 4 | pause iff any `[BLOCKER]` | always pause | never pause* |
+| After `llo-invite` | 7 | never pause (passive solicitation invites) | always pause | never pause* |
+| **Phase 7→8 boundary** | 7→8 | **always pause** (waits for `selected_llo`) | always pause | always pause |
+| Before `llo-onboarding` | 8 | always pause (first 1-1 email to awardee) | always pause | always pause |
+| Before `llo-uat` send | 8 | always pause (UAT instructions to awardee) | always pause | always pause |
+| Before `llo-launch` | 8 | always pause (opp activation in Connect) | always pause | always pause |
+| Before `opp-closeout` | 9 | always pause (Jira payment ticket) | always pause | always pause |
 
-*`auto` still pauses on `[BLOCKER]` — see below. The Phase 7→8 boundary
-is unconditional in all modes because Phase 8 cannot start without
-`opp.yaml.selected_llo.org_slug` (populated by manual
-`solicitation-review`).
+\*`auto` still pauses on `[BLOCKER]` — admins opted into auto mode for speed, not to ship known-broken work. The Phase 7→8 boundary + Phase 8 external-comms + Phase 9 closeout pauses are unconditional in all modes because they affect external parties.
 
-In addition to the named gates, `default` mode pauses before any
-external-communication action that doesn't have a dedicated gate:
-`llo-onboarding` (first email to LLOs), `llo-uat` (UAT email send),
-and `opp-closeout` (Jira payment ticket creation). These were
-previously implicit `review`-mode pauses inside the producing skill;
-`default` mode makes them explicit external-comm halts.
+**Synthesizing a pause-time summary.** At each pause, the orchestrator:
 
-**`auto` mode and `[BLOCKER]`.** In `--mode auto`, the orchestrator
-proceeds past gate briefs without pausing, archiving each brief for
-the admin-group status email. **If any brief contains a `[BLOCKER]`
-concern, pause anyway and escalate** — admins opted into auto mode
-for speed, not to ship known-broken work.
+1. Reads the per-skill QA + eval verdict files for the upstream step (paths follow `<phase>/<producer>[-qa|-eval]_<artifact>.yaml`). Missing verdicts are fine — skip.
+2. Aggregates the verdicts into a brief summary:
+   - **Artifact under review:** path + one-line description (pulled from the producer's primary artifact).
+   - **What to check:** auto-derived from any QA `failures[]` and eval auto-surfaced concerns.
+   - **Severity surface:** any `[BLOCKER]` / `[WARN]` / `[INFO]` from the verdicts (eval has these explicitly; QA failures are always `[BLOCKER]`-equivalent).
+3. Presents via `AskUserQuestion` with four options:
+   - **Approve** — continue.
+   - **Reject** — halt the run; log admin's reason in `comms-log/`.
+   - **Iterate** — re-dispatch the upstream skill with the surfaced concerns as input (equivalent to a manual auto-fix loop).
+   - **Inspect** — open the artifact path for a deeper look, then re-prompt.
+
+There is no `gates.<name>` field to flip on approve/reject. The phase status (`phases.<phase>.status`) and the per-skill verdicts together carry the audit trail.
+
+**Why no separate gate-brief artifact.** The `<skill>_gate-brief.md` artifact (used pre-0.13.116) was a producer-authored summary that duplicated the QA + eval verdict signal. With the QA/Eval split codified (PRs #146 / #149 / #160), the verdicts ARE the source of truth — the orchestrator can render the same summary from them at pause time. Removing the artifact eliminates a class of drift (gate-brief saying "all clear" while eval verdict shows BLOCKER) and removes coordination overhead between producing skills.
 
 ## Per-Step Eval Hook
 
@@ -1072,12 +972,10 @@ afterward.
 
 **Eval failures don't halt the run by default.** A per-step eval that
 returns `verdict: fail` does NOT halt the orchestrator outside the named
-gate steps — the verdict is recorded for the dashboard / `opp-eval`, and
-the run continues. The 5 named gate steps (`idea-to-pdd`, `app-deploy`,
-`ocs-chatbot-eval-quick`, `llo-invite`, `llo-launch`) still apply per the
-Per-Mode Pause Matrix above, where `[BLOCKER]` concerns from the eval do
-halt. This keeps the eval signal visible without making every rubric a
-hard gate.
+Pause Points — the verdict is recorded for the dashboard / `opp-eval`,
+and the run continues. The named Pause Points (see § Pause Points) still
+apply, where `[BLOCKER]` concerns from the eval do halt. This keeps the
+eval signal visible without making every rubric a hard halt.
 
 **Backstop.** `/ace:eval --all <opp-name>` runs every applicable
 per-step `-eval` skill against an existing opp's artifacts (the

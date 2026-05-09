@@ -45,7 +45,8 @@ export type PhaseFolder = typeof PHASE_FOLDERS[keyof typeof PHASE_FOLDERS];
  */
 export const ROLE_VOCAB = new Set<string>([
   'summary',
-  'gate-brief',
+  // 'gate-brief' role retired in 0.13.116; per-skill QA + eval verdicts replace it.
+  // Kept as a multi-word base below to keep historical migrator tests passing.
   'verdict',
   'qa-result',  // for <producer>-qa_result.yaml — binary structural QA output (PR #146 / 0.13.88)
   'report',
