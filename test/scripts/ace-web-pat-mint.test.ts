@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { writeTokenToEnv } from '../../scripts/ace-web-pat-mint.ts';
+import { writeTokenToEnv } from '../../scripts/ace-web-pat-mint.js';
 
 const ENV_KEY = 'ACE_WEB_PAT_TOKEN';
 const MARKER_HEADER = '# --- ACE local-only secrets (preserved across op inject) ---';
