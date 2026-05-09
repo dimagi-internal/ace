@@ -6,15 +6,16 @@ This file is the canonical answer to "does skill X have QA, and why or why not?"
 
 ## Status values
 
-Three states cover every producer:
+Four states cover every producer:
 
 | Status | Meaning |
 |---|---|
-| **`has QA`** | A `<producer>-qa` skill exists. Cell points at the skill + the PR that added it. |
+| **`has QA`** | A standalone `<producer>-qa` skill exists. Cell points at the skill + the PR that added it. |
+| **`inline QA`** | The producer's own `## Process` does the structural-correctness checks inline (typically a verify-and-retry loop tightly bound to an external system the producer interacts with). Cell points at the SKILL.md section(s) doing the work + lists the inline checks. See `_qa-template.md § When QA belongs inline` for the heuristic. |
 | **`NO QA`** | We deliberately decided this producer doesn't need a QA skill. Cell explains why + lists the conditions under which we'd revisit. |
 | **`not yet migrated`** | Pending a future migration phase. Cell points at the migration phase in [`docs/superpowers/specs/2026-05-08-qa-eval-migration.md`](../docs/superpowers/specs/2026-05-08-qa-eval-migration.md). |
 
-A fourth implicit state — *not applicable* — covers utility skills with no per-opp artifact to QA (e.g. `email-communicator`). These are listed but excluded from the migration count.
+A fifth implicit state — *not applicable* — covers utility skills with no per-opp artifact to QA (e.g. `email-communicator`). These are listed but excluded from the migration count.
 
 ## When to skip QA (the heuristic that drives `NO QA` decisions)
 
@@ -27,6 +28,26 @@ If **all three** are true, default to `NO QA`:
 When this triple holds, a QA skill enforcing label format / section presence is "fake QA" — it can fail on perfectly usable artifacts (period vs colon punctuation), and it adds zero value the eval doesn't already provide. See [`docs/learnings/2026-05-08-fake-qa-detection.md`](../docs/learnings/2026-05-08-fake-qa-detection.md) for the worked example that produced this principle.
 
 When in doubt, ask: *if I deleted this QA skill, would any downstream consumer notice?* If the answer is "no, because the eval already catches everything that matters," the QA is fake.
+
+## When QA belongs inline (the heuristic that drives `inline QA` decisions)
+
+Some producers do real, non-fake structural checks but the right home for those checks is *inside the producer*, not a separate `-qa` skill. Default to `inline QA` when **both** are true:
+
+1. **The producer interacts tightly with an external system** (Nova MCP, Mobile Maestro, CCHQ HTTP API, OCS clone-and-configure flow, etc.) where the verify-and-retry loop benefits from being in the producer's same agent context — every "fix" is a short-cycle call into the same external system the producer just used.
+2. **Extracting QA would force the producer to be dispatched twice** for what is conceptually one task. The dispatch overhead (orchestrator → producer → orchestrator → -qa skill → orchestrator → producer with hint → ...) costs round-trips and loses the producer's working context.
+
+Reference example: Phase 2's Nova builders (`pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-release`) all do bounded verify-and-retry loops via `/nova:edit` or CCHQ HTTP atoms in the same agent invocation that did the original build. Pulling those checks out into separate `-qa` skills would more than double Nova/CCHQ round-trips per Phase 2 run and force a redesign of the producer's iteration loop, while adding nothing to what the inline checks already catch (Connect markers, slug uniqueness, XML escapes, CCZ collision projection).
+
+Contrast with `idea-to-pdd` (Phase 1): the producer writes a Drive artifact and exits; the orchestrator reads independently. Separate `-qa` skill works cleanly because there's no external-system context to lose.
+
+The shape distinction:
+
+| Producer pattern | QA placement |
+|---|---|
+| Writes Drive artifact, orchestrator reads independently | Separate `-qa` skill |
+| Iterates tightly with an external system (Nova MCP, Mobile, CCHQ HTTP, OCS configure) | `inline QA` in producer |
+
+`inline QA` is **not a downgrade from `has QA`** — it is the right shape when the producer's iteration is already where QA belongs. The registry treats it as a first-class status so future audits know it was a deliberate decision (not "we forgot to extract").
 
 ## Registry
 
@@ -42,13 +63,13 @@ When in doubt, ask: *if I deleted this QA skill, would any downstream consumer n
 
 | Producer | QA status | QA skill / rationale |
 |---|---|---|
-| `pdd-to-learn-app` | not yet migrated | Phase 2 batch (Nova builders) per migration spec. Will likely share a `nova-qa` helper checking compiled-app schema. |
-| `pdd-to-deliver-app` | not yet migrated | Phase 2 batch — same `nova-qa` helper. |
-| `app-deploy` | not yet migrated | Phase 2 batch — QA = "publish succeeded; markers present in CCZ". |
-| `app-release` | not yet migrated | Phase 2 batch — QA = "released; status reads 'released'". |
-| `app-multimedia-coverage` | not yet migrated | Manual sibling of `commcare-form-patch`; Phase 2 batch reach. |
-| `commcare-form-patch` | not yet migrated | Manual fix-loop skill; QA scope to be decided during Phase 2 batch. |
-| `app-connect-coverage` | not yet migrated | Phase 2 reach. |
+| `pdd-to-learn-app` | **inline QA** | Inline checks in `skills/pdd-to-learn-app/SKILL.md § Process step 4a` (post-build field-count verification — `get_app` + per-form `get_form`, cross-reference against PDD-expected counts, bounded retry via `/nova:edit`, max 3 iterations, halt with named failures). Connect-marker verification delegated to sibling `app-connect-coverage` skill (Phase 2 Step 1.5). Schema validity is Nova's own `validate_app` — not duplicated here. |
+| `pdd-to-deliver-app` | **inline QA** | Inline checks in `skills/pdd-to-deliver-app/SKILL.md § Process steps 4a + 4b`. 4a: same field-count verify-and-retry as Learn. 4b: structural pre-flight asserting `paid_module_count === intended_paid_form_count` (every paid form lives in its own module — works around Nova's per-module slug reuse that would silently collapse multi-form modules into one Connect deliver_unit). Bounded retry via `/nova:edit`, max 3 iterations. Connect markers delegated to `app-connect-coverage`. |
+| `app-deploy` | **inline QA** | Inline checks in `skills/app-deploy/SKILL.md`. § Step 2 — domain match (Nova's bound HQ project space === `ACE_HQ_DOMAIN`). § Step 2.5 — XML-escape lint walking every form, catches `<`/`>`/`&` in field labels that Nova's `validate_app` says ok but CCHQ build rejects. § Steps 3–4 — build-status check on each upload. Class-level preventer per `docs/issues/nova-validate-app-misses-xml-escapes.md`. |
+| `app-release` | **inline QA** | Inline checks in `skills/app-release/SKILL.md`. § Step 3 — Connect-coverage pre-flight gate consuming `app-connect-coverage` verdict. § Step 5 — released-state verification via CCHQ read-only API. § Step 6 — CCZ verification: `commcare_download_ccz` projection MUST have `collision_count: 0` (no slug collisions Connect would silently dedup) AND per-type record counts > 0 (Connect markers present in CCZ). On any fail, halt with `[BLOCKER]` naming each colliding slug + kept/dropped forms. Replaces what would have been most of `app-release-qa`. |
+| `app-multimedia-coverage` | not yet migrated | Manual sibling of `commcare-form-patch`; Phase 2 reach when its inline shape is reviewed. |
+| `commcare-form-patch` | not yet migrated | Manual fix-loop skill; likely `inline QA` candidate. Review when reached. |
+| `app-connect-coverage` | **inline QA** | This skill IS the verify-and-fix QA for Connect-marker coverage on Nova-built apps. Inline loop in `skills/app-connect-coverage/SKILL.md` checks every form for required `connect.deliver_unit`/`learn_module`/`assessment` block, dispatches `/nova:edit` to fix missing ones, bounded retry, writes `clean | blocked` verdict that `app-release` consumes. Effectively a dedicated QA skill for a sibling concern; the `-qa` naming would be redundant. |
 
 ### Phase 3 — connect-setup
 
@@ -140,3 +161,4 @@ When in doubt, ask: *if I deleted this QA skill, would any downstream consumer n
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-08 | Initial registry (PR #160). Captures three `has QA` (idea-to-pdd, pdd-to-test-prompts, ocs-chatbot runtime) + first `NO QA` (pdd-to-app-journeys, with rationale). Remaining 40+ producers marked `not yet migrated` per the migration spec's phase plan. | ACE team |
+| 2026-05-09 | Added 4th status `inline QA` for producers whose structural checks are correctly placed in the producer's own loop (typically tight iteration with an external system — Nova MCP, CCHQ HTTP, Mobile, OCS configure). Phase 2 Nova builders (`pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-release`, `app-connect-coverage`) flipped from `not yet migrated` to `inline QA` with pointers to the SKILL.md sections doing the inline work — they were never going to need separate `-qa` skills. Heuristic added to `_qa-template.md § When QA belongs inline`. | ACE team |

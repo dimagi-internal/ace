@@ -49,6 +49,24 @@ The worked example (`pdd-to-app-journeys-qa`, dropped in PR #160) is documented 
 
 When you decide to skip QA for a new producer, add a row to `_qa-decisions.md` with rationale + revisit conditions. Don't just leave it absent — absence is indistinguishable from "not yet migrated."
 
+## When QA belongs inline
+
+Some producers do real, non-fake structural checks but the right home is *inside the producer*, not a separate `-qa` skill. Default to `inline QA` (recorded as that status in `_qa-decisions.md`) when **both** are true:
+
+1. **The producer interacts tightly with an external system** (Nova MCP, Mobile Maestro, CCHQ HTTP, OCS clone-and-configure, etc.) and its verify-and-retry loop benefits from staying in the producer's same agent context — every "fix" is a short-cycle call into the same external system the producer just used.
+2. **Extracting QA would force the producer to be dispatched twice** for what is conceptually one task. The dispatch overhead (orchestrator → producer → orchestrator → -qa skill → orchestrator → producer with hint → ...) costs round-trips and loses the producer's working context.
+
+Reference example: Phase 2's Nova builders. `pdd-to-deliver-app` does field-count verification + one-form-per-module check via `/nova:edit` in the same agent invocation that did the original `/nova:autobuild`. Pulling those checks into a separate `-qa` skill would more than double Nova round-trips per build while adding nothing to what the inline checks already catch.
+
+The shape distinction:
+
+| Producer pattern | QA placement |
+|---|---|
+| Writes Drive artifact, orchestrator reads independently | Separate `-qa` skill (this template) |
+| Iterates tightly with an external system (Nova MCP, Mobile, CCHQ HTTP, OCS configure) | `inline QA` in producer's `## Process` |
+
+`inline QA` is **not a downgrade from `has QA`**. It's the right shape when the producer's iteration loop is already where QA belongs. Document it as a first-class status in `_qa-decisions.md` so future audits know it was a deliberate decision (not "we forgot to extract").
+
 ## Static vs LLM
 
 **Prefer static.** Regex, parsing, schema validation, arithmetic, filesystem checks. They're cheap, fast, deterministic, and don't burn LLM budget on every run.
