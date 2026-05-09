@@ -520,17 +520,17 @@ if [ -n "$ENV_FILE" ]; then
     warn "drive_root: ACE_DRIVE_ROOT_FOLDER_ID not set (PDD auto-discovery disabled)" "re-inject .env via op inject (var added in 0.5.3)"
   fi
 
-  # ACE_E2E_AUTH_TOKEN gates the /auth/e2e-login/ shared-secret automation
-  # path on labs. Without it, scripted tools like
-  # tools/walkthrough/run_chat_e2e.py and the upload-transcript skill
-  # cannot drive the deployed ace-web. Token rotates via AWS Secrets
-  # Manager; mirrored into deploy/aws/task-definition.json AND should be
-  # in .env so local tools and the doctor agree on the value.
-  E2E_TOKEN="$(get_env ACE_E2E_AUTH_TOKEN)"
-  if [ -n "$E2E_TOKEN" ]; then
-    pass "e2e_auth_token: ACE_E2E_AUTH_TOKEN is set (${#E2E_TOKEN} chars)"
+  # ACE_WEB_PAT_TOKEN is the per-human Personal Access Token for ace-web,
+  # minted via /ace:ace-web-pat-mint (gh-style loopback flow). Replaces
+  # the deployment-wide ACE_E2E_AUTH_TOKEN shared secret. The
+  # upload-transcript skill (and any future ace-web automation) uses it
+  # as a Bearer auth header. Local-only secret — preserved across op
+  # inject by the marker block in $ENV_OUT.
+  PAT_TOKEN="$(get_env ACE_WEB_PAT_TOKEN)"
+  if [ -n "$PAT_TOKEN" ]; then
+    pass "ace_web_pat_token: ACE_WEB_PAT_TOKEN is set (${#PAT_TOKEN} chars)"
   else
-    warn "e2e_auth_token: ACE_E2E_AUTH_TOKEN not set" "add to .env (mirror from deploy/aws/task-definition.json or AWS Secrets Manager); needed by tools/walkthrough/run_chat_e2e.py and skills/upload-transcript"
+    warn "ace_web_pat_token: ACE_WEB_PAT_TOKEN not set" "run /ace:ace-web-pat-mint to mint a per-human PAT (one-time per machine; gh-style browser flow). Needed by skills/upload-transcript and /ace:run --ace-web-url."
   fi
 
   # ACE_TRAINING_DECK_TEMPLATE_ID gates the training-deck-build skill.

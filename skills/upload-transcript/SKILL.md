@@ -9,19 +9,22 @@ disable-model-invocation: true
 # upload-transcript
 
 POSTs a `.jsonl` transcript file to `<base-url>/api/ingest/upload` so the
-deployed ace-web can render it as a chat Session. Uses the e2e-login
-shared-secret flow — no per-user personal tokens.
+deployed ace-web can render it as a chat Session. Authenticates with a
+per-human Bearer PAT (`ACE_WEB_PAT_TOKEN`) minted via
+`/ace:ace-web-pat-mint`.
 
 ## Inputs
 
 - `base_url` — deployed ace-web URL, e.g. `https://labs.connect.dimagi.com/ace`.
 - `transcript_path` — filesystem path to a `.jsonl` file produced by
   `claude -p --output-format stream-json`.
-- `ACE_E2E_AUTH_TOKEN` — env var; shared secret from the target instance's
-  `deploy/aws/task-definition.json` or AWS Secrets Manager.
+- `ACE_WEB_PAT_TOKEN` — env var; per-human Personal Access Token minted
+  via `/ace:ace-web-pat-mint`. Lives as a local-only secret in
+  `${CLAUDE_PLUGIN_DATA}/.env` (preserved across `op inject`). The
+  resulting Session is attributed to whichever human signed in to
+  ace-web at mint time.
 
 Optional:
-- `email` (defaults to `ace@dimagi-ai.com`).
 - `opp_slug` — ACE opportunity slug to link the transcript to. When set,
   the resulting Session is surfaced under the opp in the Workbench's
   "linked chats" panel for that step. Strongly recommended when invoked
@@ -56,23 +59,14 @@ omit `opp_run_id`. The ace-web ingest endpoint accepts either shape.
 
 1. **Verify preconditions.**
    - `transcript_path` exists and is non-empty.
-   - `ACE_E2E_AUTH_TOKEN` is set in the environment.
+   - `ACE_WEB_PAT_TOKEN` is set in the environment. If absent, instruct
+     the operator to run `/ace:ace-web-pat-mint` and stop.
    - `base_url` does not end in a trailing slash; strip if present.
    If any fail, stop and report which precondition failed.
 
-2. **POST `/auth/e2e-login/`** with `{"email": <email>, "token": $ACE_E2E_AUTH_TOKEN}`
-   using `curl -c <cookie-jar>` to persist the session cookie. Expect 200.
-   On non-200, print the response body and fail. The cookie jar path can be
-   a temp file (`mktemp`); clean up after.
-
-3. **Warm `csrftoken_ace`** by GETting `<base-url>/` with the same cookie jar
-   (`-b -c`). Django doesn't set the CSRF cookie until a view hit by
-   `CsrfViewMiddleware` renders.
-
-4. **POST `<base-url>/api/ingest/upload`** with:
-   - `-b <cookie-jar>` for the `sessionid_ace` session cookie
-   - `-H "X-CSRFToken: <csrf-value-from-jar>"`
-   - `-H "Referer: <base-url>/"`
+2. **POST `<base-url>/api/ingest/upload`** with:
+   - `-H "Authorization: Bearer $ACE_WEB_PAT_TOKEN"` for auth (no
+     cookies, no CSRF — DRF's `BearerTokenAuthentication` handles it)
    - `-F "file=@<transcript_path>;type=application/x-ndjson"`
    - `-F "opp_slug=<slug>"` (if provided)
    - `-F "opp_run_id=<run_id>"` (if provided; format `YYYYMMDD-HHMM` for multi-run opps)
@@ -81,28 +75,16 @@ omit `opp_run_id`. The ace-web ingest endpoint accepts either shape.
      set; omit the field entirely if not — never send empty)
    Expect 201. On non-201, print the response body and fail.
 
-5. **Return** the `data.session_slug` from the 201 response envelope as the
+3. **Return** the `data.session_slug` from the 201 response envelope as the
    skill's output. Callers (e.g. `/ace:run --ace-web-url`) can log the
    resulting URL: `<base-url>/chat/<session_slug>`.
 
 ## Shell reference
 
 ```bash
-COOKIE_JAR="$(mktemp)"
-trap 'rm -f "$COOKIE_JAR"' EXIT
+[ -n "$ACE_WEB_PAT_TOKEN" ] || { echo "ACE_WEB_PAT_TOKEN not set; run /ace:ace-web-pat-mint"; exit 2; }
 
-# 1. login
-HTTP=$(curl -sS -c "$COOKIE_JAR" -o /tmp/login-resp.json -w '%{http_code}' \
-  -X POST "$BASE_URL/auth/e2e-login/" \
-  -H "Content-Type: application/json" \
-  --data-raw "{\"email\":\"${EMAIL:-ace@dimagi-ai.com}\",\"token\":\"$ACE_E2E_AUTH_TOKEN\"}")
-[ "$HTTP" = "200" ] || { echo "e2e-login $HTTP"; cat /tmp/login-resp.json; exit 3; }
-
-# 2. warm csrf (sessionid_ace from login; csrftoken_ace after first GET)
-curl -sS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -o /dev/null "$BASE_URL/"
-CSRF=$(awk '$6 == "csrftoken_ace" { print $7 }' "$COOKIE_JAR" | tail -n 1)
-
-# 3. upload — optional opp/run/step linkage surfaces under that opp in
+# upload — optional opp/run/step linkage surfaces under that opp in
 # the Workbench's linked-chats panel. Omit any field you don't have.
 UPLOAD_ARGS=(
   -F "file=@$TRANSCRIPT_PATH;type=application/x-ndjson"
@@ -112,14 +94,13 @@ UPLOAD_ARGS=(
 [ -n "${OPP_STEP_SKILL:-}" ] && UPLOAD_ARGS+=(-F "opp_step_skill=$OPP_STEP_SKILL")
 [ -n "${ACE_DRIVE_ROOT_FOLDER_ID:-}" ] && UPLOAD_ARGS+=(-F "ace_root_folder_id=$ACE_DRIVE_ROOT_FOLDER_ID")
 
-HTTP=$(curl -sS -b "$COOKIE_JAR" -o /tmp/upload-resp.json -w '%{http_code}' \
+HTTP=$(curl -sS -o /tmp/upload-resp.json -w '%{http_code}' \
   -X POST "$BASE_URL/api/ingest/upload" \
-  -H "X-CSRFToken: $CSRF" \
-  -H "Referer: $BASE_URL/" \
+  -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
   "${UPLOAD_ARGS[@]}")
 [ "$HTTP" = "201" ] || { echo "upload $HTTP"; cat /tmp/upload-resp.json; exit 4; }
 
-# 4. extract session slug from envelope {data: {session_slug: "..."}}
+# extract session slug from envelope {data: {session_slug: "..."}}
 SLUG=$(python3 -c "import json,sys; print(json.load(open('/tmp/upload-resp.json'))['data']['session_slug'])")
 echo "Uploaded. View at $BASE_URL/chat/$SLUG"
 ```
@@ -128,17 +109,21 @@ echo "Uploaded. View at $BASE_URL/chat/$SLUG"
 
 | HTTP | Cause | Remedy |
 |------|-------|--------|
-| 401  | `sessionid_ace` missing/expired | Re-run e2e-login; check token value. |
-| 403  | e2e-login route disabled (instance has `ACE_E2E_AUTH_TOKEN` empty) | Set the env var on the target deployment. |
+| 401  | `ACE_WEB_PAT_TOKEN` missing, revoked, or wrong | Re-run `/ace:ace-web-pat-mint`. Check `bin/ace-doctor`'s `[Auth liveness]` block. |
+| 403  | Token authenticated but user lacks permission | Confirm the human you minted as has access in ace-web. |
 | 409  | Transcript already uploaded (duplicate `cli_session_id`) | Expected on re-runs; treat as success for idempotency. |
 | 400 "file is required" | Multipart malformed | Check that the `-F "file=@..."` form field is present. |
 
 ## Reference
 
 - ace-web `docs/architecture/cli-credentials.md` — broader auth model
-  context. This skill uses the *e2e* flow (shared secret → session
-  cookie), not the per-user CLI credential flow (laptop credential blob
-  upload).
+  context.
+- ace-web `apps/auth/cli_authorize_views.py` — the `/auth/cli/authorize/`
+  endpoint that mints the PAT (gh-style loopback flow).
+- ace-web `apps/auth/models.py:32-67` — `PersonalToken` model.
+- ace-web `apps/auth/token_backend.py` — `BearerTokenAuthentication`,
+  registered as a DRF default auth class.
 - ace-web `apps/ingest/views.py` defines the upload endpoint
-  (`IsAuthenticated`, `MultiPartParser`). Any authenticated session —
-  including the e2e-login `ace@dimagi-ai.com` session — can POST to it.
+  (`IsAuthenticated`, `MultiPartParser`). Bearer-authenticated requests
+  satisfy `IsAuthenticated` the same as session-authenticated ones.
+- `commands/ace-web-pat-mint.md` — the mint slash-command.

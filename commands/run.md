@@ -43,21 +43,20 @@ Run the full CRISPR-Connect lifecycle for a Connect opportunity.
 - `--ace-web-url URL` — after the orchestrator completes, invoke the
   `upload-transcript` skill to POST the run's stream-json transcript to
   `<URL>/api/ingest/upload`. **Smart default:** if this flag is omitted
-  *and* `ACE_E2E_AUTH_TOKEN` is set in the environment, default to
+  *and* `ACE_WEB_PAT_TOKEN` is set in the environment, default to
   `https://labs.connect.dimagi.com/ace`. If the env var is not set,
   skip the upload silently. Explicit `--ace-web-url` always wins
   (including `--ace-web-url ''` to force-disable).
 
   **Pre-flight gate (when `--ace-web-url` is set explicitly).** Before
-  starting Phase 1, verify `ACE_E2E_AUTH_TOKEN` is present and
+  starting Phase 1, verify `ACE_WEB_PAT_TOKEN` is present and
   non-empty in the resolved `.env`. If missing, stop the run with:
 
-  > `--ace-web-url` was set but `ACE_E2E_AUTH_TOKEN` is unset in
+  > `--ace-web-url` was set but `ACE_WEB_PAT_TOKEN` is unset in
   > `<resolved-env-path>`. The post-run upload would fail with an
   > authentication error after the full lifecycle had already burned
-  > runtime. Either re-inject the token from 1Password (`op inject
-  > -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --account
-  > dimagi.1password.com`) or drop `--ace-web-url`.
+  > runtime. Mint a per-human PAT via `/ace:ace-web-pat-mint` (one-time
+  > per machine, ~30s gh-style browser flow) or drop `--ace-web-url`.
 
   This is the explicit-flag case only. The smart-default path silently
   skips the upload when the token is missing — it's not user-asked,
@@ -120,7 +119,7 @@ See `agents/ace-orchestrator.md` for full detail.
 1a. Resolve `--ace-web-url` default:
    - If the flag was explicitly passed (including an empty string),
      use that value (empty string = disable upload).
-   - Otherwise, if `$ACE_E2E_AUTH_TOKEN` is non-empty, set
+   - Otherwise, if `$ACE_WEB_PAT_TOKEN` is non-empty, set
      `--ace-web-url=https://labs.connect.dimagi.com/ace` implicitly and
      tell the operator "defaulting --ace-web-url to labs".
    - Otherwise, leave unset (skip the post-run upload hook).
