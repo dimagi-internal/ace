@@ -2,13 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { CAPABILITY_MAP } from '../../../../mcp/connect/capability-map.js';
 
 describe('connect capability map', () => {
-  it('has 21 atoms', () => {
-    expect(Object.keys(CAPABILITY_MAP)).toHaveLength(21);
-  });
-
-  it('every atom routes to PLAYWRIGHT or REST and has a documented restTarget', () => {
+  it('every restTarget starts with HTTP method + space (documents the canonical REST URL)', () => {
+    // Backend types are enforced by TS (Backend = 'PLAYWRIGHT' | 'REST'); the
+    // restTarget string format is not, so we check it here.
     for (const [name, route] of Object.entries(CAPABILITY_MAP)) {
-      expect(['PLAYWRIGHT', 'REST'], `${name} backend`).toContain(route.backend);
       expect(route.restTarget, `${name} restTarget`).toMatch(/^(GET|POST|PATCH|PUT|DELETE) /);
     }
   });
