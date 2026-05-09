@@ -49,23 +49,43 @@ The worked example (`pdd-to-app-journeys-qa`, dropped in PR #160) is documented 
 
 When you decide to skip QA for a new producer, add a row to `_qa-decisions.md` with rationale + revisit conditions. Don't just leave it absent — absence is indistinguishable from "not yet migrated."
 
+## Don't duplicate MCP-boundary QA
+
+**If an MCP atom already validates the input/output at its boundary, don't add ACE-side QA that duplicates that validation.** If the MCP is missing a check we'd want, the right action is to **improve the MCP**, not patch around it with ACE-side QA.
+
+This is the same anti-duplication shape as the fake-QA and over-spec heuristics: trust the validation that already lives in the system. Building parallel ACE-side QA when an MCP boundary already enforces the same property creates two sources of truth (which drift) and adds dispatch overhead.
+
+Examples:
+- `connect-program-setup` → Connect MCP's `create_program` validates name + organization + archetype at the API boundary. ACE-side QA on "did the program get created with the right shape" would re-check what Connect just enforced. **NO QA**; if Connect should validate something it currently doesn't, file a Connect issue.
+- `synthetic-data-generate` → `connect_labs.synthetic_generate_from_manifest` validates the manifest schema at boundary. **NO QA** for manifest correctness.
+- `ocs-agent-setup` → OCS MCP validates each clone/configure/publish call. **NO QA** for those primitives.
+
+The producer's job in MCP-boundary cases is to **dispatch and surface failures** — not to revalidate. If a real failure mode slips past the MCP, that's an MCP improvement, not an ACE-side QA addition.
+
+Surface MCP-improvement candidates as they're identified — in `_qa-decisions.md` itself or as upstream issues against the MCP.
+
 ## When QA belongs inline
 
-Some producers do real, non-fake structural checks but the right home is *inside the producer*, not a separate `-qa` skill. Default to `inline QA` (recorded as that status in `_qa-decisions.md`) when **both** are true:
+Some producers do real, non-fake structural checks the **MCP doesn't catch** — the producer fills a gap inline. Default to `inline QA` (recorded as that status in `_qa-decisions.md`) when **all three** are true:
 
 1. **The producer interacts tightly with an external system** (Nova MCP, Mobile Maestro, CCHQ HTTP, OCS clone-and-configure, etc.) and its verify-and-retry loop benefits from staying in the producer's same agent context — every "fix" is a short-cycle call into the same external system the producer just used.
-2. **Extracting QA would force the producer to be dispatched twice** for what is conceptually one task. The dispatch overhead (orchestrator → producer → orchestrator → -qa skill → orchestrator → producer with hint → ...) costs round-trips and loses the producer's working context.
+2. **The MCP / external system DOES NOT catch what the inline QA catches.** The inline check is filling a real gap, not duplicating the boundary's validation. (See "Don't duplicate MCP-boundary QA" above.)
+3. **Extracting QA would force the producer to be dispatched twice** for what is conceptually one task. The dispatch overhead (orchestrator → producer → orchestrator → -qa skill → orchestrator → producer with hint → ...) costs round-trips and loses the producer's working context.
 
-Reference example: Phase 2's Nova builders. `pdd-to-deliver-app` does field-count verification + one-form-per-module check via `/nova:edit` in the same agent invocation that did the original `/nova:autobuild`. Pulling those checks into a separate `-qa` skill would more than double Nova round-trips per build while adding nothing to what the inline checks already catch.
+Reference example: Phase 2's Nova builders. `pdd-to-deliver-app` does field-count verification + one-form-per-module check inline because Nova's `validate_app` doesn't catch either (Nova bugs 1-3 documented in `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`). The inline check is a real Nova-gap-filler, not a duplicate.
+
+If you can't articulate "the MCP misses X, so the inline check fills the gap" — the inline QA might be unnecessary. Either the MCP catches it (move to NO QA) or the producer is a process skill (also NO QA).
 
 The shape distinction:
 
 | Producer pattern | QA placement |
 |---|---|
 | Writes Drive artifact, orchestrator reads independently | Separate `-qa` skill (this template) |
-| Iterates tightly with an external system (Nova MCP, Mobile, CCHQ HTTP, OCS configure) | `inline QA` in producer's `## Process` |
+| Iterates with an external system that fully validates at boundary | **NO QA** (covered by MCP); MCP-improvement candidate if gap exists |
+| Iterates with an external system + fills a real boundary-validation gap | `inline QA` in producer's `## Process` |
+| Sends emails / creates external state with no per-opp artifact | **NO QA** (process skill) |
 
-`inline QA` is **not a downgrade from `has QA`**. It's the right shape when the producer's iteration loop is already where QA belongs. Document it as a first-class status in `_qa-decisions.md` so future audits know it was a deliberate decision (not "we forgot to extract").
+`inline QA` is **not a downgrade from `has QA`**. It's the right shape when the producer's iteration loop is already where QA belongs **AND it's filling a real MCP gap**. Document it as a first-class status in `_qa-decisions.md` so future audits know it was a deliberate decision (not "we forgot to extract" or "we forgot the MCP already covers it").
 
 ## Static vs LLM
 
