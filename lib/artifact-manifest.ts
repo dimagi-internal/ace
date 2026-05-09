@@ -98,7 +98,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['ace-orchestrator', 'llo-onboarding', 'solicitation-review'],
     phase: 'design',
     required: false,
-    description: 'Opp-level metadata: display_name, slug, last_run_id, tags, created_at, created_by, plus selected_llo (populated by solicitation-review at the Phase 6→7 boundary; read by llo-onboarding to identify the awardee). Created lazily on the first run; updated on every run to bump last_run_id.',
+    description: 'Opp-level metadata: display_name, slug, tags, created_at, created_by, plus selected_llo (populated by solicitation-review at the Phase 6→7 boundary; read by llo-onboarding to identify the awardee) and the connect/ocs_chatbot blocks. Created lazily on the first run, then mutated only when a Phase 7/8 skill needs to write its own structured block — never on every run. (Earlier shapes carried `last_run_id` and a `runs:` array; both were dropped because no consumer reads them — ace-web enumerates runs by listing the filesystem under runs/.)',
   },
   {
     path: 'connect-state.yaml',
