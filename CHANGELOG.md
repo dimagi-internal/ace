@@ -5,6 +5,23 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.111 — 2026-05-09
+
+**Drop the Nova MCP user-scope-override workaround now that the Nova plugin reads `NOVA_API_KEY` natively (voidcraft-labs/nova-plugin#11).**
+
+The Nova MCP server has supported PAT auth since early May, but the plugin's MCP config never surfaced it — Claude Code defaulted to OAuth, and ACE worked around it by registering a user-scope MCP entry at the same URL with `claude mcp add nova ... --header "Authorization: Bearer $NOVA_API_KEY"`, relying on URL-signature dedup to suppress the plugin entry. The override was fragile: it silently fell off across CLI updates, with no doctor signal until a Phase 2 upload halted mid-run on a missing `upload_app_to_hq` tool (this hit `turmeric/20260508-1951` and is the immediate trigger for this version).
+
+The right fix is upstream — add `headers.Authorization = "Bearer ${NOVA_API_KEY}"` to the plugin's `.mcp.json`. That issue (voidcraft-labs/nova-plugin#11) is filed; this version assumes it lands and removes the ACE-side workaround:
+
+- `bin/ace-setup` — deleted the entire ~40-line "Nova MCP user-scope override" block. Replaced with a one-time idempotent `claude mcp remove nova --scope user` so existing installs clean up the now-obsolete entry.
+- `bin/ace-doctor` — updated the `nova_env` and `nova_auth` probe comments + remediation strings to reflect the native PAT path. The probes themselves are unchanged (still useful — `nova_env` confirms `NOVA_API_KEY` is in `.env`; `nova_auth` confirms the bearer is accepted by the server).
+- `agents/commcare-setup.md` § Subagent inheritance — re-explained the inheritance via plugin-side `${NOVA_API_KEY}` expansion instead of the user-scope override.
+- `playbook/integrations/nova-integration.md` — full rewrite. Removed the override architecture; documented the native PAT path including the **shell-export step** required because Claude Code reads `${NOVA_API_KEY}` from its own process env, not from `$CLAUDE_PLUGIN_DATA/.env`. Added nova-plugin#11 to the Resolved Blockers section.
+
+**Operator action on update:** export `NOVA_API_KEY` in your shell rc (one-time per machine — see playbook/integrations/nova-integration.md § Install + auth step 5), then restart Claude Code. The next session will use the plugin's native PAT path.
+
+If you're updating from a version that registered the user-scope override, `bin/ace-setup`'s one-time cleanup will remove it on the next `/ace:setup --force-env`.
+
 ## 0.13.66 — 2026-05-06
 
 **Fix #129: swap `googleapis` for per-API subpackages — node_modules drops 332 MB → 141 MB.**

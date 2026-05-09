@@ -406,46 +406,16 @@ $DIAG"
   fi
 fi
 
-# ---- Nova MCP user-scope override (API-key auth)
+# ---- Nova MCP one-time cleanup of legacy user-scope override
 #
-# The Nova plugin auto-registers an OAuth-mode MCP entry at
-# https://mcp.commcare.app/mcp. Concurrent ACE worktrees on one identity
-# trip a refresh-token cascade upstream of disk (better-auth/oauth-provider
-# deletes all (userId, clientId) refresh rows when a stale token is
-# presented). Adding a user-scope entry at the same URL with a bearer
-# header makes Claude Code's URL-signature dedup suppress the plugin entry
-# and route every Nova call through API-key auth instead. See
-# voidcraft-labs/nova-plugin#9 and `playbook/integrations/nova-integration.md`.
-#
-# Idempotent: removes any existing user-scope nova entry, re-adds with the
-# current key so rotations propagate. Skipped silently when NOVA_API_KEY is
-# missing (e.g. operator hasn't minted one yet) — doctor surfaces it.
-if [ -f "$ENV_OUT" ]; then
-  NOVA_KEY="$(grep -E '^NOVA_API_KEY=' "$ENV_OUT" | head -1 | sed -E 's/^NOVA_API_KEY=//' | sed -E 's/^"(.*)"$/\1/')"
-else
-  NOVA_KEY=""
-fi
-if [ -z "$NOVA_KEY" ] || [ "${NOVA_KEY#op://}" != "$NOVA_KEY" ]; then
-  warn "nova_mcp: NOVA_API_KEY not resolved in $ENV_OUT" \
-       "mint a key at https://commcare.app/settings as the ACE Gmail identity, save to 1Password item \"ACE - Nova\" field \`api_key\`, then re-run /ace:setup --force-env. Until then, /nova:* will fall back to OAuth and break under concurrent worktree use."
-elif ! command -v claude >/dev/null 2>&1; then
-  warn "nova_mcp: claude CLI not on PATH — cannot register user-scope override" \
-       "install Claude Code CLI, then re-run /ace:setup"
-else
-  # Remove any prior user-scope entry; ignore failure (entry may not exist).
+# Pre-2026-05-09 ACE registered a user-scope MCP entry at
+# https://mcp.commcare.app/mcp with a bearer header to route around
+# voidcraft-labs/nova-plugin#9. The Nova plugin now reads NOVA_API_KEY
+# natively (voidcraft-labs/nova-plugin#11), so the user-scope entry is
+# obsolete and could double-register the same URL. Idempotent: tries
+# to remove, ignores any "not found" error.
+if command -v claude >/dev/null 2>&1; then
   claude mcp remove nova --scope user >/dev/null 2>&1 || true
-  ADD_OUT="$(claude mcp add nova "https://mcp.commcare.app/mcp" \
-              --transport http \
-              --scope user \
-              --header "Authorization: Bearer $NOVA_KEY" 2>&1)"
-  ADD_RC=$?
-  if [ "$ADD_RC" -eq 0 ]; then
-    pass "nova_mcp: user-scope bearer override registered at https://mcp.commcare.app/mcp"
-  else
-    fail "nova_mcp: claude mcp add failed (exit $ADD_RC)" "see error below; usually means the claude CLI version doesn't support --header or --scope user yet
-$(printf '%s\n' "$ADD_OUT" | sed 's/^/    /')"
-    mark_fail
-  fi
 fi
 
 # ---- Auto-update hook (opt-in)

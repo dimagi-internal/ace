@@ -2,16 +2,18 @@
 
 ## Status
 
-**Live (via the Nova Claude Code plugin + ACE-side API-key override).**
-First end-to-end smoke test on 2026-04-28; migrated to API-key auth
-2026-05-08 after voidcraft-labs/nova-plugin#9 closed.
+**Live (via the Nova Claude Code plugin's native PAT path).** First
+end-to-end smoke test on 2026-04-28; migrated to API-key auth
+2026-05-08; switched from ACE-side user-scope MCP override to native
+plugin-side PAT support 2026-05-09 after voidcraft-labs/nova-plugin#11
+landed.
 
 Braxton (voidcraft-labs) ships Nova as a Claude Code plugin. ACE
 consumes it as a sibling plugin: install once per machine, mint an
-API key, and ACE invokes Nova through its slash commands and MCP
-tools. Both `/nova:autobuild` and `/nova:upload_to_hq` round-trip
-cleanly under the ACE service identity, including across multiple
-concurrent worktrees.
+API key, export it where Claude Code can see it, and ACE invokes
+Nova through its slash commands and MCP tools. Both `/nova:autobuild`
+and `/nova:upload_to_hq` round-trip cleanly under the ACE service
+identity, including across multiple concurrent worktrees.
 
 ## Install + auth
 
@@ -20,8 +22,10 @@ concurrent worktrees.
 /plugin install nova@nova-marketplace
 ```
 
-Then mint an API key once and let `/ace:setup` register a user-scope
-MCP override that carries it as a bearer:
+The plugin's `.mcp.json` registers the Nova HTTP MCP entry with
+`headers.Authorization = "Bearer ${NOVA_API_KEY}"`. Claude Code
+expands `${NOVA_API_KEY}` from its process env at MCP-spawn time.
+So:
 
 1. Sign in at `https://commcare.app/settings` as the ACE Gmail
    identity (`ACE_GMAIL_ACCOUNT` in `.env`).
@@ -29,20 +33,26 @@ MCP override that carries it as a bearer:
    `/nova:upload_to_hq` needs.
 3. Save to 1Password vault `AI-Agents`, item `ACE - Nova`, field
    `api_key`.
-4. Run `/ace:setup --force-env`. The setup script re-injects `.env`
-   from 1Password and registers the user-scope override:
+4. Run `/ace:setup --force-env` — this re-injects `.env` from
+   1Password.
+5. **Export `NOVA_API_KEY` in your shell rc** so Claude Code's
+   process env has it (the ACE `.env` at
+   `$CLAUDE_PLUGIN_DATA/.env` is read by ACE's own MCP servers when
+   they spawn, but Claude Code itself doesn't read it). One-time
+   step per machine:
 
-   ```
-   claude mcp add nova https://mcp.commcare.app/mcp \
-     --transport http --scope user \
-     --header "Authorization: Bearer ${NOVA_API_KEY}"
+   ```bash
+   echo 'export NOVA_API_KEY="$(grep -E "^NOVA_API_KEY=" "$HOME/.claude/plugins/data/ace-ace/.env" | sed -E "s/^NOVA_API_KEY=//;s/^\"(.*)\"\$/\\1/")"' >> ~/.zshrc
+   exec zsh   # or restart your terminal
    ```
 
-Claude Code's URL-signature dedup keeps the user-scope entry over
-the plugin's OAuth-mode entry, so every Nova MCP call goes through
-bearer auth — no rotation, no refresh-token cascade. Tools end up
-namespaced as `mcp__nova__*` (the plugin's `mcp__plugin_nova_nova__*`
-namespace is suppressed).
+   Restart Claude Code so the new env var is in its process tree.
+
+When `NOVA_API_KEY` is set, every Nova MCP call goes through PAT
+auth — no browser flow, no refresh-token cascade. When unset, the
+header expands to `Bearer ` (empty) and Nova returns 401, after
+which Claude Code falls back to interactive OAuth (the plugin's
+default behavior, kept as a fallback for human-at-a-browser use).
 
 `/ace:doctor` exposes three Nova-related liveness lines:
 - `nova_env: NOVA_API_KEY present`
@@ -54,8 +64,8 @@ ACE doesn't run a Nova MCP itself.
 
 ## Resolved blockers (kept for record)
 
-Three blockers landed and were cleared between 2026-04-27 and
-2026-05-08. Listed here for continuity — none active.
+Four blockers landed and were cleared between 2026-04-27 and
+2026-05-09. Listed here for continuity — none active.
 
 - **OAuth allowlist on Nova's side (2026-04-27 → cleared 2026-04-28).**
   Nova's Google OAuth client originally only allowlisted the operating
@@ -71,9 +81,9 @@ Three blockers landed and were cleared between 2026-04-27 and
   under API-key auth.
 
 - **Refresh-token cascade across concurrent worktrees
-  (voidcraft-labs/nova-plugin#9, cleared 2026-05-08).** Two ACE
-  worktrees on one Nova/Google identity tripped a `deleteMany`
-  cascade in `@better-auth/oauth-provider`'s
+  (voidcraft-labs/nova-plugin#9, cleared 2026-05-08 server-side).**
+  Two ACE worktrees on one Nova/Google identity tripped a
+  `deleteMany` cascade in `@better-auth/oauth-provider`'s
   `handleRefreshTokenGrant`: when worktree B presented a stale
   refresh token (after worktree A had just rotated it), the
   provider treated the stale presentation as theft-detection and
@@ -82,18 +92,33 @@ Three blockers landed and were cleared between 2026-04-27 and
   interactive OAuth every ~30 minutes. Resolved by Nova shipping
   API-key auth at the same MCP URL — no rotation, no cascade.
 
+- **Plugin didn't expose the new PAT capability
+  (voidcraft-labs/nova-plugin#11, cleared 2026-05-09).** Nova
+  shipped the server-side PAT in May, but the plugin's `.mcp.json`
+  had no `headers` block — so Claude Code defaulted to OAuth even
+  with `NOVA_API_KEY` set. ACE worked around it by registering a
+  user-scope MCP entry at the same URL with `claude mcp add nova
+  ... --header "Authorization: Bearer $NOVA_API_KEY"`, relying on
+  URL-signature dedup to suppress the plugin entry. Fragile —
+  silently fell off across CLI updates. Resolved by adding a
+  `headers.Authorization = "Bearer ${NOVA_API_KEY}"` block to the
+  plugin's MCP config so the plugin uses the PAT directly. The
+  ACE workaround was deleted in this version.
+
 ## ACE service identity for Nova
 
 Under API-key auth, the bearer is identity. ACE's `NOVA_API_KEY`
 points the entire fleet (every worktree, every operator's machine
-that re-runs `/ace:setup`) at one Nova-side identity, which is the
-account that minted the key (the ACE Gmail identity). All Nova
-state — apps, HQ binding, settings — lives under that one user.
+that re-runs `/ace:setup` and exports the key) at one Nova-side
+identity, which is the account that minted the key (the ACE Gmail
+identity). All Nova state — apps, HQ binding, settings — lives
+under that one user.
 
 Rotating the key: regenerate at `commcare.app/settings`, update the
 1Password item in place, then `/ace:setup --force-env` on each
-machine. The user-scope override is re-registered with the new
-bearer.
+machine, then re-run the shell-export step from § Install + auth
+(or restart the terminal if the export references the .env at read
+time, which is the recommended pattern).
 
 The plugin's OAuth path is still available for human-at-a-browser
 use (one user, one Claude Code session, no concurrent sessions);
@@ -151,8 +176,8 @@ ACE's contract:
 
 **Two distinct keys.** Don't conflate them:
 - `NOVA_API_KEY` (`sk-nova-v1-…`) authenticates **ACE → Nova**. Lives
-  in 1Password item `ACE - Nova` / `api_key`. Read by the user-scope
-  MCP override.
+  in 1Password item `ACE - Nova` / `api_key`. Read by the plugin's
+  MCP entry via `${NOVA_API_KEY}` env-var expansion.
 - HQ API key (UUID) authenticates **Nova → CommCareHQ**. Lives on
   Nova's settings page (server-side). Generated under
   `<ACE_HQ_BASE_URL>/account/api_keys/`.
@@ -166,7 +191,7 @@ place, then re-paste into Nova settings.
 | Surface | Auth |
 |---------|------|
 | Nova web app | Google OAuth (sign-in with Google, ACE Gmail identity) |
-| Nova MCP / plugin (ACE path) | Long-lived API key (`sk-nova-v1-…`) via user-scope MCP override |
+| Nova MCP / plugin (ACE path) | Long-lived API key (`sk-nova-v1-…`) via `${NOVA_API_KEY}` in plugin's MCP `headers` |
 | Nova MCP / plugin (human path) | Real OAuth 2.1 (RFC-compliant DCR) — Braxton: "yank a client and the next call from it 401s instantly" |
 | HQ upload (downstream of Nova) | HQ API key from `account/api_keys/`, scoped per project space |
 
@@ -187,20 +212,19 @@ to the ACE Gmail identity (`ACE_GMAIL_ACCOUNT`) at mint time.
 
 ## Gotchas
 
-- **Plugin OAuth entry vs user-scope override coexist; URL-dedup
-  picks the override.** When `/ace:setup` registers the user-scope
-  bearer entry at `https://mcp.commcare.app/mcp`, Claude Code's MCP
-  host dedups by URL signature and keeps the more specific entry
-  (the bearer-carrying user-scope one). The plugin's OAuth entry is
-  silently suppressed; tools surface as `mcp__nova__*`. If both
-  show up in `claude mcp list` distinctly, something is wrong with
-  the override registration — re-run `/ace:setup --force-env`.
+- **`NOVA_API_KEY` must be in Claude Code's process env**, not just
+  in `$CLAUDE_PLUGIN_DATA/.env`. Claude Code's MCP-header
+  `${NOVA_API_KEY}` expansion reads its own process env — the ACE
+  `.env` is only read by ACE's own MCP server processes, which
+  spawn under `dotenv.config()`. If you set the key in the .env but
+  not your shell rc, the plugin's Bearer header will be empty and
+  Nova will silently fall back to OAuth. The 2026-05-09 shell-export
+  step in § Install + auth fixes this.
 
-- **Tool namespace depends on which entry wins.** Without the
-  override (e.g. machine that hasn't run `/ace:setup` post-migration)
-  tools surface as `mcp__plugin_nova_nova__*`. ACE skills use bare
-  tool names in prose ("Nova's `get_app` tool") so the model resolves
-  whichever namespace is live.
+- **Tool namespace: `mcp__plugin_nova_nova__*`.** With the plugin's
+  native PAT path, there's only one MCP entry. ACE skills use bare
+  tool names in prose ("Nova's `get_app` tool") so the model
+  resolves the right namespace regardless.
 
 - **Three known upstream bugs** (none auth-related):
   - **`nova-plugin#1`** — `update_form` re-injects empty

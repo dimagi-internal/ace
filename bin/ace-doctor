@@ -961,12 +961,13 @@ if [ -n "$ENV_FILE" ]; then
 
   # ── Nova (CommCare app builder MCP) ──────────────────────────────────
   # Presence check only — live HTTP probe runs in [Auth liveness] below.
-  # Drift detection: if NOVA_API_KEY is missing or unresolved (still
-  # `op://...`), bin/ace-setup's user-scope MCP override will be skipped
-  # and /nova:* falls back to OAuth — broken under concurrent worktrees.
+  # The Nova plugin reads NOVA_API_KEY natively (post nova-plugin#11) and
+  # expands it into the MCP entry's Authorization: Bearer header. Without
+  # it the plugin falls back to interactive OAuth — broken under concurrent
+  # worktrees per voidcraft-labs/nova-plugin#9.
   NOVA_KEY_VAL="$(get_env NOVA_API_KEY)"
   if [ -z "$NOVA_KEY_VAL" ]; then
-    warn "nova_env: NOVA_API_KEY missing or unresolved" "mint at https://commcare.app/settings as the ACE Gmail identity, save to 1Password item \"ACE - Nova\" / field \`api_key\`, then /ace:setup --force-env"
+    warn "nova_env: NOVA_API_KEY missing or unresolved" "mint at https://commcare.app/settings as the ACE Gmail identity, save to 1Password item \"ACE - Nova\" / field \`api_key\`, then /ace:setup --force-env, then export NOVA_API_KEY in your shell rc so Claude Code's MCP header expansion picks it up"
   else
     pass "nova_env: NOVA_API_KEY present"
   fi
@@ -1187,10 +1188,10 @@ else
 fi
 
 # 6. nova — POST initialize JSON-RPC frame to https://mcp.commcare.app/mcp
-# with bearer auth. 200 = bearer accepted (the user-scope override
-# bin/ace-setup registered is alive). 401 = key invalid/revoked. The
-# Accept header includes text/event-stream because Nova returns SSE
-# frames for the response body even though the request is plain JSON.
+# with bearer auth. 200 = bearer accepted by Nova's PAT auth path.
+# 401 = key invalid/revoked. The Accept header includes text/event-stream
+# because Nova returns SSE frames for the response body even though the
+# request is plain JSON.
 if [ -n "$NOVA_KEY_VAL" ]; then
   NOVA_REACH_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
     -X POST \
@@ -1210,7 +1211,7 @@ if [ -n "$NOVA_KEY_VAL" ]; then
       warn "nova_auth: cannot reach https://mcp.commcare.app/mcp (network/DNS/timeout)" "check VPN/proxy; net_nova_mcp probe above should also flag this"
       ;;
     *)
-      warn "nova_auth: POST https://mcp.commcare.app/mcp → HTTP $NOVA_REACH_CODE" "investigate Nova MCP health; if persists, /ace:setup --force-env to re-register the user-scope override"
+      warn "nova_auth: POST https://mcp.commcare.app/mcp → HTTP $NOVA_REACH_CODE" "investigate Nova MCP health; if persists, rotate the key at https://commcare.app/settings and re-inject .env"
       ;;
   esac
 else

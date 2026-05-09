@@ -97,9 +97,9 @@ Do NOT dispatch the architect until `get_hq_connection` returns
 Apply the same gate at the start of any later subagent dispatch in
 this phase that calls Nova tools (e.g. coverage retries) — but the
 parent's auth state is what matters. Subagents inherit Nova's MCP
-connection because the user-scope override registers it once for the
-session; every subagent dispatch sees the same `get_hq_connection`
-result.
+connection because the plugin's MCP entry expands `${NOVA_API_KEY}`
+once per session start; every subagent dispatch sees the same
+`get_hq_connection` result.
 
 ### Step 1: PDD to Apps (sequential)
 Invoke `pdd-to-learn-app`, then `pdd-to-deliver-app`.
