@@ -749,11 +749,20 @@ When invoked with an opportunity, execute these phases in order:
 **Notes:** Phase 2 invokes `/nova:autobuild`, which dispatches the `nova:nova-architect-autonomous` subagent. That dispatch requires `Agent` at level 0 — running Phase 2 itself as a subagent would put Nova's dispatch at level 2 and fail. See § Agent Topology in reference. This is the only orchestrator-visible inline procedure-doc dispatch in the workflow.
 
 ### Phase 3: Connect Setup
-Dispatch to the **connect-setup** agent.
-This phase produces: Program configured, Opportunity configured with verification
-rules and delivery/payment units. LLO invite-list preparation moved to Phase 8
-on 2026-04-20 — we don't commit to an invite roster until after the OCS
-chatbot has cleared its deep-eval gate.
+
+**Dispatch:** `Agent(connect-setup)`.
+
+**Inputs (inline at handoff):** PDD, Phase-2 verdicts (`2-commcare/{pdd-to-learn-app,pdd-to-deliver-app,app-deploy,app-test-cases}-{qa_result,eval_verdict}.yaml`), `2-commcare/app-deploy_summary.md`, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+
+**Atoms / skills used (orchestrator-visible only):** `Agent(connect-setup)`.
+
+**Outputs:** Program configured; Opportunity configured with verification rules and delivery/payment units (`3-connect/connect-program-setup.md`, `3-connect/connect-opp-setup.md`).
+
+**Write-back:** `phases.connect-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
+
+**Gate:** `[BLOCKER]` halts; no named pause point in default mode (see § Pause Points in reference).
+
+**Notes:** LLO invite-list preparation moved to Phase 8 on 2026-04-20 — we don't commit to an invite roster until after the OCS chatbot has cleared its deep-eval gate. After Phase 3 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
 ### Phase 4: OCS Setup
 Dispatch to the **ocs-setup** agent.
