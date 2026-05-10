@@ -781,15 +781,20 @@ When invoked with an opportunity, execute these phases in order:
 **Notes:** Each quality gate is a qa→eval pair — `ocs-chatbot-qa` captures a transcript, `ocs-chatbot-eval` grades it. Ends with a human-in-the-loop step to paste the widget credentials into the Connect opportunity until `update_opportunity` lands (CCC-301). After Phase 4 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
 ### Phase 5: QA and Training
-Dispatch `Agent(qa-and-training)`. The agent runs
-`app-screenshot-capture` (executor — runs the smoke recipes from
-Phase 2's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel
-(`training-llo-guide`, `training-flw-guide`, `training-quick-reference`,
-`training-faq`, `training-deck-outline`) → `training-deck-build` (sequential
-after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) →
-`training-onboarding-email` (LAST — links by URL to other docs). All
-skills read upstream artifacts from Phases 1-4. No 1-1 LLO contact
-happens here — that begins in Phase 8.
+
+**Dispatch:** `Agent(qa-and-training)`.
+
+**Inputs (inline at handoff):** PDD, Phase-2 outputs (`2-commcare/app-test-cases.yaml` + per-journey recipes under `2-commcare/app-test-cases/J*.yaml`), Phase-4 chatbot URL (`4-ocs/ocs-agent-setup.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+
+**Atoms / skills used (orchestrator-visible only):** `Agent(qa-and-training)`. Internally the agent runs `app-screenshot-capture` (executor — runs the smoke recipes from Phase 2's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-deck-outline`) → `training-deck-build` (sequential after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) → `training-onboarding-email` (LAST — links by URL to other docs).
+
+**Outputs:** Phase-5 artifacts under `5-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck outline), optional training deck build, onboarding email.
+
+**Write-back:** `phases.qa-and-training.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
+
+**Gate:** `[BLOCKER]` halts; no named pause point in default mode (see § Pause Points in reference). Phase 5→6 is no longer a mandatory pause (§ Modes — default, review, auto).
+
+**Notes:** All skills read upstream artifacts from Phases 1–4. No 1-1 LLO contact happens here — that begins in Phase 8. Phase 5 splits shallow (in `/ace:run`, ~5 LLM judges) vs deep (out-of-band via `/ace:qa-deep`); `llo-launch` (Phase 8) requires fresh deep verdicts.
 
 ### Phase 6: Synthetic Data and Workflows
 Dispatch `Agent(synthetic-data-and-workflows)`. The agent authors a
