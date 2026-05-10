@@ -554,14 +554,23 @@ in this section are the *rationale*; this checklist is the literal
 sequence. Burning ~25 sequential calls across ~25 turns vs. 5–6 batched
 messages costs ~60–90s of pure model-output latency on every run.
 
-**Step 1 — Resolve local state in ONE Bash call.** Once
-`bin/ace-doctor --preflight` ships (PR 0b), run:
+**Step 1 — Resolve local state in ONE Bash call.** Run:
 
 ```bash
-bash bin/ace-doctor --preflight   # emits YAML: env_file, plugin_version, env vars, auth liveness
+bash "$(node -e "const d=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.claude/plugins/installed_plugins.json','utf8'));console.log(d.plugins['ace@ace'][0].installPath)")/bin/ace-doctor" --preflight
 ```
 
-Until then, use the inline fallback (single Bash):
+Emits YAML with `env_file`, `plugin.version`, `plugin.install_path`,
+`sa_key`, `git.user_email`, and the `env:` block listing each
+ACE-relevant variable as either its public value (Drive root, HQ
+domain, OCS team slug, etc.) or `present`/`missing` (passwords, tokens).
+Read the YAML; do NOT run additional probes for any field that's
+already in it. (Auth liveness is *not* included — see § Auth liveness
+below; orchestrator pre-flight trusts the cached session and lets
+phase atoms surface auth failures at point-of-use.)
+
+If `bin/ace-doctor --preflight` is unavailable (older install), fall
+back to a single inline Bash:
 
 ```bash
 ENV=""
