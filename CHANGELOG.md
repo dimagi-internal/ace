@@ -5,6 +5,22 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.139 — 2026-05-10
+
+**`upload-transcript` auto-discovers Claude Code's session log; `commands/run.md` no longer gates on a path it can't always resolve.**
+
+The post-`/ace:run` ace-web upload was silently skipping every interactive `/ace:run` (and `/ace:step`) because `commands/run.md` step 3 asked the orchestrator to "resolve the path of the current stream-json transcript… If not available, log a warning and skip." That language was written assuming the only transcript was a file the operator was redirecting `claude -p --output-format stream-json` to. Wrong assumption — Claude Code writes a per-session JSONL log to `~/.claude/projects/<encoded-cwd>/<session-uuid>.jsonl` for **every** session, interactive and headless alike (it's what `claude --resume` reads). The orchestrator had no path to pass, so the skill never ran.
+
+Two changes:
+
+1. **`skills/upload-transcript/SKILL.md` makes `transcript_path` optional and auto-discovers.** When the caller omits `transcript_path`, the skill takes the newest `*.jsonl` under `~/.claude/projects/<encoded-cwd>/` (cwd with `/` → `-`). Same lookup `claude --resume` uses. Works identically for interactive and headless sessions. The original `claude -p --output-format stream-json > <file>` path is preserved as the explicit-override case. The `[INFO] no transcript file found` skip-not-fail behavior moves into the skill (so any caller — `/ace:run`, `/ace:step`, ad-hoc — gets the same semantics for free; no per-caller gating logic).
+
+2. **`commands/run.md` stops trying to resolve the path itself.** Step 3 now just dispatches `Skill(upload-transcript)` with `base_url` + `opp_slug` + `opp_run_id`; the skill handles discovery. The skip-when-missing rule is gone from `run.md` because the skill owns it now.
+
+ace-web's ingest already accepts both transcript shapes — the `cli_session_id`-vs-content-hash dedup fallback documented in 0.13.132 was the server-side half of this fix; this release is the client-side half.
+
+Discovered and fixed inside the `turmeric/20260509-2209` run, immediately after the post-run summary said "skipped — no transcript path available". Confirmed against the live session's `~/.claude/projects/-Users-jjackson-emdash-worktrees-ace-emdash-e2e-turmeric-5aeux/6160cb0f-….jsonl` (1.6 MB, valid JSONL, `sessionId` recorded camelCase per the interactive shape).
+
 ## 0.13.131 — 2026-05-09
 
 **Doctor: end-of-run summary table + 20× faster `hq_api_key_auth` probe.**
