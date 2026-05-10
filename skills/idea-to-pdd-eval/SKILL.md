@@ -45,8 +45,19 @@ filename rule.
 
 ## Process
 
-1. **Read inputs from GDrive:**
-   - Source material — read all of these as the "source idea pack":
+1. **Use inputs already in context (preferred) or read from Drive.**
+   When invoked from the `design-review` subagent (the common
+   `/ace:run` path), all inputs below are already loaded by the
+   parent — do NOT re-issue `drive_read_file`. See
+   `agents/design-review.md` § Performance conventions: the parent
+   subagent reads the source material in Step 1 and the PDD lands in
+   context via Step 1's producer call; both are then trusted across
+   all downstream steps. Re-reading wastes ~5–10s per file. Only
+   re-read when invoked standalone (e.g. `/ace:step idea-to-pdd-eval
+   <opp>/<run-id>`) where the parent context isn't pre-warmed.
+
+   The inputs this skill reasons about (location for standalone reads):
+   - Source material — the "source idea pack":
      - `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml`, then each
        `file_id` it lists (the orchestrator's frozen evidence-pack
        pointer-set, captured at run start)

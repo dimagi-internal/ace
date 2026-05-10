@@ -27,7 +27,15 @@ If QA verdict is `fail` or `incomplete`, this eval is skipped (`verdict: incompl
 
 ## Process
 
-1. **Read inputs from Drive:**
+1. **Use inputs already in context (preferred) or read from Drive.**
+   When invoked from the `design-review` subagent (the common
+   `/ace:run` path), the test-prompts artifact and PDD are already
+   loaded by the parent's Step 2 / Step 1 — do NOT re-issue
+   `drive_read_file`. See `agents/design-review.md` § Performance
+   conventions. Only re-read when invoked standalone via
+   `/ace:step pdd-to-test-prompts-eval <opp>/<run-id>`.
+
+   Inputs (location for standalone reads):
    - `runs/<run-id>/1-design/pdd-to-test-prompts.md` (artifact under judgment)
    - `runs/<run-id>/1-design/idea-to-pdd.md` (PDD for archetype + content reference)
    - Optionally `runs/<run-id>/1-design/pdd-to-test-prompts-qa_result.yaml`

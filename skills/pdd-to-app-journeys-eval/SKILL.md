@@ -27,7 +27,15 @@ There is **no companion QA skill** for this artifact — see `skills/_qa-decisio
 
 ## Process
 
-1. **Read inputs from Drive:**
+1. **Use inputs already in context (preferred) or read from Drive.**
+   When invoked from the `design-review` subagent (the common
+   `/ace:run` path), the journeys artifact and PDD are already loaded
+   by the parent's Step 3 / Step 1 — do NOT re-issue
+   `drive_read_file`. See `agents/design-review.md` § Performance
+   conventions. Only re-read when invoked standalone via
+   `/ace:step pdd-to-app-journeys-eval <opp>/<run-id>`.
+
+   Inputs (location for standalone reads):
    - `runs/<run-id>/1-design/pdd-to-app-journeys.md` (artifact under judgment)
    - `runs/<run-id>/1-design/idea-to-pdd.md` (PDD; for archetype + Target FLW reference)
 
