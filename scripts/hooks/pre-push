@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# pre-push hook: refuse direct pushes to main.
+# main is server-side branch-protected, but this catches muscle-memory pushes
+# locally before they roundtrip to GitHub. Ship via PR + auto-merge instead.
+set -euo pipefail
+
+remote_name="${1:-}"
+remote_url="${2:-}"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$remote_ref" == "refs/heads/main" ]]; then
+    echo "pre-push: refusing direct push to main ($remote_name $remote_url)." >&2
+    echo "  main is branch-protected; ship via PR + auto-merge:" >&2
+    echo "    git push -u origin <branch> && gh pr create && gh pr merge <pr> --auto --merge" >&2
+    echo "  to override (you almost certainly should not): git push --no-verify" >&2
+    exit 1
+  fi
+done
+
+exit 0

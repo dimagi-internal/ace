@@ -95,7 +95,7 @@ Version-collision recipe (multiple worktrees bumped in parallel — common): `gi
 3. Commit on the worktree branch, push, open a PR, arm auto-merge with `gh pr merge <pr> --auto --merge` (or check the auto-merge box in the PR UI). The PR lands itself once `clean-install` passes — no manual review gate. (`main` is branch-protected — direct push is rejected.) See § Git worktrees and merging to main for the canonical block, including the version-collision rebase recipe.
 4. **IMMEDIATELY after the PR merges**, run `/ace:update` in the current session. Mandatory — without it, this session runs stale code while new sessions get the bump on startup. (Auto-merge means the merge is asynchronous; watch with `gh pr view <pr> --json state,mergedAt` or `gh run watch` if you need to block.)
 
-Hook setup if needed: `git config core.hooksPath scripts/hooks`.
+Hook setup if needed: `git config core.hooksPath scripts/hooks`. Two hooks ship: `pre-commit` (syncs VERSION → JSON when VERSION is staged) and `pre-push` (refuses direct pushes to `main` — server-side protection already blocks them, but this catches muscle-memory pushes before the roundtrip; bypass with `git push --no-verify` if ever needed).
 
 Cache dir is keyed by version: `~/.claude/plugins/cache/ace/ace/<version>/`. On session start, Claude Code pulls the marketplace repo, compares `plugin.json` version against the installed version, and re-installs if different.
 
