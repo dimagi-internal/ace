@@ -797,21 +797,20 @@ When invoked with an opportunity, execute these phases in order:
 **Notes:** All skills read upstream artifacts from Phases 1–4. No 1-1 LLO contact happens here — that begins in Phase 8. Phase 5 splits shallow (in `/ace:run`, ~5 LLM judges) vs deep (out-of-band via `/ace:qa-deep`); `llo-launch` (Phase 8) requires fresh deep verdicts.
 
 ### Phase 6: Synthetic Data and Workflows
-Dispatch `Agent(synthetic-data-and-workflows)`. The agent authors a
-story-coherent synthetic-data manifest from the PDD, generates fixture
-data via the connect-labs MCP, instantiates the LLO weekly review +
-program admin audit workflows, polishes them per-opp, and runs persona
-walkthroughs that produce stakeholder-ready HTML decks.
 
-This phase produces: synthetic narrative manifest, fixture FLW/visit/payment
-data, two demonstrative workflows (`llo_weekly_review`,
-`program_admin_audit`), per-persona walkthrough HTML decks, and a single
-one-page summary linking everything (`6-synthetic/synthetic-summary.md`).
-**No irreversible external action** — the connect-labs `SyntheticOpportunity`
-row is reversible via `synthetic_disable`; workflows can be deleted via
-`workflow_delete`. **No phase pause** — `/ace:run` proceeds straight from
-Phase 6 to Phase 7 without halting. See
-`agents/synthetic-data-and-workflows.md`.
+**Dispatch:** `Agent(synthetic-data-and-workflows)`.
+
+**Inputs (inline at handoff):** PDD, Phase-3 Connect identifiers (`3-connect/connect-opp-setup.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+
+**Atoms / skills used (orchestrator-visible only):** `Agent(synthetic-data-and-workflows)`. Internally: authors a story-coherent synthetic-data manifest from the PDD, generates fixture data via the connect-labs MCP, instantiates the LLO weekly review + program admin audit workflows, polishes them per-opp, and runs persona walkthroughs that produce stakeholder-ready HTML decks.
+
+**Outputs:** synthetic narrative manifest; fixture FLW/visit/payment data; two demonstrative workflows (`llo_weekly_review`, `program_admin_audit`); per-persona walkthrough HTML decks; single one-page summary (`6-synthetic/synthetic-summary.md`).
+
+**Write-back:** `phases.synthetic-data-and-workflows.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
+
+**Gate:** `[BLOCKER]` halts; **no phase pause** — `/ace:run` proceeds straight from Phase 6 to Phase 7 without halting (no run-time gate; see § Pause Points in reference).
+
+**Notes:** **No irreversible external action.** The connect-labs `SyntheticOpportunity` row is reversible via `synthetic_disable`; workflows can be deleted via `workflow_delete`. See `agents/synthetic-data-and-workflows.md`.
 
 ### Phase 7: Solicitation Management
 Dispatch `Agent(solicitation-management)`. The agent runs
