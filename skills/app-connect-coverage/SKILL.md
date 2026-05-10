@@ -116,8 +116,15 @@ ambiguous:
 
 ### Step 3: Per-form verification
 
+**Issue all per-form `get_form` reads in ONE parallel message** — they
+target distinct moduleIndex/formIndex pairs, share no state, and a
+typical Connect app has 4–12 forms across Learn + Deliver. Batched,
+the reads complete in ~one round-trip; sequentially, ~7s × N forms
+adds 30–80s per coverage pass with no benefit. Same shape as Step 4's
+batched mutations.
+
 For each form:
-- Call `get_form({app_id, moduleIndex, formIndex})`
+- Call `get_form({app_id, moduleIndex, formIndex})` (in the parallel block above)
 - Compare actual `form.connect` to expected
 - Classify:
   - `match` — actual matches expected
