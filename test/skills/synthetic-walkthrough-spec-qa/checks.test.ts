@@ -110,13 +110,24 @@ describe('checkScenesArrayWellFormed', () => {
   });
 
   test('fails when a scene is missing required fields', () => {
+    // ai_quality is OPTIONAL per upstream walkthrough spec format; removing
+    // it does NOT make a scene malformed. Use `show:` instead — it's required.
     const m = VALID_SPEC.replace(
-      'ai_quality: "KPI panel must show ≥3 named FLWs with archetype labels visible"',
+      /show: "[^"]*"/,
       '',
     );
     const r = checkScenesArrayWellFormed(m);
     expect(r.pass).toBe(false);
     expect(r.detail).toContain('#0');
+  });
+
+  test('passes when a scene omits the optional ai_quality field', () => {
+    const m = VALID_SPEC.replace(
+      'ai_quality: "KPI panel must show ≥3 named FLWs with archetype labels visible"',
+      '',
+    );
+    const r = checkScenesArrayWellFormed(m);
+    expect(r.pass).toBe(true);
   });
 
   test('fails when scenes is not an array', () => {

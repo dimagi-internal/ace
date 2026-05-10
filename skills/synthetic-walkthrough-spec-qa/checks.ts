@@ -9,6 +9,11 @@
  * rationale: ACE-side QA gives faster failure + structured `auto_fix_hint`
  * for orchestrator-driven retry without spawning a canopy:walkthrough run.
  *
+ * Cross-checked against canopy plugin's
+ * `skills/walkthrough/SKILL.md § Walkthrough Spec Format` at canopy
+ * v0.2.87 on 2026-05-09. Spec format declares `auth` as optional ("omit
+ * for public pages") and `ai_quality` as optional per scene.
+ *
  * Imported by:
  * - The skill body via `scripts/qa-run.ts` at runtime (orchestrator dispatch)
  * - Per-skill tests under `test/skills/synthetic-walkthrough-spec-qa/` (vitest)
@@ -22,7 +27,10 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { QACheck, QACheckResult } from '../../lib/qa-types';
 
-const REQUIRED_TOP_LEVEL_KEYS = ['name', 'narrative', 'base_url', 'auth', 'personas', 'scenes'] as const;
+// `auth` is OPTIONAL per upstream — omit for public pages. Earlier draft
+// had it in REQUIRED_TOP_LEVEL_KEYS; corrected 2026-05-09 after canopy
+// source cross-check.
+const REQUIRED_TOP_LEVEL_KEYS = ['name', 'narrative', 'base_url', 'personas', 'scenes'] as const;
 
 const MIN_SCENES = 4;
 
@@ -68,7 +76,16 @@ const SceneZ = z
     title: z.string().min(1),
     show: z.string().min(1),
     impressive_because: z.string().min(1),
-    ai_quality: z.string().min(1),
+    // `ai_quality` is OPTIONAL per the upstream spec format ("optional"
+    // comment at the example in canopy walkthrough SKILL.md). Earlier
+    // draft required it; corrected 2026-05-09 after canopy source cross-check.
+    ai_quality: z.string().min(1).optional(),
+  })
+  .passthrough();
+
+const AuthZ = z
+  .object({
+    type: z.enum(['url', 'command']),
   })
   .passthrough();
 
@@ -77,7 +94,8 @@ const SpecZ = z
     name: z.string().min(1),
     narrative: z.string().min(1),
     base_url: z.string().min(1),
-    auth: z.unknown(),
+    // `auth` optional per upstream — public pages omit it entirely.
+    auth: AuthZ.optional(),
     personas: z.record(PersonaZ),
     scenes: z.array(SceneZ),
   })
@@ -183,7 +201,7 @@ export function checkScenesArrayWellFormed(text: string): QACheckResult {
     pass: false,
     detail: `scenes malformed: ${issues.slice(0, 5).join(' | ')}${issues.length > 5 ? ` (+${issues.length - 5} more)` : ''}`,
     auto_fix_hint:
-      'every scene must have non-empty: persona, title, show, impressive_because, ai_quality. See synthetic-walkthrough-spec/SKILL.md step 4 for examples.',
+      'every scene must have non-empty: persona, title, show, impressive_because. ai_quality is optional but recommended (drives the AI-judge rubric). See synthetic-walkthrough-spec/SKILL.md step 4 for examples.',
   };
 }
 
@@ -351,7 +369,7 @@ export const CHECKS: QACheck[] = [
   {
     id: 'scenes_array_well_formed',
     type: 'static',
-    description: `scenes is an array of ≥${MIN_SCENES}; each has persona, title, show, impressive_because, ai_quality`,
+    description: `scenes is an array of ≥${MIN_SCENES}; each has persona, title, show, impressive_because (ai_quality optional)`,
     run: checkScenesArrayWellFormed,
   },
   {
