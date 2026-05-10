@@ -35,15 +35,9 @@ no inline self-eval.
 
 ## Modes
 
-- **Default (full setup on first run; auto-prompt-patch on subsequent
-  runs).** First run on an opp executes every step end-to-end (clone +
-  create collection + upload + 5–10 min indexing wait + prompt + publish).
-  Subsequent runs against the same opp short-circuit at Step 0.5 via the
-  opp-level `opp.yaml.ocs_chatbot` block — they skip clone/create-collection/
-  upload/indexing and execute the equivalent of `--prompt-patch` (Step 7
-  recomposes the prompt, Step 9 publishes a new version, Step 11
-  refreshes state). Same-run-id re-runs short-circuit even earlier at
-  Step 0 (run-level state file) and skip to Step 10 (refresh embed).
+- **Default (full setup).** Run every step end-to-end. Re-runs against
+  an opp that already has a state file short-circuit at Step 0 — they
+  skip to Step 10 (retrieve embed) with zero OCS calls.
 - **`--prompt-patch`** (cheap iteration after `ocs-chatbot-eval --quick`
   fails). Reuses the existing chatbot, collection, and uploaded files;
   recomposes the system prompt against the latest PDD, calls
@@ -51,17 +45,13 @@ no inline self-eval.
   version. Skips clone (Step 3), create collection (Step 4), upload
   (Step 5), and the 5–10 minute re-index (Step 6). Use this when the
   RAG content didn't change but the prompt needs a tweak — the typical
-  outcome of a `--quick` quality fail. Note: Step 0.5 already does
-  this automatically across runs; the explicit flag is for forcing
-  the path within a same-run-id retry.
+  outcome of a `--quick` quality fail.
 
 ## Process
 
-0. **Idempotency short-circuit (read run-level state file first — runs
-   before any OCS call).** Read
-   `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`.
-   - **State file absent.** Continue to Step 0.5 (opp-level reuse
-     check) — do NOT jump to Step 1 yet.
+0. **Idempotency short-circuit (read state file first — runs before any
+   OCS call).** Read `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`.
+   - **State file absent.** Fresh setup. Continue to Step 1.
    - **State file present, `--prompt-patch` flag set.** Reuse the
      existing `experiment_id`, `collection_id`, and `pipeline_id`.
      Skip to Step 7 (recompose prompt) → Step 8
@@ -73,59 +63,13 @@ no inline self-eval.
      NOT call `ocs_list_chatbots`, do NOT re-clone — the state file is
      authoritative.
 
-   This step exists because Step 2's `ocs_list_chatbots` filter is a
-   late idempotency check, not the first. A live OCS list call on
-   every re-run wastes ~1s when the local artifact already has the
+   This step exists because Step 2's `ocs_list_chatbots` filter is the
+   second-line idempotency check, not the first. A live OCS list call
+   on every re-run wastes ~1s when the local artifact already has the
    answer; on a `--prompt-patch` re-run it would also walk the full
    pipeline (clone is a no-op when the bot exists, but the create
    collection / upload / wait-for-indexing branches re-fire and burn
    5–10 min) before the existing state would even be consulted.
-
-0.5. **Opp-level reuse check (cross-run idempotency — only reachable
-   when Step 0 found no state file).** Most `/ace:run` invocations
-   land on a new run-id but the SAME opp — the per-opp chatbot from
-   a prior run is the right bot to reuse. The 5–10 min indexing wait
-   is the dominant Phase 4 cost; reusing the prior collection skips
-   it entirely.
-
-   Read `ACE/<opp-name>/opp.yaml`. If it contains an `ocs_chatbot:`
-   block with `experiment_id` set:
-   - Probe `ocs_get_chatbot({ experiment_id })` to confirm the bot
-     still exists in OCS (operator may have deleted it manually
-     between runs). Capture `collection_id` and `pipeline_id` from
-     the response.
-   - **If the probe succeeds:** reconstruct the run-level state file
-     fields from the probe response + opp.yaml's stored values, then
-     **treat this run as if `--prompt-patch` was passed**: skip
-     Steps 1 (Drive reads happen later in Step 7), 2 (list-fallback
-     not needed), 3 (clone), 4 (create collection), 5 (upload), and
-     6 (5–10 min indexing wait). Continue at Step 7 (recompose
-     prompt against the current run's PDD — keeps the bot's
-     instructions fresh even though RAG content is reused) → Step 8
-     → Step 9 → Step 10 → Step 11.
-   - **If the probe fails** (bot deleted, OCS error, etc.): clear
-     `opp.yaml.ocs_chatbot` (write back with the experiment_id removed) and
-     continue to Step 1 — fresh setup. Don't attempt to reuse a
-     phantom.
-
-   **Quality trade-off this step accepts.** The reused collection's
-   indexed files are whatever the FIRST run uploaded — typically
-   `inputs/*` (operator-frozen, doesn't change between runs) +
-   per-run synthesized PDD/summaries from that first run. If the
-   PDD has materially shifted across runs, the bot's retrieval
-   surface is slightly stale. Mitigations:
-   - Step 7 recomposes the system prompt against the CURRENT run's
-     PDD, so the bot's instructions match the latest design.
-   - Operator-facing escape hatch: to force a fresh collection,
-     clear `opp.yaml.ocs_chatbot.experiment_id` (or delete the bot in OCS)
-     before re-running.
-   - The deep-eval gate (`ocs-chatbot-eval --deep`) re-tests the bot
-     against the current run's `pdd-to-test-prompts.md` — a
-     materially-stale collection will surface as deep-eval failures
-     and trigger the operator to invalidate.
-
-   If `opp.yaml.ocs_chatbot` is absent or has no `experiment_id`, continue
-   to Step 1 (fresh setup).
 
 1. **Read opportunity context from GDrive:**
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
@@ -233,42 +177,9 @@ no inline self-eval.
     - `ocs_get_chatbot_embed_info({ experiment_id })`
     - Capture `{public_id, embed_key}`
 
-11. **Write run-level state file + opp-level state.**
-
-    a. **Run-level state file:**
-       `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`
-       - Fields: `experiment_id`, `public_id`, `embed_key`,
-         `collection_id`, `pipeline_id`, `version_number`,
-         `created_at`, optional `last_prompt_patched_at` (set by
-         `--prompt-patch` re-runs and by Step 0.5's auto-prompt-patch
-         path).
-       - This file is Step 0's source of truth for same-run-id
-         idempotency.
-
-    b. **Opp-level state in `opp.yaml`:** patch
-       `ACE/<opp-name>/opp.yaml` via
-       `update_yaml_file({ patch: { ocs_chatbot: {...} }, merge: 'two-level' })`:
-
-       ```yaml
-       ocs_chatbot:
-         experiment_id: <int>
-         collection_id: <int>
-         pipeline_id: <uuid>
-         created_at: <ISO timestamp — when the bot was first cloned>
-         last_used_run_id: <current run-id — updated every run that
-                            reuses or creates this bot>
-       ```
-
-       This is Step 0.5's source of truth for cross-run
-       idempotency. On a fresh-create path (Steps 3–10 just ran),
-       `created_at` is the current timestamp and
-       `last_used_run_id` is the current run-id. On a Step-0.5
-       reuse path, `created_at` keeps the original value and only
-       `last_used_run_id` advances.
-
-       Use `merge: 'two-level'` so the patch doesn't clobber
-       sibling top-level keys (`connect`, `selected_llo`, etc.) on
-       opp.yaml.
+11. **Write state file:** `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`
+    - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`, optional `last_prompt_patched_at` (set by `--prompt-patch` re-runs)
+    - This file is the source of truth for idempotency — Step 0 reads it before any OCS call
 
 Quality gating (quick + deep qa→eval pairs) and Connect widget handoff
 happen in subsequent steps of the `ocs-setup` agent, not in this skill.
@@ -349,4 +260,3 @@ Each row this skill writes uses `phase: 4-ocs` and
 | 2026-04-28 | Step 7 prompt rule corrected (0.6.10): `{collection_index_summaries}` is required iff `collection_index_ids.length >= 2` (verified via live OCS probe — see `scripts/probe-n1-cross-test.ts`). Single-collection clones must NOT include the variable; multi-collection clones MUST. The 0.6.4 framing (variable iff non-empty) was wrong. | ACE team |
 | 2026-05-05 | **Two idempotency improvements.** (1) New Step 0 reads the local state file (`runs/<run-id>/4-ocs/ocs-agent-setup.md`) before any OCS call — saves ~1s on a normal re-run and avoids the silent-pipeline-walk on `--prompt-patch` re-runs. (2) New `--prompt-patch` mode reuses the existing chatbot/collection/files, skipping clone + create-collection + upload + 5–10 min indexing wait, and just recomposes the prompt → calls `ocs_set_chatbot_pipeline` → publishes. This is the canonical Phase 4 retry path after `ocs-chatbot-eval --quick` flags a prompt issue (the previous skill prose said the agent should "retry prompt-patch" but no such mode existed — re-runs walked the full pipeline). | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (system-prompt-baseline, rag-collection-scope, test-prompt-count) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
-| 2026-05-10 | **Cross-run idempotency via `opp.yaml.ocs_chatbot`.** New Step 0.5 reads opp-level OCS state (experiment_id + collection_id + pipeline_id) and, when present + bot still exists, auto-promotes to `--prompt-patch` semantics — saves the 5–10 min indexing wait on every subsequent run against the same opp. Step 11 now writes both the run-level state file and the opp-level state. The default path is unchanged for first-runs; subsequent-runs benefit automatically. Operator escape hatch: clear `opp.yaml.ocs_chatbot.experiment_id` (or delete the bot in OCS) to force a fresh build. Surfaced from Phase 4 perf survey on turmeric run 20260509-2209: Phase 4 was the second-longest phase (~19 min) with RAG indexing dominating wall-clock. | ACE team (perf lens) |
