@@ -140,32 +140,88 @@ function error(msg: string) {
  * Drive's ID). On My Drive, `driveId` is absent. That single field is the
  * canonical signal — no scope checks, no quota probes, no second API call
  * beyond the one `files.get`.
+ *
+ * Inflight-dedupe + 30s TTL cache (added 2026-05-10, perf lens). When N
+ * parallel writes target the same parent — common for run-folder bootstrap
+ * (run_state.yaml + idea.md + inputs-manifest.yaml + gate-brief.md often go
+ * into the same `runs/<run-id>/` parent in one batched message) — the first
+ * caller's probe populates the inflight slot; concurrent callers await the
+ * same promise instead of firing N redundant `files.get` round-trips. After
+ * the probe resolves, an `ok: true` result is cached for 30s so a follow-up
+ * write a few seconds later also short-circuits. `ok: false` results are
+ * NOT cached (transient errors must re-probe; My-Drive misconfig is a
+ * one-shot failure that halts the run anyway).
  */
+type ProbeResult = { ok: true } | { ok: false; message: string };
+const sharedDriveProbeCache = new Map<string, { result: ProbeResult; expires: number }>();
+const sharedDriveProbeInflight = new Map<string, Promise<ProbeResult>>();
+const SHARED_DRIVE_PROBE_TTL_MS = 30_000;
+
+/**
+ * Test-only: clear the inflight + TTL caches so unit tests with shared
+ * parentFolderIds don't leak state across `it` blocks. Production callers
+ * must not invoke this — the caches are correctness-preserving (single
+ * source of truth: live Drive API), they just amortize the probe cost
+ * across concurrent or near-concurrent writes to the same parent.
+ */
+export function __resetSharedDriveProbeCacheForTests(): void {
+  sharedDriveProbeCache.clear();
+  sharedDriveProbeInflight.clear();
+}
+
 async function assertParentOnSharedDrive(
   parentFolderId: string,
   driveClient: typeof drive = drive,
-): Promise<{ ok: true } | { ok: false; message: string }> {
+): Promise<ProbeResult> {
+  // Fresh-cache hit: short-circuit. Only `ok: true` is ever cached.
+  const cached = sharedDriveProbeCache.get(parentFolderId);
+  if (cached && cached.expires > Date.now()) {
+    return cached.result;
+  }
+
+  // Inflight-dedupe: if another caller is already probing this parent, await
+  // the same promise. The cache key is the parentFolderId — different parents
+  // probe independently. Module-level Maps persist across MCP tool calls; this
+  // is the inflight pool for the whole stdio session.
+  const inflight = sharedDriveProbeInflight.get(parentFolderId);
+  if (inflight) {
+    return inflight;
+  }
+
+  const probe = (async (): Promise<ProbeResult> => {
+    try {
+      const meta = await driveClient.files.get({
+        fileId: parentFolderId,
+        fields: 'id, name, driveId, mimeType',
+        supportsAllDrives: true,
+      });
+      if (meta.data.mimeType !== 'application/vnd.google-apps.folder') {
+        return { ok: false, message: `Parent ${parentFolderId} is not a folder (mimeType: ${meta.data.mimeType}).` };
+      }
+      if (!meta.data.driveId) {
+        return {
+          ok: false,
+          message:
+            `Parent folder "${meta.data.name}" (${parentFolderId}) is in My Drive, not on a Shared Drive. ` +
+            `Service Accounts have zero My-Drive quota; any file create here would fail with "user storage quota exceeded". ` +
+            `Move the folder onto a Shared Drive (or set ACE_DRIVE_ROOT_FOLDER_ID to a folder that already lives on one) and re-run.`,
+        };
+      }
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, message: `Could not resolve parent folder ${parentFolderId}: ${e.message}` };
+    }
+  })();
+
+  sharedDriveProbeInflight.set(parentFolderId, probe);
   try {
-    const meta = await driveClient.files.get({
-      fileId: parentFolderId,
-      fields: 'id, name, driveId, mimeType',
-      supportsAllDrives: true,
-    });
-    if (meta.data.mimeType !== 'application/vnd.google-apps.folder') {
-      return { ok: false, message: `Parent ${parentFolderId} is not a folder (mimeType: ${meta.data.mimeType}).` };
+    const result = await probe;
+    if (result.ok) {
+      sharedDriveProbeCache.set(parentFolderId, { result, expires: Date.now() + SHARED_DRIVE_PROBE_TTL_MS });
     }
-    if (!meta.data.driveId) {
-      return {
-        ok: false,
-        message:
-          `Parent folder "${meta.data.name}" (${parentFolderId}) is in My Drive, not on a Shared Drive. ` +
-          `Service Accounts have zero My-Drive quota; any file create here would fail with "user storage quota exceeded". ` +
-          `Move the folder onto a Shared Drive (or set ACE_DRIVE_ROOT_FOLDER_ID to a folder that already lives on one) and re-run.`,
-      };
-    }
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, message: `Could not resolve parent folder ${parentFolderId}: ${e.message}` };
+    return result;
+  } finally {
+    sharedDriveProbeInflight.delete(parentFolderId);
   }
 }
 

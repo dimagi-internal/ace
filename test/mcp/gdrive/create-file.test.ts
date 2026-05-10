@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleCreateFile } from '../../../mcp/google-drive-server.js';
+import { handleCreateFile, __resetSharedDriveProbeCacheForTests } from '../../../mcp/google-drive-server.js';
 
 const fakeDrive = {
   files: {
@@ -12,6 +12,7 @@ const fakeDrive = {
 
 describe('drive_create_file', () => {
   beforeEach(() => {
+    __resetSharedDriveProbeCacheForTests();
     fakeDrive.files.list.mockReset();
     fakeDrive.files.create.mockReset();
     fakeDrive.files.update.mockReset();
