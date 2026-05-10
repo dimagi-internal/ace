@@ -5,6 +5,26 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.142 — 2026-05-10
+
+**`app-release` auto-fix loop: catch `BuildRejectedError`, dispatch Nova architect to repair the offending form, retry `make_build` (bounded to 3 iterations).**
+
+Closes the chicken-and-egg gap that surfaced in leep run `20260509-2204` Phase 2: `commcare_make_build` rejected the Learn build on a Nova-emitter XML-encoding bug, but the existing `commcare-form-patch` recovery requires a successful build to download the CCZ from. Until 0.13.140 the operator had to peek at CCHQ's form-designer UI, hand-edit, and retry. As of 0.13.140 the diagnostic was legible. This release wires the loop end-to-end.
+
+`skills/app-release/SKILL.md` adds Step 4a between the existing build/release call and the verification step. When `commcare_make_build` throws `BuildRejectedError` (the typed error shape introduced in 0.13.140), the skill:
+
+1. Parses CCHQ's `error_text` into a structured form locator (`form_name`, `menu_name`, `line`, `col`, `parser_message`) — the canonical shape is documented inline so future format drift is grep-able.
+2. Maps `form_name` → Nova `form_id` via `nova__get_app` against the in-memory `nova_app_id`. Disambiguates same-named forms across modules using `menu_name`. Halts with a gate-brief ambiguity note if still ambiguous (operator decides).
+3. Dispatches the Nova architect via `/nova:edit` with a brief that names the form, the line/col, the parser message, and the most-likely-fix class (the angle-bracket / `&` / `"` encoding case is called out explicitly because it's the documented Nova bug; the architect is also told to inspect labels/options/hints/constraint messages broadly so it catches non-obvious cases).
+4. Re-uploads via `/nova:upload_to_hq` — produces a fresh HQ app id (CCHQ has no atomic update API) and the skill records both ids in `app-release_summary.md.frontmatter.hq_app_id_history` so Phase 3's downstream wiring lines up against the LATEST id.
+5. Retries `commcare_make_build` against the new HQ app id. Caps at 3 attempts per app; on exhaustion surfaces a `[BLOCKER]` in the gate brief with every iteration's `error_text` + every Nova edit dispatched, plus the operator-facing remediation (manual CCHQ form-designer edit on the final orphan id, or wait for Nova upstream fix).
+
+The bound is deliberate: a perpetually-failing form is almost certainly a Nova-emitter regression below `validate_app`'s scope. Three attempts gives the architect a chance at the obvious case (literal `<3 letters>` in an MCQ option) and one chance at a non-obvious case the first round missed; beyond that we're burning cycles on a structural bug that needs human eyes on the emitted XForm XML.
+
+Subagent-dispatch invariant: `/nova:edit` runs the Nova architect via `Agent`, which is only available at level 0. `app-release` is invoked from Phase 2 (`commcare-setup`), which runs inline at level 0 per `agents/ace-orchestrator.md § Agent Topology`. So the dispatch is structurally legal here — but if a future caller moves `app-release` into a subagent, the loop breaks. Documented in the SKILL.
+
+Pure prose change — no MCP atom or test code modified. The runtime behavior is implemented by the LLM following the skill steps; the parsing is done in-context rather than via a brittle regex helper because CCHQ's error format may change and multi-error responses already exist (one `Cannot make new version` followed by per-form `Error in form …` lines). Future work: an `app-release-eval` rubric that grades how well the loop's iterations narrowed in on the actual fix when triggered (separate concern from this PR).
+
 ## 0.13.140 — 2026-05-10
 
 **Surface CCHQ build-rejection diagnostics; pre-empt the angle-bracket placeholder bug in Learn-app builds.**
