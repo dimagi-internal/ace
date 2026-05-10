@@ -111,7 +111,8 @@ echo "Uploaded. View at $BASE_URL/chat/$SLUG"
 |------|-------|--------|
 | 401  | `ACE_WEB_PAT_TOKEN` missing, revoked, or wrong | Re-run `/ace:ace-web-pat-mint`. Check `bin/ace-doctor`'s `[Auth liveness]` block. |
 | 403  | Token authenticated but user lacks permission | Confirm the human you minted as has access in ace-web. |
-| 409  | Transcript already uploaded (duplicate `cli_session_id`) | Expected on re-runs; treat as success for idempotency. |
+| 409  | Transcript already uploaded (duplicate `cli_session_id` or content hash) | Expected on re-runs; treat as success for idempotency. As of ace-web PR #275 the dedup check also fires on raw-byte sha256 when the transcript has no usable session id (e.g. a Claude Code interactive transcript). |
+| 422 "validation_error" | Malformed `opp_slug` / `opp_run_id` / `opp_step_skill` | Each field must match `[A-Za-z0-9_.-]{1,64}`. Whitespace, slashes, or empty-after-strip values are rejected. Fix the form value and retry. |
 | 400 "file is required" | Multipart malformed | Check that the `-F "file=@..."` form field is present. |
 
 ## Reference
