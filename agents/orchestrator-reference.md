@@ -527,7 +527,40 @@ operator experience than auto-stub + warning.
 
 ## Pause Points
 
-(populated in Task 6)
+`/ace:run` may pause at named points where the next action affects external parties or where a phase boundary needs operator-level review. There is **no separate "gate-brief" artifact** — at each pause, the orchestrator reads the per-skill QA verdict (`<phase>/<producer>-qa_result.yaml`) + eval verdict (`<phase>/<producer>-eval_verdict.yaml`) directly and synthesizes a pause-time summary on the fly. The verdict files are the source of truth; the orchestrator is just the renderer.
+
+**Pause points and per-mode behavior:**
+
+| Pause point | Phase | `default` | `review` | `auto` |
+|------|-------|-----------|----------|--------|
+| After `idea-to-pdd` | 1 | pause iff any `[BLOCKER]` from QA or eval | always pause | never pause* |
+| After `app-deploy` | 2 | pause iff any `[BLOCKER]` | always pause | never pause* |
+| After `ocs-chatbot-eval --quick` | 4 | pause iff any `[BLOCKER]` | always pause | never pause* |
+| After `llo-invite` | 7 | never pause (passive solicitation invites) | always pause | never pause* |
+| **Phase 7→8 boundary** | 7→8 | **always pause** (waits for `selected_llo`) | always pause | always pause |
+| Before `llo-onboarding` | 8 | always pause (first 1-1 email to awardee) | always pause | always pause |
+| Before `llo-uat` send | 8 | always pause (UAT instructions to awardee) | always pause | always pause |
+| Before `llo-launch` | 8 | always pause (opp activation in Connect) | always pause | always pause |
+| Before `opp-closeout` | 9 | always pause (Jira payment ticket) | always pause | always pause |
+
+\*`auto` still pauses on `[BLOCKER]` — admins opted into auto mode for speed, not to ship known-broken work. The Phase 7→8 boundary + Phase 8 external-comms + Phase 9 closeout pauses are unconditional in all modes because they affect external parties.
+
+**Synthesizing a pause-time summary.** At each pause, the orchestrator:
+
+1. Reads the per-skill QA + eval verdict files for the upstream step (paths follow `<phase>/<producer>[-qa|-eval]_<artifact>.yaml`). Missing verdicts are fine — skip.
+2. Aggregates the verdicts into a brief summary:
+   - **Artifact under review:** path + one-line description (pulled from the producer's primary artifact).
+   - **What to check:** auto-derived from any QA `failures[]` and eval auto-surfaced concerns.
+   - **Severity surface:** any `[BLOCKER]` / `[WARN]` / `[INFO]` from the verdicts (eval has these explicitly; QA failures are always `[BLOCKER]`-equivalent).
+3. Presents via `AskUserQuestion` with four options:
+   - **Approve** — continue.
+   - **Reject** — halt the run; log admin's reason in `comms-log/`.
+   - **Iterate** — re-dispatch the upstream skill with the surfaced concerns as input (equivalent to a manual auto-fix loop).
+   - **Inspect** — open the artifact path for a deeper look, then re-prompt.
+
+There is no `gates.<name>` field to flip on approve/reject. The phase status (`phases.<phase>.status`) and the per-skill verdicts together carry the audit trail.
+
+**Why no separate gate-brief artifact.** The `<skill>_gate-brief.md` artifact (used pre-0.13.116) was a producer-authored summary that duplicated the QA + eval verdict signal. With the QA/Eval split codified (PRs #146 / #149 / #160), the verdicts ARE the source of truth — the orchestrator can render the same summary from them at pause time. Removing the artifact eliminates a class of drift (gate-brief saying "all clear" while eval verdict shows BLOCKER) and removes coordination overhead between producing skills.
 
 ## Touching State — Operator Capture
 
