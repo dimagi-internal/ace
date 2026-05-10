@@ -63,11 +63,14 @@ elif [ "${1:-}" = "deep-qa-freshness" ]; then
   shift
 fi
 
+PREFLIGHT=0
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --here)       MODE="pwd" ;;
     --installed)  MODE="installed" ;;
     --root)       shift; ROOT="$1" ;;
+    --preflight)  PREFLIGHT=1 ;;
     *)            echo "ace-doctor: unknown arg: $1" >&2; exit 2 ;;
   esac
   shift
@@ -108,7 +111,7 @@ if [ -z "$ROOT" ] || [ ! -f "$ROOT/.claude-plugin/plugin.json" ]; then
   exit 0
 fi
 
-echo "INFO plugin_root=$ROOT (mode=$MODE)"
+[ "$PREFLIGHT" = "1" ] || echo "INFO plugin_root=$ROOT (mode=$MODE)"
 
 # Dispatch sub-commands. Sub-commands short-circuit the rest of the script.
 if [ "$SUBCOMMAND" = "verdicts" ]; then
@@ -151,6 +154,98 @@ if [ "$SUBCOMMAND" = "deep-qa-freshness" ]; then
     exit 0
   fi
   cd "$ROOT" && exec npx tsx scripts/check-deep-qa-freshness.ts "$SUB_OPP"
+fi
+
+# --preflight — emit a tight YAML snapshot of local state for the orchestrator's
+# pre-flight checklist (agents/ace-orchestrator.md § Pre-flight Checklist Step 1).
+# Skips human-facing PASS/WARN/FAIL noise, hygiene checks, and live auth probes.
+# What it covers: env_file path, plugin version + install_path, git user.email,
+# presence of the env vars Phase 1+ skills depend on. Sensitive values (passwords,
+# tokens) are reported as `present`/`missing`; public IDs (Drive root, HQ domain,
+# OCS team slug, etc.) are echoed verbatim because the orchestrator needs them
+# to populate the inline-artifact prompts.
+if [ "$PREFLIGHT" = "1" ]; then
+  # env_file resolution (mirrors the runtime-readiness block ~line 484)
+  ENV_FILE=""
+  DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/ace-ace}"
+  if [ -f "$DATA_DIR/.env" ]; then
+    ENV_FILE="$DATA_DIR/.env"
+  elif [ -f "$ROOT/.env" ]; then
+    ENV_FILE="$ROOT/.env"
+  fi
+
+  # Local copy of get_env — mirrors the runtime-readiness helper. Strips
+  # quotes, treats unresolved 1Password refs as missing.
+  pf_get_env() {
+    [ -z "$ENV_FILE" ] && return
+    local raw
+    raw="$(grep -E "^[[:space:]]*$1=" "$ENV_FILE" 2>/dev/null | tail -1 | sed -E "s/^[[:space:]]*$1=//; s/^['\"]//; s/['\"]$//")"
+    case "$raw" in
+      op://*) return ;;
+      *) printf '%s' "$raw" ;;
+    esac
+  }
+
+  # Presence-only — never echo the actual value. Returns "present" or "missing".
+  pf_presence() {
+    local v
+    v="$(pf_get_env "$1")"
+    [ -n "$v" ] && echo present || echo missing
+  }
+
+  # Plugin metadata
+  PLUGIN_VERSION=""
+  if [ -f "$ROOT/VERSION" ]; then
+    PLUGIN_VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
+  fi
+  GIT_EMAIL="$(git config user.email 2>/dev/null || true)"
+  SA_KEY=""
+  if [ -f "$DATA_DIR/gws-sa-key.json" ]; then
+    SA_KEY="$DATA_DIR/gws-sa-key.json"
+  elif [ -f "$ROOT/.gws-sa-key.json" ]; then
+    SA_KEY="$ROOT/.gws-sa-key.json"
+  fi
+
+  # Public values orchestrator needs verbatim
+  ACE_DRIVE_ROOT="$(pf_get_env ACE_DRIVE_ROOT_FOLDER_ID)"
+  ACE_HQ_DOMAIN="$(pf_get_env ACE_HQ_DOMAIN)"
+  OCS_BASE_URL="$(pf_get_env OCS_BASE_URL)"
+  OCS_TEAM_SLUG="$(pf_get_env OCS_TEAM_SLUG)"
+  OCS_GTID="$(pf_get_env OCS_GOLDEN_TEMPLATE_ID)"
+  ACE_GMAIL_ACCOUNT="$(pf_get_env ACE_GMAIL_ACCOUNT)"
+
+  # Build the YAML body. Missing public values render as empty strings; the
+  # orchestrator can decide how to react (some are required, some optional).
+  cat <<EOF
+status: ok
+plugin:
+  version: ${PLUGIN_VERSION:-unknown}
+  install_path: $ROOT
+  env_file: ${ENV_FILE:-MISSING}
+  sa_key: ${SA_KEY:-MISSING}
+git:
+  user_email: ${GIT_EMAIL:-MISSING}
+env:
+  ace_drive_root_folder_id: ${ACE_DRIVE_ROOT:-}
+  ace_hq_domain: ${ACE_HQ_DOMAIN:-}
+  ocs_base_url: ${OCS_BASE_URL:-}
+  ocs_team_slug: ${OCS_TEAM_SLUG:-}
+  ocs_golden_template_id: ${OCS_GTID:-}
+  ace_gmail_account: ${ACE_GMAIL_ACCOUNT:-}
+  ace_hq_username: $(pf_presence ACE_HQ_USERNAME)
+  ace_hq_password: $(pf_presence ACE_HQ_PASSWORD)
+  ocs_username: $(pf_presence OCS_USERNAME)
+  ocs_password: $(pf_presence OCS_PASSWORD)
+  ace_web_pat_token: $(pf_presence ACE_WEB_PAT_TOKEN)
+  ace_training_deck_template_id: $(pf_presence ACE_TRAINING_DECK_TEMPLATE_ID)
+  labs_mcp_token: $(pf_presence LABS_MCP_TOKEN)
+  ocs_shared_collection_id: $(pf_presence OCS_SHARED_COLLECTION_ID)
+  ocs_llm_provider_id: $(pf_presence OCS_LLM_PROVIDER_ID)
+  ocs_embedding_model_id: $(pf_presence OCS_EMBEDDING_MODEL_ID)
+  content_generator_url: $(pf_presence CONTENT_GENERATOR_URL)
+  content_generator_api_key: $(pf_presence CONTENT_GENERATOR_API_KEY)
+EOF
+  exit 0
 fi
 
 # If the user is inside a dev worktree that differs from $ROOT, flag it so they
