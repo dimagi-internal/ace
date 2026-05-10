@@ -320,6 +320,92 @@ Steps:
 
 The `drive_create_shortcut` MCP atom shipped in 0.13.0.
 
+## Fork Points — Per-Opp vs Per-Run State
+
+When forking a run (re-running phases or skills from a prior run, in
+parallel or in isolation), every Drive artifact is either **per-opp**
+(one copy, shared across all runs of the opp) or **per-run**
+(sequestered under `runs/<run-id>/`, copied or re-derived per fork).
+Confusing the two breaks forks: copying a per-opp file produces two
+divergent calibration sources; failing to copy a per-run file leaves
+the new run's verifier looking at the prior run's verdicts.
+
+**Per-opp — DO NOT copy when forking; share across all runs.** All
+declared in `lib/artifact-manifest.ts` with `scope: 'opp'` (or
+implicitly via path lacking a `runs/` prefix):
+
+| Path | Role |
+|---|---|
+| `ACE/<opp>/opp.yaml` | Metadata, `selected_llo`, `solicitation` blocks, tags. Phase 7/8 mutate this in place. |
+| `ACE/<opp>/inputs/` | Human-curated source pack. Read-only — every run's Phase 1 reads via the run-root inputs-manifest. |
+| `ACE/<opp>/eval-calibration/known-issues.md` | Ground-truth catalogue every `-eval` rubric reads. Calibration survives across runs. |
+| `ACE/<opp>/open-questions.md` | Deferred questions that accrete across runs until answered. |
+| `ACE/<opp>/connect-state.yaml` | Connect program/opp UUIDs from Phase 3, reused by Phases 5 + 8. Subsequent runs reuse the same Connect entities. |
+| `ACE/<opp>/current/` | Shortcut folder pointing at the latest run's Phase 3/4 outputs (refreshed at phase completion — see § Current/ shortcut refresh). |
+
+**Per-run — under `ACE/<opp>/runs/<run-id>/`; copy or re-derive when
+forking:**
+
+| Path | Role |
+|---|---|
+| `runs/<run-id>/run_state.yaml` | Lifecycle state — phase/step pointer, mode, `last_actor`, timestamps. New file at each new run-id. |
+| `runs/<run-id>/README.md` | Per-run index regenerated after each phase via `generateRunReadme(...)`. |
+| `runs/<run-id>/inputs-manifest.yaml` | Frozen pointer-set captured at run start (`inputs/` file_ids). Snapshots that run's view of the source pack. |
+| `runs/<run-id>/idea.md` | Optional `--idea` seed, only when `/ace:run --idea FILE\|-` was used. |
+| `runs/<run-id>/<N>-<phase>/<producer>.md` | Producer artifacts (PDDs, app summaries, training docs, screenshots, etc.). |
+| `runs/<run-id>/<N>-<phase>/<producer>_verdict[-<mode>].yaml` | Producer self-evaluation (when the producing skill self-evaluates). |
+| `runs/<run-id>/<N>-<phase>/<producer>-eval_verdict[-<mode>].yaml` | Eval-side judgment from the matching `*-eval` skill. |
+| `runs/<run-id>/<N>-<phase>/<producer>_transcript[-<mode>].md` | QA-captured evidence (chatbot transcripts, etc.). |
+| `runs/<run-id>/<N>-<phase>/<producer>_comms-log[-<mode>].md` | Reject-pause reasons, dry-run logs. |
+
+**No top-level `verdicts/`, `gate-briefs/`, or `comms-log/`
+directories.** Verdicts and comms-logs live next to their phase work
+inside `<N>-<phase>/`. The `<skill>_gate-brief.md` artifact
+(pre-0.13.116) is gone — the orchestrator synthesizes pause-time
+summaries from verdict files at runtime (see § Pause Points). Any
+legacy opp-level folders from older opps are read-only artifacts and
+no longer written.
+
+### Forking recipes
+
+**Fork at phase boundary (today).** Re-run a phase (and everything
+downstream) from a prior run's outputs:
+
+1. Reuse the existing per-opp files (`opp.yaml`, `inputs/`,
+   `eval-calibration/`, `open-questions.md`, `connect-state.yaml`) —
+   do not copy.
+2. Mint a new run-id (`YYYYMMDD-HHMM` per § State Schema), create
+   `runs/<new-run-id>/` and seed `run_state.yaml` per the defensive
+   init in § State Schema.
+3. For each upstream phase you want to keep, copy
+   `runs/<prior-run-id>/<N>-<phase>/` into the new run's folder. Mark
+   those phases `done` in the new `run_state.yaml`.
+4. Phases you re-run will write fresh verdicts/transcripts/producer
+   artifacts under the new run-id; the Producer Artifact Verifier
+   (§ Producer Artifact Verifier) will check against the new
+   run-folder's `<N>-<phase>/` only.
+
+**Fork at skill boundary (future).** Re-run a single skill within a
+phase without re-running the whole phase:
+
+1. Delete the skill's `*_verdict*.yaml`, `*_transcript*.md`,
+   `*_comms-log*.md`, and producer artifact under
+   `runs/<run-id>/<N>-<phase>/`.
+2. Set `phases.<phase>.<skill>: pending` in `run_state.yaml`.
+3. The Phase Write-Back Verifier (§ Phase Write-Back Contract) will
+   treat the skill as not-yet-completed and re-execute. Downstream
+   skills in the same phase that already ran will NOT auto-rerun —
+   delete their artifacts too if their inputs depended on the
+   re-run skill's outputs.
+
+**Skill-fork caveat.** External side effects (Connect program/opp
+mutations, OCS chatbot deploys, HQ app uploads, LLO emails) are NOT
+captured by the per-run folder. A skill-fork that re-runs an
+external-mutation skill will either no-op (if the upstream atom is
+idempotent — most are; see § External Mutations — Verify After
+Create) or compound (if not). The producer-artifact verifier won't
+catch this; the operator owns that judgment.
+
 ## Producer Artifact Verifier
 
 After each phase completes (and write-back is verified), the
