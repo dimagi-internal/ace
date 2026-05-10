@@ -829,16 +829,20 @@ When invoked with an opportunity, execute these phases in order:
 **Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). `solicitation` and `selected_llo` are separate `opp.yaml` blocks — only `solicitation-review` populates `selected_llo`.
 
 ### Phase 8: Execution Management
-Dispatch to the **execution-manager** agent. Phase 8 entry is gated on
-`opp.yaml.selected_llo.org_slug` being populated by Phase 7's
-`solicitation-review`.
 
-This phase produces: the awarded LLO onboarded (Connect program-level
-invite + ACE onboarding email with widget link), UAT completed,
-opportunity activated (go-live), ongoing monitoring active. This phase
-has recurring skills (timeline-monitor, flw-data-review,
-ocs-chatbot-qa-monitor, ocs-chatbot-eval-monitor) that run on schedule
-during the active opportunity.
+**Dispatch:** `Agent(execution-manager)`. **Entry gated on `opp.yaml.selected_llo.org_slug` being populated by Phase 7's `solicitation-review`.**
+
+**Inputs (inline at handoff):** PDD, Phase-5 training artifacts (5 docs + onboarding email under `5-qa-and-training/`), Phase-4 chatbot URL (`4-ocs/ocs-agent-setup.md`), `opp.yaml.selected_llo`, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+
+**Atoms / skills used (orchestrator-visible only):** `Agent(execution-manager)`.
+
+**Outputs:** the awarded LLO onboarded (Connect program-level invite + ACE onboarding email with widget link); UAT completed; opportunity activated (go-live); ongoing monitoring active.
+
+**Write-back:** `phases.execution-management.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
+
+**Gate:** `[BLOCKER]` halts; **always pauses before** `llo-onboarding` (first 1-1 email to awardee), `llo-uat` send (UAT instructions), and `llo-launch` (opp activation in Connect) — these are unconditional in all modes. See § Pause Points in reference.
+
+**Notes:** Phase 8 is the first 1-1 LLO contact in the lifecycle. Recurring skills (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`, `ocs-chatbot-eval-monitor`) run on schedule during the active opportunity. `llo-launch` requires fresh deep verdicts (Phase 5 `/ace:qa-deep` output).
 
 ### Phase 9: Closeout
 Dispatch to the **closeout** agent. Triggered when the opportunity reaches its
