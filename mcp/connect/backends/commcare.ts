@@ -1,7 +1,7 @@
 import type { APIRequestContext, APIResponse } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
 import { PlaywrightSession } from '../auth/playwright-session.js';
-import { SessionExpiredError } from '../errors.js';
+import { SessionExpiredError, summarizeServerErrorBody } from '../errors.js';
 
 /**
  * CommCare HQ atoms — release apps that Nova uploaded as drafts.
@@ -231,6 +231,59 @@ export class XformConflictError extends Error {
   }
 }
 
+/**
+ * CCHQ rejected a `commcare_make_build` because the app's emitted XForm
+ * XML failed CCHQ-side parsing (XForm well-formedness, missing
+ * multimedia, invalid XPath, etc.). The endpoint returns 200 with
+ * `{saved_app: null, error_html: "..."}` rather than a 4xx; without a
+ * typed error, callers see "no build _id in saved_app" with the raw
+ * JSON inlined and have to peek at CCHQ's UI to read the actual
+ * rejection reason.
+ *
+ * `errorText` is the structured human-readable rejection (form name +
+ * menu + line/col + parser message) extracted from `error_html`. The
+ * `errorHtml` field preserves the raw HTML for callers that want to
+ * re-parse for additional context.
+ *
+ * Non-retryable in the same app-state — the caller must edit the
+ * offending form (typically via the Nova architect or the CCHQ form
+ * designer) and re-upload before retrying. `app-release` Step 2.7
+ * surfaces this; a future loop in `app-release` is expected to catch
+ * it and dispatch a Nova edit-and-retry round.
+ */
+export class BuildRejectedError extends Error {
+  retryable = false;
+  constructor(
+    public app_id: string,
+    public errorText: string,
+    public errorHtml: string,
+  ) {
+    super(
+      `CCHQ rejected commcare_make_build for app ${app_id}: ${errorText}`,
+    );
+    this.name = 'BuildRejectedError';
+  }
+
+  /** Structured payload for MCP responses (mirrors ConnectValidationError.toJSON). */
+  toJSON(): {
+    error: 'build_rejected';
+    message: string;
+    app_id: string;
+    error_text: string;
+    error_html: string;
+    retryable: false;
+  } {
+    return {
+      error: 'build_rejected',
+      message: this.message,
+      app_id: this.app_id,
+      error_text: this.errorText,
+      error_html: this.errorHtml,
+      retryable: false,
+    };
+  }
+}
+
 export class CommCareBackend {
   constructor(private opts: CommCareBackendOptions) {}
 
@@ -323,9 +376,23 @@ export class CommCareBackend {
       const build = parsed?.saved_app ?? parsed;
       const build_id = build?._id ?? build?.id;
       if (!build_id) {
+        // CCHQ's documented "build rejected" shape: 200 with
+        // `{saved_app: null, error_html: "<html string>"}`. The
+        // error_html names the affected form / menu / line:col and is
+        // what the CCHQ UI shows the user. Surface it as a typed error
+        // so callers can catch it (and so the operator sees the actual
+        // diagnostic instead of raw JSON).
+        const errorHtml = typeof parsed?.error_html === 'string' ? parsed.error_html : null;
+        if (errorHtml) {
+          throw new BuildRejectedError(
+            args.app_id,
+            summarizeServerErrorBody(errorHtml, 'text/html'),
+            errorHtml,
+          );
+        }
         throw new Error(
-          `commcare_make_build POST ${path} returned 200 but no build _id in saved_app. ` +
-            `This shape changes when the app fails XForm well-formedness — body: ${JSON.stringify(parsed).slice(0, 400)}`,
+          `commcare_make_build POST ${path} returned 200 but no build _id in saved_app and no error_html. ` +
+            `Unrecognized response shape — body: ${JSON.stringify(parsed).slice(0, 400)}`,
         );
       }
       return {

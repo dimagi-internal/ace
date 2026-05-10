@@ -44,6 +44,30 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    - Describe each module / form, in order
    - List the required Connectify fields (Learn Module, Assessment Score)
    - Reference the relevant PDD section when it shapes Nova's choices
+   - **REQUIRED — Forbid angle-bracket placeholder notation in
+     label/option/hint text.** Insert this paragraph **verbatim** into
+     the brief, in its own paragraph, prefixed `REQUIRED:`:
+
+     > REQUIRED: Do NOT use literal `<` or `>` characters in any form
+     > label, option label, hint text, constraint message, or itext
+     > value. Nova's XForm emitter does not entity-encode `<`/`>` in
+     > label text, so a literal "<3 letters>" or "<number>" placeholder
+     > becomes invalid XML when CCHQ parses the form during
+     > `make_build` (CCHQ rejects with "Error parsing XML: StartTag:
+     > invalid element name"). Use words ("three letters", "a number")
+     > or backticks (`three letters`) for placeholder syntax. Same rule
+     > for `&` and `"` in label text — write them out as words instead
+     > of relying on entity encoding to land. This applies especially
+     > to pattern-recognition / regex-style quiz options where it's
+     > tempting to write `<country><number>.<number>` literally.
+
+     Filed upstream as voidcraft-labs/nova-plugin issue
+     "XForm emitter does not entity-encode `<`/`>` in label text"; this
+     skill-side constraint is the workaround. Phase 2's `app-release`
+     Step 2.7 surfaces a typed `BuildRejectedError` (with form
+     name + line/col) if the architect violates this constraint anyway,
+     so the operator gets a clear diagnostic instead of "Cannot make
+     new version" and a CCHQ UI peek.
    - **REQUIRED — Architect must verify-then-retry every `add_fields`
      call.** Nova's `add_fields` has a partial-persistence quirk: a
      single call with N items often persists only the first few.

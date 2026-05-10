@@ -5,6 +5,20 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.140 — 2026-05-10
+
+**Surface CCHQ build-rejection diagnostics; pre-empt the angle-bracket placeholder bug in Learn-app builds.**
+
+The `leep-paint-collection/20260509-2204` run hit a Phase 2 halt at `app-release` Step 2.7: `commcare_make_build` returned 200 with `saved_app: null` and an `alert-build` `error_html`, the existing handler raised a generic `Error` with the raw JSON sliced into the message, and the operator had to peek at the CCHQ form designer UI to read the actual rejection reason. The actual rejection (`"Unique ID check" Form: Error parsing XML: StartTag: invalid element name, line 64, column 88`) pointed at the architect's pattern-recognition Q5 option label, where a literal `<3 letters>` placeholder became invalid XML because Nova's emitter doesn't entity-encode `<`/`>` in label text. Two targeted changes:
+
+1. **`mcp/connect/backends/commcare.ts` adds `BuildRejectedError`.** The `makeBuild` path detects the documented `{saved_app: null, error_html: "..."}` rejection shape, runs the HTML through `summarizeServerErrorBody` to strip tags + extract the form name + line/col + parser message, and throws `BuildRejectedError(app_id, errorText, errorHtml)`. Mirrors the existing `XformConflictError` / `ConnectValidationError` pattern: typed name, structured `toJSON()`, `retryable: false`. `connect-server.ts`'s `runAtom` now catches it and returns the JSON shape with `isError: true` so the MCP client sees a legible `{error: 'build_rejected', message, app_id, error_text, error_html}` instead of "no build _id in saved_app — body: {raw json}".
+
+2. **`skills/pdd-to-learn-app/SKILL.md` adds the angle-bracket constraint to the architect brief.** A new `REQUIRED:` paragraph (sibling to the existing `add_fields` partial-persistence rule) forbids literal `<`/`>`/`&`/`"` in any form label, option label, hint text, constraint message, or itext value — instructing the architect to use words ("three letters") or backticks for placeholder syntax. Especially load-bearing on pattern-recognition / regex-style quiz options where the temptation to write `<country><number>.<number>` literally is highest. Workaround for the upstream bug (filed at voidcraft-labs/nova-plugin); when Nova's XForm emitter starts entity-encoding label text, this constraint can be relaxed.
+
+Together: `pdd-to-learn-app` prevents the recurrence on the next run, `commcare_make_build` ensures any future make-build rejection (this class or another) surfaces a useful diagnostic at the first failure, not the third. The follow-up — an `app-release` retry-with-Nova-edit loop that catches `BuildRejectedError` and dispatches an architect repair pass — is sized for a separate PR; it benefits from this typed error already shipping.
+
+Coverage added: 5 new tests in `test/mcp/connect/unit/commcare-make-build.test.ts` (happy path; build-rejected → typed error; HTML-stripped errorText; falsy-fallback when error_html missing; toJSON shape).
+
 ## 0.13.139 — 2026-05-10
 
 **`upload-transcript` auto-discovers Claude Code's session log; `commands/run.md` no longer gates on a path it can't always resolve.**

@@ -27,7 +27,7 @@ import { z } from 'zod';
 
 import { RestBackend } from './connect/backends/rest.js';
 import { PlaywrightBackend } from './connect/backends/playwright.js';
-import { CommCareBackend } from './connect/backends/commcare.js';
+import { CommCareBackend, BuildRejectedError } from './connect/backends/commcare.js';
 import { CompositeBackend } from './connect/backends/composite.js';
 import { PlaywrightSession } from './connect/auth/playwright-session.js';
 import { createLoggingProxy, defaultFileLogger } from './connect/logging.js';
@@ -126,6 +126,9 @@ async function runAtom<T>(fn: () => Promise<T>): Promise<{ content: Array<{ type
       return { ...json(err.toJSON()), isError: true };
     }
     if (err instanceof ConnectSilentRejectError) {
+      return { ...json(err.toJSON()), isError: true };
+    }
+    if (err instanceof BuildRejectedError) {
       return { ...json(err.toJSON()), isError: true };
     }
     throw err;
