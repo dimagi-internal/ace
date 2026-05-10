@@ -150,21 +150,24 @@ See `agents/ace-orchestrator.md` for full detail.
 
 3. After the orchestration procedure completes (all phases run or a
    gate halts the run), if `--ace-web-url` is non-empty (explicit or
-   defaulted):
-   - Resolve the path of the current stream-json transcript (the `.jsonl`
-     file the operator is recording, typically via
-     `claude -p --output-format stream-json > <file>`). If the transcript
-     path is not available in the run context, log a warning and skip
-     the upload — do not fail the overall run.
-   - Dispatch the `upload-transcript` skill with:
+   defaulted), dispatch the `upload-transcript` skill with:
      - `base_url=<URL>`
-     - `transcript_path=<resolved-path>`
      - `opp_slug=<opp>` so the uploaded Session is linked under the
        opp in the Workbench's linked-chats panel (strongly recommended
        — without it the transcript is an orphan upload)
      - `opp_run_id=<run-id>` (the run-id the orchestrator generated;
        see `agents/ace-orchestrator.md § Starting a New Opportunity` step 3)
-   - Log the returned `session_slug` and the viewable URL
-     (`<URL>/chat/<session_slug>`) to the operator's console.
+
+   The skill auto-discovers the transcript path under
+   `~/.claude/projects/<encoded-cwd>/*.jsonl` (Claude Code writes a
+   per-session log there for both interactive and headless runs — same
+   discovery `claude --resume` uses). To override, pass an explicit
+   `transcript_path=<path>` (e.g. when the operator wrote stream-json
+   to a custom file via `claude -p --output-format stream-json > <file>`).
+   When the skill finds no transcript at all it returns success with an
+   `[INFO]` skip log; the overall run is not failed.
+
+   Log the returned `session_slug` and the viewable URL
+   (`<URL>/chat/<session_slug>`) to the operator's console.
 
 The orchestration procedure handles all phases in step 2.
