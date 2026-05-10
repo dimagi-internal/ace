@@ -131,135 +131,7 @@ text`.
   reuse-vs-rebuild decisions down into phase-agent skill logic. Full
   contract: § Modes — default, review, auto.
 
-## Populated opps are the norm — do NOT pause to ask "are you sure?"
-
-ACE is built around running **many cycles per opp** — that's how both the
-opp's design and ACE itself improve. So most `/ace:run` invocations land
-on an opp that already has substantial prior-run state: a live Connect
-program/opportunity, a published OCS chatbot, an open solicitation, prior
-PDDs, prior CommCare apps. **This is the expected baseline, not an edge
-case.**
-
-The orchestrator's contract on a populated opp:
-
-- **Do not pause to confirm "do you want to overwrite live state?"** —
-  `--mode default` already encodes the answer. The named Pause Points
-  (see § Pause Points) plus the Phase 7→8 boundary are the only
-  sanctioned pause locations. A populated-opp confirmation prompt is
-  **off-spec** — if you find yourself wanting to add one, the right
-  fix is to push the reuse-vs-rebuild decision down into the affected
-  phase agent's skill logic instead.
-- **Reuse-vs-rebuild is owned by each phase agent's skills**, not by
-  the orchestrator. Examples that already exist in skills today:
-  - `connect-program-setup` reuses an existing program when
-    `opp.yaml.connect.program.id` is set + verified live.
-  - `connect-opp-setup` reuses an existing opp when
-    `opp.yaml.connect.opportunity.id` is set, status is non-terminal,
-    and HQ ids on the opp match the current
-    `2-commcare/app-deploy_summary.md` (delete-and-recreate only on
-    HQ-id mismatch — see commcare-setup § Step 2).
-  - `ocs-agent-setup` reuses the chatbot in
-    `opp.yaml.ocs_chatbot.experiment_id` when shape matches; otherwise
-    re-clones from the golden template.
-  - `solicitation-create` no-ops with `[INFO]` if a published
-    solicitation already exists for this opp's labs `program_id` —
-    rebuilds only if the prior one is closed/expired.
-- **Each new run gets its own `runs/<run-id>/<N>-<phase>/` artifact
-  set** — prior-run artifacts stay frozen in their own run folders.
-  Reuse means "phase agent skipped the rebuild step and pointed at
-  the prior live entity"; it does NOT mean "wrote into the prior
-  run's folder." The new run still produces a clean per-phase
-  summary in its own slot, even when the underlying live entity
-  wasn't recreated.
-- **Solicitations are scoped to a labs `program_id`, not to the
-  Connect opportunity UUID.** Re-pointing a Connect opp at fresh HQ
-  ids (delete-and-recreate of the Connect opportunity) does NOT
-  invalidate the live solicitation. The public URL keeps working,
-  the deadline keeps counting down. See commcare-setup § Step 2 for
-  the recovery contract.
-
-If you (the orchestrator session) genuinely encounter prior state
-that you can't classify as "reuse vs rebuild" by inspecting
-`opp.yaml`, that is a **skill bug** — file an issue against the
-relevant phase agent's skills, don't add an orchestrator-level
-confirmation prompt.
-
-ACE has three modes. **`default` is the default** — pick another only
-if you have a specific reason.
-
-**Default mode (`default`):** *Keep going unless there's a reason to
-stop, up until the point of external communication.*
-
-- **Phases 1–5 (setup, internal):** auto-proceed past every gate
-  whose brief contains no `[BLOCKER]` concern and whose producing
-  skill exited cleanly. The gate brief is still written, archived,
-  and emailed in the between-phase status update — but it does NOT
-  pause the run. A `[BLOCKER]` halts immediately and surfaces the
-  brief for triage. A hard error halts immediately. A `[WARN]` is
-  logged but does NOT halt.
-- **Phase 5→6 transition:** **no longer a mandatory pause.** Phase 7
-  publishes a public solicitation on labs.connect.dimagi.com and emails
-  PDD-named candidate LLOs the public URL — passive listing, not active
-  outreach to specific individuals. The active-comms boundary moved to
-  Phase 7→8 (where Phase 8 sends an inbound onboarding email to the
-  awardee).
-- **Phase 7→8 transition:** **always pause.** This is the new external-
-  communication boundary — Phase 8 is where the awarded LLO first hears
-  from ACE on a one-to-one basis. `/ace:run` halts here in default mode
-  and remains halted until the human runs `/ace:step solicitation-review`,
-  which (after a HITL approval gate) calls `award_response` and populates
-  `opp.yaml.selected_llo`. Phase 8 cannot start while
-  `selected_llo.org_slug` is null.
-- **Phases 7–8 (Execution Management, Closeout):** behave like `review`
-  mode for any step whose action affects an external party. Specifically,
-  always pause before:
-    - `llo-onboarding` (Phase 8 — first 1-1 email to the awardee)
-    - `llo-uat` send (Phase 8 — UAT instructions to the awardee)
-    - `llo-launch` (Phase 8 — opportunity activation in Connect)
-    - `opp-closeout` (Phase 9 — Jira payment ticket creation)
-  Steps within those phases that are purely internal (e.g.
-  `timeline-monitor` reads, `flw-data-review` analysis) auto-proceed
-  the same as Phases 1–5.
-- **Inside `solicitation-review` (Phase 7 manual):** HITL gate before
-  `award_response` is called (irreversible). Skill waits for explicit
-  `award <response_id> $<amount>` reply before the labs call.
-
-**Review mode (`review`):** Pause at every Pause Point (see § Pause
-Points below) for explicit approval, regardless of blocker status. Use
-for high-touch operations, training, or when an admin wants to inspect
-every step's verdicts in front of them. The orchestrator synthesizes a
-pause-time summary from the per-skill QA + eval verdicts at each Pause
-Point — same content default mode would surface on `[BLOCKER]`,
-presented unconditionally.
-
-**Auto mode (`auto`):** Run all phases sequentially with no pauses,
-even at external-communication points except the unconditional ones
-(Phase 7→8 boundary, Phase 8 external-comms steps, Phase 9 closeout).
-Email the CRISPR Admin group (Neal, Jon, Matt, Sarvesh, Cal) at each
-step completion and on failures. `[BLOCKER]` concerns still pause and
-escalate — auto mode buys speed, not the right to ship known-broken
-work. Use sparingly: eval calibration runs, smoke tests against test
-workspaces, and the like.
-
-### Why default mode looks like this
-
-Phases 1–5 are entirely internal to Dimagi — Nova builds apps in
-private Firestore, `app-deploy` uploads CCZs to a Dimagi-controlled
-project space, OCS chatbots are configured but not yet linked to any
-opportunity FLWs are seeing. Operators historically rubber-stamped
-these gates 95%+ of the time when nothing was wrong, which is why a
-~36-minute idle gap was observed on a recent e2e session waiting for
-an unattended `idea-to-pdd` approval. Default mode treats the eval
-verdict (`[BLOCKER]` or not) as the decision-maker and only stops the
-human for it when the model itself says something is wrong.
-
-Phase 8 onward involves real LLOs receiving real emails and real
-Connect production state changes. There is no automatic eval that
-validates "is this opp ready to send to outside parties?" — only
-human judgment can clear that bar, so default mode insists on human
-review at every external-comm point.
-
-## Performance Conventions
+## Pre-flight & per-phase conventions
 
 These conventions cut wall-clock and token cost on `/ace:run`. Apply
 them on every full-cycle invocation; they're also fine on `/ace:step`.
@@ -425,6 +297,134 @@ not 5–10 separate searches as you encounter each one.
 Batching, env resolution, parallel-`TaskCreate`, and serial `Agent`
 dispatch rules are catalogued in § Anti-patterns and discipline.
 
+## Modes — default, review, auto
+
+ACE is built around running **many cycles per opp** — that's how both the
+opp's design and ACE itself improve. So most `/ace:run` invocations land
+on an opp that already has substantial prior-run state: a live Connect
+program/opportunity, a published OCS chatbot, an open solicitation, prior
+PDDs, prior CommCare apps. **This is the expected baseline, not an edge
+case.**
+
+The orchestrator's contract on a populated opp:
+
+- **Do not pause to confirm "do you want to overwrite live state?"** —
+  `--mode default` already encodes the answer. The named Pause Points
+  (see § Pause Points) plus the Phase 7→8 boundary are the only
+  sanctioned pause locations. A populated-opp confirmation prompt is
+  **off-spec** — if you find yourself wanting to add one, the right
+  fix is to push the reuse-vs-rebuild decision down into the affected
+  phase agent's skill logic instead.
+- **Reuse-vs-rebuild is owned by each phase agent's skills**, not by
+  the orchestrator. Examples that already exist in skills today:
+  - `connect-program-setup` reuses an existing program when
+    `opp.yaml.connect.program.id` is set + verified live.
+  - `connect-opp-setup` reuses an existing opp when
+    `opp.yaml.connect.opportunity.id` is set, status is non-terminal,
+    and HQ ids on the opp match the current
+    `2-commcare/app-deploy_summary.md` (delete-and-recreate only on
+    HQ-id mismatch — see commcare-setup § Step 2).
+  - `ocs-agent-setup` reuses the chatbot in
+    `opp.yaml.ocs_chatbot.experiment_id` when shape matches; otherwise
+    re-clones from the golden template.
+  - `solicitation-create` no-ops with `[INFO]` if a published
+    solicitation already exists for this opp's labs `program_id` —
+    rebuilds only if the prior one is closed/expired.
+- **Each new run gets its own `runs/<run-id>/<N>-<phase>/` artifact
+  set** — prior-run artifacts stay frozen in their own run folders.
+  Reuse means "phase agent skipped the rebuild step and pointed at
+  the prior live entity"; it does NOT mean "wrote into the prior
+  run's folder." The new run still produces a clean per-phase
+  summary in its own slot, even when the underlying live entity
+  wasn't recreated.
+- **Solicitations are scoped to a labs `program_id`, not to the
+  Connect opportunity UUID.** Re-pointing a Connect opp at fresh HQ
+  ids (delete-and-recreate of the Connect opportunity) does NOT
+  invalidate the live solicitation. The public URL keeps working,
+  the deadline keeps counting down. See commcare-setup § Step 2 for
+  the recovery contract.
+
+If you (the orchestrator session) genuinely encounter prior state
+that you can't classify as "reuse vs rebuild" by inspecting
+`opp.yaml`, that is a **skill bug** — file an issue against the
+relevant phase agent's skills, don't add an orchestrator-level
+confirmation prompt.
+
+ACE has three modes. **`default` is the default** — pick another only
+if you have a specific reason.
+
+**Default mode (`default`):** *Keep going unless there's a reason to
+stop, up until the point of external communication.*
+
+- **Phases 1–5 (setup, internal):** auto-proceed past every gate
+  whose brief contains no `[BLOCKER]` concern and whose producing
+  skill exited cleanly. The gate brief is still written, archived,
+  and emailed in the between-phase status update — but it does NOT
+  pause the run. A `[BLOCKER]` halts immediately and surfaces the
+  brief for triage. A hard error halts immediately. A `[WARN]` is
+  logged but does NOT halt.
+- **Phase 5→6 transition:** **no longer a mandatory pause.** Phase 7
+  publishes a public solicitation on labs.connect.dimagi.com and emails
+  PDD-named candidate LLOs the public URL — passive listing, not active
+  outreach to specific individuals. The active-comms boundary moved to
+  Phase 7→8 (where Phase 8 sends an inbound onboarding email to the
+  awardee).
+- **Phase 7→8 transition:** **always pause.** This is the new external-
+  communication boundary — Phase 8 is where the awarded LLO first hears
+  from ACE on a one-to-one basis. `/ace:run` halts here in default mode
+  and remains halted until the human runs `/ace:step solicitation-review`,
+  which (after a HITL approval gate) calls `award_response` and populates
+  `opp.yaml.selected_llo`. Phase 8 cannot start while
+  `selected_llo.org_slug` is null.
+- **Phases 7–8 (Execution Management, Closeout):** behave like `review`
+  mode for any step whose action affects an external party. Specifically,
+  always pause before:
+    - `llo-onboarding` (Phase 8 — first 1-1 email to the awardee)
+    - `llo-uat` send (Phase 8 — UAT instructions to the awardee)
+    - `llo-launch` (Phase 8 — opportunity activation in Connect)
+    - `opp-closeout` (Phase 9 — Jira payment ticket creation)
+  Steps within those phases that are purely internal (e.g.
+  `timeline-monitor` reads, `flw-data-review` analysis) auto-proceed
+  the same as Phases 1–5.
+- **Inside `solicitation-review` (Phase 7 manual):** HITL gate before
+  `award_response` is called (irreversible). Skill waits for explicit
+  `award <response_id> $<amount>` reply before the labs call.
+
+**Review mode (`review`):** Pause at every Pause Point (see § Pause
+Points below) for explicit approval, regardless of blocker status. Use
+for high-touch operations, training, or when an admin wants to inspect
+every step's verdicts in front of them. The orchestrator synthesizes a
+pause-time summary from the per-skill QA + eval verdicts at each Pause
+Point — same content default mode would surface on `[BLOCKER]`,
+presented unconditionally.
+
+**Auto mode (`auto`):** Run all phases sequentially with no pauses,
+even at external-communication points except the unconditional ones
+(Phase 7→8 boundary, Phase 8 external-comms steps, Phase 9 closeout).
+Email the CRISPR Admin group (Neal, Jon, Matt, Sarvesh, Cal) at each
+step completion and on failures. `[BLOCKER]` concerns still pause and
+escalate — auto mode buys speed, not the right to ship known-broken
+work. Use sparingly: eval calibration runs, smoke tests against test
+workspaces, and the like.
+
+### Why default mode looks like this
+
+Phases 1–5 are entirely internal to Dimagi — Nova builds apps in
+private Firestore, `app-deploy` uploads CCZs to a Dimagi-controlled
+project space, OCS chatbots are configured but not yet linked to any
+opportunity FLWs are seeing. Operators historically rubber-stamped
+these gates 95%+ of the time when nothing was wrong, which is why a
+~36-minute idle gap was observed on a recent e2e session waiting for
+an unattended `idea-to-pdd` approval. Default mode treats the eval
+verdict (`[BLOCKER]` or not) as the decision-maker and only stops the
+human for it when the model itself says something is wrong.
+
+Phase 8 onward involves real LLOs receiving real emails and real
+Connect production state changes. There is no automatic eval that
+validates "is this opp ready to send to outside parties?" — only
+human judgment can clear that bar, so default mode insists on human
+review at every external-comm point.
+
 ## Resuming after a halt
 
 `/ace:run` is designed to run end-to-end inline. **The orchestrator
@@ -464,306 +464,6 @@ class genuinely warrants proactive splitting, reintroduce the
 guidance with concrete evidence (a class of runs that demonstrably
 cannot complete inline even with 1M context), not heuristic
 extrapolation from token-budget anxiety.
-
-## Workflow
-
-When invoked with an opportunity, execute these phases in order:
-
-### Phase 1: Design Review & Iteration
-Dispatch to the **design-review** agent with the opportunity context.
-This phase produces: PDD and opp-specific test prompts derived from the PDD.
-
-### Phase 2: CommCare Setup
-**Execute the procedure in `agents/commcare-setup.md` inline** — do not
-dispatch `Agent(commcare-setup)`. Phase 2 invokes `/nova:autobuild`
-(via `pdd-to-learn-app` and `pdd-to-deliver-app`), which itself
-dispatches the `nova:nova-architect-autonomous` subagent. That
-dispatch requires `Agent` at level 0 — running Phase 2 as a subagent
-would put Nova's dispatch at level 2 and fail. See § Agent Topology.
-
-This phase produces: Learn app, Deliver app, deployed apps on CCHQ, test results.
-(Training materials moved to Phase 5 (`qa-and-training`) in 0.9.0.)
-
-### Phase 3: Connect Setup
-Dispatch to the **connect-setup** agent.
-This phase produces: Program configured, Opportunity configured with verification
-rules and delivery/payment units. LLO invite-list preparation moved to Phase 8
-on 2026-04-20 — we don't commit to an invite roster until after the OCS
-chatbot has cleared its deep-eval gate.
-
-### Phase 4: OCS Setup
-Dispatch to the **ocs-setup** agent.
-This phase produces: per-opp OCS chatbot cloned from the golden template with
-opp-specific RAG collection, quick smoke qa+eval passed, deep pre-launch
-qa+eval passed against opp-specific test prompts, embed credentials ready
-for Connect. Each quality gate is a qa→eval pair — `ocs-chatbot-qa`
-captures a transcript, `ocs-chatbot-eval` grades it.
-Ends with a human-in-the-loop step to paste the widget credentials into the
-Connect opportunity until `update_opportunity` lands (CCC-301).
-
-### Phase 5: QA and Training
-Dispatch `Agent(qa-and-training)`. The agent runs
-`app-screenshot-capture` (executor — runs the smoke recipes from
-Phase 2's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel
-(`training-llo-guide`, `training-flw-guide`, `training-quick-reference`,
-`training-faq`, `training-deck-outline`) → `training-deck-build` (sequential
-after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) →
-`training-onboarding-email` (LAST — links by URL to other docs). All
-skills read upstream artifacts from Phases 1-4. No 1-1 LLO contact
-happens here — that begins in Phase 8.
-
-### Phase 6: Synthetic Data and Workflows
-Dispatch `Agent(synthetic-data-and-workflows)`. The agent authors a
-story-coherent synthetic-data manifest from the PDD, generates fixture
-data via the connect-labs MCP, instantiates the LLO weekly review +
-program admin audit workflows, polishes them per-opp, and runs persona
-walkthroughs that produce stakeholder-ready HTML decks.
-
-This phase produces: synthetic narrative manifest, fixture FLW/visit/payment
-data, two demonstrative workflows (`llo_weekly_review`,
-`program_admin_audit`), per-persona walkthrough HTML decks, and a single
-one-page summary linking everything (`6-synthetic/synthetic-summary.md`).
-**No irreversible external action** — the connect-labs `SyntheticOpportunity`
-row is reversible via `synthetic_disable`; workflows can be deleted via
-`workflow_delete`. **No phase pause** — `/ace:run` proceeds straight from
-Phase 6 to Phase 7 without halting. See
-`agents/synthetic-data-and-workflows.md`.
-
-### Phase 7: Solicitation Management
-Dispatch `Agent(solicitation-management)`. The agent runs
-`solicitation-create` → `llo-invite` (default run, both auto). Publishes
-a solicitation derived from the PDD on labs.connect.dimagi.com via the
-`connect-labs` MCP, then emails PDD-named candidate LLOs the public URL
-(no-op if the PDD names no candidates — long-term flow).
-
-After this phase completes, `/ace:run` HALTS at the new external-comms
-boundary (Phase 7→8). Phase 8 cannot start until
-`opp.yaml.selected_llo.org_slug` is populated, which only happens via
-the manual `/ace:step solicitation-review` (HITL-gated; calls
-`award_response`).
-
-The recurring `solicitation-monitor` skill polls labs for responses
-while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual
-dispatch).
-
-### Phase 8: Execution Management
-Dispatch to the **execution-manager** agent. Phase 8 entry is gated on
-`opp.yaml.selected_llo.org_slug` being populated by Phase 7's
-`solicitation-review`.
-
-This phase produces: the awarded LLO onboarded (Connect program-level
-invite + ACE onboarding email with widget link), UAT completed,
-opportunity activated (go-live), ongoing monitoring active. This phase
-has recurring skills (timeline-monitor, flw-data-review,
-ocs-chatbot-qa-monitor, ocs-chatbot-eval-monitor) that run on schedule
-during the active opportunity.
-
-### Phase 9: Closeout
-Dispatch to the **closeout** agent. Triggered when the opportunity reaches its
-end date.
-This phase produces: Invoices pulled, Jira payment ticket created, LLO feedback
-collected, learnings summarized, cycle graded.
-
-## Between Phases
-
-After each phase completes:
-1. Update `run_state.yaml` per § Phase Write-Back Contract below
-2. **Verify the dispatched phase actually wrote its block** per § Phase
-   Write-Back Verifier below (catches drift; orchestrator stubs in a
-   minimal block + flips the gate if the agent forgot)
-3. **Verify producer artifacts landed** per § Producer Artifact Verifier
-   below (catches the inline-composition class of bug at the source
-   phase rather than three phases later at a consumer's pre-flight)
-4. In `auto` mode: send status email to admin group, continue
-5. In `default` mode: continue silently for Phases 1→2, 2→3, 3→4, 4→5;
-   **at the Phase 5→6 transition, pause unconditionally** with a
-   Phase-5-complete summary and "ready to begin LLO contact?" prompt;
-   for 6→7, pause if any external-comm step still pending review
-6. In `review` mode: present summary and wait for approval to continue
-
-## Phase boundary fence
-
-The verifier's actions happen as the **IMMEDIATE next assistant
-message** after the `Agent(<phase>)` tool_result returns. Not after a
-solo "Phase X complete" status text in a separate turn. Not after a
-solo `TaskUpdate` in a separate turn.
-
-These actions are independent and MUST be batched into ONE parallel
-message:
-
-- `drive_read_file` on `run_state.yaml` (verifier read — used next turn).
-- `drive_create_file` for the phase's gate-brief, if applicable.
-- `TaskUpdate` marking the current phase `completed` and the next phase `in_progress`.
-- `Skill(decisions-render)` to refresh the decisions gdoc (idempotent).
-
-A one-line text summary ("Phase N complete: <verdict>") may accompany
-these tool calls in the same message. It must NOT precede them in a
-separate turn.
-
-**Anti-pattern.** Boundary observed in real transcripts (each line a
-separate assistant turn):
-
-```
-Turn N:    Agent(<phase>) tool_result
-Turn N+1:  text "Phase 1 complete: proceed verdict, no blockers"
-Turn N+2:  drive_read_file run_state.yaml
-Turn N+3:  TaskUpdate
-Turn N+4:  drive_create_file gate-brief.md
-Turn N+5:  Skill(decisions-render)
-Turn N+6:  Agent(<next-phase>)
-```
-
-That's ~5 wasted turns × seconds each × 8 boundaries per run
-≈ 1.5–4 min of pure model-output latency per `/ace:run`.
-
-**Right pattern.**
-
-```
-Turn N:    Agent(<phase>) tool_result
-Turn N+1:  ONE message — drive_read_file + drive_create_file gate-brief
-           + TaskUpdate + Skill(decisions-render). Optional one-line
-           text summary in the same message.
-Turn N+2:  (only if N+1's read showed the phase block missing)
-           update_yaml_file stub fallback per "Procedure" below.
-Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
-```
-
-If the phase returned a `[BLOCKER]` or hard error, replace Turn N+3
-with a halt message — but Turn N+1 still happens (write-back is
-mandatory regardless of verdict).
-
-## Post-Run: ace-web Transcript Upload (optional)
-
-When `/ace:run` is invoked with `--ace-web-url URL`, after all phases
-complete (or on fatal error) the orchestrator dispatches the
-`upload-transcript` skill with the current transcript path and the
-provided base URL. This is a best-effort hook — an upload failure is
-logged but does not alter the run's success/failure status.
-
-Requirements:
-- `ACE_WEB_PAT_TOKEN` must be set in the environment (per-human PAT
-  minted via `/ace:ace-web-pat-mint`). If absent, log a warning and
-  skip the upload.
-- The transcript path is whatever the operator is writing stream-json to
-  (typically `$JSONL_PATH` in a scripted run). If not resolvable, skip.
-
-This is the only ace-web dependency in the ACE plugin. Without
-`--ace-web-url` the plugin is entirely standalone.
-
-## Per-Step Eval Hook
-
-Per-step `-eval` skills run **automatically** after their producing skill
-in `/ace:run`. Each phase agent dispatches the matching `-eval` skill
-immediately after the producing skill completes, before advancing to the
-next step. Without this, the Workbench's "run → inspect → upgrade plugin
-→ rerun → compare" loop has no per-step signal, and `opp-eval` rolls up
-nothing to aggregate.
-
-**Where the wiring lives.** Each phase agent owns its own producer→eval
-pairing, listed in the agent's frontmatter `skills:` block via
-`eval_skill: <name>` (or `inline-self-eval` if the producer judges its own
-output). The orchestrator does not maintain a separate mapping table.
-
-**Verdict-file naming convention** (the rule the web reader enforces):
-
-```
-runs/<run-id>/<phase>/<producer-skill>[-eval]_verdict[-<mode>].yaml
-```
-
-Each producer skill (and each `-eval` partner) writes its verdict next
-to its primary artifact in the phase folder. The web reader matches on
-the segment immediately before `_verdict` to attribute scores to the
-producer skill row.
-
-- `-eval` skills include `-eval` in their filename so the verdict is
-  attributable to the eval partner: `idea-to-pdd-eval` writes
-  `1-design/idea-to-pdd-eval_verdict.yaml`, NOT
-  `1-design/idea-to-pdd_verdict.yaml`. The reader rolls eval scores up
-  to the producer (`idea-to-pdd`) row by walking the eval→producer
-  pair declared in the producing phase agent's frontmatter, not by
-  parsing the filename.
-- Skills that ARE their own row in the registry (no producer / eval
-  split, e.g. `ocs-chatbot-eval`) keep their own name and a mode
-  suffix: `4-ocs/ocs-chatbot-eval_verdict-{quick,deep}.yaml`,
-  `8-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml`.
-- Skills that self-evaluate inline (no separate `-eval` skill — e.g.
-  `app-screenshot-capture` and every per-artifact training skill
-  (`training-llo-guide`, `training-flw-guide`,
-  `training-quick-reference`, `training-faq`,
-  `training-onboarding-email`, `training-deck-outline`)) write
-  `<phase>/<self>_verdict[-<mode>].yaml`.
-
-**Opt-out.** `/ace:run --no-evals` skips the per-step eval dispatch (the
-producing skills still write their primary artifacts). Useful for fast
-smoke iterations where the operator plans to run `/ace:eval --all`
-afterward.
-
-**Eval failures don't halt the run by default.** A per-step eval that
-returns `verdict: fail` does NOT halt the orchestrator outside the named
-Pause Points — the verdict is recorded for the dashboard / `opp-eval`,
-and the run continues. The named Pause Points (see § Pause Points) still
-apply, where `[BLOCKER]` concerns from the eval do halt. This keeps the
-eval signal visible without making every rubric a hard halt.
-
-**Backstop.** `/ace:eval --all <opp-name>` runs every applicable
-per-step `-eval` skill against an existing opp's artifacts (the
-verdict-discovery model: for each producer skill that has an artifact
-in Drive AND a registered eval pair, dispatch the eval). Use this to
-retroactively score older opps, or to re-grade after a rubric is
-improved.
-
-## Umbrella Eval
-
-The `opp-eval` skill (dispatched via `/ace:eval <opp-name> --mode
-quick|deep|monitor`) is an **umbrella aggregator** that rolls every
-per-skill `-eval` verdict for an opportunity into a single run-level
-scorecard and drafts improvement recommendations. It walks every
-phase folder under `ACE/<opp-name>/runs/<run-id>/` collecting
-`*_verdict*.yaml`, groups scores into 7 skill-category dimensions
-(design, commcare, connect, ocs, solicitation, operate, closeout), and
-writes a human scorecard + machine verdict + advisory gate brief.
-
-opp-eval is **ad-hoc**, not part of the `--mode review` auto-pause
-flow. It does not gate any phase. It can be run anytime during or
-after an opportunity — mid-run for a health check, end-of-run for a
-retrospective, or on a schedule (`--monitor` mode) for drift
-detection. The orchestrator does not dispatch opp-eval automatically;
-operators invoke it via `/ace:eval`.
-
-As more per-skill `-eval` skills gain `## LLM-as-Judge Rubric`
-sections and start writing to `verdicts/`, opp-eval automatically
-picks them up via directory discovery — no change to opp-eval itself
-is needed. Today most skills still self-evaluate inline (no separate
-`-eval` skill, so no verdict YAML under `verdicts/`); opp-eval emits
-`[INFO]` notes for those gaps, which is the forcing function for
-future per-skill rubric work. When a rubric arrives and the skill
-starts writing `verdicts/<skill>-<mode>.yaml`, opp-eval picks it up on
-the next run.
-
-## Error Handling
-
-If a skill fails:
-1. Log the error in `run_state.yaml`
-2. In `auto` mode: email the admin group with error details, continue to next step if possible
-3. In `default` mode: a hard error halts the run regardless of phase — present the error and ask how to proceed (retry, skip, abort). The "keep going" principle applies to clean steps, not to errors
-4. In `review` mode: present the error and ask how to proceed (retry, skip, abort)
-
-## Dry-Run Mode
-
-When `--dry-run` is passed to `/ace:run`:
-- All skills execute normally — reading inputs, generating outputs, writing to GDrive
-- Effectful skills (those that send emails, publish apps, create tickets, or call external APIs) write their intended actions to `comms-log/dry-run-<step>.md` instead of executing
-- LLM-as-Judge evaluation still runs at each step
-- Gates still apply per the active mode (default/review/auto)
-- `run_state.yaml` tracks steps as `dry-run-success` or `dry-run-blocked` instead of `success` or `blocked`
-- Pass the dry-run flag to all phase agents
-
-## Sandbox Mode
-
-When `--sandbox` is passed to `/ace:run`:
-- MCP servers route external API calls to staging endpoints (Connect staging, CommCare staging project space)
-- MCP servers read `ACE_SANDBOX=true` environment variable to determine endpoint routing
-- Can be combined with `--dry-run` for maximum safety
 
 ## Starting a New Opportunity
 
@@ -1013,4 +713,304 @@ legacy `PDD/` picker):
 
 The legacy `PDD/` flat folder is kept readable by ace-web for back-compat
 viewing of legacy opps, but is no longer consulted for new runs.
+
+## Workflow
+
+When invoked with an opportunity, execute these phases in order:
+
+### Phase 1: Design Review & Iteration
+Dispatch to the **design-review** agent with the opportunity context.
+This phase produces: PDD and opp-specific test prompts derived from the PDD.
+
+### Phase 2: CommCare Setup
+**Execute the procedure in `agents/commcare-setup.md` inline** — do not
+dispatch `Agent(commcare-setup)`. Phase 2 invokes `/nova:autobuild`
+(via `pdd-to-learn-app` and `pdd-to-deliver-app`), which itself
+dispatches the `nova:nova-architect-autonomous` subagent. That
+dispatch requires `Agent` at level 0 — running Phase 2 as a subagent
+would put Nova's dispatch at level 2 and fail. See § Agent Topology.
+
+This phase produces: Learn app, Deliver app, deployed apps on CCHQ, test results.
+(Training materials moved to Phase 5 (`qa-and-training`) in 0.9.0.)
+
+### Phase 3: Connect Setup
+Dispatch to the **connect-setup** agent.
+This phase produces: Program configured, Opportunity configured with verification
+rules and delivery/payment units. LLO invite-list preparation moved to Phase 8
+on 2026-04-20 — we don't commit to an invite roster until after the OCS
+chatbot has cleared its deep-eval gate.
+
+### Phase 4: OCS Setup
+Dispatch to the **ocs-setup** agent.
+This phase produces: per-opp OCS chatbot cloned from the golden template with
+opp-specific RAG collection, quick smoke qa+eval passed, deep pre-launch
+qa+eval passed against opp-specific test prompts, embed credentials ready
+for Connect. Each quality gate is a qa→eval pair — `ocs-chatbot-qa`
+captures a transcript, `ocs-chatbot-eval` grades it.
+Ends with a human-in-the-loop step to paste the widget credentials into the
+Connect opportunity until `update_opportunity` lands (CCC-301).
+
+### Phase 5: QA and Training
+Dispatch `Agent(qa-and-training)`. The agent runs
+`app-screenshot-capture` (executor — runs the smoke recipes from
+Phase 2's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel
+(`training-llo-guide`, `training-flw-guide`, `training-quick-reference`,
+`training-faq`, `training-deck-outline`) → `training-deck-build` (sequential
+after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) →
+`training-onboarding-email` (LAST — links by URL to other docs). All
+skills read upstream artifacts from Phases 1-4. No 1-1 LLO contact
+happens here — that begins in Phase 8.
+
+### Phase 6: Synthetic Data and Workflows
+Dispatch `Agent(synthetic-data-and-workflows)`. The agent authors a
+story-coherent synthetic-data manifest from the PDD, generates fixture
+data via the connect-labs MCP, instantiates the LLO weekly review +
+program admin audit workflows, polishes them per-opp, and runs persona
+walkthroughs that produce stakeholder-ready HTML decks.
+
+This phase produces: synthetic narrative manifest, fixture FLW/visit/payment
+data, two demonstrative workflows (`llo_weekly_review`,
+`program_admin_audit`), per-persona walkthrough HTML decks, and a single
+one-page summary linking everything (`6-synthetic/synthetic-summary.md`).
+**No irreversible external action** — the connect-labs `SyntheticOpportunity`
+row is reversible via `synthetic_disable`; workflows can be deleted via
+`workflow_delete`. **No phase pause** — `/ace:run` proceeds straight from
+Phase 6 to Phase 7 without halting. See
+`agents/synthetic-data-and-workflows.md`.
+
+### Phase 7: Solicitation Management
+Dispatch `Agent(solicitation-management)`. The agent runs
+`solicitation-create` → `llo-invite` (default run, both auto). Publishes
+a solicitation derived from the PDD on labs.connect.dimagi.com via the
+`connect-labs` MCP, then emails PDD-named candidate LLOs the public URL
+(no-op if the PDD names no candidates — long-term flow).
+
+After this phase completes, `/ace:run` HALTS at the new external-comms
+boundary (Phase 7→8). Phase 8 cannot start until
+`opp.yaml.selected_llo.org_slug` is populated, which only happens via
+the manual `/ace:step solicitation-review` (HITL-gated; calls
+`award_response`).
+
+The recurring `solicitation-monitor` skill polls labs for responses
+while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual
+dispatch).
+
+### Phase 8: Execution Management
+Dispatch to the **execution-manager** agent. Phase 8 entry is gated on
+`opp.yaml.selected_llo.org_slug` being populated by Phase 7's
+`solicitation-review`.
+
+This phase produces: the awarded LLO onboarded (Connect program-level
+invite + ACE onboarding email with widget link), UAT completed,
+opportunity activated (go-live), ongoing monitoring active. This phase
+has recurring skills (timeline-monitor, flw-data-review,
+ocs-chatbot-qa-monitor, ocs-chatbot-eval-monitor) that run on schedule
+during the active opportunity.
+
+### Phase 9: Closeout
+Dispatch to the **closeout** agent. Triggered when the opportunity reaches its
+end date.
+This phase produces: Invoices pulled, Jira payment ticket created, LLO feedback
+collected, learnings summarized, cycle graded.
+
+## Between Phases
+
+After each phase completes:
+1. Update `run_state.yaml` per § Phase Write-Back Contract below
+2. **Verify the dispatched phase actually wrote its block** per § Phase
+   Write-Back Verifier below (catches drift; orchestrator stubs in a
+   minimal block + flips the gate if the agent forgot)
+3. **Verify producer artifacts landed** per § Producer Artifact Verifier
+   below (catches the inline-composition class of bug at the source
+   phase rather than three phases later at a consumer's pre-flight)
+4. In `auto` mode: send status email to admin group, continue
+5. In `default` mode: continue silently for Phases 1→2, 2→3, 3→4, 4→5;
+   **at the Phase 5→6 transition, pause unconditionally** with a
+   Phase-5-complete summary and "ready to begin LLO contact?" prompt;
+   for 6→7, pause if any external-comm step still pending review
+6. In `review` mode: present summary and wait for approval to continue
+
+## Phase boundary fence
+
+The verifier's actions happen as the **IMMEDIATE next assistant
+message** after the `Agent(<phase>)` tool_result returns. Not after a
+solo "Phase X complete" status text in a separate turn. Not after a
+solo `TaskUpdate` in a separate turn.
+
+These actions are independent and MUST be batched into ONE parallel
+message:
+
+- `drive_read_file` on `run_state.yaml` (verifier read — used next turn).
+- `drive_create_file` for the phase's gate-brief, if applicable.
+- `TaskUpdate` marking the current phase `completed` and the next phase `in_progress`.
+- `Skill(decisions-render)` to refresh the decisions gdoc (idempotent).
+
+A one-line text summary ("Phase N complete: <verdict>") may accompany
+these tool calls in the same message. It must NOT precede them in a
+separate turn.
+
+**Anti-pattern.** Boundary observed in real transcripts (each line a
+separate assistant turn):
+
+```
+Turn N:    Agent(<phase>) tool_result
+Turn N+1:  text "Phase 1 complete: proceed verdict, no blockers"
+Turn N+2:  drive_read_file run_state.yaml
+Turn N+3:  TaskUpdate
+Turn N+4:  drive_create_file gate-brief.md
+Turn N+5:  Skill(decisions-render)
+Turn N+6:  Agent(<next-phase>)
+```
+
+That's ~5 wasted turns × seconds each × 8 boundaries per run
+≈ 1.5–4 min of pure model-output latency per `/ace:run`.
+
+**Right pattern.**
+
+```
+Turn N:    Agent(<phase>) tool_result
+Turn N+1:  ONE message — drive_read_file + drive_create_file gate-brief
+           + TaskUpdate + Skill(decisions-render). Optional one-line
+           text summary in the same message.
+Turn N+2:  (only if N+1's read showed the phase block missing)
+           update_yaml_file stub fallback per "Procedure" below.
+Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
+```
+
+If the phase returned a `[BLOCKER]` or hard error, replace Turn N+3
+with a halt message — but Turn N+1 still happens (write-back is
+mandatory regardless of verdict).
+
+## Per-Step Eval Hook
+
+Per-step `-eval` skills run **automatically** after their producing skill
+in `/ace:run`. Each phase agent dispatches the matching `-eval` skill
+immediately after the producing skill completes, before advancing to the
+next step. Without this, the Workbench's "run → inspect → upgrade plugin
+→ rerun → compare" loop has no per-step signal, and `opp-eval` rolls up
+nothing to aggregate.
+
+**Where the wiring lives.** Each phase agent owns its own producer→eval
+pairing, listed in the agent's frontmatter `skills:` block via
+`eval_skill: <name>` (or `inline-self-eval` if the producer judges its own
+output). The orchestrator does not maintain a separate mapping table.
+
+**Verdict-file naming convention** (the rule the web reader enforces):
+
+```
+runs/<run-id>/<phase>/<producer-skill>[-eval]_verdict[-<mode>].yaml
+```
+
+Each producer skill (and each `-eval` partner) writes its verdict next
+to its primary artifact in the phase folder. The web reader matches on
+the segment immediately before `_verdict` to attribute scores to the
+producer skill row.
+
+- `-eval` skills include `-eval` in their filename so the verdict is
+  attributable to the eval partner: `idea-to-pdd-eval` writes
+  `1-design/idea-to-pdd-eval_verdict.yaml`, NOT
+  `1-design/idea-to-pdd_verdict.yaml`. The reader rolls eval scores up
+  to the producer (`idea-to-pdd`) row by walking the eval→producer
+  pair declared in the producing phase agent's frontmatter, not by
+  parsing the filename.
+- Skills that ARE their own row in the registry (no producer / eval
+  split, e.g. `ocs-chatbot-eval`) keep their own name and a mode
+  suffix: `4-ocs/ocs-chatbot-eval_verdict-{quick,deep}.yaml`,
+  `8-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml`.
+- Skills that self-evaluate inline (no separate `-eval` skill — e.g.
+  `app-screenshot-capture` and every per-artifact training skill
+  (`training-llo-guide`, `training-flw-guide`,
+  `training-quick-reference`, `training-faq`,
+  `training-onboarding-email`, `training-deck-outline`)) write
+  `<phase>/<self>_verdict[-<mode>].yaml`.
+
+**Opt-out.** `/ace:run --no-evals` skips the per-step eval dispatch (the
+producing skills still write their primary artifacts). Useful for fast
+smoke iterations where the operator plans to run `/ace:eval --all`
+afterward.
+
+**Eval failures don't halt the run by default.** A per-step eval that
+returns `verdict: fail` does NOT halt the orchestrator outside the named
+Pause Points — the verdict is recorded for the dashboard / `opp-eval`,
+and the run continues. The named Pause Points (see § Pause Points) still
+apply, where `[BLOCKER]` concerns from the eval do halt. This keeps the
+eval signal visible without making every rubric a hard halt.
+
+**Backstop.** `/ace:eval --all <opp-name>` runs every applicable
+per-step `-eval` skill against an existing opp's artifacts (the
+verdict-discovery model: for each producer skill that has an artifact
+in Drive AND a registered eval pair, dispatch the eval). Use this to
+retroactively score older opps, or to re-grade after a rubric is
+improved.
+
+## Umbrella Eval
+
+The `opp-eval` skill (dispatched via `/ace:eval <opp-name> --mode
+quick|deep|monitor`) is an **umbrella aggregator** that rolls every
+per-skill `-eval` verdict for an opportunity into a single run-level
+scorecard and drafts improvement recommendations. It walks every
+phase folder under `ACE/<opp-name>/runs/<run-id>/` collecting
+`*_verdict*.yaml`, groups scores into 7 skill-category dimensions
+(design, commcare, connect, ocs, solicitation, operate, closeout), and
+writes a human scorecard + machine verdict + advisory gate brief.
+
+opp-eval is **ad-hoc**, not part of the `--mode review` auto-pause
+flow. It does not gate any phase. It can be run anytime during or
+after an opportunity — mid-run for a health check, end-of-run for a
+retrospective, or on a schedule (`--monitor` mode) for drift
+detection. The orchestrator does not dispatch opp-eval automatically;
+operators invoke it via `/ace:eval`.
+
+As more per-skill `-eval` skills gain `## LLM-as-Judge Rubric`
+sections and start writing to `verdicts/`, opp-eval automatically
+picks them up via directory discovery — no change to opp-eval itself
+is needed. Today most skills still self-evaluate inline (no separate
+`-eval` skill, so no verdict YAML under `verdicts/`); opp-eval emits
+`[INFO]` notes for those gaps, which is the forcing function for
+future per-skill rubric work. When a rubric arrives and the skill
+starts writing `verdicts/<skill>-<mode>.yaml`, opp-eval picks it up on
+the next run.
+
+## Error Handling
+
+If a skill fails:
+1. Log the error in `run_state.yaml`
+2. In `auto` mode: email the admin group with error details, continue to next step if possible
+3. In `default` mode: a hard error halts the run regardless of phase — present the error and ask how to proceed (retry, skip, abort). The "keep going" principle applies to clean steps, not to errors
+4. In `review` mode: present the error and ask how to proceed (retry, skip, abort)
+
+## Dry-Run Mode
+
+When `--dry-run` is passed to `/ace:run`:
+- All skills execute normally — reading inputs, generating outputs, writing to GDrive
+- Effectful skills (those that send emails, publish apps, create tickets, or call external APIs) write their intended actions to `comms-log/dry-run-<step>.md` instead of executing
+- LLM-as-Judge evaluation still runs at each step
+- Gates still apply per the active mode (default/review/auto)
+- `run_state.yaml` tracks steps as `dry-run-success` or `dry-run-blocked` instead of `success` or `blocked`
+- Pass the dry-run flag to all phase agents
+
+## Sandbox Mode
+
+When `--sandbox` is passed to `/ace:run`:
+- MCP servers route external API calls to staging endpoints (Connect staging, CommCare staging project space)
+- MCP servers read `ACE_SANDBOX=true` environment variable to determine endpoint routing
+- Can be combined with `--dry-run` for maximum safety
+
+## Post-Run: ace-web Transcript Upload (optional)
+
+When `/ace:run` is invoked with `--ace-web-url URL`, after all phases
+complete (or on fatal error) the orchestrator dispatches the
+`upload-transcript` skill with the current transcript path and the
+provided base URL. This is a best-effort hook — an upload failure is
+logged but does not alter the run's success/failure status.
+
+Requirements:
+- `ACE_WEB_PAT_TOKEN` must be set in the environment (per-human PAT
+  minted via `/ace:ace-web-pat-mint`). If absent, log a warning and
+  skip the upload.
+- The transcript path is whatever the operator is writing stream-json to
+  (typically `$JSONL_PATH` in a scripted run). If not resolvable, skip.
+
+This is the only ace-web dependency in the ACE plugin. Without
+`--ace-web-url` the plugin is entirely standalone.
 
