@@ -10,6 +10,17 @@
  * failure + structured `auto_fix_hint` for orchestrator-driven retry without
  * burning a labs dispatch round-trip.
  *
+ * **Schema-skeleton approach.** The Zod here mirrors upstream's REQUIRED FIELD
+ * STRUCTURE (names, arity, list-vs-scalar) but doesn't re-validate every value
+ * constraint upstream enforces (e.g. `flag_rate` in 0-1, `id` regex pattern,
+ * date-range consistency). Skeleton-level mirroring catches the high-cost
+ * mistakes (`flw_id` vs `flw_ids`, missing required field, wrong list arity)
+ * fast without duplicating upstream's value validation per
+ * `_qa-template.md § Don't duplicate MCP-boundary QA`.
+ *
+ * Cross-checked against connect-labs `commcare_connect/labs/synthetic/generator/manifest.py`
+ * at origin/main commit c20a91b6 on 2026-05-09.
+ *
  * Imported by:
  * - The skill body via `scripts/qa-run.ts` at runtime (orchestrator dispatch)
  * - Per-skill tests under `test/skills/synthetic-narrative-plan-qa/` (vitest)
@@ -27,6 +38,7 @@ const VALID_ARCHETYPES = ['rockstar', 'steady', 'struggling', 'new_hire'] as con
 
 const REQUIRED_TOP_LEVEL_KEYS = [
   'opportunity_id',
+  'opportunity_name',
   'random_seed',
   'timeline',
   'flw_personas',
@@ -34,47 +46,63 @@ const REQUIRED_TOP_LEVEL_KEYS = [
   'kpi_config',
 ] as const;
 
+const VALID_ANOMALY_TYPES = ['field_outlier', 'missing_visits', 'duplicate_submission'] as const;
+const VALID_KPI_AGGREGATIONS = ['validated_rate', 'non_null_rate', 'mean', 'count'] as const;
+
 // ── Zod schemas (used both by the schema-shape check and the cross-field checks) ──
 
 const TimelineZ = z.object({
   start_date: z.string().min(1),
   end_date: z.string().min(1),
   weeks: z.number().int().min(1),
-});
+}).passthrough(); // visit_cadence_per_week_per_flw etc. — pass through, upstream validates
 
 const FlwPersonaZ = z.object({
-  // Either `id` or `display_name` must be present; `id` is the canonical key
-  // for cross-references (coaching_arcs[].flw_id, anomalies[].flw_id).
-  id: z.string().min(1).optional(),
-  display_name: z.string().min(1).optional(),
+  // `id` is REQUIRED upstream (matches `^[a-z0-9_]+$`); cross-refs in
+  // coaching_arcs[].flw_id and anomalies[].flw_ids resolve against it.
+  id: z.string().min(1),
   archetype: z.enum(VALID_ARCHETYPES),
-});
+}).passthrough(); // accuracy_distribution / completeness_distribution / flag_rate etc.
 
 const AnomalyZ = z.object({
-  flw_id: z.string().min(1).optional(),
-  week: z.union([z.number().int(), z.string()]).optional(),
-  field_path: z.string().min(1).optional(),
-  detection_path: z.string().min(1).optional(),
-});
+  // Upstream uses `flw_ids: list[str]` (plural list), NOT `flw_id: str`.
+  // Earlier ACE-side draft had this wrong — fix landed 2026-05-09 after
+  // connect-labs source cross-check.
+  id: z.string().min(1),
+  type: z.enum(VALID_ANOMALY_TYPES),
+  flw_ids: z.array(z.string().min(1)).min(1),
+  week: z.number().int().nullable().optional(),
+  weeks: z.array(z.number().int()).nullable().optional(),
+  field_path: z.string().min(1).nullable().optional(),
+  detection_path: z.string().min(1).nullable().optional(),
+}).passthrough();
 
 const CoachingArcZ = z.object({
   flw_id: z.string().min(1),
-});
+}).passthrough(); // week_triggered / persona / target_behavior / transcript
 
 const KpiZ = z.object({
-  kpi: z.string().min(1).optional(),
-  field_path: z.string().optional(),
-});
+  kpi: z.string().min(1),
+  field_path: z.string().min(1),
+  aggregation: z.enum(VALID_KPI_AGGREGATIONS),
+}).passthrough(); // threshold_underperform / threshold_target — upstream validates types
 
-/** Top-level manifest shape — loose passthrough on unknown keys. */
+/**
+ * Top-level manifest shape — schema skeleton mirroring upstream's
+ * `commcare_connect/labs/synthetic/generator/manifest.py § Manifest`.
+ * Passthrough on unknown keys; nested objects also passthrough so upstream's
+ * full value validation (distributions, rate ranges, date consistency) stays
+ * the source of truth.
+ */
 const ManifestZ = z
   .object({
-    opportunity_id: z.union([z.number().int(), z.string()]),
-    random_seed: z.number().int().positive(),
+    opportunity_id: z.number().int().positive(),
+    opportunity_name: z.string().min(1),
+    random_seed: z.number().int().min(0), // upstream: NonNegativeInt (0 OK, not PositiveInt)
     timeline: TimelineZ,
     flw_personas: z.array(FlwPersonaZ).min(1),
     beneficiary_cohorts: z.array(z.unknown()).min(1),
-    kpi_config: z.array(KpiZ),
+    kpi_config: z.array(KpiZ).min(1),
     anomalies: z.array(AnomalyZ).optional(),
     coaching_arcs: z.array(CoachingArcZ).optional(),
   })
@@ -175,10 +203,6 @@ export function checkFlwPersonasWellFormed(text: string): QACheckResult {
     const r = FlwPersonaZ.safeParse(p);
     if (!r.success) {
       issues.push(`#${idx}: ${r.error.issues.map((i) => i.message).join('; ')}`);
-      return;
-    }
-    if (!r.data.id && !r.data.display_name) {
-      issues.push(`#${idx}: missing both 'id' and 'display_name' (one is required)`);
     }
   });
   if (issues.length === 0) {
@@ -228,7 +252,12 @@ export function checkKpiFieldPathsResolvable(text: string, ctx?: QACheckContext)
 }
 
 /**
- * Check 5: Anomalies traceable — each has flw_id + week + (field_path | detection_path).
+ * Check 5: Anomalies traceable — each has id + type + flw_ids (non-empty list)
+ * + a week reference (`week` or `weeks`) + (field_path | detection_path).
+ *
+ * Upstream uses `flw_ids: list[str]` (plural list), not `flw_id: str`.
+ * AnomalyZ validates `id` and `type` (per the upstream Pydantic) so a missing
+ * required field surfaces here directly.
  */
 export function checkAnomaliesTraceable(text: string): QACheckResult {
   const m = getParsed(text);
@@ -253,8 +282,11 @@ export function checkAnomaliesTraceable(text: string): QACheckResult {
       return;
     }
     const missing: string[] = [];
-    if (!r.data.flw_id) missing.push('flw_id');
-    if (r.data.week === undefined) missing.push('week');
+    // `flw_ids` (list) is required by AnomalyZ; the schema parse already
+    // catches empty / missing. Just check the trace fields here.
+    if (r.data.week === undefined && (!r.data.weeks || r.data.weeks.length === 0)) {
+      missing.push('week|weeks');
+    }
     if (!r.data.field_path && !r.data.detection_path) {
       missing.push('field_path|detection_path');
     }
@@ -269,7 +301,7 @@ export function checkAnomaliesTraceable(text: string): QACheckResult {
     pass: false,
     detail: `anomalies missing trace fields: ${issues.slice(0, 5).join(' | ')}${issues.length > 5 ? ` (+${issues.length - 5} more)` : ''}`,
     auto_fix_hint:
-      `each anomaly must have flw_id + week + (field_path OR detection_path). ` +
+      `each anomaly must have id + type + flw_ids (non-empty list) + a week reference (week or weeks) + (field_path OR detection_path). ` +
       `An anomaly without a detection path is reviewer-invisible downstream — it generates no signal in labs.`,
   };
 }

@@ -49,7 +49,9 @@ beneficiary_cohorts:
     size: 50
 
 anomalies:
-  - flw_id: "dinesh"
+  - id: "dinesh-week3-price-outlier"
+    type: "field_outlier"
+    flw_ids: ["dinesh"]
     week: 3
     field_path: "form.product_grp.price"
     detection_path: "form.product_grp.price"
@@ -131,19 +133,22 @@ describe('checkFlwPersonasWellFormed', () => {
     expect(r.detail).toContain('#0');
   });
 
-  test('fails when persona has neither id nor display_name', () => {
+  test('fails when persona missing required id', () => {
+    // Upstream Pydantic Manifest § FlwPersona declares `id: str` REQUIRED.
+    // Earlier ACE-side draft made id optional; cross-check 2026-05-09 tightened.
     const m = `opportunity_id: 1
 random_seed: 1
 timeline: { start_date: "2026-01-01", end_date: "2026-02-01", weeks: 4 }
 flw_personas:
-  - archetype: "steady"
+  - display_name: "anon"
+    archetype: "steady"
 beneficiary_cohorts:
   - { id: "p", size: 1 }
 kpi_config: []
 `;
     const r = checkFlwPersonasWellFormed(m);
     expect(r.pass).toBe(false);
-    expect(r.detail).toMatch(/missing both 'id' and 'display_name'/);
+    expect(r.detail).toContain('#0');
   });
 });
 
@@ -180,6 +185,7 @@ describe('checkAnomaliesTraceable', () => {
 
   test('fails on anomaly without detection_path or field_path', () => {
     const m = `opportunity_id: 1
+opportunity_name: "x"
 random_seed: 1
 timeline: { start_date: "2026-01-01", end_date: "2026-02-01", weeks: 4 }
 flw_personas:
@@ -187,9 +193,12 @@ flw_personas:
     archetype: "rockstar"
 beneficiary_cohorts:
   - { id: "p", size: 1 }
-kpi_config: []
+kpi_config:
+  - { kpi: "x", field_path: "form.x", aggregation: "mean", threshold_underperform: 0.5 }
 anomalies:
-  - flw_id: "asha"
+  - id: "a1"
+    type: "field_outlier"
+    flw_ids: ["asha"]
     week: 2
 `;
     const r = checkAnomaliesTraceable(m);
@@ -197,8 +206,12 @@ anomalies:
     expect(r.detail).toMatch(/field_path|detection_path/);
   });
 
-  test('fails on anomaly missing flw_id', () => {
+  test('fails on anomaly missing flw_ids (was singular flw_id; upstream uses plural list)', () => {
+    // Upstream Pydantic Manifest § Anomaly declares `flw_ids: list[str]`
+    // (plural list), NOT `flw_id: str`. Earlier ACE-side draft had this
+    // wrong; cross-check 2026-05-09 fixed.
     const m = `opportunity_id: 1
+opportunity_name: "x"
 random_seed: 1
 timeline: { start_date: "2026-01-01", end_date: "2026-02-01", weeks: 4 }
 flw_personas:
@@ -206,14 +219,17 @@ flw_personas:
     archetype: "rockstar"
 beneficiary_cohorts:
   - { id: "p", size: 1 }
-kpi_config: []
+kpi_config:
+  - { kpi: "x", field_path: "form.x", aggregation: "mean", threshold_underperform: 0.5 }
 anomalies:
-  - week: 2
+  - id: "a1"
+    type: "field_outlier"
+    week: 2
     field_path: "form.x"
 `;
     const r = checkAnomaliesTraceable(m);
     expect(r.pass).toBe(false);
-    expect(r.detail).toContain('flw_id');
+    expect((r.detail ?? '').toLowerCase()).toContain('required');
   });
 });
 
