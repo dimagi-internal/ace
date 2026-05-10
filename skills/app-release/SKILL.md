@@ -115,6 +115,108 @@ procedure below to rediscover.
    `/apps/save/` after a release creates a new build at the next version,
    leaving prior builds released. So safe to re-run.
 
+4a. **If `commcare_make_build` throws `BuildRejectedError` — auto-fix
+    loop with the Nova architect.** Added 0.13.141 after the leep run
+    20260509-2204 halt: CCHQ rejected a Learn build because Nova's
+    XForm emitter skipped entity-encoding `<` in an MCQ option label.
+    PR #206 (0.13.140) made that diagnostic legible; this loop closes
+    the chicken-and-egg gap (you can't run `commcare-form-patch`
+    without a successful `make_build` to download the CCZ from, so
+    the fix has to happen Nova-side before the next `make_build`
+    attempt).
+
+    The MCP atom now returns
+    `{error: 'build_rejected', app_id, error_text, error_html, retryable: false}`
+    with `error_text` already HTML-stripped (see
+    `mcp/connect/backends/commcare.ts § BuildRejectedError`). Catch
+    it; do **not** treat `retryable: false` as "give up." That field
+    means "the same args won't succeed against this app id" — the loop
+    fixes the app first, then retries.
+
+    **Loop invariants (max 3 iterations per app):**
+
+    1. **Parse `error_text` into a structured form locator.** CCHQ's
+       canonical shape is:
+
+           Cannot make new version
+           "<form-name>" Form in the "<menu-name>" Menu
+           Error parsing XML: <parser-message>, line <N>, column <M>
+           Error in form "<form-name> [<lang>]": <repeat>
+
+       Extract: `form_name`, `menu_name`, `line`, `col`,
+       `parser_message`. The form-name is the human label (e.g. "Unique
+       ID check"), not the form_unique_id; it's all you have at this
+       point because the CCZ never built.
+
+    2. **Map `form_name` → Nova `form_id`.** The Nova app summary
+       (read from `2-commcare/pdd-to-{learn,deliver}-app_summary.md`
+       frontmatter `nova_app_id`) lists modules + forms. Call
+       `nova__get_app({app_id})` for the live structure and walk to
+       the form whose name matches `form_name`. On ambiguity (two
+       forms with the same name in different modules), use
+       `menu_name` to disambiguate. If still ambiguous, halt the loop
+       and surface the ambiguity in the gate brief — operator decides.
+
+    3. **Dispatch the Nova architect** via `/nova:edit <nova_app_id>`
+       with a brief that names the form, the line/col, the parser
+       message, and the most-likely fix class. Template:
+
+           Form "<form_name>" in module "<menu_name>" produces invalid
+           XForm XML. CCHQ rejected `make_build` with:
+
+             <parser_message>
+             at line <N>, column <M>
+
+           The most common cause is unencoded `<`/`>`/`&`/`"` in label,
+           option, hint, or constraint-message text — Nova's emitter
+           does not entity-encode these (tracked at
+           voidcraft-labs/nova-plugin issue #15). Inspect every label,
+           option, hint, and constraint_message in this form via
+           `get_form` + the per-field `edit_field` getter. For any
+           string that contains a literal `<`, `>`, `&`, or `"`,
+           replace with words ("three letters") or backticks
+           (`three letters`) via `update_form` / `edit_field`. After
+           your edits, call `validate_app` to confirm clean.
+
+    4. **Re-upload via `/nova:upload_to_hq <nova_app_id>`.** This
+       creates a **fresh** HQ app id (CCHQ has no atomic update API).
+       Update the in-memory app reference to the new `hq_app_id` AND
+       record both ids in
+       `2-commcare/app-release_summary.md.frontmatter.hq_app_id_history`
+       so Phase 3's downstream wiring (which reads the LATEST id)
+       lines up. The prior orphan id stays in `ai-demo-space` —
+       expected; CCHQ has no MCP delete path.
+
+    5. **Retry `commcare_make_build` against the new HQ app id.** If
+       it still throws `BuildRejectedError`, parse the new
+       `error_text` (it may name a different form / line / cause) and
+       loop. **Cap at 3 total attempts per app.**
+
+    6. **On exhaustion (3 failed attempts),** surface the FINAL
+       `BuildRejectedError` to the orchestrator as a `[BLOCKER]` in
+       `app-release_gate-brief.md` with: every iteration's
+       `error_text`, every Nova edit dispatched, the final
+       `hq_app_id`, the operator-facing remediation (manual CCHQ
+       form-designer edit on the final orphan id, OR wait for Nova
+       upstream fix). Phase 2 halts. Do not silently downgrade to
+       success.
+
+    **Why bounded.** A perpetually-failing form is almost certainly a
+    Nova-emitter regression that the architect can't see (it lives
+    below `validate_app`'s scope). Three attempts gives the architect
+    a chance to fix the obvious case (literal angle-bracket in a
+    label) and one chance to fix a non-obvious case the first round
+    missed; beyond that we're burning cycles on a structural bug that
+    needs human eyes on the emitted XForm XML.
+
+    **Subagent dispatch note.** `/nova:edit` runs the Nova architect
+    via `Agent`, which is only available at level 0. `app-release` is
+    invoked from Phase 2 (`commcare-setup`), which runs inline at
+    level 0 per § Agent Topology in `agents/ace-orchestrator.md`. So
+    the dispatch is structurally legal here — but if a future caller
+    moves `app-release` into a subagent, this loop breaks. Keep the
+    invariant.
+
 5. **Verify both apps show `is_released: true`** via the API.
 
 6. **Verify the released CCZ via `commcare_download_ccz` projection.**
