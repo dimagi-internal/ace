@@ -21,3 +21,4 @@ scripts/tmp/
 # (corpus.yaml is megabytes) and re-generatable; the audit-report.md /
 # architecture-review.md content lives in the PR body.
 .canopy/test-audits/
+tsconfig.tsbuildinfo
