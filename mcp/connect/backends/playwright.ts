@@ -14,6 +14,7 @@ import {
   parseFormErrors,
   parseFormErrorsByField,
   parseDeliverUnitTable,
+  parseDeliverUnitFormCheckboxes,
   parsePaymentUnitTable,
 } from './html-scrape.js';
 
@@ -499,7 +500,66 @@ export class PlaywrightBackend implements ConnectClient {
     const path = `/a/${organization_slug}/opportunity/${opportunity_id}/deliver_unit_table`;
     const res = await this.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
-    return { deliver_units: parseDeliverUnitTable(await res.text()) };
+    const deliver_units = parseDeliverUnitTable(await res.text());
+    // Server-PK enrichment (added 0.13.126 — closes jjackson/ace#106 finding 5).
+    //
+    // The `deliver_unit_table` page above renders display indices (1, 2, 3…)
+    // but not the server-side primary keys that
+    // `payment_unit.required_deliver_units` accepts. Connect leaks those PKs
+    // on the create-payment-unit form's checkbox `value` attributes — the
+    // ONLY HTML route on which they're observable today. Fetch that form,
+    // sync deliver-units if needed, parse the checkboxes, and join by name
+    // back to each DU. On any error we log and proceed with `server_id`
+    // undefined (back-compat with pre-0.13.126 callers; createPaymentUnit
+    // still has its inline name-mapping fallback).
+    if (deliver_units.length > 0) {
+      try {
+        const formPath = `/a/${organization_slug}/opportunity/${opportunity_id}/payment_unit/create`;
+        let formRes = await this.request.get(formPath);
+        if (formRes.status() === 200) {
+          let formHtml = await formRes.text();
+          let nameToPk = parseDeliverUnitFormCheckboxes(formHtml);
+          // Sync precondition — the form's checkbox list is empty until
+          // the HTMX `Sync Deliver Units` button has fired (the deliver_units
+          // table cache and the create-PU checkbox cache are separate).
+          if (nameToPk.size === 0) {
+            const oppIntId = extractOppIntIdFromForm(formHtml);
+            const csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
+            if (oppIntId !== null) {
+              const syncPath = `/a/${organization_slug}/opportunity/${oppIntId}/sync_deliver_units/`;
+              const syncRes = await this.request.post(syncPath, {
+                headers: {
+                  'X-CSRFToken': csrf,
+                  'HX-Request': 'true',
+                  Referer: `${this.opts.baseUrl}${formPath}`,
+                },
+              });
+              const syncStatus = syncRes.status();
+              if (syncStatus === 200 || syncStatus === 204 || syncStatus === 302) {
+                formRes = await this.request.get(formPath);
+                if (formRes.status() === 200) {
+                  formHtml = await formRes.text();
+                  nameToPk = parseDeliverUnitFormCheckboxes(formHtml);
+                }
+              }
+            }
+          }
+          for (const du of deliver_units) {
+            const pk = nameToPk.get(du.name);
+            if (pk !== undefined) {
+              const n = Number(pk);
+              if (Number.isInteger(n) && n > 0) du.server_id = n;
+            }
+          }
+        }
+      } catch {
+        // Server-PK enrichment is best-effort — never fail listDeliverUnits
+        // over it. Callers that genuinely need server_id will see undefined
+        // and surface a typed error at use-site (e.g. createPaymentUnit's
+        // existing checkbox-mapping diagnostic).
+      }
+    }
+    return { deliver_units };
   };
 
   listPaymentUnits: ConnectClient['listPaymentUnits'] = async ({ organization_slug, opportunity_id }) => {
@@ -1166,29 +1226,12 @@ export class PlaywrightBackend implements ConnectClient {
     // caller's input ids → form values by matching against the deliver-
     // unit table's name. If the input id is ALREADY a form-value PK
     // (e.g. came from REST createOpportunity), pass it through.
-    const checkboxValueByName = new Map<string, string>();
-    const allCheckboxValues = new Set<string>();
-    for (const m of formHtml.matchAll(
-      /<input[^>]*name="(?:required|optional)_deliver_units"[^>]*value="(\d+)"[^>]*>([\s\S]*?)<\/label>/g,
-    )) {
-      const value = m[1];
-      const labelText = m[2].replace(/<[^>]+>/g, '').trim();
-      if (labelText && !checkboxValueByName.has(labelText)) {
-        checkboxValueByName.set(labelText, value);
-      }
-      allCheckboxValues.add(value);
-    }
-    // Fallback regex (some templates render label OUTSIDE the input)
-    if (checkboxValueByName.size === 0) {
-      for (const m of formHtml.matchAll(
-        /<input[^>]*name="(?:required|optional)_deliver_units"[^>]*value="(\d+)"[^>]*>\s*([^<]+)/g,
-      )) {
-        const value = m[1];
-        const labelText = m[2].trim();
-        if (labelText) checkboxValueByName.set(labelText, value);
-        allCheckboxValues.add(value);
-      }
-    }
+    // Shared with `listDeliverUnits` server_id enrichment (0.13.126).
+    // The same name→PK extraction underpins both surfaces; if you change
+    // it here, change `parseDeliverUnitFormCheckboxes` in html-scrape.ts
+    // and re-run its unit test.
+    const checkboxValueByName = parseDeliverUnitFormCheckboxes(formHtml);
+    const allCheckboxValues = new Set<string>(checkboxValueByName.values());
 
     // Pre-fetch deliver_units list once (used for display-id → name → form-value mapping).
     let idToFormValue = new Map<number, string>();
@@ -1199,13 +1242,19 @@ export class PlaywrightBackend implements ConnectClient {
         (id) => !allCheckboxValues.has(String(id)),
       );
     if (needsMapping && (args.required_deliver_units?.length || args.optional_deliver_units?.length)) {
-      const list = await this.listDeliverUnits({
-        organization_slug: args.organization_slug,
-        opportunity_id: args.opportunity_id,
-      });
-      for (const du of list.deliver_units) {
-        const v = checkboxValueByName.get(du.name);
-        if (v) idToFormValue.set(du.id, v);
+      // Use the bare deliver_unit_table fetch here, NOT the enriched
+      // public `listDeliverUnits` — we don't need `server_id` (the
+      // already-parsed `checkboxValueByName` map IS the server-PK
+      // source) and the public path's secondary form-fetch would be
+      // duplicate work since we already have `formHtml` in scope.
+      const tablePath = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/deliver_unit_table`;
+      const tableRes = await this.request.get(tablePath);
+      if (tableRes.status() === 200) {
+        const tableHtml = await tableRes.text();
+        for (const du of parseDeliverUnitTable(tableHtml)) {
+          const v = checkboxValueByName.get(du.name);
+          if (v) idToFormValue.set(du.id, v);
+        }
       }
     }
     const mapId = (id: number): string => {

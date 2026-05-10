@@ -11,6 +11,7 @@ import {
   parseFormErrorsByField,
   parsePaymentUnitTable,
   parseDeliverUnitTable,
+  parseDeliverUnitFormCheckboxes,
 } from '../../../../mcp/connect/backends/html-scrape.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -329,8 +330,69 @@ describe('parseDeliverUnitTable', () => {
     // updated. When commcare-connect ships server-side IDs in the
     // listing (data-id="5355"), update parseDeliverUnitTable AND the
     // jsdoc on DeliverUnit.id together.
+    //
+    // Note: from 0.13.124, `listDeliverUnits` enriches each parsed DU
+    // with a separate `server_id` field via a second fetch of the
+    // create-payment-unit form. `parseDeliverUnitTable` itself stays
+    // unchanged — the enrichment lives one layer up in the backend.
     const out = parseDeliverUnitTable(live);
     expect(out[0].id).toBe(1);
     expect(out[0].id).not.toBe(5355);
+    expect(out[0].server_id).toBeUndefined();
+  });
+});
+
+describe('parseDeliverUnitFormCheckboxes', () => {
+  // Live-captured 2026-05-06 from the dea88661-… opp's
+  // /payment_unit/create form. The form renders one
+  // `<input type="checkbox" name="(required|optional)_deliver_units"
+  // value="<server_pk>">` per available DU. PKs in this fixture: 3339
+  // ("Optional Delivery"), 3340 ("Optional Delivery 2"), 3341
+  // ("Optional Delivery 3"), 3342 ("optional delivery unit 4"). Closes
+  // jjackson/ace#106 finding 5: the create-PU form is the only HTML
+  // surface where server PKs are observable, so listDeliverUnits uses
+  // this parser to enrich its display-id-only output with server PKs.
+  const live = fix('opportunity-dea88661-1cd6-486b-ab25-48584bf61a8e-payment_unit-create.html');
+
+  it('extracts server PKs and labels from the live create-PU form', () => {
+    const out = parseDeliverUnitFormCheckboxes(live);
+    expect(out.size).toBe(4);
+    expect(out.get('Optional Delivery')).toBe('3339');
+    expect(out.get('Optional Delivery 2')).toBe('3340');
+    expect(out.get('Optional Delivery 3')).toBe('3341');
+    expect(out.get('optional delivery unit 4')).toBe('3342');
+  });
+
+  it('dedupes when the same DU appears in both required and optional groups', () => {
+    // The live form renders identical checkboxes for required and
+    // optional groups (same value, same label). First-seen wins so the
+    // map dedupes deterministically and doesn't overwrite.
+    const out = parseDeliverUnitFormCheckboxes(live);
+    // 4 unique DUs across BOTH checkbox groups → 4 entries.
+    expect(out.size).toBe(4);
+  });
+
+  it('returns an empty map when the form has no checkboxes (sync precondition not yet fired)', () => {
+    // Synthetic — Connect's create-PU form wraps the checkbox list in
+    // `<div id="div_id_required_deliver_units">` even when the
+    // sync-deliver-units button hasn't fired yet. The backend uses the
+    // empty result as the trigger to POST /sync_deliver_units/ and
+    // re-fetch.
+    const html = `<form>
+      <div id="div_id_required_deliver_units"></div>
+      <button hx-post="/a/x/opportunity/42/sync_deliver_units/">Sync</button>
+    </form>`;
+    const out = parseDeliverUnitFormCheckboxes(html);
+    expect(out.size).toBe(0);
+  });
+
+  it('handles the legacy fallback shape (label outside the input)', () => {
+    // Some older Connect templates rendered:
+    //   <input name="required_deliver_units" value="9001"> Bare label text
+    // instead of wrapping the input in a <label>…</label>. The parser
+    // falls back to capturing bare text after the input.
+    const html = `<input type="checkbox" name="required_deliver_units" value="9001"> Bare DU Name`;
+    const out = parseDeliverUnitFormCheckboxes(html);
+    expect(out.get('Bare DU Name')).toBe('9001');
   });
 });
