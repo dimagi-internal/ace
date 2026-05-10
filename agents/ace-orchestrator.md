@@ -156,9 +156,9 @@ Emits YAML with `env_file`, `plugin.version`, `plugin.install_path`,
 ACE-relevant variable as either its public value (Drive root, HQ
 domain, OCS team slug, etc.) or `present`/`missing` (passwords, tokens).
 Read the YAML; do NOT run additional probes for any field that's
-already in it. (Auth liveness is *not* included — see § Auth liveness
-below; orchestrator pre-flight trusts the cached session and lets
-phase atoms surface auth failures at point-of-use.)
+already in it. (Auth liveness is *not* included — orchestrator
+pre-flight trusts the cached session and lets phase atoms surface
+auth failures at point-of-use.)
 
 If `bin/ace-doctor --preflight` is unavailable (older install), fall
 back to a single inline Bash:
@@ -391,7 +391,8 @@ stop, up until the point of external communication.*
   `award <response_id> $<amount>` reply before the labs call.
 
 **Review mode (`review`):** Pause at every Pause Point (see § Pause
-Points below) for explicit approval, regardless of blocker status. Use
+Points in `agents/orchestrator-reference.md`) for explicit approval,
+regardless of blocker status. Use
 for high-touch operations, training, or when an admin wants to inspect
 every step's verdicts in front of them. The orchestrator synthesizes a
 pause-time summary from the per-skill QA + eval verdicts at each Pause
@@ -863,13 +864,14 @@ When invoked with an opportunity, execute these phases in order:
 ## Between Phases
 
 After each phase completes:
-1. Update `run_state.yaml` per § Phase Write-Back Contract below
+1. Update `run_state.yaml` per § Phase Write-Back Contract (in `agents/orchestrator-reference.md`)
 2. **Verify the dispatched phase actually wrote its block** per § Phase
-   Write-Back Verifier below (catches drift; orchestrator stubs in a
-   minimal block + flips the gate if the agent forgot)
+   Write-Back Verifier — procedure (in `agents/orchestrator-reference.md`) — catches drift;
+   orchestrator stubs in a minimal block + flips the gate if the agent forgot
 3. **Verify producer artifacts landed** per § Producer Artifact Verifier
-   below (catches the inline-composition class of bug at the source
-   phase rather than three phases later at a consumer's pre-flight)
+   (in `agents/orchestrator-reference.md`) — catches the inline-composition
+   class of bug at the source phase rather than three phases later at a
+   consumer's pre-flight
 4. In `auto` mode: send status email to admin group, continue
 5. In `default` mode: continue silently for Phases 1→2, 2→3, 3→4, 4→5;
    **at the Phase 5→6 transition, pause unconditionally** with a
@@ -920,7 +922,8 @@ Turn N+1:  ONE message — drive_read_file + drive_create_file gate-brief
            + TaskUpdate + Skill(decisions-render). Optional one-line
            text summary in the same message.
 Turn N+2:  (only if N+1's read showed the phase block missing)
-           update_yaml_file stub fallback per "Procedure" below.
+           update_yaml_file stub fallback per § Phase Write-Back
+           Verifier — procedure in `agents/orchestrator-reference.md`.
 Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
 ```
 
