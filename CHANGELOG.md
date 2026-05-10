@@ -5,7 +5,7 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.13.141 — 2026-05-10
+## 0.13.142 — 2026-05-10
 
 **`app-release` auto-fix loop: catch `BuildRejectedError`, dispatch Nova architect to repair the offending form, retry `make_build` (bounded to 3 iterations).**
 
