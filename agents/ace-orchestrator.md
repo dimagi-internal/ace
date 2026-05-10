@@ -28,6 +28,109 @@ voice ("you orchestrate", "you dispatch") as instructions to the
 top-level session. The orchestration logic that follows is yours to
 run.
 
+## Anti-patterns and discipline
+
+These are the rules the orchestrator MUST follow during `/ace:run`.
+Each rule is a one-line directive; where the rule has a worked failure
+mode (an incident or a transcript pattern), a short **Why** line
+follows. Full shape requirements, canonical incidents, and historical
+rationale live in `agents/orchestrator-reference.md § Discipline — full
+text`.
+
+### Tool dispatch
+
+- **Don't fake background tasks.** No prose like "I'll check on this in
+  5 minutes." Phase-internal sequential skills run synchronously to
+  completion against a hard wall-clock budget; they do NOT call
+  `ScheduleWakeup`. If a skill cannot finish in budget, it fails loud
+  (partial artifact + `[BLOCKER]` `auto_surfaced` entry) and the
+  orchestrator decides whether to re-dispatch — idempotent re-runs are
+  the recovery mechanism.
+  **Why:** the `turmeric-20260503-0835` deep capture burned 3+ hours,
+  ~700K tokens, and produced zero recoverable transcript by treating
+  `ScheduleWakeup` as a backgrounding primitive.
+- **Background scheduling is reserved for opp-recurring jobs, not
+  phase-internal work.** `ScheduleWakeup` / cron belong to
+  `timeline-monitor`, `flw-data-review`, `ocs-chatbot-{qa,eval}
+  --monitor` — jobs that run independent of any single `/ace:run`.
+  Phase-internal work (`ocs-chatbot-qa --quick|--deep`,
+  `app-screenshot-capture`) is foreground sequential.
+- **Polling is allowed for upstream state changes — bounded.** RAG
+  indexing in `ocs-agent-setup`, CCHQ build completion in `app-release`:
+  poll the upstream status endpoint with max attempts + exponential
+  backoff + hard timeout + fail-loud on exhaustion. Do not invent a
+  "background task ID" the orchestrator can't verify is alive.
+- **Don't dispatch two `Agent` calls in one message.** Claude Code does
+  not reliably parallelize `Agent` dispatches. Treat all `Agent` and
+  slash-command-driven agent dispatches (e.g. `/nova:autobuild`) as
+  serial — including Phase 2's two Nova builds and any future
+  cross-phase orchestration.
+- **Do batch independent tool calls.** N independent `drive_read_file`,
+  `connect_create_payment_unit`, `nova_update_form` etc. in a single
+  assistant message. Sequential single-tool messages waste the
+  parallelism the harness already supports.
+- **Don't fan out env probes.** Resolve `.env` in ONE bash invocation
+  (or `bin/ace-doctor --preflight`'s `env_file:` output) — not 3–4
+  separate `ls`/`test -f` probes across `~/.claude/`, the worktree, and
+  `.gws-sa-key.json`-adjacent paths. That fan-out is 30s of latency for
+  a value `bin/ace-doctor` already publishes.
+- **Issue all phase `TaskCreate` calls in one parallel block.** The
+  per-phase task list is known up-front from the workflow; emit one
+  message with N `TaskCreate` tool-uses, not N sequential turns.
+
+### State writes
+
+- **Verify after every external create — Write → Read → Compare → Halt
+  loud on mismatch.** Connect, CCHQ, OCS, and Nova all have classes of
+  bug where the create endpoint accepts the payload, returns 201, but
+  the stored row diverges from what was sent. Mismatch on a load-bearing
+  field (dates, app ids, amounts, required relations) is `[BLOCKER]` —
+  write the diff to `comms-log/observations.md`, do NOT proceed.
+  Mismatch on a cosmetic field is `[INFO]` — log and proceed. Canonical
+  example: `skills/connect-opp-setup/SKILL.md` Steps 4 + 6.
+  **Why:** the `turmeric-20260503-0835` Phase 3 payment-unit
+  malformation (`amount=500` vs sent `1.50`,
+  `required_deliver_units=[]` vs sent `[Vendor Visit]`) cascaded through
+  `is_setup_complete` to silently break Phase 7 invites and Phase 5
+  screenshot capture. A producer-side read-back would have converted
+  that multi-phase cascade into a single-skill halt.
+- **Don't read-modify-write `run_state.yaml` by hand.** Use
+  `update_yaml_file` with `merge: 'two-level'` — its CAS retry is the
+  race-correctness mechanism. A manual `drive_read_file` +
+  `drive_update_file` re-introduces the lost-update class of bug.
+
+### Procedure discipline
+
+- **Don't "summarize and continue" to dodge context exhaustion.** The
+  inline-artifact contract (§ Pre-flight & per-phase conventions) breaks
+  if the next phase's PDD is paraphrased rather than passed verbatim.
+  Trust the 1M-context window. If the harness genuinely signals
+  exhaustion, write back `phases.<current>.status: done` (or `error`
+  with a one-line note) and resume via `/ace:run <opp>/<run-id>` in a
+  fresh session.
+- **Don't skip producer skills to shortcut to consumers.** "Invoke X" /
+  "Dispatch X" means call `Skill(<name>)` (or
+  `/ace:step <name> <opp>/<run-id>`). Never compose a producer skill's
+  outputs inline from upstream artifacts — even when you have enough
+  context to plausibly do so. Skills with multi-file output contracts
+  bind downstream pre-flights to the on-disk layout, not to a master
+  file's content; the downstream halt surfaces phases later, by which
+  time attribution is harder. The Phase 2 procedure doc
+  (`commcare-setup`) is the highest-risk surface because it executes
+  inline at level-0. The post-phase artifact verifier
+  (§ Producer Artifact Verifier in reference) catches this mechanically;
+  the rule lives here so authors of new procedure docs know not to
+  design around it.
+  **Why:** turmeric run `20260509-0455` inline-composed
+  `2-commcare/app-test-cases.yaml` instead of invoking
+  `Skill(app-test-cases)`, omitting the per-journey recipe files Phase 5
+  reads. Phase 5 halted at pre-flight; five training docs rendered
+  without screenshots and had to be re-run.
+- **Don't add operator-confirmation prompts on populated opps.** The
+  "do you want to overwrite live state?" gate is off-spec — push
+  reuse-vs-rebuild decisions down into phase-agent skill logic. Full
+  contract: § Modes — default, review, auto.
+
 ## Populated opps are the norm — do NOT pause to ask "are you sure?"
 
 ACE is built around running **many cycles per opp** — that's how both the
@@ -155,155 +258,6 @@ Connect production state changes. There is no automatic eval that
 validates "is this opp ready to send to outside parties?" — only
 human judgment can clear that bar, so default mode insists on human
 review at every external-comm point.
-
-## Long-Running Skills — No Fake Background Tasks
-
-ACE has no real background-task primitive for phase-internal work.
-`ScheduleWakeup` defers the *agent*; it doesn't background actual work
-on a side thread. Treating it as backgrounding produces an
-unobservable, unrecoverable, unbounded loop — which is exactly what
-killed the `turmeric-20260503-0835` deep capture (3+ hours, ~700K
-tokens, zero progress, no recoverable transcript). The rule is:
-
-**Phase-internal sequential skills run synchronously to completion,
-with a hard wall-clock budget. They do NOT call `ScheduleWakeup`.**
-
-If a skill cannot finish in budget, it fails loud — writes a partial
-artifact, returns a `[BLOCKER]` `auto_surfaced` entry, and lets the
-orchestrator decide whether to re-dispatch (idempotent re-runs are the
-recovery mechanism, not deferred wakeups).
-
-Concrete shape every long-running skill must have:
-
-1. **Wall-clock budget**, declared in a `## Wall-Clock Budget` section.
-   Both per-unit (per-prompt, per-form, per-screenshot) and suite-level
-   caps. Track elapsed with `date +%s` checkpoints.
-2. **Liveness probe before the work loop.** A cheap (<5s) one-shot
-   call against the upstream service that distinguishes "service is
-   responsive" from "absence of output." Catches dead sessions before
-   the budget burns.
-3. **Incremental writes for recovery.** Every captured unit goes to
-   the artifact file as it completes. Never "build everything in
-   memory and write at the end" — a mid-loop kill that way loses
-   everything.
-4. **Resume-from-partial at start.** Read any existing artifact and
-   skip already-completed units. Re-running the skill is cheap and
-   idempotent.
-5. **Three-strike circuit breaker.** If three consecutive units fail
-   (timeout, error response), abort the loop — burning the rest of
-   the budget produces noise, not signal.
-
-### When background IS appropriate
-
-`ScheduleWakeup` and cron-style scheduling are reserved for **recurring
-jobs that run independent of any particular run**:
-
-- `timeline-monitor` — recurring during active opp, fires per LLO
-  milestone calendar
-- `flw-data-review` — recurring during active opp, fires per FLW
-  submission window
-- `ocs-chatbot-qa --monitor` / `ocs-chatbot-eval --monitor` —
-  recurring during active opp for drift detection
-
-These are legitimately parallel-to-the-main-run; they don't gate any
-phase. Phase-internal work (`ocs-chatbot-qa --quick` / `--deep`,
-`app-screenshot-capture`, etc.) is foreground sequential
-and is NOT eligible for this pattern.
-
-### When polling IS appropriate
-
-Some skills legitimately wait on upstream state changes (RAG indexing
-in `ocs-agent-setup`, CCHQ build completion in `app-release`). For
-those, poll the upstream service's status endpoint directly with a
-**bounded retry policy**: max attempts, exponential backoff, hard
-timeout, fail loud on exhaustion. Do not invent a "background task ID"
-that the orchestrator can't actually verify is alive.
-
-## Skill Invocation Discipline
-
-When a procedure step says "Invoke X" or "Dispatch X", that means
-**call the skill via `Skill(<name>)` (or `/ace:step <name>
-<opp>/<run-id>` from a fresh session)**. Never compose a producer
-skill's outputs inline from upstream artifacts even when you have
-enough context to plausibly do so — and especially under context-budget
-pressure across a long `/ace:run` where shortcutting any one step looks
-cheap. Skills with multi-file output contracts (a master file plus a
-sibling folder of per-item files; a yaml plus a recipes/ tree; a doc
-plus a `verdicts/` entry) bind downstream skills to the on-disk layout,
-not to the master file's content. The downstream pre-flight halts when
-the sibling files are missing — by which time the inline shortcut is
-several phases upstream and harder to attribute.
-
-The canonical reproduction: turmeric run 20260509-0455. The orchestrator
-inline-composed `2-commcare/app-test-cases.yaml` from the PDD + app
-summaries instead of invoking `Skill(app-test-cases)`, which would have
-emitted the per-journey recipe files (`app-test-cases/J*.yaml`) that
-Phase 5's `app-screenshot-capture` reads. Phase 5 halted at pre-flight
-with `incomplete`, no AVD time burned but five training docs rendered
-without screenshots and had to be re-run.
-
-The Phase 2 procedure doc (commcare-setup) is the highest-risk surface
-because it executes inline at level-0 — there's no subagent boundary
-between "the orchestrator decides what to do" and "the skill produces
-the artifact." When in doubt, dispatch.
-
-The post-phase artifact verifier in § Between Phases enforces this rule
-mechanically; the rule itself is here so authors of new procedure docs
-know not to design around it.
-
-## External Mutations — Verify After Create
-
-Every external-system write must be followed by a read-back. The
-write's response alone is not authoritative — Connect, CCHQ, OCS, and
-Nova all have classes of bug where the create endpoint accepts the
-payload, returns 201, but the stored row diverges from what was sent
-(wrong field mapping, silent overrides, server-side defaults
-clobbering, async hydration gaps). Skills that don't read-back hand
-silently-corrupted state to downstream phases.
-
-The rule:
-
-1. **Write** via the mutating atom (`connect_create_opportunity`,
-   `connect_create_payment_units`, `commcare_make_build`,
-   `ocs_set_chatbot_pipeline`, etc.).
-2. **Read** via the matching getter (`connect_get_opportunity`,
-   `connect_list_payment_units`, `commcare_download_ccz`,
-   `ocs_get_chatbot`).
-3. **Compare** every field the skill set against the read-back
-   response.
-4. **Halt loud on mismatch.** Mismatch on a load-bearing field
-   (dates, app ids, amounts, required-relations) is a `[BLOCKER]` —
-   write the diff (sent vs. stored) to `comms-log/observations.md`,
-   surface in the gate brief, do NOT proceed. Mismatch on a
-   cosmetic/display field (descriptions, tags) is `[INFO]` — log and
-   proceed.
-
-The `turmeric-20260503-0835` Phase 3 run is the canonical example: a
-malformed `connect_create_payment_unit` shipped values that didn't
-match what was sent (`amount=500` vs sent `1.50`,
-`required_deliver_units=[]` vs sent `[Vendor Visit]`). The skill
-returned cleanly, Phase 3 graded `warn` on the eval, the orchestrator
-auto-proceeded — and the malformation cascaded through
-`is_setup_complete` to silently break Phase 7 invites and Phase 5
-screenshot capture. A read-back at the producer would have converted
-that multi-phase cascade into a single-skill halt with an obvious
-field-diff in the gate brief.
-
-**Canonical example:** `skills/connect-opp-setup/SKILL.md` Steps 4
-and 6 (added 0.11.11). Every skill that creates external state should
-follow this pattern.
-
-**When read-back is overkill:** for read-only or write-once-read-once
-operations (a single `drive_create_file` whose content is the artifact
-itself, a one-shot status flip whose state is naturally observed
-downstream), the read-back collapses into the next skill's natural
-input read. The rule is "every write before a state-dependent
-downstream skill" — not literally every write.
-
-This rule is the producer-side complement to the per-skill `-eval`
-rubrics in `skills/<*>-eval/SKILL.md`. The eval correctly grades the
-captured artifact post-hoc; verify-after-create catches the same
-class of bug at the source, before the bad state ships downstream.
 
 ## Performance Conventions
 
@@ -468,47 +422,8 @@ When you start a phase, issue ONE `ToolSearch` with
 `select:<comma-separated names>` covering the atoms that phase uses,
 not 5–10 separate searches as you encounter each one.
 
-**Batch independent operations — for tool calls, not Agent dispatches.**
-When a phase needs N independent **tool calls** (e.g. multiple
-`drive_read_file` reads, multiple `nova_update_form` mutations,
-multiple `connect_create_payment_unit` creates), dispatch them all in
-a single assistant message. Sequential single-tool messages waste the
-parallelism that the harness already supports.
-
-**`Agent(...)` dispatches DO NOT parallelize the same way.** Claude
-Code does not reliably run two `Agent` calls placed in one assistant
-message in parallel; treat phase-agent and slash-command-driven agent
-dispatches (e.g. `/nova:autobuild`) as serial. Phase 2's two Nova
-builds, for instance, must run one after the other. This applies to
-any future cross-phase orchestration too — design-review, ocs-setup,
-etc. always serialize when dispatched together.
-
-**Resolve `.env` in one shot, not by probing.** ACE's installed `.env`
-lives at `${CLAUDE_PLUGIN_DATA}/.env` with one documented fallback at
-`<plugin-root>/.env` for dev checkouts. Run a single bash that prints
-the resolved path:
-
-```bash
-[ -f "$CLAUDE_PLUGIN_DATA/.env" ] && echo "$CLAUDE_PLUGIN_DATA/.env" || \
-  ([ -f "$(dirname "$0" 2>/dev/null)/../.env" ] && echo "$(dirname "$0")/../.env") || \
-  echo "MISSING"
-```
-
-(or, equivalently, derive the path from
-`installed_plugins.json["plugins"]["ace@ace"][0]["installPath"]`.) Do
-NOT fan out 3–4 separate `ls`/`test -f` probes across `~/.claude/`,
-the worktree, and `.gws-sa-key.json`-adjacent paths — that's
-30s of latency for a value `bin/ace-doctor` already publishes as
-`env_file:` in its output.
-
-**Issue all phase TaskCreate calls in one parallel block.** When you
-set up the run-level task list (one `TaskCreate` per phase plus the
-external-comm pause), emit them as a single assistant message with
-multiple `TaskCreate` tool-use blocks. Sequential
-`TaskCreate → TaskCreate → TaskCreate` over 7+ turns burns ~30s of
-unnecessary model-output time at run start. The whole task list is
-known up-front from the workflow below — there's no dependency on
-prior responses.
+Batching, env resolution, parallel-`TaskCreate`, and serial `Agent`
+dispatch rules are catalogued in § Anti-patterns and discipline.
 
 ## Resuming after a halt
 
@@ -536,13 +451,8 @@ dispatch); the only inline constraint is Phase 2 (`commcare-setup`),
 which dispatches Nova at level-0. That constraint is structural, not
 context-cost-driven.
 
-**Anti-pattern — do NOT "summarize and continue."** The inline-artifact
-contract (§ Performance Conventions) breaks if the next phase's PDD is
-paraphrased rather than passed verbatim. If you genuinely need to
-halt, write back `phases.<current>.status: done` (or `error` with a
-one-line note) and let the operator resume via
-`/ace:run <opp>/<run-id>` in a fresh session. Never try to compress
-your own context to keep going — the cure is worse than the disease.
+(The context-exhaustion shortcut anti-pattern lives in
+§ Anti-patterns and discipline → Procedure discipline.)
 
 **History note.** Earlier versions of this section instructed the
 orchestrator to recommend splitting runs across sessions on
