@@ -545,6 +545,99 @@ class of bug at the source, before the bad state ships downstream.
 These conventions cut wall-clock and token cost on `/ace:run`. Apply
 them on every full-cycle invocation; they're also fine on `/ace:step`.
 
+### Pre-flight Checklist (before Phase 1 dispatch)
+
+This is the canonical sequence at the start of every `/ace:run`
+invocation. **Each numbered step is ONE assistant message** — splitting
+a step across multiple turns is an anti-pattern. The conventions later
+in this section are the *rationale*; this checklist is the literal
+sequence. Burning ~25 sequential calls across ~25 turns vs. 5–6 batched
+messages costs ~60–90s of pure model-output latency on every run.
+
+**Step 1 — Resolve local state in ONE Bash call.** Once
+`bin/ace-doctor --preflight` ships (PR 0b), run:
+
+```bash
+bash bin/ace-doctor --preflight   # emits YAML: env_file, plugin_version, env vars, auth liveness
+```
+
+Until then, use the inline fallback (single Bash):
+
+```bash
+ENV=""
+[ -f "$CLAUDE_PLUGIN_DATA/.env" ] && ENV="$CLAUDE_PLUGIN_DATA/.env"
+[ -z "$ENV" ] && [ -f "$ROOT/.env" ] && ENV="$ROOT/.env"   # $ROOT = plugin install path
+echo "env_file=${ENV:-MISSING}"
+node -e 'try{const d=JSON.parse(require("fs").readFileSync(process.env.HOME+"/.claude/plugins/installed_plugins.json","utf8"));const e=d.plugins["ace@ace"][0];console.log("install_path="+e.installPath);console.log("plugin_version="+e.version);}catch(e){console.log("err:"+e.message);}'
+git config user.email
+```
+
+Read the env file's relevant vars from the printed path. Do NOT fan
+out separate `ls`/`test -f` probes — that's the anti-pattern called
+out in "Resolve `.env` in one shot" below.
+
+**Step 2 — Load deferred MCP atoms in ONE `ToolSearch` call.** L0-only
+atom set (phase subagents run their own `ToolSearch` for phase-specific
+atoms). Issue this verbatim:
+
+```
+ToolSearch select:drive_read_file,drive_list_folder,drive_create_file,drive_create_folder,drive_update_file,drive_move_file,drive_rename_file,docs_get,sheets_read,sheets_append,commcare_make_build,commcare_release_build,commcare_download_ccz,commcare_upload_multimedia
+```
+
+Do NOT issue additional `ToolSearch` calls mid-run as you encounter
+each atom — fold any miss into this literal next time you bump the doc.
+
+**Step 3 — Read opp state in ONE parallel message.** Issue together:
+
+- `drive_read_file` on `<opp>/opp.yaml`
+- `drive_list_folder` on `<opp>/inputs/`
+- `drive_list_folder` on `<opp>/runs/` (so you can pick a fresh run-id; OK if missing)
+
+These are independent — sequential single-tool messages waste the
+parallelism the harness already supports.
+
+**Step 4 — Build the run-level task list in ONE parallel `TaskCreate`
+block.** The workflow is fixed and known up-front; splat all 10 in
+one message:
+
+1. `Phase 1 — design-review`
+2. `Phase 2 — commcare-setup`
+3. `Phase 3 — connect-setup`
+4. `Phase 4 — ocs-setup`
+5. `Phase 5 — qa-and-training`
+6. `Phase 6 — synthetic-data-and-workflows`
+7. `Phase 7 — solicitation-management`
+8. `PAUSE: solicitation-review (HITL — populate selected_llo)`
+9. `Phase 8 — execution-management`
+10. `Phase 9 — closeout`
+
+Mark Phase 1 `in_progress`; leave the rest `pending`. Sequential
+`TaskCreate → TaskCreate → ...` over 10 turns burns ~30s of
+unnecessary model-output time at run start.
+
+**Step 5 — Create the run folder + initial state in ONE parallel
+message.** Issue together:
+
+- `drive_create_folder` for `<opp>/runs/<run-id>/`
+- `drive_create_file` for `runs/<run-id>/run_state.yaml` (initial — phases all pending)
+- `drive_create_file` for `runs/<run-id>/idea.md` (only if `--idea FILE|-` was passed)
+- `drive_create_file` for `runs/<run-id>/inputs-manifest.yaml` (frozen file_id list from Step 3)
+
+**Step 6 — Dispatch Phase 1.** Single `Agent(design-review)` call with
+the inline-artifact prompt structure (see "Pass artifacts inline at
+phase handoff" below).
+
+**Stop signs.** If you find yourself about to:
+
+- emit a 2nd sequential `TaskCreate` in a fresh turn → batch with Step 4.
+- issue a 2nd `ToolSearch` because you forgot an atom → fold the missing atom into Step 2's literal.
+- fire a `drive_create_file` followed by another `drive_create_file` in the next turn → batch them.
+- run a 2nd Bash to check an env var → it was already in Step 1's output.
+
+…stop, undo the planned solo call, and batch.
+
+### Per-phase conventions (apply at every phase boundary)
+
 **Pass artifacts inline at phase handoff.** When dispatching a phase
 agent, include the upstream artifacts the phase will read as inline
 prompt text — don't make the phase re-fetch them from Drive. The
