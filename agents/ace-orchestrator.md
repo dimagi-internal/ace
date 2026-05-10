@@ -813,21 +813,20 @@ When invoked with an opportunity, execute these phases in order:
 **Notes:** **No irreversible external action.** The connect-labs `SyntheticOpportunity` row is reversible via `synthetic_disable`; workflows can be deleted via `workflow_delete`. See `agents/synthetic-data-and-workflows.md`.
 
 ### Phase 7: Solicitation Management
-Dispatch `Agent(solicitation-management)`. The agent runs
-`solicitation-create` → `llo-invite` (default run, both auto). Publishes
-a solicitation derived from the PDD on labs.connect.dimagi.com via the
-`connect-labs` MCP, then emails PDD-named candidate LLOs the public URL
-(no-op if the PDD names no candidates — long-term flow).
 
-After this phase completes, `/ace:run` HALTS at the new external-comms
-boundary (Phase 7→8). Phase 8 cannot start until
-`opp.yaml.selected_llo.org_slug` is populated, which only happens via
-the manual `/ace:step solicitation-review` (HITL-gated; calls
-`award_response`).
+**Dispatch:** `Agent(solicitation-management)`.
 
-The recurring `solicitation-monitor` skill polls labs for responses
-while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual
-dispatch).
+**Inputs (inline at handoff):** PDD (with PDD-named candidate LLOs, if any), Phase-6 summary (`6-synthetic/synthetic-summary.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+
+**Atoms / skills used (orchestrator-visible only):** `Agent(solicitation-management)`. Internally the agent runs `solicitation-create` → `llo-invite` (default run, both auto).
+
+**Outputs:** solicitation derived from the PDD published on labs.connect.dimagi.com via the `connect-labs` MCP; emails to PDD-named candidate LLOs containing the public URL (no-op if the PDD names no candidates — long-term flow).
+
+**Write-back:** `phases.solicitation-management.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
+
+**Gate:** `[BLOCKER]` halts; **Phase 7→8 boundary always pauses in every mode** — `/ace:run` HALTS here at the new external-comms boundary. Phase 8 cannot start until `opp.yaml.selected_llo.org_slug` is populated, which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`). See § Pause Points in reference.
+
+**Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). `solicitation` and `selected_llo` are separate `opp.yaml` blocks — only `solicitation-review` populates `selected_llo`.
 
 ### Phase 8: Execution Management
 Dispatch to the **execution-manager** agent. Phase 8 entry is gated on
