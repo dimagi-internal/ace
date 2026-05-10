@@ -765,14 +765,20 @@ When invoked with an opportunity, execute these phases in order:
 **Notes:** LLO invite-list preparation moved to Phase 8 on 2026-04-20 — we don't commit to an invite roster until after the OCS chatbot has cleared its deep-eval gate. After Phase 3 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
 ### Phase 4: OCS Setup
-Dispatch to the **ocs-setup** agent.
-This phase produces: per-opp OCS chatbot cloned from the golden template with
-opp-specific RAG collection, quick smoke qa+eval passed, deep pre-launch
-qa+eval passed against opp-specific test prompts, embed credentials ready
-for Connect. Each quality gate is a qa→eval pair — `ocs-chatbot-qa`
-captures a transcript, `ocs-chatbot-eval` grades it.
-Ends with a human-in-the-loop step to paste the widget credentials into the
-Connect opportunity until `update_opportunity` lands (CCC-301).
+
+**Dispatch:** `Agent(ocs-setup)`.
+
+**Inputs (inline at handoff):** PDD, opp-specific test prompts (`1-design/pdd-to-test-prompts.md`), Phase-3 verdicts (`3-connect/{connect-program-setup,connect-opp-setup}-{qa_result,eval_verdict}.yaml`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+
+**Atoms / skills used (orchestrator-visible only):** `Agent(ocs-setup)`.
+
+**Outputs:** per-opp OCS chatbot cloned from the golden template with opp-specific RAG collection; quick smoke qa+eval passed; deep pre-launch qa+eval passed against opp-specific test prompts; embed credentials ready for Connect (`4-ocs/ocs-agent-setup.md`).
+
+**Write-back:** `phases.ocs-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
+
+**Gate:** `[BLOCKER]` halts; pause-on-`ocs-chatbot-eval --quick` per § Pause Points (in reference).
+
+**Notes:** Each quality gate is a qa→eval pair — `ocs-chatbot-qa` captures a transcript, `ocs-chatbot-eval` grades it. Ends with a human-in-the-loop step to paste the widget credentials into the Connect opportunity until `update_opportunity` lands (CCC-301). After Phase 4 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
 ### Phase 5: QA and Training
 Dispatch `Agent(qa-and-training)`. The agent runs
