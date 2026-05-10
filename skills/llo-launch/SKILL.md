@@ -101,35 +101,46 @@ Activate the opportunity and notify LLOs that they are live.
      appear in the audit line so a reader can reconstruct *what was
      overridden*, not just *that an override happened*.
 
-6. **Activate the opportunity in Connect** via
-   `connect_activate_opportunity` (ace-connect MCP, 0.10.47+):
+6. **Confirm the opportunity is active in Connect** (almost always
+   already-active by this phase).
+
+   Phase 3 (`connect-opp-setup` Step 6.5) now activates the opp
+   synchronously so the ACE test user can be pre-invited and Phase 5
+   `app-screenshot-capture` has a real opp on the AVD. By the time
+   `llo-launch` runs, the opp is virtually always already-active.
+
    - **Idempotency check first.** Call `connect_get_opportunity` and
-     read `active`. If `active=true` already (and `opportunity_id`
-     matches what we expect), skip the activate call entirely and log
-     an `[INFO]` line to `comms-log/observations.md`:
+     read `active`. If `active=true` already (the expected case — Phase
+     3 activated it, or Connect's managed-opp create flow auto-activated
+     as a side effect when `total_budget`/dates were populated up front),
+     skip the activate call entirely and log an `[INFO]` line to
+     `comms-log/observations.md`:
      `<ISO> llo-launch: opp <id> already active; skipping activate
      call (idempotent path).`
-     Connect's managed-opp create flow auto-activates as a side effect
-     when `total_budget`/dates are populated up front, so a clean run
-     of `connect-opp-setup` lands the opp already-active.
      `connect_activate_opportunity` itself **rejects already-active
      opps** as a validation error — without this pre-check, a clean
      Phase 3 cascades into a Phase 8 failure for no real reason.
      Tracking: jjackson/ace#106 finding 9.
-   - **Otherwise activate.** Pass `organization_slug` and
-     `opportunity_id` from `connect-setup/opportunity.md`. The atom
-     hits `POST /api/opportunities/<id>/activate/`, which validates
-     that: (a) the opp isn't already active, (b) the opp hasn't
-     ended, and (c) at least one PaymentUnit exists. Returns
+   - **Otherwise activate** (rare — an operator manually deactivated
+     between Phase 3 and Phase 8, or Phase 3's activation was rolled
+     back). Pass `organization_slug` and `opportunity_id` from
+     `connect-setup/opportunity.md`. The atom hits
+     `POST /api/opportunities/<id>/activate/`, which validates that:
+     (a) the opp isn't already active, (b) the opp hasn't ended, and
+     (c) at least one PaymentUnit exists. Returns
      `{ id, opportunity_id, name, active: true }` on success.
    - Verify by calling `connect_get_opportunity` and confirming
      `active=true` (whether we activated this run or skipped because
      it was already active).
-   - **If ACE deferred the test-user pre-invite** during
-     `connect-opp-setup` (because the opp was inactive at that point),
-     fire `connect_send_flw_invite` here with `${ACE_E2E_PHONE}` —
-     `connect-state.yaml` will have
-     `ace_test_user_invite_pending_until_active: true` set.
+   - **ACE test-user pre-invite is NOT re-fired here.** As of 0.13.x,
+     `connect-opp-setup` (Phase 3 Step 7) invites `${ACE_E2E_PHONE}`
+     synchronously once Phase 3 Step 6.5 has activated the opp, so the
+     `ace_test_user_invite_pending_until_active` deferral flag is no
+     longer written. Legacy opps that still carry the flag in their
+     `connect-state.yaml` (pre-0.13.x runs) need a one-shot manual
+     `connect_send_flw_invite` outside `/ace:run`; the orchestrator no
+     longer rescues them here. The real-LLO invite below remains this
+     skill's responsibility.
    - Payment/tracking semantics are archetype-specific — see § Archetypes
 
 7. **Confirm delivery surface readiness (archetype-specific):** see
@@ -324,3 +335,4 @@ Each row this skill writes uses `phase: 8-execution-management` and
 | 2026-05-04 | Add the deep-QA verdict freshness gate (new Step 4) before activation: refuse to activate unless `verdicts/ocs-chatbot-eval-deep.yaml` and `verdicts/app-ux-eval-deep.yaml` exist, both pass, and both are newer than the artifacts they grade (OCS chatbot `version_number`; learn/deliver `build_id` from `deployment-summary.md`). Add `--override-deep-qa-gate=<reason>` operator escape hatch with a required reason and an audit trail to `comms-log/observations.md`; reachable only via `/ace:step llo-launch`, never `/ace:run`. Gate-brief auto-surfaced concerns gain two `[BLOCKER]` rows mirroring the gate. Part of the shallow/deep QA split refactor (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`). | ACE team |
 | 2026-05-05 | **Path-scheme migration on the deep-QA gate.** Step 4 verdict reads, error messages, and gate-brief BLOCKER rows now reference `4-ocs/ocs-chatbot-eval_verdict-deep.yaml` and `5-qa-and-training/app-ux-eval_verdict-deep.yaml` (per the manifest); freshness check pulls build IDs from `2-commcare/app-deploy_summary.md`. Wiring fix — the prior `verdicts/...` paths no longer exist on disk, so the gate would always fail with "verdict missing" against current main. No behavior change beyond paths. | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 4 anchor rows mapped 1:1 to `llo-launch-eval`'s viability axis (llo-capacity-actual, day-one-readiness, downstream-handoff-alignment, stop-loss-planning) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-10 | Drop the deferred FLW pre-invite path: `connect-opp-setup` (Phase 3 Step 7) now invites `${ACE_E2E_PHONE}` directly after activating the opp in Phase 3 Step 6.5. Step 6 here is reframed from "activate the opp" to "confirm the opp is active" — the idempotent skip-if-active path is now the canonical case; the active-otherwise branch is a fallback for the rare operator-deactivated case. No behavior change for real-LLO invites (still sent in this skill); behavior change for ACE test-user invites (no longer rescued here). Closes the Phase-5-placeholder-screenshots chicken-and-egg. | ACE team |

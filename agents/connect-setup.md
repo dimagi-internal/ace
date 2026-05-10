@@ -54,14 +54,21 @@ Invoke the `connect-program-setup` skill.
 Invoke the `connect-opp-setup` skill.
 
 - **Input:** program UUID from Step 1; PDD; deployment summary from Phase 2.
-- **Output:** Opportunity created in `draft` state with verification
-  flags + payment units configured. Details in
-  `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md` with the opportunity
-  UUID.
+- **Output:** Opportunity created with `is_test=true`, verification flags +
+  payment units configured, **activated**, and ACE test user
+  (`${ACE_E2E_PHONE}`) pre-invited. Details in
+  `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md` with the
+  opportunity UUID.
 - **Depends on:** Step 1 (needs program UUID); Phase 2 outputs (needs
   CommCare app metadata).
-- **Activation:** the opportunity is created in `draft` and stays there
-  until `llo-launch` (Phase 8) flips it to `active` after UAT.
+- **Activation:** Phase 3 activates the opp synchronously (Step 6.5 in
+  `connect-opp-setup`) so the ACE test user can be invited and Phase 5
+  `app-screenshot-capture` has a real opp on the AVD. Because the opp is
+  `is_test=true` and the test user is ACE-controlled, this is NOT a
+  Phase 7→8 boundary violation — no real LLO sees this state until
+  Phase 8's `llo-launch` sends the awardee email. `llo-launch` becomes
+  idempotent on already-active opps (skip-and-log) and still owns the
+  real-LLO invite.
 
 ### Completion
 
