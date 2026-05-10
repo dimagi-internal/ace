@@ -1061,3 +1061,20 @@ Requirements:
 This is the only ace-web dependency in the ACE plugin. Without
 `--ace-web-url` the plugin is entirely standalone.
 
+## See also: orchestrator-reference.md
+
+Reference content for this orchestrator lives in `agents/orchestrator-reference.md`:
+
+- `## Agent Topology` — architectural diagram + level-0/subagent constraints
+- `## State Schema` + `## Your State` — `run_state.yaml` and `opp.yaml` shapes
+- `## Scope boundaries` + `## Cruft management` — what belongs in run_state.yaml; archive convention
+- `## Per-Phase Folder Lifecycle` — Drive folder shape per phase
+- `## Producer Artifact Verifier` — discipline rule pattern
+- `## Phase Write-Back Contract` — required write-back shape
+- `## Phase Write-Back Verifier — procedure` — auto-stub fallback
+- `## Pause Points` — full pause-point catalog with per-mode table
+- `## Touching State — Operator Capture` — operator-bypass write rules
+- `## Discipline — full text` — full source text for the rules consolidated into § Anti-patterns and discipline above
+
+The procedure doc above is the canonical execution flow; the reference doc is normative for the shapes and rules cited above.
+
