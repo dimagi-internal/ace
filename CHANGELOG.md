@@ -5,6 +5,20 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.131 — 2026-05-09
+
+**Doctor: end-of-run summary table + 20× faster `hq_api_key_auth` probe.**
+
+Two changes to `bin/ace-doctor`:
+
+1. **Summary table at end of run.** Previously the doctor emitted ~40 PASS/WARN/FAIL lines and ended with `STATUS: COMPLETE` — fine for a human scrolling the body, but a parent agent (or operator on a fresh tmux pane) had to count the WARN/FAIL lines themselves to see the verdict. New: the script tees its own output, then emits a compact summary block before `STATUS: COMPLETE` — totals (`PASS: 47   WARN: 4   FAIL: 0`), verdict (`HEALTHY — ACE works; warnings below are non-fatal` / `BROKEN — ACE will not function until FAILs are fixed`), and named lists of FAIL + WARN items. Catches the `[Drive layout]` subprocess output too (it streams via the tee'd stdout).
+
+2. **`hq_api_key_auth` is now ~250ms instead of 5+ seconds.** The probe was hitting `GET /a/<domain>/api/v0.5/application/?limit=1`, which serializes a full app blueprint per row (modules + forms + settings + fixtures, ~100KB of JSON for one app) and routinely takes 5-10s on a cold call. ACE only needs to know "is the API key valid?" — settled in tastypie's auth middleware before the view runs. Switched to `GET /a/<domain>/api/v0.5/user/?limit=1`, which is a small bounded query: 200 (auth ok) in ~250ms or 401 (auth bad) in ~200ms. Same diagnosis, ~20× faster, and the timeout drops from 5s to 3s.
+
+   Tried HEAD first as the obvious efficiency play — but tastypie returns 405 Method Not Allowed for *both* good and bad keys before auth runs, so HEAD doesn't validate auth on these endpoints. GET on a bounded resource is the only fast probe that distinguishes 200 from 401.
+
+   Reframes the timeout (`HTTP 000`) branch too: `cchq_auth` and `net_commcarehq` immediately above already prove the basic transport, so the right diagnosis is "API endpoint may be degraded" or "transient — re-run /ace:doctor", not "verify CCHQ is reachable" (misleading when the same doctor run already proved it is).
+
 ## 0.13.128 — 2026-05-09
 
 **Doctor: fix the `HTTP 000000` red-herring + add a `mobile_infra` auth-liveness check.**

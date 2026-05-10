@@ -173,6 +173,24 @@ fail() { printf 'FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; 
 # No _log() abstraction in this script; mirrors the pass/warn/fail printf pattern.
 info() { printf 'INFO %s\n' "$1"; }
 
+# --- Output capture for end-of-run summary table (added 0.13.129) ---
+#
+# Tee all stdout into a temp file so the trailing summary block can count
+# PASS/WARN/FAIL items without re-running probes. Uses tee in a process
+# substitution so output streams to the user's terminal in real time
+# (unchanged behavior) AND lands in the log file for parsing.
+#
+# Why this matters: the doctor script emits ~40 lines on a healthy run;
+# main agents and ad-hoc operators end up scrolling to find what's
+# broken. The end-of-run table inverts that — verdict + WARN/FAIL names
+# up front, body becomes the drill-down.
+#
+# Catches the doctor-drive-layout.ts subprocess output too (it writes
+# its own PASS/WARN lines via the same shape).
+DOCTOR_LOG="$(mktemp -t ace-doctor.XXXXXX 2>/dev/null || mktemp)"
+trap 'rm -f "$DOCTOR_LOG"' EXIT
+exec > >(tee "$DOCTOR_LOG")
+
 # --- Version consistency ---
 VER_FILE="$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null || echo missing)"
 VER_PLUGIN="$(node -e "console.log(require('$ROOT/.claude-plugin/plugin.json').version);" 2>/dev/null || echo missing)"
@@ -1213,25 +1231,51 @@ if [ -n "$HQ_KEY_VAL" ] && [ -n "$HQ_DOMAIN" ] && [ -n "$HQ_USER" ]; then
   # See net_reachability comment above for the curl `|| echo "000"`
   # double-fallback bug — same pattern, same fix. Pre-this-fix, a
   # connection failure here produced HTTP_PROBE_CODE="000000" which
-  # fell through to the catch-all WARN ("investigate; if persists,
-  # rotate the key"), misleading operators when the actual problem
-  # was network/DNS/timeout.
-  HQ_API_PROBE_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+  # fell through to the catch-all WARN.
+  #
+  # Endpoint switched 0.13.129: was GET /api/v0.5/application/?limit=1,
+  # now GET /api/v0.5/user/?limit=1. Live timing on a fresh probe:
+  # /application/ takes 5+ seconds (occasionally 10s+) on cold cache —
+  # the response serializes the FULL app blueprint per row (modules,
+  # forms, settings, fixtures) and a single row's JSON is 100KB+. ACE
+  # only needs to know "is the API key valid?", which is settled in
+  # tastypie's auth middleware before the view runs.
+  # /user/?limit=1 is a small bounded query that returns 200 (auth ok)
+  # in ~250ms or 401 (auth bad) in ~200ms. ~20x faster, same diagnosis.
+  #
+  # HEAD on /application/ was tried first (0.13.128 attempt) but tastypie
+  # returns 405 for both good and bad keys before auth middleware runs,
+  # so HEAD doesn't validate auth on this endpoint. HEAD on /user/ would
+  # have the same problem — GET is the only method that goes through auth
+  # for a useful diagnosis.
+  #
+  # 3s timeout (down from 5s): /user/?limit=1 should be under 500ms even
+  # on slow links; 3s catches genuinely hung connections without burning
+  # doctor wall-clock. cchq_auth + net_commcarehq above already cover
+  # basic CCHQ reachability — if THIS probe still trips 000 while those
+  # passed, the diagnosis is server-side endpoint slowness, not network.
+  HQ_API_PROBE_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 \
     -H "Authorization: ApiKey $HQ_USER:$HQ_KEY_VAL" \
-    "https://www.commcarehq.org/a/$HQ_DOMAIN/api/v0.5/application/?limit=1" 2>/dev/null)"
+    "https://www.commcarehq.org/a/$HQ_DOMAIN/api/v0.5/user/?limit=1" 2>/dev/null)"
   [ -z "$HQ_API_PROBE_CODE" ] && HQ_API_PROBE_CODE="000"
   case "$HQ_API_PROBE_CODE" in
     2*)
-      pass "hq_api_key_auth: ACE_HQ_API_KEY authed against $HQ_DOMAIN (GET /api/v0.5/application/ → HTTP $HQ_API_PROBE_CODE)"
+      pass "hq_api_key_auth: ACE_HQ_API_KEY authed against $HQ_DOMAIN (GET /api/v0.5/user/ → HTTP $HQ_API_PROBE_CODE)"
       ;;
     401|403)
       warn "hq_api_key_auth: HTTP $HQ_API_PROBE_CODE — ACE_HQ_API_KEY invalid, revoked, or scoped to wrong domain ($HQ_DOMAIN). Connect's create_opportunity / set_verification_flags will fail mid-Phase-3 with \"Failed to fetch apps from CommCare HQ.\"" "mint a new HQ API key at https://www.commcarehq.org/account/api_keys/ as ace@dimagi-ai.com, update 1Password item \"ACE - CommCare HQ API Key (connect-ace-prod)\" field \`credential\`, then op inject -i .env.tpl -o \$CLAUDE_PLUGIN_DATA/.env --force --account dimagi.1password.com AND /reload-plugins so the ace-connect MCP picks up the new env"
       ;;
     000)
-      warn "hq_api_key_auth: cannot reach https://www.commcarehq.org (network/DNS/timeout)" "verify CCHQ is reachable; net_cchq probe above should also flag this"
+      # cchq_auth + net_commcarehq above already prove CCHQ is reachable
+      # in this same doctor run — if THIS probe times out while those
+      # passed, the right diagnosis is server-side endpoint slowness, not
+      # network failure. Don't tell the operator their internet is down
+      # when we just proved it isn't. Likely transient; recovery is to
+      # re-run the doctor.
+      warn "hq_api_key_auth: GET /api/v0.5/user/ did not complete in 3s (CCHQ basic reachability OK per cchq_auth/net_commcarehq above)" "transient — re-run /ace:doctor; if persists, the CCHQ API endpoint may be degraded (status.commcare.org)"
       ;;
     *)
-      warn "hq_api_key_auth: GET /a/$HQ_DOMAIN/api/v0.5/application/ → HTTP $HQ_API_PROBE_CODE" "investigate; if persists, rotate the key per the recovery recipe above"
+      warn "hq_api_key_auth: GET /a/$HQ_DOMAIN/api/v0.5/user/ → HTTP $HQ_API_PROBE_CODE" "investigate; if persists, rotate the key per the recovery recipe above"
       ;;
   esac
 elif [ -z "$HQ_KEY_VAL" ]; then
@@ -1492,6 +1536,53 @@ if [ -f "$ROOT/scripts/doctor-drive-layout.ts" ]; then
   cd "$ROOT" && npx tsx scripts/doctor-drive-layout.ts 2>&1
 else
   warn "drive_layout: scripts/doctor-drive-layout.ts not present" "run /ace:update to pull a version that ships the audit (>= 0.11.9)"
+fi
+
+echo ""
+
+# --- End-of-run summary table (added 0.13.129) ---
+#
+# Tee'd output is in $DOCTOR_LOG. Sleep briefly so the tee subprocess
+# flushes all the [Drive layout] subprocess writes before we count.
+# 200ms is invisible to humans and well above tee's typical buffer
+# flush latency on macOS / Linux for a ~5 KB file.
+sleep 0.2
+
+# Capture all counts AND listings BEFORE printing anything — once the
+# summary header lines start streaming through tee, they'll land in the
+# log and get re-counted. Snapshot first, print second.
+_DOCTOR_PASS=$(grep -c '^PASS ' "$DOCTOR_LOG" 2>/dev/null | tr -d '[:space:]')
+_DOCTOR_WARN=$(grep -c '^WARN ' "$DOCTOR_LOG" 2>/dev/null | tr -d '[:space:]')
+_DOCTOR_FAIL=$(grep -c '^FAIL ' "$DOCTOR_LOG" 2>/dev/null | tr -d '[:space:]')
+: "${_DOCTOR_PASS:=0}" "${_DOCTOR_WARN:=0}" "${_DOCTOR_FAIL:=0}"
+_DOCTOR_FAIL_LIST="$(grep '^FAIL ' "$DOCTOR_LOG" 2>/dev/null | sed -E 's/^FAIL ([^:]+):.*$/  - \1/')"
+_DOCTOR_WARN_LIST="$(grep '^WARN ' "$DOCTOR_LOG" 2>/dev/null | sed -E 's/^WARN ([^:]+):.*$/  - \1/')"
+
+if [ "$_DOCTOR_FAIL" -gt 0 ]; then
+  _DOCTOR_VERDICT="BROKEN — ACE will not function until FAILs are fixed"
+elif [ "$_DOCTOR_WARN" -gt 0 ]; then
+  _DOCTOR_VERDICT="HEALTHY — ACE works; warnings below are non-fatal"
+else
+  _DOCTOR_VERDICT="HEALTHY — all checks passed"
+fi
+
+echo "================================================================"
+echo "ACE Doctor Summary"
+echo "================================================================"
+printf "  PASS: %s   WARN: %s   FAIL: %s\n" "$_DOCTOR_PASS" "$_DOCTOR_WARN" "$_DOCTOR_FAIL"
+echo "  Verdict: $_DOCTOR_VERDICT"
+echo "================================================================"
+
+if [ "$_DOCTOR_FAIL" -gt 0 ]; then
+  echo "FAIL items (must fix):"
+  printf '%s\n' "$_DOCTOR_FAIL_LIST"
+  echo "----------------------------------------------------------------"
+fi
+
+if [ "$_DOCTOR_WARN" -gt 0 ]; then
+  echo "WARN items (review optional):"
+  printf '%s\n' "$_DOCTOR_WARN_LIST"
+  echo "----------------------------------------------------------------"
 fi
 
 echo ""
