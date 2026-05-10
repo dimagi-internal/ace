@@ -564,4 +564,65 @@ There is no `gates.<name>` field to flip on approve/reject. The phase status (`p
 
 ## Touching State — Operator Capture
 
-(populated in Task 7)
+**Path note (multi-run layout, v0.11.0+):** `run_state.yaml` lives at
+`ACE/<opp>/runs/<run-id>/run_state.yaml`, not at the opp root. The
+run-id is established by the orchestrator's "Starting a New
+Opportunity" step 3; phase agents and skill dispatches inherit it.
+The `/ace:step` bypass path receives `<opp>/<run-id>` from its
+positional arg (see `commands/step.md`).
+
+Every skill invocation, whether via `/ace:run` or `/ace:step`, must update
+`last_actor` and `last_actor_at` in `run_state.yaml` *before* dispatching the
+skill. This is a two-line write:
+
+```yaml
+last_actor: <current git config user.email>
+last_actor_at: <ISO timestamp at the moment of dispatch>
+```
+
+Do this once per skill invocation, not once per `/ace:run` — an admin who
+resumes an interrupted run mid-pipeline should show up as the last actor for
+the skills they actually drove, not buried behind the initiator.
+
+If `git config user.email` is unset, write the literal `unknown`. Do not
+block the run.
+
+### State-as-canary contract
+
+`run_state.yaml` is the orchestrator's heartbeat. Every skill must
+mark its progress so resumption logic can distinguish "in progress"
+from "stalled" without inferring from artifact absence.
+
+**Before starting work**, the skill (or the dispatcher invoking it)
+writes:
+
+```yaml
+phases:
+  <phase>:
+    <step>: in_progress
+last_actor: <git config user.email>
+last_actor_at: <ISO timestamp>
+```
+
+**On clean completion**, write `<step>: done`.
+
+**On hard failure or timeout**, write `<step>: error` (with optional
+`<step>_error: <one-line>` adjacent) — never leave it in `in_progress`.
+
+**Resume agents** that read `run_state.yaml` and find a step in
+`in_progress` apply this rule:
+
+- `last_actor_at` ≤ 15 min ago → assume the prior session is still
+  alive; re-entering would race. Halt with a clear "another session
+  appears to be working this opp" message and the offending field.
+- `last_actor_at` > 15 min ago → treat as **dead**, not "still
+  running." The skill is idempotent (per § Long-Running Skills —
+  No Fake Background Tasks); re-dispatch from the artifact-checkable
+  resumption point. Do NOT poll-wait for a phantom completion.
+
+This rule is the single biggest preventer of the
+`turmeric-20260503-0835` failure mode: an `in_progress` field that
+nobody updates becomes an unbounded waiting loop. The 15-min
+threshold balances "let a slow but live skill finish" against "don't
+wait on a dead one." Tighten or loosen per skill if needed via a
+documented exception in the skill's SKILL.md.
