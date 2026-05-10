@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleCreateFolder } from '../../../mcp/google-drive-server.js';
+import { handleCreateFolder, __resetSharedDriveProbeCacheForTests } from '../../../mcp/google-drive-server.js';
 
 const fakeDrive = {
   files: {
@@ -11,6 +11,7 @@ const fakeDrive = {
 
 describe('drive_create_folder findOrCreate mode', () => {
   beforeEach(() => {
+    __resetSharedDriveProbeCacheForTests();
     fakeDrive.files.list.mockReset();
     fakeDrive.files.create.mockReset();
     fakeDrive.files.get.mockReset();

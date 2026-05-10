@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleCreateShortcut } from '../../../mcp/google-drive-server.js';
+import { handleCreateShortcut, __resetSharedDriveProbeCacheForTests } from '../../../mcp/google-drive-server.js';
 
 const fakeDrive = {
   files: {
@@ -24,6 +24,7 @@ const SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
 
 describe('drive_create_shortcut', () => {
   beforeEach(() => {
+    __resetSharedDriveProbeCacheForTests();
     fakeDrive.files.list.mockReset();
     fakeDrive.files.create.mockReset();
     fakeDrive.files.get.mockReset();
