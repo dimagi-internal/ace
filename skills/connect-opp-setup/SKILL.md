@@ -148,8 +148,14 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    - `start_date` / `end_date`: opportunity dates (YYYY-MM-DD; must fit
      inside the program window)
    - `total_budget`: must fit inside `program.budget − Σ(other managed opps)`
-   - `is_test`: defaults `true` server-side; set `false` only when this is a
-     production-grade opportunity
+   - `is_test`: **set explicitly to `true`** for every ACE-driven run. The
+     server defaults to `true` if omitted, but sending it explicitly makes
+     the value visible in the create-response and auditable in the
+     verify-after-create check below. ACE is in dogfood mode — every opp
+     it stands up is for engineering exercise, NOT a production rollout —
+     so the test flag must be on. The eventual production-grade opp (post-
+     dogfood) will flip this to `false`; that flip will be a deliberate
+     operator decision, not a defaulted-off slip.
    - `learn_app`: `{ hq_server_url, api_key, cc_domain, cc_app_id, description, passing_score }`
      - `hq_server_url`: full URL (e.g. `https://www.commcarehq.org`)
      - `api_key`: the **raw 40-char HQ API key** for the project space
@@ -320,6 +326,51 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    malformation at the source converts a multi-phase cascade into a
    single-skill halt.
 
+6.5. **Activate the opportunity in Connect** (REQUIRED for ACE-driven runs;
+   prerequisite for Step 7's test-user invite).
+
+   ACE's dogfood pipeline activates the opp here, in Phase 3, so the ACE
+   test user can be invited synchronously and Phase 5
+   `app-screenshot-capture` can drive the AVD against a real opp.
+   Real-LLO go-live remains a separate, human-gated event in Phase 8
+   `llo-launch` — that skill becomes idempotent on already-active opps
+   from this step (skip-and-log).
+
+   Why this isn't a Phase 7→8 boundary violation: the opp lives in
+   `connect-ace-prod` (Dimagi-controlled HQ project space) and is
+   `is_test=true`. The ACE test user (`${ACE_E2E_PHONE}`) is also ACE-
+   controlled. No real LLO sees this state until Phase 8's awardee
+   email, which is still gated behind the unconditional Phase 7→8 pause.
+
+   - **Idempotency check first.** Call
+     `connect_get_opportunity({organization_slug, opportunity_id})` and
+     read `active`. If `active=true` already (Connect's managed-opp create
+     flow can auto-activate as a side effect when `total_budget`/dates
+     are populated up front), log `[INFO]` to `comms-log/observations.md`:
+
+     ```
+     <ISO> connect-opp-setup: opp <id> already active; skipping activate call (idempotent path).
+     ```
+
+     and proceed to Step 7. `connect_activate_opportunity` itself rejects
+     already-active opps as a validation error — without this pre-check,
+     a managed-opp side-effect activation cascades into a confusing
+     Phase 3 failure.
+   - **Otherwise activate.** Call
+     `connect_activate_opportunity({organization_slug, opportunity_id})`.
+     The atom hits `POST /api/opportunities/<id>/activate/`, which
+     validates that (a) the opp isn't already active, (b) the opp hasn't
+     ended, and (c) at least one PaymentUnit exists. Step 6 above
+     satisfies (c). Returns `{ id, opportunity_id, name, active: true }`.
+   - **Verify** by calling `connect_get_opportunity` and confirming
+     `active=true` (whether activated this run or skipped because already-
+     active).
+   - **On hard error from the activate call**, halt with `[BLOCKER]` and
+     surface the server error verbatim in the gate brief. The most
+     common cause is "no PaymentUnit" — Step 6's verify-after-create
+     check should already have failed loudly; if we got here without
+     one, the verify-after-create has a gap to file against.
+
 7. **Pre-invite the ACE test user (REQUIRED for PersonalID registration).**
 
    This step is structurally load-bearing for ACE's emulator-driven mobile
@@ -340,19 +391,12 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    receives an empty/malformed response and force-stops (CommCare NPE on
    `getSessionFailureSubcode()`). See Sentry `CONNECT-ID-3F`.
 
-   **Constraint:** the new `POST /api/opportunities/<id>/invite_users/`
-   endpoint validates that the opp is **active** and not ended. So the
-   pre-invite must happen *after* `connect_activate_opportunity`, which is
-   handled by `llo-launch` (Phase 8). For ACE-driven dogfood runs that need
-   the test user invited *before* an LLO actually exists (the common case),
-   either:
+   `POST /api/opportunities/<id>/invite_users/` validates that the opp is
+   **active** and not ended. Step 6.5 above just satisfied the active
+   precondition synchronously, so the invite fires here directly — no
+   deferral.
 
-   - **(a)** Wait until `llo-launch` activates the opp, then call
-     `connect_send_flw_invite` here. This is the natural sequence for new
-     opps.
-   - **(b)** For backfilling on already-active prior opps: call directly.
-
-   Args (when ready to invite):
+   Args:
    ```
    connect_send_flw_invite({
      organization_slug: <PM-side org>,
@@ -368,11 +412,12 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    ```yaml
    ace_test_user_invited_phone: ${ACE_E2E_PHONE}
    ace_test_user_invited_at: <ISO timestamp>
-   ace_test_user_invite_pending_until_active: false
    ```
-   If the FLW invite is deferred to post-`llo-launch`, set
-   `ace_test_user_invite_pending_until_active: true` and re-call
-   `connect_send_flw_invite` from `llo-launch` after the opp is active.
+
+   The historical `ace_test_user_invite_pending_until_active` flag is no
+   longer written. Step 6.5 activates synchronously, so the deferred-to-
+   `llo-launch` branch is dead code. `llo-launch` (Phase 8) only sends
+   the real-LLO invite; it does not re-fire the ACE test-user invite.
 
 8. **Write config summary** to `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`:
    - Opportunity ID (UUID) and URL
@@ -553,5 +598,6 @@ Each row this skill writes uses `phase: 3-connect` and
 | 2026-04-30 | Adopt commcare-connect PR #1135's automation API (0.10.47). `connect_create_opportunity` is now `POST /api/programs/<id>/opportunities/`, takes structured `learn_app`/`deliver_app` payloads + dates + total_budget upfront. Eliminates the two-step "create → finalize" flow and the silent-500 schema bugs around `hq_server` resolution + `api_key` registration + `learn_app`/`deliver_app` JSON wrapping (the server now does all of it). `register_hq_api_key` and `finalize_opportunity` atoms removed. `connect_create_payment_units` (plural) added for atomic-batch creation. FLW pre-invite now requires opp to be active first — coordinate with `llo-launch`. | ACE team |
 | 2026-05-04 | **Verify-after-create discipline** added to Step 4 (opportunity) and Step 6 (payment units) — every external write is now followed by an immediate read-back, with `[BLOCKER]` halt on field misalignment. Catches the class of bug `turmeric-20260503-0835` hit: PU created with shifted values (`amount=500` vs sent `1.50`, `max_total=20` vs sent `500`, `required_deliver_units=[]` vs sent `[Vendor Visit]`), which cascaded through `is_setup_complete` to break Phase 7 invites and Phase 5 screenshot capture. Catching at the source converts a multi-phase cascade into a single-skill halt. Also: `short_description` cap doc fix (≤50 chars server-enforced, was wrongly documented as ≤255); `amount` integer-rounding behavior pinned (recommended: round + INFO-log, never silent truncate); empty `required_deliver_units` flagged as a downstream cascade trigger. See `agents/ace-orchestrator.md § External Mutations — Verify After Create` for the cross-skill rule. | ACE team (0.11.11) |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (verification-flags, payment-unit-shape, opportunity-end-date) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-10 | Move opp activation + ACE test-user invite from Phase 8 into Phase 3 (new Step 6.5 + rewritten Step 7). Closes the chicken-and-egg gap where Phase 5 `app-screenshot-capture` produced placeholder screenshots because the test user wasn't on the new opp yet — the opp couldn't be activated until Phase 8, but the test user couldn't be invited until activation. Phase 8 `llo-launch` now hits its idempotent skip-if-active path on every ACE-driven run; it still sends the real-LLO invite to the awarded LLO. Also: tighten Step 4 `is_test` from "defaults true server-side" to "set explicitly to true" — ACE is in dogfood mode and every opp it creates must be test-flagged so prod analytics, payment exports, and partner dashboards exclude these runs. | ACE team |
 
 <!-- Stage 4.5 of Plan B: post-create labs_context lookup for labs_int_id (0.13.59) -->

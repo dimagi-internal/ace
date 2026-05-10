@@ -757,13 +757,13 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(connect-setup)`.
 
-**Outputs:** Program configured; Opportunity configured with verification rules and delivery/payment units (`3-connect/connect-program-setup.md`, `3-connect/connect-opp-setup.md`).
+**Outputs:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`3-connect/connect-program-setup.md`, `3-connect/connect-opp-setup.md`).
 
 **Write-back:** `phases.connect-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
 **Gate:** `[BLOCKER]` halts; no named pause point in default mode (see § Pause Points in reference).
 
-**Notes:** LLO invite-list preparation moved to Phase 8 on 2026-04-20 — we don't commit to an invite roster until after the OCS chatbot has cleared its deep-eval gate. After Phase 3 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
+**Notes:** LLO invite-list preparation moved to Phase 8 on 2026-04-20 — we don't commit to a real-LLO invite roster until after the OCS chatbot has cleared its deep-eval gate. Phase 3 *does* activate the opp and invite the ACE test user (`${ACE_E2E_PHONE}`) on 2026-05-10 — this closes the chicken-and-egg gap where Phase 5 `app-screenshot-capture` could only produce placeholder screenshots because the test user wasn't on the new opp yet. The opp is created with `is_test=true` so prod LLO-facing analytics, payment exports, and partner dashboards exclude these dogfood runs; activation in this phase is therefore not a Phase 7→8 boundary violation. Phase 8's `llo-launch` becomes idempotent on already-active opps (skip-and-log) and still sends the real-LLO invite to the awarded LLO. After Phase 3 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
 ### Phase 4: OCS Setup
 
