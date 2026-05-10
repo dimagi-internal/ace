@@ -19,11 +19,31 @@ skills:
 You run the first phase of a CRISPR-Connect opportunity: turning a raw idea
 into a well-specified PDD that the rest of the pipeline builds on.
 
+## Performance conventions
+
+The orchestrator passes inline artifacts at phase handoff (see
+`agents/ace-orchestrator.md` § per-phase conventions). On top of that,
+this subagent's steps have these read-redundancy rules:
+
+- **Trust your context across steps.** When Step N reads a file, the
+  content stays in this subagent's context for subsequent steps. Do
+  NOT re-issue `drive_read_file` for content already loaded. Exception:
+  the PDD MAY be rewritten by Step 1.4's QA retry loop — if QA
+  dispatched the producer with an `auto_fix_hint`, re-read the PDD
+  after that loop terminates. Otherwise the Step 1 PDD content holds
+  through Step 3.5.
+- **Batch the Step 1 input reads.** `inputs-manifest.yaml`, each
+  manifest entry, and optional `idea.md` are independent — issue them
+  as ONE parallel `drive_read_file` block, not sequentially.
+- **Skill-level reads are governed by each `SKILL.md`.** This subagent
+  controls only the reads it issues directly between steps; reads
+  inside the producer/QA/eval skills are out of scope here.
+
 ## Workflow
 
 ### Step 1: Idea to PDD
 Invoke the `idea-to-pdd` skill.
-- Inputs:
+- Inputs (issue as ONE parallel `drive_read_file` block):
   - `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml`
     (frozen pointer-set captured by the orchestrator from `<opp>/inputs/`)
   - Each file referenced in the manifest (read inline)
@@ -50,6 +70,7 @@ Unless `--no-evals` was passed AND QA verdict is `pass`, invoke the `idea-to-pdd
   (`inputs-manifest.yaml` + each manifest entry, plus run-root
   `idea.md` if present) + the produced PDD at
   `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
+  **(all in subagent context from Step 1 / Step 1.4 — do NOT re-read)**
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-eval_verdict.yaml` (machine-readable
   verdict in the shared shape — see `skills/README.md § QA vs Eval`)
 - This is the independent QUALITY grader (post-0.13.88 the rubric is quality-only — structural correctness lives in QA above). A `verdict: fail` here does NOT halt the run on its own — the Phase 1→2 gate still uses the producing skill's `runs/<run-id>/1-design/idea-to-pdd_gate-brief.md`, and `[BLOCKER]` concerns from either source pause per the orchestrator's Per-Mode Pause Matrix.
@@ -57,7 +78,7 @@ Unless `--no-evals` was passed AND QA verdict is `pass`, invoke the `idea-to-pdd
 
 ### Step 2: PDD to Test Prompts
 Invoke the `pdd-to-test-prompts` skill.
-- Input: approved PDD from GDrive
+- Input: approved PDD **(in subagent context from Step 1 / Step 1.4 — do NOT re-read from Drive)**
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-test-prompts.md` — Q&A pairs with expected-answer
   summaries derived from the PDD. These are the ground truth for the OCS
   deep QA gate in Phase 4
@@ -83,7 +104,7 @@ Unless `--no-evals` was passed AND QA verdict is `pass`, invoke `pdd-to-test-pro
 ### Step 3: Generate expected user journeys
 
 Dispatch `pdd-to-app-journeys`:
-- Reads: `1-design/idea-to-pdd.md`
+- Reads: `1-design/idea-to-pdd.md` **(in subagent context from Step 1 / Step 1.4 — do NOT re-read from Drive)**
 - Writes: `1-design/pdd-to-app-journeys.md`
 - Halts on missing/empty PDD or missing target-FLW persona section
 
