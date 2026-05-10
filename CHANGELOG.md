@@ -5,6 +5,22 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.126 — 2026-05-09
+
+**Fix #106 finding 5: `connect_list_deliver_units` now returns the server PK each DU needs for `connect_create_payment_unit.required_deliver_units`.**
+
+Connect's `/deliver_unit_table/` listing only renders per-opp display indices (1, 2, 3…), not the server-side primary keys (e.g. 5379) that `payment_unit.required_deliver_units` accepts. Pre-this-fix, every fresh Phase 3 run hit the same chicken-and-egg: `connect_list_deliver_units` couldn't return the PK, the create-time response of a prior `connect_create_payment_unit` was the only reliable source, and a 30s create timeout on the very first call (server completes; client gives up) lost the response. Operators improvised one-off form-scrape probes per run.
+
+The fix: `listDeliverUnits` now opportunistically reads the create-payment-unit form (the only HTML route on which Connect leaks the server PK — as the `value` attribute on each deliver-unit checkbox), parses the checkbox map via the new `parseDeliverUnitFormCheckboxes` shared helper, and joins by name back to each `DeliverUnit` to populate a new optional `server_id: number` field. On any error in the secondary fetch (auth, 5xx, sync-deliver-units precondition not satisfied), the field stays `undefined` and existing callers keep working — the `createPaymentUnit` HTML fallback still has its inline name-mapping path.
+
+`connect-opp-setup` skill now documents `du.server_id` as the canonical input to `required_deliver_units`/`optional_deliver_units` (no behavioral change for callers passing display ids — the backend's mapping path catches those — but the documented happy path is now `server_id`).
+
+`createPaymentUnit`'s checkbox-extract regex de-duped into `parseDeliverUnitFormCheckboxes`; mapping path inside it now fetches `/deliver_unit_table` directly (one GET) instead of round-tripping through public `listDeliverUnits` (which would re-fetch the form it already has in scope).
+
+4 new unit tests pin: live-fixture parse with PKs 3339-3342; required+optional checkbox dedupe; empty-checkbox sync-precondition signal; legacy label-outside-input fallback shape.
+
+The ad-hoc `scripts/probe-create-pu-form.ts` left in turmeric run 20260509-1448 by Phase 3's recovery dance is now redundant and removed; future Phase 3 runs see the PK directly off `du.server_id`.
+
 ## 0.13.66 — 2026-05-06
 
 **Fix #129: swap `googleapis` for per-API subpackages — node_modules drops 332 MB → 141 MB.**

@@ -245,6 +245,63 @@ export function parseDeliverUnitTable(html: string): DeliverUnit[] {
 }
 
 /**
+ * Parse the deliver-unit checkbox map out of the create-payment-unit form
+ * HTML (`/a/<org>/opportunity/<uuid>/payment_unit/create`).
+ *
+ * Connect's create-PU form renders one `<input type="checkbox"
+ * name="required_deliver_units" value="<server_pk>">` per available
+ * deliver unit, plus a parallel set with `name="optional_deliver_units"`.
+ * The checkbox `value` attribute carries the **server-side primary key**
+ * (e.g. `5379`) — the one Connect's Postgres uses and the one that
+ * `payment_unit.required_deliver_units` accepts. Connect's
+ * `/deliver_unit_table/` listing exposes only a per-opp display index
+ * (1, 2, 3…), so this form is the only HTML route from which the server
+ * PK is observable. The label text immediately following each checkbox
+ * (or wrapping the input via `<label>…<input>…name…</label>`) carries
+ * the deliver-unit name, which makes a name-based join back to
+ * `parseDeliverUnitTable` results possible.
+ *
+ * Returns a `Map<labelText, server_pk_string>`. The same PK appears in
+ * both `required_deliver_units` and `optional_deliver_units` checkbox
+ * groups — first-seen wins so the map dedupes correctly.
+ *
+ * **Issue tracking:** jjackson/ace#106 finding 5. Until commcare-connect
+ * ships server PKs in `/deliver_unit_table/` directly (a server-side
+ * change), this form-scrape is the bridge. When that lands, this helper
+ * stays for back-compat and `parseDeliverUnitTable` gains the same
+ * field.
+ *
+ * Verified 2026-05-06 against the
+ * `opportunity-dea88661-…-payment_unit-create.html` fixture: 4 DUs, PKs
+ * 3339/3340/3341/3342, names "Optional Delivery", "Optional Delivery 2",
+ * "Optional Delivery 3", "optional delivery unit 4".
+ */
+export function parseDeliverUnitFormCheckboxes(html: string): Map<string, string> {
+  const out = new Map<string, string>();
+  // Pattern A (current Connect template): label wraps the input;
+  // `<label>…<input name="required_deliver_units" value="3339">…name…</label>`.
+  for (const m of html.matchAll(
+    /<input[^>]*name="(?:required|optional)_deliver_units"[^>]*value="(\d+)"[^>]*>([\s\S]*?)<\/label>/g,
+  )) {
+    const value = m[1];
+    const labelText = m[2].replace(/<[^>]+>/g, '').trim();
+    if (labelText && !out.has(labelText)) out.set(labelText, value);
+  }
+  // Pattern B (legacy / alternate template): label sits BEFORE the input
+  // or input + bare text; capture text up to the next tag.
+  if (out.size === 0) {
+    for (const m of html.matchAll(
+      /<input[^>]*name="(?:required|optional)_deliver_units"[^>]*value="(\d+)"[^>]*>\s*([^<]+)/g,
+    )) {
+      const value = m[1];
+      const labelText = m[2].trim();
+      if (labelText && !out.has(labelText)) out.set(labelText, value);
+    }
+  }
+  return out;
+}
+
+/**
  * Parse Connect's payment_unit_table HTML. Column order verified live
  * 2026-05-05 against connect.dimagi.com against an active opp's
  * `payment_unit_table/` page (see

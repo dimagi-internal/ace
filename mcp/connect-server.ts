@@ -296,7 +296,9 @@ server.tool('connect_set_verification_flags',
   async (args) => runAtom(async () => (await client()).setVerificationFlags(args))
 );
 
-server.tool('connect_list_deliver_units',
+server.tool(
+  'connect_list_deliver_units',
+  'List deliver units for an opportunity. Each entry has `id` (per-opp display index 1/2/3…), `name`, `slug`, plus `server_id` — the server-side primary key suitable for `connect_create_payment_unit.required_deliver_units` / `optional_deliver_units`. `server_id` is populated by reading the create-payment-unit form\'s checkbox values; absent only on the rare degraded path where that secondary fetch fails. Pass `server_id` (not `id`) to `connect_create_payment_unit`.',
   { organization_slug: z.string(), opportunity_id: z.string() },
   async (args) => runAtom(async () => (await client()).listDeliverUnits(args))
 );

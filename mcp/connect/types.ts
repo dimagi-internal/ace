@@ -156,18 +156,39 @@ export interface DeliverUnit {
    * integer ID. Connect's HTML for this listing does not expose the
    * server ID anywhere on the page (verified live 2026-05-06 against
    * leep-paint-collection opp `f14d8c5d-…` — no data-* attrs, no
-   * hrefs, no hidden inputs). Skills that need the server ID for
-   * `payment_unit.required_deliver_units` must use the integer
-   * returned by the create-time response of `connect_create_payment_unit`,
-   * which is the only reliable source today.
+   * hrefs, no hidden inputs).
    *
    * **REST path:** server integer ID (when this type is populated by
    * a future REST endpoint).
    *
-   * Issue tracking: jjackson/ace#106 finding 5 (server-side fix
-   * needed to expose IDs in the listing).
+   * For passing into `payment_unit.required_deliver_units`, prefer
+   * `server_id` (which `listDeliverUnits` populates by reading the
+   * create-payment-unit form's checkbox values). Issue tracking:
+   * jjackson/ace#106 finding 5 (server-side fix needed to expose IDs
+   * in the listing directly).
    */
   id: number;
+  /**
+   * Server-side primary key suitable for
+   * `payment_unit.required_deliver_units` and `optional_deliver_units`.
+   *
+   * **HTML-scraped path:** populated opportunistically by
+   * `listDeliverUnits` via a second fetch of the create-payment-unit
+   * form (where Connect renders the PK as the `value` attribute on
+   * each deliver-unit checkbox). When the second fetch fails (auth, 5xx,
+   * sync-deliver-units precondition not satisfied), the field stays
+   * `undefined` and callers fall back to the `id`+name mapping that
+   * `createPaymentUnit` does internally.
+   *
+   * **REST path:** identical to `id` (REST returns the server PK as
+   * the canonical identifier).
+   *
+   * Added 0.13.126. Before this, callers had to recover the server PK
+   * from the create-time response of `connect_create_payment_unit` —
+   * a chicken-and-egg gap that produced ad-hoc form-scrape probes per
+   * Phase 3 run (see jjackson/ace#106 finding 5).
+   */
+  server_id?: number;
   name: string;
   slug?: string;
   app_form_xmlns?: string;

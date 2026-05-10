@@ -270,11 +270,20 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    - `max_total`: total visits per user across the opportunity (≥1)
    - `max_daily`: visits per user per day (≥1)
    - `start_date` / `end_date`: optional; default to opportunity dates
-   - `required_deliver_units`: which DU ids (from step 4) MUST be completed
-     for this payment to trigger. **At least one required DU is necessary**
-     for the opp to pass `is_setup_complete`; an empty `required_deliver_units`
-     blocks Phase 7 `connect_send_flw_invite` and Phase 5 mobile screenshot
-     capture (the FLW can't claim the opp).
+   - `required_deliver_units`: which DU ids MUST be completed for this
+     payment to trigger. **Pass `du.server_id`, not `du.id`.** As of
+     0.13.126 `connect_list_deliver_units` populates `server_id` (the
+     server-side primary key Connect's DB uses) on each returned DU by
+     reading the create-payment-unit form's checkbox values; this is
+     the field the create endpoint accepts. `du.id` is the per-opp
+     display index (1, 2, 3…) and is rejected by the server as
+     "Invalid Data". The MCP backend has a name-mapping fallback that
+     accepts `du.id` and maps it for you, but passing `server_id`
+     directly is the documented happy path. **At least one required DU
+     is necessary** for the opp to pass `is_setup_complete`; an empty
+     `required_deliver_units` blocks Phase 7 `connect_send_flw_invite`
+     and Phase 5 mobile screenshot capture (the FLW can't claim the
+     opp). Closes jjackson/ace#106 finding 5.
    - `optional_deliver_units`: which DUs are bonus/optional. **No DU id
      may appear in `required` and `optional` of the same unit, AND no DU
      may appear in two payment units in the same request** — the server
