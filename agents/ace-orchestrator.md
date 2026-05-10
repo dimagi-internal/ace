@@ -845,10 +845,20 @@ When invoked with an opportunity, execute these phases in order:
 **Notes:** Phase 8 is the first 1-1 LLO contact in the lifecycle. Recurring skills (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`, `ocs-chatbot-eval-monitor`) run on schedule during the active opportunity. `llo-launch` requires fresh deep verdicts (Phase 5 `/ace:qa-deep` output).
 
 ### Phase 9: Closeout
-Dispatch to the **closeout** agent. Triggered when the opportunity reaches its
-end date.
-This phase produces: Invoices pulled, Jira payment ticket created, LLO feedback
-collected, learnings summarized, cycle graded.
+
+**Dispatch:** `Agent(closeout)`. **Triggered when the opportunity reaches its end date.**
+
+**Inputs (inline at handoff):** Phase-8 outputs (LLO onboarding + UAT + go-live artifacts under `8-execution-manager/`), `opp.yaml.selected_llo`, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+
+**Atoms / skills used (orchestrator-visible only):** `Agent(closeout)`.
+
+**Outputs:** Invoices pulled; Jira payment ticket created; LLO feedback collected; learnings summarized; cycle graded.
+
+**Write-back:** `phases.closeout.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
+
+**Gate:** `[BLOCKER]` halts; **always pauses before** `opp-closeout` (Jira payment ticket creation) — unconditional in all modes. See § Pause Points in reference.
+
+**Notes:** Triggered by end-date, not by phase chaining — Phase 9 does NOT run automatically as part of `/ace:run` continuation from Phase 8. The closeout agent owns the trigger condition.
 
 ## Between Phases
 
