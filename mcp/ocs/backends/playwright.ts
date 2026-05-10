@@ -486,25 +486,39 @@ export class PlaywrightBackend {
     const deadline = Date.now() + timeoutSec * 1000;
 
     while (Date.now() < deadline) {
+      // Probe all files in parallel — they're independent CollectionFile rows
+      // on the OCS side; serial probing burns N×RTT per cycle for no benefit.
+      // For 5 files at ~200ms RTT, parallelizing shaves ~800ms/cycle, which
+      // adds up across the 150–300 cycles a 5–10 min indexing wait spans.
+      // The status endpoint returns an HTMX partial (HTML), not JSON. Scrape
+      // `data-tip="<status>"` ("In Progress" | "Failed" | "Complete") and
+      // `<N> chunks` from the chunk_count span. Verified against OCS
+      // 2026-04-11. `pk` in the URL is the CollectionFile PK, not File PK.
+      const probes = await Promise.all(
+        fileIds.map(async (fid) => {
+          const url = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/files/${fid}/status`;
+          const res = await this.opts.request('GET', url);
+          if (!res.ok || !res.text) return { fid, status: '', chunkCount: 0, ok: false };
+          const html = await res.text();
+          const statusMatch = html.match(/data-tip="([^"]+)"/);
+          const chunkMatch = html.match(/>(\d+)\s+chunks?<\/span>/);
+          return {
+            fid,
+            status: statusMatch?.[1] ?? '',
+            chunkCount: chunkMatch ? Number(chunkMatch[1]) : 0,
+            ok: true,
+          };
+        })
+      );
       let indexed = 0;
       const failed: number[] = [];
-      for (const fid of fileIds) {
-        // The status endpoint returns an HTMX partial (HTML), not JSON. Scrape
-        // `data-tip="<status>"` ("In Progress" | "Failed" | "Complete") and
-        // `<N> chunks` from the chunk_count span. Verified against OCS
-        // 2026-04-11. `pk` in the URL is the CollectionFile PK, not File PK.
-        const url = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/files/${fid}/status`;
-        const res = await this.opts.request('GET', url);
-        if (!res.ok || !res.text) continue;
-        const html = await res.text();
-        const statusMatch = html.match(/data-tip="([^"]+)"/);
-        const chunkMatch = html.match(/>(\d+)\s+chunks?<\/span>/);
-        const status = statusMatch?.[1] ?? '';
-        const chunkCount = chunkMatch ? Number(chunkMatch[1]) : 0;
-        if (chunkCount > 0 || status.toLowerCase() === 'complete' || status.toLowerCase() === 'completed') {
+      for (const p of probes) {
+        if (!p.ok) continue;
+        const lc = p.status.toLowerCase();
+        if (p.chunkCount > 0 || lc === 'complete' || lc === 'completed') {
           indexed++;
-        } else if (status.toLowerCase() === 'failed' || status.toLowerCase() === 'error') {
-          failed.push(fid);
+        } else if (lc === 'failed' || lc === 'error') {
+          failed.push(p.fid);
         }
       }
       if (failed.length > 0) {
