@@ -133,6 +133,26 @@ upstream — i.e., explicit Connect language in the autobuild brief,
 which `pdd-to-{learn,deliver}-app` now does — coverage is rarely a
 no-op and Bug 2 is rarely triggered.
 
+### Bug 4: XForm emitter does not entity-encode `<`/`>`/`&`/`"` in label/option/hint text (added 2026-05-10)
+
+**Discovered:** leep-paint-collection run `20260509-2204` Phase 2 halt at `app-release` Step 2.7. CCHQ rejected the Learn build with `Error parsing XML: StartTag: invalid element name, line 64, column 88` in form "Unique ID check" of menu "5. Stage 2 — Unique ID rules". Two label sites in Module 5 carried literal `<` characters that the architect had used as pattern-syntax placeholders:
+
+- Form "Unique ID rules — content" field `intra_study`: `Format: \`<COUNTRY><shop>.<can>\``
+- Form "Unique ID check" field `q5`: `**5. Which of the following matches the pattern \`<3 upper-case letters><number>.<number>\` (no spaces)?**`
+
+The backticks read as Markdown code-formatting; the underlying string still contains literal `<` characters. Nova's `compile_app` writes the XForm `<label>` element body without entity-encoding `<`/`>` (also probably `&`/`"` though we didn't repro those), so the emitted XForm is technically not well-formed XML. CCHQ's `make_build` parser rejects.
+
+**Why Nova validate didn't catch it:** `validate_app` runs against the structured Firestore blueprint (object model). The blueprint stores option labels as Python/JS strings — fine. The serialization-boundary bug only surfaces when CCHQ re-parses the emitted XForm during `make_build`.
+
+**Pre-fix diagnostic gap:** the `commcare_make_build` MCP atom previously raised a generic `Error` with `JSON.stringify(parsed).slice(0, 400)` in the message — operator had to peek at CCHQ's form-designer UI to read the actual rejection reason. Fixed in 0.13.140 (typed `BuildRejectedError`).
+
+**ACE-side mitigation (shipped 0.13.140 + 0.13.142):**
+- `pdd-to-learn-app/SKILL.md` (0.13.140) and `pdd-to-deliver-app/SKILL.md` (later patch) added a `REQUIRED:` paragraph forbidding literal `<`/`>`/`&`/`"` in label/option/hint text.
+- `mcp/connect/backends/commcare.ts` (0.13.140) detects `{saved_app:null, error_html:...}` and throws typed `BuildRejectedError` with HTML-stripped `error_text`.
+- `app-release/SKILL.md` (0.13.142) catches `BuildRejectedError` and runs an auto-fix loop: parse `error_text` → map form_name to Nova form_id → dispatch `/nova:edit` to repair the offending labels → re-upload (fresh HQ id) → retry `make_build`. Bounded to 3 iterations.
+
+**Upstream fix needed:** voidcraft-labs/nova-plugin issue #15 — XForm emitter must entity-encode `<`, `>`, `&`, `"` in label/option/hint/itext text. Trivial fix; recommend a unit-test fixture with a label containing all four characters that round-trips through `compile_app` and asserts the emitted XForm parses as valid XML.
+
 ### Bug 3: `add_fields` partial persistence on first call (added 2026-04-30)
 
 Symptom: `add_fields` called with N items in `fields[]` sometimes

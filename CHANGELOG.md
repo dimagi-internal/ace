@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.150 — 2026-05-10
+
+**Apply the angle-bracket constraint to `pdd-to-deliver-app` too; record Bug 4 in the Nova-bugs learnings doc.**
+
+Followup to 0.13.140 / 0.13.142: the angle-bracket constraint added in 0.13.140 only landed in `skills/pdd-to-learn-app/SKILL.md`. The same architect-brief composition pattern lives in `skills/pdd-to-deliver-app/SKILL.md`, where the bug is identically reachable — Deliver forms have labels, hint text, and option labels that flow through Nova's emitter via the same path. Adding the `REQUIRED:` paragraph there too closes the gap before it bites a Deliver build.
+
+Also adds `Bug 4` to `docs/learnings/2026-04-29-nova-connect-marker-bugs.md` with the leep run `20260509-2204` reproduction, the diagnostic gap that 0.13.140 closed, the auto-fix loop that 0.13.142 wired, and the upstream fix needed (voidcraft-labs/nova-plugin issue #15). Future-operator guidance: the existing learnings doc is the first place an operator looks when something Nova-emitter-shaped breaks; without the entry there's no breadcrumb from "make_build rejected with weird XML error" to "PR #206 / #208 already shipped the fix."
+
+Pure prose change — no code paths or atoms touched. No test additions; the loop's behavior is already covered by 0.13.140's `commcare-make-build.test.ts` and the prose contract in `app-release/SKILL.md` Step 4a.
+
 ## 0.13.142 — 2026-05-10
 
 **`app-release` auto-fix loop: catch `BuildRejectedError`, dispatch Nova architect to repair the offending form, retry `make_build` (bounded to 3 iterations).**
