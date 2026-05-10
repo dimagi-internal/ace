@@ -165,11 +165,13 @@ Same contract as `_qa-decisions.md`:
 - Cross-link from the producer's own `SKILL.md § Change Log`.
 - Future CI lint enforces every `producedBy` in `lib/artifact-manifest.ts` has a row in this table (sibling check to the QA registry coverage).
 
-## Eval-self-QA (deferred separate workstream)
+## Eval-self-QA — `verdict-yaml-qa`
 
-Per the migration spec's Phase 7: every `-eval` skill could get a small QA on its verdict YAML schema (verifying weights sum to 1.0, dimensions match the schema, severity tags valid). Cheap, mechanical, can land as a single shared `verdict-yaml-qa` helper.
+Per the migration spec's Phase 7: every `-eval` skill's verdict YAML is structurally checked by the cross-cutting `verdict-yaml-qa` skill. 7 static checks cover every concern that's mechanically expressible: YAML parses, schema validates against `lib/verdict-schema.ts § VerdictSchema`, dimension weights sum to 1.0, `overall_score` consistent with the weighted mean of dimensions, verdict tier matches score range (`pass`≥7.0, `warn` 5.0–7.0, `fail`<5.0), `live_state_verified: false` caps verdict at `partial` and overall at 8.5, gate `approve`/`reject` disposition consistent with `overall_score` vs `gate.threshold`.
 
-Not yet built. When shipped, will add a row to `_qa-decisions.md` for each `-eval` skill (effectively `verdict-yaml-qa` covers all of them).
+Single shared helper covers all 27 `-eval` skills' verdicts — adding a new `-eval` skill picks up coverage automatically without shipping a per-eval QA.
+
+See `skills/verdict-yaml-qa/SKILL.md` and `_qa-decisions.md § Eval-self-QA (cross-cutting)` for the contract; `skills/verdict-yaml-qa/checks.ts` for the importable static-check primitives.
 
 ## Change log
 
