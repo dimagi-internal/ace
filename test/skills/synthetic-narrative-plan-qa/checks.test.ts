@@ -229,7 +229,7 @@ anomalies:
 `;
     const r = checkAnomaliesTraceable(m);
     expect(r.pass).toBe(false);
-    expect(r.detail.toLowerCase()).toContain('required');
+    expect((r.detail ?? '').toLowerCase()).toContain('required');
   });
 });
 
