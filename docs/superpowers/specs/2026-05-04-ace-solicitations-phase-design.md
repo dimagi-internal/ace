@@ -47,7 +47,7 @@ Phase 8 (Execution Management) consumes the awarded org from `opp.yaml` and proc
 - `execution-management` is a subagent (rename of `llo-manager`).
 - No procedure-doc agents added.
 
-**Pause-points (updated `pause-points` framework in `ace-orchestrator.md`):**
+**Pause-points (updated `pause-points` framework in `agents/orchestrator-reference.md` § Pause Points):**
 - Phase 5 → 6: no longer a mandatory pause. The CLAUDE.md prose flagging Phase 5→6 as "always pause / external-communication boundary" moves to Phase 7→8.
 - **Phase 7 runs autonomously start to finish** (publish solicitation + send invites). No internal HITL gate.
 - Phase 7 → 7: **the new external-communication boundary**. `/ace:run` halts here in default mode. Phase 8 will not start until `opp.yaml.selected_llo.org_slug` is populated, which only happens via the manual `solicitation-review` skill.
