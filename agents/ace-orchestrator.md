@@ -1140,7 +1140,60 @@ the dispatched phase wrote its block back. This is the load-bearing
 backstop — even if the phase agent's prose says "I updated state",
 verify that the bytes landed.
 
-**Procedure.** After each `Agent(<phase>)` dispatch (subagent) or each
+### Phase Boundary Fence — when, in one message
+
+The verifier's actions happen as the **IMMEDIATE next assistant
+message** after the `Agent(<phase>)` tool_result returns. Not after a
+solo "Phase X complete" status text in a separate turn. Not after a
+solo `TaskUpdate` in a separate turn.
+
+These actions are independent and MUST be batched into ONE parallel
+message:
+
+- `drive_read_file` on `run_state.yaml` (verifier read — used next turn).
+- `drive_create_file` for the phase's gate-brief, if applicable.
+- `TaskUpdate` marking the current phase `completed` and the next phase `in_progress`.
+- `Skill(decisions-render)` to refresh the decisions gdoc (idempotent).
+
+A one-line text summary ("Phase N complete: <verdict>") may accompany
+these tool calls in the same message. It must NOT precede them in a
+separate turn.
+
+**Anti-pattern.** Boundary observed in real transcripts (each line a
+separate assistant turn):
+
+```
+Turn N:    Agent(<phase>) tool_result
+Turn N+1:  text "Phase 1 complete: proceed verdict, no blockers"
+Turn N+2:  drive_read_file run_state.yaml
+Turn N+3:  TaskUpdate
+Turn N+4:  drive_create_file gate-brief.md
+Turn N+5:  Skill(decisions-render)
+Turn N+6:  Agent(<next-phase>)
+```
+
+That's ~5 wasted turns × seconds each × 8 boundaries per run
+≈ 1.5–4 min of pure model-output latency per `/ace:run`.
+
+**Right pattern.**
+
+```
+Turn N:    Agent(<phase>) tool_result
+Turn N+1:  ONE message — drive_read_file + drive_create_file gate-brief
+           + TaskUpdate + Skill(decisions-render). Optional one-line
+           text summary in the same message.
+Turn N+2:  (only if N+1's read showed the phase block missing)
+           update_yaml_file stub fallback per "Procedure" below.
+Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
+```
+
+If the phase returned a `[BLOCKER]` or hard error, replace Turn N+3
+with a halt message — but Turn N+1 still happens (write-back is
+mandatory regardless of verdict).
+
+### Procedure
+
+After each `Agent(<phase>)` dispatch (subagent) or each
 inline procedure-doc completion (commcare-setup):
 
 1. `drive_read_file(<run_state.yaml fileId>)`.
