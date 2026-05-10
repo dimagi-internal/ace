@@ -719,8 +719,18 @@ viewing of legacy opps, but is no longer consulted for new runs.
 When invoked with an opportunity, execute these phases in order:
 
 ### Phase 1: Design Review & Iteration
-Dispatch to the **design-review** agent with the opportunity context.
-This phase produces: PDD and opp-specific test prompts derived from the PDD.
+
+**Dispatch:** `Agent(design-review)`.
+
+**Inputs (inline at handoff):** the inputs manifest, any `idea.md`, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the prompt template.
+
+**Atoms / skills used (orchestrator-visible only):** `Agent(design-review)`.
+
+**Outputs:** PDD (`1-design/idea-to-pdd.md`); opp-specific test prompts derived from the PDD.
+
+**Write-back:** `phases.design-review.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
+
+**Gate:** `[BLOCKER]` halts; pause-on-`idea-to-pdd` per § Pause Points (in reference).
 
 ### Phase 2: CommCare Setup
 **Execute the procedure in `agents/commcare-setup.md` inline** — do not
