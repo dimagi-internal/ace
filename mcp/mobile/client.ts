@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { AvdBackend } from './backends/avd.js';
+import { CloudBackend } from './backends/cloud.js';
 import { MaestroBackend } from './backends/maestro.js';
 import { RecipeGenerator, type LlmFn } from './backends/recipe-generator.js';
 import type {
@@ -14,7 +15,19 @@ import { logInfo } from './logging.js';
 export interface MobileClientOpts {
   avd?: AvdBackend;
   maestro?: MaestroBackend;
+  cloud?: CloudBackend;
   staticRecipesDir?: string;
+}
+
+/**
+ * Whether to route atom calls through the cloud backend instead of the
+ * local AVD/MAESTRO pair. Toggled by `ACE_MOBILE_BACKEND=cloud` in the
+ * spawn env (skills don't see this knob — the dispatcher does the
+ * routing transparently). When `false` the existing local-emulator
+ * behavior is unchanged.
+ */
+function shouldUseCloud(): boolean {
+  return (process.env.ACE_MOBILE_BACKEND || '').toLowerCase() === 'cloud';
 }
 
 const DEFAULT_STATIC_DIR = new URL('./recipes/static/', import.meta.url).pathname;
@@ -28,28 +41,52 @@ export interface DriveAdapter {
 export class MobileClient {
   readonly avd: AvdBackend;
   readonly maestro: MaestroBackend;
+  readonly cloud: CloudBackend | null;
   readonly staticRecipesDir: string;
+  readonly useCloud: boolean;
 
   constructor(opts: MobileClientOpts = {}) {
     this.avd = opts.avd ?? new AvdBackend();
     this.maestro = opts.maestro ?? new MaestroBackend();
     this.staticRecipesDir = opts.staticRecipesDir ?? DEFAULT_STATIC_DIR;
+    this.useCloud = shouldUseCloud();
+    // Lazy-construct cloud only when actually selected so envs without
+    // ACE_WEB_BASE_URL/PAT don't fail to start the MCP server.
+    this.cloud = opts.cloud ?? (this.useCloud ? new CloudBackend() : null);
   }
 
   // ---- Atom-level methods (one per capability) ----
 
-  ensureAvdRunning(name: string): Promise<AvdInfo> { return this.avd.ensureAvdRunning(name); }
-  stopAvd(name: string): Promise<void> { return this.avd.stopAvd(name); }
-  listAvds(): Promise<string[]> { return this.avd.listAvds(); }
-  installApk(avdName: string, apk: string): Promise<ApkInfo> { return this.avd.installApk(avdName, apk); }
+  ensureAvdRunning(name: string): Promise<AvdInfo> {
+    if (this.useCloud && this.cloud) return this.cloud.ensureAvdRunning(name);
+    return this.avd.ensureAvdRunning(name);
+  }
+  stopAvd(name: string): Promise<void> {
+    if (this.useCloud && this.cloud) return this.cloud.stopAvd(name);
+    return this.avd.stopAvd(name);
+  }
+  listAvds(): Promise<string[]> {
+    if (this.useCloud && this.cloud) return this.cloud.listAvds();
+    return this.avd.listAvds();
+  }
+  installApk(avdName: string, apk: string): Promise<ApkInfo> {
+    if (this.useCloud && this.cloud) return this.cloud.installApk(avdName, apk);
+    return this.avd.installApk(avdName, apk);
+  }
   uninstallApk(avdName: string, pkg: string): Promise<{ uninstalled: boolean }> {
+    if (this.useCloud && this.cloud) return this.cloud.uninstallApk(avdName, pkg);
     return this.avd.uninstallApk(avdName, pkg);
   }
-  captureUiDump(avdName: string): Promise<UiDumpResult> { return this.avd.captureUiDump(avdName); }
+  captureUiDump(avdName: string): Promise<UiDumpResult> {
+    if (this.useCloud && this.cloud) return this.cloud.captureUiDump(avdName);
+    return this.avd.captureUiDump(avdName);
+  }
   saveSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
+    if (this.useCloud && this.cloud) return this.cloud.saveSnapshot(avdName, snapshotName);
     return this.avd.saveSnapshot(avdName, snapshotName);
   }
   loadSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
+    if (this.useCloud && this.cloud) return this.cloud.loadSnapshot(avdName, snapshotName);
     return this.avd.loadSnapshot(avdName, snapshotName);
   }
 
@@ -60,6 +97,10 @@ export class MobileClient {
    * unauthorized device in the local adb-server's device list (see
    * `MaestroBackend.runRecipe`). Without `avdName` we fall back to
    * Maestro's default device auto-discovery for backward compatibility.
+   *
+   * On the cloud backend `avdName` is the desired baked state (e.g.
+   * `cc-2.62.0`). The recipe is shipped as a YAML string in the request
+   * body and screenshots are downloaded into `screenshotDir`.
    */
   async runRecipe(
     recipePath: string,
@@ -67,6 +108,9 @@ export class MobileClient {
     screenshotDir: string,
     avdName?: string,
   ): Promise<RecipeRunResult> {
+    if (this.useCloud && this.cloud) {
+      return this.cloud.runRecipe(recipePath, env, screenshotDir, { state: avdName });
+    }
     const adbPort = avdName ? await this.resolveAdbPort(avdName) : undefined;
     return this.maestro.runRecipe(recipePath, env, screenshotDir, { adbPort });
   }

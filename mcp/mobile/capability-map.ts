@@ -1,4 +1,7 @@
-export type Backend = 'MAESTRO' | 'AVD' | 'COMPOSITE';
+export type Backend = 'MAESTRO' | 'AVD' | 'COMPOSITE' | 'CLOUD';
+// CLOUD = ace-web's cloud emulator (HTTP API). Selected at runtime
+// when ACE_MOBILE_BACKEND=cloud is set; otherwise the existing
+// AVD/MAESTRO/COMPOSITE backends drive a local emulator.
 
 export type Capability =
   | 'ensure_avd_running'
