@@ -733,15 +733,20 @@ When invoked with an opportunity, execute these phases in order:
 **Gate:** `[BLOCKER]` halts; pause-on-`idea-to-pdd` per § Pause Points (in reference).
 
 ### Phase 2: CommCare Setup
-**Execute the procedure in `agents/commcare-setup.md` inline** — do not
-dispatch `Agent(commcare-setup)`. Phase 2 invokes `/nova:autobuild`
-(via `pdd-to-learn-app` and `pdd-to-deliver-app`), which itself
-dispatches the `nova:nova-architect-autonomous` subagent. That
-dispatch requires `Agent` at level 0 — running Phase 2 as a subagent
-would put Nova's dispatch at level 2 and fail. See § Agent Topology.
 
-This phase produces: Learn app, Deliver app, deployed apps on CCHQ, test results.
-(Training materials moved to Phase 5 (`qa-and-training`) in 0.9.0.)
+**Dispatch:** **inline procedure-doc `agents/commcare-setup.md`** — do NOT call `Agent(commcare-setup)`. Level-0 constraint, see Notes.
+
+**Inputs (inline at handoff):** PDD, prior-phase verdicts (`1-design/idea-to-pdd-{qa_result,eval_verdict}.yaml`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+
+**Atoms / skills used (orchestrator-visible only):** inline execution of `agents/commcare-setup.md`, which itself dispatches `/nova:autobuild` for `pdd-to-learn-app` + `pdd-to-deliver-app` (each Nova call is `Agent(nova:nova-architect-autonomous)` at level 0).
+
+**Outputs:** Learn app, Deliver app, deployed apps on CCHQ, test results (`2-commcare/app-test-cases.yaml` + `app-test-cases/J*.yaml`). (Training materials moved to Phase 5 (`qa-and-training`) in 0.9.0.)
+
+**Write-back:** `phases.commcare-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
+
+**Gate:** `[BLOCKER]` halts; pause-on-`app-deploy` per § Pause Points (in reference).
+
+**Notes:** Phase 2 invokes `/nova:autobuild`, which dispatches the `nova:nova-architect-autonomous` subagent. That dispatch requires `Agent` at level 0 — running Phase 2 itself as a subagent would put Nova's dispatch at level 2 and fail. See § Agent Topology in reference. This is the only orchestrator-visible inline procedure-doc dispatch in the workflow.
 
 ### Phase 3: Connect Setup
 Dispatch to the **connect-setup** agent.
