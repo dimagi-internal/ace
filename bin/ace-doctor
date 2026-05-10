@@ -1009,7 +1009,14 @@ if command -v curl >/dev/null 2>&1; then
       "googleapis:https://www.googleapis.com/"; do
     name="${entry%%:*}"
     url="${entry#*:}"
-    status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "$url" 2>/dev/null || echo "000")"
+    # curl's `-w '%{http_code}'` already prints 000 on connection failure
+    # (DNS, refused, timeout) — the trailing `|| echo "000"` is redundant
+    # AND harmful: when curl exits non-zero, both the -w "000" and the
+    # echo "000" land in the substitution, producing "000000" which
+    # falls through the case match below. The empty-fallback only fires
+    # if curl is missing entirely.
+    status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "$url" 2>/dev/null)"
+    [ -z "$status" ] && status="000"
     case "$status" in
       000)
         warn "net_$name: cannot reach $url (timeout/DNS/connection refused)" "check VPN/proxy; if you're on a corp network, ask IT to allow $url"
@@ -1203,9 +1210,16 @@ fi
 # 200 = key valid, 401 = invalid/revoked, anything else = transport
 # issue (covered by net_cchq probe above).
 if [ -n "$HQ_KEY_VAL" ] && [ -n "$HQ_DOMAIN" ] && [ -n "$HQ_USER" ]; then
+  # See net_reachability comment above for the curl `|| echo "000"`
+  # double-fallback bug — same pattern, same fix. Pre-this-fix, a
+  # connection failure here produced HTTP_PROBE_CODE="000000" which
+  # fell through to the catch-all WARN ("investigate; if persists,
+  # rotate the key"), misleading operators when the actual problem
+  # was network/DNS/timeout.
   HQ_API_PROBE_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
     -H "Authorization: ApiKey $HQ_USER:$HQ_KEY_VAL" \
-    "https://www.commcarehq.org/a/$HQ_DOMAIN/api/v0.5/application/?limit=1" 2>/dev/null || echo "000")"
+    "https://www.commcarehq.org/a/$HQ_DOMAIN/api/v0.5/application/?limit=1" 2>/dev/null)"
+  [ -z "$HQ_API_PROBE_CODE" ] && HQ_API_PROBE_CODE="000"
   case "$HQ_API_PROBE_CODE" in
     2*)
       pass "hq_api_key_auth: ACE_HQ_API_KEY authed against $HQ_DOMAIN (GET /api/v0.5/application/ → HTTP $HQ_API_PROBE_CODE)"
@@ -1279,6 +1293,98 @@ fi
 # deprecated fetchOtp path (mobile-bootstrap.md step 6 explicitly notes
 # OTP fetching is no longer the recommended flow); removed in 0.13.26.
 info "mobile_auth: ace-mobile is local — see connect_auth above for Connect-side state and [Mobile] block below for AVD / Maestro / cookies"
+
+# mobile_infra (added 0.13.128): single-line gate that summarizes mobile
+# readiness so an operator scanning [Auth liveness] sees the gating
+# signal without having to read the verbose [Mobile] block. The detail
+# block below is unchanged — it stays the diagnostic surface for
+# operators who get a WARN here and need to see which sub-check failed.
+#
+# Failure mode this catches: Phase 5's `app-screenshot-capture` skill
+# silently degrades to `verdict: incomplete` and ships a no-screenshot
+# training run when the AVD is offline / Maestro is missing / cookies
+# are stale (real failure mode from turmeric 20260509-1448 — AVD boot
+# stuck at `offline` + adb port-5037 collision; the verbose [Mobile]
+# block correctly reported the state but the doctor summary read clean
+# and the operator didn't see the gap until Phase 5's own report).
+#
+# Recovery is `/ace:mobile-bootstrap` for almost every failure here —
+# it's the canonical one-shot setup that installs Maestro, adb,
+# creates/repairs the AVD, seeds Playwright cookies, and verifies the
+# ACE_E2E_* env vars. The `fix:` hint always points there; for the rare
+# "ACE_E2E_PHONE not set" case, mobile-bootstrap also re-injects from
+# 1Password.
+MOBILE_ISSUES=()
+
+# Maestro present + executable
+_MOBILE_MAESTRO=""
+for _candidate in \
+    "$(command -v maestro 2>/dev/null)" \
+    "${HOME}/.maestro/bin/maestro"; do
+  [ -n "$_candidate" ] && [ -x "$_candidate" ] && _MOBILE_MAESTRO="$_candidate" && break
+done
+[ -z "$_MOBILE_MAESTRO" ] && MOBILE_ISSUES+=("maestro missing")
+
+# adb present + reachable (a stale daemon on port 5037 that's hung
+# manifests as `adb devices` hanging, not as a missing binary — bound
+# the call so we fail loud rather than wait forever).
+if ! command -v adb >/dev/null 2>&1; then
+  MOBILE_ISSUES+=("adb missing")
+elif ! _ADB_DEVICES_OUT="$(timeout 3 adb devices 2>/dev/null)"; then
+  MOBILE_ISSUES+=("adb daemon unreachable (port 5037 collision or stale daemon)")
+fi
+
+# Configured AVD exists + booted. AVD_NAME / EMULATOR_BIN resolution
+# logic is duplicated in [Mobile] block below; keeping it here too so
+# this check is self-contained and survives [Mobile]-block edits.
+_MOBILE_AVD_NAME="$(get_env ACE_AVD_NAME)"
+[ -z "$_MOBILE_AVD_NAME" ] && _MOBILE_AVD_NAME="${ACE_AVD_NAME:-ACE_Pixel_API_34}"
+_MOBILE_EMULATOR_BIN=""
+for _candidate in \
+    "$(command -v emulator 2>/dev/null)" \
+    "/opt/homebrew/share/android-commandlinetools/emulator/emulator" \
+    "${ANDROID_HOME:-}/emulator/emulator" \
+    "${ANDROID_SDK_ROOT:-}/emulator/emulator"; do
+  [ -x "$_candidate" ] && _MOBILE_EMULATOR_BIN="$_candidate" && break
+done
+if [ -z "$_MOBILE_EMULATOR_BIN" ]; then
+  MOBILE_ISSUES+=("emulator binary not on PATH (Android SDK missing)")
+elif ! "$_MOBILE_EMULATOR_BIN" -list-avds 2>/dev/null | grep -q "^${_MOBILE_AVD_NAME}$"; then
+  MOBILE_ISSUES+=("AVD '${_MOBILE_AVD_NAME}' not created")
+elif ! echo "${_ADB_DEVICES_OUT:-}" | grep -q "^emulator-"; then
+  MOBILE_ISSUES+=("AVD '${_MOBILE_AVD_NAME}' not booted")
+fi
+
+# Playwright cookies: directory exists with a non-empty Cookies file.
+_MOBILE_PW_DIR="${ACE_PLAYWRIGHT_USER_DATA_DIR:-${HOME}/.ace/playwright-userdata}"
+if ! [ -d "${_MOBILE_PW_DIR}" ] || ! find "${_MOBILE_PW_DIR}" -name 'Cookies' -type f -size +0c 2>/dev/null | grep -q .; then
+  MOBILE_ISSUES+=("Playwright cookies missing (${_MOBILE_PW_DIR})")
+fi
+
+# E2E env vars (registration on a fresh AVD requires phone+PIN+backup-code)
+_MOBILE_MISSING_ENV=()
+for _v in ACE_E2E_PHONE ACE_E2E_PIN ACE_E2E_BACKUP_CODE; do
+  _val="$(get_env "$_v")"
+  [ -z "$_val" ] && _val="${!_v:-}"
+  [ -z "$_val" ] && _MOBILE_MISSING_ENV+=("$_v")
+done
+if [ ${#_MOBILE_MISSING_ENV[@]} -gt 0 ]; then
+  MOBILE_ISSUES+=("env vars missing: $(IFS=,; echo "${_MOBILE_MISSING_ENV[*]}")")
+fi
+
+if [ ${#MOBILE_ISSUES[@]} -eq 0 ]; then
+  pass "mobile_infra: maestro + adb + AVD '${_MOBILE_AVD_NAME}' booted, cookies + ACE_E2E_* env all OK (Phase 5 app-screenshot-capture ready)"
+else
+  # Build the joined string with `; ` separators. `IFS=…` with `${arr[*]}`
+  # only uses the first IFS char as separator (bash 3.2 limitation), so a
+  # manual loop gives readable multi-issue messages.
+  _MOBILE_JOINED=""
+  for _issue in "${MOBILE_ISSUES[@]}"; do
+    _MOBILE_JOINED="${_MOBILE_JOINED:+${_MOBILE_JOINED}; }${_issue}"
+  done
+  warn "mobile_infra: ${_MOBILE_JOINED}. Phase 5 app-screenshot-capture will degrade to verdict:incomplete and ship a no-screenshot training run." "/ace:mobile-bootstrap (one-shot recovery for all of these — installs Maestro, adb, creates/boots the AVD, seeds Playwright cookies, re-injects ACE_E2E_* from 1Password). See [Mobile] block below for per-component detail."
+fi
+unset MOBILE_ISSUES _MOBILE_MAESTRO _ADB_DEVICES_OUT _MOBILE_AVD_NAME _MOBILE_EMULATOR_BIN _MOBILE_PW_DIR _MOBILE_MISSING_ENV _candidate _v _val
 
 echo ""
 echo "[Mobile]"

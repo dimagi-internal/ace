@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.128 — 2026-05-09
+
+**Doctor: fix the `HTTP 000000` red-herring + add a `mobile_infra` auth-liveness check.**
+
+Two bugs in `bin/ace-doctor`:
+
+1. **`HTTP 000000` from `hq_api_key_auth` (and latently `net_*`):** the curl probe wrote both `-w '%{http_code}'` (`000` on connection failure) AND a redundant trailing `|| echo "000"`. On any actual connection failure, both fired and `$(...)` captured the concatenation `"000000"`, which fell through the case statement's `000)` arm and landed on the catch-all WARN ("investigate; if persists, rotate the key") — misleading operators when the real problem was network/DNS/timeout. Fixed: drop the `|| echo` (curl already writes 000) and use an empty-fallback only for the truly-curl-missing case. Same fix applied at `net_reachability` (latent — never observed in the wild but architecturally identical).
+
+2. **No mobile-infra gate:** the existing `[Mobile]` block reported per-component status verbosely but didn't surface in the `[Auth liveness]` summary, so a doctor scan read clean even when Phase 5's `app-screenshot-capture` would degrade to `verdict: incomplete`. Added: `mobile_infra` PASS/WARN under `[Auth liveness]` that checks Maestro present, adb daemon reachable (with a 3s timeout to catch port-5037 hangs), the configured AVD exists + booted, Playwright cookies non-empty, and the three `ACE_E2E_*` env vars populated. Single-line summary names every failed sub-check; `fix:` hint always points to `/ace:mobile-bootstrap` (the canonical one-shot recovery for all of these). Detailed `[Mobile]` block below remains the diagnostic surface for operators who get a WARN and need per-component detail.
+
+Real failure mode this prevents: turmeric run 20260509-1448 Phase 5 — AVD boot stuck at `offline` + adb port-5037 collision; verbose `[Mobile]` block reported the state correctly but the doctor summary read clean and the gap surfaced first inside Phase 5's own report ~10 minutes later.
+
 ## 0.13.126 — 2026-05-09
 
 **Fix #106 finding 5: `connect_list_deliver_units` now returns the server PK each DU needs for `connect_create_payment_unit.required_deliver_units`.**
