@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.169 — 2026-05-11
+
+**Phase 4 state-consolidation: `skill:ocs-agent-setup` writes `phases.ocs-setup.products.ocs_chatbot` with `{experiment_id, public_id, embed_key, team_slug, admin_url}`.**
+
+Adds Step 12 to ocs-agent-setup. Already-written values (`experiment_id`, `public_id`, `embed_key`) are repeated into the typed-state block so downstream readers — ace-web's summary page, `llo-onboarding`, the Connect widget handoff — get them without parsing the widget-handoff markdown table. `admin_url` is constructed correctly as `https://www.openchatstudio.com/a/<team_slug>/chatbots/<experiment_id>/`; the legacy `/chatbots/embed/<public_id>/` URL written elsewhere is a 404 and is intentionally NOT in the typed handoff.
+
+Sole writer per the consolidation convention. Two-level merge.
+
+All 915 unit tests pass.
+
 ## 0.13.168 — 2026-05-11
 
 **Phase 1 state-consolidation: `skill:idea-to-pdd` writes a `phases.design.products.pdd` block with `{title, description, file_id}`.**
