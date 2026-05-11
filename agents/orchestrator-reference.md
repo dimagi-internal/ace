@@ -91,17 +91,25 @@ phases:
 status is derived from `phases.<phase>.status` + per-skill verdict
 files at runtime; no separate field carries it. See § Pause Points.)
 
-**Per-phase `outputs:` block (state-consolidation PR a onward).** Each
-`phases.<phase>` may carry an `outputs:` map of *typed cross-run state*
-produced during that phase — Connect IDs (`phases.connect-setup.outputs.connect`),
-OCS chatbot (`phases.ocs-setup.outputs.ocs_chatbot`), solicitation +
-selected_llo (`phases.solicitation-management.outputs.*`), synthetic
-(`phases.synthetic-data-and-workflows.outputs.synthetic`). The
-orchestrator's run-init seed step (`ace-orchestrator.md § Step 6b`)
-copies the prior run's `outputs` forward, so a newly minted run starts
-with its parent's inherited state visible at the same path. See
-`docs/superpowers/specs/2026-05-10-state-consolidation.md` for the
-target shape and the per-block migration sequence (PRs a-e).
+**Per-phase `outputs:` block.** Each `phases.<phase>` may carry an
+`outputs:` map of typed state produced during that phase — Connect IDs
+(`phases.connect-setup.outputs.connect`), OCS chatbot
+(`phases.ocs-setup.outputs.ocs_chatbot`), solicitation + selected_llo
+(`phases.solicitation-management.outputs.*`), synthetic
+(`phases.synthetic-data-and-workflows.outputs.synthetic`). **Per-run
+only** — every run is independent and creates its own entities. No
+run reads from or writes to another run's `run_state.yaml`. Each
+run's `outputs.*` is the complete record of that run.
+
+The only cross-run reuse surface is `opp.yaml`, which holds opp-level
+identifiers (Connect program UUID + URL + labs_int_id) that survive
+across runs. Each run's `connect-opp-setup` records a copy of the
+program identifiers into its own `outputs.connect.program` so the
+run state file is self-contained for forking / debugging.
+
+See `docs/superpowers/specs/2026-05-10-state-consolidation.md` for
+historical context (the original design had cross-run inheritance via
+a seed step; that was reverted in favour of run independence).
 
 **`initiated_by`** — the operator who kicked off the opp. Set once in
 "Starting a New Opportunity" from `git config user.email`. Never overwritten.
@@ -348,7 +356,7 @@ implicitly via path lacking a `runs/` prefix):
 
 | Path | Role |
 |---|---|
-| `ACE/<opp>/opp.yaml` | Thin identity: `display_name`, `slug`, `tags`, `created_at`, `created_by`. No evolving state — that all lives under `runs/<run-id>/run_state.yaml.phases.<phase>.outputs.*` and is inherited per-run via the orchestrator's seed step (see `ace-orchestrator.md § Step 6b`). Older opps may still carry `selected_llo`, `solicitation`, `synthetic`, `connect`, `ocs_chatbot` blocks here — they're being migrated to `outputs` across PRs a-d (see `docs/superpowers/specs/2026-05-10-state-consolidation.md`); fallback reads on the old locations remain until PR e strips them. |
+| `ACE/<opp>/opp.yaml` | Identity (`display_name`, `slug`, `tags`, `created_at`, `created_by`) plus `connect.program.{id, url, labs_int_id}` — the durable Connect program reference reused across every run of the opp. Written by `connect-program-setup` on first create; subsequent runs read this to skip program-create. Every other piece of evolving state (Connect opportunity, OCS chatbot, solicitation, selected_llo, synthetic) is per-run and lives only in the producing run's `run_state.yaml.phases.<phase>.outputs.*`. Older opps may still carry stale `solicitation`/`selected_llo`/`synthetic`/`connect.opportunity`/`ocs_chatbot` blocks here from earlier dual-write iterations — no longer read or written; operator-cleaned-up when picking a release-candidate run. |
 | `ACE/<opp>/inputs/` | Human-curated source pack. Read-only — every run's Phase 1 reads via the run-root inputs-manifest. |
 | `ACE/<opp>/eval-calibration/known-issues.md` | Ground-truth catalogue every `-eval` rubric reads. Calibration survives across runs. |
 | `ACE/<opp>/open-questions.md` | Deferred questions that accrete across runs until answered. |
@@ -383,17 +391,19 @@ no longer written.
 downstream) from a prior run's outputs:
 
 1. Reuse the existing per-opp files (`opp.yaml`, `inputs/`,
-   `eval-calibration/`, `open-questions.md`) — do not copy. Cross-run
-   `outputs` (Connect IDs, solicitation, selected_llo, synthetic) are
-   inherited automatically by the orchestrator's seed step at run init
-   (see `ace-orchestrator.md § Step 6b`), so the new run starts with
-   the prior run's outputs visible at `phases.<phase>.outputs.*`.
+   `eval-calibration/`, `open-questions.md`) — do not copy. The
+   Connect program reference at `opp.yaml.connect.program` is the
+   only cross-run identity that survives — the new run reads it and
+   skips program-create. Everything else the new run produces fresh.
 2. Mint a new run-id (`YYYYMMDD-HHMM` per § State Schema), create
    `runs/<new-run-id>/` and seed `run_state.yaml` per the defensive
    init in § State Schema.
 3. For each upstream phase you want to keep, copy
    `runs/<prior-run-id>/<N>-<phase>/` into the new run's folder. Mark
-   those phases `done` in the new `run_state.yaml`.
+   those phases `done` in the new `run_state.yaml`. Also copy the
+   relevant `phases.<phase>.outputs.<block>` from the prior run's
+   `run_state.yaml` into the new run's `run_state.yaml` so the new
+   run's state is self-contained (no cross-run reads at runtime).
 4. Phases you re-run will write fresh verdicts/transcripts/producer
    artifacts under the new run-id; the Producer Artifact Verifier
    (§ Producer Artifact Verifier) will check against the new
@@ -538,8 +548,8 @@ Phase agents MAY also use `update_yaml_file` with the default
 key. The contract above is specifically for incremental run_state.yaml
 writes during a `/ace:run`.
 
-**Writing `phases.<phase>.outputs.<block>`.** Cross-run outputs nest
-three levels deep (`phases` → `<phase>` → `outputs` → `<block>`). With
+**Writing `phases.<phase>.outputs.<block>`.** Outputs nest three
+levels deep (`phases` → `<phase>` → `outputs` → `<block>`). With
 `merge: 'two-level'`, a patch like
 `phases: { <phase>: { outputs: { <block>: {...} } } }` replaces the
 *entire* `outputs:` subtree under that phase wholesale. Two cases:
@@ -550,17 +560,17 @@ three levels deep (`phases` → `<phase>` → `outputs` → `<block>`). With
   accumulates in-memory through its steps and writes the consolidated
   block once at end-of-skill.
 - **Multi-writer block.** Several skills produce different sub-keys
-  of the same block (e.g. `outputs.synthetic` is written by
-  `synthetic-data-generate` (top-level fields + `labs_opp_id`),
-  `synthetic-workflow-seed` (`workflows.*`), and
-  `synthetic-walkthrough-run` (`walkthroughs[]` append)). Each writer
-  reads the existing block, merges in its contribution preserving
-  siblings, and writes back. The `update_yaml_file` CAS retry handles
-  concurrent writers across skills.
+  of the same block within the same run (e.g. `outputs.synthetic` is
+  written by `synthetic-data-generate` (top-level fields +
+  `labs_opp_id`), `synthetic-workflow-seed` (`workflows.*`), and
+  `synthetic-walkthrough-run` (`walkthroughs[]`)). Each writer reads
+  the existing block from the *current* run's `run_state.yaml`, merges
+  in its contribution preserving siblings, and writes back. The
+  `update_yaml_file` CAS retry handles concurrent writers across
+  skills within the same run.
 
-Either way, the producing skill is the sole writer of *its* sub-keys
-within the block; partial writes that ignore sibling sub-keys would
-clobber other writers.
+Either way, every read and every write operates only on the current
+run's `run_state.yaml`. Cross-run reads are not allowed.
 
 Do NOT pair a manual `drive_read_file` + `drive_update_file` to
 read-modify-write `run_state.yaml` from the agent — `update_yaml_file`
@@ -593,50 +603,20 @@ required rows. PR #1 covers Phase 1 (`idea-to-pdd`); Phase 2–9 writes
 ship in PR #3 of the decisions-log series. Schema and YAML helpers
 live in `lib/decisions-schema.ts`.
 
-## Recurring Writers
+## Recurring writers — TBD
 
-Some skills run on cron *outside* `/ace:run`: `solicitation-monitor`,
-`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`,
-`ocs-chatbot-eval-monitor`. They mutate cross-run state without owning
-a run-id of their own.
+Cron-driven skills (`solicitation-monitor`, `timeline-monitor`,
+`flw-data-review`, `ocs-chatbot-{qa,eval}-monitor`) fire outside any
+`/ace:run` invocation, which means they have no current run-id of
+their own. They need a stable way to read and write opp-level state
+under the "every run is independent — no run reads from or writes to
+another run's `run_state.yaml`" rule.
 
-**Rule.** A recurring writer mutates the `run_state.yaml` of the run
-that *produced* the block it's updating. In practice that's the most
-recent run under `ACE/<opp>/runs/` — since each `/ace:run` seeds its
-`outputs` from the prior run at run init (§ Step 6b of
-`ace-orchestrator.md`), the latest run's state always carries the
-canonical chain. Procedure:
-
-1. List `ACE/<opp>/runs/` (`drive_list_folder`); pick the most recent
-   run-id (sort descending; run-ids are `YYYYMMDD-HHMM` lexically
-   sortable).
-2. Read that run's `run_state.yaml` (`drive_read_file`). Locate the
-   target `phases.<phase>.outputs.<block>` (with legacy `opp.yaml.*`
-   fallback for pre-migration opps).
-3. Construct the *full* `outputs.<block>` payload — recall that
-   `merge: 'two-level'` replaces `outputs:` wholesale, so partial
-   patches would clobber sibling fields. Read-modify-write: keep
-   sibling fields from the read; mutate only the field(s) you own.
-4. Apply the patch with `update_yaml_file` + `merge: 'two-level'`.
-   The CAS retry handles concurrent writers (a `/ace:run` that lands
-   between the read and write will lose the race; the recurring writer
-   re-reads and re-merges once).
-5. Backward-compat: also patch the legacy `opp.yaml.<block>` until
-   cleanup PR e (PR e of the state-consolidation refactor strips
-   fallbacks).
-
-**Why mutate the producing run, not mint a new one.** A monitor that
-mints a new run-id per cron firing inflates `runs/` by one entry per
-poll (30+ folders for a 30-day open solicitation), each carrying only
-a one-field status transition. Mutating the producing run keeps the
-runs/ directory aligned with `/ace:run` invocations and matches the
-semantic — the state belongs to the work that produced it; the
-monitor is bookkeeping.
-
-Forking does not change this rule. A forked run inherits the chain
-via the seed step; the recurring writer continues to update the *now-
-most-recent* run, which is the fork (or the original, depending on
-which was minted later).
+This is **unresolved**. Open as part of the Phase 7+/8 redesign. Each
+recurring skill's `SKILL.md` currently documents its own provisional
+approach (often "read-only against the most recent run, no writes").
+Do not codify a global rule here until the Phase 7+/8 architecture is
+settled.
 
 ## Phase Write-Back Verifier — procedure
 

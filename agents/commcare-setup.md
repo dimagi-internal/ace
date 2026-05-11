@@ -229,19 +229,17 @@ Invoke the `app-deploy` skill.
   any labs solicitation already published for this opp. Per
   `skills/solicitation-create/SKILL.md`, solicitations are scoped to a
   labs `program_id`, NOT to a specific Connect opportunity UUID — the
-  `connect_opportunity_id` field under
-  `phases.solicitation-management.outputs.solicitation` (legacy
-  fallback: `opp.yaml.solicitation.connect_opportunity_id`) is ACE-side
+  `connect_opportunity_id` field under the current run's
+  `phases.solicitation-management.outputs.solicitation` is ACE-side
   bookkeeping that records ACE's intended target, not a labs-side
   foreign key. The public solicitation URL keeps working, the deadline
   keeps counting down, candidate LLO views and applications continue
   uninterrupted. The recovery is one `connect_delete_opportunity` +
   `connect_create_opportunity` against canonical HQ ids + a
-  `connect_opportunity_id` bookkeeping update at the new location (and
-  legacy `opp.yaml.solicitation.connect_opportunity_id` until cleanup
-  PR e). **Repointing the Connect opp pre-Phase-8 is therefore a
-  low-cost recovery, not a destructive one.** Phase 8 onboarding then
-  targets the new opp UUID. Surfaced 2026-04-30
+  `connect_opportunity_id` bookkeeping update in the current run's
+  `run_state.yaml`. **Repointing the Connect opp pre-Phase-8 is
+  therefore a low-cost recovery, not a destructive one.** Phase 8
+  onboarding then targets the new opp UUID. Surfaced 2026-04-30
   (turmeric-20260429-2330) and re-confirmed cheaply 2026-05-07
   (turmeric-20260507-1733).
 

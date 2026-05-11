@@ -13,10 +13,11 @@ written by `synthetic-walkthrough-spec`, dispatches the
 `canopy:walkthrough` skill once per persona, and uploads each resulting
 HTML slideshow + scored screenshots to the run folder. Each invocation
 appends to `phases.synthetic-data-and-workflows.outputs.synthetic.walkthroughs[]`
-in the current run's `run_state.yaml` (backward-compat: also appends
-to `opp.yaml.synthetic.walkthroughs[]` until cleanup PR e) so a
-project history accumulates. The orchestrator's run-init seed step
-copies the prior run's list forward so the chain stays continuous.
+in the **current run's** `run_state.yaml`. Each run accumulates its
+own walkthroughs list as personas are dispatched within that run; the
+list does NOT chain across runs (every `/ace:run` is independent).
+Operators reviewing walkthrough history across multiple runs look at
+each run's state file separately or consult ace-web's run listing.
 
 The `canopy:walkthrough` skill is the source of truth for the
 walkthrough orchestration — scene loop, browse capture, deck
@@ -36,7 +37,7 @@ rubric — see `synthetic-workflow-polish-eval/SKILL.md` step 7.)
 |---|---|---|
 | Phase 6 | `6-synthetic/synthetic-walkthrough-spec_<persona>.yaml` (one per persona) | the spec dispatched to canopy:walkthrough |
 | Drive | `ACE/<opp>/opp.yaml` | `display_name`, `slug` |
-| Current run's `run_state.yaml` | `phases.synthetic-data-and-workflows.outputs.synthetic.labs_opp_id` (legacy fallback: `opp.yaml.synthetic.labs_opp_id`) | walkthrough scope |
+| Current run's `run_state.yaml` | `phases.synthetic-data-and-workflows.outputs.synthetic.labs_opp_id` | walkthrough scope |
 | Env | `${CLAUDE_PLUGIN_DATA}/.env` → `ACE_HQ_USERNAME` / `ACE_HQ_PASSWORD` | CommCareHQ creds for the headless OAuth-via-CCHQ flow used by `bin/ace-labs-walkthrough-login` (which reuses `mcp/connect/auth/hq-oauth-login.ts`) |
 | Operator (CLI, optional) | `--persona <name>` | run a single persona instead of all |
 | Operator (CLI, optional) | `--personas <comma-list>` | run a subset of personas |
@@ -46,7 +47,7 @@ rubric — see `synthetic-workflow-polish-eval/SKILL.md` step 7.)
 - `6-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/slideshow.html` — the HTML deck (per persona, per run, timestamped)
 - `6-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/scenes/scene_<n>.png` — per-scene screenshots
 - `6-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/eval.json` — per-scene scores from the canopy walkthrough's LLM-as-Judge
-- `run_state.yaml.phases.synthetic-data-and-workflows.outputs.synthetic.walkthroughs[]` — appended (NOT overwritten) per persona run via read-modify-write. Inherited by subsequent runs via the orchestrator's seed step (chain stays continuous across runs). Backward-compat: also appends to `opp.yaml.synthetic.walkthroughs[]` until cleanup PR e.
+- `run_state.yaml.phases.synthetic-data-and-workflows.outputs.synthetic.walkthroughs[]` — appended (NOT overwritten) per persona run via read-modify-write within the current run. Per-run only — does not chain across runs.
 - `run_state.yaml.phases.synthetic-data-and-workflows.synthetic-walkthrough-run.steps[<persona>]: done`
 
 ## Pre-flight
@@ -171,10 +172,9 @@ by `--persona` / `--personas`):
    `phases.synthetic-data-and-workflows.outputs.synthetic.walkthroughs[]`**
    in the current run's `run_state.yaml` via read-modify-write:
 
-   1. `drive_read_file` on `run_state.yaml`; extract the existing
-      `outputs.synthetic` block (the orchestrator's seed step
-      pre-populates `walkthroughs[]` from the prior run, so the chain
-      is continuous).
+   1. `drive_read_file` on the current run's `run_state.yaml`;
+      extract the existing `outputs.synthetic` block (this run's own
+      writes only — there's no cross-run chain).
    2. Append the new entry to `walkthroughs[]`; keep sibling sub-keys
       (`enabled`, `current_*`, `workflows`, etc.) intact:
 
@@ -193,12 +193,11 @@ by `--persona` / `--personas`):
    3. `update_yaml_file` with `merge: 'two-level'` on the full
       `phases.synthetic-data-and-workflows.outputs` payload.
 
-   **Backward-compat:** also append to `opp.yaml.synthetic.walkthroughs[]`
-   via the same read-modify-write pattern on `opp.yaml` until cleanup
-   PR e.
+   **No write to `opp.yaml.synthetic` — synthetic state is per-run only.**
 
-   Re-runs APPEND a new entry; never overwrite an existing one. The
-   list grows monotonically so a project keeps a history.
+   Within a run, re-runs of this skill (per-persona) APPEND new
+   entries; never overwrite existing ones. The list grows within
+   the run's walkthrough history.
 
 6. **Update `run_state.yaml`.** Read-merge-write the per-persona step:
 
@@ -263,8 +262,7 @@ flow-testing without browser load.
 - `canopy:walkthrough` — the upstream skill this dispatches; consult
   its `SKILL.md` for the full browser/AI contract.
 - `synthetic-summary` — bundles links to each persona slideshow from
-  `phases.synthetic-data-and-workflows.outputs.synthetic.walkthroughs[]`
-  (legacy fallback: `opp.yaml.synthetic.walkthroughs[]`).
+  the current run's `phases.synthetic-data-and-workflows.outputs.synthetic.walkthroughs[]`.
 
 ## Change Log
 

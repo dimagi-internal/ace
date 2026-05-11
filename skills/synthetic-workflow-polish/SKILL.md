@@ -45,9 +45,8 @@ Two modes:
    `opp.yaml`, the current run's `run_state.yaml`, and the PDD via
    `drive_read_file`. Resolve `llo_weekly_review_id` from
    `phases.synthetic-data-and-workflows.outputs.synthetic.workflows.llo_weekly_review_id`
-   (legacy fallback: `opp.yaml.synthetic.workflows.llo_weekly_review_id`).
-   Halt if missing at both locations: "run `synthetic-workflow-seed`
-   first."
+   in the current run's `run_state.yaml`. Halt if missing: "run
+   `synthetic-workflow-seed` first (in this run)."
 
    Read `scaffold_unsuitable` from the workflow seed summary. Branch:
 

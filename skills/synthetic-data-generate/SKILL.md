@@ -26,7 +26,7 @@ deferred to later stages. This skill is the data plumbing only.
 | Source | Artifact | Used for |
 |---|---|---|
 | Operator (CLI) | `--opp <slug>` | opp folder under `ACE/` |
-| Operator (CLI, optional) | `--opp-int-id <integer>` | labs-side integer opportunity ID — **defaults to `phases.connect-setup.outputs.connect.opportunity.labs_int_id`** in the current run's `run_state.yaml` (inherited from prior runs via the orchestrator's seed step; auto-recovered by `connect-opp-setup` Stage 4.5). Falls back to legacy `opp.yaml.connect.opportunity.labs_int_id` until cleanup PR e. Pass explicitly to override. |
+| Operator (CLI, optional) | `--opp-int-id <integer>` | labs-side integer opportunity ID — **defaults to `phases.connect-setup.outputs.connect.opportunity.labs_int_id`** in the current run's `run_state.yaml` (auto-recovered by `connect-opp-setup` Stage 4.5). Pass explicitly to override. |
 | Operator (CLI, optional) | `--manifest <drive-path>` | pre-authored manifest YAML; if omitted, the skill writes a default and pauses |
 | Operator (CLI, optional) | `--no-pause` | skip the manifest-review pause when accepting the default |
 | Phase 1 | `inputs/pdd.md` | (default-manifest mode) primary measurement field for the KPI |
@@ -38,7 +38,7 @@ deferred to later stages. This skill is the data plumbing only.
 - `6-synthetic/synthetic-data-generate_manifest.yaml` — the manifest sent to labs (default or operator-edited)
 - `6-synthetic/synthetic-data-generate.md` — run summary (folder ID, record counts, labs URL, warnings)
 - `6-synthetic/synthetic-data-generate_error.md` — written instead of the summary on `INVALID_SCHEMA` failures
-- `run_state.yaml.phases.synthetic-data-and-workflows.outputs.synthetic` block populated/extended with `enabled`, `current_folder_id`, `current_run_id`, `generated_at`, `fixture_record_counts`, `labs_opp_id` (read-modify-write to preserve other writers' sub-keys; see `agents/orchestrator-reference.md § Phase Write-Back Contract`). Backward-compat: also writes `opp.yaml.synthetic` until cleanup PR e.
+- `run_state.yaml.phases.synthetic-data-and-workflows.outputs.synthetic` block populated/extended with `enabled`, `current_folder_id`, `current_run_id`, `generated_at`, `fixture_record_counts`, `labs_opp_id` (read-modify-write to preserve sibling sub-keys from `synthetic-workflow-seed` and `synthetic-walkthrough-run`; see `agents/orchestrator-reference.md § Phase Write-Back Contract`). Per-run only.
 - `run_state.yaml.phases.synthetic-data-and-workflows.steps.synthetic-data-generate.status: done`
 
 ## Process
@@ -61,18 +61,15 @@ deferred to later stages. This skill is the data plumbing only.
    **Resolve the labs int ID** (try in order; first non-null wins):
    1. `--opp-int-id <N>` operator override.
    2. Current run's `run_state.yaml.phases.connect-setup.outputs.connect.opportunity.labs_int_id`
-      (new canonical location since state-consolidation PR a; inherited
-      from prior runs via the orchestrator's seed step). Read via
-      `drive_read_file` on `runs/<last_run_id>/run_state.yaml`.
-   3. Legacy fallback: `opp.yaml.connect.opportunity.labs_int_id`
-      (auto-recovered by Stage 4.5's `connect-opp-setup` enhancement;
-      still written until cleanup PR e strips it).
-   4. If all three are missing, halt with: "labs int_id not in
-      run_state.yaml or opp.yaml and no `--opp-int-id` passed. Either
-      re-run `/ace:step connect-opp-setup` to retry the labs lookup
-      (it sometimes lags Connect by a few seconds on first creation),
-      or pass `--opp-int-id <N>` explicitly after looking up the int
-      in the labs UI synthetic dropdown."
+      (auto-recovered by Stage 4.5's `connect-opp-setup` enhancement
+      in this same run). Read via `drive_read_file` on
+      `runs/<last_run_id>/run_state.yaml`.
+   3. If both are missing, halt with: "labs int_id not in run_state.yaml
+      and no `--opp-int-id` passed. Either re-run
+      `/ace:step connect-opp-setup` to retry the labs lookup (it
+      sometimes lags Connect by a few seconds on first creation), or
+      pass `--opp-int-id <N>` explicitly after looking up the int in
+      the labs UI synthetic dropdown."
 
    Construct the run folder path:
    `ACE/<opp>/runs/<last_run_id>/6-synthetic/`. Create it via
@@ -318,15 +315,11 @@ deferred to later stages. This skill is the data plumbing only.
    3. `update_yaml_file` with `merge: 'two-level'` on the full
       `phases.synthetic-data-and-workflows.outputs` payload.
 
-   **Backward-compat:** also patch the legacy `opp.yaml.synthetic`
-   block via a separate `update_yaml_file` call (`merge: 'shallow'` —
-   `synthetic:` is its own top-level key). Strip in cleanup PR e.
-
    If a `synthetic:` block already exists at the new location (re-run
-   in same run, or seeded from prior run), this skill's keys overwrite
-   the prior values; other writers' sub-keys (`workflows`,
-   `walkthroughs`) are preserved per the read-modify-write recipe
-   above.
+   in same run), this skill's keys overwrite the prior values; other
+   writers' sub-keys (`workflows`, `walkthroughs`) are preserved per
+   the read-modify-write recipe above. **No write to
+   `opp.yaml.synthetic` — synthetic state is per-run only.**
 
 6. **Update `run_state.yaml`** — read-merge-write, NOT a naïve
    `update_yaml_file` patch.
@@ -380,7 +373,7 @@ deferred to later stages. This skill is the data plumbing only.
 - `mcp__plugin_ace_ace-gdrive__drive_create_folder`
 - `mcp__plugin_ace_ace-gdrive__drive_list_folder` (fixture verification, step 3a)
 - `mcp__plugin_ace_ace-gdrive__drive_update_file` (run_state merge, step 6)
-- `mcp__plugin_ace_ace-gdrive__update_yaml_file` — writes `phases.synthetic-data-and-workflows.outputs.synthetic` to `run_state.yaml` (merge: 'two-level' after read-modify-write to preserve sibling sub-keys from other writers) AND backward-compat writes `opp.yaml.synthetic` (merge: 'shallow') until cleanup PR e
+- `mcp__plugin_ace_ace-gdrive__update_yaml_file` — writes `phases.synthetic-data-and-workflows.outputs.synthetic` to `run_state.yaml` (merge: 'two-level' after read-modify-write to preserve sibling sub-keys from other writers in the same run)
 
 ## Mode Behavior
 
@@ -406,7 +399,7 @@ When `--dry-run` is active:
 
 | Failure | Detection | Recovery |
 |---|---|---|
-| `--opp-int-id` not provided AND neither `phases.connect-setup.outputs.connect.opportunity.labs_int_id` (current run's `run_state.yaml`) nor legacy `opp.yaml.connect.opportunity.labs_int_id` carry a value | step 1 halt | Re-run `/ace:step connect-opp-setup` to retry the labs lookup (sometimes lags Connect by seconds), OR pass `--opp-int-id <N>` after looking up the int in the labs synthetic UI. (Stage 4.5 automated this — pre-Stage-4.5 opps lack the connect block at either location.) |
+| `--opp-int-id` not provided AND `phases.connect-setup.outputs.connect.opportunity.labs_int_id` in current run's `run_state.yaml` missing | step 1 halt | Re-run `/ace:step connect-opp-setup` to retry the labs lookup (sometimes lags Connect by seconds), OR pass `--opp-int-id <N>` after looking up the int in the labs synthetic UI. |
 | `opp.yaml` missing `last_run_id` | step 1 halt | Run `/ace:run <opp>` first so the orchestrator bootstraps a run folder. |
 | PDD missing primary measurement field | step 2 warn | Default manifest emits `kpi_config: []`; operator adds KPIs in the pause. |
 | `INVALID_SCHEMA` from labs | step 3 halt | Operator edits the manifest (error body written to `_error.md`) and re-invokes. |

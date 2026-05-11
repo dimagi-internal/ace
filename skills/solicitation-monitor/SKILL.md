@@ -9,11 +9,20 @@ disable-model-invocation: true
 # Solicitation Monitor
 
 Recurring skill that runs while solicitation status is `open`. Invoked
-by cron *outside* `/ace:run`, so it does NOT mint its own run-id —
-instead it reads and updates the **most recent run's**
-`run_state.yaml.phases.solicitation-management.outputs.solicitation`
-per the recurring-writer rule in
-`agents/orchestrator-reference.md § Recurring Writers`.
+by cron *outside* `/ace:run`, so it does NOT mint its own run-id.
+
+**Architecture TBD.** Each `/ace:run` is independent — no run reads
+from or writes to another run's `run_state.yaml`. The recurring monitor
+violates that invariant by definition (it has no run-id of its own).
+The right cross-run write semantics for cron-driven monitors will be
+designed alongside the Phase 7+/8 redesign (awarding, execution,
+closeout). Until then this skill operates in **read-only** mode against
+the most recent run's `run_state.yaml` — it pulls responses from labs
+and writes them to per-response markdown files in
+`ACE/<opp-name>/runs/<most-recent-run-id>/6-solicitation-management/solicitation-monitor_responses/`,
+but does NOT mutate `outputs.solicitation.status` (the `--close` mode
+is deferred — operators manually flag a closed solicitation at award
+time via `solicitation-review`).
 
 Mirrors the `ocs-chatbot-qa` recurring pattern (`--quick`/`--monitor`).
 
@@ -31,24 +40,19 @@ Mirrors the `ocs-chatbot-qa` recurring pattern (`--quick`/`--monitor`).
 
 Find the **most recent run-id** under `ACE/<opp-name>/runs/` (sort
 descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
-`run_state.yaml`. The relevant block lives at
-`phases.solicitation-management.outputs.solicitation`. Read with
-fallback to legacy `opp.yaml.solicitation` (pre-PR-b opps):
+`run_state.yaml`. Read (no write) from
+`phases.solicitation-management.outputs.solicitation`:
 
-- `phases.solicitation-management.outputs.solicitation.solicitation_id`
-  (legacy: `opp.yaml.solicitation.solicitation_id`)
-- `phases.solicitation-management.outputs.solicitation.deadline`
-  (legacy: `opp.yaml.solicitation.deadline`)
-- `phases.solicitation-management.outputs.solicitation.labs_program_id`
-  — labs **integer** program ID cached by `solicitation-create`
-  (legacy: `opp.yaml.solicitation.labs_program_id`). Required for any
-  `list_solicitations` / `get_solicitation` call (without scope, labs's
-  `LabsRecord` API filters to `is_public=true` only, so the parent
-  record of a private solicitation is invisible). Note: this is
-  **not** the Connect program UUID — labs `int()`-parses the field.
-  If the cached value is missing, fall back to the resolution recipe
-  in `solicitation-create` step 5 (`labs_context` lookup by program
-  name).
+- `solicitation_id`
+- `deadline`
+- `labs_program_id` — labs **integer** program ID cached by
+  `solicitation-create`. Required for any `list_solicitations` /
+  `get_solicitation` call (without scope, labs's `LabsRecord` API
+  filters to `is_public=true` only, so the parent record of a private
+  solicitation is invisible). Note: this is **not** the Connect
+  program UUID — labs `int()`-parses the field. Also available at
+  `opp.yaml.connect.program.labs_int_id` as the durable opp-level
+  cache.
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/llo-invite_invitations.md`
   (optional; for outstanding-invitee tracking)
 
@@ -64,13 +68,14 @@ fallback to legacy `opp.yaml.solicitation` (pre-PR-b opps):
    not require `program_id` scoping. **However**, if this skill ever
    needs to verify the parent record (e.g. `get_solicitation` to refresh
    the deadline or status from labs), the call **must** thread
-   `program_id: <labs_program_id>` (read from outputs.solicitation;
-   legacy fallback opp.yaml.solicitation.labs_program_id) or
-   `organization_id` if program-less. Without scope, labs's prod-side
-   filter strips non-public records and the parent appears missing —
-   see the 0.13.4 fix note in `CHANGELOG.md` and labs PR #156. Pass the
-   labs **integer** id, not the Connect UUID — labs `int()`-parses
-   the field server-side.
+   `program_id: <labs_program_id>` (read from
+   `outputs.solicitation.labs_program_id` or
+   `opp.yaml.connect.program.labs_int_id`) or `organization_id` if
+   program-less. Without scope, labs's prod-side filter strips
+   non-public records and the parent appears missing — see the 0.13.4
+   fix note in `CHANGELOG.md` and labs PR #156. Pass the labs
+   **integer** id, not the Connect UUID — labs `int()`-parses the
+   field server-side.
 
 2. **Diff against local state.** Read existing files in
    `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-monitor_responses/` (each is named
@@ -87,9 +92,8 @@ fallback to legacy `opp.yaml.solicitation` (pre-PR-b opps):
 3. **Summarize inflow.** Compute:
    - Total responses received
    - Responses received since the last monitor tick
-   - Time-to-deadline (delta between `now()` and the cached `deadline`
-     in `outputs.solicitation.deadline` / fallback
-     `opp.yaml.solicitation.deadline`)
+   - Time-to-deadline (delta between `now()` and `deadline` in
+     `outputs.solicitation.deadline`)
    - If `solicitation/invitations.md` exists: list of invitees who have
      not yet responded (match by `contact_email` or `organization_slug`).
 
@@ -100,30 +104,14 @@ fallback to legacy `opp.yaml.solicitation` (pre-PR-b opps):
    <ISO-8601>  solicitation-monitor  <count> total responses (<+N> new since last tick), <H>h to deadline
    ```
 
-5. **Update state** (mode = `--close` AND `now() > deadline` only).
-   Patch the *producing run's* `run_state.yaml` (the most recent run
-   identified in § Inputs) via `update_yaml_file` + `merge: 'two-level'`:
-
-   ```yaml
-   phases:
-     solicitation-management:
-       outputs:
-         solicitation:
-           status: closed
-   ```
-
-   The two-level merge replaces `outputs:` wholesale, so the patch
-   must carry the **full** `outputs.solicitation` block — read the
-   existing block first (via `drive_read_file`), set `status: closed`,
-   write back. `update_yaml_file`'s CAS retry handles the race against
-   a concurrent `/ace:run` writer.
-
-   **Backward-compat:** also patch legacy
-   `opp.yaml.solicitation.status` for opps whose readers haven't
-   migrated yet. Strip this fallback in cleanup PR e.
-
-   See `agents/orchestrator-reference.md § Recurring Writers` for the
-   canonical rule.
+5. **`--close` mode is currently a no-op for state.** The cross-run
+   write semantics are TBD pending Phase 7+/8 redesign (see top of
+   file). For now, `--close` behaves identically to `--monitor` (full
+   response pull + tick line) without flipping
+   `outputs.solicitation.status`. Operators manually flag a closed
+   solicitation at award time via `solicitation-review`, which writes
+   `outputs.solicitation.status: awarded` to the current
+   `/ace:run` invocation's `run_state.yaml`.
 
 ## Process (--quick)
 
@@ -144,7 +132,7 @@ orchestrator. The next tick retries.
 
 - New files in `ACE/<opp-name>/runs/<most-recent-run-id>/6-solicitation-management/solicitation-monitor_responses/`
 - Tick line in `ACE/<opp-name>/comms-log/observations.md`
-- (`--close` only) `phases.solicitation-management.outputs.solicitation.status: closed` on the most recent run's `run_state.yaml`; backward-compat also `opp.yaml.solicitation.status: closed`.
+- No `run_state.yaml` or `opp.yaml` mutations pending Phase 7+/8 redesign.
 
 ## MCP Tools Used
 

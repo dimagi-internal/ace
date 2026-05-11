@@ -6,7 +6,7 @@ description: >
   The review-and-award lifecycle continues via the manually-invoked
   solicitation-review skill (gated on a human-in-the-loop checkpoint
   before award_response is called). Phase 8 starts once an awardee is
-  recorded in phases.solicitation-management.outputs.selected_llo (legacy fallback opp.yaml.selected_llo).
+  recorded in phases.solicitation-management.outputs.selected_llo in the current run's run_state.yaml.
 model: inherit
 phase: solicitation-management
 phase_display: Solicitation Management
@@ -39,15 +39,16 @@ lifecycle requires explicit human approval and is run manually via
 ### Step 1: Solicitation Create
 
 Invoke the `solicitation-create` skill.
-- Input: approved PDD (`inputs/pdd.md`), `opp.yaml` (program_id,
-  total_budget)
+- Input: approved PDD (`inputs/pdd.md`), `opp.yaml`
+  (`connect.program.id`, total_budget)
 - Output: `solicitation/published.md`,
-  `phases.solicitation-management.outputs.solicitation` populated with
+  `phases.solicitation-management.outputs.solicitation` populated in
+  the current run's `run_state.yaml` with
   `{solicitation_id, public_url, deadline, status: open,
-  labs_program_id, ...}` (backward-compat fallback also writes
-  `opp.yaml.solicitation`). `selected_llo` is stubbed by
-  `solicitation-review` on award (PR c migrates it to
-  `outputs.selected_llo`).
+  labs_program_id, ...}`. `selected_llo` is populated by
+  `solicitation-review` on award at `outputs.selected_llo`. The labs
+  program int is cached durably at
+  `opp.yaml.connect.program.labs_int_id`.
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `solicitation-create-eval` after publish. Writes
   `verdicts/solicitation-create.yaml`.
@@ -59,7 +60,7 @@ Invoke the `solicitation-create` skill.
 Invoke the `llo-invite` skill.
 - Input: PDD `## LLO Preference` (Preferred LLOs),
   `phases.solicitation-management.outputs.solicitation.{public_url, deadline}`
-  (legacy fallback: `opp.yaml.solicitation.{public_url, deadline}`)
+  from the current run's `run_state.yaml`
 - Output: `solicitation/invitations.md` (per-recipient send log)
 - No-op when the PDD has no `Preferred LLOs` — the solicitation is
   publicly listed at `public_url`; orgs find it via the labs portal.
@@ -69,7 +70,7 @@ Invoke the `llo-invite` skill.
 ## Recurring (outside `/ace:run`)
 
 While `phases.solicitation-management.outputs.solicitation.status == open`
-(legacy fallback: `opp.yaml.solicitation.status`), the orchestrator's
+in the most recent run's `run_state.yaml`, the orchestrator's
 recurring loop calls `solicitation-monitor` to:
 - Pull new responses from labs (`mcp__connect-labs__list_responses`)
 - Write one file per response to `solicitation/responses/`
@@ -94,14 +95,14 @@ This skill:
 - **HITL gate:** waits for explicit `award <response_id> $<amount>`
   approval
 - On approval: calls `mcp__connect-labs__award_response`, writes
-  `award-record.md`, populates `phases.solicitation-management.outputs.selected_llo` (backward-compat: also `opp.yaml.selected_llo`)
+  `award-record.md`, populates `phases.solicitation-management.outputs.selected_llo` in the current run's `run_state.yaml`
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `solicitation-review-eval` after award. Writes
   `verdicts/solicitation-review.yaml`.
 
 Only this skill unblocks Phase 8 (`execution-management`). Phase 8's
 entry guard halts with an actionable message if
-`selected_llo.org_slug` is empty (checked at `phases.solicitation-management.outputs.selected_llo.org_slug` then legacy `opp.yaml.selected_llo.org_slug`).
+`phases.solicitation-management.outputs.selected_llo.org_slug` is empty in the current run's `run_state.yaml`.
 
 ## Pause-points
 
@@ -115,8 +116,8 @@ entry guard halts with an actionable message if
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md`
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md`
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/llo-invite_invitations.md`
-- `phases.solicitation-management.outputs.solicitation.{solicitation_id, public_url, deadline, status: open, labs_program_id, ...}` (backward-compat: also `opp.yaml.solicitation`)
-- `phases.solicitation-management.outputs.selected_llo.*` (stubbed until award; backward-compat `opp.yaml.selected_llo.*` until cleanup PR e)
+- `phases.solicitation-management.outputs.solicitation.{solicitation_id, public_url, deadline, status: open, labs_program_id, ...}` (per-run only)
+- `phases.solicitation-management.outputs.selected_llo` is populated only at award time by `solicitation-review`
 - `verdicts/solicitation-create.yaml` (unless `--no-evals`)
 
 ## Completion
@@ -130,11 +131,10 @@ After Step 2, write the `phases.solicitation-management` block per
 `phases.solicitation-management.verdict: halt-at-phase-7-to-8-boundary`
 to mark the orchestrator's halt point. (0.13.116: legacy `gates.llo-invite`
 + `gates.solicitation-review` flips dropped. The Phase 7→8 halt is gated
-on `selected_llo.org_slug` being non-null
-(`phases.solicitation-management.outputs.selected_llo.org_slug` since
-PR c; legacy `opp.yaml.selected_llo.org_slug` fallback until cleanup
-PR e) — populated only by manual `/ace:step solicitation-review` —
-which preserves the HITL checkpoint without a `gates.<name>` field.)
+on `phases.solicitation-management.outputs.selected_llo.org_slug` being
+non-null in the current run's `run_state.yaml` — populated only by
+manual `/ace:step solicitation-review` — which preserves the HITL
+checkpoint without a `gates.<name>` field.)
 
 ## MCP Tools Used (across all skills in this phase)
 
