@@ -1,12 +1,13 @@
 name: perf
 description: >
   Improve `/ace:run` wall-clock without compromising quality. Reads Claude
-  Code session transcripts to find tool-call batching opportunities,
-  redundant reads, inflated boundary gaps, and slow MCP polling patterns.
-  Proposes doc edits (orchestrator, agents, skills) and MCP backend
-  changes (Promise.all, inflight-dedupe, batched atoms). Verification is
-  observational + measurement — a follow-up /ace:run measures wall-clock
-  vs. pre-edit baseline.
+  Code session transcripts and source code to find tool-call batching
+  opportunities, redundant reads, inflated boundary gaps, and slow MCP
+  polling patterns. Proposes doc edits (orchestrator, agents, skills)
+  and MCP backend changes (Promise.all, inflight-dedupe, batched atoms).
+  Verification is observational only — the lens does not dispatch
+  /ace:run or any other live action; wall-clock measurement against a
+  baseline is an operator action taken separately if/when wanted.
 
 # v1: per-run analysis on the most recent session(s). v2 can add cross-run
 # wall-clock trend tracking once enough baseline runs are captured.
@@ -122,28 +123,28 @@ signals:
       "in `agents/orchestrator-reference.md`" or vice versa.
     probe: cross_ref_resolution
 
-# Verification — observational + measurement
+# Verification — observational only (matches the operational lens)
 verify:
-  type: measurement
+  type: observational
   description: >
-    Static review (does the proposed change match the documented signal?)
-    plus a follow-up /ace:run on a stable test opp to measure wall-clock
-    against a captured baseline. The session that produced this lens
-    skipped the measurement step — 11 PRs shipped without re-measuring.
-    The lens MUST close that loop.
+    Static review against transcripts and code. The lens does NOT
+    dispatch a /ace:run — that's an operator action, executed
+    separately if/when wall-clock measurement is wanted. v1 verification
+    is: (a) the proposed change matches a documented signal pattern in
+    the transcript or code, (b) the diff is confined to declared edit
+    targets, (c) existing tests pass for MCP code changes, (d) doctor
+    passes if the change touches doctor-relevant paths.
   steps:
-    - apply_change_locally
-    - run_relevant_test_suite        # npm test + targeted vitest if MCP code
+    - signal_pattern_match            # the proposed change addresses the surfaced signal
+    - diff_confined_to_edit_targets
+    - run_relevant_test_suite         # npm test + targeted vitest if MCP code
     - run_ace_doctor                  # no regression in env/auth checks
-    - dispatch_validation_run         # /ace:run against a frozen test opp
-    - parse_validation_transcript     # extract per-phase wall-clock
-    - diff_against_baseline           # compare to prior run log baseline timings
+    - manual_inspection_of_diff
   pass_criteria:
+    - signal_evidence_cited            # the proposal cites the transcript line or code path
     - existing_tests_pass
     - doctor_no_new_failures
-    - validation_run_completed         # didn't crash or halt
-    - wall_clock_phase_unchanged_or_better
-    - quality_verdicts_unchanged_or_better  # eval verdicts on producer artifacts
+    - diff_targets_only_declared_files
 
 # Edit targets
 proposes:
@@ -175,11 +176,11 @@ proposes:
 # Auto-merge gate
 auto_merge:
   # Doc-only edits matching the conventional patterns auto-merge after
-  # CI green + diff confined to declared targets.
+  # static CI + doctor green + diff confined.
   doc_only:
     enabled: true
     conditions:
-      - verification_passed_static_only   # CI + doctor; full validation run is async
+      - verification_passed
       - changes_confined_to_section: true
       - lines_changed_lte: 80
       - file_count_lte: 2
@@ -213,18 +214,9 @@ auto_merge:
       effect is the dominant lever on system behavior. Surface to a human
       even if the diff is tiny.
 
-# Validation-run convention — close the measurement loop
-validation_run:
-  trigger: every_lens_cycle           # whenever the lens proposes >= 1 PR
-  test_opp_slug: ace-perf-test        # frozen test opp; create if missing
-  capture_baseline_if_missing: true
-  baseline_file: ".claude/pm/runs/perf-baseline.yaml"
-  metrics_to_capture:
-    - pre_flight_wall_clock
-    - per_phase_wall_clock
-    - per_phase_tool_call_count
-    - per_phase_redundant_read_count
-    - boundary_gap_turns_per_transition
-  reporting:
-    write_to: ".claude/pm/runs/{date}-perf-validation.md"
-    include_baseline_diff: true
+# Measurement against a live /ace:run is an operator action, NOT part of
+# the lens. The lens analyzes existing transcripts and proposes fixes;
+# the operator decides if/when to validate wall-clock impact with a
+# fresh run. This matches how the operational lens handles "did this
+# behavior change actually take effect" — same observational
+# constraint, same operator-owned measurement.
