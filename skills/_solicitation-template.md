@@ -85,11 +85,11 @@ phases:
         response_id: <labs response UUID>
 ```
 
-The blocks are inherited across runs via the orchestrator's run-init
-seed step (see `agents/ace-orchestrator.md § Step 6b`), so every
-Phase 7 skill reads only the current run's `run_state.yaml`. The
-recurring `solicitation-monitor` updates the producing run's state
-directly — see `agents/orchestrator-reference.md § Recurring Writers`.
+Every Phase 7 skill reads and writes only the current run's
+`run_state.yaml`. Each `/ace:run` publishes a fresh solicitation; no
+cross-run inheritance. The recurring `solicitation-monitor` runs
+read-only against the most recent run; its `--close` mode is deferred
+pending the Phase 7+/8 redesign.
 
 **Per-run only.** Every read and write goes through the current
 run's `run_state.yaml`. No cross-run reads. Each `/ace:run` publishes
