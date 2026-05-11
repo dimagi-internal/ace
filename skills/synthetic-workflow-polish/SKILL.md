@@ -44,7 +44,7 @@ Two modes:
 1. **Read inputs.** Load the narrative plan, workflow seed summary,
    `opp.yaml`, the current run's `run_state.yaml`, and the PDD via
    `drive_read_file`. Resolve `llo_weekly_review_id` from
-   `phases.synthetic-data-and-workflows.outputs.synthetic.workflows.llo_weekly_review_id`
+   `phases.synthetic-data-and-workflows.products.synthetic.workflows.llo_weekly_review_id`
    in the current run's `run_state.yaml`. Halt if missing: "run
    `synthetic-workflow-seed` first (in this run)."
 

@@ -30,7 +30,7 @@ spawned coaching tasks per `coaching_arcs[]`, and landed the Week 1
 Score each dimension 0–10.
 
 1. **Workflow wiring (weight 0.30).** Both workflow IDs present in the
-   summary AND in `outputs.synthetic.workflows` of the current run's
+   summary AND in `products.synthetic.workflows` of the current run's
    `run_state.yaml`. The audit's
    `watched_workflow_id` matches the LLO weekly review's id (verify
    from the summary's recorded patch). Hard-deduct -5 if either ID
@@ -65,7 +65,7 @@ Score each dimension 0–10.
 
 - `[BLOCKER]` if any dimension scores ≤ 3.
 - `[BLOCKER]` if either workflow ID is missing.
-- `[BLOCKER]` if the current run's `outputs.synthetic.workflows` was not updated.
+- `[BLOCKER]` if the current run's `products.synthetic.workflows` was not updated.
 - `[WARN]` per coaching arc that failed to produce a task without a
   recorded failure reason.
 - `[WARN]` if `scaffold_unsuitable: true` was set but the summary

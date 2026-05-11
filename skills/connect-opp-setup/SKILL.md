@@ -17,13 +17,13 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | archetype + Evidence Model (Layer A → verification flags) |
 | Phase 3 | `3-connect/connect-program-setup.md` | program UUID (opp is scoped to it) |
-| Phase 7 | current run's `phases.solicitation-management.outputs.selected_llo.org_slug` | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
+| Phase 7 | current run's `phases.solicitation-management.products.selected_llo.org_slug` | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
 | Phase 2 | `2-commcare/app-deploy_summary.md` | `hq_server`, `learn_app`/`deliver_app` IDs, HQ project space slug |
 
 ## Outputs
 
 - `3-connect/connect-opp-setup.md` — opp UUID, verification flags, payment units, ACE test-user invite URL, labs_int_id (when recoverable)
-- `run_state.yaml.phases.connect-setup.outputs.connect` — single atomic block with `program` (copied from `opp.yaml.connect.program` for run self-containment), `opportunity`, `ace_test_user` sub-keys. Read by `synthetic-data-generate` (`opportunity.labs_int_id`), Phase 5 mobile recipes, and other skills within the same run. Per-run only — no other run reads it.
+- `run_state.yaml.phases.connect-setup.products.connect` — single atomic block with `program` (copied from `opp.yaml.connect.program` for run self-containment), `opportunity`, `ace_test_user` sub-keys. Read by `synthetic-data-generate` (`opportunity.labs_int_id`), Phase 5 mobile recipes, and other skills within the same run. Per-run only — no other run reads it.
 
 ## Process
 
@@ -182,7 +182,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    HQ id** — the recovery is `connect_delete_opportunity` +
    `connect_create_opportunity` against the canonical HQ ids, then
    update the current run's
-   `phases.solicitation-management.outputs.solicitation.connect_opportunity_id`
+   `phases.solicitation-management.products.solicitation.connect_opportunity_id`
    to the new UUID. **This recovery is low-cost.** A labs solicitation
    already published for this opp is unaffected: solicitations are
    scoped to the labs `program_id`, not to any specific Connect
@@ -490,17 +490,17 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    identical to the zero-match case.
 
 10. **Write the consolidated Connect outputs block** to
-    `run_state.yaml.phases.connect-setup.outputs.connect` as one
+    `run_state.yaml.phases.connect-setup.products.connect` as one
     atomic patch. Read the program reference from
     `opp.yaml.connect.program` (or from
     `runs/<run-id>/3-connect/connect-program-setup.md`) and copy it
-    into the run's `outputs.connect.program` so the run state is
+    into the run's `products.connect.program` so the run state is
     self-contained:
 
     ```yaml
     phases:
       connect-setup:
-        outputs:
+        products:
           connect:
             program:
               id: <UUID copied from opp.yaml.connect.program.id>
@@ -518,11 +518,11 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
     `merge: 'two-level'` on the current run's `run_state.yaml`. The
     two-level merge preserves sibling `phases.<other-phase>` blocks
     (and `connect-setup`'s own `status`, `steps`, etc.) while
-    replacing `outputs:` wholesale — which is the intended shape
-    because this skill is the sole writer of `outputs.connect`.
+    replacing `products:` wholesale — which is the intended shape
+    because this skill is the sole writer of `products.connect`.
 
     Phase 7's `synthetic-data-generate` reads
-    `phases.connect-setup.outputs.connect.opportunity.labs_int_id` from
+    `phases.connect-setup.products.connect.opportunity.labs_int_id` from
     the current run's `run_state.yaml` as the default for its
     `--opp-int-id` flag. When `labs_int_id` is null, the skill
     surfaces a `[WARN]` and asks the operator to pass `--opp-int-id`
@@ -532,7 +532,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
     **Do not write `opp.yaml.connect.opportunity` or
     `opp.yaml.connect.ace_test_user`.** Connect opportunities are
     created fresh per run (not reused across runs) and live only in
-    this run's `outputs.connect`. `opp.yaml.connect.program` is the
+    this run's `products.connect`. `opp.yaml.connect.program` is the
     *only* durable Connect reference — written by
     `connect-program-setup`, never mutated here.
 
@@ -632,6 +632,6 @@ Each row this skill writes uses `phase: 3-connect` and
 | 2026-05-04 | **Verify-after-create discipline** added to Step 4 (opportunity) and Step 6 (payment units) — every external write is now followed by an immediate read-back, with `[BLOCKER]` halt on field misalignment. Catches the class of bug `turmeric-20260503-0835` hit: PU created with shifted values (`amount=500` vs sent `1.50`, `max_total=20` vs sent `500`, `required_deliver_units=[]` vs sent `[Vendor Visit]`), which cascaded through `is_setup_complete` to break Phase 7 invites and Phase 5 screenshot capture. Catching at the source converts a multi-phase cascade into a single-skill halt. Also: `short_description` cap doc fix (≤50 chars server-enforced, was wrongly documented as ≤255); `amount` integer-rounding behavior pinned (recommended: round + INFO-log, never silent truncate); empty `required_deliver_units` flagged as a downstream cascade trigger. See `agents/ace-orchestrator.md § External Mutations — Verify After Create` for the cross-skill rule. | ACE team (0.11.11) |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (verification-flags, payment-unit-shape, opportunity-end-date) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-10 | Move opp activation + ACE test-user invite from Phase 8 into Phase 3 (new Step 6.5 + rewritten Step 7). Closes the chicken-and-egg gap where Phase 5 `app-screenshot-capture` produced placeholder screenshots because the test user wasn't on the new opp yet — the opp couldn't be activated until Phase 8, but the test user couldn't be invited until activation. Phase 8 `llo-launch` now hits its idempotent skip-if-active path on every ACE-driven run; it still sends the real-LLO invite to the awarded LLO. Also: tighten Step 4 `is_test` from "defaults true server-side" to "set explicitly to true" — ACE is in dogfood mode and every opp it creates must be test-flagged so prod analytics, payment exports, and partner dashboards exclude these runs. | ACE team |
-| 2026-05-10 | State consolidation PR a: retire `connect-state.yaml`; emit a single `run_state.yaml.phases.connect-setup.outputs.connect` block at end of Step 10. Step 7 holds invite metadata in memory rather than writing immediately. (Initial implementation dual-wrote to `opp.yaml.connect`; corrected on 2026-05-11 — runs are now independent. `opp.yaml.connect.program` is durable cross-run state written by `connect-program-setup`; `opp.yaml.connect.opportunity` / `ace_test_user` are no longer written here.) See `docs/superpowers/specs/2026-05-10-state-consolidation.md`. | ACE team |
+| 2026-05-10 | State consolidation PR a: retire `connect-state.yaml`; emit a single `run_state.yaml.phases.connect-setup.products.connect` block at end of Step 10. Step 7 holds invite metadata in memory rather than writing immediately. (Initial implementation dual-wrote to `opp.yaml.connect`; corrected on 2026-05-11 — runs are now independent. `opp.yaml.connect.program` is durable cross-run state written by `connect-program-setup`; `opp.yaml.connect.opportunity` / `ace_test_user` are no longer written here.) See `docs/superpowers/specs/2026-05-10-state-consolidation.md`. | ACE team |
 
 <!-- Stage 4.5 of Plan B: post-create labs_context lookup for labs_int_id (0.13.59) -->

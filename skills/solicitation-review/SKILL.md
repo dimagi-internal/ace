@@ -16,12 +16,12 @@ Manual skill — never runs in default `/ace:run`. Only via:
 
 This is the only skill that calls `award_response` (irreversible) and the
 only skill that populates `selected_llo` (which gates Phase 8). Writes to
-`phases.solicitation-management.outputs.selected_llo` in the current run's
+`phases.solicitation-management.products.selected_llo` in the current run's
 `run_state.yaml` only.
 
 ## Inputs
 
-Read from the current run's `run_state.yaml.phases.solicitation-management.outputs.solicitation`:
+Read from the current run's `run_state.yaml.phases.solicitation-management.products.solicitation`:
 
 - `solicitation_id`
 - `public_url`
@@ -134,7 +134,7 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.outpu
    `program_id` is mandatory for non-public records — without it the
    underlying `get_record_by_id` returns no row and the merge fails.
    Pass the labs **integer** id (resolved from
-   `phases.solicitation-management.outputs.solicitation.labs_program_id`
+   `phases.solicitation-management.products.solicitation.labs_program_id`
    or `opp.yaml.connect.program.labs_int_id`), not the Connect UUID —
    labs `int()`-parses the field. Treat 4xx here as non-fatal:
    `award_response` already succeeded, so write a
@@ -145,16 +145,16 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.outpu
 10. **Populate `selected_llo` and update solicitation status.** Only
     on a successful award, write to the current run's
     `run_state.yaml` via `update_yaml_file` + `merge: 'two-level'`.
-    Read the existing `outputs.solicitation` block first, set
+    Read the existing `products.solicitation` block first, set
     `status: awarded` and populate the `awarded.*` block, then write
-    both `outputs.solicitation` and `outputs.selected_llo` in one
-    consolidated payload (two-level merge replaces `outputs:`
+    both `products.solicitation` and `products.selected_llo` in one
+    consolidated payload (two-level merge replaces `products:`
     wholesale):
 
     ```yaml
     phases:
       solicitation-management:
-        outputs:
+        products:
           solicitation:
             # preserved from solicitation-create + the read above...
             status: awarded
@@ -199,8 +199,8 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.outpu
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_scoring-rubric.md`
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_recommendation.md`
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_award-record.md`
-- `phases.solicitation-management.outputs.selected_llo.*` populated (only on success; per-run only)
-- `phases.solicitation-management.outputs.solicitation.{status: awarded, awarded.*}` populated (only on success; per-run only)
+- `phases.solicitation-management.products.selected_llo.*` populated (only on success; per-run only)
+- `phases.solicitation-management.products.solicitation.{status: awarded, awarded.*}` populated (only on success; per-run only)
 
 ## MCP Tools Used
 

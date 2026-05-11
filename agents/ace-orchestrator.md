@@ -342,16 +342,16 @@ The orchestrator's contract on a populated opp:
     creates a new one and writes it back to `opp.yaml`.
   - `connect-opp-setup` always creates a fresh Connect opportunity
     per run; opportunity UUIDs are recorded only in the producing
-    run's `phases.connect-setup.outputs.connect.opportunity`. Stale
+    run's `phases.connect-setup.products.connect.opportunity`. Stale
     opps from earlier runs are operator-cleaned-up when picking a
     release-candidate run.
   - `ocs-agent-setup` clones a fresh chatbot per run from the golden
     template; the chatbot is recorded in the producing run's
-    `phases.ocs-setup.outputs.ocs_chatbot`. Stale chatbots are
+    `phases.ocs-setup.products.ocs_chatbot`. Stale chatbots are
     operator-cleaned-up.
   - `solicitation-create` always publishes a fresh solicitation per
     run; the solicitation is recorded in the producing run's
-    `phases.solicitation-management.outputs.solicitation`. Stale
+    `phases.solicitation-management.products.solicitation`. Stale
     solicitations are operator-cleaned-up.
 - **Each new run gets its own `runs/<run-id>/<N>-<phase>/` artifact
   set** — prior-run artifacts stay frozen in their own run folders.
@@ -397,7 +397,7 @@ stop, up until the point of external communication.*
   from ACE on a one-to-one basis. `/ace:run` halts here in default mode
   and remains halted until the human runs `/ace:step solicitation-review`,
   which (after a HITL approval gate) calls `award_response` and populates
-  `phases.solicitation-management.outputs.selected_llo` in the current
+  `phases.solicitation-management.products.selected_llo` in the current
   run's `run_state.yaml`. Phase 8 cannot start while
   `selected_llo.org_slug` is null in the current run.
 - **Phases 7–8 (Execution Management, Closeout):** behave like `review`
@@ -692,7 +692,7 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `connect-program-setup`). Everything else (Connect opportunity,
      OCS chatbot, solicitation, selected_llo, synthetic) is per-run
      and lives only in the producing run's
-     `run_state.yaml.phases.*.outputs.*`.
+     `run_state.yaml.phases.*.products.*`.
    - When the user manually deletes a run subfolder, `last_run_id` and
      `runs:` accumulate dangling references — purely cosmetic, but
      misleading enough to worry a reader who notices.
@@ -854,15 +854,15 @@ When invoked with an opportunity, execute these phases in order:
 
 **Write-back:** `phases.solicitation-management.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
-**Gate:** `[BLOCKER]` halts; **Phase 7→8 boundary always pauses in every mode** — `/ace:run` HALTS here at the new external-comms boundary. Phase 8 cannot start until `phases.solicitation-management.outputs.selected_llo.org_slug` is populated in the current run's `run_state.yaml`, which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`). See § Pause Points in reference.
+**Gate:** `[BLOCKER]` halts; **Phase 7→8 boundary always pauses in every mode** — `/ace:run` HALTS here at the new external-comms boundary. Phase 8 cannot start until `phases.solicitation-management.products.selected_llo.org_slug` is populated in the current run's `run_state.yaml`, which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`). See § Pause Points in reference.
 
-**Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). Its cross-run write semantics are TBD pending Phase 7+/8 architecture decisions. `solicitation` and `selected_llo` are separate sub-blocks under `phases.solicitation-management.outputs.*` — only `solicitation-review` populates `selected_llo`.
+**Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). Its cross-run write semantics are TBD pending Phase 7+/8 architecture decisions. `solicitation` and `selected_llo` are separate sub-blocks under `phases.solicitation-management.products.*` — only `solicitation-review` populates `selected_llo`.
 
 ### Phase 8: Execution Management
 
-**Dispatch:** `Agent(execution-manager)`. **Entry gated on `phases.solicitation-management.outputs.selected_llo.org_slug` being populated by Phase 7's `solicitation-review`** in the current run's `run_state.yaml`.
+**Dispatch:** `Agent(execution-manager)`. **Entry gated on `phases.solicitation-management.products.selected_llo.org_slug` being populated by Phase 7's `solicitation-review`** in the current run's `run_state.yaml`.
 
-**Inputs (inline at handoff):** PDD, Phase-5 training artifacts (5 docs + onboarding email under `5-qa-and-training/`), Phase-4 chatbot URL (`4-ocs/ocs-agent-setup.md`), `selected_llo` (from run_state.yaml.phases.solicitation-management.outputs.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-5 training artifacts (5 docs + onboarding email under `5-qa-and-training/`), Phase-4 chatbot URL (`4-ocs/ocs-agent-setup.md`), `selected_llo` (from run_state.yaml.phases.solicitation-management.products.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(execution-manager)`.
 
@@ -878,7 +878,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(closeout)`. **Triggered when the opportunity reaches its end date.**
 
-**Inputs (inline at handoff):** Phase-8 outputs (LLO onboarding + UAT + go-live artifacts under `8-execution-manager/`), `selected_llo` (from run_state.yaml.phases.solicitation-management.outputs.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** Phase-8 outputs (LLO onboarding + UAT + go-live artifacts under `8-execution-manager/`), `selected_llo` (from run_state.yaml.phases.solicitation-management.products.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(closeout)`.
 

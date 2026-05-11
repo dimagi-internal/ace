@@ -83,7 +83,7 @@ Create or select a Connect program for this opportunity.
    Connect program — every subsequent run of this opp reads this
    block to skip program-create (Step 3 reuse path). The Connect
    *opportunity*, OCS chatbot, solicitation, etc. are per-run and
-   live in the producing run's `run_state.yaml.phases.*.outputs.*`;
+   live in the producing run's `run_state.yaml.phases.*.products.*`;
    only `program` is durable here.
 
    Skip this write on the reuse path **only** if the existing

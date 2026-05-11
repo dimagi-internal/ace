@@ -5,6 +5,20 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.166 — 2026-05-11
+
+**Rename `phases.<phase>.outputs.<block>` → `phases.<phase>.products.<block>` across all skills, agents, and docs.**
+
+The state-consolidation work (PRs a–f, 0.13.155–0.13.163) introduced the `outputs.*` block under each phase in `run_state.yaml` as the source of truth for typed cross-run state — Connect program/opportunity IDs, OCS chatbot creds, solicitation + selected_llo, synthetic workflows + walkthroughs. "Outputs" turned out to be a misnomer in practice: every skill produces *outputs* in the colloquial sense (Drive files, verdicts, log entries, timestamps), so the term didn't carve out what the block actually is — pointers to **things this phase brought into existence in the world** (an entity in Connect / OCS / Labs, a real solicitation with a deadline, a Drive-hosted walkthrough deck). Renaming to `products` makes the contrast with `steps.<skill>.artifacts.*` (file-level provenance for what was written in *this* run) crisp.
+
+No semantic changes — same writers, same readers, same shape. Pure textual rename of every `outputs:` YAML key and every `outputs.*` dotted reference in `agents/`, `skills/`, `docs/`, `lib/artifact-manifest.ts`, and `CLAUDE.md`. Prose mentions of the English word "outputs" (e.g. markdown section headings `## Outputs`, sentences like "Phase 3 outputs") were left alone. Test fixtures that used "outputs" only in prose were not touched.
+
+This PR is the first of a planned sequence that finishes state-consolidation for the phases the original a–f sequence didn't reach (Phase 1 PDD metadata, Phase 2 commcare apps, Phase 4 OCS chatbot creds, Phase 5 training pack catalog, Phase 8 launch record, Phase 9 cycle grade + opp-eval + learnings) — see `ace-web/docs/specs/2026-05-11-products-block-contract.md` for the full punch list. Follow-up PRs in the plugin add `products.*` writes for those phases.
+
+Downstream impact: `ace-web`'s `apps/opps/summary.py` will cut over to reading `phases.<phase>.products.*` instead of parsing markdown bodies in a follow-up PR there. No migration of old run folders — old runs with `outputs:` keys are simply not read after the rename ships.
+
+All 915 unit tests pass; verified with `npm test`.
+
 ## 0.13.150 — 2026-05-10
 
 **Apply the angle-bracket constraint to `pdd-to-deliver-app` too; record Bug 4 in the Nova-bugs learnings doc.**

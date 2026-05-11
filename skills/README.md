@@ -180,7 +180,7 @@ skills don't duplicate it:
   concerns stay in each skill's own file.
 - **`skills/_solicitation-template.md`** — for the Phase 7 solicitation
   family. Defines the
-  `phases.solicitation-management.outputs.{solicitation, selected_llo}`
+  `phases.solicitation-management.products.{solicitation, selected_llo}`
   per-run contract, the connect-labs MCP atom inventory per skill, and
   the Phase 7 → Phase 8 boundary rule.
 

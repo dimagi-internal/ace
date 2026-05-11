@@ -4,13 +4,19 @@
 **Status:** Implemented + corrected. See § Correction addendum below before reading the rest of this doc.
 **Owner:** ACE
 
+> **Naming note (2026-05-11, 0.13.166):** the block originally named
+> `phases.<phase>.outputs.<block>` was renamed to
+> `phases.<phase>.products.<block>` for clarity — see CHANGELOG 0.13.166.
+> Inline references in this spec have been updated; the rest of the prose
+> still uses "outputs" where it reads naturally as English.
+
 ## Correction addendum (2026-05-11)
 
 This doc as originally drafted had two structural mistakes that
 landed in PRs a-d and were reverted in PR f:
 
 1. **The seed step is gone.** The original design had the orchestrator
-   copy `phases.<phase>.outputs.*` forward from the most recent prior
+   copy `phases.<phase>.products.*` forward from the most recent prior
    run at run init. **Runs are independent** — every `/ace:run` is a
    bubble; no run reads from or writes to another run's
    `run_state.yaml`. The seed step was deleted.
@@ -30,10 +36,10 @@ The actual mental model (correction):
 - **Every other entity** (Connect opportunity, OCS chatbot,
   solicitation, selected_llo, synthetic data + workflows +
   walkthroughs) is created **fresh per run** and lives only in that
-  run's `run_state.yaml.phases.*.outputs.*`. Stale entities from
+  run's `run_state.yaml.phases.*.products.*`. Stale entities from
   abandoned runs are operator-cleaned-up when picking a release-
   candidate run.
-- Each run's `outputs.connect` includes a **copy** of the program
+- Each run's `products.connect` includes a **copy** of the program
   reference (read from `opp.yaml.connect.program` at run time) so the
   run state file is self-contained for forking / debugging.
 
@@ -113,7 +119,7 @@ phases:
         artifacts: { ... }
 ```
 
-New addition — `outputs` block per phase for typed cross-run state:
+New addition — `products` block per phase for typed cross-run state:
 
 ```yaml
 phases:
@@ -122,7 +128,7 @@ phases:
     completed_at: 2026-05-08T14:00:00Z
     verdict: pass
     steps: { ... }
-    outputs:
+    products:
       connect:
         program:
           id: <UUID>
@@ -136,13 +142,13 @@ phases:
           invited_at: 2026-05-08T14:02:11Z
 
   ocs-setup:
-    outputs:
+    products:
       ocs_chatbot:
         experiment_id: <UUID>
         widget_url: ...
 
   synthetic-data-and-workflows:
-    outputs:
+    products:
       synthetic:
         generated_at: ...
         labs_opp_id: ...
@@ -155,7 +161,7 @@ phases:
             ...
 
   solicitation-management:
-    outputs:
+    products:
       solicitation:
         solicitation_id: ...
         labs_program_id: ...
@@ -170,7 +176,7 @@ phases:
         program_application_id: ...
 ```
 
-The `outputs` block is *typed cross-run state* — fields that subsequent runs
+The `products` block is *typed cross-run state* — fields that subsequent runs
 inherit. Distinct from `steps.*.artifacts`, which is per-run scratch (Drive
 fileIds for this run's verdicts, transcripts, etc.).
 
@@ -182,14 +188,14 @@ orchestrator does this once:
 1. List `ACE/<opp>/runs/` and pick the most recently modified prior run-id (if
    any).
 2. Read that run's `run_state.yaml`.
-3. For each phase, copy `phases.<phase>.outputs` into the new run's
+3. For each phase, copy `phases.<phase>.products` into the new run's
    `run_state.yaml` as the starting value. Leave `status`, `verdict`,
    `started_at`, `completed_at`, `steps` empty — those are this run's to fill.
 4. Write the seeded `run_state.yaml` to the new run folder.
 
 From that point on, every skill reads only the current run's `run_state.yaml`.
 Reuse decisions ("is there already a Connect opp for this opp?") read
-`phases.connect-setup.outputs.connect` in the current run, exactly the same
+`phases.connect-setup.products.connect` in the current run, exactly the same
 shape whether the value was just produced or inherited.
 
 Forking from a specific prior run is the same operation with a chosen source
@@ -199,7 +205,7 @@ run-id instead of "most recent."
 
 Today the orchestrator reuses an existing Connect opp when
 `opp.yaml.connect.opportunity.id` is set. After this refactor, the same check
-reads `phases.connect-setup.outputs.connect.opportunity.id` from the current
+reads `phases.connect-setup.products.connect.opportunity.id` from the current
 run's `run_state.yaml` — which the orchestrator seeded from the prior run at
 run init. The reuse decision is structurally identical; the storage path
 changed.
@@ -215,13 +221,13 @@ run-id.
 *produced* the block it's updating.
 
 Example: `solicitation-monitor` updates
-`phases.solicitation-management.outputs.solicitation.status` from `open` to
+`phases.solicitation-management.products.solicitation.status` from `open` to
 `closed`. The block was produced by `solicitation-create` during run
 `2026-05-01-0900`. The monitor reads `runs/2026-05-01-0900/run_state.yaml`,
 patches the field, writes back. No new run-id is minted.
 
 The monitor finds the producing run by inheritance chain: the most recent run's
-`outputs.solicitation` was seeded from its parent, all the way back to the one
+`products.solicitation` was seeded from its parent, all the way back to the one
 that originally created it. In practice the monitor reads the most recent run's
 state (since the seeded chain converges on the same producing source) and the
 patch propagates forward on the next `/ace:run` via the seed step.
@@ -232,7 +238,7 @@ the monitor is bookkeeping.
 
 ### Open subtlety: which run holds the canonical copy?
 
-After several `/ace:run`s, every run's `run_state.yaml` has `outputs.solicitation`
+After several `/ace:run`s, every run's `run_state.yaml` has `products.solicitation`
 (inherited via seed). If `solicitation-monitor` flips `status: closed` on run
 A's state, but run B (later) was seeded from run A *before* the close, run B's
 state is stale.
@@ -253,7 +259,7 @@ first, fall back to old location**:
 
 ```
 Read sequence:
-  1. run_state.yaml.phases.<phase>.outputs.<block>   (new — preferred)
+  1. run_state.yaml.phases.<phase>.products.<block>   (new — preferred)
   2. opp.yaml.<block>                                 (old — fallback)
   3. connect-state.yaml                               (old — Connect block only)
 ```
@@ -275,7 +281,7 @@ every live opp has run at least once on the new shape.
   annotations, not load-bearing. They stay where they are; nothing breaks.
 - **OCS chatbot cross-run reuse.** PR #217's idea (reverted in #221) was an
   optimization, not a correctness issue. After this refactor lands, the shape
-  for re-introducing it is obvious: `phases.ocs-setup.outputs.ocs_chatbot` with
+  for re-introducing it is obvious: `phases.ocs-setup.products.ocs_chatbot` with
   inheritance via the seed step. Pick it up in a later PR.
 - **ace-web's fork-a-run feature.** Today's implementation works against the
   current shape and will continue working through the migration (each PR keeps
@@ -294,11 +300,11 @@ keep all live opps working through the entire sequence.
 ### PR a — Connect block migration
 
 Move `opp.yaml.connect.*` AND `connect-state.yaml` into
-`run_state.yaml.phases.connect-setup.outputs.connect`. The two stores collapse
+`run_state.yaml.phases.connect-setup.products.connect`. The two stores collapse
 in one PR.
 
 **Skills changed (write):**
-- `connect-opp-setup` — writes `phases.connect-setup.outputs.connect.*` instead
+- `connect-opp-setup` — writes `phases.connect-setup.products.connect.*` instead
   of `opp.yaml.connect` and `connect-state.yaml`.
 - `connect-program-setup` — same pattern for the program sub-block.
 
@@ -318,7 +324,7 @@ in one PR.
 ### PR b — Solicitation block migration
 
 Move `opp.yaml.solicitation` to
-`run_state.yaml.phases.solicitation-management.outputs.solicitation`.
+`run_state.yaml.phases.solicitation-management.products.solicitation`.
 
 **Skills changed:** `solicitation-create` (write), `solicitation-monitor`
 (write — first use of the recurring-writer pattern; documents the rule in the
@@ -331,7 +337,7 @@ section.
 ### PR c — selected_llo block migration
 
 Move `opp.yaml.selected_llo` to
-`run_state.yaml.phases.solicitation-management.outputs.selected_llo`.
+`run_state.yaml.phases.solicitation-management.products.selected_llo`.
 
 **Skills changed:** `solicitation-review` (write), `llo-onboarding` (read —
 Phase 8 entry gate), `llo-launch`, `llo-uat`, `llo-invite`, and recurring
@@ -347,7 +353,7 @@ reads new location with fallback.
 
 Move `opp.yaml.synthetic.*` (including nested `synthetic.workflows` and
 `synthetic.walkthroughs[]`) to
-`run_state.yaml.phases.synthetic-data-and-workflows.outputs.synthetic`.
+`run_state.yaml.phases.synthetic-data-and-workflows.products.synthetic`.
 
 **Skills changed:** `synthetic-data-generate` (write
 `generated_at`, `labs_opp_id`), `synthetic-workflow-seed` (write
@@ -360,7 +366,7 @@ Move `opp.yaml.synthetic.*` (including nested `synthetic.workflows` and
 **Note on walkthroughs[].** This is the only block that's *append-only*
 across runs. Today every walkthrough run appends to `opp.yaml.synthetic.walkthroughs[]`
 in place. After migration: each run's walkthrough appends to *its own*
-`outputs.synthetic.walkthroughs[]`. The seed step at run init copies the
+`products.synthetic.walkthroughs[]`. The seed step at run init copies the
 prior run's list forward, so the chain stays continuous. Operators reviewing
 walkthrough history read the most recent run's state.
 
@@ -378,7 +384,7 @@ walkthrough history read the most recent run's state.
   new location.
 
 **Gate:** before this PR, every live opp must have run at least once on the
-new shape (so its `run_state.yaml.phases.*.outputs.*` is populated). Verify by
+new shape (so its `run_state.yaml.phases.*.products.*` is populated). Verify by
 checking each opp's most recent run's state file.
 
 ## Estimate
