@@ -14,12 +14,17 @@
 //   ACE_WEB_BASE_URL   — e.g. https://labs.connect.dimagi.com/ace
 //   ACE_WEB_PAT_TOKEN  — PersonalToken minted via /ace:ace-web-pat-mint
 //
-// The "AVD name" parameter in MobileBackend's API is meaningless on the
-// cloud side (there's exactly one cloud AVD per ace-web tenant), but we
-// keep it in the method signatures so existing callers don't have to
-// branch. CloudBackend treats it as the desired *state name* (one per
-// CommCare APK version baked into the AMI). When it doesn't match the
-// runtime's active state, the backend transparently switches.
+// State model (post-2026-05-10 pivot away from AMI-baked snapshots):
+//   The AMI bakes one *state* per CommCare APK version (declared in
+//   /opt/ace/states.yaml on the instance). A state is just "this APK
+//   is pre-installed". Each `/api/mobile/ensure-running` call cold-boots
+//   the AVD and runs the registration recipes against it, producing a
+//   fresh demo user every time (~3-4 minutes). The "AVD name" parameter
+//   on MobileBackend's API is meaningless on cloud — there's one AVD per
+//   ace-web tenant — but if it looks like a state name ("cc-2.62.0") we
+//   forward it as the desired state. save/loadSnapshot do still work,
+//   but they're session-scoped runtime snapshots (not persisted across
+//   instance stop) — useful for within-run checkpoints, not for AMI bakes.
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -46,6 +51,14 @@ export interface CloudBackendOpts {
    * Empty string means "let ace-web pick the AMI's `default` state".
    */
   defaultState?: string;
+  /**
+   * Per-request timeout in milliseconds. ace-web's `/api/mobile/ensure-running`
+   * is a long-poll — server-side it waits up to 5 min for the in-instance
+   * ready marker on cold boot. Bun's fetch enforces a default network
+   * timeout (~5 min) that races this; default here is 10 min so legitimate
+   * cold boots don't trip the client.
+   */
+  requestTimeoutMs?: number;
 }
 
 /** Shape of `/api/mobile/states`'s response data. */
@@ -87,6 +100,7 @@ export class CloudBackend {
   private readonly baseUrl: string;
   private readonly token: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly requestTimeoutMs: number;
   readonly defaultState: string;
 
   constructor(opts: CloudBackendOpts = {}) {
@@ -110,6 +124,7 @@ export class CloudBackend {
     this.token = token;
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.defaultState = opts.defaultState ?? '';
+    this.requestTimeoutMs = opts.requestTimeoutMs ?? 600_000;
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────
@@ -153,10 +168,13 @@ export class CloudBackend {
   /**
    * Install an APK on the running cloud AVD.
    *
-   * `apk` may be a local file path OR a presigned/HTTPS URL. Local
-   * paths are not yet uploaded — callers should pre-upload via the
-   * `/api/mobile/upload-url` helper (TODO) and pass the URL here.
-   * For now, accept HTTPS URLs only.
+   * Note: the cold-boot path already installs the state's baked CommCare
+   * APK (one per state in `/opt/ace/states.yaml`). This atom is for
+   * *additional* APKs — release candidates, sibling apps, etc.
+   *
+   * `apk` must be an HTTPS URL the runner can fetch. Local paths are
+   * not yet auto-uploaded — pre-upload to S3 (presigned PUT URL flow,
+   * helper TODO) and pass the URL here.
    */
   async installApk(_avdName: string, apk: string): Promise<ApkInfo> {
     if (!/^https?:/.test(apk)) {
@@ -187,6 +205,13 @@ export class CloudBackend {
   }
 
   // ── Snapshots ───────────────────────────────────────────────────
+  //
+  // Session-scoped: `adb emu avd snapshot save/load` writes to the
+  // running emulator's QEMU disk, which lives on the EC2 instance's
+  // root volume but is NOT persisted across instance stop/start (the
+  // instance cold-boots fresh from the AMI on every start). Useful as
+  // a within-run checkpoint — e.g. save before a destructive step and
+  // load to retry — not as a persisted demo seed.
 
   async saveSnapshot(_avdName: string, snapshotName: string): Promise<SnapshotResult> {
     const result = await this.post<{ name: string; saved_at: string }>(
@@ -285,10 +310,11 @@ export class CloudBackend {
   // ── HTTP plumbing ───────────────────────────────────────────────
 
   private resolveState(avdName: string): string {
-    // The atom-level avdName is meaningless on cloud; if it looks like
-    // one of our state names ("cc-x.y.z") we treat it as the requested
-    // state, otherwise fall back to the configured default (empty
-    // string = "let ace-web pick").
+    // The atom-level avdName is meaningless on cloud (one AVD per
+    // tenant). If it looks like one of our state names ("cc-x.y.z" —
+    // see /opt/ace/states.yaml on the runner) we forward it as the
+    // requested state, otherwise fall back to the configured default
+    // (empty string = "let ace-web pick the AMI's default state").
     if (avdName?.startsWith('cc-')) return avdName;
     return this.defaultState;
   }
@@ -311,9 +337,15 @@ export class CloudBackend {
     headers.set('authorization', `Bearer ${this.token}`);
     headers.set('accept', 'application/json');
 
+    // Explicit AbortSignal so Bun's default network idle timeout
+    // (~5 min) doesn't race the legitimate cold-boot wait on
+    // /api/mobile/ensure-running. init.signal wins if the caller
+    // already passed one.
+    const signal = init.signal ?? AbortSignal.timeout(this.requestTimeoutMs);
+
     let response: Response;
     try {
-      response = await this.fetchImpl(url, { ...init, headers });
+      response = await this.fetchImpl(url, { ...init, headers, signal });
     } catch (e: unknown) {
       throw new MobileError(
         'CLOUD_FETCH_FAILED',
