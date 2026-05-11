@@ -29,6 +29,7 @@ release flow + the App Editor permission prerequisite.
 ## Products
 
 - `2-commcare/app-deploy_summary.md` — HQ app IDs + URLs for both apps
+- `run_state.yaml.phases.commcare-setup.products.apps` — consolidated Learn + Deliver app handoff (name, nova_app_id, nova_url, hq_app_id, hq_url, build_status) written as a single atomic block at the end of Phase 2. This skill is the **sole writer** of `products.apps`; readers (ace-web summary, downstream phases) see the block populated once both apps are deployed.
 <!-- 0.13.116: legacy `2-commcare/app-deploy_gate-brief.md` removed.
 Pause-time summary at the Phase 2 → 3 Pause Point is composed by the
 orchestrator from per-skill QA + eval verdicts. -->
@@ -130,6 +131,44 @@ orchestrator from per-skill QA + eval verdicts. -->
 
    Body: human-readable narrative including any Nova warnings and a
    link to each HQ app.
+
+6. **Write the `products.apps` block to `run_state.yaml`** as one atomic
+   patch. This skill is the sole writer of `products.apps`, so the
+   two-level `update_yaml_file` merge replaces the whole block cleanly.
+
+   For each app, read the friendly name from the source summary's
+   frontmatter (`title`), the `nova_app_id` from the same summary, and
+   the HQ details from this skill's upload response. Construct the Nova
+   preview URL from the `nova_app_id` directly — Nova's working route
+   is `/build/<id>`, not the legacy `/apps/<id>` URL that the upstream
+   summaries' frontmatter still carries (which 404s).
+
+   ```yaml
+   phases:
+     commcare-setup:
+       products:
+         apps:
+           learn:
+             name: <from learn summary frontmatter `title`>
+             nova_app_id: <from learn summary frontmatter `nova_app_id`>
+             nova_url: https://commcare.app/build/<nova_app_id>
+             hq_app_id: <from Step 3 upload response>
+             hq_url: <from Step 3 upload response>
+             build_status: <success | errored | pending>
+           deliver:
+             name: <from deliver summary frontmatter `title`>
+             nova_app_id: <from deliver summary frontmatter `nova_app_id`>
+             nova_url: https://commcare.app/build/<nova_app_id>
+             hq_app_id: <from Step 4 upload response>
+             hq_url: <from Step 4 upload response>
+             build_status: <success | errored | pending>
+   ```
+
+   Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
+   `merge: 'two-level'` on the current run's `run_state.yaml`. The
+   two-level merge replaces `products:` wholesale under
+   `phases.commcare-setup` — that's the intended shape because this
+   skill owns the entire block.
 
 <!-- 0.13.116: gate-brief write step + ## Gate Brief section removed.
 At the Phase 2 → 3 Pause Point, the orchestrator composes the

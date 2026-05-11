@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.167 — 2026-05-11
+
+**Phase 2 state-consolidation: `skill:app-deploy` now writes a consolidated `phases.commcare-setup.products.apps` block to `run_state.yaml`.**
+
+Continues the work begun by state-consolidation PRs a–f, formalizing the typed handoff for Phase 2. `app-deploy` was already the natural Phase 2 capstone — it runs after `pdd-to-{learn,deliver}-app` and reads both summaries to drive the HQ upload — so it's also the natural single-writer of `products.apps`. Adds a new Step 6 to the skill: after writing the deploy summary markdown, write a `phases.commcare-setup.products.apps.{learn, deliver}` block with `{name, nova_app_id, nova_url, hq_app_id, hq_url, build_status}` for each app.
+
+The block is the typed-state replacement for parsing `pdd-to-{learn,deliver}-app_summary.md` and `app-deploy_summary.md` frontmatter to recover those values. Notably, `nova_url` is constructed correctly as `https://commcare.app/build/<nova_app_id>` — the per-summary frontmatter's legacy `nova_app_url: https://commcare.app/apps/<id>` is a 404. Downstream readers (ace-web's per-run summary page in particular) get the working URL directly from `products.apps.<kind>.nova_url` and never have to know about the quirk.
+
+No-op in default mode unless Phase 2 runs (which is normally part of any `/ace:run`). Old runs without the block are not back-filled; they continue to render whatever ace-web's summary builder can recover from markdown.
+
+All 915 unit tests pass.
+
 ## 0.13.166 — 2026-05-11
 
 **Rename `phases.<phase>.outputs.<block>` → `phases.<phase>.products.<block>` across all skills, agents, and docs.**
