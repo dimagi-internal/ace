@@ -24,7 +24,8 @@ narrative-plan output; this skill grows to bundle them then.
 | Phase 6 | `6-synthetic/synthetic-data-generate.md` | labs URL, GDrive folder ID, record counts |
 | Phase 6 | `6-synthetic/synthetic-data-generate_manifest.yaml` OR `6-synthetic/synthetic-narrative-plan.yaml` | FLW personas, cohort size, anomalies, timeline (for the narrative paragraphs) |
 | Phase 6 (optional) | `6-synthetic/synthetic-narrative-plan.md` | richer prose narrative — preferred over the manifest's bare data when present |
-| Drive | `ACE/<opp>/opp.yaml` | `display_name`, `slug`, opp-level context, `synthetic.walkthroughs[]` (Stage 2) |
+| Drive | `ACE/<opp>/opp.yaml` | `display_name`, `slug`, opp-level context |
+| Current run's `run_state.yaml` | `phases.synthetic-data-and-workflows.outputs.synthetic.*` — `walkthroughs[]`, `workflows`, `generated_at`, etc. (legacy fallback: `opp.yaml.synthetic.*`) | Stage 2/3 content sections |
 
 ## Outputs
 
@@ -51,9 +52,13 @@ narrative-plan output; this skill grows to bundle them then.
    `/ace:step synthetic-data-generate --opp <slug> --opp-int-id <int>` first
    — this skill aggregates its output."
 
-   Also read `ACE/<opp>/opp.yaml` for `display_name`, `slug`, and the
-   `synthetic.walkthroughs[]` list (Stage 2 — empty in Stage 1, populated
-   per-persona by `synthetic-walkthrough-run`).
+   Read `ACE/<opp>/opp.yaml` for `display_name` + `slug`. Read the
+   current run's `run_state.yaml` for
+   `phases.synthetic-data-and-workflows.outputs.synthetic.*`
+   — the `walkthroughs[]` list (Stage 2 — empty in Stage 1, populated
+   per-persona by `synthetic-walkthrough-run`), `workflows`,
+   `generated_at`. Legacy fallback to `opp.yaml.synthetic.*` for opps
+   that pre-date state-consolidation PR d.
 
 2. **Compose the summary** at
    `ACE/<opp>/runs/<last_run_id>/6-synthetic/synthetic-summary.md`. Shape:
@@ -61,7 +66,7 @@ narrative-plan output; this skill grows to bundle them then.
    ```markdown
    # <opp.yaml.display_name> — Synthetic Demo
 
-   **Opp:** `<slug>` · **Fixture run:** `<last_run_id>` · **Generated:** <ISO from opp.yaml.synthetic.generated_at>
+   **Opp:** `<slug>` · **Fixture run:** `<last_run_id>` · **Generated:** <ISO from `outputs.synthetic.generated_at`, legacy fallback `opp.yaml.synthetic.generated_at`>
 
    **See it live:** <labs URL from synthetic-data-generate.md> ← clickable
 
@@ -69,7 +74,7 @@ narrative-plan output; this skill grows to bundle them then.
 
    ## Demonstrative workflows (Stage 3)
 
-   Render this section ONLY when `opp.yaml.synthetic.workflows.{llo_weekly_review_id, program_admin_audit_id}` are populated. For each:
+   Render this section ONLY when `outputs.synthetic.workflows.{llo_weekly_review_id, program_admin_audit_id}` (legacy fallback: `opp.yaml.synthetic.workflows.*`) are populated. For each:
 
    - **LLO Weekly Review** — `${LABS_BASE_URL}/labs/workflow/<llo_weekly_review_id>/?opportunity_id=<labs_opp_id>` (clickable)
      - Saved-runs progression (when `synthetic-workflow-seed.md` records `Week 1 run_id` + `Week 2 run_id`): "Week 1 → Week 2 trend visible: <one-line description from the manifest's `coaching_arcs[]` or `anomalies[]`>".
@@ -110,7 +115,7 @@ narrative-plan output; this skill grows to bundle them then.
 
    ## Persona walkthroughs (Stage 2)
 
-   Render this section ONLY when `opp.yaml.synthetic.walkthroughs[]` is
+   Render this section ONLY when `outputs.synthetic.walkthroughs[]` (legacy fallback: `opp.yaml.synthetic.walkthroughs[]`) is
    non-empty. For each entry:
 
    - **<persona display name>** — `<eval_score>/5` average · captured
@@ -129,7 +134,7 @@ narrative-plan output; this skill grows to bundle them then.
 
    Phase 6 ships in stages — emit only the lines that match THIS opp's state:
 
-   - When `opp.yaml.synthetic.workflows` is empty: "Stage 3 (demonstrative workflows) hasn't run for this opp — `/ace:step synthetic-workflow-seed` instantiates the LLO weekly review + program admin audit."
+   - When `outputs.synthetic.workflows` (legacy fallback: `opp.yaml.synthetic.workflows`) is empty: "Stage 3 (demonstrative workflows) hasn't run for this opp — `/ace:step synthetic-workflow-seed` instantiates the LLO weekly review + program admin audit."
    - When `synthetic.workflows` exists but `synthetic-workflow-polish.md` is absent: "Stage 3.2 (polish) hasn't run — `/ace:step synthetic-workflow-polish` applies hero panels + named FLW cards + anomaly callouts."
    - When `synthetic.walkthroughs[]` is empty: "Stage 2.6 (persona walkthroughs) hasn't run — `/ace:step synthetic-walkthrough-run` produces stakeholder-ready slideshows. Requires `/ace:labs-login` first."
    - Always: "To regenerate this opp's data with a different manifest, run `/ace:step synthetic-data-generate --opp <slug>`. To fully disable synthetic mode, call `mcp__connect-labs__synthetic_disable(opportunity_id=<int>)`."
@@ -172,7 +177,7 @@ external side effects in this skill anyway). State tracks as
 |---|---|---|
 | `synthetic-data-generate.md` missing | step 1 halt | Run `synthetic-data-generate` first. |
 | Manifest YAML malformed | step 2 fallback | Skip persona-walk paragraph; emit a `> manifest unparseable — narrative truncated` banner and continue. |
-| `opp.yaml.synthetic.generated_at` missing | step 2 fallback | Use file-modified timestamp of `synthetic-data-generate.md` instead. |
+| ``phases.synthetic-data-and-workflows.outputs.synthetic.generated_at` (legacy fallback: `opp.yaml.synthetic.generated_at`)` missing | step 2 fallback | Use file-modified timestamp of `synthetic-data-generate.md` instead. |
 
 ## Related skills
 
@@ -183,7 +188,7 @@ external side effects in this skill anyway). State tracks as
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-06 | Initial Stage 1 MVP skill — three-paragraph reviewer summary aggregating data-generate output | ACE team (Plan B Stage 1) |
-| 2026-05-06 | Stage 2: prefer `synthetic-narrative-plan.{md,yaml}` when present; render Persona Walkthroughs section from `opp.yaml.synthetic.walkthroughs[]`. Section is omitted entirely when empty (Stage 1 summaries unchanged). | ACE team (Plan B Stage 2) |
-| 2026-05-07 | Stage 3+: render Demonstrative Workflows section from `opp.yaml.synthetic.workflows.{llo_weekly_review_id, program_admin_audit_id}`; surface saved-runs Week-1/Week-2 trend (Stage 3b) + polish patch count + visual-judge scores (post canopy:visual-judge wire-up). Replace the static "What's next" block with conditional gap-detection so the summary self-describes which stages haven't run for this opp. | ACE team (Plan B Stage 3+) |
+| 2026-05-06 | Stage 2: prefer `synthetic-narrative-plan.{md,yaml}` when present; render Persona Walkthroughs section from `outputs.synthetic.walkthroughs[]` (legacy fallback: `opp.yaml.synthetic.walkthroughs[]`). Section is omitted entirely when empty (Stage 1 summaries unchanged). | ACE team (Plan B Stage 2) |
+| 2026-05-07 | Stage 3+: render Demonstrative Workflows section from `outputs.synthetic.workflows.{llo_weekly_review_id, program_admin_audit_id}` (legacy fallback: `opp.yaml.synthetic.workflows.*`); surface saved-runs Week-1/Week-2 trend (Stage 3b) + polish patch count + visual-judge scores (post canopy:visual-judge wire-up). Replace the static "What's next" block with conditional gap-detection so the summary self-describes which stages haven't run for this opp. | ACE team (Plan B Stage 3+) |
 
 <!-- audit-fix marker for 0.13.76 -->

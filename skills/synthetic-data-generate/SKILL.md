@@ -38,8 +38,8 @@ deferred to later stages. This skill is the data plumbing only.
 - `6-synthetic/synthetic-data-generate_manifest.yaml` — the manifest sent to labs (default or operator-edited)
 - `6-synthetic/synthetic-data-generate.md` — run summary (folder ID, record counts, labs URL, warnings)
 - `6-synthetic/synthetic-data-generate_error.md` — written instead of the summary on `INVALID_SCHEMA` failures
-- `opp.yaml.synthetic` block populated with `enabled`, `current_folder_id`, `current_run_id`, `generated_at`, `fixture_record_counts`
-- `run_state.yaml.phases.synthetic-data-and-workflows.synthetic-data-generate: done`
+- `run_state.yaml.phases.synthetic-data-and-workflows.outputs.synthetic` block populated/extended with `enabled`, `current_folder_id`, `current_run_id`, `generated_at`, `fixture_record_counts`, `labs_opp_id` (read-modify-write to preserve other writers' sub-keys; see `agents/orchestrator-reference.md § Phase Write-Back Contract`). Backward-compat: also writes `opp.yaml.synthetic` until cleanup PR e.
+- `run_state.yaml.phases.synthetic-data-and-workflows.steps.synthetic-data-generate.status: done`
 
 ## Process
 
@@ -284,26 +284,49 @@ deferred to later stages. This skill is the data plumbing only.
      (read `LABS_BASE_URL` from the same env the connect-labs proxy uses;
      default `https://labs.connect.dimagi.com`.)
 
-5. **Update `opp.yaml`** via
-   `mcp__plugin_ace_ace-gdrive__update_yaml_file`, adding:
+5. **Update `phases.synthetic-data-and-workflows.outputs.synthetic`** in
+   the current run's `run_state.yaml`. Other writers
+   (`synthetic-workflow-seed`, `synthetic-walkthrough-run`) own
+   different sub-keys (`workflows`, `walkthroughs[]`); `update_yaml_file`
+   + `merge: 'two-level'` would replace `outputs:` wholesale, so do
+   read-modify-write:
 
-   ```yaml
-   synthetic:
-     enabled: true
-     current_folder_id: "<folder_id>"
-     current_run_id: "<last_run_id>"
-     generated_at: "<ISO-8601 UTC of MCP response receipt>"
-     fixture_record_counts:
-       user_visits: <int>
-       user_data: <int>
-       completed_works: <int>
-       completed_module: <int>
-       opportunity: <int>
-   ```
+   1. `drive_read_file` on the current run's `run_state.yaml`. Parse,
+      extract any existing
+      `phases.synthetic-data-and-workflows.outputs.synthetic` block.
+   2. Merge in this skill's contribution; keep sibling sub-keys
+      (`workflows`, `walkthroughs`) intact:
 
-   If a `synthetic:` block already exists (re-run), overwrite all fields
-   (Stage 1 keeps a single current pointer; older folders are retained
-   labs-side per the design's forensics convention).
+      ```yaml
+      synthetic:
+        # this skill's fields:
+        enabled: true
+        current_folder_id: "<folder_id>"
+        current_run_id: "<last_run_id>"
+        generated_at: "<ISO-8601 UTC of MCP response receipt>"
+        fixture_record_counts:
+          user_visits: <int>
+          user_data: <int>
+          completed_works: <int>
+          completed_module: <int>
+          opportunity: <int>
+        labs_opp_id: <int from --opp-int-id>   # carry forward for later skills
+        # preserved from earlier writers (if present):
+        workflows: { ... }
+        walkthroughs: [ ... ]
+      ```
+   3. `update_yaml_file` with `merge: 'two-level'` on the full
+      `phases.synthetic-data-and-workflows.outputs` payload.
+
+   **Backward-compat:** also patch the legacy `opp.yaml.synthetic`
+   block via a separate `update_yaml_file` call (`merge: 'shallow'` —
+   `synthetic:` is its own top-level key). Strip in cleanup PR e.
+
+   If a `synthetic:` block already exists at the new location (re-run
+   in same run, or seeded from prior run), this skill's keys overwrite
+   the prior values; other writers' sub-keys (`workflows`,
+   `walkthroughs`) are preserved per the read-modify-write recipe
+   above.
 
 6. **Update `run_state.yaml`** — read-merge-write, NOT a naïve
    `update_yaml_file` patch.
@@ -357,7 +380,7 @@ deferred to later stages. This skill is the data plumbing only.
 - `mcp__plugin_ace_ace-gdrive__drive_create_folder`
 - `mcp__plugin_ace_ace-gdrive__drive_list_folder` (fixture verification, step 3a)
 - `mcp__plugin_ace_ace-gdrive__drive_update_file` (run_state merge, step 6)
-- `mcp__plugin_ace_ace-gdrive__update_yaml_file` (opp.yaml `synthetic` block only — top-level scalar key, safe for shallow-merge)
+- `mcp__plugin_ace_ace-gdrive__update_yaml_file` — writes `phases.synthetic-data-and-workflows.outputs.synthetic` to `run_state.yaml` (merge: 'two-level' after read-modify-write to preserve sibling sub-keys from other writers) AND backward-compat writes `opp.yaml.synthetic` (merge: 'shallow') until cleanup PR e
 
 ## Mode Behavior
 

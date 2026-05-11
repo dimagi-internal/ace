@@ -86,8 +86,10 @@ otherwise authors a default 5-FLW manifest.
 - Calls labs MCP `synthetic_generate_from_manifest` to mint visits +
   user_data + completed_works + opportunity records.
 - Writes `6-synthetic/synthetic-data-generate.md`, populates
-  `opp.yaml.synthetic` block with `enabled: true`,
-  `current_folder_id`, `fixture_record_counts`.
+  `phases.synthetic-data-and-workflows.outputs.synthetic` block in the
+  current run's `run_state.yaml` with `enabled: true`,
+  `current_folder_id`, `fixture_record_counts`, `labs_opp_id`. Backward-
+  compat: also writes `opp.yaml.synthetic` until cleanup PR e.
 - Pre-flight on `connect_list_payment_units`: warns when `count == 0`
   (consequence: completed_works/completed_module zero).
 - **LLM-as-Judge:** `synthetic-data-generate-eval` (Stage 4 — not yet
@@ -140,7 +142,7 @@ Invoke `synthetic-walkthrough-run`.
 - For each persona spec, dispatches `/canopy:walkthrough <name>`;
   copies the resulting HTML deck + scored screenshots into
   `6-synthetic/walkthroughs/<persona>-<timestamp>/`.
-- Appends to `opp.yaml.synthetic.walkthroughs[]` (re-runs append, not
+- Appends to `outputs.synthetic.walkthroughs[]` in the current run's `run_state.yaml` (backward-compat also appends to legacy `opp.yaml.synthetic.walkthroughs[]`); re-runs append, not
   overwrite — project history accumulates).
 - **No separate eval skill** — `canopy:walkthrough` already scores per
   scene with its Tough Judge rubric.
@@ -247,26 +249,40 @@ intact while still threading the read+CAS internally. The legacy
 read-merge-write pattern via `drive_update_file` is no longer needed
 for this case and should not be reintroduced.
 
-`opp.yaml.synthetic` accumulates (cross-run state):
+`phases.synthetic-data-and-workflows.outputs.synthetic` accumulates
+across writers (current run's `run_state.yaml`; inherited from prior
+runs via the orchestrator's seed step). Three skills own different
+sub-keys, so each does read-modify-write to preserve siblings under
+`merge: 'two-level'`:
 
 ```yaml
-synthetic:
-  enabled: <bool>
-  current_folder_id: <gdrive id>
-  current_run_id: <run-id>
-  generated_at: <ISO>
-  fixture_record_counts: {...}
-  workflows:
-    llo_weekly_review_id: <int>
-    program_admin_audit_id: <int>
-  walkthroughs:                   # appended by walkthrough-run
-    - persona: prospective-llo
-      slideshow_artifact: <Drive ID>
-      eval_score: <float>
-      run_at: <ISO>
-    - persona: funder
-      ...
+phases:
+  synthetic-data-and-workflows:
+    outputs:
+      synthetic:
+        # synthetic-data-generate owns:
+        enabled: <bool>
+        current_folder_id: <gdrive id>
+        current_run_id: <run-id>
+        generated_at: <ISO>
+        fixture_record_counts: {...}
+        labs_opp_id: <int>
+        # synthetic-workflow-seed owns:
+        workflows:
+          llo_weekly_review_id: <int>
+          program_admin_audit_id: <int>
+        # synthetic-walkthrough-run appends to:
+        walkthroughs:
+          - persona: prospective-llo
+            slideshow_artifact: <Drive ID>
+            eval_score: <float>
+            run_at: <ISO>
+          - persona: funder
+            ...
 ```
+
+Backward-compat: each writer also patches the legacy
+`opp.yaml.synthetic` mirror until cleanup PR e.
 
 ## Failure modes
 
