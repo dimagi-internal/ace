@@ -542,12 +542,25 @@ writes during a `/ace:run`.
 three levels deep (`phases` → `<phase>` → `outputs` → `<block>`). With
 `merge: 'two-level'`, a patch like
 `phases: { <phase>: { outputs: { <block>: {...} } } }` replaces the
-*entire* `outputs:` subtree under that phase wholesale. Implication:
-each `outputs.<block>` has exactly one writing skill, and that skill
-emits the **full block** atomically — partial writes from multiple
-skills would clobber each other. When the same skill needs to surface
-intermediate state during its run, it accumulates the data in-memory
-and writes the consolidated `outputs.<block>` once at end-of-skill.
+*entire* `outputs:` subtree under that phase wholesale. Two cases:
+
+- **Single-writer block.** One skill produces the whole block (e.g.
+  `connect-opp-setup` owns `outputs.connect`,
+  `solicitation-create` owns `outputs.solicitation`). The skill
+  accumulates in-memory through its steps and writes the consolidated
+  block once at end-of-skill.
+- **Multi-writer block.** Several skills produce different sub-keys
+  of the same block (e.g. `outputs.synthetic` is written by
+  `synthetic-data-generate` (top-level fields + `labs_opp_id`),
+  `synthetic-workflow-seed` (`workflows.*`), and
+  `synthetic-walkthrough-run` (`walkthroughs[]` append)). Each writer
+  reads the existing block, merges in its contribution preserving
+  siblings, and writes back. The `update_yaml_file` CAS retry handles
+  concurrent writers across skills.
+
+Either way, the producing skill is the sole writer of *its* sub-keys
+within the block; partial writes that ignore sibling sub-keys would
+clobber other writers.
 
 Do NOT pair a manual `drive_read_file` + `drive_update_file` to
 read-modify-write `run_state.yaml` from the agent — `update_yaml_file`

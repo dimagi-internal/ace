@@ -55,7 +55,7 @@ Score each dimension 0–10. Hard-deduct rules inline.
    - Fixture folder URL — present, GDrive link.
    - Generated-at timestamp — present.
    - Cast paragraph — names FLW personas from the manifest.
-   - Stage 2 walkthroughs section — present iff `opp.yaml.synthetic.walkthroughs[]` is non-empty (and absent when empty — promising-but-not-shipped is worse than silent).
+   - Stage 2 walkthroughs section — present iff `outputs.synthetic.walkthroughs[]` (current run's `run_state.yaml`) is non-empty (legacy fallback: `opp.yaml.synthetic.walkthroughs[]`). Absent when both are empty — promising-but-not-shipped is worse than silent.
    - Stage 3 workflows section — same conditional rendering.
    Hard-deduct -5 if labs URL OR fixture folder URL is missing/broken.
 
@@ -83,9 +83,10 @@ Score each dimension 0–10. Hard-deduct rules inline.
   artifact.
 - `[WARN]` if Stage 2 walkthroughs section is rendered but empty (or
   promised in "What's next" while the artifacts already exist).
-- `[INFO]` if `opp.yaml.synthetic.walkthroughs[]` is empty AND the
-  summary is Stage 1 only — calibration signal that this is a
-  baseline-state grade.
+- `[INFO]` if `outputs.synthetic.walkthroughs[]` (legacy fallback:
+  `opp.yaml.synthetic.walkthroughs[]`) is empty AND the summary is
+  Stage 1 only — calibration signal that this is a baseline-state
+  grade.
 
 ## Inflation guard
 

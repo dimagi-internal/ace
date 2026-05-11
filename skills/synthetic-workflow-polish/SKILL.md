@@ -42,9 +42,12 @@ Two modes:
 ## Process
 
 1. **Read inputs.** Load the narrative plan, workflow seed summary,
-   `opp.yaml`, and the PDD via `drive_read_file`. If
-   `opp.yaml.synthetic.workflows.llo_weekly_review_id` is missing,
-   halt: "run `synthetic-workflow-seed` first."
+   `opp.yaml`, the current run's `run_state.yaml`, and the PDD via
+   `drive_read_file`. Resolve `llo_weekly_review_id` from
+   `phases.synthetic-data-and-workflows.outputs.synthetic.workflows.llo_weekly_review_id`
+   (legacy fallback: `opp.yaml.synthetic.workflows.llo_weekly_review_id`).
+   Halt if missing at both locations: "run `synthetic-workflow-seed`
+   first."
 
    Read `scaffold_unsuitable` from the workflow seed summary. Branch:
 
