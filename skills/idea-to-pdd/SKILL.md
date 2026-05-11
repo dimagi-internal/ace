@@ -26,6 +26,7 @@ Pause-time summary at the Phase 1 → 2 Pause Point is composed by the
 orchestrator from the per-skill QA + eval verdicts on the fly. -->
 
 - `ACE/<opp-name>/runs/<run-id>/decisions.yaml` — structured per-run decisions log (always emitted; see `## Decisions Log Convention` below)
+- `run_state.yaml.phases.design.products.pdd` — `{title, description, file_id}` typed handoff for downstream readers (ace-web summary, future skills) so they don't need to parse the PDD body. This skill is the sole writer.
 
 ## Process
 
@@ -157,6 +158,33 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
 pause-time summary from this skill's QA verdict (idea-to-pdd-qa) +
 eval verdict (idea-to-pdd-eval) at the Phase 1 → 2 Pause Point. -->
 
+7.5. **Write the `products.pdd` block to `run_state.yaml`** so
+   downstream readers (ace-web's summary page in particular) don't
+   have to fetch and regex the PDD body.
+
+   - `title`: the friendly intervention name from the PDD's H1 / opening
+     line (e.g. "Turmeric Market Survey"). Strip trailing punctuation
+     and any Google Docs comment markers (`[a][b]`).
+   - `description`: a one-paragraph plain-prose overview, ~1–3
+     sentences, lifted from the PDD's `## Overview` (or `## Summary` /
+     `## Abstract`) section. Strip markdown bold/italic wrappers; keep
+     content as a single line.
+   - `file_id`: the Drive `fileId` returned by Step 6's
+     `drive_create_file`.
+
+   ```yaml
+   phases:
+     design:
+       products:
+         pdd:
+           title: "Turmeric Market Survey"
+           description: "FLWs visit markets to photograph turmeric vendors..."
+           file_id: <fileId>
+   ```
+
+   Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
+   `merge: 'two-level'` on the current run's `run_state.yaml`. This
+   skill is the sole writer of `products.pdd`.
 
 8. **Render the decisions log to a human-readable Google Doc** by
    invoking the `decisions-render` skill against the run-id. The
