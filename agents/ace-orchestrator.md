@@ -377,8 +377,9 @@ stop, up until the point of external communication.*
   from ACE on a one-to-one basis. `/ace:run` halts here in default mode
   and remains halted until the human runs `/ace:step solicitation-review`,
   which (after a HITL approval gate) calls `award_response` and populates
-  `opp.yaml.selected_llo`. Phase 8 cannot start while
-  `selected_llo.org_slug` is null.
+  `phases.solicitation-management.outputs.selected_llo` (legacy
+  fallback: `opp.yaml.selected_llo`). Phase 8 cannot start while
+  `selected_llo.org_slug` is null at both locations.
 - **Phases 7–8 (Execution Management, Closeout):** behave like `review`
   mode for any step whose action affects an external party. Specifically,
   always pause before:
@@ -721,9 +722,12 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
 
    - ace-web scans the filesystem (`runs/` folder listing) to enumerate
      runs, so it never consults `opp.yaml.runs` or `last_run_id`.
-   - The orchestrator's only structural use of opp.yaml is
-     `selected_llo.org_slug` (Phase 7→8 gate, populated by
-     `solicitation-review`) plus the metadata fields above.
+   - The orchestrator's only remaining structural use of opp.yaml is
+     the legacy `selected_llo.org_slug` fallback for the Phase 7→8 gate
+     (canonical location since PR c:
+     `phases.solicitation-management.outputs.selected_llo.org_slug`)
+     plus the metadata fields above. The legacy fallback strips in
+     cleanup PR e.
    - When the user manually deletes a run subfolder, `last_run_id` and
      `runs:` accumulate dangling references — purely cosmetic, but
      misleading enough to worry a reader who notices.
@@ -885,15 +889,15 @@ When invoked with an opportunity, execute these phases in order:
 
 **Write-back:** `phases.solicitation-management.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
-**Gate:** `[BLOCKER]` halts; **Phase 7→8 boundary always pauses in every mode** — `/ace:run` HALTS here at the new external-comms boundary. Phase 8 cannot start until `opp.yaml.selected_llo.org_slug` is populated, which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`). See § Pause Points in reference.
+**Gate:** `[BLOCKER]` halts; **Phase 7→8 boundary always pauses in every mode** — `/ace:run` HALTS here at the new external-comms boundary. Phase 8 cannot start until `selected_llo.org_slug` is populated (canonical location: `phases.solicitation-management.outputs.selected_llo.org_slug` in the current run's `run_state.yaml`; legacy fallback: `opp.yaml.selected_llo.org_slug`), which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`). See § Pause Points in reference.
 
 **Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). `solicitation` and `selected_llo` are separate `opp.yaml` blocks — only `solicitation-review` populates `selected_llo`.
 
 ### Phase 8: Execution Management
 
-**Dispatch:** `Agent(execution-manager)`. **Entry gated on `opp.yaml.selected_llo.org_slug` being populated by Phase 7's `solicitation-review`.**
+**Dispatch:** `Agent(execution-manager)`. **Entry gated on `selected_llo.org_slug` being populated by Phase 7's `solicitation-review`** (read `phases.solicitation-management.outputs.selected_llo.org_slug` first; fall back to legacy `opp.yaml.selected_llo.org_slug` until cleanup PR e).
 
-**Inputs (inline at handoff):** PDD, Phase-5 training artifacts (5 docs + onboarding email under `5-qa-and-training/`), Phase-4 chatbot URL (`4-ocs/ocs-agent-setup.md`), `opp.yaml.selected_llo`, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-5 training artifacts (5 docs + onboarding email under `5-qa-and-training/`), Phase-4 chatbot URL (`4-ocs/ocs-agent-setup.md`), `selected_llo` (resolved from run_state.yaml.phases.solicitation-management.outputs.selected_llo, legacy opp.yaml.selected_llo fallback), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(execution-manager)`.
 
@@ -909,7 +913,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(closeout)`. **Triggered when the opportunity reaches its end date.**
 
-**Inputs (inline at handoff):** Phase-8 outputs (LLO onboarding + UAT + go-live artifacts under `8-execution-manager/`), `opp.yaml.selected_llo`, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** Phase-8 outputs (LLO onboarding + UAT + go-live artifacts under `8-execution-manager/`), `selected_llo` (resolved from run_state.yaml.phases.solicitation-management.outputs.selected_llo, legacy opp.yaml.selected_llo fallback), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(closeout)`.
 

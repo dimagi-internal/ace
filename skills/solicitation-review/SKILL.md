@@ -2,7 +2,7 @@
 name: solicitation-review
 description: >
   Score solicitation responses, recommend an awardee, and (after HITL
-  approval) call award_response and populate opp.yaml.selected_llo.
+  approval) call award_response and populate selected_llo.
 disable-model-invocation: true
 ---
 
@@ -15,7 +15,9 @@ Manual skill — never runs in default `/ace:run`. Only via:
 ```
 
 This is the only skill that calls `award_response` (irreversible) and the
-only skill that populates `opp.yaml.selected_llo` (which gates Phase 8).
+only skill that populates `selected_llo` (which gates Phase 8). Writes to
+`phases.solicitation-management.outputs.selected_llo` (current run's
+`run_state.yaml`) with backward-compat fallback to `opp.yaml.selected_llo`.
 
 ## Inputs
 
@@ -140,31 +142,39 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.outpu
    continue. The award is durable; the labs-side status flip can be
    retried out-of-band via the labs UI.
 
-10. **Populate `opp.yaml.selected_llo`** (migrates to
-    `phases.solicitation-management.outputs.selected_llo` in PR c).
-    Only on a successful award:
+10. **Populate `selected_llo`.** Only on a successful award, write to
+    the current run's
+    `phases.solicitation-management.outputs.selected_llo` via
+    `update_yaml_file` + `merge: 'two-level'` (carry the full
+    `outputs.selected_llo` payload — two-level merge replaces it
+    wholesale):
 
     ```yaml
-    selected_llo:
-      org_slug: <returned>
-      contact_email: <returned>
-      source: solicitation
-      response_id: <chosen>
+    phases:
+      solicitation-management:
+        outputs:
+          selected_llo:
+            org_slug: <returned>
+            contact_email: <returned>
+            source: solicitation
+            response_id: <chosen>
     ```
 
     Also flip the local-mirror solicitation status to `awarded` and
-    populate the `awarded.*` block with full award details. Patch the
-    current run's
-    `phases.solicitation-management.outputs.solicitation.{status,
-    awarded}` via `update_yaml_file` + `merge: 'two-level'` (carry the
-    whole `outputs.solicitation` payload to avoid clobbering siblings).
-    **Backward-compat:** also patch `opp.yaml.solicitation.status` and
-    `opp.yaml.solicitation.awarded` until cleanup PR e.
+    populate the `awarded.*` block under
+    `phases.solicitation-management.outputs.solicitation`.
+
+    **Backward-compat:** until cleanup PR e, also write the same
+    `selected_llo:` subtree to `opp.yaml` (`merge: 'shallow'`) and
+    update `opp.yaml.solicitation.{status, awarded}`. Phase 8's
+    entry-gate readers fall back to `opp.yaml.selected_llo.org_slug`
+    for opps that pre-date PR c.
 
 ## Error handling
 
 - **HITL gate timeout / no reply**: do not call `award_response`. Do not
-  mutate `opp.yaml`. Exit cleanly so the human can re-run the skill.
+  mutate `run_state.yaml` or `opp.yaml`. Exit cleanly so the human can
+  re-run the skill.
 - **Human replies `cancel`**: halt; do not write `award-record.md`.
 - **`award_response` returns 4xx after approval**: write `award-record.md`
   with `status: failed` and the error envelope. **Do not** populate
@@ -183,7 +193,7 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.outpu
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_scoring-rubric.md`
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_recommendation.md`
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_award-record.md`
-- `opp.yaml.selected_llo.*` populated (only on success; migrates to `phases.solicitation-management.outputs.selected_llo` in PR c)
+- `phases.solicitation-management.outputs.selected_llo.*` populated; backward-compat also `opp.yaml.selected_llo.*` until cleanup PR e (only on success)
 - `phases.solicitation-management.outputs.solicitation.{status: awarded, awarded.*}` populated; backward-compat `opp.yaml.solicitation.{status: awarded, awarded.*}` until cleanup PR e (only on success)
 
 ## MCP Tools Used
