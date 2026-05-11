@@ -55,7 +55,7 @@ Phase 7 owns two `outputs` blocks under
 ```yaml
 phases:
   solicitation-management:
-    outputs:
+    products:
       solicitation:
         # Audit trail — populated by solicitation-create, updated by
         # solicitation-monitor, finalized by solicitation-review.
@@ -104,9 +104,9 @@ Labs and Connect use different identifiers for the same program:
   (e.g. `cae9f0f5-...`). Written by `connect-program-setup` on first
   create; the durable cross-run reference reused across every run of
   the opp. Each run's `connect-opp-setup` copies it into
-  `phases.connect-setup.outputs.connect.program.id` so the run state
+  `phases.connect-setup.products.connect.program.id` so the run state
   is self-contained.
-- `phases.solicitation-management.outputs.solicitation.labs_program_id`
+- `phases.solicitation-management.products.solicitation.labs_program_id`
   — the **labs** integer program ID (e.g. `138`). Resolved by
   `solicitation-create` via a one-time `labs_context()` name match
   against the Connect program name, then cached at the durable
@@ -131,7 +131,7 @@ A labs solicitation is scoped to **one labs program** (`labs_program_id`)
 and that's the only labs-side foreign key. There is **no** labs-side
 foreign key to a specific Connect opportunity. The
 `connect_opportunity_id` and `connect_program_id` fields under
-`phases.solicitation-management.outputs.solicitation` are **ACE-side
+`phases.solicitation-management.products.solicitation` are **ACE-side
 bookkeeping** — ACE's record of which Connect opp the solicitation is
 *intended* to feed into. Labs neither knows nor cares.
 
@@ -202,7 +202,7 @@ Phase 7 close and waits for the operator to invoke
 awardee.
 
 Phase 8 entry gate:
-`phases.solicitation-management.outputs.selected_llo.org_slug` in
+`phases.solicitation-management.products.selected_llo.org_slug` in
 the current run's `run_state.yaml` must be a non-empty string. The
 orchestrator enforces this before dispatching
 `Agent(execution-manager)`.

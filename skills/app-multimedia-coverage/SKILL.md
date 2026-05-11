@@ -22,7 +22,7 @@ patch, then build + release + verify.
 | Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` and `pdd-to-deliver-app_summary.md` | source `nova_app_id`s |
 | Operator (manual invocation) | per-opp confirmation gate | required — this skill is NOT part of `/ace:run`; invoke via `/ace:step app-multimedia-coverage <opp>` |
 
-## Outputs
+## Products
 
 - `2-commcare/app-multimedia-coverage_summary.md` — per-field judge decisions, images attached, build/release IDs
 

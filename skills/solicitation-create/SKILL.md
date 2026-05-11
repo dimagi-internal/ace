@@ -13,7 +13,7 @@ shot — ACE always publishes, never drafts. The solicitation can be edited
 post-publish via the labs UI without affecting responses.
 
 See `skills/_solicitation-template.md` for the shared
-`phases.solicitation-management.outputs.solicitation` contract and
+`phases.solicitation-management.products.solicitation` contract and
 connect-labs MCP atom inventory.
 
 ## Inputs
@@ -27,10 +27,10 @@ connect-labs MCP atom inventory.
   the Connect program **name** (used to resolve the labs integer
   program_id via `labs_context`; see Step 5)
 
-## Outputs
+## Products
 
 - `6-solicitation-management/solicitation-create_summary.md` — solicitation_id, public_url, deadline, audit trail
-- `run_state.yaml.phases.solicitation-management.outputs.solicitation` block populated (id, public_url, deadline, status: open, labs_program_id, connect_program_id, connect_opportunity_id). Per-run only — each run of the opp publishes a fresh solicitation. Operator-cleaned-up when picking a release-candidate run.
+- `run_state.yaml.phases.solicitation-management.products.solicitation` block populated (id, public_url, deadline, status: open, labs_program_id, connect_program_id, connect_opportunity_id). Per-run only — each run of the opp publishes a fresh solicitation. Operator-cleaned-up when picking a release-candidate run.
 
 ## Process
 
@@ -139,7 +139,7 @@ connect-labs MCP atom inventory.
       `program` as a sub-object). This is opp-level state (the
       program is reused across runs, so its labs int mirror is also
       opp-level). Also carry the value into this run's
-      `phases.solicitation-management.outputs.solicitation.labs_program_id`
+      `phases.solicitation-management.products.solicitation.labs_program_id`
       via Step 9's consolidated write so the run state is
       self-contained.
    4. **Halt** with a `[BLOCKER]` if no name match — likely the Connect
@@ -210,13 +210,13 @@ connect-labs MCP atom inventory.
    without re-fetching from labs).
 
 9. **Write the consolidated solicitation outputs block** to the
-   current run's `run_state.yaml.phases.solicitation-management.outputs.solicitation`
+   current run's `run_state.yaml.phases.solicitation-management.products.solicitation`
    via `update_yaml_file` + `merge: 'two-level'`:
 
    ```yaml
    phases:
      solicitation-management:
-       outputs:
+       products:
          solicitation:
            solicitation_id: <returned>
            labs_program_id: <integer resolved in step 5>
@@ -235,15 +235,15 @@ connect-labs MCP atom inventory.
              award_amount: null
    ```
 
-   The two-level merge replaces `outputs:` wholesale under
+   The two-level merge replaces `products:` wholesale under
    `solicitation-management`. This skill is the sole writer of
-   `outputs.solicitation` within the run; `solicitation-review`
+   `products.solicitation` within the run; `solicitation-review`
    updates the same block in place at award time (within the same
    run).
 
    `selected_llo` is stubbed by `solicitation-review` on award, not
    here. `selected_llo` lives at
-   `phases.solicitation-management.outputs.selected_llo`.
+   `phases.solicitation-management.products.selected_llo`.
 
    **No write to `opp.yaml.solicitation`.** Solicitations are per-run
    — every `/ace:run` publishes a fresh solicitation; stale ones from
@@ -280,9 +280,9 @@ connect-labs MCP atom inventory.
 
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md` (audit)
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md` (live state)
-- `run_state.yaml.phases.solicitation-management.outputs.solicitation.{solicitation_id, public_url, deadline, status: open, labs_program_id, ...}` populated (per-run only).
+- `run_state.yaml.phases.solicitation-management.products.solicitation.{solicitation_id, public_url, deadline, status: open, labs_program_id, ...}` populated (per-run only).
 - `opp.yaml.connect.program.labs_int_id` cached on first resolution (durable opp-level — the labs program int matches the Connect program UUID; reused across runs).
-- `selected_llo` is left untouched here (populated by `solicitation-review` on award at `outputs.selected_llo`).
+- `selected_llo` is left untouched here (populated by `solicitation-review` on award at `products.selected_llo`).
 
 ## MCP Tools Used
 
@@ -291,7 +291,7 @@ connect-labs MCP atom inventory.
   `get_solicitation` (round-trip verification — pass `program_id`)
 - `ace-gdrive`: `drive_create_file`, `drive_read_file`,
   `drive_update_file`, `update_yaml_file` (write
-  `phases.solicitation-management.outputs.solicitation` to
+  `phases.solicitation-management.products.solicitation` to
   `run_state.yaml`; cache `opp.yaml.connect.program.labs_int_id` on
   first resolution)
 

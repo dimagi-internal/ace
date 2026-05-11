@@ -20,7 +20,7 @@ runs honor the human's edits.
 | Per-run state | `ACE/<opp-name>/runs/<run-id>/decisions.gdoc` | human-edited prose Doc — source of overrides |
 | Per-run state | `ACE/<opp-name>/runs/<run-id>/decisions.yaml` | structured log to update |
 
-## Outputs
+## Products
 
 - `ACE/<opp-name>/runs/<run-id>/decisions.yaml` — updated in place. Rows where the human changed `Default:` get `status: overridden` and the prior default is preserved in `options_considered`. New `Considered:` bullets are appended.
 

@@ -27,7 +27,7 @@ contracts.
 | Phase 2 | `2-commcare/app-test-cases.yaml` | journey↔recipe bindings, smoke flag, forms exercised |
 | Phase 5 | `5-qa-and-training/screenshots/<journey>/` + `5-qa-and-training/app-screenshot-capture_manifest.yaml` | captured PNGs to grade |
 
-## Outputs
+## Products
 
 - `5-qa-and-training/app-ux-eval_verdict-deep.yaml` — per-journey verdict on UX dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion)
 

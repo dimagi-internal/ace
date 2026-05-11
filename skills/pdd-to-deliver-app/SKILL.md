@@ -18,7 +18,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Deliver App Specification + delivery unit drive the Nova brief |
 
-## Outputs
+## Products
 
 - `2-commcare/pdd-to-deliver-app_summary.md` — Deliver-app structure summary (forms, fields, `nova_app_id`)
 

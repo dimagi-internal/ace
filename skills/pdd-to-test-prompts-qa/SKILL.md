@@ -20,7 +20,7 @@ The companion `pdd-to-test-prompts-eval` grades quality (specificity of expected
 |---|---|---|
 | Phase 1 producer | `1-design/pdd-to-test-prompts.md` | the test prompts file under structural check |
 
-## Outputs
+## Products
 
 - `1-design/pdd-to-test-prompts-qa_result.yaml` — QA result per `lib/qa-types.ts` schema
 

@@ -86,7 +86,7 @@ otherwise authors a default 5-FLW manifest.
 - Calls labs MCP `synthetic_generate_from_manifest` to mint visits +
   user_data + completed_works + opportunity records.
 - Writes `6-synthetic/synthetic-data-generate.md`, populates
-  `phases.synthetic-data-and-workflows.outputs.synthetic` block in the
+  `phases.synthetic-data-and-workflows.products.synthetic` block in the
   current run's `run_state.yaml` with `enabled: true`,
   `current_folder_id`, `fixture_record_counts`, `labs_opp_id`. Per-run
   only.
@@ -142,7 +142,7 @@ Invoke `synthetic-walkthrough-run`.
 - For each persona spec, dispatches `/canopy:walkthrough <name>`;
   copies the resulting HTML deck + scored screenshots into
   `6-synthetic/walkthroughs/<persona>-<timestamp>/`.
-- Appends to `outputs.synthetic.walkthroughs[]` in the current run's `run_state.yaml`. Per-run only — does NOT chain across runs (every `/ace:run` produces its own walkthrough list). Within a run, re-runs append, not
+- Appends to `products.synthetic.walkthroughs[]` in the current run's `run_state.yaml`. Per-run only — does NOT chain across runs (every `/ace:run` produces its own walkthrough list). Within a run, re-runs append, not
   overwrite — project history accumulates).
 - **No separate eval skill** — `canopy:walkthrough` already scores per
   scene with its Tough Judge rubric.
@@ -194,11 +194,11 @@ the whole phase to re-run.
 
 Before Step 1, verify:
 
-- [ ] **`phases.connect-setup.outputs.connect.opportunity` exists** in
+- [ ] **`phases.connect-setup.products.connect.opportunity` exists** in
   the current run's `run_state.yaml` (Phase 3 ran in this same run).
   Without an opportunity in Connect, the labs MCP has no opp to scope
   `synthetic_generate_from_manifest` against.
-- [ ] **`phases.connect-setup.outputs.connect.opportunity.labs_int_id`
+- [ ] **`phases.connect-setup.products.connect.opportunity.labs_int_id`
   populated** (Stage 4.5 of Plan B; `connect-opp-setup` recovers it
   via `labs_context` post-create). When null, Phase 6 falls back to
   operator-typed `--opp-int-id`. Re-run `connect-opp-setup` if labs
@@ -244,7 +244,7 @@ intact while still threading the read+CAS internally. The legacy
 read-merge-write pattern via `drive_update_file` is no longer needed
 for this case and should not be reintroduced.
 
-`phases.synthetic-data-and-workflows.outputs.synthetic` accumulates
+`phases.synthetic-data-and-workflows.products.synthetic` accumulates
 across writers within a single run (current run's `run_state.yaml`).
 Each `/ace:run` is independent — no cross-run inheritance. Three
 skills own different sub-keys, so each does read-modify-write to
@@ -253,7 +253,7 @@ preserve siblings under `merge: 'two-level'`:
 ```yaml
 phases:
   synthetic-data-and-workflows:
-    outputs:
+    products:
       synthetic:
         # synthetic-data-generate owns:
         enabled: <bool>

@@ -16,7 +16,7 @@ Activate the opportunity and notify LLOs that they are live.
    - UAT results: `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-uat_results.md` (includes archetype)
    - Deployment summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` (atomic-visit)
    - Opportunity config: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
-   - Awarded LLO: `phases.solicitation-management.outputs.selected_llo` in the current run's `run_state.yaml` (populated by Phase 7 `solicitation-review`)
+   - Awarded LLO: `phases.solicitation-management.products.selected_llo` in the current run's `run_state.yaml` (populated by Phase 7 `solicitation-review`)
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (fallback archetype source)
 
 2. **Read the `archetype:` field.** Go-live semantics differ per

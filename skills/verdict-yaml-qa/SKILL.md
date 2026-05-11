@@ -27,7 +27,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 
 The skill takes the verdict file path as an argument; it has no other inputs. Each invocation checks one verdict file.
 
-## Outputs
+## Products
 
 - `<phase>/<producer>-eval-yaml-qa_result.yaml` — QA result per `lib/qa-types.ts` schema. Filename uses `-eval-yaml-qa` to disambiguate from the producer's own QA result (`<producer>-qa_result.yaml`).
 

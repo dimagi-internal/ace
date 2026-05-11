@@ -20,7 +20,7 @@ closeout). Until then this skill operates in **read-only** mode against
 the most recent run's `run_state.yaml` — it pulls responses from labs
 and writes them to per-response markdown files in
 `ACE/<opp-name>/runs/<most-recent-run-id>/6-solicitation-management/solicitation-monitor_responses/`,
-but does NOT mutate `outputs.solicitation.status` (the `--close` mode
+but does NOT mutate `products.solicitation.status` (the `--close` mode
 is deferred — operators manually flag a closed solicitation at award
 time via `solicitation-review`).
 
@@ -41,7 +41,7 @@ Mirrors the `ocs-chatbot-qa` recurring pattern (`--quick`/`--monitor`).
 Find the **most recent run-id** under `ACE/<opp-name>/runs/` (sort
 descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
 `run_state.yaml`. Read (no write) from
-`phases.solicitation-management.outputs.solicitation`:
+`phases.solicitation-management.products.solicitation`:
 
 - `solicitation_id`
 - `deadline`
@@ -69,7 +69,7 @@ descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
    needs to verify the parent record (e.g. `get_solicitation` to refresh
    the deadline or status from labs), the call **must** thread
    `program_id: <labs_program_id>` (read from
-   `outputs.solicitation.labs_program_id` or
+   `products.solicitation.labs_program_id` or
    `opp.yaml.connect.program.labs_int_id`) or `organization_id` if
    program-less. Without scope, labs's prod-side filter strips
    non-public records and the parent appears missing — see the 0.13.4
@@ -93,7 +93,7 @@ descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
    - Total responses received
    - Responses received since the last monitor tick
    - Time-to-deadline (delta between `now()` and `deadline` in
-     `outputs.solicitation.deadline`)
+     `products.solicitation.deadline`)
    - If `solicitation/invitations.md` exists: list of invitees who have
      not yet responded (match by `contact_email` or `organization_slug`).
 
@@ -108,9 +108,9 @@ descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
    write semantics are TBD pending Phase 7+/8 redesign (see top of
    file). For now, `--close` behaves identically to `--monitor` (full
    response pull + tick line) without flipping
-   `outputs.solicitation.status`. Operators manually flag a closed
+   `products.solicitation.status`. Operators manually flag a closed
    solicitation at award time via `solicitation-review`, which writes
-   `outputs.solicitation.status: awarded` to the current
+   `products.solicitation.status: awarded` to the current
    `/ace:run` invocation's `run_state.yaml`.
 
 ## Process (--quick)

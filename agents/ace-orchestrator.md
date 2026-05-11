@@ -342,16 +342,16 @@ The orchestrator's contract on a populated opp:
     creates a new one and writes it back to `opp.yaml`.
   - `connect-opp-setup` always creates a fresh Connect opportunity
     per run; opportunity UUIDs are recorded only in the producing
-    run's `phases.connect-setup.outputs.connect.opportunity`. Stale
+    run's `phases.connect-setup.products.connect.opportunity`. Stale
     opps from earlier runs are operator-cleaned-up when picking a
     release-candidate run.
   - `ocs-agent-setup` clones a fresh chatbot per run from the golden
     template; the chatbot is recorded in the producing run's
-    `phases.ocs-setup.outputs.ocs_chatbot`. Stale chatbots are
+    `phases.ocs-setup.products.ocs_chatbot`. Stale chatbots are
     operator-cleaned-up.
   - `solicitation-create` always publishes a fresh solicitation per
     run; the solicitation is recorded in the producing run's
-    `phases.solicitation-management.outputs.solicitation`. Stale
+    `phases.solicitation-management.products.solicitation`. Stale
     solicitations are operator-cleaned-up.
 - **Each new run gets its own `runs/<run-id>/<N>-<phase>/` artifact
   set** — prior-run artifacts stay frozen in their own run folders.
@@ -397,7 +397,7 @@ stop, up until the point of external communication.*
   from ACE on a one-to-one basis. `/ace:run` halts here in default mode
   and remains halted until the human runs `/ace:step solicitation-review`,
   which (after a HITL approval gate) calls `award_response` and populates
-  `phases.solicitation-management.outputs.selected_llo` in the current
+  `phases.solicitation-management.products.selected_llo` in the current
   run's `run_state.yaml`. Phase 8 cannot start while
   `selected_llo.org_slug` is null in the current run.
 - **Phases 7–8 (Execution Management, Closeout):** behave like `review`
@@ -692,7 +692,7 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `connect-program-setup`). Everything else (Connect opportunity,
      OCS chatbot, solicitation, selected_llo, synthetic) is per-run
      and lives only in the producing run's
-     `run_state.yaml.phases.*.outputs.*`.
+     `run_state.yaml.phases.*.products.*`.
    - When the user manually deletes a run subfolder, `last_run_id` and
      `runs:` accumulate dangling references — purely cosmetic, but
      misleading enough to worry a reader who notices.
@@ -756,7 +756,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(design-review)`.
 
-**Outputs:** PDD (`1-design/idea-to-pdd.md`); opp-specific test prompts derived from the PDD.
+**Products:** PDD (`1-design/idea-to-pdd.md`); opp-specific test prompts derived from the PDD.
 
 **Write-back:** `phases.design-review.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -770,7 +770,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** inline execution of `agents/commcare-setup.md`, which itself dispatches `/nova:autobuild` for `pdd-to-learn-app` + `pdd-to-deliver-app` (each Nova call is `Agent(nova:nova-architect-autonomous)` at level 0).
 
-**Outputs:** Learn app, Deliver app, deployed apps on CCHQ, test results (`2-commcare/app-test-cases.yaml` + `app-test-cases/J*.yaml`). (Training materials moved to Phase 5 (`qa-and-training`) in 0.9.0.)
+**Products:** Learn app, Deliver app, deployed apps on CCHQ, test results (`2-commcare/app-test-cases.yaml` + `app-test-cases/J*.yaml`). (Training materials moved to Phase 5 (`qa-and-training`) in 0.9.0.)
 
 **Write-back:** `phases.commcare-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -786,7 +786,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(connect-setup)`.
 
-**Outputs:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`3-connect/connect-program-setup.md`, `3-connect/connect-opp-setup.md`).
+**Products:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`3-connect/connect-program-setup.md`, `3-connect/connect-opp-setup.md`).
 
 **Write-back:** `phases.connect-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -802,7 +802,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(ocs-setup)`.
 
-**Outputs:** per-opp OCS chatbot cloned from the golden template with opp-specific RAG collection; quick smoke qa+eval passed; deep pre-launch qa+eval passed against opp-specific test prompts; embed credentials ready for Connect (`4-ocs/ocs-agent-setup.md`).
+**Products:** per-opp OCS chatbot cloned from the golden template with opp-specific RAG collection; quick smoke qa+eval passed; deep pre-launch qa+eval passed against opp-specific test prompts; embed credentials ready for Connect (`4-ocs/ocs-agent-setup.md`).
 
 **Write-back:** `phases.ocs-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -818,7 +818,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(qa-and-training)`. Internally the agent runs `app-screenshot-capture` (executor — runs the smoke recipes from Phase 2's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-deck-outline`) → `training-deck-build` (sequential after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) → `training-onboarding-email` (LAST — links by URL to other docs).
 
-**Outputs:** Phase-5 artifacts under `5-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck outline), optional training deck build, onboarding email.
+**Products:** Phase-5 artifacts under `5-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck outline), optional training deck build, onboarding email.
 
 **Write-back:** `phases.qa-and-training.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -834,7 +834,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(synthetic-data-and-workflows)`. Internally: authors a story-coherent synthetic-data manifest from the PDD, generates fixture data via the connect-labs MCP, instantiates the LLO weekly review + program admin audit workflows, polishes them per-opp, and runs persona walkthroughs that produce stakeholder-ready HTML decks.
 
-**Outputs:** synthetic narrative manifest; fixture FLW/visit/payment data; two demonstrative workflows (`llo_weekly_review`, `program_admin_audit`); per-persona walkthrough HTML decks; single one-page summary (`6-synthetic/synthetic-summary.md`).
+**Products:** synthetic narrative manifest; fixture FLW/visit/payment data; two demonstrative workflows (`llo_weekly_review`, `program_admin_audit`); per-persona walkthrough HTML decks; single one-page summary (`6-synthetic/synthetic-summary.md`).
 
 **Write-back:** `phases.synthetic-data-and-workflows.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -850,23 +850,23 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(solicitation-management)`. Internally the agent runs `solicitation-create` → `llo-invite` (default run, both auto).
 
-**Outputs:** solicitation derived from the PDD published on labs.connect.dimagi.com via the `connect-labs` MCP; emails to PDD-named candidate LLOs containing the public URL (no-op if the PDD names no candidates — long-term flow).
+**Products:** solicitation derived from the PDD published on labs.connect.dimagi.com via the `connect-labs` MCP; emails to PDD-named candidate LLOs containing the public URL (no-op if the PDD names no candidates — long-term flow).
 
 **Write-back:** `phases.solicitation-management.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
-**Gate:** `[BLOCKER]` halts; **Phase 7→8 boundary always pauses in every mode** — `/ace:run` HALTS here at the new external-comms boundary. Phase 8 cannot start until `phases.solicitation-management.outputs.selected_llo.org_slug` is populated in the current run's `run_state.yaml`, which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`). See § Pause Points in reference.
+**Gate:** `[BLOCKER]` halts; **Phase 7→8 boundary always pauses in every mode** — `/ace:run` HALTS here at the new external-comms boundary. Phase 8 cannot start until `phases.solicitation-management.products.selected_llo.org_slug` is populated in the current run's `run_state.yaml`, which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`). See § Pause Points in reference.
 
-**Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). Its cross-run write semantics are TBD pending Phase 7+/8 architecture decisions. `solicitation` and `selected_llo` are separate sub-blocks under `phases.solicitation-management.outputs.*` — only `solicitation-review` populates `selected_llo`.
+**Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). Its cross-run write semantics are TBD pending Phase 7+/8 architecture decisions. `solicitation` and `selected_llo` are separate sub-blocks under `phases.solicitation-management.products.*` — only `solicitation-review` populates `selected_llo`.
 
 ### Phase 8: Execution Management
 
-**Dispatch:** `Agent(execution-manager)`. **Entry gated on `phases.solicitation-management.outputs.selected_llo.org_slug` being populated by Phase 7's `solicitation-review`** in the current run's `run_state.yaml`.
+**Dispatch:** `Agent(execution-manager)`. **Entry gated on `phases.solicitation-management.products.selected_llo.org_slug` being populated by Phase 7's `solicitation-review`** in the current run's `run_state.yaml`.
 
-**Inputs (inline at handoff):** PDD, Phase-5 training artifacts (5 docs + onboarding email under `5-qa-and-training/`), Phase-4 chatbot URL (`4-ocs/ocs-agent-setup.md`), `selected_llo` (from run_state.yaml.phases.solicitation-management.outputs.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-5 training artifacts (5 docs + onboarding email under `5-qa-and-training/`), Phase-4 chatbot URL (`4-ocs/ocs-agent-setup.md`), `selected_llo` (from run_state.yaml.phases.solicitation-management.products.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(execution-manager)`.
 
-**Outputs:** the awarded LLO onboarded (Connect program-level invite + ACE onboarding email with widget link); UAT completed; opportunity activated (go-live); ongoing monitoring active.
+**Products:** the awarded LLO onboarded (Connect program-level invite + ACE onboarding email with widget link); UAT completed; opportunity activated (go-live); ongoing monitoring active.
 
 **Write-back:** `phases.execution-management.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -878,11 +878,11 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(closeout)`. **Triggered when the opportunity reaches its end date.**
 
-**Inputs (inline at handoff):** Phase-8 outputs (LLO onboarding + UAT + go-live artifacts under `8-execution-manager/`), `selected_llo` (from run_state.yaml.phases.solicitation-management.outputs.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** Phase-8 outputs (LLO onboarding + UAT + go-live artifacts under `8-execution-manager/`), `selected_llo` (from run_state.yaml.phases.solicitation-management.products.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(closeout)`.
 
-**Outputs:** Invoices pulled; Jira payment ticket created; LLO feedback collected; learnings summarized; cycle graded.
+**Products:** Invoices pulled; Jira payment ticket created; LLO feedback collected; learnings summarized; cycle graded.
 
 **Write-back:** `phases.closeout.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 

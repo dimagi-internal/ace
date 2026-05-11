@@ -17,7 +17,7 @@ Create or select a Connect program for this opportunity.
 | Phase 1 | `1-design/idea-to-pdd.md` | archetype-aware program naming + domain match |
 | Connect MCP | `connect_list_programs({organization_slug})` | reuse-vs-create decision |
 
-## Outputs
+## Products
 
 - `3-connect/connect-program-setup.md` — program-id, decision rationale (reuse / create), admin program URL
 - `opp.yaml.connect.program.{id, url}` — written on first create (and refreshed on reuse with verified live values). This is the single durable cross-run reference for the Connect program; every subsequent run of this opp reads it to skip program-create.
@@ -83,7 +83,7 @@ Create or select a Connect program for this opportunity.
    Connect program — every subsequent run of this opp reads this
    block to skip program-create (Step 3 reuse path). The Connect
    *opportunity*, OCS chatbot, solicitation, etc. are per-run and
-   live in the producing run's `run_state.yaml.phases.*.outputs.*`;
+   live in the producing run's `run_state.yaml.phases.*.products.*`;
    only `program` is durable here.
 
    Skip this write on the reuse path **only** if the existing

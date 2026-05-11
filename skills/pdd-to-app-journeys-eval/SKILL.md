@@ -21,7 +21,7 @@ There is **no companion QA skill** for this artifact — see `skills/_qa-decisio
 | Phase 1 producer | `1-design/pdd-to-app-journeys.md` | the journeys doc under judgment |
 | Phase 1 producer | `1-design/idea-to-pdd.md` | the source PDD; archetype + Target FLW for grading alignment |
 
-## Outputs
+## Products
 
 - `1-design/pdd-to-app-journeys-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 

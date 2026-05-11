@@ -27,7 +27,7 @@ calibration TBD until 3+ shipped LLO guides produce ground truth (see
 | Phase 3 | `3-connect/connect-program-setup.md` | LLO-facing Connect controls (program/opportunity status, payment approval flow) |
 | Phase 4 | `4-ocs/ocs-bot-config.md` (if present) | bot escalation routing — guide must match how triage actually works |
 
-## Outputs
+## Products
 
 - `5-qa-and-training/training-llo-guide-eval_verdict.yaml` — verdict YAML per
   `_eval-template.md § Verdict YAML contract`.

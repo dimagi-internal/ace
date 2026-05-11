@@ -18,7 +18,7 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 | Operator | each `file_id` in the manifest | source content (PDFs, docs, sheets, markdown) |
 | Operator (optional) | `ACE/<opp-name>/runs/<run-id>/idea.md` | free-text seed via `--idea FILE\|-` |
 
-## Outputs
+## Products
 
 - `1-design/idea-to-pdd.md` — the PDD
 <!-- 0.13.116: legacy `1-design/idea-to-pdd_gate-brief.md` removed.

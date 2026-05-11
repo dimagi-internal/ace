@@ -22,7 +22,7 @@ Don't trust first-pass output — verify and fix in a loop.
 | Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` or `pdd-to-deliver-app_summary.md` | source `nova_app_id` |
 | Nova MCP | `get_app({app_id: <nova_app_id>})` | live blueprint (form list, marker presence) |
 
-## Outputs
+## Products
 
 - `2-commcare/app-connect-coverage_summary.md` — per-form marker coverage report and any Nova edits applied
 

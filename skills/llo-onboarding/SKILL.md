@@ -9,19 +9,19 @@ disable-model-invocation: true
 # LLO Onboarding
 
 First LLO contact for the awarded LLO. Reads
-`phases.solicitation-management.outputs.selected_llo` in the current
+`phases.solicitation-management.products.selected_llo` in the current
 run's `run_state.yaml` (populated by Phase 7 `solicitation-review`
 after a solicitation is awarded), issues the Connect system invite to
 that single org, and sends the ACE-authored onboarding email with the
 OCS widget link embedded.
 
 **Phase 8 entry guard:** if
-`phases.solicitation-management.outputs.selected_llo.org_slug` is
+`phases.solicitation-management.products.selected_llo.org_slug` is
 null/empty in the current run's `run_state.yaml`, this skill halts
 immediately with:
 
 > FATAL: Phase 8 cannot start —
-> `phases.solicitation-management.outputs.selected_llo.org_slug` is
+> `phases.solicitation-management.products.selected_llo.org_slug` is
 > empty in the current run's `run_state.yaml`. Run
 > `/ace:step solicitation-review --opp <opp-name>` to score Phase 7
 > solicitation responses and award an awardee. The orchestrator's
@@ -36,7 +36,7 @@ solicitation and selecting one winner, Phase 8 onboards exactly one org.
 
 1. **Read inputs from GDrive:**
    - `selected_llo` block — read from
-     `phases.solicitation-management.outputs.selected_llo` in the
+     `phases.solicitation-management.products.selected_llo` in the
      current run's `run_state.yaml`. Populated by Phase 7
      `solicitation-review`. Must contain `org_slug`, `contact_email`,
      `source: 'solicitation'`, `response_id`. Halt with the FATAL
@@ -63,8 +63,8 @@ solicitation and selecting one winner, Phase 8 onboards exactly one org.
 
    Capture the returned `program_application_id` and write it back via
    `update_yaml_file` (`merge: 'two-level'`) into the current run's
-   `phases.solicitation-management.outputs.selected_llo.program_application_id`
-   for the auto-accept step (2a). Carry the full `outputs.selected_llo`
+   `phases.solicitation-management.products.selected_llo.program_application_id`
+   for the auto-accept step (2a). Carry the full `products.selected_llo`
    payload to avoid clobbering siblings under two-level merge. Single
    org, single call — no roster iteration.
 

@@ -150,7 +150,7 @@ which rule triggered, what to do>
 - **Review:** Pause after step 7, show drafted FAQ.
 - **Dry-run:** Steps 1-7, skip write. Verdict with `dry_run: true`.
 
-## Outputs
+## Products
 
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq.md`
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq_verdict.yaml`

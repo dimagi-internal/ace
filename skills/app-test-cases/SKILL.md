@@ -29,7 +29,7 @@ Phase 5 needs them.
 | Nova MCP | `get_app({app_id: <nova_app_id>})` | authoritative form/field IDs to resolve into real Maestro selectors |
 | Static | `mcp/mobile/recipes/static/` | recipe palette / templates |
 
-## Outputs
+## Products
 
 - `2-commcare/app-test-cases.yaml` — per-journey test entries (one per journey, exactly one `is_smoke: true` per app)
 - `2-commcare/recipes/J<n>.yaml` — one Maestro recipe per journey (real selectors, no `REPLACE_*` placeholders)

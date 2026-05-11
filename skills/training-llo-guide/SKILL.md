@@ -157,7 +157,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
 - **Dry-run:** Steps 1-6, skip `drive_create_file`. Verdict with
   `dry_run: true`.
 
-## Outputs
+## Products
 
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-llo-guide.md`
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-llo-guide_verdict.yaml`

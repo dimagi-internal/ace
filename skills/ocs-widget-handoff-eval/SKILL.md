@@ -27,7 +27,7 @@ CCC-301).
 | Phase 4 | `4-ocs/ocs-agent-setup.md` | cross-check `embed_key`, `experiment_id`, `public_id` |
 | Per-run | `runs/<run-id>/run_state.yaml` | `connect_opportunity.url` |
 
-## Outputs
+## Products
 
 - `4-ocs/ocs-widget-handoff-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 

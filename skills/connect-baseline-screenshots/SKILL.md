@@ -19,7 +19,7 @@ once when the Connect APK updates and the previous baseline goes stale.
 | Operator | Connect APK version | invocation trigger; new baseline captured per APK version |
 | Static | `mcp/mobile/recipes/static/connect-flow*.yaml` | recipe palette for the standard walkthrough |
 
-## Outputs
+## Products
 
 - `ACE/_common/connect-screenshots/<connect-version>/*.png` — per-Connect-version PNGs (stable cross-opp path)
 - `ACE/_common/connect-screenshots/<connect-version>/manifest.yaml` — fileId/alias index consumed by `training-flw-guide` and `training-deck-outline`
@@ -155,7 +155,7 @@ Threshold 7.0/10.
 - `mcp/mobile/recipes/baseline/*.yaml` — the 8 baseline recipes (committed
   to ACE repo)
 
-## Outputs
+## Products
 
 - `ACE/_common/connect-screenshots/<connect-version>/<recipe>/<step>.png`
   (binary uploads via `drive_upload_binary`)

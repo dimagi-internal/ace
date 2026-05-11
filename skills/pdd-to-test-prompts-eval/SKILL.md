@@ -21,7 +21,7 @@ If QA verdict is `fail` or `incomplete`, this eval is skipped (`verdict: incompl
 | Phase 1 producer | `1-design/pdd-to-test-prompts.md` | the prompts file under judgment |
 | Phase 1 producer | `1-design/idea-to-pdd.md` | the source PDD; archetype + content for grading alignment |
 
-## Outputs
+## Products
 
 - `1-design/pdd-to-test-prompts-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 

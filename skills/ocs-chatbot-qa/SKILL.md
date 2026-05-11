@@ -22,7 +22,7 @@ The LLM-as-Judge grading happens separately in `ocs-chatbot-eval`.
 | Phase 4 | `4-ocs/ocs-agent-setup.md` | `experiment_id`, widget URL, embed credentials |
 | Phase 1 (`--deep` only) | `1-design/pdd-to-test-prompts.md` | opp-specific prompt suite + expected-answer summaries |
 
-## Outputs
+## Products
 
 - `4-ocs/ocs-chatbot-qa_transcript-<mode>.md` — chat transcript with structural checks (response received, no errors, citations present)
 

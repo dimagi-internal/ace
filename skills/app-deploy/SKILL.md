@@ -26,7 +26,7 @@ release flow + the App Editor permission prerequisite.
 | Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` | `nova_app_id` for Learn app |
 | Phase 2 | `2-commcare/pdd-to-deliver-app_summary.md` | `nova_app_id` for Deliver app |
 
-## Outputs
+## Products
 
 - `2-commcare/app-deploy_summary.md` — HQ app IDs + URLs for both apps
 <!-- 0.13.116: legacy `2-commcare/app-deploy_gate-brief.md` removed.

@@ -4,7 +4,7 @@ description: >
   Phase 8 of the CRISPR-Connect lifecycle: execute the awarded LLO's run
   of the opportunity — onboarding, UAT, go-live, and recurring monitoring.
   Phase 8 entry is gated on
-  `phases.solicitation-management.outputs.selected_llo.org_slug` being
+  `phases.solicitation-management.products.selected_llo.org_slug` being
   populated in the current run's run_state.yaml by Phase 7's
   solicitation-review skill.
 model: inherit
@@ -28,7 +28,7 @@ You run the execution phase of a CRISPR-Connect opportunity. By the time
 this phase starts, Phase 7 (Solicitation Management) has published a
 solicitation, collected responses, and (via the manual `solicitation-review`
 skill) awarded an org. The awardee is recorded in the current run's
-`phases.solicitation-management.outputs.selected_llo` — that's the LLO
+`phases.solicitation-management.products.selected_llo` — that's the LLO
 this phase onboards, supports through UAT, takes to go-live, and
 monitors during execution.
 
@@ -38,7 +38,7 @@ OCS chatbot with widget credentials already attached to the opportunity,
 and the screenshot + training-material artifacts produced by
 `qa-and-training`. Phase 7 has run the solicitation lifecycle through
 award, populating
-`phases.solicitation-management.outputs.selected_llo` with `{org_slug,
+`phases.solicitation-management.products.selected_llo` with `{org_slug,
 contact_email, response_id, source: 'solicitation'}` in the current
 run's `run_state.yaml`.
 
@@ -50,7 +50,7 @@ Training materials and screenshots were produced upstream in Phase 5
 ### Step 1: LLO Onboarding
 Invoke the `llo-onboarding` skill.
 - Input: `selected_llo` from
-  `phases.solicitation-management.outputs.selected_llo` in the current
+  `phases.solicitation-management.products.selected_llo` in the current
   run's `run_state.yaml` (populated by Phase 7 solicitation-review),
   training materials, OCS widget config (`ocs-agent-config.md`)
 - Output: Connect program-level invite sent to the awardee org

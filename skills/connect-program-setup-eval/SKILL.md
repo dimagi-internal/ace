@@ -29,7 +29,7 @@ and anti-patterns from the first calibrated rubrics.
 | Phase 3 | `3-connect/connect-program-setup.md` and `3-connect/connect-opp-setup.md` | program + opportunity config under judgment |
 | Phase 2 | `2-commcare/app-deploy_summary.md` | HQ app IDs for cross-check on Connectify wiring |
 
-## Outputs
+## Products
 
 - `3-connect/connect-program-setup-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 

@@ -230,7 +230,7 @@ Invoke the `app-deploy` skill.
   `skills/solicitation-create/SKILL.md`, solicitations are scoped to a
   labs `program_id`, NOT to a specific Connect opportunity UUID — the
   `connect_opportunity_id` field under the current run's
-  `phases.solicitation-management.outputs.solicitation` is ACE-side
+  `phases.solicitation-management.products.solicitation` is ACE-side
   bookkeeping that records ACE's intended target, not a labs-side
   foreign key. The public solicitation URL keeps working, the deadline
   keeps counting down, candidate LLO views and applications continue

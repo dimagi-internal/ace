@@ -25,7 +25,7 @@ Authored 0.10.29 in response to turmeric run_time_followups item 2
 | Phase 2 | `2-commcare/app-deploy_summary.md` | the artifact `app-release` updates with `releases:` block |
 | Per-run | `runs/<run-id>/run_state.yaml` | cross-check `hq_app_id` / `hq_build_id` under `learn_app_summary` / `deliver_app_summary` |
 
-## Outputs
+## Products
 
 - `2-commcare/app-release-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 

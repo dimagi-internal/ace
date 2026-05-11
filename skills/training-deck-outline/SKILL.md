@@ -163,7 +163,7 @@ Slides side is `training-deck-build`'s job.
 - **Dry-run:** Execute steps 1-4 in memory but skip the
   `drive_create_file` call. Verdict still written with `dry_run: true`.
 
-## Outputs
+## Products
 
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md` — the deck
   outline markdown

@@ -176,7 +176,7 @@ existing per-opp + common-pool artifacts.
 - **Dry-run:** Steps 1-6 in memory, skip the `drive_create_file`.
   Verdict written with `dry_run: true`.
 
-## Outputs
+## Products
 
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md`
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide_verdict.yaml`

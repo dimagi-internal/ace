@@ -129,7 +129,7 @@ LLO contact: <name from connect-setup/opportunity.md>
 - **Review:** Pause after step 5, show drafted card.
 - **Dry-run:** Steps 1-5, skip write. Verdict with `dry_run: true`.
 
-## Outputs
+## Products
 
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-quick-reference.md`
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-quick-reference_verdict.yaml`

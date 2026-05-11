@@ -24,7 +24,7 @@ two-phase pattern` for the framework rationale and artifact-path contract.
 | Phase 4 (`ocs-chatbot-qa`) | `4-ocs/ocs-chatbot-qa_transcript-<mode>.md` | transcript under judgment |
 | Phase 1 (`--deep` only) | `1-design/pdd-to-test-prompts.md` | per-prompt expected-answer summaries (ground truth) |
 
-## Outputs
+## Products
 
 - `4-ocs/ocs-chatbot-eval_verdict-<mode>.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 - `4-ocs/ocs-chatbot-eval_gate-brief-<mode>.md` (`--deep` only) — Phase 4 → 5 gate brief
