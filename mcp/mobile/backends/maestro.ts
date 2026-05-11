@@ -91,6 +91,66 @@ export class MaestroBackend {
   }
 
   /**
+   * Probe the Maestro driver app's gRPC liveness on a booted AVD.
+   *
+   * Failure mode this exists to catch: the AVD is booted and `adb` shows it
+   * as `device`, but `dev.mobile.maestro` (the on-device driver app) isn't
+   * answering on its gRPC channel — every `maestro test` returns
+   * `deviceInfo ... UNAVAILABLE` after a ~30s timeout and Phase 5
+   * `app-screenshot-capture` degrades to `verdict: incomplete`. The
+   * canonical symptom we hit live in leep run 20260511-0507.
+   *
+   * Cheapest non-mutating Maestro command that requires the driver is
+   * `maestro hierarchy`. On a healthy AVD it returns ~2 s; on a hung
+   * driver it hangs until `timeoutMs`.
+   *
+   * Returns `{ healthy: true }` on success and `{ healthy: false, reason }`
+   * on any failure path — callers decide whether to recover.
+   */
+  async probeDriver(adbPort: number, timeoutMs: number = 8_000): Promise<{ healthy: boolean; reason?: string }> {
+    try {
+      const r = await this.shell(
+        'maestro',
+        ['--host=localhost', `--port=${adbPort}`, 'hierarchy'],
+        { timeoutMs },
+      );
+      if (r.exitCode === 0) return { healthy: true };
+      return { healthy: false, reason: `maestro hierarchy exit ${r.exitCode}: ${r.stderr.slice(0, 160) || r.stdout.slice(0, 160)}` };
+    } catch (e: any) {
+      return { healthy: false, reason: e?.message ? String(e.message).slice(0, 200) : 'unknown' };
+    }
+  }
+
+  /**
+   * Force-recover the Maestro driver app on an AVD. Idempotent.
+   *
+   * Strategy is two-tier: cheap force-stop first, then full
+   * uninstall+reinstall if needed. The first `maestro hierarchy` after
+   * uninstall auto-reinstalls the driver (Maestro CLI bundles the APK and
+   * pushes it on first contact).
+   *
+   * Caller is expected to re-probe after this returns; this method does
+   * not itself confirm health. Returns the list of recovery actions taken
+   * so the caller can surface them in error messages.
+   */
+  async repairDriver(serial: string): Promise<string[]> {
+    const actions: string[] = [];
+    // Cheap: force-stop the driver process. Often enough when the gRPC
+    // server is wedged but the APK is fine.
+    await this.shell('adb', ['-s', serial, 'shell', 'am', 'force-stop', 'dev.mobile.maestro']).catch(() => {});
+    await this.shell('adb', ['-s', serial, 'shell', 'am', 'force-stop', 'dev.mobile.maestro.test']).catch(() => {});
+    actions.push('force-stop');
+
+    // Expensive: uninstall both halves of the Maestro driver. The next
+    // `maestro hierarchy` call reinstalls them automatically.
+    await this.shell('adb', ['-s', serial, 'uninstall', 'dev.mobile.maestro']).catch(() => {});
+    await this.shell('adb', ['-s', serial, 'uninstall', 'dev.mobile.maestro.test']).catch(() => {});
+    actions.push('uninstall');
+
+    return actions;
+  }
+
+  /**
    * Lightweight YAML structural validation. Maestro doesn't ship a public
    * --validate flag we can rely on across versions, so we parse the YAML
    * ourselves and reject unknown step keys early.

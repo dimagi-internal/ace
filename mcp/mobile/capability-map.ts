@@ -14,7 +14,8 @@ export type Capability =
   | 'generate_recipes_from_app_summary'
   | 'capture_ui_dump'
   | 'save_snapshot'
-  | 'load_snapshot';
+  | 'load_snapshot'
+  | 'probe_maestro_driver';
 
 export interface CapabilityRoute {
   backend: Backend;
@@ -33,4 +34,5 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   capture_ui_dump: { backend: 'AVD', description: 'adb shell uiautomator dump' },
   save_snapshot: { backend: 'AVD', description: 'adb emu avd snapshot save <name>' },
   load_snapshot: { backend: 'AVD', description: 'adb emu avd snapshot load <name>' },
+  probe_maestro_driver: { backend: 'MAESTRO', description: 'Read-only: does the on-device Maestro driver gRPC channel respond on the AVD? No recovery — use ensure_avd_running for the heal path.' },
 };

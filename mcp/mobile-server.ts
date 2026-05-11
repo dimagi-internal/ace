@@ -126,6 +126,31 @@ server.tool(
 );
 
 server.tool(
+  'mobile_probe_maestro_driver',
+  {
+    avdName: z.string().describe('AVD name (e.g. ACE_Pixel_API_34). Must already be booted — this atom does not boot.'),
+    timeoutMs: z.number().int().positive().optional().describe('Probe timeout in ms (default 8000). On a healthy AVD `maestro hierarchy` returns ~2s; raise only if you suspect a slow first-time install of the driver app.'),
+  },
+  async ({ avdName, timeoutMs }) => {
+    // Look up the AVD's serial without booting it — caller must have a
+    // running emulator. We deliberately don't call `ensureAvdRunning`
+    // here so this atom stays a *probe* (no heal, no mutation) — that
+    // separation is what lets ace-doctor and Phase 5 pre-flight call
+    // it to ask "would the heal path even need to run?" before paying
+    // its wall-clock cost.
+    const info = await client.avd.findRunningAvd(avdName);
+    if (!info) {
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ healthy: false, reason: `AVD ${avdName} not booted (no emulator-NNNN serial in adb devices)`, adbPort: null }, null, 2) }],
+        isError: false,
+      };
+    }
+    const r = await client.probeMaestroDriver(info.serial, timeoutMs);
+    return { content: [{ type: 'text', text: JSON.stringify({ ...r, serial: info.serial }, null, 2) }] };
+  },
+);
+
+server.tool(
   'mobile_validate_recipe',
   {
     yaml: z.string().describe('Maestro YAML body to validate. Standard ACE-recipe shape: appId frontmatter + `---` separator + step list. Validates step-key allowlist (launchApp, tapOn, inputText, takeScreenshot, assertVisible, assertNotVisible, extendedWaitUntil, waitForAnimationToEnd, eraseText, swipe, pressKey, back, scroll, hideKeyboard, runFlow, evalScript, stopApp) and structural integrity (`---` separator present, appId in frontmatter, every step is a single-key object). Use this AFTER an ACE skill (running as a Claude Code session) writes Maestro YAML inline using its own LLM context — the mobile MCP does not bundle an LLM client, so YAML generation is the calling agent\'s responsibility, not this server\'s.'),
