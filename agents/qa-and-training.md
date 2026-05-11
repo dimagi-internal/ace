@@ -222,7 +222,7 @@ their per-skill verdicts in the `commcare` category. `/ace:step
 training-materials` callers should switch to running individual
 training skills (or invoke `qa-and-training` for the full sequence).
 
-## Outputs
+## Products
 
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/screenshots/<journey-id>/<step>.png` + `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml`
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/{llo-manager-guide,quick-reference,faq,onboarding-email-body}.md` (training-materials)

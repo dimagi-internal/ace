@@ -756,7 +756,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(design-review)`.
 
-**Outputs:** PDD (`1-design/idea-to-pdd.md`); opp-specific test prompts derived from the PDD.
+**Products:** PDD (`1-design/idea-to-pdd.md`); opp-specific test prompts derived from the PDD.
 
 **Write-back:** `phases.design-review.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -770,7 +770,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** inline execution of `agents/commcare-setup.md`, which itself dispatches `/nova:autobuild` for `pdd-to-learn-app` + `pdd-to-deliver-app` (each Nova call is `Agent(nova:nova-architect-autonomous)` at level 0).
 
-**Outputs:** Learn app, Deliver app, deployed apps on CCHQ, test results (`2-commcare/app-test-cases.yaml` + `app-test-cases/J*.yaml`). (Training materials moved to Phase 5 (`qa-and-training`) in 0.9.0.)
+**Products:** Learn app, Deliver app, deployed apps on CCHQ, test results (`2-commcare/app-test-cases.yaml` + `app-test-cases/J*.yaml`). (Training materials moved to Phase 5 (`qa-and-training`) in 0.9.0.)
 
 **Write-back:** `phases.commcare-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -786,7 +786,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(connect-setup)`.
 
-**Outputs:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`3-connect/connect-program-setup.md`, `3-connect/connect-opp-setup.md`).
+**Products:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`3-connect/connect-program-setup.md`, `3-connect/connect-opp-setup.md`).
 
 **Write-back:** `phases.connect-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -802,7 +802,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(ocs-setup)`.
 
-**Outputs:** per-opp OCS chatbot cloned from the golden template with opp-specific RAG collection; quick smoke qa+eval passed; deep pre-launch qa+eval passed against opp-specific test prompts; embed credentials ready for Connect (`4-ocs/ocs-agent-setup.md`).
+**Products:** per-opp OCS chatbot cloned from the golden template with opp-specific RAG collection; quick smoke qa+eval passed; deep pre-launch qa+eval passed against opp-specific test prompts; embed credentials ready for Connect (`4-ocs/ocs-agent-setup.md`).
 
 **Write-back:** `phases.ocs-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -818,7 +818,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(qa-and-training)`. Internally the agent runs `app-screenshot-capture` (executor — runs the smoke recipes from Phase 2's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-deck-outline`) → `training-deck-build` (sequential after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) → `training-onboarding-email` (LAST — links by URL to other docs).
 
-**Outputs:** Phase-5 artifacts under `5-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck outline), optional training deck build, onboarding email.
+**Products:** Phase-5 artifacts under `5-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck outline), optional training deck build, onboarding email.
 
 **Write-back:** `phases.qa-and-training.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -834,7 +834,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(synthetic-data-and-workflows)`. Internally: authors a story-coherent synthetic-data manifest from the PDD, generates fixture data via the connect-labs MCP, instantiates the LLO weekly review + program admin audit workflows, polishes them per-opp, and runs persona walkthroughs that produce stakeholder-ready HTML decks.
 
-**Outputs:** synthetic narrative manifest; fixture FLW/visit/payment data; two demonstrative workflows (`llo_weekly_review`, `program_admin_audit`); per-persona walkthrough HTML decks; single one-page summary (`6-synthetic/synthetic-summary.md`).
+**Products:** synthetic narrative manifest; fixture FLW/visit/payment data; two demonstrative workflows (`llo_weekly_review`, `program_admin_audit`); per-persona walkthrough HTML decks; single one-page summary (`6-synthetic/synthetic-summary.md`).
 
 **Write-back:** `phases.synthetic-data-and-workflows.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -850,7 +850,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(solicitation-management)`. Internally the agent runs `solicitation-create` → `llo-invite` (default run, both auto).
 
-**Outputs:** solicitation derived from the PDD published on labs.connect.dimagi.com via the `connect-labs` MCP; emails to PDD-named candidate LLOs containing the public URL (no-op if the PDD names no candidates — long-term flow).
+**Products:** solicitation derived from the PDD published on labs.connect.dimagi.com via the `connect-labs` MCP; emails to PDD-named candidate LLOs containing the public URL (no-op if the PDD names no candidates — long-term flow).
 
 **Write-back:** `phases.solicitation-management.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -866,7 +866,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(execution-manager)`.
 
-**Outputs:** the awarded LLO onboarded (Connect program-level invite + ACE onboarding email with widget link); UAT completed; opportunity activated (go-live); ongoing monitoring active.
+**Products:** the awarded LLO onboarded (Connect program-level invite + ACE onboarding email with widget link); UAT completed; opportunity activated (go-live); ongoing monitoring active.
 
 **Write-back:** `phases.execution-management.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -882,7 +882,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(closeout)`.
 
-**Outputs:** Invoices pulled; Jira payment ticket created; LLO feedback collected; learnings summarized; cycle graded.
+**Products:** Invoices pulled; Jira payment ticket created; LLO feedback collected; learnings summarized; cycle graded.
 
 **Write-back:** `phases.closeout.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 

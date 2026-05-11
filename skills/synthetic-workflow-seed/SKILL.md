@@ -28,7 +28,7 @@ pipeline schemas populated with KPI fields. The polish step
 | Current run's `run_state.yaml` | `phases.synthetic-data-and-workflows.products.synthetic.labs_opp_id` (required) | `synthetic_generate_from_manifest` opp scope |
 | Drive | `ACE/<opp>/opp.yaml` | `display_name` |
 
-## Outputs
+## Products
 
 - `6-synthetic/synthetic-workflow-seed.md` — run summary (workflow IDs, task IDs, KPI count, polish-suitability flag)
 - `run_state.yaml.phases.synthetic-data-and-workflows.products.synthetic.workflows` populated (read-modify-write to preserve sibling sub-keys from `synthetic-data-generate` and `synthetic-walkthrough-run`):

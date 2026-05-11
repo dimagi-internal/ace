@@ -43,7 +43,7 @@ exemplar this skill mirrors.
 | Phase 7 upstream | `7-solicitation-management/solicitation-monitor_responses/` | response files; checks coverage if present |
 | Phase 1 (optional) | `1-design/idea-to-pdd.md` | PDD-declared evaluation criteria; checks coverage if available |
 
-## Outputs
+## Products
 
 - `7-solicitation-management/solicitation-review-qa_result.yaml` — QA result per `lib/qa-types.ts` schema
 

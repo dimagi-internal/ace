@@ -127,7 +127,7 @@ under human control.
   copy/batchUpdate calls. Write a verdict with `dry_run: true` and a
   count of slides that would be created. Useful for CI checks.
 
-## Outputs
+## Products
 
 - The Google Slides deck itself (in Drive)
 - `ACE/<opp>/run_state.yaml` updated with `training_deck:` block

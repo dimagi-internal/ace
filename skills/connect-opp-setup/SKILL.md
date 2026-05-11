@@ -20,7 +20,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
 | Phase 7 | current run's `phases.solicitation-management.products.selected_llo.org_slug` | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
 | Phase 2 | `2-commcare/app-deploy_summary.md` | `hq_server`, `learn_app`/`deliver_app` IDs, HQ project space slug |
 
-## Outputs
+## Products
 
 - `3-connect/connect-opp-setup.md` — opp UUID, verification flags, payment units, ACE test-user invite URL, labs_int_id (when recoverable)
 - `run_state.yaml.phases.connect-setup.products.connect` — single atomic block with `program` (copied from `opp.yaml.connect.program` for run self-containment), `opportunity`, `ace_test_user` sub-keys. Read by `synthetic-data-generate` (`opportunity.labs_int_id`), Phase 5 mobile recipes, and other skills within the same run. Per-run only — no other run reads it.

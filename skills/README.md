@@ -51,8 +51,8 @@ The CI lint (planned) fails if any of these match:
 | Pattern | Where to put it |
 |---|---|
 | `Phase N` / `Step N of Phase M` | Body intro paragraph |
-| File paths (`*.yaml`, `*.md`, `ACE/<opp>/...`) | `## Inputs` / `## Outputs` |
-| `reads X, writes Y` | `## Inputs` / `## Outputs` |
+| File paths (`*.yaml`, `*.md`, `ACE/<opp>/...`) | `## Inputs` / `## Products` |
+| `reads X, writes Y` | `## Inputs` / `## Products` |
 | `Sibling of` / `Successor to` / `Mirror of` | `## Related skills` |
 | `TEMPORARY`, `Provisional`, `Delete this skill when…` | `## Removal criteria` |
 | 3+ trigger-phrase paraphrases (`or "X"`, `or "Y"`) | Cut entirely; the harness routes by intent, not by exact phrase match |
@@ -105,14 +105,14 @@ verify the contract without reading the full procedure.
 | Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` | nova_app_id, module list |
 ```
 
-### 3. `## Outputs`
+### 3. `## Products`
 
 A bullet list of every artifact the skill writes. Same contract
 discipline as `## Inputs`. Path uses the artifact-path scheme
 defined under `## QA vs Eval — the two-phase pattern` below.
 
 ```markdown
-## Outputs
+## Products
 
 - `<phase>/<skill>_summary.md` — primary artifact
 - `<phase>/<skill>_verdict[-<mode>].yaml` — verdict YAML (when self-evaluating)
@@ -583,7 +583,7 @@ Before committing a new SKILL.md, verify:
 - [ ] Frontmatter has `name:`, `description:`, `disable-model-invocation: true` (omit only with explicit justification)
 - [ ] Description ≤200 chars (target ~120), follows `<verb> <object>. Use when <condition>.` format
 - [ ] Description does NOT contain banned patterns (phase labels, file paths, sibling/successor refs, `TEMPORARY`/`Provisional`, trigger-phrase enumeration)
-- [ ] All seven required sections present in order: `# <Display Name>` → `## Inputs` → `## Outputs` → `## Process` → `## MCP Tools Used` → `## Mode Behavior` → `## Change Log`
+- [ ] All seven required sections present in order: `# <Display Name>` → `## Inputs` → `## Products` → `## Process` → `## MCP Tools Used` → `## Mode Behavior` → `## Change Log`
 - [ ] Process steps are numbered sequentially (`grep -nE '^[0-9]+\.' SKILL.md`)
 - [ ] If the skill is in the `*-eval` / `training-*` / `solicitation-*` family, the body references `skills/_eval-template.md` / `_training-template.md` / `_solicitation-template.md` for shared contracts instead of inlining them
 - [ ] If the skill branches on PDD archetype, `## Archetypes` is present with all 3 archetypes covered

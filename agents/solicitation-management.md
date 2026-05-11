@@ -111,7 +111,7 @@ entry guard halts with an actionable message if
   `selected_llo`.
 - **Inside `solicitation-review`**: HITL gate before `award_response`.
 
-## Outputs at phase end (default run)
+## Products at phase end (default run)
 
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md`
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md`

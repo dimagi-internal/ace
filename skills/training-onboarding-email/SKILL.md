@@ -158,7 +158,7 @@ ace@dimagi-ai.com
 - **Review:** Pause after step 4, show drafted email.
 - **Dry-run:** Steps 1-4, skip write. Verdict with `dry_run: true`.
 
-## Outputs
+## Products
 
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-onboarding-email.md`
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-onboarding-email_verdict.yaml`

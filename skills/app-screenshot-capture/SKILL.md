@@ -30,7 +30,7 @@ Recipes are read by path from the entries in `app-test-cases.yaml`
 recipes itself. If a smoke recipe is missing or malformed, halt and
 point at `app-test-cases`.
 
-## Outputs
+## Products
 
 - `5-qa-and-training/screenshots/<journey-id>/<step-name>.png` — per-step PNGs (anyone-with-link permission set at upload for Slides ingest)
 - `5-qa-and-training/app-screenshot-capture_manifest.yaml` — fileId/alias index consumed by `training-flw-guide` and `training-deck-outline`

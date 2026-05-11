@@ -30,7 +30,7 @@ produce ground truth.
 | Phase 2 | `2-commcare/app-deploy_summary.md` | deliver-app field paths + form names; verifies "tap this button" prose matches reality |
 | Phase 4 | `4-ocs/ocs-bot-config.md` (if present) | escalation routing — FAQ should match what the bot tells FLWs |
 
-## Outputs
+## Products
 
 - `5-qa-and-training/training-faq-eval_verdict.yaml` — verdict YAML per
   `_eval-template.md § Verdict YAML contract`. Filename uses the producer

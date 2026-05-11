@@ -37,7 +37,7 @@ See `skills/_eval-template.md` for shared contracts and
 | All phases | `runs/<run-id>/verdicts/*.yaml` | per-skill trajectory the synthesis should have traversed |
 | All phases | `comms-log/observations.md` | per-opp evidence log |
 
-## Outputs
+## Products
 
 - `9-closeout/learnings-summary-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`learnings-summary`).
 

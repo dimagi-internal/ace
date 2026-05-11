@@ -17,7 +17,7 @@ write the result to `decisions.gdoc` at one stable URL.
 |---|---|---|
 | Per-run state | `ACE/<opp-name>/runs/<run-id>/decisions.yaml` | the structured log to render |
 
-## Outputs
+## Products
 
 - `ACE/<opp-name>/runs/<run-id>/decisions.gdoc` — prose Google Doc rendering at one stable URL. Find-or-update semantics; existing content is cleared and replaced on every invocation.
 

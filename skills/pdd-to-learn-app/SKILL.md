@@ -17,7 +17,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Learn App Specification drive the Nova brief |
 
-## Outputs
+## Products
 
 - `2-commcare/pdd-to-learn-app_summary.md` — Learn-app structure summary (modules, forms, fields, `nova_app_id`)
 

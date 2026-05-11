@@ -31,7 +31,7 @@ format, auto-fix protocol, static-vs-LLM rules).
 | Phase 6 producer | `6-synthetic/synthetic-narrative-plan.yaml` | the manifest under structural check |
 | Phase 2 (optional context) | `2-commcare/app-deploy_summary.md` | field-path resolvability for KPIs / anomalies (skipped with INFO when absent) |
 
-## Outputs
+## Products
 
 - `6-synthetic/synthetic-narrative-plan-qa_result.yaml` — QA result per `lib/qa-types.ts`
 

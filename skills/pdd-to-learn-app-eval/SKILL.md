@@ -26,7 +26,7 @@ methodology, different dimensions tuned to Learn-app concerns. See
 | Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` | Learn-app structure summary (`nova_app_id`, modules) |
 | Nova MCP (optional) | `get_app({app_id: <nova_app_id>})` | authoritative live blueprint (recommended over summary) |
 
-## Outputs
+## Products
 
 - `2-commcare/pdd-to-learn-app-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 

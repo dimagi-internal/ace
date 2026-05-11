@@ -20,7 +20,7 @@ truth here.
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Target FLW persona drive journey generation |
 
-## Outputs
+## Products
 
 - `1-design/pdd-to-app-journeys.md` — opp-specific expected-user-journey set ("expected-journeys" for short)
 

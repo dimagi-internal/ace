@@ -26,7 +26,7 @@ calibration TBD until 3+ shipped FLW guides produce ground truth.
 | Phase 1 | `1-design/idea-to-pdd.md` | anchors archetype + worker-flow expectations + accessibility constraints (language, literacy assumption) |
 | Phase 2 | `2-commcare/app-deploy_summary.md` | learn/deliver app flow — guide steps must match form-by-form what the FLW sees |
 
-## Outputs
+## Products
 
 - `5-qa-and-training/training-flw-guide-eval_verdict.yaml` — verdict YAML per
   `_eval-template.md § Verdict YAML contract`.

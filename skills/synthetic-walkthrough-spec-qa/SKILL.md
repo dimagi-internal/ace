@@ -36,7 +36,7 @@ This QA runs once per persona-spec emitted (typically 2 — `prospective-llo`,
 `funder` — plus any opp-overlay personas). The orchestrator dispatches
 this skill per spec; QA results land alongside the spec they cover.
 
-## Outputs
+## Products
 
 - `6-synthetic/synthetic-walkthrough-spec_<persona>-qa_result.yaml` — QA result per `lib/qa-types.ts`
 

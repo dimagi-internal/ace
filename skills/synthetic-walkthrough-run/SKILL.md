@@ -42,7 +42,7 @@ rubric — see `synthetic-workflow-polish-eval/SKILL.md` step 7.)
 | Operator (CLI, optional) | `--persona <name>` | run a single persona instead of all |
 | Operator (CLI, optional) | `--personas <comma-list>` | run a subset of personas |
 
-## Outputs
+## Products
 
 - `6-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/slideshow.html` — the HTML deck (per persona, per run, timestamped)
 - `6-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/scenes/scene_<n>.png` — per-scene screenshots

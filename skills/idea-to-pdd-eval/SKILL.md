@@ -35,7 +35,7 @@ calibration methodology.
 | Phase 1 producer | `1-design/idea-to-pdd.md` | the PDD under judgment |
 | Phase 1 producer (optional) | `1-design/idea-to-pdd_gate-brief.md` | gate brief if present |
 
-## Outputs
+## Products
 
 - `1-design/idea-to-pdd-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 

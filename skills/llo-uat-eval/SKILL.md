@@ -30,7 +30,7 @@ which grades the activation step that follows. See
 | Phase 8 | `8-execution/llo-onboarding_*` artifacts | LLO roster (who *should* have signed off) |
 | Phase 5/2 | `2-commcare/app-deploy_summary.md` | what was deployed for UAT to exercise |
 
-## Outputs
+## Products
 
 - `8-execution/llo-uat-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`llo-uat`).
 

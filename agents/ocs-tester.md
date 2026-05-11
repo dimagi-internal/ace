@@ -69,7 +69,7 @@ and runs the LLM-as-Judge rubric.
 - `--quick` / `--deep` / `--monitor` flag — passed through to both
   skills. Defaults to `--quick`.
 
-## Outputs
+## Products
 
 - Console summary with pass/warn/fail per question
 - Quality score from the eval's verdict: 0–10 weighted average across 5

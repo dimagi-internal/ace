@@ -33,7 +33,7 @@ Two modes:
 | Drive | `inputs/pdd.md` | opp's domain language, branding cues (e.g. "turmeric vendors", "KMC mothers") |
 | Operator (CLI, optional) | `--workflow llo\|audit\|both` | scope this run; default `both` |
 
-## Outputs
+## Products
 
 - `6-synthetic/synthetic-workflow-polish.md` — run summary (per-workflow patch list, eval flag)
 - `run_state.yaml.phases.synthetic-data-and-workflows.synthetic-workflow-polish: done`

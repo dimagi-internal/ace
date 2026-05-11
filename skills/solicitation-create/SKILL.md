@@ -27,7 +27,7 @@ connect-labs MCP atom inventory.
   the Connect program **name** (used to resolve the labs integer
   program_id via `labs_context`; see Step 5)
 
-## Outputs
+## Products
 
 - `6-solicitation-management/solicitation-create_summary.md` — solicitation_id, public_url, deadline, audit trail
 - `run_state.yaml.phases.solicitation-management.products.solicitation` block populated (id, public_url, deadline, status: open, labs_program_id, connect_program_id, connect_opportunity_id). Per-run only — each run of the opp publishes a fresh solicitation. Operator-cleaned-up when picking a release-candidate run.

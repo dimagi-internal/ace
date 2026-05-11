@@ -25,7 +25,7 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
 | Phase 2 | `2-commcare/pdd-to-deliver-app_summary.md` | Deliver-app structure summary (`nova_app_id`, forms, fields) |
 | Nova MCP (optional) | `get_app({app_id: <nova_app_id>})` | authoritative field-by-field blueprint (recommended) |
 
-## Outputs
+## Products
 
 - `2-commcare/pdd-to-deliver-app-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 

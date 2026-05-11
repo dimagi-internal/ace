@@ -21,7 +21,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 |---|---|---|
 | Phase 1 producer | `1-design/idea-to-pdd.md` | the PDD under structural check |
 
-## Outputs
+## Products
 
 - `1-design/idea-to-pdd-qa_result.yaml` — QA result per `lib/qa-types.ts` schema
 

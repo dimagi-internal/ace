@@ -18,7 +18,7 @@ right after `idea-to-pdd`.
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype field drives category branching |
 
-## Outputs
+## Products
 
 - `1-design/pdd-to-test-prompts.md` — opp-specific test suite consumed by `ocs-chatbot-qa --deep` (Phase 4) and `ocs-chatbot-eval --deep` (gate)
 

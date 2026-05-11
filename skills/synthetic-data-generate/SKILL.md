@@ -33,7 +33,7 @@ deferred to later stages. This skill is the data plumbing only.
 | Phase 3 | `3-connect/connect-opp-setup.md` | (default-manifest mode) payment unit + deliver unit hints |
 | Drive | `ACE/<opp>/opp.yaml` | `program_id`, `last_run_id`, opp display name |
 
-## Outputs
+## Products
 
 - `6-synthetic/synthetic-data-generate_manifest.yaml` — the manifest sent to labs (default or operator-edited)
 - `6-synthetic/synthetic-data-generate.md` — run summary (folder ID, record counts, labs URL, warnings)

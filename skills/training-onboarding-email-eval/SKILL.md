@@ -27,7 +27,7 @@ response-rate telemetry.
 | Phase 1 | `1-design/idea-to-pdd.md` | anchors LLO context (org name, region, intervention) and archetype |
 | Templates | `templates/onboarding-email-template.md` | reference voice/structure baseline |
 
-## Outputs
+## Products
 
 - `5-qa-and-training/training-onboarding-email-eval_verdict.yaml` — verdict
   YAML per `_eval-template.md § Verdict YAML contract`.

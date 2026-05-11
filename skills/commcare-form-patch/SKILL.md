@@ -22,7 +22,7 @@ Connect setup attempt sees a Connect-compatible CCZ.
 | Operator-authored | `commcare-patches.yaml` (per-opp) | declarative patch-class list to apply |
 | Phase 2 | `2-commcare/app-deploy_summary.md` | HQ app IDs to target |
 
-## Outputs
+## Products
 
 - `2-commcare/commcare-form-patch_summary.md` — patches applied per form, re-built/re-released build IDs
 

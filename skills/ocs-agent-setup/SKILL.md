@@ -28,7 +28,7 @@ no inline self-eval.
 | Phase 2 | `runs/<run-id>/2-commcare/` (app summaries) | RAG content (app structure for the chatbot to answer "where do I find X" questions) |
 | Phase 3 | `3-connect/connect-opp-setup.md` | opp framing for system prompt |
 
-## Outputs
+## Products
 
 - `4-ocs/ocs-agent-setup.md` — chatbot identifiers (`experiment_id`, `version_number`, embed `public_id` + `embed_key`)
 - `4-ocs/ocs-setup_widget-handoff.md` — widget URL + embed credentials staged for Connect HITL paste-in

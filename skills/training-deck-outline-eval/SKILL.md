@@ -27,7 +27,7 @@ calibration TBD until 3+ shipped deck outlines produce ground truth.
 | Phase 2 | `2-commcare/app-deploy_summary.md` | walkthrough must match deployed app screens |
 | Phase 5 | `5-qa-and-training/training-faq.md` (if present) | anticipated-question coverage cross-reference |
 
-## Outputs
+## Products
 
 - `5-qa-and-training/training-deck-outline-eval_verdict.yaml` — verdict YAML
   per `_eval-template.md § Verdict YAML contract`.

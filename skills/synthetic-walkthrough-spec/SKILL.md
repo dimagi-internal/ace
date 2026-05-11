@@ -24,7 +24,7 @@ the `synthetic-walkthrough-run` skill.
 | Drive (optional) | `ACE/<opp>/personas/*.md` | per-opp persona overlays — override or supplement the canned set |
 | Drive | `ACE/<opp>/opp.yaml` | `display_name`, `slug`, `synthetic.labs_opp_id`, `synthetic.current_folder_id` |
 
-## Outputs
+## Products
 
 - One `6-synthetic/synthetic-walkthrough-spec_<persona>.yaml` per persona
 - `run_state.yaml.phases.synthetic-data-and-workflows.synthetic-walkthrough-spec.steps[<persona>]: done`

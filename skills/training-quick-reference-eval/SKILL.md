@@ -26,7 +26,7 @@ calibration TBD until 3+ shipped quick-references produce ground truth.
 | Phase 1 | `1-design/idea-to-pdd.md` | anchors numeric caps + archetype + support contact |
 | Phase 2 | `2-commcare/app-deploy_summary.md` | confirms numeric values match deployed reality |
 
-## Outputs
+## Products
 
 - `5-qa-and-training/training-quick-reference-eval_verdict.yaml` — verdict
   YAML per `_eval-template.md § Verdict YAML contract`.

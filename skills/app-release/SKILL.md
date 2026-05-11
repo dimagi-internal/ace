@@ -17,7 +17,7 @@ can read its form schema and surface deliver units to the opportunity.
 |---|---|---|
 | Phase 2 | `2-commcare/app-deploy_summary.md` | HQ app IDs for Learn + Deliver apps |
 
-## Outputs
+## Products
 
 - `2-commcare/app-release_summary.md` — released build IDs + version numbers per app
 

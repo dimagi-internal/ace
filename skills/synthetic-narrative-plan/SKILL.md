@@ -32,7 +32,7 @@ this skill runs first, `synthetic-data-generate` consumes
 | Drive | `ACE/<opp>/opp.yaml` | `display_name`, slug, last_run_id, organization_slug |
 | Operator (CLI, optional) | `--seed-prompt FILE\|-` | free-text steering ("emphasize fraud detection," "feature Asha as the rockstar") |
 
-## Outputs
+## Products
 
 - `6-synthetic/synthetic-narrative-plan.md` — human-readable narrative explaining the data story
 - `6-synthetic/synthetic-narrative-plan.yaml` — the manifest (schema identical to `synthetic-data-generate_manifest.yaml`)

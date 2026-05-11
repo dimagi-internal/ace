@@ -31,7 +31,7 @@ sibling, `skills/_eval-template.md` for shared contracts, and
 | Phase 3 | `3-connect/connect-program-setup_summary.md` | parent Program ID + cross-check on consistency |
 | Phase 2 | `2-commcare/app-deploy_summary.md` | HQ Deliver app ID + form/module names for cross-check on Deliver Unit wiring |
 
-## Outputs
+## Products
 
 - `3-connect/connect-opp-setup-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`connect-opp-setup`).
 

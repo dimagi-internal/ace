@@ -27,7 +27,7 @@ narrative-plan output; this skill grows to bundle them then.
 | Drive | `ACE/<opp>/opp.yaml` | `display_name`, `slug`, opp-level context |
 | Current run's `run_state.yaml` | `phases.synthetic-data-and-workflows.products.synthetic.*` — `walkthroughs[]`, `workflows`, `generated_at`, etc. | Stage 2/3 content sections |
 
-## Outputs
+## Products
 
 - `6-synthetic/synthetic-summary.md` — one-page reviewer-facing summary
 - `run_state.yaml.phases.synthetic-data-and-workflows.synthetic-summary: done`
