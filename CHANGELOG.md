@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.168 — 2026-05-11
+
+**Phase 1 state-consolidation: `skill:idea-to-pdd` writes a `phases.design.products.pdd` block with `{title, description, file_id}`.**
+
+Continues the state-consolidation work. After writing the PDD markdown, `idea-to-pdd` now emits a small typed block to `run_state.yaml` carrying the friendly title, a one-paragraph description, and the Drive `fileId` of the PDD itself. The block is the typed-state replacement for ace-web's current regex extraction of the PDD's opening line and `## Overview` paragraph — the producer skill knows the friendly title with no ambiguity, so authoring it directly into state removes a fragile downstream parse.
+
+Sole writer per the established Phase 1 convention. Two-level merge.
+
+No semantic change for ACE skills (no downstream skill currently reads `products.pdd`). The motivating consumer is ace-web's per-run summary page, which will cut over in a follow-up PR in that repo.
+
+All 915 unit tests pass.
+
 ## 0.13.167 — 2026-05-11
 
 **Phase 2 state-consolidation: `skill:app-deploy` now writes a consolidated `phases.commcare-setup.products.apps` block to `run_state.yaml`.**
