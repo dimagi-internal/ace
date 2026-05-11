@@ -25,7 +25,6 @@ export type PhaseStatus = 'pending' | 'in-progress' | 'done' | 'skipped';
 const OPP_LEVEL_PATHS = new Set<string>([
   'inputs/',
   'opp.yaml',
-  'connect-state.yaml',
   'open-questions.md',
   'eval-calibration/known-issues.md',
 ]);

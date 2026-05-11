@@ -91,6 +91,18 @@ phases:
 status is derived from `phases.<phase>.status` + per-skill verdict
 files at runtime; no separate field carries it. See § Pause Points.)
 
+**Per-phase `outputs:` block (state-consolidation PR a onward).** Each
+`phases.<phase>` may carry an `outputs:` map of *typed cross-run state*
+produced during that phase — Connect IDs (`phases.connect-setup.outputs.connect`),
+OCS chatbot (`phases.ocs-setup.outputs.ocs_chatbot`), solicitation +
+selected_llo (`phases.solicitation-management.outputs.*`), synthetic
+(`phases.synthetic-data-and-workflows.outputs.synthetic`). The
+orchestrator's run-init seed step (`ace-orchestrator.md § Step 6b`)
+copies the prior run's `outputs` forward, so a newly minted run starts
+with its parent's inherited state visible at the same path. See
+`docs/superpowers/specs/2026-05-10-state-consolidation.md` for the
+target shape and the per-block migration sequence (PRs a-e).
+
 **`initiated_by`** — the operator who kicked off the opp. Set once in
 "Starting a New Opportunity" from `git config user.email`. Never overwritten.
 Fallback to the literal string `unknown` if git config is unset.
@@ -336,11 +348,10 @@ implicitly via path lacking a `runs/` prefix):
 
 | Path | Role |
 |---|---|
-| `ACE/<opp>/opp.yaml` | Metadata, `selected_llo`, `solicitation` blocks, tags. Phase 7/8 mutate this in place. |
+| `ACE/<opp>/opp.yaml` | Thin identity: `display_name`, `slug`, `tags`, `created_at`, `created_by`. No evolving state — that all lives under `runs/<run-id>/run_state.yaml.phases.<phase>.outputs.*` and is inherited per-run via the orchestrator's seed step (see `ace-orchestrator.md § Step 6b`). Older opps may still carry `selected_llo`, `solicitation`, `synthetic`, `connect`, `ocs_chatbot` blocks here — they're being migrated to `outputs` across PRs a-d (see `docs/superpowers/specs/2026-05-10-state-consolidation.md`); fallback reads on the old locations remain until PR e strips them. |
 | `ACE/<opp>/inputs/` | Human-curated source pack. Read-only — every run's Phase 1 reads via the run-root inputs-manifest. |
 | `ACE/<opp>/eval-calibration/known-issues.md` | Ground-truth catalogue every `-eval` rubric reads. Calibration survives across runs. |
 | `ACE/<opp>/open-questions.md` | Deferred questions that accrete across runs until answered. |
-| `ACE/<opp>/connect-state.yaml` | Connect program/opp UUIDs from Phase 3, reused by Phases 5 + 8. Subsequent runs reuse the same Connect entities. |
 | `ACE/<opp>/current/` | Shortcut folder pointing at the latest run's Phase 3/4 outputs (refreshed at phase completion — see § Current/ shortcut refresh). |
 
 **Per-run — under `ACE/<opp>/runs/<run-id>/`; copy or re-derive when
@@ -372,8 +383,11 @@ no longer written.
 downstream) from a prior run's outputs:
 
 1. Reuse the existing per-opp files (`opp.yaml`, `inputs/`,
-   `eval-calibration/`, `open-questions.md`, `connect-state.yaml`) —
-   do not copy.
+   `eval-calibration/`, `open-questions.md`) — do not copy. Cross-run
+   `outputs` (Connect IDs, solicitation, selected_llo, synthetic) are
+   inherited automatically by the orchestrator's seed step at run init
+   (see `ace-orchestrator.md § Step 6b`), so the new run starts with
+   the prior run's outputs visible at `phases.<phase>.outputs.*`.
 2. Mint a new run-id (`YYYYMMDD-HHMM` per § State Schema), create
    `runs/<new-run-id>/` and seed `run_state.yaml` per the defensive
    init in § State Schema.
@@ -517,10 +531,20 @@ as expected — `two-level` only recurses where both base and patch
 have an object at that key.
 
 Phase agents MAY also use `update_yaml_file` with the default
-`shallow` mode for one-shot whole-subtree replacements (e.g.,
-`opp.yaml.connect = {...}` to fully overwrite the connect block when
-the Connect opp was deleted-and-recreated). The contract above is
-specifically for incremental run_state.yaml writes during a `/ace:run`.
+`shallow` mode for one-shot whole-subtree replacements of a top-level
+key. The contract above is specifically for incremental run_state.yaml
+writes during a `/ace:run`.
+
+**Writing `phases.<phase>.outputs.<block>`.** Cross-run outputs nest
+three levels deep (`phases` → `<phase>` → `outputs` → `<block>`). With
+`merge: 'two-level'`, a patch like
+`phases: { <phase>: { outputs: { <block>: {...} } } }` replaces the
+*entire* `outputs:` subtree under that phase wholesale. Implication:
+each `outputs.<block>` has exactly one writing skill, and that skill
+emits the **full block** atomically — partial writes from multiple
+skills would clobber each other. When the same skill needs to surface
+intermediate state during its run, it accumulates the data in-memory
+and writes the consolidated `outputs.<block>` once at end-of-skill.
 
 Do NOT pair a manual `drive_read_file` + `drive_update_file` to
 read-modify-write `run_state.yaml` from the agent — `update_yaml_file`
