@@ -181,15 +181,17 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    after this skill ran, the existing opp is wired to a stale (now-abandoned)
    HQ id** — the recovery is `connect_delete_opportunity` +
    `connect_create_opportunity` against the canonical HQ ids, then
-   update `opp.yaml.solicitation.connect_opportunity_id` to the new
-   UUID. **This recovery is low-cost.** A labs solicitation already
-   published for this opp is unaffected: solicitations are scoped to
-   the labs `program_id`, not to any specific Connect opportunity UUID
-   (`opp.yaml.solicitation.connect_opportunity_id` is ACE-side
-   bookkeeping recording ACE's intended target, not a labs-side foreign
-   key — see `skills/solicitation-create/SKILL.md`). The public
-   solicitation URL, deadline, and pending applications all continue
-   uninterrupted. CCC-301 will eventually retire this dance by exposing
+   update the current run's
+   `phases.solicitation-management.outputs.solicitation.connect_opportunity_id`
+   (legacy fallback: `opp.yaml.solicitation.connect_opportunity_id`) to
+   the new UUID. **This recovery is low-cost.** A labs solicitation
+   already published for this opp is unaffected: solicitations are
+   scoped to the labs `program_id`, not to any specific Connect
+   opportunity UUID (`connect_opportunity_id` is ACE-side bookkeeping
+   recording ACE's intended target, not a labs-side foreign key — see
+   `skills/solicitation-create/SKILL.md`). The public solicitation
+   URL, deadline, and pending applications all continue uninterrupted.
+   CCC-301 will eventually retire this dance by exposing
    `update_opportunity({learn_app, deliver_app})`.
 
    **Verify-after-create (mandatory).** Immediately after the create
