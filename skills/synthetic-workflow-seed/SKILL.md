@@ -25,7 +25,7 @@ pipeline schemas populated with KPI fields. The polish step
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 6 | `6-synthetic/synthetic-narrative-plan.yaml` (preferred) or `synthetic-data-generate_manifest.yaml` (fallback) | `kpi_config`, `coaching_arcs`, `flw_personas` |
-| Current run's `run_state.yaml` | `phases.synthetic-data-and-workflows.outputs.synthetic.labs_opp_id` (required; legacy fallback: `opp.yaml.synthetic.labs_opp_id`) | `synthetic_generate_from_manifest` opp scope |
+| Current run's `run_state.yaml` | `phases.synthetic-data-and-workflows.outputs.synthetic.labs_opp_id` (required) | `synthetic_generate_from_manifest` opp scope |
 | Drive | `ACE/<opp>/opp.yaml` | `display_name` |
 
 ## Outputs
@@ -37,7 +37,7 @@ pipeline schemas populated with KPI fields. The polish step
     llo_weekly_review_id: <int>
     program_admin_audit_id: <int>
   ```
-  Backward-compat: also writes `opp.yaml.synthetic.workflows` until cleanup PR e.
+  Per-run only — no opp.yaml mirror.
 - `run_state.yaml.phases.synthetic-data-and-workflows.steps.synthetic-workflow-seed.status: done`
 - Side effects in labs:
   - 1 `llo_weekly_review` workflow with the manifest's KPIs + coaching template wired into `definition.config`
@@ -49,10 +49,9 @@ pipeline schemas populated with KPI fields. The polish step
 1. **Read inputs.** Load the active manifest (prefer
    `synthetic-narrative-plan.yaml` over the Stage 1 default manifest).
    Resolve `labs_opp_id` from the current run's
-   `phases.synthetic-data-and-workflows.outputs.synthetic.labs_opp_id`
-   (legacy fallback: `opp.yaml.synthetic.labs_opp_id`). Halt if
-   neither carries a value — this skill needs synthetic mode enabled
-   (`synthetic-data-generate` should have run first).
+   `phases.synthetic-data-and-workflows.outputs.synthetic.labs_opp_id`.
+   Halt if missing — this skill needs synthetic mode enabled
+   (`synthetic-data-generate` should have run first in this same run).
 
 2. **Create the LLO weekly review workflow.**
 
@@ -283,11 +282,7 @@ pipeline schemas populated with KPI fields. The polish step
     3. `update_yaml_file` with `merge: 'two-level'` on the full
        `phases.synthetic-data-and-workflows.outputs` payload.
 
-    **Backward-compat:** also patch `opp.yaml.synthetic.workflows` via
-    `update_yaml_file` (`merge: 'shallow'` — `synthetic:` is its own
-    top-level key, and the `synthetic.workflows` subtree replaces
-    wholesale; remaining `synthetic.*` keys at opp.yaml are preserved).
-    Strip in cleanup PR e.
+    **No write to `opp.yaml.synthetic` — synthetic state is per-run only.**
 
 11. **Update `run_state.yaml`** via the read-merge-write pattern (NOT
     `update_yaml_file` — same caveat as `synthetic-data-generate`
@@ -323,7 +318,7 @@ pipeline schemas populated with KPI fields. The polish step
 - `mcp__plugin_ace_ace-gdrive__drive_read_file`
 - `mcp__plugin_ace_ace-gdrive__drive_create_file` (find-or-update)
 - `mcp__plugin_ace_ace-gdrive__drive_update_file` (run_state read-merge-write)
-- `mcp__plugin_ace_ace-gdrive__update_yaml_file` — writes `phases.synthetic-data-and-workflows.outputs.synthetic.workflows` to `run_state.yaml` (read-modify-write + `merge: 'two-level'`); backward-compat also writes `opp.yaml.synthetic.workflows` until cleanup PR e
+- `mcp__plugin_ace_ace-gdrive__update_yaml_file` — writes `phases.synthetic-data-and-workflows.outputs.synthetic.workflows` to `run_state.yaml` (read-modify-write + `merge: 'two-level'`)
 
 ## Mode Behavior
 

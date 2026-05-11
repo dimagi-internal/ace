@@ -181,9 +181,8 @@ skills don't duplicate it:
 - **`skills/_solicitation-template.md`** — for the Phase 7 solicitation
   family. Defines the
   `phases.solicitation-management.outputs.{solicitation, selected_llo}`
-  contract (with legacy `opp.yaml.*` fallbacks during the
-  state-consolidation migration), the connect-labs MCP atom inventory
-  per skill, and the Phase 7 → Phase 8 boundary rule.
+  per-run contract, the connect-labs MCP atom inventory per skill, and
+  the Phase 7 → Phase 8 boundary rule.
 
 These files start with `_` so they are excluded from the skill catalog
 (they aren't skills — they're reference docs). When you add a new

@@ -88,8 +88,8 @@ otherwise authors a default 5-FLW manifest.
 - Writes `6-synthetic/synthetic-data-generate.md`, populates
   `phases.synthetic-data-and-workflows.outputs.synthetic` block in the
   current run's `run_state.yaml` with `enabled: true`,
-  `current_folder_id`, `fixture_record_counts`, `labs_opp_id`. Backward-
-  compat: also writes `opp.yaml.synthetic` until cleanup PR e.
+  `current_folder_id`, `fixture_record_counts`, `labs_opp_id`. Per-run
+  only.
 - Pre-flight on `connect_list_payment_units`: warns when `count == 0`
   (consequence: completed_works/completed_module zero).
 - **LLM-as-Judge:** `synthetic-data-generate-eval` (Stage 4 — not yet
@@ -142,7 +142,7 @@ Invoke `synthetic-walkthrough-run`.
 - For each persona spec, dispatches `/canopy:walkthrough <name>`;
   copies the resulting HTML deck + scored screenshots into
   `6-synthetic/walkthroughs/<persona>-<timestamp>/`.
-- Appends to `outputs.synthetic.walkthroughs[]` in the current run's `run_state.yaml` (backward-compat also appends to legacy `opp.yaml.synthetic.walkthroughs[]`); re-runs append, not
+- Appends to `outputs.synthetic.walkthroughs[]` in the current run's `run_state.yaml`. Per-run only — does NOT chain across runs (every `/ace:run` produces its own walkthrough list). Within a run, re-runs append, not
   overwrite — project history accumulates).
 - **No separate eval skill** — `canopy:walkthrough` already scores per
   scene with its Tough Judge rubric.
@@ -195,19 +195,14 @@ the whole phase to re-run.
 Before Step 1, verify:
 
 - [ ] **`phases.connect-setup.outputs.connect.opportunity` exists** in
-  the current run's `run_state.yaml` (Phase 3 ran, or its outputs
-  seeded from a prior run via the orchestrator's run-init seed step).
-  Falls back to `opp.yaml.connect.opportunity` for opps that pre-date
-  state-consolidation PR a. Without an opportunity in Connect, the
-  labs MCP has no opp to scope `synthetic_generate_from_manifest`
-  against.
+  the current run's `run_state.yaml` (Phase 3 ran in this same run).
+  Without an opportunity in Connect, the labs MCP has no opp to scope
+  `synthetic_generate_from_manifest` against.
 - [ ] **`phases.connect-setup.outputs.connect.opportunity.labs_int_id`
   populated** (Stage 4.5 of Plan B; `connect-opp-setup` recovers it
-  via `labs_context` post-create, with legacy
-  `opp.yaml.connect.opportunity.labs_int_id` as fallback). When null,
-  Phase 6 falls back to operator-typed `--opp-int-id`. Re-run
-  `connect-opp-setup` if labs hadn't observed the opp at first-create
-  time.
+  via `labs_context` post-create). When null, Phase 6 falls back to
+  operator-typed `--opp-int-id`. Re-run `connect-opp-setup` if labs
+  hadn't observed the opp at first-create time.
 - [ ] **`LABS_MCP_TOKEN` set** in `${CLAUDE_PLUGIN_DATA}/.env`.
   Required by every connect-labs MCP call. `bin/ace-doctor` reports
   the labs section.
@@ -250,10 +245,10 @@ read-merge-write pattern via `drive_update_file` is no longer needed
 for this case and should not be reintroduced.
 
 `phases.synthetic-data-and-workflows.outputs.synthetic` accumulates
-across writers (current run's `run_state.yaml`; inherited from prior
-runs via the orchestrator's seed step). Three skills own different
-sub-keys, so each does read-modify-write to preserve siblings under
-`merge: 'two-level'`:
+across writers within a single run (current run's `run_state.yaml`).
+Each `/ace:run` is independent — no cross-run inheritance. Three
+skills own different sub-keys, so each does read-modify-write to
+preserve siblings under `merge: 'two-level'`:
 
 ```yaml
 phases:
@@ -281,8 +276,7 @@ phases:
             ...
 ```
 
-Backward-compat: each writer also patches the legacy
-`opp.yaml.synthetic` mirror until cleanup PR e.
+No `opp.yaml.synthetic` writes — synthetic state is per-run only.
 
 ## Failure modes
 

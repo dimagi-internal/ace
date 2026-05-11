@@ -8,8 +8,9 @@ disable-model-invocation: true
 
 # LLO Invite
 
-Phase 7 default-run skill. Runs after `solicitation-create` has captured
-`opp.yaml.solicitation.public_url`. Sends each PDD-named candidate LLO an
+Phase 7 default-run skill. Runs after `solicitation-create` has populated
+`phases.solicitation-management.outputs.solicitation.public_url` in the
+current run's `run_state.yaml`. Sends each PDD-named candidate LLO an
 email containing the solicitation URL, deadline, and a scope summary.
 
 This skill replaces the previous Phase-7 (was Phase-6) `llo-invite` that
@@ -22,11 +23,9 @@ fires only for the awardee.
 - `ACE/<opp-name>/inputs/pdd.md` (specifically `## LLO Preference` →
   Preferred LLOs)
 - `phases.solicitation-management.outputs.solicitation.public_url` —
-  current run's `run_state.yaml` (legacy fallback:
-  `opp.yaml.solicitation.public_url`)
+  current run's `run_state.yaml`
 - `phases.solicitation-management.outputs.solicitation.deadline` —
-  current run's `run_state.yaml` (legacy fallback:
-  `opp.yaml.solicitation.deadline`)
+  current run's `run_state.yaml`
 - `opp.yaml` (opp display name)
 
 ## Process
@@ -113,9 +112,9 @@ applying" notes, not commitments).
 - All recipients fail: halt with a surfaced error pointing at the Gmail
   config in `/ace:doctor`.
 - PDD has no `Preferred LLOs`: no-op per Step 2 above.
-- Resolved `public_url` empty or resolved `status != open` (checked at
-  the new location first with legacy `opp.yaml.solicitation.*`
-  fallback): halt with "run solicitation-create first" message.
+- Resolved `public_url` empty or resolved `status != open` (read from
+  the current run's `outputs.solicitation`): halt with "run
+  solicitation-create first" message.
 
 ## Output
 

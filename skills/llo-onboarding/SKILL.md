@@ -9,21 +9,20 @@ disable-model-invocation: true
 # LLO Onboarding
 
 First LLO contact for the awarded LLO. Reads
-`phases.solicitation-management.outputs.selected_llo` (current run's
-`run_state.yaml`; populated by Phase 7 `solicitation-review` after a
-solicitation is awarded; legacy fallback: `opp.yaml.selected_llo` for
-pre-PR-c opps), issues the Connect system invite to that single org,
-and sends the ACE-authored onboarding email with the OCS widget link
-embedded.
+`phases.solicitation-management.outputs.selected_llo` in the current
+run's `run_state.yaml` (populated by Phase 7 `solicitation-review`
+after a solicitation is awarded), issues the Connect system invite to
+that single org, and sends the ACE-authored onboarding email with the
+OCS widget link embedded.
 
-**Phase 8 entry guard:** if both the new location AND the legacy
-`opp.yaml.selected_llo.org_slug` are null/empty, this skill halts
+**Phase 8 entry guard:** if
+`phases.solicitation-management.outputs.selected_llo.org_slug` is
+null/empty in the current run's `run_state.yaml`, this skill halts
 immediately with:
 
-> FATAL: Phase 8 cannot start — `selected_llo.org_slug` is empty
-> (checked `phases.solicitation-management.outputs.selected_llo.org_slug`
-> in the current run's `run_state.yaml` and legacy
-> `opp.yaml.selected_llo.org_slug`). Run
+> FATAL: Phase 8 cannot start —
+> `phases.solicitation-management.outputs.selected_llo.org_slug` is
+> empty in the current run's `run_state.yaml`. Run
 > `/ace:step solicitation-review --opp <opp-name>` to score Phase 7
 > solicitation responses and award an awardee. The orchestrator's
 > pre-Phase-7 gate should have caught this; if you're seeing this from
@@ -38,11 +37,10 @@ solicitation and selecting one winner, Phase 8 onboards exactly one org.
 1. **Read inputs from GDrive:**
    - `selected_llo` block — read from
      `phases.solicitation-management.outputs.selected_llo` in the
-     current run's `run_state.yaml` (legacy fallback:
-     `opp.yaml.selected_llo`). Populated by Phase 7
+     current run's `run_state.yaml`. Populated by Phase 7
      `solicitation-review`. Must contain `org_slug`, `contact_email`,
      `source: 'solicitation'`, `response_id`. Halt with the FATAL
-     message above if `org_slug` is null/empty at both locations.
+     message above if `org_slug` is null/empty.
    - Training materials: `ACE/<opp-name>/runs/<run-id>/5-qa-and-training/`
    - Opportunity details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
    - Program details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup.md` (program
@@ -60,17 +58,15 @@ solicitation and selecting one winner, Phase 8 onboards exactly one org.
    workspace admins via the `send_program_invite_email` task. Args:
    - `organization_slug`: PM-side org running the program
    - `program_id`: program UUID (from `connect-setup/program.md`)
-   - `organization`: `selected_llo.org_slug` (resolved from new
-     location or legacy fallback)
+   - `organization`: `selected_llo.org_slug` from the current run's
+     `run_state.yaml`.
 
    Capture the returned `program_application_id` and write it back via
    `update_yaml_file` (`merge: 'two-level'`) into the current run's
    `phases.solicitation-management.outputs.selected_llo.program_application_id`
    for the auto-accept step (2a). Carry the full `outputs.selected_llo`
-   payload to avoid clobbering siblings under two-level merge.
-   Backward-compat: also patch
-   `opp.yaml.selected_llo.program_application_id` until cleanup PR e.
-   Single org, single call — no roster iteration.
+   payload to avoid clobbering siblings under two-level merge. Single
+   org, single call — no roster iteration.
 
    **2a. (Optional, ACE-driven dogfood runs only.)** If the target org
    is an ACE-controlled fixture and there's no real LLO who will accept
@@ -94,7 +90,7 @@ solicitation and selecting one winner, Phase 8 onboards exactly one org.
 
 4. **Compose the onboarding email for the awarded LLO:**
    - From: `$ACE_GMAIL_ACCOUNT` (via `email-communicator` skill)
-   - To: `selected_llo.contact_email` (resolved from new location or legacy fallback)
+   - To: `selected_llo.contact_email` (from current run's `run_state.yaml`)
    - CC: CRISPR Admin Dimagi Google Group
    - Subject: "[Opportunity Name] — Welcome and Next Steps"
    - Body (archetype-aware — see `## Archetypes` for per-archetype content):

@@ -54,9 +54,8 @@ Score each dimension 0-10. Hard-deduct rules listed inline.
 
 - `[BLOCKER]` if any dimension scores ≤ 3.
 - `[BLOCKER]` if `award-record.md` has `status: failed` while
-  `selected_llo.org_slug` is populated (contract violation; check
-  `phases.solicitation-management.outputs.selected_llo.org_slug` with
-  legacy `opp.yaml.selected_llo.org_slug` fallback).
+  `phases.solicitation-management.outputs.selected_llo.org_slug` is
+  populated in the current run's `run_state.yaml` (contract violation).
 - `[BLOCKER]` if `recommendation.md` is missing while
   `award-record.md` has `status: success` (HITL gate was bypassed).
 - `[WARN]` per response in `solicitation/responses/` that has no entry in

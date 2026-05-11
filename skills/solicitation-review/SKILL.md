@@ -16,26 +16,26 @@ Manual skill — never runs in default `/ace:run`. Only via:
 
 This is the only skill that calls `award_response` (irreversible) and the
 only skill that populates `selected_llo` (which gates Phase 8). Writes to
-`phases.solicitation-management.outputs.selected_llo` (current run's
-`run_state.yaml`) with backward-compat fallback to `opp.yaml.selected_llo`.
+`phases.solicitation-management.outputs.selected_llo` in the current run's
+`run_state.yaml` only.
 
 ## Inputs
 
-Read from the current run's `run_state.yaml.phases.solicitation-management.outputs.solicitation`
-(fallback: `opp.yaml.solicitation` for pre-PR-b opps):
+Read from the current run's `run_state.yaml.phases.solicitation-management.outputs.solicitation`:
 
 - `solicitation_id`
 - `public_url`
 - `labs_program_id` — labs **integer** program ID cached by
-  `solicitation-create`. Required for any `get_solicitation` /
-  `list_solicitations` / `update_solicitation` call. Labs's
-  `LabsRecord` read path filters to `is_public=true` without scope,
-  and `update_solicitation` runs an underlying read first — so private
-  solicitations 404 on every call until `program_id` is passed. Note:
-  this is **not** the Connect program UUID — labs `int()`-parses the
-  field. If the cached value is missing, fall back to the resolution
-  recipe in `solicitation-create` step 5 (`labs_context` lookup by
-  program name).
+  `solicitation-create` (also available at
+  `opp.yaml.connect.program.labs_int_id` as the durable opp-level
+  cache). Required for any `get_solicitation` / `list_solicitations` /
+  `update_solicitation` call. Labs's `LabsRecord` read path filters
+  to `is_public=true` without scope, and `update_solicitation` runs an
+  underlying read first — so private solicitations 404 on every call
+  until `program_id` is passed. Note: this is **not** the Connect
+  program UUID — labs `int()`-parses the field. If both locations are
+  empty, fall back to the resolution recipe in `solicitation-create`
+  step 5 (`labs_context` lookup by program name).
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md` (rubric)
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-monitor_responses/*.md` (all responses)
 
@@ -135,24 +135,36 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.outpu
    underlying `get_record_by_id` returns no row and the merge fails.
    Pass the labs **integer** id (resolved from
    `phases.solicitation-management.outputs.solicitation.labs_program_id`
-   with fallback to legacy `opp.yaml.solicitation.labs_program_id`),
-   not the Connect UUID — labs `int()`-parses the field.
-   Treat 4xx here as non-fatal: `award_response` already succeeded, so
-   write a `status_update_failed` note into `award-record.md` and
-   continue. The award is durable; the labs-side status flip can be
-   retried out-of-band via the labs UI.
+   or `opp.yaml.connect.program.labs_int_id`), not the Connect UUID —
+   labs `int()`-parses the field. Treat 4xx here as non-fatal:
+   `award_response` already succeeded, so write a
+   `status_update_failed` note into `award-record.md` and continue.
+   The award is durable; the labs-side status flip can be retried
+   out-of-band via the labs UI.
 
-10. **Populate `selected_llo`.** Only on a successful award, write to
-    the current run's
-    `phases.solicitation-management.outputs.selected_llo` via
-    `update_yaml_file` + `merge: 'two-level'` (carry the full
-    `outputs.selected_llo` payload — two-level merge replaces it
+10. **Populate `selected_llo` and update solicitation status.** Only
+    on a successful award, write to the current run's
+    `run_state.yaml` via `update_yaml_file` + `merge: 'two-level'`.
+    Read the existing `outputs.solicitation` block first, set
+    `status: awarded` and populate the `awarded.*` block, then write
+    both `outputs.solicitation` and `outputs.selected_llo` in one
+    consolidated payload (two-level merge replaces `outputs:`
     wholesale):
 
     ```yaml
     phases:
       solicitation-management:
         outputs:
+          solicitation:
+            # preserved from solicitation-create + the read above...
+            status: awarded
+            awarded:
+              response_id: <chosen>
+              awarded_at: <ISO>
+              awarded_org_slug: <returned>
+              awarded_org_name: <returned>
+              awarded_contact_email: <returned>
+              award_amount: <approved $>
           selected_llo:
             org_slug: <returned>
             contact_email: <returned>
@@ -160,15 +172,9 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.outpu
             response_id: <chosen>
     ```
 
-    Also flip the local-mirror solicitation status to `awarded` and
-    populate the `awarded.*` block under
-    `phases.solicitation-management.outputs.solicitation`.
-
-    **Backward-compat:** until cleanup PR e, also write the same
-    `selected_llo:` subtree to `opp.yaml` (`merge: 'shallow'`) and
-    update `opp.yaml.solicitation.{status, awarded}`. Phase 8's
-    entry-gate readers fall back to `opp.yaml.selected_llo.org_slug`
-    for opps that pre-date PR c.
+    **No write to `opp.yaml.selected_llo` or `opp.yaml.solicitation`.**
+    These are per-run only. Phase 8 (`llo-onboarding`) reads
+    `selected_llo` from the same `run_state.yaml`.
 
 ## Error handling
 
@@ -193,8 +199,8 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.outpu
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_scoring-rubric.md`
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_recommendation.md`
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_award-record.md`
-- `phases.solicitation-management.outputs.selected_llo.*` populated; backward-compat also `opp.yaml.selected_llo.*` until cleanup PR e (only on success)
-- `phases.solicitation-management.outputs.solicitation.{status: awarded, awarded.*}` populated; backward-compat `opp.yaml.solicitation.{status: awarded, awarded.*}` until cleanup PR e (only on success)
+- `phases.solicitation-management.outputs.selected_llo.*` populated (only on success; per-run only)
+- `phases.solicitation-management.outputs.solicitation.{status: awarded, awarded.*}` populated (only on success; per-run only)
 
 ## MCP Tools Used
 

@@ -16,7 +16,7 @@ Activate the opportunity and notify LLOs that they are live.
    - UAT results: `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-uat_results.md` (includes archetype)
    - Deployment summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` (atomic-visit)
    - Opportunity config: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
-   - Awarded LLO: `phases.solicitation-management.outputs.selected_llo` in the current run's `run_state.yaml` (legacy fallback: `opp.yaml.selected_llo`; populated by Phase 7 `solicitation-review`)
+   - Awarded LLO: `phases.solicitation-management.outputs.selected_llo` in the current run's `run_state.yaml` (populated by Phase 7 `solicitation-review`)
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (fallback archetype source)
 
 2. **Read the `archetype:` field.** Go-live semantics differ per
@@ -134,13 +134,8 @@ Activate the opportunity and notify LLOs that they are live.
      it was already active).
    - **ACE test-user pre-invite is NOT re-fired here.** As of 0.13.x,
      `connect-opp-setup` (Phase 3 Step 7) invites `${ACE_E2E_PHONE}`
-     synchronously once Phase 3 Step 6.5 has activated the opp, so the
-     `ace_test_user_invite_pending_until_active` deferral flag is no
-     longer written. Legacy opps that still carry the flag in their
-     `connect-state.yaml` (pre-0.13.x runs) need a one-shot manual
-     `connect_send_flw_invite` outside `/ace:run`; the orchestrator no
-     longer rescues them here. The real-LLO invite below remains this
-     skill's responsibility.
+     synchronously once Phase 3 Step 6.5 has activated the opp. The
+     real-LLO invite below remains this skill's responsibility.
    - Payment/tracking semantics are archetype-specific — see § Archetypes
 
 7. **Confirm delivery surface readiness (archetype-specific):** see
@@ -281,8 +276,8 @@ the latest/current stage.)
   - `connect_activate_opportunity` — REST `POST /api/opportunities/<id>/activate/`
   - `connect_get_opportunity` — verify post-activation (HTML-driven read)
   - `connect_send_flw_invite` — REST `POST /api/opportunities/<id>/invite_users/`
-    (only if `ace_test_user_invite_pending_until_active: true` in
-    `connect-state.yaml`)
+    (no longer used here as of 0.13.x — `connect-opp-setup` Step 7
+    handles the ACE test-user invite synchronously at opp create time)
 - Email: `email-communicator` skill (sends launch notifications)
 
 ## Mode Behavior

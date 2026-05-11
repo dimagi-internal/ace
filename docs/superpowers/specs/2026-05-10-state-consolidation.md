@@ -1,8 +1,45 @@
 # Consolidate evolving state into run_state.yaml
 
-**Date:** 2026-05-10
-**Status:** Design draft; awaiting review
+**Date:** 2026-05-10 (revised 2026-05-11)
+**Status:** Implemented + corrected. See § Correction addendum below before reading the rest of this doc.
 **Owner:** ACE
+
+## Correction addendum (2026-05-11)
+
+This doc as originally drafted had two structural mistakes that
+landed in PRs a-d and were reverted in PR f:
+
+1. **The seed step is gone.** The original design had the orchestrator
+   copy `phases.<phase>.outputs.*` forward from the most recent prior
+   run at run init. **Runs are independent** — every `/ace:run` is a
+   bubble; no run reads from or writes to another run's
+   `run_state.yaml`. The seed step was deleted.
+2. **No recurring-writer rule.** The original design had cron-driven
+   monitors mutate the producing run's state. **Recurring writers are
+   TBD** alongside the Phase 7+/8 redesign (awarding, execution,
+   closeout). `solicitation-monitor` is read-only against the most
+   recent run; its `--close` mode is deferred.
+
+The actual mental model (correction):
+
+- **`opp.yaml`** holds identity (display_name, slug, tags, created_at,
+  created_by) **plus the durable Connect program reference** at
+  `connect.program.{id, url, labs_int_id}`. The Connect program is
+  the one cross-run-reused entity; `connect-program-setup` writes it
+  on first create.
+- **Every other entity** (Connect opportunity, OCS chatbot,
+  solicitation, selected_llo, synthetic data + workflows +
+  walkthroughs) is created **fresh per run** and lives only in that
+  run's `run_state.yaml.phases.*.outputs.*`. Stale entities from
+  abandoned runs are operator-cleaned-up when picking a release-
+  candidate run.
+- Each run's `outputs.connect` includes a **copy** of the program
+  reference (read from `opp.yaml.connect.program` at run time) so the
+  run state file is self-contained for forking / debugging.
+
+The rest of this doc is the original design as drafted. Read it for
+history; the implementation (and `agents/orchestrator-reference.md`)
+reflects the corrected model.
 
 ## Goal
 

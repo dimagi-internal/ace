@@ -20,6 +20,7 @@ Create or select a Connect program for this opportunity.
 ## Outputs
 
 - `3-connect/connect-program-setup.md` — program-id, decision rationale (reuse / create), admin program URL
+- `opp.yaml.connect.program.{id, url}` — written on first create (and refreshed on reuse with verified live values). This is the single durable cross-run reference for the Connect program; every subsequent run of this opp reads it to skip program-create.
 
 ## Process
 
@@ -67,8 +68,32 @@ Create or select a Connect program for this opportunity.
    - Configuration details (delivery_type name + id, budget, currency,
      country, dates)
 
+6. **Persist program reference to `opp.yaml`** via
+   `mcp__plugin_ace_ace-gdrive__update_yaml_file` with the default
+   `shallow` merge — `connect:` is a top-level scalar key:
+
+   ```yaml
+   connect:
+     program:
+       id: <UUID from step 3 reuse or step 4 create>
+       url: <CONNECT_BASE_URL>/a/<org>/program/<uuid>/
+   ```
+
+   `opp.yaml` is the **only** cross-run identity surface for the
+   Connect program — every subsequent run of this opp reads this
+   block to skip program-create (Step 3 reuse path). The Connect
+   *opportunity*, OCS chatbot, solicitation, etc. are per-run and
+   live in the producing run's `run_state.yaml.phases.*.outputs.*`;
+   only `program` is durable here.
+
+   Skip this write on the reuse path **only** if the existing
+   `opp.yaml.connect.program.id` value already matches what we just
+   verified live — no-op writes are fine but unnecessary. On any
+   value mismatch, overwrite (the live value wins; opp.yaml gets
+   corrected).
+
 ## MCP Tools Used
-- Google Drive: `drive_read_file`, `drive_create_file`
+- Google Drive: `drive_read_file`, `drive_create_file`, `update_yaml_file` (write `opp.yaml.connect.program` block, `merge: 'shallow'`)
 - Connect (`ace-connect` MCP, 0.10.47+):
   - `connect_list_programs` — discovery
   - `connect_list_delivery_types` — resolve human name → slug/int FK if needed

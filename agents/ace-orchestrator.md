@@ -316,23 +316,26 @@ The orchestrator's contract on a populated opp:
   fix is to push the reuse-vs-rebuild decision down into the affected
   phase agent's skill logic instead.
 - **Reuse-vs-rebuild is owned by each phase agent's skills**, not by
-  the orchestrator. Examples that already exist in skills today:
+  the orchestrator. Each run is independent — no run reads from or
+  writes to another run's `run_state.yaml`. The only cross-run reuse
+  surface is `opp.yaml`, which holds opp-level identifiers (Connect
+  program UUID) that survive across runs. Examples:
   - `connect-program-setup` reuses an existing program when
-    `phases.connect-setup.outputs.connect.program.id` is set + verified
-    live (with `opp.yaml.connect.program.id` fallback until the
-    state-consolidation cleanup PR).
-  - `connect-opp-setup` reuses an existing opp when
-    `phases.connect-setup.outputs.connect.opportunity.id` is set, status
-    is non-terminal, and HQ ids on the opp match the current
-    `2-commcare/app-deploy_summary.md` (delete-and-recreate only on
-    HQ-id mismatch — see commcare-setup § Step 2). Falls back to
-    `opp.yaml.connect.opportunity.id` until the cleanup PR.
-  - `ocs-agent-setup` reuses the chatbot in
-    `opp.yaml.ocs_chatbot.experiment_id` when shape matches; otherwise
-    re-clones from the golden template.
-  - `solicitation-create` no-ops with `[INFO]` if a published
-    solicitation already exists for this opp's labs `program_id` —
-    rebuilds only if the prior one is closed/expired.
+    `opp.yaml.connect.program.id` is set + verified live; otherwise
+    creates a new one and writes it back to `opp.yaml`.
+  - `connect-opp-setup` always creates a fresh Connect opportunity
+    per run; opportunity UUIDs are recorded only in the producing
+    run's `phases.connect-setup.outputs.connect.opportunity`. Stale
+    opps from earlier runs are operator-cleaned-up when picking a
+    release-candidate run.
+  - `ocs-agent-setup` clones a fresh chatbot per run from the golden
+    template; the chatbot is recorded in the producing run's
+    `phases.ocs-setup.outputs.ocs_chatbot`. Stale chatbots are
+    operator-cleaned-up.
+  - `solicitation-create` always publishes a fresh solicitation per
+    run; the solicitation is recorded in the producing run's
+    `phases.solicitation-management.outputs.solicitation`. Stale
+    solicitations are operator-cleaned-up.
 - **Each new run gets its own `runs/<run-id>/<N>-<phase>/` artifact
   set** — prior-run artifacts stay frozen in their own run folders.
   Reuse means "phase agent skipped the rebuild step and pointed at
@@ -377,9 +380,9 @@ stop, up until the point of external communication.*
   from ACE on a one-to-one basis. `/ace:run` halts here in default mode
   and remains halted until the human runs `/ace:step solicitation-review`,
   which (after a HITL approval gate) calls `award_response` and populates
-  `phases.solicitation-management.outputs.selected_llo` (legacy
-  fallback: `opp.yaml.selected_llo`). Phase 8 cannot start while
-  `selected_llo.org_slug` is null at both locations.
+  `phases.solicitation-management.outputs.selected_llo` in the current
+  run's `run_state.yaml`. Phase 8 cannot start while
+  `selected_llo.org_slug` is null in the current run.
 - **Phases 7–8 (Execution Management, Closeout):** behave like `review`
   mode for any step whose action affects an external party. Specifically,
   always pause before:
@@ -488,7 +491,7 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
 │   │       └── 1-design/
 │   │           ├── idea-to-pdd.md         (the formal PDD — Phase 1 output)
 │   │           └── ... (other Phase 1 outputs)
-│   └── opp.yaml                  (display_name, tags, selected_llo, ...)
+│   └── opp.yaml                  (display_name, tags, connect.program — durable cross-run state)
 ```
 
 The PDD is **not** an input — it's the formal output of Phase 1
@@ -647,63 +650,6 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `run_id: <runId>` — recorded so a transcript reader can identify
      the run from run_state.yaml alone.
 
-6b. **Seed cross-run `outputs` from the most recent prior run** (skip on
-   resume mode, skip on first-ever run for the opp).
-
-   Cross-run state (`phases.<phase>.outputs.*`) is inherited from the
-   most recent prior run so subsequent skills only ever read the
-   *current* run's `run_state.yaml`. See § State Schema for the
-   `outputs` shape and `docs/superpowers/specs/2026-05-10-state-consolidation.md`
-   for the architectural goal.
-
-   Procedure:
-
-   1. From the prior-runs listing already obtained in Step 4 (the
-      `drive_list_folder` on `<opp>/runs/`), pick the most recent
-      prior run-id — sort run-ids descending (run-ids are
-      `YYYYMMDD-HHMM`-sortable lexically) and take the first that is
-      NOT the run-id just minted. If none exists, skip this step
-      entirely.
-   2. Read the prior run's `run_state.yaml` via `drive_read_file`.
-   3. For each `phases.<phase>` block in the prior state, extract
-      `outputs:` (skip if missing/empty). Build the patch:
-
-      ```yaml
-      phases:
-        <phase-1>:
-          outputs: { ...prior outputs... }
-        <phase-2>:
-          outputs: { ...prior outputs... }
-        ...
-      ```
-
-      Do NOT copy `status`, `verdict`, `started_at`, `completed_at`,
-      `steps`, or `summary_artifact` — those are per-run and each phase
-      writes its own values when it runs (or skips into reuse).
-   4. Apply via `update_yaml_file` with `merge: 'two-level'` on the new
-      run's `run_state.yaml`. The two-level merge preserves the
-      phase-level scalar fields the orchestrator just initialized in
-      Step 6 (all `pending`) and only patches the `outputs:` key under
-      each phase.
-   5. Log:
-
-      ```
-      [orchestrator] seeded outputs from prior run <prior-run-id>:
-        phases=[<phase-1>, <phase-2>, ...]
-      ```
-
-   On resume mode (Step 3 picked an existing run-id), the existing
-   `run_state.yaml` already carries whatever `outputs` were populated
-   during the prior session and this step is skipped. Forking from a
-   *specific* prior run is the same operation with a chosen source
-   run-id — surfaced via a future `/ace:run --fork-from <run-id>` flag
-   (see `agents/orchestrator-reference.md § Forking recipes`).
-
-   Why no discovery helper. Per-skill cross-run searches would duplicate
-   this walk in 15+ skills and drift over time (canonical MCP-vs-skill-
-   doc-drift class). The seed step concentrates the walk in one place;
-   from then on every skill reads only its own run's state.
-
 7. **Ensure `<opp>/opp.yaml` exists.** Read it (`drive_read_file`); if
    missing, create with:
 
@@ -722,19 +668,21 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
 
    - ace-web scans the filesystem (`runs/` folder listing) to enumerate
      runs, so it never consults `opp.yaml.runs` or `last_run_id`.
-   - The orchestrator's only remaining structural use of opp.yaml is
-     the legacy `selected_llo.org_slug` fallback for the Phase 7→8 gate
-     (canonical location since PR c:
-     `phases.solicitation-management.outputs.selected_llo.org_slug`)
-     plus the metadata fields above. The legacy fallback strips in
-     cleanup PR e.
+   - The orchestrator's structural use of `opp.yaml` is limited to
+     the identity fields (display_name, slug, tags, created_at,
+     created_by) plus the `connect.program` block (durable Connect
+     program UUID + URL, reused across runs by
+     `connect-program-setup`). Everything else (Connect opportunity,
+     OCS chatbot, solicitation, selected_llo, synthetic) is per-run
+     and lives only in the producing run's
+     `run_state.yaml.phases.*.outputs.*`.
    - When the user manually deletes a run subfolder, `last_run_id` and
      `runs:` accumulate dangling references — purely cosmetic, but
      misleading enough to worry a reader who notices.
 
-   So we just drop the bump. Skip this step entirely on existing opps
-   unless a Phase 7/8 skill needs to write `selected_llo` /
-   `solicitation` (those have their own write paths).
+   So we just drop the bump. Skip this step entirely on existing opps;
+   `connect-program-setup` is the only phase skill that mutates
+   `opp.yaml` (writes the program block on first create).
 
 7b. **Write the per-run `README.md` index.** Generate the markdown via
    `generateRunReadme(runId, {})` from `lib/run-readme.ts` (all phases
@@ -889,15 +837,15 @@ When invoked with an opportunity, execute these phases in order:
 
 **Write-back:** `phases.solicitation-management.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
-**Gate:** `[BLOCKER]` halts; **Phase 7→8 boundary always pauses in every mode** — `/ace:run` HALTS here at the new external-comms boundary. Phase 8 cannot start until `selected_llo.org_slug` is populated (canonical location: `phases.solicitation-management.outputs.selected_llo.org_slug` in the current run's `run_state.yaml`; legacy fallback: `opp.yaml.selected_llo.org_slug`), which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`). See § Pause Points in reference.
+**Gate:** `[BLOCKER]` halts; **Phase 7→8 boundary always pauses in every mode** — `/ace:run` HALTS here at the new external-comms boundary. Phase 8 cannot start until `phases.solicitation-management.outputs.selected_llo.org_slug` is populated in the current run's `run_state.yaml`, which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`). See § Pause Points in reference.
 
-**Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). `solicitation` and `selected_llo` are separate `opp.yaml` blocks — only `solicitation-review` populates `selected_llo`.
+**Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). Its cross-run write semantics are TBD pending Phase 7+/8 architecture decisions. `solicitation` and `selected_llo` are separate sub-blocks under `phases.solicitation-management.outputs.*` — only `solicitation-review` populates `selected_llo`.
 
 ### Phase 8: Execution Management
 
-**Dispatch:** `Agent(execution-manager)`. **Entry gated on `selected_llo.org_slug` being populated by Phase 7's `solicitation-review`** (read `phases.solicitation-management.outputs.selected_llo.org_slug` first; fall back to legacy `opp.yaml.selected_llo.org_slug` until cleanup PR e).
+**Dispatch:** `Agent(execution-manager)`. **Entry gated on `phases.solicitation-management.outputs.selected_llo.org_slug` being populated by Phase 7's `solicitation-review`** in the current run's `run_state.yaml`.
 
-**Inputs (inline at handoff):** PDD, Phase-5 training artifacts (5 docs + onboarding email under `5-qa-and-training/`), Phase-4 chatbot URL (`4-ocs/ocs-agent-setup.md`), `selected_llo` (resolved from run_state.yaml.phases.solicitation-management.outputs.selected_llo, legacy opp.yaml.selected_llo fallback), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-5 training artifacts (5 docs + onboarding email under `5-qa-and-training/`), Phase-4 chatbot URL (`4-ocs/ocs-agent-setup.md`), `selected_llo` (from run_state.yaml.phases.solicitation-management.outputs.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(execution-manager)`.
 
@@ -913,7 +861,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(closeout)`. **Triggered when the opportunity reaches its end date.**
 
-**Inputs (inline at handoff):** Phase-8 outputs (LLO onboarding + UAT + go-live artifacts under `8-execution-manager/`), `selected_llo` (resolved from run_state.yaml.phases.solicitation-management.outputs.selected_llo, legacy opp.yaml.selected_llo fallback), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** Phase-8 outputs (LLO onboarding + UAT + go-live artifacts under `8-execution-manager/`), `selected_llo` (from run_state.yaml.phases.solicitation-management.outputs.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(closeout)`.
 
