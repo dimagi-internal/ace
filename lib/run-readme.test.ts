@@ -13,7 +13,6 @@ describe('generateRunReadme', () => {
     const oppLevel = new Set([
       'inputs/',
       'opp.yaml',
-      'connect-state.yaml',
       'open-questions.md',
       'eval-calibration/known-issues.md',
     ]);
@@ -101,7 +100,6 @@ describe('generateRunReadme', () => {
     const md = generateRunReadme('20260503-2128');
     // opp-level artifacts shouldn't be in the README (they don't live in run folder)
     expect(md).not.toContain('opp.yaml');
-    expect(md).not.toContain('connect-state.yaml');
     expect(md).not.toContain('open-questions.md');
     expect(md).not.toContain('known-issues.md');
     // dated paths shouldn't be there either

@@ -318,12 +318,15 @@ The orchestrator's contract on a populated opp:
 - **Reuse-vs-rebuild is owned by each phase agent's skills**, not by
   the orchestrator. Examples that already exist in skills today:
   - `connect-program-setup` reuses an existing program when
-    `opp.yaml.connect.program.id` is set + verified live.
+    `phases.connect-setup.outputs.connect.program.id` is set + verified
+    live (with `opp.yaml.connect.program.id` fallback until the
+    state-consolidation cleanup PR).
   - `connect-opp-setup` reuses an existing opp when
-    `opp.yaml.connect.opportunity.id` is set, status is non-terminal,
-    and HQ ids on the opp match the current
+    `phases.connect-setup.outputs.connect.opportunity.id` is set, status
+    is non-terminal, and HQ ids on the opp match the current
     `2-commcare/app-deploy_summary.md` (delete-and-recreate only on
-    HQ-id mismatch — see commcare-setup § Step 2).
+    HQ-id mismatch — see commcare-setup § Step 2). Falls back to
+    `opp.yaml.connect.opportunity.id` until the cleanup PR.
   - `ocs-agent-setup` reuses the chatbot in
     `opp.yaml.ocs_chatbot.experiment_id` when shape matches; otherwise
     re-clones from the golden template.
@@ -642,6 +645,63 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    - `opportunity: <opp>` (matches the State Schema field name) and
      `run_id: <runId>` — recorded so a transcript reader can identify
      the run from run_state.yaml alone.
+
+6b. **Seed cross-run `outputs` from the most recent prior run** (skip on
+   resume mode, skip on first-ever run for the opp).
+
+   Cross-run state (`phases.<phase>.outputs.*`) is inherited from the
+   most recent prior run so subsequent skills only ever read the
+   *current* run's `run_state.yaml`. See § State Schema for the
+   `outputs` shape and `docs/superpowers/specs/2026-05-10-state-consolidation.md`
+   for the architectural goal.
+
+   Procedure:
+
+   1. From the prior-runs listing already obtained in Step 4 (the
+      `drive_list_folder` on `<opp>/runs/`), pick the most recent
+      prior run-id — sort run-ids descending (run-ids are
+      `YYYYMMDD-HHMM`-sortable lexically) and take the first that is
+      NOT the run-id just minted. If none exists, skip this step
+      entirely.
+   2. Read the prior run's `run_state.yaml` via `drive_read_file`.
+   3. For each `phases.<phase>` block in the prior state, extract
+      `outputs:` (skip if missing/empty). Build the patch:
+
+      ```yaml
+      phases:
+        <phase-1>:
+          outputs: { ...prior outputs... }
+        <phase-2>:
+          outputs: { ...prior outputs... }
+        ...
+      ```
+
+      Do NOT copy `status`, `verdict`, `started_at`, `completed_at`,
+      `steps`, or `summary_artifact` — those are per-run and each phase
+      writes its own values when it runs (or skips into reuse).
+   4. Apply via `update_yaml_file` with `merge: 'two-level'` on the new
+      run's `run_state.yaml`. The two-level merge preserves the
+      phase-level scalar fields the orchestrator just initialized in
+      Step 6 (all `pending`) and only patches the `outputs:` key under
+      each phase.
+   5. Log:
+
+      ```
+      [orchestrator] seeded outputs from prior run <prior-run-id>:
+        phases=[<phase-1>, <phase-2>, ...]
+      ```
+
+   On resume mode (Step 3 picked an existing run-id), the existing
+   `run_state.yaml` already carries whatever `outputs` were populated
+   during the prior session and this step is skipped. Forking from a
+   *specific* prior run is the same operation with a chosen source
+   run-id — surfaced via a future `/ace:run --fork-from <run-id>` flag
+   (see `agents/orchestrator-reference.md § Forking recipes`).
+
+   Why no discovery helper. Per-skill cross-run searches would duplicate
+   this walk in 15+ skills and drift over time (canonical MCP-vs-skill-
+   doc-drift class). The seed step concentrates the walk in one place;
+   from then on every skill reads only its own run's state.
 
 7. **Ensure `<opp>/opp.yaml` exists.** Read it (`drive_read_file`); if
    missing, create with:

@@ -26,7 +26,6 @@ const AGENTS_DIR = path.resolve(import.meta.dirname, '../../agents');
 const OPP_LEVEL_EXEMPT = new Set([
   'inputs/',
   'opp.yaml',
-  'connect-state.yaml',
   'open-questions.md',
   'eval-calibration/known-issues.md',
 ]);

@@ -3,10 +3,10 @@
  *
  * Every file that an ACE skill reads from or writes to Google Drive under
  * `ACE/<opp>/runs/<run-id>/` is listed here. A handful of opp-level files
- * (`opp.yaml`, the `inputs/` folder, plus `connect-state.yaml`,
- * `open-questions.md`, and `eval-calibration/known-issues.md`) sit at
- * `ACE/<opp>/` itself, one level above the run folder; they survive
- * across runs and are flagged with `phase: 'design'` for sort order.
+ * (`opp.yaml`, the `inputs/` folder, plus `open-questions.md` and
+ * `eval-calibration/known-issues.md`) sit at `ACE/<opp>/` itself, one
+ * level above the run folder; they survive across runs and are flagged
+ * with `phase: 'design'` for sort order.
  *
  * This module is the single source of truth for:
  *   - What artifacts exist at each lifecycle phase
@@ -98,15 +98,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['ace-orchestrator', 'llo-onboarding', 'solicitation-review'],
     phase: 'design',
     required: false,
-    description: 'Opp-level metadata: display_name, slug, tags, created_at, created_by, plus selected_llo (populated by solicitation-review at the Phase 6→7 boundary; read by llo-onboarding to identify the awardee) and the connect/ocs_chatbot blocks. Created lazily on the first run, then mutated only when a Phase 7/8 skill needs to write its own structured block — never on every run. (Earlier shapes carried `last_run_id` and a `runs:` array; both were dropped because no consumer reads them — ace-web enumerates runs by listing the filesystem under runs/.)',
-  },
-  {
-    path: 'connect-state.yaml',
-    producedBy: 'connect-opp-setup',
-    consumedBy: ['llo-launch', 'llo-uat', 'app-screenshot-capture'],
-    phase: 'design',
-    required: false,
-    description: 'Cross-run Connect state: program UUID, opportunity UUID, ACE-test-user invite URL. Written by connect-opp-setup (Phase 3); read by Phase 5/7 skills that need to drive activation, UAT, or the emulator-driven test-user claim flow without knowing which run created the opp. Opp-level (NOT under runs/<run-id>/) so subsequent runs reuse the same Connect entities.',
+    description: 'Opp-level identity: display_name, slug, tags, created_at, created_by. Created lazily by the orchestrator on the first run; never mutated thereafter. Evolving state (Connect IDs, selected_llo, solicitation, synthetic, ocs_chatbot) lives under runs/<run-id>/run_state.yaml.phases.<phase>.outputs.* and is inherited per-run via the orchestrator\'s seed step (see ace-orchestrator.md § Step 6b). Older opps may still carry those blocks here during the state-consolidation migration (PRs a-d); read-old-and-new fallbacks remain until PR e. (Earlier shapes also carried `last_run_id` and a `runs:` array; both were dropped because no consumer reads them — ace-web enumerates runs by listing the filesystem under runs/.)',
   },
   {
     path: 'open-questions.md',
