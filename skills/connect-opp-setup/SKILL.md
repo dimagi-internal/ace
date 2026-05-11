@@ -17,7 +17,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | archetype + Evidence Model (Layer A → verification flags) |
 | Phase 3 | `3-connect/connect-program-setup.md` | program UUID (opp is scoped to it) |
-| Phase 7 | `opp.yaml.selected_llo.org_slug` | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
+| Phase 7 | `phases.solicitation-management.outputs.selected_llo.org_slug` (legacy fallback: `opp.yaml.selected_llo.org_slug`) | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
 | Phase 2 | `2-commcare/app-deploy_summary.md` | `hq_server`, `learn_app`/`deliver_app` IDs, HQ project space slug |
 
 ## Outputs

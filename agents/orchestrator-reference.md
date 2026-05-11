@@ -72,7 +72,7 @@ phases:
     solicitation-monitor: pending     # recurring (post-/ace:run, while solicitation open)
     solicitation-review: pending      # manual (HITL gate before award_response; only path that unblocks Phase 8)
   execution-management: # Phase 8 (renamed from llo-management 0.12.0)
-    llo-onboarding: pending           # reads opp.yaml.selected_llo (populated by Phase 7 solicitation-review)
+    llo-onboarding: pending           # reads phases.solicitation-management.outputs.selected_llo (legacy fallback opp.yaml.selected_llo)
     llo-uat: pending
     llo-launch: pending
     timeline-monitor: pending         # recurring
@@ -497,7 +497,10 @@ phases:
 Pause-point status at runtime is derived from `phases.<phase>.status` +
 the per-skill verdict files (`<phase>/<producer>-qa_result.yaml` and
 `<phase>/<producer>-eval_verdict.yaml`). The Phase 7→8 halt is gated on
-`opp.yaml.selected_llo.org_slug` being non-null, populated by manual
+`selected_llo.org_slug` being non-null
+(`phases.solicitation-management.outputs.selected_llo.org_slug` in the
+current run's `run_state.yaml`, with legacy `opp.yaml.selected_llo.org_slug`
+fallback until cleanup PR e), populated by manual
 `/ace:step solicitation-review` — that mechanism preserves the HITL
 checkpoint without needing a `gates.solicitation-review` field.)
 
