@@ -1,0 +1,230 @@
+name: perf
+description: >
+  Improve `/ace:run` wall-clock without compromising quality. Reads Claude
+  Code session transcripts to find tool-call batching opportunities,
+  redundant reads, inflated boundary gaps, and slow MCP polling patterns.
+  Proposes doc edits (orchestrator, agents, skills) and MCP backend
+  changes (Promise.all, inflight-dedupe, batched atoms). Verification is
+  observational + measurement — a follow-up /ace:run measures wall-clock
+  vs. pre-edit baseline.
+
+# v1: per-run analysis on the most recent session(s). v2 can add cross-run
+# wall-clock trend tracking once enough baseline runs are captured.
+scope: per_run
+
+# Which evidence the lens reads
+evidence:
+  primary: sessions.recent
+  ace_augmentation:
+    - per_run.run_state           # phase started_at / completed_at — phase-level wall-clock
+    - per_run.readme              # human-readable run summary (sometimes includes timings)
+  derived:
+    - source.orchestrator         # pre-flight checklist, boundary fence, anti-patterns
+    - source.agents               # phase agent procedures (parallel-skill opportunities)
+    - source.skills               # producer + eval skills (in-context vs re-read rules)
+    - source.mcp_backends         # mcp/{server}/backends/*.ts (polling, sequential loops)
+  optional:
+    - prior_run_log               # .claude/pm/runs/*-perf-lens.md — baseline timings to compare
+
+# Signal detectors — the actual patterns this session found
+signals:
+  - id: sequential_independent_tool_calls
+    description: >
+      N independent calls to the same MCP atom dispatched in N successive
+      assistant turns instead of one parallel message. Examples observed
+      this session: 10 sequential TaskCreate calls in pre-flight (PR 0a),
+      3 sequential drive_create_file in run-folder bootstrap, sequential
+      get_form reads in app-connect-coverage Step 3 (PR 0h), sequential
+      get_form re-fetches in design-review producer/eval chains (PR 0e/0j).
+      Fix shape: explicit "issue these in ONE parallel message" instruction
+      in the doc + literal copy-paste-ready tool block.
+    probe: consecutive_same_atom_turns
+    probe_args:
+      independence_check: argv_no_shared_id
+    threshold:
+      consecutive_turns: 3        # 3+ consecutive turns of same-atom = signal
+      independence_confidence: 0.8
+
+  - id: redundant_file_reads
+    description: >
+      Same Drive fileId read more than once within a single subagent's
+      context window. Indicates the parent didn't trust prior reads or
+      a child skill re-fetched what the parent already had. Examples: PDD
+      re-read across Phase 1 producer/eval chains (fixed in PR 0e + 0j).
+      Fix shape: "trust your context across steps; do NOT re-issue
+      drive_read_file for content already loaded" + per-step annotation
+      "(in subagent context from Step N — do NOT re-read)".
+    probe: drive_read_file_dedupe
+    probe_args:
+      scope: per_subagent
+    threshold:
+      duplicate_reads: 2          # 2+ reads of same fileId in same subagent
+
+  - id: inflated_boundary_gaps
+    description: >
+      Between an Agent tool_result and the next Agent dispatch, more than
+      2 assistant turns of text/TaskUpdate/single drive_create_file calls
+      that could be batched. Examples observed: Phase 1→2 boundary on leep
+      took 5+ turns where 2 would do (closed by PR 0d Phase Boundary
+      Fence). Fix shape: explicit "ONE message immediately after Agent
+      returns" rule in the orchestrator's boundary contract + worked
+      anti-pattern/right-pattern transcript example.
+    probe: phase_boundary_turn_count
+    threshold:
+      turns_between_dispatches: 3  # 3+ turns between Agent results = signal
+
+  - id: sequential_mcp_loop
+    description: >
+      MCP backend code (mcp/{server}/backends/*.ts) contains a `for` loop
+      that awaits an independent HTTP/RPC call per iteration. Example
+      observed: waitForCollectionIndexing in mcp/ocs/backends/playwright.ts
+      polled N files sequentially per cycle (PR 0i: Promise.all). Fix
+      shape: convert to Promise.all, aggregate results in a second pass.
+    probe: ts_for_await_independent
+    probe_args:
+      paths: ["mcp/**/backends/*.ts", "mcp/google-drive-server.ts"]
+    threshold:
+      iterations_observed: 3
+
+  - id: redundant_pre_call_probe
+    description: >
+      MCP atom runs a pre-call validation probe (e.g.
+      assertParentOnSharedDrive) on every invocation, even when N
+      concurrent invocations target the same parent — wasting N-1
+      redundant probes per batch. Fix shape: inflight-dedupe + short TTL
+      cache on the probe result (PR 0g). Pattern reusable for any
+      idempotent pre-call validator.
+    probe: parallel_atom_call_clustering
+    threshold:
+      concurrent_calls_same_arg: 3
+
+  - id: doc_convention_violated_in_practice
+    description: >
+      The orchestrator or an agent doc DOCUMENTS a perf convention
+      ("batch N calls", "issue one ToolSearch", "trust prior reads"), and
+      the transcript shows the model NOT following it. Symptom of prose
+      conventions vs. literal checklists. Fix shape: rewrite the
+      convention as a numbered checklist with copy-paste artifacts
+      (PR 0a pattern). The doc is right; the form is wrong.
+    probe: convention_compliance_check
+    probe_args:
+      doc_sources:
+        - agents/ace-orchestrator.md   # § Pre-flight & per-phase conventions
+        - agents/orchestrator-reference.md  # § Anti-patterns and discipline cross-refs
+
+  - id: stale_doc_cross_reference
+    description: >
+      Cross-reference in a procedure doc points to a section that has
+      moved (e.g. "§ Phase Write-Back Contract below" after the Contract
+      moved to orchestrator-reference.md). Doesn't directly cost
+      wall-clock but produces confusion-tax during model execution.
+      Cleanup PR 0k canonical example. Fix shape: replace "below" with
+      "in `agents/orchestrator-reference.md`" or vice versa.
+    probe: cross_ref_resolution
+
+# Verification — observational + measurement
+verify:
+  type: measurement
+  description: >
+    Static review (does the proposed change match the documented signal?)
+    plus a follow-up /ace:run on a stable test opp to measure wall-clock
+    against a captured baseline. The session that produced this lens
+    skipped the measurement step — 11 PRs shipped without re-measuring.
+    The lens MUST close that loop.
+  steps:
+    - apply_change_locally
+    - run_relevant_test_suite        # npm test + targeted vitest if MCP code
+    - run_ace_doctor                  # no regression in env/auth checks
+    - dispatch_validation_run         # /ace:run against a frozen test opp
+    - parse_validation_transcript     # extract per-phase wall-clock
+    - diff_against_baseline           # compare to prior run log baseline timings
+  pass_criteria:
+    - existing_tests_pass
+    - doctor_no_new_failures
+    - validation_run_completed         # didn't crash or halt
+    - wall_clock_phase_unchanged_or_better
+    - quality_verdicts_unchanged_or_better  # eval verdicts on producer artifacts
+
+# Edit targets
+proposes:
+  edit_targets:
+    - file_pattern: "agents/ace-orchestrator.md"
+      section_patterns:
+        - "## Anti-patterns and discipline"
+        - "## Pre-flight & per-phase conventions"
+        - "## Between Phases"
+        - "## Phase boundary fence"
+    - file_pattern: "agents/orchestrator-reference.md"
+    - file_pattern: "agents/{phase}.md"
+      max_lines_changed: 50
+    - file_pattern: "skills/{skill}/SKILL.md"
+      sections:
+        - "## Process"
+        - "## Modes"
+        - "## Performance conventions"
+    - file_pattern: "mcp/{server}/**/*.ts"
+      paired_test_required: true   # MCP code change requires test addition
+    - file_pattern: "bin/ace-doctor"
+      max_lines_changed: 100
+  forbidden_changes:
+    - skip_quality_check              # never trade a quality gate for speed
+    - remove_eval_dimension           # rubric tightening is a judge-lens concern
+    - parallelize_external_mutations  # mutations are sequential by external-mutations rule
+    - inline_skill_outputs            # producer-skill outputs MUST come from the skill, never composed inline
+
+# Auto-merge gate
+auto_merge:
+  # Doc-only edits matching the conventional patterns auto-merge after
+  # CI green + diff confined to declared targets.
+  doc_only:
+    enabled: true
+    conditions:
+      - verification_passed_static_only   # CI + doctor; full validation run is async
+      - changes_confined_to_section: true
+      - lines_changed_lte: 80
+      - file_count_lte: 2
+      - signal_one_of:
+          - sequential_independent_tool_calls
+          - redundant_file_reads
+          - doc_convention_violated_in_practice
+          - stale_doc_cross_reference
+    human_review_otherwise: true
+
+  # MCP code changes ALWAYS human review (blast radius = every future run
+  # that touches the atom). PR 0g (cache) and PR 0i (parallel polling)
+  # both shipped with tests; the lens enforces test pairing in the
+  # edit_targets section.
+  mcp_code:
+    enabled: false
+    human_review_required: true
+    reason: >
+      MCP backend changes affect every caller of the atom across every
+      future /ace:run and every other tool consumer (ace-web, other
+      plugins). Always human-review the contract impact.
+
+  # Orchestrator-level changes (pre-flight checklist, anti-patterns,
+  # boundary fence) — the contracts that shape how every phase agent
+  # behaves. Always human-review.
+  orchestrator:
+    enabled: false
+    human_review_required: true
+    reason: >
+      Orchestrator-doc changes affect every /ace:run; their downstream
+      effect is the dominant lever on system behavior. Surface to a human
+      even if the diff is tiny.
+
+# Validation-run convention — close the measurement loop
+validation_run:
+  trigger: every_lens_cycle           # whenever the lens proposes >= 1 PR
+  test_opp_slug: ace-perf-test        # frozen test opp; create if missing
+  capture_baseline_if_missing: true
+  baseline_file: ".claude/pm/runs/perf-baseline.yaml"
+  metrics_to_capture:
+    - pre_flight_wall_clock
+    - per_phase_wall_clock
+    - per_phase_tool_call_count
+    - per_phase_redundant_read_count
+    - boundary_gap_turns_per_transition
+  reporting:
+    write_to: ".claude/pm/runs/{date}-perf-validation.md"
+    include_baseline_diff: true
