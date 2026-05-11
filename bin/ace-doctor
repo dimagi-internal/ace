@@ -1492,6 +1492,42 @@ elif ! "$_MOBILE_EMULATOR_BIN" -list-avds 2>/dev/null | grep -q "^${_MOBILE_AVD_
   MOBILE_ISSUES+=("AVD '${_MOBILE_AVD_NAME}' not created")
 elif ! echo "${_ADB_DEVICES_OUT:-}" | grep -q "^emulator-"; then
   MOBILE_ISSUES+=("AVD '${_MOBILE_AVD_NAME}' not booted")
+else
+  # AVD is booted. Probe the on-device Maestro driver gRPC channel —
+  # the canonical Phase 5 failure mode that pre-0.13.165 doctor missed
+  # was "AVD booted, Maestro driver app installed but its gRPC server
+  # dead." Symptom: `maestro test` returns `deviceInfo … UNAVAILABLE`
+  # and Phase 5 `app-screenshot-capture` degrades to
+  # `verdict: incomplete` for a state that's auto-recoverable.
+  #
+  # This probe is the same shape as `MaestroBackend.probeDriver` —
+  # short-timeout `maestro hierarchy` against the emulator's adb port.
+  # Doctor shells out directly rather than spinning up `npx tsx` to
+  # avoid ~3s of JIT startup on the hot path; if the doctor probe and
+  # the backend probe ever drift, prefer the backend (it's the one that
+  # decides whether to heal). Recovery is `mobile_ensure_avd_running`
+  # (called by `mobile-bootstrap` and by Phase 5 Step 3); doctor only
+  # diagnoses, never mutates.
+  _MOBILE_SERIAL="$(echo "${_ADB_DEVICES_OUT:-}" | awk '/^emulator-[0-9]+\s+device/ {print $1; exit}')"
+  if [ -n "$_MOBILE_SERIAL" ] && [ -n "$_MOBILE_MAESTRO" ]; then
+    _MOBILE_ADB_PORT="${_MOBILE_SERIAL#emulator-}"
+    _MOBILE_ADB_PORT=$((_MOBILE_ADB_PORT + 1))
+    # `maestro hierarchy` on a healthy AVD returns ~2s; 10s gives us
+    # plenty of headroom for slow first-time driver attach without
+    # waiting through the full 30s UNAVAILABLE timeout on a hung
+    # driver. `timeout` here is GNU coreutils on Linux / brew coreutils
+    # on macOS — `gtimeout` is the macOS fallback if neither is on PATH.
+    _MOBILE_TIMEOUT_BIN="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)"
+    if [ -n "$_MOBILE_TIMEOUT_BIN" ]; then
+      if "$_MOBILE_TIMEOUT_BIN" 10 "$_MOBILE_MAESTRO" --host=localhost --port="$_MOBILE_ADB_PORT" hierarchy >/dev/null 2>&1; then
+        : # healthy; no message
+      else
+        MOBILE_ISSUES+=("Maestro driver on '${_MOBILE_SERIAL}' not responding on gRPC (hierarchy probe failed; Phase 5 will hit deviceInfo UNAVAILABLE)")
+      fi
+    fi
+    unset _MOBILE_TIMEOUT_BIN _MOBILE_ADB_PORT
+  fi
+  unset _MOBILE_SERIAL
 fi
 
 # Playwright cookies: directory exists with a non-empty Cookies file.
@@ -1512,7 +1548,7 @@ if [ ${#_MOBILE_MISSING_ENV[@]} -gt 0 ]; then
 fi
 
 if [ ${#MOBILE_ISSUES[@]} -eq 0 ]; then
-  pass "mobile_infra: maestro + adb + AVD '${_MOBILE_AVD_NAME}' booted, cookies + ACE_E2E_* env all OK (Phase 5 app-screenshot-capture ready)"
+  pass "mobile_infra: maestro + adb + AVD '${_MOBILE_AVD_NAME}' booted, driver gRPC responsive, cookies + ACE_E2E_* env all OK (Phase 5 app-screenshot-capture ready)"
 else
   # Build the joined string with `; ` separators. `IFS=…` with `${arr[*]}`
   # only uses the first IFS char as separator (bash 3.2 limitation), so a
@@ -1521,7 +1557,12 @@ else
   for _issue in "${MOBILE_ISSUES[@]}"; do
     _MOBILE_JOINED="${_MOBILE_JOINED:+${_MOBILE_JOINED}; }${_issue}"
   done
-  warn "mobile_infra: ${_MOBILE_JOINED}. Phase 5 app-screenshot-capture will degrade to verdict:incomplete and ship a no-screenshot training run." "/ace:mobile-bootstrap (one-shot recovery for all of these — installs Maestro, adb, creates/boots the AVD, seeds Playwright cookies, re-injects ACE_E2E_* from 1Password). See [Mobile] block below for per-component detail."
+  # Driver-only failures are auto-recoverable inside
+  # `mobile_ensure_avd_running` (force-stop + uninstall + reinstall);
+  # everything else needs `/ace:mobile-bootstrap`. Both lead to the
+  # same operator command since bootstrap itself calls
+  # `mobile_ensure_avd_running`, so the heal path runs either way.
+  warn "mobile_infra: ${_MOBILE_JOINED}. Phase 5 app-screenshot-capture is gated on these — pre-0.13.165 it would degrade silently to verdict:incomplete; current builds halt with [BLOCKER] until recovery runs." "/ace:mobile-bootstrap (one-shot recovery — boots the AVD and triggers the auto-heal in mobile_ensure_avd_running for the Maestro driver). See [Mobile] block below for per-component detail."
 fi
 unset MOBILE_ISSUES _MOBILE_MAESTRO _ADB_DEVICES_OUT _MOBILE_AVD_NAME _MOBILE_EMULATOR_BIN _MOBILE_PW_DIR _MOBILE_MISSING_ENV _candidate _v _val
 
@@ -1599,6 +1640,26 @@ done
 if [ -n "$EMULATOR_BIN" ] && "$EMULATOR_BIN" -list-avds 2>/dev/null | grep -q "^${AVD_NAME}$"; then
   if adb devices 2>/dev/null | grep -q "^emulator-"; then
     echo "  AVD:                    ${AVD_NAME}    booted    OK"
+    # Driver gRPC probe (Phase 5 readiness). See mobile_infra rollup
+    # above for the rationale + the auto-heal recovery path.
+    _DRIVER_SERIAL="$(adb devices 2>/dev/null | awk '/^emulator-[0-9]+\s+device/ {print $1; exit}')"
+    if [ -n "$_DRIVER_SERIAL" ] && [ -n "$MAESTRO_BIN" ]; then
+      _DRIVER_ADB_PORT="${_DRIVER_SERIAL#emulator-}"
+      _DRIVER_ADB_PORT=$((_DRIVER_ADB_PORT + 1))
+      _DRIVER_TIMEOUT_BIN="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)"
+      if [ -n "$_DRIVER_TIMEOUT_BIN" ]; then
+        if "$_DRIVER_TIMEOUT_BIN" 10 "$MAESTRO_BIN" --host=localhost --port="$_DRIVER_ADB_PORT" hierarchy >/dev/null 2>&1; then
+          echo "  Maestro driver:         responsive on adb tcp:${_DRIVER_ADB_PORT}    OK"
+        else
+          echo "  Maestro driver:         NOT RESPONDING on adb tcp:${_DRIVER_ADB_PORT}"
+          echo "    fix: /ace:mobile-bootstrap (boots the AVD, triggering the auto-heal in mobile_ensure_avd_running: force-stop dev.mobile.maestro + uninstall both halves, then maestro hierarchy reinstalls)."
+        fi
+      else
+        echo "  Maestro driver:         SKIPPED (no \`timeout\` binary on PATH — install GNU coreutils for the gRPC probe)"
+      fi
+      unset _DRIVER_TIMEOUT_BIN _DRIVER_ADB_PORT
+    fi
+    unset _DRIVER_SERIAL
   else
     echo "  AVD:                    ${AVD_NAME}    available (not booted)    OK"
   fi

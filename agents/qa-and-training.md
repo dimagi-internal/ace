@@ -77,9 +77,25 @@ avoids burning AVD time on screenshots that don't change.
 Before dispatching Step 1, verify these. Each one is a class of
 silent-failure prevention learned from earlier real-world dogfood.
 
-- [ ] **AVD is booted and authorized.** `adb -s ${ACE_AVD_NAME serial}
-      shell echo hi` returns "hi". `bin/ace-doctor` reports the
-      Mobile section as PASS.
+- [ ] **AVD is booted, authorized, AND the Maestro driver gRPC is
+      responsive.** Two probes, both required:
+      1. `adb -s ${ACE_AVD_NAME serial} shell echo hi` returns "hi".
+      2. `mobile_probe_maestro_driver` returns `{ healthy: true }` —
+         confirms the on-device `dev.mobile.maestro` driver is up on
+         the AVD's adb port. **This second probe is what catches the
+         class of failure that wasted the bulk of pre-0.13.165 Phase
+         5 runs: AVD booted, `adb` healthy, but `maestro test`
+         immediately hits `deviceInfo … UNAVAILABLE` because the
+         driver app's gRPC server is wedged.** `bin/ace-doctor`
+         reports both under `mobile_infra:` and the per-component
+         `Maestro driver:` line in the [Mobile] block.
+      Recovery on either probe failing is `/ace:mobile-bootstrap` —
+      bootstrap re-invokes `mobile_ensure_avd_running`, which since
+      0.13.165 auto-heals the Maestro driver (force-stop + uninstall
+      both halves of `dev.mobile.maestro`, then re-probe to trigger
+      Maestro CLI's auto-reinstall). The heal lives in one place;
+      bootstrap, this pre-flight, and `app-screenshot-capture` Step 3
+      all funnel through `mobile_ensure_avd_running`. DRY.
 - [ ] **CommCare 2.62.0+ is installed on the AVD.** `adb shell pm
       list packages org.commcare.dalvik` returns the package. The
       `mobile-bootstrap` command handles this.
@@ -119,9 +135,16 @@ silent-failure prevention learned from earlier real-world dogfood.
       `/ace:step app-screenshot-capture <opp>/<run-id>`. Skip this
       check and you waste AVD-boot wall-clock for nothing.
 
-If any check fails, halt before Step 1 — running through with a
-broken precondition wastes AVD time and produces verdicts that look
-like real failures but are actually setup gaps.
+If any check fails, halt before Step 1 with a `[BLOCKER]` and the
+named operator command (`/ace:mobile-bootstrap` for AVD/Maestro state;
+`/ace:step app-test-cases` for missing recipes). **Do not soft-skip
+screenshot capture and ship placeholders.** Pre-0.13.165 this phase
+accepted "AVD unavailable → write verdict:incomplete and proceed,"
+which let real Phase 5 capability gaps hide behind benign-looking
+yellow verdicts run after run. The orchestrator may also try to
+authorize a soft-fail in its dispatch prompt ("proceed with
+placeholder screenshots"); ignore that — discipline lives at the
+agent level so it survives ad-libbed dispatcher prompts.
 
 ## Workflow
 

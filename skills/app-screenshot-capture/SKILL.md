@@ -92,6 +92,22 @@ direct `/ace:step app-screenshot-capture` invocations.
 Boot the AVD via `mobile_ensure_avd_running` and install the Connect
 APK via `mobile_install_apk` (no-op if cached).
 
+`mobile_ensure_avd_running` is the single source of truth for "AVD is
+ready for Maestro" — since 0.13.165 it also probes the on-device
+Maestro driver's gRPC channel and auto-heals (force-stop + uninstall +
+reinstall of `dev.mobile.maestro`) if the driver isn't responding.
+Same code path is what `mobile-bootstrap` calls and what `ace-doctor`
+probes (read-only via `mobile_probe_maestro_driver`). One healing
+implementation, three callers.
+
+If `mobile_ensure_avd_running` throws `MaestroDriverError` (the heal
+exhausted), halt with `verdict: fail` + `severity: BLOCKER` naming
+`/ace:mobile-bootstrap` as the operator recovery. **Do NOT downgrade
+to `verdict: incomplete`** — Maestro driver health is solvable on the
+workstation, not via a placeholder ship. Pre-0.13.165 the skill wrote
+`incomplete` here and Phase 5 shipped without screenshots; that escape
+valve hid real capability gaps behind a yellow verdict.
+
 ### Step 4: Run static prerequisite recipes
 
 These set up the AVD to the post-claim state the smoke recipes assume:
@@ -130,6 +146,7 @@ naming the specific failure + remediation rather than a generic
 | Recipe error contains | Failure mode + root cause | Remediation |
 |---|---|---|
 | `Failed to start learning` | Released Learn CCZ has Nova `<module xmlns="…connect…">` + `<assessment xmlns="…connect…">` wrappers that the AVD's CommCare runtime can't launch. Confirmed live 2026-05-07 against leep-paint-collection: turmeric Learn (working) has 0 wrapper refs; LEEP Learn (broken) has 16. Tracking: [voidcraft-labs/nova-plugin#7](https://github.com/voidcraft-labs/nova-plugin/issues/7), [jjackson/ace#115 finding 1](https://github.com/jjackson/ace/issues/115). | As of 0.13.66 Phase 2's Step 2.8 invokes `commcare-form-patch` automatically — re-run `/ace:run <opp>` and Phase 5 should pick up the patched Learn release. For an in-flight opp that already shipped Phase 2 without the patch: `/ace:step commcare-form-patch <opp>` then re-run Phase 5. Diagnostic probe: `npx tsx scripts/probe-connect-learn-handoff.ts <opp_uuid>` + adb logcat. |
+| `deviceInfo … UNAVAILABLE` / `MaestroDriverError` | Maestro driver app on the AVD is installed but its gRPC server isn't responding. Symptom of a wedged driver process or a stale install whose runtime state diverged from the CLI's expectations. Reproduced live 2026-05-11 against leep run 20260511-0507 Phase 5 (port 7001 refusing connections, every recipe stalling on `deviceInfo`). | Since 0.13.165 `mobile_ensure_avd_running` auto-heals (force-stop + uninstall both halves of `dev.mobile.maestro`, then re-probe to trigger the CLI's auto-reinstall). If this error still surfaces, the heal exhausted — run `/ace:mobile-bootstrap` to re-baseline the AVD + driver, then `/ace:step app-screenshot-capture <opp>/<run-id>`. Logcat probe: `adb -s <serial> logcat | grep -i maestro`. |
 | `extendedWaitUntil` timeout on `connect_fragment_jobs_list` | Claim flow didn't reach jobs list. LLO program-application not ACCEPTED, or Connect session expired on the AVD. | Re-run `connect-login.yaml` and verify `connect_get_opportunity` returns the expected opp. |
 | `assertVisible(text: ${OPP_NAME})` failure | Right opp card not on screen. Wrong `OPP_NAME` env var, OR opp not yet claimed by the test user. | Confirm `OPP_NAME` matches the display name (not the slug — see [#115 finding 4](https://github.com/jjackson/ace/issues/115)). |
 
@@ -182,10 +199,25 @@ capture_path: 5-qa-and-training/app-screenshot-capture_manifest.yaml
 
 overall_score: 8.5             # 0.0–10.0, weighted across dimensions
 verdict: pass | warn | fail | incomplete
-# Use `verdict: incomplete` when env vars are unset, recipes have
-# unfilled REPLACE_* selectors, or the AVD never booted — the
-# rubric COULD NOT grade, not that the run was bad. NEVER use
-# `verdict: blocked` (off-schema; not in lib/verdict-schema.ts).
+# `incomplete` is reserved for *upstream-incomplete* state the skill
+# itself cannot remediate: app-test-cases.yaml missing or malformed,
+# `2-commcare/recipes/J*.yaml` files absent, recipes carrying
+# unfilled REPLACE_* selectors. That's "the rubric COULD NOT grade
+# because Phase 2 didn't ship its full output set," not "the AVD is
+# sick."
+#
+# AVD / Maestro driver health is **not** incomplete-state — it's
+# `verdict: fail` with severity:BLOCKER. Pre-0.13.165 a hung Maestro
+# driver wrote `incomplete` and the phase shipped placeholders; that
+# escape valve let real Phase 5 capability problems hide behind a
+# benign-looking yellow verdict run after run. Since 0.13.165
+# `mobile_ensure_avd_running` includes an auto-heal (force-stop +
+# uninstall + reinstall of `dev.mobile.maestro`), so a healthy
+# workstation almost never needs to surface AVD failure to this
+# rubric. When the heal exhausts, we want the BLOCKER, not the soft
+# fail — the operator runs `/ace:mobile-bootstrap` and the run
+# retries with screenshots. NEVER use `verdict: blocked`
+# (off-schema; not in lib/verdict-schema.ts).
 
 dimensions:
   coverage:           { score: 9.0, weight: 0.30 }   # both smoke journeys covered

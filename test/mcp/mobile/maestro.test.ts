@@ -84,3 +84,66 @@ describe('MaestroBackend.validateRecipe', () => {
     await expect(backend.validateRecipe(recipePath)).resolves.toBeUndefined();
   });
 });
+
+describe('MaestroBackend.probeDriver', () => {
+  it('returns healthy when maestro hierarchy exits 0', async () => {
+    const shell = fakeShell({
+      'maestro --host=localhost --port=5555 hierarchy': { stdout: '<hierarchy/>\n', code: 0 },
+    });
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.probeDriver(5555);
+    expect(r.healthy).toBe(true);
+    expect(r.reason).toBeUndefined();
+  });
+
+  it('returns unhealthy with reason when maestro hierarchy fails', async () => {
+    const shell = fakeShell({
+      'maestro --host=localhost --port=5555 hierarchy': {
+        stdout: '', stderr: 'io.grpc.StatusRuntimeException: UNAVAILABLE: io exception\n', code: 1,
+      },
+    });
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.probeDriver(5555);
+    expect(r.healthy).toBe(false);
+    expect(r.reason).toMatch(/UNAVAILABLE|exit 1/);
+  });
+
+  it('returns unhealthy when shell throws (timeout, missing binary, etc.)', async () => {
+    const shell = vi.fn(async () => {
+      throw new Error('maestro: command not found');
+    });
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.probeDriver(5555);
+    expect(r.healthy).toBe(false);
+    expect(r.reason).toMatch(/command not found/);
+  });
+});
+
+describe('MaestroBackend.repairDriver', () => {
+  it('issues force-stop then uninstall for both halves of the driver', async () => {
+    const calls: string[] = [];
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      calls.push(`${cmd} ${args.join(' ')}`);
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+    const backend = new MaestroBackend({ shell });
+    const actions = await backend.repairDriver('emulator-5554');
+    expect(actions).toEqual(['force-stop', 'uninstall']);
+    expect(calls).toEqual([
+      'adb -s emulator-5554 shell am force-stop dev.mobile.maestro',
+      'adb -s emulator-5554 shell am force-stop dev.mobile.maestro.test',
+      'adb -s emulator-5554 uninstall dev.mobile.maestro',
+      'adb -s emulator-5554 uninstall dev.mobile.maestro.test',
+    ]);
+  });
+
+  it('swallows errors so a missing-package uninstall does not abort recovery', async () => {
+    // adb uninstall fails noisily when the package is not installed; that's
+    // not a recovery failure — the next probe call reinstalls it.
+    const shell = vi.fn(async () => {
+      throw new Error('Unknown package: dev.mobile.maestro');
+    });
+    const backend = new MaestroBackend({ shell });
+    await expect(backend.repairDriver('emulator-5554')).resolves.toEqual(['force-stop', 'uninstall']);
+  });
+});

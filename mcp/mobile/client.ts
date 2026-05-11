@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import { AvdBackend } from './backends/avd.js';
 import { CloudBackend } from './backends/cloud.js';
 import { MaestroBackend } from './backends/maestro.js';
+import { MaestroDriverError } from './errors.js';
 import { RecipeGenerator, type LlmFn } from './backends/recipe-generator.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
@@ -57,9 +58,84 @@ export class MobileClient {
 
   // ---- Atom-level methods (one per capability) ----
 
-  ensureAvdRunning(name: string): Promise<AvdInfo> {
+  /**
+   * Boot the AVD if cold AND assert the on-device Maestro driver is
+   * responsive on its gRPC channel. Two-stage: first
+   * `AvdBackend.ensureAvdRunning` boots the emulator and runs
+   * `runPostBootPrep`; then `assertMaestroDriverHealthy` proves Maestro
+   * can actually drive it.
+   *
+   * Why the driver probe lives here. Pre-0.13.165, `mobile_ensure_avd_running`
+   * returned PASS as soon as the emulator booted and `adb` reported the
+   * device as `device`. Phase 5 `app-screenshot-capture` would then call
+   * `mobile_run_recipe`, the first `deviceInfo` gRPC call would hit
+   * `UNAVAILABLE` (driver app installed but its gRPC server dead — or
+   * driver not installed and the runtime install racing), and the skill
+   * would degrade to `verdict: incomplete` for a state that's actually
+   * recoverable. By doing the probe + repair here we make
+   * `ensure_avd_running` the single source of truth for "AVD is ready
+   * for Maestro": `mobile-bootstrap`, Phase 5's pre-flight, and
+   * `app-screenshot-capture` Step 3 all call this same path. DRY.
+   *
+   * Cloud backend skips the local driver check — its workers manage
+   * Maestro state on their side, and the gRPC channel they expose
+   * through ace-web has its own health semantics.
+   */
+  async ensureAvdRunning(name: string): Promise<AvdInfo> {
     if (this.useCloud && this.cloud) return this.cloud.ensureAvdRunning(name);
-    return this.avd.ensureAvdRunning(name);
+    const info = await this.avd.ensureAvdRunning(name);
+    await this.assertMaestroDriverHealthy(info.serial);
+    return info;
+  }
+
+  /**
+   * Probe + (if needed) repair + re-probe the Maestro driver on a booted
+   * AVD. Throws `MaestroDriverError` on exhaustion.
+   *
+   * Read-only probing is exposed separately as `probeMaestroDriver` for
+   * callers (doctor) that want a fast diagnostic without mutating state.
+   */
+  async assertMaestroDriverHealthy(serial: string): Promise<void> {
+    const adbPort = AvdBackend.adbPortFromSerial(serial);
+    if (adbPort === null) {
+      // Non-emulator serial (real device, unusual local setup) — skip the
+      // probe rather than fail. The probe assumes the standard emulator
+      // port layout; real-device sessions are out of scope.
+      return;
+    }
+    const attempts: string[] = [];
+    // Stage 1: cheap probe.
+    let probe = await this.maestro.probeDriver(adbPort, 8_000);
+    if (probe.healthy) return;
+    attempts.push(`probe1: ${probe.reason ?? 'unknown'}`);
+    logInfo(`maestro_driver: stage 1 probe unhealthy on ${serial} — attempting repair`);
+
+    // Stage 2: force-stop + uninstall + re-probe with a longer timeout to
+    // allow the driver to reinstall and bind its gRPC server.
+    const actions = await this.maestro.repairDriver(serial);
+    attempts.push(`repair: ${actions.join(',')}`);
+    probe = await this.maestro.probeDriver(adbPort, 90_000);
+    if (probe.healthy) {
+      logInfo(`maestro_driver: recovered after ${actions.join(',')} on ${serial}`);
+      return;
+    }
+    attempts.push(`probe2: ${probe.reason ?? 'unknown'}`);
+    throw new MaestroDriverError(serial, attempts);
+  }
+
+  /**
+   * Read-only Maestro driver health probe. No recovery, no mutation —
+   * just answers "would the next `maestro test` call work?" for the
+   * given serial. Used by `ace-doctor` to gate the `mobile_infra` line
+   * before `/ace:run` starts.
+   */
+  async probeMaestroDriver(serial: string, timeoutMs: number = 8_000): Promise<{ healthy: boolean; reason?: string; adbPort: number | null }> {
+    const adbPort = AvdBackend.adbPortFromSerial(serial);
+    if (adbPort === null) {
+      return { healthy: false, reason: 'serial is not an emulator-NNNN (real-device probe not supported)', adbPort: null };
+    }
+    const r = await this.maestro.probeDriver(adbPort, timeoutMs);
+    return { ...r, adbPort };
   }
   stopAvd(name: string): Promise<void> {
     if (this.useCloud && this.cloud) return this.cloud.stopAvd(name);

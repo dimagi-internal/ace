@@ -130,6 +130,23 @@ text`.
   "do you want to overwrite live state?" gate is off-spec — push
   reuse-vs-rebuild decisions down into phase-agent skill logic. Full
   contract: § Modes — default, review, auto.
+- **Don't authorize Phase 5 soft-fail in the dispatch prompt.** The
+  AVD/Maestro auto-heal lives inside `mobile_ensure_avd_running`; if
+  it exhausts, the right answer is a `[BLOCKER]` halt that points the
+  operator at `/ace:mobile-bootstrap`, not "proceed with placeholder
+  screenshots and log `[WARN]`." Sentences along the lines of "if
+  `app-screenshot-capture` cannot run, proceed without screenshots"
+  in the Phase 5 dispatch prompt are off-spec — they reintroduce the
+  escape valve the heal was designed to retire. The phase agent
+  itself rejects this kind of override since 0.13.165 (see
+  `agents/qa-and-training.md` § Pre-flight checklist), but
+  orchestrator authors should not write it in the first place.
+  **Why:** leep run `20260511-0507` Phase 5 shipped no screenshots
+  because the dispatcher's prompt told the phase agent "don't halt
+  Phase 5 over dev-machine state" — but that "dev-machine state" was
+  a wedged Maestro gRPC server, which the heal could have fixed in
+  ~90s. Every run that quietly ships placeholders is a Phase 5
+  capability gap we can't see in the verdict stream.
 
 ## Pre-flight & per-phase conventions
 

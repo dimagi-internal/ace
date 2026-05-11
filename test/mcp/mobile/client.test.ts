@@ -53,3 +53,87 @@ describe('MobileClient.registerTestUser', () => {
     expect(r.alreadyRegistered).toBe(true);
   });
 });
+
+describe('MobileClient.assertMaestroDriverHealthy', () => {
+  function makeClient(probeReturns: Array<{ healthy: boolean; reason?: string }>, repairActions: string[] = ['force-stop', 'uninstall']) {
+    const probeCalls: number[] = [];
+    const avd = {
+      ensureAvdRunning: vi.fn(),
+      findRunningAvd: vi.fn(),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn(async (port: number, timeoutMs: number) => {
+        probeCalls.push(timeoutMs);
+        const next = probeReturns.shift();
+        if (!next) throw new Error('probeDriver called more times than scripted');
+        return next;
+      }),
+      repairDriver: vi.fn(async () => repairActions),
+    } as any;
+    return { client: new MobileClient({ avd, maestro }), probeCalls, maestro };
+  }
+
+  it('passes through cleanly when the driver is healthy on the first probe', async () => {
+    const { client, probeCalls, maestro } = makeClient([{ healthy: true }]);
+    await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
+    expect(probeCalls).toEqual([8_000]); // single short-timeout probe
+    expect(maestro.repairDriver).not.toHaveBeenCalled();
+  });
+
+  it('repairs + re-probes with the longer reinstall timeout when stage 1 fails', async () => {
+    const { client, probeCalls, maestro } = makeClient([
+      { healthy: false, reason: 'UNAVAILABLE' },
+      { healthy: true },
+    ]);
+    await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
+    expect(probeCalls).toEqual([8_000, 90_000]); // 2nd probe gets reinstall budget
+    expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
+    expect(maestro.repairDriver).toHaveBeenCalledWith('emulator-5554');
+  });
+
+  it('throws MaestroDriverError when stage 2 probe still reports unhealthy', async () => {
+    const { client } = makeClient([
+      { healthy: false, reason: 'UNAVAILABLE' },
+      { healthy: false, reason: 'still UNAVAILABLE after reinstall' },
+    ]);
+    await expect(client.assertMaestroDriverHealthy('emulator-5554')).rejects.toThrow(/Maestro driver.*unhealthy after recovery/);
+  });
+
+  it('skips the probe for non-emulator serials (real device)', async () => {
+    const { client, maestro } = makeClient([]);
+    await expect(client.assertMaestroDriverHealthy('abc123def')).resolves.toBeUndefined();
+    expect(maestro.probeDriver).not.toHaveBeenCalled();
+    expect(maestro.repairDriver).not.toHaveBeenCalled();
+  });
+});
+
+describe('MobileClient.ensureAvdRunning', () => {
+  it('chains AvdBackend.ensureAvdRunning then assertMaestroDriverHealthy', async () => {
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+    } as any;
+    const client = new MobileClient({ avd, maestro });
+    const r = await client.ensureAvdRunning('AVD');
+    expect(r.serial).toBe('emulator-5554');
+    expect(avd.ensureAvdRunning).toHaveBeenCalledWith('AVD');
+    expect(maestro.probeDriver).toHaveBeenCalledTimes(1);
+  });
+
+  it('propagates MaestroDriverError when the driver heal exhausts', async () => {
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn()
+        .mockResolvedValueOnce({ healthy: false, reason: 'UNAVAILABLE' })
+        .mockResolvedValueOnce({ healthy: false, reason: 'still UNAVAILABLE' }),
+      repairDriver: vi.fn().mockResolvedValue(['force-stop', 'uninstall']),
+    } as any;
+    const client = new MobileClient({ avd, maestro });
+    await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(/Maestro driver.*unhealthy after recovery/);
+  });
+});
