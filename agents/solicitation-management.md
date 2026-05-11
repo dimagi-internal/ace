@@ -41,9 +41,13 @@ lifecycle requires explicit human approval and is run manually via
 Invoke the `solicitation-create` skill.
 - Input: approved PDD (`inputs/pdd.md`), `opp.yaml` (program_id,
   total_budget)
-- Output: `solicitation/published.md`, `opp.yaml.solicitation` populated
-  with `{solicitation_id, public_url, deadline, status: open}`,
-  `opp.yaml.selected_llo` stubbed
+- Output: `solicitation/published.md`,
+  `phases.solicitation-management.outputs.solicitation` populated with
+  `{solicitation_id, public_url, deadline, status: open,
+  labs_program_id, ...}` (backward-compat fallback also writes
+  `opp.yaml.solicitation`). `selected_llo` is stubbed by
+  `solicitation-review` on award (PR c migrates it to
+  `outputs.selected_llo`).
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `solicitation-create-eval` after publish. Writes
   `verdicts/solicitation-create.yaml`.
@@ -54,8 +58,8 @@ Invoke the `solicitation-create` skill.
 
 Invoke the `llo-invite` skill.
 - Input: PDD `## LLO Preference` (Preferred LLOs),
-  `opp.yaml.solicitation.public_url`,
-  `opp.yaml.solicitation.deadline`
+  `phases.solicitation-management.outputs.solicitation.{public_url, deadline}`
+  (legacy fallback: `opp.yaml.solicitation.{public_url, deadline}`)
 - Output: `solicitation/invitations.md` (per-recipient send log)
 - No-op when the PDD has no `Preferred LLOs` — the solicitation is
   publicly listed at `public_url`; orgs find it via the labs portal.
@@ -64,8 +68,9 @@ Invoke the `llo-invite` skill.
 
 ## Recurring (outside `/ace:run`)
 
-While `opp.yaml.solicitation.status == open`, the orchestrator's recurring
-loop calls `solicitation-monitor` to:
+While `phases.solicitation-management.outputs.solicitation.status == open`
+(legacy fallback: `opp.yaml.solicitation.status`), the orchestrator's
+recurring loop calls `solicitation-monitor` to:
 - Pull new responses from labs (`mcp__connect-labs__list_responses`)
 - Write one file per response to `solicitation/responses/`
 - Append a tick line to `comms-log/observations.md`
@@ -110,8 +115,8 @@ entry guard halts with an actionable message if
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md`
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md`
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/llo-invite_invitations.md`
-- `opp.yaml.solicitation.{solicitation_id, public_url, deadline, status: open}`
-- `opp.yaml.selected_llo.*` (stubbed, null until award)
+- `phases.solicitation-management.outputs.solicitation.{solicitation_id, public_url, deadline, status: open, labs_program_id, ...}` (backward-compat: also `opp.yaml.solicitation`)
+- `opp.yaml.selected_llo.*` (stubbed; migrates to `outputs.selected_llo` in PR c)
 - `verdicts/solicitation-create.yaml` (unless `--no-evals`)
 
 ## Completion

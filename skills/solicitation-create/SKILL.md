@@ -27,7 +27,7 @@ contract and connect-labs MCP atom inventory.
 ## Outputs
 
 - `6-solicitation-management/solicitation-create_summary.md` — solicitation_id, public_url, deadline, audit trail
-- `opp.yaml.solicitation` block populated (id, public_url, deadline, status: open)
+- `run_state.yaml.phases.solicitation-management.outputs.solicitation` block populated (id, public_url, deadline, status: open, labs_program_id, connect_program_id, connect_opportunity_id). Inherited by subsequent runs via the orchestrator's seed step. **Backward-compat:** also writes `opp.yaml.solicitation` until cleanup PR e.
 
 ## Process
 
@@ -119,20 +119,27 @@ contract and connect-labs MCP atom inventory.
 
    Resolve in this order:
 
-   1. **Fast path:** if `opp.yaml.solicitation.labs_program_id` is set
-      (cached from a prior run), use it directly.
-   2. **Lookup:** call `mcp__connect-labs__labs_context()`. Find the
+   1. **Fast path (new):** if the current run's
+      `phases.solicitation-management.outputs.solicitation.labs_program_id`
+      is set (inherited from prior run via the orchestrator's seed
+      step), use it directly.
+   2. **Fast path (legacy fallback):** if
+      `opp.yaml.solicitation.labs_program_id` is set (pre-PR-b cached
+      value), use it directly.
+   3. **Lookup:** call `mcp__connect-labs__labs_context()`. Find the
       organization by `opp.yaml.organization_slug` (default
       `ai-demo-space`); within it, find the program whose `name` matches
       the Connect program name from
       `runs/<run-id>/3-connect/connect-program-setup.md` (the markdown
       summary written by `connect-program-setup`). Capture the
       program's integer `id`.
-   3. **Cache:** persist the result as
-      `opp.yaml.solicitation.labs_program_id` (so subsequent
-      `solicitation-monitor` / `solicitation-review` calls and re-runs
-      don't re-query labs_context). Phase 3 stays free of labs concerns.
-   4. **Halt** with a `[BLOCKER]` if no name match — likely the Connect
+   4. **Cache:** carry the result in memory for Step 7's consolidated
+      write to
+      `phases.solicitation-management.outputs.solicitation.labs_program_id`
+      (subsequent runs inherit via the seed step). The skill also
+      writes `opp.yaml.solicitation.labs_program_id` as a backward-
+      compat fallback so pre-PR-b consumers keep working until PR e.
+   5. **Halt** with a `[BLOCKER]` if no name match — likely the Connect
       program exists but was never mirrored to labs (labs creates
       shadow programs on first opportunity sync). Surface the Connect
       program name and the list of labs programs the caller can see.
@@ -199,38 +206,48 @@ contract and connect-labs MCP atom inventory.
    `solicitation-review` and `solicitation-monitor` have the rubric
    without re-fetching from labs).
 
-9. **Update `opp.yaml`.** Add a `solicitation:` block:
+9. **Write the consolidated solicitation outputs block** to the
+   current run's `run_state.yaml.phases.solicitation-management.outputs.solicitation`
+   via `update_yaml_file` + `merge: 'two-level'`:
 
    ```yaml
-   solicitation:
-     solicitation_id: <returned>
-     labs_program_id: <integer resolved in step 5; cached for monitor/review>
-     public_url: <returned>
-     manage_url: <returned>
-     type: <EOI|RFP>
-     published_at: <now ISO-8601>
-     deadline: <computed ISO-8601>
-     status: open
-     awarded:
-       response_id: null
-       awarded_at: null
-       awarded_org_slug: null
-       awarded_org_name: null
-       awarded_contact_email: null
-       award_amount: null
+   phases:
+     solicitation-management:
+       outputs:
+         solicitation:
+           solicitation_id: <returned>
+           labs_program_id: <integer resolved in step 5>
+           public_url: <returned>
+           manage_url: <returned>
+           type: <EOI|RFP>
+           published_at: <now ISO-8601>
+           deadline: <computed ISO-8601>
+           status: open
+           awarded:
+             response_id: null
+             awarded_at: null
+             awarded_org_slug: null
+             awarded_org_name: null
+             awarded_contact_email: null
+             award_amount: null
    ```
 
-   Also stub a `selected_llo:` block:
+   The two-level merge replaces `outputs:` wholesale under
+   `solicitation-management`. This skill is the sole writer of
+   `outputs.solicitation`; later monitor/review runs update it in place
+   (the monitor via the recurring-writer rule —
+   `agents/orchestrator-reference.md § Recurring Writers`).
 
-   ```yaml
-   selected_llo:
-     org_slug: null
-     contact_email: null
-     source: null
-     response_id: null
-   ```
+   `selected_llo` is stubbed by `solicitation-review` on award, not
+   here. (PR c migrates `selected_llo` to
+   `phases.solicitation-management.outputs.selected_llo`.)
 
-   These will be populated by `solicitation-review` on award.
+   **Backward-compat fallback.** Until cleanup PR e, also emit the same
+   `solicitation:` subtree to `opp.yaml` via `update_yaml_file`
+   (`merge: 'shallow'` — `solicitation:` is its own top-level key
+   there). This keeps Phase 8 entry-gate readers and any
+   one-off scripts working for opps whose orchestrator hasn't yet
+   executed a new seed step.
 
 ## Error handling
 
@@ -262,8 +279,10 @@ contract and connect-labs MCP atom inventory.
 
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md` (audit)
 - `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md` (live state)
-- `opp.yaml.solicitation.{solicitation_id, public_url, deadline, status: open}` populated
-- `opp.yaml.selected_llo.*` stubbed (null until award)
+- `run_state.yaml.phases.solicitation-management.outputs.solicitation.{solicitation_id, public_url, deadline, status: open, labs_program_id}` populated. Backward-compat: also `opp.yaml.solicitation.*` until cleanup PR e.
+- `selected_llo` is left untouched here (populated by
+  `solicitation-review` on award; migrated to `outputs.selected_llo` in
+  PR c).
 
 ## MCP Tools Used
 
@@ -271,17 +290,19 @@ contract and connect-labs MCP atom inventory.
   integer program_id, when not cached), `create_solicitation`,
   `get_solicitation` (round-trip verification — pass `program_id`)
 - `ace-gdrive`: `drive_create_file`, `drive_read_file`,
-  `drive_update_file`, `update_yaml_file` (cache `labs_program_id` on
-  `opp.yaml.solicitation`)
+  `drive_update_file`, `update_yaml_file` (write
+  `phases.solicitation-management.outputs.solicitation` to
+  `run_state.yaml`; backward-compat write to `opp.yaml.solicitation`)
 
 ## Mode Behavior
 
 - **Auto:** Publish in one pass.
 - **Review:** Pause after Step 6, present `published.md` for human
-  approval before mutating `opp.yaml`. (The publish itself already
-  happened — review-mode is about the local state mutation, not the
-  external call. If review rejects, the human can call labs's
-  `update_solicitation` to draft or close the solicitation.)
+  approval before mutating `run_state.yaml` / `opp.yaml`. (The publish
+  itself already happened — review-mode is about the local state
+  mutation, not the external call. If review rejects, the human can
+  call labs's `update_solicitation` to draft or close the
+  solicitation.)
 - **Dry-run:** Steps 1-4, skip steps 5-7. Verdict with `dry_run: true`.
 
 ## Decisions Log

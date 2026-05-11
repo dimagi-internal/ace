@@ -179,9 +179,11 @@ skills don't duplicate it:
   `_eval-template.md`). Per-skill format rules and audience-specific
   concerns stay in each skill's own file.
 - **`skills/_solicitation-template.md`** — for the Phase 7 solicitation
-  family. Defines the `opp.yaml.solicitation` and `opp.yaml.selected_llo`
-  contract, the connect-labs MCP atom inventory per skill, and the
-  Phase 7 → Phase 8 boundary rule.
+  family. Defines the
+  `phases.solicitation-management.outputs.{solicitation, selected_llo}`
+  contract (with legacy `opp.yaml.*` fallbacks during the
+  state-consolidation migration), the connect-labs MCP atom inventory
+  per skill, and the Phase 7 → Phase 8 boundary rule.
 
 These files start with `_` so they are excluded from the skill catalog
 (they aren't skills — they're reference docs). When you add a new

@@ -577,6 +577,51 @@ required rows. PR #1 covers Phase 1 (`idea-to-pdd`); Phase 2–9 writes
 ship in PR #3 of the decisions-log series. Schema and YAML helpers
 live in `lib/decisions-schema.ts`.
 
+## Recurring Writers
+
+Some skills run on cron *outside* `/ace:run`: `solicitation-monitor`,
+`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`,
+`ocs-chatbot-eval-monitor`. They mutate cross-run state without owning
+a run-id of their own.
+
+**Rule.** A recurring writer mutates the `run_state.yaml` of the run
+that *produced* the block it's updating. In practice that's the most
+recent run under `ACE/<opp>/runs/` — since each `/ace:run` seeds its
+`outputs` from the prior run at run init (§ Step 6b of
+`ace-orchestrator.md`), the latest run's state always carries the
+canonical chain. Procedure:
+
+1. List `ACE/<opp>/runs/` (`drive_list_folder`); pick the most recent
+   run-id (sort descending; run-ids are `YYYYMMDD-HHMM` lexically
+   sortable).
+2. Read that run's `run_state.yaml` (`drive_read_file`). Locate the
+   target `phases.<phase>.outputs.<block>` (with legacy `opp.yaml.*`
+   fallback for pre-migration opps).
+3. Construct the *full* `outputs.<block>` payload — recall that
+   `merge: 'two-level'` replaces `outputs:` wholesale, so partial
+   patches would clobber sibling fields. Read-modify-write: keep
+   sibling fields from the read; mutate only the field(s) you own.
+4. Apply the patch with `update_yaml_file` + `merge: 'two-level'`.
+   The CAS retry handles concurrent writers (a `/ace:run` that lands
+   between the read and write will lose the race; the recurring writer
+   re-reads and re-merges once).
+5. Backward-compat: also patch the legacy `opp.yaml.<block>` until
+   cleanup PR e (PR e of the state-consolidation refactor strips
+   fallbacks).
+
+**Why mutate the producing run, not mint a new one.** A monitor that
+mints a new run-id per cron firing inflates `runs/` by one entry per
+poll (30+ folders for a 30-day open solicitation), each carrying only
+a one-field status transition. Mutating the producing run keeps the
+runs/ directory aligned with `/ace:run` invocations and matches the
+semantic — the state belongs to the work that produced it; the
+monitor is bookkeeping.
+
+Forking does not change this rule. A forked run inherits the chain
+via the seed step; the recurring writer continues to update the *now-
+most-recent* run, which is the fork (or the original, depending on
+which was minted later).
+
 ## Phase Write-Back Verifier — procedure
 
 After each phase dispatch returns, the orchestrator (i.e., the

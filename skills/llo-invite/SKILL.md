@@ -21,8 +21,12 @@ fires only for the awardee.
 
 - `ACE/<opp-name>/inputs/pdd.md` (specifically `## LLO Preference` →
   Preferred LLOs)
-- `opp.yaml.solicitation.public_url`
-- `opp.yaml.solicitation.deadline`
+- `phases.solicitation-management.outputs.solicitation.public_url` —
+  current run's `run_state.yaml` (legacy fallback:
+  `opp.yaml.solicitation.public_url`)
+- `phases.solicitation-management.outputs.solicitation.deadline` —
+  current run's `run_state.yaml` (legacy fallback:
+  `opp.yaml.solicitation.deadline`)
 - `opp.yaml` (opp display name)
 
 ## Process
@@ -59,9 +63,9 @@ fires only for the awardee.
    <pdd.title>. The full description, scope of work, and response template
    are at:
 
-       <opp.yaml.solicitation.public_url>
+       <public_url>
 
-   Responses are due by <opp.yaml.solicitation.deadline> (UTC).
+   Responses are due by <deadline> (UTC).
 
    To respond, sign into labs.connect.dimagi.com with your organization
    account, open the solicitation linked above, and click "Submit
@@ -109,9 +113,9 @@ applying" notes, not commitments).
 - All recipients fail: halt with a surfaced error pointing at the Gmail
   config in `/ace:doctor`.
 - PDD has no `Preferred LLOs`: no-op per Step 2 above.
-- `opp.yaml.solicitation.public_url` empty or
-  `opp.yaml.solicitation.status != open`: halt with "run
-  solicitation-create first" message.
+- Resolved `public_url` empty or resolved `status != open` (checked at
+  the new location first with legacy `opp.yaml.solicitation.*`
+  fallback): halt with "run solicitation-create first" message.
 
 ## Output
 
