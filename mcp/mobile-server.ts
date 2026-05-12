@@ -30,8 +30,22 @@ import { fileURLToPath } from 'node:url';
 
 import { MobileClient } from './mobile/client.js';
 import { logInfo, logError } from './mobile/logging.js';
+import { resolveBackend } from './mobile/backend-toggle.js';
 
 const client = new MobileClient();
+
+// One-line startup banner so "which backend is this MCP routing to?" is
+// trivially answerable from the Claude Code MCP log. The resolver is
+// re-run on every call, so this is only a snapshot of the value AT
+// startup; a slash-command toggle mid-session won't re-emit this line.
+{
+  const { backend, source, sessionFile, ppid } = resolveBackend();
+  const cloudReady = client.cloud !== null;
+  process.stderr.write(
+    `[ace-mobile] startup backend=${backend} source=${source} ppid=${ppid} ` +
+    `cloud_ready=${cloudReady} session_file=${sessionFile}\n`,
+  );
+}
 
 const server = new McpServer({ name: 'ace-mobile', version: '0.9.0' });
 

@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MobileClient } from '../../../mcp/mobile/client.js';
+import { setSessionBackend, clearSessionBackend } from '../../../mcp/mobile/backend-toggle.js';
 
 function fakeMaestroAndAvd(opts: {
   registerToOtp: 'pass' | 'fail';
@@ -73,6 +74,54 @@ describe('MobileClient.registerTestUser', () => {
     } finally {
       if (prev === undefined) delete process.env.ACE_MOBILE_BACKEND;
       else process.env.ACE_MOBILE_BACKEND = prev;
+    }
+  });
+});
+
+describe('MobileClient.useCloud (dynamic resolution)', () => {
+  let savedEnv: string | undefined;
+  beforeEach(() => {
+    savedEnv = process.env.ACE_MOBILE_BACKEND;
+    delete process.env.ACE_MOBILE_BACKEND;
+    clearSessionBackend();
+  });
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env.ACE_MOBILE_BACKEND;
+    else process.env.ACE_MOBILE_BACKEND = savedEnv;
+    clearSessionBackend();
+  });
+
+  it('re-resolves between calls — toggling the session file flips routing', () => {
+    const avd = {} as any;
+    const maestro = {} as any;
+    const cloud = {} as any;
+    const client = new MobileClient({ avd, maestro, cloud });
+
+    expect(client.useCloud).toBe(false); // default
+    setSessionBackend('cloud');
+    expect(client.useCloud).toBe(true);  // session file flipped
+    setSessionBackend('local');
+    expect(client.useCloud).toBe(false); // back to local
+  });
+
+  it('throws CLOUD_NOT_CONFIGURED when cloud is selected but client.cloud is null', async () => {
+    setSessionBackend('cloud');
+    // No cloud option passed → constructor catches the CLOUD_NOT_CONFIGURED
+    // error from CloudBackend (no ACE_WEB env) and sets this.cloud = null.
+    const prevBase = process.env.ACE_WEB_BASE_URL;
+    const prevTok = process.env.ACE_WEB_PAT_TOKEN;
+    delete process.env.ACE_WEB_BASE_URL;
+    delete process.env.ACE_WEB_PAT_TOKEN;
+    try {
+      const client = new MobileClient({ avd: {} as any, maestro: {} as any });
+      expect(client.cloud).toBeNull();
+      // requireCloud throws synchronously — listAvds() itself raises before
+      // returning a Promise. Either form (sync throw or Promise rejection)
+      // would be valid; this asserts the actual runtime behavior.
+      expect(() => client.listAvds()).toThrow(/cloud backend selected but not configured/);
+    } finally {
+      if (prevBase !== undefined) process.env.ACE_WEB_BASE_URL = prevBase;
+      if (prevTok !== undefined) process.env.ACE_WEB_PAT_TOKEN = prevTok;
     }
   });
 });
