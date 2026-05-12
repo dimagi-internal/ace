@@ -77,6 +77,25 @@ text`.
 - **Issue all phase `TaskCreate` calls in one parallel block.** The
   per-phase task list is known up-front from the workflow; emit one
   message with N `TaskCreate` tool-uses, not N sequential turns.
+- **≥3 same-class BLOCKER retries within one phase → halt the run.**
+  Write `gates.<phase>: failed` to `run_state.yaml`, surface
+  `[BLOCKER]` to the operator, and stop. Phase agents must not
+  auto-redispatch identical payloads.
+  **Why:** turmeric Phase 3 retried `connect_create_opportunity` 3×
+  on an identical payload against the same opaque 500 before bisect
+  proved it deterministic (CI-659, the 50-char `short_description`
+  trap). Leep Phase 5 retried 5× across `/loop continue` cycles on
+  the same `runner_service_state=failed` class — burning hours that
+  a circuit breaker would have converted into a single operator halt.
+- **When a phase blocks on an infra/contract bug, don't debug at L0.**
+  Dispatch a single `general-purpose` subagent with the prompt "find
+  root cause, propose patch, return diff." The orchestrator's job is
+  run flow, not bisect.
+  **Why:** leep run `20260512-0418` had 1325 lines of L0 ace-web
+  cloud-emulator debugging between Agent dispatches (only 4 Agent
+  calls across 1448 lines total). Turmeric Phase 3 had ~24 min of L0
+  bisect work that belonged in a research subagent. The user manually
+  pivoted in both runs ("I'll spin up another agent") — too late.
 
 ### State writes
 
@@ -147,6 +166,15 @@ text`.
   a wedged Maestro gRPC server, which the heal could have fixed in
   ~90s. Every run that quietly ships placeholders is a Phase 5
   capability gap we can't see in the verdict stream.
+- **On phase retry, pass the prior failed verdict's Drive `fileId`
+  inline — do NOT paraphrase.** The retry agent reads the verdict
+  directly from Drive; the orchestrator's dispatch prompt cites the
+  fileId (and the producer artifact paths) rather than summarizing
+  the failure mode.
+  **Why:** leep Phase 5 retry #5's dispatch prompt paraphrased
+  `phase5-block.md` as "selector-map gaps... `connect-baseline-screenshots`
+  to fix" — the subagent re-discovered the same gap from scratch each
+  cycle because it never saw the actual artifact.
 
 ## Pre-flight & per-phase conventions
 
@@ -478,6 +506,17 @@ context-cost-driven.
 
 (The context-exhaustion shortcut anti-pattern lives in
 § Anti-patterns and discipline → Procedure discipline.)
+
+**Cross-repo dev exception.** The "trust 1M context" rule covers
+in-phase work. When a phase block requires cross-repo development
+(ace-web, an MCP server) involving ≥2 PRs through GitHub, halt the
+run with `phase: failed/blocked-on-infra`, surface to the operator,
+and resume in a fresh session once the infra ships.
+**Why:** leep run `20260512-0418` accumulated 540k
+`cache_read_input_tokens`/turn while shipping 8 PRs (ace-web
+#312–#315, ACE #246–#248) to fix cloud-emulator infrastructure. The
+user pivoted to a second session at line 1215 — too late. Codifying
+this as policy, not folklore.
 
 **History note.** Earlier versions of this section instructed the
 orchestrator to recommend splitting runs across sessions on
