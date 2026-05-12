@@ -35,6 +35,27 @@ Produce a final grade and assessment of the complete CRISPR-Connect cycle.
 
 5. **Write final report** to `ACE/<opp-name>/runs/<run-id>/8-closeout/cycle-grade.md`.
 
+5.5. **Write `phases.closeout.products.cycle_grade`** to the current
+   run's `run_state.yaml` so downstream readers (ace-web summary in
+   particular — the hero status chip flips to "closed" with the actual
+   grade letter once this lands) get the headline grade from typed
+   state.
+
+   ```yaml
+   phases:
+     closeout:
+       products:
+         cycle_grade:
+           letter: <e.g. "A" | "A-" | "B+">
+           overall_score: <weighted average from Step 2, 0-10>
+           headline: <one-sentence narrative summary of the outcome>
+           archetype: <atomic-visit | focus-group | multi-stage>
+           scorecard_file_id: <Drive fileId of cycle-grade.md>
+   ```
+
+   Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
+   `merge: 'two-level'`. Sole writer of `products.cycle_grade`.
+
 6. **Email admin group** with the full cycle grade report.
 
 ## Archetypes
