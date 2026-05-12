@@ -1514,16 +1514,32 @@ if [ -n "$HQ_DOMAIN" ] && [ -f "$CONNECT_SESS" ]; then
       CCHQ_CONNECT_FLAG="unreachable"
     fi
 
-    # Check the OAuth Connection Settings page for an active connection
-    # row pointing at connect.dimagi.com. The page renders a table; a
-    # `<td>Deleted</td>` row means a connection was set up and then
-    # removed (or it was created by an admin who later deleted it).
-    # An absent connection.dimagi.com / "Connection successful" anchor
-    # in the HTML means no active OAuth connection exists.
+    # Check for an active Connection Settings entry. The /motech/conn/
+    # listing page is rendered entirely client-side via Knockout (the
+    # static HTML has the template but not the data), so a static curl
+    # can't see the rows there. Instead, hit /motech/forwarding/new/FormRepeater/
+    # and inspect the server-rendered `<select name="connection_settings_id">`
+    # — if at least one <option> exists with a numeric value > 0, an
+    # active connection exists. (The dropdown ONLY surfaces non-deleted
+    # connections, so the presence of any option is a clean PASS signal.)
+    # This is the same signal data-forwarding rules themselves consume,
+    # so it accurately reflects whether new rules can target the connection.
     CCHQ_CONN_HTML="$(curl -sS -L -b "$CCHQ_PROBE_COOKIES" --max-time 10 \
+      "$CCHQ_BASE/a/$HQ_DOMAIN/motech/forwarding/new/FormRepeater/" 2>/dev/null || echo "")"
+    CCHQ_CONN_OPTION_COUNT="$(printf '%s' "$CCHQ_CONN_HTML" | node -e "
+      const s=require('fs').readFileSync(0,'utf8');
+      const m=s.match(/<select[^>]*name=\"connection_settings_id\"[^>]*>([\\s\\S]*?)<\/select>/);
+      if(!m){console.log(0);process.exit(0);}
+      const opts=[...m[1].matchAll(/<option[^>]*value=\"([0-9]+)\"/g)];
+      console.log(opts.length);
+    " 2>/dev/null || echo "0")"
+    CCHQ_CONN_TO_CONNECT="$CCHQ_CONN_OPTION_COUNT"
+    # Detect prior 'Deleted' rows on the conn page just for the WARN
+    # message — separately fetched, since the forwarder add page won't
+    # show deleted entries.
+    CCHQ_CONN_LISTING_HTML="$(curl -sS -L -b "$CCHQ_PROBE_COOKIES" --max-time 10 \
       "$CCHQ_BASE/a/$HQ_DOMAIN/motech/conn/" 2>/dev/null || echo "")"
-    CCHQ_CONN_TO_CONNECT="$(printf '%s' "$CCHQ_CONN_HTML" | grep -ciE 'connect\.dimagi\.com/api/receiver|connect\.dimagi\.com/o/token' || true)"
-    CCHQ_CONN_DELETED="$(printf '%s' "$CCHQ_CONN_HTML" | grep -ciE '<td[^>]*>Deleted</td>' || true)"
+    CCHQ_CONN_DELETED="$(printf '%s' "$CCHQ_CONN_LISTING_HTML" | grep -ciE '<td[^>]*>Deleted</td>' || true)"
 
     REMEDIATION="enable the feature flag + configure the OAuth connection per the 'Run Your First Connect Opportunity' doc (Confluence; GDrive id 18Y1UQJW1aIwcgSt-Mt1Vze5pdQPAPs0I). Concretely: (1) ask a Dimagi super-user to flip the COMMCARE_CONNECT feature flag ON for project space '$HQ_DOMAIN' (Settings → Feature Flags and Privileges → 'Enable CommCare Connect features...'); (2) on the same project, go to Settings → Project Settings → Connection Settings (Integration) → Add new connection → URL https://connect.dimagi.com/api/receiver/ → Auth Type 'OAuth 2.0 Client Credentials Grant' → Client ID/Secret from 1Password 'Connect Delivery / Tech' → Token URL https://connect.dimagi.com/o/token/ → Pass Credentials in header → click Test Connection (must return 200 'Connection successful'); (3) Settings → Data Forwarding → Forward Forms → add one rule per app (Learn + Deliver) with the connection just created, POST, JSON, Include app_id in URL query"
     if [ "$CCHQ_CONNECT_FLAG" = "true" ] && [ "$CCHQ_CONN_TO_CONNECT" -gt 0 ]; then
