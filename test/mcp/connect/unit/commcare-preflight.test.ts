@@ -262,13 +262,12 @@ describe('preflightLearnAppUser — request shape', () => {
       fetchSpy as unknown as typeof fetch,
     );
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-    const firstCall = fetchSpy.mock.calls[0];
-    const firstHeaders = (firstCall[1] as RequestInit).headers as Record<string, string>;
+    const calls = fetchSpy.mock.calls as unknown as Array<[string, RequestInit]>;
+    const firstHeaders = calls[0][1].headers as Record<string, string>;
     expect(firstHeaders.Authorization).toBe(
       `ApiKey ${baseArgs.hq_username}:${baseArgs.api_key}`,
     );
-    const secondCall = fetchSpy.mock.calls[1];
-    const secondUrl = String(secondCall[0]);
+    const secondUrl = String(calls[1][0]);
     // The username must be URL-encoded (space → %20, + → %2B).
     expect(secondUrl).toContain('username=user%20with%20spaces%2Bsymbols');
   });
@@ -286,6 +285,7 @@ describe('preflightLearnAppUser — request shape', () => {
       { ...baseArgs, base_url: 'https://staging.commcarehq.org' },
       fetchSpy as unknown as typeof fetch,
     );
-    expect(String(fetchSpy.mock.calls[0][0])).toMatch(/^https:\/\/staging\.commcarehq\.org/);
+    const calls = fetchSpy.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(String(calls[0][0])).toMatch(/^https:\/\/staging\.commcarehq\.org/);
   });
 });
