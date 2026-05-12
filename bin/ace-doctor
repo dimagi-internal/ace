@@ -214,6 +214,65 @@ if [ "$PREFLIGHT" = "1" ]; then
   OCS_GTID="$(pf_get_env OCS_GOLDEN_TEMPLATE_ID)"
   ACE_GMAIL_ACCOUNT="$(pf_get_env ACE_GMAIL_ACCOUNT)"
 
+  # selector_map_currency — static structural check; mirrors the named
+  # probe in the human-readable block below. Reads ACE_CONNECT_APK_VERSION
+  # (env), falls back to newest connect-*.yaml on disk. Counts rows
+  # referenced/known/unverified, lists unresolved selectors so the
+  # orchestrator can decide whether Phase 5 is safe to enter.
+  PF_SEL_DIR="$ROOT/mcp/mobile/selectors"
+  PF_SEL_RECIPES_DIR="$ROOT/mcp/mobile/recipes/static"
+  PF_SEL_APK="$(pf_get_env ACE_CONNECT_APK_VERSION)"
+  if [ -z "$PF_SEL_APK" ]; then
+    PF_SEL_APK="$(ls -1 "$PF_SEL_DIR"/connect-*.yaml 2>/dev/null \
+      | sed -E 's|.*/connect-([^/]+)\.yaml$|\1|' \
+      | sort -V | tail -1)"
+  fi
+  PF_SEL_MAP_REL="mcp/mobile/selectors/connect-${PF_SEL_APK}.yaml"
+  PF_SEL_MAP_PATH="$ROOT/$PF_SEL_MAP_REL"
+  PF_SEL_STATUS="fail"
+  PF_SEL_ROWS_VERIFIED=0
+  PF_SEL_ROWS_UNVERIFIED=0
+  PF_SEL_RECIPES_SCANNED=0
+  PF_SEL_UNRESOLVED_YAML="[]"
+  PF_SEL_REMEDIATION="run /ace:step connect-baseline-screenshots"
+  if [ -n "$PF_SEL_APK" ] && [ -f "$PF_SEL_MAP_PATH" ]; then
+    PF_SEL_KNOWN="$(awk '
+      /^selectors:[[:space:]]*$/ { in_sel=1; next }
+      in_sel && /^[a-zA-Z_]/ { in_sel=0 }
+      in_sel && /^  [a-z][a-z0-9-]*:[[:space:]]*$/ {
+        gsub(/^  |:[[:space:]]*$/, "", $0); print $0
+      }
+    ' "$PF_SEL_MAP_PATH" 2>/dev/null)"
+    PF_SEL_KNOWN_COUNT=$(printf '%s\n' "$PF_SEL_KNOWN" | grep -c . | tr -d '[:space:]')
+    : "${PF_SEL_KNOWN_COUNT:=0}"
+    PF_SEL_ROWS_UNVERIFIED=$(grep -cE '^[[:space:]]+unverified:[[:space:]]*true' "$PF_SEL_MAP_PATH" 2>/dev/null | tr -d '[:space:]')
+    : "${PF_SEL_ROWS_UNVERIFIED:=0}"
+    PF_SEL_ROWS_VERIFIED=$((PF_SEL_KNOWN_COUNT - PF_SEL_ROWS_UNVERIFIED))
+    if [ "$PF_SEL_KNOWN_COUNT" -gt 0 ]; then
+      PF_SEL_REFD=""
+      if [ -d "$PF_SEL_RECIPES_DIR" ]; then
+        PF_SEL_REFD="$(grep -h -oE '\$\{SELECTOR:[^}]+\}' "$PF_SEL_RECIPES_DIR"/*.yaml 2>/dev/null \
+          | sed -E 's/^\$\{SELECTOR:([^}]+)\}$/\1/' | sort -u)"
+        PF_SEL_RECIPES_SCANNED=$(ls -1 "$PF_SEL_RECIPES_DIR"/*.yaml 2>/dev/null | wc -l | tr -d '[:space:]')
+      fi
+      PF_SEL_UNRESOLVED="$(comm -23 \
+        <(printf '%s\n' "$PF_SEL_REFD" | grep . | sort -u) \
+        <(printf '%s\n' "$PF_SEL_KNOWN" | grep . | sort -u))"
+      PF_SEL_UNRESOLVED_COUNT=$(printf '%s\n' "$PF_SEL_UNRESOLVED" | grep -c . | tr -d '[:space:]')
+      : "${PF_SEL_UNRESOLVED_COUNT:=0}"
+      if [ "$PF_SEL_UNRESOLVED_COUNT" -eq 0 ]; then
+        PF_SEL_STATUS="pass"
+        PF_SEL_REMEDIATION=""
+        PF_SEL_UNRESOLVED_YAML="[]"
+      else
+        PF_SEL_STATUS="warn"
+        PF_SEL_REMEDIATION="run /ace:step connect-baseline-screenshots to calibrate against the live APK"
+        # Inline JSON-style list — YAML 1.1 accepts ["a","b"].
+        PF_SEL_UNRESOLVED_YAML="[$(printf '%s\n' "$PF_SEL_UNRESOLVED" | grep . | sed 's/^/"/; s/$/"/' | tr '\n' ',' | sed 's/,$//')]"
+      fi
+    fi
+  fi
+
   # Build the YAML body. Missing public values render as empty strings; the
   # orchestrator can decide how to react (some are required, some optional).
   cat <<EOF
@@ -244,6 +303,15 @@ env:
   ocs_embedding_model_id: $(pf_presence OCS_EMBEDDING_MODEL_ID)
   content_generator_url: $(pf_presence CONTENT_GENERATOR_URL)
   content_generator_api_key: $(pf_presence CONTENT_GENERATOR_API_KEY)
+selector_map_currency:
+  status: ${PF_SEL_STATUS}
+  apk_version: "${PF_SEL_APK:-}"
+  map_path: "${PF_SEL_MAP_REL}"
+  rows_verified: ${PF_SEL_ROWS_VERIFIED}
+  rows_unverified: ${PF_SEL_ROWS_UNVERIFIED}
+  recipes_scanned: ${PF_SEL_RECIPES_SCANNED}
+  unresolved_selectors: ${PF_SEL_UNRESOLVED_YAML}
+  remediation: "${PF_SEL_REMEDIATION}"
 EOF
   exit 0
 fi
@@ -1738,6 +1806,117 @@ else
   warn "mobile_infra: ${_MOBILE_JOINED}. Phase 5 app-screenshot-capture is gated on these — pre-0.13.165 it would degrade silently to verdict:incomplete; current builds halt with [BLOCKER] until recovery runs." "/ace:mobile-bootstrap (one-shot recovery — boots the AVD and triggers the auto-heal in mobile_ensure_avd_running for the Maestro driver). See [Mobile] block below for per-component detail."
 fi
 unset MOBILE_ISSUES _MOBILE_MAESTRO _ADB_DEVICES_OUT _MOBILE_AVD_NAME _MOBILE_EMULATOR_BIN _MOBILE_PW_DIR _MOBILE_MISSING_ENV _candidate _v _val
+
+# --- selector_map_currency ---
+# Phase 5 (`qa-and-training`) Maestro recipes reference logical selector
+# names via `${SELECTOR:<logical-name>}` placeholders. At resolve time
+# `mobile_resolve_selectors({yaml, apk_version})` substitutes those with
+# concrete matchers from `mcp/mobile/selectors/connect-<VERSION>.yaml`.
+# When the deployed Connect APK bumps (e.g. 2.62.0 → 2.63.0) and no fresh
+# selector map exists for the new version — or the map exists but lacks
+# rows for selectors the static recipes need — Phase 5 blocks late, after
+# the AVD is already booted and the recipe is mid-flight.
+#
+# This probe is the static structural pre-flight: does the map for the
+# deployed APK exist, is it populated, and does it cover every logical
+# name referenced in `mcp/mobile/recipes/static/*.yaml`? No network. Reads
+# `ACE_CONNECT_APK_VERSION` from .env; if unset, picks the newest
+# `connect-*.yaml` on disk and INFOs the fallback (the env var is
+# advisory — the canonical source is the apk_version yaml header).
+#
+# Classification:
+#   - map missing OR zero rows → FAIL (Phase 5 cannot run)
+#   - any referenced selector unresolved → WARN (Phase 5 may partially
+#     run; uncovered surfaces will halt mid-recipe)
+#   - all resolvable + zero unverified → PASS
+#   - all resolvable + some unverified → PASS with INFO line listing the
+#     unverified count (unverified rows are best-guesses pending a
+#     baseline-screenshot calibration — see skills/connect-baseline-screenshots)
+#
+# Companion of cloud_emu and ocs_shared_collection_team: same shape —
+# named probe, single-line gate, PASS/WARN/FAIL + concrete remediation
+# (`/ace:step connect-baseline-screenshots`).
+SELECTOR_MAP_DIR="$ROOT/mcp/mobile/selectors"
+SELECTOR_RECIPES_DIR="$ROOT/mcp/mobile/recipes/static"
+SELECTOR_APK_VERSION="$(get_env ACE_CONNECT_APK_VERSION)"
+SELECTOR_APK_VERSION_SOURCE="env"
+if [ -z "$SELECTOR_APK_VERSION" ]; then
+  # Fall back to newest connect-*.yaml on disk (version-sorted).
+  SELECTOR_APK_VERSION="$(ls -1 "$SELECTOR_MAP_DIR"/connect-*.yaml 2>/dev/null \
+    | sed -E 's|.*/connect-([^/]+)\.yaml$|\1|' \
+    | sort -V | tail -1)"
+  SELECTOR_APK_VERSION_SOURCE="newest-on-disk"
+fi
+SELECTOR_MAP_REL="mcp/mobile/selectors/connect-${SELECTOR_APK_VERSION}.yaml"
+SELECTOR_MAP_PATH="$ROOT/$SELECTOR_MAP_REL"
+
+if [ -z "$SELECTOR_APK_VERSION" ]; then
+  fail "selector_map_currency: no selector maps found under $SELECTOR_MAP_DIR and ACE_CONNECT_APK_VERSION unset" "run /ace:step connect-baseline-screenshots to seed a map for the deployed APK"
+elif ! [ -f "$SELECTOR_MAP_PATH" ]; then
+  fail "selector_map_currency: no map for APK $SELECTOR_APK_VERSION at $SELECTOR_MAP_REL" "run /ace:step connect-baseline-screenshots"
+else
+  # Selector keys live under `selectors:` at 2-space indent; each row is
+  # `  <kebab-name>:` on its own line. Awk slice between the `^selectors:$`
+  # anchor and EOF keeps us robust to other top-level fields above it.
+  SELECTOR_KNOWN="$(awk '
+    /^selectors:[[:space:]]*$/ { in_sel=1; next }
+    in_sel && /^[a-zA-Z_]/ { in_sel=0 }
+    in_sel && /^  [a-z][a-z0-9-]*:[[:space:]]*$/ {
+      gsub(/^  |:[[:space:]]*$/, "", $0); print $0
+    }
+  ' "$SELECTOR_MAP_PATH" 2>/dev/null)"
+  SELECTOR_KNOWN_COUNT=$(printf '%s\n' "$SELECTOR_KNOWN" | grep -c . | tr -d '[:space:]')
+  : "${SELECTOR_KNOWN_COUNT:=0}"
+  # Count rows marked `unverified: true` (best-guesses pending live calibration).
+  SELECTOR_UNVERIFIED_COUNT=$(grep -cE '^[[:space:]]+unverified:[[:space:]]*true' "$SELECTOR_MAP_PATH" 2>/dev/null | tr -d '[:space:]')
+  : "${SELECTOR_UNVERIFIED_COUNT:=0}"
+  SELECTOR_VERIFIED_COUNT=$((SELECTOR_KNOWN_COUNT - SELECTOR_UNVERIFIED_COUNT))
+
+  if [ "$SELECTOR_KNOWN_COUNT" -eq 0 ]; then
+    fail "selector_map_currency: $SELECTOR_MAP_REL exists but has zero selector rows" "run /ace:step connect-baseline-screenshots"
+  else
+    # Logical names referenced by every static recipe. `-h` suppresses
+    # filenames so the sed pipeline only sees `${SELECTOR:foo}` tokens.
+    SELECTOR_REFD=""
+    SELECTOR_RECIPE_COUNT=0
+    if [ -d "$SELECTOR_RECIPES_DIR" ]; then
+      SELECTOR_REFD="$(grep -h -oE '\$\{SELECTOR:[^}]+\}' "$SELECTOR_RECIPES_DIR"/*.yaml 2>/dev/null \
+        | sed -E 's/^\$\{SELECTOR:([^}]+)\}$/\1/' | sort -u)"
+      SELECTOR_RECIPE_COUNT=$(ls -1 "$SELECTOR_RECIPES_DIR"/*.yaml 2>/dev/null | wc -l | tr -d '[:space:]')
+    fi
+    # Diff referenced ∖ known. `comm -23` requires sorted inputs.
+    SELECTOR_UNRESOLVED="$(comm -23 \
+      <(printf '%s\n' "$SELECTOR_REFD" | grep . | sort -u) \
+      <(printf '%s\n' "$SELECTOR_KNOWN" | grep . | sort -u))"
+    SELECTOR_UNRESOLVED_COUNT=$(printf '%s\n' "$SELECTOR_UNRESOLVED" | grep -c . | tr -d '[:space:]')
+    : "${SELECTOR_UNRESOLVED_COUNT:=0}"
+    SELECTOR_REFD_COUNT=$(printf '%s\n' "$SELECTOR_REFD" | grep -c . | tr -d '[:space:]')
+    : "${SELECTOR_REFD_COUNT:=0}"
+
+    if [ "$SELECTOR_UNRESOLVED_COUNT" -gt 0 ]; then
+      # Cap the listed names at 5 to keep the WARN line readable.
+      SELECTOR_UNRESOLVED_HEAD="$(printf '%s\n' "$SELECTOR_UNRESOLVED" | head -5 | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
+      SELECTOR_OVERFLOW=""
+      if [ "$SELECTOR_UNRESOLVED_COUNT" -gt 5 ]; then
+        SELECTOR_OVERFLOW=" (+$((SELECTOR_UNRESOLVED_COUNT - 5)) more)"
+      fi
+      warn "selector_map_currency: $SELECTOR_UNRESOLVED_COUNT selector(s) referenced by recipes have no matcher in $SELECTOR_MAP_REL: ${SELECTOR_UNRESOLVED_HEAD}${SELECTOR_OVERFLOW}" "run /ace:step connect-baseline-screenshots to calibrate against the live APK"
+    else
+      pass "selector_map_currency: APK $SELECTOR_APK_VERSION, $SELECTOR_VERIFIED_COUNT verified + $SELECTOR_UNVERIFIED_COUNT unverified row(s), $SELECTOR_REFD_COUNT selector(s) referenced across $SELECTOR_RECIPE_COUNT recipe(s) all resolvable"
+      if [ "$SELECTOR_UNVERIFIED_COUNT" -gt 0 ]; then
+        info "selector_map_currency: $SELECTOR_UNVERIFIED_COUNT row(s) marked unverified: true — best-guess values pending live calibration via connect-baseline-screenshots"
+      fi
+    fi
+    if [ "$SELECTOR_APK_VERSION_SOURCE" = "newest-on-disk" ]; then
+      info "selector_map_currency: ACE_CONNECT_APK_VERSION not set in .env — used newest map on disk ($SELECTOR_APK_VERSION); set the env var to gate on a specific deployed version"
+    fi
+  fi
+fi
+unset SELECTOR_MAP_DIR SELECTOR_RECIPES_DIR SELECTOR_APK_VERSION SELECTOR_APK_VERSION_SOURCE \
+      SELECTOR_MAP_REL SELECTOR_MAP_PATH SELECTOR_KNOWN SELECTOR_KNOWN_COUNT \
+      SELECTOR_UNVERIFIED_COUNT SELECTOR_VERIFIED_COUNT SELECTOR_REFD SELECTOR_RECIPE_COUNT \
+      SELECTOR_UNRESOLVED SELECTOR_UNRESOLVED_COUNT SELECTOR_UNRESOLVED_HEAD \
+      SELECTOR_OVERFLOW SELECTOR_REFD_COUNT
 
 echo ""
 echo "[Mobile]"
