@@ -95,14 +95,28 @@ under human control.
 8. **Apply speaker notes** via `buildSpeakerNotesRequests` + a second
    `slides_batch_update`.
 
-9. **Write a state-trail entry** to `run_state.yaml` under the opp:
+9. **Write the deck handoff** to
+   `phases.qa-and-training.products.training.deck` in the current run's
+   `run_state.yaml`. Multi-writer block (sibling slots are the five
+   training doc skills' `docs.<key>` entries) — apply via
+   read-modify-write following the canonical pattern in
+   `skills/synthetic-data-generate/SKILL.md § Step 6` so sibling
+   sub-keys are preserved.
+
    ```yaml
-   training_deck:
-     presentation_id: <new id>
-     web_view_link: <url>
-     template_id: <ACE_TRAINING_DECK_TEMPLATE_ID>
-     built_at: <ISO timestamp>
+   phases:
+     qa-and-training:
+       products:
+         training:
+           deck:
+             file_id: <new presentation_id>
+             title: <title of the new Slides file>
+             web_view_link: <url>
+             template_id: <ACE_TRAINING_DECK_TEMPLATE_ID>
+             built_at: <ISO timestamp>
    ```
+
+   See `agents/qa-and-training.md § Products` for the full slot table.
 
 10. **Print the deck URL** to the operator. The LLO admin opens it,
     optionally tweaks branding/wording, and uses Slides' native
@@ -130,7 +144,7 @@ under human control.
 ## Products
 
 - The Google Slides deck itself (in Drive)
-- `ACE/<opp>/run_state.yaml` updated with `training_deck:` block
+- `run_state.yaml.phases.qa-and-training.products.training.deck` — `{file_id, title, web_view_link, template_id, built_at}` typed handoff (multi-writer block; sibling `docs.*` slots written by the five training doc skills)
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-build_verdict.yaml` — standard verdict shape
   (see `lib/verdict-schema.ts`); `summary.deck_url` set; `passed:` true if
   parse + both batchUpdates succeeded

@@ -41,6 +41,25 @@ Synthesize all information from the completed opportunity into actionable learni
    - `ACE/<opp-name>/runs/<run-id>/8-closeout/learnings-summary.md` — full learnings document
    - `ACE/<opp-name>/runs/<run-id>/8-closeout/learnings-summary_new-pdd.md` — new PDD if iteration warranted
 
+6. **Write `phases.closeout.products.learnings`** to the current run's
+   `run_state.yaml` so downstream readers (ace-web summary, next-cycle
+   `idea-to-pdd` if iteration is warranted) can deep-link to the
+   learnings doc and the iteration PDD without listing the closeout
+   folder.
+
+   ```yaml
+   phases:
+     closeout:
+       products:
+         learnings:
+           summary_file_id: <Drive fileId of learnings-summary.md>
+           new_pdd_file_id: <Drive fileId of learnings-summary_new-pdd.md, or null when iteration not warranted>
+           iteration_warranted: <true | false>
+   ```
+
+   Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
+   `merge: 'two-level'`. Sole writer of `products.learnings`.
+
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`
 - OCS: `ocs_list_sessions`, `ocs_get_session`

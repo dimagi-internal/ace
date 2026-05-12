@@ -232,6 +232,18 @@ training skills (or invoke `qa-and-training` for the full sequence).
 - `runs/<run-id>/5-qa-and-training/app-screenshot-capture_verdict.yaml` (structural verdict)
 - `runs/<run-id>/5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (smoke-judge verdict)
 - Per-training-skill verdicts (`runs/<run-id>/5-qa-and-training/training-*_verdict.yaml`)
+- `run_state.yaml.phases.qa-and-training.products.training` block — multi-writer typed handoff. Each of the six doc / deck skills writes its own slot via read-modify-write (the established multi-writer pattern from `synthetic-data-generate`):
+
+  | Skill | Slot |
+  |---|---|
+  | `skill:training-llo-guide` | `products.training.docs.llo_guide.{file_id, title, web_view_link}` (title: "LLO manager guide") |
+  | `skill:training-flw-guide` | `products.training.docs.flw_guide.*` (title: "FLW training guide") |
+  | `skill:training-quick-reference` | `products.training.docs.quick_reference.*` (title: "Quick reference card") |
+  | `skill:training-faq` | `products.training.docs.faq.*` (title: "FAQ") |
+  | `skill:training-onboarding-email` | `products.training.docs.onboarding_email.*` (title: "Onboarding email") |
+  | `skill:training-deck-build` | `products.training.deck.{file_id, title, web_view_link}` (title: from the Slides file's display name) |
+
+  Read-modify-write recipe: `drive_read_file` → parse → merge in this skill's slot (sibling slots preserved) → `drive_update_file` with `ifMatchRevisionId`. See `skills/synthetic-data-generate/SKILL.md § Step 6` for the canonical implementation. ace-web's per-run summary page consumes this block to render the training pack section.
 
 ## Completion
 

@@ -32,6 +32,7 @@ no inline self-eval.
 
 - `4-ocs/ocs-agent-setup.md` — chatbot identifiers (`experiment_id`, `version_number`, embed `public_id` + `embed_key`)
 - `4-ocs/ocs-setup_widget-handoff.md` — widget URL + embed credentials staged for Connect HITL paste-in
+- `run_state.yaml.phases.ocs-setup.products.ocs_chatbot` — `{experiment_id, public_id, embed_key, admin_url, team_slug}` typed handoff. Sole writer.
 
 ## Modes
 
@@ -180,6 +181,30 @@ no inline self-eval.
 11. **Write state file:** `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`
     - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`, optional `last_prompt_patched_at` (set by `--prompt-patch` re-runs)
     - This file is the source of truth for idempotency — Step 0 reads it before any OCS call
+
+12. **Write `products.ocs_chatbot` to `run_state.yaml`** so downstream
+    readers (ace-web summary, llo-onboarding, Connect handoff) can read
+    the chatbot identity directly from typed state without parsing the
+    widget-handoff markdown table.
+
+    ```yaml
+    phases:
+      ocs-setup:
+        products:
+          ocs_chatbot:
+            experiment_id: <UUID from Step 1>
+            public_id: <from Step 10>
+            embed_key: <from Step 10>
+            team_slug: <OCS team slug — typically "connect-ace">
+            admin_url: https://www.openchatstudio.com/a/<team_slug>/chatbots/<experiment_id>/
+    ```
+
+    Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
+    `merge: 'two-level'`. Sole writer. The `admin_url` is the OCS
+    chatbot home page (auth-gated; useful for ACE operators with OCS
+    access). The `/chatbots/embed/<public_id>/` URL once written by
+    `ocs-widget-handoff` is a 404 — there's no standalone embed page,
+    only the corner widget — so it's not in the typed handoff.
 
 Quality gating (quick + deep qa→eval pairs) and Connect widget handoff
 happen in subsequent steps of the `ocs-setup` agent, not in this skill.

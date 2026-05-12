@@ -5,6 +5,101 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.173 — 2026-05-11
+
+**Catchup merge: lands PRs #235–#240 into main as one merge commit.**
+
+PRs #235–#240 were stacked (each base = the previous PR's branch). Auto-merge processed each correctly into its parent stacked branch, but only PR #234 (base=main) actually reached `main`. The 6 follow-up commits accumulated on `emdash/products-closeout` and never propagated. This merge re-targets that end-of-chain branch at `main` so the full state-consolidation completion lands as one merge commit.
+
+VERSION bumped past both the closeout chain's tip (0.13.172) and main's mid-merge state (0.13.167, from PR #241's mobile work) to 0.13.173 to give a clean unique tip.
+
+Code-wise this is identical to the cumulative content of PRs #235–#240 (all of which are reviewed and approved); no new edits.
+
+## 0.13.172 — 2026-05-11
+
+**Phase 9 state-consolidation: three closeout skills write `phases.closeout.products.{cycle_grade, opp_eval, learnings}`.**
+
+Three independent sub-blocks, each with a sole writer (no multi-writer fan-in — different skills, different blocks). Closes out the consolidation sweep covering every ACE phase.
+
+| Skill | Slot | Headline fields |
+|---|---|---|
+| `skill:cycle-grade` | `products.cycle_grade` | `letter`, `overall_score`, `headline`, `archetype`, `scorecard_file_id` |
+| `skill:opp-eval` | `products.opp_eval` | `mode`, `overall_score`, `verdict`, `scorecard_file_id`, `verdict_file_id`, `trend_file_id` |
+| `skill:learnings-summary` | `products.learnings` | `summary_file_id`, `new_pdd_file_id`, `iteration_warranted` |
+
+Each skill adds a `5.5` / `15` / `6` step after its existing markdown-write to land the typed handoff. Two-level merge.
+
+ace-web's per-run summary page is the immediate beneficiary: the hero status chip can flip from a binary "closed" detection (existence of `cycle-grade.md`) to an actual grade letter + headline once these land. Same for the opp-eval score chip and the learnings/new-PDD deep-links. Follow-up PR in ace-web.
+
+All 915 unit tests pass.
+
+## 0.13.171 — 2026-05-11
+
+**Phase 8 state-consolidation: `skill:llo-launch` writes `phases.execution-management.products.launch`.**
+
+Adds Step 10 to llo-launch: after writing the launch record markdown, write a typed `{went_live_at, archetype, llo_org_slug, llo_org_display_name, record_file_id}` block to `run_state.yaml`. Sole writer, two-level merge.
+
+Downstream readers (ace-web's per-run summary in particular, plus `cycle-grade` and the closeout phase) get the go-live identity without parsing the launch-record markdown.
+
+All 915 unit tests pass.
+
+## 0.13.170 — 2026-05-11
+
+**Phase 5 state-consolidation: the six training producers write a consolidated `phases.qa-and-training.products.training` block.**
+
+Multi-writer block — first Phase-5 use of the established multi-writer pattern from `skill:synthetic-data-generate`. Each producer skill writes its own slot via read-modify-write so sibling sub-keys (other doc skills' slots, the deck) are preserved:
+
+| Skill | Slot |
+|---|---|
+| `skill:training-llo-guide` | `products.training.docs.llo_guide.*` (title: "LLO manager guide") |
+| `skill:training-flw-guide` | `products.training.docs.flw_guide.*` (title: "FLW training guide") |
+| `skill:training-quick-reference` | `products.training.docs.quick_reference.*` (title: "Quick reference card") |
+| `skill:training-faq` | `products.training.docs.faq.*` (title: "FAQ") |
+| `skill:training-onboarding-email` | `products.training.docs.onboarding_email.*` (title: "Onboarding email") |
+| `skill:training-deck-build` | `products.training.deck.*` (title: from the Slides file's display name) |
+
+Each slot carries `{file_id, title, web_view_link}` (the deck slot also carries `template_id` + `built_at`). `agents/qa-and-training.md § Products` was updated with the full per-skill slot table as the single source of truth; each SKILL.md gets a tight pointer to the table to keep the convention discoverable but not duplicated.
+
+Retires the ad-hoc `opp.yaml.training_deck` block that `skill:training-deck-build` was writing — that data now lives in `products.training.deck` per the run-scoped convention.
+
+ace-web's per-run summary will replace its filename-matched `_TRAINING_DOC_TITLES` map and `training-materials/` folder listing with a single `dict.get` chain into the typed slot. Follow-up PR in ace-web.
+
+All 915 unit tests pass.
+
+## 0.13.169 — 2026-05-11
+
+**Phase 4 state-consolidation: `skill:ocs-agent-setup` writes `phases.ocs-setup.products.ocs_chatbot` with `{experiment_id, public_id, embed_key, team_slug, admin_url}`.**
+
+Adds Step 12 to ocs-agent-setup. Already-written values (`experiment_id`, `public_id`, `embed_key`) are repeated into the typed-state block so downstream readers — ace-web's summary page, `llo-onboarding`, the Connect widget handoff — get them without parsing the widget-handoff markdown table. `admin_url` is constructed correctly as `https://www.openchatstudio.com/a/<team_slug>/chatbots/<experiment_id>/`; the legacy `/chatbots/embed/<public_id>/` URL written elsewhere is a 404 and is intentionally NOT in the typed handoff.
+
+Sole writer per the consolidation convention. Two-level merge.
+
+All 915 unit tests pass.
+
+## 0.13.168 — 2026-05-11
+
+**Phase 1 state-consolidation: `skill:idea-to-pdd` writes a `phases.design.products.pdd` block with `{title, description, file_id}`.**
+
+Continues the state-consolidation work. After writing the PDD markdown, `idea-to-pdd` now emits a small typed block to `run_state.yaml` carrying the friendly title, a one-paragraph description, and the Drive `fileId` of the PDD itself. The block is the typed-state replacement for ace-web's current regex extraction of the PDD's opening line and `## Overview` paragraph — the producer skill knows the friendly title with no ambiguity, so authoring it directly into state removes a fragile downstream parse.
+
+Sole writer per the established Phase 1 convention. Two-level merge.
+
+No semantic change for ACE skills (no downstream skill currently reads `products.pdd`). The motivating consumer is ace-web's per-run summary page, which will cut over in a follow-up PR in that repo.
+
+All 915 unit tests pass.
+
+## 0.13.167 — 2026-05-11
+
+**Phase 2 state-consolidation: `skill:app-deploy` now writes a consolidated `phases.commcare-setup.products.apps` block to `run_state.yaml`.**
+
+Continues the work begun by state-consolidation PRs a–f, formalizing the typed handoff for Phase 2. `app-deploy` was already the natural Phase 2 capstone — it runs after `pdd-to-{learn,deliver}-app` and reads both summaries to drive the HQ upload — so it's also the natural single-writer of `products.apps`. Adds a new Step 6 to the skill: after writing the deploy summary markdown, write a `phases.commcare-setup.products.apps.{learn, deliver}` block with `{name, nova_app_id, nova_url, hq_app_id, hq_url, build_status}` for each app.
+
+The block is the typed-state replacement for parsing `pdd-to-{learn,deliver}-app_summary.md` and `app-deploy_summary.md` frontmatter to recover those values. Notably, `nova_url` is constructed correctly as `https://commcare.app/build/<nova_app_id>` — the per-summary frontmatter's legacy `nova_app_url: https://commcare.app/apps/<id>` is a 404. Downstream readers (ace-web's per-run summary page in particular) get the working URL directly from `products.apps.<kind>.nova_url` and never have to know about the quirk.
+
+No-op in default mode unless Phase 2 runs (which is normally part of any `/ace:run`). Old runs without the block are not back-filled; they continue to render whatever ace-web's summary builder can recover from markdown.
+
+All 915 unit tests pass.
+
 ## 0.13.166 — 2026-05-11
 
 **Rename `phases.<phase>.outputs.<block>` → `phases.<phase>.products.<block>` across all skills, agents, and docs.**
