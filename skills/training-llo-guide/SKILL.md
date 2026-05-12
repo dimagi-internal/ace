@@ -161,6 +161,7 @@ For LLO operators overseeing FLW deployment of this opportunity.
 
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-llo-guide.md`
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-llo-guide_verdict.yaml`
+- `run_state.yaml.phases.qa-and-training.products.training.docs.llo_guide` — `{file_id, title: "LLO manager guide", web_view_link}` typed handoff. Multi-writer block: apply via read-modify-write following the canonical pattern in `skills/synthetic-data-generate/SKILL.md § Step 6` so sibling sub-keys (`docs.flw_guide`, `docs.quick_reference`, …, `deck`) are preserved. See `agents/qa-and-training.md § Products` for the full per-skill slot table.
 
 ## Why a separate skill
 

@@ -5,6 +5,29 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.170 — 2026-05-11
+
+**Phase 5 state-consolidation: the six training producers write a consolidated `phases.qa-and-training.products.training` block.**
+
+Multi-writer block — first Phase-5 use of the established multi-writer pattern from `skill:synthetic-data-generate`. Each producer skill writes its own slot via read-modify-write so sibling sub-keys (other doc skills' slots, the deck) are preserved:
+
+| Skill | Slot |
+|---|---|
+| `skill:training-llo-guide` | `products.training.docs.llo_guide.*` (title: "LLO manager guide") |
+| `skill:training-flw-guide` | `products.training.docs.flw_guide.*` (title: "FLW training guide") |
+| `skill:training-quick-reference` | `products.training.docs.quick_reference.*` (title: "Quick reference card") |
+| `skill:training-faq` | `products.training.docs.faq.*` (title: "FAQ") |
+| `skill:training-onboarding-email` | `products.training.docs.onboarding_email.*` (title: "Onboarding email") |
+| `skill:training-deck-build` | `products.training.deck.*` (title: from the Slides file's display name) |
+
+Each slot carries `{file_id, title, web_view_link}` (the deck slot also carries `template_id` + `built_at`). `agents/qa-and-training.md § Products` was updated with the full per-skill slot table as the single source of truth; each SKILL.md gets a tight pointer to the table to keep the convention discoverable but not duplicated.
+
+Retires the ad-hoc `opp.yaml.training_deck` block that `skill:training-deck-build` was writing — that data now lives in `products.training.deck` per the run-scoped convention.
+
+ace-web's per-run summary will replace its filename-matched `_TRAINING_DOC_TITLES` map and `training-materials/` folder listing with a single `dict.get` chain into the typed slot. Follow-up PR in ace-web.
+
+All 915 unit tests pass.
+
 ## 0.13.169 — 2026-05-11
 
 **Phase 4 state-consolidation: `skill:ocs-agent-setup` writes `phases.ocs-setup.products.ocs_chatbot` with `{experiment_id, public_id, embed_key, team_slug, admin_url}`.**
