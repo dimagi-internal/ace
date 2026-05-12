@@ -5,8 +5,9 @@ import * as os from 'node:os';
 import { AvdBackend } from './backends/avd.js';
 import { CloudBackend } from './backends/cloud.js';
 import { MaestroBackend } from './backends/maestro.js';
-import { MaestroDriverError } from './errors.js';
+import { MaestroDriverError, MobileError } from './errors.js';
 import { RecipeGenerator, type LlmFn } from './backends/recipe-generator.js';
+import { resolveBackend } from './backend-toggle.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
   SnapshotResult,
@@ -20,17 +21,6 @@ export interface MobileClientOpts {
   staticRecipesDir?: string;
 }
 
-/**
- * Whether to route atom calls through the cloud backend instead of the
- * local AVD/MAESTRO pair. Toggled by `ACE_MOBILE_BACKEND=cloud` in the
- * spawn env (skills don't see this knob — the dispatcher does the
- * routing transparently). When `false` the existing local-emulator
- * behavior is unchanged.
- */
-function shouldUseCloud(): boolean {
-  return (process.env.ACE_MOBILE_BACKEND || '').toLowerCase() === 'cloud';
-}
-
 const DEFAULT_STATIC_DIR = new URL('./recipes/static/', import.meta.url).pathname;
 
 export interface DriveAdapter {
@@ -42,18 +32,61 @@ export interface DriveAdapter {
 export class MobileClient {
   readonly avd: AvdBackend;
   readonly maestro: MaestroBackend;
-  readonly cloud: CloudBackend | null;
   readonly staticRecipesDir: string;
-  readonly useCloud: boolean;
+  /**
+   * Cloud backend handle. Always pre-constructed when ACE_WEB env is
+   * available so a mid-session toggle to cloud routes immediately. Null
+   * only when the runtime can't build a CloudBackend (missing
+   * ACE_WEB_BASE_URL / ACE_WEB_PAT_TOKEN), in which case routing to
+   * cloud throws a clear typed error.
+   */
+  readonly cloud: CloudBackend | null;
 
   constructor(opts: MobileClientOpts = {}) {
     this.avd = opts.avd ?? new AvdBackend();
     this.maestro = opts.maestro ?? new MaestroBackend();
     this.staticRecipesDir = opts.staticRecipesDir ?? DEFAULT_STATIC_DIR;
-    this.useCloud = shouldUseCloud();
-    // Lazy-construct cloud only when actually selected so envs without
-    // ACE_WEB_BASE_URL/PAT don't fail to start the MCP server.
-    this.cloud = opts.cloud ?? (this.useCloud ? new CloudBackend() : null);
+    // Eagerly try to construct CloudBackend so /ace:mobile-backend can
+    // flip the toggle mid-session without an MCP restart. We catch the
+    // typed env-missing error so envs without ACE_WEB still start up.
+    if (opts.cloud !== undefined) {
+      this.cloud = opts.cloud;
+    } else {
+      try {
+        this.cloud = new CloudBackend();
+      } catch (e) {
+        if (e instanceof MobileError && e.code === 'CLOUD_NOT_CONFIGURED') {
+          this.cloud = null;
+        } else {
+          throw e;
+        }
+      }
+    }
+  }
+
+  /**
+   * Resolve the active backend on every routing decision so a slash-
+   * command toggle takes effect mid-session.
+   */
+  get useCloud(): boolean {
+    return resolveBackend().backend === 'cloud';
+  }
+
+  /**
+   * Route to cloud if it's both selected and configured. If the toggle
+   * says cloud but CloudBackend wasn't constructible, throw a typed
+   * error pointing at the missing env so the caller sees a clear signal
+   * instead of silently falling back to local.
+   */
+  private requireCloud(): CloudBackend {
+    if (!this.cloud) {
+      throw new MobileError(
+        'CLOUD_NOT_CONFIGURED',
+        'cloud backend selected but not configured',
+        'Set ACE_WEB_BASE_URL and ACE_WEB_PAT_TOKEN in .env, or switch backend with /ace:mobile-backend local.',
+      );
+    }
+    return this.cloud;
   }
 
   // ---- Atom-level methods (one per capability) ----
@@ -82,7 +115,7 @@ export class MobileClient {
    * through ace-web has its own health semantics.
    */
   async ensureAvdRunning(name: string): Promise<AvdInfo> {
-    if (this.useCloud && this.cloud) return this.cloud.ensureAvdRunning(name);
+    if (this.useCloud) return this.requireCloud().ensureAvdRunning(name);
     const info = await this.avd.ensureAvdRunning(name);
     await this.assertMaestroDriverHealthy(info.serial);
     return info;
@@ -138,32 +171,32 @@ export class MobileClient {
     return { ...r, adbPort };
   }
   stopAvd(name: string, opts: { force?: boolean } = {}): Promise<void> {
-    if (this.useCloud && this.cloud) return this.cloud.stopAvd(name, opts);
+    if (this.useCloud) return this.requireCloud().stopAvd(name, opts);
     // The local AVD backend has no busy guard — opts is ignored there.
     return this.avd.stopAvd(name);
   }
   listAvds(): Promise<string[]> {
-    if (this.useCloud && this.cloud) return this.cloud.listAvds();
+    if (this.useCloud) return this.requireCloud().listAvds();
     return this.avd.listAvds();
   }
   installApk(avdName: string, apk: string): Promise<ApkInfo> {
-    if (this.useCloud && this.cloud) return this.cloud.installApk(avdName, apk);
+    if (this.useCloud) return this.requireCloud().installApk(avdName, apk);
     return this.avd.installApk(avdName, apk);
   }
   uninstallApk(avdName: string, pkg: string): Promise<{ uninstalled: boolean }> {
-    if (this.useCloud && this.cloud) return this.cloud.uninstallApk(avdName, pkg);
+    if (this.useCloud) return this.requireCloud().uninstallApk(avdName, pkg);
     return this.avd.uninstallApk(avdName, pkg);
   }
   captureUiDump(avdName: string): Promise<UiDumpResult> {
-    if (this.useCloud && this.cloud) return this.cloud.captureUiDump(avdName);
+    if (this.useCloud) return this.requireCloud().captureUiDump(avdName);
     return this.avd.captureUiDump(avdName);
   }
   saveSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
-    if (this.useCloud && this.cloud) return this.cloud.saveSnapshot(avdName, snapshotName);
+    if (this.useCloud) return this.requireCloud().saveSnapshot(avdName, snapshotName);
     return this.avd.saveSnapshot(avdName, snapshotName);
   }
   loadSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
-    if (this.useCloud && this.cloud) return this.cloud.loadSnapshot(avdName, snapshotName);
+    if (this.useCloud) return this.requireCloud().loadSnapshot(avdName, snapshotName);
     return this.avd.loadSnapshot(avdName, snapshotName);
   }
 
@@ -185,8 +218,8 @@ export class MobileClient {
     screenshotDir: string,
     avdName?: string,
   ): Promise<RecipeRunResult> {
-    if (this.useCloud && this.cloud) {
-      return this.cloud.runRecipe(recipePath, env, screenshotDir, { state: avdName });
+    if (this.useCloud) {
+      return this.requireCloud().runRecipe(recipePath, env, screenshotDir, { state: avdName });
     }
     const adbPort = avdName ? await this.resolveAdbPort(avdName) : undefined;
     return this.maestro.runRecipe(recipePath, env, screenshotDir, { adbPort });
