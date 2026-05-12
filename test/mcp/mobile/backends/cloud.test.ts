@@ -91,6 +91,49 @@ describe('CloudBackend.ensureAvdRunning', () => {
     expect(err).toBeInstanceOf(MobileError);
     expect(err.code).toBe('CLOUD_SINGLETON_BUSY');
   });
+
+  it('surfaces emulator-not-ready diagnostics inline in the error message', async () => {
+    // ace-web /api/mobile/ensure-running returns 503 emulator-not-ready
+    // with a `diagnostics` block. cloud.ts must bake the snapshot into
+    // the user-visible message (MCP only surfaces .message in the
+    // tool_result, so callers can't see structured fields otherwise).
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(503, {
+        data: null,
+        error: {
+          code: 'emulator-not-ready',
+          message: 'emulator on i-abc signalled ready but no device is visible to adb',
+          diagnostics: {
+            adb_devices: [],
+            adb_visible_count: 0,
+            emulator_pid: null,
+            runner_service_state: 'failed',
+            marker_present: true,
+            marker_age_seconds: 1200,
+            runner_log_tail: '[ace-emulator-launch] ERROR: boot timed out',
+            emulator_log_tail: 'emulator: PANIC: Could not find AVD',
+          },
+        },
+      }),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const err = await cb.ensureAvdRunning('cloud').catch((e) => e);
+    expect(err).toBeInstanceOf(MobileError);
+    expect(err.code).toBe('CLOUD_EMULATOR_NOT_READY');
+    expect(err.message).toContain('no device is visible to adb');
+    expect(err.message).toContain('In-VM diagnostics:');
+    expect(err.message).toContain("adb devices: 0 in 'device' state");
+    expect(err.message).toContain('emulator process: not running');
+    expect(err.message).toContain('ace-mobile-runner.service: failed');
+    expect(err.message).toContain('ready marker: present (age 1200s)');
+    expect(err.message).toContain('ERROR: boot timed out');
+    expect(err.message).toContain('PANIC: Could not find AVD');
+    // The structured diagnostics are also attached for programmatic
+    // consumers (skill-level retry logic that doesn't want to grep
+    // the message).
+    expect(err.diagnostics).toBeDefined();
+    expect(err.diagnostics.adb_visible_count).toBe(0);
+  });
 });
 
 describe('CloudBackend.listStates / listAvds', () => {
