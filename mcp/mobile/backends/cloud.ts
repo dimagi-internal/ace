@@ -405,7 +405,20 @@ export class CloudBackend {
     };
     if (opts.screenshotPrefix) body.screenshot_prefix = opts.screenshotPrefix;
     else body.screenshot_prefix = path.basename(recipePath, path.extname(recipePath));
-    if (opts.state ?? this.defaultState) body.state = opts.state ?? this.defaultState;
+    // Filter through resolveState — the caller routes `avdName` straight
+    // into `opts.state`, but on cloud only `cc-*` names are real baked
+    // states. A generic placeholder like `'cloud'` (the MobileClient
+    // dispatch default) would otherwise hit the server's `state_name !=
+    // active_state` check and trigger a full emulator restart on every
+    // recipe call — caught in vivo on leep Phase 5 attempt 6, where the
+    // emulator pid rotated 1074 → 2761 → 4354 across consecutive recipe
+    // calls and each restart hit the 300s ready-marker timeout. The
+    // server doesn't need a state field when we just want it to keep
+    // running whatever's already active.
+    const resolvedState = opts.state
+      ? this.resolveState(opts.state)
+      : this.defaultState;
+    if (resolvedState) body.state = resolvedState;
 
     // Async submission since ace-web #316: POST returns 202 + job_id,
     // we poll until terminal. Why: AWS ALB closes idle connections

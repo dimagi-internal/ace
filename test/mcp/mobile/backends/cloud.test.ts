@@ -353,6 +353,57 @@ describe('CloudBackend.runRecipe', () => {
     await fs.rm(tmp, { recursive: true, force: true });
   });
 
+  it("omits state from the request body when avdName is a generic placeholder", async () => {
+    // Regression for the leep Phase 5 attempt-6 bug: MobileClient
+    // dispatches with avdName='cloud' (its generic AVD-name default),
+    // and the prior runRecipe routed `state: 'cloud'` into the request
+    // body. ace-web's controller saw `state_name='cloud' != active='cc-2.62.0'`
+    // and triggered a full emulator switch_state on every recipe call.
+    // The fix: filter `opts.state` through `resolveState` so non-`cc-*`
+    // names map to the (empty) defaultState — no state field sent.
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-no-state-'));
+    const recipePath = path.join(tmp, 'r.yaml');
+    await fs.writeFile(recipePath, 'appId: x\n');
+
+    const [submit, poll] = asyncRecipeMocks({
+      exit_code: 0, stdout: '', stderr: '', artifacts: [],
+    });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(submit)
+      .mockResolvedValueOnce(poll);
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
+    await cb.runRecipe(recipePath, {}, tmp, { state: 'cloud' });
+
+    // The submit POST body must NOT include `state` — the server would
+    // otherwise switch_state on every call.
+    const submitCall = fetchImpl.mock.calls[0];
+    const body = JSON.parse(submitCall[1].body as string);
+    expect(body.state).toBeUndefined();
+
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it("forwards state to the server when avdName is a real baked state ('cc-2.62.0')", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-state-'));
+    const recipePath = path.join(tmp, 'r.yaml');
+    await fs.writeFile(recipePath, 'appId: x\n');
+
+    const [submit, poll] = asyncRecipeMocks({
+      exit_code: 0, stdout: '', stderr: '', artifacts: [],
+    });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(submit)
+      .mockResolvedValueOnce(poll);
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
+    await cb.runRecipe(recipePath, {}, tmp, { state: 'cc-2.62.0' });
+
+    const submitCall = fetchImpl.mock.calls[0];
+    const body = JSON.parse(submitCall[1].body as string);
+    expect(body.state).toBe('cc-2.62.0');
+
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
   it('polls multiple times while the job is still running', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-test-'));
     const recipePath = path.join(tmp, 'r.yaml');

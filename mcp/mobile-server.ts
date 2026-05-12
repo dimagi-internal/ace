@@ -146,6 +146,37 @@ server.tool(
     timeoutMs: z.number().int().positive().optional().describe('Probe timeout in ms (default 8000). On a healthy AVD `maestro hierarchy` returns ~2s; raise only if you suspect a slow first-time install of the driver app.'),
   },
   async ({ avdName, timeoutMs }) => {
+    // Cloud short-circuit: there is no local adb port to probe, and the
+    // cloud runner's launch script proves Maestro is installed by
+    // running two real registration recipes before touching the ready
+    // marker — so `runner_service_state === 'active' && adb sees a
+    // 'device'` is a tight equivalent to "Maestro driver healthy".
+    // Without this branch, the atom always returned `healthy: false`
+    // on cloud (the local `findRunningAvd` never finds a `cloud:i-...`
+    // serial), which made Phase 5 pre-flight spuriously fail.
+    if (client.useCloud) {
+      const diag = await client.diagnose();
+      const sawDevice = diag.adb_devices.some((d) => d.state === 'device');
+      const runnerActive = diag.runner_service_state === 'active';
+      const healthy = runnerActive && sawDevice;
+      const reason = healthy
+        ? undefined
+        : !runnerActive
+          ? `cloud runner ${diag.runner_service_state ?? 'unknown'} (expected active)`
+          : 'cloud emulator not visible to adb';
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            healthy,
+            reason,
+            adbPort: null,
+            serial: diag.adb_devices[0]?.serial,
+            backend: 'cloud',
+          }, null, 2),
+        }],
+      };
+    }
     // Look up the AVD's serial without booting it — caller must have a
     // running emulator. We deliberately don't call `ensureAvdRunning`
     // here so this atom stays a *probe* (no heal, no mutation) — that
