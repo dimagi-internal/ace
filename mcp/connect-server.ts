@@ -215,15 +215,26 @@ server.tool('connect_create_opportunity',
     organization_slug: z.string().describe('PM-side org running the program.'),
     program_id: z.string().describe('Program UUID — required (managed opportunity).'),
     name: z.string(),
-    short_description: z.string().max(255),
+    short_description: z.string().max(50).describe(
+      'Max 50 chars — DB-enforced. Connect\'s `Opportunity.short_description` ' +
+        'is `CharField(max_length=50)` but the DRF serializer is wrongly typed as ' +
+        '`max_length=255`. A 51–255 char payload validates clean at the DRF layer, ' +
+        'then Postgres raises `DataError: value too long for type character varying(50)` ' +
+        'inside `transaction.atomic()`. That `DataError` is NOT caught by ' +
+        'commcare-connect/program/api/views.py:102 (which only catches httpx errors), ' +
+        'so it bubbles up as a Django 500 with no actionable response body. Bisected ' +
+        'deterministically 2026-05-12 against `e62dcb06-...`: 49 chars → 201; 51 chars → 500. ' +
+        'Tightening here so we fail-loud in Zod before the network round-trip. ' +
+        'Upstream alignment: align serializer to model in commcare-connect (or vice versa).',
+    ),
     description: z.string().describe(
-      'Full opportunity description. Server has an upper bound around ~250 ' +
-        'chars before HTTP 500s start firing intermittently (verified 2026-05-06 ' +
-        'on leep-paint-collection — see jjackson/ace#106 finding 7). Default to ' +
-        'a one-paragraph headline (≤250 chars). Stash the long-form prose in the ' +
-        'opp\'s Drive summary doc and link to it from the headline. Once the ' +
-        'server-side fix lands and the cap can be raised safely, this note ' +
-        'should be removed.',
+      'Full opportunity description. Connect\'s `Opportunity.description` is `TextField()` — ' +
+        'no DB-enforced length. Earlier ACE versions claimed an intermittent ~250-char 500 ' +
+        'threshold (jjackson/ace#106 finding 7 from leep-paint-collection 2026-05-06); that ' +
+        'observation has not been reproduced under the bisect protocol that proved the ' +
+        'short_description 50-char trap. Treat any "description 500" as suspect-misattribution ' +
+        'and re-bisect before assuming a length cap. Long-form prose belongs in the opp\'s Drive ' +
+        'summary doc; the headline lives here.',
     ),
     target_organization_slug: z.string().describe(
       'LLO org slug — must already have an ACCEPTED program application. ' +
@@ -262,7 +273,9 @@ server.tool('connect_update_opportunity',
     organization_slug: z.string(),
     opportunity_id: z.string(),
     name: z.string().optional(),
-    short_description: z.string().max(255).optional(),
+    short_description: z.string().max(50).optional().describe(
+      'Max 50 chars — DB-enforced (see connect_create_opportunity for the full bisect note).',
+    ),
     description: z.string().optional(),
     end_date: z.string().optional(),
     is_test: z.boolean().optional(),

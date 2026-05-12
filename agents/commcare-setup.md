@@ -303,12 +303,29 @@ Invoke the `commcare-form-patch` skill (default `targets: auto`,
 
 Background: Nova's `compile_app` emits `<module xmlns="…connect…">` /
 `<assessment xmlns="…connect…">` wrapper elements in Learn-app form
-XML. Connect's `/opportunity/init/` *now* tolerates these (post-2026-04
-server fix), so Phase 3 succeeds. **But the AVD's CommCare runtime
-still chokes on them at Learn-app launch time** — the user sees a
-"Failed to start learning" banner with no diagnostic, which blocks
-Phase 5 (`app-screenshot-capture`). Tracking: jjackson/ace#115
-finding 1, voidcraft-labs/nova-plugin#7.
+XML. Connect's HQ-side sync (`opportunity/app_xml.py:extract_modules`
++ `opportunity/tasks.py:sync_learn_modules_and_deliver_units`) reads
+namespaced `<learn:module>` / `<learn:deliver>` elements via stdlib
+ElementTree on in-memory strings — **the in-form wrappers are benign
+for Phase 3 sync**, regardless of count. (Verified against
+commcare-connect main on 2026-05-12: the parser is pure in-memory
+iteration with no DB queries, HTTP fetches, or locks per-block.) An
+earlier comment here claimed "Connect's `/opportunity/init/` *now*
+tolerates these (post-2026-04 server fix), so Phase 3 succeeds" — that
+was wrong about provenance. There was no Connect server fix; prior
+Phase 3 successes happened because the payload's `short_description`
+happened to be ≤ 50 chars (the actual DB-enforced cap). The deterministic
+Phase 3 500 trap is a serializer/model schema mismatch on
+`short_description`, NOT in-form wrappers; bisected 2026-05-12 against
+`e62dcb06-...` (49 chars → 201, 51 chars → 500). See
+`mcp/connect-server.ts` `connect_create_opportunity.short_description`
+description for the full account.
+
+**But the AVD's CommCare runtime still chokes on the wrappers at Learn-app
+launch time** — the user sees a "Failed to start learning" banner with
+no diagnostic, which blocks Phase 5 (`app-screenshot-capture`). That is
+the load-bearing reason this skill exists; it has nothing to do with
+Phase 3. Tracking: jjackson/ace#115 finding 1, voidcraft-labs/nova-plugin#7.
 
 The skill is **idempotent + safe to run unconditionally**: `targets:
 auto` scans the released Learn CCZ for wrapper-bearing forms; if zero
