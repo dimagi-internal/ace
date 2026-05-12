@@ -133,6 +133,7 @@ LLO contact: <name from connect-setup/opportunity.md>
 
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-quick-reference.md`
 - `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-quick-reference_verdict.yaml`
+- `run_state.yaml.phases.qa-and-training.products.training.docs.quick_reference` — `{file_id, title: "Quick reference card", web_view_link}` typed handoff. Multi-writer block: apply via read-modify-write per `skills/synthetic-data-generate/SKILL.md § Step 6`. See `agents/qa-and-training.md § Products` for the full slot table.
 
 ## Known limitations
 
