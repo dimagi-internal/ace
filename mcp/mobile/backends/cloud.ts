@@ -38,6 +38,7 @@ import type {
   ApkInfo,
   RecipeRunResult,
   ScreenshotEntry,
+  StepResult,
   UiDumpResult,
   SnapshotResult,
 } from '../types.js';
@@ -82,11 +83,22 @@ interface CloudArtifact {
   content_type: string;
 }
 
+interface CloudStep {
+  index: number;
+  name: string;
+  status: string;            // 'pass' | 'fail' | 'skipped' | 'unknown' — narrowed at the boundary
+  screenshot?: string | null;
+  error?: string | null;
+  duration_ms?: number | null;
+}
+
 interface CloudRunResult {
   exit_code: number;
   stdout: string;
   stderr: string;
   artifacts: CloudArtifact[];
+  /** Optional — only present when ace-web parsed Maestro's commands JSON. */
+  steps?: CloudStep[];
 }
 
 interface RunningState {
@@ -144,8 +156,19 @@ export class CloudBackend {
     };
   }
 
-  async stopAvd(_name: string): Promise<void> {
-    await this.post<unknown>('/api/mobile/stop', {});
+  /**
+   * Stop the cloud instance.
+   *
+   * Since ace-web #309, `/api/mobile/stop` refuses (503 singleton-busy)
+   * if a recipe is in flight. Pass `force: true` to override — the
+   * explicit "abort hung recipe" path. Plain accidental stops from a
+   * concurrent skill now surface as a typed error instead of silently
+   * killing the holder's flow.
+   */
+  async stopAvd(_name: string, opts: { force?: boolean } = {}): Promise<void> {
+    const body: Record<string, unknown> = {};
+    if (opts.force) body.force = true;
+    await this.post<unknown>('/api/mobile/stop', body);
   }
 
   /**
@@ -184,14 +207,19 @@ export class CloudBackend {
         'Upload the APK to S3 first (presigned PUT URL flow) and pass the URL here.',
       );
     }
-    const result = await this.post<{ package_name: string; version: string }>(
-      '/api/mobile/install-apk',
-      { apk_url: apk },
-    );
+    const result = await this.post<{
+      package_name: string;
+      version: string;
+      version_code?: number;
+    }>('/api/mobile/install-apk', { apk_url: apk });
     return {
       packageId: result.package_name,
       versionName: result.version,
-      versionCode: 0, // not surfaced by ace-web's API; left zero for shape parity
+      // ace-web surfaces version_code since #307; defaults to 0 if the
+      // ace-web aapt parse didn't find it (shouldn't happen for valid
+      // APKs). Older ace-web versions don't return the field at all —
+      // we treat undefined the same as 0.
+      versionCode: result.version_code ?? 0,
       path: apk,
     };
   }
@@ -242,8 +270,14 @@ export class CloudBackend {
   // ── UI dump ─────────────────────────────────────────────────────
 
   async captureUiDump(_avdName: string): Promise<UiDumpResult> {
-    const result = await this.post<{ xml: string }>('/api/mobile/capture-ui-dump', {});
-    return { xml: result.xml, elements: [] };
+    const result = await this.post<{
+      xml: string;
+      elements?: Array<{ id?: string; text?: string; class?: string; bounds?: string }>;
+    }>('/api/mobile/capture-ui-dump', {});
+    // ace-web parses the XML server-side since #308. Older ace-web
+    // versions omit `elements`; surface an empty list in that case so
+    // the call site doesn't need to defend against undefined.
+    return { xml: result.xml, elements: result.elements ?? [] };
   }
 
   // ── Recipe execution ────────────────────────────────────────────
@@ -304,6 +338,7 @@ export class CloudBackend {
       stderr: result.stderr,
       screenshotsDir: screenshotDir,
       screenshots,
+      steps: result.steps ? result.steps.map(normalizeCloudStep) : undefined,
     };
   }
 
@@ -403,4 +438,43 @@ export class CloudBackend {
     await fs.writeFile(dest, buf);
     return buf.byteLength;
   }
+}
+
+
+// ── helpers ────────────────────────────────────────────────────────────
+
+
+const VALID_STEP_STATUSES: ReadonlySet<StepResult['status']> = new Set([
+  'pass',
+  'fail',
+  'skipped',
+  'unknown',
+]);
+
+
+/**
+ * Coerce a CloudStep (which has loose `string` status and `null`-able
+ * optionals) into the typed StepResult. Unknown statuses fall through
+ * to 'unknown' so a future ace-web version emitting a new value can't
+ * crash the cloud backend.
+ */
+function normalizeCloudStep(s: {
+  index: number;
+  name: string;
+  status: string;
+  screenshot?: string | null;
+  error?: string | null;
+  duration_ms?: number | null;
+}): StepResult {
+  const status: StepResult['status'] = VALID_STEP_STATUSES.has(s.status as StepResult['status'])
+    ? (s.status as StepResult['status'])
+    : 'unknown';
+  return {
+    index: s.index,
+    name: s.name,
+    status,
+    screenshot: s.screenshot ?? undefined,
+    error: s.error ?? undefined,
+    durationMs: s.duration_ms ?? undefined,
+  };
 }
