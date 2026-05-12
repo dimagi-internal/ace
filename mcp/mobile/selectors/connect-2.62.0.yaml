@@ -30,8 +30,8 @@
 #       (when type=both) `id: "org.commcare.dalvik:id/btn_start"  # text fallback: "Start"`
 
 apk_version: "2.62.0"
-captured_at: "2026-04-30"
-captured_against: "ACE_Pixel_API_34_PS (google_apis_playstore arm64)"
+captured_at: "2026-05-12"
+captured_against: "ACE_Pixel_API_34 (google_apis arm64) — Turmeric Run 20260511 2053"
 
 selectors:
   # ── App shell ────────────────────────────────────────────────────
@@ -144,12 +144,12 @@ selectors:
   opp-detail-start:
     type: id
     value: "org.commcare.dalvik:id/btn_start"
-    purpose: "Pre-claim 'Start' button on the opp-detail page. CONFIRMED 2026-04-30 against ACE_Pixel_API_34_PS turmeric opp: button text is just 'Start' (not 'Start Learning'). RE-CONFIRMED 2026-04-30 round 4: tap is REGISTERED by Maestro (status pass) but NO surface transition occurs — same blocker as WARN-FLW-START-LEARNING-RETRY-NEEDED. Multiple consecutive taps + sync produce no toast, no snackbar, no screen change. The btn_start tap silently no-ops at the FLW-client layer. This is NOT a recipe-calibration issue; needs CommCare-client-side investigation (logs, sync state, Learn-app materialization). Recipe layer is unblocked once this is fixed."
+    purpose: "Pre-claim 'Start' button on the opp-detail page. CONFIRMED 2026-04-30 against ACE_Pixel_API_34_PS turmeric opp: button text is just 'Start' (not 'Start Learning'). RE-VERIFIED 2026-05-12 against Turmeric Run 20260511 2053 opp on ACE_Pixel_API_34: selector + tap are CORRECT (Maestro tap registers, no client-side noop). Earlier 'silent FLW-client noop' diagnosis is REFUTED — logcat shows the tap fires POST /users/start_learn_app/ to Connect and gets back HTTP 500 ('Ooops!!! 500 / Server Error') via org.commcare.connect.network.NetworkUtils.logFailedResponse. The client correctly swallows the failed response, so the UI does not transition. Root cause is server-side: an uncaught CommCareHQAPIException in commcare-connect/users/views.py:107 `start_learn_app` view bubbles as Django 500 with no actionable body. Filed as CI-660 (https://dimagi.atlassian.net/browse/CI-660). Until that's fixed upstream, the post-claim surface (Start Learning, modules list, quiz, Start Delivering, Submit) cannot be reached for ANY test opp via the AVD, regardless of selector calibration."
 
   opp-learn-modules-list:
     type: id
     value: "org.commcare.dalvik:id/tv_learn_modules_list"
-    purpose: "Pre-claim Learn-Details preview TextView on the opp-detail page. CONFIRMED 2026-04-30 against ACE_Pixel_API_34_PS turmeric opp: renders as a single TextView with text like '1. Form walkthrough' (concatenated newline-joined modules), NOT a RecyclerView of tappable cards. Module cards live behind a separate post-claim Learn-app surface that this selector does NOT reach."
+    purpose: "Pre-claim Learn-Details preview TextView on the opp-detail page. CONFIRMED 2026-04-30 / RE-VERIFIED 2026-05-12 against Turmeric Run 20260511 2053: renders as a single TextView with newline-joined module names like '1. 1. Program Overview\\n\\n2. 2. Consent and FLW Safety\\n...' (concatenated), NOT a RecyclerView of tappable cards. Module cards live behind a separate post-claim Learn-app surface that this selector does NOT reach (and which is currently unreachable due to the start_learn_app 500; see opp-detail-start)."
 
   # ── Photo capture ──────────────────────────────────────────────
   camera-shutter-button:
@@ -178,52 +178,78 @@ selectors:
     type: text
     value: "Start Learning"
     unverified: true
-    purpose: "Start Learning button on the post-claim opp-detail. NOT YET REACHED in 2026-04-30 calibration — the test user's opp click on btn_start did not visibly transition the surface in the available session window, so the post-claim surface was not captured live. Best-guess label retained until a successful claim run reaches it."
+    purpose: "Start Learning button on the post-claim opp-detail. NOT YET REACHED 2026-04-30 nor 2026-05-12. Both calibration attempts blocked upstream of this surface by a server-side HTTP 500 from /users/start_learn_app/ when btn_start is tapped (see opp-detail-start). Best-guess label retained until Connect-server start_learn_app is fixed and a successful claim reaches this surface."
 
   opp-detail-start-delivering:
     type: text
     value: "Start Delivering"
     unverified: true
-    purpose: "Start Delivering button on the post-Learn-completion opp-detail. NOT YET REACHED 2026-04-30. Best-guess label retained until a Learn-app assessment-passed run reaches it."
+    purpose: "Start Delivering button on the post-Learn-completion opp-detail. NOT YET REACHED 2026-04-30 nor 2026-05-12 (blocked by start_learn_app 500 upstream). Best-guess label retained until a Learn-app assessment-passed run reaches it."
 
   learn-module-card:
     type: text
     value: "${MODULE_NAME}"  # caller substitutes
     unverified: true
-    purpose: "A single module entry in the Learn-app module list, anchored by its visible label. Composer substitutes ${MODULE_NAME} at recipe-resolution time."
+    purpose: "A single module entry in the Learn-app module list, anchored by its visible label. NOT YET REACHED 2026-05-12 (blocked by start_learn_app 500 upstream). Composer substitutes ${MODULE_NAME} at recipe-resolution time. Pre-claim teaser of module labels confirms the values used in PDD-driven modules render verbatim (e.g. '1. Program Overview', '2. Consent and FLW Safety') — see opp-learn-modules-list, which is the pre-claim concatenated TextView."
 
   form-question-next:
     type: text
     value: "Next"
     unverified: true
-    purpose: "Generic Next button advancing through form questions"
+    purpose: "Generic Next button advancing through form questions (Learn-app or Deliver-app). NOT YET REACHED 2026-05-12 — Learn-app forms unreachable due to upstream 500."
 
   form-question-finish:
     type: text
     value: "Finish"
     unverified: true
-    purpose: "Generic Finish button at the end of a form / module"
+    purpose: "Generic Finish button at the end of a form / module. NOT YET REACHED 2026-05-12 — Learn-app forms unreachable due to upstream 500."
 
   form-question-back:
     type: text
     value: "Back"
     unverified: true
-    purpose: "Generic Back button"
+    purpose: "Generic Back button. NOT YET REACHED 2026-05-12 — Learn-app forms unreachable due to upstream 500."
 
   form-submit:
     type: text
     value: "Submit"
     unverified: true
-    purpose: "Generic Submit button on the final form screen (Deliver app)"
+    purpose: "Generic Submit button on the final form screen (Deliver app). NOT YET REACHED 2026-05-12 — Deliver app unreachable until Learn-app completes (blocked by upstream 500). Best-guess label retained."
 
   assessment-result-passed:
     type: text
     value: "Passed"
     unverified: true
-    purpose: "Result indicator after the Learn-app assessment scores ≥ passing threshold"
+    purpose: "Result indicator after the Learn-app assessment scores ≥ passing threshold. NOT YET REACHED 2026-05-12 — assessment surface unreachable due to upstream 500."
 
   assessment-result-failed:
     type: text
     value: "Try Again"
     unverified: true
-    purpose: "Retake button on a failed assessment screen"
+    purpose: "Retake button on a failed assessment screen. NOT YET REACHED 2026-05-12 — assessment surface unreachable due to upstream 500."
+
+  # ── J1-smoke-required selectors not yet reachable (added 2026-05-12) ──
+  # J1.yaml references these but they live on Deliver-app surfaces which
+  # are downstream of the upstream start_learn_app 500. Best-guess values
+  # based on CommCare 2.62.0 standard Deliver form chrome; flagged
+  # unverified until a live Deliver run reaches them. NOTE: J1 ALSO
+  # depends on `form-question-next` and `form-submit` above, which share
+  # the same blocker.
+
+  deliver-start-button:
+    type: text
+    value: "Start Delivering"
+    unverified: true
+    purpose: "The button that launches the Deliver app from the post-Learn-completion opp-detail. Best-guess: same label/surface as `opp-detail-start-delivering` (kept as a J1-recipe-named alias for the Deliver-side entry). NOT YET REACHED 2026-05-12 — blocked by upstream 500. When verified, this row may collapse into a pure alias of opp-detail-start-delivering."
+
+  form-question-input:
+    type: id
+    value: "org.odk.collect.android:id/answer_text"
+    unverified: true
+    purpose: "Free-text answer EditText in a CommCare/ODK form question. Best-guess from ODK Collect 2.62.0 chrome (CommCare embeds ODK). Used 3× in J1 (Bidiani Market name, '200' weight, 'Northern region farms' origin). NOT YET REACHED 2026-05-12 — Deliver app unreachable due to upstream 500. Verify against the live form question once reachable; common alternates: `org.commcare.dalvik:id/answer_text`, plain `android.widget.EditText` matched by parent prompt."
+
+  form-photo-capture:
+    type: id
+    value: "org.commcare.dalvik:id/take_photo_button"
+    unverified: true
+    purpose: "Take Photo button on a CommCare photo-capture question (the one that opens the camera; the captured 2026-04-30 `camera-take-photo` selector targets the same id). NOT YET REACHED 2026-05-12 — Deliver app unreachable due to upstream 500. If a separate question-prompt EditText surfaces before the take_photo_button, this row may need to point at that prompt instead; verify when reachable."
