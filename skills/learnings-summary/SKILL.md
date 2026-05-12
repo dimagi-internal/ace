@@ -53,9 +53,19 @@ Synthesize all information from the completed opportunity into actionable learni
        products:
          learnings:
            summary_file_id: <Drive fileId of learnings-summary.md>
+           summary_web_view_link: <webViewLink returned by Step 5's drive_create_file for learnings-summary.md>
            new_pdd_file_id: <Drive fileId of learnings-summary_new-pdd.md, or null when iteration not warranted>
+           new_pdd_web_view_link: <webViewLink for the new-pdd doc, or null>
            iteration_warranted: <true | false>
    ```
+
+   Both `*_web_view_link` fields are populated from the `webViewLink`
+   returned by Step 5's `drive_create_file` calls. The Drive URL shape
+   for Google Docs (`/document/d/<id>/edit`) differs from the generic
+   blob preview URL (`/file/d/<id>/view`), and there's no single
+   construction rule that works for every file type — so the producer
+   skill (which has the live webViewLink in hand) records it
+   directly, and consumers don't have to guess.
 
    Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
    `merge: 'two-level'`. Sole writer of `products.learnings`.
