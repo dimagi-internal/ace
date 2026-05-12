@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.173 — 2026-05-11
+
+**Catchup merge: lands PRs #235–#240 into main as one merge commit.**
+
+PRs #235–#240 were stacked (each base = the previous PR's branch). Auto-merge processed each correctly into its parent stacked branch, but only PR #234 (base=main) actually reached `main`. The 6 follow-up commits accumulated on `emdash/products-closeout` and never propagated. This merge re-targets that end-of-chain branch at `main` so the full state-consolidation completion lands as one merge commit.
+
+VERSION bumped past both the closeout chain's tip (0.13.172) and main's mid-merge state (0.13.167, from PR #241's mobile work) to 0.13.173 to give a clean unique tip.
+
+Code-wise this is identical to the cumulative content of PRs #235–#240 (all of which are reviewed and approved); no new edits.
+
 ## 0.13.172 — 2026-05-11
 
 **Phase 9 state-consolidation: three closeout skills write `phases.closeout.products.{cycle_grade, opp_eval, learnings}`.**

@@ -208,7 +208,7 @@ If no mode is passed, default to `--quick`.
           opp_eval:
             mode: <quick | deep | monitor>
             overall_score: <0-100 weighted score from Step 7>
-            verdict: <pass | mixed | fail>
+            verdict: <pass | warn | partial | fail | incomplete>
             scorecard_file_id: <Drive fileId of opp-eval_scorecard-<mode>.md>
             verdict_file_id: <Drive fileId of opp-eval_verdict-<mode>.yaml — null on --quick>
             trend_file_id: <Drive fileId of opp-eval_trend.md — null outside --monitor>
