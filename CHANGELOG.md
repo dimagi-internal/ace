@@ -5,6 +5,24 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.172 — 2026-05-11
+
+**Phase 9 state-consolidation: three closeout skills write `phases.closeout.products.{cycle_grade, opp_eval, learnings}`.**
+
+Three independent sub-blocks, each with a sole writer (no multi-writer fan-in — different skills, different blocks). Closes out the consolidation sweep covering every ACE phase.
+
+| Skill | Slot | Headline fields |
+|---|---|---|
+| `skill:cycle-grade` | `products.cycle_grade` | `letter`, `overall_score`, `headline`, `archetype`, `scorecard_file_id` |
+| `skill:opp-eval` | `products.opp_eval` | `mode`, `overall_score`, `verdict`, `scorecard_file_id`, `verdict_file_id`, `trend_file_id` |
+| `skill:learnings-summary` | `products.learnings` | `summary_file_id`, `new_pdd_file_id`, `iteration_warranted` |
+
+Each skill adds a `5.5` / `15` / `6` step after its existing markdown-write to land the typed handoff. Two-level merge.
+
+ace-web's per-run summary page is the immediate beneficiary: the hero status chip can flip from a binary "closed" detection (existence of `cycle-grade.md`) to an actual grade letter + headline once these land. Same for the opp-eval score chip and the learnings/new-PDD deep-links. Follow-up PR in ace-web.
+
+All 915 unit tests pass.
+
 ## 0.13.171 — 2026-05-11
 
 **Phase 8 state-consolidation: `skill:llo-launch` writes `phases.execution-management.products.launch`.**

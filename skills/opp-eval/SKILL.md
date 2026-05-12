@@ -196,6 +196,31 @@ If no mode is passed, default to `--quick`.
     number of verdicts aggregated. One row per run so drift is visible
     at a glance.
 
+15. **Write `phases.closeout.products.opp_eval`** to the current run's
+    `run_state.yaml` so downstream readers (ace-web summary in
+    particular) get the headline score without re-parsing the
+    scorecard markdown.
+
+    ```yaml
+    phases:
+      closeout:
+        products:
+          opp_eval:
+            mode: <quick | deep | monitor>
+            overall_score: <0-100 weighted score from Step 7>
+            verdict: <pass | mixed | fail>
+            scorecard_file_id: <Drive fileId of opp-eval_scorecard-<mode>.md>
+            verdict_file_id: <Drive fileId of opp-eval_verdict-<mode>.yaml — null on --quick>
+            trend_file_id: <Drive fileId of opp-eval_trend.md — null outside --monitor>
+            evaluated_at: <ISO timestamp>
+    ```
+
+    Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
+    `merge: 'two-level'`. Sole writer of `products.opp_eval`. Each
+    re-run replaces the block in full — this is intended; consumers
+    read the latest scorecard, not the history (the trend file
+    captures history).
+
 ## LLM-as-Judge Rubric
 
 opp-eval's rubric is **aggregation rules**, not a per-response grader.
