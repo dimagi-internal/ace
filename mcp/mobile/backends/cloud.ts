@@ -390,7 +390,14 @@ export class CloudBackend {
     }
 
     const text = await response.text();
-    let payload: { data?: T; error?: { code: string; message: string } } = {};
+    let payload: {
+      data?: T;
+      error?: {
+        code: string;
+        message: string;
+        diagnostics?: Record<string, unknown>;
+      };
+    } = {};
     if (text) {
       try {
         payload = JSON.parse(text);
@@ -406,13 +413,27 @@ export class CloudBackend {
 
     if (!response.ok || payload.error) {
       const code = payload.error?.code ?? `HTTP_${response.status}`;
-      const message = payload.error?.message ?? `${url} returned ${response.status}`;
+      const baseMessage =
+        payload.error?.message ?? `${url} returned ${response.status}`;
+      const diagnostics = payload.error?.diagnostics;
+      // Bake the diagnostic snapshot into the error message — MCP
+      // surfaces only `message` in the user-visible tool_result, so
+      // putting it there avoids a second round-trip to /diagnose
+      // when the caller is a Claude session reading the tool_result.
+      const message = diagnostics
+        ? `${baseMessage}\n\nIn-VM diagnostics:\n${formatDiagnostics(diagnostics)}`
+        : baseMessage;
       // Map a few well-known codes to typed errors so skill-level
       // retry/abort logic works without string-matching.
       if (code === 'boot-timeout') {
         throw new AvdBootError('cloud', message);
       }
-      throw new MobileError(`CLOUD_${code.toUpperCase().replace(/-/g, '_')}`, message);
+      throw new MobileError(
+        `CLOUD_${code.toUpperCase().replace(/-/g, '_')}`,
+        message,
+        undefined,
+        diagnostics,
+      );
     }
 
     return payload.data as T;
@@ -442,6 +463,53 @@ export class CloudBackend {
 
 
 // ── helpers ────────────────────────────────────────────────────────────
+
+
+/**
+ * Format the in-VM diagnostic snapshot that ace-web attaches to its
+ * /api/mobile/{ensure-running,diagnose} responses into a compact,
+ * human-readable block suitable for an MCP tool_result message.
+ *
+ * Truncates the runner/emulator log tails so a 30-line tail doesn't
+ * push the tool_result over the agent's line-wrap threshold; the
+ * Python side already limits them to ~30 lines so a soft 1.5 KB cap
+ * is fine.
+ */
+function formatDiagnostics(diag: Record<string, unknown>): string {
+  const lines: string[] = [];
+  const adbDevices = diag.adb_devices as Array<{ serial: string; state: string }> | undefined;
+  const visible = diag.adb_visible_count as number | undefined;
+  lines.push(
+    `  adb devices: ${visible ?? 0} in 'device' state` +
+      (adbDevices?.length
+        ? ` (${adbDevices.map((d) => `${d.serial}=${d.state}`).join(', ')})`
+        : ' (none)'),
+  );
+  const pid = diag.emulator_pid as number | null | undefined;
+  lines.push(
+    `  emulator process: ${pid ? `pid ${pid}` : 'not running'}`,
+  );
+  const runnerState = diag.runner_service_state as string | undefined;
+  lines.push(`  ace-mobile-runner.service: ${runnerState ?? 'unknown'}`);
+  const markerPresent = diag.marker_present as boolean | undefined;
+  const markerAge = diag.marker_age_seconds as number | null | undefined;
+  lines.push(
+    `  ready marker: ${
+      markerPresent ? `present (age ${markerAge ?? '?'}s)` : 'absent'
+    }`,
+  );
+  const runnerLog = (diag.runner_log_tail as string | undefined)?.trim();
+  if (runnerLog) {
+    lines.push('  --- runner.log tail ---');
+    lines.push(...runnerLog.split('\n').map((l) => `    ${l}`));
+  }
+  const emuLog = (diag.emulator_log_tail as string | undefined)?.trim();
+  if (emuLog) {
+    lines.push('  --- emulator.log tail ---');
+    lines.push(...emuLog.split('\n').map((l) => `    ${l}`));
+  }
+  return lines.join('\n');
+}
 
 
 const VALID_STEP_STATUSES: ReadonlySet<StepResult['status']> = new Set([

@@ -3,6 +3,7 @@ export class MobileError extends Error {
     public readonly code: string,
     message: string,
     public readonly remediation?: string,
+    public readonly diagnostics?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'MobileError';
