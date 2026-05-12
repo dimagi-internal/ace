@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.171 — 2026-05-11
+
+**Phase 8 state-consolidation: `skill:llo-launch` writes `phases.execution-management.products.launch`.**
+
+Adds Step 10 to llo-launch: after writing the launch record markdown, write a typed `{went_live_at, archetype, llo_org_slug, llo_org_display_name, record_file_id}` block to `run_state.yaml`. Sole writer, two-level merge.
+
+Downstream readers (ace-web's per-run summary in particular, plus `cycle-grade` and the closeout phase) get the go-live identity without parsing the launch-record markdown.
+
+All 915 unit tests pass.
+
 ## 0.13.170 — 2026-05-11
 
 **Phase 5 state-consolidation: the six training producers write a consolidated `phases.qa-and-training.products.training` block.**
