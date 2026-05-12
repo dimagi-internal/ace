@@ -219,6 +219,17 @@ export class MobileClient {
     backupCode: string;
     name: string;
   }): Promise<TestUserRegistrationResult> {
+    if (this.useCloud) {
+      // ace-web's cold-boot path (`ace-emulator-launch`) already registers
+      // the +7426 demo user using credentials from AWS Secrets Manager
+      // (`ace-mobile-test-user-creds`) before `/run/ace-mobile/ready` is
+      // touched. So when routed through cloud, this atom is a no-op that
+      // attests the pre-baked registration. The caller's `args.phone` is
+      // expected to match the secret's phone; mismatched callers should
+      // not invoke this atom on cloud.
+      logInfo(`register_test_user: cloud backend — no-op (AMI cold-boot path registers ${args.phone})`);
+      return { alreadyRegistered: true, phone: args.phone };
+    }
     const avd = await this.avd.ensureAvdRunning(args.avdName);
     const adbPort = AvdBackend.adbPortFromSerial(avd.serial) ?? undefined;
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-mobile-reg-'));

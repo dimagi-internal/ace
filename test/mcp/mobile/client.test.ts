@@ -52,6 +52,29 @@ describe('MobileClient.registerTestUser', () => {
     });
     expect(r.alreadyRegistered).toBe(true);
   });
+
+  it('returns alreadyRegistered=true without invoking AVD/maestro on cloud backend', async () => {
+    const prev = process.env.ACE_MOBILE_BACKEND;
+    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    try {
+      const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'pass', otp: '123456' });
+      // Stub the cloud backend so the client constructor doesn't try to hit ace-web env.
+      const cloud = {} as any;
+      const client = new MobileClient({ avd, maestro, cloud, staticRecipesDir: '/static' });
+
+      const r = await client.registerTestUser({
+        avdName: 'AVD', phone: '+74260000001', phoneLocal: '4260000001', countryCode: '+7',
+        pin: '111111', backupCode: '222222', name: 'ACE Test',
+      });
+      expect(r.alreadyRegistered).toBe(true);
+      expect(r.phone).toBe('+74260000001');
+      expect(avd.ensureAvdRunning).not.toHaveBeenCalled();
+      expect(maestro.runRecipe).not.toHaveBeenCalled();
+    } finally {
+      if (prev === undefined) delete process.env.ACE_MOBILE_BACKEND;
+      else process.env.ACE_MOBILE_BACKEND = prev;
+    }
+  });
 });
 
 describe('MobileClient.assertMaestroDriverHealthy', () => {
