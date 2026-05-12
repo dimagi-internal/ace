@@ -265,6 +265,76 @@ server.tool(
   }),
 );
 
+// ── Cloud-only diagnostics + admin atoms ─────────────────────────────
+//
+// These three atoms target the ace-web cloud backend specifically.
+// They throw `MobileError(CLOUD_ONLY_OPERATION)` against the local
+// AVD backend — skills that need them should gate on the cloud
+// toggle, OR catch the error and skip.
+
+server.tool(
+  'mobile_diagnose',
+  {},
+  async () => ({
+    content: [
+      { type: 'text', text: JSON.stringify(await client.diagnose(), null, 2) },
+    ],
+  }),
+);
+
+server.tool(
+  'mobile_restart_runner',
+  {
+    waitForReady: z
+      .boolean()
+      .optional()
+      .describe(
+        'Block until the runner re-sets the ready marker (default true). False is fire-and-forget — returns a partial Diagnostics snapshot immediately.',
+      ),
+  },
+  async ({ waitForReady }) => ({
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify(
+          await client.restartRunner({ waitForReady }),
+          null,
+          2,
+        ),
+      },
+    ],
+  }),
+);
+
+server.tool(
+  'mobile_patch_launch_script',
+  {
+    scriptBody: z
+      .string()
+      .describe(
+        "Full new body of /usr/local/bin/ace-emulator-launch. Must start with '#!/bin/bash'. Server enforces a 64KB cap.",
+      ),
+    restartRunner: z
+      .boolean()
+      .optional()
+      .describe(
+        'After writing the new script, restart ace-mobile-runner.service so the next cold-boot exercises it (default true).',
+      ),
+  },
+  async ({ scriptBody, restartRunner }) => ({
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify(
+          await client.patchLaunchScript({ scriptBody, restartRunner }),
+          null,
+          2,
+        ),
+      },
+    ],
+  }),
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);

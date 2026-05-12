@@ -388,3 +388,203 @@ describe('CloudBackend.uninstallApk', () => {
     expect(err.code).toBe('CLOUD_UNSUPPORTED');
   });
 });
+
+describe('CloudBackend.diagnose', () => {
+  it('GETs /api/mobile/diagnose and returns the Diagnostics payload', async () => {
+    const diagPayload = {
+      ssm_ok: true,
+      ssm_error: null,
+      adb_devices: [{ serial: 'emulator-5554', state: 'device' }],
+      adb_visible_count: 1,
+      emulator_pid: 1234,
+      emulator_cmdline: '/opt/android-sdk/emulator/emulator -avd ACE',
+      runner_service_state: 'active',
+      marker_present: true,
+      marker_age_seconds: 42,
+      runner_log_tail: '...',
+      emulator_log_tail: '...',
+    };
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, envelope(diagPayload)));
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+
+    const d = await cb.diagnose();
+
+    expect(d.adb_visible_count).toBe(1);
+    expect(d.runner_service_state).toBe('active');
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe(`${BASE}/api/mobile/diagnose`);
+    expect(init.method).toBe('GET');
+  });
+
+  it('returns ssm_ok=false when the EC2 instance is stopped', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, envelope({
+        ssm_ok: false,
+        ssm_error: "instance i-xyz is 'stopped'",
+        adb_devices: [],
+        emulator_pid: null,
+        emulator_cmdline: null,
+        runner_service_state: null,
+        marker_present: false,
+        marker_age_seconds: null,
+        runner_log_tail: '',
+        emulator_log_tail: '',
+      })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const d = await cb.diagnose();
+    expect(d.ssm_ok).toBe(false);
+    expect(d.ssm_error).toContain("'stopped'");
+  });
+});
+
+describe('CloudBackend.restartRunner', () => {
+  it("POSTs /api/mobile/restart-runner with wait_for_ready=true by default", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, envelope({
+        ssm_ok: true, ssm_error: null,
+        adb_devices: [{ serial: 'emulator-5554', state: 'device' }],
+        adb_visible_count: 1,
+        emulator_pid: 9999, emulator_cmdline: null,
+        runner_service_state: 'active',
+        marker_present: true, marker_age_seconds: 5,
+        runner_log_tail: '', emulator_log_tail: '',
+      })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const d = await cb.restartRunner();
+    expect(d.marker_age_seconds).toBe(5);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe(`${BASE}/api/mobile/restart-runner`);
+    expect(init.method).toBe('POST');
+    // Default omits wait_for_ready field — server applies default true.
+    expect(JSON.parse(init.body as string)).toEqual({});
+  });
+
+  it('forwards wait_for_ready=false when set', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, envelope({
+        ssm_ok: true, ssm_error: null,
+        adb_devices: [], adb_visible_count: 0,
+        emulator_pid: null, emulator_cmdline: null,
+        runner_service_state: 'activating',
+        marker_present: false, marker_age_seconds: null,
+        runner_log_tail: '', emulator_log_tail: '',
+      })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    await cb.restartRunner({ waitForReady: false });
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(JSON.parse(init.body as string)).toEqual({ wait_for_ready: false });
+  });
+});
+
+describe('CloudBackend.patchLaunchScript', () => {
+  it('POSTs script body + restart_runner=true by default', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, envelope({
+        sha256: 'abc123', bytes_written: 9876,
+        restarted_runner: true, restart_log: null,
+      })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const r = await cb.patchLaunchScript({ scriptBody: '#!/bin/bash\necho hi\n' });
+    expect(r.sha256).toBe('abc123');
+    expect(r.restarted_runner).toBe(true);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe(`${BASE}/api/mobile/admin/patch-launch-script`);
+    expect(JSON.parse(init.body as string)).toEqual({
+      script_body: '#!/bin/bash\necho hi\n',
+      restart_runner: true,
+    });
+  });
+
+  it('forwards restart_runner=false when set', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, envelope({
+        sha256: 'def', bytes_written: 10,
+        restarted_runner: false, restart_log: null,
+      })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    await cb.patchLaunchScript({ scriptBody: '#!/bin/bash\n', restartRunner: false });
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(JSON.parse(init.body as string).restart_runner).toBe(false);
+  });
+});
+
+describe('CloudBackend.runRecipe auto-diagnose on failure', () => {
+  it('attaches a Diagnostics snapshot on failure so callers see in-VM state', async () => {
+    const fetchImpl = vi.fn()
+      // run-recipe response (failure)
+      .mockResolvedValueOnce(jsonResponse(200, envelope({
+        exit_code: 1,
+        stdout: '...',
+        stderr: 'Maestro: no devices/emulators found',
+        artifacts: [],
+      })))
+      // diagnose response (auto-probed after the failure)
+      .mockResolvedValueOnce(jsonResponse(200, envelope({
+        ssm_ok: true, ssm_error: null,
+        adb_devices: [], adb_visible_count: 0,
+        emulator_pid: null, emulator_cmdline: null,
+        runner_service_state: 'failed',
+        marker_present: false, marker_age_seconds: null,
+        runner_log_tail: 'startup failed', emulator_log_tail: 'Segfault',
+      })));
+
+    // Mock fs.readFile for the recipe body without actually touching disk.
+    const recipePath = path.join(os.tmpdir(), `recipe-${Date.now()}.yaml`);
+    await fs.writeFile(recipePath, '# minimal recipe\n');
+    const screenshotDir = path.join(os.tmpdir(), `shots-${Date.now()}`);
+
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const r = await cb.runRecipe(recipePath, {}, screenshotDir);
+
+    expect(r.status).toBe('fail');
+    expect(r.diagnostics).toBeDefined();
+    expect((r.diagnostics as Record<string, unknown>).adb_visible_count).toBe(0);
+    expect((r.diagnostics as Record<string, unknown>).runner_service_state).toBe('failed');
+    // diagnose was called exactly once (the auto-probe after failure).
+    expect(fetchImpl.mock.calls.length).toBe(2);
+    expect((fetchImpl.mock.calls[1] as [string, RequestInit])[0]).toBe(
+      `${BASE}/api/mobile/diagnose`,
+    );
+  });
+
+  it('does not call diagnose on pass — kept off the happy path', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, envelope({
+        exit_code: 0, stdout: '', stderr: '', artifacts: [],
+      })),
+    );
+    const recipePath = path.join(os.tmpdir(), `recipe-${Date.now()}.yaml`);
+    await fs.writeFile(recipePath, '# minimal recipe\n');
+    const screenshotDir = path.join(os.tmpdir(), `shots-${Date.now()}-pass`);
+
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const r = await cb.runRecipe(recipePath, {}, screenshotDir);
+
+    expect(r.status).toBe('pass');
+    expect(r.diagnostics).toBeUndefined();
+    expect(fetchImpl.mock.calls.length).toBe(1);
+  });
+
+  it('swallows diagnose probe errors — does not mask the original recipe failure', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, envelope({
+        exit_code: 1, stdout: '', stderr: '', artifacts: [],
+      })))
+      .mockRejectedValueOnce(new Error('SSM probe blew up'));
+
+    const recipePath = path.join(os.tmpdir(), `recipe-${Date.now()}-swallow.yaml`);
+    await fs.writeFile(recipePath, '# minimal recipe\n');
+    const screenshotDir = path.join(os.tmpdir(), `shots-${Date.now()}-swallow`);
+
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const r = await cb.runRecipe(recipePath, {}, screenshotDir);
+
+    expect(r.status).toBe('fail');
+    expect(r.diagnostics).toBeUndefined();
+  });
+});

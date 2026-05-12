@@ -108,6 +108,38 @@ interface RunningState {
   started_at: string;
 }
 
+/**
+ * Server-side snapshot of the in-VM runtime returned by
+ * `GET /api/mobile/diagnose` and embedded in error envelopes from
+ * `ensure-running` 503s. Mirror of ace-web's `Diagnostics` dataclass
+ * (apps/mobile/controller.py).
+ */
+export interface CloudAdbDevice {
+  serial: string;
+  state: string; // 'device' | 'offline' | 'unauthorized' | ...
+}
+
+export interface CloudDiagnostics {
+  ssm_ok: boolean;
+  ssm_error: string | null;
+  adb_devices: CloudAdbDevice[];
+  adb_visible_count?: number;
+  emulator_pid: number | null;
+  emulator_cmdline: string | null;
+  runner_service_state: string | null;
+  marker_present: boolean;
+  marker_age_seconds: number | null;
+  runner_log_tail: string;
+  emulator_log_tail: string;
+}
+
+export interface CloudPatchLaunchScriptResult {
+  sha256: string;
+  bytes_written: number;
+  restarted_runner: boolean;
+  restart_log: string | null;
+}
+
 export class CloudBackend {
   private readonly baseUrl: string;
   private readonly token: string;
@@ -184,6 +216,62 @@ export class CloudBackend {
 
   async listStates(): Promise<CloudStatesCatalog> {
     return this.get<CloudStatesCatalog>('/api/mobile/states');
+  }
+
+  /**
+   * Read-only snapshot of the in-VM emulator state via
+   * `GET /api/mobile/diagnose`. Doesn't start the EC2 instance,
+   * doesn't run recipes — pure observation. Use when a previous call
+   * looks suspicious ("ensure_running returned booted but my recipe
+   * fails") and you want the actual state without committing to a
+   * start.
+   *
+   * Returns the same `CloudDiagnostics` shape that
+   * `ensure-running` attaches to its success / failure envelope.
+   * When the EC2 instance isn't running, `ssm_ok=false` and
+   * `ssm_error` names the state.
+   */
+  async diagnose(): Promise<CloudDiagnostics> {
+    return this.get<CloudDiagnostics>('/api/mobile/diagnose');
+  }
+
+  /**
+   * Cleanly restart the in-VM `ace-mobile-runner` systemd unit via
+   * `POST /api/mobile/restart-runner`. Public counterpart to the
+   * private recovery path inside `ensure_running`. Use when the
+   * caller wants a fresh cold-boot without the state-switching side-
+   * effects of `select_state` and without the marker-stale gate of
+   * `ensure_running`.
+   *
+   * `waitForReady` defaults true; pass false for fire-and-forget
+   * (returns a partial Diagnostics snapshot immediately).
+   */
+  async restartRunner(opts: { waitForReady?: boolean } = {}): Promise<CloudDiagnostics> {
+    const body: Record<string, unknown> = {};
+    if (opts.waitForReady === false) body.wait_for_ready = false;
+    return this.post<CloudDiagnostics>('/api/mobile/restart-runner', body);
+  }
+
+  /**
+   * Hot-patch the in-VM `/usr/local/bin/ace-emulator-launch` via
+   * `POST /api/mobile/admin/patch-launch-script`. The same fix MUST
+   * also land in `infra/mobile-ami/files/ace-emulator-launch` on the
+   * ace-web repo so the next AMI rebake picks it up — without that
+   * the live fix evaporates on next AMI roll.
+   *
+   * Server enforces a `#!/bin/bash` shebang + 64KB size cap.
+   */
+  async patchLaunchScript(opts: {
+    scriptBody: string;
+    restartRunner?: boolean;
+  }): Promise<CloudPatchLaunchScriptResult> {
+    return this.post<CloudPatchLaunchScriptResult>(
+      '/api/mobile/admin/patch-launch-script',
+      {
+        script_body: opts.scriptBody,
+        restart_runner: opts.restartRunner ?? true,
+      },
+    );
   }
 
   // ── APK ─────────────────────────────────────────────────────────
@@ -331,14 +419,33 @@ export class CloudBackend {
       }
     }
 
+    const status: RecipeRunResult['status'] =
+      result.exit_code === 0 ? 'pass' : 'fail';
+
+    // On failure, collect an in-VM diagnostic snapshot so callers can
+    // see WHY the recipe blew up — was the emulator still alive? did
+    // pm crash? did the marker disappear? Without this, every fail
+    // burns an operator round to `/diagnose` separately. Best-effort:
+    // a diagnose probe failure must NOT mask the original recipe
+    // result, so we swallow errors and leave the field undefined.
+    let diagnostics: Record<string, unknown> | undefined;
+    if (status === 'fail') {
+      try {
+        diagnostics = await this.diagnose() as unknown as Record<string, unknown>;
+      } catch {
+        // diagnose itself failed (SSM down, etc.) — leave undefined.
+      }
+    }
+
     return {
-      status: result.exit_code === 0 ? 'pass' : 'fail',
+      status,
       exitCode: result.exit_code,
       stdout: result.stdout,
       stderr: result.stderr,
       screenshotsDir: screenshotDir,
       screenshots,
       steps: result.steps ? result.steps.map(normalizeCloudStep) : undefined,
+      diagnostics,
     };
   }
 
