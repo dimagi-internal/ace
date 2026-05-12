@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.174 — 2026-05-11
+
+**`skill:learnings-summary` also writes `summary_web_view_link` + `new_pdd_web_view_link` into `products.learnings`.**
+
+Tiny follow-on to 0.13.172 (which introduced `products.learnings` with only the file_ids). Drive's URL shape differs by file type — Google Docs use `/document/d/<id>/edit`, blob files use `/file/d/<id>/view`. There's no construction rule that works for every kind, and the producer skill is the one place that has the live `webViewLink` in hand. Recording it directly into state means consumers (ace-web summary page in particular) deep-link reliably without having to guess.
+
+Additive change — `summary_file_id` + `new_pdd_file_id` still written. ace-web's consumer prefers `*_web_view_link` when present, falls back to constructing a Drive URL from `*_file_id` for older runs.
+
+All 916 tests pass.
+
 ## 0.13.173 — 2026-05-11
 
 **Catchup merge: lands PRs #235–#240 into main as one merge commit.**
