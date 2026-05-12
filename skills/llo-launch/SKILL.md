@@ -161,6 +161,26 @@ Activate the opportunity and notify LLOs that they are live.
      number + next-stage kickoff window for multi-stage)
    - Any outstanding non-blocking issues
 
+10. **Write `phases.execution-management.products.launch`** to the
+    current run's `run_state.yaml` so downstream readers (ace-web's
+    per-run summary, `cycle-grade`, the closeout phase) get the
+    go-live identity without parsing the launch-record markdown.
+
+    ```yaml
+    phases:
+      execution-management:
+        products:
+          launch:
+            went_live_at: <ISO timestamp from Step 6 activation>
+            archetype: <atomic-visit | focus-group | multi-stage>
+            llo_org_slug: <from products.selected_llo.org_slug>
+            llo_org_display_name: <from products.selected_llo.org_display_name>
+            record_file_id: <Drive fileId of llo-launch_record.md>
+    ```
+
+    Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
+    `merge: 'two-level'`. Sole writer of `products.launch`.
+
 <!-- 0.13.116: gate-brief write step + ## Gate Brief section removed.
 The Phase 8 "Before llo-launch" Pause Point is unconditional in all
 modes (always pauses — the highest-stakes activation in the pipeline).
