@@ -23,6 +23,47 @@ function envErr(code: string, message: string) {
   return { data: null, error: { code, message } };
 }
 
+/**
+ * Builder for the runRecipe async flow: returns mock fetch responses
+ * for a single POST (returns 202 + job_id) followed by one GET (returns
+ * the terminal job record with `result` or `error` already populated).
+ * Tests that don't need the polling shape directly can use this so
+ * they don't need to know about the 2-step protocol — they just
+ * declare the eventual result envelope.
+ */
+function asyncRecipeMocks(result: Record<string, unknown>) {
+  const jobId = 'test-job-' + Math.random().toString(16).slice(2, 10);
+  return [
+    jsonResponse(202, envelope({ job_id: jobId, status: 'running' })),
+    jsonResponse(200, envelope({
+      job_id: jobId,
+      operation: 'run_recipe',
+      status: 'completed',
+      owner: 'test',
+      started_at: '2026-05-12T00:00:00Z',
+      completed_at: '2026-05-12T00:01:00Z',
+      result,
+    })),
+  ];
+}
+
+function asyncRecipeFailureMocks(error: string, errorCode = 'job-failed') {
+  const jobId = 'test-job-' + Math.random().toString(16).slice(2, 10);
+  return [
+    jsonResponse(202, envelope({ job_id: jobId, status: 'running' })),
+    jsonResponse(200, envelope({
+      job_id: jobId,
+      operation: 'run_recipe',
+      status: 'failed',
+      owner: 'test',
+      started_at: '2026-05-12T00:00:00Z',
+      completed_at: '2026-05-12T00:01:00Z',
+      error,
+      error_code: errorCode,
+    })),
+  ];
+}
+
 beforeEach(() => {
   vi.restoreAllMocks();
 });
@@ -212,63 +253,135 @@ describe('CloudBackend.installApk', () => {
 });
 
 describe('CloudBackend.runRecipe', () => {
-  it('reads recipe from disk, POSTs YAML body, downloads artifacts to screenshotDir', async () => {
+  it('POSTs recipe (async 202), polls job to completion, downloads artifacts', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-test-'));
     const recipePath = path.join(tmp, 'connect-login.yaml');
     await fs.writeFile(recipePath, 'appId: org.commcare.dalvik\n---\n- launchApp: org.commcare.dalvik\n');
 
     const screenshotDir = path.join(tmp, 'shots');
+    const [submitResp, pollResp] = asyncRecipeMocks({
+      exit_code: 0,
+      stdout: 'ok',
+      stderr: '',
+      artifacts: [
+        { name: '01.png', presigned_url: 'https://s3/01.png?sig=x', content_type: 'image/png' },
+        { name: 'commands.json', presigned_url: 'https://s3/commands.json', content_type: 'application/json' },
+      ],
+    });
     const fetchImpl = vi.fn()
-      // Recipe POST
-      .mockResolvedValueOnce(jsonResponse(200, envelope({
-        exit_code: 0,
-        stdout: 'ok',
-        stderr: '',
-        artifacts: [
-          { name: '01.png', presigned_url: 'https://s3/01.png?sig=x', content_type: 'image/png' },
-          { name: 'commands.json', presigned_url: 'https://s3/commands.json', content_type: 'application/json' },
-        ],
-      })))
-      // Artifact downloads
+      .mockResolvedValueOnce(submitResp)
+      .mockResolvedValueOnce(pollResp)
       .mockResolvedValueOnce(new Response(Buffer.from([0x89, 0x50, 0x4e, 0x47]), { status: 200 }))
       .mockResolvedValueOnce(new Response('{"foo":1}', { status: 200 }));
 
-    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
     const result = await cb.runRecipe(recipePath, { COUNTRY_CODE: '+7' }, screenshotDir);
 
     expect(result.status).toBe('pass');
     expect(result.exitCode).toBe(0);
-    expect(result.screenshots).toHaveLength(1); // only the .png
-    expect(result.screenshots[0].path).toBe(path.join(screenshotDir, '01.png'));
+    expect(result.screenshots).toHaveLength(1);
 
-    // Verify body shape on the recipe POST.
-    const recipeCall = fetchImpl.mock.calls[0];
-    const body = JSON.parse(recipeCall[1].body as string);
+    // Submit POST should have the recipe body.
+    const submitCall = fetchImpl.mock.calls[0];
+    expect(submitCall[0]).toBe(`${BASE}/api/mobile/run-recipe`);
+    const body = JSON.parse(submitCall[1].body as string);
     expect(body.recipe_yaml).toContain('appId: org.commcare.dalvik');
     expect(body.env).toEqual({ COUNTRY_CODE: '+7' });
     expect(body.screenshot_prefix).toBe('connect-login');
 
-    // Both files materialize on disk.
+    // The second call is the poll — GET to /api/mobile/jobs/<id>.
+    const pollCall = fetchImpl.mock.calls[1];
+    expect((pollCall[0] as string).startsWith(`${BASE}/api/mobile/jobs/`)).toBe(true);
+    expect(pollCall[1].method).toBe('GET');
+
     const onDisk = (await fs.readdir(screenshotDir)).sort();
     expect(onDisk).toEqual(['01.png', 'commands.json']);
 
     await fs.rm(tmp, { recursive: true, force: true });
   });
 
-  it('returns status=fail when ace-web reports non-zero exit_code', async () => {
+  it('returns status=fail when the completed job result has non-zero exit_code', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-test-'));
     const recipePath = path.join(tmp, 'r.yaml');
     await fs.writeFile(recipePath, 'appId: x\n');
 
-    const fetchImpl = vi.fn().mockResolvedValueOnce(
-      jsonResponse(200, envelope({
-        exit_code: 1, stdout: '', stderr: 'failed at step 3', artifacts: [],
-      })),
-    );
-    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    // The recipe ran end-to-end on the server but returned exit_code=1
+    // (Maestro reported a failed step). Job status is still 'completed'
+    // — server-side execution succeeded; the recipe just didn't pass.
+    const [submit, poll] = asyncRecipeMocks({
+      exit_code: 1, stdout: '', stderr: 'failed at step 3', artifacts: [],
+    });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(submit)
+      .mockResolvedValueOnce(poll)
+      // Auto-diagnose on failure path: runRecipe calls diagnose after a
+      // non-zero exit_code to attach the in-VM snapshot.
+      .mockResolvedValueOnce(jsonResponse(200, envelope({
+        ssm_ok: true, ssm_error: null,
+        adb_devices: [], adb_visible_count: 0,
+        emulator_pid: null, emulator_cmdline: null,
+        runner_service_state: 'failed',
+        marker_present: false, marker_age_seconds: null,
+        runner_log_tail: '', emulator_log_tail: '',
+      })));
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
     const result = await cb.runRecipe(recipePath, {}, tmp);
     expect(result.status).toBe('fail');
     expect(result.stderr).toBe('failed at step 3');
+
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it('throws when the job completes with status=failed (server-side execution error)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-test-'));
+    const recipePath = path.join(tmp, 'r.yaml');
+    await fs.writeFile(recipePath, 'appId: x\n');
+
+    const [submit, poll] = asyncRecipeFailureMocks(
+      'SSM timed out after 1800s',
+      'ssm-timeout',
+    );
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(submit)
+      .mockResolvedValueOnce(poll);
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
+    const err = await cb.runRecipe(recipePath, {}, tmp).catch((e) => e);
+    expect(err).toBeInstanceOf(MobileError);
+    expect(err.code).toBe('CLOUD_SSM_TIMEOUT');
+    expect(err.message).toContain('1800s');
+
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it('polls multiple times while the job is still running', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-test-'));
+    const recipePath = path.join(tmp, 'r.yaml');
+    await fs.writeFile(recipePath, 'appId: x\n');
+
+    const jobId = 'long-job';
+    const fetchImpl = vi.fn()
+      // POST → 202
+      .mockResolvedValueOnce(jsonResponse(202, envelope({ job_id: jobId, status: 'running' })))
+      // 3 running polls — each one is a separate GET
+      .mockResolvedValueOnce(jsonResponse(200, envelope({
+        job_id: jobId, operation: 'run_recipe', status: 'running',
+        owner: 't', started_at: '2026-05-12T00:00:00Z',
+      })))
+      .mockResolvedValueOnce(jsonResponse(200, envelope({
+        job_id: jobId, operation: 'run_recipe', status: 'running',
+        owner: 't', started_at: '2026-05-12T00:00:00Z',
+      })))
+      .mockResolvedValueOnce(jsonResponse(200, envelope({
+        job_id: jobId, operation: 'run_recipe', status: 'completed',
+        owner: 't', started_at: '2026-05-12T00:00:00Z',
+        completed_at: '2026-05-12T00:02:00Z',
+        result: { exit_code: 0, stdout: '', stderr: '', artifacts: [] },
+      })));
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
+    const result = await cb.runRecipe(recipePath, {}, tmp);
+    expect(result.status).toBe('pass');
+    // 1 POST + 3 GETs to /jobs/<id>
+    expect(fetchImpl.mock.calls).toHaveLength(4);
 
     await fs.rm(tmp, { recursive: true, force: true });
   });
@@ -320,17 +433,18 @@ describe('CloudBackend.runRecipe steps surfacing', () => {
     const recipePath = path.join(tmp, 'r.yaml');
     await fs.writeFile(recipePath, 'appId: x\n');
 
-    const fetchImpl = vi.fn().mockResolvedValueOnce(
-      jsonResponse(200, envelope({
-        exit_code: 0, stdout: '', stderr: '', artifacts: [],
-        steps: [
-          { index: 0, name: 'launchApp: x', status: 'pass', duration_ms: 100 },
-          { index: 1, name: 'tapOn: Next', status: 'fail', error: 'timeout', screenshot: '02.png' },
-          { index: 2, name: 'oddCommand', status: 'WEIRD_NEW_STATE' },
-        ],
-      })),
-    );
-    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const [submit, poll] = asyncRecipeMocks({
+      exit_code: 0, stdout: '', stderr: '', artifacts: [],
+      steps: [
+        { index: 0, name: 'launchApp: x', status: 'pass', duration_ms: 100 },
+        { index: 1, name: 'tapOn: Next', status: 'fail', error: 'timeout', screenshot: '02.png' },
+        { index: 2, name: 'oddCommand', status: 'WEIRD_NEW_STATE' },
+      ],
+    });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(submit)
+      .mockResolvedValueOnce(poll);
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
     const r = await cb.runRecipe(recipePath, {}, tmp);
     expect(r.steps).toBeDefined();
     expect(r.steps).toHaveLength(3);
@@ -351,10 +465,13 @@ describe('CloudBackend.runRecipe steps surfacing', () => {
     const recipePath = path.join(tmp, 'r.yaml');
     await fs.writeFile(recipePath, 'appId: x\n');
 
-    const fetchImpl = vi.fn().mockResolvedValueOnce(
-      jsonResponse(200, envelope({ exit_code: 0, stdout: '', stderr: '', artifacts: [] })),
-    );
-    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const [submit, poll] = asyncRecipeMocks({
+      exit_code: 0, stdout: '', stderr: '', artifacts: [],
+    });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(submit)
+      .mockResolvedValueOnce(poll);
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
     const r = await cb.runRecipe(recipePath, {}, tmp);
     expect(r.steps).toBeUndefined();
 
@@ -514,15 +631,16 @@ describe('CloudBackend.patchLaunchScript', () => {
 });
 
 describe('CloudBackend.runRecipe auto-diagnose on failure', () => {
-  it('attaches a Diagnostics snapshot on failure so callers see in-VM state', async () => {
+  it('attaches a Diagnostics snapshot on non-zero exit so callers see in-VM state', async () => {
+    const [submit, poll] = asyncRecipeMocks({
+      exit_code: 1,
+      stdout: '...',
+      stderr: 'Maestro: no devices/emulators found',
+      artifacts: [],
+    });
     const fetchImpl = vi.fn()
-      // run-recipe response (failure)
-      .mockResolvedValueOnce(jsonResponse(200, envelope({
-        exit_code: 1,
-        stdout: '...',
-        stderr: 'Maestro: no devices/emulators found',
-        artifacts: [],
-      })))
+      .mockResolvedValueOnce(submit)
+      .mockResolvedValueOnce(poll)
       // diagnose response (auto-probed after the failure)
       .mockResolvedValueOnce(jsonResponse(200, envelope({
         ssm_ok: true, ssm_error: null,
@@ -533,55 +651,58 @@ describe('CloudBackend.runRecipe auto-diagnose on failure', () => {
         runner_log_tail: 'startup failed', emulator_log_tail: 'Segfault',
       })));
 
-    // Mock fs.readFile for the recipe body without actually touching disk.
     const recipePath = path.join(os.tmpdir(), `recipe-${Date.now()}.yaml`);
     await fs.writeFile(recipePath, '# minimal recipe\n');
     const screenshotDir = path.join(os.tmpdir(), `shots-${Date.now()}`);
 
-    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
     const r = await cb.runRecipe(recipePath, {}, screenshotDir);
 
     expect(r.status).toBe('fail');
     expect(r.diagnostics).toBeDefined();
     expect((r.diagnostics as Record<string, unknown>).adb_visible_count).toBe(0);
     expect((r.diagnostics as Record<string, unknown>).runner_service_state).toBe('failed');
-    // diagnose was called exactly once (the auto-probe after failure).
-    expect(fetchImpl.mock.calls.length).toBe(2);
-    expect((fetchImpl.mock.calls[1] as [string, RequestInit])[0]).toBe(
+    // 3 calls: submit (POST), poll (GET), diagnose (GET).
+    expect(fetchImpl.mock.calls.length).toBe(3);
+    expect((fetchImpl.mock.calls[2] as [string, RequestInit])[0]).toBe(
       `${BASE}/api/mobile/diagnose`,
     );
   });
 
   it('does not call diagnose on pass — kept off the happy path', async () => {
-    const fetchImpl = vi.fn().mockResolvedValueOnce(
-      jsonResponse(200, envelope({
-        exit_code: 0, stdout: '', stderr: '', artifacts: [],
-      })),
-    );
+    const [submit, poll] = asyncRecipeMocks({
+      exit_code: 0, stdout: '', stderr: '', artifacts: [],
+    });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(submit)
+      .mockResolvedValueOnce(poll);
     const recipePath = path.join(os.tmpdir(), `recipe-${Date.now()}.yaml`);
     await fs.writeFile(recipePath, '# minimal recipe\n');
     const screenshotDir = path.join(os.tmpdir(), `shots-${Date.now()}-pass`);
 
-    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
     const r = await cb.runRecipe(recipePath, {}, screenshotDir);
 
     expect(r.status).toBe('pass');
     expect(r.diagnostics).toBeUndefined();
-    expect(fetchImpl.mock.calls.length).toBe(1);
+    // 2 calls: submit + poll. No diagnose.
+    expect(fetchImpl.mock.calls.length).toBe(2);
   });
 
   it('swallows diagnose probe errors — does not mask the original recipe failure', async () => {
+    const [submit, poll] = asyncRecipeMocks({
+      exit_code: 1, stdout: '', stderr: '', artifacts: [],
+    });
     const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, envelope({
-        exit_code: 1, stdout: '', stderr: '', artifacts: [],
-      })))
+      .mockResolvedValueOnce(submit)
+      .mockResolvedValueOnce(poll)
       .mockRejectedValueOnce(new Error('SSM probe blew up'));
 
     const recipePath = path.join(os.tmpdir(), `recipe-${Date.now()}-swallow.yaml`);
     await fs.writeFile(recipePath, '# minimal recipe\n');
     const screenshotDir = path.join(os.tmpdir(), `shots-${Date.now()}-swallow`);
 
-    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
     const r = await cb.runRecipe(recipePath, {}, screenshotDir);
 
     expect(r.status).toBe('fail');

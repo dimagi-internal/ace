@@ -60,6 +60,11 @@ export interface CloudBackendOpts {
    * cold boots don't trip the client.
    */
   requestTimeoutMs?: number;
+  /**
+   * Override the run-recipe job poll interval (ms). Defaults to 2 s.
+   * Tests pass 0 so they don't actually sleep between iterations.
+   */
+  jobPollIntervalMs?: number;
 }
 
 /** Shape of `/api/mobile/states`'s response data. */
@@ -145,6 +150,7 @@ export class CloudBackend {
   private readonly token: string;
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;
+  private readonly jobPollIntervalMs: number;
   readonly defaultState: string;
 
   constructor(opts: CloudBackendOpts = {}) {
@@ -169,6 +175,7 @@ export class CloudBackend {
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.defaultState = opts.defaultState ?? '';
     this.requestTimeoutMs = opts.requestTimeoutMs ?? 600_000;
+    this.jobPollIntervalMs = opts.jobPollIntervalMs ?? 2_000;
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────
@@ -400,7 +407,17 @@ export class CloudBackend {
     else body.screenshot_prefix = path.basename(recipePath, path.extname(recipePath));
     if (opts.state ?? this.defaultState) body.state = opts.state ?? this.defaultState;
 
-    const result = await this.post<CloudRunResult>('/api/mobile/run-recipe', body);
+    // Async submission since ace-web #316: POST returns 202 + job_id,
+    // we poll until terminal. Why: AWS ALB closes idle connections
+    // at 60 s by default and typical Maestro runs take 60–300 s, so a
+    // synchronous POST died as `fetch failed` every time and leaked
+    // the singleton lock for 30 min (caught in vivo by leep Phase 5,
+    // 2026-05-12 — 5 consecutive attempts each leaked one lock).
+    const submission = await this.post<{ job_id: string; status: string }>(
+      '/api/mobile/run-recipe',
+      body,
+    );
+    const result = await this.pollJob(submission.job_id);
 
     await fs.mkdir(screenshotDir, { recursive: true });
     const screenshots: ScreenshotEntry[] = [];
@@ -447,6 +464,68 @@ export class CloudBackend {
       steps: result.steps ? result.steps.map(normalizeCloudStep) : undefined,
       diagnostics,
     };
+  }
+
+  /**
+   * Poll a server-side job (from `/api/mobile/run-recipe`'s 202
+   * submission) until it reaches a terminal state. Returns the
+   * `CloudRunResult` envelope on success; throws a typed
+   * `MobileError` on failure that preserves the server-side
+   * `error_code` so skill-level retry logic still works.
+   *
+   * Polling cadence: 2 s. Max wait: 30 min (matches the singleton
+   * lock TTL — a recipe that takes longer than the lock TTL is a
+   * skill-level bug, not something the client should patiently wait
+   * for).
+   */
+  private async pollJob(jobId: string): Promise<CloudRunResult> {
+    const POLL_INTERVAL_MS = this.jobPollIntervalMs;
+    const MAX_WAIT_MS = 30 * 60 * 1000;
+    const deadline = Date.now() + MAX_WAIT_MS;
+    let lastStatus: string | undefined;
+
+    while (Date.now() < deadline) {
+      const record = await this.get<{
+        status: string;
+        result?: CloudRunResult;
+        error?: string;
+        error_code?: string;
+      }>(`/api/mobile/jobs/${jobId}`);
+      lastStatus = record.status;
+
+      if (record.status === 'completed') {
+        if (!record.result) {
+          throw new MobileError(
+            'CLOUD_BAD_RESPONSE',
+            `job ${jobId} completed without a result envelope`,
+          );
+        }
+        return record.result;
+      }
+      if (record.status === 'failed') {
+        const code = record.error_code ?? 'job-failed';
+        if (code === 'boot-timeout') {
+          throw new AvdBootError(
+            'cloud',
+            record.error ?? 'job failed (no detail)',
+          );
+        }
+        throw new MobileError(
+          `CLOUD_${code.toUpperCase().replace(/-/g, '_')}`,
+          record.error ?? 'job failed (no detail)',
+        );
+      }
+      // status === 'running' (or any future intermediate state)
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+
+    throw new MobileError(
+      'CLOUD_POLL_TIMEOUT',
+      `job ${jobId} did not reach terminal state in ${MAX_WAIT_MS / 60_000} min ` +
+        `(last status: ${lastStatus ?? 'unknown'}). The recipe may still be ` +
+        'running server-side; call /api/mobile/restart-runner to abort and ' +
+        'free the singleton lock.',
+    );
   }
 
   // ── HTTP plumbing ───────────────────────────────────────────────
