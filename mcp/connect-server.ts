@@ -28,6 +28,7 @@ import { z } from 'zod';
 import { RestBackend } from './connect/backends/rest.js';
 import { PlaywrightBackend } from './connect/backends/playwright.js';
 import { CommCareBackend, BuildRejectedError } from './connect/backends/commcare.js';
+import { preflightLearnAppUser } from './connect/backends/commcare-preflight.js';
 import { CompositeBackend } from './connect/backends/composite.js';
 import { PlaywrightSession } from './connect/auth/playwright-session.js';
 import { createLoggingProxy, defaultFileLogger } from './connect/logging.js';
@@ -548,6 +549,69 @@ server.tool('commcare_upload_multimedia',
         ...rest,
         file_bytes,
       });
+    }),
+);
+
+// ── CI-660 pre-flight ────────────────────────────────────────────
+//
+// `connect_preflight_learn_app_user` — class-level preventer for the
+// CI-660 bug class. commcare-connect's `users/views.py:107` calls
+// `create_hq_user_and_link()` without try/except, so any
+// `CommCareHQAPIException` raised inside that helper bubbles out as
+// opaque Django HTTP 500 on `POST /users/start_learn_app/`. The
+// Connect Android client logs+swallows the failed response, so the
+// FLW-facing symptom is a silent "Start learning" button noop during
+// Phase 5 navigation.
+//
+// Same class as the `short_description` 50-char trap
+// (`docs/learnings/2026-05-12-connect-opp-short-description-50-char-trap.md`):
+// server has a deterministic narrow `except` clause and an unhandled
+// exception type 500s with no body. The mitigation pattern is the
+// same — pre-flight client-side against the same upstream contract.
+//
+// Recommended caller: `connect-opp-setup` Step 7 (just before
+// `connect_send_flw_invite`). The probe is read-only and idempotent;
+// safe to also wire as a Phase-5 pre-flight at the cloud-emulator
+// recipe entrypoint if the ace-mobile side wants double belt+braces.
+//
+// See `mcp/connect/backends/commcare-preflight.ts` for the full
+// rationale + the cheapest-probe-that-catches-the-class design.
+server.tool('connect_preflight_learn_app_user',
+  {
+    hq_domain: z.string().describe(
+      'HQ project space slug (e.g. `connect-ace-prod`). Same value that flows ' +
+      'through `connect_create_opportunity` as `learn_app.cc_domain` / ' +
+      '`deliver_app.cc_domain`.',
+    ),
+    connect_username: z.string().optional().describe(
+      'ConnectID username for the FLW about to claim the opp. Optional — when ' +
+      'omitted, the probe still validates API-key auth + domain reachability ' +
+      '(catches the most common CI-660 failure mode at near-zero cost). Supply ' +
+      'when you have the username in hand to additionally screen for ' +
+      'already-linked-to-different-connect-username conflicts.',
+    ),
+    api_key: z.string().describe(
+      'CCHQ REST API key. Accepts `${VAR}` syntax (same convention as ' +
+      '`connect_create_opportunity.learn_app.api_key`); typically called as ' +
+      '`${ACE_HQ_API_KEY}`.',
+    ),
+    hq_username: z.string().describe(
+      'CCHQ username the API key belongs to. Typically `${ACE_HQ_USERNAME}`.',
+    ),
+    base_url: z.string().url().optional().describe(
+      'Override CCHQ base URL. Defaults to https://www.commcarehq.org.',
+    ),
+  },
+  async (args) =>
+    runAtom(async () => {
+      // Resolve `${VAR}` patterns just like `connect_create_opportunity` does.
+      // Same env-substitution helper, same `.env` rules.
+      const resolved = {
+        ...args,
+        api_key: resolveEnvSubstitution(args.api_key),
+        hq_username: resolveEnvSubstitution(args.hq_username),
+      };
+      return preflightLearnAppUser(resolved);
     }),
 );
 
