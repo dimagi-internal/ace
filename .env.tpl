@@ -132,6 +132,16 @@ ACE_E2E_BACKUP_CODE=op://AI-Agents/connect-test-user/backup-code
 ACE_E2E_NAME="ACE Test"
 ACE_AVD_NAME=ACE_Pixel_API_34
 
+# Pinned Connect APK version. Read by:
+#   - `bin/ace-doctor` `selector_map_currency` probe (warns when this !=
+#     the newest `mcp/mobile/selectors/connect-*.yaml` selector map).
+#   - `skills/connect-baseline-screenshots` + `skills/training-flw-guide`
+#     for selector resolution + reference framing.
+# Bump in lockstep when a new selector map lands under
+# `mcp/mobile/selectors/connect-<version>.yaml`. Inline literal (not 1P-backed)
+# because it's a public Connect APK version, not a secret, and changes via PR.
+ACE_CONNECT_APK_VERSION=2.62.0
+
 # Multi-user macOS hosts only — leave both unset for a single-user box.
 # When two Mac users share one machine, an adb-server on the default port
 # (5037) and an emulator on the default console pair (5554/5555) collide.
