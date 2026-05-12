@@ -429,6 +429,49 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    `llo-launch` branch is dead code. `llo-launch` (Phase 8) only sends
    the real-LLO invite; it does not re-fire the ACE test-user invite.
 
+7.5. **CI-660 pre-flight (Phase 5 prerequisite, idempotent).**
+
+   Call `connect_preflight_learn_app_user` against CCHQ before the
+   Phase 5 mobile recipe triggers `start_learn_app` from the Android
+   client. This is the class-level preventer for the CI-660 bug class
+   (`docs/learnings/2026-05-12-ci-660-preflight.md`): commcare-connect's
+   `users/views.py:107 start_learn_app` doesn't wrap
+   `create_hq_user_and_link` in try/except, so any HQ-side rejection
+   bubbles out as Django HTTP 500 with no actionable body. The Connect
+   Android client logs+swallows the failed response, surfacing as a
+   silent "Start learning" noop in Phase 5.
+
+   The probe is read-only — it hits `GET /a/<domain>/api/v0.5/user/`
+   with the same `ACE_HQ_API_KEY` Phase 5 will eventually use, and
+   surfaces auth/domain/conflict failures as a structured
+   `{ok, action, reason}` outcome before Phase 5 ever boots the AVD.
+
+   Args:
+   ```
+   connect_preflight_learn_app_user({
+     hq_domain: <opp.connect.program.learn_app.cc_domain>,
+     connect_username: <ACE test-user ConnectID username> | omitted,
+     api_key: "${ACE_HQ_API_KEY}",
+     hq_username: "${ACE_HQ_USERNAME}",
+   })
+   ```
+
+   Branch:
+   - `ok: true, action: 'would_create' | 'would_reuse_existing' | 'skipped'`
+     → log `[OK]` to `comms-log/observations.md` and proceed to Step 8.
+   - `ok: false` → halt with `[BLOCKER]` and surface `reason` verbatim.
+     The remediation text is embedded in `reason` (rotate the HQ API
+     key, fix the domain, reconcile the conflicting CCHQ user record,
+     etc.). DO NOT continue to Step 8 — Phase 5 would 500 with no
+     diagnostic.
+
+   If the run is being executed without the ConnectID username in
+   hand (the common case — ACE doesn't always know the FLW's
+   ConnectID at opp-create time), omit `connect_username`. The probe
+   then validates only API-key auth + domain reachability, which
+   already catches the most common CI-660 failure modes (rotated key,
+   archived domain, CCHQ outage) at near-zero cost.
+
 8. **Write config summary** to `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`:
    - Opportunity ID (UUID) and URL
      (`<CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/`)

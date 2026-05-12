@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.187 — 2026-05-12
+
+**`connect_preflight_learn_app_user` — CI-660 boundary probe surfaces Phase 5 `start_learn_app` 500s before AVD navigation.**
+
+commcare-connect's `users/views.py:107 start_learn_app` doesn't wrap `create_hq_user_and_link` in try/except — any HQ-side rejection (rotated API key, archived domain, CCHQ outage, already-linked-to-different-ConnectID user) bubbles out as opaque HTTP 500. The Connect Android client logs+swallows the failed response, so the FLW-facing symptom is a silent "Start learning" button noop. Identical structural class to the `short_description` 50-char trap (0.13.177).
+
+New MCP atom runs two cheap CCHQ probes (`GET /api/v0.5/user/?limit=1` for auth+domain, optional `?username=<x>` for conflict detection) and returns a structured `{ok, action, reason}` outcome with embedded remediation text. Read-only; never mutates CCHQ state. `connect-opp-setup` Step 7.5 now invokes it after the FLW invite, halting Phase 5 with a clear diagnostic before the AVD recipe stalls.
+
+Files: `mcp/connect/backends/commcare-preflight.ts` (impl, no Playwright session dependency), `mcp/connect-server.ts` (atom wiring + `${VAR}` env resolution), `test/mcp/connect/unit/commcare-preflight.test.ts` (15 tests), `skills/connect-opp-setup/SKILL.md` (Step 7.5), `docs/learnings/2026-05-12-ci-660-preflight.md` (new), `docs/learnings/2026-05-12-boundary-probe-registry.md` (Pending → Shipped). Tracks CI-660 upstream.
+
+All 179 connect unit tests pass.
+
 ## 0.13.174 — 2026-05-11
 
 **`skill:learnings-summary` also writes `summary_web_view_link` + `new_pdd_web_view_link` into `products.learnings`.**
