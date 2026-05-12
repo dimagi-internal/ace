@@ -126,6 +126,60 @@ describe('MobileClient.useCloud (dynamic resolution)', () => {
   });
 });
 
+describe('MobileClient cloud-only diagnostic atoms', () => {
+  let savedEnv: string | undefined;
+  beforeEach(() => {
+    savedEnv = process.env.ACE_MOBILE_BACKEND;
+    delete process.env.ACE_MOBILE_BACKEND;
+    clearSessionBackend();
+  });
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env.ACE_MOBILE_BACKEND;
+    else process.env.ACE_MOBILE_BACKEND = savedEnv;
+    clearSessionBackend();
+  });
+
+  function fakeCloud() {
+    return {
+      diagnose: vi.fn().mockResolvedValue({ ssm_ok: true, adb_devices: [] }),
+      restartRunner: vi.fn().mockResolvedValue({ ssm_ok: true }),
+      patchLaunchScript: vi.fn().mockResolvedValue({ sha256: 'x' }),
+    } as any;
+  }
+
+  it('routes diagnose / restartRunner / patchLaunchScript to the cloud backend when cloud is active', async () => {
+    setSessionBackend('cloud');
+    const cloud = fakeCloud();
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    await client.diagnose();
+    expect(cloud.diagnose).toHaveBeenCalledTimes(1);
+
+    await client.restartRunner({ waitForReady: false });
+    expect(cloud.restartRunner).toHaveBeenCalledWith({ waitForReady: false });
+
+    await client.patchLaunchScript({ scriptBody: '#!/bin/bash\n', restartRunner: false });
+    expect(cloud.patchLaunchScript).toHaveBeenCalledWith({
+      scriptBody: '#!/bin/bash\n',
+      restartRunner: false,
+    });
+  });
+
+  it('throws CLOUD_ONLY_OPERATION when active backend is local', async () => {
+    // Default is local (no session file, no env).
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud: fakeCloud() });
+    expect(client.useCloud).toBe(false);
+
+    // requireCloudOnly throws synchronously before returning a Promise,
+    // matching the pattern used by listAvds (see useCloud test above).
+    expect(() => client.diagnose()).toThrow(/only available on the cloud/);
+    expect(() => client.restartRunner()).toThrow(/only available on the cloud/);
+    expect(() => client.patchLaunchScript({ scriptBody: '#!/bin/bash\n' })).toThrow(
+      /only available on the cloud/,
+    );
+  });
+});
+
 describe('MobileClient.assertMaestroDriverHealthy', () => {
   function makeClient(probeReturns: Array<{ healthy: boolean; reason?: string }>, repairActions: string[] = ['force-stop', 'uninstall']) {
     const probeCalls: number[] = [];

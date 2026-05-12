@@ -28,6 +28,19 @@ export interface RecipeRunResult {
    * `steps[]` envelope field (since ace-web v0.x).
    */
   steps?: StepResult[];
+  /**
+   * Cloud backend only: post-failure in-VM diagnostic snapshot
+   * captured via `/api/mobile/diagnose`. Populated when `status:
+   * 'fail'` and the diagnose probe itself succeeded. Lets skills see
+   * the runner's state at the moment of failure (was the emulator
+   * still alive? did pm crash? did the marker disappear?) without
+   * making a separate round-trip. Undefined on `pass` or when
+   * diagnose itself failed. Shape mirrors ace-web's Diagnostics
+   * dataclass — see CloudDiagnostics in backends/cloud.ts.
+   */
+  // Untyped here to avoid pulling CloudDiagnostics into the
+  // backend-agnostic types module; the cloud backend casts on assign.
+  diagnostics?: Record<string, unknown>;
 }
 
 export interface StepResult {

@@ -3,7 +3,11 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { AvdBackend } from './backends/avd.js';
-import { CloudBackend } from './backends/cloud.js';
+import {
+  CloudBackend,
+  type CloudDiagnostics,
+  type CloudPatchLaunchScriptResult,
+} from './backends/cloud.js';
 import { MaestroBackend } from './backends/maestro.js';
 import { MaestroDriverError, MobileError } from './errors.js';
 import { RecipeGenerator, type LlmFn } from './backends/recipe-generator.js';
@@ -198,6 +202,44 @@ export class MobileClient {
   loadSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
     if (this.useCloud) return this.requireCloud().loadSnapshot(avdName, snapshotName);
     return this.avd.loadSnapshot(avdName, snapshotName);
+  }
+
+  // ── Cloud-only diagnostics + admin ─────────────────────────────────
+  //
+  // These three methods are only meaningful against the cloud backend
+  // (there is no `/api/mobile/diagnose` for a local AVD — `adb` is the
+  // local equivalent). When the active backend is local we throw a
+  // clear typed error rather than silently no-op'ing, so a skill that
+  // calls `mobile_diagnose` against a local backend sees a signal
+  // instead of a misleading empty result.
+
+  private requireCloudOnly(operation: string): CloudBackend {
+    if (!this.useCloud) {
+      throw new MobileError(
+        'CLOUD_ONLY_OPERATION',
+        `${operation} is only available on the cloud mobile backend`,
+        'Switch to cloud with /ace:mobile-backend cloud, or invoke this against the cloud directly.',
+      );
+    }
+    return this.requireCloud();
+  }
+
+  /** Read-only in-VM diagnostic snapshot. Cloud only. */
+  diagnose(): Promise<CloudDiagnostics> {
+    return this.requireCloudOnly('mobile_diagnose').diagnose();
+  }
+
+  /** Cleanly restart the in-VM ace-mobile-runner unit. Cloud only. */
+  restartRunner(opts: { waitForReady?: boolean } = {}): Promise<CloudDiagnostics> {
+    return this.requireCloudOnly('mobile_restart_runner').restartRunner(opts);
+  }
+
+  /** Hot-patch the in-VM ace-emulator-launch script. Cloud only. */
+  patchLaunchScript(opts: {
+    scriptBody: string;
+    restartRunner?: boolean;
+  }): Promise<CloudPatchLaunchScriptResult> {
+    return this.requireCloudOnly('mobile_patch_launch_script').patchLaunchScript(opts);
   }
 
   /**

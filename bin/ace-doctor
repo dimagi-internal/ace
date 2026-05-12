@@ -1433,6 +1433,78 @@ fi
 # OTP fetching is no longer the recommended flow); removed in 0.13.26.
 info "mobile_auth: ace-mobile is local — see connect_auth above for Connect-side state and [Mobile] block below for AVD / Maestro / cookies"
 
+# 8b. ace-mobile cloud backend — when the operator has flipped to the
+# cloud backend (via /ace:mobile-backend cloud OR
+# ACE_MOBILE_BACKEND=cloud), the runtime path is ECS task → ace-web
+# (PAT auth) → SSM → EC2 instance → Android emulator. We probe the
+# topmost rung — `GET /api/mobile/diagnose` against the configured
+# ACE_WEB_BASE_URL — and emit a single-line state summary. The probe
+# is read-only (does not start EC2). If diagnose returns 200 with
+# ssm_ok=true + adb_visible_count>0 the emulator is hot and Phase 5
+# can run; ssm_ok=false means EC2 is stopped (callers will start it
+# on first ensure-running call); HTTP non-2xx means the PAT or
+# ace-web is broken. Only runs when ACE_WEB_BASE_URL + PAT are both
+# set — otherwise skipped silently (the env-presence is already
+# tracked above by ace_web_pat_token).
+ACE_WEB_BASE="$(get_env ACE_WEB_BASE_URL)"
+if [ -n "$PAT_TOKEN" ] && [ -n "$ACE_WEB_BASE" ]; then
+  # Strip trailing slash to mirror cloud.ts normalisation.
+  ACE_WEB_BASE="${ACE_WEB_BASE%/}"
+  CLOUD_EMU_BODY="$(mktemp -t ace-doctor-cloud-emu.XXXXXX)"
+  CLOUD_EMU_CODE="$(curl -sS -o "$CLOUD_EMU_BODY" -w '%{http_code}' --max-time 8 \
+    -H "Authorization: Bearer $PAT_TOKEN" \
+    "$ACE_WEB_BASE/api/mobile/diagnose" 2>/dev/null || echo "000")"
+  case "$CLOUD_EMU_CODE" in
+    2*)
+      # Parse the envelope to surface the most actionable signal.
+      CLOUD_EMU_SUMMARY="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$CLOUD_EMU_BODY'))
+    data = (d.get('data') or {})
+    if not data.get('ssm_ok'):
+        print('ec2_stopped')
+    else:
+        n = data.get('adb_visible_count') or len([a for a in (data.get('adb_devices') or []) if a.get('state') == 'device'])
+        runner = data.get('runner_service_state') or 'unknown'
+        marker_age = data.get('marker_age_seconds')
+        if n > 0:
+            print(f'adb={n}_runner={runner}_marker_age_s={marker_age}')
+        else:
+            print(f'adb=0_runner={runner}_marker_age_s={marker_age}')
+except Exception as e:
+    print(f'parse_err:{e}')
+" 2>/dev/null)"
+      case "$CLOUD_EMU_SUMMARY" in
+        adb=0*|parse_err*)
+          warn "cloud_emu: $ACE_WEB_BASE/api/mobile/diagnose → HTTP $CLOUD_EMU_CODE but emulator unhealthy ($CLOUD_EMU_SUMMARY)" "the emulator may have crashed or the runner unit failed — call /api/mobile/restart-runner to cold-boot cleanly, or wait for ensure-running's auto-recovery on next run"
+          ;;
+        ec2_stopped)
+          info "cloud_emu: ec2 instance is stopped — ensure-running will start it on first call (~5 min cold-boot)"
+          ;;
+        *)
+          pass "cloud_emu: emulator healthy ($CLOUD_EMU_SUMMARY)"
+          ;;
+      esac
+      ;;
+    401|403)
+      warn "cloud_emu: HTTP $CLOUD_EMU_CODE — PAT invalid or revoked" "re-mint via /ace:ace-web-pat-mint and re-inject .env"
+      ;;
+    404)
+      warn "cloud_emu: HTTP 404 — ACE_WEB_BASE_URL ($ACE_WEB_BASE) does not expose /api/mobile/diagnose; ace-web may be older than #312" "deploy a newer ace-web or unset ACE_WEB_BASE_URL"
+      ;;
+    000)
+      warn "cloud_emu: cannot reach $ACE_WEB_BASE (network/DNS/timeout)" "check VPN/proxy and ACE_WEB_BASE_URL"
+      ;;
+    *)
+      warn "cloud_emu: GET $ACE_WEB_BASE/api/mobile/diagnose → HTTP $CLOUD_EMU_CODE" "inspect ace-web logs; if persists, ace-web may be down"
+      ;;
+  esac
+  rm -f "$CLOUD_EMU_BODY"
+else
+  info "cloud_emu: skipped — ACE_WEB_BASE_URL or ACE_WEB_PAT_TOKEN not set (cloud backend disabled — see /ace:mobile-backend)"
+fi
+
 # mobile_infra (added 0.13.128): single-line gate that summarizes mobile
 # readiness so an operator scanning [Auth liveness] sees the gating
 # signal without having to read the verbose [Mobile] block. The detail
