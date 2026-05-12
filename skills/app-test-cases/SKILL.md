@@ -70,7 +70,8 @@ between major form sections):
   `takeScreenshot: "sc-J<n>-final"` for the deep UX judge to grade
 - Resolve any `${SELECTOR:logical-name}` placeholders via
   `mobile_resolve_selectors` against the current APK selector map
-  before validating
+  before validating (see Step 3.4 below — selector-resolution is a
+  fail-loud gate, not just a substitution pass)
 - Validate via `mobile_validate_recipe` before writing
 
 **Use live labels from Nova's `get_form` response, not the PDD
@@ -104,6 +105,41 @@ Phase 5's `app-screenshot-capture` can find them.)
 Create the `2-commcare/recipes/` subfolder via `drive_create_folder`
 (idempotent — `findOrCreate: true` is the default) BEFORE writing the
 first recipe.
+
+### Step 3.4: Selector-resolution gate
+
+Before writing any recipe to Drive, run a recipe-wide
+`mobile_resolve_selectors` pass against the current APK selector map
+(`mcp/mobile/selectors/connect-<ACE_CONNECT_APK_VERSION>.yaml`,
+default `2.62.0`). For each composed recipe, call:
+
+```
+mcp__plugin_ace_ace-mobile__mobile_resolve_selectors({
+  yaml: <composed recipe body>,
+  apkVersion: <ACE_CONNECT_APK_VERSION>,
+})
+```
+
+If `unresolved` is non-empty for any recipe, halt with `[BLOCKER]`
+naming:
+
+- the logical selector names that didn't resolve
+- the recipe(s) that referenced them
+- the active selector-map version (`connect-<apkVersion>.yaml`)
+- remediation: `Add missing rows to mcp/mobile/selectors/connect-<apkVersion>.yaml — see PR #249 for the calibration pattern (3 added rows + 5 re-verified for the connect-2.62.0 map). Until that lands, this opp cannot reach Phase 5 cleanly.`
+
+This gate exists because Phase 5's `app-screenshot-capture` will
+block on the same condition when it tries to run the recipes against
+a live AVD. Shifting it left to Phase 2 — where Nova `get_form` /
+`get_app` context is still in-scope — gives the author a chance to
+fix the recipe's selector references (or surface the map gap for a
+calibration PR) before the unresolved selectors reach the emulator.
+Both `leep` and `turmeric` runs in early May 2026 hit this class at
+Phase 5; this is the structural preventer.
+
+`unverified` entries are NOT a blocker — they substitute fine, they're
+just flagged as not-yet-re-verified against the live APK. Surface the
+list as `[WARN]` and continue.
 
 ### Step 3.5 (optional): Runtime smoke validator
 
@@ -160,6 +196,9 @@ in `templates/app-test-cases-template.yaml`.
   leep-paint-collection run hit this exact gap and required two
   manual `/ace:step` retries to recover).
 - Every recipe passes `mobile_validate_recipe`
+- Every recipe's `mobile_resolve_selectors` pass returned
+  `unresolved: []` (Step 3.4 gate; non-empty means the APK selector
+  map is missing rows and Phase 5 will block)
 - Every `forms_exercised` entry resolves to a real Nova form ID
 
 **If any check fails, halt with a `[BLOCKER]` in the gate brief.**
@@ -220,3 +259,4 @@ Each row this skill writes uses `phase: 5-qa-and-training` and
 |------|--------|--------|
 | 2026-05-04 | Initial version. Phase 2 producer for app-test-cases.yaml; binds pdd-to-app-journeys.md to Nova-built structure with Maestro recipe stubs. Successor to qa-plan (retired in same release). | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 2 anchor rows (test-scenario-count, test-archetype-coverage) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-12 | Add Step 3.4 — recipe-wide `mobile_resolve_selectors` gate. Halts `[BLOCKER]` on any unresolved logical selector before recipes are written to Drive. Shifts left a class of Phase 5 blockers (leep + turmeric runs both hit this in early May) to Phase 2, where Nova form/field context is still in-scope. Follows PR #249's `connect-2.62.0.yaml` calibration. | ACE team |
