@@ -137,8 +137,9 @@ export class MobileClient {
     const r = await this.maestro.probeDriver(adbPort, timeoutMs);
     return { ...r, adbPort };
   }
-  stopAvd(name: string): Promise<void> {
-    if (this.useCloud && this.cloud) return this.cloud.stopAvd(name);
+  stopAvd(name: string, opts: { force?: boolean } = {}): Promise<void> {
+    if (this.useCloud && this.cloud) return this.cloud.stopAvd(name, opts);
+    // The local AVD backend has no busy guard — opts is ignored there.
     return this.avd.stopAvd(name);
   }
   listAvds(): Promise<string[]> {

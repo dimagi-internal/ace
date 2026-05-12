@@ -19,6 +19,25 @@ export interface RecipeRunResult {
   stderr: string;
   screenshotsDir: string;
   screenshots: ScreenshotEntry[];
+  /**
+   * Structured per-step report parsed from Maestro's --debug-output
+   * commands JSON. Optional — backends that can't surface it (or
+   * Maestro versions that don't emit a commands JSON) leave this
+   * undefined, and skills should fall back to `screenshots[]` ordering.
+   * Cloud backend populates this from `/api/mobile/run-recipe`'s
+   * `steps[]` envelope field (since ace-web v0.x).
+   */
+  steps?: StepResult[];
+}
+
+export interface StepResult {
+  index: number;
+  name: string;
+  status: 'pass' | 'fail' | 'skipped' | 'unknown';
+  /** Filename only (not a full path) — matches a ScreenshotEntry.stepName when set. */
+  screenshot?: string;
+  error?: string;
+  durationMs?: number;
 }
 
 export interface ScreenshotEntry {

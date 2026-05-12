@@ -142,6 +142,30 @@ describe('CloudBackend.installApk', () => {
     const [, init] = fetchImpl.mock.calls[0];
     expect(JSON.parse(init.body as string)).toEqual({ apk_url: 'https://s3/url.apk' });
   });
+
+  it('surfaces version_code from ace-web when present', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, envelope({
+        package_name: 'org.commcare.dalvik',
+        version: '2.62.0',
+        version_code: 462001,
+      })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+
+    const info = await cb.installApk('cloud', 'https://s3/url.apk');
+    expect(info.versionCode).toBe(462001);
+  });
+
+  it('falls back to versionCode=0 against older ace-web that omits the field', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, envelope({ package_name: 'org.x', version: '1.0' })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+
+    const info = await cb.installApk('cloud', 'https://s3/url.apk');
+    expect(info.versionCode).toBe(0);
+  });
 });
 
 describe('CloudBackend.runRecipe', () => {
@@ -218,13 +242,98 @@ describe('CloudBackend.snapshots / capture', () => {
     expect(r.saved).toBe(true);
   });
 
-  it('captureUiDump returns the xml', async () => {
+  it('captureUiDump returns xml + parsed elements from ace-web', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, envelope({
+        xml: '<hierarchy><node text="hi" class="android.widget.TextView"/></hierarchy>',
+        elements: [
+          { id: 'com.x:id/g', text: 'hi', class: 'android.widget.TextView', bounds: '[0,0][1,1]' },
+        ],
+      })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const r = await cb.captureUiDump('cloud');
+    expect(r.xml).toContain('<hierarchy>');
+    expect(r.elements).toHaveLength(1);
+    expect(r.elements[0]).toEqual({
+      id: 'com.x:id/g', text: 'hi', class: 'android.widget.TextView', bounds: '[0,0][1,1]',
+    });
+  });
+
+  it('captureUiDump degrades to empty elements when ace-web omits the field', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse(200, envelope({ xml: '<hierarchy/>' })),
     );
     const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
     const r = await cb.captureUiDump('cloud');
     expect(r.xml).toBe('<hierarchy/>');
+    expect(r.elements).toEqual([]);
+  });
+});
+
+describe('CloudBackend.runRecipe steps surfacing', () => {
+  it('lifts ace-web steps[] into RecipeRunResult.steps with normalized status', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-steps-'));
+    const recipePath = path.join(tmp, 'r.yaml');
+    await fs.writeFile(recipePath, 'appId: x\n');
+
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, envelope({
+        exit_code: 0, stdout: '', stderr: '', artifacts: [],
+        steps: [
+          { index: 0, name: 'launchApp: x', status: 'pass', duration_ms: 100 },
+          { index: 1, name: 'tapOn: Next', status: 'fail', error: 'timeout', screenshot: '02.png' },
+          { index: 2, name: 'oddCommand', status: 'WEIRD_NEW_STATE' },
+        ],
+      })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const r = await cb.runRecipe(recipePath, {}, tmp);
+    expect(r.steps).toBeDefined();
+    expect(r.steps).toHaveLength(3);
+    expect(r.steps![0]).toEqual({
+      index: 0, name: 'launchApp: x', status: 'pass', screenshot: undefined, error: undefined, durationMs: 100,
+    });
+    expect(r.steps![1].status).toBe('fail');
+    expect(r.steps![1].screenshot).toBe('02.png');
+    expect(r.steps![1].error).toBe('timeout');
+    // Unknown status from a future ace-web release coerces, not crashes.
+    expect(r.steps![2].status).toBe('unknown');
+
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it('leaves steps undefined when ace-web omits the field (older versions)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-no-steps-'));
+    const recipePath = path.join(tmp, 'r.yaml');
+    await fs.writeFile(recipePath, 'appId: x\n');
+
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, envelope({ exit_code: 0, stdout: '', stderr: '', artifacts: [] })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    const r = await cb.runRecipe(recipePath, {}, tmp);
+    expect(r.steps).toBeUndefined();
+
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+});
+
+describe('CloudBackend.stopAvd', () => {
+  it('sends an empty body by default', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, envelope({})));
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    await cb.stopAvd('cloud');
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(JSON.parse(init.body as string)).toEqual({});
+  });
+
+  it('forwards force=true when opt is set', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, envelope({})));
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+    await cb.stopAvd('cloud', { force: true });
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(JSON.parse(init.body as string)).toEqual({ force: true });
   });
 });
 
