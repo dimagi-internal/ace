@@ -1381,6 +1381,107 @@ else
   warn "hq_api_key_auth: skipped — ACE_HQ_USERNAME not set" "see connect_env warning above"
 fi
 
+# 5b. ace-connect (CCHQ Connect-features project-space setup) — Phase 3
+# + Phase 5 both fail confusingly when the target HQ project space
+# hasn't been wired for CommCare Connect per the "Run Your First Connect
+# Opportunity" doc (Confluence / GDrive 18Y1UQJW1aIwcgSt-Mt1Vze5pdQPAPs0I).
+# Two required setup items, both check-able from the web UI with the
+# CCHQ cookies the connect-login flow leaves behind:
+#
+#   (a) Feature flag `COMMCARE_CONNECT` enabled — gates the
+#       `connect_username` permission CCHQ uses to recognize a
+#       ConnectID-owned mobile worker. With it OFF, Connect's
+#       `_create_hq_user` POST to `/a/<domain>/api/v0.5/user/` gets
+#       400 `"You don't have permission to use connect_username field"`,
+#       which `_create_hq_user` re-raises as `CommCareHQAPIException`,
+#       which `start_learn_app` does NOT catch → Django 500.
+#       The Android client correctly logs the failed response and
+#       swallows it (the response shape isn't a structured JSON error),
+#       so the opp-detail "Start" button appears to silently no-op
+#       from the FLW's point of view. From the field this looks like
+#       a client bug, but the actual cause is "feature flag not
+#       enabled in the HQ project space."
+#
+#   (b) Active OAuth 2.0 Connection at /motech/conn/ pointing at
+#       `https://connect.dimagi.com/api/receiver/` — required so CCHQ
+#       can forward submitted forms back to Connect for verification +
+#       payment. Without this, FLW submissions are never visible to
+#       Connect, payment never accrues, and Phase 8 monitoring stalls.
+#
+# Both must be set up ONCE per HQ project space; ACE has no MCP atom
+# to do this (the flag flip requires a Dimagi super-user; the OAuth
+# client credentials live in 1Password "Connect Delivery / Tech").
+# This probe surfaces missing setup so the operator can fix it BEFORE
+# burning a /ace:run on a non-Connect-enabled project space.
+#
+# Diagnosis surfaced 2026-05-12 (turmeric run 20260511-2053):
+# `connect-ace-prod` had `COMMCARE_CONNECT: false` AND the conn-setup
+# page showed `<td>Deleted</td>` — two weeks of "phantom FLW-client
+# noop" diagnoses on the selector map (2026-04-30 calibration note)
+# were retracted by inspecting the actual project setup state.
+# Tracking: CI-660 (https://dimagi.atlassian.net/browse/CI-660).
+if [ -n "$HQ_DOMAIN" ] && [ -f "$CONNECT_SESS" ]; then
+  CCHQ_BASE="https://www.commcarehq.org"
+  CCHQ_PROBE_COOKIES="$(node -e "
+    try {
+      const s = JSON.parse(require('fs').readFileSync('$CONNECT_SESS','utf8'));
+      const cs = (s.cookies || []).filter(c =>
+        (c.name === 'sessionid' || c.name === 'csrftoken') &&
+        (c.domain || '').includes('commcarehq')
+      );
+      process.stdout.write(cs.map(c => c.name + '=' + c.value).join('; '));
+    } catch(_) {}
+  " 2>/dev/null)"
+  if [ -n "$CCHQ_PROBE_COOKIES" ]; then
+    # The toggles_dict <div data-name="toggles_dict" ...> is embedded in
+    # every project-settings page; we hit data-forwarding because it's
+    # cheap and stable. grep for the COMMCARE_CONNECT flag value.
+    CCHQ_FLAGS_HTML="$(curl -sS -L -b "$CCHQ_PROBE_COOKIES" --max-time 10 \
+      "$CCHQ_BASE/a/$HQ_DOMAIN/motech/forwarding/" 2>/dev/null || echo "")"
+    if [ -n "$CCHQ_FLAGS_HTML" ]; then
+      # Parse the toggles_dict to extract the COMMCARE_CONNECT bool.
+      # Live shape:  &quot;COMMCARE_CONNECT&quot;: true   (or false)
+      CCHQ_CONNECT_FLAG="$(printf '%s' "$CCHQ_FLAGS_HTML" | grep -oE '&quot;COMMCARE_CONNECT&quot;: (true|false)' | head -1 | grep -oE '(true|false)$' || echo "unknown")"
+    else
+      CCHQ_CONNECT_FLAG="unreachable"
+    fi
+
+    # Check the OAuth Connection Settings page for an active connection
+    # row pointing at connect.dimagi.com. The page renders a table; a
+    # `<td>Deleted</td>` row means a connection was set up and then
+    # removed (or it was created by an admin who later deleted it).
+    # An absent connection.dimagi.com / "Connection successful" anchor
+    # in the HTML means no active OAuth connection exists.
+    CCHQ_CONN_HTML="$(curl -sS -L -b "$CCHQ_PROBE_COOKIES" --max-time 10 \
+      "$CCHQ_BASE/a/$HQ_DOMAIN/motech/conn/" 2>/dev/null || echo "")"
+    CCHQ_CONN_TO_CONNECT="$(printf '%s' "$CCHQ_CONN_HTML" | grep -ciE 'connect\.dimagi\.com/api/receiver|connect\.dimagi\.com/o/token' || true)"
+    CCHQ_CONN_DELETED="$(printf '%s' "$CCHQ_CONN_HTML" | grep -ciE '<td[^>]*>Deleted</td>' || true)"
+
+    REMEDIATION="enable the feature flag + configure the OAuth connection per the 'Run Your First Connect Opportunity' doc (Confluence; GDrive id 18Y1UQJW1aIwcgSt-Mt1Vze5pdQPAPs0I). Concretely: (1) ask a Dimagi super-user to flip the COMMCARE_CONNECT feature flag ON for project space '$HQ_DOMAIN' (Settings → Feature Flags and Privileges → 'Enable CommCare Connect features...'); (2) on the same project, go to Settings → Project Settings → Connection Settings (Integration) → Add new connection → URL https://connect.dimagi.com/api/receiver/ → Auth Type 'OAuth 2.0 Client Credentials Grant' → Client ID/Secret from 1Password 'Connect Delivery / Tech' → Token URL https://connect.dimagi.com/o/token/ → Pass Credentials in header → click Test Connection (must return 200 'Connection successful'); (3) Settings → Data Forwarding → Forward Forms → add one rule per app (Learn + Deliver) with the connection just created, POST, JSON, Include app_id in URL query"
+    if [ "$CCHQ_CONNECT_FLAG" = "true" ] && [ "$CCHQ_CONN_TO_CONNECT" -gt 0 ]; then
+      pass "cchq_connect_features: COMMCARE_CONNECT flag enabled on '$HQ_DOMAIN' AND active OAuth connection to connect.dimagi.com configured"
+    elif [ "$CCHQ_CONNECT_FLAG" = "unreachable" ] || [ "$CCHQ_CONNECT_FLAG" = "unknown" ]; then
+      warn "cchq_connect_features: could not read toggles_dict from $CCHQ_BASE/a/$HQ_DOMAIN/motech/forwarding/ (cookies may be stale or project access may be missing for ace@dimagi-ai.com)" "/ace:connect-login to refresh the CCHQ session; then re-run /ace:doctor. If the cookies refresh and this probe still can't see the flag, the project may not exist or the user lacks access."
+    elif [ "$CCHQ_CONNECT_FLAG" = "false" ] && [ "$CCHQ_CONN_TO_CONNECT" -eq 0 ]; then
+      warn "cchq_connect_features: NEITHER COMMCARE_CONNECT flag enabled NOR OAuth connection to connect.dimagi.com configured on '$HQ_DOMAIN' — Phase 3 (opp create + payment-unit sync) will partially succeed, Phase 5 (Learn-app launch on AVD) will fail with the 'silent FLW-client noop' symptom because /users/start_learn_app/ returns Django 500 (CommCareHQAPIException uncaught), and form submissions in Phase 5/8 will never reach Connect" "$REMEDIATION"
+    elif [ "$CCHQ_CONNECT_FLAG" = "false" ]; then
+      warn "cchq_connect_features: COMMCARE_CONNECT feature flag is OFF on '$HQ_DOMAIN' — /users/start_learn_app/ will 500 because CCHQ rejects the connect_username field (gated by this flag), and the Connect Android client logs+swallows the failed response so the opp-detail 'Start' button appears to silently no-op. OAuth connection IS present; only the flag is missing." "ask a Dimagi super-user to flip the COMMCARE_CONNECT feature flag ON for '$HQ_DOMAIN' (Settings → Feature Flags and Privileges → 'Enable CommCare Connect features...'). Full setup doc: GDrive 18Y1UQJW1aIwcgSt-Mt1Vze5pdQPAPs0I."
+    elif [ "$CCHQ_CONN_TO_CONNECT" -eq 0 ]; then
+      DELETED_HINT=""
+      [ "$CCHQ_CONN_DELETED" -gt 0 ] && DELETED_HINT=" (page shows a '<td>Deleted</td>' row — a prior connection was removed)"
+      warn "cchq_connect_features: OAuth connection from '$HQ_DOMAIN' to https://connect.dimagi.com/api/receiver/ is missing${DELETED_HINT} — feature flag IS enabled, so claim+Learn-app launch will work, but FLW form submissions from the Deliver app will not reach Connect for verification/payment, breaking Phase 8 monitoring" "Settings → Project Settings → Connection Settings (Integration) → Add new connection → URL https://connect.dimagi.com/api/receiver/ → OAuth 2.0 Client Credentials Grant → Client ID/Secret from 1Password 'Connect Delivery / Tech' → Token URL https://connect.dimagi.com/o/token/ → Test Connection must return 'Connection successful'. Then add a Forward Forms rule per app (Learn + Deliver). Full setup doc: GDrive 18Y1UQJW1aIwcgSt-Mt1Vze5pdQPAPs0I."
+    fi
+  else
+    info "cchq_connect_features: skipped — no CCHQ cookies in $CONNECT_SESS (covered by cchq_auth warning above). Re-run /ace:connect-login so the OAuth-via-CCHQ flow leaves valid commcarehq.org cookies, then re-run /ace:doctor."
+  fi
+else
+  if [ -z "$HQ_DOMAIN" ]; then
+    warn "cchq_connect_features: skipped — ACE_HQ_DOMAIN not set (see hq_domain warning above)" "set ACE_HQ_DOMAIN in .env and re-run"
+  else
+    warn "cchq_connect_features: skipped — $CONNECT_SESS missing (see connect_auth warning above)" "/ace:connect-login first; then this probe will tell you whether the HQ project space is wired for Connect"
+  fi
+fi
+
 # 6. ace-connect-labs — already covered by connect_labs_mcp_reachable +
 # connect_labs_connect_oauth above; reference here so the auth-liveness
 # block reads as a complete inventory.
