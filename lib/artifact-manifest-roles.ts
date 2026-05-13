@@ -13,23 +13,29 @@
  * § Naming rule (one convention everywhere) for the why.
  *
  * 0.13.0: Renumbered to 8 phases when 0.12.0 introduced
- * `solicitation-management` (Phase 6). Old `llo-manager` (was Phase 6)
- * was renamed to `execution-management` (Phase 7) and `closeout` moved
- * from Phase 7 to Phase 8. The folder for the renamed phase uses
- * `7-execution-manager` to match the agent name.
+ * `solicitation-management` at Phase 7. Old `llo-manager` (was
+ * Phase 7) was renamed to `execution-management` and `closeout` moved
+ * from Phase 7 to Phase 8.
+ *
+ * 0.13.x: Phase 1 (design-review) split into idea-to-design
+ * (Phase 1) and scenarios-and-acceptance (Phase 2). All downstream
+ * ordinals shifted +1 (commcare 2→3 ... closeout 9→10). Folder
+ * prefixes follow: `1-design` stayed; new `2-scenarios` added;
+ * `2-commcare` → `3-commcare`, etc.
  */
 
 /** Phase enum → folder slug used in Drive paths under runs/<run-id>/. */
 export const PHASE_FOLDERS = {
   'design': '1-design',
-  'commcare': '2-commcare',
-  'connect': '3-connect',
-  'ocs': '4-ocs',
-  'qa-and-training': '5-qa-and-training',
-  'synthetic-data-and-workflows': '6-synthetic',
-  'solicitation-management': '7-solicitation-management',
-  'execution-management': '8-execution-manager',
-  'closeout': '9-closeout',
+  'scenarios-and-acceptance': '2-scenarios',
+  'commcare': '3-commcare',
+  'connect': '4-connect',
+  'ocs': '5-ocs',
+  'qa-and-training': '6-qa-and-training',
+  'synthetic-data-and-workflows': '7-synthetic',
+  'solicitation-management': '8-solicitation-management',
+  'execution-management': '9-execution-manager',
+  'closeout': '10-closeout',
 } as const;
 
 export type PhaseFolder = typeof PHASE_FOLDERS[keyof typeof PHASE_FOLDERS];

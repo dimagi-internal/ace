@@ -48,15 +48,20 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 
 ## Registry
 
-### Phase 1 — design-review
+### Phase 1 — idea-to-design
 
 | Producer | Eval status | Eval skill / rationale |
 |---|---|---|
 | `idea-to-pdd` | **has eval + inline self-eval** | Companion `idea-to-pdd-eval` (slimmed to quality-only in PR #149). Plus inline 5-question stress-test rubric in producer's `## Process` step 6. The inline check fires during dispatch (gate-brief input); the companion eval re-grades independently. Both shapes valid here because they serve different roles — inline = producer self-aware halt, companion = independent grader. |
+
+### Phase 2 — scenarios-and-acceptance
+
+| Producer | Eval status | Eval skill / rationale |
+|---|---|---|
 | `pdd-to-app-journeys` | **has eval** | `pdd-to-app-journeys-eval` (PR #150). 6 quality dimensions: persona specificity, archetype alignment, coverage completeness, happy-path narrative voice, edge-case recoverability, pass-criteria measurability. |
 | `pdd-to-test-prompts` | **has eval** | `pdd-to-test-prompts-eval` (PR #151). 6 quality dimensions: expected-answer specificity, adversarial-prompt quality, archetype coverage, prompt phrasing realism, expected-tag correctness, escalation-prompt quality. |
 
-### Phase 2 — commcare-setup
+### Phase 3 — commcare-setup
 
 | Producer | Eval status | Eval skill / rationale |
 |---|---|---|
@@ -68,14 +73,14 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 | `commcare-form-patch` | **NO eval** | TEMPORARY workaround that patches form XML. Binary success — patch applies cleanly or it doesn't. No quality dimension. |
 | `app-connect-coverage` | **NO eval** | Verify+fix loop emitting `clean | blocked` verdict. Binary outcome — same shape as a QA. The "quality" of coverage IS the binary verdict. |
 
-### Phase 3 — connect-setup
+### Phase 4 — connect-setup
 
 | Producer | Eval status | Eval skill / rationale |
 |---|---|---|
 | `connect-program-setup` | **has eval** | `connect-program-setup-eval`. Grades whether the program shape (name, archetype-match) is appropriate for the opp. |
 | `connect-opp-setup` | **has eval** | `connect-opp-setup-eval`. 5 dimensions weighted to 1.0: verification_flag_fidelity (0.25), payment_unit_fit (0.20), deliver_unit_wiring (0.20), active_window_status (0.20), archetype_config_coherence (0.15). Mirrors `connect-program-setup-eval` structure including BLOCKER/WARN/DRIFT/PLATFORM/INFO/INFO-SKIPPED severity tiers, `partial` verdict tier for live-MCP-unreachable mode, live-state-drift via `connect_get_opportunity` + `connect_list_payment_units` + `connect_list_deliver_units`, archetype branches. Provisional. |
 
-### Phase 4 — ocs-setup
+### Phase 5 — ocs-setup
 
 | Producer | Eval status | Eval skill / rationale |
 |---|---|---|
@@ -83,11 +88,11 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 | `ocs-chatbot-qa` (runtime QA) | **has eval** | Pairs with `ocs-chatbot-eval` — qa captures transcript, eval scores responses. Reference example for the runtime-exercise eval pattern. |
 | `ocs-widget-handoff` (in `ocs-agent-setup`) | **has eval** | `ocs-widget-handoff-eval` evaluates the widget handoff artifact (URL valid, embed metadata correct, branding fields populated). Distinct from `ocs-chatbot-eval` (which grades responses). |
 
-### Phase 5 — qa-and-training
+### Phase 6 — qa-and-training
 
 | Producer | Eval status | Eval skill / rationale |
 |---|---|---|
-| `app-screenshot-capture` | **inline self-eval + covered by sibling eval** | Producer has inline UX smoke judge (~2 LLM calls) for shallow scoring. The deep per-journey UX grading lives in `app-ux-eval` (runs from `/ace:qa-deep`, separate workstream). Two-tier: inline shallow (every Phase 5 run) + deep (`app-ux-eval`, on-demand). |
+| `app-screenshot-capture` | **inline self-eval + covered by sibling eval** | Producer has inline UX smoke judge (~2 LLM calls) for shallow scoring. The deep per-journey UX grading lives in `app-ux-eval` (runs from `/ace:qa-deep`, separate workstream). Two-tier: inline shallow (every Phase 6 run) + deep (`app-ux-eval`, on-demand). |
 | `app-test-cases` | **NO eval** | Bindings YAML. Quality is "do the bindings resolve to real Nova form/field IDs and produce valid Maestro recipes" — that's structural (validated inline via `mobile_validate_recipe`), not gradable on a 0-10 spectrum. The downstream consumer (`app-ux-eval`) grades the actual app UX, not the bindings. |
 | `training-faq` | **has eval** | `training-faq-eval`. 5 dimensions: comprehensiveness (0.35), accuracy (0.25), scannability (0.20), field_realism (0.10), anticipated_question_depth (0.10). Provisional. |
 | `training-llo-guide` | **has eval** | `training-llo-guide-eval`. 5 dimensions: operational_completeness (0.35), action_orientation (0.25), screenshot_grounding (0.20), cap_threshold_accuracy (0.10), escalation_pathway_clarity (0.10). Provisional. |
@@ -98,7 +103,7 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 | `training-deck-build` | **NO eval** | Renders the outline into Slides via the Slides API. Quality of the rendered deck IS the quality of the outline (graded above) plus visual consistency (graded by Slides template). Producer doesn't add quality — it transcribes. |
 | `connect-baseline-screenshots` | not applicable | Cross-opp utility (per-Connect-version, not per-opp). Outside per-opp eval scope. |
 
-### Phase 6 — synthetic-data-and-workflows
+### Phase 7 — synthetic-data-and-workflows
 
 | Producer | Eval status | Eval skill / rationale |
 |---|---|---|
@@ -110,26 +115,26 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 | `synthetic-workflow-seed` | **has eval** | `synthetic-workflow-seed-eval`. Grades workflow seeding quality (KPIs wired correctly to manifest, coaching tasks attached to right FLWs, render-code sane). |
 | `synthetic-workflow-polish` | **has eval** | `synthetic-workflow-polish-eval`. Grades polish quality (visual coherence with opp domain, hero panels useful, anomaly callouts surface real anomalies). |
 
-### Phase 7 — solicitation-management
+### Phase 8 — solicitation-management
 
 | Producer | Eval status | Eval skill / rationale |
 |---|---|---|
 | `solicitation-create` | **has eval** | `solicitation-create-eval`. Grades published solicitation quality (scope clarity, criteria measurability, evaluation framework completeness). |
 | `solicitation-monitor` | **NO eval** | Recurring poll for responses. State-tracking; nothing to grade on a 0-10 spectrum. |
-| `solicitation-review` | **has eval** | `solicitation-review-eval`. Grades the awardee recommendation (scoring rubric applied consistently, recommendation reasoning grounded in responses, no obvious bias). Critical for Phase 7→8 HITL gate quality. |
+| `solicitation-review` | **has eval** | `solicitation-review-eval`. Grades the awardee recommendation (scoring rubric applied consistently, recommendation reasoning grounded in responses, no obvious bias). Critical for Phase 8→9 HITL gate quality. |
 
-### Phase 8 — execution-management
+### Phase 9 — execution-management
 
 | Producer | Eval status | Eval skill / rationale |
 |---|---|---|
 | `llo-onboarding` | **NO eval** | Process skill — sends Connect invite + onboarding email. Binary success/fail. The quality of the onboarding email content is graded upstream by `training-onboarding-email-eval` (when shipped); the dispatch itself isn't graded. |
-| `llo-launch` | **has eval** | `llo-launch-eval`. Phase 8 entry-quality grade (UAT verdicts considered, deep-QA freshness checked, activation timing appropriate). Critical pre-go-live gate. |
+| `llo-launch` | **has eval** | `llo-launch-eval`. Phase 9 entry-quality grade (UAT verdicts considered, deep-QA freshness checked, activation timing appropriate). Critical pre-go-live gate. |
 | `llo-invite` | **NO eval** | Email send loop. Process skill, no quality dimension. |
 | `llo-uat` | **has eval** | `llo-uat-eval`. 5 dimensions: uat_coverage_completeness (0.30), llo_signoff_clarity (0.25), blocker_resolution (0.20), evidence_citation_discipline (0.15), launch_readiness_recommendation (0.10). 3 hard-block rules: <50% metric coverage, LLO no-go but recommend launch, unresolved blocker without resolution path. Provisional. |
 | `flw-data-review` | **has eval** | `flw-data-review-eval`. Grades FLW data review quality (issue detection rate, recommendation actionability, prioritization). Recurring during active opp. |
 | `timeline-monitor` | **NO eval** | Recurring state-tracking. No artifact to grade. |
 
-### Phase 9 — closeout
+### Phase 10 — closeout
 
 | Producer | Eval status | Eval skill / rationale |
 |---|---|---|
@@ -142,7 +147,7 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 
 | Eval skill | Role |
 |---|---|
-| `app-ux-eval` | Deep per-journey UX grading; runs from `/ace:qa-deep`. Consumes Phase 1 `pdd-to-app-journeys.md` + Phase 2 `app-test-cases.yaml` + Phase 5 screenshots. |
+| `app-ux-eval` | Deep per-journey UX grading; runs from `/ace:qa-deep`. Consumes Phase 1 `pdd-to-app-journeys.md` + Phase 3 `app-test-cases.yaml` + Phase 6 screenshots. |
 | `opp-eval` | Umbrella aggregator across all per-skill eval verdicts. Per CLAUDE.md, produces opp-level rollup. |
 | `eval-calibration` | Meta-skill — calibrates other evals' rubrics against ground-truth catalogues per `eval-calibration` methodology. Not a per-opp producer. |
 
@@ -167,7 +172,7 @@ Same contract as `_qa-decisions.md`:
 
 ## Eval-self-QA — `verdict-yaml-qa`
 
-Per the migration spec's Phase 7: every `-eval` skill's verdict YAML is structurally checked by the cross-cutting `verdict-yaml-qa` skill. 7 static checks cover every concern that's mechanically expressible: YAML parses, schema validates against `lib/verdict-schema.ts § VerdictSchema`, dimension weights sum to 1.0, `overall_score` consistent with the weighted mean of dimensions, verdict tier matches score range (`pass`≥7.0, `warn` 5.0–7.0, `fail`<5.0), `live_state_verified: false` caps verdict at `partial` and overall at 8.5, gate `approve`/`reject` disposition consistent with `overall_score` vs `gate.threshold`.
+Per the migration spec's Phase 8: every `-eval` skill's verdict YAML is structurally checked by the cross-cutting `verdict-yaml-qa` skill. 7 static checks cover every concern that's mechanically expressible: YAML parses, schema validates against `lib/verdict-schema.ts § VerdictSchema`, dimension weights sum to 1.0, `overall_score` consistent with the weighted mean of dimensions, verdict tier matches score range (`pass`≥7.0, `warn` 5.0–7.0, `fail`<5.0), `live_state_verified: false` caps verdict at `partial` and overall at 8.5, gate `approve`/`reject` disposition consistent with `overall_score` vs `gate.threshold`.
 
 Single shared helper covers all 27 `-eval` skills' verdicts — adding a new `-eval` skill picks up coverage automatically without shipping a per-eval QA.
 
@@ -178,4 +183,4 @@ See `skills/verdict-yaml-qa/SKILL.md` and `_qa-decisions.md § Eval-self-QA (cro
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-09 | Initial registry. Mirrors `_qa-decisions.md` structure. Captures 17 `has eval` (companion `-eval` skill exists), 1 `inline self-eval` only (`idea-to-pdd` has both inline + companion), 2 `covered by sibling eval` (`app-screenshot-capture` via `app-ux-eval`; `ocs-agent-setup` via runtime `ocs-chatbot-qa`/`-eval` pair), 12 `NO eval` (binary process / state-tracking / covered upstream), 5 `not applicable` (utilities), 11 `not yet migrated` (eval candidates with stated revisit triggers — most concentrated in the training cluster + closeout cluster). Plus 3 cross-cutting evals (`app-ux-eval`, `opp-eval`, `eval-calibration`) listed separately since they don't pair with a single producer. | ACE team |
-| 2026-05-09 | **Initial-build registry completion.** All 10 deferred eval candidates shipped. `connect-opp-setup-eval` (Phase 3) mirrors connect-program-setup-eval shape with full BLOCKER/WARN/DRIFT/PLATFORM/INFO/INFO-SKIPPED severity tiers + live-state drift via `connect_get_opportunity` + `connect_list_payment_units` + `connect_list_deliver_units`. Six Phase 5 training evals (`training-faq-eval`, `training-llo-guide-eval`, `training-flw-guide-eval`, `training-onboarding-email-eval`, `training-quick-reference-eval`, `training-deck-outline-eval`). Phase 6 `synthetic-summary-eval`. Phase 8 `llo-uat-eval`. Phase 9 `learnings-summary-eval`. Each ships at provisional calibration; revisit conditions in the prior `not yet migrated` rows are now archived. The 6 training producers' verdict paths in `lib/artifact-manifest.ts` rename from `<producer>_verdict.yaml` (self-emitted placeholder) to `<producer>-eval_verdict.yaml` (companion-eval-emitted), and producedBy flips from `<producer>` to `<producer>-eval`. Final tally: **27 has eval, 1 inline self-eval (idea-to-pdd companion), 2 covered by sibling eval, 12 NO eval, 5 not applicable, 0 not yet migrated.** | ACE team |
+| 2026-05-09 | **Initial-build registry completion.** All 10 deferred eval candidates shipped. `connect-opp-setup-eval` (Phase 4) mirrors connect-program-setup-eval shape with full BLOCKER/WARN/DRIFT/PLATFORM/INFO/INFO-SKIPPED severity tiers + live-state drift via `connect_get_opportunity` + `connect_list_payment_units` + `connect_list_deliver_units`. Six Phase 6 training evals (`training-faq-eval`, `training-llo-guide-eval`, `training-flw-guide-eval`, `training-onboarding-email-eval`, `training-quick-reference-eval`, `training-deck-outline-eval`). Phase 7 `synthetic-summary-eval`. Phase 9 `llo-uat-eval`. Phase 10 `learnings-summary-eval`. Each ships at provisional calibration; revisit conditions in the prior `not yet migrated` rows are now archived. The 6 training producers' verdict paths in `lib/artifact-manifest.ts` rename from `<producer>_verdict.yaml` (self-emitted placeholder) to `<producer>-eval_verdict.yaml` (companion-eval-emitted), and producedBy flips from `<producer>` to `<producer>-eval`. Final tally: **27 has eval, 1 inline self-eval (idea-to-pdd companion), 2 covered by sibling eval, 12 NO eval, 5 not applicable, 0 not yet migrated.** | ACE team |

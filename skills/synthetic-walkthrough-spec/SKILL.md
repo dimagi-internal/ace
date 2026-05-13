@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # Synthetic Walkthrough Spec
 
-Stage 2 of ACE Phase 6 (Plan B). Reads the narrative plan and the persona
+Stage 2 of ACE Phase 7 (Plan B). Reads the narrative plan and the persona
 catalog (canned + opp-specific overlays) and emits one walkthrough spec
 YAML per persona. Each spec is the input to a `canopy:walkthrough` run via
 the `synthetic-walkthrough-run` skill.
@@ -17,16 +17,16 @@ the `synthetic-walkthrough-run` skill.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 6 | `6-synthetic/synthetic-narrative-plan.md` | the data story — informs scene narration |
-| Phase 6 | `6-synthetic/synthetic-narrative-plan.yaml` | manifest — anomaly weeks, FLW names, KPI thresholds for "wow moment" assertions |
-| Phase 6 | `6-synthetic/synthetic-data-generate.md` | labs URL, fixture folder ID, record counts |
+| Phase 7 | `7-synthetic/synthetic-narrative-plan.md` | the data story — informs scene narration |
+| Phase 7 | `7-synthetic/synthetic-narrative-plan.yaml` | manifest — anomaly weeks, FLW names, KPI thresholds for "wow moment" assertions |
+| Phase 7 | `7-synthetic/synthetic-data-generate.md` | labs URL, fixture folder ID, record counts |
 | Plugin | `personas/<persona>.md` | canned persona catalog (currently `prospective-llo.md`, `funder.md`) |
 | Drive (optional) | `ACE/<opp>/personas/*.md` | per-opp persona overlays — override or supplement the canned set |
 | Drive | `ACE/<opp>/opp.yaml` | `display_name`, `slug`, `synthetic.labs_opp_id`, `synthetic.current_folder_id` |
 
 ## Products
 
-- One `6-synthetic/synthetic-walkthrough-spec_<persona>.yaml` per persona
+- One `7-synthetic/synthetic-walkthrough-spec_<persona>.yaml` per persona
 - `run_state.yaml.phases.synthetic-data-and-workflows.synthetic-walkthrough-spec.steps[<persona>]: done`
 
 ## Process
@@ -145,7 +145,7 @@ the `synthetic-walkthrough-run` skill.
    Don't write a malformed spec.
 
 7. **Write each spec** to
-   `6-synthetic/synthetic-walkthrough-spec_<persona>.yaml` via
+   `7-synthetic/synthetic-walkthrough-spec_<persona>.yaml` via
    `drive_create_file` (find-or-update; re-runs overwrite).
 
 8. **Update `run_state.yaml`** via the read-merge-write pattern:

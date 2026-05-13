@@ -235,9 +235,9 @@ If you re-order any of these, two failure modes appear:
 `buildSlidesRequests` always uses `pageObjectIds: [duplicateId]` to
 scope per-slide replacements. Don't bypass that.
 
-## Phase 5 invocation chain
+## Phase 6 invocation chain
 
-For a full Phase 5 end-to-end:
+For a full Phase 6 end-to-end:
 
 1. `qa-plan` — produces walkthrough recipes + screenshot manifest
 2. `app-screenshot-capture` — runs recipes against AVD, uploads PNGs
@@ -252,13 +252,13 @@ For a full Phase 5 end-to-end:
    Skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` is unset.
 5. `training-onboarding-email` — last, links to all other docs by URL.
 
-`training-deck-build` is non-blocking (Phase 6 doesn't depend on the
-Slides deck — `onboarding-email-body.md` is the load-bearing Phase 6
+`training-deck-build` is non-blocking (Phase 7 doesn't depend on the
+Slides deck — `onboarding-email-body.md` is the load-bearing Phase 7
 input).
 
 ## Pre-flight checklist for a fresh environment
 
-Before the first Phase 5 in a new GCP project / 1Password vault:
+Before the first Phase 6 in a new GCP project / 1Password vault:
 
 - [ ] **Slides API enabled** on the GCP project. First call to
       `slides.presentations.get` returns the enable URL if not. One-click
@@ -291,5 +291,5 @@ Before the first Phase 5 in a new GCP project / 1Password vault:
 - v1 (0.10.91): Initial. Captures the four critical Slides gotchas
   (SA can't create directly, createImage needs anyone-with-link,
   speakerNotes lazy, delete returns 404), the template lifecycle, the
-  pre-flight checklist, and the Phase 5 invocation chain. Drawn from
+  pre-flight checklist, and the Phase 6 invocation chain. Drawn from
   the 0.10.78–0.10.90 build cycle.

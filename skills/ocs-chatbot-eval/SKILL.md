@@ -21,13 +21,13 @@ two-phase pattern` for the framework rationale and artifact-path contract.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 4 (`ocs-chatbot-qa`) | `4-ocs/ocs-chatbot-qa_transcript-<mode>.md` | transcript under judgment |
-| Phase 1 (`--deep` only) | `1-design/pdd-to-test-prompts.md` | per-prompt expected-answer summaries (ground truth) |
+| Phase 5 (`ocs-chatbot-qa`) | `5-ocs/ocs-chatbot-qa_transcript-<mode>.md` | transcript under judgment |
+| Phase 1 (`--deep` only) | `2-scenarios/pdd-to-test-prompts.md` | per-prompt expected-answer summaries (ground truth) |
 
 ## Products
 
-- `4-ocs/ocs-chatbot-eval_verdict-<mode>.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
-- `4-ocs/ocs-chatbot-eval_gate-brief-<mode>.md` (`--deep` only) — Phase 4 → 5 gate brief
+- `5-ocs/ocs-chatbot-eval_verdict-<mode>.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
+- `5-ocs/ocs-chatbot-eval_gate-brief-<mode>.md` (`--deep` only) — Phase 5→6 gate brief
 - `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` — recurring monitor verdict (when `--monitor`)
 
 ## Modes
@@ -38,8 +38,8 @@ uses a single-dimension shallow rubric (`overall_quality_0_to_3`);
 the table below.
 
 All paths below are run-scoped under
-`ACE/<opp-name>/runs/<run-id>/<phase>/`. Phase is `4-ocs` for `--quick`
-and `--deep`; `7-execution-manager` for `--monitor` (recurring Phase 8
+`ACE/<opp-name>/runs/<run-id>/<phase>/`. Phase is `5-ocs` for `--quick`
+and `--deep`; `7-execution-manager` for `--monitor` (recurring Phase 9
 work). The golden-template no-opp fallback (legacy dated form under
 `ACE/golden-template/qa-captures/`) is documented in
 `skills/ocs-chatbot-qa/SKILL.md`; the eval reads whichever path the qa
@@ -47,8 +47,8 @@ producer wrote to.
 
 | Mode | Transcript source | Rubric | Gate | Writes |
 |---|---|---|---|---|
-| `--quick` | `4-ocs/ocs-chatbot-qa_transcript-quick.md` | 1 dimension (`overall_quality_0_to_3`) | every prompt ≥ 2/3; retry signal otherwise | stdout summary + `4-ocs/ocs-chatbot-eval_verdict-quick.yaml` + `4-ocs/ocs-chatbot-eval_gate-brief-quick.md` |
-| `--deep` | `4-ocs/ocs-chatbot-qa_transcript-deep.md` | 5 dimensions (full rubric below) | overall ≥ 7 AND zero Fail verdicts | `4-ocs/ocs-chatbot-eval_verdict-deep.yaml` + `4-ocs/ocs-chatbot-eval_report-deep.md` + `4-ocs/ocs-chatbot-eval_gate-brief-deep.md` |
+| `--quick` | `5-ocs/ocs-chatbot-qa_transcript-quick.md` | 1 dimension (`overall_quality_0_to_3`) | every prompt ≥ 2/3; retry signal otherwise | stdout summary + `5-ocs/ocs-chatbot-eval_verdict-quick.yaml` + `5-ocs/ocs-chatbot-eval_gate-brief-quick.md` |
+| `--deep` | `5-ocs/ocs-chatbot-qa_transcript-deep.md` | 5 dimensions (full rubric below) | overall ≥ 7 AND zero Fail verdicts | `5-ocs/ocs-chatbot-eval_verdict-deep.yaml` + `5-ocs/ocs-chatbot-eval_report-deep.md` + `5-ocs/ocs-chatbot-eval_gate-brief-deep.md` |
 | `--monitor` | `7-execution-manager/ocs-chatbot-qa_transcript-monitor.md` | 5 dimensions (full rubric below) | none — trend only | `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` + `7-execution-manager/ocs-chatbot-eval_report-monitor.md` + append to `7-execution-manager/ocs-chatbot-eval_trend.md` |
 
 If no mode is passed, default to `--quick`.
@@ -57,7 +57,7 @@ If no mode is passed, default to `--quick`.
 
 1. **Locate the transcript.** Read the run-scoped transcript at
    `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-qa_transcript-<mode>.md`
-   (`4-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for
+   (`5-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for
    `--monitor`) — or the path passed as `--capture <path>`. Fail loudly
    if missing — do not chat with the bot to regenerate it. That's
    `ocs-chatbot-qa`'s job.
@@ -102,7 +102,7 @@ If no mode is passed, default to `--quick`.
    prompt-patch once before escalating.
 
    The single-dimension rubric is intentionally minimal — `--quick` is
-   the Phase 4 → 5 shallow gate (3 prompts × 1 dim = 3 LLM judge
+   the Phase 5→6 shallow gate (3 prompts × 1 dim = 3 LLM judge
    calls). Multi-dimensional grading lives in `--deep` and `--monitor`,
    which is where the calibrated rubric below applies.
 
@@ -252,7 +252,7 @@ rubric is improving over time, not just changing.
 
 4. **Write the verdict YAML** to
    `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_verdict-<mode>.yaml`
-   (`4-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for
+   (`5-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for
    `--monitor`). Uses the shared verdict shape (see `skills/README.md §
    QA vs Eval — the two-phase pattern` for the contract — every `-eval`
    skill writes the same shape so `opp-eval` can aggregate uniformly).
@@ -304,7 +304,7 @@ rubric is improving over time, not just changing.
    target: <experiment_id>
    mode: quick
    ran_at: <ISO timestamp>
-   capture_path: 4-ocs/ocs-chatbot-qa_transcript-quick.md   # relative to runs/<run-id>/
+   capture_path: 5-ocs/ocs-chatbot-qa_transcript-quick.md   # relative to runs/<run-id>/
 
    overall_score: 2.7        # mean of per-prompt overall_quality (0-3)
    verdict: pass | fail
@@ -332,12 +332,12 @@ rubric is improving over time, not just changing.
    - `--quick`: every per-prompt `overall_quality` ≥ 2/3 passes. On
      fail (any prompt scoring 0 or 1), return a retry signal so the
      caller (`ocs-setup` agent) can re-run `ocs-agent-setup`'s
-     prompt-patch once before escalating. This is the only Phase 4
-     OCS gate now — `--deep` no longer runs in Phase 4.
+     prompt-patch once before escalating. This is the only Phase 5
+     OCS gate now — `--deep` no longer runs in Phase 5.
    - `--deep`: overall ≥ 7 AND every Fail verdict resolved. On fail,
      escalate to admin group with the report attached. **Runs only
      from `/ace:qa-deep`** (manual, pre-launch); the verdict feeds
-     the Phase 7 `llo-launch` activation gate.
+     the Phase 8 `llo-launch` activation gate.
    - `--monitor`: no gate — write verdict + report, append to trend file.
      If overall drops > 1.5 points from the previous monitor verdict, email
      the admin group with the delta.
@@ -345,7 +345,7 @@ rubric is improving over time, not just changing.
 6. **Write the human-readable report** (skipped for `--quick` stdout-only
    mode) to
    `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_report-<mode>.md`
-   (`4-ocs/` for `--deep`; `7-execution-manager/` for `--monitor`):
+   (`5-ocs/` for `--deep`; `7-execution-manager/` for `--monitor`):
 
    ```markdown
    # OCS Chatbot Eval Report
@@ -377,8 +377,8 @@ rubric is improving over time, not just changing.
    dimension breakdown so drift is visible at a glance.
 
 <!-- 0.13.116: gate-brief write step removed. The orchestrator composes
-the pause-time summary at the Phase 4 → 5 Pause Point (`--quick`) and
-the Phase 8 `llo-launch` Pause Point (`--deep`) directly from this
+the pause-time summary at the Phase 5→6 Pause Point (`--quick`) and
+the Phase 9 `llo-launch` Pause Point (`--deep`) directly from this
 skill's verdict files (`ocs-chatbot-eval_verdict-{quick,deep}.yaml`).
 The `## Gate Brief` documentation section below stays as a historical
 reference — its contents describe what the orchestrator now synthesizes
@@ -387,7 +387,7 @@ from the verdict YAMLs. -->
 
 ## Gate Brief
 
-*Applies to `--quick` (Phase 4 gate, post-Task-6) and `--deep`
+*Applies to `--quick` (Phase 5 gate, post-Task-6) and `--deep`
 (post-`/ace:qa-deep`).* Summarizes the verdict so the admin can decide
 whether the bot is ready to advance without reading the full transcript.
 `--monitor` does not produce a gate brief.
@@ -395,7 +395,7 @@ whether the bot is ready to advance without reading the full transcript.
 ### Deep mode gate brief shape
 
 - **Artifact Under Review:** path to the report at
-  `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_report-deep.md`;
+  `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-chatbot-eval_report-deep.md`;
   summary is
   `<overall-score>/10 across <N> prompts, <P> Pass / <W> Warn / <F> Fail`
 - **What to Check** (emit these 4 items verbatim):
@@ -428,7 +428,7 @@ The `--quick` brief is intentionally thin: one dimension
 2/3`. There is no multi-dimensional breakdown to surface.
 
 - **Artifact Under Review:** path to the quick verdict YAML at
-  `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_verdict-quick.yaml`;
+  `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-chatbot-eval_verdict-quick.yaml`;
   summary is `<overall-score>/3 across <N> prompts, <P> Pass / <F> Fail`
 - **What to Check** (emit these 3 items verbatim):
   - Every prompt's `overall_quality` ≥ 2/3 (the shallow pass criterion)
@@ -452,7 +452,7 @@ Opportunity: <opp-name>
 Generated: 2026-05-04T18:30:00Z
 
 ## Artifact Under Review
-- Path: `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_verdict-quick.yaml`
+- Path: `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-chatbot-eval_verdict-quick.yaml`
 - Summary: 2.7/3 across 3 prompts, 3 Pass / 0 Fail.
 
 ## What to Check
@@ -492,7 +492,7 @@ When `--dry-run` is active:
 | 2026-04-19 | Initial version — split out from `ocs-chatbot-qa` as the judge half of the qa/eval pair. Reads transcripts from `qa-captures/`, writes `verdicts/`, `eval-reports/`, `gate-briefs/ocs-chatbot-eval-deep.md`. Gate now sits on eval, not qa | ACE team (qa/eval split refactor) |
 | 2026-04-19 | Rename per-item verdict key `per_prompt` → `per_item` (canonical per `skills/README.md § QA vs Eval`); add `prompt:` as domain-specific subkey inside each entry; document `ACE/golden-template/` no-opp fallback path; document `auto_surfaced:` block contract (inputs to the gate brief) | ACE team (qa/eval iteration loop) |
 | 2026-04-29 | Source-usage dimension now branches on the transcript's `Capture method:` header. Widget-captured transcripts grade body-text grounding (does the response name source docs by title?) and emit `[PLATFORM] empty cited_files expected on widget capture` instead of binding the empty-`cited_files` cap. OpenAI-compat captures keep the existing two-tier cap. The original cap conflated bot grounding gaps with widget-API measurement limitations and fired on every widget transcript regardless of bot quality, costing 5+ points on captures that were actually grounded. Surfaced 0.9.11 cross-opp validation against `turmeric-dogfood-20260427`. | ACE team (0.10.10) |
-| 2026-05-04 | **Thinned `--quick` to a single-dimension rubric.** `--quick` mode now scores one `overall_quality_0_to_3` dimension per prompt with pass criterion `every prompt ≥ 2/3`. `--deep` and `--monitor` still use the calibrated 5-dimension rubric. Phase 4 cost reduction: 3 prompts × 1 dim = 3 LLM judge calls (vs 5 prompts × 5 dims = ~25). Multi-dimensional judging moves to deep-only — the `--deep` mode is now invoked only from `/ace:qa-deep` and gates Phase 7 `llo-launch` activation. Verdict file path unchanged (`verdicts/ocs-chatbot-eval-quick.yaml`); the `dimensions` array now has 1 entry. | ACE team |
-| 2026-05-04 | **`--quick` now writes a gate brief.** `--quick` mode emits `gate-briefs/ocs-chatbot-eval-quick.md` so the orchestrator's Phase 4→5 gate lookup resolves (post-Task-6 contract). Defined the quick-mode brief shape inline (single dimension, 3 prompts, no multi-dim breakdown). `--monitor` still does not produce a gate brief. Final-review followup to the shallow/deep QA split. | ACE team |
-| 2026-05-05 | **Path-scheme migration.** All read/write paths repointed to `runs/<run-id>/<phase>/ocs-chatbot-eval_*-<mode>.<ext>` per the manifest (`4-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for `--monitor`). Retires the opp-level `qa-captures/` / `verdicts/` / `eval-reports/` / `gate-briefs/` directories. Updated: Modes table, Step 1 transcript locator + golden-template fallback path, Step 4 verdict output, Step 6 report output, Step 7 trend path, Step 8 gate-brief output, Gate Brief artifact-under-review for both modes, the deep + quick verdict YAML examples (`capture_path` field), and the worked Quick example. No behavior change beyond paths. | ACE team |
+| 2026-05-04 | **Thinned `--quick` to a single-dimension rubric.** `--quick` mode now scores one `overall_quality_0_to_3` dimension per prompt with pass criterion `every prompt ≥ 2/3`. `--deep` and `--monitor` still use the calibrated 5-dimension rubric. Phase 5 cost reduction: 3 prompts × 1 dim = 3 LLM judge calls (vs 5 prompts × 5 dims = ~25). Multi-dimensional judging moves to deep-only — the `--deep` mode is now invoked only from `/ace:qa-deep` and gates Phase 8 `llo-launch` activation. Verdict file path unchanged (`verdicts/ocs-chatbot-eval-quick.yaml`); the `dimensions` array now has 1 entry. | ACE team |
+| 2026-05-04 | **`--quick` now writes a gate brief.** `--quick` mode emits `gate-briefs/ocs-chatbot-eval-quick.md` so the orchestrator's Phase 5→6 gate lookup resolves (post-Task-6 contract). Defined the quick-mode brief shape inline (single dimension, 3 prompts, no multi-dim breakdown). `--monitor` still does not produce a gate brief. Final-review followup to the shallow/deep QA split. | ACE team |
+| 2026-05-05 | **Path-scheme migration.** All read/write paths repointed to `runs/<run-id>/<phase>/ocs-chatbot-eval_*-<mode>.<ext>` per the manifest (`5-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for `--monitor`). Retires the opp-level `qa-captures/` / `verdicts/` / `eval-reports/` / `gate-briefs/` directories. Updated: Modes table, Step 1 transcript locator + golden-template fallback path, Step 4 verdict output, Step 6 report output, Step 7 trend path, Step 8 gate-brief output, Gate Brief artifact-under-review for both modes, the deep + quick verdict YAML examples (`capture_path` field), and the worked Quick example. No behavior change beyond paths. | ACE team |
 | 2026-05-05 | **Rubric prose extracted.** The 5-dimension table cells were ~600 words each, packing per-dimension criteria with hard deductions, multi-tier caps, capture-method branches, and suite-level rules into single rows. The dimension table now carries a one-line summary plus a pointer to a new `## Rubric Rules` section that breaks each dimension into labeled subsections (Correctness, Source usage with `openai-compat` / `widget` branches, Refusal correctness with tiered cap table, Tone, Tagging) plus a Suite level subsection (Inflation guard, Pre/post-cap reporting). Same grading semantics — every existing rule, deduction, and cap is preserved verbatim under its own heading. Rationale: LLM judges miss rules buried in dense prose; labeled subsections give the rubric visible structure. | ACE team |

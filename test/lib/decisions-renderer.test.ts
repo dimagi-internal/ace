@@ -66,7 +66,7 @@ describe("renderDecisionsLog", () => {
       decisions: [
         { ...MINIMAL_LOG.decisions[0]!, id: "row-a", phase: "1-design" },
         { ...MINIMAL_LOG.decisions[0]!, id: "row-b", phase: "1-design" },
-        { ...MINIMAL_LOG.decisions[0]!, id: "row-c", phase: "2-commcare" },
+        { ...MINIMAL_LOG.decisions[0]!, id: "row-c", phase: "3-commcare" },
       ],
     } as DecisionsLog), 2],
   ] as const)("emits one HEADING_2 per distinct phase (%s)", (_label, build, expected) => {

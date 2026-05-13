@@ -1,16 +1,16 @@
 ---
 name: execution-manager
 description: >
-  Phase 8 of the CRISPR-Connect lifecycle: execute the awarded LLO's run
+  Phase 10 of the CRISPR-Connect lifecycle: execute the awarded LLO's run
   of the opportunity — onboarding, UAT, go-live, and recurring monitoring.
-  Phase 8 entry is gated on
+  Phase 10 entry is gated on
   `phases.solicitation-management.products.selected_llo.org_slug` being
-  populated in the current run's run_state.yaml by Phase 7's
+  populated in the current run's run_state.yaml by Phase 9's
   solicitation-review skill.
 model: inherit
 phase: execution-management
 phase_display: Execution Management
-phase_ordinal: 8
+phase_ordinal: 9
 skills:
   - { name: llo-onboarding,  has_judge: false }
   - { name: llo-uat,         has_judge: false }
@@ -22,10 +22,10 @@ recurring_skills:
   - { name: ocs-chatbot-eval,   has_judge: true }
 ---
 
-# Execution Manager Agent (Phase 8)
+# Execution Manager Agent (Phase 9)
 
 You run the execution phase of a CRISPR-Connect opportunity. By the time
-this phase starts, Phase 7 (Solicitation Management) has published a
+this phase starts, Phase 8 (Solicitation Management) has published a
 solicitation, collected responses, and (via the manual `solicitation-review`
 skill) awarded an org. The awardee is recorded in the current run's
 `phases.solicitation-management.products.selected_llo` — that's the LLO
@@ -36,13 +36,13 @@ By the time this phase starts, Phases 1–5 have produced an approved PDD,
 deployed CommCare apps, a configured Connect opportunity, a quality-gated
 OCS chatbot with widget credentials already attached to the opportunity,
 and the screenshot + training-material artifacts produced by
-`qa-and-training`. Phase 7 has run the solicitation lifecycle through
+`qa-and-training`. Phase 8 has run the solicitation lifecycle through
 award, populating
 `phases.solicitation-management.products.selected_llo` with `{org_slug,
 contact_email, response_id, source: 'solicitation'}` in the current
 run's `run_state.yaml`.
 
-Training materials and screenshots were produced upstream in Phase 5
+Training materials and screenshots were produced upstream in Phase 6
 (`qa-and-training`); this phase consumes them but does not generate them.
 
 ## Workflow
@@ -51,7 +51,7 @@ Training materials and screenshots were produced upstream in Phase 5
 Invoke the `llo-onboarding` skill.
 - Input: `selected_llo` from
   `phases.solicitation-management.products.selected_llo` in the current
-  run's `run_state.yaml` (populated by Phase 7 solicitation-review),
+  run's `run_state.yaml` (populated by Phase 8 solicitation-review),
   training materials, OCS widget config (`ocs-agent-config.md`)
 - Output: Connect program-level invite sent to the awardee org
   (`connect_send_llo_invite`), ACE onboarding email sent to
@@ -81,7 +81,7 @@ Invoke the `llo-launch` skill.
   `verdicts/ocs-chatbot-eval-deep.yaml` and
   `verdicts/app-ux-eval-deep.yaml` exist, pass, and are newer than
   the artifacts they grade (OCS chatbot `version_number`; learn /
-  deliver build IDs in `2-commcare/app-deploy_summary.md`). If `/ace:qa-deep`
+  deliver build IDs in `3-commcare/app-deploy_summary.md`). If `/ace:qa-deep`
   hasn't been run since the most recent app release / chatbot
   publish, `llo-launch` halts with `[BLOCKER]` and the operator must
   run `/ace:qa-deep <opp>` before resuming. The

@@ -9,28 +9,31 @@ ACE has one architectural rule: **anything that calls `Agent` must run at level 
 | Node | Calls `Agent`? | Form | Invoked how |
 |------|----------------|------|-------------|
 | `ace-orchestrator` | yes (dispatches phases + Nova) | procedure doc | `/ace:run` reads it and executes inline |
-| `commcare-setup` (Phase 2) | yes — `/nova:autobuild` is a hidden Agent dispatch | procedure doc | orchestrator reads it and executes inline |
-| `design-review` (Phase 1) | no | subagent | `Agent(design-review)` from level 0 |
-| `connect-setup` (Phase 3) | no | subagent | `Agent(connect-setup)` from level 0 |
-| `ocs-setup` (Phase 4) | no | subagent | `Agent(ocs-setup)` from level 0 |
-| `qa-and-training` (Phase 5) | no | subagent | `Agent(qa-and-training)` from level 0 |
-| `synthetic-data-and-workflows` (Phase 6) | no | subagent | `Agent(synthetic-data-and-workflows)` from level 0 |
-| `solicitation-management` (Phase 7) | no | subagent | `Agent(solicitation-management)` from level 0 |
-| `execution-manager` (Phase 8) | no | subagent | `Agent(execution-manager)` from level 0 |
-| `closeout` (Phase 9) | no | subagent | `Agent(closeout)` from level 0 |
+| `commcare-setup` (Phase 3) | yes — `/nova:autobuild` is a hidden Agent dispatch | procedure doc | orchestrator reads it and executes inline |
+| `idea-to-design` (Phase 1) | no | subagent | `Agent(idea-to-design)` from level 0 |
+| `scenarios-and-acceptance` (Phase 2) | no | subagent | `Agent(scenarios-and-acceptance)` from level 0 |
+| `connect-setup` (Phase 4) | no | subagent | `Agent(connect-setup)` from level 0 |
+| `ocs-setup` (Phase 5) | no | subagent | `Agent(ocs-setup)` from level 0 |
+| `qa-and-training` (Phase 6) | no | subagent | `Agent(qa-and-training)` from level 0 |
+| `synthetic-data-and-workflows` (Phase 7) | no | subagent | `Agent(synthetic-data-and-workflows)` from level 0 |
+| `solicitation-management` (Phase 8) | no | subagent | `Agent(solicitation-management)` from level 0 |
+| `execution-manager` (Phase 9) | no | subagent | `Agent(execution-manager)` from level 0 |
+| `closeout` (Phase 10) | no | subagent | `Agent(closeout)` from level 0 |
 | `ocs-tester` | no — leaf qa+eval pair | subagent | `Agent(ocs-tester)` ad-hoc |
 
 Procedure docs retain frontmatter so `/ace:status`, `/ace:eval`, `/ace:doctor`, `/ace:docs` keep working; `/ace:run` and `/ace:step` execute them inline. Never two levels of `Agent` dispatch — that's the invariant. (Rule landed in 0.7.0 after Nova migration silently broke a level-2 `Agent` call.)
 
 ## Phases (current pipeline, 0.13.x)
 
-1. design-review → 2. commcare-setup → 3. connect-setup → 4. ocs-setup → 5. qa-and-training → 6. synthetic-data-and-workflows → 7. solicitation-management → 8. execution-management → 9. closeout.
+1. idea-to-design → 2. scenarios-and-acceptance → 3. commcare-setup → 4. connect-setup → 5. ocs-setup → 6. qa-and-training → 7. synthetic-data-and-workflows → 8. solicitation-management → 9. execution-management → 10. closeout.
 
-Phases 1–6 run end-to-end with zero LLO involvement. Phase 7 publishes a public solicitation (and emails PDD-named candidates if any). Phase 8 is the first 1-1 LLO contact, gated on `phases.solicitation-management.products.selected_llo.org_slug` in the current run's `run_state.yaml`. Phase 5 splits shallow (in `/ace:run`, ~5 LLM judges) vs deep (out-of-band via `/ace:qa-deep`, ~90 judges); `llo-launch` requires fresh deep verdicts. `app-multimedia-coverage` is a manual post-Phase-2 sibling of `commcare-form-patch`, invoked via `/ace:step`, not part of `/ace:run`.
+Phases 1–7 run end-to-end with zero LLO involvement. Phase 8 publishes a public solicitation (and emails PDD-named candidates if any). Phase 9 is the first 1-1 LLO contact, gated on `phases.solicitation-management.products.selected_llo.org_slug` in the current run's `run_state.yaml`. Phase 6 splits shallow (in `/ace:run`, ~5 LLM judges) vs deep (out-of-band via `/ace:qa-deep`, ~90 judges); `llo-launch` requires fresh deep verdicts. `app-multimedia-coverage` is a manual post-Phase-3 sibling of `commcare-form-patch`, invoked via `/ace:step`, not part of `/ace:run`.
+
+Phase 1 produces the PDD (the formal design doc). Phase 2 derives test prompts (Q&A scenarios for OCS deep QA in Phase 5) and expected app journeys (UX-intent scenarios for app QA in Phase 6) from the approved PDD — both are AI interpretations of an AI-authored PDD, not ground truth.
 
 ## Layout
 
-- `agents/` — 11 agents + 1 reference doc. Two procedure docs (`ace-orchestrator`, `commcare-setup`); nine subagents; `orchestrator-reference.md` is the reference companion to `ace-orchestrator.md` (state schemas, write-back contract, pause-points catalog).
+- `agents/` — 12 agents + 1 reference doc. Two procedure docs (`ace-orchestrator`, `commcare-setup`); ten subagents; `orchestrator-reference.md` is the reference companion to `ace-orchestrator.md` (state schemas, write-back contract, pause-points catalog).
 - `skills/` — 66 skills, one dir per skill (`SKILL.md`). Stateless; per-opp state lives in Drive `ACE/<opp-name>/`. See `skills/README.md` for the author contract, the `## QA vs Eval` two-phase pattern, and `opp-eval` aggregator. Per-skill `-eval` rubrics calibrated against ground truth — see `skills/eval-calibration/SKILL.md`.
 - `commands/` — 15 slash commands: `run`, `step`, `status`, `eval`, `qa-deep`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `connect-login`, `labs-login`, `labs-token-mint`, `mobile-bootstrap`, `ocs-bootstrap-template`.
 - `mcp/` — 5 MCP servers wired inline in `.claude-plugin/plugin.json` `mcpServers` (inline since 0.5.16 to work around [anthropics/claude-code#9427](https://github.com/anthropics/claude-code/issues/9427)):
@@ -38,7 +41,7 @@ Phases 1–6 run end-to-end with zero LLO involvement. Phase 7 publishes a publi
   - `ace-ocs` (`ocs-server.ts`) — Open Chat Studio composite, 23 atoms (Authoring 11 + Observation 12). Source under `mcp/ocs/`.
   - `ace-connect` (`connect-server.ts`) — `connect.dimagi.com` composite, 21 atoms; 8 authoring atoms via REST automation API ([commcare-connect#1135](https://github.com/dimagi/commcare-connect/pull/1135)), rest via Playwright. Same MCP exposes 5 `commcare_*` atoms (`download_ccz`, `make_build`, `patch_xform`, `release_build`, `upload_multimedia`) via `backends/commcare.ts`. Source under `mcp/connect/`.
   - `ace-mobile` (`mobile-server.ts`) — Mac-local AVD + Maestro, 11 atoms. Static recipes in `mcp/mobile/recipes/static/` ship as scaffolds with `REPLACE_*` selectors that must be filled via `maestro studio` against the Connect APK before live runs. Source under `mcp/mobile/`.
-  - `connect-labs` (`connect-labs-server.ts`) — stdio proxy forwarding JSON-RPC to `https://labs.connect.dimagi.com/mcp/`, injecting `LABS_MCP_TOKEN`. 9 atoms back Phase 7. One-line config swap to delete when Claude Code gains first-class HTTP MCP support.
+  - `connect-labs` (`connect-labs-server.ts`) — stdio proxy forwarding JSON-RPC to `https://labs.connect.dimagi.com/mcp/`, injecting `LABS_MCP_TOKEN`. 9 atoms back Phase 8. One-line config swap to delete when Claude Code gains first-class HTTP MCP support.
 - `playbook/integrations/` — per-MCP integration reference + durable gotcha records: `ocs-integration.md`, `nova-integration.md`, `connect-api.md`, `connect-labs.md`, `commcare-api.md`, `mobile-integration.md`, `slides-integration.md`.
 - `docs/superpowers/specs/` + `docs/superpowers/plans/` — design specs and plans. Anchor doc: `specs/2026-04-01-ace-design.md`. Browse the directories for the rest; PR history is more reliable than plan checkboxes for shipped state.
 - `docs/examples/` — PDD examples + stress-test observations.
@@ -152,6 +155,6 @@ ACE has two classes of credential state — confusing them is the #1 source of f
 - **`/invite_users/` requires the opp to be `active`.** Call `connect_activate_opportunity` first.
 - **MCP-vs-skill-doc drift.** Skills paraphrasing atom schemas inline drift from the actual schema (canonical case: 0.9.4 `connect-opp-setup` `location` field — skill said "meters threshold," atom takes a boolean toggle). When you change an atom, grep skills for inline references; when writing inline references, link to the atom's tool description, not your own paraphrase. See `docs/learnings/2026-04-28-mcp-vs-skill-doc-drift.md`.
 - **Connect-Labs MCP is HTTP, ACE consumes via stdio proxy.** `mcp/connect-labs-server.ts` reads `LABS_MCP_TOKEN` from `.env` and forwards JSON-RPC frames. Auth is per-user **PAT**, not OAuth on the wire — OAuth bridge happens server-side inside labs's tool handlers. The proxy correctly distinguishes JSON-RPC notifications (no `id`) from requests; replying to a notification disables tool discovery.
-- **`solicitation` and `selected_llo` are separate `run_state.yaml.phases.solicitation-management.products.*` sub-blocks** (per-run only). `solicitation` is the audit trail (URLs, deadline, status, awarded.* fields); `selected_llo` is the narrow contract Phase 8 reads (`org_slug`, `contact_email`, `source`, `response_id`). Only `solicitation-review` populates `selected_llo`. If `selected_llo.org_slug` is set without a corresponding `solicitation` block, that's a contract violation. Phase 8's `llo-onboarding` halts fast if `selected_llo.org_slug` is null in the current run.
+- **`solicitation` and `selected_llo` are separate `run_state.yaml.phases.solicitation-management.products.*` sub-blocks** (per-run only). `solicitation` is the audit trail (URLs, deadline, status, awarded.* fields); `selected_llo` is the narrow contract Phase 9 reads (`org_slug`, `contact_email`, `source`, `response_id`). Only `solicitation-review` populates `selected_llo`. If `selected_llo.org_slug` is set without a corresponding `solicitation` block, that's a contract violation. Phase 9's `llo-onboarding` halts fast if `selected_llo.org_slug` is null in the current run.
 - **Nova has three known upstream bugs.** Autobuild sometimes skips Connect markers on vague specs; `update_form` `deliver_unit` runtime auto-fills broken `entity_id`/`entity_name`; `add_fields` partial persistence on first call. Mitigations: explicit Connect language in `pdd-to-{learn,deliver}-app` briefs; `app-release` pre-flight checks markers and post-release greps the CCZ for `<learn:deliver>` / `<learn:module>` counts. See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`.
 - **Plans use `- [ ]` syntax but are not live trackers.** Use PR history and code to determine what's shipped, not the checkboxes.

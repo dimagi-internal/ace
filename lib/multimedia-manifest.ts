@@ -1,7 +1,7 @@
 /**
  * Source of truth for what `app-multimedia-coverage` has actually generated
  * + uploaded for an opp. Stored in Drive at
- *   2-commcare/app-multimedia-coverage_manifest.yaml
+ *   3-commcare/app-multimedia-coverage_manifest.yaml
  *
  * The skill writes the manifest incrementally: generation produces a row
  * with `cchq_multimedia_id` / `cchq_file_hash_md5` set to null; the upload

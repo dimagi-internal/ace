@@ -15,7 +15,7 @@ Manual skill — never runs in default `/ace:run`. Only via:
 ```
 
 This is the only skill that calls `award_response` (irreversible) and the
-only skill that populates `selected_llo` (which gates Phase 8). Writes to
+only skill that populates `selected_llo` (which gates Phase 9). Writes to
 `phases.solicitation-management.products.selected_llo` in the current run's
 `run_state.yaml` only.
 
@@ -173,7 +173,7 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
     ```
 
     **No write to `opp.yaml.selected_llo` or `opp.yaml.solicitation`.**
-    These are per-run only. Phase 8 (`llo-onboarding`) reads
+    These are per-run only. Phase 9 (`llo-onboarding`) reads
     `selected_llo` from the same `run_state.yaml`.
 
 ## Error handling
@@ -184,7 +184,7 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
 - **Human replies `cancel`**: halt; do not write `award-record.md`.
 - **`award_response` returns 4xx after approval**: write `award-record.md`
   with `status: failed` and the error envelope. **Do not** populate
-  `selected_llo` (Phase 8 stays gated). Surface the error to the human
+  `selected_llo` (Phase 9 stays gated). Surface the error to the human
   and suggest contacting a labs admin if the award call must succeed
   out-of-band.
 - **`list_reviews` shows ACE already reviewed all responses**: skip the

@@ -2,13 +2,13 @@
 name: pdd-to-test-prompts
 description: >
   Derive opp-specific Q&A test prompts from an approved PDD. Produces the
-  ground-truth suite for the Phase 4 OCS chatbot deep gate.
+  ground-truth suite for the Phase 5 OCS chatbot deep gate.
 disable-model-invocation: true
 ---
 
 # PDD to Test Prompts
 
-Generate the opp-specific test suite that the Phase 4 qa→eval pair uses as
+Generate the opp-specific test suite that the Phase 5 qa→eval pair uses as
 its ground truth. Runs in Phase 1 (Design Review & Iteration) as Step 2,
 right after `idea-to-pdd`.
 
@@ -20,7 +20,7 @@ right after `idea-to-pdd`.
 
 ## Products
 
-- `1-design/pdd-to-test-prompts.md` — opp-specific test suite consumed by `ocs-chatbot-qa --deep` (Phase 4) and `ocs-chatbot-eval --deep` (gate)
+- `2-scenarios/pdd-to-test-prompts.md` — opp-specific test suite consumed by `ocs-chatbot-qa --deep` (Phase 5) and `ocs-chatbot-eval --deep` (gate)
 
 ## Process
 
@@ -71,7 +71,7 @@ right after `idea-to-pdd`.
      correctly, NOT walk through how to bypass it.
 
 4. **Write the test prompt file** to
-   `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-test-prompts.md`:
+   `ACE/<opp-name>/runs/<run-id>/2-scenarios/pdd-to-test-prompts.md`:
 
    ```markdown
    # OCS Test Prompts — <opp-name>
@@ -212,7 +212,7 @@ stage-scoped answers.
 
 - **Auto:** Generate the full prompt file, self-evaluate coverage, write it
 - **Review:** Pause before writing to present the generated Q&A list for
-  operator approval (this is the ground truth for Phase 4's deep gate, so
+  operator approval (this is the ground truth for Phase 5's deep gate, so
   getting it wrong causes cascading false failures downstream)
 
 ## Dry-Run Behavior
@@ -234,6 +234,6 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-14 | Initial version — introduced as Phase 1 Step 2 so Phase 4's `ocs-chatbot-qa --deep` has ground-truth opp-specific prompts to grade against. Previously `test-prompts.md` was referenced by `ocs-chatbot-qa` but had no producer | ACE team |
+| 2026-04-14 | Initial version — introduced as Phase 1 Step 2 so Phase 5's `ocs-chatbot-qa --deep` has ground-truth opp-specific prompts to grade against. Previously `test-prompts.md` was referenced by `ocs-chatbot-qa` but had no producer | ACE team |
 | 2026-04-19 | Added `## Archetypes` section branching on PDD archetype. `focus-group` gets session/recruitment/consent/question-guide/facilitation/output/audio categories; atomic-visit retains visit-flow/eligibility/GPS/duplicate categories; multi-stage mixes per-stage with an added stage-gate category. Motivated by cosmetics-fgd-pilot recon (2026-04-19) where the atomic-visit-only category list forced manual remapping | ACE team (qa/eval iteration loop) |
 | 2026-04-20 | Expand `multi-stage` archetype: clarify per-stage archetype dispatch, add intervention-continuity cross-stage category, flag missing Stage Gate as `[WARN]` | ACE team (skills review) |

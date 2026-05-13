@@ -1,7 +1,7 @@
 /**
  * Unit tests for `connect_preflight_learn_app_user` — the CI-660 boundary
  * probe shipped to convert opaque `POST /users/start_learn_app/` 500s into
- * a structured Zod/JSON outcome before Phase 5 mobile navigation triggers
+ * a structured Zod/JSON outcome before Phase 6 mobile navigation triggers
  * `create_hq_user_and_link` (which `users/views.py:107` doesn't try/except).
  *
  * Test surface:

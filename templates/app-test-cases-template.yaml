@@ -1,6 +1,6 @@
-# app-test-cases.yaml — bindings of Phase 1 journeys to Phase 2 built structure.
-# Producer: app-test-cases (Phase 2)
-# Consumers: app-screenshot-capture (Phase 5 shallow), /ace:qa-deep (manual deep)
+# app-test-cases.yaml — bindings of Phase 1 journeys to Phase 3 built structure.
+# Producer: app-test-cases (Phase 3)
+# Consumers: app-screenshot-capture (Phase 6 shallow), /ace:qa-deep (manual deep)
 
 opp: {{opp_name}}
 run_id: {{run_id}}
@@ -14,7 +14,7 @@ nova_apps:
 #   - a Maestro recipe filled with concrete selectors (no REPLACE_*)
 #   - the structural pass criteria (boot, no crash, submit confirmation)
 #
-# `is_smoke: true` marks the recipe Phase 5 runs in shallow mode (one
+# `is_smoke: true` marks the recipe Phase 6 runs in shallow mode (one
 # per app — the cheapest representative happy path).
 
 journeys:

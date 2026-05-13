@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # FLW Data Review Eval
 
-`flw-data-review` is the recurring Phase 5 skill that runs weekly
+`flw-data-review` is the recurring Phase 6 skill that runs weekly
 during an active opp to surface FLW submission data quality issues
 (outlier detection, calibration drift, refusal-rate flags, photo
 pass-rate trends). It's the per-cycle quality signal that catches

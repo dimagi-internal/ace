@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # LLO UAT Eval
 
-`llo-uat` is the Phase 8 skill that compiles user-acceptance-test
+`llo-uat` is the Phase 9 skill that compiles user-acceptance-test
 results from collected LLO responses ahead of `llo-launch`. It is the
 last quality gate before activation: blockers surfaced here either
 become launch-stoppers or get a documented resolution path. This
@@ -16,7 +16,7 @@ rubric grades whether that compilation faithfully covers the PDD's
 success metrics, names the LLOs giving sign-off, and resolves every
 flagged blocker.
 
-This is a Phase 8 process-skill eval, sibling of `llo-launch-eval`
+This is a Phase 9 process-skill eval, sibling of `llo-launch-eval`
 which grades the activation step that follows. See
 `skills/_eval-template.md` for shared contracts and
 `skills/eval-calibration/SKILL.md` for calibration methodology.
@@ -26,23 +26,23 @@ which grades the activation step that follows. See
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; Success Metrics + Evidence Model define UAT coverage expectation |
-| Phase 8 | `8-execution/llo-uat_results.md` | UAT compilation under judgment |
-| Phase 8 | `8-execution/llo-onboarding_*` artifacts | LLO roster (who *should* have signed off) |
-| Phase 5/2 | `2-commcare/app-deploy_summary.md` | what was deployed for UAT to exercise |
+| Phase 9 | `9-execution/llo-uat_results.md` | UAT compilation under judgment |
+| Phase 9 | `9-execution/llo-onboarding_*` artifacts | LLO roster (who *should* have signed off) |
+| Phase 6/2 | `3-commcare/app-deploy_summary.md` | what was deployed for UAT to exercise |
 
 ## Products
 
-- `8-execution/llo-uat-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`llo-uat`).
+- `9-execution/llo-uat-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`llo-uat`).
 
 ## Process
 
 1. **Read inputs from GDrive** (paths in `## Inputs` above). Also read
-   `runs/<run-id>/run_state.yaml` to confirm Phase 8 reached `llo-uat`.
+   `runs/<run-id>/run_state.yaml` to confirm Phase 9 reached `llo-uat`.
 
 2. **Detect "phase not run" mode.** If `run_state.yaml` shows
    `phases.execution-management.llo-uat` not `done` or
-   `8-execution/llo-uat_results.md` is missing, emit `verdict:
-   incomplete` immediately with `[INFO] Phase 8 llo-uat not run; not
+   `9-execution/llo-uat_results.md` is missing, emit `verdict:
+   incomplete` immediately with `[INFO] Phase 9 llo-uat not run; not
    gradable yet`.
 
 3. **Extract the PDD's UAT-coverage expectation:**
@@ -77,7 +77,7 @@ which grades the activation step that follows. See
    - `pass` — overall ≥ 7.0, no dimension ≤ 3.
    - `warn` — overall ≥ 5.0 < 7.0, or any inflation cap binds.
    - `fail` — overall < 5.0 OR any dimension ≤ 3.
-   - `incomplete` — Phase 8 `llo-uat` not run, or artifact missing entirely.
+   - `incomplete` — Phase 9 `llo-uat` not run, or artifact missing entirely.
 
    **Severity tiers** for `auto_surfaced` entries:
    - `[BLOCKER]` — must-fix before launch. Counts as a hard defect.
@@ -85,7 +85,7 @@ which grades the activation step that follows. See
    - `[INFO]` — observational, no action required.
 
 5. **Write the verdict YAML** to
-   `8-execution/llo-uat-eval_verdict.yaml` using the shape from
+   `9-execution/llo-uat-eval_verdict.yaml` using the shape from
    `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
 
    ```yaml
@@ -119,9 +119,9 @@ Calibration target on a real UAT compilation:
 - **Inter-run variance:** ≤ 0.5 across 3 same-model runs.
 - **Cross-model variance:** ≤ 1.0 for strong calibration.
 
-This rubric ships at **provisional** until a real Phase 8 UAT
+This rubric ships at **provisional** until a real Phase 9 UAT
 compilation produces ground truth. Until then, it correctly emits
-`incomplete` on opps where Phase 8 hasn't reached `llo-uat`.
+`incomplete` on opps where Phase 9 hasn't reached `llo-uat`.
 
 ## Archetypes
 
@@ -149,4 +149,4 @@ verdict + report written to Drive.
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-09 | Initial version. 5 dimensions: uat_coverage_completeness (0.30 — most load-bearing for "did we actually test what we said we'd test"), llo_signoff_clarity (0.25), blocker_resolution (0.20), evidence_citation_discipline (0.15), launch_readiness_recommendation (0.10). Inflation guard at 8.5. Three hard-block rules: <50% Success Metric coverage; LLO no-go but recommend launch; unresolved blocker with no path. Explicit `incomplete` verdict when Phase 8 hasn't reached `llo-uat`. Last quality gate before `llo-launch` activation. Ships at provisional calibration until a real UAT compilation produces ground truth. Closes the "not yet migrated" registry row for `llo-uat`. | ACE team |
+| 2026-05-09 | Initial version. 5 dimensions: uat_coverage_completeness (0.30 — most load-bearing for "did we actually test what we said we'd test"), llo_signoff_clarity (0.25), blocker_resolution (0.20), evidence_citation_discipline (0.15), launch_readiness_recommendation (0.10). Inflation guard at 8.5. Three hard-block rules: <50% Success Metric coverage; LLO no-go but recommend launch; unresolved blocker with no path. Explicit `incomplete` verdict when Phase 9 hasn't reached `llo-uat`. Last quality gate before `llo-launch` activation. Ships at provisional calibration until a real UAT compilation produces ground truth. Closes the "not yet migrated" registry row for `llo-uat`. | ACE team |

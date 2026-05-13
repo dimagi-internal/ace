@@ -20,14 +20,14 @@ describe('lintBacklogEntries', () => {
       phase_3_backlog: [
         {
           id: 'leep-stub-program-cleanup',
-          summary: 'Stub program f3164651-... created accidentally during Phase 3 probing; manual web-UI cleanup needed.',
+          summary: 'Stub program f3164651-... created accidentally during Phase 4 probing; manual web-UI cleanup needed.',
           location: 'ACE/leep-paint-collection/connect/',
         },
       ],
       phase_5_backlog: [
         {
           id: 'mobile-bootstrap-not-run',
-          summary: '~/.ace/connect-app.apk absent; Phase 5 ran in STUB mode',
+          summary: '~/.ace/connect-app.apk absent; Phase 6 ran in STUB mode',
           location: '~/.ace/, ACE/leep-paint-collection/screenshots/',
         },
       ],

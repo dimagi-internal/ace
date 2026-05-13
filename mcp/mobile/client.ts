@@ -104,14 +104,14 @@ export class MobileClient {
    *
    * Why the driver probe lives here. Pre-0.13.165, `mobile_ensure_avd_running`
    * returned PASS as soon as the emulator booted and `adb` reported the
-   * device as `device`. Phase 5 `app-screenshot-capture` would then call
+   * device as `device`. Phase 6 `app-screenshot-capture` would then call
    * `mobile_run_recipe`, the first `deviceInfo` gRPC call would hit
    * `UNAVAILABLE` (driver app installed but its gRPC server dead — or
    * driver not installed and the runtime install racing), and the skill
    * would degrade to `verdict: incomplete` for a state that's actually
    * recoverable. By doing the probe + repair here we make
    * `ensure_avd_running` the single source of truth for "AVD is ready
-   * for Maestro": `mobile-bootstrap`, Phase 5's pre-flight, and
+   * for Maestro": `mobile-bootstrap`, Phase 6's pre-flight, and
    * `app-screenshot-capture` Step 3 all call this same path. DRY.
    *
    * Cloud backend skips the local driver check — its workers manage

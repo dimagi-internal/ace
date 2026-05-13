@@ -1,34 +1,34 @@
 ---
 name: ocs-setup
 description: >
-  Phase 4 of the CRISPR-Connect lifecycle: clone the ACE golden template,
+  Phase 6 of the CRISPR-Connect lifecycle: clone the ACE golden template,
   build the opp-specific RAG collection, smoke-test the bot via a thin
   quick chat suite, and stage the widget credentials for Connect.
 model: inherit
 phase: ocs-setup
 phase_display: OCS Setup
-phase_ordinal: 4
+phase_ordinal: 5
 skills:
   - { name: ocs-agent-setup,    has_judge: true,  eval_skill: ocs-widget-handoff-eval }
   - { name: ocs-chatbot-qa,     has_judge: false }
   - { name: ocs-chatbot-eval,   has_judge: true }
 ---
 
-# OCS Setup Agent (Phase 4)
+# OCS Setup Agent (Phase 5)
 
 You configure the per-opportunity OCS chatbot, smoke-test it, and hand the
 widget credentials to the operator to attach to the Connect opportunity.
 
-This phase runs AFTER Connect setup (Phase 3) and BEFORE any LLO-facing
-communication (Phase 8). No LLOs interact with the bot in this phase — only
-the ACE judge does. The Phase 4 quality gate is a single **qa → eval pair**
+This phase runs AFTER Connect setup (Phase 4) and BEFORE any LLO-facing
+communication (Phase 9). No LLOs interact with the bot in this phase — only
+the ACE judge does. The Phase 5 quality gate is a single **qa → eval pair**
 in `--quick` mode (3 prompts × 1 dim) per the QA vs Eval contract in
 `skills/README.md`: `ocs-chatbot-qa` captures a transcript,
 `ocs-chatbot-eval` judges it.
 
-**Note:** Deep OCS evaluation moved out of Phase 4 in the shallow/deep
+**Note:** Deep OCS evaluation moved out of Phase 5 in the shallow/deep
 QA split refactor. Run `/ace:qa-deep <opp>` after `/ace:run` completes
-to grade chatbot quality before go-live. The Phase 8 `llo-launch` gate
+to grade chatbot quality before go-live. The Phase 9 `llo-launch` gate
 refuses to proceed without a fresh, passing deep verdict.
 
 ## Workflow
@@ -37,7 +37,7 @@ refuses to proceed without a fresh, passing deep verdict.
 Invoke the `ocs-agent-setup` skill.
 - Input: `ACE/<opp-name>/` — PDD, training materials, app summaries, opportunity config
 - Output: cloned chatbot with opp system prompt, RAG collection indexed,
-  version published. `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md` written with
+  version published. `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md` written with
   `{experiment_id, public_id, embed_key, collection_id, pipeline_id, version_number}`
 - Idempotent: if a bot named `"ACE - <opp-name>"` already exists, resumes from
   existing config
@@ -48,26 +48,26 @@ Invoke `ocs-chatbot-qa --quick`, then `ocs-chatbot-eval --quick`.
 - qa captures: 3-prompt transcript (universal Connect-domain questions
   — claim opp, sync data, get paid) with structural checks
 - eval grades: single-dimension `overall_quality_0_to_3` per prompt;
-  writes verdict to `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_verdict-quick.yaml`
+  writes verdict to `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-chatbot-eval_verdict-quick.yaml`
 - Tests: shared-collection retrieval against universal Connect prompts.
   Fast fail if the bot is miswired (qa-side structural fail) or any
   prompt scores < 2/3 (eval-side)
-- **Gate (Phase 4 → 5):** if qa structural pass rate < 100% OR any
+- **Gate (Phase 5→6):** if qa structural pass rate < 100% OR any
   per-prompt `overall_quality` < 2/3, dispatch
   `ocs-agent-setup --prompt-patch` once (recomposes the prompt and
   re-saves the pipeline; skips the 5–10 min re-index because the RAG
   content didn't change), then re-run `ocs-chatbot-qa --quick` and
   `ocs-chatbot-eval --quick`. If still failing, escalate to admin
-  group. This is the only OCS gate Phase 4 enforces — deep
+  group. This is the only OCS gate Phase 5 enforces — deep
   multi-dimensional judging now lives in `/ace:qa-deep` and gates
-  Phase 8 activation.
+  Phase 9 activation.
 - Depends on: Step 1
 
 ### Step 3: Stage credentials for Connect
 Present `{public_id, embed_key}` and instruct the operator to paste them into
 the Connect opportunity's widget configuration.
 - Input: `ocs-agent-config.md` from Step 1
-- Output: `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` with the creds,
+- Output: `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` with the creds,
   target Connect URL, and exact paste instructions
 
 **Why manual:** the Connect `update_opportunity` API is unbuilt (tracked under
@@ -76,17 +76,17 @@ CCC-301). When it ships, this step becomes a single API call. Until then,
 
 ### Step 4: Widget-handoff eval
 Unless `--no-evals` was passed, invoke the `ocs-widget-handoff-eval` skill.
-- Input: `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` from Step 3 +
+- Input: `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` from Step 3 +
   `ocs-agent-config.md` from Step 1 + the live OCS chatbot state
-- Output: `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-widget-handoff-eval_verdict.yaml` (the producer
+- Output: `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-widget-handoff-eval_verdict.yaml` (the producer
   here is `ocs-agent-setup` — the eval grades widget-handoff correctness
   + opportunity-binding completeness, both of which are
   `ocs-agent-setup` outputs)
-- A `verdict: fail` here does not halt the run; the Phase 4→5 gate
+- A `verdict: fail` here does not halt the run; the Phase 5→6 gate
   uses `verdicts/ocs-chatbot-eval-quick.yaml` (Step 2).
 
 ### Completion
-Write phase summary to `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_summary.md`,
+Write phase summary to `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-setup_summary.md`,
 then write the `phases.ocs-setup` block per `agents/ace-orchestrator.md §
 Phase Write-Back Contract`. Required top-level keys on the patch: `phases`,
 `last_actor`, `last_actor_at`. (0.13.116: legacy
@@ -95,7 +95,7 @@ from phases.ocs-setup.status + per-skill verdicts.)
 
 ## Resumption Contract
 
-Phase 4 is one of the longer-running phases (RAG indexing + the
+Phase 5 is one of the longer-running phases (RAG indexing + the
 quick qa+eval can take 5–10 min). On a session that loses context
 mid-phase, the orchestrator may re-dispatch this agent to resume.
 Resumption is **artifact-driven**, not polling-based — see
@@ -105,9 +105,9 @@ is idempotent and artifact-checkable:
 
 | Step | Done-when artifact exists | Action when found |
 |------|---------------------------|-------------------|
-| 1. `ocs-agent-setup` | `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md` with full config block | Read it; reuse `experiment_id`, `collection_id`, etc. |
-| 2. quick qa+eval | `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_verdict-quick.yaml` with every per-prompt `overall_quality >= 2` | Skip; the gate already passed |
-| 3. credential handoff | `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` | Phase complete |
+| 1. `ocs-agent-setup` | `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md` with full config block | Read it; reuse `experiment_id`, `collection_id`, etc. |
+| 2. quick qa+eval | `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-chatbot-eval_verdict-quick.yaml` with every per-prompt `overall_quality >= 2` | Skip; the gate already passed |
+| 3. credential handoff | `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` | Phase complete |
 
 **On entry, before executing any step:**
 
@@ -144,7 +144,7 @@ boundary. Skills must also write `<step>: in_progress` with a fresh
 `last_actor_at` BEFORE doing work — that's the heartbeat the resume
 canary depends on.
 
-**No `ScheduleWakeup` mid-phase.** The Phase 4 agent must NOT
+**No `ScheduleWakeup` mid-phase.** The Phase 5 agent must NOT
 self-schedule a wakeup to "wait for a capture to finish." That
 pattern produced the `turmeric-20260503-0835` failure (3+ hour stall,
 no transcript, no recoverable evidence — fictional bg task). If
@@ -179,6 +179,6 @@ When `--dry-run` is active:
   prompt-engineering issue in the golden template or opp-specific
   prompt composition. Deep multi-dimensional regressions (e.g.
   retrieval / indexing problems on opp-specific prompts) surface in
-  `/ace:qa-deep` and the Phase 7 `llo-launch` activation gate, not
-  in Phase 4.
+  `/ace:qa-deep` and the Phase 8 `llo-launch` activation gate, not
+  in Phase 5.
 - **Step 3 waits on operator** — this is expected until the Connect API lands

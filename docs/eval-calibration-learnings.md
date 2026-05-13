@@ -192,7 +192,7 @@ isn't discriminating.
   calibrated; the other two are provisional.)
 - **Operator-effort tracking** in `state.yaml` — a meta-eval
   signal nobody else has today.
-- **`cycle-grade` promotion** to a proper `-eval` skill. Phase 6
+- **`cycle-grade` promotion** to a proper `-eval` skill. Phase 7
   hasn't run for a closed cycle yet so no ground truth.
 - **`connect-program-setup-eval`** — unblocked by 0.8.0/0.8.1
   ace-connect MCP but needs a non-degraded run.

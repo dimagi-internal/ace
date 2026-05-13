@@ -72,7 +72,7 @@ The verdict file is the unit `opp-eval` aggregates. Schema in
 `lib/verdict-schema.ts`. **Filename uses the eval skill's name**:
 `<phase-folder>/<producer>-eval_verdict.yaml`. For example,
 `idea-to-pdd-eval` writes `1-design/idea-to-pdd-eval_verdict.yaml`;
-`training-faq-eval` writes `5-qa-and-training/training-faq-eval_verdict.yaml`.
+`training-faq-eval` writes `6-qa-and-training/training-faq-eval_verdict.yaml`.
 Verify the canonical path in `lib/artifact-manifest.ts` (the single
 source of truth for verdict filenames).
 

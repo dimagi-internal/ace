@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # LLO Launch Eval
 
-`llo-launch` is the Phase 5 skill that activates a CRISPR-Connect
+`llo-launch` is the Phase 6 skill that activates a CRISPR-Connect
 opportunity for live FLW use. It's the production gate: any defect that
 slips past it ships to real LLOs and FLWs in the field. This rubric
 grades whether the activation was faithful to the PDD's launch
@@ -28,7 +28,7 @@ the first 4 strongly-calibrated rubrics.
      activation record
    - `runs/<run-id>/7-execution-manager/llo-uat_results.md` — UAT
      sign-offs the launch should have verified
-   - `runs/<run-id>/2-commcare/app-deploy_summary.md` — app-publish
+   - `runs/<run-id>/3-commcare/app-deploy_summary.md` — app-publish
      status the launch verified
    - `runs/<run-id>/run_state.yaml` — gate states (`gates.llo-launch`,
      `gates.llo-invite`)
@@ -36,7 +36,7 @@ the first 4 strongly-calibrated rubrics.
 2. **Detect "phase not run" mode.** If `run_state.yaml` shows
    `phases.execution-management.llo-launch` not `done` or the launch
    artifact is missing, emit `verdict: incomplete` immediately with
-   `[INFO] Phase 5 llo-launch not run; not gradable yet`.
+   `[INFO] Phase 6 llo-launch not run; not gradable yet`.
 
 3. **Grade across 9 dimensions.** Each dimension is 0–10. Overall
    score is the weighted mean.
@@ -46,11 +46,11 @@ the first 4 strongly-calibrated rubrics.
    | Dimension | Weight | Criteria |
    |---|---|---|
    | **UAT sign-off completeness** | 15% | (Reduced from 25% in 0.13.84.) Every UAT participant from `llo-uat`'s sign-off list must have signed off (or have a documented blocker). Missing sign-offs = 3-point deduction per missing LLO. **Hard block:** a launch that fired with ≥1 LLO who explicitly did NOT sign off (vs simply pending) is a fail (≤3) — the producing skill missed a real veto. |
-   | **Connect activation correctness** | 15% | (Reduced from 25% in 0.13.84.) Connect Opportunity status must transition from `draft` to `active`. Verification rules and payment units configured by Phase 3 must still match the PDD spec at activation time (no silent drift between Phase 3 and Phase 5). Missing activation transition = fail (≤3). Drift between Phase 3 and Phase 5 config = 2-point deduction per drift. |
-   | **App-publish status** | 10% | (Reduced from 20% in 0.13.84.) Both Learn and Deliver apps must be published (not draft) on the configured HQ project space. App-publish status is read from `2-commcare/app-deploy_summary.md` and confirmed via Nova MCP at launch. Either app still in draft = fail (≤3). |
+   | **Connect activation correctness** | 15% | (Reduced from 25% in 0.13.84.) Connect Opportunity status must transition from `draft` to `active`. Verification rules and payment units configured by Phase 4 must still match the PDD spec at activation time (no silent drift between Phase 4 and Phase 6). Missing activation transition = fail (≤3). Drift between Phase 4 and Phase 6 config = 2-point deduction per drift. |
+   | **App-publish status** | 10% | (Reduced from 20% in 0.13.84.) Both Learn and Deliver apps must be published (not draft) on the configured HQ project space. App-publish status is read from `3-commcare/app-deploy_summary.md` and confirmed via Nova MCP at launch. Either app still in draft = fail (≤3). |
    | **Go-live notification fidelity** | 10% | (Reduced from 15% in 0.13.84.) The go-live notification email to LLOs must include: app links, calibration-gate threshold reminder (10/12 for atomic-visit calibrated rubrics), safety-plan summary if applicable, support-channel contact (`ace@dimagi-ai.com`). Missing required content = 1-point deduction per gap. **Factual error rule (mirrors OCS rubric 0.9.4):** wrong contact email, wrong threshold, wrong app link = 1-point Correctness deduction per occurrence with hard ceiling 7 on the affected email. |
    | **Pre-launch gate discipline** | 10% | (Reduced from 15% in 0.13.84.) All upstream gates must be `approved` before activation: `idea-to-pdd`, `app-deploy`, `ocs-chatbot-eval-deep`, `llo-invite`. Activating with any upstream gate still `pending` or `rejected` is a 4-point deduction (gate bypass). Activating with `gates.llo-launch` itself still `pending` (the producing skill skipped its own gate brief) is also a 4-point deduction. |
-   | **LLO capacity actual** | 12% | (Added 0.13.84 — viability dimension.) Did the LLO actually recruit and onboard the team they claimed in their solicitation response? Cross-reference `solicitation/award_response` (FLW count promised) against `llo-uat_results` and onboarding artifacts (FLW roster, supervisor designation). **Anchors:** full team recruited, trained, supervisor named with contact = **9.5**; team recruited but ≥1 FLW vacancy or supervisor unnamed = **7.5**; team mostly recruited + supervisor commitment but no Day 1 roster = **6.0**; team understaffed at launch (recruited < claimed) = **4.0**; LLO claimed capacity that didn't materialize at launch = **2.0**. The biggest "things change between Phase 7 award and Phase 8 launch" risk. |
+   | **LLO capacity actual** | 12% | (Added 0.13.84 — viability dimension.) Did the LLO actually recruit and onboard the team they claimed in their solicitation response? Cross-reference `solicitation/award_response` (FLW count promised) against `llo-uat_results` and onboarding artifacts (FLW roster, supervisor designation). **Anchors:** full team recruited, trained, supervisor named with contact = **9.5**; team recruited but ≥1 FLW vacancy or supervisor unnamed = **7.5**; team mostly recruited + supervisor commitment but no Day 1 roster = **6.0**; team understaffed at launch (recruited < claimed) = **4.0**; LLO claimed capacity that didn't materialize at launch = **2.0**. The biggest "things change between Phase 8 award and Phase 9 launch" risk. |
    | **Day-one readiness** | 10% | (Added 0.13.84 — viability dimension.) Are FLWs actually ready to do the work on Day 1? **Anchors:** all FLWs completed Learn-app modules + UAT walkthrough + Day 1 markets/sites named with assignment = **9.5**; most completed but ≥1 FLW incomplete training = **7.5**; team trained but no Day 1 plan / market assignments = **6.0**; trained but no per-FLW UAT signoff or no calibration baseline = **4.0**; firing the launch with FLWs not actually ready (no training records, no Day 1 plan) = **2.0**. The artifact must show Day 1 is actually scheduled, not just "soon." |
    | **Downstream handoff alignment** | 10% | (Added 0.13.84 — viability dimension.) Re-verify at launch that a named downstream consumer is aligned and ready to receive data. **Anchors:** downstream handoff confirmed with named delivery contract (data format, cadence, action-trigger threshold, recipient) = **9.5**; downstream confirmed at launch but contract is implicit = **7.5**; downstream named in PDD but no launch-time confirmation = **6.0**; downstream missing from launch artifact OR vague ("analysts" generic) = **4.0**; firing launch into a downstream that hasn't materialized (PDD claimed Lab X; Lab X never engaged) = **2.0**. The grader may consider upstream verdicts (e.g. `idea-to-pdd-eval`) as context when forming a judgment, but should apply this dimension's own anchors based on the launch artifact — no hardcoded cross-eval cap rules. |
    | **Stop-loss planning** | 8% | (Added 0.13.84 — viability dimension.) Is there a documented halt condition? At what metric thresholds, by what date, does the program pull the plug or iterate? **Anchors:** explicit halt criteria with metric thresholds AND timing AND named decision-maker ("if visits/day < 50% of target by week 2, supervisor X halts and triggers iteration") = **9.5**; halt criteria mentioned with thresholds but timing or owner vague = **7.5**; "we'll evaluate at week N" without specific criteria = **6.0**; no halt planning declared = **4.0**; only "if metrics fall short we'll iterate" without explicit conditions = **2.0**. Catches launches that assume happy path forever. |
@@ -99,7 +99,7 @@ the first 4 strongly-calibrated rubrics.
      - ref: "Connect activation: draft → active"
        score: 9.5
        verdict: pass
-       note: "Activation timestamp recorded in run_state.yaml; verification rules unchanged from Phase 3."
+       note: "Activation timestamp recorded in run_state.yaml; verification rules unchanged from Phase 4."
      # ... per check
 
    auto_surfaced:
@@ -117,7 +117,7 @@ the first 4 strongly-calibrated rubrics.
    - `[BLOCKER]` for activation with any LLO explicit reject (not pending).
    - `[BLOCKER]` for activation with any upstream gate not approved.
    - `[WARN]` per missing UAT sign-off (pending, not rejected).
-   - `[WARN]` per Phase 3→Phase 5 verification-rule drift.
+   - `[WARN]` per Phase 4→Phase 6 verification-rule drift.
    - `[INFO]` per nice-to-have notification content missing.
 
 ## LLM-as-Judge Rubric
@@ -131,7 +131,7 @@ Calibration target on a real launch:
 
 This rubric ships at **provisional** until a real launch produces
 ground truth. Until then, it correctly emits `incomplete` on opps
-where Phase 5 hasn't reached llo-launch.
+where Phase 6 hasn't reached llo-launch.
 
 ## Archetypes
 
@@ -158,7 +158,7 @@ where Phase 5 hasn't reached llo-launch.
 
 When `--dry-run` is active:
 - Read inputs normally — read-only.
-- Skip live Connect/Nova MCP verification (use `2-commcare/app-deploy_summary.md`
+- Skip live Connect/Nova MCP verification (use `3-commcare/app-deploy_summary.md`
   as the single source).
 - Write verdict + report.
 - State tracks as `dry-run-success`.
@@ -167,5 +167,5 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-28 | Initial version. 5 dimensions: uat_signoff_completeness (0.25), connect_activation_correctness (0.25), app_publish_status (0.20), go_live_notification_fidelity (0.15), pre_launch_gate_discipline (0.15). Inflation guard at 8.5. Explicit `incomplete` verdict when Phase 5 llo-launch hasn't run. Most load-bearing Phase 5 rubric. | ACE team (eval system buildout — 0.9.9) |
+| 2026-04-28 | Initial version. 5 dimensions: uat_signoff_completeness (0.25), connect_activation_correctness (0.25), app_publish_status (0.20), go_live_notification_fidelity (0.15), pre_launch_gate_discipline (0.15). Inflation guard at 8.5. Explicit `incomplete` verdict when Phase 6 llo-launch hasn't run. Most load-bearing Phase 6 rubric. | ACE team (eval system buildout — 0.9.9) |
 | 2026-05-08 | **Viability axis added (40% weight). 5 → 9 dimensions.** Mirrors the 0.13.81 expansion of `idea-to-pdd-eval`: rubric was grading launch correctness exclusively (did the launch fire technically correctly?) without grading whether the launched program is viable at the launch moment. Added 4 launch-time viability dimensions: `llo_capacity_actual` (12%, did the LLO actually recruit the team they promised?), `day_one_readiness` (10%, are FLWs actually ready Day 1?), `downstream_handoff_alignment` (10%, is the named downstream consumer ready to receive data?), `stop_loss_planning` (8%, is there a documented halt condition?). Existing 5 launch-correctness dimensions reduced proportionally to make room: 25→15%, 25→15%, 20→10%, 15→10%, 15→10%. Pairs with `idea-to-pdd-eval` 0.13.84 — at design time and launch time the program is judged on viability axis. | ACE team (0.13.84) |

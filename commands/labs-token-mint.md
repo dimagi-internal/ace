@@ -18,7 +18,7 @@ in your local `.env`.
 ## When to run
 
 - **First-time setup** on a new machine where `bin/ace-doctor` shows
-  `connect_labs_env: LABS_MCP_TOKEN missing` (the new Phase 7
+  `connect_labs_env: LABS_MCP_TOKEN missing` (the new Phase 8
   Solicitation Management work depends on it; see `CHANGELOG.md`
   `0.12.0`)
 - **Rotation** when an existing token is expired or compromised

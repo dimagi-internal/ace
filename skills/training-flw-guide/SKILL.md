@@ -15,7 +15,7 @@ visit successfully.
 
 ## When to run
 
-Phase 5 (`qa-and-training`), after `app-screenshot-capture` has uploaded
+Phase 6 (`qa-and-training`), after `app-screenshot-capture` has uploaded
 the per-opp screenshots. Independent of `training-llo-guide`,
 `training-faq`, etc. — re-running this skill rebuilds only
 `flw-training-guide.md`.
@@ -25,16 +25,16 @@ the per-opp screenshots. Independent of `training-llo-guide`,
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | opp framing, archetype, target FLW persona |
-| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md` | Learn modules + assessment threshold |
-| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md` | Deliver form structure (the "what to do here" section) |
-| Phase 3 (`run_state.yaml`) | `connect.opportunity` (claim flow), `connect.payment_units` | "what FLWs get paid for" framing |
-| Phase 4 | `ACE/<opp>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "where to get help" section |
-| Phase 5 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml` + per-opp PNGs | embed step-by-step Learn/Deliver screenshots |
+| Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-learn-app_summary.md` | Learn modules + assessment threshold |
+| Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | Deliver form structure (the "what to do here" section) |
+| Phase 4 (`run_state.yaml`) | `connect.opportunity` (claim flow), `connect.payment_units` | "what FLWs get paid for" framing |
+| Phase 5 | `ACE/<opp>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "where to get help" section |
+| Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` + per-opp PNGs | embed step-by-step Learn/Deliver screenshots |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` + PNGs | embed common Connect navigation (sign-in, claim opp, sync, payments) |
 
 ## Output
 
-Single file: `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md`.
+Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide.md`.
 
 ## Format
 
@@ -90,7 +90,7 @@ from PDD's Evidence Model.>
   under `ACE/_common/connect-screenshots/<v>/`.
 - **Per-opp screenshots come second** (Learn modules, Deliver form
   walkthrough) — these are unique to this opp and live under
-  `ACE/<opp>/runs/<run-id>/5-qa-and-training/screenshots/`.
+  `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/`.
 - **Speaker-style prose, not bullet-list-only.** A working FLW guide
   has narrative connecting the bullets, not just a flat checklist.
 
@@ -106,7 +106,7 @@ from PDD's Evidence Model.>
 
 3. **Build the screenshot resolution map.** Two pools merged into one
    `{ alias → drive_file_id }`:
-   - Per-opp aliases from `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml` (e.g.,
+   - Per-opp aliases from `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` (e.g.,
      `learn-mod-1-step-3`, `deliver-form-photo-step-1`)
    - Common-pool aliases from
      `ACE/_common/connect-screenshots/<v>/manifest.yaml` (e.g.,
@@ -139,7 +139,7 @@ from PDD's Evidence Model.>
    - Word count is 600-1500 — shorter feels skeletal, longer is
      unrealistic for a field worker to absorb
 
-7. **Write** to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md`
+7. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide.md`
    via `drive_create_file`. Overwrite if it already exists.
 
 8. **Self-evaluate (LLM-as-Judge).** Four criteria:
@@ -153,12 +153,12 @@ from PDD's Evidence Model.>
      jargon without explanation
 
    Write a verdict YAML to
-   `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide_verdict.yaml` in the standard shape
+   `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide_verdict.yaml` in the standard shape
    (see `lib/verdict-schema.ts`). `passed: true` only if all four
    pass.
 
 9. **Hand off.** Print the guide's Drive URL + the verdict summary.
-   Phase 5 orchestrator continues with the next training skill.
+   Phase 6 orchestrator continues with the next training skill.
 
 ## MCP Tools Used
 
@@ -178,8 +178,8 @@ existing per-opp + common-pool artifacts.
 
 ## Products
 
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md`
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide_verdict.yaml`
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide.md`
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide_verdict.yaml`
 - `run_state.yaml.phases.qa-and-training.products.training.docs.flw_guide` — `{file_id, title: "FLW training guide", web_view_link}` typed handoff. Multi-writer block: apply via read-modify-write per `skills/synthetic-data-generate/SKILL.md § Step 6`. See `agents/qa-and-training.md § Products` for the full slot table.
 
 ## Known limitations
@@ -215,4 +215,4 @@ This is the **second of the per-artifact training skills**, after
 
 - v1 (0.10.83): Initial skill. Owns `flw-training-guide.md` only.
   Common + per-opp screenshot layering. Archetype-aware structure.
-- 2026-05-07: Per-opp screenshot path corrected from `ACE/<opp>/screenshots/` to `ACE/<opp>/runs/<run-id>/5-qa-and-training/screenshots/` to match the runs/<run-id>/<phase>/ scheme producers actually use. Doc-only fix; matches what `app-screenshot-capture` writes.
+- 2026-05-07: Per-opp screenshot path corrected from `ACE/<opp>/screenshots/` to `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/` to match the runs/<run-id>/<phase>/ scheme producers actually use. Doc-only fix; matches what `app-screenshot-capture` writes.

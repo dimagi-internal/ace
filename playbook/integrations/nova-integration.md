@@ -208,7 +208,7 @@ to the ACE Gmail identity (`ACE_GMAIL_ACCOUNT`) at mint time.
     `app-connect-coverage` skill detects this on per-mutation
     re-fetch and exits `blocked` rather than looping.
   - **`nova-plugin#2`** — `/nova:autobuild` occasionally returns
-    with zero tool actions. Phase 2 retries up to 3 times.
+    with zero tool actions. Phase 3 retries up to 3 times.
   - **`nova-plugin#5`** — `add_fields` partial persistence on first
     call. Mitigated by call-and-verify pattern in `pdd-to-{learn,deliver}-app`.
 

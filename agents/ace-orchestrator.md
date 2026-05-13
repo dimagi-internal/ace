@@ -63,7 +63,7 @@ text`.
 - **Don't dispatch two `Agent` calls in one message.** Claude Code does
   not reliably parallelize `Agent` dispatches. Treat all `Agent` and
   slash-command-driven agent dispatches (e.g. `/nova:autobuild`) as
-  serial — including Phase 2's two Nova builds and any future
+  serial — including Phase 3's two Nova builds and any future
   cross-phase orchestration.
 - **Do batch independent tool calls.** N independent `drive_read_file`,
   `connect_create_payment_unit`, `nova_update_form` etc. in a single
@@ -81,10 +81,10 @@ text`.
   Write `gates.<phase>: failed` to `run_state.yaml`, surface
   `[BLOCKER]` to the operator, and stop. Phase agents must not
   auto-redispatch identical payloads.
-  **Why:** turmeric Phase 3 retried `connect_create_opportunity` 3×
+  **Why:** turmeric Phase 4 retried `connect_create_opportunity` 3×
   on an identical payload against the same opaque 500 before bisect
   proved it deterministic (CI-659, the 50-char `short_description`
-  trap). Leep Phase 5 retried 5× across `/loop continue` cycles on
+  trap). Leep Phase 6 retried 5× across `/loop continue` cycles on
   the same `runner_service_state=failed` class — burning hours that
   a circuit breaker would have converted into a single operator halt.
 - **When a phase blocks on an infra/contract bug, don't debug at L0.**
@@ -93,7 +93,7 @@ text`.
   run flow, not bisect.
   **Why:** leep run `20260512-0418` had 1325 lines of L0 ace-web
   cloud-emulator debugging between Agent dispatches (only 4 Agent
-  calls across 1448 lines total). Turmeric Phase 3 had ~24 min of L0
+  calls across 1448 lines total). Turmeric Phase 4 had ~24 min of L0
   bisect work that belonged in a research subagent. The user manually
   pivoted in both runs ("I'll spin up another agent") — too late.
 
@@ -107,10 +107,10 @@ text`.
   write the diff to `comms-log/observations.md`, do NOT proceed.
   Mismatch on a cosmetic field is `[INFO]` — log and proceed. Canonical
   example: `skills/connect-opp-setup/SKILL.md` Steps 4 + 6.
-  **Why:** the `turmeric-20260503-0835` Phase 3 payment-unit
+  **Why:** the `turmeric-20260503-0835` Phase 4 payment-unit
   malformation (`amount=500` vs sent `1.50`,
   `required_deliver_units=[]` vs sent `[Vendor Visit]`) cascaded through
-  `is_setup_complete` to silently break Phase 7 invites and Phase 5
+  `is_setup_complete` to silently break Phase 8 invites and Phase 6
   screenshot capture. A producer-side read-back would have converted
   that multi-phase cascade into a single-skill halt.
 - **Don't read-modify-write `run_state.yaml` by hand.** Use
@@ -134,44 +134,44 @@ text`.
   context to plausibly do so. Skills with multi-file output contracts
   bind downstream pre-flights to the on-disk layout, not to a master
   file's content; the downstream halt surfaces phases later, by which
-  time attribution is harder. The Phase 2 procedure doc
+  time attribution is harder. The Phase 3 procedure doc
   (`commcare-setup`) is the highest-risk surface because it executes
   inline at level-0. The post-phase artifact verifier
   (§ Producer Artifact Verifier in reference) catches this mechanically;
   the rule lives here so authors of new procedure docs know not to
   design around it.
   **Why:** turmeric run `20260509-0455` inline-composed
-  `2-commcare/app-test-cases.yaml` instead of invoking
-  `Skill(app-test-cases)`, omitting the per-journey recipe files Phase 5
-  reads. Phase 5 halted at pre-flight; five training docs rendered
+  `3-commcare/app-test-cases.yaml` instead of invoking
+  `Skill(app-test-cases)`, omitting the per-journey recipe files Phase 6
+  reads. Phase 6 halted at pre-flight; five training docs rendered
   without screenshots and had to be re-run.
 - **Don't add operator-confirmation prompts on populated opps.** The
   "do you want to overwrite live state?" gate is off-spec — push
   reuse-vs-rebuild decisions down into phase-agent skill logic. Full
   contract: § Modes — default, review, auto.
-- **Don't authorize Phase 5 soft-fail in the dispatch prompt.** The
+- **Don't authorize Phase 6 soft-fail in the dispatch prompt.** The
   AVD/Maestro auto-heal lives inside `mobile_ensure_avd_running`; if
   it exhausts, the right answer is a `[BLOCKER]` halt that points the
   operator at `/ace:mobile-bootstrap`, not "proceed with placeholder
   screenshots and log `[WARN]`." Sentences along the lines of "if
   `app-screenshot-capture` cannot run, proceed without screenshots"
-  in the Phase 5 dispatch prompt are off-spec — they reintroduce the
+  in the Phase 6 dispatch prompt are off-spec — they reintroduce the
   escape valve the heal was designed to retire. The phase agent
   itself rejects this kind of override since 0.13.165 (see
   `agents/qa-and-training.md` § Pre-flight checklist), but
   orchestrator authors should not write it in the first place.
-  **Why:** leep run `20260511-0507` Phase 5 shipped no screenshots
+  **Why:** leep run `20260511-0507` Phase 6 shipped no screenshots
   because the dispatcher's prompt told the phase agent "don't halt
-  Phase 5 over dev-machine state" — but that "dev-machine state" was
+  Phase 6 over dev-machine state" — but that "dev-machine state" was
   a wedged Maestro gRPC server, which the heal could have fixed in
-  ~90s. Every run that quietly ships placeholders is a Phase 5
+  ~90s. Every run that quietly ships placeholders is a Phase 6
   capability gap we can't see in the verdict stream.
 - **On phase retry, pass the prior failed verdict's Drive `fileId`
   inline — do NOT paraphrase.** The retry agent reads the verdict
   directly from Drive; the orchestrator's dispatch prompt cites the
   fileId (and the producer artifact paths) rather than summarizing
   the failure mode.
-  **Why:** leep Phase 5 retry #5's dispatch prompt paraphrased
+  **Why:** leep Phase 6 retry #5's dispatch prompt paraphrased
   `phase5-block.md` as "selector-map gaps... `connect-baseline-screenshots`
   to fix" — the subagent re-discovered the same gap from scratch each
   cycle because it never saw the actual artifact.
@@ -242,22 +242,23 @@ These are independent — sequential single-tool messages waste the
 parallelism the harness already supports.
 
 **Step 4 — Build the run-level task list in ONE parallel `TaskCreate`
-block.** The workflow is fixed and known up-front; splat all 10 in
+block.** The workflow is fixed and known up-front; splat all 11 in
 one message:
 
-1. `Phase 1 — design-review`
-2. `Phase 2 — commcare-setup`
-3. `Phase 3 — connect-setup`
-4. `Phase 4 — ocs-setup`
-5. `Phase 5 — qa-and-training`
-6. `Phase 6 — synthetic-data-and-workflows`
-7. `Phase 7 — solicitation-management`
-8. `PAUSE: solicitation-review (HITL — populate selected_llo)`
-9. `Phase 8 — execution-management`
-10. `Phase 9 — closeout`
+1. `Phase 1 — idea-to-design`
+2. `Phase 3 — scenarios-and-acceptance`
+3. `Phase 4 — commcare-setup`
+4. `Phase 5 — connect-setup`
+5. `Phase 6 — ocs-setup`
+6. `Phase 7 — qa-and-training`
+7. `Phase 8 — synthetic-data-and-workflows`
+8. `Phase 9 — solicitation-management`
+9. `PAUSE: solicitation-review (HITL — populate selected_llo)`
+10. `Phase 10 — execution-management`
+11. `Phase 10 — closeout`
 
 Mark Phase 1 `in_progress`; leave the rest `pending`. Sequential
-`TaskCreate → TaskCreate → ...` over 10 turns burns ~30s of
+`TaskCreate → TaskCreate → ...` over 11 turns burns ~30s of
 unnecessary model-output time at run start.
 
 **Step 5 — Create the run folder + initial state in ONE parallel
@@ -268,7 +269,7 @@ message.** Issue together:
 - `drive_create_file` for `runs/<run-id>/idea.md` (only if `--idea FILE|-` was passed)
 - `drive_create_file` for `runs/<run-id>/inputs-manifest.yaml` (frozen file_id list from Step 3)
 
-**Step 6 — Dispatch Phase 1.** Single `Agent(design-review)` call with
+**Step 6 — Dispatch Phase 1.** Single `Agent(idea-to-design)` call with
 the inline-artifact prompt structure (see "Pass artifacts inline at
 phase handoff" below).
 
@@ -355,7 +356,7 @@ The orchestrator's contract on a populated opp:
 
 - **Do not pause to confirm "do you want to overwrite live state?"** —
   `--mode default` already encodes the answer. The named Pause Points
-  (see § Pause Points) plus the Phase 7→8 boundary are the only
+  (see § Pause Points) plus the Phase 8→9 boundary are the only
   sanctioned pause locations. A populated-opp confirmation prompt is
   **off-spec** — if you find yourself wanting to add one, the right
   fix is to push the reuse-vs-rebuild decision down into the affected
@@ -414,31 +415,31 @@ stop, up until the point of external communication.*
   pause the run. A `[BLOCKER]` halts immediately and surfaces the
   brief for triage. A hard error halts immediately. A `[WARN]` is
   logged but does NOT halt.
-- **Phase 5→6 transition:** **no longer a mandatory pause.** Phase 7
+- **Phase 6→7 transition:** **no longer a mandatory pause.** Phase 8
   publishes a public solicitation on labs.connect.dimagi.com and emails
   PDD-named candidate LLOs the public URL — passive listing, not active
   outreach to specific individuals. The active-comms boundary moved to
-  Phase 7→8 (where Phase 8 sends an inbound onboarding email to the
+  Phase 8→9 (where Phase 9 sends an inbound onboarding email to the
   awardee).
-- **Phase 7→8 transition:** **always pause.** This is the new external-
-  communication boundary — Phase 8 is where the awarded LLO first hears
+- **Phase 8→9 transition:** **always pause.** This is the new external-
+  communication boundary — Phase 9 is where the awarded LLO first hears
   from ACE on a one-to-one basis. `/ace:run` halts here in default mode
   and remains halted until the human runs `/ace:step solicitation-review`,
   which (after a HITL approval gate) calls `award_response` and populates
   `phases.solicitation-management.products.selected_llo` in the current
-  run's `run_state.yaml`. Phase 8 cannot start while
+  run's `run_state.yaml`. Phase 9 cannot start while
   `selected_llo.org_slug` is null in the current run.
 - **Phases 7–8 (Execution Management, Closeout):** behave like `review`
   mode for any step whose action affects an external party. Specifically,
   always pause before:
-    - `llo-onboarding` (Phase 8 — first 1-1 email to the awardee)
-    - `llo-uat` send (Phase 8 — UAT instructions to the awardee)
-    - `llo-launch` (Phase 8 — opportunity activation in Connect)
-    - `opp-closeout` (Phase 9 — Jira payment ticket creation)
+    - `llo-onboarding` (Phase 9 — first 1-1 email to the awardee)
+    - `llo-uat` send (Phase 9 — UAT instructions to the awardee)
+    - `llo-launch` (Phase 9 — opportunity activation in Connect)
+    - `opp-closeout` (Phase 10 — Jira payment ticket creation)
   Steps within those phases that are purely internal (e.g.
   `timeline-monitor` reads, `flw-data-review` analysis) auto-proceed
   the same as Phases 1–5.
-- **Inside `solicitation-review` (Phase 7 manual):** HITL gate before
+- **Inside `solicitation-review` (Phase 8 manual):** HITL gate before
   `award_response` is called (irreversible). Skill waits for explicit
   `award <response_id> $<amount>` reply before the labs call.
 
@@ -453,7 +454,7 @@ presented unconditionally.
 
 **Auto mode (`auto`):** Run all phases sequentially with no pauses,
 even at external-communication points except the unconditional ones
-(Phase 7→8 boundary, Phase 8 external-comms steps, Phase 9 closeout).
+(Phase 8→9 boundary, Phase 9 external-comms steps, Phase 10 closeout).
 Email the CRISPR Admin group (Neal, Jon, Matt, Sarvesh, Cal) at each
 step completion and on failures. `[BLOCKER]` concerns still pause and
 escalate — auto mode buys speed, not the right to ship known-broken
@@ -472,7 +473,7 @@ an unattended `idea-to-pdd` approval. Default mode treats the eval
 verdict (`[BLOCKER]` or not) as the decision-maker and only stops the
 human for it when the model itself says something is wrong.
 
-Phase 8 onward involves real LLOs receiving real emails and real
+Phase 9 onward involves real LLOs receiving real emails and real
 Connect production state changes. There is no automatic eval that
 validates "is this opp ready to send to outside parties?" — only
 human judgment can clear that bar, so default mode insists on human
@@ -500,7 +501,7 @@ explicitly halts the run), the resume mechanism is:
   that was previously inlined or skipped.
 
 Phase agents 3–9 are subagents (each gets a fresh context window per
-dispatch); the only inline constraint is Phase 2 (`commcare-setup`),
+dispatch); the only inline constraint is Phase 3 (`commcare-setup`),
 which dispatches Nova at level-0. That constraint is structural, not
 context-cost-driven.
 
@@ -522,7 +523,7 @@ this as policy, not folklore.
 orchestrator to recommend splitting runs across sessions on
 "populated opps" or "rich-PDD runs." That heuristic over-fit on a
 200K-context era and produced unnecessary operator friction in the
-1M-context era — sessions self-halted at Phase 2 when they could
+1M-context era — sessions self-halted at Phase 3 when they could
 have completed end-to-end. Removed 0.13.122. If a future failure
 class genuinely warrants proactive splitting, reintroduce the
 guidance with concrete evidence (a class of runs that demonstrably
@@ -787,21 +788,35 @@ viewing of legacy opps, but is no longer consulted for new runs.
 
 When invoked with an opportunity, execute these phases in order:
 
-### Phase 1: Design Review & Iteration
+### Phase 1: Idea to Design
 
-**Dispatch:** `Agent(design-review)`.
+**Dispatch:** `Agent(idea-to-design)`.
 
 **Inputs (inline at handoff):** the inputs manifest, any `idea.md`, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the prompt template.
 
-**Atoms / skills used (orchestrator-visible only):** `Agent(design-review)`.
+**Atoms / skills used (orchestrator-visible only):** `Agent(idea-to-design)`.
 
-**Products:** PDD (`1-design/idea-to-pdd.md`); opp-specific test prompts derived from the PDD.
+**Products:** PDD (`1-design/idea-to-pdd.md`) — the formal design doc.
 
-**Write-back:** `phases.design-review.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
+**Write-back:** `phases.idea-to-design.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
-**Gate:** `[BLOCKER]` halts; pause-on-`idea-to-pdd` per § Pause Points (in reference).
+**Gate:** `[BLOCKER]` halts; pause-on-`idea-to-pdd` per § Pause Points (in reference). In review mode, the PDD-approval gate is the natural human checkpoint at the Phase 1→2 boundary.
 
-### Phase 2: CommCare Setup
+### Phase 2: Scenarios & Acceptance Planning
+
+**Dispatch:** `Agent(scenarios-and-acceptance)`.
+
+**Inputs (inline at handoff):** approved PDD (`1-design/idea-to-pdd.md`), Phase-1 verdicts (`1-design/idea-to-pdd-{qa_result,eval_verdict}.yaml`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+
+**Atoms / skills used (orchestrator-visible only):** `Agent(scenarios-and-acceptance)`. Internally the agent runs `pdd-to-test-prompts` (+ QA + eval) then `pdd-to-app-journeys` (+ eval).
+
+**Products:** opp-specific test prompts (`2-scenarios/pdd-to-test-prompts.md`) — Q&A scenarios the Phase 5 OCS deep QA gate judges chatbot answers against; expected app journeys (`2-scenarios/pdd-to-app-journeys.md`) — UX-intent scenarios the Phase 6 shallow app QA and `/ace:qa-deep` grade FLW app behavior against. Both are AI interpretations of the AI-authored PDD — "what we'd expect," not ground truth.
+
+**Write-back:** `phases.scenarios-and-acceptance.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
+
+**Gate:** `[BLOCKER]` halts; no named pause point in default mode (see § Pause Points in reference). The two skill chains are independent of each other (both read only the PDD) so a `[BLOCKER]` from one doesn't necessarily implicate the other.
+
+### Phase 3: CommCare Setup
 
 **Dispatch:** **inline procedure-doc `agents/commcare-setup.md`** — do NOT call `Agent(commcare-setup)`. Level-0 constraint, see Notes.
 
@@ -809,83 +824,83 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** inline execution of `agents/commcare-setup.md`, which itself dispatches `/nova:autobuild` for `pdd-to-learn-app` + `pdd-to-deliver-app` (each Nova call is `Agent(nova:nova-architect-autonomous)` at level 0).
 
-**Products:** Learn app, Deliver app, deployed apps on CCHQ, test results (`2-commcare/app-test-cases.yaml` + `app-test-cases/J*.yaml`). (Training materials moved to Phase 5 (`qa-and-training`) in 0.9.0.)
+**Products:** Learn app, Deliver app, deployed apps on CCHQ, test results (`3-commcare/app-test-cases.yaml` + `app-test-cases/J*.yaml`). (Training materials moved to Phase 6 (`qa-and-training`) in 0.9.0.)
 
 **Write-back:** `phases.commcare-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
 **Gate:** `[BLOCKER]` halts; pause-on-`app-deploy` per § Pause Points (in reference).
 
-**Notes:** Phase 2 invokes `/nova:autobuild`, which dispatches the `nova:nova-architect-autonomous` subagent. That dispatch requires `Agent` at level 0 — running Phase 2 itself as a subagent would put Nova's dispatch at level 2 and fail. See § Agent Topology in reference. This is the only orchestrator-visible inline procedure-doc dispatch in the workflow.
+**Notes:** Phase 3 invokes `/nova:autobuild`, which dispatches the `nova:nova-architect-autonomous` subagent. That dispatch requires `Agent` at level 0 — running Phase 3 itself as a subagent would put Nova's dispatch at level 2 and fail. See § Agent Topology in reference. This is the only orchestrator-visible inline procedure-doc dispatch in the workflow.
 
-### Phase 3: Connect Setup
+### Phase 4: Connect Setup
 
 **Dispatch:** `Agent(connect-setup)`.
 
-**Inputs (inline at handoff):** PDD, Phase-2 verdicts (`2-commcare/{pdd-to-learn-app,pdd-to-deliver-app,app-deploy,app-test-cases}-{qa_result,eval_verdict}.yaml`), `2-commcare/app-deploy_summary.md`, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-3 verdicts (`3-commcare/{pdd-to-learn-app,pdd-to-deliver-app,app-deploy,app-test-cases}-{qa_result,eval_verdict}.yaml`), `3-commcare/app-deploy_summary.md`, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(connect-setup)`.
 
-**Products:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`3-connect/connect-program-setup.md`, `3-connect/connect-opp-setup.md`).
+**Products:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`4-connect/connect-program-setup.md`, `4-connect/connect-opp-setup.md`).
 
 **Write-back:** `phases.connect-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
 **Gate:** `[BLOCKER]` halts; no named pause point in default mode (see § Pause Points in reference).
 
-**Notes:** LLO invite-list preparation moved to Phase 8 on 2026-04-20 — we don't commit to a real-LLO invite roster until after the OCS chatbot has cleared its deep-eval gate. Phase 3 *does* activate the opp and invite the ACE test user (`${ACE_E2E_PHONE}`) on 2026-05-10 — this closes the chicken-and-egg gap where Phase 5 `app-screenshot-capture` could only produce placeholder screenshots because the test user wasn't on the new opp yet. The opp is created with `is_test=true` so prod LLO-facing analytics, payment exports, and partner dashboards exclude these dogfood runs; activation in this phase is therefore not a Phase 7→8 boundary violation. Phase 8's `llo-launch` becomes idempotent on already-active opps (skip-and-log) and still sends the real-LLO invite to the awarded LLO. After Phase 3 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
+**Notes:** LLO invite-list preparation moved to Phase 9 on 2026-04-20 — we don't commit to a real-LLO invite roster until after the OCS chatbot has cleared its deep-eval gate. Phase 4 *does* activate the opp and invite the ACE test user (`${ACE_E2E_PHONE}`) on 2026-05-10 — this closes the chicken-and-egg gap where Phase 6 `app-screenshot-capture` could only produce placeholder screenshots because the test user wasn't on the new opp yet. The opp is created with `is_test=true` so prod LLO-facing analytics, payment exports, and partner dashboards exclude these dogfood runs; activation in this phase is therefore not a Phase 8→9 boundary violation. Phase 9's `llo-launch` becomes idempotent on already-active opps (skip-and-log) and still sends the real-LLO invite to the awarded LLO. After Phase 4 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
-### Phase 4: OCS Setup
+### Phase 5: OCS Setup
 
 **Dispatch:** `Agent(ocs-setup)`.
 
-**Inputs (inline at handoff):** PDD, opp-specific test prompts (`1-design/pdd-to-test-prompts.md`), Phase-3 verdicts (`3-connect/{connect-program-setup,connect-opp-setup}-{qa_result,eval_verdict}.yaml`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, opp-specific test prompts (`2-scenarios/pdd-to-test-prompts.md`), Phase-4 verdicts (`4-connect/{connect-program-setup,connect-opp-setup}-{qa_result,eval_verdict}.yaml`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(ocs-setup)`.
 
-**Products:** per-opp OCS chatbot cloned from the golden template with opp-specific RAG collection; quick smoke qa+eval passed; deep pre-launch qa+eval passed against opp-specific test prompts; embed credentials ready for Connect (`4-ocs/ocs-agent-setup.md`).
+**Products:** per-opp OCS chatbot cloned from the golden template with opp-specific RAG collection; quick smoke qa+eval passed; deep pre-launch qa+eval passed against opp-specific test prompts; embed credentials ready for Connect (`5-ocs/ocs-agent-setup.md`).
 
 **Write-back:** `phases.ocs-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
 **Gate:** `[BLOCKER]` halts; pause-on-`ocs-chatbot-eval --quick` per § Pause Points (in reference).
 
-**Notes:** Each quality gate is a qa→eval pair — `ocs-chatbot-qa` captures a transcript, `ocs-chatbot-eval` grades it. Ends with a human-in-the-loop step to paste the widget credentials into the Connect opportunity until `update_opportunity` lands (CCC-301). After Phase 4 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
+**Notes:** Each quality gate is a qa→eval pair — `ocs-chatbot-qa` captures a transcript, `ocs-chatbot-eval` grades it. Ends with a human-in-the-loop step to paste the widget credentials into the Connect opportunity until `update_opportunity` lands (CCC-301). After Phase 5 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
-### Phase 5: QA and Training
+### Phase 6: QA and Training
 
 **Dispatch:** `Agent(qa-and-training)`.
 
-**Inputs (inline at handoff):** PDD, Phase-2 outputs (`2-commcare/app-test-cases.yaml` + per-journey recipes under `2-commcare/app-test-cases/J*.yaml`), Phase-4 chatbot URL (`4-ocs/ocs-agent-setup.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-3 outputs (`3-commcare/app-test-cases.yaml` + per-journey recipes under `3-commcare/app-test-cases/J*.yaml`), Phase-5 chatbot URL (`5-ocs/ocs-agent-setup.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
-**Atoms / skills used (orchestrator-visible only):** `Agent(qa-and-training)`. Internally the agent runs `app-screenshot-capture` (executor — runs the smoke recipes from Phase 2's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-deck-outline`) → `training-deck-build` (sequential after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) → `training-onboarding-email` (LAST — links by URL to other docs).
+**Atoms / skills used (orchestrator-visible only):** `Agent(qa-and-training)`. Internally the agent runs `app-screenshot-capture` (executor — runs the smoke recipes from Phase 3's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-deck-outline`) → `training-deck-build` (sequential after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) → `training-onboarding-email` (LAST — links by URL to other docs).
 
-**Products:** Phase-5 artifacts under `5-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck outline), optional training deck build, onboarding email.
+**Products:** Phase-6 artifacts under `6-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck outline), optional training deck build, onboarding email.
 
 **Write-back:** `phases.qa-and-training.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
-**Gate:** `[BLOCKER]` halts; no named pause point in default mode (see § Pause Points in reference). Phase 5→6 is no longer a mandatory pause (§ Modes — default, review, auto).
+**Gate:** `[BLOCKER]` halts; no named pause point in default mode (see § Pause Points in reference). Phase 6→7 is no longer a mandatory pause (§ Modes — default, review, auto).
 
-**Notes:** All skills read upstream artifacts from Phases 1–4. No 1-1 LLO contact happens here — that begins in Phase 8. Phase 5 splits shallow (in `/ace:run`, ~5 LLM judges) vs deep (out-of-band via `/ace:qa-deep`); `llo-launch` (Phase 8) requires fresh deep verdicts.
+**Notes:** All skills read upstream artifacts from Phases 1–4. No 1-1 LLO contact happens here — that begins in Phase 9. Phase 6 splits shallow (in `/ace:run`, ~5 LLM judges) vs deep (out-of-band via `/ace:qa-deep`); `llo-launch` (Phase 9) requires fresh deep verdicts.
 
-### Phase 6: Synthetic Data and Workflows
+### Phase 7: Synthetic Data and Workflows
 
 **Dispatch:** `Agent(synthetic-data-and-workflows)`.
 
-**Inputs (inline at handoff):** PDD, Phase-3 Connect identifiers (`3-connect/connect-opp-setup.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-4 Connect identifiers (`4-connect/connect-opp-setup.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(synthetic-data-and-workflows)`. Internally: authors a story-coherent synthetic-data manifest from the PDD, generates fixture data via the connect-labs MCP, instantiates the LLO weekly review + program admin audit workflows, polishes them per-opp, and runs persona walkthroughs that produce stakeholder-ready HTML decks.
 
-**Products:** synthetic narrative manifest; fixture FLW/visit/payment data; two demonstrative workflows (`llo_weekly_review`, `program_admin_audit`); per-persona walkthrough HTML decks; single one-page summary (`6-synthetic/synthetic-summary.md`).
+**Products:** synthetic narrative manifest; fixture FLW/visit/payment data; two demonstrative workflows (`llo_weekly_review`, `program_admin_audit`); per-persona walkthrough HTML decks; single one-page summary (`7-synthetic/synthetic-summary.md`).
 
 **Write-back:** `phases.synthetic-data-and-workflows.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
-**Gate:** `[BLOCKER]` halts; **no phase pause** — `/ace:run` proceeds straight from Phase 6 to Phase 7 without halting (no run-time gate; see § Pause Points in reference).
+**Gate:** `[BLOCKER]` halts; **no phase pause** — `/ace:run` proceeds straight from Phase 7 to Phase 8 without halting (no run-time gate; see § Pause Points in reference).
 
 **Notes:** **No irreversible external action.** The connect-labs `SyntheticOpportunity` row is reversible via `synthetic_disable`; workflows can be deleted via `workflow_delete`. See `agents/synthetic-data-and-workflows.md`.
 
-### Phase 7: Solicitation Management
+### Phase 8: Solicitation Management
 
 **Dispatch:** `Agent(solicitation-management)`.
 
-**Inputs (inline at handoff):** PDD (with PDD-named candidate LLOs, if any), Phase-6 summary (`6-synthetic/synthetic-summary.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD (with PDD-named candidate LLOs, if any), Phase-7 summary (`7-synthetic/synthetic-summary.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(solicitation-management)`. Internally the agent runs `solicitation-create` → `llo-invite` (default run, both auto).
 
@@ -893,15 +908,15 @@ When invoked with an opportunity, execute these phases in order:
 
 **Write-back:** `phases.solicitation-management.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
-**Gate:** `[BLOCKER]` halts; **Phase 7→8 boundary always pauses in every mode** — `/ace:run` HALTS here at the new external-comms boundary. Phase 8 cannot start until `phases.solicitation-management.products.selected_llo.org_slug` is populated in the current run's `run_state.yaml`, which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`). See § Pause Points in reference.
+**Gate:** `[BLOCKER]` halts; **Phase 8→9 boundary always pauses in every mode** — `/ace:run` HALTS here at the new external-comms boundary. Phase 9 cannot start until `phases.solicitation-management.products.selected_llo.org_slug` is populated in the current run's `run_state.yaml`, which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`). See § Pause Points in reference.
 
-**Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). Its cross-run write semantics are TBD pending Phase 7+/8 architecture decisions. `solicitation` and `selected_llo` are separate sub-blocks under `phases.solicitation-management.products.*` — only `solicitation-review` populates `selected_llo`.
+**Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). Its cross-run write semantics are TBD pending Phase 8+/8 architecture decisions. `solicitation` and `selected_llo` are separate sub-blocks under `phases.solicitation-management.products.*` — only `solicitation-review` populates `selected_llo`.
 
-### Phase 8: Execution Management
+### Phase 9: Execution Management
 
-**Dispatch:** `Agent(execution-manager)`. **Entry gated on `phases.solicitation-management.products.selected_llo.org_slug` being populated by Phase 7's `solicitation-review`** in the current run's `run_state.yaml`.
+**Dispatch:** `Agent(execution-manager)`. **Entry gated on `phases.solicitation-management.products.selected_llo.org_slug` being populated by Phase 8's `solicitation-review`** in the current run's `run_state.yaml`.
 
-**Inputs (inline at handoff):** PDD, Phase-5 training artifacts (5 docs + onboarding email under `5-qa-and-training/`), Phase-4 chatbot URL (`4-ocs/ocs-agent-setup.md`), `selected_llo` (from run_state.yaml.phases.solicitation-management.products.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-6 training artifacts (5 docs + onboarding email under `6-qa-and-training/`), Phase-5 chatbot URL (`5-ocs/ocs-agent-setup.md`), `selected_llo` (from run_state.yaml.phases.solicitation-management.products.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(execution-manager)`.
 
@@ -911,13 +926,13 @@ When invoked with an opportunity, execute these phases in order:
 
 **Gate:** `[BLOCKER]` halts; **always pauses before** `llo-onboarding` (first 1-1 email to awardee), `llo-uat` send (UAT instructions), and `llo-launch` (opp activation in Connect) — these are unconditional in all modes. See § Pause Points in reference.
 
-**Notes:** Phase 8 is the first 1-1 LLO contact in the lifecycle. Recurring skills (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`, `ocs-chatbot-eval-monitor`) run on schedule during the active opportunity. `llo-launch` requires fresh deep verdicts (Phase 5 `/ace:qa-deep` output).
+**Notes:** Phase 9 is the first 1-1 LLO contact in the lifecycle. Recurring skills (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`, `ocs-chatbot-eval-monitor`) run on schedule during the active opportunity. `llo-launch` requires fresh deep verdicts (Phase 6 `/ace:qa-deep` output).
 
-### Phase 9: Closeout
+### Phase 10: Closeout
 
 **Dispatch:** `Agent(closeout)`. **Triggered when the opportunity reaches its end date.**
 
-**Inputs (inline at handoff):** Phase-8 outputs (LLO onboarding + UAT + go-live artifacts under `8-execution-manager/`), `selected_llo` (from run_state.yaml.phases.solicitation-management.products.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** Phase-9 outputs (LLO onboarding + UAT + go-live artifacts under `9-execution-manager/`), `selected_llo` (from run_state.yaml.phases.solicitation-management.products.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(closeout)`.
 
@@ -927,7 +942,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Gate:** `[BLOCKER]` halts; **always pauses before** `opp-closeout` (Jira payment ticket creation) — unconditional in all modes. See § Pause Points in reference.
 
-**Notes:** Triggered by end-date, not by phase chaining — Phase 9 does NOT run automatically as part of `/ace:run` continuation from Phase 8. The closeout agent owns the trigger condition.
+**Notes:** Triggered by end-date, not by phase chaining — Phase 10 does NOT run automatically as part of `/ace:run` continuation from Phase 9. The closeout agent owns the trigger condition.
 
 ## Between Phases
 
@@ -942,8 +957,8 @@ After each phase completes:
    consumer's pre-flight
 4. In `auto` mode: send status email to admin group, continue
 5. In `default` mode: continue silently for Phases 1→2, 2→3, 3→4, 4→5;
-   **at the Phase 5→6 transition, pause unconditionally** with a
-   Phase-5-complete summary and "ready to begin LLO contact?" prompt;
+   **at the Phase 6→7 transition, pause unconditionally** with a
+   Phase-6-complete summary and "ready to begin LLO contact?" prompt;
    for 6→7, pause if any external-comm step still pending review
 6. In `review` mode: present summary and wait for approval to continue
 
@@ -1033,8 +1048,8 @@ producer skill row.
   parsing the filename.
 - Skills that ARE their own row in the registry (no producer / eval
   split, e.g. `ocs-chatbot-eval`) keep their own name and a mode
-  suffix: `4-ocs/ocs-chatbot-eval_verdict-{quick,deep}.yaml`,
-  `8-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml`.
+  suffix: `5-ocs/ocs-chatbot-eval_verdict-{quick,deep}.yaml`,
+  `9-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml`.
 - Skills that self-evaluate inline (no separate `-eval` skill — e.g.
   `app-screenshot-capture` and every per-artifact training skill
   (`training-llo-guide`, `training-flw-guide`,

@@ -247,7 +247,7 @@ export function checkKpiFieldPathsResolvable(text: string, ctx?: QACheckContext)
     detail: `kpi field_path(s) not found in deliver-app summary: ${unresolved.join(', ')}`,
     auto_fix_hint:
       `fix each kpi_config[].field_path to reference a real form question path from the deliver app summary. ` +
-      `Common paths are listed in 2-commcare/app-deploy_summary.md.`,
+      `Common paths are listed in 3-commcare/app-deploy_summary.md.`,
   };
 }
 

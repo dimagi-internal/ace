@@ -1,7 +1,7 @@
 ---
 name: training-deck-outline-eval
 description: >
-  Grade the Phase 5 training-deck outline for pedagogical flow (intro →
+  Grade the Phase 6 training-deck outline for pedagogical flow (intro →
   reference → walkthrough → recap), screenshot integration, and
   anticipated-question coverage.
 disable-model-invocation: true
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 # Training Deck Outline — Eval
 
-Grades `5-qa-and-training/training-deck-outline.md`. The deck outline
+Grades `6-qa-and-training/training-deck-outline.md`. The deck outline
 drives `training-deck-build` (which transcribes outline → Slides via
 the Slides API). The deck outline is therefore where pedagogical
 quality lives — `training-deck-build` is graded by template, not by
@@ -22,14 +22,14 @@ calibration TBD until 3+ shipped deck outlines produce ground truth.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 5 | `5-qa-and-training/training-deck-outline.md` | artifact under judgment |
+| Phase 6 | `6-qa-and-training/training-deck-outline.md` | artifact under judgment |
 | Phase 1 | `1-design/idea-to-pdd.md` | anchors archetype, intervention design, anticipated audience questions |
-| Phase 2 | `2-commcare/app-deploy_summary.md` | walkthrough must match deployed app screens |
-| Phase 5 | `5-qa-and-training/training-faq.md` (if present) | anticipated-question coverage cross-reference |
+| Phase 3 | `3-commcare/app-deploy_summary.md` | walkthrough must match deployed app screens |
+| Phase 6 | `6-qa-and-training/training-faq.md` (if present) | anticipated-question coverage cross-reference |
 
 ## Products
 
-- `5-qa-and-training/training-deck-outline-eval_verdict.yaml` — verdict YAML
+- `6-qa-and-training/training-deck-outline-eval_verdict.yaml` — verdict YAML
   per `_eval-template.md § Verdict YAML contract`.
 
 ## Process

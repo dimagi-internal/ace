@@ -93,7 +93,7 @@ decisions:
     status: open
     notes: |
       No consumer named in idea.md. Proceeding with default; flag in gate brief.
-      Human edit recommended before Phase 7 solicitation publishes.
+      Human edit recommended before Phase 8 solicitation publishes.
 
   - id: primary-metric-vs-goal
     phase: 1-design
@@ -122,12 +122,12 @@ decisions:
     options_considered: ["A only", "A + B", "A + B + C"]
     source: pdd-template.md `## Evidence Model` section
     status: applied
-    notes: Layer A self-report + Layer B AI photo-verification. Layer C (independent audit) deferred to Phase 8.
+    notes: Layer A self-report + Layer B AI photo-verification. Layer C (independent audit) deferred to Phase 9.
 
   - id: solicitation-type
     phase: 1-design
     skill: idea-to-pdd
-    question: Solicitation type for Phase 7 publication?
+    question: Solicitation type for Phase 8 publication?
     default: EOI
     options_considered: ["EOI", "RFP", "custom"]
     source: skills/idea-to-pdd `## Solicitation` section default

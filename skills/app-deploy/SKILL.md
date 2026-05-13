@@ -23,15 +23,15 @@ release flow + the App Editor permission prerequisite.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` | `nova_app_id` for Learn app |
-| Phase 2 | `2-commcare/pdd-to-deliver-app_summary.md` | `nova_app_id` for Deliver app |
+| Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` | `nova_app_id` for Learn app |
+| Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` | `nova_app_id` for Deliver app |
 
 ## Products
 
-- `2-commcare/app-deploy_summary.md` — HQ app IDs + URLs for both apps
-- `run_state.yaml.phases.commcare-setup.products.apps` — consolidated Learn + Deliver app handoff (name, nova_app_id, nova_url, hq_app_id, hq_url, build_status) written as a single atomic block at the end of Phase 2. This skill is the **sole writer** of `products.apps`; readers (ace-web summary, downstream phases) see the block populated once both apps are deployed.
-<!-- 0.13.116: legacy `2-commcare/app-deploy_gate-brief.md` removed.
-Pause-time summary at the Phase 2 → 3 Pause Point is composed by the
+- `3-commcare/app-deploy_summary.md` — HQ app IDs + URLs for both apps
+- `run_state.yaml.phases.commcare-setup.products.apps` — consolidated Learn + Deliver app handoff (name, nova_app_id, nova_url, hq_app_id, hq_url, build_status) written as a single atomic block at the end of Phase 3. This skill is the **sole writer** of `products.apps`; readers (ace-web summary, downstream phases) see the block populated once both apps are deployed.
+<!-- 0.13.116: legacy `3-commcare/app-deploy_gate-brief.md` removed.
+Pause-time summary at the Phase 3→4 Pause Point is composed by the
 orchestrator from per-skill QA + eval verdicts. -->
 
 
@@ -89,7 +89,7 @@ orchestrator from per-skill QA + eval verdicts. -->
       `(>10kg)` in the field label. Filed as
       `docs/issues/nova-validate-app-misses-xml-escapes.md`. Until Nova
       auto-escapes on `add_field`/`edit_field` (or `validate_app`
-      rejects), every Phase 2 run does this lint.
+      rejects), every Phase 3 run does this lint.
 
    If the lint is skipped (e.g. Nova MCP unauthed at this point), log
    `app-deploy-xml-lint: skipped-nova-unauthed` in `run_state.yaml` and add
@@ -111,7 +111,7 @@ orchestrator from per-skill QA + eval verdicts. -->
 4. **Upload Deliver app.** Same shape — `/nova:upload_to_hq <deliver_app_id>`.
 
 5. **Write the deployment summary** to
-   `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md`:
+   `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md`:
 
    ```yaml
    ---
@@ -171,7 +171,7 @@ orchestrator from per-skill QA + eval verdicts. -->
    skill owns the entire block.
 
 <!-- 0.13.116: gate-brief write step + ## Gate Brief section removed.
-At the Phase 2 → 3 Pause Point, the orchestrator composes the
+At the Phase 3→4 Pause Point, the orchestrator composes the
 pause-time summary from this skill's eval verdict
 (`app-release-eval`) + downstream `app-connect-coverage` verdict +
 the deploy/release status fields in `app-deploy_summary.md`. The
@@ -184,7 +184,7 @@ producer no longer authors a separate gate-brief artifact. -->
 
 ## Mode Behavior
 - **Auto:** Pre-flight, upload, write summary, notify admin, proceed.
-- **Review:** Same, but pause at the Phase 2→3 Pause Point (per
+- **Review:** Same, but pause at the Phase 3→4 Pause Point (per
   `agents/ace-orchestrator.md § Pause Points`); orchestrator presents
   the per-skill verdicts.
 
@@ -202,6 +202,6 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
-| 2026-04-17 | Emit gate brief at `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_gate-brief.md` covering build status, Connectify flags, and workaround-path warnings for the Phase 2→3 gate | ACE team (PM scout, internal-admin lens) |
+| 2026-04-17 | Emit gate brief at `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_gate-brief.md` covering build status, Connectify flags, and workaround-path warnings for the Phase 3→4 gate | ACE team (PM scout, internal-admin lens) |
 | 2026-04-27 | Switch from manual HQ-UI upload to `/nova:upload_to_hq` via the Nova plugin. Inputs are now `nova_app_id` values read from the app summaries. New pre-flight check compares Nova's bound HQ project space against `ACE_HQ_DOMAIN`. Gate brief drops the workaround-path WARN and adds a domain-mismatch BLOCKER. | ACE team |
-| 2026-04-29 | Carve out app release into the new `app-release` skill (Step 2.5 of Phase 2). This skill now ends at "draft uploaded" — release is a separate, permission-sensitive step. Reason: Connect's `Sync Deliver Units` only enumerates units from released builds, so unreleased apps silently break Phase 3's payment-unit config. (0.10.1) | ACE team |
+| 2026-04-29 | Carve out app release into the new `app-release` skill (Step 2.5 of Phase 3). This skill now ends at "draft uploaded" — release is a separate, permission-sensitive step. Reason: Connect's `Sync Deliver Units` only enumerates units from released builds, so unreleased apps silently break Phase 4's payment-unit config. (0.10.1) | ACE team |

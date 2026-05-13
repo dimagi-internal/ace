@@ -64,7 +64,7 @@ and what should I improve?"
 
    a. Read the producer's primary artifact path from Drive (e.g.
       `1-design/idea-to-pdd.md` for `idea-to-pdd`,
-      `3-connect/connect-program-setup.md` for
+      `4-connect/connect-program-setup.md` for
       `connect-program-setup`). If absent, skip with an `[INFO]` log
       line; do not error.
    b. Dispatch the eval skill via `/ace:step <eval-skill> <opp-name>`.

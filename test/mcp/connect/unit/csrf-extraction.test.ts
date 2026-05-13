@@ -11,7 +11,7 @@ import { extractCsrfToken, type Cookie } from '../../../../mcp/connect/auth/play
  * defeated the throw guard in `getContext()`, and produced 403 CSRF
  * Failed on every Connect REST POST.
  *
- * leep-paint-collection-20260505-1505 Phase 3 Step 2 was the live
+ * leep-paint-collection-20260505-1505 Phase 4 Step 2 was the live
  * surface.
  */
 describe('extractCsrfToken — domain filter contract', () => {

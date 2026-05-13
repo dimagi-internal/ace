@@ -63,7 +63,7 @@ describe('CRISPR-Test-001 fixture', () => {
     // Note: test-results/{test-plan,test-results,bugs}.md were dropped on
     // 2026-05-04 (shallow/deep QA split) when the `app-test` skill was
     // retired. The fixture gained `expected-journeys.md` (Phase 1) and
-    // `app-test-cases.yaml` (Phase 2) in the same release; both ship in
+    // `app-test-cases.yaml` (Phase 3) in the same release; both ship in
     // the fixture so they don't appear in expectedMissing.
     const expectedMissing = [
       // inputs/ is an opp-level required artifact; CRISPR-Test-001 is a
@@ -71,22 +71,24 @@ describe('CRISPR-Test-001 fixture', () => {
       // the full opp folder layout, so inputs/ is intentionally absent here.
       'inputs/',
       // Phase 1 outputs missing in this fixture.
-      '1-design/pdd-to-test-prompts.md',
-      '1-design/design-review_summary.md',
+      '1-design/idea-to-design_summary.md',
       // Phase 2 outputs missing in this fixture.
-      '2-commcare/commcare-setup_summary.md',
-      // Phase 3 summary missing.
-      '3-connect/connect-setup_summary.md',
-      // Phase 4 OCS artifacts (the fixture covers earlier phases only).
-      '4-ocs/ocs-agent-setup.md',
-      '4-ocs/ocs-setup_summary.md',
-      '4-ocs/ocs-setup_widget-handoff.md',
+      '2-scenarios/pdd-to-test-prompts.md',
+      '2-scenarios/scenarios-and-acceptance_summary.md',
+      // Phase 3 outputs missing in this fixture.
+      '3-commcare/commcare-setup_summary.md',
+      // Phase 4 summary missing.
+      '4-connect/connect-setup_summary.md',
+      // Phase 5 OCS artifacts (the fixture covers earlier phases only).
+      '5-ocs/ocs-agent-setup.md',
+      '5-ocs/ocs-setup_summary.md',
+      '5-ocs/ocs-setup_widget-handoff.md',
       // 0.13.116: gate-brief artifacts removed across all phases.
-      // Phase 5 verdicts + onboarding email (training docs are present;
+      // Phase 6 verdicts + onboarding email (training docs are present;
       // verdicts and the onboarding email are not).
-      '5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',
-      '5-qa-and-training/app-screenshot-capture_verdict.yaml',
-      '5-qa-and-training/training-onboarding-email.md',
+      '6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',
+      '6-qa-and-training/app-screenshot-capture_verdict.yaml',
+      '6-qa-and-training/training-onboarding-email.md',
     ];
     const files = listFiles(fixtureDir);
     const result = validateFixture(files, 'qa-and-training', ['README.md']);
@@ -121,7 +123,7 @@ describe('CRISPR-Test-002 fixture', () => {
   });
 });
 
-describe('CRISPR-Test-004-Solicitation fixture (Phase 6)', () => {
+describe('CRISPR-Test-004-Solicitation fixture (Phase 7)', () => {
   const fixtureDir = path.join(FIXTURES_DIR, 'CRISPR-Test-004-Solicitation');
 
   it('fixture directory exists', () => {

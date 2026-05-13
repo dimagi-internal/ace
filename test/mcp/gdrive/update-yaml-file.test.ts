@@ -29,7 +29,7 @@ function makeFakeDriveWithDoc(initialContent: string, initialVersion = '1') {
 
 describe('update_yaml_file: server-side patch+CAS', () => {
   it('merges top-level keys into existing YAML and writes once', async () => {
-    const yaml = YAML.stringify({ phase: 'design-review', status: 'in_progress', foo: 'bar' });
+    const yaml = YAML.stringify({ phase: 'idea-to-design', status: 'in_progress', foo: 'bar' });
     const fake = makeFakeDriveWithDoc(yaml, '5');
 
     const r = await handleUpdateYamlFile(
@@ -39,7 +39,7 @@ describe('update_yaml_file: server-side patch+CAS', () => {
 
     const updated = YAML.parse(fake.state.content);
     expect(updated).toEqual({
-      phase: 'design-review',
+      phase: 'idea-to-design',
       status: 'done',          // replaced
       foo: 'bar',              // preserved
       new_field: 42,           // added
@@ -52,11 +52,11 @@ describe('update_yaml_file: server-side patch+CAS', () => {
     const fake = makeFakeDriveWithDoc('', '1');
 
     await handleUpdateYamlFile(
-      { fileId: 'f1', patch: { phase: 'design-review' } },
+      { fileId: 'f1', patch: { phase: 'idea-to-design' } },
       fake as any,
     );
 
-    expect(YAML.parse(fake.state.content)).toEqual({ phase: 'design-review' });
+    expect(YAML.parse(fake.state.content)).toEqual({ phase: 'idea-to-design' });
   });
 
   it('top-level replace, not deep merge (default = shallow)', async () => {
@@ -77,7 +77,7 @@ describe('update_yaml_file: server-side patch+CAS', () => {
     // each own one entry under `phases:` and must not clobber the other.
     const yaml = YAML.stringify({
       opportunity: 'leep-paint-collection',
-      phases: { 'design-review': { status: 'done', verdict: 'pass' } },
+      phases: { 'idea-to-design': { status: 'done', verdict: 'pass' } },
       gates: { 'idea-to-pdd': 'approved' },
     });
     const fake = makeFakeDriveWithDoc(yaml, '5');
@@ -98,7 +98,7 @@ describe('update_yaml_file: server-side patch+CAS', () => {
     expect(YAML.parse(fake.state.content)).toEqual({
       opportunity: 'leep-paint-collection',
       phases: {
-        'design-review': { status: 'done', verdict: 'pass' },        // preserved
+        'idea-to-design': { status: 'done', verdict: 'pass' },        // preserved
         'commcare-setup': { status: 'done', verdict: 'pass' },        // added
       },
       gates: {
@@ -111,21 +111,21 @@ describe('update_yaml_file: server-side patch+CAS', () => {
 
   it('two-level merge: child-key conflict — patch wins (replaces just that child)', async () => {
     const yaml = YAML.stringify({
-      phases: { 'design-review': { status: 'in_progress', verdict: null } },
+      phases: { 'idea-to-design': { status: 'in_progress', verdict: null } },
     });
     const fake = makeFakeDriveWithDoc(yaml, '1');
 
     await handleUpdateYamlFile(
       {
         fileId: 'f1',
-        patch: { phases: { 'design-review': { status: 'done', verdict: 'pass' } } },
+        patch: { phases: { 'idea-to-design': { status: 'done', verdict: 'pass' } } },
         merge: 'two-level',
       },
       fake as any,
     );
 
     expect(YAML.parse(fake.state.content)).toEqual({
-      phases: { 'design-review': { status: 'done', verdict: 'pass' } },
+      phases: { 'idea-to-design': { status: 'done', verdict: 'pass' } },
     });
   });
 

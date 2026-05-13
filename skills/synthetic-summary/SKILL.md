@@ -8,12 +8,12 @@ disable-model-invocation: true
 
 # Synthetic Summary
 
-Stage 1 sibling of `synthetic-data-generate`. Reads the Phase 6 artifacts in
+Stage 1 sibling of `synthetic-data-generate`. Reads the Phase 7 artifacts in
 the run folder and produces a single markdown page a Dimagi staffer can
 forward to a stakeholder ("here is what this opportunity looks like running
 well"). Pure aggregator — no MCP calls beyond Drive reads/writes, no eval.
 
-In Stage 1 the only Phase 6 inputs are the data-generate summary and its
+In Stage 1 the only Phase 7 inputs are the data-generate summary and its
 manifest. Later stages add walkthrough slideshows, workflow URLs, and
 narrative-plan output; this skill grows to bundle them then.
 
@@ -21,22 +21,22 @@ narrative-plan output; this skill grows to bundle them then.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 6 | `6-synthetic/synthetic-data-generate.md` | labs URL, GDrive folder ID, record counts |
-| Phase 6 | `6-synthetic/synthetic-data-generate_manifest.yaml` OR `6-synthetic/synthetic-narrative-plan.yaml` | FLW personas, cohort size, anomalies, timeline (for the narrative paragraphs) |
-| Phase 6 (optional) | `6-synthetic/synthetic-narrative-plan.md` | richer prose narrative — preferred over the manifest's bare data when present |
+| Phase 7 | `7-synthetic/synthetic-data-generate.md` | labs URL, GDrive folder ID, record counts |
+| Phase 7 | `7-synthetic/synthetic-data-generate_manifest.yaml` OR `7-synthetic/synthetic-narrative-plan.yaml` | FLW personas, cohort size, anomalies, timeline (for the narrative paragraphs) |
+| Phase 7 (optional) | `7-synthetic/synthetic-narrative-plan.md` | richer prose narrative — preferred over the manifest's bare data when present |
 | Drive | `ACE/<opp>/opp.yaml` | `display_name`, `slug`, opp-level context |
 | Current run's `run_state.yaml` | `phases.synthetic-data-and-workflows.products.synthetic.*` — `walkthroughs[]`, `workflows`, `generated_at`, etc. | Stage 2/3 content sections |
 
 ## Products
 
-- `6-synthetic/synthetic-summary.md` — one-page reviewer-facing summary
+- `7-synthetic/synthetic-summary.md` — one-page reviewer-facing summary
 - `run_state.yaml.phases.synthetic-data-and-workflows.synthetic-summary: done`
 
 ## Process
 
-1. **Read Phase 6 artifacts.**
+1. **Read Phase 7 artifacts.**
 
-   From `ACE/<opp>/runs/<last_run_id>/6-synthetic/`, read via
+   From `ACE/<opp>/runs/<last_run_id>/7-synthetic/`, read via
    `mcp__plugin_ace_ace-gdrive__drive_read_file`:
 
    - `synthetic-data-generate.md` — labs URL, GDrive folder ID, record
@@ -61,7 +61,7 @@ narrative-plan output; this skill grows to bundle them then.
    run's synthetic state, not a cross-run history.
 
 2. **Compose the summary** at
-   `ACE/<opp>/runs/<last_run_id>/6-synthetic/synthetic-summary.md`. Shape:
+   `ACE/<opp>/runs/<last_run_id>/7-synthetic/synthetic-summary.md`. Shape:
 
    ```markdown
    # <opp.yaml.display_name> — Synthetic Demo
@@ -132,7 +132,7 @@ narrative-plan output; this skill grows to bundle them then.
 
    ## What's next
 
-   Phase 6 ships in stages — emit only the lines that match THIS opp's state:
+   Phase 7 ships in stages — emit only the lines that match THIS opp's state:
 
    - When `products.synthetic.workflows` is empty: "Stage 3 (demonstrative workflows) hasn't run for this opp — `/ace:step synthetic-workflow-seed` instantiates the LLO weekly review + program admin audit."
    - When `synthetic.workflows` exists but `synthetic-workflow-polish.md` is absent: "Stage 3.2 (polish) hasn't run — `/ace:step synthetic-workflow-polish` applies hero panels + named FLW cards + anomaly callouts."

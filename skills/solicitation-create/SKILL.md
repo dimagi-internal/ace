@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # Solicitation Create
 
-Phase 7 default-run skill. Builds and publishes the solicitation in one
+Phase 8 default-run skill. Builds and publishes the solicitation in one
 shot — ACE always publishes, never drafts. The solicitation can be edited
 post-publish via the labs UI without affecting responses.
 
@@ -23,7 +23,7 @@ connect-labs MCP atom inventory.
   archetype, opp display name, organization_slug, optional cached
   `connect.program.labs_int_id` (labs integer mirror of the Connect
   program)
-- `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup.md` —
+- `ACE/<opp-name>/runs/<run-id>/4-connect/connect-program-setup.md` —
   the Connect program **name** (used to resolve the labs integer
   program_id via `labs_context`; see Step 5)
 
@@ -130,7 +130,7 @@ connect-labs MCP atom inventory.
       organization by `opp.yaml.organization_slug` (default
       `ai-demo-space`); within it, find the program whose `name` matches
       the Connect program name from
-      `runs/<run-id>/3-connect/connect-program-setup.md` (the markdown
+      `runs/<run-id>/4-connect/connect-program-setup.md` (the markdown
       summary written by `connect-program-setup`). Capture the
       program's integer `id`.
    3. **Cache:** write the result to
@@ -262,7 +262,7 @@ connect-labs MCP atom inventory.
   criterion): write what was returned, mark `evaluation_criteria` as
   `needs-review` in `published.md`, still publish. Criteria are editable
   post-publish via labs UI without losing responses.
-- **`opp.yaml.program_id` missing**: halt with "run Phase 3
+- **`opp.yaml.program_id` missing**: halt with "run Phase 4
   (`connect-setup`) first to register a Connect program." The Connect
   UUID is the upstream evidence that a labs-side program will exist;
   without it there is nothing to look up in `labs_context`.
@@ -315,12 +315,12 @@ qualify under the bar for this phase — a working template, not a
 required set. The skill applies the bar criterion and emits whatever
 rows meet it; the catalog is a teaching device that improves over time.
 
-### Common load-bearing decisions for Phase 7
+### Common load-bearing decisions for Phase 8
 
 | ID | Question | Map to surface |
 |---|---|---|
 | `solicitation-type` | EOI vs RFP vs custom? | `solicitation-create-eval`; affects who applies and at what fidelity |
-| `response-deadline` | Days from publish to deadline (default 14)? | `solicitation-create` schema; gates Phase 7→8 timing |
+| `response-deadline` | Days from publish to deadline (default 14)? | `solicitation-create` schema; gates Phase 8→9 timing |
 | `response-template-choice` | Stock template vs opp-custom response form? | `solicitation-create` content; downstream `solicitation-review` rubric input |
 
 The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
@@ -328,11 +328,11 @@ The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 contract; the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.
 
-Each row this skill writes uses `phase: 7-solicitation-management` and
+Each row this skill writes uses `phase: 8-solicitation-management` and
 `skill: solicitation-create`.
 
 ## Change Log
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (solicitation-type, response-deadline, response-template-choice) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (solicitation-type, response-deadline, response-template-choice) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |

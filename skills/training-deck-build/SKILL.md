@@ -16,15 +16,15 @@ video — that's a separate skill, planned but not implemented.
 ## When to run
 
 After `training-deck-outline` has written its artifact for the
-opportunity. Typically the last step of Phase 5 (`qa-and-training`),
-before LLO onboarding in Phase 8.
+opportunity. Typically the last step of Phase 6 (`qa-and-training`),
+before LLO onboarding in Phase 9.
 
 ## Inputs (read from Drive)
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 5 (`training-deck-outline`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md` | parsed via `parseDeckOutline` |
-| Phase 5 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml` | screenshot fileId resolution for `drive:` image refs by alias |
+| Phase 6 (`training-deck-outline`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-outline.md` | parsed via `parseDeckOutline` |
+| Phase 6 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` | screenshot fileId resolution for `drive:` image refs by alias |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` | same, for cross-opp screenshots |
 
 ## Inputs (env)
@@ -40,7 +40,7 @@ under human control.
 
 ## Process
 
-1. **Read** `5-qa-and-training/training-deck-outline.md` from Drive.
+1. **Read** `6-qa-and-training/training-deck-outline.md` from Drive.
    If missing, fail with a hint to run the `training-deck-outline`
    skill first.
 
@@ -73,7 +73,7 @@ under human control.
 4. **Copy the template.** Call `slides_copy_template` with:
    - `templatePresentationId`: from `ACE_TRAINING_DECK_TEMPLATE_ID`
    - `title`: `<opp> — Training Deck`
-   - `parentFolderId`: the opp's `5-qa-and-training/` folder
+   - `parentFolderId`: the opp's `6-qa-and-training/` folder
    Capture the new `presentationId` and `webViewLink`.
 
 5. **Discover stencil objectIds.** Call `slides_get` on the new
@@ -145,7 +145,7 @@ under human control.
 
 - The Google Slides deck itself (in Drive)
 - `run_state.yaml.phases.qa-and-training.products.training.deck` — `{file_id, title, web_view_link, template_id, built_at}` typed handoff (multi-writer block; sibling `docs.*` slots written by the five training doc skills)
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-build_verdict.yaml` — standard verdict shape
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-build_verdict.yaml` — standard verdict shape
   (see `lib/verdict-schema.ts`); `summary.deck_url` set; `passed:` true if
   parse + both batchUpdates succeeded
 

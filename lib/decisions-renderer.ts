@@ -232,8 +232,8 @@ class RequestBuilder {
 // ── Phase label helpers ───────────────────────────────────────────────────────
 
 /**
- * Parse a phase string like "1-design" or "2-commcare-setup" into a
- * human-readable label: "Phase 1 — Design" / "Phase 2 — Commcare Setup".
+ * Parse a phase string like "1-design" or "3-commcare-setup" into a
+ * human-readable label: "Phase 1 — Design" / "Phase 3 — Commcare Setup".
  */
 function phaseLabel(phase: string): string {
   const dashIdx = phase.indexOf("-");

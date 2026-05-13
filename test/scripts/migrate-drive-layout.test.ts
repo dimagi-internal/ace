@@ -145,13 +145,13 @@ describe('planMoves', () => {
     expect(moves).toContainEqual({
       fileId: 'cap-id',
       from: 'qa-captures/2026-05-04-ocs-chat-deep.md',
-      to: '4-ocs/ocs-chatbot-qa_transcript-deep.md',
+      to: '5-ocs/ocs-chatbot-qa_transcript-deep.md',
       action: 'move',
       runFolderId: 'run-1-id',
     });
   });
 
-  it('handles screenshots/ binary files (preserves nested path under 5-qa-and-training/screenshots/)', async () => {
+  it('handles screenshots/ binary files (preserves nested path under 6-qa-and-training/screenshots/)', async () => {
     const drive = fakeDrive({
       'opp-id': [{ id: 'runs-id', name: 'runs', mimeType: FOLDER }],
       'runs-id': [{ id: 'run-1-id', name: 'run-1', mimeType: FOLDER }],
@@ -169,7 +169,7 @@ describe('planMoves', () => {
     expect(moves).toContainEqual({
       fileId: 'png-id',
       from: 'screenshots/learn/01-welcome.png',
-      to: '5-qa-and-training/screenshots/learn/01-welcome.png',
+      to: '6-qa-and-training/screenshots/learn/01-welcome.png',
       action: 'move',
       runFolderId: 'run-1-id',
     });
@@ -268,7 +268,7 @@ describe('executeMoves', () => {
     const d = makeFakeGoogleDrive();
     d.files.list.mockResolvedValueOnce({ data: { files: [] } });
     d.files.create.mockResolvedValueOnce({
-      data: { id: 'phase-2-id', name: '2-commcare' },
+      data: { id: 'phase-2-id', name: '3-commcare' },
     });
     d.files.get.mockResolvedValueOnce({ data: { parents: ['run-1-id'] } });
     d.files.update.mockResolvedValueOnce({
@@ -278,7 +278,7 @@ describe('executeMoves', () => {
     const moves: PlannedMove[] = [{
       fileId: 'app-summary-id',
       from: 'app-summaries/learn-app-summary.md',
-      to: '2-commcare/pdd-to-learn-app_summary.md',
+      to: '3-commcare/pdd-to-learn-app_summary.md',
       action: 'move',
       runFolderId: 'run-1-id',
     }];
@@ -347,11 +347,11 @@ describe('executeMoves', () => {
 
   it('folder cache: two moves into the same phase folder only call files.create once', async () => {
     const d = makeFakeGoogleDrive();
-    // First lookup of 2-commcare/ — empty
+    // First lookup of 3-commcare/ — empty
     d.files.list.mockResolvedValueOnce({ data: { files: [] } });
     // Folder create: returns id once
     d.files.create.mockResolvedValueOnce({
-      data: { id: 'phase-2-id', name: '2-commcare' },
+      data: { id: 'phase-2-id', name: '3-commcare' },
     });
     // Two file gets + two file updates
     d.files.get
@@ -365,14 +365,14 @@ describe('executeMoves', () => {
       {
         fileId: 'a-id',
         from: 'app-summaries/learn-app-summary.md',
-        to: '2-commcare/pdd-to-learn-app_summary.md',
+        to: '3-commcare/pdd-to-learn-app_summary.md',
         action: 'move',
         runFolderId: 'run-1-id',
       },
       {
         fileId: 'b-id',
         from: 'app-summaries/deliver-app-summary.md',
-        to: '2-commcare/pdd-to-deliver-app_summary.md',
+        to: '3-commcare/pdd-to-deliver-app_summary.md',
         action: 'move',
         runFolderId: 'run-1-id',
       },
@@ -410,9 +410,9 @@ describe('planMoves: create-shortcut emissions', () => {
     }
     // Spot-check the names + targets we expect.
     const byName = new Map(shortcuts.map((s) => [s.from, s.to]));
-    expect(byName.get('connect-opp-summary.md')).toBe('3-connect/connect-opp-setup.md');
-    expect(byName.get('connect-program-summary.md')).toBe('3-connect/connect-program-setup.md');
-    expect(byName.get('ocs-agent-config.md')).toBe('4-ocs/ocs-agent-setup.md');
+    expect(byName.get('connect-opp-summary.md')).toBe('4-connect/connect-opp-setup.md');
+    expect(byName.get('connect-program-summary.md')).toBe('4-connect/connect-program-setup.md');
+    expect(byName.get('ocs-agent-config.md')).toBe('5-ocs/ocs-agent-setup.md');
   });
 
   it('emits no create-shortcut actions when no runs exist', async () => {
@@ -484,10 +484,10 @@ describe('planMoves: delete-empty emissions', () => {
 describe('executeMoves: create-shortcut + delete-empty handlers', () => {
   it('create-shortcut: walks segments to resolve targetId, ensures current/, deletes prior, creates shortcut', async () => {
     const d = makeFakeGoogleDrive();
-    // 1. resolveTargetIdByPath: walks "3-connect" → "connect-opp-setup.md"
+    // 1. resolveTargetIdByPath: walks "4-connect" → "connect-opp-setup.md"
     d.files.list
       .mockResolvedValueOnce({
-        data: { files: [{ id: 'phase-3-id', name: '3-connect', mimeType: 'application/vnd.google-apps.folder' }] },
+        data: { files: [{ id: 'phase-3-id', name: '4-connect', mimeType: 'application/vnd.google-apps.folder' }] },
       })
       .mockResolvedValueOnce({
         data: { files: [{ id: 'opp-summary-id', name: 'connect-opp-setup.md', mimeType: 'application/vnd.google-apps.document' }] },
@@ -509,7 +509,7 @@ describe('executeMoves: create-shortcut + delete-empty handlers', () => {
     const moves: PlannedMove[] = [{
       fileId: 'run-B-id',
       from: 'connect-opp-summary.md',
-      to: '3-connect/connect-opp-setup.md',
+      to: '4-connect/connect-opp-setup.md',
       action: 'create-shortcut',
       runFolderId: 'run-B-id',
     }];

@@ -328,7 +328,7 @@ export function parseDeliverUnitFormCheckboxes(html: string): Map<string, string
  *   `cells[5] → max_total`. That was WRONG — Connect renders no `amount`
  *   column. The off-by-one read produced a "field-shift defect" that
  *   blocked turmeric-20260429-2330, turmeric-20260503-0835, and
- *   turmeric-20260504-2304 at Phase 3 verify-after-create. Live HTML
+ *   turmeric-20260504-2304 at Phase 4 verify-after-create. Live HTML
  *   inspection on 2026-05-05 against `f116865a-…/payment_unit/.../edit`
  *   confirmed the server-side data was correct on all three runs; the
  *   "field-shift" was entirely in this parser.

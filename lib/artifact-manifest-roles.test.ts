@@ -2,23 +2,35 @@ import { describe, it, expect } from 'vitest';
 import { PHASE_FOLDERS, ROLE_VOCAB, baseRole } from './artifact-manifest-roles.js';
 
 describe('PHASE_FOLDERS', () => {
-  it('maps all 9 phase enum values to N-<phase> folder slugs', () => {
+  it('maps all 10 phase enum values to N-<phase> folder slugs', () => {
     expect(PHASE_FOLDERS).toEqual({
       'design': '1-design',
-      'commcare': '2-commcare',
-      'connect': '3-connect',
-      'ocs': '4-ocs',
-      'qa-and-training': '5-qa-and-training',
-      'synthetic-data-and-workflows': '6-synthetic',
-      'solicitation-management': '7-solicitation-management',
-      'execution-management': '8-execution-manager',
-      'closeout': '9-closeout',
+      'scenarios-and-acceptance': '2-scenarios',
+      'commcare': '3-commcare',
+      'connect': '4-connect',
+      'ocs': '5-ocs',
+      'qa-and-training': '6-qa-and-training',
+      'synthetic-data-and-workflows': '7-synthetic',
+      'solicitation-management': '8-solicitation-management',
+      'execution-management': '9-execution-manager',
+      'closeout': '10-closeout',
     });
   });
 
-  it('folder slugs sort lex-ascending in phase order', () => {
+  it('folder slugs sort natural-ascending in phase order', () => {
+    // Natural sort: leading numeric prefix first, then the rest of the slug.
+    // (Lex sort would put '10-closeout' between '1-design' and '2-scenarios'.)
     const slugs = Object.values(PHASE_FOLDERS);
-    const sorted = [...slugs].sort();
+    const extract = (s: string) => {
+      const m = s.match(/^(\d+)-(.*)$/);
+      return m ? [parseInt(m[1], 10), m[2]] as const : [0, s] as const;
+    };
+    const sorted = [...slugs].sort((a, b) => {
+      const [an, ar] = extract(a);
+      const [bn, br] = extract(b);
+      if (an !== bn) return an - bn;
+      return ar < br ? -1 : ar > br ? 1 : 0;
+    });
     expect(slugs).toEqual(sorted);
   });
 });

@@ -153,7 +153,7 @@ server.tool(
     // 'device'` is a tight equivalent to "Maestro driver healthy".
     // Without this branch, the atom always returned `healthy: false`
     // on cloud (the local `findRunningAvd` never finds a `cloud:i-...`
-    // serial), which made Phase 5 pre-flight spuriously fail.
+    // serial), which made Phase 6 pre-flight spuriously fail.
     if (client.useCloud) {
       const diag = await client.diagnose();
       const sawDevice = diag.adb_devices.some((d) => d.state === 'device');
@@ -180,7 +180,7 @@ server.tool(
     // Look up the AVD's serial without booting it — caller must have a
     // running emulator. We deliberately don't call `ensureAvdRunning`
     // here so this atom stays a *probe* (no heal, no mutation) — that
-    // separation is what lets ace-doctor and Phase 5 pre-flight call
+    // separation is what lets ace-doctor and Phase 6 pre-flight call
     // it to ask "would the heal path even need to run?" before paying
     // its wall-clock cost.
     const info = await client.avd.findRunningAvd(avdName);

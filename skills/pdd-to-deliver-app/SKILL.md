@@ -20,7 +20,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
 ## Products
 
-- `2-commcare/pdd-to-deliver-app_summary.md` — Deliver-app structure summary (forms, fields, `nova_app_id`)
+- `3-commcare/pdd-to-deliver-app_summary.md` — Deliver-app structure summary (forms, fields, `nova_app_id`)
 
 ## Process
 
@@ -43,7 +43,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      (or `task`) block per CommCare Connect's rules.** This is
      load-bearing language — without it, autobuild often skips the
      per-form Connect blocks even though its system prompt knows
-     about them. The `app-connect-coverage` skill in Phase 2 Step 1.5
+     about them. The `app-connect-coverage` skill in Phase 3 Step 1.5
      is the safety net for cases where the brief was vague, but the
      more robust path is for this brief to be unambiguous up front.
      See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
@@ -97,7 +97,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
      Filed upstream as voidcraft-labs/nova-plugin issue #15
      ("XForm emitter does not entity-encode `<`/`>` in label text");
-     this skill-side constraint is the workaround. Phase 2's
+     this skill-side constraint is the workaround. Phase 3's
      `app-release` Step 4a surfaces a typed `BuildRejectedError` (with
      form name + line/col) and dispatches a Nova architect repair
      loop if the architect violates this constraint anyway, so the
@@ -210,7 +210,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    - Are verification criteria encoded in form questions?
 
 7. **Write the summary** to
-   `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md` with required
+   `ACE/<opp-name>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` with required
    frontmatter:
 
    ```yaml
@@ -300,7 +300,7 @@ qualify under the bar for this phase — a working template, not a
 required set. The skill applies the bar criterion and emits whatever
 rows meet it; the catalog is a teaching device that improves over time.
 
-### Common load-bearing decisions for Phase 2
+### Common load-bearing decisions for Phase 3
 
 | ID | Question | Map to surface |
 |---|---|---|
@@ -313,7 +313,7 @@ The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 contract; the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.
 
-Each row this skill writes uses `phase: 2-commcare` and
+Each row this skill writes uses `phase: 3-commcare` and
 `skill: pdd-to-deliver-app`.
 
 ## Change Log
@@ -323,4 +323,4 @@ Each row this skill writes uses `phase: 2-commcare` and
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-08 | Add `## Archetypes` section: `atomic-visit` (per-beneficiary form), `focus-group` (per-session documentation form, segment-level case), `multi-stage` (per-stage branching) | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-27 | Switch from manual Nova UI handoff to `/nova:autobuild` via the Nova plugin. Output is now `nova_app_id` written to the summary, not a JSON file. The `apps/deliver-app.json` snapshot is no longer required. | ACE team |
-| 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (deliver-unit-count, one-form-per-module-workaround, multimedia-coverage-strategy) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (deliver-unit-count, one-form-per-module-workaround, multimedia-coverage-strategy) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |

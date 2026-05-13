@@ -4,7 +4,7 @@ Derived from: pdd.md (rev 2026-04-03)
 Archetype: atomic-visit
 
 > Synthetic stub. Written by `pdd-to-app-journeys` (Phase 1) as the
-> UX-intent ground truth that `app-test-cases` (Phase 2) and
+> UX-intent ground truth that `app-test-cases` (Phase 3) and
 > `app-ux-eval` (deep QA) consume. Mirrors `pdd-to-test-prompts` for
 > the apps. Fixture content is illustrative — real PDDs produce
 > richer journeys.

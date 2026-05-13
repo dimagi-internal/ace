@@ -1,16 +1,16 @@
 ---
 name: solicitation-management
 description: >
-  Phase 7 of the CRISPR-Connect lifecycle: publish a solicitation derived
+  Phase 9 of the CRISPR-Connect lifecycle: publish a solicitation derived
   from the PDD, invite PDD-named candidate LLOs to it by email, and stop.
   The review-and-award lifecycle continues via the manually-invoked
   solicitation-review skill (gated on a human-in-the-loop checkpoint
-  before award_response is called). Phase 8 starts once an awardee is
+  before award_response is called). Phase 10 starts once an awardee is
   recorded in phases.solicitation-management.products.selected_llo in the current run's run_state.yaml.
 model: inherit
 phase: solicitation-management
 phase_display: Solicitation Management
-phase_ordinal: 7
+phase_ordinal: 8
 skills:
   - { name: solicitation-create, has_judge: true,  eval_skill: solicitation-create-eval }
   - { name: llo-invite,          has_judge: false }
@@ -20,7 +20,7 @@ manual_skills:
   - { name: solicitation-review, has_judge: true, eval_skill: solicitation-review-eval }
 ---
 
-# Solicitation Management Agent (Phase 7)
+# Solicitation Management Agent (Phase 8)
 
 You run the solicitation phase of a CRISPR-Connect opportunity. By the
 time this phase starts, Phases 1–5 have produced an approved PDD,
@@ -65,7 +65,7 @@ Invoke the `llo-invite` skill.
 - No-op when the PDD has no `Preferred LLOs` — the solicitation is
   publicly listed at `public_url`; orgs find it via the labs portal.
 - Sends emails via `email-communicator`. No Connect API calls — those
-  happen only for the awardee inside `llo-onboarding` (Phase 8).
+  happen only for the awardee inside `llo-onboarding` (Phase 9).
 
 ## Recurring (outside `/ace:run`)
 
@@ -100,14 +100,14 @@ This skill:
   `solicitation-review-eval` after award. Writes
   `verdicts/solicitation-review.yaml`.
 
-Only this skill unblocks Phase 8 (`execution-management`). Phase 8's
+Only this skill unblocks Phase 9 (`execution-management`). Phase 9's
 entry guard halts with an actionable message if
 `phases.solicitation-management.products.selected_llo.org_slug` is empty in the current run's `run_state.yaml`.
 
 ## Pause-points
 
 - **End of Step 2** (default `/ace:run` exit): `/ace:run` halts here.
-  Phase 8 cannot start until `solicitation-review` populates
+  Phase 9 cannot start until `solicitation-review` populates
   `selected_llo`.
 - **Inside `solicitation-review`**: HITL gate before `award_response`.
 
@@ -124,13 +124,13 @@ entry guard halts with an actionable message if
 
 The phase is "complete" in the orchestrator's sense after Step 2. The
 recurring monitor and manual review are NOT part of phase completion —
-they happen post-`/ace:run` and gate Phase 8 entry.
+they happen post-`/ace:run` and gate Phase 9 entry.
 
 After Step 2, write the `phases.solicitation-management` block per
 `agents/ace-orchestrator.md § Phase Write-Back Contract`. Set
 `phases.solicitation-management.verdict: halt-at-phase-7-to-8-boundary`
 to mark the orchestrator's halt point. (0.13.116: legacy `gates.llo-invite`
-+ `gates.solicitation-review` flips dropped. The Phase 7→8 halt is gated
++ `gates.solicitation-review` flips dropped. The Phase 8→9 halt is gated
 on `phases.solicitation-management.products.selected_llo.org_slug` being
 non-null in the current run's `run_state.yaml` — populated only by
 manual `/ace:step solicitation-review` — which preserves the HITL
@@ -146,4 +146,4 @@ checkpoint without a `gates.<name>` field.)
 - `email-communicator`: Gmail send via GOG CLI
 
 No `ace-connect` calls in this phase — Connect-side activity (program
-invite, opp activation) starts in Phase 8.
+invite, opp activation) starts in Phase 9.

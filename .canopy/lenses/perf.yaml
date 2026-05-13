@@ -65,7 +65,7 @@ signals:
     description: >
       Between an Agent tool_result and the next Agent dispatch, more than
       2 assistant turns of text/TaskUpdate/single drive_create_file calls
-      that could be batched. Examples observed: Phase 1→2 boundary on leep
+      that could be batched. Examples observed: Phase 1→3 boundary on leep
       took 5+ turns where 2 would do (closed by PR 0d Phase Boundary
       Fence). Fix shape: explicit "ONE message immediately after Agent
       returns" rule in the orchestrator's boundary contract + worked

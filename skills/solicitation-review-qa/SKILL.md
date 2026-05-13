@@ -18,7 +18,7 @@ the scoring rubric, the recommendation document, and any award record
 static checks, all runnable in <100ms via the importable `checks.ts`
 module — no LLM.
 
-This is the first QA migration for a Phase 7 producer. The companion
+This is the first QA migration for a Phase 8 producer. The companion
 `solicitation-review-eval` (already shipped) grades the *quality* of
 the recommendation reasoning; this skill catches the structural defects
 QA owns: missing sections, unnamed awardee, incomplete scoring,
@@ -38,14 +38,14 @@ exemplar this skill mirrors.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 7 producer | `7-solicitation-management/solicitation-review_recommendation.md` | the recommendation under structural check |
-| Phase 7 producer | `7-solicitation-management/solicitation-review_scoring-rubric.md` | per-response scoring; cross-checked against recommendation |
-| Phase 7 upstream | `7-solicitation-management/solicitation-monitor_responses/` | response files; checks coverage if present |
+| Phase 8 producer | `8-solicitation-management/solicitation-review_recommendation.md` | the recommendation under structural check |
+| Phase 8 producer | `8-solicitation-management/solicitation-review_scoring-rubric.md` | per-response scoring; cross-checked against recommendation |
+| Phase 8 upstream | `8-solicitation-management/solicitation-monitor_responses/` | response files; checks coverage if present |
 | Phase 1 (optional) | `1-design/idea-to-pdd.md` | PDD-declared evaluation criteria; checks coverage if available |
 
 ## Products
 
-- `7-solicitation-management/solicitation-review-qa_result.yaml` — QA result per `lib/qa-types.ts` schema
+- `8-solicitation-management/solicitation-review-qa_result.yaml` — QA result per `lib/qa-types.ts` schema
 
 ## Checks
 
@@ -88,7 +88,7 @@ The static check functions live at `skills/solicitation-review-qa/checks.ts` as 
      --context-scoring "$SCO" \
      --context-response-files "<comma-separated response filenames or ''>" \
      --target "<opp-name>" \
-     --capture-path "7-solicitation-management/solicitation-review_recommendation.md"
+     --capture-path "8-solicitation-management/solicitation-review_recommendation.md"
    ```
 
    The runner:
@@ -99,8 +99,8 @@ The static check functions live at `skills/solicitation-review-qa/checks.ts` as 
    - Prints a fully-shaped `QAResult` YAML to stdout.
 
 6. **Write the QA result** to Drive at
-   `7-solicitation-management/solicitation-review-qa_result.yaml`.
-   `drive_create_file(parentFolderId=<run-folder/7-solicitation-management>, name='solicitation-review-qa_result.yaml', content=<runner stdout>)`.
+   `8-solicitation-management/solicitation-review-qa_result.yaml`.
+   `drive_create_file(parentFolderId=<run-folder/8-solicitation-management>, name='solicitation-review-qa_result.yaml', content=<runner stdout>)`.
 
 7. **Return the verdict** to the orchestrator (or, more often, to the
    human reviewer who is about to apply the HITL gate):

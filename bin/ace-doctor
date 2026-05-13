@@ -639,9 +639,9 @@ if [ -d "$HOME/emdash-projects/connect-labs" ]; then
 fi
 
 # --- Runtime readiness (things needed to actually run an opportunity) ---
-# These are all WARN, not FAIL: a user who only wants design-review runs
+# These are all WARN, not FAIL: a user who only wants idea-to-design runs
 # doesn't need OCS/Gmail configured. But doctor-green should still tell
-# them what's unset so they see the wall before they hit it at Phase 4.
+# them what's unset so they see the wall before they hit it at Phase 5.
 
 # Prefer the plugin-data .env (persistent across updates). Fall back to a
 # dev checkout's ./.env if that's where the user keeps their secrets.

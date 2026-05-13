@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # Training Onboarding Email
 
-Produce the onboarding email body — the message Phase 8
+Produce the onboarding email body — the message Phase 9
 `llo-onboarding` sends to each LLO admin once the opportunity is
 configured and ready. Audience: an LLO admin opening their inbox who
 needs to (a) understand they have a new opportunity, (b) know how to
@@ -16,8 +16,8 @@ accept and start, (c) know where to ask questions.
 
 ## When to run
 
-Phase 5 (`qa-and-training`), after the Connect opportunity exists
-(Phase 3) and the OCS widget is configured (Phase 4). Phase 8
+Phase 6 (`qa-and-training`), after the Connect opportunity exists
+(Phase 4) and the OCS widget is configured (Phase 5). Phase 9
 (`llo-onboarding`) reads this file and substitutes per-LLO
 personalization tokens at send time.
 
@@ -26,18 +26,18 @@ personalization tokens at send time.
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | one-paragraph opp framing for the email body |
-| Phase 3 | `ACE/<opp>/runs/<run-id>/3-connect/connect-opp-setup.md` | opportunity name + URL |
-| Phase 3 (`run_state.yaml`) | `connect.payment_units` | payment-summary line |
-| Phase 4 | `ACE/<opp>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | widget link in the email |
-| Phase 5 (per-artifact training siblings) | `5-qa-and-training/llo-manager-guide.md`, `flw-training-guide.md`, `quick-reference.md` | links to the docs LLO will use |
+| Phase 4 | `ACE/<opp>/runs/<run-id>/4-connect/connect-opp-setup.md` | opportunity name + URL |
+| Phase 4 (`run_state.yaml`) | `connect.payment_units` | payment-summary line |
+| Phase 5 | `ACE/<opp>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | widget link in the email |
+| Phase 6 (per-artifact training siblings) | `6-qa-and-training/llo-manager-guide.md`, `flw-training-guide.md`, `quick-reference.md` | links to the docs LLO will use |
 
 ## Output
 
-Single file: `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-onboarding-email.md`.
+Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-onboarding-email.md`.
 
 ## Format
 
-Markdown email body. Phase 8 substitutes these tokens at send time:
+Markdown email body. Phase 9 substitutes these tokens at send time:
 
 - `{{LLO_NAME}}` — the LLO admin's display name
 - `{{LLO_FIRST_NAME}}` — first name only, for the greeting
@@ -95,15 +95,15 @@ ace@dimagi-ai.com
 
 ## Format rules
 
-- **Personalization tokens use `{{TOKEN}}` syntax** so Phase 8 can
+- **Personalization tokens use `{{TOKEN}}` syntax** so Phase 9 can
   substitute. The set is fixed: `LLO_NAME`, `LLO_FIRST_NAME`,
   `LLO_ORG`. Don't introduce new tokens without coordinating a
-  Phase-6-side update.
+  Phase-7-side update.
 - **Every URL is a real URL** — no `<insert link here>` placeholders.
   All inputs are available at the time this skill runs.
 - **One paragraph per section.** This is an email, not a manual; LLOs
   scan and click.
-- **Subject line on the first line, prefixed `Subject:`** so Phase 8
+- **Subject line on the first line, prefixed `Subject:`** so Phase 9
   can extract.
 - **Word count: 200-400.** Longer emails get skimmed and key links
   missed; shorter feels dismissive.
@@ -115,7 +115,7 @@ ace@dimagi-ai.com
 2. **Resolve sibling-doc Drive URLs.** For each of llo-manager-guide,
    flw-training-guide, quick-reference, look up the file's
    webViewLink via `drive_list_folder` on
-   `ACE/<opp>/runs/<run-id>/5-qa-and-training/`. If any of them
+   `ACE/<opp>/runs/<run-id>/6-qa-and-training/`. If any of them
    doesn't exist yet, that's a phase-ordering bug — fail with a clear
    pointer.
 
@@ -131,7 +131,7 @@ ace@dimagi-ai.com
    - The three personalization tokens are used (none more, none
      fewer)
 
-5. **Write** to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-onboarding-email.md`
+5. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-onboarding-email.md`
    via `drive_create_file`.
 
 6. **Self-evaluate (LLM-as-Judge).** Four criteria:
@@ -143,7 +143,7 @@ ace@dimagi-ai.com
    - **Audience fit:** professional but warm; no jargon-heavy
      phrasing
 
-   Verdict to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-onboarding-email_verdict.yaml`.
+   Verdict to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-onboarding-email_verdict.yaml`.
 
 7. **Hand off.** Print Drive URL + verdict summary.
 
@@ -160,26 +160,26 @@ ace@dimagi-ai.com
 
 ## Products
 
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-onboarding-email.md`
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-onboarding-email_verdict.yaml`
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-onboarding-email.md`
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-onboarding-email_verdict.yaml`
 - `run_state.yaml.phases.qa-and-training.products.training.docs.onboarding_email` — `{file_id, title: "Onboarding email", web_view_link}` typed handoff. Multi-writer block: apply via read-modify-write per `skills/synthetic-data-generate/SKILL.md § Step 6`. See `agents/qa-and-training.md § Products` for the full slot table.
 
 ## Phase-ordering invariant
 
 This skill must run **after** the other per-artifact training skills
 (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`,
-`training-faq`) because the email body links to their outputs. Phase 5
+`training-faq`) because the email body links to their outputs. Phase 6
 sequencing in `agents/qa-and-training.md` enforces this.
 
 ## Why a separate skill
 
-The onboarding email is consumed by Phase 8, not Phase 5. Pulling it
-into its own skill makes the Phase-5 → Phase-7 boundary cleaner: this
-skill produces the artifact Phase 8 reads, with no other Phase-5
+The onboarding email is consumed by Phase 9, not Phase 6. Pulling it
+into its own skill makes the Phase-6 → Phase-8 boundary cleaner: this
+skill produces the artifact Phase 9 reads, with no other Phase-6
 side effects.
 
 Sixth and final of the per-artifact training skills. The legacy
-`training-materials` umbrella was removed in 0.10.89; the Phase 5
+`training-materials` umbrella was removed in 0.10.89; the Phase 6
 agent now dispatches each child directly.
 
 ## Change Log

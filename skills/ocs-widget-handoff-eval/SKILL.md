@@ -8,8 +8,8 @@ disable-model-invocation: true
 
 # OCS Widget Handoff Eval
 
-The OCS widget is staged at the end of Phase 4 (`ocs-setup`) for the LLO
-to paste into Connect's opportunity-config UI in Phase 8 (`llo-onboarding`).
+The OCS widget is staged at the end of Phase 5 (`ocs-setup`) for the LLO
+to paste into Connect's opportunity-config UI in Phase 9 (`llo-onboarding`).
 Until CCC-301 ships an `update_opportunity` API for widget-config, this
 hop is HITL. This rubric grades the staging artifact (`ocs-setup/widget-handoff.md`)
 to make sure the operator has everything they need: a real widget URL, a
@@ -23,13 +23,13 @@ CCC-301).
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 4 | `4-ocs/ocs-setup_widget-handoff.md` | staging artifact under judgment |
-| Phase 4 | `4-ocs/ocs-agent-setup.md` | cross-check `embed_key`, `experiment_id`, `public_id` |
+| Phase 5 | `5-ocs/ocs-setup_widget-handoff.md` | staging artifact under judgment |
+| Phase 5 | `5-ocs/ocs-agent-setup.md` | cross-check `embed_key`, `experiment_id`, `public_id` |
 | Per-run | `runs/<run-id>/run_state.yaml` | `connect_opportunity.url` |
 
 ## Products
 
-- `4-ocs/ocs-widget-handoff-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
+- `5-ocs/ocs-widget-handoff-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 
 ## Process
 
@@ -37,7 +37,7 @@ CCC-301).
 
 2. **Detect missing artifacts.** If `widget-handoff.md` is missing,
    emit `verdict: incomplete` with `[INFO] widget-handoff.md not
-   found — Phase 4 ocs-setup did not write the staging artifact, or
+   found — Phase 5 ocs-setup did not write the staging artifact, or
    the LLO already pasted in and the artifact was archived`.
 
 3. **Grade across 4 dimensions.**
@@ -80,7 +80,7 @@ CCC-301).
    - `[INFO-SKIPPED]` for the live HTTP probe when offline-mode is requested.
 
 5. **Write the verdict YAML** to
-   `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-widget-handoff-eval_verdict.yaml`. The filename uses
+   `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-widget-handoff-eval_verdict.yaml`. The filename uses
    the **producer** skill name (`ocs-agent-setup` — the skill that
    produces `ocs-setup/widget-handoff.md` as one of its outputs), NOT
    this skill's name — see `agents/ace-orchestrator.md § Per-Step

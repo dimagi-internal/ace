@@ -19,7 +19,7 @@ Create or select a Connect program for this opportunity.
 
 ## Products
 
-- `3-connect/connect-program-setup.md` — program-id, decision rationale (reuse / create), admin program URL
+- `4-connect/connect-program-setup.md` — program-id, decision rationale (reuse / create), admin program URL
 - `opp.yaml.connect.program.{id, url}` — written on first create (and refreshed on reuse with verified live values). This is the single durable cross-run reference for the Connect program; every subsequent run of this opp reads it to skip program-create.
 
 ## Process
@@ -60,7 +60,7 @@ Create or select a Connect program for this opportunity.
      (e.g. `"United States of America"`, not `"USA"`)
    - `start_date` / `end_date`: PDD timeline (YYYY-MM-DD)
 
-5. **Write program details** to `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup.md`:
+5. **Write program details** to `ACE/<opp-name>/runs/<run-id>/4-connect/connect-program-setup.md`:
    - Program ID (UUID)
    - Program name
    - Archetype declared at program creation (if new)

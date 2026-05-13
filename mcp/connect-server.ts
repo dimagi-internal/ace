@@ -459,11 +459,11 @@ server.tool('commcare_download_ccz',
 //
 // TEMPORARY workaround for nova-plugin#5 (compile_app emits empty
 // `<user_score/>`) and nova-plugin#6 (`connect: null` is auto-restored on
-// quiz forms). Both upstream blockers gate ACE Phase 3 e2e for any
+// quiz forms). Both upstream blockers gate ACE Phase 4 e2e for any
 // Nova-built Connect Learn app with the standard quiz scaffold. When
 // Nova ships fixes for both, the `commcare-form-patch` skill — and this
 // atom along with it — should be deleted (verified by re-running
-// leep-paint-collection Phase 3 with no patches needed).
+// leep-paint-collection Phase 4 with no patches needed).
 //
 // Endpoint: POST /a/<domain>/apps/edit_form_attr/<app_id>/<form_unique_id>/xform/
 // Auth: same `@login_or_digest` Playwright session as other commcare_* atoms.
@@ -561,7 +561,7 @@ server.tool('commcare_upload_multimedia',
 // opaque Django HTTP 500 on `POST /users/start_learn_app/`. The
 // Connect Android client logs+swallows the failed response, so the
 // FLW-facing symptom is a silent "Start learning" button noop during
-// Phase 5 navigation.
+// Phase 6 navigation.
 //
 // Same class as the `short_description` 50-char trap
 // (`docs/learnings/2026-05-12-connect-opp-short-description-50-char-trap.md`):
@@ -571,7 +571,7 @@ server.tool('commcare_upload_multimedia',
 //
 // Recommended caller: `connect-opp-setup` Step 7 (just before
 // `connect_send_flw_invite`). The probe is read-only and idempotent;
-// safe to also wire as a Phase-5 pre-flight at the cloud-emulator
+// safe to also wire as a Phase-6 pre-flight at the cloud-emulator
 // recipe entrypoint if the ace-mobile side wants double belt+braces.
 //
 // See `mcp/connect/backends/commcare-preflight.ts` for the full

@@ -1,5 +1,5 @@
 /**
- * check-deep-qa-freshness.ts — advisory freshness check for the Phase 6
+ * check-deep-qa-freshness.ts — advisory freshness check for the Phase 7
  * deep-QA gate. Mirrors (a subset of) the gate enforced by
  * `skills/llo-launch/SKILL.md` § Step 4.
  *
@@ -272,7 +272,7 @@ async function main() {
     const summaryFile = await findChild(drive, oppFolder.id, 'deployment-summary.md');
     if (!summaryFile) {
       console.log('WARN app-ux-eval-deep.yaml: deployment-summary.md not found — cannot verify build-ID freshness');
-      console.log('  fix: ensure Phase 2 deployment-summary.md is present; the gate will require it too');
+      console.log('  fix: ensure Phase 3 deployment-summary.md is present; the gate will require it too');
       issues++;
     } else {
       const text = await readDocText(drive, summaryFile);
@@ -300,10 +300,10 @@ async function main() {
 
   console.log('');
   if (issues === 0) {
-    console.log('STATUS: deep-qa-freshness OK (Phase 6 gate will pass)');
+    console.log('STATUS: deep-qa-freshness OK (Phase 7 gate will pass)');
     process.exit(0);
   } else {
-    console.log(`STATUS: deep-qa-freshness has ${issues} WARN(s) (Phase 6 gate will halt — run /ace:qa-deep)`);
+    console.log(`STATUS: deep-qa-freshness has ${issues} WARN(s) (Phase 7 gate will halt — run /ace:qa-deep)`);
     process.exit(1);
   }
 }

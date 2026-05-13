@@ -26,9 +26,9 @@ Show the current state of opps and their runs.
 
    ```
    <opp>  (display_name from opp.yaml)
-     20260502-1830  Phase 4/ocs-agent-setup  default  ace@dimagi-ai.com  2026-05-02T18:42Z
+     20260502-1830  Phase 5/ocs-agent-setup  default  ace@dimagi-ai.com  2026-05-02T18:42Z
      20260502-1430  done                     default  ace@dimagi-ai.com  2026-05-02T16:01Z
-     20260501-2200  Phase 2/pdd-to-deliver-app  review  jjackson@dimagi.com  2026-05-01T22:30Z
+     20260501-2200  Phase 3/pdd-to-deliver-app  review  jjackson@dimagi.com  2026-05-01T22:30Z
 
    <other-opp>  (...)
      ...

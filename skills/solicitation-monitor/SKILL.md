@@ -15,7 +15,7 @@ by cron *outside* `/ace:run`, so it does NOT mint its own run-id.
 from or writes to another run's `run_state.yaml`. The recurring monitor
 violates that invariant by definition (it has no run-id of its own).
 The right cross-run write semantics for cron-driven monitors will be
-designed alongside the Phase 7+/8 redesign (awarding, execution,
+designed alongside the Phase 8+/8 redesign (awarding, execution,
 closeout). Until then this skill operates in **read-only** mode against
 the most recent run's `run_state.yaml` — it pulls responses from labs
 and writes them to per-response markdown files in
@@ -105,7 +105,7 @@ descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
    ```
 
 5. **`--close` mode is currently a no-op for state.** The cross-run
-   write semantics are TBD pending Phase 7+/8 redesign (see top of
+   write semantics are TBD pending Phase 8+/8 redesign (see top of
    file). For now, `--close` behaves identically to `--monitor` (full
    response pull + tick line) without flipping
    `products.solicitation.status`. Operators manually flag a closed
@@ -132,7 +132,7 @@ orchestrator. The next tick retries.
 
 - New files in `ACE/<opp-name>/runs/<most-recent-run-id>/6-solicitation-management/solicitation-monitor_responses/`
 - Tick line in `ACE/<opp-name>/comms-log/observations.md`
-- No `run_state.yaml` or `opp.yaml` mutations pending Phase 7+/8 redesign.
+- No `run_state.yaml` or `opp.yaml` mutations pending Phase 8+/8 redesign.
 
 ## MCP Tools Used
 

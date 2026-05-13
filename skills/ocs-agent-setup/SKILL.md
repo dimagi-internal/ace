@@ -14,7 +14,7 @@ atoms: `ocs_list_chatbots`, `ocs_clone_chatbot`, `ocs_create_collection`,
 `ocs_set_chatbot_system_prompt`, `ocs_attach_knowledge`, `ocs_set_chatbot_tools`,
 `ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`.
 
-Runs in Phase 4 as Step 1 under the `ocs-setup` agent. The agent handles
+Runs in Phase 5 as Step 1 under the `ocs-setup` agent. The agent handles
 quality gating via the `ocs-chatbot-qa` → `ocs-chatbot-eval` pair (quick
 + deep) in subsequent steps, so this skill is now purely configuration —
 no inline self-eval.
@@ -24,14 +24,14 @@ no inline self-eval.
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | RAG content + system prompt framing |
-| Phase 5 | `runs/<run-id>/5-qa-and-training/` (per-artifact training docs) | RAG content (LLO/FLW guides, FAQ, quick-reference) |
-| Phase 2 | `runs/<run-id>/2-commcare/` (app summaries) | RAG content (app structure for the chatbot to answer "where do I find X" questions) |
-| Phase 3 | `3-connect/connect-opp-setup.md` | opp framing for system prompt |
+| Phase 6 | `runs/<run-id>/6-qa-and-training/` (per-artifact training docs) | RAG content (LLO/FLW guides, FAQ, quick-reference) |
+| Phase 3 | `runs/<run-id>/3-commcare/` (app summaries) | RAG content (app structure for the chatbot to answer "where do I find X" questions) |
+| Phase 4 | `4-connect/connect-opp-setup.md` | opp framing for system prompt |
 
 ## Products
 
-- `4-ocs/ocs-agent-setup.md` — chatbot identifiers (`experiment_id`, `version_number`, embed `public_id` + `embed_key`)
-- `4-ocs/ocs-setup_widget-handoff.md` — widget URL + embed credentials staged for Connect HITL paste-in
+- `5-ocs/ocs-agent-setup.md` — chatbot identifiers (`experiment_id`, `version_number`, embed `public_id` + `embed_key`)
+- `5-ocs/ocs-setup_widget-handoff.md` — widget URL + embed credentials staged for Connect HITL paste-in
 - `run_state.yaml.phases.ocs-setup.products.ocs_chatbot` — `{experiment_id, public_id, embed_key, admin_url, team_slug}` typed handoff. Sole writer.
 
 ## Modes
@@ -51,7 +51,7 @@ no inline self-eval.
 ## Process
 
 0. **Idempotency short-circuit (read state file first — runs before any
-   OCS call).** Read `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`.
+   OCS call).** Read `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md`.
    - **State file absent.** Fresh setup. Continue to Step 1.
    - **State file present, `--prompt-patch` flag set.** Reuse the
      existing `experiment_id`, `collection_id`, and `pipeline_id`.
@@ -74,9 +74,9 @@ no inline self-eval.
 
 1. **Read opportunity context from GDrive:**
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
-   - Training materials: `ACE/<opp-name>/runs/<run-id>/5-qa-and-training/`
-   - Opportunity details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
-   - App summaries: `ACE/<opp-name>/runs/<run-id>/2-commcare/`
+   - Training materials: `ACE/<opp-name>/runs/<run-id>/6-qa-and-training/`
+   - Opportunity details: `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`
+   - App summaries: `ACE/<opp-name>/runs/<run-id>/3-commcare/`
 
 2. **Check for existing chatbot via OCS list** (second-line idempotency
    — only reachable when Step 0 found no state file):
@@ -110,9 +110,9 @@ no inline self-eval.
      Use `drive_list_folder` + `drive_download_binary` for binary
      types (PDF, docx, xlsx — see also [#106 finding 4](https://github.com/jjackson/ace/issues/106));
      use `drive_read_file` for text files (markdown, plain text).
-   - `runs/<run-id>/5-qa-and-training/*` — per-artifact training docs
+   - `runs/<run-id>/6-qa-and-training/*` — per-artifact training docs
      (LLO/FLW guides, FAQ, quick-reference)
-   - `runs/<run-id>/2-commcare/*` — app structure summaries
+   - `runs/<run-id>/3-commcare/*` — app structure summaries
 
    For each file, base64-encode the content (the upload atom takes
    base64). Upload in one call:
@@ -178,7 +178,7 @@ no inline self-eval.
     - `ocs_get_chatbot_embed_info({ experiment_id })`
     - Capture `{public_id, embed_key}`
 
-11. **Write state file:** `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`
+11. **Write state file:** `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md`
     - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`, optional `last_prompt_patched_at` (set by `--prompt-patch` re-runs)
     - This file is the source of truth for idempotency — Step 0 reads it before any OCS call
 
@@ -230,7 +230,7 @@ required.
 ## Dry-Run Behavior
 
 When `--dry-run` is active:
-- Every MCP atom call is logged to `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup_dry-run-log.md` with atom name + args
+- Every MCP atom call is logged to `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup_dry-run-log.md` with atom name + args
 - No HTTP goes out; atom responses are stubbed
 - State tracks as `dry-run-success`
 
@@ -241,10 +241,10 @@ When `--dry-run` is active:
 - `SessionExpiredError` — run `/ace:ocs-login` to re-authenticate.
 - `HttpError 4xx` on clone — verify `OCS_GOLDEN_TEMPLATE_ID` and `OCS_TEAM_SLUG` env vars.
 - Quality gate failure downstream — if `ocs-chatbot-eval --quick` or
-  `--deep` scores below threshold in Phase 4, the usual fix is prompt
+  `--deep` scores below threshold in Phase 5, the usual fix is prompt
   engineering in step 7's composition. Re-run with `--prompt-patch`
   (skips the 5–10 min re-index since the RAG content didn't change),
-  then re-run qa + eval. The `ocs-setup` agent's Phase 4 retry loop
+  then re-run qa + eval. The `ocs-setup` agent's Phase 5 retry loop
   uses this mode automatically.
 
 ## Decisions Log
@@ -257,7 +257,7 @@ qualify under the bar for this phase — a working template, not a
 required set. The skill applies the bar criterion and emits whatever
 rows meet it; the catalog is a teaching device that improves over time.
 
-### Common load-bearing decisions for Phase 4
+### Common load-bearing decisions for Phase 5
 
 | ID | Question | Map to surface |
 |---|---|---|
@@ -270,7 +270,7 @@ The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 contract; the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.
 
-Each row this skill writes uses `phase: 4-ocs` and
+Each row this skill writes uses `phase: 5-ocs` and
 `skill: ocs-agent-setup`.
 
 ## Change Log
@@ -279,9 +279,9 @@ Each row this skill writes uses `phase: 4-ocs` and
 |------|--------|--------|
 | 2026-04-03 | Initial version (manual workaround) | ACE team |
 | 2026-04-08 | Full rewrite against OCS MCP composite backend | ACE team |
-| 2026-04-14 | Removed inline LLM-as-Judge self-eval and connect-setup handoff; quality gating + Connect widget handoff now live in the `ocs-setup` Phase 4 agent | ACE team |
+| 2026-04-14 | Removed inline LLM-as-Judge self-eval and connect-setup handoff; quality gating + Connect widget handoff now live in the `ocs-setup` Phase 5 agent | ACE team |
 | 2026-04-27 | Step 2 idempotency uses the integer `experiment_id` returned by `ocs_list_chatbots` (0.5.19 — no more orphan re-clones). Step 7 explicitly requires `{collection_index_summaries}` in the system prompt; MCP `ocs_attach_knowledge` pre-flights this and fails with a typed error otherwise. | ACE team |
 | 2026-04-28 | Step 8 collapsed into a single `ocs_set_chatbot_pipeline` call (0.6.4 — transactional save). Closes the chicken-and-egg surfaced in the 2026-04-27 dogfood where `set_chatbot_system_prompt` followed by `attach_knowledge` (or vice versa) hit OCS cross-field validation on the intermediate save. | ACE team |
 | 2026-04-28 | Step 7 prompt rule corrected (0.6.10): `{collection_index_summaries}` is required iff `collection_index_ids.length >= 2` (verified via live OCS probe — see `scripts/probe-n1-cross-test.ts`). Single-collection clones must NOT include the variable; multi-collection clones MUST. The 0.6.4 framing (variable iff non-empty) was wrong. | ACE team |
-| 2026-05-05 | **Two idempotency improvements.** (1) New Step 0 reads the local state file (`runs/<run-id>/4-ocs/ocs-agent-setup.md`) before any OCS call — saves ~1s on a normal re-run and avoids the silent-pipeline-walk on `--prompt-patch` re-runs. (2) New `--prompt-patch` mode reuses the existing chatbot/collection/files, skipping clone + create-collection + upload + 5–10 min indexing wait, and just recomposes the prompt → calls `ocs_set_chatbot_pipeline` → publishes. This is the canonical Phase 4 retry path after `ocs-chatbot-eval --quick` flags a prompt issue (the previous skill prose said the agent should "retry prompt-patch" but no such mode existed — re-runs walked the full pipeline). | ACE team |
-| 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (system-prompt-baseline, rag-collection-scope, test-prompt-count) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-05 | **Two idempotency improvements.** (1) New Step 0 reads the local state file (`runs/<run-id>/5-ocs/ocs-agent-setup.md`) before any OCS call — saves ~1s on a normal re-run and avoids the silent-pipeline-walk on `--prompt-patch` re-runs. (2) New `--prompt-patch` mode reuses the existing chatbot/collection/files, skipping clone + create-collection + upload + 5–10 min indexing wait, and just recomposes the prompt → calls `ocs_set_chatbot_pipeline` → publishes. This is the canonical Phase 5 retry path after `ocs-chatbot-eval --quick` flags a prompt issue (the previous skill prose said the agent should "retry prompt-patch" but no such mode existed — re-runs walked the full pipeline). | ACE team |
+| 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (system-prompt-baseline, rag-collection-scope, test-prompt-count) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |

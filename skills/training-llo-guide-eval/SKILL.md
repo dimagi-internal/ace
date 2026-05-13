@@ -1,7 +1,7 @@
 ---
 name: training-llo-guide-eval
 description: >
-  Grade the Phase 5 LLO guide for operational completeness (morning
+  Grade the Phase 6 LLO guide for operational completeness (morning
   check-ins, daily caps, escalation triggers), action-orientation (the
   LLO knows what to do next), and screenshot grounding.
 disable-model-invocation: true
@@ -9,10 +9,10 @@ disable-model-invocation: true
 
 # Training LLO Guide — Eval
 
-Grades `5-qa-and-training/training-llo-guide.md`. The LLO guide is the
+Grades `6-qa-and-training/training-llo-guide.md`. The LLO guide is the
 operating manual the local-leadership organization uses every day to run
 the cohort. If it's a wall of theory rather than an action playbook,
-Phase 8 onboarding stalls.
+Phase 9 onboarding stalls.
 
 See `skills/_eval-template.md` for shared contracts. Provisional rubric —
 calibration TBD until 3+ shipped LLO guides produce ground truth (see
@@ -22,14 +22,14 @@ calibration TBD until 3+ shipped LLO guides produce ground truth (see
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 5 | `5-qa-and-training/training-llo-guide.md` | artifact under judgment |
+| Phase 6 | `6-qa-and-training/training-llo-guide.md` | artifact under judgment |
 | Phase 1 | `1-design/idea-to-pdd.md` | anchors operational caps, escalation matrix, archetype |
-| Phase 3 | `3-connect/connect-program-setup.md` | LLO-facing Connect controls (program/opportunity status, payment approval flow) |
-| Phase 4 | `4-ocs/ocs-bot-config.md` (if present) | bot escalation routing — guide must match how triage actually works |
+| Phase 4 | `4-connect/connect-program-setup.md` | LLO-facing Connect controls (program/opportunity status, payment approval flow) |
+| Phase 5 | `5-ocs/ocs-bot-config.md` (if present) | bot escalation routing — guide must match how triage actually works |
 
 ## Products
 
-- `5-qa-and-training/training-llo-guide-eval_verdict.yaml` — verdict YAML per
+- `6-qa-and-training/training-llo-guide-eval_verdict.yaml` — verdict YAML per
   `_eval-template.md § Verdict YAML contract`.
 
 ## Process

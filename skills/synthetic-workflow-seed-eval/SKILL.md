@@ -11,7 +11,7 @@ disable-model-invocation: true
 See `skills/_eval-template.md` for shared verdict / severity / stock-block
 contracts. Provisional rubric.
 
-Stage 4 of ACE Phase 6 (Plan B). Grades whether the seed step landed
+Stage 4 of ACE Phase 7 (Plan B). Grades whether the seed step landed
 two correctly-wired workflows on labs (LLO weekly review + program
 admin audit), populated their pipeline schemas with KPI-derived fields,
 spawned coaching tasks per `coaching_arcs[]`, and landed the Week 1
@@ -21,8 +21,8 @@ spawned coaching tasks per `coaching_arcs[]`, and landed the Week 1
 
 ## Inputs
 
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-workflow-seed.md`
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-narrative-plan.yaml` OR `synthetic-data-generate_manifest.yaml` — anchor for KPI count + coaching arc count expected
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-workflow-seed.md`
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-narrative-plan.yaml` OR `synthetic-data-generate_manifest.yaml` — anchor for KPI count + coaching arc count expected
 - `ACE/<opp-name>/opp.yaml` — `synthetic.workflows.{llo_weekly_review_id, program_admin_audit_id}`
 
 ## Rubric
@@ -73,7 +73,7 @@ Score each dimension 0–10.
 
 ## Verdict shape
 
-Write `<6-synthetic-folder>/synthetic-workflow-seed-eval_verdict.yaml`
+Write `<7-synthetic-folder>/synthetic-workflow-seed-eval_verdict.yaml`
 per `lib/verdict-schema.ts`:
 
 ```yaml
@@ -82,7 +82,7 @@ skill: synthetic-workflow-seed-eval
 target: <opp-name>
 mode: deep
 ran_at: <ISO timestamp>
-capture_path: 6-synthetic/synthetic-workflow-seed.md
+capture_path: 7-synthetic/synthetic-workflow-seed.md
 
 overall_score: <weighted mean post-cap>
 overall_score_pre_cap: <raw weighted mean>

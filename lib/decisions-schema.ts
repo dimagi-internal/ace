@@ -20,7 +20,7 @@ export const DecisionRowSchema = z.object({
     message: "id must be canonical kebab-case (lowercase alphanumeric segments separated by single hyphens)",
   }),
   phase: z.string().regex(/^[1-9][0-9]*-[a-z]+(-[a-z]+)*$/, {
-    message: "phase must match <N>-<kebab-name> (e.g. 1-design, 2-commcare)",
+    message: "phase must match <N>-<kebab-name> (e.g. 1-design, 3-commcare)",
   }),
   skill: z.string().min(1),
   question: z.string().min(1),

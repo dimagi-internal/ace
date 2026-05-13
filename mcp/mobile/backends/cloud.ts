@@ -410,7 +410,7 @@ export class CloudBackend {
     // states. A generic placeholder like `'cloud'` (the MobileClient
     // dispatch default) would otherwise hit the server's `state_name !=
     // active_state` check and trigger a full emulator restart on every
-    // recipe call — caught in vivo on leep Phase 5 attempt 6, where the
+    // recipe call — caught in vivo on leep Phase 6 attempt 6, where the
     // emulator pid rotated 1074 → 2761 → 4354 across consecutive recipe
     // calls and each restart hit the 300s ready-marker timeout. The
     // server doesn't need a state field when we just want it to keep
@@ -424,7 +424,7 @@ export class CloudBackend {
     // we poll until terminal. Why: AWS ALB closes idle connections
     // at 60 s by default and typical Maestro runs take 60–300 s, so a
     // synchronous POST died as `fetch failed` every time and leaked
-    // the singleton lock for 30 min (caught in vivo by leep Phase 5,
+    // the singleton lock for 30 min (caught in vivo by leep Phase 6,
     // 2026-05-12 — 5 consecutive attempts each leaked one lock).
     const submission = await this.post<{ job_id: string; status: string }>(
       '/api/mobile/run-recipe',

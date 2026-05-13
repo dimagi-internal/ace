@@ -34,7 +34,7 @@ command above.
 
 ## Capability map (atoms used by ACE)
 
-### Solicitations + responses (Phase 7)
+### Solicitations + responses (Phase 8)
 
 | Atom | Used by |
 |---|---|
@@ -47,7 +47,7 @@ command above.
 | `create_review` / `update_review` / `list_reviews` / `get_review` | `solicitation-review` |
 | `award_response` | `solicitation-review` (HITL-gated; only path that populates `opp.yaml.selected_llo`) |
 
-### Synthetic data (Phase 6)
+### Synthetic data (Phase 7)
 
 | Atom | Used by |
 |---|---|
@@ -57,7 +57,7 @@ command above.
 | `task_create_synthetic` | (v2) |
 | `get_sample_ids` | (v2) |
 
-### Workflows (Phase 6)
+### Workflows (Phase 7)
 
 | Atom | Used by |
 |---|---|
@@ -72,14 +72,14 @@ command above.
 | `workflow_update_opportunity_ids` | (v2) |
 | `workflow_delete` | reversal command (no skill; operator-driven) |
 
-### Funds (Phase 7 / 8 future)
+### Funds (Phase 8 / 8 future)
 
 | Atom | Used by |
 |---|---|
 | `create_fund` / `update_fund` / `get_fund` / `list_funds` | (v2; budget-tier funding) |
 | `add_fund_allocation` / `remove_fund_allocation` | (v2) |
 
-### Pipelines (Phase 8 / 9 future)
+### Pipelines (Phase 9 / 9 future)
 
 | Atom | Used by |
 |---|---|
@@ -90,7 +90,7 @@ command above.
 | Atom | Used by |
 |---|---|
 | `labs_context` | `bin/ace-doctor` (auth liveness probe) |
-| `mbw_dashboard_v1` / `mbw_dashboard_v3` / `mbw_dashboard_diff` | (v2; Phase 8 monitoring views) |
+| `mbw_dashboard_v1` / `mbw_dashboard_v3` / `mbw_dashboard_diff` | (v2; Phase 9 monitoring views) |
 
 ## Synthetic-manifest schema gotchas
 
@@ -152,7 +152,7 @@ retry tax.
 ### Practical authoring sequence
 
 1. **Start from a working manifest from a prior run** (e.g. the
-   manifest under `ACE/<opp>/runs/<latest-good>/6-synthetic/`).
+   manifest under `ACE/<opp>/runs/<latest-good>/7-synthetic/`).
    Even a different opp's manifest is closer to the canonical shape
    than a fresh-author attempt — every field has been validation-tested.
 
@@ -203,9 +203,9 @@ retry tax.
 
 - Spec: `docs/superpowers/specs/2026-04-26-connect-labs-mcp-design.md`.
 - Skills using these atoms:
-  - Phase 6: `synthetic-data-manifest`, `synthetic-data-generate`,
+  - Phase 7: `synthetic-data-manifest`, `synthetic-data-generate`,
     `workflows-instantiate`, `persona-walkthroughs`.
-  - Phase 7: `solicitation-create`, `solicitation-monitor`,
+  - Phase 8: `solicitation-create`, `solicitation-monitor`,
     `solicitation-review`, `llo-invite`.
 - Token rotation: `commands/labs-token-mint.md`.
 
@@ -213,6 +213,6 @@ retry tax.
 
 | Date | Change |
 |------|--------|
-| 2026-04-26 | Initial connect-labs MCP shipped as stdio proxy (9 atoms, Phase 7 only) |
-| 2026-05-02 | Synthetic + workflows atoms added (Phase 6) |
+| 2026-04-26 | Initial connect-labs MCP shipped as stdio proxy (9 atoms, Phase 8 only) |
+| 2026-05-02 | Synthetic + workflows atoms added (Phase 7) |
 | 2026-05-09 | `## Synthetic-manifest schema gotchas` added — captures the 5-retry tax observed on `leep-paint-collection` run `20260509-1448`; conform on first attempt to skip it |

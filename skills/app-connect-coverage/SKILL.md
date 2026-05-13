@@ -19,12 +19,12 @@ Don't trust first-pass output — verify and fix in a loop.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` or `pdd-to-deliver-app_summary.md` | source `nova_app_id` |
+| Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` or `pdd-to-deliver-app_summary.md` | source `nova_app_id` |
 | Nova MCP | `get_app({app_id: <nova_app_id>})` | live blueprint (form list, marker presence) |
 
 ## Products
 
-- `2-commcare/app-connect-coverage_summary.md` — per-form marker coverage report and any Nova edits applied
+- `3-commcare/app-connect-coverage_summary.md` — per-form marker coverage report and any Nova edits applied
 
 ## Why this skill exists
 
@@ -49,7 +49,7 @@ wizard's payment-unit step has no deliver units to attach. That dead
 end is **silent** without this skill.
 
 This skill turns "did Nova set Connect markers correctly?" from a
-silent Phase 3 mystery into a Phase 2 deterministic check.
+silent Phase 4 mystery into a Phase 3 deterministic check.
 
 ## Scope
 
@@ -74,7 +74,7 @@ Inputs:
 - `app_id` — Firestore Nova app id (from `app-summaries/{learn,deliver}-app-summary.md`)
 - `pdd.md` — for context when heuristics are ambiguous
 
-The skill targets ONE app at a time. Phase 2 runs it twice (once per
+The skill targets ONE app at a time. Phase 3 runs it twice (once per
 app). Each run is bounded by a max iteration count (default 3) to
 prevent infinite Nova loops.
 

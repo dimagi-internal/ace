@@ -11,7 +11,7 @@ disable-model-invocation: true
 See `skills/_eval-template.md` for shared verdict / severity / stock-block
 contracts. Provisional rubric.
 
-Stage 4 of ACE Phase 6 (Plan B). Grades each per-persona walkthrough
+Stage 4 of ACE Phase 7 (Plan B). Grades each per-persona walkthrough
 spec emitted by `synthetic-walkthrough-spec`. The spec is what
 `canopy:walkthrough` consumes — bad specs produce bad decks. This eval
 catches generic "looks good" assertions, missing wow-moment coverage,
@@ -25,8 +25,8 @@ on a deck that won't land.
 For EACH `synthetic-walkthrough-spec_<persona>.yaml` produced (one eval
 verdict per persona):
 
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-walkthrough-spec_<persona>.yaml`
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-narrative-plan.yaml` — anchor for FLW names + anomalies the spec should reference
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-walkthrough-spec_<persona>.yaml`
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-narrative-plan.yaml` — anchor for FLW names + anomalies the spec should reference
 - `personas/<persona>.md` — anchor for persona priorities + turn-offs
 - `ACE/<opp-name>/personas/<persona>.md` — opp-overlay persona (if present); overrides canned
 
@@ -91,7 +91,7 @@ suspicion.
 
 ## Verdict shape
 
-Write `<6-synthetic-folder>/synthetic-walkthrough-spec-eval_verdict_<persona>.yaml`
+Write `<7-synthetic-folder>/synthetic-walkthrough-spec-eval_verdict_<persona>.yaml`
 per `lib/verdict-schema.ts`:
 
 ```yaml
@@ -100,7 +100,7 @@ skill: synthetic-walkthrough-spec-eval
 target: <opp-name>
 mode: deep
 ran_at: <ISO timestamp>
-capture_path: 6-synthetic/synthetic-walkthrough-spec_<persona>.yaml
+capture_path: 7-synthetic/synthetic-walkthrough-spec_<persona>.yaml
 persona: <persona>
 
 overall_score: <weighted mean post-cap>

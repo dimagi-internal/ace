@@ -1164,7 +1164,7 @@ export class PlaywrightBackend implements ConnectClient {
     // the regex below scrapes zero DU options and any
     // `required_deliver_units` arg fails to map.
     //
-    // Diagnosed `turmeric-20260503-0835` Phase 3 by reading the live
+    // Diagnosed `turmeric-20260503-0835` Phase 4 by reading the live
     // form HTML on 2026-05-04: the form structurally has
     // `<div id="div_id_required_deliver_units">` but no
     // `<input name="required_deliver_units">` checkboxes; the form

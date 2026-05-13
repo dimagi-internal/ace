@@ -9,7 +9,7 @@ created_by: ace@dimagi-ai.com
 last_run_id: null
 tags: [solicitation-fixture, atomic-visit]
 
-# Phase 6 (Solicitation Management) artifacts:
+# Phase 7 (Solicitation Management) artifacts:
 solicitation:
   solicitation_id: 1247
   # labs's integer program id (resolved by solicitation-create via labs_context).
@@ -30,7 +30,7 @@ solicitation:
     awarded_contact_email: null
     award_amount: null
 
-# Stub — populated by solicitation-review on award. Phase 7 entry guard.
+# Stub — populated by solicitation-review on award. Phase 8 entry guard.
 selected_llo:
   org_slug: null
   contact_email: null

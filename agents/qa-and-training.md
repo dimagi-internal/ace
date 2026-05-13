@@ -1,15 +1,15 @@
 ---
 name: qa-and-training
 description: >
-  Phase 5 of the CRISPR-Connect lifecycle: produce per-opp QA test plan +
+  Phase 7 of the CRISPR-Connect lifecycle: produce per-opp QA test plan +
   walkthrough screenshots + training materials (deck outline and video
   script). All derived from the design docs (PDD, app summaries, opp
   identifiers, OCS chatbot URL) so the Phase runs from artifacts; no live
-  LLO contact. Phase 8 is where LLOs first hear from ACE.
+  LLO contact. Phase 10 is where LLOs first hear from ACE.
 model: inherit
 phase: qa-and-training
 phase_display: QA and Training
-phase_ordinal: 5
+phase_ordinal: 6
 skills:
   - { name: app-screenshot-capture,     has_judge: true }
   - { name: training-llo-guide,         has_judge: true }
@@ -20,36 +20,36 @@ skills:
   - { name: training-deck-build,        has_judge: false }
   - { name: training-onboarding-email,  has_judge: true }
 # Note: `training-materials` umbrella was removed in 0.10.87. The
-# Phase 5 agent dispatches each per-artifact skill directly; the
+# Phase 6 agent dispatches each per-artifact skill directly; the
 # umbrella's only remaining role (verdict aggregation) is now opp-eval's
 # job via per-skill verdicts in the `commcare` category.
 ---
 
-# QA and Training Agent (Phase 5)
+# QA and Training Agent (Phase 6)
 
 You run the executor phase between OCS chatbot setup and the first LLO
 contact. By the time this phase starts, Phases 1-4 have produced an
 approved PDD, deployed CommCare apps, a configured Connect opportunity
 (with the ACE test user already invited), and a quality-gated OCS chatbot.
 **No real 1-1 LLO contact happens during this phase** — that begins in
-Phase 8. Phase 7 (Solicitation Management) sits between this phase and
-Phase 8; it publishes a public solicitation but does not contact specific
+Phase 9. Phase 8 (Solicitation Management) sits between this phase and
+Phase 9; it publishes a public solicitation but does not contact specific
 individuals unless the PDD names preferred candidates.
 
-Phase 5 is intentionally an **executor**, not a synthesizer. The QA test
+Phase 6 is intentionally an **executor**, not a synthesizer. The QA test
 plan was synthesized upstream:
 
 - `pdd-to-app-journeys.md` (Phase 1, `pdd-to-app-journeys`) — UX-intent ground truth
-- `app-test-cases.yaml` (Phase 2, `app-test-cases`) — bindings of journeys to
+- `app-test-cases.yaml` (Phase 3, `app-test-cases`) — bindings of journeys to
   built structure with pre-composed Maestro recipes (one `is_smoke: true`
   recipe per app)
 
-Phase 5 produces two artifact families:
+Phase 6 produces two artifact families:
 
 1. **Per-opp screenshots** from running the smoke recipes — used in the
    training deck and a thin per-app UX smoke judge (~2 LLM calls total).
    Deep, per-journey UX grading lives in `/ace:qa-deep` →
-   `app-ux-eval`, run manually before Phase 7 activation.
+   `app-ux-eval`, run manually before Phase 8 activation.
 2. **Training materials** — LLO playbook, FLW guide, quick-reference, FAQ,
    onboarding email body, training deck outline, training video script.
 
@@ -61,15 +61,15 @@ Training materials draw from two asset pools:
   on Drive — the standard "how Connect works" walkthrough screenshots
   (sign-in, claim an opportunity, sync, view payments, etc.). These are
   captured once per Connect-app version by the standalone
-  `connect-baseline-screenshots` skill (NOT part of Phase 5; invoked
+  `connect-baseline-screenshots` skill (NOT part of Phase 6; invoked
   manually when the Connect APK ships an update).
-- **Per-opp assets** at `ACE/<opp>/runs/<run-id>/5-qa-and-training/screenshots/...` — captured fresh each
+- **Per-opp assets** at `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/...` — captured fresh each
   cycle for THIS opp's actual Learn-app modules and Deliver form.
 
 `training-materials` stitches both pools into the final deck outline and
 video script. Per-opp content is always re-captured (it changes per opp);
 common content is referenced by file path and only re-captured when the
-Connect APK actually updates. This keeps Phase 5 runtime predictable and
+Connect APK actually updates. This keeps Phase 6 runtime predictable and
 avoids burning AVD time on screenshots that don't change.
 
 ## Pre-flight checklist
@@ -100,13 +100,13 @@ silent-failure prevention learned from earlier real-world dogfood.
       list packages org.commcare.dalvik` returns the package. The
       `mobile-bootstrap` command handles this.
 - [ ] **The opp-specific Learn + Deliver apps are claimable on the
-      AVD via the test user.** Phase 3 `connect-opp-setup` should
+      AVD via the test user.** Phase 4 `connect-opp-setup` should
       have pre-invited `${ACE_E2E_PHONE}`. Without an opp invite,
       `app-screenshot-capture` recipes that try to claim or interact
       with the app will fail.
 - [ ] **`ACE_TRAINING_DECK_TEMPLATE_ID` is set** if you want a Slides
       deck. `bin/ace-doctor` reports it. If unset, `training-deck-build`
-      skips silently — Phase 5 still completes, just without the
+      skips silently — Phase 6 still completes, just without the
       Slides deliverable.
 - [ ] **Slides API is enabled** on the GCP project. Only matters if
       `training-deck-build` will run. First call returns the enable
@@ -118,17 +118,17 @@ silent-failure prevention learned from earlier real-world dogfood.
       ad-hoc `adb shell` without `-s` may pick the wrong device. See
       `playbook/integrations/mobile-integration.md` "Multi-user dadb
       landmine."
-- [ ] **Phase 2 produced the per-journey Maestro recipes alongside
+- [ ] **Phase 3 produced the per-journey Maestro recipes alongside
       `app-test-cases.yaml`.** For each `is_smoke: true` journey in
-      `2-commcare/app-test-cases.yaml`, the journey's `recipe_path`
+      `3-commcare/app-test-cases.yaml`, the journey's `recipe_path`
       must resolve to a real file under
-      `2-commcare/recipes/J<n>.yaml`. The `app-test-cases` SKILL
+      `3-commcare/recipes/J<n>.yaml`. The `app-test-cases` SKILL
       contracts BOTH outputs — the master yaml AND per-journey
       recipes (see `skills/app-test-cases/SKILL.md § Outputs`).
-      Master-yaml-without-recipes is the canonical "upstream Phase 2
+      Master-yaml-without-recipes is the canonical "upstream Phase 3
       produced incomplete output" failure mode (observed
       2026-05-06 leep-paint-collection run 20260506-1440 — surfaced
-      because a Phase 2 dispatch paraphrased the SKILL contract and
+      because a Phase 3 dispatch paraphrased the SKILL contract and
       elided the recipe outputs). If recipes are missing, halt
       with a clear pointer to re-run
       `/ace:step app-test-cases <opp>/<run-id>` BEFORE running
@@ -140,7 +140,7 @@ named operator command (`/ace:mobile-bootstrap` for AVD/Maestro state;
 `/ace:step app-test-cases` for missing recipes). **Do not soft-skip
 screenshot capture and ship placeholders.** Pre-0.13.165 this phase
 accepted "AVD unavailable → write verdict:incomplete and proceed,"
-which let real Phase 5 capability gaps hide behind benign-looking
+which let real Phase 6 capability gaps hide behind benign-looking
 yellow verdicts run after run. The orchestrator may also try to
 authorize a soft-fail in its dispatch prompt ("proceed with
 placeholder screenshots"); ignore that — discipline lives at the
@@ -151,7 +151,7 @@ agent level so it survives ad-libbed dispatcher prompts.
 ### Step 1: Capture smoke screenshots + thin UX judge
 
 Dispatch `app-screenshot-capture`:
-- Reads: pdd-to-app-journeys.md (Phase 1), app-test-cases.yaml (Phase 2)
+- Reads: pdd-to-app-journeys.md (Phase 1), app-test-cases.yaml (Phase 3)
 - Writes: screenshots/J*/*.png + verdicts/app-screenshot-capture-shallow.yaml
 - Halts on smoke-recipe failure or UX judge < 2/3
 
@@ -162,7 +162,7 @@ total) asking whether the persona-matching FLW could complete the
 journey without confusion. Threshold ≥ 2/3 per app.
 
 Deep, per-journey UX grading is `app-ux-eval`, run manually from
-`/ace:qa-deep` before Phase 8 activation. The Phase 8 `llo-launch` gate
+`/ace:qa-deep` before Phase 9 activation. The Phase 9 `llo-launch` gate
 refuses activation without a fresh, passing
 `verdicts/app-ux-eval-deep.yaml`.
 
@@ -182,7 +182,7 @@ phase dispatches them in dependency order:
 
 Each skill reads PDD + app summaries + connect/OCS state + (where
 applicable) per-opp + common screenshot manifests. Each writes its
-single artifact under `ACE/<opp>/runs/<run-id>/5-qa-and-training/`. Each
+single artifact under `ACE/<opp>/runs/<run-id>/6-qa-and-training/`. Each
 self-evaluates against four criteria specific to its audience and
 writes a verdict YAML.
 
@@ -195,9 +195,9 @@ Halt the phase on any non-pass verdict.
   the opp folder, fills via `slides_batch_update`, returns the
   Slides URL.
 - Skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` is unset (with a clear
-  pointer to `scripts/bootstrap-training-deck-template.ts`). Phase 8
+  pointer to `scripts/bootstrap-training-deck-template.ts`). Phase 9
   doesn't depend on the Slides deck — `onboarding-email-body.md` is
-  the load-bearing Phase 8 input — so a missing template doesn't
+  the load-bearing Phase 9 input — so a missing template doesn't
   block go-live.
 
 **2c. Sequential — onboarding email (after the other 5 text artifacts):**
@@ -224,14 +224,14 @@ training skills (or invoke `qa-and-training` for the full sequence).
 
 ## Products
 
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/screenshots/<journey-id>/<step>.png` + `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml`
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/{llo-manager-guide,quick-reference,faq,onboarding-email-body}.md` (training-materials)
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md` (training-flw-guide)
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md` (training-deck-outline)
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<journey-id>/<step>.png` + `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/{llo-manager-guide,quick-reference,faq,onboarding-email-body}.md` (training-materials)
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide.md` (training-flw-guide)
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-outline.md` (training-deck-outline)
 - A Google Slides deck under the same folder (when template is configured)
-- `runs/<run-id>/5-qa-and-training/app-screenshot-capture_verdict.yaml` (structural verdict)
-- `runs/<run-id>/5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (smoke-judge verdict)
-- Per-training-skill verdicts (`runs/<run-id>/5-qa-and-training/training-*_verdict.yaml`)
+- `runs/<run-id>/6-qa-and-training/app-screenshot-capture_verdict.yaml` (structural verdict)
+- `runs/<run-id>/6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (smoke-judge verdict)
+- Per-training-skill verdicts (`runs/<run-id>/6-qa-and-training/training-*_verdict.yaml`)
 - `run_state.yaml.phases.qa-and-training.products.training` block — multi-writer typed handoff. Each of the six doc / deck skills writes its own slot via read-modify-write (the established multi-writer pattern from `synthetic-data-generate`):
 
   | Skill | Slot |
@@ -248,9 +248,9 @@ training skills (or invoke `qa-and-training` for the full sequence).
 ## Completion
 
 After Step 2 finishes, write the `phases.qa-and-training` block per
-`agents/ace-orchestrator.md § Phase Write-Back Contract`. Phase 5 has
+`agents/ace-orchestrator.md § Phase Write-Back Contract`. Phase 6 has
 no named gate (`/ace:qa-deep` is the actual quality gate, run
-separately before Phase 8 `llo-launch`), so the patch sets
+separately before Phase 9 `llo-launch`), so the patch sets
 `phases.qa-and-training.status: done` + a verdict like `proceed` or
 `proceed-with-warn` without flipping any `gates.<gate>` entry.
 Required top-level keys: `phases`, `last_actor`, `last_actor_at`.
@@ -272,11 +272,11 @@ from `agents/training-prep.md` to `agents/qa-and-training.md`; the new
 ## Executor pivot (2026-05-04)
 
 In 0.11.10 (shallow/deep QA split) the QA-plan synthesis moved upstream to
-Phase 1 (`pdd-to-app-journeys`) and Phase 2 (`app-test-cases`). Phase 5
+Phase 1 (`pdd-to-app-journeys`) and Phase 3 (`app-test-cases`). Phase 6
 became an executor: it reads the pre-composed smoke recipes from
 `app-test-cases.yaml`, runs them, captures screenshots, and runs a thin
 per-app UX smoke judge. Deep, per-journey UX grading is `app-ux-eval`,
-manually triggered via `/ace:qa-deep` before Phase 7 activation. The
+manually triggered via `/ace:qa-deep` before Phase 8 activation. The
 `qa-plan` skill is retired and the agent's `skills:` frontmatter no
 longer lists it. Spec:
 `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`.

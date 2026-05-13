@@ -19,12 +19,12 @@ patch, then build + release + verify.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` and `pdd-to-deliver-app_summary.md` | source `nova_app_id`s |
+| Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` and `pdd-to-deliver-app_summary.md` | source `nova_app_id`s |
 | Operator (manual invocation) | per-opp confirmation gate | required — this skill is NOT part of `/ace:run`; invoke via `/ace:step app-multimedia-coverage <opp>` |
 
 ## Products
 
-- `2-commcare/app-multimedia-coverage_summary.md` — per-field judge decisions, images attached, build/release IDs
+- `3-commcare/app-multimedia-coverage_summary.md` — per-field judge decisions, images attached, build/release IDs
 
 ## Removal criteria
 
@@ -103,11 +103,11 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
 
 1. **Read deployment summary.** Pull `hq_domain`, `learn_app_id`,
    `deliver_app_id`, and the latest released `build_id` per app from
-   `2-commcare/app-deploy_summary.md` frontmatter. Read `pdd.md` for
+   `3-commcare/app-deploy_summary.md` frontmatter. Read `pdd.md` for
    the intervention description used in step 2.
 
 2. **Derive Application Context.** Look for
-   `2-commcare/app-multimedia-coverage_app-context.md`. If present,
+   `3-commcare/app-multimedia-coverage_app-context.md`. If present,
    use as-is — the operator override always wins. Otherwise synthesize
    from the PDD's `intervention.description`, a one-line target-FLW
    statement, and the standard Dimagi guidance ("People should be
@@ -180,7 +180,7 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
    criterion is short enough to inline.)
 
 4. **Write candidates YAML** to
-   `2-commcare/app-multimedia-coverage_candidates-<app>.yaml`. One row
+   `3-commcare/app-multimedia-coverage_candidates-<app>.yaml`. One row
    per visible field with the judge output (`generate`, `use_case`,
    `why`, `directive`) and an `operator_override: null` slot. **If the
    file already exists**, load it as-is — operator hand-edits to
@@ -210,7 +210,7 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
      implementation; it normalizes via `s.trim()` then joins with `' '`.
      The Bash one-liner above matches that contract.)
    - Cache check: if a PNG exists at
-     `2-commcare/app-multimedia-coverage_generated/<app>/<form_unique_id>/<field_id>__<prompt_hash>.png`,
+     `3-commcare/app-multimedia-coverage_generated/<app>/<form_unique_id>/<field_id>__<prompt_hash>.png`,
      skip.
    - Cache miss: write a per-field input JSON file like:
 
@@ -239,7 +239,7 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
      stderr message and halt the skill on a hard failure (one retry on
      5xx is built into the underlying client).
    - Append a row to
-     `2-commcare/app-multimedia-coverage_manifest.yaml` matching the
+     `3-commcare/app-multimedia-coverage_manifest.yaml` matching the
      schema in `lib/multimedia-manifest.ts` (Zod-validated; YAML keys:
      `app`, `form_unique_id`, `field_id`, `prompt_hash`, `file_path`,
      `ccz_filename`, `cchq_multimedia_id` (null until step 8),
@@ -331,7 +331,7 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
     orphan-pruning callout in Failure modes.
 
 11. **Write the report** to
-    `2-commcare/app-multimedia-coverage_report-<YYYY-MM-DD>.md`.
+    `3-commcare/app-multimedia-coverage_report-<YYYY-MM-DD>.md`.
     Frontmatter:
 
     ```yaml

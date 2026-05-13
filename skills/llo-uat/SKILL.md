@@ -13,10 +13,10 @@ Coordinate UAT with LLOs before the opportunity goes live.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - Deployment summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md`
-   - Training materials: `ACE/<opp-name>/runs/<run-id>/5-qa-and-training/`
-   - Opportunity config: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
-   - Awarded LLO: `phases.solicitation-management.products.selected_llo` in the current run's `run_state.yaml` (populated by Phase 7 `solicitation-review`)
+   - Deployment summary: `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md`
+   - Training materials: `ACE/<opp-name>/runs/<run-id>/6-qa-and-training/`
+   - Opportunity config: `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`
+   - Awarded LLO: `phases.solicitation-management.products.selected_llo` in the current run's `run_state.yaml` (populated by Phase 8 `solicitation-review`)
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (reads `archetype:`)
 
 2. **Read the PDD's `archetype:` field.** The entire "what to test" list
@@ -106,7 +106,7 @@ conditions — enough that you'd hand the phone to an FLW tomorrow."*
 
 **How to access:** question guide, facilitator guide, consent form,
 audio-upload instructions from the per-artifact training docs in
-`ACE/<opp-name>/runs/<run-id>/5-qa-and-training/`.
+`ACE/<opp-name>/runs/<run-id>/6-qa-and-training/`.
 Explicitly do NOT ask them to "download an app" — there isn't one for
 this archetype.
 

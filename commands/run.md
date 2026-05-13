@@ -8,9 +8,9 @@ allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 
 Run the full CRISPR-Connect lifecycle for a Connect opportunity.
 
-- Phase 4 (OCS) and Phase 5 (apps) run **shallow** QA only. Deep
+- Phase 5 (OCS) and Phase 6 (apps) run **shallow** QA only. Deep
   quality assessment is a separate command — see /ace:qa-deep <opp>.
-  Phase 7 activation will refuse to proceed without fresh deep
+  Phase 8 activation will refuse to proceed without fresh deep
   verdicts (run /ace:qa-deep before go-live).
 
 ## Arguments
@@ -136,7 +136,7 @@ See `agents/ace-orchestrator.md` for full detail.
    `Agent(ace-orchestrator)` — the orchestrator is a procedure doc, not
    a subagent (see `CLAUDE.md` § Agent topology). The reason this
    matters: the orchestrator dispatches per-phase agents and (for
-   Phase 2) the Nova architect, all of which require the `Agent` tool.
+   Phase 3) the Nova architect, all of which require the `Agent` tool.
    `Agent` is only available at level 0; running the orchestrator as a
    subagent would put it at level 1 and break every dispatch.
 

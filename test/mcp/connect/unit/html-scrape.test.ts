@@ -201,7 +201,7 @@ describe('parsePaymentUnitTable', () => {
   // required_deliver_units=[1]` (verified via the per-PU /edit page). The
   // fixture is the table view for the SAME PU. Until 0.13.2 the parser
   // mis-aligned columns and produced `amount=100, max_total=20` — the
-  // "field-shift defect" that blocked three Phase 3 runs. This test pins
+  // "field-shift defect" that blocked three Phase 4 runs. This test pins
   // the corrected mapping against real Connect HTML.
   const live = fix('payment_unit_table-live-2026-05-05.html');
 

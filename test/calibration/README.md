@@ -15,7 +15,7 @@ test/calibration/
 │   ├── structurally-bad.md            QA should fail outright
 │   └── viability-broken.md            QA passes but eval scores ≤4 on viability dimensions
 ├── apps/
-│   └── ...                            (Phase 2 calibration — TBD)
+│   └── ...                            (Phase 3 calibration — TBD)
 └── expected.yaml                      one entry per artifact: expected QA + per-eval score ranges
 ```
 

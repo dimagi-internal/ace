@@ -13,7 +13,7 @@
  * `errorText` and the raw `errorHtml`.
  *
  * The fixture is the literal CCHQ rejection from
- * `leep-paint-collection/runs/20260509-2204` Phase 2: the architect's
+ * `leep-paint-collection/runs/20260509-2204` Phase 3: the architect's
  * Q5 in the "Unique ID check" form had a literal `<3 letters>`
  * placeholder that became invalid XML after Nova's emitter skipped
  * entity-encoding (filed upstream at voidcraft-labs/nova-plugin).

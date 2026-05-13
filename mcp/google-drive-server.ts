@@ -603,7 +603,7 @@ server.tool(
 // 11b. Upload a binary file (PNG, PDF, audio, etc.) to Google Drive
 server.tool(
   'drive_upload_binary',
-  'Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Content is base64-encoded; the MCP decodes it and uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Used by ACE skills that need to upload screenshots (Phase 5 `app-screenshot-capture`), CCZs, training-material attachments, audio session recordings, etc. Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file — required for downstream Slides `createImage` ingest (Slides\' image-import service does NOT carry the SA\'s auth, so an SA-only PNG renders as an empty image in the deck). The parent MUST be a folder on a Shared Drive — same Service Account quota constraint as `drive_create_file` / `drive_create_folder`.',
+  'Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Content is base64-encoded; the MCP decodes it and uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Used by ACE skills that need to upload screenshots (Phase 6 `app-screenshot-capture`), CCZs, training-material attachments, audio session recordings, etc. Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file — required for downstream Slides `createImage` ingest (Slides\' image-import service does NOT carry the SA\'s auth, so an SA-only PNG renders as an empty image in the deck). The parent MUST be a folder on a Shared Drive — same Service Account quota constraint as `drive_create_file` / `drive_create_folder`.',
   {
     name: z.string().describe('Name for the new file (include the extension — e.g., "screen-01.png", not "screen-01")'),
     contentBase64: z.string().describe('File content, base64-encoded. For PNGs from `cat foo.png | base64`, just paste the result. The MCP decodes before upload.'),
@@ -1012,7 +1012,7 @@ export async function handleCreateFolder(
  * `text/plain; charset=utf-8` so non-ASCII text (em-dashes, accented
  * characters, smart quotes, etc.) round-trips correctly — without the
  * charset hint Drive's import path mis-decodes the bytes and the upload
- * fails with `Internal Error` (observed during ACE Phase 6 Stage 1
+ * fails with `Internal Error` (observed during ACE Phase 7 Stage 1
  * synthetic-data-generate smoke on 2026-05-06).
  *
  * Default behavior is find-or-update: if a same-name file exists under
@@ -1160,7 +1160,7 @@ server.tool(
 // 12b. Create a Drive shortcut pointing at an existing file/folder
 server.tool(
   'drive_create_shortcut',
-  'Create a Google Drive shortcut (mimeType application/vnd.google-apps.shortcut) under `parentFolderId` pointing at `targetId`. The orchestrator uses this to refresh `<opp>/current/` shortcuts after each phase completes — e.g. `<opp>/current/connect-opp-summary.md → runs/<latest>/3-connect/connect-opp-setup.md`. With findOrReplace=true, any prior file/shortcut with the same `name` under the parent is deleted before the new shortcut is created (semantics: "swap the pointer atomically"). Default findOrReplace=false because Drive permits multiple same-named entries; only set it to true when you intend the shortcut to be a single canonical pointer. The parent MUST live on a Shared Drive — same Service Account quota constraint as drive_create_file / drive_create_folder.',
+  'Create a Google Drive shortcut (mimeType application/vnd.google-apps.shortcut) under `parentFolderId` pointing at `targetId`. The orchestrator uses this to refresh `<opp>/current/` shortcuts after each phase completes — e.g. `<opp>/current/connect-opp-summary.md → runs/<latest>/4-connect/connect-opp-setup.md`. With findOrReplace=true, any prior file/shortcut with the same `name` under the parent is deleted before the new shortcut is created (semantics: "swap the pointer atomically"). Default findOrReplace=false because Drive permits multiple same-named entries; only set it to true when you intend the shortcut to be a single canonical pointer. The parent MUST live on a Shared Drive — same Service Account quota constraint as drive_create_file / drive_create_folder.',
   {
     name: z.string().min(1).describe('Display name for the shortcut (include the extension to mirror the target — e.g., "connect-opp-summary.md").'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),

@@ -24,7 +24,7 @@ and runs the LLM-as-Judge rubric.
 ## When to use
 
 - **After `ocs-agent-setup`** — as a pre-launch gate before handing the
-  bot's embed credentials to Connect. Phase 4's `ocs-setup` agent already
+  bot's embed credentials to Connect. Phase 5's `ocs-setup` agent already
   does this on the critical path; use `ocs-tester` directly for ad-hoc
   re-checks.
 - **Ongoing monitoring** — run periodically against live per-opp bots to
@@ -47,7 +47,7 @@ and runs the LLM-as-Judge rubric.
    - Runs structural checks (response received, no error, citations
      present where expected)
    - Writes the transcript to the run-scoped path
-     `<phase>/ocs-chatbot-qa_transcript-<mode>.md` (`4-ocs/` for
+     `<phase>/ocs-chatbot-qa_transcript-<mode>.md` (`5-ocs/` for
      `--quick`/`--deep`; `7-execution-manager/` for `--monitor`)
 3. **Dispatches `ocs-chatbot-eval`** (judge phase):
    - Reads the transcript written by step 2
@@ -64,7 +64,7 @@ and runs the LLM-as-Judge rubric.
 - `experiment_id` (integer) — the OCS chatbot to test. If omitted, tests
   the golden template from `$OCS_GOLDEN_TEMPLATE_ID`.
 - `opp_name` (optional) — if set, loads opp-specific test prompts from
-  `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-test-prompts.md` (expected questions + ground-truth
+  `ACE/<opp-name>/runs/<run-id>/2-scenarios/pdd-to-test-prompts.md` (expected questions + ground-truth
   answers from the PDD). If unset, only runs Connect-general prompts.
 - `--quick` / `--deep` / `--monitor` flag — passed through to both
   skills. Defaults to `--quick`.
@@ -75,9 +75,9 @@ and runs the LLM-as-Judge rubric.
 - Quality score from the eval's verdict: 0–10 weighted average across 5
   dimensions (Correctness, Source usage, Refusal correctness, Tone, Tagging)
 - `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-qa_transcript-<mode>.md` —
-  transcript (`4-ocs/` for quick/deep; `7-execution-manager/` for monitor)
+  transcript (`5-ocs/` for quick/deep; `7-execution-manager/` for monitor)
 - `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_verdict-<mode>.yaml` —
   verdict (same phase rule)
 - `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_report-<mode>.md` —
   eval report (skipped for `--quick` stdout-only mode; same phase rule)
-- `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-deep.md` — only in `--deep`
+- `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-chatbot-eval_gate-brief-deep.md` — only in `--deep`
