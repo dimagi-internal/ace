@@ -1517,15 +1517,17 @@ if [ -n "$HQ_DOMAIN" ] && [ -f "$CONNECT_SESS" ]; then
     # Check for an active Connection Settings entry. The /motech/conn/
     # listing page is rendered entirely client-side via Knockout (the
     # static HTML has the template but not the data), so a static curl
-    # can't see the rows there. Instead, hit /motech/forwarding/new/FormRepeater/
+    # can't see the rows there. Instead, hit /motech/forwarding/new/ConnectFormRepeater/
     # and inspect the server-rendered `<select name="connection_settings_id">`
     # — if at least one <option> exists with a numeric value > 0, an
     # active connection exists. (The dropdown ONLY surfaces non-deleted
     # connections, so the presence of any option is a clean PASS signal.)
-    # This is the same signal data-forwarding rules themselves consume,
-    # so it accurately reflects whether new rules can target the connection.
+    # We use the ConnectFormRepeater path because it's gated by the
+    # COMMCARE_CONNECT toggle — only available when the flag is ON, so
+    # if this URL 404s we know the flag isn't enabled. The generic
+    # /new/FormRepeater/ would work too but doesn't disambiguate.
     CCHQ_CONN_HTML="$(curl -sS -L -b "$CCHQ_PROBE_COOKIES" --max-time 10 \
-      "$CCHQ_BASE/a/$HQ_DOMAIN/motech/forwarding/new/FormRepeater/" 2>/dev/null || echo "")"
+      "$CCHQ_BASE/a/$HQ_DOMAIN/motech/forwarding/new/ConnectFormRepeater/" 2>/dev/null || echo "")"
     CCHQ_CONN_OPTION_COUNT="$(printf '%s' "$CCHQ_CONN_HTML" | node -e "
       const s=require('fs').readFileSync(0,'utf8');
       const m=s.match(/<select[^>]*name=\"connection_settings_id\"[^>]*>([\\s\\S]*?)<\/select>/);
@@ -1541,19 +1543,58 @@ if [ -n "$HQ_DOMAIN" ] && [ -f "$CONNECT_SESS" ]; then
       "$CCHQ_BASE/a/$HQ_DOMAIN/motech/conn/" 2>/dev/null || echo "")"
     CCHQ_CONN_DELETED="$(printf '%s' "$CCHQ_CONN_LISTING_HTML" | grep -ciE '<td[^>]*>Deleted</td>' || true)"
 
-    REMEDIATION="enable the feature flag + configure the OAuth connection per the 'Run Your First Connect Opportunity' doc (Confluence; GDrive id 18Y1UQJW1aIwcgSt-Mt1Vze5pdQPAPs0I). Concretely: (1) ask a Dimagi super-user to flip the COMMCARE_CONNECT feature flag ON for project space '$HQ_DOMAIN' (Settings → Feature Flags and Privileges → 'Enable CommCare Connect features...'); (2) on the same project, go to Settings → Project Settings → Connection Settings (Integration) → Add new connection → URL https://connect.dimagi.com/api/receiver/ → Auth Type 'OAuth 2.0 Client Credentials Grant' → Client ID/Secret from 1Password 'Connect Delivery / Tech' → Token URL https://connect.dimagi.com/o/token/ → Pass Credentials in header → click Test Connection (must return 200 'Connection successful'); (3) Settings → Data Forwarding → Forward Forms → add one rule per app (Learn + Deliver) with the connection just created, POST, JSON, Include app_id in URL query"
-    if [ "$CCHQ_CONNECT_FLAG" = "true" ] && [ "$CCHQ_CONN_TO_CONNECT" -gt 0 ]; then
-      pass "cchq_connect_features: COMMCARE_CONNECT flag enabled on '$HQ_DOMAIN' AND active OAuth connection to connect.dimagi.com configured"
+    # (c) Check that a ConnectFormRepeater data-forwarding rule actually
+    # exists. The /motech/forwarding/ listing renders one section per
+    # repeater type, each with a friendly-name heading. The Connect-specific
+    # type is `ConnectFormRepeater` (commcare-hq/corehq/motech/repeaters/models.py
+    # — proxy class of FormRepeater) with friendly_name "Forward Form
+    # Metadata to Commcare Connect". When the section is empty the HTML
+    # has `You haven't configured any services to forward to yet.` right
+    # after the heading; when populated it has a <table> with the rule
+    # rows. The signal: the absence of "haven't configured" text
+    # immediately after our section heading = at least one rule exists.
+    #
+    # This is load-bearing because using the WRONG repeater type (generic
+    # FormRepeater) sends raw form payloads that Connect's receiver
+    # rejects ("app_id may not be null"). Live ground-truthed 2026-05-13:
+    # generic FormRepeater rules under "Forward Forms" produce 400s on
+    # every submission; ConnectFormRepeater rules under "Forward Form
+    # Metadata to Commcare Connect" are the right type.
+    CCHQ_FWD_LIST_HTML="$CCHQ_FLAGS_HTML"  # same page already fetched above
+    CCHQ_CONNECT_RULE_PRESENT="$(printf '%s' "$CCHQ_FWD_LIST_HTML" | node -e "
+      const s=require('fs').readFileSync(0,'utf8');
+      // Find the section: heading + everything before the next h2/h3 heading
+      const heading = '>Forward Form Metadata to Commcare Connect<';
+      const i = s.indexOf(heading);
+      if (i < 0) { console.log('0'); process.exit(0); }
+      const after = s.slice(i, i + 2000);  // window past the heading
+      // Empty marker first
+      const empty = /You haven't configured any services to forward to yet/.test(after);
+      // Populated marker — a table with rule rows
+      const populated = /<table/.test(after);
+      console.log(empty ? '0' : (populated ? '1' : '0'));
+    " 2>/dev/null || echo "0")"
+
+    SETUP_DOC="GDrive 18Y1UQJW1aIwcgSt-Mt1Vze5pdQPAPs0I"
+    REMED_FLAG="ask a Dimagi super-user to flip the COMMCARE_CONNECT feature flag ON for '$HQ_DOMAIN' (Settings → Feature Flags and Privileges → 'Enable CommCare Connect features...')"
+    REMED_CONN="Settings → Project Settings → Connection Settings (Integration) → Add new connection → URL https://connect.dimagi.com/api/receiver/ → OAuth 2.0 Client Credentials Grant → Client ID/Secret from 1Password 'Connect Delivery / Tech' → Token URL https://connect.dimagi.com/o/token/ → Pass Credentials in header → Test Connection must return 200 'Connection successful'"
+    REMED_RULE="Settings → Project Settings → Data Forwarding → **'Forward Form Metadata to Commcare Connect'** section (NOT generic 'Forward Forms' — that one sends raw form payloads Connect rejects) → 'Add a service to forward to' → select the connection from step (2) → name e.g. 'Forward Form Metadata to Connect' → request method POST → Include 'app_id' URL query parameter checked → leave Users to exclude + XMLNSes blank → Start Forwarding. Maps to the ConnectFormRepeater type which only sends form metadata + Connect question blocks, the shape Connect's /api/receiver/ expects."
+    REMEDIATION_ALL="enable the feature flag + configure the OAuth connection + add the Connect data-forwarding rule per the 'Run Your First Connect Opportunity' doc ($SETUP_DOC). Concretely: (1) $REMED_FLAG. (2) $REMED_CONN. (3) $REMED_RULE."
+
+    if [ "$CCHQ_CONNECT_FLAG" = "true" ] && [ "$CCHQ_CONN_TO_CONNECT" -gt 0 ] && [ "$CCHQ_CONNECT_RULE_PRESENT" = "1" ]; then
+      pass "cchq_connect_features: COMMCARE_CONNECT flag enabled on '$HQ_DOMAIN', OAuth connection to connect.dimagi.com configured, AND ConnectFormRepeater rule active under 'Forward Form Metadata to Commcare Connect'"
     elif [ "$CCHQ_CONNECT_FLAG" = "unreachable" ] || [ "$CCHQ_CONNECT_FLAG" = "unknown" ]; then
       warn "cchq_connect_features: could not read toggles_dict from $CCHQ_BASE/a/$HQ_DOMAIN/motech/forwarding/ (cookies may be stale or project access may be missing for ace@dimagi-ai.com)" "/ace:connect-login to refresh the CCHQ session; then re-run /ace:doctor. If the cookies refresh and this probe still can't see the flag, the project may not exist or the user lacks access."
     elif [ "$CCHQ_CONNECT_FLAG" = "false" ] && [ "$CCHQ_CONN_TO_CONNECT" -eq 0 ]; then
-      warn "cchq_connect_features: NEITHER COMMCARE_CONNECT flag enabled NOR OAuth connection to connect.dimagi.com configured on '$HQ_DOMAIN' — Phase 3 (opp create + payment-unit sync) will partially succeed, Phase 5 (Learn-app launch on AVD) will fail with the 'silent FLW-client noop' symptom because /users/start_learn_app/ returns Django 500 (CommCareHQAPIException uncaught), and form submissions in Phase 5/8 will never reach Connect" "$REMEDIATION"
+      warn "cchq_connect_features: NONE of the 3 setup items configured on '$HQ_DOMAIN' (flag OFF, no OAuth conn, no Connect data-forwarding rule) — Phase 3 (opp create + payment-unit sync) will partially succeed, Phase 5 (Learn-app launch on AVD) will fail with the 'silent FLW-client noop' symptom because /users/start_learn_app/ returns Django 500 (CommCareHQAPIException uncaught), and form submissions in Phase 5/8 will never reach Connect for verification/payment" "$REMEDIATION_ALL"
     elif [ "$CCHQ_CONNECT_FLAG" = "false" ]; then
-      warn "cchq_connect_features: COMMCARE_CONNECT feature flag is OFF on '$HQ_DOMAIN' — /users/start_learn_app/ will 500 because CCHQ rejects the connect_username field (gated by this flag), and the Connect Android client logs+swallows the failed response so the opp-detail 'Start' button appears to silently no-op. OAuth connection IS present; only the flag is missing." "ask a Dimagi super-user to flip the COMMCARE_CONNECT feature flag ON for '$HQ_DOMAIN' (Settings → Feature Flags and Privileges → 'Enable CommCare Connect features...'). Full setup doc: GDrive 18Y1UQJW1aIwcgSt-Mt1Vze5pdQPAPs0I."
+      warn "cchq_connect_features: COMMCARE_CONNECT feature flag is OFF on '$HQ_DOMAIN' — /users/start_learn_app/ will 500 because CCHQ rejects the connect_username field (gated by this flag), and the Connect Android client logs+swallows the failed response so the opp-detail 'Start' button appears to silently no-op. OAuth connection IS present; only the flag is missing." "$REMED_FLAG. Full setup doc: $SETUP_DOC."
     elif [ "$CCHQ_CONN_TO_CONNECT" -eq 0 ]; then
       DELETED_HINT=""
       [ "$CCHQ_CONN_DELETED" -gt 0 ] && DELETED_HINT=" (page shows a '<td>Deleted</td>' row — a prior connection was removed)"
-      warn "cchq_connect_features: OAuth connection from '$HQ_DOMAIN' to https://connect.dimagi.com/api/receiver/ is missing${DELETED_HINT} — feature flag IS enabled, so claim+Learn-app launch will work, but FLW form submissions from the Deliver app will not reach Connect for verification/payment, breaking Phase 8 monitoring" "Settings → Project Settings → Connection Settings (Integration) → Add new connection → URL https://connect.dimagi.com/api/receiver/ → OAuth 2.0 Client Credentials Grant → Client ID/Secret from 1Password 'Connect Delivery / Tech' → Token URL https://connect.dimagi.com/o/token/ → Test Connection must return 'Connection successful'. Then add a Forward Forms rule per app (Learn + Deliver). Full setup doc: GDrive 18Y1UQJW1aIwcgSt-Mt1Vze5pdQPAPs0I."
+      warn "cchq_connect_features: OAuth connection from '$HQ_DOMAIN' to https://connect.dimagi.com/api/receiver/ is missing${DELETED_HINT} — feature flag IS enabled, so claim+Learn-app launch will work, but FLW form submissions from the Deliver app will not reach Connect for verification/payment, breaking Phase 8 monitoring" "$REMED_CONN. Then $REMED_RULE. Full setup doc: $SETUP_DOC."
+    elif [ "$CCHQ_CONNECT_RULE_PRESENT" != "1" ]; then
+      warn "cchq_connect_features: no active ConnectFormRepeater rule on '$HQ_DOMAIN' under 'Forward Form Metadata to Commcare Connect' — feature flag + OAuth connection are configured, but without the data-forwarding rule of the correct type, FLW form submissions from the Deliver app will not reach Connect for verification/payment. (Heads-up: a rule under generic 'Forward Forms' will NOT work — it uses the wrong payload shape and Connect rejects with 'app_id may not be null'. Use the Connect-specific section.)" "$REMED_RULE. Full setup doc: $SETUP_DOC."
     fi
   else
     info "cchq_connect_features: skipped — no CCHQ cookies in $CONNECT_SESS (covered by cchq_auth warning above). Re-run /ace:connect-login so the OAuth-via-CCHQ flow leaves valid commcarehq.org cookies, then re-run /ace:doctor."
