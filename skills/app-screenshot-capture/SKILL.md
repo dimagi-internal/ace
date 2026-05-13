@@ -92,11 +92,34 @@ direct `/ace:step app-screenshot-capture` invocations.
 Recipes assume the AVD is sitting at the Connect "New Opportunities"
 home — the app is configured, the test user is logged in to PersonalID,
 and the opp tile is reachable. Recipes do NOT recover from a wiped
-device-state; they'll just fail at the first `assertVisible`. Probing
-the state up-front costs ~200ms and avoids the 30–60s round-trip of
-"boot the AVD, fire Maestro, watch it fail, then classify by guessing."
+device-state; they'll just fail at the first `assertVisible`.
 
-Probe via two adb calls + one UI dump, then classify:
+**Most state-loss is already auto-healed upstream.** Since 0.13.201
+`mobile_ensure_avd_running` includes the AVD user-state class in its
+auto-heal funnel — when its post-boot probes detect
+`needs-app-config` or `needs-personal-id`, the heal automatically
+runs `loadSnapshot('registered-test-user')` and re-probes.
+`AvdInfo.heal.deviceUserState` carries the outcome:
+`{ classified_as, attempted, healed_via, verified_as }`. So in the
+common case (operator ran `/ace:mobile-bootstrap` once + a clean
+snapshot exists), this step sees `ready` on the first probe and
+proceeds silently.
+
+If the post-`mobile_ensure_avd_running` `AvdInfo.heal.deviceUserState`
+says `attempted: false` and `classified_as: ready` — proceed with no
+extra probe. The work has already been done.
+
+If `mobile_ensure_avd_running` threw `DeviceUserStateError` (the
+snapshot-load heal exhausted — snapshot missing, snapshot stale, or
+post-load probe still showed a wiped state), halt with the
+remediation in the failure-modes table below. **Do NOT do an
+independent probe here** — duplicating the upstream probe just adds
+latency.
+
+The local probe below is a defensive fallback for callers that bypass
+`mobile_ensure_avd_running` (e.g. direct `/ace:step
+app-screenshot-capture` against a long-running session that lost
+state mid-run). Probe via two adb calls + one UI dump, then classify:
 
 ```
 adb -s <serial> shell dumpsys activity activities | grep mResumedActivity
