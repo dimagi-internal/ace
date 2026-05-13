@@ -97,13 +97,42 @@ silent-failure prevention learned from earlier real-world dogfood.
       bootstrap, this pre-flight, and `app-screenshot-capture` Step 3
       all funnel through `mobile_ensure_avd_running`. DRY.
 - [ ] **CommCare 2.62.0+ is installed on the AVD.** `adb shell pm
-      list packages org.commcare.dalvik` returns the package. The
-      `mobile-bootstrap` command handles this.
+      list packages org.commcare.dalvik` returns the package.
+      `org.commcare.dalvik` IS the Connect-enabled CommCare client —
+      there is NO separate "Connect APK" or `connect`-named package.
+      Don't grep for `connect`; you'll find nothing and incorrectly
+      conclude Connect is missing when it's installed and just in a
+      wiped-state. `mobile-bootstrap` handles installation.
+- [ ] **The AVD's per-user device-state is healthy.** Three sub-checks,
+      ALL required:
+      1. `adb shell dumpsys activity activities | grep mResumedActivity`
+         does NOT return `CommCareSetupActivity` (that activity means
+         CommCare has no `ApplicationDocument` configured — first-launch
+         "Enter Code" / "Scan Application Barcode" state).
+      2. `mobile_capture_ui_dump` output does NOT contain
+         "Logged out of PersonalID", "Lost PersonalID configuration",
+         or a "Reconfigure" CTA (PersonalID is the Connect identity
+         layer; without it, the test user can't see any opp tile).
+      3. The dump or focused activity reaches one of the expected
+         "ready" markers — e.g. `OpportunitiesActivity`, `VendorVisitActivity`,
+         or the configured `${OPP_NAME}` is visible.
+      All three failures funnel to the same recovery: `/ace:mobile-bootstrap`.
+      The recovery is the same; the *diagnosis* matters because this
+      class is what got mislabeled "Connect APK not installed" live in
+      2026-05-13. `skills/app-screenshot-capture/SKILL.md § Step 2.5`
+      is the canonical state-classification table.
 - [ ] **The opp-specific Learn + Deliver apps are claimable on the
       AVD via the test user.** Phase 4 `connect-opp-setup` should
       have pre-invited `${ACE_E2E_PHONE}`. Without an opp invite,
       `app-screenshot-capture` recipes that try to claim or interact
-      with the app will fail.
+      with the app will fail. Note: the test user accumulates invites
+      across every `/ace:run` — by run N the test user has N opp tiles
+      in their app, distinguished only by the run-id suffix in the
+      display name. The `${OPP_NAME}` matcher in `connect-claim-opp.yaml`
+      relies on (a) the name being unique enough and (b) the newest
+      invite sitting near the top of the list. See
+      `skills/app-screenshot-capture/SKILL.md § Step 4` for the
+      future-proofing options when this implicit ordering breaks.
 - [ ] **`ACE_TRAINING_DECK_TEMPLATE_ID` is set** if you want a Slides
       deck. `bin/ace-doctor` reports it. If unset, `training-deck-build`
       skips silently — Phase 6 still completes, just without the
@@ -145,6 +174,38 @@ yellow verdicts run after run. The orchestrator may also try to
 authorize a soft-fail in its dispatch prompt ("proceed with
 placeholder screenshots"); ignore that — discipline lives at the
 agent level so it survives ad-libbed dispatcher prompts.
+
+### On halt, capture diagnostic state — don't infer it
+
+When this agent halts at the pre-flight (or when `app-screenshot-capture`
+halts under us), the return summary MUST include:
+
+1. **The failure screenshot path + read of its contents.** Maestro
+   writes one on every recipe halt at `~/.maestro/tests/<timestamp>/screenshot-❌-*.png`.
+   Read it before classifying. The image often names the failure mode
+   literally (PersonalID banner, Enter Code screen, etc.) and avoids
+   the inverted-conclusion class of bug (live 2026-05-13 turmeric run:
+   subagent concluded "Connect not installed" because it didn't find a
+   `connect`-named package — but `org.commcare.dalvik` is the Connect
+   client, and the screenshot had the actual diagnosis in 16pt type).
+2. **The last `mobile_ensure_avd_running` response in full**
+   (`heal_attempted`, `heal_steps`, `heal_outcome`). Pre-0.13.165 these
+   weren't structured; 0.13.165 introduced the auto-heal contract but
+   the subagent often returns just "Maestro recipe failed" without the
+   heal log. If the heal log is empty or absent in the return, the
+   subagent didn't actually probe whether the heal ran — re-dispatch
+   with an explicit "return the full `mobile_ensure_avd_running`
+   response including heal_steps" instruction OR file a class-level
+   issue on the heal contract. Don't immediately escalate to
+   `/ace:mobile-bootstrap` if the heal log shows the heal never fired —
+   the structural fix is fixing the heal contract, not papering with
+   bootstrap.
+3. **The focused activity and a `mobile_capture_ui_dump` excerpt** of
+   the failure state, so the table in `app-screenshot-capture/SKILL.md`
+   § Step 2.5 can classify deterministically.
+
+The pre-flight has the evidence; reading it costs three tool calls
+and prevents a whole class of "guessed from indirect signals" mistakes.
 
 ## Workflow
 

@@ -87,6 +87,51 @@ checklist`) catches the same class of gap before the skill is
 dispatched. This skill-level check is the second line of defense for
 direct `/ace:step app-screenshot-capture` invocations.
 
+### Step 2.5: AVD user-state probe (BEFORE running any recipe)
+
+Recipes assume the AVD is sitting at the Connect "New Opportunities"
+home — the app is configured, the test user is logged in to PersonalID,
+and the opp tile is reachable. Recipes do NOT recover from a wiped
+device-state; they'll just fail at the first `assertVisible`. Probing
+the state up-front costs ~200ms and avoids the 30–60s round-trip of
+"boot the AVD, fire Maestro, watch it fail, then classify by guessing."
+
+Probe via two adb calls + one UI dump, then classify:
+
+```
+adb -s <serial> shell dumpsys activity activities | grep mResumedActivity
+adb -s <serial> shell pm list packages org.commcare.dalvik
+mobile_capture_ui_dump
+```
+
+**Classification table** (first-match wins):
+
+| Signal | State class | Action |
+|---|---|---|
+| `pm list` returns nothing for `org.commcare.dalvik` | `commcare-not-installed` | Halt: `/ace:mobile-bootstrap` to install the Connect-enabled CommCare APK. CommCare 2.62.0+ IS the Connect client — there is NO separate "Connect APK" package. The grep is for `org.commcare.dalvik`, not `connect`. |
+| Focused activity is `CommCareSetupActivity` OR UI dump contains "Welcome to CommCare" / "Scan Application Barcode" / "Enter Code" | `needs-app-config` | Halt: `/ace:mobile-bootstrap` — pulls the CCHQ app for this run's HQ ids and configures the device. |
+| UI dump contains "Logged out of PersonalID" OR "Lost PersonalID configuration" OR a visible "Reconfigure" CTA | `needs-personal-id` | Halt: `/ace:mobile-bootstrap` — re-registers the ACE test user (`${ACE_E2E_PHONE}`) via the Connect registration API and re-establishes PersonalID on the device. |
+| Focused activity contains "OpportunitiesActivity" / "VendorVisitActivity" OR `${OPP_NAME}` is visible in the dump | `ready` | Proceed to Step 3. |
+| None of the above | `unknown` | Log the dump + focused activity verbatim into the verdict for class-mining, then proceed (Step 5's failure-mode table is the second-line classifier). |
+
+Each halt writes `verdict: fail` + `severity: BLOCKER` with the precise
+state class in the `failure_mode` field — NEVER `verdict: incomplete`
+(that's reserved for upstream artifact gaps, not AVD state). Same
+discipline as the Maestro-driver heal-exhaustion halt: workstation
+state is solvable on the operator's machine, not via a placeholder
+ship.
+
+**Why this is a class-level preventer.** Pre-this-step, the skill
+booted the AVD, ran a recipe, watched it fail at `assertVisible`, then
+tried to classify by inspecting the recipe error string + package list.
+The package-list path landed an inverted-conclusion bug live in
+2026-05-13 (turmeric run 20260513-0616): the agent saw `org.commcare.dalvik`
+present, looked for a `connect` package, didn't find one, and concluded
+"Connect not installed" — when in fact CommCare WAS installed and the
+real symptom was the PersonalID drawer banner in the captured screenshot
+that the agent never read. Probing the focused activity + UI dump up
+front makes that misclassification structurally impossible.
+
 ### Step 3: Boot AVD + ensure apps installed
 
 Boot the AVD via `mobile_ensure_avd_running` and install the Connect
@@ -115,6 +160,46 @@ These set up the AVD to the post-claim state the smoke recipes assume:
 - `connect-login.yaml` with `${ACE_E2E_PHONE_LOCAL}`, `${ACE_E2E_PIN}`.
 - `connect-claim-opp.yaml` with `${OPP_NAME}` from run_state.yaml.
 
+**OPP_NAME uniqueness assumption (durable note).** Because every
+`/ace:run` Phase 3 invites the same ACE test user (`${ACE_E2E_PHONE}`)
+to a fresh Connect opp, the test user's in-app invite list grows
+unboundedly across runs. Every prior opp the test user was ever invited
+to is still listed, and there is no per-run cleanup atom yet (TBD). The
+`${OPP_NAME}` recipe matcher assumes:
+
+1. The opp name is **unique enough** to disambiguate this run's opp
+   from all prior invites. Today `connect-opp-setup` writes a name
+   like `"<Title> Run YYYYMMDD HHMM"` (e.g.
+   `"Turmeric Market Survey Run 20260513 0616"`) — the run-id suffix
+   gives it lexical uniqueness, but the prefix collides with prior
+   runs of the same opp.
+2. **The newest invite sits near the top of the list.** Today this is
+   implicitly the case (Connect orders by invited_at descending), so
+   `tapOn:text` on the unique full name lands the right tile.
+
+These assumptions break as the test user accumulates invites:
+- A `tapOn:text` matcher that uses just the title prefix (without the
+  run-id suffix) will collide across runs.
+- Even with a unique full name, on extremely long invite lists Maestro
+  may need to scroll to find it; recipes today don't.
+
+**Future-proofing options** (none implemented yet):
+- Use `${OPP_UUID}` or `${OPP_LABS_INT_ID}` as the identifier — but
+  neither surfaces in the mobile UI today (Connect's tile shows the
+  display name).
+- Have `connect-opp-setup` emit a per-run unique short tag (e.g.
+  `RUN20260513-0616`) and append it to the opp name so the recipe
+  matcher is unambiguous regardless of invite-list length.
+- Add an explicit `scrollUntilVisible` wrapper to the claim recipe so
+  long invite lists don't fall off the visible region.
+- Add a periodic test-user invite-list-cleanup atom (Connect doesn't
+  expose this in the public API today; would need a `connect_*`
+  Playwright atom).
+
+Track as a class-level concern; revisit when the test user has
+accumulated enough invites to break the implicit ordering or when a
+recipe surfaces a false-positive `tapOn:text` hit on the wrong tile.
+
 ### Step 5: Run the smoke recipes
 
 For each of the two smoke journeys (Learn first, then Deliver), call
@@ -139,6 +224,22 @@ If a smoke recipe fails (status != pass), halt — downstream phases
 must not start without working smoke screenshots, and a smoke failure
 means the app is broken in a basic way.
 
+**Before consulting this table, READ the failure screenshot.** Maestro
+writes one to its debug bundle on every recipe halt — path appears in
+the `maestro.log` `Failed:` line as `screenshot-❌-<timestamp>-(<recipe>.yaml).png`,
+under `~/.maestro/tests/<timestamp>/`. The image often names the
+failure mode literally — *"Logged out of PersonalID"*, *"Enter Code"*,
+*"Failed to start learning"*, *"App not found"* — making package /
+process / driver probing redundant. **Image-read first, infer second.**
+Skipping this step produced an inverted-conclusion bug live in
+2026-05-13 (turmeric run 20260513-0616): the agent saw `org.commcare.dalvik`
+absent of a `connect`-named sibling package and concluded "Connect not
+installed" — when the failure screenshot showed *"Logged out of
+PersonalID — Lost PersonalID configuration with server, please recover
+your PersonalID account and retry"* with a `Reconfigure →` CTA in the
+nav drawer. Reading the screenshot would have produced the right
+answer in one step.
+
 **Recognized failure modes** (write a `[BLOCKER]` to the gate brief
 naming the specific failure + remediation rather than a generic
 "smoke recipe failed" message):
@@ -148,7 +249,8 @@ naming the specific failure + remediation rather than a generic
 | `Failed to start learning` | Released Learn CCZ has Nova `<module xmlns="…connect…">` + `<assessment xmlns="…connect…">` wrappers that the AVD's CommCare runtime can't launch. Confirmed live 2026-05-07 against leep-paint-collection: turmeric Learn (working) has 0 wrapper refs; LEEP Learn (broken) has 16. Tracking: [voidcraft-labs/nova-plugin#7](https://github.com/voidcraft-labs/nova-plugin/issues/7), [jjackson/ace#115 finding 1](https://github.com/jjackson/ace/issues/115). | As of 0.13.66 Phase 3's Step 2.8 invokes `commcare-form-patch` automatically — re-run `/ace:run <opp>` and Phase 6 should pick up the patched Learn release. For an in-flight opp that already shipped Phase 3 without the patch: `/ace:step commcare-form-patch <opp>` then re-run Phase 6. Diagnostic probe: `npx tsx scripts/probe-connect-learn-handoff.ts <opp_uuid>` + adb logcat. |
 | `deviceInfo … UNAVAILABLE` / `MaestroDriverError` | Maestro driver app on the AVD is installed but its gRPC server isn't responding. Symptom of a wedged driver process or a stale install whose runtime state diverged from the CLI's expectations. Reproduced live 2026-05-11 against leep run 20260511-0507 Phase 6 (port 7001 refusing connections, every recipe stalling on `deviceInfo`). | Since 0.13.165 `mobile_ensure_avd_running` auto-heals (force-stop + uninstall both halves of `dev.mobile.maestro`, then re-probe to trigger the CLI's auto-reinstall). If this error still surfaces, the heal exhausted — run `/ace:mobile-bootstrap` to re-baseline the AVD + driver, then `/ace:step app-screenshot-capture <opp>/<run-id>`. Logcat probe: `adb -s <serial> logcat | grep -i maestro`. |
 | `extendedWaitUntil` timeout on `connect_fragment_jobs_list` | Claim flow didn't reach jobs list. LLO program-application not ACCEPTED, or Connect session expired on the AVD. | Re-run `connect-login.yaml` and verify `connect_get_opportunity` returns the expected opp. |
-| `assertVisible(text: ${OPP_NAME})` failure | Right opp card not on screen. Wrong `OPP_NAME` env var, OR opp not yet claimed by the test user. | Confirm `OPP_NAME` matches the display name (not the slug — see [#115 finding 4](https://github.com/jjackson/ace/issues/115)). |
+| `assertVisible(text: ${OPP_NAME})` failure AND focused activity is `CommCareSetupActivity` AND/OR failure screenshot shows "Logged out of PersonalID" / "Lost PersonalID configuration" / "Reconfigure" / "Enter Code" / "Welcome to CommCare" | **AVD's per-user state was wiped** — no `ApplicationDocument` configured (CCHQ app never pulled OR app db was wiped) and/or PersonalID account de-registered from the device. Important: `org.commcare.dalvik` IS the Connect-enabled CommCare client (no separate Connect package); presence of `org.commcare.dalvik` in `pm list packages` does **NOT** imply a usable Connect home. Should have been caught by Step 2.5; if it surfaces here, Step 2.5's probe missed a signal worth adding. Live in 2026-05-13 (turmeric run 20260513-0616) with both states stacked: setup activity foregrounded + PersonalID drawer banner. | `/ace:mobile-bootstrap` — re-installs APK if needed, registers the ACE test user (`${ACE_E2E_PHONE}`) via the Connect registration API, pulls the CCHQ app for this run's HQ ids, saves a clean snapshot. After bootstrap returns clean: `/ace:step app-screenshot-capture <opp>/<run-id>`. If this state recurs after a successful bootstrap, the issue is state-loss between sessions (snapshot revert, AVD cold-boot, server-side PersonalID de-registration); file a class-level issue on `mobile_ensure_avd_running`'s state-persistence contract rather than re-bootstrapping. |
+| `assertVisible(text: ${OPP_NAME})` failure AND failure screenshot shows the Connect "New Opportunities" / opp list home (the user IS logged in, app IS configured, just no matching tile) | Right opp card not on screen for the OPP_NAME being matched. Wrong `OPP_NAME` env var, OR opp not yet claimed by the test user, OR `${OPP_NAME}` collides ambiguously with another invite further up the test user's accumulated invite list (see Step 4 "OPP_NAME uniqueness assumption"). | Confirm `OPP_NAME` matches the display name verbatim (not the slug — see [#115 finding 4](https://github.com/jjackson/ace/issues/115)). If display name matches but tile isn't visible, scroll the invite list or use a run-id-suffixed display name to disambiguate. |
 
 ### Step 6: Write `6-qa-and-training/app-screenshot-capture_manifest.yaml`
 
