@@ -45,6 +45,32 @@ For every form question in the module, emit:
   - tapOn next/finish button
 
 End every module recipe with assertVisible of an end-state element.
+
+CRITICAL: \`inputText\` (and every Maestro command that has both a
+scalar and a mapping form — \`tapOn\`, \`assertVisible\`,
+\`extendedWaitUntil\`, etc.) has two valid shapes. Pick based on
+whether you need any options:
+
+  # Scalar form — bare value, no options
+  - inputText: "Apcolite Stores"
+
+  # Mapping form — REQUIRED when you need ANY option
+  # (optional, label, id, point, etc.)
+  - inputText:
+      text: "Apcolite Stores"
+      optional: true
+
+The combination that DOES NOT PARSE is the scalar form with a
+sibling option key under the same list item:
+
+  - inputText: "Apcolite Stores"
+      optional: true    # ← Maestro rejects this at parse time
+
+This is invalid YAML — the \`-\` opens a list item that's BOTH a
+scalar (\`inputText: "..."\`) and a mapping (\`optional: true\`).
+Maestro's parser surfaces it as: "expected <block end>, but found
+'<block mapping start>'". When in doubt, use the mapping form.
+
 Output the YAML and nothing else. No code fences, no commentary.`;
 
 export class RecipeGenerator {
