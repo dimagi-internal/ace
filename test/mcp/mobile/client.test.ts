@@ -240,7 +240,9 @@ describe('MobileClient.ensureAvdRunning', () => {
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
       getFocusedActivity: vi.fn().mockResolvedValue('mResumedActivity: ActivityRecord{... OpportunitiesActivity}'),
       captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
-      loadSnapshot: vi.fn(),
+      loadSnapshot: vi
+        .fn()
+        .mockResolvedValue({ avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK' }),
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
@@ -328,10 +330,10 @@ describe('classifyDeviceUserState', () => {
   });
 });
 
-describe('MobileClient.assertDeviceUserStateHealthy', () => {
+describe('MobileClient.restoreDeviceUserState', () => {
   const readyAvd = { name: 'AVD', serial: 'emulator-5554', status: 'booted' } as const;
 
-  it('skips heal when state is ready', async () => {
+  it('always loads the snapshot, even when the AVD already appears ready', async () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
@@ -339,33 +341,6 @@ describe('MobileClient.assertDeviceUserStateHealthy', () => {
         .fn()
         .mockResolvedValue('mResumedActivity: ActivityRecord{... OpportunitiesActivity}'),
       captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
-      loadSnapshot: vi.fn(),
-    } as any;
-    const maestro = {
-      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
-      repairDriver: vi.fn(),
-    } as any;
-    const client = new MobileClient({ avd, maestro });
-    const r = await client.ensureAvdRunning('AVD');
-    expect(r.heal?.deviceUserState?.classified_as).toBe('ready');
-    expect(r.heal?.deviceUserState?.attempted).toBe(false);
-    expect(avd.loadSnapshot).not.toHaveBeenCalled();
-  });
-
-  it('recovers from needs-personal-id via loadSnapshot', async () => {
-    const focused = vi
-      .fn()
-      .mockResolvedValueOnce('mResumedActivity: CommCareSetupActivity')
-      .mockResolvedValueOnce('mResumedActivity: ActivityRecord{... OpportunitiesActivity}');
-    const dump = vi
-      .fn()
-      .mockResolvedValueOnce({ xml: '<node text="Logged out of PersonalID"/>', elements: [] })
-      .mockResolvedValueOnce({ xml: '', elements: [] });
-    const avd = {
-      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
-      listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
-      getFocusedActivity: focused,
-      captureUiDump: dump,
       loadSnapshot: vi
         .fn()
         .mockResolvedValue({ avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK' }),
@@ -376,21 +351,47 @@ describe('MobileClient.assertDeviceUserStateHealthy', () => {
     } as any;
     const client = new MobileClient({ avd, maestro });
     const r = await client.ensureAvdRunning('AVD');
+    expect(avd.loadSnapshot).toHaveBeenCalledTimes(1);
     expect(avd.loadSnapshot).toHaveBeenCalledWith('AVD', 'registered-test-user');
     expect(r.heal?.deviceUserState).toMatchObject({
-      classified_as: 'needs-personal-id',
+      classified_as: 'ready',
       attempted: true,
       healed_via: 'snapshot-load',
       verified_as: 'ready',
     });
   });
 
-  it('throws DeviceUserStateError when loadSnapshot fails (saved=false)', async () => {
+  it('restores a wiped state (needs-personal-id) via loadSnapshot + verification', async () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
-      getFocusedActivity: vi.fn().mockResolvedValue('mResumedActivity: CommCareSetupActivity'),
+      getFocusedActivity: vi
+        .fn()
+        .mockResolvedValue('mResumedActivity: ActivityRecord{... OpportunitiesActivity}'),
       captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
+      loadSnapshot: vi
+        .fn()
+        .mockResolvedValue({ avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK' }),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+    } as any;
+    const client = new MobileClient({ avd, maestro });
+    const r = await client.ensureAvdRunning('AVD');
+    // Same path as "already ready" — the contract is identical regardless
+    // of starting state; the snapshot replaces RAM state deterministically.
+    expect(avd.loadSnapshot).toHaveBeenCalledTimes(1);
+    expect(r.heal?.deviceUserState?.healed_via).toBe('snapshot-load');
+    expect(r.heal?.deviceUserState?.verified_as).toBe('ready');
+  });
+
+  it('throws snapshot-load-failed when loadSnapshot returns saved=false (e.g. snapshot missing)', async () => {
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
+      getFocusedActivity: vi.fn(),
+      captureUiDump: vi.fn(),
       loadSnapshot: vi.fn().mockResolvedValue({
         avdName: 'AVD',
         snapshotName: 'registered-test-user',
@@ -404,11 +405,31 @@ describe('MobileClient.assertDeviceUserStateHealthy', () => {
     } as any;
     const client = new MobileClient({ avd, maestro });
     await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
-      /AVD per-user state is unhealthy.*needs-app-config.*loadSnapshot:fail/,
+      /AVD per-user state is unhealthy.*snapshot-load-failed.*loadSnapshot:fail/,
+    );
+    // The post-load probe shouldn't even fire when loadSnapshot itself failed.
+    expect(avd.getFocusedActivity).not.toHaveBeenCalled();
+  });
+
+  it('throws snapshot-load-failed when loadSnapshot throws', async () => {
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      listPackages: vi.fn(),
+      getFocusedActivity: vi.fn(),
+      captureUiDump: vi.fn(),
+      loadSnapshot: vi.fn().mockRejectedValue(new Error('emulator console unavailable')),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+    } as any;
+    const client = new MobileClient({ avd, maestro });
+    await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
+      /AVD per-user state is unhealthy.*snapshot-load-failed.*loadSnapshot:throw/,
     );
   });
 
-  it('throws DeviceUserStateError when re-probe after loadSnapshot still shows a wiped state', async () => {
+  it('throws with the precise verify class when snapshot loads but state is still wiped (snapshot corruption / APK drift)', async () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
@@ -427,26 +448,30 @@ describe('MobileClient.assertDeviceUserStateHealthy', () => {
     } as any;
     const client = new MobileClient({ avd, maestro });
     await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
-      /AVD per-user state is unhealthy.*probe2:needs-personal-id/,
+      /AVD per-user state is unhealthy.*needs-personal-id.*verify:needs-personal-id/,
     );
   });
 
-  it('exhausts immediately for commcare-not-installed (no snapshot can install an APK)', async () => {
-    const avd = {
-      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
-      listPackages: vi.fn().mockResolvedValue([]),
-      getFocusedActivity: vi.fn().mockResolvedValue('mResumedActivity: Launcher'),
-      captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
-      loadSnapshot: vi.fn(),
-    } as any;
-    const maestro = {
-      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
-      repairDriver: vi.fn(),
-    } as any;
-    const client = new MobileClient({ avd, maestro });
-    await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
-      /AVD per-user state is unhealthy.*commcare-not-installed.*loadSnapshot:skipped/,
-    );
-    expect(avd.loadSnapshot).not.toHaveBeenCalled();
+  it('cloud backend short-circuits (cold-boot semantics are the restore mechanism)', async () => {
+    setSessionBackend('cloud');
+    try {
+      const cloud = {
+        ensureAvdRunning: vi
+          .fn()
+          .mockResolvedValue({ name: 'cloud', serial: 'cloud:i-abc', status: 'booted' }),
+      } as any;
+      // No-op local backends — should not be touched on cloud routing.
+      const avd = { loadSnapshot: vi.fn() } as any;
+      const maestro = {} as any;
+      const client = new MobileClient({ avd, maestro, cloud });
+      const r = await client.ensureAvdRunning('cloud');
+      expect(cloud.ensureAvdRunning).toHaveBeenCalledWith('cloud');
+      // No local snapshot-load on cloud — cold-boot is the equivalent
+      // restore mechanism (see backends/cloud.ts header).
+      expect(avd.loadSnapshot).not.toHaveBeenCalled();
+      expect(r.serial).toBe('cloud:i-abc');
+    } finally {
+      clearSessionBackend();
+    }
   });
 });

@@ -114,6 +114,21 @@ Cache dir is keyed by version: `~/.claude/plugins/cache/ace/ace/<version>/`. On 
 - **Archetypes are first-class.** PDDs declare `Archetype: atomic-visit | focus-group | multi-stage`; archetype-aware skills branch via `## Archetypes` sections. Adding a new archetype is purely additive (per-skill PRs). Default is `atomic-visit`.
 - **Class-level preventers > instance-level fixes.** When a silent-failure class surfaces, catch it at the boundary (MCP backend, doctor probe, schema pre-flight, HTTP probe) so future instances are structurally impossible. Don't just patch the case in front of you. The 0.7.1 `ocs_shared_collection_team` doctor probe is the canonical example: 50ms HTTP request that turns "configured" into "configured correctly."
 
+## Phase preconditions are restored, not adapted
+
+Each phase has a known precondition (the state it expects). Recovery is **restore to that precondition**, not **detect-and-adapt to whatever state is in front of us.** Already implicit elsewhere in ACE (run independence; fresh Connect opp per run; fresh OCS chatbot clone per opp; Nova builds from scratch per run). Made explicit in 0.13.202 after a misstep in Phase 6 that introduced state-classification logic instead of restoration.
+
+The pattern:
+
+1. **Precondition declared.** "Phase 6 expects: AVD at Connect home, test user signed in to PersonalID, opp tile reachable."
+2. **Restore unconditionally.** Don't probe-first. Don't decide-then-act. Run the restore operation every time. Deterministic starting state, deterministic recovery path.
+3. **Verify post-restore.** A classifier earns its keep ONLY as a verification step after restore — if the restore *should* have produced the precondition but didn't, the classifier names which precondition is still violated (snapshot corruption, APK drift, etc.). That's the only path a classifier is the right tool.
+4. **Fail loud.** If restore can't reach the precondition, throw a typed error with the precise class. Don't ship placeholders, don't soft-fail with `verdict: incomplete`.
+
+Canonical implementation: `MobileClient.restoreDeviceUserState` in `mcp/mobile/client.ts`. Local backend unconditionally `loadSnapshot('registered-test-user')`. Cloud backend's `/api/mobile/ensure-running` cold-boots from AMI + runs registration recipes — same contract, different mechanism, no special-casing at the caller. Each phase's heal lives in one place and funnels through the matching `mobile_ensure_avd_running` / `connect_*_setup` / `ocs_*_setup` atom.
+
+**Anti-pattern: tolerance for "whatever starting state we find."** That's complexity in service of a question the phase shouldn't be asking. If you find yourself writing a state-classifier as the primary recovery mechanism, you're solving the wrong problem — flip it to "always restore; classify only on verification failure."
+
 ## Improvement cycles & canopy
 
 This repo is dogfooded by the `canopy` plugin. **Per-run evidence lives in Drive at `ACE/<opp>/runs/<run-id>/`: `run_state.yaml` (the source of truth for every piece of state produced in that run — Connect opportunity, OCS chatbot, solicitation, selected_llo, synthetic — under `phases.<phase>.products.*`) plus per-phase `<N>-<phase>/<skill>_*` files (verdicts, transcripts, comms-logs). Each `/ace:run` is independent: no run reads from or writes to another run's `run_state.yaml`. Per-opp state — shared across every run — lives at `ACE/<opp>/`: `opp.yaml` (identity + the durable Connect program reference at `connect.program.{id, url, labs_int_id}`, written once and reused by every run; `connect-program-setup` is the only skill that mutates it), `inputs/`, `eval-calibration/known-issues.md`, `open-questions.md`. Cross-opp strategy lives in `.claude/pm/runs/<date>-<lens>.md`.** ACE skills don't read run logs; canopy and humans do. (State-consolidation refactor 2026-05-10/11: `connect-state.yaml` retired; per-run blocks moved into `run_state.yaml.phases.<phase>.products.*`. Initial implementation tried cross-run inheritance via a seed step; reverted in favor of run independence — see `docs/superpowers/specs/2026-05-10-state-consolidation.md`. `run_state.yaml` was renamed from `state.yaml` in 0.11.3; `gate-briefs/` removed 0.13.116; full per-opp vs per-run table + forking recipes in `agents/orchestrator-reference.md § Fork Points`.)

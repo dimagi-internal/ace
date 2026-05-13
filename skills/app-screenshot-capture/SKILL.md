@@ -87,73 +87,55 @@ checklist`) catches the same class of gap before the skill is
 dispatched. This skill-level check is the second line of defense for
 direct `/ace:step app-screenshot-capture` invocations.
 
-### Step 2.5: AVD user-state probe (BEFORE running any recipe)
+### Step 2.5: Trust the upstream restore (no local probe)
 
-Recipes assume the AVD is sitting at the Connect "New Opportunities"
-home — the app is configured, the test user is logged in to PersonalID,
-and the opp tile is reachable. Recipes do NOT recover from a wiped
-device-state; they'll just fail at the first `assertVisible`.
+Recipes assume the AVD is at the Connect "New Opportunities" home —
+the app is configured, the test user is signed in to PersonalID, the
+opp tile is reachable. This is a **precondition** of running the
+smoke recipes, not a state we adapt to. Per the **"phase preconditions
+are restored, not adapted"** pattern (see `CLAUDE.md § Phase
+preconditions`), the restore happens in `mobile_ensure_avd_running`,
+unconditionally:
 
-**Most state-loss is already auto-healed upstream.** Since 0.13.201
-`mobile_ensure_avd_running` includes the AVD user-state class in its
-auto-heal funnel — when its post-boot probes detect
-`needs-app-config` or `needs-personal-id`, the heal automatically
-runs `loadSnapshot('registered-test-user')` and re-probes.
-`AvdInfo.heal.deviceUserState` carries the outcome:
-`{ classified_as, attempted, healed_via, verified_as }`. So in the
-common case (operator ran `/ace:mobile-bootstrap` once + a clean
-snapshot exists), this step sees `ready` on the first probe and
-proceeds silently.
+- **Local backend (since 0.13.202):** `loadSnapshot('registered-test-user')`
+  every Phase 6 dispatch. ~3s, deterministic. The snapshot is created
+  by the operator's one-time `/ace:mobile-bootstrap` and is the local
+  equivalent of cloud's cold-boot baseline.
+- **Cloud backend:** each `/api/mobile/ensure-running` cold-boots the
+  AVD and runs the registration recipes against it (see
+  `backends/cloud.ts` header). Same precondition contract, different
+  mechanism — and no explicit snapshot-load is needed because the AMI
+  ships the registration recipes built-in.
 
-If the post-`mobile_ensure_avd_running` `AvdInfo.heal.deviceUserState`
-says `attempted: false` and `classified_as: ready` — proceed with no
-extra probe. The work has already been done.
+After `mobile_ensure_avd_running` returns, `AvdInfo.heal.deviceUserState`
+carries the outcome: `{ classified_as, attempted, healed_via,
+verified_as, ui_dump_signal }`. Local always shows `attempted: true,
+healed_via: 'snapshot-load'`. Cloud shows `attempted: false` (cold-boot
+already handled it).
 
-If `mobile_ensure_avd_running` threw `DeviceUserStateError` (the
-snapshot-load heal exhausted — snapshot missing, snapshot stale, or
-post-load probe still showed a wiped state), halt with the
-remediation in the failure-modes table below. **Do NOT do an
-independent probe here** — duplicating the upstream probe just adds
-latency.
+**Recovery escalation.** If `mobile_ensure_avd_running` threw
+`DeviceUserStateError`, two recoverable error codes:
 
-The local probe below is a defensive fallback for callers that bypass
-`mobile_ensure_avd_running` (e.g. direct `/ace:step
-app-screenshot-capture` against a long-running session that lost
-state mid-run). Probe via two adb calls + one UI dump, then classify:
+- `snapshot-load-failed` — the snapshot doesn't exist (fresh machine,
+  snapshot was deleted) OR the emulator console couldn't load it. The
+  remediation is `/ace:mobile-bootstrap` — it'll register the test
+  user, configure the app, and save a fresh snapshot.
+- `needs-app-config` / `needs-personal-id` / `commcare-not-installed`
+  (as the `verify:` segment in the error attempts) — the snapshot
+  loaded but post-restore probe still showed a wiped state. This is
+  snapshot corruption or post-snapshot APK upgrade drift. Same
+  remediation: `/ace:mobile-bootstrap` re-snapshots.
 
-```
-adb -s <serial> shell dumpsys activity activities | grep mResumedActivity
-adb -s <serial> shell pm list packages org.commcare.dalvik
-mobile_capture_ui_dump
-```
+**This step is now ~zero code in the skill.** The state-classifier
+lives in `mcp/mobile/client.ts` (post-restore verification only); no
+duplicate probe at the skill level. Earlier versions of this skill
+documented a local probe table here — that was the "tolerate any
+starting state" anti-pattern. Removed 0.13.202.
 
-**Classification table** (first-match wins):
-
-| Signal | State class | Action |
-|---|---|---|
-| `pm list` returns nothing for `org.commcare.dalvik` | `commcare-not-installed` | Halt: `/ace:mobile-bootstrap` to install the Connect-enabled CommCare APK. CommCare 2.62.0+ IS the Connect client — there is NO separate "Connect APK" package. The grep is for `org.commcare.dalvik`, not `connect`. |
-| Focused activity is `CommCareSetupActivity` OR UI dump contains "Welcome to CommCare" / "Scan Application Barcode" / "Enter Code" | `needs-app-config` | Halt: `/ace:mobile-bootstrap` — pulls the CCHQ app for this run's HQ ids and configures the device. |
-| UI dump contains "Logged out of PersonalID" OR "Lost PersonalID configuration" OR a visible "Reconfigure" CTA | `needs-personal-id` | Halt: `/ace:mobile-bootstrap` — re-registers the ACE test user (`${ACE_E2E_PHONE}`) via the Connect registration API and re-establishes PersonalID on the device. |
-| Focused activity contains "OpportunitiesActivity" / "VendorVisitActivity" OR `${OPP_NAME}` is visible in the dump | `ready` | Proceed to Step 3. |
-| None of the above | `unknown` | Log the dump + focused activity verbatim into the verdict for class-mining, then proceed (Step 5's failure-mode table is the second-line classifier). |
-
-Each halt writes `verdict: fail` + `severity: BLOCKER` with the precise
-state class in the `failure_mode` field — NEVER `verdict: incomplete`
-(that's reserved for upstream artifact gaps, not AVD state). Same
-discipline as the Maestro-driver heal-exhaustion halt: workstation
-state is solvable on the operator's machine, not via a placeholder
-ship.
-
-**Why this is a class-level preventer.** Pre-this-step, the skill
-booted the AVD, ran a recipe, watched it fail at `assertVisible`, then
-tried to classify by inspecting the recipe error string + package list.
-The package-list path landed an inverted-conclusion bug live in
-2026-05-13 (turmeric run 20260513-0616): the agent saw `org.commcare.dalvik`
-present, looked for a `connect` package, didn't find one, and concluded
-"Connect not installed" — when in fact CommCare WAS installed and the
-real symptom was the PersonalID drawer banner in the captured screenshot
-that the agent never read. Probing the focused activity + UI dump up
-front makes that misclassification structurally impossible.
+The recipe-error → failure-mode table further down (Step 5) is the
+second-line classifier for things the upstream restore couldn't
+catch (e.g. CCZ content issues, Maestro recipe drift, OPP_NAME
+collisions in long invite lists). It stays.
 
 ### Step 3: Boot AVD + ensure apps installed
 
