@@ -69,13 +69,19 @@ appId: org.commcare.dalvik
 # The opp card's display text is the program/opp's display name (NOT the
 # bare slug — round 5 of the 2026-04-30 calibration round confirmed
 # this). Pass the display name as `OPP_NAME` to mobile_run_recipe.
-# `visibilityPercentage: 30` so the matcher hits even if the card text
-# wraps across multiple lines.
+#
+# `visibilityPercentage` removed 2026-05-13: the cloud Maestro build
+# (dadb 1.2.10 / Maestro 1.36-ish based on its CLI banner) doesn't
+# recognize the property and rejects the whole recipe with an
+# `Unknown Property` parse error before the first step executes.
+# Caught in vivo on leep Phase 5 attempt 10 against the cloud
+# emulator. The matcher works without it for cards with wrapped
+# text — Maestro defaults to substring + a low visibility threshold,
+# which is enough for our card layouts.
 - assertVisible:
     text: ${OPP_NAME}
 - tapOn:
     text: ${OPP_NAME}
-    visibilityPercentage: 30
 - extendedWaitUntil:
     visible:
       id: "org.commcare.dalvik:id/btn_start"
