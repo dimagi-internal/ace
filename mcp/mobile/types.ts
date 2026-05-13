@@ -3,6 +3,49 @@ export interface AvdInfo {
   serial: string;       // adb device serial, e.g. "emulator-5554"
   status: 'booted' | 'booting' | 'offline';
   bootTimeMs?: number;
+  /**
+   * Optional heal log produced by `MobileClient.ensureAvdRunning` when its
+   * probes detected a recoverable state and ran a heal. Subagents surface
+   * this to skills so they can attribute halts ("snapshot-load recovered
+   * the state" vs "heal exhausted, need /ace:mobile-bootstrap") rather
+   * than guessing from indirect signals like the recipe error string.
+   * Undefined when nothing needed healing.
+   */
+  heal?: {
+    maestroDriver?: { healed: boolean; attempts?: string[] };
+    deviceUserState?: DeviceStateHealLog;
+  };
+}
+
+/**
+ * Per-user device-state classification — see `classifyDeviceUserState`
+ * in `client.ts` for the signal-to-class mapping.
+ *
+ * - `ready`                  — Connect home / opp tile screen reachable; proceed.
+ * - `commcare-not-installed` — `org.commcare.dalvik` absent. CommCare 2.62.0+
+ *                              IS the Connect-enabled client (NO separate
+ *                              package); never grep for `connect`.
+ * - `needs-app-config`       — CommCareSetupActivity foregrounded / "Enter
+ *                              Code" screen. No `ApplicationDocument`.
+ * - `needs-personal-id`      — "Logged out of PersonalID" drawer banner.
+ *                              Connect identity layer is gone.
+ * - `unknown`                — none of the known markers; let downstream
+ *                              recipes classify, don't halt up-front.
+ */
+export type DeviceUserStateClass =
+  | 'ready'
+  | 'commcare-not-installed'
+  | 'needs-app-config'
+  | 'needs-personal-id'
+  | 'unknown';
+
+export interface DeviceStateHealLog {
+  classified_as: DeviceUserStateClass;
+  attempted: boolean;
+  healed_via?: 'snapshot-load' | 'none';
+  verified_as?: DeviceUserStateClass;
+  focused_activity?: string;
+  ui_dump_signal?: string;
 }
 
 export interface ApkInfo {

@@ -57,3 +57,28 @@ export class MaestroDriverError extends MobileError {
     );
   }
 }
+
+// Surfaced when the AVD is booted and Maestro driver is healthy, but the
+// per-user device state is wiped: either CommCare has no `ApplicationDocument`
+// configured (CommCareSetupActivity foregrounded; "Enter Code" / barcode
+// screen) or PersonalID has lost server configuration ("Logged out of
+// PersonalID" drawer banner with a "Reconfigure" CTA). The healer in
+// `MobileClient.ensureAvdRunning` tries `loadSnapshot('registered-test-user')`
+// before throwing; by the time this surfaces, the snapshot is missing or
+// stale and the operator needs `/ace:mobile-bootstrap` (which can also do
+// the server-side `${ACE_E2E_PHONE}` invite check the auto-heal cannot).
+//
+// Class history: misdiagnosed as "Connect APK not installed" on turmeric
+// run 20260513-0616 — the subagent saw `org.commcare.dalvik` absent of a
+// sibling `connect`-named package and inverted-concluded. The state
+// classifier (`classifyDeviceUserState`) was added to make this class
+// structurally impossible to mislabel.
+export class DeviceUserStateError extends MobileError {
+  constructor(stateClass: string, attempts: string[]) {
+    super(
+      'DEVICE_USER_STATE_WIPED',
+      `AVD per-user state is unhealthy (${stateClass}) after recovery: ${attempts.join('; ')}`,
+      'Run /ace:mobile-bootstrap to re-register the ACE test user, configure the CommCare app, and save a fresh `registered-test-user` snapshot. The auto-heal only does snapshot-load; full registration + server-side invite verification require the bootstrap flow.',
+    );
+  }
+}

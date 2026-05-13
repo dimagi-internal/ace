@@ -9,12 +9,12 @@ import {
   type CloudPatchLaunchScriptResult,
 } from './backends/cloud.js';
 import { MaestroBackend } from './backends/maestro.js';
-import { MaestroDriverError, MobileError } from './errors.js';
+import { DeviceUserStateError, MaestroDriverError, MobileError } from './errors.js';
 import { RecipeGenerator, type LlmFn } from './backends/recipe-generator.js';
 import { resolveBackend } from './backend-toggle.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
-  SnapshotResult,
+  SnapshotResult, DeviceUserStateClass, DeviceStateHealLog,
 } from './types.js';
 import { logInfo } from './logging.js';
 
@@ -31,6 +31,61 @@ export interface DriveAdapter {
   readFile(driveId: string, filePath: string): Promise<string>;
   writeFile(driveId: string, filePath: string, content: string): Promise<void>;
   listFolder(driveId: string, folderPath: string): Promise<string[]>;
+}
+
+/**
+ * Classify the AVD's user-facing state from three signals. Pure function;
+ * see `MobileClient.probeDeviceUserState` for the signal-collection path.
+ *
+ * Order matters — first-match wins. The classifier prefers explicit
+ * "wipe" markers over the `ready` activity check so that a stacked
+ * state (PersonalID drawer over a setup activity) lands on the heal-able
+ * class, not on `ready`.
+ */
+export function classifyDeviceUserState(
+  focusedActivity: string,
+  uiDumpXml: string,
+  installedPackages: string[],
+): DeviceUserStateClass {
+  if (!installedPackages.some((p) => p === 'org.commcare.dalvik')) {
+    return 'commcare-not-installed';
+  }
+  if (/Logged out of PersonalID|Lost PersonalID configuration|\bReconfigure\b/i.test(uiDumpXml)) {
+    return 'needs-personal-id';
+  }
+  if (/CommCareSetupActivity/i.test(focusedActivity)) {
+    return 'needs-app-config';
+  }
+  if (/Enter Code|Scan Application Barcode|Welcome to CommCare/i.test(uiDumpXml)) {
+    return 'needs-app-config';
+  }
+  if (/OpportunitiesActivity|VendorVisitActivity|DispatchActivity|HomeActivity/i.test(focusedActivity)) {
+    return 'ready';
+  }
+  return 'unknown';
+}
+
+/**
+ * Pick a short human-readable signal string from the probe data — used
+ * in the heal log so the subagent's return surfaces "what was on screen"
+ * without dumping the full XML. First non-empty match wins.
+ */
+function pickStateSignal(focusedActivity: string, uiDumpXml: string): string | undefined {
+  const markers: Array<[RegExp, string]> = [
+    [/Logged out of PersonalID/i, 'drawer:logged-out-personal-id'],
+    [/Lost PersonalID configuration/i, 'drawer:lost-personal-id-config'],
+    [/\bReconfigure\b/i, 'drawer:reconfigure-cta'],
+    [/CommCareSetupActivity/, 'activity:CommCareSetupActivity'],
+    [/Enter Code/i, 'screen:enter-code'],
+    [/Scan Application Barcode/i, 'screen:scan-barcode'],
+    [/Welcome to CommCare/i, 'screen:welcome-to-commcare'],
+    [/OpportunitiesActivity/, 'activity:OpportunitiesActivity'],
+    [/VendorVisitActivity/, 'activity:VendorVisitActivity'],
+  ];
+  for (const [re, label] of markers) {
+    if (re.test(focusedActivity) || re.test(uiDumpXml)) return label;
+  }
+  return undefined;
 }
 
 export class MobileClient {
@@ -122,7 +177,127 @@ export class MobileClient {
     if (this.useCloud) return this.requireCloud().ensureAvdRunning(name);
     const info = await this.avd.ensureAvdRunning(name);
     await this.assertMaestroDriverHealthy(info.serial);
-    return info;
+    const deviceUserState = await this.assertDeviceUserStateHealthy(info);
+    return { ...info, heal: { deviceUserState } };
+  }
+
+  /**
+   * Probe the AVD's per-user device state and, if recoverable, self-heal
+   * via `loadSnapshot('registered-test-user')`. Throws `DeviceUserStateError`
+   * on exhaustion.
+   *
+   * Why this lives in `ensureAvdRunning` and not in skill-level pre-flight:
+   * the contract documented across `qa-and-training.md` and
+   * `app-screenshot-capture.md` is "the heal lives in one place; bootstrap,
+   * this pre-flight, and `app-screenshot-capture` Step 3 all funnel through
+   * `mobile_ensure_avd_running`. DRY." This method adds the per-user state
+   * class to the same heal funnel — sibling to `assertMaestroDriverHealthy`.
+   *
+   * Scope of the auto-heal: snapshot-load only. The snapshot is created by
+   * the operator's one-time `/ace:mobile-bootstrap` run (step 10 of the
+   * bootstrap procedure saves `registered-test-user`). When the AVD's
+   * per-user state goes missing between sessions — snapshot revert, AVD
+   * cold-boot wiping user-data, server-side PersonalID de-registration —
+   * loading the snapshot restores the registered state in ~3s. If the
+   * snapshot doesn't exist or doesn't restore the device to `ready`, the
+   * heal exhausts and the operator runs `/ace:mobile-bootstrap` to do the
+   * full registration + invite-check flow (which the auto-heal can't do —
+   * the server-side invite check requires a Connect UI session, out of
+   * scope for the MCP).
+   */
+  async assertDeviceUserStateHealthy(avd: AvdInfo): Promise<DeviceStateHealLog> {
+    if (this.useCloud) {
+      // Cloud workers manage AVD state via the cold-boot path; local
+      // probing doesn't apply. Surface as `unknown` so callers don't
+      // halt on it but the field is still populated for telemetry.
+      return { classified_as: 'unknown', attempted: false };
+    }
+
+    const probe = await this.probeDeviceUserState(avd);
+    if (probe.classified_as === 'ready' || probe.classified_as === 'unknown') {
+      return { ...probe, attempted: false };
+    }
+
+    // `commcare-not-installed` is not snapshot-recoverable (the package
+    // itself is missing). Exhaust immediately with a clear pointer.
+    if (probe.classified_as === 'commcare-not-installed') {
+      throw new DeviceUserStateError(probe.classified_as, [
+        `probe1:${probe.classified_as}`,
+        `loadSnapshot:skipped (snapshot cannot reinstall a missing APK)`,
+      ]);
+    }
+
+    // `needs-app-config` / `needs-personal-id` → try snapshot-load heal.
+    logInfo(
+      `device_user_state: ${probe.classified_as} on ${avd.serial} — attempting snapshot-load heal (registered-test-user)`,
+    );
+    const snapshotName = 'registered-test-user';
+    let loadOutcome: SnapshotResult;
+    try {
+      loadOutcome = await this.avd.loadSnapshot(avd.name, snapshotName);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new DeviceUserStateError(probe.classified_as, [
+        `probe1:${probe.classified_as}`,
+        `loadSnapshot:throw(${msg})`,
+      ]);
+    }
+    if (!loadOutcome.saved) {
+      throw new DeviceUserStateError(probe.classified_as, [
+        `probe1:${probe.classified_as}`,
+        `loadSnapshot:fail(${loadOutcome.output.slice(0, 200)})`,
+      ]);
+    }
+
+    // Re-probe after snapshot load.
+    const recheck = await this.probeDeviceUserState(avd);
+    if (recheck.classified_as === 'ready' || recheck.classified_as === 'unknown') {
+      logInfo(
+        `device_user_state: recovered to ${recheck.classified_as} via snapshot-load on ${avd.serial}`,
+      );
+      return {
+        classified_as: probe.classified_as,
+        attempted: true,
+        healed_via: 'snapshot-load',
+        verified_as: recheck.classified_as,
+        focused_activity: recheck.focused_activity,
+        ui_dump_signal: recheck.ui_dump_signal,
+      };
+    }
+    throw new DeviceUserStateError(probe.classified_as, [
+      `probe1:${probe.classified_as}`,
+      `loadSnapshot:pass`,
+      `probe2:${recheck.classified_as}`,
+    ]);
+  }
+
+  /**
+   * Read-only probe of the AVD's user-facing state. Three signals:
+   *   1. `org.commcare.dalvik` installed?
+   *   2. focused activity (resumed activity from `dumpsys`)
+   *   3. UI hierarchy dump (uiautomator)
+   * Classified into a `DeviceUserStateClass`. No mutation; safe to call
+   * repeatedly. The heal method calls this twice (once before, once
+   * after `loadSnapshot`).
+   */
+  private async probeDeviceUserState(avd: AvdInfo): Promise<{
+    classified_as: DeviceUserStateClass;
+    focused_activity?: string;
+    ui_dump_signal?: string;
+  }> {
+    const packages = await this.avd
+      .listPackages(avd.name, 'org.commcare.dalvik')
+      .catch(() => [] as string[]);
+    const focused = await this.avd
+      .getFocusedActivity(avd.name)
+      .catch(() => '');
+    const dump = await this.avd
+      .captureUiDump(avd.name)
+      .catch(() => ({ xml: '', elements: [] } as UiDumpResult));
+
+    const cls = classifyDeviceUserState(focused, dump.xml, packages);
+    const signal = pickStateSignal(focused, dump.xml);
+    return { classified_as: cls, focused_activity: focused, ui_dump_signal: signal };
   }
 
   /**

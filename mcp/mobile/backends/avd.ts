@@ -433,6 +433,39 @@ export class AvdBackend {
     return null;
   }
 
+  /**
+   * Read the focused-activity line from `dumpsys activity activities`.
+   * Returns the trimmed `mResumedActivity ...` line (empty string if no
+   * match). Cheap probe used by the device-user-state classifier in
+   * `MobileClient` to detect first-launch / "Enter Code" state
+   * (CommCareSetupActivity foregrounded).
+   */
+  async getFocusedActivity(avdName: string): Promise<string> {
+    const avd = await this.ensureAvdRunning(avdName);
+    const r = await this.shell('adb', ['-s', avd.serial, 'shell', 'dumpsys', 'activity', 'activities']);
+    const line = r.stdout.split('\n').find((l) => l.includes('mResumedActivity')) ?? '';
+    return line.trim();
+  }
+
+  /**
+   * List installed packages on the AVD, optionally filtered to a prefix.
+   * Pass `org.commcare.dalvik` to confirm the CommCare-with-Connect client
+   * is installed; CommCare 2.62.0+ IS the Connect client (no separate
+   * `connect`-named package — grep'ing for `connect` returns nothing
+   * even on a healthy install, which is what landed the inverted-
+   * conclusion misdiagnosis on turmeric run 20260513-0616).
+   */
+  async listPackages(avdName: string, filter?: string): Promise<string[]> {
+    const avd = await this.ensureAvdRunning(avdName);
+    const args = ['-s', avd.serial, 'shell', 'pm', 'list', 'packages'];
+    if (filter) args.push(filter);
+    const r = await this.shell('adb', args);
+    return r.stdout
+      .split('\n')
+      .map((l) => l.trim().replace(/^package:/, ''))
+      .filter(Boolean);
+  }
+
   async captureUiDump(avdName: string): Promise<UiDumpResult> {
     const avd = await this.ensureAvdRunning(avdName);
     // Pass an explicit /data/local/tmp path. The default `uiautomator dump`

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { MobileClient } from '../../../mcp/mobile/client.js';
+import { classifyDeviceUserState, MobileClient } from '../../../mcp/mobile/client.js';
 import { setSessionBackend, clearSessionBackend } from '../../../mcp/mobile/backend-toggle.js';
 
 function fakeMaestroAndAvd(opts: {
@@ -237,6 +237,10 @@ describe('MobileClient.ensureAvdRunning', () => {
   it('chains AvdBackend.ensureAvdRunning then assertMaestroDriverHealthy', async () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+      listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
+      getFocusedActivity: vi.fn().mockResolvedValue('mResumedActivity: ActivityRecord{... OpportunitiesActivity}'),
+      captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
+      loadSnapshot: vi.fn(),
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
@@ -252,6 +256,10 @@ describe('MobileClient.ensureAvdRunning', () => {
   it('propagates MaestroDriverError when the driver heal exhausts', async () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+      listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
+      getFocusedActivity: vi.fn().mockResolvedValue('mResumedActivity: ActivityRecord{... OpportunitiesActivity}'),
+      captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
+      loadSnapshot: vi.fn(),
     } as any;
     const maestro = {
       probeDriver: vi.fn()
@@ -261,5 +269,184 @@ describe('MobileClient.ensureAvdRunning', () => {
     } as any;
     const client = new MobileClient({ avd, maestro });
     await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(/Maestro driver.*unhealthy after recovery/);
+  });
+});
+
+describe('classifyDeviceUserState', () => {
+  it('returns commcare-not-installed when org.commcare.dalvik is absent', () => {
+    expect(classifyDeviceUserState('mResumedActivity: Launcher', '<dump/>', [])).toBe(
+      'commcare-not-installed',
+    );
+  });
+
+  it('returns needs-personal-id when the PersonalID drawer is showing', () => {
+    const ui = '<node text="Logged out of PersonalID"/><node text="Reconfigure"/>';
+    expect(
+      classifyDeviceUserState('mResumedActivity: CommCareSetupActivity', ui, ['org.commcare.dalvik']),
+    ).toBe('needs-personal-id');
+  });
+
+  it('returns needs-app-config when the setup activity is foregrounded without PersonalID drawer', () => {
+    expect(
+      classifyDeviceUserState('mResumedActivity: ActivityRecord{... CommCareSetupActivity}', '<dump/>', [
+        'org.commcare.dalvik',
+      ]),
+    ).toBe('needs-app-config');
+  });
+
+  it('returns needs-app-config when the dump shows the Enter Code screen', () => {
+    expect(
+      classifyDeviceUserState('mResumedActivity: SomeUnknownActivity', '<node text="Enter Code"/>', [
+        'org.commcare.dalvik',
+      ]),
+    ).toBe('needs-app-config');
+  });
+
+  it('returns ready when the home/opp tile activity is foregrounded', () => {
+    expect(
+      classifyDeviceUserState('mResumedActivity: ActivityRecord{... OpportunitiesActivity}', '', [
+        'org.commcare.dalvik',
+      ]),
+    ).toBe('ready');
+  });
+
+  it('returns unknown when no markers match', () => {
+    expect(classifyDeviceUserState('mResumedActivity: SomethingElse', '', ['org.commcare.dalvik'])).toBe(
+      'unknown',
+    );
+  });
+
+  it('prefers PersonalID drawer over CommCareSetupActivity (stacked-state case)', () => {
+    const stacked = '<node text="Logged out of PersonalID"/>';
+    expect(
+      classifyDeviceUserState(
+        'mResumedActivity: ActivityRecord{... CommCareSetupActivity}',
+        stacked,
+        ['org.commcare.dalvik'],
+      ),
+    ).toBe('needs-personal-id');
+  });
+});
+
+describe('MobileClient.assertDeviceUserStateHealthy', () => {
+  const readyAvd = { name: 'AVD', serial: 'emulator-5554', status: 'booted' } as const;
+
+  it('skips heal when state is ready', async () => {
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
+      getFocusedActivity: vi
+        .fn()
+        .mockResolvedValue('mResumedActivity: ActivityRecord{... OpportunitiesActivity}'),
+      captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
+      loadSnapshot: vi.fn(),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+    } as any;
+    const client = new MobileClient({ avd, maestro });
+    const r = await client.ensureAvdRunning('AVD');
+    expect(r.heal?.deviceUserState?.classified_as).toBe('ready');
+    expect(r.heal?.deviceUserState?.attempted).toBe(false);
+    expect(avd.loadSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('recovers from needs-personal-id via loadSnapshot', async () => {
+    const focused = vi
+      .fn()
+      .mockResolvedValueOnce('mResumedActivity: CommCareSetupActivity')
+      .mockResolvedValueOnce('mResumedActivity: ActivityRecord{... OpportunitiesActivity}');
+    const dump = vi
+      .fn()
+      .mockResolvedValueOnce({ xml: '<node text="Logged out of PersonalID"/>', elements: [] })
+      .mockResolvedValueOnce({ xml: '', elements: [] });
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
+      getFocusedActivity: focused,
+      captureUiDump: dump,
+      loadSnapshot: vi
+        .fn()
+        .mockResolvedValue({ avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK' }),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+    } as any;
+    const client = new MobileClient({ avd, maestro });
+    const r = await client.ensureAvdRunning('AVD');
+    expect(avd.loadSnapshot).toHaveBeenCalledWith('AVD', 'registered-test-user');
+    expect(r.heal?.deviceUserState).toMatchObject({
+      classified_as: 'needs-personal-id',
+      attempted: true,
+      healed_via: 'snapshot-load',
+      verified_as: 'ready',
+    });
+  });
+
+  it('throws DeviceUserStateError when loadSnapshot fails (saved=false)', async () => {
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
+      getFocusedActivity: vi.fn().mockResolvedValue('mResumedActivity: CommCareSetupActivity'),
+      captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
+      loadSnapshot: vi.fn().mockResolvedValue({
+        avdName: 'AVD',
+        snapshotName: 'registered-test-user',
+        saved: false,
+        output: 'error: snapshot does not exist',
+      }),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+    } as any;
+    const client = new MobileClient({ avd, maestro });
+    await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
+      /AVD per-user state is unhealthy.*needs-app-config.*loadSnapshot:fail/,
+    );
+  });
+
+  it('throws DeviceUserStateError when re-probe after loadSnapshot still shows a wiped state', async () => {
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
+      getFocusedActivity: vi.fn().mockResolvedValue('mResumedActivity: CommCareSetupActivity'),
+      captureUiDump: vi.fn().mockResolvedValue({
+        xml: '<node text="Logged out of PersonalID"/>',
+        elements: [],
+      }),
+      loadSnapshot: vi
+        .fn()
+        .mockResolvedValue({ avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK' }),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+    } as any;
+    const client = new MobileClient({ avd, maestro });
+    await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
+      /AVD per-user state is unhealthy.*probe2:needs-personal-id/,
+    );
+  });
+
+  it('exhausts immediately for commcare-not-installed (no snapshot can install an APK)', async () => {
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      listPackages: vi.fn().mockResolvedValue([]),
+      getFocusedActivity: vi.fn().mockResolvedValue('mResumedActivity: Launcher'),
+      captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
+      loadSnapshot: vi.fn(),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+    } as any;
+    const client = new MobileClient({ avd, maestro });
+    await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
+      /AVD per-user state is unhealthy.*commcare-not-installed.*loadSnapshot:skipped/,
+    );
+    expect(avd.loadSnapshot).not.toHaveBeenCalled();
   });
 });
