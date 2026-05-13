@@ -1632,6 +1632,39 @@ else
   warn "nova_auth: skipped — NOVA_API_KEY not set" "see nova_env warning above; mint at https://commcare.app/settings"
 fi
 
+# 7b. nova_mcp_registered — verify Claude Code's user-scope `nova:` MCP
+# entry exists (the one with NOVA_API_KEY as a bearer header). Without
+# this entry, the architect subagent's `mcp__nova__*` tool namespace is
+# absent and every /nova:autobuild dispatch turn-0-halts. The
+# `plugin:nova:nova` entry (OAuth) is the alternative path, but its
+# accessToken in ~/.claude/.credentials.json gets wiped across sessions
+# and Nova's OAuth refresh-token cascade (voidcraft-labs/nova-plugin#9)
+# makes it unreliable for unattended /ace:run cycles.
+#
+# Structural preventer for the turn-0-halt class — the existing nova_auth
+# probe above only tests the HTTP path, not Claude Code's MCP registry
+# state. Auto-registers (idempotent — same logic as bin/ace-setup) so
+# operators who never run `/ace:setup --force-env` still get a working
+# Nova MCP. Remove when nova-plugin upstream lands stable OAuth.
+if ! command -v claude >/dev/null 2>&1; then
+  warn "nova_mcp_registered: skipped — claude CLI not on PATH" "install Claude Code CLI; without it, this probe cannot inspect or fix the user-scope MCP entry"
+elif claude mcp list 2>/dev/null | grep -qE '^nova:[[:space:]]'; then
+  pass "nova_mcp_registered: user-scope nova MCP entry present"
+elif [ -z "$NOVA_KEY_VAL" ]; then
+  warn "nova_mcp_registered: user-scope nova entry missing AND NOVA_API_KEY not set" "see nova_env warning above; mint a key at https://commcare.app/settings, save to 1Password item \"ACE - Nova\" / field \`api_key\`, then /ace:setup --force-env"
+else
+  # Auto-register. Idempotent: remove any stale entry first, then re-add.
+  claude mcp remove nova --scope user >/dev/null 2>&1 || true
+  ADD_OUT="$(claude mcp add nova "https://mcp.commcare.app/mcp" \
+    --transport http --scope user \
+    --header "Authorization: Bearer $NOVA_KEY_VAL" 2>&1)"
+  if claude mcp list 2>/dev/null | grep -qE '^nova:[[:space:]]'; then
+    pass "nova_mcp_registered: user-scope nova MCP entry auto-registered (was missing) — run /reload-plugins to surface mcp__nova__* tools in the current session"
+  else
+    fail "nova_mcp_registered: auto-register failed" "$(printf '%s' "$ADD_OUT" | head -3); manually run: claude mcp add nova https://mcp.commcare.app/mcp --transport http --scope user --header \"Authorization: Bearer \$NOVA_API_KEY\""
+  fi
+fi
+
 # 8. ace-mobile — local-only MCP (Maestro + adb + AVD + APK). It does not
 # authenticate against any remote service at runtime, so there is no
 # "live auth probe" distinct from the others. The auth-adjacent things
