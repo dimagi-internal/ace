@@ -177,97 +177,101 @@ export class MobileClient {
     if (this.useCloud) return this.requireCloud().ensureAvdRunning(name);
     const info = await this.avd.ensureAvdRunning(name);
     await this.assertMaestroDriverHealthy(info.serial);
-    const deviceUserState = await this.assertDeviceUserStateHealthy(info);
+    const deviceUserState = await this.restoreDeviceUserState(info);
     return { ...info, heal: { deviceUserState } };
   }
 
   /**
-   * Probe the AVD's per-user device state and, if recoverable, self-heal
-   * via `loadSnapshot('registered-test-user')`. Throws `DeviceUserStateError`
-   * on exhaustion.
+   * Restore the AVD's per-user state to the known precondition by
+   * unconditionally loading `registered-test-user`, then verify the
+   * load landed on a usable state. Throws `DeviceUserStateError` on
+   * snapshot failure OR verification failure.
    *
-   * Why this lives in `ensureAvdRunning` and not in skill-level pre-flight:
-   * the contract documented across `qa-and-training.md` and
-   * `app-screenshot-capture.md` is "the heal lives in one place; bootstrap,
-   * this pre-flight, and `app-screenshot-capture` Step 3 all funnel through
-   * `mobile_ensure_avd_running`. DRY." This method adds the per-user state
-   * class to the same heal funnel — sibling to `assertMaestroDriverHealthy`.
+   * **Design pattern: preconditions are restored, not adapted.** Every
+   * Phase 6 dispatch needs the AVD at the Connect home with the test
+   * user signed in. Rather than probe-and-adapt to whatever state we
+   * find (a class of complexity that landed an inverted-conclusion bug
+   * live in 2026-05-13 turmeric run 20260513-0616), we always restore
+   * to the known state via `loadSnapshot`. ~3s round-trip; deterministic
+   * starting state every Phase 6 run. See CLAUDE.md § Phase preconditions.
    *
-   * Scope of the auto-heal: snapshot-load only. The snapshot is created by
-   * the operator's one-time `/ace:mobile-bootstrap` run (step 10 of the
-   * bootstrap procedure saves `registered-test-user`). When the AVD's
-   * per-user state goes missing between sessions — snapshot revert, AVD
-   * cold-boot wiping user-data, server-side PersonalID de-registration —
-   * loading the snapshot restores the registered state in ~3s. If the
-   * snapshot doesn't exist or doesn't restore the device to `ready`, the
-   * heal exhausts and the operator runs `/ace:mobile-bootstrap` to do the
-   * full registration + invite-check flow (which the auto-heal can't do —
-   * the server-side invite check requires a Connect UI session, out of
-   * scope for the MCP).
+   * **Cloud backend follows the same contract via a different mechanism.**
+   * `backends/cloud.ts` documents that each `/api/mobile/ensure-running`
+   * call cold-boots the AVD and runs the registration recipes against
+   * it, producing a fresh demo user every time (~3-4 min). Cloud's
+   * cold-boot IS the restore mechanism; no explicit snapshot-load is
+   * needed because the AMI ships the registration recipes built-in.
+   * The contract — *"after `MobileClient.ensureAvdRunning` returns, the
+   * device is at the Connect home, signed in as the test user"* — is
+   * identical across backends; only the mechanism differs.
+   *
+   * **Recovery escalation.** If the local snapshot doesn't exist (first
+   * machine setup, snapshot deleted) or doesn't restore the device to
+   * `ready` (snapshot corruption, post-snapshot APK upgrade drift), the
+   * heal throws `DeviceUserStateError` with the precise class so the
+   * operator knows whether to re-snapshot or re-bootstrap. The full
+   * registration + server-side `${ACE_E2E_PHONE}` invite check is
+   * `/ace:mobile-bootstrap`'s job; the auto-heal does not duplicate it.
+   *
+   * **Why the classifier still exists.** Post-load verification — when
+   * the snapshot loaded but state is somehow still wrong (corrupted
+   * snapshot, APK upgrade drift) the classifier names which class is
+   * wrong so the operator gets a precise label, not "snapshot didn't
+   * work." That's the only path the classifier fires on now.
    */
-  async assertDeviceUserStateHealthy(avd: AvdInfo): Promise<DeviceStateHealLog> {
+  async restoreDeviceUserState(avd: AvdInfo): Promise<DeviceStateHealLog> {
     if (this.useCloud) {
-      // Cloud workers manage AVD state via the cold-boot path; local
-      // probing doesn't apply. Surface as `unknown` so callers don't
-      // halt on it but the field is still populated for telemetry.
+      // Cloud's cold-boot path is the equivalent restore mechanism;
+      // see `backends/cloud.ts` header comment. Surface `unknown` so
+      // callers don't gate on the local-only field.
       return { classified_as: 'unknown', attempted: false };
     }
 
-    const probe = await this.probeDeviceUserState(avd);
-    if (probe.classified_as === 'ready' || probe.classified_as === 'unknown') {
-      return { ...probe, attempted: false };
-    }
-
-    // `commcare-not-installed` is not snapshot-recoverable (the package
-    // itself is missing). Exhaust immediately with a clear pointer.
-    if (probe.classified_as === 'commcare-not-installed') {
-      throw new DeviceUserStateError(probe.classified_as, [
-        `probe1:${probe.classified_as}`,
-        `loadSnapshot:skipped (snapshot cannot reinstall a missing APK)`,
-      ]);
-    }
-
-    // `needs-app-config` / `needs-personal-id` → try snapshot-load heal.
-    logInfo(
-      `device_user_state: ${probe.classified_as} on ${avd.serial} — attempting snapshot-load heal (registered-test-user)`,
-    );
+    // Restore: ALWAYS load the snapshot. No pre-probe. The snapshot
+    // produces a deterministic starting state every Phase 6 run.
     const snapshotName = 'registered-test-user';
+    logInfo(
+      `device_user_state: restoring to known state via loadSnapshot(${snapshotName}) on ${avd.serial}`,
+    );
     let loadOutcome: SnapshotResult;
     try {
       loadOutcome = await this.avd.loadSnapshot(avd.name, snapshotName);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      throw new DeviceUserStateError(probe.classified_as, [
-        `probe1:${probe.classified_as}`,
+      throw new DeviceUserStateError('snapshot-load-failed', [
         `loadSnapshot:throw(${msg})`,
       ]);
     }
     if (!loadOutcome.saved) {
-      throw new DeviceUserStateError(probe.classified_as, [
-        `probe1:${probe.classified_as}`,
+      throw new DeviceUserStateError('snapshot-load-failed', [
         `loadSnapshot:fail(${loadOutcome.output.slice(0, 200)})`,
       ]);
     }
 
-    // Re-probe after snapshot load.
-    const recheck = await this.probeDeviceUserState(avd);
-    if (recheck.classified_as === 'ready' || recheck.classified_as === 'unknown') {
+    // Verify the restore actually landed on a usable state.
+    const verify = await this.probeDeviceUserState(avd);
+    if (verify.classified_as === 'ready' || verify.classified_as === 'unknown') {
       logInfo(
-        `device_user_state: recovered to ${recheck.classified_as} via snapshot-load on ${avd.serial}`,
+        `device_user_state: restored to ${verify.classified_as} via snapshot-load on ${avd.serial}`,
       );
       return {
-        classified_as: probe.classified_as,
+        classified_as: verify.classified_as,
         attempted: true,
         healed_via: 'snapshot-load',
-        verified_as: recheck.classified_as,
-        focused_activity: recheck.focused_activity,
-        ui_dump_signal: recheck.ui_dump_signal,
+        verified_as: verify.classified_as,
+        focused_activity: verify.focused_activity,
+        ui_dump_signal: verify.ui_dump_signal,
       };
     }
-    throw new DeviceUserStateError(probe.classified_as, [
-      `probe1:${probe.classified_as}`,
-      `loadSnapshot:pass`,
-      `probe2:${recheck.classified_as}`,
+
+    // Snapshot loaded but state is still wiped — snapshot corruption
+    // or post-snapshot APK upgrade drift. The classifier surfaces
+    // which class so the operator knows whether to re-snapshot or
+    // re-bootstrap.
+    throw new DeviceUserStateError(verify.classified_as, [
+      'loadSnapshot:pass',
+      `verify:${verify.classified_as}`,
+      `signal:${verify.ui_dump_signal ?? 'none'}`,
     ]);
   }
 
@@ -277,8 +281,8 @@ export class MobileClient {
    *   2. focused activity (resumed activity from `dumpsys`)
    *   3. UI hierarchy dump (uiautomator)
    * Classified into a `DeviceUserStateClass`. No mutation; safe to call
-   * repeatedly. The heal method calls this twice (once before, once
-   * after `loadSnapshot`).
+   * repeatedly. Today the only caller is `restoreDeviceUserState`'s
+   * post-load verification step.
    */
   private async probeDeviceUserState(avd: AvdInfo): Promise<{
     classified_as: DeviceUserStateClass;

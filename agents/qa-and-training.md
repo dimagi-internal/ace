@@ -103,32 +103,31 @@ silent-failure prevention learned from earlier real-world dogfood.
       Don't grep for `connect`; you'll find nothing and incorrectly
       conclude Connect is missing when it's installed and just in a
       wiped-state. `mobile-bootstrap` handles installation.
-- [ ] **The AVD's per-user device-state is healthy.** Auto-healed
-      since 0.13.201 — `mobile_ensure_avd_running` includes the
-      AVD user-state class in its heal funnel, alongside the Maestro
-      driver check. Three signals get probed (focused activity from
-      `dumpsys activity activities | grep mResumedActivity`; UI dump
-      via `mobile_capture_ui_dump`; package list via `pm list packages
-      org.commcare.dalvik`); the classifier (`classifyDeviceUserState`
-      in `mcp/mobile/client.ts`) emits one of `ready` /
-      `commcare-not-installed` / `needs-app-config` /
-      `needs-personal-id` / `unknown`.
-      - On `ready` / `unknown` — proceed.
-      - On `needs-app-config` / `needs-personal-id` — auto-heal via
-        `loadSnapshot('registered-test-user')` and re-probe. If
-        re-probe lands on `ready`, proceed silently.
-      - On `commcare-not-installed` OR heal exhaustion — throws
-        `DeviceUserStateError` and Phase 6 surfaces the named
-        recovery (`/ace:mobile-bootstrap`).
-      The `AvdInfo.heal.deviceUserState` field on the
-      `mobile_ensure_avd_running` response carries `{ classified_as,
+- [ ] **The AVD's per-user state is restored to the precondition.**
+      Per the *"phase preconditions are restored, not adapted"*
+      pattern (see `CLAUDE.md § Phase preconditions`),
+      `mobile_ensure_avd_running` unconditionally restores the AVD
+      to the known starting state every dispatch — no detect-and-adapt
+      logic. Mechanism by backend:
+      - **Local (since 0.13.202):** `loadSnapshot('registered-test-user')`,
+        always. ~3s. The snapshot is created once per machine by
+        `/ace:mobile-bootstrap`.
+      - **Cloud:** each `/api/mobile/ensure-running` cold-boots the
+        AVD and runs the registration recipes (see
+        `backends/cloud.ts` header). ~3-4 min, same contract.
+      `AvdInfo.heal.deviceUserState` carries `{ classified_as,
       attempted, healed_via, verified_as, focused_activity,
-      ui_dump_signal }` — surface that in your halt return so the
-      operator sees what was actually on screen, not a guessed
-      classification.
-      `skills/app-screenshot-capture/SKILL.md § Step 2.5` documents
-      the classifier table for direct-`/ace:step` callers that bypass
-      this funnel.
+      ui_dump_signal }` — surface that in your halt return on
+      failure so the operator sees what was actually on screen.
+      Recovery escalation: a `DeviceUserStateError` with code
+      `snapshot-load-failed` means the snapshot doesn't exist (first
+      machine setup, deleted) — operator runs `/ace:mobile-bootstrap`.
+      A `DeviceUserStateError` with one of the wipe classes in the
+      `verify:` segment (`needs-personal-id` /
+      `needs-app-config` / `commcare-not-installed`) means the
+      snapshot loaded but state is still wrong — snapshot corruption
+      or post-snapshot APK upgrade drift; same remediation
+      (`/ace:mobile-bootstrap` re-snapshots).
 - [ ] **The opp-specific Learn + Deliver apps are claimable on the
       AVD via the test user.** Phase 4 `connect-opp-setup` should
       have pre-invited `${ACE_E2E_PHONE}`. Without an opp invite,
