@@ -74,6 +74,45 @@ between major form sections):
   fail-loud gate, not just a substitution pass)
 - Validate via `mobile_validate_recipe` before writing
 
+#### Maestro inputText: scalar vs mapping form
+
+`inputText` has two valid shapes — pick the right one based on
+whether you need any options:
+
+```yaml
+# Scalar form — text only, no options
+- inputText: "Apcolite Stores"
+
+# Mapping form — REQUIRED when you need any inputText option
+# (optional, label, id, point, etc.)
+- inputText:
+    text: "Apcolite Stores"
+    optional: true
+```
+
+The combination that **does not parse** is the scalar form with
+a sibling option key under the same list item:
+
+```yaml
+- inputText: "Apcolite Stores"
+    optional: true            # ← Maestro rejects this at parse time
+```
+
+This is invalid YAML — the `-` opens a list item that's *both* a
+scalar (`inputText: "..."`) and a mapping (`optional: true`).
+Maestro's parser surfaces it as:
+`expected <block end>, but found '<block mapping start>'`.
+
+The same rule applies to every Maestro command that has both a
+scalar and a mapping form (`tapOn`, `assertVisible`,
+`extendedWaitUntil`, etc.): use the mapping form whenever you need
+*any* option beyond the bare value.
+
+Caught in vivo on leep Phase 5 attempt 8 (2026-05-12) — J1.yaml
+emitted the broken sibling form, Phase 5 halted, the cloud
+emulator stack returned a full structured error envelope with the
+Maestro parse-error frame which named this exact pattern.
+
 **Use live labels from Nova's `get_form` response, not the PDD
 brief's labels** (per [#115 finding 2](https://github.com/jjackson/ace/issues/115)).
 The PDD brief uses pre-build naming conventions (`L0 — Why this
