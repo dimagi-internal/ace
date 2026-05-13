@@ -113,6 +113,118 @@ emitted the broken sibling form, Phase 5 halted, the cloud
 emulator stack returned a full structured error envelope with the
 Maestro parse-error frame which named this exact pattern.
 
+#### Entry-point template — Connect-integrated flow
+
+ACE-Phase-5 recipes drive a CommCare install that's **Connect-
+integrated**, not standalone. The post-`launchApp` surface on
+CommCare 2.62.0 is `screen_first_start_main` (Welcome to CommCare)
+with buttons like `GO TO CONNECT MENU`, `Scan Barcode`,
+`Enter Code` — there is **no app-name tile** to tap. Apps reach
+the device via Connect's claim → Start workflow.
+
+The mistake to avoid (caught on leep Phase 5 attempt 10):
+
+```yaml
+# WRONG — assumes the standalone-CommCare model, which doesn't exist
+- launchApp
+- tapOn:
+    text: "ACE - LEEP Paint Surveillance - Deliver"   # ← no such tile
+```
+
+Right pattern: chain the static palette to land at the per-journey
+form, then add journey-specific steps:
+
+```yaml
+# RIGHT — composes the static palette
+appId: org.commcare.dalvik
+---
+# (a) Connect login, navigates to Opportunities home
+- runFlow:
+    file: connect-login.yaml
+# (b) For each opp's first journey, claim+Start the opp once
+- runFlow:
+    file: connect-claim-opp.yaml
+    env:
+      OPP_NAME: ${OPP_NAME}
+# (c) For Deliver journeys: deliver-launch (TODO: add to static palette)
+#     For Learn journeys:   learn-launch.yaml
+- runFlow:
+    file: learn-launch.yaml
+# ... journey-specific module/form steps below, using live labels
+#     from Nova get_form (see "Use live labels" section below)
+- takeScreenshot: "sc-J<n>-final"
+```
+
+The static palette lives at `mcp/mobile/recipes/static/`:
+- `connect-login.yaml` — splash → nav drawer → Sign In → Opportunities home
+- `connect-claim-opp.yaml` — opp-list → tap opp → Start → handoff
+- `learn-launch.yaml` — opp detail → Start Learning → Learn home
+- `form-advance.yaml` / `form-submit.yaml` — per-form helpers
+
+Each `is_smoke=true` journey's recipe **must** include the Connect-
+login + opp-claim prefix so it can run from a cold boot (the cloud
+backend's standard state). Non-smoke journeys can assume warm state
+and skip the prefix — but flag that assumption in the YAML header
+comment so a reviewer doesn't try to run them cold.
+
+Caught in vivo on leep Phase 5 attempt 10 (2026-05-13). Before this
+guidance landed, J1.yaml and J7.yaml emitted the broken `launchApp +
+tapOn:<app-name>` model, the live `tapOn` never found a target, and
+the recipes failed with selector-miss errors — even though the
+emulator + Maestro + cloud-stack were healthy.
+
+#### Maestro feature-compat — cloud-backend lag
+
+The cloud emulator's bundled Maestro (1.36-ish per its CLI banner)
+is older than what the local-AVD backend ships. Some Maestro
+properties are scalar-form-only or unsupported on cloud:
+
+| Property | Local AVD | Cloud |
+|---|---|---|
+| `visibilityPercentage` | works | **rejects with `Unknown Property`** |
+| `point: "x,y"` | works | works |
+| `id:` matcher | works | works |
+| `text:` matcher | works | works |
+| `index:` for multi-match | works | works |
+| `optional: true` (under mapping form) | works | works |
+
+When in doubt, omit Maestro version-specific properties — the
+default substring + visibility threshold is usually enough.
+Re-baseline this table when the cloud AMI gets a Maestro version
+bump (track via `ACE_MOBILE_AMI_VERSION`).
+
+Caught in vivo on leep Phase 5 attempt 10 — `connect-claim-opp.yaml`
+shipped with `visibilityPercentage: 30`, the cloud Maestro rejected
+the whole recipe with `Unknown Property` before the first step
+executed. Property removed in 0.13.194; this table is the prevention
+for the future class of bug.
+
+#### Selector placeholder gate — STRICT
+
+Every `tapOn:text:` matcher in a generated recipe MUST be either:
+- A **Nova-confirmed live form-field label** (read via `get_form`
+  or `get_module` per the "Use live labels" section below), OR
+- A `${SELECTOR:logical-name}` placeholder that resolves against
+  `mcp/mobile/selectors/connect-<apk-version>.yaml` via
+  `mobile_resolve_selectors` (Step 3.4)
+
+The reason the placeholder path is mandatory for non-form-label
+matchers: Connect-integrated CommCare has surface elements
+(nav-drawer items, opp-card buttons, Start buttons, etc.) whose
+labels are NOT in `get_form`. If a recipe hard-codes their text,
+the matcher drifts silently when Connect's UI updates. The
+selector map at `connect-<apk>.yaml` is the **single point of
+calibration** — populate it via `connect-baseline-screenshots`,
+then every recipe that references the same logical name updates
+in lockstep.
+
+The fallback rule: if you're tempted to write
+`tapOn: { text: "Some Surface Label" }` and that label is NOT
+from Nova's `get_form`, STOP. Add a logical name to the selector
+map (or a placeholder for one) and use `${SELECTOR:<name>}`
+instead. The agent at Step 3.4 will halt with `[BLOCKER]` if any
+unresolved placeholder ships — that's the forcing function.
+
 **Use live labels from Nova's `get_form` response, not the PDD
 brief's labels** (per [#115 finding 2](https://github.com/jjackson/ace/issues/115)).
 The PDD brief uses pre-build naming conventions (`L0 — Why this
