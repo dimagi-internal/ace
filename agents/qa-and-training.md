@@ -77,25 +77,26 @@ avoids burning AVD time on screenshots that don't change.
 Before dispatching Step 1, verify these. Each one is a class of
 silent-failure prevention learned from earlier real-world dogfood.
 
-- [ ] **AVD is booted, authorized, AND the Maestro driver gRPC is
-      responsive.** Two probes, both required:
-      1. `adb -s ${ACE_AVD_NAME serial} shell echo hi` returns "hi".
-      2. `mobile_probe_maestro_driver` returns `{ healthy: true }` —
-         confirms the on-device `dev.mobile.maestro` driver is up on
-         the AVD's adb port. **This second probe is what catches the
-         class of failure that wasted the bulk of pre-0.13.165 Phase
-         5 runs: AVD booted, `adb` healthy, but `maestro test`
-         immediately hits `deviceInfo … UNAVAILABLE` because the
-         driver app's gRPC server is wedged.** `bin/ace-doctor`
-         reports both under `mobile_infra:` and the per-component
-         `Maestro driver:` line in the [Mobile] block.
-      Recovery on either probe failing is `/ace:mobile-bootstrap` —
-      bootstrap re-invokes `mobile_ensure_avd_running`, which since
-      0.13.165 auto-heals the Maestro driver (force-stop + uninstall
-      both halves of `dev.mobile.maestro`, then re-probe to trigger
-      Maestro CLI's auto-reinstall). The heal lives in one place;
-      bootstrap, this pre-flight, and `app-screenshot-capture` Step 3
-      all funnel through `mobile_ensure_avd_running`. DRY.
+- [ ] **AVD is booted + Maestro driver healthy + per-user state
+      restored** — all three are owned by a SINGLE call to
+      `mobile_ensure_avd_running` (since 0.13.204). Do NOT pre-flight
+      with read-only probes (`mobile_probe_maestro_driver`,
+      `mobile_capture_ui_dump`) and halt on them. Read-only probes
+      cannot heal; halting on them means the heal funnel never runs.
+      The contract:
+        - `mobile_ensure_avd_running` returns → AVD is fully ready
+          (booted, Maestro driver responsive, snapshot or bootstrap
+          restored). Trust the return. Surface
+          `AvdInfo.heal.deviceUserState` to the caller for telemetry.
+        - `mobile_ensure_avd_running` throws (`AvdBootError`,
+          `MaestroDriverError`, `DeviceUserStateError`) → halt with
+          the typed error class + heal-attempt log in the halt return.
+      Single entry point, single point of failure, single point of
+      diagnosis. Pre-0.13.204 versions of this checklist called the
+      read-only `mobile_probe_maestro_driver` as a halt gate and saw
+      Phase 6 halt on driver-wedge states the heal would have fixed
+      — that bug landed live in turmeric run 20260513-0616 retry on
+      v0.13.203. Removed by the single-funnel rewrite.
 - [ ] **CommCare 2.62.0+ is installed on the AVD.** `adb shell pm
       list packages org.commcare.dalvik` returns the package.
       `org.commcare.dalvik` IS the Connect-enabled CommCare client —

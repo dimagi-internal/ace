@@ -407,13 +407,13 @@ describe('MobileClient.restoreDeviceUserState', () => {
     // pre-0.13.203 "throw immediately" behavior.
     const client = new MobileClient({ avd, maestro, bootstrapConfig: null });
     await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
-      /AVD per-user state is unhealthy.*snapshot-load-failed.*bootstrapConfig:absent/,
+      /AVD per-user state is unhealthy.*loadSnapshot:fail.*bootstrapConfig:absent/,
     );
-    // The post-load probe shouldn't even fire when tier-2 didn't run.
+    // The post-load probe shouldn't even fire when tier-1 load itself failed.
     expect(avd.getFocusedActivity).not.toHaveBeenCalled();
   });
 
-  it('throws snapshot-load-failed when loadSnapshot throws AND no bootstrap config', async () => {
+  it('throws when loadSnapshot throws AND no bootstrap config', async () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi.fn(),
@@ -427,7 +427,7 @@ describe('MobileClient.restoreDeviceUserState', () => {
     } as any;
     const client = new MobileClient({ avd, maestro, bootstrapConfig: null });
     await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
-      /AVD per-user state is unhealthy.*snapshot-load-failed.*loadSnapshot:throw/,
+      /AVD per-user state is unhealthy.*loadSnapshot:throw.*bootstrapConfig:absent/,
     );
   });
 
@@ -569,7 +569,7 @@ describe('MobileClient.restoreDeviceUserState', () => {
     expect(r.heal?.deviceUserState?.bootstrap_steps).toContain('snapshot-saved');
   });
 
-  it('throws with the precise verify class when snapshot loads but state is still wiped (snapshot corruption / APK drift)', async () => {
+  it('throws with the precise verify class when snapshot loads but state is still wiped AND no bootstrap config', async () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
@@ -586,10 +586,83 @@ describe('MobileClient.restoreDeviceUserState', () => {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
       repairDriver: vi.fn(),
     } as any;
-    const client = new MobileClient({ avd, maestro });
+    // Disable tier-2 to confirm the throw shape includes the verify class.
+    const client = new MobileClient({ avd, maestro, bootstrapConfig: null });
     await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
       /AVD per-user state is unhealthy.*needs-personal-id.*verify:needs-personal-id/,
     );
+  });
+
+  it('tier-2 escalates when snapshot loads BUT content is stale (verify-wiped class — snapshot corruption)', async () => {
+    // The bug surfaced live in turmeric run 20260513-0616 Phase 6 retry
+    // on v0.13.203: snapshot existed and loadSnapshot returned saved:true,
+    // but the snapshot itself had been saved at a moment when the device
+    // was already PersonalID-logged-out. Pre-this-fix, restoreDeviceUserState
+    // threw on verify-wiped instead of escalating to tier-2 to re-register
+    // and re-snapshot.
+    const bootstrapConfig = {
+      apkVersion: `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      testUser: {
+        phone: '+74260000100',
+        phoneLocal: '4260000100',
+        countryCode: '7',
+        pin: '1234',
+        backupCode: 'backup',
+        name: 'ACE Test',
+      },
+    };
+    const fetchImpl = vi.fn(); // APK already installed, fetch shouldn't fire
+    // First captureUiDump = post-load verify (stale snapshot, PersonalID drawer
+    // visible). Second captureUiDump = post-bootstrap verify (ready).
+    const captureUiDump = vi
+      .fn()
+      .mockResolvedValueOnce({ xml: '<node text="Logged out of PersonalID"/>', elements: [] })
+      .mockResolvedValueOnce({ xml: '', elements: [] });
+    const getFocusedActivity = vi
+      .fn()
+      .mockResolvedValueOnce('mResumedActivity: CommCareSetupActivity')
+      .mockResolvedValueOnce('mResumedActivity: ActivityRecord{... OpportunitiesActivity}');
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
+      getFocusedActivity,
+      captureUiDump,
+      loadSnapshot: vi
+        .fn()
+        .mockResolvedValue({ avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK' }),
+      installApk: vi.fn(),
+      saveSnapshot: vi.fn().mockResolvedValue({
+        avdName: 'AVD',
+        snapshotName: 'registered-test-user',
+        saved: true,
+        output: 'OK',
+      }),
+      setGmsEnabled: vi.fn().mockResolvedValue(undefined),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+      runRecipe: vi.fn().mockResolvedValue({
+        status: 'pass',
+        exitCode: 0,
+        stdout: 'PHONE_ALREADY_REGISTERED',
+        stderr: '',
+        screenshotsDir: '/tmp/',
+        screenshots: [],
+      }),
+    } as any;
+    const client = new MobileClient({ avd, maestro, bootstrapConfig, fetchImpl });
+    const r = await client.ensureAvdRunning('AVD');
+    // Tier-1 fired (loadSnapshot succeeded) but verify caught the stale
+    // content → escalated to tier-2 which re-registered + re-saved.
+    expect(avd.loadSnapshot).toHaveBeenCalledTimes(1);
+    expect(avd.saveSnapshot).toHaveBeenCalledWith('AVD', 'registered-test-user');
+    expect(r.heal?.deviceUserState).toMatchObject({
+      attempted: true,
+      healed_via: 'local-bootstrap',
+      verified_as: 'ready',
+    });
+    expect(r.heal?.deviceUserState?.bootstrap_steps).toContain('snapshot-saved');
   });
 
   it('cloud backend short-circuits (cold-boot semantics are the restore mechanism)', async () => {

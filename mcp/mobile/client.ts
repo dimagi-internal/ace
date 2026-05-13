@@ -272,13 +272,83 @@ export class MobileClient {
   async restoreDeviceUserState(avd: AvdInfo): Promise<DeviceStateHealLog> {
     if (this.useCloud) {
       // Cloud's cold-boot path is the equivalent restore mechanism;
-      // see `backends/cloud.ts` header comment. Surface `unknown` so
-      // callers don't gate on the local-only field.
+      // see `backends/cloud.ts` header comment.
       return { classified_as: 'unknown', attempted: false };
     }
 
-    // Restore: ALWAYS load the snapshot. No pre-probe. The snapshot
-    // produces a deterministic starting state every Phase 6 run.
+    // Tier 1: snapshot-load + post-load verify.
+    const tier1 = await this.tryTier1SnapshotLoad(avd);
+    if (tier1.healLog) {
+      logInfo(
+        `device_user_state: restored to ${tier1.healLog.verified_as} via snapshot-load on ${avd.serial}`,
+      );
+      return tier1.healLog;
+    }
+
+    // Tier 1 didn't yield ready — either loadSnapshot itself failed
+    // (snapshot missing, console error) OR the snapshot loaded but its
+    // content is stale (post-load verify still showed a wipe class —
+    // snapshot corruption, post-snapshot APK upgrade drift, etc.).
+    // Both classes escalate to tier-2 (run the bootstrap-equivalent
+    // local steps inline) IF we have credentials. Phase 4's
+    // `connect-opp-setup` already invited `${ACE_E2E_PHONE}` to the
+    // run's opp inside `/ace:run`, so `check_number_for_existing_invites`
+    // is satisfied — registerTestUser won't hit the CONNECT-ID-3F crash.
+    if (!this.bootstrapConfig) {
+      throw new DeviceUserStateError(tier1.classified_as, [
+        ...tier1.attempts,
+        `bootstrapConfig:absent (ACE_E2E_* / ACE_CONNECT_APK_VERSION env vars not set; run /ace:setup --force-env then retry)`,
+      ]);
+    }
+    logInfo(
+      `device_user_state: tier-1 outcome=${tier1.outcome} on ${avd.serial} — escalating to tier-2 bootstrap`,
+    );
+    const bootstrapSteps = await this.runLocalBootstrap(avd);
+    const verifyAfterBootstrap = await this.probeDeviceUserState(avd);
+    if (
+      verifyAfterBootstrap.classified_as === 'ready' ||
+      verifyAfterBootstrap.classified_as === 'unknown'
+    ) {
+      logInfo(
+        `device_user_state: restored to ${verifyAfterBootstrap.classified_as} via local-bootstrap on ${avd.serial}`,
+      );
+      return {
+        classified_as: verifyAfterBootstrap.classified_as,
+        attempted: true,
+        healed_via: 'local-bootstrap',
+        verified_as: verifyAfterBootstrap.classified_as,
+        focused_activity: verifyAfterBootstrap.focused_activity,
+        ui_dump_signal: verifyAfterBootstrap.ui_dump_signal,
+        bootstrap_steps: bootstrapSteps,
+      };
+    }
+    // Both tiers exhausted — surface the precise final class for
+    // operator triage.
+    throw new DeviceUserStateError(verifyAfterBootstrap.classified_as, [
+      ...tier1.attempts,
+      `runLocalBootstrap:pass(${bootstrapSteps.join(',')})`,
+      `verify:${verifyAfterBootstrap.classified_as}`,
+      `signal:${verifyAfterBootstrap.ui_dump_signal ?? 'none'}`,
+    ]);
+  }
+
+  /**
+   * Run tier-1 (snapshot-load + verify). Returns:
+   *   - `healLog` populated when the snapshot loaded AND verified as
+   *     ready/unknown (success — caller returns immediately).
+   *   - `outcome` describes WHY tier-1 didn't yield ready:
+   *     * `load-failed` — loadSnapshot threw or returned saved:false.
+   *     * `verify-wiped` — load succeeded but post-load probe still
+   *       classified as a wipe class (snapshot content is stale).
+   *   `attempts` is the structured log for inclusion in any halt
+   *   message; the caller appends tier-2 attempts to it.
+   */
+  private async tryTier1SnapshotLoad(avd: AvdInfo): Promise<{
+    outcome: 'ready' | 'load-failed' | 'verify-wiped';
+    classified_as: DeviceUserStateClass;
+    attempts: string[];
+    healLog?: DeviceStateHealLog;
+  }> {
     const snapshotName = 'registered-test-user';
     logInfo(
       `device_user_state: restoring to known state via loadSnapshot(${snapshotName}) on ${avd.serial}`,
@@ -288,77 +358,44 @@ export class MobileClient {
       loadOutcome = await this.avd.loadSnapshot(avd.name, snapshotName);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      throw new DeviceUserStateError('snapshot-load-failed', [
-        `loadSnapshot:throw(${msg})`,
-      ]);
-    }
-    if (!loadOutcome.saved) {
-      // Tier 2: snapshot doesn't exist (fresh machine, snapshot deleted,
-      // or emulator console couldn't load it). Run the bootstrap-equivalent
-      // local steps inline IF we have credentials. Phase 4 already invited
-      // `${ACE_E2E_PHONE}` to the run's opp, so `check_number_for_existing_invites`
-      // is satisfied — registerTestUser won't hit the CONNECT-ID-3F crash.
-      if (!this.bootstrapConfig) {
-        throw new DeviceUserStateError('snapshot-load-failed', [
-          `loadSnapshot:fail(${loadOutcome.output.slice(0, 200)})`,
-          `bootstrapConfig:absent (ACE_E2E_* / ACE_CONNECT_APK_VERSION env vars not set; run /ace:setup --force-env then retry)`,
-        ]);
-      }
-      logInfo(
-        `device_user_state: snapshot missing on ${avd.serial} — running local bootstrap (tier-2)`,
-      );
-      const bootstrapSteps = await this.runLocalBootstrap(avd);
-      const verifyAfterBootstrap = await this.probeDeviceUserState(avd);
-      if (
-        verifyAfterBootstrap.classified_as === 'ready' ||
-        verifyAfterBootstrap.classified_as === 'unknown'
-      ) {
-        logInfo(
-          `device_user_state: restored to ${verifyAfterBootstrap.classified_as} via local-bootstrap on ${avd.serial}`,
-        );
-        return {
-          classified_as: verifyAfterBootstrap.classified_as,
-          attempted: true,
-          healed_via: 'local-bootstrap',
-          verified_as: verifyAfterBootstrap.classified_as,
-          focused_activity: verifyAfterBootstrap.focused_activity,
-          ui_dump_signal: verifyAfterBootstrap.ui_dump_signal,
-          bootstrap_steps: bootstrapSteps,
-        };
-      }
-      throw new DeviceUserStateError(verifyAfterBootstrap.classified_as, [
-        `loadSnapshot:fail`,
-        `runLocalBootstrap:pass(${bootstrapSteps.join(',')})`,
-        `verify:${verifyAfterBootstrap.classified_as}`,
-        `signal:${verifyAfterBootstrap.ui_dump_signal ?? 'none'}`,
-      ]);
-    }
-
-    // Verify the restore actually landed on a usable state.
-    const verify = await this.probeDeviceUserState(avd);
-    if (verify.classified_as === 'ready' || verify.classified_as === 'unknown') {
-      logInfo(
-        `device_user_state: restored to ${verify.classified_as} via snapshot-load on ${avd.serial}`,
-      );
       return {
-        classified_as: verify.classified_as,
-        attempted: true,
-        healed_via: 'snapshot-load',
-        verified_as: verify.classified_as,
-        focused_activity: verify.focused_activity,
-        ui_dump_signal: verify.ui_dump_signal,
+        outcome: 'load-failed',
+        classified_as: 'unknown',
+        attempts: [`loadSnapshot:throw(${msg})`],
       };
     }
-
-    // Snapshot loaded but state is still wiped — snapshot corruption
-    // or post-snapshot APK upgrade drift. The classifier surfaces
-    // which class so the operator knows whether to re-snapshot or
-    // re-bootstrap.
-    throw new DeviceUserStateError(verify.classified_as, [
-      'loadSnapshot:pass',
-      `verify:${verify.classified_as}`,
-      `signal:${verify.ui_dump_signal ?? 'none'}`,
-    ]);
+    if (!loadOutcome.saved) {
+      return {
+        outcome: 'load-failed',
+        classified_as: 'unknown',
+        attempts: [`loadSnapshot:fail(${loadOutcome.output.slice(0, 200)})`],
+      };
+    }
+    const verify = await this.probeDeviceUserState(avd);
+    if (verify.classified_as === 'ready' || verify.classified_as === 'unknown') {
+      return {
+        outcome: 'ready',
+        classified_as: verify.classified_as,
+        attempts: [`loadSnapshot:pass`, `verify:${verify.classified_as}`],
+        healLog: {
+          classified_as: verify.classified_as,
+          attempted: true,
+          healed_via: 'snapshot-load',
+          verified_as: verify.classified_as,
+          focused_activity: verify.focused_activity,
+          ui_dump_signal: verify.ui_dump_signal,
+        },
+      };
+    }
+    return {
+      outcome: 'verify-wiped',
+      classified_as: verify.classified_as,
+      attempts: [
+        `loadSnapshot:pass`,
+        `verify:${verify.classified_as}`,
+        `signal:${verify.ui_dump_signal ?? 'none'}`,
+      ],
+    };
   }
 
   /**
