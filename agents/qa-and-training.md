@@ -109,9 +109,14 @@ silent-failure prevention learned from earlier real-world dogfood.
       `mobile_ensure_avd_running` unconditionally restores the AVD
       to the known starting state every dispatch — no detect-and-adapt
       logic. Mechanism by backend:
-      - **Local (since 0.13.202):** `loadSnapshot('registered-test-user')`,
-        always. ~3s. The snapshot is created once per machine by
-        `/ace:mobile-bootstrap`.
+      - **Local (since 0.13.203):** `loadSnapshot('registered-test-user')`,
+        always. ~3s on the happy path. If the snapshot doesn't exist
+        (fresh machine, deleted), tier-2 auto-bootstrap fires inline:
+        install APK if missing → `registerTestUser` → `saveSnapshot`.
+        ~3-5 min on first dispatch, then back to ~3s. Phase 4's
+        `connect-opp-setup` already invited the test user, so the
+        CONNECT-ID-3F precondition is satisfied automatically inside
+        `/ace:run`.
       - **Cloud:** each `/api/mobile/ensure-running` cold-boots the
         AVD and runs the registration recipes (see
         `backends/cloud.ts` header). ~3-4 min, same contract.
