@@ -97,10 +97,17 @@ are restored, not adapted"** pattern (see `CLAUDE.md § Phase
 preconditions`), the restore happens in `mobile_ensure_avd_running`,
 unconditionally:
 
-- **Local backend (since 0.13.202):** `loadSnapshot('registered-test-user')`
-  every Phase 6 dispatch. ~3s, deterministic. The snapshot is created
-  by the operator's one-time `/ace:mobile-bootstrap` and is the local
-  equivalent of cloud's cold-boot baseline.
+- **Local backend (since 0.13.203):** `loadSnapshot('registered-test-user')`
+  every Phase 6 dispatch. ~3s, deterministic. If the snapshot doesn't
+  exist (fresh machine, deleted, etc.), tier-2 auto-bootstrap fires:
+  install CommCare APK if missing → `registerTestUser` → `saveSnapshot`.
+  ~3-5 min on fresh-machine first dispatch; ~3s thereafter via the
+  freshly-saved snapshot. Phase 4's `connect-opp-setup` already
+  invited `${ACE_E2E_PHONE}` to the run's opp, so the CONNECT-ID-3F
+  server-side invite-check precondition is satisfied automatically.
+  `/ace:mobile-bootstrap` is no longer required as an operator
+  pre-step inside `/ace:run` — useful only for ad-hoc workstation
+  setup outside the lifecycle.
 - **Cloud backend:** each `/api/mobile/ensure-running` cold-boots the
   AVD and runs the registration recipes against it (see
   `backends/cloud.ts` header). Same precondition contract, different

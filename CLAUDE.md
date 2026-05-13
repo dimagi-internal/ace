@@ -125,7 +125,13 @@ The pattern:
 3. **Verify post-restore.** A classifier earns its keep ONLY as a verification step after restore — if the restore *should* have produced the precondition but didn't, the classifier names which precondition is still violated (snapshot corruption, APK drift, etc.). That's the only path a classifier is the right tool.
 4. **Fail loud.** If restore can't reach the precondition, throw a typed error with the precise class. Don't ship placeholders, don't soft-fail with `verdict: incomplete`.
 
-Canonical implementation: `MobileClient.restoreDeviceUserState` in `mcp/mobile/client.ts`. Local backend unconditionally `loadSnapshot('registered-test-user')`. Cloud backend's `/api/mobile/ensure-running` cold-boots from AMI + runs registration recipes — same contract, different mechanism, no special-casing at the caller. Each phase's heal lives in one place and funnels through the matching `mobile_ensure_avd_running` / `connect_*_setup` / `ocs_*_setup` atom.
+Canonical implementation: `MobileClient.restoreDeviceUserState` in `mcp/mobile/client.ts`. Two tiers:
+
+1. **Tier 1 — snapshot-load.** Local backend unconditionally `loadSnapshot('registered-test-user')` every dispatch. ~3s. Cloud backend's `/api/mobile/ensure-running` cold-boots from AMI + runs registration recipes — same contract, different mechanism. The snapshot/AMI is the materialized form of "the known precondition state."
+
+2. **Tier 2 — auto-bootstrap (local only, since 0.13.203).** When tier-1 fails (snapshot missing — fresh machine, deleted, etc.) AND `ACE_E2E_*` + `ACE_CONNECT_APK_VERSION` env vars are populated, run the bootstrap-equivalent local steps inline: install APK if missing → registerTestUser → saveSnapshot. ~3-5 min wall-clock on fresh-machine first dispatch; thereafter tier 1 hits the freshly-saved snapshot in ~3s. The server-side `${ACE_E2E_PHONE}` invite check (CONNECT-ID-3F precondition) is structurally satisfied within `/ace:run` by Phase 4's `connect-opp-setup` running before Phase 6 — no operator action required mid-run. (Cloud equivalent: the AMI's baked registration recipes do this on every cold-boot.)
+
+Each phase's heal lives in one place and funnels through the matching `mobile_ensure_avd_running` / `connect_*_setup` / `ocs_*_setup` atom.
 
 **Anti-pattern: tolerance for "whatever starting state we find."** That's complexity in service of a question the phase shouldn't be asking. If you find yourself writing a state-classifier as the primary recovery mechanism, you're solving the wrong problem — flip it to "always restore; classify only on verification failure."
 

@@ -42,10 +42,38 @@ export type DeviceUserStateClass =
 export interface DeviceStateHealLog {
   classified_as: DeviceUserStateClass;
   attempted: boolean;
-  healed_via?: 'snapshot-load' | 'none';
+  healed_via?: 'snapshot-load' | 'local-bootstrap' | 'none';
   verified_as?: DeviceUserStateClass;
   focused_activity?: string;
   ui_dump_signal?: string;
+  /**
+   * Populated only when `healed_via: 'local-bootstrap'` — itemized
+   * record of the tier-2 actions taken (apk_installed, registered,
+   * snapshot_saved). Surfaces what the auto-bootstrap actually did so
+   * the operator can verify against expectations.
+   */
+  bootstrap_steps?: string[];
+}
+
+/**
+ * Test-user credentials + APK version pin needed by `runLocalBootstrap`.
+ * Populated from `ACE_E2E_*` and `ACE_CONNECT_APK_VERSION` env vars by
+ * `bootstrapConfigFromEnv()`. Set to `null` (the default for callers
+ * that don't pass `bootstrapConfig` and don't have all required env
+ * vars set) to disable the tier-2 fallback — `restoreDeviceUserState`
+ * will throw `snapshot-load-failed` on snapshot-missing without
+ * attempting a bootstrap.
+ */
+export interface LocalBootstrapConfig {
+  apkVersion: string;
+  testUser: {
+    phone: string;
+    phoneLocal: string;
+    countryCode: string;
+    pin: string;
+    backupCode: string;
+    name: string;
+  };
 }
 
 export interface ApkInfo {

@@ -14,7 +14,7 @@ import { RecipeGenerator, type LlmFn } from './backends/recipe-generator.js';
 import { resolveBackend } from './backend-toggle.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
-  SnapshotResult, DeviceUserStateClass, DeviceStateHealLog,
+  SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
 } from './types.js';
 import { logInfo } from './logging.js';
 
@@ -23,6 +23,44 @@ export interface MobileClientOpts {
   maestro?: MaestroBackend;
   cloud?: CloudBackend;
   staticRecipesDir?: string;
+  /**
+   * Optional override for the tier-2 (auto-bootstrap) recovery in
+   * `restoreDeviceUserState`. When provided, used as-is. When omitted
+   * (the production default), the constructor calls
+   * `bootstrapConfigFromEnv()` to assemble it from `ACE_E2E_*` +
+   * `ACE_CONNECT_APK_VERSION`. Pass `null` explicitly to disable the
+   * tier-2 path (tests that want the legacy snapshot-load-fails-and-
+   * throws behavior).
+   */
+  bootstrapConfig?: LocalBootstrapConfig | null;
+  /**
+   * Optional override for the APK fetch (testing only). Default is
+   * native `fetch`. Tests inject a mock to avoid network round-trips.
+   */
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Read the test-user credentials + APK version pin from env. Returns
+ * `null` if any required var is missing — `restoreDeviceUserState` will
+ * then halt with `snapshot-load-failed` on snapshot-missing instead of
+ * attempting the tier-2 bootstrap.
+ */
+export function bootstrapConfigFromEnv(): LocalBootstrapConfig | null {
+  const apkVersion = process.env.ACE_CONNECT_APK_VERSION;
+  const phone = process.env.ACE_E2E_PHONE;
+  const phoneLocal = process.env.ACE_E2E_PHONE_LOCAL;
+  const countryCode = process.env.ACE_E2E_COUNTRY_CODE;
+  const pin = process.env.ACE_E2E_PIN;
+  const backupCode = process.env.ACE_E2E_BACKUP_CODE;
+  const name = process.env.ACE_E2E_NAME;
+  if (!apkVersion || !phone || !phoneLocal || !countryCode || !pin || !backupCode || !name) {
+    return null;
+  }
+  return {
+    apkVersion,
+    testUser: { phone, phoneLocal, countryCode, pin, backupCode, name },
+  };
 }
 
 const DEFAULT_STATIC_DIR = new URL('./recipes/static/', import.meta.url).pathname;
@@ -100,11 +138,23 @@ export class MobileClient {
    * cloud throws a clear typed error.
    */
   readonly cloud: CloudBackend | null;
+  /**
+   * Tier-2 (auto-bootstrap) config for `restoreDeviceUserState`. Null
+   * disables the fallback. See `bootstrapConfigFromEnv` for env-derived
+   * defaults.
+   */
+  readonly bootstrapConfig: LocalBootstrapConfig | null;
+  private readonly fetchImpl: typeof fetch;
 
   constructor(opts: MobileClientOpts = {}) {
     this.avd = opts.avd ?? new AvdBackend();
     this.maestro = opts.maestro ?? new MaestroBackend();
     this.staticRecipesDir = opts.staticRecipesDir ?? DEFAULT_STATIC_DIR;
+    // `bootstrapConfig: null` (explicit) disables auto-bootstrap;
+    // `undefined` (omitted) reads from env; non-null override wins.
+    this.bootstrapConfig =
+      opts.bootstrapConfig === undefined ? bootstrapConfigFromEnv() : opts.bootstrapConfig;
+    this.fetchImpl = opts.fetchImpl ?? fetch;
     // Eagerly try to construct CloudBackend so /ace:mobile-backend can
     // flip the toggle mid-session without an MCP restart. We catch the
     // typed env-missing error so envs without ACE_WEB still start up.
@@ -243,8 +293,44 @@ export class MobileClient {
       ]);
     }
     if (!loadOutcome.saved) {
-      throw new DeviceUserStateError('snapshot-load-failed', [
-        `loadSnapshot:fail(${loadOutcome.output.slice(0, 200)})`,
+      // Tier 2: snapshot doesn't exist (fresh machine, snapshot deleted,
+      // or emulator console couldn't load it). Run the bootstrap-equivalent
+      // local steps inline IF we have credentials. Phase 4 already invited
+      // `${ACE_E2E_PHONE}` to the run's opp, so `check_number_for_existing_invites`
+      // is satisfied — registerTestUser won't hit the CONNECT-ID-3F crash.
+      if (!this.bootstrapConfig) {
+        throw new DeviceUserStateError('snapshot-load-failed', [
+          `loadSnapshot:fail(${loadOutcome.output.slice(0, 200)})`,
+          `bootstrapConfig:absent (ACE_E2E_* / ACE_CONNECT_APK_VERSION env vars not set; run /ace:setup --force-env then retry)`,
+        ]);
+      }
+      logInfo(
+        `device_user_state: snapshot missing on ${avd.serial} — running local bootstrap (tier-2)`,
+      );
+      const bootstrapSteps = await this.runLocalBootstrap(avd);
+      const verifyAfterBootstrap = await this.probeDeviceUserState(avd);
+      if (
+        verifyAfterBootstrap.classified_as === 'ready' ||
+        verifyAfterBootstrap.classified_as === 'unknown'
+      ) {
+        logInfo(
+          `device_user_state: restored to ${verifyAfterBootstrap.classified_as} via local-bootstrap on ${avd.serial}`,
+        );
+        return {
+          classified_as: verifyAfterBootstrap.classified_as,
+          attempted: true,
+          healed_via: 'local-bootstrap',
+          verified_as: verifyAfterBootstrap.classified_as,
+          focused_activity: verifyAfterBootstrap.focused_activity,
+          ui_dump_signal: verifyAfterBootstrap.ui_dump_signal,
+          bootstrap_steps: bootstrapSteps,
+        };
+      }
+      throw new DeviceUserStateError(verifyAfterBootstrap.classified_as, [
+        `loadSnapshot:fail`,
+        `runLocalBootstrap:pass(${bootstrapSteps.join(',')})`,
+        `verify:${verifyAfterBootstrap.classified_as}`,
+        `signal:${verifyAfterBootstrap.ui_dump_signal ?? 'none'}`,
       ]);
     }
 
@@ -302,6 +388,114 @@ export class MobileClient {
     const cls = classifyDeviceUserState(focused, dump.xml, packages);
     const signal = pickStateSignal(focused, dump.xml);
     return { classified_as: cls, focused_activity: focused, ui_dump_signal: signal };
+  }
+
+  /**
+   * Run the local-bootstrap-equivalent sequence inline. Used as the
+   * tier-2 fallback in `restoreDeviceUserState` when the snapshot is
+   * missing. Mirrors steps 5 / 9 / 10 of `/ace:mobile-bootstrap`:
+   *
+   *   1. Ensure `org.commcare.dalvik` is installed (downloads the APK
+   *      from the pinned GitHub release if missing, caches under
+   *      `<tmp>/ace-mobile-apk-cache/`).
+   *   2. `registerTestUser` with the env-derived `ACE_E2E_*` creds
+   *      (idempotent — returns alreadyRegistered if the device already
+   *      has the user). Phase 4's `connect-opp-setup` Step 8 invites
+   *      `${ACE_E2E_PHONE}` to the run's opp before Phase 6 runs, so
+   *      the CONNECT-ID-3F server-side invite check is satisfied.
+   *   3. `saveSnapshot('registered-test-user')` so subsequent
+   *      `restoreDeviceUserState` calls can use the fast loadSnapshot
+   *      path.
+   *
+   * Cookie seeding (`scripts/seed-connect-cookies.ts`) + the
+   * server-side `${ACE_E2E_PHONE}` invite check are deliberately NOT
+   * here — the former is host-filesystem prep that `/ace:setup` owns,
+   * and the latter is handled by Phase 4 inside `/ace:run`.
+   *
+   * Returns the list of bootstrap steps that actually fired (e.g.
+   * `['apk-installed', 'registered', 'snapshot-saved']`); skipped
+   * idempotent steps are omitted so the heal log shows what changed.
+   */
+  async runLocalBootstrap(avd: AvdInfo): Promise<string[]> {
+    if (!this.bootstrapConfig) {
+      throw new MobileError(
+        'NO_BOOTSTRAP_CONFIG',
+        'runLocalBootstrap called without bootstrapConfig — env vars (ACE_E2E_* / ACE_CONNECT_APK_VERSION) are missing',
+        'Run /ace:setup --force-env to re-inject .env from 1Password.',
+      );
+    }
+    const { apkVersion, testUser } = this.bootstrapConfig;
+    const steps: string[] = [];
+
+    // Step 1: ensure CommCare APK installed.
+    const packages = await this.avd.listPackages(avd.name, 'org.commcare.dalvik');
+    if (!packages.includes('org.commcare.dalvik')) {
+      logInfo(`local_bootstrap: CommCare ${apkVersion} not installed on ${avd.serial} — downloading + installing`);
+      const apkPath = await this.ensureCommCareApkCached(apkVersion);
+      await this.avd.installApk(avd.name, apkPath);
+      steps.push('apk-installed');
+    } else {
+      steps.push('apk-present');
+    }
+
+    // Step 2: register the test user. registerTestUser is idempotent —
+    // returns alreadyRegistered if the device already carries the user.
+    logInfo(`local_bootstrap: registering test user ${testUser.phone} on ${avd.serial}`);
+    const reg = await this.registerTestUser({
+      avdName: avd.name,
+      phone: testUser.phone,
+      phoneLocal: testUser.phoneLocal,
+      countryCode: testUser.countryCode,
+      pin: testUser.pin,
+      backupCode: testUser.backupCode,
+      name: testUser.name,
+    });
+    steps.push(reg.alreadyRegistered ? 'register-already' : 'registered');
+
+    // Step 3: save snapshot for fast tier-1 restore on subsequent runs.
+    logInfo(`local_bootstrap: saving registered-test-user snapshot on ${avd.serial}`);
+    const save = await this.avd.saveSnapshot(avd.name, 'registered-test-user');
+    if (!save.saved) {
+      throw new MobileError(
+        'SNAPSHOT_SAVE_FAILED',
+        `saveSnapshot(registered-test-user) on ${avd.name} failed: ${save.output.slice(0, 200)}`,
+        'Verify the emulator console responds to `adb emu avd snapshot save`; check disk space under the AVD home.',
+      );
+    }
+    steps.push('snapshot-saved');
+    return steps;
+  }
+
+  /**
+   * Download the CommCare APK for the given version if not already
+   * cached locally; returns the local path. Cache lives under
+   * `<os.tmpdir()>/ace-mobile-apk-cache/commcare-<version>.apk` so it
+   * survives across sessions but isn't checked in.
+   */
+  private async ensureCommCareApkCached(version: string): Promise<string> {
+    const cacheDir = path.join(os.tmpdir(), 'ace-mobile-apk-cache');
+    await fs.promises.mkdir(cacheDir, { recursive: true });
+    const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
+    // Cached if a non-trivial file already lives at the path.
+    try {
+      const stat = await fs.promises.stat(apkPath);
+      if (stat.size > 1_000_000) return apkPath;
+    } catch {
+      // Not cached — fall through to download.
+    }
+    const url = `https://github.com/dimagi/commcare-android/releases/download/commcare_${version}/app-commcare-release.apk`;
+    logInfo(`local_bootstrap: downloading CommCare ${version} from ${url}`);
+    const res = await this.fetchImpl(url);
+    if (!res.ok) {
+      throw new MobileError(
+        'APK_DOWNLOAD_FAILED',
+        `CommCare APK download failed: HTTP ${res.status} ${res.statusText} from ${url}`,
+        `Verify ACE_CONNECT_APK_VERSION pins a real release tag at https://github.com/dimagi/commcare-android/releases, or download manually to ${apkPath}.`,
+      );
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    await fs.promises.writeFile(apkPath, buf);
+    return apkPath;
   }
 
   /**
