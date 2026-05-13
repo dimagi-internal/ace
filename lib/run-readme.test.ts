@@ -39,17 +39,17 @@ describe('generateRunReadme', () => {
     expect(tableBodyLines.length).toBe(expectedRows.length);
   });
 
-  it('phase folders appear in numeric order (1-design before 2-commcare, etc)', () => {
+  it('phase folders appear in numeric order (1-design before 3-commcare, etc)', () => {
     const md = generateRunReadme('20260503-2128');
     const idx1Design = md.indexOf('| 1-design |');
-    const idx2Commcare = md.indexOf('| 2-commcare |');
-    const idx3Connect = md.indexOf('| 3-connect |');
-    const idx4Ocs = md.indexOf('| 4-ocs |');
-    const idx5Qa = md.indexOf('| 5-qa-and-training |');
-    const idx6Synthetic = md.indexOf('| 6-synthetic |');
-    const idx7Solicitation = md.indexOf('| 7-solicitation-management |');
-    const idx8Execution = md.indexOf('| 8-execution-manager |');
-    const idx9Closeout = md.indexOf('| 9-closeout |');
+    const idx2Commcare = md.indexOf('| 3-commcare |');
+    const idx3Connect = md.indexOf('| 4-connect |');
+    const idx4Ocs = md.indexOf('| 5-ocs |');
+    const idx5Qa = md.indexOf('| 6-qa-and-training |');
+    const idx6Synthetic = md.indexOf('| 7-synthetic |');
+    const idx7Solicitation = md.indexOf('| 8-solicitation-management |');
+    const idx8Execution = md.indexOf('| 9-execution-manager |');
+    const idx9Closeout = md.indexOf('| 10-closeout |');
     expect(idx1Design).toBeGreaterThan(0);
     expect(idx2Commcare).toBeGreaterThan(idx1Design);
     expect(idx3Connect).toBeGreaterThan(idx2Commcare);
@@ -82,16 +82,16 @@ describe('generateRunReadme', () => {
       .find((l) => l.startsWith('| 1-design |'));
     expect(designRow).toBeDefined();
     expect(designRow!.endsWith('| done |')).toBe(true);
-    // 2-commcare rows should show in-progress
+    // 3-commcare rows should show in-progress
     const commcareRow = md
       .split('\n')
-      .find((l) => l.startsWith('| 2-commcare |'));
+      .find((l) => l.startsWith('| 3-commcare |'));
     expect(commcareRow).toBeDefined();
     expect(commcareRow!.endsWith('| in-progress |')).toBe(true);
-    // 3-connect rows should still be pending
+    // 4-connect rows should still be pending
     const connectRow = md
       .split('\n')
-      .find((l) => l.startsWith('| 3-connect |'));
+      .find((l) => l.startsWith('| 4-connect |'));
     expect(connectRow).toBeDefined();
     expect(connectRow!.endsWith('| pending |')).toBe(true);
   });

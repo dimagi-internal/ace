@@ -10,7 +10,7 @@ disable-model-invocation: true
 # Synthetic Walkthrough Spec QA
 
 Structural correctness checks on
-`6-synthetic/synthetic-walkthrough-spec_<persona>.yaml`, the per-persona
+`7-synthetic/synthetic-walkthrough-spec_<persona>.yaml`, the per-persona
 walkthrough specs authored by `synthetic-walkthrough-spec` and consumed
 by `synthetic-walkthrough-run` → `canopy:walkthrough`.
 
@@ -30,7 +30,7 @@ format, auto-fix protocol, static-vs-LLM rules).
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 6 producer | `6-synthetic/synthetic-walkthrough-spec_<persona>.yaml` | the spec under structural check |
+| Phase 7 producer | `7-synthetic/synthetic-walkthrough-spec_<persona>.yaml` | the spec under structural check |
 
 This QA runs once per persona-spec emitted (typically 2 — `prospective-llo`,
 `funder` — plus any opp-overlay personas). The orchestrator dispatches
@@ -38,7 +38,7 @@ this skill per spec; QA results land alongside the spec they cover.
 
 ## Products
 
-- `6-synthetic/synthetic-walkthrough-spec_<persona>-qa_result.yaml` — QA result per `lib/qa-types.ts`
+- `7-synthetic/synthetic-walkthrough-spec_<persona>-qa_result.yaml` — QA result per `lib/qa-types.ts`
 
 ## Checks
 
@@ -67,14 +67,14 @@ The static check functions live at `skills/synthetic-walkthrough-spec-qa/checks.
    `Bash: TMP=$(mktemp); drive content saved to $TMP`.
 
 3. **Run all checks** via the generic CLI runner:
-   `Bash: npx tsx scripts/qa-run.ts --skill synthetic-walkthrough-spec-qa --artifact "$TMP" --target "<opp-name>:<persona>" --capture-path "6-synthetic/synthetic-walkthrough-spec_<persona>.yaml"`.
+   `Bash: npx tsx scripts/qa-run.ts --skill synthetic-walkthrough-spec-qa --artifact "$TMP" --target "<opp-name>:<persona>" --capture-path "7-synthetic/synthetic-walkthrough-spec_<persona>.yaml"`.
 
    The runner imports `CHECKS` from `skills/synthetic-walkthrough-spec-qa/checks.ts`,
    runs each check via `lib/qa-runner.ts`, and prints a fully-shaped
    `QAResult` YAML to stdout.
 
 4. **Write the QA result** to Drive at
-   `6-synthetic/synthetic-walkthrough-spec_<persona>-qa_result.yaml` via
+   `7-synthetic/synthetic-walkthrough-spec_<persona>-qa_result.yaml` via
    `drive_create_file`.
 
 5. **Return the verdict** to the orchestrator:

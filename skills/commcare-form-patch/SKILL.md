@@ -20,11 +20,11 @@ Connect setup attempt sees a Connect-compatible CCZ.
 | Source | Artifact | Used for |
 |---|---|---|
 | Operator-authored | `commcare-patches.yaml` (per-opp) | declarative patch-class list to apply |
-| Phase 2 | `2-commcare/app-deploy_summary.md` | HQ app IDs to target |
+| Phase 3 | `3-commcare/app-deploy_summary.md` | HQ app IDs to target |
 
 ## Products
 
-- `2-commcare/commcare-form-patch_summary.md` — patches applied per form, re-built/re-released build IDs
+- `3-commcare/commcare-form-patch_summary.md` — patches applied per form, re-built/re-released build IDs
 
 ## Removal criteria
 
@@ -85,7 +85,7 @@ it) MUST be deleted when ALL of:
 3. nova-plugin#7 (compile_app does NOT emit the in-form `commcareconnect`
    assessment wrapper for quiz forms — matches the working Turmeric Learn
    render) ships and is deployed.
-4. A clean re-run of `leep-paint-collection` Phase 3 succeeds with no
+4. A clean re-run of `leep-paint-collection` Phase 4 succeeds with no
    patch step needed (`commcare-patches.yaml` empty or absent;
    `connect_create_opportunity` returns 201 with a real opp UUID).
 
@@ -112,7 +112,7 @@ This skill targets ONE app at a time *per patches.yaml entry*. The
 default LEEP-style invocation patches the Learn app (which has all 6
 quiz forms in scope for nova-plugin#5).
 
-1. **Read `2-commcare/app-deploy_summary.md`.** Pull `hq_domain`, `learn_app_id`,
+1. **Read `3-commcare/app-deploy_summary.md`.** Pull `hq_domain`, `learn_app_id`,
    `deliver_app_id`, and the latest `releases.{learn,deliver}.build_id`
    from the frontmatter. These are the source of truth for which CCHQ
    project + apps to patch.
@@ -293,12 +293,12 @@ When `--dry-run` is active:
   rejected it, OR the build/release step picked up an older draft.
   Halt with the per-form before/after dump.
 - **`commcare-patches.yaml` references an app not in
-  `2-commcare/app-deploy_summary.md`** — operator added a stale or incorrect
+  `3-commcare/app-deploy_summary.md`** — operator added a stale or incorrect
   entry. Fail loudly rather than guess.
 
 ## Change Log
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-03 | Initial version. Temporary workaround for nova-plugin#5 + nova-plugin#6 — both upstream Nova bugs gate Phase 3 e2e for any LEEP-style Connect Learn app with the standard quiz scaffold. Backed by the new `commcare_patch_xform` atom in `mcp/connect/backends/commcare.ts` and the pure `applyUserScorePatch` helper. Single patch class shipping today: `user-score`. Removal criteria documented. | ACE team |
+| 2026-05-03 | Initial version. Temporary workaround for nova-plugin#5 + nova-plugin#6 — both upstream Nova bugs gate Phase 4 e2e for any LEEP-style Connect Learn app with the standard quiz scaffold. Backed by the new `commcare_patch_xform` atom in `mcp/connect/backends/commcare.ts` and the pure `applyUserScorePatch` helper. Single patch class shipping today: `user-score`. Removal criteria documented. | ACE team |
 | 2026-05-03 | Added `assessment-removal` patch class after live root-cause analysis showed `user-score` alone is insufficient: Connect's `/opportunity/init/` rejects ANY Learn app whose forms carry `commcareconnect`-namespaced `<assessment>` markup, regardless of whether `user_score` is populated. The reference working app (Turmeric Learn `76fd5f0e2834454bb946bdf9ae9bff71`) has zero `commcareconnect` references in suite.xml, profile.ccpr, or any form XML — the assessment relationship is derived from suite-level metadata. New helper `applyAssessmentRemovalPatch` strips the wrapper element + binds entirely. Filed as suspected nova-plugin#7. `assessment-removal` is now the recommended class for new opps; `user-score` retained for diagnostic use. | ACE team |

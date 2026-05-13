@@ -83,7 +83,7 @@ export class PlaywrightSession {
     // 302→/accounts/login/→200 chain and we incorrectly return true on
     // expired sessions, gating out the auto-relogin path. The URL guard
     // is belt-and-braces in case Playwright behavior changes. Surfaced
-    // 2026-05-02 in leep-paint-collection Phase 4.
+    // 2026-05-02 in leep-paint-collection Phase 5.
     const res = await context.request.get(`/a/${this.opts.teamSlug}/chatbots/`, {
       maxRedirects: 0,
     });

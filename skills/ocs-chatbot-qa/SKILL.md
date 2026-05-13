@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 Talk to a deployed ACE OCS chatbot and capture what it says into a
 structured transcript at
-`runs/<run-id>/4-ocs/ocs-chatbot-qa_transcript-<mode>.md`. This skill is
+`runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-<mode>.md`. This skill is
 the **qa** half of
 the qa/eval pair — it captures evidence and runs cheap structural checks.
 The LLM-as-Judge grading happens separately in `ocs-chatbot-eval`.
@@ -19,16 +19,16 @@ The LLM-as-Judge grading happens separately in `ocs-chatbot-eval`.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 4 | `4-ocs/ocs-agent-setup.md` | `experiment_id`, widget URL, embed credentials |
-| Phase 1 (`--deep` only) | `1-design/pdd-to-test-prompts.md` | opp-specific prompt suite + expected-answer summaries |
+| Phase 5 | `5-ocs/ocs-agent-setup.md` | `experiment_id`, widget URL, embed credentials |
+| Phase 1 (`--deep` only) | `2-scenarios/pdd-to-test-prompts.md` | opp-specific prompt suite + expected-answer summaries |
 
 ## Products
 
-- `4-ocs/ocs-chatbot-qa_transcript-<mode>.md` — chat transcript with structural checks (response received, no errors, citations present)
+- `5-ocs/ocs-chatbot-qa_transcript-<mode>.md` — chat transcript with structural checks (response received, no errors, citations present)
 
-Called from the `ocs-setup` agent in Phase 4 (`--quick` only — shallow
+Called from the `ocs-setup` agent in Phase 5 (`--quick` only — shallow
 3-prompt smoke), from the `/ace:qa-deep` slash command (`--deep`,
-manual pre-launch), and from `execution-manager` in Phase 8
+manual pre-launch), and from `execution-manager` in Phase 9
 (`--monitor`). Each call is paired with an immediately following
 `ocs-chatbot-eval` call in the same mode.
 
@@ -39,15 +39,15 @@ rationale and artifact-path contract.
 
 | Mode | Suite size | When it runs | Capture written to |
 |---|---|---|---|
-| `--quick` | 3 smoke questions | Phase 4 Step 2 (post-setup) | `runs/<run-id>/4-ocs/ocs-chatbot-qa_transcript-quick.md` |
-| `--deep` | Full suite + opp-specific prompts from `test-prompts.md` | `/ace:qa-deep` (manual, pre-launch) | `runs/<run-id>/4-ocs/ocs-chatbot-qa_transcript-deep.md` |
-| `--monitor` | Full suite, scheduled | Phase 5 recurring, ad-hoc | `runs/<run-id>/4-ocs/ocs-chatbot-qa_transcript-monitor.md` |
+| `--quick` | 3 smoke questions | Phase 5 Step 2 (post-setup) | `runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-quick.md` |
+| `--deep` | Full suite + opp-specific prompts from `test-prompts.md` | `/ace:qa-deep` (manual, pre-launch) | `runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-deep.md` |
+| `--monitor` | Full suite, scheduled | Phase 6 recurring, ad-hoc | `runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-monitor.md` |
 
 If no mode is passed, default to `--quick`.
 
 ## Wall-Clock Budget
 
-This skill is **synchronous and time-boxed**. Phase 4's deep capture
+This skill is **synchronous and time-boxed**. Phase 5's deep capture
 once spun for 3+ hours waiting on a fictional "background task" — that
 pattern is banned (see `agents/ace-orchestrator.md § Long-Running
 Skills — No Fake Background Tasks`). Concrete budget:
@@ -66,7 +66,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
   unhealthy, and burning the rest of the budget produces noise. Write
   the partial transcript with a `[BLOCKER]` `auto_surfaced` entry
   for the eval skill.
-- **Never call `ScheduleWakeup` from inside this skill.** Phase 4 is
+- **Never call `ScheduleWakeup` from inside this skill.** Phase 5 is
   foreground sequential work; deferring the agent doesn't background
   the chat loop. If you can't finish in budget, fail loud and write
   the partial — the orchestrator decides whether to re-dispatch.
@@ -77,7 +77,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
    - If `experiment_id` is provided, call `ocs_get_chatbot_embed_info` to
      get `public_id` + `embed_key`
    - Otherwise, if `opp_name` is provided, read
-     `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`
+     `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md`
    - Otherwise, use `$OCS_GOLDEN_TEMPLATE_ID` from the env
    - The `embed_key` and `public_id` are needed for the anonymous chat API
 
@@ -104,12 +104,12 @@ Skills — No Fake Background Tasks`). Concrete budget:
 
    The probe takes ~2s when healthy. It's the cheapest pre-flight that
    distinguishes "OCS is responsive" from "absence of output" — which
-   was the single biggest observability gap in the 0.11.5-era Phase 4
+   was the single biggest observability gap in the 0.11.5-era Phase 5
    capture loop.
 
 3. **Resume from partial capture** — `--deep` / `--monitor` only.
    Check for an existing transcript at the destination path
-   (`ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-qa_transcript-<mode>.md`,
+   (`ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-<mode>.md`,
    or `7-execution-manager/...` for `--monitor`).
    - **If absent:** fresh capture. Continue.
    - **If present and `complete: true` in the header:** the suite
@@ -131,7 +131,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
    ### `--quick` suite (3 questions — universal Connect-domain smoke)
    These are universal Connect-domain questions — they apply to any
    opportunity, not opp-specific. Cheap shallow gate (3 LLM judge
-   calls, single dimension) for the Phase 4 → 5 hand-off; deep
+   calls, single dimension) for the Phase 5→6 hand-off; deep
    multi-dimensional grading lives in `/ace:qa-deep`.
    - "How do I claim an opportunity?"
      (expected: correct Connect workflow answer — tests shared collection)
@@ -158,7 +158,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
      (expected: tags response with [training-gap] if the answer IS in the KB)
 
    **Opp-specific prompts** (only if `opp_name` is provided):
-   - Loaded from `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-test-prompts.md` — produced in Phase 1 by
+   - Loaded from `ACE/<opp-name>/runs/<run-id>/2-scenarios/pdd-to-test-prompts.md` — produced in Phase 1 by
      the `pdd-to-test-prompts` skill. Each entry has a question + an
      expected-answer summary that `ocs-chatbot-eval` uses as ground truth
 
@@ -245,7 +245,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
    - `structural_pass_rate: <X/N>`
    - `suite_elapsed_seconds: <total wall clock>`
 
-   Path: `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-qa_transcript-<mode>.md`.
+   Path: `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-<mode>.md`.
    If no `opp_name` is provided (golden-template-no-opp runs), there is
    no run-id available, so fall back to the legacy dated form:
    `ACE/golden-template/qa-captures/YYYY-MM-DD-ocs-chat-<mode>.md`.
@@ -355,12 +355,12 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-10 | Initial version | ACE team |
-| 2026-04-14 | Added --quick / --deep / --monitor modes; --quick replaces the inline self-eval previously in `ocs-agent-setup`; --deep is the pre-launch gate in Phase 4; --monitor runs recurring in Phase 5 | ACE team |
-| 2026-04-17 | `--deep` emits gate brief at `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-chatbot-eval_gate-brief-deep.md`; `--quick` and `--monitor` do not | ACE team (PM scout, internal-admin lens) |
+| 2026-04-14 | Added --quick / --deep / --monitor modes; --quick replaces the inline self-eval previously in `ocs-agent-setup`; --deep is the pre-launch gate in Phase 5; --monitor runs recurring in Phase 6 | ACE team |
+| 2026-04-17 | `--deep` emits gate brief at `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-chatbot-eval_gate-brief-deep.md`; `--quick` and `--monitor` do not | ACE team (PM scout, internal-admin lens) |
 | 2026-04-19 | **QA/eval split.** Removed LLM-as-Judge; this skill now captures transcripts + structural checks only. Writes to `qa-captures/` (renamed from embedded report). Gate brief ownership moved to new `ocs-chatbot-eval` skill. See `skills/README.md § QA vs Eval — the two-phase pattern` | ACE team (qa/eval split refactor) |
 | 2026-04-19 | Document `ACE/golden-template/` as the canonical no-opp fallback path; make env-source of `$OCS_GOLDEN_TEMPLATE_ID` explicit (`$CLAUDE_PLUGIN_DATA/.env`); call out that `ocs_send_test_message` MCP tool is structurally incomplete for the transcript schema — stick to raw widget HTTP. Surfaced during first real qa/eval split exercise against the golden template | ACE team (qa/eval iteration loop) |
 | 2026-04-29 | Added `Capture method:` header field to the transcript schema (`widget` for the anonymous widget endpoint this skill uses today; `openai-compat` reserved for the OpenAI-compatible endpoint when capture for that endpoint lands). `ocs-chatbot-eval` branches its source-usage rubric on this field — without it, the rubric can't tell whether an empty `cited_files` indicates a real grounding gap (openai-compat path) or a measurement limitation (widget path, where the API never returns inline citations regardless). | ACE team (0.10.10) |
 | 2026-05-03 | **Time-box, incremental writes, resume-from-partial, liveness probe.** Added `## Wall-Clock Budget` (per-prompt 90s, suite-cap `min(90s × N, 30 min)`, 3-prompt circuit-breaker, no `ScheduleWakeup`). Renumbered Process: new Step 2 mandatory `ocs_send_test_message` liveness probe before suite (catches dead session before budget burns); new Step 3 reads any existing transcript and skips already-captured prompts (idempotent re-runs); Step 5 chat loop now writes each entry to Drive incrementally via `drive_update_file` + `revisionVersion` CAS so a mid-loop kill doesn't lose data; Step 7 is a metadata-only flush. Header schema gains `Prompts captured`, `Prompts remaining`, `Complete`, `Suite elapsed` fields; partial transcripts are graded by eval as `incomplete-coverage` rather than failing. Surfaced after the `turmeric-20260503-0835` deep capture spun for 3+ hours on a fictional bg task; the prior all-or-nothing write meant zero recoverable evidence. | ACE team (0.11.6) |
-| 2026-05-04 | Thinned from 5 to 3 prompts. Phase 4 cost reduction; multi-dimensional judging moves to deep-only. `--quick` is now 3 universal Connect-domain prompts (claim opp, sync data, get paid) with a hard 270s wall-clock cap (90s × 3). The `--deep` mode is no longer dispatched from Phase 4 — it lives in the manual `/ace:qa-deep <opp>` command and is the Phase 7 `llo-launch` activation gate. | ACE team |
-| 2026-05-05 | **Path-scheme migration.** Transcripts now write to `runs/<run-id>/4-ocs/ocs-chatbot-qa_transcript-<mode>.md` (or `7-execution-manager/...` for `--monitor`), per the manifest. The opp-level `qa-captures/` directory is retired; the only surviving use of the dated `qa-captures/` form is the golden-template no-opp fallback (`ACE/golden-template/qa-captures/<dated>.md`). Resume-from-partial check (Step 3) re-pointed at the new path. No behavior change beyond paths. | ACE team |
+| 2026-05-04 | Thinned from 5 to 3 prompts. Phase 5 cost reduction; multi-dimensional judging moves to deep-only. `--quick` is now 3 universal Connect-domain prompts (claim opp, sync data, get paid) with a hard 270s wall-clock cap (90s × 3). The `--deep` mode is no longer dispatched from Phase 5 — it lives in the manual `/ace:qa-deep <opp>` command and is the Phase 8 `llo-launch` activation gate. | ACE team |
+| 2026-05-05 | **Path-scheme migration.** Transcripts now write to `runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-<mode>.md` (or `7-execution-manager/...` for `--monitor`), per the manifest. The opp-level `qa-captures/` directory is retired; the only surviving use of the dated `qa-captures/` form is the golden-template no-opp fallback (`ACE/golden-template/qa-captures/<dated>.md`). Resume-from-partial check (Step 3) re-pointed at the new path. No behavior change beyond paths. | ACE team |
 | 2026-05-05 | **`--quick` switched to single-shot write.** Buffer entries in memory and call `drive_create_file` once at suite end (Step 7). Reduces Drive RTTs on `--quick` from N+1 (read+write per prompt + metadata) to 1. The incremental CAS-write strategy still applies on `--deep`/`--monitor` where 15–30 min suite runtimes make resume-from-partial worth the cost. Step 3 resume-from-partial is a `--deep`/`--monitor`-only step now (`--quick`'s 270s cap is short enough that re-running is cheaper than the resume bookkeeping). | ACE team |

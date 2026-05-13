@@ -2,7 +2,7 @@
  * Pure helper: turn a `training-deck-outline.md` file into a sequence of
  * Google Slides API `batchUpdate` requests.
  *
- * The skill `training-deck-build` (Phase 5 follow-up to `training-materials`)
+ * The skill `training-deck-build` (Phase 6 follow-up to `training-materials`)
  * uses this module to:
  *   1. Parse the deck-outline markdown emitted by `training-materials`
  *   2. Resolve referenced screenshot paths against the per-opp +

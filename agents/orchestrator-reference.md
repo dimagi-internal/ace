@@ -10,7 +10,7 @@ If you're executing `/ace:run`, read `agents/ace-orchestrator.md` first. Come he
 
 The architectural rule and full topology table live in `CLAUDE.md § Agent topology` (the canonical source — every session loads it). Summary for the orchestrator's purposes:
 
-- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 2) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other seven agents (`design-review`, `connect-setup`, `ocs-setup`, `qa-and-training`, `execution-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
+- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 3) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other nine agents (`idea-to-design`, `scenarios-and-acceptance`, `connect-setup`, `ocs-setup`, `qa-and-training`, `synthetic-data-and-workflows`, `solicitation-management`, `execution-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
 - **Invocation in the procedure below:** "dispatch the X agent" means a top-level `Agent(X)` call (subagent rows in the CLAUDE.md table) or "read `agents/X.md` and execute it inline" (procedure-doc rows).
 - **Why the rule:** the `Agent` tool is unavailable to subagents; a node that nests further work cannot itself be a subagent. There are never two levels of `Agent` dispatch.
 
@@ -42,22 +42,24 @@ last_actor: <email>          # updated on every skill invocation
 last_actor_at: <ISO timestamp>  # updated on every skill invocation
 
 phases:
-  design-review:        # Phase 1
+  idea-to-design:       # Phase 1
     idea-to-pdd: done|pending|error|dry-run-success|...
+  scenarios-and-acceptance:  # Phase 2
     pdd-to-test-prompts: done|pending|...
-  commcare-setup:       # Phase 2
+    pdd-to-app-journeys: done|pending|...
+  commcare-setup:       # Phase 3
     pdd-to-learn-app: pending
     pdd-to-deliver-app: pending
     app-deploy: pending
     app-test-cases: pending
-  connect-setup:        # Phase 3
+  connect-setup:        # Phase 4
     connect-program-setup: pending
     connect-opp-setup: pending
-  ocs-setup:            # Phase 4 — qa/eval split in 0.3.5; deep moved to /ace:qa-deep
+  ocs-setup:            # Phase 5 — qa/eval split in 0.3.5; deep moved to /ace:qa-deep
     ocs-agent-setup: pending
     ocs-chatbot-qa-quick: pending
     ocs-chatbot-eval-quick: pending
-  qa-and-training:        # Phase 5 — added 0.9.0; per-artifact training split 0.10.79–0.10.84; qa-plan retired in shallow/deep QA split
+  qa-and-training:        # Phase 6 — added 0.9.0; per-artifact training split 0.10.79–0.10.84; qa-plan retired in shallow/deep QA split
     app-screenshot-capture: pending
     training-llo-guide: pending
     training-flw-guide: pending
@@ -66,12 +68,12 @@ phases:
     training-deck-outline: pending
     training-deck-build: pending          # skipped if ACE_TRAINING_DECK_TEMPLATE_ID unset
     training-onboarding-email: pending    # last — links to other docs by URL
-  solicitation-management:  # Phase 7 — added 0.12.0
+  solicitation-management:  # Phase 8 — added 0.12.0
     solicitation-create: pending
     llo-invite: pending               # repurposed 0.12.0: emails solicitation URL to PDD-named candidates
     solicitation-monitor: pending     # recurring (post-/ace:run, while solicitation open)
-    solicitation-review: pending      # manual (HITL gate before award_response; only path that unblocks Phase 8)
-  execution-management: # Phase 8 (renamed from llo-management 0.12.0)
+    solicitation-review: pending      # manual (HITL gate before award_response; only path that unblocks Phase 9)
+  execution-management: # Phase 9 (renamed from llo-management 0.12.0)
     llo-onboarding: pending           # reads phases.solicitation-management.products.selected_llo (legacy fallback opp.yaml.selected_llo)
     llo-uat: pending
     llo-launch: pending
@@ -79,7 +81,7 @@ phases:
     flw-data-review: pending          # recurring
     ocs-chatbot-qa-monitor: pending   # recurring
     ocs-chatbot-eval-monitor: pending # recurring
-  closeout:             # Phase 9 (was Phase 8)
+  closeout:             # Phase 10 (was Phase 9)
     opp-closeout: pending
     llo-feedback: pending
     learnings-summary: pending
@@ -162,7 +164,7 @@ this opp's lifecycle and not let plugin-wide concerns leak in.
 - Open questions that are **about this opp** — pricing for this
   funder, country list for this rollout, LLO contacts for this program.
 - Eval verdicts for this opp's runs.
-- `phase_X_backlog` items that block **this opp** — a stuck Phase 3,
+- `phase_X_backlog` items that block **this opp** — a stuck Phase 4,
   a stub LLO invite that needs follow-up, a deferred screenshot capture.
 
 **Out of scope** (do NOT write to `run_state.yaml` — they belong elsewhere):
@@ -269,9 +271,11 @@ each `<N>-<phase>/` folder before its phase agent runs, threading the
 resulting `phaseFolderId` into the dispatch prompt, and refreshing the
 run's `README.md` index after the phase completes.
 
-Before dispatching each phase agent (`Agent(design-review)`,
+Before dispatching each phase agent (`Agent(idea-to-design)`,
+`Agent(scenarios-and-acceptance)`,
 `Agent(commcare-setup)` (inline procedure doc — same rule applies),
 `Agent(connect-setup)`, `Agent(ocs-setup)`, `Agent(qa-and-training)`,
+`Agent(synthetic-data-and-workflows)`,
 `Agent(solicitation-management)`, `Agent(execution-manager)`,
 `Agent(closeout)`), the orchestrator MUST:
 
@@ -282,14 +286,14 @@ Before dispatching each phase agent (`Agent(design-review)`,
    once; if you find new drift, fix it here AND consider promoting the
    prose listing to a generated table.):
    - `design` → `1-design`
-   - `commcare` → `2-commcare`
-   - `connect` → `3-connect`
-   - `ocs` → `4-ocs`
-   - `qa-and-training` → `5-qa-and-training`
-   - `synthetic-data-and-workflows` → `6-synthetic`
-   - `solicitation-management` → `7-solicitation-management`
-   - `execution-management` → `8-execution-manager`
-   - `closeout` → `9-closeout`
+   - `commcare` → `3-commcare`
+   - `connect` → `4-connect`
+   - `ocs` → `5-ocs`
+   - `qa-and-training` → `6-qa-and-training`
+   - `synthetic-data-and-workflows` → `7-synthetic`
+   - `solicitation-management` → `8-solicitation-management`
+   - `execution-management` → `9-execution-manager`
+   - `closeout` → `10-closeout`
 
 2. Call `drive_create_folder(name='<N>-<phase>',
    parentFolderId=<runFolderId>, findOrCreate=true)`. The
@@ -315,17 +319,17 @@ via `generateRunReadme(runId, phaseStatus)` and write back to
 `runs/<runId>/README.md` via `drive_update_file`. The README is the
 operator's single-glance view of run state; keep it fresh.
 
-### Current/ shortcut refresh (Phase 3 + Phase 4 completion)
+### Current/ shortcut refresh (Phase 4 + Phase 5 completion)
 
-**After Phase 3 completes** — refresh shortcuts pointing at this run's
-Phase 3 outputs. For each:
+**After Phase 4 completes** — refresh shortcuts pointing at this run's
+Phase 4 outputs. For each:
 
-- `connect-opp-summary.md` → `runs/<runId>/3-connect/connect-opp-setup.md`
-- `connect-program-summary.md` → `runs/<runId>/3-connect/connect-program-setup.md`
+- `connect-opp-summary.md` → `runs/<runId>/4-connect/connect-opp-setup.md`
+- `connect-program-summary.md` → `runs/<runId>/4-connect/connect-program-setup.md`
 
 Steps:
 1. Resolve the target file ID via `drive_list_folder` on
-   `runs/<runId>/3-connect/` and find the matching filename.
+   `runs/<runId>/4-connect/` and find the matching filename.
 2. Ensure `<opp>/current/` folder exists via
    `drive_create_folder(name='current', parentFolderId=<oppFolderId>,
    findOrCreate=true)`.
@@ -335,8 +339,8 @@ Steps:
    prior same-name shortcut before creating, so each new run cleanly
    overwrites the prior pointer.
 
-**After Phase 4 completes** — same pattern for
-`ocs-agent-config.md` → `runs/<runId>/4-ocs/ocs-agent-setup.md`.
+**After Phase 5 completes** — same pattern for
+`ocs-agent-config.md` → `runs/<runId>/5-ocs/ocs-agent-setup.md`.
 
 The `drive_create_shortcut` MCP atom shipped in 0.13.0.
 
@@ -360,7 +364,7 @@ implicitly via path lacking a `runs/` prefix):
 | `ACE/<opp>/inputs/` | Human-curated source pack. Read-only — every run's Phase 1 reads via the run-root inputs-manifest. |
 | `ACE/<opp>/eval-calibration/known-issues.md` | Ground-truth catalogue every `-eval` rubric reads. Calibration survives across runs. |
 | `ACE/<opp>/open-questions.md` | Deferred questions that accrete across runs until answered. |
-| `ACE/<opp>/current/` | Shortcut folder pointing at the latest run's Phase 3/4 outputs (refreshed at phase completion — see § Current/ shortcut refresh). |
+| `ACE/<opp>/current/` | Shortcut folder pointing at the latest run's Phase 4/4 outputs (refreshed at phase completion — see § Current/ shortcut refresh). |
 
 **Per-run — under `ACE/<opp>/runs/<run-id>/`; copy or re-derive when
 forking:**
@@ -506,7 +510,7 @@ phases:
 (0.13.116: there is no longer a separate `gates.<name>` flip step.
 Pause-point status at runtime is derived from `phases.<phase>.status` +
 the per-skill verdict files (`<phase>/<producer>-qa_result.yaml` and
-`<phase>/<producer>-eval_verdict.yaml`). The Phase 7→8 halt is gated on
+`<phase>/<producer>-eval_verdict.yaml`). The Phase 8→9 halt is gated on
 `selected_llo.org_slug` being non-null
 (`phases.solicitation-management.products.selected_llo.org_slug` in the
 current run's `run_state.yaml`, with legacy `opp.yaml.selected_llo.org_slug`
@@ -531,7 +535,7 @@ update_yaml_file({
 
 **Why `two-level`, not the default `shallow`.** `update_yaml_file`'s
 default `shallow` mode replaces each top-level key wholesale —
-patching `phases: { 'design-review': {...} }` would clobber every
+patching `phases: { 'idea-to-design': {...} }` would clobber every
 other phase's entry under `phases:`, which is exactly the wrong
 outcome when each phase agent owns one entry. `merge: 'two-level'`
 recurses one level into object-valued top-level keys (`phases:`), so
@@ -582,7 +586,7 @@ re-introduces the lost-update class of bug.
 
 - Phase agent says "done" in its return summary but the orchestrator's
   `/ace:status` view shows the phase as `pending` (run-state drift —
-  observed in turmeric run 20260506-1304 on Phase 2 + Phase 3, filed as
+  observed in turmeric run 20260506-1304 on Phase 3 + Phase 4, filed as
   `jjackson/ace#116`).
 - `opp-eval` rollup misses the phase entirely because there's no
   `phases.<phase>.steps.*.verdict` to walk.
@@ -599,7 +603,7 @@ Scope and `skills/idea-to-pdd/SKILL.md` § Decisions Log Convention §
 Bar criterion). Each phase's primary writing skill owns the rows it
 writes. The orchestrator stub-fills + warns post-phase if a phase
 wrote zero rows AND the calibration set for that phase has any
-required rows. PR #1 covers Phase 1 (`idea-to-pdd`); Phase 2–9 writes
+required rows. PR #1 covers Phase 1 (`idea-to-pdd`); Phase 3–10 writes
 ship in PR #3 of the decisions-log series. Schema and YAML helpers
 live in `lib/decisions-schema.ts`.
 
@@ -612,10 +616,10 @@ their own. They need a stable way to read and write opp-level state
 under the "every run is independent — no run reads from or writes to
 another run's `run_state.yaml`" rule.
 
-This is **unresolved**. Open as part of the Phase 7+/8 redesign. Each
+This is **unresolved**. Open as part of the Phase 8+/8 redesign. Each
 recurring skill's `SKILL.md` currently documents its own provisional
 approach (often "read-only against the most recent run, no writes").
-Do not codify a global rule here until the Phase 7+/8 architecture is
+Do not codify a global rule here until the Phase 8+/8 architecture is
 settled.
 
 ## Phase Write-Back Verifier — procedure
@@ -685,16 +689,16 @@ operator experience than auto-stub + warning.
 | Pause point | Phase | `default` | `review` | `auto` |
 |------|-------|-----------|----------|--------|
 | After `idea-to-pdd` | 1 | pause iff any `[BLOCKER]` from QA or eval | always pause | never pause* |
-| After `app-deploy` | 2 | pause iff any `[BLOCKER]` | always pause | never pause* |
-| After `ocs-chatbot-eval --quick` | 4 | pause iff any `[BLOCKER]` | always pause | never pause* |
-| After `llo-invite` | 7 | never pause (passive solicitation invites) | always pause | never pause* |
-| **Phase 7→8 boundary** | 7→8 | **always pause** (waits for `selected_llo`) | always pause | always pause |
-| Before `llo-onboarding` | 8 | always pause (first 1-1 email to awardee) | always pause | always pause |
-| Before `llo-uat` send | 8 | always pause (UAT instructions to awardee) | always pause | always pause |
-| Before `llo-launch` | 8 | always pause (opp activation in Connect) | always pause | always pause |
-| Before `opp-closeout` | 9 | always pause (Jira payment ticket) | always pause | always pause |
+| After `app-deploy` | 3 | pause iff any `[BLOCKER]` | always pause | never pause* |
+| After `ocs-chatbot-eval --quick` | 5 | pause iff any `[BLOCKER]` | always pause | never pause* |
+| After `llo-invite` | 8 | never pause (passive solicitation invites) | always pause | never pause* |
+| **Phase 8→9 boundary** | 8→9 | **always pause** (waits for `selected_llo`) | always pause | always pause |
+| Before `llo-onboarding` | 9 | always pause (first 1-1 email to awardee) | always pause | always pause |
+| Before `llo-uat` send | 9 | always pause (UAT instructions to awardee) | always pause | always pause |
+| Before `llo-launch` | 9 | always pause (opp activation in Connect) | always pause | always pause |
+| Before `opp-closeout` | 10 | always pause (Jira payment ticket) | always pause | always pause |
 
-\*`auto` still pauses on `[BLOCKER]` — admins opted into auto mode for speed, not to ship known-broken work. The Phase 7→8 boundary + Phase 8 external-comms + Phase 9 closeout pauses are unconditional in all modes because they affect external parties.
+\*`auto` still pauses on `[BLOCKER]` — admins opted into auto mode for speed, not to ship known-broken work. The Phase 8→9 boundary + Phase 9 external-comms + Phase 10 closeout pauses are unconditional in all modes because they affect external parties.
 
 **Synthesizing a pause-time summary.** At each pause, the orchestrator:
 
@@ -865,14 +869,14 @@ the sibling files are missing — by which time the inline shortcut is
 several phases upstream and harder to attribute.
 
 The canonical reproduction: turmeric run 20260509-0455. The orchestrator
-inline-composed `2-commcare/app-test-cases.yaml` from the PDD + app
+inline-composed `3-commcare/app-test-cases.yaml` from the PDD + app
 summaries instead of invoking `Skill(app-test-cases)`, which would have
 emitted the per-journey recipe files (`app-test-cases/J*.yaml`) that
-Phase 5's `app-screenshot-capture` reads. Phase 5 halted at pre-flight
+Phase 6's `app-screenshot-capture` reads. Phase 6 halted at pre-flight
 with `incomplete`, no AVD time burned but five training docs rendered
 without screenshots and had to be re-run.
 
-The Phase 2 procedure doc (commcare-setup) is the highest-risk surface
+The Phase 3 procedure doc (commcare-setup) is the highest-risk surface
 because it executes inline at level-0 — there's no subagent boundary
 between "the orchestrator decides what to do" and "the skill produces
 the artifact." When in doubt, dispatch.
@@ -908,13 +912,13 @@ The rule:
    cosmetic/display field (descriptions, tags) is `[INFO]` — log and
    proceed.
 
-The `turmeric-20260503-0835` Phase 3 run is the canonical example: a
+The `turmeric-20260503-0835` Phase 4 run is the canonical example: a
 malformed `connect_create_payment_unit` shipped values that didn't
 match what was sent (`amount=500` vs sent `1.50`,
 `required_deliver_units=[]` vs sent `[Vendor Visit]`). The skill
-returned cleanly, Phase 3 graded `warn` on the eval, the orchestrator
+returned cleanly, Phase 4 graded `warn` on the eval, the orchestrator
 auto-proceeded — and the malformation cascaded through
-`is_setup_complete` to silently break Phase 7 invites and Phase 5
+`is_setup_complete` to silently break Phase 8 invites and Phase 6
 screenshot capture. A read-back at the producer would have converted
 that multi-phase cascade into a single-skill halt with an obvious
 field-diff in the gate brief.
@@ -947,9 +951,9 @@ parallelism that the harness already supports.
 **`Agent(...)` dispatches DO NOT parallelize the same way.** Claude
 Code does not reliably run two `Agent` calls placed in one assistant
 message in parallel; treat phase-agent and slash-command-driven agent
-dispatches (e.g. `/nova:autobuild`) as serial. Phase 2's two Nova
+dispatches (e.g. `/nova:autobuild`) as serial. Phase 3's two Nova
 builds, for instance, must run one after the other. This applies to
-any future cross-phase orchestration too — design-review, ocs-setup,
+any future cross-phase orchestration too — idea-to-design, ocs-setup,
 etc. always serialize when dispatched together.
 
 **Resolve `.env` in one shot, not by probing.** ACE's installed `.env`

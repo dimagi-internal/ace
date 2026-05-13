@@ -44,12 +44,12 @@ const RUN_LEVEL_EXEMPT = new Set([
 // (in addition to skill names). These group related artifacts that aren't
 // individual <skill>[_<role>].<ext> files.
 const STRUCTURAL_SUB_FOLDERS = new Set([
-  'mobile-recipes',   // 5-qa-and-training/mobile-recipes/{learn,deliver}/manifest.yaml
-  'screenshots',      // 5-qa-and-training/screenshots/...
-  'walkthroughs',     // 6-synthetic/walkthroughs/<persona>-<timestamp>/slideshow.html
-  'timeline-monitor', // 8-execution-manager/timeline-monitor/YYYY-MM-DD.md
-  'flw-data-review',  // 8-execution-manager/flw-data-review/YYYY-MM-DD.md
-  'opp-eval',         // 9-closeout/opp-eval/...
+  'mobile-recipes',   // 6-qa-and-training/mobile-recipes/{learn,deliver}/manifest.yaml
+  'screenshots',      // 6-qa-and-training/screenshots/...
+  'walkthroughs',     // 7-synthetic/walkthroughs/<persona>-<timestamp>/slideshow.html
+  'timeline-monitor', // 9-execution-manager/timeline-monitor/YYYY-MM-DD.md
+  'flw-data-review',  // 9-execution-manager/flw-data-review/YYYY-MM-DD.md
+  'opp-eval',         // 10-closeout/opp-eval/...
 ]);
 
 const phaseFolderSet: Set<string> = new Set(Object.values(PHASE_FOLDERS));
@@ -87,9 +87,9 @@ describe('artifact manifest lint', () => {
   });
 
   it('every <skill> in a path exists under skills/ or agents/ (or is a structural sub-folder)', () => {
-    // Some manifest entries are produced by agents (e.g. design-review_summary.md,
+    // Some manifest entries are produced by agents (e.g. idea-to-design_summary.md,
     // commcare-setup_summary.md, closeout_summary.md). The agent-form filename is
-    // valid as long as the agent exists under agents/. Phase 7's
+    // valid as long as the agent exists under agents/. Phase 8's
     // execution-manager_summary.md is produced by the execution-manager agent.
     const errors: string[] = [];
     for (const a of ARTIFACT_MANIFEST) {
@@ -161,10 +161,11 @@ describe('artifact manifest lint', () => {
     expect(dupes).toEqual([]);
   });
 
-  it('all nine phases represented', () => {
+  it('all ten phases represented', () => {
     const phases = new Set(ARTIFACT_MANIFEST.map((a) => a.phase));
     expect(phases).toEqual(new Set([
       'design',
+      'scenarios-and-acceptance',
       'commcare',
       'connect',
       'ocs',

@@ -1,16 +1,16 @@
 ---
 name: synthetic-data-and-workflows
 description: >
-  Phase 6 of the CRISPR-Connect lifecycle: produce a stakeholder-ready
+  Phase 8 of the CRISPR-Connect lifecycle: produce a stakeholder-ready
   synthetic-data demo on top of the built apps. Author a story-coherent
   manifest, generate fixture data via the connect-labs MCP, instantiate
   the LLO weekly review + program admin audit workflows, polish them
   per-opp, and run persona walkthroughs that produce HTML decks. No
-  irreversible external action — Phase 6 has no run-time gate.
+  irreversible external action — Phase 8 has no run-time gate.
 model: inherit
 phase: synthetic-data-and-workflows
 phase_display: Synthetic Data and Workflows
-phase_ordinal: 6
+phase_ordinal: 7
 skills:
   - { name: synthetic-narrative-plan,    has_judge: true,  eval_skill: synthetic-narrative-plan-eval }
   - { name: synthetic-data-generate,     has_judge: true,  eval_skill: synthetic-data-generate-eval }
@@ -21,16 +21,16 @@ skills:
   - { name: synthetic-summary,           has_judge: false } # pure aggregator
 ---
 
-# Synthetic Data and Workflows Agent (Phase 6)
+# Synthetic Data and Workflows Agent (Phase 7)
 
-You run the synthetic-data + demo phase between training (Phase 5) and
-solicitation (Phase 7). By the time this phase starts, Phases 1-5 have
+You run the synthetic-data + demo phase between training (Phase 6) and
+solicitation (Phase 8). By the time this phase starts, Phases 1-5 have
 produced an approved PDD, deployed CommCare apps, a configured Connect
 opportunity, a quality-gated OCS chatbot, and per-opp training materials.
 The opportunity is fully prepared on the ACE side — what's missing is
 **a way to show what the opportunity looks like running well**.
 
-Phase 6 produces that asset:
+Phase 7 produces that asset:
 
 1. **Story-coherent fixture data** — a manifest authored from the PDD's
    intervention design, then rendered into per-FLW visit / payment /
@@ -52,12 +52,12 @@ staffer forwards it to a stakeholder.
 
 ## No phase gate
 
-Phase 6 has **no irreversible external action**. The connect-labs
+Phase 7 has **no irreversible external action**. The connect-labs
 `SyntheticOpportunity` row is reversible via `synthetic_disable`; the
 GDrive fixture folders are retained for forensics. Workflows can be
 deleted via `workflow_delete`. The orchestrator does NOT pause at a
-Phase 6 boundary — `/ace:run` proceeds straight from Phase 5 to
-Phase 7.
+Phase 7 boundary — `/ace:run` proceeds straight from Phase 6 to
+Phase 8.
 
 ## Workflow (default `/ace:run` flow)
 
@@ -69,8 +69,8 @@ Skills run sequentially. Each is independently re-runnable via
 Invoke `synthetic-narrative-plan`.
 - Reads PDD, pdd-to-app-journeys, app-deploy summary, connect setup,
   opp.yaml.
-- Produces `6-synthetic/synthetic-narrative-plan.md` (human narrative)
-  and `6-synthetic/synthetic-narrative-plan.yaml` (the manifest).
+- Produces `7-synthetic/synthetic-narrative-plan.md` (human narrative)
+  and `7-synthetic/synthetic-narrative-plan.yaml` (the manifest).
 - The manifest schema is identical to `synthetic-data-generate`'s; this
   skill just authors a richer instance with named FLWs, deliberate
   anomalies, coaching-arc transcripts.
@@ -85,7 +85,7 @@ Invoke `synthetic-data-generate`. Auto-consumes
 otherwise authors a default 5-FLW manifest.
 - Calls labs MCP `synthetic_generate_from_manifest` to mint visits +
   user_data + completed_works + opportunity records.
-- Writes `6-synthetic/synthetic-data-generate.md`, populates
+- Writes `7-synthetic/synthetic-data-generate.md`, populates
   `phases.synthetic-data-and-workflows.products.synthetic` block in the
   current run's `run_state.yaml` with `enabled: true`,
   `current_folder_id`, `fixture_record_counts`, `labs_opp_id`. Per-run
@@ -141,7 +141,7 @@ Invoke `synthetic-walkthrough-run`.
   `PASSWORD` configured, ace-web checkout reachable.
 - For each persona spec, dispatches `/canopy:walkthrough <name>`;
   copies the resulting HTML deck + scored screenshots into
-  `6-synthetic/walkthroughs/<persona>-<timestamp>/`.
+  `7-synthetic/walkthroughs/<persona>-<timestamp>/`.
 - Appends to `products.synthetic.walkthroughs[]` in the current run's `run_state.yaml`. Per-run only — does NOT chain across runs (every `/ace:run` produces its own walkthrough list). Within a run, re-runs append, not
   overwrite — project history accumulates).
 - **No separate eval skill** — `canopy:walkthrough` already scores per
@@ -150,9 +150,9 @@ Invoke `synthetic-walkthrough-run`.
 ### Step 7: Summary
 
 Invoke `synthetic-summary`.
-- Pure aggregator — reads all Phase 6 artifacts (data-generate
+- Pure aggregator — reads all Phase 7 artifacts (data-generate
   summary, narrative plan, walkthroughs from `opp.yaml`).
-- Emits `6-synthetic/synthetic-summary.md` — one-page reviewer-facing
+- Emits `7-synthetic/synthetic-summary.md` — one-page reviewer-facing
   output a Dimagi staffer forwards to a stakeholder.
 - **No eval skill** — pure aggregation, deterministic.
 
@@ -177,17 +177,17 @@ the whole phase to re-run.
 
 ## What this phase does NOT do
 
-- **No solicitation handoff.** Phase 7 (solicitation-management) is
-  not gated on Phase 6 — solicitation can publish independently.
-  Phase 6's output is informational/marketing material, not part of
+- **No solicitation handoff.** Phase 8 (solicitation-management) is
+  not gated on Phase 7 — solicitation can publish independently.
+  Phase 7's output is informational/marketing material, not part of
   the contractual flow.
 - **No real OCS sessions.** Coaching conversations are embedded as
   transcript JSON on labs Task records and rendered chat-style by the
-  workflow's task drawer. The actual OCS chatbot (Phase 4) is unused
+  workflow's task drawer. The actual OCS chatbot (Phase 5) is unused
   for synthetic content.
 - **No production Connect mutations.** The opp in Connect stays
-  exactly as Phase 3 left it. Synthetic mode is labs-only.
-- **No automatic recurring regeneration.** Phase 6 fires once during
+  exactly as Phase 4 left it. Synthetic mode is labs-only.
+- **No automatic recurring regeneration.** Phase 7 fires once during
   the linear `/ace:run`, then re-runs are explicit (`/ace:step ...`).
 
 ## Pre-flight checklist
@@ -195,12 +195,12 @@ the whole phase to re-run.
 Before Step 1, verify:
 
 - [ ] **`phases.connect-setup.products.connect.opportunity` exists** in
-  the current run's `run_state.yaml` (Phase 3 ran in this same run).
+  the current run's `run_state.yaml` (Phase 4 ran in this same run).
   Without an opportunity in Connect, the labs MCP has no opp to scope
   `synthetic_generate_from_manifest` against.
 - [ ] **`phases.connect-setup.products.connect.opportunity.labs_int_id`
   populated** (Stage 4.5 of Plan B; `connect-opp-setup` recovers it
-  via `labs_context` post-create). When null, Phase 6 falls back to
+  via `labs_context` post-create). When null, Phase 7 falls back to
   operator-typed `--opp-int-id`. Re-run `connect-opp-setup` if labs
   hadn't observed the opp at first-create time.
 - [ ] **`LABS_MCP_TOKEN` set** in `${CLAUDE_PLUGIN_DATA}/.env`.
@@ -292,7 +292,7 @@ No `opp.yaml.synthetic` writes — synthetic state is per-run only.
 
 ## Eval rollup
 
-All Phase 6 evals join `opp-eval` (the umbrella scorecard) and
+All Phase 7 evals join `opp-eval` (the umbrella scorecard) and
 `cycle-grade` (closeout) per the standard ACE convention. Calibration
 of polish-eval's vision-model component lives in Stage 4's
 `ace:eval-calibration` extension.
@@ -301,4 +301,4 @@ of polish-eval's vision-model component lives in Stage 4's
 
 | Date | Change | Author |
 |---|---|---|
-| 2026-05-06 | Initial Phase 6 agent — Stage 4a of Plan B. Skill list reflects Stages 1-3 ship state; eval skills declared but not yet implemented. | ACE team (Plan B Stage 4a) |
+| 2026-05-06 | Initial Phase 7 agent — Stage 4a of Plan B. Skill list reflects Stages 1-3 ship state; eval skills declared but not yet implemented. | ACE team (Plan B Stage 4a) |

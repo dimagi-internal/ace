@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # Synthetic Data Generate
 
-Stage 1 MVP for ACE Phase 6 (Synthetic Data and Workflows). Authors a manifest
+Stage 1 MVP for ACE Phase 7 (Synthetic Data and Workflows). Authors a manifest
 for an opp, calls the deployed connect-labs synthetic generator, and registers
 the resulting GDrive fixture folder as the `SyntheticOpportunity` for that opp
 in labs.
@@ -18,7 +18,7 @@ opp without requiring any production traffic — Dimagi staff can forward the
 labs URL to a stakeholder, prospective LLO, or funder before the opp has any
 real activity.
 
-The full Phase 6 design (narrative-plan, workflow-seed, walkthroughs, etc.) is
+The full Phase 7 design (narrative-plan, workflow-seed, walkthroughs, etc.) is
 deferred to later stages. This skill is the data plumbing only.
 
 ## Inputs
@@ -30,14 +30,14 @@ deferred to later stages. This skill is the data plumbing only.
 | Operator (CLI, optional) | `--manifest <drive-path>` | pre-authored manifest YAML; if omitted, the skill writes a default and pauses |
 | Operator (CLI, optional) | `--no-pause` | skip the manifest-review pause when accepting the default |
 | Phase 1 | `inputs/pdd.md` | (default-manifest mode) primary measurement field for the KPI |
-| Phase 3 | `3-connect/connect-opp-setup.md` | (default-manifest mode) payment unit + deliver unit hints |
+| Phase 4 | `4-connect/connect-opp-setup.md` | (default-manifest mode) payment unit + deliver unit hints |
 | Drive | `ACE/<opp>/opp.yaml` | `program_id`, `last_run_id`, opp display name |
 
 ## Products
 
-- `6-synthetic/synthetic-data-generate_manifest.yaml` — the manifest sent to labs (default or operator-edited)
-- `6-synthetic/synthetic-data-generate.md` — run summary (folder ID, record counts, labs URL, warnings)
-- `6-synthetic/synthetic-data-generate_error.md` — written instead of the summary on `INVALID_SCHEMA` failures
+- `7-synthetic/synthetic-data-generate_manifest.yaml` — the manifest sent to labs (default or operator-edited)
+- `7-synthetic/synthetic-data-generate.md` — run summary (folder ID, record counts, labs URL, warnings)
+- `7-synthetic/synthetic-data-generate_error.md` — written instead of the summary on `INVALID_SCHEMA` failures
 - `run_state.yaml.phases.synthetic-data-and-workflows.products.synthetic` block populated/extended with `enabled`, `current_folder_id`, `current_run_id`, `generated_at`, `fixture_record_counts`, `labs_opp_id` (read-modify-write to preserve sibling sub-keys from `synthetic-workflow-seed` and `synthetic-walkthrough-run`; see `agents/orchestrator-reference.md § Phase Write-Back Contract`). Per-run only.
 - `run_state.yaml.phases.synthetic-data-and-workflows.steps.synthetic-data-generate.status: done`
 
@@ -72,12 +72,12 @@ deferred to later stages. This skill is the data plumbing only.
       the labs UI synthetic dropdown."
 
    Construct the run folder path:
-   `ACE/<opp>/runs/<last_run_id>/6-synthetic/`. Create it via
+   `ACE/<opp>/runs/<last_run_id>/7-synthetic/`. Create it via
    `mcp__plugin_ace_ace-gdrive__drive_create_folder` if missing.
 
-   Note on phase-folder numbering: until Phase 6 is formally renumbered
+   Note on phase-folder numbering: until Phase 7 is formally renumbered
    (Stage 4 of Plan B), `6-` already names `6-solicitation-management`. The
-   `6-synthetic/` folder coexists at the run level — both directories live
+   `7-synthetic/` folder coexists at the run level — both directories live
    side-by-side in the run folder until renumbering happens. This mirrors the
    plan and is intentional for Stage 1.
 
@@ -110,7 +110,7 @@ deferred to later stages. This skill is the data plumbing only.
    and use the body verbatim as `manifest_yaml`. Skip to step 3.
 
    **Otherwise, look for the narrative-plan manifest first.** If
-   `6-synthetic/synthetic-narrative-plan.yaml` exists in the run folder
+   `7-synthetic/synthetic-narrative-plan.yaml` exists in the run folder
    (Stage 2 of Plan B's `synthetic-narrative-plan` skill produces it),
    read it and use it as `manifest_yaml`. Skip to step 3.
 
@@ -122,7 +122,7 @@ deferred to later stages. This skill is the data plumbing only.
 
    **Otherwise (default-manifest mode):** read the PDD at
    `ACE/<opp>/inputs/pdd.md` and the connect setup summary at
-   `ACE/<opp>/runs/<last_run_id>/3-connect/connect-opp-setup.md`. Use them
+   `ACE/<opp>/runs/<last_run_id>/4-connect/connect-opp-setup.md`. Use them
    to fill in:
 
    - `opportunity_name` — from `opp.yaml.display_name`
@@ -197,7 +197,7 @@ deferred to later stages. This skill is the data plumbing only.
    ```
 
    Save the manifest as
-   `6-synthetic/synthetic-data-generate_manifest.yaml` via
+   `7-synthetic/synthetic-data-generate_manifest.yaml` via
    `mcp__plugin_ace_ace-gdrive__drive_create_file`.
 
    **Pause for operator review unless `--no-pause` is set.** The default is a
@@ -231,7 +231,7 @@ deferred to later stages. This skill is the data plumbing only.
      opportunity_id=<int>; check Connect membership / labs admin grant before
      retrying."
    - `INVALID_SCHEMA` (manifest fails Pydantic validation) → write the
-     verbatim error body to `6-synthetic/synthetic-data-generate_error.md`
+     verbatim error body to `7-synthetic/synthetic-data-generate_error.md`
      and halt. Do not retry; the operator must edit the manifest.
    - Transport / 5xx errors → halt with the labs error body verbatim and a
      pointer to `/ace:doctor` `[Connect Labs]`.
@@ -260,7 +260,7 @@ deferred to later stages. This skill is the data plumbing only.
     step is a defense-in-depth check.
 
 4. **Write the run summary** to
-   `6-synthetic/synthetic-data-generate.md` via `drive_create_file`
+   `7-synthetic/synthetic-data-generate.md` via `drive_create_file`
    (find-or-update — re-runs overwrite the same file rather than
    creating a duplicate). Include in this order:
 
@@ -271,7 +271,7 @@ deferred to later stages. This skill is the data plumbing only.
      empty or unreachable; visit `form_json` will be sparse";
      `[WARN] labs fixture folder not shared with ACE` (from step 3a).
      Skip the banner entirely if all three are clean.
-   - Manifest path: `ACE/<opp>/runs/<run-id>/6-synthetic/synthetic-data-generate_manifest.yaml`
+   - Manifest path: `ACE/<opp>/runs/<run-id>/7-synthetic/synthetic-data-generate_manifest.yaml`
    - GDrive fixture folder: `https://drive.google.com/drive/folders/<folder_id>`
    - Per-file fixture links table (from step 3a), if verification ran
    - Record counts table (one row per endpoint)
@@ -327,7 +327,7 @@ deferred to later stages. This skill is the data plumbing only.
    `update_yaml_file` shallow-merges top-level keys (replace, not
    deep-merge — see its tool description). Sending
    `{phases: {synthetic-data-and-workflows: {...}}}` would replace the
-   entire `phases:` block, clobbering `design-review`, `ocs-setup`,
+   entire `phases:` block, clobbering `idea-to-design`, `ocs-setup`,
    `qa-and-training`, `solicitation-management`, etc. Instead:
 
    1. `mcp__plugin_ace_ace-gdrive__drive_read_file` on
@@ -391,7 +391,7 @@ When `--dry-run` is active:
 
 - Write the manifest to Drive as normal.
 - Skip the `synthetic_generate_from_manifest` call.
-- Write `6-synthetic/synthetic-data-generate.md` with a `> dry-run: no labs
+- Write `7-synthetic/synthetic-data-generate.md` with a `> dry-run: no labs
   call made` banner and the manifest path.
 - Do not mutate `opp.yaml`. State tracks as `dry-run-success`.
 

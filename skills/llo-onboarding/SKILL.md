@@ -10,42 +10,42 @@ disable-model-invocation: true
 
 First LLO contact for the awarded LLO. Reads
 `phases.solicitation-management.products.selected_llo` in the current
-run's `run_state.yaml` (populated by Phase 7 `solicitation-review`
+run's `run_state.yaml` (populated by Phase 8 `solicitation-review`
 after a solicitation is awarded), issues the Connect system invite to
 that single org, and sends the ACE-authored onboarding email with the
 OCS widget link embedded.
 
-**Phase 8 entry guard:** if
+**Phase 9 entry guard:** if
 `phases.solicitation-management.products.selected_llo.org_slug` is
 null/empty in the current run's `run_state.yaml`, this skill halts
 immediately with:
 
-> FATAL: Phase 8 cannot start —
+> FATAL: Phase 9 cannot start —
 > `phases.solicitation-management.products.selected_llo.org_slug` is
 > empty in the current run's `run_state.yaml`. Run
-> `/ace:step solicitation-review --opp <opp-name>` to score Phase 7
+> `/ace:step solicitation-review --opp <opp-name>` to score Phase 8
 > solicitation responses and award an awardee. The orchestrator's
-> pre-Phase-7 gate should have caught this; if you're seeing this from
+> pre-Phase-8 gate should have caught this; if you're seeing this from
 > a manual `/ace:step` invocation, the gate was bypassed.
 
 The single-awardee model replaces the previous multi-LLO roster model
-that read `connect-setup/invites.md`. With Phase 7 publishing a
-solicitation and selecting one winner, Phase 8 onboards exactly one org.
+that read `connect-setup/invites.md`. With Phase 8 publishing a
+solicitation and selecting one winner, Phase 9 onboards exactly one org.
 
 ## Process
 
 1. **Read inputs from GDrive:**
    - `selected_llo` block — read from
      `phases.solicitation-management.products.selected_llo` in the
-     current run's `run_state.yaml`. Populated by Phase 7
+     current run's `run_state.yaml`. Populated by Phase 8
      `solicitation-review`. Must contain `org_slug`, `contact_email`,
      `source: 'solicitation'`, `response_id`. Halt with the FATAL
      message above if `org_slug` is null/empty.
-   - Training materials: `ACE/<opp-name>/runs/<run-id>/5-qa-and-training/`
-   - Opportunity details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
-   - Program details: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-program-setup.md` (program
+   - Training materials: `ACE/<opp-name>/runs/<run-id>/6-qa-and-training/`
+   - Opportunity details: `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`
+   - Program details: `ACE/<opp-name>/runs/<run-id>/4-connect/connect-program-setup.md` (program
      UUID for the Connect invite)
-   - OCS widget config: `ACE/<opp-name>/runs/<run-id>/4-ocs/ocs-agent-setup.md`
+   - OCS widget config: `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md`
      (`public_id`, `embed_key`)
    - Award record: `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_award-record.md` (for
      the awarded amount and award context to mention in the onboarding
@@ -159,7 +159,7 @@ running discussions, not visits.
 
 **Materials to foreground:** facilitator guide, question guide, consent
 form, audio-upload instructions. These live under
-`runs/<run-id>/5-qa-and-training/` but paths differ per archetype — if
+`runs/<run-id>/6-qa-and-training/` but paths differ per archetype — if
 an FGD-specific training bundle isn't present, link the atomic-visit
 materials with a note that the
 team should adapt the framing for discussion sessions (flag as an
@@ -225,4 +225,4 @@ When `--dry-run` is active:
 | 2026-04-20 | Added `## Archetypes` section with per-archetype email framing, "getting started" steps, and timeline language. `focus-group` addresses the recipient as a facilitator-owning org (not FLW-managing), leads with question guide + audio upload, and uses session-count cadence language. `multi-stage` front-loads Stage 1 content. Prevents atomic-visit framing from landing as the first LLO-facing artifact on FGD opps | ACE team |
 | 2026-04-28 | Replace HITL workaround with `connect_send_llo_invite` (ace-connect 0.8.1). Connect's invite is program-level, so the atom takes the program UUID and an `organization` slug for the target LLO workspace | ACE team |
 | 2026-04-30 | Switch `connect_send_llo_invite` to `POST /api/programs/<id>/applications/` (commcare-connect PR #1135). Args drop `contact_email` (server emails workspace admins via `send_program_invite_email`). Add new step 2a: `connect_accept_program_application` for ACE-driven dogfood runs that need to auto-accept the invite. (0.10.47) | ACE team |
-| 2026-05-04 | Read awardee from `opp.yaml.selected_llo` instead of iterating `connect-setup/invites.md` roster. Phase 8 entry guard halts with an actionable message if `selected_llo.org_slug` is null (Phase 7 `solicitation-review` must run first). Single-org onboarding replaces multi-LLO roster model. (0.12.0) | ACE team |
+| 2026-05-04 | Read awardee from `opp.yaml.selected_llo` instead of iterating `connect-setup/invites.md` roster. Phase 9 entry guard halts with an actionable message if `selected_llo.org_slug` is null (Phase 8 `solicitation-review` must run first). Single-org onboarding replaces multi-LLO roster model. (0.12.0) | ACE team |

@@ -4,7 +4,7 @@
  * Background: jjackson/ace#115 finding 1 — on the local AVD, tapping
  * `btn_start` on a claimed LEEP opp produces an on-screen banner reading
  * "Failed to start learning" (no logcat exception class surfaced to the
- * user). Phase 5's `app-screenshot-capture` halts; both Learn and
+ * user). Phase 6's `app-screenshot-capture` halts; both Learn and
  * Deliver smoke journeys depend on entering the Learn app first.
  *
  * Hypotheses (ranked by likelihood when issue was filed):
@@ -33,7 +33,7 @@
  *     Connect's database has the freshly-released metadata, not stale.
  *   - hypothesis 4 RULED OUT: opp record's cc_app_ids match the just-
  *     released build's source-app id, and the build's `built_on`
- *     timestamp matches Phase 2's release time.
+ *     timestamp matches Phase 3's release time.
  *
  * What that leaves: the failure is in either (a) Connect's mobile API
  * when the AVD calls "start learning", or (b) the CommCare Android
@@ -48,7 +48,7 @@
  * patched server-side; they still break the AVD's CommCare runtime at
  * Learn-app launch time. ACE has a workaround skill `commcare-form-patch`
  * (`assessment-removal` patch class) that strips them, but it was a
- * MANUAL skill not part of `/ace:run`. As of 0.13.66 Phase 2's Step 2.8
+ * MANUAL skill not part of `/ace:run`. As of 0.13.66 Phase 3's Step 2.8
  * invokes it automatically. Tracking: voidcraft-labs/nova-plugin#7,
  * jjackson/ace#115 finding 1.
  *

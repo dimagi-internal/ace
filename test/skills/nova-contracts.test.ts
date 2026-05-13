@@ -35,9 +35,9 @@ import {
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 describe('Nova-plugin migration: artifact manifest reflects new contract', () => {
-  it('snapshot JSON paths (now under 2-commcare/) are optional (Nova owns app storage)', () => {
-    const learnSnap = ARTIFACT_MANIFEST.find((a) => a.path === '2-commcare/pdd-to-learn-app_snapshot.json');
-    const deliverSnap = ARTIFACT_MANIFEST.find((a) => a.path === '2-commcare/pdd-to-deliver-app_snapshot.json');
+  it('snapshot JSON paths (now under 3-commcare/) are optional (Nova owns app storage)', () => {
+    const learnSnap = ARTIFACT_MANIFEST.find((a) => a.path === '3-commcare/pdd-to-learn-app_snapshot.json');
+    const deliverSnap = ARTIFACT_MANIFEST.find((a) => a.path === '3-commcare/pdd-to-deliver-app_snapshot.json');
     expect(learnSnap?.required).toBe(false);
     expect(deliverSnap?.required).toBe(false);
     // No skill should consume the JSON snapshots — the canonical handle
@@ -48,10 +48,10 @@ describe('Nova-plugin migration: artifact manifest reflects new contract', () =>
 
   it('app-deploy now consumes the app summaries (not the JSON snapshots)', () => {
     const consumed = artifactsConsumedBy('app-deploy').map((a) => a.path);
-    expect(consumed).toContain('2-commcare/pdd-to-learn-app_summary.md');
-    expect(consumed).toContain('2-commcare/pdd-to-deliver-app_summary.md');
-    expect(consumed).not.toContain('2-commcare/pdd-to-learn-app_snapshot.json');
-    expect(consumed).not.toContain('2-commcare/pdd-to-deliver-app_snapshot.json');
+    expect(consumed).toContain('3-commcare/pdd-to-learn-app_summary.md');
+    expect(consumed).toContain('3-commcare/pdd-to-deliver-app_summary.md');
+    expect(consumed).not.toContain('3-commcare/pdd-to-learn-app_snapshot.json');
+    expect(consumed).not.toContain('3-commcare/pdd-to-deliver-app_snapshot.json');
   });
 
   it('pdd-to-learn-app and pdd-to-deliver-app still produce the (now-optional) snapshots', () => {
@@ -59,17 +59,17 @@ describe('Nova-plugin migration: artifact manifest reflects new contract', () =>
     // operator wants an audit trail; the manifest still names the producer
     // so the path doesn't become orphan if it does land on disk.
     expect(artifactsProducedBy('pdd-to-learn-app').map((a) => a.path))
-      .toContain('2-commcare/pdd-to-learn-app_snapshot.json');
+      .toContain('3-commcare/pdd-to-learn-app_snapshot.json');
     expect(artifactsProducedBy('pdd-to-deliver-app').map((a) => a.path))
-      .toContain('2-commcare/pdd-to-deliver-app_snapshot.json');
+      .toContain('3-commcare/pdd-to-deliver-app_snapshot.json');
   });
 });
 
 describe('Nova-plugin migration: app-summary fixtures carry nova_app_id frontmatter', () => {
   const fixtures = ['CRISPR-Test-001', 'CRISPR-Test-002'];
   const summaryFiles = [
-    '2-commcare/pdd-to-learn-app_summary.md',
-    '2-commcare/pdd-to-deliver-app_summary.md',
+    '3-commcare/pdd-to-learn-app_summary.md',
+    '3-commcare/pdd-to-deliver-app_summary.md',
   ];
 
   for (const fixture of fixtures) {
@@ -88,8 +88,8 @@ describe('Nova-plugin migration: app-summary fixtures carry nova_app_id frontmat
 
   // Extra contract just for deliver summaries: delivery_unit must be set
   for (const fixture of fixtures) {
-    it(`${fixture}/2-commcare/pdd-to-deliver-app_summary.md declares delivery_unit`, () => {
-      const fp = path.join(REPO_ROOT, 'test/fixtures', fixture, '2-commcare/pdd-to-deliver-app_summary.md');
+    it(`${fixture}/3-commcare/pdd-to-deliver-app_summary.md declares delivery_unit`, () => {
+      const fp = path.join(REPO_ROOT, 'test/fixtures', fixture, '3-commcare/pdd-to-deliver-app_summary.md');
       const body = fs.readFileSync(fp, 'utf-8');
       expect(body).toMatch(/^delivery_unit:\s*\S+/m);
     });

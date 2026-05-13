@@ -13,7 +13,7 @@ into a real Google Slides deck. Single artifact, single concern.
 
 ## When to run
 
-Phase 5 (`qa-and-training`), after `app-screenshot-capture` has uploaded
+Phase 6 (`qa-and-training`), after `app-screenshot-capture` has uploaded
 the per-opp screenshots and after the per-artifact training skills
 (`training-llo-guide`, `training-flw-guide`) have produced the LLO/FLW
 guides (so you can pull a few framing lines forward without duplicating
@@ -24,15 +24,15 @@ analysis). Upstream of `training-deck-build`.
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | opp framing, archetype, audience |
-| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md` | Learn app modules → "what FLWs will see" slides |
-| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md` | Deliver app forms → walkthrough slides |
-| Phase 5 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml` | per-opp PNG fileIds |
+| Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-learn-app_summary.md` | Learn app modules → "what FLWs will see" slides |
+| Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | Deliver app forms → walkthrough slides |
+| Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` | per-opp PNG fileIds |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` | sign-in, claim-opp, sync, payments — common across opps |
-| Phase 5 (`training-flw-guide` sibling) | `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-flw-guide.md` | optional: pull caption phrasing forward so the deck and guide say the same thing |
+| Phase 6 (`training-flw-guide` sibling) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide.md` | optional: pull caption phrasing forward so the deck and guide say the same thing |
 
 ## Output
 
-Single file: `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md`.
+Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-outline.md`.
 
 The format is the **strict contract** that `training-deck-build` parses
 via `parseDeckOutline` in `lib/training-deck-spec.ts`. Producing
@@ -127,7 +127,7 @@ clear error — that's intentional, the parser is opinionated.
    - Every slide with `> Speaker notes:` has at least one sentence
 
 5. **Write the output** to
-   `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md` via
+   `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-outline.md` via
    `drive_create_file` (overwrite if it already exists).
 
 6. **Self-evaluate (LLM-as-Judge inline).** A 4-criterion check:
@@ -141,12 +141,12 @@ clear error — that's intentional, the parser is opinionated.
      long for one training session
 
    Write a verdict YAML to
-   `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline_verdict.yaml` in the standard
+   `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-outline_verdict.yaml` in the standard
    shape (see `lib/verdict-schema.ts`). `passed: true` only if all
    four criteria pass.
 
 7. **Hand off.** Print the deck-outline Drive URL + the verdict
-   summary. Phase 5 orchestrator dispatches `training-deck-build` next.
+   summary. Phase 6 orchestrator dispatches `training-deck-build` next.
 
 ## MCP Tools Used
 
@@ -165,9 +165,9 @@ Slides side is `training-deck-build`'s job.
 
 ## Products
 
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline.md` — the deck
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-outline.md` — the deck
   outline markdown
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-deck-outline_verdict.yaml` — self-eval verdict
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-outline_verdict.yaml` — self-eval verdict
 
 ## Known limitations (and the fix path)
 
@@ -187,7 +187,7 @@ The legacy `training-materials` umbrella emitted 7 artifacts at once
 in a single LLM call. Splitting per artifact gives independent
 iteration, eval, and rerun: each output gets its own context, its own
 self-check, its own verdict. Re-running the FAQ doesn't re-emit the
-entire LLO guide. The umbrella was removed in 0.10.89; the Phase 5
+entire LLO guide. The umbrella was removed in 0.10.89; the Phase 6
 agent now dispatches each per-artifact skill directly.
 
 Sibling per-artifact skills:

@@ -32,10 +32,10 @@ ACE training decks layer two pools of screenshots:
   from your invite list," "sync," "view payments." These look the same for
   every ACE opp because they're driven by the Connect APK's own UI, not by
   any opp-specific config.
-- **Per-opp (Phase 5 `app-screenshot-capture` output):** the Learn-app
+- **Per-opp (Phase 6 `app-screenshot-capture` output):** the Learn-app
   modules + Deliver form for THIS opp.
 
-Without this layering, every Phase 5 burns AVD time re-capturing the same
+Without this layering, every Phase 6 burns AVD time re-capturing the same
 20+ Connect-navigation screenshots. With it, those screenshots are captured
 once per Connect version, sit at a stable Drive path, and the per-opp
 training-flw-guide / training-deck-outline skills embed them by reference.
@@ -245,4 +245,4 @@ Notes:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-30 | Initial version. Standalone skill (NOT in any phase). Surfaced by the request to layer common-vs-opp content in training-materials so per-opp Phase 5 doesn't re-capture identical Connect-navigation screenshots every cycle. (0.10.44) | ACE team |
+| 2026-04-30 | Initial version. Standalone skill (NOT in any phase). Surfaced by the request to layer common-vs-opp content in training-materials so per-opp Phase 6 doesn't re-capture identical Connect-navigation screenshots every cycle. (0.10.44) | ACE team |

@@ -440,7 +440,7 @@ export class AvdBackend {
     // on API 34 Pixel AVDs `/sdcard/` is a FUSE-backed user-space mount that
     // the `shell` user cannot read back via `cat /sdcard/...` even though
     // the dump command reports success. Verified live in
-    // turmeric-20260429-2330 Phase 5 / D-step probe (2026-04-30):
+    // turmeric-20260429-2330 Phase 6 / D-step probe (2026-04-30):
     // /sdcard/ → "No such file or directory" on read,
     // /data/local/tmp/ → file readable, dump valid.
     const dumpPath = '/data/local/tmp/window_dump.xml';

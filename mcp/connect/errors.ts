@@ -201,7 +201,7 @@ export class ConnectValidationError extends ConnectError {
  * `skills/connect-opp-setup/SKILL.md § payment_unit silent drop`.
  *
  * Added 2026-04-30 after the turmeric e2e session retried 3× on this exact
- * shape, blocking Phase 3 for ~5 minutes before the agent gave up.
+ * shape, blocking Phase 4 for ~5 minutes before the agent gave up.
  */
 export class ConnectSilentRejectError extends ConnectError {
   retryable = false;

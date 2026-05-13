@@ -9,7 +9,7 @@
  * PlaywrightBackend kept holding the dead one — every subsequent Playwright
  * read failed with `apiRequestContext.get: Target page, context or browser
  * has been closed`. Surfaced in the leep-paint-collection 2026-05-05 e2e run
- * (Phase 3 connect-opp-setup_BLOCKED.md).
+ * (Phase 4 connect-opp-setup_BLOCKED.md).
  *
  * Fix: PlaywrightBackend now accepts an optional `session` and resolves
  * `request` lazily on every call via `session.peekRequest()`. A

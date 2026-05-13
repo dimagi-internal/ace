@@ -9,30 +9,30 @@ disable-model-invocation: true
 
 # App Test Cases
 
-Binds Phase 1 UX intent to Phase 2 built structure. Runs after Nova
+Binds Phase 1 UX intent to Phase 3 built structure. Runs after Nova
 finishes both apps, before `app-release` — so the recipes exist when
-Phase 5 needs them.
+Phase 6 needs them.
 
 ## Related skills
 
 - **Successor to:** `qa-plan` (retired in 0.10.x, replaced by this skill).
 - **Consumes:** `pdd-to-app-journeys.md` from `pdd-to-app-journeys` (Phase 1).
-- **Consumed by:** `app-screenshot-capture` (Phase 5, shallow) and
+- **Consumed by:** `app-screenshot-capture` (Phase 6, shallow) and
   `/ace:qa-deep` (full execution).
 
 ## Inputs
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `1-design/pdd-to-app-journeys.md` | journey list + persona + per-journey pass criteria |
-| Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` and `pdd-to-deliver-app_summary.md` | nova_app_id per app |
+| Phase 1 | `2-scenarios/pdd-to-app-journeys.md` | journey list + persona + per-journey pass criteria |
+| Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` and `pdd-to-deliver-app_summary.md` | nova_app_id per app |
 | Nova MCP | `get_app({app_id: <nova_app_id>})` | authoritative form/field IDs to resolve into real Maestro selectors |
 | Static | `mcp/mobile/recipes/static/` | recipe palette / templates |
 
 ## Products
 
-- `2-commcare/app-test-cases.yaml` — per-journey test entries (one per journey, exactly one `is_smoke: true` per app)
-- `2-commcare/recipes/J<n>.yaml` — one Maestro recipe per journey (real selectors, no `REPLACE_*` placeholders)
+- `3-commcare/app-test-cases.yaml` — per-journey test entries (one per journey, exactly one `is_smoke: true` per app)
+- `3-commcare/recipes/J<n>.yaml` — one Maestro recipe per journey (real selectors, no `REPLACE_*` placeholders)
 
 ## Process
 
@@ -108,8 +108,8 @@ scalar and a mapping form (`tapOn`, `assertVisible`,
 `extendedWaitUntil`, etc.): use the mapping form whenever you need
 *any* option beyond the bare value.
 
-Caught in vivo on leep Phase 5 attempt 8 (2026-05-12) — J1.yaml
-emitted the broken sibling form, Phase 5 halted, the cloud
+Caught in vivo on leep Phase 6 attempt 8 (2026-05-12) — J1.yaml
+emitted the broken sibling form, Phase 6 halted, the cloud
 emulator stack returned a full structured error envelope with the
 Maestro parse-error frame which named this exact pattern.
 
@@ -246,14 +246,14 @@ For every `tapOn:text` matcher in a recipe:
 syntactically-valid string — it cannot detect a brief-vs-live drift.
 Step 4 (below) adds a runtime smoke check that catches it.
 
-**Write recipes to `ACE/<opp>/runs/<run-id>/2-commcare/recipes/J<n>.yaml`**
+**Write recipes to `ACE/<opp>/runs/<run-id>/3-commcare/recipes/J<n>.yaml`**
 (NOT `app-test-cases/recipes/` — earlier drafts of this SKILL.md had
 the wrong path and the recipes silently weren't being created;
 [#106 finding 3](https://github.com/jjackson/ace/issues/106) fixed
 this. The path must mirror the output spec at the top of the file so
-Phase 5's `app-screenshot-capture` can find them.)
+Phase 6's `app-screenshot-capture` can find them.)
 
-Create the `2-commcare/recipes/` subfolder via `drive_create_folder`
+Create the `3-commcare/recipes/` subfolder via `drive_create_folder`
 (idempotent — `findOrCreate: true` is the default) BEFORE writing the
 first recipe.
 
@@ -277,16 +277,16 @@ naming:
 - the logical selector names that didn't resolve
 - the recipe(s) that referenced them
 - the active selector-map version (`connect-<apkVersion>.yaml`)
-- remediation: `Add missing rows to mcp/mobile/selectors/connect-<apkVersion>.yaml — see PR #249 for the calibration pattern (3 added rows + 5 re-verified for the connect-2.62.0 map). Until that lands, this opp cannot reach Phase 5 cleanly.`
+- remediation: `Add missing rows to mcp/mobile/selectors/connect-<apkVersion>.yaml — see PR #249 for the calibration pattern (3 added rows + 5 re-verified for the connect-2.62.0 map). Until that lands, this opp cannot reach Phase 6 cleanly.`
 
-This gate exists because Phase 5's `app-screenshot-capture` will
+This gate exists because Phase 6's `app-screenshot-capture` will
 block on the same condition when it tries to run the recipes against
-a live AVD. Shifting it left to Phase 2 — where Nova `get_form` /
+a live AVD. Shifting it left to Phase 3 — where Nova `get_form` /
 `get_app` context is still in-scope — gives the author a chance to
 fix the recipe's selector references (or surface the map gap for a
 calibration PR) before the unresolved selectors reach the emulator.
 Both `leep` and `turmeric` runs in early May 2026 hit this class at
-Phase 5; this is the structural preventer.
+Phase 6; this is the structural preventer.
 
 `unverified` entries are NOT a blocker — they substitute fine, they're
 just flagged as not-yet-re-verified against the live APK. Surface the
@@ -301,13 +301,13 @@ Static `mobile_validate_recipe` cannot detect brief-vs-live label drift
 
 **Run only when the operator has mobile bootstrap healthy and opts in.**
 Set `--smoke-validate` to enable; default is OFF so non-mobile-bootstrapped
-operators can run Phase 2 to completion without an AVD. When the flag is
+operators can run Phase 3 to completion without an AVD. When the flag is
 set:
 
 1. Confirm bootstrap health via `mobile_ensure_avd_running()`. If it
    returns `running: false` and the AVD can't auto-start, log
    `[INFO] smoke validator skipped: AVD unavailable` and continue —
-   don't fail Phase 2 over a dev-machine state issue.
+   don't fail Phase 3 over a dev-machine state issue.
 2. For each `is_smoke: true` journey's recipe, call:
 
    ```
@@ -338,9 +338,9 @@ in `templates/app-test-cases-template.yaml`.
 - Every journey from `pdd-to-app-journeys.md` has a binding
 - Exactly one `is_smoke: true` per app
 - **Every `is_smoke: true` journey has a `recipes/J<n>.yaml` file
-  written under `2-commcare/recipes/`.** Confirm via
+  written under `3-commcare/recipes/`.** Confirm via
   `drive_list_folder` against the recipes folder — count must equal
-  the number of `is_smoke: true` journeys. Phase 5's
+  the number of `is_smoke: true` journeys. Phase 6's
   `app-screenshot-capture` reads from this folder; a missing recipe
   silently degrades the deck-build to placeholder screenshots
   ([#106 finding 3](https://github.com/jjackson/ace/issues/106) — the
@@ -349,7 +349,7 @@ in `templates/app-test-cases-template.yaml`.
 - Every recipe passes `mobile_validate_recipe`
 - Every recipe's `mobile_resolve_selectors` pass returned
   `unresolved: []` (Step 3.4 gate; non-empty means the APK selector
-  map is missing rows and Phase 5 will block)
+  map is missing rows and Phase 6 will block)
 - Every `forms_exercised` entry resolves to a real Nova form ID
 
 **If any check fails, halt with a `[BLOCKER]` in the gate brief.**
@@ -368,7 +368,7 @@ judging happens later in `app-ux-eval`).
 ## Failure modes
 
 - pdd-to-app-journeys.md missing or empty → Phase 1 hasn't completed; halt
-- Nova blueprint missing for one of the apps → Phase 2 build hasn't
+- Nova blueprint missing for one of the apps → Phase 3 build hasn't
   succeeded; halt with pointer to upstream skill
 - mobile_validate_recipe rejects more than 2× per journey → escalate
   with the validator output
@@ -389,7 +389,7 @@ qualify under the bar for this phase — a working template, not a
 required set. The skill applies the bar criterion and emits whatever
 rows meet it; the catalog is a teaching device that improves over time.
 
-### Common load-bearing decisions for Phase 5
+### Common load-bearing decisions for Phase 6
 
 | ID | Question | Map to surface |
 |---|---|---|
@@ -401,13 +401,13 @@ The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 contract; the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.
 
-Each row this skill writes uses `phase: 5-qa-and-training` and
+Each row this skill writes uses `phase: 6-qa-and-training` and
 `skill: app-test-cases`.
 
 ## Change log
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-04 | Initial version. Phase 2 producer for app-test-cases.yaml; binds pdd-to-app-journeys.md to Nova-built structure with Maestro recipe stubs. Successor to qa-plan (retired in same release). | ACE team |
-| 2026-05-08 | Add `## Decisions Log` section: 2 anchor rows (test-scenario-count, test-archetype-coverage) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
-| 2026-05-12 | Add Step 3.4 — recipe-wide `mobile_resolve_selectors` gate. Halts `[BLOCKER]` on any unresolved logical selector before recipes are written to Drive. Shifts left a class of Phase 5 blockers (leep + turmeric runs both hit this in early May) to Phase 2, where Nova form/field context is still in-scope. Follows PR #249's `connect-2.62.0.yaml` calibration. | ACE team |
+| 2026-05-04 | Initial version. Phase 3 producer for app-test-cases.yaml; binds pdd-to-app-journeys.md to Nova-built structure with Maestro recipe stubs. Successor to qa-plan (retired in same release). | ACE team |
+| 2026-05-08 | Add `## Decisions Log` section: 2 anchor rows (test-scenario-count, test-archetype-coverage) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-12 | Add Step 3.4 — recipe-wide `mobile_resolve_selectors` gate. Halts `[BLOCKER]` on any unresolved logical selector before recipes are written to Drive. Shifts left a class of Phase 6 blockers (leep + turmeric runs both hit this in early May) to Phase 3, where Nova form/field context is still in-scope. Follows PR #249's `connect-2.62.0.yaml` calibration. | ACE team |

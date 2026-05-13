@@ -14,9 +14,9 @@ Activate the opportunity and notify LLOs that they are live.
 
 1. **Read inputs from GDrive:**
    - UAT results: `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-uat_results.md` (includes archetype)
-   - Deployment summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` (atomic-visit)
-   - Opportunity config: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
-   - Awarded LLO: `phases.solicitation-management.products.selected_llo` in the current run's `run_state.yaml` (populated by Phase 7 `solicitation-review`)
+   - Deployment summary: `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md` (atomic-visit)
+   - Opportunity config: `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`
+   - Awarded LLO: `phases.solicitation-management.products.selected_llo` in the current run's `run_state.yaml` (populated by Phase 8 `solicitation-review`)
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (fallback archetype source)
 
 2. **Read the `archetype:` field.** Go-live semantics differ per
@@ -36,8 +36,8 @@ Activate the opportunity and notify LLOs that they are live.
    highest-stakes gate in the pipeline; activation flips the opp from
    draft to live and deliveries start counting toward payment. Read
    both deep verdicts from `ACE/<opp-name>/runs/<run-id>/`:
-   - `4-ocs/ocs-chatbot-eval_verdict-deep.yaml`
-   - `5-qa-and-training/app-ux-eval_verdict-deep.yaml`
+   - `5-ocs/ocs-chatbot-eval_verdict-deep.yaml`
+   - `6-qa-and-training/app-ux-eval_verdict-deep.yaml`
 
    For each verdict, require:
 
@@ -54,9 +54,9 @@ Activate the opportunity and notify LLOs that they are live.
         stale.
       - **App verdict freshness:** read `learn_build_id` and
         `deliver_build_id` from
-        `5-qa-and-training/app-ux-eval_verdict-deep.yaml`'s
+        `6-qa-and-training/app-ux-eval_verdict-deep.yaml`'s
         `artifact_refs:` block, then read
-        `2-commcare/app-deploy_summary.md`'s `releases:` block. The
+        `3-commcare/app-deploy_summary.md`'s `releases:` block. The
         verdict's build IDs must match the latest released build IDs.
         If either app has been re-released since the verdict was
         written, the screenshots that grounded the eval are out of
@@ -69,8 +69,8 @@ Activate the opportunity and notify LLOs that they are live.
    > Missing or stale: <list of failing checks>
 
    List one entry per failing check (e.g.
-   `4-ocs/ocs-chatbot-eval_verdict-deep.yaml missing`,
-   `5-qa-and-training/app-ux-eval_verdict-deep.yaml verdict=fail`, `OCS
+   `5-ocs/ocs-chatbot-eval_verdict-deep.yaml missing`,
+   `6-qa-and-training/app-ux-eval_verdict-deep.yaml verdict=fail`, `OCS
    chatbot re-published since verdict written (verdict v3, current v4)`,
    `learn app re-released since verdict written (verdict build abc...,
    current build xyz...)`).
@@ -104,8 +104,8 @@ Activate the opportunity and notify LLOs that they are live.
 6. **Confirm the opportunity is active in Connect** (almost always
    already-active by this phase).
 
-   Phase 3 (`connect-opp-setup` Step 6.5) now activates the opp
-   synchronously so the ACE test user can be pre-invited and Phase 5
+   Phase 4 (`connect-opp-setup` Step 6.5) now activates the opp
+   synchronously so the ACE test user can be pre-invited and Phase 6
    `app-screenshot-capture` has a real opp on the AVD. By the time
    `llo-launch` runs, the opp is virtually always already-active.
 
@@ -119,10 +119,10 @@ Activate the opportunity and notify LLOs that they are live.
      call (idempotent path).`
      `connect_activate_opportunity` itself **rejects already-active
      opps** as a validation error — without this pre-check, a clean
-     Phase 3 cascades into a Phase 8 failure for no real reason.
+     Phase 4 cascades into a Phase 9 failure for no real reason.
      Tracking: jjackson/ace#106 finding 9.
    - **Otherwise activate** (rare — an operator manually deactivated
-     between Phase 3 and Phase 8, or Phase 3's activation was rolled
+     between Phase 4 and Phase 9, or Phase 4's activation was rolled
      back). Pass `organization_slug` and `opportunity_id` from
      `connect-setup/opportunity.md`. The atom hits
      `POST /api/opportunities/<id>/activate/`, which validates that:
@@ -133,8 +133,8 @@ Activate the opportunity and notify LLOs that they are live.
      `active=true` (whether we activated this run or skipped because
      it was already active).
    - **ACE test-user pre-invite is NOT re-fired here.** As of 0.13.x,
-     `connect-opp-setup` (Phase 3 Step 7) invites `${ACE_E2E_PHONE}`
-     synchronously once Phase 3 Step 6.5 has activated the opp. The
+     `connect-opp-setup` (Phase 4 Step 7) invites `${ACE_E2E_PHONE}`
+     synchronously once Phase 4 Step 6.5 has activated the opp. The
      real-LLO invite below remains this skill's responsibility.
    - Payment/tracking semantics are archetype-specific — see § Archetypes
 
@@ -182,7 +182,7 @@ Activate the opportunity and notify LLOs that they are live.
     `merge: 'two-level'`. Sole writer of `products.launch`.
 
 <!-- 0.13.116: gate-brief write step + ## Gate Brief section removed.
-The Phase 8 "Before llo-launch" Pause Point is unconditional in all
+The Phase 9 "Before llo-launch" Pause Point is unconditional in all
 modes (always pauses — the highest-stakes activation in the pipeline).
 At pause time, the orchestrator composes the pause-time summary from:
 - this skill's eval verdict (`llo-launch-eval`)
@@ -321,7 +321,7 @@ viability axis (PR #145) — when they're present in the log, the rubric
 has structured input for those dimensions instead of grading on prose.
 The list is a working template; the bar criterion is the sole filter.
 
-### Common load-bearing decisions for Phase 8
+### Common load-bearing decisions for Phase 9
 
 | ID | Question | Map to surface |
 |---|---|---|
@@ -335,7 +335,7 @@ The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 contract; the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.
 
-Each row this skill writes uses `phase: 8-execution-management` and
+Each row this skill writes uses `phase: 9-execution-management` and
 `skill: llo-launch`.
 
 ## Change Log
@@ -348,6 +348,6 @@ Each row this skill writes uses `phase: 8-execution-management` and
 | 2026-04-28 | Replace HITL workaround with `connect_activate_opportunity` + `connect_get_opportunity` (ace-connect 0.8.1) | ACE team |
 | 2026-04-30 | Switch `connect_activate_opportunity` to `POST /api/opportunities/<id>/activate/` (commcare-connect PR #1135). Server-side guards now reject activation if no PaymentUnits exist or the opp has ended; clearer errors than the silent edit-form fallback. Step 4 also gains a deferred FLW pre-invite path for ACE-driven dogfood runs whose `connect-opp-setup` deferred the invite until activation. (0.10.47) | ACE team |
 | 2026-05-04 | Add the deep-QA verdict freshness gate (new Step 4) before activation: refuse to activate unless `verdicts/ocs-chatbot-eval-deep.yaml` and `verdicts/app-ux-eval-deep.yaml` exist, both pass, and both are newer than the artifacts they grade (OCS chatbot `version_number`; learn/deliver `build_id` from `deployment-summary.md`). Add `--override-deep-qa-gate=<reason>` operator escape hatch with a required reason and an audit trail to `comms-log/observations.md`; reachable only via `/ace:step llo-launch`, never `/ace:run`. Gate-brief auto-surfaced concerns gain two `[BLOCKER]` rows mirroring the gate. Part of the shallow/deep QA split refactor (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`). | ACE team |
-| 2026-05-05 | **Path-scheme migration on the deep-QA gate.** Step 4 verdict reads, error messages, and gate-brief BLOCKER rows now reference `4-ocs/ocs-chatbot-eval_verdict-deep.yaml` and `5-qa-and-training/app-ux-eval_verdict-deep.yaml` (per the manifest); freshness check pulls build IDs from `2-commcare/app-deploy_summary.md`. Wiring fix — the prior `verdicts/...` paths no longer exist on disk, so the gate would always fail with "verdict missing" against current main. No behavior change beyond paths. | ACE team |
-| 2026-05-08 | Add `## Decisions Log` section: 4 anchor rows mapped 1:1 to `llo-launch-eval`'s viability axis (llo-capacity-actual, day-one-readiness, downstream-handoff-alignment, stop-loss-planning) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
-| 2026-05-10 | Drop the deferred FLW pre-invite path: `connect-opp-setup` (Phase 3 Step 7) now invites `${ACE_E2E_PHONE}` directly after activating the opp in Phase 3 Step 6.5. Step 6 here is reframed from "activate the opp" to "confirm the opp is active" — the idempotent skip-if-active path is now the canonical case; the active-otherwise branch is a fallback for the rare operator-deactivated case. No behavior change for real-LLO invites (still sent in this skill); behavior change for ACE test-user invites (no longer rescued here). Closes the Phase-5-placeholder-screenshots chicken-and-egg. | ACE team |
+| 2026-05-05 | **Path-scheme migration on the deep-QA gate.** Step 4 verdict reads, error messages, and gate-brief BLOCKER rows now reference `5-ocs/ocs-chatbot-eval_verdict-deep.yaml` and `6-qa-and-training/app-ux-eval_verdict-deep.yaml` (per the manifest); freshness check pulls build IDs from `3-commcare/app-deploy_summary.md`. Wiring fix — the prior `verdicts/...` paths no longer exist on disk, so the gate would always fail with "verdict missing" against current main. No behavior change beyond paths. | ACE team |
+| 2026-05-08 | Add `## Decisions Log` section: 4 anchor rows mapped 1:1 to `llo-launch-eval`'s viability axis (llo-capacity-actual, day-one-readiness, downstream-handoff-alignment, stop-loss-planning) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-10 | Drop the deferred FLW pre-invite path: `connect-opp-setup` (Phase 4 Step 7) now invites `${ACE_E2E_PHONE}` directly after activating the opp in Phase 4 Step 6.5. Step 6 here is reframed from "activate the opp" to "confirm the opp is active" — the idempotent skip-if-active path is now the canonical case; the active-otherwise branch is a fallback for the rare operator-deactivated case. No behavior change for real-LLO invites (still sent in this skill); behavior change for ACE test-user invites (no longer rescued here). Closes the Phase-6-placeholder-screenshots chicken-and-egg. | ACE team |

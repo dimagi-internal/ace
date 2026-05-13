@@ -49,7 +49,7 @@ export class MaestroBackend {
     // reports, not PNGs). Setting cwd to screenshotDir is what makes
     // `takeScreenshot: "connect-login-home"` land at
     // `<screenshotDir>/connect-login-home.png`. Surfaced live in
-    // turmeric-20260429-2330 Phase 5 Step 2 round 4 (2026-04-30): every
+    // turmeric-20260429-2330 Phase 6 Step 2 round 4 (2026-04-30): every
     // recipe reported `takeScreenshot ... COMPLETED` but screenshotDir
     // ended up empty. The recipes were correct; the cwd was wrong.
     const args: string[] = [];
@@ -96,7 +96,7 @@ export class MaestroBackend {
    * Failure mode this exists to catch: the AVD is booted and `adb` shows it
    * as `device`, but `dev.mobile.maestro` (the on-device driver app) isn't
    * answering on its gRPC channel — every `maestro test` returns
-   * `deviceInfo ... UNAVAILABLE` after a ~30s timeout and Phase 5
+   * `deviceInfo ... UNAVAILABLE` after a ~30s timeout and Phase 6
    * `app-screenshot-capture` degrades to `verdict: incomplete`. The
    * canonical symptom we hit live in leep run 20260511-0507.
    *

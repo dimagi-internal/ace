@@ -11,7 +11,7 @@ disable-model-invocation: true
 See `skills/_eval-template.md` for shared verdict / severity / stock-block
 contracts. Provisional rubric.
 
-Stage 4 of ACE Phase 6 (Plan B). The polish step is what moves a demo
+Stage 4 of ACE Phase 7 (Plan B). The polish step is what moves a demo
 from "competent" to "amazing" — it's the most consequential step for
 demo quality. This eval is correspondingly strict.
 
@@ -28,9 +28,9 @@ the calibrated judge.
 
 ## Inputs
 
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-workflow-polish.md`
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-narrative-plan.{md,yaml}` — anchor for FLW names + anomaly descriptions that should appear in patches
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-workflow-seed.md` — `scaffold_unsuitable` flag, baseline render-code version
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-workflow-polish.md`
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-narrative-plan.{md,yaml}` — anchor for FLW names + anomaly descriptions that should appear in patches
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-workflow-seed.md` — `scaffold_unsuitable` flag, baseline render-code version
 - `ACE/<opp-name>/opp.yaml` — `synthetic.workflows.llo_weekly_review_id` + `synthetic.labs_opp_id` (needed for the screenshot capture in step 6)
 - `inputs/pdd.md` — opp domain (used as the `domain` context for canopy:visual-judge's brand-fit anchoring)
 
@@ -208,7 +208,7 @@ eval's overall verdict becomes `[BLOCKER]` per the hard-deduct table.
 
 ## Verdict shape
 
-Write `<6-synthetic-folder>/synthetic-workflow-polish-eval_verdict.yaml`
+Write `<7-synthetic-folder>/synthetic-workflow-polish-eval_verdict.yaml`
 per `lib/verdict-schema.ts`:
 
 ```yaml
@@ -217,7 +217,7 @@ skill: synthetic-workflow-polish-eval
 target: <opp-name>
 mode: deep
 ran_at: <ISO timestamp>
-capture_path: 6-synthetic/synthetic-workflow-polish.md
+capture_path: 7-synthetic/synthetic-workflow-polish.md
 
 overall_score: <weighted mean post-cap>
 overall_score_pre_cap: <raw weighted mean>
@@ -235,7 +235,7 @@ dimensions:
 hard_deduct_triggered: [ ... ]
 auto_surfaced: [ ... ]
 gate:
-  threshold: 7.5      # stricter than other Phase 6 evals — polish is the headline
+  threshold: 7.5      # stricter than other Phase 7 evals — polish is the headline
   disposition: approve | iterate | reject
 ```
 

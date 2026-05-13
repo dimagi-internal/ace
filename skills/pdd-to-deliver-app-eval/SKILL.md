@@ -22,12 +22,12 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Deliver App Specification + delivery unit drive expectation |
-| Phase 2 | `2-commcare/pdd-to-deliver-app_summary.md` | Deliver-app structure summary (`nova_app_id`, forms, fields) |
+| Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` | Deliver-app structure summary (`nova_app_id`, forms, fields) |
 | Nova MCP (optional) | `get_app({app_id: <nova_app_id>})` | authoritative field-by-field blueprint (recommended) |
 
 ## Products
 
-- `2-commcare/pdd-to-deliver-app-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
+- `3-commcare/pdd-to-deliver-app-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 
 ## Process
 
@@ -40,7 +40,7 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
      (e.g. "actual app JSON/CCZ not yet produced", "awaiting human
      completion", "HITL-pending", "stub-only")
    - the summary lists *only* placeholders/section names with no
-     field-level structure (the "skeleton" shape Phase 2 emits before
+     field-level structure (the "skeleton" shape Phase 3 emits before
      Nova finishes a build)
 
    then emit `verdict: incomplete` immediately with `[INFO] HITL-stub
@@ -92,7 +92,7 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
    - All 5 dimensions ≥ 7 AND overall ≥ 7.5 → suite verdict `pass`.
 
 6. **Write the verdict YAML** to
-   `2-commcare/pdd-to-deliver-app-eval_verdict.yaml` using the shape
+   `3-commcare/pdd-to-deliver-app-eval_verdict.yaml` using the shape
    from `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
 
    ```yaml
@@ -105,7 +105,7 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
    ```
 
 7. **Write the human-readable report** to
-   `2-commcare/pdd-to-deliver-app-eval_report.md` summarizing each
+   `3-commcare/pdd-to-deliver-app-eval_report.md` summarizing each
    dimension's score, surfaced discrepancies (WARN/INFO table), and
    suggested Nova edits to bring the build into spec.
 
@@ -167,4 +167,4 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 |------|--------|--------|
 | 2026-04-28 | Initial version. Cross-artifact rubric: 5 dimensions (field_count_match, question_order_match, gate_semantics_match, conditional_logic_match, connectify_wiring). Calibrated against `eval-calibration/known-issues.md`. Template for future cross-artifact evals. | ACE team (eval system buildout) |
 | 2026-04-29 | Added step-2 HITL-pending stub detection. If the deliver app summary has no `nova_app_id`, has `TBD`/`null`, is explicitly marked HITL-pending, or carries only skeleton structure, emit `verdict: incomplete` immediately. Surfaced 0.9.11 cross-opp validation against `turmeric-dogfood-20260427`: trying to grade a HITL-pending summary made 2 of 5 dimensions ungradable (field-order, conditional-logic) and inflated the others. The early-return pattern mirrors `connect-program-setup-eval`'s degraded-mode detection — both treat upstream environmental gaps as `incomplete`, not as quality defects. | ACE team (0.10.8) |
-| 2026-05-05 | Step 7 report path migrated to `runs/<run-id>/2-commcare/pdd-to-deliver-app-eval_report.md` (was opp-level `eval-reports/YYYY-MM-DD-pdd-to-deliver-eval.md`). No methodology change. | ACE team |
+| 2026-05-05 | Step 7 report path migrated to `runs/<run-id>/3-commcare/pdd-to-deliver-app-eval_report.md` (was opp-level `eval-reports/YYYY-MM-DD-pdd-to-deliver-eval.md`). No methodology change. | ACE team |

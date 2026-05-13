@@ -354,7 +354,7 @@ describe('CloudBackend.runRecipe', () => {
   });
 
   it("omits state from the request body when avdName is a generic placeholder", async () => {
-    // Regression for the leep Phase 5 attempt-6 bug: MobileClient
+    // Regression for the leep Phase 6 attempt-6 bug: MobileClient
     // dispatches with avdName='cloud' (its generic AVD-name default),
     // and the prior runRecipe routed `state: 'cloud'` into the request
     // body. ace-web's controller saw `state_name='cloud' != active='cc-2.62.0'`

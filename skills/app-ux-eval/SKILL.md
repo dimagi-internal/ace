@@ -23,33 +23,33 @@ contracts.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `1-design/pdd-to-app-journeys.md` | UX-intent ground truth (goal, happy-path narrative, edge cases, pass criteria, `pdd_time_budget_seconds`) |
-| Phase 2 | `2-commcare/app-test-cases.yaml` | journey↔recipe bindings, smoke flag, forms exercised |
-| Phase 5 | `5-qa-and-training/screenshots/<journey>/` + `5-qa-and-training/app-screenshot-capture_manifest.yaml` | captured PNGs to grade |
+| Phase 1 | `2-scenarios/pdd-to-app-journeys.md` | UX-intent ground truth (goal, happy-path narrative, edge cases, pass criteria, `pdd_time_budget_seconds`) |
+| Phase 3 | `3-commcare/app-test-cases.yaml` | journey↔recipe bindings, smoke flag, forms exercised |
+| Phase 6 | `6-qa-and-training/screenshots/<journey>/` + `6-qa-and-training/app-screenshot-capture_manifest.yaml` | captured PNGs to grade |
 
 ## Products
 
-- `5-qa-and-training/app-ux-eval_verdict-deep.yaml` — per-journey verdict on UX dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion)
+- `6-qa-and-training/app-ux-eval_verdict-deep.yaml` — per-journey verdict on UX dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion)
 
 ## Process
 
 ### Step 1: Read inputs
 
-- `1-design/pdd-to-app-journeys.md` — ground truth (UX-intent:
+- `2-scenarios/pdd-to-app-journeys.md` — ground truth (UX-intent:
   per-journey goal, happy-path narrative, edge cases, pass criteria,
   `pdd_time_budget_seconds`)
-- `2-commcare/app-test-cases.yaml` — journey↔recipe bindings (which
+- `3-commcare/app-test-cases.yaml` — journey↔recipe bindings (which
   Maestro recipe corresponds to which journey, smoke flag, forms
   exercised)
 - The captured screenshots from the recent execution run — look up by
   the `--run-id` argument passed in. Paths:
-  `ACE/<opp>/runs/<run-id>/5-qa-and-training/screenshots/` plus
-  `ACE/<opp>/runs/<run-id>/5-qa-and-training/app-screenshot-capture_manifest.yaml`
+  `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/` plus
+  `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`
   (which step → which PNG)
 - `inputs/pdd.md` — for persona context (the FLW the rubric is judging
   "good experience" against; pulled from the "Target FLW" section)
-- `2-commcare/app-deploy_summary.md` — for the `learn_build_id` and
-  `deliver_build_id` that go into `artifact_refs` so the Phase 8 gate
+- `3-commcare/app-deploy_summary.md` — for the `learn_build_id` and
+  `deliver_build_id` that go into `artifact_refs` so the Phase 9 gate
   can compare verdict freshness against the latest released CommCare
   build
 
@@ -101,7 +101,7 @@ score to 0.
 ### Step 4: Write verdict
 
 Write
-`ACE/<opp>/runs/<run-id>/5-qa-and-training/app-ux-eval_verdict-deep.yaml`
+`ACE/<opp>/runs/<run-id>/6-qa-and-training/app-ux-eval_verdict-deep.yaml`
 per the uniform verdict shape (see `skills/README.md § Eval verdict
 shape` or `lib/verdict-schema.ts`):
 
@@ -110,11 +110,11 @@ skill: app-ux-eval
 target: <opp-name>
 mode: deep
 ran_at: <ISO timestamp with timezone>
-capture_path: 5-qa-and-training/app-screenshot-capture_manifest.yaml
+capture_path: 6-qa-and-training/app-screenshot-capture_manifest.yaml
 
 artifact_refs:
-  learn_build_id: <from 2-commcare/app-deploy_summary.md>
-  deliver_build_id: <from 2-commcare/app-deploy_summary.md>
+  learn_build_id: <from 3-commcare/app-deploy_summary.md>
+  deliver_build_id: <from 3-commcare/app-deploy_summary.md>
 
 overall_score: 7.0             # 0–10 scale; convert per-dimension 1–3 to 0–10 via (avg-1)/2*10
 overall_score_pre_cap: 7.7     # raw weighted mean before any hard-deduction clamp
@@ -157,7 +157,7 @@ Required top-level fields:
 - `mode: deep`
 - `ran_at` — ISO timestamp with timezone
 - `artifact_refs: { learn_build_id, deliver_build_id }` — read from
-  `2-commcare/app-deploy_summary.md` so the Phase 8 gate can
+  `3-commcare/app-deploy_summary.md` so the Phase 9 gate can
   timestamp-compare against the currently released builds
 - `dimensions` — per-dimension scores + reasons (5 dimensions, equal
   0.20 weights)
@@ -180,16 +180,16 @@ calibration metrics keep growing per
 - Any non-smoke failure with overall ≥ 7.0 = `iterate` (the operator
   can decide whether to fix and re-run vs. proceed)
 
-The Phase 8 gate (`llo-launch`) reads this verdict and adds its own
+The Phase 9 gate (`llo-launch`) reads this verdict and adds its own
 freshness check (verdict's `artifact_refs` must match the latest
 released build IDs — see Task 7 in the shallow/deep split plan).
 
 ## Mode behavior
 
-- **Deep only.** There is no `--quick` mode. The shallow Phase 5
+- **Deep only.** There is no `--quick` mode. The shallow Phase 6
   smoke (`app-screenshot-capture` running just the `is_smoke: true`
   recipes) does NOT invoke this skill — it's structural-only.
-  This skill is invoked exclusively by `/ace:qa-deep` and the Phase 8
+  This skill is invoked exclusively by `/ace:qa-deep` and the Phase 9
   go-live gate.
 
 ## Failure modes
@@ -199,16 +199,16 @@ released build IDs — see Task 7 in the shallow/deep split plan).
   recipe didn't run. Don't grade partial coverage; the missing
   screenshots are upstream signal that `/ace:qa-deep`'s capture step
   failed.
-- **`1-design/pdd-to-app-journeys.md` missing** → upstream Phase 1 or
+- **`2-scenarios/pdd-to-app-journeys.md` missing** → upstream Phase 1 or
   migration gap; halt with pointer to `pdd-to-app-journeys`.
-- **`2-commcare/app-test-cases.yaml` missing** → upstream Phase 2 gap;
+- **`3-commcare/app-test-cases.yaml` missing** → upstream Phase 3 gap;
   halt with pointer to `app-test-cases`.
 - **Nova builds older than the screenshots** (i.e., a CommCare build
   released after the screenshots were captured) → screenshots are
   stale; halt with `[BLOCKER]` and instruct the operator to re-run
   `/ace:qa-deep` against the current build.
-- **`2-commcare/app-deploy_summary.md` missing the build IDs** → halt;
-  the Phase 8 gate needs `artifact_refs` to compare freshness, and
+- **`3-commcare/app-deploy_summary.md` missing the build IDs** → halt;
+  the Phase 9 gate needs `artifact_refs` to compare freshness, and
   partial verdicts can't be timestamp-checked.
 
 ## MCP tools used
@@ -222,5 +222,5 @@ released build IDs — see Task 7 in the shallow/deep split plan).
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-04 | Initial version. Deep-only LLM-as-Judge for app UX. Five dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion) with hard-deductions. Used by /ace:qa-deep and the Phase 7 gate. Introduced as part of the shallow/deep QA split (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`). | ACE team |
-| 2026-05-05 | **Path-scheme migration.** Inputs repointed to `1-design/pdd-to-app-journeys.md`, `2-commcare/app-test-cases.yaml`, `5-qa-and-training/screenshots/` + `5-qa-and-training/app-screenshot-capture_manifest.yaml`, `2-commcare/app-deploy_summary.md`. Verdict output is now `5-qa-and-training/app-ux-eval_verdict-deep.yaml` (per manifest). Calibration audit trail at `ACE/<opp>/eval-calibration/app-ux-eval-runs.md` corrected to opp-level (was incorrectly under `runs/<run-id>/`). Phase references updated 6 → 7 to match the 8-phase topology. No behavior change beyond paths. | ACE team |
+| 2026-05-04 | Initial version. Deep-only LLM-as-Judge for app UX. Five dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion) with hard-deductions. Used by /ace:qa-deep and the Phase 8 gate. Introduced as part of the shallow/deep QA split (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`). | ACE team |
+| 2026-05-05 | **Path-scheme migration.** Inputs repointed to `2-scenarios/pdd-to-app-journeys.md`, `3-commcare/app-test-cases.yaml`, `6-qa-and-training/screenshots/` + `6-qa-and-training/app-screenshot-capture_manifest.yaml`, `3-commcare/app-deploy_summary.md`. Verdict output is now `6-qa-and-training/app-ux-eval_verdict-deep.yaml` (per manifest). Calibration audit trail at `ACE/<opp>/eval-calibration/app-ux-eval-runs.md` corrected to opp-level (was incorrectly under `runs/<run-id>/`). Phase references updated 6 → 7 to match the 8-phase topology. No behavior change beyond paths. | ACE team |

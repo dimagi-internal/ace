@@ -8,7 +8,7 @@
  *      createImage with the real screenshot)
  *   5. Verify the resulting Slides deck contains a slide with the real PNG
  *
- * This is the missing demo — proves the Phase 5 chain
+ * This is the missing demo — proves the Phase 6 chain
  *   AVD → Maestro → screenshot PNG → Drive upload → deck-outline.md →
  *   Slides deck with real per-opp screenshots
  * actually works on real device output, not synthetic content.

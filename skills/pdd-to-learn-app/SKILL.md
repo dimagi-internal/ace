@@ -19,7 +19,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
 ## Products
 
-- `2-commcare/pdd-to-learn-app_summary.md` — Learn-app structure summary (modules, forms, fields, `nova_app_id`)
+- `3-commcare/pdd-to-learn-app_summary.md` — Learn-app structure summary (modules, forms, fields, `nova_app_id`)
 
 ## Process
 
@@ -63,7 +63,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
      Filed upstream as voidcraft-labs/nova-plugin issue
      "XForm emitter does not entity-encode `<`/`>` in label text"; this
-     skill-side constraint is the workaround. Phase 2's `app-release`
+     skill-side constraint is the workaround. Phase 3's `app-release`
      Step 2.7 surfaces a typed `BuildRejectedError` (with form
      name + line/col) if the architect violates this constraint anyway,
      so the operator gets a clear diagnostic instead of "Cannot make
@@ -128,7 +128,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      rather than form completion?
 
 7. **Write the summary** to
-   `ACE/<opp-name>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md`. Required
+   `ACE/<opp-name>/runs/<run-id>/3-commcare/pdd-to-learn-app_summary.md`. Required
    frontmatter:
 
    ```yaml

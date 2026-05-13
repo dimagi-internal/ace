@@ -16,7 +16,7 @@ Companion fixture (`test/fixtures/CRISPR-Test-003-Turmeric/`) ships the
 same day as a **complete** end-to-end stub with phase-4–6 artifacts
 populated, so CI can catch manifest drift all the way through closeout.
 `CRISPR-Test-001` remains a partial (Phase-1–3) fixture used for
-scenario-style input testing into Phase 4 (`ocs-agent-setup`).
+scenario-style input testing into Phase 5 (`ocs-agent-setup`).
 
 ## State schema refresh
 
@@ -41,9 +41,9 @@ skill contract is readable, expected outputs line up with the manifest.
 | `idea-to-pdd` | `idea.md` ✓ | `pdd.md` ✓ (already in fixture) | OK |
 | `pdd-to-test-prompts` | `pdd.md` ✓ | `test-prompts.md` | Gap — fixture missing `test-prompts.md`. Intentional: this is a Phase-1 output, so running the skill against the fixture *produces* it. Noted in `artifact-manifest.test.ts` expectedMissing list. CRISPR-Test-003-Turmeric ships it populated. |
 
-**Gate:** operator approves `pdd.md` before Phase 2.
+**Gate:** operator approves `pdd.md` before Phase 3.
 
-### Phase 2 — CommCare Setup
+### Phase 3 — CommCare Setup
 
 | Skill | Input state | Output contract | Verdict |
 |---|---|---|---|
@@ -53,9 +53,9 @@ skill contract is readable, expected outputs line up with the manifest.
 | `app-test` | `deployment-summary.md` ✓, `app-summaries/*` ✓ | `test-results/{test-plan,test-results,bugs}.md` | Gap — `test-results/` absent. CRISPR-Test-003 ships these populated |
 | `training-materials` | `app-summaries/*` ✓, `pdd.md` ✓ | `training-materials/{llo-manager-guide,flw-training-guide,quick-reference,faq}.md` ✓ | OK — already in fixture |
 
-**Gate:** operator approves `deployment-summary.md` before Phase 3.
+**Gate:** operator approves `deployment-summary.md` before Phase 4.
 
-### Phase 3 — Connect Setup
+### Phase 4 — Connect Setup
 
 | Skill | Input state | Output contract | Verdict |
 |---|---|---|---|
@@ -63,9 +63,9 @@ skill contract is readable, expected outputs line up with the manifest.
 | `connect-opp-setup` | `program.md` ✓, `pdd.md` ✓, `deployment-summary.md` ✓ | `connect-setup/opportunity.md` ✓ | OK |
 | `llo-invite` | `opportunity.md` ✓, `pdd.md` ✓ | `connect-setup/invites.md` ✓ | OK |
 
-**Gate:** operator approves `invites.md` (invites are *prepared* here, *sent* in Phase 5 after the OCS widget URL is known).
+**Gate:** operator approves `invites.md` (invites are *prepared* here, *sent* in Phase 6 after the OCS widget URL is known).
 
-### Phase 4 — OCS Setup
+### Phase 5 — OCS Setup
 
 | Skill | Input state | Output contract | Verdict |
 |---|---|---|---|
@@ -76,11 +76,11 @@ skill contract is readable, expected outputs line up with the manifest.
 
 **Gate:** operator approves the deep QA report.
 
-### Phase 5 — LLO Management
+### Phase 6 — LLO Management
 
 | Skill | Input state | Output contract | Verdict |
 |---|---|---|---|
-| `llo-onboarding` | `invites.md` ✓, `training-materials/*` ✓, `ocs-agent-config.md` | `comms-log/onboarding-emails.md` | Input OK modulo ocs-agent-config which is a Phase 4 output |
+| `llo-onboarding` | `invites.md` ✓, `training-materials/*` ✓, `ocs-agent-config.md` | `comms-log/onboarding-emails.md` | Input OK modulo ocs-agent-config which is a Phase 5 output |
 | `llo-uat` | `deployment-summary.md` ✓, `training-materials/*` ✓, `opportunity.md` ✓ | `uat/uat-results.md` | Inputs OK |
 | `llo-launch` | `uat-results.md` | `launch/launch-record.md` | Depends on UAT |
 | `timeline-monitor` (recurring) | `pdd.md` ✓ + `state.yaml` | `monitoring/YYYY-MM-DD-timeline-check.md` | Recurring output is dated, optional |
@@ -89,7 +89,7 @@ skill contract is readable, expected outputs line up with the manifest.
 
 **Gate:** operator approves `launch-record.md` before opportunity activates.
 
-### Phase 6 — Closeout
+### Phase 7 — Closeout
 
 | Skill | Input state | Output contract | Verdict |
 |---|---|---|---|
@@ -98,20 +98,20 @@ skill contract is readable, expected outputs line up with the manifest.
 | `learnings-summary` | all upstream artifacts | `closeout/learnings.md`, optional `closeout/new-pdd.md` | — |
 | `cycle-grade` | all artifacts + feedback + learnings | `closeout/cycle-grade.md` | — |
 
-CRISPR-Test-001 doesn't exercise Phase 6. CRISPR-Test-003-Turmeric ships
+CRISPR-Test-001 doesn't exercise Phase 7. CRISPR-Test-003-Turmeric ships
 populated closeout stubs so the artifact-manifest test can span the full
 lifecycle.
 
 ## Gaps surfaced by this trace
 
 1. **Silent prereq failure.** `/ace:step ocs-chatbot-qa CRISPR-Test-001 --deep` today runs without noticing that `test-prompts.md` is absent. Fixed by P2 (prereq check in `/ace:step` via `artifactsConsumedBy`).
-2. **Fixture coverage stops at Phase 3.** `artifact-manifest.test.ts` validates CRISPR-Test-001 only `upToPhase: 'connect'`. Phases 4–6 are silently uncovered. Fixed by P3 (new CRISPR-Test-003-Turmeric + test span extended to `'closeout'`).
+2. **Fixture coverage stops at Phase 4.** `artifact-manifest.test.ts` validates CRISPR-Test-001 only `upToPhase: 'connect'`. Phases 4–6 are silently uncovered. Fixed by P3 (new CRISPR-Test-003-Turmeric + test span extended to `'closeout'`).
 3. **`state.yaml` was stale.** The flat 19-skill list predated 0.2.0; two skills were missing entirely (`pdd-to-test-prompts`, `ocs-chatbot-qa` in any form). Fixed in this cycle (refreshed to 6-phase nested schema).
 
 ## What this walk-through does NOT cover
 
 - **Actual MCP round-trips.** Dispatching skills with live `ace-gdrive` and `ace-ocs` sessions is a separate qualification (OCS side has E2E integration tests gated by `OCS_INTEGRATION=1`).
-- **Recurring-skill cadence.** Phase 5 recurring skills have no "completion" in a dry-run trace; they'd need a simulated schedule.
+- **Recurring-skill cadence.** Phase 6 recurring skills have no "completion" in a dry-run trace; they'd need a simulated schedule.
 - **LLM-as-Judge self-eval behavior.** Skills with `has_judge: true` run a self-evaluation that we're not simulating here.
 
 ## Caveats

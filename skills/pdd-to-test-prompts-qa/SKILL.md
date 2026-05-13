@@ -18,11 +18,11 @@ The companion `pdd-to-test-prompts-eval` grades quality (specificity of expected
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 producer | `1-design/pdd-to-test-prompts.md` | the test prompts file under structural check |
+| Phase 1 producer | `2-scenarios/pdd-to-test-prompts.md` | the test prompts file under structural check |
 
 ## Products
 
-- `1-design/pdd-to-test-prompts-qa_result.yaml` — QA result per `lib/qa-types.ts` schema
+- `2-scenarios/pdd-to-test-prompts-qa_result.yaml` — QA result per `lib/qa-types.ts` schema
 
 ## Checks
 
@@ -44,7 +44,7 @@ The static check functions live at `skills/pdd-to-test-prompts-qa/checks.ts` as 
 1. **Read the test-prompts artifact** from Drive.
 2. **Save to a local temp path**.
 3. **Run all checks** via `scripts/qa-run.ts --skill pdd-to-test-prompts-qa --artifact "$TMP" ...`.
-4. **Write the QA result** to Drive at `1-design/pdd-to-test-prompts-qa_result.yaml`.
+4. **Write the QA result** to Drive at `2-scenarios/pdd-to-test-prompts-qa_result.yaml`.
 5. **Return the verdict** — pass | fail | incomplete. On fail, orchestrator attempts auto-fix and re-runs; halts after bounded retries.
 
 ## MCP Tools Used

@@ -10,14 +10,14 @@
  * with no actionable response body. The Connect Android client correctly
  * logs the failed response and swallows it (Sentry shape doesn't match
  * a structured JSON error), so the FLW-facing symptom is an opaque
- * "Start learning" button noop during Phase 5 navigation.
+ * "Start learning" button noop during Phase 6 navigation.
  *
  * Identical failure class to the `short_description` 50-char trap
  * (`docs/learnings/2026-05-12-connect-opp-short-description-50-char-trap.md`):
  * the server has a deterministic narrow `except` clause and an
  * unhandled exception type 500s with no body. The mitigation pattern is
  * the same — pre-flight client-side against the same upstream contract,
- * surface a structured error before the Phase 5 mobile recipe stalls.
+ * surface a structured error before the Phase 6 mobile recipe stalls.
  *
  * **What this probe checks (cheapest probe that catches the class):**
  *
@@ -41,7 +41,7 @@
  *      POST returns 400 + the same `CommCareHQAPIException` bubble.
  *      Splitting create-vs-exists ahead of time lets the operator see
  *      `would_reuse_existing` cleanly, or surface the conflict with
- *      enough state to debug without touching Phase 5.
+ *      enough state to debug without touching Phase 6.
  *
  * What this probe deliberately does NOT check:
  *
@@ -50,7 +50,7 @@
  *     done with just an API key). Operators get steered there by the
  *     warning message when the flag is off but the API key works.
  *   - OAuth-connection-to-Connect — same scope; doctor-probe-only.
- *   - The actual `start_learn_app` POST — that's Phase 5's job, and a
+ *   - The actual `start_learn_app` POST — that's Phase 6's job, and a
  *     dry-run would mutate the server's invite/link state which we
  *     don't want to do from a pre-flight.
  *
@@ -93,7 +93,7 @@ export interface PreflightLearnAppUserArgs {
 
 /** Outcome shape. Always returned; never throws on a server-side rejection. */
 export interface PreflightLearnAppUserResult {
-  /** True iff Phase 5's `start_learn_app` is structurally clear to run. */
+  /** True iff Phase 6's `start_learn_app` is structurally clear to run. */
   ok: boolean;
   /**
    * Coarse classification of the outcome — the operator branches on this
@@ -208,7 +208,7 @@ export async function preflightLearnAppUser(
       action: 'auth_failed',
       reason:
         `CCHQ rejected ACE_HQ_API_KEY against domain "${args.hq_domain}" with HTTP ${listRes.status}. ` +
-        'The same key fuels `connect_create_opportunity` and the Phase 5 `start_learn_app` POST — ' +
+        'The same key fuels `connect_create_opportunity` and the Phase 6 `start_learn_app` POST — ' +
         'both will fail identically until rotated. Mint a new HQ API key at ' +
         'https://www.commcarehq.org/account/api_keys/ as ace@dimagi-ai.com, update 1Password item ' +
         '"ACE - CommCare HQ API Key (connect-ace-prod)" field `credential`, then ' +
@@ -223,7 +223,7 @@ export async function preflightLearnAppUser(
       action: 'domain_unreachable',
       reason:
         `CCHQ returned 404 for project space "${args.hq_domain}". The domain may be archived, ` +
-        'renamed, or never provisioned. Phase 5 `start_learn_app` will 500 because ' +
+        'renamed, or never provisioned. Phase 6 `start_learn_app` will 500 because ' +
         '`create_hq_user_and_link` cannot create a mobile worker in a non-existent domain. ' +
         'Verify ACE_HQ_DOMAIN spelling against https://www.commcarehq.org/domain/select/.',
       cchq: { status: 404, body_excerpt: '(empty)', path: listPath },
@@ -237,7 +237,7 @@ export async function preflightLearnAppUser(
       action: 'cchq_error',
       reason:
         `CCHQ returned HTTP ${listRes.status} on the user-list probe. CCHQ may be degraded — ` +
-        'check status.commcare.org. Phase 5 `start_learn_app` will fail with the same 500 class ' +
+        'check status.commcare.org. Phase 6 `start_learn_app` will fail with the same 500 class ' +
         'until CCHQ recovers; defer the run.',
       cchq: { status: listRes.status, body_excerpt: body.slice(0, 300), path: listPath },
     };
@@ -265,7 +265,7 @@ export async function preflightLearnAppUser(
       reason:
         `CCHQ API key + domain "${args.hq_domain}" verified reachable. ` +
         'No connect_username supplied → user-conflict branch skipped. ' +
-        'Phase 5 `start_learn_app` is clear of the CI-660 auth/domain failure modes.',
+        'Phase 6 `start_learn_app` is clear of the CI-660 auth/domain failure modes.',
     };
   }
 
@@ -326,7 +326,7 @@ export async function preflightLearnAppUser(
       action: 'would_create',
       reason:
         `No existing CCHQ user named "${args.connect_username}" in domain "${args.hq_domain}". ` +
-        '`create_hq_user_and_link` will mint a fresh mobile worker on the Phase 5 ' +
+        '`create_hq_user_and_link` will mint a fresh mobile worker on the Phase 6 ' +
         '`start_learn_app` call — expected happy path.',
     };
   }
@@ -355,7 +355,7 @@ export async function preflightLearnAppUser(
         '`create_hq_user_and_link` will reject this with CommCareHQAPIException, which ' +
         'Connect\'s `users/views.py:107 start_learn_app` view does not catch — surfaces as ' +
         'opaque HTTP 500. Either (a) pick a different `connect_username`, or (b) manually ' +
-        'reconcile the HQ user record via the CCHQ web UI before re-running Phase 5.',
+        'reconcile the HQ user record via the CCHQ web UI before re-running Phase 6.',
       existing_user: {
         username: exact.username,
         connect_username: cu ?? undefined,
@@ -386,7 +386,7 @@ export async function preflightLearnAppUser(
     reason:
       `CCHQ user "${exact.username}" already exists in "${args.hq_domain}" and is compatible ` +
       '(active, no conflicting connect_username link). `create_hq_user_and_link` will reuse ' +
-      'the record idempotently — Phase 5 `start_learn_app` is clear.',
+      'the record idempotently — Phase 6 `start_learn_app` is clear.',
     existing_user: {
       username: exact.username,
       connect_username: cu ?? undefined,

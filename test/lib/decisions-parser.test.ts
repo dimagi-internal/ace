@@ -55,7 +55,7 @@ describe("parseDocumentStructure", () => {
       { text: "  Default: alpha" },
       { text: "row-b", style: "HEADING_3" },
       { text: "  Default: beta" },
-      { text: "Phase 2 — CommCare", style: "HEADING_2" },
+      { text: "Phase 3 — CommCare", style: "HEADING_2" },
       { text: "row-c", style: "HEADING_3" },
       { text: "  Default: gamma" },
     ]);

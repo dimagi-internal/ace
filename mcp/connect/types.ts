@@ -186,7 +186,7 @@ export interface DeliverUnit {
    * Added 0.13.126. Before this, callers had to recover the server PK
    * from the create-time response of `connect_create_payment_unit` —
    * a chicken-and-egg gap that produced ad-hoc form-scrape probes per
-   * Phase 3 run (see jjackson/ace#106 finding 5).
+   * Phase 4 run (see jjackson/ace#106 finding 5).
    */
   server_id?: number;
   name: string;

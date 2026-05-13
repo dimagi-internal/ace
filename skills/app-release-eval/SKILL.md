@@ -22,18 +22,18 @@ Authored 0.10.29 in response to turmeric run_time_followups item 2
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 2 | `2-commcare/app-deploy_summary.md` | the artifact `app-release` updates with `releases:` block |
+| Phase 3 | `3-commcare/app-deploy_summary.md` | the artifact `app-release` updates with `releases:` block |
 | Per-run | `runs/<run-id>/run_state.yaml` | cross-check `hq_app_id` / `hq_build_id` under `learn_app_summary` / `deliver_app_summary` |
 
 ## Products
 
-- `2-commcare/app-release-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
+- `3-commcare/app-release-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 
 ## Process
 
 1. **Read inputs from GDrive** (paths in `## Inputs` above).
 
-2. **Detect missing artifacts.** If `2-commcare/app-deploy_summary.md` is missing
+2. **Detect missing artifacts.** If `3-commcare/app-deploy_summary.md` is missing
    or has no `releases:` block, emit `verdict: incomplete` immediately
    with `[INFO] app-release output missing — skill did not run or did
    not complete writing its artifact`. Do not score zero.
@@ -46,7 +46,7 @@ Authored 0.10.29 in response to turmeric run_time_followups item 2
    | **Both apps released** | 35% | Both Learn and Deliver have `is_released: true` and a `latest_released_version` ≥ 1 in the deployment-summary `releases:` block. Either app missing release = ≤3 (fail). One app released, the other still draft = ≤6 (warn). |
    | **CCZ-marker integrity** | 25% | CCZ verification (Step 6 of app-release) confirms each released build has the canonical Connect markers (`connect.learn_module` / `connect.deliver_unit` / `connect.assessment`). Missing markers = ≤4 deduction per missing class. (Note: this is the dimension that catches turmeric run_time_followups item 2 — the CCZ regex bug that uses `<learn:` prefix instead of the actual `xmlns` attribute. A regex bug that mis-reports a perfectly-marked app as missing markers should surface as a [PLATFORM] entry on the CCZ-checker side, not a deduction here.) |
    | **Build-id traceability** | 20% | The `hq_build_id` recorded in run_state.yaml (post-release) matches the `_id` returned by the CCHQ `apps/save` step and the `latest_released_version` matches what `releases/release/<build_id>/` returned. Mismatch = 4-point deduction. |
-   | **Connect deliver-units enumerable** | 20% | After release, Connect's `Sync Deliver Units` should successfully enumerate at least one deliver unit per Deliver-app form. Verified by checking `connect-setup-summary.md` (Phase 3) for the `Sync Deliver Units enumerated:` line; OR if Phase 3 hasn't run yet, by `connect_list_deliver_units` MCP probe against the opp. Empty enumeration = 4-point deduction (release didn't actually unblock Phase 3). |
+   | **Connect deliver-units enumerable** | 20% | After release, Connect's `Sync Deliver Units` should successfully enumerate at least one deliver unit per Deliver-app form. Verified by checking `connect-setup-summary.md` (Phase 4) for the `Sync Deliver Units enumerated:` line; OR if Phase 4 hasn't run yet, by `connect_list_deliver_units` MCP probe against the opp. Empty enumeration = 4-point deduction (release didn't actually unblock Phase 4). |
 
    **Deduction rules:**
    - Any single dimension ≤3 → suite verdict `fail`.
@@ -59,10 +59,10 @@ Authored 0.10.29 in response to turmeric run_time_followups item 2
    - `fail` — overall < 5.0 OR any dimension ≤ 3.
    - `partial` — overall ≥ 7.0 but live MCP probes for Connect-side
      verification failed at grading time.
-   - `incomplete` — 2-commcare/app-deploy_summary.md missing or no `releases:` block.
+   - `incomplete` — 3-commcare/app-deploy_summary.md missing or no `releases:` block.
 
    **Severity tiers** (mirror connect-program-setup-eval):
-   - `[BLOCKER]` — must-fix before Phase 3 can proceed (e.g., one app unreleased).
+   - `[BLOCKER]` — must-fix before Phase 4 can proceed (e.g., one app unreleased).
    - `[WARN]` — should-fix; counts toward inflation guard.
    - `[PLATFORM]` — defect originates in CCHQ or Nova, not the skill
      (e.g., the CCZ-marker regex bug uses `<learn:` instead of xmlns
@@ -92,7 +92,7 @@ Authored 0.10.29 in response to turmeric run_time_followups item 2
      ONLY if the markers are actually missing in the XML.
 
 5. **Write the verdict YAML** to
-   `2-commcare/app-release-eval_verdict.yaml` using the shape from
+   `3-commcare/app-release-eval_verdict.yaml` using the shape from
    `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
 
    ```yaml
@@ -142,7 +142,7 @@ The first 3 calibration runs should specifically include:
 
 See `skills/_eval-template.md § MCP Tools Used (stock)` for the Drive
 block. Plus:
-- ace-connect MCP (when Phase 3 has run): `connect_list_deliver_units`
+- ace-connect MCP (when Phase 4 has run): `connect_list_deliver_units`
   to verify Connect can enumerate deliver units from the released build.
 - CCHQ HTTP probe (no MCP yet): `GET /a/<domain>/apps/view/<app_id>/`
   to verify is_released against the build_id in run_state.yaml.

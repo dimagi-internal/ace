@@ -161,7 +161,7 @@ true one-shot debugging artifacts go to `./tmp/ace-debug/`.
    - The invite does NOT need to be accepted; its mere existence is what
      `check_number_for_existing_invites` checks.
 
-   Future ACE-created opps (Phase 3 `connect-opp-setup` Step 8) will keep
+   Future ACE-created opps (Phase 4 `connect-opp-setup` Step 8) will keep
    the invite alive automatically. This bootstrap step only matters for
    the very first registration on a fresh test user.
 

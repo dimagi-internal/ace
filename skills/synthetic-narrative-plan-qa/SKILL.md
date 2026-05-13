@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 # Synthetic Narrative Plan QA
 
-Structural correctness checks on `6-synthetic/synthetic-narrative-plan.yaml`,
+Structural correctness checks on `7-synthetic/synthetic-narrative-plan.yaml`,
 the manifest authored by `synthetic-narrative-plan` and consumed by
 `synthetic-data-generate` → `mcp__connect-labs__synthetic_generate_from_manifest`.
 
@@ -28,12 +28,12 @@ format, auto-fix protocol, static-vs-LLM rules).
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 6 producer | `6-synthetic/synthetic-narrative-plan.yaml` | the manifest under structural check |
-| Phase 2 (optional context) | `2-commcare/app-deploy_summary.md` | field-path resolvability for KPIs / anomalies (skipped with INFO when absent) |
+| Phase 7 producer | `7-synthetic/synthetic-narrative-plan.yaml` | the manifest under structural check |
+| Phase 3 (optional context) | `3-commcare/app-deploy_summary.md` | field-path resolvability for KPIs / anomalies (skipped with INFO when absent) |
 
 ## Products
 
-- `6-synthetic/synthetic-narrative-plan-qa_result.yaml` — QA result per `lib/qa-types.ts`
+- `7-synthetic/synthetic-narrative-plan-qa_result.yaml` — QA result per `lib/qa-types.ts`
 
 ## Checks
 
@@ -58,21 +58,21 @@ The static check functions live at `skills/synthetic-narrative-plan-qa/checks.ts
    `drive_read_file(file_id=<synthetic-narrative-plan.yaml drive id>)`.
 
 2. **(Optional) Read the deliver-app summary** if available at
-   `runs/<run-id>/2-commcare/app-deploy_summary.md`; pass its text via the
+   `runs/<run-id>/3-commcare/app-deploy_summary.md`; pass its text via the
    runner's `--context-file` (or skip — check 4 returns INFO when absent).
 
 3. **Save to a local temp path** so the CLI runner can read it.
    `Bash: TMP=$(mktemp); drive content saved to $TMP`.
 
 4. **Run all checks** via the generic CLI runner:
-   `Bash: npx tsx scripts/qa-run.ts --skill synthetic-narrative-plan-qa --artifact "$TMP" --target "<opp-name>" --capture-path "6-synthetic/synthetic-narrative-plan.yaml"`.
+   `Bash: npx tsx scripts/qa-run.ts --skill synthetic-narrative-plan-qa --artifact "$TMP" --target "<opp-name>" --capture-path "7-synthetic/synthetic-narrative-plan.yaml"`.
 
    The runner imports `CHECKS` from `skills/synthetic-narrative-plan-qa/checks.ts`,
    runs each check via `lib/qa-runner.ts`, and prints a fully-shaped
    `QAResult` YAML to stdout.
 
 5. **Write the QA result** to Drive at
-   `6-synthetic/synthetic-narrative-plan-qa_result.yaml` via
+   `7-synthetic/synthetic-narrative-plan-qa_result.yaml` via
    `drive_create_file`.
 
 6. **Return the verdict** to the orchestrator:

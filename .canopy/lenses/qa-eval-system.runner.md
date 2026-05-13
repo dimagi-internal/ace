@@ -77,9 +77,9 @@ If no evidence: emit a `low` `[INFO]` "no closure" entry per candidate (audit tr
 For each row with status `not yet migrated`:
 1. Read the row's "Revisit when" condition.
 2. Search per-run evidence for triggers:
-   - "Connect-Labs MCP rejects manifest" → grep recent `runs/*/6-synthetic/synthetic-narrative-plan*` for rejection logs.
-   - "canopy:walkthrough rejects spec" → grep `runs/*/6-synthetic/walkthrough-*` for rejection logs.
-   - "HITL review caught structural issue a QA could have caught" → grep `runs/*/7-solicitation*/` for human-corrected scoring/recommendation files.
+   - "Connect-Labs MCP rejects manifest" → grep recent `runs/*/7-synthetic/synthetic-narrative-plan*` for rejection logs.
+   - "canopy:walkthrough rejects spec" → grep `runs/*/7-synthetic/walkthrough-*` for rejection logs.
+   - "HITL review caught structural issue a QA could have caught" → grep `runs/*/8-solicitation*/` for human-corrected scoring/recommendation files.
 3. If trigger fired: emit a `high` finding + propose flipping the row from `not yet migrated` to the appropriate status (typically `has QA` / `has eval`) and shipping the corresponding skill.
 
 After PR #188 (2026-05-09) all 13 deferred rows were closed; this signal should currently emit zero findings unless a *new* row gets added with `not yet migrated` status.
@@ -131,7 +131,7 @@ proposals:
 
 ### Verification
 
-The descriptor declares `verify.type: observational`. The dispatcher (canopy's improve-lens Phase 4) will:
+The descriptor declares `verify.type: observational`. The dispatcher (canopy's improve-lens Phase 5) will:
 1. Apply the proposed edit on a worktree copy.
 2. Run `npm test` (which includes `test/lib/registries-coverage.test.ts`).
 3. Diff-inspect: confirm changes are confined to `proposes.edit_targets` patterns.

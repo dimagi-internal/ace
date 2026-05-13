@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # Synthetic Workflow Polish
 
-Stage 3.2 of ACE Phase 6 (Plan B). The `synthetic-workflow-seed` skill
+Stage 3.2 of ACE Phase 7 (Plan B). The `synthetic-workflow-seed` skill
 instantiates the SEED templates with opp-agnostic render code; this
 skill applies surgical edits to make the dashboards look genuinely
 tailored to a specific opp's data. The polish step is what moves a
@@ -27,15 +27,15 @@ Two modes:
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 6 | `6-synthetic/synthetic-narrative-plan.md` (preferred) or `synthetic-narrative-plan.yaml` | the data story — drives which FLWs to feature, which anomalies to call out |
-| Phase 6 | `6-synthetic/synthetic-workflow-seed.md` | workflow IDs + `scaffold_unsuitable` flag |
+| Phase 7 | `7-synthetic/synthetic-narrative-plan.md` (preferred) or `synthetic-narrative-plan.yaml` | the data story — drives which FLWs to feature, which anomalies to call out |
+| Phase 7 | `7-synthetic/synthetic-workflow-seed.md` | workflow IDs + `scaffold_unsuitable` flag |
 | Drive | `ACE/<opp>/opp.yaml` | `synthetic.workflows.{llo_weekly_review_id, program_admin_audit_id}`, `synthetic.labs_opp_id` |
 | Drive | `inputs/pdd.md` | opp's domain language, branding cues (e.g. "turmeric vendors", "KMC mothers") |
 | Operator (CLI, optional) | `--workflow llo\|audit\|both` | scope this run; default `both` |
 
 ## Products
 
-- `6-synthetic/synthetic-workflow-polish.md` — run summary (per-workflow patch list, eval flag)
+- `7-synthetic/synthetic-workflow-polish.md` — run summary (per-workflow patch list, eval flag)
 - `run_state.yaml.phases.synthetic-data-and-workflows.synthetic-workflow-polish: done`
 - Side effect in labs: render_code on each polished workflow advanced by N versions (one per applied patch)
 
@@ -158,7 +158,7 @@ Two modes:
    visual eval lives in `synthetic-workflow-polish-eval` (Stage 4).
 
 6. **Write the run summary** to
-   `6-synthetic/synthetic-workflow-polish.md` via `drive_create_file`
+   `7-synthetic/synthetic-workflow-polish.md` via `drive_create_file`
    (find-or-update). Body:
 
    - Per-workflow patches applied: one row per patch with the

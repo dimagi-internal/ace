@@ -69,61 +69,61 @@ export const OLD_TO_NEW: Record<string, string> = {
   // Design (Phase 1)
   'idea.md': '1-design/idea.md',
   'pdd.md': '1-design/idea-to-pdd.md',
-  'test-prompts.md': '1-design/pdd-to-test-prompts.md',
-  'expected-journeys.md': '1-design/pdd-to-app-journeys.md',
+  'test-prompts.md': '2-scenarios/pdd-to-test-prompts.md',
+  'expected-journeys.md': '2-scenarios/pdd-to-app-journeys.md',
   'gate-briefs/idea-to-pdd.md': '1-design/idea-to-pdd_gate-brief.md',
   'verdicts/idea-to-pdd.yaml': '1-design/idea-to-pdd-eval_verdict.yaml',
-  'design-review-summary.md': '1-design/design-review_summary.md',
-  // CommCare (Phase 2)
-  'app-summaries/learn-app-summary.md': '2-commcare/pdd-to-learn-app_summary.md',
-  'app-summaries/deliver-app-summary.md': '2-commcare/pdd-to-deliver-app_summary.md',
-  'apps/learn-app.json': '2-commcare/pdd-to-learn-app_snapshot.json',
-  'apps/deliver-app.json': '2-commcare/pdd-to-deliver-app_snapshot.json',
-  'app-coverage/learn-connect-coverage.md': '2-commcare/app-connect-coverage_learn.md',
-  'app-coverage/deliver-connect-coverage.md': '2-commcare/app-connect-coverage_deliver.md',
-  'deployment-summary.md': '2-commcare/app-deploy_summary.md',
-  'app-test-cases.yaml': '2-commcare/app-test-cases.yaml',
-  'gate-briefs/app-deploy.md': '2-commcare/app-deploy_gate-brief.md',
-  'verdicts/pdd-to-learn-app.yaml': '2-commcare/pdd-to-learn-app-eval_verdict.yaml',
-  'verdicts/pdd-to-deliver-app.yaml': '2-commcare/pdd-to-deliver-app-eval_verdict.yaml',
-  'verdicts/app-release.yaml': '2-commcare/app-release-eval_verdict.yaml',
-  'commcare-setup-summary.md': '2-commcare/commcare-setup_summary.md',
-  // Connect (Phase 3) — connect-program-setup.md and connect-opp-setup.md ARE
+  'design-review-summary.md': '1-design/idea-to-design_summary.md',
+  // CommCare (Phase 3)
+  'app-summaries/learn-app-summary.md': '3-commcare/pdd-to-learn-app_summary.md',
+  'app-summaries/deliver-app-summary.md': '3-commcare/pdd-to-deliver-app_summary.md',
+  'apps/learn-app.json': '3-commcare/pdd-to-learn-app_snapshot.json',
+  'apps/deliver-app.json': '3-commcare/pdd-to-deliver-app_snapshot.json',
+  'app-coverage/learn-connect-coverage.md': '3-commcare/app-connect-coverage_learn.md',
+  'app-coverage/deliver-connect-coverage.md': '3-commcare/app-connect-coverage_deliver.md',
+  'deployment-summary.md': '3-commcare/app-deploy_summary.md',
+  'app-test-cases.yaml': '3-commcare/app-test-cases.yaml',
+  'gate-briefs/app-deploy.md': '3-commcare/app-deploy_gate-brief.md',
+  'verdicts/pdd-to-learn-app.yaml': '3-commcare/pdd-to-learn-app-eval_verdict.yaml',
+  'verdicts/pdd-to-deliver-app.yaml': '3-commcare/pdd-to-deliver-app-eval_verdict.yaml',
+  'verdicts/app-release.yaml': '3-commcare/app-release-eval_verdict.yaml',
+  'commcare-setup-summary.md': '3-commcare/commcare-setup_summary.md',
+  // Connect (Phase 4) — connect-program-setup.md and connect-opp-setup.md ARE
   // run-scoped (one per run), unlike connect-state.yaml (opp-level identity).
-  'connect-setup/program.md': '3-connect/connect-program-setup.md',
-  'connect-setup/opportunity.md': '3-connect/connect-opp-setup.md',
-  'verdicts/connect-program-setup.yaml': '3-connect/connect-program-setup-eval_verdict.yaml',
-  'connect-setup-summary.md': '3-connect/connect-setup_summary.md',
-  // OCS (Phase 4)
-  'ocs-agent-config.md': '4-ocs/ocs-agent-setup.md',
-  'ocs-setup/widget-handoff.md': '4-ocs/ocs-setup_widget-handoff.md',
-  'verdicts/ocs-chatbot-eval-quick.yaml': '4-ocs/ocs-chatbot-eval_verdict-quick.yaml',
-  'verdicts/ocs-chatbot-eval-deep.yaml': '4-ocs/ocs-chatbot-eval_verdict-deep.yaml',
-  'verdicts/ocs-agent-setup.yaml': '4-ocs/ocs-widget-handoff-eval_verdict.yaml',
-  'gate-briefs/ocs-chatbot-eval-quick.md': '4-ocs/ocs-chatbot-eval_gate-brief-quick.md',
-  'gate-briefs/ocs-chatbot-eval-deep.md': '4-ocs/ocs-chatbot-eval_gate-brief-deep.md',
-  'comms-log/dry-run-ocs-agent-setup.md': '4-ocs/ocs-agent-setup_dry-run-log.md',
-  'ocs-setup-summary.md': '4-ocs/ocs-setup_summary.md',
-  // QA + Training (Phase 5)
-  'training-materials/llo-manager-guide.md': '5-qa-and-training/training-llo-guide.md',
-  'training-materials/flw-training-guide.md': '5-qa-and-training/training-flw-guide.md',
-  'training-materials/quick-reference.md': '5-qa-and-training/training-quick-reference.md',
-  'training-materials/faq.md': '5-qa-and-training/training-faq.md',
-  'training-materials/onboarding-email-body.md': '5-qa-and-training/training-onboarding-email.md',
-  'training-materials/training-deck-outline.md': '5-qa-and-training/training-deck-outline.md',
-  'screenshots/manifest.yaml': '5-qa-and-training/app-screenshot-capture_manifest.yaml',
-  'verdicts/app-screenshot-capture.yaml': '5-qa-and-training/app-screenshot-capture_verdict.yaml',
-  'verdicts/app-screenshot-capture-shallow.yaml': '5-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',
-  'verdicts/app-ux-eval-deep.yaml': '5-qa-and-training/app-ux-eval_verdict-deep.yaml',
-  // Self-emitted Phase 5 verdicts (Option β) — verdicts named after producer
-  'verdicts/training-deck-build.yaml': '5-qa-and-training/training-deck-build_verdict.yaml',
-  'verdicts/training-deck-outline.yaml': '5-qa-and-training/training-deck-outline_verdict.yaml',
-  'verdicts/training-faq.yaml': '5-qa-and-training/training-faq_verdict.yaml',
-  'verdicts/training-flw-guide.yaml': '5-qa-and-training/training-flw-guide_verdict.yaml',
-  'verdicts/training-llo-guide.yaml': '5-qa-and-training/training-llo-guide_verdict.yaml',
-  'verdicts/training-onboarding-email.yaml': '5-qa-and-training/training-onboarding-email_verdict.yaml',
-  'verdicts/training-quick-reference.yaml': '5-qa-and-training/training-quick-reference_verdict.yaml',
-  // Solicitation Management (Phase 6) — new in 0.12.0
+  'connect-setup/program.md': '4-connect/connect-program-setup.md',
+  'connect-setup/opportunity.md': '4-connect/connect-opp-setup.md',
+  'verdicts/connect-program-setup.yaml': '4-connect/connect-program-setup-eval_verdict.yaml',
+  'connect-setup-summary.md': '4-connect/connect-setup_summary.md',
+  // OCS (Phase 5)
+  'ocs-agent-config.md': '5-ocs/ocs-agent-setup.md',
+  'ocs-setup/widget-handoff.md': '5-ocs/ocs-setup_widget-handoff.md',
+  'verdicts/ocs-chatbot-eval-quick.yaml': '5-ocs/ocs-chatbot-eval_verdict-quick.yaml',
+  'verdicts/ocs-chatbot-eval-deep.yaml': '5-ocs/ocs-chatbot-eval_verdict-deep.yaml',
+  'verdicts/ocs-agent-setup.yaml': '5-ocs/ocs-widget-handoff-eval_verdict.yaml',
+  'gate-briefs/ocs-chatbot-eval-quick.md': '5-ocs/ocs-chatbot-eval_gate-brief-quick.md',
+  'gate-briefs/ocs-chatbot-eval-deep.md': '5-ocs/ocs-chatbot-eval_gate-brief-deep.md',
+  'comms-log/dry-run-ocs-agent-setup.md': '5-ocs/ocs-agent-setup_dry-run-log.md',
+  'ocs-setup-summary.md': '5-ocs/ocs-setup_summary.md',
+  // QA + Training (Phase 6)
+  'training-materials/llo-manager-guide.md': '6-qa-and-training/training-llo-guide.md',
+  'training-materials/flw-training-guide.md': '6-qa-and-training/training-flw-guide.md',
+  'training-materials/quick-reference.md': '6-qa-and-training/training-quick-reference.md',
+  'training-materials/faq.md': '6-qa-and-training/training-faq.md',
+  'training-materials/onboarding-email-body.md': '6-qa-and-training/training-onboarding-email.md',
+  'training-materials/training-deck-outline.md': '6-qa-and-training/training-deck-outline.md',
+  'screenshots/manifest.yaml': '6-qa-and-training/app-screenshot-capture_manifest.yaml',
+  'verdicts/app-screenshot-capture.yaml': '6-qa-and-training/app-screenshot-capture_verdict.yaml',
+  'verdicts/app-screenshot-capture-shallow.yaml': '6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',
+  'verdicts/app-ux-eval-deep.yaml': '6-qa-and-training/app-ux-eval_verdict-deep.yaml',
+  // Self-emitted Phase 6 verdicts (Option β) — verdicts named after producer
+  'verdicts/training-deck-build.yaml': '6-qa-and-training/training-deck-build_verdict.yaml',
+  'verdicts/training-deck-outline.yaml': '6-qa-and-training/training-deck-outline_verdict.yaml',
+  'verdicts/training-faq.yaml': '6-qa-and-training/training-faq_verdict.yaml',
+  'verdicts/training-flw-guide.yaml': '6-qa-and-training/training-flw-guide_verdict.yaml',
+  'verdicts/training-llo-guide.yaml': '6-qa-and-training/training-llo-guide_verdict.yaml',
+  'verdicts/training-onboarding-email.yaml': '6-qa-and-training/training-onboarding-email_verdict.yaml',
+  'verdicts/training-quick-reference.yaml': '6-qa-and-training/training-quick-reference_verdict.yaml',
+  // Solicitation Management (Phase 7) — new in 0.12.0
   'solicitation/draft.md': '6-solicitation-management/solicitation-create_draft.md',
   'solicitation/published.md': '6-solicitation-management/solicitation-create_published.md',
   'solicitation/invitations.md': '6-solicitation-management/llo-invite_invitations.md',
@@ -132,7 +132,7 @@ export const OLD_TO_NEW: Record<string, string> = {
   'solicitation/award-record.md': '6-solicitation-management/solicitation-review_award-record.md',
   'verdicts/solicitation-create.yaml': '6-solicitation-management/solicitation-create-eval_verdict.yaml',
   'verdicts/solicitation-review.yaml': '6-solicitation-management/solicitation-review-eval_verdict.yaml',
-  // Execution Management (Phase 7) — was llo-manager (was Phase 6) renamed in 0.12.0
+  // Execution Management (Phase 8) — was llo-manager (was Phase 7) renamed in 0.12.0
   // Renumbered from 6-llo-manager/ to 7-execution-manager/ in 0.13.0.
   'connect-setup/invites.md': '7-execution-manager/llo-invite_list.md', // legacy pre-0.12.0 invite-list path
   'gate-briefs/llo-invite.md': '7-execution-manager/llo-invite_gate-brief.md',
@@ -147,7 +147,7 @@ export const OLD_TO_NEW: Record<string, string> = {
   // 0.12.0 → 0.13.0 in-place renames for files under previously-migrated
   // 6-llo-manager/ and 7-closeout/ folders are handled by the prefix block
   // in `computeNewPath` (no exact-match leaf entry possible).
-  // Closeout (Phase 8) — was Phase 7 in 0.12.0; renumbered in 0.13.0.
+  // Closeout (Phase 9) — was Phase 8 in 0.12.0; renumbered in 0.13.0.
   'closeout/invoices.md': '8-closeout/opp-closeout_invoices.md',
   'closeout/llo-feedback.md': '8-closeout/llo-feedback.md',
   'closeout/learnings.md': '8-closeout/learnings-summary.md',
@@ -174,9 +174,9 @@ const RUN_LEVEL_IDENTITY = new Set<string>([
  * here so existing opps land on the new layout in a single sweep.
  */
 const CURRENT_TARGETS: Array<{ name: string; target: string }> = [
-  { name: 'connect-opp-summary.md', target: '3-connect/connect-opp-setup.md' },
-  { name: 'connect-program-summary.md', target: '3-connect/connect-program-setup.md' },
-  { name: 'ocs-agent-config.md', target: '4-ocs/ocs-agent-setup.md' },
+  { name: 'connect-opp-summary.md', target: '4-connect/connect-opp-setup.md' },
+  { name: 'connect-program-summary.md', target: '4-connect/connect-program-setup.md' },
+  { name: 'ocs-agent-config.md', target: '5-ocs/ocs-agent-setup.md' },
 ];
 
 /**
@@ -213,7 +213,7 @@ const LEGACY_DEAD_FOLDERS = new Set<string>([
 // Files that are dropped wholesale in the new layout — no migration target.
 // Detected via prefix match; the planner skips them silently.
 const DROPPED_PREFIXES = [
-  // Folded into 4-ocs/ocs-chatbot-eval_report-deep.md
+  // Folded into 5-ocs/ocs-chatbot-eval_report-deep.md
   'eval-reports/',
 ];
 
@@ -256,15 +256,15 @@ export function computeNewPath(oldPath: string): string | null {
 
   // Folder-prefix rules. The order matters; longest/most-specific first.
 
-  // mobile-recipes/<rest> → 5-qa-and-training/mobile-recipes/<rest>
+  // mobile-recipes/<rest> → 6-qa-and-training/mobile-recipes/<rest>
   if (oldPath.startsWith('mobile-recipes/')) {
-    return `5-qa-and-training/${oldPath}`;
+    return `6-qa-and-training/${oldPath}`;
   }
 
   // screenshots/<rest> (binary screenshots, not the manifest.yaml which is
-  // mapped above) → 5-qa-and-training/screenshots/<rest>
+  // mapped above) → 6-qa-and-training/screenshots/<rest>
   if (oldPath.startsWith('screenshots/')) {
-    return `5-qa-and-training/${oldPath}`;
+    return `6-qa-and-training/${oldPath}`;
   }
 
   // solicitation/responses/<rest> → 6-solicitation-management/solicitation-monitor_responses/<rest>
@@ -274,15 +274,15 @@ export function computeNewPath(oldPath: string): string | null {
   }
 
   // qa-captures/<YYYY-MM-DD>-<...>-<mode>.md →
-  //   - quick/deep → 4-ocs/ocs-chatbot-qa_transcript-<mode>.md  (Phase 4 gate)
-  //   - monitor    → 7-execution-manager/ocs-chatbot-qa_transcript-monitor.md (Phase 7 recurring)
+  //   - quick/deep → 5-ocs/ocs-chatbot-qa_transcript-<mode>.md  (Phase 5 gate)
+  //   - monitor    → 7-execution-manager/ocs-chatbot-qa_transcript-monitor.md (Phase 8 recurring)
   if (oldPath.startsWith('qa-captures/')) {
     const leaf = oldPath.slice('qa-captures/'.length);
     const m = leaf.match(/-(quick|deep|monitor)\.md$/);
     if (m) {
       const mode = m[1];
       if (mode === 'monitor') return `7-execution-manager/ocs-chatbot-qa_transcript-monitor.md`;
-      return `4-ocs/ocs-chatbot-qa_transcript-${mode}.md`;
+      return `5-ocs/ocs-chatbot-qa_transcript-${mode}.md`;
     }
     // Unparseable date pattern — skip with WARN signal (caller decides);
     // returning null tells the planner to omit silently.

@@ -1,7 +1,7 @@
 ---
 name: training-faq-eval
 description: >
-  Grade the Phase 5 FAQ artifact for comprehensiveness against anticipated
+  Grade the Phase 6 FAQ artifact for comprehensiveness against anticipated
   FLW/LLO questions, accuracy against the PDD + deployed apps, and
   scannability for a worker thumbing through it mid-visit.
 disable-model-invocation: true
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 # Training FAQ — Eval
 
-Grades `5-qa-and-training/training-faq.md`. The FAQ is the highest-traffic
+Grades `6-qa-and-training/training-faq.md`. The FAQ is the highest-traffic
 training artifact: an FLW interrupted in the field needs to find the answer
 to "where do I tap to retake the photo?" in seconds, and an LLO triaging
 their first cohort needs the escalation matrix in front of them. An
@@ -25,14 +25,14 @@ produce ground truth.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 5 | `5-qa-and-training/training-faq.md` | artifact under judgment |
+| Phase 6 | `6-qa-and-training/training-faq.md` | artifact under judgment |
 | Phase 1 | `1-design/idea-to-pdd.md` | anchors anticipated questions (Operational Caps, Evidence Model, Stage Gate triggers) and archetype |
-| Phase 2 | `2-commcare/app-deploy_summary.md` | deliver-app field paths + form names; verifies "tap this button" prose matches reality |
-| Phase 4 | `4-ocs/ocs-bot-config.md` (if present) | escalation routing — FAQ should match what the bot tells FLWs |
+| Phase 3 | `3-commcare/app-deploy_summary.md` | deliver-app field paths + form names; verifies "tap this button" prose matches reality |
+| Phase 5 | `5-ocs/ocs-bot-config.md` (if present) | escalation routing — FAQ should match what the bot tells FLWs |
 
 ## Products
 
-- `5-qa-and-training/training-faq-eval_verdict.yaml` — verdict YAML per
+- `6-qa-and-training/training-faq-eval_verdict.yaml` — verdict YAML per
   `_eval-template.md § Verdict YAML contract`. Filename uses the producer
   stem.
 

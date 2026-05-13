@@ -8,7 +8,7 @@ workstation through a small set of atomic capabilities, backed by Maestro,
 adb, and Playwright.
 
 This is dev-machine-only — no cloud device farms, no shared CI emulators.
-The only consumer in production is Phase 5 `qa-and-training`, which uses the
+The only consumer in production is Phase 6 `qa-and-training`, which uses the
 mobile MCP to capture screenshots of a deployed CommCare app for inclusion
 in training material.
 
@@ -239,8 +239,8 @@ The server requires the field to be present and non-empty, then uploads
 to S3 without face validation. Face detection lives entirely in the
 client as the auto-shutter trigger.
 
-**Implication for ACE Phase 5 `qa-and-training`:** screenshot capture of a
-*deployed CommCare app* (the Phase 5 use case) does NOT need a fully
+**Implication for ACE Phase 6 `qa-and-training`:** screenshot capture of a
+*deployed CommCare app* (the Phase 6 use case) does NOT need a fully
 registered PersonalID — `app-screenshot-capture` opens the deployed app
 directly, not via the registration flow. The face-capture gate only
 matters for the one-time fresh-AVD bootstrap.

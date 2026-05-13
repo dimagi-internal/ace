@@ -1,7 +1,7 @@
 ---
 name: learnings-summary-eval
 description: >
-  Independently grade the Phase 9 learnings-summary synthesis. Detects
+  Independently grade the Phase 10 learnings-summary synthesis. Detects
   gaps in opp-lifecycle coverage, vague recommendations, and tone drift
   vs the cycle-grade.
 disable-model-invocation: true
@@ -9,12 +9,12 @@ disable-model-invocation: true
 
 # Learnings Summary Eval
 
-`learnings-summary` is the Phase 9 skill that synthesizes a
+`learnings-summary` is the Phase 10 skill that synthesizes a
 LLM-authored summary of an opp's full lifecycle, optionally seeding
 the next cycle's PDD. Like `cycle-grade`, the same model that ran the
 cycle is writing the synthesis — structural generosity bias applies.
 This skill is the independent grader: did the synthesis actually walk
-the full Phase 1–9 arc, name actionable changes, and stay calibrated
+the full Phase 1–10 arc, name actionable changes, and stay calibrated
 to the cycle's actual grade?
 
 Closeout-category sibling of `cycle-grade-eval`. `cycle-grade-eval`
@@ -30,8 +30,8 @@ See `skills/_eval-template.md` for shared contracts and
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 9 | `9-closeout/learnings-summary.md` | the synthesis under judgment |
-| Phase 9 | `9-closeout/cycle-grade.md` | meta-grade for tone-calibration check |
+| Phase 10 | `10-closeout/learnings-summary.md` | the synthesis under judgment |
+| Phase 10 | `10-closeout/cycle-grade.md` | meta-grade for tone-calibration check |
 | Phase 1 | `1-design/idea-to-pdd.md` | original PDD; lifecycle baseline |
 | All phases | `runs/<run-id>/run_state.yaml` | which phases ran, gate dispositions |
 | All phases | `runs/<run-id>/verdicts/*.yaml` | per-skill trajectory the synthesis should have traversed |
@@ -39,16 +39,16 @@ See `skills/_eval-template.md` for shared contracts and
 
 ## Products
 
-- `9-closeout/learnings-summary-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`learnings-summary`).
+- `10-closeout/learnings-summary-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`learnings-summary`).
 
 ## Process
 
 1. **Read inputs from GDrive** (paths in `## Inputs` above).
 
-2. **Detect "phase not run" mode.** If `run_state.yaml` shows Phase 9
+2. **Detect "phase not run" mode.** If `run_state.yaml` shows Phase 10
    incomplete (no `closeout.learnings-summary: done`) or
    `learnings-summary.md` is missing, emit `verdict: incomplete`
-   immediately with `[INFO] Phase 9 learnings-summary not run; not
+   immediately with `[INFO] Phase 10 learnings-summary not run; not
    gradable yet`. Do not score zero.
 
 3. **Build the lifecycle expectation.** Enumerate which phases ran from
@@ -85,7 +85,7 @@ See `skills/_eval-template.md` for shared contracts and
    - `pass` — overall ≥ 7.0, no dimension ≤ 3.
    - `warn` — overall ≥ 5.0 < 7.0, or any inflation cap binds.
    - `fail` — overall < 5.0 OR any dimension ≤ 3.
-   - `incomplete` — Phase 9 `learnings-summary` not run, or artifact
+   - `incomplete` — Phase 10 `learnings-summary` not run, or artifact
      missing entirely.
 
    **Severity tiers** for `auto_surfaced` entries:
@@ -94,7 +94,7 @@ See `skills/_eval-template.md` for shared contracts and
    - `[INFO]` — observational, no action required.
 
 6. **Write the verdict YAML** to
-   `9-closeout/learnings-summary-eval_verdict.yaml` using the shape
+   `10-closeout/learnings-summary-eval_verdict.yaml` using the shape
    from `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
 
    ```yaml
@@ -130,7 +130,7 @@ Calibration target on a closed cycle's `learnings-summary`:
 
 This rubric ships at **provisional** until a real closed cycle's
 `learnings-summary` produces ground truth. Until then, it correctly
-emits `incomplete` on opps where Phase 9 hasn't run.
+emits `incomplete` on opps where Phase 10 hasn't run.
 
 ## Archetypes
 

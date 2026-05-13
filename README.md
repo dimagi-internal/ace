@@ -16,7 +16,7 @@ Before `/ace:setup` will succeed, you need:
 - **Network reachability** to `openchatstudio.com`, `connect.dimagi.com`, `commcarehq.org`, `labs.connect.dimagi.com`, `googleapis.com`. Corp VPNs and proxies sometimes block these — `/ace:doctor` reports an explicit status per host.
 - **Playwright Chromium** browser binary. Auto-installed on first use; if you hit "browser doesn't open" errors, run `npx playwright install chromium`.
 
-**Mobile (Phase 5 only) is currently Mac-only.** Phases 1–4 and 6–9 work on Mac, Linux, and Windows. Phase 5 (mobile screenshot capture against an Android emulator) has only been live-validated on macOS Apple Silicon — the Linux/Windows installer commands in `commands/mobile-bootstrap.md` exist but haven't been tested end-to-end. If you're on Windows, you can run everything except Phase 5; ask Jon for the workaround.
+**Mobile (Phase 6 only) is currently Mac-only.** Phases 1–4 and 6–9 work on Mac, Linux, and Windows. Phase 6 (mobile screenshot capture against an Android emulator) has only been live-validated on macOS Apple Silicon — the Linux/Windows installer commands in `commands/mobile-bootstrap.md` exist but haven't been tested end-to-end. If you're on Windows, you can run everything except Phase 6; ask Jon for the workaround.
 
 ## Quick Start
 
@@ -194,25 +194,25 @@ under `mcpServers` and auto-register on plugin install:
   Includes 5 `commcare_*` atoms for app release / multimedia. Authenticate
   with `/ace:connect-login` for MFA; otherwise auto-logs-in from
   `ACE_HQ_USERNAME` / `ACE_HQ_PASSWORD` via OAuth-with-CommCareHQ.
-- **`ace-mobile`** — local Maestro + AVD for Phase 5 (Mac-only today).
+- **`ace-mobile`** — local Maestro + AVD for Phase 6 (Mac-only today).
   Bootstrap with `/ace:mobile-bootstrap`.
 - **`connect-labs`** — stdio proxy forwarding JSON-RPC to
-  `https://labs.connect.dimagi.com/mcp/`. Used by Phase 7 (solicitations).
+  `https://labs.connect.dimagi.com/mcp/`. Used by Phase 8 (solicitations).
   Mint a PAT with `/ace:labs-token-mint` if `/ace:doctor` flags
   `LABS_MCP_TOKEN` as missing.
 
 Nova ships as a sibling Claude Code plugin (not part of ACE). Install
-once with `/plugin install nova@nova-marketplace`; ACE's Phase 2
+once with `/plugin install nova@nova-marketplace`; ACE's Phase 3
 delegates app-build to `/nova:autobuild`. See
 `playbook/integrations/nova-integration.md` for the integration contract.
 
 ## Architecture
 
-- **11 agents** — `ace-orchestrator` + 9 phase agents (`design-review`, `commcare-setup`, `connect-setup`, `ocs-setup`, `qa-and-training`, `synthetic-data-and-workflows`, `solicitation-management`, `execution-manager`, `closeout`) + `ocs-tester` (ad-hoc QA+Eval)
+- **12 agents** — `ace-orchestrator` + 10 phase agents (`idea-to-design`, `scenarios-and-acceptance`, `commcare-setup`, `connect-setup`, `ocs-setup`, `qa-and-training`, `synthetic-data-and-workflows`, `solicitation-management`, `execution-manager`, `closeout`) + `ocs-tester` (ad-hoc QA+Eval)
 - **~65 skills** — one per process step, each a SKILL.md that Claude executes. Evaluation is a two-phase `-qa` / `-eval` pattern (see `skills/README.md § QA vs Eval`), with the `opp-eval` umbrella aggregator rolling per-skill verdicts into a run-level scorecard
 - **15 commands** — `run`, `step`, `status`, `eval`, `qa-deep`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `connect-login`, `labs-login`, `labs-token-mint`, `mobile-bootstrap`, `ocs-bootstrap-template`
 - **5 MCP servers** — Google Drive (`ace-gdrive`), OCS (`ace-ocs`), Connect (`ace-connect`), Mobile (`ace-mobile`), Connect Labs (`connect-labs`, stdio proxy to `labs.connect.dimagi.com/mcp/`)
-- **9 phases** — design-review → commcare-setup → connect-setup → ocs-setup → qa-and-training → synthetic-data-and-workflows → solicitation-management → execution-manager → closeout (Phases 1–6 run end-to-end with zero LLO involvement; Phase 7 publishes a public solicitation; Phase 8 is the first 1-1 contact with the awarded LLO)
+- **10 phases** — idea-to-design → scenarios-and-acceptance → commcare-setup → connect-setup → ocs-setup → qa-and-training → synthetic-data-and-workflows → solicitation-management → execution-manager → closeout (Phases 1–7 run end-to-end with zero LLO involvement; Phase 8 publishes a public solicitation; Phase 9 is the first 1-1 contact with the awarded LLO)
 - **2 execution modes** — auto (hands-off) and review (pauses at gates)
 
 ## Documentation

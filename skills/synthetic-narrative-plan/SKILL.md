@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # Synthetic Narrative Plan
 
-Stage 2 of ACE Phase 6 (Plan B). Where Stage 1's `synthetic-data-generate`
+Stage 2 of ACE Phase 7 (Plan B). Where Stage 1's `synthetic-data-generate`
 ships a clean baseline manifest (5 default FLWs, no anomalies, no coaching
 arcs), this skill authors a *richer* manifest tuned to the specific opp's
 intervention design — named FLWs with archetype-appropriate notes, deliberate
@@ -25,17 +25,17 @@ this skill runs first, `synthetic-data-generate` consumes
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `inputs/pdd.md` | intervention design, archetype, success metrics, evidence model |
-| Phase 1 | `runs/<run-id>/1-design/pdd-to-app-journeys.md` | FLW journey shape, edge cases worth seeding as anomalies |
-| Phase 2 | `runs/<run-id>/2-commcare/app-deploy_summary.md` | deliver-app form structure (field paths, types) |
-| Phase 2 (optional) | `runs/<run-id>/2-commcare/app-test-cases.yaml` | test-case anomalies that double as plausible field anomalies |
-| Phase 3 | `runs/<run-id>/3-connect/connect-opp-setup.md` | payment units, deliver units, verification flags |
+| Phase 1 | `runs/<run-id>/2-scenarios/pdd-to-app-journeys.md` | FLW journey shape, edge cases worth seeding as anomalies |
+| Phase 3 | `runs/<run-id>/3-commcare/app-deploy_summary.md` | deliver-app form structure (field paths, types) |
+| Phase 3 (optional) | `runs/<run-id>/3-commcare/app-test-cases.yaml` | test-case anomalies that double as plausible field anomalies |
+| Phase 4 | `runs/<run-id>/4-connect/connect-opp-setup.md` | payment units, deliver units, verification flags |
 | Drive | `ACE/<opp>/opp.yaml` | `display_name`, slug, last_run_id, organization_slug |
 | Operator (CLI, optional) | `--seed-prompt FILE\|-` | free-text steering ("emphasize fraud detection," "feature Asha as the rockstar") |
 
 ## Products
 
-- `6-synthetic/synthetic-narrative-plan.md` — human-readable narrative explaining the data story
-- `6-synthetic/synthetic-narrative-plan.yaml` — the manifest (schema identical to `synthetic-data-generate_manifest.yaml`)
+- `7-synthetic/synthetic-narrative-plan.md` — human-readable narrative explaining the data story
+- `7-synthetic/synthetic-narrative-plan.yaml` — the manifest (schema identical to `synthetic-data-generate_manifest.yaml`)
 - `run_state.yaml.phases.synthetic-data-and-workflows.synthetic-narrative-plan: done`
 
 ## Process
@@ -89,7 +89,7 @@ this skill runs first, `synthetic-data-generate` consumes
      follow-ups; surfaces in coverage / completeness charts
    - **photo_quality_drop** (atomic-visit only) — when the deliver app
      has a `photo` field, one FLW's photos start failing Layer B AI
-     check in week K (used by Layer-B-AI verification flag if Phase 3
+     check in week K (used by Layer-B-AI verification flag if Phase 4
      enabled it)
    - **fraud_signal** (optional) — duplicate-vendor / GPS-cluster
      pattern that flags one FLW for review
@@ -131,7 +131,7 @@ this skill runs first, `synthetic-data-generate` consumes
    `start_date` is `today − weeks*7`. Random seed: today's date as
    `YYYYMMDD` integer for determinism across re-runs.
 
-8. **Write the manifest** as `6-synthetic/synthetic-narrative-plan.yaml`
+8. **Write the manifest** as `7-synthetic/synthetic-narrative-plan.yaml`
    via `mcp__plugin_ace_ace-gdrive__drive_create_file` (find-or-update —
    re-runs overwrite).
 
@@ -140,7 +140,7 @@ this skill runs first, `synthetic-data-generate` consumes
    This skill just authors a richer instance.
 
 9. **Write the narrative companion** as
-   `6-synthetic/synthetic-narrative-plan.md` — a 1–2 page reviewer-facing
+   `7-synthetic/synthetic-narrative-plan.md` — a 1–2 page reviewer-facing
    doc that explains the data story to a human:
 
    - **Opening (2–3 sentences):** What this opp is about, what the demo
@@ -222,7 +222,7 @@ qualify under the bar for this phase — a working template, not a
 required set. The skill applies the bar criterion and emits whatever
 rows meet it; the catalog is a teaching device that improves over time.
 
-### Common load-bearing decisions for Phase 6
+### Common load-bearing decisions for Phase 7
 
 | ID | Question | Map to surface |
 |---|---|---|
@@ -235,7 +235,7 @@ The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 contract; the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.
 
-Each row this skill writes uses `phase: 6-synthetic-data-and-workflows` and
+Each row this skill writes uses `phase: 7-synthetic-data-and-workflows` and
 `skill: synthetic-narrative-plan`.
 
 ## Change Log
@@ -243,4 +243,4 @@ Each row this skill writes uses `phase: 6-synthetic-data-and-workflows` and
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-06 | Initial Stage 2 skill — LLM-authored manifest + narrative companion | ACE team (Plan B Stage 2) |
-| 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (persona-count, scenario-count, narrative-arc-shape) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (persona-count, scenario-count, narrative-arc-shape) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |

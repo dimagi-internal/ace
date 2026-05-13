@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # Synthetic Workflow Seed
 
-Stage 3 of ACE Phase 6 (Plan B). Creates the two demonstrative workflows
+Stage 3 of ACE Phase 7 (Plan B). Creates the two demonstrative workflows
 on top of the synthetic data: an operational `llo_weekly_review` (FLW
 KPI scorecard + coaching-task spawning) and a meta-level
 `program_admin_audit` (week-over-week review of the LLO's process).
@@ -24,13 +24,13 @@ pipeline schemas populated with KPI fields. The polish step
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 6 | `6-synthetic/synthetic-narrative-plan.yaml` (preferred) or `synthetic-data-generate_manifest.yaml` (fallback) | `kpi_config`, `coaching_arcs`, `flw_personas` |
+| Phase 7 | `7-synthetic/synthetic-narrative-plan.yaml` (preferred) or `synthetic-data-generate_manifest.yaml` (fallback) | `kpi_config`, `coaching_arcs`, `flw_personas` |
 | Current run's `run_state.yaml` | `phases.synthetic-data-and-workflows.products.synthetic.labs_opp_id` (required) | `synthetic_generate_from_manifest` opp scope |
 | Drive | `ACE/<opp>/opp.yaml` | `display_name` |
 
 ## Products
 
-- `6-synthetic/synthetic-workflow-seed.md` — run summary (workflow IDs, task IDs, KPI count, polish-suitability flag)
+- `7-synthetic/synthetic-workflow-seed.md` — run summary (workflow IDs, task IDs, KPI count, polish-suitability flag)
 - `run_state.yaml.phases.synthetic-data-and-workflows.products.synthetic.workflows` populated (read-modify-write to preserve sibling sub-keys from `synthetic-data-generate` and `synthetic-walkthrough-run`):
   ```yaml
   workflows:
@@ -248,7 +248,7 @@ pipeline schemas populated with KPI fields. The polish step
    N times via direct MCP calls.
 
 9. **Write the run summary** to
-   `6-synthetic/synthetic-workflow-seed.md` via `drive_create_file`
+   `7-synthetic/synthetic-workflow-seed.md` via `drive_create_file`
    (find-or-update — re-runs overwrite). Body:
 
    - Workflow IDs: `llo_weekly_review_id`, `program_admin_audit_id`
@@ -371,5 +371,5 @@ labs PR at first ship; that gap closed in 0.13.64 once labs shipped
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-06 | Initial Stage 3a skill — workflow seeding via SEED templates + config wiring + coaching tasks. Saved-runs deferred to labs PR. | ACE team (Plan B Stage 3) |
-| 2026-05-07 | Step 8 wires the full Week 1 + Week 2 saved-runs loop via `workflow_create_run` + `workflow_save_snapshot` (now scoped to `opportunity_id` per labs PR #168). Removes the last `[WAITING ON LABS]` deferral in Phase 6. Live-smoked against turmeric (workflow 2847, run_ids 2859 + 2860, both snapshots saved cleanly). | ACE team (Plan B Stage 3b) |
+| 2026-05-07 | Step 8 wires the full Week 1 + Week 2 saved-runs loop via `workflow_create_run` + `workflow_save_snapshot` (now scoped to `opportunity_id` per labs PR #168). Removes the last `[WAITING ON LABS]` deferral in Phase 7. Live-smoked against turmeric (workflow 2847, run_ids 2859 + 2860, both snapshots saved cleanly). | ACE team (Plan B Stage 3b) |
 

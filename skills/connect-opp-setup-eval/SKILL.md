@@ -10,14 +10,14 @@ disable-model-invocation: true
 
 # Connect Opp Setup Eval
 
-`connect-opp-setup` is the Phase 3 skill that creates the Connect
+`connect-opp-setup` is the Phase 4 skill that creates the Connect
 Opportunity that hangs off the Program — verification flags, payment
 units, deliver-unit links, active window. Where `connect-program-setup`
 grades the program-side translation, this rubric grades the
-opportunity-side. Together they cover the full Phase 3 Connect-side
+opportunity-side. Together they cover the full Phase 4 Connect-side
 build.
 
-This is the per-opp half of the Phase 3 eval pair. See
+This is the per-opp half of the Phase 4 eval pair. See
 `skills/connect-program-setup-eval/SKILL.md` for the program-side
 sibling, `skills/_eval-template.md` for shared contracts, and
 `skills/eval-calibration/SKILL.md` for calibration methodology.
@@ -27,25 +27,25 @@ sibling, `skills/_eval-template.md` for shared contracts, and
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; Evidence Model + Operational caps drive expectation |
-| Phase 3 | `3-connect/connect-opp-setup.md` and `3-connect/connect-opp-setup_summary.md` | opp config under judgment |
-| Phase 3 | `3-connect/connect-program-setup_summary.md` | parent Program ID + cross-check on consistency |
-| Phase 2 | `2-commcare/app-deploy_summary.md` | HQ Deliver app ID + form/module names for cross-check on Deliver Unit wiring |
+| Phase 4 | `4-connect/connect-opp-setup.md` and `4-connect/connect-opp-setup_summary.md` | opp config under judgment |
+| Phase 4 | `4-connect/connect-program-setup_summary.md` | parent Program ID + cross-check on consistency |
+| Phase 3 | `3-commcare/app-deploy_summary.md` | HQ Deliver app ID + form/module names for cross-check on Deliver Unit wiring |
 
 ## Products
 
-- `3-connect/connect-opp-setup-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`connect-opp-setup`).
+- `4-connect/connect-opp-setup-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`connect-opp-setup`).
 
 ## Process
 
 1. **Read inputs from GDrive** (paths in `## Inputs` above).
    Additional sources read on demand:
-   - Connect opp summary: `runs/<run-id>/3-connect/connect-opp-setup_summary.md`
-   - Deployment summary: `runs/<run-id>/2-commcare/app-deploy_summary.md`
+   - Connect opp summary: `runs/<run-id>/4-connect/connect-opp-setup_summary.md`
+   - Deployment summary: `runs/<run-id>/3-commcare/app-deploy_summary.md`
      (verifies the linked HQ Deliver app + form names match what
      Connect actually points at).
 
 2. **Detect degraded mode.** If the opp-setup artifacts contain
-   `connect_opportunity_id: TBD-MANUAL` — i.e., Phase 3 ran in degraded
+   `connect_opportunity_id: TBD-MANUAL` — i.e., Phase 4 ran in degraded
    mode because the ace-connect MCP `create_*` tools weren't available
    — emit `verdict: incomplete` immediately with `[INFO] degraded-mode
    artifacts; not gradable as Connect-real`. Do not score zero or warn
@@ -78,7 +78,7 @@ sibling, `skills/_eval-template.md` for shared contracts, and
    | **Verification-flag fidelity** | 0.25 | The PDD's Evidence Model § Layer A specifies hard verification rules (GPS ≤Xm, photo present, consent=yes, market-hours window). Connect's verification flags must enforce the same rules at archetype-appropriate strictness — `atomic-visit` defaults to strict GPS + photo; `focus-group` relaxes GPS to room-level + adds attendance check; `multi-stage` adds stage-gate transitions. Missing a Layer A rule Connect could enforce = 2-point deduction per rule. Adding a rule Connect enforces but PDD doesn't require = 0.5-point deduction. Wrong strictness for the archetype (e.g., GPS strict on a focus-group) = 1.5-point deduction per misfit. |
    | **Payment-unit fit** | 0.20 | Payment-unit *count* must match what the PDD declares (one per-delivery PU for atomic-visit; one per-session for focus-group; one PU per stage for multi-stage). Payment *type* (visit/session/stage/piece) must match. Mismatch in count = 3-point deduction; mismatch in type = 3-point deduction. **Threshold sanity (informational, conditional):** if and only if the PDD declares an expected regional day-rate, check that per-unit rate × max-daily-units falls within 30–80% of it. If no day-rate declared, emit `[INFO-SKIPPED] payment-rate sanity: PDD declares no regional day-rate; sub-check skipped` and do NOT count the absence as a defect. |
    | **Deliver-unit wiring** | 0.20 | The Connect Opportunity must link to the same Deliver Unit name the Deliver app declares (Connectify-tagged form name) on the same HQ project space. Mismatch in deliver-unit name = 4-point deduction (Connect can't credit FLW visits). Wrong HQ app pointer = fail (≤3) — Connect would credit visits against the wrong app. Entity ID composite formula must match what the Deliver app computes (PDD spec ↔ Deliver-app summary ↔ Connect read should agree); divergence between any two = 3-point deduction. |
-   | **Active-window + status** | 0.20 | Active-window duration matches PDD Timeline section ±10%. Status at end of Phase 3 must be `draft` — Phase 5 `llo-launch` activates. Premature activation is a fail (≤3) since it would let LLOs deliver before apps are tested and the bot is gated. Window shorter than the PDD declares (truncates the program's planned duration) is a 2-point deduction; longer than PDD declares (drift, but operationally safe) is a 0.5-point INFO deduction. |
+   | **Active-window + status** | 0.20 | Active-window duration matches PDD Timeline section ±10%. Status at end of Phase 4 must be `draft` — Phase 6 `llo-launch` activates. Premature activation is a fail (≤3) since it would let LLOs deliver before apps are tested and the bot is gated. Window shorter than the PDD declares (truncates the program's planned duration) is a 2-point deduction; longer than PDD declares (drift, but operationally safe) is a 0.5-point INFO deduction. |
    | **Archetype-config coherence** | 0.15 | The end-to-end opp config — verification flags + payment unit + deliver-unit + active window — must read coherently for the declared archetype, even when each individual dimension is inside tolerance. Examples: an `atomic-visit` opp with per-session payment + room-level GPS + facilitator-stipend = incoherent (those are focus-group defaults misapplied). Each cross-dimensional misfit = 2-point deduction. The grader uses anchors: full-archetype-coherent = **9.5**; one cross-dim misfit = **7.0**; multiple = **4.0**; all cross-dims wrong for archetype = **2.0**. |
 
    **Deduction rules:**
@@ -128,7 +128,7 @@ sibling, `skills/_eval-template.md` for shared contracts, and
    audit trail downstream investigation reads.
 
 7. **Write the verdict YAML** to
-   `3-connect/connect-opp-setup-eval_verdict.yaml` using the shape from
+   `4-connect/connect-opp-setup-eval_verdict.yaml` using the shape from
    `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
 
    ```yaml
@@ -209,4 +209,4 @@ treated as offline-unsafe under `--dry-run`).
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-09 | Initial version. 5 dimensions: verification_flag_fidelity (0.25), payment_unit_fit (0.20), deliver_unit_wiring (0.20), active_window_status (0.20), archetype_config_coherence (0.15). Sibling of `connect-program-setup-eval`; together they cover Phase 3. Inflation guard at 8.5; same severity tier set ([BLOCKER]/[WARN]/[DRIFT]/[PLATFORM]/[INFO]/[INFO-SKIPPED]). Explicit `incomplete` verdict for degraded-mode artifacts. Live-state-drift check via `connect_get_opportunity` + `connect_list_payment_units` + `connect_list_deliver_units`. Ships at provisional calibration until a non-degraded run produces ground truth. Closes the "not yet migrated" registry row for `connect-opp-setup`. | ACE team |
+| 2026-05-09 | Initial version. 5 dimensions: verification_flag_fidelity (0.25), payment_unit_fit (0.20), deliver_unit_wiring (0.20), active_window_status (0.20), archetype_config_coherence (0.15). Sibling of `connect-program-setup-eval`; together they cover Phase 4. Inflation guard at 8.5; same severity tier set ([BLOCKER]/[WARN]/[DRIFT]/[PLATFORM]/[INFO]/[INFO-SKIPPED]). Explicit `incomplete` verdict for degraded-mode artifacts. Live-state-drift check via `connect_get_opportunity` + `connect_list_payment_units` + `connect_list_deliver_units`. Ships at provisional calibration until a non-degraded run produces ground truth. Closes the "not yet migrated" registry row for `connect-opp-setup`. | ACE team |

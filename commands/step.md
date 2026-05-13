@@ -37,7 +37,7 @@ Run a single skill for an opportunity without running the full lifecycle.
 5. Invoke the specified skill with the opportunity context. Skills run
    inline at top-level (this `/ace:step` invocation IS the top-level
    session) so `Agent` is available — required for any skill that
-   invokes `/nova:autobuild` (Phase 2's `pdd-to-learn-app` /
+   invokes `/nova:autobuild` (Phase 3's `pdd-to-learn-app` /
    `pdd-to-deliver-app`) or otherwise dispatches a subagent. See
    `CLAUDE.md` § Agent topology.
 6. Update `run_state.yaml` with the result (per-phase nested map, 8-phase schema).
@@ -71,10 +71,10 @@ Implementation steps the agent (or a thin Bash wrapper) must perform:
 4. Exit without invoking the skill. The user fixes the gap and retries.
 
 **Why this exists.** Without the check, `/ace:step ocs-chatbot-qa my-opp --deep`
-silently fails when `1-design/pdd-to-test-prompts.md` hasn't been
+silently fails when `2-scenarios/pdd-to-test-prompts.md` hasn't been
 produced yet (because `pdd-to-test-prompts` hasn't run), and
 `/ace:step ocs-chatbot-eval my-opp --deep` silently fails when no
-`4-ocs/ocs-chatbot-qa_transcript-deep.md` exists yet (because
+`5-ocs/ocs-chatbot-qa_transcript-deep.md` exists yet (because
 `ocs-chatbot-qa --deep` hasn't run). Per ACE's fail-loudly contract:
 skills that read upstream-produced artifacts must error when those
 artifacts are missing, not improvise content. The check belongs in
@@ -98,19 +98,19 @@ skills in dependency order) still enforces the contract.
   → Reads inputs/idea.md (required, producedBy: external). OK → invoke skill.
 
 /ace:step ocs-chatbot-qa my-opp
-  → Required: 1-design/pdd-to-test-prompts.md. Missing.
+  → Required: 2-scenarios/pdd-to-test-prompts.md. Missing.
   → Error: "cannot run — missing required inputs:
-    1-design/pdd-to-test-prompts.md (produced by: pdd-to-test-prompts)."
+    2-scenarios/pdd-to-test-prompts.md (produced by: pdd-to-test-prompts)."
 
 /ace:step ocs-chatbot-eval my-opp --deep
-  → Required: 4-ocs/ocs-chatbot-qa_transcript-deep.md. Missing.
+  → Required: 5-ocs/ocs-chatbot-qa_transcript-deep.md. Missing.
   → Error: "cannot run — missing required inputs:
-    4-ocs/ocs-chatbot-qa_transcript-deep.md
+    5-ocs/ocs-chatbot-qa_transcript-deep.md
     (produced by: ocs-chatbot-qa --deep)."
 
 /ace:step connect-opp-setup my-opp
-  → Required: 3-connect/connect-program-setup.md, inputs/pdd.md,
-    2-commcare/app-deploy_summary.md. All present.
+  → Required: 4-connect/connect-program-setup.md, inputs/pdd.md,
+    3-commcare/app-deploy_summary.md. All present.
   → OK → invoke skill.
 ```
 

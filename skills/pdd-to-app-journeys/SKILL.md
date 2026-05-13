@@ -22,12 +22,12 @@ truth here.
 
 ## Products
 
-- `1-design/pdd-to-app-journeys.md` — opp-specific expected-user-journey set ("expected-journeys" for short)
+- `2-scenarios/pdd-to-app-journeys.md` — opp-specific expected-user-journey set ("expected-journeys" for short)
 
 Consumers:
-- `app-test-cases` (Phase 2) — turns each journey into a concrete per-form test matrix once Nova has built the apps.
+- `app-test-cases` (Phase 3) — turns each journey into a concrete per-form test matrix once Nova has built the apps.
 - `app-ux-eval` (deep QA) — LLM-as-Judge over captured screenshots + transcripts, scoring each journey's pass criteria and edge-case recovery.
-- `app-screenshot-capture` (Phase 5) — uses the journey list to decide which step sequences to walk through on the AVD.
+- `app-screenshot-capture` (Phase 6) — uses the journey list to decide which step sequences to walk through on the AVD.
 
 ## Process
 
@@ -77,14 +77,14 @@ Consumers:
    If any rule is missed, go back to step 4 and add.
 
 6. **Write the journeys file** to
-   `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-app-journeys.md`. Use
+   `ACE/<opp-name>/runs/<run-id>/2-scenarios/pdd-to-app-journeys.md`. Use
    the template at `templates/expected-journeys-template.md` as the
    skeleton.
 
 ## Archetypes
 
 ACE skills branch on the PDD's declared `archetype:` field. The journey
-list here is what `app-test-cases` (Phase 2) and `app-ux-eval` (deep
+list here is what `app-test-cases` (Phase 3) and `app-ux-eval` (deep
 QA) will later grade against, so getting them right for the archetype
 matters: an FGD opp graded against atomic-visit-shaped journeys
 produces false-positive failures in the deep app eval.
@@ -205,14 +205,14 @@ output but proceed.
 - **Review:** Pause before writing to present the generated journey
   list for operator approval. This artifact is the UX ground truth
   for downstream app QA, so getting it wrong cascades into
-  false-positive / false-negative deep-eval failures in Phase 5.
+  false-positive / false-negative deep-eval failures in Phase 6.
 
 ## Dry-Run Behavior
 
 When `--dry-run` is active:
 - Generate the journey file content as normal.
 - Write to `comms-log/dry-run-pdd-to-app-journeys.md` instead of
-  `1-design/pdd-to-app-journeys.md`.
+  `2-scenarios/pdd-to-app-journeys.md`.
 - State tracks as `dry-run-success`.
 
 ## Failure Modes
@@ -238,6 +238,6 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-04 | Initial version — Phase 1 producer of `expected-journeys.md`, the UX-intent ground truth that `app-test-cases` (Phase 2) and `app-ux-eval` (deep QA) consume. Mirror of `pdd-to-test-prompts` for the app side. Introduced as part of the shallow/deep QA split (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`) | ACE team |
-| 2026-05-08 | Output path corrected to `1-design/pdd-to-app-journeys.md` (was `expected-journeys.md` at the run root). Aligns with `lib/artifact-manifest.ts:220`, the QA + eval skills, and `agents/design-review.md`. Consumers (`app-test-cases`, `app-ux-eval`, training cluster, `synthetic-narrative-plan`) updated in the same PR. | ACE team |
+| 2026-05-04 | Initial version — Phase 1 producer of `expected-journeys.md`, the UX-intent ground truth that `app-test-cases` (Phase 3) and `app-ux-eval` (deep QA) consume. Mirror of `pdd-to-test-prompts` for the app side. Introduced as part of the shallow/deep QA split (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`) | ACE team |
+| 2026-05-08 | Output path corrected to `2-scenarios/pdd-to-app-journeys.md` (was `expected-journeys.md` at the run root). Aligns with `lib/artifact-manifest.ts:220`, the QA + eval skills, and `agents/design-review.md`. Consumers (`app-test-cases`, `app-ux-eval`, training cluster, `synthetic-narrative-plan`) updated in the same PR. | ACE team |
 | 2026-05-08 | **No QA companion.** `pdd-to-app-journeys-qa` removed (PR #160) — downstream consumers are LLM-driven; structural label-format checks gate nothing real, and the eval already covers the substantive concerns. See `skills/_qa-decisions.md` for the registry entry + revisit conditions, and `docs/learnings/2026-05-08-fake-qa-detection.md` for the heuristic. | ACE team |

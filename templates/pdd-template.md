@@ -61,7 +61,7 @@
 - LLO criteria: [what capabilities are needed]
 
 ## Solicitation
-> Phase 6 (Solicitation Management) reads this section to publish a solicitation
+> Phase 7 (Solicitation Management) reads this section to publish a solicitation
 > on labs.connect.dimagi.com that LLOs respond to. All fields below are optional
 > — defaults apply if omitted, and the long-term flow (where ACE doesn't pre-name
 > LLOs) leaves Preferred LLOs above empty so the solicitation goes to the public

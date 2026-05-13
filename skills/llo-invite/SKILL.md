@@ -8,12 +8,12 @@ disable-model-invocation: true
 
 # LLO Invite
 
-Phase 7 default-run skill. Runs after `solicitation-create` has populated
+Phase 8 default-run skill. Runs after `solicitation-create` has populated
 `phases.solicitation-management.products.solicitation.public_url` in the
 current run's `run_state.yaml`. Sends each PDD-named candidate LLO an
 email containing the solicitation URL, deadline, and a scope summary.
 
-This skill replaces the previous Phase-7 (was Phase-6) `llo-invite` that
+This skill replaces the previous Phase-8 (was Phase-7) `llo-invite` that
 prepared a Connect-side invite roster. The Connect program-level invite
 (`connect_send_llo_invite`) is now `llo-onboarding`'s responsibility and
 fires only for the awardee.
@@ -101,7 +101,7 @@ fires only for the awardee.
 
 If invoked under `/ace:run --review` mode, present the prepared email
 list to the human before sending and pause. Default mode sends without
-a gate (the orchestrator's external-comms gate is the Phase 7→8
+a gate (the orchestrator's external-comms gate is the Phase 8→9
 boundary, not here — these emails are non-binding "please consider
 applying" notes, not commitments).
 

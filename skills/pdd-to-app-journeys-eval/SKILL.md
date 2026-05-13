@@ -18,17 +18,17 @@ There is **no companion QA skill** for this artifact — see `skills/_qa-decisio
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 producer | `1-design/pdd-to-app-journeys.md` | the journeys doc under judgment |
+| Phase 1 producer | `2-scenarios/pdd-to-app-journeys.md` | the journeys doc under judgment |
 | Phase 1 producer | `1-design/idea-to-pdd.md` | the source PDD; archetype + Target FLW for grading alignment |
 
 ## Products
 
-- `1-design/pdd-to-app-journeys-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
+- `2-scenarios/pdd-to-app-journeys-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 
 ## Process
 
 1. **Use inputs already in context (preferred) or read from Drive.**
-   When invoked from the `design-review` subagent (the common
+   When invoked from the `idea-to-design` subagent (the common
    `/ace:run` path), the journeys artifact and PDD are already loaded
    by the parent's Step 3 / Step 1 — do NOT re-issue
    `drive_read_file`. See `agents/design-review.md` § Performance
@@ -36,14 +36,14 @@ There is **no companion QA skill** for this artifact — see `skills/_qa-decisio
    `/ace:step pdd-to-app-journeys-eval <opp>/<run-id>`.
 
    Inputs (location for standalone reads):
-   - `runs/<run-id>/1-design/pdd-to-app-journeys.md` (artifact under judgment)
+   - `runs/<run-id>/2-scenarios/pdd-to-app-journeys.md` (artifact under judgment)
    - `runs/<run-id>/1-design/idea-to-pdd.md` (PDD; for archetype + Target FLW reference)
 
 2. **Halt on missing inputs.** If `pdd-to-app-journeys.md` is absent or empty, emit `verdict: incomplete` with `[INFO] producer artifact missing; eval skipped`. (No QA gate replaces this fast-path; the eval itself short-circuits when there's nothing to grade.)
 
 3. **Grade across 6 dimensions.** Each 0–10. Overall = weighted mean.
 
-4. **Write the verdict YAML** to `1-design/pdd-to-app-journeys-eval_verdict.yaml`.
+4. **Write the verdict YAML** to `2-scenarios/pdd-to-app-journeys-eval_verdict.yaml`.
 
 5. **Auto-surfaced concerns** per `_eval-template.md § Auto-surfaced severity rules`.
 
@@ -71,7 +71,7 @@ This skill ships **provisional** until calibrated against ground truth. Initial 
    skill: pdd-to-app-journeys-eval
    target: <opp-name>
    ran_at: <ISO>
-   capture_path: 1-design/pdd-to-app-journeys.md
+   capture_path: 2-scenarios/pdd-to-app-journeys.md
 
    overall_score: 0.0-10.0
    overall_score_pre_cap: 0.0-10.0

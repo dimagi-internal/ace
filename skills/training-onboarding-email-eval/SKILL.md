@@ -1,35 +1,35 @@
 ---
 name: training-onboarding-email-eval
 description: >
-  Grade the Phase 5 LLO onboarding email draft for warmth, clarity, and
-  call-to-action effectiveness — the email Phase 8 sends to kick off
+  Grade the Phase 6 LLO onboarding email draft for warmth, clarity, and
+  call-to-action effectiveness — the email Phase 9 sends to kick off
   LLO onboarding.
 disable-model-invocation: true
 ---
 
 # Training Onboarding Email — Eval
 
-Grades `5-qa-and-training/training-onboarding-email.md`. Low-priority but
+Grades `6-qa-and-training/training-onboarding-email.md`. Low-priority but
 non-zero: this is the first contact ace makes with the LLO, and a cold,
-ambiguous, or buried-CTA email correlates with slow Phase 8 response
+ambiguous, or buried-CTA email correlates with slow Phase 9 response
 rates. An independent grader catches the failure modes a producer's
 self-eval typically rationalizes ("it's professional").
 
 See `skills/_eval-template.md` for shared contracts. Provisional rubric —
-calibration TBD; future signal expected from Phase 8 `llo-onboarding`
+calibration TBD; future signal expected from Phase 9 `llo-onboarding`
 response-rate telemetry.
 
 ## Inputs
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 5 | `5-qa-and-training/training-onboarding-email.md` | artifact under judgment |
+| Phase 6 | `6-qa-and-training/training-onboarding-email.md` | artifact under judgment |
 | Phase 1 | `1-design/idea-to-pdd.md` | anchors LLO context (org name, region, intervention) and archetype |
 | Templates | `templates/onboarding-email-template.md` | reference voice/structure baseline |
 
 ## Products
 
-- `5-qa-and-training/training-onboarding-email-eval_verdict.yaml` — verdict
+- `6-qa-and-training/training-onboarding-email-eval_verdict.yaml` — verdict
   YAML per `_eval-template.md § Verdict YAML contract`.
 
 ## Process
@@ -65,7 +65,7 @@ surface a `[WARN]`. Default no-op until the producer ships a self-eval.
 - Detection rate ≥ 80% of catalogued onboarding-email issues from
   `eval-calibration/known-issues.md § Training onboarding email` (catalogue TBD).
 - Inter-run variance ≤ 0.5 across 3 same-model runs.
-- Future external signal: Phase 8 `llo-onboarding` response rates per
+- Future external signal: Phase 9 `llo-onboarding` response rates per
   email — if response < 50%, recall the verdict and recalibrate.
 
 Provisional until first real run produces ground truth.
@@ -99,4 +99,4 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 
 | Date | Change | Author |
 |---|---|---|
-| 2026-05-09 | Initial version. 5 dimensions: warmth (0.25), clarity (0.30), call_to_action_effectiveness (0.25), context_fidelity (0.15), length_discipline (0.05). Provisional rubric — calibration TBD until first real run grades the artifact; future external signal from Phase 8 `llo-onboarding` response rates. | ACE team (qa-eval-registry initial buildout) |
+| 2026-05-09 | Initial version. 5 dimensions: warmth (0.25), clarity (0.30), call_to_action_effectiveness (0.25), context_fidelity (0.15), length_discipline (0.05). Provisional rubric — calibration TBD until first real run grades the artifact; future external signal from Phase 9 `llo-onboarding` response rates. | ACE team (qa-eval-registry initial buildout) |

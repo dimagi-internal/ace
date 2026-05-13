@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # Synthetic Walkthrough Run
 
-Stage 2 of ACE Phase 6 (Plan B). Consumes the per-persona spec YAMLs
+Stage 2 of ACE Phase 7 (Plan B). Consumes the per-persona spec YAMLs
 written by `synthetic-walkthrough-spec`, dispatches the
 `canopy:walkthrough` skill once per persona, and uploads each resulting
 HTML slideshow + scored screenshots to the run folder. Each invocation
@@ -35,7 +35,7 @@ rubric — see `synthetic-workflow-polish-eval/SKILL.md` step 7.)
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 6 | `6-synthetic/synthetic-walkthrough-spec_<persona>.yaml` (one per persona) | the spec dispatched to canopy:walkthrough |
+| Phase 7 | `7-synthetic/synthetic-walkthrough-spec_<persona>.yaml` (one per persona) | the spec dispatched to canopy:walkthrough |
 | Drive | `ACE/<opp>/opp.yaml` | `display_name`, `slug` |
 | Current run's `run_state.yaml` | `phases.synthetic-data-and-workflows.products.synthetic.labs_opp_id` | walkthrough scope |
 | Env | `${CLAUDE_PLUGIN_DATA}/.env` → `ACE_HQ_USERNAME` / `ACE_HQ_PASSWORD` | CommCareHQ creds for the headless OAuth-via-CCHQ flow used by `bin/ace-labs-walkthrough-login` (which reuses `mcp/connect/auth/hq-oauth-login.ts`) |
@@ -44,9 +44,9 @@ rubric — see `synthetic-workflow-polish-eval/SKILL.md` step 7.)
 
 ## Products
 
-- `6-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/slideshow.html` — the HTML deck (per persona, per run, timestamped)
-- `6-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/scenes/scene_<n>.png` — per-scene screenshots
-- `6-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/eval.json` — per-scene scores from the canopy walkthrough's LLM-as-Judge
+- `7-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/slideshow.html` — the HTML deck (per persona, per run, timestamped)
+- `7-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/scenes/scene_<n>.png` — per-scene screenshots
+- `7-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/eval.json` — per-scene scores from the canopy walkthrough's LLM-as-Judge
 - `run_state.yaml.phases.synthetic-data-and-workflows.products.synthetic.walkthroughs[]` — appended (NOT overwritten) per persona run via read-modify-write within the current run. Per-run only — does not chain across runs.
 - `run_state.yaml.phases.synthetic-data-and-workflows.synthetic-walkthrough-run.steps[<persona>]: done`
 
@@ -101,7 +101,7 @@ For each selected persona (canned + opp-overlay set, optionally filtered
 by `--persona` / `--personas`):
 
 1. **Read the spec.** Load
-   `6-synthetic/synthetic-walkthrough-spec_<persona>.yaml` from Drive
+   `7-synthetic/synthetic-walkthrough-spec_<persona>.yaml` from Drive
    via `drive_read_file`. If the file is missing, skip the persona with
    a `[WARN]` and continue (don't halt — partial decks are better than
    none).
@@ -149,7 +149,7 @@ by `--persona` / `--personas`):
    For each successful run, build:
 
    ```
-   6-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/
+   7-synthetic/walkthroughs/<persona>-<YYYYMMDD-HHMMSS>/
      slideshow.html
      scenes/
        scene_1.png ... scene_N.png

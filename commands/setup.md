@@ -97,7 +97,7 @@ Read the script output and tell the user:
    - `FAIL op: not authenticated to 1Password` → tell the user verbatim: "Type `! op signin --account dimagi.1password.com` now (the `!` prefix runs it in this session). After it succeeds, re-run `/ace:setup`."
    - `FAIL gws_key: missing and could not auto-fetch from 1Password` → if the script printed candidate Document items, tell the user: "Pick the right item from the candidate list above and re-run with `ACE_GWS_KEY_OP_DOC='<exact name>' /ace:setup` — or if no candidate looks right, ask Jon for the SA key JSON and drop it at the path the script printed."
 5. If everything passes:
-   - **If mobile is needed (Phase 5 `qa-and-training`):** suggest `/ace:mobile-bootstrap` next.
+   - **If mobile is needed (Phase 6 `qa-and-training`):** suggest `/ace:mobile-bootstrap` next.
    - **Otherwise:** suggest `/ace:status` to view opportunities, or `/ace:run --dry-run` for a safe end-to-end smoke.
 
 ## Rules

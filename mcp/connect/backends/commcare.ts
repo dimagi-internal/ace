@@ -1044,7 +1044,7 @@ function collisionsFor(
  * data, so an empty element makes `/opportunity/init/` 500 with no useful
  * server-side message. Tracker: nova-plugin#5 (compile_app render gap),
  * nova-plugin#6 (`connect: null` on a quiz form gets auto-restored). Both
- * upstream blockers gate ACE Phase 3 today.
+ * upstream blockers gate ACE Phase 4 today.
  *
  * Match scope: only `<user_score/>` elements that appear inside an
  * `<assessment ... xmlns="http://commcareconnect.com/data/v1/learn">`

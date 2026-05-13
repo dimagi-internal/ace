@@ -102,7 +102,7 @@ verify the contract without reading the full procedure.
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | archetype, framing, FLW count |
-| Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` | nova_app_id, module list |
+| Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` | nova_app_id, module list |
 ```
 
 ### 3. `## Products`
@@ -178,11 +178,11 @@ skills don't duplicate it:
   paths, and shared verdict shape (which itself references
   `_eval-template.md`). Per-skill format rules and audience-specific
   concerns stay in each skill's own file.
-- **`skills/_solicitation-template.md`** — for the Phase 7 solicitation
+- **`skills/_solicitation-template.md`** — for the Phase 8 solicitation
   family. Defines the
   `phases.solicitation-management.products.{solicitation, selected_llo}`
   per-run contract, the connect-labs MCP atom inventory per skill, and
-  the Phase 7 → Phase 8 boundary rule.
+  the Phase 8 → Phase 9 boundary rule.
 
 These files start with `_` so they are excluded from the skill catalog
 (they aren't skills — they're reference docs). When you add a new
@@ -232,7 +232,7 @@ populates (Artifact Under Review, What to Check, Auto-Surfaced
 Concerns, Recommended Disposition) using the canonical shape from
 `agents/ace-orchestrator.md § Gate Brief Contract`.
 
-The 5 gate-owning skills today are: `idea-to-pdd` (Phase 1→2), `app-deploy` (Phase 2→3), `ocs-chatbot-eval` (Phase 4→5), `llo-invite` (Phase 7 invite-list), `llo-launch` (Phase 8 launch). `opp-eval` also writes a Gate Brief section but its brief is advisory (does not gate any phase).
+The 5 gate-owning skills today are: `idea-to-pdd` (Phase 1→3), `app-deploy` (Phase 3→4), `ocs-chatbot-eval` (Phase 5→6), `llo-invite` (Phase 8 invite-list), `llo-launch` (Phase 9 launch). `opp-eval` also writes a Gate Brief section but its brief is advisory (does not gate any phase).
 
 ### `## Current Workaround` (when the skill is blocked on un-built APIs)
 
@@ -339,12 +339,12 @@ The `idea-to-pdd-eval` rubric (post-0.13.84) is the next migration target; `ocs-
 > Every per-run artifact lives at
 > `ACE/<opp-name>/runs/<run-id>/<phase>/<skill>_<artifact>[-<mode>].<ext>`.
 
-Phase folders are `1-design/`, `2-commcare/`, `3-connect/`, `4-ocs/`,
-`5-qa-and-training/`, `6-solicitation-management/`,
+Phase folders are `1-design/`, `3-commcare/`, `4-connect/`, `5-ocs/`,
+`6-qa-and-training/`, `6-solicitation-management/`,
 `7-execution-manager/`, `8-closeout/`. Skills choose the phase that
 matches **when the work runs** (so `--monitor` mode for OCS lands
-under `7-execution-manager/`, not `4-ocs/`, because monitoring is
-Phase 8 work). The canonical inventory is in `lib/artifact-manifest.ts`
+under `7-execution-manager/`, not `5-ocs/`, because monitoring is
+Phase 9 work). The canonical inventory is in `lib/artifact-manifest.ts`
 — that file is the source of truth when prose and code drift.
 
 **No opp-level `qa-captures/`, `verdicts/`, `eval-reports/`,
@@ -382,7 +382,7 @@ filename. Concrete consequences:
   `<phase>/<self>_verdict[-<mode>].yaml`.
 - Skills that ARE their own registry row (no producer/eval split,
   e.g. `ocs-chatbot-eval`) keep their own name and a mode suffix:
-  `4-ocs/ocs-chatbot-eval_verdict-{quick,deep}.yaml`,
+  `5-ocs/ocs-chatbot-eval_verdict-{quick,deep}.yaml`,
   `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml`.
 - The umbrella `opp-eval` writes into its own subfolder under
   `8-closeout/`:
@@ -474,7 +474,7 @@ the source of truth if this prose drifts.
 - `skills/ocs-chatbot-qa/SKILL.md` + `skills/ocs-chatbot-eval/SKILL.md` —
   the reference qa/eval pair. The qa skill captures a chat transcript
   with structural checks; the eval skill grades across 4 weighted
-  dimensions and writes the Phase 4 gate brief.
+  dimensions and writes the Phase 5 gate brief.
 - `skills/idea-to-pdd/SKILL.md` — a skill with inline self-eval (no
   separate `-eval` skill). The 5-question stress-test rubric runs inside
   the skill as a self-check before writing the PDD.

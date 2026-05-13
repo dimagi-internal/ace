@@ -14,7 +14,7 @@ who's mid-task and stuck, scanning for their question.
 
 ## When to run
 
-Phase 5 (`qa-and-training`). Reads upstream Phase 1 artifacts —
+Phase 6 (`qa-and-training`). Reads upstream Phase 1 artifacts —
 `pdd-to-app-journeys`'s `pdd-to-app-journeys.md` for journey edge cases
 and `pdd-to-test-prompts`'s `test-prompts.md` for OCS-side seed
 questions.
@@ -24,16 +24,16 @@ questions.
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | escalation triggers, evidence model rules, opp framing |
-| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/pdd-to-test-prompts.md` | seed Q's that the OCS bot was tested on (high-confidence "FLWs will ask this") |
-| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-learn-app_summary.md` | content-clarification questions |
-| Phase 2 | `ACE/<opp>/runs/<run-id>/2-commcare/pdd-to-deliver-app_summary.md` | per-form field-clarification questions |
-| Phase 3 (`run_state.yaml`) | `connect.payment_units` + `connect.verification_flags` | "why was my submission flagged?" answers |
-| Phase 4 | `ACE/<opp>/runs/<run-id>/4-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "how do I ask?" answer |
-| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/pdd-to-app-journeys.md` (edge cases per journey) | seed Q's about boundary conditions |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/2-scenarios/pdd-to-test-prompts.md` | seed Q's that the OCS bot was tested on (high-confidence "FLWs will ask this") |
+| Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-learn-app_summary.md` | content-clarification questions |
+| Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | per-form field-clarification questions |
+| Phase 4 (`run_state.yaml`) | `connect.payment_units` + `connect.verification_flags` | "why was my submission flagged?" answers |
+| Phase 5 | `ACE/<opp>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "how do I ask?" answer |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/2-scenarios/pdd-to-app-journeys.md` (edge cases per journey) | seed Q's about boundary conditions |
 
 ## Output
 
-Single file: `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq.md`.
+Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-faq.md`.
 
 ## Format
 
@@ -123,7 +123,7 @@ which rule triggered, what to do>
    - At least 4 Q's seeded from `test-prompts.md`
    - At least 2 Q's seeded from `pdd-to-app-journeys.md` edge cases
 
-8. **Write** to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq.md` via
+8. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-faq.md` via
    `drive_create_file`.
 
 9. **Self-evaluate (LLM-as-Judge).** Four criteria:
@@ -135,7 +135,7 @@ which rule triggered, what to do>
    - **Audience split:** at least 30% LLO Q's and at least 30% FLW
      Q's (otherwise the doc is over-skewed)
 
-   Verdict to `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq_verdict.yaml`.
+   Verdict to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-faq_verdict.yaml`.
 
 10. **Hand off.** Print Drive URL + verdict summary.
 
@@ -152,8 +152,8 @@ which rule triggered, what to do>
 
 ## Products
 
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq.md`
-- `ACE/<opp>/runs/<run-id>/5-qa-and-training/training-faq_verdict.yaml`
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-faq.md`
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-faq_verdict.yaml`
 - `run_state.yaml.phases.qa-and-training.products.training.docs.faq` — `{file_id, title: "FAQ", web_view_link}` typed handoff. Multi-writer block: apply via read-modify-write per `skills/synthetic-data-generate/SKILL.md § Step 6`. See `agents/qa-and-training.md § Products` for the full slot table.
 
 ## Why a separate skill

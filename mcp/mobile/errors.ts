@@ -46,7 +46,7 @@ export class MaestroError extends MobileError {
 // MaestroError (a specific recipe failed). The healer in
 // `MobileClient.ensureAvdRunning` tries `am force-stop` and then
 // uninstall-and-reinstall before throwing this; by the time it surfaces, the
-// AVD needs operator attention (or `/ace:mobile-bootstrap`) before Phase 5
+// AVD needs operator attention (or `/ace:mobile-bootstrap`) before Phase 6
 // `app-screenshot-capture` can capture anything.
 export class MaestroDriverError extends MobileError {
   constructor(serial: string, attempts: string[]) {

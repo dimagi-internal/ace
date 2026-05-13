@@ -41,13 +41,13 @@ CRISPR-Connect process, generated from the actual agent and skill definitions.
    [Summary from SKILL.md]
    ...
 
-   ## Phase 2: Connect Setup
+   ## Phase 3: Connect Setup
    ...
 
-   ## Phase 3: LLO Management
+   ## Phase 4: LLO Management
    ...
 
-   ## Phase 4: Closeout
+   ## Phase 5: Closeout
    ...
 
    ## External Integrations

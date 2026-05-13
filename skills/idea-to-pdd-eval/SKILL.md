@@ -46,7 +46,7 @@ filename rule.
 ## Process
 
 1. **Use inputs already in context (preferred) or read from Drive.**
-   When invoked from the `design-review` subagent (the common
+   When invoked from the `idea-to-design` subagent (the common
    `/ace:run` path), all inputs below are already loaded by the
    parent — do NOT re-issue `drive_read_file`. See
    `agents/design-review.md` § Performance conventions: the parent

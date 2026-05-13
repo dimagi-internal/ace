@@ -1,7 +1,7 @@
 ---
 name: training-flw-guide-eval
 description: >
-  Grade the Phase 5 FLW guide for step-by-step concreteness (a worker
+  Grade the Phase 6 FLW guide for step-by-step concreteness (a worker
   with no prior context can follow), screenshot completeness, and
   language accessibility.
 disable-model-invocation: true
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 # Training FLW Guide — Eval
 
-Grades `5-qa-and-training/training-flw-guide.md`. The FLW guide is the
+Grades `6-qa-and-training/training-flw-guide.md`. The FLW guide is the
 ground-truth onboarding artifact for the field worker. Unlike the FAQ
 (reference) or quick-reference (glance), this is the linear walkthrough
 they read once before their first visit. If steps are abstract or
@@ -22,13 +22,13 @@ calibration TBD until 3+ shipped FLW guides produce ground truth.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 5 | `5-qa-and-training/training-flw-guide.md` | artifact under judgment |
+| Phase 6 | `6-qa-and-training/training-flw-guide.md` | artifact under judgment |
 | Phase 1 | `1-design/idea-to-pdd.md` | anchors archetype + worker-flow expectations + accessibility constraints (language, literacy assumption) |
-| Phase 2 | `2-commcare/app-deploy_summary.md` | learn/deliver app flow — guide steps must match form-by-form what the FLW sees |
+| Phase 3 | `3-commcare/app-deploy_summary.md` | learn/deliver app flow — guide steps must match form-by-form what the FLW sees |
 
 ## Products
 
-- `5-qa-and-training/training-flw-guide-eval_verdict.yaml` — verdict YAML per
+- `6-qa-and-training/training-flw-guide-eval_verdict.yaml` — verdict YAML per
   `_eval-template.md § Verdict YAML contract`.
 
 ## Process

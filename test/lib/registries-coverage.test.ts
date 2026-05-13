@@ -43,7 +43,8 @@ const EVAL_REGISTRY_PATH = path.join(REPO_ROOT, 'skills', '_eval-decisions.md');
 const PRODUCER_EXEMPTIONS = new Set<string>([
   // Agents (orchestration, not per-opp producers)
   'ace-orchestrator',
-  'design-review',
+  'idea-to-design',
+  'scenarios-and-acceptance',
   'commcare-setup',
   'connect-setup',
   'ocs-setup',

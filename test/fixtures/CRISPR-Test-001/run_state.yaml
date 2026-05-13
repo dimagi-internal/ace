@@ -18,22 +18,22 @@ phases:
   design-review:        # Phase 1
     idea-to-pdd: pending
     pdd-to-test-prompts: pending
-  commcare-setup:       # Phase 2
+  commcare-setup:       # Phase 3
     pdd-to-learn-app: pending
     pdd-to-deliver-app: pending
     app-deploy: pending
     app-test-cases: pending
-  connect-setup:        # Phase 3
+  connect-setup:        # Phase 4
     connect-program-setup: pending
     connect-opp-setup: pending
     llo-invite: pending
-  ocs-setup:            # Phase 4
+  ocs-setup:            # Phase 5
     ocs-agent-setup: pending
     ocs-chatbot-qa-quick: pending
     ocs-chatbot-eval-quick: pending
     ocs-chatbot-qa-deep: pending
     ocs-chatbot-eval-deep: pending
-  llo-management:       # Phase 5
+  llo-management:       # Phase 6
     llo-onboarding: pending
     llo-uat: pending
     llo-launch: pending
@@ -42,7 +42,7 @@ phases:
     flw-data-review: pending
     ocs-chatbot-qa-monitor: pending
     ocs-chatbot-eval-monitor: pending
-  closeout:             # Phase 6
+  closeout:             # Phase 7
     opp-closeout: pending
     llo-feedback: pending
     learnings-summary: pending
@@ -52,7 +52,7 @@ phases:
 # the next step dispatches.
 gates:
   idea-to-pdd: pending             # Phase 1 exit
-  app-deploy: pending              # Phase 2 exit
-  ocs-chatbot-eval-deep: pending   # Phase 4 exit (gate is on the eval, not the qa capture)
-  llo-invite: pending              # Phase 3 exit (invites sent in Phase 5)
-  llo-launch: pending              # Phase 5 go-live
+  app-deploy: pending              # Phase 3 exit
+  ocs-chatbot-eval-deep: pending   # Phase 5 exit (gate is on the eval, not the qa capture)
+  llo-invite: pending              # Phase 4 exit (invites sent in Phase 6)
+  llo-launch: pending              # Phase 6 go-live

@@ -9,12 +9,12 @@ disable-model-invocation: true
 # Synthetic Summary — Eval
 
 See `skills/_eval-template.md` for shared verdict / severity / stock-block
-contracts. Provisional rubric — calibration TBD once 3+ Phase 6 summaries
+contracts. Provisional rubric — calibration TBD once 3+ Phase 7 summaries
 have been forwarded to real stakeholders and we have feedback signal
 (`skills/eval-calibration/SKILL.md`).
 
 Aggregator-stage eval for `synthetic-summary`'s
-`6-synthetic/synthetic-summary.md` artifact. The summary is the document
+`7-synthetic/synthetic-summary.md` artifact. The summary is the document
 a Dimagi staffer forwards to a stakeholder — "here is what this
 opportunity looks like running well." It composes the labs URL, the
 fixture folder, the persona walkthroughs (Stage 2), the demonstrative
@@ -25,9 +25,9 @@ grades whether that page actually works for forwarding.
 
 ## Inputs
 
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-summary.md`
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-data-generate.md` — labs URL + fixture folder ground truth
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-narrative-plan.{md,yaml}` (when present) — narrative ground truth
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-summary.md`
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-data-generate.md` — labs URL + fixture folder ground truth
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-narrative-plan.{md,yaml}` (when present) — narrative ground truth
 - `ACE/<opp-name>/opp.yaml` — `display_name`, `synthetic.walkthroughs[]`, `synthetic.workflows.*` for completeness checks
 
 ## Rubric
@@ -68,7 +68,7 @@ Score each dimension 0–10. Hard-deduct rules inline.
    appear in the source artifacts is invented; the eval flags it).
 
 5. **What's-next clarity (weight 0.10).** The "What's next" section
-   accurately describes which Phase 6 stages have NOT run for this opp,
+   accurately describes which Phase 7 stages have NOT run for this opp,
    and gives the right `/ace:step` invocations. Skipping the section
    entirely is correct iff every stage is filled (the demo is complete);
    describing stages as "not run" when the artifacts exist is a fail.
@@ -96,7 +96,7 @@ ever lands, cap overall at 8.0 when self-eval is `pass` and overall is
 
 ## Verdict shape
 
-Write `<6-synthetic-folder>/synthetic-summary-eval_verdict.yaml` per
+Write `<7-synthetic-folder>/synthetic-summary-eval_verdict.yaml` per
 `lib/verdict-schema.ts`:
 
 ```yaml
@@ -105,7 +105,7 @@ skill: synthetic-summary-eval
 target: <opp-name>
 mode: deep
 ran_at: <ISO timestamp>
-capture_path: 6-synthetic/synthetic-summary.md
+capture_path: 7-synthetic/synthetic-summary.md
 
 overall_score: <weighted mean post-cap>
 overall_score_pre_cap: <raw weighted mean>
@@ -129,7 +129,7 @@ Weights sum: 0.30 + 0.25 + 0.25 + 0.10 + 0.10 = 1.00.
 
 ## Calibration target
 
-Provisional. Once 3+ Phase 6 summaries have been forwarded to
+Provisional. Once 3+ Phase 7 summaries have been forwarded to
 stakeholders:
 - Build ground-truth catalogue at
   `eval-calibration/known-issues.md § Synthetic summary`.

@@ -1,6 +1,6 @@
 # `solicitation-*` skill template
 
-Shared conventions for ACE's Phase 7 solicitation skills:
+Shared conventions for ACE's Phase 8 solicitation skills:
 `solicitation-create`, `solicitation-monitor`, `solicitation-review`,
 plus their evals (`solicitation-create-eval`, `solicitation-review-eval`)
 and the `llo-invite` invitation-side companion. All consume the
@@ -49,7 +49,7 @@ See `skills/_eval-template.md § Mode Behavior (stock)`.
 
 ## run_state.yaml contract
 
-Phase 7 owns two `outputs` blocks under
+Phase 8 owns two `outputs` blocks under
 `runs/<run-id>/run_state.yaml.phases.solicitation-management`:
 
 ```yaml
@@ -76,7 +76,7 @@ phases:
           awarded_by: <human operator>
 
       selected_llo:
-        # Narrow contract — the single block Phase 8 reads to know who
+        # Narrow contract — the single block Phase 9 reads to know who
         # to onboard. Populated EXCLUSIVELY by solicitation-review after
         # human-in-the-loop approval.
         org_slug: <Connect workspace slug>
@@ -85,11 +85,11 @@ phases:
         response_id: <labs response UUID>
 ```
 
-Every Phase 7 skill reads and writes only the current run's
+Every Phase 8 skill reads and writes only the current run's
 `run_state.yaml`. Each `/ace:run` publishes a fresh solicitation; no
 cross-run inheritance. The recurring `solicitation-monitor` runs
 read-only against the most recent run; its `--close` mode is deferred
-pending the Phase 7+/8 redesign.
+pending the Phase 8+/8 redesign.
 
 **Per-run only.** Every read and write goes through the current
 run's `run_state.yaml`. No cross-run reads. Each `/ace:run` publishes
@@ -111,7 +111,7 @@ Labs and Connect use different identifiers for the same program:
   `solicitation-create` via a one-time `labs_context()` name match
   against the Connect program name, then cached at the durable
   `opp.yaml.connect.program.labs_int_id` location. Consumed by all
-  three Phase 7 skills (`solicitation-create`, `solicitation-monitor`,
+  three Phase 8 skills (`solicitation-create`, `solicitation-monitor`,
   `solicitation-review`) whenever they call labs MCP atoms that need
   program scope.
 
@@ -122,7 +122,7 @@ integer id (as a string) to labs MCP, never the Connect UUID.
 
 **Invariant:** `selected_llo.org_slug` is set if and only if
 `solicitation.status == 'awarded'` and a human approved the award via
-`solicitation-review`. Phase 8's `llo-onboarding` halts immediately if
+`solicitation-review`. Phase 9's `llo-onboarding` halts immediately if
 this invariant is violated.
 
 ### Labs scoping invariant (load-bearing)
@@ -141,13 +141,13 @@ bookkeeping** — ACE's record of which Connect opp the solicitation is
   exists. `solicitation-create` fires when the program is set; the
   Connect opp wires up later in the same run or a later run.
 - Repointing the Connect opp pre-award (e.g., `connect-opp-setup`
-  delete-and-recreate to refresh app-wire fields after a Phase 2
+  delete-and-recreate to refresh app-wire fields after a Phase 3
   re-upload) **does not orphan or affect the labs solicitation**. The
   public solicitation URL keeps working, the deadline keeps counting
   down, and pending responses are unaffected. ACE just updates the
   `connect_opportunity_id` bookkeeping field.
 - `solicitation-review` reads `connect_opportunity_id` at the moment of
-  award and writes the awardee onto **that** opp via Phase 8. It does
+  award and writes the awardee onto **that** opp via Phase 9. It does
   not require the value to have been stable since the solicitation was
   published.
 - Skills that worry about "the labs solicitation will 404 if I delete
@@ -175,7 +175,7 @@ historical docs claimed it as a 10th MCP atom — that was incorrect.)
 
 ## Drive paths
 
-All Phase 7 artifacts live under:
+All Phase 8 artifacts live under:
 `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/`
 
 Per-skill subpaths:
@@ -187,21 +187,21 @@ Per-skill subpaths:
 | `solicitation-review` | `solicitation-review_award-record.md` + verdict |
 | `llo-invite` | `llo-invite_outbound-emails/<llo>.md` |
 
-## Phase 7 → Phase 8 boundary
+## Phase 8 → Phase 9 boundary
 
-Phase 7 is the first phase that publishes anything publicly (the
-solicitation listing). Phase 8 is the first phase that contacts
+Phase 8 is the first phase that publishes anything publicly (the
+solicitation listing). Phase 9 is the first phase that contacts
 specific LLOs (with the awarded LLO).
 
 `solicitation-create` and `llo-invite` run in default `/ace:run`.
 `solicitation-monitor` runs recurring while open.
 `solicitation-review` is **manual only** — it requires human
 approval before populating `selected_llo`. `/ace:run` halts at
-Phase 7 close and waits for the operator to invoke
+Phase 8 close and waits for the operator to invoke
 `/ace:step solicitation-review <opp>` once they've decided the
 awardee.
 
-Phase 8 entry gate:
+Phase 9 entry gate:
 `phases.solicitation-management.products.selected_llo.org_slug` in
 the current run's `run_state.yaml` must be a non-empty string. The
 orchestrator enforces this before dispatching
@@ -223,6 +223,6 @@ That's a calibration signal, not a decision input.
 
 Edit when:
 - The run_state.yaml contract changes (then also update
-  `agents/ace-orchestrator.md` and Phase 8 entry-gate code).
+  `agents/ace-orchestrator.md` and Phase 9 entry-gate code).
 - Connect-labs MCP adds/removes an atom (update inventory).
-- Phase 7 sequencing changes.
+- Phase 8 sequencing changes.

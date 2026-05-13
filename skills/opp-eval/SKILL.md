@@ -68,8 +68,8 @@ If no mode is passed, default to `--quick`.
    verdict files. No LLM calls.
 
 5. **Discover verdicts.** Walk each phase folder under
-   `ACE/<opp-name>/runs/<run-id>/` (`1-design/`, `2-commcare/`,
-   `3-connect/`, `4-ocs/`, `5-qa-and-training/`,
+   `ACE/<opp-name>/runs/<run-id>/` (`1-design/`, `3-commcare/`,
+   `4-connect/`, `5-ocs/`, `6-qa-and-training/`,
    `6-solicitation-management/`, `7-execution-manager/`,
    `8-closeout/`) and collect every file matching
    `*_verdict*.yaml`. Also descend one level into
@@ -95,7 +95,7 @@ If no mode is passed, default to `--quick`.
    | `commcare`      | 0.18 | `pdd-to-learn-app`, `pdd-to-deliver-app`, `app-deploy`, `app-test-cases`, `training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-onboarding-email`, `training-deck-outline` |
    | `connect`       | 0.13 | `connect-program-setup`, `connect-opp-setup` |
    | `ocs`           | 0.18 | `ocs-agent-setup`, `ocs-chatbot-eval-quick`, `ocs-chatbot-eval-deep` |
-   | `solicitation`  | 0.10 | `solicitation-create`, `solicitation-review` (added 0.12.0 — Phase 7) |
+   | `solicitation`  | 0.10 | `solicitation-create`, `solicitation-review` (added 0.12.0 — Phase 8) |
    | `operate`       | 0.13 | `llo-onboarding`, `llo-uat`, `llo-launch`, `ocs-chatbot-eval-monitor`, `flw-data-review`, `timeline-monitor` |
    | `closeout`      | 0.08 | `opp-closeout`, `llo-feedback`, `learnings-summary`, `cycle-grade` |
 
@@ -110,7 +110,7 @@ If no mode is passed, default to `--quick`.
    Categories with zero gradable verdicts (zero non-incomplete) score
    `null` and their weight is redistributed proportionally across
    categories that **did** score — so a partial opp (e.g., still in
-   Phase 3, no OCS verdict yet) gets a meaningful run-level number
+   Phase 4, no OCS verdict yet) gets a meaningful run-level number
    rather than an artificially low one.
 
 7. **Compute the run-level overall score.** Weighted mean of the

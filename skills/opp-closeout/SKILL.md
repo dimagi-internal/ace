@@ -13,7 +13,7 @@ Process the financial closeout of a completed opportunity.
 ## Process
 
 1. **Read opportunity details** from GDrive:
-   - Opportunity config: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-opp-setup.md`
+   - Opportunity config: `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`
    - Delivery/payment unit config
 
 2. **Pull invoices** from Connect for this opportunity via
@@ -65,7 +65,7 @@ qualify under the bar for this phase — a working template, not a
 required set. The skill applies the bar criterion and emits whatever
 rows meet it; the catalog is a teaching device that improves over time.
 
-### Common load-bearing decisions for Phase 9
+### Common load-bearing decisions for Phase 10
 
 | ID | Question | Map to surface |
 |---|---|---|
@@ -77,7 +77,7 @@ The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 contract; the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.
 
-Each row this skill writes uses `phase: 9-closeout` and
+Each row this skill writes uses `phase: 10-closeout` and
 `skill: opp-closeout`.
 
 ## Change Log
@@ -86,4 +86,4 @@ Each row this skill writes uses `phase: 9-closeout` and
 |------|--------|--------|
 | 2026-04-03 | Initial version | ACE team |
 | 2026-04-28 | Replace HITL workaround with `connect_list_invoices` + `connect_get_invoice` (ace-connect 0.8.1). Note: invoice page shape was not yet probed at 0.8.1 ship; atoms return conservative defaults until the page has been observed live | ACE team |
-| 2026-05-08 | Add `## Decisions Log` section: 2 anchor rows (closeout-depth, learnings-summary-scope) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 2-9 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-08 | Add `## Decisions Log` section: 2 anchor rows (closeout-depth, learnings-summary-scope) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |

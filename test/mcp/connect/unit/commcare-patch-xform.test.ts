@@ -6,7 +6,7 @@
  * inside the Connect `<assessment>` block on every quiz form (nova-plugin#5),
  * and the ACE-side `connect: null` workaround Nova rejects (nova-plugin#6).
  * Connect's `/opportunity/init/` view 500s on apps that contain the empty
- * shape, so ACE Phase 3 cannot create an opportunity until the shape is
+ * shape, so ACE Phase 4 cannot create an opportunity until the shape is
  * patched to `<user_score>/data/total_score</user_score>`.
  *
  * The MCP atom posts the new XForm XML to CCHQ's

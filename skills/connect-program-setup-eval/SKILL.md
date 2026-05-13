@@ -26,26 +26,26 @@ and anti-patterns from the first calibrated rubrics.
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; Evidence Model + verification spec drive expectation |
-| Phase 3 | `3-connect/connect-program-setup.md` and `3-connect/connect-opp-setup.md` | program + opportunity config under judgment |
-| Phase 2 | `2-commcare/app-deploy_summary.md` | HQ app IDs for cross-check on Connectify wiring |
+| Phase 4 | `4-connect/connect-program-setup.md` and `4-connect/connect-opp-setup.md` | program + opportunity config under judgment |
+| Phase 3 | `3-commcare/app-deploy_summary.md` | HQ app IDs for cross-check on Connectify wiring |
 
 ## Products
 
-- `3-connect/connect-program-setup-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
+- `4-connect/connect-program-setup-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 
 ## Process
 
 1. **Read inputs from GDrive** (paths in `## Inputs` above).
    Additional sources read on demand:
-   - Connect setup summary: `ACE/<opp-name>/runs/<run-id>/3-connect/connect-setup_summary.md`
+   - Connect setup summary: `ACE/<opp-name>/runs/<run-id>/4-connect/connect-setup_summary.md`
      (or `connect-setup/program.md` + `connect-setup/opportunity.md`).
-   - Deployment summary: `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` (for
+   - Deployment summary: `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md` (for
      verifying the linked HQ apps match what Connect actually points
      at).
 
 2. **Detect degraded mode.** If the connect-setup artifacts contain
    `connect_program_id: TBD-MANUAL` or `connect_opportunity_id:
-   TBD-MANUAL` — i.e., Phase 3 ran in degraded mode because the
+   TBD-MANUAL` — i.e., Phase 4 ran in degraded mode because the
    ace-connect MCP `create_*` tools weren't yet implemented — emit a
    `verdict: incomplete` immediately with `[INFO] degraded-mode
    artifacts; not gradable as Connect-real`. **Do not score zero or
@@ -81,11 +81,11 @@ and anti-patterns from the first calibrated rubrics.
 
    | Dimension | Weight | Criteria |
    |---|---|---|
-   | **Program-fit decision** | 15% | Did Phase 3 reuse an existing Program when a clean fit existed, or create a new one when no fit existed? Reuse-when-fit and create-when-no-fit both = 10. Create-when-fit (missed reuse opportunity) = 6. Reuse-when-no-fit (forced fit, wrong domain) = 4. Decision quality is read from the `connect-setup-summary.md` rationale section. |
+   | **Program-fit decision** | 15% | Did Phase 4 reuse an existing Program when a clean fit existed, or create a new one when no fit existed? Reuse-when-fit and create-when-no-fit both = 10. Create-when-fit (missed reuse opportunity) = 6. Reuse-when-no-fit (forced fit, wrong domain) = 4. Decision quality is read from the `connect-setup-summary.md` rationale section. |
    | **Verification-rule fidelity** | 25% | The PDD's Evidence Model § Layer A specifies hard verification rules (GPS ≤Xm, photo present, consent=yes, market-hours window). Connect's verification flags must enforce the same rules — or, where Connect can't enforce a specific rule, the gap must be documented in the gate brief, not silently dropped. Missing a Layer A rule from Connect = 2-point deduction per rule. Adding a rule Connect enforces but the PDD doesn't require = 0.5-point deduction (over-enforcement is also a defect). |
    | **Delivery-unit wiring** | 20% | The Connect Opportunity must link to the same Deliver Unit name the Deliver app declares (Connectify-tagged form name). Mismatch is a 4-point deduction (Connect can't credit FLW visits). The Entity ID composite formula must match what the Deliver app computes for cross-opp duplicate detection. Mismatch in formula structure (e.g. PDD says `market_name + GPS hash`, Connect reads `market_name + landmark`) is a 3-point deduction. |
    | **Payment-unit fit** | 20% | Payment structure must match the PDD's intent: per-delivery for atomic-visit, per-session for focus-group, per-stage for multi-stage. Mismatch is a 3-point deduction. **Threshold sanity (informational, conditional):** if and only if the PDD declares an expected regional day-rate (Operational Caps § Day Rate or Compensation § Region Benchmark), check that per-delivery rate × max-daily-visits falls within 30–80% of it. If the day-rate is not declared — the common case — emit `[INFO-SKIPPED] payment-rate sanity: PDD declares no regional day-rate; sub-check skipped` and do NOT count the absence as a defect. Never deduct from the dimension score for this sub-check. |
-   | **Active-window + status** | 20% | Active-window duration matches PDD Timeline section ±10%. Status at end of Phase 3 must be `draft` (Phase 5 `llo-launch` activates) — premature activation is a fail (≤3) since it would let LLOs deliver before the apps are tested and the bot is gated. |
+   | **Active-window + status** | 20% | Active-window duration matches PDD Timeline section ±10%. Status at end of Phase 4 must be `draft` (Phase 6 `llo-launch` activates) — premature activation is a fail (≤3) since it would let LLOs deliver before the apps are tested and the bot is gated. |
 
    **Deduction rules:**
    - Any single dimension ≤3 → suite verdict `fail`, regardless of
@@ -94,7 +94,7 @@ and anti-patterns from the first calibrated rubrics.
      if the rubric surfaces ≥2 `[WARN]`-tier `auto_surfaced` entries,
      overall is capped at **8.5**. `[PLATFORM]` and `[DRIFT]` entries
      are tracked separately (see § Severity tiers below) and do NOT
-     count toward this guard — penalizing a Phase-3 skill for a
+     count toward this guard — penalizing a Phase-4 skill for a
      Connect platform limit conflates "thing the operator can fix"
      with "thing they cannot."
    - **Pre-cap and post-cap reporting** per `eval-calibration` § 0.9.4
@@ -135,7 +135,7 @@ and anti-patterns from the first calibrated rubrics.
      coverage gap without penalizing.
 
 6. **Write the verdict YAML** to
-   `3-connect/connect-program-setup-eval_verdict.yaml` using the shape
+   `4-connect/connect-program-setup-eval_verdict.yaml` using the shape
    from `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
 
    ```yaml
@@ -246,6 +246,6 @@ unsafe under `--dry-run`).
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-28 | Initial version. 5 dimensions: program_fit_decision (0.15), verification_rule_fidelity (0.25 — most load-bearing for Layer A faithfulness), delivery_unit_wiring (0.20), payment_unit_fit (0.20), active_window_status (0.20). Inflation guard at 8.5. Explicit `incomplete` verdict for degraded-mode artifacts (the Phase 3 mode that ran on smoke-20260428-1242 before ace-connect MCP shipped) — degraded mode is environment, not quality, and shouldn't deduct. Ships at provisional calibration until a non-degraded run produces ground truth. | ACE team (eval system buildout — 0.9.8) |
+| 2026-04-28 | Initial version. 5 dimensions: program_fit_decision (0.15), verification_rule_fidelity (0.25 — most load-bearing for Layer A faithfulness), delivery_unit_wiring (0.20), payment_unit_fit (0.20), active_window_status (0.20). Inflation guard at 8.5. Explicit `incomplete` verdict for degraded-mode artifacts (the Phase 4 mode that ran on smoke-20260428-1242 before ace-connect MCP shipped) — degraded mode is environment, not quality, and shouldn't deduct. Ships at provisional calibration until a non-degraded run produces ground truth. | ACE team (eval system buildout — 0.9.8) |
 | 2026-04-29 | Defect-vs-cause discipline added (step 8). Driven by the `turmeric-market-survey-2026-04-28` run mis-attributing a real read-side hydration bug to a write-side serialization gap. The rubric correctly flagged the symptom; the rubric did not constrain causal attribution. Now requires confident observation + tentative cause, with `Observed: ... Likely cause (unverified): ...` formatting when both are present. | ACE team (0.10.6) |
 | 2026-04-29 | Five-item rubric polish from the turmeric run's first non-degraded grading. (1) Added `partial` verdict tier for runtime-blocked-but-not-degraded mode (artifact correct, live MCP probes unreachable). Caps at 8.5; `live_state_verified: false`. (2) `[PLATFORM]` severity tier for defects that originate in Connect itself rather than skill output; does NOT count toward the inflation guard. Removes a class of false-deduction where the skill is penalized for a Connect schema limit. (3) `[DRIFT]` severity tier for `connect-setup-summary` ↔ live-state discrepancies; diagnostic-only, never deductive (the dimension consuming either source already deducts if either is wrong; counting drift again double-penalizes). New live-state-drift check runs after dimensional grading. (4) Payment threshold-sanity sub-check now explicitly conditional: if PDD declares no regional day-rate, emit `[INFO-SKIPPED]` and skip — do NOT count as defect. Documents the coverage gap without penalizing. (5) `live_state_verified` boolean added to verdict schema; forces verdict ≤ `partial` when false. | ACE team (0.10.7) |

@@ -43,7 +43,7 @@ human-confirmed flaw the rubric must detect:
 ```markdown
 # Known Issues — <opp-name>
 
-## OCS chatbot deep transcript (4-ocs/ocs-chatbot-qa_transcript-deep.md)
+## OCS chatbot deep transcript (5-ocs/ocs-chatbot-qa_transcript-deep.md)
 
 - **[factual]** Bot wrote `ace@dimagi.com` (missing `-ai`) in entries
   19, 22, 25. Detection target: ≥1-point Correctness deduction per
@@ -137,7 +137,7 @@ A rubric is **provisionally calibrated** at ≤ 0.5 same-model
 variance, **strongly calibrated** if cross-model spread is also ≤ 1.0
 or shuffled-order spread is also ≤ 0.5. New rubrics should ship at
 provisional; rubrics that gate critical decisions (the OCS deep
-gate, future Phase 2→3 gate via `pdd-to-deliver-app-eval`) should
+gate, future Phase 3→4 gate via `pdd-to-deliver-app-eval`) should
 move to strongly calibrated before they're trusted in production.
 
 ### Step 5 — Iterate the rubric
@@ -227,4 +227,4 @@ ground-truth set, captured in an auditable run-record.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-28 | Initial version. Defines the ground-truth catalogue, multi-run variance protocol, detection-rate metric, and iteration loop. Companion to `pdd-to-deliver-app-eval` and the tightened `ocs-chatbot-eval` rubric, both of which cite this skill as their calibration source. | ACE team (eval system buildout) |
-| 2026-05-05 | Refresh the OCS-transcript example header in the known-issues template to match the new run-scoped path scheme (`4-ocs/ocs-chatbot-qa_transcript-deep.md` instead of the dated `qa-captures/...`). Cosmetic; no methodology change. | ACE team |
+| 2026-05-05 | Refresh the OCS-transcript example header in the known-issues template to match the new run-scoped path scheme (`5-ocs/ocs-chatbot-qa_transcript-deep.md` instead of the dated `qa-captures/...`). Cosmetic; no methodology change. | ACE team |

@@ -9,10 +9,10 @@ disable-model-invocation: true
 # Synthetic Narrative Plan — Eval
 
 See `skills/_eval-template.md` for shared verdict / severity / stock-block
-contracts. Provisional rubric — calibration TBD once 3+ Phase 6 narrative
+contracts. Provisional rubric — calibration TBD once 3+ Phase 7 narrative
 plans have shipped (`skills/eval-calibration/SKILL.md`).
 
-Stage 4 of ACE Phase 6 (Plan B). Grades the artifact pair
+Stage 4 of ACE Phase 7 (Plan B). Grades the artifact pair
 `synthetic-narrative-plan.{md,yaml}` for the story this opp's synthetic
 demo will tell. The narrative-plan is what makes the demo land — a
 coherent cast + plausible anomalies + closed-loop coaching arcs is the
@@ -22,10 +22,10 @@ difference between "synthetic data" and "actual demo content."
 
 ## Inputs
 
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-narrative-plan.md`
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-narrative-plan.yaml`
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-narrative-plan.md`
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-narrative-plan.yaml`
 - `ACE/<opp-name>/inputs/pdd.md` — anchor for archetype + intervention design
-- `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` — for field-path validation in anomalies + KPIs
+- `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md` — for field-path validation in anomalies + KPIs
 
 ## Rubric
 
@@ -87,7 +87,7 @@ is added, cap at 8.0 if self-eval is `pass` and overall is ≤ 8.0.
 
 ## Verdict shape
 
-Write `<6-synthetic-folder>/synthetic-narrative-plan-eval_verdict.yaml`
+Write `<7-synthetic-folder>/synthetic-narrative-plan-eval_verdict.yaml`
 per `lib/verdict-schema.ts`:
 
 ```yaml
@@ -96,7 +96,7 @@ skill: synthetic-narrative-plan-eval
 target: <opp-name>
 mode: deep
 ran_at: <ISO timestamp>
-capture_path: 6-synthetic/synthetic-narrative-plan.yaml
+capture_path: 7-synthetic/synthetic-narrative-plan.yaml
 
 overall_score: <weighted mean post-cap>
 overall_score_pre_cap: <raw weighted mean>
@@ -118,7 +118,7 @@ gate:
 
 ## Calibration target
 
-Provisional. Once 3+ Phase 6 narrative plans have shipped:
+Provisional. Once 3+ Phase 7 narrative plans have shipped:
 - Build ground-truth catalogue at
   `eval-calibration/known-issues.md § Synthetic narrative plan`.
 - Target detection rate ≥ 80% on catalogued issues.

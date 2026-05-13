@@ -1,12 +1,12 @@
 ---
 name: commcare-setup
 description: >
-  Phase 2 of the CRISPR-Connect lifecycle: translate the approved PDD into
+  Phase 4 of the CRISPR-Connect lifecycle: translate the approved PDD into
   Learn and Deliver apps via Nova, deploy them to CommCare HQ, and test.
 model: inherit
 phase: commcare-setup
 phase_display: CommCare Setup
-phase_ordinal: 2
+phase_ordinal: 3
 skills:
   - { name: pdd-to-learn-app,        has_judge: true,  eval_skill: pdd-to-learn-app-eval }
   - { name: pdd-to-deliver-app,      has_judge: true,  eval_skill: pdd-to-deliver-app-eval }
@@ -17,16 +17,16 @@ skills:
   - { name: commcare-form-patch,     has_judge: false }
 ---
 
-# CommCare Setup (Phase 2 Procedure Document)
+# CommCare Setup (Phase 3 Procedure Document)
 
-This file specifies Phase 2 of the CRISPR-Connect lifecycle: build and
+This file specifies Phase 3 of the CRISPR-Connect lifecycle: build and
 deploy the CommCare-side apps.
 
 **This file is read and executed inline by the top-level Claude Code
 session — it is NOT dispatched as a subagent.** Step 1 invokes
 `/nova:autobuild`, which itself dispatches `nova:nova-architect-autonomous`
 via the `Agent` tool. `Agent` is only available at level 0; running
-Phase 2 as a subagent would put Nova's dispatch at level 2 and fail.
+Phase 3 as a subagent would put Nova's dispatch at level 2 and fail.
 See `agents/ace-orchestrator.md` § Agent Topology. The frontmatter is
 retained for tooling that introspects agent metadata, not because Phase
 2 is itself dispatched.
@@ -39,7 +39,7 @@ Execute these steps in order for the given opportunity:
 
 Before dispatching any architect, verify Nova is bound to the expected
 HQ project space. Skipping this step is the single biggest documented
-time-sink in Phase 2 — see the turmeric-20260429-2330 e2e: the
+time-sink in Phase 3 — see the turmeric-20260429-2330 e2e: the
 architect produced apps under its own auth context that were invisible
 to the user's Nova account, every `upload_to_hq` failed with "App not
 found", and the apps had to be rebuilt from scratch (~30 min wasted,
@@ -67,7 +67,7 @@ If it fails:
 - `nova_auth` not present → `bin/ace-setup`'s user-scope MCP override
   hasn't been registered. Re-run `/ace:setup --force-env`.
 
-Halt Phase 2 until `nova_auth` is green. Authentication uses the
+Halt Phase 3 until `nova_auth` is green. Authentication uses the
 long-lived API-key path (voidcraft-labs/nova-plugin#9) — there is no
 OAuth refresh-token rotation, no per-session sign-in, no needs-auth
 cache to manage, and Claude Code's `~/.claude/.credentials.json` does
@@ -110,7 +110,7 @@ incorrect — Claude Code does not reliably parallelize `Agent`
 dispatches the way it parallelizes regular tool calls, and Nova's
 `/nova:autobuild` cannot be parallelized in this environment today.
 Dispatch Learn, await its result, then dispatch Deliver. Each takes
-10–15 minutes; the two together set the lower bound on Phase 2
+10–15 minutes; the two together set the lower bound on Phase 3
 wall-clock until upstream supports parallel architect runs.
 
 The two builds are otherwise independent — Learn reads the PDD's
@@ -161,11 +161,11 @@ identically — not just builds.
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `pdd-to-learn-app-eval` after the Learn build and
   `pdd-to-deliver-app-eval` after the Deliver build. Each writes
-  `runs/<run-id>/2-commcare/pdd-to-learn-app-eval_verdict.yaml` and
-  `runs/<run-id>/2-commcare/pdd-to-deliver-app-eval_verdict.yaml`
-  respectively. A `verdict: fail` here does not halt Phase 2 on its
-  own; the Phase 2→3 gate uses
-  `runs/<run-id>/2-commcare/app-deploy_gate-brief.md`.
+  `runs/<run-id>/3-commcare/pdd-to-learn-app-eval_verdict.yaml` and
+  `runs/<run-id>/3-commcare/pdd-to-deliver-app-eval_verdict.yaml`
+  respectively. A `verdict: fail` here does not halt Phase 3 on its
+  own; the Phase 3→4 gate uses
+  `runs/<run-id>/3-commcare/app-deploy_gate-brief.md`.
 
 ### Step 1.5: Connect-marker coverage (verify + auto-fix)
 Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
@@ -176,7 +176,7 @@ Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
   `assessment` / `deliver_unit` / `task`) is set per the form's purpose.
 - **Why before deploy:** Connect's `Sync Deliver Units` reads markers
   from the released CCZ. If markers are missing, the opp gets stuck
-  silently at Phase 3 Step 2 (no deliver units → no payment unit).
+  silently at Phase 4 Step 2 (no deliver units → no payment unit).
   Fixing on the Nova side before upload avoids round-tripping HQ
   builds.
 - **Why before eval:** the existing `pdd-to-{learn,deliver}-app-eval`
@@ -186,11 +186,11 @@ Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
 - **Failure modes:**
   - **`blocked` with `voidcraft-labs/nova-plugin#1` (Bug 2 — empty
     `entity_id`/`entity_name` re-injected on `update_form`
-    `deliver_unit`):** halt Phase 2. The malformed bind will fail
+    `deliver_unit`):** halt Phase 3. The malformed bind will fail
     CCHQ's build at `app-release`, and the eventual released CCZ
     won't carry the markers Connect needs. Wait for upstream fix.
   - **Coverage's architect dispatch can't get past `nova-plugin#2`
-    (bootstrap halts on all 3 attempts):** **do NOT halt Phase 2.**
+    (bootstrap halts on all 3 attempts):** **do NOT halt Phase 3.**
     Coverage is the upstream safety net; `app-release` (Step 2.7,
     0.10.5+) is the actual wall — its Step 6 downloads the released
     CCZ and greps for `<learn:deliver>` / `<learn:module>` element
@@ -211,19 +211,19 @@ Invoke the `app-deploy` skill.
 - **Gate (review mode):** Present app deployment summary for verification
 - **HQ-id stability requirement (added 2026-04-30):** every `nova_upload_to_hq`
   call creates a **fresh** HQ application document with a new id (CCHQ has no
-  atomic update API for app uploads). If Phase 2 has to re-upload an app for
+  atomic update API for app uploads). If Phase 3 has to re-upload an app for
   ANY reason after the first deploy — XForm escape fixes, Connect-marker
   patches, build-rejection iteration — the HQ ids in
-  `2-commcare/app-deploy_summary.md` must be updated, and Phase 3
+  `3-commcare/app-deploy_summary.md` must be updated, and Phase 4
   (`connect-opp-setup`) MUST run against the FINAL post-iteration ids.
-  Phase 3's `connect_create_opportunity` writes the HQ ids into the opp's
+  Phase 4's `connect_create_opportunity` writes the HQ ids into the opp's
   app-wire fields at create time, and Connect's edit form does NOT expose
   those fields — so re-pointing a wired opp at new HQ ids requires
   delete-and-recreate **of the Connect opportunity** (CCC-301 will
   eventually expose `update_opportunity({learn_app, deliver_app})` and
-  retire this dance). The orchestrator's Phase 2→3 transition MUST
-  verify `2-commcare/app-deploy_summary.md.released_at >= 2-commcare/app-deploy_summary.md.uploaded_at`
-  AND that no subsequent re-upload happened, before dispatching Phase 3.
+  retire this dance). The orchestrator's Phase 3→4 transition MUST
+  verify `3-commcare/app-deploy_summary.md.released_at >= 3-commcare/app-deploy_summary.md.uploaded_at`
+  AND that no subsequent re-upload happened, before dispatching Phase 4.
 
   **What delete-and-recreate of the Connect opportunity does NOT touch:**
   any labs solicitation already published for this opp. Per
@@ -237,8 +237,8 @@ Invoke the `app-deploy` skill.
   uninterrupted. The recovery is one `connect_delete_opportunity` +
   `connect_create_opportunity` against canonical HQ ids + a
   `connect_opportunity_id` bookkeeping update in the current run's
-  `run_state.yaml`. **Repointing the Connect opp pre-Phase-8 is
-  therefore a low-cost recovery, not a destructive one.** Phase 8
+  `run_state.yaml`. **Repointing the Connect opp pre-Phase-9 is
+  therefore a low-cost recovery, not a destructive one.** Phase 9
   onboarding then targets the new opp UUID. Surfaced 2026-04-30
   (turmeric-20260429-2330) and re-confirmed cheaply 2026-05-07
   (turmeric-20260507-1733).
@@ -248,10 +248,10 @@ Invoke the `app-deploy` skill.
 Invoke `app-test-cases` via `Skill(app-test-cases)` (or `/ace:step
 app-test-cases <opp>/<run-id>` from a fresh session). **Do NOT compose
 its outputs inline.** This skill's contract is multi-file: it emits a
-master `2-commcare/app-test-cases.yaml` AND per-journey recipe files
-(`2-commcare/app-test-cases/J*.yaml`) which Phase 5's
+master `3-commcare/app-test-cases.yaml` AND per-journey recipe files
+(`3-commcare/app-test-cases/J*.yaml`) which Phase 6's
 `app-screenshot-capture` requires for pre-flight. An inline-composed
-master file with no per-recipe siblings will halt Phase 5 at
+master file with no per-recipe siblings will halt Phase 6 at
 pre-flight (real failure mode from turmeric run 20260509-0455). See
 `agents/ace-orchestrator.md § Skill Invocation Discipline`.
 
@@ -259,11 +259,11 @@ pre-flight (real failure mode from turmeric run 20260509-0455). See
 - Writes: app-test-cases.yaml + recipes/J*.yaml under app-test-cases/
 - Halts on missing inputs or recipe-validation failure
 
-Phase 5 shallow runs the smoke recipes; /ace:qa-deep runs them all.
+Phase 6 shallow runs the smoke recipes; /ace:qa-deep runs them all.
 
 This step runs **after** `app-deploy` (so the Nova blueprints are
 finalized and the HQ ids are stable) and **before** `app-release` (so
-the recipes are in place by the time Phase 5 needs them, and so the
+the recipes are in place by the time Phase 6 needs them, and so the
 journey-to-form bindings are captured against the apps as built — not a
 later re-build). Nova builds are uploaded via `app-deploy`, so the
 blueprint IDs we read here are the same ones the released CCZ will
@@ -272,9 +272,9 @@ so it's the natural cutoff for "the apps are now what they are."
 
 ### Step 2.7: Release Apps
 Invoke the `app-release` skill.
-- Input: HQ app ids from `2-commcare/app-deploy_summary.md`
+- Input: HQ app ids from `3-commcare/app-deploy_summary.md`
 - Output: each app has a new released build; Connect's `Sync Deliver Units`
-  can now read the form schema. Without this step, Phase 3
+  can now read the form schema. Without this step, Phase 4
   (`connect-opp-setup`) creates the opp shell but cannot configure
   payment units (deliver-units list comes back empty).
 - **Prerequisite:** the user backing `ACE_HQ_USERNAME` needs a role with
@@ -286,14 +286,14 @@ Invoke the `app-release` skill.
   `app-release-eval` after release. Writes `verdicts/app-release.yaml`.
 
 Note: the `app-test` skill was retired in the shallow/deep QA split
-(0.11.10). Phase 2's QA contribution is now Step 2.6's
-`app-test-cases.yaml`; the actual smoke runs happen in Phase 5
+(0.11.10). Phase 3's QA contribution is now Step 2.6's
+`app-test-cases.yaml`; the actual smoke runs happen in Phase 6
 (`app-screenshot-capture`) and the deep grading runs from
 `/ace:qa-deep` (`app-ux-eval`). Spec:
 `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`.
 
-Note: `training-materials` no longer runs in Phase 2. As of 0.9.0 it lives
-in Phase 5 (`qa-and-training`), where it consumes the screenshots produced
+Note: `training-materials` no longer runs in Phase 3. As of 0.9.0 it lives
+in Phase 6 (`qa-and-training`), where it consumes the screenshots produced
 by `app-screenshot-capture` alongside the app summaries.
 
 ### Step 2.8: Strip Connect wrappers from Learn forms
@@ -307,15 +307,15 @@ XML. Connect's HQ-side sync (`opportunity/app_xml.py:extract_modules`
 + `opportunity/tasks.py:sync_learn_modules_and_deliver_units`) reads
 namespaced `<learn:module>` / `<learn:deliver>` elements via stdlib
 ElementTree on in-memory strings — **the in-form wrappers are benign
-for Phase 3 sync**, regardless of count. (Verified against
+for Phase 4 sync**, regardless of count. (Verified against
 commcare-connect main on 2026-05-12: the parser is pure in-memory
 iteration with no DB queries, HTTP fetches, or locks per-block.) An
 earlier comment here claimed "Connect's `/opportunity/init/` *now*
-tolerates these (post-2026-04 server fix), so Phase 3 succeeds" — that
+tolerates these (post-2026-04 server fix), so Phase 4 succeeds" — that
 was wrong about provenance. There was no Connect server fix; prior
-Phase 3 successes happened because the payload's `short_description`
+Phase 4 successes happened because the payload's `short_description`
 happened to be ≤ 50 chars (the actual DB-enforced cap). The deterministic
-Phase 3 500 trap is a serializer/model schema mismatch on
+Phase 4 500 trap is a serializer/model schema mismatch on
 `short_description`, NOT in-form wrappers; bisected 2026-05-12 against
 `e62dcb06-...` (49 chars → 201, 51 chars → 500). See
 `mcp/connect-server.ts` `connect_create_opportunity.short_description`
@@ -323,16 +323,16 @@ description for the full account.
 
 **But the AVD's CommCare runtime still chokes on the wrappers at Learn-app
 launch time** — the user sees a "Failed to start learning" banner with
-no diagnostic, which blocks Phase 5 (`app-screenshot-capture`). That is
+no diagnostic, which blocks Phase 6 (`app-screenshot-capture`). That is
 the load-bearing reason this skill exists; it has nothing to do with
-Phase 3. Tracking: jjackson/ace#115 finding 1, voidcraft-labs/nova-plugin#7.
+Phase 4. Tracking: jjackson/ace#115 finding 1, voidcraft-labs/nova-plugin#7.
 
 The skill is **idempotent + safe to run unconditionally**: `targets:
 auto` scans the released Learn CCZ for wrapper-bearing forms; if zero
 match (e.g. Nova fix has shipped, or this opp's Learn app was never
 broken), the skill no-ops with an `[INFO]` log. When wrappers are
 present, the skill patches the form XML, re-builds, and re-releases —
-producing a Connect-runtime-compatible Learn CCZ that Phase 5 can
+producing a Connect-runtime-compatible Learn CCZ that Phase 6 can
 launch. **Apply to Learn apps only** — patching Deliver forms via
 `edit_form_attr` triggers a CCHQ "Cannot use Case Management UI if you
 already have a case block" build error.
@@ -343,9 +343,9 @@ this step + the entire `commcare-form-patch` skill (per its own
 SKILL.md § Removal criteria).
 
 ### Completion
-Write phase summary to `ACE/<opp-name>/runs/<run-id>/2-commcare/commcare-setup_summary.md`,
+Write phase summary to `ACE/<opp-name>/runs/<run-id>/3-commcare/commcare-setup_summary.md`,
 then write the `phases.commcare-setup` block per `agents/ace-orchestrator.md
-§ Phase Write-Back Contract`. Phase 2 is a procedure doc executed by the
+§ Phase Write-Back Contract`. Phase 3 is a procedure doc executed by the
 top-level orchestrator session inline (see § Agent Topology), so the
 orchestrator owns this write. Required top-level keys on the patch:
 `phases`, `last_actor`, `last_actor_at`. (0.13.116: legacy `gates.app-deploy`

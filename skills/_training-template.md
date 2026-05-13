@@ -1,6 +1,6 @@
 # `training-*` skill template
 
-Shared conventions for the per-artifact training skills under Phase 5.
+Shared conventions for the per-artifact training skills under Phase 6.
 Six skills (`training-llo-guide`, `training-flw-guide`,
 `training-quick-reference`, `training-faq`, `training-deck-outline`,
 `training-onboarding-email`) plus the renderer (`training-deck-build`)
@@ -16,11 +16,11 @@ Excluded from the skill catalog because the filename starts with `_`.
 # <Skill Name>
 
 (1-3 sentence framing — what artifact this skill produces, who reads
-the artifact, what Phase 5 sequence position the skill occupies.)
+the artifact, what Phase 6 sequence position the skill occupies.)
 
 ## When to run
 
-(Phase 5 sequencing — which sibling skills must run before, which
+(Phase 6 sequencing — which sibling skills must run before, which
 skills consume this artifact.)
 
 ## Inputs (read from Drive)
@@ -31,7 +31,7 @@ skills consume this artifact.)
 
 ## Output
 
-Single file: `ACE/<opp>/runs/<run-id>/5-qa-and-training/<artifact>.md`
+Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/<artifact>.md`
 
 ## Format
 
@@ -90,8 +90,8 @@ favor of one skill per artifact. The decomposition gives:
   self-eval — verdicts attribute cleanly per artifact.
 - **Independent context budget.** Each LLM call sees only the inputs
   it needs (FAQ doesn't need deck-outline context).
-- **Phase-7 boundary.** `training-onboarding-email` is consumed by
-  Phase 8 LLO onboarding; isolating it from Phase-5-only siblings
+- **Phase-8 boundary.** `training-onboarding-email` is consumed by
+  Phase 9 LLO onboarding; isolating it from Phase-6-only siblings
   makes the cross-phase dependency explicit.
 
 ## Sibling map
@@ -102,8 +102,8 @@ favor of one skill per artifact. The decomposition gives:
 | `training-flw-guide` | `flw-training-guide.md` | FLWs in the field | Step 2 (parallel) |
 | `training-quick-reference` | `quick-reference.md` | FLWs (printed pocket card) | Step 2 (parallel) |
 | `training-faq` | `faq.md` | LLOs and FLWs | Step 2 (parallel) |
-| `training-deck-outline` | `training-deck-outline.md` | Phase 5 internal (input to deck-build) | Step 2 (parallel) |
-| `training-onboarding-email` | `training-onboarding-email.md` | Phase 8 (consumed at LLO onboarding) | Step 3 (sequential, after siblings) |
+| `training-deck-outline` | `training-deck-outline.md` | Phase 6 internal (input to deck-build) | Step 2 (parallel) |
+| `training-onboarding-email` | `training-onboarding-email.md` | Phase 9 (consumed at LLO onboarding) | Step 3 (sequential, after siblings) |
 | `training-deck-build` | Google Slides URL | LLO (presents to FLWs / records) | Step 4 (sequential, after deck-outline) |
 
 `agents/qa-and-training.md` enforces the sequencing.
@@ -111,15 +111,15 @@ favor of one skill per artifact. The decomposition gives:
 ## Common Drive paths
 
 All per-artifact training skills write to:
-`ACE/<opp-name>/runs/<run-id>/5-qa-and-training/`
+`ACE/<opp-name>/runs/<run-id>/6-qa-and-training/`
 
 All consume per-opp screenshots from:
-`ACE/<opp-name>/runs/<run-id>/5-qa-and-training/screenshots/`
+`ACE/<opp-name>/runs/<run-id>/6-qa-and-training/screenshots/`
 
 All consume cross-opp Connect screenshots from:
 `ACE/_common/connect-screenshots/<connect-version>/`
 (produced by the standalone `connect-baseline-screenshots` skill —
-NOT a Phase 5 dispatch).
+NOT a Phase 6 dispatch).
 
 ## Verdict shape
 
@@ -134,7 +134,7 @@ and gate-brief surface follow the shared contract.
 
 Edit when:
 - A new per-artifact training skill is added (update the sibling map).
-- The Phase 5 dispatch order changes (update sequencing column).
+- The Phase 6 dispatch order changes (update sequencing column).
 - A shared contract changes (then also touch `_eval-template.md` if
   the change affects verdict shape or stock blocks).
 

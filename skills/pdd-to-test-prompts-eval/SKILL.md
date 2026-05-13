@@ -18,17 +18,17 @@ If QA verdict is `fail` or `incomplete`, this eval is skipped (`verdict: incompl
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 producer | `1-design/pdd-to-test-prompts.md` | the prompts file under judgment |
+| Phase 1 producer | `2-scenarios/pdd-to-test-prompts.md` | the prompts file under judgment |
 | Phase 1 producer | `1-design/idea-to-pdd.md` | the source PDD; archetype + content for grading alignment |
 
 ## Products
 
-- `1-design/pdd-to-test-prompts-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
+- `2-scenarios/pdd-to-test-prompts-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 
 ## Process
 
 1. **Use inputs already in context (preferred) or read from Drive.**
-   When invoked from the `design-review` subagent (the common
+   When invoked from the `idea-to-design` subagent (the common
    `/ace:run` path), the test-prompts artifact and PDD are already
    loaded by the parent's Step 2 / Step 1 — do NOT re-issue
    `drive_read_file`. See `agents/design-review.md` § Performance
@@ -36,9 +36,9 @@ If QA verdict is `fail` or `incomplete`, this eval is skipped (`verdict: incompl
    `/ace:step pdd-to-test-prompts-eval <opp>/<run-id>`.
 
    Inputs (location for standalone reads):
-   - `runs/<run-id>/1-design/pdd-to-test-prompts.md` (artifact under judgment)
+   - `runs/<run-id>/2-scenarios/pdd-to-test-prompts.md` (artifact under judgment)
    - `runs/<run-id>/1-design/idea-to-pdd.md` (PDD for archetype + content reference)
-   - Optionally `runs/<run-id>/1-design/pdd-to-test-prompts-qa_result.yaml`
+   - Optionally `runs/<run-id>/2-scenarios/pdd-to-test-prompts-qa_result.yaml`
 
 2. **If QA verdict is `fail` or `incomplete`**, emit `verdict: incomplete` immediately.
 
@@ -71,7 +71,7 @@ This skill ships **provisional** until calibrated against ground truth.
    skill: pdd-to-test-prompts-eval
    target: <opp-name>
    ran_at: <ISO>
-   capture_path: 1-design/pdd-to-test-prompts.md
+   capture_path: 2-scenarios/pdd-to-test-prompts.md
 
    overall_score: 0.0-10.0
    overall_score_pre_cap: 0.0-10.0

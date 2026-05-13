@@ -1,7 +1,7 @@
 ---
 name: training-quick-reference-eval
 description: >
-  Grade the Phase 5 quick-reference card for mid-visit scannability,
+  Grade the Phase 6 quick-reference card for mid-visit scannability,
   coverage of key numbers (daily caps, payment per visit, support
   contact), and printability.
 disable-model-invocation: true
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 # Training Quick Reference — Eval
 
-Grades `5-qa-and-training/training-quick-reference.md`. The
+Grades `6-qa-and-training/training-quick-reference.md`. The
 quick-reference is the one-pager an FLW glances at mid-visit (often
 printed and folded into a notebook). The rubric optimizes for
 scannability and number-coverage rather than depth — depth is the FAQ's
@@ -22,13 +22,13 @@ calibration TBD until 3+ shipped quick-references produce ground truth.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 5 | `5-qa-and-training/training-quick-reference.md` | artifact under judgment |
+| Phase 6 | `6-qa-and-training/training-quick-reference.md` | artifact under judgment |
 | Phase 1 | `1-design/idea-to-pdd.md` | anchors numeric caps + archetype + support contact |
-| Phase 2 | `2-commcare/app-deploy_summary.md` | confirms numeric values match deployed reality |
+| Phase 3 | `3-commcare/app-deploy_summary.md` | confirms numeric values match deployed reality |
 
 ## Products
 
-- `5-qa-and-training/training-quick-reference-eval_verdict.yaml` — verdict
+- `6-qa-and-training/training-quick-reference-eval_verdict.yaml` — verdict
   YAML per `_eval-template.md § Verdict YAML contract`.
 
 ## Process

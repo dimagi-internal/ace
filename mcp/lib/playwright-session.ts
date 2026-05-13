@@ -56,7 +56,7 @@ export interface Cookie {
  * the first csrftoken regardless of domain, which defeated multi-domain
  * guards (a truthy wrong-domain token didn't trip downstream throws)
  * and let every Connect REST POST 403 with the HQ csrftoken in the
- * header. Surfaced live on leep-paint-collection-20260505-1505 Phase 3
+ * header. Surfaced live on leep-paint-collection-20260505-1505 Phase 4
  * Step 2; the silent fallback was the footgun behind the documented
  * bug class.
  *

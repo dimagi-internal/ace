@@ -15,11 +15,11 @@ can read its form schema and surface deliver units to the opportunity.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 2 | `2-commcare/app-deploy_summary.md` | HQ app IDs for Learn + Deliver apps |
+| Phase 3 | `3-commcare/app-deploy_summary.md` | HQ app IDs for Learn + Deliver apps |
 
 ## Products
 
-- `2-commcare/app-release_summary.md` — released build IDs + version numbers per app
+- `3-commcare/app-release_summary.md` — released build IDs + version numbers per app
 
 ## Why this skill exists
 
@@ -92,7 +92,7 @@ procedure below to rediscover.
 ## Process
 
 1. **Read app ids from the deployment summary.**
-   - `ACE/<opp-name>/runs/<run-id>/2-commcare/app-deploy_summary.md` frontmatter has `learn_app_id`
+   - `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md` frontmatter has `learn_app_id`
      and `deliver_app_id` — the 32-char HQ app IDs Nova wrote there.
    - Also read `hq_domain` (typically `connect-ace-prod`) and `hq_base_url`.
 
@@ -101,14 +101,14 @@ procedure below to rediscover.
    expired, run `/ace:connect-login` to refresh.
 
 3. **Pre-flight: confirm Connect-marker coverage was already run in
-   Phase 2 Step 1.5.** The `app-connect-coverage` skill is responsible
+   Phase 3 Step 1.5.** The `app-connect-coverage` skill is responsible
    for verifying + auto-fixing Connect markers on the Nova side BEFORE
    deploy + release. Just check that
    `ACE/<opp-name>/app-coverage/{learn,deliver}-connect-coverage.md`
    exists with `status: clean`. If missing or `blocked`, halt and tell
    the operator to resolve coverage first — re-running app-release on
    uncovered apps will succeed at the build level but the opp will get
-   stuck at Phase 3 Step 2 with empty deliver units.
+   stuck at Phase 4 Step 2 with empty deliver units.
 
 4. **For each app (learn + deliver):** run the verified Step 1 + Step 2
    POSTs above. Each call is idempotent on the build side: re-POSTing
@@ -149,7 +149,7 @@ procedure below to rediscover.
        point because the CCZ never built.
 
     2. **Map `form_name` → Nova `form_id`.** The Nova app summary
-       (read from `2-commcare/pdd-to-{learn,deliver}-app_summary.md`
+       (read from `3-commcare/pdd-to-{learn,deliver}-app_summary.md`
        frontmatter `nova_app_id`) lists modules + forms. Call
        `nova__get_app({app_id})` for the live structure and walk to
        the form whose name matches `form_name`. On ambiguity (two
@@ -182,8 +182,8 @@ procedure below to rediscover.
        creates a **fresh** HQ app id (CCHQ has no atomic update API).
        Update the in-memory app reference to the new `hq_app_id` AND
        record both ids in
-       `2-commcare/app-release_summary.md.frontmatter.hq_app_id_history`
-       so Phase 3's downstream wiring (which reads the LATEST id)
+       `3-commcare/app-release_summary.md.frontmatter.hq_app_id_history`
+       so Phase 4's downstream wiring (which reads the LATEST id)
        lines up. The prior orphan id stays in `ai-demo-space` —
        expected; CCHQ has no MCP delete path.
 
@@ -198,7 +198,7 @@ procedure below to rediscover.
        `error_text`, every Nova edit dispatched, the final
        `hq_app_id`, the operator-facing remediation (manual CCHQ
        form-designer edit on the final orphan id, OR wait for Nova
-       upstream fix). Phase 2 halts. Do not silently downgrade to
+       upstream fix). Phase 3 halts. Do not silently downgrade to
        success.
 
     **Why bounded.** A perpetually-failing form is almost certainly a
@@ -211,7 +211,7 @@ procedure below to rediscover.
 
     **Subagent dispatch note.** `/nova:edit` runs the Nova architect
     via `Agent`, which is only available at level 0. `app-release` is
-    invoked from Phase 2 (`commcare-setup`), which runs inline at
+    invoked from Phase 3 (`commcare-setup`), which runs inline at
     level 0 per § Agent Topology in `agents/ace-orchestrator.md`. So
     the dispatch is structurally legal here — but if a future caller
     moves `app-release` into a subagent, this loop breaks. Keep the
@@ -257,7 +257,7 @@ procedure below to rediscover.
    per type, but cannot detect slug collisions. Treat that path as a
    degraded build (operator has not pulled the projection-aware MCP).
 
-7. **Update `2-commcare/app-deploy_summary.md`** with a `releases:` block:
+7. **Update `3-commcare/app-deploy_summary.md`** with a `releases:` block:
    ```yaml
    releases:
      learn_app:  { build_id: <id>, version: <n>, released_at: <iso>, connect_markers: <count> }
@@ -285,11 +285,11 @@ procedure below to rediscover.
 See `voidcraft-labs/nova-plugin#1` for the upstream tracker (autobuild
 skips Connect markers; `update_form` strips fields not in the published
 schema and the runtime injects empty `entity_id`/`entity_name` that
-serialize as invalid XPath). The `app-connect-coverage` skill (Phase 2
+serialize as invalid XPath). The `app-connect-coverage` skill (Phase 3
 Step 1.5) is the place that detects and reports these — this skill
 just consumes its `clean | blocked` verdict.
 
-5. **Update 2-commcare/app-deploy_summary.md.**
+5. **Update 3-commcare/app-deploy_summary.md.**
    Append a `releases` block to the frontmatter with the new build IDs and
    release timestamps:
 
@@ -304,7 +304,7 @@ just consumes its `clean | blocked` verdict.
    ```
 
 6. **Verify Connect can see the release.**
-   Optional but recommended sanity check before Phase 3 starts:
+   Optional but recommended sanity check before Phase 4 starts:
 
    - GET `/a/<connect_org>/opportunity/init/` (Connect side, via ace-connect MCP context)
    - Look at the deliver_app dropdown options for `<hq_domain>`. The option
@@ -328,7 +328,7 @@ just consumes its `clean | blocked` verdict.
   `~/.ace/connect-session.json`, so a single login covers both services.
 
   **Prefer these atoms over raw `Bash` + `curl`.** The orchestrator used
-  to regenerate `/tmp/ace-release.js` scripts on every Phase 2 run
+  to regenerate `/tmp/ace-release.js` scripts on every Phase 3 run
   (turmeric-20260429-2330 spent ~10 min on this); the atoms eliminate
   that loop. The bash/curl path documented earlier in this file is the
   fallback when the URL contract shifts and a re-probe is needed.
@@ -369,8 +369,8 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-29 | Initial version. Carved out as a separate Phase 2 step (between `app-deploy` and `connect-opp-setup`) after the turmeric-market-survey-2026-04-28 dogfood made it clear that "Nova upload" and "released and discoverable by Connect" are different states. (0.10.1) | ACE team |
+| 2026-04-29 | Initial version. Carved out as a separate Phase 3 step (between `app-deploy` and `connect-opp-setup`) after the turmeric-market-survey-2026-04-28 dogfood made it clear that "Nova upload" and "released and discoverable by Connect" are different states. (0.10.1) | ACE team |
 | 2026-04-29 | Correct the prerequisite section: ace@dimagi-ai.com IS Admin on connect-ace-prod (verified live). The UI's "Sorry, you don't have permission" banner is a Knockout fallback for any `buildState() == 'error'`, not a literal permission verdict. Replace the bad pre-flight with an empirical probe procedure for endpoint discovery — CCHQ's `Make New Version` and `Make Released` URL patterns aren't stable public APIs and need to be re-discovered when the UI changes. (0.10.3) | ACE team |
 | 2026-04-29 | Discovered + verified the actual endpoints on `/apps/view/<app_id>/releases/`: `POST /apps/save/<app_id>/` (empty body) returns the new build with `_id`; `POST /apps/view/<app_id>/releases/release/<build_id>/` with `ajax=true&is_released=true` flips the release flag. Tested live against `0c96435881b0...` (deliver) and `76fd5f0e2834...` (learn) on connect-ace-prod — both successfully released. Also documented the Connect-side sync endpoint: `POST /a/<org>/opportunity/<int_id>/sync_deliver_units/`. (0.10.4) | ACE team |
 | 2026-04-29 | Add Connect-coverage pre-flight (Step 3) and CCZ verification (Step 6) — checks Nova blueprints have `connect.deliver_unit` / `learn_module` / `assessment` set on every form, then verifies the released CCZ has `<learn:deliver>` / `<learn:module>` markers. Document two upstream Nova bugs that cause silent failures: (a) autobuild often skips Connect markers entirely; (b) `update_form deliver_unit` runtime auto-fills empty `entity_id`/`entity_name` that serialize as invalid XPath, breaking the build. Both need Nova upstream fixes; the skill surfaces clear pointers when either is detected. Learn-app pipeline currently works end-to-end; Deliver-app pipeline blocks on bug (b). (0.10.5) | ACE team |
-| 2026-04-29 | Move Connect-marker verify+fix into a dedicated Phase 2 Step 1.5 skill (`app-connect-coverage`) that runs after Nova builds and before deploy. This skill's pre-flight now just consumes that skill's `clean | blocked` verdict instead of duplicating the logic. Step 6 CCZ verification stays here as the post-release sanity check. (0.10.7) | ACE team |
+| 2026-04-29 | Move Connect-marker verify+fix into a dedicated Phase 3 Step 1.5 skill (`app-connect-coverage`) that runs after Nova builds and before deploy. This skill's pre-flight now just consumes that skill's `clean | blocked` verdict instead of duplicating the logic. Step 6 CCZ verification stays here as the post-release sanity check. (0.10.7) | ACE team |

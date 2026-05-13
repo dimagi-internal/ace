@@ -23,12 +23,12 @@ methodology, different dimensions tuned to Learn-app concerns. See
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Learn App Specification drive expectation |
-| Phase 2 | `2-commcare/pdd-to-learn-app_summary.md` | Learn-app structure summary (`nova_app_id`, modules) |
+| Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` | Learn-app structure summary (`nova_app_id`, modules) |
 | Nova MCP (optional) | `get_app({app_id: <nova_app_id>})` | authoritative live blueprint (recommended over summary) |
 
 ## Products
 
-- `2-commcare/pdd-to-learn-app-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
+- `3-commcare/pdd-to-learn-app-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 
 ## Process
 
@@ -42,7 +42,7 @@ methodology, different dimensions tuned to Learn-app concerns. See
      completion", "HITL-pending", "stub-only")
    - the summary lists *only* module titles with no Connectify
      wiring detail or content-topic breakdowns (the "skeleton" shape
-     Phase 2 emits before Nova finishes a build)
+     Phase 3 emits before Nova finishes a build)
 
    then emit `verdict: incomplete` immediately with `[INFO] HITL-stub
    summary; no built app to grade against PDD spec`. Do NOT score zero
@@ -97,7 +97,7 @@ methodology, different dimensions tuned to Learn-app concerns. See
      into the underlying judge discretion.
 
 6. **Write the verdict YAML** to
-   `2-commcare/pdd-to-learn-app-eval_verdict.yaml` using the shape from
+   `3-commcare/pdd-to-learn-app-eval_verdict.yaml` using the shape from
    `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
 
    ```yaml

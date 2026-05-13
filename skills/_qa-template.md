@@ -72,7 +72,7 @@ Some producers do real, non-fake structural checks the **MCP doesn't catch** —
 2. **The MCP / external system DOES NOT catch what the inline QA catches.** The inline check is filling a real gap, not duplicating the boundary's validation. (See "Don't duplicate MCP-boundary QA" above.)
 3. **Extracting QA would force the producer to be dispatched twice** for what is conceptually one task. The dispatch overhead (orchestrator → producer → orchestrator → -qa skill → orchestrator → producer with hint → ...) costs round-trips and loses the producer's working context.
 
-Reference example: Phase 2's Nova builders. `pdd-to-deliver-app` does field-count verification + one-form-per-module check inline because Nova's `validate_app` doesn't catch either (Nova bugs 1-3 documented in `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`). The inline check is a real Nova-gap-filler, not a duplicate.
+Reference example: Phase 3's Nova builders. `pdd-to-deliver-app` does field-count verification + one-form-per-module check inline because Nova's `validate_app` doesn't catch either (Nova bugs 1-3 documented in `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`). The inline check is a real Nova-gap-filler, not a duplicate.
 
 If you can't articulate "the MCP misses X, so the inline check fills the gap" — the inline QA might be unnecessary. Either the MCP catches it (move to NO QA) or the producer is a process skill (also NO QA).
 

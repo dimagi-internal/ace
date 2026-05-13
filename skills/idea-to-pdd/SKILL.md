@@ -22,7 +22,7 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 
 - `1-design/idea-to-pdd.md` — the PDD
 <!-- 0.13.116: legacy `1-design/idea-to-pdd_gate-brief.md` removed.
-Pause-time summary at the Phase 1 → 2 Pause Point is composed by the
+Pause-time summary at the Phase 1→3 Pause Point is composed by the
 orchestrator from the per-skill QA + eval verdicts on the fly. -->
 
 - `ACE/<opp-name>/runs/<run-id>/decisions.yaml` — structured per-run decisions log (always emitted; see `## Decisions Log Convention` below)
@@ -145,7 +145,7 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    - **Target Population** — beneficiary criteria, expected reach
    - **FLW Requirements** — number of FLWs, skills needed, geographic distribution
    - **LLO Preference** — preferred or known LLOs to execute, from LLO Directory
-   - **Solicitation** — Phase 7 publishes a solicitation to labs.connect.dimagi.com so LLOs respond. All three fields are optional; defaults apply if omitted. Always ask once: "do you want a custom solicitation type (EOI vs RFP), a non-default deadline (default 14 days), or a custom response template?" If not, leave the section with default placeholders (the `solicitation-create` skill reads them as defaults).
+   - **Solicitation** — Phase 8 publishes a solicitation to labs.connect.dimagi.com so LLOs respond. All three fields are optional; defaults apply if omitted. Always ask once: "do you want a custom solicitation type (EOI vs RFP), a non-default deadline (default 14 days), or a custom response template?" If not, leave the section with default placeholders (the `solicitation-create` skill reads them as defaults).
    - **Success Metrics** — how to measure if the intervention worked
    - **Evidence Model** — Layer A / B / C verification plan (see `## Evidence Model` in `templates/pdd-template.md`)
    - **Timeline** — expected duration of the opportunity
@@ -156,7 +156,7 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
 
 <!-- 0.13.116: gate-brief write step removed. The orchestrator composes a
 pause-time summary from this skill's QA verdict (idea-to-pdd-qa) +
-eval verdict (idea-to-pdd-eval) at the Phase 1 → 2 Pause Point. -->
+eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
 
 7.5. **Write the `products.pdd` block to `run_state.yaml`** so
    downstream readers (ace-web's summary page in particular) don't
@@ -234,7 +234,7 @@ The turmeric-market-survey PDD at `docs/examples/pdd-turmeric-market-survey.md` 
 Both PDDs fail the rubric in their current form. Surface specific failures and either (a) iterate on the PDD to fix them, or (b) in review mode, hand off to a human with the failure list attached.
 
 <!-- 0.13.116: ## Gate Brief section removed. The orchestrator composes
-a pause-time summary at the Phase 1 → 2 Pause Point from this skill's
+a pause-time summary at the Phase 1→3 Pause Point from this skill's
 QA verdict + eval verdict directly (per `agents/ace-orchestrator.md §
 Pause Points`). The producer no longer authors a separate gate-brief
 artifact. -->
@@ -246,7 +246,7 @@ to produce a prose Google Doc rendering at one stable URL
 (`ACE/<opp-name>/runs/<run-id>/decisions.gdoc`). The YAML lives at
 `ACE/<opp-name>/runs/<run-id>/decisions.yaml`; the gdoc is its
 human-friendly rendering and is regenerated after every phase. The
-orchestrator's pause-time summary at the Phase 1 → 2 Pause Point
+orchestrator's pause-time summary at the Phase 1→3 Pause Point
 includes a `Decisions Log: <gdoc-url>` line.
 
 ## Decisions Log Convention
@@ -325,7 +325,7 @@ A row is marked `status: open` when a load-bearing default exists but the
 AI judges it likely-wrong without human confirmation. Examples:
 
 - `named-downstream-consumer` is `none-named-proceed-with-caveat` AND
-  the opp will publish a public solicitation in Phase 7.
+  the opp will publish a public solicitation in Phase 8.
 - `ai-fallback-design` is `parallel-sampling-N-percent` AND the program
   needs ground-truth per-decision accuracy.
 

@@ -11,7 +11,7 @@ disable-model-invocation: true
 See `skills/_eval-template.md` for shared verdict / severity / stock-block
 contracts. Provisional rubric.
 
-Stage 4 of ACE Phase 6 (Plan B). Grades whether the labs-side synthetic
+Stage 4 of ACE Phase 7 (Plan B). Grades whether the labs-side synthetic
 generation actually produced demo-quality data: enough visits, named FLWs
 with archetype labels round-tripped, deliver-app schema reached, and
 warnings (payment-units = 0, share-gap, schema-questions = 0) surfaced
@@ -21,8 +21,8 @@ honestly in the run summary.
 
 ## Inputs
 
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-data-generate.md`
-- `ACE/<opp-name>/runs/<run-id>/6-synthetic/synthetic-data-generate_manifest.yaml` OR `synthetic-narrative-plan.yaml` (whichever was the source)
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-data-generate.md`
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-data-generate_manifest.yaml` OR `synthetic-narrative-plan.yaml` (whichever was the source)
 - `ACE/<opp-name>/opp.yaml` — `synthetic.fixture_record_counts`, `synthetic.labs_opp_id`
 
 ## Rubric
@@ -70,7 +70,7 @@ Score each dimension 0–10.
 
 ## Verdict shape
 
-Write `<6-synthetic-folder>/synthetic-data-generate-eval_verdict.yaml`
+Write `<7-synthetic-folder>/synthetic-data-generate-eval_verdict.yaml`
 per `lib/verdict-schema.ts`:
 
 ```yaml
@@ -79,7 +79,7 @@ skill: synthetic-data-generate-eval
 target: <opp-name>
 mode: deep
 ran_at: <ISO timestamp>
-capture_path: 6-synthetic/synthetic-data-generate.md
+capture_path: 7-synthetic/synthetic-data-generate.md
 
 overall_score: <weighted mean post-cap>
 overall_score_pre_cap: <raw weighted mean>
