@@ -1230,11 +1230,24 @@ export function assertPostPatchMarkersSurvive(
   // zero is a regression even if the source had any.
   if (pre.deliver > 0 && post.deliver === 0) droppedToZero.push('deliver');
   if (pre.task > 0 && post.task === 0) droppedToZero.push('task');
-  // Assessment: the patcher INTENDS to strip in-form wrapper instances
-  // but suite-level `<learn:assessment>` refs should survive. If the
-  // count goes to zero when the source had any, suite.xml refs are
-  // missing too — that's a regression worth halting.
-  if (pre.assessment > 0 && post.assessment === 0) droppedToZero.push('assessment');
+  // Assessment markers are NOT asserted here. The patcher's documented
+  // job is to strip in-form `<assessment xmlns="...connect">` wrappers,
+  // and Connect derives assessment relationships from suite-level
+  // module/form metadata — not from in-form markup the patcher targets.
+  //
+  // Nova-shaped Learn apps emit zero `<learn:assessment>` suite-level
+  // refs (verified live on turmeric run 20260513-2243), so the
+  // pre-patch `assessment` count is purely the in-form wrappers the
+  // patcher will strip. Driving `assessment` to zero is the patcher
+  // succeeding, not a regression. Asserting on it produced a false-
+  // positive halt on a correctly-patched build (turmeric 20260513-2243
+  // Phase 3 commcare-form-patch step).
+  //
+  // If a future Nova / CCHQ release starts emitting suite-level
+  // assessment refs that the patcher should preserve, reintroduce the
+  // assertion with the distinction "wrapper count" vs "suite-ref count"
+  // measured separately — see `computeConnectMarkers` for the place to
+  // split the regex.
   if (droppedToZero.length > 0) {
     throw new PostPatchMarkerLossError(droppedToZero, pre, post);
   }
