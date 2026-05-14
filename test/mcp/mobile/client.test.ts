@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { classifyDeviceUserState, MobileClient } from '../../../mcp/mobile/client.js';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import * as crypto from 'node:crypto';
+import {
+  classifyDeviceUserState,
+  MobileClient,
+  bootstrapConfigFromEnv,
+  missingBootstrapEnvVars,
+} from '../../../mcp/mobile/client.js';
 import { setSessionBackend, clearSessionBackend } from '../../../mcp/mobile/backend-toggle.js';
 
 function fakeMaestroAndAvd(opts: {
@@ -462,8 +471,14 @@ describe('MobileClient.restoreDeviceUserState', () => {
         name: 'ACE Test',
       },
     };
-    // Mock fetch to skip the network APK download.
+    // Mock fetch to skip the network APK download. Bytes start with the
+    // ZIP local-file-header magic (PK\x03\x04) so they pass
+    // `isApkZipMagic` — APKs are signed JARs are ZIPs.
     const fakeApkBytes = new Uint8Array(2_000_000); // > 1MB cache sanity threshold
+    fakeApkBytes[0] = 0x50;
+    fakeApkBytes[1] = 0x4b;
+    fakeApkBytes[2] = 0x03;
+    fakeApkBytes[3] = 0x04;
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -696,8 +711,598 @@ describe('MobileClient.restoreDeviceUserState', () => {
       // restore mechanism (see backends/cloud.ts header).
       expect(avd.loadSnapshot).not.toHaveBeenCalled();
       expect(r.serial).toBe('cloud:i-abc');
+      // Symmetric heal shape with local: callers that read
+      // `result.heal.deviceUserState` on the mobile_ensure_avd_running
+      // result must see the same shape across backends. Cloud populates
+      // a stub so the field isn't undefined.
+      expect(r.heal?.deviceUserState).toEqual({
+        classified_as: 'unknown',
+        attempted: false,
+      });
     } finally {
       clearSessionBackend();
     }
+  });
+});
+
+describe('missingBootstrapEnvVars + bootstrapConfigFromEnv', () => {
+  const KEYS = [
+    'ACE_CONNECT_APK_VERSION',
+    'ACE_E2E_PHONE',
+    'ACE_E2E_PHONE_LOCAL',
+    'ACE_E2E_COUNTRY_CODE',
+    'ACE_E2E_PIN',
+    'ACE_E2E_BACKUP_CODE',
+    'ACE_E2E_NAME',
+  ] as const;
+  let saved: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    saved = {};
+    for (const k of KEYS) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    for (const k of KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  it('returns ALL seven names when none are set', () => {
+    expect(missingBootstrapEnvVars().sort()).toEqual([...KEYS].sort());
+    expect(bootstrapConfigFromEnv()).toBeNull();
+  });
+
+  it('returns only the missing names when some are set', () => {
+    process.env.ACE_CONNECT_APK_VERSION = '2.62.0';
+    process.env.ACE_E2E_PHONE = '+74260000100';
+    process.env.ACE_E2E_PHONE_LOCAL = '4260000100';
+    // PIN, NAME, COUNTRY_CODE, BACKUP_CODE still missing
+    expect(missingBootstrapEnvVars().sort()).toEqual(
+      ['ACE_E2E_COUNTRY_CODE', 'ACE_E2E_PIN', 'ACE_E2E_BACKUP_CODE', 'ACE_E2E_NAME'].sort(),
+    );
+    expect(bootstrapConfigFromEnv()).toBeNull();
+  });
+
+  it('returns [] and a populated config when all seven are set', () => {
+    process.env.ACE_CONNECT_APK_VERSION = '2.62.0';
+    process.env.ACE_E2E_PHONE = '+74260000100';
+    process.env.ACE_E2E_PHONE_LOCAL = '4260000100';
+    process.env.ACE_E2E_COUNTRY_CODE = '7';
+    process.env.ACE_E2E_PIN = '1234';
+    process.env.ACE_E2E_BACKUP_CODE = 'BACKUP1';
+    process.env.ACE_E2E_NAME = 'ACE Test';
+    expect(missingBootstrapEnvVars()).toEqual([]);
+    expect(bootstrapConfigFromEnv()).toEqual({
+      apkVersion: '2.62.0',
+      testUser: {
+        phone: '+74260000100',
+        phoneLocal: '4260000100',
+        countryCode: '7',
+        pin: '1234',
+        backupCode: 'BACKUP1',
+        name: 'ACE Test',
+      },
+    });
+  });
+
+  it('treats empty-string env vars the same as unset (missing)', () => {
+    for (const k of KEYS) process.env[k] = 'x';
+    process.env.ACE_E2E_PIN = '';
+    expect(missingBootstrapEnvVars()).toEqual(['ACE_E2E_PIN']);
+    expect(bootstrapConfigFromEnv()).toBeNull();
+  });
+});
+
+describe('restoreDeviceUserState: bootstrapConfig-absent error names specific missing vars', () => {
+  const readyAvd = { name: 'AVD', serial: 'emulator-5554', status: 'booted' } as const;
+  const KEYS = [
+    'ACE_CONNECT_APK_VERSION',
+    'ACE_E2E_PHONE',
+    'ACE_E2E_PHONE_LOCAL',
+    'ACE_E2E_COUNTRY_CODE',
+    'ACE_E2E_PIN',
+    'ACE_E2E_BACKUP_CODE',
+    'ACE_E2E_NAME',
+  ] as const;
+  let saved: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    saved = {};
+    for (const k of KEYS) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    for (const k of KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  it('enumerates the specific missing env var names when tier-1 fails and env is partial', async () => {
+    // Set 6 of 7 so the failure surfaces a single name. The previous
+    // "bootstrapConfig:absent" message gave an operator no signal about
+    // which env var was missing — required a manual diff against .env.tpl.
+    process.env.ACE_CONNECT_APK_VERSION = '2.62.0';
+    process.env.ACE_E2E_PHONE = '+74260000100';
+    process.env.ACE_E2E_PHONE_LOCAL = '4260000100';
+    process.env.ACE_E2E_COUNTRY_CODE = '7';
+    process.env.ACE_E2E_PIN = '1234';
+    process.env.ACE_E2E_BACKUP_CODE = 'BACKUP1';
+    // ACE_E2E_NAME intentionally omitted.
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
+      getFocusedActivity: vi.fn(),
+      captureUiDump: vi.fn(),
+      loadSnapshot: vi.fn().mockResolvedValue({
+        avdName: 'AVD',
+        snapshotName: 'registered-test-user',
+        saved: false,
+        output: 'snapshot does not exist',
+      }),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+    } as any;
+    // Default ctor reads env — so bootstrapConfig will be null because
+    // ACE_E2E_NAME is missing, but the error message must say so.
+    const client = new MobileClient({ avd, maestro });
+    await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(/missing env: ACE_E2E_NAME/);
+  });
+
+  it('explicit null bootstrapConfig surfaces "explicitly disabled by caller" — distinct from env-missing', async () => {
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
+      getFocusedActivity: vi.fn(),
+      captureUiDump: vi.fn(),
+      loadSnapshot: vi.fn().mockResolvedValue({
+        avdName: 'AVD',
+        snapshotName: 'registered-test-user',
+        saved: false,
+        output: 'snapshot does not exist',
+      }),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+    } as any;
+    // All env vars populated → bootstrapConfigFromEnv would succeed, but
+    // caller explicitly overrides to null.
+    for (const k of KEYS) process.env[k] = 'x';
+    const client = new MobileClient({ avd, maestro, bootstrapConfig: null });
+    await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(/explicitly disabled by caller/);
+  });
+});
+
+describe('classifyDeviceUserState: scoped regexes reject deeply-nested false positives', () => {
+  it('does NOT false-positive on "Reconfigure" appearing in a non-text attribute or deep node body', () => {
+    // Pre-scoping, the regex `/Reconfigure/i` would match anywhere in
+    // the XML — including a Help dialog's accessibility content or a
+    // settings tooltip. Both of those are real strings CommCare could
+    // surface in unrelated dialogs; the scoped regex requires the
+    // string be inside `text="..."` or `content-desc="..."`.
+    const dump = `<hierarchy>
+      <!-- Reconfigure mentioned in a comment, NOT a UI element -->
+      <node class="android.widget.HelpDialog" help-target="something Reconfigure"/>
+      <node text="Welcome" />
+      <node text="OK" />
+    </hierarchy>`;
+    expect(classifyDeviceUserState('mResumedActivity: Launcher', dump, ['org.commcare.dalvik'])).toBe(
+      'unknown',
+    );
+  });
+
+  it('still classifies needs-personal-id when "Reconfigure" appears in a text attribute (real wipe banner)', () => {
+    const dump = '<node text="Reconfigure" resource-id="reconfigure_button"/>';
+    expect(
+      classifyDeviceUserState('mResumedActivity: CommCareSetupActivity', dump, ['org.commcare.dalvik']),
+    ).toBe('needs-personal-id');
+  });
+
+  it('still classifies needs-personal-id when the wipe phrase is in content-desc (accessibility-only label)', () => {
+    const dump = '<node content-desc="Logged out of PersonalID"/>';
+    expect(
+      classifyDeviceUserState('mResumedActivity: CommCareSetupActivity', dump, ['org.commcare.dalvik']),
+    ).toBe('needs-personal-id');
+  });
+
+  it('PersonalID-wipe banner takes precedence over positive Connect-nav signals (stacked-state real case)', () => {
+    // The drawer can still show cached nav items briefly after a
+    // server-side wipe lands the banner. The wipe banner must win.
+    const dump =
+      '<node text="Logged out of PersonalID"/><node text="Opportunities"/><node text="Work History"/>';
+    expect(
+      classifyDeviceUserState('mResumedActivity: HomeActivity', dump, ['org.commcare.dalvik']),
+    ).toBe('needs-personal-id');
+  });
+});
+
+describe('registerTestUser: tempdir lifecycle', () => {
+  it('cleans up the temp registration dir on success', async () => {
+    const tmpRoot = os.tmpdir();
+    const before = new Set(fs.readdirSync(tmpRoot).filter((f) => f.startsWith('ace-mobile-reg-')));
+    const { avd, maestro } = fakeMaestroAndAvd({
+      registerToOtp: 'pass',
+      registerFromOtp: 'pass',
+      otp: '123456',
+    });
+    const client = new MobileClient({ avd, maestro, staticRecipesDir: '/static' });
+    await client.registerTestUser({
+      avdName: 'AVD',
+      phone: '+74260000001',
+      phoneLocal: '4260000001',
+      countryCode: '+7',
+      pin: '111111',
+      backupCode: '222222',
+      name: 'ACE Test',
+    });
+    const after = new Set(fs.readdirSync(tmpRoot).filter((f) => f.startsWith('ace-mobile-reg-')));
+    // The new dir created during this call must have been removed.
+    const created = [...after].filter((f) => !before.has(f));
+    expect(created).toEqual([]);
+  });
+
+  it('keeps the temp registration dir on failure for post-mortem', async () => {
+    const tmpRoot = os.tmpdir();
+    const before = new Set(fs.readdirSync(tmpRoot).filter((f) => f.startsWith('ace-mobile-reg-')));
+    const { avd, maestro } = fakeMaestroAndAvd({
+      registerToOtp: 'fail', // part A fails — registration throws
+      registerFromOtp: 'pass',
+      otp: '123456',
+    });
+    const client = new MobileClient({ avd, maestro, staticRecipesDir: '/static' });
+    await expect(
+      client.registerTestUser({
+        avdName: 'AVD',
+        phone: '+74260000001',
+        phoneLocal: '4260000001',
+        countryCode: '+7',
+        pin: '111111',
+        backupCode: '222222',
+        name: 'ACE Test',
+      }),
+    ).rejects.toThrow(/register_test_user part A failed/);
+    const after = new Set(fs.readdirSync(tmpRoot).filter((f) => f.startsWith('ace-mobile-reg-')));
+    const created = [...after].filter((f) => !before.has(f));
+    // Exactly one new dir kept, for the failed call.
+    expect(created.length).toBe(1);
+    // Best-effort cleanup so the test itself doesn't leak.
+    for (const c of created) {
+      try {
+        fs.rmSync(path.join(tmpRoot, c), { recursive: true, force: true });
+      } catch {
+        /* leave it; harmless */
+      }
+    }
+  });
+});
+
+describe('ensureCommCareApkCached: integrity-checked cache', () => {
+  // The cache lives at <os.tmpdir()>/ace-mobile-apk-cache/. We use a
+  // unique APK version per assertion to avoid colliding with the real
+  // cache or with other tests.
+  const cacheDir = path.join(os.tmpdir(), 'ace-mobile-apk-cache');
+  beforeEach(() => {
+    fs.mkdirSync(cacheDir, { recursive: true });
+  });
+
+  // Helper: a 2MB byte array starting with ZIP magic.
+  function fakeApkBuffer(version: string): Uint8Array {
+    const buf = new Uint8Array(2_000_000);
+    buf[0] = 0x50;
+    buf[1] = 0x4b;
+    buf[2] = 0x03;
+    buf[3] = 0x04;
+    // Mix the version into the body so different versions have
+    // different SHAs (otherwise multiple tests would write byte-identical
+    // payloads and the test wouldn't distinguish them).
+    for (let i = 0; i < version.length && i < 64; i++) buf[100 + i] = version.charCodeAt(i);
+    return buf;
+  }
+
+  it('downloads + writes both .apk and .sha256 sidecar on cache miss', async () => {
+    const version = `test-sha-write-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
+    const shaPath = `${apkPath}.sha256`;
+    const bytes = fakeApkBuffer(version);
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    });
+    const avd = { listPackages: vi.fn().mockResolvedValue([]), installApk: vi.fn() } as any;
+    const maestro = {} as any;
+    const client = new MobileClient({
+      avd,
+      maestro,
+      fetchImpl,
+      bootstrapConfig: {
+        apkVersion: version,
+        testUser: {
+          phone: '+74260000100',
+          phoneLocal: '4260000100',
+          countryCode: '7',
+          pin: '1234',
+          backupCode: 'b',
+          name: 'n',
+        },
+      },
+    });
+    // runLocalBootstrap → ensureCommCareApkCached path
+    await expect(
+      client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
+    ).rejects.toThrow(); // registerTestUser will fail on the no-op maestro mock — fine.
+
+    expect(fs.existsSync(apkPath)).toBe(true);
+    expect(fs.existsSync(shaPath)).toBe(true);
+    const sidecarSha = fs.readFileSync(shaPath, 'utf8').trim();
+    const actualSha = crypto.createHash('sha256').update(fs.readFileSync(apkPath)).digest('hex');
+    expect(sidecarSha).toBe(actualSha);
+
+    // Cleanup so we don't pollute the cache across CI runs.
+    try {
+      fs.unlinkSync(apkPath);
+      fs.unlinkSync(shaPath);
+    } catch {
+      /* leave */
+    }
+  });
+
+  it('rejects a download that lacks ZIP magic (truncated or HTML error page)', async () => {
+    const version = `test-bad-magic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
+    try {
+      fs.unlinkSync(apkPath);
+    } catch {
+      /* fine */
+    }
+    // 2MB of zeros — passes size sanity check but has no ZIP magic.
+    const bytes = new Uint8Array(2_000_000);
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => bytes.buffer,
+    });
+    const avd = { listPackages: vi.fn().mockResolvedValue([]) } as any;
+    const maestro = {} as any;
+    const client = new MobileClient({
+      avd,
+      maestro,
+      fetchImpl,
+      bootstrapConfig: {
+        apkVersion: version,
+        testUser: {
+          phone: '+74260000100',
+          phoneLocal: '4260000100',
+          countryCode: '7',
+          pin: '1234',
+          backupCode: 'b',
+          name: 'n',
+        },
+      },
+    });
+    await expect(
+      client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
+    ).rejects.toThrow(/not a valid APK \(missing ZIP magic bytes\)/);
+    // Must NOT have written the bad bytes — magic-check happens before write.
+    expect(fs.existsSync(apkPath)).toBe(false);
+  });
+
+  it('rejects a truncated download (under the 1MB size floor)', async () => {
+    const version = `test-too-small-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const bytes = new Uint8Array(500_000); // < 1MB
+    bytes[0] = 0x50;
+    bytes[1] = 0x4b;
+    bytes[2] = 0x03;
+    bytes[3] = 0x04;
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => bytes.buffer,
+    });
+    const avd = { listPackages: vi.fn().mockResolvedValue([]) } as any;
+    const maestro = {} as any;
+    const client = new MobileClient({
+      avd,
+      maestro,
+      fetchImpl,
+      bootstrapConfig: {
+        apkVersion: version,
+        testUser: {
+          phone: '+74260000100',
+          phoneLocal: '4260000100',
+          countryCode: '7',
+          pin: '1234',
+          backupCode: 'b',
+          name: 'n',
+        },
+      },
+    });
+    await expect(
+      client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
+    ).rejects.toThrow(/too small.*likely truncated/);
+  });
+
+  it('treats cache SHA mismatch as a miss and re-downloads (catches in-place corruption)', async () => {
+    const version = `test-sha-mismatch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
+    const shaPath = `${apkPath}.sha256`;
+    // Seed cache with bytes A but a sidecar SHA for non-A → on next
+    // call the SHAs won't match → must re-download from fetchImpl.
+    const seededBytes = fakeApkBuffer(version);
+    fs.writeFileSync(apkPath, Buffer.from(seededBytes));
+    fs.writeFileSync(shaPath, 'a'.repeat(64)); // bogus stored SHA
+    // Fresh download bytes (different content via a different version
+    // suffix in the body) so we can prove fetchImpl was invoked.
+    const freshBytes = fakeApkBuffer(`${version}-FRESH`);
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () =>
+        freshBytes.buffer.slice(freshBytes.byteOffset, freshBytes.byteOffset + freshBytes.byteLength),
+    });
+    const avd = { listPackages: vi.fn().mockResolvedValue([]) } as any;
+    const maestro = {} as any;
+    const client = new MobileClient({
+      avd,
+      maestro,
+      fetchImpl,
+      bootstrapConfig: {
+        apkVersion: version,
+        testUser: {
+          phone: '+74260000100',
+          phoneLocal: '4260000100',
+          countryCode: '7',
+          pin: '1234',
+          backupCode: 'b',
+          name: 'n',
+        },
+      },
+    });
+    await expect(
+      client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
+    ).rejects.toThrow();
+    // Fetch DID fire (cache mismatch → re-download).
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    // Sidecar now matches the fresh bytes on disk.
+    const onDisk = fs.readFileSync(apkPath);
+    const sidecarSha = fs.readFileSync(shaPath, 'utf8').trim();
+    const actualSha = crypto.createHash('sha256').update(onDisk).digest('hex');
+    expect(sidecarSha).toBe(actualSha);
+    // Cleanup.
+    try {
+      fs.unlinkSync(apkPath);
+      fs.unlinkSync(shaPath);
+    } catch {
+      /* leave */
+    }
+  });
+
+  it('adopts a sidecar-less legacy cache entry (writes the sidecar on the fly without re-downloading)', async () => {
+    const version = `test-legacy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
+    const shaPath = `${apkPath}.sha256`;
+    // Seed APK with no sidecar — simulates a cache populated by a
+    // pre-sidecar version of this method.
+    const legacyBytes = fakeApkBuffer(version);
+    fs.writeFileSync(apkPath, Buffer.from(legacyBytes));
+    try {
+      fs.unlinkSync(shaPath);
+    } catch {
+      /* fine */
+    }
+    const fetchImpl = vi.fn(); // must NOT be called — adopt path
+    const avd = { listPackages: vi.fn().mockResolvedValue([]) } as any;
+    const maestro = {} as any;
+    const client = new MobileClient({
+      avd,
+      maestro,
+      fetchImpl,
+      bootstrapConfig: {
+        apkVersion: version,
+        testUser: {
+          phone: '+74260000100',
+          phoneLocal: '4260000100',
+          countryCode: '7',
+          pin: '1234',
+          backupCode: 'b',
+          name: 'n',
+        },
+      },
+    });
+    await expect(
+      client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
+    ).rejects.toThrow();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    // Sidecar should have been written on adoption.
+    expect(fs.existsSync(shaPath)).toBe(true);
+    const sidecarSha = fs.readFileSync(shaPath, 'utf8').trim();
+    const actualSha = crypto.createHash('sha256').update(fs.readFileSync(apkPath)).digest('hex');
+    expect(sidecarSha).toBe(actualSha);
+    // Cleanup.
+    try {
+      fs.unlinkSync(apkPath);
+      fs.unlinkSync(shaPath);
+    } catch {
+      /* leave */
+    }
+  });
+});
+
+describe('runLocalBootstrap: SNAPSHOT_SAVE_FAILED surfaces "registered but not persisted"', () => {
+  const readyAvd = { name: 'AVD', serial: 'emulator-5554', status: 'booted' } as const;
+
+  it('error message tells the operator: device is usable for this dispatch; just re-save next time', async () => {
+    const version = `test-save-fail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const bytes = new Uint8Array(2_000_000);
+    bytes[0] = 0x50;
+    bytes[1] = 0x4b;
+    bytes[2] = 0x03;
+    bytes[3] = 0x04;
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => bytes.buffer,
+    });
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      listPackages: vi.fn().mockResolvedValue([]),
+      getFocusedActivity: vi.fn(),
+      captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
+      loadSnapshot: vi.fn(),
+      installApk: vi.fn().mockResolvedValue({
+        packageId: 'org.commcare.dalvik',
+        versionName: version,
+        versionCode: 1,
+        path: '/tmp/apk',
+      }),
+      // KEY: saveSnapshot REPORTS failure — register succeeded, but persist did not.
+      saveSnapshot: vi.fn().mockResolvedValue({
+        avdName: 'AVD',
+        snapshotName: 'registered-test-user',
+        saved: false,
+        output: 'disk full',
+      }),
+      setGmsEnabled: vi.fn(),
+    } as any;
+    const maestro = {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+      runRecipe: vi.fn().mockResolvedValue({
+        status: 'pass',
+        exitCode: 0,
+        stdout: 'PHONE_ALREADY_REGISTERED',
+        stderr: '',
+        screenshotsDir: '/tmp/',
+        screenshots: [],
+      }),
+    } as any;
+    const client = new MobileClient({
+      avd,
+      maestro,
+      fetchImpl,
+      bootstrapConfig: {
+        apkVersion: version,
+        testUser: {
+          phone: '+74260000100',
+          phoneLocal: '4260000100',
+          countryCode: '7',
+          pin: '1234',
+          backupCode: 'b',
+          name: 'n',
+        },
+      },
+    });
+    await expect(
+      client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
+    ).rejects.toThrow(/device IS registered and usable for this dispatch/);
   });
 });

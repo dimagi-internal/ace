@@ -760,3 +760,173 @@ describe('CloudBackend.runRecipe auto-diagnose on failure', () => {
     expect(r.diagnostics).toBeUndefined();
   });
 });
+
+describe('CloudBackend.request: transient-failure retry', () => {
+  // Captures sleep durations so tests can assert exponential backoff
+  // without actually waiting.
+  function makeRecorderSleep() {
+    const sleeps: number[] = [];
+    return {
+      sleeps,
+      sleepImpl: async (ms: number) => {
+        sleeps.push(ms);
+      },
+    };
+  }
+
+  it('retries on transient 503 then succeeds on the second attempt', async () => {
+    const recorder = makeRecorderSleep();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(503, { error: { code: 'gateway', message: 'transient' } }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, envelope({ name: 'cc-2.62.0', snapshot: 'x', commcare_version: '2.62.0' })),
+      );
+    const cb = new CloudBackend({
+      baseUrl: BASE,
+      token: TOKEN,
+      fetchImpl: fetchImpl as any,
+      retry: { sleepImpl: recorder.sleepImpl, backoffMs: 100 },
+    });
+    // Call through any GET — listStates is small.
+    const got = await cb.listStates();
+    expect(got).toBeDefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(recorder.sleeps).toEqual([100]); // first retry uses base backoff
+  });
+
+  it('uses exponential backoff (250ms then 1000ms by default)', async () => {
+    const recorder = makeRecorderSleep();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(502, {}))
+      .mockResolvedValueOnce(jsonResponse(503, {}))
+      .mockResolvedValueOnce(jsonResponse(200, envelope({ default: '', active: null, states: [] })));
+    const cb = new CloudBackend({
+      baseUrl: BASE,
+      token: TOKEN,
+      fetchImpl: fetchImpl as any,
+      retry: { sleepImpl: recorder.sleepImpl }, // default backoff=250, retries=2 (3 attempts)
+    });
+    await cb.listStates();
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    // 250 * 2^0 = 250; 250 * 2^1 = 500
+    expect(recorder.sleeps).toEqual([250, 500]);
+  });
+
+  it('retries on a fetch throw (network/DNS error)', async () => {
+    const recorder = makeRecorderSleep();
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('ENOTFOUND'))
+      .mockResolvedValueOnce(jsonResponse(200, envelope({ default: '', active: null, states: [] })));
+    const cb = new CloudBackend({
+      baseUrl: BASE,
+      token: TOKEN,
+      fetchImpl: fetchImpl as any,
+      retry: { sleepImpl: recorder.sleepImpl, backoffMs: 50 },
+    });
+    await cb.listStates();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('does NOT retry on 4xx (deterministic from request — retrying is wasted)', async () => {
+    const recorder = makeRecorderSleep();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(403, { error: { code: 'forbidden', message: 'no auth' } }),
+      );
+    const cb = new CloudBackend({
+      baseUrl: BASE,
+      token: TOKEN,
+      fetchImpl: fetchImpl as any,
+      retry: { sleepImpl: recorder.sleepImpl },
+    });
+    await expect(cb.listStates()).rejects.toThrow();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(recorder.sleeps).toEqual([]);
+  });
+
+  it('does NOT retry on application-level error envelope (deterministic)', async () => {
+    const recorder = makeRecorderSleep();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, envErr('invalid-args', 'state name unknown')),
+      );
+    const cb = new CloudBackend({
+      baseUrl: BASE,
+      token: TOKEN,
+      fetchImpl: fetchImpl as any,
+      retry: { sleepImpl: recorder.sleepImpl },
+    });
+    await expect(cb.listStates()).rejects.toThrow(/state name unknown/);
+    // Only one attempt — envelope errors are deterministic.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT retry on AbortError (caller-driven timeout)', async () => {
+    const recorder = makeRecorderSleep();
+    const abortErr = new Error('aborted');
+    abortErr.name = 'AbortError';
+    const fetchImpl = vi.fn().mockRejectedValueOnce(abortErr);
+    const cb = new CloudBackend({
+      baseUrl: BASE,
+      token: TOKEN,
+      fetchImpl: fetchImpl as any,
+      retry: { sleepImpl: recorder.sleepImpl },
+    });
+    await expect(cb.listStates()).rejects.toThrow(/aborted/);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('exhausts retries and surfaces "after N attempt(s)" in the error', async () => {
+    const recorder = makeRecorderSleep();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(503, { error: { code: 'gateway', message: 'still down' } }));
+    const cb = new CloudBackend({
+      baseUrl: BASE,
+      token: TOKEN,
+      fetchImpl: fetchImpl as any,
+      retry: { retries: 2, sleepImpl: recorder.sleepImpl, backoffMs: 10 },
+    });
+    // After all retries the last 503 still gets envelope-decoded and
+    // thrown as a CloudGateway* style error — not a "after N attempts"
+    // wrapper, because the retry loop falls through to the envelope
+    // path on the final attempt. This is the right behavior: when we
+    // CAN read the server's response, we surface its error rather than
+    // a generic "failed to connect."
+    await expect(cb.listStates()).rejects.toThrow(/still down/);
+    expect(fetchImpl).toHaveBeenCalledTimes(3); // 1 + 2 retries
+  });
+
+  it('exhausts retries on persistent network throws and surfaces "after N attempt(s)"', async () => {
+    const recorder = makeRecorderSleep();
+    const fetchImpl = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+    const cb = new CloudBackend({
+      baseUrl: BASE,
+      token: TOKEN,
+      fetchImpl: fetchImpl as any,
+      retry: { retries: 1, sleepImpl: recorder.sleepImpl, backoffMs: 10 },
+    });
+    await expect(cb.listStates()).rejects.toThrow(/after 2 attempt\(s\).*ECONNREFUSED/);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries: 0 disables retry entirely', async () => {
+    const recorder = makeRecorderSleep();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(503, { error: { code: 'gateway', message: 'transient' } }));
+    const cb = new CloudBackend({
+      baseUrl: BASE,
+      token: TOKEN,
+      fetchImpl: fetchImpl as any,
+      retry: { retries: 0, sleepImpl: recorder.sleepImpl },
+    });
+    await expect(cb.listStates()).rejects.toThrow(/transient/);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});

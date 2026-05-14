@@ -1,8 +1,23 @@
 # Mobile cloud runner — closing the API gaps
 
-**Status:** Draft (2026-05-11)
+**Status:** ✅ Shipped (2026-05-13). All five gaps implemented end-to-end.
+**Original draft:** 2026-05-11
 **Related:** [2026-05-09-mobile-cloud-runner-poc.md](2026-05-09-mobile-cloud-runner-poc.md) (parent design)
 **Author:** Jonathan + claude (audit pair)
+
+## Status (audit 2026-05-13)
+
+| Gap | Status | Evidence |
+|-----|--------|----------|
+| 1 — `install-apk` returns `version_code` | ✅ shipped | `mcp/mobile/backends/cloud.ts:308,313-317` reads `result.version_code ?? 0` (server-side ships since ace-web #307) |
+| 2 — `capture-ui-dump` returns parsed `elements[]` | ✅ shipped | `mcp/mobile/backends/cloud.ts:367-376` surfaces `result.elements ?? []` |
+| 3 — `run-recipe` returns structured `steps[]` | ✅ shipped | `mcp/mobile/types.ts:117-125` defines `StepResult`; `mcp/mobile/backends/cloud.ts:91-107,714-737` parses + narrows the `status` enum at the boundary |
+| 4 — `stop` busy guard with `force: boolean` | ✅ shipped | `mcp/mobile/backends/cloud.ts:200-211` passes `{force: true}` when caller opts in; ace-web returns 409 otherwise |
+| 5 — `register_test_user` no-op on cloud | ✅ shipped | `mcp/mobile/client.ts:729-739` short-circuits on `useCloud` — cold-boot path already registers the +7426 demo user |
+
+Original spec body retained below for historical context.
+
+---
 
 ## Why
 
