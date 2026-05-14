@@ -243,9 +243,30 @@ describe('applyAssessmentRemovalPatch', () => {
         assertPostPatchMarkersSurvive(pre, post);
       } catch (e: any) {
         expect(e.droppedToZero).toContain('module');
-        expect(e.droppedToZero).toContain('assessment');
+        // assessment intentionally NOT asserted on — see comment in
+        // assertPostPatchMarkersSurvive: Nova-shaped Learn apps emit zero
+        // suite-level <learn:assessment> refs, so driving assessment to zero
+        // is the patcher succeeding, not a regression. Module is the real
+        // load-bearing signal.
+        expect(e.droppedToZero).not.toContain('assessment');
         expect(e.message).toMatch(/missing markers/);
       }
+    });
+
+    it('passes when modules survive AND assessment drops to zero (Nova-shaped Learn — wrappers fully stripped, no suite-level refs to lose)', async () => {
+      // Live shape from turmeric run 20260513-2243 Phase 3 commcare-form-patch:
+      // Nova Learn apps emit `<assessment xmlns="...connect">` wrappers in
+      // every quiz form, but emit ZERO `<learn:assessment>` suite-level refs.
+      // So pre-patch assessment count = wrapper count; post-patch = 0 (all
+      // wrappers stripped — the patcher's job). Modules survive intact.
+      // Pre-v0.13.208 the assertion threw here; the false-positive halted
+      // a correctly-patched build. This test pins the corrected scope.
+      const { assertPostPatchMarkersSurvive } = await import(
+        '../../../../mcp/connect/backends/commcare.js'
+      );
+      const pre = { deliver: 0, module: 7, task: 0, assessment: 6 };
+      const post = { deliver: 0, module: 7, task: 0, assessment: 0 };
+      expect(() => assertPostPatchMarkersSurvive(pre, post)).not.toThrow();
     });
 
     it('passes when modules survive intact and only assessments decrease (the happy path)', async () => {
