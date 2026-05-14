@@ -1,18 +1,37 @@
-# Advance to the next form question by tapping Next + capturing a
-# screenshot of the resulting screen.
+# Advance to the next form question on FormEntryActivity by tapping the
+# `nav_btn_next` ImageButton (right-edge `>` arrow).
 #
-# Generic single-step recipe — the qa-plan composer concatenates one of
-# these between every form-question tap+input block in the per-module
-# walkthrough.
+# Atlas §7. The button has NO text — it's an ImageButton with only a
+# resource-id, so text-match selectors (the prior recipe used
+# `text: "Next"`) tap nothing or tap something else entirely. Use the
+# resource-id-based `form-nav-next` selector.
+#
+# On the LAST question of a form, the same tap auto-finalizes + submits
+# the form locally and returns to StandardHomeActivity. For Learn-app
+# forms there is no explicit Submit button — the last `nav_btn_next` IS
+# the finalize action. For Deliver-app forms, behavior is TBD until the
+# atlas walks Deliver.
 #
 # Parameters:
 #   ${SCREENSHOT_NAME} — name for the screenshot taken after advancing.
 #                        Composer fills with e.g. "form-q3-photo-rendered"
 #                        or "form-q11-yes-conditional-q12-shown".
+#
+# Failure modes:
+#   - Required-input violation: the `nav_btn_next` tap fires but the
+#     surface stays put and the `warning_root` banner appears with text
+#     "Sorry, this response is required!". Caller should `assertNotVisible:
+#     id: form-required-warning` after advancing on questions that DO
+#     require input — confirms the answer registered.
+#   - Form auto-finalize: tapping next on the last question returns to
+#     StandardHomeActivity (no animation back to a "next question"). If
+#     the caller doesn't expect this, the post-tap `takeScreenshot` will
+#     show the home tiles, not a form question — useful structural
+#     signal for "form complete."
 appId: org.commcare.dalvik
 ---
 - tapOn:
-    ${SELECTOR:form-question-next}
+    ${SELECTOR:form-nav-next}
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: "${SCREENSHOT_NAME}"

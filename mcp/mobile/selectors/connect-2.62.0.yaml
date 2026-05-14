@@ -146,10 +146,10 @@ selectors:
     value: "org.commcare.dalvik:id/btn_start"
     purpose: "Pre-claim 'Start' button on the opp-detail page. Confirmed against ACE_Pixel_API_34_PS — button text is 'Start' (not 'Start Learning'). Tapping fires POST /users/start_learn_app/ which mints/links the mobile worker on CCHQ and transitions the opp-detail surface in-place (Start disappears, Learn modules section becomes interactive). Boundary preflight for the auth/domain/conflict failure modes lives in `connect_preflight_learn_app_user`."
 
-  opp-learn-modules-list:
+  opp-detail-learn-modules-teaser:
     type: id
     value: "org.commcare.dalvik:id/tv_learn_modules_list"
-    purpose: "Pre-claim Learn-Details preview TextView on the opp-detail page. Renders as a single TextView with newline-joined module names ('1. 1. Program Overview\\n\\n2. 2. Consent and FLW Safety\\n...'), NOT a RecyclerView of tappable cards. The interactive module cards live behind a separate post-claim Learn-app surface — different selector."
+    purpose: "Pre-claim Learn-Details preview TextView on the opp-detail page. Renders as a single TextView with the module-list label(s) (e.g. '1. Form walkthrough' for atomic-visit opps). NOT a RecyclerView; NOT tappable; NOT the post-claim Learn-app module list. Use as a structural anchor for opp-detail-screen presence checks only — for the interactive Learn-app modules, use learn-suite-row-by-name on the MenuActivity surface (see atlas §6)."
 
   # ── Photo capture ──────────────────────────────────────────────
   camera-shutter-button:
@@ -167,66 +167,70 @@ selectors:
     value: "org.commcare.dalvik:id/save_photo_button"
     purpose: "Save / Use Photo button after capturing"
 
-  # ── To calibrate (placeholders for transitions not yet captured live) ──
-  # The values below are best-guess based on the static recipes' direction
-  # of travel and the standard CommCare Connect 2.62.0 surface. Run
-  # `connect-baseline-screenshots` against a live AVD to confirm or replace.
-  # Each entry is marked `unverified: true` until a baseline run
-  # confirms it.
+  # ── Post-claim Learn-app surfaces (atlas-verified 2026-05-14) ──────
+  # These selectors were calibrated against ACE_Pixel_API_34_PS on the
+  # turmeric run 20260513-2243 retry. See docs/mobile-atlas/connect-2.62.0.md
+  # §§ 5-7 for the full screen-by-screen ground truth.
 
-  opp-detail-start-learning:
+  learn-home-start-tile:
     type: text
-    value: "Start Learning"
-    unverified: true
-    purpose: "Start Learning button on the post-claim opp-detail. NOT YET REACHED 2026-04-30 nor 2026-05-12. Both calibration attempts blocked upstream of this surface by a server-side HTTP 500 from /users/start_learn_app/ when btn_start is tapped (see opp-detail-start). Best-guess label retained until Connect-server start_learn_app is fixed and a successful claim reaches this surface."
+    value: "Start"
+    purpose: "The green 'Start' tile on StandardHomeActivity (CommCare app home, post-claim, post-CCZ-install). Atlas §5. Tapping launches MenuActivity showing the Learn-app's suite root. Maestro walks up the hierarchy from the TextView (`card_text`) to find the clickable RelativeLayout (`card`); text-match works without needing the parent's resource-id."
+
+  learn-home-sync-tile:
+    type: text
+    value: "Sync with Server"
+    purpose: "The blue 'Sync with Server' tile on StandardHomeActivity. Atlas §5. Tapping triggers a CCHQ sync (uploads any submitted forms, downloads any pending). Used by `app-test-cases` recipes after a form sequence to upload before moving on."
+
+  learn-suite-row-by-name:
+    type: text
+    value: "${MODULE_NAME}"  # caller substitutes
+    purpose: "A row in the MenuActivity `screen_suite_menu_list` ListView. Atlas §6. The row's parent LinearLayout is `clickable=true`; the inner `row_txt` TextView (which carries the visible label) is NOT clickable, so Maestro walks up to the LinearLayout to perform the tap. Use this selector for: (a) the suite root row (e.g. 'Turmeric Market Survey — Learn'), (b) each form row inside a module (e.g. '1. Why we are doing this', 'Final assessment'). Composer substitutes ${MODULE_NAME} at recipe-resolution time."
+
+  form-nav-next:
+    type: id
+    value: "org.commcare.dalvik:id/nav_btn_next"
+    purpose: "Right-edge ImageButton (arrow icon, no text) on FormEntryActivity. Atlas §7. Advances to the next question; on the LAST question of a form, the same tap auto-finalizes + submits the form locally and returns to StandardHomeActivity. NOT a text-matched selector — the button has no text attribute, only the resource-id."
+
+  form-nav-prev:
+    type: id
+    value: "org.commcare.dalvik:id/nav_btn_prev"
+    purpose: "Left-edge ImageButton (X icon on Q1, arrow icon thereafter) on FormEntryActivity. Atlas §7. Goes back one question. On Q1, tapping equates to 'exit form without saving' — typically halts the recipe."
+
+  form-required-warning:
+    type: id
+    value: "org.commcare.dalvik:id/warning_root"
+    purpose: "Red banner that appears when `nav_btn_next` is tapped on a required-input question with no answer selected. Inner `id/message` TextView text 'Sorry, this response is required!' (atlas §7). Useful as a structural assertNotVisible after answering — confirms the answer registered before advancing."
+
+  # ── To calibrate (transitions not yet captured live) ────────────────
+  # The values below are placeholders for surfaces the atlas walk hasn't
+  # reached yet (atlas "Open questions" list). Each entry is marked
+  # `unverified: true` until a baseline run confirms it. Don't author
+  # recipes against these without a live verification first.
 
   opp-detail-start-delivering:
     type: text
     value: "Start Delivering"
     unverified: true
-    purpose: "Start Delivering button on the post-Learn-completion opp-detail. NOT YET REACHED 2026-04-30 nor 2026-05-12 (blocked by start_learn_app 500 upstream). Best-guess label retained until a Learn-app assessment-passed run reaches it."
-
-  learn-module-card:
-    type: text
-    value: "${MODULE_NAME}"  # caller substitutes
-    unverified: true
-    purpose: "A single module entry in the Learn-app module list, anchored by its visible label. NOT YET REACHED 2026-05-12 (blocked by start_learn_app 500 upstream). Composer substitutes ${MODULE_NAME} at recipe-resolution time. Pre-claim teaser of module labels confirms the values used in PDD-driven modules render verbatim (e.g. '1. Program Overview', '2. Consent and FLW Safety') — see opp-learn-modules-list, which is the pre-claim concatenated TextView."
-
-  form-question-next:
-    type: text
-    value: "Next"
-    unverified: true
-    purpose: "Generic Next button advancing through form questions (Learn-app or Deliver-app). NOT YET REACHED 2026-05-12 — Learn-app forms unreachable due to upstream 500."
-
-  form-question-finish:
-    type: text
-    value: "Finish"
-    unverified: true
-    purpose: "Generic Finish button at the end of a form / module. NOT YET REACHED 2026-05-12 — Learn-app forms unreachable due to upstream 500."
-
-  form-question-back:
-    type: text
-    value: "Back"
-    unverified: true
-    purpose: "Generic Back button. NOT YET REACHED 2026-05-12 — Learn-app forms unreachable due to upstream 500."
+    purpose: "Start Delivering button on the post-Learn-completion opp-detail. UNREACHED 2026-05-14 — atlas walk hasn't passed the Final Assessment yet. See atlas § Open questions."
 
   form-submit:
     type: text
     value: "Submit"
     unverified: true
-    purpose: "Generic Submit button on the final form screen (Deliver app). NOT YET REACHED 2026-05-12 — Deliver app unreachable until Learn-app completes (blocked by upstream 500). Best-guess label retained."
+    purpose: "Generic Submit button on the final form screen. NOTE 2026-05-14: Learn-app forms AUTO-FINALIZE via nav_btn_next on the last question (atlas §7) — they have NO explicit Submit button. Deliver-app forms may have a Submit; UNREACHED until the atlas walk passes Final Assessment. If used in recipes, branch on `form-submit visible?` before tapping — Learn-app recipes should use form-nav-next throughout, not this."
 
   assessment-result-passed:
     type: text
     value: "Passed"
     unverified: true
-    purpose: "Result indicator after the Learn-app assessment scores ≥ passing threshold. NOT YET REACHED 2026-05-12 — assessment surface unreachable due to upstream 500."
+    purpose: "Result indicator after the Learn-app Final Assessment scores ≥ passing threshold. UNREACHED 2026-05-14."
 
   assessment-result-failed:
     type: text
     value: "Try Again"
     unverified: true
-    purpose: "Retake button on a failed assessment screen. NOT YET REACHED 2026-05-12 — assessment surface unreachable due to upstream 500."
+    purpose: "Retake button on a failed assessment screen. UNREACHED 2026-05-14."
 
   # ── J1-smoke-required selectors not yet reachable (added 2026-05-12) ──
   # J1.yaml references these but they live on Deliver-app surfaces which
