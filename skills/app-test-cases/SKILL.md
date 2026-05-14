@@ -158,11 +158,40 @@ appId: org.commcare.dalvik
 
 The static palette lives at `mcp/mobile/recipes/static/`:
 - `connect-login.yaml` — splash → nav drawer → Sign In → Opportunities home
-- `connect-claim-opp.yaml` — opp-list → tap opp's View Opportunity button (scoped by `below: text`) → Start → handoff
+- `connect-claim-opp.yaml` — opp-list → tap opp's View Opportunity button (scoped by `below: text`) → Start → handoff to StandardHomeActivity
 - `learn-launch.yaml` — post-claim StandardHomeActivity (Start tile) → MenuActivity suite root
-- `learn-tap-module.yaml` — MenuActivity row tap (generic — handles both suite-root rows and form-list rows)
+- `learn-tap-module.yaml` — MenuActivity row tap (generic — handles ANY level of the 3-level suite tree)
 - `form-advance.yaml` — `nav_btn_next` ImageButton tap (NOT text-match "Next" — see atlas §7)
 - `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`
+
+**CRITICAL — Learn-app navigation is 2 menu levels deep.** After `learn-launch.yaml` lands you on the module list (atlas §6a), reaching a form requires **TWO** `learn-tap-module` invocations:
+
+1. Tap module-list row (e.g. `"1. Survey Background & Adulteration Basics"`) → drills 6a → 6b (form list).
+2. Tap form-list row (e.g. `"Background & Adulteration Basics"` for the lesson, or `"Module 1 Quiz"` for the quiz) → launches FormEntryActivity (6b → §7).
+
+Earlier-authored recipes that chained only ONE `learn-tap-module` between `learn-launch` and `nav_btn_next` landed on a menu list, not a form — subsequent `nav_btn_next` taps then found no button. Verified live on turmeric run 20260513-2243 retry #4 (2026-05-14) — see atlas §6.
+
+For the canonical Learn-app smoke recipe template:
+
+```yaml
+- runFlow:
+    file: learn-launch.yaml
+# Drill from module list to the target form via two row-taps.
+- runFlow:
+    file: learn-tap-module.yaml
+    env:
+      MODULE_NAME: "1. Survey Background & Adulteration Basics"  # the module
+- runFlow:
+    file: learn-tap-module.yaml
+    env:
+      MODULE_NAME: "Background & Adulteration Basics"  # the form (lesson) or "Module 1 Quiz"
+# Now on FormEntryActivity for that form.
+- tapOn:
+    ${SELECTOR:form-nav-next}
+# ... rest of form-question handling
+```
+
+Read live module + form names from Nova's `get_form` per the "Use live labels" section below — the pre-claim teaser at `tv_learn_modules_list` lists module names verbatim, but form names inside each module are only visible via Nova.
 
 **Use the atlas (`docs/mobile-atlas/connect-2.62.0.md`) to verify each
 transition you author.** Each section of the atlas documents one
