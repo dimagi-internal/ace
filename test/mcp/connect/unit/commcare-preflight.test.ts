@@ -1,8 +1,8 @@
 /**
- * Unit tests for `connect_preflight_learn_app_user` — the CI-660 boundary
- * probe shipped to convert opaque `POST /users/start_learn_app/` 500s into
- * a structured Zod/JSON outcome before Phase 6 mobile navigation triggers
- * `create_hq_user_and_link` (which `users/views.py:107` doesn't try/except).
+ * Unit tests for `connect_preflight_learn_app_user` — defense-in-depth
+ * boundary probe that surfaces CCHQ auth / domain / user-conflict failures
+ * as a structured outcome before Phase 6's mobile recipe triggers
+ * `POST /users/start_learn_app/`.
  *
  * Test surface:
  *   - 200 + no existing user → `action: 'would_create'`.

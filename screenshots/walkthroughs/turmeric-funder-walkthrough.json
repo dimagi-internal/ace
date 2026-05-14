@@ -1,0 +1,46 @@
+{
+  "name": "turmeric-funder-walkthrough",
+  "generated_at": "2026-05-14T06:53:52Z",
+  "duration_seconds": 240,
+  "scenes_completed": 6,
+  "scenes_total": 6,
+  "ai_scores": [
+    {
+      "feature": "Connect Labs \u2014 the verification surface",
+      "score": 3,
+      "max_score": 5
+    },
+    {
+      "feature": "LLO Weekly Review \u2014 KPI definition",
+      "score": 3,
+      "max_score": 5
+    },
+    {
+      "feature": "Anomaly + coaching configuration",
+      "score": 3,
+      "max_score": 5
+    },
+    {
+      "feature": "Program Admin Audit \u2014 meta-accountability",
+      "score": 3,
+      "max_score": 5
+    },
+    {
+      "feature": "Week 1 instance \u2014 saved snapshot",
+      "score": 3,
+      "max_score": 5
+    },
+    {
+      "feature": "Week 2 instance \u2014 the trend line begins",
+      "score": 3,
+      "max_score": 5
+    }
+  ],
+  "issues": [
+    {
+      "scene": 2,
+      "severity": "warning",
+      "description": "Labs UI requires interactive context selection before rendering the polished render_code dashboard. Headless captures show the JSON definition view (KPIs + statuses + audit semantics) instead. The polished React render lives in the same workflow and is verifiable via /labs/workflow/3061/ \u2192 Apply Selection \u2192 Run Workflow."
+    }
+  ]
+}

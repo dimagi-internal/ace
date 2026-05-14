@@ -28,7 +28,7 @@ about why something works*.
 | Symptom | Inferred claim | Real cause | Cost | Correction |
 |---|---|---|---|---|
 | turmeric run `20260511-2053` Phase 3 — 5× HTTP 500 on `connect_create_opportunity` | `agents/commcare-setup.md` background asserted "Connect *now* tolerates Nova's in-form `<assessment xmlns="…connect…">` wrappers post-2026-04 server fix" (introduced commit `6967df5`) | `short_description` 50-char varchar trap — serializer says 255, model says 50, Postgres `DataError` bubbles as HTTP 500. Nothing to do with wrappers. Prior runs survived because their headlines happened to be ≤50 chars. | ~80 min of wrong-hypothesis retries | PR #246 / commit `e5aceb1` — replaced the claim with bisect-cited provenance + `docs/learnings/2026-05-12-connect-opp-short-description-50-char-trap.md` |
-| Connect 2.62.0 `btn_start` "silent FLW-client noop" | `mcp/mobile/selectors/connect-2.62.0.yaml` carried a 2026-04-30 inferred diagnosis that the tap "silently no-ops on the FLW client" | Server-side: uncaught `CommCareHQAPIException` in `commcare-connect/users/views.py:107` `start_learn_app` returns HTTP 500 with no body. Filed as CI-660. Client correctly swallows the failed response — looked like a noop. | Weeks of mis-attributed Phase 5 blockers | PR #249 / commit `caba0b8` — selector retained, diagnosis explicitly REFUTED with logcat evidence + Jira link |
+| Connect 2.62.0 `btn_start` "silent FLW-client noop" | `mcp/mobile/selectors/connect-2.62.0.yaml` carried a 2026-04-30 inferred diagnosis that the tap "silently no-ops on the FLW client" | Server-side HTTP 500 from `POST /users/start_learn_app/` caused by a CCHQ-side config issue (since fixed). The client correctly swallowed the failed response, so the FLW-facing symptom looked like a client noop. | Weeks of mis-attributed Phase 5 blockers | PR #249 / commit `caba0b8` — refuted the client-noop diagnosis with logcat evidence; the underlying config issue was a one-off, now resolved. Selector retained; defense-in-depth probe lives in `mcp/connect/backends/commcare-preflight.ts` |
 
 Both claims looked plausible. Both were written from a single live
 observation. Both became load-bearing because nothing in the doc told a
@@ -85,7 +85,7 @@ When writing or editing an agent procedure doc or selector map:
    so the next agent sees the previous mis-diagnosis and doesn't re-derive
    it from scratch.
 4. Date-stamp claims with provenance: "Verified against commcare-connect
-   main on <date>" or "Refuted by logcat 2026-05-12, see CI-660" beats
+   main on <date>" or "Refuted by logcat <date>, see <ticket>" beats
    "post-2026-04 server fix."
 
 ## The sweep
@@ -97,7 +97,7 @@ post-2026|since 202\d`:
 | Hit | Status |
 |---|---|
 | `agents/commcare-setup.md:300–322` — Step 2.8 "wrappers benign for Phase 3 sync" | Already cited (bisect 2026-05-12, code paths, learning-doc link) — landed in PR #246. Exemplar. |
-| `mcp/mobile/selectors/connect-2.62.0.yaml:147` — `btn_start` purpose block | Already cited (Connect 2.62.0, ACE_Pixel_API_34, turmeric opp date, CI-660 Jira link, source file path) — landed in PR #249. Exemplar. |
+| `mcp/mobile/selectors/connect-2.62.0.yaml:147` — `btn_start` purpose block | Cited against Connect 2.62.0 / ACE_Pixel_API_34. Original 2026-05-12 framing referenced a since-resolved CCHQ config issue; trimmed back to ground-truth selector behavior 2026-05-14. |
 | Version-anchored claims in `connect-setup.md`, `ace-orchestrator.md`, `qa-and-training.md` ("As of 0.8.1 …", "since 0.10.65 …") | All cite the ACE version that introduced the behavior. In-scope; out-of-bug-class. |
 
 **Zero uncited inferred-backstory claims remain** in the swept files. The

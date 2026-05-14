@@ -552,27 +552,21 @@ server.tool('commcare_upload_multimedia',
     }),
 );
 
-// ── CI-660 pre-flight ────────────────────────────────────────────
+// ── Learn-app CCHQ pre-flight ────────────────────────────────────
 //
-// `connect_preflight_learn_app_user` — class-level preventer for the
-// CI-660 bug class. commcare-connect's `users/views.py:107` calls
-// `create_hq_user_and_link()` without try/except, so any
-// `CommCareHQAPIException` raised inside that helper bubbles out as
-// opaque Django HTTP 500 on `POST /users/start_learn_app/`. The
-// Connect Android client logs+swallows the failed response, so the
-// FLW-facing symptom is a silent "Start learning" button noop during
-// Phase 6 navigation.
+// `connect_preflight_learn_app_user` — defense-in-depth check before
+// the Phase 6 mobile recipe triggers `POST /users/start_learn_app/`.
+// Catches the auth / domain / user-conflict failure modes that would
+// otherwise surface only at recipe runtime, when the FLW client has
+// already started navigating.
 //
-// Same class as the `short_description` 50-char trap
-// (`docs/learnings/2026-05-12-connect-opp-short-description-50-char-trap.md`):
-// server has a deterministic narrow `except` clause and an unhandled
-// exception type 500s with no body. The mitigation pattern is the
-// same — pre-flight client-side against the same upstream contract.
+// What it checks: API key + domain reachability on CCHQ, and (if a
+// `connect_username` is supplied) whether the mobile worker already
+// exists with a conflicting link. Recommended caller:
+// `connect-opp-setup` Step 7 (just before `connect_send_flw_invite`).
 //
-// Recommended caller: `connect-opp-setup` Step 7 (just before
-// `connect_send_flw_invite`). The probe is read-only and idempotent;
-// safe to also wire as a Phase-6 pre-flight at the cloud-emulator
-// recipe entrypoint if the ace-mobile side wants double belt+braces.
+// The probe is read-only and idempotent; safe to also wire as a
+// Phase-6 pre-flight at the cloud-emulator recipe entrypoint.
 //
 // See `mcp/connect/backends/commcare-preflight.ts` for the full
 // rationale + the cheapest-probe-that-catches-the-class design.
@@ -586,7 +580,7 @@ server.tool('connect_preflight_learn_app_user',
     connect_username: z.string().optional().describe(
       'ConnectID username for the FLW about to claim the opp. Optional — when ' +
       'omitted, the probe still validates API-key auth + domain reachability ' +
-      '(catches the most common CI-660 failure mode at near-zero cost). Supply ' +
+      '(catches the most common auth/domain failure modes at near-zero cost). Supply ' +
       'when you have the username in hand to additionally screen for ' +
       'already-linked-to-different-connect-username conflicts.',
     ),

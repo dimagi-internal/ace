@@ -1,23 +1,17 @@
 /**
  * CommCare HQ pre-flight probes for ACE-side Connect orchestration.
  *
- * Class-level preventer for the **CI-660** bug class: commcare-connect's
- * `users/views.py:107` calls `create_hq_user_and_link()` without wrapping
- * it in try/except. Any failure inside that helper (CCHQ rejecting the
- * `POST /a/<domain>/api/v0.5/user/` mobile-worker create, missing API
- * permission, project-space disabled, COMMCARE_CONNECT flag off, etc.)
- * raises `CommCareHQAPIException`, which bubbles out as Django HTTP 500
- * with no actionable response body. The Connect Android client correctly
- * logs the failed response and swallows it (Sentry shape doesn't match
- * a structured JSON error), so the FLW-facing symptom is an opaque
- * "Start learning" button noop during Phase 6 navigation.
+ * Defense-in-depth boundary probe for the Learn-app start path. When
+ * a FLW taps "Start" on a claimed opp, the Android client POSTs to
+ * `/users/start_learn_app/`, which on CCHQ-side calls
+ * `create_hq_user_and_link()` to mint or re-link the mobile worker.
+ * That call can fail in well-known ways (CCHQ auth rejected, domain
+ * archived/typo'd, user already linked to a different ConnectID),
+ * and historically those failures could bubble as opaque HTTP 500.
+ * This probe catches those classes of failure pre-flight so they
+ * surface as a structured `{ok, action, reason}` outcome before
+ * Phase 6 boots the AVD.
  *
- * Identical failure class to the `short_description` 50-char trap
- * (`docs/learnings/2026-05-12-connect-opp-short-description-50-char-trap.md`):
- * the server has a deterministic narrow `except` clause and an
- * unhandled exception type 500s with no body. The mitigation pattern is
- * the same — pre-flight client-side against the same upstream contract,
- * surface a structured error before the Phase 6 mobile recipe stalls.
  *
  * **What this probe checks (cheapest probe that catches the class):**
  *
@@ -165,7 +159,7 @@ interface CchqUserListResponse {
 }
 
 /**
- * Run the CI-660 pre-flight. See module doc for the bug-class rationale.
+ * Run the Learn-app CCHQ pre-flight. See module doc for the bug-class rationale.
  *
  * `fetchImpl` is injectable so unit tests can stub HTTP without going
  * through real CCHQ. Defaults to the global `fetch`.
@@ -265,7 +259,7 @@ export async function preflightLearnAppUser(
       reason:
         `CCHQ API key + domain "${args.hq_domain}" verified reachable. ` +
         'No connect_username supplied → user-conflict branch skipped. ' +
-        'Phase 6 `start_learn_app` is clear of the CI-660 auth/domain failure modes.',
+        'Phase 6 `start_learn_app` is clear of the auth/domain failure modes.',
     };
   }
 

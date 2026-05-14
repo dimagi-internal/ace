@@ -1,0 +1,41 @@
+{
+  "name": "turmeric-prospective-llo-walkthrough",
+  "generated_at": "2026-05-14T06:53:05Z",
+  "duration_seconds": 240,
+  "scenes_completed": 5,
+  "scenes_total": 5,
+  "ai_scores": [
+    {
+      "feature": "Connect Labs home \u2014 the synthetic environment",
+      "score": 3,
+      "max_score": 5
+    },
+    {
+      "feature": "LLO Weekly Review \u2014 workflow definition page",
+      "score": 2,
+      "max_score": 5
+    },
+    {
+      "feature": "Week 1 saved-run instance (Apr 16\u201323)",
+      "score": 3,
+      "max_score": 5
+    },
+    {
+      "feature": "Program Admin Audit \u2014 workflow definition",
+      "score": 3,
+      "max_score": 5
+    },
+    {
+      "feature": "Week 2 instance \u2014 audit input",
+      "score": 3,
+      "max_score": 5
+    }
+  ],
+  "issues": [
+    {
+      "scene": 2,
+      "severity": "warning",
+      "description": "Labs UI requires interactive context selection (org + opp picker) before rendering the polished render_code dashboard. Headless walkthrough captures the JSON definition view instead. Live polished render is visible by clicking through https://labs.connect.dimagi.com/labs/workflow/3061/ \u2192 Apply Selection \u2192 Run Workflow."
+    }
+  ]
+}

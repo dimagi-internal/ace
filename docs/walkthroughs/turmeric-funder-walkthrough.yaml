@@ -1,0 +1,83 @@
+name: "turmeric-funder-walkthrough"
+narrative: >
+  Show a funder considering investment in the Turmeric Market Survey what
+  $2/visit actually buys: verifiable photo+GPS dataset, AI-grader checked, FLW
+  performance tracked and corrected in-flight, and a program-admin layer that
+  makes LLO accountability legible.
+base_url: "https://labs.connect.dimagi.com"
+
+auth:
+  type: command
+  check: "test -f ~/.ace/labs-session.json"
+  login: "bash ~/.claude/plugins/cache/ace/ace/$(cat ~/.claude/plugins/marketplaces/ace/VERSION)/bin/ace-labs-walkthrough-login"
+
+personas:
+  funder:
+    name: "Marcus Chen"
+    role: "Program Officer — global health funder evaluating $50K pilot grants for adulteration-screening programs"
+    color: "#16a34a"
+    intro: >
+      I want to see signal-per-dollar. Show me what 1,000 vendor visits at $2/visit
+      actually produces: is the data verifiable, is FLW quality tracked, and is the
+      LLO accountable? If those three answers are yes, this is a fundable program.
+
+scenes:
+  - persona: funder
+    title: "Opportunity scope — what gets built for $2,000"
+    show: "/a/ai-demo-space/opportunity/1788/"
+    impressive_because: >
+      1,095 vendor visits delivered across 5 Nairobi markets in 4 weeks. Payment
+      structure (per verified visit, $2/visit) visible. Geographic + temporal
+      coverage on one page.
+    ai_quality: >
+      Header area must show visit count (≥1,000), market count (5), and payment
+      structure or budget indicator. A funder must see the program's footprint
+      without clicking deeper.
+
+  - persona: funder
+    title: "Data quality — Layer A delivery verification working"
+    show: "/labs/workflow/3061/"
+    impressive_because: >
+      Hero panel: 87% photo-quality pass rate. The KPI is named and threshold-tagged
+      (target 85%); the system is actually measuring against a public bar, not just
+      logging activity.
+    ai_quality: >
+      A photo-quality or photo-verification KPI must be visible with a percentage
+      number; the page must also show evidence the threshold is being enforced
+      (e.g., "underperform" tag, anomaly badge, or threshold reference).
+
+  - persona: funder
+    title: "Quality auditing — anomalies surface, not hidden"
+    show: "/labs/workflow/3061/"
+    impressive_because: >
+      Dinesh's row carries TWO red warn badges in week 2 — the system is admitting
+      a quality problem, not papering over it. Carla's week-4 row shows a
+      duplicate-GPS flag (Layer-A working on real data).
+    ai_quality: >
+      At least two distinct anomaly/warning badges must be visible across the FLW
+      table, each in a high-contrast color (red/orange/yellow); the badges must
+      include concrete labels (not generic "issue" or "warning" text).
+
+  - persona: funder
+    title: "Coaching loop closure — anomalies don't just get logged"
+    show: "/labs/workflow/3061/"
+    impressive_because: >
+      Three colored pills below the table: "Wk 2 detected → Wk 2 coaching task →
+      Wk 4 +18pp lift". A funder sees the system is *correcting* problems, not
+      just cataloguing them. Click-through reveals the actual coach/FLW exchange.
+    ai_quality: >
+      Page must show a coaching-arc element with at least 3 distinct stages or
+      pills, AND quantified outcome language ("+18pp", "lift", "improved", or a
+      similar before/after number).
+
+  - persona: funder
+    title: "LLO accountability — the audit watching the LLO"
+    show: "/labs/workflow/3064/"
+    impressive_because: >
+      Purple "Are LLO weekly reviews actually closing the coaching loop?" header.
+      Snapshot rows with compliance grade pills. Funders see the program-admin
+      layer exists — they're not relying on the LLO's self-report.
+    ai_quality: >
+      Page must clearly position itself as a meta/audit view (mentions "audit",
+      "compliance", "process gap", "actioned", or "watching") AND show ≥2 snapshot
+      rows with grade pills.
