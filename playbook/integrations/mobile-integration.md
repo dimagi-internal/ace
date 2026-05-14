@@ -104,6 +104,84 @@ sentinel string `PHONE_ALREADY_REGISTERED` which the client converts into
 `{ alreadyRegistered: true }` instead of a failure. Re-running with a
 registered user is a 5-second no-op.
 
+## Device-state heal: tier-1 + tier-2 contract
+
+`mobile_ensure_avd_running` is the single funnel for landing the AVD on
+a Phase-6-ready state. Callers (the `qa-and-training` agent's pre-flight,
+`/ace:step` skills, anywhere else that needs a working device) make ONE
+call and trust the return. Read-only probes like
+`mobile_probe_maestro_driver` cannot heal — halting on them defeats the
+auto-heal (PR #274 rewrote the Phase 6 pre-flight to remove this exact
+anti-pattern, where the agent halted on `mobile_probe_maestro_driver`
+returning `healthy: false` before ever calling
+`mobile_ensure_avd_running` and giving it the chance to heal the wedge).
+
+Two tiers, in order. Tier-1 is fast (~3s); tier-2 is slow (~3–5 min on
+fresh-machine first dispatch). Source: `restoreDeviceUserState` +
+`tryTier1SnapshotLoad` in `mcp/mobile/client.ts`.
+
+### Tier 1 — snapshot-load
+
+Unconditionally `loadSnapshot('registered-test-user')`. No pre-probe.
+Then re-probe the device and run `classifyDeviceUserState` on the
+result. Pass classes: `ready` and `unknown` (`unknown` is treated as
+ready to avoid false rejections when the classifier can't read the UI
+dump and let downstream recipes surface real failures).
+
+### Tier 2 — local-bootstrap (auto, gated on env)
+
+Fires when tier-1's outcome is **anything other than `ready`** — covers
+BOTH "loadSnapshot itself failed" (snapshot missing, console error) AND
+"loadSnapshot returned `saved=true` but post-load verify classified as
+wiped." The latter is the common case post-0.13.204: snapshot bytes
+load fine but the server-side PersonalID linkage baked into them has
+drifted (token expiry, server-side cleanup since the snapshot was
+taken).
+
+Tier-2 runs the bootstrap-equivalent steps inline:
+
+1. install APK if missing (no-op if already at `ACE_CONNECT_APK_VERSION`)
+2. `mobile_register_test_user` — drives PersonalID registration via the
+   `+7426` demo-bypass path; idempotent if already registered
+3. `mobile_save_snapshot` overwrites the stale snapshot so the next
+   tier-1 hits the freshly-saved state in ~3s
+
+Gated on `LocalBootstrapConfig` populated from `ACE_E2E_*` +
+`ACE_CONNECT_APK_VERSION` env. Absent these, tier-2 cannot fire and the
+atom throws `DeviceUserStateError` with `bootstrapConfig:absent` so the
+operator knows to run `/ace:setup --force-env`.
+
+CONNECT-ID-3F precondition is satisfied within `/ace:run` because Phase
+4's `connect-opp-setup` invites `${ACE_E2E_PHONE}` to the opp before
+Phase 6 dispatches — `check_number_for_existing_invites` always passes
+inside a clean `/ace:run`. The pre-invite gating gotcha below covers
+the equivalent step for one-off `/ace:step` invocations.
+
+### Classifier states + recovery matrix
+
+| `DeviceUserStateClass` | Recovery | When you'll see it |
+|---|---|---|
+| `ready` | none | Connect nav-drawer items present (`Work History` / `Opportunities` / `Messaging` / `CommCare Apps`) OR opp/visit activity foregrounded (`OpportunitiesActivity` / `VendorVisitActivity` / `DispatchActivity` / `HomeActivity`) |
+| `commcare-not-installed` | tier-2 (installs APK) | `org.commcare.dalvik` absent from `pm list packages` |
+| `needs-personal-id` | tier-2 (re-registers + re-snapshots) | "Logged out of PersonalID" banner, OR no positive Connect-nav signal + first-start markers (`CommCareSetupActivity`, `Welcome to CommCare`, `Enter Code`, `Scan Application Barcode`) |
+| `unknown` | treated as ready | classifier couldn't read the dump — accept rather than reject; downstream recipes surface real failures with better diagnostics |
+
+Order matters in `classifyDeviceUserState`: the PersonalID-wipe banner
+is checked **before** Connect-nav-positive signals (stacked-state
+precedence — a freshly logged-out user may still have nav-drawer items
+cached on screen, and the wipe banner is the authoritative signal).
+First-match wins.
+
+### What changed across recent releases
+
+| Version | Change |
+|---|---|
+| 0.13.165 | First `mobile_ensure_avd_running` auto-heal (force-stop → uninstall → reinstall → re-register sequence on the Maestro-driver-wedge path) |
+| 0.13.198 | `restoreDeviceUserState` replaced probe-first heal with unconditional snapshot-restore (PR #272). Deterministic starting state every Phase 6 run. |
+| 0.13.203 | Tier-2 auto-bootstrap when snapshot is missing (PR #273). Fresh-machine first-dispatch self-heals. |
+| 0.13.204 | Tier-2 also fires on `verify-wiped` (PR #274) — covers stale-snapshot drift. Same release: `qa-and-training` pre-flight rewritten to a single funnel through `mobile_ensure_avd_running` (no read-only probe halts). |
+| 0.13.205 | Classifier accepts the post-register pre-claim state (CommCare app slot still on `CommCareSetupActivity` while Connect nav drawer is healthy) as `ready` (PR #275). Collapses the prior `needs-app-config` class — same recovery as `needs-personal-id`, no benefit to splitting. |
+
 ## Gotchas (the durable-knowledge section)
 
 ### Pre-invite gating (CRITICAL)
