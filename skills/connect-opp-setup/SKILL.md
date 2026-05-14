@@ -429,22 +429,16 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    `llo-launch` branch is dead code. `llo-launch` (Phase 9) only sends
    the real-LLO invite; it does not re-fire the ACE test-user invite.
 
-7.5. **CI-660 pre-flight (Phase 6 prerequisite, idempotent).**
+7.5. **Learn-app CCHQ pre-flight (Phase 6 prerequisite, idempotent).**
 
    Call `connect_preflight_learn_app_user` against CCHQ before the
    Phase 6 mobile recipe triggers `start_learn_app` from the Android
-   client. This is the class-level preventer for the CI-660 bug class
-   (`docs/learnings/2026-05-12-ci-660-preflight.md`): commcare-connect's
-   `users/views.py:107 start_learn_app` doesn't wrap
-   `create_hq_user_and_link` in try/except, so any HQ-side rejection
-   bubbles out as Django HTTP 500 with no actionable body. The Connect
-   Android client logs+swallows the failed response, surfacing as a
-   silent "Start learning" noop in Phase 6.
+   client. Defense-in-depth probe for the auth / domain / user-conflict
+   failure modes — surfaces them as a structured `{ok, action, reason}`
+   outcome before Phase 6 boots the AVD.
 
    The probe is read-only — it hits `GET /a/<domain>/api/v0.5/user/`
-   with the same `ACE_HQ_API_KEY` Phase 6 will eventually use, and
-   surfaces auth/domain/conflict failures as a structured
-   `{ok, action, reason}` outcome before Phase 6 ever boots the AVD.
+   with the same `ACE_HQ_API_KEY` Phase 6 will eventually use.
 
    Args:
    ```
@@ -469,7 +463,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    hand (the common case — ACE doesn't always know the FLW's
    ConnectID at opp-create time), omit `connect_username`. The probe
    then validates only API-key auth + domain reachability, which
-   already catches the most common CI-660 failure modes (rotated key,
+   already catches the most common failure modes (rotated key,
    archived domain, CCHQ outage) at near-zero cost.
 
 8. **Write config summary** to `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`:

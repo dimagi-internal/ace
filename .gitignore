@@ -22,3 +22,10 @@ scripts/tmp/
 # architecture-review.md content lives in the PR body.
 .canopy/test-audits/
 tsconfig.tsbuildinfo
+
+# Phase 7 synthetic walkthrough artifacts. These are per-run rendered
+# decks (HTML + JSON, 1-2MB each) and per-run spec YAMLs. Authoritative
+# copies live in Drive under ACE/<opp>/runs/<run-id>/7-synthetic/; the
+# local filesystem copy is a side-effect of the walkthrough renderer.
+docs/walkthroughs/
+screenshots/
