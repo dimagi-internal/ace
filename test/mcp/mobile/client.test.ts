@@ -288,20 +288,33 @@ describe('classifyDeviceUserState', () => {
     ).toBe('needs-personal-id');
   });
 
-  it('returns needs-app-config when the setup activity is foregrounded without PersonalID drawer', () => {
+  it('returns needs-personal-id when CommCareSetupActivity foregrounded AND no Connect nav drawer (unregistered)', () => {
     expect(
       classifyDeviceUserState('mResumedActivity: ActivityRecord{... CommCareSetupActivity}', '<dump/>', [
         'org.commcare.dalvik',
       ]),
-    ).toBe('needs-app-config');
+    ).toBe('needs-personal-id');
   });
 
-  it('returns needs-app-config when the dump shows the Enter Code screen', () => {
+  it('returns needs-personal-id when the dump shows the Enter Code screen AND no Connect nav', () => {
     expect(
       classifyDeviceUserState('mResumedActivity: SomeUnknownActivity', '<node text="Enter Code"/>', [
         'org.commcare.dalvik',
       ]),
-    ).toBe('needs-app-config');
+    ).toBe('needs-personal-id');
+  });
+
+  it('returns ready for the post-register, pre-claim state (CommCareSetupActivity + Connect nav drawer items)', () => {
+    // Live state after registerTestUser succeeds on a fresh AVD:
+    // CommCare app slot still on first-start "Enter Code" screen, but
+    // Connect nav drawer has the registered user's items. Phase 6
+    // recipes (connect-login + connect-claim-opp) advance from here.
+    const drawer = '<node text="ACE Test"/><node text="Opportunities"/><node text="Work History"/>';
+    expect(
+      classifyDeviceUserState('mResumedActivity: ActivityRecord{... CommCareSetupActivity}', drawer, [
+        'org.commcare.dalvik',
+      ]),
+    ).toBe('ready');
   });
 
   it('returns ready when the home/opp tile activity is foregrounded', () => {

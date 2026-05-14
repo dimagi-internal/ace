@@ -75,10 +75,19 @@ export interface DriveAdapter {
  * Classify the AVD's user-facing state from three signals. Pure function;
  * see `MobileClient.probeDeviceUserState` for the signal-collection path.
  *
- * Order matters — first-match wins. The classifier prefers explicit
- * "wipe" markers over the `ready` activity check so that a stacked
- * state (PersonalID drawer over a setup activity) lands on the heal-able
- * class, not on `ready`.
+ * **The `ready` definition is broad on purpose.** Phase 6's prerequisite
+ * recipes (`connect-login.yaml` + `connect-claim-opp.yaml`) navigate
+ * from "Connect-registered, no opp claimed yet" forward to the opp
+ * tile — they don't require the device to start on the
+ * OpportunitiesActivity. So any state where (a) CommCare is installed
+ * AND (b) PersonalID is healthy counts as `ready`. The classifier
+ * looks for positive PersonalID-healthy signals — Connect nav-drawer
+ * items, opp/visit activities — and treats their presence as ready
+ * even when the CommCare app slot is still on the first-start setup
+ * screen (the legitimate post-register, pre-claim state that
+ * `registerTestUser` leaves the device in).
+ *
+ * Order matters — first-match wins.
  */
 export function classifyDeviceUserState(
   focusedActivity: string,
@@ -88,17 +97,29 @@ export function classifyDeviceUserState(
   if (!installedPackages.some((p) => p === 'org.commcare.dalvik')) {
     return 'commcare-not-installed';
   }
+  // PersonalID-wipe banner is the unambiguous wipe signal (Connect
+  // server-side de-registration). Highest priority — fires even when a
+  // post-register drawer would otherwise look healthy.
   if (/Logged out of PersonalID|Lost PersonalID configuration|\bReconfigure\b/i.test(uiDumpXml)) {
     return 'needs-personal-id';
   }
-  if (/CommCareSetupActivity/i.test(focusedActivity)) {
-    return 'needs-app-config';
-  }
-  if (/Enter Code|Scan Application Barcode|Welcome to CommCare/i.test(uiDumpXml)) {
-    return 'needs-app-config';
+  // Positive PersonalID-healthy signals: Connect nav-drawer items only
+  // appear post-registration ("Work History" / "Opportunities" /
+  // "Messaging" / "CommCare Apps"), or an opp/visit activity is
+  // foregrounded (the post-claim path). Either is `ready`.
+  if (/\bWork History\b|\bOpportunities\b|\bMessaging\b|\bCommCare Apps\b/i.test(uiDumpXml)) {
+    return 'ready';
   }
   if (/OpportunitiesActivity|VendorVisitActivity|DispatchActivity|HomeActivity/i.test(focusedActivity)) {
     return 'ready';
+  }
+  // No positive registered signal + first-start markers = unregistered.
+  // Same recovery as wiped (run registerTestUser via tier-2 bootstrap).
+  if (/CommCareSetupActivity/i.test(focusedActivity)) {
+    return 'needs-personal-id';
+  }
+  if (/Enter Code|Scan Application Barcode|Welcome to CommCare/i.test(uiDumpXml)) {
+    return 'needs-personal-id';
   }
   return 'unknown';
 }
