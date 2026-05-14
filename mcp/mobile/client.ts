@@ -465,6 +465,30 @@ export class MobileClient {
         attempts: [`loadSnapshot:fail(${loadOutcome.output.slice(0, 200)})`],
       };
     }
+    // Align AVD wall-clock to host wall-clock immediately after snapshot
+    // load. The snapshot freezes the device clock at capture time; without
+    // this step, every Connect API request after the load fails with 401
+    // because the locally-cached Connect Token's expiration check disagrees
+    // with the server. Logged but not fatal — clock skew is a degraded-mode
+    // condition (the recipe walkthrough may still succeed for non-network
+    // surfaces) and we don't want a missing root permission to block Phase 6.
+    // Local-backend only; the cloud backend's AMI-based loadSnapshot has
+    // the same problem and needs an equivalent server-side fix in ace-web.
+    if (!this.useCloud) {
+      let synced = false;
+      try {
+        synced = await this.avd.syncDeviceClockToHost(avd.name);
+      } catch {
+        synced = false;
+      }
+      if (!synced) {
+        logInfo(
+          `device_user_state: WARNING — failed to sync AVD wall-clock to host. ` +
+            `Connect API calls may 401 due to snapshot-frozen clock. ` +
+            `See docs/mobile-atlas/connect-2.62.0.md § Prerequisites.`,
+        );
+      }
+    }
     const verify = await this.probeDeviceUserState(avd);
     if (verify.classified_as === 'ready' || verify.classified_as === 'unknown') {
       return {
