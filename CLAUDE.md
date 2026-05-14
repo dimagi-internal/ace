@@ -125,11 +125,23 @@ The pattern:
 3. **Verify post-restore.** A classifier earns its keep ONLY as a verification step after restore — if the restore *should* have produced the precondition but didn't, the classifier names which precondition is still violated (snapshot corruption, APK drift, etc.). That's the only path a classifier is the right tool.
 4. **Fail loud.** If restore can't reach the precondition, throw a typed error with the precise class. Don't ship placeholders, don't soft-fail with `verdict: incomplete`.
 
-Canonical implementation: `MobileClient.restoreDeviceUserState` in `mcp/mobile/client.ts`. Two tiers:
+Canonical implementation: `MobileClient.restoreDeviceUserState` in `mcp/mobile/client.ts`. Single path — **always deterministic bootstrap** (refactored 2026-05-14, see `docs/learnings/2026-05-14-demo-user-no-otp.md`):
 
-1. **Tier 1 — snapshot-load.** Local backend unconditionally `loadSnapshot('registered-test-user')` every dispatch. ~3s. Cloud backend's `/api/mobile/ensure-running` cold-boots from AMI + runs registration recipes — same contract, different mechanism. The snapshot/AMI is the materialized form of "the known precondition state."
+1. **Wipe Connect's per-app data** via `pm clear org.commcare.dalvik` (~0.5s; no root needed). Removes the prior dispatch's Connect Token, cached opp list, and sqlite DBs without touching the APK install.
 
-2. **Tier 2 — auto-bootstrap (local only, since 0.13.203).** When tier-1 fails (snapshot missing — fresh machine, deleted, etc.) AND `ACE_E2E_*` + `ACE_CONNECT_APK_VERSION` env vars are populated, run the bootstrap-equivalent local steps inline: install APK if missing → registerTestUser → saveSnapshot. ~3-5 min wall-clock on fresh-machine first dispatch; thereafter tier 1 hits the freshly-saved snapshot in ~3s. The server-side `${ACE_E2E_PHONE}` invite check (CONNECT-ID-3F precondition) is structurally satisfied within `/ace:run` by Phase 4's `connect-opp-setup` running before Phase 6 — no operator action required mid-run. (Cloud equivalent: the AMI's baked registration recipes do this on every cold-boot.)
+2. **Ensure APK is installed.** Persists across emulator restarts in the AVD's userdata disk image — so on a warm AVD this is just a `listPackages` probe (~0.5s). Re-install only on fresh AVD; the host-side cache at `<tmp>/ace-mobile-apk-cache/` avoids re-downloading from GitHub release.
+
+3. **`registerTestUser`** with the `+7426` demo-user prefix (CRITICAL — demo users skip OTP server-side; see the dedicated learning doc). ~15-25s end-to-end via Maestro.
+
+4. **Verify post-bootstrap.** Classifier names the precondition class on failure (`needs-personal-id`, `commcare-not-installed`, etc.). Throws `DeviceUserStateError` with the precise label.
+
+**Total steady-state cost: ~20-30s on a warm AVD.** Fresh-machine first dispatch is ~60-100s (one-time AVD boot + APK install + register). After that, every dispatch pays the same ~20-30s. Worth it — guaranteed clean state, never relying on stale cached snapshots.
+
+**No snapshot-load fast path.** The previous design used `loadSnapshot('registered-test-user')` as a ~3s tier-1, fall-through-to-bootstrap as tier-2. That fast path had a recurring failure class: snapshots silently age (wall-clock + cached Connect Token both freeze at capture; post-load API calls 401). The clock-sync in PR #281 was a band-aid for one symptom. The 2026-05-14 refactor drops the snapshot from the heal path entirely. `saveSnapshot` is preserved as a manual MCP atom for ad-hoc debugging captures — heal flow never loads from snapshot.
+
+The server-side `${ACE_E2E_PHONE}` invite check (CONNECT-ID-3F precondition) is structurally satisfied within `/ace:run` by Phase 4's `connect-opp-setup` running before Phase 6 — no operator action required mid-run.
+
+**Cloud backend equivalent:** `/api/mobile/ensure-running` cold-boots from AMI and runs registration recipes — same contract, different mechanism. The AMI's baked registration scripts produce a fresh demo user on every cold-boot; ace-mobile MCP doesn't have a local snapshot-load that could go stale.
 
 Each phase's heal lives in one place and funnels through the matching `mobile_ensure_avd_running` / `connect_*_setup` / `ocs_*_setup` atom.
 

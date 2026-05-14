@@ -320,42 +320,53 @@ export class MobileClient {
   }
 
   /**
-   * Restore the AVD's per-user state to the known precondition by
-   * unconditionally loading `registered-test-user`, then verify the
-   * load landed on a usable state. Throws `DeviceUserStateError` on
-   * snapshot failure OR verification failure.
+   * Restore the AVD's per-user state to a guaranteed-clean precondition
+   * by running the deterministic bootstrap path on every dispatch:
+   * `pm clear` Connect's app data, then a fresh `registerTestUser` walk
+   * (demo bypass — ~15-25s). Throws `DeviceUserStateError` on bootstrap
+   * failure OR post-bootstrap verification failure.
    *
    * **Design pattern: preconditions are restored, not adapted.** Every
-   * Phase 6 dispatch needs the AVD at the Connect home with the test
-   * user signed in. Rather than probe-and-adapt to whatever state we
-   * find (a class of complexity that landed an inverted-conclusion bug
-   * live in 2026-05-13 turmeric run 20260513-0616), we always restore
-   * to the known state via `loadSnapshot`. ~3s round-trip; deterministic
-   * starting state every Phase 6 run. See CLAUDE.md § Phase preconditions.
+   * Phase 6 dispatch needs the AVD at the Connect home with a fresh,
+   * authenticated demo user. Rather than probe-and-adapt to whatever
+   * state we find (a class of complexity that landed an inverted-
+   * conclusion bug in 2026-05-13 turmeric run 20260513-0616), we always
+   * restore to that state via cold start — wipe + register. See
+   * CLAUDE.md § Phase preconditions.
+   *
+   * **No snapshot tier-1.** Earlier versions tried a fast-path
+   * `loadSnapshot('registered-test-user')` before falling back to
+   * register. That cached-state shortcut has a recurring failure mode:
+   * snapshots silently age (the wall-clock + cached Connect Token both
+   * freeze at capture; the token then real-time-expires; the
+   * post-restore opp-list call 401s with the misleading "Authentication
+   * credentials were not provided"). The clock-sync in PR #281 was a
+   * band-aid for one symptom of that class; the right fix is to drop
+   * the snapshot from the heal path entirely and pay the ~20s cold-
+   * start cost for guaranteed clean state. Demo users skip OTP — see
+   * `docs/learnings/2026-05-14-demo-user-no-otp.md` for the rationale.
    *
    * **Cloud backend follows the same contract via a different mechanism.**
    * `backends/cloud.ts` documents that each `/api/mobile/ensure-running`
-   * call cold-boots the AVD and runs the registration recipes against
-   * it, producing a fresh demo user every time (~3-4 min). Cloud's
-   * cold-boot IS the restore mechanism; no explicit snapshot-load is
-   * needed because the AMI ships the registration recipes built-in.
+   * call cold-boots the AVD and runs registration recipes against it.
    * The contract — *"after `MobileClient.ensureAvdRunning` returns, the
    * device is at the Connect home, signed in as the test user"* — is
    * identical across backends; only the mechanism differs.
    *
-   * **Recovery escalation.** If the local snapshot doesn't exist (first
-   * machine setup, snapshot deleted) or doesn't restore the device to
-   * `ready` (snapshot corruption, post-snapshot APK upgrade drift), the
-   * heal throws `DeviceUserStateError` with the precise class so the
-   * operator knows whether to re-snapshot or re-bootstrap. The full
-   * registration + server-side `${ACE_E2E_PHONE}` invite check is
-   * `/ace:mobile-bootstrap`'s job; the auto-heal does not duplicate it.
+   * **What's preserved across dispatches (free):**
+   * - APK installed on the AVD (persists in the userdata disk image —
+   *   no re-download / re-install unless the AVD is fresh).
+   * - Host-side APK cache at `<tmp>/ace-mobile-apk-cache/`.
+   * - AVD boot state itself (AVD stays running across dispatches).
    *
-   * **Why the classifier still exists.** Post-load verification — when
-   * the snapshot loaded but state is somehow still wrong (corrupted
-   * snapshot, APK upgrade drift) the classifier names which class is
-   * wrong so the operator gets a precise label, not "snapshot didn't
-   * work." That's the only path the classifier fires on now.
+   * **What's torn down + rebuilt per dispatch (~20s):**
+   * - Connect's per-app data — sqlite DBs, shared prefs, Connect Token.
+   * - Fresh demo-user registration → fresh tokens + clean local state.
+   *
+   * **`saveSnapshot` kept as a manual debugging atom.** Operator can
+   * save a snapshot via the MCP atom to capture interesting state for
+   * later inspection, but the heal flow itself never loads from
+   * snapshot.
    */
   async restoreDeviceUserState(avd: AvdInfo): Promise<DeviceStateHealLog> {
     if (this.useCloud) {
@@ -364,38 +375,17 @@ export class MobileClient {
       return { classified_as: 'unknown', attempted: false };
     }
 
-    // Tier 1: snapshot-load + post-load verify.
-    const tier1 = await this.tryTier1SnapshotLoad(avd);
-    if (tier1.healLog) {
-      logInfo(
-        `device_user_state: restored to ${tier1.healLog.verified_as} via snapshot-load on ${avd.serial}`,
-      );
-      return tier1.healLog;
-    }
-
-    // Tier 1 didn't yield ready — either loadSnapshot itself failed
-    // (snapshot missing, console error) OR the snapshot loaded but its
-    // content is stale (post-load verify still showed a wipe class —
-    // snapshot corruption, post-snapshot APK upgrade drift, etc.).
-    // Both classes escalate to tier-2 (run the bootstrap-equivalent
-    // local steps inline) IF we have credentials. Phase 4's
-    // `connect-opp-setup` already invited `${ACE_E2E_PHONE}` to the
-    // run's opp inside `/ace:run`, so `check_number_for_existing_invites`
-    // is satisfied — registerTestUser won't hit the CONNECT-ID-3F crash.
     if (!this.bootstrapConfig) {
       const missing = missingBootstrapEnvVars();
-      // Name the specific missing vars so the operator doesn't have to
-      // diff their .env against .env.tpl. When the list is empty,
-      // bootstrapConfig was set to null explicitly by the caller
-      // (test path) — that's distinct from "env is broken."
       const detail =
         missing.length > 0
           ? `bootstrapConfig:absent (missing env: ${missing.join(', ')}; run /ace:setup --force-env then retry)`
           : `bootstrapConfig:absent (explicitly disabled by caller)`;
-      throw new DeviceUserStateError(tier1.classified_as, [...tier1.attempts, detail]);
+      throw new DeviceUserStateError('unknown', [detail]);
     }
+
     logInfo(
-      `device_user_state: tier-1 outcome=${tier1.outcome} on ${avd.serial} — escalating to tier-2 bootstrap`,
+      `device_user_state: restoring to known state via deterministic bootstrap on ${avd.serial}`,
     );
     const bootstrapSteps = await this.runLocalBootstrap(avd);
     const verifyAfterBootstrap = await this.probeDeviceUserState(avd);
@@ -416,105 +406,13 @@ export class MobileClient {
         bootstrap_steps: bootstrapSteps,
       };
     }
-    // Both tiers exhausted — surface the precise final class for
-    // operator triage.
     throw new DeviceUserStateError(verifyAfterBootstrap.classified_as, [
-      ...tier1.attempts,
       `runLocalBootstrap:pass(${bootstrapSteps.join(',')})`,
       `verify:${verifyAfterBootstrap.classified_as}`,
       `signal:${verifyAfterBootstrap.ui_dump_signal ?? 'none'}`,
     ]);
   }
 
-  /**
-   * Run tier-1 (snapshot-load + verify). Returns:
-   *   - `healLog` populated when the snapshot loaded AND verified as
-   *     ready/unknown (success — caller returns immediately).
-   *   - `outcome` describes WHY tier-1 didn't yield ready:
-   *     * `load-failed` — loadSnapshot threw or returned saved:false.
-   *     * `verify-wiped` — load succeeded but post-load probe still
-   *       classified as a wipe class (snapshot content is stale).
-   *   `attempts` is the structured log for inclusion in any halt
-   *   message; the caller appends tier-2 attempts to it.
-   */
-  private async tryTier1SnapshotLoad(avd: AvdInfo): Promise<{
-    outcome: 'ready' | 'load-failed' | 'verify-wiped';
-    classified_as: DeviceUserStateClass;
-    attempts: string[];
-    healLog?: DeviceStateHealLog;
-  }> {
-    const snapshotName = 'registered-test-user';
-    logInfo(
-      `device_user_state: restoring to known state via loadSnapshot(${snapshotName}) on ${avd.serial}`,
-    );
-    let loadOutcome: SnapshotResult;
-    try {
-      loadOutcome = await this.avd.loadSnapshot(avd.name, snapshotName);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return {
-        outcome: 'load-failed',
-        classified_as: 'unknown',
-        attempts: [`loadSnapshot:throw(${msg})`],
-      };
-    }
-    if (!loadOutcome.saved) {
-      return {
-        outcome: 'load-failed',
-        classified_as: 'unknown',
-        attempts: [`loadSnapshot:fail(${loadOutcome.output.slice(0, 200)})`],
-      };
-    }
-    // Align AVD wall-clock to host wall-clock immediately after snapshot
-    // load. The snapshot freezes the device clock at capture time; without
-    // this step, every Connect API request after the load fails with 401
-    // because the locally-cached Connect Token's expiration check disagrees
-    // with the server. Logged but not fatal — clock skew is a degraded-mode
-    // condition (the recipe walkthrough may still succeed for non-network
-    // surfaces) and we don't want a missing root permission to block Phase 6.
-    // Local-backend only; the cloud backend's AMI-based loadSnapshot has
-    // the same problem and needs an equivalent server-side fix in ace-web.
-    if (!this.useCloud) {
-      let synced = false;
-      try {
-        synced = await this.avd.syncDeviceClockToHost(avd.name);
-      } catch {
-        synced = false;
-      }
-      if (!synced) {
-        logInfo(
-          `device_user_state: WARNING — failed to sync AVD wall-clock to host. ` +
-            `Connect API calls may 401 due to snapshot-frozen clock. ` +
-            `See docs/mobile-atlas/connect-2.62.0.md § Prerequisites.`,
-        );
-      }
-    }
-    const verify = await this.probeDeviceUserState(avd);
-    if (verify.classified_as === 'ready' || verify.classified_as === 'unknown') {
-      return {
-        outcome: 'ready',
-        classified_as: verify.classified_as,
-        attempts: [`loadSnapshot:pass`, `verify:${verify.classified_as}`],
-        healLog: {
-          classified_as: verify.classified_as,
-          attempted: true,
-          healed_via: 'snapshot-load',
-          verified_as: verify.classified_as,
-          focused_activity: verify.focused_activity,
-          ui_dump_signal: verify.ui_dump_signal,
-        },
-      };
-    }
-    return {
-      outcome: 'verify-wiped',
-      classified_as: verify.classified_as,
-      attempts: [
-        `loadSnapshot:pass`,
-        `verify:${verify.classified_as}`,
-        `signal:${verify.ui_dump_signal ?? 'none'}`,
-      ],
-    };
-  }
 
   /**
    * Read-only probe of the AVD's user-facing state. Three signals:
@@ -583,6 +481,14 @@ export class MobileClient {
     const steps: string[] = [];
 
     // Step 1: ensure CommCare APK installed.
+    //
+    // APK install persists in the AVD's userdata disk image across
+    // emulator restarts. We only re-install when truly missing (fresh
+    // AVD or operator-uninstalled). The cached APK file on the host
+    // (`<tmp>/ace-mobile-apk-cache/commcare-<ver>.apk`) is the slowest
+    // recovery — re-downloads from GitHub release on cache miss. See
+    // `docs/learnings/2026-05-14-demo-user-no-otp.md § "How the emulator
+    // handles APKs across boots"`.
     const packages = await this.avd.listPackages(avd.name, 'org.commcare.dalvik');
     if (!packages.includes('org.commcare.dalvik')) {
       logInfo(`local_bootstrap: CommCare ${apkVersion} not installed on ${avd.serial} — downloading + installing`);
@@ -593,8 +499,27 @@ export class MobileClient {
       steps.push('apk-present');
     }
 
-    // Step 2: register the test user. registerTestUser is idempotent —
-    // returns alreadyRegistered if the device already carries the user.
+    // Step 1.5: wipe Connect's per-app data so registerTestUser walks
+    // the full demo registration flow against a clean slate, never
+    // trusting cached state from a prior dispatch (stale Connect Token,
+    // stale opp list, stale device-link). `pm clear` is ~0.5s; does NOT
+    // touch the APK installation; does NOT require root. See
+    // `docs/learnings/2026-05-14-demo-user-no-otp.md` for the rationale
+    // (always-cold-start > snapshot-as-cache).
+    //
+    // Skipped on the apk-installed branch above because the install just
+    // produced a clean state — pm clear on a fresh install is a no-op
+    // and would mostly print "Success" but burn a round-trip.
+    if (packages.includes('org.commcare.dalvik')) {
+      const cleared = await this.avd
+        .clearConnectAppData(avd.name)
+        .catch(() => false);
+      steps.push(cleared ? 'app-data-cleared' : 'app-data-clear-failed');
+    }
+
+    // Step 2: register the test user. Demo users (+7426 prefix) skip
+    // OTP server-side — total walk-through cost is ~15-25s. See the
+    // demo-user-no-OTP learning for the breakdown.
     logInfo(`local_bootstrap: registering test user ${testUser.phone} on ${avd.serial}`);
     const reg = await this.registerTestUser({
       avdName: avd.name,

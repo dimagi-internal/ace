@@ -526,6 +526,39 @@ export class AvdBackend {
     };
   }
 
+  /**
+   * Wipe `org.commcare.dalvik`'s local data — caches, databases, shared
+   * prefs, ContextID-issued tokens — without uninstalling the APK. Used
+   * as the first step of every heal dispatch so the subsequent
+   * `registerTestUser` runs against a clean slate, never trusting cached
+   * state from a prior run.
+   *
+   * Why this beats "trust the snapshot": snapshots silently age (the
+   * wall-clock + cached Connect Token expiration drift; see
+   * `docs/learnings/2026-05-14-demo-user-no-otp.md`). Wiping + freshly
+   * registering a `+7426` demo user takes ~15-25s and produces guaranteed
+   * clean state. The cost is dwarfed by the cost of debugging a stale-
+   * snapshot failure once.
+   *
+   * Implementation: `adb shell pm clear <pkg>`. Returns `true` on success.
+   * On failure (no root needed, but the package must exist) returns
+   * `false` and lets the caller decide whether to halt.
+   */
+  async clearConnectAppData(avdName: string): Promise<boolean> {
+    const avd = await this.ensureAvdRunning(avdName);
+    const r = await this.shell('adb', [
+      '-s',
+      avd.serial,
+      'shell',
+      'pm',
+      'clear',
+      'org.commcare.dalvik',
+    ]);
+    // `pm clear` prints "Success" on success, "Failed" on failure. Exit
+    // code is unreliable across API levels — pin to the stdout text.
+    return /Success/.test(r.stdout);
+  }
+
   async loadSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
     const avd = await this.ensureAvdRunning(avdName);
     const r = await this.shell('adb', ['-s', avd.serial, 'emu', 'avd', 'snapshot', 'load', snapshotName]);

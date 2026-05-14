@@ -244,20 +244,32 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
 
 describe('MobileClient.ensureAvdRunning', () => {
   it('chains AvdBackend.ensureAvdRunning then assertMaestroDriverHealthy', async () => {
+    // Post-2026-05-14: heal always runs runLocalBootstrap; needs
+    // bootstrapConfig + the AvdBackend methods bootstrap calls.
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
+      clearConnectAppData: vi.fn().mockResolvedValue(true),
       getFocusedActivity: vi.fn().mockResolvedValue('mResumedActivity: ActivityRecord{... OpportunitiesActivity}'),
       captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
-      loadSnapshot: vi
-        .fn()
-        .mockResolvedValue({ avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK' }),
+      saveSnapshot: vi.fn().mockResolvedValue({ avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK' }),
+      setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
       repairDriver: vi.fn(),
+      runRecipe: vi.fn().mockResolvedValue({
+        status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: '/tmp/', screenshots: [],
+      }),
     } as any;
-    const client = new MobileClient({ avd, maestro });
+    const bootstrapConfig = {
+      apkVersion: '2.62.0',
+      testUser: {
+        phone: '+74260000100', phoneLocal: '4260000100', countryCode: '7',
+        pin: '1234', backupCode: 'backup', name: 'ACE Test',
+      },
+    };
+    const client = new MobileClient({ avd, maestro, bootstrapConfig });
     const r = await client.ensureAvdRunning('AVD');
     expect(r.serial).toBe('emulator-5554');
     expect(avd.ensureAvdRunning).toHaveBeenCalledWith('AVD');
@@ -352,10 +364,132 @@ describe('classifyDeviceUserState', () => {
   });
 });
 
-describe('MobileClient.restoreDeviceUserState', () => {
+describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap)', () => {
   const readyAvd = { name: 'AVD', serial: 'emulator-5554', status: 'booted' } as const;
 
-  it('always loads the snapshot, even when the AVD already appears ready', async () => {
+  // The 2026-05-14 refactor dropped snapshot-load tier-1 from the heal
+  // path entirely. Every dispatch runs the deterministic bootstrap:
+  // pm clear Connect's app data + registerTestUser. See
+  // docs/learnings/2026-05-14-demo-user-no-otp.md for the rationale.
+
+  function makeBootstrapAvd(opts: {
+    apkInstalled?: boolean;
+    clearOk?: boolean;
+    postRegisterReady?: boolean;
+  } = {}) {
+    const apkInstalled = opts.apkInstalled ?? true;
+    const clearOk = opts.clearOk ?? true;
+    const postRegisterReady = opts.postRegisterReady ?? true;
+
+    return {
+      ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      listPackages: vi
+        .fn()
+        .mockResolvedValue(apkInstalled ? ['org.commcare.dalvik'] : []),
+      clearConnectAppData: vi.fn().mockResolvedValue(clearOk),
+      getFocusedActivity: vi.fn().mockResolvedValue(
+        postRegisterReady
+          ? 'mResumedActivity: ActivityRecord{... OpportunitiesActivity}'
+          : 'mResumedActivity: CommCareSetupActivity',
+      ),
+      captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
+      installApk: vi.fn().mockResolvedValue({
+        packageId: 'org.commcare.dalvik', versionName: '2.62.0', versionCode: 1, path: '/tmp/apk',
+      }),
+      saveSnapshot: vi.fn().mockResolvedValue({
+        avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK',
+      }),
+      setGmsEnabled: vi.fn().mockResolvedValue(undefined),
+      adbPortFromSerial: () => 5554,
+      // loadSnapshot intentionally absent — the heal must never call it.
+    } as any;
+  }
+
+  function makeMaestro() {
+    return {
+      probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      repairDriver: vi.fn(),
+      runRecipe: vi.fn().mockResolvedValue({
+        status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: '/tmp/', screenshots: [],
+      }),
+    } as any;
+  }
+
+  const bootstrapConfig = {
+    apkVersion: '2.62.0',
+    testUser: {
+      phone: '+74260000100', phoneLocal: '4260000100', countryCode: '7',
+      pin: '1234', backupCode: 'backup', name: 'ACE Test',
+    },
+  };
+
+  it('always runs the deterministic bootstrap (no snapshot tier-1)', async () => {
+    const avd = makeBootstrapAvd();
+    const maestro = makeMaestro();
+    const client = new MobileClient({ avd, maestro, bootstrapConfig });
+    const r = await client.ensureAvdRunning('AVD');
+    // The heal NEVER calls loadSnapshot — there's no fast path anymore.
+    expect(avd.loadSnapshot).toBeUndefined(); // method not even mocked
+    // It DOES wipe app data + register fresh:
+    expect(avd.clearConnectAppData).toHaveBeenCalledWith('AVD');
+    expect(maestro.runRecipe).toHaveBeenCalled();
+    expect(r.heal?.deviceUserState).toMatchObject({
+      attempted: true,
+      healed_via: 'local-bootstrap',
+      verified_as: 'ready',
+    });
+    expect(r.heal?.deviceUserState?.bootstrap_steps).toContain('app-data-cleared');
+  });
+
+  it('skips pm clear when APK was just freshly installed (no data to wipe)', async () => {
+    const fakeApkBytes = new Uint8Array(2_000_000);
+    fakeApkBytes[0] = 0x50; fakeApkBytes[1] = 0x4b; fakeApkBytes[2] = 0x03; fakeApkBytes[3] = 0x04;
+    const uniqueVersion = `test-skip-clear-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true, status: 200, arrayBuffer: async () => fakeApkBytes.buffer,
+    });
+    const avd = makeBootstrapAvd();
+    // First listPackages call (start of bootstrap): APK NOT installed.
+    // Second listPackages call (post-bootstrap probe): APK present.
+    avd.listPackages = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(['org.commcare.dalvik']);
+    const maestro = makeMaestro();
+    const client = new MobileClient({
+      avd, maestro, fetchImpl,
+      bootstrapConfig: { ...bootstrapConfig, apkVersion: uniqueVersion },
+    });
+    const r = await client.ensureAvdRunning('AVD');
+    expect(avd.installApk).toHaveBeenCalledTimes(1);
+    // pm clear is skipped — the fresh install IS clean state.
+    expect(avd.clearConnectAppData).not.toHaveBeenCalled();
+    expect(r.heal?.deviceUserState?.bootstrap_steps).toContain('apk-installed');
+    expect(r.heal?.deviceUserState?.bootstrap_steps).not.toContain('app-data-cleared');
+  });
+
+  it('throws when bootstrapConfig is absent', async () => {
+    const avd = makeBootstrapAvd();
+    const maestro = makeMaestro();
+    const client = new MobileClient({ avd, maestro, bootstrapConfig: null });
+    await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
+      /AVD per-user state is unhealthy.*bootstrapConfig:absent/,
+    );
+  });
+
+  it('throws with verify class when bootstrap completes but post-probe still wiped', async () => {
+    const avd = makeBootstrapAvd({ postRegisterReady: false });
+    avd.captureUiDump = vi
+      .fn()
+      .mockResolvedValue({ xml: '<node text="Logged out of PersonalID"/>', elements: [] });
+    const maestro = makeMaestro();
+    const client = new MobileClient({ avd, maestro, bootstrapConfig });
+    await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
+      /AVD per-user state is unhealthy.*needs-personal-id.*verify:needs-personal-id/,
+    );
+  });
+
+  it.skip('legacy: always loads the snapshot, even when the AVD already appears ready', async () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
@@ -383,7 +517,7 @@ describe('MobileClient.restoreDeviceUserState', () => {
     });
   });
 
-  it('restores a wiped state (needs-personal-id) via loadSnapshot + verification', async () => {
+  it.skip('legacy: restores a wiped state (needs-personal-id) via loadSnapshot + verification', async () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
@@ -408,7 +542,7 @@ describe('MobileClient.restoreDeviceUserState', () => {
     expect(r.heal?.deviceUserState?.verified_as).toBe('ready');
   });
 
-  it('throws snapshot-load-failed when loadSnapshot fails AND no bootstrap config available', async () => {
+  it.skip('legacy: throws snapshot-load-failed when loadSnapshot fails AND no bootstrap config available', async () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
@@ -435,7 +569,7 @@ describe('MobileClient.restoreDeviceUserState', () => {
     expect(avd.getFocusedActivity).not.toHaveBeenCalled();
   });
 
-  it('throws when loadSnapshot throws AND no bootstrap config', async () => {
+  it.skip('legacy: throws when loadSnapshot throws AND no bootstrap config', async () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi.fn(),
@@ -453,7 +587,7 @@ describe('MobileClient.restoreDeviceUserState', () => {
     );
   });
 
-  it('tier-2: runs local bootstrap when loadSnapshot fails AND bootstrap config IS available', async () => {
+  it.skip('legacy: tier-2: runs local bootstrap when loadSnapshot fails AND bootstrap config IS available', async () => {
     // Use a unique version string per test invocation so we never hit
     // the on-disk APK cache from a prior run/test (the cache lives at
     // `<tmp>/ace-mobile-apk-cache/commcare-<version>.apk` and persists
@@ -540,7 +674,7 @@ describe('MobileClient.restoreDeviceUserState', () => {
     expect(r.heal?.deviceUserState?.bootstrap_steps).toContain('snapshot-saved');
   });
 
-  it('tier-2: skips APK install when already present, still registers + saves snapshot', async () => {
+  it.skip('legacy: tier-2: skips APK install when already present, still registers + saves snapshot', async () => {
     const bootstrapConfig = {
       apkVersion: '2.62.0',
       testUser: {
@@ -597,7 +731,7 @@ describe('MobileClient.restoreDeviceUserState', () => {
     expect(r.heal?.deviceUserState?.bootstrap_steps).toContain('snapshot-saved');
   });
 
-  it('throws with the precise verify class when snapshot loads but state is still wiped AND no bootstrap config', async () => {
+  it.skip('legacy: throws with the precise verify class when snapshot loads but state is still wiped AND no bootstrap config', async () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
@@ -621,7 +755,7 @@ describe('MobileClient.restoreDeviceUserState', () => {
     );
   });
 
-  it('tier-2 escalates when snapshot loads BUT content is stale (verify-wiped class — snapshot corruption)', async () => {
+  it.skip('legacy: tier-2 escalates when snapshot loads BUT content is stale (verify-wiped class — snapshot corruption)', async () => {
     // The bug surfaced live in turmeric run 20260513-0616 Phase 6 retry
     // on v0.13.203: snapshot existed and loadSnapshot returned saved:true,
     // but the snapshot itself had been saved at a moment when the device
