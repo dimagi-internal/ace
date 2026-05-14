@@ -57,7 +57,9 @@ This is unconditional — never depend on the snapshot's frozen clock being "clo
 | `StandardHomeActivity` (CommCare app home, Connect-mode) — 4 tiles (Start / Job Status / Sync / Logout) | [§ 5](#5-standardhomeactivity-commcare-app-home) |
 | `MenuActivity` — suite root + form list (`screen_suite_menu_list`) | [§ 6](#6-menuactivity-suite--form-list) |
 | `FormEntryActivity` — question rendering, `nav_btn_prev`/`nav_btn_next`, required-validation banner | [§ 7](#7-formentryactivity) |
+| Exit Form dialog — Deliver-side mid-form back-press confirmation | [§ 7.1](#71-exit-form-dialog-deliver-side-mid-form-back) |
 | Opportunity detail (post-Learn-complete) — certificate view, `View Opportunity Details` CTA | [§ 8](#8-opportunity-detail-post-learn-complete--certificate) |
+| Opportunity detail (post-Deliver-download) — View Info bottom-sheet, 4-stage progress widget, Delivery Details card | [§ 8.5](#85-opportunity-detail-post-deliver-download--view-info-bottom-sheet) |
 | Download Delivery gate — single-screen handoff between Learn completion and Deliver download | [§ 9](#9-download-delivery-gate) |
 | `StandardHomeActivity` — Deliver mode — same 4-tile grid, title suffix `— Deli…`, Sync subtext `Daily Visits N/M` | [§ 10](#10-standardhomeactivity-deliver-mode) |
 | `MenuActivity` — Deliver-side — `Vendor Visits` module tile | [§ 11](#11-menuactivity-deliver-side) |
@@ -484,7 +486,21 @@ Tapping `nav_btn_next` on the LAST question of a form (after all required questi
 | Tap `nav_btn_next` on last question (validated) | `StandardHomeActivity` with submission toast |
 | Tap `nav_btn_next` on required question without input | Same activity, `warning_root` banner shown |
 | Tap `nav_btn_prev` | Same activity, previous question rendered (disabled on Q1) |
-| Tap Navigate up arrow | Pops back to `MenuActivity` form list — TBD whether unsaved state is preserved |
+| Tap Navigate up arrow | Pops back to `MenuActivity` form list — for Deliver-side forms, surfaces the **Exit Form dialog** (§ 7.1) instead. |
+
+### 7.1. Exit Form dialog (Deliver-side mid-form back)
+
+VERIFIED 2026-05-14 (delivery-walk session — Deliver-side Vendor Visit form).
+
+When the user presses the system back / Navigate-up arrow while inside a Deliver-side form with any pending input, CommCare interposes a confirmation dialog instead of immediately popping. Same dialog widget that other CommCare flows use; documented here because it's load-bearing in Phase 6 recipes (any mid-form recovery needs to dismiss it).
+
+| Element | Selector | Notes |
+|---|---|---|
+| Dialog title | `id/dialog_title_text` TextView text `"Exit Form?"` | |
+| `STAY IN FORM` button | `id/choice_dialog_panel` Button, `text="STAY IN FORM"` | Default selection (`selected="true"`). |
+| `EXIT WITHOUT SAVING` button | `id/choice_dialog_panel` Button, `text="EXIT WITHOUT SAVING"` | Note: **both buttons share the same resource-id** (`id/choice_dialog_panel`) — scope by text-match, not by id alone. |
+
+Tap `EXIT WITHOUT SAVING` to abandon and pop back to the `MenuActivity` form list (§ 11). Tap `STAY IN FORM` to dismiss the dialog and remain on the current question.
 
 ---
 
@@ -492,9 +508,9 @@ Tapping `nav_btn_next` on the LAST question of a form (after all required questi
 
 VERIFIED 2026-05-14 (delivery-walk session).
 
-The opp-detail surface reached by tapping `Resume` on a 50%-progress In-Progress card after the Learn-side Final Assessment has been passed and synced. **Replaces** the pre-claim opp detail surface documented in § 3 once Learn is complete — the same nav path now lands on a "certificate" screen instead of the start/claim CTA.
+The opp-detail surface reached by tapping `Resume` on a 50%-progress In-Progress card after the Learn-side Final Assessment has been passed and synced **but before the Deliver CCZ is downloaded.** Transient one-time gate — once the Deliver app is installed (§ 10 reachable), Resume bypasses this surface entirely and goes straight to Deliver `StandardHomeActivity`. The post-Deliver-download equivalent is the **View Info bottom-sheet** (§ 8.5).
 
-**Activity:** Connect-side opp-detail screen (TBD — needs UI dump capture in a follow-up walk; this screen was navigated by coordinate-taps captured from screenshots).
+**Activity:** Connect-side opp-detail screen (resource-IDs TBD — not yet dump-captured; this screen was navigated by coordinate-taps captured from screenshots, and the surface is no longer reachable from this opp's current state to re-dump. A future opp run mid-window between Learn-pass and Deliver-download will need to capture it).
 
 ### Visible content
 
@@ -515,8 +531,66 @@ The opp-detail surface reached by tapping `Resume` on a 50%-progress In-Progress
 
 ### Open questions for this screen
 
-- Resource-IDs not captured (taps were by coordinate). Follow-up walk should `uiautomator dump` and record selectors for the title, body, and CTA.
+- Resource-IDs not captured (taps were by coordinate). The surface is transient — a future opp at the Learn-pass / pre-Deliver-download stage will be needed to dump it. Best opportunity is during Phase 6 J5 the moment after the Final Assessment passes and before the operator advances.
 - Does this screen appear before OR after the Final-Assessment-pass score syncs to Connect? Observed live AFTER `Sync with Server` was tapped on the Learn home; the certificate did not appear until sync completed. (Worth confirming whether a slow sync would show a partial state.)
+
+---
+
+## 8.5. Opportunity detail (post-Deliver-download) — View Info bottom-sheet
+
+VERIFIED 2026-05-14 (delivery-walk session).
+
+The post-Deliver-download replacement for § 8. Reached by tapping `btn_view_info` on the In-Progress card in the Connect-side opp list (`connect_fragment_jobs_list`). The opp-list `btn_resume` no longer surfaces the certificate after Deliver is installed — it now lands directly on Deliver `StandardHomeActivity` (§ 10).
+
+**Surface:** a Material `BottomSheetDialog` overlayed on the opp-list surface. Two components: (a) a four-stage opp-progress widget at the top, (b) a Delivery Details info card at the bottom.
+
+### (a) Opp-progress widget — `id/include_job_progress`
+
+Horizontal row of four stage indicators with three connecting lines between them. Each stage has an icon + a progress-bar:
+
+| Stage | Icon | Progress bar | Connecting line (to next) |
+|---|---|---|---|
+| 1. New opportunity (claim) | `id/iv_new_opp` ImageView | `id/pb_new_opp` ProgressBar | `id/iv_first_line` |
+| 2. Learn | `id/iv_learn` ImageView | `id/pb_learn` ProgressBar | `id/iv_second_line` |
+| 3. Delivery | `id/iv_delivery` ImageView | `id/pb_delivery` ProgressBar | `id/iv_third_line` |
+| 4. Review | `id/iv_review` ImageView | `id/pb_review` ProgressBar | (terminal — no next-line) |
+
+All four icons are `clickable="false"` — pure visual indicators, NOT navigable. The icon tint reflects the stage's completion state (filled = complete, dim = locked, in-progress hue = mid). Recipes wanting to assert "user is in stage N" should read the bar fill of `pb_<stage>` rather than visual icon state.
+
+### (b) Delivery Details card
+
+| Element | Selector | Live value (turmeric opp) |
+|---|---|---|
+| Title | `id/connect_delivery_title` TextView | `"Delivery Details"` |
+| Sub-label | `id/connect_review` TextView | `"Review the delivery details"` |
+| Total visits — icon | `id/connect_delivery_visits_icon` | — |
+| Total visits — text | `id/connect_delivery_total_visits_text` | `"500 maximum Visits"` |
+| Days to complete — icon | `id/connect_delivery_days_icon` | — |
+| Days to complete — text | `id/connect_delivery_days_text` | `"122 Days to complete"` |
+| Max daily visits — icon | `id/connect_delivery_max_daily_icon` | — |
+| Max daily visits — text | `id/connect_delivery_max_daily_text` | `"Maximum visits per day 20"` |
+| Per-visit budget — icon | `id/connect_delivery_budget_icon` | — |
+| Per-visit budget — text | `id/connect_delivery_budget_text` | `"Earn up to 9 USD for visit"` |
+
+Container resource-id: `id/connect_delivery_details_container`. Bottom-sheet root: `id/design_bottom_sheet` inside `id/coordinator`. Outside-tap dismiss target: `id/touch_outside`. Explicit close: `id/imgCloseDialog` (X glyph, top-right of the sheet).
+
+### Transitions
+
+| Trigger | Destination |
+|---|---|
+| Tap `imgCloseDialog` or outside the sheet | Dismiss; return to `connect_fragment_jobs_list` |
+| System back | Dismiss; return to `connect_fragment_jobs_list` |
+| Stage icons (`iv_*`) | No-op — not clickable |
+
+### Recipe-authoring guidance
+
+- This sheet is the most reliable place to read the opp's **operational parameters** (max visits, max daily, budget, days). Recipes that need to assert "the opp's daily cap is 20" should pattern-match on `id/connect_delivery_max_daily_text` rather than scraping the Sync tile's `card_subtext` on `StandardHomeActivity` (which only shows the consumed count, not the cap).
+- To detect "Learn complete, Deliver active" without navigating into the CommCare app, read `id/pb_learn` (full) + `id/pb_delivery` (partial / non-empty) from this sheet. Cheaper than reaching the Deliver-mode `StandardHomeActivity`.
+
+### Open questions for this screen
+
+- Stage-icon tint state machine — what exact tints correspond to "not started / in progress / complete / locked"? Worth dumping at multiple opp states (fresh-claim, mid-Learn, Learn-complete-pre-Deliver, mid-Deliver, Review).
+- `id/connect_review` label says `"Review the delivery details"` — is this clickable to navigate to Stage 4 (Review)? Did not exercise this session.
 
 ---
 
@@ -551,32 +625,51 @@ A single-screen handoff between Learn-completion and the Deliver-side app downlo
 
 ## 10. `StandardHomeActivity` (Deliver mode)
 
-VERIFIED 2026-05-14 (delivery-walk session).
+VERIFIED 2026-05-14 (delivery-walk session, resource-IDs dumped).
 
-**Same activity, same selectors as § 5** — but with the Deliver CCZ loaded. The structural differentiators are surface-level, not activity-level: the title bar suffix changes and the 4-tile action grid's `card_subtext` strings reflect Deliver-phase state instead of Learn-phase state.
+**Same activity as § 5** with the Deliver CCZ loaded — the 4-tile grid is structurally identical. The Deliver-mode home adds a dedicated **project-card progress widget** at the top of the body that doesn't exist in Learn mode. That widget is the load-bearing differentiator, not the toolbar title or `card_subtext`.
 
 **Activity:** `org.commcare.activities.StandardHomeActivity` (identical to § 5).
-**Title:** the opp's display name suffixed `— Deli…` (truncated; the full string is presumably `— Deliver`). The Learn-mode equivalent suffixes `— Learn`.
+**Toolbar title:** full text in the `TextView` is `"<opp> — Deliver (turmeric)"` (e.g. `"Turmeric Market Survey — Deliver (turmeric)"`). The toolbar visually truncates it to `— Deli…` on a 1080-wide device, but the underlying `text` attribute is the full string — text-matchers should anchor on `"— Deliver"` directly, not on `"— Deli…"`.
+
+### Project-card progress widget — `id/viewJobCard` (NEW vs § 5)
+
+Sits above the 4-tile grid in `id/nsv_home_screen`. Exposes the Deliver opp's operational state as named widgets, not subtext strings:
+
+| Element | Selector | Live value (turmeric, fresh-Deliver state) |
+|---|---|---|
+| Card container | `id/viewJobCard` | — |
+| Title | `id/tv_job_title` TextView | `"Turmeric Market Survey — turmeric (2026-04-29)"` |
+| Description | `id/tv_job_description` TextView | `"Turmeric vendor market survey pilot"` |
+| Visit-progress label | `id/tv_primary_visit_title` TextView | `"Daily Visits"` |
+| Visit-progress count | `id/tv_primary_visit_count` TextView | `"0/20"` |
+| Visit-progress bar | `id/lp_primary_visit_progress` ProgressBar | (numeric fill matches count) |
+| End-date | `id/connect_job_end_date` TextView | `"Complete Project by 30 Sep, 2026"` |
+| Delivery-type list | `id/rdDeliveryTypeList` RecyclerView | (visit-type chip row) |
 
 ### Differentiators from Learn-mode home (§ 5)
 
 | Surface | Learn mode (§ 5) | Deliver mode (§ 10) |
 |---|---|---|
-| Toolbar title | `<opp> — Learn` | `<opp> — Deli…` (truncated `— Deliver`) |
-| Sync tile `card_subtext` | `N form(s) sent to server!` after submissions | `Daily Visits X/Y` (e.g. `Daily Visits 0/20`) — reflects daily-cap progress against the visit operational limit |
+| **Project-card progress widget (`id/viewJobCard`)** | absent | **present — primary differentiator** |
+| Toolbar title text (in dump) | `<opp> — Learn (<slug>)` | `<opp> — Deliver (<slug>)` |
+| Sync tile `card_subtext` | `N form(s) sent to server!` after submissions | `You last synced with the server: never` (initially) — does NOT contain "Daily Visits N/M" on this surface. The daily-visits metric lives on the project-card widget, not the Sync tile. |
 | Start tile target | Learn module list (§ 6) | Deliver-side module list (§ 11) — only the Vendor Visits module is present |
 
-The 4-tile grid (Start / Job Status / Sync / Logout), grid resource-id (`id/home_gridview_buttons`), and per-tile resource-ids are identical to § 5. Recipe-authoring guidance from § 5 applies unchanged.
+The 4-tile grid (Start / Job Status / Sync / Logout), grid resource-id (`id/home_gridview_buttons`), and per-tile resource-ids are identical to § 5. Recipe-authoring guidance from § 5 applies unchanged for the tile grid.
 
 ### Recipe-authoring guidance
 
-- To assert "we are on the Deliver home" specifically (vs the Learn home), anchor on the Sync tile's `card_subtext` text matching `^Daily Visits \d+/\d+$`. The Learn-mode subtext (`form(s) sent to server`) never matches that pattern.
-- Toolbar title alone is unreliable as a differentiator — it truncates to `— Deli…` and the user's CCZ name might collide with a Learn-mode CCZ depending on the opp's app naming convention. Prefer the Sync-subtext signal.
+- **To assert "we are on the Deliver home"**, check presence of `id/viewJobCard` (it's absent on the Learn home). Cheaper and more reliable than any text-match.
+- **To read the daily-cap counter** ("X/Y"), read `id/tv_primary_visit_count` directly — don't pattern-match across multiple TextViews. The value is structured.
+- **To assert the operational cap** (the denominator in X/Y), split `tv_primary_visit_count` on `/`. The cap also appears in the View Info bottom-sheet's `connect_delivery_max_daily_text` (§ 8.5) which is reachable without leaving the Connect-side opp list.
+- **An earlier version of this section** (PR #295) recommended pattern-matching `card_subtext` for `Daily Visits N/M`. That was wrong — the visit counter is on the project-card widget, not the Sync tile. Use `id/tv_primary_visit_count` instead.
 
 ### Open questions for this screen
 
 - Does the Job Status tile show different content in Deliver mode (visits-completed counter vs Learn-modules counter)? Not captured this session.
 - Is there a structural cue (badge, distinct icon) on the Start tile when there are unfinished or rejected visits to return to?
+- The `id/rdDeliveryTypeList` RecyclerView — for multi-delivery-type opps, what does each row look like? Single-row case (this opp's "Vendor Visit") not dumped.
 
 ---
 
@@ -590,30 +683,42 @@ VERIFIED 2026-05-14 (delivery-walk session).
 
 ### Module list (level 1)
 
+VERIFIED 2026-05-14 (resource-IDs dumped).
+
+Toolbar title TextView text: `"Turmeric Market Survey — Deliver (turmeric)"` (full Deliver suffix; not truncated like the home-tile title).
+
 Single tile observed:
 
-| Tile | Selector | Tap area |
-|---|---|---|
-| `Vendor Visits` | row container `id/screen_suite_menu_list` row matching `text="Vendor Visits"` | bounds `[215,346][1017,472]`, center `(616, 409)` |
+| Tile | Row image (id) | Row text (id) | Row text value |
+|---|---|---|---|
+| `Vendor Visits` | `id/row_img` (folder glyph) | `id/row_txt` | `"Vendor Visits"` |
 
-(Only one Deliver-side module exists for the turmeric opp — `Vendor Visits`. Other opps with multiple deliver-unit types would render additional tiles here.)
+Container: `id/screen_suite_menu_list` RecyclerView (same as Learn-side § 6 — confirms § 6's pattern reuses on the Deliver side).
+
+(Only one Deliver-side module exists for the turmeric opp. Other opps with multiple deliver-unit types would render additional tiles here.)
 
 ### Form list (level 2 — after tapping Vendor Visits)
 
+VERIFIED 2026-05-14 (resource-IDs dumped).
+
+Toolbar title: `"Vendor Visits"`.
+
 Single form observed:
 
-| Row | Selector | Notes |
-|---|---|---|
-| `Vendor Visit` | `screen_suite_menu_list` row; `tvTitle` `"Vendor Visit"`; leading icon = pencil glyph (Deliver-form icon, distinct from Learn-module's book/play glyph) | Tap launches § 12 `FormEntryActivity`. |
+| Row | Row image (id) | Row text (id) | Row text value |
+|---|---|---|---|
+| `Vendor Visit` | `id/row_img` (pencil glyph — distinct from level-1's folder glyph) | `id/row_txt` | `"Vendor Visit"` |
+
+Container: `id/screen_suite_menu_list` (same id as level 1). Tap launches § 12 `FormEntryActivity`.
 
 ### Recipe-authoring implication
 
-Recipe pattern mirrors § 6: chain TWO `tapOn` operations — one for the module tile, one for the form row. Apply the same `below: text` scoping pattern that § 6 retry #4 required (`tvTitle` is `clickable=false`; the row container is what receives the tap).
+Recipe pattern mirrors § 6: chain TWO `tapOn` operations — one for the module tile, one for the form row. Apply the same `below: text` scoping pattern that § 6 retry #4 required: `id/row_txt` is the TextView with the row label, but the **row container** is what receives the tap (the TextView itself is not directly clickable in this widget tree). Scope by `id: row_txt` for the visibility assertion, then `tapOn` the row container by anchoring `below: text "Vendor Visits"` (or whatever the row label is).
 
 ### Open questions for this screen
 
-- Resource-IDs for the Vendor Visits tile were not captured (coordinate-based interaction). Follow-up walk should `uiautomator dump` and record selectors.
 - Multi-form-per-module Deliver configurations (e.g. an opp with both `Vendor Visit` and a separate `Quality Check` form under one module) — not exercised this session.
+- Both module-tile and form-row use `id/row_img` + `id/row_txt`. The differentiator between "this is a module — drill in" vs "this is a form — launch FormEntryActivity" is the row image glyph (folder vs pencil), which isn't a resource-id signal. Toolbar-title context disambiguates (the module-list toolbar title contains `"— Deliver"`; the form-list toolbar title is the module name).
 
 ---
 
@@ -702,7 +807,12 @@ Outstanding screens not yet documented (need a follow-up walk):
 6. **Form submission confirmation for Deliver forms** — STILL OPEN. § 7 documents Learn-form auto-finalize; whether the multi-screen Deliver form follows the same auto-finalize path or surfaces an explicit Submit screen is untested.
 7. **Notifications panel** (`action_bell`) — what notification types surface there? Does tapping a notification card claim that opp directly (the path the operator explicitly does NOT want recipes to use)?
 8. **Multi-question Learn forms with non-note types** — PARTIALLY RESOLVED via § 12.4: text-input + GPS-EditText + photo-capture widget shapes documented for Deliver forms; Learn-side forms with the same widget types should follow the same patterns.
-9. **Resource-IDs for Deliver-side screens (§ 8–§ 11)** — interactions in this session were coordinate-based (taps captured from screenshots), not selector-based. A follow-up walk should `uiautomator dump` each Deliver-side surface (§ 8 certificate, § 9 download gate, § 11 Vendor Visits module tile) and replace the live tap-point references with resource-id selectors. Without resource-IDs, recipes targeting these screens must fall back to text-matchers and coordinates, which are brittle.
+9. **Resource-IDs for Deliver-side screens (§ 8–§ 11)** — PARTIALLY RESOLVED in the follow-up dump pass (2026-05-14):
+   - § 8 (certificate) — STILL OPEN. The surface is transient (vanishes after Deliver-download), and the current opp has already moved past that state. A future opp run mid-window between Final-Assessment-pass and Deliver-download will need to capture it. § 8.5 (View Info bottom-sheet) is the post-download equivalent and is fully dumped.
+   - § 8.5 (View Info bottom-sheet) — RESOLVED. Full resource-IDs for the opp-stage progress widget + Delivery Details card.
+   - § 9 (Download Delivery gate) — STILL OPEN. Also transient (one-time during Deliver-CCZ download). Requires uninstalling the Deliver app or capturing during another opp's Phase 6 J5.
+   - § 10 (Deliver `StandardHomeActivity`) — RESOLVED. Project-card progress widget (`id/viewJobCard`) is the structural Learn-vs-Deliver differentiator; `tv_primary_visit_count` exposes the daily-visits counter as a structured value (revises the `card_subtext` text-match guidance from PR #295).
+   - § 11 (Deliver-side `MenuActivity`) — RESOLVED. Both module-list and form-list use `id/screen_suite_menu_list` with `id/row_img` + `id/row_txt`; row-glyph (folder vs pencil) is the only structural signal that distinguishes a module from a form.
 
 These should be walked in a follow-up session, ideally on a freshly-registered test user (or via faster forms — completing the comprehension gates on all 8 forms + the assessment is ~50–80 taps).
 
