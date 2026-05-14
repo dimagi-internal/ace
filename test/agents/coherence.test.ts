@@ -55,24 +55,36 @@ interface AgentFrontmatter {
   skills?: SkillEntry[];
 }
 
+function normalizeSkillsList(raw: unknown): SkillEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((s) => (typeof s === 'string' ? { name: s } : (s as SkillEntry)));
+}
+
 function readFrontmatter(agentFile: string): AgentFrontmatter | null {
   const src = fs.readFileSync(path.join(AGENTS_DIR, agentFile), 'utf-8');
   const m = src.match(/^---\n([\s\S]*?)\n---/);
   // No frontmatter = reference doc, not an agent (e.g. orchestrator-reference.md).
   if (!m) return null;
   const parsed = yaml.parse(m[1]) as Record<string, unknown>;
-  // skills: can be either `['name-a', 'name-b']` (ocs-tester) or
-  // `[{ name, has_judge, qa_skill, eval_skill }]` (phase agents). Normalize.
-  const rawSkills = parsed.skills as unknown;
-  const skills: SkillEntry[] | undefined = Array.isArray(rawSkills)
-    ? rawSkills.map((s) => (typeof s === 'string' ? { name: s } : (s as SkillEntry)))
-    : undefined;
+  // Three claim-lists in current frontmatter (all optional):
+  //   `skills:`           — primary per-phase skills
+  //   `recurring_skills:` — skills the agent dispatches on a schedule
+  //                         post-launch (execution-manager, solicitation-management)
+  //   `manual_skills:`    — HITL-gated skills the agent prepares but
+  //                         doesn't auto-dispatch (solicitation-management)
+  // All three contribute claims for the coherence checks. Entries can be
+  // either bare strings (`ocs-tester`) or full `{name, has_judge, ...}` objects.
+  const skills: SkillEntry[] = [
+    ...normalizeSkillsList(parsed.skills),
+    ...normalizeSkillsList(parsed.recurring_skills),
+    ...normalizeSkillsList(parsed.manual_skills),
+  ];
   return {
     file: agentFile,
     name: parsed.name as string,
     phase: parsed.phase as string | undefined,
     phase_ordinal: parsed.phase_ordinal as number | undefined,
-    skills,
+    skills: skills.length > 0 ? skills : undefined,
   };
 }
 
@@ -118,14 +130,20 @@ function isExemptProducer(name: string): boolean {
 // remove it from this list (the test will tell you it's no longer
 // unclaimed). That celebrates progress on closing this drift.
 const UNCLAIMED_BASELINE = new Set<string>([
-  // 2026-05-14: producers below are real skills with no owning agent.
-  // Tracked in https://github.com/jjackson/ace (follow-up to PR #289).
-  'decisions-render',     // utility; renders decisions.yaml as gdoc cross-phase
-  'eval-calibration',     // phase-1 calibration; arguably idea-to-design owns this
-  'flw-data-review',      // phase-9 execution-management?
-  'solicitation-monitor', // phase-8 monitoring during solicitation
-  'solicitation-review',  // phase-8 HITL review
-  'timeline-monitor',     // cross-phase monitoring utility
+  // 2026-05-14: producers below are real skills with no owning agent and
+  // none expected — they're genuinely cross-phase / cross-opp utilities.
+  //
+  // Originally this set had 6 entries; 4 were false positives because the
+  // coherence test only read agent frontmatter's `skills:` list and missed
+  // claims in `recurring_skills:` (timeline-monitor, flw-data-review,
+  // solicitation-monitor) and `manual_skills:` (solicitation-review).
+  // Fixed in PR following #292.
+  'decisions-render',  // cross-phase utility; renders decisions.yaml -> gdoc.
+                       // Invoked directly by ace-orchestrator (which has no
+                       // phase_ordinal so no skills: list of its own).
+  'eval-calibration',  // produces an opp-level artifact (eval-calibration/
+                       // known-issues.md), not a per-run skill any phase
+                       // agent dispatches.
 ]);
 
 function skillExists(name: string): boolean {
