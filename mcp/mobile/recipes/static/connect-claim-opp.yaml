@@ -78,10 +78,34 @@ appId: org.commcare.dalvik
 # emulator. The matcher works without it for cards with wrapped
 # text — Maestro defaults to substring + a low visibility threshold,
 # which is enough for our card layouts.
+#
+# Scroll the target tile into view. Newest invite appears at the BOTTOM
+# of `rvJobList` for the ACE test user (the test user accumulates invites
+# across runs, and the newest is appended to the end — not prepended).
+# Verified live 2026-05-14 on turmeric run 20260513-2243 retry. The
+# atlas's "Scroll behavior" entry in § 2 documents the same fact.
+# scrollUntilVisible bounded at 20s — enough to walk past several
+# screens of accumulated invites without infinite-looping if the
+# OPP_NAME truly isn't present.
+- scrollUntilVisible:
+    element:
+      text: ${OPP_NAME}
+    direction: DOWN
+    timeout: 20000
 - assertVisible:
     text: ${OPP_NAME}
+# Tap the View Opportunity button SCOPED to the card containing the
+# target title. `tvTitle` is not clickable (`clickable=false` per UI
+# dump 2026-05-14); `rootCardView` is not clickable either. Only
+# `btn_view_opportunity` is. Without the `below: text` scoping we'd
+# tap the topmost matching button — some unrelated prior-run invite.
+# `below: text: ${OPP_NAME}` finds the first `btn_view_opportunity`
+# whose y-coordinate is below the OPP_NAME text — i.e. the button on
+# the same card as the title we want.
 - tapOn:
-    text: ${OPP_NAME}
+    id: "org.commcare.dalvik:id/btn_view_opportunity"
+    below:
+      text: ${OPP_NAME}
 - extendedWaitUntil:
     visible:
       id: "org.commcare.dalvik:id/btn_start"

@@ -189,11 +189,34 @@ When the list has cards:
 | Tap `action_bell` | Notifications panel | Separate surface; documented later. |
 | Tap "Navigate up" arrow | Back to `screen_first_start_main` | |
 
-### Open questions for this screen
+### Card-tap semantics — VERIFIED 2026-05-14
 
-- Is there a second section beyond "New Opportunities" (e.g., "Active Opportunities" with claimed opps)? The RecyclerView is `scrollable=true` so there may be more content below — needs scrolling test.
-- Does tapping the title-area of a card (not the button) navigate too? `rootCardView` itself isn't marked `clickable`, but Material card semantics often capture taps anywhere on the card body.
-- What does the progress-bar overlay look like during the network fetch? Does it become a structural signal we can wait on?
+Tapping the card TEXT (`tvTitle` or anywhere on the card body) **does NOT navigate**. The clickable elements per card are:
+
+- `id/btn_view_opportunity` — the only on-card element with `clickable=true`. Tapping this navigates to the opp detail screen (§ 3).
+- The card body (`rootCardView` FrameLayout, the title TextView, the date TextView, the icon) all have `clickable=false`. Tap events on these are no-ops at the Maestro level.
+
+**Recipe-authoring guidance:** to tap a SPECIFIC card by its title, use Maestro's `below` matcher to scope a `btn_view_opportunity` tap to the one whose y-coordinate is below the title text:
+
+```yaml
+- tapOn:
+    id: "org.commcare.dalvik:id/btn_view_opportunity"
+    below:
+      text: ${OPP_NAME}
+```
+
+Without scoping, an unscoped `tapOn { id: btn_view_opportunity }` taps the topmost button — usually the wrong opp when the user has multiple invites.
+
+### Scroll behavior — VERIFIED 2026-05-14
+
+Newest invite appears at the **BOTTOM** of `rvJobList`, not the top. The RecyclerView is `scrollable=true` and new invites are appended, not prepended. The ACE test user accumulates invites across runs (the `+74260000100` demo user is reused), so on a typical Phase 6 dispatch you'll see 5+ cards and the run-of-interest's tile is below the initial viewport.
+
+**Recipe-authoring guidance:** use `scrollUntilVisible(direction: DOWN, element: {text: ${OPP_NAME}}, timeout: 20000)` before any `assertVisible` / `tapOn` keyed on the target card's text.
+
+### Remaining open questions
+
+- Is there a second section beyond "New Opportunities" (e.g., "Active Opportunities" with claimed opps)? Adjacent `tv_section_header` in `rvJobList` could expose another section below — needs deeper scrolling test once the user has multiple claimed opps.
+- What does the `id/progressBar` overlay look like during the per-card network fetch (between `btn_view_opportunity` tap and the opp-detail screen)? Does it become a structural signal we can `extendedWaitUntil(visible)` on?
 
 ---
 
