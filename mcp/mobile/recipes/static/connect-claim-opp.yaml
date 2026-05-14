@@ -113,12 +113,23 @@ appId: org.commcare.dalvik
 - takeScreenshot: "claim-opp-detail"
 - tapOn:
     id: "org.commcare.dalvik:id/btn_start"
-# After Start, the detail screen transitions in-place: the "Start"
-# button disappears and the Learn modules section becomes the
-# interactive entry point. tv_learn_modules_list is the stable
-# post-acceptance signal.
+# After Start, Connect fires POST /users/start_learn_app/ and downloads
+# the Learn CCZ ("Downloading Learn App" progress, Step N of 14, atlas
+# §4). On a verified+invited demo user, the post-download transition
+# auto-launches the Learn app's StandardHomeActivity (atlas §5) — the
+# 4-tile home grid (Start / View Job Status / Sync with Server /
+# Log out of CommCare). The Connect-side modules-list teaser
+# (`tv_learn_modules_list`) is BYPASSED entirely on this path; it
+# only renders pre-claim (atlas §3). Earlier versions of this recipe
+# waited on `tv_learn_modules_list` here — verified against the live
+# AVD 2026-05-14, that selector never reappears post-claim.
+#
+# Anchor on the Learn-app home's ScrollView (`nsv_home_screen`) which
+# is the StandardHomeActivity-specific signal; `learn-launch.yaml` will
+# then take over by tapping the Start tile. 60s timeout accommodates the
+# 14-step CCZ download on slow connections.
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/tv_learn_modules_list"
-    timeout: 30000
-- takeScreenshot: "claim-opp-handoff"
+      id: "org.commcare.dalvik:id/nsv_home_screen"
+    timeout: 60000
+- takeScreenshot: "claim-opp-handoff-learn-home"
