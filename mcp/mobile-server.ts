@@ -29,6 +29,7 @@ import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { MobileClient } from './mobile/client.js';
+import { resolveSelectorsInYaml } from './mobile/recipe-resolver.js';
 import { logInfo, logError } from './mobile/logging.js';
 import { resolveBackend } from './mobile/backend-toggle.js';
 
@@ -226,57 +227,29 @@ server.tool(
     apkVersion: z.string().default('2.62.0').describe('Connect APK version. Maps to mcp/mobile/selectors/connect-<apkVersion>.yaml. Defaults to 2.62.0; bump when re-baselining against a new APK.'),
   },
   async ({ yaml, apkVersion }) => {
-    const pathMod = await import('node:path');
-    const here = pathMod.dirname(fileURLToPath(import.meta.url));
-    const selectorPath = pathMod.join(here, 'mobile', 'selectors', `connect-${apkVersion}.yaml`);
-    if (!fs.existsSync(selectorPath)) {
-      return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: `selector map not found: ${selectorPath}` }, null, 2) }], isError: true };
+    try {
+      const r = resolveSelectorsInYaml(yaml, apkVersion);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            ok: r.unresolved.length === 0,
+            yaml: r.yaml,
+            unresolved: r.unresolved,
+            unverified: r.unverified,
+            apk_version: r.apkVersion,
+            source_map: r.sourceMap,
+          }, null, 2),
+        }],
+        isError: r.unresolved.length > 0,
+      };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ ok: false, error: msg }, null, 2) }],
+        isError: true,
+      };
     }
-    const map = parseYaml(fs.readFileSync(selectorPath, 'utf8')) as {
-      apk_version: string;
-      selectors: Record<string, { type: 'id' | 'text' | 'point'; value: string; unverified?: boolean; purpose?: string }>;
-    };
-    if (!map.selectors) {
-      return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: `selector map at ${selectorPath} has no \`selectors\` block` }, null, 2) }], isError: true };
-    }
-
-    // Substitute every `${SELECTOR:logical-name}` with the matcher block
-    // appropriate to the entry's `type`. Composer is responsible for
-    // having the placeholder on its own indented line so the substitution
-    // produces valid YAML (e.g. inside an `extendedWaitUntil.visible:`
-    // block, the placeholder lives on the line right under the parent).
-    const unresolved: string[] = [];
-    const unverified: string[] = [];
-    const re = /\$\{SELECTOR:([a-z0-9-]+)\}/g;
-    const out = yaml.replace(re, (_match, name: string) => {
-      const entry = map.selectors[name];
-      if (!entry) {
-        unresolved.push(name);
-        return `# UNRESOLVED ${name}`;
-      }
-      if (entry.unverified) unverified.push(name);
-      switch (entry.type) {
-        case 'id':   return `id: "${entry.value}"`;
-        case 'text': return `text: "${entry.value}"`;
-        case 'point': return `point: "${entry.value}"`;
-        default: unresolved.push(name); return `# UNRESOLVED-TYPE ${name}`;
-      }
-    });
-
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          ok: unresolved.length === 0,
-          yaml: out,
-          unresolved,
-          unverified,
-          apk_version: map.apk_version,
-          source_map: selectorPath,
-        }, null, 2),
-      }],
-      isError: unresolved.length > 0,
-    };
   },
 );
 
