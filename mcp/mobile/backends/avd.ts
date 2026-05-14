@@ -537,6 +537,68 @@ export class AvdBackend {
     };
   }
 
+  /**
+   * Align the AVD's wall-clock to the host's wall-clock. Required after
+   * `loadSnapshot` because Android emulator snapshots preserve the device's
+   * wall-clock at capture time. If the snapshot was captured N hours ago,
+   * the device wakes up thinking it's N hours in the past; the locally-cached
+   * Connect Token's expiration check passes (`device_now < expiration`) so
+   * the client attaches the token to API requests — but Connect's backend
+   * runs on real time and rejects the request as authentication-missing.
+   * Symptom: jobs list comes up empty with toast "You are not authorized to
+   * make this request." Logcat shows
+   *   `Unauthorized: Response Code: 401 | error:
+   *   {"detail":"Authentication credentials were not provided."}
+   *   for url /api/opportunity/`
+   *
+   * Fix is unconditional: ALWAYS sync the clock after a snapshot load. Don't
+   * try to detect "is the skew big enough to matter" — every interactive
+   * Connect path needs the wall-clock to be approximately right.
+   *
+   * Requires root (`adb root` first). Most Android Studio emulator images
+   * are debuggable so this succeeds; on production-keys images it fails
+   * silently — the caller swallows the error and the operator sees the
+   * 401 instead.
+   *
+   * Returns `true` if the clock was set, `false` on any failure (caller
+   * logs but does not throw — clock skew is a degraded-mode condition,
+   * not a hard failure, and the underlying restore should still proceed).
+   *
+   * Verified live: 2026-05-14 — snapshot loaded ~10h45m after capture;
+   * pre-fix `connect_fragment_jobs_list` was empty + 401; post-fix the
+   * 4 expected opp tiles appeared on the very next `action_sync` tap.
+   * See `docs/mobile-atlas/connect-2.62.0.md § Prerequisites`.
+   */
+  async syncDeviceClockToHost(avdName: string): Promise<boolean> {
+    const avd = await this.ensureAvdRunning(avdName);
+    // `adb root` is needed to set the device wall-clock; the `shell` user
+    // can't `settimeofday(2)`. Idempotent — emits a "restarting adbd as
+    // root" line if not already root, no-ops otherwise.
+    const rootR = await this.shell('adb', ['-s', avd.serial, 'root']);
+    if (rootR.exitCode !== 0) {
+      return false;
+    }
+    // adb root restarts adbd; wait for it to be ready again before
+    // issuing the next command. wait-for-device blocks until the daemon
+    // is back up; bounded by a short timeout via wait-for-online subset.
+    await this.shell('adb', ['-s', avd.serial, 'wait-for-device']);
+    // Format the host's local time as `MMDDhhmmYYYY.ss` — the `date` shell
+    // built-in's accepted form on bionic. Use `date -u` would set UTC; we
+    // use local time so the on-device timezone display matches the host.
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const stamp =
+      pad(now.getMonth() + 1) +
+      pad(now.getDate()) +
+      pad(now.getHours()) +
+      pad(now.getMinutes()) +
+      now.getFullYear() +
+      '.' +
+      pad(now.getSeconds());
+    const setR = await this.shell('adb', ['-s', avd.serial, 'shell', `date ${stamp}`]);
+    return setR.exitCode === 0;
+  }
+
   private parseHierarchy(xml: string): UiDumpResult['elements'] {
     const out: UiDumpResult['elements'] = [];
     const nodeRe = /<node\s+([^>]*?)\/?>/g;
