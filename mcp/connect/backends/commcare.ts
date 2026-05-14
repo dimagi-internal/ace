@@ -1117,11 +1117,24 @@ export function applyAssessmentRemovalPatch(
   xml: string,
 ): { patched: boolean; xml: string; removedWrappers: string[] } {
   // Match a wrapper element that contains exactly one connect-namespaced
-  // inner element. Capture group 1 = leading newline+indent (drop blank
-  // lines), 2 = wrapper element name, 3 = inner element name (used for
-  // the closing-tag backref so we match well-formed XML).
+  // `<assessment>` inner element. Capture group 1 = leading newline+indent
+  // (drop blank lines), 2 = wrapper element name, 3 = literal "assessment"
+  // (used for the closing-tag backref so the match is well-formed XML).
+  //
+  // The inner-element capture is restricted to literal `assessment` since
+  // 0.13.206 — prior versions used `[A-Za-z_][\w\-.]*` which also matched
+  // `<learn:module>` wrappers and silently destroyed Learn-app module
+  // markers. The post-patch CCZ ended up with `connect_markers.module: 0`
+  // even when Nova emitted modules correctly, and Connect's `Sync
+  // Deliver Units` reported "No learning required" because the CCZ
+  // genuinely had no learn:module elements left.
+  //
+  // Diagnosed live on turmeric run 20260513-0616 Phase 6 retry — Learn
+  // build v14 (post-patch) had 13 forms patched and zero surviving
+  // module markers. See `applyAssessmentRemovalPatch over-stripped
+  // learn:module elements` regression test.
   const wrapperRe =
-    /(\n[ \t]*)?<([A-Za-z_][\w\-.]*)>\s*<([A-Za-z_][\w\-.]*)\b[^>]*xmlns="http:\/\/commcareconnect\.com\/[^"]*"[^>]*>[\s\S]*?<\/\3>\s*<\/\2>/g;
+    /(\n[ \t]*)?<([A-Za-z_][\w\-.]*)>\s*<(assessment)\b[^>]*xmlns="http:\/\/commcareconnect\.com\/[^"]*"[^>]*>[\s\S]*?<\/\3>\s*<\/\2>/g;
 
   const removed: string[] = [];
   let xml1 = xml.replace(wrapperRe, (_match, _lead, name) => {

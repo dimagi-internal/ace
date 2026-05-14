@@ -196,7 +196,18 @@ describe('applyAssessmentRemovalPatch', () => {
     expect(out).toEqual(xml);
   });
 
-  it('also strips <module> wrapper on learn forms (Nova learn-form shape)', () => {
+  it('PRESERVES <module> wrappers on learn forms (regression: 0.13.205 over-stripped them)', () => {
+    // Phase 6 of turmeric run 20260513-0616 hit "No learning required" in
+    // the Connect FLW home because the released Learn CCZ had
+    // `connect_markers.module: 0`. Root cause: the patcher's regex was
+    // matching ANY connect-namespaced inner element (including `<module>`)
+    // and stripping its enclosing wrapper. The skill's documented contract
+    // (`patch_class: assessment-removal`) targets ONLY `<assessment>`
+    // wrappers; `<module>` wrappers MUST survive so Connect's
+    // `Sync Deliver Units` can populate learn-module records.
+    //
+    // 0.13.206 fix: restrict the inner-element capture to literal
+    // `assessment`. This test pins the corrected scope.
     const xml = `
       <data>
         <module_1_intro>
@@ -210,13 +221,22 @@ describe('applyAssessmentRemovalPatch', () => {
       <bind nodeset="/data/module_1_intro"/>
     `;
     const { patched, xml: out, removedWrappers } = applyAssessmentRemovalPatch(xml);
-    expect(patched).toBe(true);
-    expect(removedWrappers).toEqual(['module_1_intro']);
-    expect(out).not.toContain('module_1_intro');
-    expect(out).not.toContain('commcareconnect');
+    expect(patched).toBe(false);
+    expect(removedWrappers).toEqual([]);
+    // <module> wrapper + its connect-namespaced inner survive.
+    expect(out).toContain('<module_1_intro>');
+    expect(out).toContain('xmlns="http://commcareconnect.com/data/v1/learn"');
+    expect(out).toContain('id="module_1_intro"');
+    // Bind survives too.
+    expect(out).toContain('<bind nodeset="/data/module_1_intro"/>');
   });
 
-  it('strips <deliver>/<task> wrappers on deliver forms', () => {
+  it('PRESERVES <deliver> wrappers (skill scope is Learn-only assessment removal)', () => {
+    // `commcare-form-patch` is explicitly scoped to Learn apps in
+    // `skills/commcare-form-patch/SKILL.md`. Even if a deliver form were
+    // accidentally passed through the patcher, the corrected
+    // assessment-only scope leaves it untouched (no Deliver-side
+    // `Cannot use Case Management UI` build error class).
     const xml = `
 <data>
   <visit_outcome>
@@ -228,9 +248,9 @@ describe('applyAssessmentRemovalPatch', () => {
 <bind nodeset="/data/visit_outcome"/>
 `;
     const { patched, xml: out, removedWrappers } = applyAssessmentRemovalPatch(xml);
-    expect(patched).toBe(true);
-    expect(removedWrappers).toEqual(['visit_outcome']);
-    expect(out).not.toContain('commcareconnect');
+    expect(patched).toBe(false);
+    expect(removedWrappers).toEqual([]);
+    expect(out).toContain('xmlns="http://commcareconnect.com/data/v1/deliver"');
   });
 });
 
