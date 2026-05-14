@@ -124,10 +124,22 @@ export class MaestroBackend {
   /**
    * Force-recover the Maestro driver app on an AVD. Idempotent.
    *
-   * Strategy is two-tier: cheap force-stop first, then full
-   * uninstall+reinstall if needed. The first `maestro hierarchy` after
-   * uninstall auto-reinstalls the driver (Maestro CLI bundles the APK and
-   * pushes it on first contact).
+   * Three-step strategy:
+   *
+   * 1. **Force-stop** the driver process. Often enough when the gRPC
+   *    server is wedged but the APK is fine.
+   * 2. **`adb uninstall`** both halves of the driver. Standard
+   *    uninstall path — works for most wedged-driver states.
+   * 3. **`pm uninstall -k --user 0`** both halves as a belt+braces
+   *    follow-up. Some wedged-instrumentation states leave records
+   *    that `adb uninstall` doesn't fully clear; the explicit user-0
+   *    scope removes them. Verified live on turmeric/20260513-2243
+   *    retry #2 — manual intervention with this command unstuck a
+   *    driver state that the prior two steps couldn't reach.
+   *
+   * The next `maestro hierarchy` call reinstalls the driver
+   * automatically (Maestro CLI bundles the APK and pushes it on
+   * first contact).
    *
    * Caller is expected to re-probe after this returns; this method does
    * not itself confirm health. Returns the list of recovery actions taken
@@ -135,17 +147,21 @@ export class MaestroBackend {
    */
   async repairDriver(serial: string): Promise<string[]> {
     const actions: string[] = [];
-    // Cheap: force-stop the driver process. Often enough when the gRPC
-    // server is wedged but the APK is fine.
     await this.shell('adb', ['-s', serial, 'shell', 'am', 'force-stop', 'dev.mobile.maestro']).catch(() => {});
     await this.shell('adb', ['-s', serial, 'shell', 'am', 'force-stop', 'dev.mobile.maestro.test']).catch(() => {});
     actions.push('force-stop');
 
-    // Expensive: uninstall both halves of the Maestro driver. The next
-    // `maestro hierarchy` call reinstalls them automatically.
     await this.shell('adb', ['-s', serial, 'uninstall', 'dev.mobile.maestro']).catch(() => {});
     await this.shell('adb', ['-s', serial, 'uninstall', 'dev.mobile.maestro.test']).catch(() => {});
     actions.push('uninstall');
+
+    // Belt+braces: pm uninstall -k --user 0 catches wedged
+    // instrumentation state that the standard `adb uninstall` above
+    // doesn't fully clear. Idempotent — succeeds when packages still
+    // present, succeeds when already removed.
+    await this.shell('adb', ['-s', serial, 'shell', 'pm', 'uninstall', '-k', '--user', '0', 'dev.mobile.maestro']).catch(() => {});
+    await this.shell('adb', ['-s', serial, 'shell', 'pm', 'uninstall', '-k', '--user', '0', 'dev.mobile.maestro.test']).catch(() => {});
+    actions.push('pm-uninstall-user-0');
 
     return actions;
   }
