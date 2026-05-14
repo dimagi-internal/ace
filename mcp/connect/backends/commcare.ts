@@ -1117,11 +1117,24 @@ export function applyAssessmentRemovalPatch(
   xml: string,
 ): { patched: boolean; xml: string; removedWrappers: string[] } {
   // Match a wrapper element that contains exactly one connect-namespaced
-  // inner element. Capture group 1 = leading newline+indent (drop blank
-  // lines), 2 = wrapper element name, 3 = inner element name (used for
-  // the closing-tag backref so we match well-formed XML).
+  // `<assessment>` inner element. Capture group 1 = leading newline+indent
+  // (drop blank lines), 2 = wrapper element name, 3 = literal "assessment"
+  // (used for the closing-tag backref so the match is well-formed XML).
+  //
+  // The inner-element capture is restricted to literal `assessment` since
+  // 0.13.206 — prior versions used `[A-Za-z_][\w\-.]*` which also matched
+  // `<learn:module>` wrappers and silently destroyed Learn-app module
+  // markers. The post-patch CCZ ended up with `connect_markers.module: 0`
+  // even when Nova emitted modules correctly, and Connect's `Sync
+  // Deliver Units` reported "No learning required" because the CCZ
+  // genuinely had no learn:module elements left.
+  //
+  // Diagnosed live on turmeric run 20260513-0616 Phase 6 retry — Learn
+  // build v14 (post-patch) had 13 forms patched and zero surviving
+  // module markers. See `applyAssessmentRemovalPatch over-stripped
+  // learn:module elements` regression test.
   const wrapperRe =
-    /(\n[ \t]*)?<([A-Za-z_][\w\-.]*)>\s*<([A-Za-z_][\w\-.]*)\b[^>]*xmlns="http:\/\/commcareconnect\.com\/[^"]*"[^>]*>[\s\S]*?<\/\3>\s*<\/\2>/g;
+    /(\n[ \t]*)?<([A-Za-z_][\w\-.]*)>\s*<(assessment)\b[^>]*xmlns="http:\/\/commcareconnect\.com\/[^"]*"[^>]*>[\s\S]*?<\/\3>\s*<\/\2>/g;
 
   const removed: string[] = [];
   let xml1 = xml.replace(wrapperRe, (_match, _lead, name) => {
@@ -1150,4 +1163,79 @@ export function applyAssessmentRemovalPatch(
   }
 
   return { patched: true, xml: xml1, removedWrappers: removed };
+}
+
+// ── Post-patch CCZ marker verification ────────────────────────────────
+//
+// Class-level preventer for the bug class that landed on turmeric run
+// 20260513-0616 Phase 6: `commcare-form-patch` reported success while
+// the post-patch CCZ had zero `<learn:module>` elements (the broken
+// pre-0.13.206 regex stripped module wrappers along with assessment
+// wrappers). Phase 2 marked `gates.commcare-setup: passed` and the
+// downstream symptom only surfaced two phases later as "No learning
+// required" in the Connect FLW home.
+//
+// The preventer: every caller of `applyAssessmentRemovalPatch` MUST
+// run this assertion AFTER re-building + re-releasing the CCZ. If a
+// marker the source declared went to zero in the post-patch CCZ,
+// throw with a precise class name — the operator (or future MCP
+// atom) rolls back to the prior build rather than shipping a build
+// missing markers Connect needs.
+
+export interface ConnectMarkerCounts {
+  deliver: number;
+  module: number;
+  task: number;
+  assessment: number;
+}
+
+export class PostPatchMarkerLossError extends Error {
+  constructor(
+    public readonly droppedToZero: Array<keyof ConnectMarkerCounts>,
+    public readonly pre: ConnectMarkerCounts,
+    public readonly post: ConnectMarkerCounts,
+  ) {
+    super(
+      `Post-patch CCZ is missing markers the source declared: ${droppedToZero.join(', ')}. ` +
+        `pre=${JSON.stringify(pre)} post=${JSON.stringify(post)}. ` +
+        `Roll back the released build and investigate the patcher (mcp/connect/backends/commcare.ts:applyAssessmentRemovalPatch).`,
+    );
+    this.name = 'PostPatchMarkerLossError';
+  }
+}
+
+/**
+ * Assert that the post-patch CCZ retained the markers Connect needs.
+ * Throws `PostPatchMarkerLossError` if any marker the source declared
+ * went to zero. Module markers MUST survive (the patcher's documented
+ * scope is assessment-only); assessment markers MAY decrease (that's
+ * the patcher's job) but should not go to zero if the source had any
+ * assessments. Deliver/task counts MUST be unchanged (the patcher
+ * doesn't touch Deliver-app forms).
+ *
+ * Callers (the `commcare-form-patch` skill orchestration today, a
+ * future `commcare_patch_xform` MCP atom tomorrow) MUST run this
+ * after re-build + re-release and before flipping the
+ * `commcare-form-patch.status: done` in run_state.yaml.
+ */
+export function assertPostPatchMarkersSurvive(
+  pre: ConnectMarkerCounts,
+  post: ConnectMarkerCounts,
+): void {
+  const droppedToZero: Array<keyof ConnectMarkerCounts> = [];
+  // Module markers: zero tolerance for drops. The patcher's scope is
+  // assessment-only; module wrappers MUST survive.
+  if (pre.module > 0 && post.module === 0) droppedToZero.push('module');
+  // Deliver / task: untouched by the Learn-only patch scope. Going to
+  // zero is a regression even if the source had any.
+  if (pre.deliver > 0 && post.deliver === 0) droppedToZero.push('deliver');
+  if (pre.task > 0 && post.task === 0) droppedToZero.push('task');
+  // Assessment: the patcher INTENDS to strip in-form wrapper instances
+  // but suite-level `<learn:assessment>` refs should survive. If the
+  // count goes to zero when the source had any, suite.xml refs are
+  // missing too — that's a regression worth halting.
+  if (pre.assessment > 0 && post.assessment === 0) droppedToZero.push('assessment');
+  if (droppedToZero.length > 0) {
+    throw new PostPatchMarkerLossError(droppedToZero, pre, post);
+  }
 }

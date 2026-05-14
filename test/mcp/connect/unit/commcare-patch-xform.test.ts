@@ -196,7 +196,18 @@ describe('applyAssessmentRemovalPatch', () => {
     expect(out).toEqual(xml);
   });
 
-  it('also strips <module> wrapper on learn forms (Nova learn-form shape)', () => {
+  it('PRESERVES <module> wrappers on learn forms (regression: 0.13.205 over-stripped them)', () => {
+    // Phase 6 of turmeric run 20260513-0616 hit "No learning required" in
+    // the Connect FLW home because the released Learn CCZ had
+    // `connect_markers.module: 0`. Root cause: the patcher's regex was
+    // matching ANY connect-namespaced inner element (including `<module>`)
+    // and stripping its enclosing wrapper. The skill's documented contract
+    // (`patch_class: assessment-removal`) targets ONLY `<assessment>`
+    // wrappers; `<module>` wrappers MUST survive so Connect's
+    // `Sync Deliver Units` can populate learn-module records.
+    //
+    // 0.13.206 fix: restrict the inner-element capture to literal
+    // `assessment`. This test pins the corrected scope.
     const xml = `
       <data>
         <module_1_intro>
@@ -210,13 +221,70 @@ describe('applyAssessmentRemovalPatch', () => {
       <bind nodeset="/data/module_1_intro"/>
     `;
     const { patched, xml: out, removedWrappers } = applyAssessmentRemovalPatch(xml);
-    expect(patched).toBe(true);
-    expect(removedWrappers).toEqual(['module_1_intro']);
-    expect(out).not.toContain('module_1_intro');
-    expect(out).not.toContain('commcareconnect');
+    expect(patched).toBe(false);
+    expect(removedWrappers).toEqual([]);
+    // <module> wrapper + its connect-namespaced inner survive.
+    expect(out).toContain('<module_1_intro>');
+    expect(out).toContain('xmlns="http://commcareconnect.com/data/v1/learn"');
+    expect(out).toContain('id="module_1_intro"');
+    // Bind survives too.
+    expect(out).toContain('<bind nodeset="/data/module_1_intro"/>');
   });
 
-  it('strips <deliver>/<task> wrappers on deliver forms', () => {
+  describe('assertPostPatchMarkersSurvive (class-level preventer)', () => {
+    it('throws when modules dropped to zero post-patch (the turmeric 20260513-0616 bug)', async () => {
+      const { assertPostPatchMarkersSurvive, PostPatchMarkerLossError } = await import(
+        '../../../../mcp/connect/backends/commcare.js'
+      );
+      const pre = { deliver: 0, module: 6, task: 0, assessment: 6 };
+      const post = { deliver: 0, module: 0, task: 0, assessment: 0 };
+      expect(() => assertPostPatchMarkersSurvive(pre, post)).toThrow(PostPatchMarkerLossError);
+      try {
+        assertPostPatchMarkersSurvive(pre, post);
+      } catch (e: any) {
+        expect(e.droppedToZero).toContain('module');
+        expect(e.droppedToZero).toContain('assessment');
+        expect(e.message).toMatch(/missing markers/);
+      }
+    });
+
+    it('passes when modules survive intact and only assessments decrease (the happy path)', async () => {
+      const { assertPostPatchMarkersSurvive } = await import(
+        '../../../../mcp/connect/backends/commcare.js'
+      );
+      // 6 modules before + after (unchanged); 6 assessments before, 3 after
+      // because suite-level <learn:assessment> refs survive even though
+      // in-form wrappers were stripped from 3 quiz forms.
+      const pre = { deliver: 0, module: 6, task: 0, assessment: 6 };
+      const post = { deliver: 0, module: 6, task: 0, assessment: 3 };
+      expect(() => assertPostPatchMarkersSurvive(pre, post)).not.toThrow();
+    });
+
+    it('throws when deliver markers regress (Learn-only scope means Deliver count untouched)', async () => {
+      const { assertPostPatchMarkersSurvive, PostPatchMarkerLossError } = await import(
+        '../../../../mcp/connect/backends/commcare.js'
+      );
+      const pre = { deliver: 1, module: 6, task: 0, assessment: 6 };
+      const post = { deliver: 0, module: 6, task: 0, assessment: 6 };
+      expect(() => assertPostPatchMarkersSurvive(pre, post)).toThrow(PostPatchMarkerLossError);
+    });
+
+    it('no-ops when source has no markers (running on a non-connect app)', async () => {
+      const { assertPostPatchMarkersSurvive } = await import(
+        '../../../../mcp/connect/backends/commcare.js'
+      );
+      const pre = { deliver: 0, module: 0, task: 0, assessment: 0 };
+      const post = { deliver: 0, module: 0, task: 0, assessment: 0 };
+      expect(() => assertPostPatchMarkersSurvive(pre, post)).not.toThrow();
+    });
+  });
+
+  it('PRESERVES <deliver> wrappers (skill scope is Learn-only assessment removal)', () => {
+    // `commcare-form-patch` is explicitly scoped to Learn apps in
+    // `skills/commcare-form-patch/SKILL.md`. Even if a deliver form were
+    // accidentally passed through the patcher, the corrected
+    // assessment-only scope leaves it untouched (no Deliver-side
+    // `Cannot use Case Management UI` build error class).
     const xml = `
 <data>
   <visit_outcome>
@@ -228,9 +296,9 @@ describe('applyAssessmentRemovalPatch', () => {
 <bind nodeset="/data/visit_outcome"/>
 `;
     const { patched, xml: out, removedWrappers } = applyAssessmentRemovalPatch(xml);
-    expect(patched).toBe(true);
-    expect(removedWrappers).toEqual(['visit_outcome']);
-    expect(out).not.toContain('commcareconnect');
+    expect(patched).toBe(false);
+    expect(removedWrappers).toEqual([]);
+    expect(out).toContain('xmlns="http://commcareconnect.com/data/v1/deliver"');
   });
 });
 
