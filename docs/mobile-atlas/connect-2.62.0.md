@@ -363,19 +363,16 @@ CommCare's menu activity — same surface used for the suite root AND for in-sui
 | Row icon | `id/row_img` ImageView | Folder-style icon at left for suite entries; pencil-style for forms. |
 | Row text | `id/row_txt` TextView | The module/form name (e.g. `"1. Why we are doing this"`, `"Final assessment"`). |
 
-### Surface variants
+### Surface variants — VERIFIED 2026-05-14 retry #4 (2 menu levels)
 
-**6a. Suite root** — one row per module in the app:
+After tapping the Start tile on StandardHomeActivity (§5), you land on the **module list** (6a). Tapping a module row drills into the **form list for that module** (6b). Tapping a form row launches FormEntryActivity (§7). Total: 2 MenuActivity surfaces between StandardHomeActivity and FormEntryActivity.
 
-For the turmeric Learn app, this is a single row:
-- `row_txt` = `"Turmeric Market Survey — Learn"` (matches the menu_root id in the CCZ suite.xml).
+Earlier (incorrect) versions of this atlas misread 6a as a "form list" — leading recipes to chain ONE `learn-tap-module` and then tap `nav_btn_next` directly. The retry #4 walk drilled into the actual sub-menu and corrected the labeling.
 
-Drilling in pushes another `MenuActivity` — the form list (6b).
+**6a. Module list** — first `MenuActivity` after the StandardHomeActivity Start tap. One row per module in the Learn app.
 
-**6b. Form list** — one row per form/quiz inside the module:
-
-For the turmeric Learn app the form list (observed live) is:
-1. `"1. Why we are doing this"`
+For the turmeric Learn app the module list is (live observation 2026-05-14):
+1. `"1. Survey Background & Adulteration Basics"`
 2. `"2. The MTN card"`
 3. `"3. Photo standardization"`
 4. `"4. Color & shininess scales"`
@@ -383,18 +380,40 @@ For the turmeric Learn app the form list (observed live) is:
 6. `"6. Safety protocol"`
 7. `"7. Vendor education script"`
 8. `"8. Form walkthrough"`
-9. `"Final assessment"` — the gating quiz; must be passed to transition to Deliver.
+9. `"Final assessment"`
 
-Form names match the form display labels from the Nova-built Learn app. Always pin recipes to `row_txt` text (substring or exact), never row index — adding a new form (e.g. a future "9. Refresher") shifts indices but keeps text stable.
+Atomic-visit Learn apps from other opps may have a single "suite-root row" (e.g. `"<Opp> — Learn"`) at this level instead — a one-module app collapses. Always pin recipes to row text content, not row count or index.
+
+**6b. Form list** — second `MenuActivity`, reached by tapping a module row. One row per form inside the module.
+
+For module 1 ("Survey Background & Adulteration Basics") the form list is:
+1. `"Background & Adulteration Basics"` — the lesson form.
+2. `"Module 1 Quiz"` — the comprehension-check form.
+
+Each module typically has 1-2 forms: a lesson + an optional quiz. The "Final assessment" module typically has a single form (the gating quiz).
+
+Drilling into any form-list row launches `FormEntryActivity` for that form (§7).
 
 ### Transitions
 
 | Trigger | Destination |
 |---|---|
-| Tap any row in 6a (suite root) | 6b (form list inside that module) |
-| Tap a non-assessment row in 6b | `FormEntryActivity` for that form (§ 7) |
-| Tap "Final assessment" in 6b | `FormEntryActivity` for the assessment form — same activity, but the form internally branches on quiz answers (TBD: structural distinction from a regular form) |
-| Tap Navigate up arrow | One step back in the menu stack (form list → suite root → StandardHomeActivity) |
+| Tap module-list row (6a) | Form list for that module (6b) |
+| Tap form-list row (6b) | `FormEntryActivity` for that form (§7) |
+| Tap Navigate up arrow | One step back in the menu stack (form list → module list → StandardHomeActivity) |
+
+### Recipe-authoring implication — chain TWO `learn-tap-module` calls
+
+A recipe driving to a specific form needs:
+
+1. `learn-launch.yaml` → lands on module list (6a).
+2. `learn-tap-module.yaml` with `MODULE_NAME` = module name (e.g. `"1. Survey Background & Adulteration Basics"`). Drills 6a → 6b.
+3. `learn-tap-module.yaml` with `MODULE_NAME` = form name (e.g. `"Background & Adulteration Basics"` or `"Module 1 Quiz"`). Drills 6b → FormEntryActivity.
+4. Form-entry steps (`form-advance.yaml`, etc.) operate on the now-loaded FormEntryActivity.
+
+Net: **two** `learn-tap-module` invocations between `learn-launch` and FormEntryActivity. The historical pattern of one invocation lands the recipe on a menu list, not a form — subsequent `nav_btn_next` taps then find no button.
+
+The `learn-tap-module.yaml` recipe is structurally generic (taps any `screen_suite_menu_list` row by text-match); the recipe COMPOSER (the `app-test-cases` skill) decides how many invocations to chain based on the app's depth.
 
 ---
 
