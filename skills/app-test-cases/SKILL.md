@@ -28,6 +28,7 @@ Phase 6 needs them.
 | Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` and `pdd-to-deliver-app_summary.md` | nova_app_id per app |
 | Nova MCP | `get_app({app_id: <nova_app_id>})` | authoritative form/field IDs to resolve into real Maestro selectors |
 | Static | `mcp/mobile/recipes/static/` | recipe palette / templates |
+| **Atlas** | `docs/mobile-atlas/connect-2.62.0.md` | **ground-truth navigation map for every Connect-side surface.** Use it as the authoritative reference for screen IDs, transitions, and selector behavior — DO NOT improvise selectors that contradict the atlas. |
 
 ## Products
 
@@ -157,9 +158,19 @@ appId: org.commcare.dalvik
 
 The static palette lives at `mcp/mobile/recipes/static/`:
 - `connect-login.yaml` — splash → nav drawer → Sign In → Opportunities home
-- `connect-claim-opp.yaml` — opp-list → tap opp → Start → handoff
-- `learn-launch.yaml` — opp detail → Start Learning → Learn home
-- `form-advance.yaml` / `form-submit.yaml` — per-form helpers
+- `connect-claim-opp.yaml` — opp-list → tap opp's View Opportunity button (scoped by `below: text`) → Start → handoff
+- `learn-launch.yaml` — post-claim StandardHomeActivity (Start tile) → MenuActivity suite root
+- `learn-tap-module.yaml` — MenuActivity row tap (generic — handles both suite-root rows and form-list rows)
+- `form-advance.yaml` — `nav_btn_next` ImageButton tap (NOT text-match "Next" — see atlas §7)
+- `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`
+
+**Use the atlas (`docs/mobile-atlas/connect-2.62.0.md`) to verify each
+transition you author.** Each section of the atlas documents one
+screen with its stable resource-ids, the transitions out of it, and
+side-effects (system prompts, network calls, screen replacements). If
+a recipe needs a transition the atlas doesn't document, that's a gap
+in the atlas — flag it in the recipe header comment AND in the atlas's
+"Open questions" list for the next walk.
 
 Each `is_smoke=true` journey's recipe **must** include the Connect-
 login + opp-claim prefix so it can run from a cold boot (the cloud
