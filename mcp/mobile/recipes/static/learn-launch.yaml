@@ -1,31 +1,27 @@
-# Drive a claimed opportunity from the post-claim handoff state into the
-# Learn-app home (module list visible).
+# Drive a claimed opportunity from the post-claim handoff state through
+# the StandardHomeActivity Start tile into the Learn-app's MenuActivity
+# suite root.
 #
-# Pre-state assumed: `connect-claim-opp.yaml` has just completed and the
-# user is on the opp-detail screen with the "Start" / "Start Learning"
-# button visible.
+# Pre-state: post-`btn_start` transition completed; device is on
+# StandardHomeActivity (the CommCare app home with 4 tiles: Start, View
+# Job Status, Sync with Server, Log out of CommCare). The recipe author
+# enters this state when `connect-claim-opp.yaml` has finished, fired
+# `btn_start`, and the Learn CCZ download completed (`Downloading
+# Learn App` progress screen auto-advanced).
 #
-# Post-state: Learn-app module-list home (the `opp-learn-modules-list`
-# RecyclerView is the stable anchor).
+# Post-state: MenuActivity showing the Learn-app's suite root (1+ rows
+# in `screen_suite_menu_list`, each a tappable LinearLayout containing
+# `row_img` + `row_txt`).
 #
-# Selectors are referenced by logical name; resolve against
-# `mcp/mobile/selectors/connect-<APK_VERSION>.yaml` via
-# `mobile_resolve_selectors` before passing to `mobile_run_recipe`.
-#
-# Marked `unverified: true` selectors in the map will need calibration
-# against a live AVD running the target Connect APK before this recipe
-# runs cleanly. Run `connect-baseline-screenshots` skill to surface
-# selector drift on APK update.
+# Atlas reference: docs/mobile-atlas/connect-2.62.0.md §§ 5-6.
 appId: org.commcare.dalvik
 ---
+# StandardHomeActivity gives us 4 tiles. We want the green Start tile.
 - extendedWaitUntil:
     visible:
-      ${SELECTOR:opp-detail-start-learning}
-    timeout: 15000
-- takeScreenshot: "learn-launch-opp-detail"
-
-- tapOn:
-    ${SELECTOR:opp-detail-start-learning}
+      ${SELECTOR:learn-home-start-tile}
+    timeout: 30000
+- takeScreenshot: "learn-launch-home-tiles"
 
 # Detect the "Failed to start learning" failure mode early. Connect
 # surfaces this banner within ~2 seconds when its CCHQ Learn-app fetch
@@ -38,8 +34,18 @@ appId: org.commcare.dalvik
 - assertNotVisible:
     text: "Failed to start learning"
 
+# Tap the Start tile. Maestro walks up the hierarchy from the
+# `card_text` TextView to the clickable `card` RelativeLayout
+# (the TextView itself is not clickable; only the parent card is).
+- tapOn:
+    ${SELECTOR:learn-home-start-tile}
+
+# Landing surface: MenuActivity (suite root). Anchor is a single row
+# containing the app's display name (e.g. "Turmeric Market Survey — Learn").
+# The exact text varies per opp; using the structural anchor (the
+# ListView itself) keeps the recipe opp-agnostic.
 - extendedWaitUntil:
     visible:
-      ${SELECTOR:opp-learn-modules-list}
-    timeout: 30000
-- takeScreenshot: "learn-launch-modules-home"
+      id: "org.commcare.dalvik:id/screen_suite_menu_list"
+    timeout: 15000
+- takeScreenshot: "learn-launch-suite-root"

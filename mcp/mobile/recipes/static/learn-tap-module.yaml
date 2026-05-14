@@ -1,28 +1,45 @@
-# Tap a specific module on the Learn-app module list, advancing to its
-# first form.
+# Tap a specific module or form on the Learn-app's MenuActivity surface,
+# advancing one level deeper into the suite tree.
 #
-# Pre-state: Learn-app module-list home (output of `learn-launch.yaml`).
-# Post-state: first form of the chosen module is loaded; the form's first
-# question is the focused element.
+# Pre-state: MenuActivity showing `screen_suite_menu_list` (either the
+# suite root from learn-launch.yaml, OR a drilled-in form list inside
+# a module). Atlas §6.
+#
+# Post-state: depends on what was tapped:
+#   - Tapping a suite-root row → drills into a form-list MenuActivity.
+#   - Tapping a form row in a form list → launches FormEntryActivity for
+#     that form (atlas §7).
 #
 # Parameters:
-#   ${MODULE_NAME} — the visible label of the module to tap (e.g.,
-#                    "Photo standardization", "Final assessment"). Composer
-#                    substitutes when generating per-module recipes; the
-#                    selector map's `learn-module-card` entry is itself a
-#                    text-anchor matcher that uses ${MODULE_NAME}, so no
-#                    second substitution is needed.
+#   ${MODULE_NAME} — the visible label of the row to tap (e.g.,
+#                    "Photo standardization", "Final assessment", or the
+#                    app's name for the suite-root row). The
+#                    `learn-suite-row-by-name` selector is itself a
+#                    text-anchor matcher that uses ${MODULE_NAME}, so
+#                    Maestro walks up from the matched TextView to the
+#                    clickable LinearLayout parent (the row container).
+#
+# Naming note: the recipe is called `learn-tap-module` for historical
+# reasons (the original recipe assumed a flat module list). With the
+# atlas-corrected suite-tree understanding, the same recipe drills any
+# level of the tree — module OR form — by row text. The "module"
+# wording in this name is retained to avoid churning all callers; the
+# recipe itself is structurally generic.
 appId: org.commcare.dalvik
 ---
 - extendedWaitUntil:
     visible:
-      ${SELECTOR:opp-learn-modules-list}
+      id: "org.commcare.dalvik:id/screen_suite_menu_list"
     timeout: 10000
-- takeScreenshot: "learn-tap-module-list-${MODULE_NAME}"
+- takeScreenshot: "learn-tap-module-before-${MODULE_NAME}"
 
+# Maestro walks up from the matched `row_txt` TextView (not clickable)
+# to the row's parent LinearLayout (which IS clickable). No need for
+# `below:` scoping — rows in this ListView don't overlap horizontally,
+# so a text match disambiguates the row uniquely.
 - tapOn:
-    ${SELECTOR:learn-module-card}
+    ${SELECTOR:learn-suite-row-by-name}
 
 - waitForAnimationToEnd:
     timeout: 5000
-- takeScreenshot: "learn-module-${MODULE_NAME}-first-form"
+- takeScreenshot: "learn-tap-module-after-${MODULE_NAME}"

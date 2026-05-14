@@ -1,19 +1,50 @@
-# Tap the Submit button at the end of a Deliver form + verify the
-# submission landed.
+# Submit a form at its final question.
 #
-# Pre-state: last form-question screen with the Submit button visible.
-# Post-state: post-submit confirmation surface.
+# UNVERIFIED — atlas walk hasn't passed the Final Assessment yet, so we
+# don't know if Deliver forms have an explicit Submit button or
+# auto-finalize via `nav_btn_next` (as Learn-app forms do — atlas §7).
+#
+# This recipe branches:
+#   - If a Submit button is visible, tap it (form-submit selector).
+#   - Otherwise, tap nav_btn_next — the auto-finalize path that Learn
+#     forms use.
+#
+# Post-state: depends on the form. Learn forms return to
+# StandardHomeActivity with a "1 form sent to server!" toast +
+# `card_subtext` update. Deliver forms (TBD) likely have an explicit
+# confirmation surface.
 #
 # Parameters:
 #   ${SCREENSHOT_NAME_PRE_SUBMIT} — screenshot before tapping Submit
 #                                   (e.g. "deliver-final-review")
 #   ${SCREENSHOT_NAME_POST_SUBMIT} — screenshot after submit confirmation
 #                                    (e.g. "deliver-submitted-confirmation")
+#
+# When the atlas walks Deliver, this recipe should be replaced with a
+# concrete branch (either keep the auto-finalize path or use a real
+# Submit selector with known label).
 appId: org.commcare.dalvik
 ---
 - takeScreenshot: "${SCREENSHOT_NAME_PRE_SUBMIT}"
-- tapOn:
-    ${SELECTOR:form-submit}
+
+# Try the explicit Submit button first (covers Deliver-style flows if
+# they exist). If not visible, fall through to nav_btn_next
+# (Learn-style auto-finalize).
+- runFlow:
+    when:
+      visible:
+        ${SELECTOR:form-submit}
+    commands:
+      - tapOn:
+          ${SELECTOR:form-submit}
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:form-submit}
+    commands:
+      - tapOn:
+          ${SELECTOR:form-nav-next}
+
 - waitForAnimationToEnd:
     timeout: 8000
 - takeScreenshot: "${SCREENSHOT_NAME_POST_SUBMIT}"
