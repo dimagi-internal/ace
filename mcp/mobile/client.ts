@@ -12,6 +12,7 @@ import {
 import { MaestroBackend } from './backends/maestro.js';
 import { DeviceUserStateError, MaestroDriverError, MobileError } from './errors.js';
 import { RecipeGenerator, type LlmFn } from './backends/recipe-generator.js';
+import { prepareRecipeForMaestro, injectAceEnvVars } from './recipe-resolver.js';
 import { resolveBackend } from './backend-toggle.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
@@ -774,11 +775,41 @@ export class MobileClient {
     screenshotDir: string,
     avdName?: string,
   ): Promise<RecipeRunResult> {
+    // Auto-inject ACE_E2E_* env vars from process.env (PIN, PHONE,
+    // BACKUP_CODE, etc.) — caller-provided values win on conflict.
+    // See `mcp/mobile/recipe-resolver.ts § injectAceEnvVars` for the
+    // mapping. Closes harness-gap-1 from turmeric retry #5.
+    const enrichedEnv = injectAceEnvVars(env);
+
     if (this.useCloud) {
-      return this.requireCloud().runRecipe(recipePath, env, screenshotDir, { state: avdName });
+      // Cloud backend's recipe pipeline runs server-side; it already
+      // does its own selector resolution + env-var injection. We only
+      // forward the auto-injected envVars here so the local + cloud
+      // contracts are identical from the caller's perspective.
+      return this.requireCloud().runRecipe(recipePath, enrichedEnv, screenshotDir, {
+        state: avdName,
+      });
     }
+
+    // Resolve `${SELECTOR:...}` placeholders in the top-level recipe AND
+    // every file in the static palette before invoking Maestro. The
+    // resolved files are written to a temp dir; Maestro's relative-path
+    // `runFlow: file:` refs naturally resolve to the temp-dir siblings.
+    // Closes harness-gap-2 from turmeric retry #5. The selector map's
+    // APK version is hard-coded to 2.62.0 for now — when ACE moves to
+    // a newer Connect APK, this becomes a `process.env.ACE_CONNECT_APK_VERSION`
+    // lookup.
+    const prep = await prepareRecipeForMaestro(recipePath, '2.62.0');
+    if (prep.unverifiedSelectorsInTop.length > 0) {
+      logInfo(
+        `runRecipe: ${recipePath} uses unverified selectors ` +
+          `${JSON.stringify(prep.unverifiedSelectorsInTop)} — proceeding, but ` +
+          `recipe may halt at the first unverified-selector tap.`,
+      );
+    }
+
     const adbPort = avdName ? await this.resolveAdbPort(avdName) : undefined;
-    return this.maestro.runRecipe(recipePath, env, screenshotDir, { adbPort });
+    return this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, screenshotDir, { adbPort });
   }
 
   private async resolveAdbPort(avdName: string): Promise<number | undefined> {

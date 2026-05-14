@@ -120,7 +120,7 @@ describe('MaestroBackend.probeDriver', () => {
 });
 
 describe('MaestroBackend.repairDriver', () => {
-  it('issues force-stop then uninstall for both halves of the driver', async () => {
+  it('issues force-stop, adb uninstall, AND pm uninstall -k --user 0 for both halves', async () => {
     const calls: string[] = [];
     const shell = vi.fn(async (cmd: string, args: string[]) => {
       calls.push(`${cmd} ${args.join(' ')}`);
@@ -128,12 +128,14 @@ describe('MaestroBackend.repairDriver', () => {
     });
     const backend = new MaestroBackend({ shell });
     const actions = await backend.repairDriver('emulator-5554');
-    expect(actions).toEqual(['force-stop', 'uninstall']);
+    expect(actions).toEqual(['force-stop', 'uninstall', 'pm-uninstall-user-0']);
     expect(calls).toEqual([
       'adb -s emulator-5554 shell am force-stop dev.mobile.maestro',
       'adb -s emulator-5554 shell am force-stop dev.mobile.maestro.test',
       'adb -s emulator-5554 uninstall dev.mobile.maestro',
       'adb -s emulator-5554 uninstall dev.mobile.maestro.test',
+      'adb -s emulator-5554 shell pm uninstall -k --user 0 dev.mobile.maestro',
+      'adb -s emulator-5554 shell pm uninstall -k --user 0 dev.mobile.maestro.test',
     ]);
   });
 
@@ -144,6 +146,10 @@ describe('MaestroBackend.repairDriver', () => {
       throw new Error('Unknown package: dev.mobile.maestro');
     });
     const backend = new MaestroBackend({ shell });
-    await expect(backend.repairDriver('emulator-5554')).resolves.toEqual(['force-stop', 'uninstall']);
+    await expect(backend.repairDriver('emulator-5554')).resolves.toEqual([
+      'force-stop',
+      'uninstall',
+      'pm-uninstall-user-0',
+    ]);
   });
 });
