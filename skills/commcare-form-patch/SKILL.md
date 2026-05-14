@@ -221,6 +221,37 @@ quiz forms in scope for nova-plugin#5).
 
    If any assertion fails, halt — the patch did not stick.
 
+7b. **MANDATORY: post-patch CCZ marker assertion.** Before declaring
+    the skill done, call `assertPostPatchMarkersSurvive(pre, post)`
+    from `mcp/connect/backends/commcare.ts` against the pre-patch
+    and post-patch `computeConnectMarkers()` counts. The assertion
+    throws `PostPatchMarkerLossError` if any marker the source CCZ
+    declared went to zero in the post-patch CCZ:
+
+    - `module: 0 post-patch when pre > 0` → **HALT**. The patcher's
+      scope is assessment-only; module wrappers MUST survive.
+    - `deliver: 0 post-patch when pre > 0` → HALT. Deliver-app forms
+      should be untouched (Learn-only scope).
+    - `task: 0 post-patch when pre > 0` → HALT.
+    - `assessment: 0 post-patch when pre > 0` → HALT. The patcher
+      strips in-form `<assessment xmlns="...connect">` wrappers but
+      suite-level `<learn:assessment>` refs MUST survive.
+
+    On halt: surface a typed error pointing at the over-aggressive
+    patcher implementation. The released build at `new_build_id` is
+    broken; the operator should re-release the prior known-good
+    `build_id` (or run the patcher with a corrected scope) before
+    flipping `phases.commcare-setup.gates: passed`.
+
+    **Why this step is mandatory and not just diagnostic.** The
+    skill's "verified_in_release: true" flag means "the patch
+    transformation succeeded and a new build was released" — NOT
+    "the new build has the markers Connect needs." Pre-0.13.207
+    skill SKILL.md treated those as the same; turmeric run
+    20260513-0616 Phase 6 surfaced "No learning required" because
+    `assertPostPatchMarkersSurvive` wasn't enforced. This step
+    structurally prevents the recurrence.
+
 8. **Write `ACE/<opp-name>/commcare-patches/patch-report-<YYYY-MM-DD>.md`.**
    Frontmatter + summary table:
    ```yaml

@@ -350,3 +350,46 @@ top-level orchestrator session inline (see § Agent Topology), so the
 orchestrator owns this write. Required top-level keys on the patch:
 `phases`, `last_actor`, `last_actor_at`. (0.13.116: legacy `gates.app-deploy`
 flip dropped — derived from phases.commcare-setup.status + per-skill verdicts.)
+
+#### Verdict-gate rule for `-eval` skills (since 0.13.207)
+
+The skills frontmatter declares which producers have a paired `-eval`
+skill (`has_judge: true` rows). Three of those — `pdd-to-learn-app-eval`,
+`pdd-to-deliver-app-eval`, `app-release-eval` — historically ran
+`status: deferred` in `/ace:run`, meaning the gate flipped to
+`passed` while the LLM-as-Judge content quality had not been graded.
+
+That pattern bit Phase 2 on turmeric run 20260513-0616 — the
+commcare-form-patch over-stripping bug shipped to a "gates.commcare-setup:
+passed" phase because nothing in the inline run looked at the released
+CCZ's structural state. The eval verdicts are not the right tool for
+catching CCZ-marker drops (that's the structural assertion the patcher
+skill now mandates per its Step 7b), but the more general principle
+holds:
+
+**Do NOT flip `gates.commcare-setup: passed` when any `has_judge: true`
+skill has `steps.<skill>-eval.status: deferred`.** Either:
+
+- **Run the eval inline** (preferred — write the verdict to
+  `<phase>/<skill>-eval_verdict.yaml` and gate the phase on its
+  verdict). The orchestrator's Per-Step Eval Hook is supposed to do
+  this automatically; if it didn't, the phase write-back's `status`
+  should be `partial` (not `complete`), `verdict` should be
+  `passed-with-deferred-evals` (not `pass`), and `gates.commcare-setup`
+  should be `partial` (not `passed`).
+- **OR explicitly opt out** via a top-level `--no-evals` flag on
+  `/ace:run` (operator-asserted decision), in which case the phase
+  status reflects the opt-out (`partial-evals-skipped` /
+  `gates.commcare-setup: partial`).
+
+The legacy `status: deferred + rationale: backfill via /ace:eval --all`
+shape is still useful for opp-level retroactive grading, but it MUST
+NOT coexist with `gates.commcare-setup: passed` in the same write-back.
+Catch this in the Phase Write-Back Verifier — if any step in the
+phase has `status: deferred` on a `has_judge: true` producer, downgrade
+the gate to `partial` before writing.
+
+This rule applies to every phase agent, not just `commcare-setup`. The
+canonical implementation is the Phase Write-Back Verifier procedure in
+`agents/orchestrator-reference.md`; this file documents the contract
+for the procedure-doc form of the agent (Phase 2 / Phase 3).

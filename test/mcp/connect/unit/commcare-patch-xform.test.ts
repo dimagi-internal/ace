@@ -231,6 +231,54 @@ describe('applyAssessmentRemovalPatch', () => {
     expect(out).toContain('<bind nodeset="/data/module_1_intro"/>');
   });
 
+  describe('assertPostPatchMarkersSurvive (class-level preventer)', () => {
+    it('throws when modules dropped to zero post-patch (the turmeric 20260513-0616 bug)', async () => {
+      const { assertPostPatchMarkersSurvive, PostPatchMarkerLossError } = await import(
+        '../../../../mcp/connect/backends/commcare.js'
+      );
+      const pre = { deliver: 0, module: 6, task: 0, assessment: 6 };
+      const post = { deliver: 0, module: 0, task: 0, assessment: 0 };
+      expect(() => assertPostPatchMarkersSurvive(pre, post)).toThrow(PostPatchMarkerLossError);
+      try {
+        assertPostPatchMarkersSurvive(pre, post);
+      } catch (e: any) {
+        expect(e.droppedToZero).toContain('module');
+        expect(e.droppedToZero).toContain('assessment');
+        expect(e.message).toMatch(/missing markers/);
+      }
+    });
+
+    it('passes when modules survive intact and only assessments decrease (the happy path)', async () => {
+      const { assertPostPatchMarkersSurvive } = await import(
+        '../../../../mcp/connect/backends/commcare.js'
+      );
+      // 6 modules before + after (unchanged); 6 assessments before, 3 after
+      // because suite-level <learn:assessment> refs survive even though
+      // in-form wrappers were stripped from 3 quiz forms.
+      const pre = { deliver: 0, module: 6, task: 0, assessment: 6 };
+      const post = { deliver: 0, module: 6, task: 0, assessment: 3 };
+      expect(() => assertPostPatchMarkersSurvive(pre, post)).not.toThrow();
+    });
+
+    it('throws when deliver markers regress (Learn-only scope means Deliver count untouched)', async () => {
+      const { assertPostPatchMarkersSurvive, PostPatchMarkerLossError } = await import(
+        '../../../../mcp/connect/backends/commcare.js'
+      );
+      const pre = { deliver: 1, module: 6, task: 0, assessment: 6 };
+      const post = { deliver: 0, module: 6, task: 0, assessment: 6 };
+      expect(() => assertPostPatchMarkersSurvive(pre, post)).toThrow(PostPatchMarkerLossError);
+    });
+
+    it('no-ops when source has no markers (running on a non-connect app)', async () => {
+      const { assertPostPatchMarkersSurvive } = await import(
+        '../../../../mcp/connect/backends/commcare.js'
+      );
+      const pre = { deliver: 0, module: 0, task: 0, assessment: 0 };
+      const post = { deliver: 0, module: 0, task: 0, assessment: 0 };
+      expect(() => assertPostPatchMarkersSurvive(pre, post)).not.toThrow();
+    });
+  });
+
   it('PRESERVES <deliver> wrappers (skill scope is Learn-only assessment removal)', () => {
     // `commcare-form-patch` is explicitly scoped to Learn apps in
     // `skills/commcare-form-patch/SKILL.md`. Even if a deliver form were
