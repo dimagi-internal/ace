@@ -57,8 +57,11 @@ This is unconditional — never depend on the snapshot's frozen clock being "clo
 | `StandardHomeActivity` (CommCare app home, Connect-mode) — 4 tiles (Start / Job Status / Sync / Logout) | [§ 5](#5-standardhomeactivity-commcare-app-home) |
 | `MenuActivity` — suite root + form list (`screen_suite_menu_list`) | [§ 6](#6-menuactivity-suite--form-list) |
 | `FormEntryActivity` — question rendering, `nav_btn_prev`/`nav_btn_next`, required-validation banner | [§ 7](#7-formentryactivity) |
-| Opportunity detail (post-claim) — TBD (gated on Learn completion) | TBD |
-| Deliver units list — TBD (gated on Final Assessment pass) | TBD |
+| Opportunity detail (post-Learn-complete) — certificate view, `View Opportunity Details` CTA | [§ 8](#8-opportunity-detail-post-learn-complete--certificate) |
+| Download Delivery gate — single-screen handoff between Learn completion and Deliver download | [§ 9](#9-download-delivery-gate) |
+| `StandardHomeActivity` — Deliver mode — same 4-tile grid, title suffix `— Deli…`, Sync subtext `Daily Visits N/M` | [§ 10](#10-standardhomeactivity-deliver-mode) |
+| `MenuActivity` — Deliver-side — `Vendor Visits` module tile | [§ 11](#11-menuactivity-deliver-side) |
+| Vendor Visit form — composite widgets (text + GPS + photo), binary-radio gates (Safety exit / Consent), validation banner | [§ 12](#12-vendor-visit-form-walk) |
 | Form submission confirmation / auto-finalize behavior | [§ 7 note](#7-formentryactivity) |
 
 ---
@@ -485,18 +488,221 @@ Tapping `nav_btn_next` on the LAST question of a form (after all required questi
 
 ---
 
+## 8. Opportunity detail (post-Learn-complete) — certificate
+
+VERIFIED 2026-05-14 (delivery-walk session).
+
+The opp-detail surface reached by tapping `Resume` on a 50%-progress In-Progress card after the Learn-side Final Assessment has been passed and synced. **Replaces** the pre-claim opp detail surface documented in § 3 once Learn is complete — the same nav path now lands on a "certificate" screen instead of the start/claim CTA.
+
+**Activity:** Connect-side opp-detail screen (TBD — needs UI dump capture in a follow-up walk; this screen was navigated by coordinate-taps captured from screenshots).
+
+### Visible content
+
+- Title bar with the opp's display name (e.g. "Turmeric").
+- Body: a certificate-style block.
+  - Heading: "Congratulations, ACE Test!" (or the registered user's name).
+  - Body text: "You have successfully completed the Learn modules for **Turmeric**."
+  - Metadata line: `Completed on: <DD MMM, YYYY>` (e.g. `14 May, 2026`).
+- Footer CTA button: `VIEW OPPORTUNITY DETAILS`, centered, full-width.
+  - Live tap point captured at `(540, 1486)` on a 1080x2400 device.
+
+### Transitions
+
+| Trigger | Destination |
+|---|---|
+| Tap `VIEW OPPORTUNITY DETAILS` | § 9 — Download Delivery gate |
+| Tap `Navigate up` / system back | Connect-side opp list (`connect_fragment_jobs_list`) |
+
+### Open questions for this screen
+
+- Resource-IDs not captured (taps were by coordinate). Follow-up walk should `uiautomator dump` and record selectors for the title, body, and CTA.
+- Does this screen appear before OR after the Final-Assessment-pass score syncs to Connect? Observed live AFTER `Sync with Server` was tapped on the Learn home; the certificate did not appear until sync completed. (Worth confirming whether a slow sync would show a partial state.)
+
+---
+
+## 9. Download Delivery gate
+
+VERIFIED 2026-05-14 (delivery-walk session).
+
+A single-screen handoff between Learn-completion and the Deliver-side app download. Functionally analogous to § 4 (Downloading Learn App) but for the Deliver CCZ.
+
+**Activity:** TBD (coordinate-based interaction; dump pending follow-up).
+
+### Visible content
+
+- Title: identifies the opp ("Turmeric") and the Deliver phase.
+- Body: brief instructions explaining that the Deliver app needs to be downloaded to start collecting visits.
+- Single CTA: `DOWNLOAD` button, mid-right area of the screen.
+  - Live tap point captured at `(741, 1248)` on a 1080x2400 device.
+
+### Transitions
+
+| Trigger | Destination |
+|---|---|
+| Tap `DOWNLOAD` | Deliver-CCZ install progress (likely the same `Step N of M` progress UI as § 4, but downloading the Deliver app instead of Learn); on completion, lands directly on § 10 `StandardHomeActivity` in Deliver mode. |
+| Tap `Navigate up` / system back | Back to § 8 certificate screen. |
+
+### Open questions for this screen
+
+- Confirm whether the in-progress download surface is the same `Step N of M` progress UI as § 4 (Learn download). Visually it appears identical, but selectors not dumped.
+- What happens if the Deliver download is interrupted (network drop)? Does the gate re-appear, or does the user land mid-install with a resume option?
+
+---
+
+## 10. `StandardHomeActivity` (Deliver mode)
+
+VERIFIED 2026-05-14 (delivery-walk session).
+
+**Same activity, same selectors as § 5** — but with the Deliver CCZ loaded. The structural differentiators are surface-level, not activity-level: the title bar suffix changes and the 4-tile action grid's `card_subtext` strings reflect Deliver-phase state instead of Learn-phase state.
+
+**Activity:** `org.commcare.activities.StandardHomeActivity` (identical to § 5).
+**Title:** the opp's display name suffixed `— Deli…` (truncated; the full string is presumably `— Deliver`). The Learn-mode equivalent suffixes `— Learn`.
+
+### Differentiators from Learn-mode home (§ 5)
+
+| Surface | Learn mode (§ 5) | Deliver mode (§ 10) |
+|---|---|---|
+| Toolbar title | `<opp> — Learn` | `<opp> — Deli…` (truncated `— Deliver`) |
+| Sync tile `card_subtext` | `N form(s) sent to server!` after submissions | `Daily Visits X/Y` (e.g. `Daily Visits 0/20`) — reflects daily-cap progress against the visit operational limit |
+| Start tile target | Learn module list (§ 6) | Deliver-side module list (§ 11) — only the Vendor Visits module is present |
+
+The 4-tile grid (Start / Job Status / Sync / Logout), grid resource-id (`id/home_gridview_buttons`), and per-tile resource-ids are identical to § 5. Recipe-authoring guidance from § 5 applies unchanged.
+
+### Recipe-authoring guidance
+
+- To assert "we are on the Deliver home" specifically (vs the Learn home), anchor on the Sync tile's `card_subtext` text matching `^Daily Visits \d+/\d+$`. The Learn-mode subtext (`form(s) sent to server`) never matches that pattern.
+- Toolbar title alone is unreliable as a differentiator — it truncates to `— Deli…` and the user's CCZ name might collide with a Learn-mode CCZ depending on the opp's app naming convention. Prefer the Sync-subtext signal.
+
+### Open questions for this screen
+
+- Does the Job Status tile show different content in Deliver mode (visits-completed counter vs Learn-modules counter)? Not captured this session.
+- Is there a structural cue (badge, distinct icon) on the Start tile when there are unfinished or rejected visits to return to?
+
+---
+
+## 11. `MenuActivity` (Deliver-side)
+
+VERIFIED 2026-05-14 (delivery-walk session).
+
+**Same activity, same `screen_suite_menu_list` pattern as § 6** — the suite-and-form-list MenuActivity reused for the Deliver-side module structure. Two-level drill identical to Learn: module list → form list → FormEntryActivity.
+
+**Activity:** `org.commcare.activities.MenuActivity` (identical to § 6).
+
+### Module list (level 1)
+
+Single tile observed:
+
+| Tile | Selector | Tap area |
+|---|---|---|
+| `Vendor Visits` | row container `id/screen_suite_menu_list` row matching `text="Vendor Visits"` | bounds `[215,346][1017,472]`, center `(616, 409)` |
+
+(Only one Deliver-side module exists for the turmeric opp — `Vendor Visits`. Other opps with multiple deliver-unit types would render additional tiles here.)
+
+### Form list (level 2 — after tapping Vendor Visits)
+
+Single form observed:
+
+| Row | Selector | Notes |
+|---|---|---|
+| `Vendor Visit` | `screen_suite_menu_list` row; `tvTitle` `"Vendor Visit"`; leading icon = pencil glyph (Deliver-form icon, distinct from Learn-module's book/play glyph) | Tap launches § 12 `FormEntryActivity`. |
+
+### Recipe-authoring implication
+
+Recipe pattern mirrors § 6: chain TWO `tapOn` operations — one for the module tile, one for the form row. Apply the same `below: text` scoping pattern that § 6 retry #4 required (`tvTitle` is `clickable=false`; the row container is what receives the tap).
+
+### Open questions for this screen
+
+- Resource-IDs for the Vendor Visits tile were not captured (coordinate-based interaction). Follow-up walk should `uiautomator dump` and record selectors.
+- Multi-form-per-module Deliver configurations (e.g. an opp with both `Vendor Visit` and a separate `Quality Check` form under one module) — not exercised this session.
+
+---
+
+## 12. Vendor Visit form-walk
+
+VERIFIED 2026-05-14 (delivery-walk session).
+
+Walked through the first four questions of the live `Vendor Visit` form on a registered test user. Each `FormEntryActivity` question screen was dumped and structural elements recorded. Subsequent questions beyond § 12.4 were not walked end-to-end (gated on GPS auto-capture + camera permission, which would require additional emulator setup); the surface types not exercised are listed as open questions.
+
+The activity, navigation pane, and form-completion semantics are identical to § 7 `FormEntryActivity`. This section documents the **widget types** observed in a Deliver-side form.
+
+### 12.1. Form intro screen (no input — informational)
+
+Lands here on first tap of the `Vendor Visit` row from § 11.
+
+- Header: `form_entry_group_label` TextView `"Turmeric Market Survey — Vendor Visit"` (the form's display name).
+- Body: composite informational text covering:
+  - **Operational caps** — `20 vendor visits per FLW per day, 5 per market per day`. Server-side enforced; the form does not gate locally.
+  - **Daylight window** — visits accepted only between sunrise + 1 hour and sunset − 1 hour. Server-side verified post-submission.
+  - **Before you begin** — checklist mentioning the yellow MTN reference card pre-flight; pointer to `Safety exit` as the recommended way to abort a visit.
+- Widget structure: `id/text_container` → `id/text` → unnamed TextView (no inputs on this screen — matches § 7's "text/heading" widget type).
+- Advance: tap `nav_btn_next`.
+
+### 12.2. `Safety exit` — binary `select_one`
+
+`form_entry_group_label` `"Safety exit"`.
+
+- Question prose: `Exit visit now (safety)?` plus help text `Choose Yes only if you need to leave the visit for safety reasons. The case will close and will NOT count against the daily cap.`
+- Two `RadioButton` options stacked vertically:
+  - `"No — continue with visit"` — bounds `[42,907][1038,991]` (center `(540, 949)`).
+  - `"Yes — exit now"` — bounds `[42,1070][1038,1154]` (center `(540, 1112)`).
+- Behavior: tapping `Yes` immediately terminates the visit (case closes, form abandoned). Selecting `No` and advancing proceeds to § 12.3.
+- Widget type matches § 7 `select_one` pattern — `RadioButton` widgets with the option text as the `text` attribute.
+
+### 12.3. `Consent` — binary `select_one`
+
+`form_entry_group_label` `"Consent"`.
+
+- Question prose: `Read the consent script aloud to the vendor in their preferred language. Record their response below. If consent is No, the visit will end immediately, the case will close, and no further questions will be asked.` followed by `Consent given?`.
+- Two `RadioButton` options:
+  - `"Yes — vendor consents"` (top option, ~center `(540, 1184)` observed live).
+  - `"No — vendor declines"` (bottom).
+- Behavior: selecting `No` terminates the visit. `Yes` advances to § 12.4.
+- Widget type matches § 7 `select_one`.
+
+### 12.4. `Visit context` — composite multi-widget screen
+
+`form_entry_group_label` `"Visit context"`.
+
+Unlike Learn-mode forms (which render exactly one question per screen), this Deliver-side screen renders **three widgets in a single `id/odkview_layout`**. Each widget retains its standard `id/text_container` → `id/text` → widget-input structure.
+
+| # | Question | Widget type | Selector |
+|---|---|---|---|
+| a | `Market name` (help text: "Name of the market where this vendor is located.") | text-input | `EditText` immediately below the help text. Bounds `[42,812][1038,948]` (focused state). |
+| b | `GPS coordinates` (help text: "Auto-capture the vendor's location. Stand at the stall when capturing.") | GPS-coordinate (manual fallback) | Unnamed `EditText` at bounds `[42,1159][1038,1295]` for manual entry. Auto-capture may run silently on screen entry (permission prompt the first time); no explicit "Capture" button observed in the dumped hierarchy. |
+| c | `Photo of turmeric with yellow MTN card visible` (help text: "Place the yellow MTN reference card directly next to the turmeric. Card must be clearly visible in the frame.") | photo-capture | Two `Button` widgets stacked: `TAKE PICTURE` (bounds `[49,1781][1031,1907]`) and `CHOOSE IMAGE` (bounds `[49,1917][1031,2043]`). |
+
+**Validation surface when advancing without input** — tapping `nav_btn_next` with any sub-widget empty surfaces the same `id/warning_root` → `id/message` banner documented in § 7, with text `"Sorry, this response is required!"`. The banner inserts BETWEEN the offending widget and the next one (observed live: the banner appeared between the GPS `EditText` and the Photo widget when GPS was empty). All un-filled widgets get a red-tinted outer container; the per-widget container resource-id was not captured this session.
+
+### 12.5. Question types not walked this session
+
+Subsequent screens after § 12.4 were not walked end-to-end (would require triggering real GPS auto-capture + granting camera permission + capturing/choosing an image, none of which were set up on this emulator). Based on the form spec, the remaining questions exercise:
+
+- 5-point color scale (`select_one` with 5 options) — same widget type as § 12.2 / 12.3.
+- 5-point shininess scale (`select_one`).
+- Integer-input (price, quantity) — `EditText` with numeric IME (selectors TBD).
+- Final acknowledgement / "Save" — TBD whether Deliver forms auto-finalize on last-question `nav_btn_next` like § 7 documents, or whether there's an explicit Submit step.
+
+### Recipe-authoring guidance
+
+- **Composite-screen scoping**: when a Deliver-side screen renders multiple widgets, `tapOn` calls must scope by widget label (`below: text`) or by widget index — anchoring on `text_container` alone matches every widget on the screen. § 6 retry #4 already established the pattern; § 12.4 is the first observed composite screen where it MUST be applied.
+- **GPS strategy**: prefer the manual `EditText` entry path for recipe runs (input `0.0 0.0 0 5` or similar) rather than waiting for emulator GPS to auto-capture — the auto-capture is dependent on emulated location settings that aren't part of the AVD snapshot.
+- **Photo strategy**: `CHOOSE IMAGE` (picker) is more recipe-friendly than `TAKE PICTURE` (live camera) since a fixed image asset can be pre-staged on the emulator's gallery and selected deterministically. `TAKE PICTURE` requires camera-permission grant + emulator camera config.
+
+---
+
 ## Open questions across the atlas
 
 Outstanding screens not yet documented (need a follow-up walk):
 
-1. **Opportunity detail (post-claim)** — what the opp-detail screen looks like when the user has already started Learn. Does `btn_start` change to "Continue"? Is there a progress indicator? Does the Deliver section unlock when Learn is complete?
-2. **Final assessment branch** — the quiz form's pass/fail flow. What's the structural signal that the user passed? Where does the "transition to Deliver" handoff happen — auto, manual button tap, or another screen?
-3. **Deliver app home** — analogous to § 5 but with delivery-specific tiles. Likely the same `StandardHomeActivity` with the Deliver CCZ loaded; the title would suffix " — Deliver" instead of " — Learn".
-4. **Deliver units list** — analogous to § 6b. Each row is likely a different deliver-unit form.
-5. **Vendor Visit form** — the actual atomic-visit form (20 questions, photo, GPS, color/shininess scales, consent gate). Most production-relevant flow.
-6. **Form submission confirmation for Deliver forms** — does Deliver have a "Submit" button screen, or auto-finalize like Learn?
+1. ~~**Opportunity detail (post-claim)**~~ — RESOLVED in § 8. Certificate view replaces the pre-claim opp detail surface once Learn completes; the `VIEW OPPORTUNITY DETAILS` CTA hands off to § 9.
+2. **Final assessment branch** — the quiz form's pass/fail flow. RESOLVED partially: a passing score (≥ threshold) syncs to Connect via the standard `Sync with Server` tile; the In-Progress card on the opp list then unlocks the Resume → Certificate (§ 8) path. The fail-path UX was not exercised — what surfaces if a learner scores below the threshold?
+3. ~~**Deliver app home**~~ — RESOLVED in § 10. Same `StandardHomeActivity` as Learn; differentiate on Sync tile's `card_subtext` matching `Daily Visits N/M`.
+4. ~~**Deliver units list**~~ — RESOLVED in § 11. Two-level `MenuActivity` drill (module list → form list), same as Learn-mode § 6.
+5. ~~**Vendor Visit form**~~ — PARTIALLY RESOLVED in § 12. First 4 questions walked (intro + Safety exit + Consent + Visit context). Remaining 5-point scales, integer inputs, and the submission terminus still need a walk that grants camera + GPS permissions.
+6. **Form submission confirmation for Deliver forms** — STILL OPEN. § 7 documents Learn-form auto-finalize; whether the multi-screen Deliver form follows the same auto-finalize path or surfaces an explicit Submit screen is untested.
 7. **Notifications panel** (`action_bell`) — what notification types surface there? Does tapping a notification card claim that opp directly (the path the operator explicitly does NOT want recipes to use)?
-8. **Multi-question Learn forms with non-note types** — only `select_one` was observed this session. Real Vendor Visit forms use text input, integer input, multi-select, photo, GPS.
+8. **Multi-question Learn forms with non-note types** — PARTIALLY RESOLVED via § 12.4: text-input + GPS-EditText + photo-capture widget shapes documented for Deliver forms; Learn-side forms with the same widget types should follow the same patterns.
+9. **Resource-IDs for Deliver-side screens (§ 8–§ 11)** — interactions in this session were coordinate-based (taps captured from screenshots), not selector-based. A follow-up walk should `uiautomator dump` each Deliver-side surface (§ 8 certificate, § 9 download gate, § 11 Vendor Visits module tile) and replace the live tap-point references with resource-id selectors. Without resource-IDs, recipes targeting these screens must fall back to text-matchers and coordinates, which are brittle.
 
 These should be walked in a follow-up session, ideally on a freshly-registered test user (or via faster forms — completing the comprehension gates on all 8 forms + the assessment is ~50–80 taps).
 
