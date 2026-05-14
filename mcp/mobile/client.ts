@@ -2,6 +2,7 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
+import * as crypto from 'node:crypto';
 import { AvdBackend } from './backends/avd.js';
 import {
   CloudBackend,
@@ -41,25 +42,54 @@ export interface MobileClientOpts {
 }
 
 /**
+ * The seven env vars `runLocalBootstrap` needs. Centralized so a typo'd
+ * var name in `bootstrapConfigFromEnv` and the operator-facing error
+ * message can't drift apart.
+ */
+const BOOTSTRAP_ENV_VARS = [
+  'ACE_CONNECT_APK_VERSION',
+  'ACE_E2E_PHONE',
+  'ACE_E2E_PHONE_LOCAL',
+  'ACE_E2E_COUNTRY_CODE',
+  'ACE_E2E_PIN',
+  'ACE_E2E_BACKUP_CODE',
+  'ACE_E2E_NAME',
+] as const;
+
+/**
+ * Return the names of any `BOOTSTRAP_ENV_VARS` that are missing or empty.
+ * Empty array means all are populated.
+ *
+ * Surfaced in `DeviceUserStateError` attempts so an operator who's
+ * missing one variable sees its specific name rather than a blanket
+ * "bootstrapConfig:absent" — the previous error required a `.env` diff
+ * against `.env.tpl` to identify the culprit.
+ */
+export function missingBootstrapEnvVars(): string[] {
+  return BOOTSTRAP_ENV_VARS.filter((name) => !process.env[name]);
+}
+
+/**
  * Read the test-user credentials + APK version pin from env. Returns
  * `null` if any required var is missing — `restoreDeviceUserState` will
  * then halt with `snapshot-load-failed` on snapshot-missing instead of
  * attempting the tier-2 bootstrap.
+ *
+ * Pair with `missingBootstrapEnvVars()` to identify exactly which vars
+ * are missing for the operator-facing error.
  */
 export function bootstrapConfigFromEnv(): LocalBootstrapConfig | null {
-  const apkVersion = process.env.ACE_CONNECT_APK_VERSION;
-  const phone = process.env.ACE_E2E_PHONE;
-  const phoneLocal = process.env.ACE_E2E_PHONE_LOCAL;
-  const countryCode = process.env.ACE_E2E_COUNTRY_CODE;
-  const pin = process.env.ACE_E2E_PIN;
-  const backupCode = process.env.ACE_E2E_BACKUP_CODE;
-  const name = process.env.ACE_E2E_NAME;
-  if (!apkVersion || !phone || !phoneLocal || !countryCode || !pin || !backupCode || !name) {
-    return null;
-  }
+  if (missingBootstrapEnvVars().length > 0) return null;
   return {
-    apkVersion,
-    testUser: { phone, phoneLocal, countryCode, pin, backupCode, name },
+    apkVersion: process.env.ACE_CONNECT_APK_VERSION!,
+    testUser: {
+      phone: process.env.ACE_E2E_PHONE!,
+      phoneLocal: process.env.ACE_E2E_PHONE_LOCAL!,
+      countryCode: process.env.ACE_E2E_COUNTRY_CODE!,
+      pin: process.env.ACE_E2E_PIN!,
+      backupCode: process.env.ACE_E2E_BACKUP_CODE!,
+      name: process.env.ACE_E2E_NAME!,
+    },
   };
 }
 
@@ -100,7 +130,19 @@ export function classifyDeviceUserState(
   // PersonalID-wipe banner is the unambiguous wipe signal (Connect
   // server-side de-registration). Highest priority — fires even when a
   // post-register drawer would otherwise look healthy.
-  if (/Logged out of PersonalID|Lost PersonalID configuration|\bReconfigure\b/i.test(uiDumpXml)) {
+  //
+  // Scoped to `text="..."` and `content-desc="..."` attribute values so
+  // a deeply nested tooltip, accessibility hint, or status string that
+  // happens to contain "Reconfigure" anywhere in the dump can't
+  // false-positive. The bare word "Reconfigure" is especially generic
+  // — without scoping, a future CommCare update that surfaces it in any
+  // unrelated dialog would silently halt every Phase 6 dispatch with
+  // DeviceUserStateError before tier-2 ever fires.
+  if (
+    /(?:text|content-desc)="[^"]*(?:Logged out of PersonalID|Lost PersonalID configuration|Reconfigure)[^"]*"/i.test(
+      uiDumpXml,
+    )
+  ) {
     return 'needs-personal-id';
   }
   // Positive PersonalID-healthy signals: Connect nav-drawer items only
@@ -122,6 +164,16 @@ export function classifyDeviceUserState(
     return 'needs-personal-id';
   }
   return 'unknown';
+}
+
+/**
+ * APKs are signed JAR files; signed JARs are ZIP files. Every valid APK
+ * therefore starts with the local-file-header magic `PK\x03\x04` (50 4b
+ * 03 04). Truncated downloads, GitHub HTML error pages, and corrupted
+ * cache entries all fail this check at zero cost.
+ */
+function isApkZipMagic(buf: Buffer): boolean {
+  return buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04;
 }
 
 /**
@@ -245,7 +297,22 @@ export class MobileClient {
    * through ace-web has its own health semantics.
    */
   async ensureAvdRunning(name: string): Promise<AvdInfo> {
-    if (this.useCloud) return this.requireCloud().ensureAvdRunning(name);
+    if (this.useCloud) {
+      const info = await this.requireCloud().ensureAvdRunning(name);
+      // Symmetric shape with the local branch: callers that read
+      // `info.heal.deviceUserState` from `mobile_ensure_avd_running`
+      // get a populated stub on cloud instead of undefined. Cloud's
+      // cold-boot path IS the equivalent restore mechanism (the AMI
+      // ships the registration recipes built-in and runs them on
+      // every cold boot) so there's nothing for the auto-heal to
+      // attempt locally — `attempted: false` reflects that.
+      return {
+        ...info,
+        heal: {
+          deviceUserState: { classified_as: 'unknown', attempted: false },
+        },
+      };
+    }
     const info = await this.avd.ensureAvdRunning(name);
     await this.assertMaestroDriverHealthy(info.serial);
     const deviceUserState = await this.restoreDeviceUserState(info);
@@ -316,10 +383,16 @@ export class MobileClient {
     // run's opp inside `/ace:run`, so `check_number_for_existing_invites`
     // is satisfied — registerTestUser won't hit the CONNECT-ID-3F crash.
     if (!this.bootstrapConfig) {
-      throw new DeviceUserStateError(tier1.classified_as, [
-        ...tier1.attempts,
-        `bootstrapConfig:absent (ACE_E2E_* / ACE_CONNECT_APK_VERSION env vars not set; run /ace:setup --force-env then retry)`,
-      ]);
+      const missing = missingBootstrapEnvVars();
+      // Name the specific missing vars so the operator doesn't have to
+      // diff their .env against .env.tpl. When the list is empty,
+      // bootstrapConfig was set to null explicitly by the caller
+      // (test path) — that's distinct from "env is broken."
+      const detail =
+        missing.length > 0
+          ? `bootstrapConfig:absent (missing env: ${missing.join(', ')}; run /ace:setup --force-env then retry)`
+          : `bootstrapConfig:absent (explicitly disabled by caller)`;
+      throw new DeviceUserStateError(tier1.classified_as, [...tier1.attempts, detail]);
     }
     logInfo(
       `device_user_state: tier-1 outcome=${tier1.outcome} on ${avd.serial} — escalating to tier-2 bootstrap`,
@@ -514,10 +587,17 @@ export class MobileClient {
     logInfo(`local_bootstrap: saving registered-test-user snapshot on ${avd.serial}`);
     const save = await this.avd.saveSnapshot(avd.name, 'registered-test-user');
     if (!save.saved) {
+      // Registration succeeded — the AVD is usable for THIS dispatch.
+      // What we couldn't do is persist the state for next time, so the
+      // next dispatch's tier-1 will miss and re-run tier-2 (registerTestUser
+      // is idempotent, but the round-trip is 5s+ vs the 3s snapshot load).
+      // Surface that distinction so the operator knows: don't re-bootstrap,
+      // just diagnose snapshot persistence.
       throw new MobileError(
         'SNAPSHOT_SAVE_FAILED',
-        `saveSnapshot(registered-test-user) on ${avd.name} failed: ${save.output.slice(0, 200)}`,
-        'Verify the emulator console responds to `adb emu avd snapshot save`; check disk space under the AVD home.',
+        `saveSnapshot(registered-test-user) on ${avd.name} failed: ${save.output.slice(0, 200)}. ` +
+          `The device IS registered and usable for this dispatch — next dispatch will need to re-run tier-2 bootstrap to re-establish the snapshot.`,
+        'Check disk space under ~/.android/avd/<name>.avd/snapshots/; verify the emulator console responds to `adb emu avd snapshot save`. After fixing, re-run /ace:mobile-bootstrap or the next mobile_ensure_avd_running call to re-save.',
       );
     }
     steps.push('snapshot-saved');
@@ -529,18 +609,52 @@ export class MobileClient {
    * cached locally; returns the local path. Cache lives under
    * `<os.tmpdir()>/ace-mobile-apk-cache/commcare-<version>.apk` so it
    * survives across sessions but isn't checked in.
+   *
+   * Integrity model: each cached APK has a sidecar `<apk>.sha256` file
+   * holding the SHA256 of the bytes that were written. Cache HITS
+   * re-compute the SHA and compare; mismatch is treated as a cache
+   * miss and triggers a re-download. Cache MISSES validate the ZIP
+   * magic bytes before writing (truncated downloads silently produced
+   * cache poisoning under the prior `size > 1_000_000` check —
+   * everything after stayed broken until the operator manually wiped
+   * `/tmp/ace-mobile-apk-cache/`). Sidecars without a paired APK and
+   * vice-versa are repaired on the next call.
    */
   private async ensureCommCareApkCached(version: string): Promise<string> {
     const cacheDir = path.join(os.tmpdir(), 'ace-mobile-apk-cache');
     await fs.promises.mkdir(cacheDir, { recursive: true });
     const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
-    // Cached if a non-trivial file already lives at the path.
+    const shaPath = `${apkPath}.sha256`;
+
+    // Cache check — must have non-trivial size, valid ZIP magic, AND
+    // either match the stored sidecar SHA or have no sidecar (legacy
+    // cache from pre-sidecar versions; populate the sidecar on the fly).
     try {
-      const stat = await fs.promises.stat(apkPath);
-      if (stat.size > 1_000_000) return apkPath;
+      const buf = await fs.promises.readFile(apkPath);
+      if (buf.length > 1_000_000 && isApkZipMagic(buf)) {
+        const actualSha = crypto.createHash('sha256').update(buf).digest('hex');
+        const expectedSha = await fs.promises
+          .readFile(shaPath, 'utf8')
+          .then((s) => s.trim())
+          .catch(() => null);
+        if (expectedSha === null) {
+          // Legacy cache — adopt the current bytes as authoritative.
+          await fs.promises.writeFile(shaPath, actualSha).catch(() => {});
+          return apkPath;
+        }
+        if (actualSha === expectedSha) return apkPath;
+        logInfo(
+          `local_bootstrap: cached APK sha mismatch for ${version} (expected ${expectedSha.slice(0, 12)}, got ${actualSha.slice(0, 12)}) — re-downloading`,
+        );
+      } else {
+        logInfo(
+          `local_bootstrap: cached APK at ${apkPath} is corrupt (size=${buf.length}, magic_ok=${isApkZipMagic(buf)}) — re-downloading`,
+        );
+      }
     } catch {
       // Not cached — fall through to download.
     }
+
     const url = `https://github.com/dimagi/commcare-android/releases/download/commcare_${version}/app-commcare-release.apk`;
     logInfo(`local_bootstrap: downloading CommCare ${version} from ${url}`);
     const res = await this.fetchImpl(url);
@@ -552,7 +666,27 @@ export class MobileClient {
       );
     }
     const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 1_000_000) {
+      throw new MobileError(
+        'APK_DOWNLOAD_FAILED',
+        `Downloaded CommCare ${version} APK is too small (${buf.length} bytes) — likely truncated or a non-APK response from GitHub.`,
+        `Verify network connectivity and that ACE_CONNECT_APK_VERSION pins a real release; if the issue persists, download manually to ${apkPath}.`,
+      );
+    }
+    if (!isApkZipMagic(buf)) {
+      throw new MobileError(
+        'APK_DOWNLOAD_FAILED',
+        `Downloaded CommCare ${version} payload is not a valid APK (missing ZIP magic bytes) — got ${buf.slice(0, 16).toString('hex')}.`,
+        `GitHub may have returned an HTML error page instead of the APK. Verify the release exists at https://github.com/dimagi/commcare-android/releases/tag/commcare_${version}.`,
+      );
+    }
+    const sha = crypto.createHash('sha256').update(buf).digest('hex');
+    // Write APK first, then sidecar — order matters for the cache-hit
+    // path: if a future call sees the APK but no sidecar, it adopts
+    // the bytes as authoritative (legacy path). Reversed order could
+    // leave a sidecar pointing at a missing APK.
     await fs.promises.writeFile(apkPath, buf);
+    await fs.promises.writeFile(shaPath, sha);
     return apkPath;
   }
 
@@ -742,45 +876,65 @@ export class MobileClient {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-mobile-reg-'));
     const toContinue = path.join(this.staticRecipesDir, 'connect-register-to-otp.yaml');
     const fromContinue = path.join(this.staticRecipesDir, 'connect-register-from-otp.yaml');
+    let success = false;
+    try {
+      // GMS is enabled here so CommCare 2.62.0's launch check passes. We
+      // disable it between part A and part B so the in-app face-capture
+      // step (only reached on the fresh-registration branch of part B)
+      // can fall back to ManualMode. See `AvdBackend.setGmsEnabled`.
+      await this.avd.setGmsEnabled(args.avdName, true);
 
-    // GMS is enabled here so CommCare 2.62.0's launch check passes. We
-    // disable it between part A and part B so the in-app face-capture
-    // step (only reached on the fresh-registration branch of part B)
-    // can fall back to ManualMode. See `AvdBackend.setGmsEnabled`.
-    await this.avd.setGmsEnabled(args.avdName, true);
-
-    logInfo('register_test_user: part A (launch → Continue)');
-    const partA = await this.maestro.runRecipe(toContinue, {
-      PHONE_LOCAL: args.phoneLocal,
-      COUNTRY_CODE: args.countryCode,
-      PIN: args.pin,
-    }, path.join(tmp, 'part-a'), { adbPort });
-    if (partA.status !== 'pass') {
-      if (partA.stdout.includes('PHONE_ALREADY_REGISTERED')) {
-        return { alreadyRegistered: true, phone: args.phone };
+      logInfo('register_test_user: part A (launch → Continue)');
+      const partA = await this.maestro.runRecipe(toContinue, {
+        PHONE_LOCAL: args.phoneLocal,
+        COUNTRY_CODE: args.countryCode,
+        PIN: args.pin,
+      }, path.join(tmp, 'part-a'), { adbPort });
+      if (partA.status !== 'pass') {
+        if (partA.stdout.includes('PHONE_ALREADY_REGISTERED')) {
+          success = true;
+          return { alreadyRegistered: true, phone: args.phone };
+        }
+        throw new Error(`register_test_user part A failed: ${partA.stderr || partA.stdout}`);
       }
-      throw new Error(`register_test_user part A failed: ${partA.stderr || partA.stdout}`);
-    }
 
-    // Disable GMS so face-capture in part B picks ManualMode. CommCare
-    // already passed its launch check above, and doesn't re-check GMS
-    // mid-session.
-    await this.avd.setGmsEnabled(args.avdName, false);
+      // Disable GMS so face-capture in part B picks ManualMode. CommCare
+      // already passed its launch check above, and doesn't re-check GMS
+      // mid-session.
+      await this.avd.setGmsEnabled(args.avdName, false);
 
-    logInfo('register_test_user: part B (post-Continue → registered)');
-    const partB = await this.maestro.runRecipe(fromContinue, {
-      NAME: args.name,
-      BACKUP_CODE: args.backupCode,
-      PIN: args.pin,
-    }, path.join(tmp, 'part-b'), { adbPort });
-    if (partB.status !== 'pass') {
-      if (partB.stdout.includes('PHONE_ALREADY_REGISTERED')) {
-        return { alreadyRegistered: true, phone: args.phone };
+      logInfo('register_test_user: part B (post-Continue → registered)');
+      const partB = await this.maestro.runRecipe(fromContinue, {
+        NAME: args.name,
+        BACKUP_CODE: args.backupCode,
+        PIN: args.pin,
+      }, path.join(tmp, 'part-b'), { adbPort });
+      if (partB.status !== 'pass') {
+        if (partB.stdout.includes('PHONE_ALREADY_REGISTERED')) {
+          success = true;
+          return { alreadyRegistered: true, phone: args.phone };
+        }
+        throw new Error(`register_test_user part B failed: ${partB.stderr || partB.stdout}`);
       }
-      throw new Error(`register_test_user part B failed: ${partB.stderr || partB.stdout}`);
-    }
 
-    return { alreadyRegistered: false, phone: args.phone, backupCode: args.backupCode };
+      success = true;
+      return { alreadyRegistered: false, phone: args.phone, backupCode: args.backupCode };
+    } finally {
+      // Clean up on success; on failure, keep the screenshot artifacts
+      // for post-mortem (the user is going to want to see "what did
+      // Maestro actually do?" when registration broke). The path is
+      // logged so it's discoverable.
+      if (success) {
+        try {
+          fs.rmSync(tmp, { recursive: true, force: true });
+        } catch {
+          // Best-effort — leak is small and bounded by the size of two
+          // Maestro screenshot dirs; better than throwing in finally.
+        }
+      } else {
+        logInfo(`register_test_user: kept temp artifacts at ${tmp} for post-mortem`);
+      }
+    }
   }
 
   async generateRecipesFromAppSummary(args: {

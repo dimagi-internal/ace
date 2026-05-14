@@ -65,6 +65,20 @@ export interface CloudBackendOpts {
    * Tests pass 0 so they don't actually sleep between iterations.
    */
   jobPollIntervalMs?: number;
+  /**
+   * Override the transient-failure retry config. By default
+   * `CloudBackend.request` retries 2 times (3 attempts total) on network
+   * errors + 502/503/504 with exponential backoff (250 ms, 1000 ms).
+   * Pass `{ retries: 0 }` to disable in tests. Application-level error
+   * envelopes (those carrying `payload.error.code`) and 4xx responses
+   * are never retried — they're deterministic from the request.
+   */
+  retry?: {
+    retries?: number;
+    backoffMs?: number;
+    /** Hook for tests; defaults to setTimeout-based sleep. */
+    sleepImpl?: (ms: number) => Promise<void>;
+  };
 }
 
 /** Shape of `/api/mobile/states`'s response data. */
@@ -151,6 +165,7 @@ export class CloudBackend {
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;
   private readonly jobPollIntervalMs: number;
+  private readonly retryConfig: { retries: number; backoffMs: number; sleep: (ms: number) => Promise<void> };
   readonly defaultState: string;
 
   constructor(opts: CloudBackendOpts = {}) {
@@ -176,6 +191,11 @@ export class CloudBackend {
     this.defaultState = opts.defaultState ?? '';
     this.requestTimeoutMs = opts.requestTimeoutMs ?? 600_000;
     this.jobPollIntervalMs = opts.jobPollIntervalMs ?? 2_000;
+    this.retryConfig = {
+      retries: opts.retry?.retries ?? 2,
+      backoffMs: opts.retry?.backoffMs ?? 250,
+      sleep: opts.retry?.sleepImpl ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
+    };
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────
@@ -577,14 +597,54 @@ export class CloudBackend {
     // already passed one.
     const signal = init.signal ?? AbortSignal.timeout(this.requestTimeoutMs);
 
-    let response: Response;
-    try {
-      response = await this.fetchImpl(url, { ...init, headers, signal });
-    } catch (e: unknown) {
+    // Bounded retry on transient transport failures + upstream-gateway
+    // 5xx. Application-level error envelopes (`payload.error.code`) and
+    // 4xx responses are NOT retried — they're deterministic from the
+    // request, so retrying just delays the failure. The retry guard
+    // covers the classes of error that DO benefit from a second try:
+    //   - fetch throws (DNS hiccup, TCP reset, TLS handshake fail)
+    //   - HTTP 502 (gateway received bad response from upstream)
+    //   - HTTP 503 (gateway temporarily unavailable)
+    //   - HTTP 504 (gateway timeout)
+    // 429 (rate limit) is intentionally NOT retried — ace-web doesn't
+    // currently rate-limit ACE PATs, and a real rate-limit response
+    // wants a longer back-off than this layer provides.
+    let response: Response | undefined;
+    let lastError: unknown;
+    const maxAttempts = this.retryConfig.retries + 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        response = await this.fetchImpl(url, { ...init, headers, signal });
+        // Retry transient gateway errors with backoff; fall through for
+        // 2xx + 4xx + non-retriable codes.
+        if (
+          attempt < maxAttempts &&
+          (response.status === 502 || response.status === 503 || response.status === 504)
+        ) {
+          lastError = new Error(`HTTP ${response.status} from ${url}`);
+          await this.retryConfig.sleep(this.retryConfig.backoffMs * 2 ** (attempt - 1));
+          continue;
+        }
+        lastError = undefined;
+        break;
+      } catch (e: unknown) {
+        lastError = e;
+        // Don't retry on AbortError — the caller's own timeout fired,
+        // they want immediate feedback.
+        if ((e as Error).name === 'AbortError') break;
+        if (attempt < maxAttempts) {
+          await this.retryConfig.sleep(this.retryConfig.backoffMs * 2 ** (attempt - 1));
+          continue;
+        }
+        break;
+      }
+    }
+    if (!response) {
+      const err = lastError as Error | undefined;
       throw new MobileError(
         'CLOUD_FETCH_FAILED',
-        `request to ${url} failed: ${(e as Error).message}`,
-        'Check ACE_WEB_BASE_URL and your network reachability.',
+        `request to ${url} failed after ${maxAttempts} attempt(s): ${err?.message ?? 'unknown error'}`,
+        'Check ACE_WEB_BASE_URL and your network reachability. If the failure is persistent on the server, run `mobile_diagnose` to inspect the in-VM state.',
       );
     }
 
@@ -639,13 +699,41 @@ export class CloudBackend {
   }
 
   private async downloadTo(url: string, dest: string): Promise<number> {
-    let response: Response;
-    try {
-      response = await this.fetchImpl(url);
-    } catch (e: unknown) {
+    // Same retry contract as `request`: transient transport errors and
+    // gateway 5xx get a bounded second attempt. S3 presigned-URL
+    // downloads occasionally trip on transient network conditions; one
+    // flaky screenshot artifact shouldn't fail an entire recipe run.
+    let response: Response | undefined;
+    let lastError: unknown;
+    const maxAttempts = this.retryConfig.retries + 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        response = await this.fetchImpl(url);
+        if (
+          attempt < maxAttempts &&
+          (response.status === 502 || response.status === 503 || response.status === 504)
+        ) {
+          lastError = new Error(`HTTP ${response.status} from ${url}`);
+          await this.retryConfig.sleep(this.retryConfig.backoffMs * 2 ** (attempt - 1));
+          continue;
+        }
+        lastError = undefined;
+        break;
+      } catch (e: unknown) {
+        lastError = e;
+        if ((e as Error).name === 'AbortError') break;
+        if (attempt < maxAttempts) {
+          await this.retryConfig.sleep(this.retryConfig.backoffMs * 2 ** (attempt - 1));
+          continue;
+        }
+        break;
+      }
+    }
+    if (!response) {
+      const err = lastError as Error | undefined;
       throw new MobileError(
         'CLOUD_DOWNLOAD_FAILED',
-        `failed to fetch ${url}: ${(e as Error).message}`,
+        `failed to fetch ${url} after ${maxAttempts} attempt(s): ${err?.message ?? 'unknown'}`,
       );
     }
     if (!response.ok) {

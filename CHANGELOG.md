@@ -5,6 +5,26 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.209 — 2026-05-13
+
+**Phase 6 mobile robustness pass: local + cloud hardening across heal contract, classifier, APK cache, and cloud HTTP transport.**
+
+Seven correlated changes from an audit of "Phase 6 mobile cost a lot of debugging hours." None are behavior changes for the happy path; all eliminate a specific previously-observed failure mode or reduce a class of silent-corruption risk:
+
+- **Heal shape symmetric across backends.** `mobile_ensure_avd_running` now populates `result.heal.deviceUserState` on cloud too (stub `{classified_as: 'unknown', attempted: false}`). Pre-this-fix, cloud returned plain `AvdInfo` and any caller reading `info.heal.deviceUserState` worked on local and was `undefined` on cloud — a cloud-only bug class structurally invisible to local tests. `mcp/mobile/client.ts:247-269`.
+- **`bootstrapConfig:absent` names the missing env var.** Previously the operator had to diff `.env` against `.env.tpl` to find the typo'd variable. Now the error includes `missing env: ACE_E2E_NAME` (or whichever subset is absent). New exported `missingBootstrapEnvVars()` helper centralizes the var list so the validator + error message can't drift. `mcp/mobile/client.ts:43-86`.
+- **Wipe-banner classifier scoped to text attributes only.** `classifyDeviceUserState` previously matched `/Reconfigure/i` anywhere in the UI dump XML; a deeply nested tooltip, accessibility hint, or comment containing that word would false-positive `needs-personal-id` and halt Phase 6 before tier-2 could fire. Now scoped to `text="..."` / `content-desc="..."` attribute values. `mcp/mobile/client.ts:100-126`.
+- **APK cache integrity-checked via SHA256 sidecar + ZIP magic.** Cached APK reads recompute SHA against the sidecar; mismatch triggers re-download. Fresh downloads validate ZIP local-file-header magic before writing, so a GitHub HTML error page or truncated stream can't poison the cache (the prior `size > 1MB` check let bad bytes persist indefinitely). Sidecar-less legacy entries are adopted on the fly. `mcp/mobile/client.ts:621-708`.
+- **`registerTestUser` cleans its mkdtemp on success, keeps it on failure for post-mortem.** Path logged in the failure case so it's discoverable. Prior behavior leaked one ~5MB dir per registration in `$TMPDIR`. `mcp/mobile/client.ts:891-946`.
+- **`SNAPSHOT_SAVE_FAILED` message distinguishes "registered but not persisted."** Operator now sees "The device IS registered and usable for this dispatch — next dispatch will need to re-run tier-2 bootstrap to re-establish the snapshot" instead of a generic "saveSnapshot failed." `mcp/mobile/client.ts:570-585`.
+- **`CloudBackend.request` and `downloadTo` retry on transient 5xx + network errors.** 2 retries with 250 ms / 500 ms exponential backoff. Retries fire on network throws (DNS / TCP reset / TLS) and HTTP 502/503/504. Application-error envelopes (`payload.error.code`), 4xx, and `AbortError` are NOT retried — they're deterministic. New `retry: { retries, backoffMs, sleepImpl }` constructor option makes the policy testable. `mcp/mobile/backends/cloud.ts:46-79, 568-651`.
+
+Also: `docs/superpowers/specs/2026-05-11-mobile-cloud-runner-api-gaps.md` marked **Shipped** — all five gaps (version_code, parsed elements, structured steps, stop busy guard, register cloud-noop) are now implemented end-to-end with evidence inline.
+
+22 new vitest cases (`test/mcp/mobile/client.test.ts` + `test/mcp/mobile/backends/cloud.test.ts`) cover: cloud heal symmetry, missing-env enumeration, scoped classifier rejection of deeply-nested false positives, APK SHA mismatch / ZIP magic / truncation, register tempdir lifecycle, snapshot-save-failure message, and the 8 retry / no-retry policy cases.
+
+All 1011 tests pass; `tsc --noEmit` clean.
+
 ## 0.13.187 — 2026-05-12
 
 **`connect_preflight_learn_app_user` — CI-660 boundary probe surfaces Phase 5 `start_learn_app` 500s before AVD navigation.**
