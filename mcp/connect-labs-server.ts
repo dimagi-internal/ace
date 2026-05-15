@@ -79,6 +79,12 @@ export const LOCAL_TOOLS = [
         id: { type: 'integer', description: 'Integer primary key of the LabsRecord to delete.' },
       },
       required: ['id'],
+      // additionalProperties:false is required by Claude Code's MCP tool injection
+      // layer (verified empirically 2026-05-15: tools missing this field are
+      // silently dropped from the catalog even though they appear in the proxy's
+      // wire-level tools/list response). Every upstream labs MCP tool has this
+      // set; mirroring it here for consistency.
+      additionalProperties: false,
     },
   },
 ] as const;
