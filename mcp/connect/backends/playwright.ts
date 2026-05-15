@@ -434,10 +434,15 @@ export class PlaywrightBackend implements ConnectClient {
     const csrf = extractFormCsrfToken(html) ?? this.opts.csrfToken;
     const current = extractFormFieldValues(html);
 
+    // `location` is the form's numeric "GPS radius (meters)" field — NOT
+    // a boolean toggle. Surfaced through `flags.gps_radius_meters` since
+    // 0.13.240; preserve the form's current value (default 10m) if not
+    // explicitly set. Renamed from the historic boolean-shaped
+    // `flags.location` which never worked anyway.
+    const radiusFromArg = flags.gps_radius_meters != null ? String(flags.gps_radius_meters) : undefined;
     const form: Record<string, string> = {
       csrfmiddlewaretoken: csrf,
-      // location is a number field (default 10m)
-      location: current['location'] ?? '10',
+      location: radiusFromArg ?? current['location'] ?? '10',
       form_submission_start: flags.form_submission_start ?? current['form_submission_start'] ?? '',
       form_submission_end: flags.form_submission_end ?? current['form_submission_end'] ?? '',
     };

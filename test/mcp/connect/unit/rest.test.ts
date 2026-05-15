@@ -182,6 +182,7 @@ describe('RestBackend.createOpportunity', () => {
       start_date: '2026-05-01',
       end_date: '2026-12-31',
       total_budget: 100000,
+      auto_activate: false, // skip the activate POST so this test stays focused on the create payload shape
       learn_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'la', description: 'Learn', passing_score: 80 },
       deliver_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'da' },
     });
@@ -193,6 +194,54 @@ describe('RestBackend.createOpportunity', () => {
     expect(body.organization).toBe('llo-org');
     expect(body.total_budget).toBe(100000);
     expect((body.learn_app as Record<string, unknown>).cc_app_id).toBe('la');
+  });
+
+  it('auto-activates by default (POSTs to /activate/ after create)', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [
+        {
+          status: 201,
+          body: {
+            id: 1, opportunity_id: 'opp-uuid', name: 'Auto Opp', description: 'd',
+            short_description: 's', organization: 'llo-org', managed: true,
+            program_id: 'prog-uuid', start_date: '2026-05-01', end_date: '2026-12-31',
+            total_budget: 100000, is_test: true,
+            learn_app: { cc_domain: 'd', cc_app_id: 'la', name: 'L', learn_modules: [] },
+            deliver_app: { cc_domain: 'd', cc_app_id: 'da', name: 'D', deliver_units: [] },
+            currency: 'USD', country: 'United States of America',
+            // Create-response active is `false` — exactly the surface the
+            // auto-activate behavior is meant to fix.
+            active: false,
+          },
+        },
+        {
+          status: 200,
+          body: { id: 1, opportunity_id: 'opp-uuid', name: 'Auto Opp', active: true },
+        },
+      ],
+      captured,
+    );
+    const backend = new RestBackend({ baseUrl, csrfToken, request });
+    const out = await backend.createOpportunity({
+      organization_slug: 'pm-org',
+      program_id: 'prog-uuid',
+      name: 'Auto Opp',
+      short_description: 'short',
+      description: 'desc',
+      target_organization_slug: 'llo-org',
+      start_date: '2026-05-01',
+      end_date: '2026-12-31',
+      total_budget: 100000,
+      learn_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'la', description: 'L', passing_score: 80 },
+      deliver_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'da' },
+      // auto_activate defaults to true
+    });
+    expect(captured.length).toBe(2);
+    expect(captured[0].url).toBe('/api/programs/prog-uuid/opportunities/');
+    expect(captured[1].url).toBe('/api/opportunities/opp-uuid/activate/');
+    // Returned opp reflects the truly-active state, not the create response's `active: false`.
+    expect(out.active).toBe(true);
   });
 });
 

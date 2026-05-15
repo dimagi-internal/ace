@@ -145,12 +145,24 @@ export class RestBackend implements ConnectClient {
     this.csrf = this.opts.session.getCsrfToken();
   }
 
-  private async post<T>(path: string, body: unknown): Promise<{ status: number; data: T | undefined; raw: APIResponse }> {
-    let res = await this.request.post(path, {
+  private async post<T>(
+    path: string,
+    body: unknown,
+    opts: { timeout_ms?: number } = {},
+  ): Promise<{ status: number; data: T | undefined; raw: APIResponse }> {
+    // Playwright's APIRequestContext defaults to a 30s per-request timeout.
+    // Some Connect endpoints (managed-opp create syncs HQ apps + deliver
+    // units server-side, takes 30-90s under load; verified live on
+    // malaria-itn-fgd/20260514-2352 Phase 4 where the first attempt timed
+    // out at 30s and produced an orphan opp consuming program budget).
+    // Callers pass `timeout_ms` per-endpoint to opt into longer waits.
+    const requestOpts = {
       data: body,
       headers: this.headers(),
       maxRedirects: 0,
-    });
+      ...(opts.timeout_ms != null ? { timeout: opts.timeout_ms } : {}),
+    };
+    let res = await this.request.post(path, requestOpts);
 
     // Two-stage 403-CSRF self-heal:
     //
@@ -171,11 +183,7 @@ export class RestBackend implements ConnectClient {
       const bodyText = await res.text();
       if (RestBackend.isCsrfFailure(res.status(), bodyText)) {
         await this.refreshCsrf();
-        res = await this.request.post(path, {
-          data: body,
-          headers: this.headers(),
-          maxRedirects: 0,
-        });
+        res = await this.request.post(path, requestOpts);
 
         // Stage 2: still 403 CSRF after cookie refresh? The session
         // itself is stale. Bottom out at a full re-auth.
@@ -183,11 +191,7 @@ export class RestBackend implements ConnectClient {
           const retryBody = await res.text();
           if (RestBackend.isCsrfFailure(res.status(), retryBody)) {
             await this.reauth();
-            res = await this.request.post(path, {
-              data: body,
-              headers: this.headers(),
-              maxRedirects: 0,
-            });
+            res = await this.request.post(path, requestOpts);
           }
         }
       }
@@ -284,9 +288,35 @@ export class RestBackend implements ConnectClient {
       learn_app: { ...args.learn_app },
       deliver_app: { ...args.deliver_app },
     };
-    const { status, data, raw } = await this.post<ManagedOpportunityResponse>(path, body);
+    // Managed-opp create syncs HQ learn-app + deliver-app server-side and
+    // can take 30-90s under load. Default Playwright timeout (30s) was
+    // hit on `malaria-itn-fgd/20260514-2352` Phase 4 and produced an
+    // orphan opp consuming program budget. 120s timeout absorbs the
+    // realistic upper bound; transient overruns past that are a server
+    // health issue, not a client config issue.
+    const { status, data, raw } = await this.post<ManagedOpportunityResponse>(path, body, {
+      timeout_ms: 120_000,
+    });
     if (status !== 201 || !data) await this.raiseForStatus(raw, path, 'POST');
-    return opportunityFromResponse(data!, args.organization_slug);
+    const opp = opportunityFromResponse(data!, args.organization_slug);
+
+    // Auto-activate by default. The create response's `active: true` is
+    // set in the Connect DB column but the activation hook hasn't run
+    // yet — downstream endpoints (sendFlwInvite's `/invite_users/`)
+    // reject with "Opportunity must be active to invite users" until
+    // `/activate/` is POSTed. Verified live on malaria-itn-fgd
+    // 20260514-2352 Phase 4. The activate endpoint is idempotent.
+    // Set `auto_activate: false` to opt out (rare — for intentional
+    // drafts).
+    if (args.auto_activate !== false) {
+      await this.activateOpportunity({
+        organization_slug: args.organization_slug,
+        opportunity_id: opp.id,
+      });
+      // Reflect the now-truly-active state on the returned object.
+      return { ...opp, active: true as const };
+    }
+    return opp;
   };
 
   // ── Payment units (atomic-list endpoint) ─────────────────────────

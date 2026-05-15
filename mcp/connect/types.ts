@@ -81,7 +81,18 @@ export interface VerificationFlags {
   duplicate?: boolean;
   gps?: boolean;
   catchment_areas?: boolean;
-  location?: boolean;
+  /**
+   * GPS radius (in meters) for the catchment-area / location-based
+   * verification check. Surfaced through the form's `location` numeric
+   * input on `/opportunity/<id>/verification_flags_config/`. Default 10m
+   * (the form's pre-filled value); typical PDD specs are 100-500m.
+   *
+   * 0.13.240: renamed from `location: boolean` (which was misleading —
+   * the form field has always been a number, never a boolean). Added
+   * to fix the malaria-itn-fgd `gps-verification-radius` Decisions Log
+   * row not being settable through the atom.
+   */
+  gps_radius_meters?: number;
   form_submission_start?: string;        // HH:MM:SS
   form_submission_end?: string;          // HH:MM:SS
   deliver_unit_checks?: DeliverUnitCheck[];
@@ -141,10 +152,32 @@ export interface PaymentUnit {
    */
   amount?: number;
   org_amount?: number;
+  /**
+   * **Unreliable on the HTML-scraped path (`listPaymentUnits`).** The
+   * `payment_unit_table` page renders Total/Daily as a combined cell
+   * that the scraper has historically mislabeled; verified live
+   * 2026-05-15 against `malaria-itn-fgd/20260514-2352` Phase 4 where
+   * `max_total=120, max_daily=30` was returned for a PU created with
+   * `max_total=10, max_daily=2`. **Use the create-response equality
+   * check** (compare `createPaymentUnit` return value against the input
+   * args) rather than `listPaymentUnits` read-back to verify these
+   * fields. REST path returns server values verbatim and IS reliable.
+   * Issue tracking: jjackson/ace#106 finding 5 / turmeric-20260503-0835.
+   */
   max_total?: number;
+  /** **Unreliable on the HTML-scraped path.** See `max_total` JSDoc. */
   max_daily?: number;
   start_date?: string;
   end_date?: string;
+  /**
+   * **Unreliable on the HTML-scraped path (`listPaymentUnits`).** The
+   * `payment_unit_table` page does not surface the deliver-unit list
+   * — `listPaymentUnits` returns `[]` regardless of the actual
+   * required_deliver_units configured. Use the create-response equality
+   * check on `createPaymentUnit` (or the per-PU edit form via the
+   * `payment_unit_uuid` link) to round-trip this field. REST path
+   * returns server values verbatim and IS reliable.
+   */
   required_deliver_units: number[];     // DU ids (server snake_case)
   optional_deliver_units: number[];
 }
