@@ -115,27 +115,40 @@ Generate **2–4 journeys** covering:
 
 ### `focus-group`
 
-The PDD describes FLW-facilitated group discussions producing
-qualitative content (audio + per-section summaries + attendance).
-Examples: vaccine-hesitancy Stage 1, lead-cosmetics formative FGDs.
+The PDD describes FLW-facilitated group discussions where qualitative
+content is captured **in a Google Doc out-of-band**. The mobile-app
+surface is narrow: one ~5-field attestation form (consent, date,
+venue, GPS, photo) submitted at session end as the payment trigger.
+The gdoc is written separately, hours-to-days later, with no
+`gdoc_link` field on the form. See
+`docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
 
 Generate **2–4 journeys** covering:
 
-- **session-setup** — the FLW arrives at the venue, recruits/seats
-  participants, runs through the consent step, and starts recording.
-  Happy path through "ready to facilitate."
+- **session-setup** — the FLW arrives at the venue, runs through the
+  consent step verbally with participants per the consent script
+  (out-of-app), and is ready to facilitate. **No in-app interaction
+  at session start** — the mobile form is filled at session end.
+  Happy path: arrives prepared, consent obtained, ready to begin.
 - **recruitment-failure** — the FLW arrives and turnout is below the
-  PDD's minimum. Pass criterion: the app gives the FLW a clear path
-  (cancel, reschedule, proceed-with-fewer) rather than silently
-  letting them submit a sub-spec session.
-- **consent-handling** — at least one participant declines recording
-  / declines to participate. Pass criterion: the FLW captures the
-  refusal, knows whether to proceed, and ends with a record that
-  passes audit.
-- **output-coherence** — the FLW completes the session and writes the
-  per-section summaries + uploads the audio. Pass criterion: the
-  output structure matches what the PDD's Output spec demands; the
-  FLW can tell at submit time whether the output is complete.
+  PDD's minimum group size. Pass criterion: the FLW knows the protocol
+  (cancel / reschedule / proceed-with-fewer per the LLO coordinator's
+  guidance — typically reschedule). **App-side:** if the session
+  doesn't run, no attestation is submitted (no payment).
+- **consent-handling** — one or more participants decline to
+  participate. Pass criterion: the FLW captures the refusal verbally,
+  knows whether to proceed (per consent script: proceed only if all
+  remaining participants consented), and if proceeding, the
+  attestation form's `consent_all_participants` field can answer `yes`
+  for the participants who DID consent and stayed. If consent fails
+  the session aborts; no attestation submitted.
+- **attestation-submission** — the FLW reaches session end, opens the
+  Deliver app, fills the 5-field attestation form (consent, date,
+  venue, GPS, photo), and submits. Pass criterion: form submits
+  cleanly within the 24h window; GPS captured at venue; photo not
+  showing faces; coordinator can match this attestation to the gdoc
+  the FLW will write later by `(FLW, session_date, venue)`. Edge
+  cases: GPS out of expected radius, late submission (>24h).
 
 ### `multi-stage`
 
@@ -171,8 +184,9 @@ Before writing the file, verify:
    visit-flow, eligibility-edge, data-quality-error, duplicate-handling
    (at minimum 2 of these 4, recommended all 4 if the PDD warrants).
    Focus-group needs session-setup, recruitment-failure,
-   consent-handling, output-coherence (same minimums). Multi-stage
-   needs per-stage coverage plus the stage-transition journey.
+   consent-handling, attestation-submission (same minimums).
+   Multi-stage needs per-stage coverage plus the stage-transition
+   journey.
 
 2. **At least one `error_recovery`-flavored edge case per journey.**
    The `app-ux-eval` deep rubric specifically grades whether the app
@@ -246,3 +260,4 @@ When `--dry-run` is active:
 | 2026-05-08 | Output path corrected to `2-scenarios/pdd-to-app-journeys.md` (was `expected-journeys.md` at the run root). Aligns with `lib/artifact-manifest.ts:220`, the QA + eval skills, and `agents/design-review.md`. Consumers (`app-test-cases`, `app-ux-eval`, training cluster, `synthetic-narrative-plan`) updated in the same PR. | ACE team |
 | 2026-05-08 | **No QA companion.** `pdd-to-app-journeys-qa` removed (PR #160) — downstream consumers are LLM-driven; structural label-format checks gate nothing real, and the eval already covers the substantive concerns. See `skills/_qa-decisions.md` for the registry entry + revisit conditions, and `docs/learnings/2026-05-08-fake-qa-detection.md` for the heuristic. | ACE team |
 | 2026-05-15 | Accept either "FLW Requirements" (canonical, per `templates/pdd-template.md`) or "Target FLW" (legacy) as the persona section in Process step 3 + Failure Modes. Prompted by `malaria-itn-fgd/20260514-2007` where the template-conformant PDD said "FLW Requirements" and the skill halted looking for "Target FLW". See jjackson/ace#302. | ACE team |
+| 2026-05-15 | Recharacterize `focus-group` journey categories for the attestation-form-only shape (PRs #305, #306): `output-coherence` (which assumed the FLW fills 28 in-app fields with content) → `attestation-submission` (FLW fills the 5-field form at session end, no per-section content in the app). Session-setup reframed to note "no in-app interaction at session start" — the mobile form is end-of-session only. Other categories (recruitment-failure, consent-handling) reframed to note no-attestation-on-abort semantics. Coverage rule updated to reference the new category name. Prompted by `malaria-itn-fgd/20260514-2352` re-run. | ACE team |

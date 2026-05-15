@@ -146,37 +146,45 @@ from step 3):
 
 ### `focus-group`
 
-The PDD describes FLW-facilitated group discussions producing qualitative
-content (audio + per-section summaries + attendance). Examples:
-vaccine-hesitancy Stage 1, lead-cosmetics formative FGDs.
+The PDD describes FLW-facilitated group discussions where the
+qualitative content is captured **in a Google Doc out-of-band** and
+the mobile-app artifact is a small attestation form that triggers
+payment. The OCS chatbot is the **primary facilitator surface** for
+training reference + post-session gdoc writing guidance. See
+`docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
 
 **Archetype-specific categories** (add to the cross-archetype categories
 from step 3):
 
 - **Session flow** — "How long should a focus group session take?" /
-  "What do I do between sessions on the same day?" / "When do I start
-  recording?" — answers from the facilitation protocol
+  "What do I do between sessions on the same day?" / "When do I submit
+  the attestation form vs the gdoc?" — answers from the facilitation
+  protocol + Deliver workflow
 - **Recruitment and venue** — "How many participants should I have in a
   group?" / "Is it okay to hold the session in a health facility?" /
   "Should I separate mothers from grandmothers?" — answers from the
   recruitment plan and venue choice
 - **Consent and recording** — "What do I do if someone doesn't want to
-  be recorded?" / "Do I need written consent from every participant?" —
+  be recorded?" / "Do I need written consent from every participant?"
+  / "What does the `consent_all_participants` field really attest?" —
   answers from the consent protocol
 - **Question-guide sequencing** — "Should I follow the guide in order?"
-  / "When do I introduce the lead-exposure risk?" / "What if a
-  participant brings up the risk topic before Section 5?" — answers
-  from the question guide
+  / "When do I introduce the risk topic?" / "What if a participant
+  brings it up before Section 5?" — answers from the question guide
 - **Facilitation technique** — "What do I do if one participant is
   dominating?" / "How do I probe without leading?" / "Is silence okay?"
-  — answers from the facilitator training and Learn app content
-- **Output spec** — "How detailed does the per-section summary need to
-  be?" / "What counts as a 'representative quote'?" — answers from the
-  output specification in the PDD
-- **Audio and evidence** — "How long does the audio recording need to
-  be?" / "What if the audio quality is poor?" / "Can I skip the
-  attendance photo if participants don't consent?" — answers from
-  Layer A of the Evidence Model
+  — answers from the PDD's Facilitation Protocol (OCS chatbot is the
+  primary surface for these answers, not a Learn app)
+- **Gdoc writing guidance** — "What should I put in section 3 of my
+  gdoc?" / "What counts as a 'representative quote'?" / "How specific
+  do the themes need to be?" / "When is consensus 'strong'?" — answers
+  from the PDD's Output Specification (which describes the gdoc
+  structure)
+- **Attestation form** — "When do I submit the attestation form?" /
+  "What if my GPS is off?" / "Can I submit the form before writing
+  the gdoc?" (yes — the gdoc goes in separately) / "What photo should
+  I attach?" — answers from the Deliver App Spec's 5-field form
+  + Layer A of the Evidence Model
 
 ### `multi-stage`
 
@@ -237,3 +245,4 @@ When `--dry-run` is active:
 | 2026-04-14 | Initial version — introduced as Phase 1 Step 2 so Phase 5's `ocs-chatbot-qa --deep` has ground-truth opp-specific prompts to grade against. Previously `test-prompts.md` was referenced by `ocs-chatbot-qa` but had no producer | ACE team |
 | 2026-04-19 | Added `## Archetypes` section branching on PDD archetype. `focus-group` gets session/recruitment/consent/question-guide/facilitation/output/audio categories; atomic-visit retains visit-flow/eligibility/GPS/duplicate categories; multi-stage mixes per-stage with an added stage-gate category. Motivated by cosmetics-fgd-pilot recon (2026-04-19) where the atomic-visit-only category list forced manual remapping | ACE team (qa/eval iteration loop) |
 | 2026-04-20 | Expand `multi-stage` archetype: clarify per-stage archetype dispatch, add intervention-continuity cross-stage category, flag missing Stage Gate as `[WARN]` | ACE team (skills review) |
+| 2026-05-15 | Recharacterize `focus-group` category list for the attestation-form-only shape (PRs #305, #306): `Output spec` → `Gdoc writing guidance` (the chatbot helps facilitators write the gdoc per PDD Output Spec); `Audio and evidence` → `Attestation form` (no audio in CommCare; 5-field form questions). `Facilitation technique` line drops the Learn-app reference (no Learn app for focus-group; OCS chatbot is the primary training surface). Prompted by `malaria-itn-fgd/20260514-2352` re-run where the Phase 2 agent surfaced these as small-tweak friction. | ACE team |
