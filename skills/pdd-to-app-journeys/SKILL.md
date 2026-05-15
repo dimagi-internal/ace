@@ -42,10 +42,12 @@ Consumers:
    Archetype field, default to `atomic-visit` but flag it as a `[WARN]`
    in the coverage self-check.
 
-3. **Extract persona from the PDD.** Pull the "Target FLW" section
-   verbatim into the `## Persona` block. If the PDD has no target-FLW
-   persona section, halt — the journeys depend on knowing who the
-   user is. Don't synthesize a persona; escalate.
+3. **Extract persona from the PDD.** Pull the persona section verbatim
+   into the `## Persona` block. The canonical name is **"FLW Requirements"**
+   (per `templates/pdd-template.md`); the legacy name "Target FLW" is
+   also accepted for older PDDs that haven't been re-rendered. If the
+   PDD has neither section, halt — the journeys depend on knowing who
+   the user is. Don't synthesize a persona; escalate.
 
 4. **Generate journeys per the archetype branch.** For each journey
    in the matching archetype branch, write:
@@ -219,10 +221,12 @@ When `--dry-run` is active:
 
 - **PDD missing or empty** — blocker; Phase 1 Step 1 (`idea-to-pdd`)
   hasn't completed. Don't synthesize; escalate.
-- **PDD has no target-FLW persona section** — blocker; the journeys
-  describe what the FLW does and need a defined FLW. Flag back to
-  the operator and request a PDD revision; don't synthesize a
-  persona.
+- **PDD has neither "FLW Requirements" nor "Target FLW" section** —
+  blocker; the journeys describe what the FLW does and need a defined
+  FLW. The canonical name is "FLW Requirements" (per
+  `templates/pdd-template.md`); "Target FLW" is the legacy name and is
+  also accepted. Flag back to the operator and request a PDD revision;
+  don't synthesize a persona.
 - **PDD has no eligibility / duplicate-handling / consent / output
   spec** — for the relevant archetype, the journey set will be
   missing a category. Flag a `[WARN]` rather than blocking, and note
@@ -241,3 +245,4 @@ When `--dry-run` is active:
 | 2026-05-04 | Initial version — Phase 1 producer of `expected-journeys.md`, the UX-intent ground truth that `app-test-cases` (Phase 3) and `app-ux-eval` (deep QA) consume. Mirror of `pdd-to-test-prompts` for the app side. Introduced as part of the shallow/deep QA split (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`) | ACE team |
 | 2026-05-08 | Output path corrected to `2-scenarios/pdd-to-app-journeys.md` (was `expected-journeys.md` at the run root). Aligns with `lib/artifact-manifest.ts:220`, the QA + eval skills, and `agents/design-review.md`. Consumers (`app-test-cases`, `app-ux-eval`, training cluster, `synthetic-narrative-plan`) updated in the same PR. | ACE team |
 | 2026-05-08 | **No QA companion.** `pdd-to-app-journeys-qa` removed (PR #160) — downstream consumers are LLM-driven; structural label-format checks gate nothing real, and the eval already covers the substantive concerns. See `skills/_qa-decisions.md` for the registry entry + revisit conditions, and `docs/learnings/2026-05-08-fake-qa-detection.md` for the heuristic. | ACE team |
+| 2026-05-15 | Accept either "FLW Requirements" (canonical, per `templates/pdd-template.md`) or "Target FLW" (legacy) as the persona section in Process step 3 + Failure Modes. Prompted by `malaria-itn-fgd/20260514-2007` where the template-conformant PDD said "FLW Requirements" and the skill halted looking for "Target FLW". See jjackson/ace#302. | ACE team |
