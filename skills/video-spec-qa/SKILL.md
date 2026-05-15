@@ -52,6 +52,8 @@ format, auto-fix protocol).
 | 11 | `hook_paraphrases_connect_tagline` | static | narration.by_beat.hook either contains Connect's tagline verbatim or shares 3+ of its 4 key tokens (pay/verified/service/delivery). | Rewrite hook to paraphrase or quote: "Pay for verified service delivery, not planned activity." |
 | 12 | `no_banned_voice_tokens` | static | Narration doesn't contain Connect's banned marketing-voice words: leverage / synergy / robust / comprehensive / transformative / game-changing / world-class / best-in-class / cutting-edge. | Rewrite in documentary lower-third style: concrete nouns, numbers over adjectives. |
 | 13 | `voice_config_valid` | static | voice.provider/voice_id/model all set. | Restore voice.* from the template skeleton. |
+| 14 | `spec_has_renderable_clips` | static | At least one clip is referenced in scene.clips OR product.beats. Remotion's Zod schema requires non-empty arrays — an empty-manifest spec lands in Drive but the render aborts before producing a video. | Either attach footage to manifest: and reference it from scene.clips[] / product.beats[], OR populate `manifest_todo:` with proposed aliases for the operator. |
+| 15 | `spec_manifest_refs_resolvable` | static | Every `@alias` used in scene.clips / product.beats has a matching manifest entry. Catches typos and forgotten manifest additions. | Add manifest entries for the missing aliases. Format: `<alias>: gdrive:<file-id>.<ext>` |
 
 The check functions live at `skills/video-spec-qa/checks.ts` as
 importable TS. Each returns a `QACheckResult` (`{pass, detail?,
