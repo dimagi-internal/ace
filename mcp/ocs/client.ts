@@ -99,6 +99,35 @@ export interface OcsClient {
     experiment_id: number;
   }): Promise<{ public_id: string; embed_key: string }>;
 
+  /**
+   * Soft-archive an experiment (chatbot) by integer id. Sets `is_archived=True`
+   * on the Experiment row server-side. Each clone has its own Experiment, so
+   * archiving one opp's clone doesn't affect the golden template or other
+   * opps' clones.
+   *
+   * IMPORTANT — callers MUST exclude the `OCS_GOLDEN_TEMPLATE_ID` from the
+   * sweep set before calling this atom. The atom itself has no idea what
+   * the template id is; the safety boundary lives in the caller (the
+   * `sweep-ocs` skill reads the env var and excludes it from candidates).
+   *
+   * Routes through Playwright to the `/a/<team>/chatbots/<pk>/delete/` HTML
+   * view (POST, returns 302 HTMX `HX-Redirect`). No REST equivalent.
+   */
+  archiveChatbot(args: { experiment_id: number }): Promise<{ archived: number }>;
+
+  /**
+   * Soft-archive a pipeline by integer id. Sets `is_archived=True` on the
+   * Pipeline row server-side. Each clone gets its own Pipeline (verified
+   * 2026-05-15: `Pipeline.create_new_version(is_copy=True)` deep-clones nodes
+   * but Collection IDs in LLM node params are SHARED with the source — so
+   * archiving an orphan opp's pipeline is safe, but archiving its
+   * collection would break the golden template).
+   *
+   * Routes through Playwright to the `/a/<team>/pipelines/<pk>/delete/` HTML
+   * view (HTTP DELETE method on Django View.delete(); returns 200 empty body).
+   */
+  archivePipeline(args: { pipeline_id: number }): Promise<{ archived: number }>;
+
   // ── Observation atoms ────────────────────────────────────────────
 
   listChatbots(args?: {
