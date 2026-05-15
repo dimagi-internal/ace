@@ -134,9 +134,11 @@ The facilitator's session gdoc should contain:
 
 The OCS chatbot for this opp is loaded with this Output Specification so
 facilitators can ask it "what should I put in section 3?" during
-write-up. The attestation form's `gdoc_link` field captures a link to
-this gdoc; the gdoc lives in the LLO's or ACE's shared Drive, not in
-CommCare.
+write-up. The gdoc lives in the LLO's or ACE's shared Drive, not in
+CommCare; the attestation form does **not** carry a `gdoc_link` field
+(the gdoc is written after the form is submitted). Coordinator review
+matches attestation to gdoc by `(FLW identity, session_date, venue)`
+tuple, out-of-band.
 
 ## Target Population
 - Beneficiary criteria: [who]
