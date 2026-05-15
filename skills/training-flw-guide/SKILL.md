@@ -119,11 +119,35 @@ from PDD's Evidence Model.>
    - `atomic-visit` (default): one Deliver form, one delivery per
      vendor/visit. Section "Doing one delivery" has one form
      walkthrough.
-   - `focus-group`: session-based, multiple participants per session.
-     Replace the per-vendor walkthrough with per-session-stage
-     (consent → group task → debrief).
+   - `focus-group`: **the FLW guide's shape changes fundamentally.**
+     The mobile-app footprint is tiny (one sentinel Learn form
+     "Briefing Acknowledgement" + one 5-field Deliver attestation
+     form). The bulk of the FLW's work is **out-of-band**: running
+     the FGD verbally, then writing the qualitative content into a
+     Google Doc per the PDD's § Output Specification. The guide
+     should:
+     - Replace "Complete the Learn app" with a brief "Acknowledge
+       readiness in the Learn app (one form, ~30 seconds)" pointing
+       at the sentinel + noting that real facilitator training lives
+       in the per-opp **OCS chatbot** (primary surface) + the
+       handbook gdoc + the coordinator-graded practice-session audio
+       review.
+     - Replace "Doing one delivery" with a **two-step session
+       workflow** section: (1) run the 75–90 min FGD per the
+       Question Guide; (2) within 24 hours, fill the 5-field
+       attestation form (consent / date / venue / GPS / photo);
+       (3) within 72 hours of the attestation, write the per-session
+       gdoc per the PDD's Output Spec (themes, quotes, consensus,
+       post-FGD report, reflection) and submit to the coordinator.
+     - Add a "How to use the OCS chatbot" subsection pointing
+       facilitators at it for both pre-session prep questions and
+       post-session gdoc-writing guidance.
+     - Drop the "common pitfalls" form-fill-error patterns (mostly
+       N/A for a 5-field form) and add FGD-specific pitfalls (e.g.
+       leading questions in Section 3, previewing Section 5 options).
    - `multi-stage`: hybrid; first-stage and follow-up stages get their
-     own subsections.
+     own subsections. If a stage's archetype is `focus-group`, use the
+     focus-group section shape for that stage.
 
 5. **Draft the guide.** Use the format above. For each Learn module
    and Deliver form, walk through the screenshots referenced in the
@@ -216,3 +240,4 @@ This is the **second of the per-artifact training skills**, after
 - v1 (0.10.83): Initial skill. Owns `flw-training-guide.md` only.
   Common + per-opp screenshot layering. Archetype-aware structure.
 - 2026-05-07: Per-opp screenshot path corrected from `ACE/<opp>/screenshots/` to `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/` to match the runs/<run-id>/<phase>/ scheme producers actually use. Doc-only fix; matches what `app-screenshot-capture` writes.
+- 2026-05-15: Expand `focus-group` archetype branch (Step 4) from one-line "session-based" note to full shape spec: (1) acknowledge sentinel readiness form instead of full Learn-app walkthrough, (2) two-step session workflow (run FGD verbally → submit attestation within 24h → write gdoc within 72h), (3) add OCS chatbot subsection (primary writing-guidance surface), (4) drop form-fill pitfalls + add FGD-specific pitfalls (leading questions, premature Section 5 preview). Prompted by `malaria-itn-fgd/20260514-2352` Phase 6 observations.

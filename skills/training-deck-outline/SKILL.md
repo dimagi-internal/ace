@@ -112,13 +112,44 @@ clear error — that's intentional, the parser is opinionated.
      `ocs-setup/widget-handoff.md`), escalation contacts
    - Slide N+3: Closing thanks + "Now you're ready"
 
-   For `focus-group` archetype: replace the per-form walkthrough slides
-   with per-session-stage slides (consent, group-task-1, group-task-2,
-   debrief).
+   For `focus-group` archetype: **deck shape changes fundamentally.**
+   There are only 2-3 anchor-worthy screenshots (the sentinel readiness
+   form + the 5-field attestation form). Don't pad with per-stage
+   in-app slides that don't exist; instead, structure the deck around
+   the FGD workflow:
+
+   - Slide 1: Title + subtitle
+   - Slide 2: "What you're doing" — formative-research framing from
+     PDD; emphasize gdoc-as-deliverable
+   - Slide 3: "Before your first session" — readiness check, practice-
+     session-pass gate (out-of-band, coordinator-graded), the
+     sentinel acknowledgement form (one screenshot)
+   - Slide 4: "Running the session" — Question Guide overview, anti-
+     leading + anti-preview rules, consent script (no in-app
+     interaction during the session itself)
+   - Slide 5: "Within 24 hours — submit the attestation form" — the
+     5-field form (one screenshot of the form). Emphasize: this is
+     the payment trigger; gdoc comes separately later.
+   - Slide 6: "Within 72 hours — write the session gdoc" — point at
+     the PDD's Output Specification for the gdoc structure (themes /
+     quotes / consensus / post-FGD report / reflection). Point at the
+     OCS chatbot ("ask it 'what should I put in section 3?'") as the
+     primary writing-guidance surface.
+   - Slide 7: "Common pitfalls" — leading questions in Section 3,
+     previewing Section 5 options early, smoothing over disagreement,
+     weak theme summaries (paraphrasing instead of specifics)
+   - Slide 8: "Where to get help" — OCS widget URL, escalation contact
+   - Slide 9: Closing thanks
+
+   Target ~9 slides total (versus 8-15 for atomic-visit). Screenshot
+   density is 2-3 PNGs (sentinel form, attestation form, maybe the
+   OCS widget) — don't synthesize fake walkthrough PNGs that don't
+   exist.
 
    For `multi-stage`: combine — initial-stage slides like
    atomic-visit, follow-up-stage slides treat the FLW as a returning
-   user.
+   user. If a stage's archetype is `focus-group`, use the focus-group
+   shape above for that stage's slides.
 
 4. **Self-check the format.** Before writing, confirm the output:
    - Starts with exactly one `# Title` heading
@@ -204,3 +235,4 @@ Sibling per-artifact skills:
 - v1 (0.10.79): Initial skill. Owns `training-deck-outline.md` only.
   Format contract synced to `lib/training-deck-spec.ts`
   `parseDeckOutline`.
+- 2026-05-15: Replace the one-line "per-session-stage slides" focus-group note in Step 3 with a full 9-slide focus-group deck shape (title / formative-research framing / before-first-session readiness gate / running-the-session / 24h attestation / 72h gdoc + OCS chatbot / FGD-specific pitfalls / where to get help / closing). Screenshot density drops from 6-8 to 2-3 (sentinel form + attestation form + maybe OCS widget) — don't synthesize fake walkthrough PNGs that don't exist. Prompted by `malaria-itn-fgd/20260514-2352` Phase 6 observation.
