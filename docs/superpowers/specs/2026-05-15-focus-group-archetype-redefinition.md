@@ -121,9 +121,23 @@ For focus-group, the OCS chatbot is the **primary facilitator surface** for trai
 
 `training-deck-outline`, `training-flw-guide`, `training-quick-reference`, `training-faq` for focus-group should target the gdoc-deliverable workflow + the attestation-form-only mobile interaction. Current content shape needs review against the new model. **Defer to a follow-up PR** — the training-skill changes are content-shape, not blocking for a coherent FGD run.
 
-### Phase 7 — `synthetic-data-and-workflows` (defer)
+### Phase 7 — `synthetic-data-and-workflows` (skipped entirely for focus-group)
 
-Synthetic data for focus-group generates fake attestation form submissions + fake facilitator gdocs (one per fake session). Synthetic-narrative-plan + synthetic-workflow-seed for focus-group need to be reshaped — current shape assumes Deliver-app form content carries the qualitative data. **Defer to a follow-up PR.**
+**Phase 7 is a no-op for `focus-group` archetype.** Operator decision after `malaria-itn-fgd/20260514-2352` Phase 7 ran and produced 9 friction items (mix of small-tweak and reshape). Operator verbatim: "for synthetic data, this should be skipped for fgd, there is nothing interesting to do there."
+
+Why a clean skip rather than reshape:
+
+- **Nothing meaningful to fake.** The Deliver attestation form has 5 fields (consent / date / venue / gps / photo). Synthetic submissions would be 6-12 rows of mostly-uniform attestations. Nothing for a per-FLW KPI scorecard to render that adds insight beyond the live Connect FormRepeater feed.
+- **The qualitative content surface is a Google Doc, not a CommCare submission.** Faking gdocs would mean generating fake themes, fake quotes, fake post-FGD reports. That's narrative authorship, not synthetic data — and the manifest schema for `connect_labs.synthetic_generate_from_manifest` has no `qualitative_artifacts` first-class type.
+- **No FGD-shaped workflow templates exist.** All 14 labs templates from `workflow_list_templates` are atomic-visit / per-FLW-KPI shaped (KMC, MBW, weekly review with per-FLW scorecards). Building "coordinator gdoc-review queue" + "saturation tracker" FGD templates is a substantive labs-side build, not a small ACE tweak.
+- **Stakeholder asset isn't needed.** The Phase 7 output (HTML slideshow + workflow URLs) is a "show what the opp looks like running well" asset for prospective LLOs / funders. For an FGD opp, the equivalent asset is the published solicitation page + the PDD itself + the OCS chatbot demo URL. Phase 7's output adds nothing on top.
+
+Skip semantics (per `agents/synthetic-data-and-workflows.md § Archetype: focus-group is a no-op`):
+
+- Phase agent reads PDD `archetype:`, sees `focus-group`, writes a one-paragraph skip summary to `7-synthetic/synthetic-data-and-workflows_summary.md`, patches `phases.synthetic-data-and-workflows.{status: skipped, ...}` + `gates.synthetic: skipped`, returns. No sub-skill dispatch. No `connect_labs.synthetic_*` atom calls.
+- Phase 8 (`solicitation-management`) starts immediately after.
+
+If the operational model later requires synthetic-data work for FGD (e.g., a fake-gdoc-corpus generator to demo coordinator review workflows), revisit this skip rule.
 
 ### Phase 8 — `solicitation-management` (no direct change)
 
@@ -180,3 +194,4 @@ The existing PDD (`docs/.../1-design/idea-to-pdd.md`) is oversized for the new m
 - **2026-05-15** — Operator (jjackson) reframes FGD from "rich Learn-app + 28-field Deliver-app" to "attestation-form-only + gdoc content + invoice-or-form payment". Answers "one tiny attestation form per session" to the payment-shape question. Decision captured here.
 - **2026-05-15** — Operator pares the attestation form further. Verbatim: "For the fields just have consent (this should confirm you have consent from all participants), date, venue, gps, photo. everything else is either wrong or goes into the gdoc. the gdoc will be created after the fact so no ability to enter it into commcare". Final field list is 5 fields (consent / date / venue / gps / photo). Audio upload removed (out-of-band); gdoc_link removed (gdoc doesn't exist at submission time). Coordinator review matches attestation to gdoc by `(FLW, session_date, venue)` tuple, not by an in-form link.
 - **2026-05-15** — Re-run `malaria-itn-fgd/20260514-2352` Phase 4 hit a hard blocker on the no-Learn-app path: `connect_create_opportunity` requires `learn_app` at the schema, REST request, and cross-field-validator layers. Operator chose **per-opp sentinel Learn app** (option b) over shared no-op (option a), upstream API change (option c), or new atom (option d). Sentinel is one module, one form (~7 fields, ~1-2 min Nova build, ~$0 marginal cost). Doubles as an in-app readiness gate (`acknowledge_readiness = yes` required for facilitator clearance). `pdd-to-learn-app/SKILL.md § Archetypes § focus-group` carries the canonical sentinel spec. Production restored; the §305 short-circuit-to-skipped is walked back.
+- **2026-05-15** — Phase 7 (`synthetic-data-and-workflows`) **skipped entirely for `focus-group`**. Operator decision after Phase 7 ran on the re-run and produced 9 friction items (mix of small-tweak + reshape; `synthetic-narrative-plan/SKILL.md § Process step 2` literally says focus-group is deferred). Operator verbatim: "for synthetic data, this should be skipped for fgd, there is nothing interesting to do there." No per-FLW KPI scorecard worth populating with synthetic 5-field attestations; no `qualitative_artifacts` manifest type to mint fake gdocs as fixtures; no FGD-shaped workflow templates exist. Phase agent now archetype-short-circuits at phase start; sub-skills are not dispatched. Phase 8 starts immediately after.

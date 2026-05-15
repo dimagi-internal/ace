@@ -59,10 +59,52 @@ deleted via `workflow_delete`. The orchestrator does NOT pause at a
 Phase 7 boundary — `/ace:run` proceeds straight from Phase 6 to
 Phase 8.
 
-## Workflow (default `/ace:run` flow)
+## Archetype: focus-group is a no-op
+
+**For `focus-group` archetype, this entire phase is skipped.** The FGD
+operational model captures qualitative content in Google Docs
+out-of-band; the only mobile-app submissions are 5-field attestation
+forms (one per session). There is no per-FLW KPI scorecard to populate
+with synthetic data, no rich form content to fake, and no workflow
+template that meaningfully renders "10 sessions submitted, all five
+fields valid, here are the gdoc links" any differently from looking
+at the live Connect FormRepeater feed directly. Synthetic data +
+workflows + persona walkthroughs add zero stakeholder value for the
+FGD shape.
+
+Read the PDD's `archetype:` at phase start. If it's `focus-group`:
+
+1. Write a one-paragraph summary doc to
+   `7-synthetic/synthetic-data-and-workflows_summary.md` with
+   frontmatter `{archetype: focus-group, status: skipped, reason: no-stakeholder-value-for-attestation-form-shape}`
+   and a body explaining the skip rationale + pointer to
+   `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
+2. Patch `run_state.yaml.phases.synthetic-data-and-workflows` with
+   `status: skipped`, `verdict: skipped`, `completed_at: <iso>`,
+   `summary_artifact: <doc-id>`, `skip_reason: focus-group-no-op`.
+   Flip `gates.synthetic: skipped`.
+3. Return cleanly. Phase 8 (`solicitation-management`) starts.
+
+Do NOT dispatch any of the 7 sub-skills below. Do NOT call
+`connect_labs.synthetic_*` atoms. Do NOT mint workflows. Do NOT
+generate persona walkthroughs.
+
+For `atomic-visit` and `multi-stage` (where at least one stage uses
+atomic-visit data collection), proceed with the workflow below. The
+sub-skill SKILL.md files still carry the legacy "focus-group support
+extends in subsequent stages" deferral language — that's now resolved
+by this phase-level skip rather than a per-skill archetype branch.
+
+See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`
+§ Phase 7 for the full rationale, including why a reshape (fake gdocs
+as fixtures, FGD-shaped workflow templates) was rejected in favor of
+a clean skip.
+
+## Workflow (default `/ace:run` flow — atomic-visit / multi-stage only)
 
 Skills run sequentially. Each is independently re-runnable via
-`/ace:step <skill-name> --opp <slug>`.
+`/ace:step <skill-name> --opp <slug>`. **Not dispatched for
+`focus-group` archetype** — see § Archetype: focus-group is a no-op above.
 
 ### Step 1: Narrative Plan
 
