@@ -58,6 +58,18 @@ export interface ConnectClient {
     end_date: string;                   // YYYY-MM-DD
     total_budget: number;               // must fit inside program.budget − Σ(other managed opps)
     is_test?: boolean;                  // defaults true server-side
+    /**
+     * If `true` (default), call `activateOpportunity` after a successful
+     * create and return an opportunity with truly-active server state.
+     * The create response's `active: true` is set in the Connect DB but
+     * the activation hook hasn't run yet, so downstream endpoints (e.g.
+     * `sendFlwInvite`'s `invite_users/`) reject the opp until activate
+     * is called. Verified live on `malaria-itn-fgd/20260514-2352`
+     * Phase 4: invite endpoint rejected with "Opportunity must be active
+     * to invite users" until an explicit activate. Set `false` to opt
+     * out (rare — for drafts that intentionally stay inactive).
+     */
+    auto_activate?: boolean;
     learn_app: {
       hq_server_url: string;            // e.g. https://www.commcarehq.org
       api_key: string;                  // raw 40-char HQ key; server creates HQApiKey if not present
@@ -69,7 +81,7 @@ export interface ConnectClient {
     deliver_app: {
       hq_server_url: string;
       api_key: string;                  // can be the same as learn_app.api_key
-      cc_domain: string;
+      cc_domain: string;                // HQ project space slug
       cc_app_id: string;                // must differ from learn_app.cc_app_id
     };
   }): Promise<Opportunity>;

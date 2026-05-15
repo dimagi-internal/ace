@@ -247,6 +247,17 @@ server.tool('connect_create_opportunity',
       'Must fit inside `program.budget − Σ(other managed opps)`.',
     ),
     is_test: z.boolean().optional().describe('Defaults true server-side.'),
+    auto_activate: z.boolean().optional().default(true).describe(
+      'When true (default), call `activateOpportunity` after a successful ' +
+      'create so the returned opp reflects truly-active server state. The ' +
+      'create response\'s `active: true` field is set in the Connect DB ' +
+      'column but the activation hook hasn\'t run yet — downstream ' +
+      'endpoints (`sendFlwInvite` / `invite_users/`) reject with ' +
+      '"Opportunity must be active to invite users" until `/activate/` ' +
+      'is POSTed. The activate endpoint is idempotent. Set false only ' +
+      'for intentional drafts. Verified live on malaria-itn-fgd ' +
+      '20260514-2352 Phase 4 (0.13.240).',
+    ),
     learn_app: HqAppZ.extend({
       description: z.string().describe('Required — Connect form marks it *.'),
       passing_score: z.coerce.number().int().min(0).max(100),
@@ -290,7 +301,8 @@ const VerificationFlagsZ = z.object({
   duplicate: z.boolean().optional(),
   gps: z.boolean().optional(),
   catchment_areas: z.boolean().optional(),
-  location: z.boolean().optional(),
+  gps_radius_meters: z.number().int().min(0).max(10000).optional()
+    .describe('GPS radius (meters) for catchment-area / location-based verification. Surfaced through the form\'s `location` numeric input. Default is the form\'s pre-filled value (10m). Typical PDD specs are 100-500m. Renamed from `location: boolean` in 0.13.240 — the form field has always been a number, never a boolean.'),
   form_submission_start: z.string().optional(),
   form_submission_end: z.string().optional(),
   deliver_unit_checks: z.array(z.object({
@@ -309,6 +321,7 @@ const VerificationFlagsZ = z.object({
 });
 
 server.tool('connect_set_verification_flags',
+  'Set per-opportunity verification toggles via the `/opportunity/<id>/verification_flags_config/` HTML form (not yet on the public REST API; routes through Playwright). Supports the top-level booleans (`duplicate` / `gps` / `catchment_areas`), the numeric `gps_radius_meters` field (renamed from the historic `location: boolean` typo), submission-window times, and the per-deliver-unit attachment / duration checks. Re-posts every existing formset row verbatim so changes are additive.',
   { organization_slug: z.string(), opportunity_id: z.string(), flags: VerificationFlagsZ },
   async (args) => runAtom(async () => (await client()).setVerificationFlags(args))
 );
@@ -364,6 +377,7 @@ server.tool('connect_create_payment_unit',
 );
 
 server.tool('connect_list_payment_units',
+  'List payment units on an opportunity. **HTML-scraped read-back has known unreliable fields:** `amount` returns undefined (the table doesn\'t render it); `max_total` and `max_daily` are mislabeled / swapped on some pages (verified live on `malaria-itn-fgd/20260514-2352` Phase 4); `required_deliver_units` returns `[]` regardless of actual config. **Use `createPaymentUnit`\'s response object for round-trip verification** of those fields rather than this list endpoint. `id`, `payment_unit_uuid`, `name`, and `description` ARE reliable. Issue tracking: jjackson/ace#106 finding 5 + turmeric-20260503-0835. When upstream ships a real GET /api/payment_units/ endpoint, all fields become reliable in one routing change.',
   { organization_slug: z.string(), opportunity_id: z.string() },
   async (args) => runAtom(async () => (await client()).listPaymentUnits(args))
 );
