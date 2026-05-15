@@ -26,7 +26,7 @@ Which system?
   connect — Connect opportunities + unaccepted FLW invites                    (auto: deactivate opps, delete unaccepted invites; programs report-only)
   ocs     — OCS chatbots + pipelines + sessions                               (auto: archive chatbots+pipelines, end sessions; collections never auto-archive — shared with golden template)
   hq      — CommCare HQ apps                                                  (auto-soft-delete; builds and multimedia are upstream gaps and not surfaced)
-  labs    — connect-labs workflows + pipelines + synthetic + LabsRecord types (auto-delete/disable everything)
+  labs    — connect-labs workflows + pipelines + synthetic                    (auto-delete/disable; solicitations/funds/reviews/responses report-only — lifecycle semantics belong to labs MCP)
   all     — run all five in sequence
 ```
 
@@ -95,6 +95,6 @@ When `system == 'all'`, print one summary block per system, then a final aggrega
 | CommCare HQ apps | hq | ✅ Auto-soft-delete via `commcare_delete_app` (mutates `doc_type` to `<original>-Deleted`; restorable 90d via HQ admin UI). Listing via new `commcare_list_apps`. |
 | CommCare HQ builds / multimedia | hq | ❌ Upstream gap. No delete API exists; not surfaced in sweep report. |
 | labs workflows / pipelines / synthetic | labs | ✅ Auto-delete via existing `workflow_delete` / `pipeline_delete` / `synthetic_disable` |
-| labs solicitations / funds / reviews / responses | labs | ✅ Auto-delete via new `labs_delete_record(id)` (HTTP DELETE to `/export/labs_record/`; primary-key lookup covers all four product types — no discriminator needed) |
+| labs solicitations / funds / reviews / responses | labs | ⚠️ Report-only. Labs MCP intentionally has no per-type delete — these have lifecycle semantics (status state machines, allocation refs, audit trails). Cleanup happens via the existing `update_*` atoms (e.g. `update_solicitation({status:'cancelled'})`) or via cascade-on-opp-delete when upstream ships a real Connect opportunity-delete view. Sweep surfaces them for visibility only. |
 
 Items marked ⚠️ surface in the report with an admin-UI deep link the human can click to delete manually. Items marked 🚧 await a prerequisite atom. Items marked ❌ have no upstream support and are surfaced for visibility only.
