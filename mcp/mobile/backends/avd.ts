@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { AvdBootError, AdbError } from '../errors.js';
 import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult } from '../types.js';
+import { resolveAdbServerPort, resolveEmulatorPair } from '../port-allocator.js';
 
 const AVD_BOOT_TIMEOUT_MS = 120_000;
 const AVD_BOOT_POLL_MS = 2_000;
@@ -164,12 +165,98 @@ export const defaultShell: ShellFn = (cmd, args, opts = {}) =>
 
 export interface AvdBackendOpts {
   shell?: ShellFn;
+  /**
+   * Skip the env-aware adb-port injection wrapper. Tests pass their own
+   * `shell` mock and don't want the wrapper second-guessing the calls.
+   * Production code never sets this.
+   */
+  rawShell?: boolean;
+}
+
+export interface AllocatedPorts {
+  adbServerPort: number;
+  emulatorConsolePort: number;
+  emulatorAdbBridgePort: number;
+  /** True if both ports were probe-allocated (no env override). */
+  autoAllocated: boolean;
 }
 
 export class AvdBackend {
+  /** The injected/wrapped shell used by all adb/emulator/aapt invocations. */
   private shell: ShellFn;
+  /** The raw underlying shell, before adb-port env injection. */
+  private rawShellFn: ShellFn;
+  /** Lazily allocated; populated on first call to `getAllocatedPorts`. */
+  private ports: AllocatedPorts | null = null;
+  /** Promise dedupe so concurrent `getAllocatedPorts` calls share one allocation. */
+  private allocPromise: Promise<AllocatedPorts> | null = null;
+
   constructor(opts: AvdBackendOpts = {}) {
-    this.shell = opts.shell ?? defaultShell;
+    this.rawShellFn = opts.shell ?? defaultShell;
+    // When tests pass a `shell` mock they want exact-match behavior — they
+    // script call signatures like `adb devices`, not `adb -P 5039 devices`.
+    // Production wraps to inject ANDROID_ADB_SERVER_PORT into spawned env
+    // so every adb call lands on the right server.
+    this.shell = opts.shell || opts.rawShell ? this.rawShellFn : this.makeAdbShell(this.rawShellFn);
+  }
+
+  /**
+   * Wrap a ShellFn so `adb` invocations spawn with `ANDROID_ADB_SERVER_PORT`
+   * pinned to whatever this backend has allocated. Only `adb` is wrapped —
+   * `emulator -port <N>` already gets the explicit port arg, and other
+   * commands (`aapt`, the maestro launcher inside `defaultShell`) don't
+   * care.
+   *
+   * The wrapper deliberately calls `getAllocatedPorts()` (which lazily
+   * probes on first use) so the very first `adb` call after construction
+   * triggers allocation. Subsequent calls are O(1).
+   */
+  private makeAdbShell(inner: ShellFn): ShellFn {
+    return async (cmd, args, opts) => {
+      if (cmd !== 'adb') return inner(cmd, args, opts);
+      const ports = await this.getAllocatedPorts();
+      const oldEnv = process.env.ANDROID_ADB_SERVER_PORT;
+      // Inject for the duration of this single shell call. `defaultShell`
+      // builds its child env from `process.env` at spawn time, so we set
+      // and restore around the call. Concurrent `adb` invocations from
+      // the same backend instance all see the same allocated port, so
+      // this race-free even under parallel awaits.
+      process.env.ANDROID_ADB_SERVER_PORT = String(ports.adbServerPort);
+      try {
+        return await inner(cmd, args, opts);
+      } finally {
+        if (oldEnv === undefined) delete process.env.ANDROID_ADB_SERVER_PORT;
+        else process.env.ANDROID_ADB_SERVER_PORT = oldEnv;
+      }
+    };
+  }
+
+  /**
+   * Resolve the adb-server + emulator console/adb-bridge ports for this
+   * backend instance (= this MCP server session). Env vars
+   * `ANDROID_ADB_SERVER_PORT` and `ACE_MOBILE_EMULATOR_PORT` win when
+   * set; otherwise we probe TCP ports starting at 5037 and 5554
+   * respectively, walking upward to the first free pair. Cached for the
+   * lifetime of the backend so every `adb -P <port>` and emulator spawn
+   * in the same session uses the same allocator.
+   */
+  async getAllocatedPorts(): Promise<AllocatedPorts> {
+    if (this.ports) return this.ports;
+    if (this.allocPromise) return this.allocPromise;
+    this.allocPromise = (async () => {
+      const adbEnv = process.env.ANDROID_ADB_SERVER_PORT?.trim();
+      const emuEnv = process.env.ACE_MOBILE_EMULATOR_PORT?.trim();
+      const adbServerPort = await resolveAdbServerPort();
+      const pair = await resolveEmulatorPair();
+      this.ports = {
+        adbServerPort,
+        emulatorConsolePort: pair.console,
+        emulatorAdbBridgePort: pair.adbBridge,
+        autoAllocated: !adbEnv && !emuEnv,
+      };
+      return this.ports;
+    })();
+    return this.allocPromise;
   }
 
   async listAvds(): Promise<string[]> {
@@ -193,17 +280,26 @@ export class AvdBackend {
     this.ensureFrontCameraEmulated(avdName);
 
     // Boot in detached background process; do NOT await it.
-    // ACE_MOBILE_EMULATOR_PORT pins the emulator's console port (and adb-bridge
-    // at port+1, serial `emulator-<port>`). Lets two Mac users share one host
-    // without their emulators colliding on the auto-incremented 5554/5555 pair.
-    // Unset → emulator picks the default 5554 / next-free.
-    const args = ['-avd', avdName, '-no-window', '-no-snapshot-save'];
-    const port = process.env.ACE_MOBILE_EMULATOR_PORT?.trim();
-    if (port) args.push('-port', port);
+    // Two concurrent local sessions on the same laptop both default to
+    // adb 5037 + emulator console 5554 / adb-bridge 5555 and collide.
+    // `getAllocatedPorts` resolves env-pinned values (when set) or
+    // probe-walks for the next free pair. The same allocator backs every
+    // adb call in this session via `makeAdbShell`, so the boot port and
+    // the discovery port are always the same.
+    const ports = await this.getAllocatedPorts();
+    const args = [
+      '-avd',
+      avdName,
+      '-no-window',
+      '-no-snapshot-save',
+      '-port',
+      String(ports.emulatorConsolePort),
+    ];
+    const env = { ...shellEnv(), ANDROID_ADB_SERVER_PORT: String(ports.adbServerPort) };
     const child = spawn('emulator', args, {
       detached: true,
       stdio: 'ignore',
-      env: shellEnv(),
+      env,
     });
     child.unref();
 

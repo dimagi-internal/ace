@@ -200,6 +200,51 @@ describe('AvdBackend.captureUiDump', () => {
   });
 });
 
+describe('AvdBackend.getAllocatedPorts', () => {
+  const saved = {
+    adb: process.env.ANDROID_ADB_SERVER_PORT,
+    emu: process.env.ACE_MOBILE_EMULATOR_PORT,
+  };
+  afterEach(() => {
+    if (saved.adb === undefined) delete process.env.ANDROID_ADB_SERVER_PORT;
+    else process.env.ANDROID_ADB_SERVER_PORT = saved.adb;
+    if (saved.emu === undefined) delete process.env.ACE_MOBILE_EMULATOR_PORT;
+    else process.env.ACE_MOBILE_EMULATOR_PORT = saved.emu;
+  });
+
+  it('uses env-pinned ports when set, marks autoAllocated=false', async () => {
+    process.env.ANDROID_ADB_SERVER_PORT = '5099';
+    process.env.ACE_MOBILE_EMULATOR_PORT = '5580';
+    const backend = new AvdBackend({ rawShell: true });
+    const ports = await backend.getAllocatedPorts();
+    expect(ports.adbServerPort).toBe(5099);
+    expect(ports.emulatorConsolePort).toBe(5580);
+    expect(ports.emulatorAdbBridgePort).toBe(5581);
+    expect(ports.autoAllocated).toBe(false);
+  });
+
+  it('auto-probes when both env vars unset, marks autoAllocated=true', async () => {
+    delete process.env.ANDROID_ADB_SERVER_PORT;
+    delete process.env.ACE_MOBILE_EMULATOR_PORT;
+    const backend = new AvdBackend({ rawShell: true });
+    const ports = await backend.getAllocatedPorts();
+    expect(ports.adbServerPort).toBeGreaterThanOrEqual(5037);
+    expect(ports.emulatorConsolePort).toBeGreaterThanOrEqual(5554);
+    expect(ports.emulatorConsolePort % 2).toBe(0);
+    expect(ports.emulatorAdbBridgePort).toBe(ports.emulatorConsolePort + 1);
+    expect(ports.autoAllocated).toBe(true);
+  });
+
+  it('caches allocation across calls (same backend = same ports)', async () => {
+    delete process.env.ANDROID_ADB_SERVER_PORT;
+    delete process.env.ACE_MOBILE_EMULATOR_PORT;
+    const backend = new AvdBackend({ rawShell: true });
+    const a = await backend.getAllocatedPorts();
+    const b = await backend.getAllocatedPorts();
+    expect(b).toEqual(a);
+  });
+});
+
 describe('AvdBackend.adbPortFromSerial', () => {
   it('derives the adbd port for a standard emulator serial', () => {
     expect(AvdBackend.adbPortFromSerial('emulator-5554')).toBe(5555);
