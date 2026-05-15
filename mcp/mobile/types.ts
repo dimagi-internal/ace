@@ -129,6 +129,16 @@ export interface ScreenshotEntry {
   path: string;
   takenAt: string;      // ISO 8601
   bytes: number;
+  /**
+   * Absolute path to a sibling `<stepName>.xml` UI hierarchy dump
+   * captured at the same moment as the PNG. Present only when the
+   * caller passed `serial` to `MaestroBackend.runRecipe` AND the
+   * matching .xml file is on disk. See § Local backend split-and-dump
+   * in `MaestroBackend.runRecipeWithDumps` for the capture contract.
+   */
+  uiDumpPath?: string;
+  /** Byte size of the sibling .xml dump when `uiDumpPath` is set. */
+  uiDumpBytes?: number;
 }
 
 export interface TestUserRegistrationResult {

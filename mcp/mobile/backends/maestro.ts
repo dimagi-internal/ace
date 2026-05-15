@@ -1,8 +1,10 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { RecipeValidationError } from '../errors.js';
 import type { ShellFn } from './avd.js';
 import { defaultShell } from './avd.js';
+import { splitRecipeAtScreenshots } from '../recipe-splitter.js';
 import type { RecipeRunResult, ScreenshotEntry } from '../types.js';
 
 const ALLOWED_STEP_KEYS = new Set([
@@ -41,7 +43,7 @@ export class MaestroBackend {
     recipePath: string,
     envVars: Record<string, string>,
     screenshotDir: string,
-    opts: { adbPort?: number } = {},
+    opts: { adbPort?: number; serial?: string } = {},
   ): Promise<RecipeRunResult> {
     fs.mkdirSync(screenshotDir, { recursive: true });
     // Maestro's `takeScreenshot: "name"` writes to `./name.png` in the
@@ -52,6 +54,52 @@ export class MaestroBackend {
     // turmeric-20260429-2330 Phase 6 Step 2 round 4 (2026-04-30): every
     // recipe reported `takeScreenshot ... COMPLETED` but screenshotDir
     // ended up empty. The recipes were correct; the cwd was wrong.
+
+    // When `serial` is provided, we run the recipe as a SERIES of
+    // sub-recipes split at every top-level `takeScreenshot:` boundary,
+    // and between sub-recipes we capture the AVD's UI hierarchy XML
+    // alongside each PNG. This is the only structurally-correct way to
+    // capture per-surface dumps: Maestro's gRPC driver locks the
+    // on-device `uiautomator` service exclusively while a `maestro test`
+    // run is active, so a concurrent `adb shell uiautomator dump` from
+    // a different host process fails (verified 2026-05-14 — see
+    // `docs/learnings/2026-05-14-atlas-side-channel-capture.md`).
+    // Between sub-recipes the driver is idle and the dump succeeds.
+    //
+    // When `serial` is NOT provided we keep the single-invocation path
+    // — same behaviour as pre-0.13.229 for callers that don't need
+    // dumps. This also preserves the exact shape that the
+    // `MaestroBackend.runRecipe` unit tests assert against (one
+    // `maestro test` shell call per `runRecipe`).
+    if (opts.serial) {
+      return this.runRecipeWithDumps(recipePath, envVars, screenshotDir, opts as { adbPort?: number; serial: string });
+    }
+
+    const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, recipePath);
+    const r = await this.shell('maestro', args, { timeoutMs: 10 * 60 * 1000, cwd: screenshotDir });
+    const screenshots = this.collectScreenshots(screenshotDir);
+    return {
+      status: r.exitCode === 0 ? 'pass' : 'fail',
+      exitCode: r.exitCode,
+      stdout: r.stdout,
+      stderr: r.stderr,
+      screenshotsDir: screenshotDir,
+      screenshots,
+    };
+  }
+
+  /**
+   * Build the `maestro` CLI args for a single recipe invocation.
+   *
+   * The `--host`/`--port` flags routing rationale and the cwd contract
+   * are documented in `runRecipe` above.
+   */
+  private buildMaestroArgs(
+    adbPort: number | undefined,
+    envVars: Record<string, string>,
+    screenshotDir: string,
+    recipePath: string,
+  ): string[] {
     const args: string[] = [];
     // When the caller knows the target emulator's adb port, prefer
     // Maestro's hidden top-level `--host` / `--port` flags over relying on
@@ -67,8 +115,8 @@ export class MaestroBackend {
     // emulator directly. The flags are picocli-defined on `App.class` but
     // omitted from `--help`, so they are effectively undocumented; pinning
     // them to a known-stable form here.
-    if (typeof opts.adbPort === 'number') {
-      args.push('--host=localhost', `--port=${opts.adbPort}`);
+    if (typeof adbPort === 'number') {
+      args.push('--host=localhost', `--port=${adbPort}`);
     }
     args.push('test', '--no-ansi');
     for (const [k, v] of Object.entries(envVars)) {
@@ -78,16 +126,126 @@ export class MaestroBackend {
     // resolves it relative to the new cwd otherwise.
     const absoluteRecipePath = path.isAbsolute(recipePath) ? recipePath : path.resolve(recipePath);
     args.push('--output', screenshotDir, absoluteRecipePath);
-    const r = await this.shell('maestro', args, { timeoutMs: 10 * 60 * 1000, cwd: screenshotDir });
+    return args;
+  }
+
+  /**
+   * Split-and-run variant of `runRecipe`: splits the recipe at every
+   * top-level `takeScreenshot:` boundary (see
+   * `mcp/mobile/recipe-splitter.ts`) and runs each sub-recipe
+   * sequentially, capturing a UI hierarchy XML dump in between.
+   *
+   * Each captured dump lands at
+   * `<screenshotDir>/<screenshotName>.xml` — same basename as the PNG
+   * Maestro just produced. Phase 6's `app-screenshot-capture` skill
+   * picks them up alongside the PNGs in `collectScreenshots`.
+   *
+   * Failure model: if any sub-recipe exits non-zero, the loop stops
+   * immediately — subsequent sub-recipes would run against a broken
+   * mid-flow state and produce noise. The returned `exitCode` is the
+   * first failing sub-recipe's exit code; `stdout` / `stderr` are
+   * concatenated across all sub-recipes that DID run, separated by
+   * marker lines so a reader can tell where each one started.
+   */
+  private async runRecipeWithDumps(
+    recipePath: string,
+    envVars: Record<string, string>,
+    screenshotDir: string,
+    opts: { adbPort?: number; serial: string },
+  ): Promise<RecipeRunResult> {
+    const absoluteRecipePath = path.isAbsolute(recipePath) ? recipePath : path.resolve(recipePath);
+    const body = fs.readFileSync(absoluteRecipePath, 'utf8');
+    const chunks = splitRecipeAtScreenshots(body);
+
+    // Zero-screenshot recipes (e.g. probe recipes, or a recipe where
+    // every `takeScreenshot:` is nested inside a `runFlow.commands`
+    // block) collapse to a single chunk — no dump windows, fall back
+    // to the simple single-invocation path so we don't pay the
+    // chunk-write overhead for no benefit.
+    if (chunks.length === 1 && !chunks[0].screenshotName) {
+      const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, absoluteRecipePath);
+      const r = await this.shell('maestro', args, { timeoutMs: 10 * 60 * 1000, cwd: screenshotDir });
+      const screenshots = this.collectScreenshots(screenshotDir);
+      return {
+        status: r.exitCode === 0 ? 'pass' : 'fail',
+        exitCode: r.exitCode,
+        stdout: r.stdout,
+        stderr: r.stderr,
+        screenshotsDir: screenshotDir,
+        screenshots,
+      };
+    }
+
+    // Per-chunk recipes go in a sibling tempdir so the screenshot dir
+    // stays "screenshots + dumps", not "screenshots + dumps + chunk
+    // YAMLs". Cleaned up on success; left behind on failure for
+    // debugging.
+    const chunkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-recipe-chunks-'));
+    const stdoutParts: string[] = [];
+    const stderrParts: string[] = [];
+    let lastExitCode = 0;
+
+    try {
+      for (const chunk of chunks) {
+        const chunkPath = path.join(chunkDir, `chunk-${chunk.index}.yaml`);
+        fs.writeFileSync(chunkPath, chunk.yaml, 'utf8');
+
+        const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, chunkPath);
+        const r = await this.shell('maestro', args, { timeoutMs: 10 * 60 * 1000, cwd: screenshotDir });
+        stdoutParts.push(`# --- chunk ${chunk.index} (screenshot=${chunk.screenshotName ?? 'none'}) ---\n${r.stdout}`);
+        stderrParts.push(`# --- chunk ${chunk.index} (screenshot=${chunk.screenshotName ?? 'none'}) ---\n${r.stderr}`);
+        lastExitCode = r.exitCode;
+        if (r.exitCode !== 0) break;
+
+        // Chunk passed and ended on a screenshot — quick window to
+        // grab the UI hierarchy XML before the next chunk relaunches
+        // the Maestro driver.
+        if (chunk.screenshotName) {
+          await this.captureUiDump(opts.serial, screenshotDir, chunk.screenshotName);
+        }
+      }
+    } finally {
+      if (lastExitCode === 0) {
+        // Best-effort cleanup; ignore errors.
+        try {
+          fs.rmSync(chunkDir, { recursive: true, force: true });
+        } catch {
+          /* noop */
+        }
+      }
+    }
+
     const screenshots = this.collectScreenshots(screenshotDir);
     return {
-      status: r.exitCode === 0 ? 'pass' : 'fail',
-      exitCode: r.exitCode,
-      stdout: r.stdout,
-      stderr: r.stderr,
+      status: lastExitCode === 0 ? 'pass' : 'fail',
+      exitCode: lastExitCode,
+      stdout: stdoutParts.join('\n'),
+      stderr: stderrParts.join('\n'),
       screenshotsDir: screenshotDir,
       screenshots,
     };
+  }
+
+  /**
+   * Capture the AVD's current UI hierarchy XML to
+   * `<screenshotDir>/<screenshotName>.xml`. Two-step adb dance because
+   * `uiautomator dump` writes to the device's filesystem; `adb pull`
+   * brings it back. Failures are swallowed — a missing dump
+   * degrades to "PNG without sibling XML", which is the pre-0.13.229
+   * baseline.
+   */
+  private async captureUiDump(serial: string, screenshotDir: string, screenshotName: string): Promise<void> {
+    const devicePath = `/sdcard/__ace-dump-${screenshotName}.xml`;
+    const hostPath = path.join(screenshotDir, `${screenshotName}.xml`);
+    try {
+      const dumpRes = await this.shell('adb', ['-s', serial, 'shell', 'uiautomator', 'dump', devicePath], {
+        timeoutMs: 10_000,
+      });
+      if (dumpRes.exitCode !== 0) return;
+      await this.shell('adb', ['-s', serial, 'pull', devicePath, hostPath], { timeoutMs: 10_000 }).catch(() => {});
+    } catch {
+      /* noop — best-effort */
+    }
   }
 
   /**
@@ -197,12 +355,31 @@ export class MaestroBackend {
       .map((f) => {
         const full = path.join(dir, f);
         const stat = fs.statSync(full);
-        return {
-          stepName: f.replace(/\.png$/, ''),
+        const stepName = f.replace(/\.png$/, '');
+        // Pair the PNG with its sibling UI dump if `runRecipeWithDumps`
+        // captured one (same basename, .xml suffix). Absence is the
+        // normal pre-0.13.229 case (caller didn't pass `serial`); we
+        // silently omit `uiDumpPath` so legacy consumers see no
+        // change.
+        const dumpPath = path.join(dir, `${stepName}.xml`);
+        let uiDumpPath: string | undefined;
+        let uiDumpBytes: number | undefined;
+        if (fs.existsSync(dumpPath)) {
+          const dumpStat = fs.statSync(dumpPath);
+          uiDumpPath = dumpPath;
+          uiDumpBytes = dumpStat.size;
+        }
+        const entry: ScreenshotEntry = {
+          stepName,
           path: full,
           takenAt: stat.mtime.toISOString(),
           bytes: stat.size,
         };
+        if (uiDumpPath !== undefined) {
+          entry.uiDumpPath = uiDumpPath;
+          entry.uiDumpBytes = uiDumpBytes;
+        }
+        return entry;
       });
   }
 }

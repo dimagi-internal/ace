@@ -4,6 +4,8 @@
 **Context:** Trying to capture the § 8 (post-Learn-complete certificate) and § 9 (Download Delivery gate) surfaces during a Phase 6 J5 re-dispatch, after shipping PR #295 + #296 with those surfaces flagged as coordinate-only TBD.
 **Outcome:** Both attempts failed for structural reasons. Two findings worth carrying forward.
 
+> **Update 2026-05-14 (later):** Finding 1's structural fix — splitting recipes at `takeScreenshot:` boundaries and capturing a UI dump in each between-chunk quiet window — shipped in **PR #298** / **v0.13.229**. See `mcp/mobile/recipe-splitter.ts` + `MaestroBackend.runRecipeWithDumps`. The next fresh-opp Phase 6 dispatch will automatically pair every PNG screenshot with a `<step-name>.xml` dump, closing the § 8 / § 9 atlas gap as a routine side-effect. The original analysis below remains the source-of-truth for *why* the side-channel approach is structurally broken — preserve it.
+
 ## Finding 1 — concurrent ADB sessions lose to Maestro
 
 **Attempted pattern:** background bash script polling `adb shell uiautomator dump` every 3s while Phase 6 J5's Maestro recipe walked the Learn→Deliver transition. The idea was to capture the dump XML the moment distinctive surface markers ("VIEW OPPORTUNITY DETAILS", "DOWNLOAD") appeared on screen.

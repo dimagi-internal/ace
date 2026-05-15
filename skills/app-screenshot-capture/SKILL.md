@@ -231,6 +231,24 @@ For each of the two smoke journeys (Learn first, then Deliver), call
   atom exists for retroactively sharing a file that was uploaded
   without the flag. Verified live 2026-05-02 via
   `scripts/test-screenshot-to-slides-e2e.ts`.
+- **NEW (0.13.229):** each `ScreenshotEntry` may now carry a sibling
+  `uiDumpPath` pointing at a `<step-name>.xml` file containing the
+  Android `uiautomator dump` output captured at the same moment as the
+  PNG. When present, upload it to
+  `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<journey-id>/<step-name>.xml`
+  via `drive_upload_binary` with `mimeType: "application/xml"`
+  (no `shareAnyoneWithLink` needed — XMLs aren't consumed by Slides).
+  The dumps are produced automatically by `MaestroBackend.runRecipeWithDumps`
+  whenever the caller passes a `serial` to `mobile_run_recipe` (the
+  default path for local-AVD invocations since 0.13.229). Absence is
+  fine — pre-0.13.229 recipes have no XMLs and the upload step
+  becomes a no-op. The dumps unlock atlas auto-maintenance (every
+  Phase 6 dispatch leaves a complete record of resource-IDs at every
+  surface the recipe visited) and selector drift detection (diff
+  current dump vs prior passing run's dump). See
+  `docs/learnings/2026-05-14-atlas-side-channel-capture.md` for the
+  underlying problem and `mcp/mobile/recipe-splitter.ts` for the
+  splitting logic.
 
 If a smoke recipe fails (status != pass), halt — downstream phases
 must not start without working smoke screenshots, and a smoke failure

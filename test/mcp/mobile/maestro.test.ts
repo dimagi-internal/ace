@@ -67,6 +67,149 @@ describe('MaestroBackend.runRecipe', () => {
   });
 });
 
+describe('MaestroBackend.runRecipe — split-and-dump path (when `serial` is provided)', () => {
+  // Helper: a shell mock that records every call and routes by command-prefix
+  // pattern rather than exact-string match (chunk paths contain random
+  // mkdtemp suffixes that are unknown at test-author time).
+  function makeRoutingShell(routes: Array<{ match: (cmd: string, args: string[]) => boolean; reply: { stdout?: string; stderr?: string; code?: number } }>) {
+    const calls: { cmd: string; args: string[] }[] = [];
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      calls.push({ cmd, args });
+      for (const r of routes) {
+        if (r.match(cmd, args)) {
+          return { stdout: r.reply.stdout ?? '', stderr: r.reply.stderr ?? '', exitCode: r.reply.code ?? 0 };
+        }
+      }
+      throw new Error(`Unscripted shell call: ${cmd} ${args.join(' ')}`);
+    });
+    return { shell, calls };
+  }
+
+  it('runs N+1 sub-recipes for N takeScreenshot steps, capturing UI dumps between them', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-split-'));
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(
+      recipePath,
+      'appId: org.commcare.dalvik\n---\n- tapOn: A\n- takeScreenshot: "screen-a"\n- tapOn: B\n- takeScreenshot: "screen-b"\n- tapOn: C\n',
+    );
+
+    const { shell, calls } = makeRoutingShell([
+      {
+        // Any `maestro test ...` invocation — the chunk path is opaque.
+        match: (cmd, args) => cmd === 'maestro' && args.includes('test'),
+        reply: { stdout: 'OK\n', code: 0 },
+      },
+      {
+        // `adb -s emulator-5554 shell uiautomator dump <devicePath>` — write
+        // a fake XML into the host-side dump path so the post-chunk pull is
+        // representative of a real success.
+        match: (cmd, args) => cmd === 'adb' && args.includes('uiautomator') && args.includes('dump'),
+        reply: { stdout: '', code: 0 },
+      },
+      {
+        // `adb -s emulator-5554 pull <devicePath> <hostPath>` — emulate
+        // the pull producing the file on disk so collectScreenshots
+        // discovers the .xml sibling.
+        match: (cmd, args) => cmd === 'adb' && args.includes('pull'),
+        reply: { stdout: '', code: 0 },
+      },
+    ]);
+
+    // Side-effect: when the pull "succeeds" in our mock, the real pull
+    // would have written a file. Simulate that so collectScreenshots
+    // sees a sibling .xml.
+    const originalShellFn = shell;
+    const wrappedShell = vi.fn(async (cmd: string, args: string[]) => {
+      const result = await originalShellFn(cmd, args);
+      if (cmd === 'adb' && args.includes('pull')) {
+        const hostPath = args[args.length - 1];
+        fs.writeFileSync(hostPath, '<hierarchy/>\n');
+      }
+      // Maestro takeScreenshot would normally produce a PNG; simulate
+      // that whenever Maestro test runs against a chunk that contains a
+      // takeScreenshot step.
+      if (cmd === 'maestro' && args.includes('test')) {
+        const chunkPath = args[args.length - 1];
+        if (fs.existsSync(chunkPath)) {
+          const body = fs.readFileSync(chunkPath, 'utf8');
+          const match = body.match(/takeScreenshot:\s*"([^"]+)"/);
+          if (match) {
+            fs.writeFileSync(path.join(tmp, `${match[1]}.png`), 'fake-png');
+          }
+        }
+      }
+      return result;
+    });
+
+    const backend = new MaestroBackend({ shell: wrappedShell });
+    const r = await backend.runRecipe(recipePath, {}, tmp, { serial: 'emulator-5554' });
+
+    expect(r.status).toBe('pass');
+    // 3 chunks → 3 maestro test calls; 2 ended in screenshot → 2 dumps × 2 adb calls (dump + pull) = 4 adb calls.
+    const maestroCalls = calls.filter((c) => c.cmd === 'maestro' && c.args.includes('test'));
+    expect(maestroCalls).toHaveLength(3);
+    const adbDumpCalls = calls.filter((c) => c.cmd === 'adb' && c.args.includes('uiautomator'));
+    expect(adbDumpCalls).toHaveLength(2);
+    const adbPullCalls = calls.filter((c) => c.cmd === 'adb' && c.args.includes('pull'));
+    expect(adbPullCalls).toHaveLength(2);
+    // ScreenshotEntry's `uiDumpPath` is populated for both captured surfaces.
+    const screensWithDumps = r.screenshots.filter((s) => s.uiDumpPath !== undefined);
+    expect(screensWithDumps.map((s) => s.stepName).sort()).toEqual(['screen-a', 'screen-b']);
+  });
+
+  it('stops after first failing sub-recipe and skips remaining dumps', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-split-fail-'));
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(
+      recipePath,
+      'appId: x\n---\n- tapOn: A\n- takeScreenshot: "screen-a"\n- tapOn: B\n- takeScreenshot: "screen-b"\n',
+    );
+
+    let maestroCallNum = 0;
+    const calls: { cmd: string; args: string[] }[] = [];
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      calls.push({ cmd, args });
+      if (cmd === 'maestro' && args.includes('test')) {
+        maestroCallNum++;
+        // First chunk: fail. Should NOT proceed to dump or to chunk 2.
+        return { stdout: '', stderr: 'maestro halt', exitCode: 1 };
+      }
+      throw new Error(`Unexpected call: ${cmd} ${args.join(' ')}`);
+    });
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.runRecipe(recipePath, {}, tmp, { serial: 'emulator-5554' });
+
+    expect(r.status).toBe('fail');
+    expect(r.exitCode).toBe(1);
+    expect(maestroCallNum).toBe(1);
+    // No adb calls at all — first chunk failed before the dump window.
+    expect(calls.filter((c) => c.cmd === 'adb')).toHaveLength(0);
+  });
+
+  it('falls back to single-invocation when the recipe has no takeScreenshot steps', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-split-empty-'));
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- tapOn: A\n- tapOn: B\n');
+
+    const calls: { cmd: string; args: string[] }[] = [];
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      calls.push({ cmd, args });
+      return { stdout: 'OK\n', stderr: '', exitCode: 0 };
+    });
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.runRecipe(recipePath, {}, tmp, { serial: 'emulator-5554' });
+
+    expect(r.status).toBe('pass');
+    // Exactly ONE maestro test call (no chunking).
+    const maestroCalls = calls.filter((c) => c.cmd === 'maestro' && c.args.includes('test'));
+    expect(maestroCalls).toHaveLength(1);
+    // Single-invocation pointed at the ORIGINAL recipePath, not a chunk file.
+    expect(maestroCalls[0].args[maestroCalls[0].args.length - 1]).toBe(recipePath);
+    // No dump calls — nothing to capture.
+    expect(calls.filter((c) => c.cmd === 'adb')).toHaveLength(0);
+  });
+});
+
 describe('MaestroBackend.validateRecipe', () => {
   it('rejects YAML with unknown step keys', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-'));
