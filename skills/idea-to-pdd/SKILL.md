@@ -310,7 +310,7 @@ to the opp; add others not listed when they meet the bar.
 
 | ID | Question | Map to surface |
 |---|---|---|
-| `payment-rate` | Per-visit payment rate to FLW? | PDD `FLW Requirements` numeric |
+| `payment-rate` | Per-visit payment rate band (range, not fixed) to propose to the LLO. The PDD captures a target range or anchor + rationale; the actual rate is **negotiated via the solicitation response** where the LLO proposes a number with justification. | PDD `FLW Requirements` numeric (range or band) |
 | `pilot-sample-size` | Pilot sample size for AI calibration? | `verifiability` rubric |
 | `ai-photo-threshold` | AI auto-accept confidence threshold? | `verifiability` rubric |
 | `gps-verification-radius` | Acceptable GPS radius (meters) for visit-at-location? | `verifiability` rubric |
@@ -322,7 +322,7 @@ to the opp; add others not listed when they meet the bar.
 | ID | Question | Map to surface |
 |---|---|---|
 | `payment-unit-model` | Per-session attestation-form payment via Connect deliver_unit (default) vs per-month invoice via Connect web (rare)? | PDD `Budget` + `connect-opp-setup` payment unit |
-| `per-session-rate` | Per-verified-session rate to facilitator (and notetaker)? | PDD `FLW Requirements` numeric |
+| `per-session-rate` | Per-verified-session rate band (range, not fixed) for facilitator + notetaker. Same negotiation principle as `payment-rate` — PDD captures a range with rationale; LLO proposes a number in their solicitation response and explains why. The awarded LLO's proposed rate becomes the actual `connect.deliver_unit` payment_unit amount at Phase 4 setup time. | PDD `FLW Requirements` numeric (range or band) |
 | `facilitator-training-stipend` | Flat training stipend on **practice-session-pass** (coordinator-graded audio review). Note: not Learn-app completion — focus-group archetype has no Learn app. | PDD `FLW Requirements` numeric |
 | `gdoc-content-template` | What sections / fields should the facilitator's gdoc contain? Default: the PDD's Output Specification verbatim. Where does the gdoc template live (a template URL the facilitator copies, or a free-text starting point)? | PDD `Output Specification` |
 | `participant-compensation-cap-usd` | Per-participant compensation USD-equivalent cap? | PDD `Budget` numeric |
@@ -464,3 +464,4 @@ When `--dry-run` is active:
 | 2026-05-15 | Branch the Common load-bearing decisions catalog by archetype: base table + `atomic-visit` / `focus-group` / `multi-stage` additive tables. Prompted by `malaria-itn-fgd/20260514-2007` where rows like `ai-photo-threshold` had no meaning for an FGD and FGD-relevant rows (`payment-unit-model`, `submission-window`, `audio-consent-fallback`, `site-selection`, etc.) had to be authored ad-hoc outside the catalog. See jjackson/ace#301. | ACE team |
 | 2026-05-15 | **Recharacterize `focus-group` archetype to attestation-form-only.** `## Archetypes § focus-group` updated: training surface is OCS chatbot + handbook gdoc + practice-session audio review (NOT a Learn app); Output Specification is the gdoc structure, not Deliver-app form fields; new "Attestation form fields" question references the canonical default in `pdd-to-deliver-app`. Decisions Log: `facilitator-training-stipend` re-pegged to practice-session-pass; new `gdoc-content-template` row; `submission-window` clarified as attestation-form submission. Prompted by `malaria-itn-fgd/20260514-2007` post-run reframe. See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
 | 2026-05-15 | Pare attestation-form-fields question + Decisions Log to match the 5-field form: consent / date / venue / GPS / photo. Audio is out-of-band; gdoc_link is removed (gdoc is written after submission). Add `gps-verification-radius` and `gdoc-submission-window` decisions; recharacterize `audio-min-duration` and `audio-consent-fallback` as facilitator-protocol concerns (out-of-band, not in the form). | ACE team |
+| 2026-05-15 | Recharacterize `payment-rate` and `per-session-rate` Decisions Log rows: PDD captures a **range** (not a fixed number), and the actual rate is **negotiated via the solicitation response** where the LLO proposes a number with rationale. The awarded LLO's proposed rate becomes the `connect.deliver_unit` payment_unit amount at Phase 4 setup. Pairs with `solicitation-create/SKILL.md § Process`'s "per-unit payment is negotiated, not declared" design principle. | ACE team |
