@@ -533,6 +533,21 @@ export class MobileClient {
     });
     steps.push(reg.alreadyRegistered ? 'register-already' : 'registered');
 
+    // Step 2.5: silence Android heads-up notification banners. AOSP AVDs
+    // (no Google Play Services) periodically fire a Messages-app banner
+    // ("Enable Google Play services") that is touch-receptive and steals
+    // the next Maestro tap mid-recipe — surfaced as a recipe selector
+    // miss on whichever screen the banner happened to navigate to (the
+    // banner's tap target is Settings → App info → GMS). Class-level fix
+    // — every smoke run on this AVD will hit it sooner or later. See
+    // `AvdBackend.disableHeadsUpNotifications` for the full failure-mode
+    // writeup. Best-effort; idempotent; persists into the snapshot saved
+    // by Step 3 below.
+    await this.avd
+      .disableHeadsUpNotifications(avd.name)
+      .catch(() => {});
+    steps.push('heads-up-notifications-disabled');
+
     // Step 3: save snapshot for fast tier-1 restore on subsequent runs.
     logInfo(`local_bootstrap: saving registered-test-user snapshot on ${avd.serial}`);
     const save = await this.avd.saveSnapshot(avd.name, 'registered-test-user');

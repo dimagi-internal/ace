@@ -258,6 +258,52 @@ describe('AvdBackend.adbPortFromSerial', () => {
   });
 });
 
+describe('AvdBackend.disableHeadsUpNotifications', () => {
+  it('runs `settings put global heads_up_notifications_enabled 0` against the matching device', async () => {
+    const calls: string[] = [];
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const key = `${cmd} ${args.join(' ')}`;
+      calls.push(key);
+      const scripted: Record<string, { stdout: string; code?: number }> = {
+        'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
+        'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+        'adb -s emulator-5554 shell settings put global heads_up_notifications_enabled 0': {
+          stdout: '',
+        },
+        'adb -s emulator-5554 shell cmd notification disallow_dnd com.google.android.gms': {
+          stdout: '',
+        },
+      };
+      const r = scripted[key];
+      if (!r) throw new Error(`Unscripted shell call: ${key}`);
+      return { stdout: r.stdout, stderr: '', exitCode: r.code ?? 0 };
+    });
+    const backend = new AvdBackend({ shell });
+    await expect(backend.disableHeadsUpNotifications('ACE_Pixel_API_34')).resolves.toBeUndefined();
+    expect(calls).toContain(
+      'adb -s emulator-5554 shell settings put global heads_up_notifications_enabled 0',
+    );
+    expect(calls).toContain(
+      'adb -s emulator-5554 shell cmd notification disallow_dnd com.google.android.gms',
+    );
+  });
+
+  it('swallows shell failures (best-effort; never gates bootstrap)', async () => {
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const key = `${cmd} ${args.join(' ')}`;
+      if (key === 'adb devices') {
+        return { stdout: 'List of devices attached\nemulator-5554\tdevice\n', stderr: '', exitCode: 0 };
+      }
+      if (key === 'adb -s emulator-5554 emu avd name') {
+        return { stdout: 'ACE_Pixel_API_34\nOK\n', stderr: '', exitCode: 0 };
+      }
+      throw new Error(`adb hiccup: ${key}`);
+    });
+    const backend = new AvdBackend({ shell });
+    await expect(backend.disableHeadsUpNotifications('ACE_Pixel_API_34')).resolves.toBeUndefined();
+  });
+});
+
 describe('AvdBackend.setGmsEnabled', () => {
   it('runs `pm enable` against the matching device when enabled=true', async () => {
     const shell = fakeShell({

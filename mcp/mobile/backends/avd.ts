@@ -655,6 +655,57 @@ export class AvdBackend {
     return /Success/.test(r.stdout);
   }
 
+  /**
+   * Suppress Android heads-up notification banners on the AVD.
+   *
+   * Why this is class-level: AOSP AVDs (no Google Play Services — e.g.
+   * `ACE_Pixel_API_34`) periodically fire a system heads-up banner from
+   * the Messages app:
+   *   "Enable Google Play services — Messages won't work unless you
+   *    enable Google Play services"
+   * The banner is touch-receptive and intercepts the next Maestro tap
+   * mid-recipe. Live-reproduced in turmeric run 20260515-0536, attempt
+   * #6 of `/ace:step app-screenshot-capture`: the banner ate a
+   * `nav_btn_next` tap during `form-advance.yaml`, navigating the device
+   * to Settings → App info → Google Play services; the recipe then
+   * halted on a missing form text selector.
+   *
+   * Fix: turn off heads-up notifications globally and forbid GMS from
+   * triggering Do-Not-Disturb override (belt-and-suspenders — DND-disallow
+   * stops the GMS-owned channels from raising heads-up even if the global
+   * toggle ever gets re-enabled by a system update).
+   *
+   * Idempotent: both writes are system-state toggles — repeated calls are
+   * no-ops. Safe to call on every dispatch. Best-effort: failures are
+   * swallowed so a transient adb hiccup doesn't gate the whole bootstrap.
+   *
+   * Persists in AVD snapshots (system globals live in
+   * `/data/system/users/0/settings_global.xml`), so saving a post-boot
+   * snapshot after this call carries the setting forward.
+   */
+  async disableHeadsUpNotifications(avdName: string): Promise<void> {
+    const avd = await this.ensureAvdRunning(avdName);
+    await this.shell('adb', [
+      '-s',
+      avd.serial,
+      'shell',
+      'settings',
+      'put',
+      'global',
+      'heads_up_notifications_enabled',
+      '0',
+    ]).catch(() => {});
+    await this.shell('adb', [
+      '-s',
+      avd.serial,
+      'shell',
+      'cmd',
+      'notification',
+      'disallow_dnd',
+      'com.google.android.gms',
+    ]).catch(() => {});
+  }
+
   async loadSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
     const avd = await this.ensureAvdRunning(avdName);
     const r = await this.shell('adb', ['-s', avd.serial, 'emu', 'avd', 'snapshot', 'load', snapshotName]);
