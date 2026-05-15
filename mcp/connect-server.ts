@@ -423,6 +423,18 @@ server.tool('connect_send_flw_invite',
   async (args) => runAtom(async () => (await client()).sendFlwInvite(args))
 );
 
+server.tool('connect_delete_unaccepted_flw_invites',
+  'Hard-delete unaccepted FLW invites by integer id. Invites with `status=accepted` are silently skipped server-side (those represent real workers and cannot be deleted via this endpoint). Associated `OpportunityAccess` rows cascade-delete. Used by `/ace:sweep connect` to clean up orphan invites tied to deactivated opportunities. Routes through Playwright to the `@csrf_exempt` `/opportunity/<opp_id>/delete_invites/` HTML view; no REST equivalent. `opportunity_id` is the opportunity UUID slug; `user_invite_ids` are the integer ids returned by `connect_list_invites`.',
+  {
+    organization_slug: z.string(),
+    opportunity_id: z.string().describe('Opportunity UUID slug (same shape used by connect_list_invites).'),
+    user_invite_ids: z.array(z.coerce.number().int()).min(1).describe(
+      'Integer ids from connect_list_invites. Accepted invites in this list are silently skipped server-side.',
+    ),
+  },
+  async (args) => runAtom(async () => (await client()).deleteUnacceptedFlwInvites(args))
+);
+
 // ── Invoices ─────────────────────────────────────────────────────
 
 server.tool('connect_list_invoices',

@@ -1119,6 +1119,74 @@ describe('PlaywrightBackend.sendFlwInvite', () => {
   });
 });
 
+describe('PlaywrightBackend.deleteUnacceptedFlwInvites', () => {
+  it('POSTs to /opportunity/<uuid>/delete_invites/ with repeated user_invite_ids form fields', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [{ status: 200, body: '', headers: { 'HX-Redirect': '/a/ai-demo-space/opportunity/opp-uuid-1234/workers/' } }],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    const out = await backend.deleteUnacceptedFlwInvites({
+      organization_slug: 'ai-demo-space',
+      opportunity_id: 'opp-uuid-1234',
+      user_invite_ids: [101, 102, 103],
+    });
+    expect(out).toEqual({ requested: 3 });
+    expect(captured).toHaveLength(1);
+    const post = captured[0];
+    expect(post.method).toBe('POST');
+    expect(post.url).toBe('/a/ai-demo-space/opportunity/opp-uuid-1234/delete_invites/');
+    // Body should be URL-encoded with repeated keys (Django getlist).
+    expect(post.body).toBe('user_invite_ids=101&user_invite_ids=102&user_invite_ids=103');
+    expect(post.headers?.['Content-Type']).toBe('application/x-www-form-urlencoded');
+  });
+
+  it('returns requested:0 and makes no HTTP call when invite list is empty', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext([], captured);
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    const out = await backend.deleteUnacceptedFlwInvites({
+      organization_slug: 'ai-demo-space',
+      opportunity_id: 'opp-uuid-1234',
+      user_invite_ids: [],
+    });
+    expect(out).toEqual({ requested: 0 });
+    expect(captured).toHaveLength(0);
+  });
+
+  it('throws HttpError on 400 (empty list rejected by server)', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [{ status: 400, body: 'Bad Request' }],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await expect(
+      backend.deleteUnacceptedFlwInvites({
+        organization_slug: 'ai-demo-space',
+        opportunity_id: 'opp-uuid-1234',
+        user_invite_ids: [101],
+      }),
+    ).rejects.toBeInstanceOf(HttpError);
+  });
+
+  it('accepts 302 status as success (Django redirect)', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [{ status: 302, body: '' }],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    const out = await backend.deleteUnacceptedFlwInvites({
+      organization_slug: 'ai-demo-space',
+      opportunity_id: 'opp-uuid-1234',
+      user_invite_ids: [101],
+    });
+    expect(out).toEqual({ requested: 1 });
+  });
+});
+
 // ─── Composite fallback wiring ─────────────────────────────────────────────
 
 describe('CompositeBackend REST→Playwright 404 fallback', () => {

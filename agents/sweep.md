@@ -85,7 +85,8 @@ When `system == 'all'`, print one summary block per system, then a final aggrega
 |---|---|---|
 | Drive folders | drive | ✅ Auto-trash (`drive_trash_file`) |
 | Connect opportunities | connect | Soft-deactivate via existing `update_opportunity({active: false})` |
-| Connect programs / PUs / invites | connect | ⚠️ Report-only (admin UI link). Programs and PUs have no upstream delete; FLW invites need a `connect_delete_unaccepted_flw_invites` atom. |
+| Connect unaccepted FLW invites | connect | ✅ Auto-delete via `connect_delete_unaccepted_flw_invites` (cascade-deletes OpportunityAccess; accepted invites silently skipped server-side) |
+| Connect programs / payment units | connect | ❌ Upstream gap. No delete view exists. Admin UI link only. |
 | OCS sessions | ocs | ✅ Auto-end via `ocs_end_session` |
 | OCS chatbots / collections / pipelines | ocs | ⚠️ Report-only. Upstream supports `is_archived` soft-delete via web UI POST; needs `ocs_archive_*` atoms. |
 | CommCare HQ apps | hq | 🚧 Stub. Needs `commcare_list_apps` + `commcare_delete_app` atoms. |
