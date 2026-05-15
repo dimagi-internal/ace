@@ -60,7 +60,9 @@ Skills — No Fake Background Tasks`). Concrete budget:
   elapsed with `date +%s` checkpoints around the chat loop. If the cap
   is reached mid-suite, stop sending new prompts, write the transcript
   with `complete: false` + `prompts_captured: <N>` / `prompts_remaining:
-  <M>`, return. For `--quick` (3 prompts), this is a hard 270s cap.
+  <M>`, return. For `--quick` the cap is 270s for the 3-prompt universal
+  suite, scaling to 360s / 450s when `focus-group` archetype appends
+  1–2 archetype-specific prompts (see Step 4 `--quick suite` below).
 - **Three-prompt failure circuit-breaker.** If three consecutive
   prompts fail (timeout or error response), abort the suite — OCS is
   unhealthy, and burning the rest of the budget produces noise. Write
@@ -128,17 +130,42 @@ Skills — No Fake Background Tasks`). Concrete budget:
 
 4. **Build the test prompt suite by mode:**
 
-   ### `--quick` suite (3 questions — universal Connect-domain smoke)
-   These are universal Connect-domain questions — they apply to any
-   opportunity, not opp-specific. Cheap shallow gate (3 LLM judge
-   calls, single dimension) for the Phase 5→6 hand-off; deep
-   multi-dimensional grading lives in `/ace:qa-deep`.
+   ### `--quick` suite (3 universal + 0–2 archetype-specific)
+
+   The 3 universal Connect-domain questions apply to any opportunity
+   and primarily exercise the **shared** collection. Cheap shallow
+   gate (~3 LLM judge calls, single dimension) for the Phase 5→6
+   hand-off; deep multi-dimensional grading lives in `/ace:qa-deep`.
+
+   **Universal 3 (always run):**
    - "How do I claim an opportunity?"
      (expected: correct Connect workflow answer — tests shared collection)
    - "How do I sync my data?"
      (expected: correct Connect workflow answer — tests shared collection)
    - "How do I get paid for my deliveries?"
      (expected: correct Connect workflow answer — tests shared collection)
+
+   **Archetype-specific extras (append for `focus-group` only):**
+
+   For `focus-group` opps where the OCS chatbot is the **primary**
+   facilitator surface (see `ocs-agent-setup/SKILL.md § Process step 7`),
+   the 3 universal prompts above primarily exercise shared-collection
+   retrieval and would pass even if the opp-specific collection was
+   mis-loaded. Append **1–2 archetype-derived prompts** drawn from
+   `2-scenarios/pdd-to-test-prompts.md` to get shallow signal on
+   opp-specific RAG. Pick categories that exercise the gdoc-vs-form
+   distinction:
+   - One from `gdoc-writing-guidance` — e.g. "What should I put in
+     section 3 of my gdoc?"
+   - One from `facilitation-technique` — e.g. "How do I probe Q9
+     without leading?"
+
+   Bump the wall-clock cap from 270s to **360s for focus-group**
+   (3 universal + 1 archetype = 4 prompts × 90s) or **450s** (3+2 = 5).
+   For `atomic-visit` and `multi-stage`, the 3 universal prompts are
+   sufficient — the Learn app carries the bulk of opp-specific training
+   content, not the chatbot, so opp-specific RAG signal is less
+   load-bearing at the shallow gate. The 270s cap stays.
 
    ### `--deep` suite (full — pre-launch)
 
@@ -364,3 +391,4 @@ When `--dry-run` is active:
 | 2026-05-04 | Thinned from 5 to 3 prompts. Phase 5 cost reduction; multi-dimensional judging moves to deep-only. `--quick` is now 3 universal Connect-domain prompts (claim opp, sync data, get paid) with a hard 270s wall-clock cap (90s × 3). The `--deep` mode is no longer dispatched from Phase 5 — it lives in the manual `/ace:qa-deep <opp>` command and is the Phase 8 `llo-launch` activation gate. | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Transcripts now write to `runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-<mode>.md` (or `7-execution-manager/...` for `--monitor`), per the manifest. The opp-level `qa-captures/` directory is retired; the only surviving use of the dated `qa-captures/` form is the golden-template no-opp fallback (`ACE/golden-template/qa-captures/<dated>.md`). Resume-from-partial check (Step 3) re-pointed at the new path. No behavior change beyond paths. | ACE team |
 | 2026-05-05 | **`--quick` switched to single-shot write.** Buffer entries in memory and call `drive_create_file` once at suite end (Step 7). Reduces Drive RTTs on `--quick` from N+1 (read+write per prompt + metadata) to 1. The incremental CAS-write strategy still applies on `--deep`/`--monitor` where 15–30 min suite runtimes make resume-from-partial worth the cost. Step 3 resume-from-partial is a `--deep`/`--monitor`-only step now (`--quick`'s 270s cap is short enough that re-running is cheaper than the resume bookkeeping). | ACE team |
+| 2026-05-15 | Extend `--quick` suite with archetype-specific prompts for `focus-group` (1–2 from `pdd-to-test-prompts.md` `gdoc-writing-guidance` + `facilitation-technique` categories) since the 3 universal Connect-domain prompts primarily exercise shared-collection retrieval and would pass even if the opp-specific collection was mis-loaded. Wall-clock cap scales to 360s/450s for focus-group. Atomic-visit / multi-stage stay at the 3-prompt / 270s baseline. Prompted by `malaria-itn-fgd/20260514-2352` Phase 5 observation. | ACE team |

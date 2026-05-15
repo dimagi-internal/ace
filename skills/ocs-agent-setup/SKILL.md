@@ -105,13 +105,25 @@ no inline self-eval.
 
    Files to gather:
    - `runs/<run-id>/1-design/idea-to-pdd.md` — synthesized PDD
+   - `runs/<run-id>/2-scenarios/pdd-to-test-prompts.md` — Phase 2's
+     32 derived Q&A pairs. Especially useful for **`focus-group`**
+     archetype where the chatbot is the **primary** facilitator
+     surface (training reference + post-session gdoc-writing
+     guidance); indexing the test prompts gives meaningfully better
+     facilitator-domain grounding than the PDD alone. Less load-bearing
+     for `atomic-visit` (where the Learn app carries the bulk of
+     training), but always-include is the simpler rule and the
+     marginal token cost is small.
    - `inputs/*` — every file in the opp's `inputs/` folder (SOPs,
      questionnaire templates, data spreadsheets, evidence packs).
      Use `drive_list_folder` + `drive_download_binary` for binary
      types (PDF, docx, xlsx — see also [#106 finding 4](https://github.com/jjackson/ace/issues/106));
      use `drive_read_file` for text files (markdown, plain text).
    - `runs/<run-id>/6-qa-and-training/*` — per-artifact training docs
-     (LLO/FLW guides, FAQ, quick-reference)
+     (LLO/FLW guides, FAQ, quick-reference). Phase 6 may not have run
+     yet when this skill runs in `/ace:run` flow — skip missing files
+     silently rather than halting; Phase 6's `--prompt-patch` re-run
+     picks them up after the fact.
    - `runs/<run-id>/3-commcare/*` — app structure summaries
 
    For each file, base64-encode the content (the upload atom takes
@@ -134,6 +146,7 @@ no inline self-eval.
      - **If `$OCS_SHARED_COLLECTION_ID` is set** (you'll attach `[shared, opp]`, length 2): include `{collection_index_summaries}` in a "Knowledge:" or "Reference:" section. The token is interpolated at runtime with one-line summaries of every attached collection.
      - **If `$OCS_SHARED_COLLECTION_ID` is unset** (you'll attach `[opp]` only, length 1): do NOT include the variable. Reference the opp-specific collection content directly in the prompt body.
    - Identify the chatbot as the ACE support bot for this specific opportunity
+   - **State whether this bot is the primary or supplementary facilitator surface**, based on the PDD's `archetype:`. For `focus-group`, the bot is the **primary** training + post-session writing surface — there is no Learn app carrying training content (the Learn app is a one-form sentinel readiness gate; see `pdd-to-learn-app/SKILL.md § Archetypes § focus-group`). The prompt should say verbatim: *"You are the **primary** facilitator-training and post-session writing-guidance surface for this opportunity. The CommCare Learn app is a one-form readiness gate, not a training curriculum. Facilitator training content lives here (this chatbot) + the per-opp handbook gdoc."* For `atomic-visit` and `multi-stage`, the bot is supplementary to a real Learn app — say so explicitly so retrieval doesn't over-confidently answer training-content questions.
    - Name the Network Manager / LLO(s) and key dates
    - Summarize the intervention (from PDD)
    - Tell the bot to escalate to the admin group at ace@dimagi-ai.com on specific triggers
@@ -285,3 +298,4 @@ Each row this skill writes uses `phase: 5-ocs` and
 | 2026-04-28 | Step 7 prompt rule corrected (0.6.10): `{collection_index_summaries}` is required iff `collection_index_ids.length >= 2` (verified via live OCS probe — see `scripts/probe-n1-cross-test.ts`). Single-collection clones must NOT include the variable; multi-collection clones MUST. The 0.6.4 framing (variable iff non-empty) was wrong. | ACE team |
 | 2026-05-05 | **Two idempotency improvements.** (1) New Step 0 reads the local state file (`runs/<run-id>/5-ocs/ocs-agent-setup.md`) before any OCS call — saves ~1s on a normal re-run and avoids the silent-pipeline-walk on `--prompt-patch` re-runs. (2) New `--prompt-patch` mode reuses the existing chatbot/collection/files, skipping clone + create-collection + upload + 5–10 min indexing wait, and just recomposes the prompt → calls `ocs_set_chatbot_pipeline` → publishes. This is the canonical Phase 5 retry path after `ocs-chatbot-eval --quick` flags a prompt issue (the previous skill prose said the agent should "retry prompt-patch" but no such mode existed — re-runs walked the full pipeline). | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (system-prompt-baseline, rag-collection-scope, test-prompt-count) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-15 | Add `2-scenarios/pdd-to-test-prompts.md` to the canonical KB recipe (Step 5); add archetype-aware "primary vs supplementary surface" line to the system-prompt composition checklist (Step 7) — for `focus-group`, the chatbot is the primary facilitator training + post-session writing surface. Make `6-qa-and-training/*` reads tolerant of missing files (Phase 6 may not have run yet in `/ace:run` flow). Prompted by `malaria-itn-fgd/20260514-2352` Phase 5 agent observations. | ACE team |

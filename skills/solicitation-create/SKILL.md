@@ -48,7 +48,7 @@ connect-labs MCP atom inventory.
    | `title` | `<solicitation_type>: <pdd.title> — <pdd.archetype>` |
    | `solicitation_type` | PDD `## Solicitation` → `Solicitation type` (default `EOI`) |
    | `description` | PDD `## Problem Statement` + `## Intervention Design` (concatenate with a blank line) |
-   | `scope_of_work` | PDD `## Learn App Specification` + `## Deliver App Specification` + `## Success Metrics` (concatenated) |
+   | `scope_of_work` | **Archetype-branched.** See § Scope-of-work composition below. |
    | `budget` | PDD `## Budget` → `Estimated cost` value, parsed as a number |
    | `deadline` | `now() + (response_window_days || 14)` days, ISO-8601 UTC |
    | `evaluation_criteria` | composed locally — see step 3 |
@@ -75,20 +75,59 @@ connect-labs MCP atom inventory.
    PDD is the operator's source of truth and they need to know it
    needs scrubbing.
 
+   **Scope-of-work composition** (archetype-branched, since the PDD
+   section names differ):
+
+   - **`atomic-visit`** / **`multi-stage`**: concatenate PDD
+     `## Learn App Specification` + `## Deliver App Specification` +
+     `## Success Metrics`.
+   - **`focus-group`**: the FGD PDD has no `## Learn App Specification`
+     (the focus-group archetype emits `## Facilitation Protocol`
+     instead — see `templates/pdd-template.md` + `pdd-to-learn-app/SKILL.md
+     § Archetypes § focus-group`). Concatenate PDD `## Facilitation
+     Protocol` + `## Deliver App Specification` + `## Question Guide` +
+     `## Recruitment Plan` (sample size targets) + `## Success Metrics`
+     + `## Evidence Model` (Layer A/B/C). Open with a "PER VERIFIED
+     SESSION, THREE ARTIFACTS" block listing (1) audio recording with
+     45-min minimum + audio-off consent-decline branch, (2) per-session
+     Google Doc with three blocks (per-section summary / post-FGD
+     report / facilitator reflection) + the 72h SLA, (3) 5-field
+     CommCare attestation form (consent / session_date / venue / gps /
+     photo) with an explicit "NOT in the form" callout so applicant
+     LLOs don't assume a 28-field atomic-visit form.
+
 3. **Compose evaluation criteria locally.** Read the PDD's archetype,
    intervention summary, and success criteria. Draft a structured rubric
    inline using the same archetype-aware judgment that
-   `solicitation-create-eval` would apply:
+   `solicitation-create-eval` would apply. Default rubric shape:
+   `[{ id, label, weight: 0..1, scale: 10 }, ...]` summing to 1.0.
 
-   - **`atomic-visit`**: emphasize FLW deployment scale, geographic-fit,
-     supervision model, data-quality track record.
-   - **`focus-group`**: emphasize facilitator skill, language/cultural
-     fit, audio-equipment access, transcription/synthesis capability.
+   - **`atomic-visit`** (4-axis starter): FLW deployment scale,
+     geographic-fit, supervision model, data-quality track record.
+   - **`focus-group`** (6-axis starter — research-stage opps need
+     deeper rubric than CHW-deployment opps):
+     1. **Qualitative-research experience** (weight ~0.20) — prior
+        FGD or in-depth-interview engagements; ability to produce
+        usable session-level qualitative content.
+     2. **Facilitator skill & language fit** (weight ~0.20) — named
+        facilitators with matching local-language fluency + 2+ years
+        community-research experience.
+     3. **Homogeneous-group recruitment** (weight ~0.15) — ability to
+        recruit separate mother / father / grandmother groups in the
+        same community without selection bias toward
+        LLO-program-favored families.
+     4. **Coordinator capacity for gdoc review** (weight ~0.15) —
+        rolling-basis review of facilitator gdocs against the PDD's
+        Output Specification.
+     5. **Audio handling out-of-band** (weight ~0.10) — minimum-45-min
+        audio capture, secure Drive-based storage, consent-decline
+        fallback to notetaker-only.
+     6. **Timeline + per-session payment economics** (weight ~0.20) —
+        ability to field within window, comfortable with
+        per-attestation-form-submission payment structure.
    - **`multi-stage`**: emphasize stage-gate discipline, archetype
-     fluency across stages, transition-management.
-
-   Default rubric shape: `[{ id, label, weight: 0..1, scale: 10 }, ...]`
-   summing to 1.0.
+     fluency across stages, transition-management. For each stage with
+     its own archetype, fold in 2-3 axes from that archetype's starter.
 
    **Note (0.13.3):** the earlier 0.12.0 SKILL.md called
    `mcp__connect-labs__generate_criteria` here. That atom does not exist
@@ -97,13 +136,34 @@ connect-labs MCP atom inventory.
    it, we can swap this local composition step for an MCP call without
    changing the rest of the skill.
 
-   **Default 6-question response template** (used when PDD doesn't
-   override): "Describe your prior experience deploying CHW programs in
-   this archetype.", "How will you recruit and train FLWs for this
-   scope?", "What is your timeline for fielding once awarded?", "What is
-   your supervision model?", "Do you have local-language capacity matching
-   the target geography?", "Provide a budget breakdown for the proposed
-   scope."
+   **Default 6-question response template, archetype-branched** (used
+   when PDD doesn't override):
+
+   For `atomic-visit` / `multi-stage`:
+   1. Describe your prior experience deploying CHW programs in this archetype.
+   2. How will you recruit and train FLWs for this scope?
+   3. What is your timeline for fielding once awarded?
+   4. What is your supervision model?
+   5. Do you have local-language capacity matching the target geography?
+   6. Provide a budget breakdown for the proposed scope.
+
+   For `focus-group` (CHW-deployment vocabulary is wrong; swap to
+   qualitative-research vocabulary):
+   1. Describe your prior qualitative-research experience (FGDs,
+      in-depth interviews) — topic, segment counts, working language,
+      and what synthesis output you produced.
+   2. How will you recruit homogeneous mother / father / grandmother
+      groups without overweighting households with prior LLO program
+      history?
+   3. What is your timeline from award to first practice-session-pass
+      certification, and from award to first live FGD?
+   4. Describe your coordinator capacity to review facilitator gdocs
+      against an Output Specification rubric on a rolling basis.
+   5. What local-language fluency do your named facilitators have, and
+      what audio-recording equipment do you have available?
+   6. Provide a per-session budget breakdown (facilitator +
+      notetaker + participant compensation + venue + coordinator
+      review amortized).
 
 4. **Write the draft for traceability.** Save the full payload + the
    AI-derived rubric to:
@@ -336,3 +396,4 @@ Each row this skill writes uses `phase: 8-solicitation-management` and
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (solicitation-type, response-deadline, response-template-choice) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-15 | Three archetype-branches added for `focus-group`: (1) scope_of_work concatenation in Step 2 — FGD PDD has no `## Learn App Specification` (uses `## Facilitation Protocol` instead); the scope opens with a "PER VERIFIED SESSION, THREE ARTIFACTS" block listing audio + gdoc + 5-field attestation form with explicit "NOT in the form" callout. (2) evaluation_criteria in Step 3 — focus-group goes from a 4-axis sketch to a 6-axis starter rubric (qualitative-research experience, facilitator skill + language, homogeneous-group recruitment, coordinator gdoc-review capacity, audio handling out-of-band, timeline + per-session payment economics). (3) default questions in Step 3 — swap CHW-deployment vocabulary for qualitative-research vocabulary on q1 + q5 + q6. Prompted by `malaria-itn-fgd/20260514-2352` Phase 8 observations. | ACE team |

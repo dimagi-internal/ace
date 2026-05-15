@@ -109,10 +109,25 @@ which rule triggered, what to do>
 
 4. **Add LLO-operations Q's from PDD § Escalation + run_state.yaml verification flags.**
 
-5. **Categorize into 4 sections.** Vendor/Subject Interaction, App/
-   Device, Payment & Verification, Logistics. (For `focus-group`
-   archetype, replace "Vendor/Subject Interaction" with "Participant
-   Interaction.")
+5. **Categorize into 4 sections, archetype-aware.**
+
+   For `atomic-visit` / `multi-stage` (default): Vendor/Subject
+   Interaction, App/Device, Payment & Verification, Logistics.
+
+   For `focus-group`: swap the category set to match the FGD operational
+   model (out-of-band gdoc + minimal in-app attestation):
+   - **Facilitation & Consent** (replaces "Vendor/Subject Interaction") —
+     how to handle one-voice domination, leading questions, audio
+     consent decline, the verbatim consent script.
+   - **Attestation Form & Layer A** (replaces "App/Device") — the
+     5-field form, GPS-out-of-radius cases, the 24h submission window,
+     "what counts as a valid photo" (attendance sheet, no faces).
+   - **Gdoc Writing & Layer B** (new for focus-group) — what to put in
+     each section, what makes a "good theme" vs "weak theme", verbatim
+     quote rules, when coordinator review flags content.
+   - **Payment & Logistics** (merges "Payment & Verification" +
+     "Logistics") — per-session rate, training stipend on
+     practice-session-pass, venue acceptable list, refreshments.
 
 6. **Draft answers** that are 2-4 sentences each. Authoritative tone.
 
@@ -169,3 +184,4 @@ Fifth of the per-artifact training skills.
 ## Change Log
 
 - v1 (0.10.84): Initial skill. Owns `faq.md` only.
+- 2026-05-15: Replace the one-line "Participant Interaction" focus-group note in Step 5 with a full archetype-branched 4-category set: Facilitation & Consent / Attestation Form & Layer A / Gdoc Writing & Layer B / Payment & Logistics. Atomic-visit / multi-stage keep the default Vendor-Subject-Interaction / App-Device / Payment-Verification / Logistics categories. Prompted by `malaria-itn-fgd/20260514-2352` Phase 6 observation.
