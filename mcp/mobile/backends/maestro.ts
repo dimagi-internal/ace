@@ -181,6 +181,26 @@ export class MaestroBackend {
     // YAMLs". Cleaned up on success; left behind on failure for
     // debugging.
     const chunkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-recipe-chunks-'));
+    // Copy any sibling palette YAMLs from the resolved-recipe's directory
+    // into the chunk dir so Maestro's relative-path `runFlow: file:` refs
+    // resolve correctly when chunks invoke sub-flows like connect-login.yaml.
+    // Without this, the splitter's per-chunk tempdir lacks the palette and
+    // the first `runFlow` chunk fails with "Flow file does not exist".
+    try {
+      const recipeDir = path.dirname(absoluteRecipePath);
+      const siblings = fs.readdirSync(recipeDir).filter((f) => f.endsWith('.yaml'));
+      for (const f of siblings) {
+        const src = path.join(recipeDir, f);
+        const dest = path.join(chunkDir, f);
+        try {
+          fs.copyFileSync(src, dest);
+        } catch {
+          /* best-effort */
+        }
+      }
+    } catch {
+      /* best-effort — recipe dir might not be readable */
+    }
     const stdoutParts: string[] = [];
     const stderrParts: string[] = [];
     let lastExitCode = 0;

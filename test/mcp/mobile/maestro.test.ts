@@ -186,6 +186,83 @@ describe('MaestroBackend.runRecipe — split-and-dump path (when `serial` is pro
     expect(calls.filter((c) => c.cmd === 'adb')).toHaveLength(0);
   });
 
+  it('copies sibling palette YAMLs into the chunk dir so runFlow.file refs resolve', async () => {
+    // Reproducer for the Phase 6 "Flow file does not exist:
+    // .../ace-recipe-chunks-XXX/connect-login.yaml" failure: the splitter
+    // writes chunk-N.yaml into a fresh tmp dir, but Maestro resolves
+    // `runFlow.file: connect-login.yaml` relative to the chunk's parent
+    // dir — the palette must live next to the chunk.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-split-palette-'));
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(
+      recipePath,
+      'appId: org.commcare.dalvik\n---\n- runFlow:\n    file: connect-login.yaml\n- takeScreenshot: "after-login"\n- tapOn: B\n',
+    );
+    // Sibling palette that the chunked flow references.
+    const palettePath = path.join(tmp, 'connect-login.yaml');
+    fs.writeFileSync(palettePath, 'appId: org.commcare.dalvik\n---\n- tapOn: SignIn\n');
+
+    const observedChunkDirs = new Set<string>();
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      if (cmd === 'maestro' && args.includes('test')) {
+        const chunkPath = args[args.length - 1];
+        const dir = path.dirname(chunkPath);
+        observedChunkDirs.add(dir);
+        // Synthesize the screenshot Maestro would have taken so collect succeeds.
+        const body = fs.readFileSync(chunkPath, 'utf8');
+        const m = body.match(/takeScreenshot:\s*"([^"]+)"/);
+        if (m) fs.writeFileSync(path.join(tmp, `${m[1]}.png`), 'fake');
+      }
+      if (cmd === 'adb' && args.includes('pull')) {
+        fs.writeFileSync(args[args.length - 1], '<hierarchy/>\n');
+      }
+      return { stdout: 'OK\n', stderr: '', exitCode: 0 };
+    });
+
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.runRecipe(recipePath, {}, tmp, { serial: 'emulator-5554' });
+    expect(r.status).toBe('pass');
+
+    // The chunk dir(s) the splitter created must contain the palette
+    // YAML so Maestro's relative `runFlow.file` resolves successfully.
+    expect(observedChunkDirs.size).toBeGreaterThan(0);
+    for (const dir of observedChunkDirs) {
+      // Chunk dir is left behind only on failure; on success it's cleaned up.
+      // Either way, the palette must have been present at the moment of
+      // the maestro call — so we re-create the assertion via a probe of
+      // the parent tmpdir pattern: the chunk dir basename must start with
+      // 'ace-recipe-chunks-' (sanity), and during the maestro call the
+      // palette was readable. We assert the latter by checking that the
+      // splitter behavior preserved the palette path resolution: copy the
+      // sibling, run again with a no-op shell that asserts palette presence.
+      expect(path.basename(dir)).toMatch(/^ace-recipe-chunks-/);
+    }
+
+    // Stronger assertion: invoke a second run where the shell ASSERTS
+    // the palette is co-located with the chunk file at maestro-call time.
+    let paletteSeenNextToChunk = false;
+    const assertingShell = vi.fn(async (cmd: string, args: string[]) => {
+      if (cmd === 'maestro' && args.includes('test')) {
+        const chunkPath = args[args.length - 1];
+        const dir = path.dirname(chunkPath);
+        if (fs.existsSync(path.join(dir, 'connect-login.yaml'))) {
+          paletteSeenNextToChunk = true;
+        }
+        const body = fs.readFileSync(chunkPath, 'utf8');
+        const m = body.match(/takeScreenshot:\s*"([^"]+)"/);
+        if (m) fs.writeFileSync(path.join(tmp, `${m[1]}.png`), 'fake');
+      }
+      if (cmd === 'adb' && args.includes('pull')) {
+        fs.writeFileSync(args[args.length - 1], '<hierarchy/>\n');
+      }
+      return { stdout: 'OK\n', stderr: '', exitCode: 0 };
+    });
+    const backend2 = new MaestroBackend({ shell: assertingShell });
+    const r2 = await backend2.runRecipe(recipePath, {}, tmp, { serial: 'emulator-5554' });
+    expect(r2.status).toBe('pass');
+    expect(paletteSeenNextToChunk).toBe(true);
+  });
+
   it('falls back to single-invocation when the recipe has no takeScreenshot steps', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-split-empty-'));
     const recipePath = path.join(tmp, 'flow.yaml');
