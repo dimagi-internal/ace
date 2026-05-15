@@ -22,13 +22,28 @@
 [How does the intervention work? What is the mechanism of change?]
 
 ## Learn App Specification
-### Data Collection
-- [What data do FLWs collect?]
 
-### Visit Structure
-- Visit frequency: [daily/weekly/monthly]
-- Expected visits per FLW: [number]
-- Duration per visit: [minutes]
+> Section content branches on `Archetype:`. Skip sub-sections that don't apply.
+
+### Learning Objectives
+- [What must the FLW be able to do after training? List by module.]
+
+### FLW Work-Unit Structure
+The unit of FLW work depends on the archetype:
+
+- **`atomic-visit`** — one FLW visit produces one structured delivery.
+  Fill in:
+  - Visit frequency: [daily / weekly / monthly]
+  - Expected visits per FLW: [number]
+  - Duration per visit: [minutes]
+- **`focus-group`** — one FLW-facilitated group session is the unit.
+  Fill in:
+  - Session length: [target minutes; hard cap]
+  - Sessions per facilitator: [number across pilot]
+  - Post-session writing budget: [minutes per session to draft summary + report]
+  - Submission window: [hours after session end; default 48]
+- **`multi-stage`** — per-stage. Declare each stage's archetype and fill
+  in that archetype's bullets in the stage's own subsection.
 
 ### Forms
 | Form Name | Purpose | Key Fields |
@@ -36,15 +51,32 @@
 | | | |
 
 ## Deliver App Specification
+
+> Section content branches on `Archetype:`. Skip sub-sections that don't apply.
+
 ### Services Delivered
-- [What services do FLWs deliver?]
+- [What does each completed FLW work-unit produce? For atomic-visit: per-beneficiary form + verification artifact. For focus-group: per-session summary + audio + attendance. For multi-stage: per-stage entry.]
 
 ### Workflow
-- [Step-by-step service delivery workflow]
+- [Step-by-step from work-unit start to submission.]
 
 ### Case Management
-- Case types: [list]
-- Case lifecycle: [create → update → close criteria]
+The "case" depends on the archetype:
+
+- **`atomic-visit`** — one case per beneficiary; lifecycle `create → update → close`.
+  Fill in:
+  - Case types: [list]
+  - Case lifecycle: [create → update → close criteria]
+- **`focus-group`** — one case per session; lifecycle
+  `planned → in_progress → awaiting_summary → submitted → verified` (or `flagged`).
+  Fill in:
+  - Case type: [e.g. `fgd_session`]
+  - Close criteria: [Layer A + Layer B verification both pass]
+  - Note: NOT per-beneficiary. The Deliver app captures session
+    metadata + facilitator reporting fields, not per-participant
+    outcomes.
+- **`multi-stage`** — per-stage. Declare each stage's archetype and
+  follow its case-management shape.
 
 ## Target Population
 - Beneficiary criteria: [who]

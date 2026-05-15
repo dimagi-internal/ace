@@ -282,6 +282,16 @@ marked `(eval input)` because `idea-to-pdd-eval`'s viability axis
 the log, the rubric has structured input instead of grading on PDD
 prose.
 
+The catalog branches on archetype. The **base table** rows fit every
+archetype; the per-archetype tables below it add rows that are
+load-bearing for that archetype and meaningless for others (e.g.
+`ai-photo-threshold` doesn't apply to FGDs; `submission-window`
+doesn't apply to atomic visits). Emit base rows on every run, plus
+the matching archetype's rows; skip a row when it's not applicable
+to the opp; add others not listed when they meet the bar.
+
+**Base (all archetypes):**
+
 | ID | Question | Map to surface |
 |---|---|---|
 | `archetype-selection` | Which delivery archetype best fits? | `archetype_coherence` (eval input) |
@@ -290,18 +300,50 @@ prose.
 | `primary-metric-vs-goal` | Direct goal vs upstream proxy? | `mission_alignment` (eval input, PR #144) |
 | `ai-fallback-design` | True validation harness or parallel sampling? | `fallback_validates_primary` (eval input, PR #144) |
 | `flw-count` | How many FLWs? | PDD `FLW Requirements` numeric |
-| `payment-rate` | Per-visit payment rate to FLW? | PDD `FLW Requirements` numeric |
-| `pilot-sample-size` | Pilot sample size for AI calibration? | `verifiability` rubric |
-| `ai-photo-threshold` | AI auto-accept confidence threshold? | `verifiability` rubric |
 | `working-language` | Working language(s)? | PDD `Learn App Specification` |
 | `verification-layers` | Which evidence-model layers in scope? | PDD `Evidence Model` section |
 | `solicitation-type` | Solicitation type (EOI/RFP/custom)? | PDD `Solicitation` section |
 | `solicitation-deadline` | Solicitation deadline? | PDD `Solicitation` section |
 | `candidate-llo-roster` | Named candidates or public-only? | `LLO Preference` named entity |
 
-Skip a row when it's not applicable to the opp; add others not listed
-when they meet the bar. The bar criterion alone determines what rows
-belong in the log.
+**`atomic-visit` (additive):**
+
+| ID | Question | Map to surface |
+|---|---|---|
+| `payment-rate` | Per-visit payment rate to FLW? | PDD `FLW Requirements` numeric |
+| `pilot-sample-size` | Pilot sample size for AI calibration? | `verifiability` rubric |
+| `ai-photo-threshold` | AI auto-accept confidence threshold? | `verifiability` rubric |
+| `gps-verification-radius` | Acceptable GPS radius (meters) for visit-at-location? | `verifiability` rubric |
+| `duplicate-detection-key` | What constitutes a duplicate? (vendor id, GPS bucket, household id) | PDD `Evidence Model` Layer A |
+| `per-visit-daily-cap` | Daily / weekly cap per FLW? | PDD `FLW Requirements` numeric |
+
+**`focus-group` (additive):**
+
+| ID | Question | Map to surface |
+|---|---|---|
+| `payment-unit-model` | Per-session vs per-visit payment? | PDD `Budget` + `connect-opp-setup` payment unit |
+| `per-session-rate` | Per-verified-session rate to facilitator (and notetaker)? | PDD `FLW Requirements` numeric |
+| `facilitator-training-stipend` | Flat training stipend on Learn-app + practice-FGD pass? | PDD `FLW Requirements` numeric |
+| `participant-compensation-cap-usd` | Per-participant compensation USD-equivalent cap? | PDD `Budget` numeric |
+| `submission-window` | Hours allowed between session end and Deliver submission? | PDD `Evidence Model` Layer A |
+| `audio-min-duration` | Minimum audio duration for a session to clear Layer A? | PDD `Evidence Model` Layer A |
+| `audio-consent-fallback` | What happens when one participant declines audio? | PDD `Facilitation Protocol` |
+| `notetaker-required` | Is a separate notetaker required? Always / when audio recording / never? | PDD `Facilitation Protocol` |
+| `venue-acceptable-list` | Which venue types are acceptable / disallowed? | PDD `Facilitation Protocol` |
+| `site-selection` | Sites pre-named in PDD, or deferred to solicitation review? | PDD `Target Population` + `solicitation-review` |
+| `payment-unit-entity-id` | Default `entity_id` (`concat(username, today())`) or override to `#case/case_id`? Affects payment collapse when one FLW runs ≥2 sessions/day | `connect-opp-setup` Connect form |
+| `saturation-early-stop` | Threshold + sign-off for stopping the pilot before the planned session count? | PDD `Success Metrics` |
+
+**`multi-stage` (additive):**
+
+| ID | Question | Map to surface |
+|---|---|---|
+| `stage-gate-criteria` | What must be true at the end of stage N to proceed to N+1? | PDD `Stage Gate` per stage |
+| `per-stage-archetype` | Which archetype for each stage? | Per-stage Archetype declaration |
+| `stage-launch-policy` | Does stage N+1 launch before stage N is fully reviewed, or after? | PDD `Timeline` |
+
+The bar criterion alone determines what rows belong in the log — the
+tables above are teaching templates that improve over time.
 
 ### Schema and write semantics
 
@@ -405,3 +447,4 @@ When `--dry-run` is active:
 | 2026-05-08 | Replace `## Open Questions Convention` with `## Decisions Log Convention`. Skill always emits `decisions.yaml` with the 14-row calibrated Phase 1 set covering archetype, FLW count, budget plausibility, payment rate, pilot size, AI threshold, AI fallback design, named consumer, primary-metric-vs-goal, language, evidence layers, solicitation defaults, candidate roster. Schema defined in `lib/decisions-schema.ts`; ground-truth fixture in `test/skills/idea-to-pdd/fixtures/turmeric-decisions.yaml`. Renderer + round-trip ship in PRs #2–#4. | ACE team |
 | 2026-05-08 | Retrofit: replace `### Required Phase 1 row set` (14 hardcoded rows) with `### Anchor decisions` (5 rows tied to specific eval rubric dimensions) + `### Recommended additional rows` (illustrative, non-binding). Bar criterion is the sole filter; anchors are the only required surface. Process step adds renderer invocation; gate brief links the gdoc rendering instead of the YAML. | ACE team (decisions-log PR #2) |
 | 2026-05-08 | Retire the "anchor" framing: collapse the two sub-sections into a single `### Common load-bearing decisions for Phase 1` template (14 rows, 5 of which feed `idea-to-pdd-eval`'s viability axis). Soften "MUST emit" wording in process step 3a — bar criterion is the sole filter; the catalog is a teaching template that improves over time. | ACE team (decisions-log PR #5) |
+| 2026-05-15 | Branch the Common load-bearing decisions catalog by archetype: base table + `atomic-visit` / `focus-group` / `multi-stage` additive tables. Prompted by `malaria-itn-fgd/20260514-2007` where rows like `ai-photo-threshold` had no meaning for an FGD and FGD-relevant rows (`payment-unit-model`, `submission-window`, `audio-consent-fallback`, `site-selection`, etc.) had to be authored ad-hoc outside the catalog. See jjackson/ace#301. | ACE team |

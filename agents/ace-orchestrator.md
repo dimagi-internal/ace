@@ -580,11 +580,19 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    This costs 1 `drive_list_folder` call. The match is an LLM judgment
    on the listed folder names — no rules ladder.
 
-   After resolving the opp, do not auto-create `inputs/` — the
-   operator must do that step manually so they actively choose what
-   goes in. If after this step the opp folder lacks an `inputs/`
-   subfolder, stop with the new-layout error message (see § Fallback
-   below).
+   After resolving the opp, **ensure `inputs/` exists and migrate any
+   stray top-level docs into it.** Step 5 (Capture the inputs manifest)
+   has the full procedure — auto-create `inputs/` if missing, auto-move
+   any non-folder / non-yaml top-level docs into it, then proceed to
+   manifest capture. The fallback message only fires if after migration
+   `inputs/` is still empty (the operator genuinely has no source
+   material).
+
+   This used to halt unconditionally when `inputs/` was absent. The
+   change was prompted by `malaria-itn-fgd/20260514-2007` — a first-FGD
+   operator naturally dropped the FGD Guide at the opp folder root
+   (next to `opp.yaml`) without knowing about the `inputs/` requirement.
+   See jjackson/ace#299.
 
    **(b) `--idea FILE|-` was passed**: scripted-seed flow. If `<opp>`
    was also provided, use it; otherwise auto-generate a fresh slug
@@ -656,11 +664,27 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    alongside `run_state.yaml` — both are run-level metadata, scoped
    beyond any single phase:
 
-   - List `<opp>/inputs/` via `drive_list_folder`. For each direct
-     child file (skip subfolders), capture
-     `{file_id, name, mime_type}`.
-   - Write the result as `runs/<runId>/inputs-manifest.yaml` via
-     `drive_create_file`:
+   - **5a. Ensure `<opp>/inputs/` exists** via
+     `drive_create_folder({name: 'inputs', parentFolderId: <opp-folder-id>})`.
+     The MCP's `findOrCreate: true` default returns the existing folder
+     id if `inputs/` already exists — idempotent, one call.
+   - **5b. Auto-migrate top-level docs into `inputs/`.** List `<opp>/`
+     via `drive_list_folder`. For each direct child whose
+     `mimeType` is NOT `application/vnd.google-apps.folder` AND whose
+     name is NOT one of the orchestrator-owned files (`opp.yaml`),
+     call `drive_move_file({fileId, newParentFolderId: <inputs-folder-id>})`
+     to move it into `inputs/`. Log every move in `run_state.yaml.notes`
+     as a single line: `auto-migrated <name> from opp folder root to
+     inputs/`.
+
+     This catches the "first-time operator drops the source doc next to
+     opp.yaml" case — see jjackson/ace#299. Operator-managed top-level
+     files that should NOT be migrated (currently just `opp.yaml`) are
+     skipped by name. Subfolders are never moved.
+   - **5c. Capture the manifest.** List `<opp>/inputs/` via
+     `drive_list_folder`. For each direct child file (skip subfolders),
+     capture `{file_id, name, mime_type}`. Write the result as
+     `runs/<runId>/inputs-manifest.yaml` via `drive_create_file`:
 
      ```yaml
      opportunity: <opp>
@@ -673,10 +697,11 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
        - ...
      ```
 
-   - If `<opp>/inputs/` is missing OR contains zero files, halt with
-     the fallback message in § Fallback below. Subfolders inside
-     `inputs/` don't count as files; if every direct child is a
-     subfolder the manifest is empty and the same fallback fires.
+   - **5d. Halt only if still empty.** If after auto-create + migration
+     `<opp>/inputs/` contains zero direct child files, halt with the
+     fallback message in § Fallback below. Subfolders inside `inputs/`
+     don't count as files; if every direct child is a subfolder the
+     manifest is empty and the same fallback fires.
 
    Phase agents materialize their own `<N>-<phase>/` folders when
    they run (see § Per-Phase Folder Lifecycle). The orchestrator does
@@ -761,13 +786,18 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
 
 9. **Begin Phase 1.**
 
-### Fallback — opp is missing an `inputs/` subfolder OR `inputs/` is empty
+### Fallback — `inputs/` is still empty after auto-create + migration
 
-Stop with this message (covers both zero-arg-no-candidates and
-explicit-opp-without-inputs cases — do NOT silently fall back to the
-legacy `PDD/` picker):
+Stop with this message. Fires when the explicit-opp path's Step 5d
+finds zero files in `inputs/` after the orchestrator auto-created the
+folder and tried to migrate any stray top-level docs (5a + 5b), AND
+when the zero-arg discovery path finds no opp at all with an `inputs/`
+that has files in it. Do NOT silently fall back to the legacy `PDD/`
+picker.
 
-> Opp `<opp>` has no source material in `inputs/`.
+> Opp `<opp>` has no source material in `inputs/` (orchestrator
+> already auto-created the folder and tried to migrate any top-level
+> docs into it — nothing was found).
 >
 > `inputs/` is the human-curated evidence pack that seeds the PDD.
 > Drop in any combination of source docs, SOPs, questionnaires,
@@ -775,8 +805,10 @@ legacy `PDD/` picker):
 > filename. Phase 1 (`idea-to-pdd`) reads everything in `inputs/`
 > and synthesizes a formal PDD as the Phase 1 output.
 >
-> Create the folder under `ACE/<opp>/inputs/`, drop the source
-> material in, and re-run `/ace:run <opp>`.
+> Drop the source material into `ACE/<opp>/inputs/` (the folder
+> already exists), and re-run `/ace:run <opp>`. Top-level drops
+> directly under `ACE/<opp>/` are also fine — the orchestrator
+> auto-migrates them into `inputs/` on next run.
 >
 > Or pass `--idea FILE|-` to seed a free-text idea directly without
 > using `inputs/`.

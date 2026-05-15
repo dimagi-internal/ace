@@ -133,32 +133,83 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    - Build summary
    - Any warnings
 
-4a. **Post-build field-count verification (skill-side safety net).**
-    The architect-brief language above puts the retry-then-verify
-    discipline on the architect agent, but a skill-side check catches
-    the case where the agent finished without enforcing it. After
-    autobuild returns, **the in-context LLM running this skill** must:
+4a. **Post-build field-count verification — runnable recipe (skill-side safety net).**
 
-    1. Call `get_app({app_id})` and enumerate
-       every form across every module.
-    2. For each form, call `get_form` and count
-       the persisted fields.
-    3. Cross-reference each form's count against the PDD's expected
-       field list (from §Forms / §Output Specification, depending on
-       archetype).
-    4. If any form's persisted count is short, dispatch
-       `/nova:edit <app_id> "Add the following missing fields to form
-       <name>: <list>. After each add_fields call, get_form and verify
-       persistence."` and loop step 1–3.
-    5. **Bounded loop, max 3 iterations.** If still short after 3,
-       surface a clear failure listing the affected forms and the
-       missing fields — do not write the success summary.
+    The architect-brief language above puts retry-then-verify
+    discipline on the architect agent. This step is the skill-side
+    safety net for cases where the architect finished short — including
+    the case where the architect ran out of budget mid-form and
+    silently persisted N-of-M expected fields with no error. (FGD
+    Deliver apps are the highest-risk surface: the per-section summary
+    form for focus-group archetypes is ~45-70 fields with 7 section
+    groups — exactly the kind of long form where partial persistence is
+    most likely. Seen on a sibling Learn-app build; see jjackson/ace#303.)
 
-    Why both the architect-brief instruction and the skill-side check?
-    The architect's verification is faster (one round-trip per
-    `add_fields`); the skill-side check is the safety net for cases
-    where the architect skipped it. Same pattern as
-    `app-connect-coverage` — verify+fix in a bounded loop, post-Nova.
+    **Always run this recipe before writing the success summary.** Not
+    a prose contract — a numbered tool-call sequence the L0 LLM
+    executes verbatim:
+
+    1. **Build the expected field-count table** from the brief that was
+       sent to `/nova:autobuild`. For each `(module, form)` pair the
+       brief named, extract the field list. Persist as an in-memory
+       map `expected[module][form] -> [field_id, ...]`. The brief is
+       the source of truth — not the PDD prose, not the architect's
+       return string.
+
+    2. **Read the built app** via one `get_app({app_id})` call. Compare
+       module + form names against the expected map. **Halt** if any
+       expected `(module, form)` is missing — that's a structural gap
+       the field-count recipe can't fix.
+
+    3. **For every form in the expected map**, call
+       `get_form({app_id, moduleIndex, formIndex})` (one call per form,
+       batchable in parallel across forms). Collect:
+       - `persisted_ids`: the set of `field.id` values present in the
+         response. Hidden / label / group / repeat fields all count.
+       - `persisted_count`: `len(persisted_ids)`.
+
+    4. **Compute the diff per form.** `missing = expected[m][f] -
+       persisted_ids`. **Also** compute `referenced_missing`: any field
+       referenced in another field's `calculate` / `relevant` /
+       Connect-marker `user_score` / `entity_id` that isn't in
+       `persisted_ids`. (`validate_app` flags this class as
+       "X references Y which doesn't exist in this form" — same
+       shortfall, different detection path. Catching it here means we
+       don't ship to `validate_app` with a known gap.)
+
+    5. **If `missing ∪ referenced_missing` is empty across every form,
+       proceed to step 4b (one-form-per-module check).** No edit needed.
+
+    6. **If non-empty for any form**, dispatch ONE `/nova:edit` call
+       per affected form. Prompt template:
+
+       ```
+       /nova:edit <app_id> "Add the following missing fields to form
+       <module-name> / <form-name>: <comma-separated field ids and
+       their kind/calculate spec from the brief>. After each add_fields
+       call, get_form and verify persistence. Do not return until every
+       requested field is present."
+       ```
+
+       Re-run step 3 + step 4 after the edit returns.
+
+    7. **Bounded loop, max 3 iterations.** If any form is still short
+       after the third iteration, halt with a structured failure
+       listing `<form-name>: <missing ids>` per offender, and do NOT
+       write the success summary. The operator decides whether to
+       /nova:edit manually, re-dispatch autobuild, or escalate.
+
+    Why we run this even though `validate_app` will catch some
+    shortfalls downstream: `validate_app`'s reference-integrity check
+    only catches missing fields that ARE referenced elsewhere. A
+    `Post-Session Summary` form that's missing 1 of 7 section groups
+    with no cross-reference between groups passes `validate_app`
+    cleanly and ships to the FLW silently incomplete. Step 4a is the
+    coverage-on-the-brief safety net `validate_app` is structurally
+    unable to provide.
+
+    Same shape as `app-connect-coverage` — verify+fix in a bounded
+    loop, post-Nova.
 
 4b. **Structural pre-flight: one form per module (deliver_unit slug
     uniqueness).** After field counts match, verify the module/form
@@ -324,3 +375,4 @@ Each row this skill writes uses `phase: 3-commcare` and
 | 2026-04-08 | Add `## Archetypes` section: `atomic-visit` (per-beneficiary form), `focus-group` (per-session documentation form, segment-level case), `multi-stage` (per-stage branching) | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-27 | Switch from manual Nova UI handoff to `/nova:autobuild` via the Nova plugin. Output is now `nova_app_id` written to the summary, not a JSON file. The `apps/deliver-app.json` snapshot is no longer required. | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (deliver-unit-count, one-form-per-module-workaround, multimedia-coverage-strategy) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-15 | Tighten Step 4a (post-build field-count verification) from "the in-context LLM must..." prose into a numbered tool-call recipe. Mirrors the same change in `pdd-to-learn-app/SKILL.md`. Prompted by `malaria-itn-fgd/20260514-2007` Learn-app cert-assessment partial-persistence (FGD Deliver apps with the ~45-70-field per-section summary form are the highest-risk surface for the same class). See jjackson/ace#303. | ACE team |
