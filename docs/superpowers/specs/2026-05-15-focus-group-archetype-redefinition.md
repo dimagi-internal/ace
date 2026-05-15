@@ -59,16 +59,36 @@ PDD shape stays the same. What changes:
 
 ### Phase 3 — `commcare-setup` (the core change)
 
-The Phase 3 procedure doc branches on archetype at Step 1:
+The Phase 3 procedure doc dispatches `pdd-to-learn-app`, then
+`pdd-to-deliver-app`, sequentially for every archetype. The
+**Learn-app shape varies by archetype** (per `pdd-to-learn-app/SKILL.md
+§ Archetypes`):
 
-- `atomic-visit` / `multi-stage` — unchanged. Dispatch `pdd-to-learn-app`, then `pdd-to-deliver-app`, sequentially.
-- `focus-group` — **dispatch only `pdd-to-deliver-app`.** Skip `pdd-to-learn-app` entirely. The Learn-app build is not just slow — it's the wrong artifact for the operational model.
+- `atomic-visit` / `multi-stage` — full Learn app (training curriculum, 10-15 min Nova build).
+- `focus-group` — **minimal sentinel** (one module, one form, ~7 fields, both Connect markers, ~1-2 min Nova build). The sentinel doubles as an in-app readiness gate: facilitator must `acknowledge_readiness = yes` (coordinator-confirmed practice-session-pass) before they're cleared to submit attestation forms.
 
-Step 2.8 (`commcare-form-patch`) also skips for focus-group (no Learn app to strip Connect wrappers from).
+Step 2.8 (`commcare-form-patch`) runs as normal for focus-group too —
+`targets: auto` handles the single-sentinel-form case safely (idempotent
+no-op if Nova doesn't emit Connect wrappers for the sentinel).
 
-Step 1.5 (`app-connect-coverage`) runs only for the one Deliver-app build for focus-group.
+Step 1.5 (`app-connect-coverage`) runs against both apps for focus-group
+(same as atomic-visit), though the Learn-side coverage is trivial
+(one form, one assessment).
 
-`pdd-to-learn-app` skill itself becomes a no-op for focus-group archetype: the skill reads the PDD, sees `archetype: focus-group`, writes a one-line summary doc to `3-commcare/pdd-to-learn-app_summary.md` explaining the skip, and exits with status `skipped`. It does NOT call `/nova:autobuild`.
+`pdd-to-learn-app` skill produces the sentinel for focus-group per
+its `## Archetypes § focus-group` brief. Step 1a is no longer a
+short-circuit — it sets up the sentinel-shaped brief and proceeds to
+the full skill flow.
+
+**History note:** an earlier version of this spec (and PR #305) had
+`pdd-to-learn-app` short-circuit to `status: skipped` for focus-group.
+That worked for the producer skill but Phase 4 hit a hard blocker:
+`connect_create_opportunity` requires a non-null `learn_app` at three
+layers (schema, REST request, cross-field validator), confirmed live
+on `malaria-itn-fgd/20260514-2352`. The operator chose per-opp
+sentinel (vs shared no-op or upstream API change) as the working
+pattern. This PR (and the linked spec edit) restores `pdd-to-learn-app`
+production for focus-group with a sentinel-shaped brief.
 
 `pdd-to-deliver-app` skill's `## Archetypes § focus-group` branch is rewritten. The Deliver app for focus-group has:
 - **One module:** "Session Attestation"
@@ -159,3 +179,4 @@ The existing PDD (`docs/.../1-design/idea-to-pdd.md`) is oversized for the new m
 
 - **2026-05-15** — Operator (jjackson) reframes FGD from "rich Learn-app + 28-field Deliver-app" to "attestation-form-only + gdoc content + invoice-or-form payment". Answers "one tiny attestation form per session" to the payment-shape question. Decision captured here.
 - **2026-05-15** — Operator pares the attestation form further. Verbatim: "For the fields just have consent (this should confirm you have consent from all participants), date, venue, gps, photo. everything else is either wrong or goes into the gdoc. the gdoc will be created after the fact so no ability to enter it into commcare". Final field list is 5 fields (consent / date / venue / gps / photo). Audio upload removed (out-of-band); gdoc_link removed (gdoc doesn't exist at submission time). Coordinator review matches attestation to gdoc by `(FLW, session_date, venue)` tuple, not by an in-form link.
+- **2026-05-15** — Re-run `malaria-itn-fgd/20260514-2352` Phase 4 hit a hard blocker on the no-Learn-app path: `connect_create_opportunity` requires `learn_app` at the schema, REST request, and cross-field-validator layers. Operator chose **per-opp sentinel Learn app** (option b) over shared no-op (option a), upstream API change (option c), or new atom (option d). Sentinel is one module, one form (~7 fields, ~1-2 min Nova build, ~$0 marginal cost). Doubles as an in-app readiness gate (`acknowledge_readiness = yes` required for facilitator clearance). `pdd-to-learn-app/SKILL.md § Archetypes § focus-group` carries the canonical sentinel spec. Production restored; the §305 short-circuit-to-skipped is walked back.

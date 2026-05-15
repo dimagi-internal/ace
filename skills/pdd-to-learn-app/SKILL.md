@@ -25,27 +25,33 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
 1. **Read the PDD** from `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` via Google Drive MCP.
 
-1a. **Archetype short-circuit — focus-group is a no-op.** If the PDD's
-    `Archetype:` is `focus-group`, this skill does NOT produce a Learn
-    app. Facilitator training for FGDs lives out-of-band (OCS chatbot +
-    handbook gdoc + coordinator-graded practice-session audio review).
-    See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
+1a. **Archetype check — focus-group uses the sentinel pattern.** If the
+    PDD's `Archetype:` is `focus-group`, this skill still produces a
+    Learn app, but a **minimal sentinel** — a single 1-form readiness
+    check, not a full training curriculum. The sentinel exists for two
+    reasons:
 
-    Action: write a one-line summary doc to
-    `3-commcare/pdd-to-learn-app_summary.md` with frontmatter
-    `{archetype: focus-group, status: skipped}` and a body explaining
-    "focus-group archetype does not produce a Learn app; facilitator
-    training lives in the per-opp OCS chatbot + a handbook gdoc + a
-    coordinator-graded practice-session audio review. See PDD §
-    Facilitation Protocol for the training plan." Skip steps 2–8.
-    Return cleanly; Phase 3's `commcare-setup` already knows to expect
-    this for focus-group archetype.
+    1. **Connect API requirement.** `connect_create_opportunity`
+       requires a non-null `learn_app` at the schema, REST request, and
+       cross-field-validator layers (verified `malaria-itn-fgd/20260514-2352`).
+       A no-Learn-app focus-group cannot be wired into a Connect opp.
+    2. **In-app readiness gate.** The sentinel form gates whether the
+       facilitator has completed the out-of-band training (OCS chatbot +
+       handbook gdoc + coordinator-graded practice-session audio review).
+       A facilitator must acknowledge readiness in CommCare before
+       Connect treats them as cleared to submit attestation forms.
 
-    For `multi-stage` PDDs where Stage 1 is `focus-group` and Stage 2
-    is `atomic-visit`, the multi-stage branch (see `## Archetypes`
-    below) takes precedence — produce a Learn app for the atomic-visit
-    stage; the focus-group stage gets the same skip treatment as a
-    standalone focus-group archetype within its stage section.
+    The actual training content lives **out-of-band** (the sentinel
+    doesn't carry it). See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`
+    for the operational model.
+
+    Proceed to step 2 with the focus-group sentinel brief described in
+    `## Archetypes § focus-group` below. The brief is short (one form,
+    ~7 fields, both Connect markers set); Nova autobuild typically
+    completes in 1-2 minutes.
+
+    For `multi-stage` PDDs, follow the multi-stage branch below — each
+    stage's Learn app shape depends on the stage's declared archetype.
 
 2. **Extract the Learn app spec** from the PDD. The spec drives the Nova
    brief; what to extract depends on `archetype:` (see `## Archetypes` below).
@@ -236,14 +242,45 @@ stock, hostile vendor, duplicate), submission and case closure.
 
 ### `focus-group`
 
-**No Learn app is produced for focus-group archetype.** This skill is a
-no-op for focus-group; see Process step 1a above for the short-circuit.
+**Produce a minimal sentinel Learn app** — one module, one form, ~7
+fields, both Connect markers (`connect.learn_module` +
+`connect.assessment` with passing_score 1).
 
-Why no Learn app: the FGD operational model captures qualitative
-content **in a Google Doc**, not in a CommCare form. The
-mobile-app-only artifact is a small attestation form (see
-`pdd-to-deliver-app/SKILL.md § Archetypes § focus-group`). Facilitator
-training is correspondingly out-of-band — it lives in:
+The sentinel satisfies two constraints simultaneously:
+
+1. **Connect API needs a Learn app.** `connect_create_opportunity`
+   requires non-null `learn_app` (schema + REST + validator). One sentinel
+   per FGD opp is the working pattern (operator decision, 2026-05-15).
+2. **In-app readiness gate.** The sentinel's one form is a
+   coordinator-confirmed readiness check — the facilitator can't
+   acknowledge readiness in CommCare until they've completed the
+   out-of-band practice-session-pass.
+
+**Sentinel app spec (the Nova brief):**
+
+- **App name:** `"<Opp display name> — Facilitator Readiness Check"`
+  (e.g., "Malaria ITN FGD — Facilitator Readiness Check").
+- **One module:** "Readiness Check" (case_type: `facilitator`).
+- **One form:** "Briefing Acknowledgement" (case-create form,
+  `connect.learn_module` set AND `connect.assessment` with
+  `passing_score=1` and `user_score: #form/user_score`).
+
+Fields (the complete sentinel form):
+
+1. `intro` (label) — out-of-band training overview pointing the
+   facilitator at the per-opp OCS chatbot + the LLO's handbook gdoc +
+   the practice-session audio review the coordinator grades.
+2. `case_name` (hidden, calculate `concat(#user/username, ' - readiness')`).
+3. `acknowledge_readiness` (single_select yes/no, required, constraint
+   `. = 'yes'`). Saves to case property `readiness_acknowledged`.
+4. `acknowledgement_date` (date, required, default `today()`). Saves
+   to `readiness_date`.
+5. `q1_score` (hidden, `calculate: if(#form/acknowledge_readiness = 'yes', 1, 0)`).
+6. `user_score` (hidden, `calculate: #form/q1_score`). Referenced by
+   the `connect.assessment` block.
+7. `result_label` (label) — readiness-acknowledged closing message.
+
+**Real facilitator training lives out-of-band:**
 
 - **OCS chatbot** (Phase 5, per-opp) — primary reference surface for
   facilitation craft (silence handling, neutral probing,
@@ -255,17 +292,26 @@ training is correspondingly out-of-band — it lives in:
   out-of-band, referenced from the OCS chatbot's RAG content.
 - **Practice-session audio review** — the pre-fielding certification
   gate. Facilitator records a practice FGD, uploads the audio,
-  coordinator reviews and either passes (cleared for live fielding) or
-  fails-with-notes. This is not an in-app interaction; it's a
-  coordinator-graded audio review tracked in the per-run state.
+  coordinator reviews and either passes (cleared for live fielding,
+  $50 training stipend released, and the facilitator can answer
+  `yes` to the sentinel's `acknowledge_readiness`) or fails-with-notes.
 
-If the operational model later evolves to require in-app training for
-focus-group opps (e.g., a quiz the facilitator must pass before the
-attestation form unlocks), revisit this skip rule. For the foreseeable
-future, focus-group = no Learn app.
+The sentinel **does not duplicate or replace** the out-of-band training.
+It's a thin in-app artifact whose only operational job is to gate
+attestation submissions on coordinator-confirmed practice-session-pass.
+
+**Why "sentinel" and not "real training":** the FGD content lives in a
+Google Doc out-of-band, not in a CommCare form (see
+`pdd-to-deliver-app/SKILL.md § Archetypes § focus-group`). The real
+training is correspondingly out-of-band — putting it into CommCare
+would mean re-authoring all the facilitation craft content as in-app
+quizzes, which is the old-shape pattern that the operator explicitly
+walked back ("not a 'thin focus group' — the only way we will do
+the focus group"). The sentinel is the minimum needed to satisfy
+Connect's API and add one operational gate.
 
 See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`
-for the full archetype redefinition.
+for the full archetype redefinition + the sentinel rationale.
 
 ### `multi-stage`
 Generate one Learn app per stage that has its own delivery work,
@@ -312,3 +358,4 @@ When `--dry-run` is active:
 | 2026-04-27 | Switch from manual Nova UI handoff to `/nova:autobuild` via the Nova plugin. Output is now `nova_app_id` written to the summary, not a JSON file. The `apps/learn-app.json` snapshot is no longer required. | ACE team |
 | 2026-05-15 | Tighten Step 4a (post-build field-count verification) from "the in-context LLM must..." prose into a numbered tool-call recipe. Prompted by `malaria-itn-fgd/20260514-2007` where the cert-assessment shipped 12/15 score fields + 0/1 user_score and the recipe didn't fire — `validate_app` caught it instead. Mirrored in `pdd-to-deliver-app/SKILL.md`. See jjackson/ace#303. | ACE team |
 | 2026-05-15 | **focus-group archetype becomes a no-op for this skill.** The FGD operational model captures content in a gdoc (not a CommCare form) and trains facilitators out-of-band (OCS chatbot + handbook gdoc + coordinator-graded practice-session audio review), so no Learn app is produced. Step 1a short-circuits with a `skipped` summary; § Archetypes § focus-group rewritten to document the skip. Prompted by `malaria-itn-fgd/20260514-2007` post-run reframe; see `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
+| 2026-05-15 | **focus-group switches from no-op to minimal sentinel pattern.** Re-run `malaria-itn-fgd/20260514-2352` Phase 4 surfaced a hard blocker: `connect_create_opportunity` requires `learn_app` at the schema, REST, and validator layers. Operator chose per-opp sentinel (one minimal 1-form readiness check, ~7 fields, both Connect markers, ~1-2 min build) over a server-side fix. Step 1a no longer short-circuits — focus-group runs the full skill flow but with the sentinel-shaped brief documented in § Archetypes § focus-group. Sentinel doubles as in-app readiness gate: facilitator must `acknowledge_readiness = yes` (coordinator-confirmed practice-session-pass) before they're cleared to submit attestations. | ACE team |

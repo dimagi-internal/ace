@@ -405,7 +405,7 @@ practice-session audio review. No Learn app is produced. See
 
 - **Recruitment**: Who are the segments? How will participants be identified? What sample size per segment? Comparison groups and their justification?
 - **Language**: Working language? Need translation? Facilitator language fluency?
-- **Facilitation skill level**: Existing skill assumed, or training required? Training surface is the per-opp **OCS chatbot** (loaded with the FGD Guide + Output Specification + handbook gdoc) plus a coordinator-graded practice-session audio review. (No Learn app — see archetype rationale above.)
+- **Facilitation skill level**: Existing skill assumed, or training required? Training surface is the per-opp **OCS chatbot** (loaded with the FGD Guide + Output Specification + handbook gdoc) plus a coordinator-graded practice-session audio review. The Learn app produced for focus-group is a **minimal sentinel** (one-form readiness gate, not a training curriculum) — it exists to satisfy Connect's API + gate attestation submissions on coordinator-confirmed practice-session-pass, NOT to carry training content. See `pdd-to-learn-app/SKILL.md § Archetypes § focus-group` for the sentinel spec.
 - **Consent**: Verbal/written? Audio recording consent? Photo consent? Documented how?
 - **Venue**: Neutral / facility / leader's compound? Each biases differently — which is acceptable?
 - **Duration & compensation**: Expected session length? Participant opportunity cost compensated? Per-session facilitator + notetaker rate? Facilitator training stipend tied to practice-session-pass?
