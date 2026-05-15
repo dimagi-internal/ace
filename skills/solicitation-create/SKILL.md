@@ -34,6 +34,20 @@ connect-labs MCP atom inventory.
 
 ## Process
 
+> **Design principle: per-unit payment is negotiated, not declared.** The
+> labs solicitation `data` schema deliberately has no `per_unit_payment`
+> structured field — and we should not push for one. Per-unit payment
+> shape varies by archetype (per-visit / per-session / per-stage) and
+> within each archetype the right rate is opp-and-LLO-specific.
+> Solicitations express payment as a **range with rationale in
+> `scope_of_work` prose** (e.g. "Per verified session: 80–120 USD-equivalent,
+> facilitator + notetaker combined") and the **`questions` block asks
+> the responding LLO to propose their actual rate + why** (q6 in the
+> default template). The awarded LLO's proposed rate becomes the
+> `connect.deliver_unit` payment_unit amount at Phase 4 setup time. Do
+> not embed a fixed per-unit number as the load-bearing economic; the
+> range + the question + the LLO's response are the load-bearing parts.
+
 1. **Read the PDD.** Extract the fields per the table below. The PDD's
    `## Solicitation` section is optional; defaults apply when fields are
    missing or use placeholder values like `[EOI | RFP — default EOI]`.
@@ -397,3 +411,4 @@ Each row this skill writes uses `phase: 8-solicitation-management` and
 |------|--------|--------|
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (solicitation-type, response-deadline, response-template-choice) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-15 | Three archetype-branches added for `focus-group`: (1) scope_of_work concatenation in Step 2 — FGD PDD has no `## Learn App Specification` (uses `## Facilitation Protocol` instead); the scope opens with a "PER VERIFIED SESSION, THREE ARTIFACTS" block listing audio + gdoc + 5-field attestation form with explicit "NOT in the form" callout. (2) evaluation_criteria in Step 3 — focus-group goes from a 4-axis sketch to a 6-axis starter rubric (qualitative-research experience, facilitator skill + language, homogeneous-group recruitment, coordinator gdoc-review capacity, audio handling out-of-band, timeline + per-session payment economics). (3) default questions in Step 3 — swap CHW-deployment vocabulary for qualitative-research vocabulary on q1 + q5 + q6. Prompted by `malaria-itn-fgd/20260514-2352` Phase 8 observations. | ACE team |
+| 2026-05-15 | Codify the **"per-unit payment is negotiated, not declared"** design principle at the top of `## Process`. Solicitations express payment as a range with rationale in `scope_of_work` prose; the `questions` block asks the responding LLO to propose their actual rate + why. Closes the loop on the "labs `per_unit_payment` schema gap" surfaced in Phase 8 — it's not a gap, it's an intentional design choice (per-unit shape varies by archetype; the rate is opp-and-LLO-specific and negotiated through the response). | ACE team |
