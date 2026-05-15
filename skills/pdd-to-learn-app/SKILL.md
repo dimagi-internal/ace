@@ -25,6 +25,28 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
 1. **Read the PDD** from `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` via Google Drive MCP.
 
+1a. **Archetype short-circuit — focus-group is a no-op.** If the PDD's
+    `Archetype:` is `focus-group`, this skill does NOT produce a Learn
+    app. Facilitator training for FGDs lives out-of-band (OCS chatbot +
+    handbook gdoc + coordinator-graded practice-session audio review).
+    See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
+
+    Action: write a one-line summary doc to
+    `3-commcare/pdd-to-learn-app_summary.md` with frontmatter
+    `{archetype: focus-group, status: skipped}` and a body explaining
+    "focus-group archetype does not produce a Learn app; facilitator
+    training lives in the per-opp OCS chatbot + a handbook gdoc + a
+    coordinator-graded practice-session audio review. See PDD §
+    Facilitation Protocol for the training plan." Skip steps 2–8.
+    Return cleanly; Phase 3's `commcare-setup` already knows to expect
+    this for focus-group archetype.
+
+    For `multi-stage` PDDs where Stage 1 is `focus-group` and Stage 2
+    is `atomic-visit`, the multi-stage branch (see `## Archetypes`
+    below) takes precedence — produce a Learn app for the atomic-visit
+    stage; the focus-group stage gets the same skip treatment as a
+    standalone focus-group archetype within its stage section.
+
 2. **Extract the Learn app spec** from the PDD. The spec drives the Nova
    brief; what to extract depends on `archetype:` (see `## Archetypes` below).
 
@@ -213,32 +235,37 @@ protocol from the Evidence Model — Layer A), how to handle edge cases (no
 stock, hostile vendor, duplicate), submission and case closure.
 
 ### `focus-group`
-Learn app teaches FLWs to **facilitate group discussions** — this is a
-**craft, not a checklist**. The brief to Nova is fundamentally different
-from atomic-visit:
 
-- **Facilitation basics**: opening the session, introducing yourself,
-  setting ground rules
-- **Probing techniques**: how to ask "tell me more," "can you give an
-  example," "what do you mean by that," without leading
-- **Neutral framing**: how to ask sensitive questions (vaccination
-  decisions, religious objections) without conveying judgment
-- **Group dynamics**: managing dominant participants, drawing out quiet
-  ones, handling disagreement, recognizing groupthink
-- **Question guide walkthrough**: the PDD's prioritized question list,
-  with probes — covered in the order specified (program-specific
-  questions last to avoid anchoring)
-- **Session form walkthrough**: how to capture per-domain themes, notable
-  quotes, level of consensus, time spent, facilitator reflection —
-  referencing the Output Specification from the PDD
-- **Consent and ethics**: verbal consent script, audio recording consent,
-  what to do if a participant withdraws
-- **Logistics**: venue setup, attendance register, audio recording
-  start/stop, compensation distribution
+**No Learn app is produced for focus-group archetype.** This skill is a
+no-op for focus-group; see Process step 1a above for the short-circuit.
 
-The Nova brief should explicitly say "this is a facilitation training
-app, not a form-walkthrough app" and reference the PDD's Facilitation
-Protocol section.
+Why no Learn app: the FGD operational model captures qualitative
+content **in a Google Doc**, not in a CommCare form. The
+mobile-app-only artifact is a small attestation form (see
+`pdd-to-deliver-app/SKILL.md § Archetypes § focus-group`). Facilitator
+training is correspondingly out-of-band — it lives in:
+
+- **OCS chatbot** (Phase 5, per-opp) — primary reference surface for
+  facilitation craft (silence handling, neutral probing,
+  anti-anchoring, group dynamics) + post-session writing guidance
+  ("what should I put in section 3 of my gdoc?"). Loaded with the
+  PDD's Facilitation Protocol + Question Guide + Output Specification
+  + a handbook gdoc.
+- **Facilitator handbook gdoc** — the LLO's prep doc; distributed
+  out-of-band, referenced from the OCS chatbot's RAG content.
+- **Practice-session audio review** — the pre-fielding certification
+  gate. Facilitator records a practice FGD, uploads the audio,
+  coordinator reviews and either passes (cleared for live fielding) or
+  fails-with-notes. This is not an in-app interaction; it's a
+  coordinator-graded audio review tracked in the per-run state.
+
+If the operational model later evolves to require in-app training for
+focus-group opps (e.g., a quiz the facilitator must pass before the
+attestation form unlocks), revisit this skip rule. For the foreseeable
+future, focus-group = no Learn app.
+
+See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`
+for the full archetype redefinition.
 
 ### `multi-stage`
 Generate one Learn app per stage that has its own delivery work,
@@ -284,3 +311,4 @@ When `--dry-run` is active:
 | 2026-04-08 | Add `## Archetypes` section: `atomic-visit` (form walkthrough), `focus-group` (facilitation craft training), `multi-stage` (per-stage branching) | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-27 | Switch from manual Nova UI handoff to `/nova:autobuild` via the Nova plugin. Output is now `nova_app_id` written to the summary, not a JSON file. The `apps/learn-app.json` snapshot is no longer required. | ACE team |
 | 2026-05-15 | Tighten Step 4a (post-build field-count verification) from "the in-context LLM must..." prose into a numbered tool-call recipe. Prompted by `malaria-itn-fgd/20260514-2007` where the cert-assessment shipped 12/15 score fields + 0/1 user_score and the recipe didn't fire — `validate_app` caught it instead. Mirrored in `pdd-to-deliver-app/SKILL.md`. See jjackson/ace#303. | ACE team |
+| 2026-05-15 | **focus-group archetype becomes a no-op for this skill.** The FGD operational model captures content in a gdoc (not a CommCare form) and trains facilitators out-of-band (OCS chatbot + handbook gdoc + coordinator-graded practice-session audio review), so no Learn app is produced. Step 1a short-circuits with a `skipped` summary; § Archetypes § focus-group rewritten to document the skip. Prompted by `malaria-itn-fgd/20260514-2007` post-run reframe; see `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |

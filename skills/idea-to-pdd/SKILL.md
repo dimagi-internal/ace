@@ -321,11 +321,12 @@ to the opp; add others not listed when they meet the bar.
 
 | ID | Question | Map to surface |
 |---|---|---|
-| `payment-unit-model` | Per-session vs per-visit payment? | PDD `Budget` + `connect-opp-setup` payment unit |
+| `payment-unit-model` | Per-session attestation-form payment via Connect deliver_unit (default) vs per-month invoice via Connect web (rare)? | PDD `Budget` + `connect-opp-setup` payment unit |
 | `per-session-rate` | Per-verified-session rate to facilitator (and notetaker)? | PDD `FLW Requirements` numeric |
-| `facilitator-training-stipend` | Flat training stipend on Learn-app + practice-FGD pass? | PDD `FLW Requirements` numeric |
+| `facilitator-training-stipend` | Flat training stipend on **practice-session-pass** (coordinator-graded audio review). Note: not Learn-app completion — focus-group archetype has no Learn app. | PDD `FLW Requirements` numeric |
+| `gdoc-content-template` | What sections / fields should the facilitator's gdoc contain? Default: the PDD's Output Specification verbatim. Where does the gdoc template live (a template URL the facilitator copies, or a free-text starting point)? | PDD `Output Specification` |
 | `participant-compensation-cap-usd` | Per-participant compensation USD-equivalent cap? | PDD `Budget` numeric |
-| `submission-window` | Hours allowed between session end and Deliver submission? | PDD `Evidence Model` Layer A |
+| `submission-window` | Hours between session end and **attestation form** submission. Gdoc submission window may differ — default: same. | PDD `Evidence Model` Layer A |
 | `audio-min-duration` | Minimum audio duration for a session to clear Layer A? | PDD `Evidence Model` Layer A |
 | `audio-consent-fallback` | What happens when one participant declines audio? | PDD `Facilitation Protocol` |
 | `notetaker-required` | Is a separate notetaker required? Always / when audio recording / never? | PDD `Facilitation Protocol` |
@@ -388,23 +389,34 @@ The PDD describes one FLW visit producing one structured delivery (photo + GPS +
 - How is duplicate detection handled (vendor ID, stall number, GPS resolution)?
 
 ### `focus-group`
-The PDD describes FLW-facilitated group discussions producing qualitative content (audio + per-domain summaries + attendance). Examples: vaccine-hesitancy Stage 1.
+
+The PDD describes FLW-facilitated group discussions producing qualitative
+content. **The FGD operational model is attestation-form-only on
+CommCare; all qualitative content (themes, quotes, post-section
+summaries, post-FGD report, facilitator reflection) is captured
+out-of-band in a Google Doc.** Facilitator training is correspondingly
+out-of-band — OCS chatbot + handbook gdoc + coordinator-graded
+practice-session audio review. No Learn app is produced. See
+`docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
 
 **Additional questions to answer in step 3:**
+
 - **Recruitment**: Who are the segments? How will participants be identified? What sample size per segment? Comparison groups and their justification?
 - **Language**: Working language? Need translation? Facilitator language fluency?
-- **Facilitation skill level**: Existing skill assumed, or training required? Probing/neutral framing/group dynamics covered in the Learn app?
+- **Facilitation skill level**: Existing skill assumed, or training required? Training surface is the per-opp **OCS chatbot** (loaded with the FGD Guide + Output Specification + handbook gdoc) plus a coordinator-graded practice-session audio review. (No Learn app — see archetype rationale above.)
 - **Consent**: Verbal/written? Audio recording consent? Photo consent? Documented how?
 - **Venue**: Neutral / facility / leader's compound? Each biases differently — which is acceptable?
-- **Duration & compensation**: Expected session length? Participant opportunity cost compensated?
+- **Duration & compensation**: Expected session length? Participant opportunity cost compensated? Per-session facilitator + notetaker rate? Facilitator training stipend tied to practice-session-pass?
 - **Question guide**: Sequencing (sensitive/program-specific questions last to avoid anchoring), prioritization (a 90-minute group covers 8–10 questions well, not 15+), warm-up questions, probing prompts.
-- **Output spec**: What does a "good summary" look like? Format, length, template, required content per question domain. Without this, the qualitative outputs aren't AI-ingestable.
+- **Output spec — the gdoc structure**: What does a "good gdoc" look like? Per-section themes (3–6 bullets, with specifics), notable verbatim quotes (2–4 per section, role attribution like "mother" / "father" / "grandmother" not by name), level of consensus (strong / mixed / disagreement + justification), time spent per section, post-FGD report (top 5 things we heard, most-cited barriers, per-option reactions, surprises, recommendations), facilitator reflection (150–300 words). This structure goes in the **PDD's Output Specification** section and seeds both the gdoc template the facilitator fills out and the OCS chatbot's RAG content for post-session writing guidance.
+- **Attestation form fields**: What metadata + artifacts does the per-session CommCare attestation form capture? Default: date, llo, site, venue, segment, participant count, audio (with consent status), attendance photo (no faces), gdoc link, audio duration, facilitator reflection (short). See `pdd-to-deliver-app/SKILL.md § Archetypes § focus-group` for the canonical default field list.
 
 **Additional sections to include in the PDD draft:**
-- **Recruitment Plan** — segments, sample sizes, identification mechanism, comparison groups
-- **Facilitation Protocol** — skill level, training requirement, venue, language, consent, recording, compensation
-- **Question Guide** — ordered questions per domain, with probes and warm-ups, and time allocation
-- **Output Specification** — per-session summary format with concrete fields (themes, notable quotes, level of consensus, time spent, facilitator reflection)
+
+- **Recruitment Plan** — segments, sample sizes, identification mechanism, comparison groups.
+- **Facilitation Protocol** — skill level, training surface (OCS chatbot + handbook gdoc + practice-session audio review), venue, language, consent, recording, compensation.
+- **Question Guide** — ordered questions per section, with probes and warm-ups, and time allocation.
+- **Output Specification** — **the gdoc structure** the facilitator fills in. Per-section format with concrete fields (themes, notable quotes, level of consensus, time spent, facilitator reflection). The Deliver app's attestation form captures *metadata and artifacts*, not this content — but the OCS chatbot's RAG content is seeded from this section so facilitators can ask "what should I put in section 3?" during write-up.
 
 ### `multi-stage`
 The PDD has two or more sequenced stages with different archetypes. Treat the base sections as describing the overall intervention and create one **Stage X** subsection per stage, each declaring its own archetype and following that archetype's additional sections.
@@ -448,3 +460,4 @@ When `--dry-run` is active:
 | 2026-05-08 | Retrofit: replace `### Required Phase 1 row set` (14 hardcoded rows) with `### Anchor decisions` (5 rows tied to specific eval rubric dimensions) + `### Recommended additional rows` (illustrative, non-binding). Bar criterion is the sole filter; anchors are the only required surface. Process step adds renderer invocation; gate brief links the gdoc rendering instead of the YAML. | ACE team (decisions-log PR #2) |
 | 2026-05-08 | Retire the "anchor" framing: collapse the two sub-sections into a single `### Common load-bearing decisions for Phase 1` template (14 rows, 5 of which feed `idea-to-pdd-eval`'s viability axis). Soften "MUST emit" wording in process step 3a — bar criterion is the sole filter; the catalog is a teaching template that improves over time. | ACE team (decisions-log PR #5) |
 | 2026-05-15 | Branch the Common load-bearing decisions catalog by archetype: base table + `atomic-visit` / `focus-group` / `multi-stage` additive tables. Prompted by `malaria-itn-fgd/20260514-2007` where rows like `ai-photo-threshold` had no meaning for an FGD and FGD-relevant rows (`payment-unit-model`, `submission-window`, `audio-consent-fallback`, `site-selection`, etc.) had to be authored ad-hoc outside the catalog. See jjackson/ace#301. | ACE team |
+| 2026-05-15 | **Recharacterize `focus-group` archetype to attestation-form-only.** `## Archetypes § focus-group` updated: training surface is OCS chatbot + handbook gdoc + practice-session audio review (NOT a Learn app); Output Specification is the gdoc structure, not Deliver-app form fields; new "Attestation form fields" question references the canonical default in `pdd-to-deliver-app`. Decisions Log: `facilitator-training-stipend` re-pegged to practice-session-pass; new `gdoc-content-template` row; `submission-window` clarified as attestation-form submission. Prompted by `malaria-itn-fgd/20260514-2007` post-run reframe. See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
