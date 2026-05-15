@@ -87,13 +87,30 @@ appId: org.commcare.dalvik
 # scrollUntilVisible bounded at 20s — enough to walk past several
 # screens of accumulated invites without infinite-looping if the
 # OPP_NAME truly isn't present.
+#
+# IMPORTANT: anchor the scroll on `btn_view_opportunity` *below* the
+# target title, NOT on the title text alone. Anchoring on the title is
+# insufficient — once the title is visible at the bottom of the
+# viewport, the button beneath it on the same card can still be
+# clipped off-screen (verified 2026-05-15 on turmeric run
+# 20260515-0536: title bounds y=2126..2233, button bounds y~2353..2432,
+# viewport bottom y=2337 — title visible but button clipped, so the
+# subsequent `tapOn(id:btn_view_opportunity, below:text:${OPP_NAME})`
+# fails because the matched node isn't actually rendered). Driving
+# the scroll by the element we need to tap guarantees it ends up in
+# the viewport. The `below: text: ${OPP_NAME}` scoping inside the
+# element selector keeps us pinned to the correct card (the topmost
+# `btn_view_opportunity` would otherwise belong to a stale prior-run
+# invite higher in the list).
 - scrollUntilVisible:
     element:
-      text: ${OPP_NAME}
+      id: "org.commcare.dalvik:id/btn_view_opportunity"
+      below:
+        text: ${OPP_NAME}
     direction: DOWN
     timeout: 20000
 - assertVisible:
-    text: ${OPP_NAME}
+    id: "org.commcare.dalvik:id/btn_view_opportunity"
 # Tap the View Opportunity button SCOPED to the card containing the
 # target title. `tvTitle` is not clickable (`clickable=false` per UI
 # dump 2026-05-14); `rootCardView` is not clickable either. Only
