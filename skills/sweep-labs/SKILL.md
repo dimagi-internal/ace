@@ -2,14 +2,14 @@
 name: sweep-labs
 description: >
   Diff connect-labs workflows/pipelines/synthetic/records against the
-  live-set, score orphans, auto-delete or auto-disable using existing
-  labs atoms; report LabsRecord types pending a delete atom.
+  live-set, score orphans, auto-delete or auto-disable everything using
+  existing labs atoms plus labs_delete_record for LabsRecord types.
 disable-model-invocation: true
 ---
 
 # sweep-labs
 
-Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, solicitations, funds, reviews, responses) that no current opp references. Workflows, pipelines, and synthetic opps have existing delete/disable atoms — auto-execute on approval. LabsRecord-backed types (solicitations, funds, reviews, responses) all delete via the same generic `LabsRecordDataView.DELETE` endpoint upstream, but no ACE atom exposes it yet — those surface as report-only with admin-UI links until a `labs_delete_record` atom ships.
+Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, solicitations, funds, reviews, responses) that no current opp references. Every product type now has an auto-execute atom: `workflow_delete`, `pipeline_delete`, `synthetic_disable`, and `labs_delete_record` (covers all four LabsRecord-backed types via a single primary-key DELETE — the upstream view doesn't need a type discriminator).
 
 ## Inputs
 
@@ -41,15 +41,14 @@ Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, soli
    - synthetic opps → `liveSet.identifiers.labsSyntheticIds`
    - solicitations/funds/reviews/responses → `liveSet.identifiers.labsRecordIds`
 4. **Score** each orphan via `scoreLabsItem(item, liveSet)` from `lib/sweep-fingerprint.ts`. Note: `scoreLabsItem` defensively downgrades to `low` when an item references a Connect opportunity that's still in `liveSet.identifiers.connectOpportunityIds` — that's a sign the labs caller mis-flagged the item.
-5. **Build the `OrphanReport`** with `system: 'labs'`. Partition into:
-   - **Actionable:** workflows, pipelines, synthetic opps.
-   - **Upstream-blocked-by-atom:** solicitations, funds, reviews, responses — print labs admin URLs (`https://labs.connect.dimagi.com/labs/records/<type>/<id>/`) for manual deletion.
+5. **Build the `OrphanReport`** with `system: 'labs'`. All entries are actionable — no upstream-blocked section needed.
 6. **Render** + write `labs-orphans.md` and `.yaml` to the sweep folder.
-7. **Surface to human** in chat. Prompt for approval per actionable chunk.
+7. **Surface to human** in chat. Prompt for approval per chunk (one prompt per atom type, since each maps to a different atom).
 8. **On approval:**
    - Orphan workflows → `workflow_delete({ workflow_id })`
    - Orphan pipelines → `pipeline_delete({ pipeline_id })`
    - Orphan synthetic opps → `synthetic_disable({ synthetic_opp_id })`
+   - Orphan LabsRecord-backed items (solicitations, funds, reviews, responses) → `labs_delete_record({ id })` per item. The labs MCP proxy intercepts this call locally and issues an HTTP DELETE to `/export/labs_record/`; no type discriminator needed.
 
 ## Failure modes
 
@@ -59,10 +58,10 @@ Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, soli
 
 ## Implementation notes for agents
 
-- LabsRecord-backed types (solicitation, fund, review, response) all store data in the same Django model (`commcare_connect.opportunity.models:LabsRecord`) with a `type` discriminator. The upstream `LabsRecordDataView.DELETE` endpoint at `/labs_record/` accepts `{"id": pk}` in the request body and hard-deletes. A single generic `labs_delete_record(type, id)` atom in the labs MCP proxy would cover all four types in a follow-up PR.
-- Workflow runs are stored as `LabsRecord(type='workflow_run')` too; not currently surfaced.
+- LabsRecord-backed types (solicitation, fund, review, response) all store data in the same Django model (`commcare_connect.opportunity.models:LabsRecord`) with a `type` discriminator. The `labs_delete_record(id)` atom hits the upstream HTTP DELETE at `/export/labs_record/` directly (not via the labs MCP) using the same Bearer token. No type discriminator is needed — lookup is by primary key alone.
+- Workflow runs are also stored as `LabsRecord` entries; not currently surfaced as orphans (no live-set bucket for them).
+- The `labs_delete_record` atom is implemented as a LOCAL tool in the ACE proxy at `mcp/connect-labs-server.ts`. The proxy intercepts `tools/list` to advertise it alongside upstream tools, and intercepts `tools/call` for `labs_delete_record` to issue the REST DELETE directly. All other JSON-RPC frames forward unchanged.
 
 ## Related skills
 
 - `sweep-live-set` produces the live-set this skill diffs against.
-- Future: `labs_delete_record` atom unblocks auto-delete for the LabsRecord-backed product types.
