@@ -44,6 +44,7 @@ export type Capability =
   | 'send_llo_invite'
   | 'accept_program_application'
   | 'send_flw_invite'
+  | 'delete_unaccepted_flw_invites'
   // Observation (10)
   | 'list_programs'
   | 'get_program'
@@ -69,6 +70,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   send_llo_invite:              { backend: 'REST',       restTarget: 'POST /api/programs/{program_id}/applications/' },
   accept_program_application:   { backend: 'REST',       restTarget: 'POST /api/programs/{program_id}/applications/{application_id}/accept/' },
   send_flw_invite:              { backend: 'REST',       restTarget: 'POST /api/opportunities/{id}/invite_users/' },
+  delete_unaccepted_flw_invites: { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/opportunities/{id}/invites/ (not yet shipped)' },
 
   // Observation — still HTML-scrape; PR #1135 didn't ship reads
   list_programs:                { backend: 'PLAYWRIGHT', restTarget: 'GET /api/programs/ (not yet shipped)' },

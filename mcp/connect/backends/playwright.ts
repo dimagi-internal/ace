@@ -1531,4 +1531,41 @@ export class PlaywrightBackend implements ConnectClient {
     }
     throw await httpErrorFor(postRes, path, 'POST');
   };
+
+  /**
+   * Delete unaccepted FLW invites by their integer ids. The Django view at
+   * `/a/<org>/opportunity/<opp_id>/delete_invites/` is `@csrf_exempt` so we
+   * skip the GET-form-to-scrape-CSRF dance the other write atoms do.
+   *
+   * The view expects the same form key (`user_invite_ids`) repeated once
+   * per id — Playwright's `request.post({ form })` flattens an object into
+   * non-repeating keys, so we build the URL-encoded body manually.
+   *
+   * Server-side filter is `id__in=invite_ids` AND `opportunity=request.opportunity`
+   * AND `exclude(status=accepted)` — accepted invites are silently skipped,
+   * so a caller passing an accepted invite's id gets no error (it just
+   * doesn't get deleted). The view returns 200 with an `HX-Redirect`
+   * header to the worker list; 400 if the list is empty.
+   */
+  deleteUnacceptedFlwInvites: ConnectClient['deleteUnacceptedFlwInvites'] = async (args) => {
+    if (args.user_invite_ids.length === 0) {
+      return { requested: 0 };
+    }
+    const path = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/delete_invites/`;
+    const body = args.user_invite_ids
+      .map((id) => `user_invite_ids=${encodeURIComponent(String(id))}`)
+      .join('&');
+    const res = await this.request.post(path, {
+      data: body,
+      maxRedirects: 0,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Referer: `${this.opts.baseUrl}${path}`,
+      },
+    });
+    if (res.status() === 200 || res.status() === 302) {
+      return { requested: args.user_invite_ids.length };
+    }
+    throw await httpErrorFor(res, path, 'POST');
+  };
 }

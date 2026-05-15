@@ -195,6 +195,30 @@ export interface ConnectClient {
     status: 'queued';
   }>;
 
+  /**
+   * Hard-delete unaccepted FLW invites by their integer ids. Invites with
+   * `status=accepted` are silently skipped server-side (those represent
+   * real workers who've joined; they cannot be deleted via this endpoint).
+   * Associated `OpportunityAccess` rows are cascade-deleted.
+   *
+   * Used by `/ace:sweep connect` to clean up orphan invites tied to
+   * deactivated opportunities. POST to the `@csrf_exempt` HTML view at
+   * `/a/<org_slug>/opportunity/<opp_id>/delete_invites/`; no REST API
+   * equivalent. The `<opp_id>` here is the opportunity's UUID slug
+   * (matches `Opportunity.opportunity_id`); `user_invite_ids` are the
+   * integer ids returned by `connect_list_invites`.
+   *
+   * Returns the requested count; the server returns 200 with an `HX-Redirect`
+   * header but no body breakdown of how many of the requested ids were
+   * actually deleted (e.g. some may have been accepted and skipped).
+   * Callers that need a precise count should re-list invites afterwards.
+   */
+  deleteUnacceptedFlwInvites(args: {
+    organization_slug: string;
+    opportunity_id: string;             // opportunity UUID slug
+    user_invite_ids: number[];          // integer ids from connect_list_invites
+  }): Promise<{ requested: number }>;
+
   // Invoices
   listInvoices(args: { organization_slug: string; opportunity_id: string }): Promise<{ invoices: Invoice[] }>;
   getInvoice(args: { organization_slug: string; invoice_id: string }): Promise<Invoice>;

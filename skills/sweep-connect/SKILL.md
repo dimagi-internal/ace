@@ -3,13 +3,14 @@ name: sweep-connect
 description: >
   Diff Connect programs/opportunities/payment-units/invites against the
   live-set, score orphans, surface a triage report. Soft-deactivate
-  orphan opportunities; report-only for the rest until atoms exist.
+  orphan opportunities; auto-delete orphan unaccepted FLW invites;
+  report-only for programs and payment units.
 disable-model-invocation: true
 ---
 
 # sweep-connect
 
-Find Connect artifacts (programs, opportunities, payment units, FLW invites) that no current opp references, score them, and present them for triage. Connect's upstream API is uneven: only opportunity deactivate is straightforwardly available; deletion of opportunities/programs/PUs isn't exposed (no Django view exists for opportunity-delete despite an internal `delete_opportunity()` helper). This skill surfaces orphans and auto-deactivates opportunities; programs/PUs/invites surface in a "upstream-blocked — delete via Connect admin UI" section of the report.
+Find Connect artifacts (programs, opportunities, payment units, FLW invites) that no current opp references, score them, and present them for triage. Connect's upstream API is uneven: opportunity deactivate is available, unaccepted FLW invite delete is available, but programs and payment units have no upstream delete path. This skill auto-executes what it can; programs and PUs surface in a "upstream-gap — delete via Connect admin UI" section.
 
 ## Inputs
 
@@ -37,11 +38,13 @@ Find Connect artifacts (programs, opportunities, payment units, FLW invites) tha
    - (invites have no live-set bucket; treat all invites tied to orphan opportunities as orphan-candidates)
 4. **Score** each orphan via `scoreConnectItem(item, liveSet)` from `lib/sweep-fingerprint.ts`.
 5. **Build the `OrphanReport`** with `system: 'connect'`. Partition the report into two sections:
-   - **Actionable:** opportunities (can be soft-deactivated via existing atom).
-   - **Upstream-blocked:** programs, payment units, FLW invites — print Connect admin URLs (`<base_url>/a/<org_slug>/program/<id>/`, etc.) for manual deletion.
+   - **Actionable:** opportunities (soft-deactivate) and unaccepted FLW invites (auto-delete).
+   - **Upstream-gap:** programs and payment units — print Connect admin URLs (`<base_url>/a/<org_slug>/program/<id>/`, etc.) for manual deletion. There is no upstream delete view for these.
 6. **Render** via `renderOrphanReport()` from `lib/sweep-report.ts`. Write `connect-orphans.md` and `connect-orphans.yaml` to the sweep folder.
 7. **Surface to human** in chat: print the report, prompt for approval per actionable chunk.
-8. **On approval:** for each approved orphan opportunity, call `connect_update_opportunity` with `{ organization_slug, opportunity_id, active: false }`. NB: the existing `updateOpportunity` interface in `mcp/connect/client.ts` does NOT yet expose `active`; the Playwright backend's `postEditForm` does. Extending the public interface is a one-line change blocked on a follow-up PR — until then, this step prints the `update_opportunity` call you'd make and asks the human to confirm.
+8. **On approval:**
+   - **Opportunities** → call `connect_update_opportunity` with `{ organization_slug, opportunity_id, active: false }`. NB: the existing `updateOpportunity` interface in `mcp/connect/client.ts` does NOT yet expose `active`; the Playwright backend's `postEditForm` does. Until the public interface is extended (one-line change in a follow-up PR), this step prints the call signature and asks the human to confirm.
+   - **Unaccepted FLW invites** → call `connect_delete_unaccepted_flw_invites({ organization_slug, opportunity_id, user_invite_ids: [...] })`. Pass the integer ids from `connect_list_invites`. Accepted invites in the list are silently skipped server-side; cascade-deletes associated `OpportunityAccess` rows.
 
 ## Failure modes
 
@@ -51,10 +54,9 @@ Find Connect artifacts (programs, opportunities, payment units, FLW invites) tha
 
 ## Implementation notes for agents
 
-- The Connect `delete_opportunity()` helper exists in `commcare_connect/opportunity/deletion.py` (used by Celery tasks) but no Django view exposes it. Building `connect_delete_opportunity` requires an upstream PR — out of scope for this skill.
-- The Connect `delete_user_invites` HTML view DOES exist (`/a/<org_slug>/opportunity/<opp_id>/delete_invites/` POST with `user_invite_ids[]`). Future PR: add a `connect_delete_unaccepted_flw_invites` atom to handle invite cleanup; this skill currently falls back to admin-UI link for invites.
+- The Connect `delete_opportunity()` helper exists in `commcare_connect/opportunity/deletion.py` (used by Celery tasks) but no Django view exposes it. Building `connect_delete_opportunity` requires an upstream PR — out of scope.
+- The Connect `delete_user_invites` HTML view at `/a/<org_slug>/opportunity/<opp_id>/delete_invites/` is `@csrf_exempt` and the atom `connect_delete_unaccepted_flw_invites` calls it directly. Accepted invites are silently skipped server-side, so the caller doesn't need to pre-filter — but doing so saves a server roundtrip.
 
 ## Related skills
 
 - `sweep-live-set` produces the live-set this skill diffs against.
-- Future: a `connect_delete_unaccepted_flw_invites` atom (in a follow-up PR) lets this skill auto-delete orphan invites instead of linking to the admin UI.
