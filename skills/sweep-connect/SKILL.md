@@ -29,17 +29,16 @@ Find Connect artifacts (programs, opportunities, payment units, FLW invites) tha
 2. **List Connect inventory** using existing atoms:
    - `connect_list_programs`
    - `connect_list_opportunities` (per program)
-   - `connect_list_payment_units` (per opportunity)
-   - `connect_list_invites` (per program)
+   - `connect_list_invites` (per program — for unaccepted-invite cleanup tied to orphan opportunities)
+   - Payment units are NOT listed standalone — they are implicit children of opportunities. When an opp is deactivated (or eventually hard-deleted), its PUs follow.
 3. **Diff** each item's id against the corresponding live-set bucket:
    - programs → `liveSet.identifiers.connectProgramIds`
    - opportunities → `liveSet.identifiers.connectOpportunityIds`
-   - payment units → `liveSet.identifiers.connectPaymentUnitIds`
-   - (invites have no live-set bucket; treat all invites tied to orphan opportunities as orphan-candidates)
+   - invites (for orphan opportunities only) → no diff needed; every invite under an orphan opp is itself orphaned
 4. **Score** each orphan via `scoreConnectItem(item, liveSet)` from `lib/sweep-fingerprint.ts`.
 5. **Build the `OrphanReport`** with `system: 'connect'`. Partition the report into two sections:
    - **Actionable:** opportunities (soft-deactivate) and unaccepted FLW invites (auto-delete).
-   - **Upstream-gap:** programs and payment units — print Connect admin URLs (`<base_url>/a/<org_slug>/program/<id>/`, etc.) for manual deletion. There is no upstream delete view for these.
+   - **Upstream-gap:** programs only — print Connect admin URLs (`<base_url>/a/<org_slug>/program/<id>/`) for manual deletion. There is no upstream delete view for programs.
 6. **Render** via `renderOrphanReport()` from `lib/sweep-report.ts`. Write `connect-orphans.md` and `connect-orphans.yaml` to the sweep folder.
 7. **Surface to human** in chat: print the report, prompt for approval per actionable chunk.
 8. **On approval:**

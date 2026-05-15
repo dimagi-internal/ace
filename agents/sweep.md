@@ -86,9 +86,12 @@ When `system == 'all'`, print one summary block per system, then a final aggrega
 | Drive folders | drive | ✅ Auto-trash (`drive_trash_file`) |
 | Connect opportunities | connect | Soft-deactivate via existing `update_opportunity({active: false})` |
 | Connect unaccepted FLW invites | connect | ✅ Auto-delete via `connect_delete_unaccepted_flw_invites` (cascade-deletes OpportunityAccess; accepted invites silently skipped server-side) |
-| Connect programs / payment units | connect | ❌ Upstream gap. No delete view exists. Admin UI link only. |
+| Connect payment units | connect | Implicit children of opportunities — no standalone cleanup. When an opp is deactivated/deleted, its PUs follow. Sweep does not list PUs separately. |
+| Connect programs | connect | ❌ Upstream gap. No delete view exists. Admin UI link only. |
 | OCS sessions | ocs | ✅ Auto-end via `ocs_end_session` |
-| OCS chatbots / collections / pipelines | ocs | ⚠️ Report-only. Upstream supports `is_archived` soft-delete via web UI POST; needs `ocs_archive_*` atoms. |
+| OCS chatbots | ocs | ✅ Auto-archive via `ocs_archive_chatbot` (per-opp clone — safe; golden template explicitly safe-listed) |
+| OCS pipelines | ocs | ✅ Auto-archive via `ocs_archive_pipeline` (per-opp deep clone via `create_new_version(is_copy=True)` — safe) |
+| OCS collections / source-material files | ocs | ❌ SHARED with golden template (LLM nodes pass collection_id through unchanged on clone). Surface for visibility but NEVER auto-archive — would break golden template + every other clone. |
 | CommCare HQ apps | hq | 🚧 Stub. Needs `commcare_list_apps` + `commcare_delete_app` atoms. |
 | CommCare HQ builds / multimedia | hq | ❌ Upstream gap. No delete API exists. |
 | labs workflows / pipelines / synthetic | labs | ✅ Auto-delete via existing `workflow_delete` / `pipeline_delete` / `synthetic_disable` |

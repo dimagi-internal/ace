@@ -34,7 +34,7 @@ export interface RequestOptions {
 }
 
 export type RequestFn = (
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'DELETE',
   url: string,
   body?: unknown,
   options?: RequestOptions,

@@ -758,4 +758,60 @@ export class PlaywrightBackend {
 
     return { public_id: publicId, embed_key: embedKey };
   }
+
+  /**
+   * Soft-archive a chatbot (experiment). POST to /a/<team>/chatbots/<pk>/delete/
+   * triggers `archive_chatbot` view (apps/experiments/views/experiment.py) which
+   * calls `Experiment.archive()` and sets `is_archived=True`. Returns 302 with
+   * HTMX `HX-Redirect` to chatbots_home.
+   *
+   * Safety boundary: the caller MUST exclude OCS_GOLDEN_TEMPLATE_ID from the
+   * sweep set before calling — this atom has no concept of "template" and
+   * will happily archive any experiment by id. The `sweep-ocs` skill is
+   * responsible for the exclusion check; this method is a thin form-POST.
+   */
+  async archiveChatbot(args: { experiment_id: number }): Promise<{ archived: number }> {
+    const path = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/delete/`;
+    const res = await this.opts.request(
+      'POST',
+      path,
+      { csrfmiddlewaretoken: this.opts.csrfToken },
+      { followRedirects: false, formEncoded: true },
+    );
+    if (res.status === 200 || res.status === 302) {
+      return { archived: 1 };
+    }
+    throw await httpErrorFor(res, path);
+  }
+
+  /**
+   * Soft-archive a pipeline. HTTP DELETE to /a/<team>/pipelines/<pk>/delete/
+   * triggers `DeletePipeline` view (apps/pipelines/views.py) which calls
+   * `Pipeline.archive()` and sets `is_archived=True`. Returns 200 with empty
+   * body.
+   *
+   * Pipeline archive is SAFE per-opp: when ACE clones a chatbot, the upstream
+   * `copy_chatbot` view deep-clones the Pipeline (via `create_new_version(is_copy=True)`)
+   * — each clone has its own Pipeline row. Verified 2026-05-15 against
+   * apps/pipelines/models.py.
+   *
+   * NOTE: the LLM nodes inside the pipeline reference Collection IDs that are
+   * SHARED with the golden template. Archiving the pipeline does NOT archive
+   * those collections — the FK is just dropped when the pipeline is archived.
+   * Do not confuse "archive this pipeline" with "archive this pipeline's
+   * collection"; the latter is unsafe and not exposed as an atom.
+   */
+  async archivePipeline(args: { pipeline_id: number }): Promise<{ archived: number }> {
+    const path = `/a/${this.opts.teamSlug}/pipelines/${args.pipeline_id}/delete/`;
+    const res = await this.opts.request(
+      'DELETE',
+      path,
+      undefined,
+      { followRedirects: false },
+    );
+    if (res.status === 200 || res.status === 204) {
+      return { archived: 1 };
+    }
+    throw await httpErrorFor(res, path);
+  }
 }

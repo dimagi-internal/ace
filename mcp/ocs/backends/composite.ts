@@ -32,6 +32,8 @@ export class CompositeBackend implements OcsClient {
   setSourceMaterial = (a: Parameters<OcsClient['setSourceMaterial']>[0]) => this.opts.playwright.setSourceMaterial(a);
   publishChatbotVersion = (a: Parameters<OcsClient['publishChatbotVersion']>[0]) => this.opts.playwright.publishChatbotVersion(a);
   getChatbotEmbedInfo = (a: Parameters<OcsClient['getChatbotEmbedInfo']>[0]) => this.opts.playwright.getChatbotEmbedInfo(a);
+  archiveChatbot = (a: Parameters<OcsClient['archiveChatbot']>[0]) => this.opts.playwright.archiveChatbot(a);
+  archivePipeline = (a: Parameters<OcsClient['archivePipeline']>[0]) => this.opts.playwright.archivePipeline(a);
 
   // ── Observation (REST today) ─────────────────────────────────────
 

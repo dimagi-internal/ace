@@ -104,7 +104,7 @@ async function initPlaywright(): Promise<PlaywrightBackend> {
   }
 
   async function doRequest(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'DELETE',
     url: string,
     body?: unknown,
     options?: {
@@ -120,6 +120,13 @@ async function initPlaywright(): Promise<PlaywrightBackend> {
     }
     const maxRedirects = options?.followRedirects === false ? 0 : undefined;
     const headers = { 'X-CSRFToken': csrfToken, Referer: baseUrl };
+
+    if (method === 'DELETE') {
+      // OCS soft-archive views (DeleteCollection, DeletePipeline, archive_chatbot
+      // siblings) are Django View.delete() methods responding to the HTTP DELETE
+      // verb. CSRF header still required; no request body expected by the view.
+      return ctx.request.delete(url, { headers, maxRedirects });
+    }
 
     if (options?.multipart) {
       // Real multipart/form-data — for Django views that parse request.FILES
@@ -343,6 +350,20 @@ server.tool(
   'Fetch the public_id and embed_key needed to render the OCS widget.',
   { experiment_id: z.number() },
   async (args) => result(await composite.getChatbotEmbedInfo(args)),
+);
+
+server.tool(
+  'ocs_archive_chatbot',
+  'Soft-archive a chatbot (sets is_archived=True server-side). SAFE PER-OPP: each ACE clone has its own Experiment row, so archiving one clone does not affect the golden template or other opps. CRITICAL — callers MUST exclude OCS_GOLDEN_TEMPLATE_ID from the set of ids passed to this atom; the atom itself has no concept of "template" and will archive any experiment_id given. The /ace:sweep ocs flow enforces this exclusion. Routes through Playwright to /a/<team>/chatbots/<pk>/delete/ (POST, returns 302 HTMX HX-Redirect). No REST equivalent.',
+  { experiment_id: z.number().int() },
+  async (args) => result(await composite.archiveChatbot(args)),
+);
+
+server.tool(
+  'ocs_archive_pipeline',
+  'Soft-archive a pipeline (sets is_archived=True server-side). SAFE PER-OPP: when ACE clones a chatbot, Pipeline.create_new_version(is_copy=True) deep-clones the Pipeline row + its nodes — each clone has its own pipeline. NOTE: LLM nodes inside the pipeline reference Collection IDs that are SHARED with the golden template; archiving the pipeline does NOT archive those collections (and we do NOT expose a collection-archive atom because doing so would break the template). Routes through Playwright to /a/<team>/pipelines/<pk>/delete/ (HTTP DELETE method on Django View.delete(); returns 200 empty body).',
+  { pipeline_id: z.number().int() },
+  async (args) => result(await composite.archivePipeline(args)),
 );
 
 // ── Observation atoms (12) ──────────────────────────────────────────
