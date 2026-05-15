@@ -101,25 +101,42 @@ connection because the user-scope override registers it once for the
 session; every subagent dispatch sees the same `get_hq_connection`
 result.
 
-### Step 1: PDD to Apps (sequential)
-Invoke `pdd-to-learn-app`, then `pdd-to-deliver-app`.
+### Step 1: PDD to Apps (sequential, archetype-branched)
 
-**Run these sequentially, not in parallel.** An earlier note here
-claimed they could batch in a single assistant message; that was
-incorrect — Claude Code does not reliably parallelize `Agent`
+Read the PDD's `Archetype:` field first. The dispatch list depends on
+archetype:
+
+- **`atomic-visit` / `multi-stage`** — invoke `pdd-to-learn-app`, then
+  `pdd-to-deliver-app`. Standard two-build path.
+- **`focus-group`** — invoke **only** `pdd-to-deliver-app`. Skip
+  `pdd-to-learn-app` entirely. The skill itself is a no-op for
+  focus-group (writes a one-line `skipped` summary and exits without
+  calling `/nova:autobuild`), but the orchestrator should also not
+  dispatch it in the first place — saves a dispatch round-trip. See
+  `skills/pdd-to-learn-app/SKILL.md § Process step 1a` and
+  `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
+
+  For focus-group, the Deliver-app build is a single small attestation
+  form (~14 fields), so the wall-clock budget is much smaller than for
+  atomic-visit — typically 3–6 minutes vs 10–15.
+
+**Run the dispatched builds sequentially, not in parallel.** An earlier
+note here claimed they could batch in a single assistant message; that
+was incorrect — Claude Code does not reliably parallelize `Agent`
 dispatches the way it parallelizes regular tool calls, and Nova's
 `/nova:autobuild` cannot be parallelized in this environment today.
-Dispatch Learn, await its result, then dispatch Deliver. Each takes
-10–15 minutes; the two together set the lower bound on Phase 3
-wall-clock until upstream supports parallel architect runs.
+For atomic-visit / multi-stage: dispatch Learn, await its result, then
+dispatch Deliver. Each takes 10–15 minutes; the two together set the
+lower bound on Phase 3 wall-clock until upstream supports parallel
+architect runs.
 
-The two builds are otherwise independent — Learn reads the PDD's
-learning objectives, Deliver reads the visit/registration spec,
-neither depends on the other's `nova_app_id`.
+The two builds (when both run) are otherwise independent — Learn reads
+the PDD's learning objectives, Deliver reads the visit/registration
+spec, neither depends on the other's `nova_app_id`.
 
-If the Learn build fails, halt before dispatching Deliver — re-running
-both wastes ~10 min and the failure is usually deterministic (PDD
-spec issue, not transient).
+If the Learn build fails (when it runs), halt before dispatching
+Deliver — re-running both wastes ~10 min and the failure is usually
+deterministic (PDD spec issue, not transient).
 
 #### Turn-0 halt detection (defensive — Nova issue #2)
 
@@ -298,8 +315,11 @@ by `app-screenshot-capture` alongside the app summaries.
 
 ### Step 2.8: Strip Connect wrappers from Learn forms
 
-Invoke the `commcare-form-patch` skill (default `targets: auto`,
-`patch_class: assessment-removal`, `app: learn`).
+**Skip this step entirely for `focus-group` archetype** — there is no
+Learn app to patch (Step 1's archetype branch skipped the Learn build).
+For `atomic-visit` and `multi-stage`, invoke the `commcare-form-patch`
+skill (default `targets: auto`, `patch_class: assessment-removal`,
+`app: learn`).
 
 Background: Nova's `compile_app` emits `<module xmlns="…connect…">` /
 `<assessment xmlns="…connect…">` wrapper elements in Learn-app form

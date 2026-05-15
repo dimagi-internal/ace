@@ -23,7 +23,15 @@
 
 ## Learn App Specification
 
-> Section content branches on `Archetype:`. Skip sub-sections that don't apply.
+> **Archetype-conditional. Skip this entire section for `focus-group` —
+> the focus-group archetype does not produce a Learn app.** Facilitator
+> training for FGDs lives in the per-opp OCS chatbot + handbook gdoc +
+> coordinator-graded practice-session audio review. See
+> `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
+>
+> For `atomic-visit` and `multi-stage` (where a stage uses atomic-visit
+> data collection), fill out the sub-sections below. Multi-stage PDDs
+> with a focus-group stage skip this section for that stage only.
 
 ### Learning Objectives
 - [What must the FLW be able to do after training? List by module.]
@@ -36,12 +44,6 @@ The unit of FLW work depends on the archetype:
   - Visit frequency: [daily / weekly / monthly]
   - Expected visits per FLW: [number]
   - Duration per visit: [minutes]
-- **`focus-group`** — one FLW-facilitated group session is the unit.
-  Fill in:
-  - Session length: [target minutes; hard cap]
-  - Sessions per facilitator: [number across pilot]
-  - Post-session writing budget: [minutes per session to draft summary + report]
-  - Submission window: [hours after session end; default 48]
 - **`multi-stage`** — per-stage. Declare each stage's archetype and fill
   in that archetype's bullets in the stage's own subsection.
 
@@ -50,12 +52,38 @@ The unit of FLW work depends on the archetype:
 |-----------|---------|------------|
 | | | |
 
+## Facilitation Protocol (`focus-group` archetype only)
+
+> Use this section in place of "Learn App Specification" when archetype is `focus-group`.
+
+### Training surface
+- **OCS chatbot** (per-opp, Phase 5) — primary reference for facilitation craft + post-session writing guidance. Loaded with the FGD Guide + Output Specification + handbook gdoc via the chatbot's RAG content.
+- **Facilitator handbook gdoc** — the LLO's prep doc; distributed out-of-band, referenced from the OCS chatbot's RAG content.
+- **Practice-session audio review** — pre-fielding certification gate. Facilitator records a practice FGD, uploads audio, coordinator reviews and either passes (cleared for live fielding) or fails-with-notes.
+
+### Facilitator profile
+- Native fluency in working language: [yes/no]
+- Prior community-work experience required: [yes/no; minimum years if yes]
+- Facilitator-to-group ratio: [1 facilitator + 1 notetaker per group / other]
+
+### Session logistics
+- Session length target: [minutes]; hard cap: [minutes]
+- Per-session payment (facilitator + notetaker): [USD-equivalent range]
+- Training stipend on practice-session-pass: [USD-equivalent]
+- Venue acceptable list: [neutral community space / school room / community hall / courtyard / other-with-justification]
+- Venue disallow list: [health facilities / leader compounds / private homes of high-status families / other]
+
+### Recording + consent
+- Audio minimum duration: [minutes; default 45]
+- Audio consent fallback: [if any participant declines, audio device OFF whole session — notetaker only / other]
+- Photo policy: [attendance sheet only, NO participant faces by default / other]
+
 ## Deliver App Specification
 
 > Section content branches on `Archetype:`. Skip sub-sections that don't apply.
 
 ### Services Delivered
-- [What does each completed FLW work-unit produce? For atomic-visit: per-beneficiary form + verification artifact. For focus-group: per-session summary + audio + attendance. For multi-stage: per-stage entry.]
+- [What does each completed FLW work-unit produce? For **atomic-visit**: per-beneficiary form + verification artifact. For **focus-group**: one completed FGD session attested by a small CommCare form + a separately-submitted Google Doc with the qualitative content. For **multi-stage**: per-stage entry.]
 
 ### Workflow
 - [Step-by-step from work-unit start to submission.]
@@ -67,16 +95,48 @@ The "case" depends on the archetype:
   Fill in:
   - Case types: [list]
   - Case lifecycle: [create → update → close criteria]
-- **`focus-group`** — one case per session; lifecycle
-  `planned → in_progress → awaiting_summary → submitted → verified` (or `flagged`).
+- **`focus-group`** — one case per session; case-create only on the
+  attestation form. **No case lifecycle beyond per-session attestation
+  submission.** Reviewer verification happens out-of-band (via Connect
+  FormRepeater observation feedback), not via a separate Deliver form.
   Fill in:
   - Case type: [e.g. `fgd_session`]
-  - Close criteria: [Layer A + Layer B verification both pass]
-  - Note: NOT per-beneficiary. The Deliver app captures session
-    metadata + facilitator reporting fields, not per-participant
-    outcomes.
+  - Note: NOT per-beneficiary. The Deliver app is the **payment trigger
+    only** — all qualitative content (per-section themes, quotes,
+    post-FGD report, reflection) lives in a **separately-submitted
+    Google Doc**. The attestation form captures session metadata +
+    artifacts (audio, photo, gdoc link). See `Output Specification
+    (gdoc structure)` below for the gdoc shape.
 - **`multi-stage`** — per-stage. Declare each stage's archetype and
   follow its case-management shape.
+
+### Output Specification (gdoc structure, `focus-group` archetype only)
+
+> Use this subsection when archetype is `focus-group`. The gdoc is the
+> qualitative-content surface; CommCare captures only metadata +
+> artifacts (audio file, attendance photo, gdoc link) via the
+> per-session attestation form.
+
+The facilitator's session gdoc should contain:
+
+- **Per-section summary** (one block per FGD section): themes
+  (3-6 bullets with specifics — named barriers, named options, named
+  motivators); notable verbatim quotes (2-4, role-attributed: "mother"
+  / "father" / "grandmother", NOT by name); level of consensus
+  (strong agreement / mixed / strong disagreement, with one-line
+  justification); time spent (minutes).
+- **Post-FGD report**: top 5 things we heard; most-cited barriers (rough
+  frequency order); per-program-option reactions (one block per option
+  described in the PDD's Question Guide); surprises; facilitator
+  recommendations.
+- **Facilitator reflection**: 150–300 words on what surprised them,
+  what fell flat, what to do differently next time.
+
+The OCS chatbot for this opp is loaded with this Output Specification so
+facilitators can ask it "what should I put in section 3?" during
+write-up. The attestation form's `gdoc_link` field captures a link to
+this gdoc; the gdoc lives in the LLO's or ACE's shared Drive, not in
+CommCare.
 
 ## Target Population
 - Beneficiary criteria: [who]

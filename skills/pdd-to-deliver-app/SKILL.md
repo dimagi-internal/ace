@@ -289,28 +289,78 @@ management follows the standard create → update → close pattern. The
 form's fields map 1:1 to Layer A and Layer B of the PDD's Evidence Model.
 
 ### `focus-group`
-Delivery unit = **one completed group session with all required
-artifacts**. The form is a session-documentation form, not an
-individual-beneficiary form. Required artifacts:
 
-- **Pre-session**: date, GPS, venue, segment, participant count, consent
-  confirmed (per participant), recording started
-- **Per question domain (one section per domain in the PDD's question
-  guide)**: themes observed, notable quotes (verbatim, with translation
-  if needed), level of consensus, time spent
-- **Post-session**: facilitator reflection (what went well, what didn't,
-  anything surprising), attendance photo, audio file upload, total
-  session duration
+Delivery unit = **one completed FGD session, attested by a small CommCare
+form.** The Deliver app for focus-group is intentionally small — it is
+the **payment trigger only**, not the content-capture surface.
 
-Case management is **per session**, not per participant. There's no
-"case lifecycle" for participants — they're not the unit. The
-opportunity-level case is the segment (e.g., "Women, remote,
-under-vaccinated children"), and each session against that segment is a
-delivery against that case.
+**FGD content lives in a Google Doc**, not in this app. Per-section
+themes, verbatim quotes, level-of-consensus grading, post-FGD report,
+facilitator reflection — all captured out-of-band in a gdoc the LLO
+and ACE-program-team share. The Deliver app form captures session
+metadata + the artifacts (audio, attendance photo, gdoc link), and
+each submission is one payment unit. See
+`docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
 
-The Nova brief should explicitly call out that this is **session
-documentation, not atomic data collection**, and reference the PDD's
-Output Specification section for the per-domain summary fields.
+**App shape (one module, one form):**
+
+- **Module 1: Session Attestation** (case type: `fgd_session`)
+- **Form: "Session Attestation"** (case-create, `connect.deliver_unit`
+  set). One submission = one completed session = one payment trigger.
+
+**Required fields on the attestation form** (~14 fields, all
+attestation/artifact, no qualitative content):
+
+| Field | Kind | Notes |
+|---|---|---|
+| `case_name` | text | Session display name, e.g. "Kibera mothers 2026-06-15" |
+| `llo_name` | text | LLO organization name |
+| `site_village`, `site_district` | text | Location |
+| `venue_name` | text | |
+| `venue_type` | single_select | school_room / community_hall / courtyard / other_with_justification |
+| `venue_justification` | text | Relevant on `venue_type = 'other_with_justification'` |
+| `planned_segment` | single_select | mothers_under5 / fathers / grandmothers |
+| `actual_participant_count` | int | Validate >= 1 |
+| `session_date` | date | |
+| `start_time`, `end_time` | time | |
+| `audio_duration_minutes` | int | Validate >= 45 (`audio-min-duration` decision) |
+| `audio_file` | audio | Primary device upload |
+| `backup_audio_file` | audio | Optional |
+| `attendance_photo` | image | NO faces — first names + role + consent marks only |
+| `audio_consent_status` | single_select | full_yes / partial / declined |
+| `per_participant_consent_confirmed` | single_select | yes / no |
+| `gdoc_link` | text | Validate matches `^https://docs\.google\.com/`. The facilitator's session gdoc with content. |
+| `facilitator_reflection` | long text | 100-300 words (validate string-length 400-1500) |
+| `pre_checklist_complete` | single_select | yes / no. Hint lists the 8 items (consent form, audio recorder, notebook, notetaker, visuals, refreshments, quiet space, per-diem). Operator attests; not 8 separate fields. |
+
+**Connect markers:**
+
+- `connect.deliver_unit` set on the form.
+- `connect.entity_id` defaults to `concat(#user/username, '-', today())` —
+  one paid delivery per facilitator per day, the realistic case for
+  75-90 min sessions + travel. Override to `#case/case_id` only if any
+  LLO schedules ≥2 sessions/day per facilitator (`payment-unit-entity-id`
+  Decisions Log row).
+
+**Specifically not included:**
+
+- **Per-section structured summary fields (28-field load-bearing form).**
+  The FGD operational model puts this content in the facilitator's
+  gdoc, NOT in the Deliver app. The `gdoc_link` field is the bridge.
+- **Pre-session form + per-session post form + reviewer-verification
+  form split.** One form. Reviewer review happens out-of-band via
+  FormRepeater observation feedback, not via a separate Deliver form.
+- **Case management beyond per-session.** No case lifecycle, no
+  per-beneficiary cases, no per-participant follow-up.
+- **A Learn-app-equivalent training surface.** `pdd-to-learn-app` is a
+  no-op for focus-group archetype (see its `## Archetypes § focus-group`).
+
+**Brief language for `/nova:autobuild`:** open with "this is a session
+attestation form for an FGD opportunity. The mobile form captures
+session metadata + artifacts (audio, photo, gdoc link); it is NOT a
+content-capture form. Content lives in a Google Doc out-of-band; the
+gdoc_link field is the bridge. One submission = one completed session
+= one Connect deliver_unit submission = one payment trigger."
 
 ### `multi-stage`
 Generate one Deliver app per stage that has its own delivery work,
@@ -376,3 +426,4 @@ Each row this skill writes uses `phase: 3-commcare` and
 | 2026-04-27 | Switch from manual Nova UI handoff to `/nova:autobuild` via the Nova plugin. Output is now `nova_app_id` written to the summary, not a JSON file. The `apps/deliver-app.json` snapshot is no longer required. | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (deliver-unit-count, one-form-per-module-workaround, multimedia-coverage-strategy) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-15 | Tighten Step 4a (post-build field-count verification) from "the in-context LLM must..." prose into a numbered tool-call recipe. Mirrors the same change in `pdd-to-learn-app/SKILL.md`. Prompted by `malaria-itn-fgd/20260514-2007` Learn-app cert-assessment partial-persistence (FGD Deliver apps with the ~45-70-field per-section summary form are the highest-risk surface for the same class). See jjackson/ace#303. | ACE team |
+| 2026-05-15 | **focus-group archetype rewritten to attestation-form-only.** Previously: 3-module / 69-field per-section-summary Deliver app capturing all qualitative content in CommCare. New: one module, one ~14-field attestation form (date / venue / participants / audio / photo / gdoc link / consent / reflection). Content lives in a Google Doc out-of-band; the gdoc_link field is the bridge. One submission = one payment trigger. Prompted by post-run reframe from operator: "all the content collection... will happen manually and they will send us a gdoc". See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
