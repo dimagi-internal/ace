@@ -453,6 +453,21 @@ server.tool('connect_get_invoice',
 // share the Playwright session because Connect's OAuth-via-CCHQ login
 // flow leaves valid CCHQ cookies in the same BrowserContext.
 
+server.tool('commcare_list_apps',
+  'List CommCare HQ applications in a domain. Hits the REST API at GET /api/v0.4/application/?domain=<domain> using the existing PlaywrightSession cookie jar (allow_session_auth=True on CCHQ\'s TaskPie resource — no separate API key needed). Returns id, name, and doc_type per app. Soft-deleted apps (doc_type ending in `-Deleted`) are filtered server-side; the field is preserved for callers that cross-check against `commcare_delete_app`. Used by `/ace:sweep hq` to enumerate the universe of apps in the ACE-owned domain.',
+  { domain: z.string() },
+  async (args) => runAtom(async () => (await commcareClient()).listApps(args))
+);
+
+server.tool('commcare_delete_app',
+  'Soft-delete a CommCare HQ application. POST /a/<domain>/apps/delete_app/<app_id>/ via the web view (no REST equivalent — the view soft-deletes by mutating doc_type to `<original>-Deleted` and creates a DeleteApplicationRecord for restore). Restore is possible via HQ admin UI\'s "deleted applications" list. Routes through the existing PlaywrightSession (session cookies + CSRF from cookie jar; API key auth is insufficient because this is a CSRF-protected Django web view). Used by `/ace:sweep hq` to clean up orphan apps in the ACE-owned domain.',
+  {
+    domain: z.string(),
+    app_id: z.string(),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).deleteApp(args))
+);
+
 server.tool('commcare_make_build',
   {
     domain: z.string(),

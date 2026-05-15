@@ -25,7 +25,7 @@ Which system?
   drive   — Drive folders under ACE/                                          (auto-trash)
   connect — Connect programs / opportunities / payment-units / invites        (partial — soft-deactivate opps; report-only for the rest)
   ocs     — OCS chatbots / collections / sessions / pipelines                 (partial — end orphan sessions; report-only for the rest)
-  hq      — CommCare HQ apps                                                  (stub — needs commcare_list_apps atom; report-only)
+  hq      — CommCare HQ apps                                                  (auto-soft-delete; builds and multimedia are upstream gaps and not surfaced)
   labs    — connect-labs workflows / pipelines / synthetic / labs records     (partial — auto-delete workflows+pipelines, disable synthetic; report-only for records)
   all     — run all five in sequence
 ```
@@ -92,8 +92,8 @@ When `system == 'all'`, print one summary block per system, then a final aggrega
 | OCS chatbots | ocs | ✅ Auto-archive via `ocs_archive_chatbot` (per-opp clone — safe; golden template explicitly safe-listed) |
 | OCS pipelines | ocs | ✅ Auto-archive via `ocs_archive_pipeline` (per-opp deep clone via `create_new_version(is_copy=True)` — safe) |
 | OCS collections / source-material files | ocs | ❌ SHARED with golden template (LLM nodes pass collection_id through unchanged on clone). Surface for visibility but NEVER auto-archive — would break golden template + every other clone. |
-| CommCare HQ apps | hq | 🚧 Stub. Needs `commcare_list_apps` + `commcare_delete_app` atoms. |
-| CommCare HQ builds / multimedia | hq | ❌ Upstream gap. No delete API exists. |
+| CommCare HQ apps | hq | ✅ Auto-soft-delete via `commcare_delete_app` (mutates `doc_type` to `<original>-Deleted`; restorable 90d via HQ admin UI). Listing via new `commcare_list_apps`. |
+| CommCare HQ builds / multimedia | hq | ❌ Upstream gap. No delete API exists; not surfaced in sweep report. |
 | labs workflows / pipelines / synthetic | labs | ✅ Auto-delete via existing `workflow_delete` / `pipeline_delete` / `synthetic_disable` |
 | labs solicitations / funds / reviews / responses | labs | ✅ Auto-delete via new `labs_delete_record(id)` (HTTP DELETE to `/export/labs_record/`; primary-key lookup covers all four product types — no discriminator needed) |
 
