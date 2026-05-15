@@ -749,6 +749,102 @@ export class CommCareBackend {
     const cookie = state.cookies.find((c) => c.name === 'csrftoken' && c.domain.includes('commcarehq'));
     return cookie?.value;
   }
+
+  /**
+   * List CommCare HQ applications in a domain.
+   *
+   * Uses CCHQ's REST API at GET /api/v0.4/application/?domain=<domain>. The
+   * endpoint accepts session cookies (LoginAndDomainAuthentication with
+   * allow_session_auth=True), so we reuse the existing PlaywrightSession
+   * cookie jar — no separate API key needed.
+   *
+   * Returns only the fields ACE's sweep needs: `id` (app_id), `name`, plus
+   * the `doc_type` so callers can spot soft-deleted apps (those have
+   * doc_type ending in `-Deleted`; the live listing already filters them
+   * out server-side, but the field is preserved for any caller that
+   * cross-checks against `commcare_delete_app`'s soft-delete behavior).
+   *
+   * Used by `/ace:sweep hq` to enumerate the universe of apps in the
+   * ACE-owned domain before diffing against the live-set.
+   */
+  async listApps(args: { domain: string }): Promise<{ apps: Array<{ id: string; name: string; doc_type?: string }> }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/api/v0.4/application/?domain=${encodeURIComponent(args.domain)}`;
+      const res = await request.get(`${this.opts.baseUrl}${path}`, { maxRedirects: 0 });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_list_apps GET ${path}`);
+      }
+      if (res.status() !== 200) {
+        throw new Error(
+          `commcare_list_apps GET ${path} returned ${res.status()}: ` +
+            (await res.text()).slice(0, 300),
+        );
+      }
+      const parsed = JSON.parse(await res.text()) as {
+        objects?: Array<{ id?: string; _id?: string; name?: string; doc_type?: string }>;
+      };
+      const apps = (parsed.objects ?? []).map((o) => ({
+        id: o.id ?? o._id ?? '',
+        name: o.name ?? '',
+        doc_type: o.doc_type,
+      })).filter((a) => a.id);
+      return { apps };
+    });
+  }
+
+  /**
+   * Soft-delete a CommCare HQ application.
+   *
+   * Routes through CCHQ's web view at POST /a/<domain>/apps/delete_app/<app_id>/
+   * (no REST API equivalent — the view soft-deletes by mutating doc_type to
+   * `<original>-Deleted` and creating a `DeleteApplicationRecord` for undo).
+   * Decorators: `@no_conflict_require_POST` + `@require_can_edit_apps`.
+   *
+   * CSRF token must come from the cookie jar (Django middleware requirement);
+   * the existing csrfFromCookies helper handles this. Response is a 302
+   * redirect to the domain dashboard.
+   *
+   * Restoration is possible via `undo_delete_app/<record_id>/` but this atom
+   * doesn't return the record id (the redirect doesn't expose it). To recover
+   * a deleted app, use the HQ admin UI's "deleted applications" list.
+   */
+  async deleteApp(args: { domain: string; app_id: string }): Promise<{ deleted: true }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${args.domain}/apps/delete_app/${args.app_id}/`;
+      // Refresh CSRF by GETting the apps listing — same pattern as makeBuild.
+      const refreshPath = `/a/${args.domain}/apps/`;
+      const refreshRes = await request.get(`${this.opts.baseUrl}${refreshPath}`, {
+        maxRedirects: 0,
+      });
+      if (refreshRes.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(refreshRes, `commcare_delete_app GET ${refreshPath}`);
+      }
+      const csrf = await this.csrfFromCookies(request);
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: '',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${refreshPath}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        // Success is a 302 to the domain dashboard. Session-expired-redirect
+        // would point at /login/ — assertNotLoginRedirect throws SessionExpired
+        // in that case so runWithSessionRetry recovers automatically.
+        const location = res.headers()['location'] || '';
+        if (/\/login\/?(\?|$)/.test(location)) {
+          throw new SessionExpiredError();
+        }
+        return { deleted: true as const };
+      }
+      throw new Error(
+        `commcare_delete_app POST ${path} returned ${res.status()}: ` +
+          (await res.text()).slice(0, 300),
+      );
+    });
+  }
 }
 
 /**
