@@ -55,120 +55,6 @@ export async function forward(frame: JsonRpcFrame, opts: ForwardOpts): Promise<J
   return (await res.json()) as JsonRpcFrame;
 }
 
-/**
- * Local tools that the proxy handles itself rather than forwarding upstream.
- * These get merged into the `tools/list` response and intercepted on
- * `tools/call`. Each entry is exposed to the MCP host as
- * `mcp__connect-labs__<name>` (the host adds the prefix).
- *
- * Added in 0.13.x: `labs_delete_record` — the upstream `LabsRecordDataView`
- * supports DELETE but isn't exposed as an MCP tool, so the proxy makes a
- * direct REST call to `/export/labs_record/` with the same Bearer token.
- * Covers solicitations, funds, reviews, and responses (all backed by the
- * same `LabsRecord` table; no type discriminator needed for delete —
- * lookup is by primary key alone).
- */
-export const LOCAL_TOOLS = [
-  {
-    name: 'labs_delete_record',
-    description:
-      'Hard-delete a LabsRecord by primary key. Covers solicitations, funds, reviews, and responses (all backed by the same LabsRecord table; type discriminator not required for delete). Used by /ace:sweep labs to clean up orphan records. Calls the upstream HTTP DELETE /export/labs_record/ endpoint directly (not via the labs MCP); auth uses the same LABS_MCP_TOKEN.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'integer', description: 'Integer primary key of the LabsRecord to delete.' },
-      },
-      required: ['id'],
-      // additionalProperties:false is required by Claude Code's MCP tool injection
-      // layer (verified empirically 2026-05-15: tools missing this field are
-      // silently dropped from the catalog even though they appear in the proxy's
-      // wire-level tools/list response). Every upstream labs MCP tool has this
-      // set; mirroring it here for consistency.
-      additionalProperties: false,
-    },
-  },
-] as const;
-
-/**
- * Derive the labs REST base URL from `LABS_MCP_URL`. The MCP endpoint
- * lives at `<base>/mcp/`; the REST endpoints live alongside (`<base>/export/...`).
- */
-export function labsBaseUrl(mcpUrl: string): string {
-  return mcpUrl.replace(/\/mcp\/?$/, '');
-}
-
-export interface LocalCallOpts {
-  token: string;
-  baseUrl: string;
-}
-
-/**
- * Handle a `tools/call` for a local tool. Returns an MCP-shaped result
- * frame; never forwards. Throws if the local tool isn't recognized
- * (callers should check `isLocalTool` first).
- */
-export async function callLocal(frame: JsonRpcFrame, opts: LocalCallOpts): Promise<JsonRpcFrame> {
-  const params = (frame.params ?? {}) as { name?: string; arguments?: Record<string, unknown> };
-  if (params.name !== 'labs_delete_record') {
-    throw new Error(`callLocal: unknown local tool ${JSON.stringify(params.name)}`);
-  }
-  const id = (params.arguments ?? {}).id;
-  if (typeof id !== 'number' || !Number.isInteger(id)) {
-    return {
-      jsonrpc: '2.0',
-      id: frame.id ?? null,
-      error: { code: -32602, message: 'labs_delete_record: `id` must be an integer' },
-    };
-  }
-  const url = `${opts.baseUrl}/export/labs_record/`;
-  const res = await fetch(url, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${opts.token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify([{ id }]),
-  });
-  if (!res.ok) {
-    return {
-      jsonrpc: '2.0',
-      id: frame.id ?? null,
-      error: {
-        code: -32000,
-        message: `labs_delete_record: ${res.status} ${await res.text()}`,
-      },
-    };
-  }
-  // MCP `tools/call` result shape: `{ content: [{ type: 'text', text: '...' }] }`.
-  return {
-    jsonrpc: '2.0',
-    id: frame.id ?? null,
-    result: { content: [{ type: 'text', text: `Deleted LabsRecord id=${id}` }] },
-  };
-}
-
-/** Returns true if the frame is a `tools/call` for a local tool. */
-export function isLocalToolCall(frame: JsonRpcFrame): boolean {
-  if (frame.method !== 'tools/call') return false;
-  const name = (frame.params as { name?: string } | undefined)?.name;
-  return LOCAL_TOOLS.some((t) => t.name === name);
-}
-
-/**
- * Merge local tool definitions into a `tools/list` reply from upstream.
- * If the upstream reply is an error, return it unchanged; otherwise
- * append every entry in LOCAL_TOOLS to `result.tools`.
- */
-export function mergeToolsList(reply: JsonRpcFrame): JsonRpcFrame {
-  if (reply.error) return reply;
-  const result = (reply.result ?? {}) as { tools?: unknown[] };
-  const upstream = Array.isArray(result.tools) ? result.tools : [];
-  return {
-    ...reply,
-    result: { ...result, tools: [...upstream, ...LOCAL_TOOLS] },
-  };
-}
-
 function parseEnvFile(path: string): Record<string, string> {
   try {
     const txt = readFileSync(path, 'utf8');
@@ -217,7 +103,6 @@ export function isNotification(frame: JsonRpcFrame): boolean {
 async function main() {
   const token = loadToken();
   const url = process.env.LABS_MCP_URL || 'https://labs.connect.dimagi.com/mcp/';
-  const baseUrl = labsBaseUrl(url);
 
   const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of rl) {
@@ -241,18 +126,7 @@ async function main() {
     }
     const isNotif = isNotification(frame);
     try {
-      let reply: JsonRpcFrame;
-      if (isLocalToolCall(frame)) {
-        // Intercept tools/call for local tools — never forwards upstream.
-        reply = await callLocal(frame, { token, baseUrl });
-      } else {
-        reply = await forward(frame, { token, url });
-        // Merge local tool defs into tools/list responses so the MCP
-        // host advertises them alongside the upstream tools.
-        if (frame.method === 'tools/list') {
-          reply = mergeToolsList(reply);
-        }
-      }
+      const reply = await forward(frame, { token, url });
       // Notifications must not produce a stdout reply, even if the
       // upstream server volunteered one (e.g. labs replying with
       // "Method not found" to `notifications/initialized` — that's

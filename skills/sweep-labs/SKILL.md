@@ -2,20 +2,21 @@
 name: sweep-labs
 description: >
   Diff connect-labs workflows/pipelines/synthetic/records against the
-  live-set, score orphans, auto-delete or auto-disable everything using
-  existing labs atoms plus labs_delete_record for LabsRecord types.
+  live-set, score orphans, auto-delete/disable workflows + pipelines +
+  synthetic. LabsRecord types are report-only (no per-type delete in
+  the upstream MCP; cascade-cleans when parent opp is hard-deleted).
 disable-model-invocation: true
 ---
 
 # sweep-labs
 
-Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, solicitations, funds, reviews, responses) that no current opp references. Every product type now has an auto-execute atom: `workflow_delete`, `pipeline_delete`, `synthetic_disable`, and `labs_delete_record` (covers all four LabsRecord-backed types via a single primary-key DELETE — the upstream view doesn't need a type discriminator).
+Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, solicitations, funds, reviews, responses) that no current opp references. Workflows, pipelines, and synthetic opps have first-class delete/disable atoms in the labs MCP — auto-execute. LabsRecord-backed types (solicitations, funds, reviews, responses) are **report-only** by design: the labs MCP intentionally doesn't expose per-type delete because these records have lifecycle semantics (solicitation status, fund allocations, audit data) that a generic delete would violate. They cascade-clean automatically when the parent Connect opportunity is hard-deleted upstream.
 
 ## Inputs
 
 - Live-set file path from `sweep-live-set`.
 - `LABS_MCP_TOKEN` and labs base URL (loaded via `connect-labs` MCP).
-- Labs base URL: `https://labs.connect.dimagi.com`.
+- Labs admin base URL: `https://labs.connect.dimagi.com`.
 
 ## Products
 
@@ -40,15 +41,16 @@ Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, soli
    - pipelines → `liveSet.identifiers.labsPipelineIds`
    - synthetic opps → `liveSet.identifiers.labsSyntheticIds`
    - solicitations/funds/reviews/responses → `liveSet.identifiers.labsRecordIds`
-4. **Score** each orphan via `scoreLabsItem(item, liveSet)` from `lib/sweep-fingerprint.ts`. Note: `scoreLabsItem` defensively downgrades to `low` when an item references a Connect opportunity that's still in `liveSet.identifiers.connectOpportunityIds` — that's a sign the labs caller mis-flagged the item.
-5. **Build the `OrphanReport`** with `system: 'labs'`. All entries are actionable — no upstream-blocked section needed.
+4. **Score** each orphan via `scoreLabsItem(item, liveSet)` from `lib/sweep-fingerprint.ts`. The scorer defensively downgrades to `low` when an item references a Connect opportunity that's still in `liveSet.identifiers.connectOpportunityIds` — that's a sign the caller mis-flagged the item.
+5. **Build the `OrphanReport`** with `system: 'labs'`. Partition into:
+   - **Actionable — auto-execute:** workflows, pipelines, synthetic opps.
+   - **Informational only:** solicitations, funds, reviews, responses. Print labs admin URLs (`https://labs.connect.dimagi.com/labs/records/<type>/<id>/`) and a note that these will cascade-clean when the parent Connect opportunity is hard-deleted upstream (Celery `delete_opportunity()` cascade in `opportunity/deletion.py:58`). If the human wants to flip status on a specific solicitation/fund (e.g. mark as `cancelled` or `closed`), they can use the existing `update_solicitation` / `update_fund` atoms manually — but sweep doesn't auto-mutate lifecycle state.
 6. **Render** + write `labs-orphans.md` and `.yaml` to the sweep folder.
-7. **Surface to human** in chat. Prompt for approval per chunk (one prompt per atom type, since each maps to a different atom).
+7. **Surface to human** in chat. Prompt for approval per actionable chunk; the LabsRecord list is read-only.
 8. **On approval:**
    - Orphan workflows → `workflow_delete({ workflow_id })`
    - Orphan pipelines → `pipeline_delete({ pipeline_id })`
    - Orphan synthetic opps → `synthetic_disable({ synthetic_opp_id })`
-   - Orphan LabsRecord-backed items (solicitations, funds, reviews, responses) → `labs_delete_record({ id })` per item. The labs MCP proxy intercepts this call locally and issues an HTTP DELETE to `/export/labs_record/`; no type discriminator needed.
 
 ## Failure modes
 
@@ -56,11 +58,16 @@ Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, soli
 - **Labs MCP returns 401:** `LABS_MCP_TOKEN` is expired; recommend `/ace:labs-token-mint` to rotate, then retry.
 - **`workflow_delete` fails because the workflow has running tasks:** report the item as "in-use — needs manual review"; don't retry, don't abort the batch.
 
-## Implementation notes for agents
+## Why LabsRecord types are not auto-deleted
 
-- LabsRecord-backed types (solicitation, fund, review, response) all store data in the same Django model (`commcare_connect.opportunity.models:LabsRecord`) with a `type` discriminator. The `labs_delete_record(id)` atom hits the upstream HTTP DELETE at `/export/labs_record/` directly (not via the labs MCP) using the same Bearer token. No type discriminator is needed — lookup is by primary key alone.
-- Workflow runs are also stored as `LabsRecord` entries; not currently surfaced as orphans (no live-set bucket for them).
-- The `labs_delete_record` atom is implemented as a LOCAL tool in the ACE proxy at `mcp/connect-labs-server.ts`. The proxy intercepts `tools/list` to advertise it alongside upstream tools, and intercepts `tools/call` for `labs_delete_record` to issue the REST DELETE directly. All other JSON-RPC frames forward unchanged.
+The labs MCP exposes `workflow_delete`, `pipeline_delete`, and `synthetic_disable` because workflows and pipelines are infrastructural and synthetic opps have a clean disable semantic. LabsRecord-backed types (solicitations, funds, reviews, responses) intentionally don't have a delete atom in the labs MCP because:
+
+- **Solicitations have a lifecycle.** Statuses like `draft` → `published` → `closed` → `awarded` are the supported state machine. "Delete" isn't a state; the lifecycle-correct cleanup is `update_solicitation({status: 'cancelled'})`.
+- **Funds may have allocations and downstream allocations referenced by responses.** Hard-deleting via a raw endpoint could leave dangling references.
+- **Reviews and responses are audit data.** Deleting them severs the audit trail tied to their parent solicitation.
+- **The cascade already exists.** `commcare_connect/opportunity/deletion.py` cascade-deletes LabsRecords when their parent Connect opportunity is hard-deleted. Once upstream exposes a real opportunity-delete view (currently only deactivate), the cleanup happens for free.
+
+So this skill surfaces orphan LabsRecord items for visibility but never auto-mutates them. If a human wants explicit lifecycle changes on a specific record, they call `update_solicitation` / `update_fund` / `update_review` directly — those are the lifecycle-correct primitives the labs MCP exposes.
 
 ## Related skills
 
