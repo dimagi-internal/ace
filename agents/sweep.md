@@ -26,7 +26,7 @@ Which system?
   connect — Connect opportunities + unaccepted FLW invites                    (auto: deactivate opps, delete unaccepted invites; programs report-only)
   ocs     — OCS chatbots + pipelines + sessions                               (auto: archive chatbots+pipelines, end sessions; collections never auto-archive — shared with golden template)
   hq      — CommCare HQ apps                                                  (auto-soft-delete; builds and multimedia are upstream gaps and not surfaced)
-  labs    — connect-labs workflows + pipelines + synthetic                    (auto-delete/disable; solicitations/funds/reviews/responses report-only — lifecycle semantics belong to labs MCP)
+  labs    — connect-labs workflows + pipelines + synthetic + solicitations    (auto: delete workflows/pipelines/draft+closed solicitations, disable synthetic; funds/standalone-reviews/standalone-responses report-only)
   all     — run all five in sequence
 ```
 
@@ -95,6 +95,7 @@ When `system == 'all'`, print one summary block per system, then a final aggrega
 | CommCare HQ apps | hq | ✅ Auto-soft-delete via `commcare_delete_app` (mutates `doc_type` to `<original>-Deleted`; restorable 90d via HQ admin UI). Listing via new `commcare_list_apps`. |
 | CommCare HQ builds / multimedia | hq | ❌ Upstream gap. No delete API exists; not surfaced in sweep report. |
 | labs workflows / pipelines / synthetic | labs | ✅ Auto-delete via existing `workflow_delete` / `pipeline_delete` / `synthetic_disable` |
-| labs solicitations / funds / reviews / responses | labs | ⚠️ Report-only. Labs MCP intentionally has no per-type delete — these have lifecycle semantics (status state machines, allocation refs, audit trails). Cleanup happens via the existing `update_*` atoms (e.g. `update_solicitation({status:'cancelled'})`) or via cascade-on-opp-delete when upstream ships a real Connect opportunity-delete view. Sweep surfaces them for visibility only. |
+| labs solicitations | labs | ✅ Auto-delete via `delete_solicitation` (refuses `active`/`awarded`; allowed for `draft`/`closed`; cascade-deletes reviews + responses). Active/awarded orphans surface as blocked-by-lifecycle in the report. |
+| labs funds / standalone reviews / standalone responses | labs | ⚠️ Report-only. No per-type delete atom upstream yet. Reviews/responses generally cascade with their parent solicitation; funds tend to be reused. If `delete_fund` ships upstream later, the proxy forwards it automatically and the coverage matrix here can be updated. |
 
 Items marked ⚠️ surface in the report with an admin-UI deep link the human can click to delete manually. Items marked 🚧 await a prerequisite atom. Items marked ❌ have no upstream support and are surfaced for visibility only.
