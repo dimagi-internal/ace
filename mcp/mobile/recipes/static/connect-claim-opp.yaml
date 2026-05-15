@@ -54,82 +54,151 @@ appId: org.commcare.dalvik
 - assertVisible:
     id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
 
-# Wait for the jobs list to populate any opp card.
+# Wait for the jobs list to populate any opp card (any of resume / view).
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/btn_view_opportunity"
+      id: "org.commcare.dalvik:id/rvJobList"
     timeout: 15000
 - takeScreenshot: "claim-opp-list"
 
-# Pin to OPP_NAME instead of the first card. With multiple claimed opps
-# (real runs alongside stale dogfood opps), tapping the first
-# `btn_view_opportunity` grabs whichever the RecyclerView sorts first —
-# silently wrong. Match on the card text directly.
+# THE CARD-IDENTITY PROBLEM (re-authored 2026-05-15, v0.13.237 candidate):
 #
-# The opp card's display text is the program/opp's display name (NOT the
-# bare slug — round 5 of the 2026-04-30 calibration round confirmed
-# this). Pass the display name as `OPP_NAME` to mobile_run_recipe.
+# The ACE test user accumulates invites across every /ace:run; on a real
+# dogfood machine `rvJobList` shows ~15-20 cards. Cards have NO per-tile
+# UUID identifier (verified live 2026-05-15 turmeric run 20260515-0536
+# UI dump): every card uses the same `tvTitle` / `btn_resume` /
+# `btn_view_opportunity` resource-ids; no `content-desc` or `tag`
+# carries the opp UUID. The ONLY discriminator is the title text in
+# `tvTitle`.
 #
-# `visibilityPercentage` removed 2026-05-13: the cloud Maestro build
-# (dadb 1.2.10 / Maestro 1.36-ish based on its CLI banner) doesn't
-# recognize the property and rejects the whole recipe with an
-# `Unknown Property` parse error before the first step executes.
-# Caught in vivo on leep Phase 6 attempt 10 against the cloud
-# emulator. The matcher works without it for cards with wrapped
-# text — Maestro defaults to substring + a low visibility threshold,
-# which is enough for our card layouts.
+# The list is segmented into "In Progress" (cards with `btn_resume` +
+# `btn_view_info`) and "New Opportunities" (cards with
+# `btn_view_opportunity`). An opp moves into "In Progress" the moment
+# the user taps Start once and the Learn CCZ download begins — even
+# 0% / 14% counts as in-progress.
 #
-# Scroll the target tile into view. Newest invite appears at the BOTTOM
-# of `rvJobList` for the ACE test user (the test user accumulates invites
-# across runs, and the newest is appended to the end — not prepended).
-# Verified live 2026-05-14 on turmeric run 20260513-2243 retry. The
-# atlas's "Scroll behavior" entry in § 2 documents the same fact.
-# scrollUntilVisible bounded at 20s — enough to walk past several
-# screens of accumulated invites without infinite-looping if the
-# OPP_NAME truly isn't present.
+# This means a recipe that "claims" the opp has TWO branches based on
+# which section the target opp lives in:
+#   - If it's a fresh "New Opportunities" tile: tap btn_view_opportunity
+#     → opp-detail screen → tap btn_start → wait for Learn home.
+#   - If it's already in "In Progress" (e.g. a prior attempt of the
+#     same recipe progressed past Start): tap btn_resume → jumps
+#     directly to opp-detail or Learn home (Connect remembers state).
 #
-# IMPORTANT: anchor the scroll on `btn_view_opportunity` *below* the
-# target title, NOT on the title text alone. Anchoring on the title is
-# insufficient — once the title is visible at the bottom of the
-# viewport, the button beneath it on the same card can still be
-# clipped off-screen (verified 2026-05-15 on turmeric run
-# 20260515-0536: title bounds y=2126..2233, button bounds y~2353..2432,
-# viewport bottom y=2337 — title visible but button clipped, so the
-# subsequent `tapOn(id:btn_view_opportunity, below:text:${OPP_NAME})`
-# fails because the matched node isn't actually rendered). Driving
-# the scroll by the element we need to tap guarantees it ends up in
-# the viewport. The `below: text: ${OPP_NAME}` scoping inside the
-# element selector keeps us pinned to the correct card (the topmost
-# `btn_view_opportunity` would otherwise belong to a stale prior-run
-# invite higher in the list).
-- scrollUntilVisible:
-    element:
-      id: "org.commcare.dalvik:id/btn_view_opportunity"
-      below:
-        text: ${OPP_NAME}
-    direction: DOWN
-    timeout: 20000
-- assertVisible:
-    id: "org.commcare.dalvik:id/btn_view_opportunity"
-# Tap the View Opportunity button SCOPED to the card containing the
-# target title. `tvTitle` is not clickable (`clickable=false` per UI
-# dump 2026-05-14); `rootCardView` is not clickable either. Only
-# `btn_view_opportunity` is. Without the `below: text` scoping we'd
-# tap the topmost matching button — some unrelated prior-run invite.
-# `below: text: ${OPP_NAME}` finds the first `btn_view_opportunity`
-# whose y-coordinate is below the OPP_NAME text — i.e. the button on
-# the same card as the title we want.
-- tapOn:
-    id: "org.commcare.dalvik:id/btn_view_opportunity"
-    below:
-      text: ${OPP_NAME}
-- extendedWaitUntil:
-    visible:
-      id: "org.commcare.dalvik:id/btn_start"
-    timeout: 10000
-- takeScreenshot: "claim-opp-detail"
-- tapOn:
-    id: "org.commcare.dalvik:id/btn_start"
+# Earlier versions assumed always-`btn_view_opportunity` and used
+# `below: text: ${OPP_NAME}` to scope to the target card. That broke
+# silently when the target card was in In-Progress: the title-text
+# anchor matched the in-progress card (it has tvTitle), but the
+# nearest `btn_view_opportunity` BELOW that y-coord was on an
+# UNRELATED downstream card in New Opportunities — so we'd tap into
+# a wrong opp's content. Discovered 2026-05-15 turmeric run
+# 20260515-0536 attempt 5: claimed an unrelated opp with 9 modules
+# instead of this run's 7-module opp. Root cause was correct
+# title-substring match + wrong button scoping.
+#
+# FIX: branch on which button is present below the matched title.
+# Both branches scope `below: text: ${OPP_NAME}` so we always act on
+# the target card, not a sibling.
+#
+# Substring-vs-exact: Maestro `text:` is substring by default. Run-id
+# suffixes ("(run 20260515-0536)") make each run's title unique; an
+# OPP_NAME that includes the run-id will only match that run's card.
+# Older title formats without run-ids (legacy fixture data) will
+# collide; the orchestrator MUST pass an OPP_NAME that includes the
+# unique run-id for this matcher to be safe. Phase 4
+# `connect-opp-setup` already produces names like
+# "Turmeric Market Survey — turmeric (run 20260515-0536)".
+
+# --- BRANCH A: in-progress (btn_resume present) ---
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/btn_resume"
+        below:
+          text: ${OPP_NAME}
+    commands:
+      # Scroll on the BUTTON itself (anchored to our title) so the tap
+      # target ends up in the viewport, not just the title text.
+      - scrollUntilVisible:
+          element:
+            id: "org.commcare.dalvik:id/btn_resume"
+            below:
+              text: ${OPP_NAME}
+          direction: DOWN
+          timeout: 20000
+      - takeScreenshot: "claim-opp-resume-tile"
+      - tapOn:
+          id: "org.commcare.dalvik:id/btn_resume"
+          below:
+            text: ${OPP_NAME}
+      # Resume on an in-progress opp can land on one of THREE surfaces
+      # depending on what's persisted on the device:
+      #   (i)  Opp-detail "Job Card" with `viewJobCard` + `learning_card`
+      #        + `connect_learning_button` ("DOWNLOAD LEARN APP") — fires
+      #        when Connect's per-opp progress is server-side but the
+      #        Learn CCZ is NOT installed locally (e.g. after a Connect
+      #        data wipe, which happens during local-bootstrap heal —
+      #        verified live 2026-05-15 turmeric run 20260515-0536
+      #        attempt 6 immediately after `pm clear org.commcare.dalvik`).
+      #        The `acb_resume` button on this surface re-triggers the
+      #        same in-progress flow but is a no-op on a wiped device.
+      #        Tapping `connect_learning_button` is what actually starts
+      #        the CCZ download (POST /users/start_learn_app/) and
+      #        transitions us to the Learn-app StandardHomeActivity
+      #        once the 14-step download finishes.
+      #   (ii) Opp-detail with `btn_start` (the original New-Opportunity
+      #        screen) — fires for some Connect states; same handler as
+      #        Branch B.
+      #   (iii) Directly on Learn-app StandardHomeActivity — fires when
+      #        the CCZ is already cached locally.
+      # Probe for each in priority order. The `nsv_home_screen` wait
+      # below covers (iii) implicitly.
+      - runFlow:
+          when:
+            visible:
+              id: "org.commcare.dalvik:id/connect_learning_button"
+          commands:
+            - takeScreenshot: "claim-opp-resume-jobcard"
+            - tapOn:
+                id: "org.commcare.dalvik:id/connect_learning_button"
+      - runFlow:
+          when:
+            visible:
+              id: "org.commcare.dalvik:id/btn_start"
+          commands:
+            - takeScreenshot: "claim-opp-resume-detail"
+            - tapOn:
+                id: "org.commcare.dalvik:id/btn_start"
+
+# --- BRANCH B: new-opportunity (btn_view_opportunity present) ---
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/btn_view_opportunity"
+        below:
+          text: ${OPP_NAME}
+    commands:
+      # Scroll on the button anchored to the title — see comment above
+      # about title-only scrolling leaving the button clipped.
+      - scrollUntilVisible:
+          element:
+            id: "org.commcare.dalvik:id/btn_view_opportunity"
+            below:
+              text: ${OPP_NAME}
+          direction: DOWN
+          timeout: 20000
+      - takeScreenshot: "claim-opp-new-tile"
+      - tapOn:
+          id: "org.commcare.dalvik:id/btn_view_opportunity"
+          below:
+            text: ${OPP_NAME}
+      - extendedWaitUntil:
+          visible:
+            id: "org.commcare.dalvik:id/btn_start"
+          timeout: 10000
+      - takeScreenshot: "claim-opp-detail"
+      - tapOn:
+          id: "org.commcare.dalvik:id/btn_start"
 # After Start, Connect fires POST /users/start_learn_app/ and downloads
 # the Learn CCZ ("Downloading Learn App" progress, Step N of 14, atlas
 # §4). On a verified+invited demo user, the post-download transition
