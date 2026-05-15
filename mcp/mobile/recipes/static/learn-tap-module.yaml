@@ -10,6 +10,17 @@
 #   - Tapping a form row in a form list → launches FormEntryActivity for
 #     that form (atlas §7).
 #
+# CommCare's "auto-skip into only form" behavior: when a module contains
+# exactly one form AND the form's display name DIFFERS from the module
+# name, CommCare suppresses the intermediate one-row form-list and
+# launches the form directly (FormEntryActivity, `nav_btn_next` visible).
+# When module name == form name, CommCare suppresses the auto-skip — the
+# device sits on the intermediate `screen_suite_menu_list` showing one
+# row labeled identically to the action bar. (Live observed turmeric run
+# 2026-05-15: Modules 4-7 of the Learn app use module-name == form-name;
+# Module 4's halt at `tapOn nav_btn_next` is the canonical reproducer.)
+# This recipe probes-then-taps to handle both cases under one contract.
+#
 # Parameters:
 #   ${MODULE_NAME} — the visible label of the row to tap (e.g.,
 #                    "Photo standardization", "Final assessment", or the
@@ -42,4 +53,38 @@ appId: org.commcare.dalvik
 
 - waitForAnimationToEnd:
     timeout: 5000
+
+# Branch on what landed:
+#   A. `nav_btn_next` already visible → CommCare auto-skipped past the
+#      intermediate one-row form-list directly into the form (the common
+#      case when module-name != form-name). No further action needed —
+#      downstream `form-advance.yaml` takes over.
+#   B. `screen_suite_menu_list` still visible AND `nav_btn_next` NOT
+#      visible → CommCare suppressed the auto-skip because module-name
+#      == form-name. Device is sitting on the intermediate one-row
+#      form-list; tap the only row (still text:${MODULE_NAME} since the
+#      form shares the module's name) to enter the form, then assert
+#      `nav_btn_next` visible so any further halt is fast and named.
+#   Otherwise (drilling from suite-root into a form-LIST, neither
+#   branch fires): the recipe falls through with the form-list still
+#   visible — caller is expected to invoke learn-tap-module again with
+#   the form's row name. This preserves the existing two-call drill
+#   pattern used by J1-style palettes.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/screen_suite_menu_list"
+      notVisible:
+        id: "org.commcare.dalvik:id/nav_btn_next"
+    commands:
+      - takeScreenshot: "learn-tap-module-intermediate-${MODULE_NAME}"
+      - tapOn:
+          ${SELECTOR:learn-suite-row-by-name}
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - extendedWaitUntil:
+          visible:
+            id: "org.commcare.dalvik:id/nav_btn_next"
+          timeout: 10000
+
 - takeScreenshot: "learn-tap-module-after-${MODULE_NAME}"

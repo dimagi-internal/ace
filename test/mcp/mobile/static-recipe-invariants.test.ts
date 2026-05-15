@@ -92,3 +92,37 @@ describe('connect-claim-opp.yaml', () => {
     );
   });
 });
+
+describe('learn-tap-module.yaml', () => {
+  const yaml = readRecipe('learn-tap-module.yaml');
+
+  it('does NOT assume CommCare auto-skip into the only form — branches on nav_btn_next visibility', () => {
+    // Regression guard for the 2026-05-15 turmeric run halt on Module 4
+    // ("Form Walkthrough — Vendor & Product"): when a module's name
+    // equals its single form's display name, CommCare suppresses the
+    // auto-skip-into-only-form behavior and the device sits on the
+    // intermediate one-row `screen_suite_menu_list`. The pre-fix
+    // recipe taps the suite-root row and immediately handed off to
+    // `form-advance.yaml`'s `tapOn nav_btn_next` — which halts
+    // because the form hasn't been entered yet.
+    //
+    // The structural fix is a `runFlow when:` branch that probes for
+    // `screen_suite_menu_list` still visible AND `nav_btn_next` NOT
+    // visible (the same-name intermediate-list state), then taps the
+    // only row to enter the form.
+    expect(yaml).toMatch(/- runFlow:\s*\n\s*when:/);
+    expect(yaml).toMatch(
+      /when:\s*\n\s*visible:\s*\n\s*id: "org\.commcare\.dalvik:id\/screen_suite_menu_list"\s*\n\s*notVisible:\s*\n\s*id: "org\.commcare\.dalvik:id\/nav_btn_next"/,
+    );
+  });
+
+  it('Branch B converges on nav_btn_next visible (form entered)', () => {
+    // After tapping the intermediate-list row, the recipe must assert
+    // that `nav_btn_next` becomes visible — so any further halt is
+    // fast and named at the precondition rather than deep inside
+    // form-advance.yaml.
+    expect(yaml).toMatch(
+      /extendedWaitUntil:\s*\n\s*visible:\s*\n\s*id: "org\.commcare\.dalvik:id\/nav_btn_next"/,
+    );
+  });
+});
