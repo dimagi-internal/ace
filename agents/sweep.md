@@ -23,10 +23,10 @@ If the user passed `<system>`, use it. Otherwise, present:
 ```
 Which system?
   drive   — Drive folders under ACE/                                          (auto-trash)
-  connect — Connect programs / opportunities / payment-units / invites        (partial — soft-deactivate opps; report-only for the rest)
-  ocs     — OCS chatbots / collections / sessions / pipelines                 (partial — end orphan sessions; report-only for the rest)
+  connect — Connect opportunities + unaccepted FLW invites                    (auto: deactivate opps, delete unaccepted invites; programs report-only)
+  ocs     — OCS chatbots + pipelines + sessions                               (auto: archive chatbots+pipelines, end sessions; collections never auto-archive — shared with golden template)
   hq      — CommCare HQ apps                                                  (auto-soft-delete; builds and multimedia are upstream gaps and not surfaced)
-  labs    — connect-labs workflows / pipelines / synthetic / labs records     (partial — auto-delete workflows+pipelines, disable synthetic; report-only for records)
+  labs    — connect-labs workflows + pipelines + synthetic + LabsRecord types (auto-delete/disable everything)
   all     — run all five in sequence
 ```
 
