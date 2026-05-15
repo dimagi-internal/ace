@@ -2042,10 +2042,30 @@ if command -v adb >/dev/null 2>&1; then
     echo "    fix: another user on this machine has emulators visible to your adb server."
     echo "    ACE bypasses this since 0.10.65, but unrelated 'adb shell' calls without -s may"
     echo "    pick the wrong device. Disconnect with 'adb disconnect <serial>' (transient)"
-    echo "    or run a per-user adb server (ANDROID_ADB_SERVER_PORT=5038 adb start-server)."
+    echo "    or pin a per-session adb server (ANDROID_ADB_SERVER_PORT=5038 adb start-server)."
+    echo "    Note: ACE's local AVD backend now auto-allocates this port per session."
   fi
 else
   echo "  adb:                    MISSING — install with brew install android-platform-tools"
+fi
+
+# Surface the allocator inputs for the local AVD backend. The MCP server
+# probes these ports lazily on first AVD use; doctor only shows what's
+# DECLARED in env (live allocation lives inside the running MCP process,
+# not visible from a one-shot bash check). Either env var set → that port
+# is pinned; unset → MCP auto-picks the next free pair starting at the
+# default. See `mcp/mobile/port-allocator.ts`.
+ADB_PORT_ENV="$(get_env ANDROID_ADB_SERVER_PORT)"
+EMU_PORT_ENV="$(get_env ACE_MOBILE_EMULATOR_PORT)"
+if [ -n "$ADB_PORT_ENV" ] || [ -n "$EMU_PORT_ENV" ]; then
+  echo "  Port allocation:        pinned via env"
+  echo "    ANDROID_ADB_SERVER_PORT=${ADB_PORT_ENV:-(unset; auto from 5037)}"
+  echo "    ACE_MOBILE_EMULATOR_PORT=${EMU_PORT_ENV:-(unset; auto from 5554/5555)}"
+else
+  echo "  Port allocation:        auto (probe-and-pick from 5037 / 5554)    OK"
+  echo "    note: two concurrent /ace:run sessions on this laptop will get"
+  echo "    distinct adb-server + emulator ports. Pin via ANDROID_ADB_SERVER_PORT"
+  echo "    + ACE_MOBILE_EMULATOR_PORT in .env for deterministic CI."
 fi
 
 # Read ACE_AVD_NAME from .env first (matches the rest of doctor's behavior),
