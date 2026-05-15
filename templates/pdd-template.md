@@ -23,15 +23,21 @@
 
 ## Learn App Specification
 
-> **Archetype-conditional. Skip this entire section for `focus-group` —
-> the focus-group archetype does not produce a Learn app.** Facilitator
-> training for FGDs lives in the per-opp OCS chatbot + handbook gdoc +
-> coordinator-graded practice-session audio review. See
-> `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
+> **Archetype-conditional.** For `atomic-visit` and `multi-stage`,
+> fill out the sub-sections below as the full training curriculum.
 >
-> For `atomic-visit` and `multi-stage` (where a stage uses atomic-visit
-> data collection), fill out the sub-sections below. Multi-stage PDDs
-> with a focus-group stage skip this section for that stage only.
+> For **`focus-group`**, this section describes a **minimal sentinel
+> Learn app** — a one-form readiness gate, not a training curriculum.
+> The real facilitator training lives out-of-band (per-opp OCS chatbot
+> + handbook gdoc + coordinator-graded practice-session audio review,
+> documented in § Facilitation Protocol below). The sentinel exists
+> because (a) `connect_create_opportunity` requires a non-null
+> `learn_app`, and (b) it provides one in-app gate ensuring the
+> facilitator has completed practice-session-pass before they're
+> cleared to submit attestation forms. See `pdd-to-learn-app/SKILL.md
+> § Archetypes § focus-group` for the canonical sentinel spec (one
+> "Briefing Acknowledgement" form with `acknowledge_readiness` y/n,
+> Connect markers `learn_module` + `assessment`).
 
 ### Learning Objectives
 - [What must the FLW be able to do after training? List by module.]
