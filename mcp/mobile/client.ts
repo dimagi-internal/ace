@@ -808,15 +808,27 @@ export class MobileClient {
       );
     }
 
-    const adbPort = avdName ? await this.resolveAdbPort(avdName) : undefined;
-    return this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, screenshotDir, { adbPort });
+    const avdInfo = avdName ? await this.resolveAvdInfo(avdName) : undefined;
+    // Pass `serial` through so MaestroBackend can capture per-screenshot
+    // UI hierarchy dumps in the quiet windows between sub-recipes. See
+    // `MaestroBackend.runRecipeWithDumps` for the split-and-capture
+    // contract and `docs/learnings/2026-05-14-atlas-side-channel-capture.md`
+    // for why a side-channel dump (running concurrent with Maestro)
+    // doesn't work. When `serial` is undefined the backend falls back
+    // to the pre-0.13.229 single-invocation path with no dumps.
+    return this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, screenshotDir, {
+      adbPort: avdInfo?.adbPort,
+      serial: avdInfo?.serial,
+    });
   }
 
-  private async resolveAdbPort(avdName: string): Promise<number | undefined> {
+  private async resolveAvdInfo(
+    avdName: string,
+  ): Promise<{ adbPort?: number; serial?: string } | undefined> {
     const found = await this.avd.findRunningAvd(avdName);
     if (!found) return undefined;
     const port = AvdBackend.adbPortFromSerial(found.serial);
-    return port ?? undefined;
+    return { adbPort: port ?? undefined, serial: found.serial };
   }
 
   /**
