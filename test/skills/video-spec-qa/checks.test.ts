@@ -293,11 +293,62 @@ describe('voice_config_valid', () => {
   });
 });
 
+// ── spec_has_renderable_clips ──────────────────────────────────────
+
+describe('spec_has_renderable_clips', () => {
+  test('passes when scene.clips has at least one entry', () => {
+    const withScene = VALID_60S.replace(
+      /scene:\n  clips: \[\]/,
+      'scene:\n  clips:\n  - "@a"',
+    );
+    expect(run('spec_has_renderable_clips', withScene).pass).toBe(true);
+  });
+  test('passes when only product.beats has entries', () => {
+    const productPopulated = VALID_60S.replace(
+      /product:\n  beats: \[\]/,
+      'product:\n  beats:\n  - {asset: "@a", caption: "x"}',
+    );
+    expect(run('spec_has_renderable_clips', productPopulated).pass).toBe(true);
+  });
+  test('fails when both arrays are empty (the base fixture)', () => {
+    const r = run('spec_has_renderable_clips', VALID_60S);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/empty/);
+  });
+});
+
+// ── spec_manifest_refs_resolvable ──────────────────────────────────
+
+describe('spec_manifest_refs_resolvable', () => {
+  const WITH_MANIFEST = VALID_60S
+    .replace(
+      /manifest: \{\}/,
+      'manifest:\n  clip-a: "gdrive:abc.mp4"\n  clip-b: "gdrive:def.mp4"',
+    )
+    .replace(
+      /scene:\n  clips: \[\]/,
+      'scene:\n  clips:\n  - "@clip-a"\n  - "@clip-b"',
+    );
+
+  test('passes when every @alias has a manifest entry', () => {
+    expect(run('spec_manifest_refs_resolvable', WITH_MANIFEST).pass).toBe(true);
+  });
+  test('fails when an alias is referenced but missing', () => {
+    const bad = WITH_MANIFEST.replace('"@clip-b"', '"@clip-missing"');
+    const r = run('spec_manifest_refs_resolvable', bad);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/@clip-missing/);
+  });
+  test('passes on empty arrays (no refs to resolve)', () => {
+    expect(run('spec_manifest_refs_resolvable', VALID_60S).pass).toBe(true);
+  });
+});
+
 // ── CHECKS array shape ─────────────────────────────────────────────
 
 describe('CHECKS array', () => {
-  test('exposes 13 stable check ids', () => {
-    expect(CHECKS).toHaveLength(13);
+  test('exposes 15 stable check ids', () => {
+    expect(CHECKS).toHaveLength(15);
     const ids = CHECKS.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length); // unique
   });

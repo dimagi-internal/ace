@@ -413,6 +413,63 @@ const checkVoiceConfig: QACheck = {
   },
 };
 
+const checkSpecHasRenderableClips: QACheck = {
+  id: 'spec_has_renderable_clips',
+  type: 'static',
+  description: 'spec references at least one clip in either scene.clips or product.beats (Remotion requires non-empty arrays).',
+  run(artifact): QACheckResult {
+    const r = safeParseSpec(artifact);
+    if (!r.ok) return { pass: false, detail: 'unparseable', auto_fix_hint: 'fix yaml first' };
+    const sceneClips = getPath(r.doc, ['scene', 'clips']);
+    const productBeats = getPath(r.doc, ['product', 'beats']);
+    const sceneCount = Array.isArray(sceneClips) ? sceneClips.length : 0;
+    const productCount = Array.isArray(productBeats) ? productBeats.length : 0;
+    if (sceneCount > 0 || productCount > 0) return { pass: true };
+    return {
+      pass: false,
+      detail: 'Both scene.clips and product.beats are empty — the Remotion render aborts on empty clip arrays.',
+      auto_fix_hint: 'Either attach footage to manifest: + reference it from scene.clips[] and/or product.beats[], OR populate manifest_todo: with proposed aliases for the operator to hand-attach before render.',
+    };
+  },
+};
+
+const checkSpecManifestRefsResolvable: QACheck = {
+  id: 'spec_manifest_refs_resolvable',
+  type: 'static',
+  description: 'Every @alias used in scene.clips or product.beats has a matching entry in manifest:.',
+  run(artifact): QACheckResult {
+    const r = safeParseSpec(artifact);
+    if (!r.ok) return { pass: false, detail: 'unparseable', auto_fix_hint: 'fix yaml first' };
+    const manifest = r.doc.manifest;
+    const manifestKeys = new Set(
+      manifest && typeof manifest === 'object' && !Array.isArray(manifest)
+        ? Object.keys(manifest as Record<string, unknown>)
+        : [],
+    );
+    const sceneClips = getPath(r.doc, ['scene', 'clips']);
+    const productBeats = getPath(r.doc, ['product', 'beats']);
+    const referenced: string[] = [];
+    if (Array.isArray(sceneClips)) {
+      for (const c of sceneClips) {
+        if (typeof c === 'string' && c.startsWith('@')) referenced.push(c.slice(1));
+      }
+    }
+    if (Array.isArray(productBeats)) {
+      for (const b of productBeats) {
+        const asset = (b as Record<string, unknown>)?.asset;
+        if (typeof asset === 'string' && asset.startsWith('@')) referenced.push(asset.slice(1));
+      }
+    }
+    const missing = Array.from(new Set(referenced.filter((alias) => !manifestKeys.has(alias))));
+    if (missing.length === 0) return { pass: true };
+    return {
+      pass: false,
+      detail: `@aliases referenced but not in manifest: ${missing.map((m) => '@' + m).join(', ')}`,
+      auto_fix_hint: `Add manifest entries for: ${missing.join(', ')}. Format: <alias>: gdrive:<file-id>.<ext>`,
+    };
+  },
+};
+
 // ── Canonical CHECKS array ─────────────────────────────────────────
 
 export const CHECKS: QACheck[] = [
@@ -429,4 +486,6 @@ export const CHECKS: QACheck[] = [
   checkHookParaphrasesTagline,
   checkBannedVoiceTokens,
   checkVoiceConfig,
+  checkSpecHasRenderableClips,
+  checkSpecManifestRefsResolvable,
 ];
