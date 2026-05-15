@@ -92,6 +92,6 @@ When `system == 'all'`, print one summary block per system, then a final aggrega
 | CommCare HQ apps | hq | 🚧 Stub. Needs `commcare_list_apps` + `commcare_delete_app` atoms. |
 | CommCare HQ builds / multimedia | hq | ❌ Upstream gap. No delete API exists. |
 | labs workflows / pipelines / synthetic | labs | ✅ Auto-delete via existing `workflow_delete` / `pipeline_delete` / `synthetic_disable` |
-| labs solicitations / funds / reviews / responses | labs | ⚠️ Report-only. Needs a generic `labs_delete_record(type, id)` atom (single upstream endpoint covers all four). |
+| labs solicitations / funds / reviews / responses | labs | ✅ Auto-delete via new `labs_delete_record(id)` (HTTP DELETE to `/export/labs_record/`; primary-key lookup covers all four product types — no discriminator needed) |
 
 Items marked ⚠️ surface in the report with an admin-UI deep link the human can click to delete manually. Items marked 🚧 await a prerequisite atom. Items marked ❌ have no upstream support and are surfaced for visibility only.
