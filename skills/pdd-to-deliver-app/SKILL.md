@@ -290,77 +290,98 @@ form's fields map 1:1 to Layer A and Layer B of the PDD's Evidence Model.
 
 ### `focus-group`
 
-Delivery unit = **one completed FGD session, attested by a small CommCare
-form.** The Deliver app for focus-group is intentionally small — it is
-the **payment trigger only**, not the content-capture surface.
+Delivery unit = **one completed FGD session, attested by a 5-field
+CommCare form** submitted at session end. The Deliver app for
+focus-group is intentionally minimal — it is the **payment trigger
+only**, not the content-capture surface and not the artifact-upload
+surface.
 
-**FGD content lives in a Google Doc**, not in this app. Per-section
-themes, verbatim quotes, level-of-consensus grading, post-FGD report,
-facilitator reflection — all captured out-of-band in a gdoc the LLO
-and ACE-program-team share. The Deliver app form captures session
-metadata + the artifacts (audio, attendance photo, gdoc link), and
-each submission is one payment unit. See
+**FGD content lives in a Google Doc**, not in this app. **The gdoc is
+written after the session ends — typically hours or days later — and
+cannot be linked from the attestation form at submission time.** All
+qualitative content (per-section themes, verbatim quotes, consensus
+grading, post-FGD report, facilitator reflection) lives in the gdoc.
+Audio recording (if captured) is out-of-band entirely — it does not
+go through CommCare; the facilitator attaches audio to the gdoc as a
+Drive attachment or shares it through a separate Drive folder. The
+attestation form captures only session-happened evidence + consent
+confirmation, and each submission is one payment unit. See
 `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
 
 **App shape (one module, one form):**
 
-- **Module 1: Session Attestation** (case type: `fgd_session`)
+- **Module 1: Session Attestation** (case type: `fgd_session`).
 - **Form: "Session Attestation"** (case-create, `connect.deliver_unit`
   set). One submission = one completed session = one payment trigger.
 
-**Required fields on the attestation form** (~14 fields, all
-attestation/artifact, no qualitative content):
+**Required fields on the attestation form (5 fields):**
 
 | Field | Kind | Notes |
 |---|---|---|
-| `case_name` | text | Session display name, e.g. "Kibera mothers 2026-06-15" |
-| `llo_name` | text | LLO organization name |
-| `site_village`, `site_district` | text | Location |
-| `venue_name` | text | |
-| `venue_type` | single_select | school_room / community_hall / courtyard / other_with_justification |
-| `venue_justification` | text | Relevant on `venue_type = 'other_with_justification'` |
-| `planned_segment` | single_select | mothers_under5 / fathers / grandmothers |
-| `actual_participant_count` | int | Validate >= 1 |
-| `session_date` | date | |
-| `start_time`, `end_time` | time | |
-| `audio_duration_minutes` | int | Validate >= 45 (`audio-min-duration` decision) |
-| `audio_file` | audio | Primary device upload |
-| `backup_audio_file` | audio | Optional |
-| `attendance_photo` | image | NO faces — first names + role + consent marks only |
-| `audio_consent_status` | single_select | full_yes / partial / declined |
-| `per_participant_consent_confirmed` | single_select | yes / no |
-| `gdoc_link` | text | Validate matches `^https://docs\.google\.com/`. The facilitator's session gdoc with content. |
-| `facilitator_reflection` | long text | 100-300 words (validate string-length 400-1500) |
-| `pre_checklist_complete` | single_select | yes / no. Hint lists the 8 items (consent form, audio recorder, notebook, notetaker, visuals, refreshments, quiet space, per-diem). Operator attests; not 8 separate fields. |
+| `consent_all_participants` | single_select | Required attestation: did every participant consent to participate? Options: `yes` (consent obtained from all participants) / `no` (one or more declined / not obtained). Constraint: `. = 'yes'` — form cannot be submitted without affirmative consent, because there is no payment for an FGD held without consent. |
+| `session_date` | date | When the session was held. Facilitator picks; usually today (submitted at session end) but can be one or two days back if writing it up later. |
+| `venue` | text | Free-text venue description. Hint: include the village/community name + the specific space (e.g. "Kibera, community hall behind the primary school"). |
+| `gps` | geopoint | Captured at the venue. Anchors location verification (Layer A). Captured at form-fill time on the FLW's device — implicitly proves the FLW was AT the venue when they attested. |
+| `photo` | image | A single evidence photo. Hint: an attendance sheet (first names + role + consent marks, NO faces) or a venue photo. Faces only if every participant has actively consented to a face photo. |
+
+That is the complete form. No audio, no participant count, no per-section
+fields, no gdoc link, no reflection, no facilitator-name field
+(captured implicitly via Connect's FLW identity). Auto-generated
+`case_name` from `concat(#user/username, '-', #form/session_date)` keeps
+the case list legible.
 
 **Connect markers:**
 
 - `connect.deliver_unit` set on the form.
 - `connect.entity_id` defaults to `concat(#user/username, '-', today())` —
   one paid delivery per facilitator per day, the realistic case for
-  75-90 min sessions + travel. Override to `#case/case_id` only if any
+  60-90 min sessions + travel. Override to `#case/case_id` only if any
   LLO schedules ≥2 sessions/day per facilitator (`payment-unit-entity-id`
   Decisions Log row).
 
+**Coordinator review flow (out-of-band):**
+
+Layer A verification happens automatically against form contents
+(GPS within an expected radius of the planned venue, photo attached,
+consent attested, session_date within an expected fielding window).
+Layer B verification is the coordinator reviewing the **facilitator's
+gdoc**, matched to the attestation submission by `(FLW identity,
+session_date, venue)` — there is no `gdoc_link` field, so matching is
+operator-driven (coordinator sees the attestation in the FormRepeater
+feed, expects a gdoc from that facilitator about that session,
+follows up if it doesn't arrive within the gdoc submission window).
+
 **Specifically not included:**
 
-- **Per-section structured summary fields (28-field load-bearing form).**
-  The FGD operational model puts this content in the facilitator's
-  gdoc, NOT in the Deliver app. The `gdoc_link` field is the bridge.
-- **Pre-session form + per-session post form + reviewer-verification
-  form split.** One form. Reviewer review happens out-of-band via
-  FormRepeater observation feedback, not via a separate Deliver form.
-- **Case management beyond per-session.** No case lifecycle, no
+- **No audio upload through CommCare.** Audio recording (if captured)
+  is out-of-band entirely. CommCare doesn't carry large audio files
+  for FGDs — they live in Drive or wherever the LLO keeps audio.
+- **No `gdoc_link` field.** The gdoc doesn't exist when the
+  attestation is submitted. Linkage between attestation and gdoc is
+  coordinator-driven, by `(FLW, session_date, venue)` match.
+- **No per-section structured summary fields.** Qualitative content
+  lives in the gdoc.
+- **No participant-count / segment / start-end-time fields.** These
+  go in the gdoc.
+- **No facilitator-reflection field.** Goes in the gdoc.
+- **No pre-checklist field.** The pre-session preparation is the LLO's
+  responsibility; the consent attestation is the only check that needs
+  to gate payment.
+- **No pre-session + post-session + reviewer-verification form split.**
+  One form, submitted at session end.
+- **No case management beyond per-session.** No case lifecycle, no
   per-beneficiary cases, no per-participant follow-up.
-- **A Learn-app-equivalent training surface.** `pdd-to-learn-app` is a
-  no-op for focus-group archetype (see its `## Archetypes § focus-group`).
+- **No Learn-app-equivalent training surface.** `pdd-to-learn-app` is a
+  no-op for focus-group archetype.
 
-**Brief language for `/nova:autobuild`:** open with "this is a session
-attestation form for an FGD opportunity. The mobile form captures
-session metadata + artifacts (audio, photo, gdoc link); it is NOT a
-content-capture form. Content lives in a Google Doc out-of-band; the
-gdoc_link field is the bridge. One submission = one completed session
-= one Connect deliver_unit submission = one payment trigger."
+**Brief language for `/nova:autobuild`:** open with "this is a 5-field
+session attestation form for an FGD opportunity. The mobile form
+captures only proof-of-session-happened (consent, date, venue, GPS,
+photo); it is NOT a content-capture form and NOT an artifact-upload
+form. Qualitative content lives in a Google Doc written after the
+session, out-of-band; audio (if captured) lives in Drive separately.
+One submission = one completed session = one Connect deliver_unit
+submission = one payment trigger."
 
 ### `multi-stage`
 Generate one Deliver app per stage that has its own delivery work,
@@ -427,3 +448,4 @@ Each row this skill writes uses `phase: 3-commcare` and
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (deliver-unit-count, one-form-per-module-workaround, multimedia-coverage-strategy) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-15 | Tighten Step 4a (post-build field-count verification) from "the in-context LLM must..." prose into a numbered tool-call recipe. Mirrors the same change in `pdd-to-learn-app/SKILL.md`. Prompted by `malaria-itn-fgd/20260514-2007` Learn-app cert-assessment partial-persistence (FGD Deliver apps with the ~45-70-field per-section summary form are the highest-risk surface for the same class). See jjackson/ace#303. | ACE team |
 | 2026-05-15 | **focus-group archetype rewritten to attestation-form-only.** Previously: 3-module / 69-field per-section-summary Deliver app capturing all qualitative content in CommCare. New: one module, one ~14-field attestation form (date / venue / participants / audio / photo / gdoc link / consent / reflection). Content lives in a Google Doc out-of-band; the gdoc_link field is the bridge. One submission = one payment trigger. Prompted by post-run reframe from operator: "all the content collection... will happen manually and they will send us a gdoc". See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
+| 2026-05-15 | **Pare focus-group attestation form to 5 fields:** `consent_all_participants` (single_select yes/no, validate=yes), `session_date`, `venue` (text), `gps` (geopoint), `photo` (image). Drop `audio_file` / `backup_audio_file` (audio capture is out-of-band; not in CommCare), `gdoc_link` (gdoc is written AFTER session end, no linkable URL exists at submission time), and the metadata fields (`llo_name`, `site_*`, `venue_type`, `planned_segment`, `actual_participant_count`, `start_time`, `end_time`, `audio_duration_minutes`, `facilitator_reflection`, `pre_checklist_complete`) — these go in the gdoc. Matching attestation → gdoc is coordinator-driven by `(FLW, session_date, venue)` tuple. Prompted by operator: "For the fields just have consent (this should confirm you have consent from all participants), date, venue, gps, photo. everything else is either wrong or goes into the gdoc. the gdoc will be created after the fact so no ability to enter it into commcare". | ACE team |
