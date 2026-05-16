@@ -337,3 +337,59 @@ describe('AvdBackend.setGmsEnabled', () => {
     await expect(backend.setGmsEnabled('ACE_Pixel_API_34', true)).resolves.toBeUndefined();
   });
 });
+
+describe('AvdBackend.applyEnvironmentBaseline', () => {
+  it('applies all three baseline settings and returns a stable fingerprint', async () => {
+    const calls: string[] = [];
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const key = `${cmd} ${args.join(' ')}`;
+      calls.push(key);
+      const scripted: Record<string, { stdout: string }> = {
+        'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
+        'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+        'adb -s emulator-5554 shell settings put global heads_up_notifications_enabled 0': { stdout: '' },
+        'adb -s emulator-5554 shell cmd notification disallow_dnd com.google.android.gms': { stdout: '' },
+        'adb -s emulator-5554 shell settings put system screen_off_timeout 1800000': { stdout: '' },
+      };
+      const r = scripted[key];
+      if (!r) throw new Error(`Unscripted shell call: ${key}`);
+      return { stdout: r.stdout, stderr: '', exitCode: 0 };
+    });
+    const backend = new AvdBackend({ shell });
+    const fingerprint = await backend.applyEnvironmentBaseline('ACE_Pixel_API_34');
+
+    // All three settings applied.
+    expect(calls).toContain(
+      'adb -s emulator-5554 shell settings put global heads_up_notifications_enabled 0',
+    );
+    expect(calls).toContain(
+      'adb -s emulator-5554 shell cmd notification disallow_dnd com.google.android.gms',
+    );
+    expect(calls).toContain(
+      'adb -s emulator-5554 shell settings put system screen_off_timeout 1800000',
+    );
+
+    // Fingerprint is a stable, non-empty short hex string. Re-running
+    // produces the same fingerprint (baseline didn't change).
+    expect(fingerprint).toMatch(/^[0-9a-f]{12}$/);
+
+    const second = await backend.applyEnvironmentBaseline('ACE_Pixel_API_34');
+    expect(second).toBe(fingerprint);
+  });
+
+  it('still returns the fingerprint even when individual adb writes fail (best-effort)', async () => {
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const key = `${cmd} ${args.join(' ')}`;
+      if (key === 'adb devices') {
+        return { stdout: 'List of devices attached\nemulator-5554\tdevice\n', stderr: '', exitCode: 0 };
+      }
+      if (key === 'adb -s emulator-5554 emu avd name') {
+        return { stdout: 'ACE_Pixel_API_34\nOK\n', stderr: '', exitCode: 0 };
+      }
+      throw new Error(`adb hiccup: ${key}`);
+    });
+    const backend = new AvdBackend({ shell });
+    const fingerprint = await backend.applyEnvironmentBaseline('ACE_Pixel_API_34');
+    expect(fingerprint).toMatch(/^[0-9a-f]{12}$/);
+  });
+});

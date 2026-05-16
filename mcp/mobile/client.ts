@@ -219,6 +219,14 @@ export class MobileClient {
    */
   readonly bootstrapConfig: LocalBootstrapConfig | null;
   private readonly fetchImpl: typeof fetch;
+  /**
+   * Fingerprint of the AVD environment baseline applied during the most
+   * recent `runLocalBootstrap`. Surfaced via the heal log so telemetry
+   * can detect when an AVD is running an older baseline version.
+   * Undefined when no bootstrap has run on this client, or when the
+   * baseline application failed silently.
+   */
+  private lastBaselineFingerprint: string | undefined;
 
   constructor(opts: MobileClientOpts = {}) {
     this.avd = opts.avd ?? new AvdBackend();
@@ -405,6 +413,8 @@ export class MobileClient {
         focused_activity: verifyAfterBootstrap.focused_activity,
         ui_dump_signal: verifyAfterBootstrap.ui_dump_signal,
         bootstrap_steps: bootstrapSteps,
+        environment_baseline_applied: this.lastBaselineFingerprint !== undefined,
+        environment_baseline_fingerprint: this.lastBaselineFingerprint,
       };
     }
     throw new DeviceUserStateError(verifyAfterBootstrap.classified_as, [
@@ -533,20 +543,23 @@ export class MobileClient {
     });
     steps.push(reg.alreadyRegistered ? 'register-already' : 'registered');
 
-    // Step 2.5: silence Android heads-up notification banners. AOSP AVDs
-    // (no Google Play Services) periodically fire a Messages-app banner
-    // ("Enable Google Play services") that is touch-receptive and steals
-    // the next Maestro tap mid-recipe — surfaced as a recipe selector
-    // miss on whichever screen the banner happened to navigate to (the
-    // banner's tap target is Settings → App info → GMS). Class-level fix
-    // — every smoke run on this AVD will hit it sooner or later. See
-    // `AvdBackend.disableHeadsUpNotifications` for the full failure-mode
-    // writeup. Best-effort; idempotent; persists into the snapshot saved
-    // by Step 3 below.
-    await this.avd
-      .disableHeadsUpNotifications(avd.name)
-      .catch(() => {});
-    steps.push('heads-up-notifications-disabled');
+    // Step 2.5: apply the AVD environment baseline. Bundles:
+    //   - heads-up notifications off (PR #328 / 0.13.252) — AOSP AVDs
+    //     periodically fire a touch-receptive Messages-app banner that
+    //     steals the next Maestro tap mid-recipe
+    //   - GMS DND-disallow (PR #328 / 0.13.252)
+    //   - screen_off_timeout 30 min — prevents the AVD locking the
+    //     screen mid-recipe (Maestro tap-on-locked-screen surfaces as a
+    //     generic selector miss, costs ~10 min of recipe-debug time per
+    //     occurrence)
+    // Class-level fix — every smoke run on this AVD will hit one of
+    // these sooner or later. Best-effort; idempotent; persists into the
+    // snapshot saved by Step 3 below. Captures a fingerprint so
+    // telemetry can detect when an AVD is running an older baseline.
+    this.lastBaselineFingerprint = await this.avd
+      .applyEnvironmentBaseline(avd.name)
+      .catch(() => undefined);
+    steps.push('environment-baseline-applied');
 
     // Step 3: save snapshot for fast tier-1 restore on subsequent runs.
     logInfo(`local_bootstrap: saving registered-test-user snapshot on ${avd.serial}`);

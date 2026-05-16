@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -704,6 +705,68 @@ export class AvdBackend {
       'disallow_dnd',
       'com.google.android.gms',
     ]).catch(() => {});
+  }
+
+  /**
+   * Apply the full AVD environment baseline used by every Phase 6 mobile
+   * dispatch. Bundles the heads-up-notification suppress (added 0.13.252,
+   * PR #328) with the broader environment hygiene the bundle in 0.13.256+
+   * surfaces: lock-screen timeout extended to 30 min so the device doesn't
+   * lock mid-recipe (Maestro's `tapOn` against a locked screen produces a
+   * misleading "no element found" failure rather than a "screen is locked"
+   * one).
+   *
+   * Returns the sha1 fingerprint of the sorted list of applied setting
+   * keys. Stored on `AvdInfo.heal.environment_baseline_applied` (boolean
+   * for compatibility) and surfaced via a separate
+   * `environment_baseline_fingerprint` field on the heal log so telemetry
+   * can detect drift when a new setting is added or removed in a future
+   * version.
+   *
+   * Idempotent and best-effort — every individual `adb shell settings`
+   * call is wrapped in `.catch(() => {})` so a transient adb hiccup
+   * doesn't gate the whole bootstrap. The fingerprint is returned
+   * regardless of whether each individual write succeeded; the return
+   * value attests to the version of the baseline that was *attempted*,
+   * not necessarily applied.
+   */
+  async applyEnvironmentBaseline(avdName: string): Promise<string> {
+    const avd = await this.ensureAvdRunning(avdName);
+    // Settings applied. Add to this list whenever a new environment-class
+    // failure surfaces; the fingerprint will change automatically so
+    // telemetry can detect when AVDs are running an older baseline.
+    const settingsApplied = [
+      'heads_up_notifications_enabled',
+      'notification_disallow_dnd_gms',
+      'screen_off_timeout',
+    ];
+
+    // 1. Heads-up notifications off (PR #328 / 0.13.252).
+    await this.shell('adb', [
+      '-s', avd.serial, 'shell', 'settings', 'put', 'global',
+      'heads_up_notifications_enabled', '0',
+    ]).catch(() => {});
+
+    // 2. Forbid GMS from triggering DND-override (PR #328 / 0.13.252).
+    await this.shell('adb', [
+      '-s', avd.serial, 'shell', 'cmd', 'notification',
+      'disallow_dnd', 'com.google.android.gms',
+    ]).catch(() => {});
+
+    // 3. Lock-screen timeout to 30 min so the AVD doesn't sleep
+    // mid-recipe. Maestro's failure when the screen is locked surfaces as
+    // a generic selector miss, not an obvious "screen is locked" — costs
+    // ~10 min of recipe-debug time per occurrence.
+    await this.shell('adb', [
+      '-s', avd.serial, 'shell', 'settings', 'put', 'system',
+      'screen_off_timeout', '1800000',
+    ]).catch(() => {});
+
+    // Fingerprint = sha1(sorted-list-of-keys). Stable across runs;
+    // changes only when the baseline itself changes.
+    const sorted = [...settingsApplied].sort();
+    const hash = crypto.createHash('sha1').update(sorted.join('|')).digest('hex');
+    return hash.slice(0, 12); // short hash; full sha1 is overkill for drift detection
   }
 
   async loadSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
