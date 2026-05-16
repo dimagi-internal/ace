@@ -18,8 +18,9 @@ export type Capability =
   | 'set_source_material'
   | 'publish_chatbot_version'
   | 'get_chatbot_embed_info'
-  | 'archive_chatbot'
-  | 'archive_pipeline'
+  | 'delete_chatbot'
+  | 'delete_pipeline'
+  | 'delete_collection'
   // Observation (12)
   | 'list_chatbots'
   | 'get_chatbot'
@@ -47,8 +48,9 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   set_source_material:          { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/experiments/{id}/' },
   publish_chatbot_version:      { backend: 'PLAYWRIGHT', restTarget: 'POST /api/experiments/{id}/versions/' },
   get_chatbot_embed_info:       { backend: 'HYBRID',     restTarget: 'GET /api/experiments/{id}/embed/' },
-  archive_chatbot:              { backend: 'PLAYWRIGHT', restTarget: 'POST /api/experiments/{id}/archive/ (not yet shipped)' },
-  archive_pipeline:             { backend: 'PLAYWRIGHT', restTarget: 'POST /api/pipelines/{id}/archive/ (not yet shipped)' },
+  delete_chatbot:               { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/experiments/{id}/ (not yet shipped)' },
+  delete_pipeline:              { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/pipelines/{id}/ (not yet shipped)' },
+  delete_collection:            { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/collections/{id}/ (not yet shipped)' },
 
   // Observation
   list_chatbots:            { backend: 'REST', restTarget: 'GET /api/experiments/' },

@@ -353,17 +353,24 @@ server.tool(
 );
 
 server.tool(
-  'ocs_archive_chatbot',
-  'Soft-archive a chatbot (sets is_archived=True server-side). SAFE PER-OPP: each ACE clone has its own Experiment row, so archiving one clone does not affect the golden template or other opps. CRITICAL — callers MUST exclude OCS_GOLDEN_TEMPLATE_ID from the set of ids passed to this atom; the atom itself has no concept of "template" and will archive any experiment_id given. The /ace:sweep ocs flow enforces this exclusion. Routes through Playwright to /a/<team>/chatbots/<pk>/delete/ (POST, returns 302 HTMX HX-Redirect). No REST equivalent.',
+  'ocs_delete_chatbot',
+  'Delete a chatbot (user-visible effect: the chatbot disappears from listings; mechanism is OCS setting is_archived=True server-side). SAFE PER-OPP: each ACE clone has its own Experiment row, so deleting one clone does not affect the golden template or other opps. CRITICAL — callers MUST exclude OCS_GOLDEN_TEMPLATE_ID from the set of ids passed to this atom; the atom itself has no concept of "template" and will delete any experiment_id given. The /ace:sweep ocs flow enforces this exclusion. Routes through Playwright to /a/<team>/chatbots/<pk>/delete/ (POST, returns 302 HTMX HX-Redirect). No REST equivalent.',
   { experiment_id: z.number().int() },
-  async (args) => result(await composite.archiveChatbot(args)),
+  async (args) => result(await composite.deleteChatbot(args)),
 );
 
 server.tool(
-  'ocs_archive_pipeline',
-  'Soft-archive a pipeline (sets is_archived=True server-side). SAFE PER-OPP: when ACE clones a chatbot, Pipeline.create_new_version(is_copy=True) deep-clones the Pipeline row + its nodes — each clone has its own pipeline. NOTE: LLM nodes inside the pipeline reference Collection IDs that are SHARED with the golden template; archiving the pipeline does NOT archive those collections (and we do NOT expose a collection-archive atom because doing so would break the template). Routes through Playwright to /a/<team>/pipelines/<pk>/delete/ (HTTP DELETE method on Django View.delete(); returns 200 empty body).',
+  'ocs_delete_pipeline',
+  'Delete a pipeline (sets is_archived=True server-side). SAFE PER-OPP: when ACE clones a chatbot, Pipeline.create_new_version(is_copy=True) deep-clones the Pipeline row + its nodes — each clone has its own pipeline. Deleting the pipeline does NOT cascade-delete its referenced Collections — those need separate ocs_delete_collection calls. Routes through Playwright to /a/<team>/pipelines/<pk>/delete/ (HTTP DELETE method on Django View.delete(); returns 200 empty body).',
   { pipeline_id: z.number().int() },
-  async (args) => result(await composite.archivePipeline(args)),
+  async (args) => result(await composite.deletePipeline(args)),
+);
+
+server.tool(
+  'ocs_delete_collection',
+  'Delete a collection (calls Collection.archive() server-side — sets is_archived=True AND triggers delete_document_source_task to async-purge underlying File rows + object-storage blobs + FileChunkEmbedding vectors; the user-visible effect is full deletion). SAFE PER-OPP for collections created fresh by Phase 5 (those are not shared). CRITICAL — callers MUST exclude OCS_GOLDEN_TEMPLATE_COLLECTION_ID (the collection referenced by every cloned pipeline; typically id 350) from the set of ids passed to this atom. Deleting the template collection would break every clone\'s RAG retrieval. The /ace:sweep ocs flow enforces this exclusion. Routes through Playwright to /a/<team>/documents/collection/<pk>/delete/ (HTTP DELETE method on Django View.delete(); returns 200 empty body; async cleanup task fires after).',
+  { collection_id: z.number().int() },
+  async (args) => result(await composite.deleteCollection(args)),
 );
 
 // ── Observation atoms (12) ──────────────────────────────────────────
