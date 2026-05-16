@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.261 — 2026-05-16
+
+**Close cloud-side selector-resolution gap: `MobileClient.runRecipe` now ships the resolved palette to ace-web.**
+
+Audit on 2026-05-16 surfaced a silent-failure class: the cloud branch of `runRecipe` posted raw recipe YAML to ace-web with `${SELECTOR:form-submit}` placeholders intact, and never shipped sibling palette files. The stale comment in `client.ts:800` claimed "Cloud backend's recipe pipeline runs server-side; it already does its own selector resolution + env-var injection" — but ace-web never had that resolver. Result: any cloud-side recipe with selector placeholders or `runFlow: file: "./..."` palette refs would have failed at runtime.
+
+Fix: `MobileClient.runRecipe` now calls `prepareRecipeForMaestro` unconditionally (both backends). On cloud, the resolved temp dir is tarred + base64'd and passed to `CloudBackend.runRecipe` as `opts.paletteTarB64`, which forwards it as `palette_tar_b64` in the POST body. The companion ace-web change (jjackson/ace-web#427) extracts the tarball into the in-VM run dir before Maestro starts, so the cloud-side Maestro sees the same sibling layout local-side Maestro sees.
+
+This is a parity fix, not a feature — local + cloud now go through the same recipe-prep pipeline. The cloud-only `tarDirAsBase64` helper uses `tar -czf -` via `spawnSync` (no new dep).
+
+4 new vitest cases (2 in `cloud.test.ts` for body-forwarding contract, 2 in `client.test.ts` for end-to-end resolved-+-tarred contract via the real selector palette). 1203 tests pass; `tsc --noEmit` clean.
+
 ## 0.13.209 — 2026-05-13
 
 **Phase 6 mobile robustness pass: local + cloud hardening across heal contract, classifier, APK cache, and cloud HTTP transport.**
