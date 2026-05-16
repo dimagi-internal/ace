@@ -159,6 +159,8 @@ This repo is dogfooded by the `canopy` plugin. **Per-run evidence lives in Drive
 
 **Canopy commands:** `/canopy:pm-status`, `/canopy:pm-scout`, `/canopy:improve`, `/canopy:patterns`.
 
+**Running canopy improvement alongside `/ace:run`:** see `playbook/opp-run-with-canopy.md` for the per-opp sequence — fire `perf` lens in-session at a gate (capture only); fire `judge` / `production` / `qa-eval-system` lenses off-session against run artifacts; implement captured proposals in a separate session to avoid VERSION + worktree churn. One opp at a time.
+
 ## Auth model: per-machine vs 1Password-backed
 
 ACE has two classes of credential state — confusing them is the #1 source of friction across workstations. Session cookies are bound to TLS fingerprints + CSRF rotation; copying them between machines is *worse* than re-login (intermittent, hard to debug). **Don't sync `~/.ace/` via 1Password or git.**
