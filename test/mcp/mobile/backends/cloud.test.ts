@@ -404,6 +404,58 @@ describe('CloudBackend.runRecipe', () => {
     await fs.rm(tmp, { recursive: true, force: true });
   });
 
+  it('forwards opts.paletteTarB64 into body.palette_tar_b64 (palette parity with local)', async () => {
+    // Closes the cloud-side selector-resolution gap: before 2026-05-16
+    // the cloud branch posted raw recipes with `${SELECTOR:...}`
+    // placeholders intact AND no sibling palette files, so Maestro
+    // either choked on the literal placeholder or 404'd on the
+    // `runFlow: file: "./form-advance.yaml"` ref. Now the client
+    // resolves both, tars the temp dir, and ships it as
+    // `paletteTarB64`. This test pins the forwarding contract so
+    // future refactors can't silently regress.
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-palette-'));
+    const recipePath = path.join(tmp, 'r.yaml');
+    await fs.writeFile(recipePath, 'appId: x\n');
+
+    const [submit, poll] = asyncRecipeMocks({
+      exit_code: 0, stdout: '', stderr: '', artifacts: [],
+    });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(submit)
+      .mockResolvedValueOnce(poll);
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
+
+    const palette = 'SGVsbG8sIHRhcmJhbGwh';  // synthetic; CloudBackend doesn't decode
+    await cb.runRecipe(recipePath, {}, tmp, { paletteTarB64: palette });
+
+    const submitCall = fetchImpl.mock.calls[0];
+    const body = JSON.parse(submitCall[1].body as string);
+    expect(body.palette_tar_b64).toBe(palette);
+
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it('omits palette_tar_b64 from body when no palette is provided (back-compat)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-no-palette-'));
+    const recipePath = path.join(tmp, 'r.yaml');
+    await fs.writeFile(recipePath, 'appId: x\n');
+
+    const [submit, poll] = asyncRecipeMocks({
+      exit_code: 0, stdout: '', stderr: '', artifacts: [],
+    });
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(submit)
+      .mockResolvedValueOnce(poll);
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl, jobPollIntervalMs: 0 });
+    await cb.runRecipe(recipePath, {}, tmp);
+
+    const submitCall = fetchImpl.mock.calls[0];
+    const body = JSON.parse(submitCall[1].body as string);
+    expect(body.palette_tar_b64).toBeUndefined();
+
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
   it('polls multiple times while the job is still running', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-test-'));
     const recipePath = path.join(tmp, 'r.yaml');

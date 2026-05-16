@@ -89,6 +89,90 @@ describe('MobileClient.registerTestUser', () => {
   });
 });
 
+describe('MobileClient.runRecipe (cloud-path palette parity)', () => {
+  let savedBackend: string | undefined;
+  let tmpDir: string;
+  beforeEach(async () => {
+    savedBackend = process.env.ACE_MOBILE_BACKEND;
+    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    clearSessionBackend();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'palette-it-'));
+  });
+  afterEach(() => {
+    if (savedBackend === undefined) delete process.env.ACE_MOBILE_BACKEND;
+    else process.env.ACE_MOBILE_BACKEND = savedBackend;
+    clearSessionBackend();
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  });
+
+  it('resolves ${SELECTOR:...} and ships the resolved palette as paletteTarB64', async () => {
+    // The pre-2026-05-16 bug: cloud branch bypassed
+    // `prepareRecipeForMaestro`, so Maestro saw raw `${SELECTOR:...}`.
+    // This test pins the new contract: cloud.runRecipe gets a resolved
+    // top recipe (read from prep.resolvedPath) AND a paletteTarB64 of
+    // the resolved temp dir, exactly mirroring what local's Maestro sees.
+    const recipePath = path.join(tmpDir, 'use-selector.yaml');
+    fs.writeFileSync(
+      recipePath,
+      'appId: org.commcare.dalvik\n---\n- tapOn:\n    ${SELECTOR:form-nav-next}\n',
+      'utf8',
+    );
+
+    const cloudRunRecipe = vi.fn().mockResolvedValue({
+      status: 'pass',
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+      screenshotsDir: tmpDir,
+      screenshots: [],
+    });
+    const cloud = { runRecipe: cloudRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    await client.runRecipe(recipePath, {}, tmpDir);
+
+    expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
+    const [resolvedPath, , , opts] = cloudRunRecipe.mock.calls[0];
+
+    // The path handed to cloud is the prep'd file (different from
+    // the caller's recipePath). Its content has the placeholder
+    // resolved.
+    expect(resolvedPath).not.toBe(recipePath);
+    const resolvedContent = fs.readFileSync(resolvedPath as string, 'utf8');
+    expect(resolvedContent).toContain('id: "org.commcare.dalvik:id/nav_btn_next"');
+    expect(resolvedContent).not.toContain('${SELECTOR:');
+
+    // The palette tarball is a non-empty base64 string.
+    expect(typeof opts.paletteTarB64).toBe('string');
+    expect((opts.paletteTarB64 as string).length).toBeGreaterThan(100);
+    // Quick sanity: base64 decodes to a gzip-magic-prefixed buffer.
+    const decoded = Buffer.from(opts.paletteTarB64 as string, 'base64');
+    expect(decoded[0]).toBe(0x1f);
+    expect(decoded[1]).toBe(0x8b);
+  });
+
+  it('passes paletteTarB64 even when the recipe has no ${SELECTOR:...} (idempotent palette shipping)', async () => {
+    // Cloud always gets the palette dir, even when the top recipe
+    // doesn't reference any selectors. That way `runFlow: file:` refs
+    // still find their siblings server-side.
+    const recipePath = path.join(tmpDir, 'plain.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+
+    const cloudRunRecipe = vi.fn().mockResolvedValue({
+      status: 'pass', exitCode: 0, stdout: '', stderr: '',
+      screenshotsDir: tmpDir, screenshots: [],
+    });
+    const cloud = { runRecipe: cloudRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    await client.runRecipe(recipePath, {}, tmpDir);
+
+    const opts = cloudRunRecipe.mock.calls[0][3];
+    expect(opts.paletteTarB64).toBeDefined();
+    expect((opts.paletteTarB64 as string).length).toBeGreaterThan(0);
+  });
+});
+
 describe('MobileClient.useCloud (dynamic resolution)', () => {
   let savedEnv: string | undefined;
   beforeEach(() => {

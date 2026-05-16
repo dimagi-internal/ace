@@ -405,12 +405,21 @@ export class CloudBackend {
    * artifacts come back as 1-hour-TTL S3 presigned URLs which we
    * download into `screenshotDir` so callers see the same on-disk
    * shape they'd see from MaestroBackend.
+   *
+   * `opts.paletteTarB64`: optional base64 tar.gz of the resolved
+   * sibling palette files (the temp dir from
+   * `prepareRecipeForMaestro`). When present, ace-web extracts it
+   * into the in-VM run directory before invoking Maestro so
+   * `runFlow: file: "./..."` refs in the top recipe resolve to
+   * siblings — keeps local + cloud at parity. Added 2026-05-16 after
+   * the audit found that cloud was silently shipping unresolved
+   * `${SELECTOR:...}` placeholders to Maestro.
    */
   async runRecipe(
     recipePath: string,
     env: Record<string, string>,
     screenshotDir: string,
-    opts: { state?: string; screenshotPrefix?: string } = {},
+    opts: { state?: string; screenshotPrefix?: string; paletteTarB64?: string } = {},
   ): Promise<RecipeRunResult> {
     let recipeYaml: string;
     try {
@@ -425,6 +434,7 @@ export class CloudBackend {
     };
     if (opts.screenshotPrefix) body.screenshot_prefix = opts.screenshotPrefix;
     else body.screenshot_prefix = path.basename(recipePath, path.extname(recipePath));
+    if (opts.paletteTarB64) body.palette_tar_b64 = opts.paletteTarB64;
     // Filter through resolveState — the caller routes `avdName` straight
     // into `opts.state`, but on cloud only `cc-*` names are real baked
     // states. A generic placeholder like `'cloud'` (the MobileClient
