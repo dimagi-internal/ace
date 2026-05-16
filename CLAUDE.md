@@ -86,7 +86,7 @@ This repo uses emdash. If you're in a worktree (`git rev-parse --git-dir` contai
 
 **`main` is branch-protected** (`clean-install` status check required) — direct push is rejected. Ship via PR: `bash scripts/version-bump.sh`, commit, `git push -u origin <branch>`, `gh pr create`, then arm auto-merge with `gh pr merge <pr> --auto --merge`. The PR lands itself once `clean-install` passes (no manual review gate). Wait for the merge to land, then run `/ace:update` + `/reload-plugins` in this session.
 
-Version-collision recipe (multiple worktrees bumped in parallel — common): `git fetch origin main && git rebase origin/main`; on conflict, `git checkout --ours VERSION package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json`, re-run `scripts/version-bump.sh`, `git add -A && git rebase --continue`, `git push --force-with-lease`.
+Version-collision recipe (multiple worktrees bumped in parallel — common): `bash scripts/version-bump.sh --rebase-first` then `git push --force-with-lease`. The flag fetches origin/main, rebases, auto-resolves conflicts in the 4 version files (`--ours`), then recomputes the next version against the freshly-rebased base. Aborts cleanly if any non-version-file conflict surfaces (those need human review).
 
 ## Plugin updates — NEVER locally patch
 
