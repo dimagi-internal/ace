@@ -965,16 +965,16 @@ describe('PlaywrightBackend publish + embed info', () => {
   });
 });
 
-describe('PlaywrightBackend.archiveChatbot', () => {
-  it('POSTs to /a/<team>/chatbots/<pk>/delete/ with csrfmiddlewaretoken and returns archived:1 on 302', async () => {
+describe('PlaywrightBackend.deleteChatbot', () => {
+  it('POSTs to /a/<team>/chatbots/<pk>/delete/ with csrfmiddlewaretoken and returns deleted:1 on 302', async () => {
     const calls: Array<{ method: string; url: string; body?: unknown }> = [];
     const request: RequestFn = async (method, url, body) => {
       calls.push({ method, url, body });
       return { ok: false, status: 302, text: async () => '', json: async () => ({}) };
     };
     const backend = makeBackend(request);
-    const out = await backend.archiveChatbot({ experiment_id: 42 });
-    expect(out).toEqual({ archived: 1 });
+    const out = await backend.deleteChatbot({ experiment_id: 42 });
+    expect(out).toEqual({ deleted: 1 });
     expect(calls).toHaveLength(1);
     expect(calls[0]).toEqual({
       method: 'POST',
@@ -988,8 +988,8 @@ describe('PlaywrightBackend.archiveChatbot', () => {
       ok: true, status: 200, text: async () => '', json: async () => ({}),
     });
     const backend = makeBackend(request);
-    const out = await backend.archiveChatbot({ experiment_id: 42 });
-    expect(out).toEqual({ archived: 1 });
+    const out = await backend.deleteChatbot({ experiment_id: 42 });
+    expect(out).toEqual({ deleted: 1 });
   });
 
   it('throws HttpError on 404 (chatbot not found)', async () => {
@@ -997,20 +997,20 @@ describe('PlaywrightBackend.archiveChatbot', () => {
       ok: false, status: 404, text: async () => 'Not Found', json: async () => ({}),
     });
     const backend = makeBackend(request);
-    await expect(backend.archiveChatbot({ experiment_id: 99 })).rejects.toThrow(/404/);
+    await expect(backend.deleteChatbot({ experiment_id: 99 })).rejects.toThrow(/404/);
   });
 });
 
-describe('PlaywrightBackend.archivePipeline', () => {
-  it('issues HTTP DELETE to /a/<team>/pipelines/<pk>/delete/ and returns archived:1 on 200', async () => {
+describe('PlaywrightBackend.deletePipeline', () => {
+  it('issues HTTP DELETE to /a/<team>/pipelines/<pk>/delete/ and returns deleted:1 on 200', async () => {
     const calls: Array<{ method: string; url: string }> = [];
     const request: RequestFn = async (method, url) => {
       calls.push({ method, url });
       return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
     };
     const backend = makeBackend(request);
-    const out = await backend.archivePipeline({ pipeline_id: 77 });
-    expect(out).toEqual({ archived: 1 });
+    const out = await backend.deletePipeline({ pipeline_id: 77 });
+    expect(out).toEqual({ deleted: 1 });
     expect(calls).toEqual([{ method: 'DELETE', url: '/a/dimagi/pipelines/77/delete/' }]);
   });
 
@@ -1019,8 +1019,8 @@ describe('PlaywrightBackend.archivePipeline', () => {
       ok: true, status: 204, text: async () => '', json: async () => ({}),
     });
     const backend = makeBackend(request);
-    const out = await backend.archivePipeline({ pipeline_id: 77 });
-    expect(out).toEqual({ archived: 1 });
+    const out = await backend.deletePipeline({ pipeline_id: 77 });
+    expect(out).toEqual({ deleted: 1 });
   });
 
   it('throws HttpError on 403 (insufficient permission)', async () => {
@@ -1028,6 +1028,37 @@ describe('PlaywrightBackend.archivePipeline', () => {
       ok: false, status: 403, text: async () => 'Forbidden', json: async () => ({}),
     });
     const backend = makeBackend(request);
-    await expect(backend.archivePipeline({ pipeline_id: 77 })).rejects.toThrow(/403/);
+    await expect(backend.deletePipeline({ pipeline_id: 77 })).rejects.toThrow(/403/);
+  });
+});
+
+describe('PlaywrightBackend.deleteCollection', () => {
+  it('issues HTTP DELETE to /a/<team>/documents/collection/<pk>/delete/ and returns deleted:1 on 200', async () => {
+    const calls: Array<{ method: string; url: string }> = [];
+    const request: RequestFn = async (method, url) => {
+      calls.push({ method, url });
+      return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
+    };
+    const backend = makeBackend(request);
+    const out = await backend.deleteCollection({ collection_id: 411 });
+    expect(out).toEqual({ deleted: 1 });
+    expect(calls).toEqual([{ method: 'DELETE', url: '/a/dimagi/documents/collection/411/delete/' }]);
+  });
+
+  it('accepts 204 No Content as success', async () => {
+    const request: RequestFn = async () => ({
+      ok: true, status: 204, text: async () => '', json: async () => ({}),
+    });
+    const backend = makeBackend(request);
+    const out = await backend.deleteCollection({ collection_id: 411 });
+    expect(out).toEqual({ deleted: 1 });
+  });
+
+  it('throws HttpError on 404 (collection not found)', async () => {
+    const request: RequestFn = async () => ({
+      ok: false, status: 404, text: async () => 'Not Found', json: async () => ({}),
+    });
+    const backend = makeBackend(request);
+    await expect(backend.deleteCollection({ collection_id: 999 })).rejects.toThrow(/404/);
   });
 });

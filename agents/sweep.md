@@ -24,7 +24,7 @@ If the user passed `<system>`, use it. Otherwise, present:
 Which system?
   drive   — Drive folders under ACE/                                          (auto-trash)
   connect — Connect opportunities + unaccepted FLW invites                    (auto: deactivate opps, delete unaccepted invites; programs report-only)
-  ocs     — OCS chatbots + pipelines + sessions                               (auto: archive chatbots+pipelines, end sessions; collections never auto-archive — shared with golden template)
+  ocs     — OCS chatbots + pipelines + per-opp collections + sessions         (auto: delete chatbots/pipelines/per-opp-collections, end sessions; golden template + shared collection safe-listed)
   hq      — CommCare HQ apps                                                  (auto-soft-delete; builds and multimedia are upstream gaps and not surfaced)
   labs    — connect-labs workflows + pipelines + synthetic + solicitations    (auto: delete workflows/pipelines/draft+closed solicitations, disable synthetic; funds/standalone-reviews/standalone-responses report-only)
   all     — run all five in sequence
@@ -89,9 +89,9 @@ When `system == 'all'`, print one summary block per system, then a final aggrega
 | Connect payment units | connect | Implicit children of opportunities — no standalone cleanup. When an opp is deactivated/deleted, its PUs follow. Sweep does not list PUs separately. |
 | Connect programs | connect | ❌ Upstream gap. No delete view exists. Admin UI link only. |
 | OCS sessions | ocs | ✅ Auto-end via `ocs_end_session` |
-| OCS chatbots | ocs | ✅ Auto-archive via `ocs_archive_chatbot` (per-opp clone — safe; golden template explicitly safe-listed) |
-| OCS pipelines | ocs | ✅ Auto-archive via `ocs_archive_pipeline` (per-opp deep clone via `create_new_version(is_copy=True)` — safe) |
-| OCS collections / source-material files | ocs | ❌ SHARED with golden template (LLM nodes pass collection_id through unchanged on clone). Surface for visibility but NEVER auto-archive — would break golden template + every other clone. |
+| OCS chatbots | ocs | ✅ Auto-delete via `ocs_delete_chatbot` (per-opp clone — safe; golden template `OCS_GOLDEN_TEMPLATE_ID` safe-listed) |
+| OCS pipelines | ocs | ✅ Auto-delete via `ocs_delete_pipeline` (per-opp deep clone via `create_new_version(is_copy=True)` — safe) |
+| OCS per-opp collections | ocs | ✅ Auto-delete via `ocs_delete_collection` (Phase-5-created collections are not shared; cascades to underlying File rows + object-storage blobs + FileChunkEmbedding vectors via `delete_document_source_task`). Shared collection `OCS_SHARED_COLLECTION_ID` (typically 350) safe-listed. |
 | CommCare HQ apps | hq | ✅ Auto-soft-delete via `commcare_delete_app` (mutates `doc_type` to `<original>-Deleted`; restorable 90d via HQ admin UI). Listing via new `commcare_list_apps`. |
 | CommCare HQ builds / multimedia | hq | ❌ Upstream gap. No delete API exists; not surfaced in sweep report. |
 | labs workflows / pipelines / synthetic | labs | ✅ Auto-delete via existing `workflow_delete` / `pipeline_delete` / `synthetic_disable` |

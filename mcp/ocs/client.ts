@@ -100,10 +100,11 @@ export interface OcsClient {
   }): Promise<{ public_id: string; embed_key: string }>;
 
   /**
-   * Soft-archive an experiment (chatbot) by integer id. Sets `is_archived=True`
-   * on the Experiment row server-side. Each clone has its own Experiment, so
-   * archiving one opp's clone doesn't affect the golden template or other
-   * opps' clones.
+   * Delete an experiment (chatbot) by integer id. Sets `is_archived=True` on
+   * the Experiment row server-side (the user-visible effect is deletion —
+   * the chatbot disappears from listings and the team's catalog). Each clone
+   * has its own Experiment, so deleting one opp's clone doesn't affect the
+   * golden template or other opps' clones.
    *
    * IMPORTANT — callers MUST exclude the `OCS_GOLDEN_TEMPLATE_ID` from the
    * sweep set before calling this atom. The atom itself has no idea what
@@ -113,20 +114,43 @@ export interface OcsClient {
    * Routes through Playwright to the `/a/<team>/chatbots/<pk>/delete/` HTML
    * view (POST, returns 302 HTMX `HX-Redirect`). No REST equivalent.
    */
-  archiveChatbot(args: { experiment_id: number }): Promise<{ archived: number }>;
+  deleteChatbot(args: { experiment_id: number }): Promise<{ deleted: number }>;
 
   /**
-   * Soft-archive a pipeline by integer id. Sets `is_archived=True` on the
-   * Pipeline row server-side. Each clone gets its own Pipeline (verified
-   * 2026-05-15: `Pipeline.create_new_version(is_copy=True)` deep-clones nodes
-   * but Collection IDs in LLM node params are SHARED with the source — so
-   * archiving an orphan opp's pipeline is safe, but archiving its
-   * collection would break the golden template).
+   * Delete a pipeline by integer id. Sets `is_archived=True` on the Pipeline
+   * row server-side. Each clone gets its own Pipeline (verified 2026-05-15:
+   * `Pipeline.create_new_version(is_copy=True)` deep-clones nodes), so
+   * deleting an orphan opp's pipeline is safe and never affects the golden
+   * template or other clones.
    *
    * Routes through Playwright to the `/a/<team>/pipelines/<pk>/delete/` HTML
    * view (HTTP DELETE method on Django View.delete(); returns 200 empty body).
    */
-  archivePipeline(args: { pipeline_id: number }): Promise<{ archived: number }>;
+  deletePipeline(args: { pipeline_id: number }): Promise<{ deleted: number }>;
+
+  /**
+   * Delete a collection by integer id. Calls `Collection.archive()` server-side
+   * which sets `is_archived=True` AND triggers `delete_document_source_task`
+   * to async-purge the underlying File rows + object-storage blobs +
+   * FileChunkEmbedding vectors. The user-visible effect is a full delete:
+   * files are gone, vector storage is reclaimed.
+   *
+   * IMPORTANT — callers MUST exclude `OCS_GOLDEN_TEMPLATE_COLLECTION_ID`
+   * from the sweep set before calling this atom. That collection (e.g. id
+   * 350 today) is referenced by every clone's pipeline (the
+   * `if not is_copy` branch in `Node.create_new_version` skips versioning
+   * of `collection_id` on clone, so all clones inherit it). Deleting it
+   * would break every clone's RAG retrieval.
+   *
+   * Per-opp collections (created fresh by Phase 5 via `ocs_create_collection`
+   * and attached via `attach_knowledge`) are NOT shared — they belong to
+   * the clone and are safe to delete when the clone is deleted.
+   *
+   * Routes through Playwright to the `/a/<team>/documents/collection/<pk>/delete/`
+   * HTML view (HTTP DELETE method on Django View.delete(); returns 200 empty
+   * body; async cleanup task fires after).
+   */
+  deleteCollection(args: { collection_id: number }): Promise<{ deleted: number }>;
 
   // ── Observation atoms ────────────────────────────────────────────
 
