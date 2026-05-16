@@ -16,6 +16,35 @@ See `skills/_solicitation-template.md` for the shared
 `phases.solicitation-management.products.solicitation` contract and
 connect-labs MCP atom inventory.
 
+## Per-run solicitations are expected, not a bug
+
+**Every `/ace:run` publishes a FRESH solicitation under the same
+Connect program — by design.** This skill does NOT detect already-open
+solicitations on the program and does NOT close-or-coordinate against
+them. Two operational facts make multiple open solicitations correct:
+
+1. **Solicitations are run-scoped audit trails.** Each run's
+   solicitation captures *that run's* intent (PDD wording, criteria,
+   indicative budget, archetype, deadline). Different runs ship
+   different PDD revisions; merging them under one solicitation would
+   lose the audit trail.
+2. **Launch is operator-coordinated, not skill-coordinated.** The
+   typical opp will only have **one** solicitation actually launched
+   to candidate LLOs (the chosen release-candidate run's). The other
+   open solicitations live in the labs portal until the operator picks
+   one to drive Phase 9 from. Stale solicitations are
+   operator-cleaned-up via `connect-labs delete_solicitation` or the
+   labs UI when picking a release-candidate run.
+
+If you (the agent reading this skill) notice multiple open
+solicitations on the same Connect program and feel the urge to
+"deduplicate" or "warn-and-prompt," resist. It's not a footgun; it's
+how per-run independence is meant to look at the solicitation surface.
+The same pattern applies to per-run Connect opportunities and OCS
+chatbots — see `agents/ace-orchestrator.md § Modes` for the broader
+"each run gets its own live entity; stale ones are operator-managed"
+contract.
+
 ## Inputs
 
 - `ACE/<opp-name>/inputs/pdd.md` — approved PDD (intervention, scope, success criteria, total_budget, optional Solicitation section)
