@@ -992,3 +992,72 @@ verbatim. If you genuinely need to halt, write back
 let the operator resume via `/ace:run <opp>/<run-id>` in a fresh
 session. Never try to compress your own context to keep going — the
 cure is worse than the disease.
+
+## Fix-and-ship subagent template — explicit merge confirmation
+
+When the orchestrator (or any level-0 dispatcher) launches a
+background fix-and-ship subagent, the subagent's final step MUST be
+an explicit poll loop that waits for a terminal PR state. Returning
+after `gh pr merge --auto --merge` is armed — without confirming the
+merge actually landed — is the canonical failure mode that surfaced
+across all 6 fix-and-ship dispatches in the turmeric 20260515-0536
+cycle. Each one returned "checks running" / "watchers armed" / "PR
+queued" and the operator had to re-poll manually.
+
+### Bad pattern (don't do this)
+
+```
+... (subagent does the fix + push + PR creation) ...
+
+gh pr merge 333 --auto --merge
+
+Return: PR #333 created and auto-merge armed. clean-install check
+        is running.
+```
+
+The subagent has no idea whether the PR merged. The next dispatcher
+either polls itself (defeats the point of backgrounding) or assumes
+success (silently builds on un-merged work).
+
+### Good pattern (canonical)
+
+```
+... (subagent does the fix + push + PR creation) ...
+
+gh pr merge 333 --auto --merge
+
+# Poll until terminal state: MERGED, DIRTY (needs rebase), or
+# any FAILURE in the status check rollup.
+until [ "$(gh pr view 333 --json state -q .state 2>/dev/null)" = "MERGED" ] || \
+      [ "$(gh pr view 333 --json mergeStateStatus -q .mergeStateStatus 2>/dev/null)" = "DIRTY" ] || \
+      gh pr view 333 --json statusCheckRollup -q '.statusCheckRollup[] | select(.conclusion=="FAILURE")' 2>/dev/null | grep -q .; do
+  sleep 30
+done
+
+Return: PR #333 state=<MERGED|DIRTY|CHECK-FAILED>
+        mergedAt=<timestamp-if-merged>
+        failed-check=<name-if-failure>
+```
+
+If `DIRTY` surfaces, the subagent should resolve via
+`bash scripts/version-bump.sh --rebase-first && git push --force-with-lease`
+and re-enter the poll. If a check `FAILURE` surfaces, return the check
+name + URL — the orchestrator decides whether to escalate or relaunch
+with a fix.
+
+The poll loop is cheap (one `gh pr view` per 30s; ~6 calls per merge
+cycle) and is the only signal that distinguishes "merged" from "armed
+but stuck."
+
+### Required fields in the subagent return
+
+- PR URL
+- Final state (MERGED / DIRTY-after-rebase-exhausted / CHECK-FAILED /
+  open-waiting-only-if-timeout)
+- For MERGED: `mergedAt`
+- For DIRTY-after-rebase-exhausted: which non-version files conflicted
+- For CHECK-FAILED: check name + first 200 chars of failure log
+
+See also: `CLAUDE.md § Plugin updates — NEVER locally patch` for the
+end-to-end "bump → PR → poll → /ace:update" workflow this template
+slots into.
