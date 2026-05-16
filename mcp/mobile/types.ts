@@ -53,6 +53,21 @@ export interface DeviceStateHealLog {
    * the operator can verify against expectations.
    */
   bootstrap_steps?: string[];
+  /**
+   * True when the AVD environment baseline (heads-up notifications off,
+   * GMS DND-disallow, lock-screen timeout 30 min) was applied in this
+   * bootstrap. False / undefined for older paths that bypass the baseline.
+   * Telemetry-friendly signal — pairs with `environment_baseline_fingerprint`
+   * to detect drift across baseline versions.
+   */
+  environment_baseline_applied?: boolean;
+  /**
+   * sha1-12 fingerprint of the sorted list of setting keys that compose
+   * the environment baseline. Changes whenever the baseline itself
+   * changes (key added / removed). Lets telemetry detect AVDs running
+   * an older baseline version.
+   */
+  environment_baseline_fingerprint?: string;
 }
 
 /**

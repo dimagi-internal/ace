@@ -21,6 +21,7 @@ function fakeMaestroAndAvd(opts: {
     findRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
     setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
+    applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
   } as any;
   const runRecipe = vi.fn().mockImplementation(async (recipePath: string) => {
     if (recipePath.endsWith('connect-register-to-otp.yaml')) {
@@ -256,6 +257,7 @@ describe('MobileClient.ensureAvdRunning', () => {
       saveSnapshot: vi.fn().mockResolvedValue({ avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK' }),
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
+    applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
@@ -403,6 +405,7 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
       }),
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
+    applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
       adbPortFromSerial: () => 5554,
       // loadSnapshot intentionally absent — the heal must never call it.
     } as any;
@@ -648,6 +651,7 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
       }),
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
+    applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
       adbPortFromSerial: () => 5554,
     } as any;
     const maestro = {
@@ -714,6 +718,7 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
       }),
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
+    applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
@@ -806,6 +811,7 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
       }),
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
+    applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
@@ -1413,6 +1419,7 @@ describe('runLocalBootstrap: SNAPSHOT_SAVE_FAILED surfaces "registered but not p
       }),
       setGmsEnabled: vi.fn(),
       disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
+    applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),

@@ -16,19 +16,23 @@
 # fetch before bumping.
 #
 # Usage:
-#   scripts/version-bump.sh           # fetch origin, compute next, write
-#   scripts/version-bump.sh --dry-run # print the next version without writing
+#   scripts/version-bump.sh                 # fetch origin, compute next, write
+#   scripts/version-bump.sh --dry-run       # print the next version without writing
+#   scripts/version-bump.sh --rebase-first  # rebase onto origin/main (auto-resolving
+#                                           # the 4 version files via --ours), then bump
 #
 # Output: prints the new version on the last line of stdout.
 
 set -euo pipefail
 
 DRY_RUN=0
+REBASE_FIRST=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
+    --rebase-first) REBASE_FIRST=1 ;;
     -h|--help)
-      sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "version-bump: unknown arg: $1" >&2; exit 2 ;;
@@ -38,6 +42,57 @@ done
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 VERSION_FILE="$REPO_ROOT/VERSION"
+
+# Version files that have deterministic rebase conflicts when parallel
+# worktrees bump in parallel. --rebase-first auto-resolves these with
+# --ours, then re-runs the bump (so the new version is computed against
+# the freshly-rebased origin/main).
+VERSION_FILES=(
+  "VERSION"
+  "package.json"
+  ".claude-plugin/plugin.json"
+  ".claude-plugin/marketplace.json"
+)
+
+if [ "$REBASE_FIRST" = "1" ]; then
+  echo "version-bump: --rebase-first set; fetching + rebasing onto origin/main"
+  git fetch origin main --quiet
+  if ! git rebase origin/main; then
+    # Inspect which files are in conflict. If they're all version files,
+    # auto-resolve. Otherwise abort cleanly — real conflicts need a human.
+    CONFLICTED="$(git diff --name-only --diff-filter=U || true)"
+    if [ -z "$CONFLICTED" ]; then
+      echo "version-bump: rebase failed but no conflict files reported" >&2
+      git rebase --abort 2>/dev/null || true
+      exit 1
+    fi
+    NON_VERSION=""
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      MATCH=0
+      for vf in "${VERSION_FILES[@]}"; do
+        if [ "$f" = "$vf" ]; then MATCH=1; break; fi
+      done
+      if [ "$MATCH" = "0" ]; then
+        NON_VERSION="$NON_VERSION $f"
+      fi
+    done <<<"$CONFLICTED"
+    if [ -n "$NON_VERSION" ]; then
+      echo "version-bump: real conflicts outside version files — aborting rebase:" >&2
+      echo "$NON_VERSION" | tr ' ' '\n' | sed 's/^/  /' >&2
+      git rebase --abort
+      exit 1
+    fi
+    echo "version-bump: auto-resolving version-file conflicts with --ours"
+    for vf in "${VERSION_FILES[@]}"; do
+      if echo "$CONFLICTED" | grep -qx "$vf"; then
+        git checkout --ours -- "$vf"
+        git add -- "$vf"
+      fi
+    done
+    GIT_EDITOR=true git rebase --continue
+  fi
+fi
 
 if [ ! -f "$VERSION_FILE" ]; then
   echo "ERROR: VERSION file not found at $VERSION_FILE" >&2

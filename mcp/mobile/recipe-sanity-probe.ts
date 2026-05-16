@@ -1,0 +1,284 @@
+// mcp/mobile/recipe-sanity-probe.ts
+//
+// Static pre-flight: compare what a smoke recipe EXPECTS against what
+// the live Nova app + Connect opportunity actually have, before booting
+// the AVD or running any recipe. The probe is pure-data — callers pass
+// in already-fetched Nova / Connect responses; this module compares
+// them against parsed recipe parameters and returns a structured
+// verdict the skill (or operator) can act on.
+//
+// Why: today's Phase 6 retry loop (turmeric 20260515-0536) surfaced 8
+// distinct failure classes one-at-a-time, each costing ~10-12 min
+// wall-clock per attempt. A static probe would have caught attempts
+// #5 (wrong-opp-claimed) and #7 (module-name == form-name) at attempt
+// #1. The recipe-error → failure-mode table in
+// `skills/app-screenshot-capture/SKILL.md § Step 5` is the runtime
+// second-line classifier; this is the pre-flight first-line one.
+//
+// Scope discipline:
+//   * Pure data in, structured verdict out — NO MCP calls, NO process
+//     side-effects. The skill (or its caller) is responsible for
+//     fetching the Nova app + Connect opp via `nova_get_app` /
+//     `connect_get_opportunity` and passing them in.
+//   * No tile-list classification yet — the probe accepts an OPTIONAL
+//     pre-captured tile list (from `mobile_capture_ui_dump` after a
+//     quick login) and checks for prefix collisions. Skipping the
+//     ui-dump just means the `tile-name-collision` class isn't
+//     surfaced; everything else still runs.
+//   * Detection only, no remediation execution. The verdict names the
+//     remediation command per failure class; the operator runs it.
+
+import { parseAllDocuments } from 'yaml';
+
+/** Failure classes the probe can surface. Stable strings — telemetry
+ * and the SKILL.md remediation table reference them by name. */
+export type SanityFailureClass =
+  | 'module-name-equals-form-name'
+  | 'expected-module-not-in-app'
+  | 'expected-form-not-in-module'
+  | 'tile-name-collision'
+  | 'opp-name-mismatch';
+
+export interface SanityFailure {
+  class: SanityFailureClass;
+  /** Human-readable detail. Stable enough to grep for. */
+  detail: string;
+  /** Single canonical remediation command/action. */
+  remediation: string;
+  /** Which recipe + parameter triggered the failure (when applicable). */
+  recipe?: string;
+  parameter?: string;
+  value?: string;
+}
+
+export interface SanityVerdict {
+  /** Overall pass/fail. Pass iff `failures` is empty. */
+  ok: boolean;
+  /** Each failure carries its class + canonical remediation. */
+  failures: SanityFailure[];
+  /** Echo of what the probe found, for the verdict YAML. */
+  observed: {
+    /** Distinct module names referenced across all parsed recipes. */
+    recipe_module_names: string[];
+    /** Distinct form names referenced across all parsed recipes. */
+    recipe_form_names: string[];
+    /** Canonical OPP_NAME from connect_get_opportunity (or null). */
+    live_opp_name: string | null;
+    /** OPP_NAME the recipe expects (from envVars / parameters). */
+    recipe_opp_name: string | null;
+  };
+}
+
+/** Minimal Nova app shape the probe consumes. Matches the relevant
+ * subset of what `nova_get_app` returns. Keeping it minimal so the
+ * probe doesn't get coupled to Nova's full app schema. */
+export interface NovaAppSlice {
+  app_id: string;
+  modules: {
+    module_name: string;
+    forms: { form_name: string }[];
+  }[];
+}
+
+/** Minimal Connect opportunity shape the probe consumes. */
+export interface ConnectOpportunitySlice {
+  /** Display-name the user sees on their Connect tile list. */
+  display_name: string;
+}
+
+export interface RecipeText {
+  /** Recipe identifier (e.g. "J1a.yaml") used in failure reports. */
+  name: string;
+  /** Raw YAML text. */
+  text: string;
+}
+
+export interface ProbeInputs {
+  /** Smoke recipes parsed for parameter extraction. */
+  recipes: RecipeText[];
+  /** The Nova app(s) the recipes target. Keyed by some operator-known
+   * label (e.g. "learn" / "deliver") — the probe doesn't care what the
+   * keys are, only that every recipe-referenced module/form lives in
+   * at least one of them. */
+  novaApps: NovaAppSlice[];
+  /** Live Connect opp (from `connect_get_opportunity`). */
+  connectOpp: ConnectOpportunitySlice;
+  /** OPP_NAME the recipe was authored against (from the recipe's
+   * envVars block or app-test-cases.yaml). If null, opp-name-mismatch
+   * detection is skipped. */
+  recipeOppName?: string | null;
+  /** Optional: display names of the test user's currently-visible
+   * tiles (from `mobile_capture_ui_dump` after login). If absent,
+   * tile-name-collision detection is skipped. */
+  visibleTiles?: string[];
+}
+
+/**
+ * Static pre-flight probe. Pure function — same inputs always produce
+ * the same verdict. No MCP calls, no env reads, no fs access.
+ */
+export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
+  const failures: SanityFailure[] = [];
+  const recipeModuleNames = new Set<string>();
+  const recipeFormNames = new Set<string>();
+
+  for (const recipe of inputs.recipes) {
+    const params = extractRecipeParameters(recipe);
+
+    for (const moduleName of params.moduleNames) {
+      recipeModuleNames.add(moduleName);
+    }
+    for (const formName of params.formNames) {
+      recipeFormNames.add(formName);
+    }
+
+    // 1. module-name == form-name → the intermediate-list edge case
+    // PR #331 handled in v0.13.255. Recipes authored before that fix
+    // are flagged so the operator knows to re-run with a current
+    // palette or accept the (now-handled) intermediate list.
+    for (const moduleName of params.moduleNames) {
+      if (params.formNames.has(moduleName)) {
+        failures.push({
+          class: 'module-name-equals-form-name',
+          detail: `recipe ${recipe.name} parameterizes both MODULE_NAME and FORM_NAME with "${moduleName}" — Connect renders an intermediate list when the names collide`,
+          remediation: `verify ace plugin >= 0.13.255 (handled by learn-tap-module); if older, re-author the recipe via /ace:step app-test-cases`,
+          recipe: recipe.name,
+          parameter: 'MODULE_NAME==FORM_NAME',
+          value: moduleName,
+        });
+      }
+    }
+
+    // 2. expected-module-not-in-app → recipe references a module name
+    // that doesn't exist in any of the provided Nova apps.
+    const allModuleNames = new Set<string>();
+    const moduleToForms = new Map<string, Set<string>>();
+    for (const app of inputs.novaApps) {
+      for (const mod of app.modules) {
+        allModuleNames.add(mod.module_name);
+        if (!moduleToForms.has(mod.module_name)) {
+          moduleToForms.set(mod.module_name, new Set());
+        }
+        const formSet = moduleToForms.get(mod.module_name)!;
+        for (const f of mod.forms) {
+          formSet.add(f.form_name);
+        }
+      }
+    }
+
+    for (const moduleName of params.moduleNames) {
+      if (!allModuleNames.has(moduleName)) {
+        failures.push({
+          class: 'expected-module-not-in-app',
+          detail: `recipe ${recipe.name} references MODULE_NAME "${moduleName}" but no Nova app has a module with that name (apps checked: ${inputs.novaApps.map(a => a.app_id).join(', ')})`,
+          remediation: `recipe needs re-author via /ace:step app-test-cases — the live app structure has drifted from what the recipe expects`,
+          recipe: recipe.name,
+          parameter: 'MODULE_NAME',
+          value: moduleName,
+        });
+      }
+    }
+
+    // 3. expected-form-not-in-module → recipe references a form name
+    // that exists in some module, but not in the module the recipe
+    // names. Only check when MODULE_NAME resolves to a known module.
+    for (const moduleName of params.moduleNames) {
+      const knownForms = moduleToForms.get(moduleName);
+      if (!knownForms) continue;
+      for (const formName of params.formNames) {
+        if (!knownForms.has(formName)) {
+          failures.push({
+            class: 'expected-form-not-in-module',
+            detail: `recipe ${recipe.name} references FORM_NAME "${formName}" inside module "${moduleName}" but that form is not present in the module (forms in module: ${[...knownForms].join(', ')})`,
+            remediation: `recipe needs re-author via /ace:step app-test-cases — module/form structure has drifted`,
+            recipe: recipe.name,
+            parameter: 'FORM_NAME',
+            value: formName,
+          });
+        }
+      }
+    }
+  }
+
+  // 4. opp-name-mismatch → recipe was authored against a synthesized
+  // OPP_NAME that doesn't match the live Connect opp's display_name.
+  // Only check when the caller provided a recipeOppName.
+  const recipeOppName = inputs.recipeOppName ?? null;
+  if (recipeOppName !== null && recipeOppName !== inputs.connectOpp.display_name) {
+    failures.push({
+      class: 'opp-name-mismatch',
+      detail: `recipe expects OPP_NAME "${recipeOppName}" but Connect opp display_name is "${inputs.connectOpp.display_name}"`,
+      remediation: `pass OPP_NAME="${inputs.connectOpp.display_name}" explicitly in envVars, OR resolve from connect_get_opportunity at recipe-run time`,
+      parameter: 'OPP_NAME',
+      value: recipeOppName,
+    });
+  }
+
+  // 5. tile-name-collision → multiple visible tiles share a prefix
+  // with the target opp name. Only check when caller passed
+  // visibleTiles. "Shares a prefix" = first 8 chars match (Connect's
+  // tile labels truncate visually around there).
+  if (inputs.visibleTiles && inputs.visibleTiles.length > 0) {
+    const targetName = inputs.connectOpp.display_name;
+    const targetPrefix = targetName.slice(0, 8).toLowerCase();
+    const collisions = inputs.visibleTiles.filter(
+      (t) => t !== targetName && t.slice(0, 8).toLowerCase() === targetPrefix,
+    );
+    if (collisions.length > 0) {
+      failures.push({
+        class: 'tile-name-collision',
+        detail: `${collisions.length} other tile(s) share the first-8-char prefix "${targetPrefix}" with target opp "${targetName}": ${collisions.join(', ')}`,
+        remediation: `clean up prior-run invites from the test user OR ensure the recipe uses the Resume-branch (claims the opp by exact match, not prefix scan)`,
+      });
+    }
+  }
+
+  return {
+    ok: failures.length === 0,
+    failures,
+    observed: {
+      recipe_module_names: [...recipeModuleNames].sort(),
+      recipe_form_names: [...recipeFormNames].sort(),
+      live_opp_name: inputs.connectOpp.display_name,
+      recipe_opp_name: recipeOppName,
+    },
+  };
+}
+
+/** Extract the MODULE_NAME / FORM_NAME values a recipe binds. Looks at
+ * the recipe's `env:` block (`appId.env`) and `${MODULE_NAME}` /
+ * `${FORM_NAME}` substring references. Returns sets — a single recipe
+ * may bind multiple module/form names across its steps. */
+export function extractRecipeParameters(recipe: RecipeText): {
+  moduleNames: Set<string>;
+  formNames: Set<string>;
+} {
+  const moduleNames = new Set<string>();
+  const formNames = new Set<string>();
+
+  // Parse the YAML. Maestro recipes ALMOST ALWAYS use multi-document
+  // form (`appId + env` as doc 1, step list as doc 2 after `---`), so
+  // we must use `parseAllDocuments`. The env block lives in the first
+  // document; later docs are step lists we ignore for parameter
+  // extraction.
+  let docs: ReturnType<typeof parseAllDocuments>;
+  try {
+    docs = parseAllDocuments(recipe.text);
+  } catch {
+    return { moduleNames, formNames };
+  }
+
+  for (const doc of docs) {
+    const parsed = doc.toJS();
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const env = (parsed as Record<string, unknown>).env;
+      if (env && typeof env === 'object') {
+        const envMap = env as Record<string, unknown>;
+        if (typeof envMap.MODULE_NAME === 'string') moduleNames.add(envMap.MODULE_NAME);
+        if (typeof envMap.FORM_NAME === 'string') formNames.add(envMap.FORM_NAME);
+      }
+    }
+  }
+
+  return { moduleNames, formNames };
+}

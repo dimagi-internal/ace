@@ -144,6 +144,49 @@ second-line classifier for things the upstream restore couldn't
 catch (e.g. CCZ content issues, Maestro recipe drift, OPP_NAME
 collisions in long invite lists). It stays.
 
+### Step 2.6: Recipe-sanity pre-flight (static probe)
+
+Before booting the AVD, run a static comparison between recipe
+expectations and live app + Connect state. This catches the failure
+classes the turmeric/20260515-0536 cycle surfaced one-at-a-time over
+8 attempts (~80 min of wall-clock burn) — module-name == form-name,
+expected-module-not-in-app, opp-name-mismatch, tile-name-collision.
+
+Helper: `mcp/mobile/recipe-sanity-probe.ts` (pure function — same
+inputs always produce the same verdict; no MCP calls inside the
+probe itself).
+
+Inputs the caller assembles:
+- Smoke recipe text(s) — read from `3-commcare/recipes/J*.yaml` on
+  Drive
+- Nova app structures — one `nova_get_app({app_id})` per app in
+  `app-test-cases.yaml` (typically learn + deliver)
+- Live Connect opp — `connect_get_opportunity({org_slug,
+  opportunity_id})` from `run_state.yaml.phases.connect-setup.products`
+- (optional) OPP_NAME the recipe was authored against — read from the
+  recipe's `env.OPP_NAME` or from `app-test-cases.yaml`
+- (optional) Visible tile names — `mobile_capture_ui_dump` after a
+  quick login. Skipping this skips only the `tile-name-collision`
+  check; everything else still runs.
+
+Failure classes the probe surfaces (each with a canonical
+remediation):
+
+| Class | Remediation |
+|---|---|
+| `module-name-equals-form-name` | Verify plugin >= 0.13.255 (handled by learn-tap-module). If older, re-author via `/ace:step app-test-cases`. |
+| `expected-module-not-in-app` | Recipe needs re-author via `/ace:step app-test-cases` — live app structure has drifted. |
+| `expected-form-not-in-module` | Same as above — module/form structure has drifted. |
+| `opp-name-mismatch` | Pass `OPP_NAME` explicitly from `connect_get_opportunity().display_name`. |
+| `tile-name-collision` | Clean up prior-run invites OR use Resume-branch (exact-match claim). |
+
+On any failure, halt with the **incomplete-mode verdict shape** (see
+Step 9), `verdict: incomplete`, and a per-class
+PLATFORM auto_surfaced entry naming the remediation. Do NOT proceed
+to Step 3 — every one of these classes is structurally guaranteed to
+produce a recipe-level failure 5-10 min later. Fail fast at the
+boundary.
+
 ### Step 3: Boot AVD + ensure apps installed
 
 Boot the AVD via `mobile_ensure_avd_running` and install the Connect

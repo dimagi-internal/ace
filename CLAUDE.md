@@ -86,7 +86,7 @@ This repo uses emdash. If you're in a worktree (`git rev-parse --git-dir` contai
 
 **`main` is branch-protected** (`clean-install` status check required) — direct push is rejected. Ship via PR: `bash scripts/version-bump.sh`, commit, `git push -u origin <branch>`, `gh pr create`, then arm auto-merge with `gh pr merge <pr> --auto --merge`. The PR lands itself once `clean-install` passes (no manual review gate). Wait for the merge to land, then run `/ace:update` + `/reload-plugins` in this session.
 
-Version-collision recipe (multiple worktrees bumped in parallel — common): `git fetch origin main && git rebase origin/main`; on conflict, `git checkout --ours VERSION package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json`, re-run `scripts/version-bump.sh`, `git add -A && git rebase --continue`, `git push --force-with-lease`.
+Version-collision recipe (multiple worktrees bumped in parallel — common): `bash scripts/version-bump.sh --rebase-first` then `git push --force-with-lease`. The flag fetches origin/main, rebases, auto-resolves conflicts in the 4 version files (`--ours`), then recomputes the next version against the freshly-rebased base. Aborts cleanly if any non-version-file conflict surfaces (those need human review).
 
 ## Plugin updates — NEVER locally patch
 
@@ -97,6 +97,8 @@ Version-collision recipe (multiple worktrees bumped in parallel — common): `gi
 2. Bump version. **Recommended (worktree-safe):** run `scripts/version-bump.sh` — fetches `origin/main` and picks `max(local, origin) + patch+1`, writing all 4 files atomically. Removes the deterministic VERSION/plugin.json/marketplace.json/package.json rebase conflict that hits when several worktrees bump in parallel. Manual fallback: edit `VERSION` only; pre-commit hook syncs `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`.
 3. Commit on the worktree branch, push, open a PR, arm auto-merge with `gh pr merge <pr> --auto --merge` (or check the auto-merge box in the PR UI). The PR lands itself once `clean-install` passes — no manual review gate. (`main` is branch-protected — direct push is rejected.) See § Git worktrees and merging to main for the canonical block, including the version-collision rebase recipe.
 4. **IMMEDIATELY after the PR merges**, run `/ace:update` in the current session. Mandatory — without it, this session runs stale code while new sessions get the bump on startup. (Auto-merge means the merge is asynchronous; watch with `gh pr view <pr> --json state,mergedAt` or `gh run watch` if you need to block.)
+
+**Dispatching a fix-and-ship subagent?** Use the canonical poll-loop template in `agents/orchestrator-reference.md § Fix-and-ship subagent template`. Returning before the merge confirms is the #1 source of "PR queued but actually stuck" handoffs.
 
 Hook setup if needed: `git config core.hooksPath scripts/hooks`. Two hooks ship: `pre-commit` (syncs VERSION → JSON when VERSION is staged) and `pre-push` (refuses direct pushes to `main` — server-side protection already blocks them, but this catches muscle-memory pushes before the roundtrip; bypass with `git push --no-verify` if ever needed).
 
