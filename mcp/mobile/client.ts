@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { AvdBackend } from './backends/avd.js';
 import {
   CloudBackend,
@@ -175,6 +176,32 @@ export function classifyDeviceUserState(
  */
 function isApkZipMagic(buf: Buffer): boolean {
   return buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04;
+}
+
+/**
+ * Tar + gzip every file in `dir` (non-recursive into hidden dirs that
+ * Maestro doesn't reference — we tar the visible contents only) and
+ * return a base64 string. Used to ship the resolved palette to the
+ * cloud backend so the server's Maestro sees the same sibling layout
+ * the local backend's Maestro sees. The `cd` form means the tarball
+ * contains *relative* paths, so server-side `tar xzf - -C run_dir`
+ * lays them out as direct children of `run_dir`.
+ */
+function tarDirAsBase64(dir: string): string {
+  const result = spawnSync('tar', ['-czf', '-', '-C', dir, '.'], {
+    encoding: 'buffer',
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    const err = result.stderr instanceof Buffer
+      ? result.stderr.toString()
+      : String(result.stderr ?? 'unknown');
+    throw new Error(`tarDirAsBase64: tar exited ${result.status} (${err.trim()})`);
+  }
+  if (!(result.stdout instanceof Buffer)) {
+    throw new Error('tarDirAsBase64: tar produced no stdout buffer');
+  }
+  return result.stdout.toString('base64');
 }
 
 /**
@@ -809,30 +836,35 @@ export class MobileClient {
     // mapping. Closes harness-gap-1 from turmeric retry #5.
     const enrichedEnv = injectAceEnvVars(env);
 
-    if (this.useCloud) {
-      // Cloud backend's recipe pipeline runs server-side; it already
-      // does its own selector resolution + env-var injection. We only
-      // forward the auto-injected envVars here so the local + cloud
-      // contracts are identical from the caller's perspective.
-      return this.requireCloud().runRecipe(recipePath, enrichedEnv, screenshotDir, {
-        state: avdName,
-      });
-    }
-
     // Resolve `${SELECTOR:...}` placeholders in the top-level recipe AND
     // every file in the static palette before invoking Maestro. The
     // resolved files are written to a temp dir; Maestro's relative-path
     // `runFlow: file:` refs naturally resolve to the temp-dir siblings.
-    // Closes harness-gap-2 from turmeric retry #5. The selector map's
-    // APK version is hard-coded to 2.62.0 for now — when ACE moves to
-    // a newer Connect APK, this becomes a `process.env.ACE_CONNECT_APK_VERSION`
-    // lookup.
+    // Closes harness-gap-2 from turmeric retry #5. Both backends go
+    // through the same prep — for cloud we ship the resolved temp dir
+    // as a tarball alongside the top recipe, so cloud's Maestro sees
+    // the same sibling layout the local path's Maestro sees. (Pre-
+    // 2026-05-16 the cloud branch skipped this entirely on the
+    // assumption that ace-web resolved server-side; it never did.)
+    // The selector map's APK version is hard-coded to 2.62.0 for now —
+    // when ACE moves to a newer Connect APK, this becomes a
+    // `process.env.ACE_CONNECT_APK_VERSION` lookup.
     const prep = await prepareRecipeForMaestro(recipePath, '2.62.0');
     if (prep.unverifiedSelectorsInTop.length > 0) {
       logInfo(
         `runRecipe: ${recipePath} uses unverified selectors ` +
           `${JSON.stringify(prep.unverifiedSelectorsInTop)} — proceeding, but ` +
           `recipe may halt at the first unverified-selector tap.`,
+      );
+    }
+
+    if (this.useCloud) {
+      const paletteTarB64 = tarDirAsBase64(prep.tempDir);
+      return this.requireCloud().runRecipe(
+        prep.resolvedPath,
+        enrichedEnv,
+        screenshotDir,
+        { state: avdName, paletteTarB64 },
       );
     }
 
