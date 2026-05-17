@@ -186,11 +186,20 @@ function isApkZipMagic(buf: Buffer): boolean {
  * the local backend's Maestro sees. The `cd` form means the tarball
  * contains *relative* paths, so server-side `tar xzf - -C run_dir`
  * lays them out as direct children of `run_dir`.
+ *
+ * `COPYFILE_DISABLE=1` suppresses macOS AppleDouble (`._foo.yaml`)
+ * sidecar files that bsdtar otherwise embeds for filesystem extended
+ * attributes. Without this, the cloud-side `tar xzf` on Linux emits a
+ * `Ignoring unknown extended header keyword 'LIBARCHIVE.xattr...'`
+ * warning per file and lands stray `._*.yaml` files in `run_dir` —
+ * harmless to Maestro but they pollute the S3 artifact list. Verified
+ * live in smoke test 2026-05-16 (palette-smoke-001).
  */
 function tarDirAsBase64(dir: string): string {
   const result = spawnSync('tar', ['-czf', '-', '-C', dir, '.'], {
     encoding: 'buffer',
     maxBuffer: 8 * 1024 * 1024,
+    env: { ...process.env, COPYFILE_DISABLE: '1' },
   });
   if (result.status !== 0) {
     const err = result.stderr instanceof Buffer
