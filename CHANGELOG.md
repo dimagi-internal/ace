@@ -5,6 +5,22 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.262 — 2026-05-17
+
+**Install Maestro driver APK explicitly in the heal flow (fresh-AVD bug).**
+
+`mobile_ensure_avd_running` failed to install the on-device Maestro driver APK (`dev.mobile.maestro` + `.test`) when the AVD was fresh. Symptom: `maestro hierarchy` returned `UNAVAILABLE: io exception` / `Connection refused: localhost/...:7001` and Phase 6 `app-screenshot-capture` halted with a structured BLOCKER. Reproduced live 2× on `malaria-itn-fgd/20260515-1645` Phase 6 across a machine reboot — structural, not transient.
+
+Root cause: `MaestroBackend.repairDriver` relied on the documented Maestro CLI behavior that the next `maestro hierarchy` call reinstalls the driver automatically. That works on a warm AVD where the driver was once present; it does NOT work on a fresh AVD where the driver was never installed: the CLI's first auto-push races the AVD's early-boot `pm` service availability ("Install failed: cmd: Can't find service: package"), and subsequent probes see an empty port 7001 with no retry path inside the CLI.
+
+Fix: new `MaestroBackend.ensureDriverInstalled(serial)` — idempotent, mirrors the CommCare APK pattern. Probes `pm list packages dev.mobile.maestro` for early-return on the warm path; otherwise polls `cmd package list packages` for pm-readiness (max 30s, 1s intervals), extracts `maestro-app.apk` + `maestro-server.apk` from `~/.maestro/lib/maestro-client.jar` to a per-jar-mtime tempdir, `adb install -r` both halves, then verifies via `pm list packages`. Throws typed `MAESTRO_DRIVER_APK_MISSING` / `MAESTRO_DRIVER_APK_INSTALL_FAILED` / `AVD_PM_SERVICE_TIMEOUT` for the failure classes.
+
+Wired into `MobileClient.assertMaestroDriverHealthy` as a new "Stage 1.5" between the failed cheap probe and the existing `repairDriver` flow. When `ensureDriverInstalled` reports `already-installed` (the wedged-but-installed pre-fix recovery class), Stage 1.5 short-circuits and we fall through to Stage 2 unchanged. When it actually installs, we re-probe with the same 90s reinstall budget and skip Stage 2 on success. If the install throws (e.g. operator hasn't run `/ace:mobile-bootstrap`), we record the error and fall through to repair rather than failing the heal — the install error attempt is captured in `MaestroDriverError.attempts` if Stage 2 also can't recover.
+
+4 new vitest cases (2 in `client.test.ts` for the Stage 1.5 success + already-installed paths and the install-throws fall-through; 2 in `maestro.test.ts` for the short-circuit + missing-jar paths). 1208 tests pass.
+
+**Reproducer.** `mobile_ensure_avd_running` against a fresh AVD with `~/.maestro/lib/maestro-client.jar` present but `dev.mobile.maestro` not yet installed (e.g. immediately after `emulator -avd <name> -wipe-data`). Pre-fix: probe1 fails UNAVAILABLE, repairDriver runs against absent packages (no-op), probe2 fails UNAVAILABLE, `MaestroDriverError` thrown. Post-fix: probe1 fails, `ensureDriverInstalled` installs both APKs, probe1.5 succeeds within the 90s reinstall budget.
+
 ## 0.13.261 — 2026-05-16
 
 **Close cloud-side selector-resolution gap: `MobileClient.runRecipe` now ships the resolved palette to ace-web.**

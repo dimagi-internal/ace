@@ -715,7 +715,46 @@ export class MobileClient {
     let probe = await this.maestro.probeDriver(adbPort, 8_000);
     if (probe.healthy) return;
     attempts.push(`probe1: ${probe.reason ?? 'unknown'}`);
-    logInfo(`maestro_driver: stage 1 probe unhealthy on ${serial} — attempting repair`);
+    logInfo(`maestro_driver: stage 1 probe unhealthy on ${serial} — attempting install + repair`);
+
+    // Stage 1.5: explicitly install the driver APKs.
+    //
+    // Why this exists separately from the Stage 2 `repairDriver` flow:
+    // `repairDriver` relies on the documented Maestro CLI behavior that
+    // the next `maestro hierarchy` call reinstalls the driver
+    // automatically. That works fine when the driver was once
+    // installed and is now wedged (the canonical leep run 20260511-0507
+    // class). It does NOT work on a **fresh AVD where the driver was
+    // never installed**: the CLI's first auto-push races the AVD's
+    // early-boot `pm` service availability, fails with "Install failed:
+    // cmd: Can't find service: package", and subsequent probes see an
+    // empty port 7001 with no retry path inside the CLI. Reproduced
+    // live 2× on malaria-itn-fgd/20260515-1645 across a machine reboot.
+    //
+    // `ensureDriverInstalled` is idempotent: when the driver is already
+    // installed, it short-circuits in ~150ms and we proceed straight
+    // to Stage 2 below (the wedged-but-installed recovery path).
+    try {
+      const installActions = await this.maestro.ensureDriverInstalled(serial);
+      attempts.push(`install: ${installActions.join(',')}`);
+      if (!installActions.includes('already-installed')) {
+        // Fresh install — give the driver a moment to bind its gRPC
+        // server, then re-probe with the same extended budget Stage 2
+        // uses.
+        probe = await this.maestro.probeDriver(adbPort, 90_000);
+        if (probe.healthy) {
+          logInfo(`maestro_driver: recovered after ${installActions.join(',')} on ${serial}`);
+          return;
+        }
+        attempts.push(`probe1.5: ${probe.reason ?? 'unknown'}`);
+      }
+    } catch (e: any) {
+      // Don't fail the heal on an install error — fall through to the
+      // repair path. The install error message is captured in
+      // `attempts` so MaestroDriverError surfaces it if Stage 2 also
+      // fails to recover.
+      attempts.push(`install-error: ${(e?.message ?? String(e)).slice(0, 180)}`);
+    }
 
     // Stage 2: force-stop + uninstall + re-probe with a longer timeout to
     // allow the driver to reinstall and bind its gRPC server.

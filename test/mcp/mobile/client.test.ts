@@ -290,6 +290,9 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
         return next;
       }),
       repairDriver: vi.fn(async () => repairActions),
+      // Default: pretend driver was already installed. Tests that exercise
+      // the fresh-install path override this on the returned `maestro`.
+      ensureDriverInstalled: vi.fn(async () => ['already-installed']),
     } as any;
     return { client: new MobileClient({ avd, maestro }), probeCalls, maestro };
   }
@@ -325,6 +328,57 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
     await expect(client.assertMaestroDriverHealthy('abc123def')).resolves.toBeUndefined();
     expect(maestro.probeDriver).not.toHaveBeenCalled();
     expect(maestro.repairDriver).not.toHaveBeenCalled();
+  });
+
+  // Fresh-AVD path (the malaria-itn-fgd/20260515-1645 bug). The driver
+  // was never installed → stage-1 probe fails → ensureDriverInstalled
+  // installs it → re-probe with the extended timeout passes → repair
+  // never runs.
+  it('installs driver and recovers without repair on a fresh AVD (Stage 1.5 wins)', async () => {
+    const { client, probeCalls, maestro } = makeClient([
+      { healthy: false, reason: 'UNAVAILABLE: io exception' },
+      { healthy: true }, // post-install re-probe
+    ]);
+    maestro.ensureDriverInstalled = vi.fn().mockResolvedValue([
+      'pm-ready', 'apks-resolved', 'installed:app', 'installed:test', 'verified',
+    ]);
+    await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
+    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554');
+    expect(maestro.repairDriver).not.toHaveBeenCalled();
+    expect(probeCalls).toEqual([8_000, 90_000]); // post-install probe gets full budget
+  });
+
+  // When the driver is already installed (wedged-but-installed — the
+  // pre-fix recovery class), Stage 1.5 short-circuits and we fall
+  // through to the existing repair path.
+  it('skips post-install re-probe when already-installed, runs repair as before', async () => {
+    const { client, probeCalls, maestro } = makeClient([
+      { healthy: false, reason: 'UNAVAILABLE' },
+      { healthy: true }, // post-repair re-probe
+    ]);
+    // Default ensureDriverInstalled returns ['already-installed'].
+    await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
+    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554');
+    expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
+    expect(probeCalls).toEqual([8_000, 90_000]); // probe1 + probe2 only — no probe1.5
+  });
+
+  // If ensureDriverInstalled throws (operator hasn't run mobile-bootstrap
+  // yet), we don't fail the heal — fall through to repair. The install
+  // error is recorded in MaestroDriverError.attempts when repair also
+  // fails.
+  it('falls through to repair when ensureDriverInstalled throws', async () => {
+    const { client, maestro } = makeClient([
+      { healthy: false, reason: 'UNAVAILABLE' },
+      { healthy: false, reason: 'still UNAVAILABLE' },
+    ]);
+    maestro.ensureDriverInstalled = vi.fn().mockRejectedValue(
+      new Error('Cannot find Maestro driver APKs — ~/.maestro/lib/maestro-client.jar does not exist'),
+    );
+    await expect(client.assertMaestroDriverHealthy('emulator-5554')).rejects.toThrow(
+      /Maestro driver.*unhealthy after recovery/,
+    );
+    expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -377,6 +431,10 @@ describe('MobileClient.ensureAvdRunning', () => {
         .mockResolvedValueOnce({ healthy: false, reason: 'UNAVAILABLE' })
         .mockResolvedValueOnce({ healthy: false, reason: 'still UNAVAILABLE' }),
       repairDriver: vi.fn().mockResolvedValue(['force-stop', 'uninstall']),
+      // Driver was already installed — exercises the wedged-but-installed
+      // path that the original test was written against (Stage 1.5 short-
+      // circuits, Stage 2 runs).
+      ensureDriverInstalled: vi.fn().mockResolvedValue(['already-installed']),
     } as any;
     const client = new MobileClient({ avd, maestro });
     await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(/Maestro driver.*unhealthy after recovery/);
