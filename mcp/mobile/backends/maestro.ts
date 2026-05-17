@@ -304,26 +304,43 @@ export class MaestroBackend {
   /**
    * Force-recover the Maestro driver app on an AVD. Idempotent.
    *
-   * Three-step strategy:
+   * Strategy:
    *
-   * 1. **Force-stop** the driver process. Often enough when the gRPC
-   *    server is wedged but the APK is fine.
+   * 1. **Force-stop** both halves. Often enough when the gRPC
+   *    server is wedged but the APK is fine — but we still go through
+   *    the destructive path because force-stop alone has been observed
+   *    not to clear wedged instrumentation state (leep run
+   *    20260511-0507, turmeric/20260513-2243 retry #2).
    * 2. **`adb uninstall`** both halves of the driver. Standard
    *    uninstall path — works for most wedged-driver states.
    * 3. **`pm uninstall -k --user 0`** both halves as a belt+braces
    *    follow-up. Some wedged-instrumentation states leave records
    *    that `adb uninstall` doesn't fully clear; the explicit user-0
-   *    scope removes them. Verified live on turmeric/20260513-2243
-   *    retry #2 — manual intervention with this command unstuck a
-   *    driver state that the prior two steps couldn't reach.
+   *    scope removes them.
+   * 4. **Reinstall via `installDriverApks`** — explicitly push the
+   *    bundled APKs back onto the device, wait for `pm` readiness,
+   *    verify, and best-effort kick the instrumentation. Without this
+   *    step the recovery ends with the device in a known-empty state
+   *    and we rely on the Maestro CLI's implicit auto-push during the
+   *    next `maestro hierarchy` call. That auto-push races early-boot
+   *    `pm` availability and leaves the driver unreachable —
+   *    live-reproduced on malaria-itn-fgd/20260515-1645 Phase 6
+   *    attempt 4 against v0.13.263: probe1 wedged → ensureDriverInstalled
+   *    saw both halves present → repair uninstalled them → probe2 hit
+   *    UNAVAILABLE because nothing reinstalled.
    *
-   * The next `maestro hierarchy` call reinstalls the driver
-   * automatically (Maestro CLI bundles the APK and pushes it on
-   * first contact).
+   * Self-contained: `repairDriver` now always ends with the packages
+   * present in a freshly-installed state. Callers re-probe; the
+   * post-repair probe has a real chance to succeed.
    *
-   * Caller is expected to re-probe after this returns; this method does
-   * not itself confirm health. Returns the list of recovery actions taken
-   * so the caller can surface them in error messages.
+   * Returns the list of recovery actions taken so the caller can surface
+   * them in error messages.
+   *
+   * Throws `MobileError(MAESTRO_DRIVER_APK_MISSING)` /
+   * `MobileError(MAESTRO_DRIVER_APK_INSTALL_FAILED)` /
+   * `MobileError(AVD_PM_SERVICE_TIMEOUT)` if the post-destruction
+   * reinstall cannot complete — surfaces a typed error rather than
+   * leaving the AVD in a broken state.
    */
   async repairDriver(serial: string): Promise<string[]> {
     const actions: string[] = [];
@@ -342,6 +359,14 @@ export class MaestroBackend {
     await this.shell('adb', ['-s', serial, 'shell', 'pm', 'uninstall', '-k', '--user', '0', 'dev.mobile.maestro']).catch(() => {});
     await this.shell('adb', ['-s', serial, 'shell', 'pm', 'uninstall', '-k', '--user', '0', 'dev.mobile.maestro.test']).catch(() => {});
     actions.push('pm-uninstall-user-0');
+
+    // Reinstall the freshly-cleared driver halves so the next probe
+    // has packages to talk to. Without this the next `maestro
+    // hierarchy` call has to push the APKs itself and races
+    // early-boot `pm` availability — see method docstring for
+    // live-repro reference.
+    const installActions = await this.installDriverApks(serial);
+    actions.push(...installActions);
 
     return actions;
   }
@@ -403,20 +428,47 @@ export class MaestroBackend {
       return actions;
     }
 
-    // Step 2: wait for the AVD's `pm` package service. Fresh boot races
+    // Fall through to the shared install tail. We install regardless of
+    // beforeApp/beforeTest here so a half-installed state (one APK
+    // missing, the other stale) heals.
+    const installActions = await this.installDriverApks(serial);
+    actions.push(...installActions);
+    return actions;
+  }
+
+  /**
+   * Push the bundled Maestro driver APKs onto a booted AVD. Shared tail
+   * between `ensureDriverInstalled` (probe-then-install path) and
+   * `repairDriver` (force-uninstall-then-install path).
+   *
+   * Steps:
+   * 1. Wait for the AVD's `pm` package service to bind.
+   * 2. Extract `maestro-app.apk` + `maestro-server.apk` from
+   *    `~/.maestro/lib/maestro-client.jar` (cached by mtime).
+   * 3. `adb install -r -t` both halves.
+   * 4. Verify via `pm list packages`.
+   * 5. Best-effort `am instrument` kick to nudge the gRPC server.
+   *
+   * Throws `MobileError(MAESTRO_DRIVER_APK_MISSING)` when the bundled
+   * APKs aren't on the host, `MobileError(MAESTRO_DRIVER_APK_INSTALL_FAILED)`
+   * if the install round-trip doesn't produce both packages on-device,
+   * or `MobileError(AVD_PM_SERVICE_TIMEOUT)` if `pm` never binds.
+   */
+  private async installDriverApks(serial: string): Promise<string[]> {
+    const actions: string[] = [];
+    // Step 1: wait for the AVD's `pm` package service. Fresh boot races
     // here — `pm list packages` returns "Can't find service: package"
     // until the package manager binds. Cheap probe; ~150ms when ready.
     await this.waitForPackageManager(serial, 30_000);
     actions.push('pm-ready');
 
-    // Step 3: locate the driver APKs on disk. Cache in a tempdir so we
+    // Step 2: locate the driver APKs on disk. Cache in a tempdir so we
     // don't re-extract the jar on every call.
     const apks = await this.resolveDriverApks();
     actions.push('apks-resolved');
 
-    // Step 4: install both halves. `adb install -r` is idempotent across
-    // re-installs. We install regardless of `beforeApp/beforeTest` here
-    // so a half-installed state (one APK missing, the other stale) heals.
+    // Step 3: install both halves. `adb install -r` is idempotent across
+    // re-installs.
     let appResult: 'ok' | 'fail' = 'fail';
     let testResult: 'ok' | 'fail' = 'fail';
     try {
@@ -437,7 +489,7 @@ export class MaestroBackend {
     }
     actions.push(`apk-install-results:app=${appResult},test=${testResult}`);
 
-    // Step 5: verify. If a verify-after-install miss happens we throw
+    // Step 4: verify. If a verify-after-install miss happens we throw
     // a typed error rather than silently letting the next probe fail
     // with the same UNAVAILABLE that triggered us here.
     const afterApp = await this.isPackageInstalled(serial, 'dev.mobile.maestro');
@@ -455,7 +507,7 @@ export class MaestroBackend {
     }
     actions.push('verified');
 
-    // Step 6: kick the test runner to nudge the gRPC server toward
+    // Step 5: kick the test runner to nudge the gRPC server toward
     // binding. Maestro's CLI normally starts the driver via
     // `am instrument` on first contact, but the post-install hand-off
     // can stall ~10-30s. Pre-warming with the same instrumentation

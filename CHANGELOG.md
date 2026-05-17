@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.266 — 2026-05-17
+
+**`repairDriver` must reinstall, not just uninstall.**
+
+Third bug in the Maestro heal flow, surfaced live on `malaria-itn-fgd/20260515-1645` Phase 6 attempt 4 against v0.13.263. With probe1 failing on a wedged-but-installed AVD, `ensureDriverInstalled` correctly detected both halves present (`package-list-before:app=true,test=true`) and short-circuited as `already-installed`. The heal flow then dropped into `repairDriver`, which uninstalled both halves via `adb uninstall` + `pm uninstall -k --user 0`, then returned. The post-repair probe2 hit `maestro hierarchy exit 1: UNAVAILABLE: io exception` because nothing reinstalled the driver — the comment-documented "next `maestro hierarchy` call reinstalls the driver automatically" auto-push raced early-boot `pm` availability, exactly the failure class PR #339 was originally fixing on the fresh-install path. End state: both packages absent from `pm list packages`, driver unreachable, Phase 6 halted.
+
+Fix: `repairDriver` now always ends with a reinstall. Refactored the install tail of `ensureDriverInstalled` (pm-ready wait → APK extraction → `adb install -r` both halves → verify → `am instrument` kick) into a shared private `installDriverApks(serial)` helper. `ensureDriverInstalled` becomes probe-then-install-if-needed; `repairDriver` becomes force-stop + uninstall + pm-uninstall + `installDriverApks`. The destructive phase still swallows shell errors (a missing-package uninstall is normal); the install phase throws typed `MAESTRO_DRIVER_APK_*` errors if the reinstall can't complete, surfaced as `MaestroDriverError.attempts` by the caller.
+
+2 new vitest cases: `repairDriver reinstalls after destruction` asserts destructive commands precede the install in the shell-call sequence and the action list contains both halves' install + `am instrument` kick; `swallows errors during destructive phase but throws if reinstall fails` asserts `repairDriver` no longer silently completes in a broken state. 1 new case in `client.test.ts` (`heal flow recovers from already-installed-but-wedged state via repair-then-reinstall`) — the live-reproduced scenario from attempt 4. 1212 tests pass.
+
+Completes the fix series started by PR #339 (Stage 1.5 install) and continued by PR #341 (per-package probe + skip-repair-after-fresh-install gate).
+
 ## 0.13.265 — 2026-05-17
 
 **Three new `CloudBackend` heal-flow primitives at parity with local — `clearAppData`, `repairDriver`, `installDriver`.**
