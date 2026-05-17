@@ -13,7 +13,7 @@ function fakeShell(scripted: Record<string, { stdout: string; stderr?: string; c
   });
 }
 
-import { AvdBootError } from '../../../mcp/mobile/errors.js';
+import { AvdBootError, AvdBootTimeoutError } from '../../../mcp/mobile/errors.js';
 
 describe('AvdBackend.listAvds', () => {
   it('parses emulator -list-avds output', async () => {
@@ -94,6 +94,167 @@ describe('AvdBackend.ensureAvdRunning', () => {
     });
     const backend = new AvdBackend({ shell });
     await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(AvdBootError);
+  });
+
+  // Pin emulator console port to 5554 so the expected serial in mocks
+  // is stable across machines (probe-allocator would skip 5554 if it
+  // detected anything on that port).
+  const savedEmuPort = process.env.ACE_MOBILE_EMULATOR_PORT;
+  const savedAdbPort = process.env.ANDROID_ADB_SERVER_PORT;
+  beforeEach(() => {
+    process.env.ACE_MOBILE_EMULATOR_PORT = '5554';
+    process.env.ANDROID_ADB_SERVER_PORT = '5037';
+  });
+  afterEach(() => {
+    if (savedEmuPort === undefined) delete process.env.ACE_MOBILE_EMULATOR_PORT;
+    else process.env.ACE_MOBILE_EMULATOR_PORT = savedEmuPort;
+    if (savedAdbPort === undefined) delete process.env.ANDROID_ADB_SERVER_PORT;
+    else process.env.ANDROID_ADB_SERVER_PORT = savedAdbPort;
+  });
+
+  // Regression suite for the v0.13.270 cold-boot wait short-circuit
+  // (malaria-itn-fgd/20260515-1645 Phase 6 attempt 7). The original
+  // boot-wait returned the first `offline` reading from `adb devices`
+  // as fatal, throwing within ~1s while the emulator was still finishing
+  // its cold-boot. The fix: a three-phase wait (adb-register →
+  // boot-completed → storage-mount) that tolerates the brief `offline`
+  // window and reports which phase ran out of budget if any.
+
+  it('cold-boot waits for device-then-boot-completed (does not bail on the brief offline window)', async () => {
+    // Mock adb devices to report offline for the first 2 polls, then
+    // device. Then `getprop sys.boot_completed` returns empty for 1
+    // poll, then 1. Then `test -e /storage/emulated/0` exits 0.
+    // Expected: ensureAvdRunning resolves with the booted AvdInfo.
+    let devicesPolls = 0;
+    let bootPolls = 0;
+    const calls: string[] = [];
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const key = `${cmd} ${args.join(' ')}`;
+      calls.push(key);
+      if (key === 'emulator -list-avds') {
+        return { stdout: 'ACE_Pixel_API_34\n', stderr: '', exitCode: 0 };
+      }
+      if (key === 'adb devices') {
+        devicesPolls += 1;
+        // First find-running-avd probe sees nothing (no prior). After
+        // spawn, the wait poll sees offline twice, then device.
+        const lines: string[] = ['List of devices attached'];
+        if (devicesPolls === 1) {
+          // pre-spawn `findRunningAvd` lookup — return empty
+        } else if (devicesPolls <= 3) {
+          lines.push('emulator-5554\toffline');
+        } else {
+          lines.push('emulator-5554\tdevice');
+        }
+        return { stdout: lines.join('\n') + '\n', stderr: '', exitCode: 0 };
+      }
+      if (key === 'adb -s emulator-5554 shell getprop sys.boot_completed') {
+        bootPolls += 1;
+        return { stdout: bootPolls < 2 ? '\n' : '1\n', stderr: '', exitCode: 0 };
+      }
+      if (key === 'adb -s emulator-5554 shell test -e /storage/emulated/0') {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
+      if (key === 'adb -s emulator-5554 emu avd name') {
+        return { stdout: 'ACE_Pixel_API_34\nOK\n', stderr: '', exitCode: 0 };
+      }
+      // Best-effort post-boot prep — all return success.
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+    const backend = new AvdBackend({
+      shell,
+      bootWait: { adbRegisterMs: 2000, bootCompletedMs: 2000, storageMountMs: 1000, pollMs: 20 },
+    });
+    const info = await backend.ensureAvdRunning('ACE_Pixel_API_34');
+    expect(info).toMatchObject({ name: 'ACE_Pixel_API_34', serial: 'emulator-5554' });
+    // Sanity: we polled `adb devices` more than once (proves we waited
+    // past the first `offline` reading rather than bailing).
+    expect(devicesPolls).toBeGreaterThan(2);
+  });
+
+  it('cold-boot throws AvdBootTimeoutError(phase=adb-register) when serial never appears as device', async () => {
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const key = `${cmd} ${args.join(' ')}`;
+      if (key === 'emulator -list-avds') {
+        return { stdout: 'ACE_Pixel_API_34\n', stderr: '', exitCode: 0 };
+      }
+      if (key === 'adb devices') {
+        // Always empty — emulator never registers.
+        return { stdout: 'List of devices attached\n', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+    const backend = new AvdBackend({
+      shell,
+      bootWait: { adbRegisterMs: 200, bootCompletedMs: 200, storageMountMs: 200, pollMs: 20 },
+    });
+    await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toMatchObject({
+      code: 'AVD_BOOT_TIMEOUT',
+      diagnostics: expect.objectContaining({
+        phase: 'adb-register',
+        last_adb_state: null,
+      }),
+    });
+  });
+
+  it('cold-boot throws AvdBootTimeoutError(phase=boot-completed) when device registers but sys.boot_completed never flips', async () => {
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const key = `${cmd} ${args.join(' ')}`;
+      if (key === 'emulator -list-avds') {
+        return { stdout: 'ACE_Pixel_API_34\n', stderr: '', exitCode: 0 };
+      }
+      if (key === 'adb devices') {
+        return {
+          stdout: 'List of devices attached\nemulator-5554\tdevice\n',
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      if (key === 'adb -s emulator-5554 shell getprop sys.boot_completed') {
+        return { stdout: '\n', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+    const backend = new AvdBackend({
+      shell,
+      bootWait: { adbRegisterMs: 1000, bootCompletedMs: 200, storageMountMs: 200, pollMs: 20 },
+    });
+    await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toMatchObject({
+      code: 'AVD_BOOT_TIMEOUT',
+      diagnostics: expect.objectContaining({
+        phase: 'boot-completed',
+        last_adb_state: 'device',
+        last_boot_completed: '',
+      }),
+    });
+  });
+
+  it('cold-boot kills orphan qemu via `adb emu kill` when the wait throws', async () => {
+    // The wait throws (adb never reports device); the catch handler MUST
+    // fire `adb -s emulator-5554 emu kill` against the just-spawned
+    // qemu so it doesn't keep running in the background.
+    const calls: string[] = [];
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const key = `${cmd} ${args.join(' ')}`;
+      calls.push(key);
+      if (key === 'emulator -list-avds') {
+        return { stdout: 'ACE_Pixel_API_34\n', stderr: '', exitCode: 0 };
+      }
+      if (key === 'adb devices') {
+        return { stdout: 'List of devices attached\n', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+    const backend = new AvdBackend({
+      shell,
+      bootWait: { adbRegisterMs: 100, bootCompletedMs: 100, storageMountMs: 100, pollMs: 20 },
+    });
+    await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(
+      AvdBootTimeoutError,
+    );
+    // Orphan-kill fired against the expected serial (derived from the
+    // allocated emulator console port — 5554 on a clean test box).
+    expect(calls).toContain('adb -s emulator-5554 emu kill');
   });
 });
 
