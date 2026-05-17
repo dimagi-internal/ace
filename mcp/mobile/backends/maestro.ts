@@ -386,9 +386,19 @@ export class MaestroBackend {
    */
   async ensureDriverInstalled(serial: string): Promise<string[]> {
     const actions: string[] = [];
-    // Step 1: cheap probe — both packages already present? Return.
-    const already = await this.driverPackagesPresent(serial);
-    if (already.app && already.test) {
+    // Step 1: cheap probe — BOTH packages already present? Return.
+    // Each half is queried with its EXACT package name as the filter,
+    // then we verify the exact name appears in the parsed line set.
+    // The previous combined-prefix query (`pm list packages
+    // dev.mobile.maestro` returning both halves in one call) was fragile
+    // — a transient adb hiccup or unexpected stdout shape produced a
+    // false "already-installed" verdict, and Stage 2's repairDriver
+    // then uninstalled what was never installed. Live-reproduced on
+    // malaria-itn-fgd/20260515-1645 Phase 6.
+    const beforeApp = await this.isPackageInstalled(serial, 'dev.mobile.maestro');
+    const beforeTest = await this.isPackageInstalled(serial, 'dev.mobile.maestro.test');
+    actions.push(`package-list-before:app=${beforeApp},test=${beforeTest}`);
+    if (beforeApp && beforeTest) {
       actions.push('already-installed');
       return actions;
     }
@@ -405,43 +415,91 @@ export class MaestroBackend {
     actions.push('apks-resolved');
 
     // Step 4: install both halves. `adb install -r` is idempotent across
-    // re-installs. We install regardless of `already.app/test` here so
-    // a half-installed state (one APK missing, the other stale) heals.
-    await this.adbInstall(serial, apks.app);
-    actions.push('installed:app');
-    await this.adbInstall(serial, apks.test);
-    actions.push('installed:test');
+    // re-installs. We install regardless of `beforeApp/beforeTest` here
+    // so a half-installed state (one APK missing, the other stale) heals.
+    let appResult: 'ok' | 'fail' = 'fail';
+    let testResult: 'ok' | 'fail' = 'fail';
+    try {
+      await this.adbInstall(serial, apks.app);
+      appResult = 'ok';
+      actions.push('installed:app');
+    } catch (e) {
+      actions.push('install-failed:app');
+      throw e;
+    }
+    try {
+      await this.adbInstall(serial, apks.test);
+      testResult = 'ok';
+      actions.push('installed:test');
+    } catch (e) {
+      actions.push('install-failed:test');
+      throw e;
+    }
+    actions.push(`apk-install-results:app=${appResult},test=${testResult}`);
 
     // Step 5: verify. If a verify-after-install miss happens we throw
     // a typed error rather than silently letting the next probe fail
     // with the same UNAVAILABLE that triggered us here.
-    const verify = await this.driverPackagesPresent(serial);
-    if (!verify.app || !verify.test) {
+    const afterApp = await this.isPackageInstalled(serial, 'dev.mobile.maestro');
+    const afterTest = await this.isPackageInstalled(serial, 'dev.mobile.maestro.test');
+    actions.push(`package-list-after:app=${afterApp},test=${afterTest}`);
+    if (!afterApp || !afterTest) {
       throw new MobileError(
         'MAESTRO_DRIVER_APK_INSTALL_FAILED',
         `adb install reported success but ${[
-          !verify.app ? 'dev.mobile.maestro' : null,
-          !verify.test ? 'dev.mobile.maestro.test' : null,
+          !afterApp ? 'dev.mobile.maestro' : null,
+          !afterTest ? 'dev.mobile.maestro.test' : null,
         ].filter(Boolean).join(' + ')} is still absent from \`pm list packages\` on ${serial}.`,
         'Capture `adb -s <serial> logcat | grep -i "PackageManager\\|maestro"` and rerun /ace:mobile-bootstrap. The AVD may be out of disk space or have a corrupt user image.',
       );
     }
     actions.push('verified');
+
+    // Step 6: kick the test runner to nudge the gRPC server toward
+    // binding. Maestro's CLI normally starts the driver via
+    // `am instrument` on first contact, but the post-install hand-off
+    // can stall ~10-30s. Pre-warming with the same instrumentation
+    // invocation Maestro itself uses (`-w` waits for completion which
+    // we explicitly do NOT want here — we want it backgrounded). We
+    // detach via `nohup ... &` so the shell call returns immediately;
+    // any failure is best-effort and surfaces as a probe miss
+    // downstream rather than a hard error here.
+    await this.shell(
+      'adb',
+      [
+        '-s', serial,
+        'shell',
+        'am', 'instrument', '-e', 'debug', 'false',
+        'dev.mobile.maestro.test/androidx.test.runner.AndroidJUnitRunner', '&',
+      ],
+      { timeoutMs: 3_000 },
+    ).catch(() => {});
+    actions.push('instrumentation-kicked');
     return actions;
   }
 
-  /** Cheap "is the driver APK installed?" probe. */
-  private async driverPackagesPresent(serial: string): Promise<{ app: boolean; test: boolean }> {
+  /**
+   * Exact-name "is this package installed on the device?" check. Queries
+   * `pm list packages <pkg>` (substring filter on the device) and then
+   * asserts that the EXACT package name appears in the parsed line set —
+   * so `dev.mobile.maestro.foo` wouldn't be misread as
+   * `dev.mobile.maestro` being present. Returns `false` on any adb error
+   * (hiccup, timeout, "Can't find service: package" on fresh boot) so
+   * the caller falls through to the install path rather than
+   * short-circuiting on stale state.
+   */
+  private async isPackageInstalled(serial: string, pkg: string): Promise<boolean> {
     const r = await this.shell(
       'adb',
-      ['-s', serial, 'shell', 'pm', 'list', 'packages', 'dev.mobile.maestro'],
+      ['-s', serial, 'shell', 'pm', 'list', 'packages', pkg],
       { timeoutMs: 8_000 },
     ).catch(() => ({ stdout: '', stderr: '', exitCode: 1 }));
-    const lines = (r.stdout || '').split('\n').map((l) => l.trim().replace(/^package:/, ''));
-    return {
-      app: lines.includes('dev.mobile.maestro'),
-      test: lines.includes('dev.mobile.maestro.test'),
-    };
+    if (r.exitCode !== 0) return false;
+    const lines = (r.stdout || '')
+      .split('\n')
+      .map((l) => l.trim().replace(/^package:/, ''))
+      .filter((l) => l.length > 0);
+    return lines.includes(pkg);
   }
 
   /**

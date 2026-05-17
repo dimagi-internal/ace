@@ -363,6 +363,29 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
     expect(probeCalls).toEqual([8_000, 90_000]); // probe1 + probe2 only — no probe1.5
   });
 
+  // Fresh install that didn't recover on the post-install probe: must
+  // fall through to repair (the wedged-after-install case). Repair runs
+  // and re-probes with the 90s budget; if THAT probe succeeds, the heal
+  // returns clean. This is the "Stage 1.5 installed APKs but driver
+  // never bound" recovery path.
+  it('falls through to repair when fresh install probe re-fails, then recovers via repair', async () => {
+    const { client, probeCalls, maestro } = makeClient([
+      { healthy: false, reason: 'UNAVAILABLE: io exception' }, // stage 1
+      { healthy: false, reason: 'still UNAVAILABLE post-install' }, // stage 1.5
+      { healthy: true }, // stage 2 post-repair
+    ]);
+    maestro.ensureDriverInstalled = vi.fn().mockResolvedValue([
+      'package-list-before:app=false,test=false',
+      'pm-ready', 'apks-resolved', 'installed:app', 'installed:test',
+      'apk-install-results:app=ok,test=ok',
+      'package-list-after:app=true,test=true', 'verified', 'instrumentation-kicked',
+    ]);
+    await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
+    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554');
+    expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
+    expect(probeCalls).toEqual([8_000, 90_000, 90_000]); // probe1 + probe1.5 + probe2
+  });
+
   // If ensureDriverInstalled throws (operator hasn't run mobile-bootstrap
   // yet), we don't fail the heal — fall through to repair. The install
   // error is recorded in MaestroDriverError.attempts when repair also

@@ -379,20 +379,99 @@ describe('MaestroBackend.ensureDriverInstalled', () => {
     const calls: string[] = [];
     const shell = vi.fn(async (cmd: string, args: string[]) => {
       calls.push(`${cmd} ${args.join(' ')}`);
-      // First call: `pm list packages dev.mobile.maestro` — both halves listed.
-      return {
-        stdout: 'package:dev.mobile.maestro\npackage:dev.mobile.maestro.test\n',
-        stderr: '',
-        exitCode: 0,
-      };
+      const argStr = args.join(' ');
+      // Per-package exact-name probes. Each call's filter is the exact
+      // package name and the device echoes back that package line.
+      if (argStr.endsWith('pm list packages dev.mobile.maestro')) {
+        return { stdout: 'package:dev.mobile.maestro\n', stderr: '', exitCode: 0 };
+      }
+      if (argStr.endsWith('pm list packages dev.mobile.maestro.test')) {
+        return { stdout: 'package:dev.mobile.maestro.test\n', stderr: '', exitCode: 0 };
+      }
+      throw new Error(`Unscripted: ${cmd} ${argStr}`);
     });
     const backend = new MaestroBackend({ shell });
     const actions = await backend.ensureDriverInstalled('emulator-5554');
-    expect(actions).toEqual(['already-installed']);
-    // Cheap probe only — no extraction, no `adb install`.
+    expect(actions).toContain('already-installed');
+    // Cheap probe only — TWO `pm list packages` calls (one per package),
+    // no extraction, no `adb install`.
     expect(calls).toEqual([
       'adb -s emulator-5554 shell pm list packages dev.mobile.maestro',
+      'adb -s emulator-5554 shell pm list packages dev.mobile.maestro.test',
     ]);
+  });
+
+  // Bug A regression test (PR #339 follow-up). Live-reproduced on
+  // malaria-itn-fgd/20260515-1645: the driver was absent on-device but
+  // the prior single-call `pm list packages dev.mobile.maestro` probe
+  // mis-detected "already-installed". With per-package probes, a missing
+  // half must NOT short-circuit — the install path runs.
+  it('does NOT short-circuit when only one of the two packages is present', async () => {
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-half-driver-'));
+    const origHome = process.env.HOME;
+    process.env.HOME = tmpHome;
+    try {
+      const shell = vi.fn(async (cmd: string, args: string[]) => {
+        const argStr = args.join(' ');
+        // Half-installed state: app present, test absent.
+        if (argStr.endsWith('pm list packages dev.mobile.maestro')) {
+          return { stdout: 'package:dev.mobile.maestro\n', stderr: '', exitCode: 0 };
+        }
+        if (argStr.endsWith('pm list packages dev.mobile.maestro.test')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        // pm-ready probe passes so we walk past the wait-for-pm step
+        // and hit the jar-resolution failure (no jar at the fake HOME).
+        if (argStr.endsWith('cmd package list packages')) {
+          return { stdout: 'package:android\n', stderr: '', exitCode: 0 };
+        }
+        throw new Error(`Unscripted: ${cmd} ${argStr}`);
+      });
+      const backend = new MaestroBackend({ shell });
+      // Should NOT return 'already-installed'; should fall through to
+      // the install path and trip on the missing jar.
+      await expect(backend.ensureDriverInstalled('emulator-5554')).rejects.toMatchObject({
+        code: 'MAESTRO_DRIVER_APK_MISSING',
+      });
+    } finally {
+      if (origHome === undefined) delete process.env.HOME;
+      else process.env.HOME = origHome;
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it('does NOT short-circuit when an adb error returns empty stdout for one half', async () => {
+    // If a per-package probe transiently fails (adb hiccup, fresh-boot
+    // pm-service race), we MUST treat that as "missing" and run the
+    // install path, not as "already installed." This is the inverse
+    // failure mode of bug A — be conservative on probe errors.
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-flaky-probe-'));
+    const origHome = process.env.HOME;
+    process.env.HOME = tmpHome;
+    try {
+      const shell = vi.fn(async (cmd: string, args: string[]) => {
+        const argStr = args.join(' ');
+        if (argStr.endsWith('pm list packages dev.mobile.maestro')) {
+          return { stdout: 'package:dev.mobile.maestro\n', stderr: '', exitCode: 0 };
+        }
+        if (argStr.endsWith('pm list packages dev.mobile.maestro.test')) {
+          // Adb returned non-zero with no output — treat as missing.
+          return { stdout: '', stderr: 'Error', exitCode: 255 };
+        }
+        if (argStr.endsWith('cmd package list packages')) {
+          return { stdout: 'package:android\n', stderr: '', exitCode: 0 };
+        }
+        throw new Error(`Unscripted: ${cmd} ${argStr}`);
+      });
+      const backend = new MaestroBackend({ shell });
+      await expect(backend.ensureDriverInstalled('emulator-5554')).rejects.toMatchObject({
+        code: 'MAESTRO_DRIVER_APK_MISSING',
+      });
+    } finally {
+      if (origHome === undefined) delete process.env.HOME;
+      else process.env.HOME = origHome;
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+    }
   });
 
   it('returns MAESTRO_DRIVER_APK_MISSING when neither package is present and the jar is absent', async () => {
@@ -403,16 +482,20 @@ describe('MaestroBackend.ensureDriverInstalled', () => {
     process.env.HOME = tmpHome;
     try {
       const shell = vi.fn(async (cmd: string, args: string[]) => {
-        // First probe: neither package installed.
-        if (args.join(' ').endsWith('pm list packages dev.mobile.maestro')) {
+        const argStr = args.join(' ');
+        // Per-package probes: neither package installed.
+        if (argStr.endsWith('pm list packages dev.mobile.maestro')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (argStr.endsWith('pm list packages dev.mobile.maestro.test')) {
           return { stdout: '', stderr: '', exitCode: 0 };
         }
         // `cmd package list packages` succeeds (pm ready) so we get past
         // waitForPackageManager and hit the jar-resolution failure.
-        if (args.join(' ').endsWith('cmd package list packages')) {
+        if (argStr.endsWith('cmd package list packages')) {
           return { stdout: 'package:android\n', stderr: '', exitCode: 0 };
         }
-        throw new Error(`Unscripted shell call: ${cmd} ${args.join(' ')}`);
+        throw new Error(`Unscripted shell call: ${cmd} ${argStr}`);
       });
       const backend = new MaestroBackend({ shell });
       await expect(backend.ensureDriverInstalled('emulator-5554')).rejects.toMatchObject({
