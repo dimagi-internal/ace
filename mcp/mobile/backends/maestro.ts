@@ -1,10 +1,12 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { RecipeValidationError } from '../errors.js';
+import { execSync } from 'node:child_process';
+import { MobileError, RecipeValidationError } from '../errors.js';
 import type { ShellFn } from './avd.js';
 import { defaultShell } from './avd.js';
 import { splitRecipeAtScreenshots } from '../recipe-splitter.js';
+import { logInfo } from '../logging.js';
 import type { RecipeRunResult, ScreenshotEntry } from '../types.js';
 
 const ALLOWED_STEP_KEYS = new Set([
@@ -342,6 +344,202 @@ export class MaestroBackend {
     actions.push('pm-uninstall-user-0');
 
     return actions;
+  }
+
+  /**
+   * Idempotently install the Maestro driver APK halves
+   * (`dev.mobile.maestro` + `dev.mobile.maestro.test`) onto a booted
+   * AVD. Returns the list of actions taken so callers can surface them
+   * in logs / error attempts.
+   *
+   * **Why this exists.** `repairDriver` relies on a documented Maestro CLI
+   * behavior: "the next `maestro hierarchy` call reinstalls the driver
+   * automatically (Maestro CLI bundles the APK and pushes it on first
+   * contact)." That auto-push works on a warm AVD where Maestro has
+   * already touched the device. On a **fresh AVD where the driver was
+   * never installed** it races the AVD's early-boot `pm` service
+   * availability — Maestro's first push hits "Install failed: cmd:
+   * Can't find service: package", then subsequent `maestro hierarchy`
+   * probes see an empty port 7001 (the driver's gRPC server never
+   * started) and exit with `UNAVAILABLE: io exception` after
+   * `timeoutMs`. There's no retry inside the CLI for this case.
+   *
+   * Reproduced live 2× on `malaria-itn-fgd/20260515-1645` Phase 6 across
+   * a machine reboot — structural, not transient.
+   *
+   * **The fix.** Mirror the CommCare APK pattern (`runLocalBootstrap`
+   * Step 1, `ensureCommCareApkCached` in `client.ts`): explicitly
+   * `adb install -r` the driver halves from the operator's local
+   * Maestro install, with a poll for `pm` readiness up front. Both
+   * APKs ship bundled inside `~/.maestro/lib/maestro-client.jar` (we
+   * verified the file naming + package IDs live on 0.13.x — see
+   * commit message). Extract to a tempdir if not already cached.
+   *
+   * **Idempotency contract.** Cheap probe + early-return when both
+   * packages are already installed. Safe to call before every
+   * `assertMaestroDriverHealthy` re-probe; the success path on a warm
+   * AVD adds one `pm list packages` call (~150ms).
+   *
+   * Throws `MobileError(MAESTRO_DRIVER_APK_MISSING)` when the bundled
+   * APKs cannot be located on the host (operator hasn't run the
+   * Maestro CLI installer yet — direct them at `/ace:mobile-bootstrap`).
+   */
+  async ensureDriverInstalled(serial: string): Promise<string[]> {
+    const actions: string[] = [];
+    // Step 1: cheap probe — both packages already present? Return.
+    const already = await this.driverPackagesPresent(serial);
+    if (already.app && already.test) {
+      actions.push('already-installed');
+      return actions;
+    }
+
+    // Step 2: wait for the AVD's `pm` package service. Fresh boot races
+    // here — `pm list packages` returns "Can't find service: package"
+    // until the package manager binds. Cheap probe; ~150ms when ready.
+    await this.waitForPackageManager(serial, 30_000);
+    actions.push('pm-ready');
+
+    // Step 3: locate the driver APKs on disk. Cache in a tempdir so we
+    // don't re-extract the jar on every call.
+    const apks = await this.resolveDriverApks();
+    actions.push('apks-resolved');
+
+    // Step 4: install both halves. `adb install -r` is idempotent across
+    // re-installs. We install regardless of `already.app/test` here so
+    // a half-installed state (one APK missing, the other stale) heals.
+    await this.adbInstall(serial, apks.app);
+    actions.push('installed:app');
+    await this.adbInstall(serial, apks.test);
+    actions.push('installed:test');
+
+    // Step 5: verify. If a verify-after-install miss happens we throw
+    // a typed error rather than silently letting the next probe fail
+    // with the same UNAVAILABLE that triggered us here.
+    const verify = await this.driverPackagesPresent(serial);
+    if (!verify.app || !verify.test) {
+      throw new MobileError(
+        'MAESTRO_DRIVER_APK_INSTALL_FAILED',
+        `adb install reported success but ${[
+          !verify.app ? 'dev.mobile.maestro' : null,
+          !verify.test ? 'dev.mobile.maestro.test' : null,
+        ].filter(Boolean).join(' + ')} is still absent from \`pm list packages\` on ${serial}.`,
+        'Capture `adb -s <serial> logcat | grep -i "PackageManager\\|maestro"` and rerun /ace:mobile-bootstrap. The AVD may be out of disk space or have a corrupt user image.',
+      );
+    }
+    actions.push('verified');
+    return actions;
+  }
+
+  /** Cheap "is the driver APK installed?" probe. */
+  private async driverPackagesPresent(serial: string): Promise<{ app: boolean; test: boolean }> {
+    const r = await this.shell(
+      'adb',
+      ['-s', serial, 'shell', 'pm', 'list', 'packages', 'dev.mobile.maestro'],
+      { timeoutMs: 8_000 },
+    ).catch(() => ({ stdout: '', stderr: '', exitCode: 1 }));
+    const lines = (r.stdout || '').split('\n').map((l) => l.trim().replace(/^package:/, ''));
+    return {
+      app: lines.includes('dev.mobile.maestro'),
+      test: lines.includes('dev.mobile.maestro.test'),
+    };
+  }
+
+  /**
+   * Poll `cmd package list packages` until it returns successfully (the
+   * package manager service is bound) or `timeoutMs` elapses. On fresh
+   * AVDs `pm` can race ~5-15s past `sys.boot_completed=1`. Without this
+   * wait, the first `adb install` hits "Install failed: cmd: Can't find
+   * service: package" and aborts.
+   */
+  private async waitForPackageManager(serial: string, timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    let lastErr = '';
+    while (Date.now() < deadline) {
+      const r = await this.shell(
+        'adb',
+        ['-s', serial, 'shell', 'cmd', 'package', 'list', 'packages'],
+        { timeoutMs: 5_000 },
+      ).catch((e: any) => ({ stdout: '', stderr: String(e?.message ?? e), exitCode: 1 }));
+      if (r.exitCode === 0 && /package:/.test(r.stdout)) return;
+      lastErr = (r.stderr || r.stdout || '').slice(0, 160);
+      await new Promise((res) => setTimeout(res, 1_000));
+    }
+    throw new MobileError(
+      'AVD_PM_SERVICE_TIMEOUT',
+      `AVD ${serial} did not finish binding the \`package\` service within ${Math.round(timeoutMs / 1000)}s (last: ${lastErr || 'unknown'}).`,
+      'The emulator may be stuck mid-boot. Try `mobile_stop_avd` then `mobile_ensure_avd_running` to cold-restart; if it persists, wipe the AVD user data via Android Studio.',
+    );
+  }
+
+  /**
+   * `adb install -r <apkPath>` with success-line validation. `-r`
+   * (reinstall) makes this idempotent across calls: installing the
+   * same APK over itself is a no-op when the signature matches.
+   */
+  private async adbInstall(serial: string, apkPath: string): Promise<void> {
+    logInfo(`maestro_driver: installing ${path.basename(apkPath)} on ${serial}`);
+    const r = await this.shell('adb', ['-s', serial, 'install', '-r', apkPath], { timeoutMs: 60_000 });
+    if (r.exitCode !== 0 || !/Success/.test(r.stdout)) {
+      throw new MobileError(
+        'MAESTRO_DRIVER_APK_INSTALL_FAILED',
+        `adb install ${path.basename(apkPath)} on ${serial} failed (exit ${r.exitCode}): ${(r.stderr || r.stdout).slice(0, 240)}`,
+        'Check `adb -s <serial> shell df /data` for disk pressure; rerun /ace:mobile-bootstrap to refresh the AVD baseline.',
+      );
+    }
+  }
+
+  /**
+   * Locate the two driver APKs on the host. They ship bundled inside
+   * `~/.maestro/lib/maestro-client.jar` (verified on Maestro CLI 1.39.x
+   * — file naming: `maestro-app.apk` and `maestro-server.apk` at the
+   * jar root). Extract once to a per-version tempdir; reuse on
+   * subsequent calls.
+   */
+  private async resolveDriverApks(): Promise<{ app: string; test: string }> {
+    const home = process.env.HOME || os.homedir();
+    const jarPath = path.join(home, '.maestro', 'lib', 'maestro-client.jar');
+    if (!fs.existsSync(jarPath)) {
+      throw new MobileError(
+        'MAESTRO_DRIVER_APK_MISSING',
+        `Cannot find Maestro driver APKs — ${jarPath} does not exist (Maestro CLI not installed under this user).`,
+        'Run /ace:mobile-bootstrap (Step 1) to install Maestro: `curl -Ls "https://get.maestro.mobile.dev" | bash`.',
+      );
+    }
+    // Cache extraction under tmpdir keyed by jar mtime, so re-runs are
+    // fast and a `maestro update` invalidates the cache automatically.
+    const stat = fs.statSync(jarPath);
+    const tag = `${stat.size}-${Math.floor(stat.mtimeMs)}`;
+    const cacheDir = path.join(os.tmpdir(), 'ace-maestro-driver-cache', tag);
+    const appPath = path.join(cacheDir, 'maestro-app.apk');
+    const testPath = path.join(cacheDir, 'maestro-server.apk');
+    if (fs.existsSync(appPath) && fs.existsSync(testPath)) {
+      return { app: appPath, test: testPath };
+    }
+    fs.mkdirSync(cacheDir, { recursive: true });
+    // `unzip` ships in macOS + most Linux distros; we don't depend on
+    // a Node zip library to keep the surface small (CommCare APK
+    // handling already uses raw fs + magic-byte validation, not a zip
+    // parser). Failures fall through to a typed error.
+    try {
+      execSync(`unzip -o -q ${JSON.stringify(jarPath)} maestro-app.apk maestro-server.apk -d ${JSON.stringify(cacheDir)}`, {
+        stdio: 'pipe',
+        timeout: 30_000,
+      });
+    } catch (e: any) {
+      throw new MobileError(
+        'MAESTRO_DRIVER_APK_MISSING',
+        `Failed to extract driver APKs from ${jarPath}: ${(e?.stderr?.toString?.() || e?.message || String(e)).slice(0, 240)}.`,
+        'Verify `unzip` is on PATH (`brew install unzip` / `apt install unzip`). The APKs are bundled inside maestro-client.jar; if the jar is truncated, rerun the Maestro installer.',
+      );
+    }
+    if (!fs.existsSync(appPath) || !fs.existsSync(testPath)) {
+      throw new MobileError(
+        'MAESTRO_DRIVER_APK_MISSING',
+        `Extracted maestro-client.jar but driver APKs are absent at ${appPath} / ${testPath} — jar layout may have changed in this Maestro version.`,
+        'File an issue with the Maestro CLI version (`maestro --version`); meanwhile manually `unzip ~/.maestro/lib/maestro-client.jar` and copy maestro-app.apk + maestro-server.apk to ${cacheDir}.',
+      );
+    }
+    return { app: appPath, test: testPath };
   }
 
   /**

@@ -373,3 +373,55 @@ describe('MaestroBackend.repairDriver', () => {
     ]);
   });
 });
+
+describe('MaestroBackend.ensureDriverInstalled', () => {
+  it('short-circuits when both driver packages are already present', async () => {
+    const calls: string[] = [];
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      calls.push(`${cmd} ${args.join(' ')}`);
+      // First call: `pm list packages dev.mobile.maestro` — both halves listed.
+      return {
+        stdout: 'package:dev.mobile.maestro\npackage:dev.mobile.maestro.test\n',
+        stderr: '',
+        exitCode: 0,
+      };
+    });
+    const backend = new MaestroBackend({ shell });
+    const actions = await backend.ensureDriverInstalled('emulator-5554');
+    expect(actions).toEqual(['already-installed']);
+    // Cheap probe only — no extraction, no `adb install`.
+    expect(calls).toEqual([
+      'adb -s emulator-5554 shell pm list packages dev.mobile.maestro',
+    ]);
+  });
+
+  it('returns MAESTRO_DRIVER_APK_MISSING when neither package is present and the jar is absent', async () => {
+    // Force HOME to a guaranteed-empty tempdir so ~/.maestro/lib/maestro-client.jar
+    // resolves to a missing path regardless of the developer's local install.
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-no-maestro-'));
+    const origHome = process.env.HOME;
+    process.env.HOME = tmpHome;
+    try {
+      const shell = vi.fn(async (cmd: string, args: string[]) => {
+        // First probe: neither package installed.
+        if (args.join(' ').endsWith('pm list packages dev.mobile.maestro')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        // `cmd package list packages` succeeds (pm ready) so we get past
+        // waitForPackageManager and hit the jar-resolution failure.
+        if (args.join(' ').endsWith('cmd package list packages')) {
+          return { stdout: 'package:android\n', stderr: '', exitCode: 0 };
+        }
+        throw new Error(`Unscripted shell call: ${cmd} ${args.join(' ')}`);
+      });
+      const backend = new MaestroBackend({ shell });
+      await expect(backend.ensureDriverInstalled('emulator-5554')).rejects.toMatchObject({
+        code: 'MAESTRO_DRIVER_APK_MISSING',
+      });
+    } finally {
+      if (origHome === undefined) delete process.env.HOME;
+      else process.env.HOME = origHome;
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+});
