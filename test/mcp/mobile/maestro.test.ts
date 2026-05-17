@@ -340,39 +340,127 @@ describe('MaestroBackend.probeDriver', () => {
 });
 
 describe('MaestroBackend.repairDriver', () => {
-  it('issues force-stop, adb uninstall, AND pm uninstall -k --user 0 for both halves', async () => {
-    const calls: string[] = [];
-    const shell = vi.fn(async (cmd: string, args: string[]) => {
-      calls.push(`${cmd} ${args.join(' ')}`);
-      return { stdout: '', stderr: '', exitCode: 0 };
-    });
-    const backend = new MaestroBackend({ shell });
-    const actions = await backend.repairDriver('emulator-5554');
-    expect(actions).toEqual(['force-stop', 'uninstall', 'pm-uninstall-user-0']);
-    expect(calls).toEqual([
-      'adb -s emulator-5554 shell am force-stop dev.mobile.maestro',
-      'adb -s emulator-5554 shell am force-stop dev.mobile.maestro.test',
-      'adb -s emulator-5554 uninstall dev.mobile.maestro',
-      'adb -s emulator-5554 uninstall dev.mobile.maestro.test',
-      'adb -s emulator-5554 shell pm uninstall -k --user 0 dev.mobile.maestro',
-      'adb -s emulator-5554 shell pm uninstall -k --user 0 dev.mobile.maestro.test',
-    ]);
+  // Helper: build a HOME tempdir with a fake maestro-client.jar that
+  // contains the two driver APKs, so `resolveDriverApks` succeeds during
+  // the install tail. Returns a cleanup fn.
+  function withFakeMaestroJar(): { home: string; cleanup: () => void } {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-repair-home-'));
+    const libDir = path.join(home, '.maestro', 'lib');
+    fs.mkdirSync(libDir, { recursive: true });
+    // Build a real zip containing maestro-app.apk + maestro-server.apk so
+    // the production `unzip -o -q` extraction in `resolveDriverApks` works.
+    const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-jar-staging-'));
+    fs.writeFileSync(path.join(stagingDir, 'maestro-app.apk'), 'PK\x03\x04fake-app');
+    fs.writeFileSync(path.join(stagingDir, 'maestro-server.apk'), 'PK\x03\x04fake-test');
+    const jarPath = path.join(libDir, 'maestro-client.jar');
+    execSyncForTest(
+      `cd ${JSON.stringify(stagingDir)} && zip -q ${JSON.stringify(jarPath)} maestro-app.apk maestro-server.apk`,
+    );
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+    return {
+      home,
+      cleanup: () => fs.rmSync(home, { recursive: true, force: true }),
+    };
+  }
+
+  it('issues force-stop, adb uninstall, pm uninstall -k --user 0, AND reinstalls both halves', async () => {
+    const { home, cleanup } = withFakeMaestroJar();
+    const origHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const calls: string[] = [];
+      const shell = vi.fn(async (cmd: string, args: string[]) => {
+        calls.push(`${cmd} ${args.join(' ')}`);
+        const argStr = args.join(' ');
+        // waitForPackageManager probe
+        if (argStr.endsWith('cmd package list packages')) {
+          return { stdout: 'package:android\n', stderr: '', exitCode: 0 };
+        }
+        // adb install success
+        if (args[1] === 'install' || args[2] === 'install') {
+          return { stdout: 'Success\n', stderr: '', exitCode: 0 };
+        }
+        // Post-install verify probes
+        if (argStr.endsWith('pm list packages dev.mobile.maestro')) {
+          return { stdout: 'package:dev.mobile.maestro\n', stderr: '', exitCode: 0 };
+        }
+        if (argStr.endsWith('pm list packages dev.mobile.maestro.test')) {
+          return { stdout: 'package:dev.mobile.maestro.test\n', stderr: '', exitCode: 0 };
+        }
+        // Force-stop, uninstall, pm uninstall, instrumentation kick — succeed silently
+        return { stdout: '', stderr: '', exitCode: 0 };
+      });
+      const backend = new MaestroBackend({ shell });
+      const actions = await backend.repairDriver('emulator-5554');
+      // Destruction prefix.
+      expect(actions.slice(0, 3)).toEqual(['force-stop', 'uninstall', 'pm-uninstall-user-0']);
+      // Install tail — same shape as `ensureDriverInstalled` post-install.
+      expect(actions).toContain('pm-ready');
+      expect(actions).toContain('installed:app');
+      expect(actions).toContain('installed:test');
+      expect(actions).toContain('verified');
+      expect(actions).toContain('instrumentation-kicked');
+      // Destructive commands MUST appear before install commands.
+      const uninstallIdx = calls.findIndex((c) => c.includes('uninstall dev.mobile.maestro'));
+      const installIdx = calls.findIndex((c) => c.includes(' install -r '));
+      expect(uninstallIdx).toBeGreaterThanOrEqual(0);
+      expect(installIdx).toBeGreaterThan(uninstallIdx);
+      // `am instrument` kick was attempted.
+      expect(calls.some((c) => c.includes('am instrument'))).toBe(true);
+    } finally {
+      if (origHome === undefined) delete process.env.HOME;
+      else process.env.HOME = origHome;
+      cleanup();
+    }
   });
 
-  it('swallows errors so a missing-package uninstall does not abort recovery', async () => {
-    // adb uninstall fails noisily when the package is not installed; that's
-    // not a recovery failure — the next probe call reinstalls it.
-    const shell = vi.fn(async () => {
-      throw new Error('Unknown package: dev.mobile.maestro');
-    });
-    const backend = new MaestroBackend({ shell });
-    await expect(backend.repairDriver('emulator-5554')).resolves.toEqual([
-      'force-stop',
-      'uninstall',
-      'pm-uninstall-user-0',
-    ]);
+  it('swallows errors during destructive phase but throws if reinstall fails', async () => {
+    // adb uninstall fails noisily when the package is not installed —
+    // destructive-phase shell errors are swallowed. But if the install
+    // tail can't push the APKs back on, `repairDriver` MUST throw
+    // rather than silently leaving the AVD with no driver installed
+    // (the malaria-itn-fgd/20260515-1645 attempt 4 failure class).
+    const { home, cleanup } = withFakeMaestroJar();
+    const origHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const shell = vi.fn(async (cmd: string, args: string[]) => {
+        const argStr = args.join(' ');
+        // waitForPackageManager probe succeeds.
+        if (argStr.endsWith('cmd package list packages')) {
+          return { stdout: 'package:android\n', stderr: '', exitCode: 0 };
+        }
+        // adb install fails — the install-tail must surface the error
+        // up out of repairDriver.
+        if (argStr.includes(' install -r ')) {
+          return { stdout: '', stderr: 'INSTALL_FAILED_INSUFFICIENT_STORAGE', exitCode: 1 };
+        }
+        // Force-stop and uninstall calls — pretend they error like a
+        // missing-package adb uninstall.
+        if (argStr.includes('force-stop') || argStr.includes('uninstall')) {
+          throw new Error('Unknown package: dev.mobile.maestro');
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      });
+      const backend = new MaestroBackend({ shell });
+      await expect(backend.repairDriver('emulator-5554')).rejects.toMatchObject({
+        code: 'MAESTRO_DRIVER_APK_INSTALL_FAILED',
+      });
+    } finally {
+      if (origHome === undefined) delete process.env.HOME;
+      else process.env.HOME = origHome;
+      cleanup();
+    }
   });
 });
+
+// Tiny synchronous-exec helper used only by the repairDriver test
+// fixture above. Local to the test file so we don't drag execSync into
+// the production import set unnecessarily.
+function execSyncForTest(cmd: string): void {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require('node:child_process').execSync(cmd, { stdio: 'pipe' });
+}
 
 describe('MaestroBackend.ensureDriverInstalled', () => {
   it('short-circuits when both driver packages are already present', async () => {

@@ -386,6 +386,47 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
     expect(probeCalls).toEqual([8_000, 90_000, 90_000]); // probe1 + probe1.5 + probe2
   });
 
+  // Live-reproduced on malaria-itn-fgd/20260515-1645 attempt 4
+  // (v0.13.263): probe1 fails ("maestro hierarchy: io exception") →
+  // ensureDriverInstalled detects both halves present + short-circuits
+  // as already-installed → repairDriver uninstalls + reinstalls →
+  // probe2 succeeds. Under pre-fix repairDriver (which only
+  // uninstalled), probe2 would have failed because no auto-reinstall
+  // happened in the heal flow.
+  it('heal flow recovers from already-installed-but-wedged state via repair-then-reinstall', async () => {
+    const { client, probeCalls, maestro } = makeClient([
+      { healthy: false, reason: 'UNAVAILABLE: io exception' }, // probe1
+      { healthy: true }, // probe2 — post-repair, packages back in place
+    ]);
+    // ensureDriverInstalled short-circuits because both halves are
+    // present on the wedged AVD.
+    maestro.ensureDriverInstalled = vi.fn().mockResolvedValue([
+      'package-list-before:app=true,test=true',
+      'already-installed',
+    ]);
+    // repairDriver now ends with installDriverApks actions — assert
+    // the heal flow does not blow up on the expanded action list.
+    maestro.repairDriver = vi.fn().mockResolvedValue([
+      'force-stop',
+      'uninstall',
+      'pm-uninstall-user-0',
+      'pm-ready',
+      'apks-resolved',
+      'installed:app',
+      'installed:test',
+      'apk-install-results:app=ok,test=ok',
+      'package-list-after:app=true,test=true',
+      'verified',
+      'instrumentation-kicked',
+    ]);
+    await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
+    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554');
+    expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
+    // Two probes only: stage-1 + stage-2 (no stage-1.5 because
+    // ensureDriverInstalled returned already-installed).
+    expect(probeCalls).toEqual([8_000, 90_000]);
+  });
+
   // If ensureDriverInstalled throws (operator hasn't run mobile-bootstrap
   // yet), we don't fail the heal — fall through to repair. The install
   // error is recorded in MaestroDriverError.attempts when repair also
