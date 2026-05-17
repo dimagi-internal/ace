@@ -11,11 +11,49 @@ export class MobileError extends Error {
 }
 
 export class AvdBootError extends MobileError {
-  constructor(avdName: string, reason: string) {
+  constructor(avdName: string, reason: string, diagnostics?: Record<string, unknown>) {
     super(
       'AVD_BOOT_FAILED',
       `AVD ${avdName} failed to boot: ${reason}`,
       'Run /ace:mobile-bootstrap to verify AVD setup.',
+      diagnostics,
+    );
+  }
+}
+
+/**
+ * Thrown by `AvdBackend.ensureAvdRunning` when the cold-boot's post-spawn
+ * wait stalls in a specific phase (adb-register → boot-completed →
+ * storage-mount). Carries structured diagnostics so the orchestrator's
+ * halt classifier and on-call humans don't have to grep at a bare string.
+ *
+ * The boot-wait short-circuit (returning the first `offline` reading as
+ * fatal) was the failure mode on malaria-itn-fgd/20260515-1645 Phase 6
+ * attempt 7 against v0.13.270's brand-new cold-boot path. The class-level
+ * preventer: every wait phase has its own typed budget and surfaces which
+ * phase ran out.
+ */
+export class AvdBootTimeoutError extends MobileError {
+  constructor(
+    avdName: string,
+    serial: string | null,
+    phase: 'adb-register' | 'boot-completed' | 'storage-mount',
+    elapsedMs: number,
+    budgetMs: number,
+    lastAdbState: string | null,
+    lastBootCompleted: string,
+  ) {
+    super(
+      'AVD_BOOT_TIMEOUT',
+      `AVD ${avdName}${serial ? ` (${serial})` : ''} stalled in phase=${phase} ` +
+        `(elapsed_ms=${elapsedMs} budget_ms=${budgetMs} ` +
+        `last_adb_state=${lastAdbState ?? 'absent'} last_boot_completed='${lastBootCompleted}')`,
+      'Run /ace:mobile-bootstrap to verify AVD setup. ' +
+        'If the phase is adb-register, the emulator process likely died on startup — ' +
+        'check that no other emulator is on the same console port and that the AVD config is valid. ' +
+        'If the phase is boot-completed, the AVD is starting but slow — bump AVD_BOOT_TIMEOUT_MS or check disk I/O. ' +
+        'If the phase is storage-mount, userdata.img is corrupt — delete and re-create the AVD.',
+      { phase, elapsed_ms: elapsedMs, budget_ms: budgetMs, last_adb_state: lastAdbState, last_boot_completed: lastBootCompleted },
     );
   }
 }

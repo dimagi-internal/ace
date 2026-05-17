@@ -3,12 +3,28 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { AvdBootError, AdbError } from '../errors.js';
+import { AvdBootError, AvdBootTimeoutError, AdbError } from '../errors.js';
 import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult } from '../types.js';
 import { resolveAdbServerPort, resolveEmulatorPair } from '../port-allocator.js';
 
-const AVD_BOOT_TIMEOUT_MS = 120_000;
-const AVD_BOOT_POLL_MS = 2_000;
+// Per-phase budgets for the post-spawn three-phase boot wait.
+//
+// Phase A — adb-register: serial appears in `adb devices` with state `device`.
+//   On a fresh `-wipe-data` cold-boot, the serial pops in the list within ~5s
+//   as `offline`, then flips to `device` ~5-15s later. 60s comfortably covers
+//   slow disk or contention on a shared CI box. The MUST-HAVE bug fix: don't
+//   treat the brief `offline` window as fatal.
+//
+// Phase B — boot-completed: `getprop sys.boot_completed` returns "1".
+//   Typically 10-30s after `device`; 120s budget tolerates slow images
+//   (google_apis_playstore is notably slower than google_apis on cold-boot).
+//
+// Phase C — storage-mount: `/storage/emulated/0` is mounted.
+//   Usually a couple of seconds after boot_completed; 30s is plenty.
+const AVD_PHASE_ADB_REGISTER_MS = 60_000;
+const AVD_PHASE_BOOT_COMPLETED_MS = 120_000;
+const AVD_PHASE_STORAGE_MOUNT_MS = 30_000;
+const AVD_PHASE_POLL_MS = 1_000;
 
 /**
  * Where AVDs live on disk, per platform.
@@ -172,6 +188,19 @@ export interface AvdBackendOpts {
    * Production code never sets this.
    */
   rawShell?: boolean;
+  /**
+   * Override the post-spawn three-phase boot-wait budgets and poll
+   * interval. Tests pass tiny values (~100ms total) so timeout cases
+   * land deterministically without sleeping seconds in CI. Production
+   * leaves these undefined and uses the constants at the top of the
+   * module.
+   */
+  bootWait?: {
+    adbRegisterMs?: number;
+    bootCompletedMs?: number;
+    storageMountMs?: number;
+    pollMs?: number;
+  };
 }
 
 export interface AllocatedPorts {
@@ -191,6 +220,13 @@ export class AvdBackend {
   private ports: AllocatedPorts | null = null;
   /** Promise dedupe so concurrent `getAllocatedPorts` calls share one allocation. */
   private allocPromise: Promise<AllocatedPorts> | null = null;
+  /** Per-phase boot-wait budgets (test override via constructor opts). */
+  private readonly bootWait: {
+    adbRegisterMs: number;
+    bootCompletedMs: number;
+    storageMountMs: number;
+    pollMs: number;
+  };
 
   constructor(opts: AvdBackendOpts = {}) {
     this.rawShellFn = opts.shell ?? defaultShell;
@@ -199,6 +235,12 @@ export class AvdBackend {
     // Production wraps to inject ANDROID_ADB_SERVER_PORT into spawned env
     // so every adb call lands on the right server.
     this.shell = opts.shell || opts.rawShell ? this.rawShellFn : this.makeAdbShell(this.rawShellFn);
+    this.bootWait = {
+      adbRegisterMs: opts.bootWait?.adbRegisterMs ?? AVD_PHASE_ADB_REGISTER_MS,
+      bootCompletedMs: opts.bootWait?.bootCompletedMs ?? AVD_PHASE_BOOT_COMPLETED_MS,
+      storageMountMs: opts.bootWait?.storageMountMs ?? AVD_PHASE_STORAGE_MOUNT_MS,
+      pollMs: opts.bootWait?.pollMs ?? AVD_PHASE_POLL_MS,
+    };
   }
 
   /**
@@ -376,16 +418,144 @@ export class AvdBackend {
     child.unref();
 
     const start = Date.now();
-    while (Date.now() - start < AVD_BOOT_TIMEOUT_MS) {
-      await new Promise((r) => setTimeout(r, AVD_BOOT_POLL_MS));
+    const expectedSerial = `emulator-${ports.emulatorConsolePort}`;
+
+    // Orphan-kill scope: if any wait phase throws, kill the just-spawned
+    // qemu before propagating. The cold-boot funnel's "deterministic
+    // state" promise depends on the funnel completing or cleaning up —
+    // an orphaned qemu booting in the background that survives into the
+    // next session re-introduces the warm-AVD class we cold-boot to
+    // structurally prevent. Best-effort: ignore kill errors (the qemu
+    // might have already died on its own).
+    try {
+      await this.waitForAdbRegister(expectedSerial, start);
+      await this.waitForBootCompleted(expectedSerial, start);
+      await this.waitForStorageMount(expectedSerial, start);
+
+      // assertSerialAuthorized is now a redundant final check rather
+      // than the load-bearing one. waitForAdbRegister already required
+      // state=device; the only way to land here in unauthorized is a
+      // race between the wait loop and a stale-RSA-key adb-server. The
+      // self-healing kill+restart logic in assertSerialAuthorized
+      // handles that race.
+      await this.assertSerialAuthorized(expectedSerial);
+
+      // Lookup the AvdInfo (serial → avd name); cheap one-shot.
       const found = await this.findRunningAvd(avdName);
-      if (found) {
-        await this.assertSerialAuthorized(found.serial);
-        await this.runPostBootPrep(found.serial);
-        return { ...found, bootTimeMs: Date.now() - start };
+      if (!found) {
+        // adb shows `device` for the expected serial but emu console
+        // doesn't report this AVD's name back. Means we collided with
+        // another emulator on the same console port. Surface as a real
+        // error rather than returning a wrong AvdInfo.
+        throw new AvdBootError(
+          avdName,
+          `serial ${expectedSerial} booted but does not report avd name '${avdName}' from emu console`,
+        );
       }
+
+      await this.runPostBootPrep(found.serial);
+      return { ...found, bootTimeMs: Date.now() - start };
+    } catch (err) {
+      // Kill the orphan qemu. Best-effort — adb emu kill may fail if
+      // the device is still in `offline` state (the very case that
+      // triggered our throw). Fall back to SIGKILL on the spawn pid.
+      await this.shell('adb', ['-s', expectedSerial, 'emu', 'kill']).catch(() => {});
+      if (typeof child.pid === 'number') {
+        try { process.kill(child.pid, 'SIGKILL'); } catch { /* already gone */ }
+      }
+      throw err;
     }
-    throw new AvdBootError(avdName, `boot timeout after ${AVD_BOOT_TIMEOUT_MS}ms`);
+  }
+
+  /**
+   * Phase A of the post-spawn cold-boot wait: poll `adb devices` until
+   * the expected serial appears with state `device` (authorized + online).
+   *
+   * Tolerates the brief `offline` window during qemu startup — that's
+   * normal, not a fault. The bug in v0.13.270 was treating the first
+   * `offline` reading as fatal, which short-circuited the wait inside
+   * ~1s and left an orphan qemu booting in the background.
+   *
+   * Tolerates `unauthorized` for the same reason — it can flicker
+   * during the boot-time RSA key handshake. The dedicated `assertSerial-
+   * Authorized` self-heal runs after this phase to handle persistent
+   * unauthorized states.
+   *
+   * Throws AvdBootTimeoutError(phase='adb-register') on budget exceeded.
+   */
+  private async waitForAdbRegister(expectedSerial: string, startedAt: number): Promise<void> {
+    const deadline = startedAt + this.bootWait.adbRegisterMs;
+    let lastState: string | null = null;
+    while (Date.now() < deadline) {
+      lastState = await this.adbDeviceStatus(expectedSerial).catch(() => null);
+      if (lastState === 'device') return;
+      await new Promise((r) => setTimeout(r, this.bootWait.pollMs));
+    }
+    throw new AvdBootTimeoutError(
+      expectedSerial,
+      expectedSerial,
+      'adb-register',
+      Date.now() - startedAt,
+      this.bootWait.adbRegisterMs,
+      lastState,
+      '',
+    );
+  }
+
+  /**
+   * Phase B of the post-spawn cold-boot wait: poll `getprop
+   * sys.boot_completed` until it returns "1". Empty output / errors are
+   * "still booting", not fatal.
+   *
+   * Throws AvdBootTimeoutError(phase='boot-completed') on budget exceeded.
+   */
+  private async waitForBootCompleted(serial: string, startedAt: number): Promise<void> {
+    const deadline = startedAt + this.bootWait.bootCompletedMs;
+    let last = '';
+    while (Date.now() < deadline) {
+      const r = await this.shell('adb', ['-s', serial, 'shell', 'getprop', 'sys.boot_completed']).catch(
+        () => null,
+      );
+      last = (r?.stdout ?? '').trim();
+      if (last === '1') return;
+      await new Promise((r) => setTimeout(r, this.bootWait.pollMs));
+    }
+    throw new AvdBootTimeoutError(
+      serial,
+      serial,
+      'boot-completed',
+      Date.now() - startedAt,
+      this.bootWait.bootCompletedMs,
+      'device',
+      last,
+    );
+  }
+
+  /**
+   * Phase C of the post-spawn cold-boot wait: poll for /storage/emulated/0
+   * mount. Some Android `settings put` writes and APK installs depend on
+   * scoped storage being mounted even when `sys.boot_completed=1`.
+   *
+   * Throws AvdBootTimeoutError(phase='storage-mount') on budget exceeded.
+   */
+  private async waitForStorageMount(serial: string, startedAt: number): Promise<void> {
+    const deadline = Date.now() + this.bootWait.storageMountMs;
+    while (Date.now() < deadline) {
+      const r = await this.shell('adb', ['-s', serial, 'shell', 'test', '-e', '/storage/emulated/0']).catch(
+        () => null,
+      );
+      if (r && r.exitCode === 0) return;
+      await new Promise((r) => setTimeout(r, this.bootWait.pollMs));
+    }
+    throw new AvdBootTimeoutError(
+      serial,
+      serial,
+      'storage-mount',
+      Date.now() - startedAt,
+      this.bootWait.storageMountMs,
+      'device',
+      '1',
+    );
   }
 
   /**
@@ -447,36 +617,21 @@ export class AvdBackend {
 
   /**
    * Idempotent post-boot AVD prep for ACE registration:
-   *   - waits for sys.boot_completed=1
    *   - disables Google Play Services (so MicroImageActivity falls back to
    *     manual shutter — see Face-capture gate gotcha)
    *   - pre-grants CAMERA permission to org.commcare.dalvik if installed
    *   - dismisses NotificationShade if it's the focused window (a
    *     known-quirk on cold boot of `google_apis*` images on macOS)
    *
+   * Boot-completed and /storage/emulated/0 waits are NOT here — they ran
+   * already in `ensureAvdRunning`'s three-phase wait. This function runs
+   * AFTER both phases pass, so the device is ready for `pm`, `am`,
+   * `settings`, and `dumpsys` calls.
+   *
    * All steps best-effort. Any single failure logs and continues — the
    * AVD is still usable, just may need manual prep for registration.
    */
   private async runPostBootPrep(serial: string): Promise<void> {
-    // Two-phase boot wait. sys.boot_completed=1 is set early; the device
-    // is reachable by `adb -s` long before user storage and the launcher
-    // are actually ready. Wait for /sdcard to be mounted as the real
-    // signal — a stuck-on-NotificationShade boot is exactly the case
-    // where boot_completed=1 but /sdcard isn't there yet.
-    const bootStart = Date.now();
-    while (Date.now() - bootStart < 90_000) {
-      const r = await this.shell('adb', ['-s', serial, 'shell', 'getprop', 'sys.boot_completed']);
-      if (r.stdout.trim() === '1') break;
-      await new Promise((r) => setTimeout(r, 1500));
-    }
-    while (Date.now() - bootStart < 120_000) {
-      // Use /storage/emulated/0 instead of /sdcard — the latter is a
-      // symlink that may not be readable by the shell uid under scoped
-      // storage even when user storage is fully mounted.
-      const r = await this.shell('adb', ['-s', serial, 'shell', 'test', '-e', '/storage/emulated/0']).catch(() => null);
-      if (r && r.exitCode === 0) break;
-      await new Promise((r) => setTimeout(r, 1500));
-    }
 
     // GMS state is NOT touched here. Older versions of this prep
     // unconditionally `pm disable-user com.google.android.gms` so that
