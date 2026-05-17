@@ -347,6 +347,85 @@ export class CloudBackend {
     );
   }
 
+  // ── Bootstrap helpers ───────────────────────────────────────────
+  //
+  // These mirror the local-side bootstrap primitives so the cloud heal
+  // flow can do "wipe + re-register" before each dispatch, the way
+  // local does post-2026-05-14 (always-deterministic-bootstrap, no
+  // snapshot-load fast-path). Added 2026-05-16; the corresponding
+  // MobileClient routing comes later — for now these are direct
+  // CloudBackend methods that callers opt into.
+
+  /**
+   * Clear a target package's per-app data via `pm clear` server-side.
+   *
+   * Mirrors `AvdBackend.clearConnectAppData`. Returns `true` iff the
+   * in-VM `adb shell pm clear` reported `Success`. `false` means the
+   * package wasn't installed (no-op) or the command emitted no
+   * recognizable marker. The default package matches the local
+   * default — CommCare's `org.commcare.dalvik`.
+   */
+  async clearAppData(packageName: string = 'org.commcare.dalvik'): Promise<boolean> {
+    const result = await this.post<{ package: string; cleared: boolean }>(
+      '/api/mobile/clear-app-data',
+      { package: packageName },
+    );
+    return result.cleared;
+  }
+
+  /**
+   * Clear wedged Maestro gRPC instrumentation state server-side.
+   *
+   * Mirrors `MaestroBackend.repairDriver`. Returns the list of
+   * Maestro packages actually present + removed (subset of
+   * `[dev.mobile.maestro, dev.mobile.maestro.test]`). Empty list
+   * means neither was installed and there was nothing to repair —
+   * a no-op success. The local-side fix that motivated this lives
+   * in commit ebf4560 (turmeric/20260513-2243 retry #2).
+   *
+   * NOTE: Repair uninstalls only — the next Maestro CLI call is
+   * expected to auto-push the driver back. On a fresh AVD this
+   * auto-push races the AVD's `pm` service binding (the bug
+   * b2838cb fixed locally). For that path, call `installDriver()`
+   * after `repairDriver()` (or as a standalone pre-flight on fresh
+   * AVDs).
+   */
+  async repairDriver(): Promise<string[]> {
+    const result = await this.post<{ uninstalled_packages: string[] }>(
+      '/api/mobile/repair-driver',
+      {},
+    );
+    return result.uninstalled_packages;
+  }
+
+  /**
+   * Idempotently install the Maestro driver APK halves on the cloud
+   * AVD. Mirrors `MaestroBackend.ensureDriverInstalled` (commit
+   * b2838cb).
+   *
+   * The local-side fix exists because Maestro CLI's auto-push of
+   * the driver APK races the AVD's early-boot `pm` service on fresh
+   * AVDs ("Install failed: cmd: Can't find service: package") with
+   * no retry inside the CLI. On cloud the same race surfaces in
+   * two cases:
+   *   1. After `repairDriver()` uninstalled the driver and the next
+   *      `runRecipe` relies on auto-push.
+   *   2. (Future) When the AMI's pre-baked snapshot is dropped and
+   *      every dispatch cold-boots the AVD.
+   *
+   * Returns the audit-trail of actions taken server-side (tokens
+   * like `already-installed`, `pm-ready`, `extracted`,
+   * `installed:app`, `installed:test`, `verified`). Single-element
+   * `[already-installed]` is the warm-path fast-return.
+   */
+  async installDriver(): Promise<string[]> {
+    const result = await this.post<{ actions: string[] }>(
+      '/api/mobile/install-driver',
+      {},
+    );
+    return result.actions;
+  }
+
   // ── Snapshots ───────────────────────────────────────────────────
   //
   // Session-scoped: `adb emu avd snapshot save/load` writes to the

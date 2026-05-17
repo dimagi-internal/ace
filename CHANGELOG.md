@@ -5,6 +5,22 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.265 — 2026-05-17
+
+**Three new `CloudBackend` heal-flow primitives at parity with local — `clearAppData`, `repairDriver`, `installDriver`.**
+
+Three methods on `CloudBackend` that wrap matching ace-web endpoints. Continues the local↔cloud parity work from 0.13.261 (palette shipping). With these building blocks exposed, the cloud heal flow can later drop the AMI's pre-baked snapshot and do "wipe + re-register" before every dispatch — matching local's post-2026-05-14 always-deterministic-bootstrap pattern.
+
+- `clearAppData(packageName = 'org.commcare.dalvik')`: POSTs the package + reports the server's `cleared` flag. Mirrors `AvdBackend.clearConnectAppData`.
+- `repairDriver()`: triggers `pm uninstall -k --user 0 dev.mobile.maestro{,.test}` server-side and returns the subset of packages actually removed. Mirrors `MaestroBackend.repairDriver` (the local-side fix from ebf4560).
+- `installDriver()`: idempotently `adb install -r`s the Maestro driver APK halves from the bundled Maestro jar (server-side). Mirrors `MaestroBackend.ensureDriverInstalled` (the local-side fix from 0.13.262 / b2838cb). Without this, `repairDriver()` would leave the cloud AVD in a state where the next `runRecipe` races the AVD's early-boot `pm` service — exactly the bug b2838cb fixed for local.
+
+The MobileClient routing change (auto-switching these to cloud when `useCloud`) is deferred to a follow-up — for now these are direct CloudBackend methods that callers opt into.
+
+Also: macOS `tar` AppleDouble polish. `tarDirAsBase64` now sets `COPYFILE_DISABLE=1` when spawning tar so the cloud-side `tar xzf` no longer emits the `LIBARCHIVE.xattr.com.apple.provenance` warning per file and no stray `._*.yaml` AppleDouble entries land in the cloud `run_dir`. Caught in the 2026-05-16 palette smoke test (S3 artifact list had `._sibling.yaml`).
+
+6 new vitest cases (2 each for `clearAppData`, `repairDriver`, `installDriver`). All tests pass; `tsc --noEmit` clean.
+
 ## 0.13.262 — 2026-05-17
 
 **Install Maestro driver APK explicitly in the heal flow (fresh-AVD bug).**

@@ -982,3 +982,84 @@ describe('CloudBackend.request: transient-failure retry', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('CloudBackend.clearAppData', () => {
+  it('POSTs the package and surfaces the server cleared flag', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, envelope({ package: 'org.commcare.dalvik', cleared: true })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl: fetchImpl as any });
+    const ok = await cb.clearAppData();
+    expect(ok).toBe(true);
+
+    const call = fetchImpl.mock.calls[0];
+    expect(call[0]).toBe(`${BASE}/api/mobile/clear-app-data`);
+    const body = JSON.parse(call[1].body as string);
+    expect(body.package).toBe('org.commcare.dalvik');
+  });
+
+  it('forwards a custom package name and reports cleared=false unchanged', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, envelope({ package: 'com.example.foo', cleared: false })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl: fetchImpl as any });
+    const ok = await cb.clearAppData('com.example.foo');
+    expect(ok).toBe(false);
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body as string);
+    expect(body.package).toBe('com.example.foo');
+  });
+});
+
+describe('CloudBackend.repairDriver', () => {
+  it('POSTs and returns the list of packages actually removed', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, envelope({
+        uninstalled_packages: ['dev.mobile.maestro', 'dev.mobile.maestro.test'],
+      })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl: fetchImpl as any });
+    const removed = await cb.repairDriver();
+    expect(removed).toEqual(['dev.mobile.maestro', 'dev.mobile.maestro.test']);
+
+    const call = fetchImpl.mock.calls[0];
+    expect(call[0]).toBe(`${BASE}/api/mobile/repair-driver`);
+    expect(call[1].method).toBe('POST');
+  });
+
+  it('returns empty list when neither Maestro package was installed (no-op success)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, envelope({ uninstalled_packages: [] })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl: fetchImpl as any });
+    const removed = await cb.repairDriver();
+    expect(removed).toEqual([]);
+  });
+});
+
+describe('CloudBackend.installDriver', () => {
+  it('POSTs and surfaces the warm-path single-action result', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, envelope({ actions: ['already-installed'] })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl: fetchImpl as any });
+    const actions = await cb.installDriver();
+    expect(actions).toEqual(['already-installed']);
+
+    const call = fetchImpl.mock.calls[0];
+    expect(call[0]).toBe(`${BASE}/api/mobile/install-driver`);
+    expect(call[1].method).toBe('POST');
+  });
+
+  it('returns the full audit trail on a cold install path', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, envelope({
+        actions: ['pm-ready', 'extracted', 'installed:app', 'installed:test', 'verified'],
+      })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl: fetchImpl as any });
+    const actions = await cb.installDriver();
+    expect(actions[actions.length - 1]).toBe('verified');
+    expect(actions).toContain('installed:app');
+    expect(actions).toContain('installed:test');
+  });
+});
