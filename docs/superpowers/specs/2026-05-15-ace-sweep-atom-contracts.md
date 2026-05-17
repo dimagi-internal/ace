@@ -16,7 +16,7 @@ PR 1 (`/ace:sweep` foundation + Drive) and PR 2 (per-system sweep skills in repo
 | `ocs_archive_collection` | HTTP DELETE method | `mcp/ocs/backends/playwright.ts` | session cookie + CSRF | DELETE | `/a/<team_slug>/documents/collection/<pk>/delete/` |
 | `ocs_archive_pipeline` | HTTP DELETE method | `mcp/ocs/backends/playwright.ts` | session cookie + CSRF | DELETE | `/a/<team_slug>/pipelines/<pk>/delete/` |
 | `ocs_delete_collection_file` | HTML form POST | `mcp/ocs/backends/playwright.ts` | session cookie + CSRF | POST | `/a/<team_slug>/documents/collections/<pk>/files/<file_id>/delete` |
-| `commcare_list_apps` | JSON REST | `mcp/connect/backends/commcare.ts` | API key (Authorization: ApiKey ...) | GET | `/api/v0.4/application/?domain=<domain>` |
+| `commcare_list_apps` | JSON REST | `mcp/connect/backends/commcare.ts` | session cookie (TaskPie `allow_session_auth=True`) | GET | `/a/<domain>/api/v0.4/application/` |
 | `commcare_delete_app` | HTML form POST | `mcp/connect/backends/commcare.ts` | session cookie + CSRF | POST | `/a/<domain>/apps/delete_app/<app_id>/` |
 | `labs_delete_record` | REST in local-tool proxy | `mcp/connect-labs-server.ts` | OAuth2 Bearer (LABS_MCP_TOKEN) | POST | `/export/labs_record/` body: `[{id}]` |
 
@@ -81,11 +81,11 @@ All four follow the same pattern but vary in HTTP method:
 
 ### `commcare_list_apps`
 
-- **JSON REST.** Use existing `Authorization: ApiKey username:key` pattern from `commcare_make_build`.
-- **URL:** `GET /api/v0.4/application/?domain=<domain>` (TaskPie resource defined in `corehq/apps/api/resources/v0_4.py:ApplicationResource`)
+- **JSON REST.** Reuses the PlaywrightSession cookie jar (session cookie path) since the same auth covers `commcare_delete_app`.
+- **URL:** `GET /a/<domain>/api/v0.4/application/` (TaskPie resource defined in `corehq/apps/api/resources/v0_4.py:ApplicationResource`). The unscoped `/api/v0.4/application/?domain=<domain>` form returns 404 from Django URL routing even though TaskPie accepts a `domain` query param — the resource is mounted only under the `/a/<domain>/` prefix.
 - **Response (JSON):** `{ objects: [{ id, name, version, is_released, built_on, modules, versions }], meta: {...} }`
-- **Auth:** `LoginAndDomainAuthentication(allow_session_auth=True)` — API key works.
-- **For sweep:** we only need `id`, `name`, `domain`. Filter on domain in the request.
+- **Auth:** `LoginAndDomainAuthentication(allow_session_auth=True)` — session cookies work. API key (`Authorization: ApiKey ...`) also works on this resource if needed.
+- **For sweep:** we only need `id`, `name`, `doc_type`. The domain is fixed by the URL path.
 
 ### `commcare_delete_app`
 
