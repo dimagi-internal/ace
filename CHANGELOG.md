@@ -5,6 +5,24 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.270 — 2026-05-17
+
+**Always cold-boot AVD on `mobile_ensure_avd_running` — scrap the warm-AVD optimization.**
+
+The prior heal model preserved the running emulator process across dispatches and only scrubbed Connect's per-app data + re-ran `registerTestUser`. That model claimed "always deterministic bootstrap" but the determinism was narrow — it only restored two surfaces. Everything else (AVD process state, CommCare APK install, Maestro driver install, lockscreen / CE-lock state of user 0, instrumentation state, GMS toggles, system settings) was implicitly trusted as carry-over from prior dispatches. That's the same anti-pattern as the snapshot-load tier-1 we previously rejected — the cached state is the running emulator process instead of a saved snapshot.
+
+This session burned 3 PRs (#339 APK absent on first dispatch, #341 detection probe wrong, #342 `repairDriver` didn't reinstall) debugging junk-state classes one at a time. Then on `malaria-itn-fgd/20260515-1645` Phase 6 attempt 5 we hit a fourth distinct class — user 0 in `RUNNING_LOCKED` direct-boot state with a residual lockscreen password from a prior `maestro studio` session, so `am instrument` failed with `SecurityException: Package dev.mobile.maestro is not encryption aware`. The pattern won't end while there are implicit-state-trust layers.
+
+Fix: `AvdBackend.ensureAvdRunning` now always cold-boots. If a prior emulator for this AVD is running, kill it via `adb -s <serial> emu kill`, wait for the serial to disappear from `adb devices`, then boot fresh with `emulator -avd <name> -wipe-data -no-snapshot-load -no-snapshot-save`. The wipe scrubs userdata.img → every transient junk class is implicitly fixed. Steady-state cost jumps from ~20-30s to ~60-90s per dispatch; cheaper than another out-of-band debug cycle.
+
+Helper methods (`installApk`, `captureUiDump`, `saveSnapshot`, `setGmsEnabled`, settings adjustments, etc.) used to call `ensureAvdRunning` to locate the device serial; that would now trigger a cold-boot on every call. Split into a new `requireRunningAvd(avdName)` helper that just looks up the running device (or throws); the cold-boot orchestration is the single responsibility of `ensureAvdRunning`. `MobileClient.registerTestUser` uses `requireRunningAvd` for the same reason — it's called by `runLocalBootstrap` AFTER the orchestrator already cold-booted, so re-cold-booting mid-bootstrap would wipe the just-installed APK and loop forever.
+
+`runLocalBootstrap` Step 3 (`saveSnapshot('registered-test-user')`) is removed. The next dispatch always cold-boots with `-wipe-data`, so a saved snapshot would never be loaded — pure overhead. `mobile_save_snapshot` and `mobile_load_snapshot` remain as MCP atoms for operator-driven debugging captures but aren't part of the heal path.
+
+Cloud backend unchanged — `/api/mobile/ensure-running` already cold-boots from AMI on every call, same contract via a different mechanism.
+
+12 new vitest cases: cold-boot path emits the kill call before re-booting; `requireRunningAvd` returns running info or throws when absent; `runLocalBootstrap` does not call `saveSnapshot`. 1220 tests pass (was 1212, removed 1 obsolete `SNAPSHOT_SAVE_FAILED` test, added 12). Closes the 4-PR debug arc started by #339.
+
 ## 0.13.266 — 2026-05-17
 
 **`repairDriver` must reinstall, not just uninstall.**

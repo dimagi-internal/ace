@@ -18,6 +18,7 @@ function fakeMaestroAndAvd(opts: {
 }) {
   const avd = {
     ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+    requireRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
     findRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
     setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
@@ -452,6 +453,8 @@ describe('MobileClient.ensureAvdRunning', () => {
     // bootstrapConfig + the AvdBackend methods bootstrap calls.
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+      requireRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+      findRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
       clearConnectAppData: vi.fn().mockResolvedValue(true),
       getFocusedActivity: vi.fn().mockResolvedValue('mResumedActivity: ActivityRecord{... OpportunitiesActivity}'),
@@ -593,6 +596,8 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
 
     return {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      requireRunningAvd: vi.fn().mockResolvedValue(readyAvd),
+      findRunningAvd: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi
         .fn()
         .mockResolvedValue(apkInstalled ? ['org.commcare.dalvik'] : []),
@@ -1589,11 +1594,11 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
   });
 });
 
-describe('runLocalBootstrap: SNAPSHOT_SAVE_FAILED surfaces "registered but not persisted"', () => {
+describe('runLocalBootstrap: no snapshot save (cold-boot model)', () => {
   const readyAvd = { name: 'AVD', serial: 'emulator-5554', status: 'booted' } as const;
 
-  it('error message tells the operator: device is usable for this dispatch; just re-save next time', async () => {
-    const version = `test-save-fail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  it('does NOT call saveSnapshot — every dispatch cold-boots so no snapshot would ever be loaded', async () => {
+    const version = `test-no-snapshot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const bytes = new Uint8Array(2_000_000);
     bytes[0] = 0x50;
     bytes[1] = 0x4b;
@@ -1606,6 +1611,8 @@ describe('runLocalBootstrap: SNAPSHOT_SAVE_FAILED surfaces "registered but not p
     });
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
+      requireRunningAvd: vi.fn().mockResolvedValue(readyAvd),
+      findRunningAvd: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi.fn().mockResolvedValue([]),
       getFocusedActivity: vi.fn(),
       captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
@@ -1616,16 +1623,17 @@ describe('runLocalBootstrap: SNAPSHOT_SAVE_FAILED surfaces "registered but not p
         versionCode: 1,
         path: '/tmp/apk',
       }),
-      // KEY: saveSnapshot REPORTS failure — register succeeded, but persist did not.
+      // saveSnapshot is still mocked so a regression that reintroduces
+      // the call would surface here.
       saveSnapshot: vi.fn().mockResolvedValue({
         avdName: 'AVD',
         snapshotName: 'registered-test-user',
-        saved: false,
-        output: 'disk full',
+        saved: true,
+        output: 'OK',
       }),
-      setGmsEnabled: vi.fn(),
+      setGmsEnabled: vi.fn().mockResolvedValue(undefined),
       disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
-    applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
+      applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
@@ -1655,8 +1663,16 @@ describe('runLocalBootstrap: SNAPSHOT_SAVE_FAILED surfaces "registered but not p
         },
       },
     });
-    await expect(
-      client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
-    ).rejects.toThrow(/device IS registered and usable for this dispatch/);
+    const steps = await client.runLocalBootstrap({
+      name: 'AVD',
+      serial: 'emulator-5554',
+      status: 'booted',
+    } as any);
+    // No snapshot-saved step. The heal flow never persists a snapshot.
+    expect(steps).not.toContain('snapshot-saved');
+    expect(avd.saveSnapshot).not.toHaveBeenCalled();
+    // It still ran the actual bootstrap steps.
+    expect(steps).toContain('apk-installed');
+    expect(steps).toContain('environment-baseline-applied');
   });
 });
