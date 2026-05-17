@@ -76,7 +76,7 @@ function makeBackend(request: unknown): CommCareBackend {
 }
 
 describe('CommCareBackend.listApps', () => {
-  it('GETs /api/v0.4/application/?domain=<domain> and parses the objects array', async () => {
+  it('GETs /a/<domain>/api/v0.4/application/ and parses the objects array', async () => {
     const fake = makeFakeRequest({
       listJsonBody: JSON.stringify({
         objects: [
@@ -93,7 +93,7 @@ describe('CommCareBackend.listApps', () => {
     ]);
     expect(fake.calls).toHaveLength(1);
     expect(fake.calls[0].method).toBe('GET');
-    expect(fake.calls[0].url).toContain('/api/v0.4/application/?domain=connect-ace-prod');
+    expect(fake.calls[0].url).toContain('/a/connect-ace-prod/api/v0.4/application/');
   });
 
   it('falls back to _id when id field is absent (CCHQ alternate shape)', async () => {

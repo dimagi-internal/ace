@@ -454,7 +454,7 @@ server.tool('connect_get_invoice',
 // flow leaves valid CCHQ cookies in the same BrowserContext.
 
 server.tool('commcare_list_apps',
-  'List CommCare HQ applications in a domain. Hits the REST API at GET /api/v0.4/application/?domain=<domain> using the existing PlaywrightSession cookie jar (allow_session_auth=True on CCHQ\'s TaskPie resource — no separate API key needed). Returns id, name, and doc_type per app. Soft-deleted apps (doc_type ending in `-Deleted`) are filtered server-side; the field is preserved for callers that cross-check against `commcare_delete_app`. Used by `/ace:sweep hq` to enumerate the universe of apps in the ACE-owned domain.',
+  'List CommCare HQ applications in a domain. Hits the REST API at GET /a/<domain>/api/v0.4/application/ (domain-scoped — the unscoped /api/v0.4/application/?domain= form returns 404 from Django routing) using the existing PlaywrightSession cookie jar (allow_session_auth=True on CCHQ\'s TaskPie resource — no separate API key needed). Returns id, name, and doc_type per app. Soft-deleted apps (doc_type ending in `-Deleted`) are filtered server-side; the field is preserved for callers that cross-check against `commcare_delete_app`. Used by `/ace:sweep hq` to enumerate the universe of apps in the ACE-owned domain.',
   { domain: z.string() },
   async (args) => runAtom(async () => (await commcareClient()).listApps(args))
 );

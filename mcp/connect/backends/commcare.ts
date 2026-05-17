@@ -753,8 +753,11 @@ export class CommCareBackend {
   /**
    * List CommCare HQ applications in a domain.
    *
-   * Uses CCHQ's REST API at GET /api/v0.4/application/?domain=<domain>. The
-   * endpoint accepts session cookies (LoginAndDomainAuthentication with
+   * Uses CCHQ's REST API at GET /a/<domain>/api/v0.4/application/ (the
+   * endpoint is domain-scoped; the unscoped /api/v0.4/application/?domain=
+   * form returns 404 even though the TaskPie resource accepts a `domain`
+   * query param — Django's URL routing requires the /a/<domain>/ prefix).
+   * The endpoint accepts session cookies (LoginAndDomainAuthentication with
    * allow_session_auth=True), so we reuse the existing PlaywrightSession
    * cookie jar — no separate API key needed.
    *
@@ -769,7 +772,7 @@ export class CommCareBackend {
    */
   async listApps(args: { domain: string }): Promise<{ apps: Array<{ id: string; name: string; doc_type?: string }> }> {
     return this.runWithSessionRetry(async (request) => {
-      const path = `/api/v0.4/application/?domain=${encodeURIComponent(args.domain)}`;
+      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.4/application/`;
       const res = await request.get(`${this.opts.baseUrl}${path}`, { maxRedirects: 0 });
       if (res.status() === 302) {
         CommCareBackend.assertNotLoginRedirect(res, `commcare_list_apps GET ${path}`);
