@@ -33,23 +33,87 @@ describe('AvdBackend.listAvds', () => {
 });
 
 describe('AvdBackend.ensureAvdRunning', () => {
-  it('returns existing serial if AVD already booted', async () => {
-    const shell = fakeShell({
-      'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
-      'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+  it('kills any prior running emulator for the same AVD before re-booting (cold-boot model)', async () => {
+    // The prior fast-path "return existing serial if already booted"
+    // was a warm-AVD optimization that masked accumulated junk-state
+    // (lockscreen residue, wedged Maestro driver, GMS toggles) across
+    // dispatches. The new contract: every call cold-boots, so any
+    // running emulator for this AVD MUST be killed first.
+    //
+    // We can't easily mock the detached `emulator` spawn from a unit
+    // test (it forks a real binary). Instead we observe the kill call
+    // synchronously, then cancel the test before the boot-poll loop
+    // takes effect.
+    const calls: string[] = [];
+    let killed = false;
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const key = `${cmd} ${args.join(' ')}`;
+      calls.push(key);
+      if (key === 'adb -s emulator-5554 emu kill') {
+        killed = true;
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
+      if (key === 'adb devices') {
+        return killed
+          ? { stdout: 'List of devices attached\n', stderr: '', exitCode: 0 }
+          : {
+              stdout: 'List of devices attached\nemulator-5554\tdevice\n',
+              stderr: '',
+              exitCode: 0,
+            };
+      }
+      if (key === 'adb -s emulator-5554 emu avd name') {
+        return { stdout: 'ACE_Pixel_API_34\nOK\n', stderr: '', exitCode: 0 };
+      }
+      if (key === 'emulator -list-avds') {
+        return { stdout: 'ACE_Pixel_API_34\n', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
     });
     const backend = new AvdBackend({ shell });
-    const info = await backend.ensureAvdRunning('ACE_Pixel_API_34');
-    expect(info).toMatchObject({ name: 'ACE_Pixel_API_34', serial: 'emulator-5554', status: 'booted' });
+    // The real emulator spawn would never produce a device in this
+    // test, so ensureAvdRunning will eventually throw AvdBootError on
+    // boot timeout. We don't care about that — we only care that the
+    // kill ran first.
+    const p = backend.ensureAvdRunning('ACE_Pixel_API_34').catch(() => null);
+    // Give the find + kill round-trip a beat to fire.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(killed).toBe(true);
+    expect(calls).toContain('adb -s emulator-5554 emu kill');
+    // Don't await `p` — it's blocked on the boot poll. The test framework
+    // will not flag a dangling unresolved promise.
   });
 
-  it('throws AvdBootError if AVD does not exist', async () => {
+  it('throws AvdBootError if AVD does not exist (cold-boot path: listAvds runs before kill)', async () => {
+    // The cold-boot orchestration calls listAvds early to surface
+    // unknown-AVD errors quickly. No `emu kill` should fire when there
+    // is no running emulator AND the requested AVD isn't even known.
     const shell = fakeShell({
       'adb devices': { stdout: 'List of devices attached\n' },
       'emulator -list-avds': { stdout: 'Other_AVD\n' },
     });
     const backend = new AvdBackend({ shell });
     await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(AvdBootError);
+  });
+});
+
+describe('AvdBackend.requireRunningAvd', () => {
+  it('returns the running AVD info without triggering a boot', async () => {
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\nemulator-5554\tdevice\n' },
+      'adb -s emulator-5554 emu avd name': { stdout: 'ACE_Pixel_API_34\nOK\n' },
+    });
+    const backend = new AvdBackend({ shell });
+    const info = await backend.requireRunningAvd('ACE_Pixel_API_34');
+    expect(info).toMatchObject({ name: 'ACE_Pixel_API_34', serial: 'emulator-5554', status: 'booted' });
+  });
+
+  it('throws AvdBootError when the AVD is not currently running', async () => {
+    const shell = fakeShell({
+      'adb devices': { stdout: 'List of devices attached\n' },
+    });
+    const backend = new AvdBackend({ shell });
+    await expect(backend.requireRunningAvd('ACE_Pixel_API_34')).rejects.toBeInstanceOf(AvdBootError);
   });
 });
 

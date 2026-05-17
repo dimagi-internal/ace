@@ -260,18 +260,79 @@ export class AvdBackend {
     return this.allocPromise;
   }
 
+  /**
+   * Locate the named AVD's running emulator and return its info, OR
+   * throw `AvdBootError` if it isn't currently running.
+   *
+   * Used by helper methods (installApk, captureUiDump, saveSnapshot,
+   * settings adjustments, etc.) that need the device serial of an
+   * already-booted AVD without triggering the full cold-boot path that
+   * `ensureAvdRunning` now always performs. The orchestrator (`MobileClient.
+   * ensureAvdRunning`) is the single caller responsible for the cold-boot;
+   * everything downstream just needs to look up the running device.
+   */
+  async requireRunningAvd(avdName: string): Promise<AvdInfo> {
+    const found = await this.findRunningAvd(avdName);
+    if (!found) {
+      throw new AvdBootError(
+        avdName,
+        `AVD '${avdName}' is not currently running. Call mobile_ensure_avd_running first to cold-boot it.`,
+      );
+    }
+    return found;
+  }
+
   async listAvds(): Promise<string[]> {
     const r = await this.shell('emulator', ['-list-avds']);
     return r.stdout.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
   }
 
+  /**
+   * Always cold-boot the AVD. If an emulator process for this AVD is
+   * already running, kill it, wait for it to exit, then boot fresh with
+   * `-wipe-data -no-snapshot-load -no-snapshot-save`. This guarantees a
+   * deterministic starting state for every Phase 6 dispatch — no implicit
+   * trust in carry-over from prior dispatches (lockscreen state, GMS
+   * toggles, instrumentation residue, Maestro driver state, etc.).
+   *
+   * Replaces the prior "fast path on warm AVD" optimization. That model
+   * had the same failure shape as snapshot-load tier-1: it cached the
+   * running emulator process as implicit state, and every class of
+   * junk-state that accumulated across dispatches (driver wedged, user 0
+   * direct-boot, residual lockscreen passwords from `maestro studio`)
+   * had to be debugged one at a time. Cold-boot makes those classes
+   * structurally impossible — every dispatch starts from a known-empty
+   * userdata.
+   *
+   * Steady-state cost: ~60-90s. ~30s for `emu kill` + exit + emulator
+   * cold-boot; ~10s for `-wipe-data` to scrub the userdata image; the
+   * remainder for `runPostBootPrep` waiting on `sys.boot_completed` and
+   * `/storage/emulated/0`. Compares against ~20-30s for the prior warm-
+   * AVD path. The extra ~30-60s is the price of guaranteed clean state;
+   * cheaper than debugging another junk-state class out-of-band.
+   *
+   * Cloud backend follows the same contract via a different mechanism —
+   * `/api/mobile/ensure-running` cold-boots from AMI on every call.
+   */
   async ensureAvdRunning(avdName: string): Promise<AvdInfo> {
-    const existing = await this.findRunningAvd(avdName);
-    if (existing) return existing;
-
     const known = await this.listAvds();
     if (!known.includes(avdName)) {
       throw new AvdBootError(avdName, `AVD '${avdName}' not in emulator -list-avds output`);
+    }
+
+    // If a prior emulator for this AVD is running, kill it and wait for
+    // it to fully exit. Best-effort: a stale `adb devices` entry can lag
+    // a few seconds after `emu kill` lands; we poll until the serial
+    // disappears OR ~15s elapse (real-world bound is well under that).
+    const existing = await this.findRunningAvd(avdName);
+    if (existing) {
+      await this.shell('adb', ['-s', existing.serial, 'emu', 'kill']).catch(() => {});
+      const killStart = Date.now();
+      while (Date.now() - killStart < 15_000) {
+        const stillThere = await this.findRunningAvd(avdName).catch(() => null);
+        if (!stillThere) break;
+        await new Promise((r) => setTimeout(r, 1_000));
+      }
     }
 
     // Patch the AVD config to ensure a front camera is available before boot.
@@ -287,11 +348,21 @@ export class AvdBackend {
     // probe-walks for the next free pair. The same allocator backs every
     // adb call in this session via `makeAdbShell`, so the boot port and
     // the discovery port are always the same.
+    //
+    // `-wipe-data` scrubs userdata.img on launch (lockscreen, system
+    // settings, app data, instrumentation state — everything that
+    // accumulates across dispatches). `-no-snapshot-load` blocks the
+    // emulator from auto-loading the default snapshot, which would
+    // re-introduce the same warm-state class we're scrubbing.
+    // `-no-snapshot-save` keeps the next cold-boot honest by not saving
+    // a snapshot of the post-bootstrap state on shutdown.
     const ports = await this.getAllocatedPorts();
     const args = [
       '-avd',
       avdName,
       '-no-window',
+      '-wipe-data',
+      '-no-snapshot-load',
       '-no-snapshot-save',
       '-port',
       String(ports.emulatorConsolePort),
@@ -479,7 +550,7 @@ export class AvdBackend {
   }
 
   async installApk(avdName: string, apkPath: string): Promise<ApkInfo> {
-    const avd = await this.ensureAvdRunning(avdName);
+    const avd = await this.requireRunningAvd(avdName);
     const r = await this.shell('adb', ['-s', avd.serial, 'install', '-r', apkPath]);
     if (r.exitCode !== 0 || !r.stdout.includes('Success')) {
       throw new AdbError('install', r.exitCode, r.stderr || r.stdout);
@@ -488,7 +559,7 @@ export class AvdBackend {
   }
 
   async uninstallApk(avdName: string, packageId: string): Promise<{ uninstalled: boolean }> {
-    const avd = await this.ensureAvdRunning(avdName);
+    const avd = await this.requireRunningAvd(avdName);
     const r = await this.shell('adb', ['-s', avd.serial, 'uninstall', packageId]);
     return { uninstalled: r.stdout.includes('Success') };
   }
@@ -538,7 +609,7 @@ export class AvdBackend {
    * (CommCareSetupActivity foregrounded).
    */
   async getFocusedActivity(avdName: string): Promise<string> {
-    const avd = await this.ensureAvdRunning(avdName);
+    const avd = await this.requireRunningAvd(avdName);
     const r = await this.shell('adb', ['-s', avd.serial, 'shell', 'dumpsys', 'activity', 'activities']);
     const line = r.stdout.split('\n').find((l) => l.includes('mResumedActivity')) ?? '';
     return line.trim();
@@ -553,7 +624,7 @@ export class AvdBackend {
    * conclusion misdiagnosis on turmeric run 20260513-0616).
    */
   async listPackages(avdName: string, filter?: string): Promise<string[]> {
-    const avd = await this.ensureAvdRunning(avdName);
+    const avd = await this.requireRunningAvd(avdName);
     const args = ['-s', avd.serial, 'shell', 'pm', 'list', 'packages'];
     if (filter) args.push(filter);
     const r = await this.shell('adb', args);
@@ -564,7 +635,7 @@ export class AvdBackend {
   }
 
   async captureUiDump(avdName: string): Promise<UiDumpResult> {
-    const avd = await this.ensureAvdRunning(avdName);
+    const avd = await this.requireRunningAvd(avdName);
     // Pass an explicit /data/local/tmp path. The default `uiautomator dump`
     // (no path arg) writes "/sdcard/window_dump.xml" per its CLI help, but
     // on API 34 Pixel AVDs `/sdcard/` is a FUSE-backed user-space mount that
@@ -613,7 +684,7 @@ export class AvdBackend {
    * restore from snapshot on every test run" workflows.
    */
   async saveSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
-    const avd = await this.ensureAvdRunning(avdName);
+    const avd = await this.requireRunningAvd(avdName);
     const r = await this.shell('adb', ['-s', avd.serial, 'emu', 'avd', 'snapshot', 'save', snapshotName]);
     return {
       avdName,
@@ -642,7 +713,7 @@ export class AvdBackend {
    * `false` and lets the caller decide whether to halt.
    */
   async clearConnectAppData(avdName: string): Promise<boolean> {
-    const avd = await this.ensureAvdRunning(avdName);
+    const avd = await this.requireRunningAvd(avdName);
     const r = await this.shell('adb', [
       '-s',
       avd.serial,
@@ -685,7 +756,7 @@ export class AvdBackend {
    * snapshot after this call carries the setting forward.
    */
   async disableHeadsUpNotifications(avdName: string): Promise<void> {
-    const avd = await this.ensureAvdRunning(avdName);
+    const avd = await this.requireRunningAvd(avdName);
     await this.shell('adb', [
       '-s',
       avd.serial,
@@ -731,7 +802,7 @@ export class AvdBackend {
    * not necessarily applied.
    */
   async applyEnvironmentBaseline(avdName: string): Promise<string> {
-    const avd = await this.ensureAvdRunning(avdName);
+    const avd = await this.requireRunningAvd(avdName);
     // Settings applied. Add to this list whenever a new environment-class
     // failure surfaces; the fingerprint will change automatically so
     // telemetry can detect when AVDs are running an older baseline.
@@ -770,7 +841,7 @@ export class AvdBackend {
   }
 
   async loadSnapshot(avdName: string, snapshotName: string): Promise<SnapshotResult> {
-    const avd = await this.ensureAvdRunning(avdName);
+    const avd = await this.requireRunningAvd(avdName);
     const r = await this.shell('adb', ['-s', avd.serial, 'emu', 'avd', 'snapshot', 'load', snapshotName]);
     return {
       avdName,
@@ -813,7 +884,7 @@ export class AvdBackend {
    * See `docs/mobile-atlas/connect-2.62.0.md § Prerequisites`.
    */
   async syncDeviceClockToHost(avdName: string): Promise<boolean> {
-    const avd = await this.ensureAvdRunning(avdName);
+    const avd = await this.requireRunningAvd(avdName);
     // `adb root` is needed to set the device wall-clock; the `shell` user
     // can't `settimeofday(2)`. Idempotent — emits a "restarting adbd as
     // root" line if not already root, no-ops otherwise.

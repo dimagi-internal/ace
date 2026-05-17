@@ -367,7 +367,8 @@ export class MobileClient {
   /**
    * Restore the AVD's per-user state to a guaranteed-clean precondition
    * by running the deterministic bootstrap path on every dispatch:
-   * `pm clear` Connect's app data, then a fresh `registerTestUser` walk
+   * install the CommCare APK (the cold-booted AVD has none — see
+   * `AvdBackend.ensureAvdRunning`), then a fresh `registerTestUser` walk
    * (demo bypass — ~15-25s). Throws `DeviceUserStateError` on bootstrap
    * failure OR post-bootstrap verification failure.
    *
@@ -379,6 +380,15 @@ export class MobileClient {
    * restore to that state via cold start — wipe + register. See
    * CLAUDE.md § Phase preconditions.
    *
+   * **Always cold-boot, nothing preserved across dispatches.** The
+   * upstream `AvdBackend.ensureAvdRunning` now ALWAYS kills any running
+   * emulator and boots fresh with `-wipe-data`. The prior model that
+   * preserved the running AVD process (and with it the APK install,
+   * lockscreen state, GMS toggles, Maestro driver state, instrumentation
+   * residue, etc.) was a snapshot-load tier-1 in disguise: cached running
+   * state accumulated junk-state classes that had to be debugged one at
+   * a time. Cold-boot makes those classes structurally impossible.
+   *
    * **No snapshot tier-1.** Earlier versions tried a fast-path
    * `loadSnapshot('registered-test-user')` before falling back to
    * register. That cached-state shortcut has a recurring failure mode:
@@ -387,8 +397,7 @@ export class MobileClient {
    * post-restore opp-list call 401s with the misleading "Authentication
    * credentials were not provided"). The clock-sync in PR #281 was a
    * band-aid for one symptom of that class; the right fix is to drop
-   * the snapshot from the heal path entirely and pay the ~20s cold-
-   * start cost for guaranteed clean state. Demo users skip OTP — see
+   * the snapshot from the heal path entirely. Demo users skip OTP — see
    * `docs/learnings/2026-05-14-demo-user-no-otp.md` for the rationale.
    *
    * **Cloud backend follows the same contract via a different mechanism.**
@@ -399,19 +408,19 @@ export class MobileClient {
    * identical across backends; only the mechanism differs.
    *
    * **What's preserved across dispatches (free):**
-   * - APK installed on the AVD (persists in the userdata disk image —
-   *   no re-download / re-install unless the AVD is fresh).
-   * - Host-side APK cache at `<tmp>/ace-mobile-apk-cache/`.
-   * - AVD boot state itself (AVD stays running across dispatches).
+   * - Host-side APK cache at `<tmp>/ace-mobile-apk-cache/` (a host
+   *   filesystem artifact, not on-device state — survives the wipe).
    *
-   * **What's torn down + rebuilt per dispatch (~20s):**
-   * - Connect's per-app data — sqlite DBs, shared prefs, Connect Token.
+   * **What's torn down + rebuilt per dispatch (~60-90s):**
+   * - AVD emulator process (cold-booted; `-wipe-data` scrubs userdata.img).
+   * - CommCare APK install (re-installed from host cache).
+   * - Maestro driver APK install (re-installed by `assertMaestroDriverHealthy`).
+   * - All system settings, lockscreen state, GMS toggles, Connect tokens.
    * - Fresh demo-user registration → fresh tokens + clean local state.
    *
    * **`saveSnapshot` kept as a manual debugging atom.** Operator can
    * save a snapshot via the MCP atom to capture interesting state for
-   * later inspection, but the heal flow itself never loads from
-   * snapshot.
+   * later inspection, but the heal flow never saves or loads snapshots.
    */
   async restoreDeviceUserState(avd: AvdInfo): Promise<DeviceStateHealLog> {
     if (this.useCloud) {
@@ -491,30 +500,34 @@ export class MobileClient {
   }
 
   /**
-   * Run the local-bootstrap-equivalent sequence inline. Used as the
-   * tier-2 fallback in `restoreDeviceUserState` when the snapshot is
-   * missing. Mirrors steps 5 / 9 / 10 of `/ace:mobile-bootstrap`:
+   * Run the local-bootstrap-equivalent sequence inline against the
+   * freshly cold-booted AVD. Mirrors steps 5 / 9 of `/ace:mobile-bootstrap`:
    *
    *   1. Ensure `org.commcare.dalvik` is installed (downloads the APK
    *      from the pinned GitHub release if missing, caches under
-   *      `<tmp>/ace-mobile-apk-cache/`).
+   *      `<tmp>/ace-mobile-apk-cache/`). After cold-boot the AVD has no
+   *      APK installed (the `-wipe-data` flag scrubs userdata.img), so
+   *      the install branch fires every dispatch.
    *   2. `registerTestUser` with the env-derived `ACE_E2E_*` creds
    *      (idempotent — returns alreadyRegistered if the device already
    *      has the user). Phase 4's `connect-opp-setup` Step 8 invites
    *      `${ACE_E2E_PHONE}` to the run's opp before Phase 6 runs, so
    *      the CONNECT-ID-3F server-side invite check is satisfied.
-   *   3. `saveSnapshot('registered-test-user')` so subsequent
-   *      `restoreDeviceUserState` calls can use the fast loadSnapshot
-   *      path.
    *
    * Cookie seeding (`scripts/seed-connect-cookies.ts`) + the
    * server-side `${ACE_E2E_PHONE}` invite check are deliberately NOT
    * here — the former is host-filesystem prep that `/ace:setup` owns,
    * and the latter is handled by Phase 4 inside `/ace:run`.
    *
+   * No snapshot save. The AVD is cold-booted on every dispatch, so a
+   * post-bootstrap snapshot would never be loaded (the next dispatch's
+   * `-wipe-data` scrubs userdata.img). `saveSnapshot` is preserved as
+   * a manual debugging atom but not part of the heal path.
+   *
    * Returns the list of bootstrap steps that actually fired (e.g.
-   * `['apk-installed', 'registered', 'snapshot-saved']`); skipped
-   * idempotent steps are omitted so the heal log shows what changed.
+   * `['apk-installed', 'registered', 'environment-baseline-applied']`);
+   * skipped idempotent steps are omitted so the heal log shows what
+   * changed.
    */
   async runLocalBootstrap(avd: AvdInfo): Promise<string[]> {
     if (!this.bootstrapConfig) {
@@ -529,13 +542,13 @@ export class MobileClient {
 
     // Step 1: ensure CommCare APK installed.
     //
-    // APK install persists in the AVD's userdata disk image across
-    // emulator restarts. We only re-install when truly missing (fresh
-    // AVD or operator-uninstalled). The cached APK file on the host
-    // (`<tmp>/ace-mobile-apk-cache/commcare-<ver>.apk`) is the slowest
-    // recovery — re-downloads from GitHub release on cache miss. See
-    // `docs/learnings/2026-05-14-demo-user-no-otp.md § "How the emulator
-    // handles APKs across boots"`.
+    // The AVD is cold-booted with `-wipe-data` upstream, so userdata.img
+    // is scrubbed and the APK is never preserved across dispatches —
+    // this install branch fires every time. The host-side cache at
+    // `<tmp>/ace-mobile-apk-cache/commcare-<ver>.apk` survives the wipe
+    // (it's a host filesystem artifact, not on-device state), so the
+    // re-install is bounded to ~3-5s `adb install` rather than the
+    // ~30s GitHub re-download on a cache miss.
     const packages = await this.avd.listPackages(avd.name, 'org.commcare.dalvik');
     if (!packages.includes('org.commcare.dalvik')) {
       logInfo(`local_bootstrap: CommCare ${apkVersion} not installed on ${avd.serial} — downloading + installing`);
@@ -546,17 +559,13 @@ export class MobileClient {
       steps.push('apk-present');
     }
 
-    // Step 1.5: wipe Connect's per-app data so registerTestUser walks
-    // the full demo registration flow against a clean slate, never
-    // trusting cached state from a prior dispatch (stale Connect Token,
-    // stale opp list, stale device-link). `pm clear` is ~0.5s; does NOT
-    // touch the APK installation; does NOT require root. See
-    // `docs/learnings/2026-05-14-demo-user-no-otp.md` for the rationale
-    // (always-cold-start > snapshot-as-cache).
-    //
-    // Skipped on the apk-installed branch above because the install just
-    // produced a clean state — pm clear on a fresh install is a no-op
-    // and would mostly print "Success" but burn a round-trip.
+    // Step 1.5: wipe Connect's per-app data — defensive belt-and-
+    // suspenders. With the upstream cold-boot `-wipe-data`, the APK is
+    // never present here on the production path, so this branch should
+    // not fire. Retained for compatibility with tests/mocks that stub
+    // listPackages returning an installed APK, and as a safety net if a
+    // future change ever weakens the cold-boot guarantee. `pm clear` is
+    // ~0.5s; does NOT touch the APK installation; does NOT require root.
     if (packages.includes('org.commcare.dalvik')) {
       const cleared = await this.avd
         .clearConnectAppData(avd.name)
@@ -589,32 +598,19 @@ export class MobileClient {
     //     generic selector miss, costs ~10 min of recipe-debug time per
     //     occurrence)
     // Class-level fix — every smoke run on this AVD will hit one of
-    // these sooner or later. Best-effort; idempotent; persists into the
-    // snapshot saved by Step 3 below. Captures a fingerprint so
-    // telemetry can detect when an AVD is running an older baseline.
+    // these sooner or later. Best-effort; idempotent; re-applied every
+    // dispatch (the cold-boot wipes userdata.img, taking these settings
+    // with it). Captures a fingerprint so telemetry can detect when an
+    // AVD is running an older baseline.
     this.lastBaselineFingerprint = await this.avd
       .applyEnvironmentBaseline(avd.name)
       .catch(() => undefined);
     steps.push('environment-baseline-applied');
 
-    // Step 3: save snapshot for fast tier-1 restore on subsequent runs.
-    logInfo(`local_bootstrap: saving registered-test-user snapshot on ${avd.serial}`);
-    const save = await this.avd.saveSnapshot(avd.name, 'registered-test-user');
-    if (!save.saved) {
-      // Registration succeeded — the AVD is usable for THIS dispatch.
-      // What we couldn't do is persist the state for next time, so the
-      // next dispatch's tier-1 will miss and re-run tier-2 (registerTestUser
-      // is idempotent, but the round-trip is 5s+ vs the 3s snapshot load).
-      // Surface that distinction so the operator knows: don't re-bootstrap,
-      // just diagnose snapshot persistence.
-      throw new MobileError(
-        'SNAPSHOT_SAVE_FAILED',
-        `saveSnapshot(registered-test-user) on ${avd.name} failed: ${save.output.slice(0, 200)}. ` +
-          `The device IS registered and usable for this dispatch — next dispatch will need to re-run tier-2 bootstrap to re-establish the snapshot.`,
-        'Check disk space under ~/.android/avd/<name>.avd/snapshots/; verify the emulator console responds to `adb emu avd snapshot save`. After fixing, re-run /ace:mobile-bootstrap or the next mobile_ensure_avd_running call to re-save.',
-      );
-    }
-    steps.push('snapshot-saved');
+    // No snapshot save. The next dispatch always cold-boots with
+    // `-wipe-data`, so a saved snapshot would never be loaded.
+    // `saveSnapshot` remains available as a manual debugging atom but
+    // is not part of the heal path.
     return steps;
   }
 
@@ -971,7 +967,12 @@ export class MobileClient {
       logInfo(`register_test_user: cloud backend — no-op (AMI cold-boot path registers ${args.phone})`);
       return { alreadyRegistered: true, phone: args.phone };
     }
-    const avd = await this.avd.ensureAvdRunning(args.avdName);
+    // Use requireRunningAvd, not ensureAvdRunning — registerTestUser is
+    // called by runLocalBootstrap after the orchestrator has already
+    // cold-booted the AVD via this.avd.ensureAvdRunning. Triggering
+    // another cold-boot here would wipe the just-installed CommCare
+    // APK and loop forever.
+    const avd = await this.avd.requireRunningAvd(args.avdName);
     const adbPort = AvdBackend.adbPortFromSerial(avd.serial) ?? undefined;
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-mobile-reg-'));
     const toContinue = path.join(this.staticRecipesDir, 'connect-register-to-otp.yaml');

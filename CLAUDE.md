@@ -127,19 +127,27 @@ The pattern:
 3. **Verify post-restore.** A classifier earns its keep ONLY as a verification step after restore — if the restore *should* have produced the precondition but didn't, the classifier names which precondition is still violated (snapshot corruption, APK drift, etc.). That's the only path a classifier is the right tool.
 4. **Fail loud.** If restore can't reach the precondition, throw a typed error with the precise class. Don't ship placeholders, don't soft-fail with `verdict: incomplete`.
 
-Canonical implementation: `MobileClient.restoreDeviceUserState` in `mcp/mobile/client.ts`. Single path — **always deterministic bootstrap** (refactored 2026-05-14, see `docs/learnings/2026-05-14-demo-user-no-otp.md`):
+Canonical implementation: `MobileClient.ensureAvdRunning` → `AvdBackend.ensureAvdRunning` → `MobileClient.restoreDeviceUserState` in `mcp/mobile/client.ts` + `mcp/mobile/backends/avd.ts`. Single path — **always full cold-boot per dispatch** (refactored 2026-05-17 — see `docs/learnings/2026-05-14-demo-user-no-otp.md` for the demo-user mechanics; the cold-boot widening landed after the malaria-itn-fgd 4-PR debug arc, below):
 
-1. **Wipe Connect's per-app data** via `pm clear org.commcare.dalvik` (~0.5s; no root needed). Removes the prior dispatch's Connect Token, cached opp list, and sqlite DBs without touching the APK install.
+1. **Kill any running emulator for this AVD** via `adb -s <serial> emu kill`, then wait for the serial to disappear from `adb devices` (~3-10s).
 
-2. **Ensure APK is installed.** Persists across emulator restarts in the AVD's userdata disk image — so on a warm AVD this is just a `listPackages` probe (~0.5s). Re-install only on fresh AVD; the host-side cache at `<tmp>/ace-mobile-apk-cache/` avoids re-downloading from GitHub release.
+2. **Cold-boot the AVD** with `emulator -avd <name> -wipe-data -no-snapshot-load -no-snapshot-save -no-window -port <N>`. `-wipe-data` scrubs userdata.img — every dispatch starts from an empty disk image. ~30-60s to `sys.boot_completed=1` + `/storage/emulated/0` mounted.
 
-3. **`registerTestUser`** with the `+7426` demo-user prefix (CRITICAL — demo users skip OTP server-side; see the dedicated learning doc). ~15-25s end-to-end via Maestro.
+3. **Install the CommCare APK** from the host-side cache at `<tmp>/ace-mobile-apk-cache/` (the wipe scrubbed the prior install). Cache survives the wipe because it's a host artifact, not on-device state. ~3-5s.
 
-4. **Verify post-bootstrap.** Classifier names the precondition class on failure (`needs-personal-id`, `commcare-not-installed`, etc.). Throws `DeviceUserStateError` with the precise label.
+4. **`registerTestUser`** with the `+7426` demo-user prefix (CRITICAL — demo users skip OTP server-side; see the dedicated learning doc). ~15-25s end-to-end via Maestro.
 
-**Total steady-state cost: ~20-30s on a warm AVD.** Fresh-machine first dispatch is ~60-100s (one-time AVD boot + APK install + register). After that, every dispatch pays the same ~20-30s. Worth it — guaranteed clean state, never relying on stale cached snapshots.
+5. **Apply the environment baseline** — heads-up notifications off, GMS DND-disallow, screen_off_timeout 30 min. Idempotent; re-applied every dispatch because the wipe took the prior settings with it.
 
-**No snapshot-load fast path.** The previous design used `loadSnapshot('registered-test-user')` as a ~3s tier-1, fall-through-to-bootstrap as tier-2. That fast path had a recurring failure class: snapshots silently age (wall-clock + cached Connect Token both freeze at capture; post-load API calls 401). The clock-sync in PR #281 was a band-aid for one symptom. The 2026-05-14 refactor drops the snapshot from the heal path entirely. `saveSnapshot` is preserved as a manual MCP atom for ad-hoc debugging captures — heal flow never loads from snapshot.
+6. **Reinstall Maestro driver via `assertMaestroDriverHealthy`** — fresh AVD has no driver; `ensureDriverInstalled` pushes the gRPC driver APK and waits for the channel to bind.
+
+7. **Verify post-bootstrap.** Classifier names the precondition class on failure (`needs-personal-id`, `commcare-not-installed`, etc.). Throws `DeviceUserStateError` with the precise label.
+
+**Total steady-state cost: ~60-90s per dispatch.** Up from the prior ~20-30s warm-AVD model. The extra ~30-60s is the price of guaranteed clean state — no implicit trust in carry-over (lockscreen residue, GMS toggles, instrumentation residue, wedged Maestro driver, residual user 0 `RUNNING_LOCKED` state, etc.).
+
+**Why the warm-AVD model died.** The prior "fast path on warm AVD" (preserve the running emulator process across dispatches, only wipe Connect app data + re-register) was a snapshot-load tier-1 in disguise: the running emulator IS cached state. That model accumulated junk-state classes that had to be debugged one at a time. The 4-PR session arc on the malaria-itn-fgd run (#339 APK absent on first dispatch; #341 detection probe wrong; #342 repairDriver didn't reinstall; this PR cold-boot to end the pattern) is the forcing function. Each fix landed a class-level preventer, but a new class surfaced on the next attempt (user 0 in direct-boot `RUNNING_LOCKED` state with a residual lockscreen password from a prior `maestro studio` session, breaking `am instrument` with `SecurityException: Package dev.mobile.maestro is not encryption aware`). Cold-boot makes all these classes structurally impossible.
+
+**No snapshot-load fast path.** The previous design used `loadSnapshot('registered-test-user')` as a ~3s tier-1, fall-through-to-bootstrap as tier-2. That fast path had a recurring failure class: snapshots silently age (wall-clock + cached Connect Token both freeze at capture; post-load API calls 401). The clock-sync in PR #281 was a band-aid for one symptom. The 2026-05-14 refactor dropped snapshot-load from the heal path; the 2026-05-17 cold-boot widening dropped warm-AVD reuse as well. `saveSnapshot` is preserved as a manual MCP atom for ad-hoc debugging captures — heal flow never saves or loads snapshots.
 
 The server-side `${ACE_E2E_PHONE}` invite check (CONNECT-ID-3F precondition) is structurally satisfied within `/ace:run` by Phase 4's `connect-opp-setup` running before Phase 6 — no operator action required mid-run.
 
