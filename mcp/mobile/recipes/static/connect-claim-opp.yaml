@@ -235,10 +235,26 @@ appId: org.commcare.dalvik
 #
 # Anchor on the Learn-app home's ScrollView (`nsv_home_screen`) which
 # is the StandardHomeActivity-specific signal; `learn-launch.yaml` will
-# then take over by tapping the Start tile. 60s timeout accommodates the
-# 14-step CCZ download on slow connections.
+# then take over by tapping the Start tile.
+#
+# Timeout: 180s. CommCare's first-boot of the Learn app after btn_start
+# combines: (i) POST /users/start_learn_app/ round-trip, (ii) the 14-step
+# Learn CCZ download ("Downloading Learn App" progress dialog), and
+# (iii) the initial in-app module install + first-sync of empty case
+# data before StandardHomeActivity renders `nsv_home_screen`. On a fresh
+# cold-booted AVD with no warmed network paths, the full window can run
+# 30s on the fast end and well past 60s on the slow end. The earlier
+# 60s timeout was tight enough that it expired with Connect's opp-detail
+# screen still rendered — assertion failed, recipe halted. Live
+# reproducer: malaria-itn-fgd run 20260515-1645 Phase 6 attempt 9
+# (.maestro/tests/2026-05-17_191039/) — 60s elapsed between Start tap
+# and FAILED, ending screenshot still on opp-detail. Surfaced now
+# because PR #346 (unconditional title-scroll) was what finally got the
+# recipe far enough to actually tap Start; prior halts terminated
+# upstream. 180s gives a comfortable margin without masking a genuinely
+# wedged download (which would still throw, just later).
 - extendedWaitUntil:
     visible:
       id: "org.commcare.dalvik:id/nsv_home_screen"
-    timeout: 60000
+    timeout: 180000
 - takeScreenshot: "claim-opp-handoff-learn-home"

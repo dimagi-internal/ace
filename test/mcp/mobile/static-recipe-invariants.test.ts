@@ -123,6 +123,26 @@ describe('connect-claim-opp.yaml', () => {
       /- extendedWaitUntil:\s*\n\s*visible:\s*\n\s*id: "org\.commcare\.dalvik:id\/nsv_home_screen"/,
     );
   });
+
+  it('nsv_home_screen wait timeout is generous enough for CommCare Learn first-boot', () => {
+    // Regression guard for the 2026-05-17 malaria-itn-fgd run halt
+    // (run 20260515-1645 Phase 6 attempt 9): after the btn_start tap,
+    // CommCare fires POST /users/start_learn_app/, downloads the
+    // 14-step Learn CCZ, installs modules, and runs the initial sync
+    // before StandardHomeActivity renders nsv_home_screen. The full
+    // first-boot window can run past 60s on a fresh cold-booted AVD,
+    // so the wait must be ≥120s. Earlier 60s value expired with the
+    // recipe still on opp-detail, halting the run.
+    const match = yaml.match(
+      /- extendedWaitUntil:\s*\n\s*visible:\s*\n\s*id: "org\.commcare\.dalvik:id\/nsv_home_screen"\s*\n\s*timeout:\s*(\d+)/,
+    );
+    expect(match, 'expected an extendedWaitUntil on nsv_home_screen with an explicit timeout').not.toBeNull();
+    const timeoutMs = Number(match![1]);
+    expect(
+      timeoutMs,
+      'nsv_home_screen wait must be ≥120s to cover CommCare Learn first-boot (CCZ download + module install + initial sync)',
+    ).toBeGreaterThanOrEqual(120000);
+  });
 });
 
 describe('learn-tap-module.yaml', () => {
