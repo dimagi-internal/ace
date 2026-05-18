@@ -24,7 +24,7 @@ Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, soli
 - For approved orphan workflows: `workflow_delete` calls.
 - For approved orphan pipelines: `pipeline_delete` calls.
 - For approved orphan synthetic opps: `synthetic_disable` calls.
-- For approved orphan draft/closed solicitations: `delete_solicitation` calls (cascade-deletes reviews + responses).
+- For approved orphan solicitations: `delete_solicitation` calls (cascade-deletes reviews + responses; gated on cascade emptiness — connect-labs PR #197).
 
 ## Process
 
@@ -42,25 +42,23 @@ Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, soli
    - synthetic opps → `liveSet.identifiers.labsSyntheticIds`
    - solicitations/funds/reviews/responses → `liveSet.identifiers.labsRecordIds`
 4. **Score** each orphan via `scoreLabsItem(item, liveSet)` from `lib/sweep-fingerprint.ts`. The scorer defensively downgrades to `low` when an item references a Connect opportunity that's still in `liveSet.identifiers.connectOpportunityIds` — that's a sign the caller mis-flagged the item.
-5. **Filter solicitations by lifecycle status:** only solicitations with `status in {'draft', 'closed'}` are deletable via `delete_solicitation`. Active and awarded solicitations refused server-side (they have downstream commitments — invited respondents, funded awards). Partition the orphan solicitation list by status: deletable vs blocked-by-lifecycle.
-6. **Build the `OrphanReport`** with `system: 'labs'`. Partition into:
-   - **Actionable — auto-execute:** workflows, pipelines, synthetic opps, draft/closed solicitations.
-   - **Blocked by lifecycle:** active/awarded solicitations — print labs admin URLs and a note that these need lifecycle changes (use `update_solicitation` to flip status to `closed` first if cleanup is wanted).
+5. **Build the `OrphanReport`** with `system: 'labs'`. Partition into:
+   - **Actionable — auto-execute:** workflows, pipelines, synthetic opps, orphan solicitations. Solicitation deletion is gated on `responses + reviews == 0` (cascade emptiness), not on lifecycle status — every ACE dogfood solicitation passes that gate cleanly because no real LLO ever engaged. See connect-labs PR #197.
    - **Informational only:** funds, standalone reviews/responses (reviews+responses that were already cascade-deleted with a parent solicitation don't appear here). Funds may need their own per-type atom in a future labs MCP release; reviews/responses generally cascade with their parent solicitation.
-7. **Render** + write `labs-orphans.md` and `.yaml` to the sweep folder.
-8. **Surface to human** in chat. Prompt for approval per actionable chunk; the blocked-by-lifecycle and informational lists are read-only.
-9. **On approval:**
+6. **Render** + write `labs-orphans.md` and `.yaml` to the sweep folder.
+7. **Surface to human** in chat. Prompt for approval per actionable chunk; the informational list is read-only.
+8. **On approval:**
    - Orphan workflows → `workflow_delete({ workflow_id })`
    - Orphan pipelines → `pipeline_delete({ pipeline_id })`
    - Orphan synthetic opps → `synthetic_disable({ synthetic_opp_id })`
-   - Orphan deletable solicitations → `delete_solicitation({ solicitation_id, program_id })`. The atom cascade-deletes the solicitation's reviews and responses in one call and returns the count of records deleted at each level — surface that in the chat summary so the human sees the cascade impact.
+   - Orphan solicitations → `delete_solicitation({ solicitation_id, program_id })`. The atom cascade-deletes the solicitation's reviews and responses in one call and returns the count of records deleted at each level — surface that in the chat summary so the human sees the cascade impact. Pass `force: true` only for the rare legitimate destroy-with-engagement-data case (test fixtures that intentionally include responses).
 
 ## Failure modes
 
 - **Live-set path doesn't resolve:** abort with "Run `sweep-live-set` first."
 - **Labs MCP returns 401:** `LABS_MCP_TOKEN` is expired; recommend `/ace:labs-token-mint` to rotate, then retry.
 - **`workflow_delete` fails because the workflow has running tasks:** report the item as "in-use — needs manual review"; don't retry, don't abort the batch.
-- **`delete_solicitation` refused due to status:** the lifecycle check failed server-side (race condition — status flipped between list and delete). Report the item as "lifecycle-blocked"; don't retry.
+- **`delete_solicitation` refused (`FAILED_PRECONDITION` with response/review counts):** the solicitation has real engagement data — a real LLO filed a response or a review was created. Surface the counts in the chat output; do NOT pass `force: true` automatically. The operator decides whether to override.
 
 ## Why funds + standalone reviews/responses remain report-only
 
