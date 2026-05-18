@@ -29,14 +29,22 @@ describe('connect-claim-opp.yaml', () => {
     // Both Resume and New-Opportunity branches each ship a
     // scrollUntilVisible — assert each one targets a button id and
     // is scoped to the target card via `below: text: ${OPP_NAME}`.
+    // The unconditional title-scroll added before the branches uses
+    // `text:` (no button id) — exclude it here; it has its own
+    // dedicated regression test below.
     const scrollBlocks = [
       ...yaml.matchAll(
         /- scrollUntilVisible:\s*\n\s*element:\s*\n([\s\S]*?)\n\s*direction:/g,
       ),
     ];
-    expect(scrollBlocks.length, 'expected one scrollUntilVisible per branch').toBeGreaterThanOrEqual(2);
-    for (const m of scrollBlocks) {
-      const elementClause = m[1];
+    const buttonAnchoredScrolls = scrollBlocks
+      .map((m) => m[1])
+      .filter((clause) => /id: "org\.commcare\.dalvik:id\/btn_/.test(clause));
+    expect(
+      buttonAnchoredScrolls.length,
+      'expected one button-anchored scrollUntilVisible per branch',
+    ).toBeGreaterThanOrEqual(2);
+    for (const elementClause of buttonAnchoredScrolls) {
       expect(elementClause).toMatch(
         /id: "org\.commcare\.dalvik:id\/(btn_resume|btn_view_opportunity)"/,
       );
@@ -53,6 +61,30 @@ describe('connect-claim-opp.yaml', () => {
     expect(yaml).toMatch(
       /- tapOn:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_view_opportunity"\s*\n\s*below:\s*\n\s*text: \$\{OPP_NAME\}/,
     );
+  });
+
+  it('scrolls the target title into the viewport BEFORE the branch `when:` guards evaluate', () => {
+    // Regression guard for the 2026-05-17 malaria-itn-fgd run halt
+    // (run 20260515-1645 Phase 6 attempt 8): with 4+ prior-run invite
+    // cards rendered ahead of the target tile, both Branch A
+    // (`btn_resume` + `below: text: ${OPP_NAME}`) and Branch B
+    // (`btn_view_opportunity` + `below: text: ${OPP_NAME}`)
+    // `when:` guards evaluate to false because the title is below the
+    // fold. The in-body `scrollUntilVisible` lives INSIDE each guard,
+    // so it never fires — recipe halts without claiming. Fix:
+    // unconditional `scrollUntilVisible` on `text: ${OPP_NAME}`
+    // before either branch, restoring the visibility precondition
+    // both guards depend on.
+    const titleScrollIdx = yaml.search(
+      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*text: \$\{OPP_NAME\}\s*\n\s*direction: DOWN/,
+    );
+    expect(titleScrollIdx, 'expected an unconditional title scroll').toBeGreaterThan(-1);
+    const branchAIdx = yaml.indexOf('# --- BRANCH A:');
+    expect(branchAIdx, 'expected Branch A marker').toBeGreaterThan(-1);
+    expect(
+      titleScrollIdx,
+      'title scroll must precede Branch A so its `when:` guard can resolve when the target is below the fold',
+    ).toBeLessThan(branchAIdx);
   });
 
   it('branches on btn_resume vs btn_view_opportunity, both card-scoped', () => {
