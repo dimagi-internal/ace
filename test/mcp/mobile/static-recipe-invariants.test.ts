@@ -87,6 +87,42 @@ describe('connect-claim-opp.yaml', () => {
     ).toBeLessThan(branchAIdx);
   });
 
+  it('scrolls the per-branch button into the viewport BEFORE the branch `when:` guards evaluate', () => {
+    // Regression guard for malaria-itn-fgd run 20260515-1645 Phase 6
+    // attempt 11: with 5+ prior-run invite cards rendered ahead of
+    // the target, the title-only scroll-into-view leaves the title at
+    // the viewport BOTTOM. The button below the title is clipped
+    // off-screen, both Branch A (`btn_resume`) and Branch B
+    // (`btn_view_opportunity`) `when:` guards evaluate to false
+    // (the button isn't visible), and the in-body `scrollUntilVisible`
+    // never fires. Catch-22.
+    //
+    // Fix: after the unconditional title-scroll, add a button-scroll
+    // for each branch's possible button id. Each lives inside its own
+    // `runFlow when: visible: { id: btn_* }` so only the actually-
+    // present button is scrolled into view. By the time the Branch A
+    // / Branch B guards below evaluate, the per-branch button is in
+    // the rendered viewport.
+    const branchAIdx = yaml.indexOf('# --- BRANCH A:');
+    expect(branchAIdx, 'expected Branch A marker').toBeGreaterThan(-1);
+    const preBranchYaml = yaml.slice(0, branchAIdx);
+
+    // Both branch buttons must have a pre-branch scroll that brings
+    // them into view (each scoped `below: text: ${OPP_NAME}`).
+    expect(
+      preBranchYaml,
+      'expected pre-branch scroll for btn_resume below the target title',
+    ).toMatch(
+      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_resume"\s*\n\s*below:\s*\n\s*text: \$\{OPP_NAME\}/,
+    );
+    expect(
+      preBranchYaml,
+      'expected pre-branch scroll for btn_view_opportunity below the target title',
+    ).toMatch(
+      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_view_opportunity"\s*\n\s*below:\s*\n\s*text: \$\{OPP_NAME\}/,
+    );
+  });
+
   it('branches on btn_resume vs btn_view_opportunity, both card-scoped', () => {
     // Regression guard for the 2026-05-15 turmeric run wrong-opp claim:
     // when the target opp tile lives in the "In Progress" section it
