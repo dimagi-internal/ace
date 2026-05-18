@@ -80,7 +80,69 @@ Plus migration. The 50-char default has no operational justification (slug strin
 
 Removal criterion for the ACE-side preventers: drop the brief-template REQUIRED clauses and bump `SLUG_LENGTH_LIMIT` (and any test fixtures relying on it) in lock-step with the Connect column widening.
 
-## Generalization
+## Generalization (Vellum-as-source-of-truth)
+
+**The HQ-side authoring source of truth for Connect blocks is the Vellum plugin at `dimagi/Vellum:src/commcareConnect.js`.** That file is the spec Nova's `compile_app` should mirror — and it makes a key separation Nova currently elides: the Connect slug (`<learn:module id="…">`) comes from the form's `nodeID` field (an explicit user-supplied identifier), NOT from a slugified display name. The `name` element is a SEPARATE field that holds the human-readable label.
+
+From `src/commcareConnect.js:117-173` (Learn Module spec):
+
+```javascript
+ConnectLearnModule: {
+  rootName: "module",
+  childNodes: [
+    {id: "name", writeToData: true},
+    {id: "description", writeToData: true},
+    {id: "time_estimate", writeToData: true},
+  ],
+  mugOptions: { spec: {
+    nodeID: { lstring: 'Module ID' },        // ← slug; user-supplied directly
+    name:   { lstring: 'Name', required: true },
+    description: { ... required ... },
+    time_estimate: {
+      ... required ...,
+      validationFunc: mug => /^\d+$/.test(mug.p.time_estimate) ? 'pass' : 'Must be an integer',
+      help: 'Estimated time to complete the module in hours.',
+    },
+  } }
+}
+```
+
+And the emitter at `dataChildFilter` (lines 89-115):
+
+```javascript
+getExtraDataAttributes: () => ({
+  "xmlns": CCC_XMLNS,
+  "id": mug.p.nodeID,    // ← the slug comes from nodeID, NOT a slugified name
+})
+```
+
+The Vellum test fixture `tests/static/commcareConnect/learn_module.xml` confirms:
+
+```xml
+<module xmlns="http://commcareconnect.com/data/v1/learn" id="module_1">
+  <name>module 1</name>
+  <description>...</description>
+  <time_estimate>2</time_estimate>
+</module>
+```
+
+Two distinct values: `id="module_1"` (short, code-like, picked as the form's nodeID) and `<name>module 1</name>` (display label, can be long). Vellum-authored apps don't have the slug-length problem because the user picks a short stable identifier for the nodeID and writes their descriptive title in `name`.
+
+**Nova's behavior diverges.** Nova's `compile_app` derives the Connect `id` as `module_<idx>_<slugify(name)>` when the architect doesn't set `connect.learn_module.id` explicitly — conflating two fields Vellum keeps separate. The architect-brief REQUIRED clauses (this learning doc → `pdd-to-{learn,deliver}-app/SKILL.md`) instruct the architect to ALWAYS set `id` explicitly, mirroring what a human Vellum author naturally does.
+
+**Other Vellum-prescribed rules Nova should mirror:**
+
+| Vellum rule | Source | Currently in Nova/ACE? |
+|---|---|---|
+| `time_estimate` is in **hours**, not minutes | `src/commcareConnect.js:158` ("Estimated time to complete the module in hours") + Connect's `LearnModule.time_estimate` docstring | NOW in `pdd-to-learn-app/SKILL.md` brief template (added 0.13.275) — previously not specified; an architect on the LEEP run set 10-20 (intending minutes) which Connect would have stored as 10-20 hours |
+| `time_estimate` MUST match `^\d+$` (positive integer only) | `src/commcareConnect.js:155` (`validationFunc`) | Nova's API schema says `"type": "number"` (allows decimals) — narrower validator should be on the Nova side |
+| `connect.deliver_unit.entity_id` / `entity_name` are OPTIONAL XPath fields | `src/commcareConnect.js:240, 249` (`presence: 'optional'`) | Nova has them but the `update_form` deliver_unit runtime auto-fills broken defaults (`voidcraft-labs/nova-plugin#1`) — known upstream bug |
+| `relevantAttr` (XPath) for conditional display of the Connect block itself | `src/commcareConnect.js:27-40` (`logicSection`), applied to every Connect mug type | Not exposed in Nova — no current PDD needs it, low priority |
+| New mug type `ConnectWorkAreaUpdate` — FLW-driven work-area issue reporting (status, reason, additional_details, photo_evidence) | `src/commcareConnect.js:321-402` | Not in Nova's vocabulary at all — possible new Connect feature we haven't surfaced. File a spec doc when relevant. |
+
+**Why this matters operationally.** Once the architect sets `id` explicitly, the brief's ≤40-char-name fallback becomes a defense-in-depth safety net rather than the primary rule. After commcare-connect#1195 widens the columns to 255 (or whatever), drop the ≤40-char fallback — but KEEP the explicit-id rule, because it's not a workaround. It's a cleanliness invariant matching Vellum's slug/name separation and stays correct regardless of upstream column width.
+
+## Two failure shapes, one bug class
 
 The 2026-05-12 `short_description` 50-char trap and this 2026-05-17 slug-length trap are **the same shape of bug at different boundaries**:
 

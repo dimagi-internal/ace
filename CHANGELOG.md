@@ -5,6 +5,28 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.277 — 2026-05-18
+
+**Mirror Vellum's slug/name separation in the Nova architect brief (follow-up to 0.13.274).**
+
+The 0.13.274 fix capped module/deliver-unit *name* length at 40 chars as a workaround for Connect's 50-char `LearnModule.slug` / `DeliverUnit.slug` columns. That treats the symptom — the actual cause is that Nova's default `<learn:module id>` derivation conflates the Connect slug (which feeds those columns) with the human-readable display name (which can be long and rich).
+
+The HQ-side authoring source of truth — `dimagi/Vellum:src/commcareConnect.js`, the Vellum plugin that humans use in the form designer when the `COMMCARE_CONNECT` flag is on — keeps these as two SEPARATE fields. The form's `nodeID` is the slug (user types something short and code-like like `module_1` or `m6_sample_prep`); the `name` element is the display label (any length, any character set). The fixture at `tests/static/commcareConnect/learn_module.xml` confirms: `<module id="module_1"><name>module 1</name>…</module>`. Vellum-authored apps don't hit the slug-length trap because humans naturally pick short identifiers.
+
+Nova's API already supports this split — `connect.learn_module.id` is an optional field on `update_form` — but ACE's brief template never told the architect to set it, so Nova defaulted to `module_<idx>_<slugify(name)>` and inherited the column-overflow risk.
+
+Three brief-template additions to `pdd-to-{learn,deliver}-app/SKILL.md`:
+
+1. **New REQUIRED clause** — every `connect.learn_module` / `connect.assessment` / `connect.deliver_unit` / `connect.task` block MUST include an explicit `id` field (8-20 chars, lowercase, snake_case, stable across renames of the display name). Examples: `m1_background`, `m6_sample_prep`, `wohl_shipment`. This is now the load-bearing rule; the ≤40-char name fallback below becomes defense-in-depth.
+
+2. **New REQUIRED clause (Learn only)** — `connect.learn_module.time_estimate` is in **HOURS**, not minutes. Vellum's plugin help text and Connect's model docstring both say hours; an architect on the LEEP run set 10-20 (intending minutes) which Connect would have stored as 10-20-hour modules. For typical modules this is 1 or 2.
+
+3. **Reframed the ≤40-char name clause** — explicitly labelled FALLBACK, kicks in only when the explicit-id rule above is missed. Removal criterion split: drop the fallback when commcare-connect#1195 lands + `SLUG_LENGTH_LIMIT` bumps in lock-step, but KEEP the explicit-id rule indefinitely — it's a cleanliness invariant matching Vellum's separation, not a workaround.
+
+`docs/learnings/2026-05-17-connect-slug-length-50-char-trap.md` § Generalization extended with the full Vellum source citations + a table of other Vellum-prescribed rules Nova should mirror (`time_estimate` integer-only validator → currently Nova allows decimals via `"type": "number"`; `relevantAttr` for conditional Connect-block display → not currently exposed; `ConnectWorkAreaUpdate` mug type → entire feature missing from Nova's vocabulary).
+
+No test or MCP code changes — purely brief-template updates + doc additions. The structural backstop (`app-release` Step 6 `oversized_slugs` projection gate, shipped in 0.13.274) remains the wall.
+
 ## 0.13.276 — 2026-05-18
 
 **Sweep-labs docs follow up connect-labs PR #197 (cascade-based delete gate).**
