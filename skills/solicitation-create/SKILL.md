@@ -279,8 +279,22 @@ contract.
    Capture the returned `id` (the labs record id) into `solicitation_id`.
    The response also includes `experiment` (echo of the program_id) and
    the data object as written. Public URL pattern:
-   `${LABS_BASE_URL}/labs/solicitations/<id>/`. Manage URL pattern:
-   `${LABS_BASE_URL}/labs/solicitations/<id>/edit/`.
+   `${LABS_BASE_URL}/solicitations/<id>/`. Manage URL pattern:
+   `${LABS_BASE_URL}/solicitations/<id>/edit/`. **NO `/labs/` prefix** —
+   `connect-labs/config/urls.py` mounts the solicitations app at
+   `/solicitations/`, not `/labs/solicitations/`. The `/labs/` prefix is
+   reserved for the authenticated Labs UI (overview, login, explorer).
+
+   **Verify reachability before recording the URL.** After publish,
+   issue a HEAD against the constructed public URL and confirm 200. A
+   404 here means either the URL pattern doesn't match the current labs
+   URLconf (regression on labs side) or the record's envelope `public`
+   flag didn't flip (regression on MCP side — see PRs
+   commcare-connect#162/164/165 for the canonical contract). Either way,
+   surface as `[BLOCKER]` rather than writing a broken URL into
+   `run_state.yaml`. This catches the class of bug where the MCP
+   reports `is_public: true` but the public listing page renders empty
+   (verified jjackson/ace e2e malaria-itn-app run 20260517-1829).
 
 7. **Verify the round-trip.** Immediately after publish, call:
 
