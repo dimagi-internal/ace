@@ -5,6 +5,27 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.274 — 2026-05-18
+
+**Close the `LearnModule.slug` / `DeliverUnit.slug` 50-char trap with a class-level preventer.**
+
+Phase 4 of `leep-paint-collection/20260517-1515` 500'd opaquely on `connect_create_opportunity` because Nova's `compile_app` emitted a 52-char slug (`module_6_stage_2_sample_prep_drying_bagging_shipment`) from the LEEP M6 module name, and Connect's `LearnModule.slug` column is `SlugField()` with the Django default `max_length=50`. The Postgres `DataError: value too long for type character varying(50)` raised inside `sync_learn_modules_and_deliver_units` fell through `program/api/views.py:102`'s narrow `except` clause and surfaced as HTTP 500 with empty body. Same shape as the 2026-05-12 `short_description` 50-char trap, different boundary (the slug is server-extracted from CCZ XML, not caller-supplied).
+
+The 2026-05-12 boundary-probe registry filed the generalized serializer-vs-model length probe as a pending follow-up, but that probe would NOT have caught this — it only sees wire-visible serializer fields. The slug case needed a different boundary (CCZ projection at release time + architect-brief constraint upstream).
+
+Four-layer fix, defense-in-depth:
+
+1. **`mcp/connect/backends/commcare.ts`** — `simulateConnectSync` projection extended with `slug_length_limit` (constant 50), `max_slug_length`, and per-type `oversized_slugs[]`. New exported constant `SLUG_LENGTH_LIMIT = 50` for lock-step bumping when the upstream column widens.
+2. **`skills/app-release/SKILL.md` § Step 6** — release-time gate extended from `collision_count === 0 && per-type > 0` to ALSO require every `oversized_slugs.*` array empty. `[BLOCKER]` brief MUST list each offender as `<type>: <slug> (<length> chars, in <first_seen_in>)`. This is the structural backstop — even if an operator drives Nova manually and ships an over-length name, this gate halts before Phase 4 ever calls Connect.
+3. **`skills/pdd-to-learn-app/SKILL.md` + `skills/pdd-to-deliver-app/SKILL.md`** — new REQUIRED clause in each brief template instructing the Nova architect to keep module/deliver-unit names ≤ 40 chars (Nova's `module_<index>_` prefix + slugified name fits Connect's 50-char column with headroom). Includes the exact rationale and a removal criterion tied to the upstream Connect PR.
+4. **`docs/learnings/2026-05-17-connect-slug-length-50-char-trap.md`** — new learning doc covering the bug, the prior-framing refutations (CCZ-marker over-strip and `time_estimate: NULL` were both wrong), the Sentry proof, and the upstream Connect fix needed (`SlugField(max_length=255)` on `LearnModule.slug` + `DeliverUnit.slug` + migration). `docs/learnings/2026-05-12-boundary-probe-registry.md` updated with the new shipped probe + an annotation on the still-pending generalized length probe explaining why it'd miss this class.
+
+5 new vitest cases in `test/mcp/connect/unit/connect-sync-projection.test.ts` — every projection exposes the new fields, learn_module + deliver_unit slugs > 50 are flagged, empty projection produces sensible defaults, 50-char slugs do NOT trigger (boundary inclusive). All 13 tests pass.
+
+**Recovery for leep-paint-collection/20260517-1515:** rename Nova module 6 (`"Stage 2: Sample Preparation, Drying, Bagging, Shipment"` → shorter active form), re-build + re-release Learn, resume `/ace:run leep-paint-collection/20260517-1515`. The Phase 4 retry will now (a) succeed against the shortened slug and (b) be structurally protected from the same class going forward.
+
+**Upstream Connect PR (dimagi/commcare-connect#1195, open):** bump `LearnModule.slug` + `TaskType.slug` to `SlugField(max_length=255)` + migration; the 50-char default has no operational justification. Also worth proposing separately: extending `program/api/views.py:102`'s `except` clause to catch `DataError` / `IntegrityError` and return HTTP 400 with the offending column name, converting every future column-width trap (any field, any path) from "opaque 500" to "actionable 400."
+
 ## 0.13.270 — 2026-05-17
 
 **Always cold-boot AVD on `mobile_ensure_avd_running` — scrap the warm-AVD optimization.**

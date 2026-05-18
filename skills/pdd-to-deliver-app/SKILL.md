@@ -104,6 +104,33 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      operator gets clean diagnostic + auto-recovery instead of "Cannot
      make new version" + a CCHQ UI peek. See
      `docs/learnings/2026-04-29-nova-connect-marker-bugs.md` § Bug 4.
+   - **REQUIRED — Keep deliver_unit names short enough that the derived
+     slug fits Connect's 50-char column.** Insert this paragraph
+     **verbatim** into the brief, in its own paragraph, prefixed
+     `REQUIRED:`:
+
+     > REQUIRED: Every `connect.deliver_unit.name` you set MUST be ≤ 40
+     > characters. Nova's `compile_app` derives the `<learn:deliver id>`
+     > slug from the module slug (which itself comes from the module's
+     > display name slugified), and Connect's `DeliverUnit.slug` column
+     > is `SlugField()` with the Django default `max_length=50`. A
+     > longer module/deliver-unit name slugifies past 50 and triggers
+     > Postgres `DataError: value too long for type character varying(50)`
+     > at Connect's sync, which surfaces as an opaque HTTP 500 from
+     > `connect_create_opportunity` with no diagnostic. Prefer short
+     > active titles like "Stage 2: Sample Prep + Shipment" over the
+     > full descriptive form — there's no description field on
+     > DeliverUnit but the name is what shows up in the deliver-unit
+     > picker on Connect, so terseness helps readability too.
+
+     Reproducer + class-level preventer: see
+     `pdd-to-learn-app/SKILL.md` § REQUIRED — Keep module names short.
+     The structural backstop is `app-release` Step 6's
+     `projected_connect_state.oversized_slugs.deliver_units` gate.
+     Removal criterion: drop this constraint when the upstream
+     commcare-connect PR widens `DeliverUnit.slug` to `max_length=255`
+     and `SLUG_LENGTH_LIMIT` in `mcp/connect/backends/commcare.ts` is
+     bumped in lock-step.
    - **REQUIRED — Architect must verify-then-retry every `add_fields`
      call.** Nova's `add_fields` has a partial-persistence quirk: a
      single call with N items often persists only the first few. The
