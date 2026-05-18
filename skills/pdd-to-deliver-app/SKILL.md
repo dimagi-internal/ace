@@ -104,33 +104,61 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      operator gets clean diagnostic + auto-recovery instead of "Cannot
      make new version" + a CCHQ UI peek. See
      `docs/learnings/2026-04-29-nova-connect-marker-bugs.md` § Bug 4.
-   - **REQUIRED — Keep deliver_unit names short enough that the derived
-     slug fits Connect's 50-char column.** Insert this paragraph
-     **verbatim** into the brief, in its own paragraph, prefixed
-     `REQUIRED:`:
+   - **REQUIRED — Set `connect.deliver_unit.id` AND `connect.task.id`
+     explicitly to short stable identifiers, separately from the human-
+     readable `name`.** This is the load-bearing constraint; the ≤40-char
+     name fallback below is just a safety net. Insert this paragraph
+     **verbatim** into the brief, in its own paragraph, prefixed `REQUIRED:`:
 
-     > REQUIRED: Every `connect.deliver_unit.name` you set MUST be ≤ 40
-     > characters. Nova's `compile_app` derives the `<learn:deliver id>`
-     > slug from the module slug (which itself comes from the module's
-     > display name slugified), and Connect's `DeliverUnit.slug` column
-     > is `SlugField()` with the Django default `max_length=50`. A
-     > longer module/deliver-unit name slugifies past 50 and triggers
-     > Postgres `DataError: value too long for type character varying(50)`
-     > at Connect's sync, which surfaces as an opaque HTTP 500 from
-     > `connect_create_opportunity` with no diagnostic. Prefer short
-     > active titles like "Stage 2: Sample Prep + Shipment" over the
-     > full descriptive form — there's no description field on
-     > DeliverUnit but the name is what shows up in the deliver-unit
-     > picker on Connect, so terseness helps readability too.
+     > REQUIRED: Every `connect.deliver_unit` and `connect.task` block
+     > MUST include an explicit `id` field. The id is the Connect slug —
+     > it MUST be short (8-20 chars), lowercase, snake_case, code-like,
+     > and stable across renames of the human-readable name. Examples:
+     > `shop_registration`, `sample_prep_initial`, `wohl_shipment`. Do
+     > NOT rely on Nova's default derivation (which slugifies the module
+     > name) — that conflates the Connect slug with the display name and
+     > trips Connect's 50-char `DeliverUnit.slug` column on any name that
+     > slugifies past ~40 chars. The `name` field is a separate, human-
+     > readable string that can be any length and is what shows up in
+     > the deliver-unit picker on Connect — terseness is preferred for
+     > picker readability but not required for correctness once the id
+     > is set explicitly. Vellum-authored apps (the human-driven
+     > authoring path in HQ's form designer) separate these into two UI
+     > fields ("Delivery Unit ID" / "Task ID" and "Name") and humans
+     > naturally pick short identifiers; Nova's API exposes the same two
+     > fields but the architect has to set both explicitly because there's
+     > no UI to nudge the separation. See
+     > `docs/learnings/2026-05-17-connect-slug-length-50-char-trap.md`
+     > § Generalization (Vellum-as-source-of-truth) for the full mechanism
+     > + source citations.
+
+   - **REQUIRED — Keep deliver_unit/task names short enough that the
+     derived slug fits Connect's 50-char column (FALLBACK).** This is
+     the defense-in-depth fallback for cases where the explicit-id rule
+     above is missed. Insert this paragraph **verbatim** into the brief,
+     in its own paragraph, prefixed `REQUIRED:`:
+
+     > REQUIRED: If you have not set `connect.deliver_unit.id` /
+     > `connect.task.id` explicitly per the rule above, the `name` field
+     > MUST be ≤ 40 characters as a fallback — Nova's default slug
+     > derivation overflows Connect's 50-char `DeliverUnit.slug` /
+     > `TaskType.slug` column on longer names and triggers an opaque
+     > HTTP 500 from `connect_create_opportunity`. Prefer the explicit-id
+     > rule above (cleaner; lets `name` be any length); this clause
+     > exists only because architects sometimes skip the id field.
 
      Reproducer + class-level preventer: see
-     `pdd-to-learn-app/SKILL.md` § REQUIRED — Keep module names short.
-     The structural backstop is `app-release` Step 6's
-     `projected_connect_state.oversized_slugs.deliver_units` gate.
-     Removal criterion: drop this constraint when the upstream
-     commcare-connect PR widens `DeliverUnit.slug` to `max_length=255`
+     `pdd-to-learn-app/SKILL.md` § REQUIRED — Set id explicitly. The
+     structural backstop is `app-release` Step 6's
+     `projected_connect_state.oversized_slugs.deliver_units` /
+     `oversized_slugs.task_units` gate. Removal criteria: (a) drop the
+     ≤40-char fallback when the upstream commcare-connect PR widens
+     `DeliverUnit.slug` to `max_length=255` (already `=100` since a prior
+     fix) AND `TaskType.slug` to `max_length=255` (dimagi/commcare-connect#1195)
      and `SLUG_LENGTH_LIMIT` in `mcp/connect/backends/commcare.ts` is
-     bumped in lock-step.
+     bumped in lock-step. (b) KEEP the explicit-id rule even after the
+     column widens — it's a cleanliness invariant matching Vellum's
+     slug-vs-name separation, not just a workaround for the column width.
    - **REQUIRED — Architect must verify-then-retry every `add_fields`
      call.** Nova's `add_fields` has a partial-persistence quirk: a
      single call with N items often persists only the first few. The

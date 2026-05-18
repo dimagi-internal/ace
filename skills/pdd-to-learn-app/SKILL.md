@@ -96,32 +96,74 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      name + line/col) if the architect violates this constraint anyway,
      so the operator gets a clear diagnostic instead of "Cannot make
      new version" and a CCHQ UI peek.
-   - **REQUIRED — Keep module names short enough that the derived slug
-     fits Connect's 50-char column.** Insert this paragraph **verbatim**
-     into the brief, in its own paragraph, prefixed `REQUIRED:`:
+   - **REQUIRED — Set `connect.learn_module.id` AND `connect.assessment.id`
+     explicitly to short stable identifiers, separately from the human-
+     readable `name`.** This is the load-bearing constraint; the ≤40-char
+     name fallback below is just a safety net. Insert this paragraph
+     **verbatim** into the brief, in its own paragraph, prefixed `REQUIRED:`:
 
-     > REQUIRED: Every `connect.learn_module.name` you set MUST be ≤ 40
-     > characters. Nova's `compile_app` derives the `<learn:module id>`
-     > slug as `module_<index>_<slugified_name>`, and Connect's
-     > `LearnModule.slug` column is `SlugField()` with the Django default
-     > `max_length=50`. A longer name slugifies past 50 and triggers
-     > Postgres `DataError: value too long for type character varying(50)`
-     > at Connect's sync, which surfaces as an opaque HTTP 500 from
-     > `connect_create_opportunity` with no diagnostic. Prefer short
-     > active titles like "Stage 2: Sample Prep + Shipment" over the
-     > full descriptive form "Stage 2: Sample Preparation, Drying,
-     > Bagging, Shipment" — the description field is the right place
-     > for the long version.
+     > REQUIRED: Every `connect.learn_module` and `connect.assessment`
+     > block MUST include an explicit `id` field. The id is the Connect
+     > slug — it MUST be short (8-20 chars), lowercase, snake_case, code-
+     > like, and stable across renames of the human-readable name. Examples:
+     > `m1_background`, `m6_sample_prep`, `m1_quiz`. Do NOT rely on Nova's
+     > default derivation (`module_<index>_<slugify(name)>`) — that
+     > conflates the Connect slug with the display name and trips Connect's
+     > 50-char `LearnModule.slug` column on any name that slugifies past
+     > ~40 chars. The `name` field is a separate, human-readable string
+     > that can be any length and any character set — that's where the
+     > descriptive title belongs. Vellum-authored apps (the human-driven
+     > authoring path in HQ's form designer) separate these into two UI
+     > fields ("Module ID" and "Name") and humans naturally pick short
+     > identifiers; Nova's API exposes the same two fields but the
+     > architect has to set both explicitly because there's no UI to
+     > nudge the separation. See `docs/learnings/2026-05-17-connect-slug-length-50-char-trap.md`
+     > § Generalization (Vellum-as-source-of-truth) for the full mechanism
+     > + source citations.
+
+   - **REQUIRED — `connect.learn_module.time_estimate` is in HOURS, not
+     minutes.** Insert this paragraph **verbatim** into the brief, in its
+     own paragraph, prefixed `REQUIRED:`:
+
+     > REQUIRED: The `connect.learn_module.time_estimate` field is the
+     > estimated time to complete the module in **HOURS**, not minutes.
+     > Vellum's plugin help text says verbatim "Estimated time to complete
+     > the module in hours" (`src/commcareConnect.js:158`) and Connect's
+     > `LearnModule.time_estimate` model field docstring says "Estimated
+     > hours to complete the module". For typical Learn modules this is
+     > 1 (one hour) or 2; never a two-digit minute count. If a module
+     > genuinely takes less than an hour, round up to 1 — Connect displays
+     > the value in dashboards as hours-to-complete and FLW-onboarding
+     > timing calculations downstream assume the unit.
+
+   - **REQUIRED — Keep module/assessment names short enough that the
+     derived slug fits Connect's 50-char column (FALLBACK).** This is the
+     defense-in-depth fallback for cases where the explicit-id rule above
+     is missed. Insert this paragraph **verbatim** into the brief, in its
+     own paragraph, prefixed `REQUIRED:`:
+
+     > REQUIRED: If you have not set `connect.learn_module.id` /
+     > `connect.assessment.id` explicitly per the rule above, the `name`
+     > field MUST be ≤ 40 characters as a fallback — Nova's default slug
+     > derivation `module_<index>_<slugify(name)>` overflows Connect's
+     > 50-char `LearnModule.slug` column on longer names and triggers an
+     > opaque HTTP 500 from `connect_create_opportunity`. Prefer the
+     > explicit-id rule above (cleaner; lets `name` be any length); this
+     > clause exists only because architects sometimes skip the id field.
 
      Reproducer: `leep-paint-collection` run 20260517-1515 Phase 4 hit
-     this on M6 (52-char slug). The structural backstop is `app-release`
+     this on M6 (52-char slug derived from "Stage 2: Sample Preparation,
+     Drying, Bagging, Shipment"). The structural backstop is `app-release`
      Step 6's `projected_connect_state.oversized_slugs` gate — even if
-     the architect ships an over-length name, the release-time projection
-     halts before Phase 4 ever calls Connect. Removal criterion: drop
-     this constraint when the upstream commcare-connect PR widens
-     `LearnModule.slug` / `DeliverUnit.slug` to `max_length=255` and
-     `SLUG_LENGTH_LIMIT` in `mcp/connect/backends/commcare.ts` is
-     bumped in lock-step.
+     the architect ships an over-length slug, the release-time projection
+     halts before Phase 4 ever calls Connect. Removal criteria: (a) drop
+     the ≤40-char fallback when the upstream commcare-connect PR widens
+     `LearnModule.slug` / `DeliverUnit.slug` to `max_length=255` (PR
+     dimagi/commcare-connect#1195) and `SLUG_LENGTH_LIMIT` in
+     `mcp/connect/backends/commcare.ts` is bumped in lock-step. (b) KEEP
+     the explicit-id rule even after the column widens — it's a
+     cleanliness invariant matching Vellum's slug-vs-name separation,
+     not just a workaround for the column width.
    - **REQUIRED — Architect must verify-then-retry every `add_fields`
      call.** Nova's `add_fields` has a partial-persistence quirk: a
      single call with N items often persists only the first few.
