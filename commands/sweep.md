@@ -23,7 +23,7 @@ Read `agents/sweep.md` and execute its procedure inline (this is a procedure doc
 /ace:sweep connect      # auto-deactivates orphan opps + auto-deletes unaccepted FLW invites
 /ace:sweep ocs          # auto-deletes orphan chatbots + pipelines + per-opp collections + ends orphan sessions (golden template + shared collection safe-listed)
 /ace:sweep hq           # auto-soft-deletes orphan apps (90-day restorable via HQ admin UI)
-/ace:sweep labs         # auto-deletes orphan workflows + pipelines + draft/closed solicitations (cascade); disables synthetic; funds + standalone reviews/responses report-only
+/ace:sweep labs         # auto-deletes orphan workflows + pipelines + solicitations (cascade; gated on responses+reviews == 0); disables synthetic; funds + standalone reviews/responses report-only
 /ace:sweep all          # runs all five in sequence with a unified summary
 ```
 

@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.276 — 2026-05-18
+
+**Sweep-labs docs follow up connect-labs PR #197 (cascade-based delete gate).**
+
+connect-labs PR #197 replaced the status-based gate on `delete_solicitation` (refuse `active`/`awarded`, allow `draft`/`closed`) with a cascade-emptiness gate (refuse when `responses + reviews > 0` unless `force=true`). The status field is no longer load-bearing for delete authorization — it stays in place purely for marketplace display.
+
+Why: the status-based gate was wrong in both directions. It forced ACE's `/ace:sweep labs` to do a close-then-delete dance against every freshly-published dogfood solicitation (always empty cascade, always safe to delete directly), and it permitted destruction of real LLO engagement data once a populated solicitation was manually flipped to `closed`. The cascade-based gate fixes both: ACE sweeps call `delete_solicitation` directly, real engagement data is structurally protected, and the rare legitimate destroy-with-data case (test fixtures) has an explicit `force: true` escape hatch.
+
+ACE-side updates: `skills/sweep-labs/SKILL.md` drops Step 5's status-partitioning logic and the blocked-by-lifecycle bucket from the OrphanReport; the failure-mode entry now describes the `FAILED_PRECONDITION` with response/review counts and explicitly warns against auto-passing `force: true`. `agents/sweep.md` and `commands/sweep.md` coverage matrix entries updated to match. Validated live this session: 8 ACE-created solicitations swept clean across 3 archetypes; every one returned `cascade: {responses: 0, reviews: 0}`, confirming no real LLO ever engaged.
+
 ## 0.13.274 — 2026-05-18
 
 **Close the `LearnModule.slug` / `DeliverUnit.slug` 50-char trap with a class-level preventer.**
