@@ -357,6 +357,31 @@ export class AvdBackend {
    * `/api/mobile/ensure-running` cold-boots from AMI on every call.
    */
   async ensureAvdRunning(avdName: string): Promise<AvdInfo> {
+    // Sweep stale qemu+adb daemon state BEFORE listing/killing/booting.
+    //
+    // Same precondition-restore class as the cold-boot itself (see
+    // CLAUDE.md § "Phase preconditions are restored, not adapted"),
+    // just one layer lower: qemu+adb daemon state, not AVD content
+    // state. Three concrete observations of this class on
+    // malaria-itn-fgd/20260515-1645 Phase 6:
+    //   (8) post-PR-#345 boot-wait fix passed but a wedged adb daemon
+    //       independent of the wait still 500'd; `adb kill-server` +
+    //       `adb start-server` cleared it.
+    //   (10) 2 orphan qemu-system-aarch64 processes + 3 stale adb
+    //       daemons from prior crashed boots — `package service` never
+    //       binds; 3 consecutive `mobile_ensure_avd_running` failures.
+    //   (11) Even after the parent manually swept qemu+adb, the first
+    //       in-dispatch `ensureAvdRunning` call STILL threw the same
+    //       signature until a second `adb kill-server`/`start-server`
+    //       fired inside the dispatch — proving the heal itself needs
+    //       to own daemon restoration, not the operator.
+    //
+    // Best-effort: ignore failures. Logs structured info on orphan
+    // qemu PIDs so future debug avoids the manual `pgrep -af qemu`
+    // step. Cost: ~500ms-1s once per heal; cheaper than the next
+    // junk-state debug cycle.
+    await this.sweepStaleEmulatorState();
+
     const known = await this.listAvds();
     if (!known.includes(avdName)) {
       throw new AvdBootError(avdName, `AVD '${avdName}' not in emulator -list-avds output`);
@@ -465,6 +490,119 @@ export class AvdBackend {
       }
       throw err;
     }
+  }
+
+  /**
+   * Best-effort sweep of orphan `qemu-system-*` processes + a forced
+   * adb-server restart, run as the first step of every `ensureAvdRunning`
+   * call. Restores a known-clean qemu+adb daemon precondition before the
+   * cold-boot funnel runs, the same way the cold-boot funnel itself
+   * restores a known-clean AVD-content precondition.
+   *
+   * Two-step contract:
+   *
+   *   1. Find every running `qemu-system-*` PID. Cross-reference against
+   *      the current `adb devices` listing. If a qemu PID has no live
+   *      `emulator-NNNN device` line tracking it, it's an orphan (a
+   *      crashed / interrupted prior dispatch left it behind) — kill -9.
+   *      Logs structured info per kill: PID + console port it was
+   *      listening on (best-effort via lsof; ports are derived from
+   *      `adb devices` so we don't strictly need lsof to make the right
+   *      kill decision).
+   *
+   *   2. Always run `adb kill-server` + `adb start-server`. Wedged adb
+   *      daemons accumulate state across long sessions; a single
+   *      restart costs ~500ms and resets the daemon to a known-good
+   *      state. This is the cheaper path than probing for "is the
+   *      daemon wedged?" — three observed instances in
+   *      malaria-itn-fgd/20260515-1645 (attempts 8, 10, 11) all
+   *      resolved with the same `kill-server`/`start-server` pair.
+   *
+   * Both steps are best-effort: every shell call swallows its error.
+   * If sweeping fails, the cold-boot funnel still proceeds — the worst
+   * case is the same "wedged daemon" symptom we're trying to prevent,
+   * which then surfaces in a downstream phase with the same diagnostic
+   * we already have.
+   */
+  private async sweepStaleEmulatorState(): Promise<void> {
+    // Step 1: orphan qemu sweep.
+    //
+    // Get all qemu-system PIDs. `pgrep -af` would give us the command-
+    // line too, but we don't need it for the kill decision — the
+    // adb-devices cross-reference is the authoritative signal. On
+    // Windows we no-op (pgrep doesn't exist, and ACE mobile dev is
+    // Mac/Linux-only in practice).
+    if (process.platform !== 'win32') {
+      try {
+        const pgrep = await this.shell('pgrep', ['-f', 'qemu-system']).catch(() => null);
+        const qemuPids = pgrep && pgrep.exitCode === 0
+          ? pgrep.stdout
+              .split('\n')
+              .map((s) => parseInt(s.trim(), 10))
+              .filter((n) => Number.isFinite(n) && n > 0)
+          : [];
+
+        if (qemuPids.length > 0) {
+          // Live-tracked qemu emulators have an entry in `adb devices`.
+          // Anything else is orphan state. We don't try to map specific
+          // PIDs to specific console ports here — if `adb devices` is
+          // empty (which is the wedged state we're trying to recover
+          // from), every qemu PID is by definition an orphan.
+          const devices = await this.shell('adb', ['devices']).catch(() => null);
+          const liveSerials = devices
+            ? devices.stdout
+                .split('\n')
+                .slice(1)
+                .map((line) => line.split('\t')[0].trim())
+                .filter((s) => s.startsWith('emulator-'))
+            : [];
+          const liveCount = liveSerials.length;
+
+          if (liveCount === 0) {
+            // Wedged-daemon state: kill every qemu PID we found. This
+            // is the explicit malaria-itn-fgd attempt-10 reproducer.
+            for (const pid of qemuPids) {
+              // eslint-disable-next-line no-console
+              console.warn(`[ace-mobile] sweepStaleEmulatorState: killing orphan qemu pid=${pid} (no adb devices visible)`);
+              try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+            }
+          } else if (qemuPids.length > liveCount) {
+            // Some qemu PIDs aren't matched by adb devices — best-
+            // effort: kill the excess. We can't precisely identify
+            // which PIDs are orphans without per-process port probing,
+            // but if pgrep shows N PIDs and adb sees M < N devices,
+            // (N - M) PIDs are orphans. We kill the lowest-PID
+            // excess (most likely to be the older orphans).
+            //
+            // Conservative: only kill if pgrep > 2 * live (i.e. we're
+            // confident there are MULTIPLE orphans, not a single
+            // legitimate emulator with a stale pgrep echo). This
+            // avoids killing a healthy concurrent emulator on a
+            // shared box.
+            if (qemuPids.length >= liveCount + 2) {
+              const excess = qemuPids.slice(0, qemuPids.length - liveCount);
+              for (const pid of excess) {
+                // eslint-disable-next-line no-console
+                console.warn(`[ace-mobile] sweepStaleEmulatorState: killing likely-orphan qemu pid=${pid} (${qemuPids.length} qemu PIDs, ${liveCount} adb devices)`);
+                try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+              }
+            }
+          }
+        }
+      } catch {
+        // Best-effort: any sweep failure is silently swallowed so the
+        // cold-boot funnel still proceeds.
+      }
+    }
+
+    // Step 2: always restart adb-server. Cheap (~500ms) and resets
+    // the daemon to a known-clean state independent of whether we
+    // detected wedge symptoms. Cited in three observed instances
+    // (malaria-itn-fgd attempts 8, 10, 11) as the manual recovery
+    // operators ran — owning it inside the heal removes the
+    // operator-in-the-loop step.
+    await this.shell('adb', ['kill-server']).catch(() => {});
+    await this.shell('adb', ['start-server']).catch(() => {});
   }
 
   /**

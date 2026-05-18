@@ -132,6 +132,55 @@ appId: org.commcare.dalvik
 - assertVisible:
     text: ${OPP_NAME}
 
+# Bring the per-branch BUTTON into the rendered viewport before the
+# Branch A / Branch B `when:` guards evaluate. Title-only scrolling
+# leaves the title at the viewport bottom on a list with several
+# prior-run tiles ahead — the button below the title is clipped, both
+# branches' `when: visible: { id: btn_*, below: text: ${OPP_NAME} }`
+# guards evaluate to false, and the in-body `scrollUntilVisible` steps
+# (which would scroll the button into view) never fire. Catch-22.
+#
+# Each tile carries EITHER `btn_resume` (in-progress) OR
+# `btn_view_opportunity` (new-opportunity) — never both. We try each
+# in its own `runFlow` so whichever is present scrolls into view;
+# the other branch's `runFlow` no-ops because its `when:` guard
+# matches nothing on the rendered hierarchy. Either way the per-
+# branch button below the title is now in the viewport and the
+# downstream Branch A / Branch B guards can resolve correctly.
+#
+# Live reproducer: malaria-itn-fgd run 20260515-1645 Phase 6
+# attempt 11 — 5+ invite tiles, target title scrolled to viewport
+# bottom by the title-scroll above, button clipped below-fold, both
+# `when:` guards skipped, recipe halted. Third PR in the claim-opp
+# series (PR #346 = title scroll; PR #348 = post-start wait; this
+# = post-title button scroll). See
+# `skills/app-screenshot-capture/SKILL.md § Step 4 "OPP_NAME
+# uniqueness assumption"` for the durable cross-recipe pattern.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/btn_resume"
+    commands:
+      - scrollUntilVisible:
+          element:
+            id: "org.commcare.dalvik:id/btn_resume"
+            below:
+              text: ${OPP_NAME}
+          direction: DOWN
+          timeout: 10000
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/btn_view_opportunity"
+    commands:
+      - scrollUntilVisible:
+          element:
+            id: "org.commcare.dalvik:id/btn_view_opportunity"
+            below:
+              text: ${OPP_NAME}
+          direction: DOWN
+          timeout: 10000
+
 # --- BRANCH A: in-progress (btn_resume present) ---
 - runFlow:
     when:

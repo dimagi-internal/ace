@@ -256,6 +256,114 @@ describe('AvdBackend.ensureAvdRunning', () => {
     // allocated emulator console port — 5554 on a clean test box).
     expect(calls).toContain('adb -s emulator-5554 emu kill');
   });
+
+  // Regression suite for the qemu+adb-daemon-wedge class observed
+  // three times in malaria-itn-fgd/20260515-1645 Phase 6 attempts 8,
+  // 10, 11. Same precondition-restore pattern as the cold-boot itself
+  // (CLAUDE.md § "Phase preconditions are restored, not adapted") —
+  // one layer lower (qemu+adb daemon state, not AVD content state).
+
+  it('sweepStaleEmulatorState: restarts adb daemon as pre-step before the AVD-specific emu kill', async () => {
+    const calls: string[] = [];
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const key = `${cmd} ${args.join(' ')}`;
+      calls.push(key);
+      if (key === 'pgrep -f qemu-system') {
+        // No qemu PIDs — skip the orphan-kill branch and just exercise
+        // the always-restart adb-server step.
+        return { stdout: '', stderr: '', exitCode: 1 };
+      }
+      if (key === 'emulator -list-avds') {
+        // Unknown AVD — we don't actually care about boot, we just
+        // want to capture the order of pre-step adb daemon calls
+        // before the AvdBootError throws.
+        return { stdout: 'Other_AVD\n', stderr: '', exitCode: 0 };
+      }
+      if (key === 'adb devices') {
+        return { stdout: 'List of devices attached\n', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+    const backend = new AvdBackend({ shell });
+    await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(AvdBootError);
+
+    // adb kill-server and adb start-server must have fired before any
+    // AVD-specific `emu kill` call (in this scenario emu kill never
+    // fires, but the more important contract is that the daemon
+    // restart is at the very top of the heal).
+    const killSrvIdx = calls.indexOf('adb kill-server');
+    const startSrvIdx = calls.indexOf('adb start-server');
+    expect(killSrvIdx, 'expected adb kill-server in heal pre-step').toBeGreaterThan(-1);
+    expect(startSrvIdx, 'expected adb start-server in heal pre-step').toBeGreaterThan(killSrvIdx);
+    // The list-avds call (and therefore everything downstream) must
+    // come AFTER the daemon restart, not before.
+    const listAvdsIdx = calls.indexOf('emulator -list-avds');
+    expect(listAvdsIdx).toBeGreaterThan(startSrvIdx);
+  });
+
+  it('sweepStaleEmulatorState: kills orphan qemu PIDs when adb sees no devices', async () => {
+    if (process.platform === 'win32') return; // skipped on win32 by design
+    const killed: number[] = [];
+    const realKill = process.kill;
+    // Stub process.kill so we can observe orphan kills without actually
+    // signaling random PIDs on the test machine.
+    (process as { kill: typeof process.kill }).kill = ((pid: number, _sig?: string | number) => {
+      killed.push(pid);
+      return true;
+    }) as typeof process.kill;
+    try {
+      const shell = vi.fn(async (cmd: string, args: string[]) => {
+        const key = `${cmd} ${args.join(' ')}`;
+        if (key === 'pgrep -f qemu-system') {
+          // Two orphan qemu PIDs (the attempt-10 reproducer signature).
+          return { stdout: '90001\n90002\n', stderr: '', exitCode: 0 };
+        }
+        if (key === 'adb devices') {
+          return { stdout: 'List of devices attached\n', stderr: '', exitCode: 0 };
+        }
+        if (key === 'emulator -list-avds') {
+          return { stdout: 'Other_AVD\n', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      });
+      const backend = new AvdBackend({ shell });
+      await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(AvdBootError);
+      expect(killed).toContain(90001);
+      expect(killed).toContain(90002);
+    } finally {
+      (process as { kill: typeof process.kill }).kill = realKill;
+    }
+  });
+
+  it('sweepStaleEmulatorState: tolerates pgrep/kill failures (best-effort)', async () => {
+    if (process.platform === 'win32') return;
+    const realKill = process.kill;
+    (process as { kill: typeof process.kill }).kill = ((_pid: number, _sig?: string | number) => {
+      // Simulate ESRCH — the process was already gone.
+      throw new Error('ESRCH');
+    }) as typeof process.kill;
+    try {
+      const shell = vi.fn(async (cmd: string, args: string[]) => {
+        const key = `${cmd} ${args.join(' ')}`;
+        if (key === 'pgrep -f qemu-system') {
+          return { stdout: '90003\n', stderr: '', exitCode: 0 };
+        }
+        if (key === 'adb devices') {
+          return { stdout: 'List of devices attached\n', stderr: '', exitCode: 0 };
+        }
+        if (key === 'emulator -list-avds') {
+          return { stdout: 'Other_AVD\n', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      });
+      const backend = new AvdBackend({ shell });
+      // Should still reach the unknown-AVD throw cleanly — the kill
+      // failure during the sweep must NOT propagate.
+      await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(AvdBootError);
+    } finally {
+      (process as { kill: typeof process.kill }).kill = realKill;
+    }
+  });
 });
 
 describe('AvdBackend.requireRunningAvd', () => {
