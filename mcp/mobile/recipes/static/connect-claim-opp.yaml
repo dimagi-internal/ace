@@ -109,6 +109,29 @@ appId: org.commcare.dalvik
 # `connect-opp-setup` already produces names like
 # "Turmeric Market Survey — turmeric (run 20260515-0536)".
 
+# Bring the target tile into the rendered viewport BEFORE the
+# Branch A / Branch B `when:` guards evaluate. Maestro evaluates
+# `visible:` only against currently-rendered nodes; with the ACE test
+# user's accumulated invite list (3+ prior-run tiles ahead of the
+# target is the steady state on any dogfood machine), the target
+# title is frequently below the fold. Both branches' in-body
+# `scrollUntilVisible` steps would never fire because their parent
+# `when: visible: { id: btn_*, below: text: ${OPP_NAME} }` guards
+# require the title (and a button below it) to already be visible.
+# This unconditional title-scroll restores the precondition both
+# guards depend on. Live reproducer: malaria-itn-fgd run
+# 20260515-1645 Phase 6 attempt 8 — 4 cards rendered, target tile
+# below fold, J1 halt. Class also flagged in
+# skills/app-screenshot-capture/SKILL.md § Step 4 "OPP_NAME
+# uniqueness assumption" as a known follow-up.
+- scrollUntilVisible:
+    element:
+      text: ${OPP_NAME}
+    direction: DOWN
+    timeout: 20000
+- assertVisible:
+    text: ${OPP_NAME}
+
 # --- BRANCH A: in-progress (btn_resume present) ---
 - runFlow:
     when:
