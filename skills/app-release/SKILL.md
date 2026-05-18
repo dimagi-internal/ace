@@ -221,7 +221,7 @@ procedure below to rediscover.
 
 6. **Verify the released CCZ via `commcare_download_ccz` projection.**
    Call `commcare_download_ccz(domain, app_id, build_id, include_multimedia=false)`
-   and read both fields on the response:
+   and read all three gates on the response:
 
    - **`projected_connect_state.collision_count`** — MUST be `0`.
      This is a deterministic projection of what Connect's HQ→Connect
@@ -236,6 +236,22 @@ procedure below to rediscover.
      etc.) MUST be > 0 for the app type — Learn apps have ≥ 1 module,
      Deliver apps have ≥ 1 deliver_unit. Zero means the form lacks
      Connect metadata at the source (Nova didn't generate it).
+   - **`projected_connect_state.oversized_slugs`** — every per-type array
+     MUST be empty (`oversized_slugs.deliver_units === [] && .learn_modules
+     === [] && .task_units === [] && .assessments === []`). Equivalently:
+     `projected_connect_state.max_slug_length <= projected_connect_state.slug_length_limit`
+     (50 today; constant on the projection so this gate is self-documenting).
+     Connect's `LearnModule.slug` and `DeliverUnit.slug` are
+     `SlugField()` with the Django default `max_length=50`. A slug > 50
+     chars raises Postgres `DataError: value too long for type character
+     varying(50)` at sync time, which falls through the narrow `except
+     (CommCareHQAPIException, AppNoBuildException, httpx.*)` in
+     `commcare_connect/program/api/views.py:102` and surfaces as HTTP 500
+     with an empty body — Phase 4's `connect_create_opportunity` 500s
+     opaquely. Reproducer: `leep-paint-collection/20260517-1515` Phase 4,
+     module name "Stage 2: Sample Preparation, Drying, Bagging, Shipment"
+     → slug `module_6_stage_2_sample_prep_drying_bagging_shipment`
+     (52 chars). See `docs/learnings/2026-05-12-boundary-probe-registry.md`.
 
    On `collision_count > 0`, halt with `[BLOCKER]` in
    `app-release_gate-brief.md`. The brief MUST name every
@@ -246,6 +262,18 @@ procedure below to rediscover.
    `<learn:deliver id>` for every form in a module, and the only
    reliable way to get N unique slugs is N modules. See
    `feedback_connect_deliver_unit_per_module` memory for full mechanism.
+
+   On any `oversized_slugs.*` non-empty, halt with `[BLOCKER]` in the
+   gate brief. The brief MUST list each offender as
+   `<type>: <slug> (<length> chars, in <first_seen_in>)`. Concrete
+   remediation: rename the offending Nova module / deliver-unit to
+   produce a shorter slug. Rule of thumb — keep `connect.learn_module.name`
+   / `connect.deliver_unit.name` ≤ 40 chars so Nova's `module_<index>_`
+   prefix + slugified name fits Connect's 50-char column. The
+   `pdd-to-learn-app` / `pdd-to-deliver-app` SKILL.md brief templates
+   carry this constraint upstream of `app-release` — but oversized slugs
+   can still leak past the brief (e.g., when an operator re-runs Nova
+   manually), so this gate is the structural wall.
 
    On `< 1` records of the expected type, halt with the same Step 3
    remediation (re-run coverage; this is a Nova autobuild marker-skip,

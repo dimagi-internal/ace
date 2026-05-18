@@ -212,4 +212,68 @@ describe('simulateConnectSync', () => {
     expect(proj.deliver_units).toHaveLength(1);
     expect(proj.deliver_units[0].slug).toBe('a');
   });
+
+  // Slug-length boundary probe. Connect's `LearnModule.slug` /
+  // `DeliverUnit.slug` are `SlugField()` with the Django default
+  // `max_length=50`. A slug > 50 chars causes Postgres `DataError:
+  // value too long for type character varying(50)` at sync time,
+  // uncaught → HTTP 500 with empty body from `/opportunity/init/`.
+  // Reproducer: leep-paint-collection run 20260517-1515 Phase 4 —
+  // module name "Stage 2: Sample Preparation, Drying, Bagging, Shipment"
+  // produced slug `module_6_stage_2_sample_prep_drying_bagging_shipment`
+  // (52 chars) and 500'd Connect with no diagnostic.
+  describe('slug-length boundary probe (Connect SlugField() max_length=50)', () => {
+    it('exposes slug_length_limit + max_slug_length on every projection', () => {
+      const ccz = buildCcz({
+        'modules-0/forms-0.xml': form(deliver('shop_visit', 'Shop visit')),
+      });
+      const proj = simulateConnectSync(ccz);
+      expect(proj.slug_length_limit).toBe(50);
+      expect(proj.max_slug_length).toBe('shop_visit'.length);
+      expect(proj.oversized_slugs.deliver_units).toEqual([]);
+      expect(proj.oversized_slugs.learn_modules).toEqual([]);
+    });
+
+    it('flags learn_module slugs > 50 chars (the leep-paint regression)', () => {
+      const oversized = 'module_6_stage_2_sample_prep_drying_bagging_shipment'; // 52
+      expect(oversized.length).toBeGreaterThan(50);
+      const ccz = buildCcz({
+        'modules-5/forms-0.xml': form(
+          moduleEl(oversized, 'Stage 2: Sample Preparation, Drying, Bagging, Shipment', 'desc', 20),
+        ),
+      });
+      const proj = simulateConnectSync(ccz);
+      expect(proj.max_slug_length).toBe(52);
+      expect(proj.oversized_slugs.learn_modules.map((r) => r.slug)).toEqual([oversized]);
+      expect(proj.oversized_slugs.deliver_units).toEqual([]);
+    });
+
+    it('flags deliver_unit slugs > 50 chars too', () => {
+      const oversized = 'deliver_unit_stage_2_sample_prep_drying_bagging_shipment'; // 56
+      expect(oversized.length).toBeGreaterThan(50);
+      const ccz = buildCcz({
+        'modules-0/forms-0.xml': form(deliver(oversized, 'long')),
+      });
+      const proj = simulateConnectSync(ccz);
+      expect(proj.oversized_slugs.deliver_units.map((r) => r.slug)).toEqual([oversized]);
+      expect(proj.max_slug_length).toBe(56);
+    });
+
+    it('empty projection sets max_slug_length=0 and slug_length_limit=50', () => {
+      const proj = simulateConnectSync(Buffer.from('not a zip', 'utf8'));
+      expect(proj.slug_length_limit).toBe(50);
+      expect(proj.max_slug_length).toBe(0);
+      expect(proj.oversized_slugs.learn_modules).toEqual([]);
+    });
+
+    it('slugs exactly 50 chars do NOT trigger oversized (boundary inclusive)', () => {
+      const exactly50 = 'a'.repeat(50);
+      const ccz = buildCcz({
+        'modules-0/forms-0.xml': form(deliver(exactly50, 'edge case')),
+      });
+      const proj = simulateConnectSync(ccz);
+      expect(proj.oversized_slugs.deliver_units).toEqual([]);
+      expect(proj.max_slug_length).toBe(50);
+    });
+  });
 });

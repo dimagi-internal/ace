@@ -96,6 +96,32 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      name + line/col) if the architect violates this constraint anyway,
      so the operator gets a clear diagnostic instead of "Cannot make
      new version" and a CCHQ UI peek.
+   - **REQUIRED — Keep module names short enough that the derived slug
+     fits Connect's 50-char column.** Insert this paragraph **verbatim**
+     into the brief, in its own paragraph, prefixed `REQUIRED:`:
+
+     > REQUIRED: Every `connect.learn_module.name` you set MUST be ≤ 40
+     > characters. Nova's `compile_app` derives the `<learn:module id>`
+     > slug as `module_<index>_<slugified_name>`, and Connect's
+     > `LearnModule.slug` column is `SlugField()` with the Django default
+     > `max_length=50`. A longer name slugifies past 50 and triggers
+     > Postgres `DataError: value too long for type character varying(50)`
+     > at Connect's sync, which surfaces as an opaque HTTP 500 from
+     > `connect_create_opportunity` with no diagnostic. Prefer short
+     > active titles like "Stage 2: Sample Prep + Shipment" over the
+     > full descriptive form "Stage 2: Sample Preparation, Drying,
+     > Bagging, Shipment" — the description field is the right place
+     > for the long version.
+
+     Reproducer: `leep-paint-collection` run 20260517-1515 Phase 4 hit
+     this on M6 (52-char slug). The structural backstop is `app-release`
+     Step 6's `projected_connect_state.oversized_slugs` gate — even if
+     the architect ships an over-length name, the release-time projection
+     halts before Phase 4 ever calls Connect. Removal criterion: drop
+     this constraint when the upstream commcare-connect PR widens
+     `LearnModule.slug` / `DeliverUnit.slug` to `max_length=255` and
+     `SLUG_LENGTH_LIMIT` in `mcp/connect/backends/commcare.ts` is
+     bumped in lock-step.
    - **REQUIRED — Architect must verify-then-retry every `add_fields`
      call.** Nova's `add_fields` has a partial-persistence quirk: a
      single call with N items often persists only the first few.

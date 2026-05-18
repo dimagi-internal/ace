@@ -151,6 +151,35 @@ export interface ConnectSyncProjection {
   };
   /** Sum of all collision-group counts across types. 0 = clean projection. */
   collision_count: number;
+  /**
+   * Connect's `LearnModule.slug` and `DeliverUnit.slug` columns are
+   * `SlugField()` with the Django default `max_length=50`. The slug values
+   * are derived server-side inside `extract_modules` / `extract_deliver_units`
+   * from the CCZ's `<learn:module id="…">` / `<learn:deliver id="…">`
+   * attributes — Nova slugifies the module name to produce them. If a
+   * slug exceeds 50 chars, the subsequent `LearnModule.objects.get_or_create`
+   * / `DeliverUnit.objects.get_or_create` INSERT raises Postgres
+   * `DataError: value too long for type character varying(50)`, which falls
+   * through the narrow `except (CommCareHQAPIException, AppNoBuildException,
+   * httpx.*)` clause in `commcare_connect/program/api/views.py:102` and
+   * surfaces as HTTP 500 with an empty body. Same shape as the 2026-05-12
+   * `short_description` 50-char trap; same generalized boundary-probe
+   * pattern. See `docs/learnings/2026-05-12-boundary-probe-registry.md`.
+   *
+   * `slug_length_limit` is a constant (50) so callers self-document the gate.
+   * `max_slug_length` is the longest slug seen across all extracted records.
+   * `oversized_slugs` lists every record whose slug exceeds the limit, per
+   * type, so the producer-side gate (`app-release` Step 6) can name each
+   * offender precisely in the [BLOCKER] verdict.
+   */
+  slug_length_limit: number;
+  max_slug_length: number;
+  oversized_slugs: {
+    deliver_units: ProjectedRecord[];
+    learn_modules: ProjectedRecord[];
+    task_units: ProjectedRecord[];
+    assessments: ProjectedRecord[];
+  };
 }
 
 export interface PatchXformArgs {
@@ -994,15 +1023,46 @@ export function simulateConnectSync(cczBuf: Buffer): ConnectSyncProjection {
     collisions.task_units.length +
     collisions.assessments.length;
 
+  const deliver_units = Array.from(records.deliver.values());
+  const learn_modules = Array.from(records.module.values());
+  const task_units = Array.from(records.task.values());
+  const assessments = Array.from(records.assessment.values());
+
+  const oversized_slugs = {
+    deliver_units: deliver_units.filter((r) => r.slug.length > SLUG_LENGTH_LIMIT),
+    learn_modules: learn_modules.filter((r) => r.slug.length > SLUG_LENGTH_LIMIT),
+    task_units: task_units.filter((r) => r.slug.length > SLUG_LENGTH_LIMIT),
+    assessments: assessments.filter((r) => r.slug.length > SLUG_LENGTH_LIMIT),
+  };
+  const max_slug_length = Math.max(
+    0,
+    ...deliver_units.map((r) => r.slug.length),
+    ...learn_modules.map((r) => r.slug.length),
+    ...task_units.map((r) => r.slug.length),
+    ...assessments.map((r) => r.slug.length),
+  );
+
   return {
-    deliver_units: Array.from(records.deliver.values()),
-    learn_modules: Array.from(records.module.values()),
-    task_units: Array.from(records.task.values()),
-    assessments: Array.from(records.assessment.values()),
+    deliver_units,
+    learn_modules,
+    task_units,
+    assessments,
     collisions,
     collision_count,
+    slug_length_limit: SLUG_LENGTH_LIMIT,
+    max_slug_length,
+    oversized_slugs,
   };
 }
+
+/**
+ * Connect's `LearnModule.slug` / `DeliverUnit.slug` `SlugField()` default
+ * max_length. Module slugs that exceed this trigger the Postgres
+ * `character varying(50)` `DataError` → uncaught HTTP 500 documented above.
+ * When the upstream commcare-connect PR widens these columns, bump this
+ * constant in lock-step.
+ */
+export const SLUG_LENGTH_LIMIT = 50;
 
 function emptyProjection(): ConnectSyncProjection {
   return {
@@ -1017,6 +1077,14 @@ function emptyProjection(): ConnectSyncProjection {
       assessments: [],
     },
     collision_count: 0,
+    slug_length_limit: SLUG_LENGTH_LIMIT,
+    max_slug_length: 0,
+    oversized_slugs: {
+      deliver_units: [],
+      learn_modules: [],
+      task_units: [],
+      assessments: [],
+    },
   };
 }
 
