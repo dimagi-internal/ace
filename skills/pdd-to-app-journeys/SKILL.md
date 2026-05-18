@@ -202,6 +202,39 @@ Before writing the file, verify:
    recoverability claim, or a structural-output claim that the deep
    eval can grade.
 
+4. **Training-app coverage (Learn smoke) — REQUIRED for every PDD with
+   a Learn app.** Every archetype except a hypothetical Learn-less mode
+   produces a Learn (training) app. Phase 6's training deck needs
+   screenshots of BOTH apps, so the journey set MUST include at least
+   one Learn-app journey:
+
+   - `training-completion-smoke` — happy-path FLW completes Learn
+     Module 1 (content form + assessment), passes the assessment,
+     returns to the suite root with Module 1 marked complete. Pass
+     criterion: the FLW reaches the first assessment, submits with a
+     passing score, and Module 1 row shows a completion indicator
+     (per atlas § 6 — completion-state is rendered on the row).
+
+     Set `app: learn` and `is_smoke: true` on this journey. It is the
+     mandatory pair to the Deliver-side smoke for two-app opps.
+
+   Deeper Learn-app journeys (full curriculum walk, assessment-fail
+   recovery, etc.) belong in `/ace:qa-deep` and may be added as
+   non-smoke entries with `is_smoke: false`. Phase 6 shallow only
+   needs the one smoke per app.
+
+   This rule was added 2026-05-18 after the malaria-itn-app run
+   20260517-1829 surfaced a Phase 6 halt: Phase 2 had generated 9
+   Deliver journeys + 0 Learn journeys, Phase 3 dutifully wrote
+   `smoke_journeys_per_app: {learn: 0, deliver: 1}`, and Phase 6's
+   smoke run tried to reach Deliver via `connect-claim + Start +
+   tap V1` — which lands in Learn, not Deliver, because Connect gates
+   Deliver behind Learn-assessment completion (see
+   `docs/learnings/2026-05-18-connect-gates-deliver-on-learn-completion.md`).
+   The right fix is structural: always emit the Learn smoke so Phase 6
+   captures it independently, AND the Deliver smoke walks Learn to
+   completion first (see `app-test-cases` for the recipe shape).
+
 If any rule is missed, return to the journey-generation step (step 4
 in `## Process`) and add until coverage is satisfied.
 

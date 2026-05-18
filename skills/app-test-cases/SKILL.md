@@ -59,6 +59,43 @@ visit/delivery behavior (Deliver). Multi-stage opps may have both.
 - If two journeys could plausibly be the smoke, pick the one with the
   smallest `pdd_time_budget_seconds`
 
+**Two-app coverage is REQUIRED.** Every PDD with both a Learn and a
+Deliver app (every archetype except a hypothetical Learn-less mode)
+MUST emit one `is_smoke: true` journey per app — Phase 6 reads BOTH
+smokes to capture training-deck screenshots of each app. If
+`pdd-to-app-journeys` did not produce a Learn-app journey, halt with
+a structured error pointing at Phase 2 (`pdd-to-app-journeys`) rather
+than writing `smoke_journeys_per_app.learn: 0` — the upstream coverage
+rule (added 2026-05-18) requires the Learn smoke. The
+`smoke_journeys_per_app: {learn: 1, deliver: 1}` invariant is
+load-bearing for Phase 6's pre-flight; emitting `learn: 0` produces a
+silent downstream halt at Phase 6 (see malaria-itn-app
+run 20260517-1829 for the canonical incident).
+
+**Deliver-smoke composition for two-app opps.** Connect's UI gates the
+Deliver app behind Learn-assessment completion (see
+`docs/learnings/2026-05-18-connect-gates-deliver-on-learn-completion.md`).
+A Deliver smoke that drives `connect-claim + Start + tap V1` lands in
+Learn, not Deliver — the recipe physically cannot reach Deliver
+without completing Learn first. The faithful composition (the only
+one that works) is:
+
+  connect-login → connect-claim-opp → learn-launch → walk all Learn
+  modules (content form + assessment per module) → return to Connect
+  opp list → tap Resume → certificate (atlas § 8) → tap
+  VIEW OPPORTUNITY DETAILS → Download Delivery gate (atlas § 9) →
+  tap DOWNLOAD → Deliver StandardHomeActivity (atlas § 10) → tap
+  Start → Deliver MenuActivity (atlas § 11) → tap first Deliver
+  module → first form-field screenshot.
+
+That's not "shallow" — it's a faithful FLW walk-through. Phase 6
+budgets ~5–10 min per Deliver smoke on multi-stage opps as a
+consequence. Compose the Learn-walk-to-completion as inline
+`runFlow: { file: learn-launch.yaml }` + per-module
+`learn-tap-module.yaml` + `form-advance.yaml` + `form-submit.yaml`
+chains; the post-Learn → Deliver transition uses the
+`deliver-launch.yaml` palette (see § 3's entry-point template).
+
 ### Step 3: For each journey, compose the Maestro recipe
 
 Compose each recipe using the static palette pattern (one Maestro
@@ -147,8 +184,14 @@ appId: org.commcare.dalvik
     file: connect-claim-opp.yaml
     env:
       OPP_NAME: ${OPP_NAME}
-# (c) For Deliver journeys: deliver-launch (TODO: add to static palette)
-#     For Learn journeys:   learn-launch.yaml
+# (c) For Learn journeys: learn-launch.yaml lands on the Learn suite root.
+#     For Deliver journeys: Connect gates Deliver behind Learn-assessment
+#     completion (see docs/learnings/2026-05-18-connect-gates-deliver-on-
+#     learn-completion.md). Walk all Learn modules to completion first via
+#     learn-launch + per-module learn-tap-module + form-advance + form-
+#     submit, THEN chain deliver-launch.yaml which drives the post-Learn
+#     certificate (atlas § 8) → Download Delivery gate (§ 9) → Deliver
+#     StandardHomeActivity (§ 10) → Deliver MenuActivity (§ 11).
 - runFlow:
     file: learn-launch.yaml
 # ... journey-specific module/form steps below, using live labels
@@ -163,6 +206,7 @@ The static palette lives at `mcp/mobile/recipes/static/`:
 - `learn-tap-module.yaml` — MenuActivity row tap (generic — handles ANY level of the 3-level suite tree)
 - `form-advance.yaml` — `nav_btn_next` ImageButton tap (NOT text-match "Next" — see atlas §7)
 - `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`
+- `deliver-launch.yaml` — post-Learn-complete certificate (atlas § 8) → tap VIEW OPPORTUNITY DETAILS → Download Delivery gate (§ 9) → tap DOWNLOAD → Deliver-mode StandardHomeActivity (§ 10) anchored on `id/viewJobCard`. Chains immediately after a full Learn walk-to-completion in the Deliver smoke recipe. Resource-IDs at the certificate + gate screens are coordinate-fallback-only (see palette file for remediation: live dump capture from a future Phase 6 run mid-window between Learn-pass and Deliver-download).
 
 **CRITICAL — Learn-app navigation is 2 menu levels deep.** After `learn-launch.yaml` lands you on the module list (atlas §6a), reaching a form requires **TWO** `learn-tap-module` invocations:
 
@@ -377,6 +421,17 @@ in `templates/app-test-cases-template.yaml`.
 (Same shape as pdd-to-test-prompts.) Verify:
 - Every journey from `pdd-to-app-journeys.md` has a binding
 - Exactly one `is_smoke: true` per app
+- **Two-app coverage invariant.** For any opp with both a Learn and a
+  Deliver app (every archetype except a hypothetical Learn-less mode),
+  `smoke_journeys_per_app.learn` MUST be `1` AND
+  `smoke_journeys_per_app.deliver` MUST be `1`. **Do not write
+  `app-test-cases.yaml` with `learn: 0` "because Phase 2 didn't
+  produce a Learn journey"** — halt instead with a `[BLOCKER]` naming
+  Phase 2 (`pdd-to-app-journeys`) as the remediation target. The
+  Phase 6 pre-flight reads this field; emitting `learn: 0` produces
+  a silent downstream halt with no Learn-app screenshots in the
+  training deck. Caught in vivo on malaria-itn-app run 20260517-1829;
+  Phase 2 contract tightened in the same PR.
 - **Every `is_smoke: true` journey has a `recipes/J<n>.yaml` file
   written under `3-commcare/recipes/`.** Confirm via
   `drive_list_folder` against the recipes folder — count must equal
