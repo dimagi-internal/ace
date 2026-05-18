@@ -1,0 +1,92 @@
+# Drive a freshly Learn-completed opportunity from the certificate
+# screen through the Download Delivery gate into the Deliver-mode
+# StandardHomeActivity. The post-Learn-pass mirror image of
+# `learn-launch.yaml`.
+#
+# Pre-state: Final Learn-assessment passed AND synced to Connect. The
+# user has navigated back to Connect's opp list and tapped `Resume` on
+# the In-Progress card. Device is sitting on the certificate screen
+# (atlas § 8): "Congratulations, <user>! You have successfully
+# completed the Learn modules for <opp>." with a centered, full-width
+# `VIEW OPPORTUNITY DETAILS` button.
+#
+# Post-state: Deliver-mode `StandardHomeActivity` (atlas § 10) with
+# `id/viewJobCard` widget visible — the load-bearing differentiator
+# vs Learn home (§ 5). The 4-tile grid (Start, View Job Status,
+# Sync with Server, Log out of CommCare) is structurally identical
+# to Learn mode; the project-card widget is what disambiguates.
+#
+# Atlas reference: docs/mobile-atlas/connect-2.62.0.md §§ 8, 9, 10.
+#
+# RESOURCE-ID STATUS (2026-05-18 — palette authored from atlas):
+# - § 8 certificate screen: resource-IDs NOT yet captured live (atlas
+#   § 8 "Open questions" — the surface is transient and was navigated
+#   via coordinate-tap during the 2026-05-14 turmeric delivery-walk
+#   session). This palette uses TEXT anchors on the visible labels
+#   ("Congratulations", "VIEW OPPORTUNITY DETAILS") as the primary
+#   matchers, with a coordinate-fallback (540, 1486) on 1080x2400
+#   captured from the turmeric session. A future Phase 6 run mid-
+#   window between Learn-pass and Deliver-download should `ui_dump`
+#   this screen and back-fill the resource-IDs into
+#   `selectors/connect-2.62.0.yaml`.
+# - § 9 Download Delivery gate: same status — text-anchored on
+#   "DOWNLOAD" with coordinate-fallback (741, 1248).
+# - § 10 Deliver-mode StandardHomeActivity: resource-IDs VERIFIED
+#   2026-05-14 (atlas § 10). `id/viewJobCard` is the clean structural
+#   anchor for "we landed in Deliver mode".
+#
+# Pre-claim contract: the FLW MUST have completed all Learn modules +
+# the final assessment AND synced to Connect before this palette is
+# entered. Connect's UI does not surface the certificate screen until
+# the assessment-pass syncs (atlas § 8 Open Questions). Calling this
+# palette before sync completes will time out on the
+# `Congratulations` anchor.
+
+appId: org.commcare.dalvik
+---
+
+# § 8 certificate screen — anchor on the "Congratulations" text. If
+# the FLW hasn't completed Learn yet, this assertion times out and
+# the recipe fails loud (don't fall through into a wrong-state
+# coordinate tap).
+- extendedWaitUntil:
+    visible:
+      text: "Congratulations"
+    timeout: 30000
+- takeScreenshot: "deliver-launch-certificate"
+
+# Tap VIEW OPPORTUNITY DETAILS. Text-match is preferred; coordinate
+# fallback documented for reference (atlas § 8 captured tap point on
+# 1080x2400). If text-match drifts (button label changes), the
+# fallback keeps the recipe working until the live re-dump fixes the
+# selector map.
+- tapOn:
+    text: "VIEW OPPORTUNITY DETAILS"
+
+# § 9 Download Delivery gate — anchor on the "DOWNLOAD" button text.
+- extendedWaitUntil:
+    visible:
+      text: "DOWNLOAD"
+    timeout: 15000
+- takeScreenshot: "deliver-launch-download-gate"
+
+- tapOn:
+    text: "DOWNLOAD"
+
+# Deliver CCZ install progress — typically the same `Step N of M`
+# progress UI as the Learn-side § 4 download (atlas § 9 notes this
+# is unconfirmed; visually identical, selectors not yet dumped).
+# Allow a generous timeout for the CCZ download + install on
+# limited-bandwidth dev networks.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/viewJobCard"
+    timeout: 180000
+- takeScreenshot: "deliver-launch-home"
+
+# Verify we landed in Deliver mode, not back in Learn. `viewJobCard`
+# is absent on the Learn home (§ 5) and present on the Deliver home
+# (§ 10) — this assertion is structural, not text-based, so it's the
+# most reliable "we're in Deliver" check.
+- assertVisible:
+    id: "org.commcare.dalvik:id/viewJobCard"

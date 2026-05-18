@@ -82,6 +82,21 @@ auto_surfaced entry. Do not write `verdict: fail` for these — fail is
 reserved for cases where the recipes ran but a smoke recipe broke.
 Upstream gaps are `incomplete`, not `fail`.
 
+**This pre-flight is not optional, even when journeys + recipes are
+on disk.** The count check is the load-bearing gate, not the recipe-
+presence check. Caught in vivo on malaria-itn-app run 20260517-1829:
+Phase 3 emitted `smoke_journeys_per_app: {learn: 0, deliver: 1}` (a
+known-incomplete state) and Phase 6 ran the Deliver recipe anyway —
+producing a recipe-vs-app-state mismatch (post-claim handoff landed in
+Learn, not Deliver, because Connect gates Deliver behind Learn-
+assessment completion; see
+`docs/learnings/2026-05-18-connect-gates-deliver-on-learn-completion.md`).
+The agent SHOULD have halted at row 2 of the failure-mode table the
+moment it read `learn=0`. If the agent finds itself rationalizing past
+this check ("the recipe is on disk, the AVD is healthy, I'll just run
+the Deliver smoke and skip the Learn one") — that's the exact anti-
+pattern this table prevents. Halt instead.
+
 The agent-level pre-flight (`agents/qa-and-training.md § Pre-flight
 checklist`) catches the same class of gap before the skill is
 dispatched. This skill-level check is the second line of defense for
