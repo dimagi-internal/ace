@@ -5,6 +5,23 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.279 — 2026-05-19
+
+**New `ocs_get_chatbot_pipeline_id` atom — closes last orphan-storage class on OCS sweep.**
+
+Before this PR, `/ace:sweep ocs` could delete an orphan chatbot but had no way to discover its paired Pipeline row's id. The existing `PlaywrightBackend.pipelineIdFor` method (used internally by `cloneChatbot` + the pipeline-patch atoms) already scrapes the pipeline-builder HTML — but it wasn't exposed as an MCP atom, so sweep skills couldn't call it. Result: every chatbot delete left a zombie Pipeline row (`is_archived=False`, no parent chatbot in the live listing). Surfaced live in the 2026-05-18 OCS sweep that cleaned up 9 orphan chatbots + 12 collections but had to skip all 10 paired pipelines.
+
+Fix: thin one-line wrapper exposing the existing internal method.
+
+- `mcp/ocs/client.ts` — new `getChatbotPipelineId({ experiment_id }) → { pipeline_id }` capability.
+- `mcp/ocs/backends/composite.ts` — delegates to `playwright.pipelineIdFor(experiment_id)`.
+- `mcp/ocs/capability-map.ts` — new `get_chatbot_pipeline_id` entry routed to Playwright with `restTarget` noted as "pipeline_id field not yet exposed in REST schema" (lock-step swap if OCS adds it upstream).
+- `mcp/ocs-server.ts` — registers the new `ocs_get_chatbot_pipeline_id` tool. Description explains the use case (sweep wiring) and the OCS-side gap (REST schema omits pipeline_id).
+- `skills/sweep-ocs/SKILL.md § Process` — step 3 now calls `ocs_get_chatbot_pipeline_id` per chatbot; step 9 explicitly warns against skipping the pipeline delete.
+- `test/mcp/ocs/composite.test.ts` — new case asserts the composite routes `getChatbotPipelineId` to `pipelineIdFor` and wraps the integer in `{ pipeline_id }`. 9/9 tests pass.
+
+The 10 zombie pipelines from the 2026-05-18 sweep (chatbots 11839, 11994, 11996, 12000, 12003, 12018, 12042, 12050, 12101 + historical 12027 versions v2-v11) can be cleaned up in a follow-up sweep with the new atom in place.
+
 ## 0.13.277 — 2026-05-18
 
 **Mirror Vellum's slug/name separation in the Nova architect brief (follow-up to 0.13.274).**

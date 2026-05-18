@@ -33,6 +33,9 @@ export class CompositeBackend implements OcsClient {
   publishChatbotVersion = (a: Parameters<OcsClient['publishChatbotVersion']>[0]) => this.opts.playwright.publishChatbotVersion(a);
   getChatbotEmbedInfo = (a: Parameters<OcsClient['getChatbotEmbedInfo']>[0]) => this.opts.playwright.getChatbotEmbedInfo(a);
   deleteChatbot = (a: Parameters<OcsClient['deleteChatbot']>[0]) => this.opts.playwright.deleteChatbot(a);
+  getChatbotPipelineId = async (a: Parameters<OcsClient['getChatbotPipelineId']>[0]) => ({
+    pipeline_id: await this.opts.playwright.pipelineIdFor(a.experiment_id),
+  });
   deletePipeline = (a: Parameters<OcsClient['deletePipeline']>[0]) => this.opts.playwright.deletePipeline(a);
   deleteCollection = (a: Parameters<OcsClient['deleteCollection']>[0]) => this.opts.playwright.deleteCollection(a);
 

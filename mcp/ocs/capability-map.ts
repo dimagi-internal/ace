@@ -19,6 +19,7 @@ export type Capability =
   | 'publish_chatbot_version'
   | 'get_chatbot_embed_info'
   | 'delete_chatbot'
+  | 'get_chatbot_pipeline_id'
   | 'delete_pipeline'
   | 'delete_collection'
   // Observation (12)
@@ -49,6 +50,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   publish_chatbot_version:      { backend: 'PLAYWRIGHT', restTarget: 'POST /api/experiments/{id}/versions/' },
   get_chatbot_embed_info:       { backend: 'HYBRID',     restTarget: 'GET /api/experiments/{id}/embed/' },
   delete_chatbot:               { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/experiments/{id}/ (not yet shipped)' },
+  get_chatbot_pipeline_id:      { backend: 'PLAYWRIGHT', restTarget: 'GET /api/experiments/{id}/ (pipeline_id field not yet exposed in REST schema)' },
   delete_pipeline:              { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/pipelines/{id}/ (not yet shipped)' },
   delete_collection:            { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/collections/{id}/ (not yet shipped)' },
 

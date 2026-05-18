@@ -52,7 +52,7 @@ No dedup at the file or vector layer means uploading the same PDD into 19 per-op
 3. **List OCS inventory** using existing atoms:
    - `ocs_list_chatbots` (paginate as needed)
    - `ocs_list_sessions` (filter to `OCS_TEAM_SLUG`; last 90 days by default).
-   - For each chatbot, derive its pipeline id and per-opp collection ids from the chatbot's published version description / pipeline definition. The chatbot's most-recent version description embeds the per-opp collection id explicitly (e.g. "shared Connect collection 350 + new per-run collection 418"). Parse it; cross-check by reading the pipeline's LLM node params for collection refs.
+   - For each chatbot, derive its pipeline_id via `ocs_get_chatbot_pipeline_id({ experiment_id })` (added 0.13.277 — scrapes the pipeline-builder HTML; cached). Per-opp collection ids come from the chatbot's most-recent published version description (e.g. "shared Connect collection 350 + new per-run collection 418"); cross-check against the pipeline's LLM node params via the pipeline-builder page if the description is thin.
 4. **Diff** each item's id against the live-set:
    - chatbots → `liveSet.identifiers.ocsChatbotIds` (now includes golden template).
    - sessions → `liveSet.identifiers.ocsSessionIds`.
@@ -67,7 +67,7 @@ No dedup at the file or vector layer means uploading the same PDD into 19 per-op
 8. **Surface to human** in chat. Prompt for approval per actionable chunk.
 9. **On approval (in order, per orphan chatbot):**
    - Call `ocs_delete_chatbot({ experiment_id })`.
-   - Call `ocs_delete_pipeline({ pipeline_id })` for the paired pipeline.
+   - Call `ocs_delete_pipeline({ pipeline_id })` for the paired pipeline (resolved via `ocs_get_chatbot_pipeline_id` in step 3 — never skip this; pipeline deletes are the only way to clear the per-opp Pipeline row).
    - For each per-opp collection_id derived in step 3, call `ocs_delete_collection({ collection_id })` — but ONLY if collection_id ≠ `OCS_SHARED_COLLECTION_ID`. The atom itself doesn't enforce this; the skill must filter.
    - For each approved orphan session, call `ocs_end_session`.
 
