@@ -267,23 +267,26 @@ server.tool(
 
 server.tool(
   'ocs_upload_collection_files',
-  'Upload files to an existing Collection. Files will be chunked and embedded asynchronously. chunk_size and chunk_overlap are optional (default 800/400, matching the upstream NM Bot collection); if omitted the upload still works but uses the defaults.',
+  'Upload files to an existing Collection. Each file MUST supply EXACTLY ONE source: `file_path` (local filesystem path — MCP reads + base64-encodes server-side, preferred for any payload >1KB) OR `content` (caller-supplied base64 — legacy inline mode, only sensible for tiny strings). Mixing both, or supplying neither, fails fast. The file_path mode exists because emitting megabytes of base64 in the tool_use input wedges model generation (stream-idle timeout) — class-level preventer for the 2026-05-19 Phase 5 wedge (`docs/learnings/2026-05-19-ocs-upload-b64-context-wedge.md`). For files that live on Drive, `drive_download_binary` to a tmp path first, then pass that as `file_path` — keeps the b64 entirely out of agent context. Files will be chunked and embedded asynchronously. chunk_size and chunk_overlap are optional (default 800/400, matching the upstream NM Bot collection).',
   {
     collection_id: z.number(),
     files: z.array(z.object({
       name: z.string(),
-      content: z.string().describe('Base64-encoded file content'),
+      content: z.string().optional().describe(
+        'Base64-encoded file content. Legacy inline mode — use file_path for anything > ~1KB to avoid stalling model generation on large b64 tool_use inputs.',
+      ),
+      file_path: z.string().optional().describe(
+        'Local filesystem path. MCP reads the bytes + base64-encodes server-side, so the agent never holds the b64 in context. Pass an absolute path; relative paths resolve against the MCP subprocess CWD which is rarely predictable. Preferred for any payload > 1KB.',
+      ),
       mime_type: z.string(),
     })),
     chunk_size: z.number().optional().describe('Chunk size in tokens. Default 800.'),
     chunk_overlap: z.number().optional().describe('Chunk overlap in tokens. Must be < chunk_size. Default 400.'),
   },
   async (args) => {
-    const decoded = args.files.map((f) => ({
-      name: f.name,
-      content: Buffer.from(f.content, 'base64'),
-      mime_type: f.mime_type,
-    }));
+    const decoded = await Promise.all(
+      args.files.map((f) => decodeUploadCollectionFileSource(f)),
+    );
     return result(
       await composite.uploadCollectionFiles({
         collection_id: args.collection_id,
@@ -294,6 +297,42 @@ server.tool(
     );
   },
 );
+
+/**
+ * Resolve a single `ocs_upload_collection_files` file-input entry to its
+ * decoded `Buffer` regardless of source (file_path read or inline b64 decode),
+ * enforcing exactly-one-source-per-file. Exported for unit-testability.
+ *
+ * Class-level preventer for the 2026-05-19 Phase 5 wedge: the inline `content`
+ * (base64) path forces the agent to emit megabytes of b64 in its tool_use
+ * input, which stalls model generation on any payload past ~10KB. The
+ * file_path path keeps the bytes on disk, with the MCP doing the b64 work
+ * server-side, so the agent never holds the encoded form in context.
+ */
+export async function decodeUploadCollectionFileSource(f: {
+  name: string;
+  content?: string;
+  file_path?: string;
+  mime_type: string;
+}): Promise<{ name: string; content: Buffer; mime_type: string }> {
+  const { readFile } = await import('node:fs/promises');
+  const hasContent = f.content !== undefined;
+  const hasPath = f.file_path !== undefined;
+  if (!hasContent && !hasPath) {
+    throw new Error(
+      `ocs_upload_collection_files: file "${f.name}" missing source — supply exactly one of content / file_path.`,
+    );
+  }
+  if (hasContent && hasPath) {
+    throw new Error(
+      `ocs_upload_collection_files: file "${f.name}" supplies both content and file_path — pick one.`,
+    );
+  }
+  const bytes = hasPath
+    ? await readFile(f.file_path!)
+    : Buffer.from(f.content!, 'base64');
+  return { name: f.name, content: bytes, mime_type: f.mime_type };
+}
 
 server.tool(
   'ocs_wait_for_collection_indexing',

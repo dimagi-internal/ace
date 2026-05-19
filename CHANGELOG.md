@@ -5,6 +5,20 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.286 — 2026-05-19
+
+**Add `file_path` mode to `ocs_upload_collection_files` — close the b64 context wedge that stalled Phase 5 twice.**
+
+Two consecutive `ace:ocs-setup` dispatches on `leep-paint-collection/20260517-1515` hit stream-idle timeouts (one at ~30 min / 49 tool calls, second at ~114 min / 44 tool calls) without writing any Drive artifacts. Session-log bisect (see `docs/learnings/2026-05-19-ocs-upload-b64-context-wedge.md`) pinned the cause: the agent built its RAG content pack on disk (~67 KB), `base64`-encoded it via Bash, then **`Read` the resulting `.b64` chunks back into its own context** so it could emit them as the `ocs_upload_collection_files` tool_use `input.files[].content` field. Generating 100s of KB of b64 as output tokens stalls model generation either mid-emit or on the next turn. No OCS slowness, no auth churn, no QA loop — pure output-token budget exhaustion.
+
+Fix: `ocs_upload_collection_files` extended to accept `file_path` as an alternative source per file. The MCP reads the file server-side, no b64 ever crosses the agent's context. Each file MUST supply EXACTLY ONE of `content` (legacy inline b64) or `file_path` (absolute filesystem path); mixed or missing sources fail fast with a named error citing the offending file.
+
+Refactor: the file-decoding logic moved into `decodeUploadCollectionFileSource`, exported for unit-testability. 7 new vitest cases (UTF-8 text via file_path, arbitrary binary via file_path, inline content legacy mode, missing source, both sources, ENOENT propagation, error names the offending file). All pass.
+
+Skill-side guidance: Phase 5 `ocs-content-pack` and any future skill calling this atom SHOULD use `file_path` for any payload > ~1KB. For files on Drive, `drive_download_binary` into a tmp path first, then pass that as `file_path` — keeps the b64 entirely out of agent context.
+
+`docs/learnings/2026-05-12-boundary-probe-registry.md` updated with the new Shipped probe + a new pending row generalizing the audit ("every MCP atom whose input schema takes a `string` that may carry > ~10KB of payload should have a `_path` companion"; existing examples: `commcare_upload_multimedia.file_bytes_path`, `commcare_patch_xform.new_xform_xml_path`).
+
 ## 0.13.279 — 2026-05-19
 
 **New `ocs_get_chatbot_pipeline_id` atom — closes last orphan-storage class on OCS sweep.**
