@@ -257,31 +257,31 @@ tapOn:<app-name>` model, the live `tapOn` never found a target, and
 the recipes failed with selector-miss errors — even though the
 emulator + Maestro + cloud-stack were healthy.
 
-#### Maestro feature-compat — cloud-backend lag
+#### Maestro feature-compat — local vs cloud parity
 
-The cloud emulator's bundled Maestro (1.36-ish per its CLI banner)
-is older than what the local-AVD backend ships. Some Maestro
-properties are scalar-form-only or unsupported on cloud:
+As of 2026-05-19, **both backends run Maestro on the v2.x line**
+(local: v2.5.1 via the official installer; cloud AMI: v2.5.1 pinned
+in `infra/mobile-ami/scripts/30-maestro.sh`). The lag table below
+documents the historical drift class — it's NOT currently active.
+Re-baseline if the versions ever diverge again (track local via
+`maestro --version`, cloud via `ACE_MOBILE_AMI_VERSION`):
 
 | Property | Local AVD | Cloud |
 |---|---|---|
-| `visibilityPercentage` | works | **rejects with `Unknown Property`** |
+| `visibilityPercentage` | works | **historically rejected with `Unknown Property` on the v1.36-era AMI** |
 | `point: "x,y"` | works | works |
 | `id:` matcher | works | works |
 | `text:` matcher | works | works |
 | `index:` for multi-match | works | works |
 | `optional: true` (under mapping form) | works | works |
 
-When in doubt, omit Maestro version-specific properties — the
-default substring + visibility threshold is usually enough.
-Re-baseline this table when the cloud AMI gets a Maestro version
-bump (track via `ACE_MOBILE_AMI_VERSION`).
-
-Caught in vivo on leep Phase 5 attempt 10 — `connect-claim-opp.yaml`
-shipped with `visibilityPercentage: 30`, the cloud Maestro rejected
+Origin: leep Phase 5 attempt 10 — `connect-claim-opp.yaml` shipped
+with `visibilityPercentage: 30`, the v1.36-era cloud Maestro rejected
 the whole recipe with `Unknown Property` before the first step
-executed. Property removed in 0.13.194; this table is the prevention
-for the future class of bug.
+executed. Property removed in 0.13.194; AMI bumped past the drift in
+the 2026-05-12-2142 bake. Keep the prevention discipline regardless:
+when in doubt, omit version-specific properties — the default
+substring + visibility threshold is usually enough.
 
 #### Selector placeholder gate — STRICT
 
