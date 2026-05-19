@@ -22,7 +22,7 @@ built apps are usable end-to-end. Deep, per-journey UX grading lives in
 | Phase 3 (`app-test-cases`) | `ACE/<opp>/runs/<run-id>/3-commcare/app-test-cases.yaml` | smoke-recipe selection (`is_smoke: true`) + recipe paths |
 | Phase 1 | `ACE/<opp>/inputs/pdd.md` | persona-summary fallback if not embedded in pdd-to-app-journeys |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/app-deploy_summary.md` | HQ domain for `${HQ_DOMAIN}` env var |
-| Phase 4 (run_state.yaml) | `connect.opportunity.id` + ACE test user invite | `${OPP_NAME}`, `${ACE_E2E_PHONE_LOCAL}`, etc. |
+| Phase 4 (run_state.yaml) | `phases.connect-setup.products.connect.opportunity.{id, name}` + ACE test user invite | `${OPP_NAME}` (verbatim from `opportunity.name`), `${ACE_E2E_PHONE_LOCAL}`, etc. |
 
 Recipes are read by path from the entries in `app-test-cases.yaml`
 (`recipe_path` field). They were composed and validated by Phase 3's
@@ -192,7 +192,7 @@ remediation):
 | `module-name-equals-form-name` | Verify plugin >= 0.13.255 (handled by learn-tap-module). If older, re-author via `/ace:step app-test-cases`. |
 | `expected-module-not-in-app` | Recipe needs re-author via `/ace:step app-test-cases` — live app structure has drifted. |
 | `expected-form-not-in-module` | Same as above — module/form structure has drifted. |
-| `opp-name-mismatch` | Pass `OPP_NAME` explicitly from `connect_get_opportunity().display_name`. |
+| `opp-name-mismatch` | Pass `OPP_NAME` verbatim from `run_state.yaml.phases.connect-setup.products.connect.opportunity.name` (NOT slug-reassembled). Fallback only if missing: `connect_get_opportunity({org_slug, opportunity_id}).name`. |
 | `tile-name-collision` | Clean up prior-run invites OR use Resume-branch (exact-match claim). |
 
 On any failure, halt with the **incomplete-mode verdict shape** (see
@@ -228,7 +228,33 @@ valve hid real capability gaps behind a yellow verdict.
 These set up the AVD to the post-claim state the smoke recipes assume:
 
 - `connect-login.yaml` with `${ACE_E2E_PHONE_LOCAL}`, `${ACE_E2E_PIN}`.
-- `connect-claim-opp.yaml` with `${OPP_NAME}` from run_state.yaml.
+- `connect-claim-opp.yaml` with `${OPP_NAME}` read verbatim from
+  `run_state.yaml.phases.connect-setup.products.connect.opportunity.name`.
+
+**OPP_NAME source — authoritative read from `run_state.yaml`.** Phase 4
+(`connect-opp-setup`) writes the exact tile name Connect renders into
+`phases.connect-setup.products.connect.opportunity.name` at the moment
+the opportunity is created. Pass that string **verbatim** as the
+`OPP_NAME` envVar. Do NOT reassemble from slug pieces — the live tile
+text is `"<display_name> — <slug> (run <date>)"` with an em-dash
+(U+2014), not `"<org_slug> - <slug> (run <date>)"` with an ASCII hyphen,
+and any slug-based composition will silently mis-match the tile.
+
+**Fallback (legacy runs only).** If `opportunity.name` is missing from
+`run_state.yaml` (rare — only pre-0.13.x runs predating the name-field
+write), fall back to `connect_get_opportunity({org_slug,
+opportunity_id}).name` and log `[WARN] OPP_NAME read from connect_get_opportunity
+fallback — current run_state.yaml lacks phases.connect-setup.products.connect.opportunity.name`.
+Never compose from slug pieces.
+
+This insulates Phase 6 from Connect's name-formatting changes — we
+read what Phase 4 wrote when it created the opp, not what the Connect
+UI happens to render today. Caught live on malaria-itn-fgd run
+20260515-1645 Phase 6 attempt 9, where slug-based composition produced
+`"ai-demo-space - malaria-itn-fgd (run 20260515-1645)"` but the live
+tile text was `"Malaria ITN FGD — malaria-itn-fgd (run 20260515-1645)"`;
+the subagent self-corrected mid-dispatch by calling
+`connect_get_opportunity`, wasting a recipe cycle.
 
 **OPP_NAME uniqueness assumption (durable note).** Because every
 `/ace:run` Phase 3 invites the same ACE test user (`${ACE_E2E_PHONE}`)
@@ -238,11 +264,12 @@ to is still listed, and there is no per-run cleanup atom yet (TBD). The
 `${OPP_NAME}` recipe matcher assumes:
 
 1. The opp name is **unique enough** to disambiguate this run's opp
-   from all prior invites. Today `connect-opp-setup` writes a name
-   like `"<Title> Run YYYYMMDD HHMM"` (e.g.
-   `"Turmeric Market Survey Run 20260513 0616"`) — the run-id suffix
-   gives it lexical uniqueness, but the prefix collides with prior
-   runs of the same opp.
+   from all prior invites. `connect-opp-setup` writes a name like
+   `"<display_name> — <slug> (run <YYYYMMDD-HHMM>)"` (e.g.
+   `"Malaria ITN FGD — malaria-itn-fgd (run 20260515-1645)"`) — the
+   run-id suffix gives it lexical uniqueness, the em-dash + slug
+   disambiguates within an opp's runs, and the display-name prefix
+   matches what the LLO will see when the opportunity is solicited.
 2. **The newest invite sits near the top of the list.** Today this is
    implicitly the case (Connect orders by invited_at descending), so
    `tapOn:text` on the unique full name lands the right tile.
@@ -338,7 +365,7 @@ naming the specific failure + remediation rather than a generic
 | `deviceInfo … UNAVAILABLE` / `MaestroDriverError` | Maestro driver app on the AVD is installed but its gRPC server isn't responding. Symptom of a wedged driver process or a stale install whose runtime state diverged from the CLI's expectations. Reproduced live 2026-05-11 against leep run 20260511-0507 Phase 6 (port 7001 refusing connections, every recipe stalling on `deviceInfo`). | Since 0.13.165 `mobile_ensure_avd_running` auto-heals (force-stop + uninstall both halves of `dev.mobile.maestro`, then re-probe to trigger the CLI's auto-reinstall). If this error still surfaces, the heal exhausted — run `/ace:mobile-bootstrap` to re-baseline the AVD + driver, then `/ace:step app-screenshot-capture <opp>/<run-id>`. Logcat probe: `adb -s <serial> logcat | grep -i maestro`. |
 | `extendedWaitUntil` timeout on `connect_fragment_jobs_list` | Claim flow didn't reach jobs list. LLO program-application not ACCEPTED, or Connect session expired on the AVD. | Re-run `connect-login.yaml` and verify `connect_get_opportunity` returns the expected opp. |
 | `assertVisible(text: ${OPP_NAME})` failure AND focused activity is `CommCareSetupActivity` AND/OR failure screenshot shows "Logged out of PersonalID" / "Lost PersonalID configuration" / "Reconfigure" / "Enter Code" / "Welcome to CommCare" | **AVD's per-user state was wiped** — no `ApplicationDocument` configured (CCHQ app never pulled OR app db was wiped) and/or PersonalID account de-registered from the device. Important: `org.commcare.dalvik` IS the Connect-enabled CommCare client (no separate Connect package); presence of `org.commcare.dalvik` in `pm list packages` does **NOT** imply a usable Connect home. Should have been caught by Step 2.5; if it surfaces here, Step 2.5's probe missed a signal worth adding. Live in 2026-05-13 (turmeric run 20260513-0616) with both states stacked: setup activity foregrounded + PersonalID drawer banner. | `/ace:mobile-bootstrap` — re-installs APK if needed, registers the ACE test user (`${ACE_E2E_PHONE}`) via the Connect registration API, pulls the CCHQ app for this run's HQ ids, saves a clean snapshot. After bootstrap returns clean: `/ace:step app-screenshot-capture <opp>/<run-id>`. If this state recurs after a successful bootstrap, the issue is state-loss between sessions (snapshot revert, AVD cold-boot, server-side PersonalID de-registration); file a class-level issue on `mobile_ensure_avd_running`'s state-persistence contract rather than re-bootstrapping. |
-| `assertVisible(text: ${OPP_NAME})` failure AND failure screenshot shows the Connect "New Opportunities" / opp list home (the user IS logged in, app IS configured, just no matching tile) | Right opp card not on screen for the OPP_NAME being matched. Wrong `OPP_NAME` env var, OR opp not yet claimed by the test user, OR `${OPP_NAME}` collides ambiguously with another invite further up the test user's accumulated invite list (see Step 4 "OPP_NAME uniqueness assumption"). | Confirm `OPP_NAME` matches the display name verbatim (not the slug — see [#115 finding 4](https://github.com/jjackson/ace/issues/115)). If display name matches but tile isn't visible, scroll the invite list or use a run-id-suffixed display name to disambiguate. |
+| `assertVisible(text: ${OPP_NAME})` failure AND failure screenshot shows the Connect "New Opportunities" / opp list home (the user IS logged in, app IS configured, just no matching tile) | Right opp card not on screen for the OPP_NAME being matched. Wrong `OPP_NAME` env var (typically slug-reassembled instead of read verbatim from `run_state.yaml`), OR opp not yet claimed by the test user, OR `${OPP_NAME}` collides ambiguously with another invite further up the test user's accumulated invite list (see Step 4 "OPP_NAME uniqueness assumption"). | Confirm `OPP_NAME` was read verbatim from `run_state.yaml.phases.connect-setup.products.connect.opportunity.name` (NOT composed from slug pieces — see Step 4 "OPP_NAME source" and [#115 finding 4](https://github.com/jjackson/ace/issues/115)). If the field is present and still mismatches the tile, scroll the invite list or use the `connect_get_opportunity` fallback. |
 
 ### Step 6: Write `6-qa-and-training/app-screenshot-capture_manifest.yaml`
 
