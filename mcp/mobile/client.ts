@@ -716,8 +716,16 @@ export class MobileClient {
       return;
     }
     const attempts: string[] = [];
-    // Stage 1: cheap probe.
-    let probe = await this.maestro.probeDriver(adbPort, 8_000);
+    // Stage 1: cheap probe. 20s budget covers the Maestro v2.x CLI's
+    // JVM cold-start (~10-12s steady-state on a healthy AVD), measured
+    // on v2.3.0 / Java 17 — the v1.39 budget of 8s ran shorter than v2's
+    // first-invocation init and caused false-positive "unhealthy" verdicts
+    // that triggered Stage 2 repair on a perfectly working driver
+    // (malaria-itn-app/20260517-1829 trace: probe1 always shell-timed out
+    // at 8s, full uninstall+reinstall ran, then probe2 hit the post-tear-down
+    // gRPC bind race and surfaced UNAVAILABLE). See
+    // docs/learnings/2026-05-19-maestro-v2-probe-timeout.md.
+    let probe = await this.maestro.probeDriver(adbPort, 20_000);
     if (probe.healthy) return;
     attempts.push(`probe1: ${probe.reason ?? 'unknown'}`);
     logInfo(`maestro_driver: stage 1 probe unhealthy on ${serial} — attempting install + repair`);

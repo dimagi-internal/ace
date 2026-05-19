@@ -2020,6 +2020,19 @@ if [ -n "$MAESTRO_BIN" ]; then
   fi
   MAESTRO_VER="$("$MAESTRO_BIN" --version 2>/dev/null | tail -1)"
   echo "  Maestro:                $MAESTRO_BIN    ${MAESTRO_VER:-unknown}    OK"
+  # Version-floor advisory: ACE standardized on Maestro v2.x as of
+  # 0.13.x (post-malaria-itn-app debug arc). v1.39 still works for
+  # recipe playback — driver APK layout and gRPC contract are
+  # wire-compatible — but the cheap probe1 in `assertMaestroDriverHealthy`
+  # was recalibrated for v2's slower JVM cold-start. Operators on v1.x
+  # should upgrade so local-backend behavior matches the (forthcoming)
+  # v2.x-baked cloud AMI. WARN-level, not BLOCKER: cloud-AMI rebake
+  # is tracked separately and operators using the cloud backend with a
+  # v1-bundled AMI still work fine.
+  if echo "$MAESTRO_VER" | grep -qE '^1\.'; then
+    echo "  WARN maestro_version:   ${MAESTRO_VER} — ACE has standardized on Maestro v2.x"
+    echo "    fix: curl -Ls 'https://get.maestro.mobile.dev' | bash  # reinstalls latest (currently v2.3.x)"
+  fi
 else
   echo "  Maestro:                MISSING — install with curl -Ls 'https://get.maestro.mobile.dev' | bash"
 fi
