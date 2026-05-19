@@ -6,7 +6,7 @@ export interface CapabilityRoute {
 }
 
 export type Capability =
-  // Authoring (11)
+  // Authoring (15)
   | 'clone_chatbot'
   | 'set_chatbot_system_prompt'
   | 'set_chatbot_pipeline'
