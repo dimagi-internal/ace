@@ -25,4 +25,13 @@ describe('CompositeBackend routing', () => {
     await c.getChatbotEmbedInfo({ experiment_id: 1 });
     expect(pw.getChatbotEmbedInfo).toHaveBeenCalled();
   });
+
+  it('getChatbotPipelineId calls playwright.pipelineIdFor and wraps the result', async () => {
+    const rest = {};
+    const pw = { pipelineIdFor: vi.fn().mockResolvedValue(5942) };
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+    const out = await c.getChatbotPipelineId({ experiment_id: 12167 });
+    expect(pw.pipelineIdFor).toHaveBeenCalledWith(12167);
+    expect(out).toEqual({ pipeline_id: 5942 });
+  });
 });

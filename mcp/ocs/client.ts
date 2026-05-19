@@ -117,6 +117,21 @@ export interface OcsClient {
   deleteChatbot(args: { experiment_id: number }): Promise<{ deleted: number }>;
 
   /**
+   * Resolve an experiment_id (integer chatbot id) to its working-version
+   * pipeline_id (integer). Required by `/ace:sweep ocs` to pair each orphan
+   * chatbot with its per-opp Pipeline row before deletion — without this,
+   * deleting an orphan chatbot leaves its Pipeline as a zombie row on the
+   * team (`is_archived=False`, no parent chatbot in the live listing).
+   *
+   * OCS's REST `/api/experiments/<id>/` response intentionally omits
+   * `pipeline_id`; the value is rendered inline in the pipeline-builder
+   * HTML page as `SiteJS.pipeline.renderPipeline("#pipelineBuilder", ...,
+   * <pipeline_id>)`. This atom scrapes that page (Playwright-backed) and
+   * caches the result per experiment_id.
+   */
+  getChatbotPipelineId(args: { experiment_id: number }): Promise<{ pipeline_id: number }>;
+
+  /**
    * Delete a pipeline by integer id. Sets `is_archived=True` on the Pipeline
    * row server-side. Each clone gets its own Pipeline (verified 2026-05-15:
    * `Pipeline.create_new_version(is_copy=True)` deep-clones nodes), so

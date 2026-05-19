@@ -360,6 +360,13 @@ server.tool(
 );
 
 server.tool(
+  'ocs_get_chatbot_pipeline_id',
+  'Resolve an experiment_id (integer chatbot id) to its working-version pipeline_id (integer). The OCS REST `/api/experiments/<id>/` response omits pipeline_id by design; this atom scrapes it from the pipeline-builder HTML (`SiteJS.pipeline.renderPipeline("#pipelineBuilder", "<team>", <pipeline_id>)`) via Playwright and caches the result per experiment_id. Used by /ace:sweep ocs to pair each orphan chatbot with its per-opp Pipeline row before deletion — without this, deleting an orphan chatbot leaves its Pipeline as a zombie row on the team (is_archived=False, no parent chatbot in the live listing). Returns `{ pipeline_id: number }`.',
+  { experiment_id: z.number().int() },
+  async (args) => result(await composite.getChatbotPipelineId(args)),
+);
+
+server.tool(
   'ocs_delete_pipeline',
   'Delete a pipeline (sets is_archived=True server-side). SAFE PER-OPP: when ACE clones a chatbot, Pipeline.create_new_version(is_copy=True) deep-clones the Pipeline row + its nodes — each clone has its own pipeline. Deleting the pipeline does NOT cascade-delete its referenced Collections — those need separate ocs_delete_collection calls. Routes through Playwright to /a/<team>/pipelines/<pk>/delete/ (HTTP DELETE method on Django View.delete(); returns 200 empty body).',
   { pipeline_id: z.number().int() },
