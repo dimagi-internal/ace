@@ -335,6 +335,126 @@ describe('AvdBackend.ensureAvdRunning', () => {
     }
   });
 
+  it('sweepStaleEmulatorState: orphan-qemu kill runs BEFORE adb kill-server with a socket-release wait between', async () => {
+    if (process.platform === 'win32') return;
+    // Regression guard for the 2026-05-19 malaria-itn-fgd attempt-12
+    // re-occurrence (run 20260515-1645 Phase 6): PR #349 wired up
+    // both the orphan-qemu sweep and the adb-server restart, but
+    // without (a) firm ordering and (b) a socket-release wait between
+    // them. The bug pattern: SIGKILL on qemu returns synchronously,
+    // but the kernel takes a few hundred ms to release the
+    // emulator-NNNN TCP sockets the qemu was holding. When the
+    // adb-restart fires immediately after the kill, the freshly-
+    // restarted daemon re-adopts the wedged-port state and the next
+    // `ensureAvdRunning` still fails with "package service did not
+    // bind." Empirically 2 attempts failed even after PR #349 was
+    // live, before a *second* `adb kill-server`/`start-server`
+    // inside the dispatch cleared it.
+    //
+    // Structural fix: orphan-qemu kill MUST run first, then a brief
+    // (~500ms) wait, then adb-server restart.
+    const events: { name: string; t: number }[] = [];
+    const start = Date.now();
+    const realKill = process.kill;
+    (process as { kill: typeof process.kill }).kill = ((pid: number, _sig?: string | number) => {
+      events.push({ name: `process.kill(${pid})`, t: Date.now() - start });
+      return true;
+    }) as typeof process.kill;
+    try {
+      const shell = vi.fn(async (cmd: string, args: string[]) => {
+        const key = `${cmd} ${args.join(' ')}`;
+        events.push({ name: key, t: Date.now() - start });
+        if (key === 'pgrep -f qemu-system') {
+          // Two orphan qemu PIDs (matches attempt-12 signature).
+          return { stdout: '90011\n90012\n', stderr: '', exitCode: 0 };
+        }
+        if (key === 'adb devices') {
+          return { stdout: 'List of devices attached\n', stderr: '', exitCode: 0 };
+        }
+        if (key === 'emulator -list-avds') {
+          // Unknown AVD short-circuits the rest of the boot path —
+          // we only care about the order of the sweep steps here.
+          return { stdout: 'Other_AVD\n', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      });
+      const backend = new AvdBackend({ shell });
+      await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(AvdBootError);
+
+      const firstOrphanKill = events.findIndex((e) => e.name.startsWith('process.kill('));
+      const adbKillSrv = events.findIndex((e) => e.name === 'adb kill-server');
+      const adbStartSrv = events.findIndex((e) => e.name === 'adb start-server');
+      expect(firstOrphanKill, 'expected at least one orphan-qemu kill').toBeGreaterThan(-1);
+      expect(adbKillSrv, 'expected adb kill-server in heal').toBeGreaterThan(-1);
+      expect(adbStartSrv, 'expected adb start-server in heal').toBeGreaterThan(adbKillSrv);
+      // ORDER: orphan kill must precede adb kill-server.
+      expect(
+        firstOrphanKill,
+        'orphan-qemu kill must run BEFORE adb kill-server so the freshly-restarted daemon sees a clean port landscape',
+      ).toBeLessThan(adbKillSrv);
+      // SOCKET-RELEASE WAIT: at least ~400ms must pass between the
+      // last orphan kill and adb kill-server (we wait 500ms; allow a
+      // 100ms scheduling slack so the test isn't flaky on slow CI).
+      const lastOrphanKillT = [...events]
+        .reverse()
+        .find((e) => e.name.startsWith('process.kill('))!.t;
+      const adbKillSrvT = events[adbKillSrv].t;
+      expect(
+        adbKillSrvT - lastOrphanKillT,
+        'expected ≥400ms socket-release wait between orphan-qemu kill and adb kill-server',
+      ).toBeGreaterThanOrEqual(400);
+    } finally {
+      (process as { kill: typeof process.kill }).kill = realKill;
+    }
+  });
+
+  it('sweepStaleEmulatorState: kills orphan qemu PIDs when adb sees only a partial subset (no +2 threshold)', async () => {
+    if (process.platform === 'win32') return;
+    // Regression guard against re-introducing PR #349's conservative
+    // `qemuPids.length >= liveCount + 2` guard. Attempt-12 signature:
+    // 2 orphan qemu PIDs + 1 stale adb-devices entry → length 2,
+    // liveCount 1 → 2 >= 1+2 is FALSE → no kill fires, orphans
+    // survive into the next ensureAvdRunning. Loosened to
+    // `qemuPids.length > liveCount`: with N > M, (N-M) PIDs are
+    // orphan and must be killed.
+    const killed: number[] = [];
+    const realKill = process.kill;
+    (process as { kill: typeof process.kill }).kill = ((pid: number, _sig?: string | number) => {
+      killed.push(pid);
+      return true;
+    }) as typeof process.kill;
+    try {
+      const shell = vi.fn(async (cmd: string, args: string[]) => {
+        const key = `${cmd} ${args.join(' ')}`;
+        if (key === 'pgrep -f qemu-system') {
+          return { stdout: '90021\n90022\n', stderr: '', exitCode: 0 };
+        }
+        if (key === 'adb devices') {
+          // One legitimate-looking adb device entry; 2 qemu PIDs.
+          // PR #349 +2 guard wouldn't fire here — confirming the
+          // loosened guard fires the kill for the orphan.
+          return {
+            stdout: 'List of devices attached\nemulator-5554\tdevice\n',
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (key === 'emulator -list-avds') {
+          return { stdout: 'Other_AVD\n', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      });
+      const backend = new AvdBackend({ shell });
+      await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(AvdBootError);
+      // (qemu length 2) - (live count 1) = 1 expected orphan kill.
+      expect(killed.length).toBeGreaterThanOrEqual(1);
+      // Killed the lowest PID first (the older, more-likely-orphan).
+      expect(killed[0]).toBe(90021);
+    } finally {
+      (process as { kill: typeof process.kill }).kill = realKill;
+    }
+  });
+
   it('sweepStaleEmulatorState: tolerates pgrep/kill failures (best-effort)', async () => {
     if (process.platform === 'win32') return;
     const realKill = process.kill;
