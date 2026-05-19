@@ -23,6 +23,18 @@
 #              runs), tapping the first card grabs whichever sorts
 #              first — silently the wrong one. Pinning to text avoids
 #              that. Tracking: jjackson/ace#115 finding 4.
+#
+#              **READ verbatim from
+#              `run_state.yaml.phases.connect-setup.products.connect.opportunity.name`**
+#              (written by Phase 4 `connect-opp-setup` at opp-create
+#              time). NEVER compose from slug pieces — the live tile
+#              text uses an em-dash (U+2014) like `"Malaria ITN FGD —
+#              malaria-itn-fgd (run 20260515-1645)"`, while
+#              slug-reassembly would produce `"ai-demo-space -
+#              malaria-itn-fgd (run 20260515-1645)"` (ASCII hyphen,
+#              wrong prefix). Fallback only if the field is missing
+#              (legacy runs): `connect_get_opportunity({org_slug,
+#              opportunity_id}).name`.
 appId: org.commcare.dalvik
 ---
 # Two valid starting surfaces after connect-login.yaml:

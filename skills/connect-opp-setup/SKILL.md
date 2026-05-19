@@ -544,6 +544,7 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
               url: <CONNECT_BASE_URL>/a/<org>/program/<uuid>/
             opportunity:
               id: <UUID>                       # from Step 4 create response
+              name: <verbatim display name>    # from Step 4 create response — the exact tile text Connect renders (em-dash, NOT slug-reassembled). Phase 6 reads this as its OPP_NAME envVar; never recompose.
               url: <CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/
               labs_int_id: <integer | null>    # from Step 9 lookup
             ace_test_user:

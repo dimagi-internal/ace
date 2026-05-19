@@ -143,9 +143,12 @@ silent-failure prevention learned from earlier real-world dogfood.
       in their app, distinguished only by the run-id suffix in the
       display name. The `${OPP_NAME}` matcher in `connect-claim-opp.yaml`
       relies on (a) the name being unique enough and (b) the newest
-      invite sitting near the top of the list. See
-      `skills/app-screenshot-capture/SKILL.md § Step 4` for the
-      future-proofing options when this implicit ordering breaks.
+      invite sitting near the top of the list. **Read `OPP_NAME`
+      verbatim from `run_state.yaml.phases.connect-setup.products.connect.opportunity.name`**
+      — do NOT compose it from slug pieces. The live tile text uses an
+      em-dash (`—`, U+2014) and the display-name prefix, neither of
+      which a slug-based reassembly produces. See
+      `skills/app-screenshot-capture/SKILL.md § Step 4 "OPP_NAME source"`.
 - [ ] **`ACE_TRAINING_DECK_TEMPLATE_ID` is set** if you want a Slides
       deck. `bin/ace-doctor` reports it. If unset, `training-deck-build`
       skips silently — Phase 6 still completes, just without the
