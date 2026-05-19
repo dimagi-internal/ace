@@ -213,4 +213,34 @@ describe('learn-tap-module.yaml', () => {
       /extendedWaitUntil:\s*\n\s*visible:\s*\n\s*id: "org\.commcare\.dalvik:id\/nav_btn_next"/,
     );
   });
+
+  it('Branch B only fires when the form row text matches MODULE_NAME (same-name case)', () => {
+    // Regression guard for the 2026-05-19 malaria-itn-fgd run halt
+    // (run 20260515-1645 Phase 6 attempt 12) on J1 module
+    // "Briefing Acknowledgement" → form "Acknowledge Readiness":
+    // Branch B's pre-fix `when:` clause only required the
+    // intermediate form-list to be visible + nav_btn_next NOT visible,
+    // so it fired regardless of whether the form's display name
+    // matched the module name. On the form-list screen the toolbar
+    // still reads ${MODULE_NAME}, so the inner re-tap of
+    // `learn-suite-row-by-name` (text-anchored on ${MODULE_NAME})
+    // landed on the non-tappable toolbar TextView; the subsequent
+    // extendedWaitUntil on nav_btn_next then expired against the
+    // unchanged form-list.
+    //
+    // Structural fix: Branch B's effective trigger must additionally
+    // require a `${MODULE_NAME}`-matching node SCOPED to the menu-list
+    // body (via `below: id: screen_suite_menu_list`). When form-name
+    // != module-name, no such body node exists, so Branch B skips and
+    // the caller's next learn-tap-module invocation (with FORM_NAME)
+    // drills the form row by its own label.
+    //
+    // Expressed as a nested runFlow because Maestro `when:` clauses
+    // accept ONE `visible:` element selector — combining two visible-
+    // predicate semantics (outer: list-id visible; inner: text-in-
+    // body visible) requires a nested flow.
+    expect(yaml).toMatch(
+      /visible:\s*\n\s*text: "\$\{MODULE_NAME\}"\s*\n\s*below:\s*\n\s*id: "org\.commcare\.dalvik:id\/screen_suite_menu_list"/,
+    );
+  });
 });

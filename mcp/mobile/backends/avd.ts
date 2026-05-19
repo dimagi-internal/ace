@@ -525,13 +525,27 @@ export class AvdBackend {
    * we already have.
    */
   private async sweepStaleEmulatorState(): Promise<void> {
-    // Step 1: orphan qemu sweep.
+    // Ordering is load-bearing — orphan-qemu kill MUST land BEFORE
+    // adb-server restart, with a brief socket-release window between
+    // them. If adb-server starts up while orphan qemu instances are
+    // still holding emulator-NNNN TCP sockets, the freshly-restarted
+    // daemon adopts the wedged-port state and we end up back in the
+    // same "package service did not bind" failure. The attempt-12
+    // reproducer (malaria-itn-fgd 20260515-1645): 2 orphan qemu PIDs
+    // + 3 stale adb daemons; even with PR #349's adb-restart in place,
+    // the next `ensureAvdRunning` failed twice because the qemu PIDs
+    // were still alive when the daemon came back up. Operator had to
+    // run a second `adb kill-server`/`start-server` AFTER manually
+    // pkill'ing qemu before the third attempt finally booted.
+    //
+    // Step 1: orphan qemu sweep (must run first).
     //
     // Get all qemu-system PIDs. `pgrep -af` would give us the command-
     // line too, but we don't need it for the kill decision — the
     // adb-devices cross-reference is the authoritative signal. On
     // Windows we no-op (pgrep doesn't exist, and ACE mobile dev is
     // Mac/Linux-only in practice).
+    let orphansKilled = 0;
     if (process.platform !== 'win32') {
       try {
         const pgrep = await this.shell('pgrep', ['-f', 'qemu-system']).catch(() => null);
@@ -564,28 +578,25 @@ export class AvdBackend {
             for (const pid of qemuPids) {
               // eslint-disable-next-line no-console
               console.warn(`[ace-mobile] sweepStaleEmulatorState: killing orphan qemu pid=${pid} (no adb devices visible)`);
-              try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+              try { process.kill(pid, 'SIGKILL'); orphansKilled++; } catch { /* already gone */ }
             }
           } else if (qemuPids.length > liveCount) {
-            // Some qemu PIDs aren't matched by adb devices — best-
-            // effort: kill the excess. We can't precisely identify
-            // which PIDs are orphans without per-process port probing,
-            // but if pgrep shows N PIDs and adb sees M < N devices,
-            // (N - M) PIDs are orphans. We kill the lowest-PID
-            // excess (most likely to be the older orphans).
-            //
-            // Conservative: only kill if pgrep > 2 * live (i.e. we're
-            // confident there are MULTIPLE orphans, not a single
-            // legitimate emulator with a stale pgrep echo). This
-            // avoids killing a healthy concurrent emulator on a
-            // shared box.
-            if (qemuPids.length >= liveCount + 2) {
-              const excess = qemuPids.slice(0, qemuPids.length - liveCount);
-              for (const pid of excess) {
-                // eslint-disable-next-line no-console
-                console.warn(`[ace-mobile] sweepStaleEmulatorState: killing likely-orphan qemu pid=${pid} (${qemuPids.length} qemu PIDs, ${liveCount} adb devices)`);
-                try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
-              }
+            // Some qemu PIDs aren't matched by adb devices — these are
+            // orphans (a live qemu always has an adb-devices entry once
+            // the daemon has scanned the port range). If pgrep shows N
+            // PIDs and adb sees M < N devices, (N - M) PIDs are
+            // orphans. Kill the excess (lowest-PID first — most likely
+            // to be the older orphans). Tightened from PR #349's
+            // `qemuPids.length >= liveCount + 2` guard: that conservative
+            // threshold meant a 2-orphan + 1-stale-adb-entry state
+            // (the attempt-12 signature) was BELOW the kill threshold
+            // and got passed through to the adb-restart step with the
+            // orphans still alive — which is exactly the bug.
+            const excess = qemuPids.slice(0, qemuPids.length - liveCount);
+            for (const pid of excess) {
+              // eslint-disable-next-line no-console
+              console.warn(`[ace-mobile] sweepStaleEmulatorState: killing likely-orphan qemu pid=${pid} (${qemuPids.length} qemu PIDs, ${liveCount} adb devices)`);
+              try { process.kill(pid, 'SIGKILL'); orphansKilled++; } catch { /* already gone */ }
             }
           }
         }
@@ -595,12 +606,29 @@ export class AvdBackend {
       }
     }
 
+    // Step 1.5: brief socket-release wait if we actually killed
+    // anything. SIGKILL is synchronous in the sense that process.kill
+    // returns immediately, but the kernel's TCP socket teardown for
+    // the emulator-NNNN ports the qemu was holding completes a few
+    // hundred ms later. Restarting adb-server BEFORE the sockets are
+    // released causes the daemon to either re-adopt the half-closed
+    // ports OR bind to a different set, both of which leave the
+    // subsequent emulator spawn unable to land cleanly. ~500ms is
+    // enough — empirically matches the SO_LINGER + TIME_WAIT
+    // shortened window on Darwin and Linux for the loopback
+    // sockets qemu uses for emulator-NNNN.
+    if (orphansKilled > 0) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
     // Step 2: always restart adb-server. Cheap (~500ms) and resets
     // the daemon to a known-clean state independent of whether we
     // detected wedge symptoms. Cited in three observed instances
     // (malaria-itn-fgd attempts 8, 10, 11) as the manual recovery
     // operators ran — owning it inside the heal removes the
-    // operator-in-the-loop step.
+    // operator-in-the-loop step. MUST run AFTER the orphan-qemu
+    // kill + socket-release wait so the freshly-restarted daemon
+    // sees a clean port landscape.
     await this.shell('adb', ['kill-server']).catch(() => {});
     await this.shell('adb', ['start-server']).catch(() => {});
   }
