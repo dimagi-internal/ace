@@ -601,9 +601,10 @@ export class MaestroBackend {
   /**
    * Locate the two driver APKs on the host. They ship bundled inside
    * `~/.maestro/lib/maestro-client.jar` (verified on Maestro CLI 1.39.x
-   * — file naming: `maestro-app.apk` and `maestro-server.apk` at the
-   * jar root). Extract once to a per-version tempdir; reuse on
-   * subsequent calls.
+   * and 2.3.0 — file naming preserved across the v1 → v2 break:
+   * `maestro-app.apk` and `maestro-server.apk` at the jar root, same
+   * package IDs `dev.mobile.maestro` + `dev.mobile.maestro.test`).
+   * Extract once to a per-version tempdir; reuse on subsequent calls.
    */
   private async resolveDriverApks(): Promise<{ app: string; test: string }> {
     const home = process.env.HOME || os.homedir();

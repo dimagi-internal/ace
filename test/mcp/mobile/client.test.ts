@@ -301,7 +301,7 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
   it('passes through cleanly when the driver is healthy on the first probe', async () => {
     const { client, probeCalls, maestro } = makeClient([{ healthy: true }]);
     await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
-    expect(probeCalls).toEqual([8_000]); // single short-timeout probe
+    expect(probeCalls).toEqual([20_000]); // single short-timeout probe
     expect(maestro.repairDriver).not.toHaveBeenCalled();
   });
 
@@ -311,7 +311,7 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
       { healthy: true },
     ]);
     await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
-    expect(probeCalls).toEqual([8_000, 90_000]); // 2nd probe gets reinstall budget
+    expect(probeCalls).toEqual([20_000, 90_000]); // 2nd probe gets reinstall budget
     expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
     expect(maestro.repairDriver).toHaveBeenCalledWith('emulator-5554');
   });
@@ -346,7 +346,7 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
     await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
     expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554');
     expect(maestro.repairDriver).not.toHaveBeenCalled();
-    expect(probeCalls).toEqual([8_000, 90_000]); // post-install probe gets full budget
+    expect(probeCalls).toEqual([20_000, 90_000]); // post-install probe gets full budget
   });
 
   // When the driver is already installed (wedged-but-installed — the
@@ -361,7 +361,7 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
     await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
     expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554');
     expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
-    expect(probeCalls).toEqual([8_000, 90_000]); // probe1 + probe2 only — no probe1.5
+    expect(probeCalls).toEqual([20_000, 90_000]); // probe1 + probe2 only — no probe1.5
   });
 
   // Fresh install that didn't recover on the post-install probe: must
@@ -384,7 +384,7 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
     await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
     expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554');
     expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
-    expect(probeCalls).toEqual([8_000, 90_000, 90_000]); // probe1 + probe1.5 + probe2
+    expect(probeCalls).toEqual([20_000, 90_000, 90_000]); // probe1 + probe1.5 + probe2
   });
 
   // Live-reproduced on malaria-itn-fgd/20260515-1645 attempt 4
@@ -425,7 +425,7 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
     expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
     // Two probes only: stage-1 + stage-2 (no stage-1.5 because
     // ensureDriverInstalled returned already-installed).
-    expect(probeCalls).toEqual([8_000, 90_000]);
+    expect(probeCalls).toEqual([20_000, 90_000]);
   });
 
   // If ensureDriverInstalled throws (operator hasn't run mobile-bootstrap
