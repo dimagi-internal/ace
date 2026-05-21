@@ -56,6 +56,7 @@ The shape distinction:
 | Producer | QA status | QA skill / rationale |
 |---|---|---|
 | `idea-to-pdd` | **has QA** | `idea-to-pdd-qa` (PR #149). 6 static checks: required sections, archetype enum, stress-test appendix, success-metrics table, evidence-model layers, reviewer-comment table. Downstream skills regex-extract sections from the PDD; structural correctness gates real consumers. |
+| `pdd-to-work-order` | **has QA** | `pdd-to-work-order-qa`. Static checks live; structural correctness is enforceable without an LLM (section presence, decision-row presence, payment-schedule arithmetic, signature blocks, scaffolding markers). 8 static checks: required sections, required `wo-*` decisions, period-of-performance completeness, payment-schedule sums to 100, total NTE present, signature blocks, archetype-appropriate scope, no scaffolding markers. Eval grades the substantive concerns. |
 
 ### Phase 2 — scenarios-and-acceptance
 
