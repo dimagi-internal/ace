@@ -1645,14 +1645,35 @@ fi
 # from the pre-1.1.0 setup — that entry shadows the plugin's PAT-aware
 # entry under Claude Code's URL-dedup and re-introduces the identity
 # divergence Braxton fixed in voidcraft-labs/nova-plugin#11 / #13.
+# Determine which rc file ACE's auto-append targets on this machine
+# (matches the picker in bin/ace-setup). Used to give a precise
+# remediation when the marker block is missing or present-but-not-applied.
+NOVA_RC_FILE=""
+NOVA_OS_NAME="$(uname -s 2>/dev/null)"
+NOVA_SHELL_NAME="$(basename "${SHELL:-/bin/sh}")"
+case "$NOVA_OS_NAME:$NOVA_SHELL_NAME" in
+  Darwin:zsh)  NOVA_RC_FILE="$HOME/.zshenv" ;;
+  Darwin:bash) NOVA_RC_FILE="$HOME/.bash_profile" ;;
+  Linux:zsh)   NOVA_RC_FILE="$HOME/.zshrc" ;;
+  Linux:bash)  NOVA_RC_FILE="$HOME/.bashrc" ;;
+esac
+NOVA_MARKER_PRESENT=0
+if [ -n "$NOVA_RC_FILE" ] && [ -f "$NOVA_RC_FILE" ] && grep -qF "# >>> ACE managed >>>" "$NOVA_RC_FILE" 2>/dev/null; then
+  NOVA_MARKER_PRESENT=1
+fi
+
 if [ -n "${NOVA_API_KEY:-}" ]; then
   pass "nova_shell_env: NOVA_API_KEY present in shell env (Nova plugin headersHelper will authenticate)"
 elif [ -z "$NOVA_KEY_VAL" ]; then
   warn "nova_shell_env: skipped — NOVA_API_KEY not set in ACE .env either" "see nova_env warning above"
+elif [ "$NOVA_MARKER_PRESENT" = "1" ]; then
+  warn "nova_shell_env: ACE marker block present in $NOVA_RC_FILE but NOVA_API_KEY not in this Claude Code session's env" "restart Claude Code (Cmd-Q + reopen) — the rc block only takes effect on the next shell/process launch"
+elif [ -f "$HOME/.ace/env.sh" ] && [ -n "$NOVA_RC_FILE" ]; then
+  warn "nova_shell_env: ~/.ace/env.sh exists but $NOVA_RC_FILE doesn't source it" "re-run /ace:setup --force-env  (it auto-appends a marker-fenced source block since 0.13.298)"
 elif [ -f "$HOME/.ace/env.sh" ]; then
-  warn "nova_shell_env: NOVA_API_KEY not in shell env (~/.ace/env.sh exists but not sourced)" "echo 'source ~/.ace/env.sh' >> ~/.zshrc && exec zsh  # (or your shell's rc file)"
+  warn "nova_shell_env: ~/.ace/env.sh exists but couldn't auto-detect your shell rc (OS=$NOVA_OS_NAME SHELL=$NOVA_SHELL_NAME)" "manually add 'source ~/.ace/env.sh' to your shell's startup file, then restart Claude Code"
 else
-  warn "nova_shell_env: NOVA_API_KEY not in shell env and ~/.ace/env.sh missing" "run /ace:setup to write ~/.ace/env.sh, then add 'source ~/.ace/env.sh' to your shell rc"
+  warn "nova_shell_env: NOVA_API_KEY not in shell env and ~/.ace/env.sh missing" "run /ace:setup --force-env  (writes ~/.ace/env.sh and appends source line to $NOVA_RC_FILE)"
 fi
 if command -v claude >/dev/null 2>&1 && claude mcp list 2>/dev/null | grep -qE '^nova:[[:space:]]'; then
   warn "nova_shell_env: stale user-scope nova: MCP override detected (pre-1.1.0 setup)" "the override shadows the Nova plugin's PAT-aware MCP entry. Run: claude mcp remove nova --scope user  (then restart Claude Code)"

@@ -37,6 +37,7 @@ FORCE_INSTALL=0
 FORCE_ENV=0
 SKIP_ENV=0
 SKIP_DOCTOR=0
+NO_SHELL_EDIT=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -45,6 +46,7 @@ while [ $# -gt 0 ]; do
     --force-env)     FORCE_ENV=1 ;;
     --skip-env)      SKIP_ENV=1 ;;
     --skip-doctor)   SKIP_DOCTOR=1 ;;
+    --no-shell-edit) NO_SHELL_EDIT=1 ;;
     -h|--help)
       sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -406,16 +408,20 @@ $DIAG"
   fi
 fi
 
-# ---- Nova PAT wiring via ~/.ace/env.sh
+# ---- Nova PAT wiring via ~/.ace/env.sh + shell rc auto-append
 #
 # Nova plugin v1.1.0 reads NOVA_API_KEY from the Claude Code process's
 # shell env via a headersHelper in its .mcp.json. ACE stores
 # NOVA_API_KEY in ${CLAUDE_PLUGIN_DATA}/.env (loaded only into ACE's own
 # MCP subprocesses, not the parent shell), so we write a sourceable
-# shim at ~/.ace/env.sh and the operator adds `source ~/.ace/env.sh`
-# to their shell rc once per machine. See
+# shim at ~/.ace/env.sh and append a marker-fenced source line to the
+# operator's shell rc once per machine. See
 # `playbook/integrations/nova-integration.md` and
 # voidcraft-labs/nova-plugin#11 / #13 / #16.
+#
+# Marker-fenced shell-rc edits are the standard pattern (conda init,
+# nvm, rustup, fnm, etc.). Idempotent (marker grep), reversible (delete
+# the block), and operator-triggered (only runs via /ace:setup).
 #
 # Also removes any stale user-scope `nova:` MCP entry left over from the
 # pre-1.1.0 override workaround — that path is obsolete and shadows the
@@ -443,14 +449,68 @@ else
   ACE_ENV_TMP="$(mktemp "${ACE_ENV_FILE}.XXXXXX")"
   cat > "$ACE_ENV_TMP" <<EOF
 # Managed by bin/ace-setup — do not edit by hand.
-# Source this file from ~/.zshrc / ~/.bashrc so Nova plugin v1.1.0's
-# headersHelper can read NOVA_API_KEY from the shell env.
-#   echo 'source ~/.ace/env.sh' >> ~/.zshrc && exec zsh
+# Sourced from your shell rc so Nova plugin v1.1.0's headersHelper can
+# read NOVA_API_KEY from the shell env. Re-run /ace:setup after
+# rotating the key in 1Password.
 export NOVA_API_KEY="$NOVA_KEY"
 EOF
   chmod 600 "$ACE_ENV_TMP"
   mv "$ACE_ENV_TMP" "$ACE_ENV_FILE"
-  pass "nova_env: wrote $ACE_ENV_FILE (source it from your shell rc; see /ace:doctor for remediation)"
+  pass "nova_env: wrote $ACE_ENV_FILE"
+
+  # ---- Auto-append marker-fenced source line to shell rc
+  #
+  # Picks the right rc file per platform/shell:
+  #   - macOS + zsh  → ~/.zshenv  (launchd-spawned GUI Claude Code reads this,
+  #                                ~/.zshrc is interactive-only)
+  #   - macOS + bash → ~/.bash_profile  (Mac's standard login shell rc)
+  #   - Linux + zsh  → ~/.zshrc
+  #   - Linux + bash → ~/.bashrc
+  #   - other shells → skip with a printed instruction
+  #
+  # Marker block is idempotent — re-runs find the marker and skip.
+  if [ "$NO_SHELL_EDIT" = "1" ]; then
+    info_shell_rc_skip_reason="--no-shell-edit passed"
+  fi
+
+  RC_FILE=""
+  RC_REASON=""
+  OS_NAME="$(uname -s 2>/dev/null)"
+  SHELL_NAME="$(basename "${SHELL:-/bin/sh}")"
+  case "$OS_NAME:$SHELL_NAME" in
+    Darwin:zsh)  RC_FILE="$HOME/.zshenv"; RC_REASON="macOS + zsh (launchd-spawned Claude Code reads .zshenv)" ;;
+    Darwin:bash) RC_FILE="$HOME/.bash_profile"; RC_REASON="macOS + bash" ;;
+    Linux:zsh)   RC_FILE="$HOME/.zshrc";  RC_REASON="Linux + zsh" ;;
+    Linux:bash)  RC_FILE="$HOME/.bashrc"; RC_REASON="Linux + bash" ;;
+    *)           RC_FILE=""; RC_REASON="unsupported: OS=$OS_NAME SHELL=$SHELL_NAME" ;;
+  esac
+
+  MARKER_OPEN="# >>> ACE managed >>>"
+  MARKER_CLOSE="# <<< ACE managed <<<"
+
+  if [ "$NO_SHELL_EDIT" = "1" ]; then
+    warn "nova_shell_rc: skipped — --no-shell-edit passed" \
+         "add manually:  echo 'source ~/.ace/env.sh' >> $RC_FILE  # then restart Claude Code"
+  elif [ -z "$RC_FILE" ]; then
+    warn "nova_shell_rc: cannot auto-append (${RC_REASON})" \
+         "manually add 'source ~/.ace/env.sh' to your shell's startup file, then restart Claude Code"
+  elif [ -f "$RC_FILE" ] && grep -qF "$MARKER_OPEN" "$RC_FILE" 2>/dev/null; then
+    pass "nova_shell_rc: $RC_FILE already sources ~/.ace/env.sh (marker block present)"
+  else
+    # Create the file if it doesn't exist (touch is idempotent).
+    touch "$RC_FILE"
+    # Append marker-fenced block. Leading newline keeps the block visually
+    # separated even if the rc file doesn't end in a newline.
+    {
+      printf '\n%s\n' "$MARKER_OPEN"
+      printf '%s\n' "# Sources ACE's NOVA_API_KEY (and any future env exports) so"
+      printf '%s\n' "# Claude Code plugins (Nova v1.1.0+) can read them. Managed by"
+      printf '%s\n' "# /ace:setup; remove this block to opt out."
+      printf '%s\n' '[ -f "$HOME/.ace/env.sh" ] && source "$HOME/.ace/env.sh"'
+      printf '%s\n' "$MARKER_CLOSE"
+    } >> "$RC_FILE"
+    pass "nova_shell_rc: appended marker block to $RC_FILE ($RC_REASON) — restart Claude Code to pick up NOVA_API_KEY"
+  fi
 fi
 
 # ---- Auto-update hook (opt-in)
