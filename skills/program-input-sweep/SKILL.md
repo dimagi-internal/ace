@@ -34,7 +34,8 @@ A program team moves fast on a related set of opportunities (malaria EOIs, COVID
    - For each file: capture `id`, `name`, `mimeType`, `modifiedTime`, parent folder name.
    - For gdocs and `.docx`: `drive_read_file` to grab body text (truncate to ~10k chars per doc for classification; classifier doesn't need the whole RFI).
    - For sheets: `sheets_list_tabs` + `sheets_info` to grab tab names and header rows. Read full tab content only if a tab looks opp-relevant.
-   - For other binaries (PDF, images): record metadata only; surface in `Unmapped` if classifier can't place them.
+   - For Google Forms: `drive_read_file` doesn't return form bodies. Classify from the form's name + parent-folder context (the EOI forms in `EOI/Connect for <topic>...` are unambiguous from the name alone — no body extraction needed). If the form name is too generic to classify, surface in `Unmapped`.
+   - For PDFs and other opaque binaries (images, audio, zips): record metadata only — `drive_read_file` rejects them. Classify from filename + parent folder context if possible; otherwise surface in `Unmapped` with a "PDF body not extracted" note. (Future enhancement: a `drive_extract_pdf_text` atom would let the classifier read bodies. Not blocking for the common case.)
 
 2. **Resolve target opp set — and auto-expand it.**
    - If slugs passed: read each `ACE/<slug>/opp.yaml` and `ACE/<slug>/inputs/`. These are the **operator-named** targets.
@@ -51,10 +52,12 @@ A program team moves fast on a related set of opportunities (malaria EOIs, COVID
    - Tag each emitted action with `Confidence: HIGH | MEDIUM | LOW` based on classifier certainty.
 
 4. **Diff against current opp inputs.**
-   - For each target opp, list current `inputs/` files.
-   - Staleness signals: filename prefix `OLD -` / `OLD_`, an existing input whose source-doc-id (resolvable when the input is a Drive shortcut) matches a source file that classifier marks as relevant but whose body has changed materially, an existing input whose name closely matches a newer source doc with a different ID.
+   - For each target opp, list current `inputs/` files. For each item, capture `id`, `name`, `mimeType`, `modifiedTime`, and (when it's a shortcut) `shortcutDetails.targetId` — the latter is the key for "is this the same artifact" checks.
+   - **Idempotence check by `target_id`, not by name.** For each `ADD_SHORTCUT <slug>: <source-file-id>` the classifier would emit, check whether the target opp's `inputs/` already contains a shortcut whose `targetId` equals that source file id. If yes, suppress the action (already-applied). Name-only matching is unreliable because Drive permits same-name duplicates.
+   - **`ADD_DERIVED_DOC` staleness check via `modifiedTime`.** For each derived doc already present in the target's `inputs/` (matched by proposed name), compare every source artifact it was derived from against the derived doc's `modifiedTime`. If any source `modifiedTime > derived modifiedTime`, the derived doc may be stale — emit a `REPLACE_FILE` (regenerate the extracted content from the now-fresher source). If all source `modifiedTime ≤ derived modifiedTime`, suppress (already-applied). Render a brief "staleness audit" table in the proposal doc listing source-mtime vs derived-mtime for each derived doc so the operator can see the check happened.
+   - **Other staleness signals** (orthogonal to the modifiedTime check): filename prefix `OLD -` / `OLD_` fires `REPLACE_FILE` when a clearly-newer source exists with a near-identical name. A pre-existing `inputs/` shortcut whose `targetId` no longer resolves (target trashed) fires `REMOVE_FILE`. An existing input whose name closely matches a newer source doc with a different ID fires `REPLACE_FILE`.
    - Emit `REPLACE_FILE` for each detected staleness pair (existing → new).
-   - Emit `REMOVE_FILE` only for explicit signals (the `OLD -` prefix is the strongest). Don't auto-remove on staleness-by-content alone — that's `REPLACE_FILE`.
+   - Emit `REMOVE_FILE` only for explicit signals (the `OLD -` prefix is the strongest, or trashed shortcut target). Don't auto-remove on staleness-by-content alone — that's `REPLACE_FILE`.
 
 5. **Build the proposal doc.**
    - Emit the proposal as a markdown string (the natural format for LLM-authored content). Use `#`/`##`/`###` for top sections / actions / sub-fields, `**bold**` for emphasis, `[text](url)` for source links, fenced ``` blocks for proposed `opp.yaml` bodies, `-` lists for bullets.
@@ -107,6 +110,9 @@ A program team moves fast on a related set of opportunities (malaria EOIs, COVID
      ### Rationale
      ### Confidence
 
+     # Staleness audit (optional, but recommended when any `ADD_DERIVED_DOC` was suppressed by the modifiedTime check)
+     <markdown table: | Source artifact | Source mtime | Derived doc | Derived mtime | Stale? |>
+
      # Unmapped
      <one-line note: "Excluded by skill rule — not surfaced: meeting notes, comms drafts, LLO/MoU interview templates, Slack/email exports.">
 
@@ -116,6 +122,7 @@ A program team moves fast on a related set of opportunities (malaria EOIs, COVID
      ### Low-confidence candidates
      ```
    - Per-opp grouping (one H1 per target opp, all of that opp's actions as H2 children) reads better than action-type grouping because operator review is opp-by-opp.
+   - The Staleness audit table is the visible signal that the modifiedTime check actually ran — without it, a "0 derived doc actions" result is indistinguishable from "I didn't check." Emit it whenever ≥1 derived doc was suppressed; skip the section when there are no derived docs to audit at all (e.g. brand-new opps where no derived docs exist yet).
 
 6. **Report.** Print the proposal doc's Drive URL and a one-line summary (`N new opps, M shortcuts, K derived, P replace, Q remove, R unmapped`). Stop.
 
