@@ -23,6 +23,7 @@ export class CompositeBackend implements OcsClient {
 
   cloneChatbot = (a: Parameters<OcsClient['cloneChatbot']>[0]) => this.opts.playwright.cloneChatbot(a);
   createChatbot = (a: Parameters<OcsClient['createChatbot']>[0]) => this.opts.playwright.createChatbot(a);
+  addPipelineNode = (a: Parameters<OcsClient['addPipelineNode']>[0]) => this.opts.playwright.addPipelineNode(a);
   setChatbotSystemPrompt = (a: Parameters<OcsClient['setChatbotSystemPrompt']>[0]) => this.opts.playwright.setChatbotSystemPrompt(a);
   setChatbotPipeline = (a: Parameters<OcsClient['setChatbotPipeline']>[0]) => this.opts.playwright.setChatbotPipeline(a);
   createCollection = (a: Parameters<OcsClient['createCollection']>[0]) => this.opts.playwright.createCollection(a);

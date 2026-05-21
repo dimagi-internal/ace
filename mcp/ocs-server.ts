@@ -230,6 +230,22 @@ server.tool(
 );
 
 server.tool(
+  'ocs_add_pipeline_node',
+  'Add a node to a chatbot\'s pipeline graph. GET-mutate-POST the pipeline JSON at /a/<team>/pipelines/data/<pipeline_id>/ — same shape as the existing LLM-patch atoms. Supports splice-into-existing-edge: pass `disconnect_edge: {source:A, target:B}` + `connect_from: A` + `connect_to: B` to turn A→B into A→new→B (the typical pattern for inserting Router or Python nodes between Start and the default LLM). `node_id` is auto-generated as `<node_type>-<5hex>` (matching OCS UI convention) if omitted. Returns the chosen `node_id`. Server-side validation errors surface as PipelineValidationError.',
+  {
+    pipeline_id: z.number(),
+    node_type: z.string().describe('OCS data.type value — e.g. "DynamicRouterNode", "PythonNode", "LLMResponseWithPrompt", "StartNode", "EndNode".'),
+    node_id: z.string().optional().describe('Explicit node id; auto-generated if omitted.'),
+    position: z.object({ x: z.number(), y: z.number() }).optional(),
+    params: z.record(z.any()).optional().describe('Node-specific config blob, passed through into data.params verbatim.'),
+    connect_from: z.string().optional().describe('Existing node id; if set, creates edge connect_from→new_node.'),
+    connect_to: z.string().optional().describe('Existing node id; if set, creates edge new_node→connect_to.'),
+    disconnect_edge: z.object({ source: z.string(), target: z.string() }).optional().describe('Optional edge to remove before adding new wiring. Use with connect_from + connect_to to splice in.'),
+  },
+  async (args) => result(await composite.addPipelineNode(args)),
+);
+
+server.tool(
   'ocs_set_chatbot_system_prompt',
   "Update the LLMResponseWithPrompt node's prompt field for this chatbot. NOTE: when also changing collection_index_ids in the same operator-visible step, prefer ocs_set_chatbot_pipeline — it does both updates in a single transactional save and avoids the cross-field validation chicken-and-egg (e.g. setting a prompt with `{collection_index_summaries}` when no collections are attached, or vice versa).",
   { experiment_id: z.number(), prompt: z.string() },

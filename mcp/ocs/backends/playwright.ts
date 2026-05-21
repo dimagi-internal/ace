@@ -1,5 +1,5 @@
 import type { RequestFn, RequestResult } from './pipeline-patch.js';
-import { patchLlmNodeParams, validatePipeline, getLlmNodeParams, type PipelinePatchContext } from './pipeline-patch.js';
+import { patchLlmNodeParams, validatePipeline, getLlmNodeParams, addPipelineNode, type PipelinePatchContext } from './pipeline-patch.js';
 import { PipelineValidationError } from '../errors.js';
 import type { LlmNodeParams, ClonedChatbot } from '../types.js';
 import { CollectionIndexingTimeoutError, HttpError, PipelineShapeError } from '../errors.js';
@@ -600,6 +600,37 @@ export class PlaywrightBackend {
     }
     this.pipelineCache.set(experimentId, pipelineId);
     return { experiment_id: experimentId, pipeline_id: pipelineId };
+  }
+
+  /**
+   * Add a node to a chatbot's pipeline. Wraps the pipeline-patch helper —
+   * see `addPipelineNode` in pipeline-patch.ts for the splice semantics.
+   *
+   * Used by the ACE Interviews stub-template build to insert
+   * DynamicRouterNode + PythonNode into the default Start→LLM→End graph
+   * that createChatbot produces.
+   */
+  async addPipelineNode(args: {
+    pipeline_id: number;
+    node_type: string;
+    node_id?: string;
+    position?: { x: number; y: number };
+    params?: Record<string, unknown>;
+    connect_from?: string;
+    connect_to?: string;
+    disconnect_edge?: { source: string; target: string };
+  }): Promise<{ node_id: string }> {
+    const { nodeId } = await addPipelineNode(this.patchContext(), {
+      pipelineId: args.pipeline_id,
+      nodeType: args.node_type,
+      nodeId: args.node_id,
+      position: args.position,
+      params: args.params,
+      connectFrom: args.connect_from,
+      connectTo: args.connect_to,
+      disconnectEdge: args.disconnect_edge,
+    });
+    return { node_id: nodeId };
   }
 
   async cloneChatbot(args: { template_id: number; new_name: string }): Promise<ClonedChatbot> {
