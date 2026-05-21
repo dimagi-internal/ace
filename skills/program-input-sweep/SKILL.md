@@ -36,15 +36,17 @@ A program team moves fast on a related set of opportunities (malaria EOIs, COVID
    - For sheets: `sheets_list_tabs` + `sheets_info` to grab tab names and header rows. Read full tab content only if a tab looks opp-relevant.
    - For other binaries (PDF, images): record metadata only; surface in `Unmapped` if classifier can't place them.
 
-2. **Resolve target opp set.**
-   - If slugs passed: read each `ACE/<slug>/opp.yaml` and `ACE/<slug>/inputs/`.
-   - If no slugs: list `ACE_DRIVE_ROOT_FOLDER_ID`, read each child opp's `opp.yaml`, score each opp's `display_name + tags` for overlap with the source folder name (lowercase token Jaccard is fine), keep the top N (≥0.2 score). Surface the auto-picked set in the proposal's `Targets` section so the operator can prune by deleting lines.
+2. **Resolve target opp set — and auto-expand it.**
+   - If slugs passed: read each `ACE/<slug>/opp.yaml` and `ACE/<slug>/inputs/`. These are the **operator-named** targets.
+   - **Auto-expand the target set.** Then list `ACE_DRIVE_ROOT_FOLDER_ID` and, for each existing opp whose slug is a **close match** to a slug the classifier would propose for an opp-shaped source artifact, add that opp to the target set. "Close match" = exact slug match OR same program-prefix + same topic token (e.g. `malaria-pmc` for an artifact about "Perennial Malaria Chemoprevention" — the classifier proposes `malaria-pmc`; the opp `malaria-pmc` exists in ACE root → auto-add to targets). **A slug collision is assumed to be the same thing.** Genuine "same name, different opp" collisions are rare; the operator resolves them after the fact by removing the wrong opp's ADD_* actions from the proposal doc before apply.
+   - If no slugs passed: list `ACE_DRIVE_ROOT_FOLDER_ID`, read each child opp's `opp.yaml`, score each opp's `display_name + tags` for overlap with the source folder name (lowercase token Jaccard is fine), keep the top N (≥0.2 score), then apply the auto-expand rule on top.
+   - Surface the **final** target set (operator-named + auto-expanded) in the proposal's `Targets` section. Tag each entry as `(named)` or `(auto-expanded)` so the operator can scan; the operator prunes by deleting that target's action blocks from the proposal doc before apply.
 
 3. **Classify each source artifact.**
    - For each source file (or sheet-tab), classify against the resolved opp set as one of:
      - `whole-doc-applies-to: [<slug>, ...]` — whole content is relevant; emit one `ADD_SHORTCUT` per target slug. If the slug list is empty, mark Unmapped.
      - `partial-applies-to: { <slug>: [<sections|tab-names>], ... }` — content is mixed (RFI, multi-tab sheet); emit one `ADD_DERIVED_DOC` per target slug with only the relevant slices extracted. The extracted-content block in the doc is the canonical content — apply uses it as-edited.
-     - `proposes-new-opp: { slug, display_name, tags }` — the artifact is opp-shaped (a dedicated EOI form, a per-opp tab in a planning sheet with no matching opp) and no target slug covers it. Emit a `CREATE_OPP` plus the follow-on `ADD_*` actions that populate the new opp's `inputs/`.
+     - `proposes-new-opp: { slug, display_name, tags }` — the artifact is opp-shaped (a dedicated EOI form, a per-opp tab in a planning sheet) AND no existing opp in `ACE_DRIVE_ROOT_FOLDER_ID` has a close slug match. Emit a `CREATE_OPP` plus the follow-on `ADD_*` actions that populate the new opp's `inputs/`. *Note: if a close-name opp already exists, the auto-expand step in section 2 should have added it to the target set; that opp-shaped artifact then classifies as `whole-doc-applies-to: [<that-slug>]` instead.*
      - `unmapped` — the classifier can't place it; emit under `Unmapped` with a note explaining why and any low-confidence candidates considered.
    - Tag each emitted action with `Confidence: HIGH | MEDIUM | LOW` based on classifier certainty.
 
