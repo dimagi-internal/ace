@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+#
+# ace-mobile-reap — operator-facing CLI for the mobile MCP's session
+# lock + adb/qemu leak reaper.
+#
+# Usage:
+#   ace-mobile-reap            sweep stale sessions only (default)
+#   ace-mobile-reap --all      nuke ALL ace-managed adb/qemu, alive or not
+#   ace-mobile-reap --list     list current session locks without touching anything
+#
+# Background: each MCP session writes a lock file at
+# ~/.ace/sessions/<mcp-pid>.lock.json recording its allocated adb-server
+# + emulator-console ports. The default mode (no args) walks the lock
+# dir and SIGKILLs any adb/qemu still bound to a port whose owning MCP
+# pid is dead. `--all` ignores PID liveness and treats every lock as
+# stale — useful when the host is in a known-bad state and the operator
+# wants a hard reset before /ace:mobile-bootstrap. See
+# docs/learnings/2026-05-21-parallel-session-adb-leak.md.
+#
+# This script is a thin wrapper around `reapStaleSessions` in
+# mcp/mobile/session-lock.ts; the heavy lifting (lock-file parsing,
+# PID-liveness probing, lsof port lookup, SIGKILL) lives there so the
+# MCP server and this CLI share one implementation. Run via npx tsx so
+# the same ESM/TS source resolves in either context.
+
+set -euo pipefail
+
+mode="reap"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --all)  mode="all"; shift ;;
+    --list) mode="list"; shift ;;
+    -h|--help)
+      sed -n '3,18p' "$0"
+      exit 0
+      ;;
+    *)
+      echo "ace-mobile-reap: unknown arg '$1' (try --help)" >&2
+      exit 2
+      ;;
+  esac
+done
+
+# Locate the script's plugin root — same resolution order as
+# bin/ace-doctor. Priority: $CLAUDE_PLUGIN_ROOT, then the directory
+# containing this script's parent (so a dev checkout's `bin/` works),
+# then the installed-plugins registry.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT=""
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -d "$CLAUDE_PLUGIN_ROOT/mcp/mobile" ]; then
+  PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT"
+elif [ -d "$SCRIPT_DIR/../mcp/mobile" ]; then
+  PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+else
+  REG="$HOME/.claude/plugins/installed_plugins.json"
+  if [ -f "$REG" ]; then
+    INSTALL_PATH="$(node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));const e=d['ace@ace']||(d.plugins&&d.plugins['ace@ace']);if(Array.isArray(e)){for(const x of e){if(x&&x.installPath){console.log(x.installPath);break}}}else if(e&&e.installPath){console.log(e.installPath)}}catch(_){}" "$REG" 2>/dev/null)"
+    if [ -n "$INSTALL_PATH" ] && [ -d "$INSTALL_PATH/mcp/mobile" ]; then
+      PLUGIN_ROOT="$INSTALL_PATH"
+    fi
+  fi
+fi
+
+if [ -z "$PLUGIN_ROOT" ]; then
+  echo "ace-mobile-reap: could not locate the ACE plugin root. Set CLAUDE_PLUGIN_ROOT or install via /plugin install ace@ace." >&2
+  exit 1
+fi
+
+cd "$PLUGIN_ROOT"
+
+# Inline TS shim — keeps the bin script standalone (no separate .ts
+# file to import). Calls reapStaleSessions / list locks as requested.
+# Use file:// URL absolute path because tsx -e doesn't establish a
+# stable CWD for relative imports.
+LOCK_MOD_URL="file://$PLUGIN_ROOT/mcp/mobile/session-lock.ts"
+exec npx --yes tsx -e "
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { reapStaleSessions, SESSION_LOCK_DIR, isPidAlive } from '$LOCK_MOD_URL';
+
+const mode = '${mode}';
+
+if (mode === 'list') {
+  if (!fs.existsSync(SESSION_LOCK_DIR)) {
+    console.log('(no session locks under ' + SESSION_LOCK_DIR + ')');
+    process.exit(0);
+  }
+  const entries = fs.readdirSync(SESSION_LOCK_DIR).filter(f => f.endsWith('.lock.json'));
+  if (entries.length === 0) {
+    console.log('(no session locks)');
+    process.exit(0);
+  }
+  console.log('Session locks under ' + SESSION_LOCK_DIR + ':');
+  for (const e of entries) {
+    try {
+      const lock = JSON.parse(fs.readFileSync(path.join(SESSION_LOCK_DIR, e), 'utf8'));
+      const status = isPidAlive(lock.mcp_pid) ? 'ALIVE' : 'STALE';
+      console.log(\`  \${e}  [\${status}]  mcp_pid=\${lock.mcp_pid}  adb=\${lock.adb_port}  emu=\${lock.emulator_port}  avd=\${lock.avd_name ?? '?'}  started=\${lock.started_at}\`);
+    } catch (err: any) {
+      console.log(\`  \${e}  [CORRUPT]  \${err?.message ?? err}\`);
+    }
+  }
+  process.exit(0);
+}
+
+const result = reapStaleSessions({ all: mode === 'all' });
+console.log(JSON.stringify(result, null, 2));
+if (result.errors.length > 0) process.exit(1);
+"

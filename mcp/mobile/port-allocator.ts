@@ -21,6 +21,7 @@
  *     that here so we don't pick a pair the emulator will reject.
  */
 import * as net from 'node:net';
+import { acquireSessionLock, reapStaleSessions, type SessionLock } from './session-lock.js';
 
 export const DEFAULT_ADB_PORT = 5037;
 export const DEFAULT_EMULATOR_CONSOLE_PORT = 5554;
@@ -113,8 +114,22 @@ export async function findFreeEmulatorPair(
 /**
  * Resolve the adb-server port: env var wins; otherwise probe-and-pick
  * starting at the default 5037.
+ *
+ * **Stale-session reaping.** Before probing, walk `~/.ace/sessions/` and
+ * SIGKILL any adb daemons whose owning MCP subprocess is dead. This is
+ * what makes parallel `/ace:run` sessions resilient: without the reap
+ * step, daemons leak across sessions and accumulate as orphans on
+ * 5037..5043+ over a day of dogfooding, racing emulator-adbd ownership
+ * and producing the `dadb Broken pipe` failure class
+ * (`docs/learnings/2026-05-21-parallel-session-adb-leak.md`). Idempotent
+ * + best-effort — a failed reap doesn't block allocation.
  */
 export async function resolveAdbServerPort(): Promise<number> {
+  // Reap first so we don't pick a port that's currently squatted by a
+  // dead-session adb daemon. The reaper kills daemons on stale-lock
+  // ports, then port probing sees them as free.
+  reapStaleSessions();
+
   const envVal = process.env.ANDROID_ADB_SERVER_PORT?.trim();
   if (envVal) {
     const n = Number.parseInt(envVal, 10);
@@ -131,8 +146,15 @@ export async function resolveAdbServerPort(): Promise<number> {
 /**
  * Resolve the emulator console+adb-bridge pair: env var wins;
  * otherwise probe-and-pick starting at the default 5554.
+ *
+ * **Stale-session reaping.** Mirrors `resolveAdbServerPort` — sweeps
+ * `~/.ace/sessions/` for dead-MCP locks and SIGKILLs any orphan qemu
+ * emulators on the freed ports before probing. See `resolveAdbServerPort`
+ * for the full rationale.
  */
 export async function resolveEmulatorPair(): Promise<{ console: number; adbBridge: number }> {
+  reapStaleSessions();
+
   const envVal = process.env.ACE_MOBILE_EMULATOR_PORT?.trim();
   if (envVal) {
     const n = Number.parseInt(envVal, 10);
@@ -151,4 +173,29 @@ export async function resolveEmulatorPair(): Promise<{ console: number; adbBridg
     return { console: n, adbBridge: n + 1 };
   }
   return findFreeEmulatorPair();
+}
+
+/**
+ * Write this MCP session's lock file recording its allocated ports.
+ * Called by the AVD backend after both `resolveAdbServerPort` and
+ * `resolveEmulatorPair` succeed, when the spawn of adb/qemu is about
+ * to happen. The lock file ties the MCP subprocess's PID (the lifetime
+ * trigger) to the ports it owns; future MCP sessions' `reapStaleSessions`
+ * calls will SIGKILL processes on these ports if our PID dies.
+ *
+ * Idempotent — safe to call repeatedly with the same args.
+ */
+export function recordSessionLock(args: {
+  adbPort: number;
+  emulatorPort: number;
+  avdName?: string;
+}): void {
+  const lock: SessionLock = {
+    mcp_pid: process.pid,
+    started_at: new Date().toISOString(),
+    adb_port: args.adbPort,
+    emulator_port: args.emulatorPort,
+    avd_name: args.avdName,
+  };
+  acquireSessionLock(lock);
 }

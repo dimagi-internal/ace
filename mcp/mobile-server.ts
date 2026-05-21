@@ -339,6 +339,38 @@ server.tool(
   }),
 );
 
+// Graceful self-cleanup: when the MCP subprocess is told to exit
+// (Claude Code closing the session, host shutdown, manual kill), drop
+// our session lock so a sibling allocator doesn't see a stale lock and
+// uselessly kill processes we already released. The reaper handles the
+// hard-kill case (-9, OOM-kill, crash) by checking PID liveness, so
+// this signal-handler path is just an optimization for the graceful
+// case. Best-effort: any failure here is irrelevant because the next
+// session's reaper will catch the leak via PID-liveness probing.
+//
+// We don't register `process.on('exit', ...)` because that handler
+// must be sync and ESM `import` is async; the SIGINT/SIGTERM/SIGHUP
+// handlers cover every signal-driven shutdown path, and the reaper is
+// the safety net for everything else.
+{
+  let releasing = false;
+  const release = async () => {
+    if (releasing) return;
+    releasing = true;
+    try {
+      const { releaseSessionLock } = await import('./mobile/session-lock.js');
+      releaseSessionLock(process.pid);
+    } catch {
+      /* ignore */
+    }
+  };
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    process.on(sig, () => {
+      void release().finally(() => process.exit(0));
+    });
+  }
+}
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
