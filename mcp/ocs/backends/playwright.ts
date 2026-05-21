@@ -1,5 +1,5 @@
 import type { RequestFn, RequestResult } from './pipeline-patch.js';
-import { patchLlmNodeParams, validatePipeline, getLlmNodeParams, addPipelineNode, type PipelinePatchContext } from './pipeline-patch.js';
+import { patchLlmNodeParams, validatePipeline, getLlmNodeParams, addPipelineNode, linkActionToNode, type PipelinePatchContext } from './pipeline-patch.js';
 import { PipelineValidationError } from '../errors.js';
 import type { LlmNodeParams, ClonedChatbot } from '../types.js';
 import { CollectionIndexingTimeoutError, HttpError, PipelineShapeError } from '../errors.js';
@@ -74,6 +74,11 @@ export function extractEmbeddedWidgetChannelId(html: string, experimentId: numbe
 export function extractExperimentIdFromLocation(location: string): number | undefined {
   const match = location.match(/\/chatbots\/(\d+)\//);
   return match ? Number(match[1]) : undefined;
+}
+
+/** Escape a string for use as a literal inside a RegExp pattern. */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -603,6 +608,25 @@ export class PlaywrightBackend {
   }
 
   /**
+   * Link a custom-action operation to a pipeline node. Modifies the
+   * node's `data.params.custom_actions` array to include
+   * `<action_id>:<operation_id>`.
+   */
+  async linkActionToNode(args: {
+    pipeline_id: number;
+    node_id: string;
+    custom_action_id: number;
+    operation_id: string;
+  }): Promise<{ ok: true }> {
+    return linkActionToNode(this.patchContext(), {
+      pipelineId: args.pipeline_id,
+      nodeId: args.node_id,
+      customActionId: args.custom_action_id,
+      operationId: args.operation_id,
+    });
+  }
+
+  /**
    * Add a node to a chatbot's pipeline. Wraps the pipeline-patch helper —
    * see `addPipelineNode` in pipeline-patch.ts for the splice semantics.
    *
@@ -631,6 +655,147 @@ export class PlaywrightBackend {
       disconnectEdge: args.disconnect_edge,
     });
     return { node_id: nodeId };
+  }
+
+  /**
+   * Attach a timeout-trigger event to a chatbot. POST to
+   * /a/<team>/chatbots/<experiment_id>/events/timeout/new/ via the
+   * combined `_create_event_view` (apps/events/views.py:35-74), which
+   * accepts THREE forms in a single POST:
+   *
+   *   1. TimeoutTriggerForm   — delay (seconds), total_num_triggers, trigger_from_first_message
+   *   2. EventActionForm      — action_type
+   *   3. Action-params form   — whatever the chosen action_type needs
+   *
+   * Verified against /tmp/ace-refs/ocs/apps/events/views.py +
+   * apps/events/forms.py + apps/events/models.py (2026-05-21).
+   *
+   * KNOWN LIMITATIONS:
+   *   - The view does NOT expose the trigger ID in the response. Success
+   *     is a 302 to /a/<team>/chatbots/<id>/#events with no trigger_id in
+   *     the Location. To find the new trigger, caller must re-list events
+   *     and pick the newest (out of scope for V1).
+   *   - The Connect Interviews tech doc says "after 24hr timeout, a
+   *     custom action fires from OCS back to HQ." OCS events CANNOT
+   *     directly fire custom actions (ACTION_PARAMS_FORMS has no
+   *     "custom_action" key). The team's actual architecture must use
+   *     action_type="pipeline_start" pointing at a secondary pipeline
+   *     that contains the custom action. See docs/connect-interviews/
+   *     ocs-verification.md § "Architectural mismatch".
+   */
+  async addChatbotEvent(args: {
+    experiment_id: number;
+    delay_seconds: number;
+    total_num_triggers?: number;
+    trigger_from_first_message?: boolean;
+    action_type: 'log' | 'send_message_to_bot' | 'end_conversation' | 'schedule_trigger' | 'pipeline_start';
+    /** action_type-specific params (e.g. pipeline_start needs pipeline_id + input_type). */
+    action_params?: Record<string, string | number | boolean>;
+  }): Promise<{ ok: true }> {
+    const path = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/events/timeout/new/`;
+    const body: Record<string, string> = {
+      csrfmiddlewaretoken: this.opts.csrfToken,
+      // TimeoutTriggerForm fields:
+      delay: String(args.delay_seconds),
+      total_num_triggers: String(args.total_num_triggers ?? 1),
+      trigger_from_first_message: args.trigger_from_first_message ? 'on' : '',
+      // EventActionForm field:
+      action_type: args.action_type,
+    };
+    // Merge action-params form fields (stringified — Django form parses POST strings)
+    for (const [k, v] of Object.entries(args.action_params ?? {})) {
+      body[k] = String(v);
+    }
+    const res = await this.opts.request(
+      'POST',
+      path,
+      body,
+      { followRedirects: false, formEncoded: true },
+    );
+    if (res.status === 302) {
+      return { ok: true };
+    }
+    if (res.status === 200) {
+      // Form re-render — one or more of the three forms failed validation.
+      // The HTML template renders errors per-field; parsing them out is
+      // template-fragile. For V1 we surface a generic error with a body
+      // sample so the operator can adjust inputs.
+      const html = res.text ? (await res.text()).slice(0, 600) : '';
+      throw new Error(
+        `addChatbotEvent: form re-render (200) — one of TimeoutTriggerForm, EventActionForm, or the ${args.action_type} action-params form failed validation. First 400 chars: ${html.slice(0, 400)}`,
+      );
+    }
+    throw await httpErrorFor(res, path);
+  }
+
+  /**
+   * Create a custom action (an OpenAPI-driven external tool the LLM can
+   * call). POST /a/<team>/actions/new/ via the CSRF-protected
+   * CustomActionForm (apps/custom_actions/forms.py + views.py).
+   *
+   * Required: name, server_url, api_schema (an OpenAPI 3.x schema as
+   * JSON or YAML string). Optional: description, prompt, auth_provider,
+   * healthcheck_path.
+   *
+   * Success: 302 to /a/<team>/team/ (single_team:manage_team) — the
+   * Location header does NOT include the new action's id. To return the
+   * id, this atom follows up with a GET on /a/<team>/actions/ and
+   * scrapes the row whose name matches. If multiple actions share the
+   * same name, returns the most recent (highest id).
+   *
+   * Verified against /tmp/ace-refs/ocs/apps/custom_actions/views.py +
+   * forms.py (2026-05-21).
+   */
+  async addCustomAction(args: {
+    name: string;
+    server_url: string;
+    api_schema: string;
+    description?: string;
+    prompt?: string;
+    healthcheck_path?: string;
+  }): Promise<{ action_id: number }> {
+    const newPath = `/a/${this.opts.teamSlug}/actions/new/`;
+    const body: Record<string, string> = {
+      csrfmiddlewaretoken: this.opts.csrfToken,
+      name: args.name,
+      server_url: args.server_url,
+      api_schema: args.api_schema,
+      description: args.description ?? '',
+      prompt: args.prompt ?? '',
+      healthcheck_path: args.healthcheck_path ?? '',
+    };
+    const res = await this.opts.request(
+      'POST', newPath, body, { followRedirects: false, formEncoded: true },
+    );
+    if (res.status !== 302 && !res.ok) {
+      throw await httpErrorFor(res, newPath);
+    }
+    if (res.status === 200) {
+      const html = res.text ? (await res.text()).slice(0, 800) : '';
+      throw new Error(
+        `addCustomAction: form re-render (200) — validation failed. Common causes: api_schema is not valid JSON/YAML, server_url is not a valid URL, or name is missing. First 400 chars: ${html.slice(0, 400)}`,
+      );
+    }
+    // Successful 302. Now scrape the actions TABLE (not the home — the
+    // home renders a React shell; the table view at /actions/table/
+    // returns the actual rendered rows). Real-row format verified
+    // against live OCS:
+    //   <a class="link" href="/a/<team>/actions/<id>/">{name}</a>
+    const tablePath = `/a/${this.opts.teamSlug}/actions/table/`;
+    const listRes = await this.opts.request('GET', tablePath);
+    if (!listRes.ok || !listRes.text) throw await httpErrorFor(listRes, tablePath);
+    const listHtml = await listRes.text();
+    const re = new RegExp(`href="/a/${this.opts.teamSlug}/actions/(\\d+)/">${escapeRegex(args.name)}<`, 'g');
+    const ids: number[] = [];
+    for (const m of listHtml.matchAll(re)) {
+      ids.push(Number(m[1]));
+    }
+    if (ids.length === 0) {
+      throw new Error(
+        `addCustomAction created the action (302 redirect received) but could not find it by name "${args.name}" on the list page. Template may have changed; check the HTML structure.`,
+      );
+    }
+    return { action_id: Math.max(...ids) };
   }
 
   async cloneChatbot(args: { template_id: number; new_name: string }): Promise<ClonedChatbot> {

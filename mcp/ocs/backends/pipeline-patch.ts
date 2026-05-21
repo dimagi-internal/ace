@@ -190,6 +190,79 @@ export async function addPipelineNode(
   return { nodeId };
 }
 
+export interface LinkActionToNodeArgs {
+  pipelineId: number;
+  /** Pipeline node ID to attach the custom-action operation to (typically an LLMResponseWithPrompt). */
+  nodeId: string;
+  /** Custom Action database id. From `addCustomAction`. */
+  customActionId: number;
+  /**
+   * OpenAPI operationId within the custom action's api_schema (e.g.
+   * "postSessionCompletion"). The caller chose this when writing the
+   * schema; OCS extracts it into `allowed_operations` on save.
+   */
+  operationId: string;
+}
+
+/**
+ * Append a custom-action operation to a pipeline node's
+ * `data.params.custom_actions` array.
+ *
+ * The string format is `<custom_action_id>:<operation_id>` per
+ * `apps/custom_actions/form_utils.py:make_model_id`. Verified against
+ * source 2026-05-21.
+ *
+ * Verified workflow:
+ *   1. createCustomAction → returns action_id 35 with operationId
+ *      "postSessionCompletion" in the schema
+ *   2. linkActionToNode({nodeId: "LLMResponseWithPrompt-45d67",
+ *      customActionId: 35, operationId: "postSessionCompletion"})
+ *   3. The LLM node now exposes "35:postSessionCompletion" to the LLM
+ *      as a callable tool.
+ */
+export async function linkActionToNode(
+  ctx: PipelinePatchContext,
+  args: LinkActionToNodeArgs,
+): Promise<{ ok: true }> {
+  const url = `/a/${ctx.teamSlug}/pipelines/data/${args.pipelineId}/`;
+  const getRes = await ctx.request('GET', url);
+  if (!getRes.ok) {
+    throw new Error(`pipeline data GET failed for pipeline ${args.pipelineId}`);
+  }
+  const payload = (await getRes.json()) as PipelineDataResponse;
+  const graph = payload.pipeline.data;
+
+  const node = graph.nodes.find((n) => n.id === args.nodeId);
+  if (!node) {
+    throw new PipelineShapeError(
+      `linkActionToNode: node id "${args.nodeId}" not found in pipeline ${args.pipelineId}. ` +
+        `Available node ids: ${graph.nodes.map((n) => n.id).join(', ')}`,
+    );
+  }
+  const modelId = `${args.customActionId}:${args.operationId}`;
+  const params = node.data.params as Record<string, unknown>;
+  const existing = Array.isArray(params.custom_actions) ? (params.custom_actions as string[]) : [];
+  if (!existing.includes(modelId)) {
+    params.custom_actions = [...existing, modelId];
+  }
+
+  const postRes = await ctx.request('POST', url, {
+    name: payload.pipeline.name,
+    data: graph,
+  });
+  if (!postRes.ok) {
+    const body = postRes.text ? await postRes.text() : '<no body>';
+    throw new Error(
+      `linkActionToNode: pipeline POST failed for pipeline ${args.pipelineId} (status ${postRes.status}). First 400 chars: ${body.slice(0, 400)}`,
+    );
+  }
+  const errors = extractPipelineErrors(await postRes.json());
+  if (errors.length > 0) {
+    throw new PipelineValidationError(errors);
+  }
+  return { ok: true };
+}
+
 function randomSuffix(n: number): string {
   // Cryptographically-random hex suffix; no need for crypto-secure here, but
   // Math.random would collide more often. Use Web Crypto if available.
