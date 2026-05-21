@@ -68,7 +68,9 @@ describe('MobileClient.registerTestUser', () => {
 
   it('returns alreadyRegistered=true without invoking AVD/maestro on cloud backend', async () => {
     const prev = process.env.ACE_MOBILE_BACKEND;
+    const prevFlag = process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
     process.env.ACE_MOBILE_BACKEND = 'cloud';
+    delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
     try {
       const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'pass', otp: '123456' });
       // Stub the cloud backend so the client constructor doesn't try to hit ace-web env.
@@ -86,6 +88,93 @@ describe('MobileClient.registerTestUser', () => {
     } finally {
       if (prev === undefined) delete process.env.ACE_MOBILE_BACKEND;
       else process.env.ACE_MOBILE_BACKEND = prev;
+      if (prevFlag === undefined) delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
+      else process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = prevFlag;
+    }
+  });
+
+  it('cloud branch calls CloudBackend.registerTestUser when ACE_MOBILE_CLOUD_LIVE_REGISTER=true', async () => {
+    const prev = process.env.ACE_MOBILE_BACKEND;
+    const prevFlag = process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
+    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
+    try {
+      const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'pass', otp: '123456' });
+      const cloudRegister = vi.fn().mockResolvedValue({
+        alreadyRegistered: false,
+        phone: '+74260000100',
+        backupCode: '222222',
+      });
+      const cloud = { registerTestUser: cloudRegister } as any;
+      const client = new MobileClient({
+        avd,
+        maestro,
+        cloud,
+        // Use the real static recipes dir so prepareRecipeForMaestro
+        // finds both register recipes and the rest of the palette.
+        staticRecipesDir: new URL('../../../mcp/mobile/recipes/static/', import.meta.url).pathname,
+      });
+
+      const r = await client.registerTestUser({
+        avdName: 'AVD',
+        phone: '+74260000100',
+        phoneLocal: '4260000100',
+        countryCode: '+7',
+        pin: '111111',
+        backupCode: '222222',
+        name: 'ACE Test',
+      });
+
+      // Local AVD + maestro must NOT be touched on the cloud branch.
+      expect(avd.ensureAvdRunning).not.toHaveBeenCalled();
+      expect(maestro.runRecipe).not.toHaveBeenCalled();
+      // Cloud register must be called exactly once with the camelCase
+      // args + a non-empty paletteTarB64 + both recipe basenames.
+      expect(cloudRegister).toHaveBeenCalledTimes(1);
+      const callArgs = cloudRegister.mock.calls[0][0];
+      expect(callArgs.phone).toBe('+74260000100');
+      expect(callArgs.phoneLocal).toBe('4260000100');
+      expect(callArgs.countryCode).toBe('+7');
+      expect(callArgs.pin).toBe('111111');
+      expect(callArgs.backupCode).toBe('222222');
+      expect(callArgs.name).toBe('ACE Test');
+      expect(callArgs.toOtpRecipe).toBe('connect-register-to-otp.yaml');
+      expect(callArgs.fromOtpRecipe).toBe('connect-register-from-otp.yaml');
+      expect(typeof callArgs.paletteTarB64).toBe('string');
+      expect(callArgs.paletteTarB64.length).toBeGreaterThan(100);
+      // Result threaded through unchanged.
+      expect(r.alreadyRegistered).toBe(false);
+      expect(r.phone).toBe('+74260000100');
+      expect(r.backupCode).toBe('222222');
+    } finally {
+      if (prev === undefined) delete process.env.ACE_MOBILE_BACKEND;
+      else process.env.ACE_MOBILE_BACKEND = prev;
+      if (prevFlag === undefined) delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
+      else process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = prevFlag;
+    }
+  });
+
+  it('cloud branch stays no-op when ACE_MOBILE_CLOUD_LIVE_REGISTER is anything other than "true"', async () => {
+    const prev = process.env.ACE_MOBILE_BACKEND;
+    const prevFlag = process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
+    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'false';  // explicit off
+    try {
+      const cloudRegister = vi.fn();
+      const cloud = { registerTestUser: cloudRegister } as any;
+      const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'pass', otp: '123456' });
+      const client = new MobileClient({ avd, maestro, cloud, staticRecipesDir: '/static' });
+      const r = await client.registerTestUser({
+        avdName: 'AVD', phone: '+74260000100', phoneLocal: '4260000100', countryCode: '+7',
+        pin: '111111', backupCode: '222222', name: 'ACE Test',
+      });
+      expect(r.alreadyRegistered).toBe(true);  // legacy no-op success shape
+      expect(cloudRegister).not.toHaveBeenCalled();
+    } finally {
+      if (prev === undefined) delete process.env.ACE_MOBILE_BACKEND;
+      else process.env.ACE_MOBILE_BACKEND = prev;
+      if (prevFlag === undefined) delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
+      else process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = prevFlag;
     }
   });
 });

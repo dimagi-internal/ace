@@ -965,13 +965,21 @@ export class MobileClient {
     name: string;
   }): Promise<TestUserRegistrationResult> {
     if (this.useCloud) {
-      // ace-web's cold-boot path (`ace-emulator-launch`) already registers
-      // the +7426 demo user using credentials from AWS Secrets Manager
-      // (`ace-mobile-test-user-creds`) before `/run/ace-mobile/ready` is
-      // touched. So when routed through cloud, this atom is a no-op that
-      // attests the pre-baked registration. The caller's `args.phone` is
-      // expected to match the secret's phone; mismatched callers should
-      // not invoke this atom on cloud.
+      // Feature-flagged: when `ACE_MOBILE_CLOUD_LIVE_REGISTER=true`,
+      // call the new ace-web endpoint to drive the same two-recipe
+      // walkthrough server-side that the local backend runs here
+      // — converging cloud onto local's always-deterministic-bootstrap
+      // model. Otherwise fall back to the legacy "trust the AMI cold-
+      // boot pre-bake" no-op for the in-flight rollout.
+      //
+      // The AMI's `ace-emulator-launch` (pre-cutover) registers the
+      // +7426 demo user using AWS Secrets Manager creds before the
+      // `/run/ace-mobile/ready` marker fires. Once Phase D rebakes the
+      // AMI to drop the pre-bake, the flag must be on or every
+      // dispatch will fail with an unregistered Connect app.
+      if (process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER === 'true') {
+        return this.cloudRegisterTestUser(args);
+      }
       logInfo(`register_test_user: cloud backend — no-op (AMI cold-boot path registers ${args.phone})`);
       return { alreadyRegistered: true, phone: args.phone };
     }
@@ -1042,6 +1050,66 @@ export class MobileClient {
         }
       } else {
         logInfo(`register_test_user: kept temp artifacts at ${tmp} for post-mortem`);
+      }
+    }
+  }
+
+  /**
+   * Cloud-side counterpart to ``registerTestUser`` — drives the two-
+   * recipe walkthrough on the cloud AVD via ace-web's
+   * ``/api/mobile/register-test-user`` endpoint. The server runs the
+   * same two recipes + GMS toggle that local does inline.
+   *
+   * Recipes ship to the server as a base64 tar.gz of the resolved
+   * static palette. Uses ``prepareRecipeForMaestro`` to produce the
+   * same resolved temp-dir layout the local Maestro sees (selector
+   * placeholders expanded, palette siblings populated). The two
+   * recipe basenames are passed alongside so the server knows which
+   * file to invoke first vs. second.
+   *
+   * Behind ``ACE_MOBILE_CLOUD_LIVE_REGISTER`` — see the caller
+   * ``registerTestUser`` for the gate and rollout rationale.
+   */
+  private async cloudRegisterTestUser(args: {
+    avdName: string;
+    phone: string;
+    phoneLocal: string;
+    countryCode: string;
+    pin: string;
+    backupCode: string;
+    name: string;
+  }): Promise<TestUserRegistrationResult> {
+    const toName = 'connect-register-to-otp.yaml';
+    const fromName = 'connect-register-from-otp.yaml';
+    const toPath = path.join(this.staticRecipesDir, toName);
+
+    // Resolve the static palette into a temp dir so the server sees
+    // the same sibling layout local does. We hand `to_otp` to
+    // `prepareRecipeForMaestro` as the "top" recipe; the palette
+    // includes both register recipes (the function resolves *every*
+    // file in STATIC_RECIPES_DIR), so `from_otp` lands alongside.
+    const prep = await prepareRecipeForMaestro(toPath, '2.62.0');
+    try {
+      const paletteTarB64 = tarDirAsBase64(prep.tempDir);
+      logInfo(
+        `register_test_user: cloud backend — live register for ${args.phone} (palette ${paletteTarB64.length}b)`,
+      );
+      return await this.requireCloud().registerTestUser({
+        phone: args.phone,
+        phoneLocal: args.phoneLocal,
+        countryCode: args.countryCode,
+        pin: args.pin,
+        backupCode: args.backupCode,
+        name: args.name,
+        paletteTarB64,
+        toOtpRecipe: toName,
+        fromOtpRecipe: fromName,
+      });
+    } finally {
+      try {
+        fs.rmSync(prep.tempDir, { recursive: true, force: true });
+      } catch {
+        // Best-effort cleanup; the OS temp dir is bounded.
       }
     }
   }

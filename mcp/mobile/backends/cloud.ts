@@ -39,6 +39,7 @@ import type {
   RecipeRunResult,
   ScreenshotEntry,
   StepResult,
+  TestUserRegistrationResult,
   UiDumpResult,
   SnapshotResult,
 } from '../types.js';
@@ -424,6 +425,117 @@ export class CloudBackend {
       {},
     );
     return result.actions;
+  }
+
+  /**
+   * Drive the two-recipe Connect-id registration walk-through server-
+   * side. Mirrors local-side ``MobileClient.registerTestUser`` (the
+   * two-recipe + GMS-toggle ordering) so cloud + local return
+   * interchangeably.
+   *
+   * Async on the server (202 + job_id), polled here until terminal.
+   * Why: the two register recipes plus the GMS toggle between them
+   * take ~30-60s — well past ALB's 60s idle timeout that the legacy
+   * synchronous POST would race.
+   *
+   * Server response shape: ``{already_registered, phone, backup_code?}``.
+   * Converted to the camelCase ``TestUserRegistrationResult`` at the
+   * boundary so callers can swap in either backend without noticing.
+   *
+   * ``paletteTarB64`` is required (unlike for run-recipe where it's
+   * optional). The static palette is the contract: the server has no
+   * filesystem access to the plugin, so the two register recipes
+   * (``connect-register-to-otp.yaml`` and
+   * ``connect-register-from-otp.yaml``) must be shipped over the wire.
+   */
+  async registerTestUser(args: {
+    phone: string;
+    phoneLocal: string;
+    countryCode: string;
+    pin: string;
+    backupCode: string;
+    name: string;
+    paletteTarB64: string;
+    toOtpRecipe: string;
+    fromOtpRecipe: string;
+  }): Promise<TestUserRegistrationResult> {
+    const submission = await this.post<{ job_id: string; status: string }>(
+      '/api/mobile/register-test-user',
+      {
+        phone: args.phone,
+        phone_local: args.phoneLocal,
+        country_code: args.countryCode,
+        pin: args.pin,
+        backup_code: args.backupCode,
+        name: args.name,
+        palette_tar_b64: args.paletteTarB64,
+        to_otp_recipe: args.toOtpRecipe,
+        from_otp_recipe: args.fromOtpRecipe,
+      },
+    );
+    const result = await this.pollRegisterJob(submission.job_id);
+    return {
+      alreadyRegistered: result.already_registered,
+      phone: result.phone,
+      ...(result.backup_code ? { backupCode: result.backup_code } : {}),
+    };
+  }
+
+  /**
+   * Poll a server-side register-test-user job until terminal. Same
+   * polling cadence + timeout class as ``pollJob`` (the run-recipe
+   * variant); kept separate because the result envelope shape is
+   * different (the register job's `result` carries
+   * ``RegisterTestUserResultOut`` instead of the maestro
+   * ``CloudRunResult``).
+   */
+  private async pollRegisterJob(jobId: string): Promise<{
+    already_registered: boolean;
+    phone: string;
+    backup_code?: string | null;
+  }> {
+    const POLL_INTERVAL_MS = this.jobPollIntervalMs;
+    const MAX_WAIT_MS = 30 * 60 * 1000;
+    const deadline = Date.now() + MAX_WAIT_MS;
+    let lastStatus: string | undefined;
+
+    while (Date.now() < deadline) {
+      const record = await this.get<{
+        status: string;
+        result?: {
+          already_registered: boolean;
+          phone: string;
+          backup_code?: string | null;
+        };
+        error?: string;
+        error_code?: string;
+      }>(`/api/mobile/jobs/${jobId}`);
+      lastStatus = record.status;
+
+      if (record.status === 'completed') {
+        if (!record.result) {
+          throw new MobileError(
+            'CLOUD_BAD_RESPONSE',
+            `register-test-user job ${jobId} completed without a result envelope`,
+          );
+        }
+        return record.result;
+      }
+      if (record.status === 'failed') {
+        const code = record.error_code ?? 'job-failed';
+        throw new MobileError(
+          `CLOUD_${code.toUpperCase().replace(/-/g, '_')}`,
+          record.error ?? 'register-test-user job failed (no detail)',
+        );
+      }
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+
+    throw new MobileError(
+      'CLOUD_POLL_TIMEOUT',
+      `register-test-user job ${jobId} did not reach terminal state in ` +
+        `${MAX_WAIT_MS / 60_000} min (last status: ${lastStatus ?? 'unknown'}).`,
+    );
   }
 
   // ── Snapshots ───────────────────────────────────────────────────
