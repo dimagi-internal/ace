@@ -223,6 +223,13 @@ server.tool(
 );
 
 server.tool(
+  'ocs_create_chatbot',
+  'Create a brand-new OCS chatbot from scratch (not by cloning). POST /a/<team>/chatbots/new/ via the CSRF-protected ChatbotForm (apps/chatbots/views.py:CreateChatbot, apps/chatbots/forms.py:ChatbotForm — fields: name + optional description). On success, OCS auto-creates a default Pipeline with the team\'s first LLM provider and 302-redirects to /edit/. Returns { experiment_id, pipeline_id }. Does NOT create channels — caller follows up with createEmbeddedWidgetChannel if needed. Used by the ACE Interviews stub bot template build where the bot is the *clone source*, so channels are added on clones, not the source.',
+  { name: z.string(), description: z.string().optional() },
+  async (args) => result(await composite.createChatbot(args)),
+);
+
+server.tool(
   'ocs_set_chatbot_system_prompt',
   "Update the LLMResponseWithPrompt node's prompt field for this chatbot. NOTE: when also changing collection_index_ids in the same operator-visible step, prefer ocs_set_chatbot_pipeline — it does both updates in a single transactional save and avoids the cross-field validation chicken-and-egg (e.g. setting a prompt with `{collection_index_summaries}` when no collections are attached, or vice versa).",
   { experiment_id: z.number(), prompt: z.string() },

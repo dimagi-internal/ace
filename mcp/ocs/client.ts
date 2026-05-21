@@ -13,6 +13,19 @@ export interface OcsClient {
     new_name: string;
   }): Promise<ClonedChatbot>;
 
+  /**
+   * Create a brand-new chatbot from scratch. POST /a/<team>/chatbots/new/
+   * via the ChatbotForm. Returns the new experiment_id and the
+   * auto-created pipeline_id. Unlike cloneChatbot, this does NOT create
+   * channels — for a fully-usable chatbot the caller follows up with
+   * channel creation. Used by the ACE Interviews stub bot template flow
+   * where the bot is the *source* of clones, not the production bot.
+   */
+  createChatbot(args: {
+    name: string;
+    description?: string;
+  }): Promise<{ experiment_id: number; pipeline_id: number }>;
+
   setChatbotSystemPrompt(args: {
     experiment_id: number;
     prompt: string;

@@ -1,0 +1,1247 @@
+---
+# Connect Interviews — Launch Checklist Schema
+#
+# Source-of-truth structured form of the prose checklists used by the Connect
+# Interviews team. Both the verifier (`/ace:interview-opp-verify`) and the
+# creator (`/ace:interview-cohort-create` + `/ace:interview-domain-bootstrap`)
+# read this file. Edit here, not in either skill.
+#
+# Source docs (read-only):
+#   - Technical Design — gdocs 1jPMP0IUJO6T4Mmfjw9icsTjlOCUa9Z6JhZpNOK3-IF0
+#   - Domain Config Checklist — gsheets 15yjXEMATSIoTLMZLu7-AMK1E4dptdngQxuZdX7rcxgI
+#   - Opportunity Creation Checklist — gdocs 1H7q27gW1qNa05-GUUUiA_v_YZOazGfLtjk_KxTBg1HM
+#
+# Item schema (every entry under `per_domain` and `per_cohort`):
+#
+#   id            kebab-case stable identifier; verifier reports cite this.
+#   name          human label (matches the source doc where possible).
+#   source        free-text pointer to source row/step.
+#   surface       hq | connect | ocs
+#   location      where in the UI the human sees this (for human reports).
+#   cardinality   1 | 1_per_cohort | 1_per_user | n_per_domain  etc.
+#   when          initial | per_cohort | per_user
+#   copy_mode     manual | linked_domain | api  (how the team copies it today)
+#   verify:                              # how to read state and grade it
+#     atom        name of the MCP atom that reads this. `null` if no atom.
+#     args        partial args (the verifier fills in domain/opp at runtime).
+#     rule:                              # the predicate
+#       type      exists | name_matches | property_equals | row_exists |
+#                 count_at_least | choice_includes | filter_matches
+#       <type-specific fields>
+#   create:                              # how to bring this into existence
+#     atom        name of the MCP atom that writes this. `null` if no atom.
+#     gap         true if the atom needs to be built before V1.
+#     inputs      symbolic inputs the creator needs (resolved from cohort/domain YAML).
+#   notes         free-form caveats from the source doc.
+#
+# Conventions:
+#   - Items that today require a Playwright backend are NOT distinguished here.
+#     The probe phase (step 2 of the V1 plan) annotates each gap atom with
+#     `backend: rest | playwright` in a sibling file.
+#   - Optional / conditional items (e.g. "if user reused across cohorts")
+#     carry `applies_when:` with a condition the cohort YAML can satisfy.
+#   - Rules are intentionally narrow: "exists with this name" is the v1 floor.
+#     Deeper property checks (filter expressions, payload JSON shape, etc.)
+#     are layered in after the first round-trip works.
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# Per-program checks — one-time across the whole Connect Interviews
+# initiative. Covers the Connect program shell, the OCS team, and the
+# program-LLO invitation graph (the dimagi-interviews PM org invites
+# COWACDI Interviews and EHA Interviews into the Connect Interviews
+# program). Derived from tech-design § "Domain, App and Opp Structure".
+# ---------------------------------------------------------------------------
+
+per_program:
+
+  - id: connect-program-exists
+    name: Connect program "Connect Interviews" exists in PM org
+    source: 'tech-design § "Domain, App and Opp Structure" — "New Program: Connect Interviews"'
+    surface: connect
+    location: Connect > Programs
+    cardinality: 1
+    when: initial
+    copy_mode: api
+    verify:
+      atom: connect_list_programs   # EXISTS
+      args: { organization_slug: "@pm_org_slug" }
+      rule:
+        type: filter_matches
+        match: { name: "Connect Interviews" }
+    create:
+      atom: connect_create_program   # EXISTS
+      gap: false
+      inputs: [organization_slug, name="Connect Interviews", delivery_type, country, currency, description]
+    notes: |
+      For ACE-owned test infra, PM org slug is `ai-demo-space` and program
+      name is "ACE Interviews Test". For team production, PM org is
+      `dimagi-interviews`.
+
+  - id: llo-orgs-accepted-into-program
+    name: LLO orgs invited and accepted into the program
+    source: tech-design § "Domain, App and Opp Structure" — "2 NM Orgs invited"
+    surface: connect
+    location: Connect > Program > Applications
+    cardinality: n_per_program   # one per LLO
+    when: initial
+    copy_mode: api
+    verify:
+      atom: null   # No first-class "list program participants" atom yet — gap
+      rule: { type: out_of_band }
+    create:
+      atom: connect_accept_program_application   # EXISTS for accept side
+      gap: partial   # accept side exists; invite-to-program flow uses
+                     # connect_send_llo_invite (program-level invite). List
+                     # readback atom missing.
+      inputs: [program_id, organization_slug_per_llo]
+    notes: |
+      Tech-design names COWACDI Interviews and EHA Interviews as the two
+      production LLO orgs. Out of scope for ACE-owned V1 round-trip; only
+      relevant when pointing the verifier at the team's real program later.
+
+  - id: ocs-team-for-program
+    name: OCS team configured for the Interviews bot
+    source: tech-design § "OCS Dynamic Router Bot Design"
+    surface: ocs
+    location: OCS > Team Settings
+    cardinality: 1
+    when: initial
+    copy_mode: manual
+    verify:
+      atom: null   # OCS has no public "get team" atom; team identity is
+                   # set via OCS_TEAM_SLUG env at session-bind time
+      rule: { type: out_of_band, evidence: "OCS_TEAM_SLUG env binds the session" }
+    create:
+      atom: null
+      gap: false   # OCS teams are created via UI; not in V1 automation scope
+      inputs: []
+    notes: |
+      For ACE-owned test infra, ACE's existing OCS team (per `OCS_TEAM_SLUG`)
+      is used. The team's production bot lives in their own OCS team that
+      ACE does not have membership in.
+
+
+# ---------------------------------------------------------------------------
+# Per-domain checks — one-time per project space.
+# Mirrors the "Connect Interviews Integration Checklist" gsheet 1:1, with
+# items collapsed where the gsheet duplicated by source vs. action.
+# Now also includes OCS-side rules per § "OCS Dynamic Router Bot Design":
+# each downstream HQ domain has its own Dynamic Router Bot in OCS, with
+# the per-domain LLO's interview question content.
+# ---------------------------------------------------------------------------
+
+per_domain:
+  - id: subscription
+    name: Required HQ subscription
+    source: domain-config row 9 ("Get required subscription for project spaces")
+    surface: hq
+    location: HQ ops — emailed to accounts@
+    cardinality: 1
+    when: initial
+    copy_mode: manual
+    verify:
+      atom: null  # No public endpoint; verifier flags as "out-of-band, assume manually confirmed"
+      rule: { type: out_of_band }
+    create:
+      atom: null
+      gap: false   # Won't automate — needs internal Dimagi accounts@ workflow
+      inputs: []
+    notes: |
+      Manual email to accounts@dimagi.com. Verifier records the assumption
+      but cannot prove it from the API surface. Out-of-band gate.
+
+  - id: messaging-feature-enabled
+    name: Messaging feature enabled
+    source: tech-design "All the things in the domains" table row 2
+    surface: hq
+    location: Project Settings > Privileges / Project Features
+    cardinality: 1
+    when: initial
+    copy_mode: manual
+    verify:
+      atom: commcare_get_domain_features   # NEW atom
+      rule:
+        type: property_equals
+        path: features.messaging
+        value: true
+    create:
+      atom: commcare_set_domain_feature    # NEW atom
+      gap: true
+      inputs: [domain, feature_name=messaging]
+
+  - id: connection-connect-interviews
+    name: "Connection: Connect Interviews"
+    source: domain-config row 6
+    surface: hq
+    location: Project Setting > Connection Settings
+    cardinality: 1
+    when: initial
+    copy_mode: manual
+    verify:
+      atom: commcare_list_connections   # NEW atom
+      rule:
+        type: name_matches
+        field: name
+        value: "Connect Interviews"
+    create:
+      atom: commcare_create_connection  # NEW atom
+      gap: true
+      inputs: [domain, name="Connect Interviews", type=connect_app]
+
+  - id: connection-ocs-interviews-bot
+    name: "Connection: OCS Interviews Bot"
+    source: domain-config row 7
+    surface: hq
+    location: Project Setting > Connection Settings
+    cardinality: 1
+    when: initial
+    copy_mode: manual
+    verify:
+      atom: commcare_list_connections   # NEW atom
+      rule:
+        type: name_matches
+        field: name
+        value: "Interviews Bot"
+    create:
+      atom: commcare_create_connection  # NEW atom
+      gap: true
+      inputs: [domain, name="Interviews Bot", type=ocs]
+
+  - id: data-forwarding-forms-interviews
+    name: "Data forwarding: Forward Forms — Interviews"
+    source: domain-config row 8
+    surface: hq
+    location: Project Setting > Data Forwarding
+    cardinality: 1
+    when: initial
+    copy_mode: manual
+    verify:
+      atom: commcare_list_form_forwarders   # NEW atom
+      rule:
+        type: filter_matches
+        match:
+          name: "Connect Interviews"
+          payload_format: json
+    create:
+      atom: commcare_create_form_forwarder  # NEW atom
+      gap: true
+      inputs: [domain, name="Connect Interviews", payload_format=json]
+    notes: |
+      ZK from source sheet: "Make sure the Payload Format is JSON and not XML"
+
+  - id: master-apps-linked
+    name: Learn + Deliver apps present (linked from master)
+    source: tech-design "All the things in the domains" row "App"
+    surface: hq
+    location: Applications
+    cardinality: 2_per_cohort   # one Learn + one Deliver
+    when: initial_and_per_cohort
+    copy_mode: linked_domain
+    verify:
+      atom: commcare_list_apps   # EXISTS
+      rule:
+        type: count_at_least
+        match: { name_contains: "Interviews (Learn)" }
+        n: 1
+    create:
+      atom: commcare_linked_app_push   # NEW atom
+      gap: true
+      inputs: [upstream_domain, downstream_domain, app_id]
+
+  - id: feature-flags
+    name: Required feature flags enabled
+    source: tech-design "All the things in the domains" row "Feature flags"
+    surface: hq
+    location: Project Settings > Feature Flags and Privileges
+    cardinality: n_per_domain
+    when: initial
+    copy_mode: linked_domain
+    verify:
+      atom: commcare_get_feature_flags   # NEW atom
+      rule:
+        type: out_of_band   # Specific flag list not in checklist; tech-design
+                            # § "GAing or not relying on frozen and/or deprecated
+                            # feature flags" lists current set, deferred to v2.
+    create:
+      atom: null   # Feature flag enabling is HQ-admin-only — out of scope
+      gap: false
+      inputs: []
+    notes: |
+      Tech-design § "GAing or not relying on frozen feature flags" is the
+      authoritative list. Capture exact flag names in a follow-up.
+
+  - id: lookup-table-interview-schedule
+    name: "Lookup table: interview_schedule"
+    source: domain-config row 12
+    surface: hq
+    location: Data > Lookup Table
+    cardinality: 1
+    when: initial
+    copy_mode: linked_domain_then_manual
+    verify:
+      atom: commcare_get_lookup_table   # NEW atom
+      args: { name: "interview_schedule" }
+      rule:
+        type: exists
+        and:
+          - { type: has_column, name: cohort_id }
+          - { type: has_column, name: previous_interview }
+          - { type: has_column, name: next_interview }
+          - { type: has_column, name: frequency_days }
+    create:
+      atom: commcare_create_lookup_table   # NEW atom
+      gap: true
+      inputs:
+        - domain
+        - name=interview_schedule
+        - columns=[cohort_id, previous_interview, next_interview, frequency_days]
+    notes: |
+      Schema only — per-cohort rows live under per_cohort/lookup-table-rows.
+
+  - id: custom-user-data
+    name: Custom user data fields
+    source: domain-config row 13
+    surface: hq
+    location: Users > Mobile Workers > Edit User Fields
+    cardinality: n_per_domain   # at minimum: cohort_id
+    when: initial
+    copy_mode: linked_domain
+    verify:
+      atom: commcare_list_user_fields   # NEW atom
+      rule:
+        type: filter_matches
+        match: { slug: cohort_id }
+    create:
+      atom: commcare_create_user_field   # NEW atom
+      gap: true
+      inputs: [domain, "slug=cohort_id", "choices=[]"]
+
+  - id: ucr-register-user-ocs
+    name: "UCR expression: Register User OCS"
+    source: domain-config row 14
+    surface: hq
+    location: Data > Filters and Expressions
+    cardinality: 1
+    when: initial
+    copy_mode: linked_domain
+    verify:
+      atom: commcare_list_ucr_expressions   # NEW atom
+      rule: { type: name_matches, field: name, value: "Register User OCS" }
+    create:
+      atom: null   # Linked-domain pushed from master; no direct create needed
+      gap: false
+      inputs: []
+    notes: |
+      Per source doc, pushed via Linked Domain "Data Expressions and Filters"
+      payload. Creator triggers the push rather than authoring the expression.
+
+  - id: ucr-trigger-ocs-bot
+    name: "UCR expression: Trigger OCS Bot"
+    source: domain-config row 15
+    surface: hq
+    location: Data > Filters and Expressions
+    cardinality: 1
+    when: initial
+    copy_mode: linked_domain
+    verify:
+      atom: commcare_list_ucr_expressions
+      rule: { type: name_matches, field: name, value: "Trigger OCS Bot" }
+    create:
+      atom: null
+      gap: false
+      inputs: []
+    notes: |
+      Source-doc NB: "interview questions need to be updated in OCS directly
+      (Mansi)" — OCS-side responsibility, not part of this rule.
+
+  - id: ucr-session-completion-api
+    name: "UCR expression: Session Completion API"
+    source: domain-config row 16
+    surface: hq
+    location: Data > Filters and Expressions
+    cardinality: 1
+    when: initial
+    copy_mode: linked_domain
+    verify:
+      atom: commcare_list_ucr_expressions
+      rule: { type: name_matches, field: name, value: "Session Completion API" }
+    create:
+      atom: null
+      gap: false
+      inputs: []
+
+  - id: ucr-24hr-expiry-api
+    name: "UCR expression: 24 hr expiry API"
+    source: domain-config row 17
+    surface: hq
+    location: Data > Filters and Expressions
+    cardinality: 1
+    when: initial
+    copy_mode: linked_domain
+    verify:
+      atom: commcare_list_ucr_expressions
+      rule: { type: name_matches, field: name, value: "24 hr expiry API" }
+    create:
+      atom: null
+      gap: false
+      inputs: []
+
+  - id: repeater-ocs-user-registration
+    name: "Configurable Form Repeater: OCS User Registration"
+    source: domain-config row 18
+    surface: hq
+    location: Project Setting > Data Forwarding
+    cardinality: 1
+    when: initial
+    copy_mode: manual_after_ucr_push
+    verify:
+      atom: commcare_list_form_repeaters   # NEW atom
+      rule:
+        type: filter_matches
+        match:
+          name: "OCS User Registration"
+          filter_expression_id: "@ucr-register-user-ocs.id"
+    create:
+      atom: commcare_create_form_repeater   # NEW atom
+      gap: true
+      inputs: [domain, name="OCS User Registration", filter_expression_id, target_connection_id]
+
+  - id: repeater-trigger-bot
+    name: "Configurable Form Repeater: Trigger Bot"
+    source: domain-config row 19
+    surface: hq
+    location: Project Setting > Data Forwarding
+    cardinality: 1
+    when: initial
+    copy_mode: manual_after_ucr_push
+    verify:
+      atom: commcare_list_form_repeaters
+      rule:
+        type: filter_matches
+        match:
+          name: "Trigger Bot"
+          filter_expression_id: "@ucr-trigger-ocs-bot.id"
+    create:
+      atom: commcare_create_form_repeater
+      gap: true
+      inputs: [domain, name="Trigger Bot", filter_expression_id, target_connection_id]
+
+  - id: inbound-api-session-completion
+    name: "Inbound API: Session Completion API"
+    source: domain-config row 20
+    surface: hq
+    location: Project Setting > Inbound API configuration
+    cardinality: 1
+    when: initial
+    copy_mode: manual
+    verify:
+      atom: commcare_list_inbound_apis   # NEW atom
+      rule: { type: name_matches, field: name, value: "Session Completion API" }
+    create:
+      atom: commcare_create_inbound_api   # NEW atom
+      gap: true
+      inputs: [domain, name="Session Completion API", spec]
+
+  - id: inbound-api-24hr-expiry
+    name: "Inbound API: 24 hr Expiry API"
+    source: domain-config row 21
+    surface: hq
+    location: Project Setting > Inbound API configuration
+    cardinality: 1
+    when: initial
+    copy_mode: manual
+    verify:
+      atom: commcare_list_inbound_apis
+      rule: { type: name_matches, field: name, value: "24 hr Expiry API" }
+    create:
+      atom: commcare_create_inbound_api
+      gap: true
+      inputs: [domain, name="24 hr Expiry API", spec]
+
+  # ----- OCS-side per-domain rules (Dynamic Router Bot) -----
+  # One Dynamic Router Bot per downstream HQ domain. The bot is what the
+  # FLW actually chats with in Connect Messaging; the per-cohort interview
+  # nodes live inside this bot and are checked under per_cohort.
+
+  - id: ocs-dynamic-router-bot-exists
+    name: Dynamic Router Bot exists in OCS team for this domain
+    source: tech-design § "OCS Dynamic Router Bot Design"
+    surface: ocs
+    location: OCS > Chatbots
+    cardinality: 1_per_domain
+    when: initial
+    copy_mode: manual_or_clone
+    verify:
+      atom: ocs_list_chatbots   # EXISTS
+      rule:
+        type: filter_matches
+        match: { name_contains: "Interviews" }
+    create:
+      atom: ocs_clone_chatbot   # EXISTS — clones from a golden template
+      gap: false
+      inputs: [source_chatbot_id, target_name]
+    notes: |
+      Per-LLO bot lives in the OCS team. ACE-owned V1 test bot clones from
+      an ACE-internal "ACE Interviews Template" bot stored in ACE's OCS
+      team; team production bot lives in their own OCS team.
+
+  - id: ocs-bot-has-router-node
+    name: Bot pipeline includes a Dynamic Router node
+    source: tech-design § "OCS Dynamic Router Bot Design"
+    surface: ocs
+    location: OCS > Chatbot > Pipeline
+    cardinality: 1_per_domain
+    when: initial
+    copy_mode: clone
+    verify:
+      atom: ocs_get_chatbot_pipeline_id   # EXISTS — returns pipeline structure
+      rule:
+        type: pipeline_has_node
+        node_type: router
+        reads_participant_data: [cohort_id, interview_id]
+    create:
+      atom: null   # Created at clone time; not a separate atom
+      gap: false
+      inputs: []
+
+  - id: ocs-bot-has-llm-node
+    name: Bot has the shared interview LLM node
+    source: tech-design § "OCS Dynamic Router Bot Design" — "shared LLM node configured with universal interview prompt structure"
+    surface: ocs
+    location: OCS > Chatbot > Pipeline
+    cardinality: 1_per_domain
+    when: initial
+    copy_mode: clone
+    verify:
+      atom: ocs_get_chatbot_pipeline_id
+      rule:
+        type: pipeline_has_node
+        node_type: llm
+        prompt_contains: ["interview", "questions"]
+    create:
+      atom: null
+      gap: false
+      inputs: []
+
+  - id: ocs-bot-has-python-node-session-state
+    name: Bot has Python node for deterministic session-state capture
+    source: tech-design § "OCS Dynamic Router Bot Design" — "Python node is used to ensure deterministic capture of session state variables"
+    surface: ocs
+    location: OCS > Chatbot > Pipeline
+    cardinality: 1_per_domain
+    when: initial
+    copy_mode: clone
+    verify:
+      atom: ocs_get_chatbot_pipeline_id
+      rule:
+        type: pipeline_has_node
+        node_type: python
+        sets_session_state: [interview_status, payment_eligibility]
+    create:
+      atom: null
+      gap: false
+      inputs: []
+    notes: |
+      Tech-design explicitly calls out that session-level variables cannot
+      be saved through standard participant-data mechanisms alone — this
+      Python node is load-bearing for the back-to-CCHQ integration.
+
+  - id: ocs-bot-has-24hr-timeout-event
+    name: 24-hour inactivity timeout event configured
+    source: tech-design § "OCS Dynamic Router Bot Design" — "after 24 hours of inactivity, a custom action fires"
+    surface: ocs
+    location: OCS > Chatbot > Events
+    cardinality: 1_per_domain
+    when: initial
+    copy_mode: clone
+    verify:
+      atom: ocs_get_chatbot   # EXISTS — surfaces events on the chatbot
+      rule:
+        type: chatbot_has_event
+        event_type: inactivity_timeout
+        threshold_hours: 24
+    create:
+      atom: null
+      gap: false
+      inputs: []
+
+  - id: ocs-bot-has-completion-action
+    name: Custom action posts session completion back to HQ
+    source: tech-design § "2. OCS to CCHQ Configuration"
+    surface: ocs
+    location: OCS > Chatbot > Custom Actions
+    cardinality: 1_per_domain
+    when: initial
+    copy_mode: clone
+    verify:
+      atom: ocs_get_chatbot
+      rule:
+        type: chatbot_has_custom_action
+        action_name_contains: "Session Completion"
+        target_url_matches: "@inbound-api-session-completion.url"   # cross-system
+    create:
+      atom: null
+      gap: false
+      inputs: []
+    notes: |
+      Target URL points at the HQ Inbound API "Session Completion API"
+      defined under per_domain/inbound-api-session-completion. Cross-system
+      reference — verifier must compare OCS-side config against HQ-side
+      Inbound API URL to grade this pass.
+
+  - id: ocs-bot-has-24hr-expiry-action
+    name: Custom action posts 24hr expiry back to HQ
+    source: tech-design § "6. Timeout and Inactivity Handling"
+    surface: ocs
+    location: OCS > Chatbot > Custom Actions
+    cardinality: 1_per_domain
+    when: initial
+    copy_mode: clone
+    verify:
+      atom: ocs_get_chatbot
+      rule:
+        type: chatbot_has_custom_action
+        action_name_contains: "Expiry"
+        target_url_matches: "@inbound-api-24hr-expiry.url"
+    create:
+      atom: null
+      gap: false
+      inputs: []
+
+
+# ---------------------------------------------------------------------------
+# Per-cohort checks — fires once per Connect opportunity / cohort.
+# Mirrors the gdocs "Interviews: Opportunity Creation Checklist" steps 1-6.
+# Also includes OCS-side per-cohort rules: the Dynamic Router has one node
+# per interview_id in the cohort's schedule, with the cohort's interview
+# questions baked into that node's prompt context.
+# ---------------------------------------------------------------------------
+
+per_cohort:
+
+  # ----- Step 1: Apps -----
+
+  - id: app-learn-copied
+    name: Learn app copy for this cohort
+    source: opp-checklist step 1.1
+    surface: hq
+    location: Applications
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: linked_domain
+    verify:
+      atom: commcare_list_apps   # EXISTS
+      rule:
+        type: name_matches
+        field: name
+        value_template: "Connect Interviews (Learn) {{cohort_id}}"
+    create:
+      atom: commcare_linked_app_copy   # NEW atom
+      gap: true
+      inputs: [upstream_domain, downstream_domain, master_learn_app_id, target_name]
+
+  - id: app-deliver-copied
+    name: Deliver app copy for this cohort
+    source: opp-checklist step 1.1
+    surface: hq
+    location: Applications
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: linked_domain
+    verify:
+      atom: commcare_list_apps
+      rule:
+        type: name_matches
+        field: name
+        value_template: "Connect Interviews (Deliver) {{cohort_id}}"
+    create:
+      atom: commcare_linked_app_copy
+      gap: true
+      inputs: [upstream_domain, downstream_domain, master_deliver_app_id, target_name]
+
+  - id: app-learn-released
+    name: Learn app released build present
+    source: opp-checklist step 1.3
+    surface: hq
+    location: Applications > Releases
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: commcare_list_app_releases   # NEW atom (or extend commcare_list_apps)
+      rule: { type: has_released_build }
+    create:
+      atom: commcare_release_build   # EXISTS
+      gap: false
+      inputs: [domain, app_id]
+
+  - id: app-deliver-released
+    name: Deliver app released build present
+    source: opp-checklist step 1.3
+    surface: hq
+    location: Applications > Releases
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: commcare_list_app_releases
+      rule: { type: has_released_build }
+    create:
+      atom: commcare_release_build
+      gap: false
+      inputs: [domain, app_id]
+
+  # ----- Step 2: User field + lookup table -----
+
+  - id: cohort-id-in-user-field-choices
+    name: cohort_id added as a user-field choice
+    source: opp-checklist step 2.1
+    surface: hq
+    location: Users > Mobile Workers > User Fields
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: commcare_list_user_fields   # NEW atom (also per_domain)
+      rule:
+        type: choice_includes
+        field_slug: cohort_id
+        value_template: "{{cohort_id}}"
+    create:
+      atom: commcare_user_field_add_choice   # NEW atom
+      gap: true
+      inputs: [domain, field_slug=cohort_id, choice]
+
+  - id: lookup-table-rows
+    name: interview_schedule rows for this cohort
+    source: opp-checklist step 2.3
+    surface: hq
+    location: Data > Lookup Table
+    cardinality: n_per_cohort   # one row per interview position in the schedule
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: commcare_get_lookup_table_rows   # NEW atom
+      args: { table_name: interview_schedule }
+      rule:
+        type: rows_match_schedule
+        cohort_id_template: "{{cohort_id}}"
+        rules:
+          - first_row.previous_interview: "--"      # double-dash / empty
+          - last_row.frequency_days: 9999
+          - each_row.frequency_days: required
+    create:
+      atom: commcare_lookup_table_append_rows   # NEW atom
+      gap: true
+      inputs: [domain, table_name=interview_schedule, rows]
+
+  # ----- Step 2.5 (conditional): User reused across cohorts -----
+
+  - id: user-reuse-case-update
+    name: Case re-update on commcare-user (case-id + name + cohort-id only)
+    source: opp-checklist "Step IF users is repeated"
+    surface: hq
+    location: Excel import
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    applies_when: "cohort.reuses_existing_users == true"
+    verify:
+      atom: commcare_get_case   # NEW atom
+      rule: { type: out_of_band }   # Verified at-rest by cohort_id-on-user check below
+    create:
+      atom: commcare_bulk_case_update   # NEW atom
+      gap: true
+      inputs: [domain, case_type=commcare-user, csv_path]
+
+  - id: user-reuse-cohort-id-rewrite
+    name: Mobile worker bulk upload — cohort_id updated
+    source: opp-checklist "Step IF users is repeated"
+    surface: hq
+    location: Users > Bulk Upload
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    applies_when: "cohort.reuses_existing_users == true"
+    verify:
+      atom: commcare_list_users   # NEW atom
+      rule:
+        type: all_match
+        filter: { cohort_id: "@previous_cohort.id" }
+        new_value: "@this_cohort.id"
+    create:
+      atom: commcare_bulk_user_update   # NEW atom
+      gap: true
+      inputs: [domain, csv_path]
+
+  # ----- Step 3: Opportunity in Connect -----
+
+  - id: opp-exists
+    name: Connect opportunity exists with cohort_id name
+    source: opp-checklist step 3.2
+    surface: connect
+    location: Connect > Opportunities
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity   # EXISTS
+      rule:
+        type: property_equals
+        path: name
+        value_template: "{{cohort_id}}"   # tech-design proposes
+                                          # "Interviews - {cohort_id} - {LLO} - {batch} - {type}"
+                                          # — checklist itself uses just cohort_id.
+                                          # Default to cohort_id; allow override.
+    create:
+      atom: connect_create_opportunity   # EXISTS
+      gap: false
+      inputs: [organization_slug, program_id, name, currency=NGN, country=Nigeria,
+               hq_server=commcare_hq, learn_app, deliver_app, passing_score=4, descriptions]
+
+  - id: opp-currency
+    name: Currency = NGN
+    source: opp-checklist step 3.3
+    surface: connect
+    location: Connect > Opportunity > Edit
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity
+      rule: { type: property_equals, path: currency, value: NGN }
+    create:
+      atom: connect_create_opportunity
+      gap: false
+      inputs: [currency=NGN]
+
+  - id: opp-country
+    name: Country = Nigeria
+    source: opp-checklist step 3.3
+    surface: connect
+    location: Connect > Opportunity > Edit
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity
+      rule: { type: property_equals, path: country, value: Nigeria }
+    create:
+      atom: connect_create_opportunity
+      gap: false
+      inputs: [country=Nigeria]
+
+  - id: opp-learn-app-linked
+    name: Learn app selected on opportunity
+    source: opp-checklist step 3.8
+    surface: connect
+    location: Connect > Opportunity > Edit
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity
+      rule:
+        type: property_equals
+        path: learn_app.cc_app_id
+        value: "@app-learn-copied.app_id"
+    create:
+      atom: connect_create_opportunity
+      gap: false
+      inputs: [learn_app]
+
+  - id: opp-deliver-app-linked
+    name: Deliver app selected on opportunity
+    source: opp-checklist step 3.8
+    surface: connect
+    location: Connect > Opportunity > Edit
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity
+      rule:
+        type: property_equals
+        path: deliver_app.cc_app_id
+        value: "@app-deliver-copied.app_id"
+    create:
+      atom: connect_create_opportunity
+      gap: false
+      inputs: [deliver_app]
+
+  - id: opp-passing-score
+    name: Learn app passing score = 4
+    source: opp-checklist step 3.9
+    surface: connect
+    location: Connect > Opportunity > Edit
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity
+      rule: { type: property_equals, path: learn_app.passing_score, value: 4 }
+    create:
+      atom: connect_create_opportunity
+      gap: false
+      inputs: [passing_score=4]
+
+  # ----- Step 4: Payment + Budget -----
+
+  - id: payment-unit
+    name: Payment unit for completed interview
+    source: opp-checklist step 4
+    surface: connect
+    location: Connect > Opportunity > Payment Units
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_list_payment_units   # EXISTS — but see atom description:
+                                          # amount/max_total/max_daily fields
+                                          # are unreliable on list. Verifier
+                                          # leans on the create response object.
+      rule:
+        type: filter_matches
+        match:
+          name_template: "{{cohort_id}} interview completed successfully"
+    create:
+      atom: connect_create_payment_unit   # EXISTS
+      gap: false
+      inputs:
+        - opportunity_id
+        - name_template="{{cohort_id}} interview completed successfully"
+        - amount   # from cohort tracker
+        - max_total   # = total interviews in schedule
+        - max_daily=1
+
+  - id: opp-start-date
+    name: Opportunity start_date set
+    source: opp-checklist step 4.4
+    surface: connect
+    location: Connect > Opportunity > Edit
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity
+      rule: { type: property_present, path: start_date }
+    create:
+      atom: connect_create_opportunity
+      gap: false
+      inputs: [start_date]
+    notes: |
+      Source doc: "start date can not be updated later" — creator must pass it
+      at create time, not via update.
+
+  - id: opp-end-date
+    name: Opportunity end_date set
+    source: opp-checklist step 4.6
+    surface: connect
+    location: Connect > Opportunity > Edit
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity
+      rule: { type: property_present, path: end_date }
+    create:
+      atom: connect_create_opportunity
+      gap: false
+      inputs: [end_date]
+
+  - id: opp-worker-budget
+    name: Worker budget set
+    source: opp-checklist step 4.5
+    surface: connect
+    location: Connect > Opportunity > Budget
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity
+      rule: { type: property_present, path: max_users }
+    create:
+      atom: connect_create_opportunity
+      gap: false
+      inputs: [max_users]
+    notes: |
+      Source doc says "round up 33/35 to 40" — creator should accept the
+      tracker's raw value and round to a configurable bucket.
+
+  # ----- Step 5: Conditional alert -----
+
+  - id: conditional-alert-payment
+    name: Payment conditional alert for this cohort
+    source: opp-checklist step 5
+    surface: hq
+    location: Messaging > Conditional Alerts
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: commcare_list_conditional_alerts   # NEW atom
+      rule:
+        type: filter_matches
+        match:
+          name_template: "{{cohort_id}} Payment Conditional Alert"
+          case_type: commcare-user
+          filter:
+            cohort_id: "@this_cohort.id"
+            session_completion: "session completed"
+    create:
+      atom: commcare_create_conditional_alert   # NEW atom
+      gap: true
+      inputs: [domain, name_template, case_type=commcare-user, filter, action]
+
+  # ----- Step 6: Final flags / state -----
+
+  - id: opp-delivery-type
+    name: Delivery Type = Interviews
+    source: opp-checklist step 6
+    surface: connect
+    location: Connect > Opportunity > hamburger menu
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity
+      rule: { type: property_equals, path: delivery_type.slug, value: interviews }
+    create:
+      atom: connect_update_opportunity   # EXISTS
+      gap: false
+      inputs: [delivery_type=interviews]
+    notes: |
+      Resolve the slug via `connect_list_delivery_types` once — caller passes
+      the slug literal.
+
+  - id: opp-gps-verification-off
+    name: GPS verification disabled
+    source: opp-checklist step 6
+    surface: connect
+    location: Connect > Opportunity > hamburger menu
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity
+      rule: { type: property_equals, path: verification_flags.gps, value: false }
+    create:
+      atom: connect_set_verification_flags   # EXISTS
+      gap: false
+      inputs: [verification_flags.gps=false]
+    notes: |
+      Source doc: "essential for workers to be automatically approved for
+      payment" — failure mode if left on is silent payment hold.
+
+  - id: opp-is-test-off
+    name: Is Test = off
+    source: opp-checklist step 6
+    surface: connect
+    location: Connect > Opportunity > hamburger menu
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity
+      rule: { type: property_equals, path: is_test, value: false }
+    create:
+      atom: connect_update_opportunity
+      gap: false
+      inputs: [is_test=false]
+
+  - id: opp-active
+    name: Opportunity active
+    source: opp-checklist step 6
+    surface: connect
+    location: Connect > Opportunity > Status
+    cardinality: 1_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: connect_get_opportunity
+      rule: { type: property_equals, path: active, value: true }
+    create:
+      atom: connect_activate_opportunity   # EXISTS
+      gap: false
+      inputs: [opportunity_id]
+
+  # ----- OCS-side per-cohort rules -----
+  # The cohort's interview schedule names a set of interview_ids
+  # (e.g. te001, te002, te003). The Dynamic Router must have a routable
+  # node for each interview_id, with that interview's question content
+  # available to the shared LLM node when the router selects it.
+
+  - id: ocs-interview-nodes-per-cohort
+    name: Bot has a routable node for every interview_id in this cohort's schedule
+    source: tech-design § "OCS Dynamic Router Bot Design" — "Each interview is represented as a distinct node within the same bot"
+    surface: ocs
+    location: OCS > Chatbot > Pipeline > Router targets
+    cardinality: n_per_cohort   # one node per unique interview_id in the schedule
+    when: per_cohort
+    copy_mode: manual_or_clone
+    verify:
+      atom: ocs_get_chatbot_pipeline_id
+      rule:
+        type: pipeline_has_router_targets
+        for_each_interview_id: "@cohort.schedule.interview_ids"
+    create:
+      atom: null   # Adding new interview nodes is currently manual in OCS;
+                   # no OCS atom exists for editing pipeline structure.
+      gap: true   # NEW gap surfaced by the OCS-side rules: no OCS
+                  # pipeline-edit atom exists. V1: bot template includes a
+                  # generous set of pre-built interview-node slots and the
+                  # cohort-creator chooses which ones to route to.
+      inputs: []
+    notes: |
+      Editing OCS pipeline structure programmatically is not currently
+      supported by any OCS atom. The V1 cohort-creator works around this
+      by cloning a template bot that already has interview-node slots
+      pre-built; the router config selects which slots to use based on the
+      cohort's interview_ids.
+
+  - id: ocs-interview-source-material
+    name: Interview question content is set on the bot's source material / collections for each interview_id
+    source: tech-design § "OCS Dynamic Router Bot Design" — question content per interview
+    surface: ocs
+    location: OCS > Chatbot > Source Material
+    cardinality: n_per_cohort
+    when: per_cohort
+    copy_mode: api
+    verify:
+      atom: ocs_get_chatbot   # EXISTS — surfaces source_material
+      rule:
+        type: source_material_includes
+        for_each_interview_id: "@cohort.schedule.interview_ids"
+        content_topic_present: true
+    create:
+      atom: ocs_set_source_material   # EXISTS
+      gap: false
+      inputs: [chatbot_id, source_material_content]
+    notes: |
+      The opp-checklist NB row 15 explicitly says "interview questions need
+      to be updated in OCS directly (Mansi)" — this is the rule that
+      captures that step. Today done by hand; ACE creator should be able to
+      assemble the source material from the cohort YAML's question list.
+
+
+# ---------------------------------------------------------------------------
+# Per-user checks — fires once per FLW, after Learn completion.
+# Minimal in v1; the team currently does this by hand.
+# ---------------------------------------------------------------------------
+
+per_user:
+
+  - id: user-cohort-id-set
+    name: cohort_id user-field populated for this FLW
+    source: tech-design "Launching cohorts" + opp-checklist last-step
+    surface: hq
+    location: Users > Mobile Workers > [user] > User Fields
+    cardinality: 1_per_user
+    when: per_user
+    copy_mode: api
+    verify:
+      atom: commcare_get_user   # NEW atom
+      rule:
+        type: property_equals
+        path: user_data.cohort_id
+        value_template: "{{cohort_id}}"
+    create:
+      atom: commcare_update_user_field   # NEW atom
+      gap: true
+      inputs: [domain, user_id, field_slug=cohort_id, value]
+    notes: |
+      Tech-design: this happens after the FLW completes the Learn app and is
+      ready to enter the cohort. Out of scope for v1 cohort-creator.
+
+
+# ---------------------------------------------------------------------------
+# Atom gap summary — derived view, kept here for human readers.
+# The verifier doesn't read this section; the canonical info is on each
+# item's `verify.atom` / `create.atom` + `create.gap` fields.
+# ---------------------------------------------------------------------------
+
+atom_gaps:
+  # NEW read atoms (verifier-only path)
+  reads:
+    - commcare_get_domain_features
+    - commcare_list_connections
+    - commcare_list_form_forwarders
+    - commcare_list_form_repeaters
+    - commcare_list_ucr_expressions
+    - commcare_list_inbound_apis
+    - commcare_list_user_fields
+    - commcare_get_lookup_table
+    - commcare_get_lookup_table_rows
+    - commcare_list_conditional_alerts
+    - commcare_list_app_releases   # could extend commcare_list_apps instead
+    - commcare_get_user
+    - commcare_list_users
+    - commcare_get_case
+    - commcare_get_feature_flags
+
+  # NEW write atoms (creator path)
+  writes:
+    # Per-domain bootstrap
+    - commcare_set_domain_feature
+    - commcare_create_connection
+    - commcare_create_form_forwarder
+    - commcare_create_form_repeater
+    - commcare_create_inbound_api
+    - commcare_create_user_field
+    - commcare_create_lookup_table
+    # Per-cohort
+    - commcare_linked_app_push
+    - commcare_linked_app_copy
+    - commcare_user_field_add_choice
+    - commcare_lookup_table_append_rows
+    - commcare_create_conditional_alert
+    - commcare_bulk_case_update
+    - commcare_bulk_user_update
+    # Per-user
+    - commcare_update_user_field
+    # HQ infra (added per V1 reframe — ACE owns end-to-end, no human UI steps)
+    - commcare_create_domain         # Playwright; drives /domain/new/ wizard
+    - commcare_link_domains          # set master→downstream linked-project-space pair
+    - commcare_invite_web_user       # Tastypie v0.5 user resource
+
+  # OCS-side atom gaps. V1 reframe: ACE builds the stub bot programmatically
+  # via these atoms instead of relying on UI clicks. Probe in flight (see
+  # docs/connect-interviews/ocs-probe-report.md when ready) — most are
+  # expected REST-via-page.request since OCS is modern Django+DRF.
+  ocs_gaps:
+    - ocs_create_chatbot             # create from scratch (not clone)
+    - ocs_add_pipeline_node          # add router / llm / python nodes
+    - ocs_add_chatbot_event          # add inactivity timeout event
+    - ocs_add_custom_action          # add HQ inbound API custom actions
+    - ocs_link_action_to_node        # wire custom action to node trigger / event
+    # No "list program participants" atom on Connect side — surfaces when
+    # verifying the LLO orgs accepted into the program. Not blocking for
+    # V1 (ACE-owned program has no external participants).
+    - connect_list_program_participants
+
+  # Atoms already in tree (no work, just reuse)
+  reuse:
+    # CommCare HQ
+    - commcare_list_apps
+    - commcare_release_build
+    # Connect platform
+    - connect_get_opportunity
+    - connect_list_payment_units
+    - connect_create_opportunity
+    - connect_create_payment_unit
+    - connect_update_opportunity
+    - connect_set_verification_flags
+    - connect_activate_opportunity
+    - connect_list_delivery_types
+    - connect_list_programs
+    - connect_create_program
+    - connect_accept_program_application
+    - connect_send_llo_invite
+    # OCS — sufficient for all new OCS-side rules except pipeline edit
+    - ocs_list_chatbots
+    - ocs_get_chatbot
+    - ocs_get_chatbot_pipeline_id
+    - ocs_clone_chatbot
+    - ocs_set_source_material

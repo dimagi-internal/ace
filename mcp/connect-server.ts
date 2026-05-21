@@ -468,6 +468,24 @@ server.tool('commcare_delete_app',
   async (args) => runAtom(async () => (await commcareClient()).deleteApp(args))
 );
 
+server.tool('commcare_create_domain',
+  'Create a new CommCare HQ project space (domain). POST /register/domain/ via the DomainRegistrationForm CSRF-protected web view (no REST equivalent — corehq/apps/registration/views.py:RegisterDomainView). For an existing (non-new) user — which ACE\'s ace@dimagi-ai.com always is — success is a 302 to /a/<slug>/dashboard/; the returned `domain` is the slug HQ derived from `hr_name`. `hr_name` is capped at 25 chars (HQ\'s DomainRegistrationForm.max_name_length); pass an already-slug-shaped value (lowercase, hyphens) for predictable slug derivation. Daily-creation rate-limit and `RESTRICT_DOMAIN_CREATION` errors are surfaced explicitly.',
+  {
+    hr_name: z.string().max(25).describe('Human-readable project name; HQ derives the URL slug from this. Max 25 chars. Pass a slug-shaped value (lowercase + hyphens) for predictable results.'),
+    org: z.string().optional().describe('Optional organization id (hidden form field; usually empty).'),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).createDomain(args))
+);
+
+server.tool('commcare_link_domains',
+  'Set up a linked-project-spaces relationship: upstream (master) → downstream. Required before linked-app push / linked content sync. POST /a/<upstream>/linked_domain/service/ via the jQuery-RMI protocol (corehq/util/jqueryrmi.py + corehq/apps/linked_domain/views.py:DomainLinkRMIView.create_domain_link). Caller must have access in both domains. Pro Edition is required for the LITE_RELEASE_MANAGEMENT privilege that backs linked spaces — without it, the call may succeed structurally but content-push operations downstream will fail.',
+  {
+    upstream_domain: z.string().describe('Master domain slug (must have access).'),
+    downstream_domain: z.string().describe('Downstream domain slug to attach (must also have access).'),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).linkDomains(args))
+);
+
 server.tool('commcare_make_build',
   {
     domain: z.string(),
