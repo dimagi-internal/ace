@@ -13,7 +13,23 @@
 
 ## 2. Scope of Work
 
-{{scope_body}}
+{{scope_intro}}
+
+For each engagement, the Partner will:
+
+<<<BULLETS_SCOPE_WILL_START>>>
+
+{{scope_will_body}}
+
+<<<BULLETS_SCOPE_WILL_END>>>
+
+The Partner will not:
+
+<<<BULLETS_SCOPE_WILL_NOT_START>>>
+
+{{scope_will_not_body}}
+
+<<<BULLETS_SCOPE_WILL_NOT_END>>>
 
 ## 3. Geographic Coverage
 
@@ -27,11 +43,23 @@
 
 ### 4.2 Definition of a Verified Unit
 
+A unit qualifies as "verified" and is payable under this Work Order only when all of the following are met:
+
+<<<BULLETS_VERIFIED_UNIT_START>>>
+
 {{verified_unit_body}}
+
+<<<BULLETS_VERIFIED_UNIT_END>>>
+
+{{verified_unit_closing}}
 
 ### 4.3 Reporting Deliverables
 
+<<<BULLETS_REPORTING_START>>>
+
 {{reporting_body}}
+
+<<<BULLETS_REPORTING_END>>>
 
 ## 5. Timeline and Milestones
 
@@ -83,7 +111,15 @@ Dimagi will pay only for verified units at the per-visit (or per-session, per ar
 
 ### 8.1 Permissions
 
+The Partner is responsible for securing all in-country permissions required to conduct the field activities, including:
+
+<<<BULLETS_PERMISSIONS_START>>>
+
 {{permissions_body}}
+
+<<<BULLETS_PERMISSIONS_END>>>
+
+The Partner will provide Dimagi with copies of all written permissions or notifications obtained.
 
 ### 8.2 Ethics
 

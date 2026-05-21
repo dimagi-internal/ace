@@ -1442,6 +1442,128 @@ server.tool(
   },
 );
 
+mcp.tool(
+  'docs_finalize_bullets',
+  'Finalize an ACE-template-rendered Google Doc by applying real Google Docs bullet styling to paragraphs enclosed in `<<<BULLETS_<NAME>_START>>>` / `<<<BULLETS_<NAME>_END>>>` anchor pairs, then deleting the two anchor paragraphs. Call AFTER `docs_copy_template` when the template wraps variable-length bulleted regions in anchor pairs (so the skill\'s cell-level token replacement can emit `\\n`-separated bullet items without per-bullet token slots). Idempotent — re-runs are no-ops once all anchors have been processed. Returns the count of anchor pairs processed.',
+  {
+    documentId: z.string().describe('The Google Doc ID'),
+  },
+  async ({ documentId }) => {
+    try {
+      // Read doc structure to locate anchor paragraphs.
+      const doc = await docs.documents.get({ documentId });
+      const bodyContent = doc.data.body?.content ?? [];
+
+      const anchorRe = /^<<<BULLETS_([A-Z0-9_]+)_(START|END)>>>$/;
+      type Anchor = { name: string; kind: 'START' | 'END'; startIndex: number; endIndex: number };
+      const anchors: Anchor[] = [];
+      for (const el of bodyContent) {
+        if (!el.paragraph) continue;
+        const text = (el.paragraph.elements?.map((e) => e.textRun?.content || '').join('') || '').trim();
+        const m = text.match(anchorRe);
+        if (m) {
+          anchors.push({
+            name: m[1],
+            kind: m[2] as 'START' | 'END',
+            startIndex: el.startIndex!,
+            endIndex: el.endIndex!,
+          });
+        }
+      }
+
+      if (anchors.length === 0) {
+        return result({ documentId, anchorsProcessed: 0 });
+      }
+
+      // Pair START/END by anchor name.
+      type Pair = { name: string; start: Anchor; end: Anchor };
+      const pairs: Pair[] = [];
+      const byName: Record<string, { start?: Anchor; end?: Anchor }> = {};
+      for (const a of anchors) {
+        byName[a.name] = byName[a.name] || {};
+        if (a.kind === 'START') byName[a.name].start = a;
+        else byName[a.name].end = a;
+      }
+      for (const name in byName) {
+        const { start, end } = byName[name];
+        if (!start || !end) {
+          return error(`docs_finalize_bullets: incomplete anchor pair for ${name} (missing ${start ? 'END' : 'START'})`);
+        }
+        if (start.endIndex >= end.startIndex) {
+          return error(`docs_finalize_bullets: anchor pair ${name} has START at/after END`);
+        }
+        pairs.push({ name, start, end });
+      }
+
+      // Process LAST-TO-FIRST so earlier indices stay valid while we mutate later ones.
+      pairs.sort((a, b) => b.start.startIndex - a.start.startIndex);
+
+      for (const pair of pairs) {
+        // Step 1: apply bullet style to the inner range (between START's end and END's start).
+        // Step 2: delete END anchor (higher index first).
+        // Step 3: delete START anchor.
+        await docs.documents.batchUpdate({
+          documentId,
+          requestBody: {
+            requests: [
+              {
+                createParagraphBullets: {
+                  range: {
+                    startIndex: pair.start.endIndex,
+                    endIndex: pair.end.startIndex,
+                  },
+                  bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+                },
+              },
+              {
+                deleteContentRange: {
+                  range: { startIndex: pair.end.startIndex, endIndex: pair.end.endIndex },
+                },
+              },
+              {
+                deleteContentRange: {
+                  range: { startIndex: pair.start.startIndex, endIndex: pair.start.endIndex },
+                },
+              },
+            ],
+          },
+        });
+      }
+
+      // Post-pass: delete any empty bulleted paragraphs left behind by the
+      // blank lines in the markdown source around the anchor tokens. Without
+      // this, the rendered doc shows `• ` (empty bullet) before the first
+      // real item and after the last item of each bulleted region.
+      const after = await docs.documents.get({ documentId });
+      type Empty = { startIndex: number; endIndex: number };
+      const emptyBullets: Empty[] = [];
+      for (const el of after.data.body?.content ?? []) {
+        if (!el.paragraph?.bullet) continue;
+        const text = (el.paragraph.elements?.map((e) => e.textRun?.content || '').join('') || '').trim();
+        if (text === '') {
+          emptyBullets.push({ startIndex: el.startIndex!, endIndex: el.endIndex! });
+        }
+      }
+      // Delete last-to-first to keep earlier indices valid.
+      emptyBullets.sort((a, b) => b.startIndex - a.startIndex);
+      if (emptyBullets.length > 0) {
+        await docs.documents.batchUpdate({
+          documentId,
+          requestBody: {
+            requests: emptyBullets.map((e) => ({
+              deleteContentRange: { range: { startIndex: e.startIndex, endIndex: e.endIndex } },
+            })),
+          },
+        });
+      }
+
+      return result({ documentId, anchorsProcessed: pairs.length, emptyBulletsRemoved: emptyBullets.length });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
 // ============================================================================
 // Slides
 // ============================================================================

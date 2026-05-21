@@ -55,21 +55,30 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 4. **Append `wo-*` rows to `decisions.yaml`** via `update_yaml_file` with merge-only semantics. Never overwrite existing rows. Required keys per row per `lib/decisions-schema.ts`: `id`, `phase: 1-design`, `skill: pdd-to-work-order`, `question`, `default`, `options_considered`, `source`, `status`. Optional `notes`.
 
 5. **Render the work-order template to a Google Doc.**
-   - `docs_copy_template(templateId=<WORK_ORDER_TEMPLATE_ID from env>, parent=<run-folder file_id>, name="Work Order — <opp-title>")`. If the run already has a `pdd-to-work-order.gdoc`, name the new one `Work Order — <opp-title> (#2)`, etc.
-   - `docs_batch_update` with token replacements. Tokens use `{{...}}` snake_case:
+   - `docs_copy_template(templateDocId=<WORK_ORDER_TEMPLATE_ID from env>, parentFolderId=<run-folder file_id>, title="pdd-to-work-order", replacements={...})`. Pass all token replacements directly to `docs_copy_template` — it runs a single `replaceAllText` batch under the hood, no separate `docs_batch_update` needed. If the run already has a `pdd-to-work-order.gdoc`, title the new one `pdd-to-work-order-2`, etc.
+   - **After the copy returns, call `docs_finalize_bullets(documentId=<new-doc-id>)`** — this applies real Google Docs bullet styling to the paragraphs enclosed in the template's `<<<BULLETS_*_START>>>` / `<<<BULLETS_*_END>>>` anchor pairs, deletes the anchors, and cleans up empty bulleted paragraphs left over from blank-line spacing. Required step; without it the bulleted sections (§2 scope, §4.2 verified-unit criteria, §4.3 reporting, §8.1 permissions) render as plain paragraphs.
+   - Body tokens for bulleted regions (`{{scope_will_body}}`, `{{scope_will_not_body}}`, `{{verified_unit_body}}`, `{{reporting_body}}`, `{{permissions_body}}`) take a `\n`-separated string with one bullet item per line. `replaceAllText` honors `\n` as paragraph breaks; `docs_finalize_bullets` then bullet-styles each resulting paragraph.
+   - Tokens use `{{...}}` snake_case:
    The template has SIX real Google Docs tables (header, timeline, payment schedule, RACI, data handling, signatures). Each cell that varies per work-order contains ONE `{{snake_case}}` token. The skill replaces tokens via `replaceAllText` — one cell-sized value per token. Token groups:
 
    **Header + narrative (prose tokens):**
      - `{{wo_number}}`, `{{opp_title}}`, `{{wo_date}}` (today, ISO), `{{wo_period_of_performance}}`
      - `{{background_body}}` (synthesized from PDD's Problem Statement + Intervention Design + any named downstream consumer)
-     - `{{scope_body}}` (archetype-branched prose — see below)
+     - `{{scope_intro}}` (one-sentence framing of the work, archetype-branched)
      - `{{geographic_coverage_body}}` (from PDD Target Population; `[Geographic Coverage — Partner to propose]` if not specified)
-     - `{{primary_deliverable_body}}`, `{{verified_unit_body}}` (from PDD Success Metrics + Evidence Model)
-     - `{{reporting_body}}` (from `wo-reporting-cadence`)
-     - `{{wo_total_not_to_exceed_usd}}` — bare number (cell)
-     - `{{permissions_body}}`, `{{ethics_body}}` — prose
+     - `{{primary_deliverable_body}}` (from PDD Success Metrics)
+     - `{{verified_unit_closing}}` (the "Verification will be performed via..." closing paragraph after the verified-unit bullets)
+     - `{{wo_total_not_to_exceed_usd}}` — bare number
+     - `{{ethics_body}}` — prose
      - `{{pdd_link}}` (Drive URL of the PDD from `phases.design.products.pdd.file_id`)
      - `{{annexure_b_placeholder}}` ("To be provided" if no opp-specific annexure)
+
+   **Bulleted-region tokens (newline-separated; finalize via `docs_finalize_bullets`):**
+     - `{{scope_will_body}}` — what the Partner will do (one bullet per line)
+     - `{{scope_will_not_body}}` — what the Partner will not do (one bullet per line)
+     - `{{verified_unit_body}}` — criteria a unit must meet to be "verified" (one bullet per line)
+     - `{{reporting_body}}` — required reporting deliverables (one bullet per line)
+     - `{{permissions_body}}` — required permissions (one bullet per line)
 
    **Timeline table (9 rows × 3 cols, header + 8 weeks):**
      - `{{week_N_dates}}`, `{{week_N_activities}}` for N=1..8 (from PDD Timeline)
@@ -122,8 +131,8 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 - Roles: per-stage RACI.
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file`, `drive_create_file`, `update_yaml_file`
-- Google Docs: `docs_copy_template`, `docs_batch_update`
+- Google Drive: `drive_read_file`, `update_yaml_file`
+- Google Docs: `docs_copy_template`, `docs_finalize_bullets`
 
 ## Mode Behavior
 
