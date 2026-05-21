@@ -182,6 +182,50 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
      See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
      § Bug 3 for the full failure analysis.
+   - **REQUIRED — Learn forms must NOT carry `<case>` blocks.** This is the
+     load-bearing rule that keeps `commcare-form-patch` runnable on the
+     Learn CCZ. Insert this paragraph **verbatim** into the brief, in its
+     own paragraph, prefixed `REQUIRED:`:
+
+     > REQUIRED: Learn forms must NOT create or update CommCare cases.
+     > Do not declare a `case_type` on Learn modules, do not configure
+     > registration forms to create cases, and do not bind any field to a
+     > case property via `case_property_on`. Calibration scores, pass
+     > flags, and assessment `user_score` MUST live as form-level hidden
+     > fields only — Connect reads them via each form's `connect.assessment`
+     > block, which is the right channel for cross-form Learn signal. If
+     > a downstream Deliver-app query needs the FLW's calibration status
+     > (e.g. "did this FLW pass the standardization gate?"), the answer
+     > comes from Connect's per-FLW assessment-completion API, NOT from
+     > a CommCare case property written by the Learn app.
+     >
+     > Why: `pdd-to-learn-app/SKILL.md` STEP 8 documents that
+     > `commcare-form-patch` runs after Learn release to strip
+     > `commcareconnect`-namespaced wrappers from form XML — but the
+     > patcher's `commcare_patch_xform` → `make_build` cycle fails with
+     > "Cannot use Case Management UI if you already have a case block in
+     > your form" whenever the patched form carries a `<case>` block,
+     > because CCHQ's Vellum form-designer caches case-block metadata
+     > separately from the XForm bytes and the patcher's `edit_form_attr`
+     > call doesn't refresh that cache. Tracking: `commcare-form-patch/
+     > SKILL.md § blocker class cchq-vellum-cache-drift`. Until either
+     > Nova's wrapper-emission bug (voidcraft-labs/nova-plugin#7) ships
+     > OR the patcher gains Vellum-cache invalidation, the only path
+     > that keeps the Learn CCZ AVD-launchable is to author Learn
+     > forms without case blocks in the first place.
+
+     Reproducer: `malaria-itn-app/20260521-1400` Phase 3 — the architect
+     bound calibration pass flags (`standardization_gate_cleared`,
+     `*_passed`) to case properties on `flw_calibration` cases. Phase 3
+     released successfully but `commcare-form-patch` was blocked by
+     `cchq-vellum-cache-drift` on all 6 Learn forms; Phase 6
+     `app-screenshot-capture` then halted on Connect → Learn CCZ install
+     with `"Unknown failure during app install"` because the released
+     Learn CCZ still carried the wrappers the AVD runtime cannot install.
+     Removal criteria: drop this rule when voidcraft-labs/nova-plugin#7
+     ships (no wrappers → no patcher → no vellum-cache-drift class) OR
+     when `commcare_patch_xform` gains the Vellum-cache invalidation
+     path documented in `commcare-form-patch/SKILL.md`.
 
 4. **Invoke `/nova:autobuild "<brief>"`.** This is a one-shot autonomous
    build — Nova will not ask clarifying questions. Capture from the
@@ -427,3 +471,4 @@ When `--dry-run` is active:
 | 2026-05-15 | Tighten Step 4a (post-build field-count verification) from "the in-context LLM must..." prose into a numbered tool-call recipe. Prompted by `malaria-itn-fgd/20260514-2007` where the cert-assessment shipped 12/15 score fields + 0/1 user_score and the recipe didn't fire — `validate_app` caught it instead. Mirrored in `pdd-to-deliver-app/SKILL.md`. See jjackson/ace#303. | ACE team |
 | 2026-05-15 | **focus-group archetype becomes a no-op for this skill.** The FGD operational model captures content in a gdoc (not a CommCare form) and trains facilitators out-of-band (OCS chatbot + handbook gdoc + coordinator-graded practice-session audio review), so no Learn app is produced. Step 1a short-circuits with a `skipped` summary; § Archetypes § focus-group rewritten to document the skip. Prompted by `malaria-itn-fgd/20260514-2007` post-run reframe; see `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
 | 2026-05-15 | **focus-group switches from no-op to minimal sentinel pattern.** Re-run `malaria-itn-fgd/20260514-2352` Phase 4 surfaced a hard blocker: `connect_create_opportunity` requires `learn_app` at the schema, REST, and validator layers. Operator chose per-opp sentinel (one minimal 1-form readiness check, ~7 fields, both Connect markers, ~1-2 min build) over a server-side fix. Step 1a no longer short-circuits — focus-group runs the full skill flow but with the sentinel-shaped brief documented in § Archetypes § focus-group. Sentinel doubles as in-app readiness gate: facilitator must `acknowledge_readiness = yes` (coordinator-confirmed practice-session-pass) before they're cleared to submit attestations. | ACE team |
+| 2026-05-21 | **Forbid `<case>` blocks in Learn forms.** Added a new REQUIRED paragraph to Step 3 instructing the architect to NOT declare `case_type` on Learn modules, NOT create cases from Learn registration forms, and NOT bind any field to a case property via `case_property_on`. Calibration scores / pass flags / `user_score` MUST live as form-level hidden fields only. Reason: `commcare-form-patch` (Step 8 wrapper-strip) hits `cchq-vellum-cache-drift` whenever a patched form carries a `<case>` block — CCHQ's Vellum form-designer cache isn't refreshed by `edit_form_attr`, and `make_build` rejects with "Cannot use Case Management UI if you already have a case block in your form." Reproducer: `malaria-itn-app/20260521-1400` Phase 3 — architect bound `standardization_gate_cleared` + `*_passed` flags to case properties, all 6 Learn forms blocked at form-patch, Phase 6 then halted on Connect → Learn CCZ install with "Unknown failure during app install." Removal criteria: drop the rule when voidcraft-labs/nova-plugin#7 ships (no wrappers → no patcher → no drift class) OR when `commcare_patch_xform` gains Vellum-cache invalidation. | ACE team |
