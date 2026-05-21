@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import { AvdBootError, AvdBootTimeoutError, AdbError } from '../errors.js';
 import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult } from '../types.js';
 import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock } from '../port-allocator.js';
+import { withAllocatorMutex } from '../session-lock.js';
 
 // Per-phase budgets for the post-spawn three-phase boot wait.
 //
@@ -289,28 +290,34 @@ export class AvdBackend {
     this.allocPromise = (async () => {
       const adbEnv = process.env.ANDROID_ADB_SERVER_PORT?.trim();
       const emuEnv = process.env.ACE_MOBILE_EMULATOR_PORT?.trim();
-      const adbServerPort = await resolveAdbServerPort();
-      const pair = await resolveEmulatorPair();
-      this.ports = {
-        adbServerPort,
-        emulatorConsolePort: pair.console,
-        emulatorAdbBridgePort: pair.adbBridge,
-        autoAllocated: !adbEnv && !emuEnv,
-      };
-      // Write the session lock now that BOTH ports are nailed down.
-      // This is what makes parallel sessions resilient — sibling
-      // sessions' future port allocations will reap our lock if our
-      // MCP subprocess dies, SIGKILL'ing the spawned adb/qemu on our
-      // ports before claiming them themselves. See
-      // `mcp/mobile/session-lock.ts` for the full architecture.
-      try {
-        recordSessionLock({
-          adbPort: adbServerPort,
-          emulatorPort: pair.console,
-        });
-      } catch {
-        /* best-effort — lock-write failure shouldn't block AVD boot */
-      }
+      // Hold the file-system allocator mutex across BOTH probes AND
+      // the recordSessionLock write. Otherwise two parallel sessions
+      // race the TCP probe-then-bind window (~ms wide) and both claim
+      // the same port pair. Live-reproduced via
+      // `scripts/probe-parallel-sessions.ts --n=3` — 3 concurrent
+      // sessions all picked emulator console 5556 with no mutex. The
+      // mutex serializes the entire allocate-then-record sequence so
+      // each sibling sees the previous one's lock before probing.
+      const result = await withAllocatorMutex(async () => {
+        const adbServerPort = await resolveAdbServerPort();
+        const pair = await resolveEmulatorPair();
+        const ports = {
+          adbServerPort,
+          emulatorConsolePort: pair.console,
+          emulatorAdbBridgePort: pair.adbBridge,
+          autoAllocated: !adbEnv && !emuEnv,
+        };
+        try {
+          recordSessionLock({
+            adbPort: adbServerPort,
+            emulatorPort: pair.console,
+          });
+        } catch {
+          /* best-effort — lock-write failure shouldn't block AVD boot */
+        }
+        return ports;
+      });
+      this.ports = result;
       return this.ports;
     })();
     return this.allocPromise;

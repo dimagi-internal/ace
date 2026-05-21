@@ -170,6 +170,126 @@ export interface ReapResult {
 }
 
 /**
+ * Read every live session lock and return the set of {adb_port,
+ * emulator_port} values they've claimed. Used by the port allocator to
+ * skip ports already reserved by sibling sessions (the "leak-induced
+ * collision" class: sibling's MCP died but its adb daemon is still on
+ * 5037; without consulting the lock, the next allocator's bind-probe
+ * sees 5037 as "taken by some adb" without knowing it's a reapable
+ * orphan, walks to 5038, and accumulates the leak we set out to fix).
+ *
+ * Locks whose `mcp_pid` is dead are reaped before reading — that way
+ * the caller sees a clean view and the reaper runs at the same
+ * boundary as port allocation.
+ *
+ * Returns separate sets so callers (ADB allocator vs emulator
+ * allocator) can each consult only the relevant slot.
+ */
+export function getReservedPorts(): { adb: Set<number>; emulator: Set<number> } {
+  // Reap first so we don't treat dead-session ports as reserved.
+  reapStaleSessions();
+
+  const adb = new Set<number>();
+  const emulator = new Set<number>();
+  if (!fs.existsSync(SESSION_LOCK_DIR)) return { adb, emulator };
+  for (const entry of fs.readdirSync(SESSION_LOCK_DIR)) {
+    if (!entry.endsWith('.lock.json')) continue;
+    try {
+      const lock = JSON.parse(fs.readFileSync(path.join(SESSION_LOCK_DIR, entry), 'utf8')) as SessionLock;
+      if (Number.isFinite(lock.adb_port)) adb.add(lock.adb_port);
+      if (Number.isFinite(lock.emulator_port)) {
+        emulator.add(lock.emulator_port);
+        // Reserve the adb-bridge port too (always emulator_port + 1)
+        emulator.add(lock.emulator_port + 1);
+      }
+    } catch {
+      /* skip corrupt locks — they'd be picked up by the next reap */
+    }
+  }
+  return { adb, emulator };
+}
+
+const ALLOCATOR_MUTEX_PATH = path.join(SESSION_LOCK_DIR, '.allocator.lock');
+const ALLOCATOR_MUTEX_TIMEOUT_MS = 30_000;
+const ALLOCATOR_MUTEX_POLL_MS = 50;
+
+/**
+ * Run `fn` while holding a file-system mutex on the allocator
+ * critical section. Two parallel `getAllocatedPorts()` calls would
+ * otherwise both probe-and-claim the same port pair (TOCTOU race —
+ * the probe binds-then-releases, leaving the port free for the next
+ * concurrent probe). Holding the mutex across BOTH the probe AND the
+ * subsequent `recordSessionLock` makes the claim atomic across
+ * processes.
+ *
+ * Mechanism: atomically create `~/.ace/sessions/.allocator.lock` via
+ * `O_EXCL` containing our PID + timestamp. If the file exists,
+ * inspect its contents:
+ *   - holder PID still alive → wait `ALLOCATOR_MUTEX_POLL_MS` and
+ *     retry up to `ALLOCATOR_MUTEX_TIMEOUT_MS`.
+ *   - holder PID dead → take over (clear the file, retry).
+ *   - file corrupt → clear and retry.
+ *
+ * Releases on every exit path of `fn` (success, error, throw).
+ * Idempotent — safe if `fn` itself acquires nested allocator locks
+ * (the outer holder's PID matches `process.pid`; we detect that and
+ * re-enter without blocking — though in practice the AVD backend
+ * never re-enters).
+ */
+export async function withAllocatorMutex<T>(fn: () => Promise<T>): Promise<T> {
+  fs.mkdirSync(SESSION_LOCK_DIR, { recursive: true });
+
+  const deadline = Date.now() + ALLOCATOR_MUTEX_TIMEOUT_MS;
+  while (true) {
+    try {
+      // O_EXCL: atomic create-if-not-exists. Throws EEXIST if held.
+      const fd = fs.openSync(ALLOCATOR_MUTEX_PATH, 'wx');
+      try {
+        fs.writeSync(fd, JSON.stringify({ pid: process.pid, ts: Date.now() }));
+      } finally {
+        fs.closeSync(fd);
+      }
+      // Got it. Run the protected section.
+      try {
+        return await fn();
+      } finally {
+        try {
+          fs.unlinkSync(ALLOCATOR_MUTEX_PATH);
+        } catch {
+          /* already gone — fine */
+        }
+      }
+    } catch (e: any) {
+      if (e?.code !== 'EEXIST') throw e;
+      // Mutex held by someone else. Inspect.
+      let holderPid: number | null = null;
+      try {
+        const held = JSON.parse(fs.readFileSync(ALLOCATOR_MUTEX_PATH, 'utf8'));
+        if (Number.isFinite(held?.pid)) holderPid = held.pid;
+      } catch {
+        /* corrupt — treat as no holder */
+      }
+      if (holderPid !== null && !isPidAlive(holderPid)) {
+        // Dead holder. Clear and retry.
+        try {
+          fs.unlinkSync(ALLOCATOR_MUTEX_PATH);
+        } catch {
+          /* race with another reaper — fine */
+        }
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `withAllocatorMutex: timeout after ${ALLOCATOR_MUTEX_TIMEOUT_MS}ms ` +
+            `waiting for ${ALLOCATOR_MUTEX_PATH} held by pid ${holderPid ?? '?'}`,
+        );
+      }
+      await new Promise((r) => setTimeout(r, ALLOCATOR_MUTEX_POLL_MS));
+    }
+  }
+}
+
+/**
  * Walk SESSION_LOCK_DIR and reap any lock whose owning mcp_pid is
  * dead. For each stale lock: look up live PIDs on its adb_port and
  * emulator_port via lsof, SIGKILL them, then remove the lock file.
