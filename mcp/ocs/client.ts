@@ -13,6 +13,35 @@ export interface OcsClient {
     new_name: string;
   }): Promise<ClonedChatbot>;
 
+  /**
+   * Create a brand-new chatbot from scratch. POST /a/<team>/chatbots/new/
+   * via the ChatbotForm. Returns the new experiment_id and the
+   * auto-created pipeline_id. Unlike cloneChatbot, this does NOT create
+   * channels — for a fully-usable chatbot the caller follows up with
+   * channel creation. Used by the ACE Interviews stub bot template flow
+   * where the bot is the *source* of clones, not the production bot.
+   */
+  createChatbot(args: {
+    name: string;
+    description?: string;
+  }): Promise<{ experiment_id: number; pipeline_id: number }>;
+
+  /**
+   * Add a node to a chatbot's pipeline graph. Supports splice-into-existing-edge
+   * patterns via the `connect_from` + `connect_to` + `disconnect_edge` combo.
+   * See `addPipelineNode` in pipeline-patch.ts for the exact semantics.
+   */
+  addPipelineNode(args: {
+    pipeline_id: number;
+    node_type: string;
+    node_id?: string;
+    position?: { x: number; y: number };
+    params?: Record<string, unknown>;
+    connect_from?: string;
+    connect_to?: string;
+    disconnect_edge?: { source: string; target: string };
+  }): Promise<{ node_id: string }>;
+
   setChatbotSystemPrompt(args: {
     experiment_id: number;
     prompt: string;

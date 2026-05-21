@@ -61,6 +61,152 @@ export function findLlmResponseNode(graph: FlowGraph): FlowNode {
   return matches[0];
 }
 
+export interface AddPipelineNodeArgs {
+  /** Pipeline integer ID (scrape with `extractPipelineId` after createChatbot or cloneChatbot). */
+  pipelineId: number;
+  /** `data.type` value for the new node — e.g. "DynamicRouterNode", "PythonNode", "LLMResponseWithPrompt". */
+  nodeType: string;
+  /** Explicit node id; auto-generated as `<nodeType>-<5hex>` if omitted. */
+  nodeId?: string;
+  /** Canvas position. Defaults to a safe non-overlapping spot to the right of existing nodes. */
+  position?: { x: number; y: number };
+  /** Node-specific params blob (passed through verbatim into `data.params`). */
+  params?: Record<string, unknown>;
+  /** If set, create an edge `<connectFrom> → <newNode>` after insertion. */
+  connectFrom?: string;
+  /** If set, create an edge `<newNode> → <connectTo>` after insertion. */
+  connectTo?: string;
+  /**
+   * If set, remove this edge before adding the new wiring. Use to splice a
+   * node into an existing edge: pass `disconnectEdge: {source: A, target: B}`
+   * along with `connectFrom: A` and `connectTo: B` to turn A→B into A→new→B.
+   */
+  disconnectEdge?: { source: string; target: string };
+}
+
+/**
+ * Add a node to a pipeline graph and (optionally) splice it into existing edges.
+ *
+ * GET-modify-POST the pipeline JSON at `/a/<team>/pipelines/data/<id>/`.
+ * Same pattern as patchLlmNodeParams. Server-side validation runs on save;
+ * errors surface via `extractPipelineErrors` exactly as for the LLM patch.
+ *
+ * Node id convention: when explicit `nodeId` is omitted, generates
+ * `<nodeType>-<5hex>` to match OCS's UI convention (LLMResponseWithPrompt-45d67,
+ * etc.). UUIDs work for StartNode/EndNode but the typed-suffix pattern is
+ * what real-world clones produce.
+ */
+export async function addPipelineNode(
+  ctx: PipelinePatchContext,
+  args: AddPipelineNodeArgs,
+): Promise<{ nodeId: string }> {
+  const url = `/a/${ctx.teamSlug}/pipelines/data/${args.pipelineId}/`;
+  const getRes = await ctx.request('GET', url);
+  if (!getRes.ok) {
+    throw new Error(`pipeline data GET failed for pipeline ${args.pipelineId}`);
+  }
+  const payload = (await getRes.json()) as PipelineDataResponse;
+  const graph = payload.pipeline.data;
+
+  // Generate id if not provided. Pattern: `<nodeType>-<5hex>`.
+  const nodeId = args.nodeId ?? `${args.nodeType}-${randomSuffix(5)}`;
+
+  // Default position: stack to the right of existing nodes.
+  const position = args.position ?? defaultPosition(graph);
+
+  // Each node carries TWO type fields per the React-Flow + OCS schema:
+  //   top-level `type` — React-Flow internal ("startNode" | "endNode" | "pipelineNode")
+  //   `data.type`      — OCS-internal class name ("StartNode" | "LLMResponseWithPrompt" | etc.)
+  // Verified against live pipeline at /a/<team>/pipelines/data/<id>/ (2026-05-21).
+  const rfType =
+    args.nodeType === 'StartNode' ? 'startNode' :
+    args.nodeType === 'EndNode'   ? 'endNode'   :
+    'pipelineNode';
+  graph.nodes.push({
+    id: nodeId,
+    type: rfType,
+    position,
+    data: {
+      id: nodeId,
+      type: args.nodeType,
+      label: '',
+      params: args.params ?? {},
+    },
+  });
+
+  if (args.disconnectEdge) {
+    const before = graph.edges.length;
+    graph.edges = graph.edges.filter(
+      (e) => !(e.source === args.disconnectEdge!.source && e.target === args.disconnectEdge!.target),
+    );
+    if (graph.edges.length === before) {
+      throw new PipelineShapeError(
+        `addPipelineNode: requested disconnectEdge ${args.disconnectEdge.source}→${args.disconnectEdge.target} ` +
+          `not found in pipeline ${args.pipelineId}. Existing edges: ` +
+          graph.edges.map((e) => `${e.source}→${e.target}`).join(', '),
+      );
+    }
+  }
+
+  // Edge handle convention from live graphs: sourceHandle="output", targetHandle="input".
+  // (Multi-output nodes like StaticRouterNode emit "output_0", "output_1" etc., but for
+  //  simple wiring the default handles work.)
+  if (args.connectFrom) {
+    graph.edges.push({
+      id: `edge-${args.connectFrom}-${nodeId}`,
+      source: args.connectFrom,
+      target: nodeId,
+      sourceHandle: 'output',
+      targetHandle: 'input',
+    });
+  }
+  if (args.connectTo) {
+    graph.edges.push({
+      id: `edge-${nodeId}-${args.connectTo}`,
+      source: nodeId,
+      target: args.connectTo,
+      sourceHandle: 'output',
+      targetHandle: 'input',
+    });
+  }
+
+  const postRes = await ctx.request('POST', url, {
+    name: payload.pipeline.name,
+    data: graph,
+  });
+  if (!postRes.ok) {
+    const body = postRes.text ? await postRes.text() : '<no body>';
+    // Sniff a Django exception from the error page if present.
+    const exc = body.match(/<pre class="exception_value">([^<]+)</)?.[1]
+             ?? body.match(/<title>([^<]+)<\/title>/)?.[1]?.trim();
+    throw new Error(
+      `pipeline data POST failed for pipeline ${args.pipelineId} (status ${postRes.status}). Exception: ${exc ?? '<not parsed>'}. First 800 chars: ${body.slice(0, 800)}`,
+    );
+  }
+  const errors = extractPipelineErrors(await postRes.json());
+  if (errors.length > 0) {
+    throw new PipelineValidationError(errors);
+  }
+  return { nodeId };
+}
+
+function randomSuffix(n: number): string {
+  // Cryptographically-random hex suffix; no need for crypto-secure here, but
+  // Math.random would collide more often. Use Web Crypto if available.
+  const bytes = new Uint8Array(Math.ceil(n / 2));
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('').slice(0, n);
+}
+
+function defaultPosition(graph: FlowGraph): { x: number; y: number } {
+  const maxX = graph.nodes.reduce((m, n) => Math.max(m, n.position?.x ?? 0), 0);
+  return { x: maxX + 200, y: 100 };
+}
+
 export async function patchLlmNodeParams(
   ctx: PipelinePatchContext,
   pipelineId: number,

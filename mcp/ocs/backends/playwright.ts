@@ -1,5 +1,5 @@
 import type { RequestFn, RequestResult } from './pipeline-patch.js';
-import { patchLlmNodeParams, validatePipeline, getLlmNodeParams, type PipelinePatchContext } from './pipeline-patch.js';
+import { patchLlmNodeParams, validatePipeline, getLlmNodeParams, addPipelineNode, type PipelinePatchContext } from './pipeline-patch.js';
 import { PipelineValidationError } from '../errors.js';
 import type { LlmNodeParams, ClonedChatbot } from '../types.js';
 import { CollectionIndexingTimeoutError, HttpError, PipelineShapeError } from '../errors.js';
@@ -536,6 +536,101 @@ export class PlaywrightBackend {
     }
 
     throw new CollectionIndexingTimeoutError(args.collection_id, timeoutSec);
+  }
+
+  /**
+   * Create a brand-new chatbot from scratch (not cloning a template).
+   *
+   * POST /a/<team>/chatbots/new/ via the CSRF-protected CreateChatbot
+   * view (apps/chatbots/views.py:CreateChatbot). Form takes just `name` +
+   * optional `description`. On `form_valid` OCS auto-creates a default
+   * Pipeline (with the team's first LLM provider), then 302-redirects to
+   * /a/<team>/chatbots/<id>/edit/.
+   *
+   * Returns the new experiment_id + the auto-created pipeline_id. The
+   * caller can then mutate the pipeline graph via
+   * `/pipelines/data/<pipeline_id>/` (see pipeline-patch.ts).
+   *
+   * Note: this does NOT create channels. For a fully-usable chatbot in
+   * Connect Messaging, the caller must follow up with channel creation —
+   * cloneChatbot's `createEmbeddedWidgetChannel` is the template. The
+   * stub-template flow for Connect Interviews doesn't need a channel
+   * (only used as a clone source), so the channel step is split off.
+   */
+  async createChatbot(args: { name: string; description?: string }): Promise<{ experiment_id: number; pipeline_id: number }> {
+    const newPath = `/a/${this.opts.teamSlug}/chatbots/new/`;
+    const res = await this.opts.request(
+      'POST',
+      newPath,
+      {
+        name: args.name,
+        description: args.description ?? '',
+        csrfmiddlewaretoken: this.opts.csrfToken,
+      },
+      { followRedirects: false, formEncoded: true },
+    );
+    if (res.status !== 302 && !res.ok) {
+      throw await httpErrorFor(res, newPath);
+    }
+    const location = res.headers?.location ?? res.headers?.['Location'];
+    if (!location) {
+      throw new Error(
+        `createChatbot returned ${res.status} with no Location header. ` +
+          `Form likely failed validation (CreateChatbot.form_invalid re-renders 200). ` +
+          `Common cause: team has no LLM providers configured — ChatbotForm.save() ` +
+          `calls get_first_llm_provider_by_team and the auto-Pipeline.create_default_pipeline_with_name ` +
+          `needs an LLM provider id.`,
+      );
+    }
+    const experimentId = extractExperimentIdFromLocation(location);
+    if (!experimentId) {
+      throw new Error(`Could not parse experiment_id from Location header: ${location}`);
+    }
+    // GET /edit/ to scrape the auto-created pipeline_id.
+    const editPath = `/a/${this.opts.teamSlug}/chatbots/${experimentId}/edit/`;
+    const editRes = await this.opts.request('GET', editPath);
+    if (!editRes.ok || !editRes.text) throw await httpErrorFor(editRes, editPath);
+    const editHtml = await editRes.text();
+    const pipelineId = extractPipelineId(editHtml);
+    if (!pipelineId) {
+      throw new PipelineShapeError(
+        `Could not find pipeline_id in edit page for newly-created experiment ${experimentId}. ` +
+          `OCS template drift on pipeline_builder.html?`,
+      );
+    }
+    this.pipelineCache.set(experimentId, pipelineId);
+    return { experiment_id: experimentId, pipeline_id: pipelineId };
+  }
+
+  /**
+   * Add a node to a chatbot's pipeline. Wraps the pipeline-patch helper —
+   * see `addPipelineNode` in pipeline-patch.ts for the splice semantics.
+   *
+   * Used by the ACE Interviews stub-template build to insert
+   * DynamicRouterNode + PythonNode into the default Start→LLM→End graph
+   * that createChatbot produces.
+   */
+  async addPipelineNode(args: {
+    pipeline_id: number;
+    node_type: string;
+    node_id?: string;
+    position?: { x: number; y: number };
+    params?: Record<string, unknown>;
+    connect_from?: string;
+    connect_to?: string;
+    disconnect_edge?: { source: string; target: string };
+  }): Promise<{ node_id: string }> {
+    const { nodeId } = await addPipelineNode(this.patchContext(), {
+      pipelineId: args.pipeline_id,
+      nodeType: args.node_type,
+      nodeId: args.node_id,
+      position: args.position,
+      params: args.params,
+      connectFrom: args.connect_from,
+      connectTo: args.connect_to,
+      disconnectEdge: args.disconnect_edge,
+    });
+    return { node_id: nodeId };
   }
 
   async cloneChatbot(args: { template_id: number; new_name: string }): Promise<ClonedChatbot> {

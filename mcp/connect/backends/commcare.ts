@@ -31,6 +31,38 @@ export interface CommCareBackendOptions {
   session: PlaywrightSession;
 }
 
+export interface CreateDomainArgs {
+  /**
+   * Human-readable project name. CCHQ's DomainRegistrationForm caps this
+   * at 25 chars (`max_name_length` in
+   * corehq/apps/registration/forms.py). The slug is auto-derived by HQ
+   * from this value (lowercase + sanitize), so for predictable results
+   * pass an already-slug-shaped string (lowercase, hyphens, no spaces).
+   */
+  hr_name: string;
+  /** Optional organization id; passed as the hidden `org` form field. */
+  org?: string;
+}
+
+export interface CreateDomainResult {
+  /** The final URL slug HQ chose for the domain (e.g. `ace-interviews-test`). */
+  domain: string;
+}
+
+export interface LinkDomainsArgs {
+  /** Slug of the upstream/master domain. Caller must have access here. */
+  upstream_domain: string;
+  /** Slug of the downstream domain to attach. Caller must have access here too. */
+  downstream_domain: string;
+}
+
+export interface LinkDomainsResult {
+  upstream_domain: string;
+  downstream_domain: string;
+  /** Server-reported view-model of the new link (id, last_update, etc.). Shape is HQ-internal. */
+  domain_link?: Record<string, unknown>;
+}
+
 export interface MakeBuildArgs {
   domain: string;
   app_id: string;
@@ -352,6 +384,179 @@ export class CommCareBackend {
     }
     // Non-login 302: surface generically, caller decides how to handle.
     throw new Error(`${label} returned 302 to ${location || '<no location header>'}`);
+  }
+
+  /**
+   * Create a new CommCare HQ project space (domain).
+   *
+   * POST /register/domain/ via the DomainRegistrationForm CSRF-protected
+   * web view in corehq/apps/registration/views.py (RegisterDomainView).
+   * No REST API exists for domain creation; this is a Django form view.
+   *
+   * For an existing (non-new) user — which ACE's `ace@dimagi-ai.com`
+   * always is, since it already owns connect-ace-prod — the success path
+   * is a 302 redirect to `/a/<slug>/dashboard/` (reverse of
+   * `domain_homepage`). The slug is auto-derived from `hr_name` by HQ.
+   *
+   * Auth: `@login_required` plus standard CSRF. ACE's PlaywrightSession
+   * cookies satisfy both. No superuser requirement on
+   * connect.dimagi.com (settings.RESTRICT_DOMAIN_CREATION is unset).
+   */
+  async createDomain(args: CreateDomainArgs): Promise<CreateDomainResult> {
+    return this.runWithSessionRetry(async (request) => {
+      if (args.hr_name.length > 25) {
+        throw new Error(
+          `commcare_create_domain: hr_name "${args.hr_name}" is ${args.hr_name.length} chars; HQ DomainRegistrationForm.max_name_length is 25.`,
+        );
+      }
+      const path = '/register/domain/';
+      // GET the registration page first so the cookie/csrf is fresh
+      // (same pattern as makeBuild). A 302 here means session expired
+      // mid-call — let runWithSessionRetry handle it.
+      const refreshRes = await request.get(`${this.opts.baseUrl}${path}`, {
+        maxRedirects: 0,
+      });
+      if (refreshRes.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(refreshRes, `commcare_create_domain GET ${path}`);
+      }
+      if (refreshRes.status() !== 200) {
+        throw new Error(
+          `commcare_create_domain GET ${path} returned ${refreshRes.status()}: ${(await refreshRes.text()).slice(0, 300)}`,
+        );
+      }
+      const csrf = await this.csrfFromCookies(request);
+      const body =
+        `csrfmiddlewaretoken=${encodeURIComponent(csrf ?? '')}` +
+        `&hr_name=${encodeURIComponent(args.hr_name)}` +
+        `&org=${encodeURIComponent(args.org ?? '')}`;
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: body,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${path}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        const location = res.headers()['location'] || '';
+        if (/\/login\/?(\?|$)/.test(location)) {
+          throw new SessionExpiredError();
+        }
+        // Success: HQ redirects to /a/<slug>/dashboard/ (or another
+        // `domain_homepage` reverse). Extract the slug from `/a/<slug>/`.
+        const m = location.match(/^\/a\/([^/]+)\//);
+        if (!m) {
+          throw new Error(
+            `commcare_create_domain POST ${path} returned 302 to unexpected Location: ${location}`,
+          );
+        }
+        return { domain: m[1] };
+      }
+      if (res.status() === 200) {
+        // Form re-render — validation failed. Sniff for known error
+        // strings from the RegisterDomainView post() method so callers
+        // see a meaningful error instead of raw HTML.
+        const html = await res.text();
+        if (/Project name already taken/i.test(html)) {
+          throw new Error(
+            `commcare_create_domain: project name "${args.hr_name}" is already taken on HQ.`,
+          );
+        }
+        if (/exceeds limit/i.test(html)) {
+          throw new Error(
+            'commcare_create_domain: HQ-wide daily domain creation limit exceeded. Try again later or contact Dimagi.',
+          );
+        }
+        if (/project creation be restricted/i.test(html)) {
+          throw new Error(
+            'commcare_create_domain: RESTRICT_DOMAIN_CREATION is set on this HQ instance and the user is not a superuser.',
+          );
+        }
+        throw new Error(
+          `commcare_create_domain POST ${path} returned 200 (form re-render — validation failed). First 400 chars: ${html.slice(0, 400)}`,
+        );
+      }
+      throw new Error(
+        `commcare_create_domain POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
+      );
+    });
+  }
+
+  /**
+   * Establish a linked-project-spaces relationship: upstream (master) →
+   * downstream. Required before linked-app push / linked content sync
+   * (see linked_domain skill docs and the LITE_RELEASE_MANAGEMENT
+   * privilege on Pro Edition).
+   *
+   * Endpoint: POST /a/<upstream>/remote_link/service/
+   *   (the linked_domain app is mounted at `^remote_link/` inside
+   *   domain_specific in commcare-hq/urls.py — the URL name suggests
+   *   "linked_domain" but the actual mount point is "remote_link/")
+   * Auth: standard session + CSRF. Caller must have access in BOTH domains.
+   * Protocol: jQuery-RMI (corehq/util/jqueryrmi.py) — requires headers
+   *   `X-Requested-With: XMLHttpRequest`  (AJAX detection)
+   *   `Djng-Remote-Method: create_domain_link`
+   * Body: JSON `{"downstream_domain": "<slug>"}`.
+   *
+   * Response: 200 JSON `{success: true, domain_link: {...}}` on success,
+   * or `{success: false, message: "..."}` on collision (already linked /
+   * domain does not exist / no access). The latter is surfaced as an
+   * Error so the caller can branch.
+   */
+  async linkDomains(args: LinkDomainsArgs): Promise<LinkDomainsResult> {
+    return this.runWithSessionRetry(async (request) => {
+      const upstream = args.upstream_domain;
+      const downstream = args.downstream_domain;
+      const path = `/a/${upstream}/remote_link/service/`;
+      // Refresh CSRF by GETting any page in the upstream domain.
+      const refreshPath = `/a/${upstream}/dashboard/`;
+      const refreshRes = await request.get(`${this.opts.baseUrl}${refreshPath}`, {
+        maxRedirects: 0,
+      });
+      if (refreshRes.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(refreshRes, `commcare_link_domains GET ${refreshPath}`);
+      }
+      const csrf = await this.csrfFromCookies(request);
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: JSON.stringify({ downstream_domain: downstream }),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Djng-Remote-Method': 'create_domain_link',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${refreshPath}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_link_domains POST ${path}`);
+      }
+      if (res.status() !== 200) {
+        throw new Error(
+          `commcare_link_domains POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 400)}`,
+        );
+      }
+      const body = await res.text();
+      let parsed: any;
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        throw new Error(
+          `commcare_link_domains POST ${path} returned 200 but body was not JSON. First 400 chars: ${body.slice(0, 400)}`,
+        );
+      }
+      if (!parsed?.success) {
+        throw new Error(
+          `commcare_link_domains: HQ refused to create link ${upstream} → ${downstream}: ${parsed?.message ?? '<no message>'}`,
+        );
+      }
+      return {
+        upstream_domain: upstream,
+        downstream_domain: downstream,
+        domain_link: parsed.domain_link,
+      };
+    });
   }
 
   /**

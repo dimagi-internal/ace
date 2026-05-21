@@ -71,12 +71,18 @@ export interface ChatCompletionMessage {
   content: string;
 }
 
-// Pipeline graph shape (React-Flow). Simplified to what ACE needs.
+// Pipeline graph shape (React-Flow + OCS). Each node carries TWO type fields:
+//   top-level `type` — React-Flow internal ("startNode" | "endNode" | "pipelineNode")
+//   `data.type`      — OCS-internal class name ("LLMResponseWithPrompt" | etc.)
+// Both are required for the pipeline-save endpoint to accept the graph;
+// verified by direct probe against live OCS 2026-05-21.
 export interface FlowNode {
   id: string;
   type?: string;
   data: {
-    type: string; // LLMResponseWithPrompt, StartNode, EndNode, etc.
+    /** Mirrors top-level `id`; OCS pipeline-save requires this. */
+    id?: string;
+    type: string; // LLMResponseWithPrompt, StartNode, EndNode, StaticRouterNode, etc.
     label?: string;
     params: Record<string, unknown>;
   };
@@ -87,6 +93,10 @@ export interface FlowEdge {
   id: string;
   source: string;
   target: string;
+  /** React-Flow handle id on the source node. Conventionally "output" (or "output_0", "output_1", … for multi-output nodes). */
+  sourceHandle?: string;
+  /** React-Flow handle id on the target node. Conventionally "input". */
+  targetHandle?: string;
 }
 
 export interface FlowGraph {
