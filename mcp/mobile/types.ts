@@ -42,7 +42,7 @@ export type DeviceUserStateClass =
 export interface DeviceStateHealLog {
   classified_as: DeviceUserStateClass;
   attempted: boolean;
-  healed_via?: 'snapshot-load' | 'local-bootstrap' | 'none';
+  healed_via?: 'snapshot-load' | 'local-bootstrap' | 'cloud-bootstrap' | 'none';
   verified_as?: DeviceUserStateClass;
   focused_activity?: string;
   ui_dump_signal?: string;

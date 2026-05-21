@@ -1328,6 +1328,157 @@ describe('restoreDeviceUserState: bootstrapConfig-absent error names specific mi
   });
 });
 
+
+describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
+  let savedBackend: string | undefined;
+  let savedFlag: string | undefined;
+  const cloudAvd = { name: 'cloud', serial: 'cloud:i-test', status: 'booted' } as const;
+  const ENV_KEYS = [
+    'ACE_CONNECT_APK_VERSION',
+    'ACE_E2E_PHONE',
+    'ACE_E2E_PHONE_LOCAL',
+    'ACE_E2E_COUNTRY_CODE',
+    'ACE_E2E_PIN',
+    'ACE_E2E_BACKUP_CODE',
+    'ACE_E2E_NAME',
+  ] as const;
+  let savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    savedBackend = process.env.ACE_MOBILE_BACKEND;
+    savedFlag = process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
+    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    savedEnv = {};
+    for (const k of ENV_KEYS) {
+      savedEnv[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    if (savedBackend === undefined) delete process.env.ACE_MOBILE_BACKEND;
+    else process.env.ACE_MOBILE_BACKEND = savedBackend;
+    if (savedFlag === undefined) delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
+    else process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = savedFlag;
+    for (const k of ENV_KEYS) {
+      if (savedEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = savedEnv[k];
+    }
+  });
+
+  const cloudBootstrapConfig = {
+    apkVersion: '2.62.0',
+    testUser: {
+      phone: '+74260000100',
+      phoneLocal: '4260000100',
+      countryCode: '+7',
+      pin: '111111',
+      backupCode: '222222',
+      name: 'ACE Test',
+    },
+  };
+
+  it('returns the legacy no-op stub when ACE_MOBILE_CLOUD_LIVE_REGISTER is unset', async () => {
+    // Pre-Phase-D rollout state: the AMI cold-boot path registers the
+    // user. The heal must continue to be a no-op stub so existing dispatches
+    // don't change behavior.
+    delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
+    const cloud = {
+      clearAppData: vi.fn(),
+      registerTestUser: vi.fn(),
+    } as any;
+    const client = new MobileClient({
+      avd: {} as any,
+      maestro: {} as any,
+      cloud,
+      bootstrapConfig: cloudBootstrapConfig,
+    });
+    const heal = await client.restoreDeviceUserState(cloudAvd);
+    expect(heal).toEqual({ classified_as: 'unknown', attempted: false });
+    expect(cloud.clearAppData).not.toHaveBeenCalled();
+    expect(cloud.registerTestUser).not.toHaveBeenCalled();
+  });
+
+  it('runs cloud-bootstrap heal when ACE_MOBILE_CLOUD_LIVE_REGISTER=true', async () => {
+    // Post-Phase-D state: AMI no longer pre-bakes the user, so the heal
+    // MUST run pm clear + registerTestUser via the cloud endpoints.
+    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
+    const cloud = {
+      clearAppData: vi.fn().mockResolvedValue(true),
+      registerTestUser: vi.fn().mockResolvedValue({
+        alreadyRegistered: false,
+        phone: '+74260000100',
+        backupCode: '222222',
+      }),
+    } as any;
+    const client = new MobileClient({
+      avd: {} as any,
+      maestro: {} as any,
+      cloud,
+      bootstrapConfig: cloudBootstrapConfig,
+      staticRecipesDir: new URL('../../../mcp/mobile/recipes/static/', import.meta.url).pathname,
+    });
+    const heal = await client.restoreDeviceUserState(cloudAvd);
+    expect(cloud.clearAppData).toHaveBeenCalledWith('org.commcare.dalvik');
+    expect(cloud.registerTestUser).toHaveBeenCalledTimes(1);
+    expect(heal).toMatchObject({
+      classified_as: 'ready',
+      attempted: true,
+      healed_via: 'cloud-bootstrap',
+      verified_as: 'ready',
+    });
+    expect(heal.bootstrap_steps).toEqual(['app-data-cleared', 'registered']);
+  });
+
+  it('emits app-data-clear-noop step when pm clear surfaces cleared=false (APK not installed)', async () => {
+    // Post-Phase-D AMI ships CommCare installed via the same state
+    // mechanism, so pm clear should succeed. But on a partially-broken
+    // AVD it's possible for the package to be absent; the heal must
+    // tolerate that and proceed to register (which itself reinstalls).
+    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
+    const cloud = {
+      clearAppData: vi.fn().mockResolvedValue(false),
+      registerTestUser: vi.fn().mockResolvedValue({
+        alreadyRegistered: true,
+        phone: '+74260000100',
+      }),
+    } as any;
+    const client = new MobileClient({
+      avd: {} as any,
+      maestro: {} as any,
+      cloud,
+      bootstrapConfig: cloudBootstrapConfig,
+      staticRecipesDir: new URL('../../../mcp/mobile/recipes/static/', import.meta.url).pathname,
+    });
+    const heal = await client.restoreDeviceUserState(cloudAvd);
+    expect(heal.bootstrap_steps).toEqual(['app-data-clear-noop', 'register-already']);
+  });
+
+  it('throws DeviceUserStateError naming the missing env var when bootstrapConfig is absent', async () => {
+    // Even on cloud, the heal needs the test-user credentials —
+    // without them we have nothing to register. The error must
+    // enumerate the specific missing vars so the operator doesn't
+    // have to diff against .env.tpl.
+    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
+    process.env.ACE_CONNECT_APK_VERSION = '2.62.0';
+    process.env.ACE_E2E_PHONE = '+74260000100';
+    process.env.ACE_E2E_PHONE_LOCAL = '4260000100';
+    process.env.ACE_E2E_COUNTRY_CODE = '+7';
+    process.env.ACE_E2E_PIN = '111111';
+    process.env.ACE_E2E_BACKUP_CODE = '222222';
+    // ACE_E2E_NAME intentionally omitted.
+    const cloud = { clearAppData: vi.fn(), registerTestUser: vi.fn() } as any;
+    const client = new MobileClient({
+      avd: {} as any,
+      maestro: {} as any,
+      cloud,
+      // Default ctor reads env → bootstrapConfig will be null.
+    });
+    await expect(client.restoreDeviceUserState(cloudAvd)).rejects.toThrow(
+      /missing env: ACE_E2E_NAME/,
+    );
+  });
+});
+
 describe('classifyDeviceUserState: scoped regexes reject deeply-nested false positives', () => {
   it('does NOT false-positive on "Reconfigure" appearing in a non-text attribute or deep node body', () => {
     // Pre-scoping, the regex `/Reconfigure/i` would match anywhere in

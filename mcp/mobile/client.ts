@@ -424,8 +424,15 @@ export class MobileClient {
    */
   async restoreDeviceUserState(avd: AvdInfo): Promise<DeviceStateHealLog> {
     if (this.useCloud) {
-      // Cloud's cold-boot path is the equivalent restore mechanism;
-      // see `backends/cloud.ts` header comment.
+      // Two cloud modes, gated on ACE_MOBILE_CLOUD_LIVE_REGISTER:
+      //   true  → live cloud-bootstrap (pm clear + registerTestUser),
+      //           mirroring local's always-deterministic-bootstrap.
+      //   else  → legacy stub. The AMI's cold-boot path is the
+      //           equivalent restore mechanism for pre-Phase-D AMIs;
+      //           see `backends/cloud.ts` header.
+      if (process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER === 'true') {
+        return this.cloudBootstrapHeal(avd);
+      }
       return { classified_as: 'unknown', attempted: false };
     }
 
@@ -1112,6 +1119,75 @@ export class MobileClient {
         // Best-effort cleanup; the OS temp dir is bounded.
       }
     }
+  }
+
+  /**
+   * Cloud-side heal flow — mirrors ``runLocalBootstrap``'s
+   * ``clearConnectAppData + registerTestUser`` sequence against the
+   * cloud AVD. Called from ``restoreDeviceUserState``'s cloud branch
+   * when ``ACE_MOBILE_CLOUD_LIVE_REGISTER=true``.
+   *
+   * Returns a ``DeviceStateHealLog`` shaped identically to the
+   * local-bootstrap variant so downstream telemetry doesn't have to
+   * branch — only the ``healed_via`` field shifts to
+   * ``'cloud-bootstrap'`` so the operator can distinguish the path.
+   *
+   * Defends against missing ``bootstrapConfig`` the same way the local
+   * branch does: env vars (``ACE_E2E_*``) must be present, otherwise
+   * we have no credentials to register with and the heal can't proceed.
+   *
+   * Verification step (``probeDeviceUserState``) is intentionally NOT
+   * called here. Unlike the local backend, the cloud backend has no
+   * lightweight UI dump probe that doesn't go through a full Maestro
+   * round-trip — and a successful ``cloudRegisterTestUser`` already
+   * implies the device reached a registered state (the second register
+   * recipe asserts on the post-registered drawer). If the registration
+   * succeeds the device IS ``ready``; if it fails we surface the
+   * underlying ``MobileError`` from the cloud call.
+   */
+  private async cloudBootstrapHeal(avd: AvdInfo): Promise<DeviceStateHealLog> {
+    if (!this.bootstrapConfig) {
+      const missing = missingBootstrapEnvVars();
+      const detail =
+        missing.length > 0
+          ? `bootstrapConfig:absent (missing env: ${missing.join(', ')}; run /ace:setup --force-env then retry)`
+          : `bootstrapConfig:absent (explicitly disabled by caller)`;
+      throw new DeviceUserStateError('unknown', [detail]);
+    }
+    const { testUser } = this.bootstrapConfig;
+    const cloud = this.requireCloud();
+
+    // Step 1: wipe Connect's per-app data. Idempotent — if the package
+    // isn't installed (the post-Phase-D AMI state) the server reports
+    // cleared=false and we still proceed.
+    logInfo(`cloud_bootstrap: pm clear org.commcare.dalvik on ${avd.serial}`);
+    const cleared = await cloud.clearAppData('org.commcare.dalvik').catch(() => false);
+    const steps: string[] = [cleared ? 'app-data-cleared' : 'app-data-clear-noop'];
+
+    // Step 2: register the test user via the cloud endpoint. Uses the
+    // same flag-gated path that ``MobileClient.registerTestUser``'s
+    // cloud branch takes — but called directly here to keep the heal
+    // log shape clean (the public method's return is the
+    // ``TestUserRegistrationResult``, not a ``DeviceStateHealLog``).
+    logInfo(`cloud_bootstrap: registering test user ${testUser.phone} on ${avd.serial}`);
+    const reg = await this.cloudRegisterTestUser({
+      avdName: avd.name,
+      phone: testUser.phone,
+      phoneLocal: testUser.phoneLocal,
+      countryCode: testUser.countryCode,
+      pin: testUser.pin,
+      backupCode: testUser.backupCode,
+      name: testUser.name,
+    });
+    steps.push(reg.alreadyRegistered ? 'register-already' : 'registered');
+
+    return {
+      classified_as: 'ready',
+      attempted: true,
+      healed_via: 'cloud-bootstrap',
+      verified_as: 'ready',
+      bootstrap_steps: steps,
+    };
   }
 
   async generateRecipesFromAppSummary(args: {
