@@ -99,7 +99,7 @@ describe('artifact manifest lint', () => {
       const second = segs[1];
       if (segs.length === 2) {
         // Leaf form: extract skill (or agent) name from filename.
-        const skill = second.split('_')[0].replace(/\.(md|yaml|json)$/, '');
+        const skill = second.split('_')[0].replace(/\.(md|yaml|json|gdoc)$/, '');
         if (
           !knownSkills.has(skill) &&
           !knownAgents.has(skill) &&

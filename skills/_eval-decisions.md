@@ -60,6 +60,7 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 |---|---|---|
 | `pdd-to-app-journeys` | **has eval** | `pdd-to-app-journeys-eval` (PR #150). 6 quality dimensions: persona specificity, archetype alignment, coverage completeness, happy-path narrative voice, edge-case recoverability, pass-criteria measurability. |
 | `pdd-to-test-prompts` | **has eval** | `pdd-to-test-prompts-eval` (PR #151). 6 quality dimensions: expected-answer specificity, adversarial-prompt quality, archetype coverage, prompt phrasing realism, expected-tag correctness, escalation-prompt quality. |
+| `pdd-to-work-order` | **has eval** | `pdd-to-work-order-eval`. 5 quality dimensions: contractual clarity, PDD alignment, decisions traceability, verification realism, archetype fit. Pairs with `pdd-to-work-order-qa` for structural checks. |
 
 ### Phase 3 — commcare-setup
 

@@ -211,3 +211,6 @@ CONTENT_GENERATOR_API_KEY=op://AI-Agents/Content Generator API/credential
 # branding/layout in Slides directly; do NOT change stencil objectIds
 # or placeholder tokens (they're wired to `lib/training-deck-spec.ts`).
 ACE_TRAINING_DECK_TEMPLATE_ID=op://AI-Agents/ACE - Open Chat Studio/Config/training_deck_template_id
+
+# Work-order template (Google Doc); see playbook/integrations/work-order-template.md to bootstrap.
+WORK_ORDER_TEMPLATE_ID=op://AI-Agents/ACE - Open Chat Studio/Config/work_order_template_id
