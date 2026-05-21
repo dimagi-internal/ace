@@ -27,11 +27,11 @@ const REQUIRED_SECTIONS: string[] = [
   'Deliverables and Verification',
   'Timeline and Milestones',
   'Payment Terms',
-  'Total Not-to-Exceed',
-  'Payment Schedule',
   'Roles and Responsibilities',
   'Permissions, Ethics, and Compliance',
   'Data Handling',
+  'Signatures',
+  'Annexures',
 ];
 
 const REQUIRED_WO_DECISION_IDS = [
