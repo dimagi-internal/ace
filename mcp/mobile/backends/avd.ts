@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { AvdBootError, AvdBootTimeoutError, AdbError } from '../errors.js';
 import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult } from '../types.js';
-import { resolveAdbServerPort, resolveEmulatorPair } from '../port-allocator.js';
+import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock } from '../port-allocator.js';
 
 // Per-phase budgets for the post-spawn three-phase boot wait.
 //
@@ -297,6 +297,20 @@ export class AvdBackend {
         emulatorAdbBridgePort: pair.adbBridge,
         autoAllocated: !adbEnv && !emuEnv,
       };
+      // Write the session lock now that BOTH ports are nailed down.
+      // This is what makes parallel sessions resilient — sibling
+      // sessions' future port allocations will reap our lock if our
+      // MCP subprocess dies, SIGKILL'ing the spawned adb/qemu on our
+      // ports before claiming them themselves. See
+      // `mcp/mobile/session-lock.ts` for the full architecture.
+      try {
+        recordSessionLock({
+          adbPort: adbServerPort,
+          emulatorPort: pair.console,
+        });
+      } catch {
+        /* best-effort — lock-write failure shouldn't block AVD boot */
+      }
       return this.ports;
     })();
     return this.allocPromise;
