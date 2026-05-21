@@ -5,6 +5,25 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.299 — 2026-05-21
+
+**`/ace:doctor` catches Nova MCP stuck-in-needs-auth-cache state.**
+
+Coverage gap surfaced during the 0.13.296/0.13.298 Nova migration: after `/ace:setup` wired NOVA_API_KEY into the shell env and `nova_env` + `nova_shell_env` + `nova_auth` all reported PASS, the user's first `/nova:list` call still failed — only `mcp__plugin_nova_nova__authenticate` and `complete_authentication` surfaced, the real toolset (`list_apps`, `get_app`, etc.) was missing.
+
+Root cause: `~/.claude/mcp-needs-auth-cache.json` had a stale `plugin:nova:nova` entry written before NOVA_API_KEY made it into the shell env. Claude Code's MCP host honors that cache and skips reconnecting to the Nova server — even after the cache reason no longer applies. Doctor's existing Nova probes test upstream layers (server accepts key, key in env) but didn't test Claude Code's session-level skip-reconnect cache.
+
+New `nova_needs_auth_cache` probe parses the cache file:
+- File absent → PASS (no stuck entries possible)
+- `plugin:nova:nova` not in cache → PASS
+- `plugin:nova:nova` cached + NOVA_API_KEY valid → **FAIL** with exact remediation (node one-liner to delete the entry + restart Claude Code)
+- `plugin:nova:nova` cached + NOVA_API_KEY missing → WARN (cache may be genuinely correct)
+- File present but unparseable → WARN
+
+Per Braxton's voidcraft-labs/nova-plugin#11 comment — this is now codified instead of living only in `.claude/pm/learnings.md`.
+
+- `bin/ace-doctor` — new `7c. nova_needs_auth_cache` probe (after `nova_shell_env`, before mobile block).
+
 ## 0.13.298 — 2026-05-21
 
 **`/ace:setup` auto-appends a marker-fenced source line to the right shell rc.**
