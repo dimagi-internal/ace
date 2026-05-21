@@ -57,18 +57,36 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 5. **Render the work-order template to a Google Doc.**
    - `docs_copy_template(templateId=<WORK_ORDER_TEMPLATE_ID from env>, parent=<run-folder file_id>, name="Work Order — <opp-title>")`. If the run already has a `pdd-to-work-order.gdoc`, name the new one `Work Order — <opp-title> (#2)`, etc.
    - `docs_batch_update` with token replacements. Tokens use `{{...}}` snake_case:
+   The template has SIX real Google Docs tables (header, timeline, payment schedule, RACI, data handling, signatures). Each cell that varies per work-order contains ONE `{{snake_case}}` token. The skill replaces tokens via `replaceAllText` — one cell-sized value per token. Token groups:
+
+   **Header + narrative (prose tokens):**
      - `{{wo_number}}`, `{{opp_title}}`, `{{wo_date}}` (today, ISO), `{{wo_period_of_performance}}`
      - `{{background_body}}` (synthesized from PDD's Problem Statement + Intervention Design + any named downstream consumer)
-     - `{{scope_body}}` (archetype-branched — see below)
+     - `{{scope_body}}` (archetype-branched prose — see below)
      - `{{geographic_coverage_body}}` (from PDD Target Population; `[Geographic Coverage — Partner to propose]` if not specified)
      - `{{primary_deliverable_body}}`, `{{verified_unit_body}}` (from PDD Success Metrics + Evidence Model)
      - `{{reporting_body}}` (from `wo-reporting-cadence`)
-     - `{{timeline_table}}` (markdown table from PDD Timeline)
-     - `{{wo_total_not_to_exceed_usd}}`, `{{payment_schedule_table}}`
-     - `{{roles_raci_table}}` (archetype-derived RACI)
-     - `{{permissions_body}}`, `{{ethics_body}}`, `{{data_handling_table}}`
+     - `{{wo_total_not_to_exceed_usd}}` — bare number (cell)
+     - `{{permissions_body}}`, `{{ethics_body}}` — prose
      - `{{pdd_link}}` (Drive URL of the PDD from `phases.design.products.pdd.file_id`)
      - `{{annexure_b_placeholder}}` ("To be provided" if no opp-specific annexure)
+
+   **Timeline table (9 rows × 3 cols, header + 8 weeks):**
+     - `{{week_N_dates}}`, `{{week_N_activities}}` for N=1..8 (from PDD Timeline)
+
+   **Payment Schedule table (3 rows × 6 cols, header + 2 milestones):**
+     - Milestone 1: `{{wo_mobilization_advance_pct}}`, `{{wo_mobilization_amount}}`, `{{wo_mobilization_trigger}}`, `{{wo_mobilization_timing}}`
+     - Milestone 2: `{{wo_reconciliation_pct}}`, `{{wo_reconciliation_amount}}`, `{{wo_reconciliation_trigger}}`, `{{wo_reconciliation_timing}}`
+
+   **RACI table (12 rows × 3 cols, header + 11 responsibility rows):**
+     - `{{raci_N_responsibility}}`, `{{raci_N_dimagi}}`, `{{raci_N_partner}}` for N=1..11. Archetype-branched (atomic-visit, focus-group, multi-stage produce different RACI rows). Use `—` or `✓` or `Lead`/`Supports`/`Reviews`/`Produces` for the responsibility-owner columns. If the archetype needs fewer than 11 rows, fill trailing rows with empty strings.
+
+   **Data Handling table (9 rows × 2 cols, header + 8 fields):**
+     - `{{data_project_overview}}`, `{{data_subjects}}`, `{{data_personal_info}}`, `{{data_purpose}}`, `{{data_security}}`, `{{data_partner_measures}}`, `{{data_storage_location}}`, `{{data_protection}}`
+
+   **Signatures table (2 rows × 2 cols, header + signer blocks):**
+     - `{{partner_signatory_name}}`, `{{partner_signatory_title}}`, `{{partner_address}}` (left cell — Subcontractor)
+     - Dimagi cell is hardcoded in the template (Lucina Tse, COO, Cambridge MA address) — no tokens for the right cell.
 
 6. **Write `run_state.yaml.phases.design.products.work_order`** via `update_yaml_file` with `merge: 'two-level'`:
 

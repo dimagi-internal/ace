@@ -201,16 +201,22 @@ CONTENT_GENERATOR_API_KEY=op://AI-Agents/Content Generator API/credential
 # resolution (the script writes the real value below the marker).
 # ACE_WEB_PAT_TOKEN=  # populated by /ace:ace-web-pat-mint
 
-# ─── ACE Training Deck (Slides) ────────────────────────────────────
-# Populated once per environment by `npx tsx scripts/bootstrap-training-deck-template.ts`,
-# stashed in 1Password, and re-injected via `op inject`. The template
-# deck has stencil slides the `training-deck-build` skill duplicates
-# and fills via TITLE / SUBTITLE / BODY placeholders (double-curly
-# tokens — left undescribed inline because op inject parses double-
-# curlies as ref delimiters even inside comments). Iterate
-# branding/layout in Slides directly; do NOT change stencil objectIds
-# or placeholder tokens (they're wired to `lib/training-deck-spec.ts`).
-ACE_TRAINING_DECK_TEMPLATE_ID=op://AI-Agents/ACE - Open Chat Studio/Config/training_deck_template_id
+# ─── ACE Drive Templates ───────────────────────────────────────────
+# File IDs of Google Drive templates ACE skills copy from at runtime.
+# Provisioned once per environment via per-template bootstrap scripts,
+# then stashed in the 1Password item `AI-Agents/ACE - Drive Templates`
+# and re-injected via `op inject`. Add new template IDs to that item
+# rather than scattering them across product-specific items (the OCS
+# golden template is OCS-specific and stays in `ACE - Open Chat Studio`).
 
-# Work-order template (Google Doc); see playbook/integrations/work-order-template.md to bootstrap.
-WORK_ORDER_TEMPLATE_ID=op://AI-Agents/ACE - Open Chat Studio/Config/work_order_template_id
+# Training deck template (Google Slides). Bootstrap: `npx tsx scripts/bootstrap-training-deck-template.ts`.
+# Stencil slides are duplicated and filled via TITLE / SUBTITLE / BODY
+# placeholders (double-curly tokens — left undescribed inline because
+# op inject parses double-curlies as ref delimiters even inside comments).
+# Iterate branding/layout in Slides directly; do NOT change stencil
+# objectIds or placeholder tokens (they're wired to `lib/training-deck-spec.ts`).
+ACE_TRAINING_DECK_TEMPLATE_ID=op://AI-Agents/ACE - Drive Templates/training_deck_template_id
+
+# Work-order template (Google Doc). Bootstrap: `npx tsx scripts/bootstrap-work-order-template.ts`.
+# See playbook/integrations/work-order-template.md for token contract.
+WORK_ORDER_TEMPLATE_ID=op://AI-Agents/ACE - Drive Templates/work_order_template_id

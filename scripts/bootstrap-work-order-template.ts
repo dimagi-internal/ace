@@ -7,8 +7,9 @@
  * environment's .env.
  *
  * Usage:
- *   ACE_TEMPLATES_FOLDER_ID=<folder id> \
- *     npx tsx scripts/bootstrap-work-order-template.ts
+ *   npx tsx scripts/bootstrap-work-order-template.ts
+ *   (reads ACE_DRIVE_ROOT_FOLDER_ID from the plugin-data .env;
+ *   ACE_TEMPLATES_FOLDER_ID also accepted for a custom parent.)
  *
  * Refresh: set WORK_ORDER_BOOTSTRAP_FORCE=1 to trash the existing template
  * (matched by name in the templates folder) and recreate.
@@ -59,9 +60,12 @@ async function main() {
   // Try the plugin-data .env if shell hasn't loaded it.
   loadEnvFile(`${process.env.HOME}/.claude/plugins/data/ace-ace/.env`);
 
-  const parentFolderId = process.env.ACE_TEMPLATES_FOLDER_ID;
+  const parentFolderId =
+    process.env.ACE_TEMPLATES_FOLDER_ID ?? process.env.ACE_DRIVE_ROOT_FOLDER_ID;
   if (!parentFolderId) {
-    console.error('ACE_TEMPLATES_FOLDER_ID is required (set via .env or shell env).');
+    console.error(
+      'ACE_DRIVE_ROOT_FOLDER_ID (or ACE_TEMPLATES_FOLDER_ID) is required (set via .env or shell env).',
+    );
     process.exit(2);
   }
 
