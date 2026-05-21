@@ -5,8 +5,9 @@ The `pdd-to-work-order` skill renders Work Orders by copying a Google Doc templa
 ## One-time bootstrap
 
 ```bash
-# Ensure ACE_TEMPLATES_FOLDER_ID is set (the Drive folder where ACE keeps its templates)
-ACE_TEMPLATES_FOLDER_ID=<folder id> npx tsx scripts/bootstrap-work-order-template.ts
+# Reads ACE_DRIVE_ROOT_FOLDER_ID from the plugin-data .env automatically.
+# Pass ACE_TEMPLATES_FOLDER_ID=<folder id> if you want a different parent.
+npx tsx scripts/bootstrap-work-order-template.ts
 ```
 
 The script:
