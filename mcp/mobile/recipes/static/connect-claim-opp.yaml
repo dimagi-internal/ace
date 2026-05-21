@@ -215,6 +215,7 @@ appId: org.commcare.dalvik
           id: "org.commcare.dalvik:id/btn_resume"
           below:
             text: ${OPP_NAME}
+          retryTapIfNoChange: true
       # Resume on an in-progress opp can land on one of THREE surfaces
       # depending on what's persisted on the device:
       #   (i)  Opp-detail "Job Card" with `viewJobCard` + `learning_card`
@@ -245,6 +246,7 @@ appId: org.commcare.dalvik
             - takeScreenshot: "claim-opp-resume-jobcard"
             - tapOn:
                 id: "org.commcare.dalvik:id/connect_learning_button"
+                retryTapIfNoChange: true
       - runFlow:
           when:
             visible:
@@ -253,6 +255,7 @@ appId: org.commcare.dalvik
             - takeScreenshot: "claim-opp-resume-detail"
             - tapOn:
                 id: "org.commcare.dalvik:id/btn_start"
+                retryTapIfNoChange: true
 
 # --- BRANCH B: new-opportunity (btn_view_opportunity present) ---
 - runFlow:
@@ -281,8 +284,24 @@ appId: org.commcare.dalvik
             id: "org.commcare.dalvik:id/btn_start"
           timeout: 10000
       - takeScreenshot: "claim-opp-detail"
+      # `retryTapIfNoChange: true` defends against tap-loss on btn_start.
+      # Live reproducer: malaria-itn-app run 20260517-1829 re-verify
+      # 2026-05-20 (`~/.maestro/tests/2026-05-20_192047/maestro.log`):
+      # Maestro logged `Tap COMPLETED` on btn_start at the correct
+      # bounds ([42,899][284,1056], enabled=true, clickable=true), then
+      # waited 180s for nsv_home_screen. The 180s timeout expired with
+      # btn_start still rendered identically (post-failure screenshot
+      # pixel-identical to the pre-tap one) — the single tap event was
+      # either dropped by Android or Connect's onClick(btn_start) fired
+      # and the `POST /users/start_learn_app/` silently failed. With
+      # `retryTapIfNoChange: true` Maestro detects the no-hierarchy-change
+      # state ~1s after the first tap and re-taps, surviving transient
+      # tap loss without masking a genuinely-wedged state (Maestro caps
+      # retries). Applied to btn_resume + connect_learning_button +
+      # both btn_start sites for parity.
       - tapOn:
           id: "org.commcare.dalvik:id/btn_start"
+          retryTapIfNoChange: true
 # After Start, Connect fires POST /users/start_learn_app/ and downloads
 # the Learn CCZ ("Downloading Learn App" progress, Step N of 14, atlas
 # §4). On a verified+invited demo user, the post-download transition
