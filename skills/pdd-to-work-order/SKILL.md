@@ -63,7 +63,9 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    - Tokens use `{{...}}` snake_case:
    The template has SIX real Google Docs tables (header, timeline, payment schedule, RACI, data handling, signatures). Each cell that varies per work-order contains ONE `{{snake_case}}` token. The skill replaces tokens via `replaceAllText` — one cell-sized value per token. Token groups:
 
-   **Prose-token synthesis — apply `references/writing-style.md` to every body token.** The most load-bearing rules: active voice; `will`/`may`/`must` (never `shall`); "(henceforth, referred to as 'partner')" on first reference then `the partner` throughout; bold reserved for defined terms, negative scope markers, financial commitments, and hard requirements (5–15 spans per page, not 50); no marketing language; spell out acronyms on first use. See the reference doc for sentence-level templates worth reusing verbatim (e.g., the NTE-cap pattern, the verified-deliverable definition, the timeline-risk-flag clause).
+   **Prose-token synthesis — apply `references/writing-style.md` to every body token.** The most load-bearing rules: active voice; `will`/`may`/`must` (never `shall`); "(henceforth, referred to as 'partner')" on first reference then `the partner` throughout; no marketing language; spell out acronyms on first use (`Insecticide-Treated Net (ITN)`, `Knowledge, Attitudes, Practices (KAP)`, `Locally-Led organization (LLO)`, etc.). See the reference doc for sentence-level templates worth reusing verbatim (e.g., the NTE-cap pattern, the verified-deliverable definition, the timeline-risk-flag clause).
+
+   **Bold rendering is a known pipeline gap.** The template uses `replaceAllText` (plain-text substitution) — there is no markdown-bold → Google-Docs-bold finalizer. **Do NOT emit `**asterisks**` in prose tokens** — they render as literal asterisks in the Google Doc. Strip all markdown bold from prose tokens. (The writing-style guide's bold rules apply once a `docs_finalize_bold` post-processor exists; tracking as a backlog item.)
 
    **Header + narrative (prose tokens):**
      - `{{wo_number}}`, `{{opp_title}}`, `{{wo_date}}` (today, ISO), `{{wo_period_of_performance}}`
@@ -155,3 +157,4 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-05-21 | Initial version | ACE team |
 | 2026-05-21 | Add `references/writing-style.md` + `references/style-guide.md`, adapted from `sarvesh-tewari/ace-skills-stewari`; wire writing-style.md into step 1 + prose-token synthesis | ACE team |
+| 2026-05-21 | Drop bold-span rule from prose-token synthesis preamble + add explicit "do not emit markdown bold" warning (template uses plain-text replaceAllText; no bold finalizer yet). Track `docs_finalize_bold` as backlog. | ACE team |
