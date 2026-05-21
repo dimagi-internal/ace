@@ -189,6 +189,33 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Structural QA verdict on idea-to-pdd.md (binary pass/fail per lib/qa-types.ts schema). Gates idea-to-pdd-eval — eval is skipped (verdict: incomplete) if QA fails irrecoverably. Produced by the new idea-to-pdd-qa skill; first migration of the QA/Eval split principle (PR #146).',
   },
   {
+    path: '1-design/work-order.gdoc',
+    producedBy: 'pdd-to-work-order',
+    consumedBy: [
+      'pdd-to-work-order-qa',
+      'pdd-to-work-order-eval',
+    ],
+    phase: 'design',
+    required: false,
+    description: 'Contractual Work Order draft derived from the PDD and decisions.yaml. Generic by default — Partner identity is a placeholder unless an LLO was supplied. Re-runs create work-order-2.gdoc, work-order-3.gdoc, etc.; products.work_order in run_state.yaml points at the latest. Parallel to Phase 8 solicitation, not a replacement. Spec: docs/superpowers/specs/2026-05-21-work-order-skill-design.md',
+  },
+  {
+    path: '1-design/pdd-to-work-order-qa_result.yaml',
+    producedBy: 'pdd-to-work-order-qa',
+    consumedBy: ['ace-orchestrator', 'pdd-to-work-order-eval'],
+    phase: 'design',
+    required: false,
+    description: 'QA verdict for pdd-to-work-order: structural pass/fail across the 8 checks defined in skills/pdd-to-work-order-qa/checks.ts.',
+  },
+  {
+    path: '1-design/pdd-to-work-order-eval_verdict.yaml',
+    producedBy: 'pdd-to-work-order-eval',
+    consumedBy: ['ace-orchestrator', 'opp-eval'],
+    phase: 'design',
+    required: false,
+    description: 'Per-skill -eval verdict for pdd-to-work-order: contractual clarity, PDD alignment, decisions traceability, verification realism, archetype fit. Shape matches skills/README.md § QA vs Eval.',
+  },
+  {
     path: '2-scenarios/pdd-to-test-prompts.md',
     producedBy: 'pdd-to-test-prompts',
     consumedBy: [
