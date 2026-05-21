@@ -31,6 +31,13 @@ const BAD_PAYMENT_WO = readFileSync(join(FIXTURES, 'bad-payment-schedule.md'), '
 const GOOD_DECISIONS = readFileSync(join(FIXTURES, 'good-decisions.yaml'), 'utf8');
 const MISSING_WO_DECISIONS = readFileSync(join(FIXTURES, 'missing-wo-decisions.yaml'), 'utf8');
 
+// Real gdoc-as-plain-text exports — what Drive returns at runtime for the
+// work-order doc and decisions.yaml after the skill renders them.
+// Captured 2026-05-21 from malaria-itn-app/20260521-1025. Lines use \r\n
+// endings; headings have no `##` prefix; tables use tab separators.
+const GDOC_WO = readFileSync(join(FIXTURES, 'gdoc-work-order.txt'), 'utf8');
+const GDOC_DECISIONS = readFileSync(join(FIXTURES, 'gdoc-decisions.txt'), 'utf8');
+
 describe('checkAllRequiredSectionsPresent', () => {
   test('passes for the good fixture (all 11 sections)', () => {
     const r = checkAllRequiredSectionsPresent(GOOD_WO);
@@ -153,8 +160,14 @@ describe('checkArchetypeAppropriateScope', () => {
     expect(r.pass).toBe(true);
   });
 
-  test('atomic-visit fails when scope lacks per-visit phrasing', () => {
-    const wo = GOOD_WO.replace(/per visit/gi, 'as part of the program');
+  test('atomic-visit fails when scope lacks any visit-shaped unit-of-work phrasing', () => {
+    // Strip every form of "visit" out of the scope section so the check
+    // sees no atomic-visit signal at all. The check loosened over time:
+    // it used to require exactly "per visit"; now it accepts any usage of
+    // "visit" as the unit-of-work, differentiating from focus-group by
+    // absence of session/attestation/gdoc language. To force a failure we
+    // have to remove every visit appearance.
+    const wo = GOOD_WO.replace(/visits?\b/gi, 'engagements');
     const r = checkArchetypeAppropriateScope(wo, 'atomic-visit');
     expect(r.pass).toBe(false);
     expect(r.auto_fix_hint).toBeTruthy();
@@ -227,5 +240,55 @@ describe('CHECKS array', () => {
       'archetype_appropriate_scope',
       'no_scaffolding_markers',
     ]);
+  });
+});
+
+// ─── Gdoc-as-plain-text regression suite ────────────────────────────
+// Why this exists: the markdown-fixture tests above all pass with the
+// regexes that require `##` heading prefixes and `|` table separators.
+// But at runtime the skill reads its artifacts as Drive plain-text exports
+// (no `##`, tab-separated tables, bare signature headings). The first
+// live-artifact smoke test surfaced 5 of 8 checks falsely failing because
+// the regexes were too strict. These tests pin both forms.
+
+describe('runtime gdoc-as-plain-text exports', () => {
+  test('checkAllRequiredSectionsPresent passes against the real gdoc export', () => {
+    const r = checkAllRequiredSectionsPresent(GDOC_WO);
+    expect(r.pass).toBe(true);
+  });
+
+  test('checkRequiredWoDecisionsPresent passes against the real decisions.yaml gdoc export', () => {
+    const r = checkRequiredWoDecisionsPresent(GDOC_DECISIONS);
+    expect(r.pass).toBe(true);
+  });
+
+  test('checkPeriodOfPerformanceComplete passes against the real gdoc export', () => {
+    const r = checkPeriodOfPerformanceComplete(GDOC_WO);
+    expect(r.pass).toBe(true);
+  });
+
+  test('checkPaymentScheduleSumsTo100 passes against the real gdoc export', () => {
+    const r = checkPaymentScheduleSumsTo100(GDOC_WO);
+    expect(r.pass).toBe(true);
+  });
+
+  test('checkTotalNtePresent passes against the real gdoc export', () => {
+    const r = checkTotalNtePresent(GDOC_WO);
+    expect(r.pass).toBe(true);
+  });
+
+  test('checkSignatureBlocksPresent passes against the real gdoc export', () => {
+    const r = checkSignatureBlocksPresent(GDOC_WO);
+    expect(r.pass).toBe(true);
+  });
+
+  test('checkArchetypeAppropriateScope passes against the real gdoc export (atomic-visit)', () => {
+    const r = checkArchetypeAppropriateScope(GDOC_WO, 'atomic-visit');
+    expect(r.pass).toBe(true);
+  });
+
+  test('checkNoScaffoldingMarkers passes against the real gdoc export', () => {
+    const r = checkNoScaffoldingMarkers(GDOC_WO);
+    expect(r.pass).toBe(true);
   });
 });

@@ -87,7 +87,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
-    expectedCount: 30,
+    expectedCount: 31,
     // gdrive bridges four Google APIs — one prefix per surface plus two
     // custom helpers that aren't in any one namespace.
     allowedPrefixes: [

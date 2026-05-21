@@ -58,10 +58,15 @@ function escapeRegExp(s: string): string {
 export function checkAllRequiredSectionsPresent(wo: string): QACheckResult {
   const missing: string[] = [];
   for (const section of REQUIRED_SECTIONS) {
-    // Match `## ` or `### ` followed by optional `<digits>.<sub>?\.?\s+`, optional **,
-    // then the section name, then a word boundary.
+    // Match a section-heading line. Accepts BOTH:
+    //   - markdown source (`## 1. Background`, `### 4.1 Primary Deliverable`, `## **Background**`)
+    //   - Google Docs plain-text export (`1. Background`, `4.1 Primary Deliverable`, `Signatures`)
+    // The `##`/`###` prefix is optional so the same check works against either source.
     const re = new RegExp(
-      `^#{2,3}\\s+(?:\\d+(?:\\.\\d+)?\\.?\\s+)?(?:\\*\\*)?${escapeRegExp(section)}\\b`,
+      // Tolerate leading whitespace — gdoc plain-text export tab-indents
+      // section headings that abut a preceding table (sections 1, Signatures,
+      // Annexures in the work-order template).
+      `^\\s*(?:#{2,3}\\s+)?(?:\\d+(?:\\.\\d+)?\\.?\\s+)?(?:\\*\\*)?${escapeRegExp(section)}\\b`,
       'mi',
     );
     if (!re.test(wo)) {
@@ -76,6 +81,7 @@ export function checkAllRequiredSectionsPresent(wo: string): QACheckResult {
       `regenerate the work order with explicit instructions to include each missing section. ` +
       `Missing: ${missing.join(', ')}. ` +
       `Heading match tolerates numbered prefixes (\`## 1.\`, \`### 4.1\`), bold wrapping (\`## **X**\`), ` +
+      `the bare gdoc-plain-text form (\`1. Background\`, \`Signatures\`), ` +
       `and trailing context after the section name. The full required-section list is in ` +
       `templates/work-order-template.md.`,
   };
@@ -113,8 +119,13 @@ export function checkRequiredWoDecisionsPresent(decisionsYaml: string): QACheckR
  * OR an explicit `[...]` placeholder. Scaffolding `{{...}}` markers fail.
  */
 export function checkPeriodOfPerformanceComplete(wo: string): QACheckResult {
-  // Find the Period of Performance cell in the header table.
-  const m = wo.match(/\|\s*Period of Performance\s*\|\s*([^|\n]+?)\s*\|/i);
+  // Find the Period of Performance value. Tries two layouts:
+  //   - markdown table:  `| Period of Performance | 2026-05-22 to 2026-07-31 |`
+  //   - gdoc plain text: `Period of Performance\n\t2026-05-22 to 2026-07-31` (label
+  //     and value on separate lines; cell prefix may be tab or whitespace).
+  const mdMatch = wo.match(/\|\s*Period of Performance\s*\|\s*([^|\n]+?)\s*\|/i);
+  const gdocMatch = wo.match(/Period of Performance[\s\r\n]*?[\t ]+([^\r\n]+)/i);
+  const m = mdMatch ?? gdocMatch;
   if (!m) {
     return {
       pass: false,
@@ -208,8 +219,12 @@ export function checkTotalNtePresent(wo: string): QACheckResult {
  * `## Subcontractor` style headings as well.
  */
 export function checkSignatureBlocksPresent(wo: string): QACheckResult {
-  const hasSub = /\*\*\s*Subcontractor\s*\*\*|^#{1,3}\s+Subcontractor\b/im.test(wo);
-  const hasDimagi = /\*\*\s*Dimagi(?:,\s*Inc\.?)?\s*\*\*|^#{1,3}\s+Dimagi(?:,\s*Inc\.?)?\b/im.test(wo);
+  // Accept the bold form (`**Subcontractor**`), the markdown-heading form
+  // (`## Subcontractor`), AND the bare form (`Subcontractor` on its own line) —
+  // the last one is what shows up in gdoc plain-text export of the signature
+  // table's left cell.
+  const hasSub = /\*\*\s*Subcontractor\s*\*\*|^#{1,3}\s+Subcontractor\b|^\s*Subcontractor\s*$/im.test(wo);
+  const hasDimagi = /\*\*\s*Dimagi(?:,\s*Inc\.?)?\s*\*\*|^#{1,3}\s+Dimagi(?:,\s*Inc\.?)?\b|^\s*Dimagi(?:,\s*Inc\.?)?\s*$/im.test(wo);
   const missing: string[] = [];
   if (!hasSub) missing.push('Subcontractor');
   if (!hasDimagi) missing.push('Dimagi, Inc.');
@@ -243,10 +258,15 @@ export function checkArchetypeAppropriateScope(
   const scope = extractNumberedSection(wo, '2') ?? wo;
   const missing: string[] = [];
   if (archetype === 'atomic-visit') {
-    if (!/per[- ]visit/i.test(scope)) missing.push('"per visit" phrasing');
+    // Accept any visit-shaped phrasing — "per visit", "per-visit", "each
+    // visit", "household visit", "household-level visit", or just the noun
+    // "visit" used as the unit. Differentiation from focus-group comes from
+    // the absence of session/attestation/gdoc language, not from a single
+    // canonical phrase.
+    if (!/\bvisit(?:s|-|\b)/i.test(scope)) missing.push('"visit" phrasing as the unit of work');
     if (!/photo|gps/i.test(scope)) missing.push('photo or GPS evidence');
   } else if (archetype === 'focus-group') {
-    if (!/per[- ]session|attestation/i.test(scope)) missing.push('"per session" or attestation phrasing');
+    if (!/per[- ]session|session|attestation/i.test(scope)) missing.push('"session" or attestation phrasing');
     if (!/gdoc|google\s+doc/i.test(scope)) missing.push('gdoc reference');
   } else if (archetype === 'multi-stage') {
     if (!/stage\s*\d|per stage/i.test(scope)) missing.push('stage phrasing');
@@ -305,17 +325,35 @@ function extractNumberedSection(wo: string, number: string): string | null {
   // Determine heading depth from the number's dot-count.
   const depth = number.includes('.') ? 3 : 2;
   const hashes = '#'.repeat(depth);
+  // Accept BOTH markdown source (`### 6.1 …`) and gdoc plain-text (`6.1 …`).
+  // The `##`/`###` prefix is optional.
   const headingRe = new RegExp(
-    `^${hashes}\\s+${escapeRegExp(number)}(?:\\.|\\s)[^\\n]*$`,
+    // Tolerate leading whitespace (gdoc plain-text export indents some
+    // headings with `\t` when they abut a table).
+    `^\\s*(?:${hashes}\\s+)?${escapeRegExp(number)}(?:\\.|\\s)[^\\n]*$`,
     'mi',
   );
   const headingMatch = wo.match(headingRe);
   if (!headingMatch || headingMatch.index === undefined) return null;
   const bodyStart = headingMatch.index + headingMatch[0].length;
   const tail = wo.slice(bodyStart);
-  // Stop at next heading of equal or higher level (= same or fewer #s).
-  // Build a regex like `^#{1,depth}\s` to match equal-or-higher headings.
-  const stopRe = new RegExp(`^#{1,${depth}}\\s`, 'm');
+  // Stop at the next equal-or-higher heading. Accepts BOTH markdown form
+  // (`^#{1,depth}\s`) AND gdoc plain-text numbered form (e.g. when extracting
+  // `6.1` at depth 3, stop on the next subsection `6.2 …` or top-level `7. …`;
+  // when extracting `6` at depth 2, stop on the next top-level `7. …`).
+  // The numbered alternative matches a digit-prefixed heading at depth-or-higher.
+  const stopAlternatives = [
+    // markdown heading — narrow to `##` (depth 2) or `###` (depth 3) since
+    // standalone `#` characters appear inside table cells (e.g. the `#`
+    // column header of section 6.2's payment table) and would otherwise
+    // truncate the extracted body.
+    `#{2,${depth}}\\s`,
+    // numbered plain-text heading at depth-or-higher:
+    //   depth=2 (top-level): `^\d+\.\s` (matches `7. …`)
+    //   depth=3 (subsection): `^\d+\.\d+\s` OR `^\d+\.\s` (matches `6.2 …` or `7. …`)
+    depth === 3 ? `\\d+\\.\\d+\\s|\\d+\\.\\s` : `\\d+\\.\\s`,
+  ];
+  const stopRe = new RegExp(`^\\s*(?:${stopAlternatives.join('|')})`, 'm');
   const nextHeadingMatch = tail.match(stopRe);
   const bodyEnd =
     nextHeadingMatch && nextHeadingMatch.index !== undefined

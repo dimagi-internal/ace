@@ -1,0 +1,228 @@
+Work Order Agreement #[WO-NUMBER]
+Malaria ITN Exploration App
+Work Order Number
+	[WO-NUMBER]
+	Work Order Date
+	21 May 2026
+	Work Order Title
+	Malaria ITN Exploration App
+	Period of Performance
+	2026-05-22 to 2026-07-31
+	1. Background
+Dimagi is conducting an exploration-stage study to diagnose the specific mix of barriers to insecticide-treated net (ITN) use across sub-Saharan African contexts. Findings will anchor the barrier-diagnosis section of a Dimagi-led GiveWell Expression of Interest. The Partner organization participating in this Work Order will deploy Connect-trained Frontline Workers (FLWs) to recruited households for a single 30-45 minute visit per household, capturing net inventory, condition photographs, knowledge-attitudes-practices (KAP) responses, and structured caregiver reactions to brief behavior-change content. The visit is diagnostic, not therapeutic: it optimizes for learning fidelity over per-visit cost. This Work Order covers field collection only.
+2. Scope of Work
+The Partner will conduct household-level visits across selected wards/communities, following the 6-section protocol provided by Dimagi (Annexure A — PDD).
+
+
+For each engagement, the Partner will:
+
+
+* Conduct each visit using Connect-trained FLWs (prior ITN / malaria-program experience preferred).
+* Capture identification, verbal consent, household roster, net inventory, KAP responses, intervention activities, and wrap-up via the Connect mobile application.
+* Photograph the household exterior, each net's current state, damage close-ups, and (if attempted) repair before/after — typically 8-20 photographs per household.
+* Capture GPS coordinates at arrival.
+* Deliver the scripted behavior-change content segment (3-5 minutes) and capture caregiver reactions in their own words.
+* Optionally demonstrate knot-tying repair using caregiver-sourced materials and capture before/after evidence + caregiver-confidence rating.
+
+
+The Partner will not:
+
+
+* Conduct patient-level data collection, clinical screening, or diagnostic testing.
+* Provide drug administration, treatment, or clinical advice.
+* Distribute new nets, mending kits, or other commodities (out of scope for this exploration).
+* Conduct laboratory analysis of any samples.
+3. Geographic Coverage
+The Partner will propose specific wards/communities for sampling within one of: Democratic Republic of Congo, Sierra Leone, or Liberia. Proposed coverage will be confirmed jointly with Dimagi during the planning stage. The Partner is expected to have an existing operational footprint in 2-3 wards/communities in the proposed geography and working-language coverage (French + local for DRC; English + local for Sierra Leone / Liberia).
+4. Deliverables and Verification
+4.1 Primary Deliverable
+The primary deliverable is 30-50 verified household visits across 2-3 wards/communities, meeting the verification criteria in Section 4.2 below. Sample size is targeted for thematic saturation on barrier diagnosis, not population-level statistics. The Partner may propose adjustment in their solicitation response if local conditions warrant.
+4.2 Definition of a Verified Unit
+A unit qualifies as "verified" and is payable under this Work Order only when all of the following are met:
+
+
+* The Connect form is submitted with all required fields populated.
+* Verbal consent attestation = yes, captured at form start; non-consent halts the rest of the form.
+* GPS coordinate at arrival is within 100 meters of the recruited cluster centroid.
+* Household exterior photograph is present and legible.
+* Net inventory section is completed for every net (per-net photo + condition + source + age + sleeping arrangement).
+* Damage close-up photographs are present when damage is flagged.
+* KAP free-text responses are substantive (not single-word or copy-paste).
+* HH ID + GPS bucket (25m) combination is not a duplicate of a prior submission within 24 hours.
+* FLW name attestation and beneficiary name attestation are completed at form start; beneficiary name is re-attested at form end.
+
+
+Verification will be performed via the Connect platform with AI-assisted first-pass photo and free-text classification (0.85 confidence threshold), followed by 100% coordinator review for the first 10 visits per LLO and risk-based spot-check thereafter. Visits failing one or more criteria are not payable and will not count toward the deliverable.
+4.3 Reporting Deliverables
+* Weekly progress report — Connect dashboard data plus a one-paragraph narrative — submitted to Dimagi every Monday during the active fielding window.
+* End-of-pilot summary report within 5 working days of the final visit submission, covering: total visits by ward/community, dominant barriers observed, operational challenges, and recommendations for the production intervention.
+5. Timeline and Milestones
+Week
+	Dates
+	Activities
+	1
+	w/c 26 May 2026
+	Protocol finalization with Dimagi; ward/community selection (Partner-proposed, jointly confirmed); FLW team confirmation begins; Dimagi finalizes the Connect app.
+	2
+	w/c 2 June 2026
+	FLW training on visit protocol, photo standards, Connect app workflow, and consent script; Connect app configuration completed by Dimagi.
+	3
+	w/c 9 June 2026
+	Site verification visits; logistics setup; digital-tool field testing; community gatekeeper introductions where needed.
+	4
+	w/c 16 June 2026
+	Structured fielding begins. First 10 visits per LLO submitted for full coordinator review before scale-up.
+	5
+	w/c 23 June 2026
+	Full fielding cadence; weekly reporting active.
+	6
+	w/c 30 June 2026
+	Continued fielding toward target sample size.
+	7
+	w/c 7 July 2026
+	Continued fielding; coordinator spot-checks ongoing.
+	8
+	w/c 14 July 2026
+	End-of-pilot reporting and final reconciliation.
+	
+
+The Partner will flag any timeline risk in writing to Dimagi within 24 hours of identification.
+6. Payment Terms
+6.1 Total Not-to-Exceed
+Dimagi's total financial commitment under this Work Order is USD 1500, not-to-exceed, inclusive of all field collection costs, FLW compensation, supervision, transport, and partner reporting time.
+6.2 Payment Schedule
+#
+	Milestone
+	% of Cap
+	Amount (USD)
+	Trigger / Deliverable
+	Expected Timing
+	1
+	Mobilization advance
+	40%
+	600
+	Contract execution + written confirmation of FLW team readiness and ward selection
+	w/c 26 May 2026
+	2
+	Final reconciliation
+	60%
+	900
+	Submission and acceptance of the end-of-pilot report; final reconciliation of verified visits
+	By 31 July 2026
+	
+
+Dimagi will pay only for verified units at the per-visit (or per-session, per archetype) rate proposed in the Partner's solicitation response.
+7. Roles and Responsibilities
+Responsibility
+	Dimagi
+	Partner
+	Visit protocol design (Annexure A — PDD)
+	✓ Lead
+	Consulted
+	Connect mobile application configuration
+	✓
+	—
+	FLW recruitment, training supplementation, and supervision
+	—
+	✓
+	Field operations and household engagement
+	—
+	✓
+	State/Provincial MoH notifications + community gatekeeper introductions
+	Supports
+	✓ Lead
+	Visit data capture in Connect app
+	—
+	✓
+	AI-assisted photo and free-text first-pass classification
+	✓
+	—
+	Coordinator review queue (first 10/LLO + spot-check)
+	✓
+	—
+	Verification audit
+	✓
+	Supports
+	Weekly and end-of-pilot reporting
+	Reviews
+	✓ Produces
+	Thematic synthesis for GiveWell EOI submission
+	✓
+	Inputs welcome
+	8. Permissions, Ethics, and Compliance
+8.1 Permissions
+The Partner is responsible for securing all in-country permissions required to conduct the field activities, including:
+
+
+* State/Provincial Ministry of Health notification or approval in each operational geography.
+* Local Government Authority administrative permissions where required.
+* Community-level gatekeeper introductions before household recruitment.
+
+
+The Partner will provide Dimagi with copies of all written permissions or notifications obtained.
+8.2 Ethics
+This exploration involves household-level data collection (net inventory, KAP responses, caregiver reactions to behavior-change content) but no patient-level clinical interactions, no clinical screening, no treatment, and no diagnostic testing. Verbal consent is required and recorded as an attestation at form start; non-consent halts the rest of the form. Caregiver names and primary-caregiver phone numbers are captured for follow-up only with explicit consent. If, during the pilot, any aspect of the work expands to include identifiable patient health data or clinical interactions, the Parties will pause field activities and agree in writing on the additional ethical review (institutional review board, NHREC, or equivalent) required before resuming.
+8.3 Security and Duty of Care
+The Partner retains sole responsibility for the safety and security of its field teams. The Partner will not deploy FLWs to areas where the prevailing security situation, in the Partner's professional judgement, poses an unacceptable risk.
+9. Data Handling
+Field
+	Value
+	Project overview
+	Malaria ITN Exploration App — household-level barrier-diagnosis pilot.
+	Data subjects
+	Households with at least one under-5 child; primary caregivers as respondents.
+	Personal information processed
+	Caregiver name and relationship to under-5 children; primary-caregiver phone number; household member counts. Net inventory metadata, condition photographs, and KAP responses. No patient-level health data and no clinical records.
+	Purpose of processing
+	Diagnose barriers to ITN use to inform the design of a production-quality ITN intervention; anchor the barrier-diagnosis section of Dimagi's GiveWell Expression of Interest.
+	Technical and organizational security
+	Dimagi and its platforms are fully compliant with global data privacy and security standards (SOC-2, GDPR, HIPAA among others).
+	Measures by Partner
+	The Partner will anonymize and de-identify any data before sharing externally or using it for analysis outside the pilot. Caregiver contact information is used only for Dimagi-controlled follow-up where consent permits.
+	Data storage location
+	Dimagi's servers in the United States.
+	Data protection
+	Dimagi's servers are compliant with international standards for data privacy and security.
+	Signatures
+IN WITNESS WHEREOF, the parties hereto have caused this Work Order to be executed by their authorized agents as of the date first above written, and annexed to the parties' MSA dated __________________.
+
+
+Subcontractor
+	Dimagi, Inc.
+	By: __________________________
+
+
+Name: [Partner Name]
+
+
+Title: [Partner Title]
+
+
+Date: ________________________
+
+
+Address for correspondence:
+
+
+[Partner Address]
+	By: __________________________
+
+
+Name: Lucina Tse
+
+
+Title: COO Dimagi, Inc.
+
+
+Date: ________________________
+
+
+Address for correspondence:
+245 Main Street, 2nd Floor,
+Cambridge, MA 02142
+
+
+(617) 649-2214; legal@dimagi.com
+	Annexures
+* Annexure A: Program Design Document — see https://docs.google.com/document/d/1Pe2gSIxeo4MKVgbXlpmBhiaixDch7S7ccaPfNuWDJPc/edit
+* Annexure B: To be provided if the Partner requires opp-specific operational annexures.
