@@ -1679,6 +1679,52 @@ if command -v claude >/dev/null 2>&1 && claude mcp list 2>/dev/null | grep -qE '
   warn "nova_shell_env: stale user-scope nova: MCP override detected (pre-1.1.0 setup)" "the override shadows the Nova plugin's PAT-aware MCP entry. Run: claude mcp remove nova --scope user  (then restart Claude Code)"
 fi
 
+# 7c. nova_needs_auth_cache — verify Claude Code is not caching
+# `plugin:nova:nova` as needs-authentication. When this entry exists,
+# Claude Code skips reconnecting to the Nova MCP server even if the
+# server is reachable and the credentials are valid — symptom is that
+# only `mcp__plugin_nova_nova__authenticate` / `complete_authentication`
+# surface, never the real toolset (`list_apps`, `get_app`, etc.).
+#
+# Common cause: the cache was written before NOVA_API_KEY made it into
+# the shell env (pre-Nova-v1.1.0 setup, or post-/ace:setup but
+# pre-Claude-Code-restart). Once `nova_env` + `nova_shell_env` +
+# `nova_auth` all PASS, a leftover entry here is a clear stuck state.
+#
+# Remediation: delete the entry and restart Claude Code (the running
+# process won't re-attempt the connection on its own). Per Braxton's
+# voidcraft-labs/nova-plugin#11 comment.
+NOVA_NEEDS_AUTH_CACHE="$HOME/.claude/mcp-needs-auth-cache.json"
+if [ ! -f "$NOVA_NEEDS_AUTH_CACHE" ]; then
+  pass "nova_needs_auth_cache: ~/.claude/mcp-needs-auth-cache.json absent (Claude Code has no stuck-auth entries cached)"
+else
+  NOVA_CACHE_HAS_NOVA="$(node -e "
+    try {
+      const d = JSON.parse(require('fs').readFileSync('$NOVA_NEEDS_AUTH_CACHE','utf8'));
+      console.log('plugin:nova:nova' in d ? '1' : '0');
+    } catch(_) { console.log('error'); }
+  " 2>/dev/null)"
+  if [ "$NOVA_CACHE_HAS_NOVA" = "error" ]; then
+    warn "nova_needs_auth_cache: $NOVA_NEEDS_AUTH_CACHE present but unparseable" "node failed to parse the file. Inspect manually or remove it; Claude Code will recreate as needed"
+  elif [ "$NOVA_CACHE_HAS_NOVA" = "1" ]; then
+    # Hard fail when nova_auth has confirmed the upstream key works —
+    # in that case the cache is anchored on stale auth state and Nova
+    # tools won't surface until it's cleared. Soft warn otherwise
+    # (operator may genuinely not be authed yet).
+    if [ -n "$NOVA_KEY_VAL" ]; then
+      fail "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth despite valid NOVA_API_KEY" "remove the stuck entry and restart Claude Code (running process won't re-connect on its own):
+       node -e 'const f=\"$NOVA_NEEDS_AUTH_CACHE\"; const d=JSON.parse(require(\"fs\").readFileSync(f,\"utf8\")); delete d[\"plugin:nova:nova\"]; require(\"fs\").writeFileSync(f, JSON.stringify(d,null,2)+\"\\n\");'
+       Then Cmd-Q Claude Code and reopen. Symptom: only \`mcp__plugin_nova_nova__authenticate\` surfaces, real tools (\`list_apps\` etc.) are missing.
+       Per Braxton's nova-plugin#11."
+      mark_fail
+    else
+      warn "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth (NOVA_API_KEY not set — possibly correct)" "if you intend to use Nova, see nova_env above; otherwise this entry is benign"
+    fi
+  else
+    pass "nova_needs_auth_cache: plugin:nova:nova not stuck in needs-auth-cache"
+  fi
+fi
+
 # 8. ace-mobile — local-only MCP (Maestro + adb + AVD + APK). It does not
 # authenticate against any remote service at runtime, so there is no
 # "live auth probe" distinct from the others. The auth-adjacent things
