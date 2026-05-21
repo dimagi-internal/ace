@@ -1063,3 +1063,125 @@ describe('CloudBackend.installDriver', () => {
     expect(actions).toContain('installed:test');
   });
 });
+
+describe('CloudBackend.registerTestUser', () => {
+  function asyncRegisterMocks(result: {
+    already_registered: boolean;
+    phone: string;
+    backup_code?: string | null;
+  }) {
+    const jobId = 'reg-job-' + Math.random().toString(16).slice(2, 10);
+    return [
+      jsonResponse(202, envelope({ job_id: jobId, status: 'running' })),
+      jsonResponse(200, envelope({
+        job_id: jobId,
+        operation: 'register_test_user',
+        status: 'completed',
+        owner: 'test',
+        started_at: '2026-05-21T00:00:00Z',
+        completed_at: '2026-05-21T00:01:00Z',
+        result,
+      })),
+    ];
+  }
+
+  const REG_ARGS = {
+    phone: '+74260000100',
+    phoneLocal: '4260000100',
+    countryCode: '+7',
+    pin: '111111',
+    backupCode: '222222',
+    name: 'ACE Test',
+    paletteTarB64: 'ZmFrZQ==',
+    toOtpRecipe: 'connect-register-to-otp.yaml',
+    fromOtpRecipe: 'connect-register-from-otp.yaml',
+  };
+
+  it('POSTs snake_case body to /api/mobile/register-test-user', async () => {
+    const fetchImpl = vi.fn();
+    for (const m of asyncRegisterMocks({
+      already_registered: false,
+      phone: '+74260000100',
+      backup_code: '222222',
+    })) fetchImpl.mockResolvedValueOnce(m);
+    const cb = new CloudBackend({
+      baseUrl: BASE, token: TOKEN, fetchImpl: fetchImpl as any,
+      retry: { retries: 0 }, jobPollIntervalMs: 0,
+    });
+
+    await cb.registerTestUser(REG_ARGS);
+
+    const post = fetchImpl.mock.calls[0];
+    expect(post[0]).toBe(`${BASE}/api/mobile/register-test-user`);
+    expect(post[1].method).toBe('POST');
+    const body = JSON.parse(post[1].body as string);
+    // camelCase → snake_case at the boundary.
+    expect(body.phone).toBe('+74260000100');
+    expect(body.phone_local).toBe('4260000100');
+    expect(body.country_code).toBe('+7');
+    expect(body.pin).toBe('111111');
+    expect(body.backup_code).toBe('222222');
+    expect(body.name).toBe('ACE Test');
+    expect(body.palette_tar_b64).toBe('ZmFrZQ==');
+    expect(body.to_otp_recipe).toBe('connect-register-to-otp.yaml');
+    expect(body.from_otp_recipe).toBe('connect-register-from-otp.yaml');
+  });
+
+  it('returns the camelCase TestUserRegistrationResult on fresh registration', async () => {
+    const fetchImpl = vi.fn();
+    for (const m of asyncRegisterMocks({
+      already_registered: false,
+      phone: '+74260000100',
+      backup_code: '222222',
+    })) fetchImpl.mockResolvedValueOnce(m);
+    const cb = new CloudBackend({
+      baseUrl: BASE, token: TOKEN, fetchImpl: fetchImpl as any,
+      retry: { retries: 0 }, jobPollIntervalMs: 0,
+    });
+    const result = await cb.registerTestUser(REG_ARGS);
+    expect(result.alreadyRegistered).toBe(false);
+    expect(result.phone).toBe('+74260000100');
+    expect(result.backupCode).toBe('222222');
+  });
+
+  it('omits backupCode on already-registered short-circuit', async () => {
+    const fetchImpl = vi.fn();
+    for (const m of asyncRegisterMocks({
+      already_registered: true,
+      phone: '+74260000100',
+      backup_code: null,
+    })) fetchImpl.mockResolvedValueOnce(m);
+    const cb = new CloudBackend({
+      baseUrl: BASE, token: TOKEN, fetchImpl: fetchImpl as any,
+      retry: { retries: 0 }, jobPollIntervalMs: 0,
+    });
+    const result = await cb.registerTestUser(REG_ARGS);
+    expect(result.alreadyRegistered).toBe(true);
+    expect(result.backupCode).toBeUndefined();
+  });
+
+  it('throws MobileError on job failure with the server error_code', async () => {
+    const jobId = 'reg-fail-1';
+    const fetchImpl = vi.fn();
+    fetchImpl.mockResolvedValueOnce(
+      jsonResponse(202, envelope({ job_id: jobId, status: 'running' })),
+    );
+    fetchImpl.mockResolvedValueOnce(jsonResponse(200, envelope({
+      job_id: jobId,
+      operation: 'register_test_user',
+      status: 'failed',
+      owner: 'test',
+      started_at: '2026-05-21T00:00:00Z',
+      completed_at: '2026-05-21T00:01:00Z',
+      error: 'register_test_user part A failed (exit 1)',
+      error_code: 'mobile-error',
+    })));
+    const cb = new CloudBackend({
+      baseUrl: BASE, token: TOKEN, fetchImpl: fetchImpl as any,
+      retry: { retries: 0 }, jobPollIntervalMs: 0,
+    });
+    await expect(cb.registerTestUser(REG_ARGS)).rejects.toThrow(
+      /register_test_user part A failed/,
+    );
+  });
+});

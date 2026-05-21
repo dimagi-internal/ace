@@ -5,6 +5,19 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.292 — 2026-05-21
+
+**Cloud `registerTestUser` calls ace-web's new live-register endpoint behind `ACE_MOBILE_CLOUD_LIVE_REGISTER` (default off).**
+
+Phase B of the local↔cloud register-parity convergence. Pre-change, the cloud branch of `MobileClient.registerTestUser` was a no-op that trusted the AMI cold-boot pre-bake (`ace-emulator-launch` registers the +7426 demo user from AWS Secrets Manager creds before the `/run/ace-mobile/ready` marker fires). That model couples the dispatch path to a brittle AMI bake step and prevents per-run state hygiene (`pm clear` + re-register) that local has done since 2026-05-14.
+
+When `ACE_MOBILE_CLOUD_LIVE_REGISTER=true`, the cloud branch now drives ace-web's new `POST /api/mobile/register-test-user` endpoint (shipped in ace-web PR #477). The endpoint runs the same two recipes + GMS toggle that local does inline — converging cloud onto local's always-deterministic-bootstrap pattern. Recipes ship over the wire as a base64-encoded tar of the resolved static palette (produced via the existing `prepareRecipeForMaestro`); the server identifies the two top recipes by basename in the request body.
+
+Default off in this PR — the legacy AMI-pre-bake path still works during the in-flight rollout. Phase C (heal flow uses the cloud primitives) lands next behind the same flag; Phase D drops the AMI pre-bake; Phase E flips the default to on and Phase F drops the flag entirely.
+
+- `mcp/mobile/backends/cloud.ts` — new `CloudBackend.registerTestUser` posting the camelCase args as snake_case JSON, polling the async job (`pollRegisterJob`) until terminal, returning the camelCase `TestUserRegistrationResult`. 4 vitest cases.
+- `mcp/mobile/client.ts` — `MobileClient.registerTestUser` cloud branch is now flag-gated; new private `cloudRegisterTestUser` helper resolves the palette into a temp dir, tars it as base64, calls `CloudBackend.registerTestUser`, cleans up the temp dir in `finally`. 2 vitest cases (flag-on calls the cloud endpoint with correct args; non-`true` flag values stay no-op).
+
 ## 0.13.286 — 2026-05-19
 
 **Add `file_path` mode to `ocs_upload_collection_files` — close the b64 context wedge that stalled Phase 5 twice.**
