@@ -5,6 +5,17 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.293 — 2026-05-21
+
+**Heal flow routes through cloud primitives behind `ACE_MOBILE_CLOUD_LIVE_REGISTER` (default off).**
+
+Phase C of the local↔cloud register-parity convergence. Builds on Phase B (cloud `registerTestUser` flag-gated). When `ACE_MOBILE_CLOUD_LIVE_REGISTER=true`, `MobileClient.restoreDeviceUserState`'s cloud branch now drives an inline `cloudBootstrapHeal` that mirrors local's deterministic bootstrap: `pm clear org.commcare.dalvik` (via the existing `clearAppData` cloud primitive) → `registerTestUser` (via Phase B's `cloudRegisterTestUser`). Result is the same `DeviceStateHealLog` shape callers already process; only `healed_via` differs, surfacing `'cloud-bootstrap'` so telemetry can distinguish the path.
+
+Off-flag behavior unchanged — the cloud branch still returns the legacy `{classified_as: 'unknown', attempted: false}` stub so existing pre-Phase-D dispatches keep working with the AMI's cold-boot pre-bake. The flag flip lands in Phase E after Phase D's AMI rebake drops the pre-bake.
+
+- `mcp/mobile/types.ts` — `DeviceStateHealLog.healed_via` now allows `'cloud-bootstrap'`.
+- `mcp/mobile/client.ts` — `restoreDeviceUserState` cloud branch is flag-gated; new private `cloudBootstrapHeal` helper does `clearAppData → cloudRegisterTestUser → emit ready DeviceStateHealLog`. Same env-var enumeration as the local branch when `bootstrapConfig` is absent (so the operator sees "missing env: ACE_E2E_NAME" instead of a blanket failure). 4 vitest cases.
+
 ## 0.13.292 — 2026-05-21
 
 **Cloud `registerTestUser` calls ace-web's new live-register endpoint behind `ACE_MOBILE_CLOUD_LIVE_REGISTER` (default off).**
