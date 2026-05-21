@@ -5,6 +5,23 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.296 — 2026-05-21
+
+**Switch Nova auth from user-scope MCP override to plugin-native PAT path (Nova v1.1.0).**
+
+Braxton shipped Nova plugin v1.1.0 with a `headersHelper` in `.mcp.json` that reads `NOVA_API_KEY` from the Claude Code parent shell's env and emits `Authorization: Bearer …` on every Nova MCP call (voidcraft-labs/nova-plugin#11 / #13 / #16). ACE's pre-1.1.0 workaround — a user-scope MCP override at `https://mcp.commcare.app/mcp` carrying the bearer as a literal header — is now obsolete and actively harmful: the override shadows the plugin's PAT-aware MCP entry under Claude Code's URL-dedup and re-introduces the subagent identity divergence that #13 fixed.
+
+The PAT path also structurally fixes the dispatched-subagent identity divergence: subagents inherit the plugin's MCP entry from the same process env, so they read the same `NOVA_API_KEY` and authenticate as the same Nova user as level-0. Apps a subagent builds are now visible to `upload_app_to_hq` at level-0.
+
+Migration: operator runs `/plugin update nova`, `/ace:update`, `/ace:setup --force-env`, adds `source ~/.ace/env.sh` to their shell rc once per machine (the file is now written by `bin/ace-setup`), and restarts Claude Code. `/ace:setup` also removes the stale user-scope override idempotently. `/ace:doctor` detects both the missing shell-env wiring and any leftover override, and prints exact remediation commands.
+
+- `bin/ace-setup` — drop the `claude mcp add nova … --header "Authorization: Bearer $NOVA_API_KEY"` block; instead, write `~/.ace/env.sh` containing `export NOVA_API_KEY=…` (mode 600, atomic write via temp+mv), and always run `claude mcp remove nova --scope user` to clean up any pre-1.1.0 override.
+- `bin/ace-doctor` — drop the `nova_mcp_registered` probe (existed only to verify the override). Add `nova_shell_env` that checks (a) `NOVA_API_KEY` present in the parent shell's env, and (b) no stale user-scope override registered. Update `nova_auth` remediation text to drop "re-register the user-scope override" hint.
+- `.env.tpl` — rewrite the `NOVA_API_KEY` comment block: drop the user-scope override / URL-dedup explanation; describe the headersHelper + shell-env requirement; point at `playbook/integrations/nova-integration.md` for the source-line step.
+- `playbook/integrations/nova-integration.md` — rewrite install + auth section around the headersHelper + shell-env wiring; add migration section for the pre-1.1.0 → 1.1.0 swap; add #11 / #13 / #16 to the resolved-blockers ledger; rewrite gotchas (drop URL-dedup + namespace gotchas; add shell-env-missing and stale-override gotchas); flip auth-summary table row to PAT-via-headersHelper.
+- `agents/commcare-setup.md` — Phase 3 doctor-check remediation now lists `nova_shell_env` failure modes (missing source line; stale override).
+- `.claude/pm/learnings.md` — mark the 2026-05-05 OAuth-footgun learning as moot under v1.1.0's PAT path; preserve the `mcp-needs-auth-cache.json` delete recipe per Braxton's #11 comment.
+
 ## 0.13.293 — 2026-05-21
 
 **Heal flow routes through cloud primitives behind `ACE_MOBILE_CLOUD_LIVE_REGISTER` (default off).**

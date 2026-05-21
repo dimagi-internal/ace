@@ -92,24 +92,21 @@ ACE_HQ_PASSWORD=op://AI-Agents/ACE - CommCareHQ/password
 
 # ── Nova (CommCare app builder MCP) ──────────────────────────────────
 #
-# Nova's MCP server lives at https://mcp.commcare.app/mcp. The Nova
-# Claude Code plugin defaults to OAuth (Google SSO) on first use, but
-# concurrent ACE worktrees on one service identity trip an upstream
-# refresh-token cascade in @better-auth/oauth-provider that wipes
-# tokens for the (userId, clientId) pair and forces interactive sign-in
-# every ~30 minutes. See voidcraft-labs/nova-plugin#9.
-#
-# Resolution: API-key auth at the same URL. ACE registers a user-scope
-# MCP override carrying this bearer token (Claude Code's URL-signature
-# dedup suppresses the plugin's OAuth entry when both are present).
+# Nova's MCP server lives at https://mcp.commcare.app/mcp. Nova plugin
+# v1.1.0+ reads this value from the Claude Code parent shell's env via
+# a headersHelper in its .mcp.json and sends it as
+# `Authorization: Bearer …` on every Nova MCP call. See
+# voidcraft-labs/nova-plugin#11 / #13 / #16.
 #
 # Mint a key at https://commcare.app/settings → Sign in as the ACE
 # Gmail identity → API Keys → New (Read+Write floor; HQ scopes are
 # required for /nova:upload_to_hq). Save the `sk-nova-v1-…` value to
 # the 1Password item "ACE - Nova" / field `api_key`.
 #
-# Re-running /ace:setup after rotation re-registers the user-scope
-# override with the new key.
+# After /ace:setup writes `.env` from 1Password, it also writes
+# `~/.ace/env.sh` (containing `export NOVA_API_KEY=…`). One-time per
+# machine, add `source ~/.ace/env.sh` to your shell rc — see
+# playbook/integrations/nova-integration.md.
 NOVA_API_KEY=op://AI-Agents/ACE - Nova/api_key
 
 # ── Connect Labs (solicitations / reviews / awards) ─────────────────

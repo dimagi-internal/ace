@@ -1602,10 +1602,12 @@ else
 fi
 
 # 7. nova — POST initialize JSON-RPC frame to https://mcp.commcare.app/mcp
-# with bearer auth. 200 = bearer accepted (the user-scope override
-# bin/ace-setup registered is alive). 401 = key invalid/revoked. The
-# Accept header includes text/event-stream because Nova returns SSE
-# frames for the response body even though the request is plain JSON.
+# with bearer auth. 200 = NOVA_API_KEY value is accepted by the Nova MCP
+# server; 401 = key invalid/revoked. This is an HTTP-only probe — it
+# does not verify Claude Code's plugin MCP entry is reading the same key
+# (that's covered by `nova_shell_env` below). The Accept header includes
+# text/event-stream because Nova returns SSE frames for the response
+# body even though the request is plain JSON.
 if [ -n "$NOVA_KEY_VAL" ]; then
   NOVA_REACH_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
     -X POST \
@@ -1625,44 +1627,35 @@ if [ -n "$NOVA_KEY_VAL" ]; then
       warn "nova_auth: cannot reach https://mcp.commcare.app/mcp (network/DNS/timeout)" "check VPN/proxy; net_nova_mcp probe above should also flag this"
       ;;
     *)
-      warn "nova_auth: POST https://mcp.commcare.app/mcp → HTTP $NOVA_REACH_CODE" "investigate Nova MCP health; if persists, /ace:setup --force-env to re-register the user-scope override"
+      warn "nova_auth: POST https://mcp.commcare.app/mcp → HTTP $NOVA_REACH_CODE" "investigate Nova MCP health"
       ;;
   esac
 else
   warn "nova_auth: skipped — NOVA_API_KEY not set" "see nova_env warning above; mint at https://commcare.app/settings"
 fi
 
-# 7b. nova_mcp_registered — verify Claude Code's user-scope `nova:` MCP
-# entry exists (the one with NOVA_API_KEY as a bearer header). Without
-# this entry, the architect subagent's `mcp__nova__*` tool namespace is
-# absent and every /nova:autobuild dispatch turn-0-halts. The
-# `plugin:nova:nova` entry (OAuth) is the alternative path, but its
-# accessToken in ~/.claude/.credentials.json gets wiped across sessions
-# and Nova's OAuth refresh-token cascade (voidcraft-labs/nova-plugin#9)
-# makes it unreliable for unattended /ace:run cycles.
+# 7b. nova_shell_env — verify NOVA_API_KEY is in the Claude Code parent
+# shell's env. Nova plugin v1.1.0's .mcp.json uses a headersHelper that
+# reads NOVA_API_KEY from the process env; without it in the shell, the
+# helper emits `{}` and every Nova call 401s. ACE's .env is loaded only
+# into ACE's own MCP subprocesses, so the operator must source
+# ~/.ace/env.sh from their shell rc once per machine.
 #
-# Structural preventer for the turn-0-halt class — the existing nova_auth
-# probe above only tests the HTTP path, not Claude Code's MCP registry
-# state. Auto-registers (idempotent — same logic as bin/ace-setup) so
-# operators who never run `/ace:setup --force-env` still get a working
-# Nova MCP. Remove when nova-plugin upstream lands stable OAuth.
-if ! command -v claude >/dev/null 2>&1; then
-  warn "nova_mcp_registered: skipped — claude CLI not on PATH" "install Claude Code CLI; without it, this probe cannot inspect or fix the user-scope MCP entry"
-elif claude mcp list 2>/dev/null | grep -qE '^nova:[[:space:]]'; then
-  pass "nova_mcp_registered: user-scope nova MCP entry present"
+# Also flag (and remove) any leftover user-scope `nova:` MCP override
+# from the pre-1.1.0 setup — that entry shadows the plugin's PAT-aware
+# entry under Claude Code's URL-dedup and re-introduces the identity
+# divergence Braxton fixed in voidcraft-labs/nova-plugin#11 / #13.
+if [ -n "${NOVA_API_KEY:-}" ]; then
+  pass "nova_shell_env: NOVA_API_KEY present in shell env (Nova plugin headersHelper will authenticate)"
 elif [ -z "$NOVA_KEY_VAL" ]; then
-  warn "nova_mcp_registered: user-scope nova entry missing AND NOVA_API_KEY not set" "see nova_env warning above; mint a key at https://commcare.app/settings, save to 1Password item \"ACE - Nova\" / field \`api_key\`, then /ace:setup --force-env"
+  warn "nova_shell_env: skipped — NOVA_API_KEY not set in ACE .env either" "see nova_env warning above"
+elif [ -f "$HOME/.ace/env.sh" ]; then
+  warn "nova_shell_env: NOVA_API_KEY not in shell env (~/.ace/env.sh exists but not sourced)" "echo 'source ~/.ace/env.sh' >> ~/.zshrc && exec zsh  # (or your shell's rc file)"
 else
-  # Auto-register. Idempotent: remove any stale entry first, then re-add.
-  claude mcp remove nova --scope user >/dev/null 2>&1 || true
-  ADD_OUT="$(claude mcp add nova "https://mcp.commcare.app/mcp" \
-    --transport http --scope user \
-    --header "Authorization: Bearer $NOVA_KEY_VAL" 2>&1)"
-  if claude mcp list 2>/dev/null | grep -qE '^nova:[[:space:]]'; then
-    pass "nova_mcp_registered: user-scope nova MCP entry auto-registered (was missing) — run /reload-plugins to surface mcp__nova__* tools in the current session"
-  else
-    fail "nova_mcp_registered: auto-register failed" "$(printf '%s' "$ADD_OUT" | head -3); manually run: claude mcp add nova https://mcp.commcare.app/mcp --transport http --scope user --header \"Authorization: Bearer \$NOVA_API_KEY\""
-  fi
+  warn "nova_shell_env: NOVA_API_KEY not in shell env and ~/.ace/env.sh missing" "run /ace:setup to write ~/.ace/env.sh, then add 'source ~/.ace/env.sh' to your shell rc"
+fi
+if command -v claude >/dev/null 2>&1 && claude mcp list 2>/dev/null | grep -qE '^nova:[[:space:]]'; then
+  warn "nova_shell_env: stale user-scope nova: MCP override detected (pre-1.1.0 setup)" "the override shadows the Nova plugin's PAT-aware MCP entry. Run: claude mcp remove nova --scope user  (then restart Claude Code)"
 fi
 
 # 8. ace-mobile — local-only MCP (Maestro + adb + AVD + APK). It does not
