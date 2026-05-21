@@ -123,6 +123,63 @@ describe('session-lock', () => {
     expect(result.reaped_locks).toContain(`${FAKE_PID_BASE + 99}.lock.json`);
   });
 
+  describe('cleanupSessionDaemons', () => {
+    it('removes the lock for the given pid', async () => {
+      const { cleanupSessionDaemons } = await import('../../../mcp/mobile/session-lock.js');
+      const lock = fakeLock(10, { mcp_pid: process.pid });
+      acquireSessionLock(lock);
+      writtenLocks.push(lockPathForPid(lock.mcp_pid));
+      const result = cleanupSessionDaemons(lock.mcp_pid);
+      expect(result.lock_removed).toBe(true);
+      expect(fs.existsSync(lockPathForPid(lock.mcp_pid))).toBe(false);
+    });
+
+    it('reads adb_port + emulator_port from the lock', async () => {
+      const { cleanupSessionDaemons } = await import('../../../mcp/mobile/session-lock.js');
+      const lock = fakeLock(11, { mcp_pid: process.pid, adb_port: 59999, emulator_port: 58000 });
+      acquireSessionLock(lock);
+      writtenLocks.push(lockPathForPid(lock.mcp_pid));
+      const result = cleanupSessionDaemons(lock.mcp_pid);
+      expect(result.adb_port).toBe(59999);
+      expect(result.emulator_port).toBe(58000);
+    });
+
+    it('handles missing lock file gracefully', async () => {
+      const { cleanupSessionDaemons } = await import('../../../mcp/mobile/session-lock.js');
+      // Pass a pid that has no lock file
+      const result = cleanupSessionDaemons(FAKE_PID_BASE + 88);
+      expect(result.killed_pids).toEqual([]);
+      expect(result.lock_removed).toBe(false);
+    });
+
+    it('handles corrupt lock file gracefully', async () => {
+      const { cleanupSessionDaemons } = await import('../../../mcp/mobile/session-lock.js');
+      const corruptPath = lockPathForPid(FAKE_PID_BASE + 89);
+      fs.mkdirSync(SESSION_LOCK_DIR, { recursive: true });
+      fs.writeFileSync(corruptPath, 'not-json{', 'utf8');
+      writtenLocks.push(corruptPath);
+      const result = cleanupSessionDaemons(FAKE_PID_BASE + 89);
+      // Lock removal still happens despite corrupt content; daemon
+      // lookup skipped because we can't read ports.
+      expect(result.lock_removed).toBe(true);
+      expect(result.killed_pids).toEqual([]);
+      expect(fs.existsSync(corruptPath)).toBe(false);
+    });
+
+    it('never kills the calling process itself', async () => {
+      const { cleanupSessionDaemons } = await import('../../../mcp/mobile/session-lock.js');
+      // Edge case: if findPidsOnPort were to return our own pid (it
+      // shouldn't, since we're not listening on our lock's ports —
+      // but defensive guard), cleanupSessionDaemons must skip it.
+      const lock = fakeLock(12, { mcp_pid: process.pid });
+      acquireSessionLock(lock);
+      writtenLocks.push(lockPathForPid(lock.mcp_pid));
+      cleanupSessionDaemons(lock.mcp_pid);
+      // Our process is still alive — defense-in-depth check.
+      expect(isPidAlive(process.pid)).toBe(true);
+    });
+  });
+
   it('reapStaleSessions returns empty result when no lock dir exists', () => {
     // Deliberately not creating SESSION_LOCK_DIR. The implementation
     // checks fs.existsSync — should early-return.

@@ -151,6 +151,16 @@ export function findPidsOnPort(port: number): number[] {
  * leaked adb daemons / qemu emulators — they don't have meaningful
  * cleanup to do, and SIGTERM-then-wait would slow the reaper to a
  * crawl with no real benefit.
+ *
+ * After sending SIGKILL we busy-poll up to ~500ms for the kernel to
+ * reap the PID before reporting success. Without this poll the
+ * function returns false ~every time on macOS because `kill(SIGKILL)`
+ * is asynchronous from the caller's perspective: the kernel signals
+ * the target, the target dies, then the parent reaps via wait() —
+ * `isPidAlive(target)` only returns false after the reap. The wait is
+ * almost always <10ms in practice for self-spawned processes, so a
+ * 500ms ceiling is generous; we exit the poll as soon as the PID
+ * actually drops.
  */
 export function killPid(pid: number): boolean {
   if (!isPidAlive(pid)) return true;
@@ -159,7 +169,19 @@ export function killPid(pid: number): boolean {
   } catch {
     /* may already be dead between isPidAlive and kill */
   }
-  return !isPidAlive(pid);
+  // Poll for kernel reap. SIGKILL is unblockable so the process WILL
+  // die; we're just waiting for the OS to acknowledge it.
+  const deadline = Date.now() + 500;
+  while (Date.now() < deadline) {
+    if (!isPidAlive(pid)) return true;
+    // Synchronous tight loop — we're in a cleanup path, not a hot loop.
+    // ~1ms granularity is plenty.
+    const wakeAt = Date.now() + 1;
+    while (Date.now() < wakeAt) {
+      /* spin */
+    }
+  }
+  return false;
 }
 
 export interface ReapResult {
@@ -207,6 +229,64 @@ export function getReservedPorts(): { adb: Set<number>; emulator: Set<number> } 
     }
   }
   return { adb, emulator };
+}
+
+/**
+ * Kill the adb/qemu daemons listed on our session's lock-recorded
+ * ports, then release the lock. Called from the MCP server's
+ * SIGINT/SIGTERM/SIGHUP handlers in `mobile-server.ts`.
+ *
+ * Kill-before-release order is load-bearing: if we released the lock
+ * first, future allocators would have no record of which ports to
+ * clean and the daemonized adb/qemu would leak forever (live-
+ * surfaced 2026-05-21 on cross-session orphan accumulation). The
+ * lock survives the kills; we remove it last.
+ *
+ * Best-effort throughout — any error is ignored (no throws, no
+ * return value beyond an action log). The hard-kill case (SIGKILL,
+ * OOM, crash) is covered by the stale-lock reaper; this graceful
+ * path is the optimization that keeps real adb/qemu from leaking on
+ * normal Claude Code session close.
+ *
+ * Returns an action log so callers can surface it in debug output;
+ * silent failure is fine for production but the log makes test
+ * verification trivial.
+ */
+export function cleanupSessionDaemons(mcpPid: number): {
+  killed_pids: number[];
+  adb_port?: number;
+  emulator_port?: number;
+  lock_removed: boolean;
+} {
+  const result: ReturnType<typeof cleanupSessionDaemons> = {
+    killed_pids: [],
+    lock_removed: false,
+  };
+  let adb_port: number | undefined;
+  let emulator_port: number | undefined;
+  try {
+    const raw = fs.readFileSync(lockPathForPid(mcpPid), 'utf8');
+    const lock = JSON.parse(raw) as SessionLock;
+    if (Number.isFinite(lock?.adb_port)) adb_port = lock.adb_port;
+    if (Number.isFinite(lock?.emulator_port)) emulator_port = lock.emulator_port;
+  } catch {
+    /* no lock or corrupt — nothing to clean up beyond unlinking */
+  }
+  result.adb_port = adb_port;
+  result.emulator_port = emulator_port;
+  for (const port of [adb_port, emulator_port].filter((p): p is number => p !== undefined)) {
+    for (const pid of findPidsOnPort(port)) {
+      if (pid === mcpPid) continue; // never kill self
+      if (killPid(pid)) result.killed_pids.push(pid);
+    }
+  }
+  try {
+    fs.unlinkSync(lockPathForPid(mcpPid));
+    result.lock_removed = true;
+  } catch {
+    /* already gone — fine */
+  }
+  return result;
 }
 
 const ALLOCATOR_MUTEX_PATH = path.join(SESSION_LOCK_DIR, '.allocator.lock');
