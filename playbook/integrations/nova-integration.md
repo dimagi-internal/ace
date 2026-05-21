@@ -33,20 +33,34 @@ one line to your shell rc:
 3. Save to 1Password vault `AI-Agents`, item `ACE - Nova`, field
    `api_key`.
 4. Run `/ace:setup --force-env`. The setup script re-injects `.env`
-   from 1Password and writes `~/.ace/env.sh` containing
-   `export NOVA_API_KEY=…`.
-5. **One-time per machine** — add a source line to your shell rc, then
-   restart Claude Code:
+   from 1Password, writes `~/.ace/env.sh` containing
+   `export NOVA_API_KEY=…`, and (since 0.13.298) auto-appends a
+   marker-fenced source block to the right shell rc for this machine:
+
+   - macOS + zsh → `~/.zshenv` (launchd-spawned GUI Claude Code reads
+     this; `~/.zshrc` is interactive-only)
+   - macOS + bash → `~/.bash_profile`
+   - Linux + zsh → `~/.zshrc`
+   - Linux + bash → `~/.bashrc`
+
+   The appended block looks like:
 
    ```
-   echo 'source ~/.ace/env.sh' >> ~/.zshrc && exec zsh
+   # >>> ACE managed >>>
+   [ -f "$HOME/.ace/env.sh" ] && source "$HOME/.ace/env.sh"
+   # <<< ACE managed <<<
    ```
 
-   (Use `~/.bashrc` if you're on bash.) The Nova plugin v1.1.0
-   `.mcp.json` ships a `headersHelper` that reads `NOVA_API_KEY` from
-   the Claude Code process env and emits `Authorization: Bearer …` on
-   every Nova MCP call. Without the shell-env wiring, the helper emits
-   `{}` and every Nova call 401s.
+   Idempotent (marker grep) and reversible (delete the block). Pass
+   `--no-shell-edit` to opt out.
+
+5. **Restart Claude Code** (Cmd-Q + reopen) so the Nova plugin's
+   `headersHelper` reads `NOVA_API_KEY` from the new process env.
+
+The Nova plugin v1.1.0 `.mcp.json` ships a `headersHelper` that reads
+`NOVA_API_KEY` from the Claude Code process env and emits
+`Authorization: Bearer …` on every Nova MCP call. Without the shell-env
+wiring, the helper emits `{}` and every Nova call 401s.
 
 Tools surface in the canonical plugin namespace `mcp__plugin_nova_nova__*`.
 
@@ -71,14 +85,19 @@ and re-introduces the subagent identity divergence Braxton fixed):
 ```
 /plugin marketplace update                                  # in Claude Code
 /plugin update nova                                         # ditto
-claude mcp remove nova --scope user                         # in a terminal
-echo 'source ~/.ace/env.sh' >> ~/.zshrc && exec zsh         # one-time
-# then restart Claude Code so the plugin re-registers under the new path
+/ace:update                                                 # ditto
+/ace:setup --force-env                                      # writes ~/.ace/env.sh,
+                                                            # removes stale override,
+                                                            # auto-appends source line
+                                                            # to shell rc (since 0.13.298)
+# then Cmd-Q Claude Code and reopen so the plugin re-registers under PAT
 ```
 
-`/ace:setup` runs the `claude mcp remove` step automatically on every
-invocation post-0.13.294 (idempotent) — manual run is only needed if
-you can't re-run setup for some reason.
+`/ace:setup` automates three pieces idempotently (post-0.13.298):
+the `claude mcp remove nova --scope user` cleanup, the `~/.ace/env.sh`
+write, and the marker-fenced shell-rc append. Manual steps are only
+needed if you pass `--no-shell-edit` or run on a shell ACE can't
+auto-detect.
 
 ## Resolved blockers (kept for record)
 

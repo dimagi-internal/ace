@@ -104,8 +104,13 @@ ACE_HQ_PASSWORD=op://AI-Agents/ACE - CommCareHQ/password
 # the 1Password item "ACE - Nova" / field `api_key`.
 #
 # After /ace:setup writes `.env` from 1Password, it also writes
-# `~/.ace/env.sh` (containing `export NOVA_API_KEY=…`). One-time per
-# machine, add `source ~/.ace/env.sh` to your shell rc — see
+# `~/.ace/env.sh` (containing `export NOVA_API_KEY=…`) AND auto-appends
+# a marker-fenced source line to the right shell rc (since 0.13.298):
+#   macOS+zsh → ~/.zshenv | macOS+bash → ~/.bash_profile
+#   Linux+zsh → ~/.zshrc  | Linux+bash → ~/.bashrc
+# Restart Claude Code (Cmd-Q + reopen) after setup so the Nova plugin's
+# headersHelper reads NOVA_API_KEY from the new shell env. Pass
+# /ace:setup --no-shell-edit to opt out of the rc edit. See
 # playbook/integrations/nova-integration.md.
 NOVA_API_KEY=op://AI-Agents/ACE - Nova/api_key
 

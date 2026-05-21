@@ -5,6 +5,39 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.298 — 2026-05-21
+
+**`/ace:setup` auto-appends a marker-fenced source line to the right shell rc.**
+
+Follow-up to 0.13.296 (Nova v1.1.0 PAT migration). The prior PR left one manual step in every operator's first-run: `echo 'source ~/.ace/env.sh' >> ~/.zshrc && exec zsh`. That step has bitten every operator who's done the migration — easy to forget, easy to put in the wrong rc file (on macOS the right answer is `~/.zshenv`, not `~/.zshrc`, because GUI-launched Claude Code inherits its env from launchd which doesn't source `~/.zshrc`).
+
+Now `bin/ace-setup` detects the operator's platform + `$SHELL` and appends a marker-fenced block to the appropriate rc file:
+
+- macOS + zsh → `~/.zshenv`
+- macOS + bash → `~/.bash_profile`
+- Linux + zsh → `~/.zshrc`
+- Linux + bash → `~/.bashrc`
+- other shells → skip with a printed instruction
+
+The marker block:
+
+```
+# >>> ACE managed >>>
+[ -f "$HOME/.ace/env.sh" ] && source "$HOME/.ace/env.sh"
+# <<< ACE managed <<<
+```
+
+Standard pattern used by conda, nvm, rustup, fnm, direnv, VS Code, etc. — operator-triggered, marker-fenced, idempotent (re-runs detect marker + skip), reversible (delete the block). Pass `--no-shell-edit` to opt out.
+
+Post-migration operator flow now collapses to: `/ace:update` → `/ace:setup --force-env` → restart Claude Code. No manual rc edits.
+
+- `bin/ace-setup` — new `--no-shell-edit` flag; new marker-fenced auto-append block after the `~/.ace/env.sh` write (lines 408-516). Picks rc file by `uname -s` + `basename $SHELL`. Touches the rc file if missing. Skips silently if the marker is already present.
+- `bin/ace-doctor` — `nova_shell_env` probe is now rc-file-aware. Three new branches:
+  - marker present in rc + NOVA_API_KEY not in env → "restart Claude Code (Cmd-Q + reopen)"
+  - env.sh exists + rc detected but doesn't source it → "re-run /ace:setup --force-env (since 0.13.298 it auto-appends)"
+  - env.sh exists + rc undetectable → manual fallback instruction
+- `.env.tpl`, `playbook/integrations/nova-integration.md` — sync docs to the new auto-append flow.
+
 ## 0.13.296 — 2026-05-21
 
 **Switch Nova auth from user-scope MCP override to plugin-native PAT path (Nova v1.1.0).**
