@@ -230,6 +230,46 @@ server.tool(
 );
 
 server.tool(
+  'ocs_link_action_to_node',
+  'Link a Custom Action operation to a pipeline node. GET/POST /a/<team>/pipelines/data/<pipeline_id>/ — appends "<custom_action_id>:<operation_id>" to the target node\'s data.params.custom_actions array. String format verified against apps/custom_actions/form_utils.py:make_model_id. Idempotent: skips if the model_id is already present. Typically the target node is an LLMResponseWithPrompt.',
+  {
+    pipeline_id: z.number(),
+    node_id: z.string(),
+    custom_action_id: z.number().int().describe('From `ocs_add_custom_action`.'),
+    operation_id: z.string().describe('The operationId within the custom action\'s api_schema (e.g. "postSessionCompletion").'),
+  },
+  async (args) => result(await composite.linkActionToNode(args)),
+);
+
+server.tool(
+  'ocs_add_custom_action',
+  'Create an OCS Custom Action (an OpenAPI-driven external tool the LLM can call). POST /a/<team>/actions/new/ via the CSRF-protected CustomActionForm (apps/custom_actions/forms.py + views.py:CreateCustomAction). The api_schema field takes an OpenAPI 3.x schema as a JSON or YAML string — operationIds within the schema become the action\'s allowed_operations. Returns action_id, found by scraping /a/<team>/actions/ for the row whose name matches (the create view 302s to the team-manage page without including the new id in the Location). For Connect Interviews this is how the bot posts session_completion or 24hr-expiry back to HQ\'s Inbound API.',
+  {
+    name: z.string(),
+    server_url: z.string().url().describe('Base URL of the target API (e.g. https://www.commcarehq.org).'),
+    api_schema: z.string().describe('OpenAPI 3.x schema as JSON or YAML string. operationIds become the action\'s allowed_operations.'),
+    description: z.string().optional(),
+    prompt: z.string().optional().describe('Additional instructions to the LLM about how to use this action.'),
+    healthcheck_path: z.string().optional().describe('Optional health endpoint path; auto-detected from schema if omitted.'),
+  },
+  async (args) => result(await composite.addCustomAction(args)),
+);
+
+server.tool(
+  'ocs_add_chatbot_event',
+  'Attach a timeout-trigger event to a chatbot. POST /a/<team>/chatbots/<experiment_id>/events/timeout/new/ via the combined _create_event_view (apps/events/views.py) which takes THREE forms in one POST: TimeoutTriggerForm (delay seconds, total_num_triggers, trigger_from_first_message), EventActionForm (action_type), and a per-action-type params form. Returns {ok: true} — the view does NOT expose the new trigger ID in the response (caller must re-list events if they need it). NOTE: OCS events CANNOT directly fire custom actions; action_type must be one of {log, send_message_to_bot, end_conversation, schedule_trigger, pipeline_start}. The Connect Interviews "24hr fires custom action" pattern requires action_type=pipeline_start pointing at a secondary pipeline that contains the custom action.',
+  {
+    experiment_id: z.number(),
+    delay_seconds: z.number().int().positive().describe('Wait time before triggering, in seconds. 86400 = 24 hours.'),
+    total_num_triggers: z.number().int().positive().optional().describe('Number of times to fire (default 1).'),
+    trigger_from_first_message: z.boolean().optional().describe('Trigger relative to the first message vs. last interaction (default false = last).'),
+    action_type: z.enum(['log', 'send_message_to_bot', 'end_conversation', 'schedule_trigger', 'pipeline_start']),
+    action_params: z.record(z.union([z.string(), z.number(), z.boolean()])).optional().describe('Action-type-specific params: pipeline_start needs {pipeline_id, input_type}; send_message_to_bot needs {message_to_bot}; schedule_trigger needs many; log/end_conversation need none.'),
+  },
+  async (args) => result(await composite.addChatbotEvent(args)),
+);
+
+server.tool(
   'ocs_add_pipeline_node',
   'Add a node to a chatbot\'s pipeline graph. GET-mutate-POST the pipeline JSON at /a/<team>/pipelines/data/<pipeline_id>/ — same shape as the existing LLM-patch atoms. Supports splice-into-existing-edge: pass `disconnect_edge: {source:A, target:B}` + `connect_from: A` + `connect_to: B` to turn A→B into A→new→B (the typical pattern for inserting Router or Python nodes between Start and the default LLM). `node_id` is auto-generated as `<node_type>-<5hex>` (matching OCS UI convention) if omitted. Returns the chosen `node_id`. Server-side validation errors surface as PipelineValidationError.',
   {

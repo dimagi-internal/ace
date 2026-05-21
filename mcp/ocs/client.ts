@@ -42,6 +42,51 @@ export interface OcsClient {
     disconnect_edge?: { source: string; target: string };
   }): Promise<{ node_id: string }>;
 
+  /**
+   * Attach a timeout-trigger event to a chatbot.
+   * POSTs the combined TimeoutTriggerForm + EventActionForm + action-params
+   * to /a/<team>/chatbots/<experiment_id>/events/timeout/new/. The view
+   * doesn't return the trigger ID, so this atom returns `{ok: true}` only.
+   */
+  addChatbotEvent(args: {
+    experiment_id: number;
+    delay_seconds: number;
+    total_num_triggers?: number;
+    trigger_from_first_message?: boolean;
+    action_type: 'log' | 'send_message_to_bot' | 'end_conversation' | 'schedule_trigger' | 'pipeline_start';
+    action_params?: Record<string, string | number | boolean>;
+  }): Promise<{ ok: true }>;
+
+  /**
+   * Create a Custom Action (OpenAPI-driven external tool the LLM can call).
+   * POSTs the CustomActionForm to /a/<team>/actions/new/. Required:
+   * name, server_url, api_schema (OpenAPI 3.x as JSON/YAML string).
+   * Optional: description, prompt, healthcheck_path. Returns the new
+   * action_id, found by scraping the actions home page (the create view
+   * doesn't include the id in the redirect Location).
+   */
+  addCustomAction(args: {
+    name: string;
+    server_url: string;
+    api_schema: string;
+    description?: string;
+    prompt?: string;
+    healthcheck_path?: string;
+  }): Promise<{ action_id: number }>;
+
+  /**
+   * Link a custom-action operation to a pipeline node. The node's
+   * `params.custom_actions` array gets `<custom_action_id>:<operation_id>`
+   * appended (per OCS's apps/custom_actions/form_utils.py:make_model_id).
+   * Typically the target node is an LLMResponseWithPrompt.
+   */
+  linkActionToNode(args: {
+    pipeline_id: number;
+    node_id: string;
+    custom_action_id: number;
+    operation_id: string;
+  }): Promise<{ ok: true }>;
+
   setChatbotSystemPrompt(args: {
     experiment_id: number;
     prompt: string;
