@@ -15,7 +15,7 @@
 
 {{scope_intro}}
 
-For each engagement, the Partner will:
+For each engagement, the partner will:
 
 <<<BULLETS_SCOPE_WILL_START>>>
 
@@ -23,7 +23,7 @@ For each engagement, the Partner will:
 
 <<<BULLETS_SCOPE_WILL_END>>>
 
-The Partner will not:
+The partner will not:
 
 <<<BULLETS_SCOPE_WILL_NOT_START>>>
 
@@ -74,7 +74,7 @@ A unit qualifies as "verified" and is payable under this Work Order only when al
 | 7 | {{week_7_dates}} | {{week_7_activities}} |
 | 8 | {{week_8_dates}} | {{week_8_activities}} |
 
-The Partner will flag any timeline risk in writing to Dimagi within 24 hours of identification.
+The partner will flag any timeline risk in writing to Dimagi within 24 hours of identification.
 
 ## 6. Payment Terms
 
@@ -89,7 +89,7 @@ Dimagi's total financial commitment under this Work Order is USD {{wo_total_not_
 | 1 | Mobilization advance | {{wo_mobilization_advance_pct}}% | {{wo_mobilization_amount}} | {{wo_mobilization_trigger}} | {{wo_mobilization_timing}} |
 | 2 | Final reconciliation | {{wo_reconciliation_pct}}% | {{wo_reconciliation_amount}} | {{wo_reconciliation_trigger}} | {{wo_reconciliation_timing}} |
 
-Dimagi will pay only for verified units at the per-visit (or per-session, per archetype) rate proposed in the Partner's solicitation response.
+Dimagi will pay only for verified units at the per-visit (or per-session, per archetype) rate proposed in the partner's solicitation response.
 
 ## 7. Roles and Responsibilities
 
@@ -111,7 +111,7 @@ Dimagi will pay only for verified units at the per-visit (or per-session, per ar
 
 ### 8.1 Permissions
 
-The Partner is responsible for securing all in-country permissions required to conduct the field activities, including:
+The partner is responsible for securing all in-country permissions required to conduct the field activities, including:
 
 <<<BULLETS_PERMISSIONS_START>>>
 
@@ -119,7 +119,7 @@ The Partner is responsible for securing all in-country permissions required to c
 
 <<<BULLETS_PERMISSIONS_END>>>
 
-The Partner will provide Dimagi with copies of all written permissions or notifications obtained.
+The partner will provide Dimagi with copies of all written permissions or notifications obtained.
 
 ### 8.2 Ethics
 
@@ -127,7 +127,7 @@ The Partner will provide Dimagi with copies of all written permissions or notifi
 
 ### 8.3 Security and Duty of Care
 
-The Partner retains sole responsibility for the safety and security of its field teams. The Partner will not deploy FLWs to areas where the prevailing security situation, in the Partner's professional judgement, poses an unacceptable risk.
+The partner retains sole responsibility for the safety and security of its field teams. The partner will not deploy FLWs to areas where the prevailing security situation, in the partner's professional judgement, poses an unacceptable risk.
 
 ## 9. Data Handling
 
@@ -144,7 +144,7 @@ The Partner retains sole responsibility for the safety and security of its field
 
 ## Signatures
 
-IN WITNESS WHEREOF, the parties hereto have caused this Work Order to be executed by their authorized agents as of the date first above written, and annexed to the parties' MSA dated __________________.
+IN WITNESS WHEREOF, the parties hereto have caused this Work Order to be executed by their authorized agents as of the date first above written, and annexed to the parties' Master Services Agreement (MSA) dated __________________.
 
 | Subcontractor | Dimagi, Inc. |
 |---|---|
