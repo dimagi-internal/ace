@@ -223,7 +223,7 @@ export class RestBackend implements ConnectClient {
         const flat: string[] = [];
         for (const [key, val] of Object.entries(parsed)) {
           if (Array.isArray(val)) {
-            const msgs = val.map((v) => String(v));
+            const msgs = val.map((v) => typeof v === 'string' ? v : JSON.stringify(v));
             fields[key] = msgs;
             flat.push(...msgs.map((m) => (key === 'non_field_errors' ? m : `${key}: ${m}`)));
           } else if (typeof val === 'string') {

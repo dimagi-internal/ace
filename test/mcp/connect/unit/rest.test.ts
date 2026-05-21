@@ -122,6 +122,41 @@ describe('RestBackend.createProgram', () => {
     });
   });
 
+  it('JSON-stringifies nested-object values in 400 error body (not "[object Object]")', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [{
+        status: 400,
+        body: {
+          payment_units: [
+            { amount: ['This field is required.'] },
+            { name: ['Must be unique.'] },
+          ],
+        },
+      }],
+      captured,
+    );
+    const backend = new RestBackend({ baseUrl, csrfToken, request });
+    await expect(backend.createProgram({
+      organization_slug: 'pm-org',
+      name: 'Test',
+      description: 'A program',
+      delivery_type: 'nutrition',
+      budget: 500000,
+      currency: 'USD',
+      country: 'United States of America',
+      start_date: '2026-05-01',
+      end_date: '2026-12-31',
+    })).rejects.toMatchObject({
+      fieldErrors: {
+        payment_units: [
+          '{"amount":["This field is required."]}',
+          '{"name":["Must be unique."]}',
+        ],
+      },
+    });
+  });
+
   it('throws HttpError on 5xx', async () => {
     const captured: CapturedRequest[] = [];
     const request = makeRequestContext(
