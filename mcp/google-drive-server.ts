@@ -567,7 +567,27 @@ server.tool(
   },
 );
 
-// 11a. Copy an existing Drive file server-side
+// 11a. Create a new Google Doc from markdown content, using Drive's native conversion
+server.tool(
+  'drive_create_doc_from_markdown',
+  'Create a new Google Doc by uploading markdown content and letting Drive natively convert it to a styled Google Doc. Drive interprets `# `/`## `/`### ` as Heading 1/2/3 (so the Docs outline sidebar works), `**bold**` and `*italic*` as native runs, `[text](url)` as hyperlinks, `-`/`*` lists as native bullets, fenced ``` blocks as monospace, and pipe tables as native tables. Use this instead of `drive_create_file` whenever you want a rendered gdoc — `drive_create_file` uploads as `text/plain` and the markdown markers remain literal characters. Same find-or-create semantics: by default reuses any same-name file under the parent (default true). The parent MUST live on a Shared Drive — same Service Account quota constraint as `drive_create_file`.',
+  {
+    name: z.string().describe('Name for the new Google Doc'),
+    markdown: z.string().describe('Markdown body. Drive converts: # → H1, ## → H2, ### → H3, **bold**, *italic*, [text](url), -/* lists, ```code```, | tables |. Smart quotes / em-dashes / accents round-trip cleanly via UTF-8.'),
+    parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive.'),
+    findOrCreate: z.boolean().optional().describe('When true (default), reuse an existing same-name file under the parent and overwrite its content; otherwise always create a new sibling. Default: true.'),
+  },
+  async ({ name: fileName, markdown, parentFolderId, findOrCreate }) => {
+    try {
+      const r = await handleCreateDocFromMarkdown({ name: fileName, markdown, parentFolderId, findOrCreate }, drive);
+      return result(r);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 11b. Copy an existing Drive file server-side
 server.tool(
   'drive_copy_file',
   'Copy an existing Google Drive file server-side into a parent folder, optionally with a new name. Wraps Drive\'s native files.copy(), so a Google Doc copy stays a Google Doc, a markdown copy stays markdown, etc. — preserves mimeType and content without ferrying bytes through the model. Use this instead of drive_read_file + drive_create_file whenever the goal is "copy file X to folder Y" — it saves a full content round-trip (~6KB+ per PDD-sized doc and ~minutes of model serialization latency). The destination parent MUST live on a Shared Drive — same Service Account quota constraint as drive_create_file.',
@@ -1086,6 +1106,87 @@ export async function handleCreateFile(
 
   return {
     id: fileId,
+    name: created.data.name!,
+    webViewLink: created.data.webViewLink ?? undefined,
+    reused: false,
+  };
+}
+
+/**
+ * Create-doc-from-markdown handler, exported for unit testing.
+ *
+ * Companion to `handleCreateFile`. Where `handleCreateFile` uploads body
+ * as `text/plain` (markdown markers stay literal), this one uploads as
+ * `text/markdown` with target mime `application/vnd.google-apps.document`
+ * — Drive's import service natively converts headings, bold/italic, lists,
+ * links, code fences, and tables into native Doc runs. The Docs outline
+ * sidebar populates correctly because the converted paragraphs use
+ * `HEADING_1/2/3` named styles.
+ *
+ * Find-or-create semantics match `handleCreateFile`: a same-name non-trashed
+ * file under the parent is overwritten in place, no duplicate created.
+ */
+export async function handleCreateDocFromMarkdown(
+  args: { name: string; markdown: string; parentFolderId: string; findOrCreate?: boolean },
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{ id: string; name: string; webViewLink?: string; reused?: boolean }> {
+  const { name, markdown, parentFolderId, findOrCreate = true } = args;
+  const retry = <T>(op: () => Promise<T>) => withTransientRetry(op, opts);
+  const guard = await assertParentOnSharedDrive(parentFolderId, driveClient);
+  if (!guard.ok) throw new Error(guard.message);
+
+  // Body uploaded as text/markdown so Drive's import service runs the
+  // markdown→gdoc conversion (headings, bold, lists, links, code, tables).
+  // Target mime is the native Google Doc — Drive picks the conversion path
+  // from the source/target mime pair.
+  const bodyMedia = {
+    mimeType: 'text/markdown',
+    body: Readable.from(Buffer.from(markdown, 'utf-8')),
+  };
+
+  if (findOrCreate) {
+    const escaped = name.replace(/'/g, "\\'");
+    const list = await retry(() => driveClient.files.list({
+      q: `name='${escaped}' and '${parentFolderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`,
+      fields: 'files(id, name, webViewLink)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    }));
+    const existing = list.data.files?.[0];
+    if (existing?.id) {
+      // Overwrite existing file's content with the new markdown.
+      // files.update with a markdown body re-runs the conversion server-side.
+      await retry(() => driveClient.files.update({
+        fileId: existing.id!,
+        media: bodyMedia,
+        fields: 'id',
+        supportsAllDrives: true,
+      }));
+      return {
+        id: existing.id,
+        name: existing.name!,
+        webViewLink: existing.webViewLink ?? undefined,
+        reused: true,
+      };
+    }
+  }
+
+  // Single-call create+convert: requestBody.mimeType = target gdoc,
+  // media.mimeType = source markdown. Drive's import service does the work.
+  const created = await retry(() => driveClient.files.create({
+    requestBody: {
+      name,
+      mimeType: 'application/vnd.google-apps.document',
+      parents: [parentFolderId],
+    },
+    media: bodyMedia,
+    fields: 'id, name, webViewLink',
+    supportsAllDrives: true,
+  }));
+
+  return {
+    id: created.data.id!,
     name: created.data.name!,
     webViewLink: created.data.webViewLink ?? undefined,
     reused: false,
