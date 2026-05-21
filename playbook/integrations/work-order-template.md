@@ -14,7 +14,9 @@ The script:
 2. Uploads it to Drive as a Google Doc named "ACE Work Order Template".
 3. Prints the resulting file_id to stdout.
 
-Record the file_id in 1Password at `AI-Agents/ACE - Open Chat Studio/Config/work_order_template_id`, then re-run `op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --force` (or `/ace:setup --force-env`).
+Record the file_id in 1Password at `AI-Agents/ACE - Drive Templates/work_order_template_id`, then re-run `op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --force` (or `/ace:setup --force-env`).
+
+If `ACE - Drive Templates` doesn't exist yet, create it as a `Secure Note` item in the `AI-Agents` vault. The same item holds `training_deck_template_id` (and any future Drive template IDs ACE skills copy from). Keep OCS-specific IDs (e.g. `golden_template_id`) in `ACE - Open Chat Studio` — `ACE - Drive Templates` is the home for Drive file-id references that aren't tied to a specific product.
 
 ## Refresh
 
