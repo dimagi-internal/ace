@@ -96,6 +96,39 @@ consequence. Compose the Learn-walk-to-completion as inline
 chains; the post-Learn → Deliver transition uses the
 `deliver-launch.yaml` palette (see § 3's entry-point template).
 
+**Emitting the legacy Learn-launch-only Deliver smoke is a `[BLOCKER]`,
+not a tolerated deferral.** Earlier versions of this section allowed
+the skill to write a `composition_status: legacy-learn-launch` escape
+field in `app-test-cases.yaml` that documented "the faithful walk
+isn't written yet — defer to a later run." That escape is now closed:
+
+- **Do NOT write `composition_status: legacy-learn-launch`** (or any
+  similar `composition_status` field naming a known-broken shape) on
+  any `is_smoke: true` journey. The field's presence is itself a
+  contract violation.
+- If you cannot compose the faithful walk-Learn-to-completion +
+  `deliver-launch.yaml` chain (e.g., the Learn-app blueprint has
+  fewer / more modules than expected, the static palette can't be
+  composed cleanly, etc.), halt with a `[BLOCKER]` and a structured
+  `auto_surfaced` entry naming the specific composition step that
+  blocked you. Do NOT ship a placeholder Deliver smoke that lands in
+  Learn — the load-bearing assertion of this skill is that every
+  `is_smoke: true` recipe physically reaches its target app's first
+  form. A recipe that demonstrably cannot do so is a structural
+  failure, not a deferred-work item.
+- The `mobile_validate_recipe` syntactic check is necessary but not
+  sufficient: a Learn-launch-only recipe validates clean and still
+  lands in the wrong app. The contract is "reaches Deliver's first
+  form," not "validates as YAML."
+
+Caught in vivo on malaria-itn-app run 20260517-1829 (the second time —
+PR #354 fixed the Phase 6 pre-flight; this tightening closes the
+upstream Phase 3 escape that produced the legacy recipe in the first
+place). The faithful composition is non-trivial (~60+ Maestro steps
+across 6 Learn modules + assessments + the Connect transition + the
+Deliver entry) but it IS what the contract requires. Defer only by
+halting; never by writing a known-broken recipe.
+
 ### Step 3: For each journey, compose the Maestro recipe
 
 Compose each recipe using the static palette pattern (one Maestro
@@ -446,6 +479,15 @@ in `templates/app-test-cases-template.yaml`.
   `unresolved: []` (Step 3.4 gate; non-empty means the APK selector
   map is missing rows and Phase 6 will block)
 - Every `forms_exercised` entry resolves to a real Nova form ID
+- **No `composition_status: legacy-*` (or any composition-escape
+  field) on any `is_smoke: true` journey entry.** Per § Step 2's
+  closed-escape rule, ship a faithful walk-Learn-to-completion +
+  `deliver-launch.yaml` Deliver smoke or halt with a `[BLOCKER]`.
+  Writing `composition_status: legacy-learn-launch` (the malaria-itn-app
+  20260517-1829 incident shape) is a structural failure — the recipe
+  validates as YAML but cannot reach its target app's first form, and
+  the field's presence is the agent self-declaring the contract
+  violation. Reject pre-write; never tolerate.
 
 **If any check fails, halt with a `[BLOCKER]` in the gate brief.**
 Do NOT write `app-test-cases.yaml` until the recipe coverage matches
