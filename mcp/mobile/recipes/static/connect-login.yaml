@@ -6,8 +6,12 @@
 #      MENU"). Tap it directly; no nav drawer needed.
 #   2. Post-install signed-out — nav drawer with "Sign In / Register"
 #      button. Open drawer, tap sign-in.
-#   3. Already signed in — "New Opportunities" home is visible after either
-#      path; short-circuit with a screenshot.
+#   3. Already signed in — the Connect home is visible after either path
+#      (anchored on `connect_fragment_jobs_list` id, which is present
+#      whether or not the user has fresh invites — "New Opportunities" is
+#      a section header that only renders pre-claim, so id is the
+#      stable anchor across the claim transition). Short-circuit with a
+#      screenshot.
 #
 # After landing on the phone-entry screen, this recipe:
 #   - Dismisses the Google Play Services phone-hint sheet that pops on
@@ -69,13 +73,17 @@ appId: org.commcare.dalvik
       - tapOn:
           id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
 
-# Already signed in? "New Opportunities" home is the stable post-login
-# anchor. If we landed here directly (either path bypasses to it), screenshot
-# and stop cleanly.
+# Already signed in? The Connect home is anchored on the
+# `connect_fragment_jobs_list` id — present whether or not the user has
+# fresh invites. The "New Opportunities" text used to anchor here, but
+# that section only renders pre-claim; on a re-run where the user has
+# already claimed the opp, the text disappears but the list container
+# stays. Surfaced live in malaria-itn-app run 20260521-1114 Phase 6 J1
+# (2026-05-21).
 - runFlow:
     when:
       visible:
-        text: "New Opportunities"
+        id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
     commands:
       - takeScreenshot: "connect-login-already-signed-in"
       - stopApp
@@ -155,9 +163,13 @@ appId: org.commcare.dalvik
       - inputText: ${PIN}
       - pressKey: Enter
 
-# Land at the Connect home (text-anchor; stable across APK rebuilds).
+# Land at the Connect home — anchored on `connect_fragment_jobs_list`
+# id, which is present whether the user has fresh invites (New
+# Opportunities section header rendered) OR only claimed opps (no header,
+# just In Progress tiles). Text anchor "New Opportunities" was previously
+# used but it disappears once every invite has been claimed.
 - extendedWaitUntil:
     visible:
-      text: "New Opportunities"
+      id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
     timeout: 30000
 - takeScreenshot: "connect-login-home"
