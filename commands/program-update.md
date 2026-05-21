@@ -30,7 +30,7 @@ Read by the propose pass (read-only):
 
 Writes (one artifact):
 
-- A native-formatted Google Doc in the source folder, named `Proposed input updates — YYYY-MM-DD HHMM`, with one `Heading 1` per section: `Summary`, `Targets`, `Actions`, `Unmapped`. Each action is a `Heading 2` of the form `<ACTION_TYPE> <opp-slug>` so `--apply` can parse the doc top-to-bottom.
+- A native-formatted Google Doc in `ACE/ai-input-creation-runs/` (NOT the source folder — the source folder is the program team's working area; ACE's audit trail lives under the ACE drive root). Named `Proposed input updates — <source-folder-name> — YYYY-MM-DD HHMM`. One `Heading 1` per section: `Summary`, `Targets`, `Actions`, `Unmapped`. Each action is a `Heading 2` of the form `<ACTION_TYPE> <opp-slug>: <short identifier>` so `--apply` can parse the doc top-to-bottom. Find-or-create the `ai-input-creation-runs/` subfolder on every run.
 
 Render contract (important — Drive renders gdocs natively, not raw markdown):
 

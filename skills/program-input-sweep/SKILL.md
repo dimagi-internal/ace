@@ -25,7 +25,7 @@ A program team moves fast on a related set of opportunities (malaria EOIs, COVID
 
 ## Products
 
-- A native-formatted Google Doc written into the source folder, named `Proposed input updates — YYYY-MM-DD HHMM`. The doc IS the proposal — no sibling YAML/JSON state file.
+- A native-formatted Google Doc named `Proposed input updates — <source-folder-name> — YYYY-MM-DD HHMM`, written to `ACE/ai-input-creation-runs/` (not the source folder — that's the program team's working area, not ACE's audit space). The doc IS the proposal — no sibling YAML/JSON state file. Find-or-create the `ai-input-creation-runs/` subfolder under `ACE_DRIVE_ROOT_FOLDER_ID` on every run; it accumulates one doc per propose+apply cycle as the durable audit trail.
 
 ## Process
 
@@ -56,7 +56,8 @@ A program team moves fast on a related set of opportunities (malaria EOIs, COVID
 
 5. **Build the proposal doc.**
    - Emit the proposal as a markdown string (the natural format for LLM-authored content). Use `#`/`##`/`###` for top sections / actions / sub-fields, `**bold**` for emphasis, `[text](url)` for source links, fenced ``` blocks for proposed `opp.yaml` bodies, `-` lists for bullets.
-   - Call `drive_create_doc_from_markdown` with `{ name, markdown, parentFolderId: <source-folder-id> }`. Drive's import service converts headings, bold/italic, lists, links, code fences, and tables to native Doc runs — the Docs outline sidebar populates because the converted paragraphs use `HEADING_1/2/3` named styles. Apply (Phase 2) reads the resulting gdoc back via `docs_get` and parses by paragraph style, not by markdown markers.
+   - **Render the proposal statelessly.** Describe what the propose pass observes right now — counts, target opps, action proposals, unmapped items. Do NOT reference "prior runs", "what was just applied", "this verifies idempotence", etc. A second invocation against an already-populated state should produce a doc with `0` actions in each category — that's the empty-diff signal — not a meta-commentary on the previous run. The operator decides whether to look at the audit trail of past propose docs in `ACE/ai-input-creation-runs/`; the skill itself doesn't reach across runs.
+   - Find-or-create the `ai-input-creation-runs/` folder under `ACE_DRIVE_ROOT_FOLDER_ID`, then call `drive_create_doc_from_markdown` with `{ name, markdown, parentFolderId: <ai-input-creation-runs-id> }`. Drive's import service converts headings, bold/italic, lists, links, code fences, and tables to native Doc runs — the Docs outline sidebar populates because the converted paragraphs use `HEADING_1/2/3` named styles. Apply (Phase 2) reads the resulting gdoc back via `docs_get` and parses by paragraph style, not by markdown markers.
    - Markdown structure (Drive converts to native gdoc with these styles):
      ```markdown
      # <opp-slug> (existing | NEW — will be created)
