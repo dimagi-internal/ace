@@ -64,14 +64,23 @@ If it fails:
 - `nova_auth: HTTP 401` → key invalid or revoked. Rotate at
   `commcare.app/settings`, update the 1Password item in place, then
   `/ace:setup --force-env`.
-- `nova_auth` not present → `bin/ace-setup`'s user-scope MCP override
-  hasn't been registered. Re-run `/ace:setup --force-env`.
+- `nova_shell_env: NOVA_API_KEY not in shell env` → operator hasn't
+  sourced `~/.ace/env.sh` from their shell rc. Run the remediation
+  command doctor prints (`echo 'source ~/.ace/env.sh' >> ~/.zshrc &&
+  exec zsh`) and restart Claude Code so the Nova plugin re-reads the
+  env.
+- `nova_shell_env: stale user-scope nova: MCP override detected` →
+  pre-1.1.0 setup carried over. `/ace:setup` removes it idempotently;
+  if doctor still flags it, run `claude mcp remove nova --scope user`
+  manually and restart Claude Code.
 
-Halt Phase 3 until `nova_auth` is green. Authentication uses the
-long-lived API-key path (voidcraft-labs/nova-plugin#9) — there is no
-OAuth refresh-token rotation, no per-session sign-in, no needs-auth
-cache to manage, and Claude Code's `~/.claude/.credentials.json` does
-not hold Nova credentials under this path.
+Halt Phase 3 until `nova_auth` and `nova_shell_env` are both green.
+Authentication uses Nova plugin v1.1.0's PAT path (voidcraft-labs/nova-plugin#11
+/ #13 / #16) — there is no OAuth refresh-token rotation, no per-session
+sign-in, no needs-auth cache to manage, and Claude Code's
+`~/.claude/.credentials.json` does not hold Nova credentials under this
+path. The plugin's `headersHelper` reads `NOVA_API_KEY` from the
+Claude Code parent shell's env.
 
 #### Step 0b: Probe HQ binding
 

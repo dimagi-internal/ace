@@ -406,46 +406,51 @@ $DIAG"
   fi
 fi
 
-# ---- Nova MCP user-scope override (API-key auth)
+# ---- Nova PAT wiring via ~/.ace/env.sh
 #
-# The Nova plugin auto-registers an OAuth-mode MCP entry at
-# https://mcp.commcare.app/mcp. Concurrent ACE worktrees on one identity
-# trip a refresh-token cascade upstream of disk (better-auth/oauth-provider
-# deletes all (userId, clientId) refresh rows when a stale token is
-# presented). Adding a user-scope entry at the same URL with a bearer
-# header makes Claude Code's URL-signature dedup suppress the plugin entry
-# and route every Nova call through API-key auth instead. See
-# voidcraft-labs/nova-plugin#9 and `playbook/integrations/nova-integration.md`.
+# Nova plugin v1.1.0 reads NOVA_API_KEY from the Claude Code process's
+# shell env via a headersHelper in its .mcp.json. ACE stores
+# NOVA_API_KEY in ${CLAUDE_PLUGIN_DATA}/.env (loaded only into ACE's own
+# MCP subprocesses, not the parent shell), so we write a sourceable
+# shim at ~/.ace/env.sh and the operator adds `source ~/.ace/env.sh`
+# to their shell rc once per machine. See
+# `playbook/integrations/nova-integration.md` and
+# voidcraft-labs/nova-plugin#11 / #13 / #16.
 #
-# Idempotent: removes any existing user-scope nova entry, re-adds with the
-# current key so rotations propagate. Skipped silently when NOVA_API_KEY is
-# missing (e.g. operator hasn't minted one yet) — doctor surfaces it.
+# Also removes any stale user-scope `nova:` MCP entry left over from the
+# pre-1.1.0 override workaround — that path is obsolete and shadows the
+# plugin's PAT-aware MCP entry under Claude Code's URL-dedup.
 if [ -f "$ENV_OUT" ]; then
   NOVA_KEY="$(grep -E '^NOVA_API_KEY=' "$ENV_OUT" | head -1 | sed -E 's/^NOVA_API_KEY=//' | sed -E 's/^"(.*)"$/\1/')"
 else
   NOVA_KEY=""
 fi
-if [ -z "$NOVA_KEY" ] || [ "${NOVA_KEY#op://}" != "$NOVA_KEY" ]; then
-  warn "nova_mcp: NOVA_API_KEY not resolved in $ENV_OUT" \
-       "mint a key at https://commcare.app/settings as the ACE Gmail identity, save to 1Password item \"ACE - Nova\" field \`api_key\`, then re-run /ace:setup --force-env. Until then, /nova:* will fall back to OAuth and break under concurrent worktree use."
-elif ! command -v claude >/dev/null 2>&1; then
-  warn "nova_mcp: claude CLI not on PATH — cannot register user-scope override" \
-       "install Claude Code CLI, then re-run /ace:setup"
-else
-  # Remove any prior user-scope entry; ignore failure (entry may not exist).
+# Always clean up any pre-1.1.0 user-scope override (idempotent; the
+# entry may not exist). Required even when NOVA_API_KEY is missing —
+# a stale override with a revoked key 401s every Nova call.
+if command -v claude >/dev/null 2>&1; then
   claude mcp remove nova --scope user >/dev/null 2>&1 || true
-  ADD_OUT="$(claude mcp add nova "https://mcp.commcare.app/mcp" \
-              --transport http \
-              --scope user \
-              --header "Authorization: Bearer $NOVA_KEY" 2>&1)"
-  ADD_RC=$?
-  if [ "$ADD_RC" -eq 0 ]; then
-    pass "nova_mcp: user-scope bearer override registered at https://mcp.commcare.app/mcp"
-  else
-    fail "nova_mcp: claude mcp add failed (exit $ADD_RC)" "see error below; usually means the claude CLI version doesn't support --header or --scope user yet
-$(printf '%s\n' "$ADD_OUT" | sed 's/^/    /')"
-    mark_fail
-  fi
+fi
+if [ -z "$NOVA_KEY" ] || [ "${NOVA_KEY#op://}" != "$NOVA_KEY" ]; then
+  warn "nova_env: NOVA_API_KEY not resolved in $ENV_OUT" \
+       "mint a key at https://commcare.app/settings as the ACE Gmail identity, save to 1Password item \"ACE - Nova\" field \`api_key\`, then re-run /ace:setup --force-env."
+else
+  ACE_ENV_DIR="$HOME/.ace"
+  ACE_ENV_FILE="$ACE_ENV_DIR/env.sh"
+  mkdir -p "$ACE_ENV_DIR"
+  # Atomic write: temp file + mv so a concurrent shell sourcing env.sh
+  # never sees a half-written file.
+  ACE_ENV_TMP="$(mktemp "${ACE_ENV_FILE}.XXXXXX")"
+  cat > "$ACE_ENV_TMP" <<EOF
+# Managed by bin/ace-setup — do not edit by hand.
+# Source this file from ~/.zshrc / ~/.bashrc so Nova plugin v1.1.0's
+# headersHelper can read NOVA_API_KEY from the shell env.
+#   echo 'source ~/.ace/env.sh' >> ~/.zshrc && exec zsh
+export NOVA_API_KEY="$NOVA_KEY"
+EOF
+  chmod 600 "$ACE_ENV_TMP"
+  mv "$ACE_ENV_TMP" "$ACE_ENV_FILE"
+  pass "nova_env: wrote $ACE_ENV_FILE (source it from your shell rc; see /ace:doctor for remediation)"
 fi
 
 # ---- Auto-update hook (opt-in)
