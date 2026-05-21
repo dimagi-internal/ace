@@ -30,9 +30,20 @@ ACE_TEMPLATES_FOLDER_ID=<folder id> WORK_ORDER_BOOTSTRAP_FORCE=1 \
 
 The old template is trashed (recoverable for 30 days in Drive) and a new one is created. Record the new file_id in 1Password.
 
-## Token contract
+## Template structure
 
-The skill replaces these `{{...}}` tokens in the template:
+The template has six real Google Docs tables (preserved through markdown→gdoc upload):
+
+1. **Header** — 4 rows × 2 cols (WO Number / Date / Title / Period of Performance).
+2. **Timeline** — 9 rows × 3 cols (header + 8 weeks). Cols: Week / Dates / Activities.
+3. **Payment Schedule** — 3 rows × 6 cols (header + 2 milestones). Cols: # / Milestone / % of Cap / Amount (USD) / Trigger / Expected Timing.
+4. **RACI** — 12 rows × 3 cols (header + 11 responsibility rows). Cols: Responsibility / Dimagi / Partner.
+5. **Data Handling** — 9 rows × 2 cols (header + 8 standard fields).
+6. **Signatures** — 2 rows × 2 cols, side-by-side Subcontractor + Dimagi blocks. Dimagi cell is hardcoded (Lucina Tse, COO, Cambridge MA).
+
+Each cell that varies per work-order contains one `{{snake_case}}` token. The skill fills cells via Drive Docs `replaceAllText` — never multi-line strings into a single cell.
+
+## Token contract
 
 | Token | Source |
 |---|---|
@@ -41,18 +52,20 @@ The skill replaces these `{{...}}` tokens in the template:
 | `{{wo_date}}` | today (ISO) |
 | `{{wo_period_of_performance}}` | `wo-period-of-performance` decision |
 | `{{background_body}}` | PDD Problem Statement + Intervention Design |
-| `{{scope_body}}` | Archetype-branched |
+| `{{scope_body}}` | Archetype-branched prose |
 | `{{geographic_coverage_body}}` | PDD Target Population |
 | `{{primary_deliverable_body}}` | PDD Success Metrics + Evidence Model |
 | `{{verified_unit_body}}` | PDD Evidence Model Layer A |
 | `{{reporting_body}}` | `wo-reporting-cadence` |
-| `{{timeline_table}}` | PDD Timeline |
+| `{{week_N_dates}}`, `{{week_N_activities}}` (N=1..8) | PDD Timeline per-week rows |
 | `{{wo_total_not_to_exceed_usd}}` | `wo-total-not-to-exceed-usd` decision |
-| `{{payment_schedule_table}}` | `wo-payment-schedule-split` + `wo-mobilization-advance-pct` |
-| `{{roles_raci_table}}` | Archetype-derived |
+| `{{wo_mobilization_advance_pct}}`, `{{wo_mobilization_amount}}`, `{{wo_mobilization_trigger}}`, `{{wo_mobilization_timing}}` | Payment milestone 1 (from `wo-payment-schedule-split` + `wo-mobilization-advance-pct`) |
+| `{{wo_reconciliation_pct}}`, `{{wo_reconciliation_amount}}`, `{{wo_reconciliation_trigger}}`, `{{wo_reconciliation_timing}}` | Payment milestone 2 |
+| `{{raci_N_responsibility}}`, `{{raci_N_dimagi}}`, `{{raci_N_partner}}` (N=1..11) | Archetype-derived RACI |
 | `{{permissions_body}}`, `{{ethics_body}}` | Template defaults + PDD scope |
-| `{{data_handling_table}}` | Template defaults + PDD data-subject treatment |
-| `{{pdd_link}}` | `phases.design.products.pdd.file_id` URL |
+| `{{data_project_overview}}`, `{{data_subjects}}`, `{{data_personal_info}}`, `{{data_purpose}}`, `{{data_security}}`, `{{data_partner_measures}}`, `{{data_storage_location}}`, `{{data_protection}}` | Per-field cells (templated defaults + PDD's data-subject treatment) |
+| `{{partner_signatory_name}}`, `{{partner_signatory_title}}`, `{{partner_address}}` | Signature block left cell |
+| `{{pdd_link}}` | `phases.design.products.pdd.file_id` Drive URL |
 | `{{annexure_b_placeholder}}` | "To be provided" if no opp-specific annexure |
 
-Editing the template adds or removes tokens — make sure the skill's `## Process step 5` lists every token the template uses.
+Editing the template adds or removes tokens — make sure the skill's `## Process` step 5 lists every token the template uses. The skill code never inserts multi-line strings into a single cell; if a section needs multiple lines, the template uses a multi-row table.
