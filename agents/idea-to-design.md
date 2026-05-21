@@ -12,6 +12,7 @@ phase_display: Idea to Design
 phase_ordinal: 1
 skills:
   - { name: idea-to-pdd, has_judge: true, qa_skill: idea-to-pdd-qa, eval_skill: idea-to-pdd-eval }
+  - { name: pdd-to-work-order, has_judge: true, qa_skill: pdd-to-work-order-qa, eval_skill: pdd-to-work-order-eval }
 ---
 
 # Idea-to-Design Agent (Phase 1)
@@ -80,11 +81,42 @@ Unless `--no-evals` was passed AND QA verdict is `pass`, invoke the `idea-to-pdd
 - This is the independent QUALITY grader (post-0.13.88 the rubric is quality-only — structural correctness lives in QA above). A `verdict: fail` here does NOT halt the run on its own — the Phase 1→2 gate uses the producing skill's verdict files and `[BLOCKER]` concerns pause per the orchestrator's Per-Mode Pause Matrix.
 - If QA verdict was `incomplete`, this step is **skipped** (eval emits `verdict: incomplete` mirroring QA's outcome).
 
+### Step 2: PDD → Work Order
+Invoke the `pdd-to-work-order` skill.
+- Inputs (already in subagent context from Step 1 — do NOT re-read):
+  - `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (the PDD)
+  - `ACE/<opp-name>/runs/<run-id>/decisions.yaml` (load-bearing decisions)
+- Output:
+  - `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order.gdoc` (re-runs create `pdd-to-work-order-2.gdoc`, etc.)
+  - `run_state.yaml.phases.design.products.work_order` block
+  - Appended `wo-*` rows in `decisions.yaml` (merge-only)
+- **Gate (review mode):** present the work-order URL for approval before continuing.
+
+### Step 2.4: PDD-to-Work-Order QA (structural pass/fail)
+
+Invoke the `pdd-to-work-order-qa` skill — runs 8 static structural checks against the produced work order.
+
+- Input:
+  - `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order.gdoc` (latest)
+  - `ACE/<opp-name>/runs/<run-id>/decisions.yaml`
+- Output: `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order-qa_result.yaml`
+- **QA gates eval:** if `verdict: fail`, dispatch the producer with each `failures[].auto_fix_hint`, then re-run QA. Halt with `verdict: incomplete` when the producer can no longer make progress on the same failures. NEVER silently proceed to eval when QA failed.
+
+### Step 2.5: PDD-to-Work-Order eval (independent quality re-grade)
+Unless `--no-evals` was passed AND QA verdict is `pass`, invoke the `pdd-to-work-order-eval` skill.
+- Inputs: work-order gdoc + PDD + decisions.yaml (all in subagent context).
+- Output: `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order-eval_verdict.yaml`
+- If QA verdict was `incomplete`, this step is **skipped** (eval emits `verdict: incomplete`).
+
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-design_summary.md`,
 then write the `phases.idea-to-design` block per `agents/ace-orchestrator.md § Phase
 Write-Back Contract`. Required top-level keys on the patch: `phases`, `last_actor`,
 `last_actor_at`.
+
+The phase summary at `1-design/idea-to-design_summary.md` MUST list both:
+- PDD: `phases.design.products.pdd.file_id` (Drive URL)
+- Work Order: `phases.design.products.work_order.file_id` (Drive URL)
 
 The approved PDD at `1-design/idea-to-pdd.md` is the input for Phase 2
 (`scenarios-and-acceptance`), which derives test prompts and expected
