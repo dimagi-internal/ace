@@ -340,13 +340,25 @@ server.tool(
 );
 
 // Graceful self-cleanup: when the MCP subprocess is told to exit
-// (Claude Code closing the session, host shutdown, manual kill), drop
-// our session lock so a sibling allocator doesn't see a stale lock and
-// uselessly kill processes we already released. The reaper handles the
-// hard-kill case (-9, OOM-kill, crash) by checking PID liveness, so
-// this signal-handler path is just an optimization for the graceful
-// case. Best-effort: any failure here is irrelevant because the next
-// session's reaper will catch the leak via PID-liveness probing.
+// (Claude Code closing the session, host shutdown, manual kill), KILL
+// the adb/qemu daemons we spawned on our allocated ports, THEN drop
+// our session lock.
+//
+// The kill-before-release order is load-bearing. An earlier version
+// of this handler released the lock first and called it good — but
+// adb/qemu daemonize via double-fork and outlive the MCP that spawned
+// them, so the moment the lock was gone, future reapers had no record
+// of which ports to clean and the daemons leaked forever. Live-
+// surfaced 2026-05-21 during the parallel-session test cycle: cross-
+// session orphans accumulated because graceful shutdowns weren't
+// killing daemons. Reproducer pattern: spawn MCP → mobile_ensure_avd_running
+// → exit MCP gracefully → adb on 5037 + qemu on 5554 still running,
+// no lock at ~/.ace/sessions/* to point at them.
+//
+// The hard-kill case (-9, OOM-kill, crash) is still covered by the
+// PID-liveness-probing reaper: the lock SURVIVES the kill, future
+// allocator sees a stale lock, kills processes on its ports, removes
+// the lock. So either path produces the same end state.
 //
 // We don't register `process.on('exit', ...)` because that handler
 // must be sync and ESM `import` is async; the SIGINT/SIGTERM/SIGHUP
@@ -358,10 +370,10 @@ server.tool(
     if (releasing) return;
     releasing = true;
     try {
-      const { releaseSessionLock } = await import('./mobile/session-lock.js');
-      releaseSessionLock(process.pid);
+      const { cleanupSessionDaemons } = await import('./mobile/session-lock.js');
+      cleanupSessionDaemons(process.pid);
     } catch {
-      /* ignore */
+      /* ignore — best-effort */
     }
   };
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {

@@ -34,6 +34,7 @@ import { Readable } from 'node:stream';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
+  acquireSessionLock,
   lockPathForPid,
   reapStaleSessions,
   SESSION_LOCK_DIR,
@@ -240,6 +241,101 @@ describe('session-lock E2E (multi-process parallel-session protocol)', () => {
     expect(result.surviving_locks).toContain(`${b.pid}.lock.json`);
     expect(fs.existsSync(lockPathForPid(a.pid))).toBe(false);
     expect(fs.existsSync(lockPathForPid(b.pid))).toBe(true);
+  });
+
+  it('SIGTERM-driven cleanup kills daemons on lock ports before releasing the lock', async () => {
+    // This test models the exact production scenario: a subprocess
+    // (the "MCP") acquires a lock, then spawns a "daemon" subprocess
+    // that survives independently (mimicking adb fork-server's
+    // double-fork behavior). On SIGTERM, the MCP runs cleanupSessionDaemons
+    // which looks up live PIDs on its lock's ports, SIGKILLs them,
+    // then removes the lock.
+    //
+    // We can't test the *actual* mobile-server.ts SIGTERM handler
+    // without spinning up the full MCP stdio protocol. Instead we
+    // spawn a subprocess that calls cleanupSessionDaemons directly,
+    // which is what the SIGTERM handler in mobile-server.ts does.
+    const TEST_PORT = 60100;
+
+    // Step 1: spawn a "daemon" — a detached subprocess that binds the
+    // test port and survives independent of any parent.
+    const daemonProc = spawn(
+      'npx',
+      [
+        '--yes',
+        'tsx',
+        '-e',
+        `
+          import * as net from 'node:net';
+          const server = net.createServer().listen(${TEST_PORT}, '127.0.0.1', () => {
+            console.log('DAEMON_LISTENING ' + process.pid);
+          });
+          setInterval(() => {}, 60_000);
+        `,
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'], detached: true },
+    );
+    daemonProc.unref();
+    let daemonPid = -1;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('daemon never reported LISTENING')), 10_000);
+      daemonProc.stdout?.on('data', (chunk) => {
+        const m = String(chunk).match(/DAEMON_LISTENING (\d+)/);
+        if (m) {
+          clearTimeout(timer);
+          daemonPid = Number.parseInt(m[1], 10);
+          resolve();
+        }
+      });
+    });
+    expect(isPidAlive(daemonPid)).toBe(true);
+    // Brief settle so lsof sees the listener — listen() resolves
+    // before the kernel publishes the binding for cross-process
+    // queries on some macOS versions.
+    await new Promise((r) => setTimeout(r, 100));
+
+    try {
+      // Step 2: write a lock for ourselves pointing at the daemon's port
+      const FAKE_MCP_PID = process.pid; // use our pid so cleanup is self-targeted
+      acquireSessionLock({
+        mcp_pid: FAKE_MCP_PID,
+        started_at: new Date().toISOString(),
+        adb_port: TEST_PORT,
+        emulator_port: TEST_PORT + 1, // unused, but lock requires it
+        avd_name: 'sigterm-test',
+      });
+      expect(fs.existsSync(lockPathForPid(FAKE_MCP_PID))).toBe(true);
+
+      // Step 3: invoke cleanupSessionDaemons — same code the SIGTERM
+      // handler in mobile-server.ts calls.
+      const { cleanupSessionDaemons } = await import('../../../mcp/mobile/session-lock.js');
+      const result = cleanupSessionDaemons(FAKE_MCP_PID);
+
+      // Step 4: verify daemon was killed
+      expect(result.killed_pids).toContain(daemonPid);
+      // Wait for OS reap
+      for (let i = 0; i < 50; i++) {
+        if (!isPidAlive(daemonPid)) break;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      expect(isPidAlive(daemonPid)).toBe(false);
+
+      // Step 5: verify lock was removed
+      expect(result.lock_removed).toBe(true);
+      expect(fs.existsSync(lockPathForPid(FAKE_MCP_PID))).toBe(false);
+    } finally {
+      // Belt+braces cleanup
+      try {
+        if (daemonPid > 0 && isPidAlive(daemonPid)) process.kill(daemonPid, 'SIGKILL');
+      } catch {
+        /* ignore */
+      }
+      try {
+        daemonProc.kill('SIGKILL');
+      } catch {
+        /* ignore */
+      }
+    }
   });
 
   it('reaper with --all (all:true) removes EVERY lock including the alive sibling', async () => {
