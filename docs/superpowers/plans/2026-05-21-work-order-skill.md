@@ -32,7 +32,7 @@
 **Modify:**
 - `agents/idea-to-design.md` — add Step 2 / 2.4 / 2.5; update frontmatter `skills:` array
 - `.env.tpl` — add `WORK_ORDER_TEMPLATE_ID` 1P reference
-- `lib/artifact-manifest.ts` — register new artifacts (`work-order.gdoc`, `pdd-to-work-order-qa_result.yaml`, `pdd-to-work-order-eval_verdict.yaml`)
+- `lib/artifact-manifest.ts` — register new artifacts (`pdd-to-work-order.gdoc`, `pdd-to-work-order-qa_result.yaml`, `pdd-to-work-order-eval_verdict.yaml`)
 - `skills/_qa-decisions.md` — add row for `pdd-to-work-order-qa` (status: has-qa)
 
 ---
@@ -53,7 +53,7 @@ Append to the artifact list (alphabetical-ish by path within `1-design/` is fine
 
 ```ts
   {
-    path: '1-design/work-order.gdoc',
+    path: '1-design/pdd-to-work-order.gdoc',
     producedBy: 'pdd-to-work-order',
     consumedBy: [
       'pdd-to-work-order-qa',
@@ -61,7 +61,7 @@ Append to the artifact list (alphabetical-ish by path within `1-design/` is fine
     ],
     phase: 'design',
     required: false,
-    description: 'Contractual Work Order draft derived from the PDD and decisions.yaml. Generic by default — Partner identity is a placeholder unless an LLO was supplied. Re-runs create work-order-2.gdoc, work-order-3.gdoc, etc.; products.work_order in run_state.yaml points at the latest. Parallel to Phase 8 solicitation, not a replacement. Spec: docs/superpowers/specs/2026-05-21-work-order-skill-design.md',
+    description: 'Contractual Work Order draft derived from the PDD and decisions.yaml. Generic by default — Partner identity is a placeholder unless an LLO was supplied. Re-runs create pdd-to-work-order-2.gdoc, pdd-to-work-order-3.gdoc, etc.; products.work_order in run_state.yaml points at the latest. Parallel to Phase 8 solicitation, not a replacement. Spec: docs/superpowers/specs/2026-05-21-work-order-skill-design.md',
   },
   {
     path: '1-design/pdd-to-work-order-qa_result.yaml',
@@ -803,7 +803,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 
 ## Products
 
-- `ACE/<opp-name>/runs/<run-id>/1-design/work-order.gdoc` — the work-order Google Doc (re-runs create `work-order-2.gdoc`, `work-order-3.gdoc`, etc.)
+- `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order.gdoc` — the work-order Google Doc (re-runs create `pdd-to-work-order-2.gdoc`, `pdd-to-work-order-3.gdoc`, etc.)
 - `run_state.yaml.phases.design.products.work_order` — `{title, file_id}` typed handoff. This skill is the sole writer.
 - Appended `wo-*` rows in `ACE/<opp-name>/runs/<run-id>/decisions.yaml` (merge-only — never overwrites existing rows).
 
@@ -835,7 +835,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 4. **Append `wo-*` rows to `decisions.yaml`** via `update_yaml_file` with merge-only semantics. Never overwrite existing rows. Required keys per row per `lib/decisions-schema.ts`: `id`, `phase: 1-design`, `skill: pdd-to-work-order`, `question`, `default`, `options_considered`, `source`, `status`. Optional `notes`.
 
 5. **Render the work-order template to a Google Doc.**
-   - `docs_copy_template(templateId=<WORK_ORDER_TEMPLATE_ID from env>, parent=<run-folder file_id>, name="Work Order — <opp-title>")`. If the run already has a `work-order.gdoc`, name the new one `Work Order — <opp-title> (#2)`, etc.
+   - `docs_copy_template(templateId=<WORK_ORDER_TEMPLATE_ID from env>, parent=<run-folder file_id>, name="Work Order — <opp-title>")`. If the run already has a `pdd-to-work-order.gdoc`, name the new one `Work Order — <opp-title> (#2)`, etc.
    - `docs_batch_update` with token replacements. Tokens use `{{...}}` snake_case:
      - `{{wo_number}}`, `{{opp_title}}`, `{{wo_date}}` (today, ISO), `{{wo_period_of_performance}}`
      - `{{background_body}}` (synthesized from PDD's Problem Statement + Intervention Design + any named downstream consumer)
@@ -950,7 +950,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 producer | `1-design/work-order.gdoc` (latest) | the work order under structural check |
+| Phase 1 producer | `1-design/pdd-to-work-order.gdoc` (latest) | the work order under structural check |
 | Phase 1 producer | `decisions.yaml` | required `wo-*` decision-row presence check |
 
 ## Products
@@ -976,7 +976,7 @@ The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as im
 
 ## Process
 
-1. **Read the work-order artifact.** Resolve the latest `work-order.gdoc` (the one referenced by `phases.design.products.work_order.file_id` in `run_state.yaml`). Read its body via `drive_read_file`.
+1. **Read the work-order artifact.** Resolve the latest `pdd-to-work-order.gdoc` (the one referenced by `phases.design.products.work_order.file_id` in `run_state.yaml`). Read its body via `drive_read_file`.
 
 2. **Read decisions.yaml** via `drive_read_file`.
 
@@ -1047,7 +1047,7 @@ If `pdd-to-work-order-qa` returned `verdict: incomplete`, this skill is **skippe
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 producer | `1-design/work-order.gdoc` (latest) | the artifact under quality re-grade |
+| Phase 1 producer | `1-design/pdd-to-work-order.gdoc` (latest) | the artifact under quality re-grade |
 | Phase 1 producer | `1-design/idea-to-pdd.md` | source-of-truth for PDD alignment check |
 | Phase 1 producer | `decisions.yaml` | source-of-truth for decisions traceability check |
 | Phase 1 QA | `1-design/pdd-to-work-order-qa_result.yaml` | gating signal |
@@ -1151,7 +1151,7 @@ Invoke the `pdd-to-work-order` skill.
   - `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (the PDD)
   - `ACE/<opp-name>/runs/<run-id>/decisions.yaml` (load-bearing decisions)
 - Output:
-  - `ACE/<opp-name>/runs/<run-id>/1-design/work-order.gdoc` (re-runs create `work-order-2.gdoc`, etc.)
+  - `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order.gdoc` (re-runs create `pdd-to-work-order-2.gdoc`, etc.)
   - `run_state.yaml.phases.design.products.work_order` block
   - Appended `wo-*` rows in `decisions.yaml` (merge-only)
 - **Gate (review mode):** present the work-order URL for approval before continuing.
@@ -1161,7 +1161,7 @@ Invoke the `pdd-to-work-order` skill.
 Invoke the `pdd-to-work-order-qa` skill — runs 8 static structural checks against the produced work order.
 
 - Input:
-  - `ACE/<opp-name>/runs/<run-id>/1-design/work-order.gdoc` (latest)
+  - `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order.gdoc` (latest)
   - `ACE/<opp-name>/runs/<run-id>/decisions.yaml`
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order-qa_result.yaml`
 - **QA gates eval:** if `verdict: fail`, dispatch the producer with each `failures[].auto_fix_hint`, then re-run QA. Halt with `verdict: incomplete` when the producer can no longer make progress on the same failures. NEVER silently proceed to eval when QA failed.
@@ -1321,7 +1321,7 @@ Pick one whose PDD is in `1-design/idea-to-pdd.md`.
 ```
 
 Expected:
-- `1-design/work-order.gdoc` appears in Drive.
+- `1-design/pdd-to-work-order.gdoc` appears in Drive.
 - `decisions.yaml` has new `wo-*` rows.
 - `run_state.yaml.phases.design.products.work_order` is populated.
 
@@ -1428,7 +1428,7 @@ If the change includes any MCP-server-side changes (it does not in this PR), als
 - **Skill files are stateless LLM-instruction documents.** Don't try to write Python/TS code "for" a SKILL.md — the LLM follows the instructions at runtime. `checks.ts` is the only TS file; it's pure functions.
 - **`docs_copy_template` + `docs_batch_update`** are MCP atoms — use them via the gdrive MCP, not direct Google API calls in skill code. Skill code uses the MCP layer; only the bootstrap script touches Google API directly.
 - **`decisions.yaml` merge semantics.** Use `update_yaml_file` with `merge: 'two-level'` (or whatever the existing pattern is — check how `idea-to-pdd` writes its decisions). Never overwrite existing rows. If a `wo-*` row already exists from a prior run of this skill, leave it (the new run picks the next free WO# variant from the gdoc name).
-- **Re-run semantics.** Each `/ace:step pdd-to-work-order` creates a NEW gdoc (`work-order-2.gdoc`, `work-order-3.gdoc`, ...) and updates `phases.design.products.work_order.file_id` to point at the latest. Older gdocs stay in the run folder as audit trail.
+- **Re-run semantics.** Each `/ace:step pdd-to-work-order` creates a NEW gdoc (`pdd-to-work-order-2.gdoc`, `pdd-to-work-order-3.gdoc`, ...) and updates `phases.design.products.work_order.file_id` to point at the latest. Older gdocs stay in the run folder as audit trail.
 - **Dimagi signatory is hardcoded** (Lucina Tse, COO) in the template — not parameterized. If a second signatory is ever needed, that's a follow-up PR that templatizes the Dimagi signature block.
 - **Phase 8 still runs.** This skill is parallel to the solicitation, not a replacement. The work order may be signed independently after the solicitation is formally "awarded" to the pre-named LLO.
 

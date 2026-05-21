@@ -51,7 +51,7 @@ Out of scope:
 All reads use parallel `drive_read_file`; context is trusted across steps per the agent's read-redundancy rules.
 
 ### Products
-- `ACE/<opp>/runs/<run-id>/1-design/work-order.gdoc` — the contract, formatted as a clean Google Doc.
+- `ACE/<opp>/runs/<run-id>/1-design/pdd-to-work-order.gdoc` — the contract, formatted as a clean Google Doc.
 - `run_state.yaml.phases.design.products.work_order` — `{title, file_id}` typed handoff. This skill is the sole writer.
 - `ACE/<opp>/runs/<run-id>/decisions.yaml` — appended `wo-*` rows (merge-only, never overwrites existing rows).
 
@@ -168,7 +168,7 @@ Per-dimension `pass | partial | fail`. Two or more non-pass → `verdict: fail` 
 ### Step 2: PDD → Work Order
 Invoke the `pdd-to-work-order` skill.
 - Inputs: PDD + decisions.yaml (already in subagent context from Step 1 — do NOT re-read).
-- Output: 1-design/work-order.gdoc, products.work_order in run_state.yaml,
+- Output: 1-design/pdd-to-work-order.gdoc, products.work_order in run_state.yaml,
   appended wo-* rows in decisions.yaml.
 - Gate (review mode): present the work-order URL for approval.
 
@@ -223,7 +223,7 @@ When `--dry-run` is active:
 ## Resolved decisions
 
 - **Template provisioning:** bootstrapped via `scripts/bootstrap-work-order-template.ts` (mirrors `scripts/bootstrap-ocs-golden-template.ts`). One-time per deployment; writes the resulting template file_id to `.env` as `WORK_ORDER_TEMPLATE_ID`.
-- **Re-runs:** each invocation creates a NEW gdoc. Older work-order drafts remain in the run folder as `work-order.gdoc`, `work-order-2.gdoc`, etc. Sole writer of `products.work_order` in `run_state.yaml` updates the pointer to the latest one. New `wo-*` decision rows are still merge-only (no duplicates).
+- **Re-runs:** each invocation creates a NEW gdoc. Older work-order drafts remain in the run folder as `pdd-to-work-order.gdoc`, `pdd-to-work-order-2.gdoc`, etc. Sole writer of `products.work_order` in `run_state.yaml` updates the pointer to the latest one. New `wo-*` decision rows are still merge-only (no duplicates).
 - **Signature block:** Dimagi signatory is hardcoded to Lucina Tse, COO (with the Cambridge MA address from the malaria example) for now. Revisit if/when a second signatory is needed.
 
 ## Non-goals

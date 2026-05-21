@@ -189,7 +189,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Structural QA verdict on idea-to-pdd.md (binary pass/fail per lib/qa-types.ts schema). Gates idea-to-pdd-eval — eval is skipped (verdict: incomplete) if QA fails irrecoverably. Produced by the new idea-to-pdd-qa skill; first migration of the QA/Eval split principle (PR #146).',
   },
   {
-    path: '1-design/work-order.gdoc',
+    path: '1-design/pdd-to-work-order.gdoc',
     producedBy: 'pdd-to-work-order',
     consumedBy: [
       'pdd-to-work-order-qa',
@@ -197,11 +197,12 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     ],
     phase: 'design',
     required: false,
-    description: 'Contractual Work Order draft derived from the PDD and decisions.yaml. Generic by default — Partner identity is a placeholder unless an LLO was supplied. Re-runs create work-order-2.gdoc, work-order-3.gdoc, etc.; products.work_order in run_state.yaml points at the latest. Parallel to Phase 8 solicitation, not a replacement. Spec: docs/superpowers/specs/2026-05-21-work-order-skill-design.md',
+    description: 'Contractual Work Order draft derived from the PDD and decisions.yaml. Generic by default — Partner identity is a placeholder unless an LLO was supplied. Re-runs create pdd-to-work-order-2.gdoc, pdd-to-work-order-3.gdoc, etc.; products.work_order in run_state.yaml points at the latest. Parallel to Phase 8 solicitation, not a replacement. Spec: docs/superpowers/specs/2026-05-21-work-order-skill-design.md',
   },
   {
     path: '1-design/pdd-to-work-order-qa_result.yaml',
     producedBy: 'pdd-to-work-order-qa',
+    role: 'qa-result',
     consumedBy: ['ace-orchestrator', 'pdd-to-work-order-eval'],
     phase: 'design',
     required: false,
@@ -210,6 +211,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: '1-design/pdd-to-work-order-eval_verdict.yaml',
     producedBy: 'pdd-to-work-order-eval',
+    role: 'verdict',
     consumedBy: ['ace-orchestrator', 'opp-eval'],
     phase: 'design',
     required: false,
