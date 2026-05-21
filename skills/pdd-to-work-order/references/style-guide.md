@@ -175,3 +175,17 @@ These are common docx features that Dimagi external documents do NOT use. Don't 
 ## Source of truth
 
 This style was derived from Dimagi work order v3 (RDT-DFHF, May 2026) and is meant to capture intentional design choices, not idiosyncrasies. If a future Dimagi document deliberately departs from these conventions, update this guide rather than carrying inconsistencies forward.
+
+## Live template state (2026-05-21)
+
+The live `WORK_ORDER_TEMPLATE_ID` Google Doc was retrofitted via `docs_batch_update` to match this spec end-to-end:
+- 36pt margins all sides
+- Work Sans cascade across body + tables
+- Title (HEADING_1): 18pt bold Deep Purple `#16006D`, centered
+- Section headers (HEADING_2 — `1. Background`, …, `9. Data Handling`, `Signatures`, `Annexures`): 14pt bold Deep Purple
+- Subsection headers (HEADING_3 — `4.1`, `4.2`, `6.1`, `6.2`, `8.1`, `8.2`, `8.3`): 12pt bold Charcoal `#37352F`
+- Default footer (centered, Work Sans 7pt grey-blue `#949EAE`): `Cambridge, Massachusetts, USA ｜ Cape Town, South Africa ｜ New Delhi, India ｜ www.dimagi.com`
+
+Note: this is a slightly simplified palette vs the colleague's original style-guide.md (which calls for sectioned H2 bottom borders + Connect Indigo `#3843D0` accent borders + alternating-row data tables). The retrofit applies the high-leverage 80% — font + color + header palette — without the per-table border manipulation. Add those in a follow-up if needed; doing so requires per-table `updateTableCellStyle` + `updateTableRowStyle` requests against each of the 6 tables in the template.
+
+All templates live under Drive `ACE/templates/`. The retrofit is structurally invisible to the `pdd-to-work-order` skill: it still `docs_copy_template`s the same `WORK_ORDER_TEMPLATE_ID` and gets a styled copy.
