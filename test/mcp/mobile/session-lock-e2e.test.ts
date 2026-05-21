@@ -30,7 +30,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
-import { Readable, Writable } from 'node:stream';
+import { Readable } from 'node:stream';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -53,7 +53,11 @@ const TEST_EMU_PORT_B = 60556;
 
 type LockHolder = {
   pid: number;
-  proc: ChildProcessByStdio<Writable, Readable, Readable>;
+  // `stdio: ['ignore', 'pipe', 'pipe']` gives stdin=null, hence the
+  // null in the ChildProcessByStdio first slot. The lock-holder
+  // subprocess doesn't read stdin — it just acquires the lock and
+  // hangs on an interval.
+  proc: ChildProcessByStdio<null, Readable, Readable>;
 };
 
 /**
