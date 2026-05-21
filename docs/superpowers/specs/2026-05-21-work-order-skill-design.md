@@ -220,11 +220,11 @@ When `--dry-run` is active:
 - Skip emailing any admin-group summary if relevant.
 - State tracks as `dry-run-success`.
 
-## Open questions
+## Resolved decisions
 
-- **Template provisioning:** does this ship with a pre-built template in 1Password, or does the operator create one as part of setup? Recommend: ship with a pre-built template via a `scripts/bootstrap-work-order-template.ts` similar to OCS bootstrap.
-- **Re-runs:** if the skill runs twice on the same run-id (e.g., human re-invokes via `/ace:step`), does it overwrite the existing gdoc or create a new one? Recommend: find-or-update on the gdoc (same file_id stays stable), append new `wo-*` rows only if not already present.
-- **Signature-block customization:** the malaria example hardcodes Lucina Tse, COO. Is that universal? Recommend: yes for now; revisit if needed.
+- **Template provisioning:** bootstrapped via `scripts/bootstrap-work-order-template.ts` (mirrors `scripts/bootstrap-ocs-golden-template.ts`). One-time per deployment; writes the resulting template file_id to `.env` as `WORK_ORDER_TEMPLATE_ID`.
+- **Re-runs:** each invocation creates a NEW gdoc. Older work-order drafts remain in the run folder as `work-order.gdoc`, `work-order-2.gdoc`, etc. Sole writer of `products.work_order` in `run_state.yaml` updates the pointer to the latest one. New `wo-*` decision rows are still merge-only (no duplicates).
+- **Signature block:** Dimagi signatory is hardcoded to Lucina Tse, COO (with the Cambridge MA address from the malaria example) for now. Revisit if/when a second signatory is needed.
 
 ## Non-goals
 
