@@ -1442,7 +1442,7 @@ server.tool(
   },
 );
 
-mcp.tool(
+server.tool(
   'docs_finalize_bullets',
   'Finalize an ACE-template-rendered Google Doc by applying real Google Docs bullet styling to paragraphs enclosed in `<<<BULLETS_<NAME>_START>>>` / `<<<BULLETS_<NAME>_END>>>` anchor pairs, then deleting the two anchor paragraphs. Call AFTER `docs_copy_template` when the template wraps variable-length bulleted regions in anchor pairs (so the skill\'s cell-level token replacement can emit `\\n`-separated bullet items without per-bullet token slots). Idempotent — re-runs are no-ops once all anchors have been processed. Returns the count of anchor pairs processed.',
   {
