@@ -20,6 +20,8 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 | Phase 1 producer | `decisions.yaml` | load-bearing values (rate, FLW count, working language, candidate LLO, etc.) — read as-is |
 | Run-root | `inputs-manifest.yaml` | optional reference for partner identity if it was supplied as input |
 | Operator (optional) | `--llo <slug>` flag | overrides partner-name placeholder |
+| Skill-local reference | `references/writing-style.md` | **Required reading before synthesizing any prose token.** Dimagi voice, modal verbs, partner-naming convention, bold-use rules, soft commercial language, canonical terminology (LLO/FLW/POC/verified visit), sentence-level templates, what to avoid. |
+| Skill-local reference | `references/style-guide.md` | Visual spec for the rendered Google Doc — consult when updating `templates/work-order-template.md` or the published WORK_ORDER_TEMPLATE_ID gdoc, not per-run. |
 
 ## Products
 
@@ -29,7 +31,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 
 ## Process
 
-1. **Read inputs in parallel.** Issue one `drive_read_file` block for the PDD, decisions.yaml, and inputs-manifest. Trust context across subsequent steps (do not re-read).
+1. **Read inputs in parallel.** Issue one `drive_read_file` block for the PDD, decisions.yaml, and inputs-manifest. Then read the skill-local `references/writing-style.md` once — it governs every prose token you synthesize below. Trust context across subsequent steps (do not re-read).
 
 2. **Determine archetype** from the PDD's frontmatter (`archetype: atomic-visit | focus-group | multi-stage`). The archetype branches the Scope of Work, Verification, Roles RACI, and Payment per-unit sections.
 
@@ -60,6 +62,8 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    - Body tokens for bulleted regions (`{{scope_will_body}}`, `{{scope_will_not_body}}`, `{{verified_unit_body}}`, `{{reporting_body}}`, `{{permissions_body}}`) take a `\n`-separated string with one bullet item per line. `replaceAllText` honors `\n` as paragraph breaks; `docs_finalize_bullets` then bullet-styles each resulting paragraph.
    - Tokens use `{{...}}` snake_case:
    The template has SIX real Google Docs tables (header, timeline, payment schedule, RACI, data handling, signatures). Each cell that varies per work-order contains ONE `{{snake_case}}` token. The skill replaces tokens via `replaceAllText` — one cell-sized value per token. Token groups:
+
+   **Prose-token synthesis — apply `references/writing-style.md` to every body token.** The most load-bearing rules: active voice; `will`/`may`/`must` (never `shall`); "(henceforth, referred to as 'partner')" on first reference then `the partner` throughout; bold reserved for defined terms, negative scope markers, financial commitments, and hard requirements (5–15 spans per page, not 50); no marketing language; spell out acronyms on first use. See the reference doc for sentence-level templates worth reusing verbatim (e.g., the NTE-cap pattern, the verified-deliverable definition, the timeline-risk-flag clause).
 
    **Header + narrative (prose tokens):**
      - `{{wo_number}}`, `{{opp_title}}`, `{{wo_date}}` (today, ISO), `{{wo_period_of_performance}}`
@@ -150,3 +154,4 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-21 | Initial version | ACE team |
+| 2026-05-21 | Add `references/writing-style.md` + `references/style-guide.md`, adapted from `sarvesh-tewari/ace-skills-stewari`; wire writing-style.md into step 1 + prose-token synthesis | ACE team |
