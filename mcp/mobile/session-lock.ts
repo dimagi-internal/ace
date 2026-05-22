@@ -189,6 +189,175 @@ export interface ReapResult {
   killed_pids: number[];
   surviving_locks: string[];
   errors: Array<{ lock: string; error: string }>;
+  /**
+   * PIDs killed by the orphan-scaffold sweep (defense in depth — see
+   * `reapOrphanScaffolds`). Distinct from `killed_pids`, which records
+   * adb/qemu daemons killed via lock-file sweep. Empty array when the
+   * scaffold sweep found nothing (the steady-state case).
+   */
+  killed_scaffold_pids: number[];
+}
+
+/**
+ * Get the parent PID for a given PID. Uses `ps -o ppid= -p <pid>`,
+ * which is POSIX-portable (macOS + Linux). Returns NaN if the PID is
+ * gone, ps is unavailable, or the output can't be parsed.
+ *
+ * Used by `reapOrphanScaffolds` to distinguish reparented-to-init
+ * orphans (PPID=1, the kill targets) from PIDs whose parent is still
+ * alive (e.g. an in-flight vitest run — leave those alone).
+ */
+function getParentPid(pid: number): number {
+  try {
+    const out = execSync(`ps -o ppid= -p ${pid} 2>/dev/null || true`, {
+      encoding: 'utf8',
+      timeout: 2_000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (!out) return NaN;
+    const n = Number.parseInt(out, 10);
+    return Number.isFinite(n) ? n : NaN;
+  } catch {
+    return NaN;
+  }
+}
+
+/**
+ * Pattern for the orphan-scaffold detection. Matches `node` processes
+ * whose command line includes BOTH `session-lock.ts` (the test scaffold
+ * imports it to acquire a lock) AND `setInterval` (the test scaffold's
+ * keepalive — distinguishes from short-lived imports during normal
+ * operation).
+ *
+ * Exported for testability — tests use the same regex to assert the
+ * scaffold signature shape.
+ */
+export const ORPHAN_SCAFFOLD_PATTERN = /session-lock\.ts[\s\S]*setInterval/;
+
+/**
+ * Defense-in-depth sweep for orphaned tsx-test-scaffold processes that
+ * survived their test runner's abrupt termination.
+ *
+ * The session-lock E2E tests (`test/mcp/mobile/session-lock-e2e.test.ts`)
+ * spawn `node tsx -e <code-that-calls-acquireSessionLock-and-hangs>` to
+ * verify the parallel-session protocol. The scaffold writes its lock,
+ * prints `LOCK_WRITTEN <pid>`, then hangs on `setInterval(60_000)` until
+ * the test driver kills it.
+ *
+ * When the test runner is hard-killed (Ctrl-C with no graceful shutdown,
+ * vitest watcher abort, OOM, worktree deletion mid-test, panel close),
+ * `afterEach` doesn't run, so `teardownLockHolder` never executes. The
+ * scaffold's lock file might be cleaned up by a successful prior
+ * `afterEach` from an earlier `it()` in the same suite, OR by the
+ * scaffold's own `releaseSessionLock` on graceful shutdown — BUT the
+ * subprocess tree (npx wrapper + tsx child + node --eval) remains alive
+ * because only one of the two-step `kill(holder.pid)` +
+ * `kill(holder.proc)` calls landed. The orphaned subprocesses are
+ * reparented to launchd/init (PPID=1) and live forever, consuming file
+ * descriptors and (more critically) potentially holding adb/qemu ports
+ * via lsof references even after the lock file is gone.
+ *
+ * The standard `reapStaleSessions` is blind to lock-less orphans — it
+ * only walks `SESSION_LOCK_DIR`. This function pattern-matches the
+ * scaffold's command line and SIGKILLs the orphans.
+ *
+ * Detection signature (intersection):
+ * - command line matches `ORPHAN_SCAFFOLD_PATTERN` (`session-lock.ts`
+ *   AND `setInterval` both present)
+ * - PPID is 1 (process is orphaned to launchd/init — guards against
+ *   killing in-flight test runs whose vitest parent is still alive)
+ * - PID is not the current process (defensive — pgrep can't match the
+ *   pattern against ourselves anyway since this file isn't running
+ *   inside a `tsx -e` shim, but the check costs nothing)
+ *
+ * SIGKILL targets the process group when possible (`-pid`) to catch
+ * both the npx wrapper and the tsx child in one signal; falls back to
+ * single-PID kill if the group kill fails (process wasn't detached).
+ *
+ * No-op on Windows (`pgrep` unavailable; ACE mobile dev is Mac/Linux-
+ * only in practice). Best-effort: every failure is captured and the
+ * sweep continues — a single problematic PID shouldn't block the rest.
+ *
+ * Reproducer: malaria-rdt run 20260522-1002 Phase 6 attempt 2. The
+ * sibling `avd-yt6cu` worktree's test run died mid-suite, leaving 10
+ * hung scaffolds (5 npx wrappers + 5 tsx loader children) with no
+ * lock files, completely invisible to `reapStaleSessions`.
+ */
+export function reapOrphanScaffolds(): {
+  killed_pids: number[];
+  errors: string[];
+} {
+  const result: { killed_pids: number[]; errors: string[] } = {
+    killed_pids: [],
+    errors: [],
+  };
+
+  if (process.platform === 'win32') return result;
+
+  let raw: string;
+  try {
+    // `pgrep -fl` matches against the FULL command line and prints
+    // `<pid> <cmd>` per line. The `|| true` swallows the exit code 1
+    // that pgrep returns when no matches are found — we treat that
+    // as "nothing to do", not an error.
+    raw = execSync(`pgrep -fl 'session-lock\\.ts' 2>/dev/null || true`, {
+      encoding: 'utf8',
+      timeout: 3_000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch (e: any) {
+    result.errors.push(`pgrep failed: ${e?.message ?? e}`);
+    return result;
+  }
+
+  const candidates = raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const m = line.match(/^(\d+)\s+(.+)$/);
+      if (!m) return null;
+      const pid = Number.parseInt(m[1], 10);
+      const cmd = m[2];
+      return Number.isFinite(pid) && pid > 0 && ORPHAN_SCAFFOLD_PATTERN.test(cmd)
+        ? { pid, cmd }
+        : null;
+    })
+    .filter((x): x is { pid: number; cmd: string } => x !== null);
+
+  for (const { pid } of candidates) {
+    if (pid === process.pid) continue; // defensive
+
+    const ppid = getParentPid(pid);
+    if (!Number.isFinite(ppid)) {
+      // Process gone between pgrep and ppid lookup — fine, nothing to do.
+      continue;
+    }
+    if (ppid !== 1) {
+      // Has a live parent — could be an in-flight vitest test scaffold.
+      // Leave it alone.
+      continue;
+    }
+
+    // Orphaned to init. Try process-group kill first (catches detached
+    // siblings); fall back to single-PID kill if the group target
+    // doesn't exist (process wasn't spawned detached).
+    let killed = false;
+    try {
+      process.kill(-pid, 'SIGKILL');
+      killed = true;
+    } catch {
+      try {
+        process.kill(pid, 'SIGKILL');
+        killed = true;
+      } catch (e: any) {
+        result.errors.push(`SIGKILL ${pid}: ${e?.message ?? e}`);
+      }
+    }
+    if (killed) result.killed_pids.push(pid);
+  }
+
+  return result;
 }
 
 /**
@@ -393,7 +562,20 @@ export function reapStaleSessions(opts: { all?: boolean } = {}): ReapResult {
     killed_pids: [],
     surviving_locks: [],
     errors: [],
+    killed_scaffold_pids: [],
   };
+
+  // Defense-in-depth: orphan-scaffold sweep runs FIRST so it can clear
+  // out hung test scaffolds whose lock files are already gone (the
+  // common failure mode — test ran, lock got cleaned, but the
+  // `setInterval` keepalive subprocess wasn't SIGTERM'd). Catches the
+  // class of orphan the lock-file walk below is structurally blind to.
+  // See `reapOrphanScaffolds` for the full rationale.
+  const scaffoldSweep = reapOrphanScaffolds();
+  for (const pid of scaffoldSweep.killed_pids) result.killed_scaffold_pids.push(pid);
+  for (const err of scaffoldSweep.errors) {
+    result.errors.push({ lock: '<scaffold-sweep>', error: err });
+  }
 
   if (!fs.existsSync(SESSION_LOCK_DIR)) return result;
 
