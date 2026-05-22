@@ -1,0 +1,28 @@
+# V1 dry-run domain spec for /ace:interview-domain-bootstrap
+master_domain: ace-interviews-master
+downstream_domain: ace-interviews-test
+hq_owner: ace@dimagi-ai.com
+
+ocs_team_slug: connect-ace
+ocs_stub_template_experiment_id: 12213   # ACE Interviews Stub Template
+
+connect_pm_org: ai-demo-space
+connect_program_id: f65e0633-cdb2-4d93-875a-b237ed241b18   # ACE Interviews Test (already exists)
+country: Nigeria
+currency: NGN
+
+# UCR expressions to create on master then push downstream.
+# Definitions are placeholders for V1 stub; real expressions live on the team's master.
+ucr_expressions:
+  - name: "Register User OCS"
+    type: named_filter
+    definition: { type: "boolean_expression", expression: { type: "property_name", property_name: "xmlns" }, operator: "eq", property_value: "http://commcarehq.org/welcome_form" }
+  - name: "Trigger OCS Bot"
+    type: named_filter
+    definition: { type: "boolean_expression", expression: { type: "property_name", property_name: "xmlns" }, operator: "eq", property_value: "http://commcarehq.org/trigger_bot_form" }
+  - name: "Session Completion API"
+    type: named_filter
+    definition: { type: "boolean_expression", expression: { type: "property_name", property_name: "case_type" }, operator: "eq", property_value: "commcare-user" }
+  - name: "24 hr Expiry API"
+    type: named_filter
+    definition: { type: "boolean_expression", expression: { type: "property_name", property_name: "case_type" }, operator: "eq", property_value: "commcare-user" }
