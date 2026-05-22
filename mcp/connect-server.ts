@@ -506,6 +506,32 @@ server.tool('commcare_create_lookup_table',
   async (args) => runAtom(async () => (await commcareClient()).createLookupTable(args))
 );
 
+server.tool('commcare_list_user_fields',
+  'Read the current custom-user-data field definition for a CommCare HQ domain. GET /a/<domain>/users/user_data/ and parse the <div data-name="custom_fields"> initial_page_data div (HQ\'s standard Django→JS bootstrap). Returns the list of fields (slug, label, is_required, choices, regex) + the list of profiles. Requires can_edit_commcare_users permission; 302s to settings/users/ surface as a typed error.',
+  { domain: z.string() },
+  async (args) => runAtom(async () => (await commcareClient()).listUserFields(args))
+);
+
+server.tool('commcare_set_user_fields',
+  'Write the full custom-user-data field definition for a domain (DESTRUCTIVE — replaces existing). POST CustomDataFieldsForm to /a/<domain>/users/user_data/ with `data_fields` JSON-encoded. Direct form POST bypasses the React/Knockout UI (verified against apps/custom_data_fields/edit_model.py:491). Callers SHOULD list_user_fields first, merge their additions, then call this. The atom doesn\'t do the merge — destructive semantics keep the contract clean.',
+  {
+    domain: z.string(),
+    fields: z.array(z.object({
+      slug: z.string(),
+      label: z.string().optional(),
+      is_required: z.boolean().optional(),
+      choices: z.array(z.string()).optional(),
+      regex: z.string().optional(),
+      regex_msg: z.string().optional(),
+      required_for: z.array(z.string()).optional(),
+      upstream_id: z.string().nullable().optional(),
+    })),
+    profiles: z.array(z.record(z.any())).optional().describe('Profile definitions to preserve. Default: []. Get current via list_user_fields.'),
+    purge_existing: z.boolean().optional().describe('If true, purge user_data on existing users for removed fields. Default false.'),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).setUserFields(args))
+);
+
 server.tool('commcare_list_ucr_expressions',
   'List named UCR expressions / filters on a CommCare HQ domain. POST /a/<domain>/data/ucr_expressions/ with action=paginate via CRUDPaginatedView. Returns id, name, expression_type ("named_expression" | "named_filter"), description, parsed definition JSON. Auth: session (BaseProjectDataView).',
   { domain: z.string(), limit: z.number().int().positive().optional() },
