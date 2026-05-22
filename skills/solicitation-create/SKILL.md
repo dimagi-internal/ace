@@ -175,8 +175,8 @@ contract.
    | `expected_end_date` | string `YYYY-MM-DD` | Phase 4 opp `end_date` if available, else PDD `## Timeline` → end. **NOT** `anticipated_end`. |
    | `estimated_scale` | string | Human-readable summary of expected reach, e.g. "30–50 verified HH visits per LLO; 2–3 LLOs total (90–150 HH end-to-end)". Sourced from PDD `## Target Population` → `Expected reach`. **NOT** `sample_target`. |
    | `contact_email` | string | Operator-monitored address. **NOT** `ace@dimagi-ai.com` (that's the service-account bot). Use `${ACE_SOLICITATION_CONTACT_EMAIL}` env var; halt with `[BLOCKER]` if unset rather than defaulting to the bot inbox. |
-   | `evaluation_criteria` | array of `{name, description, weight, scoring_guide, linked_questions}` | Composed locally — see Step 3. **NOT** `rubric`. **NOT** `[{dimension, criterion, weight}]`. Each criterion MUST have a populated `scoring_guide` and at least one `linked_questions` id. Weights sum to 100 (integers). |
-   | `questions` | array of `{id, text, required, type, framing}` | Composed locally — see Step 4. **NOT** `response_questions`. Field is `text`, not `question`. **Every question MUST have a `framing` field** (1-2 sentence "why we're asking this" preface) — the public template hides empty framings, but the eval rubric and downstream solicitation-review consume the framing. `type` is one of `"textarea"` (default for open-ended), `"multiple_choice"`, `"number"`. |
+   | `evaluation_criteria` | array of `{id, name, description, weight, scoring_guide, linked_questions}` | Composed locally — see Step 3. **NOT** `rubric`. **NOT** `[{dimension, criterion, weight}]`. **`id` is REQUIRED** — kebab-case identifier (e.g. `field-ops-realism`), unique within the rubric. Server rejects criteria without `id` even though the labs atom's documented inputSchema doesn't flag it (see `jjackson/connect-labs#212`). Each criterion MUST also have a populated `scoring_guide` and at least one `linked_questions` id. Weights sum to 100 (integers). |
+   | `questions` | array of `{id, text, required, type}` (+ inlined framing — see below) | Composed locally — see Step 4. **NOT** `response_questions`. Field is `text`, not `question`. `id` is kebab-case (`field-ops-realism`). `type` is one of `"textarea"` (default), `"multiple_choice"`, `"number"`. **Framing handling — current labs reality:** the deployed labs server (as of 2026-05-22) rejects a `framing` key with `INVALID_SCHEMA`. Until `jjackson/connect-labs#212` ships, inline the framing as a prefix in the `text` field using the literal convention `Why we're asking: <framing-sentence>\n\n<actual-prompt>`. Two-line gap between framing and prompt is load-bearing — `solicitation-review` parses the prefix back out on this anchor. Once `connect-labs#212` lands, drop the inline prefix and emit `framing` as a structured field. |
    | `status` | string | `'active'` (publishes immediately; `'draft'` for dry-run mode). |
    | `is_public` | bool | `true` (so unsolicited orgs can find it on the public marketplace). |
    | `connect_opportunity_id` | int | Phase 4 opp internal id (not the UUID). Stored on the record for downstream solicitation-review linkage. |
@@ -314,19 +314,24 @@ contract.
    **Required shape per criterion:**
 
    ```yaml
-   - name: string                # short title, e.g. "Field operations realism"
+   - id: string                  # kebab-case identifier, e.g. "field-ops-realism" — REQUIRED
+     name: string                # short title, e.g. "Field operations realism"
      description: string         # 1-2 sentence explanation of what this measures
      weight: int                 # 5-30, integer; all criteria weights sum to 100
      scoring_guide: string       # what makes a 10/10 vs 5/10 vs 0/10 — concrete and falsifiable
      linked_questions: [string]  # one or more question `id`s from the questions block; each criterion links to ≥1 question
    ```
 
-   **Every field is required.** Specifically, `scoring_guide` and
-   `linked_questions` are NOT optional — the labs template renders both,
-   and an empty `scoring_guide` makes the rubric uninterpretable to
-   responding LLOs. **Weights must sum to 100** (integers — the labs
-   template formats them as `<weight>%`). 5-8 criteria total; more than
-   8 dilutes the signal, fewer than 4 misses dimensions.
+   **Every field is required, including `id`.** The deployed labs server
+   enforces `id` even though the MCP atom's documented inputSchema does
+   not currently flag it (tracked in `jjackson/connect-labs#212`).
+   Derive `id` from `slugify(name)` if you're tempted to elide it.
+   `scoring_guide` and `linked_questions` are NOT optional — the labs
+   template renders both, and an empty `scoring_guide` makes the rubric
+   uninterpretable to responding LLOs. **Weights must sum to 100**
+   (integers — the labs template formats them as `<weight>%`). 5-8
+   criteria total; more than 8 dilutes the signal, fewer than 4 misses
+   dimensions.
 
    **`scoring_guide` shape — what a strong response looks like:**
    Each `scoring_guide` MUST describe (a) what a strong (8-10) answer
@@ -386,11 +391,36 @@ contract.
 
    ```yaml
    - id: string         # short kebab-case, e.g. "field-ops-realism"
-     framing: string    # 1-2 sentences: why this question, what we're looking for
-     text: string       # the actual prompt the LLO reads + responds to
+     text: string       # framing prefix + prompt — see "Framing convention" below
      required: bool     # default true
      type: string       # "textarea" (default), "multiple_choice", "number"
    ```
+
+   **Framing convention (current labs reality).** The deployed labs
+   server rejects a top-level `framing` key on questions (`INVALID_SCHEMA`).
+   Until `jjackson/connect-labs#212` ships, inline the framing inside
+   `text` using the literal anchor `Why we're asking: ` followed by the
+   framing sentence(s), a blank line, then the prompt:
+
+   ```yaml
+   - id: field-ops-realism
+     text: |
+       Why we're asking: a strong response names supervisor:FLW ratios,
+       handles the photo-heavy visit logistics, and treats the mid-pilot
+       checkpoint as a real planning anchor.
+
+       Propose a week-by-week schedule from award through Week 10 closeout,
+       including LLO mobilization, Connect onboarding, Learn calibration,
+       field launch, mid-pilot checkpoint, and closeout.
+     required: true
+     type: textarea
+   ```
+
+   The `Why we're asking: ` prefix + blank-line gap is load-bearing —
+   `solicitation-review` parses the framing back out on this exact
+   anchor. Once `connect-labs#212` lands and the server accepts
+   `framing` as a structured field, drop the inline prefix and emit
+   the framing separately. Until then this is the canonical convention.
 
    **Dedupe by intent.** The PDD's `## Solicitation` → `Response
    template` may list opp-specific questions that overlap with the
@@ -475,7 +505,39 @@ contract.
       shadow programs on first opportunity sync). Surface the Connect
       program name and the list of labs programs the caller can see.
 
-6. **Publish.** Call:
+6. **Publish.**
+
+   **Wire-shape note (current labs reality).** The MCP atom's
+   `tools/list` inputSchema declares `{program_id, data: {...fields...}}`
+   (fields wrapped in `data`). The deployed labs server (as of
+   2026-05-22) instead expects the fields **flat** at the JSON-RPC
+   params level and rejects the `data` envelope with `unknown fields:
+   ['data']`. This is a drift between the documented atom schema and
+   the server validator, tracked in `jjackson/connect-labs#212`.
+
+   Two paths exist while the drift is live:
+
+   - **Preferred:** call the MCP atom as documented (`data: {...}` wrap)
+     and let the proxy translate; the labs MCP server will be updated
+     to accept the wrapped shape once `connect-labs#212` lands. If the
+     MCP call succeeds, you're done.
+   - **Fallback (if MCP atom returns `unknown fields: ['data']`):** POST
+     the JSON-RPC frame directly to `https://labs.connect.dimagi.com/mcp/`
+     with the fields flat at `params.arguments`. Set
+     `Authorization: Bearer ${LABS_MCP_TOKEN}` and
+     `Content-Type: application/json`. Body shape:
+     ```json
+     {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+       "name":"create_solicitation",
+       "arguments":{"program_id":"153","title":"...","description":"...", /* flat fields */}
+     }}
+     ```
+     Parse the `result` envelope to extract `solicitation_id`.
+
+   Either way, the payload field SHAPE (names + types + required-ness)
+   is the same. Only the outer wrap differs.
+
+   Call:
 
    ```
    mcp__connect-labs__create_solicitation(
@@ -545,35 +607,51 @@ contract.
    reports `is_public: true` but the public listing page renders empty
    (verified jjackson/ace e2e malaria-itn-app run 20260517-1829).
 
-7a. **Verify the rendered public page.** After publish, fetch the
-   public URL with `curl -s` and grep for structural signals that
-   confirm each load-bearing section actually rendered:
+7a. **Verify the round-trip via `get_solicitation`.** Immediately after
+   publish (whether via MCP atom or direct JSON-RPC fallback), call
+   `mcp__connect-labs__get_solicitation(solicitation_id=<returned>,
+   program_id=<labs_program_id>)` and assert every load-bearing field
+   round-trips intact. Treat the response as the canonical view of
+   what labs persisted — if it diverges from what you sent, that's
+   either silent-drop (an extra field labs rejected without surfacing)
+   or silent-mutation (labs reformatting something).
 
-   ```bash
-   curl -s "${LABS_BASE_URL}/solicitations/<id>/" | tee /tmp/sol.html
-   ```
+   Required round-trip assertions:
 
-   Required matches (all must be present):
+   - `title` matches what was sent.
+   - `description` length is non-empty and ≥ 80% of the sent length (small whitespace/markdown normalization is OK; 20%+ shrinkage is silent-drop).
+   - `scope_of_work` is a string (not an array) AND length ≥ 80% of sent.
+   - `application_deadline` parses as `YYYY-MM-DD` AND matches the computed deadline.
+   - `expected_start_date` + `expected_end_date` both parse and match.
+   - `estimated_scale` is non-empty.
+   - `contact_email` matches.
+   - `len(questions)` matches sent; every question has `id`, `text`, `required`, `type`; `text` contains the `Why we're asking: ` framing anchor.
+   - `len(evaluation_criteria)` matches sent; every criterion has `id`, `name`, `weight`, `scoring_guide`, `linked_questions` (non-empty); `sum(weights) == 100`.
+   - `is_public: true`; `status: 'active'`; `connect_opportunity_id` matches sent.
 
-   - `<h2[^>]*>.*Description` AND a non-empty markdown body following it
-   - `Application Deadline` AND a parseable date in `Month D, YYYY` form (NOT "No deadline")
-   - `Timeline` AND a non-empty `Mon YYYY — Mon YYYY` value (NOT "TBD — TBD")
-   - `<h2[^>]*>.*Scope of Work` AND markdown bullets / sub-headings (NOT a `['...', '...']` Python repr)
-   - `<h2[^>]*>.*Application Questions` AND `N questions` count text (where N matches len(questions))
-   - `<h2[^>]*>.*Evaluation Criteria` AND `N criteria` count text (where N matches len(evaluation_criteria))
+   **Any miss → `[BLOCKER]`** naming the missing or mutated field +
+   the probable cause (e.g. "scope_of_work returned as an array — labs
+   string→array coerced; check the payload was sent as a single
+   markdown string and not Python-list-coerced upstream"). Do NOT
+   proceed to write `published.md` against a half-persisted solicitation.
 
-   **Any miss → `[BLOCKER]`** naming the missing section + the
-   probable field-name drift (e.g. "Application Deadline reads `No
-   deadline` — likely the payload sent `response_window_days` instead
-   of `application_deadline`"). Do NOT proceed to write
-   `published.md` against a half-rendered solicitation. The class
-   this catches is the silent-echo failure mode where the labs API
-   accepts the create cleanly but the public page is empty.
+   **Why round-trip and not curl-the-public-URL.** The labs
+   `/solicitations/<id>/` detail page currently 302s to `/labs/login/`
+   for unauthenticated visitors even when `is_public: true` — tracked
+   in `jjackson/connect-labs#212`. A vanilla curl gets the login page,
+   not the solicitation. Once `connect-labs#212` ships the public-page
+   ACL fix, add a second verifier step that curls the public URL and
+   greps for the rendered sections (the original Step 7a, surfaced as
+   the structural backstop for the *rendered* layer rather than just
+   the persistence layer). Until then, `get_solicitation` round-trip
+   is the canonical structural check.
 
-   This is the structural backstop for the field-name canonical-schema
-   contract. Verified live on solicitation 3130 (jjackson/ace
-   `malaria-itn-app/20260521-1400`) where all 6 sections were broken
-   simultaneously because the entire payload schema had drifted.
+   This catches the class of bugs where the labs MCP accepts the
+   create cleanly but persisted state diverges from sent payload.
+   Verified live on solicitation 3130 (`malaria-itn-app/20260521-1400`)
+   where all 6 sections were broken simultaneously because the entire
+   payload schema had drifted — round-trip would have caught it at
+   write time instead of human-eye time.
 
 7b. **Verify the round-trip.** Immediately after publish, call:
 
@@ -735,4 +813,5 @@ Each row this skill writes uses `phase: 8-solicitation-management` and
 | 2026-05-15 | Three archetype-branches added for `focus-group`: (1) scope_of_work concatenation in Step 2 — FGD PDD has no `## Learn App Specification` (uses `## Facilitation Protocol` instead); the scope opens with a "PER VERIFIED SESSION, THREE ARTIFACTS" block listing audio + gdoc + 5-field attestation form with explicit "NOT in the form" callout. (2) evaluation_criteria in Step 3 — focus-group goes from a 4-axis sketch to a 6-axis starter rubric (qualitative-research experience, facilitator skill + language, homogeneous-group recruitment, coordinator gdoc-review capacity, audio handling out-of-band, timeline + per-session payment economics). (3) default questions in Step 3 — swap CHW-deployment vocabulary for qualitative-research vocabulary on q1 + q5 + q6. Prompted by `malaria-itn-fgd/20260514-2352` Phase 8 observations. | ACE team |
 | 2026-05-15 | Codify the **"per-unit payment is negotiated, not declared"** design principle at the top of `## Process`. Solicitations express payment as a range with rationale in `scope_of_work` prose; the `questions` block asks the responding LLO to propose their actual rate + why. Closes the loop on the "labs `per_unit_payment` schema gap" surfaced in Phase 8 — it's not a gap, it's an intentional design choice (per-unit shape varies by archetype; the rate is opp-and-LLO-specific and negotiated through the response). | ACE team |
 | 2026-05-21 | **Work-order-as-primary-input + canonical-schema field names + comprehensive-content shape.** Three bundled rewrites prompted by solicitation 3130 on `malaria-itn-app/20260521-1400` where the public page rendered blank Description, "TBD" timeline, "No deadline," Python-list-repr Scope, and zero questions / zero rubric simultaneously. (1) Inputs now read Phase 1's work order (`1-design/pdd-to-work-order.gdoc`) as the primary content source + `decisions.yaml` for later run decisions, alongside the PDD (now used for problem-framing only, not for scope). (2) Field names migrated to the labs canonical schema (`description` not `overview`, `application_deadline` not `response_window_days`, `expected_start_date/_end_date` not `anticipated_*`, `estimated_scale` not `sample_target`, `questions[].text` not `response_questions[].question`, `evaluation_criteria[].name/.scoring_guide/.linked_questions` not `rubric[].dimension/.criterion`; `solicitation_type: 'eoi'` lowercase). Top-level fields not in `solicitations/models.py` (`pass_bar`, `eligibility_criteria`, `geographic_scope`, `per_hh_payment_band_usd`, `budget`) folded into `description`/`scope_of_work` prose. (3) Content shape demands comprehensive prose: `description` 500-800 words foundation-pitch tone; `scope_of_work` 600-1000+ words derived section-by-section from the work order with explicit de-prescription rules (exact dollars → ranges, exact weeks → windows); every question has a required `framing` field; every evaluation criterion has a required `scoring_guide` + `linked_questions`. (4) Added Step 7a — a curl-the-public-URL structural verifier that catches field-name drift at write time instead of at human-eye time. | ACE team |
+| 2026-05-22 | **Align with current labs reality + document the ideal end-state (`jjackson/connect-labs#212`).** Surfaced during the malaria-itn-app `20260521-1400` Phase 8 republish (solicitation 3140). Three labs-side gaps required inline workarounds: (a) atom inputSchema `{data: {...}}` shape vs deployed server's flat-fields validator — added Step 6's wire-shape fallback documenting both paths; (b) `questions[].framing` rejected as unknown key — adopted the literal `Why we're asking: <framing>\n\n<text>` inline anchor convention, load-bearing for `solicitation-review` parsing; (c) `evaluation_criteria[].id` required by server but undocumented in atom inputSchema — added `id` to the required criterion shape with `slugify(name)` as the derivation fallback. Step 7a verifier rewritten from "curl the public URL" to "`get_solicitation` round-trip" because the labs public-detail page now 302s to login for unauthenticated visitors even when `is_public: true` (tracked in `connect-labs#212`). When all four labs items in #212 ship, drop the inline workarounds: emit `framing` as a structured key, drop the wire-shape fallback paragraph, restore the curl-the-public-URL verifier as a second post-round-trip check. | ACE team |
 | 2026-05-22 | **Architecture decision: ACE owns composition; labs validates.** PR #396 had floated a future labs-side `create_solicitation_from_brief` MCP tool that would compose content server-side via labs's `solicitation_agent`. Walked back — operator chose to keep composition in ACE so this skill retains full control over voice, archetype-branched scope, framing/scoring_guide quality, and decisions-log integration (all of which are ACE-context that labs would have to learn). Labs's tightened MCP (forthcoming deploy: `create_solicitation` + `update_solicitation` now validate the canonical schema and fail loudly with `INVALID_SCHEMA` + `error.details.fields` on drift) is the right server-side contribution: schema enforcement, not content generation. This skill is the long-term home for solicitation composition; Step 6's payload shape is bound to labs's `tools/list` inputSchema rather than to a future composer call. Removal of the prior "Removal criteria" line. | ACE team |
