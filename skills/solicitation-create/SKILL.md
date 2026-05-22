@@ -90,6 +90,33 @@ contract.
 
 ## Process
 
+> **Design principle: ACE owns composition; labs validates the schema.**
+> The labs MCP's `create_solicitation` / `update_solicitation` tools
+> validate the payload against labs's canonical solicitation schema
+> (the same schema `solicitations/models.py`'s @property accessors
+> read and the public-detail template renders) and reject drift with
+> `INVALID_SCHEMA` + per-field error details under `error.details.fields`.
+> Labs does NOT compose content — there is no `create_solicitation_from_brief`
+> tool, no "standard 6 questions" server-side, no labs-side AI agent
+> that this skill defers to. ACE owns the entire compose-the-content
+> path: voice, archetype branching, scope-of-work transformation from
+> the work order, question framings, evaluation `scoring_guide`s,
+> decisions-log integration. The labs contract is structural enforcement,
+> not content delegation.
+>
+> Operational consequence: when labs surfaces an `INVALID_SCHEMA` error
+> on publish, read `error.details.fields` to find the offending field,
+> fix the composition in this skill (or in the calling agent's prompt
+> if the issue is content-shape vs schema), and retry. Do NOT work
+> around schema errors by writing top-level fields outside the
+> validated set — those fields silently drop at the labs persistence
+> layer even when validation lets them through.
+>
+> Before each publish, re-read labs's canonical inputSchema via
+> `tools/list` if the SKILL.md hasn't been refreshed against a recent
+> labs deploy. The schema is the source of truth for the field shape;
+> this SKILL.md mirrors it.
+
 > **Design principle: per-unit payment is negotiated, not declared.** The
 > labs solicitation `data` schema deliberately has no `per_unit_payment`
 > structured field — and we should not push for one. Per-unit payment
@@ -482,10 +509,15 @@ contract.
    `anticipated_start`, `anticipated_end`, `sample_target`, `rubric`,
    `response_questions`, `pass_bar`, `eligibility_criteria`,
    `geographic_scope`, `per_hh_payment_band_usd`, or `budget` — none
-   of these are read by the labs public-detail template. The labs API
-   silently echoes any extra keys back, so the create call will "succeed"
-   without surfacing the drift. The integration test in Step 7b is the
-   structural check.
+   of these are read by the labs public-detail template. After labs's
+   2026-05-22 deploy, the MCP itself rejects unknown top-level fields
+   with `INVALID_SCHEMA` + per-field error details under
+   `error.details.fields` (JSON-path keyed, e.g.
+   `evaluation_criteria[0].linked_questions`). Read the error and fix
+   the composition; do NOT retry with the same payload, and do NOT
+   work around schema rejections by stuffing extras into a free-form
+   field. Step 7a's public-page verifier remains the structural
+   double-check.
 
    The atom requires `data` (object) and at least one of `program_id` /
    `organization_id` (both strings). Application-level fields go inside
@@ -702,4 +734,5 @@ Each row this skill writes uses `phase: 8-solicitation-management` and
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (solicitation-type, response-deadline, response-template-choice) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-15 | Three archetype-branches added for `focus-group`: (1) scope_of_work concatenation in Step 2 — FGD PDD has no `## Learn App Specification` (uses `## Facilitation Protocol` instead); the scope opens with a "PER VERIFIED SESSION, THREE ARTIFACTS" block listing audio + gdoc + 5-field attestation form with explicit "NOT in the form" callout. (2) evaluation_criteria in Step 3 — focus-group goes from a 4-axis sketch to a 6-axis starter rubric (qualitative-research experience, facilitator skill + language, homogeneous-group recruitment, coordinator gdoc-review capacity, audio handling out-of-band, timeline + per-session payment economics). (3) default questions in Step 3 — swap CHW-deployment vocabulary for qualitative-research vocabulary on q1 + q5 + q6. Prompted by `malaria-itn-fgd/20260514-2352` Phase 8 observations. | ACE team |
 | 2026-05-15 | Codify the **"per-unit payment is negotiated, not declared"** design principle at the top of `## Process`. Solicitations express payment as a range with rationale in `scope_of_work` prose; the `questions` block asks the responding LLO to propose their actual rate + why. Closes the loop on the "labs `per_unit_payment` schema gap" surfaced in Phase 8 — it's not a gap, it's an intentional design choice (per-unit shape varies by archetype; the rate is opp-and-LLO-specific and negotiated through the response). | ACE team |
-| 2026-05-21 | **Work-order-as-primary-input + canonical-schema field names + comprehensive-content shape.** Three bundled rewrites prompted by solicitation 3130 on `malaria-itn-app/20260521-1400` where the public page rendered blank Description, "TBD" timeline, "No deadline," Python-list-repr Scope, and zero questions / zero rubric simultaneously. (1) Inputs now read Phase 1's work order (`1-design/pdd-to-work-order.gdoc`) as the primary content source + `decisions.yaml` for later run decisions, alongside the PDD (now used for problem-framing only, not for scope). (2) Field names migrated to the labs canonical schema (`description` not `overview`, `application_deadline` not `response_window_days`, `expected_start_date/_end_date` not `anticipated_*`, `estimated_scale` not `sample_target`, `questions[].text` not `response_questions[].question`, `evaluation_criteria[].name/.scoring_guide/.linked_questions` not `rubric[].dimension/.criterion`; `solicitation_type: 'eoi'` lowercase). Top-level fields not in `solicitations/models.py` (`pass_bar`, `eligibility_criteria`, `geographic_scope`, `per_hh_payment_band_usd`, `budget`) folded into `description`/`scope_of_work` prose. (3) Content shape demands comprehensive prose: `description` 500-800 words foundation-pitch tone; `scope_of_work` 600-1000+ words derived section-by-section from the work order with explicit de-prescription rules (exact dollars → ranges, exact weeks → windows); every question has a required `framing` field; every evaluation criterion has a required `scoring_guide` + `linked_questions`. (4) Added Step 7a — a curl-the-public-URL structural verifier that catches field-name drift at write time instead of at human-eye time. Removal criteria: keep until the labs MCP ships `create_solicitation_from_brief` (server-side composition), at which point this skill collapses to ~30 lines passing the structured brief. | ACE team |
+| 2026-05-21 | **Work-order-as-primary-input + canonical-schema field names + comprehensive-content shape.** Three bundled rewrites prompted by solicitation 3130 on `malaria-itn-app/20260521-1400` where the public page rendered blank Description, "TBD" timeline, "No deadline," Python-list-repr Scope, and zero questions / zero rubric simultaneously. (1) Inputs now read Phase 1's work order (`1-design/pdd-to-work-order.gdoc`) as the primary content source + `decisions.yaml` for later run decisions, alongside the PDD (now used for problem-framing only, not for scope). (2) Field names migrated to the labs canonical schema (`description` not `overview`, `application_deadline` not `response_window_days`, `expected_start_date/_end_date` not `anticipated_*`, `estimated_scale` not `sample_target`, `questions[].text` not `response_questions[].question`, `evaluation_criteria[].name/.scoring_guide/.linked_questions` not `rubric[].dimension/.criterion`; `solicitation_type: 'eoi'` lowercase). Top-level fields not in `solicitations/models.py` (`pass_bar`, `eligibility_criteria`, `geographic_scope`, `per_hh_payment_band_usd`, `budget`) folded into `description`/`scope_of_work` prose. (3) Content shape demands comprehensive prose: `description` 500-800 words foundation-pitch tone; `scope_of_work` 600-1000+ words derived section-by-section from the work order with explicit de-prescription rules (exact dollars → ranges, exact weeks → windows); every question has a required `framing` field; every evaluation criterion has a required `scoring_guide` + `linked_questions`. (4) Added Step 7a — a curl-the-public-URL structural verifier that catches field-name drift at write time instead of at human-eye time. | ACE team |
+| 2026-05-22 | **Architecture decision: ACE owns composition; labs validates.** PR #396 had floated a future labs-side `create_solicitation_from_brief` MCP tool that would compose content server-side via labs's `solicitation_agent`. Walked back — operator chose to keep composition in ACE so this skill retains full control over voice, archetype-branched scope, framing/scoring_guide quality, and decisions-log integration (all of which are ACE-context that labs would have to learn). Labs's tightened MCP (forthcoming deploy: `create_solicitation` + `update_solicitation` now validate the canonical schema and fail loudly with `INVALID_SCHEMA` + `error.details.fields` on drift) is the right server-side contribution: schema enforcement, not content generation. This skill is the long-term home for solicitation composition; Step 6's payload shape is bound to labs's `tools/list` inputSchema rather than to a future composer call. Removal of the prior "Removal criteria" line. | ACE team |
