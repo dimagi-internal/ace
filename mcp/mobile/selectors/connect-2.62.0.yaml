@@ -28,6 +28,28 @@
 #       (when type=id)   `id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"`
 #       (when type=text) `text: "Start Learning"`
 #       (when type=both) `id: "org.commcare.dalvik:id/btn_start"  # text fallback: "Start"`
+#
+# INTENTIONALLY ABSENT — generic-positional selectors
+# -----------------------------------------------------------------------------
+# This map deliberately does NOT define `radio-first-option`,
+# `radio-first-answer`, `single-select-option-N`, `option-1`, or any other
+# generic-positional selector for form-question answer rows. Recipe
+# authors MUST emit literal `tapOn: text: "<option label>"` matchers
+# using the option labels read from Nova's `get_form` response — that
+# string is the canonical, drift-stable handle to a specific answer.
+#
+# Reasoning: generic-positional placeholders hide which answer is being
+# selected, silently drift when option ordering changes between Nova
+# rebuilds, and pass `mobile_validate_recipe` (syntactic) while
+# producing recipes that either (a) fail at Step 3.4's
+# `mobile_resolve_selectors` gate when the row is absent, or (b) fail
+# at runtime on the live AVD when a brittle positional row IS present.
+#
+# The forcing function for recipe authors lives in
+# `skills/app-test-cases/SKILL.md § Quiz / required-input answer-tap
+# rule — MANDATORY`. The skill update was a class-level fix that
+# accompanied this comment block (PR following malaria-rdt run
+# 20260522-1002 Phase 6 BLOCKER, 2026-05-22).
 
 apk_version: "2.62.0"
 captured_at: "2026-05-12"
