@@ -105,6 +105,20 @@ Hook setup if needed: `git config core.hooksPath scripts/hooks`. Two hooks ship:
 
 Cache dir is keyed by version: `~/.claude/plugins/cache/ace/ace/<version>/`. On session start, Claude Code pulls the marketplace repo, compares `plugin.json` version against the installed version, and re-installs if different.
 
+### MCP changes need a full Claude restart (not just `/reload-plugins`)
+
+Editing MCP code in `mcp/` (or a new schema deploying upstream — e.g. labs publishes a new `tools/list`) does NOT take effect in the current Claude Code session via `/ace:update` + `/reload-plugins` alone. **MCP subprocesses bind their tool list, schemas, and module code at subprocess startup** — that's tied to the parent Claude Code process, not to plugin reloads. After:
+
+- Editing anything under `mcp/` (atom handlers, capability maps, backend wiring, `tools/list` shape) and merging the change
+- An upstream MCP server (labs, OCS, Connect) deploying a new schema while your session was running
+- `/ace:update` bumping the plugin to a version whose MCP code differs
+
+…the running MCP subprocess is still holding the OLD code/schema. `/reload-plugins` reloads agents + skills + hooks; it does NOT respawn MCP subprocesses. **Quit and reopen Claude Code (full process restart)** to pick up the new MCP behavior.
+
+Symptom of skipping this: payloads that match the documented schema get `INVALID_SCHEMA` rejections; new atoms don't appear in `ToolSearch`; deprecated atoms still resolve. The on-disk code is right; the running subprocess is just stale. Verified live on the `solicitation-create` schema-drift class (2026-05-22) where ACE was reading a pre-labs-PR-#211 `{data: {...}}` shape while the live deployed schema had been flat for weeks.
+
+When in doubt, validate by curling the live MCP's `tools/list` directly (e.g. `curl ... https://labs.connect.dimagi.com/mcp/ -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`) — that response is the canonical contract. If it disagrees with what `ToolSearch` shows you in-session, restart Claude.
+
 ## Conventions
 
 - **Skills are stateless.** Per-opportunity state lives in Drive `ACE/<opp-name>/`. Don't introduce local state in `SKILL.md` files.
