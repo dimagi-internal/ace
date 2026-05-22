@@ -71,7 +71,9 @@ Invoke the `llo-uat` skill.
 ### Step 3: Opportunity Go-Live
 Invoke the `llo-launch` skill.
 - Input: UAT results confirming LLO sign-offs
-- Output: opportunity activated in Connect, LLOs notified of go-live
+- Output:
+  - opportunity activated in Connect, LLOs notified of go-live
+  - Appended `llo-capacity-actual`, `day-one-readiness`, `downstream-handoff-alignment`, `stop-loss-planning` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`). These four rows map 1:1 to `llo-launch-eval`'s viability axis (PR #145) so the rubric has structured input instead of grading on prose.
 - **Gate (review mode):** Present launch readiness summary for approval before activating
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `llo-launch-eval` after activation. Writes `verdicts/llo-launch.yaml`.

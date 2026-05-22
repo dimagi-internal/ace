@@ -41,14 +41,16 @@ lifecycle requires explicit human approval and is run manually via
 Invoke the `solicitation-create` skill.
 - Input: approved PDD (`inputs/pdd.md`), `opp.yaml`
   (`connect.program.id`, total_budget)
-- Output: `solicitation/published.md`,
-  `phases.solicitation-management.products.solicitation` populated in
-  the current run's `run_state.yaml` with
-  `{solicitation_id, public_url, deadline, status: open,
-  labs_program_id, ...}`. `selected_llo` is populated by
-  `solicitation-review` on award at `products.selected_llo`. The labs
-  program int is cached durably at
-  `opp.yaml.connect.program.labs_int_id`.
+- Output:
+  - `solicitation/published.md`,
+    `phases.solicitation-management.products.solicitation` populated in
+    the current run's `run_state.yaml` with
+    `{solicitation_id, public_url, deadline, status: open,
+    labs_program_id, ...}`. `selected_llo` is populated by
+    `solicitation-review` on award at `products.selected_llo`. The labs
+    program int is cached durably at
+    `opp.yaml.connect.program.labs_int_id`.
+  - Appended `solicitation-type`, `response-deadline`, `response-template-choice` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`).
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `solicitation-create-eval` after publish. Writes
   `verdicts/solicitation-create.yaml`.

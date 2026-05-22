@@ -24,7 +24,9 @@ You handle the closeout of a completed CRISPR-Connect opportunity.
 ### Step 1: Invoice and Payment
 Invoke the `opp-closeout` skill.
 - Input: opportunity details, invoice data
-- Output: invoices pulled, Jira payment ticket created
+- Output:
+  - invoices pulled, Jira payment ticket created
+  - Appended `closeout-depth`, `learnings-summary-scope` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`).
 
 ### Step 2: LLO Feedback
 Invoke the `llo-feedback` skill.

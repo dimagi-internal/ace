@@ -36,9 +36,11 @@ refuses to proceed without a fresh, passing deep verdict.
 ### Step 1: Configure the chatbot
 Invoke the `ocs-agent-setup` skill.
 - Input: `ACE/<opp-name>/` — PDD, training materials, app summaries, opportunity config
-- Output: cloned chatbot with opp system prompt, RAG collection indexed,
-  version published. `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md` written with
-  `{experiment_id, public_id, embed_key, collection_id, pipeline_id, version_number}`
+- Output:
+  - cloned chatbot with opp system prompt, RAG collection indexed,
+    version published. `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md` written with
+    `{experiment_id, public_id, embed_key, collection_id, pipeline_id, version_number}`
+  - Appended `system-prompt-baseline`, `rag-collection-scope`, `test-prompt-count` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`).
 - Idempotent: if a bot named `"ACE - <opp-name>"` already exists, resumes from
   existing config
 

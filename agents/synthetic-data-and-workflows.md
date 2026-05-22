@@ -113,6 +113,7 @@ Invoke `synthetic-narrative-plan`.
   opp.yaml.
 - Produces `7-synthetic/synthetic-narrative-plan.md` (human narrative)
   and `7-synthetic/synthetic-narrative-plan.yaml` (the manifest).
+- Appends `persona-count`, `scenario-count`, `narrative-arc-shape` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`).
 - The manifest schema is identical to `synthetic-data-generate`'s; this
   skill just authors a richer instance with named FLWs, deliberate
   anomalies, coaching-arc transcripts.
