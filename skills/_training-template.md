@@ -114,7 +114,7 @@ All per-artifact training skills write to:
 `ACE/<opp-name>/runs/<run-id>/6-qa-and-training/`
 
 All consume per-opp screenshots from:
-`ACE/<opp-name>/runs/<run-id>/6-qa-and-training/screenshots/`
+`ACE/<opp-name>/runs/<run-id>/3-commcare/screenshots/`
 
 All consume cross-opp Connect screenshots from:
 `ACE/_common/connect-screenshots/<connect-version>/`

@@ -14,6 +14,7 @@ skills:
   - { name: app-deploy,              has_judge: false }
   - { name: app-test-cases,          has_judge: false }
   - { name: app-release,             has_judge: true,  eval_skill: app-release-eval }
+  - { name: app-screenshot-capture,  has_judge: true }
 ---
 
 # CommCare Setup (Phase 3 Procedure Document)
@@ -367,6 +368,64 @@ debugging a specific opp under instruction.
 The `commcare_patch_xform` atom itself stays — it's also the backbone
 of `app-multimedia-coverage` (manual sibling step, not part of
 `/ace:run`), which has nothing to do with the wrapper hypothesis.
+
+### Step 2.9: Smoke screenshot capture (shallow app QA)
+
+Invoke the `app-screenshot-capture` skill. This step boots the AVD,
+runs the J1 + J5 smoke recipes against the just-released CommCare
+builds, and captures structural + UX verdicts.
+
+**Position rationale.** This used to live in Phase 6 (Step 1) but
+moved to Phase 3 on 2026-05-22 because the failure mode is recipe
+authoring quality, not training-doc quality. When a recipe ships
+broken from Step 2.6 (`app-test-cases`), the operator wants to learn
+about it WHILE Phase 3 is fresh — same Nova blueprints in scope, same
+released CCZ build_ids, no cross-phase context loss — not three
+phases later in Phase 6 when training-deck-build can't find usable
+screenshots. The malaria-rdt run 20260522-1002 hit this class three
+times in a row (selector-resolution gap, quiz-answer-tap missing,
+form-advance overcount); each time the diagnosis took longer than
+necessary because the recipe author was a Phase 3 skill and the
+recipe runner was a Phase 6 skill in a different subagent context.
+Same applies to AVD/Maestro infrastructure issues — surfacing them at
+Phase 3 lets the operator fix `/ace:mobile-bootstrap` before Phase 4
+ships work that depends on a healthy mobile setup.
+
+- Inputs:
+  - `2-scenarios/pdd-to-app-journeys.md` (Phase 2 — drives which recipes are smoke)
+  - `3-commcare/app-test-cases.yaml` + `3-commcare/recipes/J*.yaml` (Step 2.6 outputs)
+  - `3-commcare/pdd-to-{learn,deliver}-app_summary.md` + Connect-released CCZ build_ids (Steps 1 + 2.7)
+  - Live AVD via `mobile_ensure_avd_running` (auto-heal at the MCP layer)
+- Outputs (NEW under `3-commcare/`):
+  - `3-commcare/screenshots/J<n>/*.png` — per-journey screenshot bundles
+  - `3-commcare/app-screenshot-capture_manifest.yaml` — per-screenshot index (file_id, step label, timestamp)
+  - `3-commcare/app-screenshot-capture_verdict.yaml` — structural verdict (recipe pass/fail, capture integrity)
+  - `3-commcare/app-screenshot-capture_verdict-shallow.yaml` — thin UX-judge verdict
+- **Halts loud on smoke recipe failure.** Per
+  `skills/app-screenshot-capture/SKILL.md § Step 5`, a smoke recipe
+  that can't reach its final `takeScreenshot` is a `[BLOCKER]` —
+  placeholder screenshots are forbidden. The operator's remediation
+  is usually `/ace:step app-test-cases <opp>/<run-id>` to regenerate
+  the recipes against the hardened skill, then re-dispatch
+  `/ace:step app-screenshot-capture` once they look right.
+- **Halts loud on AVD precondition failure.** If
+  `mobile_ensure_avd_running` exhausts its auto-heal retry budget,
+  the operator runs `/ace:mobile-bootstrap`. The class-level
+  preventers in `mcp/mobile/session-lock.ts § reapOrphanScaffolds`
+  and `mcp/mobile/backends/avd.ts § sweepStaleEmulatorState (Step 3)`
+  catch most pre-conditions automatically; only genuinely-novel
+  infrastructure failures should surface here as halts.
+
+**Phase 6 reads these outputs.** The 5 training skills + deck-build
+all consume `3-commcare/screenshots/` + the manifest as their visual
+evidence. Phase 6's pre-flight (see `agents/qa-and-training.md
+§ Pre-flight checklist`) halts if this step didn't run.
+
+**Deep QA is separate.** Phase 9's `llo-launch` gate still requires
+fresh deep verdicts from `/ace:qa-deep <opp>` (which runs all 5
+journeys with ~90 LLM judges via `app-ux-eval`). Phase 3's shallow
+capture is the in-`/ace:run` smoke; deep is out-of-band and not
+part of this procedure.
 
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/3-commcare/commcare-setup_summary.md`,
