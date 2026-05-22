@@ -37,6 +37,8 @@ import {
   acquireSessionLock,
   lockPathForPid,
   reapStaleSessions,
+  reapOrphanScaffolds,
+  ORPHAN_SCAFFOLD_PATTERN,
   SESSION_LOCK_DIR,
   isPidAlive,
 } from '../../../mcp/mobile/session-lock.js';
@@ -87,9 +89,18 @@ function spawnLockHolder(adbPort: number, emuPort: number, timeoutMs = 15_000): 
       process.exit(1);
     });
   `;
+  // `detached: true` puts the npx wrapper in its OWN process group,
+  // which lets `teardownLockHolder` use `process.kill(-pid, 'SIGKILL')`
+  // to nuke the whole subprocess tree (npx wrapper + tsx loader child
+  // + node --eval grandchild) in one signal. Without this, a SIGKILL of
+  // the wrapper leaves the loader+eval children alive and reparented to
+  // init — they then hang on `setInterval` until the host is rebooted.
+  // Discovered live on malaria-rdt run 20260522-1002 Phase 6 attempt 2:
+  // a sibling `avd-yt6cu` worktree's aborted test suite left 10 such
+  // orphans (5 wrapper + 5 child pairs) blocking AVD allocation.
   const child = spawn('npx', ['--yes', 'tsx', '-e', code], {
     stdio: ['ignore', 'pipe', 'pipe'],
-    detached: false,
+    detached: true,
   });
 
   return new Promise<LockHolder>((resolve, reject) => {
@@ -134,8 +145,21 @@ function spawnLockHolder(adbPort: number, emuPort: number, timeoutMs = 15_000): 
  */
 function teardownLockHolder(holder: LockHolder | null): void {
   if (!holder) return;
-  // Kill BOTH the inner Node (by pid) and the npx wrapper (via the
-  // ChildProcess handle). Either alone may leave the other lingering.
+  // Process-group kill first — `spawnLockHolder` spawns with
+  // `detached: true` so `holder.proc.pid` is the head of its own pgid.
+  // `process.kill(-pgid, 'SIGKILL')` nukes the npx wrapper AND every
+  // descendant (tsx loader child, node --eval grandchild) in one
+  // signal. Falls back to per-PID kills if the group kill fails (e.g.
+  // the wrapper already exited).
+  try {
+    if (holder.proc.pid && isPidAlive(holder.proc.pid)) {
+      process.kill(-holder.proc.pid, 'SIGKILL');
+    }
+  } catch {
+    /* fall through to per-pid kills */
+  }
+  // Per-pid kills as defense in depth — catches cases where the group
+  // kill found no group (process not detached, or already exited).
   try {
     if (isPidAlive(holder.pid)) process.kill(holder.pid, 'SIGKILL');
   } catch {
@@ -236,11 +260,18 @@ describe('session-lock E2E (multi-process parallel-session protocol)', () => {
     expect(isPidAlive(b.pid)).toBe(true);
 
     // Sweep. A is dead → reaped. B is alive → surviving.
-    const result = reapStaleSessions();
-    expect(result.reaped_locks).toContain(`${a.pid}.lock.json`);
-    expect(result.surviving_locks).toContain(`${b.pid}.lock.json`);
+    // Assertions check END STATE (lock files + B's liveness) rather
+    // than this specific call's `reaped_locks` / `surviving_locks`
+    // arrays — those arrays only capture what THIS call did, and a
+    // parallel test file's `reapStaleSessions` (running concurrently
+    // by default under vitest) can reap A's lock before this call
+    // reaches it. The invariant we care about is structural: A's
+    // lock is gone, B's lock is preserved, B is still alive. The
+    // racy intermediate (who reaped A) doesn't matter.
+    reapStaleSessions();
     expect(fs.existsSync(lockPathForPid(a.pid))).toBe(false);
     expect(fs.existsSync(lockPathForPid(b.pid))).toBe(true);
+    expect(isPidAlive(b.pid)).toBe(true);
   });
 
   it('SIGTERM-driven cleanup kills daemons on lock ports before releasing the lock', async () => {

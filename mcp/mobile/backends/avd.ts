@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { AvdBootError, AvdBootTimeoutError, AdbError } from '../errors.js';
 import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult } from '../types.js';
-import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock } from '../port-allocator.js';
+import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock, isTcpPortFree } from '../port-allocator.js';
 import { withAllocatorMutex } from '../session-lock.js';
 
 // Per-phase budgets for the post-spawn three-phase boot wait.
@@ -202,6 +202,17 @@ export interface AvdBackendOpts {
     storageMountMs?: number;
     pollMs?: number;
   };
+  /**
+   * Skip the cross-user port collision probe in `sweepStaleEmulatorState`
+   * (Step 3). Tests with a mocked `shell` don't want a real TCP-bind
+   * probe firing against the host's network state — the probe bypasses
+   * the mock and would surface as "Emulator console port 5554 is in
+   * use" any time the test host happens to be running its own AVD on
+   * 5554 (developer dogfooding, CI hosts with persistent emulators).
+   * Production code never sets this; the probe is the load-bearing
+   * preventer for the cross-macOS-user collision class.
+   */
+  skipCrossUserPortCheck?: boolean;
 }
 
 export interface AllocatedPorts {
@@ -228,6 +239,8 @@ export class AvdBackend {
     storageMountMs: number;
     pollMs: number;
   };
+  /** Skip the cross-user TCP-bind probe in `sweepStaleEmulatorState`. */
+  private readonly skipCrossUserPortCheck: boolean;
 
   constructor(opts: AvdBackendOpts = {}) {
     this.rawShellFn = opts.shell ?? defaultShell;
@@ -242,6 +255,12 @@ export class AvdBackend {
       storageMountMs: opts.bootWait?.storageMountMs ?? AVD_PHASE_STORAGE_MOUNT_MS,
       pollMs: opts.bootWait?.pollMs ?? AVD_PHASE_POLL_MS,
     };
+    // When a test provides a custom shell mock, default the cross-user
+    // port probe OFF — tests script exact call sequences and a real
+    // TCP-bind probe would surface as "port 5554 is in use" any time
+    // the dev/CI host happens to be running a real AVD. Production
+    // (no shell override) defaults the probe ON.
+    this.skipCrossUserPortCheck = opts.skipCrossUserPortCheck ?? !!opts.shell;
   }
 
   /**
@@ -652,6 +671,54 @@ export class AvdBackend {
     // sees a clean port landscape.
     await this.shell('adb', ['kill-server']).catch(() => {});
     await this.shell('adb', ['start-server']).catch(() => {});
+
+    // Step 3: cross-user collision pre-check on the resolved emulator
+    // console port. Skipped when a test shell mock is in use — see
+    // `AvdBackendOpts.skipCrossUserPortCheck` for the rationale.
+    if (this.skipCrossUserPortCheck) return;
+    // After Step 1 cleared any current-user orphan qemus,
+    // a port still in LISTEN state means a foreign owner is squatting
+    // it — typically a different macOS user account running their own
+    // copy of ACE on the default port. macOS's default `lsof` is
+    // permission-restricted across UIDs, so we use a TCP-bind probe
+    // (works across users — kernel-level port reservation is visible
+    // to anyone) and surface a clear remediation message that points
+    // at the multi-user .env port-pin convention. Without this step
+    // the failure surfaces deep in the qemu boot log as
+    // "FATAL | Running multiple emulators with the same AVD ...
+    // -read-only flag" — which is misleading (it's a port collision,
+    // not an AVD-lock collision) and operators historically had to
+    // bisect by manually running `ps -ef | grep qemu | grep -v <self>`
+    // to find the foreign owner. Reproducer: malaria-rdt run
+    // 20260522-1002 Phase 6 attempt 2.
+    const consolePortEnv = process.env.ACE_MOBILE_EMULATOR_PORT?.trim();
+    const consolePort = consolePortEnv ? Number.parseInt(consolePortEnv, 10) : 5554;
+    if (Number.isFinite(consolePort) && consolePort > 0) {
+      const free = await isTcpPortFree(consolePort);
+      if (!free) {
+        throw new AvdBootError(
+          '<sweep-stale-emulator-state>',
+          `Emulator console port ${consolePort} is in use by a process this ACE ` +
+            `session cannot manage. The orphan-qemu sweep just ran and would ` +
+            `have killed any current-user qemu on that port, so the squatter is ` +
+            `either (a) a different macOS user account running its own ACE / ` +
+            `Android emulator on the default port, or (b) an unrelated service ` +
+            `bound to ${consolePort}. ` +
+            `Remediation: set ACE_MOBILE_EMULATOR_PORT to a free even value in ` +
+            `[5556, 5680] (e.g. 5580) in ${process.env.CLAUDE_PLUGIN_DATA ?? '$CLAUDE_PLUGIN_DATA'}/.env, ` +
+            `then restart Claude Code so the MCP subprocess re-reads the env. ` +
+            `Also set ANDROID_ADB_SERVER_PORT to a free value (e.g. 5038) to ` +
+            `avoid the matching adb-server collision. See CLAUDE.md ` +
+            `§ Multi-user macOS hosts in the /ace:mobile-bootstrap procedure ` +
+            `for the full per-user port-pin convention.`,
+          {
+            console_port: consolePort,
+            env_var_set: !!consolePortEnv,
+            sweep_phase: 'cross-user-collision-precheck',
+          },
+        );
+      }
+    }
   }
 
   /**
