@@ -51,9 +51,7 @@ Optional:
 ## Payload fields
 
 When invoked from the orchestrator with both `<opp>` and `<run-id>` in
-context (the multi-run layout introduced 2026-05-02 — see
-`docs/superpowers/specs/2026-05-02-ace-run-multi-run-revival-design.md`),
-send BOTH:
+context (the multi-run layout introduced 2026-05-02), send BOTH:
 
 - `opp_slug`: the opp folder name (e.g. `turmeric`).
 - `opp_run_id`: the run-id (e.g. `20260502-1830`).

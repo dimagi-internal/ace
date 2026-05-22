@@ -2,7 +2,7 @@
 
 This file is the contract for authoring SKILL.md files in `skills/`. Read it before adding a new skill or making non-trivial edits to an existing one. Existing skills are the source of truth — if this contract drifts from them, fix the contract or fix the skills, but they should agree.
 
-ACE skills are prompt-based capability definitions. Each one handles one step of the CRISPR-Connect process (see `docs/superpowers/specs/2026-04-01-ace-design.md`). Skills are stateless — they read from and write to the opportunity's Google Drive folder (`ACE/<opp-name>/`) and call MCP tools for external system access. The agents in `agents/` are what dispatch to skills.
+ACE skills are prompt-based capability definitions. Each one handles one step of the CRISPR-Connect process (see the repo-root `CLAUDE.md` for the phase pipeline and `agents/orchestrator-reference.md` for state schemas). Skills are stateless — they read from and write to the opportunity's Google Drive folder (`ACE/<opp-name>/`) and call MCP tools for external system access. The agents in `agents/` are what dispatch to skills.
 
 ## File location and naming
 
@@ -253,7 +253,7 @@ When `--dry-run` is active:
 - State tracks as `dry-run-success`
 ```
 
-See `docs/superpowers/specs/2026-04-01-ace-design.md` § "Testing and Dry-Run Strategy" for the full dry-run model.
+The shape above is the full dry-run model — there's no longer a separate design doc for it.
 
 ### `## Failure Modes` (when the skill has typed errors worth enumerating)
 
