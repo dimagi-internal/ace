@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DecisionRowSchema,
   DecisionsLogSchema,
+  effectiveValue,
   parseDecisionsYaml,
   serializeDecisionsLog,
 } from "../../lib/decisions-schema.js";
@@ -13,7 +14,7 @@ describe("DecisionRowSchema", () => {
       phase: "1-design",
       skill: "idea-to-pdd",
       question: "How many FLWs should the program target?",
-      default: "5–8",
+      "ai-default": "5–8",
       options_considered: ["3–5", "10–15", "20+"],
       source: "idea.md §2; atomic-visit archetype norm",
       status: "applied",
@@ -35,7 +36,7 @@ describe("DecisionRowSchema", () => {
       phase: "1-design",
       skill: "idea-to-pdd",
       question: "Q?",
-      default: "x",
+      "ai-default": "x",
       options_considered: [],
       source: "x",
       status: "applied",
@@ -54,7 +55,7 @@ describe("DecisionRowSchema", () => {
       phase,
       skill: "idea-to-pdd",
       question: "Q?",
-      default: "x",
+      "ai-default": "x",
       options_considered: [],
       source: "x",
       status: "applied",
@@ -68,7 +69,7 @@ describe("DecisionRowSchema", () => {
       phase: "1-design",
       skill: "idea-to-pdd",
       question: "Q?",
-      default: "5–8",
+      "ai-default": "5–8",
       options_considered: ["3–5", ""],
       source: "x",
       status: "applied",
@@ -82,21 +83,35 @@ describe("DecisionRowSchema", () => {
       phase: "1-design",
       skill: "idea-to-pdd",
       question: "Q?",
-      default: "x",
+      "ai-default": "x",
       options_considered: [],
       source: "x",
-      status: "resolved",  // not in v1 enum
+      status: "resolved",  // not in enum
     };
     expect(() => DecisionRowSchema.parse(row)).toThrow();
   });
 
-  it("rejects a non-string default", () => {
+  it("rejects `open` status (removed in v2)", () => {
     const row = {
       id: "flw-count",
       phase: "1-design",
       skill: "idea-to-pdd",
       question: "Q?",
-      default: 5,  // must be string
+      "ai-default": "x",
+      options_considered: [],
+      source: "x",
+      status: "open",  // v1 enum value; no longer valid
+    };
+    expect(() => DecisionRowSchema.parse(row)).toThrow();
+  });
+
+  it("rejects a non-string ai-default", () => {
+    const row = {
+      id: "flw-count",
+      phase: "1-design",
+      skill: "idea-to-pdd",
+      question: "Q?",
+      "ai-default": 5,  // must be string
       options_considered: [],
       source: "x",
       status: "applied",
@@ -104,12 +119,55 @@ describe("DecisionRowSchema", () => {
     expect(() => DecisionRowSchema.parse(row)).toThrow();
   });
 
+  it("rejects status=overridden without override field", () => {
+    const row = {
+      id: "x",
+      phase: "1-design",
+      skill: "idea-to-pdd",
+      question: "Q?",
+      "ai-default": "x",
+      options_considered: [],
+      source: "x",
+      status: "overridden",
+    };
+    expect(() => DecisionRowSchema.parse(row)).toThrow(/override/);
+  });
+
+  it("accepts status=overridden with override field", () => {
+    const row = {
+      id: "x",
+      phase: "1-design",
+      skill: "idea-to-pdd",
+      question: "Q?",
+      "ai-default": "x",
+      override: "y",
+      options_considered: [],
+      source: "x",
+      status: "overridden",
+    };
+    expect(() => DecisionRowSchema.parse(row)).not.toThrow();
+  });
+
+  it("rejects status=applied with override field", () => {
+    const row = {
+      id: "x",
+      phase: "1-design",
+      skill: "idea-to-pdd",
+      question: "Q?",
+      "ai-default": "x",
+      override: "y",
+      options_considered: [],
+      source: "x",
+      status: "applied",
+    };
+    expect(() => DecisionRowSchema.parse(row)).toThrow(/override/);
+  });
 });
 
 describe("DecisionsLogSchema", () => {
   it("accepts a minimal valid log", () => {
     const log = {
-      schema_version: 1,
+      schema_version: 2,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
@@ -118,9 +176,9 @@ describe("DecisionsLogSchema", () => {
     expect(() => DecisionsLogSchema.parse(log)).not.toThrow();
   });
 
-  it("rejects schema_version other than 1", () => {
+  it("rejects schema_version other than 2", () => {
     const log = {
-      schema_version: 2,
+      schema_version: 1,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
@@ -131,7 +189,7 @@ describe("DecisionsLogSchema", () => {
 
   it("rejects duplicate decision IDs", () => {
     const log = {
-      schema_version: 1,
+      schema_version: 2,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
@@ -141,7 +199,7 @@ describe("DecisionsLogSchema", () => {
           phase: "1-design",
           skill: "idea-to-pdd",
           question: "Q?",
-          default: "5–8",
+          "ai-default": "5–8",
           options_considered: [],
           source: "x",
           status: "applied",
@@ -151,7 +209,7 @@ describe("DecisionsLogSchema", () => {
           phase: "1-design",
           skill: "idea-to-pdd",
           question: "Q?",
-          default: "5–8",
+          "ai-default": "5–8",
           options_considered: [],
           source: "x",
           status: "applied",
@@ -165,7 +223,7 @@ describe("DecisionsLogSchema", () => {
 describe("parseDecisionsYaml", () => {
   it("parses a valid YAML string into a DecisionsLog", () => {
     const yaml = `
-schema_version: 1
+schema_version: 2
 opportunity: turmeric
 run_id: 20260507-1733
 generated_at: "2026-05-07T17:33:00Z"
@@ -174,7 +232,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: How many FLWs?
-    default: "5–8"
+    ai-default: "5–8"
     options_considered: ["3–5", "10–15"]
     source: idea.md §2
     status: applied
@@ -183,11 +241,34 @@ decisions:
     expect(log.opportunity).toBe("turmeric");
     expect(log.decisions).toHaveLength(1);
     expect(log.decisions[0]!.id).toBe("flw-count");
+    expect(log.decisions[0]!["ai-default"]).toBe("5–8");
+  });
+
+  it("parses an overridden row with override field", () => {
+    const yaml = `
+schema_version: 2
+opportunity: turmeric
+run_id: 20260507-1733
+generated_at: "2026-05-07T17:33:00Z"
+decisions:
+  - id: flw-count
+    phase: 1-design
+    skill: idea-to-pdd
+    question: How many FLWs?
+    ai-default: "5–8"
+    override: "12"
+    options_considered: ["5–8", "12"]
+    source: idea.md §2
+    status: overridden
+`;
+    const log = parseDecisionsYaml(yaml);
+    expect(log.decisions[0]!.override).toBe("12");
+    expect(log.decisions[0]!["ai-default"]).toBe("5–8");
   });
 
   it("throws a typed error on schema violation", () => {
     const yaml = `
-schema_version: 1
+schema_version: 2
 opportunity: turmeric
 run_id: 20260507-1733
 generated_at: "2026-05-07T17:33:00Z"
@@ -196,14 +277,13 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Q?
-    default: x
+    ai-default: x
     options_considered: []
     source: x
     status: applied
 `;
     expect(() => parseDecisionsYaml(yaml)).toThrow(/decisions\.0\.id/);
   });
-
 });
 
 describe("serializeDecisionsLog", () => {
@@ -213,7 +293,7 @@ describe("serializeDecisionsLog", () => {
       phase: "1-design",
       skill: "idea-to-pdd",
       question: "How many FLWs?",
-      default: "5–8",
+      "ai-default": "5–8",
       options_considered: ["3–5", "10–15"],
       source: "idea.md §2",
       status: "applied" as const,
@@ -225,7 +305,7 @@ describe("serializeDecisionsLog", () => {
     ["empty array", []],
   ])("round-trips through parse with no data loss (%s)", (_label, decisions) => {
     const log = {
-      schema_version: 1 as const,
+      schema_version: 2 as const,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
@@ -236,9 +316,36 @@ describe("serializeDecisionsLog", () => {
     expect(parsed).toEqual(log);
   });
 
+  it("round-trips an overridden row preserving override + ai-default", () => {
+    const log = {
+      schema_version: 2 as const,
+      opportunity: "turmeric",
+      run_id: "20260507-1733",
+      generated_at: "2026-05-07T17:33:00Z",
+      decisions: [
+        {
+          id: "flw-count",
+          phase: "1-design",
+          skill: "idea-to-pdd",
+          question: "How many FLWs?",
+          "ai-default": "5–8",
+          override: "12",
+          options_considered: ["5–8", "12"],
+          source: "idea.md §2",
+          status: "overridden" as const,
+        },
+      ],
+    };
+    const yaml = serializeDecisionsLog(log);
+    const parsed = parseDecisionsYaml(yaml);
+    expect(parsed).toEqual(log);
+    expect(parsed.decisions[0]!.override).toBe("12");
+    expect(parsed.decisions[0]!["ai-default"]).toBe("5–8");
+  });
+
   it("preserves non-ASCII characters (em dashes, en dashes)", () => {
     const log = {
-      schema_version: 1 as const,
+      schema_version: 2 as const,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
@@ -248,7 +355,7 @@ describe("serializeDecisionsLog", () => {
           phase: "1-design",
           skill: "idea-to-pdd",
           question: "AI auto-accept confidence threshold?",
-          default: "≥90%",
+          "ai-default": "≥90%",
           options_considered: ["≥85%", "≥95%"],
           source: "stress-test verifiability dimension",
           status: "applied" as const,
@@ -258,7 +365,37 @@ describe("serializeDecisionsLog", () => {
     const yaml = serializeDecisionsLog(log);
     expect(yaml).toContain("≥90%");
     const parsed = parseDecisionsYaml(yaml);
-    expect(parsed.decisions[0]!.default).toBe("≥90%");
+    expect(parsed.decisions[0]!["ai-default"]).toBe("≥90%");
+  });
+});
+
+describe("effectiveValue", () => {
+  it("returns ai-default when no override", () => {
+    const row = {
+      id: "x",
+      phase: "1-design",
+      skill: "idea-to-pdd",
+      question: "Q?",
+      "ai-default": "5–8",
+      options_considered: [],
+      source: "x",
+      status: "applied" as const,
+    };
+    expect(effectiveValue(row)).toBe("5–8");
   });
 
+  it("returns override when present", () => {
+    const row = {
+      id: "x",
+      phase: "1-design",
+      skill: "idea-to-pdd",
+      question: "Q?",
+      "ai-default": "5–8",
+      override: "12",
+      options_considered: ["5–8", "12"],
+      source: "x",
+      status: "overridden" as const,
+    };
+    expect(effectiveValue(row)).toBe("12");
+  });
 });
