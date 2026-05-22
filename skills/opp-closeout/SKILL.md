@@ -84,6 +84,5 @@ Each row this skill writes uses `phase: 10-closeout` and
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-03 | Initial version | ACE team |
 | 2026-04-28 | Replace HITL workaround with `connect_list_invoices` + `connect_get_invoice` (ace-connect 0.8.1). Note: invoice page shape was not yet probed at 0.8.1 ship; atoms return conservative defaults until the page has been observed live | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 2 anchor rows (closeout-depth, learnings-summary-scope) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |

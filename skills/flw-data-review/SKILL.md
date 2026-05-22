@@ -113,6 +113,5 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-03 | Initial version | ACE team |
 | 2026-04-08 | Add `## Archetypes` section: focus-group review = qualitative synthesis (per-session quality, cross-session themes, saturation, quote bank), no quantitative outlier checks | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-08 | Read PDD `## Evidence Model` in step 1; Layer B drives per-delivery evaluation, Layer C drives cross-delivery synthesis | ACE team (PM scout, focus-group framework lens) |

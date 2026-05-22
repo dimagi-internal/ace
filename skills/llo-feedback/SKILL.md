@@ -136,5 +136,4 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-03 | Initial version | ACE team |
 | 2026-04-20 | Added `## Archetypes` with per-archetype feedback questions. `focus-group` replaces the app-usability / FLW-experience block with question-guide quality, facilitation experience, audio+upload workflow, participant recruitment, and session cadence. `multi-stage` asks per-stage questions plus cross-stage transition quality. Prevents the "facilitator asked about a Learn app they never used" anti-pattern that drifts responses thin | ACE team |

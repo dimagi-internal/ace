@@ -83,9 +83,3 @@ When `--dry-run` is active:
 - Learnings analysis and new PDD generation proceed normally (written to GDrive)
 - Write any notification emails (to admin group) to `comms-log/dry-run-learnings-summary.md` instead of sending
 - State tracks as `dry-run-success`
-
-## Change Log
-
-| Date | Change | Author |
-|------|--------|--------|
-| 2026-04-03 | Initial version | ACE team |

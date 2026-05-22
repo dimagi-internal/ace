@@ -157,5 +157,4 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-03 | Initial version | ACE team |
 | 2026-04-20 | Added `## Archetypes` with per-archetype UAT checklists + sign-off criteria. `focus-group` replaces "test the apps" with "dry-run a facilitation session" (question guide + recording + consent + write-up + logistics); sign-off is "you could run Session 1 tomorrow." `multi-stage` uses per-stage checklists — full UAT for Stage 1, reference-only for later stages. Prevents LLOs from getting "download the app" UAT instructions when they have no app to download | ACE team |

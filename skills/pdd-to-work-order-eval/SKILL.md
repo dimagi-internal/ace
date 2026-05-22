@@ -95,5 +95,4 @@ Grading bands: 0 strikes = `pass`; 1–3 strikes = `partial`; 4+ strikes = `fail
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-21 | Initial version | ACE team |
 | 2026-05-21 | Add `writing_style` 6th dimension scoped to renderable conventions (acronyms, modals, voice, partner-naming, terminology). Reweight: 5 content dims × 0.17 + writing_style × 0.15 = 1.00. Bold deferred until `docs_finalize_bold` ships. | ACE team |
