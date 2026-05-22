@@ -29,6 +29,15 @@ import { SessionExpiredError, summarizeServerErrorBody } from '../errors.js';
 export interface CommCareBackendOptions {
   baseUrl: string;
   session: PlaywrightSession;
+  /**
+   * HQ username + API key for endpoints that require `Authorization: ApiKey`
+   * auth (Tastypie resources without `allow_session_auth=True` — e.g.
+   * `lookup_table`, `lookup_table_item`, `user`). Optional; atoms that
+   * need it throw a typed error if these are missing at call time.
+   * Read from .env (ACE_HQ_USERNAME / ACE_HQ_API_KEY) by the server bootstrap.
+   */
+  hqUsername?: string;
+  hqApiKey?: string;
 }
 
 export interface CreateDomainArgs {
@@ -67,6 +76,39 @@ export interface MakeBuildArgs {
   domain: string;
   app_id: string;
   comment?: string;
+}
+
+export interface LookupTableField {
+  /** Column name (e.g. "cohort_id", "next_interview"). */
+  field_name: string;
+  /** Sub-property names. Empty list [] for plain string columns. */
+  properties?: string[];
+}
+
+export interface LookupTable {
+  /** UUID hex (no dashes). */
+  id: string;
+  /** "Name" the team uses (e.g. "interview_schedule"). */
+  tag: string;
+  is_global: boolean;
+  fields: LookupTableField[];
+  item_attributes: string[];
+}
+
+export interface GetLookupTableArgs {
+  domain: string;
+  /** Lookup table name (e.g. "interview_schedule"). */
+  tag: string;
+}
+
+export interface CreateLookupTableArgs {
+  domain: string;
+  tag: string;
+  fields: LookupTableField[];
+  /** Default false. */
+  is_global?: boolean;
+  /** Default []. */
+  item_attributes?: string[];
 }
 
 export interface MakeBuildResult {
@@ -560,6 +602,126 @@ export class CommCareBackend {
   }
 
   /**
+   * Fetch a lookup table by tag (name). HQ's Tastypie LookupTableResource
+   * supports list-with-filters but not directly by tag, so this atom
+   * lists all tables in the domain and finds the one whose `tag` matches.
+   *
+   * Endpoint: GET /a/<domain>/api/v0.5/lookup_table/
+   * Auth: session via RequirePermissionAuthentication(edit_apps,
+   *   allow_session_auth=True) per corehq/apps/fixtures/resources/v0_1.py.
+   * Returns null if no table with that tag exists.
+   *
+   * Verified against /tmp/ace-refs/hq/corehq/apps/fixtures/resources/v0_1.py:111-244.
+   */
+  async getLookupTable(args: GetLookupTableArgs): Promise<{ table: LookupTable | null }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/lookup_table/`;
+      const res = await request.get(`${this.opts.baseUrl}${path}`, {
+        maxRedirects: 0,
+        headers: { Authorization: this.apiKeyAuthHeader('commcare_get_lookup_table') },
+      });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_get_lookup_table GET ${path}`);
+      }
+      if (res.status() !== 200) {
+        throw new Error(
+          `commcare_get_lookup_table GET ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
+        );
+      }
+      const parsed = JSON.parse(await res.text()) as {
+        objects?: Array<{ id?: string; tag?: string; is_global?: boolean; fields?: any[]; item_attributes?: string[] }>;
+      };
+      const match = (parsed.objects ?? []).find((t) => t.tag === args.tag);
+      if (!match || !match.id) {
+        return { table: null };
+      }
+      return {
+        table: {
+          id: match.id,
+          tag: match.tag ?? args.tag,
+          is_global: match.is_global ?? false,
+          fields: (match.fields ?? []).map((f) => ({
+            field_name: f.field_name ?? f.name,
+            properties: f.properties ?? [],
+          })),
+          item_attributes: match.item_attributes ?? [],
+        },
+      };
+    });
+  }
+
+  /**
+   * Create a new lookup table.
+   * POST /a/<domain>/api/v0.5/lookup_table/ with body
+   *   {tag, is_global, fields: [{field_name, properties}], item_attributes}
+   * Returns the new table's UUID (hex, no dashes).
+   *
+   * Raises if the tag is already taken (HQ's obj_create rejects with 400
+   * via `LookupTable.objects.domain_tag_exists`).
+   *
+   * Verified against
+   * /tmp/ace-refs/hq/corehq/apps/fixtures/resources/v0_1.py:192-204.
+   */
+  async createLookupTable(args: CreateLookupTableArgs): Promise<{ id: string; tag: string }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/lookup_table/`;
+      const authHeader = this.apiKeyAuthHeader('commcare_create_lookup_table');
+      const body = {
+        tag: args.tag,
+        is_global: args.is_global ?? false,
+        fields: args.fields.map((f) => ({
+          field_name: f.field_name,
+          properties: f.properties ?? [],
+        })),
+        item_attributes: args.item_attributes ?? [],
+      };
+      // API-key-authenticated Tastypie endpoints don't need CSRF — the
+      // CsrfViewMiddleware skips Authorization-header requests.
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: JSON.stringify(body),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: authHeader,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_create_lookup_table POST ${path}`);
+      }
+      if (res.status() !== 201 && res.status() !== 200) {
+        const text = await res.text();
+        // HQ's obj_create raises BadRequest("A lookup table with name <tag> already exists")
+        if (/already exists/i.test(text)) {
+          throw new Error(
+            `commcare_create_lookup_table: a lookup table with tag "${args.tag}" already exists in domain ${args.domain}.`,
+          );
+        }
+        throw new Error(
+          `commcare_create_lookup_table POST ${path} returned ${res.status()}: ${text.slice(0, 400)}`,
+        );
+      }
+      // Tastypie returns the created object on 201 with Location header
+      // pointing at the detail URI. Parse Location for the id.
+      const location = res.headers()['location'] || '';
+      const idFromLocation = location.match(/\/lookup_table\/([0-9a-f]+)\/?$/i)?.[1];
+      if (idFromLocation) {
+        return { id: idFromLocation, tag: args.tag };
+      }
+      // Fallback: parse response body
+      try {
+        const parsed = JSON.parse(await res.text());
+        if (parsed?.id) return { id: parsed.id, tag: args.tag };
+      } catch { /* fall through */ }
+      // Worst case: re-list and find by tag
+      const got = await this.getLookupTable({ domain: args.domain, tag: args.tag });
+      if (got.table) return { id: got.table.id, tag: args.tag };
+      throw new Error(
+        `commcare_create_lookup_table POST ${path} returned ${res.status()} but neither Location header nor body nor list-readback exposed the new table's id.`,
+      );
+    });
+  }
+
+  /**
    * POST /a/<domain>/apps/save/<app_id>/ with an empty body — CCHQ creates
    * a new versioned build doc and returns its `_id`. The CSRF token is read
    * from the cookie jar (ctx.request inherits cookies from the BrowserContext).
@@ -982,6 +1144,25 @@ export class CommCareBackend {
     const state = await request.storageState();
     const cookie = state.cookies.find((c) => c.name === 'csrftoken' && c.domain.includes('commcarehq'));
     return cookie?.value;
+  }
+
+  /**
+   * Build the `Authorization: ApiKey <username>:<key>` header value used by
+   * Tastypie endpoints that require API key auth (LookupTableResource,
+   * LookupTableItemResource, and most CommCareUserResource calls).
+   * Throws a typed error if the credentials aren't configured.
+   */
+  private apiKeyAuthHeader(atomLabel: string): string {
+    const u = this.opts.hqUsername;
+    const k = this.opts.hqApiKey;
+    if (!u || !k) {
+      throw new Error(
+        `${atomLabel}: HQ API-key credentials not configured. ` +
+          `ACE_HQ_USERNAME + ACE_HQ_API_KEY must be set in the plugin .env. ` +
+          `Run /ace:doctor to verify.`,
+      );
+    }
+    return `ApiKey ${u}:${k}`;
   }
 
   /**

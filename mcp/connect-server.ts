@@ -90,7 +90,12 @@ async function getBackends(): Promise<{ rest: RestBackend; playwright: Playwrigh
     // CommCareBackend takes the session itself (not a bare APIRequestContext)
     // so each atom can pull a fresh request and recover from CCHQ-side
     // session expiry that the boot-time probe missed (0.13.8).
-    commcare = new CommCareBackend({ baseUrl: cchqBaseUrl, session });
+    commcare = new CommCareBackend({
+      baseUrl: cchqBaseUrl,
+      session,
+      hqUsername: process.env.ACE_HQ_USERNAME,
+      hqApiKey: process.env.ACE_HQ_API_KEY,
+    });
     return { rest, playwright };
   })();
   try { return await initPromise; }
@@ -475,6 +480,30 @@ server.tool('commcare_create_domain',
     org: z.string().optional().describe('Optional organization id (hidden form field; usually empty).'),
   },
   async (args) => runAtom(async () => (await commcareClient()).createDomain(args))
+);
+
+server.tool('commcare_get_lookup_table',
+  'Fetch a CommCare HQ lookup table by tag (name). GET /a/<domain>/api/v0.5/lookup_table/ via Tastypie (session auth OK). Lists all tables in the domain and returns the one whose `tag` matches; returns `{table: null}` if not found. Use this to verify a lookup table exists before appending rows (see also commcare_lookup_table_append_rows, planned).',
+  {
+    domain: z.string(),
+    tag: z.string().describe('Lookup table name as the team uses it (e.g. "interview_schedule").'),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).getLookupTable(args))
+);
+
+server.tool('commcare_create_lookup_table',
+  'Create a new CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table/ via Tastypie. Body: {tag, is_global, fields: [{field_name, properties}], item_attributes}. Returns the new table\'s UUID hex id. Rejects with 400 if a table with the same tag already exists in the domain.',
+  {
+    domain: z.string(),
+    tag: z.string().describe('Name for the new table (e.g. "interview_schedule").'),
+    fields: z.array(z.object({
+      field_name: z.string(),
+      properties: z.array(z.string()).optional().describe('Sub-properties for this column. Empty/omitted for plain string columns.'),
+    })),
+    is_global: z.boolean().optional().describe('If true, table is shared across the domain (default false).'),
+    item_attributes: z.array(z.string()).optional(),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).createLookupTable(args))
 );
 
 server.tool('commcare_link_domains',
