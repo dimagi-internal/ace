@@ -1978,19 +1978,19 @@ describe('getConfiguredApkVersion: env-var with default', () => {
     else process.env.ACE_CONNECT_APK_VERSION = prev;
   });
 
-  it("returns '2.62.0' when env var is unset (current default)", () => {
+  it("returns '2.63.0' when env var is unset (current default)", () => {
     delete process.env.ACE_CONNECT_APK_VERSION;
-    expect(getConfiguredApkVersion()).toBe('2.62.0');
+    expect(getConfiguredApkVersion()).toBe('2.63.0');
   });
 
   it('returns the env-var value when set', () => {
-    process.env.ACE_CONNECT_APK_VERSION = '2.63.0';
-    expect(getConfiguredApkVersion()).toBe('2.63.0');
+    process.env.ACE_CONNECT_APK_VERSION = '2.62.0';
+    expect(getConfiguredApkVersion()).toBe('2.62.0');
   });
 
   it('falls back to default when env var is empty string', () => {
     process.env.ACE_CONNECT_APK_VERSION = '';
-    expect(getConfiguredApkVersion()).toBe('2.62.0');
+    expect(getConfiguredApkVersion()).toBe('2.63.0');
   });
 });
 

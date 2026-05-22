@@ -125,7 +125,7 @@ true one-shot debugging artifacts go to `./tmp/ace-debug/`.
 5. **Check the CommCare Android APK is installed on the AVD.**
    - **Important:** As of CommCare 2.62.0 (April 2026), Connect/ConnectID is integrated into the CommCare app itself — there is no separate `com.dimagi.connect` package. The single APK `org.commcare.dalvik` covers both flows.
    - Run: `adb shell pm list packages org.commcare.dalvik`
-   - If missing, download from `https://github.com/dimagi/commcare-android/releases/download/commcare_2.62.0/app-commcare-release.apk` (or pin a different version), then call `mobile_install_apk` with the local path.
+   - If missing, download from `https://github.com/dimagi/commcare-android/releases/download/commcare_2.63.0/commcare-2.63.0-release.apk` (or pin a different version — `mobile_ensure_avd_running` probes the new versioned filename first and falls back to the legacy `app-commcare-release.apk` for pre-2.63.0 versions). Then call `mobile_install_apk` with the local path.
 
 6. **Seed Playwright cookies for connect.dimagi.com (headless).**
    - Check `${HOME}/.ace/playwright-userdata/Default/Cookies` exists *and* the

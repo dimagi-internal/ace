@@ -224,7 +224,7 @@ server.tool(
   'mobile_resolve_selectors',
   {
     yaml: z.string().describe('Maestro YAML body containing `${SELECTOR:logical-name}` placeholders to resolve.'),
-    apkVersion: z.string().default('2.62.0').describe('Connect APK version. Maps to mcp/mobile/selectors/connect-<apkVersion>.yaml. Defaults to 2.62.0; bump when re-baselining against a new APK.'),
+    apkVersion: z.string().default('2.63.0').describe('Connect APK version. Maps to mcp/mobile/selectors/connect-<apkVersion>.yaml. Defaults to 2.63.0; bump when re-baselining against a new APK.'),
   },
   async ({ yaml, apkVersion }) => {
     try {

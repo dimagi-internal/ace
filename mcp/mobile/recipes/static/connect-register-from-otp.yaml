@@ -137,6 +137,16 @@ appId: org.commcare.dalvik
 # (`welcome_back`) appears as a re-confirmation step. We sequence
 # `runFlow.when` checks so each path matches at most one branch and the
 # others skip cleanly. Live-verified 2026-05-01.
+#
+# CommCare 2.63.0 replaced the single backup-code text field with a
+# six-cell PIN-style widget (`backup_code_view` LinearLayout containing
+# six unidentified single-char EditText children). Maestro's `inputText`
+# auto-advances across the cells, so the recipe just needs a different
+# gating selector + no `eraseText`/`hideKeyboard`. 2.63.0 also collapses
+# the initial-entry + re-confirmation steps into a single combined
+# "Welcome Back + Backup Code" screen — no separate re-prompt. The
+# 2.62.0 branches below skip cleanly on 2.63.0 since the old field id
+# is never visible. Live-verified 2026-05-22.
 
 # Optional Name screen (skipped on snapshot-reload + already-registered).
 - runFlow:
@@ -151,30 +161,51 @@ appId: org.commcare.dalvik
       - tapOn:
           id: "org.commcare.dalvik:id/personalid_name_continue_button"
 
-# Backup Code screen — single field, both fresh and recovery enter here at
-# least once. erase a generous 12 chars so a pre-filled value doesn't get
-# concatenated.
-- extendedWaitUntil:
-    visible:
-      id: "org.commcare.dalvik:id/connect_backup_code_input"
-    timeout: 15000
-- tapOn:
-    id: "org.commcare.dalvik:id/connect_backup_code_input"
-- eraseText: 12
-- inputText: ${BACKUP_CODE}
-- hideKeyboard
-- tapOn:
-    id: "org.commcare.dalvik:id/connect_backup_code_button"
+# Settle whichever Backup Code surface is rendering before probing
+# visibility — the screen swaps in via fragment transition.
+- waitForAnimationToEnd:
+    timeout: 5000
 
-# Some recovery flows re-prompt with "Welcome back" + the same backup-code
-# field as a confirmation step. Animation latency between screens means
-# the next check needs a beat to settle.
+# 2.63.0+ path: combined "Welcome Back + Backup Code" with six-cell PIN
+# widget. `inputText` auto-advances across the cells; no eraseText
+# needed since cells masked individually. No separate re-confirm.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/backup_code_view"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/backup_code_view"
+      - inputText: ${BACKUP_CODE}
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_backup_code_button"
+
+# 2.62.0 path: single-field initial entry. erase a generous 12 chars so a
+# pre-filled value doesn't get concatenated.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/connect_backup_code_input"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_backup_code_input"
+      - eraseText: 12
+      - inputText: ${BACKUP_CODE}
+      - hideKeyboard
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_backup_code_button"
+
+# 2.62.0 only: some recovery flows re-prompt with "Welcome back" + the
+# same single backup-code field as a confirmation step. (2.63.0 handles
+# initial + confirm in the combined 6-cell branch above.)
 - waitForAnimationToEnd:
     timeout: 5000
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/welcome_back"
+        id: "org.commcare.dalvik:id/connect_backup_code_input"
     commands:
       - tapOn:
           id: "org.commcare.dalvik:id/connect_backup_code_input"

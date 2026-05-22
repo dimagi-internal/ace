@@ -5,6 +5,23 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.340 — 2026-05-22
+
+**Promote CommCare 2.63.0 to the ACE default after end-to-end bootstrap validation.**
+
+Follow-up to PR #415. After a fresh-AVD validation pass on 2.63.0 (`mobile_register_test_user` ran end-to-end through `+74260000100` → home screen, `v 2.63.0` confirmed), this PR flips the default and ships the one recipe change the new APK needs.
+
+What changed:
+- `.env.tpl`: `ACE_CONNECT_APK_VERSION=2.62.0` → `2.63.0`
+- `mcp/mobile/client.ts`: `DEFAULT_APK_VERSION` constant flipped
+- `mcp/mobile-server.ts`: `apkVersion` default in `mobile_resolve_selectors` flipped
+- `mcp/mobile/recipes/static/connect-register-from-otp.yaml`: backup-code section now branches on which gating selector is visible. 2.63.0 path uses the new six-cell `id/backup_code_view` widget (Maestro `inputText` auto-advances across cells); 2.62.0 path retains the legacy single-`id/connect_backup_code_input` flow as a fallback so explicit `ACE_CONNECT_APK_VERSION=2.62.0` pins still work.
+- `mcp/mobile/selectors/connect-2.63.0.yaml`: status block updated — bootstrap path validated; deeper Phase 6 surfaces (opp claim / Learn / Deliver) reachable but not yet exercised, will patch on first live drift.
+- Doc references: `commands/mobile-bootstrap.md` download URL bumped to the new versioned filename; `skills/connect-baseline-screenshots/SKILL.md` example updated.
+- New learning: `docs/learnings/2026-05-22-commcare-2.63.0-backup-code-cells.md` — captures the UX change, the recipe diff, and the broader lesson (hypothesis-test the OS-widget input semantics before assuming a recipe rewrite).
+
+What was NOT validated end-to-end at 2.63.0 yet: opportunity tile claim, Learn module navigation, Deliver form submission, sync. These reuse standard nav-drawer + opp-detail selectors that match 2.62.0 in the UI dumps captured during this pass, but the first live Phase 6 dispatch will be the definitive surface check.
+
 ## 0.13.339 — 2026-05-22
 
 **Plumb CommCare 2.63.0 support without flipping the default.**

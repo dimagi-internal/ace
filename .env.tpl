@@ -142,7 +142,7 @@ ACE_AVD_NAME=ACE_Pixel_API_34
 # Bump in lockstep when a new selector map lands under
 # `mcp/mobile/selectors/connect-<version>.yaml`. Inline literal (not 1P-backed)
 # because it's a public Connect APK version, not a secret, and changes via PR.
-ACE_CONNECT_APK_VERSION=2.62.0
+ACE_CONNECT_APK_VERSION=2.63.0
 
 # Local AVD port pinning. Set to override; LEAVE UNSET for auto-allocation.
 #
