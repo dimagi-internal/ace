@@ -281,8 +281,7 @@ pre-flight (real failure mode from turmeric run 20260509-0455). See
 - Reads: pdd-to-app-journeys.md, both app summaries, Nova blueprints
 - Writes:
   - app-test-cases.yaml + recipes/J*.yaml under app-test-cases/
-  - Appended `test-scenario-count`, `test-archetype-coverage` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`).
-    Note: `app-test-cases/SKILL.md` records these rows with `phase: 6-qa-and-training` even though dispatch happens here in Phase 3. That's an upstream `phase:` mismatch in the SKILL.md (see issue #399 follow-up); don't paper over it on the writer side.
+  - Appended `test-scenario-count`, `test-archetype-coverage` rows in `decisions.yaml` (merge-only; rows use `phase: 3-commcare` matching this dispatch site; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`).
 - Halts on missing inputs or recipe-validation failure
 
 Phase 6 shallow runs the smoke recipes; /ace:qa-deep runs them all.

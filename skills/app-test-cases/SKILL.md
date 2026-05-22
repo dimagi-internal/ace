@@ -526,7 +526,7 @@ qualify under the bar for this phase — a working template, not a
 required set. The skill applies the bar criterion and emits whatever
 rows meet it; the catalog is a teaching device that improves over time.
 
-### Common load-bearing decisions for Phase 6
+### Common load-bearing decisions for Phase 3
 
 | ID | Question | Map to surface |
 |---|---|---|
@@ -538,8 +538,14 @@ The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 contract; the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.
 
-Each row this skill writes uses `phase: 6-qa-and-training` and
-`skill: app-test-cases`.
+Each row this skill writes uses `phase: 3-commcare` and
+`skill: app-test-cases`. The convention is the phase the skill is
+dispatched in, not the phase its outputs are consumed in — this skill is
+dispatched from `agents/commcare-setup.md § Step 2.6` even though
+`app-test-cases.yaml` + per-journey recipes are consumed by Phase 6's
+`app-screenshot-capture`. Aligns with the artifact manifest, which
+already maps the producer to `3-commcare/` (see
+`lib/artifact-manifest.ts`).
 
 ## Change log
 
@@ -547,4 +553,5 @@ Each row this skill writes uses `phase: 6-qa-and-training` and
 |------|--------|--------|
 | 2026-05-04 | Initial version. Phase 3 producer for app-test-cases.yaml; binds pdd-to-app-journeys.md to Nova-built structure with Maestro recipe stubs. Successor to qa-plan (retired in same release). | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 2 anchor rows (test-scenario-count, test-archetype-coverage) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
+| 2026-05-22 | Fix `phase:` tag in Decisions Log footer: was `6-qa-and-training` (the consuming phase), now `3-commcare` (the dispatching phase, matching the artifact manifest's existing `3-commcare/` path mapping). Follow-up to issue #399. | ACE team |
 | 2026-05-12 | Add Step 3.4 — recipe-wide `mobile_resolve_selectors` gate. Halts `[BLOCKER]` on any unresolved logical selector before recipes are written to Drive. Shifts left a class of Phase 6 blockers (leep + turmeric runs both hit this in early May) to Phase 3, where Nova form/field context is still in-scope. Follows PR #249's `connect-2.62.0.yaml` calibration. | ACE team |
