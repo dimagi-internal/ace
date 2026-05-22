@@ -1,0 +1,27 @@
+# V1 dry-run cohort spec for /ace:interview-cohort-create
+cohort_id: "08TRS"
+llo_org_slug: "ai-demo-space"
+hq_downstream_domain: "ace-interviews-test"
+hq_master_domain: "ace-interviews-master"
+
+# App references — empty for V1 dry run (apps don't yet exist). The cohort-create
+# skill will document the manual linked-app-copy step in its manual-steps.md.
+master_learn_app_id: ""
+master_deliver_app_id: ""
+
+connect_program_id: "f65e0633-cdb2-4d93-875a-b237ed241b18"
+connect_pm_org: "ai-demo-space"
+opp_short_description: "ACE Interviews V1 — cohort 08TRS"
+opp_long_description: "End-to-end V1 acceptance test on ACE-owned infra."
+
+schedule:
+  - { previous: "",      next: "te001", frequency_days: 2 }
+  - { previous: "te001", next: "te002", frequency_days: 2 }
+  - { previous: "te002", next: "te003", frequency_days: 9999 }
+
+payment_amount_ngn: 2.0
+max_users: 5
+start_date: "2026-05-22"
+end_date: "2026-06-30"
+
+ocs_bot_id: 12213
