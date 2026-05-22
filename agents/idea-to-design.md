@@ -37,9 +37,9 @@ this subagent's steps have these read-redundancy rules:
   the PDD MAY be rewritten by Step 1.4's QA retry loop — if QA
   dispatched the producer with an `auto_fix_hint`, re-read the PDD
   after that loop terminates.
-- **Batch the Step 1 input reads.** `inputs-manifest.yaml`, each
-  manifest entry, and optional `idea.md` are independent — issue them
-  as ONE parallel `drive_read_file` block, not sequentially.
+- **Batch the Step 1 input reads.** `inputs-manifest.yaml` and each
+  manifest entry are independent — issue them as ONE parallel
+  `drive_read_file` block, not sequentially.
 - **Skill-level reads are governed by each `SKILL.md`.** This subagent
   controls only the reads it issues directly between steps; reads
   inside the producer/QA/eval skills are out of scope here.
@@ -52,8 +52,6 @@ Invoke the `idea-to-pdd` skill.
   - `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml`
     (frozen pointer-set captured by the orchestrator from `<opp>/inputs/`)
   - Each file referenced in the manifest (read inline)
-  - Optional: `ACE/<opp-name>/runs/<run-id>/idea.md` if `--idea FILE|-`
-    was passed (operator free-text seed; stands alongside the manifest)
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
   (the formal PDD — Phase 1's primary artifact)
 - **Gate (review mode):** Present the PDD for approval before continuing
@@ -72,9 +70,8 @@ Invoke the `idea-to-pdd-qa` skill — runs 6 static structural checks against th
 ### Step 1.5: Idea-to-PDD eval (independent quality re-grade)
 Unless `--no-evals` was passed AND QA verdict is `pass`, invoke the `idea-to-pdd-eval` skill.
 - Inputs: the same source material `idea-to-pdd` consumed
-  (`inputs-manifest.yaml` + each manifest entry, plus run-root
-  `idea.md` if present) + the produced PDD at
-  `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
+  (`inputs-manifest.yaml` + each manifest entry) + the produced PDD
+  at `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
   **(all in subagent context from Step 1 / Step 1.4 — do NOT re-read)**
 - Output: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd-eval_verdict.yaml` (machine-readable
   verdict in the shared shape — see `skills/README.md § QA vs Eval`)

@@ -1,6 +1,6 @@
 ---
 description: Run the full CRISPR-Connect lifecycle for an opportunity
-argument-hint: [<opp>[/<run-id>]] [--mode default|review|auto] [--idea FILE|-] [--ace-web-url URL] [--dry-run] [--sandbox] [--no-evals]
+argument-hint: [<opp>[/<run-id>]] [--mode default|review|auto] [--ace-web-url URL] [--dry-run] [--sandbox] [--no-evals]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---
 
@@ -34,12 +34,6 @@ Run the full CRISPR-Connect lifecycle for a Connect opportunity.
     approval. Use for high-touch operations or training.
   - `auto` — never pause for any gate. For unattended batch runs
     (e.g. eval calibration). `[BLOCKER]` concerns still escalate.
-- `--idea FILE|-` — pre-seed a free-text `idea.md` from a file path, or `-`
-  for stdin. Operator-supplied seed; stands alongside the inputs/
-  evidence-pack manifest as supplementary intent. Content is uploaded
-  verbatim to `ACE/<opp>/runs/<run-id>/idea.md` via `drive_create_file`.
-  Most runs do not need this flag — the inputs/ evidence pack alone is
-  sufficient seed material for `idea-to-pdd`.
 - `--ace-web-url URL` — after the orchestrator completes, invoke the
   `upload-transcript` skill to POST the run's stream-json transcript to
   `<URL>/api/ingest/upload`. **Smart default:** if this flag is omitted
@@ -89,21 +83,18 @@ seed material for the PDD; there is no required filename.
 
 Resolution:
 
-1. If `--idea FILE|-` was passed, scripted-seed flow: write the idea
-   body to `runs/<run-id>/idea.md` directly (operator free-text seed).
-   Manifest capture still runs from `inputs/` if it exists.
-2. Else read `ACE_DRIVE_ROOT_FOLDER_ID`. Stop with an actionable error
+1. Read `ACE_DRIVE_ROOT_FOLDER_ID`. Stop with an actionable error
    if unset.
-3. List `ACE/`. Find subfolders containing an `inputs/` subfolder.
-4. Pick the candidate with the newest `inputs/` mtime; folder name = `<opp>`.
-5. If no candidate exists, stop with the new-layout setup message.
-6. Generate `runId` = `YYYYMMDD-HHMM` (collision-suffixed).
-7. `mkdir <opp>/runs/<runId>/`; capture
+2. List `ACE/`. Find subfolders containing an `inputs/` subfolder.
+3. Pick the candidate with the newest `inputs/` mtime; folder name = `<opp>`.
+4. If no candidate exists, stop with the new-layout setup message.
+5. Generate `runId` = `YYYYMMDD-HHMM` (collision-suffixed).
+6. `mkdir <opp>/runs/<runId>/`; capture
    `runs/<runId>/inputs-manifest.yaml` (frozen pointer-set of every
    direct child file under `inputs/`). No input file is copied — the
    PDD is synthesized at Phase 1 from the manifest.
-8. Init `run_state.yaml`; update `opp.yaml.last_run_id`.
-9. Begin Phase 1.
+7. Init `run_state.yaml`; update `opp.yaml.last_run_id`.
+8. Begin Phase 1.
 
 See `agents/ace-orchestrator.md` for full detail.
 
@@ -124,12 +115,6 @@ See `agents/ace-orchestrator.md` for full detail.
      tell the operator "defaulting --ace-web-url to labs".
    - Otherwise, leave unset (skip the post-run upload hook).
 
-1b. If `--idea` was provided, read its body:
-   - If the value is `-`, read stdin until EOF.
-   - Otherwise treat the value as a file path; read its bytes as UTF-8.
-   Pass the body through to the orchestrator alongside the slug so the
-   "Starting a New Opportunity" flow can skip its PDD-picker.
-
 2. **Execute the orchestration procedure inline at top-level.** Read
    `agents/ace-orchestrator.md` and follow it as a procedure document
    from this (top-level) Claude Code session. Do **not** dispatch
@@ -143,7 +128,6 @@ See `agents/ace-orchestrator.md` for full detail.
    Inputs to thread through:
    - Slug
    - Execution mode
-   - Idea body (if `--idea` was provided)
    - Dry-run flag (if set)
    - Sandbox flag (if set)
    - Any existing state from GDrive (if resuming)
