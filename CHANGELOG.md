@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.330 — 2026-05-22
+
+**Update MCP registration-coverage snapshots; register 5 orphan OCS authoring atoms.**
+
+The `test/mcp/registration-coverage.test.ts` snapshot test had drifted: atoms were added to the connect, ocs, and google-drive MCP servers without updating the expected-count snapshots, and 5 newer OCS authoring atoms (`create_chatbot`, `link_action_to_node`, `add_custom_action`, `add_chatbot_event`, `add_pipeline_node`) were registered on the server but missing from `mcp/ocs/capability-map.ts`, breaking the "every prefixed server tool has a capability-map entry (no orphan atoms)" invariant.
+
+Snapshot bumps: connect 30 → 47, ocs 27 → 32, google-drive 31 → 32. Added the 5 orphan atoms to the OCS capability-map under the Authoring section with PLAYWRIGHT backend annotations describing their CSRF-protected form views (none yet exposed as first-class REST endpoints). Suite now 1314/1314 passing locally.
+
+(Note: `## 0.13.329` was the prior CHANGELOG entry for the idea.md cleanup; main's `VERSION` lagged by one bump due to a merge race in PR #402, so this PR jumps to `0.13.330` to bring VERSION + CHANGELOG back in sync.)
+
 ## 0.13.329 — 2026-05-22
 
 **Retire `idea.md` / `--idea` operator-seed pathway.**
