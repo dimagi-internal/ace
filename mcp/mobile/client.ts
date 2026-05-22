@@ -95,6 +95,21 @@ export function bootstrapConfigFromEnv(): LocalBootstrapConfig | null {
   };
 }
 
+/**
+ * The selector-map APK version that recipe resolution targets.
+ *
+ * Reads `ACE_CONNECT_APK_VERSION` (the same env var that pins the APK
+ * download in `runLocalBootstrap`), falling back to `2.62.0` when unset
+ * or empty so existing tests + main keep working without an env change.
+ * Bump the default here in lockstep with the `.env.tpl` default when a
+ * new selector baseline is verified and promoted.
+ */
+export const DEFAULT_APK_VERSION = '2.62.0';
+export function getConfiguredApkVersion(): string {
+  const v = process.env.ACE_CONNECT_APK_VERSION;
+  return v && v.length > 0 ? v : DEFAULT_APK_VERSION;
+}
+
 const DEFAULT_STATIC_DIR = new URL('./recipes/static/', import.meta.url).pathname;
 
 export interface DriveAdapter {
@@ -672,13 +687,28 @@ export class MobileClient {
       // Not cached — fall through to download.
     }
 
-    const url = `https://github.com/dimagi/commcare-android/releases/download/commcare_${version}/app-commcare-release.apk`;
-    logInfo(`local_bootstrap: downloading CommCare ${version} from ${url}`);
-    const res = await this.fetchImpl(url);
-    if (!res.ok) {
+    // Dimagi renamed the release asset between CommCare 2.62.0
+    // (`app-commcare-release.apk`) and 2.63.0 (`commcare-<v>-release.apk`).
+    // Probe the new filename first; on 404 fall back to the legacy
+    // name so older pins keep working without a code change.
+    const baseUrl = `https://github.com/dimagi/commcare-android/releases/download/commcare_${version}`;
+    const candidateUrls = [
+      `${baseUrl}/commcare-${version}-release.apk`,
+      `${baseUrl}/app-commcare-release.apk`,
+    ];
+    let res: Awaited<ReturnType<typeof this.fetchImpl>> | undefined;
+    let lastUrl = candidateUrls[0];
+    for (const url of candidateUrls) {
+      lastUrl = url;
+      logInfo(`local_bootstrap: downloading CommCare ${version} from ${url}`);
+      res = await this.fetchImpl(url);
+      if (res.ok) break;
+      logInfo(`local_bootstrap: ${url} returned HTTP ${res.status} — trying next filename`);
+    }
+    if (!res || !res.ok) {
       throw new MobileError(
         'APK_DOWNLOAD_FAILED',
-        `CommCare APK download failed: HTTP ${res.status} ${res.statusText} from ${url}`,
+        `CommCare APK download failed: HTTP ${res?.status} ${res?.statusText} from ${lastUrl} (tried ${candidateUrls.length} filename conventions)`,
         `Verify ACE_CONNECT_APK_VERSION pins a real release tag at https://github.com/dimagi/commcare-android/releases, or download manually to ${apkPath}.`,
       );
     }
@@ -905,10 +935,12 @@ export class MobileClient {
     // the same sibling layout the local path's Maestro sees. (Pre-
     // 2026-05-16 the cloud branch skipped this entirely on the
     // assumption that ace-web resolved server-side; it never did.)
-    // The selector map's APK version is hard-coded to 2.62.0 for now —
-    // when ACE moves to a newer Connect APK, this becomes a
-    // `process.env.ACE_CONNECT_APK_VERSION` lookup.
-    const prep = await prepareRecipeForMaestro(recipePath, '2.62.0');
+    // Resolves selector placeholders against the configured APK
+    // version's selector map at `mcp/mobile/selectors/connect-<v>.yaml`.
+    // Sources from `ACE_CONNECT_APK_VERSION` so opt-in QA against a new
+    // baseline (e.g. 2.63.0) routes here without a code change. See
+    // `getConfiguredApkVersion`.
+    const prep = await prepareRecipeForMaestro(recipePath, getConfiguredApkVersion());
     if (prep.unverifiedSelectorsInTop.length > 0) {
       logInfo(
         `runRecipe: ${recipePath} uses unverified selectors ` +
@@ -1095,7 +1127,7 @@ export class MobileClient {
     // `prepareRecipeForMaestro` as the "top" recipe; the palette
     // includes both register recipes (the function resolves *every*
     // file in STATIC_RECIPES_DIR), so `from_otp` lands alongside.
-    const prep = await prepareRecipeForMaestro(toPath, '2.62.0');
+    const prep = await prepareRecipeForMaestro(toPath, getConfiguredApkVersion());
     try {
       const paletteTarB64 = tarDirAsBase64(prep.tempDir);
       logInfo(

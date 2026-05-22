@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.339 — 2026-05-22
+
+**Plumb CommCare 2.63.0 support without flipping the default.**
+
+Dimagi shipped CommCare 2.63.0 on 2026-05-20 and renamed the release asset (`app-commcare-release.apk` → `commcare-<v>-release.apk`). Two plumbing changes so a session can opt-in via `ACE_CONNECT_APK_VERSION=2.63.0` before we flip the default:
+
+- `mcp/mobile/client.ts` APK downloader now probes the new filename first and falls back to the legacy name on 404 — keeps the 2.62.0 pin working without code changes. Three new vitests cover the new-filename, fallback, and both-404 paths.
+- Replaced two hardcoded `'2.62.0'` strings in `prepareRecipeForMaestro` calls with a new `getConfiguredApkVersion()` helper that reads `ACE_CONNECT_APK_VERSION` (default `'2.62.0'`). Routes the selector-map lookup to the right baseline.
+- Seeded `mcp/mobile/selectors/connect-2.63.0.yaml` as a verbatim copy of the 2.62.0 baseline (header marked UNVERIFIED) so an opt-in session resolves to a real selector file. Re-baseline against a 2.63.0 AVD pending.
+
+Default stays 2.62.0 on main. Promotion to 2.63.0 lands in a follow-up PR after baseline screenshots + one full Phase 6 dispatch confirm the selector map.
+
 ## 0.13.330 — 2026-05-22
 
 **Update MCP registration-coverage snapshots; register 5 orphan OCS authoring atoms.**
