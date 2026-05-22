@@ -96,10 +96,15 @@ export type DecisionsLog = z.infer<typeof DecisionsLogSchema>;
  * Throws an Error whose message lists the dot-paths of each offending
  * field (e.g. "decisions.0.id") if validation fails.
  * Throws YAMLParseError if the YAML itself is unparseable.
+ *
+ * Transparently upgrades v1-shape input to v2 in memory so live runs
+ * survive the schema bump without an explicit migration pass. The next
+ * write (e.g. via decisions-render) persists the v2 shape to disk.
  */
 export function parseDecisionsYaml(input: string): DecisionsLog {
   const raw = yaml.parse(input);
-  const result = DecisionsLogSchema.safeParse(raw);
+  const upgraded = maybeUpgradeFromV1(raw);
+  const result = DecisionsLogSchema.safeParse(upgraded);
   if (!result.success) {
     const paths = result.error.issues
       .map((issue) => issue.path.join("."))
@@ -107,6 +112,57 @@ export function parseDecisionsYaml(input: string): DecisionsLog {
     throw new Error(`decisions log validation failed: ${paths}`);
   }
   return result.data;
+}
+
+/**
+ * In-memory upgrade of a v1 decisions log to v2.
+ *
+ * v1 row:                   v2 row:
+ *   default: X        →        ai-default: X
+ *   status: applied            status: applied
+ *   status: open      →        status: applied   (open collapses; no longer blocking)
+ *   status: overridden →       status: overridden + override: X  (best-effort:
+ *                              in v1 the override value occupied `default:` and
+ *                              the original AI value was lost into options_considered;
+ *                              this upgrade copies the same value into both fields)
+ *
+ * Idempotent: v2 input is returned unchanged.
+ * Unknown shapes are returned unchanged and will fail validation downstream.
+ */
+function maybeUpgradeFromV1(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null) return raw;
+  const log = raw as { schema_version?: unknown; decisions?: unknown };
+  if (log.schema_version !== 1) return raw;
+  if (!Array.isArray(log.decisions)) return raw;
+
+  const upgradedRows = log.decisions.map((r) => {
+    if (typeof r !== "object" || r === null) return r;
+    const row = r as Record<string, unknown>;
+    const out: Record<string, unknown> = { ...row };
+
+    if ("default" in out && !("ai-default" in out)) {
+      out["ai-default"] = out["default"];
+      delete out["default"];
+    }
+
+    if (out["status"] === "open") {
+      out["status"] = "applied";
+    }
+
+    if (out["status"] === "overridden" && !("override" in out)) {
+      // v1 destroyed the original AI value on override (pushed to
+      // options_considered); the override value is what's in `default`
+      // (now ai-default). Copy it into `override` so the v2 invariant holds.
+      const aiDefault = out["ai-default"];
+      if (typeof aiDefault === "string") {
+        out["override"] = aiDefault;
+      }
+    }
+
+    return out;
+  });
+
+  return { ...log, schema_version: 2, decisions: upgradedRows };
 }
 
 /**

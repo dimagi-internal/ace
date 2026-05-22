@@ -369,6 +369,94 @@ describe("serializeDecisionsLog", () => {
   });
 });
 
+describe("parseDecisionsYaml v1 → v2 upgrade", () => {
+  it("upgrades a v1 applied row to v2 ai-default", () => {
+    const yaml = `
+schema_version: 1
+opportunity: turmeric
+run_id: 20260507-1733
+generated_at: "2026-05-07T17:33:00Z"
+decisions:
+  - id: flw-count
+    phase: 1-design
+    skill: idea-to-pdd
+    question: How many FLWs?
+    default: "5–8"
+    options_considered: ["3–5", "5–8"]
+    source: idea.md
+    status: applied
+`;
+    const log = parseDecisionsYaml(yaml);
+    expect(log.schema_version).toBe(2);
+    expect(log.decisions[0]!["ai-default"]).toBe("5–8");
+    expect(log.decisions[0]!.status).toBe("applied");
+    expect(log.decisions[0]!.override).toBeUndefined();
+  });
+
+  it("collapses v1 status=open to v2 status=applied", () => {
+    const yaml = `
+schema_version: 1
+opportunity: turmeric
+run_id: 20260507-1733
+generated_at: "2026-05-07T17:33:00Z"
+decisions:
+  - id: foo
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Q?
+    default: x
+    options_considered: []
+    source: idea.md
+    status: open
+`;
+    const log = parseDecisionsYaml(yaml);
+    expect(log.decisions[0]!.status).toBe("applied");
+  });
+
+  it("upgrades v1 overridden row by copying ai-default into override", () => {
+    const yaml = `
+schema_version: 1
+opportunity: turmeric
+run_id: 20260507-1733
+generated_at: "2026-05-07T17:33:00Z"
+decisions:
+  - id: flw-count
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Q?
+    default: "12"
+    options_considered: ["5–8", "12"]
+    source: idea.md
+    status: overridden
+`;
+    const log = parseDecisionsYaml(yaml);
+    expect(log.decisions[0]!["ai-default"]).toBe("12");
+    expect(log.decisions[0]!.override).toBe("12");
+    expect(log.decisions[0]!.status).toBe("overridden");
+  });
+
+  it("leaves v2 input unchanged (idempotent)", () => {
+    const yaml = `
+schema_version: 2
+opportunity: turmeric
+run_id: 20260507-1733
+generated_at: "2026-05-07T17:33:00Z"
+decisions:
+  - id: foo
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Q?
+    ai-default: x
+    options_considered: []
+    source: idea.md
+    status: applied
+`;
+    const log = parseDecisionsYaml(yaml);
+    expect(log.schema_version).toBe(2);
+    expect(log.decisions[0]!["ai-default"]).toBe("x");
+  });
+});
+
 describe("effectiveValue", () => {
   it("returns ai-default when no override", () => {
     const row = {
