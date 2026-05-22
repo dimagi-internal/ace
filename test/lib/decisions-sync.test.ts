@@ -3,7 +3,7 @@ import { mergeDecisions } from "../../lib/decisions-sync.js";
 import type { DecisionsLog } from "../../lib/decisions-schema.js";
 
 const baseLog: DecisionsLog = {
-  schema_version: 1,
+  schema_version: 2,
   opportunity: "turmeric",
   run_id: "20260507-1733",
   generated_at: "2026-05-07T17:33:00Z",
@@ -13,7 +13,7 @@ const baseLog: DecisionsLog = {
       phase: "1-design",
       skill: "idea-to-pdd",
       question: "Which delivery archetype?",
-      default: "atomic-visit",
+      "ai-default": "atomic-visit",
       options_considered: ["atomic-visit", "focus-group", "multi-stage"],
       source: "idea.md §1",
       status: "applied",
@@ -23,7 +23,7 @@ const baseLog: DecisionsLog = {
       phase: "1-design",
       skill: "idea-to-pdd",
       question: "How many FLWs?",
-      default: "5–8",
+      "ai-default": "5–8",
       options_considered: ["3–5", "5–8", "10–15"],
       source: "idea.md §2",
       status: "applied",
@@ -34,8 +34,8 @@ const baseLog: DecisionsLog = {
 describe("mergeDecisions", () => {
   it("preserves the YAML when parsed rows match it exactly", () => {
     const parsed = [
-      { id: "archetype-selection", default: "atomic-visit", options_considered: ["atomic-visit", "focus-group", "multi-stage"] },
-      { id: "flw-count", default: "5–8", options_considered: ["3–5", "5–8", "10–15"] },
+      { id: "archetype-selection", value: "atomic-visit", options_considered: ["atomic-visit", "focus-group", "multi-stage"] },
+      { id: "flw-count", value: "5–8", options_considered: ["3–5", "5–8", "10–15"] },
     ];
     const { merged, report } = mergeDecisions(parsed, baseLog);
     expect(merged).toEqual(baseLog);
@@ -43,43 +43,61 @@ describe("mergeDecisions", () => {
     expect(report.optionsAdded).toEqual([]);
   });
 
-  it("overrides default when human edits it; sets status=overridden", () => {
+  it("populates override and flips status to overridden when human edits the value", () => {
     const parsed = [
-      { id: "flw-count", default: "12", options_considered: ["3–5", "5–8", "10–15"] },
+      { id: "flw-count", value: "12", options_considered: ["3–5", "5–8", "10–15"] },
     ];
     const { merged, report } = mergeDecisions(parsed, baseLog);
     const flw = merged.decisions.find((d) => d.id === "flw-count")!;
-    expect(flw.default).toBe("12");
+    expect(flw["ai-default"]).toBe("5–8");
+    expect(flw.override).toBe("12");
     expect(flw.status).toBe("overridden");
     expect(report.defaultsOverridden).toEqual([
       { id: "flw-count", from: "5–8", to: "12" },
     ]);
   });
 
-  it("preserves the prior default in options_considered when overriding", () => {
+  it("does NOT mutate ai-default on override", () => {
     const parsed = [
-      { id: "flw-count", default: "12", options_considered: ["3–5", "5–8", "10–15"] },
+      { id: "flw-count", value: "12", options_considered: ["3–5", "5–8", "10–15"] },
     ];
     const { merged } = mergeDecisions(parsed, baseLog);
     const flw = merged.decisions.find((d) => d.id === "flw-count")!;
-    expect(flw.options_considered).toContain("5–8");
-    expect(flw.options_considered).toContain("12");
+    expect(flw["ai-default"]).toBe("5–8");
   });
 
-  it("does not duplicate the prior default if already in options_considered", () => {
+  it("clears override and reverts to applied when parsed matches ai-default", () => {
+    const startLog: DecisionsLog = {
+      ...baseLog,
+      decisions: [
+        {
+          id: "flw-count",
+          phase: "1-design",
+          skill: "idea-to-pdd",
+          question: "How many FLWs?",
+          "ai-default": "5–8",
+          override: "12",
+          options_considered: ["3–5", "5–8", "10–15", "12"],
+          source: "idea.md §2",
+          status: "overridden",
+        },
+      ],
+    };
     const parsed = [
-      { id: "flw-count", default: "10–15", options_considered: ["3–5", "5–8", "10–15"] },
+      { id: "flw-count", value: "5–8", options_considered: ["3–5", "5–8", "10–15", "12"] },
     ];
-    const { merged } = mergeDecisions(parsed, baseLog);
+    const { merged, report } = mergeDecisions(parsed, startLog);
     const flw = merged.decisions.find((d) => d.id === "flw-count")!;
-    expect(flw.default).toBe("10–15");
-    expect(flw.options_considered.filter((x) => x === "5–8")).toHaveLength(1);
-    expect(flw.options_considered.filter((x) => x === "10–15")).toHaveLength(1);
+    expect(flw.status).toBe("applied");
+    expect(flw.override).toBeUndefined();
+    expect(report.defaultsOverridden).toEqual([
+      { id: "flw-count", from: "12", to: "5–8" },
+    ]);
   });
 
   it("appends new Considered bullets that aren't in YAML", () => {
     const parsed = [
-      { id: "archetype-selection", default: "atomic-visit", options_considered: ["atomic-visit", "focus-group", "multi-stage", "novel-archetype"] },
+      { id: "archetype-selection", value: "atomic-visit", options_considered: ["atomic-visit", "focus-group", "multi-stage", "novel-archetype"] },
     ];
     const { merged, report } = mergeDecisions(parsed, baseLog);
     const arch = merged.decisions.find((d) => d.id === "archetype-selection")!;
@@ -91,7 +109,7 @@ describe("mergeDecisions", () => {
 
   it("does NOT delete options that are missing from parsed", () => {
     const parsed = [
-      { id: "archetype-selection", default: "atomic-visit", options_considered: ["atomic-visit", "multi-stage"] },
+      { id: "archetype-selection", value: "atomic-visit", options_considered: ["atomic-visit", "multi-stage"] },
     ];
     const { merged } = mergeDecisions(parsed, baseLog);
     const arch = merged.decisions.find((d) => d.id === "archetype-selection")!;
@@ -100,7 +118,7 @@ describe("mergeDecisions", () => {
 
   it("reports parsed rows not matched in YAML (warns; doesn't add)", () => {
     const parsed = [
-      { id: "ghost-row", default: "abc", options_considered: ["abc"] },
+      { id: "ghost-row", value: "abc", options_considered: ["abc"] },
     ];
     const { merged, report } = mergeDecisions(parsed, baseLog);
     expect(merged.decisions).toHaveLength(2);
@@ -109,21 +127,22 @@ describe("mergeDecisions", () => {
 
   it("reports YAML rows not present in parsed (warns; preserves)", () => {
     const parsed = [
-      { id: "archetype-selection", default: "atomic-visit", options_considered: ["atomic-visit"] },
+      { id: "archetype-selection", value: "atomic-visit", options_considered: ["atomic-visit"] },
     ];
     const { merged, report } = mergeDecisions(parsed, baseLog);
     expect(merged.decisions).toHaveLength(2);
     expect(report.yamlNotInParsed).toEqual(["flw-count"]);
   });
 
-  it("ignores parsed rows with undefined default (no override applied)", () => {
+  it("ignores parsed rows with undefined value (no override applied)", () => {
     const parsed = [
       { id: "flw-count" },
     ];
     const { merged, report } = mergeDecisions(parsed, baseLog);
     const flw = merged.decisions.find((d) => d.id === "flw-count")!;
-    expect(flw.default).toBe("5–8");
+    expect(flw["ai-default"]).toBe("5–8");
     expect(flw.status).toBe("applied");
+    expect(flw.override).toBeUndefined();
     expect(report.defaultsOverridden).toEqual([]);
   });
 });

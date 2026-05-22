@@ -3,7 +3,7 @@ import type { DecisionsLog } from "../../lib/decisions-schema.js";
 import { renderDecisionsLog } from "../../lib/decisions-renderer.js";
 
 const MINIMAL_LOG: DecisionsLog = {
-  schema_version: 1,
+  schema_version: 2,
   opportunity: "turmeric",
   run_id: "20260507-1733",
   generated_at: "2026-05-07T17:33:00Z",
@@ -13,7 +13,7 @@ const MINIMAL_LOG: DecisionsLog = {
       phase: "1-design",
       skill: "idea-to-pdd",
       question: "Which delivery archetype best fits the intervention?",
-      default: "atomic-visit",
+      "ai-default": "atomic-visit",
       options_considered: ["atomic-visit", "focus-group", "multi-stage"],
       source: "idea.md §1",
       status: "applied",
@@ -59,6 +59,54 @@ describe("renderDecisionsLog", () => {
     expect(bullets).toBeDefined();
   });
 
+  it("emits an AI-default: line for every decision", () => {
+    const requests = renderDecisionsLog(MINIMAL_LOG);
+    const aiDefaultInsert = requests.find(
+      (r: any) =>
+        "insertText" in r &&
+        r.insertText?.text?.includes("AI-default: atomic-visit"),
+    );
+    expect(aiDefaultInsert).toBeDefined();
+  });
+
+  it("emits NO Override: line when row.override is undefined", () => {
+    const requests = renderDecisionsLog(MINIMAL_LOG);
+    const override = requests.find(
+      (r: any) =>
+        "insertText" in r &&
+        r.insertText?.text?.includes("Override:"),
+    );
+    expect(override).toBeUndefined();
+  });
+
+  it("emits both AI-default: AND Override: lines when row.override is set", () => {
+    const overriddenLog: DecisionsLog = {
+      ...MINIMAL_LOG,
+      decisions: [
+        {
+          ...MINIMAL_LOG.decisions[0]!,
+          id: "flw-count",
+          "ai-default": "5-8",
+          override: "12",
+          status: "overridden",
+        },
+      ],
+    };
+    const requests = renderDecisionsLog(overriddenLog);
+    const ai = requests.findIndex(
+      (r: any) =>
+        "insertText" in r && r.insertText?.text?.includes("AI-default: 5-8"),
+    );
+    const ov = requests.findIndex(
+      (r: any) =>
+        "insertText" in r && r.insertText?.text?.includes("Override: 12"),
+    );
+    expect(ai).toBeGreaterThanOrEqual(0);
+    expect(ov).toBeGreaterThanOrEqual(0);
+    // Override line is emitted after AI-default in document order.
+    expect(ov).toBeGreaterThan(ai);
+  });
+
   it.each([
     ["1 phase, 1 decision (MINIMAL_LOG)", () => MINIMAL_LOG, 1],
     ["2 phases, 3 decisions", () => ({
@@ -95,27 +143,5 @@ describe("renderDecisionsLog", () => {
         r.updateParagraphStyle?.paragraphStyle?.namedStyleType === "HEADING_3",
     );
     expect(h3).toHaveLength(0);
-  });
-
-  it("emphasizes status: open rows distinctly from status: applied", () => {
-    const openLog: DecisionsLog = {
-      ...MINIMAL_LOG,
-      decisions: [
-        {
-          ...MINIMAL_LOG.decisions[0]!,
-          id: "named-downstream-consumer",
-          status: "open",
-          notes: "No consumer named.",
-        },
-      ],
-    };
-    const requests = renderDecisionsLog(openLog);
-    const statusText = requests.find(
-      (r: any) =>
-        "insertText" in r &&
-        (r.insertText?.text?.includes("Status: OPEN") ||
-          r.insertText?.text?.includes("OPEN — load-bearing")),
-    );
-    expect(statusText).toBeDefined();
   });
 });

@@ -31,10 +31,10 @@ For "retry in place, overwrite history" (debug-loop-tightest, no fork history), 
   - `ocs-agent-setup` → fork at Phase 5 boundary
   - `connect-program-setup` → fork at Phase 4 boundary
   - `solicitation-create` → fork at Phase 8 boundary
-- `mode` (optional, default `empty`) — one of:
-  - `with-feedback` — copies upstream-of-fork step folders + carries forward `state.yaml`. Best for "iterate on phase N with full upstream context." Requires `feedback`.
-  - `empty` — creates a new run with minimal state; skips the artifact copy. Use only when you want a clean slate downstream of the fork point.
-- `feedback` (required iff `mode=with-feedback`) — short free-text explaining the reason for the fork. Recorded in the new run's working-session as the seed user message.
+- `mode` (required) — one of:
+  - `keep-overrides-only` — copies upstream-of-fork step folders + `run_state.yaml` + a FILTERED `decisions.yaml` containing only rows where `status == overridden` and `phase_ordinal < fork-phase`. AI defaults from upstream are dropped so downstream phases re-derive them. Use when you suspect upstream AI defaults shaped downstream phases in undesirable ways.
+  - `keep-all` — same artifacts + a `decisions.yaml` carrying ALL upstream rows regardless of status (both AI defaults and overrides). Use when you want full continuity and are just iterating on one downstream phase.
+- `feedback` (required) — short free-text explaining the reason for the fork. Recorded in the new run's working-session as the seed user message; the agent reads this as its first user-turn in the new run.
 
 ## Env vars
 
@@ -52,7 +52,7 @@ Both are pre-flighted by `/ace:doctor` `[Auth liveness]` — run that first if e
    (one-time per machine, ~30s gh-style browser flow), then retry.
    ```
 
-2. **Validate inputs.** `opp_slug`, `from_run_id`, `from_skill` must all be non-empty strings. If `mode == "with-feedback"`, `feedback` must be non-empty.
+2. **Validate inputs.** `opp_slug`, `from_run_id`, `from_skill`, `mode`, and `feedback` must all be non-empty strings. `mode` must be one of `keep-overrides-only` or `keep-all`.
 
 3. **POST to ace-web's fork endpoint** via curl. Use `set -o pipefail` and capture status + body so the skill can branch on error class:
 
@@ -75,8 +75,8 @@ Both are pre-flighted by `/ace:doctor` `[Auth liveness]` — run that first if e
 4. **Branch on HTTP status:**
 
    - `201` → success. Parse `payload.data` for `new_run_id` and `working_session_slug`. Surface both to the operator. Build the workbench URL (`${ACE_WEB_BASE_URL}/chat/<working_session_slug>`) and log it.
-   - `400` with `code: invalid-mode` → caller passed an invalid `mode`. Restate the valid choices.
-   - `400` with `code: feedback-required` → `mode=with-feedback` without `feedback`. Restate the requirement.
+   - `400` with `code: invalid-mode` → caller passed an invalid `mode`. Valid choices: `keep-overrides-only`, `keep-all`.
+   - `400` with `code: feedback-required` → `feedback` was empty. Both modes require it.
    - `400` with `code: no-runs-folder` → opp doesn't have a `runs/` subfolder. Probably an old single-run opp; the fork endpoint requires multi-run layout.
    - `400` with `code: src-run-missing` → `from_run_id` not under `runs/`. Typo or wrong format.
    - `404` with `code: opp-not-found` → `opp_slug` not in Drive.
@@ -95,36 +95,36 @@ Both are pre-flighted by `/ace:doctor` `[Auth liveness]` — run that first if e
    Next: /ace:run <opp>/<new_run_id> to resume from <from_skill>.
    ```
 
-## Known issues (file against ace-web)
+## Known issues
 
-These don't block use of the fork API but operators should be aware:
-
-1. **Run-id format mismatch.** ace-web's fork endpoint creates run-ids of the form `run-001`, `run-002`, … (sequential per opp). ACE's own commands (`/ace:run`, `/ace:status`) generate and address runs by `YYYYMMDD-HHMM`. A fork-created run with id `run-NNN` IS valid Drive state but `/ace:run <opp>/run-001` may or may not work depending on the orchestrator's slug-resolution rules. Verify before relying.
-
-2. **`state.yaml` vs `run_state.yaml`.** ACE renamed the per-run state file from `state.yaml` to `run_state.yaml` in plugin v0.11.3, but `apps/opps/fork.py` still looks for `state.yaml` when copying carry-forward state. On a current-ACE run the carry-forward step finds no `state.yaml` (because the file is named `run_state.yaml`) and the new run gets no state file copied. The forked run will need its `run_state.yaml` seeded manually for the orchestrator to see upstream phase products.
-
-Both of these are tracked in `docs/learnings/2026-05-14-fork-run-skill.md` (with proposed fixes for the ace-web side). Until ace-web ships those fixes, treat fork-run as an experimental tool — verify the new run's state on Drive before invoking `/ace:run` against it.
+None currently open against the current ace-web fork endpoint. The two
+prior gaps (run-id format, `state.yaml` vs `run_state.yaml` filename)
+were fixed in ace-web 2026-05-14 — both surfaces now match ACE plugin
+conventions.
 
 ## Example invocations
 
 ```bash
-# Fork at Phase 6 boundary (validate recipe changes against the same upstream
-# artifacts):
+# Fork at Phase 6 boundary, carrying full decision history forward
+# (most common: iterate on phase 6 with all upstream context intact):
 ACE_WEB_BASE_URL=$ACE_WEB_BASE_URL \
 ACE_WEB_PAT_TOKEN=$ACE_WEB_PAT_TOKEN \
 fork-run \
   --opp_slug turmeric \
   --from_run_id 20260513-2243 \
   --from_skill app-test-cases \
-  --mode with-feedback \
+  --mode keep-all \
   --feedback "Re-run Phase 6 against the deterministic-bootstrap heal layer (PR #282)."
 
-# Empty fork — fresh slate downstream of solicitation:
+# Fork at the same boundary but wipe AI defaults — only human overrides
+# carry forward. Use when you suspect upstream AI defaults shaped
+# downstream phases in undesirable ways:
 fork-run \
   --opp_slug turmeric \
   --from_run_id 20260513-2243 \
   --from_skill solicitation-create \
-  --mode empty
+  --mode keep-overrides-only \
+  --feedback "Let downstream re-derive AI defaults from a clean slate."
 ```
 
 ## Related

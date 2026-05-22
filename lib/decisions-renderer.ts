@@ -250,17 +250,8 @@ function phaseLabel(phase: string): string {
 // ── Intro paragraph text ──────────────────────────────────────────────────────
 
 const INTRO =
-  'Generated {generated_at}. To override a default, edit the "Default:" line of the relevant decision below. ' +
+  'Generated {generated_at}. To override a default, edit the "AI-default:" line of the relevant decision below — the sync step will record your value as an Override and preserve the original AI-default. ' +
   'To propose a new option, add a bullet to "Considered:". Then run /ace:step decisions-sync <opp>/<run-id> to push your edits back.';
-
-// ── Status rendering ──────────────────────────────────────────────────────────
-
-function statusValue(status: DecisionRow["status"]): string {
-  if (status === "open") {
-    return "OPEN — load-bearing; human edit recommended";
-  }
-  return status;
-}
 
 // ── Decision block renderer ───────────────────────────────────────────────────
 
@@ -271,8 +262,13 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
   // Bold question
   builder.appendBold(row.question);
 
-  // Default: <value>
-  builder.appendBoldPrefix("Default:", row.default);
+  // AI-default: <value>
+  builder.appendBoldPrefix("AI-default:", row["ai-default"]);
+
+  // Override: <value> (only when present)
+  if (row.override !== undefined) {
+    builder.appendBoldPrefix("Override:", row.override);
+  }
 
   // Considered: (bold label) then bullet list
   builder.appendBoldLabel("Considered:");
@@ -282,7 +278,7 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
   builder.appendBoldPrefix("Source:", row.source);
 
   // Status: <value>
-  builder.appendBoldPrefix("Status:", statusValue(row.status));
+  builder.appendBoldPrefix("Status:", row.status);
 
   // Notes (italic), if present
   if (row.notes) {

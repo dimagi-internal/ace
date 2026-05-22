@@ -4,32 +4,59 @@ import yaml from "yaml";
 /**
  * Canonical schema version for the decisions log. Bump when introducing
  * a breaking change; pair with a migration in `migrations/`.
+ *
+ * v2 (2026-05-22): rename `default:` field to `ai-default:`; add optional
+ * `override:` field; drop `open` from status enum. See
+ * docs/superpowers/specs/2026-05-22-fork-decisions-modes-design.md.
  */
-export const DECISIONS_SCHEMA_VERSION = 1 as const;
+export const DECISIONS_SCHEMA_VERSION = 2 as const;
 
 /**
  * One row in a per-run decisions log. Represents a load-bearing default
- * an ACE phase applied (or a load-bearing decision the AI flagged for
- * human attention while still proceeding with a default).
+ * an ACE phase applied. When a human overrides via the
+ * renderer + sync skills, the override value is stored in `override:`
+ * and `ai-default:` is preserved as the AI's original proposal.
+ *
+ * Effective value = `override` if present else `ai-default`.
  *
  * See docs/superpowers/specs/2026-05-08-decisions-log-design.md § Schema
- * for field semantics and the bar criterion that gates row creation.
+ * for the bar criterion that gates row creation; v2 schema is
+ * documented in docs/superpowers/specs/2026-05-22-fork-decisions-modes-design.md.
  */
-export const DecisionRowSchema = z.object({
-  id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, {
-    message: "id must be canonical kebab-case (lowercase alphanumeric segments separated by single hyphens)",
-  }),
-  phase: z.string().regex(/^[1-9][0-9]*-[a-z]+(-[a-z]+)*$/, {
-    message: "phase must match <N>-<kebab-name> (e.g. 1-design, 3-commcare)",
-  }),
-  skill: z.string().min(1),
-  question: z.string().min(1),
-  default: z.string().min(1),
-  options_considered: z.array(z.string().min(1)),
-  source: z.string().min(1),
-  status: z.enum(["applied", "overridden", "open"]),
-  notes: z.string().optional(),
-});
+export const DecisionRowSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, {
+      message:
+        "id must be canonical kebab-case (lowercase alphanumeric segments separated by single hyphens)",
+    }),
+    phase: z.string().regex(/^[1-9][0-9]*-[a-z]+(-[a-z]+)*$/, {
+      message: "phase must match <N>-<kebab-name> (e.g. 1-design, 3-commcare)",
+    }),
+    skill: z.string().min(1),
+    question: z.string().min(1),
+    "ai-default": z.string().min(1),
+    override: z.string().min(1).optional(),
+    options_considered: z.array(z.string().min(1)),
+    source: z.string().min(1),
+    status: z.enum(["applied", "overridden"]),
+    notes: z.string().optional(),
+  })
+  .superRefine((row, ctx) => {
+    if (row.status === "overridden" && row.override === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "status=overridden requires `override` field",
+        path: ["override"],
+      });
+    }
+    if (row.status === "applied" && row.override !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "status=applied must not have `override` field",
+        path: ["override"],
+      });
+    }
+  });
 
 export type DecisionRow = z.infer<typeof DecisionRowSchema>;
 
@@ -69,10 +96,15 @@ export type DecisionsLog = z.infer<typeof DecisionsLogSchema>;
  * Throws an Error whose message lists the dot-paths of each offending
  * field (e.g. "decisions.0.id") if validation fails.
  * Throws YAMLParseError if the YAML itself is unparseable.
+ *
+ * Transparently upgrades v1-shape input to v2 in memory so live runs
+ * survive the schema bump without an explicit migration pass. The next
+ * write (e.g. via decisions-render) persists the v2 shape to disk.
  */
 export function parseDecisionsYaml(input: string): DecisionsLog {
   const raw = yaml.parse(input);
-  const result = DecisionsLogSchema.safeParse(raw);
+  const upgraded = maybeUpgradeFromV1(raw);
+  const result = DecisionsLogSchema.safeParse(upgraded);
   if (!result.success) {
     const paths = result.error.issues
       .map((issue) => issue.path.join("."))
@@ -80,6 +112,57 @@ export function parseDecisionsYaml(input: string): DecisionsLog {
     throw new Error(`decisions log validation failed: ${paths}`);
   }
   return result.data;
+}
+
+/**
+ * In-memory upgrade of a v1 decisions log to v2.
+ *
+ * v1 row:                   v2 row:
+ *   default: X        →        ai-default: X
+ *   status: applied            status: applied
+ *   status: open      →        status: applied   (open collapses; no longer blocking)
+ *   status: overridden →       status: overridden + override: X  (best-effort:
+ *                              in v1 the override value occupied `default:` and
+ *                              the original AI value was lost into options_considered;
+ *                              this upgrade copies the same value into both fields)
+ *
+ * Idempotent: v2 input is returned unchanged.
+ * Unknown shapes are returned unchanged and will fail validation downstream.
+ */
+function maybeUpgradeFromV1(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null) return raw;
+  const log = raw as { schema_version?: unknown; decisions?: unknown };
+  if (log.schema_version !== 1) return raw;
+  if (!Array.isArray(log.decisions)) return raw;
+
+  const upgradedRows = log.decisions.map((r) => {
+    if (typeof r !== "object" || r === null) return r;
+    const row = r as Record<string, unknown>;
+    const out: Record<string, unknown> = { ...row };
+
+    if ("default" in out && !("ai-default" in out)) {
+      out["ai-default"] = out["default"];
+      delete out["default"];
+    }
+
+    if (out["status"] === "open") {
+      out["status"] = "applied";
+    }
+
+    if (out["status"] === "overridden" && !("override" in out)) {
+      // v1 destroyed the original AI value on override (pushed to
+      // options_considered); the override value is what's in `default`
+      // (now ai-default). Copy it into `override` so the v2 invariant holds.
+      const aiDefault = out["ai-default"];
+      if (typeof aiDefault === "string") {
+        out["override"] = aiDefault;
+      }
+    }
+
+    return out;
+  });
+
+  return { ...log, schema_version: 2, decisions: upgradedRows };
 }
 
 /**
@@ -100,4 +183,13 @@ export function serializeDecisionsLog(log: DecisionsLog): string {
     lineWidth: 0,
     aliasDuplicateObjects: false,
   });
+}
+
+/**
+ * Effective value for a row: the override if present, else the AI default.
+ * Use whenever consumers need the "current" value rather than the
+ * AI's original proposal.
+ */
+export function effectiveValue(row: DecisionRow): string {
+  return row.override ?? row["ai-default"];
 }
