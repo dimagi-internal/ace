@@ -211,6 +211,39 @@ export interface CreateUcrExpressionArgs {
   description?: string;
 }
 
+/** Custom user data field definition (per HQ's CustomDataFieldsForm field schema). */
+export interface CustomUserField {
+  slug: string;
+  label?: string;
+  is_required?: boolean;
+  /** Empty list for free-text fields; populated for dropdown-choice fields. */
+  choices?: string[];
+  regex?: string;
+  regex_msg?: string;
+  /** Required for which user types — subset of ["web_user", "commcare_user"]. */
+  required_for?: string[];
+  /** When the field was pulled from an upstream master domain via Linked Domain. */
+  upstream_id?: string | null;
+}
+
+export interface ListUserFieldsArgs {
+  domain: string;
+}
+
+export interface SetUserFieldsArgs {
+  domain: string;
+  /**
+   * Full list of fields to put on the domain. DESTRUCTIVE: this replaces
+   * the existing definition. Callers wanting incremental update should
+   * first call `listUserFields` and merge.
+   */
+  fields: CustomUserField[];
+  /** Pre-existing profiles to preserve. Defaults to []. */
+  profiles?: Array<Record<string, unknown>>;
+  /** Whether to purge user_data on existing users for fields no longer in the list. Default false (safer). */
+  purge_existing?: boolean;
+}
+
 export interface ListInboundApisArgs {
   domain: string;
   limit?: number;
@@ -1298,6 +1331,152 @@ export class CommCareBackend {
         );
       }
       return { id: match.id, name: match.name };
+    });
+  }
+
+  /**
+   * Read the current custom-user-data field definition for a domain.
+   * GETs /a/<domain>/users/user_data/ and parses the
+   * `<div data-name="custom_fields" data-value="<json>">` initial_page_data
+   * div — this is HQ's standard "Django → JS" bootstrap mechanism (template
+   * tag `initial_page_data` in corehq/apps/hqwebapp/templatetags/
+   * hq_shared_tags.py:650).
+   *
+   * Requires `can_edit_commcare_users` permission (302s to settings/users/
+   * without it). Surfaces that as a typed error so callers can pivot.
+   *
+   * Verified template path: corehq/apps/custom_data_fields/templates/
+   * custom_data_fields/custom_data_fields.html lines 21-22.
+   */
+  async listUserFields(args: ListUserFieldsArgs): Promise<{ fields: CustomUserField[]; profiles: Array<Record<string, unknown>> }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/users/user_data/`;
+      const res = await request.get(`${this.opts.baseUrl}${path}`, { maxRedirects: 0 });
+      if (res.status() === 302) {
+        const location = res.headers()['location'] || '';
+        if (/\/login\/?(\?|$)/.test(location)) throw new SessionExpiredError();
+        if (location.includes('/settings/users/')) {
+          throw new Error(
+            `commcare_list_user_fields: session redirected to ${location} — the user lacks ` +
+              `can_edit_commcare_users permission on ${args.domain}. ` +
+              `Verify ace@dimagi-ai.com has admin or "Edit Mobile Workers" role on this domain.`,
+          );
+        }
+        throw new Error(`commcare_list_user_fields GET ${path} redirected to ${location}`);
+      }
+      if (res.status() !== 200) {
+        throw new Error(`commcare_list_user_fields GET ${path} returned ${res.status()}`);
+      }
+      const html = await res.text();
+      const parseInitialPageData = (name: string): unknown => {
+        const re = new RegExp(`<div data-name=["']${name}["'] data-value=["']([^"']*)["']`);
+        const m = html.match(re);
+        if (!m) return null;
+        const decoded = m[1]
+          .replace(/&quot;/g, '"')
+          .replace(/&#x27;/g, "'")
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>');
+        try { return JSON.parse(decoded); } catch { return null; }
+      };
+      const fieldsRaw = (parseInitialPageData('custom_fields') ?? []) as any[];
+      const profilesRaw = (parseInitialPageData('custom_fields_profiles') ?? []) as any[];
+      const fields: CustomUserField[] = fieldsRaw.map((f) => ({
+        slug: String(f.slug ?? ''),
+        label: f.label,
+        is_required: !!f.is_required,
+        choices: Array.isArray(f.choices) ? f.choices : [],
+        regex: f.regex ?? undefined,
+        regex_msg: f.regex_msg ?? undefined,
+        required_for: Array.isArray(f.required_for) ? f.required_for : undefined,
+        upstream_id: f.upstream_id ?? null,
+      }));
+      return { fields, profiles: profilesRaw };
+    });
+  }
+
+  /**
+   * Write the full custom-user-data field definition on a domain
+   * (DESTRUCTIVE — replaces the existing list). POSTs to
+   * /a/<domain>/users/user_data/ via the CustomDataFieldsForm. The form
+   * has three hidden inputs that take JSON-encoded payloads:
+   *   - data_fields  — the field list (slug, label, is_required, choices, ...)
+   *   - profiles     — the profile list (preserved verbatim)
+   *   - require_profile — comma-separated user types (we send empty by default)
+   * Plus optional `purge_existing` boolean.
+   *
+   * Auth: same as listUserFields. The form is otherwise JS-rendered, but
+   * a direct form POST bypasses the React/Knockout UI — verified by
+   * reading apps/custom_data_fields/edit_model.py:491 (post handler
+   * calls form.is_valid() then save_custom_fields() without UI involvement).
+   *
+   * Safety: callers SHOULD `listUserFields` first, merge their additions,
+   * then call this with the merged list. Pure-replace semantics are
+   * destructive on shared / production domains.
+   */
+  async setUserFields(args: SetUserFieldsArgs): Promise<{ ok: true; count: number }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/users/user_data/`;
+      // Seed CSRF + verify permission via GET
+      const refreshRes = await request.get(`${this.opts.baseUrl}${path}`, { maxRedirects: 0 });
+      if (refreshRes.status() === 302) {
+        const location = refreshRes.headers()['location'] || '';
+        if (/\/login\/?(\?|$)/.test(location)) throw new SessionExpiredError();
+        if (location.includes('/settings/users/')) {
+          throw new Error(
+            `commcare_set_user_fields: redirected to ${location} — user lacks can_edit_commcare_users on ${args.domain}.`,
+          );
+        }
+      }
+      const csrf = await this.csrfFromCookies(request);
+      const dataFieldsJson = JSON.stringify(args.fields.map((f) => ({
+        slug: f.slug,
+        label: f.label ?? f.slug,
+        is_required: f.is_required ?? false,
+        choices: f.choices ?? [],
+        regex: f.regex ?? '',
+        regex_msg: f.regex_msg ?? '',
+        required_for: f.required_for ?? [],
+        upstream_id: f.upstream_id ?? null,
+      })));
+      const profilesJson = JSON.stringify(args.profiles ?? []);
+      const params = new URLSearchParams();
+      params.set('csrfmiddlewaretoken', csrf ?? '');
+      params.set('data_fields', dataFieldsJson);
+      params.set('profiles', profilesJson);
+      params.set('require_profile', '');
+      if (args.purge_existing) params.set('purge_existing', 'on');
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: params.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${path}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        const location = res.headers()['location'] || '';
+        if (/\/login\/?(\?|$)/.test(location)) throw new SessionExpiredError();
+        return { ok: true as const, count: args.fields.length };
+      }
+      if (res.status() === 200) {
+        // The post() handler in edit_model.py calls self.get() at the end (success or fail).
+        // Distinguish success from validation failure by sniffing for the messages.success.
+        const html = await res.text();
+        if (/fields saved successfully/i.test(html)) {
+          return { ok: true as const, count: args.fields.length };
+        }
+        if (/Unable to save/i.test(html)) {
+          throw new Error(
+            `commcare_set_user_fields: form validation failed. First 400 chars: ${html.slice(0, 400)}`,
+          );
+        }
+        // Inconclusive — assume success.
+        return { ok: true as const, count: args.fields.length };
+      }
+      throw new Error(`commcare_set_user_fields POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
     });
   }
 
