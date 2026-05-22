@@ -1,0 +1,149 @@
+---
+name: interview-opp-verify
+description: >
+  Read-only verifier for a configured Connect Interviews opportunity.
+  Walks docs/connect-interviews/checklist-schema.yaml, calls the read
+  atoms, and grades each rule pass / fail / unverifiable. Cross-system
+  consistency checks (e.g. OCS custom action target URL == HQ Inbound
+  API URL) are included.
+disable-model-invocation: true
+---
+
+# Interview Opportunity Verify
+
+Walk every rule in `docs/connect-interviews/checklist-schema.yaml` against a live opp and produce a verdict report.
+
+## Slash command
+
+```
+/ace:interview-opp-verify <connect-opp-url>
+```
+
+Or with explicit args:
+
+```
+/ace:interview-opp-verify --opp <opp_id> --org <pm_org> --domain <hq_domain> --bot <experiment_id>
+```
+
+## Input
+
+Resolved from the Connect opp URL: `/a/<org>/opportunity/<opp_id>/`. Skill fetches the opp, then derives:
+- HQ downstream domain (from opp.learn_app.domain)
+- OCS bot id (from connections + bot list — defaults to env OCS_INTERVIEWS_TEMPLATE_ID if there's only one)
+
+## Products
+
+- `ACE/<opp-name>/verify/<run-id>/report.md` — human-readable verdict report
+- `ACE/<opp-name>/verify/<run-id>/verdict.yaml` — machine-readable per-rule pass/fail
+- Exit code 0 if all green, 1 if any fail, 2 if any unverifiable items exist
+
+## Process
+
+The skill loads `docs/connect-interviews/checklist-schema.yaml` (in-repo) and iterates every item, calling the named `verify.atom` with the appropriate args.
+
+### Sections walked (in order):
+
+1. **per_program** — Connect program + LLO org membership + OCS team
+2. **per_domain** — all the HQ plumbing + the OCS bot's structural pieces
+3. **per_cohort** — apps, lookup rows, opp config, payment unit, conditional alert, OCS interview nodes
+4. **per_user** — cohort_id is set on this cohort's FLWs (V1: only checks the opp's invited users)
+
+### Verdict shapes:
+
+- ✅ **pass** — atom returned matching state per the rule
+- ❌ **fail** — atom returned and state mismatched
+- ⚠️ **unverifiable** — atom doesn't exist yet (gap) OR returned an error we can't classify
+- ⊘ **out_of_band** — rule explicitly marked as "humans must attest" (e.g. subscription tier)
+
+### Cross-system checks
+
+Some rules check consistency across systems. The verifier resolves IDs cohesively before grading:
+
+- `ocs-bot-has-completion-action.target_url_matches: "@inbound-api-session-completion.url"` — verifier reads the HQ Inbound API URL, then checks the OCS custom action's `server_url + api_schema operationId path` resolves to the same URL.
+- `opp-learn-app-linked.value: "@app-learn-copied.app_id"` — verifier reads the new linked-app id from the cohort spec, checks the opp's `learn_app.cc_app_id` matches.
+
+### Report format
+
+```markdown
+# Interview Opp Verify — <cohort_id>
+
+**Generated:** 2026-05-22 (run-id 20260522-0030)
+**Opportunity:** https://connect.dimagi.com/a/<org>/opportunity/<opp_id>/
+**HQ domain:** <slug>  **OCS bot:** <experiment_id>
+
+## Summary
+
+| Pass | Fail | Unverifiable | Out-of-band | Total |
+|---|---|---|---|---|
+| 38 | 2 | 5 | 3 | 48 |
+
+## Per-section
+
+### per_program (3 items)
+✅ connect-program-exists — "ACE Interviews Test" found
+⊘ llo-orgs-accepted-into-program — out_of_band (ACE-owned program has no external LLOs)
+⊘ ocs-team-for-program — out_of_band (OCS_TEAM_SLUG=connect-ace confirmed by env)
+
+### per_domain (24 items)
+...
+
+### per_cohort (25 items)
+...
+
+## Action items
+
+For each fail:
+- **conditional-alert-payment** — alert "<cohort_id> Payment Conditional Alert" not found on /a/<domain>/messaging/conditional/. Create manually (atom not yet built).
+
+For each unverifiable:
+- **ocs-interview-nodes-per-cohort** — atom gap (ocs_edit_pipeline_structure). Manually inspect the bot at <bot-url> and confirm each interview_id in the cohort's schedule has a router target.
+```
+
+## Process detail
+
+1. **Resolve identifiers.** Given the opp URL, call `connect_get_opportunity` to fetch the opp; extract `learn_app.domain` as the downstream HQ domain.
+
+2. **Load the schema.** Read `docs/connect-interviews/checklist-schema.yaml` from the plugin install dir; iterate per_program / per_domain / per_cohort / per_user items.
+
+3. **Per item:**
+   - If `verify.atom` is `null`, mark `unverifiable` with the item's notes.
+   - If `verify.rule.type` is `out_of_band`, mark `⊘`.
+   - Otherwise, call the atom with the rule's args (substituting `@<other-item-id>.field` references resolved from previously-graded items).
+   - Apply the rule type: `exists`, `name_matches`, `property_equals`, `filter_matches`, etc.
+   - Record the verdict.
+
+4. **Write the report + verdict YAML.**
+
+## Atom usage map (read-side only)
+
+| Schema section | Atoms |
+|---|---|
+| per_program | `connect_list_programs`, `connect_get_program` |
+| per_domain HQ | `commcare_list_apps`, `commcare_list_connections`, `commcare_list_inbound_apis`, `commcare_get_lookup_table`, `commcare_list_users` (for user fields presence) |
+| per_domain OCS | `ocs_list_chatbots`, `ocs_get_chatbot`, `ocs_get_chatbot_pipeline_id` |
+| per_cohort | `commcare_list_apps`, `commcare_get_lookup_table_rows`, `connect_get_opportunity`, `connect_list_payment_units`, `ocs_get_chatbot_pipeline_id`, `ocs_get_chatbot` |
+| per_user | `commcare_list_users`, `commcare_get_user` |
+
+## Unverifiable rules (gap-tagged)
+
+Per `checklist-schema.yaml § atom_gaps`, these rules currently grade `unverifiable`:
+
+- `ucr-*` rules — no `commcare_list_ucr_expressions` atom yet (linked-domain push verification deferred)
+- `repeater-*` rules — no `commcare_list_form_repeaters` atom yet (only create)
+- `custom-user-data` rule (cohort_id field exists) — no `commcare_list_user_fields` atom yet
+- `conditional-alert-payment` rule — no `commcare_list_conditional_alerts` atom yet
+- `ocs-interview-nodes-per-cohort` rule — no atom to traverse router targets
+
+For V1 these grade `⚠️ unverifiable` with action-item prompts to operator. V1.5 ships the read atoms to fill these.
+
+## Exit codes
+
+- `0` — all rules pass or out_of_band
+- `1` — at least one fail
+- `2` — no fails but some unverifiable (operator should review action items)
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-05-21 | Initial V1 — read-only verifier; ~80% of rules implementable with current atoms | ACE team |
