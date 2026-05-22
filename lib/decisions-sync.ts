@@ -1,4 +1,5 @@
 import type { DecisionsLog, DecisionRow } from "./decisions-schema.js";
+import { effectiveValue } from "./decisions-schema.js";
 import type { ParsedDecisionRow } from "./decisions-parser.js";
 
 export type ChangeReport = {
@@ -46,21 +47,26 @@ function mergeRow(
   if (!parsedRow) return yamlRow;
 
   let updated: DecisionRow = yamlRow;
+  const yamlEffective = effectiveValue(yamlRow);
 
-  if (parsedRow.default !== undefined && parsedRow.default !== yamlRow.default) {
-    const newOptions = [...yamlRow.options_considered];
-    if (!newOptions.includes(yamlRow.default)) newOptions.push(yamlRow.default);
-    if (!newOptions.includes(parsedRow.default)) newOptions.push(parsedRow.default);
-    updated = {
-      ...updated,
-      default: parsedRow.default,
-      status: "overridden",
-      options_considered: newOptions,
-    };
+  if (parsedRow.value !== undefined && parsedRow.value !== yamlEffective) {
+    if (parsedRow.value === yamlRow["ai-default"]) {
+      // Parsed value matches the AI default — revert: clear the override
+      // and flip status back to applied.
+      const { override: _unused, ...withoutOverride } = updated;
+      void _unused;
+      updated = { ...withoutOverride, status: "applied" };
+    } else {
+      updated = {
+        ...updated,
+        override: parsedRow.value,
+        status: "overridden",
+      };
+    }
     report.defaultsOverridden.push({
       id: yamlRow.id,
-      from: yamlRow.default,
-      to: parsedRow.default,
+      from: yamlEffective,
+      to: parsedRow.value,
     });
   }
 

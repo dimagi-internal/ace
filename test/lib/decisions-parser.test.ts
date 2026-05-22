@@ -25,13 +25,13 @@ describe("parseDocumentStructure", () => {
     expect(parseDocumentStructure(doc)).toEqual([]);
   });
 
-  it("extracts a single decision with default + considered options", () => {
+  it("extracts a single decision with AI-default + considered options", () => {
     const doc = makeDoc([
       { text: "Decisions Log — turmeric", style: "HEADING_1" },
       { text: "Phase 1 — Design", style: "HEADING_2" },
       { text: "archetype-selection", style: "HEADING_3" },
       { text: "Which delivery archetype best fits?", style: "NORMAL_TEXT" },
-      { text: "  Default: atomic-visit" },
+      { text: "  AI-default: atomic-visit" },
       { text: "  Considered:" },
       { text: "atomic-visit", bullet: true },
       { text: "focus-group", bullet: true },
@@ -43,28 +43,49 @@ describe("parseDocumentStructure", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual({
       id: "archetype-selection",
-      default: "atomic-visit",
+      value: "atomic-visit",
       options_considered: ["atomic-visit", "focus-group", "multi-stage"],
     });
+  });
+
+  it("treats Override as winning over AI-default when both present", () => {
+    const doc = makeDoc([
+      { text: "row-overridden", style: "HEADING_3" },
+      { text: "  AI-default: 5–8" },
+      { text: "  Override: 12" },
+      { text: "  Status: overridden" },
+    ]);
+    const rows = parseDocumentStructure(doc);
+    expect(rows[0]!.value).toBe("12");
+  });
+
+  it("uses AI-default when only AI-default is present (no Override)", () => {
+    const doc = makeDoc([
+      { text: "row-applied", style: "HEADING_3" },
+      { text: "  AI-default: 5–8" },
+      { text: "  Status: applied" },
+    ]);
+    const rows = parseDocumentStructure(doc);
+    expect(rows[0]!.value).toBe("5–8");
   });
 
   it("extracts multiple decisions across multiple phases", () => {
     const doc = makeDoc([
       { text: "Phase 1 — Design", style: "HEADING_2" },
       { text: "row-a", style: "HEADING_3" },
-      { text: "  Default: alpha" },
+      { text: "  AI-default: alpha" },
       { text: "row-b", style: "HEADING_3" },
-      { text: "  Default: beta" },
+      { text: "  AI-default: beta" },
       { text: "Phase 3 — CommCare", style: "HEADING_2" },
       { text: "row-c", style: "HEADING_3" },
-      { text: "  Default: gamma" },
+      { text: "  AI-default: gamma" },
     ]);
     const rows = parseDocumentStructure(doc);
     expect(rows.map((r) => r.id)).toEqual(["row-a", "row-b", "row-c"]);
-    expect(rows.map((r) => r.default)).toEqual(["alpha", "beta", "gamma"]);
+    expect(rows.map((r) => r.value)).toEqual(["alpha", "beta", "gamma"]);
   });
 
-  it("handles a row with no Default: line (undefined default)", () => {
+  it("handles a row with no AI-default: line (undefined value)", () => {
     const doc = makeDoc([
       { text: "row-x", style: "HEADING_3" },
       { text: "Some question?", style: "NORMAL_TEXT" },
@@ -73,31 +94,31 @@ describe("parseDocumentStructure", () => {
     const rows = parseDocumentStructure(doc);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.id).toBe("row-x");
-    expect(rows[0]!.default).toBeUndefined();
+    expect(rows[0]!.value).toBeUndefined();
   });
 
-  it("handles a row with Default but no Considered: section", () => {
+  it("handles a row with AI-default but no Considered: section", () => {
     const doc = makeDoc([
       { text: "row-y", style: "HEADING_3" },
-      { text: "  Default: solo-value" },
+      { text: "  AI-default: solo-value" },
     ]);
     const rows = parseDocumentStructure(doc);
-    expect(rows[0]!.default).toBe("solo-value");
+    expect(rows[0]!.value).toBe("solo-value");
     expect(rows[0]!.options_considered).toBeUndefined();
   });
 
-  it("ignores trailing whitespace and the Default: indent", () => {
+  it("ignores trailing whitespace and the AI-default: indent", () => {
     const doc = makeDoc([
       { text: "row-z", style: "HEADING_3" },
-      { text: "    Default:   spaced-value   " },
+      { text: "    AI-default:   spaced-value   " },
     ]);
     const rows = parseDocumentStructure(doc);
-    expect(rows[0]!.default).toBe("spaced-value");
+    expect(rows[0]!.value).toBe("spaced-value");
   });
 
-  it("round-trips a DecisionsLog through render → parse without losing default/options", () => {
+  it("round-trips a DecisionsLog through render → parse without losing value/options", () => {
     const log: DecisionsLog = {
-      schema_version: 1,
+      schema_version: 2,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
@@ -107,7 +128,7 @@ describe("parseDocumentStructure", () => {
           phase: "1-design",
           skill: "idea-to-pdd",
           question: "Which delivery archetype?",
-          default: "atomic-visit",
+          "ai-default": "atomic-visit",
           options_considered: ["atomic-visit", "focus-group", "multi-stage"],
           source: "idea.md §1",
           status: "applied",
@@ -117,10 +138,11 @@ describe("parseDocumentStructure", () => {
           phase: "1-design",
           skill: "idea-to-pdd",
           question: "How many FLWs?",
-          default: "5–8",
-          options_considered: ["3–5", "5–8", "10–15"],
+          "ai-default": "5–8",
+          override: "12",
+          options_considered: ["3–5", "5–8", "10–15", "12"],
           source: "idea.md §2",
-          status: "applied",
+          status: "overridden",
         },
       ],
     };
@@ -130,14 +152,14 @@ describe("parseDocumentStructure", () => {
     const parsed = parseDocumentStructure(doc);
 
     expect(parsed.map((r) => r.id)).toEqual(["archetype-selection", "flw-count"]);
-    expect(parsed[0]!.default).toBe("atomic-visit");
+    expect(parsed[0]!.value).toBe("atomic-visit");
     expect(parsed[0]!.options_considered).toEqual([
       "atomic-visit",
       "focus-group",
       "multi-stage",
     ]);
-    expect(parsed[1]!.default).toBe("5–8");
-    expect(parsed[1]!.options_considered).toEqual(["3–5", "5–8", "10–15"]);
+    expect(parsed[1]!.value).toBe("12");
+    expect(parsed[1]!.options_considered).toEqual(["3–5", "5–8", "10–15", "12"]);
   });
 });
 

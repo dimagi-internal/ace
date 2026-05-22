@@ -4,10 +4,11 @@
  * Walks the document body in paragraph order. HEADING_3 paragraphs are
  * decision-row boundaries (the row id). Within a decision section,
  * subsequent paragraphs are scanned for:
- *   - "Default: <value>"  → row.default
- *   - "Considered:"       → enters bullet-collection mode
- *   - bullet paragraphs   → appended to row.options_considered
- *   - "Source:" / "Status:" → exits bullet-collection mode; not extracted
+ *   - "AI-default: <value>"  → contributes to row.value (falls back; loses to Override)
+ *   - "Override: <value>"    → wins; sets row.value
+ *   - "Considered:"          → enters bullet-collection mode
+ *   - bullet paragraphs      → appended to row.options_considered
+ *   - "Source:" / "Status:"  → exits bullet-collection mode; not extracted
  *
  * The parser is the inverse of lib/decisions-renderer.ts. Together they
  * form a round-trip pair for the decisions-sync workflow.
@@ -15,6 +16,11 @@
  * NOT extracted: phase, skill, question, source, status, notes. Those are
  * not editable surfaces in the round-trip workflow; the merger pulls them
  * from the YAML.
+ *
+ * The `value` field on ParsedDecisionRow is the effective value the human
+ * wants applied — Override if present, else AI-default. The merger
+ * compares it to the YAML row's effective value to decide whether an
+ * override change occurred.
  */
 
 // ── Input shape (subset of Google Docs API documents.get response) ────────────
@@ -33,7 +39,7 @@ type GoogleDocsDocument = { body?: { content?: DocsStructuralElement[] } };
 
 export type ParsedDecisionRow = {
   id: string;
-  default?: string;
+  value?: string;
   options_considered?: string[];
 };
 
@@ -67,12 +73,28 @@ export function parseDocumentStructure(
   const content = doc.body?.content ?? [];
   const rows: ParsedDecisionRow[] = [];
 
-  // State machine: walk paragraphs in order.
-  let current: ParsedDecisionRow | null = null;
+  // State machine: walk paragraphs in order. We track ai-default and
+  // override separately during the section so we can resolve "value"
+  // (override wins) at commit time.
+  type Acc = {
+    id: string;
+    aiDefault?: string;
+    override?: string;
+    options_considered?: string[];
+  };
+  let current: Acc | null = null;
   let inConsidered = false;
 
   function commit(): void {
-    if (current) rows.push(current);
+    if (current) {
+      const value = current.override ?? current.aiDefault;
+      const row: ParsedDecisionRow = { id: current.id };
+      if (value !== undefined) row.value = value;
+      if (current.options_considered !== undefined) {
+        row.options_considered = current.options_considered;
+      }
+      rows.push(row);
+    }
     current = null;
     inConsidered = false;
   }
@@ -121,8 +143,13 @@ export function parseDocumentStructure(
     }
 
     // Field-prefix detection (case-insensitive, strip leading indent).
-    if (/^Default:/i.test(trimmed)) {
-      current.default = trimmed.replace(/^Default:\s*/i, "").trim();
+    if (/^AI-default:/i.test(trimmed)) {
+      current.aiDefault = trimmed.replace(/^AI-default:\s*/i, "").trim();
+      continue;
+    }
+
+    if (/^Override:/i.test(trimmed)) {
+      current.override = trimmed.replace(/^Override:\s*/i, "").trim();
       continue;
     }
 
