@@ -506,6 +506,54 @@ server.tool('commcare_create_lookup_table',
   async (args) => runAtom(async () => (await commcareClient()).createLookupTable(args))
 );
 
+server.tool('commcare_list_users',
+  'List mobile workers (CommCareUser) in a CommCare HQ domain. GET /a/<domain>/api/v0.5/user/ via Tastypie (API key auth). Supports standard Tastypie pagination (limit/offset) and group filter. Returns each user\'s id, username, basic profile, and the full user_data dict (including custom fields like cohort_id). Used by verifier to confirm cohort_id is set on the right FLWs.',
+  {
+    domain: z.string(),
+    limit: z.number().int().positive().optional(),
+    offset: z.number().int().nonnegative().optional(),
+    group: z.string().optional(),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).listUsers(args))
+);
+
+server.tool('commcare_get_user',
+  'Fetch a single CommCare HQ mobile worker by id. GET /a/<domain>/api/v0.5/user/<user_id>/. Returns the full record including user_data.',
+  { domain: z.string(), user_id: z.string() },
+  async (args) => runAtom(async () => (await commcareClient()).getUser(args))
+);
+
+server.tool('commcare_update_user_field',
+  'Set a single custom-user-data field on a mobile worker. Implemented as GET → mutate user_data → PUT (v0_5 CommCareUserResource exposes PUT but not PATCH, so we PUT the merged user_data). Pass value=null to clear the field. Used by per-FLW cohort_id assignment after Learn completion.',
+  {
+    domain: z.string(),
+    user_id: z.string(),
+    field_slug: z.string().describe('User-data field slug (e.g. "cohort_id").'),
+    value: z.union([z.string(), z.null()]).describe('New value, or null to clear.'),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).updateUserField(args))
+);
+
+server.tool('commcare_get_lookup_table_rows',
+  'Get rows of a CommCare HQ lookup table. GET /a/<domain>/api/v0.5/lookup_table_item/ via Tastypie (API key auth). Tastypie returns ALL rows in the domain (no querystring filter); this atom client-side filters by data_type_id resolved from the supplied tag or UUID. Returns each row\'s fields as a flat map (column → first field_value).',
+  {
+    domain: z.string(),
+    table_id_or_tag: z.string().describe('Either a 32-hex table UUID or the human-readable tag (e.g. "interview_schedule").'),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).getLookupTableRows(args))
+);
+
+server.tool('commcare_lookup_table_append_rows',
+  'Append rows to a CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table_item/ once per row (Tastypie doesn\'t support list POST for this resource). Each row is a flat field_name→string-value map; HQ wraps it into its field_list shape internally. Used by the cohort-create skill to populate interview_schedule rows for a new cohort.',
+  {
+    domain: z.string(),
+    table_id_or_tag: z.string(),
+    rows: z.array(z.record(z.string())).describe('List of flat row maps: each {field_name: value}.'),
+    item_attributes: z.record(z.string()).optional(),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).appendLookupTableRows(args))
+);
+
 server.tool('commcare_link_domains',
   'Set up a linked-project-spaces relationship: upstream (master) → downstream. Required before linked-app push / linked content sync. POST /a/<upstream>/linked_domain/service/ via the jQuery-RMI protocol (corehq/util/jqueryrmi.py + corehq/apps/linked_domain/views.py:DomainLinkRMIView.create_domain_link). Caller must have access in both domains. Pro Edition is required for the LITE_RELEASE_MANAGEMENT privilege that backs linked spaces — without it, the call may succeed structurally but content-push operations downstream will fail.',
   {
