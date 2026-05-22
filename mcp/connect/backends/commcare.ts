@@ -230,6 +230,25 @@ export interface ListUserFieldsArgs {
   domain: string;
 }
 
+export interface ConditionalAlert {
+  id: number;
+  name: string;
+  case_type: string;
+  /** Whether the rule's *schedule* is active (not the rule itself — see ConditionalAlertListView docstring). */
+  active: boolean;
+  /** Whether the alert can be edited from the UI (false for SMS-survey-using alerts on subscriptions without inbound SMS). */
+  editable: boolean;
+  locked_for_editing: boolean;
+  progress_pct: number;
+}
+
+export interface ListConditionalAlertsArgs {
+  domain: string;
+  /** Server-side substring filter on rule name. */
+  query?: string;
+  limit?: number;
+}
+
 export interface SetUserFieldsArgs {
   domain: string;
   /**
@@ -1331,6 +1350,67 @@ export class CommCareBackend {
         );
       }
       return { id: match.id, name: match.name };
+    });
+  }
+
+  /**
+   * List Conditional Alerts on a domain. GET
+   * /a/<domain>/messaging/conditional/?action=list_conditional_alerts&page=N&limit=Y.
+   *
+   * The ConditionalAlertListView has a dedicated AJAX list endpoint
+   * (verified against /tmp/ace-refs/hq/corehq/messaging/scheduling/views.py
+   * :653-665 `get_conditional_alerts_ajax_response`) that returns JSON
+   * `{rules: [{id, name, case_type, active, editable, ...}], total: N}`.
+   *
+   * Gated by REMINDERS_FRAMEWORK (Standard+ subscription).
+   *
+   * NB: `active` here is the rule's schedule's active flag (not the
+   * rule.active flag). The list view's docstring explains:
+   *   "Therefore rule processing occurs unconditionally every time a
+   *    rule is saved." For verifier purposes treat any rule whose
+   *    schedule is active as "live."
+   *
+   * The CREATE counterpart is deferred — see notes in
+   * docs/connect-interviews/v1-acceptance.md.
+   */
+  async listConditionalAlerts(args: ListConditionalAlertsArgs): Promise<{ alerts: ConditionalAlert[]; total: number }> {
+    return this.runWithSessionRetry(async (request) => {
+      const params = new URLSearchParams({
+        action: 'list_conditional_alerts',
+        page: '1',
+        limit: String(args.limit ?? 100),
+      });
+      if (args.query) params.set('query', args.query);
+      const path = `/a/${encodeURIComponent(args.domain)}/messaging/conditional/?${params.toString()}`;
+      const res = await request.get(`${this.opts.baseUrl}${path}`, {
+        maxRedirects: 0,
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          Accept: 'application/json',
+        },
+      });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_list_conditional_alerts GET ${path}`);
+      }
+      if (res.status() === 404) {
+        throw new Error(
+          `commcare_list_conditional_alerts: 404 — domain ${args.domain} lacks REMINDERS_FRAMEWORK privilege (Standard+).`,
+        );
+      }
+      if (res.status() !== 200) {
+        throw new Error(`commcare_list_conditional_alerts GET ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
+      }
+      const body = JSON.parse(await res.text()) as { rules?: any[]; total?: number };
+      const alerts = (body.rules ?? []).map((r) => ({
+        id: Number(r.id),
+        name: String(r.name ?? ''),
+        case_type: String(r.case_type ?? ''),
+        active: !!r.active,
+        editable: !!r.editable,
+        locked_for_editing: !!r.locked_for_editing,
+        progress_pct: Number(r.progress_pct ?? 0),
+      }));
+      return { alerts, total: body.total ?? alerts.length };
     });
   }
 

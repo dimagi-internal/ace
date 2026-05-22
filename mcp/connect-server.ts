@@ -506,6 +506,16 @@ server.tool('commcare_create_lookup_table',
   async (args) => runAtom(async () => (await commcareClient()).createLookupTable(args))
 );
 
+// commcare_list_conditional_alerts — DEFERRED (atom code in place but
+// AJAX endpoint doesn't behave as source suggests on live HQ as of
+// 2026-05-22. corehq/messaging/scheduling/views.py:653 documents
+// `?action=list_conditional_alerts` returning JSON, but live calls
+// return the HTML page regardless of action/Accept/X-Requested-With.
+// Possible causes: deployed HQ predates the handler; middleware
+// strips the param; or JS uses a different endpoint that the source
+// doesn't expose. Atom code is preserved in commcare.ts for future
+// debugging; not registered to avoid shipping a broken atom.
+
 server.tool('commcare_list_user_fields',
   'Read the current custom-user-data field definition for a CommCare HQ domain. GET /a/<domain>/users/user_data/ and parse the <div data-name="custom_fields"> initial_page_data div (HQ\'s standard Django→JS bootstrap). Returns the list of fields (slug, label, is_required, choices, regex) + the list of profiles. Requires can_edit_commcare_users permission; 302s to settings/users/ surface as a typed error.',
   { domain: z.string() },
