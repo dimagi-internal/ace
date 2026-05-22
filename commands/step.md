@@ -92,8 +92,8 @@ Implementation steps the agent (or a thin Bash wrapper) must perform:
      `inputs/`, `eval-calibration/known-issues.md`) resolve to
      `ACE/<opp>/<path>`. Run-scoped entries (anything under
      `1-design/`, `2-scenarios/`, … `8-execution/`, plus
-     `run_state.yaml`, `inputs-manifest.yaml`, `idea.md`,
-     `decisions.yaml`) resolve to `ACE/<opp>/runs/<runId>/<path>`.
+     `run_state.yaml`, `inputs-manifest.yaml`, `decisions.yaml`)
+     resolve to `ACE/<opp>/runs/<runId>/<path>`.
    - Use `drive_list_folder` (or the live Drive listing) to check that
      the resolved path exists.
 3. If any required artifact is missing, print an error of the form:
@@ -137,8 +137,8 @@ skills in dependency order) still enforces the contract.
 ```text
 /ace:step idea-to-pdd my-opp
   → Bare opp. Resolves runId from opp.yaml.last_run_id.
-  → Reads ACE/my-opp/runs/<last_run_id>/inputs/idea.md (required,
-    producedBy: external). OK → invoke skill.
+  → Required: inputs-manifest.yaml at the run root (produced by
+    ace-orchestrator at run start). OK → invoke skill.
 
 /ace:step app-screenshot-capture malaria-itn-app/20260517-1829
   → Pinned run-id. Targets ACE/malaria-itn-app/runs/20260517-1829/

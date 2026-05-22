@@ -5,6 +5,31 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.329 — 2026-05-22
+
+**Retire `idea.md` / `--idea` operator-seed pathway.**
+
+The 2026-05-05 refactor reduced `idea.md` to an optional `--idea FILE|-` seed alongside the `inputs/` evidence pack. The dual-path persisted but was rarely used in practice and added cognitive load: the eval rubric carried a clean-source dual-branch keyed off "idea.md contains reviewer comments," the orchestrator had a special `--idea`-was-passed scripted-seed flow at run start, `idea-to-pdd` scanned the `idea.md` body for Drive URLs in its permission pre-flight, and the artifact manifest carried two `idea.md` entries (run-root + legacy `1-design/idea.md` back-compat) with their corresponding RUN_LEVEL_EXEMPT carve-outs.
+
+Operators now put any free-text seed directly into `inputs/` as a regular source file alongside everything else. One canonical input pathway, one synthesis surface.
+
+Removed:
+- `--idea FILE|-` argument from `/ace:run`
+- The scripted-seed branch in `agents/ace-orchestrator.md § Starting a New Opportunity`
+- The "If `--idea FILE|-` was passed" sub-step at run-folder bootstrap
+- The `idea.md=<present|absent>` field from the orchestrator's start-of-run log line
+- The optional `idea.md` table row in `skills/idea-to-pdd/SKILL.md § Inputs`
+- The `idea.md`-URL extraction in `idea-to-pdd`'s pre-flight permission scan
+- The "or no idea.md" arm of the missing-source-material error
+- Both `idea.md` and `1-design/idea.md` (legacy back-compat) entries from `lib/artifact-manifest.ts`
+- The `runs/<run-id>/idea.md` row in `agents/orchestrator-reference.md § Per-run`
+- The two legacy `1-design/idea.md` fixture files under `test/fixtures/CRISPR-Test-00{1,2}/`
+
+Preserved:
+- The `clean_source` detection mechanism in `idea-to-pdd-eval` (still useful — keys off reviewer-comment presence across the source pack, not specifically `idea.md`). Dual-branch dimension scoring unchanged; language updated.
+- Historical changelog entries in `skills/idea-to-pdd/SKILL.md` and `skills/idea-to-pdd-eval/SKILL.md` (audit trail of evolution from single-`idea.md` → multi-doc evidence pack → no-`idea.md`).
+- `scripts/migrate-drive-layout.ts` `idea.md → 1-design/idea.md` mapping (back-compat tool for migrating legacy pre-2026-05-05 runs).
+
 ## 0.13.299 — 2026-05-21
 
 **`/ace:doctor` catches Nova MCP stuck-in-needs-auth-cache state.**

@@ -1,5 +1,0 @@
-# Initial Idea — CRISPR-Test-002
-
-> Synthetic idea for the focus-group fixture. Used as input to `idea-to-pdd` if testing the full lifecycle from step 1.
-
-Run focus group discussions with caregivers in TestLand's Eastern Province (Luvale + Kaonde districts) to understand the underlying drivers of childhood under-vaccination. Existing health-records data tells us *that* vaccination is below target but not *why* — we don't know which barriers are dominant (access, cost, opportunity cost, social influence, religious objections, gender dynamics, mistrust) or how they vary across community segments. Recruit 2 segments (women close to a primary health center with under-vaccinated children; men remote from PHCs with mixed vaccination status) and run 3 focus group sessions per segment, facilitated by trained community-engagement staff in Hausa, with audio recording and per-domain summary capture. Synthesize findings across sessions to produce a barriers-and-enablers report. The output should be specific enough to inform a follow-on Stage-2 household intervention (which will be a separate opportunity if findings warrant it).

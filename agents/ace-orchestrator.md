@@ -266,7 +266,6 @@ message.** Issue together:
 
 - `drive_create_folder` for `<opp>/runs/<run-id>/`
 - `drive_create_file` for `runs/<run-id>/run_state.yaml` (initial — phases all pending)
-- `drive_create_file` for `runs/<run-id>/idea.md` (only if `--idea FILE|-` was passed)
 - `drive_create_file` for `runs/<run-id>/inputs-manifest.yaml` (frozen file_id list from Step 3)
 
 **Step 6 — Dispatch Phase 1.** Single `Agent(idea-to-design)` call with
@@ -544,7 +543,6 @@ ACE/                              (= ACE_DRIVE_ROOT_FOLDER_ID)
 │   │   └── <run-id>/             (e.g. "20260502-1830")
 │   │       ├── run_state.yaml
 │   │       ├── inputs-manifest.yaml  (frozen file_id list captured at run start)
-│   │       ├── idea.md           (optional — only present when --idea FILE|- was passed)
 │   │       └── 1-design/
 │   │           ├── idea-to-pdd.md         (the formal PDD — Phase 1 output)
 │   │           └── ... (other Phase 1 outputs)
@@ -594,14 +592,7 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    (next to `opp.yaml`) without knowing about the `inputs/` requirement.
    See jjackson/ace#299.
 
-   **(b) `--idea FILE|-` was passed**: scripted-seed flow. If `<opp>`
-   was also provided, use it; otherwise auto-generate a fresh slug
-   `smoke-<YYYYMMDD-HHMM>` (today's behavior). Write the idea body
-   directly into `runs/<run-id>/idea.md` at step 5 — this path
-   bypasses `inputs/` entirely (scripted runs are non-interactive by
-   design). No `inputs/pdd.md` write.
-
-   **(c) Zero-arg discovery** (default when neither (a) nor (b)):
+   **(b) Zero-arg discovery** (default when (a) does not apply):
 
    1. Read `ACE_DRIVE_ROOT_FOLDER_ID`. If unset/empty, error:
       `ACE_DRIVE_ROOT_FOLDER_ID is not set in your .env (expected at
@@ -652,7 +643,7 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    folder ID; this is the **run folder ID** that gets passed to every
    downstream skill in place of the previous "opp folder ID".
 
-5. **Capture the inputs manifest and (optionally) seed `idea.md`.**
+5. **Capture the inputs manifest.**
 
    The PDD is the formal output of Phase 1, not an input. The
    orchestrator's job here is to record what was in `inputs/` at
@@ -707,21 +698,18 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    they run (see § Per-Phase Folder Lifecycle). The orchestrator does
    NOT pre-create `1-design/` here.
 
-   **If `--idea FILE|-` was passed**, the command has loaded the body.
-   Write it verbatim to `runs/<runId>/idea.md` via `drive_create_file`
-   — this is the operator's free-text seed and stands alongside the
-   manifest as supplementary intent. `idea-to-pdd` reads both.
-
-   **Otherwise**, do NOT seed an `idea.md`. The manifest alone is
-   sufficient — `idea-to-pdd` reads each file in the manifest as the
-   evidence pack and synthesizes the PDD from there.
+   The manifest is the sole seed for Phase 1 — `idea-to-pdd` reads
+   each file in the manifest as the evidence pack and synthesizes
+   the PDD from there.
 
    The previous single-file `pdd.md` discovery (`pdd.md` exact,
    `*pdd*` glob, lone-doc fallback, multi-doc error) is removed
    entirely. There is no longer a copy of any input file into the run
    folder — `inputs/` is the canonical read-only seed pack and
    `idea-to-pdd` reads its files directly via the manifest's
-   `file_id`s.
+   `file_id`s. (The pre-2026-05-22 `--idea FILE|-` operator-seed
+   flag was also retired — operators put any free-text seed directly
+   into `inputs/` as a regular source file.)
 
 6. **Initialize `run_state.yaml`** at `<opp>/runs/<runId>/run_state.yaml` with:
    - `mode`, `created` (ISO timestamp), all steps as `pending`
@@ -781,7 +769,6 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      inputs_folder=<opp>/inputs (read-only, <N> files in manifest)
      run_folder=<opp>/runs/<runId>
      manifest=<opp>/runs/<runId>/inputs-manifest.yaml
-     idea.md=<present|absent>   # present only when --idea FILE|- was passed
    ```
 
 9. **Begin Phase 1.**
@@ -809,9 +796,6 @@ picker.
 > already exists), and re-run `/ace:run <opp>`. Top-level drops
 > directly under `ACE/<opp>/` are also fine — the orchestrator
 > auto-migrates them into `inputs/` on next run.
->
-> Or pass `--idea FILE|-` to seed a free-text idea directly without
-> using `inputs/`.
 
 The legacy `PDD/` flat folder is kept readable by ace-web for back-compat
 viewing of legacy opps, but is no longer consulted for new runs.
@@ -824,7 +808,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(idea-to-design)`.
 
-**Inputs (inline at handoff):** the inputs manifest, any `idea.md`, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the prompt template.
+**Inputs (inline at handoff):** the inputs manifest, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the prompt template.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(idea-to-design)`.
 

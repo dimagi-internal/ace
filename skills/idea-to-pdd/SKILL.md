@@ -16,7 +16,6 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 |---|---|---|
 | Operator | `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml` | frozen pointer-set to source material captured at run-start |
 | Operator | each `file_id` in the manifest | source content (PDFs, docs, sheets, markdown) |
-| Operator (optional) | `ACE/<opp-name>/runs/<run-id>/idea.md` | free-text seed via `--idea FILE\|-` |
 
 ## Products
 
@@ -63,20 +62,13 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    non-text files** — the human dropped them in for downstream skills
    (e.g. data spreadsheet templates for FLW reference).
 
-   Additionally, if `ACE/<opp-name>/runs/<run-id>/idea.md` exists
-   (operator-supplied free-text seed via `--idea FILE|-`), read it
-   too and treat its body as the operator's primary intent — it
-   stands alongside the manifest's evidence pack.
+   If `inputs-manifest.yaml` is missing, **stop and return an
+   actionable error**:
 
-   If `inputs-manifest.yaml` is missing AND no `idea.md` exists at
-   the run root, **stop and return an actionable error**:
-
-   "Phase 1 has no source material — `inputs-manifest.yaml` (at the run-folder root)
-   is missing and no operator-supplied `idea.md` was found at the
-   run root. The orchestrator should have written the manifest at
-   run-start. Re-run `/ace:run <opp-name>` so the manifest is
-   captured from `ACE/<opp-name>/inputs/`. If you intentionally want
-   a free-text-only seed, pass `--idea FILE|-`."
+   "Phase 1 has no source material — `inputs-manifest.yaml` (at the
+   run-folder root) is missing. The orchestrator should have written
+   the manifest at run-start. Re-run `/ace:run <opp-name>` so the
+   manifest is captured from `ACE/<opp-name>/inputs/`."
 
    Do not invent source material or proceed without source content.
 
@@ -88,10 +80,7 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     30-second share-with-the-SA fix.
 
     Track every entry from `inputs-manifest.yaml` whose
-    `drive_read_file` returned a permission error. Additionally, if
-    `idea.md` is present, scan its body for Drive URLs matching
-    `https://(docs|drive)\.google\.com/(document|spreadsheets|presentation|file)/d/<file_id>/`
-    and attempt to read each.
+    `drive_read_file` returned a permission error.
 
     If any read failed with a permission error, **stop and return an
     actionable error listing every inaccessible doc**:
@@ -99,7 +88,6 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     "The following files are not accessible to the ACE service
     account:
       - `<file_id>` (`<name>` from inputs/)
-      - `<file_id>` (`<name>` referenced in idea.md)
       - …
     Share each with
     `ace-service-account@connect-labs.iam.gserviceaccount.com`
@@ -465,3 +453,4 @@ When `--dry-run` is active:
 | 2026-05-15 | **Recharacterize `focus-group` archetype to attestation-form-only.** `## Archetypes § focus-group` updated: training surface is OCS chatbot + handbook gdoc + practice-session audio review (NOT a Learn app); Output Specification is the gdoc structure, not Deliver-app form fields; new "Attestation form fields" question references the canonical default in `pdd-to-deliver-app`. Decisions Log: `facilitator-training-stipend` re-pegged to practice-session-pass; new `gdoc-content-template` row; `submission-window` clarified as attestation-form submission. Prompted by `malaria-itn-fgd/20260514-2007` post-run reframe. See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
 | 2026-05-15 | Pare attestation-form-fields question + Decisions Log to match the 5-field form: consent / date / venue / GPS / photo. Audio is out-of-band; gdoc_link is removed (gdoc is written after submission). Add `gps-verification-radius` and `gdoc-submission-window` decisions; recharacterize `audio-min-duration` and `audio-consent-fallback` as facilitator-protocol concerns (out-of-band, not in the form). | ACE team |
 | 2026-05-15 | Recharacterize `payment-rate` and `per-session-rate` Decisions Log rows: PDD captures a **range** (not a fixed number), and the actual rate is **negotiated via the solicitation response** where the LLO proposes a number with rationale. The awarded LLO's proposed rate becomes the `connect.deliver_unit` payment_unit amount at Phase 4 setup. Pairs with `solicitation-create/SKILL.md § Process`'s "per-unit payment is negotiated, not declared" design principle. | ACE team |
+| 2026-05-22 | **Retire the optional `idea.md` operator-seed input.** The 2026-05-05 refactor reduced `idea.md` to an optional `--idea FILE\|-` seed alongside the `inputs/` evidence pack; the dual-path persisted but was rarely used in practice and added cognitive load (eval rubric branches, manifest-vs-idea precedence, permission-scan URL extraction). Operators now put any free-text seed directly into `inputs/` as a regular source file. Removed: optional table row, idea.md read paragraph, idea.md-URL permission scan, "or no idea.md" branch of the missing-source error. The `--idea` flag and run-root `idea.md` artifact are gone. | ACE team |
