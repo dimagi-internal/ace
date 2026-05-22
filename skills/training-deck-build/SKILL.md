@@ -24,7 +24,7 @@ before LLO onboarding in Phase 9.
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 6 (`training-deck-outline`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-outline.md` | parsed via `parseDeckOutline` |
-| Phase 6 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` | screenshot fileId resolution for `drive:` image refs by alias |
+| Phase 6 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/3-commcare/app-screenshot-capture_manifest.yaml` | screenshot fileId resolution for `drive:` image refs by alias |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` | same, for cross-opp screenshots |
 
 ## Inputs (env)
