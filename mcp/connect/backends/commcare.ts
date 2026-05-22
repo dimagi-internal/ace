@@ -95,6 +95,109 @@ export interface LookupTable {
   item_attributes: string[];
 }
 
+export interface CommCareCase {
+  case_id: string;
+  case_type: string;
+  case_name: string;
+  date_opened: string;
+  date_modified: string;
+  closed: boolean;
+  /** All non-system case properties (the dynamic property bag). */
+  properties: Record<string, unknown>;
+  user_id?: string;
+  owner_id?: string;
+}
+
+export interface GetCaseArgs {
+  domain: string;
+  case_id: string;
+}
+
+export interface Connection {
+  id: number;
+  name: string;
+  url: string;
+  notify_addresses: string;
+  used_by: string;
+  edit_url: string;
+}
+
+export interface ListConnectionsArgs {
+  domain: string;
+  limit?: number;
+}
+
+/**
+ * Auth type for a CommCare HQ Connection. Maps to corehq/motech/auth.py:
+ *   - 'none'        — no auth
+ *   - 'basic'       — basic auth (username + password)
+ *   - 'digest'      — digest auth
+ *   - 'bearer'      — bearer token
+ *   - 'oauth1'      — OAuth1
+ *   - 'oauth2_pwd'  — OAuth2 password grant
+ *   - 'oauth2_client'— OAuth2 client-credentials
+ *   - 'api_key'     — API key in header (the common one for Connect Interviews → Connect / OCS)
+ */
+export type ConnectionAuthType =
+  | 'none' | 'basic' | 'digest' | 'bearer'
+  | 'oauth1' | 'oauth2_pwd' | 'oauth2_client' | 'api_key';
+
+export type RepeaterType =
+  | 'FormRepeater'             // forwards every form submission
+  | 'CaseRepeater'             // forwards every case action
+  | 'FormExpressionRepeater'   // UCR-filtered form forward (Connect Interviews uses this)
+  | 'CaseExpressionRepeater'   // UCR-filtered case forward
+  | 'ConnectFormRepeater';     // forwards form to Connect platform
+
+export interface CreateRepeaterArgs {
+  domain: string;
+  repeater_type: RepeaterType;
+  /** FK to a Connection (see commcare_list_connections / commcare_create_connection). */
+  connection_settings_id: number;
+  /** Optional name (defaults to connection's name). */
+  name?: string;
+  /** Default 'POST'. */
+  request_method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** Payload format (e.g. 'form_json', 'form_xml'). Optional — HQ picks a default per repeater type. */
+  format?: string;
+
+  // Expression-repeater extras (only for FormExpressionRepeater /
+  // CaseExpressionRepeater):
+  /** UCR filter spec as a JSON object. Required for the *ExpressionRepeater types. */
+  configured_filter?: Record<string, unknown>;
+  /** UCR expression spec for the request payload. Required for POST/PUT *ExpressionRepeater. */
+  configured_expression?: Record<string, unknown>;
+  /** Path suffix to append to the connection's base URL (optional). */
+  url_template?: string;
+}
+
+export interface Repeater {
+  id: string;
+  name: string;
+  url: string;
+  repeater_type: string;
+}
+
+export interface CreateConnectionArgs {
+  domain: string;
+  name: string;
+  /** Base URL of the target system (e.g. "https://connect.dimagi.com/"). */
+  url: string;
+  /** Default 'none'. */
+  auth_type?: ConnectionAuthType;
+  username?: string;
+  plaintext_password?: string;
+  client_id?: string;
+  plaintext_client_secret?: string;
+  token_url?: string;
+  /** Comma-separated email addresses for failure notifications. */
+  notify_addresses_str?: string;
+  /** Default false. */
+  skip_cert_verify?: boolean;
+  /** JSON object string of custom headers (e.g. '{"Authorization": "Token ..."}'). */
+  plaintext_custom_headers?: string;
+}
+
 export interface GetLookupTableArgs {
   domain: string;
   /** Lookup table name (e.g. "interview_schedule"). */
@@ -891,6 +994,253 @@ export class CommCareBackend {
         );
       }
       return { user_id: args.user_id, field_slug: args.field_slug, value: args.value };
+    });
+  }
+
+  /**
+   * List domain Connection settings (motech). POST
+   * /a/<domain>/motech/conn/ with `action=paginate&page=N&limit=Y` —
+   * the CRUD paginated view returns JSON with `paginatedList: [{itemData}]`.
+   *
+   * Gated by privileges.DATA_FORWARDING (Pro Edition). 404s if not enabled.
+   *
+   * Verified against /tmp/ace-refs/hq/corehq/motech/views.py:185-269
+   * (ConnectionSettingsListView + CRUDPaginatedViewMixin).
+   */
+  async listConnections(args: ListConnectionsArgs): Promise<{ connections: Connection[]; total: number }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/motech/conn/`;
+      const csrf = await this.csrfFromCookies(request);
+      const params = new URLSearchParams({
+        action: 'paginate',
+        page: '1',
+        limit: String(args.limit ?? 100),
+      });
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: params.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          'X-Requested-With': 'XMLHttpRequest',
+          Referer: `${this.opts.baseUrl}${path}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 404) {
+        throw new Error(
+          `commcare_list_connections: 404 — domain ${args.domain} does not have DATA_FORWARDING privilege (Pro Edition required).`,
+        );
+      }
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_list_connections POST ${path}`);
+      }
+      if (res.status() !== 200) {
+        throw new Error(`commcare_list_connections POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
+      }
+      const body = JSON.parse(await res.text()) as { paginatedList?: Array<{ itemData?: any }>; total?: number };
+      const connections = (body.paginatedList ?? []).map((row) => {
+        const d = row.itemData ?? {};
+        return {
+          id: Number(d.id),
+          name: String(d.name ?? ''),
+          url: String(d.url ?? ''),
+          notify_addresses: String(d.notifyAddresses ?? ''),
+          used_by: String(d.usedBy ?? ''),
+          edit_url: String(d.editUrl ?? ''),
+        };
+      });
+      return { connections, total: body.total ?? connections.length };
+    });
+  }
+
+  /**
+   * Create a Connection (outbound motech connection settings). POSTs the
+   * ConnectionSettingsForm to /a/<domain>/motech/conn/add/.
+   * Success redirects to the list view (no new id in Location), so this
+   * atom re-lists by name to recover the new id.
+   *
+   * Same Pro/DATA_FORWARDING gating as list_connections.
+   *
+   * Verified against /tmp/ace-refs/hq/corehq/motech/views.py:262-301
+   * (ConnectionSettingsDetailView) + /tmp/ace-refs/hq/corehq/motech/forms.py:28
+   * (ConnectionSettingsForm.Meta.fields).
+   */
+  async createConnection(args: CreateConnectionArgs): Promise<{ id: number; name: string }> {
+    return this.runWithSessionRetry(async (request) => {
+      const addPath = `/a/${encodeURIComponent(args.domain)}/motech/conn/add/`;
+      // Seed CSRF
+      const refreshRes = await request.get(`${this.opts.baseUrl}${addPath}`, { maxRedirects: 0 });
+      if (refreshRes.status() === 404) {
+        throw new Error(`commcare_create_connection: 404 — domain ${args.domain} does not have DATA_FORWARDING privilege.`);
+      }
+      if (refreshRes.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(refreshRes, `commcare_create_connection GET ${addPath}`);
+      }
+      const csrf = await this.csrfFromCookies(request);
+      const params = new URLSearchParams();
+      params.set('csrfmiddlewaretoken', csrf ?? '');
+      params.set('name', args.name);
+      params.set('url', args.url);
+      params.set('auth_type', args.auth_type ?? 'none');
+      if (args.username) params.set('username', args.username);
+      if (args.plaintext_password) params.set('plaintext_password', args.plaintext_password);
+      if (args.client_id) params.set('client_id', args.client_id);
+      if (args.plaintext_client_secret) params.set('plaintext_client_secret', args.plaintext_client_secret);
+      if (args.token_url) params.set('token_url', args.token_url);
+      params.set('notify_addresses_str', args.notify_addresses_str ?? '');
+      if (args.skip_cert_verify) params.set('skip_cert_verify', 'on');
+      params.set('plaintext_custom_headers', args.plaintext_custom_headers ?? '{}');
+      const res = await request.post(`${this.opts.baseUrl}${addPath}`, {
+        data: params.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${addPath}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        // Could be login redirect or success (success → list view)
+        const location = res.headers()['location'] || '';
+        if (/\/login\/?(\?|$)/.test(location)) {
+          throw new SessionExpiredError();
+        }
+        // Success — look up the new connection by name to find its id.
+      } else if (res.status() === 200) {
+        // Form re-render = validation failed
+        const html = await res.text();
+        throw new Error(
+          `commcare_create_connection: form re-render — validation failed. First 400 chars: ${html.slice(0, 400)}`,
+        );
+      } else {
+        throw new Error(`commcare_create_connection POST ${addPath} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
+      }
+      // Re-list to find the new connection's id by name.
+      const list = await this.listConnections({ domain: args.domain });
+      const match = list.connections.filter((c) => c.name === args.name);
+      if (match.length === 0) {
+        throw new Error(
+          `commcare_create_connection: created connection but could not find it by name "${args.name}" on subsequent list. Names visible: ${list.connections.map((c) => c.name).join(', ')}`,
+        );
+      }
+      // Take the highest id if multiple match (newest)
+      const newest = match.sort((a, b) => b.id - a.id)[0];
+      return { id: newest.id, name: newest.name };
+    });
+  }
+
+  /**
+   * Create a Data-Forwarding Repeater on a domain. POST the GenericRepeaterForm
+   * (or BaseExpressionRepeaterForm for *ExpressionRepeater types) to
+   * /a/<domain>/motech/forwarding/new/<repeater_type>/.
+   *
+   * Plain FormRepeater forwards every submission. FormExpressionRepeater
+   * applies a UCR filter (`configured_filter`) and emits a UCR-derived
+   * payload (`configured_expression`) — the Connect Interviews
+   * "OCS User Registration" and "Trigger Bot" repeaters use this variant.
+   *
+   * Success: 302 to /a/<domain>/motech/forwarding/. Atom does not return
+   * the repeater id (the redirect doesn't expose it); caller can list
+   * by scraping the forwarding page if needed.
+   *
+   * Verified against /tmp/ace-refs/hq/corehq/motech/repeaters/views/
+   * repeaters.py:99-180 (BaseRepeaterView) + forms.py:21-105 (Generic) +
+   * expression/forms.py:20-92 (BaseExpressionRepeaterForm).
+   */
+  async createRepeater(args: CreateRepeaterArgs): Promise<{ ok: true; name: string }> {
+    return this.runWithSessionRetry(async (request) => {
+      const addPath = `/a/${encodeURIComponent(args.domain)}/motech/forwarding/new/${args.repeater_type}/`;
+      // Seed CSRF
+      const refreshRes = await request.get(`${this.opts.baseUrl}${addPath}`, { maxRedirects: 0 });
+      if (refreshRes.status() === 404) {
+        throw new Error(
+          `commcare_create_repeater: 404 — domain ${args.domain} does not have DATA_FORWARDING privilege or repeater_type "${args.repeater_type}" is unknown.`,
+        );
+      }
+      if (refreshRes.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(refreshRes, `commcare_create_repeater GET ${addPath}`);
+      }
+      const csrf = await this.csrfFromCookies(request);
+      const params = new URLSearchParams();
+      params.set('csrfmiddlewaretoken', csrf ?? '');
+      params.set('connection_settings_id', String(args.connection_settings_id));
+      params.set('name', args.name ?? '');
+      params.set('request_method', args.request_method ?? 'POST');
+      if (args.format) params.set('format', args.format);
+      const isExpression = args.repeater_type.endsWith('ExpressionRepeater');
+      if (isExpression) {
+        // BaseExpressionRepeaterForm fields. configured_filter is required.
+        if (!args.configured_filter) {
+          throw new Error(
+            `commcare_create_repeater: repeater_type ${args.repeater_type} requires configured_filter (UCR filter spec as JSON object).`,
+          );
+        }
+        params.set('configured_filter', JSON.stringify(args.configured_filter));
+        if (args.configured_expression) {
+          params.set('configured_expression', JSON.stringify(args.configured_expression));
+        }
+        if (args.url_template) params.set('url_template', args.url_template);
+      }
+      const res = await request.post(`${this.opts.baseUrl}${addPath}`, {
+        data: params.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${addPath}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        const location = res.headers()['location'] || '';
+        if (/\/login\/?(\?|$)/.test(location)) throw new SessionExpiredError();
+        // Success — redirect to forwarding list
+        return { ok: true as const, name: args.name ?? '' };
+      }
+      if (res.status() === 200) {
+        const html = await res.text();
+        throw new Error(
+          `commcare_create_repeater: form re-render — validation failed. First 400 chars: ${html.slice(0, 400)}`,
+        );
+      }
+      throw new Error(`commcare_create_repeater POST ${addPath} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
+    });
+  }
+
+  /**
+   * Fetch a single case by id. GET /a/<domain>/api/v0.5/case/<case_id>/?format=json.
+   * Auth: API key (RequirePermissionAuthentication(edit_data)).
+   *
+   * Used by verifier to read commcare-user case state — the
+   * session_completion / last_bot_interaction_date / interaction_validation
+   * properties get set by OCS-to-HQ custom action posts.
+   */
+  async getCase(args: GetCaseArgs): Promise<{ case: CommCareCase }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/case/${encodeURIComponent(args.case_id)}/?format=json`;
+      const res = await request.get(`${this.opts.baseUrl}${path}`, {
+        maxRedirects: 0,
+        headers: { Authorization: this.apiKeyAuthHeader('commcare_get_case') },
+      });
+      if (res.status() === 404) {
+        throw new Error(`commcare_get_case: case ${args.case_id} not found in domain ${args.domain}.`);
+      }
+      if (res.status() !== 200) {
+        throw new Error(`commcare_get_case GET ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
+      }
+      const c = JSON.parse(await res.text()) as any;
+      return {
+        case: {
+          case_id: c.case_id ?? c.id ?? args.case_id,
+          case_type: c.case_type ?? c.properties?.case_type ?? '',
+          case_name: c.case_name ?? c.properties?.case_name ?? '',
+          date_opened: c.date_opened ?? c.properties?.date_opened ?? '',
+          date_modified: c.date_modified ?? '',
+          closed: !!c.closed,
+          properties: (c.properties ?? {}) as Record<string, unknown>,
+          user_id: c.user_id,
+          owner_id: c.owner_id ?? c.properties?.owner_id,
+        },
+      };
     });
   }
 
