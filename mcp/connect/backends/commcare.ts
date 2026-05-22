@@ -186,6 +186,31 @@ export interface InboundApi {
   edit_url: string;
 }
 
+export type UcrExpressionType = 'named_expression' | 'named_filter';
+
+export interface UcrExpression {
+  id: number;
+  name: string;
+  expression_type: UcrExpressionType;
+  description: string;
+  /** JSON-encoded definition (parsed). */
+  definition: Record<string, unknown> | null;
+}
+
+export interface ListUcrExpressionsArgs {
+  domain: string;
+  limit?: number;
+}
+
+export interface CreateUcrExpressionArgs {
+  domain: string;
+  name: string;
+  expression_type: UcrExpressionType;
+  /** The UCR spec (a JSON object — passed as JSON-encoded string to the form). */
+  definition: Record<string, unknown>;
+  description?: string;
+}
+
 export interface ListInboundApisArgs {
   domain: string;
   limit?: number;
@@ -1155,6 +1180,128 @@ export class CommCareBackend {
   }
 
   /**
+   * List named UCR expressions / filters on a domain. POST
+   * /a/<domain>/data/ucr_expressions/ with `action=paginate` via the
+   * CRUDPaginatedView (same pattern as Connections + Inbound APIs).
+   * Returns each expression's id, name, expression_type, description,
+   * and parsed definition JSON.
+   *
+   * Auth: session via BaseProjectDataView (domain admin / edit_apps).
+   *
+   * Verified against
+   * /tmp/ace-refs/hq/corehq/apps/userreports/views.py:1882-1965 +
+   * /tmp/ace-refs/hq/corehq/apps/data_interfaces/urls.py:68.
+   */
+  async listUcrExpressions(args: ListUcrExpressionsArgs): Promise<{ expressions: UcrExpression[]; total: number }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/data/ucr_expressions/`;
+      const csrf = await this.csrfFromCookies(request);
+      const params = new URLSearchParams({ action: 'paginate', page: '1', limit: String(args.limit ?? 100) });
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: params.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          'X-Requested-With': 'XMLHttpRequest',
+          Referer: `${this.opts.baseUrl}${path}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() !== 200) {
+        throw new Error(`commcare_list_ucr_expressions POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
+      }
+      const body = JSON.parse(await res.text()) as { paginatedList?: Array<{ itemData?: any }>; total?: number };
+      const expressions = (body.paginatedList ?? []).map((row) => {
+        const d = row.itemData ?? {};
+        let parsedDef: Record<string, unknown> | null = null;
+        try {
+          parsedDef = d.definition ? JSON.parse(d.definition) : null;
+        } catch { /* malformed JSON; leave null */ }
+        return {
+          id: Number(d.id),
+          name: String(d.name ?? ''),
+          expression_type: (d.type ?? 'named_expression') as UcrExpressionType,
+          description: String(d.description ?? ''),
+          definition: parsedDef,
+        };
+      });
+      return { expressions, total: body.total ?? expressions.length };
+    });
+  }
+
+  /**
+   * Create a named UCR expression / filter on a domain. POSTs the
+   * UCRExpressionForm to /a/<domain>/data/ucr_expressions/ via
+   * `action=create`. Returns the new expression's id.
+   *
+   * Required fields per
+   * /tmp/ace-refs/hq/corehq/apps/userreports/forms.py:11 :
+   *   - name (CharField)
+   *   - expression_type ("named_expression" | "named_filter")
+   *   - definition (JSONField — serialized as JSON-encoded string)
+   *
+   * IntegrityError on duplicate name in domain surfaces as an explicit error.
+   */
+  async createUcrExpression(args: CreateUcrExpressionArgs): Promise<{ id: number; name: string }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/data/ucr_expressions/`;
+      const csrf = await this.csrfFromCookies(request);
+      const params = new URLSearchParams();
+      params.set('action', 'create');
+      params.set('csrfmiddlewaretoken', csrf ?? '');
+      params.set('name', args.name);
+      params.set('expression_type', args.expression_type);
+      params.set('description', args.description ?? '');
+      params.set('definition', JSON.stringify(args.definition));
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: params.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          'X-Requested-With': 'XMLHttpRequest',
+          Referer: `${this.opts.baseUrl}${path}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() !== 200) {
+        throw new Error(`commcare_create_ucr_expression POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
+      }
+      // CRUDPaginatedViewMixin wraps the create response as
+      //   {newItem: {itemData: {...}, template: ...}}
+      // (See `paginate_crud_response` in corehq.apps.hqwebapp.views.)
+      const body = JSON.parse(await res.text()) as {
+        newItem?: { itemData?: any; error?: string };
+        itemData?: any;
+        error?: string;
+        form?: any;
+      };
+      const itemData = body.newItem?.itemData ?? body.itemData;
+      const errorMsg = body.newItem?.error ?? body.error;
+      if (errorMsg) {
+        // get_create_item_data returns {error: "..."} on IntegrityError
+        throw new Error(`commcare_create_ucr_expression: ${errorMsg}`);
+      }
+      if (itemData?.id) {
+        return { id: Number(itemData.id), name: String(itemData.name ?? args.name) };
+      }
+      if (body.form) {
+        throw new Error(
+          `commcare_create_ucr_expression: form validation failed. Server response: ${JSON.stringify(body).slice(0, 400)}`,
+        );
+      }
+      // Fallback: list and find
+      const list = await this.listUcrExpressions({ domain: args.domain });
+      const match = list.expressions.find((e) => e.name === args.name);
+      if (!match) {
+        throw new Error(
+          `commcare_create_ucr_expression: created but could not find "${args.name}" on subsequent list. Names visible: ${list.expressions.map((e) => e.name).join(', ')}`,
+        );
+      }
+      return { id: match.id, name: match.name };
+    });
+  }
+
+  /**
    * List Inbound API configurations on a domain. POST /a/<domain>/motech/
    * inbound/ with `action=paginate` via the CRUDPaginatedView (same
    * pattern as connections). Returns each API's id, name, description,
@@ -1242,10 +1389,21 @@ export class CommCareBackend {
           `commcare_create_inbound_api POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 400)}`,
         );
       }
-      // CRUDPaginatedView returns JSON with itemData containing id
-      const body = JSON.parse(await res.text()) as { itemData?: any; form?: any; errors?: any };
-      if (body.itemData?.id) {
-        return { id: Number(body.itemData.id), name: String(body.itemData.name ?? args.name) };
+      // CRUDPaginatedViewMixin wraps the create response as
+      //   {newItem: {itemData: {...}, template: ...}}.
+      const body = JSON.parse(await res.text()) as {
+        newItem?: { itemData?: any; error?: string };
+        itemData?: any;
+        form?: any;
+        errors?: any;
+      };
+      const itemData = body.newItem?.itemData ?? body.itemData;
+      const errorMsg = body.newItem?.error;
+      if (errorMsg) {
+        throw new Error(`commcare_create_inbound_api: ${errorMsg}`);
+      }
+      if (itemData?.id) {
+        return { id: Number(itemData.id), name: String(itemData.name ?? args.name) };
       }
       // Validation error case
       if (body.errors || body.form) {

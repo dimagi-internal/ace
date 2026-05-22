@@ -506,6 +506,24 @@ server.tool('commcare_create_lookup_table',
   async (args) => runAtom(async () => (await commcareClient()).createLookupTable(args))
 );
 
+server.tool('commcare_list_ucr_expressions',
+  'List named UCR expressions / filters on a CommCare HQ domain. POST /a/<domain>/data/ucr_expressions/ with action=paginate via CRUDPaginatedView. Returns id, name, expression_type ("named_expression" | "named_filter"), description, parsed definition JSON. Auth: session (BaseProjectDataView).',
+  { domain: z.string(), limit: z.number().int().positive().optional() },
+  async (args) => runAtom(async () => (await commcareClient()).listUcrExpressions(args))
+);
+
+server.tool('commcare_create_ucr_expression',
+  'Create a named UCR expression or filter on a domain. POST the UCRExpressionForm to /a/<domain>/data/ucr_expressions/ via action=create. Required fields: name, expression_type ("named_expression" | "named_filter"), definition (JSON spec). The Connect Interviews bootstrap creates 4: "Register User OCS" + "Trigger OCS Bot" (named_filter), "Session Completion API" + "24 hr Expiry API" (named_expression). Duplicate name in domain raises IntegrityError surfaced as explicit error.',
+  {
+    domain: z.string(),
+    name: z.string(),
+    expression_type: z.enum(['named_expression', 'named_filter']),
+    definition: z.record(z.any()).describe('The UCR spec JSON object (e.g. {"type": "boolean_expression", ...}).'),
+    description: z.string().optional(),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).createUcrExpression(args))
+);
+
 server.tool('commcare_list_inbound_apis',
   'List Inbound API configurations on a CommCare HQ domain. POST /a/<domain>/motech/inbound/ with action=paginate. Returns each API\'s id, name, description, api_url, edit_url. Pro Edition / DATA_FORWARDING required.',
   { domain: z.string(), limit: z.number().int().positive().optional() },
