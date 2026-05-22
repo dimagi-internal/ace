@@ -506,6 +506,53 @@ server.tool('commcare_create_lookup_table',
   async (args) => runAtom(async () => (await commcareClient()).createLookupTable(args))
 );
 
+server.tool('commcare_create_repeater',
+  'Create a Data-Forwarding Repeater on a CommCare HQ domain. POST the GenericRepeaterForm (or BaseExpressionRepeaterForm for *ExpressionRepeater types) to /a/<domain>/motech/forwarding/new/<repeater_type>/. Plain FormRepeater forwards every submission; FormExpressionRepeater applies a UCR filter (configured_filter) and emits a UCR-derived payload (configured_expression) — the Connect Interviews "OCS User Registration" and "Trigger Bot" repeaters use this variant. Pro Edition required (DATA_FORWARDING privilege).',
+  {
+    domain: z.string(),
+    repeater_type: z.enum(['FormRepeater', 'CaseRepeater', 'FormExpressionRepeater', 'CaseExpressionRepeater', 'ConnectFormRepeater']),
+    connection_settings_id: z.number().int().positive().describe('FK to a Connection (from commcare_list_connections).'),
+    name: z.string().optional(),
+    request_method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
+    format: z.string().optional().describe('Payload format slug (e.g. "form_json", "form_xml").'),
+    configured_filter: z.record(z.any()).optional().describe('UCR filter spec as a JSON object. Required for *ExpressionRepeater types.'),
+    configured_expression: z.record(z.any()).optional().describe('UCR payload-expression spec as a JSON object. Required for POST/PUT *ExpressionRepeater.'),
+    url_template: z.string().optional(),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).createRepeater(args))
+);
+
+server.tool('commcare_list_connections',
+  'List Connection settings (motech outbound connections) on a CommCare HQ domain. POST /a/<domain>/motech/conn/ with action=paginate via the CRUDPaginatedView. Returns each connection\'s id, name, url, notify_addresses, used_by. Gated by privileges.DATA_FORWARDING (Pro Edition) — 404s without it. Used by verifier to confirm "Connect Interviews" and "OCS Interviews Bot" connections exist.',
+  { domain: z.string(), limit: z.number().int().positive().optional() },
+  async (args) => runAtom(async () => (await commcareClient()).listConnections(args))
+);
+
+server.tool('commcare_create_connection',
+  'Create a Connection (motech outbound connection settings). POST the ConnectionSettingsForm to /a/<domain>/motech/conn/add/ (form-encoded, CSRF-protected). Success redirects to the list view — atom re-lists by name to recover the new id. Auth types per corehq/motech/auth.py: none, basic, digest, bearer, oauth1, oauth2_pwd, oauth2_client, api_key. Pro Edition required (DATA_FORWARDING privilege).',
+  {
+    domain: z.string(),
+    name: z.string(),
+    url: z.string().describe('Base URL of the target system (e.g. "https://connect.dimagi.com/").'),
+    auth_type: z.enum(['none','basic','digest','bearer','oauth1','oauth2_pwd','oauth2_client','api_key']).optional(),
+    username: z.string().optional(),
+    plaintext_password: z.string().optional(),
+    client_id: z.string().optional(),
+    plaintext_client_secret: z.string().optional(),
+    token_url: z.string().optional(),
+    notify_addresses_str: z.string().optional().describe('Comma-separated emails for failure notifications.'),
+    skip_cert_verify: z.boolean().optional(),
+    plaintext_custom_headers: z.string().optional().describe('JSON string of custom headers (e.g. \'{"Authorization": "Token xyz"}\').'),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).createConnection(args))
+);
+
+server.tool('commcare_get_case',
+  'Fetch a single CommCare HQ case by case_id. GET /a/<domain>/api/v0.5/case/<id>/?format=json via Tastypie (API-key auth — CaseResource sets RequirePermissionAuthentication(edit_data) without allow_session_auth). Returns the case\'s dynamic property bag (commcare-user case has session_completion / last_bot_interaction_date / interaction_validation written by OCS-to-HQ custom action). 404 surfaces as an explicit error.',
+  { domain: z.string(), case_id: z.string() },
+  async (args) => runAtom(async () => (await commcareClient()).getCase(args))
+);
+
 server.tool('commcare_list_users',
   'List mobile workers (CommCareUser) in a CommCare HQ domain. GET /a/<domain>/api/v0.5/user/ via Tastypie (API key auth). Supports standard Tastypie pagination (limit/offset) and group filter. Returns each user\'s id, username, basic profile, and the full user_data dict (including custom fields like cohort_id). Used by verifier to confirm cohort_id is set on the right FLWs.',
   {
