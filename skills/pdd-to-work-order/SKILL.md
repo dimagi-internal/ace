@@ -155,6 +155,5 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-21 | Initial version | ACE team |
 | 2026-05-21 | Add `references/writing-style.md` + `references/style-guide.md`, adapted from `sarvesh-tewari/ace-skills-stewari`; wire writing-style.md into step 1 + prose-token synthesis | ACE team |
 | 2026-05-21 | Drop bold-span rule from prose-token synthesis preamble + add explicit "do not emit markdown bold" warning (template uses plain-text replaceAllText; no bold finalizer yet). Track `docs_finalize_bold` as backlog. | ACE team |

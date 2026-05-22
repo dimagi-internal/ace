@@ -62,9 +62,3 @@ The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as im
 6. **Compose and write the verdict YAML** to `1-design/pdd-to-work-order-qa_result.yaml` per the QA verdict schema (`lib/qa-types.ts`). `verdict: pass` iff every check passes; `verdict: fail` with `failures[]` array otherwise (each entry: `{check, detail, auto_fix_hint}`). `verdict: incomplete` if a check could not be evaluated (e.g., decisions.yaml unreadable).
 
 7. **Trigger the producer-retry loop on `verdict: fail`** per `agents/idea-to-design.md § Step 2.4`. After retry: re-run QA. Halt with `verdict: incomplete` when the producer can no longer make progress on the same failures.
-
-## Change Log
-
-| Date | Change | Author |
-|------|--------|--------|
-| 2026-05-21 | Initial version | ACE team |

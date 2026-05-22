@@ -97,6 +97,5 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-03 | Initial version | ACE team |
 | 2026-04-08 | Add `## Archetypes` section: focus-group grading uses facilitation-quality and research-yield rubrics for FLW Performance / Intervention Effectiveness, plus a 7th Research Quality dimension; multi-stage grades stage-gate transitions | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-08 | Read PDD `## Evidence Model` in step 1; Layer A drives FLW Performance evidence, Layer B/C drive Intervention Effectiveness / Research Quality evidence | ACE team (PM scout, focus-group framework lens) |

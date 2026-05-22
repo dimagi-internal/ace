@@ -242,7 +242,6 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-14 | Initial version — introduced as Phase 1 Step 2 so Phase 5's `ocs-chatbot-qa --deep` has ground-truth opp-specific prompts to grade against. Previously `test-prompts.md` was referenced by `ocs-chatbot-qa` but had no producer | ACE team |
 | 2026-04-19 | Added `## Archetypes` section branching on PDD archetype. `focus-group` gets session/recruitment/consent/question-guide/facilitation/output/audio categories; atomic-visit retains visit-flow/eligibility/GPS/duplicate categories; multi-stage mixes per-stage with an added stage-gate category. Motivated by cosmetics-fgd-pilot recon (2026-04-19) where the atomic-visit-only category list forced manual remapping | ACE team (qa/eval iteration loop) |
 | 2026-04-20 | Expand `multi-stage` archetype: clarify per-stage archetype dispatch, add intervention-continuity cross-stage category, flag missing Stage Gate as `[WARN]` | ACE team (skills review) |
 | 2026-05-15 | Recharacterize `focus-group` category list for the attestation-form-only shape (PRs #305, #306): `Output spec` → `Gdoc writing guidance` (the chatbot helps facilitators write the gdoc per PDD Output Spec); `Audio and evidence` → `Attestation form` (no audio in CommCare; 5-field form questions). `Facilitation technique` line drops the Learn-app reference (no Learn app for focus-group; OCS chatbot is the primary training surface). Prompted by `malaria-itn-fgd/20260514-2352` re-run where the Phase 2 agent surfaced these as small-tweak friction. | ACE team |

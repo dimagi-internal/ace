@@ -220,9 +220,6 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-03 | Initial version | ACE team |
-| 2026-04-14 | Own Connect system invite send (moved from `llo-invite`) and include OCS widget link in onboarding email; this is the first LLO-facing step in the lifecycle | ACE team |
-| 2026-04-20 | Added `## Archetypes` section with per-archetype email framing, "getting started" steps, and timeline language. `focus-group` addresses the recipient as a facilitator-owning org (not FLW-managing), leads with question guide + audio upload, and uses session-count cadence language. `multi-stage` front-loads Stage 1 content. Prevents atomic-visit framing from landing as the first LLO-facing artifact on FGD opps | ACE team |
 | 2026-04-28 | Replace HITL workaround with `connect_send_llo_invite` (ace-connect 0.8.1). Connect's invite is program-level, so the atom takes the program UUID and an `organization` slug for the target LLO workspace | ACE team |
 | 2026-04-30 | Switch `connect_send_llo_invite` to `POST /api/programs/<id>/applications/` (commcare-connect PR #1135). Args drop `contact_email` (server emails workspace admins via `send_program_invite_email`). Add new step 2a: `connect_accept_program_application` for ACE-driven dogfood runs that need to auto-accept the invite. (0.10.47) | ACE team |
 | 2026-05-04 | Read awardee from `opp.yaml.selected_llo` instead of iterating `connect-setup/invites.md` roster. Phase 9 entry guard halts with an actionable message if `selected_llo.org_slug` is null (Phase 8 `solicitation-review` must run first). Single-org onboarding replaces multi-LLO roster model. (0.12.0) | ACE team |

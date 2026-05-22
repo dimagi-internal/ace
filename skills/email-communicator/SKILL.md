@@ -70,9 +70,3 @@ None — this skill uses the GOG CLI via shell commands, not MCP tools.
 When `--dry-run` is active:
 - **Send/reply:** Print the full email (to, cc, subject, body) to stdout but do not send. Return a synthetic message ID for logging.
 - **Search/read:** Execute normally (read-only operations are safe in dry-run).
-
-## Change Log
-
-| Date | Change | Author |
-|------|--------|--------|
-| 2026-04-10 | Initial version | ACE team |

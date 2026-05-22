@@ -70,9 +70,3 @@ When `--dry-run` is active:
 - Monitoring report is still written to `ACE/<opp-name>/monitoring/` as normal
 - Do not send emails to LLOs
 - State tracks as `dry-run-success`
-
-## Change Log
-
-| Date | Change | Author |
-|------|--------|--------|
-| 2026-04-03 | Initial version | ACE team |
