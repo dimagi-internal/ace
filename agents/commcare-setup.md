@@ -178,7 +178,9 @@ Step 1.5), since `nova-plugin#2` affects every architect dispatch
 identically — not just builds.
 
 - Input: approved PDD from GDrive
-- Output: app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
+- Output:
+  - app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
+  - From `pdd-to-deliver-app`: appended `deliver-unit-count`, `one-form-per-module-workaround`, `multimedia-coverage-strategy` rows in `decisions.yaml` (merge-only; rows are emitted only when they meet the bar criterion in `skills/idea-to-pdd/SKILL.md § Decisions Log Convention` — the list is a working catalog, not a required set).
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `pdd-to-learn-app-eval` after the Learn build and
   `pdd-to-deliver-app-eval` after the Deliver build. Each writes
@@ -277,7 +279,10 @@ pre-flight (real failure mode from turmeric run 20260509-0455). See
 `agents/ace-orchestrator.md § Skill Invocation Discipline`.
 
 - Reads: pdd-to-app-journeys.md, both app summaries, Nova blueprints
-- Writes: app-test-cases.yaml + recipes/J*.yaml under app-test-cases/
+- Writes:
+  - app-test-cases.yaml + recipes/J*.yaml under app-test-cases/
+  - Appended `test-scenario-count`, `test-archetype-coverage` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`).
+    Note: `app-test-cases/SKILL.md` records these rows with `phase: 6-qa-and-training` even though dispatch happens here in Phase 3. That's an upstream `phase:` mismatch in the SKILL.md (see issue #399 follow-up); don't paper over it on the writer side.
 - Halts on missing inputs or recipe-validation failure
 
 Phase 6 shallow runs the smoke recipes; /ace:qa-deep runs them all.

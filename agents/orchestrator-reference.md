@@ -603,9 +603,26 @@ Scope and `skills/idea-to-pdd/SKILL.md` § Decisions Log Convention §
 Bar criterion). Each phase's primary writing skill owns the rows it
 writes. The orchestrator stub-fills + warns post-phase if a phase
 wrote zero rows AND the calibration set for that phase has any
-required rows. PR #1 covers Phase 1 (`idea-to-pdd`); Phase 3–10 writes
-ship in PR #3 of the decisions-log series. Schema and YAML helpers
-live in `lib/decisions-schema.ts`.
+required rows. Schema and YAML helpers live in `lib/decisions-schema.ts`.
+
+**The procedural authority for each phase is the per-step `Output`
+block in its `agents/<phase>.md` file**, not the catalog in the writing
+skill's `SKILL.md`. The catalog (the `## Decisions Log` section in each
+producer skill) is a teaching device — listing the rows that commonly
+qualify under the bar for that phase. The agent file's per-step `Output`
+bullets are what the dispatched subagent treats as its checklist.
+Documented catalogs without a matching per-step bullet produced silent
+zero-write failures across Phase 2–9 on the malaria-itn-app run filed
+as `jjackson/ace#399`; the fix was the per-step Output enumeration that
+now lives in every downstream agent file. When you add a new skill that
+writes anchor rows, BOTH must be updated together: the catalog in
+`SKILL.md` AND the `Output:` bullet in the dispatching agent file. The
+catalog alone is not load-bearing.
+
+History: PR #1 of the decisions-log series shipped Phase 1
+(`idea-to-pdd` + `pdd-to-work-order`). PR #4 added Decisions Log
+catalogs to Phase 3–10 skills but did NOT update the agent files; that
+gap was closed by the issue #399 fix.
 
 ## Recurring writers — TBD
 

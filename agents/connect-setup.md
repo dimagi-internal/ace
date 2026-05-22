@@ -54,11 +54,13 @@ Invoke the `connect-program-setup` skill.
 Invoke the `connect-opp-setup` skill.
 
 - **Input:** program UUID from Step 1; PDD; deployment summary from Phase 3.
-- **Output:** Opportunity created with `is_test=true`, verification flags +
-  payment units configured, **activated**, and ACE test user
-  (`${ACE_E2E_PHONE}`) pre-invited. Details in
-  `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md` with the
-  opportunity UUID.
+- **Output:**
+  - Opportunity created with `is_test=true`, verification flags +
+    payment units configured, **activated**, and ACE test user
+    (`${ACE_E2E_PHONE}`) pre-invited. Details in
+    `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md` with the
+    opportunity UUID.
+  - Appended `verification-flags`, `payment-unit-shape`, `opportunity-end-date` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention` — only rows that meet the bar are emitted).
 - **Depends on:** Step 1 (needs program UUID); Phase 3 outputs (needs
   CommCare app metadata).
 - **Activation:** Phase 4 activates the opp synchronously (Step 6.5 in
