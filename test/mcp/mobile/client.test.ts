@@ -8,6 +8,7 @@ import {
   MobileClient,
   bootstrapConfigFromEnv,
   missingBootstrapEnvVars,
+  getConfiguredApkVersion,
 } from '../../../mcp/mobile/client.js';
 import { setSessionBackend, clearSessionBackend } from '../../../mcp/mobile/backend-toggle.js';
 
@@ -1831,6 +1832,165 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
     } catch {
       /* leave */
     }
+  });
+
+  // ── URL-template fallback ──────────────────────────────────────
+  //
+  // Dimagi renamed the release asset between CommCare 2.62.0
+  // (`app-commcare-release.apk`) and 2.63.0 (`commcare-<v>-release.apk`).
+  // The downloader probes the new name first; on 404 it falls back to
+  // the old name so older pins keep working.
+  it('downloads from the new versioned filename on first attempt', async () => {
+    const version = `test-new-name-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
+    const shaPath = `${apkPath}.sha256`;
+    try { fs.unlinkSync(apkPath); } catch { /* fine */ }
+    try { fs.unlinkSync(shaPath); } catch { /* fine */ }
+    const bytes = fakeApkBuffer(version);
+    const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith(`/commcare-${version}-release.apk`)) {
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+        };
+      }
+      return { ok: false, status: 404, statusText: 'Not Found', arrayBuffer: async () => new ArrayBuffer(0) };
+    });
+    const avd = { listPackages: vi.fn().mockResolvedValue([]), installApk: vi.fn() } as any;
+    const maestro = {} as any;
+    const client = new MobileClient({
+      avd,
+      maestro,
+      fetchImpl,
+      bootstrapConfig: {
+        apkVersion: version,
+        testUser: {
+          phone: '+74260000100',
+          phoneLocal: '4260000100',
+          countryCode: '7',
+          pin: '1234',
+          backupCode: 'b',
+          name: 'n',
+        },
+      },
+    });
+    await expect(
+      client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
+    ).rejects.toThrow();
+    // One fetch — new filename succeeded, no fallback needed.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`/commcare-${version}-release\\.apk$`)));
+    expect(fs.existsSync(apkPath)).toBe(true);
+    try { fs.unlinkSync(apkPath); fs.unlinkSync(shaPath); } catch { /* leave */ }
+  });
+
+  it('falls back to the legacy filename when the new filename 404s', async () => {
+    const version = `test-fallback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
+    const shaPath = `${apkPath}.sha256`;
+    try { fs.unlinkSync(apkPath); } catch { /* fine */ }
+    try { fs.unlinkSync(shaPath); } catch { /* fine */ }
+    const bytes = fakeApkBuffer(version);
+    const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith('/app-commcare-release.apk')) {
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+        };
+      }
+      return { ok: false, status: 404, statusText: 'Not Found', arrayBuffer: async () => new ArrayBuffer(0) };
+    });
+    const avd = { listPackages: vi.fn().mockResolvedValue([]), installApk: vi.fn() } as any;
+    const maestro = {} as any;
+    const client = new MobileClient({
+      avd,
+      maestro,
+      fetchImpl,
+      bootstrapConfig: {
+        apkVersion: version,
+        testUser: {
+          phone: '+74260000100',
+          phoneLocal: '4260000100',
+          countryCode: '7',
+          pin: '1234',
+          backupCode: 'b',
+          name: 'n',
+        },
+      },
+    });
+    await expect(
+      client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
+    ).rejects.toThrow();
+    // Two fetches — new filename 404'd, then old filename succeeded.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, expect.stringMatching(new RegExp(`/commcare-${version}-release\\.apk$`)));
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, expect.stringMatching(/\/app-commcare-release\.apk$/));
+    expect(fs.existsSync(apkPath)).toBe(true);
+    try { fs.unlinkSync(apkPath); fs.unlinkSync(shaPath); } catch { /* leave */ }
+  });
+
+  it('throws when both filenames 404', async () => {
+    const version = `test-both-404-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
+    try { fs.unlinkSync(apkPath); } catch { /* fine */ }
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      arrayBuffer: async () => new ArrayBuffer(0),
+    });
+    const avd = { listPackages: vi.fn().mockResolvedValue([]) } as any;
+    const maestro = {} as any;
+    const client = new MobileClient({
+      avd,
+      maestro,
+      fetchImpl,
+      bootstrapConfig: {
+        apkVersion: version,
+        testUser: {
+          phone: '+74260000100',
+          phoneLocal: '4260000100',
+          countryCode: '7',
+          pin: '1234',
+          backupCode: 'b',
+          name: 'n',
+        },
+      },
+    });
+    await expect(
+      client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
+    ).rejects.toThrow(/APK download failed/);
+    // Both URLs were tried before erroring.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('getConfiguredApkVersion: env-var with default', () => {
+  // Selector maps live at mcp/mobile/selectors/connect-<v>.yaml; the
+  // resolver looks up files by this version. Sourced from
+  // ACE_CONNECT_APK_VERSION so an opt-in env override can route a session
+  // to a newer selector baseline (e.g. 2.63.0) without changing defaults.
+  const prev = process.env.ACE_CONNECT_APK_VERSION;
+  afterEach(() => {
+    if (prev === undefined) delete process.env.ACE_CONNECT_APK_VERSION;
+    else process.env.ACE_CONNECT_APK_VERSION = prev;
+  });
+
+  it("returns '2.62.0' when env var is unset (current default)", () => {
+    delete process.env.ACE_CONNECT_APK_VERSION;
+    expect(getConfiguredApkVersion()).toBe('2.62.0');
+  });
+
+  it('returns the env-var value when set', () => {
+    process.env.ACE_CONNECT_APK_VERSION = '2.63.0';
+    expect(getConfiguredApkVersion()).toBe('2.63.0');
+  });
+
+  it('falls back to default when env var is empty string', () => {
+    process.env.ACE_CONNECT_APK_VERSION = '';
+    expect(getConfiguredApkVersion()).toBe('2.62.0');
   });
 });
 

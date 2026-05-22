@@ -1,0 +1,267 @@
+# Connect APK 2.63.0 selector map (UNVERIFIED — seeded from 2.62.0)
+#
+# Status: this file is a verbatim copy of `connect-2.62.0.yaml` so a
+# session pinned to `ACE_CONNECT_APK_VERSION=2.63.0` resolves to a real
+# selector map instead of erroring at recipe-resolve time. Until
+# `connect-baseline-screenshots` runs against a fresh 2.63.0 AVD and any
+# drifted matchers are corrected here, treat every selector as suspect.
+# When that's done, delete this stanza and update `captured_at` and
+# `captured_against` below to the real values.
+#
+# Maps stable LOGICAL NAMES (used in static + generated recipes) to the
+# concrete Maestro selectors that resolve them in this APK version. When the
+# Connect APK ships a new version, copy this file to
+# `connect-<new-version>.yaml`, run `connect-baseline-screenshots` to detect
+# selector drift, and update only the rows that changed. Recipes that
+# reference logical names via `${SELECTOR:logical-name}` keep working
+# without edits.
+#
+# Conventions:
+# - PREFER text-anchor matchers — they survive minor APK rebuilds where
+#   resource-ids change but visible labels don't.
+# - Use `id:` only when the text is dynamic, the surface has multiple
+#   buttons with the same text, or when the static recipes already proved
+#   the resource-id is stable across builds.
+# - Logical names are kebab-case scoped by surface: `<surface>-<element>`.
+#   E.g., `nav-drawer-sign-in`, `opp-detail-start-learning`,
+#   `form-question-next-button`.
+#
+# To resolve placeholders in a recipe body, call
+# `mobile_resolve_selectors({yaml, apk_version})`. The MCP atom reads this
+# file (or the version the caller passes) and substitutes
+# `${SELECTOR:logical-name}` with the matcher block below.
+#
+# Substitution shape:
+#   `${SELECTOR:nav-drawer-sign-in}` →
+#       (when type=id)   `id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"`
+#       (when type=text) `text: "Start Learning"`
+#       (when type=both) `id: "org.commcare.dalvik:id/btn_start"  # text fallback: "Start"`
+
+apk_version: "2.63.0"
+captured_at: "UNVERIFIED"
+captured_against: "UNVERIFIED — seeded from 2.62.0; re-baseline pending"
+
+selectors:
+  # ── App shell ────────────────────────────────────────────────────
+  app-splash-message:
+    type: id
+    value: "org.commcare.dalvik:id/str_setup_message"
+    purpose: "CommCare splash 'Setting up...' message — first stable element after launch"
+
+  nav-drawer-burger-point:
+    type: point
+    value: "73,209"
+    purpose: "Top-left nav-drawer toggle. Coordinate-based since the burger image has no resource-id."
+
+  nav-drawer-sign-in:
+    type: id
+    value: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+    purpose: "Sign In / Register button in the nav drawer (visible when the user is signed out)"
+
+  # ── PersonalID / phone entry ────────────────────────────────────
+  personalid-country-code:
+    type: id
+    value: "org.commcare.dalvik:id/countryCode"
+    purpose: "Country-code AutoCompleteTextView on the phone-entry screen"
+
+  personalid-phone-input:
+    type: id
+    value: "org.commcare.dalvik:id/connect_primary_phone_input"
+    purpose: "Phone-number AutoCompleteTextView"
+
+  personalid-consent-check:
+    type: id
+    value: "org.commcare.dalvik:id/connect_consent_check"
+    purpose: "Consent checkbox below the phone field"
+
+  personalid-phone-continue:
+    type: id
+    value: "org.commcare.dalvik:id/personalid_phone_continue_button"
+    purpose: "Continue button submitting the phone-entry form"
+
+  personalid-name-input:
+    type: id
+    value: "org.commcare.dalvik:id/nameTextValue"
+    purpose: "Name text field on the registration name-entry screen"
+
+  personalid-pin-verify:
+    type: id
+    value: "org.commcare.dalvik:id/connect_verify_pin_button"
+    purpose: "Verify PIN button on the App Lock setup / verify screen"
+
+  personalid-backup-code-input:
+    type: id
+    value: "org.commcare.dalvik:id/connect_backup_code_input"
+    purpose: "Backup-code text field"
+
+  personalid-backup-code-repeat:
+    type: id
+    value: "org.commcare.dalvik:id/connect_backup_code_repeat_input"
+    purpose: "Backup-code-repeat text field"
+
+  personalid-backup-code-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_backup_code_button"
+    purpose: "Submit button on the backup-code form"
+
+  # ── Demo-user OTP bypass ────────────────────────────────────────
+  demo-snackbar-action:
+    type: id
+    value: "org.commcare.dalvik:id/snackbar_action"
+    purpose: "OK button on the demo-user OTP-bypass snackbar (for +7426 phones)"
+
+  # ── Google Play Services phone-hint sheet ───────────────────────
+  gms-phone-hint-cancel:
+    type: id
+    value: "com.google.android.gms:id/cancel"
+    purpose: "Cancel button on the Google Play Services phone-hint bottom sheet that pops on AutoCompleteTextView focus"
+
+  # ── System unlock (after PersonalID setup imposes a device PIN) ─
+  system-lockpassword:
+    type: id
+    value: "com.android.systemui:id/lockPassword"
+    purpose: "System lockscreen PIN entry (Android-side, not CommCare)"
+
+  system-pin-entry:
+    type: id
+    value: "com.android.settings:id/lock_pin"
+    purpose: "PIN-entry field on the device-lock setup screen"
+
+  system-password-entry:
+    type: id
+    value: "com.android.settings:id/password_entry"
+    purpose: "Password-entry field on the device-lock setup screen"
+
+  # ── Post-login Connect home ─────────────────────────────────────
+  home-new-opportunities:
+    type: text
+    value: "New Opportunities"
+    purpose: "Section header on Connect home — stable text anchor; survives APK rebuilds"
+
+  home-opportunities-tab:
+    type: text
+    value: "Opportunities"
+    purpose: "Bottom-nav 'Opportunities' tab"
+
+  # ── Opportunity list / detail ───────────────────────────────────
+  opp-list-view-opportunity-button:
+    type: id
+    value: "org.commcare.dalvik:id/btn_view_opportunity"
+    purpose: "View Opportunity button on each card in the unclaimed-opp list"
+
+  opp-detail-start:
+    type: id
+    value: "org.commcare.dalvik:id/btn_start"
+    purpose: "Pre-claim 'Start' button on the opp-detail page. Confirmed against ACE_Pixel_API_34_PS — button text is 'Start' (not 'Start Learning'). Tapping fires POST /users/start_learn_app/ which mints/links the mobile worker on CCHQ and transitions the opp-detail surface in-place (Start disappears, Learn modules section becomes interactive). Boundary preflight for the auth/domain/conflict failure modes lives in `connect_preflight_learn_app_user`."
+
+  opp-detail-learn-modules-teaser:
+    type: id
+    value: "org.commcare.dalvik:id/tv_learn_modules_list"
+    purpose: "Pre-claim Learn-Details preview TextView on the opp-detail page. Renders as a single TextView with the module-list label(s) (e.g. '1. Form walkthrough' for atomic-visit opps). NOT a RecyclerView; NOT tappable; NOT the post-claim Learn-app module list. Use as a structural anchor for opp-detail-screen presence checks only — for the interactive Learn-app modules, use learn-suite-row-by-name on the MenuActivity surface (see atlas §6)."
+
+  # ── Photo capture ──────────────────────────────────────────────
+  camera-shutter-button:
+    type: id
+    value: "org.commcare.dalvik:id/camera_shutter_button"
+    purpose: "Shutter button when the device camera is open via a CommCare photo question"
+
+  camera-take-photo:
+    type: id
+    value: "org.commcare.dalvik:id/take_photo_button"
+    purpose: "Take Photo button on the photo-question prompt screen (before opening the camera)"
+
+  camera-save-photo:
+    type: id
+    value: "org.commcare.dalvik:id/save_photo_button"
+    purpose: "Save / Use Photo button after capturing"
+
+  # ── Post-claim Learn-app surfaces (atlas-verified 2026-05-14) ──────
+  # These selectors were calibrated against ACE_Pixel_API_34_PS on the
+  # turmeric run 20260513-2243 retry. See docs/mobile-atlas/connect-2.62.0.md
+  # §§ 5-7 for the full screen-by-screen ground truth.
+
+  learn-home-start-tile:
+    type: text
+    value: "Start"
+    purpose: "The green 'Start' tile on StandardHomeActivity (CommCare app home, post-claim, post-CCZ-install). Atlas §5. Tapping launches MenuActivity showing the Learn-app's suite root. Maestro walks up the hierarchy from the TextView (`card_text`) to find the clickable RelativeLayout (`card`); text-match works without needing the parent's resource-id."
+
+  learn-home-sync-tile:
+    type: text
+    value: "Sync with Server"
+    purpose: "The blue 'Sync with Server' tile on StandardHomeActivity. Atlas §5. Tapping triggers a CCHQ sync (uploads any submitted forms, downloads any pending). Used by `app-test-cases` recipes after a form sequence to upload before moving on."
+
+  learn-suite-row-by-name:
+    type: text
+    value: "${MODULE_NAME}"  # caller substitutes
+    purpose: "A row in the MenuActivity `screen_suite_menu_list` ListView. Atlas §6. The row's parent LinearLayout is `clickable=true`; the inner `row_txt` TextView (which carries the visible label) is NOT clickable, so Maestro walks up to the LinearLayout to perform the tap. Use this selector for: (a) the suite root row (e.g. 'Turmeric Market Survey — Learn'), (b) each form row inside a module (e.g. '1. Why we are doing this', 'Final assessment'). Composer substitutes ${MODULE_NAME} at recipe-resolution time."
+
+  form-nav-next:
+    type: id
+    value: "org.commcare.dalvik:id/nav_btn_next"
+    purpose: "Right-edge ImageButton (arrow icon, no text) on FormEntryActivity. Atlas §7. Advances to the next question; on the LAST question of a form, the same tap auto-finalizes + submits the form locally and returns to StandardHomeActivity. NOT a text-matched selector — the button has no text attribute, only the resource-id."
+
+  form-nav-prev:
+    type: id
+    value: "org.commcare.dalvik:id/nav_btn_prev"
+    purpose: "Left-edge ImageButton (X icon on Q1, arrow icon thereafter) on FormEntryActivity. Atlas §7. Goes back one question. On Q1, tapping equates to 'exit form without saving' — typically halts the recipe."
+
+  form-required-warning:
+    type: id
+    value: "org.commcare.dalvik:id/warning_root"
+    purpose: "Red banner that appears when `nav_btn_next` is tapped on a required-input question with no answer selected. Inner `id/message` TextView text 'Sorry, this response is required!' (atlas §7). Useful as a structural assertNotVisible after answering — confirms the answer registered before advancing."
+
+  # ── To calibrate (transitions not yet captured live) ────────────────
+  # The values below are placeholders for surfaces the atlas walk hasn't
+  # reached yet (atlas "Open questions" list). Each entry is marked
+  # `unverified: true` until a baseline run confirms it. Don't author
+  # recipes against these without a live verification first.
+
+  opp-detail-start-delivering:
+    type: text
+    value: "Start Delivering"
+    unverified: true
+    purpose: "Start Delivering button on the post-Learn-completion opp-detail. UNREACHED 2026-05-14 — atlas walk hasn't passed the Final Assessment yet. See atlas § Open questions."
+
+  form-submit:
+    type: text
+    value: "Submit"
+    unverified: true
+    purpose: "Generic Submit button on the final form screen. NOTE 2026-05-14: Learn-app forms AUTO-FINALIZE via nav_btn_next on the last question (atlas §7) — they have NO explicit Submit button. Deliver-app forms may have a Submit; UNREACHED until the atlas walk passes Final Assessment. If used in recipes, branch on `form-submit visible?` before tapping — Learn-app recipes should use form-nav-next throughout, not this."
+
+  assessment-result-passed:
+    type: text
+    value: "Passed"
+    unverified: true
+    purpose: "Result indicator after the Learn-app Final Assessment scores ≥ passing threshold. UNREACHED 2026-05-14."
+
+  assessment-result-failed:
+    type: text
+    value: "Try Again"
+    unverified: true
+    purpose: "Retake button on a failed assessment screen. UNREACHED 2026-05-14."
+
+  # ── J1-smoke-required selectors not yet reachable (added 2026-05-12) ──
+  # J1.yaml references these but they live on Deliver-app surfaces which
+  # are downstream of the upstream start_learn_app 500. Best-guess values
+  # based on CommCare 2.62.0 standard Deliver form chrome; flagged
+  # unverified until a live Deliver run reaches them. NOTE: J1 ALSO
+  # depends on `form-question-next` and `form-submit` above, which share
+  # the same blocker.
+
+  deliver-start-button:
+    type: text
+    value: "Start Delivering"
+    unverified: true
+    purpose: "The button that launches the Deliver app from the post-Learn-completion opp-detail. Best-guess: same label/surface as `opp-detail-start-delivering` (kept as a J1-recipe-named alias for the Deliver-side entry). NOT YET REACHED 2026-05-12 — blocked by upstream 500. When verified, this row may collapse into a pure alias of opp-detail-start-delivering."
+
+  form-question-input:
+    type: id
+    value: "org.odk.collect.android:id/answer_text"
+    unverified: true
+    purpose: "Free-text answer EditText in a CommCare/ODK form question. Best-guess from ODK Collect 2.62.0 chrome (CommCare embeds ODK). Used 3× in J1 (Bidiani Market name, '200' weight, 'Northern region farms' origin). NOT YET REACHED 2026-05-12 — Deliver app unreachable due to upstream 500. Verify against the live form question once reachable; common alternates: `org.commcare.dalvik:id/answer_text`, plain `android.widget.EditText` matched by parent prompt."
+
+  form-photo-capture:
+    type: id
+    value: "org.commcare.dalvik:id/take_photo_button"
+    unverified: true
+    purpose: "Take Photo button on a CommCare photo-capture question (the one that opens the camera; the captured 2026-04-30 `camera-take-photo` selector targets the same id). NOT YET REACHED 2026-05-12 — Deliver app unreachable due to upstream 500. If a separate question-prompt EditText surfaces before the take_photo_button, this row may need to point at that prompt instead; verify when reachable."
