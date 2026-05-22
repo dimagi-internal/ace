@@ -111,6 +111,71 @@ export interface CreateLookupTableArgs {
   item_attributes?: string[];
 }
 
+export interface CommCareUser {
+  id: string;
+  /** Full username with @domain.commcarehq.org suffix. */
+  username: string;
+  /** Just the local part of username. */
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone_numbers?: string[];
+  groups?: string[];
+  user_data: Record<string, unknown>;
+}
+
+export interface ListUsersArgs {
+  domain: string;
+  /** Tastypie list pagination — defaults to HQ's max-per-page (usually 20). */
+  limit?: number;
+  offset?: number;
+  /** Filter by group_id. */
+  group?: string;
+}
+
+export interface GetUserArgs {
+  domain: string;
+  /** User couch id (the `id` field in list responses). */
+  user_id: string;
+}
+
+export interface UpdateUserFieldArgs {
+  domain: string;
+  user_id: string;
+  /** Field slug to set (e.g. "cohort_id"). */
+  field_slug: string;
+  /** Value to set; pass null to clear the field. */
+  value: string | null;
+}
+
+/** A single row in a lookup table. Flat-string values per column. */
+export interface LookupTableRow {
+  id: string;
+  data_type_id: string;
+  /** Flat map: field_name → string value. (Extracts the first field_list entry's field_value per column.) */
+  fields: Record<string, string>;
+  item_attributes: Record<string, string>;
+}
+
+export interface GetLookupTableRowsArgs {
+  domain: string;
+  /** Either the table UUID (data_type_id) or the table tag (name) — atom looks up by tag if no UUID syntax. */
+  table_id_or_tag: string;
+}
+
+export interface AppendLookupTableRowsArgs {
+  domain: string;
+  /** Either the table UUID (data_type_id) or the table tag (name). */
+  table_id_or_tag: string;
+  /**
+   * Rows to append. Each row is `field_name → string value` (one value
+   * per column, no sub-properties). HQ auto-assigns sort_key.
+   */
+  rows: Array<Record<string, string>>;
+  /** Optional per-row item_attributes (string-only map). */
+  item_attributes?: Record<string, string>;
+}
+
 export interface MakeBuildResult {
   build_id: string;
   version: number | null;
@@ -718,6 +783,212 @@ export class CommCareBackend {
       throw new Error(
         `commcare_create_lookup_table POST ${path} returned ${res.status()} but neither Location header nor body nor list-readback exposed the new table's id.`,
       );
+    });
+  }
+
+  /**
+   * Resolve a table UUID from either a UUID hex or a tag (name).
+   * UUIDs are 32 hex chars; anything else is treated as a tag.
+   */
+  private async resolveTableId(domain: string, idOrTag: string): Promise<string> {
+    if (/^[0-9a-f]{32}$/i.test(idOrTag)) return idOrTag;
+    const got = await this.getLookupTable({ domain, tag: idOrTag });
+    if (!got.table) {
+      throw new Error(
+        `Lookup table tag "${idOrTag}" not found in domain ${domain}. Create it first via commcare_create_lookup_table.`,
+      );
+    }
+    return got.table.id;
+  }
+
+  /**
+   * List mobile workers (CommCareUser) in a domain.
+   * GET /a/<domain>/api/v0.5/user/  with API-key auth.
+   */
+  async listUsers(args: ListUsersArgs): Promise<{ users: CommCareUser[]; total: number }> {
+    return this.runWithSessionRetry(async (request) => {
+      const params = new URLSearchParams();
+      if (args.limit !== undefined) params.set('limit', String(args.limit));
+      if (args.offset !== undefined) params.set('offset', String(args.offset));
+      if (args.group) params.set('group', args.group);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/user/${qs}`;
+      const res = await request.get(`${this.opts.baseUrl}${path}`, {
+        maxRedirects: 0,
+        headers: { Authorization: this.apiKeyAuthHeader('commcare_list_users') },
+      });
+      if (res.status() !== 200) {
+        throw new Error(`commcare_list_users GET ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
+      }
+      const parsed = JSON.parse(await res.text()) as { objects?: any[]; meta?: { total_count?: number } };
+      const users = (parsed.objects ?? []).map((u) => ({
+        id: u.id ?? u._id ?? '',
+        username: u.username ?? '',
+        first_name: u.first_name,
+        last_name: u.last_name,
+        email: u.email,
+        phone_numbers: u.phone_numbers,
+        groups: u.groups,
+        user_data: u.user_data ?? {},
+      }));
+      return { users, total: parsed.meta?.total_count ?? users.length };
+    });
+  }
+
+  /**
+   * Fetch one mobile worker by id. GET /a/<domain>/api/v0.5/user/<id>/.
+   */
+  async getUser(args: GetUserArgs): Promise<{ user: CommCareUser }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/user/${encodeURIComponent(args.user_id)}/`;
+      const res = await request.get(`${this.opts.baseUrl}${path}`, {
+        maxRedirects: 0,
+        headers: { Authorization: this.apiKeyAuthHeader('commcare_get_user') },
+      });
+      if (res.status() !== 200) {
+        throw new Error(`commcare_get_user GET ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
+      }
+      const u = JSON.parse(await res.text()) as any;
+      return {
+        user: {
+          id: u.id ?? u._id ?? args.user_id,
+          username: u.username ?? '',
+          first_name: u.first_name,
+          last_name: u.last_name,
+          email: u.email,
+          phone_numbers: u.phone_numbers,
+          groups: u.groups,
+          user_data: u.user_data ?? {},
+        },
+      };
+    });
+  }
+
+  /**
+   * Set a single user_data field on a mobile worker. Implemented as GET
+   * → mutate user_data → PUT (v0_5 CommCareUserResource has PUT but not
+   * PATCH). To clear a field, pass value=null.
+   */
+  async updateUserField(args: UpdateUserFieldArgs): Promise<{ user_id: string; field_slug: string; value: string | null }> {
+    return this.runWithSessionRetry(async (request) => {
+      const { user } = await this.getUser({ domain: args.domain, user_id: args.user_id });
+      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/user/${encodeURIComponent(args.user_id)}/`;
+      const next = { ...(user.user_data ?? {}) };
+      if (args.value === null) delete next[args.field_slug];
+      else next[args.field_slug] = args.value;
+      const res = await request.fetch(`${this.opts.baseUrl}${path}`, {
+        method: 'PUT',
+        data: JSON.stringify({ user_data: next }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: this.apiKeyAuthHeader('commcare_update_user_field'),
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() !== 200 && res.status() !== 202 && res.status() !== 204) {
+        throw new Error(
+          `commcare_update_user_field PUT ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
+        );
+      }
+      return { user_id: args.user_id, field_slug: args.field_slug, value: args.value };
+    });
+  }
+
+  /**
+   * Get rows of a lookup table. Tastypie LookupTableItemResource returns
+   * ALL rows in the domain (no querystring filter), so this atom
+   * client-side filters by `data_type_id`.
+   *
+   * Each row's `fields` is flattened: `{column_name: first_field_value}`
+   * (the team's Connect Interviews lookup tables don't use sub-properties
+   * or multi-value field_lists).
+   *
+   * Endpoint: GET /a/<domain>/api/v0.5/lookup_table_item/
+   * Auth: API key (Tastypie default for this resource).
+   */
+  async getLookupTableRows(args: GetLookupTableRowsArgs): Promise<{ rows: LookupTableRow[] }> {
+    return this.runWithSessionRetry(async (request) => {
+      const tableId = await this.resolveTableId(args.domain, args.table_id_or_tag);
+      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/lookup_table_item/`;
+      const res = await request.get(`${this.opts.baseUrl}${path}`, {
+        maxRedirects: 0,
+        headers: { Authorization: this.apiKeyAuthHeader('commcare_get_lookup_table_rows') },
+      });
+      if (res.status() !== 200) {
+        throw new Error(
+          `commcare_get_lookup_table_rows GET ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
+        );
+      }
+      const parsed = JSON.parse(await res.text()) as {
+        objects?: Array<{ id?: string; data_type_id?: string; fields?: any; item_attributes?: any }>;
+      };
+      const rows = (parsed.objects ?? [])
+        .filter((r) => r.data_type_id === tableId)
+        .map((r) => {
+          const flatFields: Record<string, string> = {};
+          for (const [col, container] of Object.entries(r.fields ?? {})) {
+            const list = (container as any)?.field_list ?? [];
+            flatFields[col] = list[0]?.field_value ?? list[0]?.value ?? '';
+          }
+          return {
+            id: r.id ?? '',
+            data_type_id: r.data_type_id ?? tableId,
+            fields: flatFields,
+            item_attributes: (r.item_attributes ?? {}) as Record<string, string>,
+          };
+        });
+      return { rows };
+    });
+  }
+
+  /**
+   * Append rows to a lookup table. POSTs one row at a time to
+   * /a/<domain>/api/v0.5/lookup_table_item/ — the Tastypie resource
+   * doesn't accept a list payload, only single-row POST. Returns the
+   * array of created row ids.
+   *
+   * For Connect Interviews `interview_schedule`, each row is a flat
+   * `{cohort_id, previous_interview, next_interview, frequency_days}`
+   * map. Empty string values are passed as-is (HQ stores them).
+   */
+  async appendLookupTableRows(args: AppendLookupTableRowsArgs): Promise<{ row_ids: string[] }> {
+    return this.runWithSessionRetry(async (request) => {
+      const tableId = await this.resolveTableId(args.domain, args.table_id_or_tag);
+      const path = `/a/${encodeURIComponent(args.domain)}/api/v0.5/lookup_table_item/`;
+      const authHeader = this.apiKeyAuthHeader('commcare_lookup_table_append_rows');
+      const ids: string[] = [];
+      for (const flatRow of args.rows) {
+        const fields: Record<string, { field_list: Array<{ field_value: string; properties: Record<string, string> }> }> = {};
+        for (const [col, val] of Object.entries(flatRow)) {
+          fields[col] = { field_list: [{ field_value: String(val), properties: {} }] };
+        }
+        const body = {
+          data_type_id: tableId,
+          fields,
+          item_attributes: args.item_attributes ?? {},
+        };
+        const res = await request.post(`${this.opts.baseUrl}${path}`, {
+          data: JSON.stringify(body),
+          headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+          maxRedirects: 0,
+        });
+        if (res.status() !== 201 && res.status() !== 200) {
+          throw new Error(
+            `commcare_lookup_table_append_rows POST ${path} for row ${JSON.stringify(flatRow)} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
+          );
+        }
+        // Tastypie returns the created row with id on 201 + Location header.
+        const location = res.headers()['location'] || '';
+        const id = location.match(/\/lookup_table_item\/([0-9a-f]+)\/?$/i)?.[1];
+        if (id) ids.push(id);
+        else {
+          try {
+            const parsed = JSON.parse(await res.text());
+            if (parsed?.id) ids.push(parsed.id);
+          } catch { /* drop — caller can re-list */ }
+        }
+      }
+      return { row_ids: ids };
     });
   }
 
