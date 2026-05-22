@@ -22,7 +22,7 @@ runs honor the human's edits.
 
 ## Products
 
-- `ACE/<opp-name>/runs/<run-id>/decisions.yaml` — updated in place. Rows where the human changed `Default:` get `status: overridden` and the prior default is preserved in `options_considered`. New `Considered:` bullets are appended.
+- `ACE/<opp-name>/runs/<run-id>/decisions.yaml` — updated in place. Rows where the human edited the effective value get `status: overridden` and the new value stored in `override:` (the original `ai-default:` is preserved unchanged). If the human reverts to the AI default, `override:` is cleared and status flips back to `applied`. New `Considered:` bullets are appended.
 
 ## Process
 
@@ -46,7 +46,7 @@ runs honor the human's edits.
 
    ```
    Decisions sync — turmeric/20260507-1733
-     Defaults overridden: 2
+     Values overridden: 2
        - flw-count: 5–8 → 12
        - ai-photo-threshold: ≥90% → ≥95%
      Options added: 1

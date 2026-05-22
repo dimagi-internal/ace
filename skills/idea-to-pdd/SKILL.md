@@ -114,15 +114,15 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     bar criterion in `## Decisions Log Convention` below. Each row
     records a load-bearing default the skill is about to apply when
     drafting the PDD. Use the AI's best inference from the source
-    material for each `default` value; mark `status: open` for any
-    default the AI flags for human attention while still proceeding.
+    material for each `ai-default` value; status is `applied` (the AI
+    proceeded with its default).
 
     See `## Decisions Log Convention § Common load-bearing decisions for
     Phase 1` for a working template of decisions that often qualify under
     the bar. Use it to guide judgment, not as a checklist — emit what
     meets the bar, skip what doesn't, add others when warranted.
 
-4. **Draft the PDD** with the **base sections** below, plus **archetype-specific additions** from `## Archetypes`. Use the values selected in step 3a's `decisions.yaml` as authoritative — every numeric or named-entity in the PDD body should match the corresponding row's `default`. If a re-run reads a `decisions.yaml` from a prior run with `status: overridden` rows (human edited via the renderer + sync skills landing in PRs #2–#4), use those overridden values instead.
+4. **Draft the PDD** with the **base sections** below, plus **archetype-specific additions** from `## Archetypes`. Use the values selected in step 3a's `decisions.yaml` as authoritative — every numeric or named-entity in the PDD body should match the corresponding row's effective value (`override` if present else `ai-default`). If a re-run reads a `decisions.yaml` from a prior run with `status: overridden` rows (human edited via the renderer + sync skills), use the `override` value instead of the `ai-default`.
 
    **Base sections (all archetypes):**
    - **Archetype** — declared in frontmatter, repeated as the first heading
@@ -340,30 +340,23 @@ tables above are teaching templates that improve over time.
 
 Schema is defined in `lib/decisions-schema.ts` (`DecisionsLogSchema`).
 Required fields per row: `id`, `phase` (always `1-design` for this skill),
-`skill` (always `idea-to-pdd`), `question`, `default`, `options_considered`,
-`source`, `status`. Optional `notes`.
+`skill` (always `idea-to-pdd`), `question`, `ai-default`,
+`options_considered`, `source`, `status`. Optional `override` (required
+when `status: overridden`), optional `notes`.
 
 `status` values:
-- `applied` — default in use; the AI's best inference from source material.
-- `overridden` — human edited via renderer + sync skills (PRs #2–#4); not produced directly by this skill.
-- `open` — load-bearing, the AI proceeded with a default but flags for human attention. Surfaces as `[WARN]` in the gate brief's `Auto-Surfaced Concerns`.
+- `applied` — `ai-default` value is in effect; no human edit.
+- `overridden` — human edited via renderer + sync skills. The
+  `override` field carries the human's value; `ai-default` is preserved
+  as the AI's original proposal. Effective value = override.
+
+This skill writes only `status: applied` rows. `overridden` rows
+appear when a prior run's human edits carry forward via the fork
+endpoint's `keep-all` or `keep-overrides-only` mode.
 
 Write via `drive_create_file` (find-or-update semantics) at
 `ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The Drive MCP's parent
 folder is the run-folder file ID resolved at run start.
-
-### Status: `open` policy
-
-A row is marked `status: open` when a load-bearing default exists but the
-AI judges it likely-wrong without human confirmation. Examples:
-
-- `named-downstream-consumer` is `none-named-proceed-with-caveat` AND
-  the opp will publish a public solicitation in Phase 8.
-- `ai-fallback-design` is `parallel-sampling-N-percent` AND the program
-  needs ground-truth per-decision accuracy.
-
-The AI proceeds with the default in either mode; review-mode pauses for
-edit, default-mode ships the gate brief with `[WARN]` entries.
 
 ## Archetypes
 
