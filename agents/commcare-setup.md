@@ -14,7 +14,6 @@ skills:
   - { name: app-deploy,              has_judge: false }
   - { name: app-test-cases,          has_judge: false }
   - { name: app-release,             has_judge: true,  eval_skill: app-release-eval }
-  - { name: commcare-form-patch,     has_judge: false }
 ---
 
 # CommCare Setup (Phase 3 Procedure Document)
@@ -321,56 +320,53 @@ Note: `training-materials` no longer runs in Phase 3. As of 0.9.0 it lives
 in Phase 6 (`qa-and-training`), where it consumes the screenshots produced
 by `app-screenshot-capture` alongside the app summaries.
 
-### Step 2.8: Strip Connect wrappers from Learn forms
+### Step 2.8: Connect wrappers — DISABLED (was: strip wrappers from Learn forms)
 
-Invoke the `commcare-form-patch` skill (default `targets: auto`,
-`patch_class: assessment-removal`, `app: learn`). For `focus-group`
-archetype, the Learn app is the minimal sentinel (one form, one
-assessment) — `commcare-form-patch` runs as a safe no-op or single-form
-patch depending on whether Nova's `compile_app` emitted Connect
-wrappers in the sentinel's form XML. The skill is idempotent and
-`targets: auto` handles both cases without operator override.
+**As of 2026-05-22 this step does NOT run.** `commcare-form-patch` is
+preserved in the repo as a manual fallback (`/ace:step commcare-form-patch
+<opp>`), but Phase 3 no longer auto-invokes it.
 
-Background: Nova's `compile_app` emits `<module xmlns="…connect…">` /
-`<assessment xmlns="…connect…">` wrapper elements in Learn-app form
-XML. Connect's HQ-side sync (`opportunity/app_xml.py:extract_modules`
-+ `opportunity/tasks.py:sync_learn_modules_and_deliver_units`) reads
-namespaced `<learn:module>` / `<learn:deliver>` elements via stdlib
-ElementTree on in-memory strings — **the in-form wrappers are benign
-for Phase 4 sync**, regardless of count. (Verified against
-commcare-connect main on 2026-05-12: the parser is pure in-memory
-iteration with no DB queries, HTTP fetches, or locks per-block.) An
-earlier comment here claimed "Connect's `/opportunity/init/` *now*
-tolerates these (post-2026-04 server fix), so Phase 4 succeeds" — that
-was wrong about provenance. There was no Connect server fix; prior
-Phase 4 successes happened because the payload's `short_description`
-happened to be ≤ 50 chars (the actual DB-enforced cap). The deterministic
-Phase 4 500 trap is a serializer/model schema mismatch on
-`short_description`, NOT in-form wrappers; bisected 2026-05-12 against
-`e62dcb06-...` (49 chars → 201, 51 chars → 500). See
-`mcp/connect-server.ts` `connect_create_opportunity.short_description`
-description for the full account.
+Why disabled — voidcraft-labs/nova-plugin#7 (closed 2026-05-22) +
+commcare-nova PR #21 (merged 2026-05-22 02:38Z): Nova's maintainer
+states the `<module xmlns="…connect…">` / `<assessment xmlns="…connect…">`
+wrappers in Learn-app form XML are **required** — they're how Connect's
+HQ→Connect sync registers learn modules and deliver units. Stripping
+them produces a Learn app where "Failed to start learning" surfaces in
+the AVD because Connect has nothing registered for the opp. The actual
+root cause of every wrapper-attributed failure we saw was the Connect
+block IDs exceeding the server-side 50-char limit, fixed at the emitter
+by PR #21 (IDs are now guaranteed valid at app creation).
 
-**But the AVD's CommCare runtime still chokes on the wrappers at Learn-app
-launch time** — the user sees a "Failed to start learning" banner with
-no diagnostic, which blocks Phase 6 (`app-screenshot-capture`). That is
-the load-bearing reason this skill exists; it has nothing to do with
-Phase 4. Tracking: jjackson/ace#115 finding 1, voidcraft-labs/nova-plugin#7.
+This directly contradicts the prior ACE hypothesis (recorded in this
+file pre-2026-05-22 and in `skills/commcare-form-patch/SKILL.md`) that
+wrappers themselves caused the AVD "Failed to start learning" crash.
+We're trusting Nova's account because they own both sides of the
+contract (emitter + Connect runtime); the contradicting ACE evidence
+(turmeric Learn = 0 wrappers + works) is consistent with the alternate
+read that turmeric was just a quirky hand-built Learn app, not a
+canonical reference.
 
-The skill is **idempotent + safe to run unconditionally**: `targets:
-auto` scans the released Learn CCZ for wrapper-bearing forms; if zero
-match (e.g. Nova fix has shipped, or this opp's Learn app was never
-broken), the skill no-ops with an `[INFO]` log. When wrappers are
-present, the skill patches the form XML, re-builds, and re-releases —
-producing a Connect-runtime-compatible Learn CCZ that Phase 6 can
-launch. **Apply to Learn apps only** — patching Deliver forms via
-`edit_form_attr` triggers a CCHQ "Cannot use Case Management UI if you
-already have a case block" build error.
+**Open verification:** run a clean `/ace:run` against a new opp with
+the deployed Nova fixes, observe Phase 6 `app-screenshot-capture`
+Learn-launch behavior on an unpatched CCZ. Two outcomes:
 
-Removal criteria: when nova-plugin#7 ships and a clean `/ace:run` end-
-to-end produces zero wrapper refs in the released Learn CCZ, drop
-this step + the entire `commcare-form-patch` skill (per its own
-SKILL.md § Removal criteria).
+- **AVD launches cleanly** → Nova's account is correct; the skill,
+  the `commcare_patch_xform` atom's `applyAssessmentRemovalPatch` /
+  `applyUserScorePatch` helpers, the marker-loss preventer, and the
+  associated tests + fixture can all be deleted. The skill's
+  `## Removal criteria` already names the exact files.
+- **AVD still chokes** → ACE's hypothesis was right; re-enable this
+  step (revert the gating change), reopen nova-plugin#7 with the AVD
+  repro + adb logcat, and keep the skill load-bearing.
+
+Until that verification ships, do not invoke `commcare-form-patch`
+from this procedure doc, from `/ace:run`, or from any orchestrator
+auto-fix path. Manual invocation remains available for operators
+debugging a specific opp under instruction.
+
+The `commcare_patch_xform` atom itself stays — it's also the backbone
+of `app-multimedia-coverage` (manual sibling step, not part of
+`/ace:run`), which has nothing to do with the wrapper hypothesis.
 
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/3-commcare/commcare-setup_summary.md`,
@@ -390,12 +386,12 @@ skill (`has_judge: true` rows). Three of those — `pdd-to-learn-app-eval`,
 `passed` while the LLM-as-Judge content quality had not been graded.
 
 That pattern bit Phase 2 on turmeric run 20260513-0616 — the
-commcare-form-patch over-stripping bug shipped to a "gates.commcare-setup:
-passed" phase because nothing in the inline run looked at the released
-CCZ's structural state. The eval verdicts are not the right tool for
-catching CCZ-marker drops (that's the structural assertion the patcher
-skill now mandates per its Step 7b), but the more general principle
-holds:
+(then-active) commcare-form-patch over-stripping bug shipped to a
+"gates.commcare-setup: passed" phase because nothing in the inline run
+looked at the released CCZ's structural state. (Step 2.8 has since
+been disabled — see above — but the lesson generalizes: eval verdicts
+are not the right tool for catching CCZ-marker drops, that's a
+structural assertion.) The general principle holds:
 
 **Do NOT flip `gates.commcare-setup: passed` when any `has_judge: true`
 skill has `steps.<skill>-eval.status: deferred`.** Either:
