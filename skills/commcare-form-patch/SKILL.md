@@ -1,19 +1,74 @@
 ---
 name: commcare-form-patch
 description: >
-  Apply surgical CCHQ form-XML patches when Nova's compile_app emits
-  output Connect rejects, then re-build + re-release. Workaround skill.
+  QUARANTINED (2026-05-22) — Nova maintainer (#7) says wrappers are
+  required, not harmful. Skill preserved as manual fallback only; do
+  NOT auto-invoke until the AVD-launch hypothesis is re-verified live.
 disable-model-invocation: true
 ---
 
-# CommCare Form Patch (TEMPORARY)
+# CommCare Form Patch (QUARANTINED — manual-fallback only)
 
-This skill is a band-aid. It exists because Nova's `compile_app` ships
-two known-broken render shapes that Connect's `/opportunity/init/`
-rejects with HTTP 500, and Nova's blueprint API gives ACE no way to
-correct them upstream. The skill patches the resulting CommCare HQ
-form XML directly, then re-builds and re-releases the app so the next
-Connect setup attempt sees a Connect-compatible CCZ.
+**Status (2026-05-22): NOT auto-invoked by `/ace:run`.** Phase 3 Step
+2.8 in `agents/commcare-setup.md` is disabled. The skill, its backing
+helpers in `mcp/connect/backends/commcare.ts`
+(`applyUserScorePatch`, `applyAssessmentRemovalPatch`,
+`assertPostPatchMarkersSurvive`, `PostPatchMarkerLossError`), the
+`commcare_patch_xform` atom, and the unit tests are all preserved
+in-place as a manual fallback (`/ace:step commcare-form-patch <opp>`)
+pending a live re-verification of the AVD-launch hypothesis.
+
+## Why quarantined
+
+voidcraft-labs/nova-plugin#7 was closed 2026-05-22 by Nova's maintainer
+with the position that the `<module xmlns="…connect…">` /
+`<assessment xmlns="…connect…">` wrappers in Learn-app form XML are
+**required** — Connect's HQ→Connect sync registers learn modules and
+deliver units from those wrappers. Stripping them produces a Learn app
+where Connect has nothing to register, surfacing as "Failed to start
+learning" in the AVD. The real root cause of every wrapper-attributed
+failure was Connect block IDs > 50 chars; fixed at the Nova emitter by
+commcare-nova PR #21 (merged 2026-05-22 02:38Z; deployment status of
+the live commcare.app service unverified at quarantine time —
+commcare-nova has no tagged release since v0.3.3 2026-04-28).
+
+This directly contradicts this skill's load-bearing premise (recorded
+below in the pre-quarantine sections) that wrappers themselves caused
+the "Failed to start learning" crash. The contradicting ACE evidence
+(turmeric Learn = 0 wrappers + works) is consistent with the alternate
+read that turmeric was just a quirky hand-built Learn app, not a
+canonical reference. Nova owns both sides of the contract (emitter +
+Connect runtime), so until we have a fresh live repro on the deployed
+fixes, we trust their account and disable the auto-stripper.
+
+## Verification plan before delete/restore
+
+Run a clean `/ace:run` against a new opp with the deployed Nova fixes,
+observe Phase 6 `app-screenshot-capture` Learn-launch behavior on an
+unpatched CCZ:
+
+- **AVD launches cleanly** → Nova's account is correct. Delete this
+  skill + the four helper functions in `mcp/connect/backends/commcare.ts`
+  + `test/mcp/connect/unit/commcare-patch-xform.test.ts`'s
+  `applyUserScorePatch` / `applyAssessmentRemovalPatch` /
+  `assertPostPatchMarkersSurvive` describe blocks +
+  `test/fixtures/cchq/leep-quiz-form-empty-user-score.xml`. Keep
+  `commcare_patch_xform` atom and `patchXform` method (still used by
+  `app-multimedia-coverage`).
+- **AVD still chokes** → ACE's hypothesis was right. Revert the Step
+  2.8 gating change in `agents/commcare-setup.md`, reopen nova-plugin#7
+  with adb logcat + a minimal repro CCZ, and keep this skill
+  load-bearing.
+
+---
+
+## Original (pre-quarantine) description follows — kept for context
+
+This skill was a band-aid. It existed because Nova's `compile_app` shipped
+two render shapes ACE attributed to causing Connect failures, and Nova's
+blueprint API gave ACE no way to correct them upstream. The skill patches
+the resulting CommCare HQ form XML directly, then re-builds and re-releases
+the app so the next Connect setup attempt sees the patched CCZ.
 
 ## Inputs
 
