@@ -544,30 +544,33 @@ contract.
    ```
    mcp__connect-labs__create_solicitation(
      program_id: <resolved labs_program_id as string>,
-     data: {
-       title: ...,
-       solicitation_type: 'eoi',                  # lowercase!
-       description: ...,                          # markdown string, 500-800 words
-       scope_of_work: ...,                        # markdown string, 600-1000+ words, NOT an array
-       application_deadline: 'YYYY-MM-DD',        # date string, NOT response_window_days
-       expected_start_date: 'YYYY-MM-DD',
-       expected_end_date: 'YYYY-MM-DD',
-       estimated_scale: 'human-readable string',
-       contact_email: ...,                        # operator-monitored, not the bot
-       evaluation_criteria: [
-         {name, description, weight, scoring_guide, linked_questions: [qid, ...]},
-         ...
-       ],                                          # weights sum to 100
-       questions: [
-         {id, framing, text, required, type},
-         ...
-       ],                                          # 7-9 items, each with framing
-       status: 'active',
-       is_public: true,
-       connect_opportunity_id: <int>,
-     }
+     title: ...,
+     solicitation_type: 'eoi',                  # lowercase
+     description: ...,                          # markdown string, 500-800 words
+     scope_of_work: ...,                        # markdown string, 600-1000+ words, NOT an array
+     application_deadline: 'YYYY-MM-DD',        # date string, NOT response_window_days
+     expected_start_date: 'YYYY-MM-DD',
+     expected_end_date: 'YYYY-MM-DD',
+     estimated_scale: 'human-readable string',
+     contact_email: ...,                        # operator-monitored, not the bot
+     evaluation_criteria: [
+       {id, name, weight, description, scoring_guide, linked_questions: [qid, ...]},
+       ...
+     ],                                          # weights sum to 100; id is REQUIRED
+     questions: [
+       {id, text, type, framing, required},
+       ...
+     ],                                          # 7-9 items; framing is structured, not inlined in text
+     status: 'active',
+     is_public: true,
+     connect_opportunity_id: <int>,
    )
    ```
+
+   **All solicitation fields are flat at the top of the atom's argument
+   object.** There is no `data: {...}` envelope. Verified against the
+   live `tools/list`: top-level `additionalProperties: false`, no `data`
+   property declared.
 
    **Do NOT include** `overview`, `response_window_days`,
    `anticipated_start`, `anticipated_end`, `sample_target`, `rubric`,
