@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 opportunity: malaria-itn-fgd
 run_id: 2026-05-22-good
 generated_at: 2026-05-22T12:00:00+00:00
@@ -7,7 +7,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: which archetype best fits this opportunity
-    default: atomic-visit
+    ai-default: atomic-visit
     options_considered:
       - atomic-visit
       - focus-group
@@ -18,7 +18,7 @@ decisions:
     phase: 1-design
     skill: pdd-to-work-order
     question: what work-order number to assign
-    default: WO-2026-001
+    ai-default: WO-2026-001
     options_considered:
       - WO-2026-001
     source: env-default
@@ -27,7 +27,7 @@ decisions:
     phase: 1-design
     skill: pdd-to-work-order
     question: what dates bound the work
-    default: 2026-05-22 to 2026-07-31
+    ai-default: 2026-05-22 to 2026-07-31
     options_considered:
       - 2026-05-22 to 2026-07-31
     source: pdd-timeline
@@ -36,7 +36,7 @@ decisions:
     phase: 1-design
     skill: pdd-to-work-order
     question: what is the not-to-exceed cap
-    default: "2500"
+    ai-default: "2500"
     options_considered:
       - "2500"
     source: pdd-budget
@@ -45,7 +45,7 @@ decisions:
     phase: 1-design
     skill: pdd-to-work-order
     question: how to split payment across milestones
-    default: 40/60 midpoint/closeout
+    ai-default: 40/60 midpoint/closeout
     options_considered:
       - 40/60 midpoint/closeout
       - 50/50 midpoint/closeout

@@ -8,7 +8,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Which delivery archetype best fits this opportunity?
-    default: atomic-visit
+    ai-default: atomic-visit
     options_considered: [atomic-visit, focus-group, multi-stage]
     source: "Source doc 'ITN Exploration App' describes ONE 30-45 min household visit producing one structured form (Sections 1-6 of one form) + photos + GPS. Two stray 'visit 2' mentions exist in Photos-required and open-question #4, but no V2 protocol is specified. Per the operator's just-in-time note, the prior run was wrongly locked to multi-stage via stale opp.yaml — archetype derives from source doc only. Connect program display name 'Multi-Stage Study' is cosmetic residue and was disregarded."
     status: applied
@@ -21,7 +21,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Is the budget plausible for implied labor + AI infra?
-    default: plausible-as-exploration
+    ai-default: plausible-as-exploration
     options_considered: [plausible-as-exploration, under-resourced, over-resourced]
     source: "Source doc explicitly frames this as exploration, not production: '30-45 min per HH', 'heavy on photos by design — this is exploration and we want rich evidence', and explicitly states 'We're optimizing for learning, not for low cost-per-visit.' At ~40 min/HH and 30-50 HHs per LLO across 2-3 wards, total fielding burden per LLO is ~30 person-hours. With 1-3 LLOs and a per-visit payment band, total opportunity cost is firmly in normal Connect-exploration territory."
     status: applied
@@ -33,7 +33,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Is there a pre-committed downstream consumer of the findings?
-    default: givewell-eoi-barrier-diagnosis
+    ai-default: givewell-eoi-barrier-diagnosis
     options_considered: [givewell-eoi-barrier-diagnosis, internal-dimagi-only, none-named-proceed-with-caveat]
     source: "Source doc closes with: 'That's exactly what the GiveWell EOI's barrier-diagnosis section needs to credibly anchor.' GiveWell EOI is a concrete, named downstream consumer with a specific use (barrier diagnosis for ITN intervention design). Strong consumer signal."
     status: applied
@@ -45,7 +45,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Does the primary metric measure the direct goal or an upstream proxy?
-    default: direct-goal-barrier-distribution
+    ai-default: direct-goal-barrier-distribution
     options_considered: [direct-goal-barrier-distribution, upstream-proxy-coverage, vanity-photo-count]
     source: "Source doc's 'What we'll learn' section names six direct learning outputs (net counts/ages/conditions, access-vs-use diagnostic, dominant barriers, knot-tying transfer rate, BC-content reception, spoken-vs-video efficacy). These ARE the goal — the intervention design hangs on knowing them. No vanity-metric framing. Photo count is high (8-20/HH) but the source explicitly frames photos as evidence-of-condition, not a count goal."
     status: applied
@@ -57,10 +57,10 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Is there a true validation harness for the AI-graded outputs, or parallel sampling?
-    default: human-coded-parallel-sample
+    ai-default: human-coded-parallel-sample
     options_considered: [human-coded-parallel-sample, true-validation-harness, no-fallback]
     source: "Source doc is exploration-stage: data volume is small (target ~30-50 HHs per LLO × 1-3 LLOs ≈ 100-150 HHs), so human coding of the full sample is tractable. Recommend AI structures the qualitative free-text and photo classifications; humans review 100% (or a stratified sample if N gets large) before findings ship to the GiveWell EOI. Photo damage-classification and KAP coding are the two AI-assist surfaces; both have human-coded ground truth in parallel."
-    status: open
+    status: applied
     notes: "OPEN — flag for human review: the exploration framing means we can afford full human review, but if scope expands to >300 HHs the validation harness needs upgrading. Reconfirm at Phase 6 (qa-and-training) when expected_journeys are written."
 
 
@@ -70,7 +70,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: How many FLWs across all LLOs?
-    default: 6-15
+    ai-default: 6-15
     options_considered: ["6-15", "20-30", "50+"]
     source: "Source doc open-question #4: '30-50 HHs in visit 1 across 2-3 wards/communities' per LLO. At ~40 min/HH + travel, an FLW can realistically do 6-8 HHs/day; full sample is ~5-8 FLW-days per LLO. With 1-3 LLOs and a 1-2 week fielding window, 2-5 FLWs per LLO × 1-3 LLOs ≈ 6-15 FLWs total. Per-LLO FLW count to be specified by the awarded LLO in their solicitation response."
     status: applied
@@ -82,7 +82,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: What are the working languages?
-    default: en-fr-plus-local-per-geography
+    ai-default: en-fr-plus-local-per-geography
     options_considered: [en-only, en-fr-plus-local-per-geography, locale-only]
     source: "Source doc open-question #6: 'DRC = French + local; SL/Liberia = English + local. KAP/BC content needs careful translation.' App strings translation is per-geography. LLO responsible for local-language fidelity at session level; app shell supports French + English."
     status: applied
@@ -94,7 +94,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Which evidence-model layers are in scope?
-    default: A-and-B-with-C-light
+    ai-default: A-and-B-with-C-light
     options_considered: [A-only, A-and-B, A-and-B-with-C-light, all-three-full]
     source: "Layer A (delivery proof: GPS + photo + form-complete) is automated and core. Layer B (content proof: net condition matches photos, KAP responses substantive, repair-demo outcome captured) is AI-assisted with human override given small sample. Layer C (cross-delivery quality: barrier-distribution variance across wards/geographies, photo-quality drift detection) is light — exploration-sized N limits cross-delivery statistical power but enables qualitative thematic synthesis for the GiveWell EOI."
     status: applied
@@ -106,7 +106,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Solicitation type?
-    default: EOI
+    ai-default: EOI
     options_considered: [EOI, RFP, custom]
     source: "Default EOI is appropriate — this is exploration scoped to 1-3 LLOs with a known shortlist of malaria-experienced organizations across DRC/SL/Liberia. RFP overhead is unnecessary for the size and learning posture."
     status: applied
@@ -118,7 +118,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Solicitation response window in days?
-    default: 14
+    ai-default: 14
     options_considered: [7, 14, 21]
     source: "Source doc: '1-2 week timeline before deployment' implies operator urgency. 14 days is default; matches the 'we may want to require both: experienced FLWs + Learn modules' decision-deferred posture — gives LLOs enough time to confirm FLW availability."
     status: applied
@@ -130,7 +130,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Named LLO candidates or public-only?
-    default: public-with-malaria-experience-filter
+    ai-default: public-with-malaria-experience-filter
     options_considered: [public-only, named-shortlist, public-with-malaria-experience-filter]
     source: "Source doc names DRC, Sierra Leone, and Liberia as candidate geographies but does NOT name specific LLOs. Solicitation should be public with eligibility filter for ITN/malaria-program-experienced LLOs in those three countries (consistent with FLW prerequisite #1)."
     status: applied
@@ -142,7 +142,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Per-visit FLW payment rate band (range, negotiated via solicitation response)?
-    default: USD-4-to-8-per-completed-visit
+    ai-default: USD-4-to-8-per-completed-visit
     options_considered: [USD-2-to-4, USD-4-to-8, USD-8-to-12]
     source: "Source doc: 30-45 min/HH visit duration, heavy photo + KAP + intervention activity capture. This is materially more labor than a standard atomic-visit (~10-15 min). Default band of USD 4-8 per completed visit reflects the longer duration. LLO proposes a specific number with rationale in their solicitation response (per ACE 'negotiate via response' convention); awarded LLO's proposed rate becomes the connect.deliver_unit payment_unit at Phase 4 setup."
     status: applied
@@ -154,7 +154,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Pilot sample size for AI calibration before full fielding?
-    default: 10-HHs
+    ai-default: 10-HHs
     options_considered: [5, 10, 20]
     source: "First 10 HHs per LLO submitted are reviewed in full by ACE coordinators (photo quality, form completeness, KAP coding) before approving full sample. Sufficient for AI calibration on damage-classification and KAP coding while staying small enough to review same-day."
     status: applied
@@ -166,7 +166,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: AI auto-accept confidence threshold for photo classification (net condition + damage type)?
-    default: 0.85-with-100-percent-human-spot-check
+    ai-default: 0.85-with-100-percent-human-spot-check
     options_considered: [0.70, 0.85, 0.95, 1.0-all-human]
     source: "Exploration framing + small N means human spot-check is affordable for every visit. AI provides first-pass classification (damage type, net-in-current-state category) at 0.85 confidence threshold; coordinator reviews all visits regardless. Photos with confidence below threshold get explicit flagging in the coordinator queue."
     status: applied
@@ -178,7 +178,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Acceptable GPS radius (meters) for visit-at-location verification?
-    default: 100m-from-recruited-cluster-centroid
+    ai-default: 100m-from-recruited-cluster-centroid
     options_considered: [50m, 100m, 250m, no-gate]
     source: "GPS is captured 'at arrival on each visit' per source doc. Visit-at-cluster verification uses the recruited ward/community centroid + 100m radius; rural household density typically supports this. Tighter radii risk false-fails on rural HH dispersion."
     status: applied
@@ -190,7 +190,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: What constitutes a duplicate visit?
-    default: HH-ID-plus-GPS-bucket
+    ai-default: HH-ID-plus-GPS-bucket
     options_considered: [HH-ID-only, GPS-bucket-only, HH-ID-plus-GPS-bucket]
     source: "Source doc: 'HH ID (auto-generated, GPS-tagged at arrival)'. Duplicate is detected when (a) the same auto-generated HH ID is re-submitted, OR (b) two visits land within 25m GPS bucket within 24h (same physical HH under different generated IDs — common when FLW restarts a form). Both signals are inspected by coordinator."
     status: applied
@@ -202,7 +202,7 @@ decisions:
     phase: 1-design
     skill: idea-to-pdd
     question: Per-FLW daily cap on completed visits?
-    default: 8-visits-per-day
+    ai-default: 8-visits-per-day
     options_considered: [5, 8, 12, no-cap]
     source: "At 30-45 min/HH + ~10 min travel + intervention activities, realistic ceiling is 7-9 visits/day before quality degrades. Cap at 8/day; coordinator reviews any FLW-day with >8 submissions as likely-rushed."
     status: applied
@@ -214,10 +214,10 @@ decisions:
     phase: 1-design
     skill: pdd-to-work-order
     question: Sequence number for this Work Order under the Master Services Agreement
-    default: "[WO-NUMBER]"
+    ai-default: "[WO-NUMBER]"
     options_considered: []
     source: "Unknown without an MSA context — placeholder. Human fills the next free WO# under the active MSA when partner is identified."
-    status: open
+    status: applied
     notes: "Fill in the next free WO# under the active MSA before signature."
 
 
@@ -227,7 +227,7 @@ decisions:
     phase: 1-design
     skill: pdd-to-work-order
     question: Start and end dates for the engagement
-    default: "2026-05-22 to 2026-07-31"
+    ai-default: "2026-05-22 to 2026-07-31"
     options_considered: []
     source: "Derived from PDD Timeline section: T+0 (solicitation publish) → T+49 (GiveWell EOI input ready) ≈ 7 weeks. Start anchored to day after PDD publish (2026-05-22). End padded to 2026-07-31 for closeout buffer matching ACE standard cadence."
     status: applied
@@ -239,7 +239,7 @@ decisions:
     phase: 1-design
     skill: pdd-to-work-order
     question: Total NTE budget cap (USD) per LLO award
-    default: "1500"
+    ai-default: "1500"
     options_considered: ["1000", "1500", "2500"]
     source: "Per-visit payment band USD 4-8 × ~30-50 HHs per LLO ≈ USD 120-400 direct FLW cost. Add LLO supervision/training overhead (~USD 1000-1100) for total NTE of USD 1500 per LLO award. Exploration-stage budget framing per `budget-plausibility` decision."
     status: applied
@@ -252,7 +252,7 @@ decisions:
     phase: 1-design
     skill: pdd-to-work-order
     question: Milestone payment percentages
-    default: "40/60"
+    ai-default: "40/60"
     options_considered: ["50/50", "40/60", "30/40/30"]
     source: "ACE default split: 40% mobilization advance on contract execution + FLW team confirmation; 60% reconciliation on end-of-pilot report acceptance. Two-milestone shape matches the malaria RDT POC Work Order #3 precedent."
     status: applied
@@ -264,7 +264,7 @@ decisions:
     phase: 1-design
     skill: pdd-to-work-order
     question: Mobilization advance percentage of total NTE
-    default: "40"
+    ai-default: "40"
     options_considered: ["25", "40", "50"]
     source: "Tied to `wo-payment-schedule-split`. 40% advance covers FLW recruitment + training + initial fielding logistics without front-loading the full LLO overhead."
     status: applied
@@ -276,7 +276,7 @@ decisions:
     phase: 1-design
     skill: pdd-to-work-order
     question: Frequency of progress reports during the active fielding window
-    default: weekly-plus-end-of-pilot
+    ai-default: weekly-plus-end-of-pilot
     options_considered: [weekly-plus-end-of-pilot, biweekly, end-of-pilot-only]
     source: "Six-week fielding window + first-10-per-LLO review gate makes weekly cadence necessary for course correction. Matches malaria RDT POC #3 precedent."
     status: applied
@@ -288,7 +288,7 @@ decisions:
     phase: 1-design
     skill: pdd-to-work-order
     question: Ethics scope (operational-only vs patient-level)
-    default: operational-only-no-patient-level-data
+    ai-default: operational-only-no-patient-level-data
     options_considered: [operational-only-no-patient-level-data, patient-level-with-IRB]
     source: "PDD Section 1 (Identification & consent) + Open Question #1 (audio recording — applied default: out of scope) confirm household-level operational data only. No clinical screening, no treatment, no diagnostic testing. Verbal consent attestation gates the form."
     status: applied
@@ -300,7 +300,7 @@ decisions:
     phase: 1-design
     skill: pdd-to-work-order
     question: Server region for data storage
-    default: US
+    ai-default: US
     options_considered: [US, EU, in-country]
     source: "Dimagi platform default + PDD does not require in-region storage. Caregiver contact information is the only PII captured (phone number); standard Dimagi SOC-2 / GDPR / HIPAA-compliant US storage suffices."
     status: applied
