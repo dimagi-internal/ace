@@ -47,14 +47,41 @@ contract.
 
 ## Inputs
 
-- `ACE/<opp-name>/inputs/pdd.md` — approved PDD (intervention, scope, success criteria, total_budget, optional Solicitation section)
+- `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order.gdoc` —
+  **primary content source.** The Phase 1 work order is the
+  comprehensive, opinionated program brief: scope (will / will not),
+  per-unit verification criteria, roles + RACI, reporting cadence,
+  ethics scope, data-handling, payment schedule, timeline. This skill
+  transforms the work order into a public-facing solicitation: same
+  comprehensive explanation, less prescriptive (rates become ranges,
+  exact weeks become windows), with the LLO-evaluation framing layered
+  on top.
+- `ACE/<opp-name>/runs/<run-id>/decisions.yaml` — run-level decisions
+  log. Phase 1's `pdd-to-work-order` writes initial `wo-*` rows; later
+  phases may add or amend decisions (e.g. operator overrides at gate
+  reviews, Phase 4 budget reductions, archetype-specific clarifications).
+  Read every row before composing — open/closed decisions that affect
+  scope, payment band, geographic scope, or ethics must be reflected
+  in the published solicitation.
+- `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` — the approved
+  PDD. Source of truth for `archetype`, the problem-statement / why-this-
+  matters narrative (often more vivid than the work-order's contractual
+  framing), and the geographic scope. Used to write the solicitation's
+  *opening* — the foundation-pitch context an LLO needs before the work-
+  order-derived scope makes sense.
 - `ACE/<opp-name>/opp.yaml` — `connect.program.id` (Connect UUID),
-  archetype, opp display name, organization_slug, optional cached
+  opp display name, organization_slug, optional cached
   `connect.program.labs_int_id` (labs integer mirror of the Connect
-  program)
+  program).
 - `ACE/<opp-name>/runs/<run-id>/4-connect/connect-program-setup.md` —
   the Connect program **name** (used to resolve the labs integer
-  program_id via `labs_context`; see Step 5)
+  program_id via `labs_context`; see Step 5).
+- `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md` (optional but recommended) — the
+  current run's Connect opportunity identifiers, payment unit, start/end
+  dates as actually configured. When present these override PDD defaults
+  (the work order's payment band may have been adjusted at Phase 4 if
+  the program budget was capped — that adjusted band is the truth for
+  this solicitation).
 
 ## Products
 
@@ -77,27 +104,72 @@ contract.
 > not embed a fixed per-unit number as the load-bearing economic; the
 > range + the question + the LLO's response are the load-bearing parts.
 
-1. **Read the PDD.** Extract the fields per the table below. The PDD's
-   `## Solicitation` section is optional; defaults apply when fields are
-   missing or use placeholder values like `[EOI | RFP — default EOI]`.
+1. **Read all source materials.** Open in this order:
 
-2. **Build the solicitation `data` payload.** All fields below go inside
-   the `data` object that wraps the application-level body of the labs
-   record. Scoping (`program_id` / `organization_id`) is sibling-level,
-   not inside `data` — see step 4.
+   - **Work order** (`1-design/pdd-to-work-order.gdoc`) via `docs_get`
+     — this is the primary content source. Pull the full body, including
+     all sub-sections: Scope of Work (will / will not), Verification of
+     Verified Units, Roles + RACI, Reporting, Ethics, Data Handling,
+     Payment Terms (with the payment schedule sub-table), Timeline.
+   - **PDD** (`1-design/idea-to-pdd.md`) via `drive_read_file` — for
+     `archetype`, the Problem Statement (the vivid "why malaria, why
+     now, why this approach" narrative), the Intervention Design
+     overview, the Target Population framing, and Geographic Scope.
+   - **decisions.yaml** (`<run-folder>/decisions.yaml`) — every row.
+     Pay special attention to:
+     - `status: open` rows on payment / scope / language / ethics —
+       these are explicit operator deferrals that should surface in
+       the solicitation (typically by phrasing the relevant scope item
+       as a band + asking the LLO to propose within it).
+     - Rows tagged `phase: 4-connect` or later that AMEND a Phase 1
+       decision (e.g. budget cap was reduced at Phase 4 — the work
+       order's NTE is stale; reflect the Phase 4 reality).
+   - **opp.yaml** for opp identity + program reference.
+   - **Phase 4 outputs** (`4-connect/connect-program-setup.md`,
+     `4-connect/connect-opp-setup.md`) for the labs program name +
+     the run's Connect opportunity identifiers + actual payment unit
+     configuration. The Phase 4 payment band overrides the work order's
+     if they differ.
 
-   | data-object field | Source |
-   |---|---|
-   | `title` | `<solicitation_type>: <pdd.title> — <pdd.archetype>` |
-   | `solicitation_type` | PDD `## Solicitation` → `Solicitation type` (default `EOI`) |
-   | `description` | PDD `## Problem Statement` + `## Intervention Design` (concatenate with a blank line) |
-   | `scope_of_work` | **Archetype-branched.** See § Scope-of-work composition below. |
-   | `budget` | PDD `## Budget` → `Estimated cost` value, parsed as a number |
-   | `deadline` | `now() + (response_window_days || 14)` days, ISO-8601 UTC |
-   | `evaluation_criteria` | composed locally — see step 3 |
-   | `questions` | PDD `## Solicitation` → `Response template`, mapped to `[{id, text, type: 'text', required: false}]`, or the default 6-question set if empty |
-   | `status` | `'active'` (publishes immediately; `'draft'` for dry-run mode) |
-   | `is_public` | `true` (so unsolicited orgs can find it on the public list) |
+2. **Build the solicitation `data` payload using the labs canonical
+   schema.** Labs's `solicitations/models.py` declares the field names
+   the public-detail template renders. Drift kills the public page
+   (silently — the API echoes back whatever you send). The canonical
+   shape is:
+
+   | data-object field | Type | Source / composition |
+   |---|---|---|
+   | `title` | string | Work order title, stripped of "Work Order —" prefix; e.g. "Connect ITN SBC Exploration — Barrier Diagnosis in Malaria-Endemic Households" |
+   | `solicitation_type` | **lowercase** `"eoi"` or `"rfp"` | PDD `## Solicitation` → `Solicitation type` (default `eoi`). **Must be lowercase** — the labs template literal-compares `solicitation_type == 'eoi'`; `'EOI'` renders as a fallback badge. |
+   | `description` | string (markdown) | **Comprehensive, 500-800 words.** Opens with the PDD's problem framing (why this matters, what the gap is), transitions into what this opportunity does and why this approach, closes with what the dataset/output enables downstream. Foundation-pitch tone, not procurement-form. **Not** a one-paragraph summary. |
+   | `scope_of_work` | string (markdown) | **Comprehensive, 600-1000+ words of structured markdown.** Derived from the work-order body. See § Scope-of-work composition below for the exact section mapping + de-prescription rules. **Must be a single markdown string with `## ` sub-headings and `- ` bullets, NOT a JSON array** (the labs template runs it through a markdown filter; an array string-coerces to Python repr). |
+   | `application_deadline` | string `YYYY-MM-DD` | `(now() + (response_window_days || 14)).strftime('%Y-%m-%d')`. **NOT** `response_window_days` (the int) — that's not a labs field. **NOT** `deadline` (legacy ACE name). Just the date string. |
+   | `expected_start_date` | string `YYYY-MM-DD` | Phase 4 opp `start_date` if available, else PDD `## Timeline` → start. **NOT** `anticipated_start`. |
+   | `expected_end_date` | string `YYYY-MM-DD` | Phase 4 opp `end_date` if available, else PDD `## Timeline` → end. **NOT** `anticipated_end`. |
+   | `estimated_scale` | string | Human-readable summary of expected reach, e.g. "30–50 verified HH visits per LLO; 2–3 LLOs total (90–150 HH end-to-end)". Sourced from PDD `## Target Population` → `Expected reach`. **NOT** `sample_target`. |
+   | `contact_email` | string | Operator-monitored address. **NOT** `ace@dimagi-ai.com` (that's the service-account bot). Use `${ACE_SOLICITATION_CONTACT_EMAIL}` env var; halt with `[BLOCKER]` if unset rather than defaulting to the bot inbox. |
+   | `evaluation_criteria` | array of `{name, description, weight, scoring_guide, linked_questions}` | Composed locally — see Step 3. **NOT** `rubric`. **NOT** `[{dimension, criterion, weight}]`. Each criterion MUST have a populated `scoring_guide` and at least one `linked_questions` id. Weights sum to 100 (integers). |
+   | `questions` | array of `{id, text, required, type, framing}` | Composed locally — see Step 4. **NOT** `response_questions`. Field is `text`, not `question`. **Every question MUST have a `framing` field** (1-2 sentence "why we're asking this" preface) — the public template hides empty framings, but the eval rubric and downstream solicitation-review consume the framing. `type` is one of `"textarea"` (default for open-ended), `"multiple_choice"`, `"number"`. |
+   | `status` | string | `'active'` (publishes immediately; `'draft'` for dry-run mode). |
+   | `is_public` | bool | `true` (so unsolicited orgs can find it on the public marketplace). |
+   | `connect_opportunity_id` | int | Phase 4 opp internal id (not the UUID). Stored on the record for downstream solicitation-review linkage. |
+
+   **Fields ACE used to write that are NOT in the labs canonical schema
+   and MUST be removed from the payload:**
+
+   - `overview` (use `description`)
+   - `response_window_days` (compute `application_deadline` instead)
+   - `anticipated_start` / `anticipated_end` (use `expected_*`)
+   - `sample_target` (use `estimated_scale`)
+   - `rubric` (use `evaluation_criteria`)
+   - `response_questions` (use `questions`)
+   - `pass_bar`, `eligibility_criteria`, `geographic_scope`,
+     `per_hh_payment_band_usd` — these aren't rendered by the public-
+     detail template. Roll their content into `description` /
+     `scope_of_work` prose instead. **Adding new top-level fields to
+     the payload that aren't in `solicitations/models.py`'s @property
+     accessors silently does nothing** — they sit in the JSON blob
+     unread.
 
    **`is_public: true` flips the server-side public ACL flag** (the
    field the `/solicitations/` marketplace query actually filters on).
@@ -118,32 +190,131 @@ contract.
    PDD is the operator's source of truth and they need to know it
    needs scrubbing.
 
-   **Scope-of-work composition** (archetype-branched, since the PDD
-   section names differ):
+   **Scope-of-work composition** — derive from the work order, NOT from
+   PDD-section concatenation. The work order is the comprehensive,
+   opinionated program brief; this skill transforms it into a public-
+   facing scope. The transform is:
 
-   - **`atomic-visit`** / **`multi-stage`**: concatenate PDD
-     `## Learn App Specification` + `## Deliver App Specification` +
-     `## Success Metrics`.
-   - **`focus-group`**: the FGD PDD has no `## Learn App Specification`
-     (the focus-group archetype emits `## Facilitation Protocol`
-     instead — see `templates/pdd-template.md` + `pdd-to-learn-app/SKILL.md
-     § Archetypes § focus-group`). Concatenate PDD `## Facilitation
-     Protocol` + `## Deliver App Specification` + `## Question Guide` +
-     `## Recruitment Plan` (sample size targets) + `## Success Metrics`
-     + `## Evidence Model` (Layer A/B/C). Open with a "PER VERIFIED
-     SESSION, THREE ARTIFACTS" block listing (1) audio recording with
-     45-min minimum + audio-off consent-decline branch, (2) per-session
-     Google Doc with three blocks (per-section summary / post-FGD
-     report / facilitator reflection) + the 72h SLA, (3) 5-field
-     CommCare attestation form (consent / session_date / venue / gps /
-     photo) with an explicit "NOT in the form" callout so applicant
-     LLOs don't assume a 28-field atomic-visit form.
+   1. **Pull the work-order sections directly.** Map work-order
+      sub-sections to scope_of_work `## ` sub-headings in the markdown
+      output:
+
+      | Work-order section | Scope-of-work `##` heading |
+      |---|---|
+      | §2 Scope of Work (will) | `## What we're asking the LLO to do` |
+      | §2 Scope of Work (will not) | `## What is NOT in scope` |
+      | §3 Roles + RACI | `## Roles & responsibilities` |
+      | §4.1 Verified Unit | `## What counts as a verified unit` |
+      | §4.2 Verification criteria | `## Verification & quality bar` |
+      | §4.3 Reporting cadence | `## Reporting cadence` |
+      | §5 Payment Terms (+ schedule sub-table) | `## Payment structure` (de-prescribed — see below) |
+      | §6 Timeline | `## Indicative timeline` |
+      | §7 Ethics scope | `## Ethics & compliance` |
+      | §8.1 Permissions / data handling | `## Data handling` |
+
+   2. **De-prescribe contractual specifics** during the transform:
+      - Exact dollar amounts → ranges with rationale. The work order
+        says "USD $1,800 total NTE, $10/HH"; the solicitation says
+        "Per verified HH visit: USD $8–15 band; LLO proposes the exact
+        rate in their response with regional cost-of-living
+        justification." The PDD's payment-band block (§ FLW Requirements
+        → `Per-visit payment rate band`) is the canonical source for the
+        range.
+      - Exact start/end dates → month windows in the prose body
+        (the structured `expected_start_date` / `expected_end_date`
+        fields carry the exact dates separately). E.g. "Field weeks
+        start in early June 2026; closeout end of July 2026."
+      - Specific calendar weeks → relative windows. "Week 4 launch /
+        Week 6 checkpoint" → "approximately 3 weeks after award
+        (launch); approximately 5 weeks after award (mid-pilot
+        checkpoint)."
+      - Specific tooling versions or build IDs → omit entirely
+        (the LLO doesn't pick those).
+      - Operator-internal language (CCC ticket numbers, ACE skill
+        names, run-id references) → omit entirely.
+
+   3. **Preserve all explanatory framing.** The work-order's "why this
+      verification rule," "why this reporting cadence," "why this
+      ethics scope" prose is exactly what an LLO needs to understand
+      what they're committing to. Do NOT compress it. If a paragraph
+      explains the rationale for a constraint, the paragraph stays in
+      the solicitation.
+
+   4. **Surface open decisions.** For each `status: open` row in
+      `decisions.yaml` that affects scope (payment, language, ethics
+      surface, geographic scope, etc.), add a one-sentence note to the
+      relevant `## ` sub-section noting the deferral and pointing to
+      the matching question (e.g. "Working language(s) are
+      LLO-proposed — see Q5 in the response template").
+
+   **Length target:** 600-1000+ words. A scope-of-work shorter than 500
+   words is a signal that the work-order content was over-compressed;
+   re-expand before publishing.
+
+   **Format invariant:** single markdown string, `## ` sub-headings
+   between sections, `- ` bullets for enumerated items. Never an array
+   of strings (the labs template will string-coerce the array to Python
+   list repr and render `['item1', 'item2', ...]` literally — verified
+   live on solicitation 3130, jjackson/ace bug surfaced 2026-05-21).
+
+   **Description composition** — same comprehensive treatment, separate
+   target:
+
+   - Open with the problem framing from the PDD's `## Problem
+     Statement`. Lead with the real-world stakes (malaria deaths, the
+     access-vs-use gap, what the literature does NOT yet localize).
+   - Bridge to what this opportunity does — the exploration framing,
+     why exploration before intervention, what's intentionally NOT
+     measured here (e.g. intervention effect — that's a later
+     opportunity).
+   - Close with what the dataset/output enables downstream (the named
+     downstream consumer if one exists — e.g. GiveWell EOI barrier-
+     diagnosis section — but written in plain terms an LLO can
+     evaluate, not as procurement jargon).
+   - Foundation-pitch tone, not procurement-form tone. The LLO is a
+     potential partner deciding whether the program is one they want
+     to be part of; the description has to sell that, not just list
+     facts.
+   - 500-800 words. A description shorter than 300 words is a signal
+     the PDD framing was under-extracted; re-expand.
 
 3. **Compose evaluation criteria locally.** Read the PDD's archetype,
-   intervention summary, and success criteria. Draft a structured rubric
-   inline using the same archetype-aware judgment that
-   `solicitation-create-eval` would apply. Default rubric shape:
-   `[{ id, label, weight: 0..1, scale: 10 }, ...]` summing to 1.0.
+   intervention summary, success criteria, and the work-order's
+   verification + RACI sections. Draft a structured rubric inline using
+   the same archetype-aware judgment that `solicitation-create-eval`
+   would apply.
+
+   **Required shape per criterion:**
+
+   ```yaml
+   - name: string                # short title, e.g. "Field operations realism"
+     description: string         # 1-2 sentence explanation of what this measures
+     weight: int                 # 5-30, integer; all criteria weights sum to 100
+     scoring_guide: string       # what makes a 10/10 vs 5/10 vs 0/10 — concrete and falsifiable
+     linked_questions: [string]  # one or more question `id`s from the questions block; each criterion links to ≥1 question
+   ```
+
+   **Every field is required.** Specifically, `scoring_guide` and
+   `linked_questions` are NOT optional — the labs template renders both,
+   and an empty `scoring_guide` makes the rubric uninterpretable to
+   responding LLOs. **Weights must sum to 100** (integers — the labs
+   template formats them as `<weight>%`). 5-8 criteria total; more than
+   8 dilutes the signal, fewer than 4 misses dimensions.
+
+   **`scoring_guide` shape — what a strong response looks like:**
+   Each `scoring_guide` MUST describe (a) what a strong (8-10) answer
+   looks like — concrete, falsifiable signals; (b) what a weak (3-5)
+   answer looks like — common shortcuts or vague phrasing; (c) what
+   counts as 0 — missing or refused. Example for a "Field operations
+   realism" dimension:
+
+   > **Strong (8-10):** week-by-week schedule names supervisor:FLW
+   > ratio, mid-pilot checkpoint participation is explicit, photo-heavy
+   > visit logistics (storage, upload bandwidth) addressed concretely
+   > with named owners. **Mid (5-7):** schedule present but supervision
+   > model thin; logistics gestured at. **Weak (1-4):** generic timeline,
+   > no supervisor-ratio discussed, logistics unaddressed. **Zero:** no
+   > schedule provided.
 
    - **`atomic-visit`** (4-axis starter): FLW deployment scale,
      geographic-fit, supervision model, data-quality track record.
@@ -179,8 +350,35 @@ contract.
    it, we can swap this local composition step for an MCP call without
    changing the rest of the skill.
 
+   **Question composition** — every question MUST have a `framing` field
+   (1-2 sentences explaining why we're asking) AND a `text` field (the
+   actual prompt). The framing field is what surfaces the "what makes a
+   strong response" intent to the LLO without making them guess.
+
+   Required shape per question:
+
+   ```yaml
+   - id: string         # short kebab-case, e.g. "field-ops-realism"
+     framing: string    # 1-2 sentences: why this question, what we're looking for
+     text: string       # the actual prompt the LLO reads + responds to
+     required: bool     # default true
+     type: string       # "textarea" (default), "multiple_choice", "number"
+   ```
+
+   **Dedupe by intent.** The PDD's `## Solicitation` → `Response
+   template` may list opp-specific questions that overlap with the
+   default set. Combine them — never publish two questions that ask
+   the same thing in different wording (e.g. don't ask about "language
+   capacity" AND "language + translation effort" as separate questions
+   — fold them into one prompt with framing that calls out both axes).
+
+   **Length budget:** 7-9 questions total. Fewer than 6 leaves
+   evaluation criteria un-linkable; more than 10 fatigues the LLO and
+   produces shallower answers across the board.
+
    **Default 6-question response template, archetype-branched** (used
-   when PDD doesn't override):
+   as the starting set; merge in PDD overrides per the dedup rule
+   above):
 
    For `atomic-visit` / `multi-stage`:
    1. Describe your prior experience deploying CHW programs in this archetype.
@@ -257,18 +455,37 @@ contract.
      program_id: <resolved labs_program_id as string>,
      data: {
        title: ...,
-       solicitation_type: ...,
-       description: ...,
-       scope_of_work: ...,
-       budget: ...,
-       deadline: ...,
-       evaluation_criteria: [...],
-       questions: [...],
+       solicitation_type: 'eoi',                  # lowercase!
+       description: ...,                          # markdown string, 500-800 words
+       scope_of_work: ...,                        # markdown string, 600-1000+ words, NOT an array
+       application_deadline: 'YYYY-MM-DD',        # date string, NOT response_window_days
+       expected_start_date: 'YYYY-MM-DD',
+       expected_end_date: 'YYYY-MM-DD',
+       estimated_scale: 'human-readable string',
+       contact_email: ...,                        # operator-monitored, not the bot
+       evaluation_criteria: [
+         {name, description, weight, scoring_guide, linked_questions: [qid, ...]},
+         ...
+       ],                                          # weights sum to 100
+       questions: [
+         {id, framing, text, required, type},
+         ...
+       ],                                          # 7-9 items, each with framing
        status: 'active',
        is_public: true,
+       connect_opportunity_id: <int>,
      }
    )
    ```
+
+   **Do NOT include** `overview`, `response_window_days`,
+   `anticipated_start`, `anticipated_end`, `sample_target`, `rubric`,
+   `response_questions`, `pass_bar`, `eligibility_criteria`,
+   `geographic_scope`, `per_hh_payment_band_usd`, or `budget` — none
+   of these are read by the labs public-detail template. The labs API
+   silently echoes any extra keys back, so the create call will "succeed"
+   without surfacing the drift. The integration test in Step 7b is the
+   structural check.
 
    The atom requires `data` (object) and at least one of `program_id` /
    `organization_id` (both strings). Application-level fields go inside
@@ -296,7 +513,37 @@ contract.
    reports `is_public: true` but the public listing page renders empty
    (verified jjackson/ace e2e malaria-itn-app run 20260517-1829).
 
-7. **Verify the round-trip.** Immediately after publish, call:
+7a. **Verify the rendered public page.** After publish, fetch the
+   public URL with `curl -s` and grep for structural signals that
+   confirm each load-bearing section actually rendered:
+
+   ```bash
+   curl -s "${LABS_BASE_URL}/solicitations/<id>/" | tee /tmp/sol.html
+   ```
+
+   Required matches (all must be present):
+
+   - `<h2[^>]*>.*Description` AND a non-empty markdown body following it
+   - `Application Deadline` AND a parseable date in `Month D, YYYY` form (NOT "No deadline")
+   - `Timeline` AND a non-empty `Mon YYYY — Mon YYYY` value (NOT "TBD — TBD")
+   - `<h2[^>]*>.*Scope of Work` AND markdown bullets / sub-headings (NOT a `['...', '...']` Python repr)
+   - `<h2[^>]*>.*Application Questions` AND `N questions` count text (where N matches len(questions))
+   - `<h2[^>]*>.*Evaluation Criteria` AND `N criteria` count text (where N matches len(evaluation_criteria))
+
+   **Any miss → `[BLOCKER]`** naming the missing section + the
+   probable field-name drift (e.g. "Application Deadline reads `No
+   deadline` — likely the payload sent `response_window_days` instead
+   of `application_deadline`"). Do NOT proceed to write
+   `published.md` against a half-rendered solicitation. The class
+   this catches is the silent-echo failure mode where the labs API
+   accepts the create cleanly but the public page is empty.
+
+   This is the structural backstop for the field-name canonical-schema
+   contract. Verified live on solicitation 3130 (jjackson/ace
+   `malaria-itn-app/20260521-1400`) where all 6 sections were broken
+   simultaneously because the entire payload schema had drifted.
+
+7b. **Verify the round-trip.** Immediately after publish, call:
 
    ```
    mcp__connect-labs__get_solicitation(
@@ -455,3 +702,4 @@ Each row this skill writes uses `phase: 8-solicitation-management` and
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (solicitation-type, response-deadline, response-template-choice) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-15 | Three archetype-branches added for `focus-group`: (1) scope_of_work concatenation in Step 2 — FGD PDD has no `## Learn App Specification` (uses `## Facilitation Protocol` instead); the scope opens with a "PER VERIFIED SESSION, THREE ARTIFACTS" block listing audio + gdoc + 5-field attestation form with explicit "NOT in the form" callout. (2) evaluation_criteria in Step 3 — focus-group goes from a 4-axis sketch to a 6-axis starter rubric (qualitative-research experience, facilitator skill + language, homogeneous-group recruitment, coordinator gdoc-review capacity, audio handling out-of-band, timeline + per-session payment economics). (3) default questions in Step 3 — swap CHW-deployment vocabulary for qualitative-research vocabulary on q1 + q5 + q6. Prompted by `malaria-itn-fgd/20260514-2352` Phase 8 observations. | ACE team |
 | 2026-05-15 | Codify the **"per-unit payment is negotiated, not declared"** design principle at the top of `## Process`. Solicitations express payment as a range with rationale in `scope_of_work` prose; the `questions` block asks the responding LLO to propose their actual rate + why. Closes the loop on the "labs `per_unit_payment` schema gap" surfaced in Phase 8 — it's not a gap, it's an intentional design choice (per-unit shape varies by archetype; the rate is opp-and-LLO-specific and negotiated through the response). | ACE team |
+| 2026-05-21 | **Work-order-as-primary-input + canonical-schema field names + comprehensive-content shape.** Three bundled rewrites prompted by solicitation 3130 on `malaria-itn-app/20260521-1400` where the public page rendered blank Description, "TBD" timeline, "No deadline," Python-list-repr Scope, and zero questions / zero rubric simultaneously. (1) Inputs now read Phase 1's work order (`1-design/pdd-to-work-order.gdoc`) as the primary content source + `decisions.yaml` for later run decisions, alongside the PDD (now used for problem-framing only, not for scope). (2) Field names migrated to the labs canonical schema (`description` not `overview`, `application_deadline` not `response_window_days`, `expected_start_date/_end_date` not `anticipated_*`, `estimated_scale` not `sample_target`, `questions[].text` not `response_questions[].question`, `evaluation_criteria[].name/.scoring_guide/.linked_questions` not `rubric[].dimension/.criterion`; `solicitation_type: 'eoi'` lowercase). Top-level fields not in `solicitations/models.py` (`pass_bar`, `eligibility_criteria`, `geographic_scope`, `per_hh_payment_band_usd`, `budget`) folded into `description`/`scope_of_work` prose. (3) Content shape demands comprehensive prose: `description` 500-800 words foundation-pitch tone; `scope_of_work` 600-1000+ words derived section-by-section from the work order with explicit de-prescription rules (exact dollars → ranges, exact weeks → windows); every question has a required `framing` field; every evaluation criterion has a required `scoring_guide` + `linked_questions`. (4) Added Step 7a — a curl-the-public-URL structural verifier that catches field-name drift at write time instead of at human-eye time. Removal criteria: keep until the labs MCP ships `create_solicitation_from_brief` (server-side composition), at which point this skill collapses to ~30 lines passing the structured brief. | ACE team |
