@@ -363,6 +363,80 @@ For every `tapOn:text` matcher in a recipe:
 syntactically-valid string — it cannot detect a brief-vs-live drift.
 Step 4 (below) adds a runtime smoke check that catches it.
 
+#### Quiz / required-input answer-tap rule — MANDATORY
+
+A `form-advance.yaml` (or any direct `nav_btn_next` tap) on a
+required-input question with no answer selected surfaces
+`warning_root` ("Sorry, this response is required!" per atlas §7),
+stalling the recipe. Every required-input question in a Maestro
+recipe **MUST** be preceded by an explicit answer-selection step:
+
+```yaml
+# CORRECT — answer is tapped before advancing
+- tapOn:
+    text: "Public hospital"      # literal option text from Nova get_form
+- runFlow:
+    file: form-advance.yaml
+
+# WRONG — no answer tap; nav_btn_next stalls on warning_root
+- runFlow:
+    file: form-advance.yaml      # required-input question is unanswered
+```
+
+For each form-walk segment of a recipe:
+
+1. Call `get_form({app_id, moduleIndex, formIndex})` and inspect each
+   field's `kind` + required-ness.
+2. For every `kind: single_select` field that's required, emit a
+   `tapOn: text: "<literal option label>"` BEFORE the
+   `form-advance.yaml` step. The option label comes from the field's
+   `options[].label` in the Nova blueprint — verbatim, not paraphrased,
+   not derived from the PDD brief.
+3. For `kind: image` required fields, emit the photo-capture sequence
+   (`camera-take-photo` → `camera-shutter-button` → `camera-save-photo`)
+   before advance.
+4. For `kind: text` / `kind: decimal` required fields, emit `inputText`
+   with a plausible sample value before advance.
+5. Hidden / `calculate`-only fields are auto-populated by the form
+   runtime — they don't need a per-question answer step. Skip them when
+   composing the answer sequence.
+
+**Anti-pattern: generic-positional placeholders.** Do NOT emit
+`${SELECTOR:radio-first-option}`, `${SELECTOR:radio-first-answer}`,
+`${SELECTOR:option-1}`, or any other generic-positional logical
+selector. The selector map intentionally does not provide stable
+rows for "the first option" because the right answer is always a
+literal label from `get_form`. Generic positional placeholders:
+
+- hide which answer is being selected (both from a code reviewer and
+  from the live-screen Maestro matcher),
+- silently drift when option ordering changes between Nova rebuilds,
+- pass `mobile_validate_recipe` (which is syntactic) while failing at
+  Step 3.4's `mobile_resolve_selectors` gate (which is what halts the
+  recipe in Phase 3 — *if* the selector is absent from the map) or at
+  runtime on the live AVD (if a future map adds a brittle positional
+  row).
+
+If the recipe author would have to guess at a positional selector,
+they haven't read `get_form` yet — read it first, then emit the
+literal label.
+
+**Anti-pattern: form-advance before answering.** Do NOT chain
+`form-advance.yaml` (or `${SELECTOR:form-nav-next}` taps) directly
+after the question rendering with no answer-selection step in between
+on a required-input field. This was the canonical structural failure
+on malaria-rdt run 20260522-1002 — every quiz step in J1's recipe
+chained `form-advance` without an answer tap, stalling on
+`warning_root` ("Sorry, this response is required!") before the
+recipe could reach `deliver-launch.yaml`. The recipe validated as YAML
+but could not advance past the first required quiz question.
+
+Caught in vivo on malaria-rdt run 20260522-1002 Phase 6 (2026-05-22).
+Both smoke recipes carried this class of defect: J5 referenced an
+unresolved `${SELECTOR:radio-first-option}` placeholder, and J1
+chained `form-advance.yaml` across 10+ required-input quiz questions
+with zero answer-selection steps in between.
+
 **Write recipes to `ACE/<opp>/runs/<run-id>/3-commcare/recipes/J<n>.yaml`**
 (NOT `app-test-cases/recipes/` — earlier drafts of this SKILL.md had
 the wrong path and the recipes silently weren't being created;
@@ -555,3 +629,4 @@ already maps the producer to `3-commcare/` (see
 | 2026-05-08 | Add `## Decisions Log` section: 2 anchor rows (test-scenario-count, test-archetype-coverage) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-22 | Fix `phase:` tag in Decisions Log footer: was `6-qa-and-training` (the consuming phase), now `3-commcare` (the dispatching phase, matching the artifact manifest's existing `3-commcare/` path mapping). Follow-up to issue #399. | ACE team |
 | 2026-05-12 | Add Step 3.4 — recipe-wide `mobile_resolve_selectors` gate. Halts `[BLOCKER]` on any unresolved logical selector before recipes are written to Drive. Shifts left a class of Phase 6 blockers (leep + turmeric runs both hit this in early May) to Phase 3, where Nova form/field context is still in-scope. Follows PR #249's `connect-2.62.0.yaml` calibration. | ACE team |
+| 2026-05-22 | Add § Quiz / required-input answer-tap rule — MANDATORY. Forbids `${SELECTOR:radio-first-option}` and other generic-positional placeholders; mandates per-required-field answer steps (literal `tapOn: text:` from Nova `get_form` options) before `form-advance.yaml`. Closes the malaria-rdt run 20260522-1002 Phase 6 BLOCKER class: both smoke recipes chained `form-advance` across required quiz questions with zero answer-selection steps, stalling on `warning_root`. Step 3.4's selector-resolution gate already catches the positional-placeholder half; this section adds the author-side rule that prevents emission in the first place. | ACE team |
