@@ -20,6 +20,7 @@ ACE has one architectural rule: **anything that calls `Agent` must run at level 
 | `execution-manager` (Phase 9) | no | subagent | `Agent(execution-manager)` from level 0 |
 | `closeout` (Phase 10) | no | subagent | `Agent(closeout)` from level 0 |
 | `ocs-tester` | no — leaf qa+eval pair | subagent | `Agent(ocs-tester)` ad-hoc |
+| `sweep` | no — orphan triage | subagent | `Agent(sweep)` via `/ace:sweep` |
 
 Procedure docs retain frontmatter so `/ace:status`, `/ace:eval`, `/ace:doctor`, `/ace:docs` keep working; `/ace:run` and `/ace:step` execute them inline. Never two levels of `Agent` dispatch — that's the invariant. (Rule landed in 0.7.0 after Nova migration silently broke a level-2 `Agent` call.)
 
@@ -33,23 +34,23 @@ Phase 1 produces the PDD (the formal design doc). Phase 2 derives test prompts (
 
 ## Layout
 
-- `agents/` — 12 agents + 1 reference doc. Two procedure docs (`ace-orchestrator`, `commcare-setup`); ten subagents; `orchestrator-reference.md` is the reference companion to `ace-orchestrator.md` (state schemas, write-back contract, pause-points catalog).
-- `skills/` — 66 skills, one dir per skill (`SKILL.md`). Stateless; per-opp state lives in Drive `ACE/<opp-name>/`. See `skills/README.md` for the author contract, the `## QA vs Eval` two-phase pattern, and `opp-eval` aggregator. Per-skill `-eval` rubrics calibrated against ground truth — see `skills/eval-calibration/SKILL.md`.
-- `commands/` — 15 slash commands: `run`, `step`, `status`, `eval`, `qa-deep`, `docs`, `setup`, `update`, `doctor`, `ocs-login`, `connect-login`, `labs-login`, `labs-token-mint`, `mobile-bootstrap`, `ocs-bootstrap-template`.
+- `agents/` — 13 agents + 1 reference doc. Two procedure docs (`ace-orchestrator`, `commcare-setup`); eleven subagents; `orchestrator-reference.md` is the reference companion to `ace-orchestrator.md` (state schemas, write-back contract, pause-points catalog).
+- `skills/` — 110 skills, one dir per skill (`SKILL.md`). Stateless; per-opp state lives in Drive `ACE/<opp-name>/`. See `skills/README.md` for the author contract, the `## QA vs Eval` two-phase pattern, and `opp-eval` aggregator. Per-skill `-eval` rubrics calibrated against ground truth — see `skills/eval-calibration/SKILL.md`. (Count drifts as new skills land — `ls skills/ | wc -l` for the live number.)
+- `commands/` — 23 slash commands. Core: `run`, `step`, `status`, `eval`, `qa-deep`, `docs`, `setup`, `update`, `doctor`. Auth/setup: `ocs-login`, `connect-login`, `labs-login`, `labs-token-mint`, `mobile-bootstrap`, `mobile-backend`, `ocs-bootstrap-template`, `ace-web-pat-mint`. Specialized flows: `sweep`, `program-update`, `video-from-program-page`, `interview-cohort-create`, `interview-domain-bootstrap`, `interview-opp-verify`.
 - `mcp/` — 5 MCP servers wired inline in `.claude-plugin/plugin.json` `mcpServers` (inline since 0.5.16 to work around [anthropics/claude-code#9427](https://github.com/anthropics/claude-code/issues/9427)):
-  - `ace-gdrive` (`google-drive-server.ts`) — Drive + Docs + Slides + Sheets.
-  - `ace-ocs` (`ocs-server.ts`) — Open Chat Studio composite, 27 atoms (Authoring 15 + Observation 12). Source under `mcp/ocs/`.
-  - `ace-connect` (`connect-server.ts`) — `connect.dimagi.com` composite, 21 atoms; 8 authoring atoms via REST automation API ([commcare-connect#1135](https://github.com/dimagi/commcare-connect/pull/1135)), rest via Playwright. Same MCP exposes 5 `commcare_*` atoms (`download_ccz`, `make_build`, `patch_xform`, `release_build`, `upload_multimedia`) via `backends/commcare.ts`. Source under `mcp/connect/`.
-  - `ace-mobile` (`mobile-server.ts`) — Mac-local AVD + Maestro, 11 atoms. Static recipes in `mcp/mobile/recipes/static/` ship as scaffolds with `REPLACE_*` selectors that must be filled via `maestro studio` against the Connect APK before live runs. Source under `mcp/mobile/`.
-  - `connect-labs` (`connect-labs-server.ts`) — stdio proxy forwarding JSON-RPC to `https://labs.connect.dimagi.com/mcp/`, injecting `LABS_MCP_TOKEN`. 9 atoms back Phase 8. One-line config swap to delete when Claude Code gains first-class HTTP MCP support.
+  - `ace-gdrive` (`google-drive-server.ts`) — Drive + Docs + Slides + Sheets. 32 atoms.
+  - `ace-ocs` (`ocs-server.ts`) — Open Chat Studio composite, 32 atoms registered (capability-map covers the core 27: Authoring 15 + Observation 12). Source under `mcp/ocs/`.
+  - `ace-connect` (`connect-server.ts`) — `connect.dimagi.com` composite, 23 `connect_*` atoms (8 authoring via REST automation API [commcare-connect#1135](https://github.com/dimagi/commcare-connect/pull/1135), rest via Playwright) + 24 `commcare_*` atoms (CommCare HQ — domain creation, app build/release, multimedia, lookup tables, users, motech, UCR expressions, inbound APIs) via `backends/commcare.ts`. Source under `mcp/connect/`.
+  - `ace-mobile` (`mobile-server.ts`) — Mac-local AVD + Maestro, 16 atoms. Static recipes in `mcp/mobile/recipes/static/` ship as scaffolds with `REPLACE_*` selectors that must be filled via `maestro studio` against the Connect APK before live runs. Source under `mcp/mobile/`.
+  - `connect-labs` (`connect-labs-server.ts`) — stdio proxy forwarding JSON-RPC to `https://labs.connect.dimagi.com/mcp/`, injecting `LABS_MCP_TOKEN`. Forwards every labs atom (funds, reviews, solicitations, workflows, pipelines, synthetic, mbw). One-line config swap to delete when Claude Code gains first-class HTTP MCP support.
 - `playbook/integrations/` — per-MCP integration reference + durable gotcha records: `ocs-integration.md`, `nova-integration.md`, `connect-api.md`, `connect-labs.md`, `commcare-api.md`, `mobile-integration.md`, `slides-integration.md`.
-- `docs/superpowers/specs/` + `docs/superpowers/plans/` — design specs and plans. Anchor doc: `specs/2026-04-01-ace-design.md`. Browse the directories for the rest; PR history is more reliable than plan checkboxes for shipped state.
+- `docs/superpowers/specs/` + `docs/superpowers/plans/` — design specs and plans. Date-stamped; browse the directories for the current set. PR history is more reliable than plan checkboxes for shipped state.
 - `docs/examples/` — PDD examples + stress-test observations.
-- `docs/learnings/` — durable cross-session learnings (Nova bugs, MCP-vs-skill drift, etc.).
+- `docs/learnings/` — durable cross-session learnings (Nova bugs, MCP-vs-skill drift, demo-user OTP mechanics, Phase 6 validation arc, etc.).
 - `docs/generated/playbook.md` — derived process flow regenerated by `/ace:docs`. Not a source of truth.
 - `templates/` — `pdd-template.md`, `onboarding-email-template.md`.
 - `lib/` — `artifact-manifest.ts` (canonical artifact registry), `verdict-schema.ts` (uniform `-eval` shape), `plugin-data-dir.ts`.
-- `test/` — `vitest` suites under `test/mcp/{ocs,connect}/` (unit + integration + E2E), `test/eval/` PDD evals, `test/fixtures/` partial-coverage manifest fixtures (`CRISPR-Test-001`/`002`/`004`/`005`) validated by `artifact-manifest.test.ts`.
+- `test/` — `vitest` suites under `test/mcp/{ocs,connect}/` (unit + integration + E2E), `test/eval/` PDD evals, `test/fixtures/` partial-coverage manifest fixtures (`CRISPR-Test-001`/`002`/`004`/`005`) validated by `artifact-manifest.test.ts`, plus `test/mcp/registration-coverage.test.ts` (cross-server tool-registration snapshot).
 - `scripts/` — `bootstrap-ocs-golden-template.ts`, `sync-version.sh`, `version-bump.sh` (worktree-safe), `hooks/pre-commit`, plus `probe-*.ts` durable contract probes.
 - `bin/ace-doctor` — diagnostic behind `/ace:doctor`. Includes `[Auth liveness]` block per MCP that names the exact remediation command per failure.
 - `bin/ace-update-check` — background update-check shim (borrowed from gstack).
@@ -57,7 +58,7 @@ Phase 1 produces the PDD (the formal design doc). Phase 2 derives test prompts (
 - `.env.tpl` — 1Password-injectable template. Installed `.env` lives at `${CLAUDE_PLUGIN_DATA}/.env`. **1Password is source of truth** — never paste values into `.env` directly. Local-only keys preserved across `op inject` since 0.13.34.
 - `migrations/` — version-to-version migration scripts. See `migrations/README.md`.
 
-**Sibling repo:** `ace-web` is a sibling repo, not a submodule. Browser-harness work happens in the `ace-web` checkout; this repo owns the design spec (`docs/superpowers/specs/2026-04-07-ace-web-harness-design.md`).
+**Sibling repo:** `ace-web` is a sibling repo, not a submodule. Browser-harness work happens in the `ace-web` checkout; its design spec lives there.
 
 ## Running tests
 
@@ -111,10 +112,11 @@ Cache dir is keyed by version: `~/.claude/plugins/cache/ace/ace/<version>/`. On 
 - **MCP servers run direct from TypeScript.** ESM + `npx tsx`, no build step.
 - **MCP capabilities are atomic.** Each atom in `mcp/{ocs,connect,mobile}/capability-map.ts` (and `mcp/connect/backends/commcare.ts`) routes to REST or Playwright; skill code never knows which. When upstream ships a real API for a Playwright-backed atom, it's a one-line routing change.
 - **VERSION is the single source of truth.** Edit `VERSION` only; pre-commit hook syncs the other files. `/ace:doctor` verifies. Worktree-safe bump: `scripts/version-bump.sh`.
-- **Phase Write-Back Contract.** Every phase MUST write `phases.<phase>.{status, verdict, completed_at, summary_artifact, steps}` to `run_state.yaml` on completion and flip the matching `gates.<gate>` entry. The orchestrator stub-fills + warns if a phase forgot. See `agents/orchestrator-reference.md § Phase Write-Back Contract` (codified 0.13.53 / issue #116). Without it `/ace:status` misreports, `opp-eval` rollups walk empty, and resume-after-interrupt can't tell which phases shipped.
+- **Phase Write-Back Contract.** Every phase MUST write `phases.<phase>.{status, verdict, completed_at, summary_artifact, steps}` to `run_state.yaml` on completion and flip the matching `gates.<gate>` entry. The orchestrator stub-fills + warns if a phase forgot. See `agents/orchestrator-reference.md § Phase Write-Back Contract` (codified 0.13.53 / issue #116; per-skill `decisions.yaml` enumeration added in PR #400). Without it `/ace:status` misreports, `opp-eval` rollups walk empty, and resume-after-interrupt can't tell which phases shipped.
 - **QA vs Eval is a two-phase pattern, calibrated against ground truth.** `*-qa` skills capture transcripts + structural checks; `*-eval` skills judge via LLM-as-Judge with hard-deduction rules and inflation guards, writing per-run `<N>-<phase>/<skill>-eval_verdict[-<mode>].yaml` next to the producer artifacts (no top-level `verdicts/` directory; `gate-briefs/` removed in 0.13.116 — orchestrator synthesizes pause summaries from verdict files at runtime). Uniform shape so `opp-eval` aggregates any skill. Shallow runs in `/ace:run`; deep runs out-of-band via `/ace:qa-deep`. Per-rubric calibration uses ground-truth catalogues (`ACE/<opp>/eval-calibration/known-issues.md`, opp-level — shared across runs) and multi-run variance protocols.
 - **Archetypes are first-class.** PDDs declare `Archetype: atomic-visit | focus-group | multi-stage`; archetype-aware skills branch via `## Archetypes` sections. Adding a new archetype is purely additive (per-skill PRs). Default is `atomic-visit`.
 - **Class-level preventers > instance-level fixes.** When a silent-failure class surfaces, catch it at the boundary (MCP backend, doctor probe, schema pre-flight, HTTP probe) so future instances are structurally impossible. Don't just patch the case in front of you. The 0.7.1 `ocs_shared_collection_team` doctor probe is the canonical example: 50ms HTTP request that turns "configured" into "configured correctly."
+- **No inferred backstory.** Skills must work from inputs that exist in `ACE/<opp>/inputs/` or the run state — never invent context (claimed populations, partner relationships, historical pilots) that the source material doesn't contain. PDD drafts that fabricate plausible-sounding details poison every downstream phase. See `docs/learnings/2026-05-12-no-inferred-backstory.md`.
 
 ## Phase preconditions are restored, not adapted
 
@@ -124,30 +126,10 @@ The pattern:
 
 1. **Precondition declared.** "Phase 6 expects: AVD at Connect home, test user signed in to PersonalID, opp tile reachable."
 2. **Restore unconditionally.** Don't probe-first. Don't decide-then-act. Run the restore operation every time. Deterministic starting state, deterministic recovery path.
-3. **Verify post-restore.** A classifier earns its keep ONLY as a verification step after restore — if the restore *should* have produced the precondition but didn't, the classifier names which precondition is still violated (snapshot corruption, APK drift, etc.). That's the only path a classifier is the right tool.
+3. **Verify post-restore.** A classifier earns its keep ONLY as a verification step after restore — if the restore *should* have produced the precondition but didn't, the classifier names which precondition is still violated. That's the only path a classifier is the right tool.
 4. **Fail loud.** If restore can't reach the precondition, throw a typed error with the precise class. Don't ship placeholders, don't soft-fail with `verdict: incomplete`.
 
-Canonical implementation: `MobileClient.ensureAvdRunning` → `AvdBackend.ensureAvdRunning` → `MobileClient.restoreDeviceUserState` in `mcp/mobile/client.ts` + `mcp/mobile/backends/avd.ts`. Single path — **always full cold-boot per dispatch** (refactored 2026-05-17 — see `docs/learnings/2026-05-14-demo-user-no-otp.md` for the demo-user mechanics; the cold-boot widening landed after the malaria-itn-fgd 4-PR debug arc, below):
-
-1. **Kill any running emulator for this AVD** via `adb -s <serial> emu kill`, then wait for the serial to disappear from `adb devices` (~3-10s).
-
-2. **Cold-boot the AVD** with `emulator -avd <name> -wipe-data -no-snapshot-load -no-snapshot-save -no-window -port <N>`. `-wipe-data` scrubs userdata.img — every dispatch starts from an empty disk image. ~30-60s to `sys.boot_completed=1` + `/storage/emulated/0` mounted.
-
-3. **Install the CommCare APK** from the host-side cache at `<tmp>/ace-mobile-apk-cache/` (the wipe scrubbed the prior install). Cache survives the wipe because it's a host artifact, not on-device state. ~3-5s.
-
-4. **`registerTestUser`** with the `+7426` demo-user prefix (CRITICAL — demo users skip OTP server-side; see the dedicated learning doc). ~15-25s end-to-end via Maestro.
-
-5. **Apply the environment baseline** — heads-up notifications off, GMS DND-disallow, screen_off_timeout 30 min. Idempotent; re-applied every dispatch because the wipe took the prior settings with it.
-
-6. **Reinstall Maestro driver via `assertMaestroDriverHealthy`** — fresh AVD has no driver; `ensureDriverInstalled` pushes the gRPC driver APK and waits for the channel to bind.
-
-7. **Verify post-bootstrap.** Classifier names the precondition class on failure (`needs-personal-id`, `commcare-not-installed`, etc.). Throws `DeviceUserStateError` with the precise label.
-
-**Total steady-state cost: ~60-90s per dispatch.** Up from the prior ~20-30s warm-AVD model. The extra ~30-60s is the price of guaranteed clean state — no implicit trust in carry-over (lockscreen residue, GMS toggles, instrumentation residue, wedged Maestro driver, residual user 0 `RUNNING_LOCKED` state, etc.).
-
-**Why the warm-AVD model died.** The prior "fast path on warm AVD" (preserve the running emulator process across dispatches, only wipe Connect app data + re-register) was a snapshot-load tier-1 in disguise: the running emulator IS cached state. That model accumulated junk-state classes that had to be debugged one at a time. The 4-PR session arc on the malaria-itn-fgd run (#339 APK absent on first dispatch; #341 detection probe wrong; #342 repairDriver didn't reinstall; this PR cold-boot to end the pattern) is the forcing function. Each fix landed a class-level preventer, but a new class surfaced on the next attempt (user 0 in direct-boot `RUNNING_LOCKED` state with a residual lockscreen password from a prior `maestro studio` session, breaking `am instrument` with `SecurityException: Package dev.mobile.maestro is not encryption aware`). Cold-boot makes all these classes structurally impossible.
-
-**No snapshot-load fast path.** The previous design used `loadSnapshot('registered-test-user')` as a ~3s tier-1, fall-through-to-bootstrap as tier-2. That fast path had a recurring failure class: snapshots silently age (wall-clock + cached Connect Token both freeze at capture; post-load API calls 401). The clock-sync in PR #281 was a band-aid for one symptom. The 2026-05-14 refactor dropped snapshot-load from the heal path; the 2026-05-17 cold-boot widening dropped warm-AVD reuse as well. `saveSnapshot` is preserved as a manual MCP atom for ad-hoc debugging captures — heal flow never saves or loads snapshots.
+Canonical implementation: `MobileClient.ensureAvdRunning` → `AvdBackend.ensureAvdRunning` → `MobileClient.restoreDeviceUserState` in `mcp/mobile/client.ts` + `mcp/mobile/backends/avd.ts`. Single path — **always full cold-boot per dispatch** (kill emulator → cold-boot AVD with `-wipe-data` → install APK from host-side cache → register demo-prefix test user → apply environment baseline → reinstall Maestro driver → verify). Steady-state cost ~60-90s per dispatch; the cost buys guaranteed clean state and structurally eliminates the carry-over failure classes (lockscreen residue, GMS toggles, instrumentation residue, wedged Maestro driver, residual `RUNNING_LOCKED` user 0) that the prior warm-AVD model accumulated one debug arc at a time. Full step-by-step + historical debug-arc context: `playbook/integrations/mobile-integration.md` and `docs/learnings/2026-05-14-phase6-validation-arc.md` (+ `2026-05-14-demo-user-no-otp.md` for the `+7426` demo-user OTP-skip mechanism).
 
 The server-side `${ACE_E2E_PHONE}` invite check (CONNECT-ID-3F precondition) is structurally satisfied within `/ace:run` by Phase 4's `connect-opp-setup` running before Phase 6 — no operator action required mid-run.
 
@@ -198,6 +180,7 @@ ACE has two classes of credential state — confusing them is the #1 source of f
 - **OCS shared-collection ID can exist on the wrong team.** `OCS_SHARED_COLLECTION_ID` may resolve to a real collection on a different team than `OCS_TEAM_SLUG`. Caught by 0.7.1 `ocs_shared_collection_team` doctor probe (WARN, not FAIL).
 - **Connect's invite UI is program-level, not opportunity-level.** `connect_send_llo_invite` takes a program UUID as `opportunity_id` and the LLO workspace slug as `organization_name`. Read it as "invite-to-program."
 - **`/invite_users/` requires the opp to be `active`.** Call `connect_activate_opportunity` first.
+- **Connect's 50-char trap on `short_description` and opp slug.** Connect silently truncates both fields at 50 characters server-side, then later API calls keyed by slug fail with confusing 404s. Skills must enforce a 50-char ceiling at the input boundary. See `docs/learnings/2026-05-12-connect-opp-short-description-50-char-trap.md` + `2026-05-17-connect-slug-length-50-char-trap.md`.
 - **MCP-vs-skill-doc drift.** Skills paraphrasing atom schemas inline drift from the actual schema (canonical case: 0.9.4 `connect-opp-setup` `location` field — skill said "meters threshold," atom takes a boolean toggle). When you change an atom, grep skills for inline references; when writing inline references, link to the atom's tool description, not your own paraphrase. See `docs/learnings/2026-04-28-mcp-vs-skill-doc-drift.md`.
 - **Connect-Labs MCP is HTTP, ACE consumes via stdio proxy.** `mcp/connect-labs-server.ts` reads `LABS_MCP_TOKEN` from `.env` and forwards JSON-RPC frames. Auth is per-user **PAT**, not OAuth on the wire — OAuth bridge happens server-side inside labs's tool handlers. The proxy correctly distinguishes JSON-RPC notifications (no `id`) from requests; replying to a notification disables tool discovery.
 - **Multiple open solicitations on the same Connect program is correct, expected behavior** — not a bug to fix. Every `/ace:run` publishes a fresh solicitation; only one (the chosen release-candidate run's) gets launched to candidate LLOs; the others live in the labs portal as run-scoped audit trails until operator-cleaned-up via `connect-labs delete_solicitation` or the labs UI. The same pattern applies to per-run Connect opportunities and OCS chatbots. See `skills/solicitation-create/SKILL.md § Per-run solicitations are expected, not a bug`.
