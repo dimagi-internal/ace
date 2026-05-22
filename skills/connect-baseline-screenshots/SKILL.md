@@ -115,7 +115,7 @@ ACE/_common/connect-screenshots/<connect-version>/manifest.yaml
 ```
 
 ```yaml
-connect_apk_version: "2.62.0"
+connect_apk_version: "2.63.0"
 captured_at: <ISO>
 captured_by: <git config user.email>
 source_avd: <avd-name>

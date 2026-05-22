@@ -99,12 +99,12 @@ export function bootstrapConfigFromEnv(): LocalBootstrapConfig | null {
  * The selector-map APK version that recipe resolution targets.
  *
  * Reads `ACE_CONNECT_APK_VERSION` (the same env var that pins the APK
- * download in `runLocalBootstrap`), falling back to `2.62.0` when unset
- * or empty so existing tests + main keep working without an env change.
- * Bump the default here in lockstep with the `.env.tpl` default when a
- * new selector baseline is verified and promoted.
+ * download in `runLocalBootstrap`), falling back to `2.63.0` when unset
+ * or empty so the default tracks the validated baseline. Bump the
+ * default here in lockstep with the `.env.tpl` default when a new
+ * selector baseline is verified and promoted.
  */
-export const DEFAULT_APK_VERSION = '2.62.0';
+export const DEFAULT_APK_VERSION = '2.63.0';
 export function getConfiguredApkVersion(): string {
   const v = process.env.ACE_CONNECT_APK_VERSION;
   return v && v.length > 0 ? v : DEFAULT_APK_VERSION;

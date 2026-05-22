@@ -1,12 +1,39 @@
-# Connect APK 2.63.0 selector map (UNVERIFIED — seeded from 2.62.0)
+# Connect APK 2.63.0 selector map (VALIDATED for bootstrap path)
 #
-# Status: this file is a verbatim copy of `connect-2.62.0.yaml` so a
-# session pinned to `ACE_CONNECT_APK_VERSION=2.63.0` resolves to a real
-# selector map instead of erroring at recipe-resolve time. Until
-# `connect-baseline-screenshots` runs against a fresh 2.63.0 AVD and any
-# drifted matchers are corrected here, treat every selector as suspect.
-# When that's done, delete this stanza and update `captured_at` and
-# `captured_against` below to the real values.
+# Status: bootstrap → home-screen path verified end-to-end via
+# `mobile_register_test_user` against a fresh 2.63.0 AVD on 2026-05-22.
+# All selectors below carried over from 2.62.0 unchanged EXCEPT the
+# backup-code entry surface, which moved from a single text field to a
+# six-cell PIN widget (drift documented below). The recipe at
+# `mcp/mobile/recipes/static/connect-register-from-otp.yaml` was patched
+# in this version-bump PR to branch between the two UX variants based on
+# which gating selector is visible.
+#
+# Phase 6 inner-loop surfaces (opportunity claim, Learn module
+# navigation, Deliver form submission, sync) are reachable but not yet
+# exercised end-to-end against 2.63.0. The home-screen nav drawer items
+# (Opportunities, CommCare Apps, Messaging, Work History) and bottom
+# bar (Notifications, About CommCare, app_version="v 2.63.0") match
+# 2.62.0 exactly; any inner-loop drift will surface in the first live
+# Phase 6 dispatch and can be patched here in follow-up.
+#
+# Known drift from 2.62.0:
+#
+# 1. **Backup-code entry UX (recipe-level fix applied 2026-05-22).**
+#    2.62.0 had `connect_backup_code_input` (single text field) +
+#    `connect_backup_code_repeat_input`. 2.63.0 replaces both with a
+#    six-cell `id/backup_code_view` LinearLayout containing six
+#    unidentified single-char EditText children. The screen is titled
+#    "Confirm Backup Code" (combined initial-entry + re-confirmation —
+#    no separate re-prompt). New surface elements: `id/recovery_code_tilte`
+#    (sic — typo in upstream), `id/backup_code_subtitle`,
+#    `id/backup_code_visibility_toggle`. The CONTINUE button retains
+#    `id/connect_backup_code_button`. The patched recipe uses
+#    `runFlow.when visible: id: backup_code_view` to branch into the
+#    2.63 path (tap layout + inputText auto-advances across cells +
+#    tap CONTINUE); the 2.62 single-field path remains as a fallback
+#    branch (`runFlow.when visible: id: connect_backup_code_input`)
+#    so an `ACE_CONNECT_APK_VERSION=2.62.0` pin still works.
 #
 # Maps stable LOGICAL NAMES (used in static + generated recipes) to the
 # concrete Maestro selectors that resolve them in this APK version. When the
@@ -38,8 +65,8 @@
 #       (when type=both) `id: "org.commcare.dalvik:id/btn_start"  # text fallback: "Start"`
 
 apk_version: "2.63.0"
-captured_at: "UNVERIFIED"
-captured_against: "UNVERIFIED — seeded from 2.62.0; re-baseline pending"
+captured_at: "2026-05-22"
+captured_against: "ACE_Pixel_API_34 (google_apis arm64) — bootstrap path validated end-to-end via mobile_register_test_user"
 
 selectors:
   # ── App shell ────────────────────────────────────────────────────
