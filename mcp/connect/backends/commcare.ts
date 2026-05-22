@@ -178,6 +178,31 @@ export interface Repeater {
   repeater_type: string;
 }
 
+export interface InboundApi {
+  id: number;
+  name: string;
+  description: string;
+  api_url: string;
+  edit_url: string;
+}
+
+export interface ListInboundApisArgs {
+  domain: string;
+  limit?: number;
+}
+
+export interface CreateInboundApiArgs {
+  domain: string;
+  name: string;
+  description?: string;
+  /** UCR expression FK (integer id from a UCRExpression that's been pushed via linked_domain). */
+  filter_expression_id: number;
+  /** Optional transform-expression FK. */
+  transform_expression_id?: number;
+  /** ApiBackendOptions slug — default 'json' (the common case). */
+  backend?: 'json' | 'form_data';
+}
+
 export interface CreateConnectionArgs {
   domain: string;
   name: string;
@@ -1126,6 +1151,117 @@ export class CommCareBackend {
       // Take the highest id if multiple match (newest)
       const newest = match.sort((a, b) => b.id - a.id)[0];
       return { id: newest.id, name: newest.name };
+    });
+  }
+
+  /**
+   * List Inbound API configurations on a domain. POST /a/<domain>/motech/
+   * inbound/ with `action=paginate` via the CRUDPaginatedView (same
+   * pattern as connections). Returns each API's id, name, description,
+   * api_url.
+   *
+   * Pro/DATA_FORWARDING gated.
+   * Verified against /tmp/ace-refs/hq/corehq/motech/generic_inbound/views.py:52-110.
+   */
+  async listInboundApis(args: ListInboundApisArgs): Promise<{ apis: InboundApi[]; total: number }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/motech/inbound/`;
+      const csrf = await this.csrfFromCookies(request);
+      const params = new URLSearchParams({ action: 'paginate', page: '1', limit: String(args.limit ?? 100) });
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: params.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          'X-Requested-With': 'XMLHttpRequest',
+          Referer: `${this.opts.baseUrl}${path}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 404) {
+        throw new Error(`commcare_list_inbound_apis: 404 — domain ${args.domain} lacks DATA_FORWARDING privilege.`);
+      }
+      if (res.status() !== 200) {
+        throw new Error(`commcare_list_inbound_apis POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
+      }
+      const body = JSON.parse(await res.text()) as { paginatedList?: Array<{ itemData?: any }>; total?: number };
+      const apis = (body.paginatedList ?? []).map((row) => {
+        const d = row.itemData ?? {};
+        return {
+          id: Number(d.id),
+          name: String(d.name ?? ''),
+          description: String(d.description ?? ''),
+          api_url: String(d.api_url ?? ''),
+          edit_url: String(d.edit_url ?? ''),
+        };
+      });
+      return { apis, total: body.total ?? apis.length };
+    });
+  }
+
+  /**
+   * Create a new Inbound API. POSTs the ConfigurableAPICreateForm to
+   * /a/<domain>/motech/inbound/ via CRUDPaginatedViewMixin's `action=create`.
+   *
+   * Requires `filter_expression` and (optionally) `transform_expression`
+   * to refer to existing UCRExpression FKs on the domain — these are
+   * pushed via linked_domain from the master domain in the
+   * Connect Interviews flow.
+   *
+   * Returns the new API's id (re-lists by name).
+   *
+   * Verified against /tmp/ace-refs/hq/corehq/motech/generic_inbound/
+   * forms.py:17-50 + views.py:52-110.
+   */
+  async createInboundApi(args: CreateInboundApiArgs): Promise<{ id: number; name: string }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.domain)}/motech/inbound/`;
+      const csrf = await this.csrfFromCookies(request);
+      const params = new URLSearchParams();
+      params.set('action', 'create');
+      params.set('csrfmiddlewaretoken', csrf ?? '');
+      params.set('name', args.name);
+      params.set('description', args.description ?? '');
+      params.set('filter_expression', String(args.filter_expression_id));
+      if (args.transform_expression_id) {
+        params.set('transform_expression', String(args.transform_expression_id));
+      }
+      params.set('backend', args.backend ?? 'json');
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: params.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          'X-Requested-With': 'XMLHttpRequest',
+          Referer: `${this.opts.baseUrl}${path}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() !== 200) {
+        throw new Error(
+          `commcare_create_inbound_api POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 400)}`,
+        );
+      }
+      // CRUDPaginatedView returns JSON with itemData containing id
+      const body = JSON.parse(await res.text()) as { itemData?: any; form?: any; errors?: any };
+      if (body.itemData?.id) {
+        return { id: Number(body.itemData.id), name: String(body.itemData.name ?? args.name) };
+      }
+      // Validation error case
+      if (body.errors || body.form) {
+        throw new Error(
+          `commcare_create_inbound_api: form validation failed. Server response: ${JSON.stringify(body).slice(0, 400)}`,
+        );
+      }
+      // Fall back to list-and-find
+      const list = await this.listInboundApis({ domain: args.domain });
+      const match = list.apis.find((a) => a.name === args.name);
+      if (!match) {
+        throw new Error(
+          `commcare_create_inbound_api: created but could not find "${args.name}" by name. Names visible: ${list.apis.map((a) => a.name).join(', ')}`,
+        );
+      }
+      return { id: match.id, name: match.name };
     });
   }
 

@@ -506,6 +506,25 @@ server.tool('commcare_create_lookup_table',
   async (args) => runAtom(async () => (await commcareClient()).createLookupTable(args))
 );
 
+server.tool('commcare_list_inbound_apis',
+  'List Inbound API configurations on a CommCare HQ domain. POST /a/<domain>/motech/inbound/ with action=paginate. Returns each API\'s id, name, description, api_url, edit_url. Pro Edition / DATA_FORWARDING required.',
+  { domain: z.string(), limit: z.number().int().positive().optional() },
+  async (args) => runAtom(async () => (await commcareClient()).listInboundApis(args))
+);
+
+server.tool('commcare_create_inbound_api',
+  'Create an Inbound API configuration. POST the ConfigurableAPICreateForm to /a/<domain>/motech/inbound/ via CRUDPaginatedViewMixin\'s action=create. Requires filter_expression_id (UCR FK) and optionally transform_expression_id — these UCR expressions must exist on the domain first (typically pushed via linked_domain in the Connect Interviews flow). Returns new id and name. The Connect Interviews "Session Completion API" + "24 hr Expiry API" are created via this atom in the per-domain bootstrap.',
+  {
+    domain: z.string(),
+    name: z.string(),
+    description: z.string().optional(),
+    filter_expression_id: z.number().int().positive(),
+    transform_expression_id: z.number().int().positive().optional(),
+    backend: z.enum(['json', 'form_data']).optional(),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).createInboundApi(args))
+);
+
 server.tool('commcare_create_repeater',
   'Create a Data-Forwarding Repeater on a CommCare HQ domain. POST the GenericRepeaterForm (or BaseExpressionRepeaterForm for *ExpressionRepeater types) to /a/<domain>/motech/forwarding/new/<repeater_type>/. Plain FormRepeater forwards every submission; FormExpressionRepeater applies a UCR filter (configured_filter) and emits a UCR-derived payload (configured_expression) — the Connect Interviews "OCS User Registration" and "Trigger Bot" repeaters use this variant. Pro Edition required (DATA_FORWARDING privilege).',
   {
