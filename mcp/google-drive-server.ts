@@ -143,8 +143,8 @@ function error(msg: string) {
  *
  * Inflight-dedupe + 30s TTL cache (added 2026-05-10, perf lens). When N
  * parallel writes target the same parent — common for run-folder bootstrap
- * (run_state.yaml + idea.md + inputs-manifest.yaml + gate-brief.md often go
- * into the same `runs/<run-id>/` parent in one batched message) — the first
+ * (run_state.yaml + inputs-manifest.yaml often go into the same
+ * `runs/<run-id>/` parent in one batched message) — the first
  * caller's probe populates the inflight slot; concurrent callers await the
  * same promise instead of firing N redundant `files.get` round-trips. After
  * the probe resolves, an `ok: true` result is cached for 30s so a follow-up

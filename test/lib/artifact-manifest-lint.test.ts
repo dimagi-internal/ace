@@ -8,9 +8,9 @@
  * every <skill> segment resolves to a real skill (or agent) directory.
  *
  * The opp-level / run-level exempt sets cover the handful of paths that don't
- * fit the per-run shape (opp.yaml lives at ACE/<opp>/, idea.md is the input
- * copy, etc.). Update those sets if a new path legitimately needs to skip the
- * shape check — and add a comment explaining why.
+ * fit the per-run shape (opp.yaml lives at ACE/<opp>/, run_state.yaml lives at
+ * the run root, etc.). Update those sets if a new path legitimately needs to
+ * skip the shape check — and add a comment explaining why.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -34,8 +34,6 @@ const OPP_LEVEL_EXEMPT = new Set([
 const RUN_LEVEL_EXEMPT = new Set([
   'run_state.yaml',
   'inputs-manifest.yaml', // frozen pointer-set captured at run start (orchestrator-emitted)
-  'idea.md',              // optional operator free-text seed via --idea FILE|-
-  '1-design/idea.md',     // legacy pre-2026-05-05 input-copy path; kept for back-compat
   'decisions.yaml',       // per-run structured decisions log (rows accumulate across all phases)
   'decisions.gdoc',       // prose Google Doc rendering of decisions.yaml (one stable URL per run)
 ]);

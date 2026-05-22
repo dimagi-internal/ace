@@ -374,7 +374,6 @@ forking:**
 | `runs/<run-id>/run_state.yaml` | Lifecycle state — phase/step pointer, mode, `last_actor`, timestamps. New file at each new run-id. |
 | `runs/<run-id>/README.md` | Per-run index regenerated after each phase via `generateRunReadme(...)`. |
 | `runs/<run-id>/inputs-manifest.yaml` | Frozen pointer-set captured at run start (`inputs/` file_ids). Snapshots that run's view of the source pack. |
-| `runs/<run-id>/idea.md` | Optional `--idea` seed, only when `/ace:run --idea FILE\|-` was used. |
 | `runs/<run-id>/<N>-<phase>/<producer>.md` | Producer artifacts (PDDs, app summaries, training docs, screenshots, etc.). |
 | `runs/<run-id>/<N>-<phase>/<producer>_verdict[-<mode>].yaml` | Producer self-evaluation (when the producing skill self-evaluates). |
 | `runs/<run-id>/<N>-<phase>/<producer>-eval_verdict[-<mode>].yaml` | Eval-side judgment from the matching `*-eval` skill. |

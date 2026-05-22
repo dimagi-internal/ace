@@ -145,22 +145,6 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Frozen pointer-set captured at run start: every direct child file under inputs/ as {file_id, name, mime_type}. idea-to-pdd reads each entry to synthesize the PDD. Lives at the run-folder root alongside run_state.yaml — both are run-level metadata, scoped beyond any single phase. Pointing at file_ids (not paths) means a human re-arranging inputs/ mid-run does not shift the source pack out from under Phase 1. NOT YET required: existing fixtures predate the 2026-05-05 evidence-pack refactor; flip to required=true once the next round of fixture updates lands.',
   },
   {
-    path: 'idea.md',
-    producedBy: 'external',
-    consumedBy: ['idea-to-pdd'],
-    phase: 'design',
-    required: false,
-    description: 'Optional operator-supplied free-text seed at the run-folder root. Only present when /ace:run was invoked with --idea FILE|-. Read by idea-to-pdd alongside the inputs-manifest. Most runs do not have this file — the inputs/ evidence pack is sufficient.',
-  },
-  {
-    path: '1-design/idea.md',
-    producedBy: 'external',
-    consumedBy: ['idea-to-pdd'],
-    phase: 'design',
-    required: false,
-    description: 'Legacy path — pre-2026-05-05 the orchestrator copied inputs/pdd.md into 1-design/idea.md as the seed for idea-to-pdd. New runs do not write this file (the manifest at 1-design/inputs-manifest.yaml replaces it; --idea seeds the run-root idea.md). Kept in the manifest so older fixtures and resumed legacy runs validate cleanly.',
-  },
-  {
     path: '1-design/idea-to-pdd.md',
     producedBy: 'idea-to-pdd',
     consumedBy: [

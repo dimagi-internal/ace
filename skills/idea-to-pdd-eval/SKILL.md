@@ -13,8 +13,8 @@ ships a stress-test grade in the PDD itself. That self-eval has two
 known weaknesses: (a) the same model that wrote the PDD also grades
 it (over-generosity bias), and (b) the PDD checks itself against the
 rubric but not against the source idea — so a PDD that addressed the
-intervention but missed reviewer comments from idea.md can still
-self-grade 5/5 if the rubric doesn't ask "did you address every
+intervention but missed reviewer comments from the source pack can
+still self-grade 5/5 if the rubric doesn't ask "did you address every
 reviewer concern?"
 
 This skill is the independent grader. It re-runs the stress test from
@@ -31,7 +31,6 @@ calibration methodology.
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 source | `inputs-manifest.yaml` + each `file_id` in it | source idea pack (the full pack is what the PDD is graded against) |
-| Phase 1 source (optional) | `runs/<run-id>/idea.md` | operator free-text seed if present |
 | Phase 1 producer | `1-design/idea-to-pdd.md` | the PDD under judgment |
 | Phase 1 producer (optional) | `1-design/idea-to-pdd_gate-brief.md` | gate brief if present |
 
@@ -61,33 +60,27 @@ filename rule.
      - `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml`, then each
        `file_id` it lists (the orchestrator's frozen evidence-pack
        pointer-set, captured at run start)
-     - `ACE/<opp-name>/runs/<run-id>/idea.md` if present (operator
-       free-text seed via `--idea FILE|-`; absent on most runs)
    - PDD (the artifact under judgment): `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
    - Optionally the gate brief if present:
      `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md`.
 
    The "source idea" referenced throughout the rest of this skill is
-   the union of the manifest's contents + `idea.md` (if present),
-   treated as one synthesized seed. When grading dimensions that
-   reference "idea.md" below, treat them as referencing the full
-   source-idea pack — early-2026 versions of this rubric assumed a
-   single `idea.md`; the multi-doc evidence-pack model arrived in the
-   2026-05-05 idea-to-pdd refactor.
+   the union of the manifest's contents, treated as one synthesized
+   seed.
 
 2. **Extract the source idea's reviewer-comment list.** Source-idea
-   bodies (any file in the manifest, plus `idea.md` if present)
-   generally include footnoted or sectioned reviewer comments
-   (e.g. "[a] FLW safety risks…", "[b] vendor consent…"). Build a
-   structured list across all source files.
+   bodies (any file in the manifest) generally include footnoted or
+   sectioned reviewer comments (e.g. "[a] FLW safety risks…",
+   "[b] vendor consent…"). Build a structured list across all source
+   files.
 
    **Clean-source detection (added 0.10.9):** if the entire source
    pack contains zero reviewer comments — no `[a]/[b]` footnotes, no
    "Reviewer Comments" / "Comments" / "Feedback" section in any of
-   the manifest entries or `idea.md` — set `clean_source = true` and
-   skip step 3. The reviewer-comment-fidelity dimension will switch
-   to the deferred-decision-discipline branch (see § Dimension
-   below). Surfaced 0.9.11 cross-opp validation:
+   the manifest entries — set `clean_source = true` and skip step 3.
+   The reviewer-comment-fidelity dimension will switch to the
+   deferred-decision-discipline branch (see § Dimension below).
+   Surfaced 0.9.11 cross-opp validation:
    `turmeric-dogfood-20260427`'s source idea was clean PM-authored
    with no review pass; the rubric's anchors at 9.5 ("all comments
    addressed") were a poor fit because there were no comments to
@@ -105,7 +98,7 @@ filename rule.
 
    | Dimension | Weight | Criteria |
    |---|---|---|
-   | **Reviewer-comment fidelity** | 10% | **Two branches by source type.** If `clean_source = false` (idea.md contains reviewer comments): every reviewer comment from idea.md must have a concrete disposition in the PDD (addressed via §X / scoped out / out-of-scope-for-this-opp). **Scoring anchors (tightened 0.9.4):** all comments addressed with concrete section citation = **9.5**; addressed plus one comment that's "addressed via § X" where § X is mentioned but light = **9.0**; one comment missing disposition = **7.5**; ≥2 missing = **5.0**; one false-disposition claim ("addressed via § X" but X doesn't exist) = **4.0** (3-point deduction floor); ≥2 false claims = **fail (≤3)**. (QA verifies the table EXISTS with rows when reviewer comments are referenced; this dimension grades whether each disposition is *concrete*, not whether the table is populated.) ── **Clean-source branch (added 0.10.9, when `clean_source = true`):** the dimension grades **deferred-decision discipline** instead. Anchors: every deferred decision is concrete (named question, named owner phase, named resolution mechanism) = **9.5**; section present, decisions concrete but owner phase implicit = **8.5**; section present but decisions vague ("TBD per LLO" with no question) = **7.0**; section absent AND PDD silently spec'd things that should have been deferred to LLO discovery = **5.0**; section claims to defer something that should have been Phase-1-speccable = **4.0**. |
+   | **Reviewer-comment fidelity** | 10% | **Two branches by source type.** If `clean_source = false` (the source pack contains reviewer comments): every reviewer comment must have a concrete disposition in the PDD (addressed via §X / scoped out / out-of-scope-for-this-opp). **Scoring anchors (tightened 0.9.4):** all comments addressed with concrete section citation = **9.5**; addressed plus one comment that's "addressed via § X" where § X is mentioned but light = **9.0**; one comment missing disposition = **7.5**; ≥2 missing = **5.0**; one false-disposition claim ("addressed via § X" but X doesn't exist) = **4.0** (3-point deduction floor); ≥2 false claims = **fail (≤3)**. (QA verifies the table EXISTS with rows when reviewer comments are referenced; this dimension grades whether each disposition is *concrete*, not whether the table is populated.) ── **Clean-source branch (added 0.10.9, when `clean_source = true`):** the dimension grades **deferred-decision discipline** instead. Anchors: every deferred decision is concrete (named question, named owner phase, named resolution mechanism) = **9.5**; section present, decisions concrete but owner phase implicit = **8.5**; section present but decisions vague ("TBD per LLO" with no question) = **7.0**; section absent AND PDD silently spec'd things that should have been deferred to LLO discovery = **5.0**; section claims to defer something that should have been Phase-1-speccable = **4.0**. |
    | **Archetype coherence** | 10% | The spec must follow the declared archetype's pattern *in spirit*: `atomic-visit` shouldn't introduce inter-visit stages or multi-visit case lifecycles; `focus-group` shouldn't have a single-vendor-style Deliver form; `multi-stage` should have a Stage Gate section between stages. Pattern violations are 2-point deductions per violation. (QA verifies the archetype is *declared and in the valid enum*; this dimension grades whether the structure *matches* the declared archetype.) |
    | **Numbers consistent** | 10% | Cross-section numerical agreement (semantic — the *meaning* of the numbers, not just regex same-value-twice). **Severity-tiered deductions:** load-bearing inconsistencies that change downstream behavior (LLO recruiting filter, FLW certification gates, payment thresholds) are **2-point deductions** per occurrence. Doc-level inconsistencies (different number presentations of the same value, ordering differences) are **0.5-point deductions**. Default tier is 1.0 (mid). |
    | **Feasibility of headline metrics** | 10% | Each Primary success metric must be measurable today, not aspirational. Specifically: the PDD's Layer B verification claims must reference concrete checks (file-format validations, deterministic field rules), not future capabilities (e.g. "AI-assisted photo content check" without naming the model, threshold, or expected pass rate). 1.5-point deduction per metric that depends on unspeccable Layer B. |
@@ -210,3 +203,4 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 | 2026-05-08 | **Rubric expansion: 7 → 11 dimensions, viability axis added (40% weight).** Surfaced by canopy's holistic_adversarial probe on turmeric run 20260507-1733: rubric scored 8.65/10 on a PDD an adversarial PM-style read scored 3/10 viability (3-to-1 against on the $10K bet). 5.65-point gap = rubric was grading document quality almost exclusively. Added 4 viability dimensions: `demand_reality` (15%, named downstream consumer with pre-committed action — biggest single gap), `resource_realism` (10%, budget vs labor at recruitment-realistic rates), `mission_alignment` (5%, do Primary metrics measure the goal or a process proxy), `fallback_validates_primary` (5%, is the named fallback a real validation harness or a parallel sampling system). Reweighted: stress_test_agreement 25→10%, reviewer_comment_fidelity 20→10%, structural_completeness 15→10%, archetype_coherence 15→10%, numbers_present 10→5%; numbers_consistent + feasibility_headline_metrics held. Pairs with canopy PR #38 (lens-types/judge.md adds rubric_blind_spot signal that drove this expansion). | ACE team (0.13.81) |
 | 2026-05-08 | **Rubric cleanup: 11 → 10 dimensions; weight-sum bug fix; viability rebalanced to 50%.** Three fixes in one edit: (1) Removed `stress_test_agreement` (10%) — it was structurally tautological (same model applies same rubric twice; cross-model probe confirmed it doesn't discriminate, scoring 8-10 on every grade with variance from rubric ambiguity not from real artifact differences). (2) Folded `numbers_present` (5%) into `numbers_consistent` (10%) since they cover the same axis and `numbers_present` was already a soft check most PDDs trivially pass. (3) Fixed the 0.13.81 weight-sum bug: weights summed to 0.95 not 1.0. New weights cleanly total 1.00 with viability at 50%: `demand_reality` 15→20%, `resource_realism` 10→15%, `mission_alignment` 5→10%, `fallback_validates_primary` held at 5%, `feasibility_headline_metrics` 5→10%. Verification (independent re-grade on turmeric PDD with the new 11-dim rubric scored 7.55 vs old rubric's 8.65 — confirming the viability axis discriminates). | ACE team (0.13.84) |
 | 2026-05-08 | **QA/Eval split: removed `structural_completeness` (10%) — now lives in new `idea-to-pdd-qa` skill.** First migration of the QA/Eval split principle (PR #146). Structural completeness was a static check (regex over `## Heading` lines for the 11 required sections); moved to `skills/idea-to-pdd-qa/checks.ts` as `checkAllRequiredSectionsPresent`. The eval rubric is now quality-only: 4 doc/fidelity dimensions (40%) + 5 viability dimensions (60%). Removed weight (10%) was redistributed to viability dimensions: `demand_reality` 20→22%, `resource_realism` 15→17%, `mission_alignment` 10→12%, `fallback_validates_primary` 5→9%. QA gates eval — eval is skipped (`verdict: incomplete`) if QA fails irrecoverably. Updated dimension descriptions to clarify which structural concerns moved to QA (annotated inline). | ACE team (0.13.88) |
+| 2026-05-22 | **Retire `idea.md` references.** The optional `idea.md` operator-seed input was removed from `idea-to-pdd`; this rubric loses its dual-input language. `clean_source` detection mechanism is unchanged (still keys off reviewer-comment presence across the source pack); language switched from "idea.md" to "the source pack" throughout. No scoring or weighting change. | ACE team |
