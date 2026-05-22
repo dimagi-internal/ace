@@ -6,10 +6,15 @@ export interface CapabilityRoute {
 }
 
 export type Capability =
-  // Authoring (15)
+  // Authoring (20)
   | 'clone_chatbot'
+  | 'create_chatbot'
   | 'set_chatbot_system_prompt'
   | 'set_chatbot_pipeline'
+  | 'add_pipeline_node'
+  | 'add_custom_action'
+  | 'link_action_to_node'
+  | 'add_chatbot_event'
   | 'create_collection'
   | 'upload_collection_files'
   | 'wait_for_collection_indexing'
@@ -39,8 +44,13 @@ export type Capability =
 export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   // Authoring
   clone_chatbot:                { backend: 'PLAYWRIGHT', restTarget: 'POST /api/experiments/' },
+  create_chatbot:               { backend: 'PLAYWRIGHT', restTarget: 'POST /api/experiments/ (not yet shipped — CSRF-protected ChatbotForm only)' },
   set_chatbot_system_prompt:    { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/experiments/{id}/prompt/' },
   set_chatbot_pipeline:         { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/experiments/{id}/pipeline/' },
+  add_pipeline_node:            { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/pipelines/{id}/nodes/ (not yet shipped — GET/POST pipeline JSON at /pipelines/data/{id}/)' },
+  add_custom_action:            { backend: 'PLAYWRIGHT', restTarget: 'POST /api/custom_actions/ (not yet shipped — CSRF-protected CustomActionForm only)' },
+  link_action_to_node:          { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/pipelines/{id}/nodes/{node_id}/ (not yet shipped — appends to data.params.custom_actions)' },
+  add_chatbot_event:            { backend: 'PLAYWRIGHT', restTarget: 'POST /api/experiments/{id}/events/ (not yet shipped — CSRF-protected combined-form view)' },
   create_collection:            { backend: 'PLAYWRIGHT', restTarget: 'POST /api/collections/' },
   upload_collection_files:      { backend: 'PLAYWRIGHT', restTarget: 'POST /api/collections/{id}/files/' },
   wait_for_collection_indexing: { backend: 'PLAYWRIGHT', restTarget: 'GET /api/collections/{id}/files/{fid}/status/' },
