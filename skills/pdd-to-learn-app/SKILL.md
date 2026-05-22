@@ -182,9 +182,9 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
      See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
      § Bug 3 for the full failure analysis.
-   - **REQUIRED — Learn forms must NOT carry `<case>` blocks.** This is the
-     load-bearing rule that keeps `commcare-form-patch` runnable on the
-     Learn CCZ. Insert this paragraph **verbatim** into the brief, in its
+   - **REQUIRED — Learn forms must NOT carry `<case>` blocks.** Connect's
+     Learn-app contract is form-only; case state is the Deliver app's
+     domain. Insert this paragraph **verbatim** into the brief, in its
      own paragraph, prefixed `REQUIRED:`:
 
      > REQUIRED: Learn forms must NOT create or update CommCare cases.
@@ -198,34 +198,6 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      > (e.g. "did this FLW pass the standardization gate?"), the answer
      > comes from Connect's per-FLW assessment-completion API, NOT from
      > a CommCare case property written by the Learn app.
-     >
-     > Why: `pdd-to-learn-app/SKILL.md` STEP 8 documents that
-     > `commcare-form-patch` runs after Learn release to strip
-     > `commcareconnect`-namespaced wrappers from form XML — but the
-     > patcher's `commcare_patch_xform` → `make_build` cycle fails with
-     > "Cannot use Case Management UI if you already have a case block in
-     > your form" whenever the patched form carries a `<case>` block,
-     > because CCHQ's Vellum form-designer caches case-block metadata
-     > separately from the XForm bytes and the patcher's `edit_form_attr`
-     > call doesn't refresh that cache. Tracking: `commcare-form-patch/
-     > SKILL.md § blocker class cchq-vellum-cache-drift`. Until either
-     > Nova's wrapper-emission bug (voidcraft-labs/nova-plugin#7) ships
-     > OR the patcher gains Vellum-cache invalidation, the only path
-     > that keeps the Learn CCZ AVD-launchable is to author Learn
-     > forms without case blocks in the first place.
-
-     Reproducer: `malaria-itn-app/20260521-1400` Phase 3 — the architect
-     bound calibration pass flags (`standardization_gate_cleared`,
-     `*_passed`) to case properties on `flw_calibration` cases. Phase 3
-     released successfully but `commcare-form-patch` was blocked by
-     `cchq-vellum-cache-drift` on all 6 Learn forms; Phase 6
-     `app-screenshot-capture` then halted on Connect → Learn CCZ install
-     with `"Unknown failure during app install"` because the released
-     Learn CCZ still carried the wrappers the AVD runtime cannot install.
-     Removal criteria: drop this rule when voidcraft-labs/nova-plugin#7
-     ships (no wrappers → no patcher → no vellum-cache-drift class) OR
-     when `commcare_patch_xform` gains the Vellum-cache invalidation
-     path documented in `commcare-form-patch/SKILL.md`.
 
 4. **Invoke `/nova:autobuild "<brief>"`.** This is a one-shot autonomous
    build — Nova will not ask clarifying questions. Capture from the

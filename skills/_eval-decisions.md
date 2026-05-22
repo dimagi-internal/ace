@@ -24,7 +24,7 @@ A sixth implicit state — *not applicable* — covers utility skills with no pe
 
 Default to **`NO eval`** when the producer's output is one of:
 
-1. **Binary correctness** — the artifact is "correct" or "wrong"; there's no spectrum to score. Examples: `app-deploy` (build succeeded or failed), `commcare-form-patch` (patched or didn't), `app-connect-coverage` (clean or blocked).
+1. **Binary correctness** — the artifact is "correct" or "wrong"; there's no spectrum to score. Examples: `app-deploy` (build succeeded or failed), `app-multimedia-coverage` (patched or didn't), `app-connect-coverage` (clean or blocked).
 2. **Process / state-tracking** — the producer's job is to advance external state, not produce a gradable artifact. Examples: `llo-invite` (sends emails), `solicitation-monitor` (polls for responses), `opp-closeout` (creates Jira ticket).
 3. **Covered by a sibling eval** — the producer's output IS the input to another `-eval` skill that grades it. Don't double-grade. Example: `ocs-agent-setup` configures the bot; `ocs-chatbot-eval` grades the deployed bot's responses — that's where quality lives.
 4. **The output IS the quality signal** — e.g., `llo-feedback` collects LLO feedback; the feedback itself is what's being measured, not the collection process.
@@ -71,7 +71,6 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 | `app-deploy` | **NO eval** | Binary process — uploads to CCHQ, build succeeds or fails. The quality of the deployed app is upstream (Nova autobuild) and downstream (`app-ux-eval` grades the running app). Nothing about the deploy step itself is graded on a 0-10 spectrum. |
 | `app-release` | **has eval** | `app-release-eval`. Grades whether the release was done correctly (versioning, marker integrity, post-release CCZ projection). Quality dimension: did this release actually unblock Connect's deliver-unit sync? |
 | `app-multimedia-coverage` | **NO eval** | Manual surgical patch — attaches images. Binary did/didn't apply correctly. The quality of the attached images themselves is a different concern (potentially handled by future `app-ux-eval` if media accessibility scoring is added). |
-| `commcare-form-patch` | **NO eval** | TEMPORARY workaround that patches form XML. Binary success — patch applies cleanly or it doesn't. No quality dimension. |
 | `app-connect-coverage` | **NO eval** | Verify+fix loop emitting `clean | blocked` verdict. Binary outcome — same shape as a QA. The "quality" of coverage IS the binary verdict. |
 
 ### Phase 4 — connect-setup

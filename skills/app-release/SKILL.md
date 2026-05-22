@@ -119,11 +119,8 @@ procedure below to rediscover.
     loop with the Nova architect.** Added 0.13.141 after the leep run
     20260509-2204 halt: CCHQ rejected a Learn build because Nova's
     XForm emitter skipped entity-encoding `<` in an MCQ option label.
-    PR #206 (0.13.140) made that diagnostic legible; this loop closes
-    the chicken-and-egg gap (you can't run `commcare-form-patch`
-    without a successful `make_build` to download the CCZ from, so
-    the fix has to happen Nova-side before the next `make_build`
-    attempt).
+    PR #206 (0.13.140) made that diagnostic legible; this loop fixes
+    the bad XForm at the source (the Nova app) and retries.
 
     The MCP atom now returns
     `{error: 'build_rejected', app_id, error_text, error_html, retryable: false}`

@@ -713,13 +713,15 @@ server.tool('commcare_download_ccz',
 
 // commcare_patch_xform — surgical CommCare HQ form-XML patch endpoint.
 //
-// TEMPORARY workaround for nova-plugin#5 (compile_app emits empty
-// `<user_score/>`) and nova-plugin#6 (`connect: null` is auto-restored on
-// quiz forms). Both upstream blockers gate ACE Phase 4 e2e for any
-// Nova-built Connect Learn app with the standard quiz scaffold. When
-// Nova ships fixes for both, the `commcare-form-patch` skill — and this
-// atom along with it — should be deleted (verified by re-running
-// leep-paint-collection Phase 4 with no patches needed).
+// Stable atom — consumed by `app-multimedia-coverage` (manual
+// post-Phase-3 step) to inject `<output value="jr://file/commcare/...">`
+// references into form bodies after multimedia upload. The sibling
+// `commcare-form-patch` skill that previously also consumed it was
+// removed 2026-05-22 after voidcraft-labs/nova-plugin#7 closure was
+// empirically verified by leep-paint-collection run 20260522-1241
+// (unpatched Learn CCZ launches cleanly on the AVD; wrappers are
+// expected and benign once Nova enforces ≤50-char Connect block ids
+// via commcare-nova PR #21).
 //
 // Endpoint: POST /a/<domain>/apps/edit_form_attr/<app_id>/<form_unique_id>/xform/
 // Auth: same `@login_or_digest` Playwright session as other commcare_* atoms.
