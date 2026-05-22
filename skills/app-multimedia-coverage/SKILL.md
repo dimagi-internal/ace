@@ -11,9 +11,9 @@ disable-model-invocation: true
 Generate and attach display-only images to Connect app questions
 where they meaningfully help frontline workers. Closes the loop that
 Nova doesn't today: schema for media on a field, asset generation,
-form-XML reference, CCZ bundling, and a release. Mirrors the
-end-to-end pattern of `commcare-form-patch` — surgical post-Nova
-patch, then build + release + verify.
+form-XML reference, CCZ bundling, and a release. Surgical post-Nova
+patch — invoke `commcare_patch_xform` to inject the jr:// reference,
+then `commcare_make_build` + `commcare_release_build` to ship.
 
 ## Inputs
 

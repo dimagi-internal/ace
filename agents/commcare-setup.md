@@ -321,54 +321,6 @@ Note: `training-materials` no longer runs in Phase 3. As of 0.9.0 it lives
 in Phase 6 (`qa-and-training`), where it consumes the screenshots produced
 by `app-screenshot-capture` alongside the app summaries.
 
-### Step 2.8: Connect wrappers — DISABLED (was: strip wrappers from Learn forms)
-
-**As of 2026-05-22 this step does NOT run.** `commcare-form-patch` is
-preserved in the repo as a manual fallback (`/ace:step commcare-form-patch
-<opp>`), but Phase 3 no longer auto-invokes it.
-
-Why disabled — voidcraft-labs/nova-plugin#7 (closed 2026-05-22) +
-commcare-nova PR #21 (merged 2026-05-22 02:38Z): Nova's maintainer
-states the `<module xmlns="…connect…">` / `<assessment xmlns="…connect…">`
-wrappers in Learn-app form XML are **required** — they're how Connect's
-HQ→Connect sync registers learn modules and deliver units. Stripping
-them produces a Learn app where "Failed to start learning" surfaces in
-the AVD because Connect has nothing registered for the opp. The actual
-root cause of every wrapper-attributed failure we saw was the Connect
-block IDs exceeding the server-side 50-char limit, fixed at the emitter
-by PR #21 (IDs are now guaranteed valid at app creation).
-
-This directly contradicts the prior ACE hypothesis (recorded in this
-file pre-2026-05-22 and in `skills/commcare-form-patch/SKILL.md`) that
-wrappers themselves caused the AVD "Failed to start learning" crash.
-We're trusting Nova's account because they own both sides of the
-contract (emitter + Connect runtime); the contradicting ACE evidence
-(turmeric Learn = 0 wrappers + works) is consistent with the alternate
-read that turmeric was just a quirky hand-built Learn app, not a
-canonical reference.
-
-**Open verification:** run a clean `/ace:run` against a new opp with
-the deployed Nova fixes, observe Phase 6 `app-screenshot-capture`
-Learn-launch behavior on an unpatched CCZ. Two outcomes:
-
-- **AVD launches cleanly** → Nova's account is correct; the skill,
-  the `commcare_patch_xform` atom's `applyAssessmentRemovalPatch` /
-  `applyUserScorePatch` helpers, the marker-loss preventer, and the
-  associated tests + fixture can all be deleted. The skill's
-  `## Removal criteria` already names the exact files.
-- **AVD still chokes** → ACE's hypothesis was right; re-enable this
-  step (revert the gating change), reopen nova-plugin#7 with the AVD
-  repro + adb logcat, and keep the skill load-bearing.
-
-Until that verification ships, do not invoke `commcare-form-patch`
-from this procedure doc, from `/ace:run`, or from any orchestrator
-auto-fix path. Manual invocation remains available for operators
-debugging a specific opp under instruction.
-
-The `commcare_patch_xform` atom itself stays — it's also the backbone
-of `app-multimedia-coverage` (manual sibling step, not part of
-`/ace:run`), which has nothing to do with the wrapper hypothesis.
-
 ### Step 2.9: Smoke screenshot capture (shallow app QA)
 
 Invoke the `app-screenshot-capture` skill. This step boots the AVD,
@@ -445,12 +397,12 @@ skill (`has_judge: true` rows). Three of those — `pdd-to-learn-app-eval`,
 `passed` while the LLM-as-Judge content quality had not been graded.
 
 That pattern bit Phase 2 on turmeric run 20260513-0616 — the
-(then-active) commcare-form-patch over-stripping bug shipped to a
-"gates.commcare-setup: passed" phase because nothing in the inline run
-looked at the released CCZ's structural state. (Step 2.8 has since
-been disabled — see above — but the lesson generalizes: eval verdicts
-are not the right tool for catching CCZ-marker drops, that's a
-structural assertion.) The general principle holds:
+(then-active, since-deleted) `commcare-form-patch` over-stripping bug
+shipped to a "gates.commcare-setup: passed" phase because nothing in
+the inline run looked at the released CCZ's structural state. The
+lesson generalizes: eval verdicts are not the right tool for catching
+CCZ-marker drops, that's a structural assertion. The general principle
+holds:
 
 **Do NOT flip `gates.commcare-setup: passed` when any `has_judge: true`
 skill has `steps.<skill>-eval.status: deferred`.** Either:
