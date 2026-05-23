@@ -60,7 +60,7 @@ Per-form Connect-block coverage:
 | `learn` | content-only (labels, no inputs) | `learn_module: { name, description, time_estimate }` |
 | `learn` | quiz-only (single/multi_select questions + `user_score` hidden) | `assessment: { user_score: "#form/user_score" }` |
 | `learn` | content + quiz mixed | both `learn_module` and `assessment` |
-| `deliver` | registration form | `deliver_unit: { name }` |
+| `deliver` | registration form | `deliver_unit: { name, entity_id?, entity_name? }` |
 | `deliver` | label-only delivery / no case action | `task: { name, description }` |
 
 Out of scope (separate sibling skills): multimedia attachments,
@@ -225,21 +225,13 @@ When `--dry-run` is active:
   autobuild fundamentally misclassified the app. This skill can't
   recover — re-run `pdd-to-{learn,deliver}-app` with a stronger
   Connect-type signal in the spec. Halt with clear error.
-- **Nova bug — `update_form` re-injects empty `entity_id`/`entity_name`
-  on `connect.deliver_unit`** even when the operator passes a clean
-  payload of just `{name}`. Confirmed live 2026-04-29: the mutation
-  ack's, but the re-fetch shows the empty entity fields back. The
-  `name` change DOES take effect, but the malformed binding stays.
-  When Step 4's re-fetch shows the entity fields still empty, exit
-  `blocked` with a pointer to `voidcraft-labs/nova-plugin#1`.
-  Don't retry — the bug isn't transient.
-- **`validate_app` is blind to the deliver_unit bug.** Confirmed live
-  2026-04-29: the Nova platform validator returns `{success: true}`
-  for an app whose `connect.deliver_unit` has empty `entity_id`/
-  `entity_name`. Don't rely on `validate_app` alone to catch coverage
-  failures — Step 4's per-mutation re-fetch is the actual gate.
-  `validate_app` is necessary but not sufficient. (See nova-plugin#1
-  for the upstream tracker.)
+- **`update_form` delivers empty `entity_id`/`entity_name` on re-fetch
+  (defensive).** Fixed upstream (nova-plugin#6). If Step 4's re-fetch
+  ever shows empty entity fields after a mutation, exit `blocked`.
+  Don't retry — treat it as a regression.
+- **`validate_app` misses malformed deliver_unit binds (defensive).**
+  Don't rely on `validate_app` alone to catch coverage failures —
+  Step 4's per-mutation re-fetch is the actual gate.
 - **Iteration budget exhausted (3+ rounds with no convergence).**
   Either the heuristic is wrong (we keep "fixing" something that
   Nova then resets) or there's an unknown Nova bug. Halt with the

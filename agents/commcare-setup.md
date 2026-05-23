@@ -142,40 +142,20 @@ If the Learn build fails, halt before dispatching Deliver — re-running
 both wastes time and the failure is usually deterministic (PDD spec
 issue, not transient).
 
-#### Turn-0 halt detection (defensive — Nova issue #2)
+#### Turn-0 halt detection (defensive)
 
-Nova's `/nova:autobuild` occasionally returns from
-`nova:nova-architect-autonomous` having taken zero tool actions — no
-`create_app`, no scaffold, no error, just a prose response. When this
-happens the `Agent` call appears to "succeed" but no Nova app exists.
-Filed as `voidcraft-labs/nova-plugin#2`; the right fix is upstream
-(autobuild refusing to return without ≥1 tool call). Until that lands,
-defend against it on the ACE side:
+After **each** Nova `Agent` dispatch returns, verify an app was created:
 
-After **each** Nova `Agent` dispatch returns, before treating its
-output as authoritative:
-
-1. Inspect the Agent's return string for a `nova_app_id` (or call
-   `list_apps` and look for an app whose
-   `created` is within the last few minutes and whose name matches
-   the spec just submitted).
-2. If no new app is present, the dispatch halted at turn 0. **Re-dispatch
-   up to two more times** (so up to **3 total attempts**) with the same
-   spec. Empirically (turmeric-20260429-2330): two halts in a row, third
-   attempt completed cleanly — bumping the budget caps wasted wall-clock
-   at ~30 sec per halted attempt while preserving the "don't loop forever"
-   discipline.
-3. If the third attempt also produces no app, surface a hard error
-   with `nova-plugin#2` in the message — at that point the failure is
-   no longer plausibly transient; let the operator decide whether to
-   wait for upstream or escalate.
+1. Inspect the Agent's return string for a `nova_app_id`. The return
+   message reliably includes the canonical `**App Name** (app_id)` line.
+   Fall back to `list_apps` (filter by `created` within the last few
+   minutes and name match) if the return string is malformed.
+2. If no new app is present, **re-dispatch up to two more times** (3
+   total attempts).
+3. If the third attempt also produces no app, surface a hard error.
 
 Apply this check after the Learn dispatch and again after the Deliver
-dispatch — they fail independently. Apply the same retry policy to
-**any** `nova:nova-architect-autonomous` dispatch elsewhere in this
-phase (e.g., the `app-connect-coverage` verification dispatches in
-Step 1.5), since `nova-plugin#2` affects every architect dispatch
-identically — not just builds.
+dispatch — they fail independently.
 
 - Input: approved PDD from GDrive
 - Output:
@@ -207,24 +187,15 @@ Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
   means evals score the auto-fixed app, not whatever Nova happened to
   emit.
 - **Failure modes:**
-  - **`blocked` with `voidcraft-labs/nova-plugin#1` (Bug 2 — empty
-    `entity_id`/`entity_name` re-injected on `update_form`
-    `deliver_unit`):** halt Phase 3. The malformed bind will fail
-    CCHQ's build at `app-release`, and the eventual released CCZ
-    won't carry the markers Connect needs. Wait for upstream fix.
-  - **Coverage's architect dispatch can't get past `nova-plugin#2`
-    (bootstrap halts on all 3 attempts):** **do NOT halt Phase 3.**
-    Coverage is the upstream safety net; `app-release` (Step 2.7,
-    0.10.5+) is the actual wall — its Step 6 downloads the released
-    CCZ and greps for `<learn:deliver>` / `<learn:module>` element
-    counts, which catches Bug 2 escapes cleanly. Log the coverage
-    skip into `run_state.yaml` (`app-connect-coverage-{learn,deliver}:
-    skipped-nova2`), write a stub coverage report noting the skip
-    + reliance on app-release verification, and proceed to Step 2.
-    Rationale: Nova's autobuild path doesn't go through `update_form`
-    for the initial connect block, so a clean autobuild build report
-    almost always means clean markers; the only risk is a silent
-    Nova-internal regression that `app-release`'s grep catches anyway.
+  - **`blocked` (empty `entity_id`/`entity_name` on re-fetch):**
+    halt Phase 3. The malformed bind will fail CCHQ's build at
+    `app-release`.
+  - **Coverage dispatch can't produce an app (all 3 attempts fail):**
+    **do NOT halt Phase 3.** `app-release` (Step 2.7) is the actual
+    wall — its Step 6 downloads the released CCZ and greps for
+    `<learn:deliver>` / `<learn:module>` element counts. Log the
+    coverage skip into `run_state.yaml`, write a stub coverage
+    report, and proceed to Step 2.
 
 ### Step 2: Deploy Apps
 Invoke the `app-deploy` skill.

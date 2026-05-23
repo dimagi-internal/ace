@@ -274,15 +274,23 @@ to the ACE Gmail identity (`ACE_GMAIL_ACCOUNT`) at mint time.
   remediation: `claude mcp remove nova --scope user`, then restart
   Claude Code. `/ace:setup` removes it idempotently on every run.
 
-- **Three known upstream bugs** (none auth-related):
-  - **`nova-plugin#1`** — `update_form` re-injects empty
-    `entity_id`/`entity_name` on `connect.deliver_unit`. ACE's
-    `app-connect-coverage` skill detects this on per-mutation
-    re-fetch and exits `blocked` rather than looping.
-  - **`nova-plugin#2`** — `/nova:autobuild` occasionally returns
-    with zero tool actions. Phase 3 retries up to 3 times.
-  - **`nova-plugin#5`** — `add_fields` partial persistence on first
-    call. Mitigated by call-and-verify pattern in `pdd-to-{learn,deliver}-app`.
+- **No known upstream bugs.** 16 of 18 filed issues are closed;
+  remaining two (#8 field-level multimedia, #12 multi-project-space
+  picker) are feature requests. Notable capabilities:
+  - `update_form` `deliver_unit` schema exposes `entity_id` and
+    `entity_name` as optional fields with sensible defaults.
+  - `update_form` with nullable properties (e.g. `connect: null`)
+    correctly clears on disk.
+  - Autonomous architect has all case-list-config tools
+    (`add_case_list_column`, etc.) — multi-module builds self-resolve
+    validation errors without ACE-side patching.
+  - XForm entity-encoding handles `<`/`>`/`&` in labels.
+  - Connect block IDs enforced to 50-char limit at save time.
+  - PAT auth eliminates OAuth token rotation; turn cap is 250;
+    return message reliably includes `**App Name** (app_id)`.
+  ACE-side defensive checks (`app-connect-coverage`, `app-release` CCZ
+  verification, `commcare-setup` turn-0 retry) remain as safety nets
+  but should not fire in normal operation.
 
 ## What is NOT here
 
