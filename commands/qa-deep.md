@@ -36,16 +36,16 @@ Writes (under `ACE/$1/runs/<run-id>/5-ocs/`):
 1. Read `3-commcare/app-test-cases.yaml` for the run.
 2. For each journey: call `mobile_run_recipe` against a fresh AVD,
    capture screenshots into
-   `ACE/<opp>/runs/<run-id>/3-commcare/screenshots/`, appending
-   entries to `3-commcare/app-screenshot-capture_manifest.yaml`.
+   `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/`, appending
+   entries to `6-qa-and-training/app-screenshot-capture_manifest.yaml`.
    Deep runs may overwrite or augment screenshots from a prior shallow
    Phase 6 run — the deep set is authoritative when both exist.
 3. Dispatch `app-ux-eval` to grade the captured set.
 
 Writes:
-- 3-commcare/screenshots/*.png (full per-journey set, supersedes any shallow run)
-- 3-commcare/app-screenshot-capture_manifest.yaml (updated)
-- 3-commcare/app-ux-eval_verdict-deep.yaml
+- 6-qa-and-training/screenshots/*.png (full per-journey set, supersedes any shallow run)
+- 6-qa-and-training/app-screenshot-capture_manifest.yaml (updated)
+- 6-qa-and-training/app-ux-eval_verdict-deep.yaml
 - ACE/$1/eval-calibration/app-ux-eval-runs.md (opp-level audit trail; appended row)
 
 ## What this does NOT do
@@ -58,7 +58,7 @@ Writes:
 
 Both verdicts land at the run-scoped paths above
 (`5-ocs/ocs-chatbot-eval_verdict-deep.yaml` and
-`3-commcare/app-ux-eval_verdict-deep.yaml`). The Phase 9
+`6-qa-and-training/app-ux-eval_verdict-deep.yaml`). The Phase 9
 `llo-launch` gate reads them and refuses activation if either is
 missing or stale.
 

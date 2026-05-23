@@ -77,6 +77,7 @@ describe('CRISPR-Test-001 fixture', () => {
       '2-scenarios/scenarios-and-acceptance_summary.md',
       // Phase 3 outputs missing in this fixture.
       '3-commcare/commcare-setup_summary.md',
+      '3-commcare/app-release-smoke_verdict.yaml',
       // Phase 4 summary missing.
       '4-connect/connect-setup_summary.md',
       // Phase 5 OCS artifacts (the fixture covers earlier phases only).
@@ -84,11 +85,10 @@ describe('CRISPR-Test-001 fixture', () => {
       '5-ocs/ocs-setup_summary.md',
       '5-ocs/ocs-setup_widget-handoff.md',
       // 0.13.116: gate-brief artifacts removed across all phases.
-      // Phase 6 onboarding email (training docs are present; the
-      // onboarding email is not in the fixture). Smoke-capture verdicts
-      // moved to 3-commcare/ on 2026-05-22 — see notes on that block.
-      '3-commcare/app-screenshot-capture_verdict-shallow.yaml',
-      '3-commcare/app-screenshot-capture_verdict.yaml',
+      // Phase 6 verdicts + onboarding email (training docs are present;
+      // verdicts and the onboarding email are not).
+      '6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',
+      '6-qa-and-training/app-screenshot-capture_verdict.yaml',
       '6-qa-and-training/training-onboarding-email.md',
     ];
     const files = listFiles(fixtureDir);

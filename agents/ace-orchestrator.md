@@ -838,15 +838,15 @@ When invoked with an opportunity, execute these phases in order:
 
 **Inputs (inline at handoff):** PDD, prior-phase verdicts (`1-design/idea-to-pdd-{qa_result,eval_verdict}.yaml`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
-**Atoms / skills used (orchestrator-visible only):** inline execution of `agents/commcare-setup.md`, which itself dispatches `/nova:autobuild` for `pdd-to-learn-app` + `pdd-to-deliver-app` (each Nova call is `Agent(nova:nova-architect-autonomous)` at level 0). The procedure ends with `app-screenshot-capture` (Step 2.9, moved from Phase 6 on 2026-05-22) — boots the AVD + runs J1/J5 smoke recipes + captures screenshots into `3-commcare/screenshots/`.
+**Atoms / skills used (orchestrator-visible only):** inline execution of `agents/commcare-setup.md`, which itself dispatches `/nova:autobuild` for `pdd-to-learn-app` + `pdd-to-deliver-app` (each Nova call is `Agent(nova:nova-architect-autonomous)` at level 0).
 
-**Products:** Learn app, Deliver app, deployed apps on CCHQ, smoke recipes (`3-commcare/app-test-cases.yaml` + `3-commcare/recipes/J*.yaml`), per-opp smoke screenshots (`3-commcare/screenshots/<journey-id>/*.png` + `3-commcare/app-screenshot-capture_manifest.yaml` + structural/shallow verdicts). (Training materials still belong to Phase 6 (`qa-and-training`); only the screenshot capture moved upstream.)
+**Products:** Learn app, Deliver app, deployed apps on CCHQ, test results (`3-commcare/app-test-cases.yaml` + `app-test-cases/J*.yaml`). (Training materials moved to Phase 6 (`qa-and-training`) in 0.9.0.)
 
 **Write-back:** `phases.commcare-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
-**Gate:** `[BLOCKER]` halts; pause-on-`app-deploy` per § Pause Points (in reference). Recipe-quality failures + AVD/Maestro infrastructure failures now surface here (at the source), not in Phase 6 (the consumer).
+**Gate:** `[BLOCKER]` halts; pause-on-`app-deploy` per § Pause Points (in reference).
 
-**Notes:** Phase 3 invokes `/nova:autobuild`, which dispatches the `nova:nova-architect-autonomous` subagent. That dispatch requires `Agent` at level 0 — running Phase 3 itself as a subagent would put Nova's dispatch at level 2 and fail. See § Agent Topology in reference. This is the only orchestrator-visible inline procedure-doc dispatch in the workflow. Adding `app-screenshot-capture` to Phase 3 means Phase 3 now also requires a healthy AVD via `mobile_ensure_avd_running`; pre-flight should remind operators to run `/ace:mobile-bootstrap` if needed.
+**Notes:** Phase 3 invokes `/nova:autobuild`, which dispatches the `nova:nova-architect-autonomous` subagent. That dispatch requires `Agent` at level 0 — running Phase 3 itself as a subagent would put Nova's dispatch at level 2 and fail. See § Agent Topology in reference. This is the only orchestrator-visible inline procedure-doc dispatch in the workflow.
 
 ### Phase 4: Connect Setup
 
@@ -884,11 +884,11 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(qa-and-training)`.
 
-**Inputs (inline at handoff):** PDD, Phase-3 outputs — `3-commcare/app-screenshot-capture_manifest.yaml` + `3-commcare/screenshots/` + structural/shallow verdicts (smoke screenshots, produced by Phase 3 as of 2026-05-22), Phase-5 chatbot URL (`5-ocs/ocs-agent-setup.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-3 outputs (`3-commcare/app-test-cases.yaml` + per-journey recipes under `3-commcare/app-test-cases/J*.yaml`), Phase-5 chatbot URL (`5-ocs/ocs-agent-setup.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
-**Atoms / skills used (orchestrator-visible only):** `Agent(qa-and-training)`. Internally the agent runs 5 per-artifact training skills in parallel (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-deck-outline`) → `training-deck-build` (sequential after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) → `training-onboarding-email` (LAST — links by URL to other docs). Note: `app-screenshot-capture` moved to Phase 3 (`commcare-setup` Step 2.9) on 2026-05-22 — the agent reads Phase 3's screenshots, doesn't produce them.
+**Atoms / skills used (orchestrator-visible only):** `Agent(qa-and-training)`. Internally the agent runs `app-screenshot-capture` (executor — runs the smoke recipes from Phase 3's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-deck-outline`) → `training-deck-build` (sequential after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) → `training-onboarding-email` (LAST — links by URL to other docs).
 
-**Products:** Phase-6 artifacts under `6-qa-and-training/` — 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck outline), optional Slides deck, onboarding email. (Screenshots are Phase-3 products, not Phase-6 products as of 2026-05-22.)
+**Products:** Phase-6 artifacts under `6-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck outline), optional training deck build, onboarding email.
 
 **Write-back:** `phases.qa-and-training.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 

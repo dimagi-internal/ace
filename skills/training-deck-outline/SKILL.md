@@ -26,7 +26,7 @@ analysis). Upstream of `training-deck-build`.
 | Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | opp framing, archetype, audience |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-learn-app_summary.md` | Learn app modules → "what FLWs will see" slides |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | Deliver app forms → walkthrough slides |
-| Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/3-commcare/app-screenshot-capture_manifest.yaml` | per-opp PNG fileIds |
+| Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` | per-opp PNG fileIds |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` | sign-in, claim-opp, sync, payments — common across opps |
 | Phase 6 (`training-flw-guide` sibling) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide.md` | optional: pull caption phrasing forward so the deck and guide say the same thing |
 

@@ -72,6 +72,7 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 | `app-release` | **has eval** | `app-release-eval`. Grades whether the release was done correctly (versioning, marker integrity, post-release CCZ projection). Quality dimension: did this release actually unblock Connect's deliver-unit sync? |
 | `app-multimedia-coverage` | **NO eval** | Manual surgical patch — attaches images. Binary did/didn't apply correctly. The quality of the attached images themselves is a different concern (potentially handled by future `app-ux-eval` if media accessibility scoring is added). |
 | `app-connect-coverage` | **NO eval** | Verify+fix loop emitting `clean | blocked` verdict. Binary outcome — same shape as a QA. The "quality" of coverage IS the binary verdict. |
+| `app-release-smoke` | **NO eval** | Structural smoke — counts forms + checks Connect markers + greps XForm parse. Binary outcome (`pass` / `fail` per mismatch class). Nothing on a 0-10 spectrum — every dimension is either structurally matched or it's a `[BLOCKER]`. The verdict-shape grades the deltas (form-count delta, missing marker count) but the rollup is binary. |
 
 ### Phase 4 — connect-setup
 

@@ -546,51 +546,62 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Phase 5 (ocs-setup) end-of-phase summary written by the ocs-setup subagent. Captures chatbot config (experiment_id, embed key), publish status, and gate disposition handed back to the orchestrator.',
   },
 
-  // ── Shallow app QA (lives under Phase 3 since 2026-05-22) ──────
-  // app-screenshot-capture moved from Phase 6 → Phase 3 (commcare-setup
-  // Step 2.9) so recipe-quality failures surface at the source. The
-  // artifact paths follow the producer; training skills (Phase 6)
-  // now read screenshots from `3-commcare/`. `app-ux-eval` (deep,
-  // via /ace:qa-deep) also writes to `3-commcare/` for consistency.
-
+  // ── New: Phase 3 CCZ structural smoke (app-release-smoke) ─────
+  // Lightweight, AVD-free verification of released CCZ structural
+  // integrity at the end of Phase 3. Catches CCZ-marker drops, form-
+  // count drift vs. Nova blueprint, and XForm parse errors at the
+  // source — without the Phase 4 / Connect-state dependency that
+  // forced us to revert the prior "move app-screenshot-capture to
+  // Phase 3" attempt. Live AVD smoke (`app-screenshot-capture`) stays
+  // in Phase 6 where Connect opp + ACE-test-user invite are available.
   {
-    path: '3-commcare/app-screenshot-capture_manifest.yaml',
+    path: '3-commcare/app-release-smoke_verdict.yaml',
+    producedBy: 'app-release-smoke',
+    role: 'verdict',
+    consumedBy: ['opp-eval'],
+    phase: 'commcare',
+    required: true,
+    description: 'Structural smoke verdict from app-release-smoke: download released Learn + Deliver CCZs, parse, verify form counts and Connect-marker presence match Nova blueprints. Halts loud on mismatch. No AVD, no Connect dependency — purely CCHQ-side structural check.',
+  },
+
+  // ── QA + Training phase (Phase 6) ──────────────────────────────
+  {
+    path: '6-qa-and-training/app-screenshot-capture_manifest.yaml',
     producedBy: 'app-screenshot-capture',
     role: 'manifest',
     consumedBy: ['training-flw-guide', 'training-deck-outline', 'app-ux-eval'],
-    phase: 'commcare',
+    phase: 'qa-and-training',
     required: false,
     description: 'Manifest of every captured screenshot with step labels and Drive paths.',
   },
   {
-    path: '3-commcare/app-screenshot-capture_verdict-shallow.yaml',
+    path: '6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',
     producedBy: 'app-screenshot-capture',
     role: 'verdict',
     consumedBy: ['opp-eval'],
-    phase: 'commcare',
+    phase: 'qa-and-training',
     required: true,
-    description: 'Shallow smoke verdict from /ace:run Phase 3 — smoke recipe pass/fail + thin UX judge ≥ 2/3 per app. Always present after a successful /ace:run.',
+    description: 'Shallow smoke verdict from /ace:run Phase 6 — smoke recipe pass/fail + thin UX judge ≥ 2/3 per app. Always present after a successful /ace:run.',
   },
   {
-    path: '3-commcare/app-screenshot-capture_verdict.yaml',
+    path: '6-qa-and-training/app-screenshot-capture_verdict.yaml',
     producedBy: 'app-screenshot-capture',
     role: 'verdict',
     consumedBy: ['opp-eval'],
-    phase: 'commcare',
+    phase: 'qa-and-training',
     required: true,
-    description: 'Structural verdict from app-screenshot-capture: smoke recipe pass/fail status + screenshot capture integrity. Always present after a successful Phase 3 run.',
+    description: 'Structural verdict from app-screenshot-capture: smoke recipe pass/fail status + screenshot capture integrity. Always present after a successful Phase 6 run.',
   },
   {
-    path: '3-commcare/app-ux-eval_verdict-deep.yaml',
+    path: '6-qa-and-training/app-ux-eval_verdict-deep.yaml',
     producedBy: 'app-ux-eval',
     role: 'verdict',
     consumedBy: ['llo-launch', 'opp-eval'],
-    phase: 'commcare',
+    phase: 'qa-and-training',
     required: false,
     description: 'Machine-readable verdict from app-ux-eval (deep). Read by llo-launch (Phase 9 activation gate) for freshness check vs. latest released CommCare build, and by opp-eval for cross-skill aggregation. Required to be fresh and passing for go-live; absent if /ace:qa-deep has not been run.',
   },
 
-  // ── QA + Training phase (Phase 6) ──────────────────────────────
   {
     path: '6-qa-and-training/training-llo-guide.md',
     producedBy: 'training-llo-guide',

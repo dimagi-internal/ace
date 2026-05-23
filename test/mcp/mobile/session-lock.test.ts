@@ -92,8 +92,12 @@ describe('session-lock', () => {
     const stale = fakeLock(2);
     acquireSessionLock(stale);
     writtenLocks.push(lockPathForPid(stale.mcp_pid));
-    const result = reapStaleSessions();
-    expect(result.reaped_locks).toContain(`${stale.mcp_pid}.lock.json`);
+    // End-state assertion only — `result.reaped_locks` is racy under
+    // parallel vitest execution because session-lock-e2e.test.ts also
+    // walks SESSION_LOCK_DIR. Whichever reapStaleSessions call runs
+    // first wins the reaped_locks attribution; the structural
+    // invariant is "the dead lock is gone after the sweep" regardless.
+    reapStaleSessions();
     expect(fs.existsSync(lockPathForPid(stale.mcp_pid))).toBe(false);
   });
 

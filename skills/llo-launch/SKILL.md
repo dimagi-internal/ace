@@ -37,7 +37,7 @@ Activate the opportunity and notify LLOs that they are live.
    draft to live and deliveries start counting toward payment. Read
    both deep verdicts from `ACE/<opp-name>/runs/<run-id>/`:
    - `5-ocs/ocs-chatbot-eval_verdict-deep.yaml`
-   - `3-commcare/app-ux-eval_verdict-deep.yaml`
+   - `6-qa-and-training/app-ux-eval_verdict-deep.yaml`
 
    For each verdict, require:
 
@@ -54,7 +54,7 @@ Activate the opportunity and notify LLOs that they are live.
         stale.
       - **App verdict freshness:** read `learn_build_id` and
         `deliver_build_id` from
-        `3-commcare/app-ux-eval_verdict-deep.yaml`'s
+        `6-qa-and-training/app-ux-eval_verdict-deep.yaml`'s
         `artifact_refs:` block, then read
         `3-commcare/app-deploy_summary.md`'s `releases:` block. The
         verdict's build IDs must match the latest released build IDs.
@@ -70,7 +70,7 @@ Activate the opportunity and notify LLOs that they are live.
 
    List one entry per failing check (e.g.
    `5-ocs/ocs-chatbot-eval_verdict-deep.yaml missing`,
-   `3-commcare/app-ux-eval_verdict-deep.yaml verdict=fail`, `OCS
+   `6-qa-and-training/app-ux-eval_verdict-deep.yaml verdict=fail`, `OCS
    chatbot re-published since verdict written (verdict v3, current v4)`,
    `learn app re-released since verdict written (verdict build abc...,
    current build xyz...)`).
@@ -342,6 +342,6 @@ Each row this skill writes uses `phase: 9-execution-management` and
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-05 | **Path-scheme migration on the deep-QA gate.** Step 4 verdict reads, error messages, and gate-brief BLOCKER rows now reference `5-ocs/ocs-chatbot-eval_verdict-deep.yaml` and `3-commcare/app-ux-eval_verdict-deep.yaml` (per the manifest); freshness check pulls build IDs from `3-commcare/app-deploy_summary.md`. Wiring fix — the prior `verdicts/...` paths no longer exist on disk, so the gate would always fail with "verdict missing" against current main. No behavior change beyond paths. | ACE team |
+| 2026-05-05 | **Path-scheme migration on the deep-QA gate.** Step 4 verdict reads, error messages, and gate-brief BLOCKER rows now reference `5-ocs/ocs-chatbot-eval_verdict-deep.yaml` and `6-qa-and-training/app-ux-eval_verdict-deep.yaml` (per the manifest); freshness check pulls build IDs from `3-commcare/app-deploy_summary.md`. Wiring fix — the prior `verdicts/...` paths no longer exist on disk, so the gate would always fail with "verdict missing" against current main. No behavior change beyond paths. | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 4 anchor rows mapped 1:1 to `llo-launch-eval`'s viability axis (llo-capacity-actual, day-one-readiness, downstream-handoff-alignment, stop-loss-planning) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-10 | Drop the deferred FLW pre-invite path: `connect-opp-setup` (Phase 4 Step 7) now invites `${ACE_E2E_PHONE}` directly after activating the opp in Phase 4 Step 6.5. Step 6 here is reframed from "activate the opp" to "confirm the opp is active" — the idempotent skip-if-active path is now the canonical case; the active-otherwise branch is a fallback for the rare operator-deactivated case. No behavior change for real-LLO invites (still sent in this skill); behavior change for ACE test-user invites (no longer rescued here). Closes the Phase-6-placeholder-screenshots chicken-and-egg. | ACE team |
