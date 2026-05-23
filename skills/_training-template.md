@@ -2,8 +2,8 @@
 
 Shared conventions for the per-artifact training skills under Phase 6.
 Six skills (`training-llo-guide`, `training-flw-guide`,
-`training-quick-reference`, `training-faq`, `training-deck-outline`,
-`training-onboarding-email`) plus the renderer (`training-deck-build`)
+`training-quick-reference`, `training-faq`, `training-deck-generate`,
+`training-onboarding-email`) plus the renderer (`training-deck-render`)
 all follow the same skeleton. This file documents the shared shape so
 each skill body can reference it instead of duplicating boilerplate.
 
@@ -102,9 +102,9 @@ favor of one skill per artifact. The decomposition gives:
 | `training-flw-guide` | `flw-training-guide.md` | FLWs in the field | Step 2 (parallel) |
 | `training-quick-reference` | `quick-reference.md` | FLWs (printed pocket card) | Step 2 (parallel) |
 | `training-faq` | `faq.md` | LLOs and FLWs | Step 2 (parallel) |
-| `training-deck-outline` | `training-deck-outline.md` | Phase 6 internal (input to deck-build) | Step 2 (parallel) |
+| `training-deck-generate` | `training-deck-spec.yaml` | Phase 6 internal (input to deck-render) | Step 2 (parallel) |
 | `training-onboarding-email` | `training-onboarding-email.md` | Phase 9 (consumed at LLO onboarding) | Step 3 (sequential, after siblings) |
-| `training-deck-build` | Google Slides URL | LLO (presents to FLWs / records) | Step 4 (sequential, after deck-outline) |
+| `training-deck-render` | Google Slides URL | LLO (presents to FLWs / records) | Step 4 (sequential, after deck-generate) |
 
 `agents/qa-and-training.md` enforces the sequencing.
 

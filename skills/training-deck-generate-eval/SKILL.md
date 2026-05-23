@@ -1,41 +1,40 @@
 ---
-name: training-deck-outline-eval
+name: training-deck-generate-eval
 description: >
-  Grade the Phase 6 training-deck outline for pedagogical flow (intro →
-  reference → walkthrough → recap), screenshot integration, and
-  anticipated-question coverage.
+  Grade the Phase 6 training-deck spec for module coverage, content
+  concreteness, image ref validity, and slide count.
 disable-model-invocation: true
 ---
 
-# Training Deck Outline — Eval
+# Training Deck Generate — Eval
 
-Grades `6-qa-and-training/training-deck-outline.md`. The deck outline
-drives `training-deck-build` (which transcribes outline → Slides via
-the Slides API). The deck outline is therefore where pedagogical
-quality lives — `training-deck-build` is graded by template, not by
+Grades `6-qa-and-training/training-deck-spec.yaml`. The deck spec
+drives `training-deck-render` (which renders spec → Slides via
+the Slides API). The spec is therefore where pedagogical
+quality lives — `training-deck-render` is graded by template, not by
 content. This rubric is the upstream gate.
 
 See `skills/_eval-template.md` for shared contracts. Provisional rubric —
-calibration TBD until 3+ shipped deck outlines produce ground truth.
+calibration TBD until 3+ shipped deck specs produce ground truth.
 
 ## Inputs
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 6 | `6-qa-and-training/training-deck-outline.md` | artifact under judgment |
+| Phase 6 | `6-qa-and-training/training-deck-spec.yaml` | artifact under judgment |
 | Phase 1 | `1-design/idea-to-pdd.md` | anchors archetype, intervention design, anticipated audience questions |
 | Phase 3 | `3-commcare/app-deploy_summary.md` | walkthrough must match deployed app screens |
 | Phase 6 | `6-qa-and-training/training-faq.md` (if present) | anticipated-question coverage cross-reference |
 
 ## Products
 
-- `6-qa-and-training/training-deck-outline-eval_verdict.yaml` — verdict YAML
+- `6-qa-and-training/training-deck-generate-eval_verdict.yaml` — verdict YAML
   per `_eval-template.md § Verdict YAML contract`.
 
 ## Process
 
 1. Read inputs from Drive.
-2. Map the outline's section list to the canonical pedagogical arc
+2. Map the spec's module list to the canonical pedagogical arc
    (Intro / Reference / Walkthrough / Recap). Note missing or
    misordered phases.
 3. Build the anticipated-question catalogue from PDD + (if present) FAQ
@@ -61,13 +60,13 @@ Score each dimension 0–10. Weights sum to 1.0.
 - Dead screenshot Drive ID → BLOCKER (cap overall ≤ 5).
 - Any single dimension ≤ 3 → suite verdict `fail`.
 
-**Inflation guard.** If `training-deck-outline` self-eval graded itself
+**Inflation guard.** If `training-deck-generate` self-eval graded itself
 top-tier and this rubric's overall ≤ 8.0, cap overall at 8.0 and surface
 a `[WARN]`. Default no-op until the producer ships a self-eval.
 
 **Calibration target** (per `_eval-template.md § Calibration target boilerplate`):
-- Detection rate ≥ 80% of catalogued deck-outline issues from
-  `eval-calibration/known-issues.md § Training deck outline` (catalogue TBD).
+- Detection rate ≥ 80% of catalogued deck-spec issues from
+  `eval-calibration/known-issues.md § Training deck spec` (catalogue TBD).
 - Inter-run variance ≤ 0.5 across 3 same-model runs.
 - Agreement with self-eval within ±1.5 points.
 
