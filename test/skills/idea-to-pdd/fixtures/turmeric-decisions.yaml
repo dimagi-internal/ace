@@ -11,7 +11,7 @@ decisions:
     ai-default: atomic-visit
     options_considered: ["atomic-visit", "focus-group", "multi-stage"]
     source: idea.md §1; one-FLW-one-delivery pattern
-    status: applied
+    status: ai-default
     notes: Single per-FLW visit producing one structured delivery.
 
   - id: flw-count
@@ -21,7 +21,7 @@ decisions:
     ai-default: "5–8"
     options_considered: ["3–5", "5–8", "10–15", "20+"]
     source: idea.md §2; atomic-visit archetype norm at this geographic scope
-    status: applied
+    status: ai-default
 
   - id: budget-plausibility
     phase: 1-design
@@ -30,7 +30,7 @@ decisions:
     ai-default: plausible
     options_considered: ["plausible", "too-low", "too-high"]
     source: idea-to-pdd-eval `resource_realism` dimension (PR #144)
-    status: applied
+    status: ai-default
     notes: |
       $1,500 / 8 FLWs / 30 visits ≈ $6.25/visit gross — covers stated $3 payment
       with margin for LLO ops + AI infra at recruitment-realistic rates.
@@ -42,7 +42,7 @@ decisions:
     ai-default: "$3.00"
     options_considered: ["$2.00", "$3.00", "$5.00"]
     source: idea.md §3; payment-rate convention for atomic-visit market surveys
-    status: applied
+    status: ai-default
 
   - id: pilot-sample-size
     phase: 1-design
@@ -51,7 +51,7 @@ decisions:
     ai-default: "30 photos"
     options_considered: ["20 photos", "30 photos", "50 photos", "100 photos"]
     source: stress-test verifiability dimension; calibration-set norm
-    status: applied
+    status: ai-default
 
   - id: ai-photo-threshold
     phase: 1-design
@@ -60,7 +60,7 @@ decisions:
     ai-default: "≥90%"
     options_considered: ["≥85%", "≥90%", "≥95%"]
     source: idea-to-pdd-eval `verifiability` rubric; Layer-B AI-check norm
-    status: applied
+    status: ai-default
 
   - id: ai-fallback-design
     phase: 1-design
@@ -72,7 +72,7 @@ decisions:
       - "stratified-validation-of-AI-output"
       - "no-fallback"
     source: idea-to-pdd-eval `fallback_validates_primary` dimension (PR #144)
-    status: applied
+    status: ai-default
     notes: |
       Default is parallel sampling (N% human review of all submissions, independent
       of AI's classification). NOT a true validation harness — it samples a different
@@ -90,7 +90,7 @@ decisions:
       - "none-named-proceed-with-caveat"
       - "none-named-halt"
     source: idea-to-pdd-eval `demand_reality` dimension (PR #144)
-    status: applied
+    status: ai-default
     notes: |
       No consumer named in idea.md. Proceeding with default; flag in gate brief.
       Human edit recommended before Phase 8 solicitation publishes.
@@ -102,7 +102,7 @@ decisions:
     ai-default: proxy-of-goal
     options_considered: ["direct-goal", "proxy-of-goal", "tbd-during-pilot"]
     source: idea-to-pdd-eval `mission_alignment` dimension (PR #144)
-    status: applied
+    status: ai-default
     notes: Photo-quality pass rate is a proxy for "AI replaces human verification"; not the goal itself.
 
   - id: working-language
@@ -112,7 +112,7 @@ decisions:
     ai-default: "English only"
     options_considered: ["English only", "English + 1 local", "Multilingual (3+)"]
     source: idea.md does not specify; LLO directory shows English-fluent candidates
-    status: applied
+    status: ai-default
 
   - id: verification-layers
     phase: 1-design
@@ -121,7 +121,7 @@ decisions:
     ai-default: "A + B"
     options_considered: ["A only", "A + B", "A + B + C"]
     source: pdd-template.md `## Evidence Model` section
-    status: applied
+    status: ai-default
     notes: Layer A self-report + Layer B AI photo-verification. Layer C (independent audit) deferred to Phase 9.
 
   - id: solicitation-type
@@ -131,7 +131,7 @@ decisions:
     ai-default: EOI
     options_considered: ["EOI", "RFP", "custom"]
     source: skills/idea-to-pdd `## Solicitation` section default
-    status: applied
+    status: ai-default
 
   - id: solicitation-deadline
     phase: 1-design
@@ -140,7 +140,7 @@ decisions:
     ai-default: "14 days"
     options_considered: ["7 days", "14 days", "21 days", "30 days"]
     source: skills/idea-to-pdd `## Solicitation` section default
-    status: applied
+    status: ai-default
 
   - id: candidate-llo-roster
     phase: 1-design
@@ -152,5 +152,5 @@ decisions:
       - "named-candidates-plus-public-solicitation"
       - "any-LLO-via-public-solicitation"
     source: idea.md §LLO Preference; LLO directory
-    status: applied
+    status: ai-default
     notes: idea.md does not name specific candidates; defaulting to public solicitation.

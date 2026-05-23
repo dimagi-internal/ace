@@ -16,7 +16,7 @@ const MINIMAL_LOG: DecisionsLog = {
       "ai-default": "atomic-visit",
       options_considered: ["atomic-visit", "focus-group", "multi-stage"],
       source: "idea.md §1",
-      status: "applied",
+      status: "ai-default",
       notes: "Single per-FLW visit producing one structured delivery.",
     },
   ],

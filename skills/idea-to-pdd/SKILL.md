@@ -114,7 +114,7 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     bar criterion in `## Decisions Log Convention` below. Each row
     records a load-bearing default the skill is about to apply when
     drafting the PDD. Use the AI's best inference from the source
-    material for each `ai-default` value; status is `applied` (the AI
+    material for each `ai-default` value; status is `ai-default` (the AI
     proceeded with its default).
 
     See `## Decisions Log Convention § Common load-bearing decisions for
@@ -350,7 +350,7 @@ when `status: overridden`), optional `notes`.
   `override` field carries the human's value; `ai-default` is preserved
   as the AI's original proposal. Effective value = override.
 
-This skill writes only `status: applied` rows. `overridden` rows
+This skill writes only `status: ai-default` rows. `overridden` rows
 appear when a prior run's human edits carry forward via the fork
 endpoint's `keep-all` or `keep-overrides-only` mode.
 

@@ -55,7 +55,7 @@ function mergeRow(
       // and flip status back to applied.
       const { override: _unused, ...withoutOverride } = updated;
       void _unused;
-      updated = { ...withoutOverride, status: "applied" };
+      updated = { ...withoutOverride, status: "ai-default" };
     } else {
       updated = {
         ...updated,

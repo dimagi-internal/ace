@@ -131,7 +131,7 @@ describe("parseDocumentStructure", () => {
           "ai-default": "atomic-visit",
           options_considered: ["atomic-visit", "focus-group", "multi-stage"],
           source: "idea.md §1",
-          status: "applied",
+          status: "ai-default",
         },
         {
           id: "flw-count",

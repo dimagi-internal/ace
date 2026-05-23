@@ -16,7 +16,7 @@ const baseLog: DecisionsLog = {
       "ai-default": "atomic-visit",
       options_considered: ["atomic-visit", "focus-group", "multi-stage"],
       source: "idea.md §1",
-      status: "applied",
+      status: "ai-default",
     },
     {
       id: "flw-count",
@@ -26,7 +26,7 @@ const baseLog: DecisionsLog = {
       "ai-default": "5–8",
       options_considered: ["3–5", "5–8", "10–15"],
       source: "idea.md §2",
-      status: "applied",
+      status: "ai-default",
     },
   ],
 };
@@ -88,7 +88,7 @@ describe("mergeDecisions", () => {
     ];
     const { merged, report } = mergeDecisions(parsed, startLog);
     const flw = merged.decisions.find((d) => d.id === "flw-count")!;
-    expect(flw.status).toBe("applied");
+    expect(flw.status).toBe("ai-default");
     expect(flw.override).toBeUndefined();
     expect(report.defaultsOverridden).toEqual([
       { id: "flw-count", from: "12", to: "5–8" },
@@ -141,7 +141,7 @@ describe("mergeDecisions", () => {
     const { merged, report } = mergeDecisions(parsed, baseLog);
     const flw = merged.decisions.find((d) => d.id === "flw-count")!;
     expect(flw["ai-default"]).toBe("5–8");
-    expect(flw.status).toBe("applied");
+    expect(flw.status).toBe("ai-default");
     expect(flw.override).toBeUndefined();
     expect(report.defaultsOverridden).toEqual([]);
   });

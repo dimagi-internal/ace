@@ -13,7 +13,7 @@ decisions:
       - focus-group
       - multi-stage
     source: source-idea
-    status: applied
+    status: ai-default
   - id: wo-number
     phase: 1-design
     skill: pdd-to-work-order
@@ -22,7 +22,7 @@ decisions:
     options_considered:
       - WO-2026-001
     source: env-default
-    status: applied
+    status: ai-default
   - id: wo-period-of-performance
     phase: 1-design
     skill: pdd-to-work-order
@@ -31,4 +31,4 @@ decisions:
     options_considered:
       - 2026-05-22 to 2026-07-31
     source: pdd-timeline
-    status: applied
+    status: ai-default
