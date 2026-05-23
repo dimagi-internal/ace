@@ -8,6 +8,7 @@ import {
   parseTrainingSpec,
   TrainingDeckSpecSchema,
   SlideSpecSchema,
+  resolveManifest,
 } from '../../lib/training-deck-spec.js';
 
 const STENCILS = {
@@ -516,5 +517,66 @@ describe('SlideSpecSchema per-layout validation', () => {
     });
     expect(result.layout).toBe('closing');
     expect(result.body).toBe('Questions? Contact support@example.com');
+  });
+});
+
+// ============================================================================
+// resolveManifest — manifest resolver for @alias image refs
+// ============================================================================
+
+describe('resolveManifest', () => {
+  const manifest = {
+    common: { logo: 'drive:1ABC', 'install-step1': 'drive:1DEF' },
+    opp: { form1: 'drive:2GHI', logo: 'drive:2JKL' },
+  };
+
+  it('merges common + opp with opp winning on collision', () => {
+    const resolved = resolveManifest(manifest);
+    // opp's logo wins over common's logo
+    expect(resolved.get('logo')).toBe('drive:2JKL');
+    // common-only key is still accessible
+    expect(resolved.get('install-step1')).toBe('drive:1DEF');
+    // opp-only key is accessible
+    expect(resolved.get('form1')).toBe('drive:2GHI');
+  });
+
+  it('resolveImageRef strips @ prefix and returns Drive URL', () => {
+    const resolved = resolveManifest(manifest);
+    expect(resolved.resolveImageRef('@form1')).toBe(
+      'https://drive.google.com/uc?export=view&id=2GHI',
+    );
+    // opp wins on collision for logo
+    expect(resolved.resolveImageRef('@logo')).toBe(
+      'https://drive.google.com/uc?export=view&id=2JKL',
+    );
+  });
+
+  it('resolveImageRef passes https:// URLs through', () => {
+    const resolved = resolveManifest(manifest);
+    expect(resolved.resolveImageRef('https://example.com/img.png')).toBe(
+      'https://example.com/img.png',
+    );
+  });
+
+  it('resolveImageRef throws for unresolvable alias', () => {
+    const resolved = resolveManifest(manifest);
+    expect(() => resolved.resolveImageRef('@nonexistent')).toThrow(/unresolvable/);
+  });
+
+  it('resolveImageRef returns non-drive values as-is', () => {
+    const resolved = resolveManifest({
+      common: { banner: 'https://cdn.example.com/banner.png' },
+    });
+    expect(resolved.resolveImageRef('@banner')).toBe('https://cdn.example.com/banner.png');
+  });
+
+  it('get returns undefined for missing alias', () => {
+    const resolved = resolveManifest(manifest);
+    expect(resolved.get('missing')).toBeUndefined();
+  });
+
+  it('handles empty manifest (both fields undefined)', () => {
+    const resolved = resolveManifest({});
+    expect(resolved.get('anything')).toBeUndefined();
   });
 });

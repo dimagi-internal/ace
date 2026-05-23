@@ -191,6 +191,85 @@ export function parseTrainingSpec(yamlStr: string): TrainingDeckSpec {
   return TrainingDeckSpecSchema.parse(raw);
 }
 
+// ---------------------------------------------------------------------------
+// Manifest resolver — merges common + opp entries, resolves @alias image refs
+// ---------------------------------------------------------------------------
+
+/**
+ * A resolved manifest that supports raw alias lookups and `@alias` image
+ * reference resolution (converting `drive:<fileId>` to a public-view URL).
+ */
+export interface ResolvedManifest {
+  /** Raw lookup by alias key. Returns undefined if the alias is not in the manifest. */
+  get(alias: string): string | undefined;
+
+  /**
+   * Resolve an image reference to a usable URL.
+   *
+   * - `https://...` — returned as-is (passthrough)
+   * - `@alias` — strips the `@`, looks up the alias in the merged manifest:
+   *   - `drive:<fileId>` values are converted to `https://drive.google.com/uc?export=view&id=<fileId>`
+   *   - all other values are returned as-is
+   * - Throws if the alias is not found in the manifest.
+   */
+  resolveImageRef(ref: string): string;
+}
+
+/**
+ * Merge `manifest.common` and `manifest.opp` into a single `ResolvedManifest`.
+ * Opp entries win on key collision.
+ */
+export function resolveManifest(manifest: {
+  common?: Record<string, string>;
+  opp?: Record<string, string>;
+}): ResolvedManifest {
+  const merged = new Map<string, string>();
+
+  // Common entries first — opp entries overwrite on collision.
+  if (manifest.common) {
+    for (const [key, value] of Object.entries(manifest.common)) {
+      merged.set(key, value);
+    }
+  }
+  if (manifest.opp) {
+    for (const [key, value] of Object.entries(manifest.opp)) {
+      merged.set(key, value);
+    }
+  }
+
+  return {
+    get(alias: string): string | undefined {
+      return merged.get(alias);
+    },
+
+    resolveImageRef(ref: string): string {
+      // HTTPS URLs pass through unchanged.
+      if (ref.startsWith('https://')) {
+        return ref;
+      }
+
+      // @alias references: strip the prefix, look up, resolve.
+      if (ref.startsWith('@')) {
+        const alias = ref.slice(1);
+        const value = merged.get(alias);
+        if (value === undefined) {
+          throw new Error(
+            `resolveImageRef: unresolvable alias "@${alias}" — not found in manifest`,
+          );
+        }
+        if (value.startsWith('drive:')) {
+          const fileId = value.slice('drive:'.length);
+          return `https://drive.google.com/uc?export=view&id=${fileId}`;
+        }
+        return value;
+      }
+
+      // Fallback: return as-is (bare URLs, relative paths, etc.).
+      return ref;
+    },
+  };
+}
+
 // ============================================================================
 // Original markdown-based DeckSpec (v1) — preserved below
 // ============================================================================
