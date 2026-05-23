@@ -1,0 +1,17 @@
+id: connect-training-atomic
+name: "Connect Training — Atomic Visit"
+description: >
+  Full training deck for atomic-visit opportunities (pharmacy surveys,
+  household visits, sample collection, etc.). Produces a 30-45 slide deck
+  covering platform setup, opportunity walkthrough, practice, and evaluation.
+archetype: atomic-visit
+audience: flw
+modules:
+  - welcome
+  - platform-setup
+  - your-opportunity
+  - practice
+  - evaluation
+  - resources
+expected_slide_count: "30-45"
+expected_duration_minutes: "150-240"

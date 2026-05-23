@@ -1,0 +1,81 @@
+id: platform-setup
+title: "Connect Platform Setup"
+common: true
+slides:
+  - id: what-is-connect
+    layout: content
+    title: "What is CommCare Connect?"
+    body: |
+      CommCare Connect matches you with paid work opportunities:
+      - Learn: Complete training modules on your phone
+      - Deliver: Do field work using guided forms
+      - Verify: Your work is checked for quality
+      - Pay: Get paid for verified, quality work
+
+  - id: install-commcare
+    layout: mobile_flow
+    title: "Step 1: Download CommCare"
+    steps:
+      - { image: "@play-store-search", caption: "Open Play Store, search 'CommCare'" }
+      - { image: "@commcare-install", caption: "Tap 'Install'" }
+      - { image: "@commcare-open", caption: "Tap 'Open'" }
+      - { image: "@commcare-welcome", caption: "CommCare is ready" }
+
+  - id: personal-id-start
+    layout: mobile_flow
+    title: "Step 2: Create Your PersonalID"
+    steps:
+      - { image: "@personal-id-start", caption: "Tap 'Sign Up'" }
+      - { image: "@personal-id-name", caption: "Enter your name" }
+      - { image: "@personal-id-phone", caption: "Enter your phone number" }
+      - { image: "@personal-id-verify", caption: "Enter the code you received" }
+
+  - id: personal-id-details
+    layout: mobile_flow
+    title: "Step 2 (continued): Complete Your Profile"
+    steps:
+      - { image: "@personal-id-photo", caption: "Take your photo" }
+      - { image: "@personal-id-id", caption: "Scan your ID" }
+      - { image: "@personal-id-location", caption: "Allow location access" }
+      - { image: "@personal-id-done", caption: "Profile complete!" }
+
+  - id: connect-home
+    layout: walkthrough
+    title: "The Connect Home Screen"
+    image: "@connect-home"
+    body: |
+      1. Your name and profile appear at the top
+      2. "New Opportunities" shows available work
+      3. "My Opportunities" shows work you've claimed
+      4. Tap the menu icon for settings and help
+
+  - id: claim-opportunity
+    layout: walkthrough
+    title: "Claiming Your Opportunity"
+    image: "@claim-opp"
+    body: |
+      1. Find your opportunity in the list
+      2. Read the description and requirements
+      3. Tap "Claim" to get started
+      4. The opportunity moves to "My Opportunities"
+
+  - id: install-learn
+    layout: walkthrough
+    title: "Installing the Learn App"
+    image: "@learn-install"
+    body: |
+      1. After claiming, tap "Start Learning"
+      2. CommCare will download the Learn app
+      3. Wait for the download to complete
+      4. The Learn modules will appear on your screen
+
+  - id: syncing
+    layout: content
+    title: "Keeping Your Data in Sync"
+    body: |
+      Your phone sends data to the server when you have internet.
+
+      - Always sync before starting work (pull latest updates)
+      - Sync after completing each form (push your data)
+      - If offline, your data is saved locally and syncs when you reconnect
+      - Look for the green check mark — it means sync is complete
