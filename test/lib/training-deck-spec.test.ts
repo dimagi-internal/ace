@@ -9,9 +9,13 @@ import {
   TrainingDeckSpecSchema,
   SlideSpecSchema,
   resolveManifest,
+  STENCILS,
+  buildSlidesRequestsV2,
+  type BuildOptsV2,
+  type StencilKey,
 } from '../../lib/training-deck-spec.js';
 
-const STENCILS = {
+const STENCILS_V1 = {
   title: STENCIL_TITLE_OBJECT_ID,
   content: STENCIL_CONTENT_OBJECT_ID,
 };
@@ -133,7 +137,7 @@ Subtitle line.
 
 > Speaker notes: say hi
 `);
-    const { mainRequests, speakerNotes } = buildSlidesRequests(spec, { stencils: STENCILS });
+    const { mainRequests, speakerNotes } = buildSlidesRequests(spec, { stencils: STENCILS_V1 });
 
     // First two requests: replace {{TITLE}} and {{SUBTITLE}} on the title stencil.
     expect((mainRequests[0] as any).replaceAllText.containsText.text).toBe('{{TITLE}}');
@@ -180,7 +184,7 @@ Subtitle line.
 
 ![](drive:abc123)
 `);
-    const { mainRequests } = buildSlidesRequests(spec, { stencils: STENCILS });
+    const { mainRequests } = buildSlidesRequests(spec, { stencils: STENCILS_V1 });
     const img = mainRequests.find((r: any) => r.createImage);
     expect((img as any).createImage.url).toBe(
       'https://drive.google.com/uc?export=view&id=abc123',
@@ -197,7 +201,7 @@ Subtitle line.
 
 ![](https://x.test/foo.png)
 `);
-    const { mainRequests } = buildSlidesRequests(spec, { stencils: STENCILS });
+    const { mainRequests } = buildSlidesRequests(spec, { stencils: STENCILS_V1 });
     const img = mainRequests.find((r: any) => r.createImage);
     expect((img as any).createImage.url).toBe('https://x.test/foo.png');
   });
@@ -211,7 +215,7 @@ Subtitle line.
 
 text
 `);
-    const { mainRequests } = buildSlidesRequests(spec, { stencils: STENCILS });
+    const { mainRequests } = buildSlidesRequests(spec, { stencils: STENCILS_V1 });
     const subRepl = mainRequests.find(
       (r: any) => r.replaceAllText?.containsText.text === '{{SUBTITLE}}',
     );
@@ -578,5 +582,251 @@ describe('resolveManifest', () => {
   it('handles empty manifest (both fields undefined)', () => {
     const resolved = resolveManifest({});
     expect(resolved.get('anything')).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// buildSlidesRequestsV2 — v2 builder for 14-stencil layouts
+// ============================================================================
+
+/** Build a full YAML spec string with the given slides YAML fragment. */
+function v2Yaml(slidesYaml: string): string {
+  return `
+slug: test-opp
+name: Test Training
+program: Test Program
+archetype: atomic-visit
+template_id: tmpl_abc
+generated_at: "2026-05-23T00:00:00Z"
+source:
+  pdd_doc_id: doc_123
+  run_id: run_456
+manifest:
+  common:
+    logo: drive:logo123
+    screen1: drive:scr1
+    screen2: drive:scr2
+    screen3: drive:scr3
+    screen4: drive:scr4
+    zoom_img: drive:zoom1
+    web_img: drive:web1
+    left_img: drive:left1
+    right_img: drive:right1
+voice:
+  audience: flw
+  estimated_duration_minutes: 15
+  language: en
+modules:
+  - id: m1
+    title: Module One
+    slides:
+${slidesYaml}
+`;
+}
+
+/** Build a BuildOptsV2 from the parsed spec, using STENCILS constant values as objectIds. */
+function v2Opts(yamlStr: string): BuildOptsV2 {
+  const spec = parseTrainingSpec(yamlStr);
+  const stencilMap = {} as Record<StencilKey, string>;
+  for (const [key, value] of Object.entries(STENCILS)) {
+    stencilMap[key as StencilKey] = value;
+  }
+  return {
+    stencils: stencilMap,
+    manifest: resolveManifest(spec.manifest),
+  };
+}
+
+describe('buildSlidesRequestsV2', () => {
+  it('emits duplicateObject for cover stencil', () => {
+    const yamlStr = v2Yaml(`
+      - id: s1
+        layout: cover
+        title: Welcome
+        subtitle: Hello
+        date: "2026-05-23"
+    `);
+    const spec = parseTrainingSpec(yamlStr);
+    const opts = v2Opts(yamlStr);
+    const reqs = buildSlidesRequestsV2(spec, opts);
+
+    const dup = reqs.find((r: any) => r.duplicateObject);
+    expect(dup).toBeTruthy();
+    expect((dup as any).duplicateObject.objectIds[STENCILS.cover]).toBe('ace_slide_1');
+  });
+
+  it('emits replaceAllText for content body', () => {
+    const yamlStr = v2Yaml(`
+      - id: s1
+        layout: content
+        title: Key Points
+        body: "Important information here."
+    `);
+    const spec = parseTrainingSpec(yamlStr);
+    const opts = v2Opts(yamlStr);
+    const reqs = buildSlidesRequestsV2(spec, opts);
+
+    const bodyRepl = reqs.find(
+      (r: any) =>
+        r.replaceAllText?.containsText.text === '{{BODY}}' &&
+        r.replaceAllText?.pageObjectIds?.[0] === 'ace_slide_1',
+    );
+    expect(bodyRepl).toBeTruthy();
+    expect((bodyRepl as any).replaceAllText.replaceText).toBe('Important information here.');
+  });
+
+  it('emits createImage for walkthrough with correct Drive URL', () => {
+    const yamlStr = v2Yaml(`
+      - id: s1
+        layout: walkthrough
+        title: Step by Step
+        image: "@screen1"
+        body: Follow along
+    `);
+    const spec = parseTrainingSpec(yamlStr);
+    const opts = v2Opts(yamlStr);
+    const reqs = buildSlidesRequestsV2(spec, opts);
+
+    const img = reqs.find((r: any) => r.createImage);
+    expect(img).toBeTruthy();
+    expect((img as any).createImage.url).toBe(
+      'https://drive.google.com/uc?export=view&id=scr1',
+    );
+    expect((img as any).createImage.elementProperties.pageObjectId).toBe('ace_slide_1');
+    // Verify right-half positioning
+    expect((img as any).createImage.elementProperties.transform.translateX).toBe(4572000);
+  });
+
+  it('emits 4 createImage for 4-step mobile_flow', () => {
+    const yamlStr = v2Yaml(`
+      - id: s1
+        layout: mobile_flow
+        title: App Flow
+        steps:
+          - image: "@screen1"
+            caption: Step 1
+          - image: "@screen2"
+            caption: Step 2
+          - image: "@screen3"
+            caption: Step 3
+          - image: "@screen4"
+            caption: Step 4
+    `);
+    const spec = parseTrainingSpec(yamlStr);
+    const opts = v2Opts(yamlStr);
+    const reqs = buildSlidesRequestsV2(spec, opts);
+
+    const imgs = reqs.filter((r: any) => r.createImage);
+    expect(imgs).toHaveLength(4);
+  });
+
+  it('emits stats replacements with unused slots cleared', () => {
+    const yamlStr = v2Yaml(`
+      - id: s1
+        layout: stats
+        title: Impact
+        stats:
+          - big: "95%"
+            label: Completion
+    `);
+    const spec = parseTrainingSpec(yamlStr);
+    const opts = v2Opts(yamlStr);
+    const reqs = buildSlidesRequestsV2(spec, opts);
+
+    // Stat 1 should be populated
+    const stat1 = reqs.find(
+      (r: any) =>
+        r.replaceAllText?.containsText.text === '{{STAT1}}' &&
+        r.replaceAllText?.pageObjectIds?.[0] === 'ace_slide_1',
+    );
+    expect(stat1).toBeTruthy();
+    expect((stat1 as any).replaceAllText.replaceText).toBe('95%');
+
+    const stat1Label = reqs.find(
+      (r: any) =>
+        r.replaceAllText?.containsText.text === '{{STAT1_LABEL}}' &&
+        r.replaceAllText?.pageObjectIds?.[0] === 'ace_slide_1',
+    );
+    expect(stat1Label).toBeTruthy();
+    expect((stat1Label as any).replaceAllText.replaceText).toBe('Completion');
+
+    // Stats 2 and 3 should be cleared (empty string)
+    const stat2 = reqs.find(
+      (r: any) =>
+        r.replaceAllText?.containsText.text === '{{STAT2}}' &&
+        r.replaceAllText?.pageObjectIds?.[0] === 'ace_slide_1',
+    );
+    expect(stat2).toBeTruthy();
+    expect((stat2 as any).replaceAllText.replaceText).toBe('');
+
+    const stat3 = reqs.find(
+      (r: any) =>
+        r.replaceAllText?.containsText.text === '{{STAT3}}' &&
+        r.replaceAllText?.pageObjectIds?.[0] === 'ace_slide_1',
+    );
+    expect(stat3).toBeTruthy();
+    expect((stat3 as any).replaceAllText.replaceText).toBe('');
+  });
+
+  it('emits deleteObject for all 14 stencils at the end', () => {
+    const yamlStr = v2Yaml(`
+      - id: s1
+        layout: cover
+        title: Welcome
+    `);
+    const spec = parseTrainingSpec(yamlStr);
+    const opts = v2Opts(yamlStr);
+    const reqs = buildSlidesRequestsV2(spec, opts);
+
+    const deletes = reqs.filter((r: any) => r.deleteObject);
+    expect(deletes).toHaveLength(14);
+
+    // All 14 stencil objectIds should appear in delete requests
+    const deletedIds = new Set(deletes.map((r: any) => r.deleteObject.objectId));
+    for (const stencilId of Object.values(STENCILS)) {
+      expect(deletedIds.has(stencilId)).toBe(true);
+    }
+  });
+
+  it('emits checklist body with checkbox characters', () => {
+    const yamlStr = v2Yaml(`
+      - id: s1
+        layout: checklist
+        title: Before You Go
+        items:
+          - Phone charged
+          - App installed
+    `);
+    const spec = parseTrainingSpec(yamlStr);
+    const opts = v2Opts(yamlStr);
+    const reqs = buildSlidesRequestsV2(spec, opts);
+
+    const bodyRepl = reqs.find(
+      (r: any) =>
+        r.replaceAllText?.containsText.text === '{{BODY}}' &&
+        r.replaceAllText?.pageObjectIds?.[0] === 'ace_slide_1',
+    );
+    expect(bodyRepl).toBeTruthy();
+    expect((bodyRepl as any).replaceAllText.replaceText).toBe(
+      '☐ Phone charged\n☐ App installed',
+    );
+  });
+
+  it('throws if layout has no matching stencil', () => {
+    const yamlStr = v2Yaml(`
+      - id: s1
+        layout: content
+        title: Test
+        body: Test body
+    `);
+    const spec = parseTrainingSpec(yamlStr);
+    const manifest = resolveManifest(spec.manifest);
+    // Pass stencils with missing 'content' key
+    const brokenStencils = { ...v2Opts(yamlStr).stencils };
+    delete (brokenStencils as any).content;
+
+    expect(() =>
+      buildSlidesRequestsV2(spec, { stencils: brokenStencils as any, manifest }),
+    ).toThrow(/no matching stencil/i);
   });
 });

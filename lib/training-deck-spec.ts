@@ -270,6 +270,285 @@ export function resolveManifest(manifest: {
   };
 }
 
+// ---------------------------------------------------------------------------
+// V2 stencil constants + builder
+// ---------------------------------------------------------------------------
+
+export const STENCILS = {
+  cover: 'ace_stencil_cover',
+  section: 'ace_stencil_section',
+  agenda: 'ace_stencil_agenda',
+  content: 'ace_stencil_content_v2',
+  walkthrough: 'ace_stencil_walkthrough',
+  mobile_flow: 'ace_stencil_mobile_flow',
+  web_screen: 'ace_stencil_web_screen',
+  mobile_zoom: 'ace_stencil_mobile_zoom',
+  two_column: 'ace_stencil_two_column',
+  stats: 'ace_stencil_stats',
+  timeline: 'ace_stencil_timeline',
+  checklist: 'ace_stencil_checklist',
+  exercise: 'ace_stencil_exercise',
+  closing: 'ace_stencil_closing',
+} as const;
+export type StencilKey = keyof typeof STENCILS;
+
+export interface BuildOptsV2 {
+  stencils: Record<StencilKey, string>;
+  manifest: ResolvedManifest;
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers for the v2 builder
+// ---------------------------------------------------------------------------
+
+function replaceAllTextV2(
+  token: string,
+  value: string,
+  pageIds: string[],
+): Record<string, unknown> {
+  return {
+    replaceAllText: {
+      containsText: { text: token, matchCase: true },
+      replaceText: value,
+      pageObjectIds: pageIds,
+    },
+  };
+}
+
+function createImage(
+  objectId: string,
+  pageObjectId: string,
+  url: string,
+  pos: { x: number; y: number; w: number; h: number },
+): Record<string, unknown> {
+  return {
+    createImage: {
+      objectId,
+      elementProperties: {
+        pageObjectId,
+        size: {
+          height: { magnitude: pos.h, unit: 'EMU' },
+          width: { magnitude: pos.w, unit: 'EMU' },
+        },
+        transform: {
+          scaleX: 1,
+          scaleY: 1,
+          translateX: pos.x,
+          translateY: pos.y,
+          unit: 'EMU',
+        },
+      },
+      url,
+    },
+  };
+}
+
+function buildLayoutRequests(
+  slide: SlideSpec_v2,
+  pageId: string,
+  manifest: ResolvedManifest,
+): Array<Record<string, unknown>> {
+  const reqs: Array<Record<string, unknown>> = [];
+  const r = (token: string, value: string) =>
+    reqs.push(replaceAllTextV2(token, value, [pageId]));
+
+  // All layouts get title
+  r('{{TITLE}}', slide.title);
+
+  switch (slide.layout) {
+    case 'cover':
+      r('{{SUBTITLE}}', slide.subtitle ?? '');
+      r('{{DATE}}', slide.date ?? '');
+      break;
+    case 'section':
+      // Title only — nothing extra
+      break;
+    case 'agenda':
+      r(
+        '{{BODY}}',
+        slide.items.map((i) => `${i.label}  —  ${i.duration}`).join('\n'),
+      );
+      break;
+    case 'content':
+      r('{{BODY}}', slide.body);
+      break;
+    case 'walkthrough':
+      r('{{BODY}}', slide.body);
+      reqs.push(
+        createImage(
+          `${pageId}_img_0`,
+          pageId,
+          manifest.resolveImageRef(slide.image),
+          { x: 4572000, y: 914400, w: 4114800, h: 3771900 },
+        ),
+      );
+      break;
+    case 'mobile_flow': {
+      const phoneWidth = 1828800;
+      const phoneGap = 228600;
+      const phoneHeight = 3200400;
+      const phoneY = 914400;
+      const totalSteps = slide.steps.length;
+      const groupWidth =
+        totalSteps * phoneWidth + (totalSteps - 1) * phoneGap;
+      const slideWidth = 9144000;
+      const startX = (slideWidth - groupWidth) / 2;
+
+      for (let i = 0; i < 4; i++) {
+        if (i < totalSteps) {
+          r(`{{STEP_${i}_CAPTION}}`, slide.steps[i].caption);
+          const x = startX + i * (phoneWidth + phoneGap);
+          reqs.push(
+            createImage(
+              `${pageId}_img_${i}`,
+              pageId,
+              manifest.resolveImageRef(slide.steps[i].image),
+              { x, y: phoneY, w: phoneWidth, h: phoneHeight },
+            ),
+          );
+        } else {
+          r(`{{STEP_${i}_CAPTION}}`, '');
+        }
+      }
+      break;
+    }
+    case 'web_screen':
+      r('{{CAPTION}}', slide.caption ?? '');
+      reqs.push(
+        createImage(
+          `${pageId}_img_0`,
+          pageId,
+          manifest.resolveImageRef(slide.image),
+          { x: 457200, y: 1143000, w: 8229600, h: 3429000 },
+        ),
+      );
+      break;
+    case 'mobile_zoom':
+      r(
+        '{{CALLOUTS}}',
+        (slide.callouts ?? []).map((c) => `• ${c}`).join('\n'),
+      );
+      reqs.push(
+        createImage(
+          `${pageId}_img_0`,
+          pageId,
+          manifest.resolveImageRef(slide.image),
+          { x: 2286000, y: 685800, w: 2743200, h: 4000500 },
+        ),
+      );
+      break;
+    case 'two_column':
+      r('{{LEFT_HEADING}}', slide.left.heading);
+      r('{{LEFT_BODY}}', slide.left.body);
+      r('{{RIGHT_HEADING}}', slide.right.heading);
+      r('{{RIGHT_BODY}}', slide.right.body);
+      if (slide.left.image) {
+        reqs.push(
+          createImage(
+            `${pageId}_img_left`,
+            pageId,
+            manifest.resolveImageRef(slide.left.image),
+            { x: 457200, y: 2743200, w: 3886200, h: 1943100 },
+          ),
+        );
+      }
+      if (slide.right.image) {
+        reqs.push(
+          createImage(
+            `${pageId}_img_right`,
+            pageId,
+            manifest.resolveImageRef(slide.right.image),
+            { x: 4800600, y: 2743200, w: 3886200, h: 1943100 },
+          ),
+        );
+      }
+      break;
+    case 'stats':
+      for (let i = 0; i < 3; i++) {
+        if (i < slide.stats.length) {
+          r(`{{STAT${i + 1}}}`, slide.stats[i].big);
+          r(`{{STAT${i + 1}_LABEL}}`, slide.stats[i].label);
+        } else {
+          r(`{{STAT${i + 1}}}`, '');
+          r(`{{STAT${i + 1}_LABEL}}`, '');
+        }
+      }
+      break;
+    case 'timeline':
+      for (let i = 0; i < 5; i++) {
+        if (i < slide.steps.length) {
+          r(`{{STEP${i + 1}_LABEL}}`, slide.steps[i].label);
+          r(`{{STEP${i + 1}_DETAIL}}`, slide.steps[i].detail);
+        } else {
+          r(`{{STEP${i + 1}_LABEL}}`, '');
+          r(`{{STEP${i + 1}_DETAIL}}`, '');
+        }
+      }
+      break;
+    case 'checklist':
+      r('{{BODY}}', slide.items.map((item) => `☐ ${item}`).join('\n'));
+      break;
+    case 'exercise':
+      r('{{DURATION}}', slide.duration);
+      r('{{BODY}}', slide.body);
+      break;
+    case 'closing':
+      r('{{BODY}}', slide.body);
+      break;
+  }
+
+  return reqs;
+}
+
+/**
+ * Build Slides API `batchUpdate` requests from a v2 `TrainingDeckSpec`.
+ *
+ * For each module → each slide: duplicates the matching stencil, emits
+ * layout-specific `replaceAllText` and `createImage` requests. After all
+ * slides, emits `deleteObject` for all 14 stencils.
+ */
+export function buildSlidesRequestsV2(
+  spec: TrainingDeckSpec,
+  opts: BuildOptsV2,
+): Array<Record<string, unknown>> {
+  const requests: Array<Record<string, unknown>> = [];
+  let slideCounter = 0;
+
+  for (const mod of spec.modules) {
+    for (const slide of mod.slides) {
+      slideCounter++;
+      const newSlideId = `ace_slide_${slideCounter}`;
+      const stencilKey = slide.layout as StencilKey;
+      const stencilId = opts.stencils[stencilKey];
+      if (!stencilId) {
+        throw new Error(
+          `buildSlidesRequestsV2: no matching stencil for layout "${slide.layout}"`,
+        );
+      }
+
+      // Duplicate the stencil slide
+      requests.push({
+        duplicateObject: {
+          objectId: stencilId,
+          objectIds: { [stencilId]: newSlideId },
+        },
+      });
+
+      // Emit layout-specific replacements and images
+      requests.push(
+        ...buildLayoutRequests(slide, newSlideId, opts.manifest),
+      );
+    }
+  }
+
+  // Delete all 14 stencils
+  for (const stencilId of Object.values(STENCILS)) {
+    requests.push({ deleteObject: { objectId: stencilId } });
+  }
+
+  return requests;
+}
+
 // ============================================================================
 // Original markdown-based DeckSpec (v1) — preserved below
 // ============================================================================
