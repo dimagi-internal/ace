@@ -17,7 +17,7 @@ describe("DecisionRowSchema", () => {
       "ai-default": "5–8",
       options_considered: ["3–5", "10–15", "20+"],
       source: "idea.md §2; atomic-visit archetype norm",
-      status: "applied",
+      status: "ai-default",
     };
     expect(() => DecisionRowSchema.parse(row)).not.toThrow();
   });
@@ -39,7 +39,7 @@ describe("DecisionRowSchema", () => {
       "ai-default": "x",
       options_considered: [],
       source: "x",
-      status: "applied",
+      status: "ai-default",
     };
     expect(() => DecisionRowSchema.parse(row)).toThrow();
   });
@@ -58,7 +58,7 @@ describe("DecisionRowSchema", () => {
       "ai-default": "x",
       options_considered: [],
       source: "x",
-      status: "applied",
+      status: "ai-default",
     };
     expect(() => DecisionRowSchema.parse(row)).toThrow();
   });
@@ -72,7 +72,7 @@ describe("DecisionRowSchema", () => {
       "ai-default": "5–8",
       options_considered: ["3–5", ""],
       source: "x",
-      status: "applied",
+      status: "ai-default",
     };
     expect(() => DecisionRowSchema.parse(row)).toThrow();
   });
@@ -114,7 +114,7 @@ describe("DecisionRowSchema", () => {
       "ai-default": 5,  // must be string
       options_considered: [],
       source: "x",
-      status: "applied",
+      status: "ai-default",
     };
     expect(() => DecisionRowSchema.parse(row)).toThrow();
   });
@@ -158,7 +158,7 @@ describe("DecisionRowSchema", () => {
       override: "y",
       options_considered: [],
       source: "x",
-      status: "applied",
+      status: "ai-default",
     };
     expect(() => DecisionRowSchema.parse(row)).toThrow(/override/);
   });
@@ -202,7 +202,7 @@ describe("DecisionsLogSchema", () => {
           "ai-default": "5–8",
           options_considered: [],
           source: "x",
-          status: "applied",
+          status: "ai-default",
         },
         {
           id: "flw-count",  // duplicate
@@ -212,7 +212,7 @@ describe("DecisionsLogSchema", () => {
           "ai-default": "5–8",
           options_considered: [],
           source: "x",
-          status: "applied",
+          status: "ai-default",
         },
       ],
     };
@@ -296,7 +296,7 @@ describe("serializeDecisionsLog", () => {
       "ai-default": "5–8",
       options_considered: ["3–5", "10–15"],
       source: "idea.md §2",
-      status: "applied" as const,
+      status: "ai-default" as const,
     },
   ];
 
@@ -358,7 +358,7 @@ describe("serializeDecisionsLog", () => {
           "ai-default": "≥90%",
           options_considered: ["≥85%", "≥95%"],
           source: "stress-test verifiability dimension",
-          status: "applied" as const,
+          status: "ai-default" as const,
         },
       ],
     };
@@ -389,7 +389,7 @@ decisions:
     const log = parseDecisionsYaml(yaml);
     expect(log.schema_version).toBe(2);
     expect(log.decisions[0]!["ai-default"]).toBe("5–8");
-    expect(log.decisions[0]!.status).toBe("applied");
+    expect(log.decisions[0]!.status).toBe("ai-default");
     expect(log.decisions[0]!.override).toBeUndefined();
   });
 
@@ -410,7 +410,7 @@ decisions:
     status: open
 `;
     const log = parseDecisionsYaml(yaml);
-    expect(log.decisions[0]!.status).toBe("applied");
+    expect(log.decisions[0]!.status).toBe("ai-default");
   });
 
   it("upgrades v1 overridden row by copying ai-default into override", () => {
@@ -467,7 +467,7 @@ describe("effectiveValue", () => {
       "ai-default": "5–8",
       options_considered: [],
       source: "x",
-      status: "applied" as const,
+      status: "ai-default" as const,
     };
     expect(effectiveValue(row)).toBe("5–8");
   });

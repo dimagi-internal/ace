@@ -38,7 +38,7 @@ export const DecisionRowSchema = z
     override: z.string().min(1).optional(),
     options_considered: z.array(z.string().min(1)),
     source: z.string().min(1),
-    status: z.enum(["applied", "overridden"]),
+    status: z.enum(["ai-default", "overridden"]),
     notes: z.string().optional(),
   })
   .superRefine((row, ctx) => {
@@ -49,7 +49,7 @@ export const DecisionRowSchema = z
         path: ["override"],
       });
     }
-    if (row.status === "applied" && row.override !== undefined) {
+    if (row.status === "ai-default" && row.override !== undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "status=applied must not have `override` field",
@@ -146,7 +146,7 @@ function maybeUpgradeFromV1(raw: unknown): unknown {
     }
 
     if (out["status"] === "open") {
-      out["status"] = "applied";
+      out["status"] = "ai-default";
     }
 
     if (out["status"] === "overridden" && !("override" in out)) {
