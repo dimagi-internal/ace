@@ -502,9 +502,27 @@ phases:
         verdict: pass | warn | fail | incomplete | <skill-specific>
         started_at: <ISO>
         completed_at: <ISO>
-        artifacts:                          # whatever Drive fileIds the skill produced
+        artifact: <relative path>           # REQUIRED when status: done — the primary artifact
+        file_id: <Drive fileId>             # REQUIRED when status: done — Drive file ID
+        artifacts:                          # additional Drive fileIds if the skill produces multiple
           <name>: <fileId>
 ```
+
+**`artifact` is required on every `status: done` step.** A step entry
+with `status: done` but no `artifact` field renders as an unfilled circle
+in ace-web (the UI keys the completion indicator on artifact presence,
+not status). This is not cosmetic — it also means the Producer Artifact
+Verifier cannot check whether the file actually landed on Drive. If a
+step genuinely produces no file (e.g. `app-release` mutates HQ state
+but doesn't write a standalone doc), write a one-line summary to Drive
+and reference it. The cost of a trivial summary file is near-zero; the
+cost of a missing `artifact` field is a silent gap in the run's audit
+trail.
+
+**Why:** `malaria-itn-app/20260523-0750` Phase 3 had `app-connect-coverage`
+and `app-release` recorded as `status: complete, verdict: pass` with no
+`artifact` field. ace-web rendered both as unfilled circles (5/7 done).
+The steps did run — the orchestrator just didn't write the reference.
 
 (0.13.116: there is no longer a separate `gates.<name>` flip step.
 Pause-point status at runtime is derived from `phases.<phase>.status` +
