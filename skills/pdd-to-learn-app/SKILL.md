@@ -182,6 +182,33 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
      See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
      § Bug 3 for the full failure analysis.
+   - **REQUIRED — `user_score` MUST be a PERCENTAGE (0-100), not a raw
+     point sum.** Connect's `passing_score` field on each assessment is
+     on a 0-100 scale — `passing_score: 80` means "pass at 80%."
+     Insert this paragraph **verbatim** into the brief, in its own
+     paragraph, prefixed `REQUIRED:`:
+
+     > REQUIRED: The `user_score` hidden field on every quiz form MUST
+     > compute a PERCENTAGE on the 0-100 scale, NOT a raw point sum.
+     > Formula: `(q1_score + q2_score + ... + qN_score) * 100 div N`
+     > where N is the total number of scored questions in that quiz.
+     > For a 5-question quiz where each `qK_score` is `if(correct, 1, 0)`,
+     > the calculate expression is:
+     > `(#form/q1_score + #form/q2_score + #form/q3_score + #form/q4_score + #form/q5_score) * 100 div 5`
+     > This produces 0 (0%), 20, 40, 60, 80, or 100 (100%).
+     > Connect's `passing_score` is ALWAYS 80 (= 80%) for ACE-built
+     > Learn apps. With percentage scoring, 80 means "at least 4 of 5
+     > correct" on a 5-Q quiz, "at least 4 of 4" on a 4-Q quiz
+     > (rounds to 100, so 3/4 = 75 < 80 = fail, 4/4 = 100 >= 80 = pass),
+     > and "at least 7 of 8" on an 8-Q quiz (7/8 = 87.5 >= 80 = pass).
+     > Do NOT emit `user_score` as a raw sum (e.g. 4 out of 5) — Connect
+     > compares the raw number against 80 and the FLW always fails.
+
+     Reproducer: malaria-rdt run 20260523-1257 Phase 6 — J1 Deliver
+     smoke blocked at the Learn assessment screen with "Training Failed:
+     score 5, passing score 80". The architect summed raw points (max 5
+     for a 5-Q quiz) but Connect compared 5 < 80 and gated the FLW.
+     The FLW answered every question correctly but still "failed."
    - **REQUIRED — Learn forms must NOT carry `<case>` blocks.** Connect's
      Learn-app contract is form-only; case state is the Deliver app's
      domain. Insert this paragraph **verbatim** into the brief, in its
@@ -439,4 +466,5 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-05-15 | **focus-group archetype becomes a no-op for this skill.** The FGD operational model captures content in a gdoc (not a CommCare form) and trains facilitators out-of-band (OCS chatbot + handbook gdoc + coordinator-graded practice-session audio review), so no Learn app is produced. Step 1a short-circuits with a `skipped` summary; § Archetypes § focus-group rewritten to document the skip. Prompted by `malaria-itn-fgd/20260514-2007` post-run reframe; see `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
 | 2026-05-15 | **focus-group switches from no-op to minimal sentinel pattern.** Re-run `malaria-itn-fgd/20260514-2352` Phase 4 surfaced a hard blocker: `connect_create_opportunity` requires `learn_app` at the schema, REST, and validator layers. Operator chose per-opp sentinel (one minimal 1-form readiness check, ~7 fields, both Connect markers, ~1-2 min build) over a server-side fix. Step 1a no longer short-circuits — focus-group runs the full skill flow but with the sentinel-shaped brief documented in § Archetypes § focus-group. Sentinel doubles as in-app readiness gate: facilitator must `acknowledge_readiness = yes` (coordinator-confirmed practice-session-pass) before they're cleared to submit attestations. | ACE team |
+| 2026-05-23 | **`user_score` must be percentage (0-100), not raw sum.** Connect's `passing_score` is on a 0-100 scale (80 = 80%). Raw-sum scoring produces max 5 for a 5-Q quiz; Connect compares 5 < 80 and the FLW always fails even with perfect answers. New REQUIRED paragraph instructs the architect to compute `user_score = (sum of per-Q scores) * 100 div N`. Reproducer: malaria-rdt run 20260523-1257 Phase 6 — "Training Failed: score 5, passing score 80" with all answers correct. | ACE team |
 | 2026-05-21 | **Forbid `<case>` blocks in Learn forms.** Added a new REQUIRED paragraph to Step 3 instructing the architect to NOT declare `case_type` on Learn modules, NOT create cases from Learn registration forms, and NOT bind any field to a case property via `case_property_on`. Calibration scores / pass flags / `user_score` MUST live as form-level hidden fields only. Reason: `commcare-form-patch` (Step 8 wrapper-strip) hits `cchq-vellum-cache-drift` whenever a patched form carries a `<case>` block — CCHQ's Vellum form-designer cache isn't refreshed by `edit_form_attr`, and `make_build` rejects with "Cannot use Case Management UI if you already have a case block in your form." Reproducer: `malaria-itn-app/20260521-1400` Phase 3 — architect bound `standardization_gate_cleared` + `*_passed` flags to case properties, all 6 Learn forms blocked at form-patch, Phase 6 then halted on Connect → Learn CCZ install with "Unknown failure during app install." Removal criteria: drop the rule when voidcraft-labs/nova-plugin#7 ships (no wrappers → no patcher → no drift class) OR when `commcare_patch_xform` gains Vellum-cache invalidation. | ACE team |
