@@ -2,7 +2,7 @@
 
 **Date**: 2026-04-29 (initial), updated 2026-04-30 with Bug 3 + Bug 1 mitigation confirmation
 **Context**: turmeric-market-survey-2026-04-28 dogfood and turmeric-20260429-2330 follow-up. After Phase 3 Step 2 created the Connect opp, `Sync Deliver Units` returned `Delivery unit sync completed.` but `connect_list_deliver_units` came back empty. Root cause traced through Connect's source (`commcare_connect.opportunity.app_xml.get_deliver_units_for_app`) to the released CCZ's form XML lacking `<learn:deliver>` elements.
-**Status**: Active — bugs 1, 2, and 3 are in `voidcraft-labs/nova-plugin` and need upstream fixes. ACE-side mitigations shipped in 0.10.5; Bug 1 mitigation **confirmed working** in 2026-04-30 turmeric-20260429-2330 run (explicit Connect language in autobuild brief → markers populated on first try with non-empty entity expressions).
+**Status**: Resolved — all bugs fixed upstream. This file is retained as a historical reference for the failure classes and how the defensive checks work. Skills should not treat these bugs as active risks.
 
 ## Problem
 
@@ -84,9 +84,19 @@ the architect prompt has it. Belt and suspenders. The
 the "vague spec slipped through" case — but with proper prompt
 discipline upstream it should usually be a no-op.
 
-### Bug 2: `update_form deliver_unit` schema only accepts `name`, runtime auto-fills broken `entity_id`/`entity_name`
+### Bug 2: `update_form deliver_unit` schema only accepts `name`, runtime auto-fills broken `entity_id`/`entity_name` — FIXED 2026-05-23
 
-Workaround for Bug 1 is to run `/nova:edit` and call `update_form` per
+**Status: Resolved.** Nova's `update_form` schema now exposes `entity_id`
+and `entity_name` as first-class optional fields on `deliver_unit`, with
+sensible defaults (`entity_id` defaults to `concat(#user/username, '-', today())`,
+`entity_name` defaults to `#user/username`). Both round-trip correctly
+through Firestore after #6's merge→replace fix. Verified live 2026-05-23
+against `onyIxf7jEqGKv8HmcTIS` — `entity_id: "#case/case_id"` and
+`entity_name: "#case/case_name"` persisted exactly as passed on re-fetch.
+
+**Original bug description (for history):**
+
+Workaround for Bug 1 was to run `/nova:edit` and call `update_form` per
 form to add the missing `connect.deliver_unit` block. But:
 
 ```
@@ -98,8 +108,8 @@ nova_update_form(connect={deliver_unit: {name: "Vendor visit"}})
     }
 ```
 
-The runtime adds two extra fields with empty defaults. On the next
-upload, CCHQ's build rejects with:
+The runtime added two extra fields with empty defaults. On the next
+upload, CCHQ's build rejected with:
 
 ```
 Validation Error:
@@ -108,9 +118,9 @@ Validation Error:
   Bad node: org.javarosa.xpath.parser.ast.ASTNodeAbstractExpr
 ```
 
-Passing `entity_id`/`entity_name` in the `update_form` call doesn't
-work — the schema validator strips them (the published JSONSchema for
-`deliver_unit` declares only `name`). Result: there's no path for ACE
+Passing `entity_id`/`entity_name` in the `update_form` call didn't
+work — the schema validator stripped them (the published JSONSchema for
+`deliver_unit` declared only `name`). Result: there was no path for ACE
 to set non-empty values via the public Nova API.
 
 Note: Bug 2 affects only `deliver_unit`. `learn_module` and

@@ -305,14 +305,13 @@ procedure below to rediscover.
    discover it, GET the wizard page and read the `hx-post` attribute on
    the Sync Deliver Units button.
 
-## Known Nova bugs
+## Connect-marker verification
 
-See `voidcraft-labs/nova-plugin#1` for the upstream tracker (autobuild
-skips Connect markers; `update_form` strips fields not in the published
-schema and the runtime injects empty `entity_id`/`entity_name` that
-serialize as invalid XPath). The `app-connect-coverage` skill (Phase 3
-Step 1.5) is the place that detects and reports these — this skill
-just consumes its `clean | blocked` verdict.
+The `app-connect-coverage` skill (Phase 3 Step 1.5) verifies and
+auto-fixes Connect markers before deploy — this skill consumes its
+`clean | blocked` verdict. Step 6's CCZ structural verification
+(grep for `<learn:deliver>` / `<learn:module>` counts) is the
+post-release boundary check.
 
 5. **Update 3-commcare/app-deploy_summary.md.**
    Append a `releases` block to the frontmatter with the new build IDs and
