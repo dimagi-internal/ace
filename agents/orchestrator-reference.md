@@ -65,8 +65,8 @@ phases:
     training-flw-guide: pending
     training-quick-reference: pending
     training-faq: pending
-    training-deck-outline: pending
-    training-deck-build: pending          # skipped if ACE_TRAINING_DECK_TEMPLATE_ID unset
+    training-deck-generate: pending
+    training-deck-render: pending         # skipped if ACE_TRAINING_DECK_TEMPLATE_ID unset
     training-onboarding-email: pending    # last — links to other docs by URL
   solicitation-management:  # Phase 8 — added 0.12.0
     solicitation-create: pending

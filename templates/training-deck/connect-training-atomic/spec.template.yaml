@@ -1,0 +1,49 @@
+slug: "{{OPP_SLUG}}"
+name: "{{OPP_NAME}}"
+program: "{{PROGRAM_NAME}}"
+archetype: atomic-visit
+template_id: connect-training-atomic
+generated_at: "{{GENERATED_AT}}"
+source:
+  pdd_doc_id: "{{PDD_DOC_ID}}"
+  run_id: "{{RUN_ID}}"
+
+manifest:
+  common: "{{COMMON_MANIFEST}}"
+  opp: "{{OPP_MANIFEST}}"
+
+voice:
+  audience: flw
+  estimated_duration_minutes: "{{DURATION}}"
+  language: "{{LANGUAGE}}"
+
+modules:
+  - id: welcome
+    title: "Welcome & Introductions"
+    slides:
+      - id: cover
+        layout: cover
+        title: "{{OPP_NAME}}"
+        subtitle: "FLW Training — {{DATE}}"
+        date: "{{DATE}}"
+      - id: agenda
+        layout: agenda
+        title: "Today's Agenda"
+        items: "{{AGENDA_ITEMS}}"
+      - id: icebreaker
+        layout: exercise
+        title: "{{ICEBREAKER_TITLE}}"
+        duration: "{{ICEBREAKER_DURATION}}"
+        body: "{{ICEBREAKER_BODY}}"
+
+  - id: your-opportunity
+    title: "Your Opportunity"
+    slides: "{{OPP_SLIDES}}"
+
+  - id: practice
+    title: "Practice & Hands-On"
+    slides: "{{PRACTICE_SLIDES}}"
+
+  - id: evaluation
+    title: "Evaluation & Next Steps"
+    slides: "{{EVALUATION_SLIDES}}"

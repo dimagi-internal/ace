@@ -170,7 +170,7 @@ rerun. The LLO guide and FLW guide have very different audiences and
 benefit from different prompts and self-eval criteria.
 
 This is the **third of the per-artifact training skills**, after
-`training-deck-outline` (0.10.79) and `training-flw-guide` (0.10.83).
+`training-deck-generate` (0.10.79) and `training-flw-guide` (0.10.83).
 
 ## Change Log
 

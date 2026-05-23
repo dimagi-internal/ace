@@ -1,0 +1,24 @@
+id: resources
+title: "Resources & Help"
+slides:
+  - id: where-to-get-help
+    layout: content
+    title: "Where to Get Help"
+    body: |
+      - OCS Chatbot: Available 24/7 in the Connect app — ask any question about your work
+      - Your LLO Manager: {{LLO_CONTACT}} — for scheduling, logistics, and urgent issues
+      - Quick Reference Card: Keep it with you in the field
+      - FAQ Document: Answers to the most common questions
+
+  - id: closing
+    layout: closing
+    title: "Thank You"
+    body: |
+      You are ready to make a difference.
+
+      Remember:
+      - Complete your Learn modules before going into the field
+      - Use the chatbot whenever you have questions
+      - Your LLO manager is here to support you
+
+      Good luck!

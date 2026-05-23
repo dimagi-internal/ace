@@ -229,7 +229,7 @@ call. Splitting per artifact gives:
   FLW guide, not the other 4 artifacts.
 
 This is the **second of the per-artifact training skills**, after
-`training-deck-outline`. Planned siblings (next migration cycles):
+`training-deck-generate`. Planned siblings (next migration cycles):
 - `training-llo-guide` — `llo-manager-guide.md`
 - `training-quick-reference` — `quick-reference.md`
 - `training-faq` — `faq.md`

@@ -22,7 +22,7 @@ once when the Connect APK updates and the previous baseline goes stale.
 ## Products
 
 - `ACE/_common/connect-screenshots/<connect-version>/*.png` — per-Connect-version PNGs (stable cross-opp path)
-- `ACE/_common/connect-screenshots/<connect-version>/manifest.yaml` — fileId/alias index consumed by `training-flw-guide` and `training-deck-outline`
+- `ACE/_common/connect-screenshots/<connect-version>/manifest.yaml` — fileId/alias index consumed by `training-flw-guide` and `training-deck-generate`
 
 ## Why this skill exists
 
@@ -38,7 +38,7 @@ ACE training decks layer two pools of screenshots:
 Without this layering, every Phase 6 burns AVD time re-capturing the same
 20+ Connect-navigation screenshots. With it, those screenshots are captured
 once per Connect version, sit at a stable Drive path, and the per-opp
-training-flw-guide / training-deck-outline skills embed them by reference.
+training-flw-guide / training-deck-generate skills embed them by reference.
 
 ## When to run
 

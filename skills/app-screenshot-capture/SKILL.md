@@ -33,7 +33,7 @@ point at `app-test-cases`.
 ## Products
 
 - `6-qa-and-training/screenshots/<journey-id>/<step-name>.png` — per-step PNGs (anyone-with-link permission set at upload for Slides ingest)
-- `6-qa-and-training/app-screenshot-capture_manifest.yaml` — fileId/alias index consumed by `training-flw-guide` and `training-deck-outline`
+- `6-qa-and-training/app-screenshot-capture_manifest.yaml` — fileId/alias index consumed by `training-flw-guide` and `training-deck-generate`
 - `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` — thin per-app UX smoke verdict
 
 Per-opp content only. Common Connect navigation screenshots come from
@@ -307,7 +307,7 @@ For each of the two smoke journeys (Learn first, then Deliver), call
   via `drive_upload_binary` with `shareAnyoneWithLink: true` AND
   `mimeType: "image/png"`.
 - **CRITICAL:** the `shareAnyoneWithLink: true` flag is required.
-  Slides' `createImage` (used by `training-deck-build` downstream)
+  Slides' `createImage` (used by `training-deck-render` downstream)
   fetches PNGs via Google's image-import service, which doesn't carry
   the SA's auth — so an SA-only file gets "image cannot be reached"
   and the deck slide comes out blank. Setting anyone-with-link at
@@ -372,7 +372,7 @@ naming the specific failure + remediation rather than a generic
 Link each captured PNG back to (a) its journey id (`J<n>`), (b) its
 `takeScreenshot:` step label, (c) its Drive path. This is the input
 shape the per-artifact training skills (`training-flw-guide`,
-`training-deck-outline`) consume.
+`training-deck-generate`) consume.
 
 ### Step 7: Thin UX smoke judge
 

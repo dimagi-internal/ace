@@ -1,0 +1,200 @@
+---
+name: training-deck-generate
+description: >
+  Generate a training deck spec.yaml from PDD, app summaries, screenshot
+  manifests, and a template bundle. The spec is the source of truth for the
+  training deck — training-deck-render produces Google Slides from it.
+disable-model-invocation: true
+---
+
+# Training Deck Generate
+
+Produce a `training-deck-spec.yaml` — the structured spec that
+`training-deck-render` parses into a real Google Slides deck. Replaces
+the legacy `training-deck-outline` skill, which emitted a markdown
+outline; the spec format is machine-parseable and template-driven.
+
+## When to run
+
+Phase 6 (`qa-and-training`), after `app-screenshot-capture` completes.
+Upstream of `training-deck-render`.
+
+## Inputs (read from Drive)
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | Opportunity description, requirements, targets |
+| Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-learn-app_summary.md` | Learn app structure, form names, module names |
+| Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | Deliver app structure, form names, module names |
+| Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` | Platform setup screenshots |
+| Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` | Per-opp app screenshots |
+| Current run | `run_state.yaml` | Opportunity metadata, payment info, verification rules |
+| Plugin repo | `templates/training-deck/connect-training-atomic/` | Skeleton + generation prompt |
+
+## Output
+
+Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`.
+
+## Process
+
+1. **Read archetype from PDD.** Parse the `Archetype:` line from PDD
+   frontmatter. Default to `atomic-visit` if absent.
+
+2. **Select template bundle.** Map archetype to template directory
+   under `templates/training-deck/`:
+   - `atomic-visit` → `connect-training-atomic`
+   - `focus-group` → `connect-training-fgd` (future)
+   - `multi-stage` → `connect-training-multistage` (future)
+
+   If the archetype's template doesn't exist yet, fall back to
+   `connect-training-atomic` and emit a WARN in the verdict.
+
+3. **Read template bundle.** Three files from the selected template
+   directory:
+   - `template.yaml` — template metadata (name, archetype, version)
+   - `spec.template.yaml` — the spec skeleton with `{{placeholder}}`
+     tokens
+   - `generate.prompt.md` — the generation prompt with layout selection
+     rules and content guidance
+
+4. **Read all inputs.** Drive paths in the table above:
+   - PDD (`idea-to-pdd.md`)
+   - Learn app summary (`pdd-to-learn-app_summary.md`)
+   - Deliver app summary (`pdd-to-deliver-app_summary.md`)
+   - `run_state.yaml` (for `connect.payment_units`,
+     `connect.verification_flags`, opportunity metadata)
+
+5. **Read screenshot manifests.** Build a merged manifest map
+   `{ alias -> {file_id, drive_url} }`:
+   - Common-pool aliases from
+     `ACE/_common/connect-screenshots/<v>/manifest.yaml` (e.g.,
+     `connect-signin-splash`, `claim-opp-detail`)
+   - Per-opp aliases from
+     `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`
+     (e.g., `learn-mod-1-step-3`, `deliver-form-photo-step-1`)
+
+   Cross-pool alias collisions: per-opp wins (more specific).
+
+6. **Read common modules.** Load shared module fragments from
+   `templates/training-deck/_common/`:
+   - `platform-setup.yaml` — Connect sign-in, claim, install slides
+   - `facilitation.yaml` — ice-breaker pool, group exercise patterns
+   - `resources.yaml` — help contacts, support links template
+
+7. **Fill the spec skeleton.** Following the generation prompt
+   instructions, produce a complete spec with 6 modules:
+
+   - **`welcome`** module: cover slide (title, subtitle, date
+     placeholder), agenda slide, ice-breaker slide from facilitation
+     pool
+   - **`platform-setup`** module: include `_common/platform-setup.yaml`
+     verbatim — Connect sign-in, claim opportunity, install app steps
+     with common-pool screenshot refs
+   - **`your-opportunity`** module: generate slides from PDD content
+     using layout selection rules in the generation prompt. One slide
+     per Deliver form section with the relevant per-opp screenshot,
+     bullet list of "what to do here", and speaker notes. Learn app
+     overview slide with module names and assessment threshold.
+   - **`practice`** module: generate exercises from facilitation
+     patterns — role-play scenarios, app walkthrough exercise, Q&A
+     prompt
+   - **`evaluation`** module: checklist slide from PDD acceptance
+     criteria, timeline-to-go-live slide, "what happens next" framing
+   - **`resources`** module: include `_common/resources.yaml`, replace
+     `{{LLO_CONTACT}}` with "your LLO manager", add OCS widget URL
+     from `ocs-setup_widget-handoff.md` if available
+
+8. **Validate the generated spec.** Check against
+   `TrainingDeckSpecSchema` (Zod schema from
+   `lib/training-deck-spec.ts`). Fix any validation errors before
+   writing. Every `@alias` image ref must resolve against the merged
+   manifest from step 5.
+
+9. **Write** `training-deck-spec.yaml` to
+   `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
+   via `drive_create_file`. Overwrite if it already exists.
+
+10. **Self-evaluate (LLM-as-Judge inline).** Four criteria:
+
+    - **Module coverage:** all 6 modules present (`welcome`,
+      `platform-setup`, `your-opportunity`, `practice`, `evaluation`,
+      `resources`). FAIL if any missing.
+    - **Content concreteness:** no placeholder text (`{{...}}`)
+      remaining in the final spec. FAIL if any found.
+    - **Image ref validity:** all `@alias` refs in walkthrough and
+      mobile_flow slides resolve against the merged manifest. FAIL if
+      any unresolvable.
+    - **Slide count:** total slides in 25-50 range. WARN if outside.
+
+    Write a verdict YAML to
+    `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-generate_verdict.yaml`
+    in the standard shape (see `lib/verdict-schema.ts`). `passed: true`
+    only if the first three criteria pass (slide count is WARN-only).
+
+11. **Hand off.** Print the spec's Drive URL + the verdict summary.
+    Phase 6 orchestrator dispatches `training-deck-render` next.
+
+## Archetypes
+
+- **`atomic-visit`** (default): Standard 6-module deck. Module 3
+  (`your-opportunity`) focuses on the single-visit delivery workflow —
+  one slide per Deliver form section.
+- **`focus-group`**: Module 3 restructured around FGD facilitation —
+  session prep, running the FGD, attestation form, gdoc writing. Uses
+  template `connect-training-fgd` (future).
+- **`multi-stage`**: Per-stage sub-modules within Module 3. Each stage
+  gets its own slides; follow-up stages treat the FLW as a returning
+  user. Uses template `connect-training-multistage` (future).
+
+## MCP Tools Used
+
+- `ace-gdrive`: `drive_read_file`, `drive_create_file`,
+  `drive_list_folder`
+
+No live Slides API or AVD — this skill is pure spec generation. The
+Slides side is `training-deck-render`'s job.
+
+## Mode Behavior
+
+- **Auto:** Run end-to-end. Write spec, write verdict.
+- **Review:** Pause after step 8 (validation), present the generated
+  spec, resume on approval.
+- **Dry-run:** Steps 1-8 in memory, skip `drive_create_file`. Verdict
+  written with `dry_run: true`.
+
+## Products
+
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-generate_verdict.yaml`
+- `run_state.yaml.phases.qa-and-training.products.training.docs.deck_spec` — `{file_id, title: "Training deck spec", web_view_link}` typed handoff. Multi-writer block: apply via read-modify-write per `skills/synthetic-data-generate/SKILL.md § Step 6`. See `agents/qa-and-training.md § Products` for the full slot table.
+
+## Downstream
+
+`training-deck-render` reads `training-deck-spec.yaml` to produce
+Google Slides. The spec is the single source of truth for the deck
+content — render never invents content, it only lays out what the spec
+declares.
+
+## Why this replaces training-deck-outline
+
+The legacy `training-deck-outline` emitted a markdown outline with
+inline `drive:<fileId>` refs and `## Slide:` markers. That format was
+loosely structured: `parseDeckOutline` was brittle, image refs were
+resolved during generation (not validated against a manifest), and the
+outline mixed content decisions with layout hints.
+
+The spec format separates concerns:
+- **Content** (what to say, which images) lives in the spec.
+- **Layout** (slide dimensions, font sizes, positioning) lives in the
+  render skill.
+- **Template** (module structure, common modules) lives in the template
+  bundle.
+
+This makes independent iteration on each concern possible without
+cross-contamination.
+
+## Change Log
+
+- v1: Initial skill. Replaces `training-deck-outline`. Produces
+  `training-deck-spec.yaml` via template bundle + generation prompt.
+  Archetype-aware with `atomic-visit` as the only shipped template.

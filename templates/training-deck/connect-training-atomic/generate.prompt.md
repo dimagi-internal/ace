@@ -1,0 +1,156 @@
+# Training Deck Generation Prompt — Atomic Visit
+
+You are generating a training deck spec for an atomic-visit Connect opportunity. The output is a fully populated `spec.yaml` file that the rendering pipeline will convert into a Google Slides presentation.
+
+## Input Sources
+
+Read these artifacts from the opportunity's Drive folder (`ACE/<opp>/`):
+
+1. **PDD** (`inputs/pdd.md` or the Google Doc at `source.pdd_doc_id`) — the authoritative design document. Extract: opportunity name, program name, target population, visit workflow, form fields, payment structure, quality criteria, geographic scope.
+2. **App summary** (`<run>/3-commcare-setup/app-summary.md`) — the CommCare app structure. Extract: form names, case properties, module flow, media references.
+3. **Screenshot manifest** (`<run>/3-commcare-setup/screenshot-manifest.yaml` or `<run>/6-qa-and-training/screenshot-manifest.yaml`) — available `@alias` references for app screenshots. Every `@alias` you use in the spec MUST exist in this manifest.
+4. **run_state.yaml** (`<run>/run_state.yaml`) — run metadata. Extract: `run_id`, `generated_at` timestamp, OCS chatbot name, Connect opportunity details.
+5. **Learn module structure** (from app summary or PDD) — module names and content for practice slide generation.
+
+## Module-by-Module Content Instructions
+
+### welcome (generate fresh)
+
+- **cover**: Use opportunity name as title. Subtitle format: "FLW Training — {date}".
+- **agenda**: List the module names as agenda items with approximate durations. Total should match `expected_duration_minutes` from the template (150-240 min).
+- **icebreaker**: Select ONE icebreaker from `_common/facilitation.yaml`. Pick `two-truths` for groups of 10+, `one-word` for groups of 20+, `common-ground` for groups under 10. Fill the template tokens.
+
+### platform-setup (include by reference)
+
+Include the `_common/platform-setup.yaml` module verbatim. Do NOT regenerate these slides. In the spec, reference it as:
+
+```yaml
+- id: platform-setup
+  ref: _common/platform-setup
+```
+
+The rendering pipeline resolves the reference at build time.
+
+### your-opportunity (generate fresh — this is the core)
+
+This is the heart of the deck. Generate 8-15 slides covering:
+
+1. **Opportunity overview** (1-2 slides, layout: `content` or `two_column`)
+   - What the work is, who benefits, why it matters
+   - Payment structure: amount per visit, payment schedule, minimum quality threshold
+
+2. **Who you will visit** (1 slide, layout: `content`)
+   - Target population description from PDD
+   - Eligibility criteria if any
+   - What to expect at a typical visit
+
+3. **Your visit workflow** (3-6 slides, layout: `walkthrough` or `mobile_flow`)
+   - Walk through EACH form in the app, step by step
+   - Use `@alias` screenshots from the manifest for every form screen
+   - Name exact buttons: "Tap 'Next'", "Select 'Yes'", "Tap 'Submit'"
+   - One slide per major form section or decision point
+
+4. **Quality and verification** (1-2 slides, layout: `content`)
+   - How work is verified (GPS, photo, supervisor review, automated checks)
+   - Common rejection reasons and how to avoid them
+   - Quality threshold required for payment
+
+5. **Payment details** (1 slide, layout: `stats` or `content`)
+   - Amount per verified delivery
+   - Payment method and timing
+   - Minimum deliveries for payout
+
+6. **Safety and ethics** (1 slide, layout: `content`)
+   - Consent requirements
+   - Data privacy expectations
+   - What to do if someone refuses or is unavailable
+
+### practice (generate fresh)
+
+Generate 3-5 slides using patterns from `_common/facilitation.yaml`:
+
+1. **Guided Learn completion** — use `guided-learn` pattern. Set `{{N}}` to "1" for the first module. If the PDD lists multiple Learn modules, add one slide per module.
+2. **Form practice** — use `form-practice` pattern. Set `{{FORM_NAME}}` to the primary delivery form name from the app summary.
+3. **Role play** — use `role-play` pattern. Set `{{VISIT_TYPE}}` and `{{ROLE}}` from the PDD's visit description (e.g., `{{VISIT_TYPE}}` = "Household Visit", `{{ROLE}}` = "household member").
+
+### evaluation (generate fresh)
+
+Generate 2-3 slides:
+
+1. **Knowledge check** (layout: `exercise`)
+   - 3-5 multiple-choice questions derived from the training content
+   - Cover: eligibility criteria, form workflow, quality requirements, payment rules
+   - Duration: 10 min
+
+2. **Field readiness checklist** (layout: `checklist`)
+   - Items: phone charged, CommCare installed, Learn modules complete, sync completed, practice form submitted, ID badge/materials ready
+
+3. **Next steps** (layout: `content`)
+   - When field work starts
+   - First-day logistics
+   - Who to contact with questions
+
+### resources (include by reference)
+
+Include the `_common/resources.yaml` module verbatim. Fill `{{LLO_CONTACT}}` from `run_state.yaml` if available, otherwise leave the placeholder. In the spec, reference it as:
+
+```yaml
+- id: resources
+  ref: _common/resources
+  overrides:
+    LLO_CONTACT: "{{LLO_CONTACT}}"
+```
+
+## Layout Selection Rules
+
+Choose the layout that best fits each slide's content:
+
+| Layout | When to use | Word budget |
+|--------|-------------|-------------|
+| `cover` | First slide only — title + subtitle + date | 10-15 words |
+| `agenda` | Session agenda with timed items | 5-8 words per item |
+| `content` | Text-heavy explanations, lists, descriptions | 40-80 words |
+| `two_column` | Side-by-side comparisons, do/don't lists | 20-40 words per side |
+| `walkthrough` | Single screenshot with numbered annotations | 30-50 words |
+| `mobile_flow` | Multi-step phone workflow (2-4 screenshots in sequence) | 5-10 words per caption |
+| `stats` | Key numbers (payment amounts, thresholds, counts) | 5-10 words per label |
+| `before_after` | Comparing correct vs incorrect form entries | 15-25 words per side |
+| `exercise` | Hands-on practice activity with instructions | 30-60 words |
+| `checklist` | Pre-flight or readiness checklists | 5-10 words per item |
+| `closing` | Final slide — thank you + key reminders | 30-50 words |
+| `quote` | Testimonial or motivational quote | 15-30 words |
+| `map` | Geographic coverage area | 10-20 words caption |
+| `timeline` | Sequential process or schedule | 5-10 words per step |
+
+**Default to `content` when uncertain.** Prefer `walkthrough` and `mobile_flow` over `content` when screenshots are available — visual slides train faster than text slides.
+
+## Screenshot Integration
+
+Reference screenshots using the `@alias` format: `@play-store-search`, `@connect-home`, `@form-household-q1`, etc.
+
+Rules:
+- Every `@alias` MUST exist in the screenshot manifest. Do not invent aliases.
+- Common aliases from `_common/platform-setup.yaml` are pre-defined (e.g., `@play-store-search`, `@commcare-install`, `@connect-home`). These are resolved by the rendering pipeline from the common screenshot set.
+- Opportunity-specific aliases come from the run's screenshot manifest. Use the exact alias strings from that manifest.
+- If a screenshot is not available for a step, use layout `content` instead of `walkthrough`/`mobile_flow`. Never reference a nonexistent screenshot.
+
+## Tone and Language Guidelines
+
+- **Reading level**: High-school equivalent. Short sentences. Simple words.
+- **Concrete actions**: "Tap 'Submit'" not "Submit the form". Name exact buttons, menus, and screens.
+- **No jargon**: No "beneficiary", "case", "module" (use "person you visit", "record", "section"). Exception: "CommCare", "Connect", "PersonalID", and "Learn" are proper nouns — always capitalize.
+- **Active voice**: "You will visit 20 households" not "20 households will be visited".
+- **No speaker notes**: The deck is self-contained. Everything the trainer needs is on the slides.
+- **Numbers are concrete**: "$2.50 per visit" not "compensation per delivery unit". "20 households per week" not "target volume".
+- **Positive framing**: "Sync after each form to keep your data safe" not "If you don't sync, you might lose data".
+
+## Output Format
+
+Produce a single `spec.yaml` file with all placeholders filled. The file must:
+
+1. Pass YAML syntax validation
+2. Have every `@alias` reference match the screenshot manifest
+3. Have a total slide count between 30 and 45
+4. Have every slide with a non-empty `title`
+5. Use only layouts from the 14 defined types above
+6. Include `platform-setup` and `resources` as `ref:` includes, not inline copies

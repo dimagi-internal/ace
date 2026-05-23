@@ -16,8 +16,8 @@ skills:
   - { name: training-flw-guide,         has_judge: true }
   - { name: training-quick-reference,   has_judge: true }
   - { name: training-faq,               has_judge: true }
-  - { name: training-deck-outline,      has_judge: true }
-  - { name: training-deck-build,        has_judge: false }
+  - { name: training-deck-generate,      has_judge: true }
+  - { name: training-deck-render,       has_judge: false }
   - { name: training-onboarding-email,  has_judge: true }
 # Note: `training-materials` umbrella was removed in 0.10.87. The
 # Phase 6 agent dispatches each per-artifact skill directly; the
@@ -51,7 +51,7 @@ Phase 6 produces two artifact families:
    Deep, per-journey UX grading lives in `/ace:qa-deep` →
    `app-ux-eval`, run manually before Phase 8 activation.
 2. **Training materials** — LLO playbook, FLW guide, quick-reference, FAQ,
-   onboarding email body, training deck outline, training video script.
+   onboarding email body, training deck spec, training video script.
 
 ## Common-vs-opp content layering
 
@@ -66,7 +66,7 @@ Training materials draw from two asset pools:
 - **Per-opp assets** at `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/...` — captured fresh each
   cycle for THIS opp's actual Learn-app modules and Deliver form.
 
-`training-materials` stitches both pools into the final deck outline and
+`training-materials` stitches both pools into the final deck spec and
 video script. Per-opp content is always re-captured (it changes per opp);
 common content is referenced by file path and only re-captured when the
 Connect APK actually updates. This keeps Phase 6 runtime predictable and
@@ -150,11 +150,11 @@ silent-failure prevention learned from earlier real-world dogfood.
       which a slug-based reassembly produces. See
       `skills/app-screenshot-capture/SKILL.md § Step 4 "OPP_NAME source"`.
 - [ ] **`ACE_TRAINING_DECK_TEMPLATE_ID` is set** if you want a Slides
-      deck. `bin/ace-doctor` reports it. If unset, `training-deck-build`
+      deck. `bin/ace-doctor` reports it. If unset, `training-deck-render`
       skips silently — Phase 6 still completes, just without the
       Slides deliverable.
 - [ ] **Slides API is enabled** on the GCP project. Only matters if
-      `training-deck-build` will run. First call returns the enable
+      `training-deck-render` will run. First call returns the enable
       URL with a 1-minute propagation if it's off. See
       `playbook/integrations/slides-integration.md`.
 - [ ] **`adb devices` shows no other-user `unauthorized` entries.**
@@ -255,7 +255,7 @@ phase dispatches them in dependency order:
 - `training-flw-guide` → `flw-training-guide.md`
 - `training-quick-reference` → `quick-reference.md`
 - `training-faq` → `faq.md`
-- `training-deck-outline` → `training-deck-outline.md`
+- `training-deck-generate` → `training-deck-spec.yaml`
 
 Each skill reads PDD + app summaries + connect/OCS state + (where
 applicable) per-opp + common screenshot manifests. Each writes its
@@ -265,9 +265,9 @@ writes a verdict YAML.
 
 Halt the phase on any non-pass verdict.
 
-**2b. Sequential — deck render (after `training-deck-outline`):**
+**2b. Sequential — deck render (after `training-deck-generate`):**
 
-- `training-deck-build` reads `training-deck-outline.md` + the
+- `training-deck-render` reads `training-deck-spec.yaml` + the
   `ACE_TRAINING_DECK_TEMPLATE_ID` env var, copies the template into
   the opp folder, fills via `slides_batch_update`, returns the
   Slides URL.
@@ -304,7 +304,7 @@ training skills (or invoke `qa-and-training` for the full sequence).
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<journey-id>/<step>.png` + `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/{llo-manager-guide,quick-reference,faq,onboarding-email-body}.md` (training-materials)
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide.md` (training-flw-guide)
-- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-outline.md` (training-deck-outline)
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml` (training-deck-generate)
 - A Google Slides deck under the same folder (when template is configured)
 - `runs/<run-id>/6-qa-and-training/app-screenshot-capture_verdict.yaml` (structural verdict)
 - `runs/<run-id>/6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (smoke-judge verdict)
@@ -318,7 +318,7 @@ training skills (or invoke `qa-and-training` for the full sequence).
   | `skill:training-quick-reference` | `products.training.docs.quick_reference.*` (title: "Quick reference card") |
   | `skill:training-faq` | `products.training.docs.faq.*` (title: "FAQ") |
   | `skill:training-onboarding-email` | `products.training.docs.onboarding_email.*` (title: "Onboarding email") |
-  | `skill:training-deck-build` | `products.training.deck.{file_id, title, web_view_link}` (title: from the Slides file's display name) |
+  | `skill:training-deck-render` | `products.training.deck.{file_id, title, web_view_link}` (title: from the Slides file's display name) |
 
   Read-modify-write recipe: `drive_read_file` → parse → merge in this skill's slot (sibling slots preserved) → `drive_update_file` with `ifMatchRevisionId`. See `skills/synthetic-data-generate/SKILL.md § Step 6` for the canonical implementation. ace-web's per-run summary page consumes this block to render the training pack section.
 

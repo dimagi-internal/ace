@@ -886,9 +886,9 @@ When invoked with an opportunity, execute these phases in order:
 
 **Inputs (inline at handoff):** PDD, Phase-3 outputs (`3-commcare/app-test-cases.yaml` + per-journey recipes under `3-commcare/app-test-cases/J*.yaml`), Phase-5 chatbot URL (`5-ocs/ocs-agent-setup.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
 
-**Atoms / skills used (orchestrator-visible only):** `Agent(qa-and-training)`. Internally the agent runs `app-screenshot-capture` (executor — runs the smoke recipes from Phase 3's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-deck-outline`) → `training-deck-build` (sequential after deck-outline; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) → `training-onboarding-email` (LAST — links by URL to other docs).
+**Atoms / skills used (orchestrator-visible only):** `Agent(qa-and-training)`. Internally the agent runs `app-screenshot-capture` (executor — runs the smoke recipes from Phase 3's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-deck-generate`) → `training-deck-render` (sequential after deck-generate; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) → `training-onboarding-email` (LAST — links by URL to other docs).
 
-**Products:** Phase-6 artifacts under `6-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck outline), optional training deck build, onboarding email.
+**Products:** Phase-6 artifacts under `6-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck spec), optional training deck render, onboarding email.
 
 **Write-back:** `phases.qa-and-training.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
@@ -1070,7 +1070,7 @@ producer skill row.
   `app-screenshot-capture` and every per-artifact training skill
   (`training-llo-guide`, `training-flw-guide`,
   `training-quick-reference`, `training-faq`,
-  `training-onboarding-email`, `training-deck-outline`)) write
+  `training-onboarding-email`, `training-deck-generate`)) write
   `<phase>/<self>_verdict[-<mode>].yaml`.
 
 **Opt-out.** `/ace:run --no-evals` skips the per-step eval dispatch (the
