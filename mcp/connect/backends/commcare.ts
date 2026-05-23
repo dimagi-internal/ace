@@ -1430,7 +1430,7 @@ export class CommCareBackend {
    */
   async listUserFields(args: ListUserFieldsArgs): Promise<{ fields: CustomUserField[]; profiles: Array<Record<string, unknown>> }> {
     return this.runWithSessionRetry(async (request) => {
-      const path = `/a/${encodeURIComponent(args.domain)}/users/user_data/`;
+      const path = `/a/${encodeURIComponent(args.domain)}/settings/users/user_data/`;
       const res = await request.get(`${this.opts.baseUrl}${path}`, { maxRedirects: 0 });
       if (res.status() === 302) {
         const location = res.headers()['location'] || '';
@@ -1497,7 +1497,7 @@ export class CommCareBackend {
    */
   async setUserFields(args: SetUserFieldsArgs): Promise<{ ok: true; count: number }> {
     return this.runWithSessionRetry(async (request) => {
-      const path = `/a/${encodeURIComponent(args.domain)}/users/user_data/`;
+      const path = `/a/${encodeURIComponent(args.domain)}/settings/users/user_data/`;
       // Seed CSRF + verify permission via GET
       const refreshRes = await request.get(`${this.opts.baseUrl}${path}`, { maxRedirects: 0 });
       if (refreshRes.status() === 302) {

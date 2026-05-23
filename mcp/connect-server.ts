@@ -242,9 +242,10 @@ server.tool('connect_create_opportunity',
         'and re-bisect before assuming a length cap. Long-form prose belongs in the opp\'s Drive ' +
         'summary doc; the headline lives here.',
     ),
-    target_organization_slug: z.string().describe(
-      'LLO org slug — must already have an ACCEPTED program application. ' +
-      'Use `connect_send_llo_invite` + `connect_accept_program_application` first if needed.',
+    target_organization_slug: z.string().optional().describe(
+      'LLO org slug. Optional — if omitted, the opp is created under the PM org (managed opps ' +
+      'allow organization=None per commcare-connect/opportunity/forms.py:582). Pass only when ' +
+      'an LLO has an ACCEPTED program application and you want to assign FLWs to that org.',
     ),
     start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Must fit inside the program window.'),
     end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
