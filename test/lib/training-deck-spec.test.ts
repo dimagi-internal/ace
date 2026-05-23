@@ -84,12 +84,14 @@ describe('SlideSpecSchema per-layout validation', () => {
       subtitle: 'World', date: '2026-05-23',
     });
     expect(result.layout).toBe('cover');
+    if (result.layout !== 'cover') throw new Error('expected cover');
     expect(result.subtitle).toBe('World');
   });
 
   it('validates cover layout without optional fields', () => {
     const result = SlideSpecSchema.parse({ id: 's1', layout: 'cover', title: 'Hello' });
     expect(result.layout).toBe('cover');
+    if (result.layout !== 'cover') throw new Error('expected cover');
     expect(result.subtitle).toBeUndefined();
   });
 
@@ -115,6 +117,7 @@ describe('SlideSpecSchema per-layout validation', () => {
       body: 'Some markdown content here.',
     });
     expect(result.layout).toBe('content');
+    if (result.layout !== 'content') throw new Error('expected content');
     expect(result.body).toBe('Some markdown content here.');
   });
 
@@ -124,6 +127,7 @@ describe('SlideSpecSchema per-layout validation', () => {
       image: 'drive:img1', body: 'Follow along with the screenshot.',
     });
     expect(result.layout).toBe('walkthrough');
+    if (result.layout !== 'walkthrough') throw new Error('expected walkthrough');
     expect(result.image).toBe('drive:img1');
     expect(result.body).toBe('Follow along with the screenshot.');
   });
@@ -158,6 +162,7 @@ describe('SlideSpecSchema per-layout validation', () => {
       image: 'drive:dash', caption: 'The main dashboard view',
     });
     expect(result.layout).toBe('web_screen');
+    if (result.layout !== 'web_screen') throw new Error('expected web_screen');
     expect(result.caption).toBe('The main dashboard view');
   });
 
@@ -166,6 +171,7 @@ describe('SlideSpecSchema per-layout validation', () => {
       id: 's1', layout: 'web_screen', title: 'Dashboard',
       image: 'drive:dash',
     });
+    if (result.layout !== 'web_screen') throw new Error('expected web_screen');
     expect(result.caption).toBeUndefined();
   });
 
@@ -176,6 +182,7 @@ describe('SlideSpecSchema per-layout validation', () => {
       callouts: ['Notice the sync icon', 'Tap the submit button'],
     });
     expect(result.layout).toBe('mobile_zoom');
+    if (result.layout !== 'mobile_zoom') throw new Error('expected mobile_zoom');
     expect(result.callouts).toEqual(['Notice the sync icon', 'Tap the submit button']);
   });
 
@@ -184,6 +191,7 @@ describe('SlideSpecSchema per-layout validation', () => {
       id: 's1', layout: 'mobile_zoom', title: 'Zoom In',
       image: 'drive:zoom',
     });
+    if (result.layout !== 'mobile_zoom') throw new Error('expected mobile_zoom');
     expect(result.callouts).toBeUndefined();
   });
 
@@ -194,6 +202,7 @@ describe('SlideSpecSchema per-layout validation', () => {
       right: { heading: 'After', body: 'New process' },
     });
     expect(result.layout).toBe('two_column');
+    if (result.layout !== 'two_column') throw new Error('expected two_column');
     expect(result.left.image).toBe('drive:before');
     expect(result.right.image).toBeUndefined();
   });
@@ -263,6 +272,7 @@ describe('SlideSpecSchema per-layout validation', () => {
       items: ['Phone charged', 'App installed', 'ID card ready'],
     });
     expect(result.layout).toBe('checklist');
+    if (result.layout !== 'checklist') throw new Error('expected checklist');
     expect(result.items).toEqual(['Phone charged', 'App installed', 'ID card ready']);
   });
 
@@ -273,6 +283,7 @@ describe('SlideSpecSchema per-layout validation', () => {
       body: 'Open the app and register a test case.',
     });
     expect(result.layout).toBe('exercise');
+    if (result.layout !== 'exercise') throw new Error('expected exercise');
     expect(result.duration).toBe('10 minutes');
   });
 
@@ -282,6 +293,7 @@ describe('SlideSpecSchema per-layout validation', () => {
       body: 'Questions? Contact support@example.com',
     });
     expect(result.layout).toBe('closing');
+    if (result.layout !== 'closing') throw new Error('expected closing');
     expect(result.body).toBe('Questions? Contact support@example.com');
   });
 });
