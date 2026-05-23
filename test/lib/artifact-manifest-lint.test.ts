@@ -43,7 +43,7 @@ const RUN_LEVEL_EXEMPT = new Set([
 // individual <skill>[_<role>].<ext> files.
 const STRUCTURAL_SUB_FOLDERS = new Set([
   'mobile-recipes',   // 6-qa-and-training/mobile-recipes/{learn,deliver}/manifest.yaml
-  'screenshots',      // 3-commcare/screenshots/... (moved from 6-qa-and-training on 2026-05-22)
+  'screenshots',      // 6-qa-and-training/screenshots/...
   'walkthroughs',     // 7-synthetic/walkthroughs/<persona>-<timestamp>/slideshow.html
   'timeline-monitor', // 9-execution-manager/timeline-monitor/YYYY-MM-DD.md
   'flw-data-review',  // 9-execution-manager/flw-data-review/YYYY-MM-DD.md

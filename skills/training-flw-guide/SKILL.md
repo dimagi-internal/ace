@@ -29,7 +29,7 @@ the per-opp screenshots. Independent of `training-llo-guide`,
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | Deliver form structure (the "what to do here" section) |
 | Phase 4 (`run_state.yaml`) | `connect.opportunity` (claim flow), `connect.payment_units` | "what FLWs get paid for" framing |
 | Phase 5 | `ACE/<opp>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "where to get help" section |
-| Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/3-commcare/app-screenshot-capture_manifest.yaml` + per-opp PNGs | embed step-by-step Learn/Deliver screenshots |
+| Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` + per-opp PNGs | embed step-by-step Learn/Deliver screenshots |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` + PNGs | embed common Connect navigation (sign-in, claim opp, sync, payments) |
 
 ## Output
@@ -90,7 +90,7 @@ from PDD's Evidence Model.>
   under `ACE/_common/connect-screenshots/<v>/`.
 - **Per-opp screenshots come second** (Learn modules, Deliver form
   walkthrough) — these are unique to this opp and live under
-  `ACE/<opp>/runs/<run-id>/3-commcare/screenshots/`.
+  `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/`.
 - **Speaker-style prose, not bullet-list-only.** A working FLW guide
   has narrative connecting the bullets, not just a flat checklist.
 
@@ -106,7 +106,7 @@ from PDD's Evidence Model.>
 
 3. **Build the screenshot resolution map.** Two pools merged into one
    `{ alias → drive_file_id }`:
-   - Per-opp aliases from `ACE/<opp>/runs/<run-id>/3-commcare/app-screenshot-capture_manifest.yaml` (e.g.,
+   - Per-opp aliases from `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` (e.g.,
      `learn-mod-1-step-3`, `deliver-form-photo-step-1`)
    - Common-pool aliases from
      `ACE/_common/connect-screenshots/<v>/manifest.yaml` (e.g.,
@@ -239,5 +239,5 @@ This is the **second of the per-artifact training skills**, after
 
 - v1 (0.10.83): Initial skill. Owns `flw-training-guide.md` only.
   Common + per-opp screenshot layering. Archetype-aware structure.
-- 2026-05-07: Per-opp screenshot path corrected from `ACE/<opp>/screenshots/` to `ACE/<opp>/runs/<run-id>/3-commcare/screenshots/` to match the runs/<run-id>/<phase>/ scheme producers actually use. Doc-only fix; matches what `app-screenshot-capture` writes.
+- 2026-05-07: Per-opp screenshot path corrected from `ACE/<opp>/screenshots/` to `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/` to match the runs/<run-id>/<phase>/ scheme producers actually use. Doc-only fix; matches what `app-screenshot-capture` writes.
 - 2026-05-15: Expand `focus-group` archetype branch (Step 4) from one-line "session-based" note to full shape spec: (1) acknowledge sentinel readiness form instead of full Learn-app walkthrough, (2) two-step session workflow (run FGD verbally → submit attestation within 24h → write gdoc within 72h), (3) add OCS chatbot subsection (primary writing-guidance surface), (4) drop form-fill pitfalls + add FGD-specific pitfalls (leading questions, premature Section 5 preview). Prompted by `malaria-itn-fgd/20260514-2352` Phase 6 observations.

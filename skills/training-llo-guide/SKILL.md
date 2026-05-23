@@ -30,7 +30,7 @@ rebuilds only `llo-manager-guide.md`.
 | Phase 4 (`run_state.yaml`) | `connect.opportunity` + `connect.payment_units` + `connect.verification_flags` | payment per visit, max-per-day, verification rules |
 | Phase 5 | `ACE/<opp>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "where to ask questions" link |
 | Phase 1 | `ACE/<opp>/runs/<run-id>/2-scenarios/pdd-to-app-journeys.md` | seed the "Pre-deployment UAT" section from per-journey pass criteria |
-| Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/3-commcare/app-screenshot-capture_manifest.yaml` | optional — embed key screenshots in the "what FLWs see" section |
+| Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` | optional — embed key screenshots in the "what FLWs see" section |
 
 ## Output
 

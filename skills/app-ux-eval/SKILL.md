@@ -25,11 +25,11 @@ contracts.
 |---|---|---|
 | Phase 1 | `2-scenarios/pdd-to-app-journeys.md` | UX-intent ground truth (goal, happy-path narrative, edge cases, pass criteria, `pdd_time_budget_seconds`) |
 | Phase 3 | `3-commcare/app-test-cases.yaml` | journey↔recipe bindings, smoke flag, forms exercised |
-| Phase 6 | `3-commcare/screenshots/<journey>/` + `3-commcare/app-screenshot-capture_manifest.yaml` | captured PNGs to grade |
+| Phase 6 | `6-qa-and-training/screenshots/<journey>/` + `6-qa-and-training/app-screenshot-capture_manifest.yaml` | captured PNGs to grade |
 
 ## Products
 
-- `3-commcare/app-ux-eval_verdict-deep.yaml` — per-journey verdict on UX dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion)
+- `6-qa-and-training/app-ux-eval_verdict-deep.yaml` — per-journey verdict on UX dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion)
 
 ## Process
 
@@ -43,8 +43,8 @@ contracts.
   exercised)
 - The captured screenshots from the recent execution run — look up by
   the `--run-id` argument passed in. Paths:
-  `ACE/<opp>/runs/<run-id>/3-commcare/screenshots/` plus
-  `ACE/<opp>/runs/<run-id>/3-commcare/app-screenshot-capture_manifest.yaml`
+  `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/` plus
+  `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`
   (which step → which PNG)
 - `inputs/pdd.md` — for persona context (the FLW the rubric is judging
   "good experience" against; pulled from the "Target FLW" section)
@@ -101,7 +101,7 @@ score to 0.
 ### Step 4: Write verdict
 
 Write
-`ACE/<opp>/runs/<run-id>/3-commcare/app-ux-eval_verdict-deep.yaml`
+`ACE/<opp>/runs/<run-id>/6-qa-and-training/app-ux-eval_verdict-deep.yaml`
 per the uniform verdict shape (see `skills/README.md § Eval verdict
 shape` or `lib/verdict-schema.ts`):
 
@@ -110,7 +110,7 @@ skill: app-ux-eval
 target: <opp-name>
 mode: deep
 ran_at: <ISO timestamp with timezone>
-capture_path: 3-commcare/app-screenshot-capture_manifest.yaml
+capture_path: 6-qa-and-training/app-screenshot-capture_manifest.yaml
 
 artifact_refs:
   learn_build_id: <from 3-commcare/app-deploy_summary.md>
@@ -223,4 +223,4 @@ released build IDs — see Task 7 in the shallow/deep split plan).
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-04 | Initial version. Deep-only LLM-as-Judge for app UX. Five dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion) with hard-deductions. Used by /ace:qa-deep and the Phase 8 gate. Introduced as part of the shallow/deep QA split (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`). | ACE team |
-| 2026-05-05 | **Path-scheme migration.** Inputs repointed to `2-scenarios/pdd-to-app-journeys.md`, `3-commcare/app-test-cases.yaml`, `3-commcare/screenshots/` + `3-commcare/app-screenshot-capture_manifest.yaml`, `3-commcare/app-deploy_summary.md`. Verdict output is now `3-commcare/app-ux-eval_verdict-deep.yaml` (per manifest). Calibration audit trail at `ACE/<opp>/eval-calibration/app-ux-eval-runs.md` corrected to opp-level (was incorrectly under `runs/<run-id>/`). Phase references updated 6 → 7 to match the 8-phase topology. No behavior change beyond paths. | ACE team |
+| 2026-05-05 | **Path-scheme migration.** Inputs repointed to `2-scenarios/pdd-to-app-journeys.md`, `3-commcare/app-test-cases.yaml`, `6-qa-and-training/screenshots/` + `6-qa-and-training/app-screenshot-capture_manifest.yaml`, `3-commcare/app-deploy_summary.md`. Verdict output is now `6-qa-and-training/app-ux-eval_verdict-deep.yaml` (per manifest). Calibration audit trail at `ACE/<opp>/eval-calibration/app-ux-eval-runs.md` corrected to opp-level (was incorrectly under `runs/<run-id>/`). Phase references updated 6 → 7 to match the 8-phase topology. No behavior change beyond paths. | ACE team |

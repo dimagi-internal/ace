@@ -14,7 +14,7 @@ skills:
   - { name: app-deploy,              has_judge: false }
   - { name: app-test-cases,          has_judge: false }
   - { name: app-release,             has_judge: true,  eval_skill: app-release-eval }
-  - { name: app-screenshot-capture,  has_judge: true }
+  - { name: app-release-smoke,       has_judge: false }
 ---
 
 # CommCare Setup (Phase 3 Procedure Document)
@@ -321,63 +321,58 @@ Note: `training-materials` no longer runs in Phase 3. As of 0.9.0 it lives
 in Phase 6 (`qa-and-training`), where it consumes the screenshots produced
 by `app-screenshot-capture` alongside the app summaries.
 
-### Step 2.9: Smoke screenshot capture (shallow app QA)
+### Step 2.8: CommCare CCZ structural smoke
 
-Invoke the `app-screenshot-capture` skill. This step boots the AVD,
-runs the J1 + J5 smoke recipes against the just-released CommCare
-builds, and captures structural + UX verdicts.
+Invoke the `app-release-smoke` skill. This step is a lightweight,
+AVD-free structural check on the just-released Learn + Deliver CCZs:
+download each via `commcare_download_ccz`, parse the zip + suite.xml +
+form XMLs, and verify form counts + Connect-marker presence match the
+Nova blueprint. Halts loud on mismatch.
 
-**Position rationale.** This used to live in Phase 6 (Step 1) but
-moved to Phase 3 on 2026-05-22 because the failure mode is recipe
-authoring quality, not training-doc quality. When a recipe ships
-broken from Step 2.6 (`app-test-cases`), the operator wants to learn
-about it WHILE Phase 3 is fresh — same Nova blueprints in scope, same
-released CCZ build_ids, no cross-phase context loss — not three
-phases later in Phase 6 when training-deck-build can't find usable
-screenshots. The malaria-rdt run 20260522-1002 hit this class three
-times in a row (selector-resolution gap, quiz-answer-tap missing,
-form-advance overcount); each time the diagnosis took longer than
-necessary because the recipe author was a Phase 3 skill and the
-recipe runner was a Phase 6 skill in a different subagent context.
-Same applies to AVD/Maestro infrastructure issues — surfacing them at
-Phase 3 lets the operator fix `/ace:mobile-bootstrap` before Phase 4
-ships work that depends on a healthy mobile setup.
+**Position rationale.** Prior versions of this file tried to put
+`app-screenshot-capture` (a full AVD smoke walk) at the end of Phase
+3 to surface recipe-authoring + AVD infrastructure failures at the
+source. That move was reverted because the live AVD smoke requires a
+Connect opportunity + ACE-test-user invite (Phase 4 outputs); Phase 3
+is upstream of those preconditions. `app-release-smoke` is a tighter
+CommCare-side-only check that DOES belong here: it catches
+CCZ-marker drops, form-count drift vs. Nova blueprint, and XForm
+parse errors that would otherwise only surface in Phase 4's Connect
+Sync Deliver Units or Phase 6's `app-screenshot-capture`. Full AVD
+smoke stays in Phase 6 where Connect state is available.
 
 - Inputs:
-  - `2-scenarios/pdd-to-app-journeys.md` (Phase 2 — drives which recipes are smoke)
-  - `3-commcare/app-test-cases.yaml` + `3-commcare/recipes/J*.yaml` (Step 2.6 outputs)
-  - `3-commcare/pdd-to-{learn,deliver}-app_summary.md` + Connect-released CCZ build_ids (Steps 1 + 2.7)
-  - Live AVD via `mobile_ensure_avd_running` (auto-heal at the MCP layer)
-- Outputs (NEW under `3-commcare/`):
-  - `3-commcare/screenshots/J<n>/*.png` — per-journey screenshot bundles
-  - `3-commcare/app-screenshot-capture_manifest.yaml` — per-screenshot index (file_id, step label, timestamp)
-  - `3-commcare/app-screenshot-capture_verdict.yaml` — structural verdict (recipe pass/fail, capture integrity)
-  - `3-commcare/app-screenshot-capture_verdict-shallow.yaml` — thin UX-judge verdict
-- **Halts loud on smoke recipe failure.** Per
-  `skills/app-screenshot-capture/SKILL.md § Step 5`, a smoke recipe
-  that can't reach its final `takeScreenshot` is a `[BLOCKER]` —
-  placeholder screenshots are forbidden. The operator's remediation
-  is usually `/ace:step app-test-cases <opp>/<run-id>` to regenerate
-  the recipes against the hardened skill, then re-dispatch
-  `/ace:step app-screenshot-capture` once they look right.
-- **Halts loud on AVD precondition failure.** If
-  `mobile_ensure_avd_running` exhausts its auto-heal retry budget,
-  the operator runs `/ace:mobile-bootstrap`. The class-level
-  preventers in `mcp/mobile/session-lock.ts § reapOrphanScaffolds`
-  and `mcp/mobile/backends/avd.ts § sweepStaleEmulatorState (Step 3)`
-  catch most pre-conditions automatically; only genuinely-novel
-  infrastructure failures should surface here as halts.
+  - `3-commcare/app-deploy_summary.md` (HQ app ids + released build ids)
+  - Nova `get_app({app_id})` blueprints for each app (for the structural cross-reference)
+- Outputs:
+  - `3-commcare/app-release-smoke_verdict.yaml` — structural verdict
+- **Halts loud on structural mismatch.** Per
+  `skills/app-release-smoke/SKILL.md § Step 4`, any of:
+  - Released CCZ download fails or yields non-zip bytes
+  - Form count in released CCZ doesn't match Nova blueprint form count
+  - Any Learn quiz form is missing `<learn:assessment>` or any Learn
+    content form is missing `<learn:module>` (Nova maintainer #7
+    closure: these wrappers are REQUIRED for Connect's sync)
+  - Deliver form `du_poc_visit` missing `<learn:deliver>` namespace
+  - XForm XML in any form fails to parse via stdlib ElementTree
 
-**Phase 6 reads these outputs.** The 5 training skills + deck-build
-all consume `3-commcare/screenshots/` + the manifest as their visual
-evidence. Phase 6's pre-flight (see `agents/qa-and-training.md
-§ Pre-flight checklist`) halts if this step didn't run.
+  …is a `[BLOCKER]`. The skill writes a structured verdict with the
+  specific mismatch class so the operator can decide whether to
+  re-run `app-release` (transient build issue) or re-run
+  `pdd-to-{learn,deliver}-app` (Nova emitted a structurally broken
+  build).
 
-**Deep QA is separate.** Phase 9's `llo-launch` gate still requires
-fresh deep verdicts from `/ace:qa-deep <opp>` (which runs all 5
-journeys with ~90 LLM judges via `app-ux-eval`). Phase 3's shallow
-capture is the in-`/ace:run` smoke; deep is out-of-band and not
-part of this procedure.
+**Why this is honest scope.** `app-release-smoke` does NOT verify
+the apps install + launch on a real device — that's the AVD smoke
+in Phase 6 (`app-screenshot-capture`). What it DOES verify is that
+the released CCZ artifact carries the structural markers Connect's
+HQ→Connect sync requires. The single failure mode this catches in
+isolation is "Nova built fine, validate_app passed, build released,
+but a downstream consumer (Connect Sync or AVD runtime) finds the
+released CCZ structurally broken" — historically the canonical
+trigger for `commcare-form-patch` regressions (now removed; this
+step exists in part as the structural watcher that would have caught
+the form-patch over-stripping incident at Phase 3 instead of Phase 6).
 
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/3-commcare/commcare-setup_summary.md`,
