@@ -1,3 +1,200 @@
+// ============================================================================
+// YAML-based Training Deck Spec (v2) — Zod schemas + parser
+// ============================================================================
+//
+// Added alongside the original markdown-based DeckSpec. Both coexist until
+// a later migration removes the markdown path. The YAML spec adds structured
+// slide layouts (14 discriminated-union variants), module grouping, manifest
+// references, and voice metadata.
+
+import { z } from 'zod';
+import yaml from 'js-yaml';
+
+// ---------------------------------------------------------------------------
+// Individual slide layout schemas
+// ---------------------------------------------------------------------------
+
+export const CoverSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('cover'),
+  title: z.string(),
+  subtitle: z.string().optional(),
+  date: z.string().optional(),
+});
+
+export const SectionSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('section'),
+  title: z.string(),
+});
+
+export const AgendaSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('agenda'),
+  title: z.string(),
+  items: z.array(z.object({ label: z.string(), duration: z.string() })),
+});
+
+export const ContentSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('content'),
+  title: z.string(),
+  body: z.string(),
+});
+
+export const WalkthroughSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('walkthrough'),
+  title: z.string(),
+  image: z.string(),
+  body: z.string(),
+});
+
+export const MobileFlowSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('mobile_flow'),
+  title: z.string(),
+  steps: z.array(z.object({ image: z.string(), caption: z.string() })).min(2).max(4),
+});
+
+export const WebScreenSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('web_screen'),
+  title: z.string(),
+  image: z.string(),
+  caption: z.string().optional(),
+});
+
+export const MobileZoomSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('mobile_zoom'),
+  title: z.string(),
+  image: z.string(),
+  callouts: z.array(z.string()).optional(),
+});
+
+export const TwoColumnSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('two_column'),
+  title: z.string(),
+  left: z.object({ heading: z.string(), body: z.string(), image: z.string().optional() }),
+  right: z.object({ heading: z.string(), body: z.string(), image: z.string().optional() }),
+});
+
+export const StatsSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('stats'),
+  title: z.string(),
+  stats: z.array(z.object({ big: z.string(), label: z.string() })).min(1).max(3),
+});
+
+export const TimelineSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('timeline'),
+  title: z.string(),
+  steps: z.array(z.object({ label: z.string(), detail: z.string() })).min(2).max(5),
+});
+
+export const ChecklistSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('checklist'),
+  title: z.string(),
+  items: z.array(z.string()),
+});
+
+export const ExerciseSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('exercise'),
+  title: z.string(),
+  duration: z.string(),
+  body: z.string(),
+});
+
+export const ClosingSlideSchema = z.object({
+  id: z.string(),
+  layout: z.literal('closing'),
+  title: z.string(),
+  body: z.string(),
+});
+
+// ---------------------------------------------------------------------------
+// Discriminated union of all slide layouts
+// ---------------------------------------------------------------------------
+
+export const SlideSpecSchema = z.discriminatedUnion('layout', [
+  CoverSlideSchema,
+  SectionSlideSchema,
+  AgendaSlideSchema,
+  ContentSlideSchema,
+  WalkthroughSlideSchema,
+  MobileFlowSlideSchema,
+  WebScreenSlideSchema,
+  MobileZoomSlideSchema,
+  TwoColumnSlideSchema,
+  StatsSlideSchema,
+  TimelineSlideSchema,
+  ChecklistSlideSchema,
+  ExerciseSlideSchema,
+  ClosingSlideSchema,
+]);
+
+export type SlideSpec_v2 = z.infer<typeof SlideSpecSchema>;
+
+// ---------------------------------------------------------------------------
+// Module + top-level spec
+// ---------------------------------------------------------------------------
+
+export const ModuleSpecSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  common: z.boolean().optional(),
+  slides: z.array(SlideSpecSchema),
+});
+
+export type ModuleSpec = z.infer<typeof ModuleSpecSchema>;
+
+export const TrainingDeckSpecSchema = z.object({
+  slug: z.string(),
+  name: z.string(),
+  program: z.string(),
+  archetype: z.enum(['atomic-visit', 'focus-group', 'multi-stage']),
+  template_id: z.string(),
+  generated_at: z.string(),
+  source: z.object({
+    pdd_doc_id: z.string(),
+    run_id: z.string(),
+  }),
+  manifest: z.object({
+    common: z.record(z.string(), z.string()).optional(),
+    opp: z.record(z.string(), z.string()).optional(),
+  }),
+  voice: z.object({
+    audience: z.enum(['flw', 'llo', 'mixed']),
+    estimated_duration_minutes: z.number(),
+    language: z.string(),
+  }),
+  modules: z.array(ModuleSpecSchema),
+});
+
+export type TrainingDeckSpec = z.infer<typeof TrainingDeckSpecSchema>;
+
+// ---------------------------------------------------------------------------
+// YAML parser
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a YAML string into a validated `TrainingDeckSpec`.
+ * Throws a `ZodError` if validation fails.
+ */
+export function parseTrainingSpec(yamlStr: string): TrainingDeckSpec {
+  const raw = yaml.load(yamlStr);
+  return TrainingDeckSpecSchema.parse(raw);
+}
+
+// ============================================================================
+// Original markdown-based DeckSpec (v1) — preserved below
+// ============================================================================
+
 /**
  * Pure helper: turn a `training-deck-outline.md` file into a sequence of
  * Google Slides API `batchUpdate` requests.
