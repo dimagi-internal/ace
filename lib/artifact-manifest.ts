@@ -648,7 +648,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['training-deck-build'],
     phase: 'qa-and-training',
     required: false,
-    description: 'Slide-by-slide markdown outline for the training deck. Format contract is parsed by `lib/training-deck-spec.ts` `parseDeckOutline`. Rendered to a Google Slides deck by `training-deck-build`.',
+    description: 'Slide-by-slide markdown outline for the training deck. Rendered to a Google Slides deck by `training-deck-build`.',
   },
   {
     path: '6-qa-and-training/training-deck-build_verdict.yaml',
