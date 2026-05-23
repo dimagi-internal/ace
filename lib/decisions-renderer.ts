@@ -256,9 +256,6 @@ const INTRO =
 // ── Status rendering ──────────────────────────────────────────────────────────
 
 function statusValue(status: DecisionRow["status"]): string {
-  if (status === "open") {
-    return "OPEN — load-bearing; human edit recommended";
-  }
   return status;
 }
 
@@ -271,8 +268,11 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
   // Bold question
   builder.appendBold(row.question);
 
-  // Default: <value>
-  builder.appendBoldPrefix("Default:", row.default);
+  // AI default: <value>
+  builder.appendBoldPrefix("AI default:", row["ai-default"]);
+  if (row.override) {
+    builder.appendBoldPrefix("Override:", row.override);
+  }
 
   // Considered: (bold label) then bullet list
   builder.appendBoldLabel("Considered:");

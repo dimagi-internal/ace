@@ -126,8 +126,8 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     bar criterion in `## Decisions Log Convention` below. Each row
     records a load-bearing default the skill is about to apply when
     drafting the PDD. Use the AI's best inference from the source
-    material for each `default` value; mark `status: open` for any
-    default the AI flags for human attention while still proceeding.
+    material for each `ai-default` value; use `status: ai-default`
+    for all rows (the human can override later via the workbench).
 
     See `## Decisions Log Convention § Common load-bearing decisions for
     Phase 1` for a working template of decisions that often qualify under
@@ -364,18 +364,11 @@ Write via `drive_create_file` (find-or-update semantics) at
 `ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The Drive MCP's parent
 folder is the run-folder file ID resolved at run start.
 
-### Status: `open` policy
+### Status values
 
-A row is marked `status: open` when a load-bearing default exists but the
-AI judges it likely-wrong without human confirmation. Examples:
-
-- `named-downstream-consumer` is `none-named-proceed-with-caveat` AND
-  the opp will publish a public solicitation in Phase 8.
-- `ai-fallback-design` is `parallel-sampling-N-percent` AND the program
-  needs ground-truth per-decision accuracy.
-
-The AI proceeds with the default in either mode; review-mode pauses for
-edit, default-mode ships the gate brief with `[WARN]` entries.
+All decisions written by the skill use `status: ai-default`. Human
+overrides (via the workbench or Slack) change the status to `overridden`
+and populate the `override:` field.
 
 ## Archetypes
 

@@ -46,20 +46,21 @@ function mergeRow(
   if (!parsedRow) return yamlRow;
 
   let updated: DecisionRow = yamlRow;
+  const currentValue = yamlRow.override ?? yamlRow["ai-default"];
 
-  if (parsedRow.default !== undefined && parsedRow.default !== yamlRow.default) {
+  if (parsedRow.default !== undefined && parsedRow.default !== currentValue) {
     const newOptions = [...yamlRow.options_considered];
-    if (!newOptions.includes(yamlRow.default)) newOptions.push(yamlRow.default);
+    if (!newOptions.includes(currentValue)) newOptions.push(currentValue);
     if (!newOptions.includes(parsedRow.default)) newOptions.push(parsedRow.default);
     updated = {
       ...updated,
-      default: parsedRow.default,
+      override: parsedRow.default,
       status: "overridden",
       options_considered: newOptions,
     };
     report.defaultsOverridden.push({
       id: yamlRow.id,
-      from: yamlRow.default,
+      from: currentValue,
       to: parsedRow.default,
     });
   }

@@ -4,7 +4,7 @@
  * Walks the document body in paragraph order. HEADING_3 paragraphs are
  * decision-row boundaries (the row id). Within a decision section,
  * subsequent paragraphs are scanned for:
- *   - "Default: <value>"  → row.default
+ *   - "AI default: <value>"  → row.default (the parsed override value)
  *   - "Considered:"       → enters bullet-collection mode
  *   - bullet paragraphs   → appended to row.options_considered
  *   - "Source:" / "Status:" → exits bullet-collection mode; not extracted
@@ -121,6 +121,17 @@ export function parseDocumentStructure(
     }
 
     // Field-prefix detection (case-insensitive, strip leading indent).
+    if (/^AI default:/i.test(trimmed)) {
+      current.default = trimmed.replace(/^AI default:\s*/i, "").trim();
+      continue;
+    }
+
+    if (/^Override:/i.test(trimmed)) {
+      current.default = trimmed.replace(/^Override:\s*/i, "").trim();
+      continue;
+    }
+
+    // Legacy v1 docs used "Default:" — parse it too for old docs.
     if (/^Default:/i.test(trimmed)) {
       current.default = trimmed.replace(/^Default:\s*/i, "").trim();
       continue;
