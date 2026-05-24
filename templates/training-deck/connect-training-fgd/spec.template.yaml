@@ -1,0 +1,53 @@
+slug: "{{OPP_SLUG}}"
+name: "{{OPP_NAME}}"
+program: "{{PROGRAM_NAME}}"
+archetype: focus-group
+template_id: connect-training-fgd
+generated_at: "{{GENERATED_AT}}"
+source:
+  pdd_doc_id: "{{PDD_DOC_ID}}"
+  run_id: "{{RUN_ID}}"
+
+manifest:
+  common: "{{COMMON_MANIFEST}}"
+  opp: "{{OPP_MANIFEST}}"
+
+voice:
+  audience: flw
+  estimated_duration_minutes: "{{DURATION}}"
+  language: "{{LANGUAGE}}"
+
+modules:
+  - id: welcome
+    title: "Welcome & Introductions"
+    slides:
+      - id: cover
+        layout: cover
+        title: "{{OPP_NAME}}"
+        subtitle: "FLW Training — {{DATE}}"
+        date: "{{DATE}}"
+      - id: agenda
+        layout: agenda
+        title: "Today's Agenda"
+        items: "{{AGENDA_ITEMS}}"
+      - id: icebreaker
+        layout: exercise
+        title: "{{ICEBREAKER_TITLE}}"
+        duration: "{{ICEBREAKER_DURATION}}"
+        body: "{{ICEBREAKER_BODY}}"
+
+  - id: fgd-overview
+    title: "Your Focus Group Discussion"
+    slides: "{{FGD_OVERVIEW_SLIDES}}"
+
+  - id: running-the-session
+    title: "Running the Session"
+    slides: "{{RUNNING_SESSION_SLIDES}}"
+
+  - id: after-the-session
+    title: "After the Session"
+    slides: "{{AFTER_SESSION_SLIDES}}"
+
+  - id: practice
+    title: "Practice & Hands-On"
+    slides: "{{PRACTICE_SLIDES}}"
