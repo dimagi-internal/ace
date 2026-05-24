@@ -243,6 +243,14 @@ atoms). Issue this verbatim:
 ToolSearch select:drive_read_file,drive_list_folder,drive_create_file,drive_create_folder,drive_update_file,drive_move_file,drive_rename_file,docs_get,sheets_read,sheets_append,commcare_make_build,commcare_release_build,commcare_download_ccz,commcare_upload_multimedia
 ```
 
+Bare names usually resolve via the `select:` shortcut. If a `select:`
+call returns zero matches for any atom (rare but observed in 0.13.213
+e2e-malaria-rdt session), re-issue with the fully-prefixed form —
+e.g. `mcp__plugin_ace_ace-gdrive__docs_get`,
+`mcp__plugin_ace_ace-connect__commcare_make_build`. Do NOT fall back
+to keyword search (`ToolSearch query:"docs_get"`); fuzzy-match is
+unreliable and silently misses prefixed atoms.
+
 Do NOT issue additional `ToolSearch` calls mid-run as you encounter
 each atom — fold any miss into this literal next time you bump the doc.
 
@@ -350,6 +358,33 @@ silently skipping the work order chain (Steps 2, 2.4, 2.5 in
 `agents/idea-to-design.md`). The work order, its QA, and its eval were
 all lost. Diagnosed as the same failure class in Phase 3 inline execution
 where step entries lacked `artifact` fields.
+
+**Auto-retry silent Agent dispatches before surfacing failure.** If an
+`Agent(<phase>)` call returns:
+
+- the literal string `No response requested` (or a near-variant), or
+- an empty/whitespace-only message, or
+- a message with no mention of artifacts written and no `run_state.yaml`
+  write-back evidence
+
+…re-dispatch the SAME phase ONE more time with an explicit closing line
+appended to the `## Your task` block:
+
+```
+**Required: produce the artifact(s) described in your agent definition
+and write back to `run_state.yaml.phases.<phase>` before returning.
+Do not return a one-line acknowledgement; the orchestrator treats that
+as a silent failure.**
+```
+
+If the second dispatch also returns silently, STOP and surface to the
+human — do not loop indefinitely. Cap at 2 attempts total per phase
+per orchestrator turn.
+
+**Why:** `e2e-malaria-rdt` Phase 1 dispatch returned "No response
+requested" with no PDD; the human had to type "keep going" to recover.
+One automatic retry catches transient agent-side glitches without
+inviting infinite loops on genuine failures.
 
 **Pre-load common MCP atoms at start.** Many ACE atoms are exposed as
 deferred tools that need a `ToolSearch` lookup before first use. To

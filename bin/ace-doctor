@@ -653,9 +653,13 @@ elif [ -f "$ROOT/.env" ]; then
 fi
 
 if [ -n "$ENV_FILE" ]; then
-  pass "env_file: $ENV_FILE"
+  if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+    pass "env_file: $ENV_FILE (CLAUDE_PLUGIN_DATA set to $CLAUDE_PLUGIN_DATA)"
+  else
+    pass "env_file: $ENV_FILE (CLAUDE_PLUGIN_DATA unset; defaulted DATA_DIR to $DATA_DIR — agents that probe \${CLAUDE_PLUGIN_DATA}/.env directly will miss this path. Resolution order: \$CLAUDE_PLUGIN_DATA/.env → ~/.claude/plugins/data/ace-ace/.env → \$ROOT/.env)"
+  fi
 else
-  warn "env_file: no .env found (checked $DATA_DIR/.env and $ROOT/.env)" "op inject -i \"$ROOT/.env.tpl\" -o \"$DATA_DIR/.env\" --account dimagi.1password.com"
+  warn "env_file: no .env found (checked $DATA_DIR/.env and $ROOT/.env; CLAUDE_PLUGIN_DATA=${CLAUDE_PLUGIN_DATA:-unset})" "op inject -i \"$ROOT/.env.tpl\" -o \"$DATA_DIR/.env\" --account dimagi.1password.com"
 fi
 
 # get_env KEY — prints the value of KEY from $ENV_FILE, or empty if absent/unresolved.
@@ -1196,7 +1200,14 @@ if command -v curl >/dev/null 2>&1; then
     # echo "000" land in the substitution, producing "000000" which
     # falls through the case match below. The empty-fallback only fires
     # if curl is missing entirely.
-    status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "$url" 2>/dev/null)"
+    #
+    # Retries: 1 retry × 1s delay catches transient network blips
+    # (Wi-Fi reconnect, DNS hiccup, VPN renegotiation) that one-shot
+    # curls from bash hit but persistent MCP subprocess connections
+    # don't. Bounded at 2 attempts × ~3s ≈ 7s per host.
+    status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 \
+      --retry 1 --retry-delay 1 --retry-all-errors --retry-connrefused \
+      "$url" 2>/dev/null)"
     [ -z "$status" ] && status="000"
     case "$status" in
       000)
@@ -1608,8 +1619,15 @@ fi
 # (that's covered by `nova_shell_env` below). The Accept header includes
 # text/event-stream because Nova returns SSE frames for the response
 # body even though the request is plain JSON.
+#
+# Retries: 2 retries × 1s delay catch transient network blips (Wi-Fi
+# reconnect, DNS hiccup, VPN renegotiation) that a one-shot 5s curl
+# from bash hits but the persistent MCP subprocess connection does not.
+# Worst case ~18s before WARN. Source: select-session feedback that
+# nova_auth WARNed while the live MCP subprocess was healthy.
 if [ -n "$NOVA_KEY_VAL" ]; then
   NOVA_REACH_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+    --retry 2 --retry-delay 1 --retry-all-errors --retry-connrefused \
     -X POST \
     -H "Authorization: Bearer $NOVA_KEY_VAL" \
     -H "Content-Type: application/json" \
