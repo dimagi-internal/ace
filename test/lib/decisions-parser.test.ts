@@ -25,27 +25,40 @@ describe("parseDocumentStructure", () => {
     expect(parseDocumentStructure(doc)).toEqual([]);
   });
 
-  it("extracts a single decision with AI-default + considered options", () => {
+  it("extracts a single decision with AI-default + options (v3 label)", () => {
     const doc = makeDoc([
       { text: "Decisions Log — turmeric", style: "HEADING_1" },
       { text: "Phase 1 — Design", style: "HEADING_2" },
       { text: "archetype-selection", style: "HEADING_3" },
       { text: "Which delivery archetype best fits?", style: "NORMAL_TEXT" },
       { text: "  AI-default: atomic-visit" },
-      { text: "  Considered:" },
+      { text: "  Options:" },
       { text: "atomic-visit", bullet: true },
       { text: "focus-group", bullet: true },
       { text: "multi-stage", bullet: true },
       { text: "  Source: idea.md §1" },
-      { text: "  Status: applied" },
+      { text: "  Status: ai-default" },
     ]);
     const rows = parseDocumentStructure(doc);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual({
       id: "archetype-selection",
       value: "atomic-visit",
-      options_considered: ["atomic-visit", "focus-group", "multi-stage"],
+      options: ["atomic-visit", "focus-group", "multi-stage"],
     });
+  });
+
+  it("also accepts legacy Considered: label (backward compat)", () => {
+    const doc = makeDoc([
+      { text: "archetype-selection", style: "HEADING_3" },
+      { text: "  AI-default: atomic-visit" },
+      { text: "  Considered:" },
+      { text: "atomic-visit", bullet: true },
+      { text: "focus-group", bullet: true },
+      { text: "  Source: idea.md §1" },
+    ]);
+    const rows = parseDocumentStructure(doc);
+    expect(rows[0]!.options).toEqual(["atomic-visit", "focus-group"]);
   });
 
   it("treats Override as winning over AI-default when both present", () => {
@@ -104,7 +117,7 @@ describe("parseDocumentStructure", () => {
     ]);
     const rows = parseDocumentStructure(doc);
     expect(rows[0]!.value).toBe("solo-value");
-    expect(rows[0]!.options_considered).toBeUndefined();
+    expect(rows[0]!.options).toBeUndefined();
   });
 
   it("ignores trailing whitespace and the AI-default: indent", () => {
@@ -118,7 +131,7 @@ describe("parseDocumentStructure", () => {
 
   it("round-trips a DecisionsLog through render → parse without losing value/options", () => {
     const log: DecisionsLog = {
-      schema_version: 2,
+      schema_version: 3,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
@@ -129,7 +142,7 @@ describe("parseDocumentStructure", () => {
           skill: "idea-to-pdd",
           question: "Which delivery archetype?",
           "ai-default": "atomic-visit",
-          options_considered: ["atomic-visit", "focus-group", "multi-stage"],
+          options: ["atomic-visit", "focus-group", "multi-stage"],
           source: "idea.md §1",
           status: "ai-default",
         },
@@ -140,7 +153,7 @@ describe("parseDocumentStructure", () => {
           question: "How many FLWs?",
           "ai-default": "5–8",
           override: "12",
-          options_considered: ["3–5", "5–8", "10–15", "12"],
+          options: ["3–5", "5–8", "10–15", "12"],
           source: "idea.md §2",
           status: "overridden",
         },
@@ -153,13 +166,13 @@ describe("parseDocumentStructure", () => {
 
     expect(parsed.map((r) => r.id)).toEqual(["archetype-selection", "flw-count"]);
     expect(parsed[0]!.value).toBe("atomic-visit");
-    expect(parsed[0]!.options_considered).toEqual([
+    expect(parsed[0]!.options).toEqual([
       "atomic-visit",
       "focus-group",
       "multi-stage",
     ]);
     expect(parsed[1]!.value).toBe("12");
-    expect(parsed[1]!.options_considered).toEqual(["3–5", "5–8", "10–15", "12"]);
+    expect(parsed[1]!.options).toEqual(["3–5", "5–8", "10–15", "12"]);
   });
 });
 

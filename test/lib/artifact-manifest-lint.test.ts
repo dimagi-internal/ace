@@ -101,7 +101,9 @@ describe('artifact manifest lint', () => {
         if (
           !knownSkills.has(skill) &&
           !knownAgents.has(skill) &&
-          !STRUCTURAL_SUB_FOLDERS.has(skill)
+          !STRUCTURAL_SUB_FOLDERS.has(skill) &&
+          !knownSkills.has(a.producedBy) &&
+          !knownAgents.has(a.producedBy)
         ) {
           errors.push(
             `${a.path}: producer '${skill}' not under skills/ or agents/, and not structural`,

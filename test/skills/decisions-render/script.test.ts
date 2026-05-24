@@ -10,7 +10,7 @@ function makeFakeDriveClient() {
   };
 }
 
-const VALID_YAML = `schema_version: 2
+const VALID_YAML = `schema_version: 3
 opportunity: turmeric
 run_id: 20260507-1733
 generated_at: "2026-05-07T17:33:00Z"
@@ -20,9 +20,9 @@ decisions:
     skill: idea-to-pdd
     question: Which delivery archetype?
     ai-default: atomic-visit
-    options_considered: ["atomic-visit", "focus-group", "multi-stage"]
+    options: ["atomic-visit", "focus-group", "multi-stage"]
     source: idea.md §1
-    status: applied
+    status: ai-default
 `;
 
 describe("runDecisionsRender", () => {
@@ -60,7 +60,7 @@ describe("runDecisionsRender", () => {
   it("throws on schema-invalid YAML with the schema dot-path", async () => {
     const client = makeFakeDriveClient();
     client.readFile.mockResolvedValueOnce({
-      content: `schema_version: 2
+      content: `schema_version: 3
 opportunity: turmeric
 run_id: 20260507-1733
 generated_at: "2026-05-07T17:33:00Z"
@@ -70,9 +70,9 @@ decisions:
     skill: idea-to-pdd
     question: Q
     ai-default: x
-    options_considered: []
+    options: []
     source: x
-    status: applied
+    status: ai-default
 `,
     });
 

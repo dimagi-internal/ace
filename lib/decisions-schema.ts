@@ -2,14 +2,14 @@ import { z } from "zod";
 import yaml from "yaml";
 
 /**
- * Canonical schema version for the decisions log. Bump when introducing
- * a breaking change; pair with a migration in `migrations/`.
+ * Canonical schema version for the decisions log.
  *
- * v2 (2026-05-22): rename `default:` field to `ai-default:`; add optional
- * `override:` field; drop `open` from status enum. See
- * docs/superpowers/specs/2026-05-22-fork-decisions-modes-design.md.
+ * v3 (2026-05-24): separates reasoning from pickable values for
+ * multiplayer editing. Fields: `options` (short scannable labels),
+ * `reasoning` (AI's rationale), `override_reasoning` (human's
+ * rationale when overriding), `source` (citation only).
  */
-export const DECISIONS_SCHEMA_VERSION = 2 as const;
+export const DECISIONS_SCHEMA_VERSION = 3 as const;
 
 /**
  * One row in a per-run decisions log. Represents a load-bearing default
@@ -19,9 +19,14 @@ export const DECISIONS_SCHEMA_VERSION = 2 as const;
  *
  * Effective value = `override` if present else `ai-default`.
  *
+ * v3 separates reasoning from pickable values for multiplayer editing:
+ * - `options` (was `options_considered`): short, scannable labels
+ * - `reasoning` (was `notes`): AI's rationale — why this option
+ * - `override_reasoning`: human's rationale — why they overrode
+ * - `source`: citation only (where the info came from), not reasoning
+ *
  * See docs/superpowers/specs/2026-05-08-decisions-log-design.md § Schema
- * for the bar criterion that gates row creation; v2 schema is
- * documented in docs/superpowers/specs/2026-05-22-fork-decisions-modes-design.md.
+ * for the bar criterion that gates row creation.
  */
 export const DecisionRowSchema = z
   .object({
@@ -36,10 +41,11 @@ export const DecisionRowSchema = z
     question: z.string().min(1),
     "ai-default": z.string().min(1),
     override: z.string().min(1).optional(),
-    options_considered: z.array(z.string().min(1)),
+    options: z.array(z.string().min(1)),
+    reasoning: z.string().optional(),
     source: z.string().min(1),
     status: z.enum(["ai-default", "overridden"]),
-    notes: z.string().optional(),
+    override_reasoning: z.string().min(1).optional(),
   })
   .superRefine((row, ctx) => {
     if (row.status === "overridden" && row.override === undefined) {
@@ -52,7 +58,7 @@ export const DecisionRowSchema = z
     if (row.status === "ai-default" && row.override !== undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "status=applied must not have `override` field",
+        message: "status=ai-default must not have `override` field",
         path: ["override"],
       });
     }
@@ -96,15 +102,10 @@ export type DecisionsLog = z.infer<typeof DecisionsLogSchema>;
  * Throws an Error whose message lists the dot-paths of each offending
  * field (e.g. "decisions.0.id") if validation fails.
  * Throws YAMLParseError if the YAML itself is unparseable.
- *
- * Transparently upgrades v1-shape input to v2 in memory so live runs
- * survive the schema bump without an explicit migration pass. The next
- * write (e.g. via decisions-render) persists the v2 shape to disk.
  */
 export function parseDecisionsYaml(input: string): DecisionsLog {
   const raw = yaml.parse(input);
-  const upgraded = maybeUpgradeFromV1(raw);
-  const result = DecisionsLogSchema.safeParse(upgraded);
+  const result = DecisionsLogSchema.safeParse(raw);
   if (!result.success) {
     const paths = result.error.issues
       .map((issue) => issue.path.join("."))
@@ -115,66 +116,13 @@ export function parseDecisionsYaml(input: string): DecisionsLog {
 }
 
 /**
- * In-memory upgrade of a v1 decisions log to v2.
- *
- * v1 row:                   v2 row:
- *   default: X        →        ai-default: X
- *   status: applied            status: applied
- *   status: open      →        status: applied   (open collapses; no longer blocking)
- *   status: overridden →       status: overridden + override: X  (best-effort:
- *                              in v1 the override value occupied `default:` and
- *                              the original AI value was lost into options_considered;
- *                              this upgrade copies the same value into both fields)
- *
- * Idempotent: v2 input is returned unchanged.
- * Unknown shapes are returned unchanged and will fail validation downstream.
- */
-function maybeUpgradeFromV1(raw: unknown): unknown {
-  if (typeof raw !== "object" || raw === null) return raw;
-  const log = raw as { schema_version?: unknown; decisions?: unknown };
-  if (log.schema_version !== 1) return raw;
-  if (!Array.isArray(log.decisions)) return raw;
-
-  const upgradedRows = log.decisions.map((r) => {
-    if (typeof r !== "object" || r === null) return r;
-    const row = r as Record<string, unknown>;
-    const out: Record<string, unknown> = { ...row };
-
-    if ("default" in out && !("ai-default" in out)) {
-      out["ai-default"] = out["default"];
-      delete out["default"];
-    }
-
-    if (out["status"] === "open") {
-      out["status"] = "ai-default";
-    }
-
-    if (out["status"] === "overridden" && !("override" in out)) {
-      // v1 destroyed the original AI value on override (pushed to
-      // options_considered); the override value is what's in `default`
-      // (now ai-default). Copy it into `override` so the v2 invariant holds.
-      const aiDefault = out["ai-default"];
-      if (typeof aiDefault === "string") {
-        out["override"] = aiDefault;
-      }
-    }
-
-    return out;
-  });
-
-  return { ...log, schema_version: 2, decisions: upgradedRows };
-}
-
-/**
  * Serialize a DecisionsLog into a YAML string suitable for writing to
  * ACE/<opp>/runs/<run-id>/decisions.yaml.
  *
- * - lineWidth: 0 — the `yaml` package disables block-scalar folding when
- *   lineWidth is 0 or negative; long `notes` paragraphs stay one-line so
- *   diffs are readable.
- * - aliasDuplicateObjects: false — suppresses `&ref_0`/`*ref_0` YAML
- *   anchors when two decisions share an identical `notes` or option
- *   string. Anchors are valid YAML but unreadable for human reviewers.
+ * - lineWidth: 0 — disables block-scalar folding so long `reasoning`
+ *   paragraphs stay one-line and diffs are readable.
+ * - aliasDuplicateObjects: false — suppresses YAML anchors/aliases
+ *   that are valid but unreadable for human reviewers.
  */
 export function serializeDecisionsLog(log: DecisionsLog): string {
   // Validate before emitting — catches caller errors before we write.
