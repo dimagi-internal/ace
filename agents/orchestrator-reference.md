@@ -484,6 +484,16 @@ Without this, `/ace:status` misreports the run state, `opp-eval`'s
 phase-rollup walks empty, and resume-after-interrupt logic can't tell
 which phases already shipped.
 
+**Source-of-truth implementation:** `lib/run-state-validator.ts` exports
+`validateRunState(parsed)` (returns structured `{valid, errors, warnings}`)
+and `classifyPhaseWriteBack(parsed, phaseName)` (returns one of
+`'ok' | 'missing' | 'in_progress' | 'error' | 'malformed'`). Tests pin
+every shape invariant the prose below describes — if you change either,
+update the other. The orchestrator's silent-dispatch retry (§ Auto-retry
+silent Agent dispatches in `ace-orchestrator.md`) treats `'missing'`,
+`'in_progress'`, and `'malformed'` as retry triggers; `'error'` is a
+real phase failure that halts.
+
 **Required shape.** Each phase writes its own top-level
 `phases.<phase-name>` block:
 
