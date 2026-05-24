@@ -1,0 +1,32 @@
+# Capture the Connect sync action — the sync icon in the toolbar and
+# its post-tap "sync complete" state.
+#
+# Alias produced: sync-button
+# Used by: training-deck-template _common/platform-setup.yaml slide "syncing"
+#
+# Pre-state: Connect opp list (connect_fragment_jobs_list visible). The
+# 00-connect-home recipe lands the AVD on this surface.
+#
+# Post-state: Same as pre-state. Sync triggers a server pull/push but
+# doesn't change navigation.
+#
+# Selector palette: connect-2.63.0.yaml
+appId: org.commcare.dalvik
+---
+# Confirm we're on Connect home before tapping sync.
+- assertVisible:
+    id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+
+# Capture the toolbar+list with the sync icon visible at top-right.
+# This is the "anchor" screenshot for the sync-button alias: shows
+# the icon in its natural toolbar context.
+- takeScreenshot: "sync-button"
+
+# Tap the sync action to trigger an actual sync. The icon is content-desc
+# "Sync" and resource-id action_sync. Use the resource-id for stability.
+- tapOn:
+    id: "org.commcare.dalvik:id/action_sync"
+
+# Sync may surface a brief toast / progress spinner. Allow time to settle.
+- waitForAnimationToEnd:
+    timeout: 5000

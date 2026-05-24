@@ -1,0 +1,82 @@
+# Capture the "claim opportunity" surface — the opp-detail page with the
+# Start button (the moment of claiming).
+#
+# Alias produced: claim-opp
+# Used by: training-deck-template _common/platform-setup.yaml slide
+#          "claim-opportunity"
+#
+# Pre-state: Connect opp list visible (connect_fragment_jobs_list). The
+# 00-connect-home recipe lands the AVD on this surface.
+#
+# Strategy: scroll the opp list to find the View Opportunity button BELOW
+# a tile whose title matches ${OPP_NAME} (substring). Tap → opp-detail
+# screen with Start button. Snap. We do NOT tap Start (downstream
+# 02-learn-install does that).
+#
+# OPP_NAME PINNING: the demo user accumulates invites across every
+# /ace:run, including older pre-Nova-fix builds that hit "A part of your
+# application is invalid" when claimed. To keep baseline capture
+# deterministic, pin OPP_NAME to a known-good recent opp (e.g.
+# "malaria-rdt (run 20260523-2027)"). First-match-by-scroll is fragile
+# because the first unclaimed tile may be a stale broken build.
+#
+# Required env vars:
+#   OPP_NAME — substring of the target opp's tile title. Recommended:
+#              an unclaimed opp on a Connect APK / Nova build version
+#              that's known to install cleanly. Pass verbatim from
+#              run_state.yaml.phases.connect-setup.products.connect.opportunity.name
+#              for the run you're capturing against.
+#
+# Selector palette: connect-2.63.0.yaml
+appId: org.commcare.dalvik
+---
+- assertVisible:
+    id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+
+# Scroll to the target opp's title first (text match — Maestro's `text:`
+# matcher is substring by default; run-id suffixes give per-run
+# uniqueness).
+- scrollUntilVisible:
+    element:
+      text: ${OPP_NAME}
+    direction: DOWN
+    timeout: 30000
+
+# Bring the per-tile button below the matched title into view. The tile
+# may have btn_view_opportunity (unclaimed) OR btn_resume (in-progress).
+# Try the unclaimed path first.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/btn_view_opportunity"
+        below:
+          text: ${OPP_NAME}
+    commands:
+      - scrollUntilVisible:
+          element:
+            id: "org.commcare.dalvik:id/btn_view_opportunity"
+            below:
+              text: ${OPP_NAME}
+          direction: DOWN
+          timeout: 10000
+
+# Capture the list view with the target tile visible.
+- takeScreenshot: "claim-opp-list"
+
+# Tap View Opportunity scoped to the target tile (below the matched title).
+- tapOn:
+    id: "org.commcare.dalvik:id/btn_view_opportunity"
+    below:
+      text: ${OPP_NAME}
+
+# Land on opp-detail. The Start button (btn_start) is the "Claim" CTA.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/btn_start"
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Primary capture: opp-detail with Start button. This is what "claim
+# your opportunity" looks like in the deck.
+- takeScreenshot: "claim-opp"
