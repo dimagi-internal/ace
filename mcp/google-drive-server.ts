@@ -623,21 +623,33 @@ server.tool(
 // 11b. Upload a binary file (PNG, PDF, audio, etc.) to Google Drive
 server.tool(
   'drive_upload_binary',
-  'Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Content is base64-encoded; the MCP decodes it and uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Used by ACE skills that need to upload screenshots (Phase 6 `app-screenshot-capture`), CCZs, training-material attachments, audio session recordings, etc. Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file — required for downstream Slides `createImage` ingest (Slides\' image-import service does NOT carry the SA\'s auth, so an SA-only PNG renders as an empty image in the deck). The parent MUST be a folder on a Shared Drive — same Service Account quota constraint as `drive_create_file` / `drive_create_folder`.',
+  'Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Accepts content via base64 string (contentBase64) OR a local file path (localFilePath) — use localFilePath for large files like videos to avoid passing megabytes through the context window. The MCP uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file. The parent MUST be a folder on a Shared Drive.',
   {
     name: z.string().describe('Name for the new file (include the extension — e.g., "screen-01.png", not "screen-01")'),
-    contentBase64: z.string().describe('File content, base64-encoded. For PNGs from `cat foo.png | base64`, just paste the result. The MCP decodes before upload.'),
-    mimeType: z.string().describe('MIME type of the binary content. Common ACE values: "image/png", "image/jpeg", "application/pdf", "audio/mpeg", "application/zip" (CCZ).'),
+    contentBase64: z.string().optional().describe('File content, base64-encoded. Provide either this OR localFilePath, not both.'),
+    localFilePath: z.string().optional().describe('Absolute path to a local file to upload. Reads directly from disk — avoids passing large binaries through the context window. Provide either this OR contentBase64, not both.'),
+    mimeType: z.string().describe('MIME type of the binary content. Common ACE values: "image/png", "image/jpeg", "application/pdf", "audio/mpeg", "video/mp4", "application/zip" (CCZ).'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
     shareAnyoneWithLink: z.boolean().optional().describe('When true, after a successful upload set sharing to `role: reader, type: anyone` (anyone-with-link). Required for any PNG that downstream Slides `createImage` will fetch — Slides\' image-import service does not carry the SA\'s auth. Default: false.'),
   },
-  async ({ name: fileName, contentBase64, mimeType, parentFolderId, shareAnyoneWithLink }) => {
+  async ({ name: fileName, contentBase64, localFilePath, mimeType, parentFolderId, shareAnyoneWithLink }) => {
     try {
       const guard = await assertParentOnSharedDrive(parentFolderId);
       if (!guard.ok) return error(guard.message);
-      const buf = Buffer.from(contentBase64, 'base64');
+      let buf: Buffer;
+      if (localFilePath) {
+        const fs = await import('fs');
+        if (!fs.existsSync(localFilePath)) {
+          return error(`localFilePath not found: ${localFilePath}`);
+        }
+        buf = fs.readFileSync(localFilePath);
+      } else if (contentBase64) {
+        buf = Buffer.from(contentBase64, 'base64');
+      } else {
+        return error('Provide either contentBase64 or localFilePath.');
+      }
       if (buf.length === 0) {
-        return error('contentBase64 decoded to 0 bytes — verify the input is valid base64.');
+        return error('File is empty (0 bytes).');
       }
       const created = await drive.files.create({
         requestBody: {
