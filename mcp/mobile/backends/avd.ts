@@ -696,14 +696,74 @@ export class AvdBackend {
     if (Number.isFinite(consolePort) && consolePort > 0) {
       const free = await isTcpPortFree(consolePort);
       if (!free) {
+        // Same-user orphan rescue: before declaring this a foreign-user
+        // squatter, see if it's actually OUR OWN orphan qemu whose
+        // session lock has been cleaned. Step 1's lock-file-driven sweep
+        // is blind to this case — when graceful MCP shutdown removed
+        // the lock but the SIGKILL on qemu raced or timed out, OR when
+        // a prior failed `ensureAvdRunning` attempt spawned qemu and
+        // threw before recording a lock, the qemu becomes an orphan
+        // with no lock pointer. Step 1's qemu==adb-devices heuristic
+        // also misses it when the orphan IS registered to our
+        // adb-server (count match → no kill).
+        //
+        // lsof permission semantics make this rescue safe across users:
+        // on macOS, `lsof -nP -iTCP:<port> -sTCP:LISTEN -t` only
+        // returns PIDs the caller has permission to see — i.e. only
+        // current-user PIDs (and root). A foreign-user squatter
+        // returns empty here, falling through to the original error.
+        //
+        // We additionally verify each PID is a qemu-system process
+        // before killing — defensive against the unlikely case where
+        // some same-user non-qemu service is bound to this port.
+        let killedSameUserOrphan = false;
+        const lsof = await this.shell('lsof', [
+          '-nP',
+          `-iTCP:${consolePort}`,
+          '-sTCP:LISTEN',
+          '-t',
+        ]).catch(() => null);
+        const sameUserPids = lsof && lsof.exitCode === 0
+          ? lsof.stdout
+              .split('\n')
+              .map((s) => parseInt(s.trim(), 10))
+              .filter((n) => Number.isFinite(n) && n > 0)
+          : [];
+        for (const pid of sameUserPids) {
+          const ps = await this.shell('ps', ['-p', String(pid), '-o', 'command=']).catch(
+            () => null,
+          );
+          const cmd = ps && ps.exitCode === 0 ? ps.stdout.trim() : '';
+          if (!/qemu-system/.test(cmd)) continue;
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[ace-mobile] sweepStaleEmulatorState: killing same-user orphan qemu pid=${pid} on port ${consolePort} (no session lock)`,
+          );
+          try {
+            process.kill(pid, 'SIGKILL');
+            killedSameUserOrphan = true;
+          } catch {
+            /* already gone — fine */
+          }
+        }
+        if (killedSameUserOrphan) {
+          // Same 500ms socket-release wait as Step 1.5 — kernel needs
+          // a moment to tear down the TCP listener after qemu dies.
+          await new Promise((r) => setTimeout(r, 500));
+          const freeAfterKill = await isTcpPortFree(consolePort);
+          if (freeAfterKill) return; // rescued — port is ours
+        }
+
+        // Still occupied → really is a foreign-user squatter or an
+        // unrelated non-qemu service. Throw the original error.
         throw new AvdBootError(
           '<sweep-stale-emulator-state>',
           `Emulator console port ${consolePort} is in use by a process this ACE ` +
-            `session cannot manage. The orphan-qemu sweep just ran and would ` +
-            `have killed any current-user qemu on that port, so the squatter is ` +
-            `either (a) a different macOS user account running its own ACE / ` +
-            `Android emulator on the default port, or (b) an unrelated service ` +
-            `bound to ${consolePort}. ` +
+            `session cannot manage. Both the lock-file orphan-qemu sweep AND the ` +
+            `same-user-PID lsof rescue just ran without freeing the port, so the ` +
+            `squatter is either (a) a different macOS user account running its ` +
+            `own ACE / Android emulator on the default port, or (b) an unrelated ` +
+            `non-qemu service bound to ${consolePort}. ` +
             `Remediation: set ACE_MOBILE_EMULATOR_PORT to a free even value in ` +
             `[5556, 5680] (e.g. 5580) in ${process.env.CLAUDE_PLUGIN_DATA ?? '$CLAUDE_PLUGIN_DATA'}/.env, ` +
             `then restart Claude Code so the MCP subprocess re-reads the env. ` +
@@ -715,6 +775,8 @@ export class AvdBackend {
             console_port: consolePort,
             env_var_set: !!consolePortEnv,
             sweep_phase: 'cross-user-collision-precheck',
+            same_user_pids_seen: sameUserPids,
+            same_user_kill_attempted: killedSameUserOrphan,
           },
         );
       }
