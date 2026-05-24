@@ -7,13 +7,14 @@
  * Existing call sites (16 of them across `mcp/` + `scripts/`) keep using
  * `google.drive({ version: 'v3', auth })`, `new google.auth.GoogleAuth(…)`,
  * etc. — only the import path changes per file. Same wire protocol, same
- * generated types, just scoped to the 4 APIs ACE actually uses (Drive,
- * Docs, Sheets, Slides) plus the auth client.
+ * generated types, just scoped to the APIs ACE actually uses (Drive,
+ * Docs, Sheets, Slides, Forms) plus the auth client.
  */
 import { drive } from '@googleapis/drive';
 import { docs } from '@googleapis/docs';
 import { sheets } from '@googleapis/sheets';
 import { slides } from '@googleapis/slides';
+import { forms } from '@googleapis/forms';
 import * as auth from 'google-auth-library';
 
-export const google = { drive, docs, sheets, slides, auth };
+export const google = { drive, docs, sheets, slides, forms, auth };
