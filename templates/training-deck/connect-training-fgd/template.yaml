@@ -1,0 +1,19 @@
+id: connect-training-fgd
+name: "Connect Training — Focus Group Discussion"
+description: >
+  Training deck for focus-group opportunities. Emphasizes FGD facilitation skills,
+  question guide walkthrough, consent procedures, and post-session documentation
+  (attestation form + Google Doc). CommCare interaction is minimal (sentinel
+  readiness + 5-field attestation). OCS chatbot is the primary guidance surface.
+archetype: focus-group
+audience: flw
+modules:
+  - welcome
+  - platform-setup
+  - fgd-overview
+  - running-the-session
+  - after-the-session
+  - practice
+  - resources
+expected_slide_count: "25-40"
+expected_duration_minutes: "180-300"
