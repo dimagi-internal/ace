@@ -18,22 +18,45 @@
 # Selector palette: connect-2.63.0.yaml
 appId: org.commcare.dalvik
 ---
+# Ensure CommCare is foregrounded (no clearState — we want post-bootstrap
+# state intact).
+- launchApp:
+    appId: org.commcare.dalvik
+- waitForAnimationToEnd:
+    timeout: 3000
+
 # If the nav drawer is open (overlay visible), close it by tapping the
-# Close drawer button at the top-left of the toolbar.
+# scrim on the right side of the screen.
+#
+# Two close attempts that DIDN'T work (verified live 2026-05-24):
+#   - tapOn: "Close navigation drawer" — Maestro logs COMPLETED but the
+#     drawer stays open in the captured screenshot
+#   - pressKey: back — exits CommCare entirely to Android home screen
+#     instead of just closing the drawer
+#
+# Scrim tap at (900, 1200) — the right-side dimmed area — is standard
+# Material design "tap outside drawer to dismiss." Falls inside the
+# welcome-screen content area where no interactive elements live, so
+# the tap is absorbed by the drawer's scrim and dismisses it.
 - runFlow:
     when:
       visible:
         text: "Close navigation drawer"
     commands:
-      - tapOn: "Close navigation drawer"
+      - tapOn:
+          point: "900,1200"
       - waitForAnimationToEnd:
           timeout: 3000
 
-# Wait for the Welcome screen to fully settle.
+# Wait for the Welcome screen to fully settle. Assert against an element
+# that's only visible when the drawer is CLOSED — the GO TO CONNECT MENU
+# button. When drawer is open this button is hidden behind the overlay.
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/str_setup_message"
+      id: "org.commcare.dalvik:id/connect_login_button"
     timeout: 10000
+- assertNotVisible:
+    text: "Close navigation drawer"
 - takeScreenshot: "commcare-welcome"
 
 # Tap GO TO CONNECT MENU — the primary path into the Connect opp list.
