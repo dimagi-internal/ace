@@ -686,15 +686,9 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    stray top-level docs into it.** Step 5 (Capture the inputs manifest)
    has the full procedure — auto-create `inputs/` if missing, auto-move
    any non-folder / non-yaml top-level docs into it, then proceed to
-   manifest capture. The fallback message only fires if after migration
-   `inputs/` is still empty (the operator genuinely has no source
-   material).
-
-   This used to halt unconditionally when `inputs/` was absent. The
-   change was prompted by `malaria-itn-fgd/20260514-2007` — a first-FGD
-   operator naturally dropped the FGD Guide at the opp folder root
-   (next to `opp.yaml`) without knowing about the `inputs/` requirement.
-   See jjackson/ace#299.
+   manifest capture. Falls back to the empty-`inputs/` halt only if
+   migration leaves the folder still empty. See jjackson/ace#299 for the
+   `malaria-itn-fgd/20260514-2007` rationale.
 
    **(b) Zero-arg discovery** (default when (a) does not apply):
 
@@ -806,14 +800,11 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    each file in the manifest as the evidence pack and synthesizes
    the PDD from there.
 
-   The previous single-file `pdd.md` discovery (`pdd.md` exact,
-   `*pdd*` glob, lone-doc fallback, multi-doc error) is removed
-   entirely. There is no longer a copy of any input file into the run
-   folder — `inputs/` is the canonical read-only seed pack and
-   `idea-to-pdd` reads its files directly via the manifest's
-   `file_id`s. (The pre-2026-05-22 `--idea FILE|-` operator-seed
-   flag was also retired — operators put any free-text seed directly
-   into `inputs/` as a regular source file.)
+   Phase 1 reads each input file directly from `inputs/` via the
+   manifest's `file_id`s — no file is copied into the run folder; no
+   single `pdd.md` is picked. Free-text seed material goes into
+   `inputs/` as a regular file (the legacy `--idea FILE|-` flag was
+   retired 2026-05-22).
 
 6. **Initialize `run_state.yaml`** at `<opp>/runs/<runId>/run_state.yaml` with:
    - `mode`, `created` (ISO timestamp), all steps as `pending`
@@ -835,28 +826,12 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    created_by: <email>
    ```
 
-   If opp.yaml already exists, leave it alone — none of its fields are
-   keyed off the current run. The previous version of this step bumped
-   `last_run_id` and appended to a `runs:` list with a revisionVersion
-   CAS dance, but neither field is read by anyone:
-
-   - ace-web scans the filesystem (`runs/` folder listing) to enumerate
-     runs, so it never consults `opp.yaml.runs` or `last_run_id`.
-   - The orchestrator's structural use of `opp.yaml` is limited to
-     the identity fields (display_name, slug, tags, created_at,
-     created_by) plus the `connect.program` block (durable Connect
-     program UUID + URL, reused across runs by
-     `connect-program-setup`). Everything else (Connect opportunity,
-     OCS chatbot, solicitation, selected_llo, synthetic) is per-run
-     and lives only in the producing run's
-     `run_state.yaml.phases.*.products.*`.
-   - When the user manually deletes a run subfolder, `last_run_id` and
-     `runs:` accumulate dangling references — purely cosmetic, but
-     misleading enough to worry a reader who notices.
-
-   So we just drop the bump. Skip this step entirely on existing opps;
-   `connect-program-setup` is the only phase skill that mutates
-   `opp.yaml` (writes the program block on first create).
+   If opp.yaml already exists, leave it alone — skip this step entirely
+   on existing opps. `connect-program-setup` is the only phase skill
+   that mutates `opp.yaml` (writes the durable `connect.program` block
+   on first program create). All other per-run state lives in
+   `run_state.yaml.phases.*.products.*`; ace-web enumerates runs by
+   scanning `runs/` directly, not by reading opp.yaml.
 
 7b. **Write the per-run `README.md` index.** Generate the markdown via
    `generateRunReadme(runId, {})` from `lib/run-readme.ts` (all phases
@@ -906,13 +881,22 @@ viewing of legacy opps, but is no longer consulted for new runs.
 
 ## Workflow
 
-When invoked with an opportunity, execute these phases in order:
+When invoked with an opportunity, execute these phases in order.
+
+**Per-phase block shape.** Each `### Phase N` block below lists
+`Dispatch`, `Inputs (inline at handoff)`, `Atoms / skills used`,
+`Products`, `Write-back`, `Gate`, and optionally `Notes`. The
+`Inputs (inline at handoff)` items are passed via the prompt template
+in § Pre-flight & per-phase conventions → "Pass artifacts inline at
+phase handoff"; the `Write-back` block follows § Phase Write-Back
+Contract (in `agents/orchestrator-reference.md`); the boundary fence
+itself (the **when**) is § Phase boundary fence below.
 
 ### Phase 1: Idea to Design
 
 **Dispatch:** `Agent(idea-to-design)`.
 
-**Inputs (inline at handoff):** the inputs manifest, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the prompt template.
+**Inputs (inline at handoff):** the inputs manifest, `run_state.yaml`.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(idea-to-design)`.
 
@@ -926,7 +910,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(scenarios-and-acceptance)`.
 
-**Inputs (inline at handoff):** approved PDD (`1-design/idea-to-pdd.md`), Phase-1 verdicts (`1-design/idea-to-pdd-{qa_result,eval_verdict}.yaml`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** approved PDD (`1-design/idea-to-pdd.md`), Phase-1 verdicts (`1-design/idea-to-pdd-{qa_result,eval_verdict}.yaml`), `run_state.yaml`.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(scenarios-and-acceptance)`. Internally the agent runs `pdd-to-test-prompts` (+ QA + eval) then `pdd-to-app-journeys` (+ eval).
 
@@ -940,7 +924,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** **inline procedure-doc `agents/commcare-setup.md`** — do NOT call `Agent(commcare-setup)`. Level-0 constraint, see Notes.
 
-**Inputs (inline at handoff):** PDD, prior-phase verdicts (`1-design/idea-to-pdd-{qa_result,eval_verdict}.yaml`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, prior-phase verdicts (`1-design/idea-to-pdd-{qa_result,eval_verdict}.yaml`), `run_state.yaml`.
 
 **Atoms / skills used (orchestrator-visible only):** inline execution of `agents/commcare-setup.md`, which itself dispatches `/nova:autobuild` for `pdd-to-learn-app` + `pdd-to-deliver-app` (each Nova call is `Agent(nova:nova-architect-autonomous)` at level 0).
 
@@ -956,7 +940,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(connect-setup)`.
 
-**Inputs (inline at handoff):** PDD, Phase-3 verdicts (`3-commcare/{pdd-to-learn-app,pdd-to-deliver-app,app-deploy,app-test-cases}-{qa_result,eval_verdict}.yaml`), `3-commcare/app-deploy_summary.md`, `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-3 verdicts (`3-commcare/{pdd-to-learn-app,pdd-to-deliver-app,app-deploy,app-test-cases}-{qa_result,eval_verdict}.yaml`), `3-commcare/app-deploy_summary.md`, `run_state.yaml`.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(connect-setup)`.
 
@@ -972,7 +956,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(ocs-setup)`.
 
-**Inputs (inline at handoff):** PDD, opp-specific test prompts (`2-scenarios/pdd-to-test-prompts.md`), Phase-4 verdicts (`4-connect/{connect-program-setup,connect-opp-setup}-{qa_result,eval_verdict}.yaml`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, opp-specific test prompts (`2-scenarios/pdd-to-test-prompts.md`), Phase-4 verdicts (`4-connect/{connect-program-setup,connect-opp-setup}-{qa_result,eval_verdict}.yaml`), `run_state.yaml`.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(ocs-setup)`.
 
@@ -988,7 +972,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(qa-and-training)`.
 
-**Inputs (inline at handoff):** PDD, Phase-3 outputs (`3-commcare/app-test-cases.yaml` + per-journey recipes under `3-commcare/app-test-cases/J*.yaml`), Phase-5 chatbot URL (`5-ocs/ocs-agent-setup.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-3 outputs (`3-commcare/app-test-cases.yaml` + per-journey recipes under `3-commcare/app-test-cases/J*.yaml`), Phase-5 chatbot URL (`5-ocs/ocs-agent-setup.md`), `run_state.yaml`.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(qa-and-training)`. Internally the agent runs `app-screenshot-capture` (executor — runs the smoke recipes from Phase 3's `app-test-cases.yaml`) → 5 per-artifact training skills in parallel (`training-llo-guide`, `training-flw-guide`, `training-quick-reference`, `training-faq`, `training-deck-generate`) → `training-deck-render` (sequential after deck-generate; skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` unset) → `training-onboarding-email` (LAST — links by URL to other docs).
 
@@ -1004,7 +988,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(synthetic-data-and-workflows)`.
 
-**Inputs (inline at handoff):** PDD, Phase-4 Connect identifiers (`4-connect/connect-opp-setup.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-4 Connect identifiers (`4-connect/connect-opp-setup.md`), `run_state.yaml`.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(synthetic-data-and-workflows)`. Internally: authors a story-coherent synthetic-data manifest from the PDD, generates fixture data via the connect-labs MCP, instantiates the LLO weekly review + program admin audit workflows, polishes them per-opp, and runs persona walkthroughs that produce stakeholder-ready HTML decks.
 
@@ -1020,7 +1004,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(solicitation-management)`.
 
-**Inputs (inline at handoff):** PDD (with PDD-named candidate LLOs, if any), Phase-7 summary (`7-synthetic/synthetic-summary.md`), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD (with PDD-named candidate LLOs, if any), Phase-7 summary (`7-synthetic/synthetic-summary.md`), `run_state.yaml`.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(solicitation-management)`. Internally the agent runs `solicitation-create` → `llo-invite` (default run, both auto).
 
@@ -1036,7 +1020,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(execution-manager)`. **Entry gated on `phases.solicitation-management.products.selected_llo.org_slug` being populated by Phase 8's `solicitation-review`** in the current run's `run_state.yaml`.
 
-**Inputs (inline at handoff):** PDD, Phase-6 training artifacts (5 docs + onboarding email under `6-qa-and-training/`), Phase-5 chatbot URL (`5-ocs/ocs-agent-setup.md`), `selected_llo` (from run_state.yaml.phases.solicitation-management.products.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** PDD, Phase-6 training artifacts (5 docs + onboarding email under `6-qa-and-training/`), Phase-5 chatbot URL (`5-ocs/ocs-agent-setup.md`), `selected_llo` (from run_state.yaml.phases.solicitation-management.products.selected_llo), `run_state.yaml`.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(execution-manager)`.
 
@@ -1052,7 +1036,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Dispatch:** `Agent(closeout)`. **Triggered when the opportunity reaches its end date.**
 
-**Inputs (inline at handoff):** Phase-9 outputs (LLO onboarding + UAT + go-live artifacts under `9-execution-manager/`), `selected_llo` (from run_state.yaml.phases.solicitation-management.products.selected_llo), `run_state.yaml`. See § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff" for the template.
+**Inputs (inline at handoff):** Phase-9 outputs (LLO onboarding + UAT + go-live artifacts under `9-execution-manager/`), `selected_llo` (from run_state.yaml.phases.solicitation-management.products.selected_llo), `run_state.yaml`.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(closeout)`.
 
