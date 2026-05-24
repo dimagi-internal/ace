@@ -377,32 +377,46 @@ silently skipping the work order chain (Steps 2, 2.4, 2.5 in
 all lost. Diagnosed as the same failure class in Phase 3 inline execution
 where step entries lacked `artifact` fields.
 
-**Auto-retry silent Agent dispatches before surfacing failure.** If an
-`Agent(<phase>)` call returns:
+**Auto-retry silent Agent dispatches before surfacing failure.** The
+gating signal is the **Phase Write-Back Verifier read** that already
+runs in Turn N+1 of the § Phase boundary fence (`drive_read_file` on
+`run_state.yaml`). Treat the Agent dispatch as a **silent failure**
+when either:
 
-- the literal string `No response requested` (or a near-variant), or
-- an empty/whitespace-only message, or
-- a message with no mention of artifacts written and no `run_state.yaml`
-  write-back evidence
+- The verifier read shows `phases.<phase>` block is absent OR its
+  `status` is still `in_progress`/`pending` (the agent didn't flip
+  the gate). This is the **primary, structural signal** — it doesn't
+  depend on response text quality.
+- The Agent message body is empty, whitespace-only, or literally `No
+  response requested` (or a near-variant). These are **secondary
+  signals** — useful for catching the cases where the agent never
+  even started its workflow, before the verifier read happens.
 
-…re-dispatch the SAME phase ONE more time with an explicit closing line
-appended to the `## Your task` block:
+On silent failure, re-dispatch the SAME phase ONE more time with an
+explicit closing line appended to the `## Your task` block:
 
 ```
 **Required: produce the artifact(s) described in your agent definition
-and write back to `run_state.yaml.phases.<phase>` before returning.
-Do not return a one-line acknowledgement; the orchestrator treats that
-as a silent failure.**
+and write back to `run_state.yaml.phases.<phase>.status = done` before
+returning. The orchestrator verifies this via drive_read_file on
+run_state.yaml; an in_progress or missing block is treated as a silent
+failure.**
 ```
 
-If the second dispatch also returns silently, STOP and surface to the
-human — do not loop indefinitely. Cap at 2 attempts total per phase
-per orchestrator turn.
+If the second dispatch also fails the verifier read, STOP and surface
+to the human — do not loop indefinitely. Cap at 2 attempts total per
+phase per orchestrator turn.
 
-**Why:** `e2e-malaria-rdt` Phase 1 dispatch returned "No response
-requested" with no PDD; the human had to type "keep going" to recover.
-One automatic retry catches transient agent-side glitches without
-inviting infinite loops on genuine failures.
+**Why structural, not text-match.** Text-match alone (`"No response
+requested"`) is fragile — the agent could return a confidently-worded
+status text that says "Phase 1 complete: PDD written" while having
+written nothing. The verifier read against `run_state.yaml.phases.<phase>`
+is the same source of truth `/ace:status` and `opp-eval` use; if the
+gate didn't flip, the phase didn't ship, regardless of what the
+response text claimed. `e2e-malaria-rdt` Phase 1's silent dispatch
+happened to also have empty text, so PR-A's text-match worked there —
+but PR-G's verifier-driven signal catches the harder class where the
+agent returns plausible-sounding text without actually writing.
 
 **Pre-load common MCP atoms at start.** Many ACE atoms are exposed as
 deferred tools that need a `ToolSearch` lookup before first use. To
