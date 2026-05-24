@@ -728,16 +728,58 @@ server.tool(
 );
 
 /**
- * Classify an error thrown by the googleapis client as a transient 5xx that
- * should be retried, vs a permanent error (4xx, auth, malformed args) that
- * should not. We accept either a numeric `code` (modern client) or a string
- * message that names the failure mode (older client / network errors).
+ * Classify an error thrown by the googleapis client as a transient 5xx /
+ * network blip that should be retried, vs a permanent error (4xx, auth,
+ * malformed args) that should not. We accept either a numeric `code` (modern
+ * client) or a string message that names the failure mode (older client /
+ * Node-layer network errors).
+ *
+ * Patterns covered:
+ *   - HTTP 5xx (numeric code or "internal error" / "backend error" /
+ *     "service unavailable" / "gateway").
+ *   - Timeouts ("timeout", `ETIMEDOUT`).
+ *   - Connection resets / hang-ups (`ECONNRESET`, "socket hang up",
+ *     "socket close", "connection closed", `EPIPE`).
+ *   - Connection refused / unreachable (`ECONNREFUSED`, `ENETUNREACH`,
+ *     `EHOSTUNREACH`, `ECONNABORTED`, "connection refused").
+ *   - DNS flakes (`EAI_AGAIN`, "getaddrinfo eai_again").
+ *   - Generic undici fetch failures ("fetch failed") — Node 18+ HTTP
+ *     client surfaces TLS / mid-stream failures under this string.
+ *
+ * Rationale for the connection-refused class: ECONNREFUSED can be a
+ * permanent "server is down" or a transient "service is restarting." With
+ * 3 attempts × exponential backoff (1s/2s/4s), the worst-case retry cost
+ * on a true-fail is ~7s — small price for catching the transient cases
+ * observed in the e2e-malaria-rdt 2026-05-24 session, where a socket-close
+ * mid-`update_yaml_file` and a ConnectionRefused at end-of-subagent both
+ * interrupted an autonomous run and forced human "keep going" intervention.
  */
-function isTransientDriveError(e: any): boolean {
+export function isTransientDriveError(e: any): boolean {
   const code = typeof e?.code === 'number' ? e.code : Number(e?.code);
   if (Number.isFinite(code) && code >= 500 && code < 600) return true;
+
+  // Node-layer network errors may surface as e.code = 'ECONNRESET' etc.
+  // rather than a numeric code. Check the string form too.
+  const codeStr = String(e?.code ?? '').toUpperCase();
+  if (
+    codeStr === 'ECONNRESET' ||
+    codeStr === 'ECONNREFUSED' ||
+    codeStr === 'ECONNABORTED' ||
+    codeStr === 'ETIMEDOUT' ||
+    codeStr === 'ENETUNREACH' ||
+    codeStr === 'EHOSTUNREACH' ||
+    codeStr === 'EPIPE' ||
+    codeStr === 'EAI_AGAIN'
+  ) {
+    return true;
+  }
+
   const msg = String(e?.message || '').toLowerCase();
-  if (/internal error|backend error|service unavailable|gateway|timeout|econnreset|etimedout/.test(msg)) {
+  if (
+    /internal error|backend error|service unavailable|gateway|timeout|econnreset|econnrefused|econnaborted|etimedout|enetunreach|ehostunreach|epipe|eai_again|socket hang up|socket close|socket closed|connection closed|connection refused|fetch failed|getaddrinfo/.test(
+      msg,
+    )
+  ) {
     return true;
   }
   return false;
@@ -748,7 +790,7 @@ function isTransientDriveError(e: any): boolean {
  * is 1s, 2s, 4s; a `sleep` injection lets tests skip the actual wait. The
  * final failure rethrows so the caller still surfaces it.
  */
-async function withTransientRetry<T>(
+export async function withTransientRetry<T>(
   op: () => Promise<T>,
   opts: { maxAttempts?: number; sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<T> {
