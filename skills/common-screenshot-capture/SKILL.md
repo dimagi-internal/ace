@@ -68,16 +68,37 @@ quota is 0 in My Drive — `assertParentOnSharedDrive` guards this).
 ### Step 3: Run baseline recipes
 
 Run baseline recipes via `mobile_run_recipe` to capture screenshots
-covering the three common flows:
+covering the three common flows. Recipe files live in
+`mcp/mobile/recipes/baseline/` and are calibrated against the live
+Connect APK selectors palette (`mcp/mobile/selectors/connect-<version>.yaml`).
 
-| Flow | Surfaces covered | Screenshots captured |
-|------|------------------|---------------------|
-| **Install flow** | Play Store search → install → open CommCare | `play-store-search`, `commcare-install`, `commcare-open`, `commcare-welcome` |
-| **PersonalID signup** | Start → name → phone → verify → photo → ID → location → done | `personal-id-start`, `personal-id-name`, `personal-id-phone`, `personal-id-verify`, `personal-id-photo`, `personal-id-id`, `personal-id-location`, `personal-id-done` |
-| **Connect navigation** | Home screen → opportunity list → claim → Learn install | `connect-home`, `claim-opp`, `learn-install` |
-| **Syncing** | Sync button, sync indicator | `sync-button` |
+| Flow | Recipe(s) | Aliases captured |
+|------|-----------|------------------|
+| **Connect navigation** | `00-connect-home.yaml`, `01-claim-opp.yaml`, `02-learn-install.yaml` | `commcare-welcome`, `connect-home`, `claim-opp`, `learn-install` |
+| **Syncing** | `03-sync-button.yaml` | `sync-button` |
+| **Install flow** | TBD — Play Store driving | `play-store-search`, `commcare-install`, `commcare-open` |
+| **PersonalID signup** | TBD — composite driving the full registration | `personal-id-start`, `personal-id-name`, `personal-id-phone`, `personal-id-verify`, `personal-id-photo`, `personal-id-id`, `personal-id-location`, `personal-id-done` |
 
-Total: 16 required screenshots.
+Total: 16 required aliases (5 currently captured by shipped recipes).
+
+#### OPP_NAME pinning (claim-opp + learn-install)
+
+`01-claim-opp.yaml` accepts an `OPP_NAME` env var (substring match
+against the tile title) so the recipe deterministically targets one
+specific opp. **First-match-by-scroll is fragile** because the ACE demo
+user accumulates invites across every `/ace:run`, including older
+pre-Nova-fix builds that hit *"A part of your application is invalid"*
+when claimed (reproduced live 2026-05-24 against LEEP run 20260506-1440
+on a fresh AVD). Pin to a known-good recent opp.
+
+The caller skill should pick the OPP_NAME by **forking a known-good
+recent run** via `/ace:fork-run` before invoking baseline recipes. The
+fork guarantees a fresh Connect opp with current Nova-build CCZ that
+installs cleanly. Use `/ace:fork-run --opp_slug <slug> --from_run_id <id>
+--from_skill connect-program-setup --mode keep-all` to fork at the
+Phase 4 boundary, then pass the new opp's `opportunity.name` as
+`OPP_NAME`. Falling back to "first unclaimed match" is a known-fragile
+shortcut and should only be used in interactive debugging.
 
 ### Step 4: Upload screenshots
 

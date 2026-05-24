@@ -1,0 +1,50 @@
+# Capture the "installing Learn app" surface — the Learn CCZ download
+# progress shown right after tapping Start on an opp-detail.
+#
+# Alias produced: learn-install
+# Used by: training-deck-template _common/platform-setup.yaml slide
+#          "install-learn"
+#
+# Pre-state: opp-detail screen with btn_start visible. The 01-claim-opp
+# recipe lands the AVD on this surface.
+#
+# Post-state: Learn-app StandardHomeActivity (nsv_home_screen visible) —
+# the post-download Learn home with Start/Sync/Log out tiles.
+#
+# Selector palette: connect-2.63.0.yaml
+appId: org.commcare.dalvik
+---
+# Confirm we're on opp-detail with the Start button visible.
+- assertVisible:
+    id: "org.commcare.dalvik:id/btn_start"
+
+# Tap Start. This fires POST /users/start_learn_app/ on Connect, then
+# downloads the Learn CCZ (per atlas §4 — "Downloading Learn App"
+# progress dialog with "Step N of 14"). The download takes 10-60s.
+- tapOn:
+    id: "org.commcare.dalvik:id/btn_start"
+    retryTapIfNoChange: true
+
+# Try to catch the "Downloading Learn App" dialog while it's visible.
+# Best-effort: the dialog may flash by quickly on a warm network. Anchor
+# on the text; capture once visible.
+- runFlow:
+    when:
+      visible:
+        text: "Downloading Learn App"
+    commands:
+      - takeScreenshot: "learn-install"
+
+# Wait for the full download cycle to complete and land on Learn home.
+# Per connect-claim-opp.yaml comments: nsv_home_screen is the
+# StandardHomeActivity-specific signal post-download. Generous 180s
+# timeout per learnings (full window can run 30-90s on cold-booted AVDs).
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/nsv_home_screen"
+    timeout: 180000
+
+# Fallback capture: if we missed the download dialog (too fast), capture
+# the post-install Learn home. The deck slide is about "Learn app
+# installed and ready" — this surface satisfies that intent too.
+- takeScreenshot: "learn-install-home"

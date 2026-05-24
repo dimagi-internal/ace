@@ -1,0 +1,92 @@
+# Capture the Connect home screen — the post-login opp list.
+#
+# Alias produced: connect-home
+# Used by: training-deck-template _common/platform-setup.yaml slide "connect-home"
+#
+# Pre-state: post-bootstrap CommCare-app-setup screen with the demo user
+# already registered ("ACE Test" in the nav drawer profile card). The
+# nav drawer may be open or closed depending on what mobile_ensure_avd_running
+# left behind. The "Welcome to CommCare!" CTA "GO TO CONNECT MENU" is the
+# primary path to the Connect opp list.
+#
+# Post-state: Connect opp list (connect_fragment_jobs_list) visible with
+# the New Opportunities section header.
+#
+# Required env vars:
+#   PIN — 4-digit device PIN for the ACE test user (${ACE_E2E_PIN})
+#
+# Selector palette: connect-2.63.0.yaml
+appId: org.commcare.dalvik
+---
+# Ensure CommCare is foregrounded (no clearState — we want post-bootstrap
+# state intact).
+- launchApp:
+    appId: org.commcare.dalvik
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# If the nav drawer is open (overlay visible), close it by tapping the
+# scrim on the right side of the screen.
+#
+# Two close attempts that DIDN'T work (verified live 2026-05-24):
+#   - tapOn: "Close navigation drawer" — Maestro logs COMPLETED but the
+#     drawer stays open in the captured screenshot
+#   - pressKey: back — exits CommCare entirely to Android home screen
+#     instead of just closing the drawer
+#
+# Scrim tap at (900, 1200) — the right-side dimmed area — is standard
+# Material design "tap outside drawer to dismiss." Falls inside the
+# welcome-screen content area where no interactive elements live, so
+# the tap is absorbed by the drawer's scrim and dismisses it.
+- runFlow:
+    when:
+      visible:
+        text: "Close navigation drawer"
+    commands:
+      - tapOn:
+          point: "900,1200"
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# Wait for the Welcome screen to fully settle. Assert against an element
+# that's only visible when the drawer is CLOSED — the GO TO CONNECT MENU
+# button. When drawer is open this button is hidden behind the overlay.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/connect_login_button"
+    timeout: 10000
+- assertNotVisible:
+    text: "Close navigation drawer"
+- takeScreenshot: "commcare-welcome"
+
+# Tap GO TO CONNECT MENU — the primary path into the Connect opp list.
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_login_button"
+
+# Tapping into a Connect-protected screen may trigger an Android
+# BiometricPrompt with device-credential fallback (PIN entry). The prompt
+# belongs to com.android.systemui, not org.commcare.dalvik, so a robust
+# runFlow.when handles both AVDs with biometric (no prompt) and AVDs that
+# fall back to PIN.
+- runFlow:
+    when:
+      visible:
+        id: "com.android.systemui:id/lockPassword"
+    commands:
+      - tapOn:
+          id: "com.android.systemui:id/lockPassword"
+      - inputText: ${PIN}
+      - pressKey: Enter
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# Land on the Connect opp list. Anchor on the structural id
+# connect_fragment_jobs_list (preferred — survives label changes); the
+# "New Opportunities" text anchor is the secondary signal.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: "connect-home"
