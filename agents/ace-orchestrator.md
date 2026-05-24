@@ -145,6 +145,20 @@ text`.
   `Skill(app-test-cases)`, omitting the per-journey recipe files Phase 6
   reads. Phase 6 halted at pre-flight; five training docs rendered
   without screenshots and had to be re-run.
+- **Don't skip per-step `-eval` dispatch during inline execution.**
+  Phase 3 (`commcare-setup`) executes inline at level 0. After each
+  producer skill (`pdd-to-learn-app`, `pdd-to-deliver-app`,
+  `app-release`), the procedure doc says to dispatch the matching
+  `-eval` skill (`pdd-to-learn-app-eval`, `pdd-to-deliver-app-eval`,
+  `app-release-eval`) — these are not optional. The inline execution
+  surface makes it easy to skip them ("the build succeeded, move on")
+  but that leaves `has_judge: true` skills without verdicts and the
+  Phase Write-Back Contract's verdict-gate rule fires
+  (`gates.commcare-setup` cannot be `passed` when any `has_judge: true`
+  skill has `steps.<skill>-eval.status: deferred`).
+  **Why:** `malaria-itn-app/20260523-0750` Phase 3 ran all 7 producer
+  skills but 0 of 3 evals. The phase flipped `gates.commcare-setup:
+  pass` without any LLM-as-Judge quality signal.
 - **Don't add operator-confirmation prompts on populated opps.** The
   "do you want to overwrite live state?" gate is off-spec — push
   reuse-vs-rebuild decisions down into phase-agent skill logic. Full
@@ -311,8 +325,31 @@ When dispatching `Agent(<phase>)`, structure the prompt with sections:
 <current run_state.yaml contents>
 
 ## Your task
-<phase-specific instructions per agent definition>
+Run your full Phase N workflow per your agent definition.
+<any phase-specific context the agent needs but that its definition doesn't contain>
 ```
+
+**Scope rule: the dispatch prompt MUST NOT narrow the agent's workflow.**
+The `## Your task` section tells the agent which phase to run and passes
+context (opp name, mode, Drive IDs) — it does NOT re-list which skills
+to invoke. The agent's own definition (`agents/<phase>.md`) owns the
+step list. A dispatch prompt that says "produce the PDD, run QA+eval,
+write back" without mentioning the work order chain causes the agent to
+return after 3 of 6 steps — it follows the prompt literally, not its
+own workflow. Phrasing it as "run your full workflow" defers step
+sequencing to the agent definition where it belongs.
+
+If you need to pass phase-specific constraints (e.g. "the opp already
+has a Connect program, reuse it"), add them as context under `## Your
+task` after the workflow-deferral line — they're inputs to the agent's
+decisions, not replacements for its step list.
+
+**Why:** `malaria-itn-app/20260523-0750` Phase 1 dispatch said "synthesize
+a PDD, run QA+eval, write back" — the agent returned after 3 of 6 steps,
+silently skipping the work order chain (Steps 2, 2.4, 2.5 in
+`agents/idea-to-design.md`). The work order, its QA, and its eval were
+all lost. Diagnosed as the same failure class in Phase 3 inline execution
+where step entries lacked `artifact` fields.
 
 **Pre-load common MCP atoms at start.** Many ACE atoms are exposed as
 deferred tools that need a `ToolSearch` lookup before first use. To
@@ -812,7 +849,7 @@ When invoked with an opportunity, execute these phases in order:
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(idea-to-design)`.
 
-**Products:** PDD (`1-design/idea-to-pdd.md`) — the formal design doc.
+**Products:** PDD (`1-design/idea-to-pdd.md`) — the formal design doc; Work Order (`1-design/pdd-to-work-order.gdoc`) — contractual draft derived from PDD + decisions.yaml. Both are required outputs of Phase 1; the work order chain (Steps 2, 2.4, 2.5 in `agents/idea-to-design.md`) runs after the PDD chain.
 
 **Write-back:** `phases.idea-to-design.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
 
