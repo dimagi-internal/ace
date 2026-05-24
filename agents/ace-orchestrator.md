@@ -220,20 +220,38 @@ pre-flight trusts the cached session and lets phase atoms surface
 auth failures at point-of-use.)
 
 If `bin/ace-doctor --preflight` is unavailable (older install), fall
-back to a single inline Bash:
+back to a single inline Bash. **`$CLAUDE_PLUGIN_DATA` is NOT reliably
+set inside Claude Code sessions** (see anthropics/claude-code#9427) —
+the inline block must self-resolve both `$CLAUDE_PLUGIN_DATA` (default
+`~/.claude/plugins/data/ace-ace`) AND `$ROOT` (from
+`installed_plugins.json`) before probing for `.env`:
 
 ```bash
+ROOT="$(node -e "const d=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.claude/plugins/installed_plugins.json','utf8'));console.log(d.plugins['ace@ace'][0].installPath)")"
+DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/ace-ace}"
 ENV=""
-[ -f "$CLAUDE_PLUGIN_DATA/.env" ] && ENV="$CLAUDE_PLUGIN_DATA/.env"
-[ -z "$ENV" ] && [ -f "$ROOT/.env" ] && ENV="$ROOT/.env"   # $ROOT = plugin install path
+[ -f "$DATA/.env" ] && ENV="$DATA/.env"
+[ -z "$ENV" ] && [ -f "$ROOT/.env" ] && ENV="$ROOT/.env"
 echo "env_file=${ENV:-MISSING}"
-node -e 'try{const d=JSON.parse(require("fs").readFileSync(process.env.HOME+"/.claude/plugins/installed_plugins.json","utf8"));const e=d.plugins["ace@ace"][0];console.log("install_path="+e.installPath);console.log("plugin_version="+e.version);}catch(e){console.log("err:"+e.message);}'
+echo "install_path=$ROOT"
+echo "data_dir=$DATA"
+echo "plugin_version=$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null)"
 git config user.email
 ```
 
 Read the env file's relevant vars from the printed path. Do NOT fan
 out separate `ls`/`test -f` probes — that's the anti-pattern called
 out in "Resolve `.env` in one shot" below.
+
+**Why the explicit $DATA derivation.** The `e2e-malaria-rdt` 2026-05-24
+session showed the orchestrator probing `$CLAUDE_PLUGIN_DATA/.env`
+with an empty `$CLAUDE_PLUGIN_DATA`, resolving to `/.env`, failing,
+then having to fan out across multiple recovery probes before locating
+the real env file. Defaulting to
+`$HOME/.claude/plugins/data/ace-ace` mirrors what `bin/ace-doctor
+--preflight` already does and what the MCP servers' `resolveKeyPath()`
+helper falls back to. The default is the canonical install location on
+Claude Code 2.1+.
 
 **Step 2 — Load deferred MCP atoms in ONE `ToolSearch` call.** L0-only
 atom set (phase subagents run their own `ToolSearch` for phase-specific
