@@ -59,6 +59,16 @@ This is the heart of the deck. Generate 8-15 slides covering:
    - Amount per verified delivery
    - Payment method and timing
    - Minimum deliveries for payout
+   - If using `stats` layout: max 3 items, each with `big:` (the prominent number/value) and `label:` (short description). No `body` field — stats slides only have `title` and `stats`. Example:
+     ```yaml
+     stats:
+       - big: "USD 2.50"
+         label: "Per verified visit"
+       - big: "Weekly"
+         label: "Payment cycle"
+       - big: "10 visits"
+         label: "Minimum for payout"
+     ```
 
 6. **Safety and ethics** (1 slide, layout: `content`)
    - Consent requirements
@@ -113,7 +123,7 @@ Choose the layout that best fits each slide's content:
 | `two_column` | Side-by-side comparisons, do/don't lists | 20-40 words per side |
 | `walkthrough` | Single screenshot with numbered annotations | 30-50 words |
 | `mobile_flow` | Multi-step phone workflow (2-4 screenshots in sequence) | 5-10 words per caption |
-| `stats` | Key numbers (payment amounts, thresholds, counts) | 5-10 words per label |
+| `stats` | Key numbers (payment amounts, thresholds, counts). Max 3 items. Each item has `big` (the number) and `label` (short description). No `body` field. | 5-10 words per label |
 | `before_after` | Comparing correct vs incorrect form entries | 15-25 words per side |
 | `exercise` | Hands-on practice activity with instructions | 30-60 words |
 | `checklist` | Pre-flight or readiness checklists | 5-10 words per item |

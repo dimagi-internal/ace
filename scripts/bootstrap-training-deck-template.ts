@@ -212,9 +212,8 @@ function accentBarRequests(
           shapeBackgroundFill: {
             solidFill: { color: { rgbColor: color } },
           },
-          outline: { outlineFill: { solidFill: { color: { rgbColor: color } } }, weight: { magnitude: 0, unit: 'PT' } },
         },
-        fields: 'shapeBackgroundFill.solidFill.color,outline',
+        fields: 'shapeBackgroundFill.solidFill.color',
       },
     },
   ];
