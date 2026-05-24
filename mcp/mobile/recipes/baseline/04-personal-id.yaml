@@ -1,0 +1,289 @@
+# Capture the PersonalID signup flow surfaces — one screenshot per
+# alias declared in templates/training-deck/_common/platform-setup.yaml.
+#
+# Aliases this recipe can produce (depends on path):
+#   personal-id-start    — Tap 'Sign Up' (the nav-drawer entry surface)
+#   personal-id-name     — Enter your name (only fresh signup, may be skipped)
+#   personal-id-phone    — Enter your phone number
+#   personal-id-verify   — Enter the code you received (DEMO USERS BYPASS;
+#                          captured as the demo-bypass snackbar surface
+#                          OR commit a static placeholder if even that's
+#                          too transient)
+#   personal-id-photo    — Take your photo (only fresh signup path)
+#   personal-id-id       — Scan your ID (may not exist in current APK flow)
+#   personal-id-location — Allow location access (system permission dialog)
+#   personal-id-done     — Profile complete (post-account-recovered)
+#
+# Pre-state: CommCare INSTALLED but LOCAL DATA WIPED (via `adb pm clear
+# org.commcare.dalvik`). Device should NOT have CommCare foregrounded;
+# this recipe launches it fresh.
+#
+# CRITICAL PRE-REQ — Google Play Services MUST be enabled:
+#   adb shell pm enable com.google.android.gms
+# The mobile_ensure_avd_running bootstrap disables GMS so registration's
+# face-capture step picks ManualMode (see playbook/integrations/
+# mobile-integration.md § Face-capture gate). But CommCare 2.63.0's
+# PersonalID launch check fails fast with a blocking "Enable Google Play
+# services" dialog (no dismiss option) when GMS is disabled. So before
+# driving signup capture, re-enable GMS. The caller skill
+# (common-screenshot-capture) MUST do this enable + pm-clear + force-stop
+# before invoking this recipe.
+#
+# Phone-number rationale: re-uses ACE_E2E_PHONE (+74260000100). Since
+# the demo user is server-registered, the recipe will land on the
+# "Server account, no local data" recovery path — NOT the fresh-signup
+# path. Per user direction 2026-05-24, this is acceptable; missing
+# alias surfaces will be filled with manual placeholder images.
+#
+# Required env vars:
+#   COUNTRY_CODE — e.g. "7"
+#   PHONE_LOCAL  — e.g. "4260000100"
+#   PIN          — 6-digit device PIN (defaults to "111111")
+#   NAME         — display name (e.g. "ACE Test")
+#   BACKUP_CODE  — 6-digit backup code (server already has this on file)
+#
+# Selector palette: connect-2.63.0.yaml
+appId: org.commcare.dalvik
+---
+# Cold-launch CommCare. clearState would re-trigger first-install flow
+# but we just pm-cleared so the launch behaves the same way.
+- launchApp:
+    appId: org.commcare.dalvik
+
+# Wait for the Welcome to CommCare splash with the GO TO CONNECT MENU
+# button. If the nav drawer is open (post-launch artifact), the
+# scrim-tap dismisses it (see 00-connect-home.yaml for the rationale).
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/str_setup_message"
+    timeout: 30000
+- runFlow:
+    when:
+      visible:
+        text: "Close navigation drawer"
+    commands:
+      - tapOn:
+          point: "900,1200"
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# Re-capture commcare-welcome from this AUTHENTIC fresh-install state.
+# After pm clear (no registered user), the welcome screen does NOT have
+# the "GO TO CONNECT MENU" button — that button only appears after
+# PersonalID registration. The deck slide "install-commcare" caption
+# "CommCare is ready" wants the first-time-opening view, which is this.
+# (The v0.13.359 capture had the button visible because that was a
+# post-bootstrap state, not a fresh-install state — corrected here.)
+- takeScreenshot: "commcare-welcome"
+
+# Open nav drawer via the burger icon at top-left. Coordinate-based tap
+# since the burger button has no resource-id (same pattern as
+# connect-register-to-otp.yaml).
+- tapOn:
+    point: "73,209"
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+    timeout: 5000
+- waitForAnimationToEnd:
+    timeout: 1000
+
+# personal-id-start surface: the nav drawer open with "Sign In/Register"
+# visible — this is the actual "Tap Sign Up" moment for a fresh user.
+- takeScreenshot: "personal-id-start"
+
+# Enter the PersonalID activity via the nav-drawer Sign In/Register.
+- tapOn:
+    id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+
+# Country code + phone entry screen (the canonical "Enter your phone
+# number" surface).
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/countryCode"
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Capture BEFORE filling — the deck slide caption is "Enter your phone
+# number" so showing the EMPTY form is more informative than a filled one.
+- takeScreenshot: "personal-id-phone"
+
+# Now fill the form (mirroring connect-register-to-otp.yaml).
+- tapOn:
+    id: "org.commcare.dalvik:id/countryCode"
+- runFlow:
+    when:
+      visible:
+        id: "com.google.android.gms:id/cancel"
+    commands:
+      - tapOn:
+          id: "com.google.android.gms:id/cancel"
+- tapOn:
+    id: "org.commcare.dalvik:id/countryCode"
+- eraseText: 5
+- inputText: ${COUNTRY_CODE}
+
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_primary_phone_input"
+- runFlow:
+    when:
+      visible:
+        id: "com.google.android.gms:id/cancel"
+    commands:
+      - tapOn:
+          id: "com.google.android.gms:id/cancel"
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_primary_phone_input"
+- eraseText: 15
+- inputText: ${PHONE_LOCAL}
+
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_consent_check"
+
+- tapOn:
+    id: "org.commcare.dalvik:id/personalid_phone_continue_button"
+
+# Demo-user bypass snackbar: "I see you're a demo user, so we'll skip the
+# OTP". Capture it as the personal-id-verify alias substitute — the
+# actual OTP-entry screen is unreachable for +7426 demo phones.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/snackbar_action"
+    commands:
+      - takeScreenshot: "personal-id-verify-demo-bypass"
+      - tapOn:
+          id: "org.commcare.dalvik:id/snackbar_action"
+
+# App Lock / Configure PIN screen
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/connect_verify_pin_button"
+    timeout: 15000
+- takeScreenshot: "personal-id-app-lock"
+- tapOn:
+    id: "org.commcare.dalvik:id/connect_verify_pin_button"
+
+# System PIN setup branch (when device has no screen lock yet)
+- runFlow:
+    when:
+      visible:
+        id: "com.android.settings:id/lock_pin"
+    commands:
+      - tapOn:
+          id: "com.android.settings:id/lock_pin"
+      - extendedWaitUntil:
+          visible:
+            id: "com.android.settings:id/password_entry"
+          timeout: 5000
+      - inputText: ${PIN}
+      - tapOn: "NEXT"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - inputText: ${PIN}
+      - tapOn: "CONFIRM"
+      - extendedWaitUntil:
+          visible:
+            text: "Lock screen"
+          timeout: 5000
+      - tapOn: "DONE"
+      - extendedWaitUntil:
+          visible:
+            text: "AGREE & CONTINUE"
+          timeout: 10000
+      - tapOn: "AGREE & CONTINUE"
+
+# Unlock PersonalID system prompt
+- runFlow:
+    when:
+      visible:
+        id: "com.android.systemui:id/lockPassword"
+    commands:
+      - tapOn:
+          id: "com.android.systemui:id/lockPassword"
+      - inputText: ${PIN}
+      - pressKey: Enter
+
+# Possible second snackbar after unlock
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/snackbar_action"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/snackbar_action"
+
+# Optional Name screen (fresh signup path; may also appear transiently
+# on wiped+server-known if the local profile cache is missing the name).
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/nameTextValue"
+    commands:
+      - takeScreenshot: "personal-id-name"
+      - tapOn:
+          id: "org.commcare.dalvik:id/nameTextValue"
+      - inputText: ${NAME}
+      - hideKeyboard
+      - tapOn:
+          id: "org.commcare.dalvik:id/personalid_name_continue_button"
+
+# Backup Code screen (2.63.0 six-cell PIN widget)
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/backup_code_view"
+    commands:
+      - takeScreenshot: "personal-id-backup-code"
+      - tapOn:
+          id: "org.commcare.dalvik:id/backup_code_view"
+      - inputText: ${BACKUP_CODE}
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_backup_code_button"
+
+# Photo capture (only truly-fresh registration). Captures personal-id-photo.
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/take_photo_button"
+    commands:
+      - takeScreenshot: "personal-id-photo"
+      - tapOn:
+          id: "org.commcare.dalvik:id/take_photo_button"
+      - extendedWaitUntil:
+          visible:
+            id: "org.commcare.dalvik:id/camera_shutter_button"
+          timeout: 8000
+      - tapOn:
+          id: "org.commcare.dalvik:id/camera_shutter_button"
+      - extendedWaitUntil:
+          visible:
+            id: "org.commcare.dalvik:id/save_photo_button"
+          timeout: 15000
+      - tapOn:
+          id: "org.commcare.dalvik:id/save_photo_button"
+
+# "Account Recovered" / "Profile Complete" success dialog
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/connect_message_button"
+    commands:
+      - takeScreenshot: "personal-id-done"
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_message_button"
+
+# Final settle
+- waitForAnimationToEnd:
+    timeout: 3000
