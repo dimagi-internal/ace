@@ -25,7 +25,7 @@ describe("turmeric calibration fixture", () => {
   const log = parseDecisionsYaml(yaml);
 
   it("parses cleanly against DecisionsLogSchema", () => {
-    expect(log.schema_version).toBe(2);
+    expect(log.schema_version).toBe(3);
     expect(log.opportunity).toBe("turmeric");
   });
 
@@ -45,10 +45,10 @@ describe("turmeric calibration fixture", () => {
     }
   });
 
-  it("ensures every overridden row has populated notes and override", () => {
+  it("ensures every overridden row has populated reasoning and override", () => {
     const offenders = log.decisions
       .filter((d) => d.status === "overridden")
-      .filter((d) => !d.override || (!d.notes || d.notes.trim().length === 0))
+      .filter((d) => !d.override || (!d.reasoning || d.reasoning.trim().length === 0))
       .map((d) => d.id);
     expect(offenders).toEqual([]);
   });

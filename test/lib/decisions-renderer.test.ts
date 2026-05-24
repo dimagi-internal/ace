@@ -3,7 +3,7 @@ import type { DecisionsLog } from "../../lib/decisions-schema.js";
 import { renderDecisionsLog } from "../../lib/decisions-renderer.js";
 
 const MINIMAL_LOG: DecisionsLog = {
-  schema_version: 2,
+  schema_version: 3,
   opportunity: "turmeric",
   run_id: "20260507-1733",
   generated_at: "2026-05-07T17:33:00Z",
@@ -14,10 +14,10 @@ const MINIMAL_LOG: DecisionsLog = {
       skill: "idea-to-pdd",
       question: "Which delivery archetype best fits the intervention?",
       "ai-default": "atomic-visit",
-      options_considered: ["atomic-visit", "focus-group", "multi-stage"],
+      options: ["atomic-visit", "focus-group", "multi-stage"],
       source: "idea.md §1",
       status: "ai-default",
-      notes: "Single per-FLW visit producing one structured delivery.",
+      reasoning: "Single per-FLW visit producing one structured delivery.",
     },
   ],
 };
@@ -53,7 +53,7 @@ describe("renderDecisionsLog", () => {
     expect(h3).toHaveLength(1);
   });
 
-  it("creates a bullet list for the options_considered items", () => {
+  it("creates a bullet list for the options", () => {
     const requests = renderDecisionsLog(MINIMAL_LOG);
     const bullets = requests.find((r: any) => "createParagraphBullets" in r);
     expect(bullets).toBeDefined();

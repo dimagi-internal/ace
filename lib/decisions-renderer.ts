@@ -251,7 +251,7 @@ function phaseLabel(phase: string): string {
 
 const INTRO =
   'Generated {generated_at}. To override a default, edit the "AI-default:" line of the relevant decision below — the sync step will record your value as an Override and preserve the original AI-default. ' +
-  'To propose a new option, add a bullet to "Considered:". Then run /ace:step decisions-sync <opp>/<run-id> to push your edits back.';
+  'To propose a new option, add a bullet to "Options:". Add your reasoning under "Override reasoning:". Then run /ace:step decisions-sync <opp>/<run-id> to push your edits back.';
 
 // ── Decision block renderer ───────────────────────────────────────────────────
 
@@ -270,9 +270,9 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
     builder.appendBoldPrefix("Override:", row.override);
   }
 
-  // Considered: (bold label) then bullet list
-  builder.appendBoldLabel("Considered:");
-  builder.appendBulletList(row.options_considered);
+  // Options: (bold label) then bullet list
+  builder.appendBoldLabel("Options:");
+  builder.appendBulletList(row.options);
 
   // Source: <value>
   builder.appendBoldPrefix("Source:", row.source);
@@ -280,10 +280,17 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
   // Status: <value>
   builder.appendBoldPrefix("Status:", row.status);
 
-  // Notes (italic), if present
-  if (row.notes) {
-    builder.appendParagraph(""); // blank separator line
-    builder.appendItalic(`  ${row.notes}`);
+  // AI reasoning (italic), if present
+  if (row.reasoning) {
+    builder.appendParagraph("");
+    builder.appendBoldLabel("Reasoning:");
+    builder.appendItalic(`  ${row.reasoning}`);
+  }
+
+  // Override reasoning (italic), if present
+  if (row.override_reasoning) {
+    builder.appendBoldLabel("Override reasoning:");
+    builder.appendItalic(`  ${row.override_reasoning}`);
   }
 
   // trailing blank line

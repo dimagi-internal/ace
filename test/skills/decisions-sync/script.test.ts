@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { runDecisionsSync } from "../../../scripts/decisions-sync.js";
 
-const VALID_YAML = `schema_version: 2
+const VALID_YAML = `schema_version: 3
 opportunity: turmeric
 run_id: 20260507-1733
 generated_at: "2026-05-07T17:33:00Z"
@@ -11,9 +11,9 @@ decisions:
     skill: idea-to-pdd
     question: How many FLWs?
     ai-default: "5–8"
-    options_considered: ["3–5", "5–8", "10–15"]
+    options: ["3–5", "5–8", "10–15"]
     source: idea.md §2
-    status: applied
+    status: ai-default
 `;
 
 const FAKE_GDOC = {

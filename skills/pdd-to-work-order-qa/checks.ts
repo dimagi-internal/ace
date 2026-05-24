@@ -109,7 +109,7 @@ export function checkRequiredWoDecisionsPresent(decisionsYaml: string): QACheckR
     detail: `decisions.yaml missing required wo-* row(s): ${missing.join(', ')}`,
     auto_fix_hint:
       `add the following decision rows to decisions.yaml under \`decisions:\`, each with phase=1-design, ` +
-      `skill=pdd-to-work-order, status=applied, and an appropriate question/default/source/options_considered: ` +
+      `skill=pdd-to-work-order, status=ai-default, and an appropriate question/ai-default/source/options: ` +
       missing.join(', '),
   };
 }

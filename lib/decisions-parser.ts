@@ -4,16 +4,17 @@
  * Walks the document body in paragraph order. HEADING_3 paragraphs are
  * decision-row boundaries (the row id). Within a decision section,
  * subsequent paragraphs are scanned for:
- *   - "AI-default: <value>"  → contributes to row.value (falls back; loses to Override)
- *   - "Override: <value>"    → wins; sets row.value
- *   - "Considered:"          → enters bullet-collection mode
- *   - bullet paragraphs      → appended to row.options_considered
- *   - "Source:" / "Status:"  → exits bullet-collection mode; not extracted
+ *   - "AI-default: <value>"        → contributes to row.value (falls back; loses to Override)
+ *   - "Override: <value>"          → wins; sets row.value
+ *   - "Options:" / "Considered:"   → enters bullet-collection mode
+ *   - bullet paragraphs            → appended to row.options
+ *   - "Override reasoning: <text>" → row.override_reasoning
+ *   - "Source:" / "Status:" / "Reasoning:" → exits bullet-collection mode; not extracted
  *
  * The parser is the inverse of lib/decisions-renderer.ts. Together they
  * form a round-trip pair for the decisions-sync workflow.
  *
- * NOT extracted: phase, skill, question, source, status, notes. Those are
+ * NOT extracted: phase, skill, question, source, status, reasoning. Those are
  * not editable surfaces in the round-trip workflow; the merger pulls them
  * from the YAML.
  *
@@ -40,7 +41,8 @@ type GoogleDocsDocument = { body?: { content?: DocsStructuralElement[] } };
 export type ParsedDecisionRow = {
   id: string;
   value?: string;
-  options_considered?: string[];
+  options?: string[];
+  override_reasoning?: string;
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -73,30 +75,31 @@ export function parseDocumentStructure(
   const content = doc.body?.content ?? [];
   const rows: ParsedDecisionRow[] = [];
 
-  // State machine: walk paragraphs in order. We track ai-default and
-  // override separately during the section so we can resolve "value"
-  // (override wins) at commit time.
   type Acc = {
     id: string;
     aiDefault?: string;
     override?: string;
-    options_considered?: string[];
+    options?: string[];
+    override_reasoning?: string;
   };
   let current: Acc | null = null;
-  let inConsidered = false;
+  let inOptions = false;
 
   function commit(): void {
     if (current) {
       const value = current.override ?? current.aiDefault;
       const row: ParsedDecisionRow = { id: current.id };
       if (value !== undefined) row.value = value;
-      if (current.options_considered !== undefined) {
-        row.options_considered = current.options_considered;
+      if (current.options !== undefined) {
+        row.options = current.options;
+      }
+      if (current.override_reasoning !== undefined) {
+        row.override_reasoning = current.override_reasoning;
       }
       rows.push(row);
     }
     current = null;
-    inConsidered = false;
+    inOptions = false;
   }
 
   for (const el of content) {
@@ -114,37 +117,39 @@ export function parseDocumentStructure(
 
     if (style === HEADING_2) {
       commit();
-      // HEADING_2 is a phase boundary — not a decision row.
       continue;
     }
 
-    // HEADING_1 is the document title — skip.
     if (style === "HEADING_1") {
       continue;
     }
 
     if (!current) continue;
 
-    // We're inside a decision section.
     const trimmed = text.trim();
 
-    // Bullet paragraph inside a "Considered:" section.
-    if (inConsidered && p.bullet) {
+    // Bullet paragraph inside an "Options:" / "Considered:" section.
+    if (inOptions && p.bullet) {
       if (trimmed) {
-        current.options_considered = current.options_considered ?? [];
-        current.options_considered.push(trimmed);
+        current.options = current.options ?? [];
+        current.options.push(trimmed);
       }
       continue;
     }
 
-    // A non-bullet paragraph exits the Considered block.
-    if (inConsidered && !p.bullet) {
-      inConsidered = false;
+    if (inOptions && !p.bullet) {
+      inOptions = false;
     }
 
-    // Field-prefix detection (case-insensitive, strip leading indent).
     if (/^AI-default:/i.test(trimmed)) {
       current.aiDefault = trimmed.replace(/^AI-default:\s*/i, "").trim();
+      continue;
+    }
+
+    // "Override reasoning:" must be checked BEFORE "Override:" to avoid
+    // partial prefix match.
+    if (/^Override reasoning:/i.test(trimmed)) {
+      current.override_reasoning = trimmed.replace(/^Override reasoning:\s*/i, "").trim();
       continue;
     }
 
@@ -153,18 +158,16 @@ export function parseDocumentStructure(
       continue;
     }
 
-    if (/^Considered:/i.test(trimmed)) {
-      inConsidered = true;
+    // Accept both "Options:" (v3) and "Considered:" (v2 gdocs).
+    if (/^Options:/i.test(trimmed) || /^Considered:/i.test(trimmed)) {
+      inOptions = true;
       continue;
     }
 
-    if (/^Source:/i.test(trimmed) || /^Status:/i.test(trimmed)) {
-      // Not extracted — just ensure we leave considered mode.
-      inConsidered = false;
+    if (/^Source:/i.test(trimmed) || /^Status:/i.test(trimmed) || /^Reasoning:/i.test(trimmed)) {
+      inOptions = false;
       continue;
     }
-
-    // Any other body paragraph (question text, notes, blank lines) is ignored.
   }
 
   commit();

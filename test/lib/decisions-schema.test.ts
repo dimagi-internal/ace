@@ -15,7 +15,7 @@ describe("DecisionRowSchema", () => {
       skill: "idea-to-pdd",
       question: "How many FLWs should the program target?",
       "ai-default": "5–8",
-      options_considered: ["3–5", "10–15", "20+"],
+      options: ["3–5", "10–15", "20+"],
       source: "idea.md §2; atomic-visit archetype norm",
       status: "ai-default",
     };
@@ -37,7 +37,7 @@ describe("DecisionRowSchema", () => {
       skill: "idea-to-pdd",
       question: "Q?",
       "ai-default": "x",
-      options_considered: [],
+      options: [],
       source: "x",
       status: "ai-default",
     };
@@ -56,21 +56,21 @@ describe("DecisionRowSchema", () => {
       skill: "idea-to-pdd",
       question: "Q?",
       "ai-default": "x",
-      options_considered: [],
+      options: [],
       source: "x",
       status: "ai-default",
     };
     expect(() => DecisionRowSchema.parse(row)).toThrow();
   });
 
-  it("rejects an empty string in options_considered", () => {
+  it("rejects an empty string in options", () => {
     const row = {
       id: "flw-count",
       phase: "1-design",
       skill: "idea-to-pdd",
       question: "Q?",
       "ai-default": "5–8",
-      options_considered: ["3–5", ""],
+      options: ["3–5", ""],
       source: "x",
       status: "ai-default",
     };
@@ -84,7 +84,7 @@ describe("DecisionRowSchema", () => {
       skill: "idea-to-pdd",
       question: "Q?",
       "ai-default": "x",
-      options_considered: [],
+      options: [],
       source: "x",
       status: "resolved",  // not in enum
     };
@@ -98,7 +98,7 @@ describe("DecisionRowSchema", () => {
       skill: "idea-to-pdd",
       question: "Q?",
       "ai-default": "x",
-      options_considered: [],
+      options: [],
       source: "x",
       status: "open",  // v1 enum value; no longer valid
     };
@@ -112,7 +112,7 @@ describe("DecisionRowSchema", () => {
       skill: "idea-to-pdd",
       question: "Q?",
       "ai-default": 5,  // must be string
-      options_considered: [],
+      options: [],
       source: "x",
       status: "ai-default",
     };
@@ -126,7 +126,7 @@ describe("DecisionRowSchema", () => {
       skill: "idea-to-pdd",
       question: "Q?",
       "ai-default": "x",
-      options_considered: [],
+      options: [],
       source: "x",
       status: "overridden",
     };
@@ -141,7 +141,7 @@ describe("DecisionRowSchema", () => {
       question: "Q?",
       "ai-default": "x",
       override: "y",
-      options_considered: [],
+      options: [],
       source: "x",
       status: "overridden",
     };
@@ -156,7 +156,7 @@ describe("DecisionRowSchema", () => {
       question: "Q?",
       "ai-default": "x",
       override: "y",
-      options_considered: [],
+      options: [],
       source: "x",
       status: "ai-default",
     };
@@ -167,7 +167,7 @@ describe("DecisionRowSchema", () => {
 describe("DecisionsLogSchema", () => {
   it("accepts a minimal valid log", () => {
     const log = {
-      schema_version: 2,
+      schema_version: 3,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
@@ -176,7 +176,7 @@ describe("DecisionsLogSchema", () => {
     expect(() => DecisionsLogSchema.parse(log)).not.toThrow();
   });
 
-  it("rejects schema_version other than 2", () => {
+  it("rejects schema_version other than 3", () => {
     const log = {
       schema_version: 1,
       opportunity: "turmeric",
@@ -189,7 +189,7 @@ describe("DecisionsLogSchema", () => {
 
   it("rejects duplicate decision IDs", () => {
     const log = {
-      schema_version: 2,
+      schema_version: 3,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
@@ -200,7 +200,7 @@ describe("DecisionsLogSchema", () => {
           skill: "idea-to-pdd",
           question: "Q?",
           "ai-default": "5–8",
-          options_considered: [],
+          options: [],
           source: "x",
           status: "ai-default",
         },
@@ -210,7 +210,7 @@ describe("DecisionsLogSchema", () => {
           skill: "idea-to-pdd",
           question: "Q?",
           "ai-default": "5–8",
-          options_considered: [],
+          options: [],
           source: "x",
           status: "ai-default",
         },
@@ -223,7 +223,7 @@ describe("DecisionsLogSchema", () => {
 describe("parseDecisionsYaml", () => {
   it("parses a valid YAML string into a DecisionsLog", () => {
     const yaml = `
-schema_version: 2
+schema_version: 3
 opportunity: turmeric
 run_id: 20260507-1733
 generated_at: "2026-05-07T17:33:00Z"
@@ -233,9 +233,9 @@ decisions:
     skill: idea-to-pdd
     question: How many FLWs?
     ai-default: "5–8"
-    options_considered: ["3–5", "10–15"]
+    options: ["3–5", "10–15"]
     source: idea.md §2
-    status: applied
+    status: ai-default
 `;
     const log = parseDecisionsYaml(yaml);
     expect(log.opportunity).toBe("turmeric");
@@ -246,7 +246,7 @@ decisions:
 
   it("parses an overridden row with override field", () => {
     const yaml = `
-schema_version: 2
+schema_version: 3
 opportunity: turmeric
 run_id: 20260507-1733
 generated_at: "2026-05-07T17:33:00Z"
@@ -257,7 +257,7 @@ decisions:
     question: How many FLWs?
     ai-default: "5–8"
     override: "12"
-    options_considered: ["5–8", "12"]
+    options: ["5–8", "12"]
     source: idea.md §2
     status: overridden
 `;
@@ -266,23 +266,58 @@ decisions:
     expect(log.decisions[0]!["ai-default"]).toBe("5–8");
   });
 
+  it("parses reasoning and override_reasoning", () => {
+    const yaml = `
+schema_version: 3
+opportunity: turmeric
+run_id: 20260507-1733
+generated_at: "2026-05-07T17:33:00Z"
+decisions:
+  - id: flw-count
+    phase: 1-design
+    skill: idea-to-pdd
+    question: How many FLWs?
+    ai-default: "5–8"
+    override: "12"
+    options: ["5–8", "12"]
+    reasoning: Small pilot scope fits 5-8
+    source: idea.md §2
+    status: overridden
+    override_reasoning: LLO has 12 trained agents already
+`;
+    const log = parseDecisionsYaml(yaml);
+    expect(log.decisions[0]!.reasoning).toBe("Small pilot scope fits 5-8");
+    expect(log.decisions[0]!.override_reasoning).toBe("LLO has 12 trained agents already");
+  });
+
   it("throws a typed error on schema violation", () => {
+    const yaml = `
+schema_version: 3
+opportunity: turmeric
+run_id: 20260507-1733
+generated_at: "2026-05-07T17:33:00Z"
+decisions:
+  - id: ""
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Q?
+    ai-default: x
+    options: []
+    source: x
+    status: ai-default
+`;
+    expect(() => parseDecisionsYaml(yaml)).toThrow(/decisions\.0\.id/);
+  });
+
+  it("rejects v1/v2 YAML without upgrade", () => {
     const yaml = `
 schema_version: 2
 opportunity: turmeric
 run_id: 20260507-1733
 generated_at: "2026-05-07T17:33:00Z"
-decisions:
-  - id: ""  # empty id violates schema
-    phase: 1-design
-    skill: idea-to-pdd
-    question: Q?
-    ai-default: x
-    options_considered: []
-    source: x
-    status: applied
+decisions: []
 `;
-    expect(() => parseDecisionsYaml(yaml)).toThrow(/decisions\.0\.id/);
+    expect(() => parseDecisionsYaml(yaml)).toThrow();
   });
 });
 
@@ -294,7 +329,7 @@ describe("serializeDecisionsLog", () => {
       skill: "idea-to-pdd",
       question: "How many FLWs?",
       "ai-default": "5–8",
-      options_considered: ["3–5", "10–15"],
+      options: ["3–5", "10–15"],
       source: "idea.md §2",
       status: "ai-default" as const,
     },
@@ -305,7 +340,7 @@ describe("serializeDecisionsLog", () => {
     ["empty array", []],
   ])("round-trips through parse with no data loss (%s)", (_label, decisions) => {
     const log = {
-      schema_version: 2 as const,
+      schema_version: 3 as const,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
@@ -318,7 +353,7 @@ describe("serializeDecisionsLog", () => {
 
   it("round-trips an overridden row preserving override + ai-default", () => {
     const log = {
-      schema_version: 2 as const,
+      schema_version: 3 as const,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
@@ -330,7 +365,7 @@ describe("serializeDecisionsLog", () => {
           question: "How many FLWs?",
           "ai-default": "5–8",
           override: "12",
-          options_considered: ["5–8", "12"],
+          options: ["5–8", "12"],
           source: "idea.md §2",
           status: "overridden" as const,
         },
@@ -345,7 +380,7 @@ describe("serializeDecisionsLog", () => {
 
   it("preserves non-ASCII characters (em dashes, en dashes)", () => {
     const log = {
-      schema_version: 2 as const,
+      schema_version: 3 as const,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
@@ -356,7 +391,7 @@ describe("serializeDecisionsLog", () => {
           skill: "idea-to-pdd",
           question: "AI auto-accept confidence threshold?",
           "ai-default": "≥90%",
-          options_considered: ["≥85%", "≥95%"],
+          options: ["≥85%", "≥95%"],
           source: "stress-test verifiability dimension",
           status: "ai-default" as const,
         },
@@ -369,94 +404,6 @@ describe("serializeDecisionsLog", () => {
   });
 });
 
-describe("parseDecisionsYaml v1 → v2 upgrade", () => {
-  it("upgrades a v1 applied row to v2 ai-default", () => {
-    const yaml = `
-schema_version: 1
-opportunity: turmeric
-run_id: 20260507-1733
-generated_at: "2026-05-07T17:33:00Z"
-decisions:
-  - id: flw-count
-    phase: 1-design
-    skill: idea-to-pdd
-    question: How many FLWs?
-    default: "5–8"
-    options_considered: ["3–5", "5–8"]
-    source: idea.md
-    status: applied
-`;
-    const log = parseDecisionsYaml(yaml);
-    expect(log.schema_version).toBe(2);
-    expect(log.decisions[0]!["ai-default"]).toBe("5–8");
-    expect(log.decisions[0]!.status).toBe("ai-default");
-    expect(log.decisions[0]!.override).toBeUndefined();
-  });
-
-  it("collapses v1 status=open to v2 status=applied", () => {
-    const yaml = `
-schema_version: 1
-opportunity: turmeric
-run_id: 20260507-1733
-generated_at: "2026-05-07T17:33:00Z"
-decisions:
-  - id: foo
-    phase: 1-design
-    skill: idea-to-pdd
-    question: Q?
-    default: x
-    options_considered: []
-    source: idea.md
-    status: open
-`;
-    const log = parseDecisionsYaml(yaml);
-    expect(log.decisions[0]!.status).toBe("ai-default");
-  });
-
-  it("upgrades v1 overridden row by copying ai-default into override", () => {
-    const yaml = `
-schema_version: 1
-opportunity: turmeric
-run_id: 20260507-1733
-generated_at: "2026-05-07T17:33:00Z"
-decisions:
-  - id: flw-count
-    phase: 1-design
-    skill: idea-to-pdd
-    question: Q?
-    default: "12"
-    options_considered: ["5–8", "12"]
-    source: idea.md
-    status: overridden
-`;
-    const log = parseDecisionsYaml(yaml);
-    expect(log.decisions[0]!["ai-default"]).toBe("12");
-    expect(log.decisions[0]!.override).toBe("12");
-    expect(log.decisions[0]!.status).toBe("overridden");
-  });
-
-  it("leaves v2 input unchanged (idempotent)", () => {
-    const yaml = `
-schema_version: 2
-opportunity: turmeric
-run_id: 20260507-1733
-generated_at: "2026-05-07T17:33:00Z"
-decisions:
-  - id: foo
-    phase: 1-design
-    skill: idea-to-pdd
-    question: Q?
-    ai-default: x
-    options_considered: []
-    source: idea.md
-    status: applied
-`;
-    const log = parseDecisionsYaml(yaml);
-    expect(log.schema_version).toBe(2);
-    expect(log.decisions[0]!["ai-default"]).toBe("x");
-  });
-});
-
 describe("effectiveValue", () => {
   it("returns ai-default when no override", () => {
     const row = {
@@ -465,7 +412,7 @@ describe("effectiveValue", () => {
       skill: "idea-to-pdd",
       question: "Q?",
       "ai-default": "5–8",
-      options_considered: [],
+      options: [],
       source: "x",
       status: "ai-default" as const,
     };
@@ -480,7 +427,7 @@ describe("effectiveValue", () => {
       question: "Q?",
       "ai-default": "5–8",
       override: "12",
-      options_considered: ["5–8", "12"],
+      options: ["5–8", "12"],
       source: "x",
       status: "overridden" as const,
     };
