@@ -87,10 +87,11 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
-    expectedCount: 34,
+    expectedCount: 35,
     // gdrive bridges five Google APIs — one prefix per surface plus a
     // small set of cross-surface helpers (manifest generator, forms
-    // reader, OAuth-personal Drive read, YAML patch helper).
+    // reader, OAuth-personal Drive read, YAML patch helper, opp-path
+    // resolver).
     allowedPrefixes: [
       'drive_',
       'sheets_',
@@ -100,6 +101,7 @@ const SERVERS: Record<string, ServerSpec> = {
       'update_yaml_file',
       'generate_inputs_manifest',
       'get_google_form_definition',
+      'resolve_opp_path',
     ],
   },
 };

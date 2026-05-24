@@ -1786,6 +1786,101 @@ server.tool(
 );
 
 // ============================================================================
+// Opp-path resolver
+// ============================================================================
+
+// Replaces the 3-call dance at run-init (drive_list_folder on ACE root →
+// find opp folder by slug → drive_list_folder on opp root → find inputs/
+// + runs/). One atom call returns {opp_root_id, inputs_id, runs_id} from
+// a slug + ACE root folder ID. runs_id is null on first-run opps where
+// the runs/ subfolder doesn't exist yet — callers create it themselves.
+
+export interface ResolveOppPathResult {
+  slug: string;
+  ace_root_id: string;
+  opp_root_id: string;
+  inputs_id: string | null;
+  runs_id: string | null;
+}
+
+export async function handleResolveOppPath(
+  args: { slug: string; aceRootFolderId?: string },
+  driveClient: typeof drive,
+): Promise<ResolveOppPathResult> {
+  const slug = args.slug;
+  const rootId = args.aceRootFolderId ?? process.env.ACE_DRIVE_ROOT_FOLDER_ID;
+  if (!rootId) {
+    throw new Error(
+      'ACE_DRIVE_ROOT_FOLDER_ID is not set and no aceRootFolderId was passed',
+    );
+  }
+  const escape = (s: string) =>
+    s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+  const oppResp = await driveClient.files.list({
+    q:
+      `'${escape(rootId)}' in parents and name = '${escape(slug)}' ` +
+      `and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: 'files(id, name)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  const oppFolders = oppResp.data.files ?? [];
+  if (oppFolders.length === 0) {
+    throw new Error(`Opp folder "${slug}" not found under ACE root ${rootId}`);
+  }
+  if (oppFolders.length > 1) {
+    throw new Error(
+      `Multiple folders named "${slug}" under ACE root ${rootId}: ` +
+        oppFolders.map((f: any) => f.id).join(', '),
+    );
+  }
+  const oppRootId = oppFolders[0].id!;
+
+  const subsResp = await driveClient.files.list({
+    q:
+      `'${escape(oppRootId)}' in parents ` +
+      `and mimeType = 'application/vnd.google-apps.folder' ` +
+      `and trashed = false and (name = 'inputs' or name = 'runs')`,
+    fields: 'files(id, name)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  const subs: Record<string, string> = {};
+  for (const f of subsResp.data.files ?? []) {
+    if (f.name && f.id) subs[f.name] = f.id;
+  }
+
+  return {
+    slug,
+    ace_root_id: rootId,
+    opp_root_id: oppRootId,
+    inputs_id: subs.inputs ?? null,
+    runs_id: subs.runs ?? null,
+  };
+}
+
+server.tool(
+  'resolve_opp_path',
+  "Resolve an ACE opportunity's Drive folder paths in one call. Given an opp slug (and an optional ACE root folder ID — defaults to $ACE_DRIVE_ROOT_FOLDER_ID), returns `{slug, ace_root_id, opp_root_id, inputs_id, runs_id}`. Replaces the 3-call drive_list_folder dance at run-init: list ACE root → find opp by name → list opp root → find inputs/ + runs/. `runs_id` is null on first-run opps where the runs/ subfolder doesn't exist yet (callers create it). Errors loudly on missing opp or ambiguous slug (multiple folders with the same name).",
+  {
+    slug: z.string().describe("The opportunity slug (folder name under ACE root)."),
+    aceRootFolderId: z
+      .string()
+      .optional()
+      .describe('Override $ACE_DRIVE_ROOT_FOLDER_ID for tests / multi-tenant.'),
+  },
+  async ({ slug, aceRootFolderId }) => {
+    try {
+      const r = await handleResolveOppPath({ slug, aceRootFolderId }, drive);
+      return result(r);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// ============================================================================
 // Inputs manifest + Google Forms
 // ============================================================================
 
