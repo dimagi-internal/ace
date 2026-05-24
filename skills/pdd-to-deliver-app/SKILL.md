@@ -390,9 +390,17 @@ the case list legible.
 - `connect.deliver_unit` set on the form.
 - `connect.entity_id` defaults to `concat(#user/username, '-', today())` —
   one paid delivery per facilitator per day, the realistic case for
-  60-90 min sessions + travel. Override to `#case/case_id` only if any
-  LLO schedules ≥2 sessions/day per facilitator (`payment-unit-entity-id`
-  Decisions Log row).
+  60-90 min sessions + travel. If you need ≥2 sessions/day per
+  facilitator (`payment-unit-entity-id` Decisions Log row), override
+  to `#case/case_name` (which resolves to the deterministic
+  `concat(#user/username, '-', #form/session_date)` template above) —
+  do NOT override to `#case/case_id`. The `e2e-malaria-rdt` 2026-05-24
+  run hit a Nova validator rejection on `#case/case_id` for create-form
+  entity_id expressions (case_id is the new UUID being assigned mid-form
+  and isn't a resolvable reference at submission time); `#case/case_name`
+  works because the template resolves to a deterministic string before
+  case creation. If Nova later accepts `#case/case_id` in this slot,
+  drop this guidance.
 
 **Coordinator review flow (out-of-band):**
 
