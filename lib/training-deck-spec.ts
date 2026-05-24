@@ -539,6 +539,19 @@ export function buildSlidesRequestsV2(
     }
   }
 
+  // Reorder slides: duplicateObject inserts each duplicate adjacent to its
+  // source stencil, so slides from different stencils interleave randomly.
+  // Move each slide to its correct sequential position (after all stencils).
+  const stencilCount = Object.keys(STENCILS).length;
+  for (let i = 0; i < slideCounter; i++) {
+    requests.push({
+      updateSlidesPosition: {
+        slideObjectIds: [`ace_slide_${i + 1}`],
+        insertionIndex: stencilCount + i,
+      },
+    });
+  }
+
   // Delete all 14 stencils
   for (const stencilId of Object.values(STENCILS)) {
     requests.push({ deleteObject: { objectId: stencilId } });
