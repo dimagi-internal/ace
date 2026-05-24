@@ -1,6 +1,6 @@
 {
   "name": "ace",
-  "version": "0.13.364",
+  "version": "0.13.365",
   "description": "AI Connect Engine - orchestrator for building Connect Opps using AI",
   "type": "module",
   "scripts": {
@@ -23,6 +23,7 @@
     "@anthropic-ai/sdk": "^0.94.0",
     "@googleapis/docs": "^9.2.1",
     "@googleapis/drive": "^20.1.0",
+    "@googleapis/forms": "^6.0.1",
     "@googleapis/sheets": "^13.0.1",
     "@googleapis/slides": "^5.0.1",
     "@modelcontextprotocol/sdk": "^1.29.0",

@@ -34,6 +34,7 @@ const SCOPES = [
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/documents',
   'https://www.googleapis.com/auth/presentations',
+  'https://www.googleapis.com/auth/forms.body.readonly',
 ];
 
 // ============================================================================
@@ -109,6 +110,7 @@ const sheets = google.sheets({ version: 'v4', auth });
 const drive = google.drive({ version: 'v3', auth });
 const docs = google.docs({ version: 'v1', auth });
 const slides = google.slides({ version: 'v1', auth });
+const forms = google.forms({ version: 'v1', auth });
 
 // ============================================================================
 // Helper
@@ -1777,6 +1779,213 @@ server.tool(
         title: copy.data.name,
         webViewLink: copy.data.webViewLink,
       });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// ============================================================================
+// Inputs manifest + Google Forms
+// ============================================================================
+
+// Replaces the hand-assembled inputs-manifest.yaml step the orchestrator
+// ran at every /ace:run start (list folder → inspect each MIME type →
+// chase shortcut targetIds → write YAML inline). One atom call now
+// returns the same structured manifest, including resolved shortcut
+// targets, in a single Drive round-trip set (paged when >100 files).
+
+export interface InputsManifestEntry {
+  file_id: string;
+  name: string;
+  mime_type: string;
+  input_key: string;
+  resolved_target_id?: string;
+  resolved_target_mime_type?: string;
+  modified_time?: string;
+  web_view_link?: string;
+}
+
+export interface InputsManifest {
+  folder_id: string;
+  generated_at: string;
+  files: InputsManifestEntry[];
+}
+
+function toInputKey(name: string): string {
+  const lastDot = name.lastIndexOf('.');
+  // Treat a trailing .<ext> as an extension only when ext is short + alphanumeric;
+  // avoids stripping a real word that happens to follow a period.
+  const ext = lastDot > 0 ? name.slice(lastDot + 1) : '';
+  const looksLikeExt = ext.length > 0 && ext.length <= 8 && /^[A-Za-z0-9]+$/.test(ext);
+  const base = looksLikeExt ? name.slice(0, lastDot) : name;
+  return base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export async function handleGenerateInputsManifest(
+  args: { folderId: string },
+  driveClient: typeof drive,
+): Promise<InputsManifest> {
+  const { folderId } = args;
+  const safeFolderId = folderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const all: any[] = [];
+  let pageToken: string | undefined;
+  do {
+    const resp = await driveClient.files.list({
+      q: `'${safeFolderId}' in parents and trashed = false`,
+      fields:
+        'nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink, shortcutDetails)',
+      orderBy: 'name',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      pageSize: 100,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    if (resp.data.files) all.push(...resp.data.files);
+    pageToken = resp.data.nextPageToken ?? undefined;
+  } while (pageToken);
+
+  const SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
+  const entries: InputsManifestEntry[] = all.map((f: any) => {
+    const entry: InputsManifestEntry = {
+      file_id: f.id,
+      name: f.name,
+      mime_type: f.mimeType,
+      input_key: toInputKey(f.name),
+      modified_time: f.modifiedTime ?? undefined,
+      web_view_link: f.webViewLink ?? undefined,
+    };
+    if (f.mimeType === SHORTCUT_MIME && f.shortcutDetails) {
+      entry.resolved_target_id = f.shortcutDetails.targetId ?? undefined;
+      entry.resolved_target_mime_type =
+        f.shortcutDetails.targetMimeType ?? undefined;
+    }
+    return entry;
+  });
+
+  return {
+    folder_id: folderId,
+    generated_at: new Date().toISOString(),
+    files: entries,
+  };
+}
+
+server.tool(
+  'generate_inputs_manifest',
+  "Generate a structured inputs manifest for an ACE opportunity's `inputs/` Drive folder. Lists every file in the folder, resolves shortcut targetIds (so a shortcut to a PDD doc surfaces the real target), and assigns each file a kebab-cased `input_key` (e.g. \"sample-pdd.docx\" → \"sample-pdd\") that downstream skills can key off. Returns `{folder_id, generated_at, files: [{file_id, name, mime_type, input_key, resolved_target_id?, resolved_target_mime_type?, modified_time?, web_view_link?}, ...]}`. Replaces the hand-assembled inputs-manifest.yaml step that ran at every /ace:run start. Snapshot semantics: returns the folder state at the moment of the call — same freshness as the prior manual process.",
+  {
+    folderId: z
+      .string()
+      .describe("The Google Drive folder ID of the opp's inputs/ folder."),
+  },
+  async ({ folderId }) => {
+    try {
+      const r = await handleGenerateInputsManifest({ folderId }, drive);
+      return result(r);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// Forms API atom — Google Forms cannot be read via drive_read_file
+// (no text export); the Forms API returns the question schema as
+// structured JSON. Skills that previously fell back to reading the
+// linked Responses sheet can now read the form definition directly.
+
+export interface FormQuestion {
+  item_id: string;
+  title: string;
+  description?: string;
+  kind: string;
+  required: boolean;
+  options?: string[];
+}
+
+export interface FormDefinition {
+  form_id: string;
+  title: string;
+  description?: string;
+  items: FormQuestion[];
+}
+
+function classifyFormQuestion(q: any): string {
+  if (q.choiceQuestion) {
+    const t = q.choiceQuestion.type;
+    if (t === 'RADIO') return 'radio';
+    if (t === 'CHECKBOX') return 'checkbox';
+    if (t === 'DROP_DOWN') return 'dropdown';
+    return 'choice';
+  }
+  if (q.textQuestion) return q.textQuestion.paragraph ? 'paragraph' : 'short_answer';
+  if (q.scaleQuestion) return 'scale';
+  if (q.dateQuestion) return 'date';
+  if (q.timeQuestion) return 'time';
+  if (q.fileUploadQuestion) return 'file_upload';
+  if (q.rowQuestion) return 'grid';
+  return 'unknown';
+}
+
+function extractFormOptions(q: any): string[] | undefined {
+  if (q.choiceQuestion?.options) {
+    return q.choiceQuestion.options
+      .map((o: any) => o.value)
+      .filter((v: any) => typeof v === 'string' && v.length > 0);
+  }
+  if (q.scaleQuestion) {
+    const lo = q.scaleQuestion.low ?? 1;
+    const hi = q.scaleQuestion.high ?? 5;
+    if (typeof lo === 'number' && typeof hi === 'number' && hi >= lo) {
+      return Array.from({ length: hi - lo + 1 }, (_, i) => String(lo + i));
+    }
+  }
+  return undefined;
+}
+
+export async function handleGetGoogleFormDefinition(
+  args: { formId: string },
+  formsClient: typeof forms,
+): Promise<FormDefinition> {
+  const { formId } = args;
+  const resp = await formsClient.forms.get({ formId });
+  const form: any = resp.data ?? {};
+  const info: any = form.info ?? {};
+  const items: FormQuestion[] = [];
+  for (const it of form.items ?? []) {
+    if (!it.questionItem?.question) continue;
+    const q = it.questionItem.question;
+    items.push({
+      item_id: it.itemId ?? q.questionId ?? '',
+      title: it.title ?? '',
+      description: it.description ?? undefined,
+      kind: classifyFormQuestion(q),
+      required: !!q.required,
+      options: extractFormOptions(q),
+    });
+  }
+  return {
+    form_id: formId,
+    title: info.title ?? '',
+    description: info.description ?? undefined,
+    items,
+  };
+}
+
+server.tool(
+  'get_google_form_definition',
+  'Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/forms/{formId}). Returns `{form_id, title, description?, items: [{item_id, title, description?, kind, required, options?}, ...]}` where `kind` is one of `radio | checkbox | dropdown | choice | short_answer | paragraph | scale | date | time | file_upload | grid | unknown`. Replaces the workaround of reading the linked Responses sheet — that approach is lossy (no option text, no required flag, no question kind) and only works after the form has at least one response. Use whenever a file in inputs/ has MIME `application/vnd.google-apps.form` — `drive_read_file` does NOT support Forms.',
+  {
+    formId: z
+      .string()
+      .describe('The Google Forms form ID (from the form URL or generate_inputs_manifest output).'),
+  },
+  async ({ formId }) => {
+    try {
+      const r = await handleGetGoogleFormDefinition({ formId }, forms);
+      return result(r);
     } catch (e: any) {
       return error(e.message);
     }

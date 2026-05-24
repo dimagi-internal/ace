@@ -87,9 +87,10 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
-    expectedCount: 32,
-    // gdrive bridges four Google APIs — one prefix per surface plus two
-    // custom helpers that aren't in any one namespace.
+    expectedCount: 34,
+    // gdrive bridges five Google APIs — one prefix per surface plus a
+    // small set of cross-surface helpers (manifest generator, forms
+    // reader, OAuth-personal Drive read, YAML patch helper).
     allowedPrefixes: [
       'drive_',
       'sheets_',
@@ -97,6 +98,8 @@ const SERVERS: Record<string, ServerSpec> = {
       'slides_',
       'read_personal_drive_doc',
       'update_yaml_file',
+      'generate_inputs_manifest',
+      'get_google_form_definition',
     ],
   },
 };
