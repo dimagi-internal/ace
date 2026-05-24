@@ -1089,18 +1089,44 @@ That's ~5 wasted turns × seconds each × 8 boundaries per run
 
 ```
 Turn N:    Agent(<phase>) tool_result
-Turn N+1:  ONE message — drive_read_file + drive_create_file gate-brief
-           + TaskUpdate + Skill(decisions-render). Optional one-line
-           text summary in the same message.
-Turn N+2:  (only if N+1's read showed the phase block missing)
+Turn N+1:  ONE message — all 4 (or 5) tool calls in parallel:
+             1. drive_read_file on run_state.yaml (write-back verifier)
+             2. drive_list_folder on <runFolderId>/<N>-<phase>/ (artifact verifier)
+             3. TaskUpdate marking <phase> completed, next phase in_progress
+             4. Skill(decisions-render) — idempotent
+             5. drive_create_file gate-brief, if applicable
+           Optional one-line text summary in the same message.
+Turn N+2:  (only if N+1's read showed the phase block missing OR the
+           list showed required artifacts missing)
            update_yaml_file stub fallback per § Phase Write-Back
-           Verifier — procedure in `agents/orchestrator-reference.md`.
+           Verifier — procedure in `agents/orchestrator-reference.md`,
+           OR halt with the `[BLOCKER]` message per § Producer Artifact
+           Verifier.
 Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
 ```
 
 If the phase returned a `[BLOCKER]` or hard error, replace Turn N+3
 with a halt message — but Turn N+1 still happens (write-back is
 mandatory regardless of verdict).
+
+**Forbidden boundary improvisations.** The boundary fence's 4-5 tool
+calls listed above are the COMPLETE set. Do NOT also:
+
+- `drive_read_file` the phase's primary product (e.g. the PDD, app
+  manifest, OCS chatbot URL) at the boundary. `drive_list_folder` in
+  the same message already proves the file exists; reading the body
+  is verification-by-feel, not by structure. If the phase wrote it,
+  it's there.
+- Issue a separate `Bash` to recompute timestamps, list the run folder
+  a second time, or run a "sanity diff" against the prior run. The
+  verifier reads in Turn N+1 are the structural evidence.
+- Emit a "Phase N complete" status text in a solo turn before Turn
+  N+1's batched tool calls. The text summary, if any, rides in the
+  same message as the batched calls.
+
+Each of these improvisations was observed in real session transcripts
+(`e2e-malaria-rdt` 2026-05-24) and adds 1–3 wasted turns per boundary
+× 8 boundaries per run.
 
 ## Per-Step Eval Hook
 
