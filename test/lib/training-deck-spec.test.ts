@@ -562,6 +562,36 @@ describe('buildSlidesRequestsV2', () => {
     }
   });
 
+  it('emits updateSlidesPosition to reorder slides before stencil deletion', () => {
+    const yamlStr = v2Yaml(`
+      - id: s1
+        layout: cover
+        title: First
+      - id: s2
+        layout: content
+        title: Second
+        body: hi
+      - id: s3
+        layout: closing
+        title: Third
+        body: bye
+    `);
+    const spec = parseTrainingSpec(yamlStr);
+    const opts = v2Opts(yamlStr);
+    const reqs = buildSlidesRequestsV2(spec, opts);
+
+    const reorders = reqs.filter((r: any) => r.updateSlidesPosition);
+    expect(reorders).toHaveLength(3);
+    expect((reorders[0] as any).updateSlidesPosition.slideObjectIds).toEqual(['ace_slide_1']);
+    expect((reorders[1] as any).updateSlidesPosition.slideObjectIds).toEqual(['ace_slide_2']);
+    expect((reorders[2] as any).updateSlidesPosition.slideObjectIds).toEqual(['ace_slide_3']);
+
+    // Reorders come before deletes
+    const firstReorder = reqs.findIndex((r: any) => r.updateSlidesPosition);
+    const firstDelete = reqs.findIndex((r: any) => r.deleteObject);
+    expect(firstReorder).toBeLessThan(firstDelete);
+  });
+
   it('emits checklist body with checkbox characters', () => {
     const yamlStr = v2Yaml(`
       - id: s1
