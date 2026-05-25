@@ -105,6 +105,7 @@ const ALLOWLIST = new Set([
   'ocs_chatbot',                   // field key in run_state.yaml.phases.ocs-setup.products.ocs_chatbot
   'connect_primary_phone_input',   // org.commcare.dalvik:id/connect_primary_phone_input AutoCompleteTextView
   'slides_create_presentation',    // playbook/integrations/slides-integration.md: documented as "does not exist as an MCP atom"
+  'commcare_cli_jar',              // bin/ace-doctor probe label for the commcare-cli.jar presence/freshness check
 
   // ---- Known drift candidates (resolved as of 2026-05-25) ----
   //

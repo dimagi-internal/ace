@@ -1070,7 +1070,37 @@ export class MobileClient {
           success = true;
           return { alreadyRegistered: true, phone: args.phone };
         }
-        throw new Error(`register_test_user part B failed: ${partB.stderr || partB.stdout}`);
+        // Post-failure device-state backstop (added 2026-05-25 after the
+        // bednet-spot-check/20260525-1405 phantom blocker). Demo-bypass
+        // re-registrations can blur through intermediate screens
+        // (App Lock setup, system unlock prompt, photo capture) faster
+        // than Maestro's polling window can land on them — recipe
+        // halts at an `extendedWaitUntil` assertion despite the
+        // underlying registration completing fine on the device.
+        // The recipe-side fix made those waits conditional + added a
+        // terminal-state assertion; this is the client-side backstop:
+        // if the recipe still halts for some other reason, probe the
+        // device for the post-registered drawer markers
+        // (classifyDeviceUserState `ready`). If the device IS ready,
+        // treat as success — the recipe's halt was timing noise, not
+        // a real failure. Class-level fix for recipe-flakiness-vs-
+        // actual-device-state divergence.
+        const verify = await this.probeDeviceUserState(avd).catch(() => ({
+          classified_as: 'unknown' as DeviceUserStateClass,
+          focused_activity: undefined,
+          ui_dump_signal: undefined,
+        }));
+        if (verify.classified_as === 'ready') {
+          logInfo(
+            `register_test_user: part B recipe halted but device classified 'ready' (signal=${verify.ui_dump_signal ?? 'none'}) — treating as success`,
+          );
+          success = true;
+          return { alreadyRegistered: true, phone: args.phone };
+        }
+        throw new Error(
+          `register_test_user part B failed: ${partB.stderr || partB.stdout}\n` +
+            `(post-failure device probe: classified_as=${verify.classified_as}, signal=${verify.ui_dump_signal ?? 'none'} — not 'ready', so this is a real registration failure not recipe flakiness)`,
+        );
       }
 
       success = true;

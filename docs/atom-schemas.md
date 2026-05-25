@@ -350,7 +350,7 @@ Single-line answer to 'did `<phaseName>` write its run_state.yaml block correctl
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 49 atoms
+Source: `mcp/connect-server.ts` — 50 atoms
 
 ### `connect_list_programs`
 
@@ -760,6 +760,12 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 ### `commcare_download_ccz`
 
 If true, request the full CCZ with multimedia binaries inlined under commcare/multimedia/...; default false returns the lite manifest-only response.
+
+_no parameters_
+
+### `commcare_validate_ccz`
+
+Base64-encoded CCZ bytes. Typically chained from `commcare_download_ccz`\'s response.
 
 _no parameters_
 

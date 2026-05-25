@@ -38,6 +38,12 @@ import {
   resolveUploadMultimediaBytes,
   resolveEnvSubstitution,
 } from '../lib/atom-payload-resolver.js';
+import {
+  commcareCliValidateCcz,
+  CommCareCliInputError,
+} from '../lib/commcare-cli-validate.js';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 
 const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
 const cchqBaseUrl = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
@@ -711,6 +717,100 @@ server.tool('commcare_download_ccz',
   },
   async (args) => runAtom(async () => (await commcareClient()).downloadCcz(args))
 );
+
+// commcare_validate_ccz — runtime-install simulation against a released CCZ.
+//
+// Wraps `dimagi/commcare-core`'s `commcare-cli.jar validate` subcommand. The
+// CLI runs the SAME `ResourceTable.initializeResources` install path the
+// Android device runs, including the `XForm*` / `Suite*` / `Profile*Installer`
+// chain whose `InvalidResourceException` maps to CommCare's device-side
+// "A part of your application is invalid" error. Catches the class of
+// runtime install rejections that Nova `validate_app`, CCHQ `make_build` /
+// release, and `commcare_download_ccz`'s `projected_connect_state`
+// projection all miss (they're static; this is install-time).
+//
+// Phase 3 wires this in via `app-release-smoke` Step 4 — halt loud on
+// `verdict: fail` so the operator sees the structural defect before Phase 6
+// hits it on the device.
+//
+// **Operator one-time setup:**
+//   git clone https://github.com/dimagi/commcare-core
+//   cd commcare-core && ./gradlew cliJar
+//   cp build/libs/commcare-cli-*.jar $CLAUDE_PLUGIN_DATA/commcare-cli.jar
+// Or set `ACE_COMMCARE_CLI_JAR` to an absolute path. `/ace:doctor` reports
+// the resolved jar path + freshness.
+//
+// Reproducer: `bednet-spot-check/20260525-1405` Phase 6 install rejection
+// (`#case/case_name` substituted for `#case/case_id` on a case-create form's
+// `entity_id`; install-time XPath bind reads null + rejects). See
+// `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md`.
+server.tool('commcare_validate_ccz',
+  {
+    ccz_base64: z.string().min(1).describe('Base64-encoded CCZ bytes. Typically chained from `commcare_download_ccz`\'s response.'),
+    jar_path: z.string().optional().describe('Override the resolved commcare-cli.jar path (default: $ACE_COMMCARE_CLI_JAR or $CLAUDE_PLUGIN_DATA/commcare-cli.jar).'),
+    timeout_ms: z.number().int().positive().optional().describe('Spawn timeout. Default 60000ms. Bednet-scale CCZs validate in <2s — long timeouts surface a stuck JVM.'),
+  },
+  async (args) =>
+    runAtom(async () => {
+      const jarPath = resolveCommCareCliJarPath(args.jar_path);
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-ccz-validate-'));
+      const cczPath = path.join(tmpDir, 'app.ccz');
+      try {
+        fs.writeFileSync(cczPath, Buffer.from(args.ccz_base64, 'base64'));
+        return await commcareCliValidateCcz({
+          cczPath,
+          jarPath,
+          timeoutMs: args.timeout_ms,
+        });
+      } catch (e) {
+        if (e instanceof CommCareCliInputError) {
+          // Surface a typed result instead of throwing — easier for the
+          // skill to branch on (jar_not_found is operator setup, not a
+          // real CCZ defect, so the skill emits a different brief).
+          return {
+            verdict: 'fail' as const,
+            exit_code: -1,
+            input_error: e.kind,
+            input_error_path: e.path,
+            stdout: '',
+            stderr: e.message,
+            timeout_ms: args.timeout_ms ?? 60_000,
+            timed_out: false,
+          };
+        }
+        throw e;
+      } finally {
+        try {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        } catch {
+          // Best-effort cleanup; bounded by OS temp.
+        }
+      }
+    }),
+);
+
+/**
+ * Resolve the commcare-cli.jar path used by `commcare_validate_ccz`.
+ *
+ * Order:
+ *   1. Explicit `jar_path` argument (lets the skill point at a one-off jar).
+ *   2. `$ACE_COMMCARE_CLI_JAR` env var (operator-pinned absolute path).
+ *   3. `$CLAUDE_PLUGIN_DATA/commcare-cli.jar` (per-machine default — same
+ *      pattern as `gws-sa-key.json` lives under).
+ *
+ * Existence is NOT checked here — the lib helper does that and surfaces a
+ * typed `CommCareCliInputError` so the skill sees `jar_not_found` instead
+ * of a generic JVM stack trace.
+ */
+function resolveCommCareCliJarPath(explicit?: string): string {
+  if (explicit && explicit.length > 0) return explicit;
+  const envPath = process.env.ACE_COMMCARE_CLI_JAR;
+  if (envPath && envPath.length > 0) return envPath;
+  if (__pluginDataDir) return path.join(__pluginDataDir, 'commcare-cli.jar');
+  // Fallback for dev checkouts running `npm run mcp:connect`. Lib will
+  // throw `jar_not_found` with this path; operator picks up the hint.
+  return path.join(process.cwd(), 'commcare-cli.jar');
+}
 
 // commcare_patch_xform — surgical CommCare HQ form-XML patch endpoint.
 //
