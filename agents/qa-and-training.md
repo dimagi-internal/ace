@@ -324,13 +324,13 @@ training skills (or invoke `qa-and-training` for the full sequence).
 
 ## Completion
 
-After Step 2 finishes, write the `phases.qa-and-training` block per
-`agents/ace-orchestrator.md § Phase Write-Back Contract`. Phase 6 has
-no named gate (`/ace:qa-deep` is the actual quality gate, run
-separately before Phase 9 `llo-launch`), so the patch sets
-`phases.qa-and-training.status: done` + a verdict like `proceed` or
-`proceed-with-warn` without flipping any `gates.<gate>` entry.
-Required top-level keys: `phases`, `last_actor`, `last_actor_at`.
+After Step 2 finishes:
+
+1. **Write the phase summary** to `ACE/<opp-name>/runs/<run-id>/6-qa-and-training/qa-and-training_summary.md`. The summary lists the screenshot bundle, the 5 training docs (with Drive URLs from `products.training.docs.*`), the optional deck render (when `ACE_TRAINING_DECK_TEMPLATE_ID` was set), and the onboarding email. This file is the operator-facing handoff for Phase 9.
+
+2. **Write the `phases.qa-and-training` block** per [`agents/ace-orchestrator.md § Phase Write-Back Contract`](../agents/orchestrator-reference.md#phase-write-back-contract). Set `phases.qa-and-training.status: done` + a verdict like `proceed` or `proceed-with-warn`, populate `summary_artifact:` with the file ID from step 1, and include the per-skill `steps:` map. Required top-level keys on the patch: `phases`, `last_actor`, `last_actor_at`.
+
+Phase 6 has no named gate (`/ace:qa-deep` is the actual quality gate, run separately before Phase 9 `llo-launch`).
 
 ## Topology note
 
