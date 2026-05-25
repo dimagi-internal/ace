@@ -760,14 +760,12 @@ viewing of legacy opps, but is no longer consulted for new runs.
 
 When invoked with an opportunity, execute these phases in order.
 
-**Per-phase block shape.** Each `### Phase N` block below lists
-`Dispatch`, `Inputs (inline at handoff)`, `Atoms / skills used`,
-`Products`, `Write-back`, `Gate`, and optionally `Notes`. The
-`Inputs (inline at handoff)` items are passed via the prompt template
-in § Pre-flight & per-phase conventions → "Pass artifacts inline at
-phase handoff"; the `Write-back` block follows § Phase Write-Back
-Contract (in `agents/orchestrator-reference.md`); the boundary fence
-itself (the **when**) is § Phase boundary fence below.
+**Per-phase block shape.** Each `### Phase N` block lists `Dispatch`, `Inputs (inline at handoff)`, `Atoms / skills used`, `Products`, and optionally `Gate` + `Notes`. Two contracts apply to **every** phase and are NOT restated per block — read them once here:
+
+- **Write-back.** Every phase writes `phases.<phase-name>.{status, started_at, completed_at, verdict, summary_artifact, steps}` per [§ Phase Write-Back Contract](orchestrator-reference.md#phase-write-back-contract). The boundary fence (§ Phase boundary fence below) governs WHEN.
+- **Gate baseline.** Any `[BLOCKER]` from the phase's eval verdicts halts the run, regardless of mode. The per-phase `Gate:` field below only lists *additional* named pause points or phase-specific gate behavior beyond that baseline; absence of a `Gate:` field means "BLOCKER-only, no named pause point in default mode" — see [§ Pause Points](orchestrator-reference.md#pause-points) for the full table.
+
+`Inputs (inline at handoff)` items are passed via the prompt template in § Pre-flight & per-phase conventions → "Pass artifacts inline at phase handoff".
 
 ### Phase 1: Idea to Design
 
@@ -779,9 +777,7 @@ itself (the **when**) is § Phase boundary fence below.
 
 **Products:** PDD (`1-design/idea-to-pdd.md`) — the formal design doc; Work Order (`1-design/pdd-to-work-order.gdoc`) — contractual draft derived from PDD + decisions.yaml. Both are required outputs of Phase 1; the work order chain (Steps 2, 2.4, 2.5 in `agents/idea-to-design.md`) runs after the PDD chain.
 
-**Write-back:** `phases.idea-to-design.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
-
-**Gate:** `[BLOCKER]` halts; pause-on-`idea-to-pdd` per § Pause Points (in reference). In review mode, the PDD-approval gate is the natural human checkpoint at the Phase 1→2 boundary.
+**Gate:** pause-on-`idea-to-pdd`. In review mode, the PDD-approval gate is the natural human checkpoint at the Phase 1→2 boundary.
 
 ### Phase 2: Scenarios & Acceptance Planning
 
@@ -793,9 +789,7 @@ itself (the **when**) is § Phase boundary fence below.
 
 **Products:** opp-specific test prompts (`2-scenarios/pdd-to-test-prompts.md`) — Q&A scenarios the Phase 5 OCS deep QA gate judges chatbot answers against; expected app journeys (`2-scenarios/pdd-to-app-journeys.md`) — UX-intent scenarios the Phase 6 shallow app QA and `/ace:qa-deep` grade FLW app behavior against. Both are AI interpretations of the AI-authored PDD — "what we'd expect," not ground truth.
 
-**Write-back:** `phases.scenarios-and-acceptance.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
-
-**Gate:** `[BLOCKER]` halts; no named pause point in default mode (see § Pause Points in reference). The two skill chains are independent of each other (both read only the PDD) so a `[BLOCKER]` from one doesn't necessarily implicate the other.
+**Notes:** The two skill chains are independent of each other (both read only the PDD) so a `[BLOCKER]` from one doesn't necessarily implicate the other.
 
 ### Phase 3: CommCare Setup
 
@@ -807,9 +801,7 @@ itself (the **when**) is § Phase boundary fence below.
 
 **Products:** Learn app, Deliver app, deployed apps on CCHQ, test results (`3-commcare/app-test-cases.yaml` + `app-test-cases/J*.yaml`). (Training materials moved to Phase 6 (`qa-and-training`) in 0.9.0.)
 
-**Write-back:** `phases.commcare-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
-
-**Gate:** `[BLOCKER]` halts; pause-on-`app-deploy` per § Pause Points (in reference).
+**Gate:** pause-on-`app-deploy`.
 
 **Notes:** Phase 3 invokes `/nova:autobuild`, which dispatches the `nova:nova-architect-autonomous` subagent. That dispatch requires `Agent` at level 0 — running Phase 3 itself as a subagent would put Nova's dispatch at level 2 and fail. See § Agent Topology in reference. This is the only orchestrator-visible inline procedure-doc dispatch in the workflow.
 
@@ -823,10 +815,6 @@ itself (the **when**) is § Phase boundary fence below.
 
 **Products:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`4-connect/connect-program-setup.md`, `4-connect/connect-opp-setup.md`).
 
-**Write-back:** `phases.connect-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
-
-**Gate:** `[BLOCKER]` halts; no named pause point in default mode (see § Pause Points in reference).
-
 **Notes:** LLO invite-list preparation moved to Phase 9 on 2026-04-20 — we don't commit to a real-LLO invite roster until after the OCS chatbot has cleared its deep-eval gate. Phase 4 *does* activate the opp and invite the ACE test user (`${ACE_E2E_PHONE}`) on 2026-05-10 — this closes the chicken-and-egg gap where Phase 6 `app-screenshot-capture` could only produce placeholder screenshots because the test user wasn't on the new opp yet. The opp is created with `is_test=true` so prod LLO-facing analytics, payment exports, and partner dashboards exclude these dogfood runs; activation in this phase is therefore not a Phase 8→9 boundary violation. Phase 9's `llo-launch` becomes idempotent on already-active opps (skip-and-log) and still sends the real-LLO invite to the awarded LLO. After Phase 4 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
 ### Phase 5: OCS Setup
@@ -839,9 +827,7 @@ itself (the **when**) is § Phase boundary fence below.
 
 **Products:** per-opp OCS chatbot cloned from the golden template with opp-specific RAG collection; quick smoke qa+eval passed; deep pre-launch qa+eval passed against opp-specific test prompts; embed credentials ready for Connect (`5-ocs/ocs-agent-setup.md`).
 
-**Write-back:** `phases.ocs-setup.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
-
-**Gate:** `[BLOCKER]` halts; pause-on-`ocs-chatbot-eval --quick` per § Pause Points (in reference).
+**Gate:** pause-on-`ocs-chatbot-eval --quick`.
 
 **Notes:** Each quality gate is a qa→eval pair — `ocs-chatbot-qa` captures a transcript, `ocs-chatbot-eval` grades it. Ends with a human-in-the-loop step to paste the widget credentials into the Connect opportunity until `update_opportunity` lands (CCC-301). After Phase 5 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
@@ -855,11 +841,7 @@ itself (the **when**) is § Phase boundary fence below.
 
 **Products:** Phase-6 artifacts under `6-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck spec), optional training deck render, onboarding email.
 
-**Write-back:** `phases.qa-and-training.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
-
-**Gate:** `[BLOCKER]` halts; no named pause point in default mode (see § Pause Points in reference). Phase 6→7 is no longer a mandatory pause (§ Modes — default, review, auto).
-
-**Notes:** All skills read upstream artifacts from Phases 1–4. No 1-1 LLO contact happens here — that begins in Phase 9. Phase 6 splits shallow (in `/ace:run`, ~5 LLM judges) vs deep (out-of-band via `/ace:qa-deep`); `llo-launch` (Phase 9) requires fresh deep verdicts.
+**Notes:** Phase 6→7 is no longer a mandatory pause (§ Modes — default, review, auto). All skills read upstream artifacts from Phases 1–4. No 1-1 LLO contact happens here — that begins in Phase 9. Phase 6 splits shallow (in `/ace:run`, ~5 LLM judges) vs deep (out-of-band via `/ace:qa-deep`); `llo-launch` (Phase 9) requires fresh deep verdicts.
 
 ### Phase 7: Synthetic Data and Workflows
 
@@ -871,9 +853,7 @@ itself (the **when**) is § Phase boundary fence below.
 
 **Products:** synthetic narrative manifest; fixture FLW/visit/payment data; two demonstrative workflows (`llo_weekly_review`, `program_admin_audit`); per-persona walkthrough HTML decks; single one-page summary (`7-synthetic/synthetic-summary.md`).
 
-**Write-back:** `phases.synthetic-data-and-workflows.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
-
-**Gate:** `[BLOCKER]` halts; **no phase pause** — `/ace:run` proceeds straight from Phase 7 to Phase 8 without halting (no run-time gate; see § Pause Points in reference).
+**Gate:** **no phase pause** — `/ace:run` proceeds straight from Phase 7 to Phase 8 without halting (no run-time gate; see § Pause Points in reference).
 
 **Notes:** **No irreversible external action.** The connect-labs `SyntheticOpportunity` row is reversible via `synthetic_disable`; workflows can be deleted via `workflow_delete`. See `agents/synthetic-data-and-workflows.md`.
 
@@ -887,9 +867,7 @@ itself (the **when**) is § Phase boundary fence below.
 
 **Products:** solicitation derived from the PDD published on labs.connect.dimagi.com via the `connect-labs` MCP; emails to PDD-named candidate LLOs containing the public URL (no-op if the PDD names no candidates — long-term flow).
 
-**Write-back:** `phases.solicitation-management.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
-
-**Gate:** `[BLOCKER]` halts; **Phase 8→9 boundary always pauses in every mode** — `/ace:run` HALTS here at the new external-comms boundary. Phase 9 cannot start until `phases.solicitation-management.products.selected_llo.org_slug` is populated in the current run's `run_state.yaml`, which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`). See § Pause Points in reference.
+**Gate:** **Phase 8→9 boundary always pauses in every mode** — `/ace:run` HALTS here at the external-comms boundary. Phase 9 cannot start until `phases.solicitation-management.products.selected_llo.org_slug` is populated in the current run's `run_state.yaml`, which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`).
 
 **Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). Its cross-run write semantics are TBD pending Phase 8+/8 architecture decisions. `solicitation` and `selected_llo` are separate sub-blocks under `phases.solicitation-management.products.*` — only `solicitation-review` populates `selected_llo`.
 
@@ -903,9 +881,7 @@ itself (the **when**) is § Phase boundary fence below.
 
 **Products:** the awarded LLO onboarded (Connect program-level invite + ACE onboarding email with widget link); UAT completed; opportunity activated (go-live); ongoing monitoring active.
 
-**Write-back:** `phases.execution-management.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
-
-**Gate:** `[BLOCKER]` halts; **always pauses before** `llo-onboarding` (first 1-1 email to awardee), `llo-uat` send (UAT instructions), and `llo-launch` (opp activation in Connect) — these are unconditional in all modes. See § Pause Points in reference.
+**Gate:** **always pauses before** `llo-onboarding` (first 1-1 email to awardee), `llo-uat` send (UAT instructions), and `llo-launch` (opp activation in Connect) — these are unconditional in all modes.
 
 **Notes:** Phase 9 is the first 1-1 LLO contact in the lifecycle. Recurring skills (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`, `ocs-chatbot-eval-monitor`) run on schedule during the active opportunity. `llo-launch` requires fresh deep verdicts (Phase 6 `/ace:qa-deep` output).
 
@@ -919,11 +895,9 @@ itself (the **when**) is § Phase boundary fence below.
 
 **Products:** Invoices pulled; Jira payment ticket created; LLO feedback collected; learnings summarized; cycle graded.
 
-**Write-back:** `phases.closeout.{status, started_at, completed_at, verdict, summary_artifact, steps}` per § Phase Write-Back Contract (in reference). The boundary fence (§ Phase boundary fence) governs WHEN.
+**Gate:** **always pauses before** `opp-closeout` (Jira payment ticket creation) — unconditional in all modes.
 
-**Gate:** `[BLOCKER]` halts; **always pauses before** `opp-closeout` (Jira payment ticket creation) — unconditional in all modes. See § Pause Points in reference.
-
-**Notes:** Triggered by end-date, not by phase chaining — Phase 10 does NOT run automatically as part of `/ace:run` continuation from Phase 9. The closeout agent owns the trigger condition.
+**Notes:** Triggered by end-date, not by phase chaining — Phase 10 does NOT run automatically as part of `/ace:run` continuation from Phase 9. The closeout agent owns the trigger condition. The terminal verdict for Phase 10 is `closed` (terminal-phase synonym for `pass` — see § Phase Write-Back Contract in reference for the full enum).
 
 ## Between Phases
 

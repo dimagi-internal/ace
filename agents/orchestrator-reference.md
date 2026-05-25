@@ -503,8 +503,10 @@ phases:
     status: in_progress | done | error
     started_at: <ISO timestamp>            # when the dispatch fired
     completed_at: <ISO timestamp>          # required when status: done
-    verdict: pass | proceed | proceed-with-warn | reject | halt-at-…
+    verdict: pass | proceed | proceed-with-warn | reject | halt-at-… | closed
                                             # phase-specific terminal disposition
+                                            # `closed` is reserved for Phase 10 (closeout) —
+                                            # terminal-phase synonym for `pass`
     summary_artifact: <Drive fileId>        # required if the phase produces a summary doc
     steps:
       <skill-name>:
