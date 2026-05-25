@@ -1,61 +1,504 @@
 /**
- * Bootstrap the ACE training-deck Slides template (v2).
+ * Bootstrap the ACE training-deck Slides template (v5).
  *
- * One-time setup: creates a Google Slides template deck with 14
- * stencil slides (one per layout variant) that the `training-deck-build`
- * skill duplicates and fills via placeholder substitution.
+ * Approach: clone Dimagi canonical slides as visual BACKGROUNDS (indigo
+ * full-bleed, topographic illustration, amber accent strips, Dimagi
+ * wordmark + O logo, thin red right edge), then strip the designer's
+ * text boxes and stock mockup images, then layer OUR text boxes (sized
+ * for our content) on top. We get Dimagi-recognizable branding without
+ * fighting the designer's fixed-bbox text placeholders.
  *
- * All 14 stencils get well-known objectIds from `STENCILS` in
- * `lib/training-deck-spec.ts`. They survive `drive.files.copy`
- * (Slides preserves objectIds on copy unless they collide).
+ * Why this works vs v4.x: v4 tried to reuse designer text boxes by
+ * replacing their text content with our tokens. Designer boxes were
+ * sized for short lorem strings ("Sample Heading", "2.7k"); per-opp
+ * content overflowed and the Slides API doesn't allow programmatic
+ * autofit (`updateShapeProperties` rejects autofitType other than NONE).
+ * v5 sidesteps that completely — keeps designer decoration, drops
+ * designer text, creates new text shapes from scratch with our
+ * geometry (carried over from v3.4 where it proved publishable).
  *
- * Branding: Dimagi brand — Work Sans, Indigo/Amber/White/Gray palette.
+ * Stencil → Dimagi source slide mappings (surveyed 2026-05-25):
+ *   cover        ← page 3   "Sample Heading / Subheading"   (dark indigo bg)
+ *   section      ← page 6   "Basic Layouts" divider          (light indigo bg)
+ *   agenda       ← page 5   "Table of contents"              (white bg)
+ *   content      ← page 10  "Bulleted Plaintext with Image"  (white bg)
+ *   walkthrough  ← page 46  "Solo Mobile UI mockup"          (white bg)
+ *   mobile_flow  ← page 47  "Three mobile mockups"           (white bg)
+ *   web_screen   ← page 48  "Solo Web Mockup"                (white bg)
+ *   mobile_zoom  ← page 46  (clone of walkthrough)
+ *   two_column   ← page 11  "Comparison"                     (white bg)
+ *   stats        ← page 34  "Stat+Description Combo"         (white bg)
+ *   timeline     ← page 36  "Horizontal Timeline Basic"      (white bg)
+ *   checklist    ← page 29  "5 numbered callouts"            (white bg)
+ *   exercise     ← page 25  "Boxed Headers"                  (white bg)
+ *   closing      ← page 71  "Thank You"                      (white bg + topographic)
  *
- * Iterating the template: edit the file in Slides directly. Do NOT
- * change the stencil objectIds or the {{...}} placeholder tokens —
- * both are wired to `lib/training-deck-spec.ts` constants. Branding
- * (fonts, colors, logo, theme), layout positions, background images,
- * and speaker-notes formatting are all template-level concerns and
- * can change freely.
- *
- * Usage (after enabling Slides API on the connect-labs GCP project):
- *
+ * Usage:
  *   npx tsx scripts/bootstrap-training-deck-template.ts
  *
- * Idempotent: re-running against an already-existing template with the
- * same name prints the existing ID without re-creating.
- *
- * Output: prints the template's presentationId. Add to `.env.tpl` and
- * `.env` as `ACE_TRAINING_DECK_TEMPLATE_ID`.
+ * Output: prints the new template's presentationId. Update 1Password
+ * "ACE - Drive Templates" → training_deck_template_id and the local
+ * .env via op inject.
  */
 
 import { google } from '../lib/google-shim.js';
 import * as fs from 'node:fs';
-import { STENCILS } from '../lib/training-deck-spec.js';
+import { STENCILS, type StencilKey } from '../lib/training-deck-spec.js';
 
 // ---------------------------------------------------------------------------
-// Dimagi branding constants
+// Source: Dimagi canonical template
 // ---------------------------------------------------------------------------
 
-const FONT_FAMILY = 'Work Sans';
-// Dimagi brand palette — exact hex values from the canonical training
-// template (presentation 1NAkbjPjDZSx_Qw8legfuRUk8eTBqO4dn1H2XOqAM1Hc),
-// surveyed 2026-05-25. (Same palette as PR #466; restated here in case
-// branches are out of sync.)
-const COLOR_INDIGO = { red: 0x13 / 255, green: 0x01 / 255, blue: 0x68 / 255 };       // #130168
-const COLOR_AMBER = { red: 0xFE / 255, green: 0xAF / 255, blue: 0x31 / 255 };        // #FEAF31
-const COLOR_WHITE = { red: 1, green: 1, blue: 1 };
-const COLOR_GRAY = { red: 0x5F / 255, green: 0x6A / 255, blue: 0x7D / 255 };         // #5F6A7D
-const COLOR_SURFACE = { red: 0xF3 / 255, green: 0xF3 / 255, blue: 0xF3 / 255 };      // #F3F3F3
-const COLOR_MOBILE_BLUE = { red: 0x5D / 255, green: 0x70 / 255, blue: 0xD2 / 255 };  // #5D70D2
+const DIMAGI_SOURCE_ID = '1NAkbjPjDZSx_Qw8legfuRUk8eTBqO4dn1H2XOqAM1Hc';
 
 // ---------------------------------------------------------------------------
 // Slide dimensions (EMU)
 // ---------------------------------------------------------------------------
 
-const SLIDE_W = 9_144_000;  // 10"
-const SLIDE_H = 5_143_500;  // 5.625"
-const MARGIN = 457_200;     // 0.5"
+const SLIDE_W = 9_144_000; // 10"
+const SLIDE_H = 5_143_500; // 5.625"
+const MARGIN = 457_200;    // 0.5"
+
+// ---------------------------------------------------------------------------
+// Dimagi brand palette
+// ---------------------------------------------------------------------------
+
+const FONT_FAMILY = 'Work Sans';
+type RgbColor = { red: number; green: number; blue: number };
+
+const COLOR_INDIGO = { red: 0x13 / 255, green: 0x01 / 255, blue: 0x68 / 255 };
+const COLOR_WHITE = { red: 1, green: 1, blue: 1 };
+const COLOR_GRAY = { red: 0x5F / 255, green: 0x6A / 255, blue: 0x7D / 255 };
+
+// ---------------------------------------------------------------------------
+// Per-stencil clone config
+// ---------------------------------------------------------------------------
+//
+// sourcePageId: the Dimagi page we duplicate for its visual background +
+// decoration (no text reused — text boxes get deleted and recreated).
+//
+// stripImageIds: mockup placeholder images to delete (stock phone/web
+// screenshots that render's createImage will replace per-opp).
+//
+// onDarkBackground: true if the source slide has a dark fill (cover) so
+// we emit white text instead of indigo. section uses light-indigo
+// background but white text reads well there too.
+
+interface StencilConfig {
+  sourcePageId: string;
+  stripImageIds: string[];
+  onDarkBackground?: boolean;
+  /**
+   * Set to true if this stencil reuses another stencil's source page.
+   * The first stencil to mention the source page gets the slide; later
+   * stencils sharing the same source duplicate the SAME source again
+   * (Slides allows multiple duplicates of one source). Used for
+   * mobile_zoom which clones the walkthrough source.
+   */
+  sourceIsShared?: boolean;
+}
+
+const STENCIL_CONFIGS: Record<StencilKey, StencilConfig> = {
+  cover: {
+    sourcePageId: 'g15b43284eab_0_101',
+    stripImageIds: [],
+    onDarkBackground: true,
+  },
+  section: {
+    sourcePageId: 'g16117138c42_0_14',
+    stripImageIds: [],
+    onDarkBackground: true, // light-indigo bg; white text reads better
+  },
+  agenda: {
+    sourcePageId: 'g16117138c42_0_41',
+    stripImageIds: [],
+  },
+  content: {
+    sourcePageId: 'g16117138c42_0_31',
+    stripImageIds: ['g16117138c42_0_40'], // stock photo
+  },
+  walkthrough: {
+    sourcePageId: 'g157d905314c_0_17',
+    stripImageIds: ['g157d905314c_0_29', 'g2a7f28d47a6_0_10'],
+  },
+  mobile_flow: {
+    sourcePageId: 'g157c2e0650a_0_10',
+    stripImageIds: [
+      'g2a7f28d47a6_0_12', 'g2a7f28d47a6_0_13',
+      'g2a7f28d47a6_0_14', 'g2a7f28d47a6_0_15',
+      'g2a7f28d47a6_0_16', 'g2a7f28d47a6_0_17',
+    ],
+  },
+  web_screen: {
+    sourcePageId: 'g157d905314c_0_41',
+    stripImageIds: ['g157d905314c_0_62', 'g180c769904c_1_1'],
+  },
+  mobile_zoom: {
+    sourcePageId: 'g157d905314c_0_17',
+    sourceIsShared: true,
+    stripImageIds: ['g157d905314c_0_29', 'g2a7f28d47a6_0_10'],
+  },
+  two_column: {
+    sourcePageId: 'g1b29c53f2a5_6_0',
+    stripImageIds: [],
+  },
+  stats: {
+    sourcePageId: 'g1582f059303_0_125',
+    stripImageIds: [],
+  },
+  timeline: {
+    sourcePageId: 'g19718957c31_0_0',
+    stripImageIds: [],
+  },
+  checklist: {
+    sourcePageId: 'g1582f059303_0_110',
+    stripImageIds: [],
+  },
+  exercise: {
+    sourcePageId: 'g19d7c017c36_0_773',
+    stripImageIds: [],
+  },
+  closing: {
+    sourcePageId: 'g157d905314c_0_85',
+    stripImageIds: ['g157d905314c_0_99'], // stock headshot
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Text-box request helper
+// ---------------------------------------------------------------------------
+
+interface TextBox {
+  id: string;
+  pageId: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+  fontSize: number;
+  bold?: boolean;
+  color?: RgbColor;
+}
+
+function textBoxRequests(tb: TextBox): Record<string, unknown>[] {
+  const style: Record<string, unknown> = {
+    fontSize: { magnitude: tb.fontSize, unit: 'PT' },
+    fontFamily: FONT_FAMILY,
+  };
+  const fields = ['fontSize', 'fontFamily'];
+  if (tb.bold) {
+    style.bold = true;
+    fields.push('bold');
+  }
+  if (tb.color) {
+    style.foregroundColor = { opaqueColor: { rgbColor: tb.color } };
+    fields.push('foregroundColor');
+  }
+  return [
+    {
+      createShape: {
+        objectId: tb.id,
+        shapeType: 'TEXT_BOX',
+        elementProperties: {
+          pageObjectId: tb.pageId,
+          size: {
+            height: { magnitude: tb.h, unit: 'EMU' },
+            width: { magnitude: tb.w, unit: 'EMU' },
+          },
+          transform: { scaleX: 1, scaleY: 1, translateX: tb.x, translateY: tb.y, unit: 'EMU' },
+        },
+      },
+    },
+    { insertText: { objectId: tb.id, text: tb.text, insertionIndex: 0 } },
+    { updateTextStyle: { objectId: tb.id, textRange: { type: 'ALL' }, style, fields: fields.join(',') } },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Per-stencil text-box builders (geometry carried over from v3.4 where
+// it proved publishable). Colors picked to read against the Dimagi
+// background each stencil clones.
+// ---------------------------------------------------------------------------
+
+function buildCoverTextBoxes(pageId: string): Record<string, unknown>[] {
+  // Dark indigo background → white title + amber-ish gray subtitle.
+  // Layout sized for 2-line title wraps (the Dimagi cover places the
+  // title near vertical center).
+  const w = SLIDE_W - MARGIN * 2 - 200_000;
+  return [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: 1_500_000, w, h: 1_400_000,
+      fontSize: 40, bold: true, color: COLOR_WHITE,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_subtitle`, pageId, text: '{{SUBTITLE}}',
+      x: MARGIN, y: 3_100_000, w, h: 600_000,
+      fontSize: 18, color: COLOR_WHITE,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_date`, pageId, text: '{{DATE}}',
+      x: MARGIN, y: 3_800_000, w, h: 500_000,
+      fontSize: 14, color: COLOR_WHITE,
+    }),
+  ];
+}
+
+function buildSectionTextBoxes(pageId: string): Record<string, unknown>[] {
+  // Light-indigo background → white title, vertically centered.
+  const titleH = 1_200_000;
+  return [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: (SLIDE_H - titleH) / 2, w: SLIDE_W - MARGIN * 2, h: titleH,
+      fontSize: 38, bold: true, color: COLOR_WHITE,
+    }),
+  ];
+}
+
+function buildAgendaTextBoxes(pageId: string): Record<string, unknown>[] {
+  return [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 700_000,
+      fontSize: 24, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_body`, pageId, text: '{{BODY}}',
+      x: MARGIN, y: 1_200_000, w: SLIDE_W - MARGIN * 2, h: 3_500_000,
+      fontSize: 14, color: COLOR_GRAY,
+    }),
+  ];
+}
+
+function buildContentTextBoxes(pageId: string): Record<string, unknown>[] {
+  return [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 700_000,
+      fontSize: 24, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_body`, pageId, text: '{{BODY}}',
+      x: MARGIN, y: 1_200_000, w: SLIDE_W - MARGIN * 2, h: 3_500_000,
+      fontSize: 14, color: COLOR_GRAY,
+    }),
+  ];
+}
+
+function buildWalkthroughTextBoxes(pageId: string): Record<string, unknown>[] {
+  // Left ~35% for body, right ~62% reserved for render's createImage.
+  const leftW = Math.round(SLIDE_W * 0.35) - MARGIN;
+  return [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: MARGIN, w: leftW, h: 1_000_000,
+      fontSize: 22, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_body`, pageId, text: '{{BODY}}',
+      x: MARGIN, y: 1_500_000, w: leftW, h: 3_400_000,
+      fontSize: 13, color: COLOR_GRAY,
+    }),
+  ];
+}
+
+function buildMobileFlowTextBoxes(pageId: string): Record<string, unknown>[] {
+  const captionW = Math.round((SLIDE_W - MARGIN * 2) / 4);
+  const captionY = SLIDE_H - 700_000;
+  const reqs: Record<string, unknown>[] = [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 700_000,
+      fontSize: 24, bold: true, color: COLOR_INDIGO,
+    }),
+  ];
+  for (let i = 0; i < 4; i++) {
+    reqs.push(...textBoxRequests({
+      id: `${pageId}_cap${i}`, pageId, text: `{{STEP_${i}_CAPTION}}`,
+      x: MARGIN + i * captionW, y: captionY,
+      w: captionW - 50_000, h: 500_000,
+      fontSize: 11, color: COLOR_GRAY,
+    }));
+  }
+  return reqs;
+}
+
+function buildWebScreenTextBoxes(pageId: string): Record<string, unknown>[] {
+  return [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 700_000,
+      fontSize: 24, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_caption`, pageId, text: '{{CAPTION}}',
+      x: MARGIN, y: SLIDE_H - 600_000, w: SLIDE_W - MARGIN * 2, h: 500_000,
+      fontSize: 12, color: COLOR_GRAY,
+    }),
+  ];
+}
+
+function buildMobileZoomTextBoxes(pageId: string): Record<string, unknown>[] {
+  return [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 700_000,
+      fontSize: 24, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_callouts`, pageId, text: '{{CALLOUTS}}',
+      x: MARGIN, y: 1_200_000, w: Math.round(SLIDE_W * 0.4), h: 3_500_000,
+      fontSize: 14, color: COLOR_GRAY,
+    }),
+  ];
+}
+
+function buildTwoColumnTextBoxes(pageId: string): Record<string, unknown>[] {
+  const colW = Math.round((SLIDE_W - MARGIN * 3) / 2);
+  const rightX = MARGIN * 2 + colW;
+  return [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 700_000,
+      fontSize: 24, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_lhead`, pageId, text: '{{LEFT_HEADING}}',
+      x: MARGIN, y: 1_300_000, w: colW, h: 500_000,
+      fontSize: 16, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_lbody`, pageId, text: '{{LEFT_BODY}}',
+      x: MARGIN, y: 1_800_000, w: colW, h: 3_000_000,
+      fontSize: 13, color: COLOR_GRAY,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_rhead`, pageId, text: '{{RIGHT_HEADING}}',
+      x: rightX, y: 1_300_000, w: colW, h: 500_000,
+      fontSize: 16, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_rbody`, pageId, text: '{{RIGHT_BODY}}',
+      x: rightX, y: 1_800_000, w: colW, h: 3_000_000,
+      fontSize: 13, color: COLOR_GRAY,
+    }),
+  ];
+}
+
+function buildStatsTextBoxes(pageId: string): Record<string, unknown>[] {
+  const colW = Math.round((SLIDE_W - MARGIN * 2) / 3);
+  const reqs: Record<string, unknown>[] = [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 700_000,
+      fontSize: 24, bold: true, color: COLOR_INDIGO,
+    }),
+  ];
+  for (let i = 1; i <= 3; i++) {
+    const x = MARGIN + (i - 1) * colW;
+    reqs.push(...textBoxRequests({
+      id: `${pageId}_stat${i}`, pageId, text: `{{STAT${i}}}`,
+      x, y: 1_900_000, w: colW - 100_000, h: 900_000,
+      // 24pt fits "USD 1.50-3.00" (13 chars) on one line at ~3in column width.
+      // 32pt wraps it to 2 lines — still readable but bulky.
+      fontSize: 24, bold: true, color: COLOR_INDIGO,
+    }));
+    reqs.push(...textBoxRequests({
+      id: `${pageId}_stat${i}_label`, pageId, text: `{{STAT${i}_LABEL}}`,
+      x, y: 3_000_000, w: colW - 100_000, h: 900_000,
+      fontSize: 13, color: COLOR_GRAY,
+    }));
+  }
+  return reqs;
+}
+
+function buildTimelineTextBoxes(pageId: string): Record<string, unknown>[] {
+  return [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 700_000,
+      fontSize: 24, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_body`, pageId, text: '{{BODY}}',
+      x: MARGIN, y: 1_200_000, w: SLIDE_W - MARGIN * 2, h: 3_500_000,
+      fontSize: 14, color: COLOR_GRAY,
+    }),
+  ];
+}
+
+function buildChecklistTextBoxes(pageId: string): Record<string, unknown>[] {
+  return [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 700_000,
+      fontSize: 24, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_body`, pageId, text: '{{BODY}}',
+      x: MARGIN, y: 1_200_000, w: SLIDE_W - MARGIN * 2, h: 3_500_000,
+      fontSize: 14, color: COLOR_GRAY,
+    }),
+  ];
+}
+
+function buildExerciseTextBoxes(pageId: string): Record<string, unknown>[] {
+  return [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2 - 1_800_000, h: 700_000,
+      fontSize: 24, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_duration`, pageId, text: '{{DURATION}}',
+      x: SLIDE_W - MARGIN - 1_700_000, y: MARGIN + 100_000,
+      w: 1_700_000, h: 500_000,
+      fontSize: 14, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_body`, pageId, text: '{{BODY}}',
+      x: MARGIN, y: 1_500_000, w: SLIDE_W - MARGIN * 2, h: 3_200_000,
+      fontSize: 14, color: COLOR_GRAY,
+    }),
+  ];
+}
+
+function buildClosingTextBoxes(pageId: string): Record<string, unknown>[] {
+  // Closing source has topographic illustration on the right ~30%, so
+  // text lives in the left ~65%.
+  const leftW = Math.round(SLIDE_W * 0.65) - MARGIN;
+  return [
+    ...textBoxRequests({
+      id: `${pageId}_title`, pageId, text: '{{TITLE}}',
+      x: MARGIN, y: 1_200_000, w: leftW, h: 900_000,
+      fontSize: 32, bold: true, color: COLOR_INDIGO,
+    }),
+    ...textBoxRequests({
+      id: `${pageId}_body`, pageId, text: '{{BODY}}',
+      x: MARGIN, y: 2_300_000, w: leftW, h: 2_500_000,
+      fontSize: 14, color: COLOR_GRAY,
+    }),
+  ];
+}
+
+const TEXT_BUILDERS: Record<StencilKey, (pageId: string) => Record<string, unknown>[]> = {
+  cover: buildCoverTextBoxes,
+  section: buildSectionTextBoxes,
+  agenda: buildAgendaTextBoxes,
+  content: buildContentTextBoxes,
+  walkthrough: buildWalkthroughTextBoxes,
+  mobile_flow: buildMobileFlowTextBoxes,
+  web_screen: buildWebScreenTextBoxes,
+  mobile_zoom: buildMobileZoomTextBoxes,
+  two_column: buildTwoColumnTextBoxes,
+  stats: buildStatsTextBoxes,
+  timeline: buildTimelineTextBoxes,
+  checklist: buildChecklistTextBoxes,
+  exercise: buildExerciseTextBoxes,
+  closing: buildClosingTextBoxes,
+};
 
 // ---------------------------------------------------------------------------
 // Config
@@ -65,8 +508,7 @@ const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 
-const TEMPLATE_NAME = 'ACE Training Deck Template (v3.4 — stats sizing + cover spacing)';
-const PARENT_FOLDER_ID = process.env.ACE_DRIVE_ROOT_FOLDER_ID;
+const TEMPLATE_NAME = 'ACE Training Deck Template (v5.1 — Dimagi bg + our text + image strip)';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -88,603 +530,47 @@ async function findExistingTemplate(
   name: string,
 ): Promise<{ id: string; webViewLink: string } | null> {
   const resp = await drive.files.list({
-    q: `name='${name.replace(/'/g, "\\'")}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.presentation' and trashed=false`,
+    q: `'${parentId}' in parents and name='${name.replace(/'/g, "\\'")}' and trashed=false`,
     fields: 'files(id, name, webViewLink)',
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
+    pageSize: 1,
   });
-  const file = resp.data.files?.[0];
-  if (!file?.id || !file.webViewLink) return null;
-  return { id: file.id, webViewLink: file.webViewLink };
+  const f = resp.data.files?.[0];
+  if (!f?.id) return null;
+  return { id: f.id, webViewLink: f.webViewLink ?? '' };
 }
 
-// ---------------------------------------------------------------------------
-// Shape builder helpers — cut down boilerplate for 14 stencils × N shapes each
-// ---------------------------------------------------------------------------
-
-type RgbColor = { red: number; green: number; blue: number };
-
-interface TextBox {
-  id: string;
-  pageId: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  text: string;
-  fontSize: number;
-  bold?: boolean;
-  fontWeight?: number;
-  color?: RgbColor;
-}
-
-function textBoxRequests(tb: TextBox): Record<string, unknown>[] {
-  const reqs: Record<string, unknown>[] = [
-    {
-      createShape: {
-        objectId: tb.id,
-        shapeType: 'TEXT_BOX',
-        elementProperties: {
-          pageObjectId: tb.pageId,
-          size: {
-            height: { magnitude: tb.h, unit: 'EMU' },
-            width: { magnitude: tb.w, unit: 'EMU' },
-          },
-          transform: {
-            scaleX: 1,
-            scaleY: 1,
-            translateX: tb.x,
-            translateY: tb.y,
-            unit: 'EMU',
-          },
-        },
-      },
-    },
-    {
-      insertText: {
-        objectId: tb.id,
-        text: tb.text,
-        insertionIndex: 0,
-      },
-    },
-  ];
-
-  // Build text style
-  const style: Record<string, unknown> = {
-    fontSize: { magnitude: tb.fontSize, unit: 'PT' },
-    fontFamily: FONT_FAMILY,
-  };
-  const fields = ['fontSize', 'fontFamily'];
-
-  if (tb.bold) {
-    style.bold = true;
-    fields.push('bold');
+async function batchUpdate(
+  slides: ReturnType<typeof google.slides>,
+  presentationId: string,
+  requests: Record<string, unknown>[],
+  label: string,
+): Promise<void> {
+  const BATCH_SIZE = 100;
+  for (let start = 0; start < requests.length; start += BATCH_SIZE) {
+    const batch = requests.slice(start, start + BATCH_SIZE);
+    const batchNum = Math.floor(start / BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(requests.length / BATCH_SIZE);
+    console.log(`    ${label} batch ${batchNum}/${totalBatches} (${batch.length} requests)`);
+    await slides.presentations.batchUpdate({
+      presentationId,
+      requestBody: { requests: batch },
+    });
   }
-  if (tb.fontWeight) {
-    style.weightedFontFamily = { fontFamily: FONT_FAMILY, weight: tb.fontWeight };
-    fields.push('weightedFontFamily');
-  }
-  if (tb.color) {
-    style.foregroundColor = { opaqueColor: { rgbColor: tb.color } };
-    fields.push('foregroundColor');
-  }
-
-  reqs.push({
-    updateTextStyle: {
-      objectId: tb.id,
-      textRange: { type: 'ALL' },
-      style,
-      fields: fields.join(','),
-    },
-  });
-
-  return reqs;
 }
-
-function accentBarRequests(
-  id: string,
-  pageId: string,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  color: RgbColor,
-): Record<string, unknown>[] {
-  return [
-    {
-      createShape: {
-        objectId: id,
-        shapeType: 'RECTANGLE',
-        elementProperties: {
-          pageObjectId: pageId,
-          size: {
-            height: { magnitude: h, unit: 'EMU' },
-            width: { magnitude: w, unit: 'EMU' },
-          },
-          transform: {
-            scaleX: 1,
-            scaleY: 1,
-            translateX: x,
-            translateY: y,
-            unit: 'EMU',
-          },
-        },
-      },
-    },
-    {
-      updateShapeProperties: {
-        objectId: id,
-        shapeProperties: {
-          shapeBackgroundFill: {
-            solidFill: { color: { rgbColor: color } },
-          },
-        },
-        fields: 'shapeBackgroundFill.solidFill.color',
-      },
-    },
-  ];
-}
-
-/**
- * Dimagi-style amber accent — a thin vertical strip flush with the left
- * edge of the slide (full height). Branding signature: every content
- * slide carries this as a quiet but consistent identity marker. Applied
- * to walkthrough/content/two_column/stats/timeline/checklist/exercise/
- * agenda. Cover + section + closing have their own visual styles and
- * skip the strip. Mobile/web mockup slides use COLOR_MOBILE_BLUE
- * instead of amber (Dimagi semantic convention: blue = product/UI).
- */
-function dimagiAccentStrip(
-  pageId: string,
-  color: RgbColor = COLOR_AMBER,
-): Record<string, unknown>[] {
-  const id = `${pageId}_dimagiaccent`;
-  const stripW = 60_000; // ~0.066" — thin but visible
-  return [
-    {
-      createShape: {
-        objectId: id,
-        shapeType: 'RECTANGLE',
-        elementProperties: {
-          pageObjectId: pageId,
-          size: {
-            height: { magnitude: SLIDE_H, unit: 'EMU' },
-            width: { magnitude: stripW, unit: 'EMU' },
-          },
-          transform: {
-            scaleX: 1,
-            scaleY: 1,
-            translateX: 0,
-            translateY: 0,
-            unit: 'EMU',
-          },
-        },
-      },
-    },
-    {
-      updateShapeProperties: {
-        objectId: id,
-        shapeProperties: {
-          shapeBackgroundFill: {
-            solidFill: { color: { rgbColor: color } },
-          },
-          outline: { propertyState: 'NOT_RENDERED' },
-        },
-        fields: 'shapeBackgroundFill,outline',
-      },
-    },
-  ];
-}
-
-function dashedOutlineBox(
-  id: string,
-  pageId: string,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): Record<string, unknown>[] {
-  return [
-    {
-      createShape: {
-        objectId: id,
-        shapeType: 'RECTANGLE',
-        elementProperties: {
-          pageObjectId: pageId,
-          size: {
-            height: { magnitude: h, unit: 'EMU' },
-            width: { magnitude: w, unit: 'EMU' },
-          },
-          transform: {
-            scaleX: 1,
-            scaleY: 1,
-            translateX: x,
-            translateY: y,
-            unit: 'EMU',
-          },
-        },
-      },
-    },
-    {
-      updateShapeProperties: {
-        objectId: id,
-        shapeProperties: {
-          shapeBackgroundFill: {
-            solidFill: { color: { rgbColor: COLOR_WHITE }, alpha: 0 },
-          },
-          outline: {
-            outlineFill: { solidFill: { color: { rgbColor: COLOR_GRAY } } },
-            weight: { magnitude: 1, unit: 'PT' },
-            dashStyle: 'DASH',
-          },
-        },
-        fields: 'shapeBackgroundFill,outline',
-      },
-    },
-  ];
-}
-
-// ---------------------------------------------------------------------------
-// Per-stencil slide request generators
-// ---------------------------------------------------------------------------
-
-function coverStencilRequests(pageId: string): Record<string, unknown>[] {
-  const s = pageId; // short alias
-  const contentW = SLIDE_W - MARGIN * 2 - 200_000; // leave room for accent bar
-  // Cover title commonly wraps to 2 lines for long opportunity names. Title
-  // bbox h grows to 1_400_000 (1.5in) and subtitle y pushes down to
-  // 3_100_000 so the title's descender ("g" in "Sampling") doesn't
-  // collide with the subtitle row. v3.4 fix.
-  return [
-    // Title
-    ...textBoxRequests({
-      id: `${s}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: 1_400_000, w: contentW, h: 1_400_000,
-      fontSize: 36, bold: true, color: COLOR_INDIGO,
-    }),
-    // Subtitle (gap of ~0.4in below 2-line title bbox bottom)
-    ...textBoxRequests({
-      id: `${s}_subbox`, pageId, text: '{{SUBTITLE}}',
-      x: MARGIN, y: 3_100_000, w: contentW, h: 685_800,
-      fontSize: 18, color: COLOR_GRAY,
-    }),
-    // Date
-    ...textBoxRequests({
-      id: `${s}_datebox`, pageId, text: '{{DATE}}',
-      x: MARGIN, y: 3_900_000, w: contentW, h: 457_200,
-      fontSize: 14, color: COLOR_GRAY,
-    }),
-    // Accent bar right edge (20px = ~182880 EMU)
-    ...accentBarRequests(
-      `${s}_accent`, pageId,
-      SLIDE_W - 182_880, 0, 182_880, SLIDE_H,
-      COLOR_AMBER,
-    ),
-  ];
-}
-
-function sectionStencilRequests(pageId: string): Record<string, unknown>[] {
-  const titleH = 914_400;
-  const titleY = (SLIDE_H - titleH) / 2; // vertically centered
-  const barH = 54_864; // ~6px
-  return [
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: titleY, w: SLIDE_W - MARGIN * 2, h: titleH,
-      fontSize: 38, fontWeight: 500, color: COLOR_INDIGO,
-    }),
-    ...accentBarRequests(
-      `${pageId}_accent`, pageId,
-      0, SLIDE_H - barH, SLIDE_W, barH,
-      COLOR_AMBER,
-    ),
-  ];
-}
-
-function agendaStencilRequests(pageId: string): Record<string, unknown>[] {
-  return [
-    ...dimagiAccentStrip(pageId),
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
-      fontSize: 24, bold: true, color: COLOR_INDIGO,
-    }),
-    ...textBoxRequests({
-      id: `${pageId}_bodybox`, pageId, text: '{{BODY}}',
-      x: MARGIN, y: 1_200_000, w: SLIDE_W - MARGIN * 2, h: 3_500_000,
-      fontSize: 14, color: COLOR_GRAY,
-    }),
-  ];
-}
-
-function contentStencilRequests(pageId: string): Record<string, unknown>[] {
-  return [
-    ...dimagiAccentStrip(pageId),
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
-      fontSize: 24, bold: true, color: COLOR_INDIGO,
-    }),
-    ...textBoxRequests({
-      id: `${pageId}_bodybox`, pageId, text: '{{BODY}}',
-      x: MARGIN, y: 1_200_000, w: SLIDE_W - MARGIN * 2, h: 3_500_000,
-      fontSize: 14, color: COLOR_GRAY,
-    }),
-  ];
-}
-
-function walkthroughStencilRequests(pageId: string): Record<string, unknown>[] {
-  // Layout v3.3 — drops the dashed placeholder (the actual image
-  // landed centered with its phone aspect ratio, and the surrounding
-  // dashed border looked like "missing content"), and gives the title
-  // enough vertical room for 3-line wraps (push body y down from
-  // 1.2M → 1.5M EMU; bbox h 685k → 1M). Walkthrough body column is
-  // ~35% wide, image area (filled at render time by lib) takes the
-  // remaining ~62%.
-  const leftW = Math.round(SLIDE_W * 0.35) - MARGIN;
-  return [
-    ...dimagiAccentStrip(pageId),
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: leftW, h: 1_000_000,
-      fontSize: 24, bold: true, color: COLOR_INDIGO,
-    }),
-    ...textBoxRequests({
-      id: `${pageId}_bodybox`, pageId, text: '{{BODY}}',
-      x: MARGIN, y: 1_500_000, w: leftW, h: 3_400_000,
-      fontSize: 14, color: COLOR_GRAY,
-    }),
-  ];
-}
-
-function mobileFlowStencilRequests(pageId: string): Record<string, unknown>[] {
-  // The builder uses 0-indexed placeholders: {{STEP_0_CAPTION}} .. {{STEP_3_CAPTION}}
-  const captionW = Math.round((SLIDE_W - MARGIN * 2) / 4);
-  const captionY = SLIDE_H - 600_000;
-  const reqs: Record<string, unknown>[] = [
-    // Dimagi semantic convention: mobile/web product slides use the
-    // blue accent (#5D70D2) instead of the amber. See A1.5 subagent
-    // report on the Dimagi template.
-    ...dimagiAccentStrip(pageId, COLOR_MOBILE_BLUE),
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
-      fontSize: 24, bold: true, color: COLOR_INDIGO,
-    }),
-  ];
-  for (let i = 0; i < 4; i++) {
-    const x = MARGIN + i * captionW;
-    reqs.push(...textBoxRequests({
-      id: `${pageId}_cap${i}`, pageId, text: `{{STEP_${i}_CAPTION}}`,
-      x, y: captionY, w: captionW - 50_000, h: 400_000,
-      fontSize: 12, color: COLOR_GRAY,
-    }));
-  }
-  return reqs;
-}
-
-function webScreenStencilRequests(pageId: string): Record<string, unknown>[] {
-  return [
-    // Mobile/web product slide — blue accent per Dimagi convention.
-    ...dimagiAccentStrip(pageId, COLOR_MOBILE_BLUE),
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
-      fontSize: 24, bold: true, color: COLOR_INDIGO,
-    }),
-    ...textBoxRequests({
-      id: `${pageId}_captionbox`, pageId, text: '{{CAPTION}}',
-      x: MARGIN, y: SLIDE_H - 600_000, w: SLIDE_W - MARGIN * 2, h: 400_000,
-      fontSize: 12, color: COLOR_GRAY,
-    }),
-  ];
-}
-
-function mobileZoomStencilRequests(pageId: string): Record<string, unknown>[] {
-  return [
-    // Mobile/web product slide — blue accent per Dimagi convention.
-    ...dimagiAccentStrip(pageId, COLOR_MOBILE_BLUE),
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
-      fontSize: 24, bold: true, color: COLOR_INDIGO,
-    }),
-    ...textBoxRequests({
-      id: `${pageId}_calloutsbox`, pageId, text: '{{CALLOUTS}}',
-      x: MARGIN, y: 1_200_000, w: Math.round(SLIDE_W * 0.4), h: 3_500_000,
-      fontSize: 14, color: COLOR_GRAY,
-    }),
-  ];
-}
-
-function twoColumnStencilRequests(pageId: string): Record<string, unknown>[] {
-  const colW = Math.round((SLIDE_W - MARGIN * 3) / 2); // gap between columns = MARGIN
-  const rightX = MARGIN * 2 + colW;
-  return [
-    ...dimagiAccentStrip(pageId),
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
-      fontSize: 24, bold: true, color: COLOR_INDIGO,
-    }),
-    // Left heading
-    ...textBoxRequests({
-      id: `${pageId}_lhead`, pageId, text: '{{LEFT_HEADING}}',
-      x: MARGIN, y: 1_200_000, w: colW, h: 457_200,
-      fontSize: 16, bold: true, color: COLOR_INDIGO,
-    }),
-    // Left body
-    ...textBoxRequests({
-      id: `${pageId}_lbody`, pageId, text: '{{LEFT_BODY}}',
-      x: MARGIN, y: 1_700_000, w: colW, h: 3_000_000,
-      fontSize: 14, color: COLOR_GRAY,
-    }),
-    // Right heading
-    ...textBoxRequests({
-      id: `${pageId}_rhead`, pageId, text: '{{RIGHT_HEADING}}',
-      x: rightX, y: 1_200_000, w: colW, h: 457_200,
-      fontSize: 16, bold: true, color: COLOR_INDIGO,
-    }),
-    // Right body
-    ...textBoxRequests({
-      id: `${pageId}_rbody`, pageId, text: '{{RIGHT_BODY}}',
-      x: rightX, y: 1_700_000, w: colW, h: 3_000_000,
-      fontSize: 14, color: COLOR_GRAY,
-    }),
-  ];
-}
-
-function statsStencilRequests(pageId: string): Record<string, unknown>[] {
-  // v3.4 fix: 72pt big-number font caused realistic values like
-  // "USD 1.50-3.00" and "Weekly" to wrap mid-word and overlap the
-  // label row below. Drops big-number font to 36pt (still visually
-  // dominant) and widens label bbox so multi-word labels like "Per
-  // verified RDT sample" don't overflow either. Bigger gap between
-  // number and label rows for visual breathing room.
-  const colW = Math.round((SLIDE_W - MARGIN * 2) / 3);
-  const reqs: Record<string, unknown>[] = [
-    ...dimagiAccentStrip(pageId),
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
-      fontSize: 24, bold: true, color: COLOR_INDIGO,
-    }),
-  ];
-  for (let i = 1; i <= 3; i++) {
-    const x = MARGIN + (i - 1) * colW;
-    // Stat number (big — 36pt fits up to ~13 chars in a 3-col layout)
-    reqs.push(...textBoxRequests({
-      id: `${pageId}_stat${i}`, pageId, text: `{{STAT${i}}}`,
-      x, y: 1_900_000, w: colW - 50_000, h: 914_400,
-      fontSize: 36, bold: true, color: COLOR_INDIGO,
-    }));
-    // Stat label (2 lines max, ~30 chars fits comfortably)
-    reqs.push(...textBoxRequests({
-      id: `${pageId}_stat${i}_label`, pageId, text: `{{STAT${i}_LABEL}}`,
-      x, y: 3_100_000, w: colW - 50_000, h: 914_400,
-      fontSize: 14, color: COLOR_GRAY,
-    }));
-  }
-  return reqs;
-}
-
-function timelineStencilRequests(pageId: string): Record<string, unknown>[] {
-  const colW = Math.round((SLIDE_W - MARGIN * 2) / 5);
-  const reqs: Record<string, unknown>[] = [
-    ...dimagiAccentStrip(pageId),
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
-      fontSize: 24, bold: true, color: COLOR_INDIGO,
-    }),
-  ];
-  for (let i = 1; i <= 5; i++) {
-    const x = MARGIN + (i - 1) * colW;
-    // Step label (bold)
-    reqs.push(...textBoxRequests({
-      id: `${pageId}_step${i}_label`, pageId, text: `{{STEP${i}_LABEL}}`,
-      x, y: 1_500_000, w: colW - 50_000, h: 457_200,
-      fontSize: 14, bold: true, color: COLOR_INDIGO,
-    }));
-    // Step detail
-    reqs.push(...textBoxRequests({
-      id: `${pageId}_step${i}_detail`, pageId, text: `{{STEP${i}_DETAIL}}`,
-      x, y: 2_100_000, w: colW - 50_000, h: 2_500_000,
-      fontSize: 12, color: COLOR_GRAY,
-    }));
-  }
-  return reqs;
-}
-
-function checklistStencilRequests(pageId: string): Record<string, unknown>[] {
-  return [
-    ...dimagiAccentStrip(pageId),
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
-      fontSize: 24, bold: true, color: COLOR_INDIGO,
-    }),
-    ...textBoxRequests({
-      id: `${pageId}_bodybox`, pageId, text: '{{BODY}}',
-      x: MARGIN, y: 1_200_000, w: SLIDE_W - MARGIN * 2, h: 3_500_000,
-      fontSize: 14, color: COLOR_GRAY,
-    }),
-  ];
-}
-
-function exerciseStencilRequests(pageId: string): Record<string, unknown>[] {
-  return [
-    // Title (white on amber background — the slide itself is amber)
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 914_400,
-      fontSize: 24, bold: true, color: COLOR_WHITE,
-    }),
-    // Duration badge
-    ...textBoxRequests({
-      id: `${pageId}_duration`, pageId, text: '{{DURATION}}',
-      x: SLIDE_W - MARGIN - 1_500_000, y: MARGIN + 100_000, w: 1_500_000, h: 457_200,
-      fontSize: 14, bold: true, color: COLOR_INDIGO,
-    }),
-    // Body
-    ...textBoxRequests({
-      id: `${pageId}_bodybox`, pageId, text: '{{BODY}}',
-      x: MARGIN, y: 1_600_000, w: SLIDE_W - MARGIN * 2, h: 3_000_000,
-      fontSize: 14, color: COLOR_GRAY,
-    }),
-  ];
-}
-
-function closingStencilRequests(pageId: string): Record<string, unknown>[] {
-  return [
-    ...textBoxRequests({
-      id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 914_400,
-      fontSize: 28, bold: true, color: COLOR_INDIGO,
-    }),
-    ...textBoxRequests({
-      id: `${pageId}_bodybox`, pageId, text: '{{BODY}}',
-      x: MARGIN, y: 1_600_000, w: SLIDE_W - MARGIN * 2, h: 3_000_000,
-      fontSize: 14, color: COLOR_GRAY,
-    }),
-  ];
-}
-
-// Map stencil key → request generator
-const STENCIL_BUILDERS: Record<
-  keyof typeof STENCILS,
-  (pageId: string) => Record<string, unknown>[]
-> = {
-  cover: coverStencilRequests,
-  section: sectionStencilRequests,
-  agenda: agendaStencilRequests,
-  content: contentStencilRequests,
-  walkthrough: walkthroughStencilRequests,
-  mobile_flow: mobileFlowStencilRequests,
-  web_screen: webScreenStencilRequests,
-  mobile_zoom: mobileZoomStencilRequests,
-  two_column: twoColumnStencilRequests,
-  stats: statsStencilRequests,
-  timeline: timelineStencilRequests,
-  checklist: checklistStencilRequests,
-  exercise: exerciseStencilRequests,
-  closing: closingStencilRequests,
-};
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
-  // Try the plugin-data .env if shell hasn't loaded it.
+async function main(): Promise<void> {
   loadEnvFile(`${process.env.HOME}/.claude/plugins/data/ace-ace/.env`);
 
-  if (!PARENT_FOLDER_ID && !process.env.ACE_DRIVE_ROOT_FOLDER_ID) {
-    throw new Error(
-      'ACE_DRIVE_ROOT_FOLDER_ID is required (set via .env or shell env)',
-    );
+  if (!process.env.ACE_DRIVE_ROOT_FOLDER_ID) {
+    throw new Error('ACE_DRIVE_ROOT_FOLDER_ID is required (set via .env or shell env)');
   }
-  const parentFolderId = process.env.ACE_DRIVE_ROOT_FOLDER_ID!;
+  const parentFolderId = process.env.ACE_DRIVE_ROOT_FOLDER_ID;
 
   const auth = new google.auth.GoogleAuth({
     keyFile: KEY_FILE,
@@ -696,106 +582,188 @@ async function main() {
   const slides = google.slides({ version: 'v1', auth });
   const drive = google.drive({ version: 'v3', auth });
 
-  // Idempotency check — skip create if template with this name already exists.
   const existing = await findExistingTemplate(drive, parentFolderId, TEMPLATE_NAME);
   if (existing) {
     console.log(`Template already exists: ${existing.id}`);
     console.log(`  ${existing.webViewLink}`);
-    console.log(`  ACE_TRAINING_DECK_TEMPLATE_ID=${existing.id}`);
     return;
   }
 
-  // -------------------------------------------------------------------------
-  // Step 1: Create the presentation via Drive API (lands on Shared Drive)
-  // -------------------------------------------------------------------------
-  console.log('Step 1: drive.files.create with Slides mimeType into Shared Drive');
-  const created = await drive.files.create({
-    requestBody: {
-      name: TEMPLATE_NAME,
-      mimeType: 'application/vnd.google-apps.presentation',
-      parents: [parentFolderId],
-    },
-    fields: 'id, name, parents',
+  // ---------------------------------------------------------------------------
+  // Step 1: Copy the Dimagi canonical master to a new file in the parent folder
+  // ---------------------------------------------------------------------------
+  console.log(`Step 1: drive.files.copy(${DIMAGI_SOURCE_ID}) → "${TEMPLATE_NAME}"`);
+  const copied = await drive.files.copy({
+    fileId: DIMAGI_SOURCE_ID,
+    requestBody: { name: TEMPLATE_NAME, parents: [parentFolderId] },
+    fields: 'id, name, webViewLink',
     supportsAllDrives: true,
   });
-  const presentationId = created.data.id!;
+  const presentationId = copied.data.id!;
+  const webViewLink = copied.data.webViewLink!;
   console.log(`  presentationId=${presentationId}`);
 
-  // -------------------------------------------------------------------------
-  // Step 2: Discover the default slide objectId
-  // -------------------------------------------------------------------------
-  console.log('Step 2: slides.presentations.get — discover default slide objectId');
-  const initial = await slides.presentations.get({ presentationId });
-  const initialSlideId = initial.data.slides?.[0]?.objectId!;
+  // ---------------------------------------------------------------------------
+  // Step 2: Duplicate 14 chosen source slides with our objectIds
+  // ---------------------------------------------------------------------------
+  console.log('Step 2: duplicate 14 Dimagi source slides as ace_stencil_<key>');
+  const stencilKeys = Object.keys(STENCIL_CONFIGS) as StencilKey[];
+  const duplicateRequests: Record<string, unknown>[] = stencilKeys.map((key) => ({
+    duplicateObject: {
+      objectId: STENCIL_CONFIGS[key].sourcePageId,
+      objectIds: { [STENCIL_CONFIGS[key].sourcePageId]: STENCILS[key] },
+    },
+  }));
+  await batchUpdate(slides, presentationId, duplicateRequests, 'duplicate');
 
-  // -------------------------------------------------------------------------
-  // Step 3: Build all 14 stencil slides via batchUpdate
-  // -------------------------------------------------------------------------
-  console.log('Step 3: batchUpdate — create 14 stencil slides with Dimagi branding');
+  // ---------------------------------------------------------------------------
+  // Step 3: Enumerate text shape IDs + large image IDs on each duplicated stencil
+  // ---------------------------------------------------------------------------
+  // We need this to delete the designer text boxes (sized for short lorem
+  // strings) before we add our own. The duplicates' element objectIds are
+  // auto-generated by Slides, so we discover them via slides_get.
+  //
+  // Image stripping is heuristic by size: any image larger than 1.5in²
+  // (the threshold below ~2-3in mockup screens but above ~0.5in
+  // watermarks / O-logos / social icons / decorative dots) gets stripped.
+  // The per-opp createImage at render time will place the actual content
+  // image in the intended slot.
+  console.log('Step 3: enumerate text shapes + large images on each duplicated stencil');
+  const pagesResp = await slides.presentations.get({
+    presentationId,
+    fields:
+      'slides(objectId,slideProperties(notesPage(notesProperties(speakerNotesObjectId))),pageElements(objectId,size,transform,shape(shapeType,text),image))',
+  });
+  const stencilSet = new Set<string>(Object.values(STENCILS));
+  const textShapeIdsByPageId = new Map<string, string[]>();
+  const imageIdsToStripByPageId = new Map<string, string[]>();
+  const notesIdByPageId = new Map<string, string>();
 
-  const stencilKeys = Object.keys(STENCILS) as Array<keyof typeof STENCILS>;
-  const allRequests: Record<string, unknown>[] = [];
+  // Only walkthrough/mobile_flow/web_screen/mobile_zoom have stock mockup
+  // images to strip. cover/content/closing have small decorative images
+  // (wordmarks, illustrations) that we WANT to keep.
+  const STRIP_IMAGES_ON: Set<StencilKey> = new Set([
+    'walkthrough', 'mobile_flow', 'web_screen', 'mobile_zoom',
+  ]);
+  const pageIdToStencilKey = new Map<string, StencilKey>();
+  for (const key of Object.keys(STENCILS) as StencilKey[]) {
+    pageIdToStencilKey.set(STENCILS[key], key);
+  }
 
-  // Delete the default blank slide first
-  allRequests.push({ deleteObject: { objectId: initialSlideId } });
+  // Image-size threshold: 1.5in × 1.5in = 2,058,675 × 2,058,675 EMU.
+  // Effective size = (raw size.{w,h}) × (transform.scale{X,Y}). Stock
+  // screenshots are typically 2-5in; watermarks + logos are < 1in.
+  const STRIP_THRESHOLD_EMU_SQ = 2_058_675 * 2_058_675;
 
-  // Create each stencil slide
-  for (let i = 0; i < stencilKeys.length; i++) {
-    const key = stencilKeys[i];
+  for (const s of pagesResp.data.slides ?? []) {
+    const id = s.objectId;
+    if (!id || !stencilSet.has(id)) continue;
+    const notesId = s.slideProperties?.notesPage?.notesProperties?.speakerNotesObjectId;
+    if (notesId) notesIdByPageId.set(id, notesId);
+
+    const stencilKey = pageIdToStencilKey.get(id);
+    const stripImagesHere = stencilKey ? STRIP_IMAGES_ON.has(stencilKey) : false;
+
+    const textIds: string[] = [];
+    const imageIds: string[] = [];
+    for (const el of s.pageElements ?? []) {
+      // Text-bearing shapes: always delete (we re-create our own).
+      if (el.shape?.text && el.objectId) {
+        textIds.push(el.objectId);
+        continue;
+      }
+      // Large images on image-bearing stencils: strip.
+      if (stripImagesHere && el.image && el.objectId && el.size && el.transform) {
+        const w = (el.size.width?.magnitude ?? 0) * (el.transform.scaleX ?? 1);
+        const h = (el.size.height?.magnitude ?? 0) * (el.transform.scaleY ?? 1);
+        if (w * h >= STRIP_THRESHOLD_EMU_SQ) imageIds.push(el.objectId);
+      }
+    }
+    textShapeIdsByPageId.set(id, textIds);
+    imageIdsToStripByPageId.set(id, imageIds);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Step 4: Per stencil — delete designer text + stock images, emit our
+  //         text boxes, inject {{NOTES}}
+  // ---------------------------------------------------------------------------
+  console.log('Step 4: strip designer text + stock images, layer our text boxes + {{NOTES}}');
+  const layerRequests: Record<string, unknown>[] = [];
+  for (const key of stencilKeys) {
+    const config = STENCIL_CONFIGS[key];
     const pageId = STENCILS[key];
+    const builder = TEXT_BUILDERS[key];
 
-    // Create the slide
-    allRequests.push({
-      createSlide: {
-        objectId: pageId,
-        insertionIndex: i,
-        slideLayoutReference: { predefinedLayout: 'BLANK' },
-      },
-    });
-
-    // Exercise stencil gets an amber background
-    if (key === 'exercise') {
-      allRequests.push({
-        updatePageProperties: {
-          objectId: pageId,
-          pageProperties: {
-            pageBackgroundFill: {
-              solidFill: { color: { rgbColor: COLOR_AMBER } },
-            },
-          },
-          fields: 'pageBackgroundFill.solidFill.color',
-        },
-      });
+    // Delete designer text shapes.
+    const textShapes = textShapeIdsByPageId.get(pageId) ?? [];
+    for (const objectId of textShapes) {
+      layerRequests.push({ deleteObject: { objectId } });
     }
 
-    // Add all shapes and text for this stencil
-    allRequests.push(...STENCIL_BUILDERS[key](pageId));
-  }
+    // Delete stock mockup images (discovered by size at step 3).
+    const imagesToStrip = imageIdsToStripByPageId.get(pageId) ?? [];
+    for (const objectId of imagesToStrip) {
+      layerRequests.push({ deleteObject: { objectId } });
+    }
+    void config.stripImageIds; // legacy field on config — discovery replaces it
 
-  // Slides API has a per-request limit; split into batches of ~100 requests
-  // to stay well under the wire. Each stencil averages ~10-15 requests, so
-  // 14 stencils × ~12 = ~170 total — split into two batches.
-  const BATCH_SIZE = 100;
-  for (let start = 0; start < allRequests.length; start += BATCH_SIZE) {
-    const batch = allRequests.slice(start, start + BATCH_SIZE);
-    const batchNum = Math.floor(start / BATCH_SIZE) + 1;
-    const totalBatches = Math.ceil(allRequests.length / BATCH_SIZE);
-    console.log(`  batchUpdate ${batchNum}/${totalBatches} (${batch.length} requests)`);
-    await slides.presentations.batchUpdate({
-      presentationId,
-      requestBody: { requests: batch },
-    });
-  }
+    // Layer OUR text boxes.
+    layerRequests.push(...builder(pageId));
 
-  const webViewLink = `https://docs.google.com/presentation/d/${presentationId}/edit`;
+    // Inject {{NOTES}} placeholder into the notes page.
+    const notesId = notesIdByPageId.get(pageId);
+    if (notesId) {
+      layerRequests.push({
+        insertText: { objectId: notesId, text: '{{NOTES}}', insertionIndex: 0 },
+      });
+    } else {
+      console.warn(`  WARN: no speakerNotesObjectId for ${key} (${pageId})`);
+    }
+  }
+  await batchUpdate(slides, presentationId, layerRequests, 'layer');
+
+  // ---------------------------------------------------------------------------
+  // Step 5: Delete all original Dimagi slides (keep only the 14 stencils)
+  // ---------------------------------------------------------------------------
+  console.log('Step 5: delete original Dimagi slides (keep 14 stencils)');
+  const allPages = await slides.presentations.get({
+    presentationId,
+    fields: 'slides(objectId)',
+  });
+  const stencilIds = new Set<string>(Object.values(STENCILS));
+  const deleteRequests: Record<string, unknown>[] = [];
+  for (const s of allPages.data.slides ?? []) {
+    const id = s.objectId;
+    if (id && !stencilIds.has(id)) {
+      deleteRequests.push({ deleteObject: { objectId: id } });
+    }
+  }
+  console.log(`  deleting ${deleteRequests.length} non-stencil slides`);
+  await batchUpdate(slides, presentationId, deleteRequests, 'delete');
+
+  // ---------------------------------------------------------------------------
+  // Step 6: Reorder stencils into canonical sequence
+  // ---------------------------------------------------------------------------
+  console.log('Step 6: reorder stencils into canonical sequence');
+  const orderRequests: Record<string, unknown>[] = stencilKeys.map((key, i) => ({
+    updateSlidesPosition: {
+      slideObjectIds: [STENCILS[key]],
+      insertionIndex: i,
+    },
+  }));
+  await batchUpdate(slides, presentationId, orderRequests, 'reorder');
+
+  // ---------------------------------------------------------------------------
+  // Done
+  // ---------------------------------------------------------------------------
   console.log('\nTemplate created:');
   console.log(`  ${webViewLink}`);
   console.log(`  presentationId=${presentationId}`);
-  console.log(`\nAdd to .env.tpl and .env:`);
-  console.log(`  ACE_TRAINING_DECK_TEMPLATE_ID=${presentationId}`);
+  console.log('\nUpdate 1Password "ACE - Drive Templates" → training_deck_template_id:');
+  console.log(`  ${presentationId}`);
 }
 
-main().catch((e: any) => {
+main().catch((e: { message: string; response?: { data?: unknown } }) => {
   console.error('FAILED:', e.message);
   if (e.response?.data) console.error('  response:', JSON.stringify(e.response.data, null, 2));
   process.exit(1);
