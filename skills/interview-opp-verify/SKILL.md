@@ -128,10 +128,10 @@ For each unverifiable:
 
 Per `checklist-schema.yaml § atom_gaps`, these rules currently grade `unverifiable`:
 
-- `ucr-*` rules — no `commcare_list_ucr_expressions` atom yet (linked-domain push verification deferred)
-- `repeater-*` rules — no `commcare_list_form_repeaters` atom yet (only create)
-- `custom-user-data` rule (cohort_id field exists) — no `commcare_list_user_fields` atom yet
-- `conditional-alert-payment` rule — no `commcare_list_conditional_alerts` atom yet
+- `ucr-*` rules — `commcare_list_ucr_expressions` atom ships, but verifier rule logic not yet wired (linked-domain push verification deferred)
+- `repeater-*` rules — a commcare-list-form-repeaters atom (*not yet built*) is needed (only create exists)
+- `custom-user-data` rule (cohort_id field exists) — `commcare_list_user_fields` atom ships, but verifier rule logic not yet wired
+- `conditional-alert-payment` rule — a commcare-list-conditional-alerts atom (*atom code present in commcare.ts but registration deferred — see comment at line 510 of mcp/connect-server.ts*) is needed
 - `ocs-interview-nodes-per-cohort` rule — no atom to traverse router targets
 
 For V1 these grade `⚠️ unverifiable` with action-item prompts to operator. V1.5 ships the read atoms to fill these.
