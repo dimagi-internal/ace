@@ -65,7 +65,7 @@ const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 
-const TEMPLATE_NAME = 'ACE Training Deck Template (v3.3 — walkthrough placeholder removed + title room)';
+const TEMPLATE_NAME = 'ACE Training Deck Template (v3.4 — stats sizing + cover spacing)';
 const PARENT_FOLDER_ID = process.env.ACE_DRIVE_ROOT_FOLDER_ID;
 
 // ---------------------------------------------------------------------------
@@ -331,23 +331,27 @@ function dashedOutlineBox(
 function coverStencilRequests(pageId: string): Record<string, unknown>[] {
   const s = pageId; // short alias
   const contentW = SLIDE_W - MARGIN * 2 - 200_000; // leave room for accent bar
+  // Cover title commonly wraps to 2 lines for long opportunity names. Title
+  // bbox h grows to 1_400_000 (1.5in) and subtitle y pushes down to
+  // 3_100_000 so the title's descender ("g" in "Sampling") doesn't
+  // collide with the subtitle row. v3.4 fix.
   return [
     // Title
     ...textBoxRequests({
       id: `${s}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: 1_600_000, w: contentW, h: 914_400,
+      x: MARGIN, y: 1_400_000, w: contentW, h: 1_400_000,
       fontSize: 36, bold: true, color: COLOR_INDIGO,
     }),
-    // Subtitle
+    // Subtitle (gap of ~0.4in below 2-line title bbox bottom)
     ...textBoxRequests({
       id: `${s}_subbox`, pageId, text: '{{SUBTITLE}}',
-      x: MARGIN, y: 2_600_000, w: contentW, h: 685_800,
+      x: MARGIN, y: 3_100_000, w: contentW, h: 685_800,
       fontSize: 18, color: COLOR_GRAY,
     }),
     // Date
     ...textBoxRequests({
       id: `${s}_datebox`, pageId, text: '{{DATE}}',
-      x: MARGIN, y: 3_400_000, w: contentW, h: 457_200,
+      x: MARGIN, y: 3_900_000, w: contentW, h: 457_200,
       fontSize: 14, color: COLOR_GRAY,
     }),
     // Accent bar right edge (20px = ~182880 EMU)
@@ -531,6 +535,12 @@ function twoColumnStencilRequests(pageId: string): Record<string, unknown>[] {
 }
 
 function statsStencilRequests(pageId: string): Record<string, unknown>[] {
+  // v3.4 fix: 72pt big-number font caused realistic values like
+  // "USD 1.50-3.00" and "Weekly" to wrap mid-word and overlap the
+  // label row below. Drops big-number font to 36pt (still visually
+  // dominant) and widens label bbox so multi-word labels like "Per
+  // verified RDT sample" don't overflow either. Bigger gap between
+  // number and label rows for visual breathing room.
   const colW = Math.round((SLIDE_W - MARGIN * 2) / 3);
   const reqs: Record<string, unknown>[] = [
     ...dimagiAccentStrip(pageId),
@@ -542,16 +552,16 @@ function statsStencilRequests(pageId: string): Record<string, unknown>[] {
   ];
   for (let i = 1; i <= 3; i++) {
     const x = MARGIN + (i - 1) * colW;
-    // Stat number (big)
+    // Stat number (big — 36pt fits up to ~13 chars in a 3-col layout)
     reqs.push(...textBoxRequests({
       id: `${pageId}_stat${i}`, pageId, text: `{{STAT${i}}}`,
-      x, y: 1_600_000, w: colW - 50_000, h: 1_371_600,
-      fontSize: 72, bold: true, color: COLOR_INDIGO,
+      x, y: 1_900_000, w: colW - 50_000, h: 914_400,
+      fontSize: 36, bold: true, color: COLOR_INDIGO,
     }));
-    // Stat label
+    // Stat label (2 lines max, ~30 chars fits comfortably)
     reqs.push(...textBoxRequests({
       id: `${pageId}_stat${i}_label`, pageId, text: `{{STAT${i}_LABEL}}`,
-      x, y: 3_100_000, w: colW - 50_000, h: 457_200,
+      x, y: 3_100_000, w: colW - 50_000, h: 914_400,
       fontSize: 14, color: COLOR_GRAY,
     }));
   }
