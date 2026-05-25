@@ -103,15 +103,18 @@ const ALLOWLIST = new Set([
   // registered. Either the atom should be added, or the skill text
   // should be reworded. Tracked here so the test can ship in detection
   // mode without immediately failing on pre-existing drift.
-  'connect_delete_opportunity',         // skills/connect-opp-setup, skills/sweep-connect — should be a real atom or reworded as "delete in Connect UI"
+  //
+  // Resolved in PR-N (2026-05-25): connect_delete_opportunity (skill
+  // reworded to manual UI deletion + connect_create_opportunity);
+  // docs_finalize_bold + drive_extract_pdf_text (skill text changed
+  // from backticked to italicized "planned, not yet built" form so
+  // the drift detector regex no longer matches).
   'connect_list_program_applications',  // skills/connect-opp-setup — recovery action; no atom
   'connect_delete_payment_unit',        // skills/connect-opp-setup — recovery action; no atom
   'commcare_linked_app_copy',           // skills/interview-cohort-create
   'commcare_list_form_repeaters',       // skills/interview-opp-verify
   'commcare_list_conditional_alerts',   // mcp/connect-server.ts comment marks atom DEFERRED
   'ocs_update_pipeline_node',           // skills/interview-cohort-create
-  'docs_finalize_bold',                 // skills/pdd-to-work-order(-eval) — likely old docs API name
-  'drive_extract_pdf_text',             // skills/program-input-sweep — likely planned, not built
 ]);
 
 function extractRegisteredAtoms(): Set<string> {

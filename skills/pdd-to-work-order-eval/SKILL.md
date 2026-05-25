@@ -72,7 +72,7 @@ Source-of-truth rubric: `skills/pdd-to-work-order/references/writing-style.md`. 
 
 Grading bands: 0 strikes = `pass`; 1–3 strikes = `partial`; 4+ strikes = `fail`. Count multiple instances of the same class as one strike each (e.g., 11 unexpanded acronyms = 11 strikes → `fail`).
 
-**Out of scope (pipeline limitation):** Do NOT grade on bold-span density. The current template uses plain-text `replaceAllText` and there is no bold-finalizer — the producer skill explicitly strips markdown bold from prose tokens. Re-enable the bold dimension once a `docs_finalize_bold` post-processor ships.
+**Out of scope (pipeline limitation):** Do NOT grade on bold-span density. The current template uses plain-text `replaceAllText` and there is no bold-finalizer — the producer skill explicitly strips markdown bold from prose tokens. Re-enable the bold dimension once a docs-finalize-bold post-processor ships (*not yet built*).
 
 ## Process
 
@@ -95,4 +95,4 @@ Grading bands: 0 strikes = `pass`; 1–3 strikes = `partial`; 4+ strikes = `fail
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-21 | Add `writing_style` 6th dimension scoped to renderable conventions (acronyms, modals, voice, partner-naming, terminology). Reweight: 5 content dims × 0.17 + writing_style × 0.15 = 1.00. Bold deferred until `docs_finalize_bold` ships. | ACE team |
+| 2026-05-21 | Add `writing_style` 6th dimension scoped to renderable conventions (acronyms, modals, voice, partner-naming, terminology). Reweight: 5 content dims × 0.17 + writing_style × 0.15 = 1.00. Bold deferred until docs-finalize-bold post-processor ships. | ACE team |

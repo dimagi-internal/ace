@@ -35,7 +35,7 @@ A program team moves fast on a related set of opportunities (malaria EOIs, COVID
    - For gdocs and `.docx`: `drive_read_file` to grab body text (truncate to ~10k chars per doc for classification; classifier doesn't need the whole RFI).
    - For sheets: `sheets_list_tabs` + `sheets_info` to grab tab names and header rows. Read full tab content only if a tab looks opp-relevant.
    - For Google Forms: `drive_read_file` doesn't return form bodies. Classify from the form's name + parent-folder context (the EOI forms in `EOI/Connect for <topic>...` are unambiguous from the name alone — no body extraction needed). If the form name is too generic to classify, surface in `Unmapped`.
-   - For PDFs and other opaque binaries (images, audio, zips): record metadata only — `drive_read_file` rejects them. Classify from filename + parent folder context if possible; otherwise surface in `Unmapped` with a "PDF body not extracted" note. (Future enhancement: a `drive_extract_pdf_text` atom would let the classifier read bodies. Not blocking for the common case.)
+   - For PDFs and other opaque binaries (images, audio, zips): record metadata only — `drive_read_file` rejects them. Classify from filename + parent folder context if possible; otherwise surface in `Unmapped` with a "PDF body not extracted" note. (Future enhancement: a drive-extract-pdf-text atom would let the classifier read bodies — *not yet built*. Not blocking for the common case.)
 
 2. **Resolve target opp set — and auto-expand it.**
    - If slugs passed: read each `ACE/<slug>/opp.yaml` and `ACE/<slug>/inputs/`. These are the **operator-named** targets.
