@@ -469,8 +469,13 @@ describe('buildSlidesRequestsV2', () => {
       'https://drive.google.com/uc?export=view&id=scr1',
     );
     expect((img as any).createImage.elementProperties.pageObjectId).toBe('ace_slide_1');
-    // Verify right-half positioning
-    expect((img as any).createImage.elementProperties.transform.translateX).toBe(4572000);
+    // Verify post-v3.2 widened layout — image starts at 3383280 EMU
+    // (37% in) and fills the right ~62% of the slide, matching the
+    // walkthroughStencilRequests dashed placeholder. Pre-v3.2 the image
+    // started at the slide midline (4572000); widened in commit 9ea7937
+    // ("widen walkthrough image (v3.2)") to close the dead horizontal
+    // whitespace surfaced in the v3 inspection.
+    expect((img as any).createImage.elementProperties.transform.translateX).toBe(3383280);
   });
 
   it('emits 4 createImage for 4-step mobile_flow', () => {
