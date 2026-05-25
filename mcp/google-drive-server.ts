@@ -1446,13 +1446,31 @@ server.tool(
   },
   async ({ documentId, tabId }) => {
     try {
-      const resp = await docs.documents.get({ documentId });
+      // `includeTabsContent: true` is required for the Docs API to populate
+      // `resp.data.tabs`. Without it the API returns the document body (first
+      // tab only) for backward-compat and `tabs` is undefined — which made
+      // every multi-tab read here silently return the wrong tab's content
+      // while ignoring the `tabId` argument.
+      const resp = await docs.documents.get({
+        documentId,
+        includeTabsContent: true,
+      } as any);
       if (tabId && resp.data.tabs) {
-        const tab = resp.data.tabs.find(
-          (t: any) => t.tabProperties?.tabId === tabId,
-        );
+        // Walk tabs depth-first so a child-tab id matches too.
+        const findTab = (tabs: any[]): any => {
+          for (const t of tabs || []) {
+            if (t.tabProperties?.tabId === tabId) return t;
+            const child = findTab(t.childTabs || []);
+            if (child) return child;
+          }
+          return null;
+        };
+        const tab = findTab(resp.data.tabs);
         if (!tab) {
-          return error(`Tab "${tabId}" not found. Available tabs: ${resp.data.tabs.map((t: any) => t.tabProperties?.tabId).join(', ')}`);
+          const ids = (resp.data.tabs || [])
+            .map((t: any) => t.tabProperties?.tabId)
+            .join(', ');
+          return error(`Tab "${tabId}" not found. Available tabs: ${ids}`);
         }
         return result({ title: resp.data.title, documentId: resp.data.documentId, tab });
       }
