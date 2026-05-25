@@ -53,7 +53,7 @@ Invoke the `solicitation-create` skill.
   - Appended `solicitation-type`, `response-deadline`, `response-template-choice` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`).
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `solicitation-create-eval` after publish. Writes
-  `verdicts/solicitation-create.yaml`.
+  `8-solicitation-management/solicitation-create-eval_verdict.yaml`.
 - Halts the phase on a non-pass verdict — Step 2 doesn't send invites
   pointing at a solicitation that's failing rubric checks.
 
@@ -100,7 +100,7 @@ This skill:
   `award-record.md`, populates `phases.solicitation-management.products.selected_llo` in the current run's `run_state.yaml`
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `solicitation-review-eval` after award. Writes
-  `verdicts/solicitation-review.yaml`.
+  `8-solicitation-management/solicitation-review-eval_verdict.yaml`.
 
 Only this skill unblocks Phase 9 (`execution-management`). Phase 9's
 entry guard halts with an actionable message if
@@ -115,12 +115,12 @@ entry guard halts with an actionable message if
 
 ## Products at phase end (default run)
 
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md`
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md`
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/llo-invite_invitations.md`
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_draft.md`
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_published.md`
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/llo-invite_invitations.md`
 - `phases.solicitation-management.products.solicitation.{solicitation_id, public_url, deadline, status: open, labs_program_id, ...}` (per-run only)
 - `phases.solicitation-management.products.selected_llo` is populated only at award time by `solicitation-review`
-- `verdicts/solicitation-create.yaml` (unless `--no-evals`)
+- `8-solicitation-management/solicitation-create-eval_verdict.yaml` (unless `--no-evals`)
 
 ## Completion
 

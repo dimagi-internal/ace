@@ -47,7 +47,7 @@ solicitation and selecting one winner, Phase 9 onboards exactly one org.
      UUID for the Connect invite)
    - OCS widget config: `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md`
      (`public_id`, `embed_key`)
-   - Award record: `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_award-record.md` (for
+   - Award record: `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-review_award-record.md` (for
      the awarded amount and award context to mention in the onboarding
      email)
 

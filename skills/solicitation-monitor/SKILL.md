@@ -19,7 +19,7 @@ designed alongside the Phase 8+/8 redesign (awarding, execution,
 closeout). Until then this skill operates in **read-only** mode against
 the most recent run's `run_state.yaml` — it pulls responses from labs
 and writes them to per-response markdown files in
-`ACE/<opp-name>/runs/<most-recent-run-id>/6-solicitation-management/solicitation-monitor_responses/`,
+`ACE/<opp-name>/runs/<most-recent-run-id>/8-solicitation-management/solicitation-monitor_responses/`,
 but does NOT mutate `products.solicitation.status` (the `--close` mode
 is deferred — operators manually flag a closed solicitation at award
 time via `solicitation-review`).
@@ -53,7 +53,7 @@ descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
   program UUID — labs `int()`-parses the field. Also available at
   `opp.yaml.connect.program.labs_int_id` as the durable opp-level
   cache.
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/llo-invite_invitations.md`
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/llo-invite_invitations.md`
   (optional; for outstanding-invitee tracking)
 
 ## Process (--monitor)
@@ -78,7 +78,7 @@ descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
    field server-side.
 
 2. **Diff against local state.** Read existing files in
-   `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-monitor_responses/` (each is named
+   `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-monitor_responses/` (each is named
    `<response_id>.md`). For each new response:
 
    ```
@@ -130,7 +130,7 @@ orchestrator. The next tick retries.
 
 ## Output
 
-- New files in `ACE/<opp-name>/runs/<most-recent-run-id>/6-solicitation-management/solicitation-monitor_responses/`
+- New files in `ACE/<opp-name>/runs/<most-recent-run-id>/8-solicitation-management/solicitation-monitor_responses/`
 - Tick line in `ACE/<opp-name>/comms-log/observations.md`
 - No `run_state.yaml` or `opp.yaml` mutations pending Phase 8+/8 redesign.
 

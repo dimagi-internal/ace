@@ -281,7 +281,8 @@ Invoke the `app-release` skill.
   underlying CCHQ endpoints — they're internal UI routes, not stable
   public APIs.
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
-  `app-release-eval` after release. Writes `verdicts/app-release.yaml`.
+  `app-release-eval` after release. Writes
+  `3-commcare/app-release-eval_verdict.yaml`.
 
 Note: the `app-test` skill was retired in the shallow/deep QA split
 (0.11.10). Phase 3's QA contribution is now Step 2.6's

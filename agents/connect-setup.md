@@ -48,7 +48,7 @@ Invoke the `connect-program-setup` skill.
   `connect_list_programs` finds it and the skill reuses it.
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `connect-program-setup-eval` after the program is configured. Writes
-  `verdicts/connect-program-setup.yaml`.
+  `4-connect/connect-program-setup-eval_verdict.yaml`.
 
 ### Step 2: Opportunity Setup
 Invoke the `connect-opp-setup` skill.

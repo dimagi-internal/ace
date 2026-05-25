@@ -24,8 +24,8 @@ shipped — see `skills/eval-calibration/SKILL.md`.
 ## Inputs
 
 - `ACE/<opp-name>/inputs/pdd.md`
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md`
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md`
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_draft.md`
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_published.md`
 
 ## Rubric
 
@@ -67,7 +67,7 @@ Score each dimension 0-10. Hard-deduct rules listed inline.
 
 ## Verdict shape
 
-Write `verdicts/solicitation-create.yaml` per `lib/verdict-schema.ts`:
+Write `8-solicitation-management/solicitation-create-eval_verdict.yaml` per `lib/verdict-schema.ts`:
 
 ```yaml
 schema_version: 1

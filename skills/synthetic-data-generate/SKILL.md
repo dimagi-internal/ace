@@ -76,7 +76,7 @@ deferred to later stages. This skill is the data plumbing only.
    `mcp__plugin_ace_ace-gdrive__drive_create_folder` if missing.
 
    Note on phase-folder numbering: until Phase 7 is formally renumbered
-   (Stage 4 of Plan B), `6-` already names `6-solicitation-management`. The
+   (Stage 4 of Plan B), `6-` already names `8-solicitation-management`. The
    `7-synthetic/` folder coexists at the run level — both directories live
    side-by-side in the run folder until renumbering happens. This mirrors the
    plan and is intentional for Stage 1.
