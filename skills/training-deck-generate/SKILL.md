@@ -133,16 +133,25 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
     written spec MUST be schema-clean for `TrainingDeckSpecSchema`
     (no `ref` modules remain).
 
-11. **Self-evaluate (LLM-as-Judge inline).** Four criteria:
+11. **Self-evaluate.** Five criteria — the first four are programmatic
+    checks (run BEFORE the LLM judge), the fifth is the soft slide-count
+    warning:
 
     - **Module coverage:** all 6 modules present (`welcome`,
       `platform-setup`, `your-opportunity`, `practice`, `evaluation`,
       `resources`). FAIL if any missing.
-    - **Content concreteness:** no placeholder text (`{{...}}`)
-      remaining in the final spec. FAIL if any found.
+    - **Content concreteness:** strict `/{{[A-Z_]+}}/` regex sweep
+      across all string leaves of the spec — any match is an unfilled
+      token leak (the `{{STAT1_LABEL}}` class of bug from the
+      malaria-rdt deck). FAIL if any found.
     - **Image ref validity:** all `@alias` refs in walkthrough and
       mobile_flow slides resolve against the merged manifest. FAIL if
       any unresolvable.
+    - **Speaker notes presence:** every slide has a non-empty `notes:`
+      field. FAIL if any slide is missing notes. The deck must be
+      facilitatable (talking points, timing cues, transitions,
+      knowledge-check answers). See generation prompt § Tone and
+      Language Guidelines for what notes should contain.
     - **Slide count:** total slides in 25-50 range. WARN if outside.
 
     Write a verdict YAML to

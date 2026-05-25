@@ -12,18 +12,31 @@ import yaml from 'js-yaml';
 // Individual slide layout schemas
 // ---------------------------------------------------------------------------
 
+// Speaker notes are optional but recommended on every slide — the
+// facilitator-facing layer that turns a self-contained deck into a
+// trainable one. Talking points, timing cues, transitions, fallback
+// prompts for activities, knowledge-check answers. Rendered into each
+// stencil's `<id>:notes` object via Slides insertText.
+//
+// Pre-2026-05-25 reality: notes field didn't exist on slide schemas;
+// every rendered deck had zero speaker notes (unfacilitatable). The
+// malaria-rdt deck shipped this way and was the largest content-quality
+// complaint from the first end-to-end review.
+
 export const CoverSlideSchema = z.object({
   id: z.string(),
   layout: z.literal('cover'),
   title: z.string(),
   subtitle: z.string().optional(),
   date: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 export const SectionSlideSchema = z.object({
   id: z.string(),
   layout: z.literal('section'),
   title: z.string(),
+  notes: z.string().optional(),
 });
 
 export const AgendaSlideSchema = z.object({
@@ -31,6 +44,7 @@ export const AgendaSlideSchema = z.object({
   layout: z.literal('agenda'),
   title: z.string(),
   items: z.array(z.object({ label: z.string(), duration: z.string() })),
+  notes: z.string().optional(),
 });
 
 export const ContentSlideSchema = z.object({
@@ -38,6 +52,7 @@ export const ContentSlideSchema = z.object({
   layout: z.literal('content'),
   title: z.string(),
   body: z.string(),
+  notes: z.string().optional(),
 });
 
 export const WalkthroughSlideSchema = z.object({
@@ -46,6 +61,7 @@ export const WalkthroughSlideSchema = z.object({
   title: z.string(),
   image: z.string(),
   body: z.string(),
+  notes: z.string().optional(),
 });
 
 export const MobileFlowSlideSchema = z.object({
@@ -53,6 +69,7 @@ export const MobileFlowSlideSchema = z.object({
   layout: z.literal('mobile_flow'),
   title: z.string(),
   steps: z.array(z.object({ image: z.string(), caption: z.string() })).min(2).max(4),
+  notes: z.string().optional(),
 });
 
 export const WebScreenSlideSchema = z.object({
@@ -61,6 +78,7 @@ export const WebScreenSlideSchema = z.object({
   title: z.string(),
   image: z.string(),
   caption: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 export const MobileZoomSlideSchema = z.object({
@@ -69,6 +87,7 @@ export const MobileZoomSlideSchema = z.object({
   title: z.string(),
   image: z.string(),
   callouts: z.array(z.string()).optional(),
+  notes: z.string().optional(),
 });
 
 export const TwoColumnSlideSchema = z.object({
@@ -77,6 +96,7 @@ export const TwoColumnSlideSchema = z.object({
   title: z.string(),
   left: z.object({ heading: z.string(), body: z.string(), image: z.string().optional() }),
   right: z.object({ heading: z.string(), body: z.string(), image: z.string().optional() }),
+  notes: z.string().optional(),
 });
 
 export const StatsSlideSchema = z.object({
@@ -84,6 +104,7 @@ export const StatsSlideSchema = z.object({
   layout: z.literal('stats'),
   title: z.string(),
   stats: z.array(z.object({ big: z.string(), label: z.string() })).min(1).max(3),
+  notes: z.string().optional(),
 });
 
 export const TimelineSlideSchema = z.object({
@@ -91,6 +112,7 @@ export const TimelineSlideSchema = z.object({
   layout: z.literal('timeline'),
   title: z.string(),
   steps: z.array(z.object({ label: z.string(), detail: z.string() })).min(2).max(5),
+  notes: z.string().optional(),
 });
 
 export const ChecklistSlideSchema = z.object({
@@ -98,6 +120,7 @@ export const ChecklistSlideSchema = z.object({
   layout: z.literal('checklist'),
   title: z.string(),
   items: z.array(z.string()),
+  notes: z.string().optional(),
 });
 
 export const ExerciseSlideSchema = z.object({
@@ -106,6 +129,7 @@ export const ExerciseSlideSchema = z.object({
   title: z.string(),
   duration: z.string(),
   body: z.string(),
+  notes: z.string().optional(),
 });
 
 export const ClosingSlideSchema = z.object({
@@ -113,6 +137,7 @@ export const ClosingSlideSchema = z.object({
   layout: z.literal('closing'),
   title: z.string(),
   body: z.string(),
+  notes: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -623,6 +648,25 @@ function buildLayoutRequests(
     case 'closing':
       r('{{BODY}}', slide.body);
       break;
+  }
+
+  // Speaker notes — fill any {{NOTES}} placeholder in the duplicated
+  // slide's notes page. Each stencil's notes page is auto-created by
+  // Slides at `<stencilId>:notes` and the duplicate inherits the
+  // `<newSlideId>:notes` ID via duplicateObject's child remapping.
+  //
+  // For this to actually surface notes in the rendered deck, the
+  // template stencils must have `{{NOTES}}` as placeholder text in
+  // their notes page body. The bootstrap script that creates the
+  // stencils SHOULD add this — tracked separately as part of the
+  // template rebrand work (task #31). Until that lands, this request
+  // is a no-op (replaceAllText silently matches nothing) and
+  // `slide.notes` is effectively dropped at render time. Schema
+  // validation still accepts `notes` so generation can populate it
+  // without breaking — the renderer side catches up when the bootstrap
+  // is updated.
+  if (slide.notes !== undefined && slide.notes !== '') {
+    reqs.push(replaceAllTextV2('{{NOTES}}', slide.notes, [`${pageId}:notes`]));
   }
 
   return reqs;
