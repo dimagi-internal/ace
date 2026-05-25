@@ -508,7 +508,7 @@ const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 
-const TEMPLATE_NAME = 'ACE Training Deck Template (v5.1 — Dimagi bg + our text + image strip)';
+const TEMPLATE_NAME = 'ACE Training Deck Template (v5.2 — Dimagi bg + strip lines too)';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -628,15 +628,16 @@ async function main(): Promise<void> {
   // watermarks / O-logos / social icons / decorative dots) gets stripped.
   // The per-opp createImage at render time will place the actual content
   // image in the intended slot.
-  console.log('Step 3: enumerate text shapes + large images on each duplicated stencil');
+  console.log('Step 3: enumerate text shapes + large images + lines on each duplicated stencil');
   const pagesResp = await slides.presentations.get({
     presentationId,
     fields:
-      'slides(objectId,slideProperties(notesPage(notesProperties(speakerNotesObjectId))),pageElements(objectId,size,transform,shape(shapeType,text),image))',
+      'slides(objectId,slideProperties(notesPage(notesProperties(speakerNotesObjectId))),pageElements(objectId,size,transform,shape(shapeType,text),image,line))',
   });
   const stencilSet = new Set<string>(Object.values(STENCILS));
   const textShapeIdsByPageId = new Map<string, string[]>();
   const imageIdsToStripByPageId = new Map<string, string[]>();
+  const lineIdsToStripByPageId = new Map<string, string[]>();
   const notesIdByPageId = new Map<string, string>();
 
   // Only walkthrough/mobile_flow/web_screen/mobile_zoom have stock mockup
@@ -666,6 +667,7 @@ async function main(): Promise<void> {
 
     const textIds: string[] = [];
     const imageIds: string[] = [];
+    const lineIds: string[] = [];
     for (const el of s.pageElements ?? []) {
       // Text-bearing shapes: always delete (we re-create our own).
       if (el.shape?.text && el.objectId) {
@@ -678,9 +680,19 @@ async function main(): Promise<void> {
         const h = (el.size.height?.magnitude ?? 0) * (el.transform.scaleY ?? 1);
         if (w * h >= STRIP_THRESHOLD_EMU_SQ) imageIds.push(el.objectId);
       }
+      // Line/connector elements (thin diagonal annotations the designer
+      // uses to link mockup callouts) — strip from image-bearing stencils
+      // since we removed the mockups they were annotating. Lines have
+      // negligible bounding-box area so they escaped the image filter.
+      // Lines on cover/section/closing are decorative (Dimagi-specific)
+      // — preserved by gating on stripImagesHere.
+      if (stripImagesHere && el.line && el.objectId) {
+        lineIds.push(el.objectId);
+      }
     }
     textShapeIdsByPageId.set(id, textIds);
     imageIdsToStripByPageId.set(id, imageIds);
+    lineIdsToStripByPageId.set(id, lineIds);
   }
 
   // ---------------------------------------------------------------------------
@@ -703,6 +715,11 @@ async function main(): Promise<void> {
     // Delete stock mockup images (discovered by size at step 3).
     const imagesToStrip = imageIdsToStripByPageId.get(pageId) ?? [];
     for (const objectId of imagesToStrip) {
+      layerRequests.push({ deleteObject: { objectId } });
+    }
+    // Delete connector/line annotations on image-bearing stencils.
+    const linesToStrip = lineIdsToStripByPageId.get(pageId) ?? [];
+    for (const objectId of linesToStrip) {
       layerRequests.push({ deleteObject: { objectId } });
     }
     void config.stripImageIds; // legacy field on config — discovery replaces it
