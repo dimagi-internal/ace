@@ -53,7 +53,7 @@ Find Connect artifacts (programs, opportunities, payment units, FLW invites) tha
 
 ## Implementation notes for agents
 
-- The Connect `delete_opportunity()` helper exists in `commcare_connect/opportunity/deletion.py` (used by Celery tasks) but no Django view exposes it. Building `connect_delete_opportunity` requires an upstream PR — out of scope.
+- The Connect `delete_opportunity()` helper exists in `commcare_connect/opportunity/deletion.py` (used by Celery tasks) but no Django view exposes it. Building a connect-delete-opportunity atom (*not yet implemented*) requires an upstream PR — out of scope.
 - The Connect `delete_user_invites` HTML view at `/a/<org_slug>/opportunity/<opp_id>/delete_invites/` is `@csrf_exempt` and the atom `connect_delete_unaccepted_flw_invites` calls it directly. Accepted invites are silently skipped server-side, so the caller doesn't need to pre-filter — but doing so saves a server roundtrip.
 
 ## Related skills

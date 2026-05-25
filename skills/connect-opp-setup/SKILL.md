@@ -179,9 +179,12 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    `connect_update_opportunity` only covers `name` / `short_description` /
    `description` / `end_date` / `is_test`. **If Phase 3 re-uploads an app
    after this skill ran, the existing opp is wired to a stale (now-abandoned)
-   HQ id** — the recovery is `connect_delete_opportunity` +
-   `connect_create_opportunity` against the canonical HQ ids, then
-   update the current run's
+   HQ id** — the recovery is **manual deletion in the Connect web UI**
+   (Connect's `delete_opportunity()` helper exists in
+   `commcare_connect/opportunity/deletion.py` but no Django view exposes
+   it yet; see `skills/sweep-connect/SKILL.md § Implementation notes`)
+   followed by `connect_create_opportunity` against the canonical HQ ids,
+   then update the current run's
    `phases.solicitation-management.products.solicitation.connect_opportunity_id`
    to the new UUID. **This recovery is low-cost.** A labs solicitation
    already published for this opp is unaffected: solicitations are
