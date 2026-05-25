@@ -23,6 +23,10 @@ import {
   validateRunState,
   classifyPhaseWriteBack,
 } from '../lib/run-state-validator.js';
+import {
+  isTransientNetworkError as isTransientNetworkErrorLib,
+  withTransientRetry as withTransientRetryLib,
+} from '../lib/transient-retry.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LEGACY_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
@@ -732,89 +736,19 @@ server.tool(
 );
 
 /**
- * Classify an error thrown by the googleapis client as a transient 5xx /
- * network blip that should be retried, vs a permanent error (4xx, auth,
- * malformed args) that should not. We accept either a numeric `code` (modern
- * client) or a string message that names the failure mode (older client /
- * Node-layer network errors).
+ * Re-exports of the shared transient-error classifier + retry envelope
+ * from `lib/transient-retry.ts`. PR-O extracted these to a shared lib so
+ * all three MCPs (gdrive Drive API, OCS REST, Connect REST) share the
+ * same patterns. Pre-PR-O each MCP had its own narrow classifier and
+ * picked up patterns inconsistently.
  *
- * Patterns covered:
- *   - HTTP 5xx (numeric code or "internal error" / "backend error" /
- *     "service unavailable" / "gateway").
- *   - Timeouts ("timeout", `ETIMEDOUT`).
- *   - Connection resets / hang-ups (`ECONNRESET`, "socket hang up",
- *     "socket close", "connection closed", `EPIPE`).
- *   - Connection refused / unreachable (`ECONNREFUSED`, `ENETUNREACH`,
- *     `EHOSTUNREACH`, `ECONNABORTED`, "connection refused").
- *   - DNS flakes (`EAI_AGAIN`, "getaddrinfo eai_again").
- *   - Generic undici fetch failures ("fetch failed") — Node 18+ HTTP
- *     client surfaces TLS / mid-stream failures under this string.
- *
- * Rationale for the connection-refused class: ECONNREFUSED can be a
- * permanent "server is down" or a transient "service is restarting." With
- * 3 attempts × exponential backoff (1s/2s/4s), the worst-case retry cost
- * on a true-fail is ~7s — small price for catching the transient cases
- * observed in the e2e-malaria-rdt 2026-05-24 session, where a socket-close
- * mid-`update_yaml_file` and a ConnectionRefused at end-of-subagent both
- * interrupted an autonomous run and forced human "keep going" intervention.
+ * The exports here keep the original `isTransientDriveError` name so
+ * the existing test suite at `test/mcp/gdrive/transient-error-classifier.test.ts`
+ * and any inline callers don't need to update. New code should import
+ * `isTransientNetworkError` from `lib/transient-retry.ts` directly.
  */
-export function isTransientDriveError(e: any): boolean {
-  const code = typeof e?.code === 'number' ? e.code : Number(e?.code);
-  if (Number.isFinite(code) && code >= 500 && code < 600) return true;
-
-  // Node-layer network errors may surface as e.code = 'ECONNRESET' etc.
-  // rather than a numeric code. Check the string form too.
-  const codeStr = String(e?.code ?? '').toUpperCase();
-  if (
-    codeStr === 'ECONNRESET' ||
-    codeStr === 'ECONNREFUSED' ||
-    codeStr === 'ECONNABORTED' ||
-    codeStr === 'ETIMEDOUT' ||
-    codeStr === 'ENETUNREACH' ||
-    codeStr === 'EHOSTUNREACH' ||
-    codeStr === 'EPIPE' ||
-    codeStr === 'EAI_AGAIN'
-  ) {
-    return true;
-  }
-
-  const msg = String(e?.message || '').toLowerCase();
-  if (
-    /internal error|backend error|service unavailable|gateway|timeout|econnreset|econnrefused|econnaborted|etimedout|enetunreach|ehostunreach|epipe|eai_again|socket hang up|socket close|socket closed|connection closed|connection refused|fetch failed|getaddrinfo/.test(
-      msg,
-    )
-  ) {
-    return true;
-  }
-  return false;
-}
-
-/**
- * Run `op` with up to N attempts on transient 5xx errors. Backoff schedule
- * is 1s, 2s, 4s; a `sleep` injection lets tests skip the actual wait. The
- * final failure rethrows so the caller still surfaces it.
- */
-export async function withTransientRetry<T>(
-  op: () => Promise<T>,
-  opts: { maxAttempts?: number; sleep?: (ms: number) => Promise<void> } = {},
-): Promise<T> {
-  const maxAttempts = opts.maxAttempts ?? 3;
-  const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
-  let lastErr: any;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      return await op();
-    } catch (e: any) {
-      lastErr = e;
-      if (!isTransientDriveError(e)) throw e;
-      if (attempt < maxAttempts) {
-        const backoffMs = 1000 * Math.pow(2, attempt - 1);
-        await sleep(backoffMs);
-      }
-    }
-  }
-  throw lastErr;
-}
+export const isTransientDriveError = isTransientNetworkErrorLib;
+export const withTransientRetry = withTransientRetryLib;
 
 /**
  * Read-file handler, exported for unit testing with a mocked Drive client.

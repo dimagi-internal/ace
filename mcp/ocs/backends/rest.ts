@@ -1,5 +1,6 @@
 import { fetch } from 'undici';
 import { HttpError } from '../errors.js';
+import { isTransientNetworkError } from '../../../lib/transient-retry.js';
 
 /**
  * Extract the integer experiment_id from a chatbot's web URL.
@@ -35,14 +36,31 @@ export class RestBackend {
     let lastErr: HttpError | undefined;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const res = await fetch(`${this.opts.baseUrl}${path}`, {
-        method,
-        headers: {
-          Authorization: `Bearer ${this.opts.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: body ? JSON.stringify(body) : undefined,
-      });
+      let res: Response;
+      try {
+        res = await fetch(`${this.opts.baseUrl}${path}`, {
+          method,
+          headers: {
+            Authorization: `Bearer ${this.opts.token}`,
+            'Content-Type': 'application/json',
+          },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+      } catch (e: any) {
+        // Network-layer failure (ECONNRESET, ECONNREFUSED, socket hang
+        // up, fetch failed, etc.) — fetch threw before returning a
+        // response. Pre-PR-O these surfaced immediately; now retry on
+        // idempotent calls with the same backoff schedule as 5xx/429.
+        if (
+          isIdempotent &&
+          isTransientNetworkError(e) &&
+          attempt < maxRetries - 1
+        ) {
+          await new Promise((r) => setTimeout(r, backoffMs * Math.pow(2, attempt)));
+          continue;
+        }
+        throw e;
+      }
       const text = await res.text();
       if (res.ok) {
         // Handle empty-body responses (e.g. trigger_bot, end_session) which return 200 with no content
