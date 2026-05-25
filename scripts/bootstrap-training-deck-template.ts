@@ -38,10 +38,16 @@ import { STENCILS } from '../lib/training-deck-spec.js';
 // ---------------------------------------------------------------------------
 
 const FONT_FAMILY = 'Work Sans';
-const COLOR_INDIGO = { red: 0.09, green: 0, blue: 0.42 };     // #16006D approx
-const COLOR_AMBER = { red: 0.99, green: 0.68, blue: 0.19 };   // #FDAE31 approx
+// Dimagi brand palette — exact hex values from the canonical training
+// template (presentation 1NAkbjPjDZSx_Qw8legfuRUk8eTBqO4dn1H2XOqAM1Hc),
+// surveyed 2026-05-25. (Same palette as PR #466; restated here in case
+// branches are out of sync.)
+const COLOR_INDIGO = { red: 0x13 / 255, green: 0x01 / 255, blue: 0x68 / 255 };       // #130168
+const COLOR_AMBER = { red: 0xFE / 255, green: 0xAF / 255, blue: 0x31 / 255 };        // #FEAF31
 const COLOR_WHITE = { red: 1, green: 1, blue: 1 };
-const COLOR_GRAY = { red: 0.37, green: 0.42, blue: 0.49 };    // #5F6A7D
+const COLOR_GRAY = { red: 0x5F / 255, green: 0x6A / 255, blue: 0x7D / 255 };         // #5F6A7D
+const COLOR_SURFACE = { red: 0xF3 / 255, green: 0xF3 / 255, blue: 0xF3 / 255 };      // #F3F3F3
+const COLOR_MOBILE_BLUE = { red: 0x5D / 255, green: 0x70 / 255, blue: 0xD2 / 255 };  // #5D70D2
 
 // ---------------------------------------------------------------------------
 // Slide dimensions (EMU)
@@ -59,7 +65,7 @@ const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 
-const TEMPLATE_NAME = 'ACE Training Deck Template (v2)';
+const TEMPLATE_NAME = 'ACE Training Deck Template (v3.2 — Dimagi accents + walkthrough fit)';
 const PARENT_FOLDER_ID = process.env.ACE_DRIVE_ROOT_FOLDER_ID;
 
 // ---------------------------------------------------------------------------
@@ -219,6 +225,57 @@ function accentBarRequests(
   ];
 }
 
+/**
+ * Dimagi-style amber accent — a thin vertical strip flush with the left
+ * edge of the slide (full height). Branding signature: every content
+ * slide carries this as a quiet but consistent identity marker. Applied
+ * to walkthrough/content/two_column/stats/timeline/checklist/exercise/
+ * agenda. Cover + section + closing have their own visual styles and
+ * skip the strip. Mobile/web mockup slides use COLOR_MOBILE_BLUE
+ * instead of amber (Dimagi semantic convention: blue = product/UI).
+ */
+function dimagiAccentStrip(
+  pageId: string,
+  color: RgbColor = COLOR_AMBER,
+): Record<string, unknown>[] {
+  const id = `${pageId}_dimagiaccent`;
+  const stripW = 60_000; // ~0.066" — thin but visible
+  return [
+    {
+      createShape: {
+        objectId: id,
+        shapeType: 'RECTANGLE',
+        elementProperties: {
+          pageObjectId: pageId,
+          size: {
+            height: { magnitude: SLIDE_H, unit: 'EMU' },
+            width: { magnitude: stripW, unit: 'EMU' },
+          },
+          transform: {
+            scaleX: 1,
+            scaleY: 1,
+            translateX: 0,
+            translateY: 0,
+            unit: 'EMU',
+          },
+        },
+      },
+    },
+    {
+      updateShapeProperties: {
+        objectId: id,
+        shapeProperties: {
+          shapeBackgroundFill: {
+            solidFill: { color: { rgbColor: color } },
+          },
+          outline: { propertyState: 'NOT_RENDERED' },
+        },
+        fields: 'shapeBackgroundFill,outline',
+      },
+    },
+  ];
+}
+
 function dashedOutlineBox(
   id: string,
   pageId: string,
@@ -322,6 +379,7 @@ function sectionStencilRequests(pageId: string): Record<string, unknown>[] {
 
 function agendaStencilRequests(pageId: string): Record<string, unknown>[] {
   return [
+    ...dimagiAccentStrip(pageId),
     ...textBoxRequests({
       id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
       x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
@@ -337,6 +395,7 @@ function agendaStencilRequests(pageId: string): Record<string, unknown>[] {
 
 function contentStencilRequests(pageId: string): Record<string, unknown>[] {
   return [
+    ...dimagiAccentStrip(pageId),
     ...textBoxRequests({
       id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
       x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
@@ -351,10 +410,16 @@ function contentStencilRequests(pageId: string): Record<string, unknown>[] {
 }
 
 function walkthroughStencilRequests(pageId: string): Record<string, unknown>[] {
-  const leftW = Math.round(SLIDE_W * 0.4) - MARGIN;
-  const rightX = Math.round(SLIDE_W * 0.4);
+  // Layout v3.1 — closes the dead horizontal whitespace surfaced in
+  // the v3 inspection. Body column tightens to ~35% (was 40%), image
+  // area shifts left to start right after the body and widens to
+  // ~62% (was 60% offset by 10% gap). Net: ~3in dead band on each
+  // body slide closes.
+  const leftW = Math.round(SLIDE_W * 0.35) - MARGIN;
+  const rightX = Math.round(SLIDE_W * 0.37);
   const rightW = SLIDE_W - rightX - MARGIN;
   return [
+    ...dimagiAccentStrip(pageId),
     ...textBoxRequests({
       id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
       x: MARGIN, y: MARGIN, w: leftW, h: 685_800,
@@ -365,7 +430,7 @@ function walkthroughStencilRequests(pageId: string): Record<string, unknown>[] {
       x: MARGIN, y: 1_200_000, w: leftW, h: 3_500_000,
       fontSize: 14, color: COLOR_GRAY,
     }),
-    // Image placeholder area (right 60%, dashed outline)
+    // Image placeholder area (right ~62%, dashed outline)
     ...dashedOutlineBox(
       `${pageId}_imgarea`, pageId,
       rightX, MARGIN, rightW, SLIDE_H - MARGIN * 2,
@@ -378,6 +443,10 @@ function mobileFlowStencilRequests(pageId: string): Record<string, unknown>[] {
   const captionW = Math.round((SLIDE_W - MARGIN * 2) / 4);
   const captionY = SLIDE_H - 600_000;
   const reqs: Record<string, unknown>[] = [
+    // Dimagi semantic convention: mobile/web product slides use the
+    // blue accent (#5D70D2) instead of the amber. See A1.5 subagent
+    // report on the Dimagi template.
+    ...dimagiAccentStrip(pageId, COLOR_MOBILE_BLUE),
     ...textBoxRequests({
       id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
       x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
@@ -397,6 +466,8 @@ function mobileFlowStencilRequests(pageId: string): Record<string, unknown>[] {
 
 function webScreenStencilRequests(pageId: string): Record<string, unknown>[] {
   return [
+    // Mobile/web product slide — blue accent per Dimagi convention.
+    ...dimagiAccentStrip(pageId, COLOR_MOBILE_BLUE),
     ...textBoxRequests({
       id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
       x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
@@ -412,6 +483,8 @@ function webScreenStencilRequests(pageId: string): Record<string, unknown>[] {
 
 function mobileZoomStencilRequests(pageId: string): Record<string, unknown>[] {
   return [
+    // Mobile/web product slide — blue accent per Dimagi convention.
+    ...dimagiAccentStrip(pageId, COLOR_MOBILE_BLUE),
     ...textBoxRequests({
       id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
       x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
@@ -429,6 +502,7 @@ function twoColumnStencilRequests(pageId: string): Record<string, unknown>[] {
   const colW = Math.round((SLIDE_W - MARGIN * 3) / 2); // gap between columns = MARGIN
   const rightX = MARGIN * 2 + colW;
   return [
+    ...dimagiAccentStrip(pageId),
     ...textBoxRequests({
       id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
       x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
@@ -464,6 +538,7 @@ function twoColumnStencilRequests(pageId: string): Record<string, unknown>[] {
 function statsStencilRequests(pageId: string): Record<string, unknown>[] {
   const colW = Math.round((SLIDE_W - MARGIN * 2) / 3);
   const reqs: Record<string, unknown>[] = [
+    ...dimagiAccentStrip(pageId),
     ...textBoxRequests({
       id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
       x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
@@ -491,6 +566,7 @@ function statsStencilRequests(pageId: string): Record<string, unknown>[] {
 function timelineStencilRequests(pageId: string): Record<string, unknown>[] {
   const colW = Math.round((SLIDE_W - MARGIN * 2) / 5);
   const reqs: Record<string, unknown>[] = [
+    ...dimagiAccentStrip(pageId),
     ...textBoxRequests({
       id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
       x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
@@ -517,6 +593,7 @@ function timelineStencilRequests(pageId: string): Record<string, unknown>[] {
 
 function checklistStencilRequests(pageId: string): Record<string, unknown>[] {
   return [
+    ...dimagiAccentStrip(pageId),
     ...textBoxRequests({
       id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
       x: MARGIN, y: MARGIN, w: SLIDE_W - MARGIN * 2, h: 685_800,
