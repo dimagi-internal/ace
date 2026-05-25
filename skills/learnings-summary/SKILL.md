@@ -18,7 +18,7 @@ Synthesize all information from the completed opportunity into actionable learni
    - Monitoring reports from `ACE/<opp-name>/monitoring/`
    - Data reviews from `ACE/<opp-name>/data-reviews/`
    - OCS transcripts (LLO questions and issues)
-   - LLO feedback from `ACE/<opp-name>/runs/<run-id>/8-closeout/llo-feedback.md`
+   - LLO feedback from `ACE/<opp-name>/runs/<run-id>/10-closeout/llo-feedback.md`
    - Comms log
 
 2. **Analyze against original PDD:**
@@ -38,8 +38,8 @@ Synthesize all information from the completed opportunity into actionable learni
    - This new PDD can trigger another CRISPR-Connect cycle
 
 5. **Write to GDrive:**
-   - `ACE/<opp-name>/runs/<run-id>/8-closeout/learnings-summary.md` — full learnings document
-   - `ACE/<opp-name>/runs/<run-id>/8-closeout/learnings-summary_new-pdd.md` — new PDD if iteration warranted
+   - `ACE/<opp-name>/runs/<run-id>/10-closeout/learnings-summary.md` — full learnings document
+   - `ACE/<opp-name>/runs/<run-id>/10-closeout/learnings-summary_new-pdd.md` — new PDD if iteration warranted
 
 6. **Write `phases.closeout.products.learnings`** to the current run's
    `run_state.yaml` so downstream readers (ace-web summary, next-cycle
