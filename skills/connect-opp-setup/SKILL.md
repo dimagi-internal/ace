@@ -57,10 +57,11 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    1. Compare `organization_slug` and `target_organization_slug`. If
       they differ, this is the LLO-distinct path — Phase 9 already
       handled the round-trip; skip this sub-step.
-   2. Same-org case: call `connect_list_program_applications` (or read
-      `connect-setup/llo-invite_invitations.md` if Phase 8 ran). If an
-      `ACCEPTED` application already exists for `organization_slug` on
-      `program_id`, capture its `program_application_id` and continue.
+   2. Same-org case: call a connect-list-program-applications atom
+      (*not yet built — V1 reads `connect-setup/llo-invite_invitations.md`
+      if Phase 8 ran*). If an `ACCEPTED` application already exists for
+      `organization_slug` on `program_id`, capture its
+      `program_application_id` and continue.
    3. No accepted application → run the round-trip inline:
 
       ```
@@ -318,8 +319,9 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    `comms-log/observations.md`. Do NOT proceed to Step 7 — a malformed
    PU cascades through `is_setup_complete` and silently breaks every
    downstream skill (Phase 8 invites, Phase 6 screenshots). Operator
-   recovery is delete + recreate via the Connect web UI; there is no
-   `connect_delete_payment_unit` atom yet.
+   recovery is delete + recreate via the Connect web UI; a
+   connect-delete-payment-unit atom (*not yet built*) would let the
+   skill self-heal.
 
    This guard is the producer-side complement to the
    `connect-program-setup-eval` rubric. The eval correctly graded a

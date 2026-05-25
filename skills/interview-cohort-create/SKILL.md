@@ -68,13 +68,13 @@ Walks per_cohort section of `checklist-schema.yaml`.
 
 For each of Learn + Deliver, pull a fresh linked copy on the downstream domain.
 
-**Atom gap**: `commcare_linked_app_copy` is documented in checklist-schema.yaml's atom_gaps but not yet built. The DomainLinkRMIView supports this (via the `create_app_copy` method on apps) but the wire shape needs probing.
+**Atom gap**: a commcare-linked-app-copy atom (*not yet built*) is documented in checklist-schema.yaml's atom_gaps. The DomainLinkRMIView supports this (via the `create_app_copy` method on apps) but the wire shape needs probing.
 
 **V1 manual fallback**: prompt operator to do the linked-app pull via HQ UI at /a/<downstream>/apps/, then enter the new app ids back into the cohort.yaml.
 
-Once atoms ship:
+Once the atom ships, the call shape will be:
 ```
-commcare_linked_app_copy({
+commcare-linked-app-copy({         # placeholder name — not yet built
   upstream_domain: hq_master_domain,
   downstream_domain: hq_downstream_domain,
   master_learn_app_id: <id>,
@@ -194,7 +194,7 @@ pipeline = ocs_get_chatbot_pipeline_id({experiment_id: ocs_bot_id})
 # (read the router node's current keywords, add this cohort's interview_ids, save)
 ```
 
-**Atom gap for V1**: `ocs_update_pipeline_node` not built — only `ocs_add_pipeline_node`. For V1, the StaticRouterNode template already has `keywords: ["default"]`; cohort-specific routing is documented as manual until the update atom ships.
+**Atom gap for V1**: an ocs-update-pipeline-node atom (*not yet built*) — only `ocs_add_pipeline_node` exists. For V1, the StaticRouterNode template already has `keywords: ["default"]`; cohort-specific routing is documented as manual until the update atom ships.
 
 ## Idempotency
 

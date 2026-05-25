@@ -98,23 +98,20 @@ const ALLOWLIST = new Set([
   'mobile_flow',  // template_kind for training-deck-render
   'mobile_zoom',  // template_kind for training-deck-render
 
-  // ---- Known drift candidates (TODO: investigate / resolve) ----
-  // Skills reference these as if they were atoms, but no atom is
-  // registered. Either the atom should be added, or the skill text
-  // should be reworded. Tracked here so the test can ship in detection
-  // mode without immediately failing on pre-existing drift.
+  // ---- Known drift candidates (resolved as of 2026-05-25) ----
   //
-  // Resolved in PR-N (2026-05-25): connect_delete_opportunity (skill
+  // PR-N (2026-05-25) resolved: connect_delete_opportunity (skill
   // reworded to manual UI deletion + connect_create_opportunity);
   // docs_finalize_bold + drive_extract_pdf_text (skill text changed
   // from backticked to italicized "planned, not yet built" form so
   // the drift detector regex no longer matches).
-  'connect_list_program_applications',  // skills/connect-opp-setup — recovery action; no atom
-  'connect_delete_payment_unit',        // skills/connect-opp-setup — recovery action; no atom
-  'commcare_linked_app_copy',           // skills/interview-cohort-create
-  'commcare_list_form_repeaters',       // skills/interview-opp-verify
-  'commcare_list_conditional_alerts',   // mcp/connect-server.ts comment marks atom DEFERRED
-  'ocs_update_pipeline_node',           // skills/interview-cohort-create
+  //
+  // PR-Q (2026-05-25) resolved the remaining 6: connect_list_program_applications,
+  // connect_delete_payment_unit, commcare_linked_app_copy,
+  // commcare_list_form_repeaters, commcare_list_conditional_alerts,
+  // ocs_update_pipeline_node — all reworded from backticked to
+  // italicized "(not yet built)" form. Allowlist is now drift-free;
+  // any future entry here should ship with a follow-up cleanup PR.
 ]);
 
 function extractRegisteredAtoms(): Set<string> {
