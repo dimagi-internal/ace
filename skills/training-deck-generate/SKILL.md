@@ -90,14 +90,20 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
    - **`platform-setup`** module: include `_common/platform-setup.yaml`
      verbatim — Connect sign-in, claim opportunity, install app steps
      with common-pool screenshot refs
-   - **`your-opportunity`** module: generate slides from PDD content
-     using layout selection rules in the generation prompt. One slide
-     per Deliver form section with the relevant per-opp screenshot,
-     bullet list of "what to do here", and speaker notes. Learn app
-     overview slide with module names and assessment threshold.
-   - **`practice`** module: generate exercises from facilitation
-     patterns — role-play scenarios, app walkthrough exercise, Q&A
-     prompt
+   - **`your-opportunity`** module (C2 — REQUIRED per-opp content):
+     emit one `walkthrough` slide per Deliver form (enumerated from the
+     Deliver app summary). Title `"Form N: <display-name>"`, body cites
+     2-3 actual field labels, image is the per-opp `@alias` if the
+     manifest has one (else fall back to `content` layout — do NOT
+     invent screenshot aliases). A 6-form Deliver app produces 6
+     walkthrough slides; do NOT collapse. Plus opportunity overview,
+     payment stats, quality/verification, safety/ethics slides per
+     the generation prompt.
+   - **`practice`** module (C2 — REQUIRED per-opp content): emit one
+     `exercise` slide per Learn module (enumerated from the Learn app
+     summary). Title `"Complete Learn Module N: <module-name>"`, body
+     names the key concept + assessment threshold. Plus 1 form-practice
+     slide + 1 role-play slide.
    - **`evaluation`** module: checklist slide from PDD acceptance
      criteria, timeline-to-go-live slide, "what happens next" framing
    - **`resources`** module: include `_common/resources.yaml`, replace
@@ -152,12 +158,23 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
       facilitatable (talking points, timing cues, transitions,
       knowledge-check answers). See generation prompt § Tone and
       Language Guidelines for what notes should contain.
+    - **Per-opp Learn/Deliver mapping (C2):** count Learn modules and
+      Deliver forms in the app summaries. Verify the spec contains:
+        - In `your-opportunity` module: ≥ `<deliver-form-count>` slides
+          with `id` matching `/form-/` or title beginning `"Form "`
+        - In `practice` module: ≥ `<learn-module-count>` slides with
+          `id` matching `/guided-learn|module-/` or title beginning
+          `"Complete Learn Module "`
+      FAIL if undercounted by more than 1 in either dimension. WARN if
+      exactly equal to N-1 (acceptable to collapse a single-form case).
+      Catches the failure mode where the generator emits one
+      "Module 1" slide regardless of the opp's actual Learn structure.
     - **Slide count:** total slides in 25-50 range. WARN if outside.
 
     Write a verdict YAML to
     `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-generate_verdict.yaml`
     in the standard shape (see `lib/verdict-schema.ts`). `passed: true`
-    only if the first three criteria pass (slide count is WARN-only).
+    only if the first four criteria pass (slide count is WARN-only).
 
 12. **Hand off.** Print the spec's Drive URL + the verdict summary.
     Phase 6 orchestrator dispatches `training-deck-render` next.

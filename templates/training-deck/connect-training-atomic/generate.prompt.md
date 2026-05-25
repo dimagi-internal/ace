@@ -44,11 +44,11 @@ This is the heart of the deck. Generate 8-15 slides covering:
    - Eligibility criteria if any
    - What to expect at a typical visit
 
-3. **Your visit workflow** (3-6 slides, layout: `walkthrough` or `mobile_flow`)
-   - Walk through EACH form in the app, step by step
-   - Use `@alias` screenshots from the manifest for every form screen
-   - Name exact buttons: "Tap 'Next'", "Select 'Yes'", "Tap 'Submit'"
-   - One slide per major form section or decision point
+3. **Your visit workflow — REQUIRED: one slide per Deliver form** (C2)
+   - Read the Deliver app summary (`pdd-to-deliver-app_summary.md` or `app-deploy_summary.md`). Enumerate every form in the Deliver app.
+   - Emit **one walkthrough slide per Deliver form**. Title: `"Form N: <form-name>"` (use the form's actual display name from the app summary, not a paraphrase). Body: 1-2 sentences explaining what the FLW captures on this form, citing 2-3 specific field labels from the app summary. Image: per-opp screenshot `@alias` if the manifest includes one for this form; otherwise omit the image and use layout `content` (NEVER invent screenshot aliases).
+   - This is the load-bearing per-opp section. A 6-form Deliver app produces 6 walkthrough slides; a 2-form app produces 2 slides. Do NOT collapse multiple forms into one slide. Do NOT skip forms because the screenshot is missing — emit the slide as `content` layout with the form-field detail in the body.
+   - Name exact buttons: "Tap 'Next'", "Select 'Yes'", "Tap 'Submit'" using the live label text from the app summary.
 
 4. **Quality and verification** (1-2 slides, layout: `content`)
    - How work is verified (GPS, photo, supervisor review, automated checks)
@@ -75,13 +75,15 @@ This is the heart of the deck. Generate 8-15 slides covering:
    - Data privacy expectations
    - What to do if someone refuses or is unavailable
 
-### practice (generate fresh)
+### practice (generate fresh) — REQUIRED: one Learn slide per Learn module (C2)
 
-Generate 3-5 slides using patterns from `_common/facilitation.yaml`:
+Generate exactly `N + 2` slides where `N` is the number of Learn modules in the Learn app summary (`pdd-to-learn-app_summary.md` or `app-deploy_summary.md`):
 
-1. **Guided Learn completion** — use `guided-learn` pattern. Set `{{N}}` to "1" for the first module. If the PDD lists multiple Learn modules, add one slide per module.
-2. **Form practice** — use `form-practice` pattern. Set `{{FORM_NAME}}` to the primary delivery form name from the app summary.
-3. **Role play** — use `role-play` pattern. Set `{{VISIT_TYPE}}` and `{{ROLE}}` from the PDD's visit description (e.g., `{{VISIT_TYPE}}` = "Household Visit", `{{ROLE}}` = "household member").
+1. **One guided-learn slide per Learn module** — emit one `exercise` slide per Learn module enumerated in the Learn app summary. Title: `"Complete Learn Module N: <module-name>"` (use the module's actual display name). Body: 1-2 sentences naming the key concept the module teaches + the assessment threshold (e.g., "75% pass"). Duration: 15-25 min per module based on content density.
+2. **Form practice** (1 slide) — use the `form-practice` pattern. Set `{{FORM_NAME}}` to the primary delivery form name from the Deliver app summary. If multiple forms, pick the most frequent visit type's form.
+3. **Role play** (1 slide) — use `role-play` pattern. Set `{{VISIT_TYPE}}` and `{{ROLE}}` from the PDD's visit description (e.g., `{{VISIT_TYPE}}` = "Household Visit", `{{ROLE}}` = "household member").
+
+A 3-module Learn app produces 3+1+1 = 5 practice slides. A 1-module Learn app produces 1+1+1 = 3. Do NOT collapse multiple modules into one slide; the trainee needs explicit per-module practice cues.
 
 ### evaluation (generate fresh)
 
