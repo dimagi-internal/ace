@@ -53,11 +53,31 @@ interface AgentFrontmatter {
   phase?: string;
   phase_ordinal?: number;
   skills?: SkillEntry[];
+  description?: string;
+  rawSkillsBlocks?: unknown[];
 }
 
 function normalizeSkillsList(raw: unknown): SkillEntry[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((s) => (typeof s === 'string' ? { name: s } : (s as SkillEntry)));
+}
+
+// Used by the "uniform skills frontmatter shape" assertion below. Returns
+// the count of bare-string entries (vs object entries) in a raw skills
+// list. We want zero across the repo — every entry should be an object
+// `{ name, has_judge, ... }` so the metadata feeds the producer-claim
+// coherence checks above. ace-orchestrator's bare-string-shape allowance
+// (PR 0c era) was simplification by undefault; the test pulls every agent
+// onto one shape.
+function countBareStringEntries(raw: unknown): number {
+  if (!Array.isArray(raw)) return 0;
+  return raw.filter((s) => typeof s === 'string').length;
+}
+
+function rawSkillsBlocks(parsed: Record<string, unknown>): unknown[] {
+  return [parsed.skills, parsed.recurring_skills, parsed.manual_skills].filter(
+    (b) => b !== undefined,
+  );
 }
 
 function readFrontmatter(agentFile: string): AgentFrontmatter | null {
@@ -85,8 +105,26 @@ function readFrontmatter(agentFile: string): AgentFrontmatter | null {
     phase: parsed.phase as string | undefined,
     phase_ordinal: parsed.phase_ordinal as number | undefined,
     skills: skills.length > 0 ? skills : undefined,
+    description: parsed.description as string | undefined,
+    rawSkillsBlocks: rawSkillsBlocks(parsed),
   };
 }
+
+function readAgentBody(agentFile: string): string {
+  const src = fs.readFileSync(path.join(AGENTS_DIR, agentFile), 'utf-8');
+  const m = src.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+  return m ? m[1] : src;
+}
+
+// Files allowed to mention `*gate-brief*.md`-shaped paths. Reference doc
+// documents the 0.13.116 removal in its `## Per-Phase Folder Lifecycle`
+// and `## Pause Points` sections. Procedure-doc agents must NOT carry
+// instruction-style mentions — those were removed in the cleanup PR that
+// preceded this test.
+const GATE_BRIEF_FILENAME_ALLOWLIST = new Set<string>([
+  'orchestrator-reference.md',
+]);
+const GATE_BRIEF_FILENAME_RE = /gate-brief\.md/;
 
 const ALL_AGENTS: AgentFrontmatter[] = fs
   .readdirSync(AGENTS_DIR)
@@ -231,5 +269,110 @@ describe('agent coherence', () => {
     expect([...unclaimed].sort(),
       'unclaimed producers drifted from baseline; update UNCLAIMED_BASELINE')
       .toEqual([...UNCLAIMED_BASELINE].sort());
+  });
+
+  // ---------------------------------------------------------------------
+  // Drift preventers added 2026-05-25 (tech-debt lens). Six phase agents
+  // had `description:` strings claiming Phase N+1 while their
+  // `phase_ordinal:` and H1 heading were correct; the 0.13.116 gate-brief
+  // removal left 5 stale "do this" instructions in 3 files; `ocs-tester`
+  // used a bare-string `skills:` shape while every other agent used the
+  // object form. PR 480 fixed each instance; these assertions lock the
+  // classes shut.
+  // ---------------------------------------------------------------------
+
+  it('phase agent description text mentions its own phase number consistently', () => {
+    // Each phase agent's `description:` may forward-reference other
+    // phases (e.g. "Phase 9 is where LLOs first hear from ACE"), so we
+    // can't assert the description mentions ONLY its own phase number.
+    // What we CAN assert: when the description mentions a phase number
+    // in the "Phase N of the CRISPR-Connect lifecycle" opening clause
+    // (the agent's claim about itself), that number matches
+    // phase_ordinal.
+    const drift: string[] = [];
+    for (const agent of PHASE_AGENTS) {
+      if (!agent.description) continue;
+      // Look for the self-introducing phrase. Tolerant of "Phase N of"
+      // and "Phase N — " openings; ignores other "Phase N" mentions
+      // later in the description (those may legitimately forward-ref).
+      const m = agent.description.match(/Phase (\d+)(?: of| —)/);
+      if (!m) continue;
+      const claimed = Number(m[1]);
+      if (claimed !== agent.phase_ordinal) {
+        drift.push(
+          `${agent.file}: description says "Phase ${claimed}" but phase_ordinal=${agent.phase_ordinal}`,
+        );
+      }
+    }
+    expect(drift, 'phase number in description text disagrees with phase_ordinal').toEqual([]);
+  });
+
+  it('phase agent H1 heading mentions the same phase number as phase_ordinal', () => {
+    // Phase agent bodies open with `# <Name> (Phase N)` or similar.
+    // Drift here is the same class as the description case — pre-2026-05
+    // renumbering era left H1s out of sync.
+    const drift: string[] = [];
+    for (const agent of PHASE_AGENTS) {
+      const body = readAgentBody(agent.file);
+      // First H1 line (the title); match `(Phase N)` if present.
+      const h1 = body.split('\n').find((l) => l.startsWith('# '));
+      if (!h1) continue;
+      const m = h1.match(/\(Phase (\d+)/);
+      if (!m) continue;
+      const claimed = Number(m[1]);
+      if (claimed !== agent.phase_ordinal) {
+        drift.push(
+          `${agent.file}: H1 says "(Phase ${claimed})" but phase_ordinal=${agent.phase_ordinal}`,
+        );
+      }
+    }
+    expect(drift, 'phase number in H1 heading disagrees with phase_ordinal').toEqual([]);
+  });
+
+  it('no agent file outside the reference doc carries `*gate-brief*.md` instruction text', () => {
+    // The 0.13.116 gate-brief removal documented the change in
+    // orchestrator-reference.md but left 5 stale producer-side "do this"
+    // instructions in 3 files. They're gone now; this assertion stops
+    // the class from regrowing.
+    //
+    // Approach: match the artifact filename shape (`gate-brief.md` —
+    // i.e. a path with `.md` suffix) rather than prose mentions
+    // ("gate-briefs/"). Prose explaining the removal is fine; pointing
+    // at a path that doesn't exist is not.
+    const violations: string[] = [];
+    for (const agentFile of fs.readdirSync(AGENTS_DIR)) {
+      if (!agentFile.endsWith('.md')) continue;
+      if (GATE_BRIEF_FILENAME_ALLOWLIST.has(agentFile)) continue;
+      const src = fs.readFileSync(path.join(AGENTS_DIR, agentFile), 'utf-8');
+      const lines = src.split('\n');
+      lines.forEach((line, i) => {
+        if (GATE_BRIEF_FILENAME_RE.test(line)) {
+          violations.push(`${agentFile}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    expect(violations,
+      '*gate-brief*.md path in non-reference agent file — 0.13.116 removed the artifact').toEqual([]);
+  });
+
+  it('every agent skills frontmatter block uses object entries (not bare strings)', () => {
+    // Object form (`- { name: foo, has_judge: true }`) carries the
+    // metadata the producer-claim coherence checks need (has_judge,
+    // qa_skill, eval_skill). Bare-string form (`- foo`) silently
+    // drops that metadata. Pre-2026-05-25 only ocs-tester used bare
+    // strings; PR following this brings it onto the object form.
+    const violations: string[] = [];
+    for (const agent of ALL_AGENTS) {
+      for (const block of agent.rawSkillsBlocks ?? []) {
+        const bareCount = countBareStringEntries(block);
+        if (bareCount > 0) {
+          violations.push(
+            `${agent.file}: skills/recurring_skills/manual_skills block has ${bareCount} bare-string entries`,
+          );
+        }
+      }
+    }
+    expect(violations,
+      'skills frontmatter entries must be objects with at least a `name:` key').toEqual([]);
   });
 });
