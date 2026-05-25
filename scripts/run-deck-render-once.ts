@@ -50,6 +50,15 @@ if (stencilPath === '-') {
       const right = s.right as Record<string, unknown> | undefined;
       if (typeof left?.image === 'string' && (left.image as string).startsWith('@')) aliasRefs.push(left.image as string);
       if (typeof right?.image === 'string' && (right.image as string).startsWith('@')) aliasRefs.push(right.image as string);
+      // mobile_flow has a steps[].image array — walk it too.
+      const steps = s.steps as Array<{ image?: string }> | undefined;
+      if (Array.isArray(steps)) {
+        for (const step of steps) {
+          if (typeof step.image === 'string' && step.image.startsWith('@')) {
+            aliasRefs.push(step.image);
+          }
+        }
+      }
     }
   }
   console.error(`✓ image alias refs in spec: ${aliasRefs.length}`);

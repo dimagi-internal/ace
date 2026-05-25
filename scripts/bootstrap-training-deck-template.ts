@@ -222,15 +222,16 @@ function textBoxRequests(tb: TextBox): Record<string, unknown>[] {
 // ---------------------------------------------------------------------------
 
 function buildCoverTextBoxes(pageId: string): Record<string, unknown>[] {
-  // Dark indigo background → white title + amber-ish gray subtitle.
-  // Layout sized for 2-line title wraps (the Dimagi cover places the
-  // title near vertical center).
+  // Dark indigo background → white title + white subtitle/date.
+  // Title font drops 40pt → 32pt (v5.3 fix) so longer opp names like
+  // "Bednet Spot-Check (E2E Smoke)" fit on one line without wrapping
+  // mid-word past the topographic illustration on the right.
   const w = SLIDE_W - MARGIN * 2 - 200_000;
   return [
     ...textBoxRequests({
       id: `${pageId}_title`, pageId, text: '{{TITLE}}',
       x: MARGIN, y: 1_500_000, w, h: 1_400_000,
-      fontSize: 40, bold: true, color: COLOR_WHITE,
+      fontSize: 32, bold: true, color: COLOR_WHITE,
     }),
     ...textBoxRequests({
       id: `${pageId}_subtitle`, pageId, text: '{{SUBTITLE}}',
@@ -258,6 +259,9 @@ function buildSectionTextBoxes(pageId: string): Record<string, unknown>[] {
 }
 
 function buildAgendaTextBoxes(pageId: string): Record<string, unknown>[] {
+  // Body font bumped 14pt → 16pt (v5.3) so agenda items read large.
+  // Bullet markers (•) are added by lib/training-deck-spec.ts on the
+  // agenda body string — see the `case 'agenda'` branch.
   return [
     ...textBoxRequests({
       id: `${pageId}_title`, pageId, text: '{{TITLE}}',
@@ -267,7 +271,7 @@ function buildAgendaTextBoxes(pageId: string): Record<string, unknown>[] {
     ...textBoxRequests({
       id: `${pageId}_body`, pageId, text: '{{BODY}}',
       x: MARGIN, y: 1_200_000, w: SLIDE_W - MARGIN * 2, h: 3_500_000,
-      fontSize: 14, color: COLOR_GRAY,
+      fontSize: 16, color: COLOR_GRAY,
     }),
   ];
 }
@@ -288,8 +292,11 @@ function buildContentTextBoxes(pageId: string): Record<string, unknown>[] {
 }
 
 function buildWalkthroughTextBoxes(pageId: string): Record<string, unknown>[] {
-  // Left ~35% for body, right ~62% reserved for render's createImage.
-  const leftW = Math.round(SLIDE_W * 0.35) - MARGIN;
+  // v5.3: widen left col 35% → 45% so body text doesn't wrap every
+  // 5-7 words. Image area on the right correspondingly shrinks 62% →
+  // 52%, but phone screenshots preserve aspect ratio so the rendered
+  // image still fits within the new image zone.
+  const leftW = Math.round(SLIDE_W * 0.45) - MARGIN;
   return [
     ...textBoxRequests({
       id: `${pageId}_title`, pageId, text: '{{TITLE}}',
@@ -388,6 +395,11 @@ function buildTwoColumnTextBoxes(pageId: string): Record<string, unknown>[] {
 }
 
 function buildStatsTextBoxes(pageId: string): Record<string, unknown>[] {
+  // v5.3: vertically center the stat numbers + labels within the canvas
+  // below the title (previously stats clustered in upper half, leaving
+  // ~50% dead space at the bottom). Numbers y 1.9M → 2.4M; labels
+  // y 3.0M → 3.6M. Net: stats sit centered between title bottom (1.2in)
+  // and slide bottom (5.625in).
   const colW = Math.round((SLIDE_W - MARGIN * 2) / 3);
   const reqs: Record<string, unknown>[] = [
     ...textBoxRequests({
@@ -400,14 +412,13 @@ function buildStatsTextBoxes(pageId: string): Record<string, unknown>[] {
     const x = MARGIN + (i - 1) * colW;
     reqs.push(...textBoxRequests({
       id: `${pageId}_stat${i}`, pageId, text: `{{STAT${i}}}`,
-      x, y: 1_900_000, w: colW - 100_000, h: 900_000,
-      // 24pt fits "USD 1.50-3.00" (13 chars) on one line at ~3in column width.
-      // 32pt wraps it to 2 lines — still readable but bulky.
+      x, y: 2_400_000, w: colW - 100_000, h: 900_000,
+      // 24pt fits "USD 1.50-3.00" (13 chars) on one line at ~3in column.
       fontSize: 24, bold: true, color: COLOR_INDIGO,
     }));
     reqs.push(...textBoxRequests({
       id: `${pageId}_stat${i}_label`, pageId, text: `{{STAT${i}_LABEL}}`,
-      x, y: 3_000_000, w: colW - 100_000, h: 900_000,
+      x, y: 3_600_000, w: colW - 100_000, h: 900_000,
       fontSize: 13, color: COLOR_GRAY,
     }));
   }
@@ -508,7 +519,7 @@ const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 
-const TEMPLATE_NAME = 'ACE Training Deck Template (v5.2 — Dimagi bg + strip lines too)';
+const TEMPLATE_NAME = 'ACE Training Deck Template (v5.3 — deck-quality fixes from bednet-spot-check)';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -640,21 +651,25 @@ async function main(): Promise<void> {
   const lineIdsToStripByPageId = new Map<string, string[]>();
   const notesIdByPageId = new Map<string, string>();
 
-  // Only walkthrough/mobile_flow/web_screen/mobile_zoom have stock mockup
-  // images to strip. cover/content/closing have small decorative images
-  // (wordmarks, illustrations) that we WANT to keep.
+  // walkthrough/mobile_flow/web_screen/mobile_zoom strip ALL images
+  // above 1.5in² (designer mockup screens). closing strips small
+  // images > 0.25in² too (catches the Dimagi headshot circle which
+  // is ~0.5in² and otherwise survives the size filter — caught in
+  // bednet-spot-check/20260525-1503 render). cover/section/content
+  // keep their decorative images (wordmarks, illustrations).
   const STRIP_IMAGES_ON: Set<StencilKey> = new Set([
-    'walkthrough', 'mobile_flow', 'web_screen', 'mobile_zoom',
+    'walkthrough', 'mobile_flow', 'web_screen', 'mobile_zoom', 'closing',
   ]);
   const pageIdToStencilKey = new Map<string, StencilKey>();
   for (const key of Object.keys(STENCILS) as StencilKey[]) {
     pageIdToStencilKey.set(STENCILS[key], key);
   }
 
-  // Image-size threshold: 1.5in × 1.5in = 2,058,675 × 2,058,675 EMU.
-  // Effective size = (raw size.{w,h}) × (transform.scale{X,Y}). Stock
-  // screenshots are typically 2-5in; watermarks + logos are < 1in.
+  // Image-size threshold: 1.5in² (= 2,058,675² EMU) for the body
+  // stencils (walkthrough et al). Closing uses a smaller 0.25in²
+  // threshold (= 457,200² EMU) so the headshot circle gets stripped too.
   const STRIP_THRESHOLD_EMU_SQ = 2_058_675 * 2_058_675;
+  const STRIP_THRESHOLD_EMU_SQ_CLOSING = 457_200 * 457_200;
 
   for (const s of pagesResp.data.slides ?? []) {
     const id = s.objectId;
@@ -678,7 +693,10 @@ async function main(): Promise<void> {
       if (stripImagesHere && el.image && el.objectId && el.size && el.transform) {
         const w = (el.size.width?.magnitude ?? 0) * (el.transform.scaleX ?? 1);
         const h = (el.size.height?.magnitude ?? 0) * (el.transform.scaleY ?? 1);
-        if (w * h >= STRIP_THRESHOLD_EMU_SQ) imageIds.push(el.objectId);
+        const threshold = stencilKey === 'closing'
+          ? STRIP_THRESHOLD_EMU_SQ_CLOSING
+          : STRIP_THRESHOLD_EMU_SQ;
+        if (w * h >= threshold) imageIds.push(el.objectId);
       }
       // Line/connector elements (thin diagonal annotations the designer
       // uses to link mockup callouts) — strip from image-bearing stencils

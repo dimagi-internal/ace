@@ -16,7 +16,7 @@ Read these artifacts from the opportunity's Drive folder (`ACE/<opp>/`):
 
 ### welcome (generate fresh)
 
-- **cover**: Use opportunity name as title. Subtitle = `"FLW Training"` (no date — the `date:` field renders the date on its own line below the subtitle; including the date in the subtitle string makes it render twice). The `date:` field gets the month + year (e.g. `"June 2026"`).
+- **cover**: Use opportunity name as title. **HARD CONSTRAINT: title ≤ 28 characters.** The Dimagi cover stencil's title shape wraps mid-word past ~28 chars at 32pt; longer opp names produce ugly mid-word breaks. If the opp's `display_name` is longer, shorten it for the cover (e.g. "Bednet Spot-Check (E2E Smoke)" → "Bednet Spot-Check" with `(E2E Smoke)` deferred to the subtitle if needed). Subtitle = `"FLW Training"` (no date — the `date:` field renders the date on its own line below the subtitle; including the date in the subtitle string makes it render twice). The `date:` field gets the month + year (e.g. `"June 2026"`).
 - **agenda**: List the module names as agenda items with approximate durations. Total should match `expected_duration_minutes` from the template (150-240 min).
 - **icebreaker**: Select ONE icebreaker from `_common/facilitation.yaml`. Pick `two-truths` for groups of 10+, `one-word` for groups of 20+, `common-ground` for groups under 10. Fill the template tokens.
 
@@ -33,47 +33,61 @@ The rendering pipeline resolves the reference at build time.
 
 ### your-opportunity (generate fresh — this is the core)
 
-This is the heart of the deck. Generate 8-15 slides covering:
+This is the heart of the deck. **Structure it around the 4 Connect lifecycle pillars: Learn → Deliver → Verify → Pay.** Each pillar gets its own `section` divider slide (large indigo headline on the section stencil) followed by 1-3 content slides. This mirrors how Connect itself frames the FLW journey and gives the trainee a mental map they can re-reference.
+
+Slide sequence (in order):
 
 1. **Opportunity overview** (1-2 slides, layout: `content` or `two_column`)
    - What the work is, who benefits, why it matters
-   - Payment structure: amount per visit, payment schedule, minimum quality threshold
+   - Brief intro to the 4 pillars: Learn (training), Deliver (field work), Verify (quality check), Pay (payment) — set expectations for what's coming.
 
-2. **Who you will visit** (1 slide, layout: `content`)
-   - Target population description from PDD
-   - Eligibility criteria if any
-   - What to expect at a typical visit
+2. **`section` divider: "Learn — What You Need to Know"** (1 slide, layout: `section`)
+   - The Learn pillar header. Sets up the Learn-app preview that follows.
 
-3. **Your visit workflow — REQUIRED: one slide per Deliver form** (C2)
+3. **Learn-app preview** (1 slide per Learn module, layout: `content`)
+   - Read the Learn app summary (`pdd-to-learn-app_summary.md` or `app-deploy_summary.md`). For each Learn module, emit a `content` slide titled `"Learn Module N: <module-name>"`. Body: 1-2 sentences naming the key concept the module teaches + the assessment threshold. This is the trainee-facing preview before they go complete the modules in the `practice` section.
+
+4. **Who you will visit** (1 slide, layout: `content`)
+   - Target population description from PDD; eligibility criteria if any; what to expect at a typical visit.
+
+5. **`section` divider: "Deliver — Your Visit Workflow"** (1 slide, layout: `section`)
+   - The Deliver pillar header. Sets up the per-form walkthrough sequence that follows.
+
+6. **Your visit workflow — REQUIRED: one slide per Deliver form** (C2)
    - Read the Deliver app summary (`pdd-to-deliver-app_summary.md` or `app-deploy_summary.md`). Enumerate every form in the Deliver app.
    - Emit **one walkthrough slide per Deliver form**. Title: `"Form N: <form-name>"` (use the form's actual display name from the app summary, not a paraphrase). Body: 1-2 sentences explaining what the FLW captures on this form, citing 2-3 specific field labels from the app summary. Image: per-opp screenshot `@alias` if the manifest includes one for this form; otherwise omit the image and use layout `content` (NEVER invent screenshot aliases).
    - This is the load-bearing per-opp section. A 6-form Deliver app produces 6 walkthrough slides; a 2-form app produces 2 slides. Do NOT collapse multiple forms into one slide. Do NOT skip forms because the screenshot is missing — emit the slide as `content` layout with the form-field detail in the body.
    - Name exact buttons: "Tap 'Next'", "Select 'Yes'", "Tap 'Submit'" using the live label text from the app summary.
 
-4. **Quality and verification** (1-2 slides, layout: `content`)
+7. **`section` divider: "Verify — How Your Work Is Checked"** (1 slide, layout: `section`)
+   - The Verify pillar header.
+
+8. **Quality and verification** (1-2 slides, layout: `content`)
    - How work is verified (GPS, photo, supervisor review, automated checks)
    - Common rejection reasons and how to avoid them
    - Quality threshold required for payment
 
-5. **Payment details** (1 slide, layout: `stats` or `content`)
-   - Amount per verified delivery
-   - Payment method and timing
-   - Minimum deliveries for payout
-   - If using `stats` layout: max 3 items, each with `big:` (the prominent number/value) and `label:` (short description). No `body` field — stats slides only have `title` and `stats`. Example:
-     ```yaml
-     stats:
-       - big: "USD 2.50"
-         label: "Per verified visit"
-       - big: "Weekly"
-         label: "Payment cycle"
-       - big: "10 visits"
-         label: "Minimum for payout"
-     ```
+9. **`section` divider: "Pay — What You Earn"** (1 slide, layout: `section`)
+   - The Pay pillar header.
 
-6. **Safety and ethics** (1 slide, layout: `content`)
-   - Consent requirements
-   - Data privacy expectations
-   - What to do if someone refuses or is unavailable
+10. **Payment details** (1 slide, layout: `stats` or `content`)
+    - Amount per verified delivery; payment method and timing; minimum deliveries for payout.
+    - If using `stats` layout: max 3 items, each with `big:` (prominent number/value) and `label:` (short description). No `body` field. Example:
+      ```yaml
+      stats:
+        - big: "USD 2.50"
+          label: "Per verified visit"
+        - big: "Weekly"
+          label: "Payment cycle"
+        - big: "10 visits"
+          label: "Minimum for payout"
+      ```
+
+11. **Safety and ethics** (1 slide, layout: `content`)
+    - Consent requirements; data privacy expectations; what to do if someone refuses or is unavailable.
+    - This is a cross-pillar concern and lives after the 4 pillars rather than within one.
+
+**Why pillar dividers matter:** Connect explicitly maps the FLW journey as Learn → Deliver → Verify → Pay; using those four words verbatim as section dividers anchors the trainee's mental model. A trainee who later opens the slides as a reference can jump to the right pillar instantly. The dividers also visually break the deck into chapters — a 30-slide deck reads as five chapters with clear transitions instead of one undifferentiated wall.
 
 ### practice (generate fresh) — REQUIRED: one Learn slide per Learn module (C2)
 
@@ -194,9 +208,11 @@ Produce a single `spec.yaml` file with all placeholders filled. The file must:
 
 1. Pass YAML syntax validation
 2. Have every `@alias` reference match the screenshot manifest
-3. Have a total slide count between 30 and 45
+3. Have a total slide count between 25 and 50. Smoke opps with 1 Learn module + 1 Deliver form will naturally land at the 25-30 floor; large opps with 5+ Learn modules + 6+ Deliver forms will land 40-50. WARN-only if outside this range — do NOT pad with filler.
 4. Have every slide with a non-empty `title`
 5. Have every slide with a non-empty `notes` (50-150 words, trainer-voice)
 6. Use only layouts from the 14 defined types above
 7. Include `platform-setup` and `resources` as `ref:` includes, not inline copies
 8. Cover slide subtitle = `"FLW Training"` only (no date — date renders separately via the `date:` field)
+9. Cover slide title ≤ 28 characters (Dimagi cover stencil wraps mid-word past ~28 chars at 32pt)
+10. `your-opportunity` module structured around the 4 Connect lifecycle pillars (Learn / Deliver / Verify / Pay) with `section` divider slides between them, per § your-opportunity above
