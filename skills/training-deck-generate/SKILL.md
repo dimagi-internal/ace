@@ -104,17 +104,36 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
      `{{LLO_CONTACT}}` with "your LLO manager", add OCS widget URL
      from `ocs-setup_widget-handoff.md` if available
 
-8. **Validate the generated spec.** Check against
-   `TrainingDeckSpecSchema` (Zod schema from
-   `lib/training-deck-spec.ts`). Fix any validation errors before
-   writing. Every `@alias` image ref must resolve against the merged
-   manifest from step 5.
+8. **Resolve `ref:` module references** via `resolveModuleRefs()` from
+   `lib/training-deck-spec.ts`. Any module declared with
+   `ref: _common/<name>` (e.g. `_common/platform-setup`,
+   `_common/resources`) gets inlined by loading
+   `templates/training-deck/_common/<name>.yaml` and substituting
+   `{{KEY}}` tokens from the module's `overrides:` map (recursively
+   across all string leaves). Pass the same `loadModule` adapter used
+   by the orchestrator (fs-based when running from a repo checkout,
+   Drive-based when running from a deployed skill).
 
-9. **Write** `training-deck-spec.yaml` to
-   `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
-   via `drive_create_file`. Overwrite if it already exists.
+   **Why this step is non-optional.** The render skill validates the
+   spec against `TrainingDeckSpecSchema`, which requires every module
+   to have inline `slides[]`. A spec that still contains `ref:` modules
+   fails parse and the render emits zero slides for those modules.
+   Pre-2026-05-25 specs that shipped with `ref: _common/platform-setup`
+   (the malaria-rdt run) lost their platform-setup slides for exactly
+   this reason — fixed by always inlining refs at generate time.
 
-10. **Self-evaluate (LLM-as-Judge inline).** Four criteria:
+9. **Validate the expanded spec.** Check against
+   `TrainingDeckSpecSchema` (Zod). Every `@alias` image ref must
+   resolve against the merged manifest from step 5; flag any
+   unresolvable refs as a hard fail.
+
+10. **Write** the fully-expanded `training-deck-spec.yaml` to
+    `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
+    via `drive_create_file`. Overwrite if it already exists. The
+    written spec MUST be schema-clean for `TrainingDeckSpecSchema`
+    (no `ref` modules remain).
+
+11. **Self-evaluate (LLM-as-Judge inline).** Four criteria:
 
     - **Module coverage:** all 6 modules present (`welcome`,
       `platform-setup`, `your-opportunity`, `practice`, `evaluation`,
@@ -131,7 +150,7 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
     in the standard shape (see `lib/verdict-schema.ts`). `passed: true`
     only if the first three criteria pass (slide count is WARN-only).
 
-11. **Hand off.** Print the spec's Drive URL + the verdict summary.
+12. **Hand off.** Print the spec's Drive URL + the verdict summary.
     Phase 6 orchestrator dispatches `training-deck-render` next.
 
 ## Archetypes

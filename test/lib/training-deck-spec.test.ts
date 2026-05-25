@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseTrainingSpec,
+  parseUnexpandedTrainingSpec,
   TrainingDeckSpecSchema,
   SlideSpecSchema,
   resolveManifest,
+  resolveModuleRefs,
   STENCILS,
   buildSlidesRequestsV2,
   type BuildOptsV2,
@@ -632,5 +634,217 @@ describe('buildSlidesRequestsV2', () => {
     expect(() =>
       buildSlidesRequestsV2(spec, { stencils: brokenStencils as any, manifest }),
     ).toThrow(/no matching stencil/i);
+  });
+});
+
+// ============================================================================
+// resolveModuleRefs — load + inline _common module templates with overrides
+// ============================================================================
+
+function unexpandedYaml(modulesYaml: string): string {
+  return `
+slug: test-opp
+name: Test Training
+program: Test Program
+archetype: atomic-visit
+template_id: tmpl_abc
+generated_at: "2026-05-25T00:00:00Z"
+source:
+  pdd_doc_id: doc_123
+  run_id: run_456
+manifest:
+  common:
+    logo: drive:logo123
+voice:
+  audience: flw
+  estimated_duration_minutes: 15
+  language: en
+modules:
+${modulesYaml}
+`;
+}
+
+describe('parseUnexpandedTrainingSpec', () => {
+  it('accepts spec with a ref module that ModuleSpecSchema would reject', () => {
+    const yamlStr = unexpandedYaml(`
+  - id: shared-intro
+    ref: _common/platform-setup
+    overrides:
+      LLO_CONTACT: "Your manager"
+`);
+    const spec = parseUnexpandedTrainingSpec(yamlStr);
+    expect(spec.modules).toHaveLength(1);
+    const m = spec.modules[0] as { id: string; ref: string; overrides?: Record<string, string> };
+    expect(m.ref).toBe('_common/platform-setup');
+    expect(m.overrides?.LLO_CONTACT).toBe('Your manager');
+  });
+
+  it('accepts a mix of inline and ref modules', () => {
+    const yamlStr = unexpandedYaml(`
+  - id: welcome
+    title: Welcome
+    slides:
+      - id: cover
+        layout: cover
+        title: Hello
+  - id: shared-resources
+    ref: _common/resources
+`);
+    const spec = parseUnexpandedTrainingSpec(yamlStr);
+    expect(spec.modules).toHaveLength(2);
+    expect((spec.modules[0] as { title: string }).title).toBe('Welcome');
+    expect((spec.modules[1] as { ref: string }).ref).toBe('_common/resources');
+  });
+});
+
+describe('resolveModuleRefs', () => {
+  it('inlines a ref module from the loader', async () => {
+    const yamlStr = unexpandedYaml(`
+  - id: platform-setup
+    ref: _common/platform-setup
+`);
+    const spec = parseUnexpandedTrainingSpec(yamlStr);
+
+    const loader = async (ref: string): Promise<string> => {
+      if (ref !== '_common/platform-setup') throw new Error(`unexpected ref: ${ref}`);
+      return `
+id: original-id
+title: Connect Setup
+slides:
+  - id: intro
+    layout: content
+    title: "What is Connect?"
+    body: "Connect matches you with paid work."
+`;
+    };
+
+    const expanded = await resolveModuleRefs(spec, loader);
+    expect(expanded.modules).toHaveLength(1);
+    expect(expanded.modules[0].id).toBe('platform-setup');
+    expect(expanded.modules[0].title).toBe('Connect Setup');
+    expect(expanded.modules[0].slides).toHaveLength(1);
+    expect(expanded.modules[0].slides[0].title).toBe('What is Connect?');
+  });
+
+  it('substitutes {{KEY}} tokens from overrides recursively', async () => {
+    const yamlStr = unexpandedYaml(`
+  - id: resources
+    ref: _common/resources
+    overrides:
+      LLO_CONTACT: "Your DFHF coordinator"
+      CHAT_URL: "https://chat.example.com"
+`);
+    const spec = parseUnexpandedTrainingSpec(yamlStr);
+
+    const loader = async (_ref: string): Promise<string> => `
+id: resources
+title: Resources
+slides:
+  - id: help
+    layout: content
+    title: "Where to Get Help"
+    body: "Your coordinator: {{LLO_CONTACT}}. Chat: {{CHAT_URL}}."
+  - id: closing
+    layout: closing
+    title: "Thanks"
+    body: "Talk to {{LLO_CONTACT}} for support."
+`;
+
+    const expanded = await resolveModuleRefs(spec, loader);
+    const helpSlide = expanded.modules[0].slides[0] as { body: string };
+    expect(helpSlide.body).toContain('Your DFHF coordinator');
+    expect(helpSlide.body).toContain('https://chat.example.com');
+    expect(helpSlide.body).not.toContain('{{LLO_CONTACT}}');
+
+    const closingSlide = expanded.modules[0].slides[1] as { body: string };
+    expect(closingSlide.body).toContain('Your DFHF coordinator');
+  });
+
+  it('leaves unmatched tokens in place', async () => {
+    const yamlStr = unexpandedYaml(`
+  - id: oops
+    ref: _common/foo
+    overrides:
+      KNOWN: "filled"
+`);
+    const spec = parseUnexpandedTrainingSpec(yamlStr);
+
+    const loader = async (_ref: string): Promise<string> => `
+id: foo
+title: Foo
+slides:
+  - id: s1
+    layout: content
+    title: "Known: {{KNOWN}}; Unknown: {{MISSING}}"
+    body: "Just {{KNOWN}}."
+`;
+
+    const expanded = await resolveModuleRefs(spec, loader);
+    const slide = expanded.modules[0].slides[0] as { title: string };
+    expect(slide.title).toBe('Known: filled; Unknown: {{MISSING}}');
+  });
+
+  it('passes inline modules through unchanged', async () => {
+    const yamlStr = unexpandedYaml(`
+  - id: welcome
+    title: Welcome
+    slides:
+      - id: cover
+        layout: cover
+        title: Hello
+        subtitle: World
+  - id: shared
+    ref: _common/x
+`);
+    const spec = parseUnexpandedTrainingSpec(yamlStr);
+
+    const loader = async (_ref: string): Promise<string> => `
+id: x
+title: Shared
+slides:
+  - id: s1
+    layout: content
+    title: From Template
+    body: Template body
+`;
+
+    const expanded = await resolveModuleRefs(spec, loader);
+    expect(expanded.modules).toHaveLength(2);
+    expect(expanded.modules[0].id).toBe('welcome');
+    expect(expanded.modules[0].title).toBe('Welcome');
+    expect(expanded.modules[1].id).toBe('shared');
+    expect(expanded.modules[1].title).toBe('Shared');
+  });
+
+  it('throws if loaded template is malformed', async () => {
+    const yamlStr = unexpandedYaml(`
+  - id: bad
+    ref: _common/broken
+`);
+    const spec = parseUnexpandedTrainingSpec(yamlStr);
+
+    const loader = async (_ref: string): Promise<string> => `
+id: broken
+slides:
+  - id: s1
+    layout: bogus
+    title: Bad
+`;
+
+    await expect(resolveModuleRefs(spec, loader)).rejects.toThrow();
+  });
+
+  it('propagates loader errors', async () => {
+    const yamlStr = unexpandedYaml(`
+  - id: missing
+    ref: _common/does-not-exist
+`);
+    const spec = parseUnexpandedTrainingSpec(yamlStr);
+
+    const loader = async (ref: string): Promise<string> => {
+      throw new Error(`no such template: ${ref}`);
+    };
+
+    await expect(resolveModuleRefs(spec, loader)).rejects.toThrow(/no such template/);
   });
 });
