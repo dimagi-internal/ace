@@ -110,7 +110,7 @@ solicitation and selecting one winner, Phase 9 onboards exactly one org.
 
 5. **Send the email** via the `email-communicator` skill (or draft for review).
 
-6. **Log communications** to `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-onboarding_comms-log.md`.
+6. **Log communications** to `ACE/<opp-name>/runs/<run-id>/9-execution-manager/llo-onboarding_comms-log.md`.
 
 ## Archetypes
 

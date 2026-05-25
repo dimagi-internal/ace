@@ -112,7 +112,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
 3. **Resume from partial capture** — `--deep` / `--monitor` only.
    Check for an existing transcript at the destination path
    (`ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-<mode>.md`,
-   or `7-execution-manager/...` for `--monitor`).
+   or `9-execution-manager/...` for `--monitor`).
    - **If absent:** fresh capture. Continue.
    - **If present and `complete: true` in the header:** the suite
      already ran cleanly. Skip the chat loop entirely; the caller can
@@ -381,6 +381,6 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-05-05 | **Path-scheme migration.** Transcripts now write to `runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-<mode>.md` (or `7-execution-manager/...` for `--monitor`), per the manifest. The opp-level `qa-captures/` directory is retired; the only surviving use of the dated `qa-captures/` form is the golden-template no-opp fallback (`ACE/golden-template/qa-captures/<dated>.md`). Resume-from-partial check (Step 3) re-pointed at the new path. No behavior change beyond paths. | ACE team |
+| 2026-05-05 | **Path-scheme migration.** Transcripts now write to `runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-<mode>.md` (or `9-execution-manager/...` for `--monitor`), per the manifest. The opp-level `qa-captures/` directory is retired; the only surviving use of the dated `qa-captures/` form is the golden-template no-opp fallback (`ACE/golden-template/qa-captures/<dated>.md`). Resume-from-partial check (Step 3) re-pointed at the new path. No behavior change beyond paths. | ACE team |
 | 2026-05-05 | **`--quick` switched to single-shot write.** Buffer entries in memory and call `drive_create_file` once at suite end (Step 7). Reduces Drive RTTs on `--quick` from N+1 (read+write per prompt + metadata) to 1. The incremental CAS-write strategy still applies on `--deep`/`--monitor` where 15–30 min suite runtimes make resume-from-partial worth the cost. Step 3 resume-from-partial is a `--deep`/`--monitor`-only step now (`--quick`'s 270s cap is short enough that re-running is cheaper than the resume bookkeeping). | ACE team |
 | 2026-05-15 | Extend `--quick` suite with archetype-specific prompts for `focus-group` (1–2 from `pdd-to-test-prompts.md` `gdoc-writing-guidance` + `facilitation-technique` categories) since the 3 universal Connect-domain prompts primarily exercise shared-collection retrieval and would pass even if the opp-specific collection was mis-loaded. Wall-clock cap scales to 360s/450s for focus-group. Atomic-visit / multi-stage stay at the 3-prompt / 270s baseline. Prompted by `malaria-itn-fgd/20260514-2352` Phase 5 observation. | ACE team |

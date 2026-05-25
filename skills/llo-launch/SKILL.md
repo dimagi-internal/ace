@@ -13,7 +13,7 @@ Activate the opportunity and notify LLOs that they are live.
 ## Process
 
 1. **Read inputs from GDrive:**
-   - UAT results: `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-uat_results.md` (includes archetype)
+   - UAT results: `ACE/<opp-name>/runs/<run-id>/9-execution-manager/llo-uat_results.md` (includes archetype)
    - Deployment summary: `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md` (atomic-visit)
    - Opportunity config: `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`
    - Awarded LLO: `phases.solicitation-management.products.selected_llo` in the current run's `run_state.yaml` (populated by Phase 8 `solicitation-review`)
@@ -151,7 +151,7 @@ Activate the opportunity and notify LLOs that they are live.
      activation confirmation, key contacts, support channels, training
      material links
 
-9. **Write launch record** to `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch_record.md`:
+9. **Write launch record** to `ACE/<opp-name>/runs/<run-id>/9-execution-manager/llo-launch_record.md`:
    - Archetype (recorded explicitly so `timeline-monitor` applies the
      right cadence and milestones)
    - Activation timestamp
@@ -283,11 +283,11 @@ next_stage_kickoff_window}`
 multi-stage opp's lifetime — once per stage transition. Each
 invocation re-emits a stage-specific gate brief + launch record. The
 gate brief path is the same
-(`runs/<run-id>/7-execution-manager/llo-launch_gate-brief.md`) —
+(`runs/<run-id>/9-execution-manager/llo-launch_gate-brief.md`) —
 subsequent runs overwrite the prior file; prior launch records stay
-in `runs/<run-id>/7-execution-manager/llo-launch_record-stage-N.md` so
+in `runs/<run-id>/9-execution-manager/llo-launch_record-stage-N.md` so
 history is preserved. (The
-`runs/<run-id>/7-execution-manager/llo-launch_record.md` entry tracks
+`runs/<run-id>/9-execution-manager/llo-launch_record.md` entry tracks
 the latest/current stage.)
 
 ## MCP Tools Used
