@@ -82,7 +82,9 @@ Read the PDD's `archetype:` at phase start. If it's `focus-group`:
 2. Patch `run_state.yaml.phases.synthetic-data-and-workflows` with
    `status: skipped`, `verdict: skipped`, `completed_at: <iso>`,
    `summary_artifact: <doc-id>`, `skip_reason: focus-group-no-op`.
-   Flip `gates.synthetic: skipped`.
+   (Pre-0.13.116 this was paired with a `gates.synthetic: skipped`
+   flip — gates removed in 0.13.116; pause-point status now derives
+   from `phases.<phase>.status`.)
 3. Return cleanly. Phase 8 (`solicitation-management`) starts.
 
 Do NOT dispatch any of the 7 sub-skills below. Do NOT call

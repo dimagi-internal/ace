@@ -78,9 +78,12 @@ text`.
   per-phase task list is known up-front from the workflow; emit one
   message with N `TaskCreate` tool-uses, not N sequential turns.
 - **≥3 same-class BLOCKER retries within one phase → halt the run.**
-  Write `gates.<phase>: failed` to `run_state.yaml`, surface
-  `[BLOCKER]` to the operator, and stop. Phase agents must not
-  auto-redispatch identical payloads.
+  Write `phases.<phase>.status: error` and `verdict: blocker-retry-cap`
+  to `run_state.yaml`, surface `[BLOCKER]` to the operator, and stop.
+  Phase agents must not auto-redispatch identical payloads.
+  (Pre-0.13.116 this paired with a `gates.<phase>: failed` flip;
+  gates removed — `phases.<phase>.status: error` is now the sole
+  signal.)
   **Why:** turmeric Phase 4 retried `connect_create_opportunity` 3×
   on an identical payload against the same opaque 500 before bisect
   proved it deterministic (CI-659, the 50-char `short_description`
@@ -154,11 +157,11 @@ text`.
   surface makes it easy to skip them ("the build succeeded, move on")
   but that leaves `has_judge: true` skills without verdicts and the
   Phase Write-Back Contract's verdict-gate rule fires
-  (`gates.commcare-setup` cannot be `passed` when any `has_judge: true`
-  skill has `steps.<skill>-eval.status: deferred`).
+  (`phases.commcare-setup.verdict` cannot be `pass` when any
+  `has_judge: true` skill has `steps.<skill>-eval.status: deferred`).
   **Why:** `malaria-itn-app/20260523-0750` Phase 3 ran all 7 producer
-  skills but 0 of 3 evals. The phase flipped `gates.commcare-setup:
-  pass` without any LLM-as-Judge quality signal.
+  skills but 0 of 3 evals. The phase shipped `verdict: pass` without
+  any LLM-as-Judge quality signal.
 - **Don't add operator-confirmation prompts on populated opps.** The
   "do you want to overwrite live state?" gate is off-spec — push
   reuse-vs-rebuild decisions down into phase-agent skill logic. Full
