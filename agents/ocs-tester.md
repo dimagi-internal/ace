@@ -6,8 +6,8 @@ description: >
   grades it), then reports a quality score. Used for pre-launch gating
   and ongoing monitoring of per-opportunity bots.
 skills:
-  - ocs-chatbot-qa
-  - ocs-chatbot-eval
+  - { name: ocs-chatbot-qa,   has_judge: false }
+  - { name: ocs-chatbot-eval, has_judge: true }
 ---
 
 # OCS Tester Agent
