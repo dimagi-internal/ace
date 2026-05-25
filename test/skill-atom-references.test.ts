@@ -98,6 +98,14 @@ const ALLOWLIST = new Set([
   'mobile_flow',  // template_kind for training-deck-render
   'mobile_zoom',  // template_kind for training-deck-render
 
+  // ---- Doctor probe / field-key / Android-view-ID names (PR-S
+  //      detector-widening surfaced these once agents/+playbook/integrations/
+  //      came into scope) ----
+  'drive_shared',                  // bin/ace-doctor probe label (PASS/FAIL on Shared-Drive parent guard)
+  'ocs_chatbot',                   // field key in run_state.yaml.phases.ocs-setup.products.ocs_chatbot
+  'connect_primary_phone_input',   // org.commcare.dalvik:id/connect_primary_phone_input AutoCompleteTextView
+  'slides_create_presentation',    // playbook/integrations/slides-integration.md: documented as "does not exist as an MCP atom"
+
   // ---- Known drift candidates (resolved as of 2026-05-25) ----
   //
   // PR-N (2026-05-25) resolved: connect_delete_opportunity (skill
@@ -125,8 +133,14 @@ function extractRegisteredAtoms(): Set<string> {
   return atoms;
 }
 
-function extractSkillMentions(): Map<string, Set<string>> {
-  // Returns a map: token → set of skill names that mention it.
+function extractDocMentions(): Map<string, Set<string>> {
+  // Returns a map: token → set of source-doc paths that mention it.
+  // Scans every markdown file in the three locations skills reference
+  // atoms from: `skills/*/SKILL.md`, `agents/*.md`, and
+  // `playbook/integrations/*.md`. The PR-S widening added the latter
+  // two — same drift class, just a different surface (procedure docs
+  // and integration playbooks can paraphrase atoms as easily as
+  // skills can).
   const tokenPattern = new RegExp(
     '`((?:' +
       ATOM_PREFIXES.map((p) => p.replace(/_$/, '')).join('|') +
@@ -134,48 +148,61 @@ function extractSkillMentions(): Map<string, Set<string>> {
     'g',
   );
   const mentions = new Map<string, Set<string>>();
+  const sources: string[] = [];
   const skillsDir = path.join(REPO_ROOT, 'skills');
   for (const d of fs.readdirSync(skillsDir)) {
     const p = path.join(skillsDir, d, 'SKILL.md');
-    if (!fs.existsSync(p)) continue;
+    if (fs.existsSync(p)) sources.push(p);
+  }
+  for (const dirRel of ['agents', 'playbook/integrations']) {
+    const dirAbs = path.join(REPO_ROOT, dirRel);
+    if (!fs.existsSync(dirAbs)) continue;
+    for (const f of fs.readdirSync(dirAbs)) {
+      const p = path.join(dirAbs, f);
+      if (p.endsWith('.md')) sources.push(p);
+    }
+  }
+  for (const p of sources) {
     const txt = fs.readFileSync(p, 'utf-8');
     let m: RegExpExecArray | null;
     while ((m = tokenPattern.exec(txt)) !== null) {
       const tok = m[1];
       if (!mentions.has(tok)) mentions.set(tok, new Set());
-      mentions.get(tok)!.add(d);
+      // Use the repo-relative path so failure messages name the
+      // offending file precisely.
+      mentions.get(tok)!.add(path.relative(REPO_ROOT, p));
     }
   }
   return mentions;
 }
 
-describe('skill → atom reference integrity', () => {
+describe('docs → atom reference integrity', () => {
   const atoms = extractRegisteredAtoms();
-  const mentions = extractSkillMentions();
+  const mentions = extractDocMentions();
 
-  it('every atom-shaped token mentioned in a SKILL.md is either a registered atom or in the allowlist', () => {
-    const offenders: Array<{ token: string; skills: string[] }> = [];
-    for (const [token, skillSet] of mentions) {
+  it('every atom-shaped token mentioned in a skill/agent/playbook doc is either a registered atom or in the allowlist', () => {
+    const offenders: Array<{ token: string; files: string[] }> = [];
+    for (const [token, fileSet] of mentions) {
       if (atoms.has(token)) continue;
       if (ALLOWLIST.has(token)) continue;
-      offenders.push({ token, skills: [...skillSet].sort() });
+      offenders.push({ token, files: [...fileSet].sort() });
     }
     if (offenders.length > 0) {
       const summary = offenders
-        .map((o) => `  - \`${o.token}\`  — mentioned in: ${o.skills.join(', ')}`)
+        .map((o) => `  - \`${o.token}\`  — mentioned in: ${o.files.join(', ')}`)
         .join('\n');
       throw new Error(
-        `Skill references ${offenders.length} atom-shaped token(s) that are neither registered atoms nor in the allowlist:\n${summary}\n\n` +
+        `${offenders.length} atom-shaped token(s) referenced in skills/agents/playbook are neither registered atoms nor in the allowlist:\n${summary}\n\n` +
           `Fix options:\n` +
           `  (a) Register the atom in the relevant mcp/*-server.ts (the real fix), OR\n` +
           `  (b) If the token is a field/env-var/Android-id/recipe-type that just LOOKS atom-shaped, add it to ALLOWLIST in test/skill-atom-references.test.ts with a one-line comment.\n` +
-          `  (c) If the skill mentions an atom name that no longer exists, update the skill text.`,
+          `  (c) If the doc mentions an atom name that no longer exists, update the doc text.`,
       );
     }
     expect(offenders).toEqual([]);
   });
 
-  it('every allowlist entry is actually referenced by at least one skill (no stale entries)', () => {
+  it('every allowlist entry is actually referenced by at least one doc (no stale entries)', () => {
     const stale: string[] = [];
     for (const tok of ALLOWLIST) {
       if (!mentions.has(tok)) stale.push(tok);
