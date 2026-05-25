@@ -121,13 +121,13 @@ These skills run on a schedule during the active opportunity:
   monitor verdict, eval emails the admin group
 
 ### Completion
-This phase is "complete" when the opportunity reaches its end date.
-Ongoing monitoring continues until then.
 
-When `llo-launch` activates the opp, write the `phases.execution-management`
-block per `agents/ace-orchestrator.md § Phase Write-Back Contract`. (0.13.116:
-legacy `gates.llo-launch` flip dropped — pause-point status derived from
-phases.execution-management.status + per-skill verdicts.) The recurring
-monitor steps (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`,
-`ocs-chatbot-eval-monitor`) update `phases.execution-management.steps.<step>.last_run_at`
-on each tick.
+This phase is "complete" when the opportunity reaches its end date. Ongoing monitoring continues until then.
+
+When `llo-launch` activates the opp:
+
+1. **Write the phase summary** to `ACE/<opp-name>/runs/<run-id>/9-execution-manager/execution-management_summary.md`. Lists the awarded LLO (from `phases.solicitation-management.products.selected_llo`), the onboarding email send timestamp, the UAT sign-off status, the opportunity-activated timestamp, and the recurring monitor cadence in effect. The summary is the handoff record for closeout review.
+
+2. **Write the `phases.execution-management` block** per [`agents/ace-orchestrator.md § Phase Write-Back Contract`](../agents/orchestrator-reference.md#phase-write-back-contract). Populate `summary_artifact:` with the file ID from step 1. (0.13.116: legacy `gates.llo-launch` flip dropped — pause-point status derived from `phases.execution-management.status` + per-skill verdicts.)
+
+The recurring monitor steps (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`, `ocs-chatbot-eval-monitor`) update `phases.execution-management.steps.<step>.last_run_at` on each tick.

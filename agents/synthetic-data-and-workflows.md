@@ -201,6 +201,12 @@ Invoke `synthetic-summary`.
   output a Dimagi staffer forwards to a stakeholder.
 - **No eval skill** — pure aggregation, deterministic.
 
+## Completion
+
+After Step 7, write the `phases.synthetic-data-and-workflows` block per [`agents/ace-orchestrator.md § Phase Write-Back Contract`](../agents/orchestrator-reference.md#phase-write-back-contract). Populate `summary_artifact:` with the file ID of the Step 7 output (`7-synthetic/synthetic-summary.md`) — Phase 7's summary IS the aggregator skill's output, not a separate `<phase>_summary.md` file. Required top-level keys on the patch: `phases`, `last_actor`, `last_actor_at`.
+
+(The focus-group archetype skip path above writes its own one-paragraph `synthetic-data-and-workflows_summary.md` because Step 7 doesn't run on that branch.)
+
 ## Re-runnability
 
 Each skill is independently re-runnable via `/ace:step` without forcing

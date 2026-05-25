@@ -124,19 +124,13 @@ entry guard halts with an actionable message if
 
 ## Completion
 
-The phase is "complete" in the orchestrator's sense after Step 2. The
-recurring monitor and manual review are NOT part of phase completion —
-they happen post-`/ace:run` and gate Phase 9 entry.
+The phase is "complete" in the orchestrator's sense after Step 2. The recurring monitor and manual review are NOT part of phase completion — they happen post-`/ace:run` and gate Phase 9 entry.
 
-After Step 2, write the `phases.solicitation-management` block per
-`agents/ace-orchestrator.md § Phase Write-Back Contract`. Set
-`phases.solicitation-management.verdict: halt-at-phase-7-to-8-boundary`
-to mark the orchestrator's halt point. (0.13.116: legacy `gates.llo-invite`
-+ `gates.solicitation-review` flips dropped. The Phase 8→9 halt is gated
-on `phases.solicitation-management.products.selected_llo.org_slug` being
-non-null in the current run's `run_state.yaml` — populated only by
-manual `/ace:step solicitation-review` — which preserves the HITL
-checkpoint without a `gates.<name>` field.)
+After Step 2:
+
+1. **Write the phase summary** to `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-management_summary.md`. Lists the published solicitation URL + deadline (from `products.solicitation`), the candidate LLO invites sent (from `llo-invite_invitations.md`), and the next-step instruction for the operator to run `/ace:step solicitation-review` after the deadline.
+
+2. **Write the `phases.solicitation-management` block** per [`agents/ace-orchestrator.md § Phase Write-Back Contract`](../agents/orchestrator-reference.md#phase-write-back-contract). Set `phases.solicitation-management.verdict: halt-at-phase-8-to-9-boundary` to mark the orchestrator's halt point, populate `summary_artifact:` with the file ID from step 1. (0.13.116: legacy `gates.llo-invite` + `gates.solicitation-review` flips dropped. The Phase 8→9 halt is gated on `phases.solicitation-management.products.selected_llo.org_slug` being non-null in the current run's `run_state.yaml` — populated only by manual `/ace:step solicitation-review` — which preserves the HITL checkpoint without a `gates.<name>` field.)
 
 ## MCP Tools Used (across all skills in this phase)
 
