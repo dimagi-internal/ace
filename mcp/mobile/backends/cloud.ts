@@ -70,9 +70,9 @@ export interface CloudBackendOpts {
    * Override the transient-failure retry config. By default
    * `CloudBackend.request` retries 2 times (3 attempts total) on network
    * errors + 502/503/504 with exponential backoff (250 ms, 1000 ms).
-   * Pass `{ retries: 0 }` to disable in tests. Application-level error
-   * envelopes (those carrying `payload.error.code`) and 4xx responses
-   * are never retried — they're deterministic from the request.
+   * Pass `{ retries: 0 }` to disable in tests. Application-level problem+json
+   * responses and 4xx responses are never retried — they're deterministic
+   * from the request.
    */
   retry?: {
     retries?: number;
@@ -799,10 +799,10 @@ export class CloudBackend {
     const signal = init.signal ?? AbortSignal.timeout(this.requestTimeoutMs);
 
     // Bounded retry on transient transport failures + upstream-gateway
-    // 5xx. Application-level error envelopes (`payload.error.code`) and
-    // 4xx responses are NOT retried — they're deterministic from the
-    // request, so retrying just delays the failure. The retry guard
-    // covers the classes of error that DO benefit from a second try:
+    // 5xx. Application-level problem+json responses and 4xx responses
+    // are NOT retried — they're deterministic from the request, so
+    // retrying just delays the failure. The retry guard covers the
+    // classes of error that DO benefit from a second try:
     //   - fetch throws (DNS hiccup, TCP reset, TLS handshake fail)
     //   - HTTP 502 (gateway received bad response from upstream)
     //   - HTTP 503 (gateway temporarily unavailable)
@@ -850,20 +850,18 @@ export class CloudBackend {
     }
 
     const text = await response.text();
-    let payload: {
-      data?: T;
-      error?: {
-        code: string;
-        message: string;
-        diagnostics?: Record<string, unknown>;
-      };
-    } = {};
+    // ace-web returns bare typed payloads on 2xx and RFC 7807
+    // application/problem+json on errors (the legacy {data, error}
+    // envelope was retired in ace-web PR #352). On success we hand the
+    // body straight back as T; on failure we extract `title`/`detail`/
+    // `extras.diagnostics` from the problem object.
+    let payload: unknown = undefined;
     if (text) {
       try {
         payload = JSON.parse(text);
       } catch {
-        // ace-web should always envelope; non-JSON likely means an
-        // upstream gateway returned its own error page.
+        // Non-JSON typically means an upstream gateway returned its
+        // own error page.
         throw new MobileError(
           'CLOUD_BAD_RESPONSE',
           `non-JSON response from ${url} (status ${response.status})`,
@@ -871,11 +869,22 @@ export class CloudBackend {
       }
     }
 
-    if (!response.ok || payload.error) {
-      const code = payload.error?.code ?? `HTTP_${response.status}`;
-      const baseMessage =
-        payload.error?.message ?? `${url} returned ${response.status}`;
-      const diagnostics = payload.error?.diagnostics;
+    if (!response.ok) {
+      const problem = (payload ?? {}) as {
+        type?: string;
+        title?: string;
+        detail?: string;
+        status?: number;
+        extras?: { diagnostics?: Record<string, unknown> } & Record<string, unknown>;
+      };
+      // `detail` carries the stable MobileError.code (e.g. "boot-timeout"),
+      // `title` is the human-readable message. Fall back gracefully if
+      // either is missing.
+      const code = problem.detail ?? `HTTP_${response.status}`;
+      const baseMessage = problem.title ?? `${url} returned ${response.status}`;
+      const diagnostics = problem.extras?.diagnostics as
+        | Record<string, unknown>
+        | undefined;
       // Bake the diagnostic snapshot into the error message — MCP
       // surfaces only `message` in the user-visible tool_result, so
       // putting it there avoids a second round-trip to /diagnose
@@ -896,7 +905,7 @@ export class CloudBackend {
       );
     }
 
-    return payload.data as T;
+    return payload as T;
   }
 
   private async downloadTo(url: string, dest: string): Promise<number> {
