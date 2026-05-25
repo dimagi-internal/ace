@@ -276,16 +276,7 @@ to the ACE Gmail identity (`ACE_GMAIL_ACCOUNT`) at mint time.
 
 - **No known upstream bugs.** 16 of 18 filed issues are closed;
   remaining two (#8 field-level multimedia, #12 multi-project-space
-  picker) are feature requests. One open observation from
-  `e2e-malaria-rdt` (2026-05-24): Nova's validator rejected
-  `#case/case_id` for `entity_id` on a deliver-app create-form
-  (the form that creates the case it references — case_id is the
-  new UUID being assigned mid-form and isn't a resolvable reference
-  at submission time). Workaround documented in
-  `skills/pdd-to-deliver-app/SKILL.md § Connect markers`: prefer
-  `#case/case_name` (a deterministic concat template) over
-  `#case/case_id` for create-form entity_ids. Not yet filed as a Nova
-  issue — needs a clean reproducer first. Notable capabilities:
+  picker) are feature requests. Notable capabilities:
   - `update_form` `deliver_unit` schema exposes `entity_id` and
     `entity_name` as optional fields with sensible defaults.
   - `update_form` with nullable properties (e.g. `connect: null`)

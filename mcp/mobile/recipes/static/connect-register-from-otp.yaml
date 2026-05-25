@@ -49,14 +49,24 @@ appId: org.commcare.dalvik
       - tapOn:
           id: "org.commcare.dalvik:id/snackbar_action"
 
-# App Lock screen offers Configure Fingerprint
-# and Configure PIN; AVD has no fingerprint enrolled so we use PIN.
-- extendedWaitUntil:
-    visible:
-      id: "org.commcare.dalvik:id/connect_verify_pin_button"
-    timeout: 15000
-- tapOn:
-    id: "org.commcare.dalvik:id/connect_verify_pin_button"
+# App Lock screen offers Configure Fingerprint and Configure PIN; AVD has
+# no fingerprint enrolled so we use PIN.
+#
+# Conditional rather than hard-asserted (changed 2026-05-25 after the
+# bednet-spot-check/20260525-1405 phantom blocker): on demo-bypass
+# re-registrations where the system lock + Connect account already exist,
+# the App Lock screen flashes through too fast for a 15s extendedWaitUntil
+# to land and the recipe halts despite the underlying registration
+# completing fine on the device. The terminal-state assertion at the end
+# of this recipe + `MobileClient.registerTestUser`'s post-failure
+# device-state probe both close the same gap from different angles.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/connect_verify_pin_button"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_verify_pin_button"
 
 # Two branches here:
 #
@@ -97,15 +107,18 @@ appId: org.commcare.dalvik
       - tapOn: "AGREE & CONTINUE"
 
 # System biometric prompt: "Unlock PersonalID" / "Please unlock to continue".
-# Enter the PIN we just set.
-- extendedWaitUntil:
-    visible:
-      id: "com.android.systemui:id/lockPassword"
-    timeout: 8000
-- tapOn:
-    id: "com.android.systemui:id/lockPassword"
-- inputText: ${PIN}
-- pressKey: Enter
+# Enter the PIN we just set. Conditional — on re-registrations where the
+# system lock is already set up, this prompt may not appear at all (Connect
+# auto-advances past it).
+- runFlow:
+    when:
+      visible:
+        id: "com.android.systemui:id/lockPassword"
+    commands:
+      - tapOn:
+          id: "com.android.systemui:id/lockPassword"
+      - inputText: ${PIN}
+      - pressKey: Enter
 
 # Second snackbar after successful unlock (same demo-user message). Some
 # CommCare builds re-show it post-unlock; runFlow.when keeps the recipe
@@ -260,3 +273,22 @@ appId: org.commcare.dalvik
           timeout: 15000
       - tapOn:
           id: "org.commcare.dalvik:id/save_photo_button"
+
+# Terminal-state assertion (added 2026-05-25 after the
+# bednet-spot-check/20260525-1405 phantom blocker). All upstream steps in
+# this recipe are conditional because demo-bypass re-registrations can
+# blur through intermediate screens (App Lock setup, system unlock
+# prompt, photo capture) before Maestro's polling window lands on any of
+# them. The recipe is "done" when the device shows one of the Connect-
+# home drawer markers — Work History / Opportunities / Messaging /
+# CommCare Apps — which only appear post-registration. 60s budget covers
+# the slow path (Account Recovered dialog + Learn auto-claim+install on
+# pre-invited demo users).
+#
+# Mirrors the post-registered signal classifyDeviceUserState() reads in
+# mcp/mobile/client.ts:169. Keep the alternatives in sync if either
+# side changes.
+- extendedWaitUntil:
+    visible:
+      textRegex: "(Work History|Opportunities|Messaging|CommCare Apps)"
+    timeout: 60000

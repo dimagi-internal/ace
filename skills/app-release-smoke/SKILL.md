@@ -154,6 +154,73 @@ If the canonical field-count comparison is over-conservative (false
 positives on auto-generated binds), the skill can WARN instead of
 halt — but the operator should see the count in the verdict.
 
+### Step 4.5: Runtime install validation via `commcare-cli.jar`
+
+Steps 3–4 are **structural** — they parse the CCZ + match counts
+against the Nova blueprint, but never bind any XPath expression.
+That leaves a real failure class uncovered: a CCZ whose XPath
+references resolve to nothing at install time (e.g. a `connect.deliver_unit.entity_id`
+bound to a `#case/<calculated-field>` on a case-create form, where
+the calculate hasn't fired yet). On the device, CommCare's
+`XFormAndroidInstaller` rejects the CCZ with `InvalidResourceException`
+→ "A part of your application is invalid." Static counts don't catch
+this; the runtime install path does.
+
+`dimagi/commcare-core`'s `commcare-cli.jar validate` subcommand runs
+the **same** `ResourceTable.initializeResources` install path the
+Android device runs, including `XFormParser`, `SuiteParser`,
+`ProfileParser`, and reference resolution. Wire it in here so the
+operator sees the defect at Phase 3 — not Phase 6 with hours of
+downstream debug.
+
+For each app (Learn, Deliver):
+
+1. Call:
+
+   ```
+   commcare_validate_ccz({
+     ccz_base64: <base64 from Step 2's commcare_download_ccz response>,
+     // jar_path optional — defaults to $ACE_COMMCARE_CLI_JAR or
+     // $CLAUDE_PLUGIN_DATA/commcare-cli.jar
+   })
+   ```
+
+2. Read the response:
+
+   ```
+   { verdict: 'pass' | 'fail',
+     exit_code: <int>,
+     failed_resource?: 'jr://resource/modules-0/forms-0.xml',
+     parser_message?: 'XPathException: Cannot resolve #case/case_name at install',
+     stdout: <truncated to 4KB>,
+     stderr: <truncated to 4KB>,
+     timed_out: <bool>,
+     // present only on input errors:
+     input_error?: 'jar_not_found' | 'ccz_not_found' | 'ccz_empty',
+     input_error_path?: <path>,
+   }
+   ```
+
+3. Branch:
+
+   - **`verdict: 'pass'`** → record per-app `cli_validate: {verdict: pass, exit_code: 0}` in the Step 5 verdict; continue.
+   - **`verdict: 'fail'` AND `input_error: 'jar_not_found'`** → emit `[WARN]` (NOT `[BLOCKER]`) in `auto_surfaced_concerns` with the operator-setup remediation block below, and continue. The structural gates from Steps 3–4 are still authoritative; this just means the install-time gate is unavailable on this machine.
+   - **`verdict: 'fail'` for any other reason** → halt with `[BLOCKER]` naming `failed_resource` (when present), `parser_message` (when present), and the first 500 chars of `stderr`. The most common cause is a runtime-only XPath defect (e.g. PR #445's `#case/case_name`-on-create-form class — see `docs/learnings/2026-05-25-entity-id-misdiagnosis.md`).
+
+**Operator one-time setup (only when `input_error: 'jar_not_found'` fires):**
+
+```bash
+git clone https://github.com/dimagi/commcare-core ~/repos/commcare-core
+cd ~/repos/commcare-core
+./gradlew cliJar   # produces build/libs/commcare-cli-<version>.jar
+cp build/libs/commcare-cli-*.jar "$CLAUDE_PLUGIN_DATA/commcare-cli.jar"
+# Or pin an absolute path via ACE_COMMCARE_CLI_JAR in .env
+```
+
+Java 17+ required (matches the existing AVD-tooling JDK requirement).
+`/ace:doctor` reports `commcare_cli_jar` presence + a `java -jar … help`
+freshness probe.
+
 ### Step 5: Write verdict
 
 Write `3-commcare/app-release-smoke_verdict.yaml`. Shape:
@@ -187,6 +254,11 @@ per_app:
         ccz_count: <int>
         match: true | false
       - ...
+    cli_validate:
+      verdict: pass | fail | unavailable
+      exit_code: <int>
+      failed_resource: <descriptor when verdict=fail, optional>
+      parser_message: <exception:msg when verdict=fail, optional>
   deliver:
     hq_app_id: <id>
     build_id: <id>
@@ -202,11 +274,22 @@ per_app:
       ccz_count: <int>
       match: true | false
     field_counts: [...]
+    cli_validate:
+      verdict: pass | fail | unavailable
+      exit_code: <int>
+      failed_resource: <optional>
+      parser_message: <optional>
 auto_surfaced_concerns:
   - severity: BLOCKER | WARN | INFO
     message: "..."
 blockers: [...]
 ```
+
+Use `verdict: unavailable` when `commcare_validate_ccz` returned
+`input_error: jar_not_found` (the operator hasn't built the jar yet).
+Pair with a `[WARN]` `auto_surfaced_concerns` entry pointing at the
+Step 4.5 setup block. Use `verdict: fail` only for real install-time
+defects.
 
 ## Mode behavior
 
@@ -228,6 +311,20 @@ blockers: [...]
   emitted invalid XML. Halt; re-run `pdd-to-{learn,deliver}-app`.
 - `form-count-mismatch` — Nova said N forms, CCZ has M. Likely Nova
   partial-persistence on form creation. Re-run the build.
+- `cli-install-rejected` — `commcare-cli.jar validate` exited non-zero or
+  surfaced an `XFormParseException` / `InvalidResourceException` /
+  `UnresolvedResourceException` / `XPathException` on stderr. This is the
+  runtime-install failure class that the structural Steps 3–4 cannot
+  catch. The verdict YAML's `per_app.<app>.cli_validate.{failed_resource,
+  parser_message}` names the exact form + parser message; the operator's
+  next move is usually `pdd-to-{learn,deliver}-app` re-build with the
+  defect addressed (e.g. flip `entity_id` back to `#case/case_id` per
+  the `2026-05-25-entity-id-misdiagnosis` learning). Halt loud.
+- `cli-validator-unavailable` — `commcare-cli.jar` not on the operator's
+  machine (resolved jar path returned `input_error: jar_not_found`). This
+  is `[WARN]`, not `[BLOCKER]` — Steps 3–4 still gate structural defects;
+  this just means the install-time gate is off. Operator fix: build the
+  jar per Step 4.5's setup block.
 - `learn-marker-missing` / `deliver-marker-missing` — released CCZ
   doesn't carry the Connect-marker wrappers Connect's sync requires.
   Halt; investigate Nova-side OR check if any post-build patcher
@@ -238,7 +335,7 @@ blockers: [...]
 
 ## MCP tools used
 
-- ace-connect: `commcare_download_ccz`
+- ace-connect: `commcare_download_ccz`, `commcare_validate_ccz`
 - nova: `get_app`
 - ace-gdrive: `drive_read_file`, `drive_create_file`
 
@@ -247,3 +344,4 @@ blockers: [...]
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-22 | Initial version. Replaces the prior (reverted) "move app-screenshot-capture to Phase 3" attempt. AVD-free structural verification on released CCZ — would have caught the malaria-rdt 20260522-1002 form-patch over-stripping at Phase 3 instead of Phase 6, and catches Nova partial-persistence silent field omissions. Full AVD smoke (`app-screenshot-capture`) stays in Phase 6 where Connect state is available. | ACE team |
+| 2026-05-25 | **Add Step 4.5 — runtime install validation via `commcare-cli.jar`.** Wraps `dimagi/commcare-core`'s `commcare-cli.jar validate` subcommand (which runs the SAME `ResourceTable.initializeResources` install path the Android device runs). Catches the runtime-install failure class that Steps 3–4 cannot: a CCZ whose XPath references resolve to nothing at install time (canonical example: `connect.deliver_unit.entity_id` bound to `#case/<calculated-field>` on a case-create form). Reproducer: `bednet-spot-check/20260525-1405` Phase 6 — `entity_id: #case/case_name` substitution passed every Phase 3 static gate then was rejected on-device with "A part of your application is invalid." Operator one-time setup: clone commcare-core + `./gradlew cliJar` + cache jar at `$CLAUDE_PLUGIN_DATA/commcare-cli.jar`. `[BLOCKER]` on `cli-install-rejected`; `[WARN]` on `cli-validator-unavailable` (jar not built yet — structural Steps 3–4 still authoritative). See `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md` § Preventer 2. | ACE team |

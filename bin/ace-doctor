@@ -1743,6 +1743,52 @@ else
   fi
 fi
 
+# 7d. commcare_cli_jar — gates Phase 3 `app-release-smoke` Step 4.5
+# (runtime install validation via `commcare-cli.jar validate`). The CLI
+# runs the same install path the Android device runs, catching the
+# runtime-install failure class that the structural Steps 3–4 miss
+# (canonical case: a `connect.deliver_unit.entity_id` bound to a
+# `#case/<calculated-field>` on a case-create form — install-time
+# resource graph reads null, CCZ rejected with "A part of your
+# application is invalid"). One-time operator setup:
+#   git clone https://github.com/dimagi/commcare-core
+#   cd commcare-core && ./gradlew cliJar
+#   cp build/libs/commcare-cli-*.jar $CLAUDE_PLUGIN_DATA/commcare-cli.jar
+# Or set `ACE_COMMCARE_CLI_JAR` to an absolute path.
+#
+# WARN (not FAIL) on absence — `app-release-smoke` continues with
+# `cli_validate.verdict: unavailable` so the structural gates still
+# run. Becomes a real Phase 3 BLOCKER only when the operator wants the
+# install-time gate active.
+COMMCARE_CLI_JAR_PATH=""
+if [ -n "${ACE_COMMCARE_CLI_JAR:-}" ]; then
+  COMMCARE_CLI_JAR_PATH="$ACE_COMMCARE_CLI_JAR"
+elif [ -n "${ACE_PLUGIN_DATA_DIR:-}" ] && [ -f "$ACE_PLUGIN_DATA_DIR/commcare-cli.jar" ]; then
+  COMMCARE_CLI_JAR_PATH="$ACE_PLUGIN_DATA_DIR/commcare-cli.jar"
+elif [ -f "$HOME/.claude/plugins/data/ace-ace/commcare-cli.jar" ]; then
+  COMMCARE_CLI_JAR_PATH="$HOME/.claude/plugins/data/ace-ace/commcare-cli.jar"
+fi
+if [ -z "$COMMCARE_CLI_JAR_PATH" ]; then
+  warn "commcare_cli_jar: not found at \$ACE_COMMCARE_CLI_JAR or \$CLAUDE_PLUGIN_DATA/commcare-cli.jar" "one-time build: git clone https://github.com/dimagi/commcare-core && cd commcare-core && ./gradlew cliJar && cp build/libs/commcare-cli-*.jar \$CLAUDE_PLUGIN_DATA/commcare-cli.jar  (or set ACE_COMMCARE_CLI_JAR). Without this, Phase 3 app-release-smoke can't catch runtime-install defects (e.g. bednet-spot-check/20260525-1405 class)."
+elif [ ! -r "$COMMCARE_CLI_JAR_PATH" ]; then
+  warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH not readable" "fix file permissions or re-copy the jar"
+else
+  COMMCARE_CLI_JAR_SIZE="$(stat -f %z "$COMMCARE_CLI_JAR_PATH" 2>/dev/null || stat -c %s "$COMMCARE_CLI_JAR_PATH" 2>/dev/null || echo 0)"
+  if [ "$COMMCARE_CLI_JAR_SIZE" -lt 100000 ]; then
+    warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH suspiciously small ($COMMCARE_CLI_JAR_SIZE bytes)" "rebuild via ./gradlew cliJar in commcare-core checkout"
+  elif command -v java >/dev/null 2>&1; then
+    # Cheap freshness probe — `java -jar … help` exits 0 on a real
+    # commcare-cli build. Total budget ~3s including JVM cold-start.
+    if COMMCARE_CLI_HELP="$(java -jar "$COMMCARE_CLI_JAR_PATH" help 2>&1)" && echo "$COMMCARE_CLI_HELP" | grep -q -i "validate"; then
+      pass "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH ($COMMCARE_CLI_JAR_SIZE bytes; help subcommand lists validate)"
+    else
+      warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH present but \`java -jar … help\` didn't list 'validate'" "this may be a stale jar (built before the validate subcommand) or a different jar. Rebuild from latest dimagi/commcare-core main."
+    fi
+  else
+    warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH present but \`java\` not on PATH" "install JDK 17+ (brew install openjdk@17 on macOS)"
+  fi
+fi
+
 # 8. ace-mobile — local-only MCP (Maestro + adb + AVD + APK). It does not
 # authenticate against any remote service at runtime, so there is no
 # "live auth probe" distinct from the others. The auth-adjacent things
