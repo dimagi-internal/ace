@@ -258,7 +258,7 @@ atom set (phase subagents run their own `ToolSearch` for phase-specific
 atoms). Issue this verbatim:
 
 ```
-ToolSearch select:drive_read_file,drive_list_folder,drive_create_file,drive_create_folder,drive_update_file,drive_move_file,drive_rename_file,docs_get,sheets_read,sheets_append,commcare_make_build,commcare_release_build,commcare_download_ccz,commcare_upload_multimedia
+ToolSearch select:drive_read_file,drive_list_folder,drive_create_file,drive_create_folder,drive_update_file,drive_move_file,drive_rename_file,docs_get,sheets_read,sheets_append,commcare_make_build,commcare_release_build,commcare_download_ccz,commcare_upload_multimedia,classify_phase_writeback,validate_run_state,resolve_opp_path,generate_inputs_manifest,get_google_form_definition
 ```
 
 Bare names usually resolve via the `select:` shortcut. If a `select:`
@@ -378,19 +378,19 @@ all lost. Diagnosed as the same failure class in Phase 3 inline execution
 where step entries lacked `artifact` fields.
 
 **Auto-retry silent Agent dispatches before surfacing failure.** The
-gating signal is the **Phase Write-Back Verifier read** that already
-runs in Turn N+1 of the § Phase boundary fence (`drive_read_file` on
-`run_state.yaml`). Treat the Agent dispatch as a **silent failure**
-when either:
+gating signal is `classify_phase_writeback(fileId=<run_state.yaml>,
+phaseName=<phase>)` — the single-call classifier that already runs in
+Turn N+1 of the § Phase boundary fence. Treat the Agent dispatch as a
+**silent failure** when classifier returns `'missing'`,
+`'in_progress'`, or `'malformed'` (agent didn't flip the gate /
+wrote a broken block). This is the **primary, structural signal** —
+it doesn't depend on response text quality.
 
-- The verifier read shows `phases.<phase>` block is absent OR its
-  `status` is still `in_progress`/`pending` (the agent didn't flip
-  the gate). This is the **primary, structural signal** — it doesn't
-  depend on response text quality.
-- The Agent message body is empty, whitespace-only, or literally `No
-  response requested` (or a near-variant). These are **secondary
-  signals** — useful for catching the cases where the agent never
-  even started its workflow, before the verifier read happens.
+Secondary signals (useful for catching the case where the agent
+never even started its workflow, before Turn N+1 happens): the Agent
+message body is empty, whitespace-only, or literally `No response
+requested` (or a near-variant). Treat these the same as a `'missing'`
+classification.
 
 On silent failure, re-dispatch the SAME phase ONE more time with an
 explicit closing line appended to the `## Your task` block:
@@ -398,25 +398,29 @@ explicit closing line appended to the `## Your task` block:
 ```
 **Required: produce the artifact(s) described in your agent definition
 and write back to `run_state.yaml.phases.<phase>.status = done` before
-returning. The orchestrator verifies this via drive_read_file on
-run_state.yaml; an in_progress or missing block is treated as a silent
-failure.**
+returning. The orchestrator verifies via
+`classify_phase_writeback(fileId, phaseName=<phase>)`; a 'missing',
+'in_progress', or 'malformed' result is treated as a silent failure.**
 ```
 
-If the second dispatch also fails the verifier read, STOP and surface
-to the human — do not loop indefinitely. Cap at 2 attempts total per
-phase per orchestrator turn.
+If the second dispatch also fails (classifier returns one of the
+silent-failure dispositions again), STOP and surface to the human —
+do not loop indefinitely. Cap at 2 attempts total per phase per
+orchestrator turn. A classifier result of `'error'` is a real phase
+failure and halts immediately — do not retry.
 
 **Why structural, not text-match.** Text-match alone (`"No response
 requested"`) is fragile — the agent could return a confidently-worded
 status text that says "Phase 1 complete: PDD written" while having
-written nothing. The verifier read against `run_state.yaml.phases.<phase>`
-is the same source of truth `/ace:status` and `opp-eval` use; if the
-gate didn't flip, the phase didn't ship, regardless of what the
-response text claimed. `e2e-malaria-rdt` Phase 1's silent dispatch
-happened to also have empty text, so PR-A's text-match worked there —
-but PR-G's verifier-driven signal catches the harder class where the
-agent returns plausible-sounding text without actually writing.
+written nothing. `classify_phase_writeback` is backed by the same
+source of truth `/ace:status` and `opp-eval` use (`phases.<phase>` in
+`run_state.yaml`); if the gate didn't flip, the phase didn't ship,
+regardless of what the response text claimed. `e2e-malaria-rdt`
+Phase 1's silent dispatch happened to also have empty text, so PR-A's
+text-match worked there — but the classifier-driven signal catches
+the harder class where the agent returns plausible-sounding text
+without actually writing. PR-J built the pure helper, PR-L wrapped
+it as the atom, PR-M wired it into Turn N+1.
 
 **Pre-load common MCP atoms at start.** Many ACE atoms are exposed as
 deferred tools that need a `ToolSearch` lookup before first use. To
@@ -1106,24 +1110,46 @@ That's ~5 wasted turns × seconds each × 8 boundaries per run
 ```
 Turn N:    Agent(<phase>) tool_result
 Turn N+1:  ONE message — all 4 (or 5) tool calls in parallel:
-             1. drive_read_file on run_state.yaml (write-back verifier)
+             1. classify_phase_writeback(fileId=<run_state.yaml>, phaseName=<phase>)
+                — returns 'ok' | 'missing' | 'in_progress' | 'error' | 'malformed'
              2. drive_list_folder on <runFolderId>/<N>-<phase>/ (artifact verifier)
              3. TaskUpdate marking <phase> completed, next phase in_progress
              4. Skill(decisions-render) — idempotent
              5. drive_create_file gate-brief, if applicable
            Optional one-line text summary in the same message.
-Turn N+2:  (only if N+1's read showed the phase block missing OR the
-           list showed required artifacts missing)
-           update_yaml_file stub fallback per § Phase Write-Back
-           Verifier — procedure in `agents/orchestrator-reference.md`,
-           OR halt with the `[BLOCKER]` message per § Producer Artifact
-           Verifier.
+Turn N+2:  Branch on the classifier result:
+             - 'ok'           → proceed to Turn N+3
+             - 'in_progress'  → silent-dispatch retry (see § Auto-retry silent
+                                 Agent dispatches above); cap at 2 attempts
+             - 'missing'      → silent-dispatch retry, same cap
+             - 'malformed'    → if validate_run_state's full issue list
+                                 includes only fixable gaps (e.g. missing
+                                 completed_at), patch via update_yaml_file
+                                 stub fallback per § Phase Write-Back
+                                 Verifier in `agents/orchestrator-reference.md`;
+                                 otherwise retry
+             - 'error'        → halt with the [BLOCKER] message per
+                                 § Producer Artifact Verifier; phase
+                                 itself returned an error verdict
+           Also: if Turn N+1's `drive_list_folder` showed any required
+           artifact missing, halt with [BLOCKER] regardless of classifier.
 Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
 ```
 
 If the phase returned a `[BLOCKER]` or hard error, replace Turn N+3
 with a halt message — but Turn N+1 still happens (write-back is
 mandatory regardless of verdict).
+
+**Why `classify_phase_writeback` rather than raw `drive_read_file`.** Pre-PR-L,
+Turn N+1 read the YAML and the orchestrator eyeballed `phases.<phase>.status`.
+That's a 3-step model dance (read → parse → judge) prone to drift if the
+agent text-matches against malformed YAML. Post-PR-L,
+`classify_phase_writeback` is a single deterministic tool_use that returns
+the exact disposition the silent-retry / halt branches need. Implementation:
+`lib/run-state-validator.ts::classifyPhaseWriteBack`. For the full issue
+list (e.g. inspect WHICH field is missing on a `'malformed'` result), call
+`validate_run_state(fileId)` — same backing helper, returns
+`{valid, errors, warnings}` with `{path, message, severity}` per issue.
 
 **Forbidden boundary improvisations.** The boundary fence's 4-5 tool
 calls listed above are the COMPLETE set. Do NOT also:
