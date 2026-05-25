@@ -15,12 +15,29 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-function envelope<T>(data: T): { data: T; error: null } {
-  return { data, error: null };
+// ace-web returns bare typed payloads on 2xx since PR #352. Kept as
+// `envelope()` so the (many) call sites that read like documentation —
+// `jsonResponse(200, envelope({...}))` — don't all churn.
+function envelope<T>(data: T): T {
+  return data;
 }
 
-function envErr(code: string, message: string) {
-  return { data: null, error: { code, message } };
+// ace-web errors are RFC 7807 application/problem+json:
+//   { type, title, status, detail, extras? }
+// MobileError -> _mobile_problem in apps/mobile/api.py packs `code` into
+// `detail` and the human message into `title`. Diagnostics (when the
+// server provides them) ride in `extras.diagnostics`.
+function envErr(
+  code: string,
+  message: string,
+  extras?: Record<string, unknown>,
+) {
+  return {
+    type: 'https://ace-web.dimagi.com/problems/mobile',
+    title: message,
+    detail: code,
+    ...(extras ? { extras } : {}),
+  };
 }
 
 /**
@@ -123,7 +140,7 @@ describe('CloudBackend.ensureAvdRunning', () => {
     await expect(cb.ensureAvdRunning('cloud')).rejects.toBeInstanceOf(AvdBootError);
   });
 
-  it('maps generic envelope errors to MobileError with namespaced code', async () => {
+  it('maps generic problem+json errors to MobileError with namespaced code', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse(503, envErr('singleton-busy', 'another caller holds the lock')),
     );
@@ -135,27 +152,30 @@ describe('CloudBackend.ensureAvdRunning', () => {
 
   it('surfaces emulator-not-ready diagnostics inline in the error message', async () => {
     // ace-web /api/mobile/ensure-running returns 503 emulator-not-ready
-    // with a `diagnostics` block. cloud.ts must bake the snapshot into
-    // the user-visible message (MCP only surfaces .message in the
-    // tool_result, so callers can't see structured fields otherwise).
+    // with the diagnostics block under problem+json `extras.diagnostics`.
+    // cloud.ts must bake the snapshot into the user-visible message (MCP
+    // only surfaces .message in the tool_result, so callers can't see
+    // structured fields otherwise).
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse(503, {
-        data: null,
-        error: {
-          code: 'emulator-not-ready',
-          message: 'emulator on i-abc signalled ready but no device is visible to adb',
-          diagnostics: {
-            adb_devices: [],
-            adb_visible_count: 0,
-            emulator_pid: null,
-            runner_service_state: 'failed',
-            marker_present: true,
-            marker_age_seconds: 1200,
-            runner_log_tail: '[ace-emulator-launch] ERROR: boot timed out',
-            emulator_log_tail: 'emulator: PANIC: Could not find AVD',
+      jsonResponse(
+        503,
+        envErr(
+          'emulator-not-ready',
+          'emulator on i-abc signalled ready but no device is visible to adb',
+          {
+            diagnostics: {
+              adb_devices: [],
+              adb_visible_count: 0,
+              emulator_pid: null,
+              runner_service_state: 'failed',
+              marker_present: true,
+              marker_age_seconds: 1200,
+              runner_log_tail: '[ace-emulator-launch] ERROR: boot timed out',
+              emulator_log_tail: 'emulator: PANIC: Could not find AVD',
+            },
           },
-        },
-      }),
+        ),
+      ),
     );
     const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
     const err = await cb.ensureAvdRunning('cloud').catch((e) => e);
@@ -830,7 +850,7 @@ describe('CloudBackend.request: transient-failure retry', () => {
     const recorder = makeRecorderSleep();
     const fetchImpl = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(503, { error: { code: 'gateway', message: 'transient' } }))
+      .mockResolvedValueOnce(jsonResponse(503, envErr('gateway', 'transient')))
       .mockResolvedValueOnce(
         jsonResponse(200, envelope({ name: 'cc-2.62.0', snapshot: 'x', commcare_version: '2.62.0' })),
       );
@@ -887,7 +907,7 @@ describe('CloudBackend.request: transient-failure retry', () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(
-        jsonResponse(403, { error: { code: 'forbidden', message: 'no auth' } }),
+        jsonResponse(403, envErr('forbidden', 'no auth')),
       );
     const cb = new CloudBackend({
       baseUrl: BASE,
@@ -900,12 +920,12 @@ describe('CloudBackend.request: transient-failure retry', () => {
     expect(recorder.sleeps).toEqual([]);
   });
 
-  it('does NOT retry on application-level error envelope (deterministic)', async () => {
+  it('does NOT retry on application-level problem+json error (deterministic)', async () => {
     const recorder = makeRecorderSleep();
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(
-        jsonResponse(200, envErr('invalid-args', 'state name unknown')),
+        jsonResponse(400, envErr('invalid-args', 'state name unknown')),
       );
     const cb = new CloudBackend({
       baseUrl: BASE,
@@ -914,7 +934,7 @@ describe('CloudBackend.request: transient-failure retry', () => {
       retry: { sleepImpl: recorder.sleepImpl },
     });
     await expect(cb.listStates()).rejects.toThrow(/state name unknown/);
-    // Only one attempt — envelope errors are deterministic.
+    // Only one attempt — problem+json errors are deterministic.
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -937,7 +957,7 @@ describe('CloudBackend.request: transient-failure retry', () => {
     const recorder = makeRecorderSleep();
     const fetchImpl = vi
       .fn()
-      .mockResolvedValue(jsonResponse(503, { error: { code: 'gateway', message: 'still down' } }));
+      .mockResolvedValue(jsonResponse(503, envErr('gateway', 'still down')));
     const cb = new CloudBackend({
       baseUrl: BASE,
       token: TOKEN,
@@ -971,7 +991,7 @@ describe('CloudBackend.request: transient-failure retry', () => {
     const recorder = makeRecorderSleep();
     const fetchImpl = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(503, { error: { code: 'gateway', message: 'transient' } }));
+      .mockResolvedValueOnce(jsonResponse(503, envErr('gateway', 'transient')));
     const cb = new CloudBackend({
       baseUrl: BASE,
       token: TOKEN,
