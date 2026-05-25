@@ -341,7 +341,7 @@ The `idea-to-pdd-eval` rubric (post-0.13.84) is the next migration target; `ocs-
 
 Phase folders are `1-design/`, `3-commcare/`, `4-connect/`, `5-ocs/`,
 `6-qa-and-training/`, `8-solicitation-management/`,
-`9-execution-manager/`, `8-closeout/`. Skills choose the phase that
+`9-execution-manager/`, `10-closeout/`. Skills choose the phase that
 matches **when the work runs** (so `--monitor` mode for OCS lands
 under `9-execution-manager/`, not `5-ocs/`, because monitoring is
 Phase 9 work). The canonical inventory is in `lib/artifact-manifest.ts`
@@ -385,8 +385,8 @@ filename. Concrete consequences:
   `5-ocs/ocs-chatbot-eval_verdict-{quick,deep}.yaml`,
   `9-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml`.
 - The umbrella `opp-eval` writes into its own subfolder under
-  `8-closeout/`:
-  `8-closeout/opp-eval/opp-eval_verdict-deep.yaml` (and matching
+  `10-closeout/`:
+  `10-closeout/opp-eval/opp-eval_verdict-deep.yaml` (and matching
   scorecard / gate-brief / trend siblings) so re-runs and the
   per-skill verdicts don't collide.
 

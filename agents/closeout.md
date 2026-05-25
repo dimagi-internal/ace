@@ -50,7 +50,7 @@ Invoke the `cycle-grade` skill.
 
 ### Completion
 Write final summary to
-`ACE/<opp-name>/runs/<run-id>/8-closeout/closeout_summary.md`,
+`ACE/<opp-name>/runs/<run-id>/10-closeout/closeout_summary.md`,
 then write the `phases.closeout` block per
 `agents/ace-orchestrator.md § Phase Write-Back Contract`. Closeout has
 no named gate (it's the terminal phase), so the patch sets

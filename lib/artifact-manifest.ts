@@ -1213,7 +1213,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: [],
     phase: 'closeout',
     required: false,
-    description: 'Machine-readable run-level verdict from opp-eval --monitor runs; latest-wins file (history lives in 8-closeout/opp-eval/trend.md)',
+    description: 'Machine-readable run-level verdict from opp-eval --monitor runs; latest-wins file (history lives in 10-closeout/opp-eval/trend.md)',
   },
 ] as const;
 

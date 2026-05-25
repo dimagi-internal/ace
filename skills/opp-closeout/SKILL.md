@@ -33,7 +33,7 @@ Process the financial closeout of a completed opportunity.
    - Description: invoice details, amount, LLO banking info reference
    - Attach invoice documents
 
-4. **Write closeout record** to `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-closeout_invoices.md`:
+4. **Write closeout record** to `ACE/<opp-name>/runs/<run-id>/10-closeout/opp-closeout_invoices.md`:
    - Invoice details
    - Total amount
    - Jira ticket link
