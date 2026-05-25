@@ -848,3 +848,87 @@ slides:
     await expect(resolveModuleRefs(spec, loader)).rejects.toThrow(/no such template/);
   });
 });
+
+// ============================================================================
+// Speaker notes — schema accepts notes; builder emits {{NOTES}} replaceAllText
+// ============================================================================
+
+describe('speaker notes', () => {
+  it('accepts notes on any slide layout', () => {
+    const withNotes = SlideSpecSchema.parse({
+      id: 's1', layout: 'content', title: 'Test', body: 'Body',
+      notes: 'Speaker notes: emphasize the key word.',
+    });
+    expect(withNotes.layout).toBe('content');
+    if (withNotes.layout !== 'content') throw new Error('expected content');
+    expect(withNotes.notes).toBe('Speaker notes: emphasize the key word.');
+  });
+
+  it('treats notes as optional (existing slides without notes still parse)', () => {
+    const withoutNotes = SlideSpecSchema.parse({
+      id: 's1', layout: 'cover', title: 'Hello',
+    });
+    if (withoutNotes.layout !== 'cover') throw new Error('expected cover');
+    expect(withoutNotes.notes).toBeUndefined();
+  });
+
+  it('emits replaceAllText for {{NOTES}} on notes page when slide.notes is set', () => {
+    const stencils = Object.fromEntries(
+      Object.entries(STENCILS).map(([k, v]) => [k, v]),
+    ) as Record<StencilKey, string>;
+    const manifest = resolveManifest({ common: {}, opp: {} });
+
+    const yamlStr = minimalYaml(`
+      - id: s1
+        layout: content
+        title: Test
+        body: Body content
+        notes: |
+          Talking points:
+          - Emphasize sync importance
+          - Pause for questions
+    `);
+    const spec = parseTrainingSpec(yamlStr);
+    const requests = buildSlidesRequestsV2(spec, { stencils, manifest });
+
+    // Find the notes replaceAllText request
+    const notesReq = requests.find(
+      (r: any) =>
+        r.replaceAllText?.containsText?.text === '{{NOTES}}' &&
+        r.replaceAllText?.pageObjectIds?.[0]?.endsWith(':notes'),
+    );
+    expect(notesReq).toBeDefined();
+    expect((notesReq as any).replaceAllText.replaceText).toContain('Emphasize sync importance');
+    expect((notesReq as any).replaceAllText.pageObjectIds[0]).toBe('ace_slide_1:notes');
+  });
+
+  it('skips notes emission when notes is undefined or empty', () => {
+    const stencils = Object.fromEntries(
+      Object.entries(STENCILS).map(([k, v]) => [k, v]),
+    ) as Record<StencilKey, string>;
+    const manifest = resolveManifest({ common: {}, opp: {} });
+
+    // Without notes
+    const yamlStr1 = minimalYaml(`
+      - id: s1
+        layout: content
+        title: Test
+        body: Body
+    `);
+    const spec1 = parseTrainingSpec(yamlStr1);
+    const requests1 = buildSlidesRequestsV2(spec1, { stencils, manifest });
+    expect(requests1.find((r: any) => r.replaceAllText?.containsText?.text === '{{NOTES}}')).toBeUndefined();
+
+    // With empty notes
+    const yamlStr2 = minimalYaml(`
+      - id: s1
+        layout: content
+        title: Test
+        body: Body
+        notes: ""
+    `);
+    const spec2 = parseTrainingSpec(yamlStr2);
+    const requests2 = buildSlidesRequestsV2(spec2, { stencils, manifest });
+    expect(requests2.find((r: any) => r.replaceAllText?.containsText?.text === '{{NOTES}}')).toBeUndefined();
+  });
+});
