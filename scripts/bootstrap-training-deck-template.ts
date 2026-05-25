@@ -65,7 +65,7 @@ const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 
-const TEMPLATE_NAME = 'ACE Training Deck Template (v3.2 — Dimagi accents + walkthrough fit)';
+const TEMPLATE_NAME = 'ACE Training Deck Template (v3.3 — walkthrough placeholder removed + title room)';
 const PARENT_FOLDER_ID = process.env.ACE_DRIVE_ROOT_FOLDER_ID;
 
 // ---------------------------------------------------------------------------
@@ -410,31 +410,26 @@ function contentStencilRequests(pageId: string): Record<string, unknown>[] {
 }
 
 function walkthroughStencilRequests(pageId: string): Record<string, unknown>[] {
-  // Layout v3.1 — closes the dead horizontal whitespace surfaced in
-  // the v3 inspection. Body column tightens to ~35% (was 40%), image
-  // area shifts left to start right after the body and widens to
-  // ~62% (was 60% offset by 10% gap). Net: ~3in dead band on each
-  // body slide closes.
+  // Layout v3.3 — drops the dashed placeholder (the actual image
+  // landed centered with its phone aspect ratio, and the surrounding
+  // dashed border looked like "missing content"), and gives the title
+  // enough vertical room for 3-line wraps (push body y down from
+  // 1.2M → 1.5M EMU; bbox h 685k → 1M). Walkthrough body column is
+  // ~35% wide, image area (filled at render time by lib) takes the
+  // remaining ~62%.
   const leftW = Math.round(SLIDE_W * 0.35) - MARGIN;
-  const rightX = Math.round(SLIDE_W * 0.37);
-  const rightW = SLIDE_W - rightX - MARGIN;
   return [
     ...dimagiAccentStrip(pageId),
     ...textBoxRequests({
       id: `${pageId}_titlebox`, pageId, text: '{{TITLE}}',
-      x: MARGIN, y: MARGIN, w: leftW, h: 685_800,
+      x: MARGIN, y: MARGIN, w: leftW, h: 1_000_000,
       fontSize: 24, bold: true, color: COLOR_INDIGO,
     }),
     ...textBoxRequests({
       id: `${pageId}_bodybox`, pageId, text: '{{BODY}}',
-      x: MARGIN, y: 1_200_000, w: leftW, h: 3_500_000,
+      x: MARGIN, y: 1_500_000, w: leftW, h: 3_400_000,
       fontSize: 14, color: COLOR_GRAY,
     }),
-    // Image placeholder area (right ~62%, dashed outline)
-    ...dashedOutlineBox(
-      `${pageId}_imgarea`, pageId,
-      rightX, MARGIN, rightW, SLIDE_H - MARGIN * 2,
-    ),
   ];
 }
 
