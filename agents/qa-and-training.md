@@ -338,22 +338,6 @@ This is a subagent dispatched from level 0 by `ace-orchestrator`. It runs
 its skills inline using their respective MCP tools (`ace-mobile`,
 `ace-gdrive`). It does NOT call `Agent(...)` further.
 
-## Naming change (2026-04-30)
+## History
 
-This phase was previously named `training-prep`. Renamed to `qa-and-training`
-to reflect that QA test-plan generation was a first-class output (alongside
-training material), not a sub-step of training prep. The agent file moved
-from `agents/training-prep.md` to `agents/qa-and-training.md`; the new
-`qa-plan` skill landed alongside.
-
-## Executor pivot (2026-05-04)
-
-In 0.11.10 (shallow/deep QA split) the QA-plan synthesis moved upstream to
-Phase 1 (`pdd-to-app-journeys`) and Phase 3 (`app-test-cases`). Phase 6
-became an executor: it reads the pre-composed smoke recipes from
-`app-test-cases.yaml`, runs them, captures screenshots, and runs a thin
-per-app UX smoke judge. Deep, per-journey UX grading is `app-ux-eval`,
-manually triggered via `/ace:qa-deep` before Phase 8 activation. The
-`qa-plan` skill is retired and the agent's `skills:` frontmatter no
-longer lists it. Spec:
-`docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`.
+Renamed from `training-prep` (2026-04-30) and pivoted from synthesizer to executor (2026-05-04, 0.11.10 shallow/deep QA split). See [`docs/agent-history.md § Phase 6`](../docs/agent-history.md#phase-6-qa-and-training).
