@@ -228,8 +228,8 @@ and prevents a whole class of "guessed from indirect signals" mistakes.
 ### Step 1: Capture smoke screenshots + thin UX judge
 
 Dispatch `app-screenshot-capture`:
-- Reads: pdd-to-app-journeys.md (Phase 1), app-test-cases.yaml (Phase 3)
-- Writes: screenshots/J*/*.png + verdicts/app-screenshot-capture-shallow.yaml
+- Reads: `2-scenarios/pdd-to-app-journeys.md` (Phase 2), `3-commcare/app-test-cases.yaml` (Phase 3)
+- Writes: `6-qa-and-training/screenshots/J*/*.png` + `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml`
 - Halts on smoke-recipe failure or UX judge < 2/3
 
 The skill filters `app-test-cases.yaml` to entries with `is_smoke: true`
@@ -241,7 +241,7 @@ journey without confusion. Threshold ≥ 2/3 per app.
 Deep, per-journey UX grading is `app-ux-eval`, run manually from
 `/ace:qa-deep` before Phase 9 activation. The Phase 9 `llo-launch` gate
 refuses activation without a fresh, passing
-`verdicts/app-ux-eval-deep.yaml`.
+`6-qa-and-training/app-ux-eval_verdict-deep.yaml`.
 
 ### Step 2: Per-artifact training skills (5 in parallel + 2 sequential)
 

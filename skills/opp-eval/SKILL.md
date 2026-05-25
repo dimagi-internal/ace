@@ -70,7 +70,7 @@ If no mode is passed, default to `--quick`.
 5. **Discover verdicts.** Walk each phase folder under
    `ACE/<opp-name>/runs/<run-id>/` (`1-design/`, `3-commcare/`,
    `4-connect/`, `5-ocs/`, `6-qa-and-training/`,
-   `6-solicitation-management/`, `9-execution-manager/`,
+   `8-solicitation-management/`, `9-execution-manager/`,
    `8-closeout/`) and collect every file matching
    `*_verdict*.yaml`. Also descend one level into
    `8-closeout/opp-eval/` for the umbrella's own verdicts (excluded

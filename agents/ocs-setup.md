@@ -85,7 +85,7 @@ Unless `--no-evals` was passed, invoke the `ocs-widget-handoff-eval` skill.
   + opportunity-binding completeness, both of which are
   `ocs-agent-setup` outputs)
 - A `verdict: fail` here does not halt the run; the Phase 5→6 gate
-  uses `verdicts/ocs-chatbot-eval-quick.yaml` (Step 2).
+  uses `5-ocs/ocs-chatbot-eval_verdict-quick.yaml` (Step 2).
 
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-setup_summary.md`,

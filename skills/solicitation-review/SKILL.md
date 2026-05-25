@@ -36,8 +36,8 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
   program UUID — labs `int()`-parses the field. If both locations are
   empty, fall back to the resolution recipe in `solicitation-create`
   step 5 (`labs_context` lookup by program name).
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md` (rubric)
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-monitor_responses/*.md` (all responses)
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_published.md` (rubric)
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-monitor_responses/*.md` (all responses)
 
 ## Process
 
@@ -74,7 +74,7 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
    scores to:
 
    ```
-   ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_scoring-rubric.md
+   ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-review_scoring-rubric.md
    ```
 
    Markdown table per response, with columns: criterion, weight, score
@@ -83,7 +83,7 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
 5. **Write `recommendation.md`.** Save:
 
    ```
-   ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_recommendation.md
+   ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-review_recommendation.md
    ```
 
    Body: ranked list of candidates with reasoning. Top candidate gets a
@@ -113,7 +113,7 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
 8. **Write `award-record.md`.**
 
    ```
-   ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_award-record.md
+   ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-review_award-record.md
    ```
 
    Body: `response_id`, `awarded_at`, `awarded_org_slug`,
@@ -196,9 +196,9 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
 
 ## Output
 
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_scoring-rubric.md`
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_recommendation.md`
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-review_award-record.md`
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-review_scoring-rubric.md`
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-review_recommendation.md`
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-review_award-record.md`
 - `phases.solicitation-management.products.selected_llo.*` populated (only on success; per-run only)
 - `phases.solicitation-management.products.solicitation.{status: awarded, awarded.*}` populated (only on success; per-run only)
 

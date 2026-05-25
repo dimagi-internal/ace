@@ -176,7 +176,7 @@ historical docs claimed it as a 10th MCP atom — that was incorrect.)
 ## Drive paths
 
 All Phase 8 artifacts live under:
-`ACE/<opp-name>/runs/<run-id>/6-solicitation-management/`
+`ACE/<opp-name>/runs/<run-id>/8-solicitation-management/`
 
 Per-skill subpaths:
 

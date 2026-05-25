@@ -45,7 +45,7 @@ Invoke the `cycle-grade` skill.
 - Output: overall grade with recommendations
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `cycle-grade-eval` to independently re-grade. Writes
-  `verdicts/cycle-grade.yaml`.
+  `10-closeout/cycle-grade-eval_verdict.yaml`.
 - Depends on: Step 3
 
 ### Completion

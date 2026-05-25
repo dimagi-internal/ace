@@ -340,7 +340,7 @@ The `idea-to-pdd-eval` rubric (post-0.13.84) is the next migration target; `ocs-
 > `ACE/<opp-name>/runs/<run-id>/<phase>/<skill>_<artifact>[-<mode>].<ext>`.
 
 Phase folders are `1-design/`, `3-commcare/`, `4-connect/`, `5-ocs/`,
-`6-qa-and-training/`, `6-solicitation-management/`,
+`6-qa-and-training/`, `8-solicitation-management/`,
 `9-execution-manager/`, `8-closeout/`. Skills choose the phase that
 matches **when the work runs** (so `--monitor` mode for OCS lands
 under `9-execution-manager/`, not `5-ocs/`, because monitoring is

@@ -85,7 +85,7 @@ contract.
 
 ## Products
 
-- `6-solicitation-management/solicitation-create_summary.md` — solicitation_id, public_url, deadline, audit trail
+- `8-solicitation-management/solicitation-create_summary.md` — solicitation_id, public_url, deadline, audit trail
 - `run_state.yaml.phases.solicitation-management.products.solicitation` block populated (id, public_url, deadline, status: open, labs_program_id, connect_program_id, connect_opportunity_id). Per-run only — each run of the opp publishes a fresh solicitation. Operator-cleaned-up when picking a release-candidate run.
 
 ## Process
@@ -471,7 +471,7 @@ contract.
    AI-derived rubric to:
 
    ```
-   ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md
+   ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_draft.md
    ```
 
    Include all fields from the payload as a structured YAML-frontmatter +
@@ -679,7 +679,7 @@ contract.
 8. **Write `published.md`.** Save:
 
    ```
-   ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md
+   ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_published.md
    ```
 
    Body: full payload as written, returned IDs/URLs, deadline in absolute
@@ -756,8 +756,8 @@ contract.
 
 ## Output
 
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_draft.md` (audit)
-- `ACE/<opp-name>/runs/<run-id>/6-solicitation-management/solicitation-create_published.md` (live state)
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_draft.md` (audit)
+- `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_published.md` (live state)
 - `run_state.yaml.phases.solicitation-management.products.solicitation.{solicitation_id, public_url, deadline, status: open, labs_program_id, ...}` populated (per-run only).
 - `opp.yaml.connect.program.labs_int_id` cached on first resolution (durable opp-level — the labs program int matches the Connect program UUID; reused across runs).
 - `selected_llo` is left untouched here (populated by `solicitation-review` on award at `products.selected_llo`).

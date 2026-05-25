@@ -76,12 +76,13 @@ Invoke the `llo-launch` skill.
   - Appended `llo-capacity-actual`, `day-one-readiness`, `downstream-handoff-alignment`, `stop-loss-planning` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`). These four rows map 1:1 to `llo-launch-eval`'s viability axis (PR #145) so the rubric has structured input instead of grading on prose.
 - **Gate (review mode):** Present launch readiness summary for approval before activating
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
-  `llo-launch-eval` after activation. Writes `verdicts/llo-launch.yaml`.
+  `llo-launch-eval` after activation. Writes
+  `9-execution-manager/llo-launch-eval_verdict.yaml`.
 - **Note:** `llo-launch` enforces a deep-QA-verdict freshness gate
   before activation as part of the shallow/deep QA split refactor.
   It refuses to activate unless both
-  `verdicts/ocs-chatbot-eval-deep.yaml` and
-  `verdicts/app-ux-eval-deep.yaml` exist, pass, and are newer than
+  `5-ocs/ocs-chatbot-eval_verdict-deep.yaml` and
+  `6-qa-and-training/app-ux-eval_verdict-deep.yaml` exist, pass, and are newer than
   the artifacts they grade (OCS chatbot `version_number`; learn /
   deliver build IDs in `3-commcare/app-deploy_summary.md`). If `/ace:qa-deep`
   hasn't been run since the most recent app release / chatbot
