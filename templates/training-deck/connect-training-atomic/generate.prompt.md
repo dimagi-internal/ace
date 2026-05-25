@@ -16,7 +16,7 @@ Read these artifacts from the opportunity's Drive folder (`ACE/<opp>/`):
 
 ### welcome (generate fresh)
 
-- **cover**: Use opportunity name as title. Subtitle format: "FLW Training — {date}".
+- **cover**: Use opportunity name as title. Subtitle = `"FLW Training"` (no date — the `date:` field renders the date on its own line below the subtitle; including the date in the subtitle string makes it render twice). The `date:` field gets the month + year (e.g. `"June 2026"`).
 - **agenda**: List the module names as agenda items with approximate durations. Total should match `expected_duration_minutes` from the template (150-240 min).
 - **icebreaker**: Select ONE icebreaker from `_common/facilitation.yaml`. Pick `two-truths` for groups of 10+, `one-word` for groups of 20+, `common-ground` for groups under 10. Fill the template tokens.
 
@@ -156,6 +156,35 @@ Rules:
 - **Numbers are concrete**: "$2.50 per visit" not "compensation per delivery unit". "20 households per week" not "target volume".
 - **Positive framing**: "Sync after each form to keep your data safe" not "If you don't sync, you might lose data".
 
+## Speaker Notes (REQUIRED on every slide)
+
+Every slide MUST carry a `notes:` field (Zod-validated as optional, but
+the deck is incomplete without them). The notes are what the trainer
+reads aloud; the body text is what the trainee sees on the screen. They
+are NOT redundant — notes add context, examples, and facilitator cues
+the trainee shouldn't see verbatim.
+
+Length: 50-150 words per slide. Format: prose, not bullets. Voice:
+addressed to the trainer in second person ("Ask the room…", "Pause
+here for…", "If anyone says X, redirect to…").
+
+What to include per layout:
+- **cover, section, closing** — opener / transition / wrap-up cues
+- **agenda** — total session duration + what to highlight (the
+  trickiest module, expected break points)
+- **content, two_column** — the one or two background facts that
+  make the slide land (a real-world example, why it matters)
+- **walkthrough, mobile_flow, mobile_zoom** — what to watch for on
+  the FLW's phone screen, what mistakes are common at this step,
+  what to say if a trainee gets stuck
+- **stats** — what each number means in context (where it came from,
+  what counts as exceeding it, what happens when you don't hit it)
+- **exercise** — facilitation cues (how to form groups, how long to
+  let people struggle, the answer to the most common confused question)
+- **checklist** — which items trip people up, how to handle "I forgot"
+- **timeline** — what counts as on/behind schedule, what to say
+  if someone is far behind
+
 ## Output Format
 
 Produce a single `spec.yaml` file with all placeholders filled. The file must:
@@ -164,5 +193,7 @@ Produce a single `spec.yaml` file with all placeholders filled. The file must:
 2. Have every `@alias` reference match the screenshot manifest
 3. Have a total slide count between 30 and 45
 4. Have every slide with a non-empty `title`
-5. Use only layouts from the 14 defined types above
-6. Include `platform-setup` and `resources` as `ref:` includes, not inline copies
+5. Have every slide with a non-empty `notes` (50-150 words, trainer-voice)
+6. Use only layouts from the 14 defined types above
+7. Include `platform-setup` and `resources` as `ref:` includes, not inline copies
+8. Cover slide subtitle = `"FLW Training"` only (no date — date renders separately via the `date:` field)
