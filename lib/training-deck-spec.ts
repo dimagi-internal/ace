@@ -499,12 +499,15 @@ function buildLayoutRequests(
       break;
     case 'walkthrough':
       r('{{BODY}}', slide.body);
+      // Image fills the right ~62% of the slide (post-v3.1 layout —
+      // matches walkthroughStencilRequests dashed placeholder). Closes
+      // the dead horizontal whitespace surfaced in the v3 inspection.
       reqs.push(
         createImage(
           `${pageId}_img_0`,
           pageId,
           manifest.resolveImageRef(slide.image),
-          { x: 4572000, y: 914400, w: 4114800, h: 3771900 },
+          { x: 3383280, y: 457200, w: 5303520, h: 4229100 },
         ),
       );
       break;
