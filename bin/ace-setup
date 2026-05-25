@@ -12,8 +12,11 @@
 #   4. Fetch the Google service-account key from 1Password if missing
 #   5. npm install (skip if node_modules + tsx present)
 #   6. Inject .env from 1Password (skip if .env covers all .env.tpl keys)
-#   7. Optionally register the SessionStart auto-update hook
-#   8. Run bin/ace-doctor and surface remaining issues
+#   7. Download commcare-cli.jar from dimagi/commcare-core's latest
+#      tagged release (skip if cached + not --force-install; WARN if gh
+#      missing). Gates Phase 3 app-release-smoke Step 4.5.
+#   8. Optionally register the SessionStart auto-update hook
+#   9. Run bin/ace-doctor and surface remaining issues
 #
 # Flags:
 #   --auto-update      register SessionStart hook for /ace:update
@@ -510,6 +513,63 @@ EOF
       printf '%s\n' "$MARKER_CLOSE"
     } >> "$RC_FILE"
     pass "nova_shell_rc: appended marker block to $RC_FILE ($RC_REASON) — restart Claude Code to pick up NOVA_API_KEY"
+  fi
+fi
+
+# ---- commcare-cli.jar (Phase 3 install-gate dependency)
+#
+# `app-release-smoke` Step 4.5 wraps Dimagi's `commcare-cli.jar validate`
+# subcommand to catch runtime-install defects (e.g. a deliver_unit
+# entity_id bound to a #case/<calculated-field> on a case-create form
+# — install-time XPath bind reads null and CommCare rejects the CCZ
+# with "A part of your application is invalid"). The jar runs the same
+# `ResourceTable.initializeResources` install path the Android device
+# runs, so it catches defects every static Phase 3 gate misses.
+#
+# Dimagi ships `commcare-cli.jar` as a release asset on every CommCare
+# release (since `commcare_2.61.5` at least, ~10MB). We fetch the
+# **latest tagged release** (including drafts — picks up `commcare_2.63.0`
+# today) via `gh release download`, which handles the draft→stable URL
+# transition transparently. Cached at `$DATA_DIR/commcare-cli.jar`; sidecar
+# `.version` records which release the bytes came from so doctor can
+# detect drift.
+#
+# Skips silently when:
+#   - The jar is already cached AND `--force-install` is not set
+#   - `gh` is not installed (we surface a WARN with the manual remediation)
+# Skips noisily (WARN) when the download fails — `app-release-smoke`
+# treats `cli-validator-unavailable` as `[WARN]` (structural Phase 3
+# gates still authoritative), so a download miss doesn't break setup.
+CCLI_JAR_PATH="$DATA_DIR/commcare-cli.jar"
+CCLI_VERSION_PATH="$DATA_DIR/commcare-cli.jar.version"
+if [ -f "$CCLI_JAR_PATH" ] && [ "$FORCE_INSTALL" = "0" ]; then
+  CCLI_SIZE="$(stat -f %z "$CCLI_JAR_PATH" 2>/dev/null || stat -c %s "$CCLI_JAR_PATH" 2>/dev/null || echo 0)"
+  CCLI_CACHED_VER="$(cat "$CCLI_VERSION_PATH" 2>/dev/null || echo unknown)"
+  pass "commcare_cli: $CCLI_JAR_PATH present (${CCLI_SIZE} bytes, version=${CCLI_CACHED_VER}) — re-run with --force-install to refresh"
+elif ! command -v gh >/dev/null 2>&1; then
+  warn "commcare_cli: gh CLI not installed — skipping auto-download of commcare-cli.jar" "install gh (\`brew install gh && gh auth login\`) and re-run /ace:setup, or manually download from https://github.com/dimagi/commcare-core/releases/latest and place at $CCLI_JAR_PATH"
+else
+  CCLI_TAG="$(gh release list --repo dimagi/commcare-core --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null)"
+  if [ -z "$CCLI_TAG" ]; then
+    warn "commcare_cli: couldn't list dimagi/commcare-core releases via gh" "check \`gh auth status\` + network; without this, Phase 3 app-release-smoke can't catch runtime-install defects (it falls through to structural-only gates, which is a [WARN] not a [BLOCKER])"
+  else
+    echo "  fetching commcare-cli.jar from ${CCLI_TAG} (this can take ~15s for the 10MB asset)..."
+    # `gh release download` resolves draft asset URLs transparently via
+    # the API, so it works for `commcare_2.63.0` (currently draft) the
+    # same as for stable releases. --clobber lets --force-install repair
+    # corrupt caches.
+    if gh release download "$CCLI_TAG" --repo dimagi/commcare-core --pattern 'commcare-cli.jar' --output "$CCLI_JAR_PATH" --clobber 2>&1 | tail -5; then
+      CCLI_SIZE="$(stat -f %z "$CCLI_JAR_PATH" 2>/dev/null || stat -c %s "$CCLI_JAR_PATH" 2>/dev/null || echo 0)"
+      if [ "$CCLI_SIZE" -lt 1000000 ]; then
+        warn "commcare_cli: downloaded jar is suspiciously small (${CCLI_SIZE} bytes)" "expected ~10MB; check network or rerun /ace:setup --force-install"
+        rm -f "$CCLI_JAR_PATH" "$CCLI_VERSION_PATH"
+      else
+        echo "$CCLI_TAG" > "$CCLI_VERSION_PATH"
+        pass "commcare_cli: downloaded ${CCLI_TAG} → $CCLI_JAR_PATH (${CCLI_SIZE} bytes)"
+      fi
+    else
+      warn "commcare_cli: download failed for ${CCLI_TAG}" "manually: gh release download ${CCLI_TAG} --repo dimagi/commcare-core --pattern 'commcare-cli.jar' --output $CCLI_JAR_PATH"
+    fi
   fi
 fi
 

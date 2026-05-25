@@ -210,16 +210,29 @@ For each app (Learn, Deliver):
 **Operator one-time setup (only when `input_error: 'jar_not_found'` fires):**
 
 ```bash
-git clone https://github.com/dimagi/commcare-core ~/repos/commcare-core
-cd ~/repos/commcare-core
-./gradlew cliJar   # produces build/libs/commcare-cli-<version>.jar
-cp build/libs/commcare-cli-*.jar "$CLAUDE_PLUGIN_DATA/commcare-cli.jar"
-# Or pin an absolute path via ACE_COMMCARE_CLI_JAR in .env
+/ace:setup
+```
+
+That's it. `/ace:setup` auto-downloads the latest tagged `commcare-cli.jar`
+asset from `dimagi/commcare-core`'s GitHub releases (picks up
+`commcare_2.63.0` today, ~10MB) via `gh release download`, which
+transparently handles draft→stable URL transitions. The jar is cached at
+`$CLAUDE_PLUGIN_DATA/commcare-cli.jar`; a sidecar `.version` file records
+which release the bytes came from so `/ace:doctor` can detect drift.
+
+Refresh to the latest release at any time:
+```bash
+/ace:setup --force-install
+```
+
+Pin to a specific build (e.g. CI cache or a local debug jar):
+```bash
+export ACE_COMMCARE_CLI_JAR=/absolute/path/to/commcare-cli.jar
 ```
 
 Java 17+ required (matches the existing AVD-tooling JDK requirement).
-`/ace:doctor` reports `commcare_cli_jar` presence + a `java -jar … help`
-freshness probe.
+`/ace:doctor` reports `commcare_cli_jar` presence + cached version + a
+`java -jar … help` freshness probe.
 
 ### Step 5: Write verdict
 
@@ -344,4 +357,4 @@ defects.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-22 | Initial version. Replaces the prior (reverted) "move app-screenshot-capture to Phase 3" attempt. AVD-free structural verification on released CCZ — would have caught the malaria-rdt 20260522-1002 form-patch over-stripping at Phase 3 instead of Phase 6, and catches Nova partial-persistence silent field omissions. Full AVD smoke (`app-screenshot-capture`) stays in Phase 6 where Connect state is available. | ACE team |
-| 2026-05-25 | **Add Step 4.5 — runtime install validation via `commcare-cli.jar`.** Wraps `dimagi/commcare-core`'s `commcare-cli.jar validate` subcommand (which runs the SAME `ResourceTable.initializeResources` install path the Android device runs). Catches the runtime-install failure class that Steps 3–4 cannot: a CCZ whose XPath references resolve to nothing at install time (canonical example: `connect.deliver_unit.entity_id` bound to `#case/<calculated-field>` on a case-create form). Reproducer: `bednet-spot-check/20260525-1405` Phase 6 — `entity_id: #case/case_name` substitution passed every Phase 3 static gate then was rejected on-device with "A part of your application is invalid." Operator one-time setup: clone commcare-core + `./gradlew cliJar` + cache jar at `$CLAUDE_PLUGIN_DATA/commcare-cli.jar`. `[BLOCKER]` on `cli-install-rejected`; `[WARN]` on `cli-validator-unavailable` (jar not built yet — structural Steps 3–4 still authoritative). See `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md` § Preventer 2. | ACE team |
+| 2026-05-25 | **Add Step 4.5 — runtime install validation via `commcare-cli.jar`.** Wraps `dimagi/commcare-core`'s `commcare-cli.jar validate` subcommand (which runs the SAME `ResourceTable.initializeResources` install path the Android device runs). Catches the runtime-install failure class that Steps 3–4 cannot: a CCZ whose XPath references resolve to nothing at install time (canonical example: `connect.deliver_unit.entity_id` bound to `#case/<calculated-field>` on a case-create form). Reproducer: `bednet-spot-check/20260525-1405` Phase 6 — `entity_id: #case/case_name` substitution passed every Phase 3 static gate then was rejected on-device with "A part of your application is invalid." Operator setup: `/ace:setup` now auto-downloads the latest tagged `commcare-cli.jar` (picks up `commcare_2.63.0` today) via `gh release download` — no manual build needed. `[BLOCKER]` on `cli-install-rejected`; `[WARN]` on `cli-validator-unavailable` (jar not downloaded yet — structural Steps 3–4 still authoritative). See `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md` § Preventer 2. | ACE team |

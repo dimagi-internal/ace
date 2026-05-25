@@ -1750,11 +1750,13 @@ fi
 # (canonical case: a `connect.deliver_unit.entity_id` bound to a
 # `#case/<calculated-field>` on a case-create form — install-time
 # resource graph reads null, CCZ rejected with "A part of your
-# application is invalid"). One-time operator setup:
-#   git clone https://github.com/dimagi/commcare-core
-#   cd commcare-core && ./gradlew cliJar
-#   cp build/libs/commcare-cli-*.jar $CLAUDE_PLUGIN_DATA/commcare-cli.jar
-# Or set `ACE_COMMCARE_CLI_JAR` to an absolute path.
+# application is invalid").
+#
+# Auto-installed by `/ace:setup` (downloads the latest tagged
+# commcare-cli.jar from dimagi/commcare-core's GitHub releases — picks
+# up `commcare_2.63.0` today, ~10MB). `--force-install` refreshes the
+# cache. Override via `ACE_COMMCARE_CLI_JAR=<absolute path>` if you want
+# to pin to a specific build.
 #
 # WARN (not FAIL) on absence — `app-release-smoke` continues with
 # `cli_validate.verdict: unavailable` so the structural gates still
@@ -1769,20 +1771,26 @@ elif [ -f "$HOME/.claude/plugins/data/ace-ace/commcare-cli.jar" ]; then
   COMMCARE_CLI_JAR_PATH="$HOME/.claude/plugins/data/ace-ace/commcare-cli.jar"
 fi
 if [ -z "$COMMCARE_CLI_JAR_PATH" ]; then
-  warn "commcare_cli_jar: not found at \$ACE_COMMCARE_CLI_JAR or \$CLAUDE_PLUGIN_DATA/commcare-cli.jar" "one-time build: git clone https://github.com/dimagi/commcare-core && cd commcare-core && ./gradlew cliJar && cp build/libs/commcare-cli-*.jar \$CLAUDE_PLUGIN_DATA/commcare-cli.jar  (or set ACE_COMMCARE_CLI_JAR). Without this, Phase 3 app-release-smoke can't catch runtime-install defects (e.g. bednet-spot-check/20260525-1405 class)."
+  warn "commcare_cli_jar: not found at \$ACE_COMMCARE_CLI_JAR or \$CLAUDE_PLUGIN_DATA/commcare-cli.jar" "run /ace:setup — it auto-downloads the latest commcare-cli.jar from dimagi/commcare-core releases. Without this, Phase 3 app-release-smoke can't catch runtime-install defects (e.g. bednet-spot-check/20260525-1405 class)."
 elif [ ! -r "$COMMCARE_CLI_JAR_PATH" ]; then
-  warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH not readable" "fix file permissions or re-copy the jar"
+  warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH not readable" "fix file permissions or re-run /ace:setup --force-install"
 else
   COMMCARE_CLI_JAR_SIZE="$(stat -f %z "$COMMCARE_CLI_JAR_PATH" 2>/dev/null || stat -c %s "$COMMCARE_CLI_JAR_PATH" 2>/dev/null || echo 0)"
-  if [ "$COMMCARE_CLI_JAR_SIZE" -lt 100000 ]; then
-    warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH suspiciously small ($COMMCARE_CLI_JAR_SIZE bytes)" "rebuild via ./gradlew cliJar in commcare-core checkout"
+  COMMCARE_CLI_VERSION="$(cat "$COMMCARE_CLI_JAR_PATH.version" 2>/dev/null || echo unknown)"
+  if [ "$COMMCARE_CLI_JAR_SIZE" -lt 1000000 ]; then
+    warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH suspiciously small ($COMMCARE_CLI_JAR_SIZE bytes; version=$COMMCARE_CLI_VERSION)" "re-run /ace:setup --force-install to redownload"
   elif command -v java >/dev/null 2>&1; then
-    # Cheap freshness probe — `java -jar … help` exits 0 on a real
-    # commcare-cli build. Total budget ~3s including JVM cold-start.
-    if COMMCARE_CLI_HELP="$(java -jar "$COMMCARE_CLI_JAR_PATH" help 2>&1)" && echo "$COMMCARE_CLI_HELP" | grep -q -i "validate"; then
-      pass "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH ($COMMCARE_CLI_JAR_SIZE bytes; help subcommand lists validate)"
+    # Cheap freshness probe. `java -jar <jar> help` triggers the jar's
+    # usage banner ("The available commands are: validate / play / ..."),
+    # which is exactly what we want to grep for. The jar exits non-zero
+    # on "help" because it's not a real subcommand — so we ignore exit
+    # code and look only at the combined output. Total budget ~3s
+    # including JVM cold-start.
+    COMMCARE_CLI_HELP="$(java -jar "$COMMCARE_CLI_JAR_PATH" help 2>&1 || true)"
+    if echo "$COMMCARE_CLI_HELP" | grep -q -iE 'validate'; then
+      pass "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH (${COMMCARE_CLI_JAR_SIZE} bytes; version=${COMMCARE_CLI_VERSION}; usage banner lists validate)"
     else
-      warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH present but \`java -jar … help\` didn't list 'validate'" "this may be a stale jar (built before the validate subcommand) or a different jar. Rebuild from latest dimagi/commcare-core main."
+      warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH present but usage banner didn't list 'validate' subcommand" "stale jar — re-run /ace:setup --force-install (pulls latest from dimagi/commcare-core releases)"
     fi
   else
     warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH present but \`java\` not on PATH" "install JDK 17+ (brew install openjdk@17 on macOS)"
