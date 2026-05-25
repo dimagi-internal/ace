@@ -1,11 +1,16 @@
 /**
  * ACE Mobile MCP Server
  *
- * Exposes 9 atomic mobile capabilities backed by Maestro + adb + Playwright.
- * (`generate_recipes_from_app_summary` is intentionally programmatic-only —
- * it's invoked by skills via MobileClient directly because it requires a
- * Drive adapter + LLM function as inputs that don't fit cleanly into MCP
- * tool schemas.)
+ * Exposes 16 atomic mobile capabilities backed by Maestro + adb +
+ * Playwright + (when ACE_MOBILE_BACKEND=cloud) ace-web's cloud
+ * emulator HTTP API. Routing → backend lives in
+ * `mcp/mobile/capability-map.ts`; the registration-coverage test pins
+ * map ↔ server alignment.
+ *
+ * `generate_recipes_from_app_summary` is intentionally NOT exposed as
+ * an MCP atom — it's invoked programmatically by skills via
+ * MobileClient because it requires a Drive adapter + LLM function as
+ * inputs that don't fit cleanly into MCP tool schemas.
  *
  * See docs/superpowers/specs/2026-04-28-ace-mobile-emulation-design.md
  */

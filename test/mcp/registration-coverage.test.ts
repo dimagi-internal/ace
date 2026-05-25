@@ -34,6 +34,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { CAPABILITY_MAP as OCS_MAP } from '../../mcp/ocs/capability-map.js';
+import { CAPABILITY_MAP as MOBILE_MAP } from '../../mcp/mobile/capability-map.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -80,10 +81,15 @@ const SERVERS: Record<string, ServerSpec> = {
     file: 'mcp/mobile-server.ts',
     expectedCount: 16,
     allowedPrefixes: ['mobile_'],
-    // capabilityMap intentionally omitted until drift is reconciled — the
-    // map currently lists `generate_recipes_from_app_summary` (not on the
-    // server) and is missing `validate_recipe`, `diagnose`,
-    // `patch_launch_script`, `resolve_selectors`, `restart_runner`.
+    // capabilityMap enabled in PR-R (2026-05-25) after aligning the map
+    // with the server registrations. The previously-extra
+    // `generate_recipes_from_app_summary` is now documented in the
+    // capability-map source as "intentionally not registered as an MCP
+    // atom" (programmatic-only); the previously-missing 5 atoms
+    // (validate_recipe, resolve_selectors, diagnose, restart_runner,
+    // patch_launch_script) now appear in both places.
+    capabilityMap: MOBILE_MAP,
+    capabilityPrefix: 'mobile_',
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
