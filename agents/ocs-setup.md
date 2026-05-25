@@ -97,13 +97,9 @@ from phases.ocs-setup.status + per-skill verdicts.)
 
 ## Resumption Contract
 
-Phase 5 is one of the longer-running phases (RAG indexing + the
-quick qa+eval can take 5–10 min). On a session that loses context
-mid-phase, the orchestrator may re-dispatch this agent to resume.
-Resumption is **artifact-driven**, not polling-based — see
-`agents/ace-orchestrator.md § Long-Running Skills — No Fake
-Background Tasks` for the rule. To make resumption cheap, every step
-is idempotent and artifact-checkable:
+Phase 5 is one of the longer-running phases (RAG indexing + the quick qa+eval can take 5–10 min). On a session that loses context mid-phase, the orchestrator may re-dispatch this agent to resume.
+
+The general resumption procedure (state-canary read, 15-min liveness threshold, no-`ScheduleWakeup` rule) lives in [`orchestrator-reference.md § State-as-canary contract`](orchestrator-reference.md#state-as-canary-contract) and [§ Long-Running Skills — No Fake Background Tasks](orchestrator-reference.md#long-running-skills-no-fake-background-tasks). Read those first; the table below specifies the **Phase-5-specific** resume points each step exposes.
 
 | Step | Done-when artifact exists | Action when found |
 |------|---------------------------|-------------------|
@@ -111,57 +107,12 @@ is idempotent and artifact-checkable:
 | 2. quick qa+eval | `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-chatbot-eval_verdict-quick.yaml` with every per-prompt `overall_quality >= 2` | Skip; the gate already passed |
 | 3. credential handoff | `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` | Phase complete |
 
-**On entry, before executing any step:**
+Phase-5-specific resume notes (beyond the general state-canary rule):
 
-1. Read `ACE/<opp-name>/run_state.yaml` (the orchestrator passes this
-   inline per the orchestrator's Performance Conventions, but if it
-   isn't in the prompt, fetch it from Drive).
-2. **Apply the state-canary rule** from
-   `agents/ace-orchestrator.md § Touching State — Operator Capture →
-   State-as-canary contract`:
-   - If a step shows `in_progress` AND `last_actor_at` ≤ 15 min ago,
-     halt with a "another session appears to be working this opp"
-     message — do not race.
-   - If a step shows `in_progress` AND `last_actor_at` > 15 min ago,
-     treat as **dead** and re-dispatch the step. Do NOT wait for a
-     phantom completion.
-3. For each step in order, check the artifact column above. If the
-   artifact exists AND the corresponding `run_state.yaml` field shows
-   `done`, skip that step and continue. If the artifact is missing OR
-   the state field shows `pending`/`error`/`in_progress` (with stale
-   `last_actor_at`), execute the step. **For Step 2 (quick qa+eval),
-   a partial transcript with `Complete: false` is also a valid resume
-   point** — `ocs-chatbot-qa` reads it and skips already-captured
-   prompts (idempotent re-run; see `skills/ocs-chatbot-qa/SKILL.md
-   § Process` Step 3).
-4. Step 1's idempotence is special: if a chatbot named
-   `ACE - <opp-name>` exists in OCS but `ocs-agent-config.md` is
-   missing, treat the bot as authoritative and re-derive the config
-   doc from `ocs_get_chatbot` — don't clone a second bot.
+- **Step 2 partial-transcript resume.** A transcript file with `Complete: false` is a valid resume point — `ocs-chatbot-qa` reads it and skips already-captured prompts (idempotent re-run; see `skills/ocs-chatbot-qa/SKILL.md § Process` Step 3). The general state-canary rule's "missing artifact" branch is too coarse for this case.
+- **Step 1 bot-as-authoritative override.** If a chatbot named `ACE - <opp-name>` exists in OCS but `ocs-agent-config.md` is missing, treat the bot as authoritative and re-derive the config doc from `ocs_get_chatbot` — don't clone a second bot.
 
-**State updates on resumption:** every step should still update
-`run_state.yaml` on completion, even if the artifact pre-existed. This
-keeps `last_actor`/`last_actor_at` accurate across the resumption
-boundary. Skills must also write `<step>: in_progress` with a fresh
-`last_actor_at` BEFORE doing work — that's the heartbeat the resume
-canary depends on.
-
-**No `ScheduleWakeup` mid-phase.** The Phase 5 agent must NOT
-self-schedule a wakeup to "wait for a capture to finish." That
-pattern produced the `turmeric-20260503-0835` failure (3+ hour stall,
-no transcript, no recoverable evidence — fictional bg task). If
-`ocs-chatbot-qa --quick` exceeds its 270s wall-clock budget, it
-returns a partial transcript with `Complete: false`; the orchestrator
-re-dispatches this agent, and Step 2 above resumes from the partial.
-
-**Why this matters:** observed in `e2e-xw5gk` (2026-04-29): a 2-hour
-gap between a `drive_create_file` for `ocs-setup/widget-handoff.md`
-preparation and the next ocs-setup tool call, after which the agent
-was fresh-dispatched. The original session had already completed
-Steps 1–2; without explicit resumption the resumed agent would have
-re-cloned the bot, re-indexed the collection (~5–10 min), and
-re-run the qa+eval suite. The contract above turns that into a
-single state-read + a Step 3 finish.
+**Why this matters:** observed in `e2e-xw5gk` (2026-04-29): a 2-hour gap between `drive_create_file` for `ocs-setup/widget-handoff.md` preparation and the next ocs-setup tool call, after which the agent was fresh-dispatched. The original session had already completed Steps 1–2; without explicit resumption the resumed agent would have re-cloned the bot, re-indexed the collection (~5–10 min), and re-run the qa+eval suite. The contract above turns that into a single state-read + a Step 3 finish.
 
 ## Dry-Run Behavior
 
