@@ -361,38 +361,38 @@ flip dropped — derived from phases.commcare-setup.status + per-skill verdicts.
 The skills frontmatter declares which producers have a paired `-eval`
 skill (`has_judge: true` rows). Three of those — `pdd-to-learn-app-eval`,
 `pdd-to-deliver-app-eval`, `app-release-eval` — historically ran
-`status: deferred` in `/ace:run`, meaning the gate flipped to
-`passed` while the LLM-as-Judge content quality had not been graded.
+`status: deferred` in `/ace:run`, meaning the phase verdict landed on
+`pass` while the LLM-as-Judge content quality had not been graded.
 
 That pattern bit Phase 2 on turmeric run 20260513-0616 — the
 (then-active, since-deleted) `commcare-form-patch` over-stripping bug
-shipped to a "gates.commcare-setup: passed" phase because nothing in
-the inline run looked at the released CCZ's structural state. The
-lesson generalizes: eval verdicts are not the right tool for catching
-CCZ-marker drops, that's a structural assertion. The general principle
-holds:
+shipped to a `verdict: pass` phase because nothing in the inline run
+looked at the released CCZ's structural state. The lesson generalizes:
+eval verdicts are not the right tool for catching CCZ-marker drops,
+that's a structural assertion. The general principle holds:
 
-**Do NOT flip `gates.commcare-setup: passed` when any `has_judge: true`
-skill has `steps.<skill>-eval.status: deferred`.** Either:
+**Do NOT set `phases.commcare-setup.verdict: pass` when any
+`has_judge: true` skill has `steps.<skill>-eval.status: deferred`.**
+Either:
 
 - **Run the eval inline** (preferred — write the verdict to
   `<phase>/<skill>-eval_verdict.yaml` and gate the phase on its
   verdict). The orchestrator's Per-Step Eval Hook is supposed to do
   this automatically; if it didn't, the phase write-back's `status`
-  should be `partial` (not `complete`), `verdict` should be
-  `passed-with-deferred-evals` (not `pass`), and `gates.commcare-setup`
-  should be `partial` (not `passed`).
+  should be `partial` (not `done`) and `verdict` should be
+  `passed-with-deferred-evals` (not `pass`).
 - **OR explicitly opt out** via a top-level `--no-evals` flag on
   `/ace:run` (operator-asserted decision), in which case the phase
-  status reflects the opt-out (`partial-evals-skipped` /
-  `gates.commcare-setup: partial`).
+  status reflects the opt-out (`verdict: partial-evals-skipped`).
 
 The legacy `status: deferred + rationale: backfill via /ace:eval --all`
 shape is still useful for opp-level retroactive grading, but it MUST
-NOT coexist with `gates.commcare-setup: passed` in the same write-back.
+NOT coexist with `verdict: pass` in the same write-back.
 Catch this in the Phase Write-Back Verifier — if any step in the
 phase has `status: deferred` on a `has_judge: true` producer, downgrade
-the gate to `partial` before writing.
+the verdict to `partial` before writing. (Pre-0.13.116 this was framed
+as "flip `gates.commcare-setup` to `partial`"; gates removed —
+`phases.commcare-setup.verdict` carries the same signal now.)
 
 This rule applies to every phase agent, not just `commcare-setup`. The
 canonical implementation is the Phase Write-Back Verifier procedure in
