@@ -514,9 +514,11 @@ function buildLayoutRequests(
       // Title only — nothing extra
       break;
     case 'agenda':
+      // Prefix each item with a bullet marker (•) and keep "label  —  duration"
+      // — v5.3 fix; previously rendered as flat lines with no visual hierarchy.
       r(
         '{{BODY}}',
-        slide.items.map((i) => `${i.label}  —  ${i.duration}`).join('\n'),
+        slide.items.map((i) => `•  ${i.label}  —  ${i.duration}`).join('\n'),
       );
       break;
     case 'content':
@@ -524,15 +526,15 @@ function buildLayoutRequests(
       break;
     case 'walkthrough':
       r('{{BODY}}', slide.body);
-      // Image fills the right ~62% of the slide (post-v3.1 layout —
-      // matches walkthroughStencilRequests dashed placeholder). Closes
-      // the dead horizontal whitespace surfaced in the v3 inspection.
+      // v5.3 walkthrough geometry: body widened to ~45% (vs 35% in v5.2)
+      // so longer body sentences don't wrap mid-phrase. Image area
+      // correspondingly starts at 45% from left and is 50% wide.
       reqs.push(
         createImage(
           `${pageId}_img_0`,
           pageId,
           manifest.resolveImageRef(slide.image),
-          { x: 3383280, y: 457200, w: 5303520, h: 4229100 },
+          { x: 4343400, y: 457200, w: 4343400, h: 4229100 },
         ),
       );
       break;
