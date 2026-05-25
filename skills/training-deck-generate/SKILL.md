@@ -64,16 +64,29 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
    - `run_state.yaml` (for `connect.payment_units`,
      `connect.verification_flags`, opportunity metadata)
 
-5. **Read screenshot manifests.** Build a merged manifest map
-   `{ alias -> {file_id, drive_url} }`:
+5. **Read screenshot manifests (C1 — per-opp wiring).** Build a merged
+   manifest map `{ alias -> {file_id, drive_url} }`:
    - Common-pool aliases from
      `ACE/_common/connect-screenshots/<v>/manifest.yaml` (e.g.,
-     `connect-signin-splash`, `claim-opp-detail`)
+     `connect-signin-splash`, `claim-opp-detail`, `commcare-welcome`).
+     These cover the Connect platform onboarding flow and are shared
+     across all opportunities.
    - Per-opp aliases from
-     `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`
-     (e.g., `learn-mod-1-step-3`, `deliver-form-photo-step-1`)
+     `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`.
+     Format: each entry has `alias:`, `journey_id:`, `step_name:`,
+     `drive_path:`, `file_id:`. Alias convention: `<journey-id>-<step-name>`
+     e.g. `J1-learn-mod-1-step-3`, `J2-deliver-form-photo-step-1`.
 
    Cross-pool alias collisions: per-opp wins (more specific).
+
+   **If the per-opp manifest is missing or empty:** the upstream
+   `app-screenshot-capture` skill in Phase 6 step 1 didn't produce
+   screenshots (likely due to a smoke-recipe failure). Don't halt the
+   deck generation — emit walkthrough slides using `content` layout
+   (no image) and surface `[WARN] no per-opp screenshots — `your-opportunity`
+   walkthroughs degraded to content-only slides` in the verdict's
+   `auto_surfaced` list. The deck still ships; the operator can
+   replace screenshots manually post-launch.
 
 6. **Read common modules.** Load shared module fragments from
    `templates/training-deck/_common/`:
