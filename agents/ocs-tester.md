@@ -80,4 +80,3 @@ and runs the LLM-as-Judge rubric.
   verdict (same phase rule)
 - `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_report-<mode>.md` —
   eval report (skipped for `--quick` stdout-only mode; same phase rule)
-- `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-chatbot-eval_gate-brief-deep.md` — only in `--deep`

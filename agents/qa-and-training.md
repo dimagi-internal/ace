@@ -1,11 +1,11 @@
 ---
 name: qa-and-training
 description: >
-  Phase 7 of the CRISPR-Connect lifecycle: produce per-opp QA test plan +
+  Phase 6 of the CRISPR-Connect lifecycle: produce per-opp QA test plan +
   walkthrough screenshots + training materials (deck outline and video
   script). All derived from the design docs (PDD, app summaries, opp
   identifiers, OCS chatbot URL) so the Phase runs from artifacts; no live
-  LLO contact. Phase 10 is where LLOs first hear from ACE.
+  LLO contact. Phase 9 is where LLOs first hear from ACE.
 model: inherit
 phase: qa-and-training
 phase_display: QA and Training

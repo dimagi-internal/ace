@@ -1,7 +1,7 @@
 ---
 name: commcare-setup
 description: >
-  Phase 4 of the CRISPR-Connect lifecycle: translate the approved PDD into
+  Phase 3 of the CRISPR-Connect lifecycle: translate the approved PDD into
   Learn and Deliver apps via Nova, deploy them to CommCare HQ, and test.
 model: inherit
 phase: commcare-setup
@@ -167,8 +167,11 @@ dispatch — they fail independently.
   `runs/<run-id>/3-commcare/pdd-to-learn-app-eval_verdict.yaml` and
   `runs/<run-id>/3-commcare/pdd-to-deliver-app-eval_verdict.yaml`
   respectively. A `verdict: fail` here does not halt Phase 3 on its
-  own; the Phase 3→4 gate uses
-  `runs/<run-id>/3-commcare/app-deploy_gate-brief.md`.
+  own; the Phase 3→4 gate uses the per-skill verdict files
+  (`runs/<run-id>/3-commcare/pdd-to-{learn,deliver}-app-eval_verdict.yaml`
+  + `app-release-eval_verdict.yaml`); the orchestrator synthesizes any
+  pause-time summary from those at runtime (gate-briefs removed in
+  0.13.116 — see `agents/orchestrator-reference.md § Pause Points`).
 
 ### Step 1.5: Connect-marker coverage (verify + auto-fix)
 Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).

@@ -1084,7 +1084,6 @@ These actions are independent and MUST be batched into ONE parallel
 message:
 
 - `drive_read_file` on `run_state.yaml` (verifier read — used next turn).
-- `drive_create_file` for the phase's gate-brief, if applicable.
 - `TaskUpdate` marking the current phase `completed` and the next phase `in_progress`.
 - `Skill(decisions-render)` to refresh the decisions gdoc (idempotent).
 
@@ -1100,25 +1099,23 @@ Turn N:    Agent(<phase>) tool_result
 Turn N+1:  text "Phase 1 complete: proceed verdict, no blockers"
 Turn N+2:  drive_read_file run_state.yaml
 Turn N+3:  TaskUpdate
-Turn N+4:  drive_create_file gate-brief.md
-Turn N+5:  Skill(decisions-render)
-Turn N+6:  Agent(<next-phase>)
+Turn N+4:  Skill(decisions-render)
+Turn N+5:  Agent(<next-phase>)
 ```
 
-That's ~5 wasted turns × seconds each × 8 boundaries per run
-≈ 1.5–4 min of pure model-output latency per `/ace:run`.
+That's ~4 wasted turns × seconds each × 8 boundaries per run
+≈ 1–3 min of pure model-output latency per `/ace:run`.
 
 **Right pattern.**
 
 ```
 Turn N:    Agent(<phase>) tool_result
-Turn N+1:  ONE message — all 4 (or 5) tool calls in parallel:
+Turn N+1:  ONE message — all 4 tool calls in parallel:
              1. classify_phase_writeback(fileId=<run_state.yaml>, phaseName=<phase>)
                 — returns 'ok' | 'missing' | 'in_progress' | 'error' | 'malformed'
              2. drive_list_folder on <runFolderId>/<N>-<phase>/ (artifact verifier)
              3. TaskUpdate marking <phase> completed, next phase in_progress
              4. Skill(decisions-render) — idempotent
-             5. drive_create_file gate-brief, if applicable
            Optional one-line text summary in the same message.
 Turn N+2:  Branch on the classifier result:
              - 'ok'           → proceed to Turn N+3

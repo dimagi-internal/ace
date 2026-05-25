@@ -1,7 +1,7 @@
 ---
 name: ocs-setup
 description: >
-  Phase 6 of the CRISPR-Connect lifecycle: clone the ACE golden template,
+  Phase 5 of the CRISPR-Connect lifecycle: clone the ACE golden template,
   build the opp-specific RAG collection, smoke-test the bot via a thin
   quick chat suite, and stage the widget credentials for Connect.
 model: inherit
