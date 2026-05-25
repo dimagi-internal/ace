@@ -91,6 +91,11 @@ const SERVERS: Record<string, ServerSpec> = {
     capabilityMap: MOBILE_MAP,
     capabilityPrefix: 'mobile_',
   },
+  decisions: {
+    file: 'mcp/decisions-server.ts',
+    expectedCount: 1,
+    allowedPrefixes: ['decisions_'],
+  },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
     expectedCount: 37,

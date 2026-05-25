@@ -659,8 +659,41 @@ The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 contract; the renderer (`skills/decisions-render`) regenerates the gdoc
 at end of every phase.
 
-Each row this skill writes uses `phase: 4-connect` and
-`skill: connect-opp-setup`.
+Each row this skill writes uses `phase: "4-connect"` and
+`skill: "connect-opp-setup"`. Append via the `decisions_append_rows` MCP
+atom (ace-decisions server) — do not hand-construct YAML and do not
+write decisions.yaml via `update_yaml_file`. The atom validates each row
+against `lib/decisions-schema.ts` v3 at the call boundary; misspelled
+keys (`decision`, `rationale`, `default`, `options_considered`, `notes`)
+are rejected before they touch Drive.
+
+Tool call:
+
+```
+decisions_append_rows({
+  runFolderId: <run-folder file_id>,
+  opportunity: <opp-slug>,
+  run_id: <run-id>,
+  rows: [
+    {
+      id: "cs-verification-flags",
+      phase: "4-connect",
+      skill: "connect-opp-setup",
+      question: "which verification flags does this opportunity require",
+      "ai-default": "duplicate=true, gps=false, catchment_areas=false",
+      options: [
+        "duplicate=true, gps=false, catchment_areas=false",
+        "duplicate=true, gps=true, catchment_areas=false",
+        "duplicate=true, gps=true, catchment_areas=true"
+      ],
+      source: "PDD §6/§8 verification mechanism",
+      status: "ai-default",
+      reasoning: "Smoke opp — no GPS or photo capture in scope; duplicate guard only."
+    },
+    ...
+  ]
+})
+```
 
 ## Change Log
 

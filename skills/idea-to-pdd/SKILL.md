@@ -338,25 +338,46 @@ tables above are teaching templates that improve over time.
 
 ### Schema and write semantics
 
-Schema is defined in `lib/decisions-schema.ts` (`DecisionsLogSchema`).
-Required fields per row: `id`, `phase` (always `1-design` for this skill),
-`skill` (always `idea-to-pdd`), `question`, `ai-default`,
-`options_considered`, `source`, `status`. Optional `override` (required
-when `status: overridden`), optional `notes`.
+Schema is defined in `lib/decisions-schema.ts` (`DecisionRowSchema` /
+`DecisionsLogSchema`, v3). Do not hand-construct YAML — call the
+`decisions_append_rows` MCP atom (ace-decisions server). The atom's
+input schema is `DecisionRowSchema` directly, so unknown / misspelled
+field names are rejected at the call boundary before they touch Drive.
 
-`status` values:
-- `applied` — `ai-default` value is in effect; no human edit.
-- `overridden` — human edited via renderer + sync skills. The
-  `override` field carries the human's value; `ai-default` is preserved
-  as the AI's original proposal. Effective value = override.
+Tool call (idiomatic shape for this skill):
 
-This skill writes only `status: ai-default` rows. `overridden` rows
+```
+decisions_append_rows({
+  runFolderId: <run-folder file_id resolved at run start>,
+  opportunity: <opp-slug>,
+  run_id: <run-id>,
+  rows: [
+    {
+      id: "archetype-selection",
+      phase: "1-design",
+      skill: "idea-to-pdd",
+      question: "Which delivery archetype best fits the intervention?",
+      "ai-default": "atomic-visit",
+      options: ["atomic-visit", "focus-group", "multi-stage"],
+      source: "idea.md §1; one-FLW-one-delivery pattern",
+      status: "ai-default",
+      reasoning: "Single per-FLW visit producing one structured delivery."
+    },
+    ...
+  ]
+})
+```
+
+The atom seeds a fresh v3 log header (`schema_version`, `opportunity`,
+`run_id`, `generated_at`) on the first call and is idempotent: rows
+whose `id` is already in the log are silently skipped and returned in
+`skipped[]`, so a retry never duplicates rows.
+
+This skill writes only `status: "ai-default"` rows. `overridden` rows
 appear when a prior run's human edits carry forward via the fork
-endpoint's `keep-all` or `keep-overrides-only` mode.
-
-Write via `drive_create_file` (find-or-update semantics) at
-`ACE/<opp-name>/runs/<run-id>/decisions.yaml`. The Drive MCP's parent
-folder is the run-folder file ID resolved at run start.
+endpoint's `keep-all` or `keep-overrides-only` mode. The canonical
+worked fixture is `test/skills/idea-to-pdd/fixtures/turmeric-decisions.yaml`
+— useful as a reference shape, not as something to copy into Drive.
 
 ## Archetypes
 
