@@ -341,9 +341,9 @@ The `idea-to-pdd-eval` rubric (post-0.13.84) is the next migration target; `ocs-
 
 Phase folders are `1-design/`, `3-commcare/`, `4-connect/`, `5-ocs/`,
 `6-qa-and-training/`, `6-solicitation-management/`,
-`7-execution-manager/`, `8-closeout/`. Skills choose the phase that
+`9-execution-manager/`, `8-closeout/`. Skills choose the phase that
 matches **when the work runs** (so `--monitor` mode for OCS lands
-under `7-execution-manager/`, not `5-ocs/`, because monitoring is
+under `9-execution-manager/`, not `5-ocs/`, because monitoring is
 Phase 9 work). The canonical inventory is in `lib/artifact-manifest.ts`
 — that file is the source of truth when prose and code drift.
 
@@ -376,14 +376,14 @@ filename. Concrete consequences:
 - `-eval` skills include `-eval` in their filename (e.g.
   `1-design/idea-to-pdd-eval_verdict.yaml`).
 - Recurring per-step evals append a mode suffix:
-  `7-execution-manager/flw-data-review-eval_verdict-monitor.yaml`.
+  `9-execution-manager/flw-data-review-eval_verdict-monitor.yaml`.
 - Skills that self-evaluate inline (no separate `-eval` skill — e.g.
   `app-screenshot-capture`, every per-artifact training skill) write
   `<phase>/<self>_verdict[-<mode>].yaml`.
 - Skills that ARE their own registry row (no producer/eval split,
   e.g. `ocs-chatbot-eval`) keep their own name and a mode suffix:
   `5-ocs/ocs-chatbot-eval_verdict-{quick,deep}.yaml`,
-  `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml`.
+  `9-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml`.
 - The umbrella `opp-eval` writes into its own subfolder under
   `8-closeout/`:
   `8-closeout/opp-eval/opp-eval_verdict-deep.yaml` (and matching

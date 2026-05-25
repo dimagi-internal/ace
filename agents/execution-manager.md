@@ -104,18 +104,18 @@ These skills run on a schedule during the active opportunity:
 - Analyzes FLW submission data for quality issues
 - Generates recommendations for the Auto-Connect team to relay to LLOs
 - Unless `--no-evals` was passed, follow with `flw-data-review-eval`,
-  which writes `7-execution-manager/flw-data-review-eval_verdict-monitor.yaml`
+  which writes `9-execution-manager/flw-data-review-eval_verdict-monitor.yaml`
   (recurring; the latest monitor verdict overwrites the prior one)
 
 **OCS Chatbot Monitoring** — invoke `ocs-chatbot-qa --monitor` then
 `ocs-chatbot-eval --monitor` weekly (qa captures transcript, eval grades).
 - Periodic quality check against the live bot to catch retrieval drift
   (e.g., after the shared Connect collection auto-syncs new Confluence pages)
-- qa writes `7-execution-manager/ocs-chatbot-qa_transcript-monitor.md`;
+- qa writes `9-execution-manager/ocs-chatbot-qa_transcript-monitor.md`;
   eval writes
-  `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` +
-  `7-execution-manager/ocs-chatbot-eval_report-monitor.md`, and appends
-  a row to `7-execution-manager/ocs-chatbot-eval_trend.md`
+  `9-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` +
+  `9-execution-manager/ocs-chatbot-eval_report-monitor.md`, and appends
+  a row to `9-execution-manager/ocs-chatbot-eval_trend.md`
 - If eval's overall score drops more than 1.5 points from the previous
   monitor verdict, eval emails the admin group
 

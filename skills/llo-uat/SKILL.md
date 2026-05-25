@@ -52,7 +52,7 @@ Coordinate UAT with LLOs before the opportunity goes live.
    - LLO sign-off status (signed off / pending / blocked)
    - If blocking issues found: log them and notify admin group
 
-7. **Write UAT results** to `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-uat_results.md`:
+7. **Write UAT results** to `ACE/<opp-name>/runs/<run-id>/9-execution-manager/llo-uat_results.md`:
    - Per-LLO sign-off status
    - Issues found and resolution status
    - Overall UAT verdict (pass / blocked)

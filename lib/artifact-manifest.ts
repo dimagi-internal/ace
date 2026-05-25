@@ -1025,7 +1025,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: [],
     phase: 'execution-management',
     required: false,
-    description: 'Machine-readable verdict from recurring --monitor runs. Latest-wins file; see 7-execution-manager/ocs-chatbot-eval_trend.md for history',
+    description: 'Machine-readable verdict from recurring --monitor runs. Latest-wins file; see 9-execution-manager/ocs-chatbot-eval_trend.md for history',
   },
   {
     path: '9-execution-manager/ocs-chatbot-eval_trend.md',

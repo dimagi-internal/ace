@@ -48,7 +48,7 @@ and runs the LLM-as-Judge rubric.
      present where expected)
    - Writes the transcript to the run-scoped path
      `<phase>/ocs-chatbot-qa_transcript-<mode>.md` (`5-ocs/` for
-     `--quick`/`--deep`; `7-execution-manager/` for `--monitor`)
+     `--quick`/`--deep`; `9-execution-manager/` for `--monitor`)
 3. **Dispatches `ocs-chatbot-eval`** (judge phase):
    - Reads the transcript written by step 2
    - Scores each response on Correctness / Source usage / Refusal correctness / Tone / Tagging
@@ -75,7 +75,7 @@ and runs the LLM-as-Judge rubric.
 - Quality score from the eval's verdict: 0–10 weighted average across 5
   dimensions (Correctness, Source usage, Refusal correctness, Tone, Tagging)
 - `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-qa_transcript-<mode>.md` —
-  transcript (`5-ocs/` for quick/deep; `7-execution-manager/` for monitor)
+  transcript (`5-ocs/` for quick/deep; `9-execution-manager/` for monitor)
 - `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_verdict-<mode>.yaml` —
   verdict (same phase rule)
 - `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_report-<mode>.md` —

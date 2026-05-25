@@ -28,7 +28,7 @@ two-phase pattern` for the framework rationale and artifact-path contract.
 
 - `5-ocs/ocs-chatbot-eval_verdict-<mode>.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
 - `5-ocs/ocs-chatbot-eval_gate-brief-<mode>.md` (`--deep` only) — Phase 5→6 gate brief
-- `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` — recurring monitor verdict (when `--monitor`)
+- `9-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` — recurring monitor verdict (when `--monitor`)
 
 ## Modes
 
@@ -39,7 +39,7 @@ the table below.
 
 All paths below are run-scoped under
 `ACE/<opp-name>/runs/<run-id>/<phase>/`. Phase is `5-ocs` for `--quick`
-and `--deep`; `7-execution-manager` for `--monitor` (recurring Phase 9
+and `--deep`; `9-execution-manager` for `--monitor` (recurring Phase 9
 work). The golden-template no-opp fallback (legacy dated form under
 `ACE/golden-template/qa-captures/`) is documented in
 `skills/ocs-chatbot-qa/SKILL.md`; the eval reads whichever path the qa
@@ -49,7 +49,7 @@ producer wrote to.
 |---|---|---|---|---|
 | `--quick` | `5-ocs/ocs-chatbot-qa_transcript-quick.md` | 1 dimension (`overall_quality_0_to_3`) | every prompt ≥ 2/3; retry signal otherwise | stdout summary + `5-ocs/ocs-chatbot-eval_verdict-quick.yaml` + `5-ocs/ocs-chatbot-eval_gate-brief-quick.md` |
 | `--deep` | `5-ocs/ocs-chatbot-qa_transcript-deep.md` | 5 dimensions (full rubric below) | overall ≥ 7 AND zero Fail verdicts | `5-ocs/ocs-chatbot-eval_verdict-deep.yaml` + `5-ocs/ocs-chatbot-eval_report-deep.md` + `5-ocs/ocs-chatbot-eval_gate-brief-deep.md` |
-| `--monitor` | `7-execution-manager/ocs-chatbot-qa_transcript-monitor.md` | 5 dimensions (full rubric below) | none — trend only | `7-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` + `7-execution-manager/ocs-chatbot-eval_report-monitor.md` + append to `7-execution-manager/ocs-chatbot-eval_trend.md` |
+| `--monitor` | `9-execution-manager/ocs-chatbot-qa_transcript-monitor.md` | 5 dimensions (full rubric below) | none — trend only | `9-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` + `9-execution-manager/ocs-chatbot-eval_report-monitor.md` + append to `9-execution-manager/ocs-chatbot-eval_trend.md` |
 
 If no mode is passed, default to `--quick`.
 
@@ -57,7 +57,7 @@ If no mode is passed, default to `--quick`.
 
 1. **Locate the transcript.** Read the run-scoped transcript at
    `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-qa_transcript-<mode>.md`
-   (`5-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for
+   (`5-ocs/` for `--quick`/`--deep`; `9-execution-manager/` for
    `--monitor`) — or the path passed as `--capture <path>`. Fail loudly
    if missing — do not chat with the bot to regenerate it. That's
    `ocs-chatbot-qa`'s job.
@@ -252,7 +252,7 @@ rubric is improving over time, not just changing.
 
 4. **Write the verdict YAML** to
    `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_verdict-<mode>.yaml`
-   (`5-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for
+   (`5-ocs/` for `--quick`/`--deep`; `9-execution-manager/` for
    `--monitor`). Uses the shared verdict shape (see `skills/README.md §
    QA vs Eval — the two-phase pattern` for the contract — every `-eval`
    skill writes the same shape so `opp-eval` can aggregate uniformly).
@@ -345,7 +345,7 @@ rubric is improving over time, not just changing.
 6. **Write the human-readable report** (skipped for `--quick` stdout-only
    mode) to
    `ACE/<opp-name>/runs/<run-id>/<phase>/ocs-chatbot-eval_report-<mode>.md`
-   (`5-ocs/` for `--deep`; `7-execution-manager/` for `--monitor`):
+   (`5-ocs/` for `--deep`; `9-execution-manager/` for `--monitor`):
 
    ```markdown
    # OCS Chatbot Eval Report
@@ -373,7 +373,7 @@ rubric is improving over time, not just changing.
    ```
 
 7. **In `--monitor` mode**, append a single-line entry to
-   `ACE/<opp-name>/runs/<run-id>/7-execution-manager/ocs-chatbot-eval_trend.md` with date, overall score, and
+   `ACE/<opp-name>/runs/<run-id>/9-execution-manager/ocs-chatbot-eval_trend.md` with date, overall score, and
    dimension breakdown so drift is visible at a glance.
 
 <!-- 0.13.116: gate-brief write step removed. The orchestrator composes
@@ -490,5 +490,5 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-04 | **`--quick` now writes a gate brief.** `--quick` mode emits `gate-briefs/ocs-chatbot-eval-quick.md` so the orchestrator's Phase 5→6 gate lookup resolves (post-Task-6 contract). Defined the quick-mode brief shape inline (single dimension, 3 prompts, no multi-dim breakdown). `--monitor` still does not produce a gate brief. Final-review followup to the shallow/deep QA split. | ACE team |
-| 2026-05-05 | **Path-scheme migration.** All read/write paths repointed to `runs/<run-id>/<phase>/ocs-chatbot-eval_*-<mode>.<ext>` per the manifest (`5-ocs/` for `--quick`/`--deep`; `7-execution-manager/` for `--monitor`). Retires the opp-level `qa-captures/` / `verdicts/` / `eval-reports/` / `gate-briefs/` directories. Updated: Modes table, Step 1 transcript locator + golden-template fallback path, Step 4 verdict output, Step 6 report output, Step 7 trend path, Step 8 gate-brief output, Gate Brief artifact-under-review for both modes, the deep + quick verdict YAML examples (`capture_path` field), and the worked Quick example. No behavior change beyond paths. | ACE team |
+| 2026-05-05 | **Path-scheme migration.** All read/write paths repointed to `runs/<run-id>/<phase>/ocs-chatbot-eval_*-<mode>.<ext>` per the manifest (`5-ocs/` for `--quick`/`--deep`; `9-execution-manager/` for `--monitor`). Retires the opp-level `qa-captures/` / `verdicts/` / `eval-reports/` / `gate-briefs/` directories. Updated: Modes table, Step 1 transcript locator + golden-template fallback path, Step 4 verdict output, Step 6 report output, Step 7 trend path, Step 8 gate-brief output, Gate Brief artifact-under-review for both modes, the deep + quick verdict YAML examples (`capture_path` field), and the worked Quick example. No behavior change beyond paths. | ACE team |
 | 2026-05-05 | **Rubric prose extracted.** The 5-dimension table cells were ~600 words each, packing per-dimension criteria with hard deductions, multi-tier caps, capture-method branches, and suite-level rules into single rows. The dimension table now carries a one-line summary plus a pointer to a new `## Rubric Rules` section that breaks each dimension into labeled subsections (Correctness, Source usage with `openai-compat` / `widget` branches, Refusal correctness with tiered cap table, Tone, Tagging) plus a Suite level subsection (Inflation guard, Pre/post-cap reporting). Same grading semantics — every existing rule, deduction, and cap is preserved verbatim under its own heading. Rationale: LLM judges miss rules buried in dense prose; labeled subsections give the rubric visible structure. | ACE team |

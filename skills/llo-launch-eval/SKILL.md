@@ -24,9 +24,9 @@ the first 4 strongly-calibrated rubrics.
 
 1. **Read inputs from GDrive:**
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
-   - `runs/<run-id>/7-execution-manager/llo-launch_record.md` — the
+   - `runs/<run-id>/9-execution-manager/llo-launch_record.md` — the
      activation record
-   - `runs/<run-id>/7-execution-manager/llo-uat_results.md` — UAT
+   - `runs/<run-id>/9-execution-manager/llo-uat_results.md` — UAT
      sign-offs the launch should have verified
    - `runs/<run-id>/3-commcare/app-deploy_summary.md` — app-publish
      status the launch verified
@@ -70,7 +70,7 @@ the first 4 strongly-calibrated rubrics.
      guidance.
 
 4. **Write the verdict YAML** to
-   `ACE/<opp-name>/runs/<run-id>/7-execution-manager/llo-launch-eval_verdict.yaml`. The filename uses the
+   `ACE/<opp-name>/runs/<run-id>/9-execution-manager/llo-launch-eval_verdict.yaml`. The filename uses the
    **producer** skill name (`llo-launch`), NOT this skill's name —
    see `agents/ace-orchestrator.md § Per-Step Eval Hook` for the
    naming rule:
