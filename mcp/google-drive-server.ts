@@ -19,6 +19,10 @@ import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import YAML from 'yaml';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
+import {
+  validateRunState,
+  classifyPhaseWriteBack,
+} from '../lib/run-state-validator.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LEGACY_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
@@ -2123,6 +2127,56 @@ server.tool(
     try {
       const r = await handleGetGoogleFormDefinition({ formId }, forms);
       return result(r);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// ============================================================================
+// Run-state validation
+// ============================================================================
+
+// Wraps `lib/run-state-validator.ts` so the orchestrator's Phase Write-Back
+// Verifier can call it as a single MCP atom instead of relaying through a
+// drive_read_file + manual parse. The validator's source-of-truth contract
+// lives in `agents/orchestrator-reference.md § Phase Write-Back Contract`.
+
+server.tool(
+  'validate_run_state',
+  "Validate a run_state.yaml file's shape against the Phase Write-Back Contract. Reads the YAML from Drive (one call, with the same transient-error retry handleReadFile uses), parses it, and returns `{valid, errors, warnings}` where each issue carries `{path, message, severity, expected?, actual?}`. Use to confirm a phase actually wrote its block correctly — particularly after an `Agent(<phase>)` dispatch returns. Empty/null YAML (legal at run-init before any phase writes) returns `valid: true`. Implementation: `lib/run-state-validator.ts::validateRunState`.",
+  {
+    fileId: z.string().describe('The Google Drive fileId of run_state.yaml.'),
+  },
+  async ({ fileId }) => {
+    try {
+      const read = await handleReadFile({ fileId }, drive);
+      const text = read.content ?? '';
+      const parsed = text.trim() ? YAML.parse(text) : null;
+      const r = validateRunState(parsed);
+      return result(r);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+server.tool(
+  'classify_phase_writeback',
+  "Single-line answer to 'did `<phaseName>` write its run_state.yaml block correctly?' Reads run_state.yaml from Drive, parses it, and returns `{status: 'ok' | 'missing' | 'in_progress' | 'error' | 'malformed', phase: <name>}`. The orchestrator's silent-dispatch retry should treat 'missing', 'in_progress', and 'malformed' as retry triggers (agent claimed success but didn't write properly); 'error' is a real phase failure that halts. Cheaper than `validate_run_state` for the common case of 'I just need to know if this phase shipped' — returns one classification, not a full issue list. Implementation: `lib/run-state-validator.ts::classifyPhaseWriteBack`.",
+  {
+    fileId: z.string().describe('The Google Drive fileId of run_state.yaml.'),
+    phaseName: z
+      .string()
+      .describe('The phase whose write-back block to classify (e.g. "idea-to-design", "commcare-setup").'),
+  },
+  async ({ fileId, phaseName }) => {
+    try {
+      const read = await handleReadFile({ fileId }, drive);
+      const text = read.content ?? '';
+      const parsed = text.trim() ? YAML.parse(text) : null;
+      const status = classifyPhaseWriteBack(parsed, phaseName);
+      return result({ phase: phaseName, status });
     } catch (e: any) {
       return error(e.message);
     }
