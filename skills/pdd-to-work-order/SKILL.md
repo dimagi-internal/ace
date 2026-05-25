@@ -54,7 +54,36 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    | `wo-ethics-scope` | Operational-only vs patient-level | Ethics section |
    | `wo-data-storage-region` | Server region for data storage (default: US) | Data Handling section |
 
-4. **Append `wo-*` rows to `decisions.yaml`** via `update_yaml_file` with merge-only semantics. Never overwrite existing rows. Required keys per row per `lib/decisions-schema.ts`: `id`, `phase: 1-design`, `skill: pdd-to-work-order`, `question`, `default`, `options_considered`, `source`, `status`. Optional `notes`.
+4. **Append `wo-*` rows to `decisions.yaml`** via the `decisions_append_rows` MCP atom (ace-decisions server). Do not hand-construct YAML and do not use `update_yaml_file` for this file — the dedicated atom validates each row against `lib/decisions-schema.ts` v3 at the call boundary and is idempotent on re-runs.
+
+   Tool call:
+
+   ```
+   decisions_append_rows({
+     runFolderId: <run-folder file_id>,
+     opportunity: <opp-slug>,
+     run_id: <run-id>,
+     rows: [
+       {
+         id: "wo-period-of-performance",
+         phase: "1-design",
+         skill: "pdd-to-work-order",
+         question: "what dates bound the work",
+         "ai-default": "2026-05-22 to 2026-07-31",
+         options: ["2026-05-22 to 2026-07-31"],
+         source: "pdd-timeline",
+         status: "ai-default"
+       },
+       ...
+     ]
+   })
+   ```
+
+   Field shape: `phase: "1-design"` (ordinal-prefixed, not `idea-to-design`), `skill: "pdd-to-work-order"`, and `status: "ai-default"` on every row this skill writes. `decision`, `rationale`, `default`, `options_considered`, and `notes` are NOT valid keys — the schema is `id` / `phase` / `skill` / `question` / `ai-default` / `options` / `source` / `status`, with optional `reasoning`. The atom rejects any row that doesn't match.
+
+   When a load-bearing field is genuinely unknowable (partner name absent, WO# unknown), insert a bracketed placeholder like `[Partner Name]` in the gdoc and pass the placeholder as `ai-default` (e.g. `"ai-default": "[Partner Name]"`) plus a `reasoning` line telling the human what to fill in. `status` is still `"ai-default"` — `"open"` is not a valid v3 status.
+
+   Canonical worked fixture with `wo-*` rows: `test/skills/pdd-to-work-order-qa/fixtures/good-decisions.yaml`.
 
 5. **Render the work-order template to a Google Doc.**
    - `docs_copy_template(templateDocId=<WORK_ORDER_TEMPLATE_ID from env>, parentFolderId=<run-folder file_id>, title="pdd-to-work-order", replacements={...})`. Pass all token replacements directly to `docs_copy_template` — it runs a single `replaceAllText` batch under the hood, no separate `docs_batch_update` needed. If the run already has a `pdd-to-work-order.gdoc`, title the new one `pdd-to-work-order-2`, etc.
