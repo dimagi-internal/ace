@@ -151,6 +151,33 @@ export const ModuleSpecSchema = z.object({
 
 export type ModuleSpec = z.infer<typeof ModuleSpecSchema>;
 
+/**
+ * A module that defers its content to a shared template file at
+ * `templates/training-deck/_common/<ref>.yaml`. Resolved by
+ * `resolveModuleRefs()` before render time. The `id` is the in-spec
+ * identifier (lets the spec name the slot independently of the
+ * underlying template); `overrides` substitutes `{{KEY}}` tokens
+ * embedded in the referenced template's text fields.
+ */
+export const RefModuleSchema = z.object({
+  id: z.string(),
+  ref: z.string(),
+  overrides: z.record(z.string(), z.string()).optional(),
+});
+
+export type RefModule = z.infer<typeof RefModuleSchema>;
+
+/**
+ * Pre-resolution module type — either inline or ref-based. After
+ * `resolveModuleRefs()` runs, every module is a `ModuleSpec`.
+ */
+export const AnyModuleSchema = z.union([RefModuleSchema, ModuleSpecSchema]);
+export type AnyModule = z.infer<typeof AnyModuleSchema>;
+
+/**
+ * Fully-expanded training-deck spec — every module has inline `slides[]`
+ * (no `ref` modules remain). This is what the render skill consumes.
+ */
 export const TrainingDeckSpecSchema = z.object({
   slug: z.string(),
   name: z.string(),
@@ -176,17 +203,117 @@ export const TrainingDeckSpecSchema = z.object({
 
 export type TrainingDeckSpec = z.infer<typeof TrainingDeckSpecSchema>;
 
+/**
+ * Pre-resolution spec — modules may still be `ref`-style. Generate skill
+ * emits this, then calls `resolveModuleRefs` to produce TrainingDeckSpec.
+ */
+export const UnexpandedTrainingDeckSpecSchema = TrainingDeckSpecSchema.extend({
+  modules: z.array(AnyModuleSchema),
+});
+
+export type UnexpandedTrainingDeckSpec = z.infer<typeof UnexpandedTrainingDeckSpecSchema>;
+
 // ---------------------------------------------------------------------------
 // YAML parser
 // ---------------------------------------------------------------------------
 
 /**
- * Parse a YAML string into a validated `TrainingDeckSpec`.
- * Throws a `ZodError` if validation fails.
+ * Parse a YAML string into a validated `TrainingDeckSpec` (fully
+ * expanded — no `ref` modules). Use AFTER `resolveModuleRefs()` has
+ * inlined any ref modules.
  */
 export function parseTrainingSpec(yamlStr: string): TrainingDeckSpec {
   const raw = yaml.load(yamlStr);
   return TrainingDeckSpecSchema.parse(raw);
+}
+
+/**
+ * Parse a YAML string into a validated `UnexpandedTrainingDeckSpec` —
+ * may contain `ref` modules awaiting expansion. Pipe through
+ * `resolveModuleRefs` before passing to `buildSlidesRequestsV2`.
+ */
+export function parseUnexpandedTrainingSpec(yamlStr: string): UnexpandedTrainingDeckSpec {
+  const raw = yaml.load(yamlStr);
+  return UnexpandedTrainingDeckSpecSchema.parse(raw);
+}
+
+/**
+ * Resolve all `ref` modules in a spec by loading the referenced
+ * template YAML files and inlining their content. Each `RefModule`
+ * becomes a `ModuleSpec` carrying the template's slides[] with any
+ * `{{KEY}}` tokens substituted from the module's `overrides` map.
+ *
+ * - `ref: _common/platform-setup` → loads `_common/platform-setup`
+ * - Module `id` from the spec wins over the template's `id`
+ * - Inline modules pass through unchanged
+ *
+ * Override substitution is plain `{{KEY}}` → value text replacement,
+ * applied recursively across every string field. Unknown tokens are
+ * left in place (caller can grep for them).
+ *
+ * @param spec - pre-resolution spec (may contain `ref` modules)
+ * @param loadModule - async loader returning YAML text for a given
+ *   ref path. Async so callers can plug in fs-based loading (tests,
+ *   scripts) OR Drive-backed loading (skill runtime).
+ * @returns fully-expanded `TrainingDeckSpec`
+ */
+export async function resolveModuleRefs(
+  spec: UnexpandedTrainingDeckSpec,
+  loadModule: (refPath: string) => Promise<string>,
+): Promise<TrainingDeckSpec> {
+  const expandedModules: ModuleSpec[] = [];
+
+  for (const m of spec.modules) {
+    if ('ref' in m && typeof m.ref === 'string') {
+      const refModule = m as RefModule;
+      const templateYaml = await loadModule(refModule.ref);
+      const loaded = yaml.load(templateYaml) as Record<string, unknown>;
+
+      const overrides = refModule.overrides ?? {};
+      const substituted = substituteOverrides(loaded, overrides) as Record<string, unknown>;
+
+      const merged: ModuleSpec = ModuleSpecSchema.parse({
+        ...substituted,
+        id: refModule.id,
+      });
+      expandedModules.push(merged);
+    } else {
+      expandedModules.push(ModuleSpecSchema.parse(m));
+    }
+  }
+
+  return TrainingDeckSpecSchema.parse({
+    ...spec,
+    modules: expandedModules,
+  });
+}
+
+/**
+ * Recursively substitute `{{KEY}}` tokens in every string leaf of a
+ * plain-object / array tree. Unknown tokens (no matching key) are
+ * left as-is for the caller to flag.
+ */
+function substituteOverrides(
+  value: unknown,
+  overrides: Record<string, string>,
+): unknown {
+  if (typeof value === 'string') {
+    return value.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+      const sub = overrides[key];
+      return sub !== undefined ? sub : match;
+    });
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => substituteOverrides(v, overrides));
+  }
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = substituteOverrides(v, overrides);
+    }
+    return out;
+  }
+  return value;
 }
 
 // ---------------------------------------------------------------------------
