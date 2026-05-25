@@ -342,8 +342,6 @@ All Phase 7 evals join `opp-eval` (the umbrella scorecard) and
 of polish-eval's vision-model component lives in Stage 4's
 `ace:eval-calibration` extension.
 
-## Change Log
+## History
 
-| Date | Change | Author |
-|---|---|---|
-| 2026-05-06 | Initial Phase 7 agent — Stage 4a of Plan B. Skill list reflects Stages 1-3 ship state; eval skills declared but not yet implemented. | ACE team (Plan B Stage 4a) |
+See [`docs/agent-history.md § Phase 7`](../docs/agent-history.md#phase-7-synthetic-data-and-workflows).
