@@ -1,11 +1,11 @@
 ---
 name: solicitation-management
 description: >
-  Phase 9 of the CRISPR-Connect lifecycle: publish a solicitation derived
+  Phase 8 of the CRISPR-Connect lifecycle: publish a solicitation derived
   from the PDD, invite PDD-named candidate LLOs to it by email, and stop.
   The review-and-award lifecycle continues via the manually-invoked
   solicitation-review skill (gated on a human-in-the-loop checkpoint
-  before award_response is called). Phase 10 starts once an awardee is
+  before award_response is called). Phase 9 starts once an awardee is
   recorded in phases.solicitation-management.products.selected_llo in the current run's run_state.yaml.
 model: inherit
 phase: solicitation-management

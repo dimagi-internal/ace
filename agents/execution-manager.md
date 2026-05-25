@@ -1,11 +1,11 @@
 ---
 name: execution-manager
 description: >
-  Phase 10 of the CRISPR-Connect lifecycle: execute the awarded LLO's run
+  Phase 9 of the CRISPR-Connect lifecycle: execute the awarded LLO's run
   of the opportunity — onboarding, UAT, go-live, and recurring monitoring.
-  Phase 10 entry is gated on
+  Phase 9 entry is gated on
   `phases.solicitation-management.products.selected_llo.org_slug` being
-  populated in the current run's run_state.yaml by Phase 9's
+  populated in the current run's run_state.yaml by Phase 8's
   solicitation-review skill.
 model: inherit
 phase: execution-management

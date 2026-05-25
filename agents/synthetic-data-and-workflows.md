@@ -1,12 +1,12 @@
 ---
 name: synthetic-data-and-workflows
 description: >
-  Phase 8 of the CRISPR-Connect lifecycle: produce a stakeholder-ready
+  Phase 7 of the CRISPR-Connect lifecycle: produce a stakeholder-ready
   synthetic-data demo on top of the built apps. Author a story-coherent
   manifest, generate fixture data via the connect-labs MCP, instantiate
   the LLO weekly review + program admin audit workflows, polish them
   per-opp, and run persona walkthroughs that produce HTML decks. No
-  irreversible external action — Phase 8 has no run-time gate.
+  irreversible external action — Phase 7 has no run-time gate.
 model: inherit
 phase: synthetic-data-and-workflows
 phase_display: Synthetic Data and Workflows
