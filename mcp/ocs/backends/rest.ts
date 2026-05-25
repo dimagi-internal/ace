@@ -36,7 +36,11 @@ export class RestBackend {
     let lastErr: HttpError | undefined;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
-      let res: Response;
+      // `fetch` here is the undici export, not the global. Type the
+      // local with `Awaited<ReturnType<typeof fetch>>` so we pick up
+      // undici's Response shape (not the global Response, which is
+      // structurally similar but tagged differently by TS 5+).
+      let res: Awaited<ReturnType<typeof fetch>>;
       try {
         res = await fetch(`${this.opts.baseUrl}${path}`, {
           method,
