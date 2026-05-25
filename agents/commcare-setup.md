@@ -228,7 +228,9 @@ Invoke the `app-deploy` skill.
   bookkeeping that records ACE's intended target, not a labs-side
   foreign key. The public solicitation URL keeps working, the deadline
   keeps counting down, candidate LLO views and applications continue
-  uninterrupted. The recovery is one `connect_delete_opportunity` +
+  uninterrupted. The recovery is manual deletion in the Connect web UI
+  (no connect-delete-opportunity atom yet — see
+  `skills/sweep-connect/SKILL.md § Implementation notes`) followed by
   `connect_create_opportunity` against canonical HQ ids + a
   `connect_opportunity_id` bookkeeping update in the current run's
   `run_state.yaml`. **Repointing the Connect opp pre-Phase-9 is
