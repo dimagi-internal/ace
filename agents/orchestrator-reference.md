@@ -1037,6 +1037,123 @@ let the operator resume via `/ace:run <opp>/<run-id>` in a fresh
 session. Never try to compress your own context to keep going — the
 cure is worse than the disease.
 
+### BLOCKER retry caps
+
+Phase agents must not auto-redispatch identical payloads against the
+same opaque failure. Cap at **3 same-class BLOCKER retries within one
+phase, then halt the run**: write `phases.<phase>.status: error` and
+`verdict: blocker-retry-cap` to `run_state.yaml`, surface `[BLOCKER]`
+to the operator, and stop. (Pre-0.13.116 this paired with a
+`gates.<phase>: failed` flip; gates removed —
+`phases.<phase>.status: error` is now the sole signal.)
+
+**Why:** turmeric Phase 4 retried `connect_create_opportunity` 3× on
+an identical payload against the same opaque 500 before bisect proved
+it deterministic (CI-659, the 50-char `short_description` trap). Leep
+Phase 6 retried 5× across `/loop continue` cycles on the same
+`runner_service_state=failed` class — burning hours that a circuit
+breaker would have converted into a single operator halt.
+
+### Cross-repo debug belongs in a subagent
+
+When a phase blocks on an infrastructure or contract bug that needs
+cross-repo development (ace-web, an MCP server, an upstream library),
+do NOT debug at L0. Dispatch a single `general-purpose` subagent with
+the prompt "find root cause, propose patch, return diff." The
+orchestrator's job is run flow, not bisect.
+
+**Why:** leep run `20260512-0418` had 1325 lines of L0 ace-web
+cloud-emulator debugging between Agent dispatches (only 4 Agent calls
+across 1448 lines total). Turmeric Phase 4 had ~24 min of L0 bisect
+work that belonged in a research subagent. The user manually pivoted
+in both runs ("I'll spin up another agent") — too late.
+
+### Don't read-modify-write run_state.yaml
+
+Use `update_yaml_file` with `merge: 'two-level'` — its CAS retry is
+the race-correctness mechanism. A manual `drive_read_file` +
+`drive_update_file` re-introduces the lost-update class of bug under
+concurrent writes (multi-skill same-phase writers, or two operators
+on the same opp).
+
+`merge: 'two-level'` recurses one level into object-valued top-level
+keys (`phases:`), so a single phase's patch leaves sibling phases'
+blocks intact. The default `shallow` mode replaces each top-level key
+wholesale and would clobber every other phase's entry under
+`phases:`. Full mechanics in § Phase Write-Back Contract.
+
+### Don't skip per-step `-eval` dispatch
+
+Phase 3 (`commcare-setup`) executes inline at level 0. After each
+producer skill (`pdd-to-learn-app`, `pdd-to-deliver-app`,
+`app-release`), the procedure doc says to dispatch the matching
+`-eval` skill — these are not optional. The inline execution surface
+makes it easy to skip them ("the build succeeded, move on") but that
+leaves `has_judge: true` skills without verdicts, and the Phase
+Write-Back Contract's verdict-gate rule fires
+(`phases.commcare-setup.verdict` cannot be `pass` when any
+`has_judge: true` skill has `steps.<skill>-eval.status: deferred`).
+
+**Why:** `malaria-itn-app/20260523-0750` Phase 3 ran all 7 producer
+skills but 0 of 3 evals. The phase shipped `verdict: pass` without
+any LLM-as-Judge quality signal. The same rule applies to any future
+procedure doc executing producers inline.
+
+### Don't add operator-confirmation on populated opps
+
+The "do you want to overwrite live state?" gate is off-spec on
+populated opps. `--mode default` already encodes the answer. The
+named Pause Points (§ Pause Points) plus the Phase 8→9 boundary are
+the only sanctioned pause locations. A populated-opp confirmation
+prompt added to the orchestrator hides a skill bug rather than fixing
+it.
+
+Reuse-vs-rebuild is owned by each phase agent's skills, not by the
+orchestrator. Each run is independent — no run reads from or writes
+to another run's `run_state.yaml`. The only cross-run reuse surface
+is `opp.yaml.connect.program.{id, url, labs_int_id}`, the durable
+Connect program reference reused across every run. Everything else
+(opportunity, OCS chatbot, solicitation) is per-run and recreated
+fresh.
+
+If you (the orchestrator session) genuinely encounter prior state you
+can't classify as "reuse vs rebuild" by inspecting `opp.yaml`, that
+is a **skill bug** — file an issue against the relevant phase agent's
+skills, don't add an orchestrator-level confirmation prompt.
+
+### Don't authorize Phase 6 soft-fail in the dispatch prompt
+
+The AVD/Maestro auto-heal lives inside `mobile_ensure_avd_running`;
+if it exhausts, the right answer is a `[BLOCKER]` halt that points
+the operator at `/ace:mobile-bootstrap`, not "proceed with placeholder
+screenshots and log `[WARN]`." Sentences along the lines of "if
+`app-screenshot-capture` cannot run, proceed without screenshots" in
+the Phase 6 dispatch prompt are off-spec — they reintroduce the
+escape valve the heal was designed to retire. The phase agent itself
+rejects this kind of override since 0.13.165 (see
+`agents/qa-and-training.md` § Pre-flight checklist), but orchestrator
+authors should not write it in the first place.
+
+**Why:** leep run `20260511-0507` Phase 6 shipped no screenshots
+because the dispatcher's prompt told the phase agent "don't halt
+Phase 6 over dev-machine state" — but that "dev-machine state" was a
+wedged Maestro gRPC server, which the heal could have fixed in ~90s.
+Every run that quietly ships placeholders is a Phase 6 capability
+gap we can't see in the verdict stream.
+
+### On phase retry, pass the verdict fileId inline
+
+On retry, pass the prior failed verdict's Drive `fileId` inline — do
+NOT paraphrase. The retry agent reads the verdict directly from
+Drive; the orchestrator's dispatch prompt cites the fileId (and the
+producer artifact paths) rather than summarizing the failure mode.
+
+**Why:** leep Phase 6 retry #5's dispatch prompt paraphrased
+`phase5-block.md` as "selector-map gaps... `connect-baseline-screenshots`
+to fix" — the subagent re-discovered the same gap from scratch each
+cycle because it never saw the actual artifact. Paraphrase compresses
+out the precise diagnosis the retry needs.
+
 ## Fix-and-ship subagent template — explicit merge confirmation
 
 When the orchestrator (or any level-0 dispatcher) launches a

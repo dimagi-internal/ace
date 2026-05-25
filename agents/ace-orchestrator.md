@@ -31,167 +31,37 @@ run.
 ## Anti-patterns and discipline
 
 These are the rules the orchestrator MUST follow during `/ace:run`.
-Each rule is a one-line directive; where the rule has a worked failure
-mode (an incident or a transcript pattern), a short **Why** line
-follows. Full shape requirements, canonical incidents, and historical
-rationale live in `agents/orchestrator-reference.md § Discipline — full
-text`.
+Each rule below is a one-line directive with the bug class it prevents.
+Full prose (canonical incidents, recovery shape, rationale) lives in
+[`agents/orchestrator-reference.md § Discipline — full text`](orchestrator-reference.md#discipline-full-text).
+When changing a rule, edit BOTH places — the reference doc owns the
+prose, this list owns the scannable "what the rule says."
 
 ### Tool dispatch
 
-- **Don't fake background tasks.** No prose like "I'll check on this in
-  5 minutes." Phase-internal sequential skills run synchronously to
-  completion against a hard wall-clock budget; they do NOT call
-  `ScheduleWakeup`. If a skill cannot finish in budget, it fails loud
-  (partial artifact + `[BLOCKER]` `auto_surfaced` entry) and the
-  orchestrator decides whether to re-dispatch — idempotent re-runs are
-  the recovery mechanism.
-  **Why:** the `turmeric-20260503-0835` deep capture burned 3+ hours,
-  ~700K tokens, and produced zero recoverable transcript by treating
-  `ScheduleWakeup` as a backgrounding primitive.
-- **Background scheduling is reserved for opp-recurring jobs, not
-  phase-internal work.** `ScheduleWakeup` / cron belong to
-  `timeline-monitor`, `flw-data-review`, `ocs-chatbot-{qa,eval}
-  --monitor` — jobs that run independent of any single `/ace:run`.
-  Phase-internal work (`ocs-chatbot-qa --quick|--deep`,
-  `app-screenshot-capture`) is foreground sequential.
-- **Polling is allowed for upstream state changes — bounded.** RAG
-  indexing in `ocs-agent-setup`, CCHQ build completion in `app-release`:
-  poll the upstream status endpoint with max attempts + exponential
-  backoff + hard timeout + fail-loud on exhaustion. Do not invent a
-  "background task ID" the orchestrator can't verify is alive.
-- **Don't dispatch two `Agent` calls in one message.** Claude Code does
-  not reliably parallelize `Agent` dispatches. Treat all `Agent` and
-  slash-command-driven agent dispatches (e.g. `/nova:autobuild`) as
-  serial — including Phase 3's two Nova builds and any future
-  cross-phase orchestration.
-- **Do batch independent tool calls.** N independent `drive_read_file`,
-  `connect_create_payment_unit`, `nova_update_form` etc. in a single
-  assistant message. Sequential single-tool messages waste the
-  parallelism the harness already supports.
-- **Don't fan out env probes.** Resolve `.env` in ONE bash invocation
-  (or `bin/ace-doctor --preflight`'s `env_file:` output) — not 3–4
-  separate `ls`/`test -f` probes across `~/.claude/`, the worktree, and
-  `.gws-sa-key.json`-adjacent paths. That fan-out is 30s of latency for
-  a value `bin/ace-doctor` already publishes.
-- **Issue all phase `TaskCreate` calls in one parallel block.** The
-  per-phase task list is known up-front from the workflow; emit one
-  message with N `TaskCreate` tool-uses, not N sequential turns.
-- **≥3 same-class BLOCKER retries within one phase → halt the run.**
-  Write `phases.<phase>.status: error` and `verdict: blocker-retry-cap`
-  to `run_state.yaml`, surface `[BLOCKER]` to the operator, and stop.
-  Phase agents must not auto-redispatch identical payloads.
-  (Pre-0.13.116 this paired with a `gates.<phase>: failed` flip;
-  gates removed — `phases.<phase>.status: error` is now the sole
-  signal.)
-  **Why:** turmeric Phase 4 retried `connect_create_opportunity` 3×
-  on an identical payload against the same opaque 500 before bisect
-  proved it deterministic (CI-659, the 50-char `short_description`
-  trap). Leep Phase 6 retried 5× across `/loop continue` cycles on
-  the same `runner_service_state=failed` class — burning hours that
-  a circuit breaker would have converted into a single operator halt.
-- **When a phase blocks on an infra/contract bug, don't debug at L0.**
-  Dispatch a single `general-purpose` subagent with the prompt "find
-  root cause, propose patch, return diff." The orchestrator's job is
-  run flow, not bisect.
-  **Why:** leep run `20260512-0418` had 1325 lines of L0 ace-web
-  cloud-emulator debugging between Agent dispatches (only 4 Agent
-  calls across 1448 lines total). Turmeric Phase 4 had ~24 min of L0
-  bisect work that belonged in a research subagent. The user manually
-  pivoted in both runs ("I'll spin up another agent") — too late.
+- **Don't fake background tasks.** `ScheduleWakeup` is not a backgrounding primitive; phase-internal sequential skills run synchronously to a hard wall-clock budget. Bug class: unbounded silent loops with zero recoverable evidence (turmeric-20260503-0835: 3+ hr, ~700K tokens, zero transcript). See [reference § Long-Running Skills — No Fake Background Tasks](orchestrator-reference.md#long-running-skills-no-fake-background-tasks).
+- **Background scheduling is for opp-recurring jobs only.** `timeline-monitor`, `flw-data-review`, `ocs-chatbot-{qa,eval} --monitor`. Phase-internal work (`ocs-chatbot-qa --quick|--deep`, `app-screenshot-capture`) is foreground sequential. See [reference § Long-Running Skills](orchestrator-reference.md#long-running-skills-no-fake-background-tasks).
+- **Polling for upstream state changes is bounded.** RAG indexing in `ocs-agent-setup`, CCHQ build in `app-release`: max attempts + exponential backoff + hard timeout + fail-loud on exhaustion. Bug class: phantom "background task IDs" the orchestrator can't verify. See [reference § When polling IS appropriate](orchestrator-reference.md#when-polling-is-appropriate).
+- **Don't dispatch two `Agent` calls in one message.** Claude Code does not reliably parallelize `Agent` dispatches — treat all of them as serial, including Phase 3's two Nova builds and any future cross-phase orchestration. Bug class: silently-dropped second dispatch. See [reference § Per-phase batching, env, and Agent-serial rules](orchestrator-reference.md#per-phase-batching-env-and-agent-serial-rules).
+- **Do batch independent tool calls.** N independent `drive_read_file`, `connect_create_payment_unit`, `nova_update_form` etc. in a single assistant message. Bug class: ~60–90s of pure model-output latency wasted per run when serialized. See [reference § Per-phase batching](orchestrator-reference.md#per-phase-batching-env-and-agent-serial-rules).
+- **Don't fan out env probes.** Resolve `.env` in ONE bash invocation (or `bin/ace-doctor --preflight`'s `env_file:` output) — not 3–4 separate `ls`/`test -f` probes. Bug class: 30s of latency for a value doctor already publishes. See [reference § Per-phase batching](orchestrator-reference.md#per-phase-batching-env-and-agent-serial-rules).
+- **Issue all phase `TaskCreate` calls in one parallel block.** The per-phase task list is known up-front; emit one message with N `TaskCreate` tool-uses, not N sequential turns. Bug class: ~30s of unnecessary model-output time at run start. See [reference § Per-phase batching](orchestrator-reference.md#per-phase-batching-env-and-agent-serial-rules).
+- **≥3 same-class BLOCKER retries within one phase → halt the run.** Write `phases.<phase>.status: error` + `verdict: blocker-retry-cap`, surface `[BLOCKER]`, and stop. Phase agents must not auto-redispatch identical payloads. Bug class: deterministic-failure thrashing (turmeric Phase 4 50-char trap, leep Phase 6 `runner_service_state=failed`). See [reference § BLOCKER retry caps](orchestrator-reference.md#blocker-retry-caps).
+- **When a phase blocks on an infra/contract bug, don't debug at L0.** Dispatch a single `general-purpose` subagent with "find root cause, propose patch, return diff." The orchestrator's job is run flow, not bisect. Bug class: hundreds of lines of bisect noise polluting orchestrator context (leep run 20260512-0418: 1325 lines of L0 ace-web debug). See [reference § Cross-repo debug belongs in a subagent](orchestrator-reference.md#cross-repo-debug-belongs-in-a-subagent).
 
 ### State writes
 
-- **Verify after every external create — Write → Read → Compare → Halt
-  loud on mismatch.** Connect, CCHQ, OCS, and Nova all have classes of
-  bug where the create endpoint accepts the payload, returns 201, but
-  the stored row diverges from what was sent. Mismatch on a load-bearing
-  field (dates, app ids, amounts, required relations) is `[BLOCKER]` —
-  write the diff to `comms-log/observations.md`, do NOT proceed.
-  Mismatch on a cosmetic field is `[INFO]` — log and proceed. Canonical
-  example: `skills/connect-opp-setup/SKILL.md` Steps 4 + 6.
-  **Why:** the `turmeric-20260503-0835` Phase 4 payment-unit
-  malformation (`amount=500` vs sent `1.50`,
-  `required_deliver_units=[]` vs sent `[Vendor Visit]`) cascaded through
-  `is_setup_complete` to silently break Phase 8 invites and Phase 6
-  screenshot capture. A producer-side read-back would have converted
-  that multi-phase cascade into a single-skill halt.
-- **Don't read-modify-write `run_state.yaml` by hand.** Use
-  `update_yaml_file` with `merge: 'two-level'` — its CAS retry is the
-  race-correctness mechanism. A manual `drive_read_file` +
-  `drive_update_file` re-introduces the lost-update class of bug.
+- **Verify after every external create — Write → Read → Compare → Halt loud on mismatch.** Connect, CCHQ, OCS, and Nova all silently accept payloads then diverge from what was sent (turmeric Phase 4: sent `amount=1.50`, stored `amount=500`). Load-bearing mismatch is `[BLOCKER]`; cosmetic mismatch is `[INFO]`. Canonical example: `skills/connect-opp-setup/SKILL.md` Steps 4 + 6. See [reference § External Mutations — Verify After Create](orchestrator-reference.md#external-mutations-verify-after-create).
+- **Don't read-modify-write `run_state.yaml` by hand.** Use `update_yaml_file` with `merge: 'two-level'` — its CAS retry is the race-correctness mechanism. Bug class: lost-update under concurrent writers. See [reference § Don't read-modify-write run_state.yaml](orchestrator-reference.md#dont-read-modify-write-run_stateyaml).
 
 ### Procedure discipline
 
-- **Don't "summarize and continue" to dodge context exhaustion.** The
-  inline-artifact contract (§ Pre-flight & per-phase conventions) breaks
-  if the next phase's PDD is paraphrased rather than passed verbatim.
-  Trust the 1M-context window. If the harness genuinely signals
-  exhaustion, write back `phases.<current>.status: done` (or `error`
-  with a one-line note) and resume via `/ace:run <opp>/<run-id>` in a
-  fresh session.
-- **Don't skip producer skills to shortcut to consumers.** "Invoke X" /
-  "Dispatch X" means call `Skill(<name>)` (or
-  `/ace:step <name> <opp>/<run-id>`). Never compose a producer skill's
-  outputs inline from upstream artifacts — even when you have enough
-  context to plausibly do so. Skills with multi-file output contracts
-  bind downstream pre-flights to the on-disk layout, not to a master
-  file's content; the downstream halt surfaces phases later, by which
-  time attribution is harder. The Phase 3 procedure doc
-  (`commcare-setup`) is the highest-risk surface because it executes
-  inline at level-0. The post-phase artifact verifier
-  (§ Producer Artifact Verifier in reference) catches this mechanically;
-  the rule lives here so authors of new procedure docs know not to
-  design around it.
-  **Why:** turmeric run `20260509-0455` inline-composed
-  `3-commcare/app-test-cases.yaml` instead of invoking
-  `Skill(app-test-cases)`, omitting the per-journey recipe files Phase 6
-  reads. Phase 6 halted at pre-flight; five training docs rendered
-  without screenshots and had to be re-run.
-- **Don't skip per-step `-eval` dispatch during inline execution.**
-  Phase 3 (`commcare-setup`) executes inline at level 0. After each
-  producer skill (`pdd-to-learn-app`, `pdd-to-deliver-app`,
-  `app-release`), the procedure doc says to dispatch the matching
-  `-eval` skill (`pdd-to-learn-app-eval`, `pdd-to-deliver-app-eval`,
-  `app-release-eval`) — these are not optional. The inline execution
-  surface makes it easy to skip them ("the build succeeded, move on")
-  but that leaves `has_judge: true` skills without verdicts and the
-  Phase Write-Back Contract's verdict-gate rule fires
-  (`phases.commcare-setup.verdict` cannot be `pass` when any
-  `has_judge: true` skill has `steps.<skill>-eval.status: deferred`).
-  **Why:** `malaria-itn-app/20260523-0750` Phase 3 ran all 7 producer
-  skills but 0 of 3 evals. The phase shipped `verdict: pass` without
-  any LLM-as-Judge quality signal.
-- **Don't add operator-confirmation prompts on populated opps.** The
-  "do you want to overwrite live state?" gate is off-spec — push
-  reuse-vs-rebuild decisions down into phase-agent skill logic. Full
-  contract: § Modes — default, review, auto.
-- **Don't authorize Phase 6 soft-fail in the dispatch prompt.** The
-  AVD/Maestro auto-heal lives inside `mobile_ensure_avd_running`; if
-  it exhausts, the right answer is a `[BLOCKER]` halt that points the
-  operator at `/ace:mobile-bootstrap`, not "proceed with placeholder
-  screenshots and log `[WARN]`." Sentences along the lines of "if
-  `app-screenshot-capture` cannot run, proceed without screenshots"
-  in the Phase 6 dispatch prompt are off-spec — they reintroduce the
-  escape valve the heal was designed to retire. The phase agent
-  itself rejects this kind of override since 0.13.165 (see
-  `agents/qa-and-training.md` § Pre-flight checklist), but
-  orchestrator authors should not write it in the first place.
-  **Why:** leep run `20260511-0507` Phase 6 shipped no screenshots
-  because the dispatcher's prompt told the phase agent "don't halt
-  Phase 6 over dev-machine state" — but that "dev-machine state" was
-  a wedged Maestro gRPC server, which the heal could have fixed in
-  ~90s. Every run that quietly ships placeholders is a Phase 6
-  capability gap we can't see in the verdict stream.
-- **On phase retry, pass the prior failed verdict's Drive `fileId`
-  inline — do NOT paraphrase.** The retry agent reads the verdict
-  directly from Drive; the orchestrator's dispatch prompt cites the
-  fileId (and the producer artifact paths) rather than summarizing
-  the failure mode.
-  **Why:** leep Phase 6 retry #5's dispatch prompt paraphrased
-  `phase5-block.md` as "selector-map gaps... `connect-baseline-screenshots`
-  to fix" — the subagent re-discovered the same gap from scratch each
-  cycle because it never saw the actual artifact.
+- **Don't "summarize and continue" to dodge context exhaustion.** The inline-artifact contract breaks if the next phase's PDD is paraphrased. Trust the 1M-context window; if the harness signals real exhaustion, write back `phases.<current>.status: done` (or `error`) and resume via `/ace:run <opp>/<run-id>` in a fresh session. Bug class: paraphrased upstream input silently changing downstream skill behavior. See [reference § Don't summarize and continue](orchestrator-reference.md#dont-summarize-and-continue).
+- **Don't skip producer skills to shortcut to consumers.** "Invoke X" / "Dispatch X" means `Skill(<name>)`. Never compose a producer's outputs inline from upstream artifacts, even under context-budget pressure. Phase 3 (procedure doc, level-0) is the highest-risk surface. Bug class: multi-file output contracts silently broken at producer; halt surfaces phases later (turmeric run 20260509-0455 → Phase 6 halt + 5 training docs re-run). See [reference § Skill Invocation Discipline](orchestrator-reference.md#skill-invocation-discipline).
+- **Don't skip per-step `-eval` dispatch during inline execution.** Phase 3 (`commcare-setup`) executes inline at L0; after each producer skill, dispatch the matching `-eval`. Phase Write-Back Contract refuses `verdict: pass` when any `has_judge: true` skill has `steps.<skill>-eval.status: deferred`. Bug class: phase verdict landing without LLM-as-Judge content-quality signal (malaria-itn-app/20260523-0750: 7/7 producers, 0/3 evals, shipped `pass`). See [reference § Don't skip per-step -eval dispatch](orchestrator-reference.md#dont-skip-per-step--eval-dispatch).
+- **Don't add operator-confirmation prompts on populated opps.** "Do you want to overwrite live state?" gates are off-spec — push reuse-vs-rebuild decisions into phase-agent skill logic. Full contract: § Modes — default, review, auto. Bug class: orchestrator-level prompts hiding skill bugs. See [reference § Don't add operator-confirmation on populated opps](orchestrator-reference.md#dont-add-operator-confirmation-on-populated-opps).
+- **Don't authorize Phase 6 soft-fail in the dispatch prompt.** AVD/Maestro auto-heal lives inside `mobile_ensure_avd_running`; if it exhausts, halt with `[BLOCKER]` pointing at `/ace:mobile-bootstrap` — not "proceed with placeholder screenshots and log `[WARN]`." The phase agent rejects this override since 0.13.165, but dispatcher authors should not write it in the first place. Bug class: placeholder screenshots quietly shipping (leep run 20260511-0507). See [reference § Don't authorize Phase 6 soft-fail in the dispatch prompt](orchestrator-reference.md#dont-authorize-phase-6-soft-fail-in-the-dispatch-prompt).
+- **On phase retry, pass the prior failed verdict's Drive `fileId` inline — do NOT paraphrase.** The retry agent reads the verdict directly from Drive; the dispatch prompt cites the fileId rather than summarizing the failure. Bug class: subagent re-discovers the same gap from scratch each cycle (leep Phase 6 retry #5 paraphrased `phase5-block.md`). See [reference § On phase retry, pass the verdict fileId inline](orchestrator-reference.md#on-phase-retry-pass-the-verdict-fileid-inline).
 
 ## Pre-flight & per-phase conventions
 
