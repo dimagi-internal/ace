@@ -194,6 +194,8 @@ remediation):
 | `expected-form-not-in-module` | Same as above — module/form structure has drifted. |
 | `opp-name-mismatch` | Pass `OPP_NAME` verbatim from `run_state.yaml.phases.connect-setup.products.connect.opportunity.name` (NOT slug-reassembled). Fallback only if missing: `connect_get_opportunity({org_slug, opportunity_id}).name`. |
 | `tile-name-collision` | Clean up prior-run invites OR use Resume-branch (exact-match claim). |
+| `form-advance-without-answer-tap` | Recipe chains ≥2 consecutive form-advance steps with no answer step between them — required-input questions will stall on `warning_root`. Re-author via `/ace:step app-test-cases`: for each required field, read its label/options via Nova `get_form` and emit a `tapOn:text:"<literal>"` (or `inputText` / photo-capture sequence) BEFORE the form-advance. |
+| `brief-label-drift` | Recipe has a `tapOn:text:"X"` matcher where X matches a PDD-brief naming pattern (`^[LFM]\d+ — `, `^Stage \d+ — `). Nova rewrites these during autobuild and the matcher won't resolve live. Re-author via `/ace:step app-test-cases`: read the live label from Nova `get_form`/`get_module` and use it verbatim. |
 
 On any failure, halt with the **incomplete-mode verdict shape** (see
 Step 9), `verdict: incomplete`, and a per-class

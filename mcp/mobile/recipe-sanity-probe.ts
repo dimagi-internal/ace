@@ -37,7 +37,9 @@ export type SanityFailureClass =
   | 'expected-module-not-in-app'
   | 'expected-form-not-in-module'
   | 'tile-name-collision'
-  | 'opp-name-mismatch';
+  | 'opp-name-mismatch'
+  | 'form-advance-without-answer-tap'
+  | 'brief-label-drift';
 
 export interface SanityFailure {
   class: SanityFailureClass;
@@ -130,6 +132,43 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
     }
     for (const formName of params.formNames) {
       recipeFormNames.add(formName);
+    }
+
+    // 6. form-advance-without-answer-tap → consecutive form-advance
+    // steps (runFlow: form-advance.yaml OR form-nav-next selector tap
+    // OR id: nav_btn_next tap) with no answer step (tapOn:text/index/
+    // id, inputText) between them. Catches the malaria-rdt 20260522
+    // class where required-input quiz questions were skipped, stalling
+    // the recipe on `warning_root` ("Sorry, this response is required").
+    // Single form-advance with no preceding answer is legitimate (info
+    // screens) — only flag chains of ≥ 2 where the antipattern is
+    // unambiguous.
+    const advanceChain = findFormAdvanceChain(recipe.text);
+    if (advanceChain) {
+      failures.push({
+        class: 'form-advance-without-answer-tap',
+        detail: `recipe ${recipe.name} chains ${advanceChain.count} consecutive form-advance steps starting at line ${advanceChain.firstLine} with no answer-selection step (tapOn:text/index/id or inputText) between them — required-input questions will stall on warning_root`,
+        remediation: `for each required field between these advances, read its label/options via Nova get_form and emit a tapOn:text:"<literal option label>" (or inputText for kind:text/decimal, photo-capture sequence for kind:image) BEFORE the form-advance step`,
+        recipe: recipe.name,
+        parameter: 'form-advance-chain',
+        value: String(advanceChain.count),
+      });
+    }
+
+    // 7. brief-label-drift → a tapOn:text matcher uses a PDD brief-
+    // style prefix (L<n>, F<n>, M<n>, Stage <n> followed by a dash)
+    // that Nova rewrites into a different live label during autobuild.
+    // Catches the #115 finding-2 class deterministically.
+    const briefLabels = findBriefStyleTapOnLabels(recipe.text);
+    for (const { label, line } of briefLabels) {
+      failures.push({
+        class: 'brief-label-drift',
+        detail: `recipe ${recipe.name} has tapOn:text:"${label}" (line ${line}) which matches a PDD-brief naming pattern (^[LFM]\\d+ or ^Stage \\d+) — Nova's autobuild rewrites these labels and the matcher will not resolve on the live screen`,
+        remediation: `read the live label from Nova get_form/get_module and use it verbatim in the matcher (per skills/app-test-cases/SKILL.md § Use live labels from Nova)`,
+        recipe: recipe.name,
+        parameter: 'tapOn:text',
+        value: label,
+      });
     }
 
     // 1. module-name == form-name → the intermediate-list edge case
@@ -281,4 +320,146 @@ export function extractRecipeParameters(recipe: RecipeText): {
   }
 
   return { moduleNames, formNames };
+}
+
+/** Step-kind classification for the form-advance-chain walker. */
+type StepKind =
+  | 'form-advance'   // any of: runFlow form-advance.yaml | tapOn form-nav-next selector | tapOn nav_btn_next id
+  | 'answer'         // tapOn:text/index/id OR inputText
+  | 'other';         // launchApp, runFlow other, takeScreenshot, extendedWaitUntil, etc.
+
+/** Classify a single step's first non-blank, non-comment line text.
+ * Conservative — anything ambiguous returns 'other'. */
+function classifyStepBlock(stepText: string): StepKind {
+  const lower = stepText.toLowerCase();
+  // form-advance forms (these are mutually exclusive with answer steps,
+  // and chaining them is the documented antipattern).
+  if (/file:\s*form-advance\.yaml/.test(stepText)) return 'form-advance';
+  if (/\$\{selector:form-nav-next\}/i.test(stepText)) return 'form-advance';
+  if (/id:\s*["']?[^"'\n]*:id\/nav_btn_next["']?/.test(stepText)) return 'form-advance';
+  // answer steps — tapOn (text/index/id, but NOT form-advance forms
+  // already caught above) OR inputText (scalar or mapping form).
+  if (/^\s*-\s+tapOn:/m.test(stepText)) return 'answer';
+  if (/^\s*-\s+inputText:/m.test(stepText)) return 'answer';
+  return 'other';
+}
+
+/** Walk a recipe's step list and return the first chain of ≥ 2
+ * consecutive form-advance steps with no answer step between them.
+ * Returns null when no such chain exists. */
+function findFormAdvanceChain(
+  yaml: string,
+): { count: number; firstLine: number } | null {
+  // Split into top-level list items by scanning lines for `- ` at the
+  // same indent as the first list-item dash. The static palette uses
+  // 0-indent dashes; recipes follow suit.
+  const lines = yaml.split('\n');
+  let dashIndent = -1;
+  const items: { text: string; startLine: number }[] = [];
+  let current: { text: string; startLine: number } | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*#/.test(line)) continue;
+    const dashMatch = line.match(/^(\s*)-\s/);
+    if (dashMatch) {
+      const indent = dashMatch[1].length;
+      if (dashIndent === -1) dashIndent = indent;
+      if (indent === dashIndent) {
+        if (current) items.push(current);
+        current = { text: line, startLine: i + 1 };
+        continue;
+      }
+    }
+    if (current) current.text += '\n' + line;
+  }
+  if (current) items.push(current);
+
+  // Walk items, tracking consecutive form-advance runs. Reset on any
+  // 'answer' kind. 'other' kinds (launchApp, takeScreenshot,
+  // extendedWaitUntil, runFlow-not-form-advance) are pass-through —
+  // they don't reset the chain (an extendedWaitUntil between two
+  // chained form-advances is still the antipattern). The chain breaks
+  // only on an explicit answer step.
+  let chainCount = 0;
+  let chainStartLine = -1;
+  for (const item of items) {
+    const kind = classifyStepBlock(item.text);
+    if (kind === 'form-advance') {
+      if (chainCount === 0) chainStartLine = item.startLine;
+      chainCount++;
+      if (chainCount >= 2) {
+        return { count: chainCount, firstLine: chainStartLine };
+      }
+    } else if (kind === 'answer') {
+      chainCount = 0;
+      chainStartLine = -1;
+    }
+  }
+  return null;
+}
+
+/** Find `tapOn: text: "..."` matchers whose text matches a known PDD-
+ * brief naming pattern that Nova rewrites during autobuild. The
+ * specific patterns are documented in skills/app-test-cases/SKILL.md
+ * § Use live labels from Nova's `get_form` response. */
+function findBriefStyleTapOnLabels(
+  yaml: string,
+): { label: string; line: number }[] {
+  const out: { label: string; line: number }[] = [];
+  const lines = yaml.split('\n');
+  // Match either:
+  //   - tapOn: { text: "X" }
+  //   - tapOn:
+  //       text: "X"
+  // We look for `text: "X"` lines that appear after a `tapOn:` opener.
+  // Single regex sweep over the whole file is enough for the static-
+  // text case (no $vars allowed — those are resolved later).
+  const briefPatterns: RegExp[] = [
+    /^[LFM]\d+\s*[—\-]\s+\S/, // L0 — Why this matters, F1 - Shop Registration, M1 — Module
+    /^Stage\s+\d+\s*[—\-]\s+\S/i, // Stage 1 — Market Analysis
+  ];
+  let inTapOnBlock = false;
+  let tapOnIndent = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*#/.test(line)) continue;
+    // Inline mapping form: `- tapOn: { text: "..." }` (one line)
+    const inline = line.match(/tapOn:\s*\{[^}]*text:\s*["']([^"']+)["']/);
+    if (inline) {
+      const label = inline[1];
+      if (briefPatterns.some((p) => p.test(label))) {
+        out.push({ label, line: i + 1 });
+      }
+      continue;
+    }
+    // Mapping-form opener: `<indent>- tapOn:` or `<indent>tapOn:` with
+    // no value on the same line.
+    const tapOnOpen = line.match(/^(\s*)(?:-\s+)?tapOn:\s*$/);
+    if (tapOnOpen) {
+      inTapOnBlock = true;
+      tapOnIndent = tapOnOpen[1].length;
+      continue;
+    }
+    if (inTapOnBlock) {
+      // Continue while we're inside the tapOn mapping (deeper indent
+      // than the opener). Exit on a shallower-or-equal line.
+      const indentMatch = line.match(/^(\s*)/);
+      const indent = indentMatch ? indentMatch[1].length : 0;
+      if (line.trim() === '' ) continue;
+      if (indent <= tapOnIndent) {
+        inTapOnBlock = false;
+        // Fall through to re-check this line as a possible new opener.
+        i--;
+        continue;
+      }
+      const textMatch = line.match(/^\s*text:\s*["']([^"']+)["']/);
+      if (textMatch) {
+        const label = textMatch[1];
+        if (briefPatterns.some((p) => p.test(label))) {
+          out.push({ label, line: i + 1 });
+        }
+      }
+    }
+  }
+  return out;
 }

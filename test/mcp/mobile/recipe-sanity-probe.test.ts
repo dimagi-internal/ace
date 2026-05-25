@@ -205,3 +205,152 @@ describe('probeRecipeSanity — multi-failure recipes', () => {
     expect(classes).toContain('opp-name-mismatch');
   });
 });
+
+// --- Raw-body fixture for step-list-walking checks ---
+function recipeBody(name: string, body: string): { name: string; text: string } {
+  return { name, text: `appId: org.commcare.dalvik\n---\n${body}\n` };
+}
+
+describe('probeRecipeSanity — failure class: form-advance-without-answer-tap', () => {
+  it('flags two adjacent form-advance runFlow steps with no answer between', () => {
+    // Canonical malaria-rdt 20260522-1002 incident: J1 chained
+    // form-advance.yaml across 10+ required-input quiz questions with
+    // zero answer-selection steps in between.
+    const body = [
+      '- runFlow:',
+      '    file: form-advance.yaml',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J1.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'form-advance-without-answer-tap');
+    expect(f).toBeDefined();
+    expect(f!.recipe).toBe('J1.yaml');
+    expect(f!.detail).toMatch(/form-advance/);
+    expect(f!.remediation).toMatch(/get_form|answer/i);
+  });
+
+  it('passes when every form-advance is preceded by an answer step in the same section', () => {
+    const body = [
+      '- tapOn:',
+      '    text: "Public hospital"',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+      '- inputText: "Apcolite Stores"',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J1.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'form-advance-without-answer-tap')).toBeUndefined();
+  });
+
+  it('flags two consecutive form-nav-next selector taps with nothing between', () => {
+    // The `${SELECTOR:form-nav-next}` and `id: nav_btn_next` forms are
+    // semantically identical to runFlow: form-advance.yaml.
+    const body = [
+      '- tapOn: ${SELECTOR:form-nav-next}',
+      '- tapOn: ${SELECTOR:form-nav-next}',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J2.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'form-advance-without-answer-tap');
+    expect(f).toBeDefined();
+  });
+
+  it('does not flag a single form-advance with no preceding answer (could be intro screen)', () => {
+    // Some forms open on an info/instructions screen — a single
+    // form-advance with no preceding answer step is legitimate. Only
+    // flag chained advances (≥ 2 in a row) where the antipattern is
+    // unambiguous.
+    const body = [
+      '- launchApp',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+      '- tapOn:',
+      '    text: "Yes"',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J3.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'form-advance-without-answer-tap')).toBeUndefined();
+  });
+});
+
+describe('probeRecipeSanity — failure class: brief-label-drift', () => {
+  it('flags tapOn:text matchers that use brief-style L<n>/F<n>/M<n> prefixes', () => {
+    // jjackson/ace#115 finding 2: PDD brief uses "L0 — Why this matters"
+    // but Nova rewrites to "1. Why this matters" — recipes referencing
+    // the brief label never match the live screen.
+    const body = [
+      '- tapOn:',
+      '    text: "L0 — Why this matters"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J1.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'brief-label-drift');
+    expect(f).toBeDefined();
+    expect(f!.recipe).toBe('J1.yaml');
+    expect(f!.value).toBe('L0 — Why this matters');
+    expect(f!.remediation).toMatch(/get_form|Nova/);
+  });
+
+  it('flags the ASCII-hyphen variant', () => {
+    const body = '- tapOn:\n    text: "F1 - Shop Registration"';
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J1.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'brief-label-drift')).toBeDefined();
+  });
+
+  it('flags Stage <N> brief naming', () => {
+    const body = '- tapOn:\n    text: "Stage 1 — Market Analysis"';
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J1.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'brief-label-drift')).toBeDefined();
+  });
+
+  it('passes Nova-rendered labels (1. Why this matters)', () => {
+    const body = '- tapOn:\n    text: "1. Why this matters"';
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J1.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'brief-label-drift')).toBeUndefined();
+  });
+
+  it('passes ALL-CAPS Connect surface labels (VIEW OPPORTUNITY DETAILS)', () => {
+    const body = '- tapOn:\n    text: "VIEW OPPORTUNITY DETAILS"';
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J1.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'brief-label-drift')).toBeUndefined();
+  });
+});

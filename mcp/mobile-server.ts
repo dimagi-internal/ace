@@ -207,6 +207,21 @@ server.tool(
     yaml: z.string().describe('Maestro YAML body to validate. Standard ACE-recipe shape: appId frontmatter + `---` separator + step list. Validates step-key allowlist (launchApp, tapOn, inputText, takeScreenshot, assertVisible, assertNotVisible, extendedWaitUntil, waitForAnimationToEnd, eraseText, swipe, pressKey, back, scroll, hideKeyboard, runFlow, evalScript, stopApp) and structural integrity (`---` separator present, appId in frontmatter, every step is a single-key object). Use this AFTER an ACE skill (running as a Claude Code session) writes Maestro YAML inline using its own LLM context — the mobile MCP does not bundle an LLM client, so YAML generation is the calling agent\'s responsibility, not this server\'s.'),
   },
   async ({ yaml }) => {
+    // Static lint pass FIRST. Catches known-broken structural shapes
+    // (e.g. inputText-scalar-with-sibling-option) with a precise
+    // rule-named error before delegating to the Maestro parser, which
+    // surfaces unhelpful "expected <block end>" errors for the same
+    // class. NOTE: avoid stray apostrophes in this comment block —
+    // scripts/dump-atom-schemas.ts walks chars with a string-aware but
+    // comment-unaware parser. A bare `'` here starts a phantom string
+    // and makes every subsequent atom invisible to docs/atom-schemas.md.
+    const { lintRecipeText } = await import('./mobile/recipe-lint.js');
+    const lint = lintRecipeText(yaml);
+    if (!lint.ok) {
+      const first = lint.violations[0];
+      const msg = `recipe lint failed [${first.rule}] line ${first.line}: ${first.detail}. Remediation: ${first.remediation}`;
+      return { content: [{ type: 'text', text: JSON.stringify({ ok: false, valid: false, error: msg, violations: lint.violations }, null, 2) }], isError: true };
+    }
     const fs = await import('node:fs');
     const os = await import('node:os');
     const path = await import('node:path');
