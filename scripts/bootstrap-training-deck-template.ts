@@ -38,10 +38,20 @@ import { STENCILS } from '../lib/training-deck-spec.js';
 // ---------------------------------------------------------------------------
 
 const FONT_FAMILY = 'Work Sans';
-const COLOR_INDIGO = { red: 0.09, green: 0, blue: 0.42 };     // #16006D approx
-const COLOR_AMBER = { red: 0.99, green: 0.68, blue: 0.19 };   // #FDAE31 approx
+// Dimagi brand palette — exact hex values from the canonical training
+// template (presentation 1NAkbjPjDZSx_Qw8legfuRUk8eTBqO4dn1H2XOqAM1Hc),
+// surveyed 2026-05-25. RGB normalized to [0, 1] for Slides API.
+//   #130168 — Primary indigo (covers, top-right corner square)
+//   #FEAF31 — Primary amber (top-left tab, accents)
+//   #5F6A7D — Body-text gray (per slide 1 brand guide)
+//   #F3F3F3 — Neutral surface fill
+//   #5D70D2 — Mobile/web mockup blue (semantic: product/UI)
+const COLOR_INDIGO = { red: 0x13 / 255, green: 0x01 / 255, blue: 0x68 / 255 };  // #130168
+const COLOR_AMBER = { red: 0xFE / 255, green: 0xAF / 255, blue: 0x31 / 255 };   // #FEAF31
 const COLOR_WHITE = { red: 1, green: 1, blue: 1 };
-const COLOR_GRAY = { red: 0.37, green: 0.42, blue: 0.49 };    // #5F6A7D
+const COLOR_GRAY = { red: 0x5F / 255, green: 0x6A / 255, blue: 0x7D / 255 };    // #5F6A7D
+const COLOR_SURFACE = { red: 0xF3 / 255, green: 0xF3 / 255, blue: 0xF3 / 255 }; // #F3F3F3
+const COLOR_MOBILE_BLUE = { red: 0x5D / 255, green: 0x70 / 255, blue: 0xD2 / 255 }; // #5D70D2
 
 // ---------------------------------------------------------------------------
 // Slide dimensions (EMU)
@@ -59,7 +69,7 @@ const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 
-const TEMPLATE_NAME = 'ACE Training Deck Template (v2)';
+const TEMPLATE_NAME = 'ACE Training Deck Template (v3 — Dimagi-branded)';
 const PARENT_FOLDER_ID = process.env.ACE_DRIVE_ROOT_FOLDER_ID;
 
 // ---------------------------------------------------------------------------
