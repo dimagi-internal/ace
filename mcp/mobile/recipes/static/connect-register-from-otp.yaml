@@ -288,7 +288,17 @@ appId: org.commcare.dalvik
 # Mirrors the post-registered signal classifyDeviceUserState() reads in
 # mcp/mobile/client.ts:169. Keep the alternatives in sync if either
 # side changes.
+#
+# Maestro 2.5.1 does NOT support `textRegex` on extendedWaitUntil — that
+# property was a 2026-05-25 attempt that surfaced as `Unknown Property:
+# textRegex` at parse time, halting the whole bootstrap. Wait for a
+# single strong anchor instead. "Work History" is the first item in the
+# Connect home drawer and only appears post-registration; sufficient as
+# a single anchor. (If the drawer item names ever change such that
+# "Work History" disappears, classifyDeviceUserState() in client.ts:169
+# would also need updating in lockstep — see the "Keep the alternatives
+# in sync" note above.)
 - extendedWaitUntil:
     visible:
-      textRegex: "(Work History|Opportunities|Messaging|CommCare Apps)"
+      text: "Work History"
     timeout: 60000

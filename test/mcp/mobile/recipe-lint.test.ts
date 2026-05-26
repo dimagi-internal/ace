@@ -124,3 +124,60 @@ describe('lintRecipeText — inputText-scalar-with-sibling-option', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe('lintRecipeText — unknown-property-textRegex', () => {
+  it('flags `textRegex` on extendedWaitUntil', () => {
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- extendedWaitUntil:',
+      '    visible:',
+      '      textRegex: "(Work History|Opportunities)"',
+      '    timeout: 60000',
+      '',
+    ].join('\n');
+    const { ok, violations } = lintRecipeText(yaml);
+    expect(ok).toBe(false);
+    const tr = violations.find((v) => v.rule === 'unknown-property-textRegex');
+    expect(tr).toBeDefined();
+    expect(tr!.line).toBe(5);
+    expect(tr!.detail).toMatch(/Maestro 2\.5\.1|Unknown Property/);
+    expect(tr!.remediation).toMatch(/text:|substring|regex-aware/);
+  });
+
+  it('flags `textRegex` on any matcher (not just extendedWaitUntil)', () => {
+    const yaml = [
+      '- tapOn:',
+      '    textRegex: "(Submit|Done|Save)"',
+      '',
+    ].join('\n');
+    const { ok, violations } = lintRecipeText(yaml);
+    expect(ok).toBe(false);
+    expect(violations.filter((v) => v.rule === 'unknown-property-textRegex')).toHaveLength(1);
+  });
+
+  it('does NOT flag `text:` (the valid form)', () => {
+    const yaml = [
+      '- extendedWaitUntil:',
+      '    visible:',
+      '      text: "Work History"',
+      '    timeout: 60000',
+      '',
+    ].join('\n');
+    const r = lintRecipeText(yaml);
+    expect(r.ok).toBe(true);
+  });
+
+  it('does NOT flag `textRegex` inside a comment', () => {
+    const yaml = [
+      '# Avoid textRegex: not supported on Maestro 2.5.1.',
+      '- extendedWaitUntil:',
+      '    visible:',
+      '      text: "Work History"',
+      '    timeout: 60000',
+      '',
+    ].join('\n');
+    const r = lintRecipeText(yaml);
+    expect(r.ok).toBe(true);
+  });
+});

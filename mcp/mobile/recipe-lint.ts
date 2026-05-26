@@ -20,7 +20,7 @@
 /** A single violation surfaced by the linter. */
 export interface LintViolation {
   /** Stable rule name — telemetry and SKILL.md reference it. */
-  rule: 'inputText-scalar-with-sibling-option';
+  rule: 'inputText-scalar-with-sibling-option' | 'unknown-property-textRegex';
   /** 1-based line number of the offending list-item start. */
   line: number;
   /** Human-readable detail. Stable enough to grep for. */
@@ -96,6 +96,42 @@ export function lintRecipeText(yaml: string): LintResult {
         });
       }
       break;
+    }
+  }
+
+  // Rule: unknown-property-textRegex.
+  //
+  // Maestro 2.5.1 (current pin in both local + cloud AMI) does NOT
+  // accept `textRegex` as a property on any matcher. A recipe that
+  // uses it surfaces at parse time as:
+  //
+  //     > Unknown Property: textRegex
+  //
+  // and the WHOLE recipe fails before any step runs. The canonical
+  // intent ("match if any of these texts appear") can be expressed via
+  // `text:` (substring/regex-aware in Maestro's own matcher) on a
+  // single strong anchor, OR via the cli's regex form `id: <selector>`
+  // when an id is available. Either way, raw `textRegex:` is never
+  // valid.
+  //
+  // Bug class introduced 2026-05-25 on `connect-register-from-otp.yaml`
+  // line 293 — bednet-spot-check/20260525-2022 Phase 6 hit it during
+  // `mobile_ensure_avd_running`'s auto-bootstrap and halted the whole
+  // run before any Phase 6 work could fire. Lint rule added so the
+  // class is structurally impossible to reintroduce.
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*#/.test(line)) continue;
+    // Match a YAML key `textRegex:` at any indent.
+    if (/^\s*textRegex\s*:/.test(line)) {
+      violations.push({
+        rule: 'unknown-property-textRegex',
+        line: i + 1,
+        detail:
+          `\`textRegex\` (line ${i + 1}) is not a valid Maestro property on Maestro 2.5.1. The recipe will fail at parse time with "Unknown Property: textRegex" before any step runs.`,
+        remediation:
+          `Replace with \`text: "<single-anchor>"\` (Maestro's text matcher is substring/regex-aware on a single anchor) or use \`id: "<resource-id>"\` when a stable resource id is available. To wait on any-of-N text alternatives, sequence multiple \`extendedWaitUntil\` blocks (each with \`optional: true\`) or just pick the strongest single anchor.`,
+      });
     }
   }
 
