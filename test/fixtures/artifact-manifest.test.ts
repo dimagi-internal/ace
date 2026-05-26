@@ -72,24 +72,48 @@ describe('CRISPR-Test-001 fixture', () => {
       'inputs/',
       // Phase 1 outputs missing in this fixture.
       '1-design/idea-to-design_summary.md',
+      // PR-517: Phase 1 `-eval` verdicts flipped to required:true.
+      '1-design/idea-to-pdd-eval_verdict.yaml',
+      '1-design/pdd-to-work-order-eval_verdict.yaml',
       // Phase 2 outputs missing in this fixture.
       '2-scenarios/pdd-to-test-prompts.md',
       '2-scenarios/scenarios-and-acceptance_summary.md',
+      // PR-517: Phase 2 `-eval` verdicts flipped to required:true.
+      '2-scenarios/pdd-to-app-journeys-eval_verdict.yaml',
+      '2-scenarios/pdd-to-test-prompts-eval_verdict.yaml',
       // Phase 3 outputs missing in this fixture.
       '3-commcare/commcare-setup_summary.md',
       '3-commcare/app-release-smoke_verdict.yaml',
+      // PR-517: Phase 3 `-eval` verdicts flipped to required:true.
+      '3-commcare/app-release-eval_verdict.yaml',
+      '3-commcare/pdd-to-deliver-app-eval_verdict.yaml',
+      '3-commcare/pdd-to-learn-app-eval_verdict.yaml',
       // Phase 4 summary missing.
       '4-connect/connect-setup_summary.md',
+      // PR-517: Phase 4 `-eval` verdict flipped to required:true.
+      '4-connect/connect-program-setup-eval_verdict.yaml',
       // Phase 5 OCS artifacts (the fixture covers earlier phases only).
       '5-ocs/ocs-agent-setup.md',
       '5-ocs/ocs-setup_summary.md',
       '5-ocs/ocs-setup_widget-handoff.md',
+      // PR-517: declared `-eval` verdict outputs flipped to required:true so
+      // the orchestrator's phase-closeout fence can enforce them. The fixture
+      // doesn't ship any of these (it predates the closeout gate), so they
+      // all surface as expected missing.
+      '5-ocs/ocs-widget-handoff-eval_verdict.yaml',
       // 0.13.116: gate-brief artifacts removed across all phases.
       // Phase 6 verdicts + onboarding email (training docs are present;
       // verdicts and the onboarding email are not).
       '6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',
       '6-qa-and-training/app-screenshot-capture_verdict.yaml',
+      // PR-517: Phase 6 training-* `-eval` verdicts flipped to required:true.
+      '6-qa-and-training/training-deck-generate-eval_verdict.yaml',
+      '6-qa-and-training/training-faq-eval_verdict.yaml',
+      '6-qa-and-training/training-flw-guide-eval_verdict.yaml',
+      '6-qa-and-training/training-llo-guide-eval_verdict.yaml',
+      '6-qa-and-training/training-onboarding-email-eval_verdict.yaml',
       '6-qa-and-training/training-onboarding-email.md',
+      '6-qa-and-training/training-quick-reference-eval_verdict.yaml',
     ];
     const files = listFiles(fixtureDir);
     const result = validateFixture(files, 'qa-and-training', ['README.md']);

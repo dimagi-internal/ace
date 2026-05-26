@@ -131,7 +131,7 @@ atom set (phase subagents run their own `ToolSearch` for phase-specific
 atoms). Issue this verbatim:
 
 ```
-ToolSearch select:drive_read_file,drive_list_folder,drive_create_file,drive_create_folder,drive_update_file,drive_move_file,drive_rename_file,docs_get,sheets_read,sheets_append,commcare_make_build,commcare_release_build,commcare_download_ccz,commcare_upload_multimedia,classify_phase_writeback,validate_run_state,resolve_opp_path,generate_inputs_manifest,get_google_form_definition
+ToolSearch select:drive_read_file,drive_list_folder,drive_create_file,drive_create_folder,drive_update_file,drive_move_file,drive_rename_file,docs_get,sheets_read,sheets_append,commcare_make_build,commcare_release_build,commcare_download_ccz,commcare_upload_multimedia,classify_phase_writeback,validate_run_state,verify_phase_artifacts,resolve_opp_path,generate_inputs_manifest,get_google_form_definition
 ```
 
 Bare names usually resolve via the `select:` shortcut. If a `select:`
@@ -954,31 +954,81 @@ That's ~4 wasted turns × seconds each × 8 boundaries per run
 
 ```
 Turn N:    Agent(<phase>) tool_result
-Turn N+1:  ONE message — all 4 tool calls in parallel:
+Turn N+1:  ONE message — all 5 tool calls in parallel:
              1. classify_phase_writeback(fileId=<run_state.yaml>, phaseName=<phase>)
                 — returns 'ok' | 'missing' | 'in_progress' | 'error' | 'malformed'
              2. drive_list_folder on <runFolderId>/<N>-<phase>/ (artifact verifier)
-             3. TaskUpdate marking <phase> completed, next phase in_progress
-             4. Skill(decisions-render) — idempotent
+             3. verify_phase_artifacts(runFolderId, phase=<manifest-key>)
+                — returns {phase, ok, missing[], present_count, expected_count}
+                  where each missing entry carries {path, producedBy, description}
+                — covers the artifact-presence half of the gate;
+                  classify_phase_writeback covers the run_state.yaml half
+             4. TaskUpdate marking <phase> completed, next phase in_progress
+             5. Skill(decisions-render) — idempotent
            Optional one-line text summary in the same message.
-Turn N+2:  Branch on the classifier result:
-             - 'ok'           → proceed to Turn N+3
-             - 'in_progress'  → silent-dispatch retry (see § Auto-retry silent
-                                 Agent dispatches above); cap at 2 attempts
-             - 'missing'      → silent-dispatch retry, same cap
-             - 'malformed'    → if validate_run_state's full issue list
-                                 includes only fixable gaps (e.g. missing
-                                 completed_at), patch via update_yaml_file
-                                 stub fallback per § Phase Write-Back
-                                 Verifier in `agents/orchestrator-reference.md`;
-                                 otherwise retry
-             - 'error'        → halt with the [BLOCKER] message per
-                                 § Producer Artifact Verifier; phase
-                                 itself returned an error verdict
-           Also: if Turn N+1's `drive_list_folder` showed any required
-           artifact missing, halt with [BLOCKER] regardless of classifier.
+Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts:
+             - classify='ok' AND verify.ok=true
+                 → proceed to Turn N+3
+             - verify.ok=false (one or more required artifacts missing)
+                 → for each entry in verify.missing, silent-dispatch its
+                   producedBy via Skill(<producedBy>) with the standard
+                   phase-context prompt (opp slug + run_id, no other
+                   priors). Cap at 2 attempts TOTAL per boundary; re-run
+                   the fence after each batch. If any item remains
+                   missing after the cap, halt with a [BLOCKER] listing
+                   the unhealed paths + producedBy values.
+             - classify='in_progress' → silent-dispatch Agent(<phase>)
+                                          retry (see § Auto-retry silent
+                                          Agent dispatches above); cap 2
+             - classify='missing'     → silent-dispatch Agent(<phase>)
+                                          retry, same cap
+             - classify='malformed'   → if validate_run_state's full
+                                          issue list includes only
+                                          fixable gaps (e.g. missing
+                                          completed_at), patch via
+                                          update_yaml_file stub fallback
+                                          per § Phase Write-Back
+                                          Verifier in
+                                          `agents/orchestrator-reference.md`;
+                                          otherwise retry
+             - classify='error'       → halt with the [BLOCKER] message
+                                          per § Producer Artifact
+                                          Verifier; phase itself
+                                          returned an error verdict
 Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
 ```
+
+**Manifest-key map** for the `phase` arg `verify_phase_artifacts` expects
+— the SHORT key from `lib/artifact-manifest.ts § PHASES`, NOT the
+agent-file name. The verifier rejects unknown values (zod enum), so
+passing the wrong key is loud and immediate:
+
+| Phase (agent file) | Manifest key |
+|---|---|
+| `idea-to-design` | `design` |
+| `scenarios-and-acceptance` | `scenarios-and-acceptance` |
+| `commcare-setup` | `commcare` |
+| `connect-setup` | `connect` |
+| `ocs-setup` | `ocs` |
+| `qa-and-training` | `qa-and-training` |
+| `synthetic-data-and-workflows` | `synthetic-data-and-workflows` |
+| `solicitation-management` | `solicitation-management` |
+| `execution-manager` | `execution-management` |
+| `closeout` | `closeout` |
+
+**Why `verify_phase_artifacts` rather than eyeballing `drive_list_folder`.**
+The Turn N+1 `drive_list_folder` is still there for inspection, but
+`drive_list_folder` returns a flat array of file metadata — turning that
+into "which required artifacts are missing for this phase?" is a
+3-step model dance (list → know-the-manifest → diff) prone to
+LLM-pattern-matched-the-wrong-set drift. `verify_phase_artifacts` does
+the diff in TypeScript against `lib/artifact-manifest.ts` and returns
+the structured `{ok, missing[]}` shape the branch logic needs. Same
+discipline-by-determinism move as `classify_phase_writeback` made for
+run-state shape in PR-L. Surfaced live in bednet-spot-check
+20260525-2013, where 13 declared `-eval` dispatches were silently
+skipped because the LLM running each phase subagent had no
+deterministic counterforce at the boundary.
 
 If the phase returned a `[BLOCKER]` or hard error, replace Turn N+3
 with a halt message — but Turn N+1 still happens (write-back is
@@ -995,7 +1045,7 @@ list (e.g. inspect WHICH field is missing on a `'malformed'` result), call
 `validate_run_state(fileId)` — same backing helper, returns
 `{valid, errors, warnings}` with `{path, message, severity}` per issue.
 
-**Forbidden boundary improvisations.** The boundary fence's 4-5 tool
+**Forbidden boundary improvisations.** The boundary fence's 5 tool
 calls listed above are the COMPLETE set. Do NOT also:
 
 - `drive_read_file` the phase's primary product (e.g. the PDD, app

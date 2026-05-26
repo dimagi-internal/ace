@@ -443,30 +443,45 @@ shortcuts a producer skill, the discipline violation surfaces at the
 producing phase boundary instead of cascading into a downstream
 consumer's pre-flight.
 
-**Procedure.** For each step recorded in `phases.<phase>.steps`:
+**Single-tool implementation:** `verify_phase_artifacts(runFolderId,
+phase)` — a gdrive-server MCP tool that wraps
+`lib/phase-closeout.ts::verifyPhaseArtifacts`. Walks the phase
+subfolder under `runFolderId` two levels deep, diffs against every
+`required: true` run-level entry the manifest declares for that
+phase, and returns `{phase, ok, missing[], present_count,
+expected_count}` where each `missing` entry carries `{path,
+producedBy, description}`. The boundary fence
+(`ace-orchestrator.md § Phase boundary fence`) calls it in the
+parallel block alongside `classify_phase_writeback`, and branches on
+`verify.ok=false` to silent-dispatch the missing producer(s).
 
-1. Call `artifactsProducedBy(<skill-name>)` from
-   `lib/artifact-manifest.ts`.
-2. For each returned entry where `required: true` AND the path does
-   NOT contain `YYYY-MM-DD` (dated/recurring artifacts are skipped),
-   list the run folder's phase subfolder (`drive_list_folder` on
-   `<runFolderId>/<N>-<phase>/`) and confirm the path exists. For
-   directory entries (paths ending in `/`), confirm at least one file
-   lives under the prefix.
-3. If any required path is missing, halt loud with:
+**Why one tool, not a hand-rolled procedure.** A pre-PR-516 version
+of this section walked the manifest in prose: list folder → call
+`artifactsProducedBy(<skill>)` → diff. That's a 3-step model dance
+prone to "LLM-pattern-matched-the-wrong-set" drift — and it was the
+proximate cause of the bednet-spot-check 20260525-2013 missed-evals
+incident (13 declared eval verdicts silently absent because the LLM
+running each phase subagent skipped the dispatch and the boundary
+had no deterministic signal). Bundling the dance into a single tool
+that returns structured `{ok, missing[]}` makes the gate as hard
+to drift past as `classify_phase_writeback` already is for
+`run_state.yaml` shape.
 
-   > `[BLOCKER]` `<skill>` step recorded as done in
-   > `phases.<phase>.steps.<skill>` but did not produce required
-   > artifact `<path>`. Likely cause: orchestrator inlined an artifact
-   > instead of invoking the skill (see § Skill Invocation Discipline).
-   > Recovery: `/ace:step <skill> <opp>/<run-id>` and re-run the
-   > orchestrator from this point.
+**Skips.** Entries with `required: false` are not checked — they're
+declared in the manifest for traceability but not for enforcement.
+Templated paths (`<persona>` placeholders, dated `YYYY-MM-DD`
+patterns) are pinned to `required: false` until the closeout gains
+wildcard match support.
 
-**Skips.** Steps with `status: skipped`, `status: error`, or
-`status: incomplete` are not checked — they are explicit non-completions
-and downstream phases will surface their own gaps. Optional artifacts
-(`required: false`) and dated/recurring artifacts (`YYYY-MM-DD` in the
-path) are also skipped.
+**Recovery message** the orchestrator should emit when an item
+remains missing after the cap of 2 silent-dispatch attempts:
+
+> `[BLOCKER]` Phase `<phase>` closeout: required artifact `<path>`
+> not present after retries. Producer: `<producedBy>`. Likely cause:
+> orchestrator inlined an artifact instead of invoking the skill
+> (see § Skill Invocation Discipline). Recovery:
+> `/ace:step <producedBy> <opp>/<run-id>` and re-run the orchestrator
+> from this point.
 
 **Why halt rather than warn.** A missing required artifact at a phase
 boundary means the orchestrator's record of "what shipped" disagrees
