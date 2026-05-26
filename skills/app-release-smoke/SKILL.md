@@ -159,53 +159,72 @@ halt — but the operator should see the count in the verdict.
 Steps 3–4 are **structural** — they parse the CCZ + match counts
 against the Nova blueprint, but never bind any XPath expression.
 That leaves a real failure class uncovered: a CCZ whose XPath
-references resolve to nothing at install time (e.g. a `connect.deliver_unit.entity_id`
-bound to a `#case/<calculated-field>` on a case-create form, where
-the calculate hasn't fired yet). On the device, CommCare's
-`XFormAndroidInstaller` rejects the CCZ with `InvalidResourceException`
-→ "A part of your application is invalid." Static counts don't catch
-this; the runtime install path does.
+references resolve to nothing at form-init time (e.g. a
+`connect.deliver_unit.entity_id` bound to a `#case/<calculated-field>`
+on a case-create form, where the calculate hasn't fired yet). On the
+device, CommCare rejects the CCZ with "A part of your application is
+invalid." Static counts + parse don't catch this; the runtime form-init
+path does.
 
-`dimagi/commcare-core`'s `commcare-cli.jar validate` subcommand runs
-the **same** `ResourceTable.initializeResources` install path the
-Android device runs, including `XFormParser`, `SuiteParser`,
-`ProfileParser`, and reference resolution. Wire it in here so the
-operator sees the defect at Phase 3 — not Phase 6 with hours of
-downstream debug.
+`dimagi/commcare-core`'s `commcare-cli.jar` ships two subcommands; use
+**both** in series — they cover different defect classes:
 
-For each app (Learn, Deliver):
+| Mode | Speed | What it catches | Verified against bednet Deliver CCZ |
+|---|---|---|---|
+| **`validate`** | ~2s | Parser-class (malformed XForm/suite/profile XML, missing namespaces, structurally broken CCZs) | PASSES — does not catch the runtime-binding class |
+| **`play`** | ~5–10s | Runtime form-init defects: `XPathTypeMismatchException` from `FormDef.initAllTriggerables` → `Recalculate.eval` chain (this IS the bednet bug class) | FAILS with `failing_binding: /data/du_bednet_visit/deliver`, `unresolved_xpath: instance(commcaresession)/session/data/case_id` |
 
-1. Call:
+**Procedure** — for each app (Learn, Deliver):
+
+1. **`validate` (parser-class pre-screen, fast):**
 
    ```
    commcare_validate_ccz({
-     ccz_base64: <base64 from Step 2's commcare_download_ccz response>,
-     // jar_path optional — defaults to $ACE_COMMCARE_CLI_JAR or
-     // $CLAUDE_PLUGIN_DATA/commcare-cli.jar
+     ccz_path: <local path to the released CCZ on disk>,  // preferred — no 10KB base64 round-trip through model context
+     // OR ccz_base64: <if not on disk yet> — exactly one of the two
+     mode: "validate",
    })
    ```
 
-2. Read the response:
+2. **`play` (the authoritative install-time gate, slower):**
+
+   ```
+   commcare_validate_ccz({
+     ccz_path: <same path>,
+     mode: "play",
+     entry_path: [0, 0],   // first module → first form (default)
+   })
+   ```
+
+   For multi-module apps, invoke `play` once per module (`[0,0]`,
+   `[1,0]`, …) to cover every form's `initAllTriggerables`.
+
+3. **Response shape (both modes):**
 
    ```
    { verdict: 'pass' | 'fail',
      exit_code: <int>,
-     failed_resource?: 'jr://resource/modules-0/forms-0.xml',
-     parser_message?: 'XPathException: Cannot resolve #case/case_name at install',
+     // play-mode only:
+     failing_binding?: '/data/du_bednet_visit/deliver',
+     unresolved_xpath?: 'instance(commcaresession)/session/data/case_id',
+     // both modes:
+     parser_message?: 'XPathTypeMismatchException: Calculation Error: …',
+     failed_resource?: 'jr://resource/modules-0/forms-0.xml',  // validate only
      stdout: <truncated to 4KB>,
      stderr: <truncated to 4KB>,
      timed_out: <bool>,
      // present only on input errors:
-     input_error?: 'jar_not_found' | 'ccz_not_found' | 'ccz_empty',
+     input_error?: 'jar_not_found' | 'ccz_not_found' | 'ccz_empty' | 'usage',
      input_error_path?: <path>,
    }
    ```
 
-3. Branch:
+4. **Branch:**
 
-   - **`verdict: 'pass'`** → record per-app `cli_validate: {verdict: pass, exit_code: 0}` in the Step 5 verdict; continue.
-   - **`verdict: 'fail'` AND `input_error: 'jar_not_found'`** → emit `[WARN]` (NOT `[BLOCKER]`) in `auto_surfaced_concerns` with the operator-setup remediation block below, and continue. The structural gates from Steps 3–4 are still authoritative; this just means the install-time gate is unavailable on this machine.
-   - **`verdict: 'fail'` for any other reason** → halt with `[BLOCKER]` naming `failed_resource` (when present), `parser_message` (when present), and the first 500 chars of `stderr`. The most common cause is a runtime-only XPath defect (e.g. PR #445's `#case/case_name`-on-create-form class — see `docs/learnings/2026-05-25-entity-id-misdiagnosis.md`).
+   - **Both modes `verdict: 'pass'`** → record per-app `cli_validate: {validate: pass, play: pass}` and continue.
+   - **`input_error: 'jar_not_found'`** (either mode) → emit `[WARN]` `cli-validator-unavailable` with the setup remediation below; continue. Structural Steps 3–4 still authoritative.
+   - **`validate verdict: 'fail'`** → halt with `[BLOCKER]` `cli-validate-parser-error` naming `parser_message` + `failed_resource`. Don't bother running `play` — `validate` already proved the CCZ is structurally broken.
+   - **`validate: pass` + `play: fail`** → halt with `[BLOCKER]` `cli-form-init-error` naming `failing_binding` + `unresolved_xpath` + `parser_message`. This IS the bednet class — the most common cause is a `connect.deliver_unit.entity_id` (or `entity_name`) bound to a runtime-unresolvable XPath. The fix usually lives in the producing skill (see `docs/learnings/2026-05-25-entity-id-misdiagnosis.md` for the canonical case).
 
 **Operator one-time setup (only when `input_error: 'jar_not_found'` fires):**
 
@@ -268,10 +287,18 @@ per_app:
         match: true | false
       - ...
     cli_validate:
-      verdict: pass | fail | unavailable
-      exit_code: <int>
-      failed_resource: <descriptor when verdict=fail, optional>
-      parser_message: <exception:msg when verdict=fail, optional>
+      validate:
+        verdict: pass | fail | unavailable
+        exit_code: <int>
+        failed_resource: <descriptor when verdict=fail, optional>
+        parser_message: <exception:msg when verdict=fail, optional>
+      play:
+        verdict: pass | fail | unavailable | skipped
+        exit_code: <int>
+        entry_path: [0, 0]
+        failing_binding: </data/...> # when verdict=fail
+        unresolved_xpath: <xpath>    # when verdict=fail
+        parser_message: <exception:msg>
   deliver:
     hq_app_id: <id>
     build_id: <id>
@@ -288,10 +315,18 @@ per_app:
       match: true | false
     field_counts: [...]
     cli_validate:
-      verdict: pass | fail | unavailable
-      exit_code: <int>
-      failed_resource: <optional>
-      parser_message: <optional>
+      validate:
+        verdict: pass | fail | unavailable
+        exit_code: <int>
+        failed_resource: <optional>
+        parser_message: <optional>
+      play:
+        verdict: pass | fail | unavailable | skipped
+        exit_code: <int>
+        entry_path: [0, 0]
+        failing_binding: <optional>
+        unresolved_xpath: <optional>
+        parser_message: <optional>
 auto_surfaced_concerns:
   - severity: BLOCKER | WARN | INFO
     message: "..."
@@ -324,20 +359,32 @@ defects.
   emitted invalid XML. Halt; re-run `pdd-to-{learn,deliver}-app`.
 - `form-count-mismatch` — Nova said N forms, CCZ has M. Likely Nova
   partial-persistence on form creation. Re-run the build.
-- `cli-install-rejected` — `commcare-cli.jar validate` exited non-zero or
-  surfaced an `XFormParseException` / `InvalidResourceException` /
-  `UnresolvedResourceException` / `XPathException` on stderr. This is the
-  runtime-install failure class that the structural Steps 3–4 cannot
-  catch. The verdict YAML's `per_app.<app>.cli_validate.{failed_resource,
-  parser_message}` names the exact form + parser message; the operator's
-  next move is usually `pdd-to-{learn,deliver}-app` re-build with the
-  defect addressed (e.g. flip `entity_id` back to `#case/case_id` per
-  the `2026-05-25-entity-id-misdiagnosis` learning). Halt loud.
+- `cli-validate-parser-error` — `commcare-cli.jar validate` (the
+  parser-class pre-screen) surfaced an `XFormParseException` /
+  `InvalidStructureException` / `InvalidResourceException` /
+  `UnresolvedResourceException`. The CCZ is structurally broken at the
+  XML / suite / profile level. Halt loud; root cause is upstream in
+  `pdd-to-{learn,deliver}-app` (Nova emitted malformed XML). No need to
+  also run `play` — the structural defect is authoritative.
+- `cli-form-init-error` — `commcare-cli.jar play` (the runtime form-init
+  gate) surfaced an `XPathTypeMismatchException` / `Calculation Error` /
+  `Logic references … which is not a valid question or value` during
+  `FormDef.initAllTriggerables`. The CCZ parses fine but at least one
+  form's XPath binding can't be resolved at form-init. **This IS the
+  bednet bug class** — the canonical reproducer is a
+  `connect.deliver_unit.entity_id` (or `entity_name`) bound to a
+  runtime-unresolvable XPath like `#case/<calculated-field>` on a
+  case-create form. Verdict YAML's `per_app.<app>.cli_validate.play.{failing_binding,
+  unresolved_xpath, parser_message}` name the exact defect. Halt loud;
+  the operator's fix is usually a `pdd-to-{learn,deliver}-app` re-build
+  flipping the entity_id substitution per
+  `docs/learnings/2026-05-25-entity-id-misdiagnosis.md`.
 - `cli-validator-unavailable` — `commcare-cli.jar` not on the operator's
   machine (resolved jar path returned `input_error: jar_not_found`). This
   is `[WARN]`, not `[BLOCKER]` — Steps 3–4 still gate structural defects;
-  this just means the install-time gate is off. Operator fix: build the
-  jar per Step 4.5's setup block.
+  this just means the install-time gate is off. Operator fix: run
+  `/ace:setup` (auto-downloads the latest jar from
+  `dimagi/commcare-core` releases).
 - `learn-marker-missing` / `deliver-marker-missing` — released CCZ
   doesn't carry the Connect-marker wrappers Connect's sync requires.
   Halt; investigate Nova-side OR check if any post-build patcher
@@ -357,4 +404,4 @@ defects.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-22 | Initial version. Replaces the prior (reverted) "move app-screenshot-capture to Phase 3" attempt. AVD-free structural verification on released CCZ — would have caught the malaria-rdt 20260522-1002 form-patch over-stripping at Phase 3 instead of Phase 6, and catches Nova partial-persistence silent field omissions. Full AVD smoke (`app-screenshot-capture`) stays in Phase 6 where Connect state is available. | ACE team |
-| 2026-05-25 | **Add Step 4.5 — runtime install validation via `commcare-cli.jar`.** Wraps `dimagi/commcare-core`'s `commcare-cli.jar validate` subcommand (which runs the SAME `ResourceTable.initializeResources` install path the Android device runs). Catches the runtime-install failure class that Steps 3–4 cannot: a CCZ whose XPath references resolve to nothing at install time (canonical example: `connect.deliver_unit.entity_id` bound to `#case/<calculated-field>` on a case-create form). Reproducer: `bednet-spot-check/20260525-1405` Phase 6 — `entity_id: #case/case_name` substitution passed every Phase 3 static gate then was rejected on-device with "A part of your application is invalid." Operator setup: `/ace:setup` now auto-downloads the latest tagged `commcare-cli.jar` (picks up `commcare_2.63.0` today) via `gh release download` — no manual build needed. `[BLOCKER]` on `cli-install-rejected`; `[WARN]` on `cli-validator-unavailable` (jar not downloaded yet — structural Steps 3–4 still authoritative). See `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md` § Preventer 2. | ACE team |
+| 2026-05-25 | **Add Step 4.5 — runtime install validation via `commcare-cli.jar`.** Two-mode wrapper: `validate` (fast, ~2s, catches parser-class defects like malformed XForm XML) + `play` (slower, ~5-10s, catches form-init runtime XPath defects). Reproducer: `bednet-spot-check/20260525-1405` Phase 6 — Deliver app's `connect.deliver_unit.entity_id: #case/case_name` substitution (from since-reverted PR #445) passed every Phase 3 static gate AND `commcare-cli validate` but failed `commcare-cli play` with `XPathTypeMismatchException` from `FormDef.initAllTriggerables` — same XPath-binding failure CommCare's mobile runtime hits when it shows "A part of your application is invalid." Operator setup: `/ace:setup` auto-downloads the latest tagged `commcare-cli.jar` (picks up `commcare_2.63.0` today) via `gh release download`. `[BLOCKER]` on `cli-validate-parser-error` (structural defect) or `cli-form-init-error` (runtime-binding defect — IS the bednet class); `[WARN]` on `cli-validator-unavailable` (jar not downloaded — structural Steps 3–4 still authoritative). MCP atom `commcare_validate_ccz` accepts `ccz_path` (preferred, no base64 in context) or `ccz_base64` (legacy fallback). See `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md` § Preventer 2. | ACE team |
