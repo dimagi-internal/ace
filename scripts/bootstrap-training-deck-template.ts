@@ -519,7 +519,7 @@ const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 
-const TEMPLATE_NAME = 'ACE Training Deck Template (v5.5 — strip checklist+stats dec shapes)';
+const TEMPLATE_NAME = 'ACE Training Deck Template (v5.6 — strip ALL non-text shapes on checklist+stats)';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -724,17 +724,15 @@ async function main(): Promise<void> {
       if (stripImagesHere && el.line && el.objectId) {
         lineIds.push(el.objectId);
       }
-      // v5.5: floating decoration shapes (RECTANGLE / ELLIPSE) on
-      // checklist + stats stencils — the Dimagi designer's bullet
-      // dots + bg panels that don't align with our text-box geometry.
-      // Strip everything that isn't text-bearing (already handled
-      // above with `continue`) and isn't a brand-edge strip we want
-      // to keep. For now, strip ALL non-text rectangles + ellipses
-      // on the listed stencils — accepts losing the amber/navy edge
-      // strips on those two slides in exchange for clean text layout.
+      // v5.6: strip ALL non-TEXT_BOX shape types on checklist + stats
+      // stencils. v5.5 only stripped RECTANGLE + ELLIPSE, but the stats
+      // slide's indigo background panel behind column 3 is a FREEFORM
+      // shape and survived. Bednet v5.5 render had this panel making
+      // column 3's label illegible. v5.6 nukes everything decorative
+      // by stripping any shape with shapeType !== 'TEXT_BOX'.
       if (stripDecShapesHere && el.shape && el.objectId) {
         const shapeType = el.shape.shapeType;
-        if (shapeType === 'RECTANGLE' || shapeType === 'ELLIPSE') {
+        if (shapeType && shapeType !== 'TEXT_BOX') {
           decShapeIds.push(el.objectId);
         }
       }
