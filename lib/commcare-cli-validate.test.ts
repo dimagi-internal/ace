@@ -5,6 +5,7 @@ import * as path from 'node:path';
 
 import {
   parseValidatorOutput,
+  parsePlayOutput,
   commcareCliValidateCcz,
   CommCareCliInputError,
 } from './commcare-cli-validate.js';
@@ -154,5 +155,104 @@ describe('commcareCliValidateCcz — input validation', () => {
     expect(err.path).toBe('/missing/path.jar');
     expect(err.message).toContain('jar_not_found');
     expect(err.message).toContain('/missing/path.jar');
+  });
+});
+
+describe('parsePlayOutput', () => {
+  const base = {
+    exitCode: 0,
+    stdout: '',
+    stderr: '',
+    timedOut: false,
+    timeoutMs: 30_000,
+    entryPath: [0, 0],
+  };
+
+  it('returns pass on clean form open + benign EOF NPE', () => {
+    // Real-world LEARN walk: form intro screen shown, then stdin EOF
+    // triggers the benign "input is null" NPE at loopSession:267.
+    const stdout = `
+Locales defined:
+* en
+Restoring user data from local file /tmp/restore.xml
+Setting logged in user to: demo
+Bednet Spot-Check — Learn | demo [1]
+====================
+0) Connect Platform Quiz
+> Answer the question below to unlock the Deliver app.
+Press Return to Proceed
+Quitting!
+> Unhandled Fatal Error executing CommCare app
+java.lang.NullPointerException: Cannot invoke "String.startsWith(String)" because "input" is null
+    at org.commcare.util.cli.ApplicationHost.loopSession(ApplicationHost.java:267)
+`;
+    const r = parsePlayOutput({ ...base, stdout });
+    expect(r.verdict).toBe('pass');
+    expect(r.failing_binding).toBeUndefined();
+    expect(r.unresolved_xpath).toBeUndefined();
+  });
+
+  it('returns fail with the bednet-class binding diagnostics on XPathTypeMismatchException', () => {
+    // Real-world DELIVER output from the bednet-spot-check/20260525-1405
+    // Phase 6 reproducer.
+    const stdout = `
+Starting form entry with the following stack frame
+Live Frame
+----------
+COMMAND: m0
+DATUM : case_id_new_bednet_visit_0 - 85064263-6469-4a1e-9e75-0fe39a02bc74
+COMMAND: m0-f0
+Unhandled Fatal Error executing CommCare app
+org.javarosa.xpath.XPathTypeMismatchException: Calculation Error: Error in calculation for /data/du_bednet_visit/deliver
+Logic references instance(commcaresession)/session/data/case_id which is not a valid question or value.
+    at org.javarosa.xpath.XPathNodeset.getInvalidNodesetException(XPathNodeset.java:146)
+    at org.javarosa.core.model.FormDef.initAllTriggerables(FormDef.java:1004)
+`;
+    const r = parsePlayOutput({ ...base, stdout });
+    expect(r.verdict).toBe('fail');
+    expect(r.failing_binding).toBe('/data/du_bednet_visit/deliver');
+    expect(r.unresolved_xpath).toBe('instance(commcaresession)/session/data/case_id');
+    expect(r.parser_message).toContain('XPathTypeMismatchException');
+    expect(r.parser_message).toContain('Calculation Error');
+  });
+
+  it('returns fail on bare XPathException without "Fatal Error" prefix', () => {
+    const stdout = 'Some output. org.javarosa.xpath.XPathException: cannot bind';
+    const r = parsePlayOutput({ ...base, stdout });
+    expect(r.verdict).toBe('fail');
+    expect(r.parser_message).toContain('XPathException');
+  });
+
+  it('returns fail on XFormParseException (also covered by validate but visible in play too)', () => {
+    const stdout =
+      'Unhandled Fatal Error executing CommCare app\norg.javarosa.xform.parse.XFormParseException: bad tag at line 5';
+    const r = parsePlayOutput({ ...base, stdout });
+    expect(r.verdict).toBe('fail');
+    expect(r.parser_message).toContain('XFormParseException');
+  });
+
+  it('treats timeouts as fail regardless of output', () => {
+    const r = parsePlayOutput({ ...base, timedOut: true });
+    expect(r.verdict).toBe('fail');
+    expect(r.timed_out).toBe(true);
+  });
+
+  it('reports the entry_path back to the caller', () => {
+    const r = parsePlayOutput({ ...base, entryPath: [2, 0] });
+    expect(r.entry_path).toEqual([2, 0]);
+  });
+
+  it('does NOT flip to fail on stderr that only contains the EOF NPE (loopSession)', () => {
+    const stderr =
+      'java.lang.NullPointerException: Cannot invoke "String.startsWith(String)" because "input" is null\n  at org.commcare.util.cli.ApplicationHost.loopSession(ApplicationHost.java:267)';
+    const r = parsePlayOutput({ ...base, stderr });
+    expect(r.verdict).toBe('pass');
+  });
+
+  it('truncates oversized stdout via shared trimLog', () => {
+    const big = 'y'.repeat(10_000);
+    const r = parsePlayOutput({ ...base, stdout: big });
+    expect(r.stdout.length).toBeLessThan(big.length);
+    expect(r.stdout).toContain('truncated');
   });
 });

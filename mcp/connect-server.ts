@@ -40,6 +40,7 @@ import {
 } from '../lib/atom-payload-resolver.js';
 import {
   commcareCliValidateCcz,
+  commcareCliPlayCcz,
   CommCareCliInputError,
 } from '../lib/commcare-cli-validate.js';
 import * as fs from 'node:fs';
@@ -733,30 +734,92 @@ server.tool('commcare_download_ccz',
 // `verdict: fail` so the operator sees the structural defect before Phase 6
 // hits it on the device.
 //
-// **Operator one-time setup:**
-//   git clone https://github.com/dimagi/commcare-core
-//   cd commcare-core && ./gradlew cliJar
-//   cp build/libs/commcare-cli-*.jar $CLAUDE_PLUGIN_DATA/commcare-cli.jar
-// Or set `ACE_COMMCARE_CLI_JAR` to an absolute path. `/ace:doctor` reports
-// the resolved jar path + freshness.
+// **Operator one-time setup:** `/ace:setup` auto-downloads the latest
+// commcare-cli.jar from `dimagi/commcare-core` releases (picks up
+// `commcare_2.63.0` today, ~10MB). Override via `ACE_COMMCARE_CLI_JAR` to
+// pin a specific build. `/ace:doctor` reports presence + cached version.
 //
-// Reproducer: `bednet-spot-check/20260525-1405` Phase 6 install rejection
-// (`#case/case_name` substituted for `#case/case_id` on a case-create form's
-// `entity_id`; install-time XPath bind reads null + rejects). See
+// **Modes:**
+//   - `validate` (default; fast, ~2s) — runs `commcare-cli.jar validate`.
+//     Catches parser-class defects (malformed XForm/suite/profile XML).
+//     Verified against the bednet `2026-05-25-1405` Deliver CCZ: PASSES
+//     even though the device rejects install — so `validate` alone is
+//     NOT sufficient for the canonical runtime-binding class.
+//   - `play` (slow, ~5-10s) — runs `commcare-cli.jar play` against a
+//     synthetic restore, navigates to a form, triggers `initAllTriggerables`.
+//     **This catches the bednet bug class** — `XPathTypeMismatchException`
+//     from `FormDef.initAllTriggerables` when a `<learn:deliver entity_id>`
+//     references a session datum that resolves to nothing at form-init.
+//     Verified against the bednet Deliver CCZ: returns `verdict: fail` with
+//     `failing_binding: /data/du_bednet_visit/deliver` +
+//     `unresolved_xpath: instance(commcaresession)/session/data/case_id`.
+//
+// **Input:** prefer `ccz_path` (no base64 round-trip through the model
+// context). `ccz_base64` is the legacy/stateless fallback for callers that
+// chain directly from `commcare_download_ccz` without writing to disk.
+// Exactly one MUST be provided.
+//
+// Reproducer: `bednet-spot-check/20260525-1405` Phase 6. See
 // `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md`.
 server.tool('commcare_validate_ccz',
   {
-    ccz_base64: z.string().min(1).describe('Base64-encoded CCZ bytes. Typically chained from `commcare_download_ccz`\'s response.'),
+    ccz_path: z.string().optional().describe('Local filesystem path to the CCZ. Preferred — avoids round-tripping ~10KB of base64 through the model context. Exactly one of `ccz_path` or `ccz_base64` must be supplied.'),
+    ccz_base64: z.string().optional().describe('Base64-encoded CCZ bytes. Use when chaining directly from `commcare_download_ccz` without writing to disk. Exactly one of `ccz_path` or `ccz_base64` must be supplied.'),
+    mode: z.enum(['validate', 'play']).optional().describe('`validate` (default; fast, parser-class only) vs `play` (slow, catches runtime-binding defects like the bednet `entity_id` class). Use `play` as the authoritative Phase 3 install-time gate.'),
+    entry_path: z.array(z.number().int().min(0)).optional().describe('`play` mode only. Menu indices to navigate to a form (default `[0, 0]` = first module → first form). For multi-module apps, invoke once per module to cover every form-init.'),
     jar_path: z.string().optional().describe('Override the resolved commcare-cli.jar path (default: $ACE_COMMCARE_CLI_JAR or $CLAUDE_PLUGIN_DATA/commcare-cli.jar).'),
-    timeout_ms: z.number().int().positive().optional().describe('Spawn timeout. Default 60000ms. Bednet-scale CCZs validate in <2s — long timeouts surface a stuck JVM.'),
+    timeout_ms: z.number().int().positive().optional().describe('Spawn timeout. validate default 60000ms; play default 30000ms.'),
   },
   async (args) =>
     runAtom(async () => {
+      // Exactly-one-input guard. Zod can't express "exactly one of A | B"
+      // without a refinement; this is the cheapest path.
+      if (!args.ccz_path && !args.ccz_base64) {
+        return {
+          verdict: 'fail' as const,
+          exit_code: -1,
+          input_error: 'usage',
+          stdout: '',
+          stderr: 'commcare_validate_ccz: exactly one of `ccz_path` or `ccz_base64` must be supplied.',
+          timeout_ms: 0,
+          timed_out: false,
+        };
+      }
+      if (args.ccz_path && args.ccz_base64) {
+        return {
+          verdict: 'fail' as const,
+          exit_code: -1,
+          input_error: 'usage',
+          stdout: '',
+          stderr: 'commcare_validate_ccz: pass `ccz_path` OR `ccz_base64`, not both.',
+          timeout_ms: 0,
+          timed_out: false,
+        };
+      }
       const jarPath = resolveCommCareCliJarPath(args.jar_path);
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-ccz-validate-'));
-      const cczPath = path.join(tmpDir, 'app.ccz');
+      const mode = args.mode ?? 'validate';
+
+      // Materialize CCZ to disk: caller-provided path wins; otherwise
+      // decode base64 to a temp file (cleaned up in `finally`).
+      let cczPath: string;
+      let tmpDir: string | undefined;
+      if (args.ccz_path) {
+        cczPath = args.ccz_path;
+      } else {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-ccz-validate-'));
+        cczPath = path.join(tmpDir, 'app.ccz');
+        fs.writeFileSync(cczPath, Buffer.from(args.ccz_base64!, 'base64'));
+      }
+
       try {
-        fs.writeFileSync(cczPath, Buffer.from(args.ccz_base64, 'base64'));
+        if (mode === 'play') {
+          return await commcareCliPlayCcz({
+            cczPath,
+            jarPath,
+            entryPath: args.entry_path,
+            timeoutMs: args.timeout_ms,
+          });
+        }
         return await commcareCliValidateCcz({
           cczPath,
           jarPath,
@@ -774,16 +837,18 @@ server.tool('commcare_validate_ccz',
             input_error_path: e.path,
             stdout: '',
             stderr: e.message,
-            timeout_ms: args.timeout_ms ?? 60_000,
+            timeout_ms: args.timeout_ms ?? (mode === 'play' ? 30_000 : 60_000),
             timed_out: false,
           };
         }
         throw e;
       } finally {
-        try {
-          fs.rmSync(tmpDir, { recursive: true, force: true });
-        } catch {
-          // Best-effort cleanup; bounded by OS temp.
+        if (tmpDir) {
+          try {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+          } catch {
+            // Best-effort cleanup; bounded by OS temp.
+          }
         }
       }
     }),

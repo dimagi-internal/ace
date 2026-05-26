@@ -350,7 +350,7 @@ Single-line answer to 'did `<phaseName>` write its run_state.yaml block correctl
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 50 atoms
+Source: `mcp/connect-server.ts` — 46 atoms
 
 ### `connect_list_programs`
 
@@ -760,30 +760,6 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 ### `commcare_download_ccz`
 
 If true, request the full CCZ with multimedia binaries inlined under commcare/multimedia/...; default false returns the lite manifest-only response.
-
-_no parameters_
-
-### `commcare_validate_ccz`
-
-Base64-encoded CCZ bytes. Typically chained from `commcare_download_ccz`\'s response.
-
-_no parameters_
-
-### `commcare_patch_xform`
-
-unique_id is a 32-char hex string from suite.xml or the delete_form action URL
-
-_no parameters_
-
-### `commcare_upload_multimedia`
-
-32-char hex
-
-_no parameters_
-
-### `connect_preflight_learn_app_user`
-
-HQ project space slug (e.g. `connect-ace-prod`). Same value that flows
 
 _no parameters_
 
