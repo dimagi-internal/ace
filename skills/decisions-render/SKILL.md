@@ -3,7 +3,7 @@ name: decisions-render
 description: >
   Render a per-run decisions.yaml into a prose Google Doc at one stable
   URL per run. Invoked at end of every phase; idempotent.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Decisions Render

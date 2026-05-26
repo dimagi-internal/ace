@@ -3,7 +3,7 @@ name: pdd-to-learn-app-eval
 description: >
   Grade a Nova-built Learn app against the PDD that specified it —
   module count, order, Assessment Score wiring, content coverage.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # PDD-to-Learn-App Eval
