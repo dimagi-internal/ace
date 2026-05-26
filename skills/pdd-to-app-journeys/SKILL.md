@@ -9,7 +9,7 @@ disable-model-invocation: true
 # PDD to App Journeys
 
 Generate the opp-specific expected-user-journey set that downstream app
-QA grades against. Runs in Phase 1 (Design Review & Iteration), in
+QA grades against. Runs in Phase 2 (Scenarios & Acceptance), in
 parallel with `pdd-to-test-prompts`. The chatbot side gets Q&A ground
 truth from `pdd-to-test-prompts`; the app side gets UX-intent ground
 truth here.
@@ -180,13 +180,21 @@ stages — the FLW needs clear per-stage UX flows.
 
 Before writing the file, verify:
 
-1. **One journey per archetype-branch category.** Atomic-visit needs
-   visit-flow, eligibility-edge, data-quality-error, duplicate-handling
-   (at minimum 2 of these 4, recommended all 4 if the PDD warrants).
-   Focus-group needs session-setup, recruitment-failure,
-   consent-handling, attestation-submission (same minimums).
-   Multi-stage needs per-stage coverage plus the stage-transition
-   journey.
+1. **One journey per archetype-branch category — when the PDD declares
+   the underlying surface.** Atomic-visit's expected categories are
+   visit-flow, eligibility-edge, data-quality-error, duplicate-handling.
+   Emit a journey for every category whose surface the PDD declares;
+   SKIP categories where the PDD explicitly defers the surface
+   (eligibility rules deferred → no eligibility-edge journey; no photo
+   or GPS → no photo-quality data-quality-error journey). Mark each
+   skipped category with `[INFO]` calibration context in the coverage
+   self-check at the bottom of the doc; the eval-side rubric grants a
+   PDD-deferral exemption for these. Focus-group needs session-setup,
+   recruitment-failure, consent-handling, attestation-submission
+   (same PDD-deferral rule). Multi-stage needs per-stage coverage
+   plus the stage-transition journey. **Minimum after deferral
+   exemptions: visit-flow (or per-archetype equivalent) is ALWAYS
+   required.**
 
 2. **At least one `error_recovery`-flavored edge case per journey.**
    The `app-ux-eval` deep rubric specifically grades whether the app
