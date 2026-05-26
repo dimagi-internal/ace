@@ -31,7 +31,8 @@ deferred to later stages. This skill is the data plumbing only.
 | Operator (CLI, optional) | `--no-pause` | skip the manifest-review pause when accepting the default |
 | Phase 1 | `inputs/pdd.md` | (default-manifest mode) primary measurement field for the KPI |
 | Phase 4 | `4-connect/connect-opp-setup.md` | (default-manifest mode) payment unit + deliver unit hints |
-| Drive | `ACE/<opp>/opp.yaml` | `program_id`, `last_run_id`, opp display name |
+| Drive | `ACE/<opp>/opp.yaml` | `program_id`, opp display name, `organization_slug` |
+| Drive | `ACE/<opp>/runs/` | current `run_id` discovered via `mcp__plugin_ace_ace-gdrive__resolve_current_run_id({slug})` (newest folder name; run-ids are `YYYYMMDD-HHMM` so lex == chronological). Used to scope the run-folder paths below. |
 
 ## Products
 
@@ -56,14 +57,22 @@ deferred to later stages. This skill is the data plumbing only.
      `[WARN]` instead of halting.
    - `organization_slug` — flat top-level, defaults to `ai-demo-space` if absent
    - `connect.opportunity.url` if present — informational
-   - `last_run_id` — required; if missing, halt with "run `/ace:run <opp>` first to bootstrap a run folder"
+
+   **Resolve the current run-id.** Call
+   `mcp__plugin_ace_ace-gdrive__resolve_current_run_id({slug: '<opp>'})`
+   — returns `{run_id, run_folder_id}` (newest folder under
+   `<opp>/runs/`; run-ids are `YYYYMMDD-HHMM` so lex == chronological).
+   If `run_id` is `null`, halt with "no runs found under `<opp>/runs/`
+   — run `/ace:run <opp>` first to bootstrap a run folder." (Replaces
+   the old `opp.yaml.last_run_id` read, which has been a dead field
+   since 2026-05-10 — see `lib/artifact-manifest.ts`.)
 
    **Resolve the labs int ID** (try in order; first non-null wins):
    1. `--opp-int-id <N>` operator override.
    2. Current run's `run_state.yaml.phases.connect-setup.products.connect.opportunity.labs_int_id`
       (auto-recovered by Stage 4.5's `connect-opp-setup` enhancement
       in this same run). Read via `drive_read_file` on
-      `runs/<last_run_id>/run_state.yaml`.
+      `runs/<run_id>/run_state.yaml`.
    3. If both are missing, halt with: "labs int_id not in run_state.yaml
       and no `--opp-int-id` passed. Either re-run
       `/ace:step connect-opp-setup` to retry the labs lookup (it
@@ -72,7 +81,7 @@ deferred to later stages. This skill is the data plumbing only.
       the labs UI synthetic dropdown."
 
    Construct the run folder path:
-   `ACE/<opp>/runs/<last_run_id>/7-synthetic/`. Create it via
+   `ACE/<opp>/runs/<run_id>/7-synthetic/`. Create it via
    `mcp__plugin_ace_ace-gdrive__drive_create_folder` if missing.
 
    Note on phase-folder numbering: until Phase 7 is formally renumbered
@@ -122,7 +131,7 @@ deferred to later stages. This skill is the data plumbing only.
 
    **Otherwise (default-manifest mode):** read the PDD at
    `ACE/<opp>/inputs/pdd.md` and the connect setup summary at
-   `ACE/<opp>/runs/<last_run_id>/4-connect/connect-opp-setup.md`. Use them
+   `ACE/<opp>/runs/<run_id>/4-connect/connect-opp-setup.md`. Use them
    to fill in:
 
    - `opportunity_name` — from `opp.yaml.display_name`
@@ -299,7 +308,7 @@ deferred to later stages. This skill is the data plumbing only.
         # this skill's fields:
         enabled: true
         current_folder_id: "<folder_id>"
-        current_run_id: "<last_run_id>"
+        current_run_id: "<run_id>"
         generated_at: "<ISO-8601 UTC of MCP response receipt>"
         fixture_record_counts:
           user_visits: <int>
@@ -400,7 +409,7 @@ When `--dry-run` is active:
 | Failure | Detection | Recovery |
 |---|---|---|
 | `--opp-int-id` not provided AND `phases.connect-setup.products.connect.opportunity.labs_int_id` in current run's `run_state.yaml` missing | step 1 halt | Re-run `/ace:step connect-opp-setup` to retry the labs lookup (sometimes lags Connect by seconds), OR pass `--opp-int-id <N>` after looking up the int in the labs synthetic UI. |
-| `opp.yaml` missing `last_run_id` | step 1 halt | Run `/ace:run <opp>` first so the orchestrator bootstraps a run folder. |
+| `<opp>/runs/` empty (no run folders) | step 1 halt | Run `/ace:run <opp>` first so the orchestrator bootstraps a run folder. (`resolve_current_run_id` returned `run_id: null`.) |
 | PDD missing primary measurement field | step 2 warn | Default manifest emits `kpi_config: []`; operator adds KPIs in the pause. |
 | `INVALID_SCHEMA` from labs | step 3 halt | Operator edits the manifest (error body written to `_error.md`) and re-invokes. |
 | `PERMISSION_DENIED` from labs | step 3 halt | Confirm `ace@dimagi-ai.com` membership in the opp's Connect organization, then retry. |

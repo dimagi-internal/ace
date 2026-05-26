@@ -17,6 +17,7 @@
  * duplicated below is the right trade.
  */
 
+import { config as dotenvConfig } from 'dotenv';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -34,6 +35,16 @@ import {
 } from '../lib/decisions-write.js';
 
 logPluginDataDirDiag('ace-decisions', import.meta.url);
+
+// Load .env so GOOGLE_APPLICATION_CREDENTIALS (if set there) and any
+// future ACE env vars are visible. Matches the boot pattern of every
+// other ace-* MCP. Must run before any code that reads process.env.
+const __aceDecisionsPluginDataDir = resolvePluginDataDir(import.meta.url);
+dotenvConfig({
+  path: __aceDecisionsPluginDataDir
+    ? path.join(__aceDecisionsPluginDataDir, '.env')
+    : path.join(process.cwd(), '.env'),
+});
 
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

@@ -29,7 +29,8 @@ this skill runs first, `synthetic-data-generate` consumes
 | Phase 3 | `runs/<run-id>/3-commcare/app-deploy_summary.md` | deliver-app form structure (field paths, types) |
 | Phase 3 (optional) | `runs/<run-id>/3-commcare/app-test-cases.yaml` | test-case anomalies that double as plausible field anomalies |
 | Phase 4 | `runs/<run-id>/4-connect/connect-opp-setup.md` | payment units, deliver units, verification flags |
-| Drive | `ACE/<opp>/opp.yaml` | `display_name`, slug, last_run_id, organization_slug |
+| Drive | `ACE/<opp>/opp.yaml` | `display_name`, slug, organization_slug |
+| Drive | `ACE/<opp>/runs/` | current `run_id` discovered via `mcp__plugin_ace_ace-gdrive__resolve_current_run_id({slug})` (newest folder; run-ids are `YYYYMMDD-HHMM` so lex == chronological). Used to scope the run-folder paths in steps 1 + 3. Replaces the dead `opp.yaml.last_run_id` read (see `lib/artifact-manifest.ts`). |
 | Operator (CLI, optional) | `--seed-prompt FILE\|-` | free-text steering ("emphasize fraud detection," "feature Asha as the rockstar") |
 
 ## Products
