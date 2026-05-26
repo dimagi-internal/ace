@@ -18,8 +18,8 @@ There is **no companion QA skill** for this artifact — see `skills/_qa-decisio
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 producer | `2-scenarios/pdd-to-app-journeys.md` | the journeys doc under judgment |
-| Phase 1 producer | `1-design/idea-to-pdd.md` | the source PDD; archetype + Target FLW for grading alignment |
+| Phase 2 producer (this phase) | `2-scenarios/pdd-to-app-journeys.md` | the journeys doc under judgment |
+| Phase 1 producer | `1-design/idea-to-pdd.md` | the source PDD; archetype + FLW Requirements section for grading alignment |
 
 ## Products
 
@@ -31,13 +31,13 @@ There is **no companion QA skill** for this artifact — see `skills/_qa-decisio
    When invoked from the `idea-to-design` subagent (the common
    `/ace:run` path), the journeys artifact and PDD are already loaded
    by the parent's Step 3 / Step 1 — do NOT re-issue
-   `drive_read_file`. See `agents/design-review.md` § Performance
+   `drive_read_file`. See `agents/scenarios-and-acceptance.md` § Performance
    conventions. Only re-read when invoked standalone via
    `/ace:step pdd-to-app-journeys-eval <opp>/<run-id>`.
 
    Inputs (location for standalone reads):
    - `runs/<run-id>/2-scenarios/pdd-to-app-journeys.md` (artifact under judgment)
-   - `runs/<run-id>/1-design/idea-to-pdd.md` (PDD; for archetype + Target FLW reference)
+   - `runs/<run-id>/1-design/idea-to-pdd.md` (PDD; for archetype + FLW Requirements reference — pre-2026 PDDs may use the legacy "Target FLW" header name; treat both as equivalent)
 
 2. **Halt on missing inputs.** If `pdd-to-app-journeys.md` is absent or empty, emit `verdict: incomplete` with `[INFO] producer artifact missing; eval skipped`. (No QA gate replaces this fast-path; the eval itself short-circuits when there's nothing to grade.)
 
@@ -53,9 +53,9 @@ This skill ships **provisional** until calibrated against ground truth. Initial 
 
    | Dimension | Weight | Criteria |
    |---|---|---|
-   | **Persona specificity** | 15% | Does the persona block describe a SPECIFIC FLW (named or archetypal) with concrete, gradable attributes (smartphone proficiency tier, daily volume, connectivity context, prior-research-experience baseline)? **Anchors:** named FLW with all attributes specific = **9.5**; specific attributes but generic role = **7.5**; generic "FLWs are smartphone-literate" = **5.0**; absent or template-placeholder content = **2.0**. |
-   | **Archetype alignment** | 15% | The journey set's category mix matches the declared archetype's expected branches (per skills/pdd-to-app-journeys/SKILL.md § Archetypes). **Anchors:** every expected category has a journey, no off-archetype journeys = **9.5**; one expected category missing = **7.0**; off-archetype journey present (e.g. eligibility-edge in a focus-group set) = **5.0**; majority of journeys mismatch archetype = **3.0**. |
-   | **Coverage completeness** | 15% | Within the archetype, are the journey set's edge cases comprehensive enough that `app-ux-eval` can grade real failure modes? **Anchors:** ≥2 distinct error-recovery edge cases per journey covering data-quality, eligibility, connectivity, and submission-confirmation paths = **9.0**; covers most failure modes but ≥1 obvious gap = **7.0**; happy paths only with thin edge cases = **5.0**; no recovery edge cases at all = **3.0**. |
+   | **Persona specificity** | 15% | Does the persona block describe a SPECIFIC FLW (named or archetypal) with concrete, gradable attributes (smartphone proficiency tier, daily volume, connectivity context, prior-research-experience baseline)? **Anchors:** named FLW with all attributes specific = **9.5**; specific attributes but generic role = **7.5**; generic "FLWs are smartphone-literate" = **5.0**; absent or template-placeholder content = **2.0**. **Smoke-scope exemption:** when the source PDD explicitly defers persona attributes (per the "no inferred backstory" rule — e.g. smoke opps that intentionally don't specify proficiency tier or prior research baseline), do NOT dock points for the deferred attributes. Score against what the PDD actually provides; treat deferrals as `[INFO]`-equivalent calibration context, not missing content. |
+   | **Archetype alignment** | 15% | The journey set's category mix matches the declared archetype's expected branches (per skills/pdd-to-app-journeys/SKILL.md § Archetypes). **Anchors:** every expected category has a journey, no off-archetype journeys = **9.5**; one expected category missing = **7.0**; off-archetype journey present (e.g. eligibility-edge in a focus-group set) = **5.0**; majority of journeys mismatch archetype = **3.0**. **PDD-deferral exemption:** when the source PDD explicitly defers a domain surface (e.g. no eligibility criteria, no GPS/photo capture), the corresponding category (eligibility-edge, data-quality-error) is legitimately absent. Mark such absences with `[INFO]` calibration context — do not dock under "expected category missing." Score against categories whose underlying surfaces the PDD actually declares. |
+   | **Coverage completeness** | 15% | Within the archetype, are the journey set's edge cases comprehensive enough that `app-ux-eval` can grade real failure modes? **Anchors:** ≥2 distinct error-recovery edge cases per journey covering data-quality, eligibility, connectivity, and submission-confirmation paths = **9.0**; covers most failure modes but ≥1 obvious gap = **7.0**; happy paths only with thin edge cases = **5.0**; no recovery edge cases at all = **3.0**. **PDD-deferral exemption:** same as Archetype alignment — only score against failure-mode categories the PDD's declared surfaces support. A 1-field yes/no Deliver form has no photo-quality or GPS-accuracy failure mode to grade. |
    | **Happy-path narrative voice** | 20% | Each Happy path narrative uses **user-outcome language** ("FLW confirms household by name and phone, completes screening, photographs the MTN card, and submits") not **field/form mechanics** ("tap next, fill household_id, click submit button"). **Anchors:** every narrative is user-outcome-grounded with concrete actions = **9.5**; mostly user-outcome with ≥1 mechanics-leaning narrative = **8.0**; mixed; mechanics dominate ≥1 narrative = **6.0**; field/form mechanics throughout = **3.5**; UI-callout descriptions ("the button on screen 3") = **2.0**. |
    | **Edge-case recoverability** | 20% | Each edge case is phrased as a **UX outcome the FLW experiences** with a clear recovery path, NOT a backend error code. **Anchors:** every edge case names the FLW outcome + the recovery action = **9.5**; mostly UX outcomes but ≥1 backend-error-flavored = **7.5**; mixed; ≥half are error-code-flavored ("returns 409 Conflict") = **5.0**; backend errors throughout = **3.0**. |
    | **Pass-criteria measurability** | 15% | Pass criteria are concrete enough that `app-ux-eval` (LLM-as-Judge over screenshots + transcripts) can grade them. **Anchors:** every criterion has a concrete measurement (time bound, error visibility, recoverability with no data loss) = **9.5**; most measurable but ≥1 vague ("works correctly") = **7.5**; multiple vague criteria = **5.0**; criteria are aspirational/un-gradable = **3.0**. |

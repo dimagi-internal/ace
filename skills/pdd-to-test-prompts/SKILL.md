@@ -9,7 +9,7 @@ disable-model-invocation: true
 # PDD to Test Prompts
 
 Generate the opp-specific test suite that the Phase 5 qa→eval pair uses as
-its ground truth. Runs in Phase 1 (Design Review & Iteration) as Step 2,
+its ground truth. Runs in Phase 2 (Scenarios & Acceptance) as Step 2,
 right after `idea-to-pdd`.
 
 ## Inputs

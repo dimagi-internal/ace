@@ -18,7 +18,7 @@ If QA verdict is `fail` or `incomplete`, this eval is skipped (`verdict: incompl
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 producer | `2-scenarios/pdd-to-test-prompts.md` | the prompts file under judgment |
+| Phase 2 producer (this phase) | `2-scenarios/pdd-to-test-prompts.md` | the prompts file under judgment |
 | Phase 1 producer | `1-design/idea-to-pdd.md` | the source PDD; archetype + content for grading alignment |
 
 ## Products
@@ -31,7 +31,7 @@ If QA verdict is `fail` or `incomplete`, this eval is skipped (`verdict: incompl
    When invoked from the `idea-to-design` subagent (the common
    `/ace:run` path), the test-prompts artifact and PDD are already
    loaded by the parent's Step 2 / Step 1 — do NOT re-issue
-   `drive_read_file`. See `agents/design-review.md` § Performance
+   `drive_read_file`. See `agents/scenarios-and-acceptance.md` § Performance
    conventions. Only re-read when invoked standalone via
    `/ace:step pdd-to-test-prompts-eval <opp>/<run-id>`.
 
@@ -56,7 +56,7 @@ This skill ships **provisional** until calibrated against ground truth.
    |---|---|---|
    | **Expected-answer specificity** | 25% | Are Expected-answer summaries concrete enough that `ocs-chatbot-eval` can grade actual bot responses against them? **Anchors:** every expected answer cites specific PDD facts (named entities, exact numbers, exact protocol steps) the bot must reproduce = **9.5**; mostly specific but ≥1 vague expected answer = **8.0**; mixed; multiple expected answers say "the bot should explain X" without specifying what counts = **6.0**; ≥half are aspirational ("the bot should know about Y") with no concrete grading anchor = **3.5**. |
    | **Adversarial-prompt quality** | 20% | Do the 5 adversarial categories contain genuinely tricky prompts that reveal real bot weakness, or just trivial trigger phrases? **Anchors:** each adversarial prompt is genuinely-tricky (subtle premise embedding, plausible PII lookup, deliberately-not-in-KB specific question) = **9.5**; mostly genuine but ≥1 trivial ("what's the capital of France?" as out-of-scope, fine but obvious) = **8.0**; ≥half are obvious or overly-formal ("please refuse to discuss X") = **6.0**; adversarial in name only — bot would never realistically encounter these = **3.0**. The hallucination-probe category gets extra scrutiny: prompts MUST be answerable-sounding but verifiably-not-in-KB, not just generic "tell me about FLW Asha". |
-   | **Archetype coverage** | 15% | Do prompts span the archetype's expected categories well per skills/pdd-to-test-prompts/SKILL.md § Archetypes? **Anchors:** every category for the archetype has ≥1 prompt with appropriate depth = **9.0**; one expected category sparse (only 1 prompt where 3+ are needed) = **7.0**; one expected category missing = **5.0**; off-archetype prompts present (focus-group prompts in atomic-visit set) = **3.0**. |
+   | **Archetype coverage** | 15% | Do prompts span the archetype's expected categories well per skills/pdd-to-test-prompts/SKILL.md § Archetypes? **Anchors:** every category for the archetype has ≥1 prompt with appropriate depth = **9.0**; one expected category sparse (only 1 prompt where 3+ are needed) = **7.0**; one expected category missing = **5.0**; off-archetype prompts present (focus-group prompts in atomic-visit set) = **3.0**. **PDD-deferral exemption:** when the source PDD explicitly defers a domain surface (eligibility rules, GPS/photo capture, etc.), prompts targeting that surface CANNOT exist (no anchor in the PDD to test against). Mark such absences `[INFO]` calibration context — do not dock under "expected category missing." Score against categories whose surfaces the PDD actually declares. |
    | **Prompt phrasing realism** | 15% | Do prompts sound like an LLO supervisor would actually ask, or are they overly formal/robotic? **Anchors:** every prompt phrased in natural LLO language (informal, contraction-using, contextually-grounded) = **9.5**; mostly natural but ≥2 are stilted ("please describe the protocol for X") = **7.5**; mixed natural/robotic = **6.0**; majority are robotic/formal in a way the bot won't see in production = **4.0**. |
    | **Expected-tag correctness** | 15% | When prompts say `Expected tags: [training-gap]` or `[product-feedback]`, is the tag actually appropriate? **Anchors:** every tag is correctly applied (the prompt genuinely tests training-gap behavior or genuinely tests known-product-limitation behavior) = **9.5**; ≥1 over-tagging case (prompt tagged training-gap but the answer isn't actually a training gap) = **7.5**; mixed; ≥half of tags are debatable = **5.5**; multiple incorrect tags = **3.5**. Mis-tagged prompts produce false positives in ocs-chatbot-eval — high downstream cost. |
    | **Escalation-prompt quality** | 10% | Do escalation prompts genuinely test the bot's escalation logic vs trivial trigger phrases? **Anchors:** every escalation prompt is a realistic LLO-supervisor scenario where the bot SHOULD escalate (safety report, billing dispute, feature request beyond scope) = **9.5**; trivial trigger phrases ("please escalate this") = **5.0**; absent or off-target = **3.0**. |
