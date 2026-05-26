@@ -27,7 +27,7 @@ import { fileURLToPath } from 'url';
 
 import { google } from '../lib/google-shim.js';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
-import { DecisionRowSchema } from '../lib/decisions-schema.js';
+import { DecisionRowStrictSchema } from '../lib/decisions-schema.js';
 import {
   DECISIONS_FILENAME,
   DecisionsWriteError,
@@ -291,9 +291,9 @@ server.tool(
       .min(1)
       .describe('Run id (e.g. `20260525-2013`). Must match an existing log\'s `run_id` if one is already in place.'),
     rows: z
-      .array(DecisionRowSchema)
+      .array(DecisionRowStrictSchema)
       .min(1)
-      .describe('Array of validated decision rows to append. Duplicate ids within the batch are rejected; ids already present in the existing log are silently skipped (idempotent re-run).'),
+      .describe('Array of validated decision rows to append. Each row\'s `ai-default` (and `override` if set) MUST be one of the strings in its `options` array, exact-match — put rationale in `reasoning`, never in `ai-default`. Duplicate ids within the batch are rejected; ids already present in the existing log are silently skipped (idempotent re-run).'),
   },
   async (args) => {
     try {
