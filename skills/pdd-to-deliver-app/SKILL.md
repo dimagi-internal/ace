@@ -159,43 +159,84 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      bumped in lock-step. (b) KEEP the explicit-id rule even after the
      column widens — it's a cleanliness invariant matching Vellum's
      slug-vs-name separation, not just a workaround for the column width.
-   - **REQUIRED — `entity_id` on a create-form MUST resolve at
-     install/parse time, not at submit time.** The canonical pattern
-     for case-create deliver_unit forms is `entity_id: #case/case_id`
-     (Vellum's own help text: "XPath expression for the entity ID
-     associated with this Delivery Unit e.g. the case ID"). JavaRosa
-     allocates the case UUID synchronously at the start of form
-     processing, so `#case/case_id` IS resolvable from that point and
-     CommCare's install-time resource graph can bind it. Do NOT
-     substitute `#case/case_name` "because it's stable" — `case_name`
-     on a case-create form is a hidden field with a `calculate` that
-     only fires at form-submit; the install-time resource graph reads
-     null and rejects the CCZ with "A part of your application is
-     invalid" (CommCare `InvalidResourceException` from
-     `XFormAndroidInstaller`). Insert this paragraph **verbatim** into
-     the brief, in its own paragraph, prefixed `REQUIRED:`:
+   - **REQUIRED — `entity_id` must resolve at install/parse time;
+     branch the directive on case action (create vs update).** Nova's
+     compiler emits the same casedb-lookup XPath shape for both case
+     actions when handed the Vellum-style `#case/case_id` shortcut.
+     That XPath works for case-update forms (the case exists in
+     `casedb`, the session-data `case_id` datum is populated by
+     Connect's update-flow deeplink) but FAILS install for case-create
+     forms on two independent grounds:
 
-     > REQUIRED: For any `connect.deliver_unit` block on a case-create
-     > form, set `entity_id: #case/case_id` and `entity_name:
-     > #case/case_name`. Do NOT substitute `#case/case_name` (or any
-     > other `#case/<calculated-field>`) for `entity_id` — the
-     > install-time resource graph reads it BEFORE the field's
-     > `calculate` fires, gets null, and CommCare rejects the CCZ at
-     > install with "A part of your application is invalid." `case_id`
-     > is the case's UUID, allocated synchronously by JavaRosa at the
-     > start of form processing; it IS resolvable from install time
-     > forward. This is the Vellum-source-of-truth canonical pattern
-     > (`src/commcareConnect.js:243`).
+       1. Connect's create-flow deeplink populates `case_id_new_visit_<n>`
+          in session data, NOT `case_id` — Nova's emitted XPath keys
+          off an unbound datum.
+       2. The case being created isn't in `casedb` yet — it lands only
+          after form submission. A create-form bind can't look itself
+          up.
 
-     Reproducer: `bednet-spot-check/20260525-1405` Phase 6 — Deliver
-     CCZ shipped with `entity_id: #case/case_name` (substituted by the
-     architect from a since-reverted SKILL.md rule), passed every
-     Phase 3 static check (`validate_app`, `make_build`, release,
-     `app-release-smoke` projection), then on-device install rejected
-     with "A part of your application is invalid." See
-     `docs/learnings/2026-05-25-entity-id-misdiagnosis.md` for the
-     full postmortem on why the substitution was wrong + the
-     process-fix for `/canopy:select-session` findings.
+     The install-time gate (`commcare-cli.jar play` → `FormDef.initAll-
+     Triggerables`) catches this as `XPathTypeMismatchException` with
+     `unresolved_xpath: instance(commcaresession)/session/data/case_id`.
+     CommCare's mobile runtime surfaces the same exception class as
+     "A part of your application is invalid."
+
+     Tracked upstream as
+     [voidcraft-labs/nova-plugin#20](https://github.com/voidcraft-labs/nova-plugin/issues/20).
+     Until that lands, the workaround is to emit a literal XPath that
+     references the form's own case block (case-create) instead of the
+     Vellum shortcut. The casedb-lookup shape is correct as-is for
+     case-update forms.
+
+     Insert ONE of these two paragraphs **verbatim** into the brief,
+     in its own paragraph, prefixed `REQUIRED:`:
+
+     **Case-CREATE deliver_units** (registration forms — the typical
+     atomic-visit Deliver app):
+
+     > REQUIRED: For any `connect.deliver_unit` block on a CASE-CREATE
+     > form (form type `registration`), set
+     > `entity_id: '/data/case/@case_id'` and
+     > `entity_name: '/data/case_name'` — literal XPaths against the
+     > form's own case block, NOT Vellum shortcuts like `#case/case_id`
+     > or `#case/case_name`. Reason: Nova's compiler currently emits
+     > a casedb-lookup XPath for `#case/case_id` regardless of case
+     > action; that lookup keys off `session/data/case_id` which is
+     > unbound on a case-create deeplink (Connect populates
+     > `case_id_new_visit_<n>` instead), AND looks up the case in
+     > `casedb` where it doesn't exist yet (the create form is
+     > allocating it). Both grounds break install
+     > (`XPathTypeMismatchException` from `FormDef.initAllTriggerables`,
+     > "A part of your application is invalid" on device). The form's
+     > own `<setvalue ref="/data/case/@case_id" value="...case_id_new_visit_<n>" event="xforms-ready"/>`
+     > chain populates `/data/case/@case_id` deterministically — that
+     > XPath IS install-time resolvable. Tracked upstream as
+     > voidcraft-labs/nova-plugin#20; remove this workaround once that
+     > ships.
+
+     **Case-UPDATE deliver_units** (forms that update an existing case
+     looked up via a Connect session datum):
+
+     > REQUIRED: For any `connect.deliver_unit` block on a CASE-UPDATE
+     > form, set `entity_id: '#case/case_id'` and
+     > `entity_name: '#case/case_name'`. Nova's casedb-lookup
+     > compilation is correct for case-update forms — Connect's
+     > update-flow deeplink populates `session/data/case_id` and the
+     > target case exists in `casedb`.
+
+     Reproducers (both case-CREATE, both pre-workaround):
+
+     - `bednet-spot-check/20260525-1405` Phase 6 — operator-side
+       substitution to `#case/case_name`. Passed every static gate;
+       failed on-device install with "A part of your application is
+       invalid."
+     - `bednet-spot-check/20260525-2022` Phase 3 step 2.8 — restored
+       `#case/case_id` per the prior REQUIRED rule. Passed every static
+       gate; failed `commcare-cli.jar play` with the same exception
+       class. (This run is what surfaced the underlying Nova compiler
+       bug and the workaround above; see
+       `docs/learnings/2026-05-25-entity-id-misdiagnosis.md` for the
+       initial misdiagnosis postmortem.)
 
    - **REQUIRED — Architect must verify-then-retry every `add_fields`
      call.** Nova's `add_fields` has a partial-persistence quirk: a
@@ -539,3 +580,4 @@ Each row this skill writes uses `phase: 3-commcare` and
 | 2026-05-15 | **focus-group archetype rewritten to attestation-form-only.** Previously: 3-module / 69-field per-section-summary Deliver app capturing all qualitative content in CommCare. New: one module, one ~14-field attestation form (date / venue / participants / audio / photo / gdoc link / consent / reflection). Content lives in a Google Doc out-of-band; the gdoc_link field is the bridge. One submission = one payment trigger. Prompted by post-run reframe from operator: "all the content collection... will happen manually and they will send us a gdoc". See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
 | 2026-05-15 | **Pare focus-group attestation form to 5 fields:** `consent_all_participants` (single_select yes/no, validate=yes), `session_date`, `venue` (text), `gps` (geopoint), `photo` (image). Drop `audio_file` / `backup_audio_file` (audio capture is out-of-band; not in CommCare), `gdoc_link` (gdoc is written AFTER session end, no linkable URL exists at submission time), and the metadata fields (`llo_name`, `site_*`, `venue_type`, `planned_segment`, `actual_participant_count`, `start_time`, `end_time`, `audio_duration_minutes`, `facilitator_reflection`, `pre_checklist_complete`) — these go in the gdoc. Matching attestation → gdoc is coordinator-driven by `(FLW, session_date, venue)` tuple. Prompted by operator: "For the fields just have consent (this should confirm you have consent from all participants), date, venue, gps, photo. everything else is either wrong or goes into the gdoc. the gdoc will be created after the fact so no ability to enter it into commcare". | ACE team |
 | 2026-05-25 | **Revert PR #445; restore `#case/case_id` as the canonical create-form `entity_id`; add explicit REQUIRED rule against `#case/case_name` substitution.** PR #445 (commit `749888e`, 2026-05-24) had flipped the recommended override from `#case/case_id` to `#case/case_name` based on a `/canopy:select-session` rescan citing a Nova validator rejection in the `e2e-malaria-rdt` 2026-05-24 run — but no artifact was preserved and the change contradicted a verified learning from one day earlier (`docs/learnings/2026-04-29-nova-connect-marker-bugs.md:92-95`: 2026-05-23 round-trip verification that `#case/case_id` persists exactly as passed). The substitution passed every Phase 3 static gate (`validate_app`, `make_build`, release, `app-release-smoke` projection) then failed on-device install on `bednet-spot-check/20260525-1405` Phase 6 with "A part of your application is invalid" — CommCare's install-time resource graph reads `entity_id`'s XPath BEFORE the hidden `case_name` field's `calculate` fires, gets null, and rejects the CCZ. `#case/case_id` does NOT have this problem because JavaRosa allocates the case UUID synchronously at form-processing start. Per Vellum's source-of-truth help text (`src/commcareConnect.js:243`), `case_id` IS the canonical pattern. New REQUIRED rule inserted in Step 3 ("`entity_id` on a create-form MUST resolve at install/parse time"). Full postmortem: `docs/learnings/2026-05-25-entity-id-misdiagnosis.md`. Structural preventer (commcare-cli.jar install simulation) tracked at `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md § Preventer 2`. | ACE team |
+| 2026-05-26 | **Both prior `entity_id` rules were operator-side workarounds for an unrecognized upstream Nova compiler bug — branch the REQUIRED rule on case action.** The `commcare-cli.jar play` install-time gate (shipped same day in PR #510's Java-resolver fix) caught `bednet-spot-check/20260525-2022`'s Deliver CCZ failing `FormDef.initAllTriggerables` with `XPathTypeMismatchException` on `/data/bednet_visit/deliver/entity_id`. The bind Nova emitted for the directive `entity_id: '#case/case_id'` was the **case-UPDATE** shape: `instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/case_id`. On a case-CREATE form that XPath is broken on two grounds — Connect populates `case_id_new_visit_<n>` (not `case_id`) in session data, and the case isn't in `casedb` yet. The same exception class is what CommCare's mobile runtime surfaces as "A part of your application is invalid" on device — explaining why BOTH bednet runs (1405 with `case_name`, 2022 with `case_id`) hit install rejection for what looked like different reasons; same Nova compiler bug, two different operator workaround attempts. Tracked upstream as voidcraft-labs/nova-plugin#20. Skill rule split: case-create deliver_units now emit `entity_id: '/data/case/@case_id'` + `entity_name: '/data/case_name'` (literal XPaths against the form's own case block, which the form's `<setvalue>` chain populates at xforms-ready); case-update deliver_units keep `#case/case_id` + `#case/case_name` (where Nova's casedb-lookup compilation IS correct). The change-log entry above (2026-05-25) is preserved verbatim for the audit trail; its conclusion was empirically wrong but the postmortem on PR #445 stands. | ACE team |
