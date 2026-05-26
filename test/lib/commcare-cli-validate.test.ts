@@ -7,7 +7,7 @@ import {
   resolveJavaPath,
   javaProbeWorks,
   JAVA_CANDIDATE_PATHS,
-} from '../../lib/commcare-cli-validate.ts';
+} from '../../lib/commcare-cli-validate';
 
 describe('javaProbeWorks', () => {
   it('returns false on a non-existent binary', () => {
