@@ -98,47 +98,59 @@ server.tool(
   'mobile_register_test_user',
   {
     avdName: z.string().default(process.env.ACE_AVD_NAME ?? 'ACE_Pixel_API_34'),
-    // All credential fields are optional and fall back to ACE_E2E_* env
-    // vars in the handler — same env conventions used by
-    // bootstrapConfigFromEnv() and the recipe-resolver placeholder map.
-    // Caller args still win when present; this just lets skill callers
-    // (qa-and-training) invoke the tool without re-plumbing every
-    // credential through the orchestrator, and avoids server-side
-    // "Request validation failed" responses from empty-string passes.
-    phone: z.string().optional(),
-    phoneLocal: z.string().optional(),
-    countryCode: z.string().optional(),
-    pin: z.string().optional(),
-    backupCode: z.string().optional(),
-    name: z.string().optional(),
+    // Test-user credentials are intentionally NOT in this schema —
+    // they're deployment-level secrets sourced from ACE_E2E_* env
+    // vars (the same env the local-side `bootstrapConfigFromEnv` and
+    // the recipe-resolver placeholder map already read). Exposing them
+    // as per-call args invites skill agents to hallucinate values when
+    // they don't have the real ones in context; that's exactly what
+    // happened in bednet-spot-check run 20260525-2013 Phase 6 — the
+    // agent passed empty strings, ace-web's E.164 validator rejected
+    // with a generic "Request validation failed", and the run halted
+    // with no field-level diagnostic for the operator.
+    //
+    // Keep this tool a *trigger* — it says "register the configured
+    // test user on this AVD," not "register *this* user with *these*
+    // credentials." If a future caller genuinely needs to test with a
+    // different identity, set the env vars (the same way every other
+    // consumer does).
   },
-  async (args) => {
-    const resolved = {
-      avdName: args.avdName,
-      phone: args.phone || process.env.ACE_E2E_PHONE || '',
-      phoneLocal: args.phoneLocal || process.env.ACE_E2E_PHONE_LOCAL || '',
-      countryCode: args.countryCode || process.env.ACE_E2E_COUNTRY_CODE || '',
-      pin: args.pin || process.env.ACE_E2E_PIN || '',
-      backupCode: args.backupCode || process.env.ACE_E2E_BACKUP_CODE || '',
-      name: args.name || process.env.ACE_E2E_NAME || 'ACE Test',
+  async ({ avdName }) => {
+    const env = {
+      phone: process.env.ACE_E2E_PHONE ?? '',
+      phoneLocal: process.env.ACE_E2E_PHONE_LOCAL ?? '',
+      countryCode: process.env.ACE_E2E_COUNTRY_CODE ?? '',
+      pin: process.env.ACE_E2E_PIN ?? '',
+      backupCode: process.env.ACE_E2E_BACKUP_CODE ?? '',
+      name: process.env.ACE_E2E_NAME ?? 'ACE Test',
     };
-    // Surface the named missing field(s) here rather than punting to
-    // ace-web's Pydantic validator, which returns a generic
-    // "Request validation failed" with no field-level detail.
-    const missing = (
-      ['phone', 'phoneLocal', 'countryCode', 'pin', 'backupCode'] as const
-    ).filter((k) => !resolved[k]);
+    const ENV_NAMES: Record<keyof typeof env, string> = {
+      phone: 'ACE_E2E_PHONE',
+      phoneLocal: 'ACE_E2E_PHONE_LOCAL',
+      countryCode: 'ACE_E2E_COUNTRY_CODE',
+      pin: 'ACE_E2E_PIN',
+      backupCode: 'ACE_E2E_BACKUP_CODE',
+      name: 'ACE_E2E_NAME',
+    };
+    // `name` has a sensible default and isn't load-bearing for
+    // registration, so don't require it.
+    const REQUIRED: Array<keyof typeof env> = [
+      'phone',
+      'phoneLocal',
+      'countryCode',
+      'pin',
+      'backupCode',
+    ];
+    const missing = REQUIRED.filter((k) => !env[k]).map((k) => ENV_NAMES[k]);
     if (missing.length > 0) {
-      const envHints = missing
-        .map((k) => `ACE_E2E_${k === 'phoneLocal' ? 'PHONE_LOCAL' : k === 'countryCode' ? 'COUNTRY_CODE' : k === 'backupCode' ? 'BACKUP_CODE' : k.toUpperCase()}`)
-        .join(', ');
       throw new Error(
-        `mobile_register_test_user: required field(s) missing — ${missing.join(', ')}. ` +
-          `Pass them as args, or set ${envHints} in the environment.`,
+        `mobile_register_test_user: deployment env var(s) missing — ${missing.join(', ')}. ` +
+          `These are configured at the ace-web deployment level (or via local .env), ` +
+          `not per-call args.`,
       );
     }
     return {
-      content: [{ type: 'text', text: JSON.stringify(await client.registerTestUser(resolved), null, 2) }],
+      content: [{ type: 'text', text: JSON.stringify(await client.registerTestUser({ avdName, ...env }), null, 2) }],
     };
   },
 );
