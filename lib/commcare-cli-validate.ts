@@ -28,10 +28,128 @@
  * separately so unit tests can exercise log shapes without spawning Java.
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+
+/**
+ * Candidate Java paths probed by `resolveJavaPath()` when nothing more
+ * specific is supplied. Exported for tests. Ordered most-specific →
+ * least-specific so a pinned JDK (`openjdk@17`) is preferred over the
+ * "current" symlink (`openjdk`).
+ *
+ * The macOS `/usr/bin/java` stub is intentionally NOT on this list —
+ * it always exists but spawns a non-JRE error when invoked. Plain
+ * `java` is probed via PATH separately (see `resolveJavaPath`).
+ */
+export const JAVA_CANDIDATE_PATHS: readonly string[] = [
+  '/opt/homebrew/opt/openjdk@17/bin/java',
+  '/opt/homebrew/opt/openjdk@21/bin/java',
+  '/opt/homebrew/opt/openjdk@25/bin/java',
+  '/opt/homebrew/opt/openjdk/bin/java',
+  '/opt/homebrew/bin/java',
+  '/usr/local/opt/openjdk@17/bin/java',
+  '/usr/local/opt/openjdk@21/bin/java',
+  '/usr/local/opt/openjdk@25/bin/java',
+  '/usr/local/opt/openjdk/bin/java',
+  '/usr/local/bin/java',
+];
+
+/**
+ * Returns true when invoking `binary -version` produces a real JRE.
+ *
+ * The macOS `/usr/bin/java` shim exists by default on every Mac but
+ * spawns "The operation couldn't be completed. Unable to locate a
+ * Java Runtime." with exit code 1 when no JDK is installed. A real
+ * JRE exits 0 and writes its version banner to stderr (Java convention).
+ *
+ * Probe rule: exit code 0 AND stderr contains either `version` or
+ * `openjdk` (case-insensitive). Both checks needed — the stub exits 1
+ * AND emits the wrong banner; a real JRE exits 0 AND emits the
+ * version banner. Either alone leaves a false-positive class.
+ *
+ * Bounded by a 4-second timeout so a wedged JVM doesn't hang the
+ * resolver. JDK 17+ cold-start is <2s on every machine we've measured.
+ */
+export function javaProbeWorks(binary: string): boolean {
+  try {
+    const res = spawnSync(binary, ['-version'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 4_000,
+      encoding: 'utf8',
+    });
+    if (res.error || res.status !== 0) return false;
+    const banner = `${res.stdout ?? ''}\n${res.stderr ?? ''}`;
+    return /version|openjdk/i.test(banner);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve a working Java binary path, or `undefined` if none found.
+ *
+ * Order:
+ *   1. Explicit `explicit` arg (caller-pinned path; not probed — caller
+ *      asserts the path is good).
+ *   2. `$ACE_JAVA_BIN` env var (operator-pinned absolute path; not probed).
+ *   3. `/usr/libexec/java_home`-derived path on macOS (the canonical
+ *      Apple-blessed JDK pointer; probed).
+ *   4. Plain `java` from `$PATH` — probed via `java -version` so the
+ *      macOS stub at `/usr/bin/java` (which is on every Mac by default
+ *      but spawns an "install Java" prompt) doesn't false-positive.
+ *   5. Common homebrew + JDK install locations (probed; see
+ *      `JAVA_CANDIDATE_PATHS`).
+ *
+ * The function is intentionally synchronous + does at most ~12
+ * `spawnSync('java -version')` calls, each capped at 4s. In the warm
+ * `java`-on-PATH case it returns in <100ms. In the absolute-worst
+ * case (no Java anywhere) it returns `undefined` in ~5s.
+ *
+ * Reproducer: bednet-spot-check 20260525-2022 Phase 3 step 2.8 hit
+ * "Unable to locate a Java Runtime" on a Mac that DOES have homebrew
+ * openjdk@17 installed — because the MCP subprocess's PATH didn't
+ * include `/opt/homebrew/opt/openjdk@17/bin`. This resolver finds
+ * the homebrew JDK regardless of PATH so Phase 3's structural-smoke
+ * gate is actually wired on a stock dev machine.
+ */
+export function resolveJavaPath(explicit?: string): string | undefined {
+  if (explicit && explicit.length > 0) return explicit;
+  const envBin = process.env.ACE_JAVA_BIN;
+  if (envBin && envBin.length > 0) return envBin;
+
+  // macOS java_home — Apple's canonical "current JDK" pointer.
+  if (process.platform === 'darwin') {
+    try {
+      const res = spawnSync('/usr/libexec/java_home', [], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 4_000,
+        encoding: 'utf8',
+      });
+      if (!res.error && res.status === 0) {
+        const home = (res.stdout ?? '').trim();
+        if (home) {
+          const candidate = path.join(home, 'bin', 'java');
+          if (javaProbeWorks(candidate)) return candidate;
+        }
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  // Plain `java` on PATH — probed because macOS's `/usr/bin/java`
+  // stub claims to exist but doesn't work without a real JDK.
+  if (javaProbeWorks('java')) return 'java';
+
+  // Common per-platform install paths.
+  for (const candidate of JAVA_CANDIDATE_PATHS) {
+    if (javaProbeWorks(candidate)) return candidate;
+  }
+
+  return undefined;
+}
 
 export interface CommCareCliValidateOptions {
   /** Path to the CCZ file to validate. Must exist and be non-empty. */
@@ -66,7 +184,8 @@ export interface CommCareCliValidateResult {
 export type CommCareCliInputErrorKind =
   | 'ccz_not_found'
   | 'ccz_empty'
-  | 'jar_not_found';
+  | 'jar_not_found'
+  | 'java_not_found';
 
 export class CommCareCliInputError extends Error {
   constructor(public readonly kind: CommCareCliInputErrorKind, public readonly path: string) {
@@ -84,7 +203,10 @@ export class CommCareCliInputError extends Error {
 export async function commcareCliValidateCcz(
   opts: CommCareCliValidateOptions,
 ): Promise<CommCareCliValidateResult> {
-  const javaPath = opts.javaPath ?? 'java';
+  const javaPath = resolveJavaPath(opts.javaPath);
+  if (!javaPath) {
+    throw new CommCareCliInputError('java_not_found', 'java');
+  }
   const timeoutMs = opts.timeoutMs ?? 60_000;
 
   // Pre-flight: explicit existence + non-empty checks so the operator
@@ -314,7 +436,10 @@ export const DEFAULT_PLAY_RESTORE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 export async function commcareCliPlayCcz(
   opts: CommCareCliPlayOptions,
 ): Promise<CommCareCliPlayResult> {
-  const javaPath = opts.javaPath ?? 'java';
+  const javaPath = resolveJavaPath(opts.javaPath);
+  if (!javaPath) {
+    throw new CommCareCliInputError('java_not_found', 'java');
+  }
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const entryPath = opts.entryPath ?? [0, 0];
 
