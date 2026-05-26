@@ -519,7 +519,7 @@ const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 
-const TEMPLATE_NAME = 'ACE Training Deck Template (v5.3 — deck-quality fixes from bednet-spot-check)';
+const TEMPLATE_NAME = 'ACE Training Deck Template (v5.4 — strip content_v2 stock photo)';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -651,14 +651,19 @@ async function main(): Promise<void> {
   const lineIdsToStripByPageId = new Map<string, string[]>();
   const notesIdByPageId = new Map<string, string>();
 
-  // walkthrough/mobile_flow/web_screen/mobile_zoom strip ALL images
-  // above 1.5in² (designer mockup screens). closing strips small
-  // images > 0.25in² too (catches the Dimagi headshot circle which
-  // is ~0.5in² and otherwise survives the size filter — caught in
-  // bednet-spot-check/20260525-1503 render). cover/section/content
-  // keep their decorative images (wordmarks, illustrations).
+  // Stencils that strip designer mockup images:
+  // - walkthrough / mobile_flow / web_screen / mobile_zoom: phone/web
+  //   mockup screenshots (1.5in² threshold)
+  // - content: the Dimagi "Bulleted Plaintext with Image" source has
+  //   a 3.7×5.6in stock photo on the right that overlays body text on
+  //   content-only slides (no image: field). Strip at 1.5in² threshold —
+  //   leaves the small O logo + wordmark alone. v5.4 fix.
+  // - closing: smaller 0.25in² threshold catches the Dimagi headshot
+  //   circle (~0.5in²) which otherwise survives.
+  // cover / section / agenda / two_column / stats / timeline /
+  // checklist / exercise keep their decorative images.
   const STRIP_IMAGES_ON: Set<StencilKey> = new Set([
-    'walkthrough', 'mobile_flow', 'web_screen', 'mobile_zoom', 'closing',
+    'walkthrough', 'mobile_flow', 'web_screen', 'mobile_zoom', 'content', 'closing',
   ]);
   const pageIdToStencilKey = new Map<string, StencilKey>();
   for (const key of Object.keys(STENCILS) as StencilKey[]) {
