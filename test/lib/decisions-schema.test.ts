@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DecisionRowSchema,
+  DecisionRowStrictSchema,
   DecisionsLogSchema,
   effectiveValue,
   parseDecisionsYaml,
@@ -432,5 +433,137 @@ describe("effectiveValue", () => {
       status: "overridden" as const,
     };
     expect(effectiveValue(row)).toBe("12");
+  });
+});
+
+describe("DecisionRowStrictSchema (write-boundary invariants)", () => {
+  it("accepts a row whose ai-default exactly matches one of the options", () => {
+    const row = {
+      id: "archetype-selection",
+      phase: "1-design",
+      skill: "idea-to-pdd",
+      question: "Which delivery archetype best fits?",
+      "ai-default": "atomic-visit",
+      options: ["atomic-visit", "focus-group", "multi-stage"],
+      source: "PDD § Intervention Design",
+      status: "ai-default",
+      reasoning: "Per-FLW per-POC visit, no group facilitation, no stage gates.",
+    };
+    expect(() => DecisionRowStrictSchema.parse(row)).not.toThrow();
+  });
+
+  it("rejects a row whose ai-default is a prose extension of an option label (budget-plausibility regression)", () => {
+    const row = {
+      id: "budget-plausibility",
+      phase: "1-design",
+      skill: "idea-to-pdd",
+      question: "Is the budget plausible?",
+      "ai-default": "USD 4,000 - USD 5,500 plausible at 240-product-capture floor",
+      options: [
+        "USD 4,000 - USD 5,500 (floor-anchored)",
+        "USD 5,500 - USD 8,000 (stretch-anchored)",
+        "USD 12,000+ (full-LLO-quoted)",
+      ],
+      source: "EOI cohort price band",
+      status: "ai-default",
+    };
+    expect(() => DecisionRowStrictSchema.parse(row)).toThrow(
+      /ai-default.*must be one of the strings in `options`/,
+    );
+  });
+
+  it("rejects a row whose ai-default is a categorically different answer from options (named-downstream-consumer regression)", () => {
+    const row = {
+      id: "named-downstream-consumer",
+      phase: "1-design",
+      skill: "idea-to-pdd",
+      question: "Is there a named downstream consumer?",
+      "ai-default":
+        "laboratory performance-testing arm of GiveWell malaria research portfolio",
+      options: [
+        "named lab + pre-committed action",
+        "named portfolio consumer with implicit commitment",
+        "no named consumer",
+      ],
+      source: "planning sheet",
+      status: "ai-default",
+    };
+    expect(() => DecisionRowStrictSchema.parse(row)).toThrow(
+      /ai-default.*must be one of the strings in `options`/,
+    );
+  });
+
+  it("error message names the violating value and lists the options", () => {
+    const row = {
+      id: "x",
+      phase: "1-design",
+      skill: "s",
+      question: "Q?",
+      "ai-default": "wrong",
+      options: ["a", "b", "c"],
+      source: "src",
+      status: "ai-default" as const,
+    };
+    const result = DecisionRowStrictSchema.safeParse(row);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const msg = result.error.issues[0].message;
+      expect(msg).toContain('"wrong"');
+      expect(msg).toContain('["a","b","c"]');
+      expect(msg).toContain("reasoning");
+    }
+  });
+
+  it("rejects an override that doesn't match one of the options", () => {
+    const row = {
+      id: "x",
+      phase: "1-design",
+      skill: "s",
+      question: "Q?",
+      "ai-default": "a",
+      override: "z plus prose",
+      options: ["a", "b", "c"],
+      source: "src",
+      status: "overridden",
+    };
+    expect(() => DecisionRowStrictSchema.parse(row)).toThrow(
+      /override.*must be one of the strings in `options`/,
+    );
+  });
+
+  it("accepts an override that exactly matches one of the options", () => {
+    const row = {
+      id: "x",
+      phase: "1-design",
+      skill: "s",
+      question: "Q?",
+      "ai-default": "a",
+      override: "b",
+      options: ["a", "b", "c"],
+      source: "src",
+      status: "overridden",
+    };
+    expect(() => DecisionRowStrictSchema.parse(row)).not.toThrow();
+  });
+
+  it("permissive DecisionRowSchema still accepts the legacy malformed shapes (read-path safety)", () => {
+    // Legacy data from runs predating the strict invariant must continue to
+    // parse — otherwise readers (decisions-render, decisions-sync, ace-web)
+    // break when they encounter pre-fix decisions.yaml files.
+    const legacyRow = {
+      id: "budget-plausibility",
+      phase: "1-design",
+      skill: "idea-to-pdd",
+      question: "Is the budget plausible?",
+      "ai-default":
+        "USD 4,000 - USD 5,500 plausible at 240-product-capture floor",
+      options: [
+        "USD 4,000 - USD 5,500 (floor-anchored)",
+        "USD 5,500 - USD 8,000 (stretch-anchored)",
+      ],
+      source: "EOI cohort price band",
+      status: "ai-default",
+    };
+    expect(() => DecisionRowSchema.parse(legacyRow)).not.toThrow();
   });
 });

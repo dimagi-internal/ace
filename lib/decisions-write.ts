@@ -7,7 +7,9 @@
  *   existing YAML (or empty)  ──►  validate + dedupe + append  ──►  new YAML
  *
  * Schema authority is `lib/decisions-schema.ts`. Every row goes through
- * `DecisionRowSchema.parse` before it touches the log; the final log is
+ * `DecisionRowStrictSchema.parse` before it touches the log (enforces
+ * `ai-default` and `override` are exact-match members of `options`,
+ * load-bearing for the ace-web point-and-click override UX); the final log is
  * re-validated via `DecisionsLogSchema.parse` before serialization — so a
  * call that succeeds is guaranteed to leave the file readable by every
  * downstream consumer (decisions-render, decisions-sync, ace-web parser).
@@ -16,7 +18,7 @@
 import yaml from "yaml";
 
 import {
-  DecisionRowSchema,
+  DecisionRowStrictSchema,
   DecisionsLogSchema,
   type DecisionRow,
   type DecisionsLog,
@@ -60,7 +62,7 @@ export interface ComposeArgs {
   opportunity: string;
   /** Run id (e.g. `20260525-2013`). */
   run_id: string;
-  /** Rows to append. Each is validated via `DecisionRowSchema`. */
+  /** Rows to append. Each is validated via `DecisionRowStrictSchema`. */
   rows: unknown[];
   /**
    * Override for `generated_at` when seeding a new log. Tests pin this so
@@ -73,7 +75,7 @@ export interface ComposeArgs {
  * Append rows to (or seed) a decisions log. Pure function — no I/O.
  *
  * Behavior:
- * - Every input row is `DecisionRowSchema.parse`d first. A single invalid
+ * - Every input row is `DecisionRowStrictSchema.parse`d first. A single invalid
  *   row aborts the entire batch (no partial writes).
  * - Intra-batch duplicate `id`s throw — they always indicate a caller bug.
  * - Rows whose `id` is already present in the existing log are SKIPPED
@@ -93,7 +95,12 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
   const now = args.now ?? (() => new Date().toISOString());
 
   const parsedRows: DecisionRow[] = rows.map((row, i) => {
-    const r = DecisionRowSchema.safeParse(row);
+    // Strict variant on the write boundary: rejects rows whose `ai-default`
+    // (or `override`) isn't in `options`. The ace-web UI's point-and-click
+    // override pattern needs exact string equality with one of the option
+    // pills, so this invariant is load-bearing for the UX. Permissive reads
+    // (parseDecisionsYaml) keep the base `DecisionRowSchema` for legacy data.
+    const r = DecisionRowStrictSchema.safeParse(row);
     if (!r.success) {
       throw new DecisionsWriteError(
         "INVALID_ROW",

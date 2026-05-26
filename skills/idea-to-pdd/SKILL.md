@@ -339,10 +339,39 @@ tables above are teaching templates that improve over time.
 ### Schema and write semantics
 
 Schema is defined in `lib/decisions-schema.ts` (`DecisionRowSchema` /
-`DecisionsLogSchema`, v3). Do not hand-construct YAML — call the
-`decisions_append_rows` MCP atom (ace-decisions server). The atom's
-input schema is `DecisionRowSchema` directly, so unknown / misspelled
-field names are rejected at the call boundary before they touch Drive.
+`DecisionRowStrictSchema` / `DecisionsLogSchema`, v3). Do not
+hand-construct YAML — call the `decisions_append_rows` MCP atom
+(ace-decisions server). The atom's input schema is
+`DecisionRowStrictSchema` (the strict write-boundary variant), so
+unknown / misspelled field names AND violations of the load-bearing
+invariants below are rejected at the call boundary before they touch
+Drive.
+
+**The `ai-default` contract (load-bearing).** Every row's `ai-default`
+MUST be one of the literal strings in its `options` array, exact-match.
+Same for `override` when `status: overridden`. Rationale goes in
+`reasoning` (AI side) or `override_reasoning` (human side); citations
+go in `source`. Never put prose, qualifications, or rationale into
+`ai-default` itself.
+
+Why this matters: ace-web's decisions UI renders each option as a
+clickable pill, highlights the pill whose text matches the row's
+effective value (`override` if present else `ai-default`), and lets the
+human override by simply clicking another pill. The frontend keys the
+selection off exact string equality, so any prose extension or
+categorical drift in `ai-default` leaves no pill highlighted and breaks
+the click-to-override flow. The Zod schema's rejection message names
+both the violating value and the expected `options` array so the agent
+can self-correct on retry.
+
+The pattern is: pick the option whose text best fits the answer, copy
+that string verbatim into `ai-default`, and put the explanation in
+`reasoning`. If none of the options fits, the `options` set is wrong —
+add another option that matches what the AI is trying to say. Sibling
+skills (`pdd-to-work-order`, `connect-opp-setup`, `ocs-agent-setup`,
+`synthetic-narrative-plan`, `solicitation-create`, `app-test-cases`,
+`pdd-to-deliver-app`) inherit this contract via this canonical doc —
+no copy-paste needed in their own SKILLs.
 
 Tool call (idiomatic shape for this skill):
 

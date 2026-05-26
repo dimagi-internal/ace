@@ -39,13 +39,50 @@ export const DecisionRowSchema = z
     }),
     skill: z.string().min(1),
     question: z.string().min(1),
-    "ai-default": z.string().min(1),
-    override: z.string().min(1).optional(),
-    options: z.array(z.string().min(1)),
-    reasoning: z.string().optional(),
-    source: z.string().min(1),
+    "ai-default": z
+      .string()
+      .min(1)
+      .describe(
+        "The AI's picked value as a literal string. MUST be one of the strings in `options`, exact-match. " +
+          "Put rationale in `reasoning`, citations in `source`. Never put prose or explanations here — " +
+          "the ace-web UI keys point-and-click overrides off exact string equality with one of the `options` pills.",
+      ),
+    override: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Human override value (only set when status=overridden). MUST be one of the strings in `options`, " +
+          "exact-match. Put the human's rationale in `override_reasoning`.",
+      ),
+    options: z
+      .array(z.string().min(1))
+      .describe(
+        "Short, scannable labels — the closed set of possible answers the AI considered. " +
+          "Each label should be 1-8 words; put long rationale in `reasoning`, not in option labels.",
+      ),
+    reasoning: z
+      .string()
+      .optional()
+      .describe(
+        "The AI's rationale for picking the `ai-default` option — why this option over the alternatives. " +
+          "All prose belongs here, never in `ai-default`.",
+      ),
+    source: z
+      .string()
+      .min(1)
+      .describe(
+        "Citation only — where the AI sourced the info (e.g. 'PDD § Evidence Model', 'EOI responses spreadsheet row 4'). " +
+          "Not a place for rationale; use `reasoning` for that.",
+      ),
     status: z.enum(["ai-default", "overridden"]),
-    override_reasoning: z.string().min(1).optional(),
+    override_reasoning: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Human's rationale for overriding (only set when status=overridden). Mirrors `reasoning` on the AI side.",
+      ),
   })
   .superRefine((row, ctx) => {
     if (row.status === "overridden" && row.override === undefined) {
@@ -65,6 +102,46 @@ export const DecisionRowSchema = z
   });
 
 export type DecisionRow = z.infer<typeof DecisionRowSchema>;
+
+/**
+ * Strict variant: enforces `ai-default ∈ options` and `override ∈ options`.
+ *
+ * Used at every write boundary (mcp/decisions-server.ts, lib/decisions-write.ts)
+ * so the AI can't ship rows whose `ai-default` is prose-extension of an option
+ * label or a categorically different answer than the `options` array. The
+ * ace-web UI's point-and-click override pattern requires exact string equality
+ * between `ai-default` (or `override`) and one of the option pills — without
+ * this invariant, no pill renders as selected and clicking another pill can't
+ * encode the override cleanly.
+ *
+ * Reads (`parseDecisionsYaml`, `DecisionsLogSchema`) keep using the permissive
+ * `DecisionRowSchema` so legacy decisions.yaml files from runs predating this
+ * check still parse. New writes are strict; old reads degrade gracefully.
+ */
+export const DecisionRowStrictSchema = DecisionRowSchema.superRefine(
+  (row, ctx) => {
+    if (!row.options.includes(row["ai-default"])) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          `\`ai-default\` (${JSON.stringify(row["ai-default"])}) must be one of the strings in \`options\` ` +
+          `(${JSON.stringify(row.options)}), exact-match. Put the rationale in \`reasoning\`, not in \`ai-default\`.`,
+        path: ["ai-default"],
+      });
+    }
+    if (row.override !== undefined && !row.options.includes(row.override)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          `\`override\` (${JSON.stringify(row.override)}) must be one of the strings in \`options\` ` +
+          `(${JSON.stringify(row.options)}), exact-match. Put the human's rationale in \`override_reasoning\`, not in \`override\`.`,
+        path: ["override"],
+      });
+    }
+  },
+);
+
+export type DecisionRowStrict = z.infer<typeof DecisionRowStrictSchema>;
 
 /**
  * The full per-run log file shape. Stored at
