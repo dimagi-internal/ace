@@ -44,14 +44,18 @@ last_actor_at: <ISO timestamp>  # updated on every skill invocation
 phases:
   idea-to-design:       # Phase 1
     idea-to-pdd: done|pending|error|dry-run-success|...
+    pdd-to-work-order: pending
   scenarios-and-acceptance:  # Phase 2
     pdd-to-test-prompts: done|pending|...
     pdd-to-app-journeys: done|pending|...
   commcare-setup:       # Phase 3
     pdd-to-learn-app: pending
     pdd-to-deliver-app: pending
+    app-connect-coverage: pending
     app-deploy: pending
     app-test-cases: pending
+    app-release: pending
+    app-release-smoke: pending
   connect-setup:        # Phase 4
     connect-program-setup: pending
     connect-opp-setup: pending
@@ -68,6 +72,14 @@ phases:
     training-deck-generate: pending
     training-deck-render: pending         # skipped if ACE_TRAINING_DECK_TEMPLATE_ID unset
     training-onboarding-email: pending    # last — links to other docs by URL
+  synthetic-data-and-workflows:  # Phase 7
+    synthetic-narrative-plan: pending
+    synthetic-data-generate: pending
+    synthetic-workflow-seed: pending
+    synthetic-workflow-polish: pending
+    synthetic-walkthrough-spec: pending
+    synthetic-walkthrough-run: pending    # canopy:walkthrough scores per scene
+    synthetic-summary: pending            # pure aggregator
   solicitation-management:  # Phase 8 — added 0.12.0
     solicitation-create: pending
     llo-invite: pending               # repurposed 0.12.0: emails solicitation URL to PDD-named candidates
