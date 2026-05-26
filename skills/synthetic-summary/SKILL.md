@@ -36,7 +36,16 @@ narrative-plan output; this skill grows to bundle them then.
 
 1. **Read Phase 7 artifacts.**
 
-   From `ACE/<opp>/runs/<last_run_id>/7-synthetic/`, read via
+   **Resolve the current run-id.** Call
+   `mcp__plugin_ace_ace-gdrive__resolve_current_run_id({slug: '<opp>'})`
+   — returns `{run_id, run_folder_id}` (newest folder under
+   `<opp>/runs/`; run-ids are `YYYYMMDD-HHMM` so lex == chronological).
+   If `run_id` is `null`, halt with "no runs found — run
+   `/ace:step synthetic-data-generate --opp <slug>` first." (Replaces
+   the old `opp.yaml.last_run_id` read, which has been a dead field
+   since 2026-05-10 — see `lib/artifact-manifest.ts`.)
+
+   From `ACE/<opp>/runs/<run_id>/7-synthetic/`, read via
    `mcp__plugin_ace_ace-gdrive__drive_read_file`:
 
    - `synthetic-data-generate.md` — labs URL, GDrive folder ID, record
@@ -61,12 +70,12 @@ narrative-plan output; this skill grows to bundle them then.
    run's synthetic state, not a cross-run history.
 
 2. **Compose the summary** at
-   `ACE/<opp>/runs/<last_run_id>/7-synthetic/synthetic-summary.md`. Shape:
+   `ACE/<opp>/runs/<run_id>/7-synthetic/synthetic-summary.md`. Shape:
 
    ```markdown
    # <opp.yaml.display_name> — Synthetic Demo
 
-   **Opp:** `<slug>` · **Fixture run:** `<last_run_id>` · **Generated:** <ISO from `products.synthetic.generated_at`>
+   **Opp:** `<slug>` · **Fixture run:** `<run_id>` · **Generated:** <ISO from `products.synthetic.generated_at`>
 
    **See it live:** <labs URL from synthetic-data-generate.md> ← clickable
 

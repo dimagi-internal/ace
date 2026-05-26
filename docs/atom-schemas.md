@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 38 atoms
+Source: `mcp/google-drive-server.ts` — 40 atoms
 
 ### `sheets_list_tabs`
 
@@ -320,6 +320,14 @@ Resolve an ACE opportunity's Drive folder paths in one call. Given an opp slug (
 |-------|------|----------|-------------|
 | `slug` | `z.string` | **required** | _—_ |
 
+### `resolve_current_run_id`
+
+Return the most-recent run-id for opp `<slug>` plus its run-folder ID. Lists `<opp>/runs/` and picks the lexicographically-largest folder name (run-ids are `YYYYMMDD-HHMM`, so lex order matches chronological order). Returns `{slug, run_id, run_folder_id}` — both `run_id` and `run_folder_id` are `null` when the opp has no runs yet. Replaces the dead `opp.yaml.last_run_id` read pattern (the orchestr…
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `slug` | `z.string` | **required** | _—_ |
+
 ### `generate_inputs_manifest`
 
 Generate a structured inputs manifest for an ACE opportunity's `inputs/` Drive folder. Lists every file in the folder, resolves shortcut targetIds (so a shortcut to a PDD doc surfaces the real target), and assigns each file a kebab-cased `input_key` (e.g. \"sample-pdd.docx\" → \"sample-pdd\") that downstream skills can key off. Returns `{folder_id, generated_at, files: [{file_id, name, mime_type, …
@@ -355,6 +363,12 @@ Verify every artifact the manifest declares required for `phase` is present in t
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `runFolderId` | `z.string` | **required** | _—_ |
+
+### `render_run_readme`
+
+Render the run-folder README markdown for `runId` with optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | skipped). Returns `{markdown}`. The orchestrator writes this direc…
+
+_no parameters_
 
 ## ace-connect
 

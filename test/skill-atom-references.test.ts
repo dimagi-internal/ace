@@ -223,3 +223,50 @@ describe('docs → atom reference integrity', () => {
     expect(atoms.size).toBeGreaterThan(100);
   });
 });
+
+/**
+ * Preventer for the dead-field-read class of skill bug.
+ *
+ * `opp.yaml.last_run_id` was retired 2026-05-10 (per
+ * `lib/artifact-manifest.ts`: "Earlier shapes also carried `last_run_id`
+ * and a `runs:` array; both were dropped because no consumer reads them
+ * — ace-web enumerates runs by listing the filesystem under runs/.").
+ * Three Phase 7 skills (`synthetic-data-generate`, `synthetic-summary`,
+ * `synthetic-narrative-plan`) kept reading it and were silently broken
+ * on any opp created after the retire. Replacement: the
+ * `mcp__plugin_ace_ace-gdrive__resolve_current_run_id` atom (lists
+ * `<opp>/runs/` and picks the newest folder name).
+ *
+ * Rule: no SKILL.md may use `<last_run_id>` as a path-template
+ * placeholder. Prose references to "the old `opp.yaml.last_run_id`
+ * read" are fine — those are historical context, not active code-path
+ * usage.
+ */
+describe('SKILL.md dead-field preventers', () => {
+  it('no SKILL.md uses `<last_run_id>` as a path-template placeholder', () => {
+    const skillDir = path.join(REPO_ROOT, 'skills');
+    const offenders: { skill: string; lines: number[] }[] = [];
+    for (const entry of fs.readdirSync(skillDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const skillPath = path.join(skillDir, entry.name, 'SKILL.md');
+      if (!fs.existsSync(skillPath)) continue;
+      const src = fs.readFileSync(skillPath, 'utf-8');
+      const lines: number[] = [];
+      src.split('\n').forEach((line, i) => {
+        if (line.includes('<last_run_id>')) lines.push(i + 1);
+      });
+      if (lines.length > 0) offenders.push({ skill: entry.name, lines });
+    }
+    if (offenders.length > 0) {
+      throw new Error(
+        `Skills using the dead \`<last_run_id>\` placeholder ` +
+          `(replace with \`<run_id>\` resolved via the ` +
+          `\`mcp__plugin_ace_ace-gdrive__resolve_current_run_id\` atom):\n  ` +
+          offenders
+            .map((o) => `${o.skill}: lines ${o.lines.join(', ')}`)
+            .join('\n  '),
+      );
+    }
+    expect(offenders).toEqual([]);
+  });
+});

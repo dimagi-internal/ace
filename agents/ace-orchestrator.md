@@ -77,7 +77,12 @@ in this section are the *rationale*; this checklist is the literal
 sequence. Burning ~25 sequential calls across ~25 turns vs. 5–6 batched
 messages costs ~60–90s of pure model-output latency on every run.
 
-**Step 1 — Resolve local state in ONE Bash call.** Run:
+**Step 1 — Resolve local state in ONE Bash call.** This is the FIRST
+tool call in `/ace:run`. Do NOT probe `.env`, `ls` the plugin install
+dir, or `find` for the env file beforehand — every value those probes
+would surface is in the doctor's output. The doctor IS Step 1.
+
+Run:
 
 ```bash
 bash "$(node -e "const d=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.claude/plugins/installed_plugins.json','utf8'));console.log(d.plugins['ace@ace'][0].installPath)")/bin/ace-doctor" --preflight
@@ -91,6 +96,15 @@ Read the YAML; do NOT run additional probes for any field that's
 already in it. (Auth liveness is *not* included — orchestrator
 pre-flight trusts the cached session and lets phase atoms surface
 auth failures at point-of-use.)
+
+**Anti-pattern observed in real sessions (2026-05-24 e2e-malaria-rdt,
+2026-05-26 bednet-spot-check):** orchestrator burns 2–3 turns probing
+`$CLAUDE_PLUGIN_DATA` (which is reliably empty inside Claude Code),
+running `find ~/.claude -name .env`, grepping the file, etc. — *before*
+running the doctor. Every one of those probes is wasted: the doctor
+publishes all of it in one call. If you find yourself about to type
+`echo $CLAUDE_PLUGIN_DATA`, `ls .../.env`, or `find ... -name .env`,
+STOP — run the doctor command above instead.
 
 If `bin/ace-doctor --preflight` is unavailable (older install), fall
 back to a single inline Bash. **`$CLAUDE_PLUGIN_DATA` is NOT reliably
@@ -128,22 +142,25 @@ Claude Code 2.1+.
 
 **Step 2 — Load deferred MCP atoms in ONE `ToolSearch` call.** L0-only
 atom set (phase subagents run their own `ToolSearch` for phase-specific
-atoms). Issue this verbatim:
+atoms). Issue this verbatim — **fully-prefixed names**, no bare aliases:
 
 ```
-ToolSearch select:drive_read_file,drive_list_folder,drive_create_file,drive_create_folder,drive_update_file,drive_move_file,drive_rename_file,docs_get,sheets_read,sheets_append,commcare_make_build,commcare_release_build,commcare_download_ccz,commcare_upload_multimedia,classify_phase_writeback,validate_run_state,verify_phase_artifacts,resolve_opp_path,generate_inputs_manifest,get_google_form_definition
+ToolSearch select:mcp__plugin_ace_ace-gdrive__drive_read_file,mcp__plugin_ace_ace-gdrive__drive_list_folder,mcp__plugin_ace_ace-gdrive__drive_create_file,mcp__plugin_ace_ace-gdrive__drive_create_folder,mcp__plugin_ace_ace-gdrive__drive_update_file,mcp__plugin_ace_ace-gdrive__drive_move_file,mcp__plugin_ace_ace-gdrive__drive_rename_file,mcp__plugin_ace_ace-gdrive__docs_get,mcp__plugin_ace_ace-gdrive__sheets_read,mcp__plugin_ace_ace-gdrive__sheets_append,mcp__plugin_ace_ace-gdrive__classify_phase_writeback,mcp__plugin_ace_ace-gdrive__validate_run_state,mcp__plugin_ace_ace-gdrive__verify_phase_artifacts,mcp__plugin_ace_ace-gdrive__resolve_opp_path,mcp__plugin_ace_ace-gdrive__generate_inputs_manifest,mcp__plugin_ace_ace-gdrive__get_google_form_definition,mcp__plugin_ace_ace-gdrive__update_yaml_file,mcp__plugin_ace_ace-gdrive__render_run_readme,mcp__plugin_ace_ace-connect__commcare_make_build,mcp__plugin_ace_ace-connect__commcare_release_build,mcp__plugin_ace_ace-connect__commcare_download_ccz,mcp__plugin_ace_ace-connect__commcare_upload_multimedia
 ```
 
-Bare names usually resolve via the `select:` shortcut. If a `select:`
-call returns zero matches for any atom (rare but observed in 0.13.213
-e2e-malaria-rdt session), re-issue with the fully-prefixed form —
-e.g. `mcp__plugin_ace_ace-gdrive__docs_get`,
-`mcp__plugin_ace_ace-connect__commcare_make_build`. Do NOT fall back
-to keyword search (`ToolSearch query:"docs_get"`); fuzzy-match is
-unreliable and silently misses prefixed atoms.
+**Why fully-prefixed.** Empirically (2026-05-26 bednet-spot-check
+session + 0.13.213 e2e-malaria-rdt session) the bare-name `select:`
+shortcut resolves only built-in deferred tools (`TaskCreate`,
+`TaskUpdate`, `EnterPlanMode`, …) — every plugin-registered atom
+returns zero matches. Bare names cost a wasted ToolSearch turn every
+run. The fully-prefixed form is deterministic. Built-in deferred tools
+(`TaskCreate`, `TaskUpdate`) load alongside automatically via the same
+call — bare names work for those.
 
-Do NOT issue additional `ToolSearch` calls mid-run as you encounter
-each atom — fold any miss into this literal next time you bump the doc.
+Do NOT fall back to keyword search (`ToolSearch query:"docs_get"`);
+fuzzy-match is unreliable and silently misses prefixed atoms. Do NOT
+issue additional `ToolSearch` calls mid-run as you encounter each atom
+— fold any miss into this literal next time you bump the doc.
 
 **Step 3 — Read opp state in ONE parallel message.** Issue together:
 
@@ -159,15 +176,15 @@ block.** The workflow is fixed and known up-front; splat all 11 in
 one message:
 
 1. `Phase 1 — idea-to-design`
-2. `Phase 3 — scenarios-and-acceptance`
-3. `Phase 4 — commcare-setup`
-4. `Phase 5 — connect-setup`
-5. `Phase 6 — ocs-setup`
-6. `Phase 7 — qa-and-training`
-7. `Phase 8 — synthetic-data-and-workflows`
-8. `Phase 9 — solicitation-management`
+2. `Phase 2 — scenarios-and-acceptance`
+3. `Phase 3 — commcare-setup`
+4. `Phase 4 — connect-setup`
+5. `Phase 5 — ocs-setup`
+6. `Phase 6 — qa-and-training`
+7. `Phase 7 — synthetic-data-and-workflows`
+8. `Phase 8 — solicitation-management`
 9. `PAUSE: solicitation-review (HITL — populate selected_llo)`
-10. `Phase 10 — execution-management`
+10. `Phase 9 — execution-management`
 11. `Phase 10 — closeout`
 
 Mark Phase 1 `in_progress`; leave the rest `pending`. Sequential
@@ -710,12 +727,19 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    `run_state.yaml.phases.*.products.*`; ace-web enumerates runs by
    scanning `runs/` directly, not by reading opp.yaml.
 
-7b. **Write the per-run `README.md` index.** Generate the markdown via
-   `generateRunReadme(runId, {})` from `lib/run-readme.ts` (all phases
-   default to `pending` at this point) and write it to
-   `<opp>/runs/<runId>/README.md` via `drive_create_file`. The README
-   gets refreshed after every phase completes — see § Per-Phase Folder
-   Lifecycle.
+7b. **Write the per-run `README.md` index.** Call the
+   `render_run_readme` atom with `{runId: "<runId>"}` (omit
+   `phaseStatus` — all phases default to `pending` at this point); it
+   returns `{markdown}`. Then write the markdown to
+   `<opp>/runs/<runId>/README.md` via `drive_create_file`. Two atoms
+   total, batchable in the same parallel message as the rest of
+   Step 5. The README gets refreshed after every phase completes (the
+   boundary fence calls `render_run_readme` with the current phase
+   status map) — see § Per-Phase Folder Lifecycle.
+
+   Do NOT shell out to `npx tsx -e "..."` against
+   `lib/run-readme.ts` — the atom exists specifically to remove that
+   dance. Source-of-truth helper: `lib/run-readme.ts::generateRunReadme`.
 
 8. **Log the run setup explicitly.** Emit a log line in this exact form
    so transcript readers and ace-web's ingest can pick it up:

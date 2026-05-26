@@ -7,6 +7,7 @@
  * Adapted from chrome-sales/mcp/google-drive-server.ts
  */
 
+import { config as dotenvConfig } from 'dotenv';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -32,6 +33,7 @@ import {
   isTransientNetworkError as isTransientNetworkErrorLib,
   withTransientRetry as withTransientRetryLib,
 } from '../lib/transient-retry.js';
+import { generateRunReadme, type PhaseStatus } from '../lib/run-readme.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LEGACY_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
@@ -41,6 +43,20 @@ const LEGACY_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
 // will use. See anthropics/claude-code#9427 for the underlying env-block
 // substitution bug this works around.
 logPluginDataDirDiag('ace-gdrive', import.meta.url);
+
+// Load .env from the resolved plugin-data dir (or cwd in dev) so atoms
+// can read process.env.ACE_DRIVE_ROOT_FOLDER_ID and other ACE config.
+// The three sibling MCPs (ace-connect, ace-ocs, ace-mobile) all do this;
+// ace-gdrive was the only one missing it, which made `resolve_opp_path`
+// fail with "ACE_DRIVE_ROOT_FOLDER_ID is not set" until callers passed
+// the aceRootFolderId override explicitly. Must run before any code that
+// reads from process.env.
+const __aceGdrivePluginDataDir = resolvePluginDataDir(import.meta.url);
+dotenvConfig({
+  path: __aceGdrivePluginDataDir
+    ? path.join(__aceGdrivePluginDataDir, '.env')
+    : path.join(process.cwd(), '.env'),
+});
 
 const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
@@ -1883,6 +1899,82 @@ server.tool(
   },
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// resolve_current_run_id — replacement for the dead `opp.yaml.last_run_id`
+// read pattern. Lists `<opp>/runs/` and picks the lexicographically-largest
+// folder name (run-ids are `YYYYMMDD-HHMM`, so lex == chronological).
+//
+// Background: pre-2026-05-10 the orchestrator wrote `opp.yaml.last_run_id`
+// at every fresh-run start. That stopped (see `lib/artifact-manifest.ts`
+// description of opp.yaml: "Earlier shapes also carried `last_run_id` and
+// a `runs:` array; both were dropped because no consumer reads them —
+// ace-web enumerates runs by listing the filesystem under runs/."). But
+// three Phase 7 skills (`synthetic-data-generate`, `synthetic-summary`,
+// `synthetic-narrative-plan`) still read `opp.yaml.last_run_id` per their
+// SKILL.md, which made them silently broken on any opp created after the
+// retire. This atom encapsulates the canonical replacement so the three
+// skills stop reinventing the same listing+sort pattern.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ResolveCurrentRunIdResult {
+  slug: string;
+  run_id: string | null;
+  run_folder_id: string | null;
+}
+
+export async function handleResolveCurrentRunId(
+  args: { slug: string; aceRootFolderId?: string },
+  driveClient: typeof drive,
+): Promise<ResolveCurrentRunIdResult> {
+  const pathInfo = await handleResolveOppPath(args, driveClient);
+  if (!pathInfo.runs_id) {
+    return { slug: pathInfo.slug, run_id: null, run_folder_id: null };
+  }
+  const escape = (s: string) =>
+    s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const runsResp = await driveClient.files.list({
+    q:
+      `'${escape(pathInfo.runs_id)}' in parents ` +
+      `and mimeType = 'application/vnd.google-apps.folder' ` +
+      `and trashed = false`,
+    fields: 'files(id, name)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+    pageSize: 1000,
+  });
+  const folders = (runsResp.data.files ?? []).filter((f: any) => f.name && f.id);
+  if (folders.length === 0) {
+    return { slug: pathInfo.slug, run_id: null, run_folder_id: null };
+  }
+  folders.sort((a: any, b: any) => (a.name! < b.name! ? 1 : a.name! > b.name! ? -1 : 0));
+  const winner = folders[0];
+  return {
+    slug: pathInfo.slug,
+    run_id: winner.name!,
+    run_folder_id: winner.id!,
+  };
+}
+
+server.tool(
+  'resolve_current_run_id',
+  "Return the most-recent run-id for opp `<slug>` plus its run-folder ID. Lists `<opp>/runs/` and picks the lexicographically-largest folder name (run-ids are `YYYYMMDD-HHMM`, so lex order matches chronological order). Returns `{slug, run_id, run_folder_id}` — both `run_id` and `run_folder_id` are `null` when the opp has no runs yet. Replaces the dead `opp.yaml.last_run_id` read pattern (the orchestrator stopped writing that field; see `lib/artifact-manifest.ts`). Used by Phase 7 synthetic skills when invoked standalone via `/ace:step` to discover which run folder to operate on; inside `/ace:run`, the phase agent already knows the current run-id and shouldn't need this call.",
+  {
+    slug: z.string().describe('The opportunity slug (folder name under ACE root).'),
+    aceRootFolderId: z
+      .string()
+      .optional()
+      .describe('Override $ACE_DRIVE_ROOT_FOLDER_ID for tests / multi-tenant.'),
+  },
+  async ({ slug, aceRootFolderId }) => {
+    try {
+      const r = await handleResolveCurrentRunId({ slug, aceRootFolderId }, drive);
+      return result(r);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
 // ============================================================================
 // Inputs manifest + Google Forms
 // ============================================================================
@@ -2189,6 +2281,38 @@ server.tool(
       };
       const report = await verifyPhaseArtifacts(adapter, runFolderId, phase as Phase);
       return result(report);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// ============================================================================
+// Run-folder README rendering
+// ============================================================================
+
+// Wraps `lib/run-readme.ts::generateRunReadme` as a single atom so the
+// orchestrator can render the run-folder README index at run-init and at
+// every phase-completion fence without shelling out to `npx tsx` against
+// the plugin's install path. The pure helper has its own unit tests in
+// `test/lib/run-readme.test.ts`; this atom is a thin transport wrapper.
+
+server.tool(
+  'render_run_readme',
+  'Render the run-folder README markdown for `runId` with optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | skipped). Returns `{markdown}`. The orchestrator writes this directly to `<run-folder>/README.md` at run-init (step 7b — all phases default to `pending`) and refreshes after every phase boundary fence with the updated status map. Implementation: `lib/run-readme.ts::generateRunReadme`.',
+  {
+    runId: z
+      .string()
+      .describe('The run-id folder name, e.g. "20260526-1334".'),
+    phaseStatus: z
+      .record(z.enum(['pending', 'in-progress', 'done', 'skipped']))
+      .optional()
+      .describe('Optional per-phase status overrides; unspecified phases default to "pending".'),
+  },
+  async ({ runId, phaseStatus }) => {
+    try {
+      const markdown = generateRunReadme(runId, (phaseStatus ?? {}) as Partial<Record<Phase, PhaseStatus>>);
+      return result({ markdown });
     } catch (e: any) {
       return error(e.message);
     }

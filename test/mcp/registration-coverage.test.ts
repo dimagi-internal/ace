@@ -98,12 +98,12 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
-    expectedCount: 38,
+    expectedCount: 40,
     // gdrive bridges five Google APIs — one prefix per surface plus a
     // small set of cross-surface helpers (manifest generator, forms
     // reader, OAuth-personal Drive read, YAML patch helper, opp-path
-    // resolver, run_state.yaml validator + classifier, phase-artifact
-    // verifier).
+    // resolver, current-run discoverer, run_state.yaml validator +
+    // classifier, phase-artifact verifier, run-folder README renderer).
     allowedPrefixes: [
       'drive_',
       'sheets_',
@@ -114,12 +114,58 @@ const SERVERS: Record<string, ServerSpec> = {
       'generate_inputs_manifest',
       'get_google_form_definition',
       'resolve_opp_path',
+      'resolve_current_run_id',
       'validate_run_state',
       'classify_phase_writeback',
       'verify_phase_artifacts',
+      'render_run_readme',
     ],
   },
 };
+
+/**
+ * Class-level preventer for the "MCP server boots without loading .env"
+ * bug class.
+ *
+ * Surfaced 2026-05-26 in the bednet-spot-check pre-flight: `ace-gdrive`
+ * was the only MCP server missing `dotenvConfig(...)` at boot, so every
+ * gdrive atom that read `process.env.ACE_DRIVE_ROOT_FOLDER_ID` (et al.)
+ * saw undefined — including `resolve_opp_path`, which is the very first
+ * atom every `/ace:run` calls. The other three ace-* MCPs (connect, ocs,
+ * mobile) had been loading dotenv since their original implementations;
+ * `decisions` was added in this same fix for consistency.
+ *
+ * `connect-labs-server.ts` uses its own homegrown `parseEnvFile()` loader
+ * because it's a stdio proxy with no dotenv dep — that counts as "loads
+ * env" for this rule.
+ *
+ * Rule: every `mcp/*-server.ts` source MUST call either `dotenvConfig(`
+ * or `parseEnvFile(` before any atom handler runs.
+ */
+const ENV_LOADER_PATTERNS = [/\bdotenvConfig\s*\(/, /\bparseEnvFile\s*\(/];
+const SERVER_FILES_FOR_ENV_CHECK = [
+  'mcp/google-drive-server.ts',
+  'mcp/connect-server.ts',
+  'mcp/ocs-server.ts',
+  'mcp/mobile-server.ts',
+  'mcp/decisions-server.ts',
+  'mcp/connect-labs-server.ts',
+];
+
+describe('MCP server env loading (boot-time)', () => {
+  it.each(SERVER_FILES_FOR_ENV_CHECK)(
+    '%s loads .env at boot (calls dotenvConfig or parseEnvFile)',
+    (relpath) => {
+      const src = fs.readFileSync(path.join(REPO_ROOT, relpath), 'utf-8');
+      const hasLoader = ENV_LOADER_PATTERNS.some((re) => re.test(src));
+      expect(
+        hasLoader,
+        `${relpath} must call dotenvConfig() or parseEnvFile() at boot ` +
+          `so atoms can read ACE_* env vars from <plugin-data-dir>/.env`,
+      ).toBe(true);
+    },
+  );
+});
 
 describe('MCP server tool registration', () => {
   describe.each(Object.entries(SERVERS))('%s', (_name, spec) => {

@@ -469,13 +469,13 @@ describe('buildSlidesRequestsV2', () => {
       'https://drive.google.com/uc?export=view&id=scr1',
     );
     expect((img as any).createImage.elementProperties.pageObjectId).toBe('ace_slide_1');
-    // Verify post-v3.2 widened layout — image starts at 3383280 EMU
-    // (37% in) and fills the right ~62% of the slide, matching the
-    // walkthroughStencilRequests dashed placeholder. Pre-v3.2 the image
-    // started at the slide midline (4572000); widened in commit 9ea7937
-    // ("widen walkthrough image (v3.2)") to close the dead horizontal
-    // whitespace surfaced in the v3 inspection.
-    expect((img as any).createImage.elementProperties.transform.translateX).toBe(3383280);
+    // Verify v5.3 walkthrough geometry — body widened to ~45% of the
+    // slide width (vs ~35% in v5.2), so image area now starts at 4343400
+    // EMU (~47.5% in) and is 4343400 wide (~47.5% of 9144000). See
+    // `lib/training-deck-spec.ts` case 'walkthrough'. Earlier
+    // generations: v3.2 placed the image at 3383280 (~37% in); pre-v3.2
+    // at the slide midline (4572000).
+    expect((img as any).createImage.elementProperties.transform.translateX).toBe(4343400);
   });
 
   it('emits 4 createImage for 4-step mobile_flow', () => {
