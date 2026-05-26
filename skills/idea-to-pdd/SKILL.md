@@ -25,7 +25,7 @@ Pause-time summary at the Phase 1→3 Pause Point is composed by the
 orchestrator from the per-skill QA + eval verdicts on the fly. -->
 
 - `ACE/<opp-name>/runs/<run-id>/decisions.yaml` — structured per-run decisions log (always emitted; see `## Decisions Log Convention` below)
-- `run_state.yaml.phases.design.products.pdd` — `{title, description, file_id}` typed handoff for downstream readers (ace-web summary, future skills) so they don't need to parse the PDD body. This skill is the sole writer.
+- `run_state.yaml.phases.idea-to-design.products.pdd` — `{title, description, file_id}` typed handoff for downstream readers (ace-web summary, future skills) so they don't need to parse the PDD body. This skill is the sole writer. (Pre-2026-05-26: `phases.design.products.pdd` — moved under the actual phase block to satisfy `lib/run-state-validator.ts` which requires every top-level `phases.*` key to be a phase block with `status`; see bednet-spot-check Phase 1 finding.)
 
 ## Process
 
