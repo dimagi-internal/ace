@@ -107,19 +107,19 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
      lifecycle pillars (Learn / Deliver / Verify / Pay) with `section`
      divider slides between them. Order:
      1. Opportunity overview (1-2 content slides)
-     2. `section` divider: "Learn — What You Need to Know"
+     2. `section` divider titled `"Learn"`
      3. One `content` slide per Learn module (Learn-app preview)
      4. "Who you will visit" (1 content slide)
-     5. `section` divider: "Deliver — Your Visit Workflow"
+     5. `section` divider titled `"Deliver"`
      6. **C2 REQUIRED:** one `walkthrough` slide per Deliver form.
         Title `"Form N: <display-name>"`, body cites 2-3 actual field
         labels, image is the per-opp `@alias` if the manifest has one
         (else fall back to `content` layout — do NOT invent screenshot
         aliases). A 6-form Deliver app produces 6 walkthrough slides;
         do NOT collapse.
-     7. `section` divider: "Verify — How Your Work Is Checked"
+     7. `section` divider titled `"Verify"`
      8. Quality and verification (1-2 content slides)
-     9. `section` divider: "Pay — What You Earn"
+     9. `section` divider titled `"Pay"`
      10. Payment details (stats slide preferred)
      11. Safety and ethics (1 content slide, cross-pillar)
    - **`practice`** module (C2 — REQUIRED per-opp content): emit one
@@ -193,11 +193,13 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
       Catches the failure mode where the generator emits one
       "Module 1" slide regardless of the opp's actual Learn structure.
     - **4-pillar section dividers:** `your-opportunity` module contains
-      exactly 4 `section`-layout slides with titles starting `"Learn —"`,
-      `"Deliver —"`, `"Verify —"`, `"Pay —"` (in that order). FAIL if
-      any pillar header is missing or out of order. Catches the failure
-      mode where the generator emits a flat sequence of content slides
-      without the lifecycle structure.
+      exactly 4 `section`-layout slides with titles `"Learn"`,
+      `"Deliver"`, `"Verify"`, `"Pay"` (in that order, single-word
+      titles per v5.5 — was `"Learn — ..."` etc but those wrap on
+      the section stencil). FAIL if any pillar header is missing
+      or out of order. Catches the failure mode where the generator
+      emits a flat sequence of content slides without the lifecycle
+      structure.
     - **Slide count:** total slides in 25-50 range. WARN if outside.
       Smoke opps (1 Learn module + 1 Deliver form) naturally land at
       the 25-30 floor; do NOT pad. Large opps (5+ modules + 6+ forms)

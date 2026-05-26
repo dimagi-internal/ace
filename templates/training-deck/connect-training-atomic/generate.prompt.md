@@ -41,8 +41,8 @@ Slide sequence (in order):
    - What the work is, who benefits, why it matters
    - Brief intro to the 4 pillars: Learn (training), Deliver (field work), Verify (quality check), Pay (payment) — set expectations for what's coming.
 
-2. **`section` divider: "Learn — What You Need to Know"** (1 slide, layout: `section`)
-   - The Learn pillar header. Sets up the Learn-app preview that follows.
+2. **`section` divider: "Learn"** (1 slide, layout: `section`)
+   - The Learn pillar header. Title is the single word `"Learn"` — short for one-line fit at 38pt. The descriptive "What You Need to Know" line goes in the speaker notes.
 
 3. **Learn-app preview** (1 slide per Learn module, layout: `content`)
    - Read the Learn app summary (`pdd-to-learn-app_summary.md` or `app-deploy_summary.md`). For each Learn module, emit a `content` slide titled `"Learn Module N: <module-name>"`. Body: 1-2 sentences naming the key concept the module teaches + the assessment threshold. This is the trainee-facing preview before they go complete the modules in the `practice` section.
@@ -50,8 +50,8 @@ Slide sequence (in order):
 4. **Who you will visit** (1 slide, layout: `content`)
    - Target population description from PDD; eligibility criteria if any; what to expect at a typical visit.
 
-5. **`section` divider: "Deliver — Your Visit Workflow"** (1 slide, layout: `section`)
-   - The Deliver pillar header. Sets up the per-form walkthrough sequence that follows.
+5. **`section` divider: "Deliver"** (1 slide, layout: `section`)
+   - The Deliver pillar header. Title `"Deliver"` only — short for one-line fit. Descriptive prose belongs in the next content slide's title or in the speaker notes.
 
 6. **Your visit workflow — REQUIRED: one slide per Deliver form** (C2)
    - Read the Deliver app summary (`pdd-to-deliver-app_summary.md` or `app-deploy_summary.md`). Enumerate every form in the Deliver app.
@@ -59,16 +59,16 @@ Slide sequence (in order):
    - This is the load-bearing per-opp section. A 6-form Deliver app produces 6 walkthrough slides; a 2-form app produces 2 slides. Do NOT collapse multiple forms into one slide. Do NOT skip forms because the screenshot is missing — emit the slide as `content` layout with the form-field detail in the body.
    - Name exact buttons: "Tap 'Next'", "Select 'Yes'", "Tap 'Submit'" using the live label text from the app summary.
 
-7. **`section` divider: "Verify — How Your Work Is Checked"** (1 slide, layout: `section`)
-   - The Verify pillar header.
+7. **`section` divider: "Verify"** (1 slide, layout: `section`)
+   - The Verify pillar header. Title `"Verify"` only.
 
 8. **Quality and verification** (1-2 slides, layout: `content`)
    - How work is verified (GPS, photo, supervisor review, automated checks)
    - Common rejection reasons and how to avoid them
    - Quality threshold required for payment
 
-9. **`section` divider: "Pay — What You Earn"** (1 slide, layout: `section`)
-   - The Pay pillar header.
+9. **`section` divider: "Pay"** (1 slide, layout: `section`)
+   - The Pay pillar header. Title `"Pay"` only.
 
 10. **Payment details** (1 slide, layout: `stats` or `content`)
     - Amount per verified delivery; payment method and timing; minimum deliveries for payout.
@@ -172,6 +172,8 @@ Rules:
 - **Speaker notes are required** (covered in detail in the **Speaker Notes** section below): every slide carries 50-150 words of trainer-voice notes. See that section for per-layout guidance.
 - **Numbers are concrete**: "$2.50 per visit" not "compensation per delivery unit". "20 households per week" not "target volume".
 - **Positive framing**: "Sync after each form to keep your data safe" not "If you don't sync, you might lose data".
+- **NO hardcoded line breaks in body text** (v5.5): write body fields as continuous prose; let Slides auto-wrap based on the text-box width. Do NOT insert `\n` at ~50-char column boundaries to pre-wrap text. Hardcoded breaks produce orphan words ("appears for about thirty / seconds"), break mid-sentence at the wrong place when text-box width changes, and look amateurish. Slides will wrap to the box width — trust it. Multi-paragraph body content (separate ideas) uses `\n\n` (double newline) between paragraphs only. Bulleted lists use `\n- ` per item. Otherwise plain prose.
+- **Section divider titles ≤ 24 chars** (v5.5): when emitting `section`-layout slides (the Learn/Deliver/Verify/Pay pillar dividers), keep the title ≤ 24 chars so it fits on one line at 38pt on the section stencil. Use the short forms: `"Learn"`, `"Deliver"`, `"Verify"`, `"Pay"` — the dash-suffix prose ("— What You Need to Know") goes in the speaker notes, not the visible title. If a title needs more context, push it into the slide that follows the divider.
 
 ## Speaker Notes (REQUIRED on every slide)
 

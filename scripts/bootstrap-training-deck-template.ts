@@ -519,7 +519,7 @@ const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 
-const TEMPLATE_NAME = 'ACE Training Deck Template (v5.3 — deck-quality fixes from bednet-spot-check)';
+const TEMPLATE_NAME = 'ACE Training Deck Template (v5.5 — strip checklist+stats dec shapes)';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -639,26 +639,41 @@ async function main(): Promise<void> {
   // watermarks / O-logos / social icons / decorative dots) gets stripped.
   // The per-opp createImage at render time will place the actual content
   // image in the intended slot.
-  console.log('Step 3: enumerate text shapes + large images + lines on each duplicated stencil');
+  console.log('Step 3: enumerate text shapes + large images + lines + dec shapes on each duplicated stencil');
   const pagesResp = await slides.presentations.get({
     presentationId,
     fields:
-      'slides(objectId,slideProperties(notesPage(notesProperties(speakerNotesObjectId))),pageElements(objectId,size,transform,shape(shapeType,text),image,line))',
+      'slides(objectId,slideProperties(notesPage(notesProperties(speakerNotesObjectId))),pageElements(objectId,size,transform,shape(shapeType,text,shapeProperties),image,line))',
   });
   const stencilSet = new Set<string>(Object.values(STENCILS));
   const textShapeIdsByPageId = new Map<string, string[]>();
   const imageIdsToStripByPageId = new Map<string, string[]>();
   const lineIdsToStripByPageId = new Map<string, string[]>();
+  const decShapeIdsToStripByPageId = new Map<string, string[]>();
   const notesIdByPageId = new Map<string, string>();
 
-  // walkthrough/mobile_flow/web_screen/mobile_zoom strip ALL images
-  // above 1.5in² (designer mockup screens). closing strips small
-  // images > 0.25in² too (catches the Dimagi headshot circle which
-  // is ~0.5in² and otherwise survives the size filter — caught in
-  // bednet-spot-check/20260525-1503 render). cover/section/content
-  // keep their decorative images (wordmarks, illustrations).
+  // v5.5: strip floating decoration on stencils where the Dimagi designer
+  // intended a specific bullet/panel layout that our text-box geometry
+  // doesn't match. Specifically:
+  // - checklist: 5 amber ellipse dots + a light-grey background panel
+  //   that designer intended to sit BEHIND a list, but our text-box
+  //   renders at MARGIN x so the dots float in empty space.
+  // - stats: a half-grey `#fafafa` rectangle behind column 3.
+  // Rule: on these stencils, strip every non-placeholder RECTANGLE and
+  // ELLIPSE shape.
+  const STRIP_DEC_SHAPES_ON: Set<StencilKey> = new Set([
+    'checklist', 'stats',
+  ]);
+
+  // Stencils that strip designer mockup images:
+  // - walkthrough / mobile_flow / web_screen / mobile_zoom: phone/web
+  //   mockup screenshots (1.5in² threshold)
+  // - content: v5.4 — the Dimagi content_v2 source has a 3.7×5.6in
+  //   stock photo on the right that overlays body text.
+  // - closing: smaller 0.25in² threshold catches the Dimagi headshot
+  //   circle (~0.5in²) which otherwise survives.
   const STRIP_IMAGES_ON: Set<StencilKey> = new Set([
-    'walkthrough', 'mobile_flow', 'web_screen', 'mobile_zoom', 'closing',
+    'walkthrough', 'mobile_flow', 'web_screen', 'mobile_zoom', 'content', 'closing',
   ]);
   const pageIdToStencilKey = new Map<string, StencilKey>();
   for (const key of Object.keys(STENCILS) as StencilKey[]) {
@@ -679,10 +694,12 @@ async function main(): Promise<void> {
 
     const stencilKey = pageIdToStencilKey.get(id);
     const stripImagesHere = stencilKey ? STRIP_IMAGES_ON.has(stencilKey) : false;
+    const stripDecShapesHere = stencilKey ? STRIP_DEC_SHAPES_ON.has(stencilKey) : false;
 
     const textIds: string[] = [];
     const imageIds: string[] = [];
     const lineIds: string[] = [];
+    const decShapeIds: string[] = [];
     for (const el of s.pageElements ?? []) {
       // Text-bearing shapes: always delete (we re-create our own).
       if (el.shape?.text && el.objectId) {
@@ -707,10 +724,25 @@ async function main(): Promise<void> {
       if (stripImagesHere && el.line && el.objectId) {
         lineIds.push(el.objectId);
       }
+      // v5.5: floating decoration shapes (RECTANGLE / ELLIPSE) on
+      // checklist + stats stencils — the Dimagi designer's bullet
+      // dots + bg panels that don't align with our text-box geometry.
+      // Strip everything that isn't text-bearing (already handled
+      // above with `continue`) and isn't a brand-edge strip we want
+      // to keep. For now, strip ALL non-text rectangles + ellipses
+      // on the listed stencils — accepts losing the amber/navy edge
+      // strips on those two slides in exchange for clean text layout.
+      if (stripDecShapesHere && el.shape && el.objectId) {
+        const shapeType = el.shape.shapeType;
+        if (shapeType === 'RECTANGLE' || shapeType === 'ELLIPSE') {
+          decShapeIds.push(el.objectId);
+        }
+      }
     }
     textShapeIdsByPageId.set(id, textIds);
     imageIdsToStripByPageId.set(id, imageIds);
     lineIdsToStripByPageId.set(id, lineIds);
+    decShapeIdsToStripByPageId.set(id, decShapeIds);
   }
 
   // ---------------------------------------------------------------------------
@@ -738,6 +770,12 @@ async function main(): Promise<void> {
     // Delete connector/line annotations on image-bearing stencils.
     const linesToStrip = lineIdsToStripByPageId.get(pageId) ?? [];
     for (const objectId of linesToStrip) {
+      layerRequests.push({ deleteObject: { objectId } });
+    }
+    // v5.5: Delete floating decoration shapes (rectangles + ellipses)
+    // on checklist + stats stencils.
+    const decShapesToStrip = decShapeIdsToStripByPageId.get(pageId) ?? [];
+    for (const objectId of decShapesToStrip) {
       layerRequests.push({ deleteObject: { objectId } });
     }
     void config.stripImageIds; // legacy field on config — discovery replaces it
