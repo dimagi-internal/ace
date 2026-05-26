@@ -3,7 +3,7 @@ name: app-connect-coverage
 description: >
   Verify every form in a Nova-built Learn or Deliver app has the right
   CommCare Connect markers, auto-fix via Nova edits, loop until clean.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # App Connect Coverage

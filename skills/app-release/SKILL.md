@@ -3,7 +3,7 @@ name: app-release
 description: >
   Build and release the Learn + Deliver CommCare apps on CCHQ so Connect
   can read their form schema and surface deliver units.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # App Release
