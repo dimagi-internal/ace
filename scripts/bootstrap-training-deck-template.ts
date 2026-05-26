@@ -519,7 +519,7 @@ const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
 
-const TEMPLATE_NAME = 'ACE Training Deck Template (v5.6 — strip ALL non-text shapes on checklist+stats)';
+const TEMPLATE_NAME = 'ACE Training Deck Template (v5.8 — mask layout panels with white rect)';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -778,7 +778,48 @@ async function main(): Promise<void> {
     }
     void config.stripImageIds; // legacy field on config — discovery replaces it
 
-    // Layer OUR text boxes.
+    // v5.8: layer a full-slide white rectangle BEFORE our text boxes
+    // on checklist + stats stencils. The Slides layout (p9 etc) has
+    // indigo/grey panels as layout-level pageElements that paint OVER
+    // the page background fill, so v5.7's pageBackgroundFill override
+    // was invisible. A page-element rectangle paints on TOP of layout
+    // elements, masking them. Our text boxes that follow then paint
+    // on TOP of the white mask. Net: clean white slide.
+    // MUST come BEFORE the builder() call below so z-order puts text
+    // on top of the mask, not the other way around.
+    if (STRIP_DEC_SHAPES_ON.has(key)) {
+      const maskId = `${pageId}_layout_mask`;
+      layerRequests.push(
+        {
+          createShape: {
+            objectId: maskId,
+            shapeType: 'RECTANGLE',
+            elementProperties: {
+              pageObjectId: pageId,
+              size: {
+                width: { magnitude: SLIDE_W, unit: 'EMU' },
+                height: { magnitude: SLIDE_H, unit: 'EMU' },
+              },
+              transform: { scaleX: 1, scaleY: 1, translateX: 0, translateY: 0, unit: 'EMU' },
+            },
+          },
+        },
+        {
+          updateShapeProperties: {
+            objectId: maskId,
+            shapeProperties: {
+              shapeBackgroundFill: {
+                solidFill: { color: { rgbColor: { red: 1, green: 1, blue: 1 } } },
+              },
+              outline: { propertyState: 'NOT_RENDERED' },
+            },
+            fields: 'shapeBackgroundFill.solidFill.color,outline.propertyState',
+          },
+        },
+      );
+    }
+
+    // Layer OUR text boxes (on top of the v5.8 mask if it was pushed).
     layerRequests.push(...builder(pageId));
 
     // Inject {{NOTES}} placeholder into the notes page.
