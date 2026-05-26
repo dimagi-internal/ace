@@ -5,6 +5,22 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.442 — 2026-05-26
+
+**Add `ace-web` as a new `/ace:sweep` system for bulk-deleting uploaded chat Sessions.**
+
+The companion ace-web PR adds `GET /api/sessions/sweep` + `POST /api/sessions/sweep/delete` (workspace-scoped via the caller's PAT's `WorkspaceMembership` rows; CASCADEs through `IngestUpload`, `Message`, `SessionParticipant`, `ShareToken`, `Draft`). The new `skills/sweep-ace-web/` skill talks to them via shell+curl+PAT — same pattern as `upload-transcript`.
+
+Behavior:
+- No live-set diff. Modeled on `sweep-opp-runs` (the other live-set-free sweep).
+- Bulk wipe — the user has opted into deleting every Session the PAT can write to; opp-orphan filtering is not its job.
+- Included in `/ace:sweep all`, running last after drive + connect + ocs + hq + labs.
+
+What changed:
+- `skills/sweep-ace-web/SKILL.md`: new skill (list → render → approve → bulk delete → result).
+- `agents/sweep.md`: register `ace-web` in system table, live-set-skip set, `all` ordering, summary block, coverage matrix.
+- `commands/sweep.md`: register `ace-web` in arguments and examples.
+
 ## 0.13.340 — 2026-05-22
 
 **Promote CommCare 2.63.0 to the ACE default after end-to-end bootstrap validation.**
