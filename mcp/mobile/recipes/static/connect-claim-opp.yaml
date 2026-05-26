@@ -136,11 +136,23 @@ appId: org.commcare.dalvik
 # below fold, J1 halt. Class also flagged in
 # skills/app-screenshot-capture/SKILL.md § Step 4 "OPP_NAME
 # uniqueness assumption" as a known follow-up.
+#
+# `visibilityPercentage: 60` (not Maestro's default 100) to tolerate
+# multi-line title-wrap on opp tiles. The card layout wraps long
+# `OPP_NAME` strings to 2-3 lines; at 100% the second line stays clipped
+# below the fold even after `scrollUntilVisible` reports success.
+# 60% is enough for the title-anchored Branch A/B `runFlow.when` guards
+# to evaluate true on the wrapped first line. Live reproducer: Phase 6
+# agent in bednet-spot-check/20260525-2022 forked a `bednet-claim-
+# custom.yaml` workaround that just relaxed this one knob — folded back
+# into canonical here. Applied to every `scrollUntilVisible` in this
+# file for parity.
 - scrollUntilVisible:
     element:
       text: ${OPP_NAME}
     direction: DOWN
     timeout: 20000
+    visibilityPercentage: 60
 - assertVisible:
     text: ${OPP_NAME}
 
@@ -180,6 +192,7 @@ appId: org.commcare.dalvik
               text: ${OPP_NAME}
           direction: DOWN
           timeout: 10000
+          visibilityPercentage: 60
 - runFlow:
     when:
       visible:
@@ -192,6 +205,7 @@ appId: org.commcare.dalvik
               text: ${OPP_NAME}
           direction: DOWN
           timeout: 10000
+          visibilityPercentage: 60
 
 # --- BRANCH A: in-progress (btn_resume present) ---
 - runFlow:
@@ -210,6 +224,7 @@ appId: org.commcare.dalvik
               text: ${OPP_NAME}
           direction: DOWN
           timeout: 20000
+          visibilityPercentage: 60
       - takeScreenshot: "claim-opp-resume-tile"
       - tapOn:
           id: "org.commcare.dalvik:id/btn_resume"
@@ -274,6 +289,7 @@ appId: org.commcare.dalvik
               text: ${OPP_NAME}
           direction: DOWN
           timeout: 20000
+          visibilityPercentage: 60
       - takeScreenshot: "claim-opp-new-tile"
       - tapOn:
           id: "org.commcare.dalvik:id/btn_view_opportunity"

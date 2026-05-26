@@ -100,9 +100,13 @@ omit `opp_run_id`. The ace-web ingest endpoint accepts either shape.
      set; omit the field entirely if not — never send empty)
    Expect 201. On non-201, print the response body and fail.
 
-4. **Return** the `data.session_slug` from the 201 response envelope as the
-   skill's output. Callers (e.g. `/ace:run --ace-web-url`) can log the
-   resulting URL: `<base-url>/chat/<session_slug>`.
+4. **Return** the `session_slug` from the 201 response body as the
+   skill's output. The response body is a flat object with
+   `session_slug`, `messages_imported`, `cli_session_id`, `opp_slug`,
+   `opp_run_id`, `opp_step_skill`, and `cost_breakdown` at the top
+   level (no `{data: {...}}` envelope). Callers (e.g.
+   `/ace:run --ace-web-url`) can log the resulting URL:
+   `<base-url>/chat/<session_slug>`.
 
 ## Shell reference
 
@@ -132,8 +136,8 @@ HTTP=$(curl -sS -o /tmp/upload-resp.json -w '%{http_code}' \
   "${UPLOAD_ARGS[@]}")
 [ "$HTTP" = "201" ] || { echo "upload $HTTP"; cat /tmp/upload-resp.json; exit 4; }
 
-# extract session slug from envelope {data: {session_slug: "..."}}
-SLUG=$(python3 -c "import json,sys; print(json.load(open('/tmp/upload-resp.json'))['data']['session_slug'])")
+# extract session slug — response is flat (no `{data: {...}}` envelope)
+SLUG=$(python3 -c "import json,sys; print(json.load(open('/tmp/upload-resp.json'))['session_slug'])")
 echo "Uploaded. View at $BASE_URL/chat/$SLUG"
 ```
 

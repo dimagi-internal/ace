@@ -45,33 +45,60 @@
 appId: org.commcare.dalvik
 ---
 
-# § 8 certificate screen — anchor on the "Congratulations" text. If
-# the FLW hasn't completed Learn yet, this assertion times out and
-# the recipe fails loud (don't fall through into a wrong-state
-# coordinate tap).
-- extendedWaitUntil:
-    visible:
-      text: "Congratulations"
-    timeout: 30000
-- takeScreenshot: "deliver-launch-certificate"
-
-# Tap VIEW OPPORTUNITY DETAILS. Text-match is preferred; coordinate
-# fallback documented for reference (atlas § 8 captured tap point on
-# 1080x2400). If text-match drifts (button label changes), the
-# fallback keeps the recipe working until the live re-dump fixes the
-# selector map.
-- tapOn:
-    text: "VIEW OPPORTUNITY DETAILS"
+# Resume from Connect's opp-list post-Learn-pass can land us on EITHER
+# of two screens on Connect 2.62.0 depending on persisted state:
+#
+#   (A) § 8 certificate screen — the documented "Congratulations, <user>!
+#       You have successfully completed the Learn modules for <opp>"
+#       overlay with a `VIEW OPPORTUNITY DETAILS` button. The atlas-
+#       documented path.
+#
+#   (B) Opp-detail directly — `connect_learning_button` ("VIEW
+#       OPPORTUNITY DETAILS" / "DOWNLOAD LEARN APP" depending on state)
+#       is the rendered button; no certificate text. Observed on
+#       Connect 2.62.0 (bednet-spot-check/20260525-2022 Phase 6) —
+#       the certificate is either auto-dismissed or skipped entirely
+#       on resume-after-assessment-pass-sync. Same atlas § 8 transition
+#       on the server side, different client-side surface.
+#
+# Both branches converge on the § 9 Download Delivery gate. The
+# previous hard `extendedWaitUntil` on `Congratulations` text was
+# strict-A-only; it timed out on path (B) and halted the recipe.
+# Branch with `runFlow.when` so whichever surface is live, the right
+# tap fires. The downstream `DOWNLOAD` + `viewJobCard` waits are
+# common to both.
+- runFlow:
+    when:
+      visible:
+        text: "Congratulations"
+    commands:
+      - takeScreenshot: "deliver-launch-certificate"
+      - tapOn:
+          text: "VIEW OPPORTUNITY DETAILS"
+          retryTapIfNoChange: true
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/connect_learning_button"
+    commands:
+      - takeScreenshot: "deliver-launch-opp-detail"
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_learning_button"
+          retryTapIfNoChange: true
 
 # § 9 Download Delivery gate — anchor on the "DOWNLOAD" button text.
+# Either branch above lands us here; if neither fired (precondition
+# violation: Learn not yet completed-and-synced), this wait times out
+# and the recipe halts loud, same as the old certificate-only path.
 - extendedWaitUntil:
     visible:
       text: "DOWNLOAD"
-    timeout: 15000
+    timeout: 30000
 - takeScreenshot: "deliver-launch-download-gate"
 
 - tapOn:
     text: "DOWNLOAD"
+    retryTapIfNoChange: true
 
 # Deliver CCZ install progress — typically the same `Step N of M`
 # progress UI as the Learn-side § 4 download (atlas § 9 notes this
