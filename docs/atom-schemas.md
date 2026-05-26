@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 37 atoms
+Source: `mcp/google-drive-server.ts` — 38 atoms
 
 ### `sheets_list_tabs`
 
@@ -347,6 +347,14 @@ Single-line answer to 'did `<phaseName>` write its run_state.yaml block correctl
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive fileId of run_state.yaml. |
+
+### `verify_phase_artifacts`
+
+Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Pair with `classify_phase_writeback` in the boundary fence's parallel block: w…
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `runFolderId` | `z.string` | **required** | _—_ |
 
 ## ace-connect
 
@@ -1135,19 +1143,19 @@ _no parameters_
 
 ### `mobile_register_test_user`
 
-ACE Test
+ACE_Pixel_API_34
 
 _no parameters_
 
-### `mobile_run_recipe`
+### `mobile_capture_ui_dump`
 
-process.env.ACE_AVD_NAME
+text
 
 _no parameters_
 
-### `mobile_validate_recipe`
+### `mobile_probe_maestro_driver`
 
-Maestro YAML body to validate. Standard ACE-recipe shape: appId frontmatter + `---` separator + step list. Validates step-key allowlist (launchApp, tapOn, inputText, takeScreenshot, assertVisible, assertNotVisible, extendedWaitUntil, waitForAnimationToEnd, eraseText, swipe, pressKey, back, scroll, hideKeyboard, runFlow, evalScript, stopApp) and structural integrity (`---` separator present, appId …
+AVD name (e.g. ACE_Pixel_API_34). Must already be booted — this atom does not boot.
 
 _no parameters_
 

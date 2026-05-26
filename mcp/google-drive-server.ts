@@ -24,6 +24,11 @@ import {
   classifyPhaseWriteBack,
 } from '../lib/run-state-validator.js';
 import {
+  verifyPhaseArtifacts,
+  type DriveListAdapter,
+} from '../lib/phase-closeout.js';
+import { PHASES, type Phase } from '../lib/artifact-manifest.js';
+import {
   isTransientNetworkError as isTransientNetworkErrorLib,
   withTransientRetry as withTransientRetryLib,
 } from '../lib/transient-retry.js';
@@ -2129,6 +2134,61 @@ server.tool(
       const parsed = text.trim() ? YAML.parse(text) : null;
       const status = classifyPhaseWriteBack(parsed, phaseName);
       return result({ phase: phaseName, status });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// ============================================================================
+// Phase-closeout artifact verification
+// ============================================================================
+
+// Companion to `classify_phase_writeback`: the writeback tool answers
+// "did the phase update run_state.yaml correctly?"; this tool answers
+// "did the phase produce every artifact the manifest declares required
+// for it in Drive?" Together they form the deterministic part of the
+// orchestrator's boundary fence — the LLM no longer has to remember to
+// dispatch each eval skill, because if the resulting verdict YAML isn't
+// in the phase folder this tool reports it as missing and the
+// orchestrator silent-dispatches the producing skill.
+//
+// Single source of truth: lib/artifact-manifest.ts (entries with
+// required: true and a `<N>-<phase>/` path prefix). Pair with the
+// drift-checking agent that keeps the manifest honest against the
+// plugin's actual skill set.
+
+server.tool(
+  'verify_phase_artifacts',
+  "Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Pair with `classify_phase_writeback` in the boundary fence's parallel block: writeback checks `run_state.yaml`, this checks Drive contents. Walks the phase subfolder two levels deep so `recipes/`, `screenshots/`, etc. children are seen. Implementation: `lib/phase-closeout.ts::verifyPhaseArtifacts`. Manifest: `lib/artifact-manifest.ts`.",
+  {
+    runFolderId: z.string().describe("The Google Drive folder ID of the run (e.g. <opp>/runs/<run-id>/)."),
+    phase: z
+      .enum(PHASES as unknown as [Phase, ...Phase[]])
+      .describe('The phase whose declared required artifacts to verify (e.g. "design", "commcare", "synthetic-data-and-workflows").'),
+  },
+  async ({ runFolderId, phase }) => {
+    try {
+      const adapter: DriveListAdapter = {
+        async listFolder(folderId: string) {
+          const safe = folderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+          const resp = await drive.files.list({
+            q: `'${safe}' in parents and trashed = false`,
+            fields: 'files(id, name, mimeType)',
+            orderBy: 'name',
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+          });
+          const files = resp.data.files ?? [];
+          return files.map((f) => ({
+            id: f.id ?? '',
+            name: f.name ?? '',
+            mimeType: f.mimeType ?? '',
+          }));
+        },
+      };
+      const report = await verifyPhaseArtifacts(adapter, runFolderId, phase as Phase);
+      return result(report);
     } catch (e: any) {
       return error(e.message);
     }
