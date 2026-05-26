@@ -2,7 +2,8 @@
 name: sweep
 description: >
   Procedure doc for /ace:sweep — orchestrates live-set build then per-system
-  orphan sweep with human triage. Supports drive, connect, ocs, hq, labs, opp-runs.
+  orphan sweep with human triage. Supports drive, connect, ocs, hq, labs,
+  opp-runs, ace-web.
 model: inherit
 ---
 
@@ -12,7 +13,7 @@ This is a procedure doc, not a subagent. The `/ace:sweep` slash command reads it
 
 ## Arguments
 
-- `<system>` (optional) — one of `drive`, `connect`, `ocs`, `hq`, `labs`, `opp-runs`, `all`. If omitted, prompt the user to pick.
+- `<system>` (optional) — one of `drive`, `connect`, `ocs`, `hq`, `labs`, `opp-runs`, `ace-web`, `all`. If omitted, prompt the user to pick.
 - `--keep <N>` (optional, `opp-runs` only) — integer ≥ 1. Number of newest runs to retain per opp. If omitted with `opp-runs`, prompt the user; default `3`.
 
 ## Process
@@ -29,7 +30,8 @@ Which system?
   hq       — CommCare HQ apps                                                  (auto-soft-delete; builds and multimedia are upstream gaps and not surfaced)
   labs     — connect-labs workflows + pipelines + synthetic + solicitations    (auto: delete workflows/pipelines/solicitations [cascade-empty gate], disable synthetic; funds/standalone-reviews/standalone-responses report-only)
   opp-runs — Per-opp runs/<run-id>/ folders                                    (retention prune; keep newest N per opp via --keep, default 3; not part of `all`)
-  all      — run drive + connect + ocs + hq + labs in sequence (opp-runs excluded; retention is a manual call)
+  ace-web  — Uploaded chat Sessions on a deployed ace-web                      (bulk delete: every Session in workspaces the PAT can write to; CASCADEs uploads + messages + share tokens; included in `all`)
+  all      — run drive + connect + ocs + hq + labs + ace-web in sequence (opp-runs excluded; retention is a manual call)
 ```
 
 If the user picked `opp-runs` and did not pass `--keep`, prompt:
@@ -42,7 +44,7 @@ Capture the answer as the `keep` parameter for the `sweep-opp-runs` skill. Rejec
 
 ### Step 2: Build the live-set
 
-**Skip this step when `system == 'opp-runs'`** — retention prune does not diff against a live-set. Still create the timestamped sweep folder (`ACE/_sweep/<timestamp>/`) for products to land in.
+**Skip this step when `system in {'opp-runs', 'ace-web'}`** — neither uses a live-set (retention prune; bulk wipe). Still create the timestamped sweep folder (`ACE/_sweep/<timestamp>/`) for products to land in.
 
 For every other system:
 
@@ -64,12 +66,15 @@ Dispatch the matching skill:
 | hq       | `sweep-hq`         |
 | labs     | `sweep-labs`       |
 | opp-runs | `sweep-opp-runs`   |
+| ace-web  | `sweep-ace-web`    |
 
 Each sub-skill handles its own diff + score + render + triage + execute. The orchestrator only waits for completion.
 
 For `opp-runs`, pass `keep: <N>` (from args or the Step 1 prompt) and the `sweepFolder` from Step 2. Do **not** pass a `liveSetPath`.
 
-For `system == 'all'`, dispatch each in order: drive → connect → ocs → hq → labs. `opp-runs` is **not** included in `all` — retention is a manual decision, not an orphan cleanup. Stop on the first hard failure (auth issue, broken atom); soft failures (per-item delete errors) are reported by the sub-skill and don't halt the orchestrator.
+For `ace-web`, pass only the `sweepFolder` from Step 2. Do **not** pass a `liveSetPath` — the skill bulk-deletes every Session the caller's PAT can write to, scoped server-side by workspace membership.
+
+For `system == 'all'`, dispatch each in order: drive → connect → ocs → hq → labs → ace-web. `opp-runs` is **not** included in `all` — retention is a manual decision, not an orphan cleanup. Stop on the first hard failure (auth issue, broken atom); soft failures (per-item delete errors) are reported by the sub-skill and don't halt the orchestrator.
 
 ### Step 4: Summary
 
@@ -96,6 +101,19 @@ Policy:       keep newest <N> per opp
 Affected:     <M> opps had >N runs
 Trashed:      <K> run folders (reversible 30d via Drive bin)
 Skipped:      <S> human-rejected
+```
+
+For `ace-web` the report name is `ace-web-sessions.md` and the summary reads:
+
+```
+/ace:sweep ace-web — complete
+
+Sweep folder: ACE/_sweep/<timestamp>/
+Report:       ACE/_sweep/<timestamp>/ace-web-sessions.md
+Result:       ACE/_sweep/<timestamp>/ace-web-sessions-result.yaml
+Scope:        <N> sessions across <M> workspaces; <T> MB of transcripts
+Deleted:      <K> sessions (CASCADEd uploads, messages, share tokens, drafts)
+Failed:       <F> rows (see result yaml for reasons)
 ```
 
 When `system == 'all'`, print one summary block per system, then a final aggregate.
@@ -126,5 +144,6 @@ When `system == 'all'`, print one summary block per system, then a final aggrega
 | labs workflows / pipelines / synthetic | labs | ✅ Auto-delete via existing `workflow_delete` / `pipeline_delete` / `synthetic_disable` |
 | labs solicitations | labs | ✅ Auto-delete via `delete_solicitation` (gated on cascade emptiness — refuses when `responses + reviews > 0` unless `force: true`; cascade-deletes reviews + responses on success). connect-labs PR #197. |
 | labs funds / standalone reviews / standalone responses | labs | ⚠️ Report-only. No per-type delete atom upstream yet. Reviews/responses generally cascade with their parent solicitation; funds tend to be reused. If `delete_fund` ships upstream later, the proxy forwards it automatically and the coverage matrix here can be updated. |
+| ace-web sessions (uploaded chat transcripts) | ace-web | ✅ Auto-delete via `DELETE /api/sessions/sweep/delete` on the deployed ace-web. Workspace-scoped to PAT writes (Owner/Editor); CASCADEs through `IngestUpload`, `Message`, `SessionParticipant`, `ShareToken`, `Draft`. Bulk wipe — no orphan filter. |
 
 Items marked ⚠️ surface in the report with an admin-UI deep link the human can click to delete manually. Items marked 🚧 await a prerequisite atom. Items marked ❌ have no upstream support and are surfaced for visibility only.
