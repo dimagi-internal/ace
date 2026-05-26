@@ -7,7 +7,7 @@ description: >
   Connect-marker presence match the Nova blueprint. AVD-free, Connect-
   free — purely CCHQ-side structural verification. Halts loud on
   mismatch.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # App Release Smoke

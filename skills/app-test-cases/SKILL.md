@@ -4,7 +4,7 @@ description: >
   Bind each PDD user journey to the Nova-built app structure and emit a
   Maestro recipe per journey with real selectors. Use after Nova
   finishes building, before app-release.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # App Test Cases
