@@ -97,17 +97,50 @@ server.tool(
 server.tool(
   'mobile_register_test_user',
   {
-    avdName: z.string(),
-    phone: z.string(),
-    phoneLocal: z.string(),
-    countryCode: z.string(),
-    pin: z.string(),
-    backupCode: z.string(),
-    name: z.string().default('ACE Test'),
+    avdName: z.string().default(process.env.ACE_AVD_NAME ?? 'ACE_Pixel_API_34'),
+    // All credential fields are optional and fall back to ACE_E2E_* env
+    // vars in the handler — same env conventions used by
+    // bootstrapConfigFromEnv() and the recipe-resolver placeholder map.
+    // Caller args still win when present; this just lets skill callers
+    // (qa-and-training) invoke the tool without re-plumbing every
+    // credential through the orchestrator, and avoids server-side
+    // "Request validation failed" responses from empty-string passes.
+    phone: z.string().optional(),
+    phoneLocal: z.string().optional(),
+    countryCode: z.string().optional(),
+    pin: z.string().optional(),
+    backupCode: z.string().optional(),
+    name: z.string().optional(),
   },
-  async (args) => ({
-    content: [{ type: 'text', text: JSON.stringify(await client.registerTestUser(args), null, 2) }],
-  }),
+  async (args) => {
+    const resolved = {
+      avdName: args.avdName,
+      phone: args.phone || process.env.ACE_E2E_PHONE || '',
+      phoneLocal: args.phoneLocal || process.env.ACE_E2E_PHONE_LOCAL || '',
+      countryCode: args.countryCode || process.env.ACE_E2E_COUNTRY_CODE || '',
+      pin: args.pin || process.env.ACE_E2E_PIN || '',
+      backupCode: args.backupCode || process.env.ACE_E2E_BACKUP_CODE || '',
+      name: args.name || process.env.ACE_E2E_NAME || 'ACE Test',
+    };
+    // Surface the named missing field(s) here rather than punting to
+    // ace-web's Pydantic validator, which returns a generic
+    // "Request validation failed" with no field-level detail.
+    const missing = (
+      ['phone', 'phoneLocal', 'countryCode', 'pin', 'backupCode'] as const
+    ).filter((k) => !resolved[k]);
+    if (missing.length > 0) {
+      const envHints = missing
+        .map((k) => `ACE_E2E_${k === 'phoneLocal' ? 'PHONE_LOCAL' : k === 'countryCode' ? 'COUNTRY_CODE' : k === 'backupCode' ? 'BACKUP_CODE' : k.toUpperCase()}`)
+        .join(', ');
+      throw new Error(
+        `mobile_register_test_user: required field(s) missing — ${missing.join(', ')}. ` +
+          `Pass them as args, or set ${envHints} in the environment.`,
+      );
+    }
+    return {
+      content: [{ type: 'text', text: JSON.stringify(await client.registerTestUser(resolved), null, 2) }],
+    };
+  },
 );
 
 server.tool(
