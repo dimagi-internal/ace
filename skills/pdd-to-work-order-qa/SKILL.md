@@ -45,11 +45,11 @@ The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as im
 
 ## Process
 
-1. **Read the work-order artifact.** Resolve the latest `pdd-to-work-order.gdoc` (the one referenced by `phases.design.products.work_order.file_id` in `run_state.yaml`). Read its body via `drive_read_file`.
+1. **Read the work-order artifact.** Resolve the latest `pdd-to-work-order.gdoc` (the one referenced by `phases.idea-to-design.products.work_order.file_id` in `run_state.yaml`). Read its body via `drive_read_file`.
 
 2. **Read decisions.yaml** via `drive_read_file`.
 
-3. **Read PDD archetype** from `run_state.yaml.phases.design.products.pdd` (or read the PDD body and parse the `archetype:` frontmatter line).
+3. **Read PDD archetype** from `run_state.yaml.phases.idea-to-design.products.pdd` (or read the PDD body and parse the `archetype:` frontmatter line).
 
 4. **Save artifact bodies to local temp paths** so the CLI runner can invoke `checks.ts`:
    ```bash

@@ -26,7 +26,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 ## Products
 
 - `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order.gdoc` — the work-order Google Doc (re-runs create `pdd-to-work-order-2.gdoc`, `pdd-to-work-order-3.gdoc`, etc.)
-- `run_state.yaml.phases.design.products.work_order` — `{title, file_id}` typed handoff. This skill is the sole writer.
+- `run_state.yaml.phases.idea-to-design.products.work_order` — `{title, file_id}` typed handoff. This skill is the sole writer.
 - Appended `wo-*` rows in `ACE/<opp-name>/runs/<run-id>/decisions.yaml` (merge-only — never overwrites existing rows).
 
 ## Process
@@ -88,7 +88,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 5. **Render the work-order template to a Google Doc.**
    - `docs_copy_template(templateDocId=<WORK_ORDER_TEMPLATE_ID from env>, parentFolderId=<run-folder file_id>, title="pdd-to-work-order", replacements={...})`. Pass all token replacements directly to `docs_copy_template` — it runs a single `replaceAllText` batch under the hood, no separate `docs_batch_update` needed. If the run already has a `pdd-to-work-order.gdoc`, title the new one `pdd-to-work-order-2`, etc.
    - **After the copy returns, call `docs_finalize_bullets(documentId=<new-doc-id>)`** — this applies real Google Docs bullet styling to the paragraphs enclosed in the template's `<<<BULLETS_*_START>>>` / `<<<BULLETS_*_END>>>` anchor pairs, deletes the anchors, and cleans up empty bulleted paragraphs left over from blank-line spacing. Required step; without it the bulleted sections (§2 scope, §4.2 verified-unit criteria, §4.3 reporting, §8.1 permissions) render as plain paragraphs.
-   - Body tokens for bulleted regions (`{{scope_will_body}}`, `{{scope_will_not_body}}`, `{{verified_unit_body}}`, `{{reporting_body}}`, `{{permissions_body}}`) take a `\n`-separated string with one bullet item per line. `replaceAllText` honors `\n` as paragraph breaks; `docs_finalize_bullets` then bullet-styles each resulting paragraph.
+   - Body tokens for bulleted regions (`{{scope_body}}`, `{{verified_unit_body}}`, `{{reporting_body}}`, `{{permissions_body}}`) take a `\n`-separated string with one bullet item per line. `replaceAllText` honors `\n` as paragraph breaks; `docs_finalize_bullets` then bullet-styles each resulting paragraph.
    - Tokens use `{{...}}` snake_case:
    The template has SIX real Google Docs tables (header, timeline, payment schedule, RACI, data handling, signatures). Each cell that varies per work-order contains ONE `{{snake_case}}` token. The skill replaces tokens via `replaceAllText` — one cell-sized value per token. Token groups:
 
@@ -105,12 +105,11 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - `{{verified_unit_closing}}` (the "Verification will be performed via..." closing paragraph after the verified-unit bullets)
      - `{{wo_total_not_to_exceed_usd}}` — bare number
      - `{{ethics_body}}` — prose
-     - `{{pdd_link}}` (Drive URL of the PDD from `phases.design.products.pdd.file_id`)
+     - `{{pdd_link}}` (Drive URL of the PDD from `phases.idea-to-design.products.pdd.file_id`)
      - `{{annexure_b_placeholder}}` ("To be provided" if no opp-specific annexure)
 
    **Bulleted-region tokens (newline-separated; finalize via `docs_finalize_bullets`):**
-     - `{{scope_will_body}}` — what the Partner will do (one bullet per line)
-     - `{{scope_will_not_body}}` — what the Partner will not do (one bullet per line)
+     - `{{scope_body}}` — what the Partner will and will not do, as a single bullet block (one bullet per line). Recommended structure: 1-2 sentence intro paragraph (no leading dash), then a blank line, then "**Will Do:**" header line, then bullets for in-scope items, then a blank line, then "**Will Not Do:**" header, then bullets for out-of-scope items. The live `WORK_ORDER_TEMPLATE_ID` template has ONE `{{scope_body}}` token — not separate `{{scope_will_body}}` / `{{scope_will_not_body}}` tokens. (Splitting into the two-token form is preferable for clarity; tracked as future work — see bednet-spot-check Phase 1 finding.)
      - `{{verified_unit_body}}` — criteria a unit must meet to be "verified" (one bullet per line)
      - `{{reporting_body}}` — required reporting deliverables (one bullet per line)
      - `{{permissions_body}}` — required permissions (one bullet per line)
@@ -121,6 +120,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    **Payment Schedule table (3 rows × 6 cols, header + 2 milestones):**
      - Milestone 1: `{{wo_mobilization_advance_pct}}`, `{{wo_mobilization_amount}}`, `{{wo_mobilization_trigger}}`, `{{wo_mobilization_timing}}`
      - Milestone 2: `{{wo_reconciliation_pct}}`, `{{wo_reconciliation_amount}}`, `{{wo_reconciliation_trigger}}`, `{{wo_reconciliation_timing}}`
+     - **PCT tokens are bare numbers (no `%` suffix).** The live template's percent cells already have `%` pre-suffixed (e.g. cell text reads `{{wo_mobilization_advance_pct}}%`), so emitting `"40%"` produces `"40%%"`. Pass `"40"` (or `"40.0"` if you need decimals) — the template adds the `%` glyph. Same rule for `{{wo_reconciliation_pct}}`. (Surfaced in bednet-spot-check Phase 1 finding.)
 
    **RACI table (12 rows × 3 cols, header + 11 responsibility rows):**
      - `{{raci_N_responsibility}}`, `{{raci_N_dimagi}}`, `{{raci_N_partner}}` for N=1..11. Archetype-branched (atomic-visit, focus-group, multi-stage produce different RACI rows). Use `—` or `✓` or `Lead`/`Supports`/`Reviews`/`Produces` for the responsibility-owner columns. If the archetype needs fewer than 11 rows, fill trailing rows with empty strings.
@@ -132,7 +132,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - `{{partner_signatory_name}}`, `{{partner_signatory_title}}`, `{{partner_address}}` (left cell — Subcontractor)
      - Dimagi cell is hardcoded in the template (Lucina Tse, COO, Cambridge MA address) — no tokens for the right cell.
 
-6. **Write `run_state.yaml.phases.design.products.work_order`** via `update_yaml_file` with `merge: 'two-level'`:
+6. **Write `run_state.yaml.phases.idea-to-design.products.work_order`** via `update_yaml_file` with `merge: 'two-level'`:
 
    ```yaml
    phases:

@@ -85,7 +85,7 @@ Invoke the `pdd-to-work-order` skill.
   - `ACE/<opp-name>/runs/<run-id>/decisions.yaml` (load-bearing decisions)
 - Output:
   - `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order.gdoc` (re-runs create `pdd-to-work-order-2.gdoc`, etc.)
-  - `run_state.yaml.phases.design.products.work_order` block
+  - `run_state.yaml.phases.idea-to-design.products.work_order` block
   - Appended `wo-*` rows in `decisions.yaml` (merge-only)
 - **Gate (review mode):** present the work-order URL for approval before continuing.
 
@@ -112,8 +112,8 @@ Write-Back Contract`. Required top-level keys on the patch: `phases`, `last_acto
 `last_actor_at`.
 
 The phase summary at `1-design/idea-to-design_summary.md` MUST list both:
-- PDD: `phases.design.products.pdd.file_id` (Drive URL)
-- Work Order: `phases.design.products.work_order.file_id` (Drive URL)
+- PDD: `phases.idea-to-design.products.pdd.file_id` (Drive URL)
+- Work Order: `phases.idea-to-design.products.work_order.file_id` (Drive URL)
 
 The approved PDD at `1-design/idea-to-pdd.md` is the input for Phase 2
 (`scenarios-and-acceptance`), which derives test prompts and expected
