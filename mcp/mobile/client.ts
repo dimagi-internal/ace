@@ -359,19 +359,22 @@ export class MobileClient {
   async ensureAvdRunning(name: string): Promise<AvdInfo> {
     if (this.useCloud) {
       const info = await this.requireCloud().ensureAvdRunning(name);
-      // Symmetric shape with the local branch: callers that read
-      // `info.heal.deviceUserState` from `mobile_ensure_avd_running`
-      // get a populated stub on cloud instead of undefined. Cloud's
-      // cold-boot path IS the equivalent restore mechanism (the AMI
-      // ships the registration recipes built-in and runs them on
-      // every cold boot) so there's nothing for the auto-heal to
-      // attempt locally — `attempted: false` reflects that.
-      return {
-        ...info,
-        heal: {
-          deviceUserState: { classified_as: 'unknown', attempted: false },
-        },
-      };
+      // Symmetric with the local branch — drive registration through
+      // `restoreDeviceUserState` so the same contract holds across
+      // backends: *after this method returns, the device is at the
+      // Connect home, signed in as the test user*.
+      //
+      // The cloud branch of `restoreDeviceUserState` dispatches to
+      // `cloudBootstrapHeal` when `ACE_MOBILE_CLOUD_LIVE_REGISTER=true`
+      // (the post-Phase-D AMI default), otherwise returns the legacy
+      // `{ attempted: false }` stub — preserving behavior for any
+      // deployment that's still riding the pre-Phase-D AMI's pre-baked
+      // demo user. Pre-2026-05-26 this method short-circuited with the
+      // stub unconditionally, which silently left the cloud AVD
+      // unregistered on every fresh-AMI boot and forced operators to
+      // run `/ace:mobile-bootstrap` by hand mid-`/ace:run`.
+      const deviceUserState = await this.restoreDeviceUserState(info);
+      return { ...info, heal: { deviceUserState } };
     }
     const info = await this.avd.ensureAvdRunning(name);
     await this.assertMaestroDriverHealthy(info.serial);

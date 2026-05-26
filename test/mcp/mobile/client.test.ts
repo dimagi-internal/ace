@@ -1140,8 +1140,10 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
     expect(r.heal?.deviceUserState?.bootstrap_steps).toContain('snapshot-saved');
   });
 
-  it('cloud backend short-circuits (cold-boot semantics are the restore mechanism)', async () => {
+  it('cloud backend with LIVE_REGISTER unset returns the legacy stub', async () => {
     setSessionBackend('cloud');
+    const savedFlag = process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
+    delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
     try {
       const cloud = {
         ensureAvdRunning: vi
@@ -1154,19 +1156,90 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
       const client = new MobileClient({ avd, maestro, cloud });
       const r = await client.ensureAvdRunning('cloud');
       expect(cloud.ensureAvdRunning).toHaveBeenCalledWith('cloud');
-      // No local snapshot-load on cloud — cold-boot is the equivalent
-      // restore mechanism (see backends/cloud.ts header).
+      // No local snapshot-load on cloud — local backends aren't touched.
       expect(avd.loadSnapshot).not.toHaveBeenCalled();
       expect(r.serial).toBe('cloud:i-abc');
-      // Symmetric heal shape with local: callers that read
-      // `result.heal.deviceUserState` on the mobile_ensure_avd_running
-      // result must see the same shape across backends. Cloud populates
-      // a stub so the field isn't undefined.
+      // LIVE_REGISTER unset → `restoreDeviceUserState`'s cloud branch
+      // returns the legacy stub (the pre-Phase-D AMI's cold-boot path
+      // was the restore mechanism). Same shape callers got pre-2026-05-26.
       expect(r.heal?.deviceUserState).toEqual({
         classified_as: 'unknown',
         attempted: false,
       });
     } finally {
+      if (savedFlag === undefined) delete process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER;
+      else process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = savedFlag;
+      clearSessionBackend();
+    }
+  });
+
+  it('cloud backend with LIVE_REGISTER=true dispatches cloudBootstrapHeal', async () => {
+    // Post-Phase-D AMI: cold-boot no longer pre-bakes the demo user, so
+    // the heal funnel must drive registration inline on every dispatch.
+    // Pre-2026-05-26 the cloud branch short-circuited regardless of
+    // LIVE_REGISTER and silently left the AVD unregistered, forcing
+    // operators to bail mid-`/ace:run` and run `/ace:mobile-bootstrap`
+    // by hand. Live observed in bednet-spot-check run 20260525-2013,
+    // Phase 6.
+    setSessionBackend('cloud');
+    const ENV_KEYS = [
+      'ACE_MOBILE_CLOUD_LIVE_REGISTER',
+      'ACE_CONNECT_APK_VERSION',
+      'ACE_E2E_PHONE',
+      'ACE_E2E_PHONE_LOCAL',
+      'ACE_E2E_COUNTRY_CODE',
+      'ACE_E2E_PIN',
+      'ACE_E2E_BACKUP_CODE',
+      'ACE_E2E_NAME',
+    ] as const;
+    const saved: Record<string, string | undefined> = {};
+    for (const k of ENV_KEYS) saved[k] = process.env[k];
+    process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
+    process.env.ACE_CONNECT_APK_VERSION = '2.63.0';
+    process.env.ACE_E2E_PHONE = '+74260000100';
+    process.env.ACE_E2E_PHONE_LOCAL = '4260000100';
+    process.env.ACE_E2E_COUNTRY_CODE = '+7';
+    process.env.ACE_E2E_PIN = '0000';
+    process.env.ACE_E2E_BACKUP_CODE = '0000';
+    process.env.ACE_E2E_NAME = 'ACE Test';
+    try {
+      const cloudRegister = vi
+        .fn()
+        .mockResolvedValue({ alreadyRegistered: false, phone: '+74260000100' });
+      const cloud = {
+        ensureAvdRunning: vi
+          .fn()
+          .mockResolvedValue({ name: 'cloud', serial: 'cloud:i-abc', status: 'booted' }),
+        clearAppData: vi.fn().mockResolvedValue(true),
+        registerTestUser: cloudRegister,
+      } as any;
+      const avd = { loadSnapshot: vi.fn() } as any;
+      const maestro = {} as any;
+      const client = new MobileClient({ avd, maestro, cloud });
+
+      const r = await client.ensureAvdRunning('cloud');
+
+      expect(cloud.ensureAvdRunning).toHaveBeenCalledWith('cloud');
+      expect(cloud.clearAppData).toHaveBeenCalledWith('org.commcare.dalvik');
+      // registerTestUser was called with credentials derived from the
+      // ACE_E2E_* env — verifying the cloud heal actually drives
+      // bootstrap (and consumes the same env vars the local heal does).
+      expect(cloudRegister).toHaveBeenCalledTimes(1);
+      const regArgs = cloudRegister.mock.calls[0][0];
+      expect(regArgs.phone).toBe('+74260000100');
+      expect(regArgs.phoneLocal).toBe('4260000100');
+      expect(regArgs.pin).toBe('0000');
+      // The post-heal log reflects an actual attempt — not the stub.
+      expect(r.heal?.deviceUserState).toMatchObject({
+        attempted: true,
+        healed_via: 'cloud-bootstrap',
+        verified_as: 'ready',
+      });
+    } finally {
+      for (const k of ENV_KEYS) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
       clearSessionBackend();
     }
   });
