@@ -198,7 +198,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['ace-orchestrator', 'opp-eval'],
     phase: 'design',
-    required: false,
+    required: true,
     description: 'Per-skill -eval verdict for pdd-to-work-order: contractual clarity, PDD alignment, decisions traceability, verification realism, archetype fit. Shape matches skills/README.md § QA vs Eval.',
   },
   {
@@ -227,7 +227,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'scenarios-and-acceptance',
-    required: false,
+    required: true,
     description: 'Quality eval on pdd-to-test-prompts.md across 6 dimensions: expected-answer specificity, adversarial-prompt quality, archetype coverage, prompt phrasing realism, expected-tag correctness, escalation-prompt quality.',
   },
   {
@@ -247,7 +247,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'scenarios-and-acceptance',
-    required: false,
+    required: true,
     description: 'Quality eval on pdd-to-app-journeys.md across 6 dimensions: persona specificity, archetype alignment, coverage completeness, happy-path narrative voice, edge-case recoverability, pass-criteria measurability.',
   },
   {
@@ -293,7 +293,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'design',
-    required: false,
+    required: true,
     description: 'Per-skill -eval verdict for idea-to-pdd: structural completeness, archetype coherence, concreteness, reviewer-comment fidelity, stress-test agreement. Shape matches skills/README.md § QA vs Eval.',
   },
   {
@@ -377,7 +377,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'commcare',
-    required: false,
+    required: true,
     description: 'Per-skill -eval verdict for pdd-to-learn-app: module count, order, Connectify Assessment Score wiring, gating thresholds, content coverage match against the PDD.',
   },
   {
@@ -386,7 +386,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'commcare',
-    required: false,
+    required: true,
     description: 'Per-skill -eval verdict for pdd-to-deliver-app: field count, ordering, conditional logic, Connectify wiring, required-field rules match against the PDD.',
   },
   {
@@ -395,7 +395,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'commcare',
-    required: false,
+    required: true,
     description: 'Per-skill -eval verdict for app-release: every uploaded build successfully released, CCZ-marker checks passed, no draft-only apps remain.',
   },
   {
@@ -432,7 +432,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'connect',
-    required: false,
+    required: true,
     description: 'Per-skill -eval verdict for the Connect program/opportunity setup: program-fit decision (reuse vs create), opportunity verification rules, delivery units, payment units, entity-id wiring against PDD spec.',
   },
   {
@@ -524,7 +524,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'ocs',
-    required: false,
+    required: true,
     description: 'Per-skill -eval verdict for ocs-widget-handoff: widget URL correctness, embed key staging, opportunity-binding completeness, HITL operator handoff hygiene. Filename uses the eval skill (ocs-widget-handoff-eval) rather than the agent name (ocs-agent-setup) — see 0.12.0 Option-α naming rule.',
   },
   {
@@ -665,7 +665,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
-    required: false,
+    required: true,
     description: 'Companion-eval verdict for training-deck-generate. Grades module coverage, content concreteness, image ref validity, slide count.',
   },
   {
@@ -674,7 +674,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
-    required: false,
+    required: true,
     description: 'Companion-eval verdict from `training-faq-eval`. Grades comprehensiveness, accuracy, scannability, field realism, anticipated-question depth.',
   },
   {
@@ -683,7 +683,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
-    required: false,
+    required: true,
     description: 'Companion-eval verdict from `training-flw-guide-eval`. Grades step concreteness, screenshot completeness, language accessibility (BLOCKER on wrong language), error recovery, flow ordering.',
   },
   {
@@ -692,7 +692,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
-    required: false,
+    required: true,
     description: 'Companion-eval verdict from `training-llo-guide-eval`. Grades operational completeness, action-orientation, screenshot grounding, cap-threshold accuracy, escalation-pathway clarity.',
   },
   {
@@ -701,7 +701,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
-    required: false,
+    required: true,
     description: 'Companion-eval verdict from `training-onboarding-email-eval`. Grades warmth, clarity, call-to-action effectiveness, context fidelity, length discipline.',
   },
   {
@@ -710,7 +710,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
-    required: false,
+    required: true,
     description: 'Companion-eval verdict from `training-quick-reference-eval`. Grades scannability, key-number coverage, numeric accuracy, printability, glance-priority ordering.',
   },
 
@@ -810,7 +810,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'synthetic-data-and-workflows',
-    required: false,
+    required: true,
     description: 'LLM-as-Judge verdict on the narrative plan: PDD anchoring, cast realism, anomaly+coaching coherence, manifest schema validity, stakeholder narrative quality.',
   },
   {
@@ -846,7 +846,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'synthetic-data-and-workflows',
-    required: false,
+    required: true,
     description: 'LLM-as-Judge verdict on the data-generate run: record-count health, form schema coverage, warning honesty, manifest provenance, operator next steps.',
   },
   {
@@ -855,7 +855,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'synthetic-data-and-workflows',
-    required: false,
+    required: true,
     description: 'LLM-as-Judge verdict on workflow seeding: workflow wiring, KPI population, coaching-task creation, aggregation-mapping honesty, saved-runs deferral honesty.',
   },
   {
@@ -864,7 +864,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'synthetic-data-and-workflows',
-    required: false,
+    required: true,
     description: 'LLM-as-Judge verdict on workflow polish: narrative-data coherence, patch quality, smoke-render success, domain-language fit, mode honesty. Strictest gate (threshold 7.5) — polish is the headline.',
   },
   {
@@ -957,7 +957,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'solicitation-management',
-    required: false,
+    required: true,
     description: 'Per-skill -eval verdict for solicitation-create: PDD-fidelity, criteria coverage, deadline plausibility, response-template clarity.',
   },
   {
