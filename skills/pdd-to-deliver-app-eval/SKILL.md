@@ -3,7 +3,7 @@ name: pdd-to-deliver-app-eval
 description: >
   Grade a Nova-built Deliver app against the PDD that specified it —
   field count, ordering, conditional logic, Connectify wiring.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # PDD-to-Deliver-App Eval

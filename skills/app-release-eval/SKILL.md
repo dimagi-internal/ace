@@ -3,7 +3,7 @@ name: app-release-eval
 description: >
   Verify every Learn + Deliver build was actually released so Connect
   can read deliver units. Provisional rubric pending 3+ real releases.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # App Release Eval
