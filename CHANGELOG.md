@@ -24,6 +24,18 @@ Scope:
 What changed:
 - `skills/idea-to-pdd/SKILL.md`, `skills/idea-to-pdd-qa/SKILL.md`, `skills/idea-to-pdd-eval/SKILL.md`, `skills/pdd-to-work-order/SKILL.md`, `skills/pdd-to-work-order-qa/SKILL.md`, `skills/pdd-to-work-order-eval/SKILL.md`: `disable-model-invocation: true` → `false`.
 
+## 0.13.447 — 2026-05-27
+
+**Wire the `ace-decisions` MCP server into `plugin.json`. Add a registration cross-check test.**
+
+The `mcp/decisions-server.ts` file (typed `decisions_append_rows` atom, shipped in PR #496) was never added to `.claude-plugin/plugin.json`'s `mcpServers` map. Result: every Phase 1 subagent silently failed to access the typed atom, fell back to direct `drive_create_file` writes, and shipped malformed `decisions.yaml` files. Empirically discovered today on `bednet-spot-check/20260527-0253`: the agent copied the SKILL.md example's `rows:` parameter name as the YAML top-level key (instead of the canonical `decisions:`), producing a file ace-web parsed as 0 rows. The strict-write invariant from PR #526 never fired because the atom was never reachable.
+
+The existing `test/mcp/registration-coverage.test.ts` checked file-internal invariants (snapshot count, allowed prefixes, no duplicates) but didn't cross-check that server files were actually registered in `plugin.json`. This PR adds that invariant: every `mcp/*-server.ts` on disk MUST have a corresponding entry whose `args[1]` path resolves to that file. Catches both the original gap and any future "added the file, forgot the wiring" regression.
+
+What changed:
+- `.claude-plugin/plugin.json`: add `ace-decisions` to `mcpServers` (matches the other 5 servers' shape — npx tsx, CLAUDE_PLUGIN_DATA env).
+- `test/mcp/registration-coverage.test.ts`: new "MCP server plugin.json registration" describe block — fails loud if any `mcp/*-server.ts` file lacks a `plugin.json` entry.
+
 ## 0.13.442 — 2026-05-26
 
 **Add `ace-web` as a new `/ace:sweep` system for bulk-deleting uploaded chat Sessions.**
