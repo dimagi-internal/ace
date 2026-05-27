@@ -1121,6 +1121,24 @@ export class MobileClient {
     const fromContinue = path.join(this.staticRecipesDir, 'connect-register-from-otp.yaml');
     let success = false;
     try {
+      // Pre-grant runtime permissions BEFORE launching CommCare. Both
+      // pm clear (Step 1.5 of runLocalBootstrap) AND fresh APK installs
+      // (Step 1) leave the device with ungranted runtime perms; on the
+      // next launch Android surfaces a GrantPermissionsActivity dialog
+      // BEFORE CommCareSetupActivity for each ungranted perm
+      // (location, audio, camera, ...). The registration recipes assume
+      // the welcome screen is the first surface and have zero handling
+      // for the system dialog — they stall. Pre-granting flips the
+      // class from "intermittent unrecoverable halt" to "no dialog
+      // appears." Idempotent + no-op-safe if APK isn't installed yet.
+      //
+      // Bednet-spot-check run 20260526-2310 Phase 6 (2026-05-27) hit
+      // this twice; two consecutive agents misread the post-dialog
+      // recipe timeout as "registration didn't advance past phone
+      // entry." See `AvdBackend.grantRuntimePermissions` for the full
+      // perm list + rationale.
+      await this.avd.grantRuntimePermissions(args.avdName).catch(() => {});
+
       // GMS is enabled here so CommCare 2.62.0's launch check passes. We
       // disable it between part A and part B so the in-app face-capture
       // step (only reached on the fresh-registration branch of part B)

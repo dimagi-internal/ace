@@ -33,6 +33,35 @@ appId: org.commcare.dalvik
     appId: org.commcare.dalvik
     clearState: true
 
+# Android system runtime-permission dialog (com.android.permissioncontroller/
+# GrantPermissionsActivity) — defensive single-shot dismiss. The MCP-side
+# `AvdBackend.grantRuntimePermissions` pre-grants the full set before this
+# recipe launches and is the load-bearing fix; this is the belt-and-
+# suspenders for paths that bypassed the MCP wrapper (manual `maestro
+# test`, AMI-side cold-boot without the pre-grant hook, etc.).
+#
+# Single runFlow.when (not a `repeat` loop): the ACE validator's step
+# allowlist doesn't include `repeat`, and the pre-grant covers the
+# common path. If the pre-grant ever silently fails and the cascading
+# 9-perm dialog appears, only the first dialog is dismissed here —
+# subsequent perms will fail the welcome-screen wait, surfacing a clear
+# diagnostic (PermissionDialogTimeout) rather than a silent stall.
+#
+# "While using the app" is the safe answer — grants foreground access
+# only, no background tracking. Bednet-spot-check run 20260526-2310
+# Phase 6 (2026-05-27) hit this; two consecutive agents misread the
+# resulting recipe timeout as "registration didn't advance past phone
+# entry." See `grantRuntimePermissions` docstring.
+- runFlow:
+    when:
+      visible:
+        id: "com.android.permissioncontroller:id/permission_allow_foreground_only_button"
+    commands:
+      - tapOn:
+          id: "com.android.permissioncontroller:id/permission_allow_foreground_only_button"
+      - waitForAnimationToEnd:
+          timeout: 1500
+
 - extendedWaitUntil:
     visible:
       id: "org.commcare.dalvik:id/str_setup_message"
