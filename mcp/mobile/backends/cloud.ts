@@ -33,6 +33,7 @@ import {
   AvdBootError,
   RecipeValidationError,
 } from '../errors.js';
+import { classifyMaestroFailure } from '../../../lib/maestro-failure-class.js';
 import type {
   AvdInfo,
   ApkInfo,
@@ -688,6 +689,11 @@ export class CloudBackend {
       }
     }
 
+    const failure = classifyMaestroFailure({
+      stderr: result.stderr,
+      stdout: result.stdout,
+      exitCode: result.exit_code,
+    });
     return {
       status,
       exitCode: result.exit_code,
@@ -697,6 +703,7 @@ export class CloudBackend {
       screenshots,
       steps: result.steps ? result.steps.map(normalizeCloudStep) : undefined,
       diagnostics,
+      failure,
     };
   }
 

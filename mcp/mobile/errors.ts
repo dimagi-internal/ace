@@ -64,6 +64,54 @@ export class RecipeValidationError extends MobileError {
   }
 }
 
+/**
+ * Thrown by `MobileClient.runRecipe`'s pre-flight gate when a recipe's
+ * stamped `selector_map_sha` doesn't match the currently-active
+ * selector map. Closes the stale-Drive-artifact class from
+ * `docs/learnings/2026-05-14-phase6-validation-arc.md` (class-level
+ * finding #1): when a code change renames a logical selector, every
+ * previously-generated journey recipe on Drive becomes silently stale.
+ * The pre-flight refuses to run so the operator regenerates instead
+ * of burning AVD wall-clock.
+ */
+export class StaleRecipeError extends MobileError {
+  constructor(recipePath: string, reason: string, diagnostics?: Record<string, unknown>) {
+    super(
+      'RECIPE_STALE',
+      `Recipe ${recipePath} is stale relative to the current selector map: ${reason}`,
+      'Re-run /ace:step app-test-cases to regenerate the journey recipes against the current selector map.',
+      diagnostics,
+    );
+  }
+}
+
+/**
+ * Thrown by `MobileClient.registerTestUser` when the Part A failure
+ * matches the canonical pre-invite gating signature (Continue-tap
+ * succeeded → CommCare app fell out of foreground → registration
+ * never completed). The fix is to ensure the phone has an active
+ * invite to a Connect opportunity before retrying.
+ *
+ * Detection signature lives in `lib/no-invite-detector.ts`. Background:
+ * `playbook/integrations/mobile-integration.md § Pre-invite gating`.
+ * Inside `/ace:run`, Phase 4's `connect-opp-setup` step 8 satisfies
+ * this precondition automatically, so this error mainly surfaces from
+ * one-off `/ace:step` invocations against a fresh test phone.
+ */
+export class NoInviteSuspectedError extends MobileError {
+  constructor(phone: string, stderrExcerpt: string) {
+    super(
+      'NO_INVITE_SUSPECTED',
+      `registerTestUser for ${phone} matched the pre-invite gating failure signature: ` +
+        `Continue-tap succeeded but CommCare fell out of foreground. ` +
+        `Excerpt: ${stderrExcerpt.slice(0, 240)}`,
+      `Invite ${phone} to an active Connect opportunity via ` +
+        `connect_send_flw_invite({ opportunity_id, phone_numbers: ['${phone}'] }), ` +
+        `or run /ace:run end-to-end so Phase 4's connect-opp-setup invites it for you.`,
+    );
+  }
+}
+
 export class AdbError extends MobileError {
   constructor(public readonly subcommand: string, public readonly exitCode: number, stderr: string) {
     super('ADB_ERROR', `adb ${subcommand} failed (exit ${exitCode}): ${stderr.slice(0, 200)}`);

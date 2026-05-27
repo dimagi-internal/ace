@@ -8,6 +8,8 @@ import { defaultShell } from './avd.js';
 import { splitRecipeAtScreenshots } from '../recipe-splitter.js';
 import { logInfo } from '../logging.js';
 import type { RecipeRunResult, ScreenshotEntry } from '../types.js';
+import { readProvenanceSidecar } from '../../../lib/screenshot-provenance.js';
+import { classifyMaestroFailure } from '../../../lib/maestro-failure-class.js';
 
 const ALLOWED_STEP_KEYS = new Set([
   'launchApp',
@@ -80,6 +82,11 @@ export class MaestroBackend {
     const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, recipePath);
     const r = await this.shell('maestro', args, { timeoutMs: 10 * 60 * 1000, cwd: screenshotDir });
     const screenshots = this.collectScreenshots(screenshotDir);
+    const failure = classifyMaestroFailure({
+      stderr: r.stderr,
+      stdout: r.stdout,
+      exitCode: r.exitCode,
+    });
     return {
       status: r.exitCode === 0 ? 'pass' : 'fail',
       exitCode: r.exitCode,
@@ -87,6 +94,7 @@ export class MaestroBackend {
       stderr: r.stderr,
       screenshotsDir: screenshotDir,
       screenshots,
+      failure,
     };
   }
 
@@ -168,6 +176,11 @@ export class MaestroBackend {
       const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, absoluteRecipePath);
       const r = await this.shell('maestro', args, { timeoutMs: 10 * 60 * 1000, cwd: screenshotDir });
       const screenshots = this.collectScreenshots(screenshotDir);
+      const failure = classifyMaestroFailure({
+        stderr: r.stderr,
+        stdout: r.stdout,
+        exitCode: r.exitCode,
+      });
       return {
         status: r.exitCode === 0 ? 'pass' : 'fail',
         exitCode: r.exitCode,
@@ -175,6 +188,7 @@ export class MaestroBackend {
         stderr: r.stderr,
         screenshotsDir: screenshotDir,
         screenshots,
+        failure,
       };
     }
 
@@ -238,13 +252,21 @@ export class MaestroBackend {
     }
 
     const screenshots = this.collectScreenshots(screenshotDir);
+    const aggregatedStderr = stderrParts.join('\n');
+    const aggregatedStdout = stdoutParts.join('\n');
+    const failure = classifyMaestroFailure({
+      stderr: aggregatedStderr,
+      stdout: aggregatedStdout,
+      exitCode: lastExitCode,
+    });
     return {
       status: lastExitCode === 0 ? 'pass' : 'fail',
       exitCode: lastExitCode,
-      stdout: stdoutParts.join('\n'),
-      stderr: stderrParts.join('\n'),
+      stdout: aggregatedStdout,
+      stderr: aggregatedStderr,
       screenshotsDir: screenshotDir,
       screenshots,
+      failure,
     };
   }
 
@@ -708,6 +730,12 @@ export class MaestroBackend {
           entry.uiDumpPath = uiDumpPath;
           entry.uiDumpBytes = uiDumpBytes;
         }
+        // Attach provenance sidecar if MobileClient already wrote one.
+        // collectScreenshots can be called from either tier (MaestroBackend
+        // direct in tests, or after MobileClient.runRecipe has written
+        // sidecars). Either way, an existing sidecar gets surfaced.
+        const prov = readProvenanceSidecar(full);
+        if (prov) entry.provenance = prov;
         return entry;
       });
   }

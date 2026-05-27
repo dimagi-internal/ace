@@ -106,6 +106,26 @@ export interface RecipeRunResult {
   screenshotsDir: string;
   screenshots: ScreenshotEntry[];
   /**
+   * Structured failure classification from `lib/maestro-failure-class.ts`.
+   * Populated on every recipe run (both pass and fail). Consumers can
+   * switch on `failure.failureClass` to act on a finite enum rather
+   * than parsing stderr strings inline. See `FailureClass` for the
+   * 8-class taxonomy.
+   */
+  failure?: {
+    failureClass:
+      | 'pass'
+      | 'driver'
+      | 'app-crash'
+      | 'network'
+      | 'selector-not-found'
+      | 'test-logic'
+      | 'timeout'
+      | 'unknown';
+    stderrExcerpt: string;
+    stageReached?: string;
+  };
+  /**
    * Structured per-step report parsed from Maestro's --debug-output
    * commands JSON. Optional — backends that can't surface it (or
    * Maestro versions that don't emit a commands JSON) leave this
@@ -154,6 +174,21 @@ export interface ScreenshotEntry {
   uiDumpPath?: string;
   /** Byte size of the sibling .xml dump when `uiDumpPath` is set. */
   uiDumpBytes?: number;
+  /**
+   * Per-dispatch provenance read from `<path>.meta.json` sidecar. Set
+   * by `MobileClient.runRecipe` after the backend returns. Consumers
+   * (UX eval, stale-carryover detection) compare `dispatch_id` against
+   * the current dispatch's ID to detect leftover PNGs from prior runs.
+   * Absent on backends/callers that pre-date the sidecar contract.
+   * Shape: `lib/screenshot-provenance.ts § ScreenshotProvenance`.
+   */
+  provenance?: {
+    recipe_id: string;
+    dispatch_id: string;
+    ace_version: string;
+    git_sha?: string;
+    written_at_epoch_ms: number;
+  };
 }
 
 export interface TestUserRegistrationResult {
