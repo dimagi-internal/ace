@@ -264,6 +264,252 @@ describe('MobileClient.runRecipe (cloud-path palette parity)', () => {
   });
 });
 
+describe('MobileClient.runRecipe (recipe freshness pre-flight gate)', () => {
+  // Closes the stale-Drive-artifact class from
+  // `docs/learnings/2026-05-14-phase6-validation-arc.md` class-level
+  // finding #1: a recipe whose stamped `selector_map_sha` doesn't
+  // match the current map gets rejected before AVD wall-clock burns.
+  let savedBackend: string | undefined;
+  let savedApk: string | undefined;
+  let tmpDir: string;
+  beforeEach(() => {
+    savedBackend = process.env.ACE_MOBILE_BACKEND;
+    savedApk = process.env.ACE_CONNECT_APK_VERSION;
+    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    clearSessionBackend();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'freshness-test-'));
+  });
+  afterEach(() => {
+    if (savedBackend === undefined) delete process.env.ACE_MOBILE_BACKEND;
+    else process.env.ACE_MOBILE_BACKEND = savedBackend;
+    if (savedApk === undefined) delete process.env.ACE_CONNECT_APK_VERSION;
+    else process.env.ACE_CONNECT_APK_VERSION = savedApk;
+    clearSessionBackend();
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  });
+
+  it('rejects a recipe whose stamped selector_map_sha does NOT match the current map', async () => {
+    const recipePath = path.join(tmpDir, 'stale.yaml');
+    // Stamp with a deliberately-wrong SHA so the current map won't match.
+    const header = [
+      '# ACE Recipe Provenance — do not edit by hand',
+      '# ace_version: 0.13.300',
+      '# selector_map_sha: STALESHAxxxx',
+      '# selector_map_apk_version: 2.63.0',
+      '# generated_at: 2026-05-25T00:00:00.000Z',
+      '',
+      '',
+    ].join('\n');
+    fs.writeFileSync(
+      recipePath,
+      header + 'appId: org.commcare.dalvik\n---\n- launchApp: x\n',
+      'utf8',
+    );
+
+    const cloudRunRecipe = vi.fn();
+    const cloud = { runRecipe: cloudRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    await expect(client.runRecipe(recipePath, {}, tmpDir)).rejects.toMatchObject({
+      code: 'RECIPE_STALE',
+    });
+    expect(cloudRunRecipe).not.toHaveBeenCalled();
+  });
+
+  it('passes a recipe with no provenance header (legacy / static palette)', async () => {
+    const recipePath = path.join(tmpDir, 'legacy.yaml');
+    fs.writeFileSync(
+      recipePath,
+      'appId: org.commcare.dalvik\n---\n- launchApp: x\n',
+      'utf8',
+    );
+
+    const cloudRunRecipe = vi.fn().mockResolvedValue({
+      status: 'pass', exitCode: 0, stdout: '', stderr: '',
+      screenshotsDir: tmpDir, screenshots: [],
+    });
+    const cloud = { runRecipe: cloudRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    await client.runRecipe(recipePath, {}, tmpDir);
+    expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes a recipe whose stamped SHA matches the current map', async () => {
+    // Compute the actual current SHA so we can write a matching header.
+    const { computeSelectorMapSha } = await import('../../../lib/recipe-provenance.js');
+    const { getActiveSelectorMapMetadata } = await import('../../../mcp/mobile/recipe-resolver.js');
+    process.env.ACE_CONNECT_APK_VERSION = '2.63.0';
+    const map = getActiveSelectorMapMetadata('2.63.0');
+    const recipePath = path.join(tmpDir, 'fresh.yaml');
+    const header = [
+      '# ACE Recipe Provenance — do not edit by hand',
+      '# ace_version: 0.13.444',
+      `# selector_map_sha: ${map.sha}`,
+      `# selector_map_apk_version: ${map.apkVersion}`,
+      '# generated_at: 2026-05-26T19:00:00.000Z',
+      '',
+      '',
+    ].join('\n');
+    fs.writeFileSync(
+      recipePath,
+      header + 'appId: org.commcare.dalvik\n---\n- launchApp: x\n',
+      'utf8',
+    );
+    // Quiet the unused warning on computeSelectorMapSha import:
+    expect(typeof computeSelectorMapSha).toBe('function');
+
+    const cloudRunRecipe = vi.fn().mockResolvedValue({
+      status: 'pass', exitCode: 0, stdout: '', stderr: '',
+      screenshotsDir: tmpDir, screenshots: [],
+    });
+    const cloud = { runRecipe: cloudRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    await client.runRecipe(recipePath, {}, tmpDir);
+    expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('MobileClient.runRecipe (provenance sidecars)', () => {
+  // Closes the silent stale-carryover class: every PNG the backend
+  // emits gets a `<png>.meta.json` sidecar stamped with the current
+  // dispatch's recipe_id + dispatch_id + ace_version + git_sha. UX eval
+  // and stale-detection consumers compare dispatch_id against the
+  // current dispatch's ID to reject leftover PNGs.
+  let savedBackend: string | undefined;
+  let tmpDir: string;
+  beforeEach(() => {
+    savedBackend = process.env.ACE_MOBILE_BACKEND;
+    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    clearSessionBackend();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'prov-test-'));
+  });
+  afterEach(() => {
+    if (savedBackend === undefined) delete process.env.ACE_MOBILE_BACKEND;
+    else process.env.ACE_MOBILE_BACKEND = savedBackend;
+    clearSessionBackend();
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  });
+
+  it('writes a `.meta.json` sidecar next to every PNG the backend emits, with current-dispatch fields', async () => {
+    const recipePath = path.join(tmpDir, 'claim-opp.yaml');
+    fs.writeFileSync(
+      recipePath,
+      'appId: org.commcare.dalvik\n---\n- takeScreenshot: "fake"\n',
+      'utf8',
+    );
+    // Simulate the backend writing a PNG to the screenshotDir, then
+    // returning a ScreenshotEntry pointing at it.
+    const pngPath = path.join(tmpDir, 'fake.png');
+    fs.writeFileSync(pngPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const cloudRunRecipe = vi.fn().mockResolvedValue({
+      status: 'pass',
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+      screenshotsDir: tmpDir,
+      screenshots: [
+        { stepName: 'fake', path: pngPath, takenAt: new Date().toISOString(), bytes: 4 },
+      ],
+    });
+    const cloud = { runRecipe: cloudRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    const result = await client.runRecipe(recipePath, {}, tmpDir);
+
+    // Sidecar exists on disk.
+    const sidecarPath = `${pngPath}.meta.json`;
+    expect(fs.existsSync(sidecarPath)).toBe(true);
+    const sidecar = JSON.parse(fs.readFileSync(sidecarPath, 'utf8'));
+    expect(sidecar.recipe_id).toBe('claim-opp');
+    expect(sidecar.dispatch_id).toMatch(/^\d{13}-[a-z0-9]{6}$/);
+    expect(sidecar.ace_version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(typeof sidecar.written_at_epoch_ms).toBe('number');
+
+    // Returned ScreenshotEntry has provenance attached in-memory too.
+    expect(result.screenshots[0].provenance).toBeDefined();
+    expect(result.screenshots[0].provenance!.recipe_id).toBe('claim-opp');
+    expect(result.screenshots[0].provenance!.dispatch_id).toBe(sidecar.dispatch_id);
+  });
+
+  it('two consecutive runRecipe invocations produce distinct dispatch_ids', async () => {
+    const recipePath = path.join(tmpDir, 'r.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+
+    const make = (pngName: string) => {
+      const p = path.join(tmpDir, pngName);
+      fs.writeFileSync(p, Buffer.from([0x89]));
+      return p;
+    };
+
+    const cloudRunRecipe = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 'pass', exitCode: 0, stdout: '', stderr: '',
+        screenshotsDir: tmpDir,
+        screenshots: [{ stepName: 'a', path: make('a.png'), takenAt: '', bytes: 1 }],
+      })
+      .mockResolvedValueOnce({
+        status: 'pass', exitCode: 0, stdout: '', stderr: '',
+        screenshotsDir: tmpDir,
+        screenshots: [{ stepName: 'b', path: make('b.png'), takenAt: '', bytes: 1 }],
+      });
+    const cloud = { runRecipe: cloudRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    const r1 = await client.runRecipe(recipePath, {}, tmpDir);
+    const r2 = await client.runRecipe(recipePath, {}, tmpDir);
+
+    expect(r1.screenshots[0].provenance!.dispatch_id).not.toBe(
+      r2.screenshots[0].provenance!.dispatch_id,
+    );
+  });
+
+  it('a screenshot left over from a prior dispatch is detectable via dispatch_id mismatch', async () => {
+    // Simulate the actual leak: first run writes PNG + sidecar; second
+    // run never touches that PNG. The sidecar from run 1 carries run
+    // 1's dispatch_id; the current dispatch (run 2) has a different
+    // ID, so the consumer can reject the leftover deterministically.
+    const recipePath = path.join(tmpDir, 'r.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    const staleObj = path.join(tmpDir, 'leftover.png');
+    fs.writeFileSync(staleObj, Buffer.from([0x89]));
+
+    const cloudRunRecipe = vi.fn().mockResolvedValue({
+      status: 'pass', exitCode: 0, stdout: '', stderr: '',
+      screenshotsDir: tmpDir,
+      screenshots: [{ stepName: 'leftover', path: staleObj, takenAt: '', bytes: 1 }],
+    });
+    const cloud = { runRecipe: cloudRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    const run1 = await client.runRecipe(recipePath, {}, tmpDir);
+    const run1Dispatch = run1.screenshots[0].provenance!.dispatch_id;
+
+    // Force MobileClient to do a second run that doesn't reference the
+    // same PNG. The leftover PNG + its sidecar remain on disk untouched.
+    const otherPng = path.join(tmpDir, 'fresh.png');
+    fs.writeFileSync(otherPng, Buffer.from([0x89]));
+    cloudRunRecipe.mockResolvedValueOnce({
+      status: 'pass', exitCode: 0, stdout: '', stderr: '',
+      screenshotsDir: tmpDir,
+      screenshots: [{ stepName: 'fresh', path: otherPng, takenAt: '', bytes: 1 }],
+    });
+    const run2 = await client.runRecipe(recipePath, {}, tmpDir);
+    const run2Dispatch = run2.screenshots[0].provenance!.dispatch_id;
+
+    // Read the leftover sidecar: dispatch_id is run 1's, which differs
+    // from the current run's dispatch_id (run 2's). This is exactly
+    // the signal a consumer needs to identify stale carryover.
+    const leftoverSidecar = JSON.parse(
+      fs.readFileSync(`${staleObj}.meta.json`, 'utf8'),
+    );
+    expect(leftoverSidecar.dispatch_id).toBe(run1Dispatch);
+    expect(leftoverSidecar.dispatch_id).not.toBe(run2Dispatch);
+  });
+});
+
 describe('MobileClient.useCloud (dynamic resolution)', () => {
   let savedEnv: string | undefined;
   beforeEach(() => {

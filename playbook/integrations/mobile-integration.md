@@ -2,21 +2,11 @@
 
 ## Overview
 
-The ACE↔CommCare-Android integration layer is the `ace-mobile` MCP server.
-It drives a local Android emulator (AVD) on the operator's Mac/Linux/Windows
-workstation through a small set of atomic capabilities, backed by Maestro,
-adb, and Playwright.
+The `ace-mobile` MCP server drives a CommCare Android emulator — either a local AVD on the operator's workstation, or a cloud emulator via ace-web — through a small set of atomic capabilities backed by Maestro + adb + Playwright.
 
-This is dev-machine-only — no cloud device farms, no shared CI emulators.
-The only consumer in production is Phase 6 `qa-and-training`, which uses the
-mobile MCP to capture screenshots of a deployed CommCare app for inclusion
-in training material.
+The only production consumer is Phase 6 `qa-and-training`, which captures screenshots of a deployed CommCare app for walkthroughs and training material. Phase 3's `app-test-cases` generates per-journey Maestro recipes that Phase 6 then runs.
 
 See the design spec: `docs/superpowers/specs/2026-04-28-ace-mobile-emulation-design.md`.
-
-This doc is the operational reference: what atoms exist, which skill uses
-each, what's verified vs. what's still scaffolded, and the gotchas worth
-remembering.
 
 ## Running the MCP server
 
@@ -24,362 +14,121 @@ remembering.
 npm run mcp:mobile
 ```
 
-The server auto-registers via `.claude-plugin/plugin.json` `mcpServers` when
-the plugin is installed. Required environment: see `.env.tpl` for
-`ACE_E2E_*` variables (test phone, PIN, name) and `ACE_AVD_NAME`.
+Auto-registers via `.claude-plugin/plugin.json` `mcpServers` when the plugin is installed. Required environment: `.env.tpl` `ACE_E2E_*` variables (test phone, PIN, name), `ACE_AVD_NAME`, and `ACE_CONNECT_APK_VERSION` (default 2.63.0).
 
 ## Capability map
 
-`ace-mobile` ships **11 atoms**, plus a programmatic-only generator atom
-that's invoked from skill code rather than via MCP (it requires a Drive
-adapter + LLM function as inputs).
+16 atoms registered. **`docs/atom-schemas.md` is the canonical Zod-schema catalog** — grep there for current atom signatures rather than paraphrasing here. The atom names + roles:
 
-### AVD lifecycle (7 atoms)
+**AVD lifecycle:** `mobile_ensure_avd_running`, `mobile_stop_avd`, `mobile_list_avds`, `mobile_install_apk`, `mobile_uninstall_apk`.
 
-| Atom | Backend | Description |
-|---|---|---|
-| `mobile_ensure_avd_running` | adb/emulator | Boot the AVD if cold; idempotent. Auto-patches `hw.camera.front=emulated` before boot. |
-| `mobile_stop_avd` | adb | `adb emu kill` |
-| `mobile_list_avds` | emulator | `emulator -list-avds` |
-| `mobile_install_apk` | adb | `adb install -r <path>` |
-| `mobile_uninstall_apk` | adb | `adb uninstall <pkg>` |
-| `mobile_save_snapshot` | adb | `adb emu avd snapshot save <name>` — register-once, reuse-many |
-| `mobile_load_snapshot` | adb | `adb emu avd snapshot load <name>` |
+**Recipe execution:** `mobile_run_recipe` (auto-resolves `${SELECTOR:...}` + auto-injects `${ACE_E2E_*}` env vars), `mobile_validate_recipe`, `mobile_resolve_selectors`, `mobile_capture_ui_dump`.
 
-### Recipe execution (2 atoms)
+**Composite:** `mobile_register_test_user` (two-recipe PersonalID registration against the `+7426` demo-bypass phone range).
 
-| Atom | Backend | Description |
-|---|---|---|
-| `mobile_run_recipe` | maestro | `maestro test <recipe.yaml>` with env vars + screenshot dir |
-| `mobile_capture_ui_dump` | adb | `adb shell uiautomator dump` + element parse — primary tool for selector discovery |
+**Diagnostic / debug:** `mobile_probe_maestro_driver`, `mobile_diagnose`, `mobile_restart_runner`, `mobile_patch_launch_script`.
 
-### Composite (1 atom)
-
-| Atom | Backend | Description |
-|---|---|---|
-| `mobile_register_test_user` | maestro + Playwright | Two-recipe flow that drives PersonalID registration end-to-end against the `+7426` demo-bypass phone range |
-
-### Programmatic-only (1, not registered as an MCP tool)
-
-| Capability | Backend | Description |
-|---|---|---|
-| `generate_recipes_from_app_summary` | LLM + Maestro | Synthesize per-module Maestro YAML from a Nova-generated app summary in Drive. Used by `app-screenshot-capture`. |
+**Ad-hoc snapshot (debugging only):** `mobile_save_snapshot`, `mobile_load_snapshot` — NOT on the Phase 6 heal path; useful for operator-driven state captures during interactive debugging.
 
 ## Static recipes
 
-The `mcp/mobile/recipes/static/` directory holds the recipes whose selectors
-have been live-verified against CommCare 2.62.0 on `ACE_Pixel_API_34_PS`.
+`mcp/mobile/recipes/static/` holds the recipes that compose into every per-opp generated recipe. Live-verified against the active CommCare APK (2.62.0 / 2.63.0). The directory listing is the source of truth — `ls mcp/mobile/recipes/static/` for the current set. As of this writing: `connect-login`, `connect-claim-opp`, `connect-register-to-otp`, `connect-register-from-otp`, `learn-launch`, `learn-tap-module`, `form-advance`, `form-submit`, `deliver-launch`.
 
-| Recipe | Status | Variables |
-|---|---|---|
-| `connect-register-to-otp.yaml` | **verified** (0.10.17) | `${COUNTRY_CODE}`, `${PHONE_LOCAL}` |
-| `connect-register-from-otp.yaml` | **verified** (0.10.17) | `${NAME}`, `${BACKUP_CODE}`, `${PIN}` |
-| `connect-claim-opp.yaml` | **verified** (0.10.38) — driven end-to-end against `+74260000100` invited via `connect_send_flw_invite` once the opp is active (the previous "create → finalize" two-step collapsed into a single `connect_create_opportunity` since 0.10.47) | `${OPP_NAME}`, `${PIN}` |
-| `connect-login.yaml` | scaffold (REPLACE_*) | — |
+Naming note: `to-otp` / `from-otp` filenames are historical. Today's flow uses the `+7426` demo-bypass prefix; the snackbar `"I see you're a demo user, so we'll skip the OTP"` replaces the OTP screen. See `docs/learnings/2026-05-14-demo-user-no-otp.md`.
 
-Naming note: the `to-otp` / `from-otp` filenames are historical. Today's
-flow uses the `+7426` demo-bypass prefix and skips OTP entry entirely;
-the snackbar `"I see you're a demo user, so we'll skip the OTP"` replaces
-the OTP screen. The filenames are kept for backward compatibility with
-existing skills and `mobile_register_test_user`.
+Selector substitution: every static recipe uses `${SELECTOR:logical-name}` placeholders resolved against `mcp/mobile/selectors/connect-<apk-version>.yaml` at `mobile_run_recipe` time. Add a new APK version by copying that file.
 
-## How `register_test_user` works
+Structural preventers run before AVD wall-clock burns:
+- `mobile_validate_recipe` → `lintRecipeText` catches `inputtext-scalar-with-sibling-option`.
+- `mcp/mobile/recipe-sanity-probe.ts` catches `form-advance-without-answer-tap` and `brief-label-drift`.
+- `test/mcp/mobile/static-palette-health.test.ts` asserts every static recipe parses, declares `appId:`, passes lint, and resolves every selector ref against the active map.
 
-```
-ensure AVD running
-  ↓
-maestro test connect-register-to-otp.yaml
-  (launch CommCare → nav drawer → Sign In/Register
-   → country code → phone → consent → Continue)
-  ↓
-maestro test connect-register-from-otp.yaml
-  (snackbar OK → App Lock → Configure PIN
-   → system PIN setup → lock-screen interstitial
-   → AGREE & CONTINUE → unlock prompt → name
-   → backup code → photo capture)
-```
+See `docs/learnings/2026-05-25-recipe-static-preventer-suite.md` for the shift-left principle behind these checks.
 
-Idempotent: if the phone is already registered, the recipe surfaces a
-sentinel string `PHONE_ALREADY_REGISTERED` which the client converts into
-`{ alreadyRegistered: true }` instead of a failure. Re-running with a
-registered user is a 5-second no-op.
+## Device-state heal: always cold-boot per dispatch
 
-## Device-state heal: tier-1 + tier-2 contract
+`mobile_ensure_avd_running` is the single funnel for landing the AVD on a Phase-6-ready state. Callers make ONE call and trust the return. Read-only probes (`mobile_probe_maestro_driver`) cannot heal — halting on them defeats the auto-heal.
 
-`mobile_ensure_avd_running` is the single funnel for landing the AVD on
-a Phase-6-ready state. Callers (the `qa-and-training` agent's pre-flight,
-`/ace:step` skills, anywhere else that needs a working device) make ONE
-call and trust the return. Read-only probes like
-`mobile_probe_maestro_driver` cannot heal — halting on them defeats the
-auto-heal (PR #274 rewrote the Phase 6 pre-flight to remove this exact
-anti-pattern, where the agent halted on `mobile_probe_maestro_driver`
-returning `healthy: false` before ever calling
-`mobile_ensure_avd_running` and giving it the chance to heal the wedge).
+**The contract is "always restore the precondition, never adapt to whatever state is in front of us"** (per `CLAUDE.md § Phase preconditions are restored, not adapted`).
 
-Two tiers, in order. Tier-1 is fast (~3s); tier-2 is slow (~3–5 min on
-fresh-machine first dispatch). Source: `restoreDeviceUserState` +
-`tryTier1SnapshotLoad` in `mcp/mobile/client.ts`.
+Local AVD: kill emulator → cold-boot AVD with `-wipe-data -no-snapshot-load -no-snapshot-save` → install APK from host-side SHA256-validated cache → register demo-prefix test user via the two registration recipes → apply environment baseline (front camera, CAMERA permission, GMS toggle around the registration boundary) → reinstall Maestro driver → verify. Steady-state cost ~60–90s per dispatch. See `mcp/mobile/client.ts:restoreDeviceUserState` and `mcp/mobile/backends/avd.ts:ensureAvdRunning`.
 
-### Tier 1 — snapshot-load
+Cloud: `/api/mobile/ensure-running` cold-boots from AMI on every call. Same contract, different mechanism — the AMI's baked registration scripts produce a fresh demo user on every cold-boot.
 
-Unconditionally `loadSnapshot('registered-test-user')`. No pre-probe.
-Then re-probe the device and run `classifyDeviceUserState` on the
-result. Pass classes: `ready` and `unknown` (`unknown` is treated as
-ready to avoid false rejections when the classifier can't read the UI
-dump and let downstream recipes surface real failures).
+**Why no snapshot fast-path:** the snapshot-load path silently aged (device wall-clock froze at capture; Connect token's expiration was real-time; 401s ensued). Cold-boot is deterministic. See `docs/learnings/2026-05-14-demo-user-no-otp.md` for the cost analysis (~20s fresh registration, not the often-quoted 3–5 min).
 
-### Tier 2 — local-bootstrap (auto, gated on env)
+**Demo user OTP bypass:** test phone numbers prefixed `+7426` skip SMS OTP entirely; Connect's backend recognizes the prefix and emits a snackbar `"I see you're a demo user, so we'll skip the OTP"`. The recipe pair is named `to-otp` / `from-otp` for historical reasons; today these are pre-snackbar and post-snackbar.
 
-Fires when tier-1's outcome is **anything other than `ready`** — covers
-BOTH "loadSnapshot itself failed" (snapshot missing, console error) AND
-"loadSnapshot returned `saved=true` but post-load verify classified as
-wiped." The latter is the common case post-0.13.204: snapshot bytes
-load fine but the server-side PersonalID linkage baked into them has
-drifted (token expiry, server-side cleanup since the snapshot was
-taken).
+## Classifier states
 
-Tier-2 runs the bootstrap-equivalent steps inline:
-
-1. install APK if missing (no-op if already at `ACE_CONNECT_APK_VERSION`)
-2. `mobile_register_test_user` — drives PersonalID registration via the
-   `+7426` demo-bypass path; idempotent if already registered
-3. `mobile_save_snapshot` overwrites the stale snapshot so the next
-   tier-1 hits the freshly-saved state in ~3s
-
-Gated on `LocalBootstrapConfig` populated from `ACE_E2E_*` +
-`ACE_CONNECT_APK_VERSION` env. Absent these, tier-2 cannot fire and the
-atom throws `DeviceUserStateError` with `bootstrapConfig:absent` so the
-operator knows to run `/ace:setup --force-env`.
-
-CONNECT-ID-3F precondition is satisfied within `/ace:run` because Phase
-4's `connect-opp-setup` invites `${ACE_E2E_PHONE}` to the opp before
-Phase 6 dispatches — `check_number_for_existing_invites` always passes
-inside a clean `/ace:run`. The pre-invite gating gotcha below covers
-the equivalent step for one-off `/ace:step` invocations.
-
-### Classifier states + recovery matrix
+`classifyDeviceUserState` runs after heal to verify the precondition was reached. It's a verification step only — recovery is always cold-boot, never "adapt based on what state we found."
 
 | `DeviceUserStateClass` | Recovery | When you'll see it |
 |---|---|---|
-| `ready` | none | Connect nav-drawer items present (`Work History` / `Opportunities` / `Messaging` / `CommCare Apps`) OR opp/visit activity foregrounded (`OpportunitiesActivity` / `VendorVisitActivity` / `DispatchActivity` / `HomeActivity`) |
-| `commcare-not-installed` | tier-2 (installs APK) | `org.commcare.dalvik` absent from `pm list packages` |
-| `needs-personal-id` | tier-2 (re-registers + re-snapshots) | "Logged out of PersonalID" banner, OR no positive Connect-nav signal + first-start markers (`CommCareSetupActivity`, `Welcome to CommCare`, `Enter Code`, `Scan Application Barcode`) |
-| `unknown` | treated as ready | classifier couldn't read the dump — accept rather than reject; downstream recipes surface real failures with better diagnostics |
+| `ready` | none | Connect nav-drawer items present OR opp/visit activity foregrounded |
+| `commcare-not-installed` | cold-boot funnel (installs APK) | `org.commcare.dalvik` absent from `pm list packages` |
+| `needs-personal-id` | cold-boot funnel (re-registers) | "Logged out of PersonalID" banner, OR no positive Connect-nav signal + first-start markers |
+| `unknown` | treated as ready | classifier couldn't read the dump — accept rather than reject |
 
-Order matters in `classifyDeviceUserState`: the PersonalID-wipe banner
-is checked **before** Connect-nav-positive signals (stacked-state
-precedence — a freshly logged-out user may still have nav-drawer items
-cached on screen, and the wipe banner is the authoritative signal).
-First-match wins.
+Order matters: the PersonalID-wipe banner is checked **before** Connect-nav-positive signals (stacked-state precedence — a freshly logged-out user may still have nav-drawer items cached on screen). First-match wins.
 
-### What changed across recent releases
-
-| Version | Change |
-|---|---|
-| 0.13.165 | First `mobile_ensure_avd_running` auto-heal (force-stop → uninstall → reinstall → re-register sequence on the Maestro-driver-wedge path) |
-| 0.13.198 | `restoreDeviceUserState` replaced probe-first heal with unconditional snapshot-restore (PR #272). Deterministic starting state every Phase 6 run. |
-| 0.13.203 | Tier-2 auto-bootstrap when snapshot is missing (PR #273). Fresh-machine first-dispatch self-heals. |
-| 0.13.204 | Tier-2 also fires on `verify-wiped` (PR #274) — covers stale-snapshot drift. Same release: `qa-and-training` pre-flight rewritten to a single funnel through `mobile_ensure_avd_running` (no read-only probe halts). |
-| 0.13.205 | Classifier accepts the post-register pre-claim state (CommCare app slot still on `CommCareSetupActivity` while Connect nav drawer is healthy) as `ready` (PR #275). Collapses the prior `needs-app-config` class — same recovery as `needs-personal-id`, no benefit to splitting. |
-| 0.13.207 | Robustness pass across local + cloud (PR pending): (a) `ensureAvdRunning` heal shape now symmetric across local + cloud — cloud populates a stub `{classified_as: 'unknown', attempted: false}` so callers reading `result.heal.deviceUserState` work on both backends; (b) `bootstrapConfig:absent` error now names the specific missing env var(s) instead of an opaque blanket message; (c) wipe-banner classifier regex scoped to `text="..."` / `content-desc="..."` attribute values — deeply-nested tooltips can no longer false-positive on "Reconfigure"; (d) APK cache integrity-checked via SHA256 sidecar + ZIP magic bytes — truncated downloads no longer poison the cache; (e) `registerTestUser` tempdir cleaned on success, kept on failure for post-mortem (path logged); (f) `SNAPSHOT_SAVE_FAILED` message now distinguishes "registered but not persisted" from "registration failed"; (g) `CloudBackend.request` and `.downloadTo` retry on transient 502/503/504 + network errors with exponential backoff (2 retries, 250ms/500ms); 4xx + envelope errors + AbortError are NOT retried (deterministic). |
-
-## Gotchas (the durable-knowledge section)
+## Gotchas (durable knowledge)
 
 ### Pre-invite gating (CRITICAL)
 
-Connect-id's `/users/start_configuration` endpoint runs an `@app_integrity`
-decorator that synchronously calls `check_number_for_existing_invites(phone)`
-over HTTP. For phone numbers with no existing invite, this lookup hangs
-past the gunicorn worker timeout, the worker dies with `SystemExit`, and
-CommCare receives an empty body and force-stops. Filed as **CI-643**
-(server) and **CI-644** (client NPE).
+Connect-id's `/users/start_configuration` endpoint runs an `@app_integrity` decorator that synchronously calls `check_number_for_existing_invites(phone)` over HTTP. For phone numbers with no existing invite, this lookup hangs past the gunicorn worker timeout, the worker dies with `SystemExit`, and CommCare receives an empty body and force-stops.
 
-The mitigation: every `${ACE_E2E_PHONE}` must be pre-invited to a Connect
-opportunity before its first `start_configuration` call. The `connect-opp-setup`
-skill auto-invites in step 8 for every new ACE opp; for the very first
-bootstrap registration on a fresh test phone, do it manually via
-connect.dimagi.com or via the `connect_send_llo_invite` atom.
+Mitigation: every `${ACE_E2E_PHONE}` must be pre-invited to a Connect opportunity before its first `start_configuration` call. The `connect-opp-setup` skill auto-invites in step 8 for every new ACE opp, so a clean `/ace:run` satisfies this precondition automatically before Phase 6 dispatches. For one-off `/ace:step` invocations on a fresh test phone, do it manually via connect.dimagi.com or via the `connect_send_llo_invite` atom.
 
 ### Front camera
 
-CommCare's photo-capture step uses CameraX with `LENS_FACING_FRONT`. The
-default Pixel 7 AVD template ships `hw.camera.front=none`, which silently
-fails CameraX validation: logcat shows
-`CameraValidator: Camera LENS_FACING_FRONT verification failed`, and
-`take_photo_button` does nothing.
+CommCare's photo-capture step uses CameraX with `LENS_FACING_FRONT`. Default Pixel AVD templates ship `hw.camera.front=none`, which silently fails CameraX validation. `mobile_ensure_avd_running` auto-patches `~/.android/avd/<NAME>.avd/config.ini` to `hw.camera.front=emulated` before booting.
 
-`mobile_ensure_avd_running` auto-patches `~/.android/avd/<NAME>.avd/config.ini`
-to `hw.camera.front=emulated` before booting. If the AVD was already
-running with the bad config, stop it (`mobile_stop_avd`) and re-run
-`mobile_ensure_avd_running` to apply the fix and cold-boot.
+### Face-capture gate — runtime GMS toggle
 
-### Face-capture gate (2.62.0+) — solved by disabling GMS at runtime
+CommCare 2.62.0+ added an in-app face-capture screen between Backup Code and registration completion. Behavior branches on runtime GMS availability:
 
-CommCare 2.62.0 added an in-app face-capture screen
-(`org.commcare.fragments.MicroImageActivity`, title "Capture Photo")
-between the Backup Code step and registration completion. The screen
-shows a live viewfinder with a `face_overlay`. Behavior depends on
-whether Google Play Services is available **at runtime**:
+- **GMS available:** ML Kit auto-triggers the shutter when a face stabilizes. The AVD's emulated front camera shows a gray test pattern, never a real face, so the auto-shutter never fires and registration hangs.
+- **GMS unavailable:** falls back to `ManualMode` with a tappable `camera_shutter_button`. The server accepts any non-empty base64 payload without face validation.
 
-```java
-// MicroImageActivity.onCreate, commcare-android master
-isGooglePlayServicesAvailable = AndroidUtil.isGooglePlayServicesAvailable(this);
-if (isGooglePlayServicesAvailable) {
-    faceCaptureView.setImageStabilizedListener(this);  // ML Kit auto-shutter
-} else {
-    faceCaptureView.setCaptureMode(FaceCaptureView.CaptureMode.ManualMode);
-    cameraShutterButton.setVisibility(View.VISIBLE);   // manual shutter
-}
-```
+The lever is **runtime GMS toggle**, not AVD image selection (both `google_apis` and `google_apis_playstore` images ship with functional GMS on macOS Apple Silicon). The recipe pair `registerTestUser` toggles GMS around itself:
 
-* **GMS available:** ML Kit face detection auto-triggers the shutter
-  when a face stabilizes in the viewfinder. The AVD's emulated front
-  camera shows a gray test pattern, never a real face, so the
-  auto-shutter never fires and registration hangs.
-* **GMS unavailable:** falls back to `ManualMode` and shows
-  `camera_shutter_button`. Maestro can tap it. The captured "photo"
-  is whatever the camera currently shows — gray test pattern is fine.
-  The server (`POST /users/complete_profile`) accepts any non-empty
-  base64 string (`if not (name and recovery_pin and photo): 400`) and
-  uploads the bytes to S3 without content validation.
+- Before part A: `setGmsEnabled(true)` — CommCare 2.62.0's launch check needs GMS present or it shows a blocking "Enable Google Play services" dialog.
+- Between part A and part B: `setGmsEnabled(false)` — face-capture in part B picks ManualMode.
 
-**Surprising finding:** *both* `google_apis` and `google_apis_playstore`
-system images on macOS Apple Silicon ship with a functional
-`com.google.android.gms` package, and both return `SUCCESS` from
-`GoogleApiAvailability.isGooglePlayServicesAvailable`. Picking a
-"non-Play-Store" AVD is not sufficient. The actual lever is **runtime
-disable**:
+Doing this at boot — or leaving GMS persistently disabled — broke CommCare 2.62.0 launch in any flow outside `registerTestUser`. If you're writing a new recipe that needs ManualMode face-capture, follow the same enable-launch / disable-pre-capture pattern.
 
 ```sh
 adb shell pm disable-user --user 0 com.google.android.gms
 adb shell pm grant org.commcare.dalvik android.permission.CAMERA
 ```
 
-The CAMERA grant runs as part of `AvdBackend.runPostBootPrep`. The
-GMS disable used to live there too, but **0.10.68 moved it** to the
-recipe-pair boundary inside `MobileClient.registerTestUser`:
+The CAMERA grant runs as part of `AvdBackend.runPostBootPrep`. The GMS toggle lives at the recipe-pair boundary in `MobileClient.registerTestUser`.
 
-* Before part A: `setGmsEnabled(true)` so CommCare 2.62.0's launch
-  check passes (a disabled GMS at app start triggers a blocking
-  "Enable Google Play services" dialog with no dismiss option).
-* Between part A and part B: `setGmsEnabled(false)` so face-capture
-  in part B picks ManualMode. CommCare doesn't re-check GMS
-  mid-session, so the late disable doesn't relaunch the dialog.
+### Multi-user dadb landmine
 
-Doing this at boot — or leaving GMS persistently disabled — broke
-CommCare 2.62.0 launch in any flow outside `registerTestUser` (e.g.,
-`connect-baseline-screenshots`). If you're writing a new recipe that
-needs ManualMode face-capture, follow the same enable-launch /
-disable-pre-capture pattern.
+dadb-1.2.10 (bundled with Maestro 2.3.0+) does NOT wrap per-device `createDadb()` calls in a try/catch. The first device that the local adb-server flags as "unauthorized" throws an `IOException` that aborts the whole device enumeration. On a shared Mac where user A's emulator is up and user B's adbkey isn't authorized on it, user B's `maestro test` reports zero connected devices.
 
-### Multi-user dadb landmine (0.10.65 workaround)
+Workaround: ACE invokes `maestro --host=localhost --port=<adbd>` for every recipe run. With both flags set Maestro takes the direct-TCP `Dadb.create(host, port)` path, never touching `Dadb.list`. Plumbed in `MaestroBackend.runRecipe` + `MobileClient.runRecipe` / `registerTestUser` (serial resolved via `findRunningAvd`, `adbPort = consolePort + 1` via `AvdBackend.adbPortFromSerial`).
 
-dadb-1.2.10 (bundled with Maestro 2.3.0–2.5.1) does NOT wrap the
-per-device `createDadb()` call inside `AdbServer.listDadbs` in a
-try/catch. The first device returned by `adb devices` that the local
-adb-server flags as "unauthorized" throws an `IOException` that
-aborts the whole device enumeration. Result: on a shared Mac where
-user A's emulator is up and user B's adbkey isn't authorized on it,
-user B's `maestro test` reports zero connected devices — even when
-`adb -s emulator-NNNN shell` works fine for user B (the adb server's
-session-cached transport still works, but dadb does its own AUTH on
-a fresh direct connection and fails on user A's emulator first).
-
-Workaround: ACE invokes `maestro --host=localhost --port=<adbd>` for
-every recipe run since 0.10.65. With both flags set Maestro takes
-the `Dadb.create(host, port)` direct-TCP path, never touching
-`Dadb.list` / the local adb server. Plumbing lives in
-`MaestroBackend.runRecipe` (accepts `opts.adbPort`) and
-`MobileClient.runRecipe` / `MobileClient.registerTestUser`
-(resolve the running AVD's serial via `findRunningAvd`, derive
-`adbPort = consolePort + 1` via `AvdBackend.adbPortFromSerial`).
-The `--host`/`--port` flags are picocli-defined on `App.class` but
-omitted from `--help` — effectively undocumented, but stable across
-2.3.0 → 2.5.1.
-
-`bin/ace-doctor` flags any `unauthorized` `emulator-NNNN` entries in
-your `adb devices` output as a WARN with a fix hint. The
-0.10.65 patch keeps ACE recipes working under that condition; the
-WARN exists because plain `adb shell` calls without `-s` may still
-pick the wrong device.
-
-**Why the photo content doesn't matter:**
-
-```python
-# connect-id users/views.py
-photo = request.data.get("photo")
-if not (name and recovery_pin and photo):
-    return JsonResponse({"error": ErrorCodes.MISSING_DATA}, status=400)
-# ...
-upload_photo_to_s3(photo, user.username)
-```
-
-The server requires the field to be present and non-empty, then uploads
-to S3 without face validation. Face detection lives entirely in the
-client as the auto-shutter trigger.
-
-**Implication for ACE Phase 6 `qa-and-training`:** screenshot capture of a
-*deployed CommCare app* (the Phase 6 use case) does NOT need a fully
-registered PersonalID — `app-screenshot-capture` opens the deployed app
-directly, not via the registration flow. The face-capture gate only
-matters for the one-time fresh-AVD bootstrap.
-
-### Google Play Services phone-number hint
-
-GMS-equipped AVDs surface a "Choose a phone number" bottom sheet on focus
-of the `connect_primary_phone_input` `AutoCompleteTextView`. The sheet IS
-visible to Maestro's view tree once shown, so the recipes dismiss it via
-`runFlow.when` against `com.google.android.gms:id/cancel`. On non-GMS AVDs
-the conditional is a no-op.
+`bin/ace-doctor` flags any `unauthorized` `emulator-NNNN` entries in `adb devices` output as a WARN with a fix hint.
 
 ### Stuck-FallbackHome recovery
 
-Some `google_apis*` AVD cold boots wedge with
-`mFocusedApp=com.android.settings/.FallbackHome` and the real launcher
-(NexusLauncher) never resolves as the default `HOME` activity. Symptoms:
-`mCurrentFocus=NotificationShade`, `/sdcard` access denied to the shell
-uid even though the device says `sys.boot_completed=1`, all Maestro
-`launchApp` calls timing out.
+Some `google_apis*` AVD cold-boots wedge with `mFocusedApp=com.android.settings/.FallbackHome` and the real launcher (NexusLauncher) never resolves as the default `HOME` activity. Once FallbackHome is registered as the home activity, only a wipe resets the package manager's HOME resolution.
 
-`runPostBootPrep` tries best-effort recoveries (status-bar collapse,
-keyguard dismiss, KEYCODE_HOME) but they don't always work — once
-FallbackHome is the registered home activity, only a wipe will reset
-the package manager's HOME resolution.
-
-**Recovery: cold-boot with `-wipe-data`.**
+The cold-boot funnel's `-wipe-data` flag means this class is now structurally rare. If you somehow get a stuck FallbackHome state (e.g. an operator-loaded snapshot from before the cold-boot model), recover with:
 
 ```sh
 adb emu kill
-emulator -avd ACE_Pixel_API_34_PS \
-  -no-window -no-snapshot-load -no-snapshot-save -wipe-data
+emulator -avd ACE_Pixel_API_34_PS -no-window -no-snapshot-load -no-snapshot-save -wipe-data
 ```
-
-This flushes user data (so CommCare needs to be reinstalled and the
-test user re-registered after) but reliably brings up NexusLauncher
-as the default home. Verified live on `ACE_Pixel_API_34_PS` after a
-3-reboot stuck-FallbackHome cycle on 2026-04-29.
-
-For a freshly-wiped AVD, the bootstrap sequence is:
-`mobile_ensure_avd_running` → `mobile_install_apk` (CommCare) →
-`mobile_register_test_user` → `mobile_save_snapshot`. Future sessions
-can `mobile_load_snapshot` to skip the first three.
 
 ### Unlock PersonalID gate
 
-After registration, navigating to any Connect-protected screen
-(e.g. tapping the "Opportunities" nav-drawer item) triggers an
-Android `BiometricPrompt` with device-credential fallback. The
-prompt belongs to the `com.android.systemui` package, not
-`org.commcare.dalvik`, so a Maestro `tapOn` against the CommCare
-nav row briefly drops out of the app and the next `assertVisible`
-on a CommCare element will fail unless the recipe answers the
-prompt first.
+After registration, navigating to any Connect-protected screen triggers an Android `BiometricPrompt` with device-credential fallback. The prompt belongs to `com.android.systemui`, not `org.commcare.dalvik`, so a Maestro `tapOn` against the CommCare nav row briefly drops out of the app and the next `assertVisible` on a CommCare element fails unless the recipe answers the prompt first.
 
-The credential is the registration PIN (`111111` for the ACE test
-user). Selector for the password field is
-`com.android.systemui:id/lockPassword`. The robust pattern in
-`connect-claim-opp.yaml` is a `runFlow.when` that fires only when
-the prompt is present:
+The credential is the registration PIN (`111111` for the ACE test user). Selector for the password field is `com.android.systemui:id/lockPassword`. Robust pattern (from `connect-claim-opp.yaml`):
 
 ```yaml
 - runFlow:
@@ -393,101 +142,59 @@ the prompt is present:
       - pressKey: Enter
 ```
 
-This makes the recipe portable across PersonalID configurations
-that expect biometric (skipping the prompt entirely on AVDs without
-a fingerprint sensor) and configurations that fall back to PIN.
+Portable across PersonalID configurations that expect biometric (skipping the prompt entirely on AVDs without a fingerprint sensor) and configurations that fall back to PIN.
 
-### `aapt` is required by `mobile_install_apk`
+### `aapt` required by `mobile_install_apk`
 
-`AvdBackend.installApk` parses APK metadata via `aapt dump badging`
-to recover the package id and version. `aapt` ships with
-`build-tools/<version>/`, which is **not** installed by default on
-homebrew's `android-commandlinetools`.
+`AvdBackend.installApk` parses APK metadata via `aapt dump badging` to recover the package id and version. `aapt` ships with Android `build-tools/<version>/`, which is **not** installed by default on homebrew's `android-commandlinetools`.
 
 Quick fix on macOS:
 ```
 yes | sdkmanager "build-tools;34.0.0"
-ln -sf /opt/homebrew/share/android-commandlinetools/build-tools/34.0.0/aapt \
-  /opt/homebrew/bin/aapt
+ln -sf /opt/homebrew/share/android-commandlinetools/build-tools/34.0.0/aapt /opt/homebrew/bin/aapt
 ```
 
-If you hit `spawn aapt ENOENT` from any mobile MCP atom that
-parses APK metadata, this is the gap. Long-term fix: have the
-backend search `$ANDROID_HOME/build-tools/*/aapt` rather than
-relying on PATH. Tracked separately.
+If you hit `spawn aapt ENOENT` from any mobile MCP atom, this is the gap. Long-term fix: have the backend search `$ANDROID_HOME/build-tools/*/aapt` rather than relying on PATH.
 
-### Selector discovery loop
+### Google Play Services phone-number hint
 
-When extending recipes, the discovery loop is:
-
-1. Drive the AVD into the state of interest. **Snapshot it** with
-   `mobile_save_snapshot` once you reach a stable, costly-to-rebuild state
-   (e.g. registered test user). Subsequent iterations load the snapshot
-   in ~3s instead of replaying the whole prefix recipe.
-2. `mobile_capture_ui_dump` returns parsed elements + xml in one call —
-   prefer this over `adb shell uiautomator dump` + `adb pull` + `grep`.
-3. **Use `maestro studio` for new selector capture.** It's an interactive
-   selector picker against the live AVD: tap an element in your browser,
-   it shows you the resource-id and a copy-pasteable Maestro snippet. Far
-   faster than dump-and-grep, and it shows you the *correct* selector
-   (resource-id vs text vs id-and-bounds) for each element. Run
-   `maestro studio` after `mobile_ensure_avd_running`.
-4. Add the next 5-10 steps to the recipe in one batch (not one-at-a-time),
-   re-run, dump again at the next checkpoint.
-
-**Anti-pattern:** screencap + Read PNG + dump + grep after every single tap.
-The PNG read is expensive in tokens and rarely necessary — almost every
-CommCare/PersonalID selector is resource-id-driven, and uiautomator XML
-has all the info. Reserve screenshots for genuinely visual states (camera
-UI, where AOSP elements lack resource-ids).
-
-### Performance & efficiency
-
-A full registration replay is ~4 minutes (Part A ~90s, Part B ~120s, plus
-CommCare cold-launch and animation waits). Selector discovery against
-fresh registration each iteration is the single biggest time sink.
-
-**Snapshot-driven discovery:**
-1. Run `mobile_register_test_user` once on a clean AVD.
-2. `mobile_save_snapshot` with name `registered-test-user`.
-3. For each new recipe (claim-opp, deliver-app navigation, etc.):
-   `mobile_load_snapshot` → drive forward from registered state → discover
-   selectors → repeat without re-registering.
-
-**Maestro flow time** is dominated by `waitForAnimationToEnd` and
-`extendedWaitUntil` timeouts. Don't tighten timeouts to "speed things up"
-— they exist because CommCare's transitions are genuinely flaky. Speed
-comes from running fewer end-to-end replays, not from making each replay
-faster.
+GMS-equipped AVDs surface a "Choose a phone number" bottom sheet on focus of the `connect_primary_phone_input` `AutoCompleteTextView`. The sheet IS visible to Maestro's view tree once shown, so the recipes dismiss it via `runFlow.when` against `com.google.android.gms:id/cancel`. On non-GMS AVDs the conditional is a no-op.
 
 ### Maestro requires Java 17
 
-Maestro's CLI is a JVM app. `mobile_ensure_avd_running` resolves a
-`JAVA_HOME` automatically:
+Maestro's CLI is a JVM app. `mobile_ensure_avd_running` resolves `JAVA_HOME` automatically:
 
 - macOS: `/usr/libexec/java_home -v 17`, falling back to homebrew prefixes
 - Linux: `/usr/lib/jvm/java-17-openjdk-*` or `temurin-17-jdk`
 - Windows: globs `%ProgramFiles%\Eclipse Adoptium\jdk-17.*`
 
-If the AVD/Maestro can't find a JDK, the operator override is to
-`export JAVA_HOME=/path/to/jdk17` before launching Claude Code.
+If the resolver fails, `export JAVA_HOME=/path/to/jdk17` before launching Claude Code.
 
-## What's not yet built
+### Maestro v2.x cold-start is ~10–12s
 
-- The deliver-app navigation recipes (`generate_recipes_from_app_summary`)
-  have been wired but not run live against a Nova-deployed app. The
-  generator's parsing logic is unit-tested; the LLM contract isn't.
-- Cross-platform support is implemented but only verified on macOS Apple
-  Silicon. Linux and Windows paths are best-effort, awaiting first-run
-  validation.
-- Live verification of the manual-shutter path (0.10.21) on a non-GMS
-  AVD. The selectors come straight from the commcare-android source
-  (`MicroImageActivity.onCreate` + `micro_image_widget.xml`) so the
-  recipe is correct by construction, but a registration end-to-end
-  on `ACE_Pixel_API_34` needs CommCare 2.62.0 installed there first.
+probe1 timeout budget is 20s in `mcp/mobile/client.ts` to accommodate Maestro v2's slower JVM cold-start. Don't tighten it — v1's faster startup is no longer the reference. See `docs/learnings/2026-05-19-maestro-v2-probe-timeout.md`.
+
+## Selector discovery loop
+
+When extending recipes or building atlas coverage for a new APK version:
+
+1. Cold-boot a fresh AVD via `mobile_ensure_avd_running`. **Do not load a snapshot** — they're for ad-hoc debugging only.
+2. Drive the AVD into the state of interest. If you tap through far enough to consume the opp (e.g. complete Learn flow), expect that the next Phase 6 dispatch on the same opp will halt at claim-opp — see `docs/learnings/2026-05-14-atlas-side-channel-capture.md` Finding 2.
+3. `mobile_capture_ui_dump` returns parsed elements + XML in one call. Prefer this over `adb shell uiautomator dump` + `adb pull` + `grep`.
+4. **Use `maestro studio` for new selector capture.** Interactive selector picker against the live AVD: tap an element in the browser, it shows the resource-id and a copy-pasteable Maestro snippet. Far faster than dump-and-grep.
+5. Add the next 5–10 steps to the recipe in one batch (not one-at-a-time), re-run, dump at the next checkpoint.
+6. After Phase 6 runs, `scripts/probe-atlas-drift.ts` harvests selector-drift signal from accumulated `runRecipeWithDumps` XMLs — read-only, surfaces candidate new logical-selector rows for the selector map.
+
+**Anti-pattern:** screencap + Read PNG + dump + grep after every single tap. PNG reads are expensive in tokens. Almost every CommCare/PersonalID selector is resource-id-driven; uiautomator XML has all the info. Reserve screenshots for genuinely visual states (camera UI, where AOSP elements lack resource-ids).
 
 ## Sibling docs
 
-- `commands/mobile-bootstrap.md` — operator-facing one-time setup script
+- `docs/learnings/2026-05-14-demo-user-no-otp.md` — registration cost model, why no snapshot fast-path
+- `docs/learnings/2026-05-14-phase6-validation-arc.md` — durable lessons + the still-open recipe-provenance gap
+- `docs/learnings/2026-05-14-atlas-side-channel-capture.md` — UI dumps embed in recipes; atlas-walks consume the opp
+- `docs/learnings/2026-05-19-maestro-v2-probe-timeout.md` — read the trace before agreeing with the diagnosis
+- `docs/learnings/2026-05-25-recipe-static-preventer-suite.md` — shift-left principle for recipe lint
+- `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md` — `commcare_validate_ccz` install gate + session-rescan governance rule
+- `commands/mobile-bootstrap.md` — operator-facing one-time setup
 - `docs/superpowers/specs/2026-04-28-ace-mobile-emulation-design.md` — design rationale
-- `docs/superpowers/plans/2026-04-28-ace-mobile-emulation.md` — implementation plan (substantially shipped through 0.10.17)
+- `docs/atom-schemas.md` — canonical Zod-schema catalog (regenerate via `npx tsx scripts/dump-atom-schemas.ts`)

@@ -11,15 +11,34 @@ import {
   type CloudPatchLaunchScriptResult,
 } from './backends/cloud.js';
 import { MaestroBackend } from './backends/maestro.js';
-import { DeviceUserStateError, MaestroDriverError, MobileError } from './errors.js';
+import {
+  DeviceUserStateError,
+  MaestroDriverError,
+  MobileError,
+  NoInviteSuspectedError,
+  StaleRecipeError,
+} from './errors.js';
+import { detectNoInviteSignature } from '../../lib/no-invite-detector.js';
 import { RecipeGenerator, type LlmFn } from './backends/recipe-generator.js';
-import { prepareRecipeForMaestro, injectAceEnvVars } from './recipe-resolver.js';
+import {
+  prepareRecipeForMaestro,
+  injectAceEnvVars,
+  getActiveSelectorMapMetadata,
+} from './recipe-resolver.js';
+import { validateRecipeFreshness } from '../../lib/recipe-provenance.js';
 import { resolveBackend } from './backend-toggle.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
   SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
 } from './types.js';
 import { logInfo } from './logging.js';
+import {
+  buildProvenance,
+  getAceVersion,
+  getGitSha,
+  newDispatchId,
+  writeProvenanceSidecar,
+} from '../../lib/screenshot-provenance.js';
 
 export interface MobileClientOpts {
   avd?: AvdBackend;
@@ -922,6 +941,38 @@ export class MobileClient {
     screenshotDir: string,
     avdName?: string,
   ): Promise<RecipeRunResult> {
+    // Pre-flight: refuse to run if the recipe carries a provenance
+    // header that doesn't match the current selector map. Closes the
+    // stale-Drive-artifact class from
+    // `docs/learnings/2026-05-14-phase6-validation-arc.md` (class-
+    // level finding #1). Recipes without a header (static palette,
+    // legacy generated recipes from before this contract) pass
+    // through unchanged — `validateRecipeFreshness` returns ok=true
+    // when no header is present.
+    const apkVersion = getConfiguredApkVersion();
+    try {
+      const recipeText = fs.readFileSync(recipePath, 'utf8');
+      const map = getActiveSelectorMapMetadata(apkVersion);
+      const freshness = validateRecipeFreshness({
+        recipeText,
+        currentSelectorMapSha: map.sha,
+        currentApkVersion: map.apkVersion,
+      });
+      if (!freshness.ok) {
+        throw new StaleRecipeError(recipePath, freshness.reason, {
+          provenance: freshness.provenance,
+          current_selector_map_path: map.path,
+          current_selector_map_sha: map.sha,
+          current_apk_version: map.apkVersion,
+        });
+      }
+    } catch (e) {
+      if (e instanceof StaleRecipeError) throw e;
+      // Recipe path unreadable or selector map missing — let the
+      // downstream `prepareRecipeForMaestro` surface those with its
+      // own error path. Don't mask a more useful error message.
+    }
+
     // Auto-inject ACE_E2E_* env vars from process.env (PIN, PHONE,
     // BACKUP_CODE, etc.) — caller-provided values win on conflict.
     // See `mcp/mobile/recipe-resolver.ts § injectAceEnvVars` for the
@@ -943,7 +994,7 @@ export class MobileClient {
     // Sources from `ACE_CONNECT_APK_VERSION` so opt-in QA against a new
     // baseline (e.g. 2.63.0) routes here without a code change. See
     // `getConfiguredApkVersion`.
-    const prep = await prepareRecipeForMaestro(recipePath, getConfiguredApkVersion());
+    const prep = await prepareRecipeForMaestro(recipePath, apkVersion);
     if (prep.unverifiedSelectorsInTop.length > 0) {
       logInfo(
         `runRecipe: ${recipePath} uses unverified selectors ` +
@@ -952,28 +1003,61 @@ export class MobileClient {
       );
     }
 
+    // Generate fresh per-dispatch provenance up front so we can stamp
+    // every PNG the backend writes. `recipeId` is the recipe filename
+    // sans extension — stable across the resolved-temp-dir copy. See
+    // `lib/screenshot-provenance.ts` for the shape; consumers (UX eval,
+    // stale-carryover detection) compare `dispatch_id` against the
+    // current dispatch's ID to detect leftover PNGs from prior runs.
+    const recipeId = path.basename(recipePath).replace(/\.ya?ml$/, '');
+    const dispatchId = newDispatchId();
+
+    let result: RecipeRunResult;
     if (this.useCloud) {
       const paletteTarB64 = tarDirAsBase64(prep.tempDir);
-      return this.requireCloud().runRecipe(
+      result = await this.requireCloud().runRecipe(
         prep.resolvedPath,
         enrichedEnv,
         screenshotDir,
         { state: avdName, paletteTarB64 },
       );
+    } else {
+      const avdInfo = avdName ? await this.resolveAvdInfo(avdName) : undefined;
+      // Pass `serial` through so MaestroBackend can capture per-screenshot
+      // UI hierarchy dumps in the quiet windows between sub-recipes. See
+      // `MaestroBackend.runRecipeWithDumps` for the split-and-capture
+      // contract and `docs/learnings/2026-05-14-atlas-side-channel-capture.md`
+      // for why a side-channel dump (running concurrent with Maestro)
+      // doesn't work. When `serial` is undefined the backend falls back
+      // to the pre-0.13.229 single-invocation path with no dumps.
+      result = await this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, screenshotDir, {
+        adbPort: avdInfo?.adbPort,
+        serial: avdInfo?.serial,
+      });
     }
 
-    const avdInfo = avdName ? await this.resolveAvdInfo(avdName) : undefined;
-    // Pass `serial` through so MaestroBackend can capture per-screenshot
-    // UI hierarchy dumps in the quiet windows between sub-recipes. See
-    // `MaestroBackend.runRecipeWithDumps` for the split-and-capture
-    // contract and `docs/learnings/2026-05-14-atlas-side-channel-capture.md`
-    // for why a side-channel dump (running concurrent with Maestro)
-    // doesn't work. When `serial` is undefined the backend falls back
-    // to the pre-0.13.229 single-invocation path with no dumps.
-    return this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, screenshotDir, {
-      adbPort: avdInfo?.adbPort,
-      serial: avdInfo?.serial,
+    // Stamp every PNG with a provenance sidecar before returning.
+    // Best-effort: write failures don't fail the recipe (forensics-only
+    // metadata, not a load-bearing invariant). Sidecars land at
+    // `<png>.meta.json` next to each PNG; PNG bytes are never modified
+    // so training-slide pipelines that read the PNG directly are
+    // unaffected. Consumers query via `readProvenanceSidecar(pngPath)`.
+    const provenance = buildProvenance({
+      recipeId,
+      dispatchId,
+      aceVersion: getAceVersion(),
+      gitSha: getGitSha(),
+      writtenAtEpochMs: Date.now(),
     });
+    for (const s of result.screenshots) {
+      try {
+        writeProvenanceSidecar(s.path, provenance);
+        s.provenance = provenance;
+      } catch (e) {
+        logInfo(`runRecipe: failed to write provenance sidecar for ${s.path}: ${String(e)}`);
+      }
+    }
+    return result;
   }
 
   private async resolveAvdInfo(
@@ -1053,6 +1137,20 @@ export class MobileClient {
         if (partA.stdout.includes('PHONE_ALREADY_REGISTERED')) {
           success = true;
           return { alreadyRegistered: true, phone: args.phone };
+        }
+        // Pre-invite gating signature: Continue-tap succeeded but
+        // CommCare fell out of foreground (server-side
+        // /users/start_configuration crashed because the phone has no
+        // Connect invite — the canonical CONNECT-ID-3F class). Surface
+        // a typed error with the exact remedy instead of a generic
+        // stderr blob. See `lib/no-invite-detector.ts` and
+        // `playbook/integrations/mobile-integration.md § Pre-invite
+        // gating`.
+        if (detectNoInviteSignature({ stderr: partA.stderr, stdout: partA.stdout })) {
+          throw new NoInviteSuspectedError(
+            args.phone,
+            partA.stderr || partA.stdout,
+          );
         }
         throw new Error(`register_test_user part A failed: ${partA.stderr || partA.stdout}`);
       }

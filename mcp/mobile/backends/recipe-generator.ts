@@ -3,6 +3,9 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { MaestroBackend } from './maestro.js';
 import type { ShellFn } from './avd.js';
+import { buildRecipeProvenanceHeader } from '../../../lib/recipe-provenance.js';
+import { getAceVersion } from '../../../lib/screenshot-provenance.js';
+import { getActiveSelectorMapMetadata } from '../recipe-resolver.js';
 
 /**
  * LLM callback. The mobile MCP does NOT bring its own LLM — when ACE runs
@@ -113,19 +116,44 @@ export class RecipeGenerator {
     summary: string;
     moduleName: string;
     appKind: 'learn' | 'deliver';
+    /**
+     * Active CommCare APK version this recipe is being generated
+     * against. Used to stamp the recipe with a provenance header
+     * (`selector_map_sha`, `selector_map_apk_version`, `ace_version`,
+     * `generated_at`) so Phase 6 can detect stale Drive artifacts
+     * before AVD wall-clock burns. When omitted, no header is added
+     * (legacy callers that don't yet know their APK version pass
+     * undefined; the resulting recipe is treated as legacy by
+     * pre-flight, which validates only when a header is present).
+     */
+    apkVersion?: string;
   }): Promise<string> {
     const userPrompt = `App kind: ${args.appKind}\n\nModule to walk through: ${args.moduleName}\n\nFull app summary:\n${args.summary}`;
-    const yaml = await this.llm(SYSTEM_PROMPT, userPrompt);
+    const rawYaml = await this.llm(SYSTEM_PROMPT, userPrompt);
 
     // Validate by writing to a temp file and running validateRecipe.
     const tmp = path.join(os.tmpdir(), `mob-gen-${Date.now()}-${Math.random().toString(36).slice(2)}.yaml`);
-    fs.writeFileSync(tmp, yaml);
+    fs.writeFileSync(tmp, rawYaml);
     try {
       await this.maestro.validateRecipe(tmp);
     } finally {
       try { fs.unlinkSync(tmp); } catch {}
     }
-    return yaml;
+
+    if (args.apkVersion === undefined) return rawYaml;
+
+    // Stamp provenance. Header is a YAML comment block prepended to
+    // the recipe body — Maestro's parser ignores it. Phase 6's
+    // pre-flight reads it back and refuses to run if the
+    // selector_map_sha doesn't match the current map.
+    const map = getActiveSelectorMapMetadata(args.apkVersion);
+    const header = buildRecipeProvenanceHeader({
+      ace_version: getAceVersion(),
+      selector_map_sha: map.sha,
+      selector_map_apk_version: map.apkVersion,
+      generated_at: new Date().toISOString(),
+    });
+    return header + rawYaml;
   }
 }
 

@@ -47,7 +47,7 @@ import {
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SELECTORS_DIR = path.join(REPO_ROOT, 'mcp/mobile/selectors');
-const DEFAULT_APK = '2.62.0';
+const DEFAULT_APK = '2.63.0';
 
 interface CliArgs {
   dumpDir: string;

@@ -236,6 +236,59 @@ selectors:
     value: "org.commcare.dalvik:id/warning_root"
     purpose: "Red banner that appears when `nav_btn_next` is tapped on a required-input question with no answer selected. Inner `id/message` TextView text 'Sorry, this response is required!' (atlas §7). Useful as a structural assertNotVisible after answering — confirms the answer registered before advancing."
 
+  # ── Deliver-side surfaces (verified 2026-05-26 against bednet-spot-check J2 dumps) ──
+  # All IDs below mapped to text labels via uiautomator dumps from
+  # /tmp/ace-bednet-recipes/screenshots/J2/ on the 20260526-1556 run.
+  # See `docs/learnings/2026-05-26-deliver-atlas-coverage.md` for the
+  # harvest record. These replace the coordinate fallbacks and
+  # text-only anchors that deliver-launch.yaml previously used at
+  # atlas § 8 + § 9.
+
+  deliver-opp-detail-view-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_learning_button"
+    purpose: "Primary action button on the post-Learn-completion opp-detail. Live label 'VIEW OPPORTUNITY DETAILS' on the immediate post-pass branch; renders 'DOWNLOAD LEARN APP' / similar on the pre-pass branch. Verified 2026-05-26 against bednet J2-opp-detail.xml (text='VIEW OPPORTUNITY DETAILS')."
+
+  deliver-download-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_delivery_button"
+    purpose: "The 'DOWNLOAD' button on the § 9 Download Delivery gate that triggers the Deliver CCZ download. Verified 2026-05-26 against bednet J2-download-gate.xml (text='DOWNLOAD'). Replaces the prior text-only `text: \"DOWNLOAD\"` anchor + coordinate fallback (741, 1248) on 1080×2400."
+
+  deliver-details-title:
+    type: id
+    value: "org.commcare.dalvik:id/connect_delivery_title"
+    purpose: "Heading 'Delivery Details' on the § 9 Download Delivery gate. Structural assertion for 'are we on the download gate?'"
+
+  deliver-action-title:
+    type: id
+    value: "org.commcare.dalvik:id/connect_delivery_action_title"
+    purpose: "Action card title 'Start Visit' on the § 9 Download Delivery gate."
+
+  deliver-action-details:
+    type: id
+    value: "org.commcare.dalvik:id/connect_delivery_action_details"
+    purpose: "Action card details 'Download Delivery' on the § 9 Download Delivery gate."
+
+  deliver-certificate-container:
+    type: id
+    value: "org.commcare.dalvik:id/connect_learning_certificate_container"
+    purpose: "The certificate section on the post-Learn-pass opp-detail (atlas § 8). Was previously coordinate-fallback (540, 1486) on 1080×2400 because the surface was thought to be a separate screen; bednet J2 dumps reveal it's a section within the opp-detail screen. Use as a structural marker for 'Learn complete'."
+
+  deliver-home-job-card:
+    type: id
+    value: "org.commcare.dalvik:id/viewJobCard"
+    purpose: "Project card widget on the Deliver-mode StandardHomeActivity (atlas § 10). Load-bearing differentiator vs Learn home (§ 5) — present in Deliver, absent in Learn."
+
+  deliver-home-job-title:
+    type: id
+    value: "org.commcare.dalvik:id/tv_job_title"
+    purpose: "Project name text on the Deliver-mode home project card. Verified 2026-05-26: text matches the opp's Connect display_name."
+
+  deliver-home-job-description:
+    type: id
+    value: "org.commcare.dalvik:id/tv_job_description"
+    purpose: "Project description text on the Deliver-mode home project card. Verified 2026-05-26."
+
   # ── To calibrate (transitions not yet captured live) ────────────────
   # The values below are placeholders for surfaces the atlas walk hasn't
   # reached yet (atlas "Open questions" list). Each entry is marked

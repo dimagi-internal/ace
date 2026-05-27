@@ -32,6 +32,7 @@ import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 
 import { logInfo } from './logging.js';
+import { computeSelectorMapSha } from '../../lib/recipe-provenance.js';
 
 /** Static palette dir relative to this file. */
 const STATIC_RECIPES_DIR = new URL('./recipes/static/', import.meta.url).pathname;
@@ -48,6 +49,34 @@ const ACE_E2E_ENV_MAP: Record<string, string> = {
   BACKUP_CODE: 'ACE_E2E_BACKUP_CODE',
   NAME: 'ACE_E2E_NAME',
 };
+
+/**
+ * Read the active selector map file for an APK version and compute
+ * its stable short SHA. Used by both the generator (stamps recipes
+ * with selector_map_sha at write time) and the pre-flight gate
+ * (rejects recipes whose stamped SHA differs from the current map).
+ *
+ * Returns the absolute file path alongside the SHA so callers can
+ * surface a useful operator message ("the map at <path> hashes to
+ * <sha>"). Throws if the file is missing — that's a fatal config
+ * error, not a fall-through to "no provenance."
+ */
+export function getActiveSelectorMapMetadata(apkVersion: string): {
+  path: string;
+  sha: string;
+  apkVersion: string;
+} {
+  const selectorPath = path.join(SELECTORS_DIR, `connect-${apkVersion}.yaml`);
+  if (!fs.existsSync(selectorPath)) {
+    throw new Error(`selector map not found: ${selectorPath}`);
+  }
+  const body = fs.readFileSync(selectorPath, 'utf8');
+  return {
+    path: selectorPath,
+    sha: computeSelectorMapSha(body),
+    apkVersion,
+  };
+}
 
 /** Outcome of resolving a single recipe YAML body. */
 export interface SelectorResolution {
