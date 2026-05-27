@@ -5,7 +5,7 @@ description: >
   decisions.yaml. Generic by default — partner identity is a placeholder
   unless an LLO was supplied. Renders to a clean Google Doc. Parallel to
   Phase 8 solicitation, not a replacement.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # PDD to Work Order

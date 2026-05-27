@@ -3,7 +3,7 @@ name: idea-to-pdd
 description: >
   Develop a Program Design Doc (PDD) for a Connect intervention from
   source material. Iterates a 5-question stress-test rubric until approved.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Idea to PDD

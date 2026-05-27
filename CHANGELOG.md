@@ -5,6 +5,25 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.445 — 2026-05-26
+
+**Flip `disable-model-invocation: false` on the 6 Phase 1 producer/QA/eval skills.**
+
+Continues the surgical carve-out started in #502 (Phase 3 procedure-doc skills) and #505 (5 cross-cutting L0-direct skills). The 6 skills flipped here: `idea-to-pdd`, `idea-to-pdd-qa`, `idea-to-pdd-eval`, `pdd-to-work-order`, `pdd-to-work-order-qa`, `pdd-to-work-order-eval`.
+
+The 2026-05-06 blanket-true audit (`d62b26d`, v0.13.34) flagged these on the rationale "orchestrator-dispatched, never free-text invoked" — the fear was the model would call them directly, skipping run_state.yaml updates and phase ordering. PR #502 carved out the L0-inline (Phase 3) case, with stated assumption that subagent-dispatched phases were unaffected because parent `Agent(<phase>)` dispatch satisfied the platform's invocation chain.
+
+That assumption holds for the `/ace:run` invocation path (slash command at L0 → orchestrator with `Agent` tool → subagent with `Skill` tool). It does NOT hold for third-party Agent dispatches (e.g. `Agent(ace:ace-orchestrator)` from another agent), where the dispatched orchestrator inherits a tool surface without `Agent`. Empirically confirmed today when dogfooding ace-web PR #574: an attempt to dispatch `idea-to-design` from a subagent context failed with `Skill idea-to-pdd cannot be used with Skill tool due to disable-model-invocation`.
+
+More fundamentally, even when the orchestrator path works, the flag is the wrong mechanism for the discipline it tries to enforce. The flag doesn't save tool space (skills with the flag still appear in the available-skills surface, same name + description). It only blocks runtime invocation, which: (a) confuses the model — it sees the skill, picks it as the answer, gets refused, has to invent a workaround; (b) blocks legitimate ad-hoc use (run one phase for dogfooding, re-run one QA, debug one step in isolation). Discipline already lives in the orchestrator-reference doc + each skill's SKILL.md guidance — those are the right place to enforce ordering. The flag is redundant for that purpose and counterproductive for the ad-hoc case.
+
+Scope:
+- Phase 1 only (6 skills) — both Drive-only, no external writes, lowest-risk place to validate the principle.
+- Phase 2 (idea-to-scenarios), Phase 4 (connect-setup), Phase 5 (ocs-setup), Phase 6 (qa-and-training), Phase 7 (synthetic-data), Phase 8 (solicitation-management), Phase 9 (execution-management), Phase 10 (closeout): follow-up. Phases 4/5/7/8/9/10 have live external writes (Connect, CommCare HQ, OCS, email, invoices) — those deserve per-skill review against destruction risk, not a blanket flip.
+
+What changed:
+- `skills/idea-to-pdd/SKILL.md`, `skills/idea-to-pdd-qa/SKILL.md`, `skills/idea-to-pdd-eval/SKILL.md`, `skills/pdd-to-work-order/SKILL.md`, `skills/pdd-to-work-order-qa/SKILL.md`, `skills/pdd-to-work-order-eval/SKILL.md`: `disable-model-invocation: true` → `false`.
+
 ## 0.13.442 — 2026-05-26
 
 **Add `ace-web` as a new `/ace:sweep` system for bulk-deleting uploaded chat Sessions.**

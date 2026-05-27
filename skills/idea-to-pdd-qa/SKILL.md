@@ -4,7 +4,7 @@ description: >
   Structural QA on the PDD artifact produced by idea-to-pdd. Binary pass/fail.
   Catches missing sections, malformed archetype declaration, etc. Static-only;
   no LLM. Gates idea-to-pdd-eval — eval is skipped if QA fails irrecoverably.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Idea-to-PDD QA

@@ -6,7 +6,7 @@ description: >
   clarity, PDD alignment, decisions traceability, verification realism,
   archetype fit, writing style. Skipped if pdd-to-work-order-qa returned
   verdict: incomplete. Verdict shape per lib/verdict-schema.ts.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # PDD-to-Work-Order Eval
