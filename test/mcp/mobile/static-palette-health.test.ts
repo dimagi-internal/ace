@@ -24,7 +24,7 @@ const STATIC_DIR = fileURLToPath(
   new URL('../../../mcp/mobile/recipes/static/', import.meta.url),
 );
 
-const DEFAULT_APK = '2.62.0';
+const DEFAULT_APK = '2.63.0';
 
 const paletteFiles: string[] = readdirSync(STATIC_DIR).filter((n) => n.endsWith('.yaml'));
 

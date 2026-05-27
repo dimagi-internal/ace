@@ -18,22 +18,21 @@
 #
 # Atlas reference: docs/mobile-atlas/connect-2.62.0.md §§ 8, 9, 10.
 #
-# RESOURCE-ID STATUS (2026-05-18 — palette authored from atlas):
-# - § 8 certificate screen: resource-IDs NOT yet captured live (atlas
-#   § 8 "Open questions" — the surface is transient and was navigated
-#   via coordinate-tap during the 2026-05-14 turmeric delivery-walk
-#   session). This palette uses TEXT anchors on the visible labels
-#   ("Congratulations", "VIEW OPPORTUNITY DETAILS") as the primary
-#   matchers, with a coordinate-fallback (540, 1486) on 1080x2400
-#   captured from the turmeric session. A future Phase 6 run mid-
-#   window between Learn-pass and Deliver-download should `ui_dump`
-#   this screen and back-fill the resource-IDs into
-#   `selectors/connect-2.62.0.yaml`.
-# - § 9 Download Delivery gate: same status — text-anchored on
-#   "DOWNLOAD" with coordinate-fallback (741, 1248).
-# - § 10 Deliver-mode StandardHomeActivity: resource-IDs VERIFIED
-#   2026-05-14 (atlas § 10). `id/viewJobCard` is the clean structural
-#   anchor for "we landed in Deliver mode".
+# RESOURCE-ID STATUS (2026-05-26 — Deliver-side atlas verified live
+# against bednet-spot-check run 20260526-1556's J2 dumps):
+# - § 8 certificate / opp-detail: `connect_learning_button` is the
+#   VIEW OPPORTUNITY DETAILS button; `connect_learning_certificate_container`
+#   is the certificate section (it's a section within the opp-detail
+#   screen, NOT a separate screen as previously assumed). Both ID-anchored
+#   via ${SELECTOR:deliver-opp-detail-view-button} and
+#   ${SELECTOR:deliver-certificate-container}.
+# - § 9 Download Delivery gate: `connect_delivery_button` is the DOWNLOAD
+#   button; `connect_delivery_title` is the "Delivery Details" heading.
+#   Both ID-anchored via ${SELECTOR:deliver-download-button} and
+#   ${SELECTOR:deliver-details-title}. No more coordinate fallbacks.
+# - § 10 Deliver-mode StandardHomeActivity: `viewJobCard` is the load-
+#   bearing differentiator (present in Deliver, absent in Learn).
+#   ID-anchored via ${SELECTOR:deliver-home-job-card}.
 #
 # Pre-claim contract: the FLW MUST have completed all Learn modules +
 # the final assessment AND synced to Connect before this palette is
@@ -67,6 +66,10 @@ appId: org.commcare.dalvik
 # Branch with `runFlow.when` so whichever surface is live, the right
 # tap fires. The downstream `DOWNLOAD` + `viewJobCard` waits are
 # common to both.
+# Both branches converge on the § 9 Download Delivery gate. Each
+# branch is ID-anchored via `connect_learning_button` (verified
+# 2026-05-26 against bednet J2 dumps) — retryTapIfNoChange isn't
+# needed on ID-anchored taps the way it was for the prior text-anchor.
 - runFlow:
     when:
       visible:
@@ -74,31 +77,30 @@ appId: org.commcare.dalvik
     commands:
       - takeScreenshot: "deliver-launch-certificate"
       - tapOn:
-          text: "VIEW OPPORTUNITY DETAILS"
-          retryTapIfNoChange: true
+          ${SELECTOR:deliver-opp-detail-view-button}
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/connect_learning_button"
+        ${SELECTOR:deliver-opp-detail-view-button}
     commands:
       - takeScreenshot: "deliver-launch-opp-detail"
       - tapOn:
-          id: "org.commcare.dalvik:id/connect_learning_button"
-          retryTapIfNoChange: true
+          ${SELECTOR:deliver-opp-detail-view-button}
 
-# § 9 Download Delivery gate — anchor on the "DOWNLOAD" button text.
-# Either branch above lands us here; if neither fired (precondition
-# violation: Learn not yet completed-and-synced), this wait times out
-# and the recipe halts loud, same as the old certificate-only path.
+# § 9 Download Delivery gate — ID-anchored on the DOWNLOAD button
+# (bednet-spot-check J2 dumps 2026-05-26 verified
+# `connect_delivery_button` = "DOWNLOAD"). Either branch above lands
+# us here; if neither fired (precondition violation: Learn not yet
+# completed-and-synced), this wait times out and the recipe halts
+# loud.
 - extendedWaitUntil:
     visible:
-      text: "DOWNLOAD"
+      ${SELECTOR:deliver-download-button}
     timeout: 30000
 - takeScreenshot: "deliver-launch-download-gate"
 
 - tapOn:
-    text: "DOWNLOAD"
-    retryTapIfNoChange: true
+    ${SELECTOR:deliver-download-button}
 
 # Deliver CCZ install progress — typically the same `Step N of M`
 # progress UI as the Learn-side § 4 download (atlas § 9 notes this
@@ -107,7 +109,7 @@ appId: org.commcare.dalvik
 # limited-bandwidth dev networks.
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/viewJobCard"
+      ${SELECTOR:deliver-home-job-card}
     timeout: 180000
 - takeScreenshot: "deliver-launch-home"
 
@@ -116,4 +118,4 @@ appId: org.commcare.dalvik
 # (§ 10) — this assertion is structural, not text-based, so it's the
 # most reliable "we're in Deliver" check.
 - assertVisible:
-    id: "org.commcare.dalvik:id/viewJobCard"
+    ${SELECTOR:deliver-home-job-card}
