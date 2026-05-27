@@ -3,7 +3,7 @@ name: idea-to-pdd-eval
 description: >
   Independently grade a PDD against the source idea pack — re-runs the
   stress test from outside and cross-checks reviewer-comment fidelity.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Idea-to-PDD Eval

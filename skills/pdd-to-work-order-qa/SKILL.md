@@ -6,7 +6,7 @@ description: >
   malformed payment schedule, leaked scaffolding markers, etc. Static-only;
   no LLM. Gates pdd-to-work-order-eval — eval is skipped if QA fails
   irrecoverably.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # PDD-to-Work-Order QA
