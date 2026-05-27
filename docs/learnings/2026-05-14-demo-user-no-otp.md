@@ -1,6 +1,6 @@
 # Demo users skip OTP — registration is fast (~20-30s), not 3-5 min
 
-**Status:** Architectural anchor. The "tier-2 bootstrap costs 3-5 min" estimate in older docs is misleading and has led agents (including this one, repeatedly) to over-rely on snapshots as a fast path. This learning supersedes the older framing.
+**Status:** Architectural anchor. Foundational fact about ACE's test-user pipeline. Cited by `mobile-integration.md` and any future work that touches AVD heal or registration.
 
 ## The fact
 
@@ -75,8 +75,6 @@ If you read or hear any of these claims, stop and check this doc:
 
 The first three are wrong for the demo-user steady state. The fourth treats a structural problem as a per-instance fix. Re-read the "Phase preconditions are restored, not adapted" principle in CLAUDE.md — the snapshot-as-cache is exactly the "tolerance for whatever starting state" anti-pattern.
 
-## Related decisions
+## Snapshot atoms today
 
-- **PR #281 (clock-sync)** — kept as defense-in-depth. If a future debugging session manually loads a snapshot, the clock-sync still helps. But it's no longer load-bearing for the primary heal path.
-- **Snapshot-TTL** — proposed and reverted. With "always cold-start," there's no stale snapshot to age out; the snapshot just isn't on the heal path at all.
-- **`saveSnapshot` MCP atom** — kept. Useful for ad-hoc state captures during debugging (operator says "save this exact UI state so I can come back to it later"). Just not part of `restoreDeviceUserState`.
+`mobile_save_snapshot` / `mobile_load_snapshot` MCP atoms still exist for **ad-hoc debugging only** — operator-driven "save this exact UI state so I can come back to it later." They are NOT part of `restoreDeviceUserState` and not on the Phase 6 heal path. The heal path is always cold-boot per dispatch (`-wipe-data -no-snapshot-load -no-snapshot-save`).
