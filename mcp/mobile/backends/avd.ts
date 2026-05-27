@@ -935,7 +935,10 @@ export class AvdBackend {
    * Idempotent post-boot AVD prep for ACE registration:
    *   - disables Google Play Services (so MicroImageActivity falls back to
    *     manual shutter — see Face-capture gate gotcha)
-   *   - pre-grants CAMERA permission to org.commcare.dalvik if installed
+   *   - pre-grants the full runtime-permission set to org.commcare.dalvik
+   *     if installed (location, camera, audio, phone, notifications,
+   *     wifi — the set Android shows GrantPermissionsActivity for on
+   *     first launch after install/pm-clear; see `grantRuntimePermissions`)
    *   - dismisses NotificationShade if it's the focused window (a
    *     known-quirk on cold boot of `google_apis*` images on macOS)
    *
@@ -965,12 +968,32 @@ export class AvdBackend {
     // ManualMode). Doing this here at boot would re-introduce the
     // launch-block class. See `setGmsEnabled` below.
 
-    // Grant CAMERA only if commcare is installed; pm grant fails noisily
-    // for missing packages, and most of the time it's not installed yet
-    // when ensure-running fires (the bootstrap installs it later).
+    // Grant the full runtime-permission set if commcare is installed.
+    // pm grant fails noisily for missing packages, and most of the time
+    // it's not installed yet when ensure-running fires (the bootstrap
+    // installs it later). Pre-0.13.x this only granted CAMERA; broadened
+    // 2026-05-27 after bednet-spot-check Phase 6 hit an Android
+    // location-permission system dialog post-pm-clear that stalled the
+    // registration recipe. The list matches `grantRuntimePermissions`
+    // below — same defect class, same mitigation, two callsites because
+    // this one has only `serial` in scope (runPostBootPrep is called
+    // before AvdInfo is fully assembled).
     const list = await this.shell('adb', ['-s', serial, 'shell', 'pm', 'list', 'packages', 'org.commcare.dalvik']).catch(() => null);
     if (list && list.stdout.includes('package:org.commcare.dalvik')) {
-      await this.shell('adb', ['-s', serial, 'shell', 'pm', 'grant', 'org.commcare.dalvik', 'android.permission.CAMERA']).catch(() => {});
+      const perms = [
+        'android.permission.ACCESS_FINE_LOCATION',
+        'android.permission.ACCESS_COARSE_LOCATION',
+        'android.permission.CAMERA',
+        'android.permission.RECORD_AUDIO',
+        'android.permission.READ_PHONE_STATE',
+        'android.permission.CALL_PHONE',
+        'android.permission.READ_MEDIA_AUDIO',
+        'android.permission.POST_NOTIFICATIONS',
+        'android.permission.NEARBY_WIFI_DEVICES',
+      ];
+      for (const perm of perms) {
+        await this.shell('adb', ['-s', serial, 'shell', 'pm', 'grant', 'org.commcare.dalvik', perm]).catch(() => {});
+      }
     }
 
     // Some `google_apis*` AVD cold boots leave SystemUI with
@@ -1195,7 +1218,85 @@ export class AvdBackend {
     ]);
     // `pm clear` prints "Success" on success, "Failed" on failure. Exit
     // code is unreliable across API levels — pin to the stdout text.
-    return /Success/.test(r.stdout);
+    const ok = /Success/.test(r.stdout);
+    if (ok) {
+      // `pm clear` revokes ALL runtime permissions. On the next launch
+      // CommCare requests them one-by-one (location, audio, camera, ...)
+      // and Android shows a `GrantPermissionsActivity` dialog BEFORE the
+      // welcome screen for each ungranted permission. The registration
+      // recipes assume the welcome screen is the first surface — they
+      // have zero handling for the system dialog, so they stall.
+      //
+      // Pre-grant the full runtime-perm set immediately so the dialogs
+      // never appear. Live-reproduced bednet-spot-check/20260526-2310
+      // Phase 6 (2026-05-27) — two consecutive Phase 6 agents misread
+      // "dialog blocks rvJobList" as "registration didn't advance past
+      // phone entry."
+      await this.grantRuntimePermissions(avdName).catch(() => {});
+    }
+    return ok;
+  }
+
+  /**
+   * Pre-grant the full set of runtime permissions CommCare requests at
+   * launch. Idempotent (Android silently ignores grants for already-
+   * granted perms). Best-effort — failures are swallowed because some
+   * perms don't exist on older API levels.
+   *
+   * The list mirrors what `dumpsys package org.commcare.dalvik` shows
+   * as USER_SENSITIVE on CommCare 2.62.0/2.63.0:
+   *   - ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION — Connect uses
+   *     GPS for opp eligibility checks
+   *   - CAMERA — face-capture during registration + photo-question forms
+   *   - RECORD_AUDIO — audio recordings in delivery forms
+   *   - READ_PHONE_STATE — device-ID for Connect telemetry
+   *   - CALL_PHONE — emergency-call CTAs in some Connect surfaces
+   *   - READ_MEDIA_AUDIO — Android 13+ scoped media access for audio
+   *   - POST_NOTIFICATIONS — Android 13+ push notifications
+   *   - NEARBY_WIFI_DEVICES — Android 13+ for WiFi scanning
+   *
+   * Without this, every `pm clear` followed by a CommCare launch
+   * surfaces an Android system permission dialog that the registration
+   * recipe can't dismiss.
+   */
+  async grantRuntimePermissions(avdName: string): Promise<void> {
+    const avd = await this.findRunningAvd(avdName);
+    if (!avd) return;
+    // pm grant fails if the package isn't installed yet; check first to
+    // avoid noisy failures during the early bootstrap path.
+    const list = await this.shell('adb', [
+      '-s',
+      avd.serial,
+      'shell',
+      'pm',
+      'list',
+      'packages',
+      'org.commcare.dalvik',
+    ]).catch(() => null);
+    if (!list || !list.stdout.includes('package:org.commcare.dalvik')) return;
+
+    const perms = [
+      'android.permission.ACCESS_FINE_LOCATION',
+      'android.permission.ACCESS_COARSE_LOCATION',
+      'android.permission.CAMERA',
+      'android.permission.RECORD_AUDIO',
+      'android.permission.READ_PHONE_STATE',
+      'android.permission.CALL_PHONE',
+      'android.permission.READ_MEDIA_AUDIO',
+      'android.permission.POST_NOTIFICATIONS',
+      'android.permission.NEARBY_WIFI_DEVICES',
+    ];
+    for (const perm of perms) {
+      await this.shell('adb', [
+        '-s',
+        avd.serial,
+        'shell',
+        'pm',
+        'grant',
+        'org.commcare.dalvik',
+        perm,
+      ]).catch(() => {});
+    }
   }
 
   /**
