@@ -11,14 +11,14 @@ phase: qa-and-training
 phase_display: QA and Training
 phase_ordinal: 6
 skills:
-  - { name: app-screenshot-capture,     has_judge: true }
-  - { name: training-llo-guide,         has_judge: true }
-  - { name: training-flw-guide,         has_judge: true }
-  - { name: training-quick-reference,   has_judge: true }
-  - { name: training-faq,               has_judge: true }
-  - { name: training-deck-generate,      has_judge: true }
-  - { name: training-deck-render,       has_judge: false }
-  - { name: training-onboarding-email,  has_judge: true }
+  - { name: app-screenshot-capture,    has_judge: true } # self-evaluates inline; no separate eval skill
+  - { name: training-llo-guide,        has_judge: true, eval_skill: training-llo-guide-eval }
+  - { name: training-flw-guide,        has_judge: true, eval_skill: training-flw-guide-eval }
+  - { name: training-quick-reference,  has_judge: true, eval_skill: training-quick-reference-eval }
+  - { name: training-faq,              has_judge: true, eval_skill: training-faq-eval }
+  - { name: training-deck-generate,    has_judge: true, eval_skill: training-deck-generate-eval }
+  - { name: training-deck-render,      has_judge: false }
+  - { name: training-onboarding-email, has_judge: true, eval_skill: training-onboarding-email-eval }
 # Note: `training-materials` umbrella was removed in 0.10.87. The
 # Phase 6 agent dispatches each per-artifact skill directly; the
 # umbrella's only remaining role (verdict aggregation) is now opp-eval's
@@ -259,11 +259,24 @@ phase dispatches them in dependency order:
 
 Each skill reads PDD + app summaries + connect/OCS state + (where
 applicable) per-opp + common screenshot manifests. Each writes its
-single artifact under `ACE/<opp>/runs/<run-id>/6-qa-and-training/`. Each
-self-evaluates against four criteria specific to its audience and
-writes a verdict YAML.
+single artifact under `ACE/<opp>/runs/<run-id>/6-qa-and-training/`.
 
-Halt the phase on any non-pass verdict.
+**Immediately after each producer completes, dispatch its paired
+`-eval` skill** (declared in the frontmatter above; one per producer
+except `training-deck-render`). Each `-eval` skill writes
+`6-qa-and-training/<producer>-eval_verdict.yaml`. These are required
+artifacts per `lib/artifact-manifest.ts`; skipping them leaves
+`verify_phase_artifacts` failing at the boundary fence with N
+missing verdict files — see the verdict-gate rule in § Verdict-gate
+rule below.
+
+The eval dispatches are independent across producers (each grades
+a different doc) and should run in parallel: emit all 5
+`Skill(<producer>-eval)` calls in one assistant message after the
+5 producer skills land, mirroring Step 2a's parallel-dispatch
+shape.
+
+Halt the phase on any non-pass eval verdict.
 
 **2b. Sequential — deck render (after `training-deck-generate`):**
 
@@ -282,6 +295,34 @@ Halt the phase on any non-pass verdict.
 - `training-onboarding-email` → `onboarding-email-body.md`. Must run
   LAST because it links by Drive URL to the LLO guide, FLW guide, and
   quick-reference.
+- Immediately after, dispatch `training-onboarding-email-eval` →
+  `training-onboarding-email-eval_verdict.yaml`.
+
+## Verdict-gate rule for `-eval` skills
+
+The skills frontmatter declares which producers have a paired `-eval`
+skill (`has_judge: true` rows with an `eval_skill:` field). All six
+paired evals (`training-llo-guide-eval`, `training-flw-guide-eval`,
+`training-quick-reference-eval`, `training-faq-eval`,
+`training-deck-generate-eval`, `training-onboarding-email-eval`) MUST
+run inline during Phase 6 — they are not deferred to `/ace:eval --all`.
+
+`app-screenshot-capture` is the exception: it self-evaluates inline
+(no separate `-eval` partner), writing its own
+`app-screenshot-capture_verdict-shallow.yaml`.
+
+**Do NOT set `phases.qa-and-training.verdict: pass` when any
+`has_judge: true` producer has `steps.<producer>-eval.status:
+deferred`** — the same rule that applies to Phase 3
+(`commcare-setup`) applies here. If an eval was skipped, the phase
+write-back's `status` should be `partial` (not `done`) and
+`verdict` should be `passed-with-deferred-evals` (not `pass`).
+`/ace:run --no-evals` is the only sanctioned way to skip them.
+
+Surfaced live on bednet-spot-check/20260526-1556 Phase 6: agent
+shipped all 5 training docs + onboarding email but skipped all 6
+paired eval dispatches, leaving `verify_phase_artifacts` flagging
+10 missing required verdict files at the boundary fence.
 
 ### Why six text skills instead of one
 
