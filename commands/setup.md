@@ -12,7 +12,7 @@ One-shot installer for the ACE plugin. Order is "cheap pre-flight checks first, 
 2. **Fetches the Google service-account key from 1Password** (Document `ACE - Google Service Account` in vault `AI-Agents` by default; overridable via `ACE_GWS_KEY_OP_DOC`) → `$CLAUDE_PLUGIN_DATA/gws-sa-key.json`
 3. `npm install` at the plugin root (skip if `node_modules` + `tsx` present)
 4. **Injects `.env` from 1Password** (`op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env`), skipping when the existing `.env` covers every key
-5. **Downloads `commcare-cli.jar` from `dimagi/commcare-core` releases** (latest tagged release, ~10MB, cached at `$CLAUDE_PLUGIN_DATA/commcare-cli.jar` + sidecar `.version` file). Gates Phase 3 `app-release-smoke` Step 4.5 (runtime install validation). Skip with no jar already present — `--force-install` re-downloads. Requires `gh` CLI authenticated; falls back to a `WARN` if missing.
+5. **Downloads `commcare-cli.jar` from `dimagi/commcare-core` releases** (latest tagged release, ~10MB, cached at `$CLAUDE_PLUGIN_DATA/commcare-cli.jar` + sidecar `.version` file). Gates Phase 3 `app-release-qa` Step 4.5 (runtime install validation). Skip with no jar already present — `--force-install` re-downloads. Requires `gh` CLI authenticated; falls back to a `WARN` if missing.
 6. Optionally registers a `SessionStart` hook that runs `bin/ace-update-check` so ACE auto-updates (`--auto-update`)
 7. Runs `bin/ace-doctor` and surfaces remaining issues (Mobile, OCS, Connect, Drive)
 

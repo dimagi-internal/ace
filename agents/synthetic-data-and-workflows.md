@@ -12,11 +12,11 @@ phase: synthetic-data-and-workflows
 phase_display: Synthetic Data and Workflows
 phase_ordinal: 7
 skills:
-  - { name: synthetic-narrative-plan,    has_judge: true,  eval_skill: synthetic-narrative-plan-eval }
+  - { name: synthetic-narrative-plan,    has_judge: true,  qa_skill: synthetic-narrative-plan-qa,  eval_skill: synthetic-narrative-plan-eval }
   - { name: synthetic-data-generate,     has_judge: true,  eval_skill: synthetic-data-generate-eval }
   - { name: synthetic-workflow-seed,     has_judge: true,  eval_skill: synthetic-workflow-seed-eval }
   - { name: synthetic-workflow-polish,   has_judge: true,  eval_skill: synthetic-workflow-polish-eval }
-  - { name: synthetic-walkthrough-spec,  has_judge: true,  eval_skill: synthetic-walkthrough-spec-eval }
+  - { name: synthetic-walkthrough-spec,  has_judge: true,  qa_skill: synthetic-walkthrough-spec-qa, eval_skill: synthetic-walkthrough-spec-eval }
   - { name: synthetic-walkthrough-run,   has_judge: false } # canopy:walkthrough scores per scene
   - { name: synthetic-summary,           has_judge: false } # pure aggregator
 ---
@@ -119,9 +119,11 @@ Invoke `synthetic-narrative-plan`.
 - The manifest schema is identical to `synthetic-data-generate`'s; this
   skill just authors a richer instance with named FLWs, deliberate
   anomalies, coaching-arc transcripts.
-- **LLM-as-Judge:** `synthetic-narrative-plan-eval` (Stage 4 of Plan B
-  — not yet shipped) evaluates whether the manifest is a coherent
-  story tied to the PDD.
+- **Structural QA:** dispatch `synthetic-narrative-plan-qa` immediately
+  after the producer. Writes `7-synthetic/synthetic-narrative-plan-qa_result.yaml`.
+- **LLM-as-Judge:** dispatch `synthetic-narrative-plan-eval` after the
+  QA passes. Writes `7-synthetic/synthetic-narrative-plan-eval_verdict.yaml`.
+  Evaluates whether the manifest is a coherent story tied to the PDD.
 
 ### Step 2: Data Generate
 
@@ -137,8 +139,8 @@ otherwise authors a default 5-FLW manifest.
   only.
 - Pre-flight on `connect_list_payment_units`: warns when `count == 0`
   (consequence: completed_works/completed_module zero).
-- **LLM-as-Judge:** `synthetic-data-generate-eval` (Stage 4 — not yet
-  shipped).
+- **LLM-as-Judge:** dispatch `synthetic-data-generate-eval` immediately
+  after the producer. Writes `7-synthetic/synthetic-data-generate-eval_verdict.yaml`.
 
 ### Step 3: Workflow Seed
 
@@ -155,7 +157,8 @@ Invoke `synthetic-workflow-seed`.
   in connect-labs PR #168, 2026-05-07). The audit workflow reads the
   LLO weekly review's snapshots automatically — no separate
   saved-runs loop needed for the audit.
-- **LLM-as-Judge:** `synthetic-workflow-seed-eval` (Stage 4).
+- **LLM-as-Judge:** dispatch `synthetic-workflow-seed-eval` immediately
+  after the producer. Writes `7-synthetic/synthetic-workflow-seed-eval_verdict.yaml`.
 
 ### Step 4: Workflow Polish
 
@@ -165,8 +168,12 @@ Invoke `synthetic-workflow-polish`.
 - Falls through to `workflow_update_render_code` (full rewrite) if
   the seed flagged `scaffold_unsuitable: true`.
 - Smoke-tests via `pipeline_preview` after patches land.
-- **LLM-as-Judge:** `synthetic-workflow-polish-eval` (Stage 4) —
-  vision-model judging on rendered screenshots once that infra lands.
+- **LLM-as-Judge:** dispatch `synthetic-workflow-polish-eval` immediately
+  after the producer. Writes `7-synthetic/synthetic-workflow-polish-eval_verdict.yaml`.
+  Strictest gate in Phase 7 (threshold 7.5) — polish is the headline.
+  Vision-model judging on rendered screenshots will be added once that
+  infra lands; today's eval grades narrative-data coherence + patch
+  quality + smoke-render success + domain-language fit + mode honesty.
 
 ### Step 5: Walkthrough Spec
 
@@ -177,7 +184,12 @@ Invoke `synthetic-walkthrough-spec`.
   consumable by `canopy:walkthrough`.
 - Wow-moment scenes reference manifest-seeded anomalies + named FLWs;
   ai_quality assertions are LLM-judge-falsifiable, not vibes.
-- **LLM-as-Judge:** `synthetic-walkthrough-spec-eval` (Stage 4).
+- **Structural QA:** dispatch `synthetic-walkthrough-spec-qa`
+  immediately after the producer. Writes
+  `7-synthetic/synthetic-walkthrough-spec_<persona>-qa_result.yaml`.
+- **LLM-as-Judge:** dispatch `synthetic-walkthrough-spec-eval` after
+  the QA passes. Writes
+  `7-synthetic/synthetic-walkthrough-spec-eval_verdict_<persona>.yaml`.
 
 ### Step 6: Walkthrough Run
 
@@ -340,6 +352,31 @@ No `opp.yaml.synthetic` writes — synthetic state is per-run only.
 | `workflow_create_run` or `workflow_save_snapshot` returns transport error | Step 3 partial | Capture the labs error in the run summary; re-run `/ace:step synthetic-workflow-seed` after the transient resolves. Note: re-runs create NEW workflow definitions (no idempotency labs-side); use `workflow_delete` to retire stale ones first OR finish the snapshot manually in the labs UI. |
 | canopy:walkthrough browser crash | Step 6 partial | Per-persona retry via `/ace:step synthetic-walkthrough-run --persona <name>`. Other personas in the original run are preserved. |
 | Operator wants different cast / story | Step 1 review | Edit `synthetic-narrative-plan.yaml` directly in Drive, then re-run from Step 2 onwards. The narrative plan is meant to be operator-tunable. |
+
+## Verdict-gate rule for `-eval` skills
+
+All four producer evals (`synthetic-narrative-plan-eval`,
+`synthetic-data-generate-eval`, `synthetic-workflow-seed-eval`,
+`synthetic-workflow-polish-eval`) plus the per-persona
+`synthetic-walkthrough-spec-eval` MUST run inline during Phase 7 —
+they are not deferred to `/ace:eval --all`. The two structural-QA
+partners (`synthetic-narrative-plan-qa`,
+`synthetic-walkthrough-spec-qa`) gate the eval dispatch:
+if QA fails, the eval doesn't run and the producer's step verdict is
+`partial` pending re-author.
+
+**Do NOT set `phases.synthetic-data-and-workflows.verdict: pass` when
+any `has_judge: true` producer has `steps.<producer>-eval.status:
+deferred`** — same rule as Phase 3 (`commcare-setup`) and Phase 6
+(`qa-and-training`). If an eval was skipped, the phase write-back's
+`status` should be `partial` (not `done`) and `verdict` should be
+`passed-with-deferred-evals` (not `pass`). `/ace:run --no-evals` is
+the only sanctioned way to skip them.
+
+Surfaced live on bednet-spot-check/20260526-1556 Phase 7: agent
+shipped all 4 producers + walkthrough specs but skipped all 4
+required paired eval dispatches, leaving `verify_phase_artifacts`
+flagging 4 missing required verdict files at the boundary fence.
 
 ## Eval rollup
 

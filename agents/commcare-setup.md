@@ -14,7 +14,7 @@ skills:
   - { name: app-deploy,              has_judge: false }
   - { name: app-test-cases,          has_judge: false }
   - { name: app-release,             has_judge: true,  eval_skill: app-release-eval }
-  - { name: app-release-smoke,       has_judge: false }
+  - { name: app-release-qa,       has_judge: false }
 ---
 
 # CommCare Setup (Phase 3 Procedure Document)
@@ -300,7 +300,7 @@ by `app-screenshot-capture` alongside the app summaries.
 
 ### Step 2.8: CommCare CCZ structural smoke
 
-Invoke the `app-release-smoke` skill. This step is a lightweight,
+Invoke the `app-release-qa` skill. This step is a lightweight,
 AVD-free structural check on the just-released Learn + Deliver CCZs:
 download each via `commcare_download_ccz`, parse the zip + suite.xml +
 form XMLs, and verify form counts + Connect-marker presence match the
@@ -311,7 +311,7 @@ Nova blueprint. Halts loud on mismatch.
 3 to surface recipe-authoring + AVD infrastructure failures at the
 source. That move was reverted because the live AVD smoke requires a
 Connect opportunity + ACE-test-user invite (Phase 4 outputs); Phase 3
-is upstream of those preconditions. `app-release-smoke` is a tighter
+is upstream of those preconditions. `app-release-qa` is a tighter
 CommCare-side-only check that DOES belong here: it catches
 CCZ-marker drops, form-count drift vs. Nova blueprint, and XForm
 parse errors that would otherwise only surface in Phase 4's Connect
@@ -322,9 +322,9 @@ smoke stays in Phase 6 where Connect state is available.
   - `3-commcare/app-deploy_summary.md` (HQ app ids + released build ids)
   - Nova `get_app({app_id})` blueprints for each app (for the structural cross-reference)
 - Outputs:
-  - `3-commcare/app-release-smoke_verdict.yaml` — structural verdict
+  - `3-commcare/app-release-qa_verdict.yaml` — structural verdict
 - **Halts loud on structural mismatch.** Per
-  `skills/app-release-smoke/SKILL.md § Step 4`, any of:
+  `skills/app-release-qa/SKILL.md § Step 4`, any of:
   - Released CCZ download fails or yields non-zip bytes
   - Form count in released CCZ doesn't match Nova blueprint form count
   - Any Learn quiz form is missing `<learn:assessment>` or any Learn
@@ -339,7 +339,7 @@ smoke stays in Phase 6 where Connect state is available.
   `pdd-to-{learn,deliver}-app` (Nova emitted a structurally broken
   build).
 
-**Why this is honest scope.** `app-release-smoke` does NOT verify
+**Why this is honest scope.** `app-release-qa` does NOT verify
 the apps install + launch on a real device — that's the AVD smoke
 in Phase 6 (`app-screenshot-capture`). What it DOES verify is that
 the released CCZ artifact carries the structural markers Connect's

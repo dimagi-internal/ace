@@ -730,7 +730,7 @@ server.tool('commcare_download_ccz',
 // release, and `commcare_download_ccz`'s `projected_connect_state`
 // projection all miss (they're static; this is install-time).
 //
-// Phase 3 wires this in via `app-release-smoke` Step 4 — halt loud on
+// Phase 3 wires this in via `app-release-qa` Step 4 — halt loud on
 // `verdict: fail` so the operator sees the structural defect before Phase 6
 // hits it on the device.
 //

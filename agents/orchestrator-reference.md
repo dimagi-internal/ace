@@ -55,7 +55,7 @@ phases:
     app-deploy: pending
     app-test-cases: pending
     app-release: pending
-    app-release-smoke: pending
+    app-release-qa: pending
   connect-setup:        # Phase 4
     connect-program-setup: pending
     connect-opp-setup: pending
