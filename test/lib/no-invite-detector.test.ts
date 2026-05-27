@@ -18,6 +18,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { detectNoInviteSignature } from '../../lib/no-invite-detector.js';
+import { TEST_PHONE } from '../fixtures/test-phone.js';
 
 describe('detectNoInviteSignature — positive cases (pre-invite failure)', () => {
   it('detects "Application is not in foreground" after Continue tap', () => {
@@ -60,7 +61,7 @@ describe('detectNoInviteSignature — negative cases (other failures)', () => {
   it('does NOT trigger on a regular selector-not-found failure mid-flow', () => {
     const stderr = [
       'tapOn id=primaryPhoneEditText',
-      'inputText "+74260000100"',
+      `inputText "${TEST_PHONE}"`,
       'Element not found: id "btn_continue"',
     ].join('\n');
     expect(detectNoInviteSignature({ stderr, stdout: '' })).toBe(false);

@@ -19,8 +19,6 @@ const OPP_IDS = [
   '249ad8fe-fd4f-49c5-8808-93b1cb016860', // Turmeric Market Survey — turmeric (2026-04-29)
   'feea0155-eee1-4ba9-b485-4da024dd7566', // Turmeric Market Survey 2026-04-28
 ];
-const PHONE = '+74260000100';
-
 // Load .env from plugin data dir if not already in env
 if (!process.env.ACE_HQ_USERNAME) {
   const envPath = path.join(os.homedir(), '.claude/plugins/data/ace-ace/.env');
@@ -30,6 +28,12 @@ if (!process.env.ACE_HQ_USERNAME) {
       if (m) process.env[m[1]] = m[2].replace(/^"(.*)"$/, '$1');
     }
   }
+}
+
+const PHONE = process.env.ACE_E2E_PHONE;
+if (!PHONE) {
+  console.error('ACE_E2E_PHONE env var required (set in $CLAUDE_PLUGIN_DATA/.env via op inject).');
+  process.exit(2);
 }
 
 async function setOppBudget(ctx: { request: import('playwright').APIRequestContext }, csrf: string, oppId: string, addUsers: number, totalBudget: number): Promise<boolean> {
