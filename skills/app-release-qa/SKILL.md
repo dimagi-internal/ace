@@ -1,21 +1,32 @@
 ---
-name: app-release-smoke
+name: app-release-qa
 description: >
-  Phase 3 § Step 2.8 — CommCare-side structural smoke on the released
+  Phase 3 § Step 2.8 — structural + install-time QA on the released
   Learn + Deliver CCZs. Downloads each CCZ via commcare_download_ccz,
-  parses the zip + suite.xml + form XMLs, and verifies form counts +
-  Connect-marker presence match the Nova blueprint. AVD-free, Connect-
-  free — purely CCHQ-side structural verification. Halts loud on
-  mismatch.
+  parses the zip + suite.xml + form XMLs, verifies form counts +
+  Connect-marker presence match the Nova blueprint, then runs
+  commcare-cli `validate` + `play` as install-time runtime gates.
+  AVD-free, Connect-free — purely CCHQ-side. Halts loud on mismatch.
 disable-model-invocation: false
 ---
 
-# App Release Smoke
+# App Release QA
 
-Lightweight structural smoke on the released CCZ artifacts at the end
+Structural + install-time QA on the released CCZ artifacts at the end
 of Phase 3. Catches CCZ-marker drops, form-count drift vs. Nova
-blueprint, and XForm parse errors at the source. No AVD, no Connect
-opp dependency — runs against CommCare HQ's REST API only.
+blueprint, XForm parse errors, and install-time runtime binding
+failures at the source. No AVD, no Connect opp dependency — runs
+against CommCare HQ's REST API only.
+
+Renamed from `app-release-smoke` 2026-05-27 — "smoke" understated the
+role. The skill is the structural QA partner for `app-release` (same
+shape as `idea-to-pdd-qa` partners `idea-to-pdd`): it produces a
+deterministic pass/fail verdict on the released artifact, gated on
+multiple structural + runtime checks. No LLM-as-Judge; pure
+verification. The `-qa` suffix matches the rest of ACE's producer/QA
+pairing convention. Verdict file moved from
+`app-release-smoke_verdict.yaml` to `app-release-qa_result.yaml`
+matching the existing QA-skill artifact convention.
 
 ## Why this skill exists
 
@@ -60,7 +71,7 @@ incident classes this would have caught:
 
 ## Products
 
-- `3-commcare/app-release-smoke_verdict.yaml` — structural verdict (see § Output schema below)
+- `3-commcare/app-release-qa_result.yaml` — structural verdict (see § Output schema below)
 
 No screenshots, no per-app summaries — the structural deltas live in
 the verdict YAML.
@@ -255,10 +266,10 @@ Java 17+ required (matches the existing AVD-tooling JDK requirement).
 
 ### Step 5: Write verdict
 
-Write `3-commcare/app-release-smoke_verdict.yaml`. Shape:
+Write `3-commcare/app-release-qa_result.yaml`. Shape:
 
 ```yaml
-skill: app-release-smoke
+skill: app-release-qa
 target: <opp>
 run_id: <run-id>
 ran_at: <ISO-8601>

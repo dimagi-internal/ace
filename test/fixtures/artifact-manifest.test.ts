@@ -83,7 +83,7 @@ describe('CRISPR-Test-001 fixture', () => {
       '2-scenarios/pdd-to-test-prompts-eval_verdict.yaml',
       // Phase 3 outputs missing in this fixture.
       '3-commcare/commcare-setup_summary.md',
-      '3-commcare/app-release-smoke_verdict.yaml',
+      '3-commcare/app-release-qa_result.yaml',
       // PR-517: Phase 3 `-eval` verdicts flipped to required:true.
       '3-commcare/app-release-eval_verdict.yaml',
       '3-commcare/pdd-to-deliver-app-eval_verdict.yaml',

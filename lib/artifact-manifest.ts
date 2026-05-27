@@ -546,22 +546,25 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Phase 5 (ocs-setup) end-of-phase summary written by the ocs-setup subagent. Captures chatbot config (experiment_id, embed key), publish status, and gate disposition handed back to the orchestrator.',
   },
 
-  // ── New: Phase 3 CCZ structural smoke (app-release-smoke) ─────
-  // Lightweight, AVD-free verification of released CCZ structural
+  // ── Phase 3 CCZ structural QA (app-release-qa) ────────────────
+  // AVD-free verification of released CCZ structural + install-time
   // integrity at the end of Phase 3. Catches CCZ-marker drops, form-
-  // count drift vs. Nova blueprint, and XForm parse errors at the
-  // source — without the Phase 4 / Connect-state dependency that
-  // forced us to revert the prior "move app-screenshot-capture to
-  // Phase 3" attempt. Live AVD smoke (`app-screenshot-capture`) stays
-  // in Phase 6 where Connect opp + ACE-test-user invite are available.
+  // count drift vs. Nova blueprint, XForm parse errors, and
+  // commcare-cli `play` install-time XPath binding failures — without
+  // the Phase 4 / Connect-state dependency that forced us to revert
+  // the prior "move app-screenshot-capture to Phase 3" attempt. Live
+  // AVD smoke (`app-screenshot-capture`) stays in Phase 6 where
+  // Connect opp + ACE-test-user invite are available. Renamed from
+  // `app-release-smoke` 2026-05-27 — "smoke" understated the role;
+  // this IS the structural QA partner for `app-release`.
   {
-    path: '3-commcare/app-release-smoke_verdict.yaml',
-    producedBy: 'app-release-smoke',
+    path: '3-commcare/app-release-qa_result.yaml',
+    producedBy: 'app-release-qa',
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'commcare',
     required: true,
-    description: 'Structural smoke verdict from app-release-smoke: download released Learn + Deliver CCZs, parse, verify form counts and Connect-marker presence match Nova blueprints. Halts loud on mismatch. No AVD, no Connect dependency — purely CCHQ-side structural check.',
+    description: 'Structural + install-time QA verdict from app-release-qa: download released Learn + Deliver CCZs, parse, verify form counts and Connect-marker presence match Nova blueprints, run commcare-cli validate + play install-time gates. Halts loud on mismatch. No AVD, no Connect dependency — purely CCHQ-side.',
   },
 
   // ── QA + Training phase (Phase 6) ──────────────────────────────
