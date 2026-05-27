@@ -167,6 +167,66 @@ describe('MCP server env loading (boot-time)', () => {
   );
 });
 
+/**
+ * Class-level preventer for the "MCP server file exists but is not wired
+ * into plugin.json" bug class.
+ *
+ * Surfaced 2026-05-27 in the bednet-spot-check Phase 1 run: the
+ * `mcp/decisions-server.ts` file shipped in PR #496 (typed
+ * `decisions_append_rows` atom) was never added to
+ * `.claude-plugin/plugin.json`'s `mcpServers` map. Result: every Phase 1
+ * subagent silently failed to access the typed atom, fell back to a
+ * direct `drive_create_file` write, copied the SKILL.md example's `rows:`
+ * parameter name as the YAML top-level key (instead of the canonical
+ * `decisions:`), and shipped malformed decisions.yaml files that ace-web
+ * silently parsed as 0 rows. None of the existing tests caught this — the
+ * snapshot-count test verified the file had 1 tool, but didn't cross-check
+ * that the server was actually loaded.
+ *
+ * Rule: every `mcp/*-server.ts` file MUST have a corresponding entry in
+ * `.claude-plugin/plugin.json.mcpServers` whose `args[1]` path resolves
+ * to that file. Server-name → file mapping is many-to-one (we register
+ * `google-drive-server.ts` under the name `ace-gdrive`); the cross-check
+ * is path-based, not name-based.
+ */
+describe('MCP server plugin.json registration', () => {
+  it('every mcp/*-server.ts is wired into .claude-plugin/plugin.json', () => {
+    const mcpDir = path.join(REPO_ROOT, 'mcp');
+    const serverFiles = fs
+      .readdirSync(mcpDir)
+      .filter((f) => f.endsWith('-server.ts'))
+      .map((f) => `mcp/${f}`);
+
+    const pluginJson = JSON.parse(
+      fs.readFileSync(
+        path.join(REPO_ROOT, '.claude-plugin/plugin.json'),
+        'utf-8',
+      ),
+    );
+    const registered = new Set<string>();
+    for (const entry of Object.values(pluginJson.mcpServers ?? {}) as Array<{
+      args?: string[];
+    }>) {
+      for (const arg of entry.args ?? []) {
+        // Args contain ${CLAUDE_PLUGIN_ROOT}/mcp/<file>.ts — strip the
+        // placeholder and any leading slash to match against serverFiles.
+        const m = arg.match(/mcp\/[A-Za-z0-9_-]+-server\.ts$/);
+        if (m) registered.add(m[0]);
+      }
+    }
+
+    const unregistered = serverFiles.filter((f) => !registered.has(f));
+    expect(
+      unregistered,
+      'MCP server files present on disk but not registered in ' +
+        '.claude-plugin/plugin.json.mcpServers. Without registration, ' +
+        'agents cannot reach the server\'s typed atoms — they fall back ' +
+        'to ad-hoc drive_create_file writes that bypass schema validation ' +
+        '(2026-05-27 decisions-server.ts regression).',
+    ).toEqual([]);
+  });
+});
+
 describe('MCP server tool registration', () => {
   describe.each(Object.entries(SERVERS))('%s', (_name, spec) => {
     const tools = extractToolRegistrations(spec.file);
