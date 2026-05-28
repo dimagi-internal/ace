@@ -24,9 +24,13 @@ nova_apps:
 #     (journey-learn-assessment-retry.yaml)
 # `id: J<n>` stays as the stable internal key; recipe_path is the file.
 journeys:
+  # The Learn smoke walks Learn to COMPLETION (all modules + final
+  # assessment) — this both captures Learn screenshots AND unlocks the
+  # Deliver app (Connect gates Deliver behind Learn-assessment
+  # completion). recipe_path uses the bare smoke name journey-learn.yaml.
   - id: J1
     name: {{journey_name from expected-journeys.md}}
-    app: learn  # or deliver
+    app: learn
     is_smoke: true   # exactly one is_smoke:true journey per app
     forms_exercised:
       - {{form_id_or_name}}
@@ -36,5 +40,26 @@ journeys:
     structural_pass_criteria:
       - app_boots
       - no_crash
-      - assessment_complete   # Learn; use "submission_confirmed" for Deliver
+      - assessment_complete
+    pdd_time_budget_seconds: {{from PDD if specified, else null}}
+
+  # The Deliver smoke RESUMES from the Learn-completed state — it does
+  # NOT re-walk Learn (the journey-learn leg, run first in the same
+  # dispatch, already unlocked Deliver). Compose it as:
+  #   connect-resume-opp.yaml -> deliver-launch.yaml -> first Deliver form.
+  # Warm-session only; not independently cold-runnable. See
+  # skills/app-test-cases/SKILL.md § Step 2 "Deliver-smoke composition".
+  - id: J2
+    name: {{journey_name from expected-journeys.md}}
+    app: deliver
+    is_smoke: true   # exactly one is_smoke:true journey per app
+    forms_exercised:
+      - {{form_id_or_name}}
+    fields_exercised:
+      - {{field_id}}
+    recipe_path: 3-commcare/recipes/journey-deliver.yaml
+    structural_pass_criteria:
+      - app_boots
+      - no_crash
+      - submission_confirmed
     pdd_time_budget_seconds: {{from PDD if specified, else null}}
