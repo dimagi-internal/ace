@@ -299,43 +299,19 @@ do not loop indefinitely. Cap at 2 attempts total per phase per
 orchestrator turn. A classifier result of `'error'` is a real phase
 failure and halts immediately — do not retry.
 
-**Why structural, not text-match.** Text-match alone (`"No response
-requested"`) is fragile — the agent could return a confidently-worded
-status text that says "Phase 1 complete: PDD written" while having
-written nothing. `classify_phase_writeback` is backed by the same
-source of truth `/ace:status` and `opp-eval` use (`phases.<phase>` in
-`run_state.yaml`); if the gate didn't flip, the phase didn't ship,
-regardless of what the response text claimed. `e2e-malaria-rdt`
-Phase 1's silent dispatch happened to also have empty text, so PR-A's
-text-match worked there — but the classifier-driven signal catches
-the harder class where the agent returns plausible-sounding text
-without actually writing. PR-J built the pure helper, PR-L wrapped
-it as the atom, PR-M wired it into Turn N+1.
+**Why structural, not text-match.** A confidently-worded "Phase 1
+complete" return can be a lie; `classify_phase_writeback` reads the same
+`phases.<phase>` source of truth `/ace:status` and `opp-eval` use, so if
+the gate didn't flip the phase didn't ship regardless of the text. The
+text-match secondary signal only catches the easy case (an empty return).
 
-**Pre-load common MCP atoms at start.** Many ACE atoms are exposed as
-deferred tools that need a `ToolSearch` lookup before first use. To
-avoid 10+ ToolSearch calls scattered through a run, load the
-phase-relevant atoms once at the start of each phase dispatch. The
-high-traffic atom list:
-
-- Drive: `drive_read_file`, `drive_list_folder`, `drive_create_file`,
-  `drive_create_folder`, `drive_update_file`
-- Connect: `connect_create_program`, `connect_create_opportunity`,
-  `connect_set_verification_flags`, `connect_create_payment_unit`,
-  `connect_list_deliver_units`, `connect_list_opportunities`,
-  `connect_send_llo_invite`, `connect_activate_opportunity`,
-  `connect_get_invoice`, `connect_list_invoices`, `connect_update_opportunity`
-- OCS: `ocs_clone_chatbot`, `ocs_create_collection`,
-  `ocs_upload_collection_files`, `ocs_wait_for_collection_indexing`,
-  `ocs_set_chatbot_system_prompt`, `ocs_set_chatbot_pipeline`,
-  `ocs_attach_knowledge`, `ocs_publish_chatbot_version`,
-  `ocs_get_chatbot_embed_info`, `ocs_send_test_message`
-- Nova: `get_app`, `get_form`, `update_form`,
-  `validate_app`, `list_apps`
-
-When you start a phase, issue ONE `ToolSearch` with
-`select:<comma-separated names>` covering the atoms that phase uses,
-not 5–10 separate searches as you encounter each one.
+**Pre-load phase atoms in ONE `ToolSearch` per phase.** Many ACE atoms
+are deferred tools needing a `ToolSearch` lookup before first use. At
+each phase dispatch, issue ONE `ToolSearch select:<names>` covering the
+atoms that phase uses — not 5–10 separate searches as you hit each one.
+The L0 atom literal is Pre-flight Step 2; phase subagents run their own
+`ToolSearch` for phase-specific atoms (named in their agent definitions),
+so the orchestrator doesn't maintain a per-phase atom list here.
 
 Batching, env resolution, parallel-`TaskCreate`, and serial `Agent`
 dispatch rules are catalogued in § Anti-patterns and discipline.
@@ -362,23 +338,12 @@ The orchestrator's contract on a populated opp:
   the orchestrator. Each run is independent — no run reads from or
   writes to another run's `run_state.yaml`. The only cross-run reuse
   surface is `opp.yaml`, which holds opp-level identifiers (Connect
-  program UUID) that survive across runs. Examples:
-  - `connect-program-setup` reuses an existing program when
-    `opp.yaml.connect.program.id` is set + verified live; otherwise
-    creates a new one and writes it back to `opp.yaml`.
-  - `connect-opp-setup` always creates a fresh Connect opportunity
-    per run; opportunity UUIDs are recorded only in the producing
-    run's `phases.connect-setup.products.connect.opportunity`. Stale
-    opps from earlier runs are operator-cleaned-up when picking a
-    release-candidate run.
-  - `ocs-agent-setup` clones a fresh chatbot per run from the golden
-    template; the chatbot is recorded in the producing run's
-    `phases.ocs-setup.products.ocs_chatbot`. Stale chatbots are
-    operator-cleaned-up.
-  - `solicitation-create` always publishes a fresh solicitation per
-    run; the solicitation is recorded in the producing run's
-    `phases.solicitation-management.products.solicitation`. Stale
-    solicitations are operator-cleaned-up.
+  program UUID) that survive across runs. Worked per-skill examples
+  (`connect-program-setup` reuses the program; `connect-opp-setup`,
+  `ocs-agent-setup`, and `solicitation-create` each mint a fresh per-run
+  entity recorded under their phase's `products.*`, with stale prior-run
+  entities operator-cleaned-up) live in reference § Fork Points and
+  § Don't add operator-confirmation.
 - **Each new run gets its own `runs/<run-id>/<N>-<phase>/` artifact
   set** — prior-run artifacts stay frozen in their own run folders.
   Reuse means "phase agent skipped the rebuild step and pointed at
@@ -935,22 +900,17 @@ When invoked with an opportunity, execute these phases in order.
 
 ## Between Phases
 
-After each phase completes:
-1. Update `run_state.yaml` per § Phase Write-Back Contract (in `agents/orchestrator-reference.md`)
-2. **Verify the dispatched phase actually wrote its block** per § Phase
-   Write-Back Verifier — procedure (in `agents/orchestrator-reference.md`) — catches drift;
-   orchestrator stubs in a minimal block + flips the gate if the agent forgot
-3. **Verify producer artifacts landed** per § Producer Artifact Verifier
-   (in `agents/orchestrator-reference.md`) — catches the inline-composition
-   class of bug at the source phase rather than three phases later at a
-   consumer's pre-flight
-4. In `auto` mode: send status email to admin group, continue
-5. In `default` mode: continue silently across Phases 1→2 … 7→8 unless
-   a `[BLOCKER]` or hard error surfaces (the named Pause Points in
-   § Pause Points still apply). The Phase 6→7 and 7→8 transitions are
-   NOT mandatory pauses. The one unconditional external-comms pause is
-   the Phase 8→9 boundary — see § Modes and § Pause Points.
-6. In `review` mode: present summary and wait for approval to continue
+A phase boundary has a fixed mechanical sequence — don't improvise it
+here. The tool sequence (write-back + the two verifiers + `decisions-render`)
+is § Phase boundary fence below; whether to pause or email at the boundary
+is § Modes:
+
+- `auto` — email the admin group at each step, continue.
+- `default` — continue silently across Phases 1→2 … 7→8 unless a
+  `[BLOCKER]`/hard error or a named Pause Point fires (§ Pause Points).
+  The 6→7 and 7→8 transitions are NOT mandatory pauses; the run
+  terminates at the Phase 8→9 boundary (§ Workflow callout).
+- `review` — present a summary and wait for approval to continue.
 
 ## Phase boundary fence
 
@@ -1115,34 +1075,19 @@ passing the wrong key is loud and immediate:
 | `execution-manager` | `execution-management` |
 | `closeout` | `closeout` |
 
-**Why `verify_phase_artifacts` rather than eyeballing `drive_list_folder`.**
-The Turn N+1 `drive_list_folder` is still there for inspection, but
-`drive_list_folder` returns a flat array of file metadata — turning that
-into "which required artifacts are missing for this phase?" is a
-3-step model dance (list → know-the-manifest → diff) prone to
-LLM-pattern-matched-the-wrong-set drift. `verify_phase_artifacts` does
-the diff in TypeScript against `lib/artifact-manifest.ts` and returns
-the structured `{ok, missing[]}` shape the branch logic needs. Same
-discipline-by-determinism move as `classify_phase_writeback` made for
-run-state shape in PR-L. Surfaced live in bednet-spot-check
-20260525-2013, where 13 declared `-eval` dispatches were silently
-skipped because the LLM running each phase subagent had no
-deterministic counterforce at the boundary.
-
 If the phase returned a `[BLOCKER]` or hard error, replace Turn N+3
 with a halt message — but Turn N+1 still happens (write-back is
 mandatory regardless of verdict).
 
-**Why `classify_phase_writeback` rather than raw `drive_read_file`.** Pre-PR-L,
-Turn N+1 read the YAML and the orchestrator eyeballed `phases.<phase>.status`.
-That's a 3-step model dance (read → parse → judge) prone to drift if the
-agent text-matches against malformed YAML. Post-PR-L,
-`classify_phase_writeback` is a single deterministic tool_use that returns
-the exact disposition the silent-retry / halt branches need. Implementation:
-`lib/run-state-validator.ts::classifyPhaseWriteBack`. For the full issue
-list (e.g. inspect WHICH field is missing on a `'malformed'` result), call
-`validate_run_state(fileId)` — same backing helper, returns
-`{valid, errors, warnings}` with `{path, message, severity}` per issue.
+Both `verify_phase_artifacts` and `classify_phase_writeback` exist so the
+two boundary checks are single deterministic tool calls instead of a
+read→parse→judge model dance that drifts (the "why one tool" rationale +
+incidents — bednet-spot-check 20260525-2013's 13 silently-skipped evals,
+the PR-L run-state move — are in reference § Producer Artifact Verifier
+and § Phase Write-Back Contract). For the full issue list on a
+`'malformed'` result (which field is missing), call
+`validate_run_state(fileId)` — returns `{valid, errors, warnings}` with
+`{path, message, severity}` per issue.
 
 **Forbidden boundary improvisations.** The boundary fence's 5 tool
 calls listed above are the COMPLETE set. Do NOT also:
