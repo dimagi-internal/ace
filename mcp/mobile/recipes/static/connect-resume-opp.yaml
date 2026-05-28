@@ -1,0 +1,74 @@
+# Navigate Connect's opp list to the target opp's In-Progress card and
+# tap Resume, landing on the post-Learn certificate/opp-detail surface
+# (atlas § 8) that deliver-launch.yaml consumes.
+#
+# Pre-state: Connect opp-list (connect_fragment_jobs_list) visible;
+# the target opp is already Learn-complete or in-progress (placed in the
+# "In Progress" section with a btn_resume card button). Warm-session only
+# — assumes the journey-learn leg just completed Learn in this dispatch.
+#
+# Post-state: the certificate/opp-detail surface (atlas § 8):
+# either the "Congratulations" certificate overlay or the
+# connect_learning_button ("VIEW OPPORTUNITY DETAILS") on the opp-detail
+# screen — whichever Connect renders on Resume after Learn completion.
+# deliver-launch.yaml handles both variants and drives forward from here.
+#
+# Required env vars (pass via mobile_run_recipe.envVars):
+#   OPP_NAME — display name of the opportunity (verbatim from
+#               run_state.yaml.phases.connect-setup.products.connect.opportunity.name).
+#               Must include the run-id suffix so the substring match is
+#               unique on the card list (same contract as connect-claim-opp.yaml).
+#
+# SELECTOR STATUS — pending live confirmation (see plan Task 3.5):
+#   `btn_resume` and `connect_fragment_jobs_list` are reused verbatim
+#   from connect-claim-opp.yaml, where they are production-proven. They
+#   are NOT yet dump-confirmed on THIS specific surface — the
+#   Learn-complete, pre-Deliver-download opp-list "In Progress" card.
+#   The atlas (docs/mobile-atlas/connect-2.62.0.md § 8) marks this
+#   surface's resource-ids as not-yet-captured. The live-AVD verification
+#   run finalizes/corrects these against a fresh mobile_capture_ui_dump
+#   before this recipe is relied on in a real Phase 6 capture.
+appId: org.commcare.dalvik
+---
+# Confirm we are on the opp-list.
+- assertVisible:
+    id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+
+# Scroll the target opp's In-Progress card into the viewport.
+# `visibilityPercentage: 60` tolerates multi-line title-wrap (same
+# reasoning as connect-claim-opp.yaml).
+- scrollUntilVisible:
+    element:
+      text: ${OPP_NAME}
+    direction: DOWN
+    timeout: 20000
+    visibilityPercentage: 60
+- assertVisible:
+    text: ${OPP_NAME}
+
+# Scroll btn_resume into view below the target title before tapping.
+# Without this, the title may sit at the viewport bottom with the button
+# clipped below the fold — matching the pattern from connect-claim-opp.yaml.
+- scrollUntilVisible:
+    element:
+      id: "org.commcare.dalvik:id/btn_resume"
+      below:
+        text: ${OPP_NAME}
+    direction: DOWN
+    timeout: 10000
+    visibilityPercentage: 60
+
+- takeScreenshot: "connect-resume-opp-tile"
+
+# Tap Resume on the In-Progress card scoped to our target opp.
+- tapOn:
+    id: "org.commcare.dalvik:id/btn_resume"
+    below:
+      text: ${OPP_NAME}
+    retryTapIfNoChange: true
+
+# Post-Resume: Connect surfaces either the certificate screen (atlas § 8)
+# or the opp-detail screen with connect_learning_button. Both are the
+# correct pre-state for deliver-launch.yaml; no additional wait needed
+# beyond what deliver-launch.yaml's own branch guards handle.
+- takeScreenshot: "connect-resume-opp-landed"
