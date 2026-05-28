@@ -163,6 +163,12 @@ ACE_CONNECT_APK_VERSION=2.63.0
 #
 # Both are honored natively by adb + emulator; ACE injects them into
 # spawned children via `mcp/mobile/backends/avd.ts` + `port-allocator.ts`.
+#
+# ⚠ Leave BOTH unset on any machine that runs ACE sessions in parallel.
+# Setting either DISABLES the per-session dynamic allocator (env wins in
+# port-allocator.ts), forcing every session onto the same fixed ports →
+# adb-server / emulator-console collisions. Pin only for a single
+# deliberate debug session, and set it in that session's env — not here.
 # ANDROID_ADB_SERVER_PORT=
 # ACE_MOBILE_EMULATOR_PORT=
 

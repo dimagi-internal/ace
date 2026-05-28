@@ -1920,18 +1920,26 @@ for _candidate in \
 done
 [ -z "$_MOBILE_MAESTRO" ] && MOBILE_ISSUES+=("maestro missing")
 
-# adb present + reachable (a stale daemon on port 5037 that's hung
-# manifests as `adb devices` hanging, not as a missing binary — bound
-# the call so we fail loud rather than wait forever).
+# adb present (binary only). Daemon reachability + WHICH port it's on is
+# a RUNTIME concern under dynamic per-session allocation
+# (mcp/mobile/port-allocator.ts probe-picks a free adb port per session and
+# records it in ~/.ace/sessions/), so probing a fixed/guessed port here
+# produced false "adb unreachable (port 5037)" WARNs that disagreed with
+# the [Mobile] detail block. Phase 6 (re)starts adb and cold-boots the AVD
+# per dispatch; at rest we only need the binary present.
 if ! command -v adb >/dev/null 2>&1; then
   MOBILE_ISSUES+=("adb missing")
-elif ! _ADB_DEVICES_OUT="$(timeout 3 adb devices 2>/dev/null)"; then
-  MOBILE_ISSUES+=("adb daemon unreachable (port 5037 collision or stale daemon)")
 fi
 
-# Configured AVD exists + booted. AVD_NAME / EMULATOR_BIN resolution
-# logic is duplicated in [Mobile] block below; keeping it here too so
-# this check is self-contained and survives [Mobile]-block edits.
+# Configured AVD EXISTS (created) — not booted. The AVD is cold-booted
+# per Phase 6 dispatch (mobile_ensure_avd_running: kill → cold-boot with
+# -wipe-data → register user → reinstall driver → verify), so a not-booted
+# AVD AT REST is the expected steady state, NOT a fault. Checking
+# booted-ness + driver-gRPC liveness here tested the wrong precondition
+# and was the source of the cosmetic "AVD not booted" WARN; those runtime
+# states are owned by mobile_ensure_avd_running (which heals them on every
+# dispatch) and gated by Phase 6 itself. Current booted state is shown
+# (informational, OK either way) in the [Mobile] block below.
 _MOBILE_AVD_NAME="$(get_env ACE_AVD_NAME)"
 [ -z "$_MOBILE_AVD_NAME" ] && _MOBILE_AVD_NAME="${ACE_AVD_NAME:-ACE_Pixel_API_34}"
 _MOBILE_EMULATOR_BIN=""
@@ -1946,44 +1954,6 @@ if [ -z "$_MOBILE_EMULATOR_BIN" ]; then
   MOBILE_ISSUES+=("emulator binary not on PATH (Android SDK missing)")
 elif ! "$_MOBILE_EMULATOR_BIN" -list-avds 2>/dev/null | grep -q "^${_MOBILE_AVD_NAME}$"; then
   MOBILE_ISSUES+=("AVD '${_MOBILE_AVD_NAME}' not created")
-elif ! echo "${_ADB_DEVICES_OUT:-}" | grep -q "^emulator-"; then
-  MOBILE_ISSUES+=("AVD '${_MOBILE_AVD_NAME}' not booted")
-else
-  # AVD is booted. Probe the on-device Maestro driver gRPC channel —
-  # the canonical Phase 5 failure mode that pre-0.13.165 doctor missed
-  # was "AVD booted, Maestro driver app installed but its gRPC server
-  # dead." Symptom: `maestro test` returns `deviceInfo … UNAVAILABLE`
-  # and Phase 5 `app-screenshot-capture` degrades to
-  # `verdict: incomplete` for a state that's auto-recoverable.
-  #
-  # This probe is the same shape as `MaestroBackend.probeDriver` —
-  # short-timeout `maestro hierarchy` against the emulator's adb port.
-  # Doctor shells out directly rather than spinning up `npx tsx` to
-  # avoid ~3s of JIT startup on the hot path; if the doctor probe and
-  # the backend probe ever drift, prefer the backend (it's the one that
-  # decides whether to heal). Recovery is `mobile_ensure_avd_running`
-  # (called by `mobile-bootstrap` and by Phase 5 Step 3); doctor only
-  # diagnoses, never mutates.
-  _MOBILE_SERIAL="$(echo "${_ADB_DEVICES_OUT:-}" | awk '/^emulator-[0-9]+\s+device/ {print $1; exit}')"
-  if [ -n "$_MOBILE_SERIAL" ] && [ -n "$_MOBILE_MAESTRO" ]; then
-    _MOBILE_ADB_PORT="${_MOBILE_SERIAL#emulator-}"
-    _MOBILE_ADB_PORT=$((_MOBILE_ADB_PORT + 1))
-    # `maestro hierarchy` on a healthy AVD returns ~2s; 10s gives us
-    # plenty of headroom for slow first-time driver attach without
-    # waiting through the full 30s UNAVAILABLE timeout on a hung
-    # driver. `timeout` here is GNU coreutils on Linux / brew coreutils
-    # on macOS — `gtimeout` is the macOS fallback if neither is on PATH.
-    _MOBILE_TIMEOUT_BIN="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)"
-    if [ -n "$_MOBILE_TIMEOUT_BIN" ]; then
-      if "$_MOBILE_TIMEOUT_BIN" 10 "$_MOBILE_MAESTRO" --host=localhost --port="$_MOBILE_ADB_PORT" hierarchy >/dev/null 2>&1; then
-        : # healthy; no message
-      else
-        MOBILE_ISSUES+=("Maestro driver on '${_MOBILE_SERIAL}' not responding on gRPC (hierarchy probe failed; Phase 5 will hit deviceInfo UNAVAILABLE)")
-      fi
-    fi
-    unset _MOBILE_TIMEOUT_BIN _MOBILE_ADB_PORT
-  fi
-  unset _MOBILE_SERIAL
 fi
 
 # Playwright cookies: directory exists with a non-empty Cookies file.
@@ -2004,7 +1974,7 @@ if [ ${#_MOBILE_MISSING_ENV[@]} -gt 0 ]; then
 fi
 
 if [ ${#MOBILE_ISSUES[@]} -eq 0 ]; then
-  pass "mobile_infra: maestro + adb + AVD '${_MOBILE_AVD_NAME}' booted, driver gRPC responsive, cookies + ACE_E2E_* env all OK (Phase 5 app-screenshot-capture ready)"
+  pass "mobile_infra: maestro + adb + emulator + AVD '${_MOBILE_AVD_NAME}' present, cookies + ACE_E2E_* env all OK (Phase 6 cold-boots the AVD per dispatch; current booted state in [Mobile] below)"
 else
   # Build the joined string with `; ` separators. `IFS=…` with `${arr[*]}`
   # only uses the first IFS char as separator (bash 3.2 limitation), so a
@@ -2018,9 +1988,9 @@ else
   # everything else needs `/ace:mobile-bootstrap`. Both lead to the
   # same operator command since bootstrap itself calls
   # `mobile_ensure_avd_running`, so the heal path runs either way.
-  warn "mobile_infra: ${_MOBILE_JOINED}. Phase 5 app-screenshot-capture is gated on these — pre-0.13.165 it would degrade silently to verdict:incomplete; current builds halt with [BLOCKER] until recovery runs." "/ace:mobile-bootstrap (one-shot recovery — boots the AVD and triggers the auto-heal in mobile_ensure_avd_running for the Maestro driver). See [Mobile] block below for per-component detail."
+  warn "mobile_infra: ${_MOBILE_JOINED}. Phase 6 mobile capture needs these present at rest (the AVD itself is cold-booted per dispatch, so booted-ness is not checked here)." "/ace:mobile-bootstrap (one-shot setup: installs Maestro/adb/SDK, creates the AVD, seeds Playwright cookies, verifies ACE_E2E_*). See [Mobile] block below for per-component detail."
 fi
-unset MOBILE_ISSUES _MOBILE_MAESTRO _ADB_DEVICES_OUT _MOBILE_AVD_NAME _MOBILE_EMULATOR_BIN _MOBILE_PW_DIR _MOBILE_MISSING_ENV _candidate _v _val
+unset MOBILE_ISSUES _MOBILE_MAESTRO _MOBILE_AVD_NAME _MOBILE_EMULATOR_BIN _MOBILE_PW_DIR _MOBILE_MISSING_ENV _candidate _v _val
 
 # --- selector_map_currency ---
 # Phase 5 (`qa-and-training`) Maestro recipes reference logical selector
