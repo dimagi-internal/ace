@@ -299,15 +299,34 @@ Track as a class-level concern; revisit when the test user has
 accumulated enough invites to break the implicit ordering or when a
 recipe surfaces a false-positive `tapOn:text` hit on the wrong tile.
 
-### Step 5: Run the smoke recipes
+### Step 5: Run the smoke recipes — two independent legs
 
-For each of the two smoke journeys (Learn first, then Deliver), call
-`mobile_run_recipe` with the resolved recipe path:
+Capture is split into a **Learn leg** and a **Deliver leg**. The legs
+are graded independently; a Deliver failure never suppresses Learn
+capture.
 
-- Each call returns a list of captured screenshots; upload each to
-  `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<recipe-base>/<step-name>.png`
-  via `drive_upload_binary` with `shareAnyoneWithLink: true` AND
-  `mimeType: "image/png"`.
+**Learn leg (always runs first).** Run `journey-learn.yaml` against the
+AVD. Upload every captured screenshot to
+`6-qa-and-training/screenshots/journey-learn/<step-name>.png`
+(`shareAnyoneWithLink: true`, `mimeType: image/png`; upload any sibling
+`<step-name>.xml` ui-dump with `mimeType: application/xml`). Record the
+Learn leg outcome (`pass` iff the recipe status is pass AND every
+screenshot is non-zero bytes). A Learn failure records the Learn
+sub-verdict and does NOT abort the dispatch — but the Deliver leg then
+cannot run (Connect gates Deliver behind Learn completion), so it is
+recorded `blocked-by-learn`.
+
+**Deliver leg (runs second; depends on the Learn leg).** Only attempt
+if the Learn leg reached completion. `journey-deliver.yaml` resumes
+from the now-unlocked state in the same device session (no re-login).
+Upload to `6-qa-and-training/screenshots/journey-deliver/<step-name>.png`.
+Record the Deliver leg outcome independently.
+
+**Do NOT halt the dispatch on a single leg failure.** Run both legs (or
+record why the Deliver leg couldn't run), then write the per-app
+verdict in Step 9. The recipe-error → failure-mode table below is the
+per-leg classifier — apply it to whichever leg failed.
+
 - **CRITICAL:** the `shareAnyoneWithLink: true` flag is required.
   Slides' `createImage` (used by `training-deck-render` downstream)
   fetches PNGs via Google's image-import service, which doesn't carry
@@ -336,10 +355,6 @@ For each of the two smoke journeys (Learn first, then Deliver), call
   `docs/learnings/2026-05-14-atlas-side-channel-capture.md` for the
   underlying problem and `mcp/mobile/recipe-splitter.ts` for the
   splitting logic.
-
-If a smoke recipe fails (status != pass), halt — downstream phases
-must not start without working smoke screenshots, and a smoke failure
-means the app is broken in a basic way.
 
 **Before consulting this table, READ the failure screenshot.** Maestro
 writes one to its debug bundle on every recipe halt — path appears in
@@ -448,12 +463,28 @@ per_item:
   - ref: learn
     score: 9.0
     verdict: pass
-    note: "5 screenshots, all PNG, all referenced from manifest"
+    note: "journey-learn walked to completion; 6 screenshots, all PNG"
   - ref: deliver
-    score: 9.0
-    verdict: pass
-    note: "5 screenshots, all PNG, all referenced from manifest"
-  # ... one per smoke journey (ref: learn / ref: deliver)
+    score: 0
+    verdict: incomplete       # or fail / pass
+    note: "journey-deliver.yaml missing — Phase 3 deferred it"
+```
+
+Top-level `verdict` from the two legs:
+
+| Learn | Deliver | top-level verdict | phase proceeds clean? |
+|---|---|---|---|
+| pass | pass | `pass` | yes |
+| pass | fail (ran, broke) | `fail` | no — blocks |
+| pass | incomplete (recipe missing/scaffold) | `incomplete` | no — blocks |
+| fail | blocked-by-learn | `fail` | no — blocks |
+| incomplete | incomplete | `incomplete` | no — blocks |
+
+A non-pass verdict still ships the Learn screenshots it captured.
+Operator-authorized whole-step skip remains the separate explicit
+escape (unchanged).
+
+```yaml
 
 auto_surfaced:
   - severity: WARN
@@ -585,7 +616,7 @@ Notes:
 
 | Dimension | Pass criteria |
 |---|---|
-| Coverage | both smoke journeys (Learn + Deliver) executed |
+| Coverage | both legs attempted; Learn always; Deliver iff Learn completed |
 | Execution | every smoke recipe status: pass |
 | Artifact quality | every screenshot is a valid PNG with non-zero bytes |
 | Manifest integrity | manifest.yaml lists every screenshot path actually present in Drive |
@@ -597,5 +628,6 @@ Notes:
 |---|---|---|
 | 2026-05-05 | **Path-scheme migration.** Inputs repointed to `2-scenarios/pdd-to-app-journeys.md`, `3-commcare/app-test-cases.yaml`, `3-commcare/app-deploy_summary.md`, `3-commcare/recipes/`. Outputs repointed to `6-qa-and-training/screenshots/<recipe-base>/<step-name>.png`, `6-qa-and-training/app-screenshot-capture_manifest.yaml`, `6-qa-and-training/app-screenshot-capture_verdict.yaml`, `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (per manifest). Both verdict YAML examples' `capture_path` updated. No behavior change beyond paths. | ACE team |
 | 2026-05-27 | **Recipe naming convention.** Screenshot dirs updated from `<journey-id>/` to `<recipe-base>/` (`journey-learn/`, `journey-deliver/`). Recipe read references updated from `J*.yaml` to `journey-*.yaml`. Structural verdict `per_item` refs changed from `ref: "J1.yaml"` to `ref: learn` / `ref: deliver`. No runtime behavior change. See spec 2026-05-27-phase6-learn-deliver-decoupling. | ACE team |
+| 2026-05-27 | **Two-leg capture split.** Step 5 rewritten as independent Learn leg + Deliver leg. Learn always runs first; a Deliver failure (or missing recipe) no longer suppresses Learn screenshots. Per-app `per_item` verdict mapping table added (pass/fail/incomplete/blocked-by-learn outcomes). Coverage rubric updated: "both legs attempted; Learn always; Deliver iff Learn completed." See spec 2026-05-27-phase6-learn-deliver-decoupling. | ACE team |
 | 2026-05-06 | **Step 2 input-completeness pre-flight** — restructured the post-Step-1 logic into an explicit failure-mode table that distinguishes upstream Phase 3 incomplete output (master yaml without recipes) from smoke-flag malformation. Each failure halts with a named PLATFORM auto_surfaced message + the exact `/ace:step` remediation command, and writes `verdict: incomplete` (not `fail` — upstream gaps aren't smoke failures). Surfaced by leep-paint-collection run 20260506-1440 where a Phase 3 dispatch paraphrased the `app-test-cases` SKILL contract and elided the per-journey recipe outputs; `app-screenshot-capture` halted correctly but the operator-facing message conflated the failure mode with general "missing input" diagnostics. See jjackson/ace#106 finding #3 + #16. | ACE team |
 | 2026-05-07 | **Step 5 anyone-with-link via `drive_upload_binary({shareAnyoneWithLink: true})`** — replaces the previous unfulfillable contract (the SKILL named `drive.permissions.create` but no MCP atom implemented it). The new flag sets `role: reader, type: anyone` atomically at upload time, eliminating the "deck builds without errors but slides are empty" failure mode. Standalone `drive_set_anyone_with_link({fileId})` atom also added for retroactive sharing. See jjackson/ace#115 finding #3. | ACE team |
