@@ -358,7 +358,7 @@ Single-line answer to 'did `<phaseName>` write its run_state.yaml block correctl
 
 ### `verify_phase_artifacts`
 
-Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Pair with `classify_phase_writeback` in the boundary fence's parallel block: w…
+Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count, optional_present_count, summary}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Narrate from `summary` (a ready-made one-line…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

@@ -461,11 +461,16 @@ phase)` — a gdrive-server MCP tool that wraps
 subfolder under `runFolderId` two levels deep, diffs against every
 `required: true` run-level entry the manifest declares for that
 phase, and returns `{phase, ok, missing[], present_count,
-expected_count}` where each `missing` entry carries `{path,
-producedBy, description}`. The boundary fence
-(`ace-orchestrator.md § Phase boundary fence`) calls it in the
-parallel block alongside `classify_phase_writeback`, and branches on
-`verify.ok=false` to silent-dispatch the missing producer(s).
+expected_count, optional_present_count, summary}` where each
+`missing` entry carries `{path, producedBy, description}`. The
+boundary fence (`ace-orchestrator.md § Phase boundary fence`) calls
+it in the parallel block alongside `classify_phase_writeback`, and
+branches on `verify.ok=false` to silent-dispatch the missing
+producer(s). `summary` is a narration-ready one-liner ("all N
+required artifacts found (+M optional)") — echo it verbatim rather
+than pairing `present_count/expected_count` into a fraction, since
+`present_count` counts every file in the folder and `expected_count`
+counts only the required set, so the ratio routinely exceeds 1.
 
 **Why one tool, not a hand-rolled procedure.** A pre-PR-516 version
 of this section walked the manifest in prose: list folder → call
