@@ -17,6 +17,12 @@ nova_apps:
 # `is_smoke: true` marks the recipe Phase 6 runs in shallow mode (one
 # per app — the cheapest representative happy path).
 
+# recipe_path convention: 3-commcare/recipes/journey-<app>[-<slug>].yaml
+#   - the single is_smoke:true journey per app uses the bare name
+#     (journey-learn.yaml / journey-deliver.yaml)
+#   - additional journeys append a kebab-case slug from `name`
+#     (journey-learn-assessment-retry.yaml)
+# `id: J<n>` stays as the stable internal key; recipe_path is the file.
 journeys:
   - id: J1
     name: {{journey_name from expected-journeys.md}}
@@ -26,7 +32,7 @@ journeys:
       - {{form_id_or_name}}
     fields_exercised:
       - {{field_id}}
-    recipe_path: app-test-cases/recipes/J1.yaml
+    recipe_path: 3-commcare/recipes/journey-learn.yaml
     structural_pass_criteria:
       - app_boots
       - no_crash
