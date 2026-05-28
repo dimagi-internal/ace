@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import type { APIRequestContext, APIResponse } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
 import { PlaywrightSession } from '../auth/playwright-session.js';
@@ -417,13 +418,35 @@ export interface DownloadCczArgs {
    * false-negatives every successful upload.
    */
   include_multimedia?: boolean;
+  /**
+   * If set, write the downloaded CCZ bytes to this local filesystem path
+   * and return `ccz_written_to` INSTEAD of `ccz_base64` — keeping the
+   * (potentially multi-MB) base64 blob out of the caller's model context.
+   * The structured `connect_markers` + `projected_connect_state` projection
+   * is still computed and returned (that's the useful signal callers gate
+   * on). Mirror of `commcare_validate_ccz`'s `ccz_path` input so the
+   * download → install-sim chain (`app-release-qa`) never round-trips
+   * base64: `download_ccz(write_to_path=X)` → `validate_ccz(ccz_path=X)`.
+   * The 25 MB base64 cap does not apply when this is set (disk writes
+   * don't bloat the response).
+   */
+  write_to_path?: string;
 }
 
 export interface DownloadCczResult {
   status: number;
   size_bytes: number;
-  /** Base64-encoded CCZ bytes. Capped at 25 MB; larger CCZs return size_bytes only. */
+  /**
+   * Base64-encoded CCZ bytes. Capped at 25 MB; larger CCZs return
+   * size_bytes only. Omitted when `write_to_path` was supplied (see
+   * `ccz_written_to`).
+   */
   ccz_base64?: string;
+  /**
+   * Absolute/relative path the CCZ bytes were written to, when the caller
+   * passed `write_to_path`. Mutually exclusive with `ccz_base64`.
+   */
+  ccz_written_to?: string;
   /** Per-namespace marker counts grepped from the inflated CCZ (when fetched). */
   connect_markers?: {
     deliver: number;
@@ -2053,9 +2076,24 @@ export class CommCareBackend {
       }
       const buf = await res.body();
       const size = buf.byteLength;
+      // When the caller asked for a disk write, persist the bytes and return
+      // the path instead of base64 — keeps multi-MB base64 out of the model
+      // context. The projection below is still computed (it's the useful
+      // signal callers gate on), and the 25 MB cap does NOT apply here since
+      // a disk write doesn't bloat the response.
+      if (args.write_to_path) {
+        fs.writeFileSync(args.write_to_path, buf);
+        return {
+          status,
+          size_bytes: size,
+          ccz_written_to: args.write_to_path,
+          connect_markers: computeConnectMarkers(buf),
+          projected_connect_state: simulateConnectSync(buf),
+        };
+      }
       // Skip base64 round-trip + marker grep on > 25 MB CCZs to keep MCP
       // responses small. If the operator needs the bytes for a larger app,
-      // they should download via curl directly.
+      // they should pass `write_to_path` (or download via curl directly).
       if (size > 25 * 1024 * 1024) {
         return { status, size_bytes: size };
       }
