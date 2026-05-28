@@ -88,6 +88,15 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
    `auto_surfaced` list. The deck still ships; the operator can
    replace screenshots manually post-launch.
 
+   **Partial per-app screenshots.** The screenshot manifest may contain
+   `journey-learn/` screenshots but no `journey-deliver/` (or vice versa)
+   when one capture leg failed/was-deferred (see
+   `app-screenshot-capture` per-app legs). Use whichever app's screenshots
+   are present; for the missing app, emit the same "screenshot placeholder
+   — capture in a future AVD-enabled QA run" treatment already used when
+   the whole bundle is absent. Never fail the deck over a missing app
+   leg — the present leg's screenshots still go in.
+
 6. **Read common modules.** Load shared module fragments from
    `templates/training-deck/_common/`:
    - `platform-setup.yaml` — Connect sign-in, claim, install slides
