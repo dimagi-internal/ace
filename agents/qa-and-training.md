@@ -176,7 +176,12 @@ silent-failure prevention learned from earlier real-world dogfood.
 
 If any check fails, halt before Step 1 with a `[BLOCKER]` and the
 named operator command (`/ace:mobile-bootstrap` for AVD/Maestro state;
-`/ace:step app-test-cases` for missing recipes). **Do not soft-skip
+`/ace:step app-test-cases` for missing recipes). A **Learn** capability
+gap (AVD unavailable, or `journey-learn.yaml` missing) halts the phase
+before Step 1. A **Deliver-only** gap (`journey-deliver.yaml` missing)
+does NOT halt before Step 1 — let `app-screenshot-capture` run the Learn
+leg and record the Deliver leg `incomplete`; the phase verdict will be
+non-pass but Learn screenshots still ship. **Do not soft-skip Learn
 screenshot capture and ship placeholders.** Pre-0.13.165 this phase
 accepted "AVD unavailable → write verdict:incomplete and proceed,"
 which let real Phase 6 capability gaps hide behind benign-looking
