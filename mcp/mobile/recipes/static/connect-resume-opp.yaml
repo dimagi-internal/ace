@@ -18,6 +18,16 @@
 #               run_state.yaml.phases.connect-setup.products.connect.opportunity.name).
 #               Must include the run-id suffix so the substring match is
 #               unique on the card list (same contract as connect-claim-opp.yaml).
+#
+# SELECTOR STATUS — pending live confirmation (see plan Task 3.5):
+#   `btn_resume` and `connect_fragment_jobs_list` are reused verbatim
+#   from connect-claim-opp.yaml, where they are production-proven. They
+#   are NOT yet dump-confirmed on THIS specific surface — the
+#   Learn-complete, pre-Deliver-download opp-list "In Progress" card.
+#   The atlas (docs/mobile-atlas/connect-2.62.0.md § 8) marks this
+#   surface's resource-ids as not-yet-captured. The live-AVD verification
+#   run finalizes/corrects these against a fresh mobile_capture_ui_dump
+#   before this recipe is relied on in a real Phase 6 capture.
 appId: org.commcare.dalvik
 ---
 # Confirm we are on the opp-list.
