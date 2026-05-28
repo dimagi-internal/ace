@@ -266,6 +266,20 @@ For the canonical Learn-app smoke recipe template:
 
 Read live module + form names from Nova's `get_form` per the "Use live labels" section below — the pre-claim teaser at `tv_learn_modules_list` lists module names verbatim, but form names inside each module are only visible via Nova.
 
+**Single-screen content forms finalize with ONE step — do NOT chain
+`form-advance.yaml` + `form-submit.yaml`.** A Learn content/lesson form that
+is a single screen (e.g. an intro form with only a `label` field and no
+questions) finalizes with a single `form-submit.yaml` (which auto-finalizes
+via `nav_btn_next`). Chaining `form-advance` THEN `form-submit` over-steps a
+one-screen form — the advance consumes the only screen, then the submit has
+nothing left to finalize (or double-advances past the form). Reserve the
+`form-advance` → `form-submit` pair for genuinely multi-screen forms (one
+`form-advance` per intermediate screen, then `form-submit` on the last).
+Quiz forms are unaffected — they still need the per-question answer-tap +
+`form-advance` per the MANDATORY rule below. Surfaced live on
+bednet-spot-check run 20260528-0556 Phase 6, where `journey-learn`
+over-stepped the single-screen "Introduction" content form.
+
 **Use the atlas (`docs/mobile-atlas/connect-2.62.0.md`) to verify each
 transition you author.** Each section of the atlas documents one
 screen with its stable resource-ids, the transitions out of it, and

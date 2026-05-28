@@ -860,6 +860,50 @@ threshold balances "let a slow but live skill finish" against "don't
 wait on a dead one." Tighten or loosen per skill if needed via a
 documented exception in the skill's SKILL.md.
 
+### External-resource phases: finish inline, don't re-dispatch on a malformed write-back
+
+The re-dispatch rules above (§ State-as-canary, and the boundary fence's
+`classify_phase_writeback='malformed' | 'in_progress'` → silent-Agent-retry
+branch in `ace-orchestrator.md § Phase boundary fence`) assume re-dispatch
+is cheap and idempotent. For phases that **mint an external resource**, that
+assumption breaks — a fresh dispatch creates a *second* resource and orphans
+the first, because most have no delete path:
+
+- `ocs-setup` → clones a per-opp OCS chatbot
+- `connect-setup` → creates a fresh Connect opportunity
+- `solicitation-management` → publishes a labs solicitation
+
+So before re-dispatching one of these on a `malformed` / `in_progress`
+write-back, branch on `verify_phase_artifacts(runFolderId, phase)` **and**
+the run_state `products.*` block:
+
+- **`verify.ok=true` (required artifacts already on disk) OR the
+  `products.*` block already records the external resource's id** → the
+  agent did the substantive work and died (commonly a transport/socket
+  error) *before* finalizing its write-back. **Finish the write-back
+  INLINE** — read the per-step verdict files + the `products` block the
+  agent already wrote, synthesize the missing
+  `{status: done, verdict, completed_at, summary_artifact, steps}` fields,
+  and patch via `update_yaml_file`. Write any missing *leaf* artifacts
+  (e.g. a phase summary, a paired `-eval` verdict the agent hadn't reached)
+  inline too. Do **NOT** re-dispatch the Agent — that orphans a second
+  resource.
+- **`verify.ok=false` AND no external-resource id recorded** → the agent
+  died before creating the resource; re-dispatch is safe (clean idempotent
+  start).
+
+This is the one place the silent-retry default is wrong: re-dispatch heals
+a *missing* phase, but for external-resource phases a *malformed-but-
+substantively-complete* phase is healed by finishing the bookkeeping, not
+by re-running the side effects.
+
+Surfaced on `bednet-spot-check/20260528-0556`: the `ocs-setup` subagent
+socket-dropped after cloning chatbot `12298` and landing its quick qa/eval
+artifacts; the write-back classified `malformed`. Re-dispatch would have
+cloned a second chatbot — instead the orchestrator finished inline (phase
+summary + `ocs-widget-handoff-eval` verdict + the write-back, all from the
+already-recorded `products.ocs_chatbot`), reusing the existing chatbot.
+
 ## Discipline — full text
 
 Full source text for the rules consolidated into the procedure doc's
