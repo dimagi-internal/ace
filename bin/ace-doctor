@@ -1779,21 +1779,29 @@ else
   COMMCARE_CLI_VERSION="$(cat "$COMMCARE_CLI_JAR_PATH.version" 2>/dev/null || echo unknown)"
   if [ "$COMMCARE_CLI_JAR_SIZE" -lt 1000000 ]; then
     warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH suspiciously small ($COMMCARE_CLI_JAR_SIZE bytes; version=$COMMCARE_CLI_VERSION)" "re-run /ace:setup --force-install to redownload"
-  elif command -v java >/dev/null 2>&1; then
-    # Cheap freshness probe. `java -jar <jar> help` triggers the jar's
-    # usage banner ("The available commands are: validate / play / ..."),
-    # which is exactly what we want to grep for. The jar exits non-zero
-    # on "help" because it's not a real subcommand — so we ignore exit
-    # code and look only at the combined output. Total budget ~3s
-    # including JVM cold-start.
-    COMMCARE_CLI_HELP="$(java -jar "$COMMCARE_CLI_JAR_PATH" help 2>&1 || true)"
-    if echo "$COMMCARE_CLI_HELP" | grep -q -iE 'validate'; then
-      pass "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH (${COMMCARE_CLI_JAR_SIZE} bytes; version=${COMMCARE_CLI_VERSION}; usage banner lists validate)"
-    else
-      warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH present but usage banner didn't list 'validate' subcommand" "stale jar — re-run /ace:setup --force-install (pulls latest from dimagi/commcare-core releases)"
-    fi
   else
-    warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH present but \`java\` not on PATH" "install JDK 17+ (brew install openjdk@17 on macOS)"
+    # Resolve Java exactly the way the jar-runner does
+    # (lib/commcare-cli-validate.ts::resolveJavaPath, wrapped by
+    # scripts/resolve-java-path.ts) — NOT a naive `command -v java`. The macOS
+    # /usr/bin/java stub passes `command -v` even with no working JDK, and the
+    # resolver also finds keg-only Homebrew openjdk that isn't on PATH. Using
+    # the same resolver keeps this check honest: it PASSes whenever ACE can
+    # actually run the jar, and only blames the jar when a real JDK runs it.
+    COMMCARE_JAVA_BIN="$(cd "$ROOT" 2>/dev/null && npx tsx scripts/resolve-java-path.ts 2>/dev/null)"
+    if [ -z "$COMMCARE_JAVA_BIN" ]; then
+      warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH present but no working Java runtime found (resolveJavaPath: not on PATH, no \$ACE_JAVA_BIN, no /usr/libexec/java_home, no Homebrew openjdk)" "install JDK 17+ (brew install openjdk@17 on macOS)"
+    else
+      # `<java> -jar <jar> help` triggers the jar's usage banner
+      # ("The available commands are: validate / play / ..."), which is what
+      # we grep for. The jar exits non-zero on "help" (not a real subcommand),
+      # so we ignore exit code and look only at the combined output.
+      COMMCARE_CLI_HELP="$("$COMMCARE_JAVA_BIN" -jar "$COMMCARE_CLI_JAR_PATH" help 2>&1 || true)"
+      if echo "$COMMCARE_CLI_HELP" | grep -q -iE 'validate'; then
+        pass "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH (${COMMCARE_CLI_JAR_SIZE} bytes; version=${COMMCARE_CLI_VERSION}; java=$COMMCARE_JAVA_BIN; banner lists validate)"
+      else
+        warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH present, java=$COMMCARE_JAVA_BIN runs but usage banner lacks 'validate'" "stale jar — re-run /ace:setup --force-install (pulls latest from dimagi/commcare-core releases)"
+      fi
+    fi
   fi
 fi
 
