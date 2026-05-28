@@ -7,10 +7,10 @@
  * for custom authentication"). It must print a JSON object of string->string
  * and exit 0.
  *
- * This replaces the old stdio->HTTP proxy (`mcp/connect-labs-server.ts`) whose
- * only jobs were forwarding JSON-RPC frames and injecting the Bearer token.
- * With a native `type: "http"` entry, Claude Code handles the transport; this
- * helper only has to produce the auth header.
+ * This replaced the old stdio->HTTP proxy (since removed) whose only jobs were
+ * forwarding JSON-RPC frames and injecting the Bearer token. With a native
+ * `type: "http"` entry, Claude Code handles the transport; this helper only has
+ * to produce the auth header.
  *
  * Self-contained on purpose. The helper runs in an unspecified shell + CWD with
  * no guaranteed env-block propagation, so:

@@ -49,7 +49,6 @@ const SERVER_FILES = [
   'mcp/ocs-server.ts',
   'mcp/google-drive-server.ts',
   'mcp/mobile-server.ts',
-  'mcp/connect-labs-server.ts',
 ];
 
 // Token prefixes that look "atom-shaped" — every MCP namespace registered
