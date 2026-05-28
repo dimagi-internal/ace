@@ -248,7 +248,7 @@ Invoke `app-test-cases` via `Skill(app-test-cases)` (or `/ace:step
 app-test-cases <opp>/<run-id>` from a fresh session). **Do NOT compose
 its outputs inline.** This skill's contract is multi-file: it emits a
 master `3-commcare/app-test-cases.yaml` AND per-journey recipe files
-(`3-commcare/app-test-cases/J*.yaml`) which Phase 6's
+(`3-commcare/recipes/journey-*.yaml`) which Phase 6's
 `app-screenshot-capture` requires for pre-flight. An inline-composed
 master file with no per-recipe siblings will halt Phase 6 at
 pre-flight (real failure mode from turmeric run 20260509-0455). See
@@ -256,7 +256,7 @@ pre-flight (real failure mode from turmeric run 20260509-0455). See
 
 - Reads: pdd-to-app-journeys.md, both app summaries, Nova blueprints
 - Writes:
-  - app-test-cases.yaml + recipes/J*.yaml under app-test-cases/
+  - app-test-cases.yaml + recipes/journey-*.yaml under 3-commcare/recipes/
   - Appended `test-scenario-count`, `test-archetype-coverage` rows in `decisions.yaml` (merge-only; rows use `phase: 3-commcare` matching this dispatch site; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`).
 - Halts on missing inputs or recipe-validation failure
 

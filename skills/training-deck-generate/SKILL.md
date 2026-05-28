@@ -74,8 +74,8 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
    - Per-opp aliases from
      `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`.
      Format: each entry has `alias:`, `journey_id:`, `step_name:`,
-     `drive_path:`, `file_id:`. Alias convention: `<journey-id>-<step-name>`
-     e.g. `J1-learn-mod-1-step-3`, `J2-deliver-form-photo-step-1`.
+     `drive_path:`, `file_id:`. Alias convention: `<recipe-base>-<step-name>`
+     e.g. `journey-learn-mod-1-step-3`, `journey-deliver-form-photo-step-1`.
 
    Cross-pool alias collisions: per-opp wins (more specific).
 
