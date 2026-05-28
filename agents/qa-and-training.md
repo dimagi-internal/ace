@@ -163,22 +163,16 @@ silent-failure prevention learned from earlier real-world dogfood.
       ad-hoc `adb shell` without `-s` may pick the wrong device. See
       `playbook/integrations/mobile-integration.md` "Multi-user dadb
       landmine."
-- [ ] **Phase 3 produced the per-journey Maestro recipes alongside
-      `app-test-cases.yaml`.** For each `is_smoke: true` journey in
-      `3-commcare/app-test-cases.yaml`, the journey's `recipe_path`
-      must resolve to a real file under
-      `3-commcare/recipes/J<n>.yaml`. The `app-test-cases` SKILL
-      contracts BOTH outputs — the master yaml AND per-journey
-      recipes (see `skills/app-test-cases/SKILL.md § Outputs`).
-      Master-yaml-without-recipes is the canonical "upstream Phase 3
-      produced incomplete output" failure mode (observed
-      2026-05-06 leep-paint-collection run 20260506-1440 — surfaced
-      because a Phase 3 dispatch paraphrased the SKILL contract and
-      elided the recipe outputs). If recipes are missing, halt
-      with a clear pointer to re-run
-      `/ace:step app-test-cases <opp>/<run-id>` BEFORE running
-      `/ace:step app-screenshot-capture <opp>/<run-id>`. Skip this
-      check and you waste AVD-boot wall-clock for nothing.
+- [ ] **Phase 3 produced the per-app smoke recipes.** Check each app
+      independently:
+      - `3-commcare/recipes/journey-learn.yaml` MUST resolve. Missing →
+        halt (Learn capture is the floor; no Learn recipe is a real
+        Phase-3 gap). Remediation: `/ace:step app-test-cases <opp>/<run-id>`.
+      - `3-commcare/recipes/journey-deliver.yaml` SHOULD resolve. Missing
+        → do NOT halt the phase before Step 1; let `app-screenshot-capture`
+        run the Learn leg and record the Deliver leg `incomplete`. The
+        phase verdict will be non-pass (per the per-app failure policy),
+        but Learn screenshots still ship.
 
 If any check fails, halt before Step 1 with a `[BLOCKER]` and the
 named operator command (`/ace:mobile-bootstrap` for AVD/Maestro state;
@@ -229,8 +223,8 @@ and prevents a whole class of "guessed from indirect signals" mistakes.
 
 Dispatch `app-screenshot-capture`:
 - Reads: `2-scenarios/pdd-to-app-journeys.md` (Phase 2), `3-commcare/app-test-cases.yaml` (Phase 3)
-- Writes: `6-qa-and-training/screenshots/J*/*.png` + `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml`
-- Halts on smoke-recipe failure or UX judge < 2/3
+- Writes: `6-qa-and-training/screenshots/journey-*/*.png` + `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml`
+- Runs the Learn leg then the Deliver leg independently; records a per-app verdict. A Deliver-leg failure yields a non-pass phase verdict but Learn screenshots still ship — it does not abort Learn capture.
 
 The skill filters `app-test-cases.yaml` to entries with `is_smoke: true`
 (exactly one per app), runs each smoke recipe against the AVD, captures
@@ -342,7 +336,7 @@ training skills (or invoke `qa-and-training` for the full sequence).
 
 ## Products
 
-- `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<journey-id>/<step>.png` + `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/journey-<app>/<step>.png` + `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/{llo-manager-guide,quick-reference,faq,onboarding-email-body}.md` (training-materials)
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide.md` (training-flw-guide)
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml` (training-deck-generate)

@@ -70,7 +70,7 @@ the rest of the journey looks.
 
 For each dimension, write a one-sentence reason citing the specific
 screenshot(s) that drove the score (e.g.
-`"sc-J2-step-04 shows field labelled q3_v2_optional"`).
+`"journey-deliver-step-04 shows field labelled q3_v2_optional"`).
 
 After scoring 1–3 per dimension, convert to a 0–10 score via
 `(score - 1) / 2 * 10` for the verdict YAML — see Step 4 for the
@@ -139,7 +139,7 @@ per_item:                # per-journey verdicts; key matches pdd-to-app-journeys
     is_smoke: false
     score: 5.0
     verdict: fail
-    note: "Hard-deduction on error_recovery: dead-end error in sc-J2-step-07 with no recovery path (FLW must restart form). error_recovery dimension clamped to 0."
+    note: "Hard-deduction on error_recovery: dead-end error in journey-deliver-step-07 with no recovery path (FLW must restart form). error_recovery dimension clamped to 0."
   # ... one entry per journey in app-test-cases.yaml
 
 auto_surfaced:

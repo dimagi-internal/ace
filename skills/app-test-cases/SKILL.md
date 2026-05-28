@@ -33,7 +33,7 @@ Phase 6 needs them.
 ## Products
 
 - `3-commcare/app-test-cases.yaml` — per-journey test entries (one per journey, exactly one `is_smoke: true` per app)
-- `3-commcare/recipes/J<n>.yaml` — one Maestro recipe per journey (real selectors, no `REPLACE_*` placeholders)
+- `3-commcare/recipes/journey-<app>[-<slug>].yaml` — one Maestro recipe per journey. The single `is_smoke: true` journey per app uses the bare name (`journey-learn.yaml`, `journey-deliver.yaml`); additional journeys append a kebab-case slug from the journey title (`journey-learn-assessment-retry.yaml`). `id: J<n>` stays as the stable internal key in `app-test-cases.yaml`; `recipe_path` points at the descriptive file.
 
 ## Process
 
@@ -136,9 +136,8 @@ step per UI interaction, with `${SELECTOR:logical-name}`
 placeholders resolved at write time, and `takeScreenshot` calls
 between major form sections):
 
-- Recipes here are journey-keyed, not module-keyed (`J1.yaml`, `J2.yaml`)
-- Each journey's recipe MUST include a final
-  `takeScreenshot: "sc-J<n>-final"` for the deep UX judge to grade
+- Recipes are named by app + intent, not journey-id: `journey-learn.yaml` / `journey-deliver.yaml` for the smokes, `journey-<app>-<slug>.yaml` for extras. The journey-id (`J<n>`) lives in `app-test-cases.yaml`, not the filename.
+- Each journey's recipe MUST include a final `takeScreenshot: "<recipe-base>-final"` (e.g. `journey-learn-final`, `journey-deliver-final`) for the deep UX judge to grade
 - Resolve any `${SELECTOR:logical-name}` placeholders via
   `mobile_resolve_selectors` against the current APK selector map
   before validating (see Step 3.4 below — selector-resolution is a
@@ -229,7 +228,7 @@ appId: org.commcare.dalvik
     file: learn-launch.yaml
 # ... journey-specific module/form steps below, using live labels
 #     from Nova get_form (see "Use live labels" section below)
-- takeScreenshot: "sc-J<n>-final"
+- takeScreenshot: "journey-learn-final"
 ```
 
 The static palette lives at `mcp/mobile/recipes/static/`:
@@ -437,7 +436,7 @@ unresolved `${SELECTOR:radio-first-option}` placeholder, and J1
 chained `form-advance.yaml` across 10+ required-input quiz questions
 with zero answer-selection steps in between.
 
-**Write recipes to `ACE/<opp>/runs/<run-id>/3-commcare/recipes/J<n>.yaml`**
+**Write recipes to `ACE/<opp>/runs/<run-id>/3-commcare/recipes/journey-<app>[-<slug>].yaml`**
 (NOT `app-test-cases/recipes/` — earlier drafts of this SKILL.md had
 the wrong path and the recipes silently weren't being created;
 [#106 finding 3](https://github.com/jjackson/ace/issues/106) fixed
@@ -539,7 +538,7 @@ in `templates/app-test-cases-template.yaml`.
   a silent downstream halt with no Learn-app screenshots in the
   training deck. Caught in vivo on malaria-itn-app run 20260517-1829;
   Phase 2 contract tightened in the same PR.
-- **Every `is_smoke: true` journey has a `recipes/J<n>.yaml` file
+- **Every `is_smoke: true` journey has its `recipes/journey-<app>.yaml` file
   written under `3-commcare/recipes/`.** Confirm via
   `drive_list_folder` against the recipes folder — count must equal
   the number of `is_smoke: true` journeys. Phase 6's
@@ -630,3 +629,4 @@ already maps the producer to `3-commcare/` (see
 | 2026-05-22 | Fix `phase:` tag in Decisions Log footer: was `6-qa-and-training` (the consuming phase), now `3-commcare` (the dispatching phase, matching the artifact manifest's existing `3-commcare/` path mapping). Follow-up to issue #399. | ACE team |
 | 2026-05-12 | Add Step 3.4 — recipe-wide `mobile_resolve_selectors` gate. Halts `[BLOCKER]` on any unresolved logical selector before recipes are written to Drive. Shifts left a class of Phase 6 blockers (leep + turmeric runs both hit this in early May) to Phase 3, where Nova form/field context is still in-scope. Follows PR #249's `connect-2.62.0.yaml` calibration. | ACE team |
 | 2026-05-22 | Add § Quiz / required-input answer-tap rule — MANDATORY. Forbids `${SELECTOR:radio-first-option}` and other generic-positional placeholders; mandates per-required-field answer steps (literal `tapOn: text:` from Nova `get_form` options) before `form-advance.yaml`. Closes the malaria-rdt run 20260522-1002 Phase 6 BLOCKER class: both smoke recipes chained `form-advance` across required quiz questions with zero answer-selection steps, stalling on `warning_root`. Step 3.4's selector-resolution gate already catches the positional-placeholder half; this section adds the author-side rule that prevents emission in the first place. | ACE team |
+| 2026-05-27 | Recipe naming convention: `J<n>.yaml` → `journey-<app>[-<slug>].yaml` (smokes use bare `journey-learn`/`journey-deliver`). `id: J<n>` retained as internal key. Screenshot labels `sc-J<n>-*` → `<recipe-base>-*`. See spec 2026-05-27-phase6-learn-deliver-decoupling. | ACE team |
