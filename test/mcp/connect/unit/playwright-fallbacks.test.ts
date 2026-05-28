@@ -26,6 +26,7 @@ import {
   HttpError,
 } from '../../../../mcp/connect/errors.js';
 import type { ConnectClient } from '../../../../mcp/connect/client.js';
+import { TEST_PHONE, TEST_PHONE_2 } from '../../../fixtures/test-phone.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fix = (name: string) =>
@@ -1086,15 +1087,15 @@ describe('PlaywrightBackend.sendFlwInvite', () => {
     const out = await backend.sendFlwInvite({
       organization_slug: 'ai-demo-space',
       opportunity_id: 'opp-uuid-1234',
-      phone_numbers: ['+74260000100', '+74260000101'],
+      phone_numbers: [TEST_PHONE, TEST_PHONE_2],
     });
     expect(out.status).toBe('queued');
     expect(out.invited_count).toBe(2);
-    expect(out.phone_numbers).toEqual(['+74260000100', '+74260000101']);
+    expect(out.phone_numbers).toEqual([TEST_PHONE, TEST_PHONE_2]);
     const post = captured.find((c) => c.method === 'POST')!;
     expect(post.url).toBe('/a/ai-demo-space/opportunity/opp-uuid-1234/user_invite/');
     const body = post.body as Record<string, string>;
-    expect(body.users).toBe('+74260000100\n+74260000101');
+    expect(body.users).toBe(`${TEST_PHONE}\n${TEST_PHONE_2}`);
   });
 
   it('throws ConnectValidationError when opportunity is inactive', async () => {
@@ -1113,7 +1114,7 @@ describe('PlaywrightBackend.sendFlwInvite', () => {
       backend.sendFlwInvite({
         organization_slug: 'ai-demo-space',
         opportunity_id: 'opp-uuid',
-        phone_numbers: ['+74260000100'],
+        phone_numbers: [TEST_PHONE],
       }),
     ).rejects.toBeInstanceOf(ConnectValidationError);
   });

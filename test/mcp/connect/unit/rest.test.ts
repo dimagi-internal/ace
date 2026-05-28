@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import type { APIRequestContext, APIResponse } from 'playwright';
 import { RestBackend } from '../../../../mcp/connect/backends/rest.js';
 import { ConnectValidationError, HttpError } from '../../../../mcp/connect/errors.js';
+import { TEST_PHONE, TEST_PHONE_2 } from '../../../fixtures/test-phone.js';
 
 interface CapturedRequest {
   url: string;
@@ -453,12 +454,12 @@ describe('RestBackend.sendFlwInvite', () => {
     const out = await backend.sendFlwInvite({
       organization_slug: 'pm-org',
       opportunity_id: 'opp-uuid',
-      phone_numbers: ['+74260000100', '+74260000101'],
+      phone_numbers: [TEST_PHONE, TEST_PHONE_2],
     });
     expect(out.invited_count).toBe(2);
     expect(out.status).toBe('queued');
     expect(captured[0].url).toBe('/api/opportunities/opp-uuid/invite_users/');
-    expect(captured[0].data).toEqual({ phone_numbers: ['+74260000100', '+74260000101'] });
+    expect(captured[0].data).toEqual({ phone_numbers: [TEST_PHONE, TEST_PHONE_2] });
   });
 
   it('rejects when opportunity is inactive', async () => {
@@ -471,7 +472,7 @@ describe('RestBackend.sendFlwInvite', () => {
     await expect(backend.sendFlwInvite({
       organization_slug: 'pm-org',
       opportunity_id: 'opp-uuid',
-      phone_numbers: ['+74260000100'],
+      phone_numbers: [TEST_PHONE],
     })).rejects.toBeInstanceOf(ConnectValidationError);
   });
 });

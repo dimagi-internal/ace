@@ -29,7 +29,8 @@
 # (common-screenshot-capture) MUST do this enable + pm-clear + force-stop
 # before invoking this recipe.
 #
-# Phone-number rationale: re-uses ACE_E2E_PHONE (+74260000100). Since
+# Phone-number rationale: re-uses ACE_E2E_PHONE (set in $CLAUDE_PLUGIN_DATA/.env
+# from 1Password item AI-Agents/connect-test-user). Since
 # the demo user is server-registered, the recipe will land on the
 # "Server account, no local data" recovery path — NOT the fresh-signup
 # path. Per user direction 2026-05-24, this is acceptable; missing

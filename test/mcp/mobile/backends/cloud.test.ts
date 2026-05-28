@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { CloudBackend } from '../../../../mcp/mobile/backends/cloud.js';
 import { MobileError, AvdBootError } from '../../../../mcp/mobile/errors.js';
+import { TEST_PHONE, TEST_PHONE_LOCAL } from '../../../fixtures/test-phone.js';
 
 const BASE = 'https://example.test/ace';
 const TOKEN = 'pat-test-token';
@@ -1106,8 +1107,8 @@ describe('CloudBackend.registerTestUser', () => {
   }
 
   const REG_ARGS = {
-    phone: '+74260000100',
-    phoneLocal: '4260000100',
+    phone: TEST_PHONE,
+    phoneLocal: TEST_PHONE_LOCAL,
     countryCode: '+7',
     pin: '111111',
     backupCode: '222222',
@@ -1121,7 +1122,7 @@ describe('CloudBackend.registerTestUser', () => {
     const fetchImpl = vi.fn();
     for (const m of asyncRegisterMocks({
       already_registered: false,
-      phone: '+74260000100',
+      phone: TEST_PHONE,
       backup_code: '222222',
     })) fetchImpl.mockResolvedValueOnce(m);
     const cb = new CloudBackend({
@@ -1136,8 +1137,8 @@ describe('CloudBackend.registerTestUser', () => {
     expect(post[1].method).toBe('POST');
     const body = JSON.parse(post[1].body as string);
     // camelCase → snake_case at the boundary.
-    expect(body.phone).toBe('+74260000100');
-    expect(body.phone_local).toBe('4260000100');
+    expect(body.phone).toBe(TEST_PHONE);
+    expect(body.phone_local).toBe(TEST_PHONE_LOCAL);
     expect(body.country_code).toBe('+7');
     expect(body.pin).toBe('111111');
     expect(body.backup_code).toBe('222222');
@@ -1151,7 +1152,7 @@ describe('CloudBackend.registerTestUser', () => {
     const fetchImpl = vi.fn();
     for (const m of asyncRegisterMocks({
       already_registered: false,
-      phone: '+74260000100',
+      phone: TEST_PHONE,
       backup_code: '222222',
     })) fetchImpl.mockResolvedValueOnce(m);
     const cb = new CloudBackend({
@@ -1160,7 +1161,7 @@ describe('CloudBackend.registerTestUser', () => {
     });
     const result = await cb.registerTestUser(REG_ARGS);
     expect(result.alreadyRegistered).toBe(false);
-    expect(result.phone).toBe('+74260000100');
+    expect(result.phone).toBe(TEST_PHONE);
     expect(result.backupCode).toBe('222222');
   });
 
@@ -1168,7 +1169,7 @@ describe('CloudBackend.registerTestUser', () => {
     const fetchImpl = vi.fn();
     for (const m of asyncRegisterMocks({
       already_registered: true,
-      phone: '+74260000100',
+      phone: TEST_PHONE,
       backup_code: null,
     })) fetchImpl.mockResolvedValueOnce(m);
     const cb = new CloudBackend({

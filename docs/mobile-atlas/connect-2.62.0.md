@@ -2,7 +2,7 @@
 
 **APK:** `org.commcare.dalvik` v 2.62.0 (Connect-enabled CommCare client).
 **Device:** ACE_Pixel_API_34 (Pixel 6 profile, API 34, 1080x2400).
-**Test user:** ACE Test (ConnectID `+74260000100`).
+**Test user:** ACE Test (ConnectID `${ACE_E2E_PHONE}` — `+74260000100` at walk-through time; resolves to whatever 1Password `AI-Agents/connect-test-user/phone` currently holds).
 **Walk-through date:** 2026-05-14.
 
 ## Purpose
@@ -214,7 +214,7 @@ Without scoping, an unscoped `tapOn { id: btn_view_opportunity }` taps the topmo
 
 ### Scroll behavior — VERIFIED 2026-05-14
 
-Newest invite appears at the **BOTTOM** of `rvJobList`, not the top. The RecyclerView is `scrollable=true` and new invites are appended, not prepended. The ACE test user accumulates invites across runs (the `+74260000100` demo user is reused), so on a typical Phase 6 dispatch you'll see 5+ cards and the run-of-interest's tile is below the initial viewport.
+Newest invite appears at the **BOTTOM** of `rvJobList`, not the top. The RecyclerView is `scrollable=true` and new invites are appended, not prepended. The ACE test user accumulates invites across runs (`${ACE_E2E_PHONE}` is reused), so on a typical Phase 6 dispatch you'll see 5+ cards and the run-of-interest's tile is below the initial viewport. Accumulation eventually requires rotating to a fresh demo phone (1P `AI-Agents/connect-test-user/phone`) — `OpportunityAccess` rows are not cleared by `/ace:sweep connect`, since the mobile-facing `/api/opportunity/` endpoint filters by `opportunityaccess__user` not `active`.
 
 **Recipe-authoring guidance:** use `scrollUntilVisible(direction: DOWN, element: {text: ${OPP_NAME}}, timeout: 20000)` before any `assertVisible` / `tapOn` keyed on the target card's text.
 

@@ -3,6 +3,7 @@ import {
   resolveSelectorsInYaml,
   injectAceEnvVars,
 } from '../../../mcp/mobile/recipe-resolver.js';
+import { TEST_PHONE } from '../../fixtures/test-phone.js';
 
 describe('resolveSelectorsInYaml', () => {
   it('substitutes id-typed selectors with id matchers', () => {
@@ -84,12 +85,12 @@ describe('injectAceEnvVars', () => {
 
   it('injects each ACE_E2E_* var as its short Maestro name', () => {
     process.env.ACE_E2E_PIN = '111111';
-    process.env.ACE_E2E_PHONE = '+74260000100';
+    process.env.ACE_E2E_PHONE = TEST_PHONE;
     process.env.ACE_E2E_BACKUP_CODE = '222222';
 
     const out = injectAceEnvVars({});
     expect(out.PIN).toBe('111111');
-    expect(out.PHONE).toBe('+74260000100');
+    expect(out.PHONE).toBe(TEST_PHONE);
     expect(out.BACKUP_CODE).toBe('222222');
     // Unset vars don't appear in output.
     expect(out.NAME).toBeUndefined();

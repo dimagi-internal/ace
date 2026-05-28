@@ -8,7 +8,10 @@
 #
 # Selectors verified live on CommCare 2.62.0 on 2026-04-29.
 # Registration steps 1–28 verified against ACE_Pixel_API_34_PS (Play
-# Store image) registering +74260000100 from a fresh install. The final
+# Store image) registering ${ACE_E2E_PHONE} (originally +74260000100;
+# rotated to a fresh demo user 2026-05-27 to escape OpportunityAccess
+# accumulation — see CLAUDE.md § Demo-user rotation) from a fresh
+# install. The final
 # photo-capture step (29–30) requires a non-GMS AVD — see the photo
 # section below and the Face-capture gotcha in
 # playbook/integrations/mobile-integration.md.

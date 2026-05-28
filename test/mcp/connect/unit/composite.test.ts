@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CompositeBackend } from '../../../../mcp/connect/backends/composite.js';
 import type { ConnectClient } from '../../../../mcp/connect/client.js';
+import { TEST_PHONE } from '../../../fixtures/test-phone.js';
 
 const makeListProgramsStub = (label: string): Partial<ConnectClient> => ({
   listPrograms: vi.fn(async () => ({
@@ -48,12 +49,12 @@ describe('CompositeBackend', () => {
     const out = await c.sendFlwInvite({
       organization_slug: 'ai-demo-space',
       opportunity_id: 'opp-uuid',
-      phone_numbers: ['+74260000100'],
+      phone_numbers: [TEST_PHONE],
     });
     expect(out.status).toBe('queued');
     expect(out.invited_count).toBe(1);
     expect(sent).toEqual([
-      { organization_slug: 'ai-demo-space', opportunity_id: 'opp-uuid', phone_numbers: ['+74260000100'] },
+      { organization_slug: 'ai-demo-space', opportunity_id: 'opp-uuid', phone_numbers: [TEST_PHONE] },
     ]);
     expect(playwright.sendFlwInvite).not.toHaveBeenCalled();
   });

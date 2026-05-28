@@ -395,9 +395,10 @@ auto_surfaced:
   step (`adb shell pm enable com.google.android.gms`) was skipped or
   ineffective. Re-run the prep + retry recipe.
 - **`personal-id-name` doesn't render** (recipe completes but no
-  `personal-id-name.png` captured). Demo user `+74260000100` was on a
-  snapshot-reload path that skipped the Name screen. Use a different
-  demo phone OR commit a fixture.
+  `personal-id-name.png` captured). The active `${ACE_E2E_PHONE}` was
+  on a snapshot-reload path that skipped the Name screen. Rotate to a
+  fresh demo phone in 1P (`AI-Agents/connect-test-user/phone`) OR
+  commit a fixture.
 - **`claim-opp` / `learn-install` recipe times out OR hits
   "application invalid".** Forked OPP_NAME points at a stale build.
   Re-fork from a more recent successful run (Step 0).

@@ -11,6 +11,7 @@ import {
   getConfiguredApkVersion,
 } from '../../../mcp/mobile/client.js';
 import { setSessionBackend, clearSessionBackend } from '../../../mcp/mobile/backend-toggle.js';
+import { TEST_PHONE, TEST_PHONE_LOCAL } from '../../fixtures/test-phone.js';
 
 function fakeMaestroAndAvd(opts: {
   registerToOtp: 'pass' | 'fail';
@@ -24,6 +25,7 @@ function fakeMaestroAndAvd(opts: {
     setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
     applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
+    grantRuntimePermissions: vi.fn().mockResolvedValue(undefined),
   } as any;
   const runRecipe = vi.fn().mockImplementation(async (recipePath: string) => {
     if (recipePath.endsWith('connect-register-to-otp.yaml')) {
@@ -103,7 +105,7 @@ describe('MobileClient.registerTestUser', () => {
       const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'pass', otp: '123456' });
       const cloudRegister = vi.fn().mockResolvedValue({
         alreadyRegistered: false,
-        phone: '+74260000100',
+        phone: TEST_PHONE,
         backupCode: '222222',
       });
       const cloud = { registerTestUser: cloudRegister } as any;
@@ -118,8 +120,8 @@ describe('MobileClient.registerTestUser', () => {
 
       const r = await client.registerTestUser({
         avdName: 'AVD',
-        phone: '+74260000100',
-        phoneLocal: '4260000100',
+        phone: TEST_PHONE,
+        phoneLocal: TEST_PHONE_LOCAL,
         countryCode: '+7',
         pin: '111111',
         backupCode: '222222',
@@ -133,8 +135,8 @@ describe('MobileClient.registerTestUser', () => {
       // args + a non-empty paletteTarB64 + both recipe basenames.
       expect(cloudRegister).toHaveBeenCalledTimes(1);
       const callArgs = cloudRegister.mock.calls[0][0];
-      expect(callArgs.phone).toBe('+74260000100');
-      expect(callArgs.phoneLocal).toBe('4260000100');
+      expect(callArgs.phone).toBe(TEST_PHONE);
+      expect(callArgs.phoneLocal).toBe(TEST_PHONE_LOCAL);
       expect(callArgs.countryCode).toBe('+7');
       expect(callArgs.pin).toBe('111111');
       expect(callArgs.backupCode).toBe('222222');
@@ -145,7 +147,7 @@ describe('MobileClient.registerTestUser', () => {
       expect(callArgs.paletteTarB64.length).toBeGreaterThan(100);
       // Result threaded through unchanged.
       expect(r.alreadyRegistered).toBe(false);
-      expect(r.phone).toBe('+74260000100');
+      expect(r.phone).toBe(TEST_PHONE);
       expect(r.backupCode).toBe('222222');
     } finally {
       if (prev === undefined) delete process.env.ACE_MOBILE_BACKEND;
@@ -166,7 +168,7 @@ describe('MobileClient.registerTestUser', () => {
       const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'pass', otp: '123456' });
       const client = new MobileClient({ avd, maestro, cloud, staticRecipesDir: '/static' });
       const r = await client.registerTestUser({
-        avdName: 'AVD', phone: '+74260000100', phoneLocal: '4260000100', countryCode: '+7',
+        avdName: 'AVD', phone: TEST_PHONE, phoneLocal: TEST_PHONE_LOCAL, countryCode: '+7',
         pin: '111111', backupCode: '222222', name: 'ACE Test',
       });
       expect(r.alreadyRegistered).toBe(true);  // legacy no-op success shape
@@ -799,6 +801,7 @@ describe('MobileClient.ensureAvdRunning', () => {
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
     applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
+      grantRuntimePermissions: vi.fn().mockResolvedValue(undefined),
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
@@ -810,7 +813,7 @@ describe('MobileClient.ensureAvdRunning', () => {
     const bootstrapConfig = {
       apkVersion: '2.62.0',
       testUser: {
-        phone: '+74260000100', phoneLocal: '4260000100', countryCode: '7',
+        phone: TEST_PHONE, phoneLocal: TEST_PHONE_LOCAL, countryCode: '7',
         pin: '1234', backupCode: 'backup', name: 'ACE Test',
       },
     };
@@ -953,6 +956,7 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
     applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
+      grantRuntimePermissions: vi.fn().mockResolvedValue(undefined),
       adbPortFromSerial: () => 5554,
       // loadSnapshot intentionally absent — the heal must never call it.
     } as any;
@@ -971,7 +975,7 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
   const bootstrapConfig = {
     apkVersion: '2.62.0',
     testUser: {
-      phone: '+74260000100', phoneLocal: '4260000100', countryCode: '7',
+      phone: TEST_PHONE, phoneLocal: TEST_PHONE_LOCAL, countryCode: '7',
       pin: '1234', backupCode: 'backup', name: 'ACE Test',
     },
   };
@@ -1098,8 +1102,8 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
     for (const k of ENV_KEYS) saved[k] = process.env[k];
     process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
     process.env.ACE_CONNECT_APK_VERSION = '2.63.0';
-    process.env.ACE_E2E_PHONE = '+74260000100';
-    process.env.ACE_E2E_PHONE_LOCAL = '4260000100';
+    process.env.ACE_E2E_PHONE = TEST_PHONE;
+    process.env.ACE_E2E_PHONE_LOCAL = TEST_PHONE_LOCAL;
     process.env.ACE_E2E_COUNTRY_CODE = '+7';
     process.env.ACE_E2E_PIN = '0000';
     process.env.ACE_E2E_BACKUP_CODE = '0000';
@@ -1107,7 +1111,7 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
     try {
       const cloudRegister = vi
         .fn()
-        .mockResolvedValue({ alreadyRegistered: false, phone: '+74260000100' });
+        .mockResolvedValue({ alreadyRegistered: false, phone: TEST_PHONE });
       const cloud = {
         ensureAvdRunning: vi
           .fn()
@@ -1128,8 +1132,8 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
       // bootstrap (and consumes the same env vars the local heal does).
       expect(cloudRegister).toHaveBeenCalledTimes(1);
       const regArgs = cloudRegister.mock.calls[0][0];
-      expect(regArgs.phone).toBe('+74260000100');
-      expect(regArgs.phoneLocal).toBe('4260000100');
+      expect(regArgs.phone).toBe(TEST_PHONE);
+      expect(regArgs.phoneLocal).toBe(TEST_PHONE_LOCAL);
       expect(regArgs.pin).toBe('0000');
       // The post-heal log reflects an actual attempt — not the stub.
       expect(r.heal?.deviceUserState).toMatchObject({
@@ -1180,8 +1184,8 @@ describe('missingBootstrapEnvVars + bootstrapConfigFromEnv', () => {
 
   it('returns only the missing names when some are set', () => {
     process.env.ACE_CONNECT_APK_VERSION = '2.62.0';
-    process.env.ACE_E2E_PHONE = '+74260000100';
-    process.env.ACE_E2E_PHONE_LOCAL = '4260000100';
+    process.env.ACE_E2E_PHONE = TEST_PHONE;
+    process.env.ACE_E2E_PHONE_LOCAL = TEST_PHONE_LOCAL;
     // PIN, NAME, COUNTRY_CODE, BACKUP_CODE still missing
     expect(missingBootstrapEnvVars().sort()).toEqual(
       ['ACE_E2E_COUNTRY_CODE', 'ACE_E2E_PIN', 'ACE_E2E_BACKUP_CODE', 'ACE_E2E_NAME'].sort(),
@@ -1191,8 +1195,8 @@ describe('missingBootstrapEnvVars + bootstrapConfigFromEnv', () => {
 
   it('returns [] and a populated config when all seven are set', () => {
     process.env.ACE_CONNECT_APK_VERSION = '2.62.0';
-    process.env.ACE_E2E_PHONE = '+74260000100';
-    process.env.ACE_E2E_PHONE_LOCAL = '4260000100';
+    process.env.ACE_E2E_PHONE = TEST_PHONE;
+    process.env.ACE_E2E_PHONE_LOCAL = TEST_PHONE_LOCAL;
     process.env.ACE_E2E_COUNTRY_CODE = '7';
     process.env.ACE_E2E_PIN = '1234';
     process.env.ACE_E2E_BACKUP_CODE = 'BACKUP1';
@@ -1201,8 +1205,8 @@ describe('missingBootstrapEnvVars + bootstrapConfigFromEnv', () => {
     expect(bootstrapConfigFromEnv()).toEqual({
       apkVersion: '2.62.0',
       testUser: {
-        phone: '+74260000100',
-        phoneLocal: '4260000100',
+        phone: TEST_PHONE,
+        phoneLocal: TEST_PHONE_LOCAL,
         countryCode: '7',
         pin: '1234',
         backupCode: 'BACKUP1',
@@ -1251,8 +1255,8 @@ describe('restoreDeviceUserState: bootstrapConfig-absent error names specific mi
     // "bootstrapConfig:absent" message gave an operator no signal about
     // which env var was missing — required a manual diff against .env.tpl.
     process.env.ACE_CONNECT_APK_VERSION = '2.62.0';
-    process.env.ACE_E2E_PHONE = '+74260000100';
-    process.env.ACE_E2E_PHONE_LOCAL = '4260000100';
+    process.env.ACE_E2E_PHONE = TEST_PHONE;
+    process.env.ACE_E2E_PHONE_LOCAL = TEST_PHONE_LOCAL;
     process.env.ACE_E2E_COUNTRY_CODE = '7';
     process.env.ACE_E2E_PIN = '1234';
     process.env.ACE_E2E_BACKUP_CODE = 'BACKUP1';
@@ -1343,8 +1347,8 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
   const cloudBootstrapConfig = {
     apkVersion: '2.62.0',
     testUser: {
-      phone: '+74260000100',
-      phoneLocal: '4260000100',
+      phone: TEST_PHONE,
+      phoneLocal: TEST_PHONE_LOCAL,
       countryCode: '+7',
       pin: '111111',
       backupCode: '222222',
@@ -1381,7 +1385,7 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
       clearAppData: vi.fn().mockResolvedValue(true),
       registerTestUser: vi.fn().mockResolvedValue({
         alreadyRegistered: false,
-        phone: '+74260000100',
+        phone: TEST_PHONE,
         backupCode: '222222',
       }),
     } as any;
@@ -1414,7 +1418,7 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
       clearAppData: vi.fn().mockResolvedValue(false),
       registerTestUser: vi.fn().mockResolvedValue({
         alreadyRegistered: true,
-        phone: '+74260000100',
+        phone: TEST_PHONE,
       }),
     } as any;
     const client = new MobileClient({
@@ -1435,8 +1439,8 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
     // have to diff against .env.tpl.
     process.env.ACE_MOBILE_CLOUD_LIVE_REGISTER = 'true';
     process.env.ACE_CONNECT_APK_VERSION = '2.62.0';
-    process.env.ACE_E2E_PHONE = '+74260000100';
-    process.env.ACE_E2E_PHONE_LOCAL = '4260000100';
+    process.env.ACE_E2E_PHONE = TEST_PHONE;
+    process.env.ACE_E2E_PHONE_LOCAL = TEST_PHONE_LOCAL;
     process.env.ACE_E2E_COUNTRY_CODE = '+7';
     process.env.ACE_E2E_PIN = '111111';
     process.env.ACE_E2E_BACKUP_CODE = '222222';
@@ -1599,8 +1603,8 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       bootstrapConfig: {
         apkVersion: version,
         testUser: {
-          phone: '+74260000100',
-          phoneLocal: '4260000100',
+          phone: TEST_PHONE,
+          phoneLocal: TEST_PHONE_LOCAL,
           countryCode: '7',
           pin: '1234',
           backupCode: 'b',
@@ -1652,8 +1656,8 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       bootstrapConfig: {
         apkVersion: version,
         testUser: {
-          phone: '+74260000100',
-          phoneLocal: '4260000100',
+          phone: TEST_PHONE,
+          phoneLocal: TEST_PHONE_LOCAL,
           countryCode: '7',
           pin: '1234',
           backupCode: 'b',
@@ -1689,8 +1693,8 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       bootstrapConfig: {
         apkVersion: version,
         testUser: {
-          phone: '+74260000100',
-          phoneLocal: '4260000100',
+          phone: TEST_PHONE,
+          phoneLocal: TEST_PHONE_LOCAL,
           countryCode: '7',
           pin: '1234',
           backupCode: 'b',
@@ -1730,8 +1734,8 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       bootstrapConfig: {
         apkVersion: version,
         testUser: {
-          phone: '+74260000100',
-          phoneLocal: '4260000100',
+          phone: TEST_PHONE,
+          phoneLocal: TEST_PHONE_LOCAL,
           countryCode: '7',
           pin: '1234',
           backupCode: 'b',
@@ -1781,8 +1785,8 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       bootstrapConfig: {
         apkVersion: version,
         testUser: {
-          phone: '+74260000100',
-          phoneLocal: '4260000100',
+          phone: TEST_PHONE,
+          phoneLocal: TEST_PHONE_LOCAL,
           countryCode: '7',
           pin: '1234',
           backupCode: 'b',
@@ -1840,8 +1844,8 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       bootstrapConfig: {
         apkVersion: version,
         testUser: {
-          phone: '+74260000100',
-          phoneLocal: '4260000100',
+          phone: TEST_PHONE,
+          phoneLocal: TEST_PHONE_LOCAL,
           countryCode: '7',
           pin: '1234',
           backupCode: 'b',
@@ -1885,8 +1889,8 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       bootstrapConfig: {
         apkVersion: version,
         testUser: {
-          phone: '+74260000100',
-          phoneLocal: '4260000100',
+          phone: TEST_PHONE,
+          phoneLocal: TEST_PHONE_LOCAL,
           countryCode: '7',
           pin: '1234',
           backupCode: 'b',
@@ -1924,8 +1928,8 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       bootstrapConfig: {
         apkVersion: version,
         testUser: {
-          phone: '+74260000100',
-          phoneLocal: '4260000100',
+          phone: TEST_PHONE,
+          phoneLocal: TEST_PHONE_LOCAL,
           countryCode: '7',
           pin: '1234',
           backupCode: 'b',
@@ -2008,6 +2012,7 @@ describe('runLocalBootstrap: no snapshot save (cold-boot model)', () => {
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
       disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
       applyEnvironmentBaseline: vi.fn().mockResolvedValue('abc123def456'),
+      grantRuntimePermissions: vi.fn().mockResolvedValue(undefined),
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
@@ -2028,8 +2033,8 @@ describe('runLocalBootstrap: no snapshot save (cold-boot model)', () => {
       bootstrapConfig: {
         apkVersion: version,
         testUser: {
-          phone: '+74260000100',
-          phoneLocal: '4260000100',
+          phone: TEST_PHONE,
+          phoneLocal: TEST_PHONE_LOCAL,
           countryCode: '7',
           pin: '1234',
           backupCode: 'b',
