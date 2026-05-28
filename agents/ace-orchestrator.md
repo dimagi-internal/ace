@@ -405,13 +405,14 @@ if you have a specific reason.
 **Default mode (`default`):** *Keep going unless there's a reason to
 stop, up until the point of external communication.*
 
-- **Phases 1–5 (setup, internal):** auto-proceed past every gate
-  whose brief contains no `[BLOCKER]` concern and whose producing
-  skill exited cleanly. The gate brief is still written, archived,
-  and emailed in the between-phase status update — but it does NOT
-  pause the run. A `[BLOCKER]` halts immediately and surfaces the
-  brief for triage. A hard error halts immediately. A `[WARN]` is
-  logged but does NOT halt.
+- **Phases 1–5 (setup, internal):** auto-proceed past every pause
+  point whose per-skill QA + eval verdicts contain no `[BLOCKER]`
+  concern and whose producing skill exited cleanly. The pause-time
+  summary is synthesized from those verdicts at runtime (§ Pause
+  Points in reference) — there is no separate gate-brief artifact (it
+  was removed in 0.13.116). A `[BLOCKER]` halts immediately and
+  surfaces the summary for triage. A hard error halts immediately. A
+  `[WARN]` is logged but does NOT halt.
 - **Phase 6→7 transition:** **no longer a mandatory pause.** Phase 8
   publishes a public solicitation on labs.connect.dimagi.com and emails
   PDD-named candidate LLOs the public URL — passive listing, not active
@@ -935,10 +936,11 @@ After each phase completes:
    class of bug at the source phase rather than three phases later at a
    consumer's pre-flight
 4. In `auto` mode: send status email to admin group, continue
-5. In `default` mode: continue silently for Phases 1→2, 2→3, 3→4, 4→5;
-   **at the Phase 6→7 transition, pause unconditionally** with a
-   Phase-6-complete summary and "ready to begin LLO contact?" prompt;
-   for 6→7, pause if any external-comm step still pending review
+5. In `default` mode: continue silently across Phases 1→2 … 7→8 unless
+   a `[BLOCKER]` or hard error surfaces (the named Pause Points in
+   § Pause Points still apply). The Phase 6→7 and 7→8 transitions are
+   NOT mandatory pauses. The one unconditional external-comms pause is
+   the Phase 8→9 boundary — see § Modes and § Pause Points.
 6. In `review` mode: present summary and wait for approval to continue
 
 ## Phase boundary fence
@@ -1233,14 +1235,15 @@ detection. The orchestrator does not dispatch opp-eval automatically;
 operators invoke it via `/ace:eval`.
 
 As more per-skill `-eval` skills gain `## LLM-as-Judge Rubric`
-sections and start writing to `verdicts/`, opp-eval automatically
-picks them up via directory discovery — no change to opp-eval itself
-is needed. Today most skills still self-evaluate inline (no separate
-`-eval` skill, so no verdict YAML under `verdicts/`); opp-eval emits
-`[INFO]` notes for those gaps, which is the forcing function for
-future per-skill rubric work. When a rubric arrives and the skill
-starts writing `verdicts/<skill>-<mode>.yaml`, opp-eval picks it up on
-the next run.
+sections and start writing their verdict files (next to the producer
+artifact as `<N>-<phase>/<producer>-eval_verdict[-<mode>].yaml` — there
+is no top-level `verdicts/` directory), opp-eval automatically picks
+them up via directory discovery — no change to opp-eval itself is
+needed. Today some skills still self-evaluate inline (no separate
+`-eval` skill); opp-eval emits `[INFO]` notes for those gaps, which is
+the forcing function for future per-skill rubric work. When a rubric
+arrives and the skill starts writing its `-eval_verdict` file, opp-eval
+picks it up on the next run.
 
 ## Error Handling
 
@@ -1257,7 +1260,7 @@ When `--dry-run` is passed to `/ace:run`:
 - Effectful skills (those that send emails, publish apps, create tickets, or call external APIs) write their intended actions to `comms-log/dry-run-<step>.md` instead of executing
 - LLM-as-Judge evaluation still runs at each step
 - Gates still apply per the active mode (default/review/auto)
-- `run_state.yaml` tracks steps as `dry-run-success` or `dry-run-blocked` instead of `success` or `blocked`
+- `run_state.yaml` marks dry-run steps so they're distinguishable from real runs (e.g. a `dry_run: true` flag on the step entry); the step `status` stays in the standard `done | error | incomplete` enum (§ Phase Write-Back Contract), not the retired `success`/`blocked` vocabulary
 - Pass the dry-run flag to all phase agents
 
 ## Sandbox Mode

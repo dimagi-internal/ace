@@ -101,6 +101,14 @@ phases:
 
 ```
 
+**Shape note.** The `phases:` map above is a LEGACY flat illustration —
+it shows which *steps* each phase covers, not the literal nesting ACE
+writes today. The authoritative per-phase block shape is
+`phases.<phase>.{status, started_at, completed_at, verdict,
+summary_artifact, steps: {<skill>: {status, verdict, artifact, ...}}}`
+— see § Phase Write-Back Contract. Read the block above as a step
+inventory, not as the on-disk schema.
+
 (0.13.116: the legacy `gates:` top-level field was removed. Pause-point
 status is derived from `phases.<phase>.status` + per-skill verdict
 files at runtime; no separate field carries it. See § Pause Points.)
@@ -1029,8 +1037,9 @@ The rule:
    response.
 4. **Halt loud on mismatch.** Mismatch on a load-bearing field
    (dates, app ids, amounts, required-relations) is a `[BLOCKER]` —
-   write the diff (sent vs. stored) to `comms-log/observations.md`,
-   surface in the gate brief, do NOT proceed. Mismatch on a
+   write the diff (sent vs. stored) to the phase's
+   `<producer>_comms-log.md`, surface it in the pause-time summary, do
+   NOT proceed. Mismatch on a
    cosmetic/display field (descriptions, tags) is `[INFO]` — log and
    proceed.
 
@@ -1043,7 +1052,7 @@ auto-proceeded — and the malformation cascaded through
 `is_setup_complete` to silently break Phase 8 invites and Phase 6
 screenshot capture. A read-back at the producer would have converted
 that multi-phase cascade into a single-skill halt with an obvious
-field-diff in the gate brief.
+field-diff in the pause-time summary.
 
 **Canonical example:** `skills/connect-opp-setup/SKILL.md` Steps 4
 and 6 (added 0.11.11). Every skill that creates external state should
