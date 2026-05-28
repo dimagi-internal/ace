@@ -24,7 +24,7 @@ This design fixes all three layers plus naming.
 | 2 | Recipe naming convention | **`journey-learn` / `journey-deliver`** (app-prefixed, descriptive) |
 | 3 | Behavior when a Deliver leg is missing/un-composable | **Per-app fail that blocks the phase** — Learn is captured first regardless; a Deliver gap is isolated and surfaced, and the phase does **not** get a clean pass |
 | 4 | Deliver-leg ordering dependency on the Learn leg | **Accepted** — Deliver is no longer independently cold-runnable; runners execute Learn→Deliver in order within one dispatch |
-| 5 | Live selector calibration of the post-Learn transition | **Do it end-to-end now** against a live AVD (option b) |
+| 5 | Live verification of the post-Learn transition | **Do it end-to-end now** against a live AVD (option b). NOTE: the post-Learn selectors are **already calibrated** in `connect-2.63.0.yaml` (2026-05-26, bednet run) — so this is end-to-end *verification*, not calibration. |
 
 ## Part 1 — Naming convention
 
@@ -85,19 +85,18 @@ Replace the "Deliver smoke re-walks all of Learn in one monolith, or BLOCKER" ru
 Consequences:
 - `app-test-cases` can now compose a faithful Deliver smoke in the common case, so the `[BLOCKER]`-or-monolith binary is gone. The hard `[BLOCKER]` is retained only for genuinely un-composable structures (e.g., Learn blueprint missing expected modules). The `composition_status` escape stays banned.
 - The Deliver recipe assumes warm state from the immediately-preceding Learn leg in the same dispatch (Connect session persists; no re-login). This is the accepted ordering dependency (Decision 4). The recipe header comment must state this assumption.
-- `mcp/mobile/recipes/static/deliver-launch.yaml` is the palette entry for the post-Learn transition. Its certificate + download-gate steps are **coordinate-fallback-only today**.
+- `mcp/mobile/recipes/static/deliver-launch.yaml` is the palette entry for the post-Learn transition. **It is already ID-anchored and live-calibrated** (header dated 2026-05-26, verified against bednet-spot-check `20260526-1556` J2 dumps): certificate/opp-detail (`deliver-opp-detail-view-button`, `deliver-certificate-container`), Download gate (`deliver-download-button`, `deliver-details-title`), and Deliver-home (`deliver-home-job-card`) all resolve in `connect-2.63.0.yaml`. No coordinate fallbacks remain. The Deliver leg `runFlow`s into this palette after a Resume-navigation prefix.
 
-### Live selector calibration (Decision 5)
+### Live end-to-end verification (Decision 5)
 
-The certificate and Download-Delivery-gate screens currently lack stable resource-IDs in `mcp/mobile/selectors/connect-2.63.0.yaml`. Calibration requires a **live AVD dump captured mid-window** — after Learn passes and before Deliver downloads — on a real opp claim. Procedure:
+**Correction from the original premise:** the post-Learn selectors are NOT coordinate-fallback — they were calibrated 2026-05-26, one day before the leep run. So the live AVD step is *verification that the composed Learn-to-completion + Deliver-resume recipes run green*, not a selector-calibration effort. Procedure:
 
 1. Bootstrap/verify the AVD (`mobile_ensure_avd_running`), claim the existing `leep-paint-collection` run `20260527-1528` opp (test user `+74260000101`, already invited).
-2. Run `journey-learn.yaml` to completion.
-3. At the certificate screen and the Download gate, capture `mobile_capture_ui_dump` and harvest stable resource-IDs.
-4. Add the calibrated logical-selector rows to `connect-2.63.0.yaml`; replace the coordinate fallbacks in `deliver-launch.yaml`.
-5. Re-run `journey-deliver.yaml` to verify it reaches the first Deliver form, capturing real screenshots.
+2. Run `journey-learn.yaml` to completion → capture Learn screenshots, confirm assessment-pass syncs to Connect.
+3. Run `journey-deliver.yaml` → confirm it reaches the first Deliver form and captures Deliver screenshots.
+4. Only if a surface the full walk visits lacks a resolvable selector: harvest it via `mobile_capture_ui_dump` and add the row to `connect-2.63.0.yaml` (the calibration-on-gap fallback, not the expected path).
 
-This is the one piece that cannot be verified statically. Everything else (composition logic, naming, decoupling, verdict model, contracts) is verifiable via `mobile_validate_recipe` lint + `mobile_resolve_selectors` + unit tests.
+Everything else (composition logic, naming, decoupling, verdict model, contracts) is verifiable statically via `mobile_validate_recipe` lint + `mobile_resolve_selectors` + unit tests. The infrastructure to compose a working Deliver smoke already existed at leep-run time — the gap was purely the Phase 3 agent's banned shortcut, which the contract change in this part closes.
 
 ## File-by-file changes
 
@@ -109,8 +108,8 @@ This is the one piece that cannot be verified statically. Everything else (compo
 - **`lib/verdict-schema.ts`** — no schema change required (`per_item` already supports it); add a doc comment naming `learn`/`deliver` as the canonical `ref` values for this skill. No new helper unless PR 2 surfaces real duplication.
 - **`lib/phase-closeout.ts`** + `test/lib/phase-closeout.test.ts` — update any recipe-name / screenshot-path assertions.
 - **`templates/app-test-cases-template.yaml`** — `recipe_path` examples to new names.
-- **`mcp/mobile/recipes/static/deliver-launch.yaml`** — finalize post-Learn transition; swap coordinate fallbacks for calibrated selectors. Possibly a small `learn-complete-walk` helper if composition is cleaner factored out.
-- **`mcp/mobile/selectors/connect-2.63.0.yaml`** — add calibrated certificate + download-gate rows (LIVE).
+- **`mcp/mobile/recipes/static/deliver-launch.yaml`** — already ID-anchored + calibrated; reuse as-is. Add a small `connect-resume-opp.yaml` palette helper (opp-list → tap In-Progress card's Resume) only if no existing palette covers the Resume navigation the Deliver leg needs before `runFlow: deliver-launch.yaml`.
+- **`mcp/mobile/selectors/connect-2.63.0.yaml`** — `deliver-*` rows already present (2026-05-26). Touch only if the live verification surfaces a missing selector on a surface the full walk visits (calibration-on-gap fallback).
 - **`mcp/mobile/recipe-sanity-probe.ts`** + `test/mcp/mobile/recipe-sanity-probe.test.ts` — add a check that the Deliver smoke does **not** contain a full Learn re-walk (anti-monolith), and that Learn/Deliver legs are named per convention.
 - **`test/fixtures/CRISPR-Test-001/3-commcare/app-test-cases.yaml`** — rename `recipe_path` values.
 - **`test/mcp/mobile/static-palette-health.test.ts`** — palette additions parse + lint + selectors resolve.
@@ -121,7 +120,7 @@ Per the staged-PR convention (one batch per PR, merge before the next):
 
 - **PR 1 — Naming convention.** Rename `J<n>.yaml` → `journey-<app>[-<slug>].yaml` across skill docs, agent docs, template, fixture, and `phase-closeout` + tests. Mechanical, lowest risk. No behavior change.
 - **PR 2 — Decoupling + per-app verdicts + failure policy.** `app-screenshot-capture` two-leg structure, per-app verdict mapping, `qa-and-training` per-app pre-flight, `training-deck-generate` partial handling, verdict-schema doc + tests.
-- **PR 3 — Deliver authoring hardening.** `app-test-cases` Learn-to-completion + Deliver-resume split, `deliver-launch.yaml` finalize, **live selector calibration** of `connect-2.63.0.yaml`, recipe-sanity anti-monolith check, end-to-end verification on the AVD against the leep opp.
+- **PR 3 — Deliver authoring hardening.** `app-test-cases` Learn-to-completion + Deliver-resume split, optional `connect-resume-opp.yaml` palette helper, recipe-sanity anti-monolith check, and **live end-to-end verification** on the AVD against the leep opp (selectors already calibrated — verify, don't re-calibrate; add a row only on a surfaced gap).
 
 Each PR bumps VERSION via `scripts/version-bump.sh`, ships via auto-merge, and is followed by `/ace:update` in-session. PR 3 additionally requires a Claude restart if the calibration touches MCP-bound selector loading (verify whether selector maps are read at subprocess start).
 
@@ -129,11 +128,11 @@ Each PR bumps VERSION via `scripts/version-bump.sh`, ships via auto-merge, and i
 
 - **Static (PR 1–2):** `npm test` — recipe-sanity-probe, static-palette-health, phase-closeout, artifact-manifest fixtures, skill-atom-references.
 - **Recipe-level (PR 3):** `mobile_validate_recipe` + `mobile_resolve_selectors` (`unresolved: []`) on both smoke recipes.
-- **Live E2E (PR 3, the calibration run):** Learn-to-completion → certificate/download-gate dump → Deliver-resume → first Deliver form, against `leep-paint-collection/20260527-1528`. Produces real `journey-learn/` + `journey-deliver/` screenshots and a `pass` per-app verdict — the acceptance evidence.
+- **Live E2E (PR 3, verification run):** Learn-to-completion → Deliver-resume → first Deliver form, against `leep-paint-collection/20260527-1528`. Produces real `journey-learn/` + `journey-deliver/` screenshots and a `pass` per-app verdict — the acceptance evidence. Selectors are pre-calibrated, so this confirms composition rather than harvesting IDs.
 
 ## Risks & open questions
 
 - **Heavier Learn smoke.** Making the Learn smoke a full walk-to-completion adds AVD wall-clock (~several min for 6 modules + quizzes). Accepted: Deliver requires Learn completion regardless, and incremental capture means a mid-walk Learn failure still yields partial Learn shots + "failed at module N" attribution.
-- **Live calibration dependency.** PR 3's calibration needs a healthy AVD + a claimable opp. If the AVD is unavailable on the implementing machine, PR 3 splits: static composition lands first; calibration + E2E verification follows on an AVD-enabled run. (Decision 5 is to attempt the full E2E now.)
-- **Selector-map staleness across APK versions.** Calibration targets `connect-2.63.0.yaml` (current default per recipe-sanity notes). If the active APK differs, copy-and-calibrate the matching version map.
+- **Live verification dependency.** PR 3's E2E verification needs a healthy AVD + a claimable opp. If the AVD is unavailable on the implementing machine, PR 3 splits: static composition + contract change lands first; the E2E verification run follows on an AVD-enabled machine. (Decision 5 is to attempt the full E2E now.) Selectors are pre-calibrated, so the static part is independently shippable.
+- **Selector-map staleness across APK versions.** The `deliver-*` rows live in `connect-2.63.0.yaml` (the active default, `DEFAULT_APK_VERSION` in `mcp/mobile/client.ts`). If the running AVD's APK differs, copy-and-verify the matching version map.
 - **`app-ux-eval` label coupling.** Confirm the deep UX-eval keys on the new screenshot labels, not `sc-J<n>-final`, before relying on qa-deep gating.
