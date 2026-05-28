@@ -1025,6 +1025,14 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts:
                                           per § Producer Artifact
                                           Verifier; phase itself
                                           returned an error verdict
+           **External-resource override (ocs-setup, connect-setup,
+           solicitation-management):** on `in_progress` / `malformed`, do
+           NOT silent-dispatch the Agent retry if `verify.ok=true` OR the
+           phase's `products.*` block already records the external
+           resource id — re-dispatch would mint a SECOND chatbot / opp /
+           solicitation. Instead FINISH the write-back inline from the
+           landed artifacts. See § External-resource phases: finish inline
+           in `agents/orchestrator-reference.md`.
 Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
 ```
 
