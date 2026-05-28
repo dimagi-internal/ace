@@ -108,9 +108,10 @@ entry guard halts with an actionable message if
 
 ## Pause-points
 
-- **End of Step 2** (default `/ace:run` exit): `/ace:run` halts here.
-  Phase 9 cannot start until `solicitation-review` populates
-  `selected_llo`.
+- **End of Step 2** (default `/ace:run` exit): `/ace:run` terminates here
+  — this is the run's end point today, since Phase 9 is not yet live.
+  Even once `solicitation-review` populates `selected_llo`, Phase 9 stays
+  guarded until execution is enabled.
 - **Inside `solicitation-review`**: HITL gate before `award_response`.
 
 ## Products at phase end (default run)
@@ -125,6 +126,8 @@ entry guard halts with an actionable message if
 ## Completion
 
 The phase is "complete" in the orchestrator's sense after Step 2. The recurring monitor and manual review are NOT part of phase completion — they happen post-`/ace:run` and gate Phase 9 entry.
+
+**Phase 8 is the terminal phase of `/ace:run` today.** Phase 9 (execution-management) is not yet live (see `agents/execution-manager.md` and `agents/ace-orchestrator.md § Workflow`), so `/ace:run` stops here after the write-back below. The `halt-at-phase-8-to-9-boundary` verdict marks the run's end point — do not attempt to continue to Phase 9.
 
 After Step 2:
 
