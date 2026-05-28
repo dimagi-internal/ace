@@ -26,8 +26,8 @@ nova_apps:
 journeys:
   - id: J1
     name: {{journey_name from expected-journeys.md}}
-    app: deliver  # or learn
-    is_smoke: false
+    app: learn  # or deliver
+    is_smoke: true   # exactly one is_smoke:true journey per app
     forms_exercised:
       - {{form_id_or_name}}
     fields_exercised:
@@ -36,5 +36,5 @@ journeys:
     structural_pass_criteria:
       - app_boots
       - no_crash
-      - submission_confirmed   # or "assessment_complete" for Learn
+      - assessment_complete   # Learn; use "submission_confirmed" for Deliver
     pdd_time_budget_seconds: {{from PDD if specified, else null}}
