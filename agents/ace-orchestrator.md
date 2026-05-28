@@ -1036,6 +1036,56 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts:
 Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
 ```
 
+**Products-presence check (Turn N+2, alongside the classify/verify branch).**
+`classify_phase_writeback` only checks the run_state *shape* (status enum,
+verdict type, steps); `verify_phase_artifacts` only checks Drive *files*.
+Neither asserts that the phase wrote its typed `products.<block>` — the
+handoff the public summary page (ace-web `apps/opps/summary.py`) and
+downstream phases actually read. A phase can therefore return
+`classify='ok'` + `verify.ok=true` while having written its outputs only
+under `steps.*` or a lone `summary_artifact`, leaving the summary page's
+section blank. Caught on leep run 20260527-1528: the published EOI
+(`products.solicitation`) and the rendered walkthroughs
+(`products.synthetic`) never surfaced because Phase 8 and Phase 7 wrote
+no `products` block.
+
+So in Turn N+2, for the phase that just completed with `status: done`,
+also confirm `phases.<phase>.products.<expected-block>` exists and is
+non-empty, per this map:
+
+| Phase | Required `products.<block>` |
+|---|---|
+| idea-to-design | `pdd` |
+| scenarios-and-acceptance | `test_prompts` + `app_journeys` |
+| commcare-setup | `apps` |
+| connect-setup | `connect` |
+| ocs-setup | `ocs_chatbot` |
+| qa-and-training | `training` |
+| synthetic-data-and-workflows | `synthetic` |
+| solicitation-management | `solicitation` (NOT `selected_llo` — award-gated) |
+
+(execution-management `launch` + closeout `cycle_grade` are end-state /
+conditional — exempt.) If the required block is absent or empty on a
+`status: done` phase, treat it as a silent under-write: re-dispatch the
+phase ONE more time with an explicit closing line naming the missing
+`products.<block>` (same cap-2 discipline as the `classify='missing'`
+branch). The phase agents' own definitions carry the explicit
+`products.<block>` write step (see e.g. `agents/solicitation-management.md`
+§ After Step 2, `agents/synthetic-data-and-workflows.md` § Completion) —
+this fence check is the structural backstop for when a subagent skips it.
+
+**Open-questions doc (run-end, once).** The summary page reads
+`open-questions.md` from the run-folder root by name (it's the lone
+section with no typed `products.*` pointer). After Phase 1 completes —
+or at the first boundary fence where the PDD exists — ensure
+`<run-folder>/open-questions.md` is written, seeded from the approved
+PDD's `## Open Questions` section (one bullet per question, each naming
+its owner + where it gets answered) and appended to as later phases
+surface new ones. Idempotent: `drive_create_doc_from_markdown` with
+`findOrCreate: true` overwrites in place, so re-running the fence
+refreshes it. Without this the summary's Open-Questions section renders
+empty even on a fully-populated run (observed: leep run 20260527-1528).
+
 **Manifest-key map** for the `phase` arg `verify_phase_artifacts` expects
 — the SHORT key from `lib/artifact-manifest.ts § PHASES`, NOT the
 agent-file name. The verifier rejects unknown values (zod enum), so

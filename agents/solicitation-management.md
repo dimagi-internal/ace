@@ -132,6 +132,25 @@ After Step 2:
 
 2. **Write the `phases.solicitation-management` block** per [`agents/ace-orchestrator.md § Phase Write-Back Contract`](../agents/orchestrator-reference.md#phase-write-back-contract). Set `phases.solicitation-management.verdict: halt-at-phase-8-to-9-boundary` to mark the orchestrator's halt point, populate `summary_artifact:` with the file ID from step 1. (0.13.116: legacy `gates.llo-invite` + `gates.solicitation-review` flips dropped. The Phase 8→9 halt is gated on `phases.solicitation-management.products.selected_llo.org_slug` being non-null in the current run's `run_state.yaml` — populated only by manual `/ace:step solicitation-review` — which preserves the HITL checkpoint without a `gates.<name>` field.)
 
+   **REQUIRED — write `products.solicitation` as part of this block, not only under `steps`.** The summary page (ace-web `apps/opps/summary.py::_read_solicitation`) and downstream readers consume `phases.solicitation-management.products.solicitation`, NOT `steps.solicitation-create`. Recording the solicitation only under `steps` leaves the summary's Solicitation section blank even though the EOI published fine (observed: leep run 20260527-1528 — the live EOI didn't surface on the summary page because `products.solicitation` was never written). Populate:
+
+   ```yaml
+   phases:
+     solicitation-management:
+       products:
+         solicitation:
+           url: <public_url>            # ace-web reads `url` (falls back to `public_url`)
+           public_url: <public_url>
+           solicitation_id: <id>
+           labs_program_id: <labs program id>
+           type: <EOI | RFP>
+           deadline: <ISO date>
+           status: open                 # open until awarded
+           is_public: <bool>
+   ```
+
+   `products.selected_llo` stays absent here — it's populated only at award time by `solicitation-review`.
+
 ## MCP Tools Used (across all skills in this phase)
 
 - `connect-labs`: `create_solicitation`, `generate_criteria`,

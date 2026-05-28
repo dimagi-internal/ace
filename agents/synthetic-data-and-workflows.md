@@ -217,6 +217,25 @@ Invoke `synthetic-summary`.
 
 After Step 7, write the `phases.synthetic-data-and-workflows` block per [`agents/ace-orchestrator.md § Phase Write-Back Contract`](../agents/orchestrator-reference.md#phase-write-back-contract). Populate `summary_artifact:` with the file ID of the Step 7 output (`7-synthetic/synthetic-summary.md`) — Phase 7's summary IS the aggregator skill's output, not a separate `<phase>_summary.md` file. Required top-level keys on the patch: `phases`, `last_actor`, `last_actor_at`.
 
+**REQUIRED — write the `products.synthetic` block, not just `summary_artifact`.** This phase is the easiest to under-record: it does a lot (fixture generation, workflow seeding, persona walkthroughs) and historically wrote back only a lone summary pointer — leaving the summary page's Walkthroughs section empty (observed: leep run 20260527-1528 — `products.synthetic` was never written, so two rendered walkthrough decks didn't surface). The summary page (ace-web `apps/opps/summary.py::_read_walkthroughs`) reads `phases.synthetic-data-and-workflows.products.synthetic.walkthroughs[]`. Populate at minimum:
+
+```yaml
+phases:
+  synthetic-data-and-workflows:
+    products:
+      synthetic:
+        labs_opp_id: <labs opportunity id>
+        workflows:
+          llo_weekly_review: { workflow_id: <id>, pipeline_id: <id>, run_url: <labs run-view URL> }
+          program_admin_audit: { workflow_id: <id> }
+        walkthroughs:               # one entry per persona deck from Step 6
+          - persona: <persona slug>
+            web_view_link: <Drive URL>   # ace-web reads slideshow_url|web_view_link
+            eval_score: <0-5 or omit>
+```
+
+The Step 6 (`synthetic-walkthrough-run`) `products.synthetic.walkthroughs[]` appends already document this list — make sure the final write-back actually carries it through to `run_state.yaml`, not just the per-step artifact.
+
 (The focus-group archetype skip path above writes its own one-paragraph `synthetic-data-and-workflows_summary.md` because Step 7 doesn't run on that branch.)
 
 ## Re-runnability
