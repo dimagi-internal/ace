@@ -715,6 +715,7 @@ server.tool('commcare_download_ccz',
     app_id: z.string(),
     build_id: z.string().optional(),
     include_multimedia: z.boolean().optional().describe('If true, request the full CCZ with multimedia binaries inlined under commcare/multimedia/...; default false returns the lite manifest-only response.'),
+    write_to_path: z.string().optional().describe('If set, write the CCZ bytes to this local path and return `ccz_written_to` INSTEAD of `ccz_base64` — keeps the (multi-MB) base64 blob out of the model context. The `connect_markers` + `projected_connect_state` projection is still returned. Mirrors `commcare_validate_ccz`\'s `ccz_path` so the download → install-sim chain (`app-release-qa`) never round-trips base64: `download_ccz(write_to_path=X)` then `validate_ccz(ccz_path=X)`. The 25 MB base64 cap does not apply when set.'),
   },
   async (args) => runAtom(async () => (await commcareClient()).downloadCcz(args))
 );

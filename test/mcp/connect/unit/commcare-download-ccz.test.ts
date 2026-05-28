@@ -16,6 +16,9 @@
  * Mirrors the unit-test plumbing pattern from commcare-patch-xform.test.ts.
  */
 import { describe, it, expect, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { CommCareBackend } from '../../../../mcp/connect/backends/commcare.js';
 
 interface FakeResponse {
@@ -140,5 +143,46 @@ describe('CommCareBackend.downloadCcz — include_multimedia flag', () => {
     // download_ccz uses app_id slot for the build_id when one is provided
     expect(u.searchParams.get('app_id')).toBe('b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1');
     expect(u.searchParams.has('latest')).toBe(false);
+  });
+});
+
+describe('CommCareBackend.downloadCcz — write_to_path', () => {
+  const baseUrl = 'https://www.commcarehq.org';
+  const args = {
+    domain: 'connect-ace-prod',
+    app_id: '4e20ddf5beca42278c4d2c20383eb943',
+  };
+  const emptyZip = Buffer.from([
+    0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ]);
+
+  it('writes the CCZ to disk and returns ccz_written_to instead of ccz_base64', async () => {
+    const fake = fakeRequest({ getStatus: 200, getBody: emptyZip });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-dlccz-test-'));
+    const outPath = path.join(dir, 'app.ccz');
+    try {
+      const res = await backend.downloadCcz({ ...args, write_to_path: outPath });
+      // path returned, base64 omitted
+      expect(res.ccz_written_to).toBe(outPath);
+      expect(res.ccz_base64).toBeUndefined();
+      // bytes actually landed on disk, byte-identical to the response body
+      expect(fs.existsSync(outPath)).toBe(true);
+      expect(fs.readFileSync(outPath).equals(emptyZip)).toBe(true);
+      expect(res.size_bytes).toBe(emptyZip.byteLength);
+      // projection is still computed (the useful signal)
+      expect(res.projected_connect_state).toBeDefined();
+      expect(res.connect_markers).toBeDefined();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns ccz_base64 (not a path) when write_to_path is omitted', async () => {
+    const fake = fakeRequest({ getStatus: 200, getBody: emptyZip });
+    const backend = new CommCareBackend({ baseUrl, session: fakeSession(fake.request) });
+    const res = await backend.downloadCcz({ ...args });
+    expect(res.ccz_base64).toBeDefined();
+    expect(res.ccz_written_to).toBeUndefined();
   });
 });
