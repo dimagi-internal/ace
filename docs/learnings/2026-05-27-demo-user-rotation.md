@@ -34,6 +34,16 @@ Same PR centralized test fixture references behind `test/fixtures/test-phone.ts`
 - The old `+74260000100` user's accumulated `OpportunityAccess` rows are still on the server (we soft-deactivated the opps but didn't touch the user rows). Reuse of `+74260000100` for ad-hoc probes still works; the demo user just has 10+ stale tiles on any device it logs into.
 - **When to rotate again:** the moment `connect-claim-opp.yaml` scroll budget becomes unreliable for the active user. Cleaner heuristic: rotate after every N runs (TBD, probably 5-10) until the durable fix lands.
 
+## Follow-on: the rotation surfaced a latent 2.63.0 registration bug
+
+Rotating to a **fresh** demo user (`+74260000101`) exercised the 2.63.0 *fresh-signup* registration path for the first time — every prior 2.63.0 run reused an already-registered user and hit the *recovery* path. The fresh-signup "Create a new Backup Code" screen (`recovery_code_tilte`) has TWO six-cell PIN widgets — Code (`backup_code_view`) and Confirm Code (`confirm_code_view`) — with a single CONTINUE button (`connect_backup_code_button`) that stays `enabled=false` until both match. The recovery path shows only `backup_code_view`, so the confirm field went unseen in the 2026-05-22 "live-verified" note.
+
+`connect-register-from-otp.yaml`'s 2.63.0 branch filled only `backup_code_view` then tapped a disabled CONTINUE → registration never completed → recipe halted at the terminal `rvJobList` assertion. Two consecutive Phase 6 agents misread this as "tile not found" / "CONTINUE-disabled location gate" before the root cause (unfilled confirm field) was captured from a live UI dump.
+
+**Fix:** the 2.63.0 branch now fills `confirm_code_view` too, guarded by `runFlow.when visible: confirm_code_view` so the recovery/welcome-back path (single field) still skips it. Field ids captured live from ACE_Pixel_API_34 / CommCare 2.63.0 on 2026-05-27.
+
+**Validation note:** the running ace-mobile MCP reads static recipes from its version-pinned installPath (`DEFAULT_STATIC_DIR` via `import.meta.url`), so a recipe change needs ship → `/ace:update` → **full Claude restart** before the in-session MCP picks it up. Manual maestro-CLI replay against the live AVD was blocked by cross-user emulator ownership (emulators run as the Claude-host user; a separate shell can't disambiguate two same-AVD instances or kill the stale one). Live validation therefore happens via a post-restart Phase 6 re-dispatch.
+
 ## Durable fix (out of scope here)
 
 - Expose `delete_opportunity()` via Connect REST (upstream PR) → add `connect_delete_opportunity` atom → make `/ace:sweep connect` actually clear device tiles.
@@ -46,3 +56,5 @@ Same PR centralized test fixture references behind `test/fixtures/test-phone.ts`
 - ACE sweep procedure: `agents/sweep.md` (the `connect` system stops at soft-deactivate)
 - Centralized test phone: `test/fixtures/test-phone.ts`
 - Demo-prefix mechanism: `docs/learnings/2026-05-14-demo-user-no-otp.md`
+- 2.63.0 dual-field backup-code fix: `mcp/mobile/recipes/static/connect-register-from-otp.yaml` (2.63.0+ branch)
+- Registration sequencing: `mcp/mobile/client.ts::registerTestUser` (part A `connect-register-to-otp` + part B `connect-register-from-otp`)
