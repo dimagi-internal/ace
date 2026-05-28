@@ -418,4 +418,36 @@ describe('deliver-smoke-rewalks-learn', () => {
     const v = probeRecipeSanity(baseInputs([{ name: 'journey-learn.yaml', text }]));
     expect(v.failures.map((f) => f.class)).not.toContain('deliver-smoke-rewalks-learn');
   });
+
+  it('does NOT flag a journey-deliver recipe with a commented-out learn-launch step', () => {
+    const text = [
+      '# Deliver leg. The journey-learn leg already did the Learn walk:',
+      '# - runFlow:',
+      '#     file: learn-launch.yaml',
+      '#     file: learn-tap-module.yaml',
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    file: connect-resume-opp.yaml',
+      '- runFlow:',
+      '    file: deliver-launch.yaml',
+    ].join('\n');
+    const v = probeRecipeSanity(baseInputs([{ name: 'journey-deliver.yaml', text }]));
+    expect(v.failures.map((f) => f.class)).not.toContain('deliver-smoke-rewalks-learn');
+  });
+
+  it('does NOT flag a journey-deliver recipe with exactly one learn-tap-module', () => {
+    const text = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    file: connect-resume-opp.yaml',
+      '- runFlow:',
+      '    file: learn-tap-module.yaml',
+      '- runFlow:',
+      '    file: deliver-launch.yaml',
+    ].join('\n');
+    const v = probeRecipeSanity(baseInputs([{ name: 'journey-deliver.yaml', text }]));
+    expect(v.failures.map((f) => f.class)).not.toContain('deliver-smoke-rewalks-learn');
+  });
 });

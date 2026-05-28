@@ -172,28 +172,6 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
       });
     }
 
-    // 8. deliver-smoke-rewalks-learn → a Deliver-leg recipe (name
-    // starts "journey-deliver") contains a full Learn walk. Post-
-    // decoupling the journey-learn leg walks Learn to completion and
-    // unlocks Deliver; the Deliver leg must only resume from the
-    // unlocked state (connect-resume-opp -> deliver-launch). A Deliver
-    // recipe that re-walks Learn is the pre-decoupling monolith
-    // antipattern (the leep 20260527 J2 class).
-    if (/^journey-deliver/.test(recipe.name)) {
-      const learnLaunches = (recipe.text.match(/file:\s*learn-launch\.yaml/g) || []).length;
-      const learnTaps = (recipe.text.match(/file:\s*learn-tap-module\.yaml/g) || []).length;
-      if (learnLaunches > 0 || learnTaps >= 2) {
-        failures.push({
-          class: 'deliver-smoke-rewalks-learn',
-          detail: `deliver recipe ${recipe.name} contains a Learn walk (learn-launch x${learnLaunches}, learn-tap-module x${learnTaps}) — post-decoupling the journey-learn leg completes Learn; the Deliver leg must resume from the unlocked state via deliver-launch.yaml only`,
-          remediation: `re-compose the Deliver smoke as: connect-resume-opp -> runFlow deliver-launch.yaml -> first Deliver form. Remove the Learn-walk steps (journey-learn handles Learn completion).`,
-          recipe: recipe.name,
-          parameter: 'learn-walk-in-deliver',
-          value: `learn-launch=${learnLaunches},learn-tap-module=${learnTaps}`,
-        });
-      }
-    }
-
     // 1. module-name == form-name → the intermediate-list edge case
     // PR #331 handled in v0.13.255. Recipes authored before that fix
     // are flagged so the operator knows to re-run with a current
@@ -258,6 +236,35 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
             value: formName,
           });
         }
+      }
+    }
+
+    // 8. deliver-smoke-rewalks-learn → a journey-deliver recipe that
+    // re-walks Learn. Post-decoupling the journey-learn leg walks Learn
+    // to completion and unlocks Deliver; the Deliver leg must only
+    // resume from the unlocked state (connect-resume-opp ->
+    // deliver-launch). A Deliver recipe that re-walks Learn is the
+    // pre-decoupling monolith antipattern (the leep 20260527 J2 class).
+    // Match only non-comment lines — composed recipes carry header
+    // comments (and commented-out steps) that may reference
+    // learn-launch / learn-tap-module descriptively; a commented mention
+    // is not a re-walk. Mirrors the `^\s*#` skipping the
+    // brief-label-drift + form-advance-chain checks already use.
+    if (/^journey-deliver/.test(recipe.name)) {
+      const stepLines = recipe.text
+        .split('\n')
+        .filter((l) => !/^\s*#/.test(l));
+      const learnLaunches = stepLines.filter((l) => /file:\s*learn-launch\.yaml/.test(l)).length;
+      const learnTaps = stepLines.filter((l) => /file:\s*learn-tap-module\.yaml/.test(l)).length;
+      if (learnLaunches > 0 || learnTaps >= 2) {
+        failures.push({
+          class: 'deliver-smoke-rewalks-learn',
+          detail: `deliver recipe ${recipe.name} contains a Learn walk (learn-launch x${learnLaunches}, learn-tap-module x${learnTaps}) — post-decoupling the journey-learn leg completes Learn; the Deliver leg must resume from the unlocked state via deliver-launch.yaml only`,
+          remediation: `re-compose the Deliver smoke as: connect-resume-opp -> runFlow deliver-launch.yaml -> first Deliver form. Remove the Learn-walk steps (journey-learn handles Learn completion).`,
+          recipe: recipe.name,
+          parameter: 'learn-walk-in-deliver',
+          value: `learn-launch=${learnLaunches},learn-tap-module=${learnTaps}`,
+        });
       }
     }
   }
