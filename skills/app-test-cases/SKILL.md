@@ -72,62 +72,52 @@ load-bearing for Phase 6's pre-flight; emitting `learn: 0` produces a
 silent downstream halt at Phase 6 (see malaria-itn-app
 run 20260517-1829 for the canonical incident).
 
-**Deliver-smoke composition for two-app opps.** Connect's UI gates the
-Deliver app behind Learn-assessment completion (see
-`docs/learnings/2026-05-18-connect-gates-deliver-on-learn-completion.md`).
-A Deliver smoke that drives `connect-claim + Start + tap V1` lands in
-Learn, not Deliver — the recipe physically cannot reach Deliver
-without completing Learn first. The faithful composition (the only
-one that works) is:
+**Deliver-smoke composition — Learn leg completes Learn, Deliver leg
+resumes.** Connect gates the Deliver app behind Learn-assessment
+completion (`docs/learnings/2026-05-18-connect-gates-deliver-on-learn-completion.md`).
+Rather than re-walk Learn inside the Deliver recipe (the old ~80-step
+monolith that was fragile and got deferred — leep 20260527 J2), the
+two smoke recipes share device state within one Phase 6 dispatch:
 
-  connect-login → connect-claim-opp → learn-launch → walk all Learn
-  modules (content form + assessment per module) → return to Connect
-  opp list → tap Resume → certificate (atlas § 8) → tap
-  VIEW OPPORTUNITY DETAILS → Download Delivery gate (atlas § 9) →
-  tap DOWNLOAD → Deliver StandardHomeActivity (atlas § 10) → tap
-  Start → Deliver MenuActivity (atlas § 11) → tap first Deliver
-  module → first form-field screenshot.
+- **`journey-learn.yaml` walks Learn to completion.** All modules
+  (content form + assessment per module) through the final
+  assessment-pass + sync. This both produces the Learn training
+  screenshots (module list → content → quiz → completion/certificate)
+  AND unlocks Deliver as a side effect. The Learn smoke is a *complete*
+  walk, not a land-at-M1 thin walk.
+- **`journey-deliver.yaml` resumes from the unlocked state.** It assumes
+  the immediately-preceding `journey-learn` leg (same dispatch, warm
+  session) completed Learn. Steps: navigate to the opp list → Resume the
+  In-Progress card (`connect-resume-opp.yaml`) → `runFlow:
+  deliver-launch.yaml` (certificate/opp-detail → Download gate →
+  Deliver home, all ID-anchored in `connect-2.63.0.yaml`) → tap into
+  the first Deliver module → first Deliver form screenshot. ~12 steps,
+  NO Learn duplication.
 
-That's not "shallow" — it's a faithful FLW walk-through. Phase 6
-budgets ~5–10 min per Deliver smoke on multi-stage opps as a
-consequence. Compose the Learn-walk-to-completion as inline
-`runFlow: { file: learn-launch.yaml }` + per-module
-`learn-tap-module.yaml` + `form-advance.yaml` + `form-submit.yaml`
-chains; the post-Learn → Deliver transition uses the
-`deliver-launch.yaml` palette (see § 3's entry-point template).
+State the warm-state dependency in `journey-deliver.yaml`'s header
+comment: it is NOT independently cold-runnable; runners execute
+journey-learn → journey-deliver in order.
 
-**Emitting the legacy Learn-launch-only Deliver smoke is a `[BLOCKER]`,
-not a tolerated deferral.** Earlier versions of this section allowed
-the skill to write a `composition_status: legacy-learn-launch` escape
-field in `app-test-cases.yaml` that documented "the faithful walk
-isn't written yet — defer to a later run." That escape is now closed:
+**The `composition_status` escape stays banned.** Do NOT write
+`composition_status: <anything>` on any `is_smoke: true` journey — its
+presence is a contract violation (it self-declares a known-broken
+recipe). With the Learn-completes / Deliver-resumes split, the common
+case IS composable, so the old "monolith or BLOCKER" binary is gone.
 
-- **Do NOT write `composition_status: legacy-learn-launch`** (or any
-  similar `composition_status` field naming a known-broken shape) on
-  any `is_smoke: true` journey. The field's presence is itself a
-  contract violation.
-- If you cannot compose the faithful walk-Learn-to-completion +
-  `deliver-launch.yaml` chain (e.g., the Learn-app blueprint has
-  fewer / more modules than expected, the static palette can't be
-  composed cleanly, etc.), halt with a `[BLOCKER]` and a structured
-  `auto_surfaced` entry naming the specific composition step that
-  blocked you. Do NOT ship a placeholder Deliver smoke that lands in
-  Learn — the load-bearing assertion of this skill is that every
-  `is_smoke: true` recipe physically reaches its target app's first
-  form. A recipe that demonstrably cannot do so is a structural
-  failure, not a deferred-work item.
-- The `mobile_validate_recipe` syntactic check is necessary but not
-  sufficient: a Learn-launch-only recipe validates clean and still
-  lands in the wrong app. The contract is "reaches Deliver's first
-  form," not "validates as YAML."
+Halt with a `[BLOCKER]` only when the structure genuinely can't be
+composed — e.g. the Learn blueprint is missing the modules the walk
+needs, or `deliver-launch.yaml`'s anchors don't resolve against the
+active selector map. A `journey-deliver.yaml` that re-walks Learn
+(`learn-launch` or ≥2 `learn-tap-module`) is rejected by the
+`deliver-smoke-rewalks-learn` recipe-sanity check (Step 3.4-adjacent) —
+re-compose it as resume-only.
 
 Caught in vivo on malaria-itn-app run 20260517-1829 (the second time —
-PR #354 fixed the Phase 6 pre-flight; this tightening closes the
-upstream Phase 3 escape that produced the legacy recipe in the first
-place). The faithful composition is non-trivial (~60+ Maestro steps
-across 6 Learn modules + assessments + the Connect transition + the
-Deliver entry) but it IS what the contract requires. Defer only by
-halting; never by writing a known-broken recipe.
+PR #354 fixed the Phase 6 pre-flight; the composition contract change
+here closes the upstream Phase 3 escape that produced the legacy recipe
+in the first place). With the split model, composition is the default
+path; Defer only by halting with a `[BLOCKER]`; never by writing a
+known-broken recipe.
 
 ### Step 3: For each journey, compose the Maestro recipe
 
@@ -217,13 +207,19 @@ appId: org.commcare.dalvik
     env:
       OPP_NAME: ${OPP_NAME}
 # (c) For Learn journeys: learn-launch.yaml lands on the Learn suite root.
-#     For Deliver journeys: Connect gates Deliver behind Learn-assessment
-#     completion (see docs/learnings/2026-05-18-connect-gates-deliver-on-
-#     learn-completion.md). Walk all Learn modules to completion first via
-#     learn-launch + per-module learn-tap-module + form-advance + form-
-#     submit, THEN chain deliver-launch.yaml which drives the post-Learn
-#     certificate (atlas § 8) → Download Delivery gate (§ 9) → Deliver
-#     StandardHomeActivity (§ 10) → Deliver MenuActivity (§ 11).
+#     Walk all Learn modules to completion (all content forms + assessments)
+#     through the final assessment-pass + sync. This is a complete walk,
+#     not a thin land-at-M1 walk — it both produces Learn screenshots and
+#     unlocks the Deliver app as a side effect.
+#
+#     For Deliver journeys: `journey-deliver.yaml` resumes from the
+#     unlocked state (warm session, journey-learn leg just completed).
+#     Do NOT re-walk Learn inside the Deliver recipe — use the split:
+#       connect-resume-opp.yaml  (opp-list → tap Resume → cert/opp-detail)
+#       runFlow: deliver-launch.yaml  (cert → Download gate → Deliver home)
+#       … first Deliver module + form screenshot
+#     The Deliver recipe is NOT independently cold-runnable; state the
+#     warm-state dependency in the YAML header comment.
 - runFlow:
     file: learn-launch.yaml
 # ... journey-specific module/form steps below, using live labels
@@ -238,7 +234,8 @@ The static palette lives at `mcp/mobile/recipes/static/`:
 - `learn-tap-module.yaml` — MenuActivity row tap (generic — handles ANY level of the 3-level suite tree)
 - `form-advance.yaml` — `nav_btn_next` ImageButton tap (NOT text-match "Next" — see atlas §7)
 - `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`
-- `deliver-launch.yaml` — post-Learn-complete certificate (atlas § 8) → tap VIEW OPPORTUNITY DETAILS → Download Delivery gate (§ 9) → tap DOWNLOAD → Deliver-mode StandardHomeActivity (§ 10) anchored on `id/viewJobCard`. Chains immediately after a full Learn walk-to-completion in the Deliver smoke recipe. Resource-IDs at the certificate + gate screens are coordinate-fallback-only (see palette file for remediation: live dump capture from a future Phase 6 run mid-window between Learn-pass and Deliver-download).
+- `connect-resume-opp.yaml` — opp-list → scroll to the target opp's In-Progress card → tap Resume → lands on the certificate/opp-detail surface (atlas § 8) that `deliver-launch.yaml` expects. Pre-state: Connect opp-list visible, opp already Learn-in-progress or complete. Warm-session only (journey-learn leg completed Learn in this dispatch). Requires `OPP_NAME` env var (same value as `connect-claim-opp.yaml`).
+- `deliver-launch.yaml` — post-Learn-complete certificate (atlas § 8) → tap VIEW OPPORTUNITY DETAILS → Download Delivery gate (§ 9) → tap DOWNLOAD → Deliver-mode StandardHomeActivity (§ 10) anchored on `id/viewJobCard`. All surfaces ID-anchored (verified 2026-05-26 against bednet J2 dumps; no coordinate fallbacks). Chain after `connect-resume-opp.yaml` in the Deliver smoke recipe.
 
 **CRITICAL — Learn-app navigation is 2 menu levels deep.** After `learn-launch.yaml` lands you on the module list (atlas §6a), reaching a form requires **TWO** `learn-tap-module` invocations:
 
@@ -552,15 +549,13 @@ in `templates/app-test-cases-template.yaml`.
   `unresolved: []` (Step 3.4 gate; non-empty means the APK selector
   map is missing rows and Phase 6 will block)
 - Every `forms_exercised` entry resolves to a real Nova form ID
-- **No `composition_status: legacy-*` (or any composition-escape
-  field) on any `is_smoke: true` journey entry.** Per § Step 2's
-  closed-escape rule, ship a faithful walk-Learn-to-completion +
-  `deliver-launch.yaml` Deliver smoke or halt with a `[BLOCKER]`.
-  Writing `composition_status: legacy-learn-launch` (the malaria-itn-app
-  20260517-1829 incident shape) is a structural failure — the recipe
-  validates as YAML but cannot reach its target app's first form, and
-  the field's presence is the agent self-declaring the contract
-  violation. Reject pre-write; never tolerate.
+- **No `composition_status` (or any composition-escape field) on any
+  `is_smoke: true` journey entry.** Per § Step 2's closed-escape rule,
+  the `composition_status` field is banned entirely. With the split
+  model (Learn-to-completion + Deliver-resume), composition is the
+  default path — the old "monolith or BLOCKER" binary is gone.
+  Writing any `composition_status` value is a contract violation;
+  reject pre-write; never tolerate.
 
 **If any check fails, halt with a `[BLOCKER]` in the gate brief.**
 Do NOT write `app-test-cases.yaml` until the recipe coverage matches
@@ -630,3 +625,4 @@ already maps the producer to `3-commcare/` (see
 | 2026-05-12 | Add Step 3.4 — recipe-wide `mobile_resolve_selectors` gate. Halts `[BLOCKER]` on any unresolved logical selector before recipes are written to Drive. Shifts left a class of Phase 6 blockers (leep + turmeric runs both hit this in early May) to Phase 3, where Nova form/field context is still in-scope. Follows PR #249's `connect-2.62.0.yaml` calibration. | ACE team |
 | 2026-05-22 | Add § Quiz / required-input answer-tap rule — MANDATORY. Forbids `${SELECTOR:radio-first-option}` and other generic-positional placeholders; mandates per-required-field answer steps (literal `tapOn: text:` from Nova `get_form` options) before `form-advance.yaml`. Closes the malaria-rdt run 20260522-1002 Phase 6 BLOCKER class: both smoke recipes chained `form-advance` across required quiz questions with zero answer-selection steps, stalling on `warning_root`. Step 3.4's selector-resolution gate already catches the positional-placeholder half; this section adds the author-side rule that prevents emission in the first place. | ACE team |
 | 2026-05-27 | Recipe naming convention: `J<n>.yaml` → `journey-<app>[-<slug>].yaml` (smokes use bare `journey-learn`/`journey-deliver`). `id: J<n>` retained as internal key. Screenshot labels `sc-J<n>-*` → `<recipe-base>-*`. See spec 2026-05-27-phase6-learn-deliver-decoupling. | ACE team |
+| 2026-05-27 | Deliver-smoke composition: split the 80-step Learn-re-walk monolith into journey-learn (walks Learn to completion) + journey-deliver (resumes from unlocked state via connect-resume-opp -> deliver-launch). Closes the leep 20260527 J2 deferral class — composition is now the default, BLOCKER reserved for genuinely un-composable structures. | ACE team |
