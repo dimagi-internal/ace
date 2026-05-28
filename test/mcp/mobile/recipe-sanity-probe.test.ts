@@ -354,3 +354,68 @@ describe('probeRecipeSanity — failure class: brief-label-drift', () => {
     expect(verdict.failures.find((x) => x.class === 'brief-label-drift')).toBeUndefined();
   });
 });
+
+describe('deliver-smoke-rewalks-learn', () => {
+  const baseInputs = (recipes: { name: string; text: string }[]) => ({
+    recipes,
+    novaApps: [],
+    connectOpp: { display_name: 'Opp' },
+  });
+
+  it('flags a journey-deliver recipe that runFlows learn-launch', () => {
+    const text = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    file: connect-login.yaml',
+      '- runFlow:',
+      '    file: learn-launch.yaml',
+      '- takeScreenshot: "journey-deliver-final"',
+    ].join('\n');
+    const v = probeRecipeSanity(baseInputs([{ name: 'journey-deliver.yaml', text }]));
+    expect(v.ok).toBe(false);
+    expect(v.failures.map((f) => f.class)).toContain('deliver-smoke-rewalks-learn');
+  });
+
+  it('flags a journey-deliver recipe with >=2 learn-tap-module runFlows', () => {
+    const text = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    file: learn-tap-module.yaml',
+      '- runFlow:',
+      '    file: learn-tap-module.yaml',
+    ].join('\n');
+    const v = probeRecipeSanity(baseInputs([{ name: 'journey-deliver.yaml', text }]));
+    expect(v.failures.map((f) => f.class)).toContain('deliver-smoke-rewalks-learn');
+  });
+
+  it('does NOT flag a resume-only journey-deliver recipe', () => {
+    const text = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    file: connect-resume-opp.yaml',
+      '- runFlow:',
+      '    file: deliver-launch.yaml',
+      '- takeScreenshot: "journey-deliver-final"',
+    ].join('\n');
+    const v = probeRecipeSanity(baseInputs([{ name: 'journey-deliver.yaml', text }]));
+    expect(v.failures.map((f) => f.class)).not.toContain('deliver-smoke-rewalks-learn');
+  });
+
+  it('does NOT flag a journey-learn recipe that walks Learn fully', () => {
+    const text = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    file: learn-launch.yaml',
+      '- runFlow:',
+      '    file: learn-tap-module.yaml',
+      '- runFlow:',
+      '    file: learn-tap-module.yaml',
+    ].join('\n');
+    const v = probeRecipeSanity(baseInputs([{ name: 'journey-learn.yaml', text }]));
+    expect(v.failures.map((f) => f.class)).not.toContain('deliver-smoke-rewalks-learn');
+  });
+});
