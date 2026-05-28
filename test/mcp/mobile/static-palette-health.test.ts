@@ -46,6 +46,7 @@ describe('static palette health — file inventory', () => {
       'form-advance.yaml',
       'form-submit.yaml',
       'deliver-launch.yaml',
+      'connect-resume-opp.yaml',
     ];
     for (const name of required) {
       expect(paletteFiles, `${name} must exist in mcp/mobile/recipes/static/`).toContain(name);
