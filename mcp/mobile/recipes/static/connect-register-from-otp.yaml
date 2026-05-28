@@ -158,11 +158,24 @@ appId: org.commcare.dalvik
 # six-cell PIN-style widget (`backup_code_view` LinearLayout containing
 # six unidentified single-char EditText children). Maestro's `inputText`
 # auto-advances across the cells, so the recipe just needs a different
-# gating selector + no `eraseText`/`hideKeyboard`. 2.63.0 also collapses
-# the initial-entry + re-confirmation steps into a single combined
-# "Welcome Back + Backup Code" screen — no separate re-prompt. The
-# 2.62.0 branches below skip cleanly on 2.63.0 since the old field id
-# is never visible. Live-verified 2026-05-22.
+# gating selector + no `eraseText`/`hideKeyboard`. The 2.62.0 branches
+# below skip cleanly on 2.63.0 since the old field id is never visible.
+#
+# DUAL-FIELD CREATE-CODE SCREEN (2.63.0 fresh signup) — added 2026-05-27.
+# The 2.63.0 *fresh-signup* path ("Create a new Backup Code",
+# id `recovery_code_tilte`) has TWO six-cell widgets stacked: Code
+# (`backup_code_view`) and Confirm Code (`confirm_code_view`), with a
+# single CONTINUE button (`connect_backup_code_button`) that stays
+# `enabled=false` until BOTH widgets hold matching 6-digit values. The
+# earlier "Live-verified 2026-05-22" note was on the *recovery* path
+# (already-registered user re-entering an existing code), which shows
+# only `backup_code_view` and no confirm field — so the confirm field
+# went unnoticed until the first fresh +7426 demo-user registration
+# under 2.63.0 (2026-05-27, demo-user rotation to +74260000101). We fill
+# `backup_code_view`, then conditionally fill `confirm_code_view` when
+# present (the recovery path skips it), then tap CONTINUE. Field ids
+# captured live from ACE_Pixel_API_34 / CommCare 2.63.0 on 2026-05-27;
+# see docs/learnings/2026-05-27-demo-user-rotation.md.
 
 # Optional Name screen (skipped on snapshot-reload + already-registered).
 - runFlow:
@@ -182,9 +195,11 @@ appId: org.commcare.dalvik
 - waitForAnimationToEnd:
     timeout: 5000
 
-# 2.63.0+ path: combined "Welcome Back + Backup Code" with six-cell PIN
-# widget. `inputText` auto-advances across the cells; no eraseText
-# needed since cells masked individually. No separate re-confirm.
+# 2.63.0+ path: six-cell PIN widget. `inputText` auto-advances across the
+# cells; no eraseText needed since cells masked individually.
+# Fresh signup additionally has a Confirm Code widget (`confirm_code_view`)
+# that must match before CONTINUE enables; the recovery/welcome-back path
+# has only `backup_code_view`. Fill Code always, Confirm conditionally.
 - runFlow:
     when:
       visible:
@@ -195,6 +210,19 @@ appId: org.commcare.dalvik
       - inputText: ${BACKUP_CODE}
       - waitForAnimationToEnd:
           timeout: 2000
+      # Confirm Code — present only on the fresh-signup create-code screen.
+      # CONTINUE (connect_backup_code_button) is enabled=false until this
+      # matches Code, so a fresh +7426 registration halts here without it.
+      - runFlow:
+          when:
+            visible:
+              id: "org.commcare.dalvik:id/confirm_code_view"
+          commands:
+            - tapOn:
+                id: "org.commcare.dalvik:id/confirm_code_view"
+            - inputText: ${BACKUP_CODE}
+            - waitForAnimationToEnd:
+                timeout: 2000
       - tapOn:
           id: "org.commcare.dalvik:id/connect_backup_code_button"
 
