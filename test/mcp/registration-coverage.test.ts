@@ -215,7 +215,17 @@ describe('MCP server plugin.json registration', () => {
       }
     }
 
-    const unregistered = serverFiles.filter((f) => !registered.has(f));
+    // Server files intentionally NOT wired into plugin.json. connect-labs
+    // migrated from a stdio proxy (connect-labs-server.ts) to a native
+    // `type: "http"` entry + headersHelper (scripts/labs-auth-headers.mjs),
+    // so no server file backs it. The proxy file is retained as a
+    // one-line-revert fallback while the headersHelper path is validated in
+    // production; delete the file AND this allowlist entry once confirmed.
+    const INTENTIONALLY_UNWIRED = new Set(['mcp/connect-labs-server.ts']);
+
+    const unregistered = serverFiles.filter(
+      (f) => !registered.has(f) && !INTENTIONALLY_UNWIRED.has(f),
+    );
     expect(
       unregistered,
       'MCP server files present on disk but not registered in ' +

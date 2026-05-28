@@ -3,19 +3,56 @@
 ## Status
 
 **Live.** ACE consumes labs.connect.dimagi.com via the `connect-labs`
-MCP server, an HTTP-over-stdio proxy. The proxy reads `LABS_MCP_TOKEN`
-from `.env`, forwards JSON-RPC frames to
-`https://labs.connect.dimagi.com/mcp/`, and exposes upstream tools as
-local MCP atoms.
+MCP server, wired in `plugin.json` as a **native `type: "http"` entry**
+pointing directly at `https://labs.connect.dimagi.com/mcp/`. Claude Code
+handles the JSON-RPC transport; a `headersHelper`
+(`scripts/labs-auth-headers.mjs`) supplies the `Authorization: Bearer
+<LABS_MCP_TOKEN>` header at connection time.
 
 Auth is per-user PAT (minted via `/ace:labs-token-mint`). OAuth-via-
-CCHQ happens server-side inside labs's tool handlers; the proxy itself
-sees only Bearer-token requests.
+CCHQ happens server-side inside labs's tool handlers; ACE only ever
+sends a Bearer token.
 
-The proxy is one config swap away from deletion when Claude Code gains
-first-class HTTP MCP support — the design intent is that labs stays
-HTTP and ACE simply consumes it directly. Until then, the stdio shim
-keeps the surface uniform.
+### headersHelper wiring (replaced the stdio proxy)
+
+The `connect-labs` entry is:
+
+```json
+"connect-labs": {
+  "type": "http",
+  "url": "https://labs.connect.dimagi.com/mcp/",
+  "headersHelper": "${CLAUDE_PLUGIN_ROOT}/scripts/labs-auth-headers.mjs"
+}
+```
+
+`headersHelper` is a command Claude Code runs at connection time; it
+must print a JSON object of string→string to stdout, which Claude Code
+merges into the request headers. `scripts/labs-auth-headers.mjs`:
+
+- Is a **node-only `.mjs`** (shebang `#!/usr/bin/env node`, executable
+  bit committed). No `tsx`, no `node_modules` resolution, no CWD
+  assumption — `headersHelper` runs in an unspecified shell, so the only
+  runtime dependency is `node` (always present alongside Claude Code).
+- **Self-derives** the plugin DATA dir from its own file location
+  (mirroring `lib/plugin-data-dir.ts::derivePluginDataDir`) rather than
+  trusting `$CLAUDE_PLUGIN_DATA`, which Claude Code does **not** expand
+  in plugin MCP configs (anthropics/claude-code#9427, still open on
+  2.1.153). `${CLAUDE_PLUGIN_ROOT}` *is* expanded, so the helper path in
+  plugin.json resolves.
+- Reads `LABS_MCP_TOKEN` (env var → `<data-dir>/.env` → dev-root `.env`)
+  and emits `{"Authorization":"Bearer <token>"}`; emits `{}` + a stderr
+  diagnostic and still exits 0 when no token is found.
+
+**Requires Claude Code ≥ 2.1.141** (last `headersHelper` auth-state
+bug-fix; the feature itself shipped by 2.1.118).
+
+**Fallback retained:** the old stdio→HTTP proxy
+(`mcp/connect-labs-server.ts` + `test/mcp/connect-labs/proxy.test.ts`)
+is kept on disk, intentionally unwired (allowlisted in
+`test/mcp/registration-coverage.test.ts`), as a one-line-revert fallback
+while the native path is validated in production. Once confirmed, delete
+the proxy file, its tests, and the allowlist entry. Revert = swap the
+plugin.json `connect-labs` block back to the stdio `command`/`args` form.
 
 ## Running the MCP server
 
@@ -192,12 +229,22 @@ retry tax.
   <opp>/<run-id>` — it's idempotent and writes the selected_llo block
   defensively.
 
-- **JSON-RPC notifications mysteriously break tool discovery.** The
-  proxy distinguishes JSON-RPC notifications (no `id`) from requests;
-  replying to a notification (i.e., echoing back with an `id`) breaks
-  the upstream's notification semantics and disables tool discovery
-  on the next request. Already handled in the proxy; flagged here so
-  it doesn't get accidentally "fixed" out of the source.
+- **JSON-RPC notifications mysteriously break tool discovery.** This was
+  a *proxy-era* hazard: the stdio shim had to suppress replies to
+  notifications (no `id`) or the host disabled tool discovery
+  (jjackson/ace#106 finding 8). The native `type: "http"` transport owns
+  JSON-RPC framing, so this class is gone for the live path — it's
+  documented here only for the retained fallback proxy.
+
+- **`connect-labs` tools don't appear in `ToolSearch` after the
+  headersHelper swap.** MCP wiring changes need a **full Claude Code
+  restart** (not just `/reload-plugins`) — subprocesses/connections bind
+  at startup. If they're still missing after a restart, the
+  `headersHelper` path likely didn't resolve: confirm Claude Code is ≥
+  2.1.141, and check the connect-labs MCP log for the helper's stderr
+  (`[labs-auth-headers] ...`). A literal unexpanded
+  `${CLAUDE_PLUGIN_ROOT}` in the helper path means expansion isn't
+  happening in `headersHelper` — revert to the stdio proxy.
 
 ## Cross-reference
 
@@ -216,3 +263,4 @@ retry tax.
 | 2026-04-26 | Initial connect-labs MCP shipped as stdio proxy (9 atoms, Phase 8 only) |
 | 2026-05-02 | Synthetic + workflows atoms added (Phase 7) |
 | 2026-05-09 | `## Synthetic-manifest schema gotchas` added — captures the 5-retry tax observed on `leep-paint-collection` run `20260509-1448`; conform on first attempt to skip it |
+| 2026-05-28 | Replaced the stdio→HTTP proxy with a native `type: "http"` entry + `headersHelper` (`scripts/labs-auth-headers.mjs`). Proxy retained as one-line-revert fallback pending production validation. Requires Claude Code ≥ 2.1.141. |
