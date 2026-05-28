@@ -32,7 +32,7 @@ point at `app-test-cases`.
 
 ## Products
 
-- `6-qa-and-training/screenshots/<journey-id>/<step-name>.png` — per-step PNGs (anyone-with-link permission set at upload for Slides ingest)
+- `6-qa-and-training/screenshots/<recipe-base>/<step-name>.png` — per-step PNGs (anyone-with-link permission set at upload for Slides ingest)
 - `6-qa-and-training/app-screenshot-capture_manifest.yaml` — fileId/alias index consumed by `training-flw-guide` and `training-deck-generate`
 - `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` — thin per-app UX smoke verdict
 
@@ -74,7 +74,7 @@ auto_surfaced entry naming the exact remediation command:
 | Master yaml has zero `is_smoke: true` journeys | `app-test-cases.yaml has no is_smoke:true journeys; upstream Phase 3 (app-test-cases) emitted no smoke set` | `/ace:step app-test-cases <opp>/<run-id>` |
 | `app: learn` smoke count != 1 OR `app: deliver` smoke count != 1 | `app-test-cases.yaml smoke set malformed: expected exactly one is_smoke:true journey per app, got learn=N deliver=M` | `/ace:step app-test-cases <opp>/<run-id>` |
 | `3-commcare/recipes/` subfolder does not exist on Drive | `app-test-cases.yaml declares is_smoke:true journeys but 3-commcare/recipes/ subfolder is missing — upstream Phase 3 produced incomplete output (master yaml without per-journey recipes)` | `/ace:step app-test-cases <opp>/<run-id>` BEFORE retrying this skill |
-| One or more smoke journeys' `recipe_path` doesn't resolve to a real file | `recipe_path J<n>.yaml referenced by app-test-cases.yaml does not resolve under 3-commcare/recipes/ — upstream Phase 3 produced an incomplete output set` | `/ace:step app-test-cases <opp>/<run-id>` BEFORE retrying |
+| One or more smoke journeys' `recipe_path` doesn't resolve to a real file | `recipe_path journey-<app>.yaml referenced by app-test-cases.yaml does not resolve under 3-commcare/recipes/ — upstream Phase 3 produced an incomplete output set` | `/ace:step app-test-cases <opp>/<run-id>` BEFORE retrying |
 
 Each of these halts writes the **incomplete-mode verdict shape** (see
 Step 9 below) with `verdict: incomplete` and the matching PLATFORM
@@ -172,7 +172,7 @@ inputs always produce the same verdict; no MCP calls inside the
 probe itself).
 
 Inputs the caller assembles:
-- Smoke recipe text(s) — read from `3-commcare/recipes/J*.yaml` on
+- Smoke recipe text(s) — read from `3-commcare/recipes/journey-*.yaml` on
   Drive
 - Nova app structures — one `nova_get_app({app_id})` per app in
   `app-test-cases.yaml` (typically learn + deliver)
@@ -305,7 +305,7 @@ For each of the two smoke journeys (Learn first, then Deliver), call
 `mobile_run_recipe` with the resolved recipe path:
 
 - Each call returns a list of captured screenshots; upload each to
-  `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<journey-id>/<step-name>.png`
+  `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<recipe-base>/<step-name>.png`
   via `drive_upload_binary` with `shareAnyoneWithLink: true` AND
   `mimeType: "image/png"`.
 - **CRITICAL:** the `shareAnyoneWithLink: true` flag is required.
@@ -322,7 +322,7 @@ For each of the two smoke journeys (Learn first, then Deliver), call
   `uiDumpPath` pointing at a `<step-name>.xml` file containing the
   Android `uiautomator dump` output captured at the same moment as the
   PNG. When present, upload it to
-  `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<journey-id>/<step-name>.xml`
+  `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/<recipe-base>/<step-name>.xml`
   via `drive_upload_binary` with `mimeType: "application/xml"`
   (no `shareAnyoneWithLink` needed — XMLs aren't consumed by Slides).
   The dumps are produced automatically by `MaestroBackend.runRecipeWithDumps`
@@ -420,7 +420,7 @@ overall_score: 8.5             # 0.0–10.0, weighted across dimensions
 verdict: pass | warn | fail | incomplete
 # `incomplete` is reserved for *upstream-incomplete* state the skill
 # itself cannot remediate: app-test-cases.yaml missing or malformed,
-# `3-commcare/recipes/J*.yaml` files absent, recipes carrying
+# `3-commcare/recipes/journey-*.yaml` files absent, recipes carrying
 # unfilled REPLACE_* selectors. That's "the rubric COULD NOT grade
 # because Phase 3 didn't ship its full output set," not "the AVD is
 # sick."
@@ -445,11 +445,15 @@ dimensions:
   manifest_integrity: { score: 8.0, weight: 0.20 }   # manifest.yaml lists every screenshot actually present in Drive
 
 per_item:
-  - ref: "J1.yaml"   # smoke journey id from app-test-cases.yaml
+  - ref: learn
     score: 9.0
     verdict: pass
     note: "5 screenshots, all PNG, all referenced from manifest"
-  # ... one per smoke journey
+  - ref: deliver
+    score: 9.0
+    verdict: pass
+    note: "5 screenshots, all PNG, all referenced from manifest"
+  # ... one per smoke journey (ref: learn / ref: deliver)
 
 auto_surfaced:
   - severity: WARN
@@ -591,6 +595,7 @@ Notes:
 
 | Date | Change | Author |
 |---|---|---|
-| 2026-05-05 | **Path-scheme migration.** Inputs repointed to `2-scenarios/pdd-to-app-journeys.md`, `3-commcare/app-test-cases.yaml`, `3-commcare/app-deploy_summary.md`, `3-commcare/recipes/`. Outputs repointed to `6-qa-and-training/screenshots/<journey-id>/<step-name>.png`, `6-qa-and-training/app-screenshot-capture_manifest.yaml`, `6-qa-and-training/app-screenshot-capture_verdict.yaml`, `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (per manifest). Both verdict YAML examples' `capture_path` updated. No behavior change beyond paths. | ACE team |
+| 2026-05-05 | **Path-scheme migration.** Inputs repointed to `2-scenarios/pdd-to-app-journeys.md`, `3-commcare/app-test-cases.yaml`, `3-commcare/app-deploy_summary.md`, `3-commcare/recipes/`. Outputs repointed to `6-qa-and-training/screenshots/<recipe-base>/<step-name>.png`, `6-qa-and-training/app-screenshot-capture_manifest.yaml`, `6-qa-and-training/app-screenshot-capture_verdict.yaml`, `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (per manifest). Both verdict YAML examples' `capture_path` updated. No behavior change beyond paths. | ACE team |
+| 2026-05-27 | **Recipe naming convention.** Screenshot dirs updated from `<journey-id>/` to `<recipe-base>/` (`journey-learn/`, `journey-deliver/`). Recipe read references updated from `J*.yaml` to `journey-*.yaml`. Structural verdict `per_item` refs changed from `ref: "J1.yaml"` to `ref: learn` / `ref: deliver`. No runtime behavior change. See spec 2026-05-27-phase6-learn-deliver-decoupling. | ACE team |
 | 2026-05-06 | **Step 2 input-completeness pre-flight** — restructured the post-Step-1 logic into an explicit failure-mode table that distinguishes upstream Phase 3 incomplete output (master yaml without recipes) from smoke-flag malformation. Each failure halts with a named PLATFORM auto_surfaced message + the exact `/ace:step` remediation command, and writes `verdict: incomplete` (not `fail` — upstream gaps aren't smoke failures). Surfaced by leep-paint-collection run 20260506-1440 where a Phase 3 dispatch paraphrased the `app-test-cases` SKILL contract and elided the per-journey recipe outputs; `app-screenshot-capture` halted correctly but the operator-facing message conflated the failure mode with general "missing input" diagnostics. See jjackson/ace#106 finding #3 + #16. | ACE team |
 | 2026-05-07 | **Step 5 anyone-with-link via `drive_upload_binary({shareAnyoneWithLink: true})`** — replaces the previous unfulfillable contract (the SKILL named `drive.permissions.create` but no MCP atom implemented it). The new flag sets `role: reader, type: anyone` atomically at upload time, eliminating the "deck builds without errors but slides are empty" failure mode. Standalone `drive_set_anyone_with_link({fileId})` atom also added for retroactive sharing. See jjackson/ace#115 finding #3. | ACE team |
