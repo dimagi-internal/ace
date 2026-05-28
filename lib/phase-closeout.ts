@@ -53,6 +53,15 @@ export interface PhaseCloseoutReport {
   present_count: number;
   /** Count of required entries declared by the manifest for this phase. */
   expected_count: number;
+  /** Files found that are NOT in the manifest's required set (eval verdicts, decisions.yaml, summaries, …). */
+  optional_present_count: number;
+  /**
+   * Human-readable one-liner for narration — echo this verbatim instead of
+   * pairing present_count/expected_count into a "7/4" fraction (present counts
+   * everything in the folder; expected counts only the required set, so the
+   * ratio routinely exceeds 1 and reads as nonsense).
+   */
+  summary: string;
 }
 
 /**
@@ -99,12 +108,23 @@ export function diffArtifacts(
   const missing = expected
     .filter((e) => !present.has(e.path))
     .map(({ path, producedBy, description }) => ({ path, producedBy, description }));
+  const requiredPresent = expected.length - missing.length;
+  const optionalPresent = presentPaths.length - requiredPresent;
+  const optionalSuffix = optionalPresent > 0 ? ` (+${optionalPresent} optional)` : '';
+  const summary =
+    missing.length === 0
+      ? `all ${expected.length} required artifacts found${optionalSuffix}`
+      : `${requiredPresent}/${expected.length} required artifacts found${optionalSuffix} — missing: ${missing
+          .map((m) => m.path)
+          .join(', ')}`;
   return {
     phase,
     ok: missing.length === 0,
     missing,
     present_count: presentPaths.length,
     expected_count: expected.length,
+    optional_present_count: optionalPresent,
+    summary,
   };
 }
 

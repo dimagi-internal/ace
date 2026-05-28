@@ -983,10 +983,16 @@ Turn N+1:  ONE message — all 5 tool calls in parallel:
                 — returns 'ok' | 'missing' | 'in_progress' | 'error' | 'malformed'
              2. drive_list_folder on <runFolderId>/<N>-<phase>/ (artifact verifier)
              3. verify_phase_artifacts(runFolderId, phase=<manifest-key>)
-                — returns {phase, ok, missing[], present_count, expected_count}
+                — returns {phase, ok, missing[], present_count,
+                  expected_count, optional_present_count, summary}
                   where each missing entry carries {path, producedBy, description}
                 — covers the artifact-presence half of the gate;
                   classify_phase_writeback covers the run_state.yaml half
+                — when narrating the result, echo verify.summary verbatim
+                  (e.g. "all 4 required artifacts found (+3 optional)"). Do
+                  NOT pair present_count/expected_count into a fraction:
+                  present counts every file in the folder, expected counts
+                  only the required set, so "7/4" is meaningless.
              4. TaskUpdate marking <phase> completed, next phase in_progress
              5. Skill(decisions-render) — idempotent
            Optional one-line text summary in the same message.

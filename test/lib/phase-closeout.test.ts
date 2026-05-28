@@ -93,6 +93,40 @@ describe('diffArtifacts (pure)', () => {
     expect(report.ok).toBe(true);
     expect(report.present_count).toBe(expected.length + 1);
   });
+
+  it('summarizes a clean pass as "all N required found (+M optional)" rather than a present/expected fraction', () => {
+    const expected = computeExpectedRequiredArtifacts('design').map((e) => e.path);
+    // 3 extra optional files on top of the full required set — the "7/4" shape.
+    const present = [
+      ...expected,
+      '1-design/idea-to-pdd-eval_verdict.yaml',
+      '1-design/decisions.yaml',
+      '1-design/idea-to-design_summary.md',
+    ];
+    const report = diffArtifacts('design', present);
+    expect(report.ok).toBe(true);
+    expect(report.optional_present_count).toBe(3);
+    expect(report.summary).toBe(`all ${expected.length} required artifacts found (+3 optional)`);
+  });
+
+  it('summarizes a gap with the required ratio and the missing paths', () => {
+    const expected = computeExpectedRequiredArtifacts('design');
+    // Drop the first required artifact; keep the rest plus one optional file.
+    const present = [...expected.slice(1).map((e) => e.path), '1-design/decisions.yaml'];
+    const report = diffArtifacts('design', present);
+    expect(report.ok).toBe(false);
+    expect(report.optional_present_count).toBe(1);
+    expect(report.summary).toBe(
+      `${expected.length - 1}/${expected.length} required artifacts found (+1 optional) — missing: ${expected[0].path}`,
+    );
+  });
+
+  it('omits the optional suffix when only the required set is present', () => {
+    const expected = computeExpectedRequiredArtifacts('design').map((e) => e.path);
+    const report = diffArtifacts('design', expected);
+    expect(report.optional_present_count).toBe(0);
+    expect(report.summary).toBe(`all ${expected.length} required artifacts found`);
+  });
 });
 
 describe('enumeratePhaseFolder', () => {
