@@ -196,6 +196,7 @@ remediation):
 | `tile-name-collision` | Clean up prior-run invites OR use Resume-branch (exact-match claim). |
 | `form-advance-without-answer-tap` | Recipe chains ≥2 consecutive form-advance steps with no answer step between them — required-input questions will stall on `warning_root`. Re-author via `/ace:step app-test-cases`: for each required field, read its label/options via Nova `get_form` and emit a `tapOn:text:"<literal>"` (or `inputText` / photo-capture sequence) BEFORE the form-advance. |
 | `brief-label-drift` | Recipe has a `tapOn:text:"X"` matcher where X matches a PDD-brief naming pattern (`^[LFM]\d+ — `, `^Stage \d+ — `). Nova rewrites these during autobuild and the matcher won't resolve live. Re-author via `/ace:step app-test-cases`: read the live label from Nova `get_form`/`get_module` and use it verbatim. |
+| `deliver-smoke-rewalks-learn` | Re-author the Deliver smoke as resume-only (`connect-resume-opp` → `deliver-launch.yaml`) via `/ace:step app-test-cases`. The Learn leg already completes Learn. |
 
 On any failure, halt with the **incomplete-mode verdict shape** (see
 Step 9), `verdict: incomplete`, and a per-class
