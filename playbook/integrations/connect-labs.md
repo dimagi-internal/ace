@@ -46,18 +46,21 @@ merges into the request headers. `scripts/labs-auth-headers.mjs`:
 **Requires Claude Code ≥ 2.1.141** (last `headersHelper` auth-state
 bug-fix; the feature itself shipped by 2.1.118).
 
-**Fallback retained:** the old stdio→HTTP proxy
-(`mcp/connect-labs-server.ts` + `test/mcp/connect-labs/proxy.test.ts`)
-is kept on disk, intentionally unwired (allowlisted in
-`test/mcp/registration-coverage.test.ts`), as a one-line-revert fallback
-while the native path is validated in production. Once confirmed, delete
-the proxy file, its tests, and the allowlist entry. Revert = swap the
-plugin.json `connect-labs` block back to the stdio `command`/`args` form.
+The native path was confirmed in production on 2026-05-28 (a live
+`labs_context` returned the full real org tree through the headersHelper,
+with no stdio subprocess running), and the old stdio→HTTP proxy
+(`mcp/connect-labs-server.ts` + its tests) was removed. To revert if ever
+needed, restore that file from git history and swap the plugin.json
+`connect-labs` block back to a stdio `command`/`args` entry pointing at it.
 
-## Running the MCP server
+## Running / testing
+
+There's no standalone subprocess to run — Claude Code connects to the
+HTTP endpoint directly and invokes the `headersHelper` at connection
+time. To sanity-check the helper in isolation:
 
 ```bash
-npm run mcp:connect-labs
+node scripts/labs-auth-headers.mjs   # prints {"Authorization":"Bearer …"} or {} + stderr diag
 ```
 
 Required env: `LABS_MCP_TOKEN` (per-user PAT from
@@ -67,7 +70,8 @@ there and re-inject `.env` via
 
 `bin/ace-doctor`'s `[Auth liveness]` block runs a one-shot
 `labs_context` against the live PAT; failure points at the rotation
-command above.
+command above. After any change to plugin.json's `connect-labs` wiring,
+a **full Claude Code restart** is needed for it to take effect.
 
 ## Capability map (atoms used by ACE)
 
@@ -230,11 +234,10 @@ retry tax.
   defensively.
 
 - **JSON-RPC notifications mysteriously break tool discovery.** This was
-  a *proxy-era* hazard: the stdio shim had to suppress replies to
-  notifications (no `id`) or the host disabled tool discovery
-  (jjackson/ace#106 finding 8). The native `type: "http"` transport owns
-  JSON-RPC framing, so this class is gone for the live path — it's
-  documented here only for the retained fallback proxy.
+  a *proxy-era* hazard (now historical): the old stdio shim had to
+  suppress replies to notifications (no `id`) or the host disabled tool
+  discovery (jjackson/ace#106 finding 8). The native `type: "http"`
+  transport owns JSON-RPC framing, so this class no longer exists.
 
 - **`connect-labs` tools don't appear in `ToolSearch` after the
   headersHelper swap.** MCP wiring changes need a **full Claude Code
@@ -264,3 +267,4 @@ retry tax.
 | 2026-05-02 | Synthetic + workflows atoms added (Phase 7) |
 | 2026-05-09 | `## Synthetic-manifest schema gotchas` added — captures the 5-retry tax observed on `leep-paint-collection` run `20260509-1448`; conform on first attempt to skip it |
 | 2026-05-28 | Replaced the stdio→HTTP proxy with a native `type: "http"` entry + `headersHelper` (`scripts/labs-auth-headers.mjs`). Proxy retained as one-line-revert fallback pending production validation. Requires Claude Code ≥ 2.1.141. |
+| 2026-05-28 | Native path confirmed in production (live `labs_context` returned the real org tree via headersHelper); removed the retired stdio proxy (`connect-labs-server.ts` + its tests). Restore from git history if a revert is ever needed. |

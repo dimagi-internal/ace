@@ -135,9 +135,10 @@ const SERVERS: Record<string, ServerSpec> = {
  * mobile) had been loading dotenv since their original implementations;
  * `decisions` was added in this same fix for consistency.
  *
- * `connect-labs-server.ts` uses its own homegrown `parseEnvFile()` loader
- * because it's a stdio proxy with no dotenv dep — that counts as "loads
- * env" for this rule.
+ * (connect-labs is no longer a stdio server — it's a native `type: "http"`
+ * plugin.json entry, so there's no `mcp/*-server.ts` source to env-check.
+ * Its auth header comes from `scripts/labs-auth-headers.mjs`, covered by
+ * `test/mcp/connect-labs/headers-helper.test.ts`.)
  *
  * Rule: every `mcp/*-server.ts` source MUST call either `dotenvConfig(`
  * or `parseEnvFile(` before any atom handler runs.
@@ -149,7 +150,6 @@ const SERVER_FILES_FOR_ENV_CHECK = [
   'mcp/ocs-server.ts',
   'mcp/mobile-server.ts',
   'mcp/decisions-server.ts',
-  'mcp/connect-labs-server.ts',
 ];
 
 describe('MCP server env loading (boot-time)', () => {
@@ -215,17 +215,7 @@ describe('MCP server plugin.json registration', () => {
       }
     }
 
-    // Server files intentionally NOT wired into plugin.json. connect-labs
-    // migrated from a stdio proxy (connect-labs-server.ts) to a native
-    // `type: "http"` entry + headersHelper (scripts/labs-auth-headers.mjs),
-    // so no server file backs it. The proxy file is retained as a
-    // one-line-revert fallback while the headersHelper path is validated in
-    // production; delete the file AND this allowlist entry once confirmed.
-    const INTENTIONALLY_UNWIRED = new Set(['mcp/connect-labs-server.ts']);
-
-    const unregistered = serverFiles.filter(
-      (f) => !registered.has(f) && !INTENTIONALLY_UNWIRED.has(f),
-    );
+    const unregistered = serverFiles.filter((f) => !registered.has(f));
     expect(
       unregistered,
       'MCP server files present on disk but not registered in ' +

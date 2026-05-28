@@ -39,7 +39,6 @@ const SERVERS: Array<{ file: string; label: string }> = [
   { file: 'mcp/ocs-server.ts',          label: 'ace-ocs' },
   { file: 'mcp/mobile-server.ts',       label: 'ace-mobile' },
   { file: 'mcp/decisions-server.ts',    label: 'ace-decisions' },
-  { file: 'mcp/connect-labs-server.ts', label: 'connect-labs (proxy)' },
 ];
 
 interface AtomField {

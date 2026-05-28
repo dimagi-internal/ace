@@ -1218,7 +1218,3 @@ Source: `mcp/decisions-server.ts` — 1 atoms
 Append validated load-bearing default rows to a run\'s decisions.yaml. The MCP transport enforces `lib/decisions-schema.ts` v3 on every row, so malformed writes (wrong field names, missing required fields, non-ordinal phase tags) are rejected at the call boundary — they never reach Drive. The tool seeds a fresh v3-compliant log header when decisions.yaml doesn\'t exist yet, and is idempotent: rows…
 
 _no parameters_
-
-## connect-labs (proxy)
-
-Source: `mcp/connect-labs-server.ts` — 0 atoms
