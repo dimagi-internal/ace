@@ -30,11 +30,15 @@ if (!process.env.ACE_HQ_USERNAME) {
   }
 }
 
-const PHONE = process.env.ACE_E2E_PHONE;
-if (!PHONE) {
-  console.error('ACE_E2E_PHONE env var required (set in $CLAUDE_PLUGIN_DATA/.env via op inject).');
-  process.exit(2);
+function requireEnv(name: string): string {
+  const v = process.env[name];
+  if (!v) {
+    console.error(`${name} env var required (set in $CLAUDE_PLUGIN_DATA/.env via op inject).`);
+    process.exit(2);
+  }
+  return v;
 }
+const PHONE = requireEnv('ACE_E2E_PHONE');
 
 async function setOppBudget(ctx: { request: import('playwright').APIRequestContext }, csrf: string, oppId: string, addUsers: number, totalBudget: number): Promise<boolean> {
   const path = `/a/${ORG}/opportunity/${oppId}/add_budget_new_users`;
