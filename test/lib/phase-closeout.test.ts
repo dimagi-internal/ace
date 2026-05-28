@@ -119,15 +119,15 @@ describe('enumeratePhaseFolder', () => {
         { id: 'recipesFolder', name: 'recipes', mimeType: FOLDER },
       ],
       recipesFolder: [
-        { id: 'j1', name: 'J1.yaml', mimeType: DOC },
-        { id: 'j2', name: 'J2.yaml', mimeType: DOC },
+        { id: 'j1', name: 'journey-learn.yaml', mimeType: DOC },
+        { id: 'j2', name: 'journey-deliver.yaml', mimeType: DOC },
       ],
     });
     const paths = await enumeratePhaseFolder(drive, 'runRoot', 'commcare');
     expect(paths).toEqual([
       '3-commcare/commcare-setup_summary.md',
-      '3-commcare/recipes/J1.yaml',
-      '3-commcare/recipes/J2.yaml',
+      '3-commcare/recipes/journey-learn.yaml',
+      '3-commcare/recipes/journey-deliver.yaml',
     ]);
   });
 

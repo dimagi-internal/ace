@@ -143,7 +143,7 @@ const FOLDER_MIMETYPE = 'application/vnd.google-apps.folder';
  * Walk the phase subfolder under `runFolderId` two levels deep and
  * return every file path relative to the run folder. Two levels covers
  * the `<phase>/<file>` and `<phase>/<subfolder>/<file>` cases the
- * manifest currently uses (e.g. `3-commcare/recipes/J1.yaml`).
+ * manifest currently uses (e.g. `3-commcare/recipes/journey-learn.yaml`).
  *
  * Returns null if the phase folder doesn't exist under `runFolderId`.
  * Callers can treat null as "this phase hasn't been touched yet" — not

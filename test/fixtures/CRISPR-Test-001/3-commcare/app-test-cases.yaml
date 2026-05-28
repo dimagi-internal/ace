@@ -23,7 +23,7 @@ journeys:
       - household_phone
       - gps_reading
       - id_card_photo
-    recipe_path: app-test-cases/recipes/J1.yaml
+    recipe_path: 3-commcare/recipes/journey-deliver.yaml
     structural_pass_criteria:
       - app_boots
       - no_crash
@@ -40,7 +40,7 @@ journeys:
       - assessment_q1
       - assessment_q2
       - assessment_q3
-    recipe_path: app-test-cases/recipes/J2.yaml
+    recipe_path: 3-commcare/recipes/journey-learn.yaml
     structural_pass_criteria:
       - app_boots
       - no_crash
