@@ -92,6 +92,13 @@ export const DimensionSchema = z.object({
 });
 export type Dimension = z.infer<typeof DimensionSchema>;
 
+/**
+ * For app-screenshot-capture (Phase 6), `ref` is the canonical app
+ * name — `learn` or `deliver` — so the two capture legs are graded
+ * independently. A non-pass top-level verdict still ships whatever the
+ * passing leg captured; failure is attributed to a specific leg, never
+ * a generic "smoke failed". See spec 2026-05-27-phase6-learn-deliver-decoupling.
+ */
 export const PerItemSchema = z.object({
   ref: z.string().min(1),
   score: z.number().min(0).max(10),
