@@ -419,24 +419,18 @@ stop, up until the point of external communication.*
   outreach to specific individuals. The active-comms boundary moved to
   Phase 8→9 (where Phase 9 sends an inbound onboarding email to the
   awardee).
-- **Phase 8→9 transition:** **always pause.** This is the new external-
-  communication boundary — Phase 9 is where the awarded LLO first hears
-  from ACE on a one-to-one basis. `/ace:run` halts here in default mode
-  and remains halted until the human runs `/ace:step solicitation-review`,
-  which (after a HITL approval gate) calls `award_response` and populates
-  `phases.solicitation-management.products.selected_llo` in the current
-  run's `run_state.yaml`. Phase 9 cannot start while
-  `selected_llo.org_slug` is null in the current run.
-- **Phases 7–8 (Execution Management, Closeout):** behave like `review`
-  mode for any step whose action affects an external party. Specifically,
-  always pause before:
-    - `llo-onboarding` (Phase 9 — first 1-1 email to the awardee)
-    - `llo-uat` send (Phase 9 — UAT instructions to the awardee)
-    - `llo-launch` (Phase 9 — opportunity activation in Connect)
-    - `opp-closeout` (Phase 10 — Jira payment ticket creation)
-  Steps within those phases that are purely internal (e.g.
-  `timeline-monitor` reads, `flw-data-review` analysis) auto-proceed
-  the same as Phases 1–5.
+- **Phase 8→9 boundary:** `/ace:run` terminates here today — Phase 9 is
+  not yet live (§ Workflow). The run halts after Phase 8's write-back. The
+  manual `/ace:step solicitation-review` (HITL-gated `award_response`) is
+  what populates `selected_llo`; when Phase 9 is eventually enabled this
+  boundary always pauses in every mode (first 1-1 LLO contact).
+- **Phases 9–10 (Execution Management, Closeout) — not yet live:** when
+  enabled, these behave like `review` mode for any step whose action
+  affects an external party — always pause before `llo-onboarding`
+  (Phase 9 first 1-1 email), `llo-uat` send, `llo-launch` (opp activation),
+  and `opp-closeout` (Phase 10 Jira ticket). Purely-internal steps
+  (`timeline-monitor` reads, `flw-data-review` analysis) auto-proceed like
+  Phases 1–5.
 - **Inside `solicitation-review` (Phase 8 manual):** HITL gate before
   `award_response` is called (irreversible). Skill waits for explicit
   `award <response_id> $<amount>` reply before the labs call.
@@ -785,6 +779,17 @@ viewing of legacy opps, but is no longer consulted for new runs.
 
 When invoked with an opportunity, execute these phases in order.
 
+> **Phases 9–10 are not yet live — this is the single authoritative
+> statement of the boundary.** `/ace:run` runs Phases 1–8, halts at the
+> PAUSE (`solicitation-review` is a manual, HITL-gated step), and does
+> **not** dispatch `Agent(execution-manager)` or `Agent(closeout)`. The
+> Phase 9 and Phase 10 blocks below are forward-spec — the contract for
+> when execution is enabled — and both agents additionally self-guard
+> (see `agents/execution-manager.md`). Because this statement is
+> authoritative, the per-phase `Gate:` fields and § Modes do not restate
+> it; they point here. To turn Phase 9 on, remove the agent self-guards
+> and re-validate the external-comms pause points.
+
 **Per-phase block shape.** Each `### Phase N` block lists `Dispatch`, `Inputs (inline at handoff)`, `Atoms / skills used`, `Products`, and optionally `Gate` + `Notes`. Two contracts apply to **every** phase and are NOT restated per block — read them once here:
 
 - **Write-back.** Every phase writes `phases.<phase-name>.{status, started_at, completed_at, verdict, summary_artifact, steps}` per [§ Phase Write-Back Contract](orchestrator-reference.md#phase-write-back-contract). The boundary fence (§ Phase boundary fence below) governs WHEN.
@@ -892,11 +897,13 @@ When invoked with an opportunity, execute these phases in order.
 
 **Products:** solicitation derived from the PDD published on labs.connect.dimagi.com via the `connect-labs` MCP; emails to PDD-named candidate LLOs containing the public URL (no-op if the PDD names no candidates — long-term flow).
 
-**Gate:** **Phase 8→9 boundary always pauses in every mode** — `/ace:run` HALTS here at the external-comms boundary. Phase 9 cannot start until `phases.solicitation-management.products.selected_llo.org_slug` is populated in the current run's `run_state.yaml`, which only happens via the manual `/ace:step solicitation-review` (HITL-gated; calls `award_response`).
+**Gate:** terminal — `/ace:run` halts after this phase (Phase 8→9 boundary; see § Workflow callout for the authoritative statement). `selected_llo` is populated only by the manual `/ace:step solicitation-review` (HITL-gated `award_response`).
 
 **Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). Its cross-run write semantics are TBD pending Phase 8+/8 architecture decisions. `solicitation` and `selected_llo` are separate sub-blocks under `phases.solicitation-management.products.*` — only `solicitation-review` populates `selected_llo`.
 
 ### Phase 9: Execution Management
+
+**Not yet live** — `/ace:run` does not reach this phase (§ Workflow callout); the block below is forward-spec for when execution is enabled, and `agents/execution-manager.md` self-guards against accidental dispatch.
 
 **Dispatch:** `Agent(execution-manager)`. **Entry gated on `phases.solicitation-management.products.selected_llo.org_slug` being populated by Phase 8's `solicitation-review`** in the current run's `run_state.yaml`.
 
@@ -911,6 +918,8 @@ When invoked with an opportunity, execute these phases in order.
 **Notes:** Phase 9 is the first 1-1 LLO contact in the lifecycle. Recurring skills (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`, `ocs-chatbot-eval-monitor`) run on schedule during the active opportunity. `llo-launch` requires fresh deep verdicts (Phase 6 `/ace:qa-deep` output).
 
 ### Phase 10: Closeout
+
+**Not yet live** — gated behind Phase 9 (§ Workflow callout); forward-spec for when execution is enabled.
 
 **Dispatch:** `Agent(closeout)`. **Triggered when the opportunity reaches its end date.**
 

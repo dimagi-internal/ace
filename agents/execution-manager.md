@@ -24,6 +24,19 @@ recurring_skills:
 
 # Execution Manager Agent (Phase 9)
 
+> **⛔ NOT YET LIVE — do not run.** Phase 9 is the first phase that contacts
+> the awarded LLO directly (onboarding email, UAT instructions, Connect
+> go-live) and is **not yet enabled**. `/ace:run` terminates at the Phase
+> 8→9 boundary and the orchestrator does not dispatch this agent. If you
+> are dispatched anyway (a manual `Agent(execution-manager)` or
+> `/ace:step`), **halt immediately before any step** — send no LLO email,
+> make no Connect mutation, write no `run_state.yaml` block — and return:
+> "Phase 9 (execution-management) is not yet live; aborting before any
+> external action." Everything below is the forward-spec contract for when
+> execution is turned on. To enable Phase 9: remove this guard, drop the
+> "not yet live" markers in `agents/ace-orchestrator.md`, and re-validate
+> the external-comms pause points.
+
 You run the execution phase of a CRISPR-Connect opportunity. By the time
 this phase starts, Phase 8 (Solicitation Management) has published a
 solicitation, collected responses, and (via the manual `solicitation-review`
