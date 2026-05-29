@@ -103,6 +103,41 @@ detection_rate = issues_flagged / total_known_issues
 
 Calibration target: **≥80% detection rate** on the ground-truth set.
 
+### Step 3b — Dimension coverage (added 2026-05-29)
+
+Detection rate has a blind spot it can never see: it only measures
+whether the rubric catches issues *that are in the catalogue*, and the
+catalogue is operator-authored from issues already noticed. **A missing
+dimension is never a known issue** — so a rubric can hit 100% detection
+while being structurally blind to an entire fitness axis. This is
+exactly how the ITN app evals scored 9.6 on a hollow build: they
+detected every catalogued structural nit, but had no dimension for
+validation, capture fidelity, case persistence, or localization.
+
+Detection rate alone is therefore *insufficient*. Add a coverage check:
+
+1. **Enumerate the fitness axes** that separate "conformant" from
+   "deployable" for this artifact type — the axes a domain expert would
+   check before shipping: input validation, capture fidelity,
+   persistence, enforcement, localization, real-world viability,
+   adversarial coverage, reader-usefulness. Pick the ones that apply.
+2. **Confirm the rubric has a dimension touching each applicable axis.**
+   An axis with no dimension is a coverage gap — the rubric cannot
+   deduct for failing it. Per `_eval-template.md § The out-of-chain
+   fitness requirement`, at least one such dimension must be graded
+   against an out-of-chain bar.
+3. **Calibrate against an expert reference AND a negative control.**
+   Detection-rate calibration uses a flawed artifact; coverage
+   calibration additionally needs (a) an *expert-built* reference as the
+   deployable bar (e.g. the malaria-itn-app `[Final]` builds Sarvesh
+   hand-finished) and (b) a deliberately-**thin negative control** the
+   rubric MUST score below `pass`. The ITN ACE build (run
+   `20260528-1607`) is the canonical negative control for the app
+   rubrics: a calibrated `pdd-to-deliver-app-eval` scores it ≤3 on
+   capture_fitness / data_quality_validation / case_persistence and
+   `fail` overall. If a rubric scores its negative control above `warn`,
+   it is not calibrated regardless of detection rate.
+
 ### Step 4 — Run the rubric N times for variance
 
 Sequentially invoke the same rubric against the same input ≥3 times
@@ -165,6 +200,8 @@ the new rubric version to the same `<rubric-name>-runs.md` file.
 
 A rubric is calibrated when:
 - Detection rate ≥ 80% on the ground-truth set.
+- **Dimension coverage (Step 3b): every applicable fitness axis has a
+  dimension, and the thin negative control scores below `pass`.**
 - Variance ≤ 0.5 across ≥3 consecutive runs.
 - The score on a known-flawed artifact is below 8 (i.e., the rubric
   is willing to deduct meaningfully).
@@ -228,3 +265,4 @@ ground-truth set, captured in an auditable run-record.
 |------|--------|--------|
 | 2026-04-28 | Initial version. Defines the ground-truth catalogue, multi-run variance protocol, detection-rate metric, and iteration loop. Companion to `pdd-to-deliver-app-eval` and the tightened `ocs-chatbot-eval` rubric, both of which cite this skill as their calibration source. | ACE team (eval system buildout) |
 | 2026-05-05 | Refresh the OCS-transcript example header in the known-issues template to match the new run-scoped path scheme (`5-ocs/ocs-chatbot-qa_transcript-deep.md` instead of the dated `qa-captures/...`). Cosmetic; no methodology change. | ACE team |
+| 2026-05-29 | **Added Step 3b (dimension coverage) — the ITN post-mortem fix.** Detection rate can't surface a *missing* dimension (a blind spot is never a known issue), which is how the app evals scored 9.6 on a hollow build. New step: enumerate the fitness axes separating conformant from deployable, confirm a dimension touches each, and calibrate against an expert reference (ITN `[Final]`) + a thin negative control (ITN ACE build `20260528-1607`) that MUST score below `pass`. Added to the Step-6 stop conditions. Per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |

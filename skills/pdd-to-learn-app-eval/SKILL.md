@@ -9,10 +9,24 @@ disable-model-invocation: false
 # PDD-to-Learn-App Eval
 
 The Learn app is the FLW-training side of every CRISPR-Connect opp.
-The PDD specifies modules, durations, content topics, and the
-Connectify Assessment Score gates that govern when an FLW unlocks the
-Deliver app. This skill grades whether the Nova-built Learn app
-matches that spec.
+This skill grades it on **two axes**: (1) does the build match the
+PDD's stated structure (module count, order, the Connect-readable
+Assessment Score tag, topic presence) — *conformance*; and (2) **does
+the app actually train and gate competence** — *fitness* — graded
+against an expert "would you let an FLW into the field after this?"
+bar, decoupled from the PDD.
+
+The fitness axis dominates (55%) because conformance alone is the ITN
+failure mode: a Learn app of label-only modules + one 5-question quiz,
+no pre/post-test, no sequential unlock, no pass/retry enforcement, and
+English-only when the PDD named French, *named* every PDD topic and
+scored 9.6 — while teaching and gating nothing a human expert's build
+did. The distinction this rubric now draws: *assessment presence* (a
+score tag Connect can read) is conformance; *assessment enforcement*
+(pre/post structure, sequential unlock, pass/retry) is fitness. *Topic
+presence* is conformance; *teachable depth at item granularity* is
+fitness. See `skills/_eval-template.md § The out-of-chain fitness
+requirement` and `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`.
 
 Sibling rubric to `pdd-to-deliver-app-eval`. Same calibration
 methodology, different dimensions tuned to Learn-app concerns. See
@@ -69,20 +83,43 @@ methodology, different dimensions tuned to Learn-app concerns. See
 4. **Extract the built app's actual structure** from the blueprint
    (or app summary). Build the matching snapshot.
 
-5. **Grade across 5 dimensions.** Each dimension is 0–10. Overall
-   score is the weighted mean.
+5. **Grade across 8 dimensions** — 5 conformance (45%) + 3 fitness
+   (55%). Each dimension is 0–10. Overall score is the weighted mean.
+
+   **The fitness dimensions are graded against an external expert
+   "would you let an FLW into the field after completing this app?"
+   bar — NOT against the PDD.** PDD silence on a readiness gate or on
+   content depth is a *finding against the build*, not an exemption
+   (per `_eval-template.md` contract rule 3). Read the live Nova
+   blueprint (`get_app`) — user-property reads/writes, module display
+   conditions, form-level relevance, assessment item bodies, and itext
+   translation entries are all visible there.
+
+   *Conformance axis (45% — does it match the PDD skeleton):*
 
    | Dimension | Weight | Criteria |
    |---|---|---|
-   | **Module-count match** | 15% | Total module count matches PDD spec. **Bonus-module rule (pinned 0.9.4):** if Nova adds a final certification-check module that meets BOTH conditions: (a) explicitly tagged as `assessment-only` (no `learn_module` wrapper) AND (b) PDD-specified content for the embedded check is preserved verbatim — score this dimension at **exactly 10.0**, not 9.5. Either condition unmet = 9.0 (small structural deviation). Other module additions or omissions are 1-point deductions per gap. |
-   | **Module-order match** | 10% | Modules appear in the order the PDD specified (atomic-visit narrative: intro → flow → consent → photo → calibration → safety → vendor talk). **Cap clarification (pinned 0.9.4):** "capped at 3 points" means the dimension floor is **7.0** — i.e., reordering deductions stop accumulating after 3 points off, so the worst possible score is 7. Pre-0.9.4 wording was ambiguous (could be read as "stop counting after 3 swaps"). |
-   | **Assessment Score wiring** | 30% | Most load-bearing dimension. The Connectify Assessment Score(s) MUST be wired correctly: numerator/denominator match the PDD's threshold (e.g. 10/12, 8/10), the score is tagged so Connect can read it as the gate to unlock Deliver, and the threshold matches the PDD spec exactly. Missing Assessment tag is a fail (≤3). Wrong threshold is a 3-point deduction. **Documented platform limitations rule (pinned 0.9.4):** when an internal score is documented in `eval-calibration/known-issues.md` as "informational-only / platform-limitation" (e.g. Module 3's `consent_score` not gated by Connect), it surfaces as `[INFO]` in `auto_surfaced` and does NOT deduct from this dimension. Platform limitations the LLO can't fix shouldn't bite the build's score. |
-   | **Content-topic coverage** | 25% | Each module's content covers the PDD-specified topics. **Placeholder rule (clarified 0.9.4):** content the LLO must localize (reference photos, phone numbers, market lists) scores **as present** if the Nova field is wired to receive the content with proper structure (correct count of placeholders, correctly-typed fields). **Stub-answer-keys carve-out (added 0.9.4):** when a placeholder field is the *answer key* for a Connectify Assessment gate (e.g. Module 5's `expected_color_*` / `expected_shininess_*` fields), it does NOT score as present — a calibration gate scoring against stub answers is meaningless and the dimension must reflect that. Score these as 0.5-point deductions per missing answer key, capped at 2 points off the dimension. The auto_surfaced section flags ALL placeholders for the LLO regardless. |
-   | **Archetype coherence** | 20% | For `atomic-visit`: the Learn app teaches form-walkthrough + observation calibration + safety, NOT facilitation craft. **M7 vendor-education-talk reading (pinned 0.9.4):** the M7 module's content is the FLW-reads-script-TO-vendor pattern, NOT a facilitation pattern (vendor doesn't speak in response to a structured question guide). atomic-visit coherent. For `focus-group`: the Learn app teaches facilitation craft (probing, neutral framing, group dynamics), NOT form completion. Wrong-archetype framing is a 4-point deduction. For `multi-stage`: per-stage Learn apps each grade against their own archetype branch. |
+   | **Module-count match** | 7% | Total module count matches PDD spec. **Bonus-module rule (0.9.4):** a final `assessment-only` cert module with PDD content preserved verbatim = 10.0; either condition unmet = 9.0. Other additions/omissions = 1-point deduction per gap. |
+   | **Module-order match** | 6% | Modules in PDD order (intro → flow → consent → photo → calibration → safety → vendor talk). 1-point deduction per swap, dimension floor 7.0. |
+   | **Assessment Score wiring (presence)** | 12% | The Connectify Assessment Score is **tagged so Connect can read it** as the unlock gate, and the numerator/denominator match the PDD threshold (10/12, 8/10). Missing tag ≤3. Wrong threshold = 3-point deduction. **Platform-limitation rule (0.9.4):** an internal score documented as "informational-only" surfaces `[INFO]`, no deduction. (NOTE: this dimension grades that the score *exists and is readable*; whether the app *enforces* the gate is graded under `assessment_gating` below.) |
+   | **Content-topic coverage (presence)** | 12% | Each PDD topic is *present* somewhere. **Placeholder rule (0.9.4):** LLO-localized content (reference photos, phone numbers) scores as present if the field is wired with correct structure. **Stub-answer-keys carve-out (0.9.4):** placeholder fields that are the *answer key* for a Connect Assessment gate do NOT score as present (0.5-point deduction each, cap 2). (NOTE: presence only; whether the content is actually *teachable* is graded under `instructional_depth`.) |
+   | **Archetype coherence** | 8% | `atomic-visit`: teaches form-walkthrough + calibration + safety, NOT facilitation. **M7 reading (0.9.4):** FLW-reads-script-TO-vendor, not a facilitation pattern. `focus-group`: teaches facilitation craft. Wrong-archetype framing = 4-point deduction. |
+
+   *Fitness axis (55% — does it train and gate competence, graded vs expert bar):*
+
+   | Dimension | Weight | Criteria |
+   |---|---|---|
+   | **Assessment gating (enforcement)** | 22% | Does the app **enforce** readiness, not just expose a trivial score? **Architecture note:** in ACE, the Deliver-unlock gate is enforced *Connect-side* — Connect reads the assessment completion; ACE Learn forms carry NO case blocks (see `pdd-to-learn-app § REQUIRED — Learn forms must NOT carry <case> blocks`). So do NOT require in-app case-property sequential unlock — that would contradict the build architecture. Enforcement fitness means, independent of the PDD: (a) **pre-test + post-test** structure with distinct item banks, not a single quiz; (b) **adequate assessment coverage** — enough scored items to actually test the curriculum (roughly ≥1 item per module/major topic; 5 items for a 5-module course is too thin); (c) the score is a **percentage correctly wired to `connect.assessment` at the PDD threshold** so Connect gates Deliver on it; (d) a **pass/fail result experience in-app** — a result label whose relevance is conditional on `user_score >= threshold` (vs a separate fail/retry label), NOT an unconditional "Well done!" that fires regardless of score; (e) retry guidance for a failing FLW. **Hard-gate:** the PDD specifies a readiness gate AND the build is a single quiz with no pre/post split, trivial item count, AND an unconditional pass message → dimension **≤3**. A score tag Connect can read but that sits behind a single trivial quiz with an unconditional "Well done!" is presence, not enforcement → caps this dimension at 5. |
+   | **Instructional depth** | 25% | Is each module actually *teachable*, at item granularity — not a label naming the topic? Check, independent of the PDD: (a) module bodies carry real instructional substance (steps, examples, do/don't, reference imagery placeholders correctly typed), not one-line labels; (b) assessment items are non-trivial and **anti-guess** (plausible distractors, not "pick the obviously-correct option"); (c) citations / source references where the domain calls for them (WHO, PMI, etc.). **Hard-gate:** modules are label-only with no teachable substance → dimension **≤3**. **Mid-tier cap (added 2026-05-29 from ITN validation):** decent expository prose is necessary but NOT sufficient for a deployable training instrument. When modules carry teaching prose but lack pedagogical scaffolding — specifically ALL THREE of: (i) no worked examples or do/don't pairs, (ii) no domain citations where the source material cites them (WHO/PMI/GiveWell), AND (iii) fewer than 2 assessment items per taught module (the ITN build has 1 quiz item per module vs the expert `[Final]`'s 10-item pre-test + 10-item post-test) — cap this dimension at **4.0**. Each module that merely *names* its topic without teaching it = 1.5-point deduction. (This is the item-granular replacement for the old "topic present = covered" reading.) |
+   | **Localization match** | 8% | **HARD-FAIL dimension.** If the PDD names a working language other than English, the build must ship the **translation set** for it (labels, choices, hints, assessment items) on top of the English core. **Hard-gate:** PDD names a working language AND the build is English-only (or the translation set is materially incomplete) → dimension **≤3 → suite `fail`.** **N/A rule:** PDD names no working language → score `null` and redistribute weight. (Resolves the 2026-05-29 localization decision: English core, hard-fail if named-language translations weren't also built.) |
 
    **Deduction rules:**
    - Any single dimension ≤3 → suite verdict `fail`, regardless of
-     overall mean.
+     overall mean. (Now bites the fitness hard-gates: a Learn app that
+     names every PDD topic but is label-only, ungated, and un-localized
+     **fails** — it can no longer launder to 8.5+.)
+   - **`null` dimensions** (localization_match when N/A) are excluded
+     from the weighted mean; weight redistributed proportionally.
    - **Inflation guard (mirrors OCS / deliver-app rubrics):** if the
      rubric surfaces ≥2 `[WARN]`-tier `auto_surfaced` entries,
      overall is capped at **8.5** regardless of per-dimension math.
@@ -102,11 +139,16 @@ methodology, different dimensions tuned to Learn-app concerns. See
 
    ```yaml
    dimensions:
-     module_count_match:        { weight: 0.15 }
-     module_order_match:        { weight: 0.10 }
-     assessment_score_wiring:   { weight: 0.30 }
-     content_topic_coverage:    { weight: 0.25 }
-     archetype_coherence:       { weight: 0.20 }
+     # Conformance axis (45%) — matches the PDD skeleton
+     module_count_match:        { weight: 0.07 }
+     module_order_match:        { weight: 0.06 }
+     assessment_score_wiring:   { weight: 0.12 }   # presence of a Connect-readable score tag
+     content_topic_coverage:    { weight: 0.12 }   # topic presence
+     archetype_coherence:       { weight: 0.08 }
+     # Fitness axis (55%) — trains + gates competence, graded vs expert bar
+     assessment_gating:         { weight: 0.22 }   # enforcement: pre/post, sequential unlock, pass/retry
+     instructional_depth:       { weight: 0.25 }   # item-granular teachable content + anti-guess items
+     localization_match:        { weight: 0.08 }   # null + redistribute when PDD names no working language; HARD-FAIL otherwise
    ```
 
 7. **Auto-surfaced concerns** (per `_eval-template.md § Auto-surfaced
@@ -120,6 +162,12 @@ methodology, different dimensions tuned to Learn-app concerns. See
      threshold, missing tag, score path that Connect can't read).
    - `[INFO]` for each defensible Nova structural addition (e.g. the
      bonus final-cert module split).
+   - `[BLOCKER]` for each fitness hard-gate that fired (no enforcement
+     machinery on a PDD-specified readiness gate; label-only modules;
+     missing required-language translations).
+   - `[WARN]` for each module that names its topic without teaching it,
+     and for an Assessment Score that Connect can read but the app never
+     enforces internally.
 
 ## LLM-as-Judge Rubric
 
@@ -132,6 +180,23 @@ Calibration target on the smoke-20260428-1242 Learn build:
   blocks live deployment (every Learn app today, until the LLO
   populates) should NOT score in the 9+ band. Placeholder-WARN flags
   should bring overall into the 8.0–8.7 range.
+
+**Fitness-axis ground truth (added 2026-05-29):** calibrated against the
+malaria-itn-app pair — the human expert's `[Final]` Learn build
+(pre-test + post-test, 80% threshold enforced via user properties,
+sequential module unlock, pass/retry, bilingual) as the *deployable*
+bar, and ACE run `20260528-1607`'s thin Learn build (4 label-only
+modules + one 5-Q quiz, no gating, English-only) as the *negative
+control*. The negative control MUST score: `assessment_gating ≤3`
+(no enforcement machinery), `instructional_depth ≤4` (via the mid-tier
+cap — the ITN build has real prose but no worked examples, no domain
+citations in module bodies, and only 1 quiz item per module; the
+label-only hard-gate does NOT apply), `localization_match ≤3 → fail`
+(English-only vs French PDD). If the rubric scores the thin ITN Learn
+build above `warn`, it is not yet calibrated. Validated 2026-05-29: the
+revised rubric scores it `fail` (assessment_gating 2.0, localization
+2.0, depth ≤4 via mid-tier cap). See
+`docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`.
 
 ## Archetypes
 
@@ -161,3 +226,4 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 |------|--------|--------|
 | 2026-04-28 | Initial version. 5 dimensions: module_count_match (0.15), module_order_match (0.10), assessment_score_wiring (0.30 — most load-bearing), content_topic_coverage (0.25), archetype_coherence (0.20). Mirror of pdd-to-deliver-app-eval. Inflation guard at 8.5 when ≥2 WARN auto_surfaced. | ACE team (eval system buildout — 0.9.2) |
 | 2026-04-29 | Added step-2 HITL-pending stub detection. If the learn app summary has no `nova_app_id`, has `TBD`/`null`, is explicitly marked HITL-pending, or lists only module titles without Connectify wiring or content-topic detail, emit `verdict: incomplete` immediately. Without this guard the rubric's most load-bearing dimension (assessment_score_wiring at 30%) graded a stub as "wiring entirely missing" → forced ≤3 → fail, on a build that wasn't actually a defect. Mirrors the deliver-app-eval HITL guard. | ACE team (0.10.8) |
+| 2026-05-29 | **Fitness axis added (ITN post-mortem).** Reweighted the 5 conformance dims 100%→45% and split conformance from fitness: `assessment_score_wiring` 30%→12% (presence of a Connect-readable score tag only), `content_topic_coverage` 25%→12% (topic presence only). Added 3 out-of-chain fitness dims (55%): `assessment_gating` (0.22 — enforcement: pre/post, sequential unlock via user properties, pass/retry), `instructional_depth` (0.25 — item-granular teachable content + anti-guess items), `localization_match` (0.08, hard-fail). All graded vs an expert deployability bar with hard-gates. Was: a label-only, ungated, English-only Learn app that named every PDD topic scored 9.6 (ITN run `20260528-1607`). Calibrated against the malaria-itn-app `[Final]` (deployable bar) + thin ACE build (negative control). Per `_eval-template.md § out-of-chain fitness requirement`. | ACE team |

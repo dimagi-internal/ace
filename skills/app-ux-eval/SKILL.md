@@ -29,7 +29,7 @@ contracts.
 
 ## Products
 
-- `6-qa-and-training/app-ux-eval_verdict-deep.yaml` — per-journey verdict on UX dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion)
+- `6-qa-and-training/app-ux-eval_verdict-deep.yaml` — per-journey verdict on UX dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion, capture_robustness)
 
 ## Process
 
@@ -53,7 +53,7 @@ contracts.
   can compare verdict freshness against the latest released CommCare
   build
 
-### Step 2: For each journey, score 5 dimensions (1–3)
+### Step 2: For each journey, score 6 dimensions (1–3)
 
 Each dimension scores 1, 2, or 3 (1 = fail, 2 = warn, 3 = pass) on the
 journey's screenshot sequence. The hard-deduction column is the
@@ -65,8 +65,9 @@ the rest of the journey looks.
 | `clarity` | Field labels and prompts unambiguous to the persona from PDD's "Target FLW" section. The FLW should know what's being asked without guessing. | Any field name only a developer would understand (e.g., `q3_v2_optional`, `field_3a`) appears in a screenshot |
 | `flow_predictability` | Conditional branches go where the FLW expects; skip patterns don't surprise. The next screen follows from the current one. | A screen appears or disappears with no apparent cause from the user's perspective (e.g., a question shows in run 1 but not run 2 with no visible trigger) |
 | `error_recovery` | Validation errors tell the FLW what's wrong and how to fix. The FLW can recover without losing prior input. | Dead-end errors with no recovery path (FLW gets stuck, or has to restart the form to retry) |
-| `time_budget` | Step count + estimated input time vs. journey's `pdd_time_budget_seconds`. Recipe step count × 5s is the heuristic estimate (5s per tap/type). | Recipe step count × 5s exceeds 2× the budget |
+| `time_budget` | Step count + estimated input time vs. journey's `pdd_time_budget_seconds`. Recipe step count × 5s is the heuristic estimate (5s per tap/type). **Being far UNDER budget is NOT a win** (fixed 2026-05-29): a recipe whose step count × 5s is < 50% of the budget is *suspiciously thin* for its declared scope — score this dimension ≤2 and surface `[WARN] time_budget: recipe far under budget — likely under-built form, not efficiency`. Do NOT award a high score for being fast because the form is thin (the old rule only penalized "too slow," which rewarded the ITN-style skeletal build). The ideal is *near* budget. | Recipe step count × 5s exceeds 2× the budget |
 | `journey_completion` | Recipe accomplishes the journey's stated goal end-to-end. Final screenshot shows confirmation / submission success / explicit completion state. | Recipe ends without confirmation / stuck screen / mid-form (the journey didn't finish) |
+| `capture_robustness` | **Fitness dimension (added 2026-05-29).** Does the instrument *refuse bad data*? Graded on the **negative-path** journeys (blank required field, out-of-range value, low-accuracy GPS, "Other" selection) — does the form reject the bad input with a clear, recoverable error, or silently accept garbage? This is the screenshot-side complement to `pdd-to-deliver-app-eval § data_quality_validation`. **Coverage cap (mirrors `ocs-chatbot-eval`'s adversarial-coverage cap):** if `app-test-cases.yaml` contains ZERO negative-path journeys, this dimension is *unmeasured* — score it ≤2 (NOT pass) and surface `[WARN] capture_robustness: no negative-path journey in the test suite — the instrument's data-quality enforcement is untested`. An app whose test suite never feeds it a bad input has unproven robustness; that absence must not read as success. (Forcing function: `app-test-cases` should emit ≥1 negative-path recipe per credit-bearing form.) | Form accepts a known-bad input (blank required / out-of-range / low-GPS) with no error, OR zero negative-path journeys exist to test it |
 
 For each dimension, write a one-sentence reason citing the specific
 screenshot(s) that drove the score (e.g.
@@ -79,9 +80,12 @@ score to 0.
 
 ### Step 3: Aggregate
 
-- **Per-journey verdict:** weighted average of dimensions (equal
-  weight: 0.20 each). Hard-deduction on any single dimension clamps
-  the journey to **fail** regardless of weighted-average math —
+- **Per-journey verdict:** weighted average of dimensions. Weights
+  (updated 2026-05-29 to seat the fitness dimension): `clarity` 0.15,
+  `flow_predictability` 0.15, `error_recovery` 0.15, `time_budget`
+  0.10, `journey_completion` 0.15, `capture_robustness` 0.30. Hard-
+  deduction on any single dimension clamps the journey to **fail**
+  regardless of weighted-average math —
   surface the triggering rule in the per-item `note`. Per-journey
   verdict is binary (`pass | fail`) for this skill — no warn tier.
   The verdict-schema permits `warn`, but app-ux-eval's rubric is
@@ -121,11 +125,12 @@ overall_score_pre_cap: 7.7     # raw weighted mean before any hard-deduction cla
 verdict: fail                  # pass | fail
 
 dimensions:
-  clarity:              { score: 9.0, weight: 0.20 }
-  flow_predictability:  { score: 8.5, weight: 0.20 }
-  error_recovery:       { score: 7.0, weight: 0.20 }
-  time_budget:          { score: 9.5, weight: 0.20 }
-  journey_completion:   { score: 8.5, weight: 0.20 }
+  clarity:              { score: 9.0, weight: 0.15 }
+  flow_predictability:  { score: 8.5, weight: 0.15 }
+  error_recovery:       { score: 7.0, weight: 0.15 }
+  time_budget:          { score: 7.0, weight: 0.10 }   # near-budget is ideal; far-under is a thinness WARN, not a 9.5
+  journey_completion:   { score: 8.5, weight: 0.15 }
+  capture_robustness:   { score: 6.0, weight: 0.30 }   # fitness: does the form refuse bad data on negative-path journeys
 
 per_item:                # per-journey verdicts; key matches pdd-to-app-journeys.md
   - ref: "J1 — visit-flow"
@@ -224,3 +229,4 @@ released build IDs — see Task 7 in the shallow/deep split plan).
 |------|--------|--------|
 | 2026-05-04 | Initial version. Deep-only LLM-as-Judge for app UX. Five dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion) with hard-deductions. Used by /ace:qa-deep and the Phase 8 gate. Introduced as part of the shallow/deep QA split (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`). | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Inputs repointed to `2-scenarios/pdd-to-app-journeys.md`, `3-commcare/app-test-cases.yaml`, `6-qa-and-training/screenshots/` + `6-qa-and-training/app-screenshot-capture_manifest.yaml`, `3-commcare/app-deploy_summary.md`. Verdict output is now `6-qa-and-training/app-ux-eval_verdict-deep.yaml` (per manifest). Calibration audit trail at `ACE/<opp>/eval-calibration/app-ux-eval-runs.md` corrected to opp-level (was incorrectly under `runs/<run-id>/`). Phase references updated 6 → 7 to match the 8-phase topology. No behavior change beyond paths. | ACE team |
+| 2026-05-29 | **Fitness dim + time_budget fix (ITN post-mortem).** Added `capture_robustness` (0.30) — grades negative-path journeys (blank-required / out-of-range / low-GPS / "Other") for whether the form *refuses bad data*, with an adversarial-coverage cap (zero negative-path journeys → ≤2, not pass). Fixed `time_budget`: being far UNDER budget is now a thinness WARN (≤2), not a 9.5 — the old rule only penalized "too slow," which rewarded the ITN-style skeletal build. Reweighted to 6 dims (capture_robustness heaviest at 0.30). Per `_eval-template.md § out-of-chain fitness requirement` + `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. Note: in-`/ace:run` build-fitness gating is handled cheaply (no AVD) by the revised `pdd-to-*-app-eval` blueprint checks; this deep screenshot check is complementary. | ACE team |

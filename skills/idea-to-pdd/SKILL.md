@@ -138,6 +138,43 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    - **Evidence Model** — Layer A / B / C verification plan (see `## Evidence Model` in `templates/pdd-template.md`)
    - **Timeline** — expected duration of the opportunity
 
+4a. **Spec for deployability, not just topic presence.** The downstream
+    build skills faithfully transcribe the PDD, and the app evals now
+    **hard-fail** a build that is structurally complete but undeployable
+    (see `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` — the
+    ITN run produced a topic-complete app that an expert had to
+    substantially rebuild). A PDD that only *names* topics produces a
+    faithfully-thin app. So when the source material or evidence model
+    *implies* any of the following, the **Deliver/Learn App
+    Specification and Evidence Model MUST spec it explicitly** — don't
+    leave it for Nova to infer (it won't):
+
+    - **Capture fidelity.** If the Evidence Model implies a GPS/location
+      radius, spec **accuracy-gated GPS** (preferred + minimum accuracy,
+      capture-gate), not a bare "capture GPS." If an answer is
+      enumerable, spec it as a **select with the option list** (+ "Other,
+      specify"), not free text. Prefer bucketed ranges over raw integers
+      where field-reliable.
+    - **Data quality.** Spec the **constraints**: numeric bounds and
+      cross-field checks on counts, phone-format expectations, free-text
+      length caps, and which fields are required-for-credit.
+    - **Case persistence.** For multi-visit / follow-up designs, spec
+      **which observations each follow-up visit writes back to the
+      case** (the whole point of a follow-up is to record change).
+    - **Assessment enforcement.** If FLWs must pass a readiness gate,
+      spec a **pre-test + post-test**, the threshold, the item count
+      (enough to test the curriculum), and that the result experience is
+      pass/fail-conditional — not "a quiz exists."
+    - **Working language.** If the program runs in a non-English
+      language, state it as a **Working language** line in the Learn and
+      Deliver App Specifications. The build authors English + ships that
+      language's translations; English-only then hard-fails the eval.
+
+    These become `decisions.yaml` rows where they meet the bar (§
+    Decisions Log Convention). This is the upstream half of the
+    eval-fitness fix: a thin PDD is the root cause, a deployable PDD is
+    the cure.
+
 5. **Self-evaluate (LLM-as-Judge) — Stress-Test Rubric.** Run the rubric defined in `## LLM-as-Judge Rubric` below against the drafted PDD. If **two or more** checks grade other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run before proceeding.
 
 6. **Write the PDD** to `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` via Google Drive MCP. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the PDD, so downstream skills (and humans) can see what was caught and what was waived.
@@ -530,3 +567,4 @@ When `--dry-run` is active:
 | 2026-05-15 | Pare attestation-form-fields question + Decisions Log to match the 5-field form: consent / date / venue / GPS / photo. Audio is out-of-band; gdoc_link is removed (gdoc is written after submission). Add `gps-verification-radius` and `gdoc-submission-window` decisions; recharacterize `audio-min-duration` and `audio-consent-fallback` as facilitator-protocol concerns (out-of-band, not in the form). | ACE team |
 | 2026-05-15 | Recharacterize `payment-rate` and `per-session-rate` Decisions Log rows: PDD captures a **range** (not a fixed number), and the actual rate is **negotiated via the solicitation response** where the LLO proposes a number with rationale. The awarded LLO's proposed rate becomes the `connect.deliver_unit` payment_unit amount at Phase 4 setup. Pairs with `solicitation-create/SKILL.md § Process`'s "per-unit payment is negotiated, not declared" design principle. | ACE team |
 | 2026-05-22 | **Retire the optional `idea.md` operator-seed input.** The 2026-05-05 refactor reduced `idea.md` to an optional `--idea FILE\|-` seed alongside the `inputs/` evidence pack; the dual-path persisted but was rarely used in practice and added cognitive load (eval rubric branches, manifest-vs-idea precedence, permission-scan URL extraction). Operators now put any free-text seed directly into `inputs/` as a regular source file. Removed: optional table row, idea.md read paragraph, idea.md-URL permission scan, "or no idea.md" branch of the missing-source error. The `--idea` flag and run-root `idea.md` artifact are gone. | ACE team |
+| 2026-05-29 | **Spec-for-deployability guidance (ITN post-mortem, upstream half).** Added Step 4a: when the source/evidence model implies capture fidelity (GPS accuracy radius, enumerable answers, bucketed numerics), data-quality constraints, case write-back on follow-up visits, assessment enforcement (pre/post + threshold + item count + conditional result), or a non-English working language, the PDD MUST spec it explicitly rather than only naming the topic. A thin PDD produces a faithfully-thin app that the new app-eval fitness gates hard-fail. The cure is a deployable PDD. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |

@@ -141,7 +141,7 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 |---|---|---|
 | `opp-closeout` | **NO eval** | Process skill — pulls invoices, creates Jira ticket. Binary success. |
 | `llo-feedback` | **NO eval** | The collected feedback IS the quality signal (graded by humans during closeout review, not by an eval). |
-| `learnings-summary` | **has eval** | `learnings-summary-eval`. 5 dimensions: opp_lifecycle_coverage (0.30), recommendation_actionability (0.30), tone_calibration_vs_cycle_grade (0.20 — inflation-detection axis: 7/10 opp shouldn't read like a victory lap), evidence_citation_discipline (0.10), forward_seeding_clarity (0.10). Provisional. |
+| `learnings-summary` | **has eval** | `learnings-summary-eval`. 5 dimensions: opp_lifecycle_coverage (0.30), recommendation_actionability (0.30), tone_calibration_vs_outcome (0.20 — out-of-chain inflation-detection axis: tone anchored to the observed opp outcome, not cycle-grade's own number), evidence_citation_discipline (0.10), forward_seeding_clarity (0.10). Provisional. |
 | `cycle-grade` | **has eval** | `cycle-grade-eval`. Grades the grade itself — calibration consistency across opps, evidence-grounding, archetype-appropriateness. Meta-eval. |
 
 ### Cross-cutting evals (not paired with a single producer)

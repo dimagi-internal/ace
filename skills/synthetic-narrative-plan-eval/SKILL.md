@@ -18,6 +18,18 @@ demo will tell. The narrative-plan is what makes the demo land — a
 coherent cast + plausible anomalies + closed-loop coaching arcs is the
 difference between "synthetic data" and "actual demo content."
 
+**Out-of-chain fitness axis** (reinforced 2026-05-29 per
+`docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`): this eval
+already carries fitness dimensions (cast realism, anomaly + coaching
+coherence) that grade against a real-world "would this land" bar rather
+than pure manifest conformance — so it needed only a light touch.
+`anomaly_coaching_coherence` is now explicitly anchored against an
+external "would this land in a *real demo* in front of a real
+stakeholder" bar (not just internal narrative consistency), and 0.05 of
+weight shifts off the conformance dimension (`manifest_schema_validity`,
+a QA-adjacent presence check) onto the stakeholder-narrative fitness
+dimension.
+
 **Status:** Provisional.
 
 ## Inputs
@@ -45,14 +57,23 @@ Score each dimension 0–10. Hard-deduct rules inline.
    "FLW A") or if archetypes are uniform (no struggling FLW = no
    coaching arc to feature).
 
-3. **Anomaly + coaching coherence (weight 0.30).** Every anomaly traces
-   to a specific FLW + week + field path. Every `improvement_arc`
-   FLW has a corresponding `coaching_arcs` entry. Coaching transcripts
-   sound like real coaches (specific, non-patronizing, FLW-arrives-at-
-   correction). Hard-deduct -5 if anomalies have no detection path or
-   no reviewer-visible artifact downstream.
+3. **Anomaly + coaching coherence (weight 0.30) — OUT-OF-CHAIN FITNESS
+   dimension.** Every anomaly traces to a specific FLW + week + field
+   path. Every `improvement_arc` FLW has a corresponding `coaching_arcs`
+   entry. Coaching transcripts sound like real coaches (specific,
+   non-patronizing, FLW-arrives-at-correction). Beyond internal
+   consistency, grade against the external bar: **would this anomaly +
+   coaching arc actually land in a *real demo* in front of a real
+   stakeholder?** A funder/LLO watching the deck should find the arc
+   believable and affecting — a contrived anomaly (one no real CHW would
+   produce) or a wooden coaching exchange fails this bar even if it's
+   internally consistent and field-path-valid. Score 9-10 when the arc
+   would visibly move a real stakeholder in a demo; 5-7 when it's
+   plausible but flat; 0-3 when it's contrived or wooden. Hard-deduct -5
+   if anomalies have no detection path or no reviewer-visible artifact
+   downstream.
 
-4. **Manifest schema validity (weight 0.15).** Every field in the YAML
+4. **Manifest schema validity (weight 0.10).** Every field in the YAML
    matches the connect-labs Pydantic schema (see
    `mcp__connect-labs__synthetic_generate_from_manifest` description).
    Required keys present: `opportunity_id`, `random_seed`, `timeline`,
@@ -61,7 +82,7 @@ Score each dimension 0–10. Hard-deduct rules inline.
    (eval re-validates by reading the YAML schema, NOT by calling the
    labs MCP).
 
-5. **Stakeholder narrative quality (weight 0.10).** The companion
+5. **Stakeholder narrative quality (weight 0.15).** The companion
    `.md` reads as a real story arc: opening → cast → week-by-week →
    what stakeholders should notice. Generic "synthetic data was
    generated" prose is a fail.
@@ -105,9 +126,10 @@ verdict: pass | warn | fail
 dimensions:
   pdd_anchoring:               { score: <0-10>, weight: 0.25 }
   cast_realism:                { score: <0-10>, weight: 0.20 }
-  anomaly_coaching_coherence:  { score: <0-10>, weight: 0.30 }
-  manifest_schema_validity:    { score: <0-10>, weight: 0.15 }
-  stakeholder_narrative:       { score: <0-10>, weight: 0.10 }
+  anomaly_coaching_coherence:  { score: <0-10>, weight: 0.30 }   # OUT-OF-CHAIN fitness ("would this land in a real demo")
+  manifest_schema_validity:    { score: <0-10>, weight: 0.10 }
+  stakeholder_narrative:       { score: <0-10>, weight: 0.15 }
+# Weights sum: 0.25 + 0.20 + 0.30 + 0.10 + 0.15 = 1.00.
 
 hard_deduct_triggered: [ ... ]
 auto_surfaced: [ ... ]
@@ -129,3 +151,4 @@ Provisional. Once 3+ Phase 7 narrative plans have shipped:
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-06 | Initial provisional rubric — Stage 4 of Plan B. | ACE team |
+| 2026-05-29 | Anchor `anomaly_coaching_coherence` (0.30) against an external "would this land in a real demo in front of a real stakeholder" bar (beyond internal consistency) — confirming it as the out-of-chain fitness dimension. Light reweight: shift 0.05 off conformance (`manifest_schema_validity` 0.15→0.10) onto the stakeholder-narrative fitness dim (0.10→0.15); weights still sum to 1.00. Per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` (lighter touch — this eval already carried real fitness dims). | ACE team |

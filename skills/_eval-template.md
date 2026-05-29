@@ -21,6 +21,60 @@ Eval grades **quality** (soft 0-10 scores via LLM-as-Judge). QA grades **structu
 
 If a dimension you're considering could be checked by static code or a Python script, it belongs in QA. If it could become a 0-10 score that genuinely uses the full range, it belongs in eval. See `skills/README.md § QA vs Eval` for the full guidance and the migration path for existing rubrics that mix the two.
 
+## The out-of-chain fitness requirement (REQUIRED — added 2026-05-29)
+
+ACE's pipeline is one AI authoring chain: `idea → PDD (AI) → artifact (AI/Nova)
+→ eval (AI grades the artifact against the AI's own PDD)`. An eval is
+**self-referential** when its grading anchor is an upstream artifact produced by
+the *same chain it is grading*. A self-referential eval can only certify
+**fidelity to the skeleton** — never **fitness of the instrument**. Because the
+PDD is itself a thin, first-pass AI draft, a faithful build of a thin skeleton
+scores ~9.6: arithmetically correct, informationally empty. (This is the ITN
+post-mortem failure mode — see `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`.)
+
+**The predictive law (use it as an authoring guide):**
+
+> An eval's inflation risk is inversely proportional to the distance between its
+> grading anchor and the AI authoring chain.
+> - Anchor = observed runtime behavior / human decision / real-world benchmark /
+>   live probe → **LOW risk.**
+> - Anchor = upstream AI spec's *stated structure* (count / order / name /
+>   topic-present matching) → **HIGH risk.**
+
+**The contract — every eval MUST satisfy this:**
+
+1. **≥1 out-of-chain fitness dimension.** At least one dimension (≥20% weight)
+   must grade against an anchor *outside* the AI authoring chain: observed
+   runtime behavior, a live probe, human ground truth, or a real-world
+   "would a domain expert ship/use this?" benchmark. A rubric whose *every*
+   dimension is satisfiable by an artifact that matches the upstream spec but is
+   undeployable does **not** meet the eval contract — that's QA's job, not
+   eval's.
+
+2. **Conformance ≠ a 0-10 score.** A count/order/name/topic-present check turned
+   into a soft 0-10 score (`field_count_match: 9.0`) is still a presence check
+   wearing a quality costume. Such checks belong in QA. Eval dimensions must use
+   the full 0-10 range on a genuine fitness judgment.
+
+3. **No exemptions that reward thinness.** Do not instruct the judge to "only
+   score against surfaces the upstream spec already declares" (the
+   "deferral exemption" anti-pattern). Upstream (PDD) thinness must be a
+   *finding*, not a free pass. The fitness dimension is exempt from any
+   deferral carve-out: it asks what a deployable artifact *should* contain even
+   when the PDD was silent.
+
+4. **The fitness dimension carries teeth.** It must be able to drive a faithful-
+   but-undeployable artifact below `pass` on its own — via a hard-gate sub-rule
+   or a `≤3 → fail` floor — not merely shave a point.
+
+**Proven patterns to port** (these are the LOW-risk evals; copy their shape):
+`idea-to-pdd-eval` (`demand_reality` / `resource_realism` / `mission_alignment`
+grade real-world viability), `ocs-chatbot-eval` (hallucination→fail, citation
+≤3 clamp, adversarial-coverage cap on a live transcript),
+`ocs-widget-handoff-eval` (live HTTP-200 probe + credential-leak auto-fail),
+`flw-data-review-eval` (cross-checks the report against observed real data),
+`llo-launch-eval` (40% launch-time viability axis).
+
 ## Skeleton
 
 Every `*-eval` skill follows this body skeleton:
@@ -177,6 +231,14 @@ Rubric`. The standard targets are:
 ```markdown
 - **Detection rate:** ≥ 80% of catalogued issues from
   `eval-calibration/known-issues.md § <category>`.
+- **Dimension coverage:** the rubric's dimension set must touch every
+  fitness axis that separates "conformant" from "deployable" for this
+  artifact (validation, capture fidelity, persistence, enforcement,
+  viability, resonance — pick what applies). Detection-rate alone can't
+  surface a *missing* dimension; a blind spot is never a known issue.
+  Calibrate against an expert-built reference (e.g. the ITN
+  `[Final]` builds) AND a deliberately-thin negative control the rubric
+  MUST score below `pass`.
 - **Inter-run variance:** ≤ 0.5 across 3 same-model runs.
 - **Agreement with self-eval:** within ±1.5 points of the producer's
   own grade. Larger gap is itself a calibration signal.

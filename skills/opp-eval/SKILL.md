@@ -144,6 +144,13 @@ If no mode is passed, default to `--quick`.
    readers treat it as "needs more rubric coverage before this number
    is meaningful," not as a quality fail.
 
+   **Deployability cap (added 2026-05-29):** the verdict is ALSO capped
+   at `warn` by the independent deployability spot-check (step 10b) when
+   that probe scores < 5 against a would-be PASS rollup. This is the
+   anti-laundering backstop — coverage breadth is not fitness depth, and
+   a high rollup of inflated per-skill scores must not survive an
+   independent raw-artifact judgment that the build is undeployable.
+
 9. **Build per-skill breakdown.** For each discovered verdict, capture:
    - `ref` — the eval skill name + mode (e.g. `ocs-chatbot-eval-deep`)
    - `score` — the verdict's `overall_score`
@@ -172,6 +179,40 @@ If no mode is passed, default to `--quick`.
     `"Tagging dimension consistently below 7.0 across 2 runs —
     consider tightening [training-gap] application rules in the golden
     template prompt"`.
+
+10b. **Independent deployability spot-check (fitness backstop — added
+    2026-05-29).** opp-eval's rollup trusts the upstream verdicts, which
+    means it *launders* any inflation in them: if every per-skill eval
+    is conformance-only and inflated, the rollup computes a high number
+    and stamps PASS (the ITN failure mode — both app evals scored 9.6 on
+    a hollow build and the cycle grade would have rolled straight up).
+    To break the self-referential loop at the one funnel point, `--deep`
+    and `--monitor` run **one** LLM-as-Judge probe against the
+    highest-stakes **raw artifact** the opp has produced — decoupled
+    from every upstream verdict.
+
+    - **Pick the artifact** (first available, in priority order): the
+      built Deliver app Nova blueprint (`get_app` on the deliver
+      `nova_app_id` from `3-commcare/pdd-to-deliver-app_summary.md`) →
+      the generated synthetic records → the published solicitation body.
+    - **The probe prompt** (does NOT see the upstream scores): "Reading
+      this actual artifact, would a Dimagi domain expert ship it to a
+      real LLO today? Score 0–10 on deployability and name the concrete
+      blockers (missing input validation, capture fidelity, case
+      write-back, localization, enforcement — whatever applies)." This
+      is the same out-of-chain fitness bar the per-skill rubrics now use
+      (`_eval-template.md § out-of-chain fitness requirement`).
+    - **Hard-cap rule:** if the deployability probe scores **< 5** while
+      the rolled-up overall is **≥ 7** (would-be PASS), cap the
+      run-level verdict at **`warn`** and surface a `[BLOCKER]`:
+      "rollup says PASS but the independent deployability spot-check
+      found the artifact undeployable (score X, blockers: …) — the
+      per-skill evals for this category are inflated; recalibrate before
+      trusting this cycle grade." Record the probe score + blockers in
+      the verdict YAML under `deployability_probe`.
+    - The probe is scoped (one artifact, one judgment) — opp-eval is
+      still an aggregator, not a full re-grader. This is the single
+      deliberate exception to "trust the upstream judgments."
 
 11. **Write the machine-readable verdict** to
     `ACE/<opp-name>/runs/<run-id>/10-closeout/opp-eval/opp-eval_verdict-<mode>.yaml`
@@ -249,8 +290,12 @@ recommendation.
 
 **What opp-eval will NOT do:**
 - Re-grade any individual response. That's the per-skill eval's job.
+  **One scoped exception (2026-05-29):** the deployability spot-check
+  (step 10b) makes a single independent fitness judgment on the
+  highest-stakes raw artifact — not a per-response re-grade, but a
+  backstop against laundering inflated upstream scores into a PASS.
 - Invoke any `-qa` or `-eval` skill. Evidence is pre-captured; opp-eval
-  only aggregates.
+  only aggregates (plus the one spot-check above).
 - Block a gate. The brief exists for uniformity, not gating.
 
 ## Archetypes
@@ -285,7 +330,13 @@ ran_at: <ISO timestamp>
 capture_path: runs/<run-id>/   # opp-eval reads a run directory, not a single file
 
 overall_score: 0.0-10.0    # weighted, renormalized across non-null categories
-verdict: pass | warn | fail
+verdict: pass | warn | fail   # capped at warn if deployability_probe.score < 5 and raw rollup >= 7
+
+deployability_probe:          # independent raw-artifact fitness backstop (step 10b); --deep/--monitor only
+  artifact: <which raw artifact was judged, e.g. "deliver app blueprint 2VI6...">
+  score: 0.0-10.0             # out-of-chain "would an expert ship this?" judgment
+  blockers: ["<concrete blocker>", ...]
+  capped_verdict: true | false  # true if this probe forced the run verdict down to warn
 
 dimensions:
   # For opp-eval, "dimensions" are skill categories. A null `score`
@@ -459,3 +510,4 @@ for dry-run purposes (same convention as `ocs-chatbot-eval`).
 | 2026-04-19 | Initial version — umbrella eval aggregator. Three modes (`--quick` / `--deep` / `--monitor`); rolls every `verdicts/*.yaml` into a run-level scorecard across 6 skill-category dimensions, emits improvement recommendations, and writes a uniform-contract gate brief (advisory; does not gate a phase). | ACE team (opp-eval rollout) |
 | 2026-04-19 | Quick-mode template: add `Unexpected:` row (skill was already surfacing unexpected files but the template omitted it); tighten Notes wording with three concrete examples; specify stdout summary format including unexpected count. Surfaced in first run against a real partial opp (cosmetics-fgd-pilot) | ACE team (qa/eval iteration loop) |
 | 2026-05-05 | **Path-scheme migration on the umbrella aggregator.** Discovery (Step 5) walks each phase folder under `runs/<run-id>/` collecting `*_verdict*.yaml` (instead of `ACE/<opp>/verdicts/*.yaml`, which is gone). Outputs land under `10-closeout/opp-eval/`: scorecard (`opp-eval_scorecard-<mode>.md`), verdict (`opp-eval_verdict-<mode>.yaml`), gate brief (`opp-eval_gate-brief-deep.md`), and `--monitor` trend (`opp-eval_trend.md`). Verdict YAML `capture_path` field updated to `runs/<run-id>/`. Wiring fix — prior glob would have found zero verdicts on a fresh run. No behavior change beyond paths. | ACE team |
+| 2026-05-29 | **Anti-laundering deployability backstop (ITN post-mortem).** Added step 10b: an independent LLM-as-Judge deployability spot-check on the highest-stakes raw artifact (deliver blueprint → synthetic records → solicitation), decoupled from all upstream verdicts. If it scores < 5 while the rollup is ≥ 7, the run verdict is capped at `warn` with a `[BLOCKER]`. Previously opp-eval was a pure score-rollup with no independent fitness term, so inflated per-skill scores (the ITN 9.6s) laundered straight into a cycle PASS. New `deployability_probe` block in the verdict YAML. The one scoped exception to "trust the upstream judgments." Per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
