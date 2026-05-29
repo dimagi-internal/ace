@@ -78,6 +78,172 @@ describe('extractOppFragment', () => {
   });
 });
 
+// Shapes verified against live Drive state 2026-05-29 — the extractor must
+// accept every alias key name, not just the canonical one, or the OCS/labs
+// sweeps will see live resources as orphan candidates and delete them.
+describe('extractOppFragment — real-world key-shape drift', () => {
+  it('captures OCS chatbot + collection from the live `ocs_chatbot` block (not `chatbot`)', () => {
+    const run = `
+phases:
+  ocs-setup:
+    products:
+      ocs_chatbot:
+        experiment_id: 12027
+        public_id: pub-uuid-aaa
+        collection_id: 418
+`;
+    const frag = extractOppFragment('turmeric', '', [run]);
+    // integer experiment_id coerced to string + public_id both captured
+    expect(frag.identifiers.ocsChatbotIds).toContain('12027');
+    expect(frag.identifiers.ocsChatbotIds).toContain('pub-uuid-aaa');
+    expect(frag.identifiers.ocsCollectionIds).toContain('418');
+  });
+
+  it('captures all 3 OCS chatbot id aliases (id / experiment_id / chatbot_id)', () => {
+    const run = `
+phases:
+  ocs-setup:
+    products:
+      ocs_chatbot:
+        id: 555
+        experiment_id: 12027
+        chatbot_id: 999
+`;
+    const frag = extractOppFragment('malaria-rdt', '', [run]);
+    expect(frag.identifiers.ocsChatbotIds.sort()).toEqual(['12027', '555', '999']);
+  });
+
+  it('captures all 4 OCS collection id aliases', () => {
+    const opp = `
+ocs_chatbot:
+  collection_id_per_opp: 395
+  collection_id_shared: 350
+  opp_collection_id: 375
+  shared_collection_id: 350
+`;
+    const frag = extractOppFragment('turmeric', opp, []);
+    expect(frag.identifiers.ocsCollectionIds.sort()).toEqual(['350', '375', '395']);
+  });
+
+  it('captures solicitation id under both `solicitation_id` and `labs_id`', () => {
+    const oppLeep = 'solicitation:\n  solicitation_id: 2845\n';
+    const oppTurmeric = 'solicitation:\n  labs_id: 2841\n';
+    expect(extractOppFragment('leep', oppLeep, []).identifiers.labsRecordIds).toContain('2845');
+    expect(extractOppFragment('turmeric', oppTurmeric, []).identifiers.labsRecordIds).toContain('2841');
+  });
+
+  it('captures synthetic opp id under both `labs_opp_id` and `labs_opportunity_id`', () => {
+    expect(
+      extractOppFragment('turmeric', 'synthetic:\n  labs_opp_id: 1749\n', []).identifiers
+        .labsSyntheticIds,
+    ).toContain('1749');
+    expect(
+      extractOppFragment('leep', 'synthetic:\n  labs_opportunity_id: 1750\n', []).identifiers
+        .labsSyntheticIds,
+    ).toContain('1750');
+  });
+
+  it('captures labs workflow/pipeline ids from both flat opp.yaml and nested run_state shapes', () => {
+    const opp = `
+synthetic:
+  workflows:
+    llo_weekly_review_id: 2957
+    program_admin_audit_id: 2959
+    llo_pipeline_id: 2945
+`;
+    const run = `
+phases:
+  synthetic-data-and-workflows:
+    products:
+      synthetic:
+        workflows:
+          llo_weekly_review:
+            workflow_id: 3001
+            pipeline_id: 3002
+          program_admin_audit:
+            workflow_id: 3003
+`;
+    const frag = extractOppFragment('leep', opp, [run]);
+    expect(frag.identifiers.labsWorkflowIds.sort()).toEqual(['2957', '2959', '3001', '3003']);
+    expect(frag.identifiers.labsPipelineIds.sort()).toEqual(['2945', '3002']);
+  });
+
+  it('captures Connect program/opp ids whether flat or nested', () => {
+    const flat = `
+phases:
+  connect-setup:
+    products:
+      connect:
+        program_id: prog-flat
+        opportunity_id: opp-flat
+`;
+    const nested = `
+phases:
+  connect-setup:
+    products:
+      connect:
+        program:
+          id: prog-nested
+        opportunity:
+          id: opp-nested
+`;
+    const f = extractOppFragment('bednet', '', [flat]).identifiers;
+    expect(f.connectProgramIds).toContain('prog-flat');
+    expect(f.connectOpportunityIds).toContain('opp-flat');
+    const n = extractOppFragment('turmeric', '', [nested]).identifiers;
+    expect(n.connectProgramIds).toContain('prog-nested');
+    expect(n.connectOpportunityIds).toContain('opp-nested');
+  });
+
+  it('captures a top-level `connect_program.id` on in-progress runs', () => {
+    const run = 'connect_program:\n  id: prog-top-level\nphases: {}\n';
+    expect(extractOppFragment('malaria-itn-app', '', [run]).identifiers.connectProgramIds).toContain(
+      'prog-top-level',
+    );
+  });
+
+  it('captures payment unit ids across singular / array / uuid shapes', () => {
+    const run = `
+phases:
+  connect-setup:
+    products:
+      connect:
+        payment_units:
+          - uuid: pu-uuid-1
+            server_id: 71
+          - payment_unit_uuid: pu-uuid-2
+`;
+    const ids = extractOppFragment('turmeric', '', [run]).identifiers.connectPaymentUnitIds;
+    expect(ids).toEqual(expect.arrayContaining(['pu-uuid-1', '71', 'pu-uuid-2']));
+  });
+
+  it('captures commcare hq_app_ids under both `apps.*` and `commcare.*` wrappers', () => {
+    const appsShape =
+      'phases:\n  commcare-setup:\n    products:\n      apps:\n        learn:\n          hq_app_id: app-a\n        deliver:\n          hq_app_id: app-b\n';
+    const commcareShape =
+      'phases:\n  commcare-setup:\n    products:\n      commcare:\n        learn:\n          hq_app_id: app-c\n        deliver:\n          hq_app_id: app-d\n';
+    expect(extractOppFragment('bednet', '', [appsShape]).identifiers.commcareAppIds.sort()).toEqual([
+      'app-a',
+      'app-b',
+    ]);
+    expect(
+      extractOppFragment('itn-fgd', '', [commcareShape]).identifiers.commcareAppIds.sort(),
+    ).toEqual(['app-c', 'app-d']);
+  });
+
+  it('dedupes an id that appears in both opp.yaml and a run_state', () => {
+    const opp = 'solicitation:\n  labs_id: 2841\n';
+    const run = `
+phases:
+  solicitation-management:
+    products:
+      solicitation:
+        labs_id: 2841
+`;
+    expect(extractOppFragment('turmeric', opp, [run]).identifiers.labsRecordIds).toEqual(['2841']);
+  });
+});
+
 describe('mergeFragments', () => {
   it('merges identifiers, dedupes, sorts opp slugs', () => {
     const a: LiveSet = {
