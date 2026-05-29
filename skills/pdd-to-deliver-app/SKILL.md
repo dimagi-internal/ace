@@ -261,6 +261,85 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
      § Bug 3 for the full failure analysis.
 
+   - **REQUIRED — Deployability (fitness) requirements.** A faithful
+     transcription of the PDD's field list is NOT a deployable
+     instrument. `pdd-to-deliver-app-eval`'s fitness axis (55% weight)
+     **hard-fails** the build on each gap below; the build must emit
+     these so the instrument is field-reliable, not just structurally
+     complete. (Root cause of the ITN 9.6-on-a-hollow-build: the brief
+     never demanded them. See
+     `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`.) Insert
+     the applicable paragraphs **verbatim** into the brief, each in its
+     own paragraph, prefixed `REQUIRED:`:
+
+     > REQUIRED — GPS accuracy gating: if the PDD's Evidence Model
+     > specifies an arrival/location radius (e.g. "within 100 m"), a
+     > plain `geopoint` question is NOT sufficient. Emit an
+     > accuracy-gated capture block: a preferred-accuracy threshold
+     > (e.g. 15 m) and a minimum-accuracy threshold (e.g. 25 m), a
+     > capture-gate that re-prompts / refuses to accept a fix worse than
+     > the minimum, a live accuracy-readout label guiding the FLW, and
+     > normalized `lat` / `lon` outputs the verification layer can read.
+     > A plain geopoint with only a text hint ("cross-check manually")
+     > does not let Connect enforce the stated radius.
+
+     > REQUIRED — Data-quality validation by default: every numeric
+     > count field MUST carry a sensible bound `constraint` (e.g.
+     > household_size 1–30); cross-field counts MUST be constrained
+     > against their parent (e.g. `under_5 <= household_size`); any phone
+     > field MUST carry a format regex (e.g. `regex(., '^[0-9]{10,13}$')`);
+     > every free-text field MUST carry a character limit; every
+     > credit-bearing field (photo, GPS, consent) MUST be `required` with
+     > a `validate`. Do NOT ship a data-capture instrument whose only
+     > constraints are the consent gate and one range — unbounded counts
+     > and unformatted phones produce unusable field data.
+
+     > REQUIRED — Follow-up / case-update forms MUST persist their
+     > observations to the case: every user-facing observation field on a
+     > case-UPDATE form (retention, change-since-last-visit, V2 readings)
+     > MUST be bound with `case_property_on` to the relevant case type. A
+     > case-update form that captures new observations but writes zero
+     > case properties is pointless — the change it observed is lost. (NB:
+     > this is the opposite of the Learn-app rule; Learn forms carry no
+     > case blocks, Deliver follow-up forms MUST write back.)
+
+     > REQUIRED — Structured capture over free text: any answer with an
+     > enumerable option set (who-sleeps-under-net, net condition, risk
+     > groups, how-obtained) MUST be a single- or multi-select, never free
+     > `text`; every "Other" option MUST have a conditional
+     > `_other` free-text follow-up (relevance-gated on the Other
+     > selection); prefer bucketed selects over raw integers where field
+     > reliability matters (net age as `<1 / 1–2 / 3–4 / 5+ / don't know`).
+
+     > REQUIRED — Section timestamps: emit a hidden `now()` timestamp at
+     > the start of each major section (and `today()` for visit_date) so
+     > the cost/time model can reconstruct per-section visit-time
+     > distributions. (Only when the PDD's success metrics reference
+     > visit-time or a cost model.)
+
+     > REQUIRED — Embed any verbatim read-aloud / behavior-change script
+     > in-form as a `label`, not as something the FLW must recall from the
+     > Learn app. If the PDD specifies a BC segment to be delivered
+     > verbatim, the exact script text goes in the Deliver form.
+
+   - **REQUIRED — Localization (build English core, ship the
+     PDD-language translations).** Insert this paragraph **verbatim**
+     into the brief, in its own paragraph, prefixed `REQUIRED:` — ONLY
+     when the PDD names a working language other than English:
+
+     > REQUIRED: Author all form strings (labels, choices, hints,
+     > constraint/validation messages) in English as the primary
+     > language, AND ship a complete translation set in the PDD's named
+     > working language (here: <LANGUAGE>) via the form's itext — every
+     > English string must have its <LANGUAGE> counterpart. English-only
+     > is a hard-fail at the eval gate when the PDD names a working
+     > language. Do NOT defer localization "downstream"; the translation
+     > set is part of this build.
+
+     (Resolves the 2026-05-29 localization decision: English core,
+     hard-fail if the named-language translations weren't also built.
+     `pdd-to-deliver-app-eval § localization_match` enforces it.)
+
 4. **Invoke `/nova:autobuild "<brief>"`.** Capture from the response:
    - `app_id` — durable Nova handle, written to the summary as
      `nova_app_id`
@@ -384,6 +463,41 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     `compile_app` learns to slug `<learn:deliver id>` per-form, this
     check becomes a one-form-per-module preference rather than a
     correctness requirement and the brief language above can soften.
+
+4c. **Case write-back verification (follow-up forms must persist
+    observations).** The structural preventer for the ITN Visit-2 defect
+    — a case-update form that captured retention/change observations but
+    wrote zero case properties, so the change it observed was lost.
+    `pdd-to-deliver-app-eval § case_persistence` hard-gates this at ≤2;
+    this step catches it at build time. Cheap; runs on the already-
+    fetched blueprint. Same bounded-loop shape as 4a/4b.
+
+    1. From `get_app({app_id})`, identify each **case-UPDATE** form (a
+       form that updates an existing case rather than creating one —
+       `entity_id: '#case/case_id'` per the case-action rule above, or a
+       form Nova tagged as updating the case type).
+    2. For each case-update form, list its **user-facing observation
+       fields** (non-hidden, non-label questions the FLW answers).
+    3. **Assert** that the form binds **≥1** of those observation fields
+       to a case property via `case_property_on`. A case-update form
+       that captures new observations and writes zero case properties
+       fails this assertion.
+    4. On failure, dispatch:
+
+       ```
+       /nova:edit <app_id> "Form <module>/<form> is a case-update form
+       that captures observations (<list>) but writes no case
+       properties. Bind the observation fields that represent durable
+       state (<list>) to case properties on case type <type> via
+       case_property_on, so the follow-up visit persists what it
+       observed. After the edit, get_form and verify each binding."
+       ```
+
+       Re-fetch and re-assert. **Bounded loop, max 3 iterations.** If
+       still failing after 3, surface a clear failure naming the form +
+       its unpersisted observations, and do not write the success
+       summary. (Single-form atomic-visit apps with no case-update form
+       have nothing to check — skip cleanly.)
 
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check structure against the PDD before writing the summary.
@@ -581,3 +695,4 @@ Each row this skill writes uses `phase: 3-commcare` and
 | 2026-05-15 | **Pare focus-group attestation form to 5 fields:** `consent_all_participants` (single_select yes/no, validate=yes), `session_date`, `venue` (text), `gps` (geopoint), `photo` (image). Drop `audio_file` / `backup_audio_file` (audio capture is out-of-band; not in CommCare), `gdoc_link` (gdoc is written AFTER session end, no linkable URL exists at submission time), and the metadata fields (`llo_name`, `site_*`, `venue_type`, `planned_segment`, `actual_participant_count`, `start_time`, `end_time`, `audio_duration_minutes`, `facilitator_reflection`, `pre_checklist_complete`) — these go in the gdoc. Matching attestation → gdoc is coordinator-driven by `(FLW, session_date, venue)` tuple. Prompted by operator: "For the fields just have consent (this should confirm you have consent from all participants), date, venue, gps, photo. everything else is either wrong or goes into the gdoc. the gdoc will be created after the fact so no ability to enter it into commcare". | ACE team |
 | 2026-05-25 | **Revert PR #445; restore `#case/case_id` as the canonical create-form `entity_id`; add explicit REQUIRED rule against `#case/case_name` substitution.** PR #445 (commit `749888e`, 2026-05-24) had flipped the recommended override from `#case/case_id` to `#case/case_name` based on a `/canopy:select-session` rescan citing a Nova validator rejection in the `e2e-malaria-rdt` 2026-05-24 run — but no artifact was preserved and the change contradicted a verified learning from one day earlier (`docs/learnings/2026-04-29-nova-connect-marker-bugs.md:92-95`: 2026-05-23 round-trip verification that `#case/case_id` persists exactly as passed). The substitution passed every Phase 3 static gate (`validate_app`, `make_build`, release, `app-release-smoke` projection) then failed on-device install on `bednet-spot-check/20260525-1405` Phase 6 with "A part of your application is invalid" — CommCare's install-time resource graph reads `entity_id`'s XPath BEFORE the hidden `case_name` field's `calculate` fires, gets null, and rejects the CCZ. `#case/case_id` does NOT have this problem because JavaRosa allocates the case UUID synchronously at form-processing start. Per Vellum's source-of-truth help text (`src/commcareConnect.js:243`), `case_id` IS the canonical pattern. New REQUIRED rule inserted in Step 3 ("`entity_id` on a create-form MUST resolve at install/parse time"). Full postmortem: `docs/learnings/2026-05-25-entity-id-misdiagnosis.md`. Structural preventer (commcare-cli.jar install simulation) tracked at `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md § Preventer 2`. | ACE team |
 | 2026-05-26 | **Both prior `entity_id` rules were operator-side workarounds for an unrecognized upstream Nova compiler bug — branch the REQUIRED rule on case action.** The `commcare-cli.jar play` install-time gate (shipped same day in PR #510's Java-resolver fix) caught `bednet-spot-check/20260525-2022`'s Deliver CCZ failing `FormDef.initAllTriggerables` with `XPathTypeMismatchException` on `/data/bednet_visit/deliver/entity_id`. The bind Nova emitted for the directive `entity_id: '#case/case_id'` was the **case-UPDATE** shape: `instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/case_id`. On a case-CREATE form that XPath is broken on two grounds — Connect populates `case_id_new_visit_<n>` (not `case_id`) in session data, and the case isn't in `casedb` yet. The same exception class is what CommCare's mobile runtime surfaces as "A part of your application is invalid" on device — explaining why BOTH bednet runs (1405 with `case_name`, 2022 with `case_id`) hit install rejection for what looked like different reasons; same Nova compiler bug, two different operator workaround attempts. Tracked upstream as voidcraft-labs/nova-plugin#20. Skill rule split: case-create deliver_units now emit `entity_id: '/data/case/@case_id'` + `entity_name: '/data/case_name'` (literal XPaths against the form's own case block, which the form's `<setvalue>` chain populates at xforms-ready); case-update deliver_units keep `#case/case_id` + `#case/case_name` (where Nova's casedb-lookup compilation IS correct). The change-log entry above (2026-05-25) is preserved verbatim for the audit trail; its conclusion was empirically wrong but the postmortem on PR #445 stands. | ACE team |
+| 2026-05-29 | **Deployability brief requirements + case-write-back verification (ITN post-mortem).** Added a `REQUIRED — Deployability (fitness) requirements` block to Step 3 (GPS accuracy-gating when a radius is specified; default data-quality constraints — bounds, cross-field, phone regex, char limits; structured selects + other→specify over free text; section timestamps; verbatim in-form BC script) and a `REQUIRED — Localization` paragraph (English core + named-language translation set; English-only hard-fails). Added Step 4c (case write-back verification): case-update forms that capture observations must bind ≥1 `case_property_on`, with a bounded `/nova:edit` repair loop — the structural preventer for the ITN Visit-2 write-nothing defect. These mirror the new `pdd-to-deliver-app-eval` fitness hard-gates 1:1 so build and eval are symmetric. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |

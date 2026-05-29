@@ -23,6 +23,17 @@ sanity-floor cross-check) extracted from `canopy:walkthrough` in canopy
 v0.2.79. ACE provides the polish-specific rubric YAML; canopy provides
 the calibrated judge.
 
+**Out-of-chain fitness axis** (strengthened 2026-05-29 per
+`docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`): the visual-judge
+dimensions are the only ones graded against *observed rendered state* (a
+real screenshot of the live workflow page) rather than against the
+manifest/PDD — i.e. the out-of-chain fitness anchor for this eval. They
+were under-weighted at a combined 0.15, which let a polish run with a
+broken-looking dashboard still pass on text-based conformance. Their
+combined weight is now 0.40 (visual_hierarchy 0.27 + brand_fit 0.13), and
+a `verdict: blocked` from the visual-judge now hard-caps the whole eval to
+`verdict: fail` — not merely a trigger on visual hierarchy ≤ 2.
+
 **Status:** Provisional. Calibration ground-truth catalogue TBD until
 3+ real polish runs land — see `skills/eval-calibration/SKILL.md`.
 
@@ -38,27 +49,27 @@ the calibrated judge.
 
 Score each dimension 0–10.
 
-1. **Narrative-data coherence (weight 0.30).** FLW names mentioned in
+1. **Narrative-data coherence (weight 0.20).** FLW names mentioned in
    patches actually appear in `manifest.flw_personas[].display_name`.
    Anomaly callouts use plain-language descriptions (NOT field paths
    — "photos missing MTN card" beats `form.location_id.photo`).
    Hard-deduct -5 if any patched name doesn't match the manifest
    (e.g. polish features "Asha M." but manifest has only "Bao N.").
 
-2. **Patch quality (weight 0.20).** Surgical mode applied at least one
+2. **Patch quality (weight 0.15).** Surgical mode applied at least one
    patch per polish category recommended in the skill's prose: hero
    panel, named FLW story cards, anomaly callouts, coaching arc
    visualization, domain branding. Hard-deduct -3 per missing category
    when the manifest had material to support it (e.g. anomalies
    present but no anomaly-callout patch).
 
-3. **Smoke-render success (weight 0.20).** `pipeline_preview` after
+3. **Smoke-render success (weight 0.15).** `pipeline_preview` after
    patches returned rows (workflow data contract not broken).
    Hard-deduct -10 if `pipeline_preview` returned a schema error
    AND the polish run summary didn't roll back — that's a live
    broken render.
 
-4. **Domain-language fit (weight 0.10).** Patches use the PDD's
+4. **Domain-language fit (weight 0.05).** Patches use the PDD's
    domain language (turmeric → market/vendor terms; KMC → maternal-
    health). Generic "FLW visit" framing where the PDD has specific
    vocabulary is a fail. Score 9-10 if 3+ domain-specific phrases
@@ -70,28 +81,33 @@ Score each dimension 0–10.
    deduct -5 if the modes don't match (skill ran L2 rewrite without
    the flag, or surgical when scaffold was unsuitable).
 
-6. **Visual hierarchy (weight 0.10) — visual-judge dimension.**
-   Hero panel reads at a glance, per-FLW cards have clear
-   primary/secondary text, anomaly badges are visually distinct from
-   normal-state cards. This dimension is scored by
+6. **Visual hierarchy (weight 0.27) — visual-judge / OUT-OF-CHAIN
+   FITNESS dimension.** Hero panel reads at a glance, per-FLW cards have
+   clear primary/secondary text, anomaly badges are visually distinct
+   from normal-state cards. This dimension is scored by
    `canopy:visual-judge` against a captured screenshot of the rendered
-   workflow page (see § Process step 6 below for the dispatch).
+   workflow page (see § Process step 6 below for the dispatch) — i.e.
+   against observed rendered state, the out-of-chain anchor.
 
-7. **Brand fit (weight 0.05) — visual-judge dimension.** Color palette
+7. **Brand fit (weight 0.13) — visual-judge / OUT-OF-CHAIN FITNESS
+   dimension.** Color palette
    + iconography match the opp's domain (turmeric → market vendor cues;
    KMC → maternal-health iconography). No leftover scaffold
    blue-on-white look. Scored by `canopy:visual-judge` against the
    same screenshot as dimension 6.
 
-Weights of dimensions 1–7 sum to 1.00 (0.30 + 0.20 + 0.20 + 0.10 +
-0.05 + 0.10 + 0.05). Pre-extraction (canopy v0.2.78 era) the rubric
-had only dimensions 1–5 with weights 0.30 + 0.20 + 0.20 + 0.15 + 0.15
-summing to 1.00 and [INFO]-flagged "vision-model judging deferred";
-dimensions 6+7 unblocked when canopy v0.2.79 shipped
-`canopy:visual-judge`. Domain-language-fit + mode-honesty drop 0.05
-each to absorb the new visual dimensions while keeping the heaviest
-weight on narrative-data coherence (the most consequential signal
-for stakeholder demos).
+Weights of dimensions 1–7 sum to 1.00 (0.20 + 0.15 + 0.15 + 0.05 +
+0.05 + 0.27 + 0.13). The visual-judge dimensions (6+7) carry a combined
+0.40 — they are the only out-of-chain fitness anchor (graded against an
+actual screenshot of the rendered page), so they now dominate the
+rubric. Weight history: pre-extraction (canopy v0.2.78 era) the rubric
+had only dimensions 1–5 (0.30 + 0.20 + 0.20 + 0.15 + 0.15) and
+[INFO]-flagged "vision-model judging deferred"; canopy v0.2.79 shipped
+`canopy:visual-judge` and dimensions 6+7 landed at a combined 0.15
+(0.10 + 0.05); the 2026-05-29 fitness-gap pass raised them to a combined
+0.40 (0.27 + 0.13), pulling the difference off the text-based
+conformance dimensions (narrative_data_coherence 0.30→0.20, patch_quality
+0.20→0.15, smoke_render 0.20→0.15, domain_language_fit 0.10→0.05).
 
 ## Hard-deduct triggers
 
@@ -99,9 +115,15 @@ for stakeholder demos).
 - `[BLOCKER]` if `pipeline_preview` returned a schema error AND no
   rollback was recorded.
 - `[BLOCKER]` if a patched FLW name isn't in the manifest.
-- `[BLOCKER]` if `canopy:visual-judge` returns `verdict: blocked`
-  (its blocking rules: visual hierarchy ≤ 2 OR projector test == NO
-  with hero claim asserted).
+- `[BLOCKER]` (hard-cap, `verdict: fail`) if `canopy:visual-judge`
+  returns `verdict: blocked` (its blocking rules: visual hierarchy ≤ 2
+  OR projector test == NO with hero claim asserted). A visual-judge
+  `blocked` forces this eval's overall `verdict: fail` regardless of how
+  high the text-based dimensions score — the rendered dashboard is what a
+  stakeholder actually sees, so an unforwardable render blocks even on a
+  conformant patch set. (Previously this only triggered on visual
+  hierarchy ≤ 2; it now hard-caps on any visual-judge `blocked` verdict,
+  which also covers the projector-test-NO case.)
 - `[WARN]` per missing polish category from rubric §2 when manifest
   had material to support it.
 - `[WARN]` if domain-language fit scores ≤ 5 (generic patches).
@@ -155,7 +177,7 @@ Skill('canopy:visual-judge', args={
         id: "visual_hierarchy",
         label: "Visual Hierarchy",
         weight: 0.67,    # local weights inside the visual sub-rubric;
-                         # outer eval re-weights at 0.10 vs 0.05.
+                         # outer eval re-weights at 0.27 vs 0.13.
         anchor: {
           "5": "Hero KPI prominent. Per-FLW cards have clear primary/secondary text. Anomaly badges visually distinct.",
           "4": "Strong, with one specific designer-polish thing left to do.",
@@ -204,7 +226,9 @@ listing into this eval's `auto_surfaced` array as `[INFO]` entries
 so the operator sees the embarrassments + competitor comparisons.
 
 When the visual-judge dispatch returns `verdict: "blocked"`, this
-eval's overall verdict becomes `[BLOCKER]` per the hard-deduct table.
+eval's overall verdict is hard-capped to `fail` per the hard-deduct
+table — the visual-judge `blocked` overrides the weighted-mean score
+entirely (it does not merely deduct points).
 
 ## Verdict shape
 
@@ -224,13 +248,15 @@ overall_score_pre_cap: <raw weighted mean>
 verdict: pass | warn | fail
 
 dimensions:
-  narrative_data_coherence: { score: <0-10>, weight: 0.30 }
-  patch_quality:            { score: <0-10>, weight: 0.20 }
-  smoke_render_success:     { score: <0-10>, weight: 0.20 }
-  domain_language_fit:      { score: <0-10>, weight: 0.10 }
+  narrative_data_coherence: { score: <0-10>, weight: 0.20 }
+  patch_quality:            { score: <0-10>, weight: 0.15 }
+  smoke_render_success:     { score: <0-10>, weight: 0.15 }
+  domain_language_fit:      { score: <0-10>, weight: 0.05 }
   mode_honesty:             { score: <0-10>, weight: 0.05 }
-  visual_hierarchy:         { score: <0-10>, weight: 0.10, source: canopy:visual-judge }
-  brand_fit:                { score: <0-10>, weight: 0.05, source: canopy:visual-judge }
+  visual_hierarchy:         { score: <0-10>, weight: 0.27, source: canopy:visual-judge }   # OUT-OF-CHAIN fitness
+  brand_fit:                { score: <0-10>, weight: 0.13, source: canopy:visual-judge }   # OUT-OF-CHAIN fitness
+# Weights sum: 0.20 + 0.15 + 0.15 + 0.05 + 0.05 + 0.27 + 0.13 = 1.00.
+# A canopy:visual-judge `verdict: blocked` hard-caps overall verdict to `fail`.
 
 hard_deduct_triggered: [ ... ]
 auto_surfaced: [ ... ]
@@ -254,5 +280,6 @@ Dimensions 6+7 (visual judge) calibrate against
 |---|---|---|
 | 2026-05-06 | Initial provisional rubric — Stage 4 of Plan B. Vision-model dimensions deferred. | ACE team |
 | 2026-05-07 | Add `visual_hierarchy` (0.10) + `brand_fit` (0.05) dimensions; weights re-normalize from the 5-dim original. New § Process steps 6+7: capture screenshot via gstack browse, dispatch `canopy:visual-judge` with polish-specific rubric. Removes the deferral. canopy v0.2.79 ships the underlying judge. | ACE team |
+| 2026-05-29 | Raise the canopy:visual-judge dimensions (visual_hierarchy + brand_fit) to a combined 0.40 (0.27 + 0.13, up from 0.15) — they are the only out-of-chain fitness anchor (graded against the actual rendered screenshot). Pulled the difference off the text-based conformance dims (narrative 0.30→0.20, patch 0.20→0.15, smoke 0.20→0.15, domain 0.10→0.05); weights still sum to 1.00. A `canopy:visual-judge verdict: blocked` now hard-caps the whole eval to `verdict: fail` (was previously only a trigger on visual hierarchy ≤ 2). Per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
 
 <!-- 0.13.73 ships canopy:visual-judge wire-up. -->

@@ -1,16 +1,19 @@
 ---
 name: pdd-to-app-journeys-eval
 description: >
-  Quality eval on the pdd-to-app-journeys.md artifact. Six dimensions
+  Quality eval on the pdd-to-app-journeys.md artifact. Seven dimensions
   graded via LLM-as-Judge: persona specificity, archetype alignment,
   coverage completeness, happy-path voice, edge-case recoverability,
-  pass-criteria measurability.
+  pass-criteria measurability, and an out-of-chain deployability-fitness
+  axis (would a CommCare expert ship an app built from these journeys?).
 disable-model-invocation: true
 ---
 
 # PDD-to-App-Journeys Eval
 
 Quality grader for the `pdd-to-app-journeys.md` artifact. This skill grades whether the journey set is *good*.
+
+**Fitness axis (out-of-chain).** Six of the seven dimensions grade *fidelity* — does the journey set faithfully realize the PDD's declared surfaces? But the PDD is itself a thin, first-pass AI draft in the same authoring chain, so fidelity alone certifies nothing about whether the resulting app is deployable. The seventh dimension, **deployability_fitness** (25%), grades against an anchor *outside* the chain — "would a CommCare expert ship an app built from these journeys into the field?" — and is **exempt from any deferral carve-out**: it asks what a deployable instrument must demand (input validation, GPS accuracy-gating, case write-back on follow-up, data-quality enforcement) even where the PDD was silent. PDD thinness is a *finding*, never a free pass. See `skills/_eval-template.md § The out-of-chain fitness requirement`.
 
 There is **no companion QA skill** for this artifact — see `skills/_qa-decisions.md` for the rationale (downstream consumers `app-test-cases` and `app-ux-eval` are LLM-driven and grade content, not bold-label punctuation, so structural QA gates nothing real). See `skills/_eval-template.md` for the shared eval contract.
 
@@ -41,7 +44,7 @@ There is **no companion QA skill** for this artifact — see `skills/_qa-decisio
 
 2. **Halt on missing inputs.** If `pdd-to-app-journeys.md` is absent or empty, emit `verdict: incomplete` with `[INFO] producer artifact missing; eval skipped`. (No QA gate replaces this fast-path; the eval itself short-circuits when there's nothing to grade.)
 
-3. **Grade across 6 dimensions.** Each 0–10. Overall = weighted mean.
+3. **Grade across 7 dimensions.** Each 0–10. Overall = weighted mean.
 
 4. **Write the verdict YAML** to `2-scenarios/pdd-to-app-journeys-eval_verdict.yaml`.
 
@@ -53,16 +56,18 @@ This skill ships **provisional** until calibrated against ground truth. Initial 
 
    | Dimension | Weight | Criteria |
    |---|---|---|
-   | **Persona specificity** | 15% | Does the persona block describe a SPECIFIC FLW (named or archetypal) with concrete, gradable attributes (smartphone proficiency tier, daily volume, connectivity context, prior-research-experience baseline)? **Anchors:** named FLW with all attributes specific = **9.5**; specific attributes but generic role = **7.5**; generic "FLWs are smartphone-literate" = **5.0**; absent or template-placeholder content = **2.0**. **Smoke-scope exemption:** when the source PDD explicitly defers persona attributes (per the "no inferred backstory" rule — e.g. smoke opps that intentionally don't specify proficiency tier or prior research baseline), do NOT dock points for the deferred attributes. Score against what the PDD actually provides; treat deferrals as `[INFO]`-equivalent calibration context, not missing content. |
-   | **Archetype alignment** | 15% | The journey set's category mix matches the declared archetype's expected branches (per skills/pdd-to-app-journeys/SKILL.md § Archetypes). **Anchors:** every expected category has a journey, no off-archetype journeys = **9.5**; one expected category missing = **7.0**; off-archetype journey present (e.g. eligibility-edge in a focus-group set) = **5.0**; majority of journeys mismatch archetype = **3.0**. **PDD-deferral exemption:** when the source PDD explicitly defers a domain surface (e.g. no eligibility criteria, no GPS/photo capture), the corresponding category (eligibility-edge, data-quality-error) is legitimately absent. Mark such absences with `[INFO]` calibration context — do not dock under "expected category missing." Score against categories whose underlying surfaces the PDD actually declares. |
-   | **Coverage completeness** | 15% | Within the archetype, are the journey set's edge cases comprehensive enough that `app-ux-eval` can grade real failure modes? **Anchors:** ≥2 distinct error-recovery edge cases per journey covering data-quality, eligibility, connectivity, and submission-confirmation paths = **9.0**; covers most failure modes but ≥1 obvious gap = **7.0**; happy paths only with thin edge cases = **5.0**; no recovery edge cases at all = **3.0**. **PDD-deferral exemption:** same as Archetype alignment — only score against failure-mode categories the PDD's declared surfaces support. A 1-field yes/no Deliver form has no photo-quality or GPS-accuracy failure mode to grade. |
-   | **Happy-path narrative voice** | 20% | Each Happy path narrative uses **user-outcome language** ("FLW confirms household by name and phone, completes screening, photographs the MTN card, and submits") not **field/form mechanics** ("tap next, fill household_id, click submit button"). **Anchors:** every narrative is user-outcome-grounded with concrete actions = **9.5**; mostly user-outcome with ≥1 mechanics-leaning narrative = **8.0**; mixed; mechanics dominate ≥1 narrative = **6.0**; field/form mechanics throughout = **3.5**; UI-callout descriptions ("the button on screen 3") = **2.0**. |
-   | **Edge-case recoverability** | 20% | Each edge case is phrased as a **UX outcome the FLW experiences** with a clear recovery path, NOT a backend error code. **Anchors:** every edge case names the FLW outcome + the recovery action = **9.5**; mostly UX outcomes but ≥1 backend-error-flavored = **7.5**; mixed; ≥half are error-code-flavored ("returns 409 Conflict") = **5.0**; backend errors throughout = **3.0**. |
+   | **Persona specificity** | 12% | Does the persona block describe a SPECIFIC FLW (named or archetypal) with concrete, gradable attributes (smartphone proficiency tier, daily volume, connectivity context, prior-research-experience baseline)? **Anchors:** named FLW with all attributes specific = **9.5**; specific attributes but generic role = **7.5**; generic "FLWs are smartphone-literate" = **5.0**; absent or template-placeholder content = **2.0**. When the source PDD is silent on persona attributes (e.g. smoke opps that don't specify proficiency tier or prior-research baseline), do NOT invent backstory to fill the gap — but DO record the silence as a finding (`[INFO]` at minimum, `[WARN]` if the gap would block downstream UX grading). PDD thinness is a finding, not an exemption: score against what a gradable journey set *needs*, and name what's missing. |
+   | **Archetype alignment** | 10% | The journey set's category mix matches the declared archetype's expected branches (per skills/pdd-to-app-journeys/SKILL.md § Archetypes). **Anchors:** every expected category has a journey, no off-archetype journeys = **9.5**; one expected category missing = **7.0**; off-archetype journey present (e.g. eligibility-edge in a focus-group set) = **5.0**; majority of journeys mismatch archetype = **3.0**. When the PDD omits a domain surface (e.g. no eligibility criteria, no GPS/photo capture) and so a category is absent, that absence is a **finding**, not a free pass: surface it (`[INFO]`/`[WARN]`) as "PDD declared no <surface>; journey set therefore can't exercise <category>." Do not silently waive the category — the deployability_fitness dimension below grades whether that omission would block a shippable app. |
+   | **Coverage completeness** | 12% | Within the archetype, are the journey set's edge cases comprehensive enough that `app-ux-eval` can grade real failure modes? **Anchors:** ≥2 distinct error-recovery edge cases per journey covering data-quality, eligibility, connectivity, and submission-confirmation paths = **9.0**; covers most failure modes but ≥1 obvious gap = **7.0**; happy paths only with thin edge cases = **5.0**; no recovery edge cases at all = **3.0**. If the PDD's declared surfaces are too thin to support a given failure-mode category, record that thinness as a finding rather than waiving it — the journey set is only as deployable as its weakest gap, and deployability_fitness will grade the gap on its own anchor. |
+   | **Happy-path narrative voice** | 13% | Each Happy path narrative uses **user-outcome language** ("FLW confirms household by name and phone, completes screening, photographs the MTN card, and submits") not **field/form mechanics** ("tap next, fill household_id, click submit button"). **Anchors:** every narrative is user-outcome-grounded with concrete actions = **9.5**; mostly user-outcome with ≥1 mechanics-leaning narrative = **8.0**; mixed; mechanics dominate ≥1 narrative = **6.0**; field/form mechanics throughout = **3.5**; UI-callout descriptions ("the button on screen 3") = **2.0**. |
+   | **Edge-case recoverability** | 13% | Each edge case is phrased as a **UX outcome the FLW experiences** with a clear recovery path, NOT a backend error code. **Anchors:** every edge case names the FLW outcome + the recovery action = **9.5**; mostly UX outcomes but ≥1 backend-error-flavored = **7.5**; mixed; ≥half are error-code-flavored ("returns 409 Conflict") = **5.0**; backend errors throughout = **3.0**. |
    | **Pass-criteria measurability** | 15% | Pass criteria are concrete enough that `app-ux-eval` (LLM-as-Judge over screenshots + transcripts) can grade them. **Anchors:** every criterion has a concrete measurement (time bound, error visibility, recoverability with no data loss) = **9.5**; most measurable but ≥1 vague ("works correctly") = **7.5**; multiple vague criteria = **5.0**; criteria are aspirational/un-gradable = **3.0**. |
+   | **Deployability fitness** (out-of-chain) | 25% | **Anchor is OUTSIDE the AI authoring chain** — not the PDD. The question: *would a CommCare field expert ship an app built from this journey set into real data collection?* A deployable instrument demands things the journeys must drive even when the PDD never mentioned them. Check whether the journeys demand: (a) **input validation** — required-field enforcement, type/range constraints, implausible-value rejection (a date-of-birth in the future, a negative count); (b) **GPS accuracy-gating** — where the intervention is location-bound, journeys must reject low-accuracy fixes, not just "capture location"; (c) **case write-back on follow-up** — multi-visit / longitudinal archetypes must update the existing case, not silently create duplicates; (d) **data-quality enforcement** — photo legibility, duplicate-household detection, consistency checks across fields. **This dimension is EXEMPT from any deferral carve-out:** a PDD silence on validation/GPS/write-back is exactly the gap to surface, not a reason to skip the check. **Anchors:** journeys demand all relevant deployability behaviors a field expert would require, with concrete recovery paths = **9.0–10**; demands most but ≥1 material gap (e.g. captures GPS but never gates on accuracy) = **6.0–7.0**; happy-path-only journeys that move data through screens but demand no validation, no write-back, no quality enforcement = **≤3.0**; thin happy path with the PDD silent and the journeys inheriting that silence wholesale = **≤3.0**. **Hard gate:** if the journey set describes only a thin happy path with none of (a)–(d), score ≤3 and the suite verdict is `fail` regardless of the other six dimensions. A faithful build of a thin skeleton is undeployable — that is the failure this axis exists to catch. |
 
    **Deduction rules:**
    - Any single dimension ≤3 → suite verdict `fail`.
-   - **Inflation guard:** if every dimension scores ≥9, this is the rare ideal — no cap. If overall ≤6 with 0 dimension flagged ≤3, that's a calibration signal that the rubric isn't discriminating; surface `[INFO]`.
+   - **Deployability hard gate:** `deployability_fitness ≤3` → suite verdict `fail`, even if every fidelity dimension scores ≥9. This is the out-of-chain teeth: a faithful-but-thin journey set must not pass. Surface a `BLOCKER`.
+   - **Inflation guard:** a high weighted mean driven entirely by the six fidelity dimensions while `deployability_fitness` is the lowest score is the canonical ITN failure shape — surface a `WARN` noting "fidelity-high / fitness-low; verify the journey set is deployable, not merely faithful to a thin PDD." If overall ≤6 with 0 dimension flagged ≤3, that's a calibration signal that the rubric isn't discriminating; surface `[INFO]`.
    - Pre-cap and post-cap reporting per the standard contract.
 
 ## Verdict YAML
@@ -78,12 +83,13 @@ This skill ships **provisional** until calibrated against ground truth. Initial 
    verdict: pass | warn | fail | incomplete
 
    dimensions:
-     persona_specificity:           { weight: 0.15 }
-     archetype_alignment:           { weight: 0.15 }
-     coverage_completeness:         { weight: 0.15 }
-     happy_path_narrative_voice:    { weight: 0.20 }
-     edge_case_recoverability:      { weight: 0.20 }
+     persona_specificity:           { weight: 0.12 }
+     archetype_alignment:           { weight: 0.10 }
+     coverage_completeness:         { weight: 0.12 }
+     happy_path_narrative_voice:    { weight: 0.13 }
+     edge_case_recoverability:      { weight: 0.13 }
      pass_criteria_measurability:   { weight: 0.15 }
+     deployability_fitness:         { weight: 0.25 }   # out-of-chain; hard-gate ≤3 → fail
 
    auto_surfaced:
      - severity: BLOCKER | WARN | INFO
@@ -117,3 +123,4 @@ When `--dry-run`: read inputs and write verdict normally (verdict is an internal
 |------|--------|--------|
 | 2026-05-08 | Initial skill. Phase 1 PR #2 of the QA/Eval split migration (greenfield — pdd-to-app-journeys had neither QA nor eval before this PR). 6 quality dimensions; gates on pdd-to-app-journeys-qa. Provisional calibration. | ACE team (0.13.89) |
 | 2026-05-08 | Companion `pdd-to-app-journeys-qa` removed (downstream consumers are LLM-driven; structural QA gates nothing real — see `skills/_qa-decisions.md`). Eval no longer reads a QA verdict; halts itself on missing/empty producer artifact. | ACE team |
+| 2026-05-29 | Added out-of-chain `deployability_fitness` dimension (25%, hard-gate ≤3 → fail) graded against a "would a CommCare expert ship this?" benchmark, exempt from deferral carve-outs. Removed the PDD-deferral exemptions from persona/archetype/coverage dimensions — PDD thinness is now a finding, not a free pass. Reweighted fidelity dims (persona 15→12, archetype 15→10, coverage 15→12, happy-path 20→13, edge-case 20→13; pass-criteria held at 15). Implements `skills/_eval-template.md § The out-of-chain fitness requirement`; closes the ITN post-mortem inflation gap per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
