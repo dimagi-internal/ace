@@ -112,7 +112,7 @@ the first 4 strongly-calibrated rubrics.
      - ref: "Raw-data re-derivation"
        score: 8.5
        verdict: pass
-       note: "Re-derived LLO drop-off from raw run data (not per-skill verdicts): counted onboarding roster in 9-execution/llo-onboarding_* (13 LLOs) vs active at close in run_state.yaml phases.execution-management.products (12) = 7.7% drop-off; cycle-grade claimed 8%. Independent number corroborates the PASS claim."
+       note: "Re-derived LLO drop-off from raw run data (not per-skill verdicts): counted onboarding roster in 9-execution-manager/llo-onboarding_* (13 LLOs) vs active at close in run_state.yaml phases.execution-management.products (12) = 7.7% drop-off; cycle-grade claimed 8%. Independent number corroborates the PASS claim."
      - ref: "Cycle PASS claim re-grade"
        score: 8.5
        verdict: pass
