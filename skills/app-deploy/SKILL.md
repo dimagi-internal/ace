@@ -43,20 +43,21 @@ orchestrator from per-skill QA + eval verdicts. -->
 
 2. **Pre-flight check.** Read `ACE_HQ_DOMAIN` (and `ACE_HQ_BASE_URL`,
    default `https://www.commcarehq.org`) from the loaded environment.
-   That's the HQ project space ACE expects Nova to be bound to. Nova
-   reads the actual HQ project space from whichever HQ API key is
-   saved on its settings page (`https://commcare.app/settings`); ACE
-   cannot pass a domain at upload time. If `ACE_HQ_DOMAIN` is unset or
-   empty, default to `connect-ace-prod` (the canonical CRISPR-Connect
-   project space) with an `[INFO]` note in the gate brief — do not
-   pause to ask. Only halt if the env loader returned an explicit
-   non-empty value that looks malformed.
+   That's the HQ project space ACE uploads each app to. If
+   `ACE_HQ_DOMAIN` is unset or empty, default to `connect-ace-prod` (the
+   canonical CRISPR-Connect project space) with an `[INFO]` note in the
+   gate brief — do not pause to ask. Only halt if the env loader
+   returned an explicit non-empty value that looks malformed.
 
-   When invoking `/nova:upload_to_hq`, Nova prints "Confirms target
-   domain with the user before uploading." Watch for that confirmation
-   line — if Nova reports a domain other than `ACE_HQ_DOMAIN`, abort the
-   upload (Nova's settings have the wrong API key bound) and surface the
-   mismatch to the operator with a pointer to update Nova settings.
+   Nova's `/nova:upload_to_hq` takes the target project space as an
+   explicit trailing argument (Nova plugin ≥ the
+   voidcraft-labs/nova-plugin#12 release). ACE always passes
+   `ACE_HQ_DOMAIN` — naming the space IS the upload confirmation, so
+   Nova goes straight to the upload with no interactive prompt and no
+   need to pre-verify Nova's bound domain. There is no longer a
+   "watch the confirmation line / abort on mismatch" step; correctness
+   is enforced at upload time by the `domain_not_authorized` handling in
+   Steps 3–4 below.
 
 2.5. **XML-escape lint.** Before uploading, walk every form on the Learn
    and Deliver Nova apps and verify no field has unescaped XML
@@ -95,10 +96,11 @@ orchestrator from per-skill QA + eval verdicts. -->
    `app-deploy-xml-lint: skipped-nova-unauthed` in `run_state.yaml` and add
    a `[WARN]` to the gate brief.
 
-3. **Upload Learn app.** Run:
+3. **Upload Learn app.** Run (always pass the target project space as
+   the trailing argument):
 
    ```
-   /nova:upload_to_hq <learn_app_id>
+   /nova:upload_to_hq <learn_app_id> <ACE_HQ_DOMAIN>
    ```
 
    Capture from the response:
@@ -108,7 +110,16 @@ orchestrator from per-skill QA + eval verdicts. -->
    - Build status (`success` / `errored` / `pending`)
    - Any warnings
 
-4. **Upload Deliver app.** Same shape — `/nova:upload_to_hq <deliver_app_id>`.
+   **Handle `domain_not_authorized`.** If Nova returns
+   `error_type: domain_not_authorized`, the HQ API key saved in Nova's
+   settings can't reach `<ACE_HQ_DOMAIN>`. Nova's `message` lists every
+   space the key CAN reach — surface that as a `[BLOCKER]` (do not
+   silently upload to a different space) with the reachable-spaces list
+   and a pointer to either fix `ACE_HQ_DOMAIN` or re-mint/re-paste an HQ
+   key that reaches it. Other error types (`hq_not_configured`,
+   `hq_upload_failed`) are also `[BLOCKER]`s — surface Nova's `message`.
+
+4. **Upload Deliver app.** Same shape — `/nova:upload_to_hq <deliver_app_id> <ACE_HQ_DOMAIN>` — including the `domain_not_authorized` handling.
 
 5. **Write the deployment summary** to
    `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md`:
@@ -193,7 +204,8 @@ When `--dry-run` is active:
 - Run the pre-flight (it's read-only) and report the result.
 - Do NOT call `/nova:upload_to_hq` (this writes to a live HQ project
   space).
-- Write the intended Nova invocations and the `nova_app_id` values
+- Write the intended Nova invocations (including the resolved
+  `<ACE_HQ_DOMAIN>` trailing argument) and the `nova_app_id` values
   resolved from the summaries to `comms-log/dry-run-app-deploy.md`.
 - State tracks as `dry-run-success`.
 
@@ -204,3 +216,4 @@ When `--dry-run` is active:
 | 2026-04-17 | Emit gate brief at `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_gate-brief.md` covering build status, Connectify flags, and workaround-path warnings for the Phase 3→4 gate | ACE team (PM scout, internal-admin lens) |
 | 2026-04-27 | Switch from manual HQ-UI upload to `/nova:upload_to_hq` via the Nova plugin. Inputs are now `nova_app_id` values read from the app summaries. New pre-flight check compares Nova's bound HQ project space against `ACE_HQ_DOMAIN`. Gate brief drops the workaround-path WARN and adds a domain-mismatch BLOCKER. | ACE team |
 | 2026-04-29 | Carve out app release into the new `app-release` skill (Step 2.5 of Phase 3). This skill now ends at "draft uploaded" — release is a separate, permission-sensitive step. Reason: Connect's `Sync Deliver Units` only enumerates units from released builds, so unreleased apps silently break Phase 4's payment-unit config. (0.10.1) | ACE team |
+| 2026-05-29 | Pass the target project space explicitly: `/nova:upload_to_hq <app_id> <ACE_HQ_DOMAIN>` (Nova plugin voidcraft-labs/nova-plugin#12). Naming the space skips Nova's interactive confirmation, so hands-off runs go straight to upload. Pre-flight no longer watches the confirmation line; the domain-mismatch BLOCKER is now driven by Nova's `domain_not_authorized` error at upload time (which enumerates the reachable spaces). | ACE team |
