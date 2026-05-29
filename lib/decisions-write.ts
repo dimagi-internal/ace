@@ -18,6 +18,7 @@
 import yaml from "yaml";
 
 import {
+  DECISIONS_SCHEMA_VERSION,
   DecisionRowStrictSchema,
   DecisionsLogSchema,
   type DecisionRow,
@@ -83,7 +84,7 @@ export interface ComposeArgs {
  *   idempotent.
  * - When `existingYamlText` is empty / null, a fresh log header is seeded
  *   from `opportunity` + `run_id` + `now()`.
- * - When `existingYamlText` is present, it MUST parse as a v3 log and its
+ * - When `existingYamlText` is present, it MUST parse as a v3/v4 log and its
  *   `opportunity` / `run_id` MUST match the caller. Any mismatch is a
  *   structural error — silently overwriting another opp's log would be a
  *   data-loss bug.
@@ -164,7 +165,7 @@ function loadOrSeedLog(args: LoadArgs): DecisionsLog {
   const { existingYamlText, opportunity, run_id, generated_at } = args;
   if (!existingYamlText || !existingYamlText.trim()) {
     return {
-      schema_version: 3,
+      schema_version: DECISIONS_SCHEMA_VERSION,
       opportunity,
       run_id,
       generated_at,
@@ -184,7 +185,7 @@ function loadOrSeedLog(args: LoadArgs): DecisionsLog {
   if (!result.success) {
     throw new DecisionsWriteError(
       "MALFORMED_LOG",
-      `existing decisions.yaml does not match DecisionsLogSchema v3: ${formatIssues(result.error.issues)}`,
+      `existing decisions.yaml does not match DecisionsLogSchema (v3/v4): ${formatIssues(result.error.issues)}`,
     );
   }
   const log = result.data;

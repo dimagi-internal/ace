@@ -177,16 +177,30 @@ describe("DecisionsLogSchema", () => {
     expect(() => DecisionsLogSchema.parse(log)).not.toThrow();
   });
 
-  it("rejects schema_version other than 3", () => {
+  it("accepts schema_version 4 (current)", () => {
     const log = {
-      schema_version: 1,
+      schema_version: 4,
       opportunity: "turmeric",
       run_id: "20260507-1733",
       generated_at: "2026-05-07T17:33:00Z",
       decisions: [],
     };
-    expect(() => DecisionsLogSchema.parse(log)).toThrow();
+    expect(() => DecisionsLogSchema.parse(log)).not.toThrow();
   });
+
+  it.each([[1], [2], [5]])(
+    "rejects unsupported schema_version %s (only 3 and 4 are read)",
+    (version) => {
+      const log = {
+        schema_version: version,
+        opportunity: "turmeric",
+        run_id: "20260507-1733",
+        generated_at: "2026-05-07T17:33:00Z",
+        decisions: [],
+      };
+      expect(() => DecisionsLogSchema.parse(log)).toThrow();
+    },
+  );
 
   it("rejects duplicate decision IDs", () => {
     const log = {
@@ -448,6 +462,7 @@ describe("DecisionRowStrictSchema (write-boundary invariants)", () => {
       source: "PDD § Intervention Design",
       status: "ai-default",
       reasoning: "Per-FLW per-POC visit, no group facilitation, no stage gates.",
+      evidence_basis: "stated",
     };
     expect(() => DecisionRowStrictSchema.parse(row)).not.toThrow();
   });
@@ -542,6 +557,7 @@ describe("DecisionRowStrictSchema (write-boundary invariants)", () => {
       options: ["a", "b", "c"],
       source: "src",
       status: "overridden",
+      evidence_basis: "stated",
     };
     expect(() => DecisionRowStrictSchema.parse(row)).not.toThrow();
   });
@@ -565,5 +581,111 @@ describe("DecisionRowStrictSchema (write-boundary invariants)", () => {
       status: "ai-default",
     };
     expect(() => DecisionRowSchema.parse(legacyRow)).not.toThrow();
+  });
+});
+
+describe("evidence_basis + conflict_signals (v4)", () => {
+  const base = {
+    id: "visit-cadence-and-form-model",
+    phase: "1-design",
+    skill: "idea-to-pdd",
+    question: "How many visits per household, and is each a distinct form?",
+    "ai-default": "Two distinct forms (V1 + V2)",
+    options: ["One instrument administered twice", "Two distinct forms (V1 + V2)"],
+    source: "ITN Exploration App doc",
+    status: "ai-default" as const,
+  };
+
+  it("permissive read schema: evidence_basis is OPTIONAL (legacy v3 rows lack it)", () => {
+    expect(() => DecisionRowSchema.parse(base)).not.toThrow();
+  });
+
+  it("permissive read schema: accepts a valid evidence_basis enum value", () => {
+    expect(() =>
+      DecisionRowSchema.parse({ ...base, evidence_basis: "inferred" }),
+    ).not.toThrow();
+  });
+
+  it("permissive read schema: rejects an out-of-enum evidence_basis", () => {
+    expect(() =>
+      DecisionRowSchema.parse({ ...base, evidence_basis: "guessed" }),
+    ).toThrow();
+  });
+
+  it("strict write schema: REQUIRES evidence_basis on a new row", () => {
+    expect(() => DecisionRowStrictSchema.parse(base)).toThrow(/evidence_basis/);
+  });
+
+  it.each(["stated", "inferred"] as const)(
+    "strict: accepts evidence_basis=%s with no conflict_signals",
+    (basis) => {
+      expect(() =>
+        DecisionRowStrictSchema.parse({ ...base, evidence_basis: basis }),
+      ).not.toThrow();
+    },
+  );
+
+  it("strict: rejects conflict_signals on a non-conflicting row", () => {
+    expect(() =>
+      DecisionRowStrictSchema.parse({
+        ...base,
+        evidence_basis: "inferred",
+        conflict_signals: ["a", "b"],
+      }),
+    ).toThrow(/conflict_signals.*only valid when.*conflicting/);
+  });
+
+  it("strict: rejects evidence_basis=conflicting with no conflict_signals", () => {
+    expect(() =>
+      DecisionRowStrictSchema.parse({ ...base, evidence_basis: "conflicting" }),
+    ).toThrow(/conflict_signals.*at least 2/);
+  });
+
+  it("strict: rejects evidence_basis=conflicting with only one signal", () => {
+    expect(() =>
+      DecisionRowStrictSchema.parse({
+        ...base,
+        evidence_basis: "conflicting",
+        conflict_signals: ["only one reading"],
+      }),
+    ).toThrow(/conflict_signals.*at least 2/);
+  });
+
+  it("strict: accepts a well-formed conflicting row (the ITN visit-cadence case)", () => {
+    const row = {
+      ...base,
+      evidence_basis: "conflicting" as const,
+      conflict_signals: [
+        "Exploration App § Visit structure: describes ONE instrument (Sections 1-6), no distinct Visit-2 content",
+        "Exploration App § Open-Q4 + Photos: households are 'visited twice' / 'across both visits'",
+      ],
+      reasoning:
+        "Source confirms a two-visit cadence but never specifies distinct Visit-2 content; picked two forms to model retention, flagging Visit-2 content as inferred.",
+    };
+    expect(() => DecisionRowStrictSchema.parse(row)).not.toThrow();
+  });
+
+  it("a conflicting row round-trips through serialize → parse with no data loss", () => {
+    const log = {
+      schema_version: 4 as const,
+      opportunity: "malaria-itn-app",
+      run_id: "20260528-1607",
+      generated_at: "2026-05-28T22:30:00Z",
+      decisions: [
+        {
+          ...base,
+          evidence_basis: "conflicting" as const,
+          conflict_signals: [
+            "Exploration App § Visit structure: one instrument",
+            "Exploration App § Open-Q4: visited twice",
+          ],
+        },
+      ],
+    };
+    const yaml = serializeDecisionsLog(log);
+    const parsed = parseDecisionsYaml(yaml);
+    expect(parsed).toEqual(log);
+    expect(parsed.decisions[0]!.evidence_basis).toBe("conflicting");
+    expect(parsed.decisions[0]!.conflict_signals).toHaveLength(2);
   });
 });
