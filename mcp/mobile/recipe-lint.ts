@@ -17,10 +17,15 @@
 // translate Maestro's parser error back into "you wrote inputText
 // wrong."
 
+import { parseAllDocuments, isMap, isSeq, type Node } from 'yaml';
+
 /** A single violation surfaced by the linter. */
 export interface LintViolation {
   /** Stable rule name — telemetry and SKILL.md reference it. */
-  rule: 'inputText-scalar-with-sibling-option' | 'unknown-property-textRegex';
+  rule:
+    | 'inputText-scalar-with-sibling-option'
+    | 'unknown-property-textRegex'
+    | 'runFlow-guard-scope-mismatch';
   /** 1-based line number of the offending list-item start. */
   line: number;
   /** Human-readable detail. Stable enough to grep for. */
@@ -135,5 +140,138 @@ export function lintRecipeText(yaml: string): LintResult {
     }
   }
 
+  // Rule: runFlow-guard-scope-mismatch.
+  //
+  // Pattern: a `runFlow` whose `when:` guard matches on a bare
+  // element (`visible: { id: <x> }`) with NO scope qualifier
+  // (`below:` / `above:` / `containsChild:` / `index:`), but whose
+  // BODY contains a `scrollUntilVisible` (or `tapOn`) whose element
+  // IS scoped (`below:` / `above:` ...) AND is NOT marked
+  // `optional: true`.
+  //
+  // The guard decides whether to enter the block; if it matches on
+  // ANY rendered instance of `<x>` (e.g. a stale prior-run tile's
+  // button) while the scoped body acts on a DIFFERENT instance (this
+  // run's target card, which may not be present in the same section),
+  // the non-optional scoped step hard-fails inside an entered block —
+  // aborting the whole flow instead of falling through to a sibling
+  // branch. The guard scope and the body scope disagree.
+  //
+  // The fix is one of:
+  //   (a) scope the `when:` guard to the same anchor as the body
+  //       (`below: text: ${...}` etc.), so the guard only fires for
+  //       the target instance; OR
+  //   (b) mark the scoped body step `optional: true`, so a
+  //       missing-target inside an intentionally-broad guard no-ops
+  //       and control falls through.
+  //
+  // Bug class root-caused live on connect-claim-opp.yaml
+  // (malaria-itn-app run 20260528-1607 Phase 6): a stale "Bednet
+  // Spot-Check" Resume tile higher in the list matched the unscoped
+  // `when: visible: { id: btn_resume }` guard, the block entered, and
+  // the non-optional `scrollUntilVisible btn_resume below: text:
+  // ${OPP_NAME}` hard-failed because this run's target was a New
+  // Opportunity (not in the In-Progress section). Lint rule added so
+  // the unscoped-guard / scoped-body class is structurally impossible
+  // to reintroduce in any palette or generated recipe.
+  for (const v of findGuardScopeMismatches(yaml)) {
+    violations.push(v);
+  }
+
   return { ok: violations.length === 0, violations };
+}
+
+/** Property keys that scope a matcher to a SPECIFIC node among several
+ * sharing an id/text (vs. matching any rendered instance). */
+const SCOPE_KEYS = ['below', 'above', 'leftOf', 'rightOf', 'containsChild', 'childOf', 'index'];
+
+/** A matcher node is "scoped" if it carries any SCOPE_KEY. */
+function matcherIsScoped(node: unknown): boolean {
+  if (!isMap(node)) return false;
+  return SCOPE_KEYS.some((k) => node.has(k));
+}
+
+/** A matcher node is "bare" (unscoped) if it has a primary anchor
+ * (id/text) but no SCOPE_KEY. */
+function matcherIsBare(node: unknown): boolean {
+  if (!isMap(node)) return false;
+  const hasAnchor = node.has('id') || node.has('text');
+  return hasAnchor && !SCOPE_KEYS.some((k) => node.has(k));
+}
+
+/** Walk every `runFlow` in the recipe and flag the
+ * unscoped-guard-with-scoped-non-optional-body antipattern. Returns one
+ * violation per offending runFlow (reported at the runFlow's line). */
+function findGuardScopeMismatches(yaml: string): LintViolation[] {
+  const out: LintViolation[] = [];
+  let docs: ReturnType<typeof parseAllDocuments>;
+  try {
+    docs = parseAllDocuments(yaml);
+  } catch {
+    // Unparseable YAML is caught by other rules / the parser gate;
+    // this structural rule simply abstains.
+    return out;
+  }
+
+  // Single generic recursion: at every map node, if it carries a
+  // `runFlow`, check that runFlow for the antipattern; then recurse
+  // into every child value (which reaches nested command lists +
+  // nested runFlows exactly once).
+  const visit = (node: Node | null): void => {
+    if (node == null) return;
+    if (isSeq(node)) {
+      for (const item of node.items) visit(item as Node);
+      return;
+    }
+    if (!isMap(node)) return;
+
+    const runFlow = node.get('runFlow', true);
+    if (isMap(runFlow)) {
+      checkRunFlow(node, runFlow);
+    }
+    // Recurse into all map values to reach nested sequences / runFlows.
+    for (const pair of node.items) {
+      visit(pair.value as Node);
+    }
+  };
+
+  const checkRunFlow = (host: Node, runFlow: Node): void => {
+    if (!isMap(runFlow)) return;
+    const when = runFlow.get('when', true);
+    const guardMatcher = isMap(when) ? when.get('visible', true) : null;
+    const commands = runFlow.get('commands', true);
+    if (!guardMatcher || !matcherIsBare(guardMatcher) || !isSeq(commands)) return;
+
+    for (const cmd of commands.items) {
+      if (!isMap(cmd)) continue;
+      for (const verb of ['scrollUntilVisible', 'tapOn'] as const) {
+        const step = cmd.get(verb, true);
+        if (!isMap(step)) continue;
+        const isOptional = step.get('optional') === true;
+        // scrollUntilVisible wraps its matcher under `element:`;
+        // tapOn carries the matcher inline.
+        const matcher = step.has('element') ? step.get('element', true) : step;
+        if (matcherIsScoped(matcher) && !isOptional) {
+          const rangeStart = (host.range && host.range[0]) ?? 0;
+          const line = yaml.slice(0, rangeStart).split('\n').length;
+          const scopeKeys = SCOPE_KEYS.filter((k) => isMap(matcher) && matcher.has(k)).join('/');
+          out.push({
+            rule: 'runFlow-guard-scope-mismatch',
+            line,
+            detail:
+              `runFlow at line ${line} has an UNSCOPED \`when: visible:\` guard (matches any rendered instance of the anchor) but its body's \`${verb}\` is SCOPED (${scopeKeys}) and not \`optional: true\` — if the guard matches a stale/sibling instance, the scoped step hard-fails inside the entered block and aborts the flow`,
+            remediation:
+              `either scope the \`when:\` guard to the same anchor as the body (e.g. add \`below: { text: \${OPP_NAME} }\`), OR mark the scoped \`${verb}\` step \`optional: true\` so a missing target no-ops and control falls through to a sibling branch`,
+          });
+          // One violation per runFlow is enough.
+          return;
+        }
+      }
+    }
+  };
+
+  for (const doc of docs) {
+    if (doc.contents) visit(doc.contents as Node);
+  }
+  return out;
 }
