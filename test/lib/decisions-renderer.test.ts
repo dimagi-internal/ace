@@ -127,6 +127,61 @@ describe("renderDecisionsLog", () => {
     expect(h2).toHaveLength(expected);
   });
 
+  it("emits an Evidence basis: line when evidence_basis is present", () => {
+    const log: DecisionsLog = {
+      ...MINIMAL_LOG,
+      decisions: [{ ...MINIMAL_LOG.decisions[0]!, evidence_basis: "stated" }],
+    };
+    const requests = renderDecisionsLog(log);
+    const basis = requests.find(
+      (r: any) =>
+        "insertText" in r && r.insertText?.text?.includes("Evidence basis: stated"),
+    );
+    expect(basis).toBeDefined();
+  });
+
+  it("emits NO Evidence basis: line for a legacy row without evidence_basis", () => {
+    const requests = renderDecisionsLog(MINIMAL_LOG);
+    const basis = requests.find(
+      (r: any) =>
+        "insertText" in r && r.insertText?.text?.includes("Evidence basis:"),
+    );
+    expect(basis).toBeUndefined();
+  });
+
+  it("surfaces conflicting source signals as a labelled bullet list", () => {
+    const log: DecisionsLog = {
+      ...MINIMAL_LOG,
+      decisions: [
+        {
+          ...MINIMAL_LOG.decisions[0]!,
+          id: "visit-cadence-and-form-model",
+          evidence_basis: "conflicting",
+          conflict_signals: [
+            "Exploration App § Visit structure: one instrument",
+            "Exploration App § Open-Q4: visited twice",
+          ],
+        },
+      ],
+    };
+    const requests = renderDecisionsLog(log);
+    const label = requests.find(
+      (r: any) =>
+        "insertText" in r &&
+        r.insertText?.text?.includes("Conflicting source signals:"),
+    );
+    expect(label).toBeDefined();
+    const signal = requests.find(
+      (r: any) =>
+        "insertText" in r &&
+        r.insertText?.text?.includes("Open-Q4: visited twice"),
+    );
+    expect(signal).toBeDefined();
+    // two option bullets + two conflict-signal bullets → 2 bullet-list requests
+    const bulletLists = requests.filter((r: any) => "createParagraphBullets" in r);
+    expect(bulletLists).toHaveLength(2);
+  });
+
   it("returns just the title block for an empty decisions array", () => {
     const empty: DecisionsLog = { ...MINIMAL_LOG, decisions: [] };
     const requests = renderDecisionsLog(empty);
