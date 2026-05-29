@@ -32,6 +32,7 @@ calibration methodology.
 |---|---|---|
 | Phase 1 source | `inputs-manifest.yaml` + each `file_id` in it | source idea pack (the full pack is what the PDD is graded against) |
 | Phase 1 producer | `1-design/idea-to-pdd.md` | the PDD under judgment |
+| Phase 1 producer | `decisions.yaml` (per-run decisions log) | `source_conflict_honesty` dimension — checks whether genuine source conflicts were tagged `evidence_basis: conflicting` with concrete `conflict_signals`, or silently resolved |
 | Phase 1 producer (optional) | `1-design/idea-to-pdd_gate-brief.md` | gate brief if present |
 
 ## Products
@@ -61,6 +62,9 @@ filename rule.
        `file_id` it lists (the orchestrator's frozen evidence-pack
        pointer-set, captured at run start)
    - PDD (the artifact under judgment): `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
+   - Decisions log: `ACE/<opp-name>/runs/<run-id>/decisions.yaml` (the
+     per-run decisions log `idea-to-pdd` wrote; used by the
+     `source_conflict_honesty` dimension).
    - Optionally the gate brief if present:
      `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md`.
 
@@ -94,14 +98,15 @@ filename rule.
 4. **Grade across 9 dimensions.** Each dimension is 0–10. Overall
    score is the weighted mean.
 
-   Per the QA/Eval split principle (PR #146), this rubric is **quality-only**. Structural correctness (sections present, weights sum, archetype valid in enum, etc.) is now checked by `idea-to-pdd-qa` and gates this eval — if QA failed irrecoverably, this skill emits `verdict: incomplete` without grading. Quality dimensions: 4 doc/fidelity (40% weight) + 5 program viability (60% weight).
+   Per the QA/Eval split principle (PR #146), this rubric is **quality-only**. Structural correctness (sections present, weights sum, archetype valid in enum, etc.) is now checked by `idea-to-pdd-qa` and gates this eval — if QA failed irrecoverably, this skill emits `verdict: incomplete` without grading. Quality dimensions: 5 doc/fidelity (40% weight) + 4 program viability (60% weight).
 
    | Dimension | Weight | Criteria |
    |---|---|---|
    | **Reviewer-comment fidelity** | 10% | **Two branches by source type.** If `clean_source = false` (the source pack contains reviewer comments): every reviewer comment must have a concrete disposition in the PDD (addressed via §X / scoped out / out-of-scope-for-this-opp). **Scoring anchors (tightened 0.9.4):** all comments addressed with concrete section citation = **9.5**; addressed plus one comment that's "addressed via § X" where § X is mentioned but light = **9.0**; one comment missing disposition = **7.5**; ≥2 missing = **5.0**; one false-disposition claim ("addressed via § X" but X doesn't exist) = **4.0** (3-point deduction floor); ≥2 false claims = **fail (≤3)**. (QA verifies the table EXISTS with rows when reviewer comments are referenced; this dimension grades whether each disposition is *concrete*, not whether the table is populated.) ── **Clean-source branch (added 0.10.9, when `clean_source = true`):** the dimension grades **deferred-decision discipline** instead. Anchors: every deferred decision is concrete (named question, named owner phase, named resolution mechanism) = **9.5**; section present, decisions concrete but owner phase implicit = **8.5**; section present but decisions vague ("TBD per LLO" with no question) = **7.0**; section absent AND PDD silently spec'd things that should have been deferred to LLO discovery = **5.0**; section claims to defer something that should have been Phase-1-speccable = **4.0**. |
    | **Archetype coherence** | 10% | The spec must follow the declared archetype's pattern *in spirit*: `atomic-visit` shouldn't introduce inter-visit stages or multi-visit case lifecycles; `focus-group` shouldn't have a single-vendor-style Deliver form; `multi-stage` should have a Stage Gate section between stages. Pattern violations are 2-point deductions per violation. (QA verifies the archetype is *declared and in the valid enum*; this dimension grades whether the structure *matches* the declared archetype.) |
    | **Numbers consistent** | 10% | Cross-section numerical agreement (semantic — the *meaning* of the numbers, not just regex same-value-twice). **Severity-tiered deductions:** load-bearing inconsistencies that change downstream behavior (LLO recruiting filter, FLW certification gates, payment thresholds) are **2-point deductions** per occurrence. Doc-level inconsistencies (different number presentations of the same value, ordering differences) are **0.5-point deductions**. Default tier is 1.0 (mid). |
-   | **Feasibility of headline metrics** | 10% | Each Primary success metric must be measurable today, not aspirational. Specifically: the PDD's Layer B verification claims must reference concrete checks (file-format validations, deterministic field rules), not future capabilities (e.g. "AI-assisted photo content check" without naming the model, threshold, or expected pass rate). 1.5-point deduction per metric that depends on unspeccable Layer B. |
+   | **Feasibility of headline metrics** | 8% | Each Primary success metric must be measurable today, not aspirational. Specifically: the PDD's Layer B verification claims must reference concrete checks (file-format validations, deterministic field rules), not future capabilities (e.g. "AI-assisted photo content check" without naming the model, threshold, or expected pass rate). 1.5-point deduction per metric that depends on unspeccable Layer B. |
+   | **Source-conflict honesty** | 8% | The independent grader's highest-value check on Phase-1 *authoring integrity*: did the run honestly flag where the source material was ambiguous or self-contradictory, rather than silently resolving it? **Independently scan the source pack** for material disagreements — two inputs, or two parts of one input, that imply different load-bearing answers (e.g. the ITN source describing **one** visit instrument while separately stating households are **"visited twice"**). For each genuine conflict, the run's `decisions.yaml` must carry a row with `evidence_basis: conflicting` and ≥ 2 concrete `conflict_signals` naming the competing readings — OR the PDD body must explicitly flag the conflict and its resolution. **Anchors:** every material source conflict flagged (conflicting row with concrete signals, or explicit PDD callout) = **9.5**; conflicts flagged but signals thin / one-sided / missing a citation = **8.0**; a default that clearly extrapolates beyond the source is tagged `stated` rather than `inferred` (over-claims grounding) = **6.0**; **one** genuine source conflict silently resolved — no `conflicting` row, no PDD callout, presented as a confident default (the ITN visit-cadence failure mode) = **4.0**; ≥ 2 silent conflict resolutions = **fail (≤ 3)**. **N/A branch:** if the source pack contains no material conflicts, score **9.0** (neutral — no penalty, no inflation) and emit the INFO below. (Legacy pre-v4 `decisions.yaml` without `evidence_basis` fields: grade on the PDD-callout branch only, and emit an INFO that the decisions log predates the evidence-basis contract.) |
    | **Demand reality** | 22% | (Increased from 20% in 0.13.88 after redistributing the removed `structural_completeness` weight to viability.) Is there a NAMED downstream consumer of the PDD's output, with a documented commitment to act on it? **Anchors:** named entity (regulator, lab, partner org) WITH explicit pre-committed action ("output X triggers test/policy step Y by entity Z by date D") = **9.5**; named entity WITH implicit/scoped commitment = **8.0**; passive references to "analysts" / "downstream consumers" / "lab testing" without a named entity = **6.0**; no named consumer; data collection in search of a buyer = **4.0**; data collection with explicit "future use TBD" = **2.0**. A PDD can be structurally complete and internally consistent while producing an orphan dataset; this dimension catches that. |
    | **Resource realism** | 17% | (Increased from 15% in 0.13.88.) Does the budget cover the implied labor + overhead at recruitment-realistic rates in the named geography? Walk through: budget ÷ visits = per-visit gross; subtract LLO management overhead (typically 25–40%), analyst review costs, AI inference costs, FLW transport/airtime; arrive at per-FLW daily rate. Compare to local market floor for the named region. **Anchors:** per-FLW daily rate clears local market floor with ≥30% buffer = **9.0**; clears the floor with little buffer = **7.0**; below local market floor — LLO must subsidize silently or FLWs churn = **5.0**; budget doesn't cover named work even at minimum rates = **3.0**; budget appears intentionally fictional / placeholder = **1.0**. |
    | **Mission alignment** | 12% | (Increased from 10% in 0.13.88.) Does each Primary metric measure the program's stated goal, or an upstream proxy? **Anchors:** every Primary metric directly measures the program's stated outcome = **9.0**; Primary metrics measure proximate proxies but the inferential chain is documented = **7.0**; ≥1 Primary metric measures something the program *does* (process metric: "form submitted, photo present") rather than what the program is trying to *learn* (outcome metric: "adulteration detected") = **5.0**; ≥1 Primary metric is structurally disconnected from the stated mission = **3.0**. The chain "Primary metric passes → mission outcome achieved" must hold without unstated steps. |
@@ -134,11 +139,13 @@ filename rule.
    ```yaml
    dimensions:
      # Document quality + fidelity (40%) — quality-only after 0.13.88;
-     # structural completeness moved to idea-to-pdd-qa
-     reviewer_comment_fidelity:    { weight: 0.10 }
-     archetype_coherence:          { weight: 0.10 }
-     numbers_consistent:           { weight: 0.10 }
-     feasibility_headline_metrics: { weight: 0.10 }
+     # structural completeness moved to idea-to-pdd-qa. 5 dims × 0.08 = 0.40
+     # after source_conflict_honesty was added (v4 evidence-basis contract).
+     reviewer_comment_fidelity:    { weight: 0.08 }
+     archetype_coherence:          { weight: 0.08 }
+     numbers_consistent:           { weight: 0.08 }
+     feasibility_headline_metrics: { weight: 0.08 }
+     source_conflict_honesty:      { weight: 0.08 }
      # Program viability (60%, redistribution of removed structural weight)
      demand_reality:               { weight: 0.22 }
      resource_realism:             { weight: 0.17 }
@@ -153,6 +160,16 @@ filename rule.
      disposition or with a false disposition claim (only when
      `clean_source = false`).
    - `[WARN]` for each cross-section numerical inconsistency.
+   - `[WARN]` for each material source conflict the run resolved
+     silently — no `evidence_basis: conflicting` row in `decisions.yaml`
+     and no explicit PDD callout. Name the competing source readings the
+     grader found, so the operator can add the missing `conflicting` row.
+   - `[INFO]` `no material source conflicts found in the source pack;
+     source_conflict_honesty scored 9.0 (N/A neutral)` (when the source
+     pack is internally consistent).
+   - `[INFO]` `decisions.yaml predates the v4 evidence-basis contract;
+     source_conflict_honesty graded on PDD-callout evidence only` (when
+     the log has no `evidence_basis` fields).
    - `[INFO]` for each reviewer comment scoped out without rationale
      (PDD says "out of scope" but the idea reviewer flagged it as
      critical).
@@ -198,6 +215,7 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-05-29 | **Added `source_conflict_honesty` dimension (8%) for the v4 evidence-basis contract.** The independent grader now checks Phase-1 authoring integrity: it independently scans the source pack for material disagreements and verifies the run's `decisions.yaml` flagged each via `evidence_basis: conflicting` + ≥ 2 `conflict_signals` (or an explicit PDD callout) rather than silently resolving it. Motivated by the ITN run (`malaria-itn-app/20260528-1607`), where the source described one visit instrument but separately said households are "visited twice" — ACE silently built two distinct forms and the eval still scored 9.6 because no dimension graded conflict honesty. Weight carved from the doc/fidelity bucket: the four existing doc/fidelity dims drop 0.10 → 0.08 each; new dim 0.08; doc/fidelity stays 40%, viability unchanged at 60%. Adds `decisions.yaml` as an input. N/A-neutral (9.0) when the source pack has no conflicts; PDD-callout-only branch + INFO when the log predates v4. | ACE team |
 | 2026-05-08 | **Rubric cleanup: 11 → 10 dimensions; weight-sum bug fix; viability rebalanced to 50%.** Three fixes in one edit: (1) Removed `stress_test_agreement` (10%) — it was structurally tautological (same model applies same rubric twice; cross-model probe confirmed it doesn't discriminate, scoring 8-10 on every grade with variance from rubric ambiguity not from real artifact differences). (2) Folded `numbers_present` (5%) into `numbers_consistent` (10%) since they cover the same axis and `numbers_present` was already a soft check most PDDs trivially pass. (3) Fixed the 0.13.81 weight-sum bug: weights summed to 0.95 not 1.0. New weights cleanly total 1.00 with viability at 50%: `demand_reality` 15→20%, `resource_realism` 10→15%, `mission_alignment` 5→10%, `fallback_validates_primary` held at 5%, `feasibility_headline_metrics` 5→10%. Verification (independent re-grade on turmeric PDD with the new 11-dim rubric scored 7.55 vs old rubric's 8.65 — confirming the viability axis discriminates). | ACE team (0.13.84) |
 | 2026-05-08 | **QA/Eval split: removed `structural_completeness` (10%) — now lives in new `idea-to-pdd-qa` skill.** First migration of the QA/Eval split principle (PR #146). Structural completeness was a static check (regex over `## Heading` lines for the 11 required sections); moved to `skills/idea-to-pdd-qa/checks.ts` as `checkAllRequiredSectionsPresent`. The eval rubric is now quality-only: 4 doc/fidelity dimensions (40%) + 5 viability dimensions (60%). Removed weight (10%) was redistributed to viability dimensions: `demand_reality` 20→22%, `resource_realism` 15→17%, `mission_alignment` 10→12%, `fallback_validates_primary` 5→9%. QA gates eval — eval is skipped (`verdict: incomplete`) if QA fails irrecoverably. Updated dimension descriptions to clarify which structural concerns moved to QA (annotated inline). | ACE team (0.13.88) |
 | 2026-05-22 | **Retire `idea.md` references.** The optional `idea.md` operator-seed input was removed from `idea-to-pdd`; this rubric loses its dual-input language. `clean_source` detection mechanism is unchanged (still keys off reviewer-comment presence across the source pack); language switched from "idea.md" to "the source pack" throughout. No scoring or weighting change. | ACE team |
