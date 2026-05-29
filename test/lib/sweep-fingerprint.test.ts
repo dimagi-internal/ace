@@ -57,6 +57,57 @@ describe('scoreDriveFolder', () => {
     );
     expect(r.confidence).toBe('low');
   });
+
+  it('returns low for well-known shared project folders (never an orphan)', () => {
+    for (const name of [
+      'documentation',
+      'templates',
+      'videos',
+      'labs-ai-videos',
+      'ai-input-creation-runs',
+      'rooftop-surveys',
+      'human output examples',
+    ]) {
+      const r = scoreDriveFolder(folder({ name }), LIVE_SET, 'ace-root');
+      expect(r.confidence, `${name} should be low`).toBe('low');
+      expect(r.signals.some((s) => s.includes('shared project folder'))).toBe(true);
+    }
+  });
+
+  it('returns low for `_`-prefixed scratch folders (e.g. _sweep)', () => {
+    const r = scoreDriveFolder(folder({ name: '_sweep' }), LIVE_SET, 'ace-root');
+    expect(r.confidence).toBe('low');
+  });
+
+  it('returns low for a kebab-named folder that is NOT opp-shaped (probed)', () => {
+    // A folder whose name looks opp-like but has no opp.yaml/inputs is not an opp.
+    const r = scoreDriveFolder(
+      folder({ name: 'some-working-folder', isOppShaped: false }),
+      LIVE_SET,
+      'ace-root',
+    );
+    expect(r.confidence).toBe('low');
+    expect(r.signals.some((s) => s.includes('not opp-shaped'))).toBe(true);
+  });
+
+  it('returns high for a confirmed opp folder not referenced by any active opp', () => {
+    const r = scoreDriveFolder(
+      folder({ name: 'abandoned-pilot', isOppShaped: true }),
+      LIVE_SET,
+      'ace-root',
+    );
+    expect(r.confidence).toBe('high');
+    expect(r.signals.some((s) => s.includes('opp-shaped'))).toBe(true);
+  });
+
+  it('isOppShaped === false overrides an opp-style name', () => {
+    const r = scoreDriveFolder(
+      folder({ name: 'CRISPR-Test-999', isOppShaped: false }),
+      LIVE_SET,
+      'ace-root',
+    );
+    expect(r.confidence).toBe('low');
+  });
 });
 
 describe('scoreConnectItem', () => {

@@ -15,6 +15,29 @@ const CRISPR_PREFIX = /^CRISPR-/i;
 const KEBAB_OPP_NAME = /^[a-z][a-z0-9-]{2,39}$/;
 const ACE_NAME_PREFIX = /^(ACE|ace)[-_]/;
 
+/**
+ * Well-known shared project-level folders that live directly under `ACE/` and
+ * are NOT per-opp artifacts. The live-set only enumerates opp *slugs*, so
+ * without this safe-list every shared folder whose name happens to be
+ * kebab-case (e.g. `labs-ai-videos`, `rooftop-surveys`) gets flagged as a
+ * high-confidence orphan on every run, forcing the human to reject the same
+ * false positives each time.
+ *
+ * This is belt-and-suspenders: the authoritative test is `isOppShaped`
+ * (does the folder contain `opp.yaml` / `inputs/`?). This list just gives the
+ * scorer instant clarity for the names we already know about, even when the
+ * caller hasn't probed Drive. Add new shared folders here as they appear.
+ */
+const SHARED_PROJECT_FOLDERS = new Set([
+  'documentation',
+  'templates',
+  'videos',
+  'labs-ai-videos',
+  'ai-input-creation-runs',
+  'rooftop-surveys',
+  'human output examples',
+]);
+
 export interface ScoreResult {
   confidence: Confidence;
   signals: string[];
@@ -26,6 +49,13 @@ export interface ScoreResult {
  * (i.e. its name does not match an active opp slug). The scorer defensively
  * downgrades to medium if it sees a name that IS in liveSet.oppSlugs in case
  * the caller passed it through.
+ *
+ * Orphan signal precedence (strongest first):
+ *  1. shared project folder (safe-list / `_`-prefixed)      → low  (never an orphan)
+ *  2. `isOppShaped === false` (probed: no opp.yaml/inputs)  → low  (not an opp at all)
+ *  3. name matches an active opp slug                       → medium
+ *  4. `isOppShaped === true`  (probed: real opp folder)     → high (orphaned opp)
+ *  5. name-shape heuristics (fallback when not probed)      → high / medium
  */
 export function scoreDriveFolder(
   folder: DriveFolderInfo,
@@ -39,11 +69,35 @@ export function scoreDriveFolder(
     return { confidence: 'low', signals };
   }
 
+  // (1) Shared project infrastructure — never a per-opp orphan, regardless of
+  // how opp-like the name looks. `_`-prefixed folders (e.g. `_sweep`) are the
+  // sweep's own scratch space.
+  if (folder.name.startsWith('_') || SHARED_PROJECT_FOLDERS.has(folder.name)) {
+    signals.push('shared project folder, not a per-opp artifact — never an orphan');
+    return { confidence: 'low', signals };
+  }
+
+  // (2) Authoritative structural test: a real orphaned opp folder still
+  // contains opp.yaml / inputs/. If the caller probed Drive and this folder is
+  // NOT opp-shaped, it cannot be an orphaned opp no matter what it's named.
+  if (folder.isOppShaped === false) {
+    signals.push('not opp-shaped (no opp.yaml / inputs/) — shared/non-opp folder, not an orphan');
+    return { confidence: 'low', signals };
+  }
+
   if (liveSet.oppSlugs.includes(folder.name)) {
     signals.push('name matches an active opp slug');
     return { confidence: 'medium', signals };
   }
 
+  // (4) Confirmed opp folder that no active opp references — the clearest orphan.
+  if (folder.isOppShaped === true) {
+    signals.push('opp-shaped (has opp.yaml / inputs/) but not referenced by any active opp');
+    return { confidence: 'high', signals };
+  }
+
+  // (5) Name-shape fallback — only reached when the caller did not probe
+  // (`isOppShaped` undefined). Weaker than the structural test above.
   if (CRISPR_PREFIX.test(folder.name)) {
     signals.push('name has CRISPR- prefix (canonical test opp pattern)');
     return { confidence: 'high', signals };
