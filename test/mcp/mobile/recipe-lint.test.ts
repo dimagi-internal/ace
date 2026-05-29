@@ -181,3 +181,129 @@ describe('lintRecipeText — unknown-property-textRegex', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe('lintRecipeText — runFlow-guard-scope-mismatch', () => {
+  // Bug class root-caused live on connect-claim-opp.yaml (malaria-itn-app
+  // run 20260528-1607 Phase 6): a stale prior-run "Resume" tile higher in
+  // the list matched an UNSCOPED `when: visible: { id: btn_resume }` guard,
+  // the block entered, and the non-optional title-SCOPED
+  // `scrollUntilVisible btn_resume below: text: ${OPP_NAME}` hard-failed
+  // because this run's target was a New Opportunity (not in In-Progress).
+  // The guard scope and the body scope disagreed.
+
+  // This is the EXACT shape the buggy connect-claim-opp.yaml had before
+  // the fix — the rule must fail on it.
+  const buggyClaimOppBlock = [
+    'appId: org.commcare.dalvik',
+    '---',
+    '- runFlow:',
+    '    when:',
+    '      visible:',
+    '        id: "org.commcare.dalvik:id/btn_resume"',
+    '    commands:',
+    '      - scrollUntilVisible:',
+    '          element:',
+    '            id: "org.commcare.dalvik:id/btn_resume"',
+    '            below:',
+    '              text: ${OPP_NAME}',
+    '          direction: DOWN',
+    '          timeout: 10000',
+    '',
+  ].join('\n');
+
+  it('flags an unscoped `when:` guard wrapping a scoped, non-optional scroll body (the original bug)', () => {
+    const { ok, violations } = lintRecipeText(buggyClaimOppBlock);
+    expect(ok).toBe(false);
+    const v = violations.find((x) => x.rule === 'runFlow-guard-scope-mismatch');
+    expect(v).toBeDefined();
+    expect(v!.line).toBeGreaterThan(0);
+    expect(v!.detail).toMatch(/UNSCOPED.*guard.*SCOPED|below/);
+    expect(v!.remediation).toMatch(/optional: true|scope the `when:`/);
+  });
+
+  it('PASSES once the scoped body step is marked `optional: true` (fix A)', () => {
+    const fixed = buggyClaimOppBlock.replace(
+      'timeout: 10000',
+      'timeout: 10000\n          optional: true',
+    );
+    const r = lintRecipeText(fixed);
+    expect(r.ok).toBe(true);
+    expect(r.violations.filter((v) => v.rule === 'runFlow-guard-scope-mismatch')).toHaveLength(0);
+  });
+
+  it('PASSES once the `when:` guard is scoped to the same anchor as the body (fix B)', () => {
+    const fixed = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    when:',
+      '      visible:',
+      '        id: "org.commcare.dalvik:id/btn_resume"',
+      '        below:',
+      '          text: ${OPP_NAME}',
+      '    commands:',
+      '      - scrollUntilVisible:',
+      '          element:',
+      '            id: "org.commcare.dalvik:id/btn_resume"',
+      '            below:',
+      '              text: ${OPP_NAME}',
+      '          direction: DOWN',
+      '          timeout: 10000',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(fixed).ok).toBe(true);
+  });
+
+  it('does NOT flag a runFlow whose body scroll is unscoped (no scope mismatch)', () => {
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    when:',
+      '      visible:',
+      '        id: "org.commcare.dalvik:id/btn_resume"',
+      '    commands:',
+      '      - scrollUntilVisible:',
+      '          element:',
+      '            id: "org.commcare.dalvik:id/btn_resume"',
+      '          direction: DOWN',
+      '          timeout: 10000',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(yaml).ok).toBe(true);
+  });
+
+  it('also flags a scoped, non-optional `tapOn` body under an unscoped guard', () => {
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    when:',
+      '      visible:',
+      '        id: "org.commcare.dalvik:id/btn_resume"',
+      '    commands:',
+      '      - tapOn:',
+      '          id: "org.commcare.dalvik:id/btn_resume"',
+      '          below:',
+      '            text: ${OPP_NAME}',
+      '',
+    ].join('\n');
+    const { ok, violations } = lintRecipeText(yaml);
+    expect(ok).toBe(false);
+    expect(violations.some((v) => v.rule === 'runFlow-guard-scope-mismatch')).toBe(true);
+  });
+
+  it('does NOT flag the live connect-claim-opp.yaml (its pre-branch scrolls are optional, its branch guards are scoped)', () => {
+    const { readFileSync } = require('node:fs');
+    const { fileURLToPath } = require('node:url');
+    const path = fileURLToPath(
+      new URL('../../../mcp/mobile/recipes/static/connect-claim-opp.yaml', import.meta.url),
+    );
+    const yaml = readFileSync(path, 'utf8');
+    const r = lintRecipeText(yaml);
+    expect(
+      r.violations.filter((v) => v.rule === 'runFlow-guard-scope-mismatch'),
+      JSON.stringify(r.violations, null, 2),
+    ).toHaveLength(0);
+  });
+});

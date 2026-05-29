@@ -174,13 +174,45 @@ appId: org.commcare.dalvik
 # branch button below the title is now in the viewport and the
 # downstream Branch A / Branch B guards can resolve correctly.
 #
-# Live reproducer: malaria-itn-fgd run 20260515-1645 Phase 6
-# attempt 11 — 5+ invite tiles, target title scrolled to viewport
-# bottom by the title-scroll above, button clipped below-fold, both
-# `when:` guards skipped, recipe halted. Third PR in the claim-opp
-# series (PR #346 = title scroll; PR #348 = post-start wait; this
-# = post-title button scroll). See
-# `skills/app-screenshot-capture/SKILL.md § Step 4 "OPP_NAME
+# `optional: true` ON EACH IN-BODY SCROLL — load-bearing. The `when:`
+# guard here is intentionally UNSCOPED (`visible: { id: btn_resume }`,
+# no `below: text: ${OPP_NAME}`): that is what lets the block fire
+# while the target's own button is still clipped below the fold and
+# scroll it into view (the below-fold catch-22 this block was added
+# to break — a `below: text: ${OPP_NAME}`-scoped guard would require
+# the target button to ALREADY be visible, defeating the purpose).
+# But an unscoped guard also matches a STALE prior-run tile's button
+# higher in the list (e.g. a leftover Resume tile in "In Progress").
+# When that happens the guard fires but the title-scoped scroll
+# `btn_resume below: text: ${OPP_NAME}` finds nothing in that section
+# (this run's opp is a New Opportunity, not in-progress). WITHOUT
+# `optional: true` that mismatch is a HARD Maestro failure that
+# aborts the claim. WITH it, the scroll no-ops and control falls
+# through to the other branch's block — which correctly scrolls the
+# target's actual button into view. The guard scope and the body
+# scope deliberately differ here; `optional: true` is what makes the
+# differing scope safe instead of fatal.
+#
+# The claim recipe MUST be robust to other opps' tiles being present:
+# cross-run invite-list accumulation is the steady state on any
+# dogfood machine (`/ace:sweep connect` does NOT clear
+# OpportunityAccess; see CLAUDE.md gotchas + project_demo_user_rotation).
+#
+# Live reproducer (unscoped-guard / scoped-body mismatch class):
+# malaria-itn-app run 20260528-1607 Phase 6 — a stale "Bednet
+# Spot-Check (E2E Smoke) — run 20260528-0556" tile sat in In Progress
+# ABOVE this run's unclaimed target; the unscoped `btn_resume` guard
+# matched the stale Resume button, entered the body, and the
+# non-optional title-scoped scroll hard-failed before the
+# btn_view_opportunity block ever got a turn.
+#
+# Original below-fold reproducer (what this block was added for):
+# malaria-itn-fgd run 20260515-1645 Phase 6 attempt 11 — 5+ invite
+# tiles, target title scrolled to viewport bottom by the title-scroll
+# above, button clipped below-fold, both `when:` guards skipped,
+# recipe halted. Third PR in the claim-opp series (PR #346 = title
+# scroll; PR #348 = post-start wait; this = post-title button scroll).
+# See `skills/app-screenshot-capture/SKILL.md § Step 4 "OPP_NAME
 # uniqueness assumption"` for the durable cross-recipe pattern.
 - runFlow:
     when:
@@ -195,6 +227,7 @@ appId: org.commcare.dalvik
           direction: DOWN
           timeout: 10000
           visibilityPercentage: 60
+          optional: true
 - runFlow:
     when:
       visible:
@@ -208,6 +241,7 @@ appId: org.commcare.dalvik
           direction: DOWN
           timeout: 10000
           visibilityPercentage: 60
+          optional: true
 
 # --- BRANCH A: in-progress (btn_resume present) ---
 - runFlow:
