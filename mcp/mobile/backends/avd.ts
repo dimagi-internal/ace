@@ -463,11 +463,16 @@ export class AvdBackend {
     // re-introduce the same warm-state class we're scrubbing.
     // `-no-snapshot-save` keeps the next cold-boot honest by not saving
     // a snapshot of the post-bootstrap state on shutdown.
+    // `-no-audio` disables the emulated audio device entirely — without it
+    // a headless (`-no-window`) cold-boot still opens a host audio output
+    // stream and the boot/notification chimes play through the operator's
+    // speakers. We never assert on audio, so there's nothing to lose.
     const ports = await this.getAllocatedPorts();
     const args = [
       '-avd',
       avdName,
       '-no-window',
+      '-no-audio',
       '-wipe-data',
       '-no-snapshot-load',
       '-no-snapshot-save',
