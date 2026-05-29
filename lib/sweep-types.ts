@@ -29,6 +29,18 @@ export interface DriveFolderInfo {
   createdTime: string;
   /** Parent folder id; for ACE-root sweep this is `ACE_DRIVE_ROOT_FOLDER_ID`. */
   parentId: string;
+  /**
+   * Whether the folder is actually an opp folder — i.e. it contains `opp.yaml`
+   * or an `inputs/` subfolder (the same test `isOppFolder` and `sweep-live-set`
+   * use). Populated by the caller after probing Drive; left `undefined` when the
+   * caller didn't probe (the scorer then falls back to name-shape heuristics).
+   *
+   * This is the authoritative orphan signal: only a folder that IS an opp but is
+   * NOT referenced by any active opp is a real orphan. Shared project folders
+   * (`documentation`, `templates`, `videos`, …) are not opp-shaped and must never
+   * be flagged, no matter how opp-like their names look.
+   */
+  isOppShaped?: boolean;
 }
 
 export interface Orphan {
