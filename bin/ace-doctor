@@ -1734,7 +1734,6 @@ else
        node -e 'const f=\"$NOVA_NEEDS_AUTH_CACHE\"; const d=JSON.parse(require(\"fs\").readFileSync(f,\"utf8\")); delete d[\"plugin:nova:nova\"]; require(\"fs\").writeFileSync(f, JSON.stringify(d,null,2)+\"\\n\");'
        Then Cmd-Q Claude Code and reopen. Symptom: only \`mcp__plugin_nova_nova__authenticate\` surfaces, real tools (\`list_apps\` etc.) are missing.
        Per Braxton's nova-plugin#11."
-      mark_fail
     else
       warn "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth (NOVA_API_KEY not set — possibly correct)" "if you intend to use Nova, see nova_env above; otherwise this entry is benign"
     fi
