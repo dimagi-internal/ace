@@ -162,14 +162,31 @@ fuzzy-match is unreliable and silently misses prefixed atoms. Do NOT
 issue additional `ToolSearch` calls mid-run as you encounter each atom
 — fold any miss into this literal next time you bump the doc.
 
-**Step 3 — Read opp state in ONE parallel message.** Issue together:
+**Step 3 — Resolve real IDs, then read opp state.** The gdrive atoms
+are **ID-only** — `drive_read_file` takes `fileId`, `drive_list_folder`
+takes `folderId`. There is no path-addressed read; `<opp>/opp.yaml` is
+a human label, not a value any atom accepts. So this is two messages,
+not one:
 
-- `drive_read_file` on `<opp>/opp.yaml`
-- `drive_list_folder` on `<opp>/inputs/`
-- `drive_list_folder` on `<opp>/runs/` (so you can pick a fresh run-id; OK if missing)
+1. **Resolve the opp's real folder IDs** in one call:
+   `resolve_opp_path({slug: <opp>})` → `{opp_root_id, inputs_id,
+   runs_id}` (`runs_id` is null on a first-run opp). Use ONLY the IDs
+   it returns from here on.
+2. **Read opp state in ONE parallel message**, keyed on those IDs:
+   - `drive_list_folder` on `opp_root_id` (to find `opp.yaml`'s fileId)
+   - `drive_list_folder` on `inputs_id`
+   - `drive_list_folder` on `runs_id` (so you can pick a fresh run-id;
+     skip if null)
 
-These are independent — sequential single-tool messages waste the
-parallelism the harness already supports.
+   Then `drive_read_file` on `opp.yaml`'s resolved fileId.
+
+**Never invent a Drive ID.** If a read errors or returns empty, that
+is "I have no value yet" — re-issue the call; do NOT fill the gap with
+a plausible-looking ID. A fabricated ID propagates silently into every
+downstream write (`parentFolderId`, `summary_artifact`, …) and the
+whole phase lands in a fictional folder tree. (Root cause of the
+bednet-spot-check 20260529-0651 Phase 3 derail: a guessed run-folder
+id seeded from an over-eager batch — see Step 5.)
 
 **Step 4 — Build the run-level task list in ONE parallel `TaskCreate`
 block.** The workflow is fixed and known up-front; splat all 11 in
@@ -191,12 +208,26 @@ Mark Phase 1 `in_progress`; leave the rest `pending`. Sequential
 `TaskCreate → TaskCreate → ...` over 11 turns burns ~30s of
 unnecessary model-output time at run start.
 
-**Step 5 — Create the run folder + initial state in ONE parallel
-message.** Issue together:
+**Step 5 — Create the run folder FIRST, then batch the file writes.**
+This is two messages, not one — `drive_create_file` requires
+`parentFolderId`, which is the run folder's id, which does not exist
+until `drive_create_folder` returns. Do NOT try to issue the folder
+create and the file writes in a single parallel message: there is no
+valid `parentFolderId` to give the writes, and guessing one is the
+exact footgun that derailed bednet-spot-check 20260529-0651.
 
-- `drive_create_folder` for `<opp>/runs/<run-id>/`
-- `drive_create_file` for `runs/<run-id>/run_state.yaml` (initial — phases all pending)
-- `drive_create_file` for `runs/<run-id>/inputs-manifest.yaml` (frozen file_id list from Step 3)
+1. `drive_create_folder` for `<opp>/runs/<run-id>/`. **Capture the
+   returned `id`** — that is the run folder id every write below (and
+   every downstream phase) uses. Never substitute a guessed value.
+2. **Then**, in ONE parallel message keyed on the returned id:
+   - `drive_create_file` for `run_state.yaml` (initial — phases all pending)
+   - `drive_create_file` for `inputs-manifest.yaml` (frozen file_id list from Step 3)
+   - `drive_create_file` for `README.md` (Step 7b)
+
+The same create-then-use rule applies anywhere you make a folder and
+then write into it (per-phase `<N>-<phase>/` subfolders, recipe
+subfolders): the create and the write that consumes its id cannot
+share a message.
 
 **Step 6 — Dispatch Phase 1.** Single `Agent(idea-to-design)` call with
 the inline-artifact prompt structure (see "Pass artifacts inline at
@@ -691,9 +722,12 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    `render_run_readme` atom with `{runId: "<runId>"}` (omit
    `phaseStatus` — all phases default to `pending` at this point); it
    returns `{markdown}`. Then write the markdown to
-   `<opp>/runs/<runId>/README.md` via `drive_create_file`. Two atoms
-   total, batchable in the same parallel message as the rest of
-   Step 5. The README gets refreshed after every phase completes (the
+   `<opp>/runs/<runId>/README.md` via `drive_create_file` — using the
+   run folder id returned by Step 5's `drive_create_folder`. The
+   `render_run_readme` call (id-free) and the `drive_create_file` write
+   batch into Step 5's second message (the file-writes batch), NOT into
+   the folder-create message. The README gets refreshed after every
+   phase completes (the
    boundary fence calls `render_run_readme` with the current phase
    status map) — see § Per-Phase Folder Lifecycle.
 
