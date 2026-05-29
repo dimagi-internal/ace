@@ -84,14 +84,24 @@ Claude Code parent shell's env.
 
 #### Step 0b: Probe HQ binding
 
-Call Nova's `get_hq_connection` (no args). Branch on the result:
+Call Nova's `get_hq_connection` (no args). Since the
+voidcraft-labs/nova-plugin#12 release it returns
+`{ configured, available_domains: [{ name, displayName }, …] }` — the
+set of project spaces the saved HQ API key can reach (no single bound
+`domain.name` anymore; a key may reach several spaces). Branch on the
+result:
 
-- `{ configured: true, domain.name === <ACE_HQ_DOMAIN> }` → **proceed
-  to Step 1.**
-- `{ configured: true, domain.name !== <ACE_HQ_DOMAIN> }` → halt; Nova
-  is bound to the wrong project space. Tell the operator to visit
-  `https://commcare.app/settings` and update the active HQ API key so
-  it targets `<ACE_HQ_DOMAIN>`, then re-run.
+- `{ configured: true }` **and `<ACE_HQ_DOMAIN>` appears in
+  `available_domains[].name`** → **proceed to Step 1.** The key reaches
+  the target space; Phase 3's uploads name `<ACE_HQ_DOMAIN>` explicitly,
+  so a multi-space key is fine — no need for the key to be scoped to a
+  single space.
+- `{ configured: true }` but `<ACE_HQ_DOMAIN>` is NOT in
+  `available_domains` → halt; the saved HQ API key can't reach the
+  target space. Surface the reachable spaces (`available_domains`) and
+  tell the operator to either fix `ACE_HQ_DOMAIN` or visit
+  `https://commcare.app/settings` and paste an HQ API key that reaches
+  `<ACE_HQ_DOMAIN>`, then re-run.
 - `{ configured: false }` → halt; Nova has no HQ key bound. The
   operator needs to paste an HQ API key (generated under the ACE Gmail
   identity at `<ACE_HQ_BASE_URL>/account/api_keys/`) into Nova's
@@ -99,7 +109,7 @@ Call Nova's `get_hq_connection` (no args). Branch on the result:
   that one authenticates ACE → Nova; this one binds Nova → CommCareHQ.
 
 Do NOT dispatch the architect until `get_hq_connection` returns
-`configured: true` against `<ACE_HQ_DOMAIN>`.
+`configured: true` with `<ACE_HQ_DOMAIN>` among `available_domains`.
 
 #### Subagent inheritance
 

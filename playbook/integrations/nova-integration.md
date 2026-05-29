@@ -174,7 +174,7 @@ Three skills consume Nova directly:
 |-------|---------------|---------|
 | `pdd-to-learn-app` | `/nova:autobuild "<brief>"` | Build the Learn app from a brief composed off the PDD |
 | `pdd-to-deliver-app` | `/nova:autobuild "<brief>"` | Build the Deliver app |
-| `app-deploy` | `/nova:upload_to_hq <app_id>` | Push both apps to the bound HQ project space |
+| `app-deploy` | `/nova:upload_to_hq <app_id> <ACE_HQ_DOMAIN>` | Push both apps to the named HQ project space |
 
 Helpful read-only commands:
 - `/nova:show <app_id>` — blueprint summary; useful for cross-checking
@@ -191,30 +191,40 @@ Inputs Nova **does not** accept:
 - A markdown PDD as-is. ACE composes a focused, archetype-aware brief
   from the PDD's Learn or Deliver spec section; pasting the whole PDD
   is wasteful and dilutes Nova's signal.
-- Per-call HQ domain. `/nova:upload_to_hq` reads the target HQ project
-  space from whichever HQ API key is saved on Nova's settings page
-  (`https://commcare.app/settings`). ACE cannot pick the domain at
-  call time — only verify it. See `## HQ domain coupling` below.
+  (`/nova:upload_to_hq` DOES take a per-call HQ domain as a trailing
+  argument — see `## HQ domain coupling` below.)
 
 ## HQ domain coupling
 
-`/nova:upload_to_hq` always uploads to the project space that owns the
-HQ API key currently saved in Nova's settings. There's no flag to
-override at call time.
+Since the voidcraft-labs/nova-plugin#12 release, `/nova:upload_to_hq`
+takes the **target project space as an explicit trailing argument**:
+`/nova:upload_to_hq <app_id> <domain>`. The underlying tool is
+`upload_app_to_hq({ app_id, domain })`; ACE always passes `domain`.
+Naming the space IS the upload confirmation, so Nova goes straight to
+the upload — no interactive prompt, no `get_hq_connection` round-trip,
+no confirmation line to watch. This is the clean path for hands-off
+automated runs, and it makes a multi-space HQ API key safe (Nova no
+longer guesses which of several reachable spaces to use).
 
 ACE's contract:
 
-1. `.env` declares `ACE_HQ_DOMAIN` (the HQ project space ACE expects
-   Nova to be bound to) and `ACE_HQ_BASE_URL` (defaults to
+1. `.env` declares `ACE_HQ_DOMAIN` (the HQ project space every upload
+   targets) and `ACE_HQ_BASE_URL` (defaults to
    `https://www.commcarehq.org`). The committed template leaves
    `ACE_HQ_DOMAIN` unset — operators set it locally per deployment.
-2. The HQ API key for that domain is generated under the ACE Gmail
-   identity at `<ACE_HQ_BASE_URL>/account/api_keys/` and stored in
-   1Password (operator's vault choice; not pinned by the codebase).
+2. The HQ API key is generated under the ACE Gmail identity at
+   `<ACE_HQ_BASE_URL>/account/api_keys/` and stored in 1Password
+   (operator's vault choice; not pinned by the codebase). The key only
+   needs to *reach* `ACE_HQ_DOMAIN` — it may be scoped to several
+   spaces.
 3. The operator pastes that HQ key into Nova's settings page once.
-4. `app-deploy` pre-flights Nova's confirmation line and aborts with
-   a `[BLOCKER]` in the gate brief if Nova's bound domain differs
-   from `ACE_HQ_DOMAIN`.
+4. Phase 3's `Step 0b` pre-flight calls `get_hq_connection` and halts
+   unless `ACE_HQ_DOMAIN` appears in the returned `available_domains`.
+5. `app-deploy` / `app-release` pass `<ACE_HQ_DOMAIN>` on every
+   `/nova:upload_to_hq` call. If the key can't reach it, Nova returns
+   `error_type: domain_not_authorized` with the list of reachable
+   spaces — `app-deploy` surfaces that as a `[BLOCKER]` rather than
+   uploading to an unintended space.
 
 **Two distinct keys.** Don't conflate them:
 - `NOVA_API_KEY` (`sk-nova-v1-…`) authenticates **ACE → Nova**. Lives

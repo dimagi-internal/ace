@@ -175,7 +175,9 @@ procedure below to rediscover.
            (`three letters`) via `update_form` / `edit_field`. After
            your edits, call `validate_app` to confirm clean.
 
-    4. **Re-upload via `/nova:upload_to_hq <nova_app_id>`.** This
+    4. **Re-upload via `/nova:upload_to_hq <nova_app_id> <ACE_HQ_DOMAIN>`.**
+       Pass the target project space explicitly (same as `app-deploy`,
+       Nova plugin voidcraft-labs/nova-plugin#12). This
        creates a **fresh** HQ app id (CCHQ has no atomic update API).
        Update the in-memory app reference to the new `hq_app_id` AND
        record both ids in
