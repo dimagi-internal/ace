@@ -29,6 +29,20 @@
 #                    text-anchor matcher that uses ${MODULE_NAME}, so
 #                    Maestro walks up from the matched TextView to the
 #                    clickable LinearLayout parent (the row container).
+#   ${FORM_NAME}   — OPTIONAL. The visible label of the FORM row inside
+#                    the module, when it DIFFERS from ${MODULE_NAME}.
+#                    Pass this in a SINGLE learn-tap-module invocation
+#                    (alongside ${MODULE_NAME}) to make the recipe robust
+#                    to BOTH the auto-skip case AND the
+#                    intermediate-form-list-with-distinct-form-name case
+#                    (Branch C below) — the caller no longer has to know,
+#                    at authoring time, whether CommCare will auto-skip.
+#                    When the module's single form shares the module's
+#                    name, ${FORM_NAME} is unnecessary (Branch B handles
+#                    same-name); when omitted, Maestro substitutes the
+#                    empty string and Branch C's body guard never matches,
+#                    so behavior is identical to the pre-FORM_NAME recipe
+#                    (the legacy two-call drill still works unchanged).
 #
 # Naming note: the recipe is called `learn-tap-module` for historical
 # reasons (the original recipe assumed a flat module list). With the
@@ -83,12 +97,35 @@ appId: org.commcare.dalvik
 #      20260515-1645 Phase 6 attempt 12) — see screenshot
 #      ❌-1779218294468-(chunk-0.yaml).png.
 #
-#   Otherwise (drilling from suite-root into a form-LIST whose form
-#   name != module name, neither branch fires): the recipe falls
-#   through with the form-list still visible — caller is expected to
-#   invoke learn-tap-module again with the form's row name. This
-#   preserves the existing two-call drill pattern used by J1-style
-#   palettes.
+#   C. `screen_suite_menu_list` still visible AND `nav_btn_next` NOT
+#      visible AND Branch B's same-name guard did NOT fire (form-name
+#      != module-name) AND a row matching `${FORM_NAME}` is rendered
+#      inside the menu-list body → the intermediate one-row form-list
+#      is showing a FORM whose display name differs from the module
+#      name (good authoring practice — distinct, descriptive per-form
+#      names, as the ITN Learn app uses: module "Visit Purpose &
+#      Ethics" → form "Purpose, Consent & Do-No-Harm"). CommCare does
+#      NOT auto-skip into the form when the single form's name differs
+#      from the module name, so the device sits on the form-list with
+#      the form unopened. Tap the form row by its OWN label
+#      (`${FORM_NAME}`, scoped to the list body), then assert
+#      `nav_btn_next` visible. This is the class-level fix for the
+#      malaria-itn-app/20260528-1607 Phase 6 halt: a SINGLE
+#      learn-tap-module call (MODULE_NAME + FORM_NAME) now opens the
+#      form in BOTH the same-name and the name-mismatch cases, instead
+#      of relying on the caller to emit a separate second drill call.
+#      The `below: id: screen_suite_menu_list` scoping is load-bearing
+#      for the same reason as Branch B: it keeps the tap on the
+#      (tappable) form row in the list body, not the (non-tappable)
+#      toolbar title (which still reads ${MODULE_NAME}).
+#
+#   Otherwise (drilling from suite-root into a form-LIST and NO
+#   ${FORM_NAME} was supplied, so neither B nor C fires): the recipe
+#   falls through with the form-list still visible — caller is
+#   expected to invoke learn-tap-module again with the form's row
+#   name (the legacy two-call drill pattern used by J1-style
+#   palettes). Preferred going forward: pass ${FORM_NAME} in the
+#   single call so Branch C handles the mismatch in one invocation.
 # Outer guard: intermediate form-list still visible (auto-skip
 # suppressed). Inner guard: same-name case specifically — a row
 # matching `${MODULE_NAME}` is rendered inside the menu-list body.
@@ -118,6 +155,34 @@ appId: org.commcare.dalvik
             - takeScreenshot: "learn-tap-module-intermediate-${MODULE_NAME}"
             - tapOn:
                 ${SELECTOR:learn-suite-row-by-name}
+            - waitForAnimationToEnd:
+                timeout: 5000
+            - extendedWaitUntil:
+                visible:
+                  id: "org.commcare.dalvik:id/nav_btn_next"
+                timeout: 10000
+      # Branch C: name-mismatch case. Form-name != module-name, so
+      # Branch B's same-name guard skipped (no ${MODULE_NAME} node in
+      # the list body) and CommCare did NOT auto-skip into the form.
+      # When the caller supplied ${FORM_NAME}, the form row carries
+      # that distinct label inside the menu-list body — tap it to open
+      # the form, then assert nav_btn_next visible so any further halt
+      # is fast and named. When ${FORM_NAME} is empty (legacy callers
+      # that omit it), `text: ""` matches no node and this guard skips,
+      # leaving the recipe's behavior identical to the pre-FORM_NAME
+      # two-call drill. See header comment Branch C for full rationale.
+      - runFlow:
+          when:
+            visible:
+              text: "${FORM_NAME}"
+              below:
+                id: "org.commcare.dalvik:id/screen_suite_menu_list"
+          commands:
+            - takeScreenshot: "learn-tap-module-form-row-${FORM_NAME}"
+            - tapOn:
+                text: "${FORM_NAME}"
+                below:
+                  id: "org.commcare.dalvik:id/screen_suite_menu_list"
             - waitForAnimationToEnd:
                 timeout: 5000
             - extendedWaitUntil:

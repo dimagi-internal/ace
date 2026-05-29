@@ -214,6 +214,55 @@ describe('learn-tap-module.yaml', () => {
     );
   });
 
+  it('opens the form via FORM_NAME when form-name != module-name (Branch C — name-mismatch case)', () => {
+    // Regression guard for the malaria-itn-app/20260528-1607 Phase 6
+    // halt. The ITN Learn app uses distinct, descriptive per-form names
+    // (module "Visit Purpose & Ethics" → form "Purpose, Consent &
+    // Do-No-Harm" — good authoring practice). When module-name !=
+    // form-name, CommCare does NOT auto-skip into the single form: the
+    // device sits on an intermediate one-row form-list whose only row is
+    // the FORM name. The pre-fix recipe handled ONLY the same-name case
+    // (Branch B taps by ${MODULE_NAME}); for the name-mismatch case it
+    // skipped, leaving the form unopened. The generated journey then
+    // tapped a form-internal option, found no target on the menu-list
+    // screen, and hard-failed with selector-not-found.
+    //
+    // Structural fix (Branch C): when ${FORM_NAME} is supplied and a row
+    // matching it is rendered in the menu-list body (scoped via
+    // `below: id: screen_suite_menu_list` so the toolbar title — which
+    // still reads ${MODULE_NAME} — is excluded), tap that form row to
+    // open the form, then assert nav_btn_next visible. A SINGLE
+    // learn-tap-module call (MODULE_NAME + FORM_NAME) now opens the form
+    // in BOTH the same-name and name-mismatch cases.
+    //
+    // This assertion FAILS on the pre-fix recipe (which had no
+    // ${FORM_NAME} matcher anywhere) and PASSES on the fixed one.
+    expect(
+      yaml,
+      'expected a Branch C guard matching text:${FORM_NAME} scoped to the menu-list body',
+    ).toMatch(
+      /visible:\s*\n\s*text: "\$\{FORM_NAME\}"\s*\n\s*below:\s*\n\s*id: "org\.commcare\.dalvik:id\/screen_suite_menu_list"/,
+    );
+    // And the body must TAP that form row (scoped the same way) to open
+    // the form — not merely probe for it.
+    expect(
+      yaml,
+      'expected Branch C to tapOn the ${FORM_NAME} form row scoped to the menu-list body',
+    ).toMatch(
+      /- tapOn:\s*\n\s*text: "\$\{FORM_NAME\}"\s*\n\s*below:\s*\n\s*id: "org\.commcare\.dalvik:id\/screen_suite_menu_list"/,
+    );
+  });
+
+  it('documents FORM_NAME as an optional parameter so callers know to pass it in a single call', () => {
+    // The class-level fix only works if recipe authors (and the
+    // app-test-cases generator) know to pass FORM_NAME alongside
+    // MODULE_NAME in a single learn-tap-module invocation. The header
+    // comment is the contract surface; assert it names FORM_NAME so the
+    // parameter can't silently disappear from the documented interface.
+    expect(yaml).toMatch(/\$\{FORM_NAME\}/);
+    expect(yaml.toLowerCase()).toContain('optional');
+  });
+
   it('Branch B only fires when the form row text matches MODULE_NAME (same-name case)', () => {
     // Regression guard for the 2026-05-19 malaria-itn-fgd run halt
     // (run 20260515-1645 Phase 6 attempt 12) on J1 module

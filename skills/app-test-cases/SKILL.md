@@ -237,34 +237,41 @@ The static palette lives at `mcp/mobile/recipes/static/`:
 - `connect-resume-opp.yaml` — opp-list → scroll to the target opp's In-Progress card → tap Resume → lands on the certificate/opp-detail surface (atlas § 8) that `deliver-launch.yaml` expects. Pre-state: Connect opp-list visible, opp already Learn-in-progress or complete. Warm-session only (journey-learn leg completed Learn in this dispatch). Requires `OPP_NAME` env var (same value as `connect-claim-opp.yaml`).
 - `deliver-launch.yaml` — post-Learn-complete certificate (atlas § 8) → tap VIEW OPPORTUNITY DETAILS → Download Delivery gate (§ 9) → tap DOWNLOAD → Deliver-mode StandardHomeActivity (§ 10) anchored on `id/viewJobCard`. All surfaces ID-anchored (verified 2026-05-26 against bednet J2 dumps; no coordinate fallbacks). Chain after `connect-resume-opp.yaml` in the Deliver smoke recipe.
 
-**CRITICAL — Learn-app navigation is 2 menu levels deep.** After `learn-launch.yaml` lands you on the module list (atlas §6a), reaching a form requires **TWO** `learn-tap-module` invocations:
+**CRITICAL — Learn-app navigation is 2 menu levels deep.** After `learn-launch.yaml` lands you on the module list (atlas §6a), reaching a form means drilling two levels:
 
 1. Tap module-list row (e.g. `"1. Survey Background & Adulteration Basics"`) → drills 6a → 6b (form list).
-2. Tap form-list row (e.g. `"Background & Adulteration Basics"` for the lesson, or `"Module 1 Quiz"` for the quiz) → launches FormEntryActivity (6b → §7).
+2. Open the form-list row (e.g. `"Background & Adulteration Basics"` for the lesson, or `"Module 1 Quiz"` for the quiz) → launches FormEntryActivity (6b → §7).
 
-Earlier-authored recipes that chained only ONE `learn-tap-module` between `learn-launch` and `nav_btn_next` landed on a menu list, not a form — subsequent `nav_btn_next` taps then found no button. Verified live on turmeric run 20260513-2243 retry #4 (2026-05-14) — see atlas §6.
+**Pass BOTH `MODULE_NAME` and `FORM_NAME` to a SINGLE `learn-tap-module` invocation.** `learn-tap-module` is robust to all three landing states in one call:
+
+- **Auto-skip** (module-name != form-name, CommCare skips the one-row list) → lands directly on the form; no further action.
+- **Same-name intermediate list** (module-name == form-name) → Branch B taps the one row by `${MODULE_NAME}` to open the form.
+- **Distinct-form-name intermediate list** (module-name != form-name, CommCare does NOT auto-skip) → Branch C taps the form row by `${FORM_NAME}` to open the form.
+
+The single-call form is the canonical pattern. (The legacy two-call drill — one `learn-tap-module` with the module name, then a second with the form name — still works because `FORM_NAME` is optional, but prefer the single call: it removes the authoring guess about whether CommCare will auto-skip, which was the malaria-itn-app/20260528-1607 Phase 6 halt class.)
+
+Earlier-authored recipes that fired only ONE module-level `learn-tap-module` (no `FORM_NAME`) and then immediately tapped a form-internal option landed on the form LIST, not the form — the form-internal `tapOn` then found no target and hard-failed with `selector-not-found`. This is exactly the malaria-itn-app/20260528-1607 halt: module "Visit Purpose & Ethics" → form "Purpose, Consent & Do-No-Harm" (distinct, descriptive names — good authoring), CommCare left the device on the one-row form-list, and the recipe assumed it was already inside the form. Passing `FORM_NAME` in the single call (Branch C) opens the form structurally. (Also verified live on turmeric run 20260513-2243 retry #4 for the no-second-tap class — see atlas §6.)
 
 For the canonical Learn-app smoke recipe template:
 
 ```yaml
 - runFlow:
     file: learn-launch.yaml
-# Drill from module list to the target form via two row-taps.
+# Drill from module list to the target form in ONE call — learn-tap-module
+# opens the form whether CommCare auto-skips, shows a same-name one-row
+# list, or shows a distinct-form-name one-row list.
 - runFlow:
     file: learn-tap-module.yaml
     env:
-      MODULE_NAME: "1. Survey Background & Adulteration Basics"  # the module
-- runFlow:
-    file: learn-tap-module.yaml
-    env:
-      MODULE_NAME: "Background & Adulteration Basics"  # the form (lesson) or "Module 1 Quiz"
+      MODULE_NAME: "1. Survey Background & Adulteration Basics"  # the module-list row
+      FORM_NAME: "Background & Adulteration Basics"              # the form (lesson) row, or "Module 1 Quiz"
 # Now on FormEntryActivity for that form.
 - tapOn:
     ${SELECTOR:form-nav-next}
 # ... rest of form-question handling
 ```
 
-Read live module + form names from Nova's `get_form` per the "Use live labels" section below — the pre-claim teaser at `tv_learn_modules_list` lists module names verbatim, but form names inside each module are only visible via Nova.
+Read live module + form names from Nova's `get_form` per the "Use live labels" section below — the pre-claim teaser at `tv_learn_modules_list` lists module names verbatim, but form names inside each module are only visible via Nova. `FORM_NAME` MUST be the form's live `label` from `get_form` (verbatim), not the PDD-brief name.
 
 **Single-screen content forms finalize with ONE step — do NOT chain
 `form-advance.yaml` + `form-submit.yaml`.** A Learn content/lesson form that
