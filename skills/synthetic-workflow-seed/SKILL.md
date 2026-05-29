@@ -1,19 +1,23 @@
 ---
 name: synthetic-workflow-seed
 description: >
-  Instantiate the LLO weekly review + program admin audit workflows from
-  labs SEED templates, wire them to the manifest's KPIs + coaching arcs.
+  Instantiate the LLO weekly review + program admin audit workflows —
+  examine the labs template registry and adapt the best-fit template, or
+  build from scratch via workflow_create (following the live authoring
+  guide) — then wire them to the manifest's KPIs + coaching arcs.
 disable-model-invocation: true
 ---
 
 # Synthetic Workflow Seed
 
 Stage 3 of ACE Phase 7 (Plan B). Creates the two demonstrative workflows
-on top of the synthetic data: an operational `llo_weekly_review` (FLW
-KPI scorecard + coaching-task spawning) and a meta-level
-`program_admin_audit` (week-over-week review of the LLO's process).
-Both ship as SEED templates in connect-labs (Plan A); this skill
-instantiates them and wires up opp-specific config from the manifest.
+on top of the synthetic data: an operational LLO weekly review (FLW KPI
+scorecard + coaching-task spawning) and a meta-level program admin audit
+(week-over-week review of the LLO's process). For each, the skill examines
+the labs template registry for a good fit and either **adapts** the closest
+template (`workflow_create_from_template`) or **builds from scratch**
+(`workflow_create`, following the live `workflow_authoring_guide`). It then
+wires up opp-specific config + KPIs from the manifest.
 
 The output is two workflow IDs registered in labs, one or more
 synthetic OCS coaching tasks attached to underperforming FLWs, and the
@@ -53,11 +57,54 @@ pipeline schemas populated with KPI fields. The polish step
    Halt if missing — this skill needs synthetic mode enabled
    (`synthetic-data-generate` should have run first in this same run).
 
-2. **Create the LLO weekly review workflow.**
+### Build-path decision — examine templates, then adapt or author (do this before steps 2 and 7)
+
+ACE produces two demonstrative workflows per opp — an operational **LLO
+weekly review** and a meta-level **program admin audit**. The two roles
+and the count are fixed; the *build path* is decided per workflow, not
+hardcoded to a template:
+
+1. **Examine the registry.** Call `mcp__connect-labs__list_templates` and
+   read each entry (`key`, `name`, `description`, `supports_saved_runs`,
+   `multi_opp`). Treat these as ideas / starting points, not a fixed menu.
+2. **Score fit** against this opp: the PDD archetype, the manifest's
+   `kpi_config` shape (per-FLW aggregates? rates? facilitation-quality?),
+   and the demonstrative intent (operational scorecard vs week-over-week
+   oversight). A template *fits* when its data contract + saved-runs
+   behavior need only config/render tailoring — NOT when you'd be working
+   around its structure or a known defect.
+3. **Decide per workflow** and record the choice + a one-line rationale
+   for the run summary:
+   - **ADAPT** — a registered template fits. Instantiate it with
+     `workflow_create_from_template` and tailor it (the ADAPT branch in
+     steps 2–4 / 7).
+   - **BUILD FROM SCRATCH** — no template fits, or the closest one has a
+     structure/defect you'd fight. Author the workflow with
+     `workflow_create` (no template) per the SCRATCH branch.
+
+**Before authoring anything from scratch, fetch the current best
+practices:** call `mcp__connect-labs__workflow_authoring_guide` and follow
+it (Template Anatomy, Render Code Contract, Actions API, Pipeline Schema,
+Saved-runs). It is the constantly-improving source of truth served live by
+labs — re-fetch every run; never author `render_code` from memory.
+
+**SCRATCH alias-consistency guardrail (load-bearing).** When you author
+from scratch, the pipeline's `pipeline_sources[].alias`, the key the
+`render_code` reads (`view.pipelines.<alias>`), and the key in the
+saved-run `snapshot_inputs.pipelines` MUST be the **same string**. A
+mismatch (e.g. alias `data` while render/snapshot read `flw_kpis`) passes
+every create call yet renders blank KPIs in saved-run views and an empty
+audit rollup — the failure mode that motivated the from-scratch path
+(`bednet-spot-check/20260528-0556`). Pick one alias and use it in all three
+places.
+
+2. **Create the LLO weekly review workflow — via the path decided above.**
+
+   **ADAPT branch** (a template fits):
 
    ```
    mcp__connect-labs__workflow_create_from_template(
-     template_key: "llo_weekly_review",
+     template_key: "<chosen key from list_templates, e.g. llo_weekly_review>",
      opportunity_id: <synthetic.labs_opp_id>,
      name: "<opp.yaml.display_name> — LLO Weekly Review"  // optional
    )
@@ -66,6 +113,33 @@ pipeline schemas populated with KPI fields. The polish step
    Capture the returned `workflow_id`. The response also lists the
    pipelines created from `pipeline_sources` (the scaffold's
    `flw_kpi_aggregates` pipeline); capture each `pipeline_id` for step 4.
+   Then continue to steps 3–4 to wire config + pipeline.
+
+   **SCRATCH branch** (no template fits / closest has a defect): author it
+   with `workflow_create`, following the `workflow_authoring_guide` you
+   fetched. Build the operational FLW-scorecard `render_code`, the `config`
+   (`kpi_config` from the manifest + `coaching_task_template` +
+   `showSummaryCards`/`showFilters`), and the `pipeline_sources` — honoring
+   the alias-consistency guardrail above.
+
+   ```
+   mcp__connect-labs__workflow_create(
+     opportunity_id: <synthetic.labs_opp_id>,
+     name: "<opp.yaml.display_name> — LLO Weekly Review",
+     config: {
+       kpi_config: <manifest.kpi_config verbatim>,
+       coaching_task_template: { subject_template: "...", ocs_persona: "..." },
+       showSummaryCards: true, showFilters: true,
+     },
+     pipeline_sources: [ { pipeline_id: <linked/created>, alias: "<stable key>" } ],
+     render_code: "<authored per the guide; reads view.pipelines.<same alias>>",
+   )
+   ```
+
+   `workflow_create` returns `{workflow_id, render_code_version}`. Because
+   the SCRATCH branch already authored `config` + `render_code` in this
+   call, **skip step 3** (config is set) and run **step 4** only if the
+   pipeline schema still needs its `fields` populated.
 
 3. **Wire the workflow's config from the manifest.**
 
@@ -165,17 +239,26 @@ pipeline schemas populated with KPI fields. The polish step
    For the canonical atomic-visit archetype with per-FLW KPIs, this is
    always `false`. Record the flag in step 8.
 
-7. **Create the program admin audit workflow.**
+7. **Create the program admin audit workflow — via the path decided above.**
+
+   **ADAPT branch** (a template fits — usually `program_admin_report`, the
+   live registry key for the cross-opp SOP-compliance rollup; confirm the
+   exact key from `list_templates` rather than assuming):
 
    ```
    mcp__connect-labs__workflow_create_from_template(
-     template_key: "program_admin_audit",
+     template_key: "<chosen audit key from list_templates>",
      opportunity_id: <synthetic.labs_opp_id>,
      name: "<opp.yaml.display_name> — Program Admin Audit"
    )
    ```
 
-   Then wire the watched workflow:
+   **SCRATCH branch** (no audit template fits): author with
+   `workflow_create` per the `workflow_authoring_guide` — a meta-level
+   workflow whose render reads the watched LLO weekly review's saved-run
+   snapshots (it has no pipeline of its own).
+
+   Either way, wire the watched workflow:
 
    ```
    mcp__connect-labs__workflow_update_definition(
@@ -307,8 +390,12 @@ pipeline schemas populated with KPI fields. The polish step
 
 ## MCP Tools Used
 
-- `mcp__connect-labs__workflow_create_from_template`
+- `mcp__connect-labs__list_templates` (build-path decision — examine the registry)
+- `mcp__connect-labs__workflow_authoring_guide` (fetch before any from-scratch authoring)
+- `mcp__connect-labs__workflow_create_from_template` (ADAPT branch)
+- `mcp__connect-labs__workflow_create` (SCRATCH branch — author without a template)
 - `mcp__connect-labs__workflow_update_definition`
+- `mcp__connect-labs__workflow_update_render_code` (SCRATCH branch — if render is authored after create)
 - `mcp__connect-labs__workflow_get` (on `VERSION_CONFLICT` retry)
 - `mcp__connect-labs__pipeline_update_schema`
 - `mcp__connect-labs__pipeline_get` (on `VERSION_CONFLICT` retry)
@@ -348,6 +435,7 @@ tracks as `dry-run-success`.
 | `workflow_create_run` or `workflow_save_snapshot` returns transport error | step 8 partial | Capture the labs error in the run summary; re-run `/ace:step synthetic-workflow-seed` after the transient resolves. Idempotency caveat: re-runs create NEW workflow definitions; use `workflow_delete` to retire stale ones first OR open the just-failed workflow in labs UI and finish the snapshot manually. |
 | `workflow_save_snapshot` returns INVALID_SCHEMA cross-check error | step 8 halt | The run's `opportunity_id` doesn't match the param. Should never fire if step 8's loop is built correctly (uses the same `synthetic.labs_opp_id` for both create and snapshot). If it does, the run record was created against a different opp than the skill thinks — investigate via `workflow_get`. |
 | Re-run on existing workflows | step 2 idempotency | `workflow_create_from_template` always creates a NEW workflow (no find-or-create on labs side). Re-runs append to opp.yaml; old workflow_ids are orphaned in labs and need manual cleanup. Use `workflow_delete` directly if you need to retire a stale instance. |
+| SCRATCH build renders blank KPIs in saved-run views | post-build smoke (walkthrough screenshot) shows `—` for KPI tiles | The `pipeline_sources[].alias`, the render's `view.pipelines.<alias>` read, and `snapshot_inputs.pipelines` disagree. Re-author so all three use the same alias — see the SCRATCH alias-consistency guardrail before step 2. |
 
 ## Related skills
 
@@ -372,4 +460,5 @@ labs PR at first ship; that gap closed in 0.13.64 once labs shipped
 |---|---|---|
 | 2026-05-06 | Initial Stage 3a skill — workflow seeding via SEED templates + config wiring + coaching tasks. Saved-runs deferred to labs PR. | ACE team (Plan B Stage 3) |
 | 2026-05-07 | Step 8 wires the full Week 1 + Week 2 saved-runs loop via `workflow_create_run` + `workflow_save_snapshot` (now scoped to `opportunity_id` per labs PR #168). Removes the last `[WAITING ON LABS]` deferral in Phase 7. Live-smoked against turmeric (workflow 2847, run_ids 2859 + 2860, both snapshots saved cleanly). | ACE team (Plan B Stage 3b) |
+| 2026-05-28 | **Adapt-or-author build path.** Added the Build-path decision step (examine `list_templates` → ADAPT closest template or BUILD FROM SCRATCH via `workflow_create`), ADAPT/SCRATCH branches on steps 2 + 7, the fetch-`workflow_authoring_guide`-before-scratch rule, and the alias-consistency guardrail (pipeline alias == render key == `snapshot_inputs` key — the blank-KPI failure from `bednet-spot-check/20260528-0556`). Unblocked by connect-labs#300 (`workflow_create` + `workflow_authoring_guide`). Also resolves the stale `program_admin_audit` template_key — the live key is `program_admin_report`, and the examine step now reads live keys. | ACE team |
 
