@@ -15,6 +15,8 @@
  *   Considered: / bullets                         [bold prefix + bullet list]
  *   Source: <value>                               [bold prefix]
  *   Status: <value>                               [bold prefix; OPEN gets emphasis]
+ *   Evidence basis: <basis>                       [bold prefix; v4, if present]
+ *   Conflicting source signals: / bullets         [bold label + bullets; iff conflicting]
  *   <notes>                                       [italic, if present]
  *
  * No Drive calls; no I/O. Caller (scripts/decisions-render.ts) applies the
@@ -279,6 +281,18 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
 
   // Status: <value>
   builder.appendBoldPrefix("Status:", row.status);
+
+  // Evidence basis: <basis> (v4; absent on legacy pre-v4 rows).
+  // For a `conflicting` default, surface the competing source readings
+  // prominently so a reviewer sees the contested fork was resolved by
+  // judgment — not buried in prose.
+  if (row.evidence_basis) {
+    builder.appendBoldPrefix("Evidence basis:", row.evidence_basis);
+    if (row.evidence_basis === "conflicting" && row.conflict_signals?.length) {
+      builder.appendBoldLabel("Conflicting source signals:");
+      builder.appendBulletList(row.conflict_signals);
+    }
+  }
 
   // AI reasoning (italic), if present
   if (row.reasoning) {

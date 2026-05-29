@@ -339,13 +339,40 @@ tables above are teaching templates that improve over time.
 ### Schema and write semantics
 
 Schema is defined in `lib/decisions-schema.ts` (`DecisionRowSchema` /
-`DecisionRowStrictSchema` / `DecisionsLogSchema`, v3). Do not
+`DecisionRowStrictSchema` / `DecisionsLogSchema`, v4). Do not
 hand-construct YAML — call the `decisions_append_rows` MCP atom
 (ace-decisions server). The atom's input schema is
 `DecisionRowStrictSchema` (the strict write-boundary variant), so
 unknown / misspelled field names AND violations of the load-bearing
 invariants below are rejected at the call boundary before they touch
 Drive.
+
+**The `evidence_basis` contract (load-bearing, v4).** Every row MUST
+declare `evidence_basis`: one of `stated`, `inferred`, or `conflicting`.
+This is the forcing function that stops Phase 1 from silently resolving a
+contested fork and presenting it as a confident, single-cited default —
+the highest-leverage failure mode in the whole lifecycle, since every
+downstream phase builds on the PDD.
+
+- **`stated`** — the chosen value is directly stated in a source input.
+  `source` cites where.
+- **`inferred`** — no source states it; this is a reasoned default the
+  AI extrapolated. Say so in `reasoning`. (The cadence "visited twice"
+  was stated in the ITN source; the *distinct Visit-2 form content* ACE
+  then built was `inferred` — and should have been tagged as such.)
+- **`conflicting`** — the source signals **disagree**, and this row
+  resolves the conflict. You MUST populate `conflict_signals` with **≥ 2
+  entries**, one per competing reading, each citing where it came from.
+  Put *why this resolution won* in `reasoning`. Canonical case: the ITN
+  app-spec described **one** visit instrument (Sections 1–6) yet
+  separately said households are **"visited twice"** — a genuine conflict
+  that was silently resolved into two distinct forms with no audit trail.
+
+When in doubt between `stated` and `inferred`, prefer `inferred` — and if
+*any* source pulls against the default, it is `conflicting`, not
+`inferred`. Do not omit `conflict_signals` on a `conflicting` row, and do
+not attach them to a non-conflicting one; both are rejected at the write
+boundary.
 
 **The `ai-default` contract (load-bearing).** Every row's `ai-default`
 MUST be one of the literal strings in its `options` array, exact-match.
@@ -390,14 +417,31 @@ decisions_append_rows({
       options: ["atomic-visit", "focus-group", "multi-stage"],
       source: "idea.md §1; one-FLW-one-delivery pattern",
       status: "ai-default",
+      evidence_basis: "stated",
       reasoning: "Single per-FLW visit producing one structured delivery."
+    },
+    {
+      id: "visit-cadence-and-form-model",
+      phase: "1-design",
+      skill: "idea-to-pdd",
+      question: "How many visits per household, and is each a distinct form?",
+      "ai-default": "Two distinct forms (V1 + V2)",
+      options: ["One instrument administered twice", "Two distinct forms (V1 + V2)"],
+      source: "ITN Exploration App doc",
+      status: "ai-default",
+      evidence_basis: "conflicting",
+      conflict_signals: [
+        "Exploration App § Visit structure: describes ONE instrument (Sections 1-6); no distinct Visit-2 content",
+        "Exploration App § Open-Q4 + Photos: households are 'visited twice' / 'across both visits'"
+      ],
+      reasoning: "Source confirms a two-visit cadence but never specifies distinct Visit-2 content; picked two forms to model retention, flagging that the Visit-2 content is inferred, not sourced."
     },
     ...
   ]
 })
 ```
 
-The atom seeds a fresh v3 log header (`schema_version`, `opportunity`,
+The atom seeds a fresh v4 log header (`schema_version`, `opportunity`,
 `run_id`, `generated_at`) on the first call and is idempotent: rows
 whose `id` is already in the log are silently skipped and returned in
 `skipped[]`, so a retry never duplicates rows.
