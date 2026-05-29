@@ -226,46 +226,37 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      > comes from Connect's per-FLW assessment-completion API, NOT from
      > a CommCare case property written by the Learn app.
 
-   - **REQUIRED — The assessment must be a real competency gate, not a
-     single trivial quiz.** A label-only curriculum + one 5-question
-     quiz scores a hard-fail at `pdd-to-learn-app-eval § assessment_gating`
-     (the ITN 9.6-on-a-hollow-build root cause). Insert this paragraph
-     **verbatim** into the brief, in its own paragraph, prefixed
-     `REQUIRED:` — when the PDD specifies a readiness/assessment gate:
+   - **REQUIRED — Deployability (fitness) components.** A label-only
+     curriculum + one trivial quiz is NOT a deployable training
+     instrument; `pdd-to-learn-app-eval` **hard-fails** it (the ITN
+     9.6-on-a-hollow-build root cause). The canonical, parameterized text
+     for each component lives in
+     **[`skills/_app-component-library.md`](../_app-component-library.md)** —
+     the single source of truth, paired 1:1 with the eval dimension that
+     hard-fails a build omitting it. For each Learn component whose
+     **Trigger** fires, open the library and insert that component's
+     **Brief paragraph** into the brief **verbatim**, in its own
+     paragraph, prefixed `REQUIRED:`, substituting any `<PARAM>`
+     placeholders from the PDD. Emit-checklist (see the library for full
+     text + triggers):
 
-     > REQUIRED: When the PDD specifies a readiness gate before delivery,
-     > the assessment must be a real competency gate: (a) build a
-     > **pre-test AND a post-test** with distinct item banks (pre-test
-     > surfaces baseline; post-test is the gate); (b) include enough
-     > scored items to actually test the curriculum — roughly **≥1 item
-     > per module/major topic**, not 5 items for a 5-module course;
-     > (c) compute `user_score` as a percentage (per the rule above) and
-     > wire it to `connect.assessment` at the PDD's threshold so Connect
-     > enforces the Deliver-unlock gate; (d) the result screen MUST be
-     > **conditional on the score** — a pass `label` relevant when
-     > `#form/user_score >= <threshold>` AND a separate fail/retry
-     > `label` relevant when below — NOT an unconditional "Well done!"
-     > that fires regardless of the score; (e) give a failing FLW retry
-     > guidance. Do NOT try to enforce the gate via in-app case-property
-     > sequential unlock — Learn forms carry no case blocks (see the rule
-     > above); the gate is Connect-side. The in-app job is a genuine
-     > pre/post assessment plus an honest pass/fail experience.
+     - `assessment-gate` — PDD specifies a readiness / competency gate
+       before delivery. Builds a pre-test + post-test (distinct banks),
+       ≥1 scored item per module, percentage `user_score` wired to
+       `connect.assessment` at the PDD threshold, a score-conditional
+       pass/fail result screen (NOT an unconditional "Well done!"), and
+       retry guidance. Gate stays Connect-side (Learn forms carry no case
+       blocks — see the rule above); the in-app job is a genuine pre/post
+       assessment + an honest pass/fail experience.
+     - `localization-layer` (Learn variant) — PDD names a working
+       language other than English. **Hard-fail** dimension: English-only
+       when the PDD names a working language fails the gate. Author the
+       English core + ship the named-language translation set via itext;
+       do NOT defer localization "downstream."
 
-   - **REQUIRED — Localization (build English core, ship the
-     PDD-language translations).** Insert this paragraph **verbatim**
-     into the brief, in its own paragraph, prefixed `REQUIRED:` — ONLY
-     when the PDD names a working language other than English:
-
-     > REQUIRED: Author all module/quiz strings (labels, choices, hints,
-     > assessment items) in English as the primary language, AND ship a
-     > complete translation set in the PDD's named working language
-     > (here: <LANGUAGE>) via itext — every English string must have its
-     > <LANGUAGE> counterpart. English-only is a hard-fail at the eval
-     > gate when the PDD names a working language; do NOT defer
-     > localization "downstream."
-
-     (Resolves the 2026-05-29 localization decision; enforced by
-     `pdd-to-learn-app-eval § localization_match`.)
+     Do NOT inline-paraphrase these — reference the library so the build
+     and `pdd-to-learn-app-eval` stay symmetric. Skip a component whose
+     trigger doesn't fire.
 
 4. **Invoke `/nova:autobuild "<brief>"`.** This is a one-shot autonomous
    build — Nova will not ask clarifying questions. Capture from the
@@ -505,6 +496,7 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-05-29 | **Extracted the assessment-gate + localization `REQUIRED:` paragraphs into the shared [`_app-component-library.md`](../_app-component-library.md).** Step 3's "assessment must be a real competency gate" and "Localization" blocks are no longer inlined — they're an emit-checklist of **named components** (`assessment-gate`, `localization-layer`) the build inserts verbatim from the library by trigger. Single source of truth (localization dedups with `pdd-to-deliver-app`); the library pairs each component 1:1 with the `pdd-to-learn-app-eval` fitness dimension (`assessment_gating`, `localization_match`) that hard-fails a build omitting it. Platform-mechanics REQUIRED paragraphs (no-case-blocks, `user_score` percentage, Connect IDs) stay inline — they're Nova constraints, not reusable instrument-quality components. Closes the reusable-component-library item (PR-8 build track) in `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
 | 2026-05-15 | **focus-group archetype becomes a no-op for this skill.** The FGD operational model captures content in a gdoc (not a CommCare form) and trains facilitators out-of-band (OCS chatbot + handbook gdoc + coordinator-graded practice-session audio review), so no Learn app is produced. Step 1a short-circuits with a `skipped` summary; § Archetypes § focus-group rewritten to document the skip. Prompted by `malaria-itn-fgd/20260514-2007` post-run reframe; see `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
 | 2026-05-15 | **focus-group switches from no-op to minimal sentinel pattern.** Re-run `malaria-itn-fgd/20260514-2352` Phase 4 surfaced a hard blocker: `connect_create_opportunity` requires `learn_app` at the schema, REST, and validator layers. Operator chose per-opp sentinel (one minimal 1-form readiness check, ~7 fields, both Connect markers, ~1-2 min build) over a server-side fix. Step 1a no longer short-circuits — focus-group runs the full skill flow but with the sentinel-shaped brief documented in § Archetypes § focus-group. Sentinel doubles as in-app readiness gate: facilitator must `acknowledge_readiness = yes` (coordinator-confirmed practice-session-pass) before they're cleared to submit attestations. | ACE team |
 | 2026-05-23 | **`user_score` must be percentage (0-100), not raw sum.** Connect's `passing_score` is on a 0-100 scale (80 = 80%). Raw-sum scoring produces max 5 for a 5-Q quiz; Connect compares 5 < 80 and the FLW always fails even with perfect answers. New REQUIRED paragraph instructs the architect to compute `user_score = (sum of per-Q scores) * 100 div N`. Reproducer: malaria-rdt run 20260523-1257 Phase 6 — "Training Failed: score 5, passing score 80" with all answers correct. | ACE team |

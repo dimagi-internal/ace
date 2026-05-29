@@ -261,116 +261,43 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
      § Bug 3 for the full failure analysis.
 
-   - **REQUIRED — Deployability (fitness) requirements.** A faithful
+   - **REQUIRED — Deployability (fitness) components.** A faithful
      transcription of the PDD's field list is NOT a deployable
      instrument. `pdd-to-deliver-app-eval`'s fitness axis (55% weight)
-     **hard-fails** the build on each gap below; the build must emit
-     these so the instrument is field-reliable, not just structurally
-     complete. (Root cause of the ITN 9.6-on-a-hollow-build: the brief
-     never demanded them. See
-     `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`.) Insert
-     the applicable paragraphs **verbatim** into the brief, each in its
-     own paragraph, prefixed `REQUIRED:`:
+     **hard-fails** the build on each gap below; the build must emit the
+     applicable components so the instrument is field-reliable, not just
+     structurally complete. (Root cause of the ITN 9.6-on-a-hollow-build:
+     the brief never demanded them. See
+     `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`.)
 
-     > REQUIRED — GPS accuracy gating: if the PDD's Evidence Model
-     > specifies an arrival/location radius (e.g. "within 100 m"), a
-     > plain `geopoint` question is NOT sufficient. Emit an
-     > accuracy-gated capture block: a preferred-accuracy threshold
-     > (e.g. 15 m) and a minimum-accuracy threshold (e.g. 25 m), a
-     > capture-gate that re-prompts / refuses to accept a fix worse than
-     > the minimum, a live accuracy-readout label guiding the FLW, and
-     > normalized `lat` / `lon` outputs the verification layer can read.
-     > A plain geopoint with only a text hint ("cross-check manually")
-     > does not let Connect enforce the stated radius.
-     > INIT-SAFETY (load-bearing — do NOT skip): the hidden `lat` / `lon` /
-     > accuracy calculates that split the geopoint via
-     > `selected-at(<geopoint>, N)` MUST be guarded against an empty
-     > geopoint. CommCare evaluates ALL calculates eagerly at form-init
-     > (`FormDef.initAllTriggerables`) BEFORE any GPS is captured, so
-     > `selected-at()` on an empty (zero-length) geopoint throws a fatal
-     > `XPathException` and the whole form fails to initialize ("A part of
-     > your application is invalid" on device; caught by `app-release-qa`'s
-     > `commcare-cli play` gate, NOT by `validate_app` or `make_build`).
-     > Wrap every such calculate so it returns empty (or a sentinel) until
-     > the geopoint is set:
-     > `lat  = if(<geopoint> = '', '', selected-at(<geopoint>, 0))`,
-     > `lon  = if(<geopoint> = '', '', selected-at(<geopoint>, 1))`,
-     > `accuracy = if(<geopoint> = '', -1, number(selected-at(<geopoint>, 3)))`.
-     > The geopoint's OWN accuracy-gate `constraint` / `validate`
-     > (e.g. `selected-at(., 3) <= 50`) is fine as-is — constraints only
-     > evaluate on answer, not at init; ONLY the eager hidden calculates
-     > need guarding. Reproducer: malaria-itn-app/20260529-1124 Phase 3 —
-     > the baseline form's unguarded `selected-at(gps_raw, 0)` on `lat`
-     > threw at init and blocked the entire app from installing.
+     The canonical, parameterized text for each component lives in
+     **[`skills/_app-component-library.md`](../_app-component-library.md)** —
+     the single source of truth, paired 1:1 with the eval dimension that
+     hard-fails a build omitting it. For each Deliver component whose
+     **Trigger** fires for this app, open the library and insert that
+     component's **Brief paragraph** into the brief **verbatim**, in its
+     own paragraph, prefixed `REQUIRED:`, substituting any `<PARAM>`
+     placeholders from the PDD. Emit-checklist (see the library for full
+     text + triggers):
 
-     > REQUIRED — Init-safe calculates (general rule): ANY hidden
-     > `calculate` that calls `selected-at()`, `substr()`, `regex()`,
-     > `number()`, or otherwise indexes/parses a value the FLW supplies
-     > LATER (a geopoint, a not-yet-answered question, a repeat-group
-     > reference) MUST guard against that source being empty at form-init,
-     > by wrapping it `if(<source> = '', <empty-or-sentinel>, <expr>)`.
-     > Every calculate runs at `initAllTriggerables` before any answer
-     > exists; an unguarded extraction over an empty source is a FATAL
-     > install-time error (the form never initializes), not a recoverable
-     > runtime one. This generalizes the GPS lat/lon case above to every
-     > capture-later extraction.
+     - `gps-accuracy-capture` — PDD Evidence Model states a GPS radius.
+     - `init-safe-calculates` — always emit alongside any capture-later
+       calculate (always pairs with `gps-accuracy-capture`).
+     - `data-quality-constraints` — always, for any data-capture form.
+     - `case-write-back` — any case-UPDATE / follow-up form that captures
+       new observations.
+     - `structured-capture` — any answer with an enumerable option set.
+     - `section-timestamps` — PDD success metrics reference visit-time / a
+       cost model.
+     - `embedded-bc-script` — PDD specifies a verbatim behavior-change
+       segment.
+     - `localization-layer` — PDD names a working language other than
+       English (Deliver variant). **Hard-fail** dimension: English-only
+       when the PDD names a working language fails the gate.
 
-     > REQUIRED — Data-quality validation by default: every numeric
-     > count field MUST carry a sensible bound `constraint` (e.g.
-     > household_size 1–30); cross-field counts MUST be constrained
-     > against their parent (e.g. `under_5 <= household_size`); any phone
-     > field MUST carry a format regex (e.g. `regex(., '^[0-9]{10,13}$')`);
-     > every free-text field MUST carry a character limit; every
-     > credit-bearing field (photo, GPS, consent) MUST be `required` with
-     > a `validate`. Do NOT ship a data-capture instrument whose only
-     > constraints are the consent gate and one range — unbounded counts
-     > and unformatted phones produce unusable field data.
-
-     > REQUIRED — Follow-up / case-update forms MUST persist their
-     > observations to the case: every user-facing observation field on a
-     > case-UPDATE form (retention, change-since-last-visit, V2 readings)
-     > MUST be bound with `case_property_on` to the relevant case type. A
-     > case-update form that captures new observations but writes zero
-     > case properties is pointless — the change it observed is lost. (NB:
-     > this is the opposite of the Learn-app rule; Learn forms carry no
-     > case blocks, Deliver follow-up forms MUST write back.)
-
-     > REQUIRED — Structured capture over free text: any answer with an
-     > enumerable option set (who-sleeps-under-net, net condition, risk
-     > groups, how-obtained) MUST be a single- or multi-select, never free
-     > `text`; every "Other" option MUST have a conditional
-     > `_other` free-text follow-up (relevance-gated on the Other
-     > selection); prefer bucketed selects over raw integers where field
-     > reliability matters (net age as `<1 / 1–2 / 3–4 / 5+ / don't know`).
-
-     > REQUIRED — Section timestamps: emit a hidden `now()` timestamp at
-     > the start of each major section (and `today()` for visit_date) so
-     > the cost/time model can reconstruct per-section visit-time
-     > distributions. (Only when the PDD's success metrics reference
-     > visit-time or a cost model.)
-
-     > REQUIRED — Embed any verbatim read-aloud / behavior-change script
-     > in-form as a `label`, not as something the FLW must recall from the
-     > Learn app. If the PDD specifies a BC segment to be delivered
-     > verbatim, the exact script text goes in the Deliver form.
-
-   - **REQUIRED — Localization (build English core, ship the
-     PDD-language translations).** Insert this paragraph **verbatim**
-     into the brief, in its own paragraph, prefixed `REQUIRED:` — ONLY
-     when the PDD names a working language other than English:
-
-     > REQUIRED: Author all form strings (labels, choices, hints,
-     > constraint/validation messages) in English as the primary
-     > language, AND ship a complete translation set in the PDD's named
-     > working language (here: <LANGUAGE>) via the form's itext — every
-     > English string must have its <LANGUAGE> counterpart. English-only
-     > is a hard-fail at the eval gate when the PDD names a working
-     > language. Do NOT defer localization "downstream"; the translation
-     > set is part of this build.
-
-     (Resolves the 2026-05-29 localization decision: English core,
-     hard-fail if the named-language translations weren't also built.
-     `pdd-to-deliver-app-eval § localization_match` enforces it.)
+     Do NOT inline-paraphrase these — reference the library so the build
+     and `pdd-to-deliver-app-eval` stay symmetric. Skip a component whose
+     trigger doesn't fire.
 
 4. **Invoke `/nova:autobuild "<brief>"`.** Capture from the response:
    - `app_id` — durable Nova handle, written to the summary as
@@ -722,6 +649,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-05-29 | **Extracted the deployability/fitness `REQUIRED:` paragraphs into the shared [`_app-component-library.md`](../_app-component-library.md).** The Step-3 "Deployability (fitness) requirements" block (GPS accuracy-gating, init-safe calculates, data-quality constraints, case-write-back, structured-capture, section-timestamps, embedded-BC-script, localization) is no longer inlined — it's now an emit-checklist of **named components** the build inserts verbatim from the library by trigger. Single source of truth for the paragraph text (dedups localization, previously duplicated with `pdd-to-learn-app`); the library pairs each component 1:1 with the `pdd-to-deliver-app-eval` fitness dimension that hard-fails a build omitting it, so the eval is the backstop for the indirection. Closes the reusable-component-library item (PR-8 build track) in `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` / open decision #2. | ACE team |
 | 2026-05-15 | Tighten Step 4a (post-build field-count verification) from "the in-context LLM must..." prose into a numbered tool-call recipe. Mirrors the same change in `pdd-to-learn-app/SKILL.md`. Prompted by `malaria-itn-fgd/20260514-2007` Learn-app cert-assessment partial-persistence (FGD Deliver apps with the ~45-70-field per-section summary form are the highest-risk surface for the same class). See jjackson/ace#303. | ACE team |
 | 2026-05-15 | **focus-group archetype rewritten to attestation-form-only.** Previously: 3-module / 69-field per-section-summary Deliver app capturing all qualitative content in CommCare. New: one module, one ~14-field attestation form (date / venue / participants / audio / photo / gdoc link / consent / reflection). Content lives in a Google Doc out-of-band; the gdoc_link field is the bridge. One submission = one payment trigger. Prompted by post-run reframe from operator: "all the content collection... will happen manually and they will send us a gdoc". See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
 | 2026-05-15 | **Pare focus-group attestation form to 5 fields:** `consent_all_participants` (single_select yes/no, validate=yes), `session_date`, `venue` (text), `gps` (geopoint), `photo` (image). Drop `audio_file` / `backup_audio_file` (audio capture is out-of-band; not in CommCare), `gdoc_link` (gdoc is written AFTER session end, no linkable URL exists at submission time), and the metadata fields (`llo_name`, `site_*`, `venue_type`, `planned_segment`, `actual_participant_count`, `start_time`, `end_time`, `audio_duration_minutes`, `facilitator_reflection`, `pre_checklist_complete`) — these go in the gdoc. Matching attestation → gdoc is coordinator-driven by `(FLW, session_date, venue)` tuple. Prompted by operator: "For the fields just have consent (this should confirm you have consent from all participants), date, venue, gps, photo. everything else is either wrong or goes into the gdoc. the gdoc will be created after the fact so no ability to enter it into commcare". | ACE team |
