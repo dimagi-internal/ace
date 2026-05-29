@@ -65,6 +65,7 @@ const ROW_1 = {
   options: ['atomic-visit', 'focus-group', 'multi-stage'],
   source: 'idea.md §1',
   status: 'ai-default' as const,
+  evidence_basis: 'stated' as const,
 };
 
 const ROW_2_WO = {
@@ -76,6 +77,7 @@ const ROW_2_WO = {
   options: ['2026-05-22 to 2026-07-31'],
   source: 'pdd-timeline',
   status: 'ai-default' as const,
+  evidence_basis: 'inferred' as const,
 };
 
 describe('findDecisionsFile', () => {
@@ -129,9 +131,9 @@ describe('handleAppendRows', () => {
       expect(args.requestBody.parents).toEqual(['run-folder-id']);
       expect(args.requestBody.mimeType).toBe('application/vnd.google-apps.document');
       const body = args.media.body as string;
-      // The body must be parseable v3 YAML with the row we passed.
+      // A freshly-seeded log is written at the current schema version (v4).
       const parsed = yaml.parse(body);
-      expect(parsed.schema_version).toBe(3);
+      expect(parsed.schema_version).toBe(4);
       expect(parsed.opportunity).toBe('bednet-spot-check');
       expect(parsed.run_id).toBe('20260525-2013');
       expect(parsed.generated_at).toBe('2026-05-25T20:13:04Z');

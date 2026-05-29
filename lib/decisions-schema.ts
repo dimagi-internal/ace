@@ -8,8 +8,25 @@ import yaml from "yaml";
  * multiplayer editing. Fields: `options` (short scannable labels),
  * `reasoning` (AI's rationale), `override_reasoning` (human's
  * rationale when overriding), `source` (citation only).
+ *
+ * v4 (2026-05-29): every row declares its `evidence_basis`
+ * (`stated` | `inferred` | `conflicting`) so a reviewer can tell, at a
+ * glance, whether a default is sourced, extrapolated, or a resolution of
+ * disagreeing source signals. When `conflicting`, `conflict_signals`
+ * enumerates the competing readings — the silent-conflict-resolution
+ * failure mode (e.g. ITN "visited twice" vs. a one-instrument spec) is
+ * now structurally surfaced instead of buried in prose. Both fields are
+ * OPTIONAL on the permissive read schema (pre-v4 logs lack them) and
+ * REQUIRED on every new write (DecisionRowStrictSchema).
  */
-export const DECISIONS_SCHEMA_VERSION = 3 as const;
+export const DECISIONS_SCHEMA_VERSION = 4 as const;
+
+/**
+ * Schema versions a reader will accept. New writes seed `DECISIONS_SCHEMA_VERSION`;
+ * reads degrade gracefully across the supported set so a log started under an
+ * older writer keeps parsing after a version bump.
+ */
+export const SUPPORTED_SCHEMA_VERSIONS = [3, 4] as const;
 
 /**
  * One row in a per-run decisions log. Represents a load-bearing default
@@ -83,6 +100,24 @@ export const DecisionRowSchema = z
       .describe(
         "Human's rationale for overriding (only set when status=overridden). Mirrors `reasoning` on the AI side.",
       ),
+    evidence_basis: z
+      .enum(["stated", "inferred", "conflicting"])
+      .optional()
+      .describe(
+        "How well-grounded this default is in the source material. " +
+          "`stated`: the value is directly stated in a source input. " +
+          "`inferred`: extrapolated beyond what any source states (a reasoned default the source did not specify). " +
+          "`conflicting`: the source signals disagree and this row RESOLVES that conflict — `conflict_signals` must enumerate the competing readings. " +
+          "Optional on the permissive read schema for back-compat with pre-v4 logs; REQUIRED on every new write (DecisionRowStrictSchema).",
+      ),
+    conflict_signals: z
+      .array(z.string().min(1))
+      .optional()
+      .describe(
+        "The competing source readings this decision had to resolve — one entry per signal, each ideally citing where it came from " +
+          "(e.g. 'Exploration App § Visit structure: one instrument' / 'Exploration App § Open-Q4: households visited twice'). " +
+          "Required (>= 2 entries) when `evidence_basis: conflicting`; omit otherwise. Put the resolution rationale in `reasoning`.",
+      ),
   })
   .superRefine((row, ctx) => {
     if (row.status === "overridden" && row.override === undefined) {
@@ -138,6 +173,38 @@ export const DecisionRowStrictSchema = DecisionRowSchema.superRefine(
         path: ["override"],
       });
     }
+    // v4: every new row must declare how grounded the default is. This is the
+    // forcing function that stops Phase-1 from silently resolving a contested
+    // fork and presenting it as a confident single-cited default.
+    if (row.evidence_basis === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "`evidence_basis` is required on every new decision row — one of: " +
+          "'stated' (value is directly in a source), 'inferred' (extrapolated beyond any source), " +
+          "or 'conflicting' (resolves disagreeing sources; set `conflict_signals`).",
+        path: ["evidence_basis"],
+      });
+    }
+    if (row.evidence_basis === "conflicting") {
+      if (!row.conflict_signals || row.conflict_signals.length < 2) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "`evidence_basis: conflicting` requires `conflict_signals` with at least 2 entries — " +
+            "enumerate the competing source readings you resolved. Put the resolution rationale in `reasoning`.",
+          path: ["conflict_signals"],
+        });
+      }
+    } else if (row.conflict_signals !== undefined && row.conflict_signals.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "`conflict_signals` is only valid when `evidence_basis: conflicting`. " +
+          "For a 'stated' or 'inferred' default, omit it (put any nuance in `reasoning`).",
+        path: ["conflict_signals"],
+      });
+    }
   },
 );
 
@@ -152,7 +219,12 @@ export type DecisionRowStrict = z.infer<typeof DecisionRowStrictSchema>;
  */
 export const DecisionsLogSchema = z
   .object({
-    schema_version: z.literal(DECISIONS_SCHEMA_VERSION),
+    schema_version: z
+      .union([z.literal(3), z.literal(4)])
+      .describe(
+        "Decisions-log schema version. Reads accept v3 (legacy, no `evidence_basis`) and v4; " +
+          "new logs are seeded at v4 (DECISIONS_SCHEMA_VERSION).",
+      ),
     opportunity: z.string().min(1),
     run_id: z.string().min(1),
     generated_at: z.string().datetime({ offset: true }),

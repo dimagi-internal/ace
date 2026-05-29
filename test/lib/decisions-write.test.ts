@@ -23,6 +23,7 @@ const VALID_ROW = {
   source: "idea.md §1",
   status: "ai-default" as const,
   reasoning: "Single per-FLW visit producing one structured delivery.",
+  evidence_basis: "stated" as const,
 };
 
 const WO_ROW = {
@@ -34,10 +35,11 @@ const WO_ROW = {
   options: ["2026-05-22 to 2026-07-31"],
   source: "pdd-timeline",
   status: "ai-default" as const,
+  evidence_basis: "inferred" as const,
 };
 
 describe("composeAppendedLog — seeding a new log", () => {
-  it("seeds schema_version=3 + opportunity + run_id + generated_at when text is null", () => {
+  it("seeds schema_version=4 + opportunity + run_id + generated_at when text is null", () => {
     const result = composeAppendedLog({
       existingYamlText: null,
       opportunity: "bednet-spot-check",
@@ -47,7 +49,7 @@ describe("composeAppendedLog — seeding a new log", () => {
     });
 
     const parsed = parseDecisionsYaml(result.content);
-    expect(parsed.schema_version).toBe(3);
+    expect(parsed.schema_version).toBe(4);
     expect(parsed.opportunity).toBe("bednet-spot-check");
     expect(parsed.run_id).toBe("20260525-2013");
     expect(parsed.generated_at).toBe("2026-05-25T20:13:04Z");
