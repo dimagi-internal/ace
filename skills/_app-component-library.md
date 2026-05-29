@@ -1,0 +1,305 @@
+# App component library (`_app-component-library.md`)
+
+Reference document, **not a skill** — the leading `_` excludes it from the
+skill catalog (same convention as `_eval-template.md`, `_qa-template.md`).
+It is never invoked; the build skills read it and assemble their
+`/nova:autobuild` brief from it.
+
+This is the **single source of truth** for the *deployable-by-default* field /
+calculate / constraint patterns the CommCare build skills emit. Each component
+is a named, parameterized building block with a **verbatim brief paragraph**
+the build skill drops into the autobuild brief. The library exists so depth is
+the **default** — not bespoke hand-craft re-derived per opportunity — and so a
+new build skill or archetype can emit a component by name instead of
+reinventing it.
+
+**Provenance.** The component set was distilled 2026-05-29 from the field-level
+comparison of ACE's ITN build (`malaria-itn-app/20260528-1607`) against
+Sarvesh's hand-finished `[Final]` ITN builds — where ACE scored 9.6 on a
+hollow build that a domain expert would not deploy. See
+`docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` and the comparison doc
+`1Ch8Hb9byn3mIz1p0oi7qqB_KS2CHPIlrgrgWmEJsSDA`.
+
+## How the build skills use this file
+
+In Step 3 (brief assembly), the build skill:
+
+1. Determines which components are **triggered** for this app, from the PDD and
+   the archetype (see each component's **Trigger**).
+2. For every triggered component, inserts its **Brief paragraph** into the
+   `/nova:autobuild` brief **verbatim**, in its own paragraph, prefixed
+   `REQUIRED:`, substituting any `<PARAM>` placeholders from the PDD.
+3. Skips components whose trigger doesn't fire (e.g. no GPS radius in the
+   Evidence Model → no `gps-accuracy-capture`).
+
+**The symmetry that makes this safe.** Every component pairs 1:1 with the eval
+dimension that **hard-fails** a build which omits it (the **Enforced by**
+field). If the brief assembly drops a triggered component, the matching
+`pdd-to-*-app-eval` fitness dimension catches it as a build failure — not a
+silent quality gap. Build-emit and eval-grade are deliberately symmetric: this
+library and the eval rubrics are two views of the same contract.
+
+## Generic vs opportunity-specific (open decision #2, resolved 2026-05-29)
+
+These components are **generic** — they apply to any data-capture or training
+app of the relevant archetype, so they live here and are emitted by name.
+
+What is **NOT** a library component (stays opportunity-specific hand-craft,
+authored from the PDD per run):
+
+- **Deliver form architecture** — single comprehensive visit form vs. two
+  linked visit forms. This is a per-intervention design decision (and a
+  Phase-1 `evidence_basis` call — see `idea-to-pdd`), not a reusable component.
+- **Domain content** — the actual KAP item list, module curriculum text,
+  choice enumerations, BC script wording. The *patterns* for capturing them
+  (structured-capture, embedded-bc-script) are components; the *content* is not.
+
+## Component index
+
+| Component | App | Trigger | Enforced by (eval dimension) |
+|---|---|---|---|
+| [`gps-accuracy-capture`](#gps-accuracy-capture) | Deliver | PDD Evidence Model specifies a GPS arrival/location radius | `pdd-to-deliver-app-eval § Capture fitness` |
+| [`init-safe-calculates`](#init-safe-calculates) | Deliver (cross-cutting) | Any hidden calc parses a capture-later value (`selected-at`/`substr`/`regex`/`number`) | `app-release-qa` (`commcare-cli play`) |
+| [`data-quality-constraints`](#data-quality-constraints) | Deliver | Always, for any data-capture instrument | `pdd-to-deliver-app-eval § Data-quality validation` |
+| [`case-write-back`](#case-write-back) | Deliver | A case-UPDATE / follow-up form captures new observations | `pdd-to-deliver-app-eval § Capture fitness`; `app-connect-coverage` |
+| [`structured-capture`](#structured-capture) | Deliver | An answer has an enumerable option set | `pdd-to-deliver-app-eval § Capture fitness` |
+| [`section-timestamps`](#section-timestamps) | Deliver | PDD success metrics reference visit-time / a cost model | `pdd-to-deliver-app-eval § Capture fitness` |
+| [`embedded-bc-script`](#embedded-bc-script) | Deliver | PDD specifies a behavior-change segment delivered verbatim | `pdd-to-deliver-app-eval` |
+| [`assessment-gate`](#assessment-gate) | Learn | PDD specifies a readiness / competency gate before delivery | `pdd-to-learn-app-eval § assessment_gating` |
+| [`localization-layer`](#localization-layer) | Learn + Deliver | PDD names a working language other than English | `pdd-to-{learn,deliver}-app-eval § localization_match` (hard-fail) |
+
+---
+
+## Components
+
+### gps-accuracy-capture
+
+- **App:** Deliver
+- **Trigger:** the PDD's Evidence Model specifies an arrival/location radius
+  (e.g. "GPS at arrival within 100 m").
+- **Parameters:** `<PREFERRED_M>` (preferred accuracy, default `15`),
+  `<MINIMUM_M>` (minimum acceptable accuracy, default `25`), `<GEOPOINT_ID>`
+  (the geopoint question id).
+- **Enforced by:** `pdd-to-deliver-app-eval § Capture fitness` — a plain
+  `geopoint` with only a text hint when the PDD states a radius caps the
+  dimension at ≤3.
+- **Pairs with:** [`init-safe-calculates`](#init-safe-calculates) — always emit
+  both; the normalized `lat`/`lon`/accuracy outputs here are exactly the
+  capture-later calculates that rule guards.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — GPS accuracy gating: if the PDD's Evidence Model specifies an
+> arrival/location radius (e.g. "within 100 m"), a plain `geopoint` question is
+> NOT sufficient. Emit an accuracy-gated capture block: a preferred-accuracy
+> threshold (<PREFERRED_M> m) and a minimum-accuracy threshold (<MINIMUM_M> m),
+> a capture-gate that re-prompts / refuses to accept a fix worse than the
+> minimum, a live accuracy-readout label guiding the FLW, and normalized `lat`
+> / `lon` outputs the verification layer can read. A plain geopoint with only a
+> text hint ("cross-check manually") does not let Connect enforce the stated
+> radius.
+> INIT-SAFETY (load-bearing — do NOT skip): the hidden `lat` / `lon` /
+> accuracy calculates that split the geopoint via
+> `selected-at(<GEOPOINT_ID>, N)` MUST be guarded against an empty geopoint.
+> CommCare evaluates ALL calculates eagerly at form-init
+> (`FormDef.initAllTriggerables`) BEFORE any GPS is captured, so
+> `selected-at()` on an empty (zero-length) geopoint throws a fatal
+> `XPathException` and the whole form fails to initialize ("A part of your
+> application is invalid" on device; caught by `app-release-qa`'s
+> `commcare-cli play` gate, NOT by `validate_app` or `make_build`). Wrap every
+> such calculate so it returns empty (or a sentinel) until the geopoint is set:
+> `lat  = if(<GEOPOINT_ID> = '', '', selected-at(<GEOPOINT_ID>, 0))`,
+> `lon  = if(<GEOPOINT_ID> = '', '', selected-at(<GEOPOINT_ID>, 1))`,
+> `accuracy = if(<GEOPOINT_ID> = '', -1, number(selected-at(<GEOPOINT_ID>, 3)))`.
+> The geopoint's OWN accuracy-gate `constraint` / `validate`
+> (e.g. `selected-at(., 3) <= <MINIMUM_M>`) is fine as-is — constraints only
+> evaluate on answer, not at init; ONLY the eager hidden calculates need
+> guarding.
+
+> Reproducer: malaria-itn-app/20260529-1124 Phase 3 — the baseline form's
+> unguarded `selected-at(gps_raw, 0)` on `lat` threw at init and blocked the
+> entire app from installing.
+
+### init-safe-calculates
+
+- **App:** Deliver (cross-cutting — applies to any form with capture-later
+  calculates, not just GPS).
+- **Trigger:** ANY hidden `calculate` that calls `selected-at()`, `substr()`,
+  `regex()`, `number()`, or otherwise indexes/parses a value the FLW supplies
+  later (a geopoint, a not-yet-answered question, a repeat-group reference).
+- **Enforced by:** `app-release-qa` (`commcare-cli play` install-time gate) —
+  an unguarded extraction is a fatal install-time error, invisible to
+  `validate_app` and `make_build`.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Init-safe calculates (general rule): ANY hidden `calculate` that
+> calls `selected-at()`, `substr()`, `regex()`, `number()`, or otherwise
+> indexes/parses a value the FLW supplies LATER (a geopoint, a not-yet-answered
+> question, a repeat-group reference) MUST guard against that source being
+> empty at form-init, by wrapping it `if(<source> = '', <empty-or-sentinel>,
+> <expr>)`. Every calculate runs at `initAllTriggerables` before any answer
+> exists; an unguarded extraction over an empty source is a FATAL install-time
+> error (the form never initializes), not a recoverable runtime one. This
+> generalizes the GPS lat/lon case to every capture-later extraction.
+
+### data-quality-constraints
+
+- **App:** Deliver
+- **Trigger:** always — every data-capture instrument.
+- **Parameters:** field-specific bounds drawn from the PDD's roster / counts
+  (e.g. `<HH_MAX>` for household size). Cross-field relationships from the PDD's
+  data model.
+- **Enforced by:** `pdd-to-deliver-app-eval § Data-quality validation` — a
+  capture instrument whose only constraints are a consent gate + one range caps
+  the dimension at ≤3, with a 1.5-point deduction per whole missing constraint
+  class (unbounded counts / unformatted phone / uncapped free text).
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Data-quality validation by default: every numeric count field MUST
+> carry a sensible bound `constraint` (e.g. household_size 1–<HH_MAX>);
+> cross-field counts MUST be constrained against their parent (e.g.
+> `under_5 <= household_size`); any phone field MUST carry a format regex (e.g.
+> `regex(., '^[0-9]{10,13}$')`); every free-text field MUST carry a character
+> limit; every credit-bearing field (photo, GPS, consent) MUST be `required`
+> with a `validate`. Do NOT ship a data-capture instrument whose only
+> constraints are the consent gate and one range — unbounded counts and
+> unformatted phones produce unusable field data.
+
+### case-write-back
+
+- **App:** Deliver
+- **Trigger:** a case-UPDATE / follow-up form (Visit 2+, retention, monitoring)
+  captures new observations.
+- **Enforced by:** `pdd-to-deliver-app-eval § Capture fitness` (a write-nothing
+  follow-up form is an explicit hard-gate) and the `app-connect-coverage`
+  structural check.
+- **Note:** this is the **opposite** of the Learn-app rule — Learn forms carry
+  NO case blocks; Deliver follow-up forms MUST write back.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Follow-up / case-update forms MUST persist their observations to
+> the case: every user-facing observation field on a case-UPDATE form
+> (retention, change-since-last-visit, V2 readings) MUST be bound with
+> `case_property_on` to the relevant case type. A case-update form that
+> captures new observations but writes zero case properties is pointless — the
+> change it observed is lost.
+
+### structured-capture
+
+- **App:** Deliver
+- **Trigger:** an answer has an enumerable option set, or a numeric whose field
+  reliability improves when bucketed.
+- **Enforced by:** `pdd-to-deliver-app-eval § Capture fitness` — ≥2 enumerable
+  answers left as free `text` caps the dimension at ≤4.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Structured capture over free text: any answer with an enumerable
+> option set (who-sleeps-under-net, net condition, risk groups, how-obtained)
+> MUST be a single- or multi-select, never free `text`; every "Other" option
+> MUST have a conditional `_other` free-text follow-up (relevance-gated on the
+> Other selection); prefer bucketed selects over raw integers where field
+> reliability matters (net age as `<1 / 1–2 / 3–4 / 5+ / don't know`).
+
+### section-timestamps
+
+- **App:** Deliver
+- **Trigger:** the PDD's success metrics reference visit-time, a time/cost
+  model, or per-section duration.
+- **Enforced by:** `pdd-to-deliver-app-eval § Capture fitness`.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Section timestamps: emit a hidden `now()` timestamp at the start
+> of each major section (and `today()` for visit_date) so the cost/time model
+> can reconstruct per-section visit-time distributions. (Only when the PDD's
+> success metrics reference visit-time or a cost model.)
+
+### embedded-bc-script
+
+- **App:** Deliver
+- **Trigger:** the PDD specifies a behavior-change / read-aloud segment to be
+  delivered verbatim.
+- **Enforced by:** `pdd-to-deliver-app-eval`.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Embed any verbatim read-aloud / behavior-change script in-form as
+> a `label`, not as something the FLW must recall from the Learn app. If the
+> PDD specifies a BC segment to be delivered verbatim, the exact script text
+> goes in the Deliver form.
+
+### assessment-gate
+
+- **App:** Learn
+- **Trigger:** the PDD specifies a readiness / competency gate before delivery.
+- **Parameters:** `<THRESHOLD>` (passing percentage, e.g. `80`).
+- **Enforced by:** `pdd-to-learn-app-eval § assessment_gating` — a label-only
+  curriculum + one trivial quiz with an unconditional pass message is a
+  hard-fail.
+- **Architecture note:** the Deliver-unlock gate is enforced **Connect-side**
+  (Connect reads the assessment completion). Do NOT enforce it via in-app
+  case-property sequential unlock — Learn forms carry no case blocks. The
+  in-app job is a genuine pre/post assessment plus an honest pass/fail
+  experience. (`user_score` is a percentage 0–100; see
+  `pdd-to-learn-app § user_score MUST be a PERCENTAGE`.)
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED: When the PDD specifies a readiness gate before delivery, the
+> assessment must be a real competency gate: (a) build a **pre-test AND a
+> post-test** with distinct item banks (pre-test surfaces baseline; post-test
+> is the gate); (b) include enough scored items to actually test the curriculum
+> — roughly **≥1 item per module/major topic**, not 5 items for a 5-module
+> course; (c) compute `user_score` as a percentage (per the rule above) and
+> wire it to `connect.assessment` at the PDD's threshold (<THRESHOLD>) so
+> Connect enforces the Deliver-unlock gate; (d) the result screen MUST be
+> **conditional on the score** — a pass `label` relevant when
+> `#form/user_score >= <THRESHOLD>` AND a separate fail/retry `label` relevant
+> when below — NOT an unconditional "Well done!" that fires regardless of the
+> score; (e) give a failing FLW retry guidance. Do NOT try to enforce the gate
+> via in-app case-property sequential unlock — Learn forms carry no case blocks;
+> the gate is Connect-side. The in-app job is a genuine pre/post assessment
+> plus an honest pass/fail experience.
+
+### localization-layer
+
+- **App:** Learn **and** Deliver.
+- **Trigger:** the PDD names a working language other than English.
+- **Parameters:** `<LANGUAGE>` (the PDD's named working language).
+- **Enforced by:** `pdd-to-{learn,deliver}-app-eval § localization_match` —
+  a **hard-fail** dimension: English-only when the PDD names a working language
+  fails the gate.
+- **Decision:** resolves the 2026-05-29 localization decision — author the core
+  in English, ship the named-language translation set; do **not** defer
+  localization "downstream."
+
+**Brief paragraph (verbatim) — Deliver:**
+
+> REQUIRED: Author all form strings (labels, choices, hints,
+> constraint/validation messages) in English as the primary language, AND ship
+> a complete translation set in the PDD's named working language (here:
+> <LANGUAGE>) via the form's itext — every English string must have its
+> <LANGUAGE> counterpart. English-only is a hard-fail at the eval gate when the
+> PDD names a working language. Do NOT defer localization "downstream"; the
+> translation set is part of this build.
+
+**Brief paragraph (verbatim) — Learn:**
+
+> REQUIRED: Author all module/quiz strings (labels, choices, hints, assessment
+> items) in English as the primary language, AND ship a complete translation
+> set in the PDD's named working language (here: <LANGUAGE>) via itext — every
+> English string must have its <LANGUAGE> counterpart. English-only is a
+> hard-fail at the eval gate when the PDD names a working language; do NOT defer
+> localization "downstream."
+
+---
+
+## Change log
+
+| Date | Change | By |
+|---|---|---|
+| 2026-05-29 | **Created the library.** Extracted the deployability/fitness `REQUIRED:` brief paragraphs that previously lived inline in `pdd-to-deliver-app` and `pdd-to-learn-app` into named, parameterized components: `gps-accuracy-capture`, `init-safe-calculates`, `data-quality-constraints`, `case-write-back`, `structured-capture`, `section-timestamps`, `embedded-bc-script` (Deliver), `assessment-gate` (Learn), `localization-layer` (both — dedups the previously-duplicated localization paragraph). Each component pairs 1:1 with the `pdd-to-*-app-eval` fitness dimension that hard-fails a build omitting it. Closes the "reusable component library" item (PR-8 build track) from `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` / open decision #2. | ACE team |

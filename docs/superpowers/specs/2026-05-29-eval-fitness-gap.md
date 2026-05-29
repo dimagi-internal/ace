@@ -344,7 +344,13 @@ grades them.
 2. **Generic vs bespoke** — which Sarvesh choices become reusable components
    (validation, case-persistence, localization, GPS block — clearly generic) vs
    stay opportunity-specific hand-craft (single-vs-two-form deliver
-   architecture)?
+   architecture)? ✅ **RESOLVED 2026-05-29:** the generic components are
+   catalogued in `skills/_app-component-library.md` (GPS accuracy-capture,
+   init-safe calculates, data-quality constraints, case-write-back,
+   structured-capture, section-timestamps, embedded-BC-script, assessment-gate,
+   localization-layer); the build skills emit them by name + trigger. Deliver
+   form architecture and domain content stay opportunity-specific. Closes the
+   PR-8 build-track component-library item.
 3. **Fitness bar calibration source** — is Sarvesh's `[Final]` the canonical
    quality bar for *all* opps, or just malaria-itn-app? (Recommend: opp-specific
    ground truth, but the *dimension set* — validation/fidelity/persistence/

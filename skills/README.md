@@ -164,7 +164,7 @@ Trivial typo fixes don't need a change log entry; behavior changes do. When in d
 
 ## Body templates (`_*.md` reference docs)
 
-Three reference documents extract shared boilerplate so individual
+These reference documents extract shared boilerplate so individual
 skills don't duplicate it:
 
 - **`skills/_eval-template.md`** — for `*-eval` skills. Defines the
@@ -183,10 +183,19 @@ skills don't duplicate it:
   `phases.solicitation-management.products.{solicitation, selected_llo}`
   per-run contract, the connect-labs MCP atom inventory per skill, and
   the Phase 8 → Phase 9 boundary rule.
+- **`skills/_app-component-library.md`** — for the CommCare build skills
+  (`pdd-to-deliver-app`, `pdd-to-learn-app`). The canonical, named,
+  parameterized **deployability/fitness components** (GPS accuracy-capture,
+  data-quality constraints, case-write-back, assessment-gate,
+  localization-layer, …) the build skills emit into the `/nova:autobuild`
+  brief by archetype. Single source of truth for each component's verbatim
+  brief paragraph; each component pairs 1:1 with the `pdd-to-*-app-eval`
+  fitness dimension that hard-fails a build omitting it.
 
-These files start with `_` so they are excluded from the skill catalog
-(they aren't skills — they're reference docs). When you add a new
-skill in one of the three families, copy the skeleton from the matching
+(Plus the registries `_qa-decisions.md` / `_eval-decisions.md` — see
+above.) These files start with `_` so they are excluded from the skill
+catalog (they aren't skills — they're reference docs). When you add a new
+skill in one of the template families, copy the skeleton from the matching
 template and reference shared sections rather than duplicating them.
 
 ## Optional sections
