@@ -282,6 +282,38 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > normalized `lat` / `lon` outputs the verification layer can read.
      > A plain geopoint with only a text hint ("cross-check manually")
      > does not let Connect enforce the stated radius.
+     > INIT-SAFETY (load-bearing — do NOT skip): the hidden `lat` / `lon` /
+     > accuracy calculates that split the geopoint via
+     > `selected-at(<geopoint>, N)` MUST be guarded against an empty
+     > geopoint. CommCare evaluates ALL calculates eagerly at form-init
+     > (`FormDef.initAllTriggerables`) BEFORE any GPS is captured, so
+     > `selected-at()` on an empty (zero-length) geopoint throws a fatal
+     > `XPathException` and the whole form fails to initialize ("A part of
+     > your application is invalid" on device; caught by `app-release-qa`'s
+     > `commcare-cli play` gate, NOT by `validate_app` or `make_build`).
+     > Wrap every such calculate so it returns empty (or a sentinel) until
+     > the geopoint is set:
+     > `lat  = if(<geopoint> = '', '', selected-at(<geopoint>, 0))`,
+     > `lon  = if(<geopoint> = '', '', selected-at(<geopoint>, 1))`,
+     > `accuracy = if(<geopoint> = '', -1, number(selected-at(<geopoint>, 3)))`.
+     > The geopoint's OWN accuracy-gate `constraint` / `validate`
+     > (e.g. `selected-at(., 3) <= 50`) is fine as-is — constraints only
+     > evaluate on answer, not at init; ONLY the eager hidden calculates
+     > need guarding. Reproducer: malaria-itn-app/20260529-1124 Phase 3 —
+     > the baseline form's unguarded `selected-at(gps_raw, 0)` on `lat`
+     > threw at init and blocked the entire app from installing.
+
+     > REQUIRED — Init-safe calculates (general rule): ANY hidden
+     > `calculate` that calls `selected-at()`, `substr()`, `regex()`,
+     > `number()`, or otherwise indexes/parses a value the FLW supplies
+     > LATER (a geopoint, a not-yet-answered question, a repeat-group
+     > reference) MUST guard against that source being empty at form-init,
+     > by wrapping it `if(<source> = '', <empty-or-sentinel>, <expr>)`.
+     > Every calculate runs at `initAllTriggerables` before any answer
+     > exists; an unguarded extraction over an empty source is a FATAL
+     > install-time error (the form never initializes), not a recoverable
+     > runtime one. This generalizes the GPS lat/lon case above to every
+     > capture-later extraction.
 
      > REQUIRED — Data-quality validation by default: every numeric
      > count field MUST carry a sensible bound `constraint` (e.g.
@@ -696,3 +728,4 @@ Each row this skill writes uses `phase: 3-commcare` and
 | 2026-05-25 | **Revert PR #445; restore `#case/case_id` as the canonical create-form `entity_id`; add explicit REQUIRED rule against `#case/case_name` substitution.** PR #445 (commit `749888e`, 2026-05-24) had flipped the recommended override from `#case/case_id` to `#case/case_name` based on a `/canopy:select-session` rescan citing a Nova validator rejection in the `e2e-malaria-rdt` 2026-05-24 run — but no artifact was preserved and the change contradicted a verified learning from one day earlier (`docs/learnings/2026-04-29-nova-connect-marker-bugs.md:92-95`: 2026-05-23 round-trip verification that `#case/case_id` persists exactly as passed). The substitution passed every Phase 3 static gate (`validate_app`, `make_build`, release, `app-release-smoke` projection) then failed on-device install on `bednet-spot-check/20260525-1405` Phase 6 with "A part of your application is invalid" — CommCare's install-time resource graph reads `entity_id`'s XPath BEFORE the hidden `case_name` field's `calculate` fires, gets null, and rejects the CCZ. `#case/case_id` does NOT have this problem because JavaRosa allocates the case UUID synchronously at form-processing start. Per Vellum's source-of-truth help text (`src/commcareConnect.js:243`), `case_id` IS the canonical pattern. New REQUIRED rule inserted in Step 3 ("`entity_id` on a create-form MUST resolve at install/parse time"). Full postmortem: `docs/learnings/2026-05-25-entity-id-misdiagnosis.md`. Structural preventer (commcare-cli.jar install simulation) tracked at `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md § Preventer 2`. | ACE team |
 | 2026-05-26 | **Both prior `entity_id` rules were operator-side workarounds for an unrecognized upstream Nova compiler bug — branch the REQUIRED rule on case action.** The `commcare-cli.jar play` install-time gate (shipped same day in PR #510's Java-resolver fix) caught `bednet-spot-check/20260525-2022`'s Deliver CCZ failing `FormDef.initAllTriggerables` with `XPathTypeMismatchException` on `/data/bednet_visit/deliver/entity_id`. The bind Nova emitted for the directive `entity_id: '#case/case_id'` was the **case-UPDATE** shape: `instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/case_id`. On a case-CREATE form that XPath is broken on two grounds — Connect populates `case_id_new_visit_<n>` (not `case_id`) in session data, and the case isn't in `casedb` yet. The same exception class is what CommCare's mobile runtime surfaces as "A part of your application is invalid" on device — explaining why BOTH bednet runs (1405 with `case_name`, 2022 with `case_id`) hit install rejection for what looked like different reasons; same Nova compiler bug, two different operator workaround attempts. Tracked upstream as voidcraft-labs/nova-plugin#20. Skill rule split: case-create deliver_units now emit `entity_id: '/data/case/@case_id'` + `entity_name: '/data/case_name'` (literal XPaths against the form's own case block, which the form's `<setvalue>` chain populates at xforms-ready); case-update deliver_units keep `#case/case_id` + `#case/case_name` (where Nova's casedb-lookup compilation IS correct). The change-log entry above (2026-05-25) is preserved verbatim for the audit trail; its conclusion was empirically wrong but the postmortem on PR #445 stands. | ACE team |
 | 2026-05-29 | **Deployability brief requirements + case-write-back verification (ITN post-mortem).** Added a `REQUIRED — Deployability (fitness) requirements` block to Step 3 (GPS accuracy-gating when a radius is specified; default data-quality constraints — bounds, cross-field, phone regex, char limits; structured selects + other→specify over free text; section timestamps; verbatim in-form BC script) and a `REQUIRED — Localization` paragraph (English core + named-language translation set; English-only hard-fails). Added Step 4c (case write-back verification): case-update forms that capture observations must bind ≥1 `case_property_on`, with a bounded `/nova:edit` repair loop — the structural preventer for the ITN Visit-2 write-nothing defect. These mirror the new `pdd-to-deliver-app-eval` fitness hard-gates 1:1 so build and eval are symmetric. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
+| 2026-05-29 | **Init-safety on GPS lat/lon/accuracy calculates (and a general init-safe-calculate rule).** The GPS accuracy-gating REQUIRED paragraph added 2026-05-29 told the architect to emit normalized `lat`/`lon` outputs but didn't say to guard the `selected-at(<geopoint>, N)` extraction calculates against an empty geopoint — and CommCare evaluates ALL calculates eagerly at `FormDef.initAllTriggerables`, BEFORE any GPS is captured, so `selected-at()` on the empty geopoint threw a fatal `XPathException` and the whole form failed to install ("A part of your application is invalid"). It passed `validate_app` AND `make_build`; only `app-release-qa`'s `commcare-cli play` gate caught it. Folded the `if(<geopoint> = '', '', selected-at(...))` guard into the GPS paragraph and added a standalone `REQUIRED — Init-safe calculates (general rule)` covering any `selected-at`/`substr`/`regex`/`number` extraction over a capture-later source. Reproducer: malaria-itn-app/20260529-1124 Phase 3 (fixed in-phase via one `/nova:edit`). | ACE team |

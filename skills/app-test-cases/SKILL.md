@@ -537,8 +537,16 @@ warning. Tracking: jjackson/ace#115 finding 2.
 
 ### Step 4: Emit the consolidated yaml
 
-Write `ACE/<opp>/runs/<run-id>/app-test-cases.yaml` per the template
-in `templates/app-test-cases-template.yaml`.
+Write `ACE/<opp>/runs/<run-id>/3-commcare/app-test-cases.yaml` per the
+template in `templates/app-test-cases-template.yaml`. **The path is
+`3-commcare/`, NOT the run root** — it must match the Products section
+above and the artifact manifest (`lib/artifact-manifest.ts`), which is
+what `verify_phase_artifacts(phase=commcare)` checks at the Phase 3
+boundary fence. Writing it to the run root passes the skill's own
+self-eval (Step 5 lists the file by name) but fails the boundary fence
+with `missing: 3-commcare/app-test-cases.yaml`. Reproducer:
+malaria-itn-app/20260529-1124 — the master yaml landed at the run root
+and the orchestrator had to `drive_move_file` it into `3-commcare/`.
 
 ### Step 5: Self-evaluate coverage
 
@@ -647,3 +655,4 @@ already maps the producer to `3-commcare/` (see
 | 2026-05-22 | Add § Quiz / required-input answer-tap rule — MANDATORY. Forbids `${SELECTOR:radio-first-option}` and other generic-positional placeholders; mandates per-required-field answer steps (literal `tapOn: text:` from Nova `get_form` options) before `form-advance.yaml`. Closes the malaria-rdt run 20260522-1002 Phase 6 BLOCKER class: both smoke recipes chained `form-advance` across required quiz questions with zero answer-selection steps, stalling on `warning_root`. Step 3.4's selector-resolution gate already catches the positional-placeholder half; this section adds the author-side rule that prevents emission in the first place. | ACE team |
 | 2026-05-27 | Recipe naming convention: `J<n>.yaml` → `journey-<app>[-<slug>].yaml` (smokes use bare `journey-learn`/`journey-deliver`). `id: J<n>` retained as internal key. Screenshot labels `sc-J<n>-*` → `<recipe-base>-*`. See spec 2026-05-27-phase6-learn-deliver-decoupling. | ACE team |
 | 2026-05-27 | Deliver-smoke composition: split the 80-step Learn-re-walk monolith into journey-learn (walks Learn to completion) + journey-deliver (resumes from unlocked state via connect-resume-opp -> deliver-launch). Closes the leep 20260527 J2 deferral class — composition is now the default, BLOCKER reserved for genuinely un-composable structures. | ACE team |
+| 2026-05-29 | Fix Step 4 output-path bug: was `ACE/<opp>/runs/<run-id>/app-test-cases.yaml` (run root), contradicting the Products section + artifact manifest (`3-commcare/app-test-cases.yaml`). The run-root write passed the skill's own Step 5 self-eval but failed the Phase 3 boundary fence's `verify_phase_artifacts(commcare)` with `missing: 3-commcare/app-test-cases.yaml`. Step 4 now writes to `3-commcare/` and calls out the mismatch explicitly. Reproducer: malaria-itn-app/20260529-1124 (orchestrator had to drive_move_file the master yaml into 3-commcare/). | ACE team |
