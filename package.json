@@ -1,6 +1,6 @@
 {
   "name": "ace",
-  "version": "0.13.476",
+  "version": "0.13.477",
   "description": "AI Connect Engine - orchestrator for building Connect Opps using AI",
   "type": "module",
   "scripts": {

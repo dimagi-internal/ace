@@ -70,11 +70,45 @@ Consumers:
      non-null." Good: "Journey completes in <3 minutes including
      form fill" / "Required-field errors are recoverable in-form."
 
+4a. **Generate deployability-exercising journeys (the fitness surface).**
+    Happy-path journeys alone describe a thin instrument.
+    `pdd-to-app-journeys-eval § deployability_fitness` hard-fails a
+    journey set that never demands the capture/validation/persistence a
+    deployable app needs, and `app-ux-eval § capture_robustness` needs a
+    negative path to grade. So when the PDD's Evidence Model implies it,
+    ALWAYS include:
+
+    - **≥1 negative-path / bad-input journey** — the FLW enters a value
+      the instrument should reject (blank required field, out-of-range
+      count, malformed phone, a low-accuracy GPS fix where a radius is
+      specified) and experiences a clear, recoverable rejection. This is
+      the journey `app-test-cases` turns into a negative-path Maestro
+      recipe and `app-ux-eval § capture_robustness` grades. A journey
+      set with zero negative-path journeys is a coverage gap, not a pass.
+    - **A capture-fidelity expectation** in the relevant journey's pass
+      criteria — e.g. "GPS capture is rejected below the accuracy
+      threshold," "enumerable answers are picked from a list, not typed,"
+      "an 'Other' selection prompts a specify field."
+    - **For multi-visit / follow-up designs, a persistence journey** —
+      the follow-up visit records change against the existing household,
+      and the change is visible/retained (the UX face of case
+      write-back).
+
+    Phrase all of these as UX outcomes (what the FLW sees/does), not
+    backend mechanics — same voice rule as the happy path. These are
+    *findings the journeys must demand even if the PDD only implied
+    them* — PDD silence is not a waiver.
+
 5. **Self-evaluate coverage** (see `## Coverage rules` below):
    - At least one journey per archetype branch category.
    - Every journey has at least one `error_recovery`-flavored edge
      case (so `app-ux-eval`'s rubric has signal on recoverability).
    - Every journey has at least one measurable pass criterion.
+   - **≥1 negative-path / bad-input journey exists** (step 4a) so
+     `app-ux-eval § capture_robustness` has signal and
+     `deployability_fitness` can pass.
+   - **Capture-fidelity + (for multi-visit) persistence expectations are
+     present** per step 4a where the Evidence Model implies them.
 
    If any rule is missed, go back to step 4 and add.
 
@@ -300,3 +334,4 @@ When `--dry-run` is active:
 | 2026-05-08 | **No QA companion.** `pdd-to-app-journeys-qa` removed (PR #160) — downstream consumers are LLM-driven; structural label-format checks gate nothing real, and the eval already covers the substantive concerns. See `skills/_qa-decisions.md` for the registry entry + revisit conditions, and `docs/learnings/2026-05-08-fake-qa-detection.md` for the heuristic. | ACE team |
 | 2026-05-15 | Accept either "FLW Requirements" (canonical, per `templates/pdd-template.md`) or "Target FLW" (legacy) as the persona section in Process step 3 + Failure Modes. Prompted by `malaria-itn-fgd/20260514-2007` where the template-conformant PDD said "FLW Requirements" and the skill halted looking for "Target FLW". See jjackson/ace#302. | ACE team |
 | 2026-05-15 | Recharacterize `focus-group` journey categories for the attestation-form-only shape (PRs #305, #306): `output-coherence` (which assumed the FLW fills 28 in-app fields with content) → `attestation-submission` (FLW fills the 5-field form at session end, no per-section content in the app). Session-setup reframed to note "no in-app interaction at session start" — the mobile form is end-of-session only. Other categories (recruitment-failure, consent-handling) reframed to note no-attestation-on-abort semantics. Coverage rule updated to reference the new category name. Prompted by `malaria-itn-fgd/20260514-2352` re-run. | ACE team |
+| 2026-05-29 | **Deployability-exercising journeys (ITN post-mortem, producer↔eval symmetry).** Added Step 4a + two coverage rules: when the Evidence Model implies it, the journey set MUST include ≥1 negative-path/bad-input journey (the recoverable-rejection path that `app-test-cases` turns into a negative-path recipe and `app-ux-eval § capture_robustness` grades), capture-fidelity pass criteria (GPS accuracy gating, structured-pick over typing, other→specify), and — for multi-visit designs — a persistence journey (follow-up records change). Symmetric with the new `pdd-to-app-journeys-eval § deployability_fitness` hard-gate; PDD silence is not a waiver. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
