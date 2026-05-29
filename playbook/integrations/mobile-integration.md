@@ -121,7 +121,7 @@ The cold-boot funnel's `-wipe-data` flag means this class is now structurally ra
 
 ```sh
 adb emu kill
-emulator -avd ACE_Pixel_API_34_PS -no-window -no-snapshot-load -no-snapshot-save -wipe-data
+emulator -avd ACE_Pixel_API_34_PS -no-window -no-audio -no-snapshot-load -no-snapshot-save -wipe-data
 ```
 
 ### Unlock PersonalID gate
