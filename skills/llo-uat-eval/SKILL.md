@@ -26,13 +26,13 @@ which grades the activation step that follows. See
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; Success Metrics + Evidence Model define UAT coverage expectation |
-| Phase 9 | `9-execution/llo-uat_results.md` | UAT compilation under judgment |
-| Phase 9 | `9-execution/llo-onboarding_*` artifacts | LLO roster (who *should* have signed off) |
+| Phase 9 | `9-execution-manager/llo-uat_results.md` | UAT compilation under judgment |
+| Phase 9 | `9-execution-manager/llo-onboarding_*` artifacts | LLO roster (who *should* have signed off) |
 | Phase 6/2 | `3-commcare/app-deploy_summary.md` | what was deployed for UAT to exercise |
 
 ## Products
 
-- `9-execution/llo-uat-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`llo-uat`).
+- `9-execution-manager/llo-uat-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`llo-uat`).
 
 ## Process
 
@@ -41,7 +41,7 @@ which grades the activation step that follows. See
 
 2. **Detect "phase not run" mode.** If `run_state.yaml` shows
    `phases.execution-management.llo-uat` not `done` or
-   `9-execution/llo-uat_results.md` is missing, emit `verdict:
+   `9-execution-manager/llo-uat_results.md` is missing, emit `verdict:
    incomplete` immediately with `[INFO] Phase 9 llo-uat not run; not
    gradable yet`.
 
@@ -98,7 +98,7 @@ which grades the activation step that follows. See
    - `[INFO]` — observational, no action required.
 
 5. **Write the verdict YAML** to
-   `9-execution/llo-uat-eval_verdict.yaml` using the shape from
+   `9-execution-manager/llo-uat-eval_verdict.yaml` using the shape from
    `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
 
    ```yaml

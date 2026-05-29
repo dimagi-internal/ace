@@ -32,7 +32,7 @@ See `skills/_eval-template.md` for shared contracts and
 |---|---|---|
 | Phase 10 | `10-closeout/learnings-summary.md` | the synthesis under judgment |
 | Phase 10 | `10-closeout/cycle-grade.md` | secondary cross-check for tone-calibration (NOT the anchor — see Process step 4) |
-| Phase 9 | `9-execution/llo-uat_results.md` + `phases.execution-management.products.*` | **independent outcome anchor** for tone calibration (did the opp actually deliver) |
+| Phase 9 | `9-execution-manager/llo-uat_results.md` + `phases.execution-management.products.*` | **independent outcome anchor** for tone calibration (did the opp actually deliver) |
 | Phase 1 | `1-design/idea-to-pdd.md` | original PDD; lifecycle baseline |
 | All phases | `runs/<run-id>/run_state.yaml` | which phases ran, gate dispositions |
 | All phases | `runs/<run-id>/verdicts/*.yaml` | per-skill trajectory the synthesis should have traversed |
@@ -66,7 +66,7 @@ See `skills/_eval-template.md` for shared contracts and
    mode this dimension exists to catch). So derive the outcome anchor from
    evidence *outside* the cycle-grade number:
    - Real Phase-9 telemetry / UAT outcome: did the Success Metrics actually
-     clear their thresholds (`9-execution/llo-uat_results.md`,
+     clear their thresholds (`9-execution-manager/llo-uat_results.md`,
      `phases.execution-management.products.*`)?
    - Did the opp actually reach launch / award, or stall (run-state
      terminal phase, `selected_llo`, launch verdict)?
