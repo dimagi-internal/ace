@@ -385,8 +385,37 @@ appId: org.commcare.dalvik
 # recipe far enough to actually tap Start; prior halts terminated
 # upstream. 180s gives a comfortable margin without masking a genuinely
 # wedged download (which would still throw, just later).
-- extendedWaitUntil:
-    visible:
-      id: "org.commcare.dalvik:id/nsv_home_screen"
-    timeout: 180000
+# Let the post-Start transition begin to settle before branching.
+- waitForAnimationToEnd:
+    timeout: 10000
+#
+# Already-Learn-complete branch (#570). If the test user has ALREADY
+# completed Learn on this opp (one-way state), Connect routes "Continue
+# Learning" to the Deliver download gate (connect_delivery_button =
+# "DOWNLOAD"), NOT the Learn home — so asserting nsv_home_screen would
+# hard-fail after 180s on a perfectly healthy opp. When the Deliver gate
+# is what rendered, capture it and SKIP the Learn-home assert; the
+# caller's Learn leg (app-screenshot-capture Step 5 / 2.7) inspects the
+# landing screen via mobile_capture_ui_dump, records the Learn
+# sub-verdict as `satisfied-by-prior-completion`, and proceeds to the
+# Deliver leg. Do NOT re-walk Learn and do NOT treat this as a blocker.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/connect_delivery_button"
+    commands:
+      - takeScreenshot: "claim-already-learn-complete-deliver-gate"
+#
+# Fresh-Learn branch: Learn not yet complete → wait for the Learn home.
+# (Guarded on the Deliver gate NOT being present so we don't burn the
+# 180s timeout on an already-complete opp.)
+- runFlow:
+    when:
+      notVisible:
+        id: "org.commcare.dalvik:id/connect_delivery_button"
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "org.commcare.dalvik:id/nsv_home_screen"
+          timeout: 180000
 - takeScreenshot: "claim-opp-handoff-learn-home"

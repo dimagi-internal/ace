@@ -6,8 +6,16 @@
 #
 # This recipe branches:
 #   - If a Submit button is visible, tap it (form-submit selector).
-#   - Otherwise, tap nav_btn_next — the auto-finalize path that Learn
-#     forms use.
+#   - Otherwise, tap nav_btn_next — the auto-finalize path that plain
+#     (non-score-gated) Learn forms use.
+#   - THEN, if a FINISH button is visible (form-nav-finish), tap it —
+#     this is the SECOND screen of a score-gated quiz finalize: a
+#     single-question quiz with a score-conditional result label does
+#     NOT auto-finalize on nav_btn_next; answering advances to a
+#     result-label screen whose FINISH button submits + syncs the form.
+#     Empirically confirmed on bednet-spot-check/20260529-1124 (#569).
+#     Without this press the assessment never submits/syncs and Connect
+#     never unlocks Deliver.
 #
 # Post-state: depends on the form. Learn forms return to
 # StandardHomeActivity with a "1 form sent to server!" toast +
@@ -44,6 +52,25 @@ appId: org.commcare.dalvik
     commands:
       - tapOn:
           ${SELECTOR:form-nav-next}
+
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# Score-gated quiz: the nav_btn_next above advanced to a result-label
+# screen rather than finalizing. If a FINISH button is now visible,
+# press it to submit + sync the form. (No-op for plain forms that
+# already auto-finalized — the button won't be visible.)
+- runFlow:
+    when:
+      visible:
+        ${SELECTOR:form-nav-finish}
+    commands:
+      - tapOn:
+          ${SELECTOR:form-nav-finish}
+      - extendedWaitUntil:
+          visible:
+            text: ".*form.*sent to server.*"
+          timeout: 15000
 
 - waitForAnimationToEnd:
     timeout: 8000

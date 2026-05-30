@@ -69,7 +69,7 @@ describe('validateRunState', () => {
   });
 
   describe('phase status enum', () => {
-    it.each(['pending', 'in_progress', 'done', 'error'])(
+    it.each(['pending', 'in_progress', 'done', 'error', 'blocked'])(
       'accepts phase status = %s',
       (status) => {
         const r = validateRunState({
@@ -309,6 +309,12 @@ describe('classifyPhaseWriteBack', () => {
     expect(
       classifyPhaseWriteBack({ phases: { p: { status: 'error' } } }, 'p'),
     ).toBe('error');
+  });
+
+  it('returns blocked when status is blocked (operator-actionable halt, not malformed) — #571', () => {
+    expect(
+      classifyPhaseWriteBack({ phases: { p: { status: 'blocked' } } }, 'p'),
+    ).toBe('blocked');
   });
 
   it('returns malformed when the block has an invalid status', () => {
