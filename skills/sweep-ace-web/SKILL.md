@@ -29,6 +29,13 @@ into wiping all visible sessions; opp-orphan filtering is not its job.
   human belongs to on the ace-web side.
 - `sweepFolder` — timestamped sweep folder created by the orchestrator
   (e.g. `ACE/_sweep/<timestamp>/`). Products land here.
+- `mode` — `recommend` (default) | `execute`. In `recommend` the skill is
+  **report-only**: list + render the plan + return it; **no delete call**.
+  In `execute` it deletes only `approvedIds`. The human-confirmation gate
+  between the two is the orchestrator's job — see
+  `agents/sweep.md § Human-confirmation gate`.
+- `approvedIds` (`execute` mode only) — the exact session ids the human
+  approved in chat. Delete nothing outside this set.
 
 No `liveSetPath` input. If the orchestrator built one for a sibling sweep,
 ignore it.
@@ -84,22 +91,28 @@ ignore it.
    `ace-web-sessions.yaml`. The YAML must contain every row in full (not
    truncated) so a replay knows exactly which ids to send.
 
-4. **Surface to the human.** Print the markdown report directly in chat.
-   Then prompt:
+4. **Recommend — stop here in `mode: recommend`.** Return the plan to the
+   orchestrator: the full session-id list (this is a **bulk wipe** — every
+   session the PAT can write to, not an orphan-filtered subset; say so
+   plainly so the human understands the scope) + per-workspace counts +
+   the report Drive link + the reversibility note (delete CASCADEs through
+   `IngestUpload`, `Message`, `SessionParticipant`, `ShareToken`, `Draft` —
+   **not reversible**). **Issue no delete call.** Do not try to prompt the
+   human from this skill — a dispatched subagent can't reach them; the
+   orchestrator runs the confirmation gate (see
+   `agents/sweep.md § Human-confirmation gate`). If the human declines at
+   that gate, the orchestrator never dispatches the execute pass.
 
-   ```
-   Approve all N sessions for deletion?
-   ```
+## Execute phase (`mode: execute` only)
 
-   If the human declines, stop without calling delete. Write
-   `<sweepFolder>/ace-web-sessions-result.yaml` with
-   `{decision: "declined", deleted: 0, failed: []}` so the orchestrator
-   can summarize.
+Runs only when the orchestrator re-dispatches with `mode: execute` +
+`approvedIds` (the session ids the human approved in chat — typically all,
+but honor a subset if that's what was approved).
 
 5. **POST `<ACE_WEB_URL>/api/sessions/sweep/delete`** with
    `-H "Content-Type: application/json"`,
    `-H "Authorization: Bearer $ACE_WEB_PAT_TOKEN"`, and
-   `{"session_ids": [<id>, ...]}` as the body. Expect 200. Response shape:
+   `{"session_ids": [<approvedIds>...]}` as the body. Expect 200. Response shape:
 
    ```yaml
    deleted: int
@@ -111,10 +124,10 @@ ignore it.
    Write the response to `<sweepFolder>/ace-web-sessions-result.yaml` with
    `decision: "approved"` for downstream summary.
 
-6. **Report.** Print a short summary block in chat:
+6. **Report.** Return a short summary block:
 
    ```
-   ace-web sweep — N requested, K deleted, F failed
+   ace-web sweep — N approved, K deleted, F failed
      deleted: K sessions across <M> workspaces
      failed:  F items (see ace-web-sessions-result.yaml)
    ```

@@ -33,6 +33,8 @@ No dedup at the file or vector layer means uploading the same PDD into 19 per-op
 - Live-set file path from `sweep-live-set`.
 - `OCS_TEAM_SLUG`, `OCS_GOLDEN_TEMPLATE_ID`, `OCS_SHARED_COLLECTION_ID` from `.env`.
 - `OCS_BASE_URL` (e.g. `https://chatbots.dimagi.com`).
+- `mode` — `recommend` (default) | `execute`. In `recommend` the skill is **report-only**: diff/score/render + return the recommended-action list; **no mutations** (no deletes, no `ocs_end_session`). In `execute` it mutates only `approvedIds`. The human-confirmation gate between the two is the orchestrator's job — see `agents/sweep.md § Human-confirmation gate`.
+- `approvedIds` (`execute` mode only) — the exact chatbot/session ids the human approved in chat. Mutate nothing outside this set (an approved chatbot's paired pipeline + per-opp collections follow it).
 
 ## Products
 
@@ -64,12 +66,17 @@ No dedup at the file or vector layer means uploading the same PDD into 19 per-op
    - **Actionable — auto-end:** sessions.
    - **Safe-listed (informational):** `OCS_GOLDEN_TEMPLATE_ID` chatbot + `OCS_SHARED_COLLECTION_ID` collection. Show them in the report so the human can verify the safe-list is correctly applied, but never propose deletion.
 7. **Render** + write `ocs-orphans.md` and `.yaml` to the sweep folder.
-8. **Surface to human** in chat. Prompt for approval per actionable chunk.
-9. **On approval (in order, per orphan chatbot):**
-   - Call `ocs_delete_chatbot({ experiment_id })`.
-   - Call `ocs_delete_pipeline({ pipeline_id })` for the paired pipeline (resolved via `ocs_get_chatbot_pipeline_id` in step 3 — never skip this; pipeline deletes are the only way to clear the per-opp Pipeline row).
-   - For each per-opp collection_id derived in step 3, call `ocs_delete_collection({ collection_id })` — but ONLY if collection_id ≠ `OCS_SHARED_COLLECTION_ID`. The atom itself doesn't enforce this; the skill must filter.
-   - For each approved orphan session, call `ocs_end_session`.
+8. **Recommend — stop here in `mode: recommend`.** Return the structured recommended-action list (orphan chatbots with their paired pipeline + per-opp collection ids; orphan sessions to end — each with id, name, confidence, and the reversibility note that collection deletes also purge File rows + embeddings) plus the safe-listed informational items and the report Drive link, to the orchestrator. **Perform no mutations.** Do not try to prompt the human from this skill — a dispatched subagent can't reach them; the orchestrator runs the confirmation gate (see `agents/sweep.md § Human-confirmation gate`).
+
+## Execute phase (`mode: execute` only)
+
+Runs only when the orchestrator re-dispatches with `mode: execute` + `approvedIds` (the chatbot/session ids the human approved in chat). For each **approved** orphan chatbot, in order:
+
+- Call `ocs_delete_chatbot({ experiment_id })`.
+- Call `ocs_delete_pipeline({ pipeline_id })` for the paired pipeline (resolved via `ocs_get_chatbot_pipeline_id` in step 3 — never skip this; pipeline deletes are the only way to clear the per-opp Pipeline row).
+- For each per-opp collection_id derived in step 3, call `ocs_delete_collection({ collection_id })` — but ONLY if collection_id ≠ `OCS_SHARED_COLLECTION_ID`. The atom itself doesn't enforce this; the skill must filter.
+
+For each **approved** orphan session, call `ocs_end_session`. Mutate nothing outside `approvedIds`; return the per-item result.
 
 ## Failure modes
 

@@ -13,6 +13,8 @@ Find Drive folders under `ACE/` that no current opp references, score them, pres
 ## Inputs
 
 - Live-set file path/id from `sweep-live-set` skill output (a Drive path like `ACE/_sweep/<timestamp>/live-set.yaml`).
+- `mode` — `recommend` (default) | `execute`. In `recommend` the skill is **report-only**: diff/score/render + return the recommended-action list; **no trashing**. In `execute` it trashes only `approvedIds`. The human-confirmation gate between the two is the orchestrator's job — see `agents/sweep.md § Human-confirmation gate`.
+- `approvedIds` (`execute` mode only) — the exact folder ids the human approved in chat. Trash nothing outside this set.
 
 ## Products
 
@@ -28,12 +30,11 @@ Find Drive folders under `ACE/` that no current opp references, score them, pres
 4. **Score:** call `scoreDriveFolder(folder, liveSet, ACE_DRIVE_ROOT_FOLDER_ID)` from `lib/sweep-fingerprint.ts` for each candidate, with `folder.isOppShaped` populated from Step 3. The scorer returns `low` for shared/non-opp folders (safe-listed names + `isOppShaped === false`), `high` for confirmed opp folders not in the live-set, and falls back to name-shape heuristics only when `isOppShaped` is left undefined. Collect into an `Orphan[]`. Only `high`-confidence items (real orphaned opp folders) should be proposed for trashing.
 5. **Build the `OrphanReport`** with `system: 'drive'`, `generatedAt: now ISO`, `liveSetGeneratedAt: liveSet.generatedAt`, totals, and orphans.
 6. **Render the report** via `renderOrphanReport()` from `lib/sweep-report.ts`. `drive_create_file` to `ACE/_sweep/<timestamp>/drive-orphans.md`. Also serialize the YAML form to `drive-orphans.yaml` in the same folder.
-7. **Surface the report** to the human in chat: print the markdown report directly, then prompt for approval. Suggested chunks:
-   - "Approve all `high` confidence orphans? (N items)"
-   - "Approve all `medium`? (N items)"
-   - "Review individually?"
-8. **On approval:** for each approved orphan, call `drive_trash_file` with `fileId: orphan.id`. Report success/failure per item back to the human.
-9. **Re-verify (optional sanity check):** after trashing, `drive_list_folder` `ACE/` again and confirm the trashed names are gone. This catches partial failures.
+7. **Recommend — stop here in `mode: recommend`.** Return the structured recommended-action list (only real orphaned opp folders — `high` confidence, opp-shaped but not in the live-set — each with id, name, confidence; reversibility: 30-day Drive bin) plus the report Drive link, to the orchestrator. **Trash nothing.** Do not try to prompt the human from this skill — a dispatched subagent can't reach them; the orchestrator runs the confirmation gate (see `agents/sweep.md § Human-confirmation gate`).
+
+## Execute phase (`mode: execute` only)
+
+Runs only when the orchestrator re-dispatches with `mode: execute` + `approvedIds` (the folder ids the human approved in chat). For each **approved** orphan, call `drive_trash_file` with `fileId: <id>`. Trash nothing outside `approvedIds`; return the per-item result. Then (sanity check) `drive_list_folder` `ACE/` again and confirm the trashed names are gone — this catches partial failures.
 
 ## Failure modes
 

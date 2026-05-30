@@ -17,6 +17,8 @@ This is purely about retention to control `/ace:status` and other listing load t
 
 - `keep` (required, int ≥ 1) — the number of newest runs to retain per opp. Sweep orchestrator surfaces this from the user; default is `3` if the user accepts the prompt without changing it.
 - `sweepFolder` — the timestamped sweep folder built by the orchestrator (e.g. `ACE/_sweep/<timestamp>/`); products land here.
+- `mode` — `recommend` (default) | `execute`. In `recommend` the skill is **report-only**: build + render the per-opp prune plan + return it; **no trashing**. In `execute` it trashes only `approvedIds`. The human-confirmation gate between the two is the orchestrator's job — see `agents/sweep.md § Human-confirmation gate`.
+- `approvedIds` (`execute` mode only) — the exact run-folder ids the human approved in chat. Trash nothing outside this set.
 
 There is no live-set dependency. If the orchestrator built one (because the user ran a different system first in the same `/ace:sweep all`-style invocation), ignore it.
 
@@ -37,12 +39,11 @@ There is no live-set dependency. If the orchestrator built one (because the user
    - `kept[]` — the `keep` newest runs (`id`, `name`, `createdTime`)
    - `candidates[]` — the runs to trash (`id`, `name`, `createdTime`)
 6. **Render the markdown report.** Per-opp section with two short tables (kept vs candidates). Headline at the top: "Prune plan — keep newest N per opp; M opps affected; K runs to trash." Write to `ACE/_sweep/<timestamp>/opp-runs-prune.md` and the YAML peer.
-7. **Surface to the human.** Print the markdown directly in chat, then prompt:
-   - "Approve all (K runs across M opps)?"
-   - "Approve per-opp (you'll be asked once per opp)?"
-   - "Cancel."
-8. **Execute.** For each approved candidate, `drive_trash_file({ fileId: candidate.id })`. Report success/failure per-item, but never abort the batch on a single-item failure — log and continue.
-9. **(Optional) Re-verify.** For one opp at random, `drive_list_folder` on its `runs/` again and confirm the trashed names are gone.
+7. **Recommend — stop here in `mode: recommend`.** Return the per-opp prune plan (candidates to trash, grouped by opp — each with id, name, createdTime; reversibility: 30-day Drive bin) + the report Drive link, to the orchestrator. **Trash nothing.** Do not try to prompt the human from this skill — a dispatched subagent can't reach them; the orchestrator runs the confirmation gate (see `agents/sweep.md § Human-confirmation gate`).
+
+## Execute phase (`mode: execute` only)
+
+Runs only when the orchestrator re-dispatches with `mode: execute` + `approvedIds` (the run-folder ids the human approved in chat). For each **approved** candidate, `drive_trash_file({ fileId: <id> })`. Trash nothing outside `approvedIds`. Report success/failure per-item, but never abort the batch on a single-item failure — log and continue. Then (sanity check) for one affected opp, `drive_list_folder` on its `runs/` again and confirm the trashed names are gone.
 
 ## Failure modes
 

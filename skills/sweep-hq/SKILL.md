@@ -16,6 +16,8 @@ Find CommCare HQ applications in the ACE-owned domain (`connect-ace-prod`) that 
 - Live-set file path from `sweep-live-set`.
 - `ACE_HQ_DOMAIN` from `.env` (defaults to `connect-ace-prod`).
 - `ACE_HQ_BASE_URL` (e.g. `https://www.commcarehq.org`).
+- `mode` — `recommend` (default) | `execute`. In `recommend` the skill is **report-only**: diff/score/render + return the recommended-action list; **no mutations**. In `execute` it soft-deletes only `approvedIds`. The human-confirmation gate between the two is the orchestrator's job — see `agents/sweep.md § Human-confirmation gate`.
+- `approvedIds` (`execute` mode only) — the exact app ids the human approved in chat. Mutate nothing outside this set.
 
 ## Products
 
@@ -31,8 +33,11 @@ Find CommCare HQ applications in the ACE-owned domain (`connect-ace-prod`) that 
 4. **Score:** call `scoreHqApp(item, ACE_HQ_DOMAIN)` from `lib/sweep-fingerprint.ts`. Returns high if the domain matches and name has Learn/Deliver/CRISPR pattern; medium for unrecognized names in the ACE domain; low for apps in a different domain (defensive — caller shouldn't normally pass these in).
 5. **Build the `OrphanReport`** with `system: 'hq'`. Single Actionable section — orphan apps are soft-deletable.
 6. **Render** + write `hq-orphans.md` and `.yaml` to the sweep folder.
-7. **Surface to human** in chat. Prompt for approval per confidence chunk.
-8. **On approval:** for each approved orphan app, call `commcare_delete_app({ domain: ACE_HQ_DOMAIN, app_id })`. The atom POSTs to HQ's `delete_app` web view, which soft-deletes by mutating `doc_type` to `<original>-Deleted` and creating a `DeleteApplicationRecord` for restore.
+7. **Recommend — stop here in `mode: recommend`.** Return the structured recommended-action list (orphan apps to soft-delete — each with id, name, confidence, and the reversibility note "90-day restorable via HQ admin UI") plus the report Drive link, to the orchestrator. **Perform no mutations.** Do not try to prompt the human from this skill — a dispatched subagent can't reach them; the orchestrator runs the confirmation gate (see `agents/sweep.md § Human-confirmation gate`).
+
+## Execute phase (`mode: execute` only)
+
+Runs only when the orchestrator re-dispatches with `mode: execute` + `approvedIds` (the app ids the human approved in chat). For each **approved** orphan app, call `commcare_delete_app({ domain: ACE_HQ_DOMAIN, app_id })`. The atom POSTs to HQ's `delete_app` web view, which soft-deletes by mutating `doc_type` to `<original>-Deleted` and creating a `DeleteApplicationRecord` for restore. Mutate nothing outside `approvedIds`; return the per-item result.
 
 ## Restoration
 

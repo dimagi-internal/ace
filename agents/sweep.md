@@ -11,6 +11,20 @@ model: inherit
 
 This is a procedure doc, not a subagent. The `/ace:sweep` slash command reads it and executes the steps inline at level 0 (so it can call the `Agent` tool to dispatch leaf skills, per `CLAUDE.md` § Agent topology).
 
+## Human-confirmation gate (the core safety contract)
+
+**A sweep NEVER mutates any external system — no trash, deactivate, delete, disable, or end-session — until you have seen the per-system recommendation in chat and explicitly confirmed it. System by system.**
+
+Why this lives at the orchestrator and not in the skills: only level 0 can pause to ask you. A sweep sub-skill runs inside a dispatched `Agent`, which **cannot reach the human** — so any "prompt the human for approval" step *inside* a subagent is a no-op that silently falls through to executing the deletes. That is the exact footgun this contract removes.
+
+The contract, therefore:
+
+1. **Sweep sub-skills are report-only when dispatched in `mode: recommend` (the default).** They diff, score, render the report, and **return a structured list of recommended actions** (what they *would* mutate — ids, names, type, confidence, reversibility). They perform **zero** mutations.
+2. **The orchestrator (this doc, at level 0) owns the gate.** It surfaces the recommendation to you and asks (`AskUserQuestion`) for an explicit decision — per system.
+3. **Mutations happen only in a second `mode: execute` pass** that the orchestrator dispatches *after* your approval, carrying the exact `approvedIds` you signed off on. No approval → no execute pass.
+
+If you ever see a sweep delete something you didn't first approve in chat, that is a contract violation — stop and report it.
+
 ## Arguments
 
 - `<system>` (optional) — one of `drive`, `connect`, `ocs`, `hq`, `labs`, `opp-runs`, `ace-web`, `all`. If omitted, prompt the user to pick.
@@ -54,9 +68,9 @@ Agent(sweep-live-set)
 
 Wait for it to return the live-set Drive path. Capture the timestamped sweep folder (e.g. `ACE/_sweep/20260515-180000/`) — every subsequent step writes into that same folder.
 
-### Step 3: Per-system sweep
+### Step 3: Per-system sweep — recommend → confirm → execute
 
-Dispatch the matching skill:
+Skill mapping:
 
 | system   | skill              |
 |----------|--------------------|
@@ -68,13 +82,15 @@ Dispatch the matching skill:
 | opp-runs | `sweep-opp-runs`   |
 | ace-web  | `sweep-ace-web`    |
 
-Each sub-skill handles its own diff + score + render + triage + execute. The orchestrator only waits for completion.
+For **each** system (a single system, or — for `all` — each in order drive → connect → ocs → hq → labs → ace-web), run this three-substep loop. **Never collapse it: 3c only ever runs after a 3b approval for that same system.**
 
-For `opp-runs`, pass `keep: <N>` (from args or the Step 1 prompt) and the `sweepFolder` from Step 2. Do **not** pass a `liveSetPath`.
+**3a. Recommend (report-only).** Dispatch the matching skill in **`mode: recommend`**. It writes `<system>-orphans.md` + `.yaml` to the sweep folder and **returns a structured recommended-action list** — each entry: `{ id, name, type, action (trash|deactivate|delete|disable|end-session), confidence, reversibility }` — plus any report-only / upstream-gap items and the report Drive link. It performs **no mutations**. Pass `liveSetPath` (Step 2) + `sweepFolder`. (For `opp-runs`: pass `keep: <N>` and `sweepFolder`, no `liveSetPath`. For `ace-web`: pass only `sweepFolder`, no `liveSetPath`.)
 
-For `ace-web`, pass only the `sweepFolder` from Step 2. Do **not** pass a `liveSetPath` — the skill bulk-deletes every Session the caller's PAT can write to, scoped server-side by workspace membership.
+**3b. Confirm with the human (at level 0).** Surface the recommendation in chat: a tight per-system summary (counts by action type + confidence, the report link, reversibility note — e.g. "OCS collection deletes also purge embeddings; HQ is 90-day restorable"). Then call `AskUserQuestion` with options at minimum: **approve all recommended**, **approve a subset** (the human names which ids/types), **skip this system**. Do **not** proceed without an explicit answer. If the recommendation is empty (zero actionable orphans), say so and move on — no need to ask.
 
-For `system == 'all'`, dispatch each in order: drive → connect → ocs → hq → labs → ace-web. `opp-runs` is **not** included in `all` — retention is a manual decision, not an orphan cleanup. Stop on the first hard failure (auth issue, broken atom); soft failures (per-item delete errors) are reported by the sub-skill and don't halt the orchestrator.
+**3c. Execute (approved ids only).** If the human approved anything, dispatch the **same skill in `mode: execute`**, passing `approvedIds` (the exact ids signed off in 3b) + `sweepFolder` + the report `.yaml`. It mutates **only** those ids and returns the per-item result. If the human skipped, record "skipped by operator" — dispatch nothing.
+
+**Failure handling.** A hard failure (auth expired, broken atom) in 3a or 3c halts the orchestrator with the precise remediation. A per-item mutation failure inside 3c is reported by the skill and does **not** halt the rest of that system's batch. For `all`, a hard failure on one system halts before the next.
 
 ### Step 4: Summary
 
