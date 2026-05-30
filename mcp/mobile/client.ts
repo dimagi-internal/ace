@@ -792,34 +792,29 @@ export class MobileClient {
     // Stage 1.5: explicitly install the driver APKs.
     //
     // Why this exists separately from the Stage 2 `repairDriver` flow:
-    // `repairDriver` relies on the documented Maestro CLI behavior that
-    // the next `maestro hierarchy` call reinstalls the driver
-    // automatically. That works fine when the driver was once
-    // installed and is now wedged (the canonical leep run 20260511-0507
-    // class). It does NOT work on a **fresh AVD where the driver was
-    // never installed**: the CLI's first auto-push races the AVD's
-    // early-boot `pm` service availability, fails with "Install failed:
-    // cmd: Can't find service: package", and subsequent probes see an
-    // empty port 7001 with no retry path inside the CLI. Reproduced
-    // live 2× on malaria-itn-fgd/20260515-1645 across a machine reboot.
+    // explicit install/reinstall is cheaper and less destructive than
+    // force-stop + uninstall. It also avoids Maestro CLI's implicit
+    // first-contact auto-push, which races the AVD's early-boot `pm`
+    // service availability and has no internal retry when the driver was
+    // never installed. Reproduced live 2× on malaria-itn-fgd/20260515-1645
+    // across a machine reboot.
     //
-    // `ensureDriverInstalled` is idempotent: when the driver is already
-    // installed, it short-circuits in ~150ms and we proceed straight
-    // to Stage 2 below (the wedged-but-installed recovery path).
+    // `ensureDriverInstalled` is normally idempotent, but after a failed
+    // probe an "already installed" verdict is not enough: the packages
+    // may be present while the instrumentation server is wedged. Force an
+    // explicit `adb install -r` reinstall and re-probe before falling
+    // through to the destructive Stage 2 path.
     try {
-      const installActions = await this.maestro.ensureDriverInstalled(serial);
+      const installActions = await this.maestro.ensureDriverInstalled(serial, { reinstallIfPresent: true });
       attempts.push(`install: ${installActions.join(',')}`);
-      if (!installActions.includes('already-installed')) {
-        // Fresh install — give the driver a moment to bind its gRPC
-        // server, then re-probe with the same extended budget Stage 2
-        // uses.
-        probe = await this.maestro.probeDriver(adbPort, 90_000);
-        if (probe.healthy) {
-          logInfo(`maestro_driver: recovered after ${installActions.join(',')} on ${serial}`);
-          return;
-        }
-        attempts.push(`probe1.5: ${probe.reason ?? 'unknown'}`);
+      // Give the freshly-installed driver a moment to bind its gRPC
+      // server, then re-probe with the same extended budget Stage 2 uses.
+      probe = await this.maestro.probeDriver(adbPort, 90_000);
+      if (probe.healthy) {
+        logInfo(`maestro_driver: recovered after ${installActions.join(',')} on ${serial}`);
+        return;
       }
+      attempts.push(`probe1.5: ${probe.reason ?? 'unknown'}`);
     } catch (e: any) {
       // Don't fail the heal on an install error — fall through to the
       // repair path. The install error message is captured in

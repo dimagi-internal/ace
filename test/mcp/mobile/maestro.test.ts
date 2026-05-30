@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { MaestroBackend } from '../../../mcp/mobile/backends/maestro.js';
 
 function fakeShell(scripted: Record<string, { stdout: string; stderr?: string; code?: number }>) {
@@ -11,6 +12,24 @@ function fakeShell(scripted: Record<string, { stdout: string; stderr?: string; c
     if (!r) throw new Error(`Unscripted shell call: ${key}`);
     return { stdout: r.stdout, stderr: r.stderr ?? '', exitCode: r.code ?? 0 };
   });
+}
+
+function writeFakeMaestroJar(home: string): string {
+  const libDir = path.join(home, '.maestro', 'lib');
+  fs.mkdirSync(libDir, { recursive: true });
+  const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-jar-staging-'));
+  const unique = `${Date.now()}-${Math.random()}`;
+  fs.writeFileSync(path.join(stagingDir, 'maestro-app.apk'), `fake-app-${unique}`);
+  fs.writeFileSync(path.join(stagingDir, 'maestro-server.apk'), `fake-test-${unique}`);
+  const jarPath = path.join(libDir, 'maestro-client.jar');
+  execFileSync('zip', ['-q', jarPath, 'maestro-app.apk', 'maestro-server.apk'], {
+    cwd: stagingDir,
+    stdio: 'pipe',
+  });
+  fs.rmSync(stagingDir, { recursive: true, force: true });
+  const mtime = new Date(Date.now() + Math.floor(Math.random() * 1_000_000));
+  fs.utimesSync(jarPath, mtime, mtime);
+  return jarPath;
 }
 
 describe('MaestroBackend.runRecipe', () => {
@@ -345,18 +364,7 @@ describe('MaestroBackend.repairDriver', () => {
   // the install tail. Returns a cleanup fn.
   function withFakeMaestroJar(): { home: string; cleanup: () => void } {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-repair-home-'));
-    const libDir = path.join(home, '.maestro', 'lib');
-    fs.mkdirSync(libDir, { recursive: true });
-    // Build a real zip containing maestro-app.apk + maestro-server.apk so
-    // the production `unzip -o -q` extraction in `resolveDriverApks` works.
-    const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-jar-staging-'));
-    fs.writeFileSync(path.join(stagingDir, 'maestro-app.apk'), 'PK\x03\x04fake-app');
-    fs.writeFileSync(path.join(stagingDir, 'maestro-server.apk'), 'PK\x03\x04fake-test');
-    const jarPath = path.join(libDir, 'maestro-client.jar');
-    execSyncForTest(
-      `cd ${JSON.stringify(stagingDir)} && zip -q ${JSON.stringify(jarPath)} maestro-app.apk maestro-server.apk`,
-    );
-    fs.rmSync(stagingDir, { recursive: true, force: true });
+    writeFakeMaestroJar(home);
     return {
       home,
       cleanup: () => fs.rmSync(home, { recursive: true, force: true }),
@@ -454,14 +462,6 @@ describe('MaestroBackend.repairDriver', () => {
   });
 });
 
-// Tiny synchronous-exec helper used only by the repairDriver test
-// fixture above. Local to the test file so we don't drag execSync into
-// the production import set unnecessarily.
-function execSyncForTest(cmd: string): void {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  require('node:child_process').execSync(cmd, { stdio: 'pipe' });
-}
-
 describe('MaestroBackend.ensureDriverInstalled', () => {
   it('short-circuits when both driver packages are already present', async () => {
     const calls: string[] = [];
@@ -487,6 +487,96 @@ describe('MaestroBackend.ensureDriverInstalled', () => {
       'adb -s emulator-5554 shell pm list packages dev.mobile.maestro',
       'adb -s emulator-5554 shell pm list packages dev.mobile.maestro.test',
     ]);
+  });
+
+  it('explicitly reinstalls and verifies when both packages are present but caller requests repair', async () => {
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-force-reinstall-'));
+    writeFakeMaestroJar(tmpHome);
+    const origHome = process.env.HOME;
+    process.env.HOME = tmpHome;
+    try {
+      const calls: string[] = [];
+      const shell = vi.fn(async (cmd: string, args: string[]) => {
+        const argStr = args.join(' ');
+        calls.push(`${cmd} ${argStr}`);
+        if (argStr.endsWith('pm list packages dev.mobile.maestro')) {
+          return { stdout: 'package:dev.mobile.maestro\n', stderr: '', exitCode: 0 };
+        }
+        if (argStr.endsWith('pm list packages dev.mobile.maestro.test')) {
+          return { stdout: 'package:dev.mobile.maestro.test\n', stderr: '', exitCode: 0 };
+        }
+        if (argStr.endsWith('cmd package list packages')) {
+          return { stdout: 'package:android\n', stderr: '', exitCode: 0 };
+        }
+        if (args.includes('install') && args.includes('-r')) {
+          return { stdout: 'Success\n', stderr: '', exitCode: 0 };
+        }
+        if (argStr.includes('am instrument')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        throw new Error(`Unscripted: ${cmd} ${argStr}`);
+      });
+      const backend = new MaestroBackend({ shell });
+      const actions = await backend.ensureDriverInstalled('emulator-5554', { reinstallIfPresent: true });
+
+      expect(actions.slice(0, 3)).toEqual([
+        'package-list-before:app=true,test=true',
+        'already-installed',
+        'reinstall-requested',
+      ]);
+      expect(actions).toContain('installed:app');
+      expect(actions).toContain('installed:test');
+      expect(actions).toContain('verified');
+      expect(calls.filter((c) => c.includes(' install -r '))).toHaveLength(2);
+    } finally {
+      if (origHome === undefined) delete process.env.HOME;
+      else process.env.HOME = origHome;
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it('extracts driver APKs with argv so HOME metacharacters are not shell-expanded', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-unzip-meta-'));
+    const markerDollar = path.join(root, 'shell-expanded-dollar');
+    const markerBacktick = path.join(root, 'shell-expanded-backtick');
+    const tmpHome = path.join(root, `home-$(touch ${markerDollar})-\`touch ${markerBacktick}\``);
+    writeFakeMaestroJar(tmpHome);
+    const origHome = process.env.HOME;
+    process.env.HOME = tmpHome;
+    try {
+      let appChecks = 0;
+      let testChecks = 0;
+      const shell = vi.fn(async (cmd: string, args: string[]) => {
+        const argStr = args.join(' ');
+        if (argStr.endsWith('pm list packages dev.mobile.maestro')) {
+          appChecks += 1;
+          return { stdout: appChecks === 1 ? '' : 'package:dev.mobile.maestro\n', stderr: '', exitCode: 0 };
+        }
+        if (argStr.endsWith('pm list packages dev.mobile.maestro.test')) {
+          testChecks += 1;
+          return { stdout: testChecks === 1 ? '' : 'package:dev.mobile.maestro.test\n', stderr: '', exitCode: 0 };
+        }
+        if (argStr.endsWith('cmd package list packages')) {
+          return { stdout: 'package:android\n', stderr: '', exitCode: 0 };
+        }
+        if (args.includes('install') && args.includes('-r')) {
+          return { stdout: 'Success\n', stderr: '', exitCode: 0 };
+        }
+        if (argStr.includes('am instrument')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        throw new Error(`Unscripted: ${cmd} ${argStr}`);
+      });
+      const backend = new MaestroBackend({ shell });
+
+      await expect(backend.ensureDriverInstalled('emulator-5554')).resolves.toContain('verified');
+      expect(fs.existsSync(markerDollar)).toBe(false);
+      expect(fs.existsSync(markerBacktick)).toBe(false);
+    } finally {
+      if (origHome === undefined) delete process.env.HOME;
+      else process.env.HOME = origHome;
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   // Bug A regression test (PR #339 follow-up). Live-reproduced on

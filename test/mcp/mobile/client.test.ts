@@ -629,9 +629,12 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
         return next;
       }),
       repairDriver: vi.fn(async () => repairActions),
-      // Default: pretend driver was already installed. Tests that exercise
-      // the fresh-install path override this on the returned `maestro`.
-      ensureDriverInstalled: vi.fn(async () => ['already-installed']),
+      // Default: make Stage 1.5 unavailable so baseline repair tests stay
+      // focused on Stage 2. Tests that exercise install/reinstall override
+      // this on the returned `maestro`.
+      ensureDriverInstalled: vi.fn(async () => {
+        throw new Error('default install unavailable');
+      }),
     } as any;
     return { client: new MobileClient({ avd, maestro }), probeCalls, maestro };
   }
@@ -682,24 +685,36 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
       'pm-ready', 'apks-resolved', 'installed:app', 'installed:test', 'verified',
     ]);
     await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
-    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554');
+    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554', { reinstallIfPresent: true });
     expect(maestro.repairDriver).not.toHaveBeenCalled();
     expect(probeCalls).toEqual([20_000, 90_000]); // post-install probe gets full budget
   });
 
-  // When the driver is already installed (wedged-but-installed — the
-  // pre-fix recovery class), Stage 1.5 short-circuits and we fall
-  // through to the existing repair path.
-  it('skips post-install re-probe when already-installed, runs repair as before', async () => {
+  // Wedged-but-installed path: probe1 fails while both package names are
+  // present. Stage 1.5 must still force an explicit reinstall and re-probe;
+  // a plain "already-installed" verdict is not a recovery action.
+  it('reinstalls and re-probes when packages are present but probe1 failed', async () => {
     const { client, probeCalls, maestro } = makeClient([
       { healthy: false, reason: 'UNAVAILABLE' },
-      { healthy: true }, // post-repair re-probe
+      { healthy: true }, // post-reinstall re-probe
     ]);
-    // Default ensureDriverInstalled returns ['already-installed'].
+    maestro.ensureDriverInstalled = vi.fn().mockResolvedValue([
+      'package-list-before:app=true,test=true',
+      'already-installed',
+      'reinstall-requested',
+      'pm-ready',
+      'apks-resolved',
+      'installed:app',
+      'installed:test',
+      'apk-install-results:app=ok,test=ok',
+      'package-list-after:app=true,test=true',
+      'verified',
+      'instrumentation-kicked',
+    ]);
     await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
-    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554');
-    expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
-    expect(probeCalls).toEqual([20_000, 90_000]); // probe1 + probe2 only — no probe1.5
+    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554', { reinstallIfPresent: true });
+    expect(maestro.repairDriver).not.toHaveBeenCalled();
+    expect(probeCalls).toEqual([20_000, 90_000]); // probe1 + probe1.5
   });
 
   // Fresh install that didn't recover on the post-install probe: must
@@ -720,28 +735,36 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
       'package-list-after:app=true,test=true', 'verified', 'instrumentation-kicked',
     ]);
     await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
-    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554');
+    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554', { reinstallIfPresent: true });
     expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
     expect(probeCalls).toEqual([20_000, 90_000, 90_000]); // probe1 + probe1.5 + probe2
   });
 
   // Live-reproduced on malaria-itn-fgd/20260515-1645 attempt 4
   // (v0.13.263): probe1 fails ("maestro hierarchy: io exception") →
-  // ensureDriverInstalled detects both halves present + short-circuits
-  // as already-installed → repairDriver uninstalls + reinstalls →
-  // probe2 succeeds. Under pre-fix repairDriver (which only
-  // uninstalled), probe2 would have failed because no auto-reinstall
-  // happened in the heal flow.
-  it('heal flow recovers from already-installed-but-wedged state via repair-then-reinstall', async () => {
+  // ensureDriverInstalled detects both halves present, explicitly
+  // reinstalls, probe1.5 still fails, then repairDriver uninstalls +
+  // reinstalls and probe2 succeeds.
+  it('falls through to repair after already-installed explicit reinstall still fails', async () => {
     const { client, probeCalls, maestro } = makeClient([
       { healthy: false, reason: 'UNAVAILABLE: io exception' }, // probe1
+      { healthy: false, reason: 'still UNAVAILABLE after reinstall' }, // probe1.5
       { healthy: true }, // probe2 — post-repair, packages back in place
     ]);
-    // ensureDriverInstalled short-circuits because both halves are
-    // present on the wedged AVD.
+    // ensureDriverInstalled starts from both halves present, but the
+    // caller requested an explicit reinstall because probe1 failed.
     maestro.ensureDriverInstalled = vi.fn().mockResolvedValue([
       'package-list-before:app=true,test=true',
       'already-installed',
+      'reinstall-requested',
+      'pm-ready',
+      'apks-resolved',
+      'installed:app',
+      'installed:test',
+      'apk-install-results:app=ok,test=ok',
+      'package-list-after:app=true,test=true',
+      'verified',
+      'instrumentation-kicked',
     ]);
     // repairDriver now ends with installDriverApks actions — assert
     // the heal flow does not blow up on the expanded action list.
@@ -759,11 +782,9 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
       'instrumentation-kicked',
     ]);
     await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
-    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554');
+    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554', { reinstallIfPresent: true });
     expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
-    // Two probes only: stage-1 + stage-2 (no stage-1.5 because
-    // ensureDriverInstalled returned already-installed).
-    expect(probeCalls).toEqual([20_000, 90_000]);
+    expect(probeCalls).toEqual([20_000, 90_000, 90_000]);
   });
 
   // If ensureDriverInstalled throws (operator hasn't run mobile-bootstrap
@@ -781,6 +802,7 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
     await expect(client.assertMaestroDriverHealthy('emulator-5554')).rejects.toThrow(
       /Maestro driver.*unhealthy after recovery/,
     );
+    expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554', { reinstallIfPresent: true });
     expect(maestro.repairDriver).toHaveBeenCalledTimes(1);
   });
 });
@@ -837,10 +859,7 @@ describe('MobileClient.ensureAvdRunning', () => {
         .mockResolvedValueOnce({ healthy: false, reason: 'UNAVAILABLE' })
         .mockResolvedValueOnce({ healthy: false, reason: 'still UNAVAILABLE' }),
       repairDriver: vi.fn().mockResolvedValue(['force-stop', 'uninstall']),
-      // Driver was already installed — exercises the wedged-but-installed
-      // path that the original test was written against (Stage 1.5 short-
-      // circuits, Stage 2 runs).
-      ensureDriverInstalled: vi.fn().mockResolvedValue(['already-installed']),
+      ensureDriverInstalled: vi.fn().mockRejectedValue(new Error('install unavailable')),
     } as any;
     const client = new MobileClient({ avd, maestro });
     await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(/Maestro driver.*unhealthy after recovery/);

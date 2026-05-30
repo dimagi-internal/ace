@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { MobileError, RecipeValidationError } from '../errors.js';
 import type { ShellFn } from './avd.js';
 import { defaultShell } from './avd.js';
@@ -423,15 +423,16 @@ export class MaestroBackend {
    * commit message). Extract to a tempdir if not already cached.
    *
    * **Idempotency contract.** Cheap probe + early-return when both
-   * packages are already installed. Safe to call before every
-   * `assertMaestroDriverHealthy` re-probe; the success path on a warm
-   * AVD adds one `pm list packages` call (~150ms).
+   * packages are already installed by default. Callers recovering from
+   * a failed liveness probe can pass `reinstallIfPresent` to force an
+   * explicit `adb install -r` even when the package-list probe says both
+   * halves are present.
    *
    * Throws `MobileError(MAESTRO_DRIVER_APK_MISSING)` when the bundled
    * APKs cannot be located on the host (operator hasn't run the
    * Maestro CLI installer yet — direct them at `/ace:mobile-bootstrap`).
    */
-  async ensureDriverInstalled(serial: string): Promise<string[]> {
+  async ensureDriverInstalled(serial: string, opts: { reinstallIfPresent?: boolean } = {}): Promise<string[]> {
     const actions: string[] = [];
     // Step 1: cheap probe — BOTH packages already present? Return.
     // Each half is queried with its EXACT package name as the filter,
@@ -447,7 +448,10 @@ export class MaestroBackend {
     actions.push(`package-list-before:app=${beforeApp},test=${beforeTest}`);
     if (beforeApp && beforeTest) {
       actions.push('already-installed');
-      return actions;
+      if (!opts.reinstallIfPresent) {
+        return actions;
+      }
+      actions.push('reinstall-requested');
     }
 
     // Fall through to the shared install tail. We install regardless of
@@ -654,7 +658,7 @@ export class MaestroBackend {
     // handling already uses raw fs + magic-byte validation, not a zip
     // parser). Failures fall through to a typed error.
     try {
-      execSync(`unzip -o -q ${JSON.stringify(jarPath)} maestro-app.apk maestro-server.apk -d ${JSON.stringify(cacheDir)}`, {
+      execFileSync('unzip', ['-o', '-q', jarPath, 'maestro-app.apk', 'maestro-server.apk', '-d', cacheDir], {
         stdio: 'pipe',
         timeout: 30_000,
       });
