@@ -231,6 +231,11 @@ selectors:
     value: "org.commcare.dalvik:id/nav_btn_prev"
     purpose: "Left-edge ImageButton (X icon on Q1, arrow icon thereafter) on FormEntryActivity. Atlas §7. Goes back one question. On Q1, tapping equates to 'exit form without saving' — typically halts the recipe."
 
+  form-nav-finish:
+    type: id
+    value: "org.commcare.dalvik:id/nav_btn_finish"
+    purpose: "FINISH button on the LAST screen of a multi-screen form finalize. Empirically confirmed on bednet-spot-check/20260529-1124: a SCORE-GATED quiz (a single-question quiz with a score-conditional result label) does NOT auto-finalize on nav_btn_next — answering advances to a result-label screen whose FINISH button (this selector) submits + syncs the form ('Form successfully completed' toast → StandardHomeActivity → '1 form sent to server!'). Distinct from form-nav-next's last-question auto-finalize (plain content forms). Recipes that walk a score-gated quiz MUST press this on the result screen, or the assessment never submits and Connect never unlocks Deliver (#569)."
+
   form-required-warning:
     type: id
     value: "org.commcare.dalvik:id/warning_root"

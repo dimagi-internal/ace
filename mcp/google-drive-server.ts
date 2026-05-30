@@ -566,7 +566,7 @@ server.tool(
   {
     fileId: z.string().describe('The Google Drive file ID of the YAML doc'),
     patch: z.record(z.unknown()).describe('Object whose top-level keys are merged into the existing YAML per `merge`. With `merge: "shallow"` (default) each top-level key fully replaces its base counterpart; with `merge: "two-level"` object-valued top-level keys merge one level deeper, preserving sibling child keys.'),
-    merge: z.enum(['shallow', 'two-level']).optional().describe('Merge strategy. Defaults to `shallow` (top-level replace) for back-compat. Pass `two-level` for run_state.yaml / opp.yaml writes where multiple writers each own a different entry under the same top-level key (e.g. each phase agent patches its own `phases.<phase-name>` block).'),
+    merge: z.enum(['shallow', 'two-level', 'deep']).optional().describe('Merge strategy. Defaults to `shallow` (top-level replace) for back-compat. `two-level` merges ONE level deep (top-level-key children preserved, grandchildren replaced wholesale) — use it ONLY when you resend a phase\'s COMPLETE child block. `deep` recursively merges at every depth (preserves sibling keys at all levels) — use it when patching a nested path like `phases.<phase>.steps.<step>` or `phases.<phase>.products.<block>` without resending the whole phase block. Prefer `deep` for incremental run_state.yaml writes: it eliminates the lost-update footgun where a partial `two-level` phase-child patch silently dropped the rest of the block (jjackson/ace#572).'),
   },
   async ({ fileId, patch, merge }) => {
     try {
@@ -947,8 +947,32 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
+/**
+ * Recursively merge `patch` into `base`. For every key where BOTH sides are
+ * plain objects, recurse (preserving sibling keys at every depth); otherwise
+ * `patch` wins (arrays and scalars replace wholesale). This is the merge a
+ * caller wants when patching a deeply-nested run_state.yaml path (e.g.
+ * `phases.<phase>.steps.<step>`) without having to resend the entire phase
+ * block — the `two-level` mode only protected top-level-key siblings and
+ * silently dropped grandchildren (the lost-update footgun: see jjackson/ace#572).
+ */
+function deepMerge(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [k, v] of Object.entries(patch)) {
+    if (isPlainObject(v) && isPlainObject(out[k])) {
+      out[k] = deepMerge(out[k] as Record<string, unknown>, v);
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
 export async function handleUpdateYamlFile(
-  args: { fileId: string; patch: Record<string, unknown>; merge?: 'shallow' | 'two-level' },
+  args: { fileId: string; patch: Record<string, unknown>; merge?: 'shallow' | 'two-level' | 'deep' },
   driveClient: typeof drive = drive,
 ): Promise<{ id: string; name: string; modifiedTime: string; revisionVersion: string | undefined }> {
   const { fileId, patch, merge = 'shallow' } = args;
@@ -959,13 +983,22 @@ export async function handleUpdateYamlFile(
     const current = await handleReadFile({ fileId }, driveClient);
     const parsed = current.content && current.content.trim() ? YAML.parse(current.content) : {};
     const base: Record<string, unknown> = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
-    const merged: Record<string, unknown> = { ...base };
-    for (const [k, v] of Object.entries(patch)) {
-      if (merge === 'two-level' && isPlainObject(v) && isPlainObject(base[k])) {
-        // Merge child keys; patch wins on conflicts, base's other children preserved.
-        merged[k] = { ...(base[k] as Record<string, unknown>), ...v };
-      } else {
-        merged[k] = v;
+    let merged: Record<string, unknown>;
+    if (merge === 'deep') {
+      // Fully recursive merge — preserves sibling keys at every depth.
+      merged = deepMerge(base, patch);
+    } else {
+      merged = { ...base };
+      for (const [k, v] of Object.entries(patch)) {
+        if (merge === 'two-level' && isPlainObject(v) && isPlainObject(base[k])) {
+          // Merge child keys; patch wins on conflicts, base's other children
+          // preserved. NOTE: only ONE level deep — a grandchild object in the
+          // patch REPLACES its base counterpart wholesale. Use `deep` when the
+          // patch targets a nested path and must not drop grandchild siblings.
+          merged[k] = { ...(base[k] as Record<string, unknown>), ...v };
+        } else {
+          merged[k] = v;
+        }
       }
     }
     const newContent = YAML.stringify(merged);

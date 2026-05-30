@@ -46,6 +46,7 @@ const PHASE_STATUSES = new Set([
   'in_progress',
   'done',
   'error',
+  'blocked', // operator-actionable halt (recoverable); distinct from a hard `error`
 ]);
 
 const STEP_STATUSES = new Set([
@@ -303,17 +304,22 @@ export function validateRunState(parsed: unknown): ValidationResult {
  *   - 'missing'         — no `phases.<name>` block at all
  *   - 'in_progress'     — block exists but status is in_progress/pending
  *   - 'error'           — block exists with status: error
+ *   - 'blocked'         — block exists with status: blocked (operator-actionable halt)
  *   - 'malformed'       — block exists but validateRunState found errors
  *
  * The orchestrator silent-retry triggers on 'missing', 'in_progress',
  * and 'malformed' (the agent claimed success but didn't write properly).
- * 'error' is a real phase failure that should halt, not retry.
+ * 'error' and 'blocked' are real phase halts that should surface, not retry —
+ * 'blocked' specifically means the phase stopped on an operator-actionable
+ * precondition (e.g. consumed one-way state) rather than a hard crash, so the
+ * orchestrator should report it (and any remediation) instead of re-dispatching.
  */
 export type PhaseWriteBackStatus =
   | 'ok'
   | 'missing'
   | 'in_progress'
   | 'error'
+  | 'blocked'
   | 'malformed';
 
 export function classifyPhaseWriteBack(
@@ -331,5 +337,6 @@ export function classifyPhaseWriteBack(
   const status = block.status;
   if (status === 'done' || status === 'complete') return 'ok';
   if (status === 'error') return 'error';
+  if (status === 'blocked') return 'blocked';
   return 'in_progress';
 }

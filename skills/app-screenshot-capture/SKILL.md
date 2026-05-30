@@ -205,6 +205,51 @@ to Step 3 — every one of these classes is structurally guaranteed to
 produce a recipe-level failure 5-10 min later. Fail fast at the
 boundary.
 
+### Step 2.7: Learn-completion is one-way — never re-walk, never mutate to diagnose (#568)
+
+**Learn completion is permanent per `(test user, opportunity)`.** Once
+the test user has completed Learn on an opp, Connect routes "Continue
+Learning" to the **Deliver download gate**, not the Learn home — the
+Learn flow cannot be walked again on that opp+user. This is documented
+in `docs/learnings/2026-05-18-connect-gates-deliver-on-learn-completion.md`;
+this step makes it operational so the Learn-walk smoke does not halt on a
+consumed opp.
+
+Two hard rules:
+
+1. **A recipe-defect diagnosis must NOT mutate one-way live state.** If
+   the Learn smoke recipe is broken (e.g. a missing FINISH press), fix
+   the *recipe* — do NOT manually complete Learn on the live opp to
+   "confirm the fix." Completing Learn consumes the Learn-not-complete
+   precondition permanently, and the only restore is a fresh opportunity
+   (run independence). The bednet-spot-check/20260529-1124 cycle burned
+   two Phase-6 attempts + a failed opp re-mint exactly this way.
+
+2. **An already-Learn-complete opp is NOT a re-walkable state and NOT a
+   blocker to "recover" by re-walking.** The Learn leg (Step 5) must
+   branch on it:
+   - If, after the claim/resume prefix, the device is at the **Deliver
+     gate** (Learn already complete — `connect-claim-opp.yaml` surfaces
+     this via its already-Learn-complete branch, #570), record the Learn
+     sub-verdict as **`satisfied-by-prior-completion`** (NOT `fail`, NOT
+     `incomplete` — Learn genuinely completed, just on a prior pass) and
+     proceed directly to the **Deliver leg**, which is unlocked.
+   - Only attempt the actual Learn screenshot walk when the device lands
+     on the **Learn home** (`nsv_home_screen`) — i.e. Learn is genuinely
+     not yet complete.
+
+If a *fresh* Learn-walk screenshot set is specifically required (e.g. the
+prior completion produced no usable captures), that needs a **fresh
+opportunity** — start a new `/ace:run` (new opp → fresh
+`OpportunityAccess`). Do NOT re-mint a Phase-4 opp on the *same released
+Deliver app* to get there: Connect shares one `DeliverUnit` across opps
+on the same `cc_app_id`, so the fresh opp can't get a payment unit
+(#573) — a fresh run (new apps → new `cc_app_id`) is the clean path.
+
+This branch is the structural fix; it does not require a live pre-AVD
+probe (Connect exposes no clean per-user Learn-completion atom today) —
+the claim-prefix landing screen IS the signal.
+
 ### Step 3: Boot AVD + ensure apps installed
 
 Boot the AVD via `mobile_ensure_avd_running` and install the Connect

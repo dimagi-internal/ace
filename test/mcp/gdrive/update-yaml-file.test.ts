@@ -146,6 +146,67 @@ describe('update_yaml_file: server-side patch+CAS', () => {
     expect(YAML.parse(fake.state.content)).toEqual({ tags: ['c'], counter: 2, new_obj: { x: 1 } });
   });
 
+  it('deep merge: patching a NESTED path preserves grandchild siblings (the lost-update footgun #572)', async () => {
+    // Reproduces the bednet-spot-check/20260529-1124 corruption: a partial
+    // `two-level` patch of one step under a phase wiped the rest of the phase
+    // block (products + other steps). `deep` must preserve them.
+    const yaml = YAML.stringify({
+      phases: {
+        'commcare-setup': {
+          status: 'done',
+          verdict: 'proceed',
+          products: { apps: { learn: { hq_app_id: 'L' }, deliver: { hq_app_id: 'D' } } },
+          steps: {
+            'pdd-to-learn-app': { status: 'done' },
+            'app-release-qa': { status: 'done', artifact: '3-commcare/app-release-qa_verdict.yaml' },
+          },
+        },
+        'connect-setup': { status: 'pending' },
+      },
+    });
+    const fake = makeFakeDriveWithDoc(yaml, '1');
+
+    // Patch ONLY the one step's artifact path, three levels deep.
+    await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        patch: { phases: { 'commcare-setup': { steps: { 'app-release-qa': { artifact: '3-commcare/app-release-qa_result.yaml' } } } } },
+        merge: 'deep',
+      },
+      fake as any,
+    );
+
+    expect(YAML.parse(fake.state.content)).toEqual({
+      phases: {
+        'commcare-setup': {
+          status: 'done',                                    // preserved
+          verdict: 'proceed',                                // preserved
+          products: { apps: { learn: { hq_app_id: 'L' }, deliver: { hq_app_id: 'D' } } }, // preserved
+          steps: {
+            'pdd-to-learn-app': { status: 'done' },          // sibling step preserved
+            'app-release-qa': {
+              status: 'done',                                // sibling key in same step preserved
+              artifact: '3-commcare/app-release-qa_result.yaml', // updated
+            },
+          },
+        },
+        'connect-setup': { status: 'pending' },              // sibling phase preserved
+      },
+    });
+  });
+
+  it('deep merge: arrays and scalars replace wholesale (no array concat)', async () => {
+    const yaml = YAML.stringify({ a: { list: [1, 2], n: 1, keep: 'x' } });
+    const fake = makeFakeDriveWithDoc(yaml, '1');
+
+    await handleUpdateYamlFile(
+      { fileId: 'f1', patch: { a: { list: [9], n: 2 } }, merge: 'deep' },
+      fake as any,
+    );
+
+    expect(YAML.parse(fake.state.content)).toEqual({ a: { list: [9], n: 2, keep: 'x' } });
+  });
+
   it('retries once on revision_conflict (concurrent writer wins, we re-read)', async () => {
     const yaml = YAML.stringify({ phase: 'a', counter: 1 });
     const fake = makeFakeDriveWithDoc(yaml, '5');
