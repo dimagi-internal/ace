@@ -10,12 +10,14 @@ disable-model-invocation: true
 
 # sweep-connect
 
-Find Connect artifacts (programs, opportunities, payment units, FLW invites) that no current opp references, score them, and present them for triage. Connect's upstream API is uneven: opportunity deactivate is available, unaccepted FLW invite delete is available, but programs and payment units have no upstream delete path. This skill auto-executes what it can; programs and PUs surface in a "upstream-gap — delete via Connect admin UI" section.
+Find Connect artifacts (programs, opportunities, payment units, FLW invites) that no current opp references, score them, and present them for triage. Connect's upstream API is uneven: opportunity deactivate is available, unaccepted FLW invite delete is available, but programs and payment units have no upstream delete path. This skill deactivates opportunities and deletes unaccepted invites **in its execute pass, after the orchestrator's per-system human-confirmation gate** (see `agents/sweep.md § Human-confirmation gate`); programs and PUs surface in a "upstream-gap — delete via Connect admin UI" section.
 
 ## Inputs
 
 - Live-set file path from `sweep-live-set` skill output.
 - `ACE_CONNECT_BASE_URL` from `.env` (e.g. `https://connect.dimagi.com`).
+- `mode` — `recommend` (default) | `execute`. In `recommend` the skill is **report-only**: diff/score/render + return the recommended-action list; **no mutations**. In `execute` it mutates only `approvedIds`. The human-confirmation gate between the two is the orchestrator's job — see `agents/sweep.md § Human-confirmation gate`.
+- `approvedIds` (`execute` mode only) — the exact ids the human approved in chat. Mutate nothing outside this set.
 
 ## Products
 
@@ -40,10 +42,16 @@ Find Connect artifacts (programs, opportunities, payment units, FLW invites) tha
    - **Actionable:** opportunities (soft-deactivate) and unaccepted FLW invites (auto-delete).
    - **Upstream-gap:** programs only — print Connect admin URLs (`<base_url>/a/<org_slug>/program/<id>/`) for manual deletion. There is no upstream delete view for programs.
 6. **Render** via `renderOrphanReport()` from `lib/sweep-report.ts`. Write `connect-orphans.md` and `connect-orphans.yaml` to the sweep folder.
-7. **Surface to human** in chat: print the report, prompt for approval per actionable chunk.
-8. **On approval:**
-   - **Opportunities** → call `connect_update_opportunity` with `{ organization_slug, opportunity_id, active: false }`. NB: the existing `updateOpportunity` interface in `mcp/connect/client.ts` does NOT yet expose `active`; the Playwright backend's `postEditForm` does. Until the public interface is extended (one-line change in a follow-up PR), this step prints the call signature and asks the human to confirm.
-   - **Unaccepted FLW invites** → call `connect_delete_unaccepted_flw_invites({ organization_slug, opportunity_id, user_invite_ids: [...] })`. Pass the integer ids from `connect_list_invites`. Accepted invites in the list are silently skipped server-side; cascade-deletes associated `OpportunityAccess` rows.
+7. **Recommend — stop here in `mode: recommend`.** Return the structured recommended-action list (opportunities to deactivate; unaccepted FLW invites to delete — each with id, name, confidence) plus the programs report-only list and the report Drive link, to the orchestrator. **Perform no mutations.** Do not try to prompt the human from this skill — a dispatched subagent can't reach them; the orchestrator runs the confirmation gate (see `agents/sweep.md § Human-confirmation gate`).
+
+## Execute phase (`mode: execute` only)
+
+Runs only when the orchestrator re-dispatches with `mode: execute` + `approvedIds` (the ids the human approved in chat). Mutate **only** those ids:
+
+- **Opportunities** → call `connect_update_opportunity` with `{ organization_slug, opportunity_id, active: false }`.
+- **Unaccepted FLW invites** → call `connect_delete_unaccepted_flw_invites({ organization_slug, opportunity_id, user_invite_ids: [...] })`. Pass the integer ids from `connect_list_invites`. Accepted invites in the list are silently skipped server-side; cascade-deletes associated `OpportunityAccess` rows.
+
+Return the per-item result. Programs are never mutated (upstream gap — report-only).
 
 ## Failure modes
 

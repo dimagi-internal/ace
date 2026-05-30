@@ -9,13 +9,15 @@ disable-model-invocation: true
 
 # sweep-labs
 
-Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, solicitations, funds, reviews, responses) that no current opp references. Workflows, pipelines, synthetic opps, and **solicitations** have first-class delete/disable atoms in the labs MCP — auto-execute. The remaining LabsRecord-backed types (funds + standalone reviews/responses) are report-only by design until per-type atoms exist upstream. Reviews and responses cascade-delete with their parent solicitation, so they generally don't need standalone cleanup.
+Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, solicitations, funds, reviews, responses) that no current opp references. Workflows, pipelines, synthetic opps, and **solicitations** have first-class delete/disable atoms in the labs MCP — deletable in the execute pass, **after the orchestrator's per-system human-confirmation gate** (see `agents/sweep.md § Human-confirmation gate`). The remaining LabsRecord-backed types (funds + standalone reviews/responses) are report-only by design until per-type atoms exist upstream. Reviews and responses cascade-delete with their parent solicitation, so they generally don't need standalone cleanup.
 
 ## Inputs
 
 - Live-set file path from `sweep-live-set`.
 - `LABS_MCP_TOKEN` and labs base URL (loaded via `connect-labs` MCP).
 - Labs admin base URL: `https://labs.connect.dimagi.com`.
+- `mode` — `recommend` (default) | `execute`. In `recommend` the skill is **report-only**: diff/score/render + return the recommended-action list; **no mutations** (no delete/disable). In `execute` it mutates only `approvedIds`. The human-confirmation gate between the two is the orchestrator's job — see `agents/sweep.md § Human-confirmation gate`.
+- `approvedIds` (`execute` mode only) — the exact workflow/pipeline/synthetic/solicitation ids the human approved in chat. Mutate nothing outside this set.
 
 ## Products
 
@@ -43,15 +45,21 @@ Find connect-labs artifacts (workflows, pipelines, synthetic opportunities, soli
    - solicitations/funds/reviews/responses → `liveSet.identifiers.labsRecordIds`
 4. **Score** each orphan via `scoreLabsItem(item, liveSet)` from `lib/sweep-fingerprint.ts`. The scorer defensively downgrades to `low` when an item references a Connect opportunity that's still in `liveSet.identifiers.connectOpportunityIds` — that's a sign the caller mis-flagged the item.
 5. **Build the `OrphanReport`** with `system: 'labs'`. Partition into:
-   - **Actionable — auto-execute:** workflows, pipelines, synthetic opps, orphan solicitations. Solicitation deletion is gated on `responses + reviews == 0` (cascade emptiness), not on lifecycle status — every ACE dogfood solicitation passes that gate cleanly because no real LLO ever engaged. See connect-labs PR #197.
+   - **Actionable (deleted in the execute pass, after human approval):** workflows, pipelines, synthetic opps, orphan solicitations. Solicitation deletion is gated on `responses + reviews == 0` (cascade emptiness), not on lifecycle status — every ACE dogfood solicitation passes that gate cleanly because no real LLO ever engaged. See connect-labs PR #197.
    - **Informational only:** funds, standalone reviews/responses (reviews+responses that were already cascade-deleted with a parent solicitation don't appear here). Funds may need their own per-type atom in a future labs MCP release; reviews/responses generally cascade with their parent solicitation.
 6. **Render** + write `labs-orphans.md` and `.yaml` to the sweep folder.
-7. **Surface to human** in chat. Prompt for approval per actionable chunk; the informational list is read-only.
-8. **On approval:**
-   - Orphan workflows → `workflow_delete({ workflow_id })`
-   - Orphan pipelines → `pipeline_delete({ pipeline_id })`
-   - Orphan synthetic opps → `synthetic_disable({ synthetic_opp_id })`
-   - Orphan solicitations → `delete_solicitation({ solicitation_id, program_id })`. The atom cascade-deletes the solicitation's reviews and responses in one call and returns the count of records deleted at each level — surface that in the chat summary so the human sees the cascade impact. Pass `force: true` only for the rare legitimate destroy-with-engagement-data case (test fixtures that intentionally include responses).
+7. **Recommend — stop here in `mode: recommend`.** Return the structured recommended-action list (orphan workflows/pipelines/synthetic to delete-or-disable; orphan solicitations to delete with their cascade preview — each with id, confidence) plus the informational-only items (funds, standalone reviews/responses) and the report Drive link, to the orchestrator. **Perform no mutations.** Do not try to prompt the human from this skill — a dispatched subagent can't reach them; the orchestrator runs the confirmation gate (see `agents/sweep.md § Human-confirmation gate`).
+
+## Execute phase (`mode: execute` only)
+
+Runs only when the orchestrator re-dispatches with `mode: execute` + `approvedIds` (the ids the human approved in chat). Mutate **only** those ids:
+
+- Orphan workflows → `workflow_delete({ workflow_id })`
+- Orphan pipelines → `pipeline_delete({ pipeline_id })`
+- Orphan synthetic opps → `synthetic_disable({ synthetic_opp_id })`
+- Orphan solicitations → `delete_solicitation({ solicitation_id, program_id })`. The atom cascade-deletes the solicitation's reviews and responses in one call and returns the count of records deleted at each level — surface that in the result so the human sees the cascade impact. Pass `force: true` only for the rare legitimate destroy-with-engagement-data case (test fixtures that intentionally include responses) — and only if the human explicitly approved that override.
+
+Funds + standalone reviews/responses are never mutated (report-only). Return the per-item result.
 
 ## Failure modes
 

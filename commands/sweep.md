@@ -7,6 +7,8 @@ allowed-tools: [Read, Bash, mcp__plugin_ace_ace-gdrive__drive_list_folder, mcp__
 
 Find and clean up orphaned artifacts ACE has created across the systems it touches.
 
+**Nothing is ever deleted without your say-so.** For each system the sweep first shows you a recommendation (what it *would* remove, with reversibility), then asks you to approve, skip, or pick a subset — system by system. Only approved items are then removed. See `agents/sweep.md § Human-confirmation gate`.
+
 ## Arguments
 
 - `<system>` (optional) — one of `drive`, `connect`, `ocs`, `hq`, `labs`, `opp-runs`, `ace-web`, `all`. Omit to be prompted.
@@ -20,15 +22,15 @@ Read `agents/sweep.md` and execute its procedure inline (this is a procedure doc
 
 ```
 /ace:sweep              # prompts for system
-/ace:sweep drive        # auto-trashes orphan Drive folders on approval
-/ace:sweep connect      # auto-deactivates orphan opps + auto-deletes unaccepted FLW invites
-/ace:sweep ocs          # auto-deletes orphan chatbots + pipelines + per-opp collections + ends orphan sessions (golden template + shared collection safe-listed)
-/ace:sweep hq           # auto-soft-deletes orphan apps (90-day restorable via HQ admin UI)
-/ace:sweep labs         # auto-deletes orphan workflows + pipelines + solicitations (cascade; gated on responses+reviews == 0); disables synthetic; funds + standalone reviews/responses report-only
+/ace:sweep drive        # recommends orphan Drive folders → you approve → trashes (30-day bin)
+/ace:sweep connect      # recommends orphan opps (deactivate) + unaccepted FLW invites (delete) → you approve
+/ace:sweep ocs          # recommends orphan chatbots + pipelines + per-opp collections + sessions → you approve (golden template + shared collection safe-listed)
+/ace:sweep hq           # recommends orphan apps → you approve → soft-delete (90-day restorable via HQ admin UI)
+/ace:sweep labs         # recommends orphan workflows + pipelines + solicitations (cascade; gated on responses+reviews == 0) + synthetic → you approve; funds + standalone reviews/responses report-only
 /ace:sweep opp-runs            # retention prune: keep newest 3 runs per opp under ACE/<opp>/runs/ (default --keep 3)
 /ace:sweep opp-runs --keep 5   # keep newest 5 runs per opp instead
-/ace:sweep ace-web      # bulk-deletes every uploaded chat Session on the deployed ace-web that this PAT can write to (CASCADEs uploads, messages, share tokens)
-/ace:sweep all          # runs drive + connect + ocs + hq + labs + ace-web in sequence (opp-runs excluded — retention is a manual decision)
+/ace:sweep ace-web      # recommends every uploaded chat Session this PAT can write to → you approve → bulk-delete (CASCADEs uploads, messages, share tokens; not reversible)
+/ace:sweep all          # runs drive + connect + ocs + hq + labs + ace-web in sequence, each with its own approval gate (opp-runs excluded — retention is a manual decision)
 ```
 
 ## Coverage matrix
