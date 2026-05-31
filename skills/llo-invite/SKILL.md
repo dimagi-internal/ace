@@ -2,7 +2,9 @@
 name: llo-invite
 description: >
   Email each PDD-named candidate LLO the public solicitation URL.
-  No-op when PDD has no preferred_llos.
+  PUBLISH-ONLY BY DEFAULT: a no-op unless the operator explicitly opts in
+  (--invite-candidates / ACE_SOLICITATION_INVITE_CANDIDATES). Also a no-op
+  when the PDD names no candidates.
 disable-model-invocation: true
 ---
 
@@ -28,7 +30,33 @@ fires only for the awardee.
   current run's `run_state.yaml`
 - `opp.yaml` (opp display name)
 
+## Default: publish-only (standing operator directive 2026-05-31)
+
+This skill sends real email to real external organizations, so it is
+**OFF by default.** It runs only when the operator has explicitly opted
+into candidate outreach for this run via either:
+
+- `/ace:run --invite-candidates` (the orchestrator threads the flag into
+  the Phase 8 dispatch prompt), or
+- `ACE_SOLICITATION_INVITE_CANDIDATES=1` in the resolved `.env`.
+
+Absent that signal — the normal case, including every dogfood / `is_test`
+run — the solicitation is published (by `solicitation-create`) and this
+skill is a **publish-only no-op**: it sends nothing, writes a
+`Status: skipped (publish-only default)` invitations log, and exits
+successfully. Do NOT pause to ask; publish-only is the intended path.
+This default holds until the skills are explicitly changed to enable
+candidate outreach. See `agents/ace-orchestrator.md § Modes → Phase 6→7
+transition`.
+
 ## Process
+
+0. **Opt-in gate.** If neither `--invite-candidates` nor
+   `ACE_SOLICITATION_INVITE_CANDIDATES=1` is set, write
+   `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/llo-invite_invitations.md`
+   with `Status: skipped (publish-only default — no candidate emails sent)`,
+   the `public_url` for the record, and exit successfully. Send NO email.
+   Only when the opt-in signal IS present do Steps 1–4 below run.
 
 1. **Read `Preferred LLOs`** from the PDD's `## LLO Preference` section.
    Parse names + contact emails + organization slugs (each entry should
@@ -99,11 +127,14 @@ fires only for the awardee.
 
 ## Review-mode gate
 
-If invoked under `/ace:run --review` mode, present the prepared email
-list to the human before sending and pause. Default mode sends without
-a gate (the orchestrator's external-comms gate is the Phase 8→9
-boundary, not here — these emails are non-binding "please consider
-applying" notes, not commitments).
+Reaching this section means the Step 0 opt-in gate already passed
+(`--invite-candidates` / `ACE_SOLICITATION_INVITE_CANDIDATES` is set) —
+otherwise the skill no-op'd and never got here. With opt-in set: under
+`/ace:run --review` mode, present the prepared email list to the human
+before sending and pause; under auto mode, send (the opt-in signal IS
+the operator's go-ahead, and these emails are non-binding "please
+consider applying" notes, not commitments). Without opt-in there is no
+send in any mode — see § Default: publish-only.
 
 ## Error handling
 
@@ -129,6 +160,11 @@ applying" notes, not commitments).
 No Connect or Connect-Labs API calls in this skill.
 
 ## Mode Behavior
+
+The opt-in gate (Step 0) runs FIRST regardless of mode — without
+`--invite-candidates` / `ACE_SOLICITATION_INVITE_CANDIDATES` this skill
+is a publish-only no-op in every mode. The rows below describe behavior
+**once opt-in is set**:
 
 - **Auto:** Send all invitations.
 - **Review:** Pause after composing, present recipient list + sample

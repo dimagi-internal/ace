@@ -423,11 +423,19 @@ stop, up until the point of external communication.*
   surfaces the summary for triage. A hard error halts immediately. A
   `[WARN]` is logged but does NOT halt.
 - **Phase 6→7 transition:** **no longer a mandatory pause.** Phase 8
-  publishes a public solicitation on labs.connect.dimagi.com and emails
-  PDD-named candidate LLOs the public URL — passive listing, not active
-  outreach to specific individuals. The active-comms boundary moved to
-  Phase 8→9 (where Phase 9 sends an inbound onboarding email to the
-  awardee).
+  publishes a public solicitation on labs.connect.dimagi.com — a passive
+  public listing, not active outreach to specific individuals.
+  **Phase 8 is publish-only by default: it does NOT email PDD-named
+  candidate LLOs.** Candidate-invite email (`llo-invite`) is OFF unless
+  the operator explicitly opts in (`/ace:run --invite-candidates`, or
+  `ACE_SOLICITATION_INVITE_CANDIDATES=1` in the env). On a dogfood /
+  `is_test` run a real email to a real org is rarely wanted, so the
+  orchestrator must NOT email candidates without that explicit signal —
+  and must NOT pause to ask, just proceed publish-only and note the skip.
+  The active-comms boundary is the Phase 8→9 boundary (where Phase 9
+  sends an inbound onboarding email to the awardee). (Standing operator
+  directive 2026-05-31; revisit only when the skills are explicitly
+  changed to enable candidate outreach by default.)
 - **Phase 8→9 boundary:** `/ace:run` terminates here today — Phase 9 is
   not yet live (§ Workflow). The run halts after Phase 8's write-back. The
   manual `/ace:step solicitation-review` (HITL-gated `award_response`) is
@@ -905,9 +913,9 @@ When invoked with an opportunity, execute these phases in order.
 
 **Inputs (inline at handoff):** PDD (with PDD-named candidate LLOs, if any), Phase-7 summary (`7-synthetic/synthetic-summary.md`), `run_state.yaml`.
 
-**Atoms / skills used (orchestrator-visible only):** `Agent(solicitation-management)`. Internally the agent runs `solicitation-create` → `llo-invite` (default run, both auto).
+**Atoms / skills used (orchestrator-visible only):** `Agent(solicitation-management)`. Internally the agent runs `solicitation-create` (always) → `llo-invite` (**publish-only by default — `llo-invite` is a no-op unless the operator opts in via `--invite-candidates` / `ACE_SOLICITATION_INVITE_CANDIDATES`**).
 
-**Products:** solicitation derived from the PDD published on labs.connect.dimagi.com via the `connect-labs` MCP; emails to PDD-named candidate LLOs containing the public URL (no-op if the PDD names no candidates — long-term flow).
+**Products:** solicitation derived from the PDD published on labs.connect.dimagi.com via the `connect-labs` MCP. **Candidate-invite emails are OFF by default (publish-only).** When the operator explicitly opts in, the agent emails PDD-named candidate LLOs the public URL (no-op if the PDD names no candidates). The dispatch prompt MUST carry the publish-only override unless opt-in is set — see § Modes → Phase 6→7 transition.
 
 **Gate:** terminal — `/ace:run` halts after this phase (Phase 8→9 boundary; see § Workflow callout for the authoritative statement). `selected_llo` is populated only by the manual `/ace:step solicitation-review` (HITL-gated `award_response`).
 
