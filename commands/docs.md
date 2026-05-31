@@ -6,7 +6,7 @@ allowed-tools: [Read, Write, Glob, Grep, Bash]
 # /ace:docs
 
 Generate the ACE playbook — a human-readable document that explains the full
-CRISPR-Connect process, generated from the actual agent and skill definitions.
+ACE process, generated from the actual agent and skill definitions.
 
 ## Process
 
@@ -23,7 +23,7 @@ CRISPR-Connect process, generated from the actual agent and skill definitions.
 4. **Generate playbook** at `docs/generated/playbook.md` with sections:
 
    ```markdown
-   # ACE Playbook — CRISPR-Connect Process
+   # ACE Playbook — ACE Process
 
    Generated: [date]
 

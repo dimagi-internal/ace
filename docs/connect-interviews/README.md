@@ -1,6 +1,6 @@
 # Connect Interviews — ACE support
 
-The Connect Interviews program is a Dimagi initiative separate from CRISPR-Connect. FLWs conduct structured interviews with participants by chatting with an OCS LLM bot embedded in CommCare Connect Messaging. Successful interview completion drives Connect payment via the standard Deliver Unit flow.
+The Connect Interviews program is a Dimagi initiative separate from ACE. FLWs conduct structured interviews with participants by chatting with an OCS LLM bot embedded in CommCare Connect Messaging. Successful interview completion drives Connect payment via the standard Deliver Unit flow.
 
 This directory holds the ACE-side design artifacts for automating the team's launch workflow.
 
@@ -21,7 +21,7 @@ The team (Ali Flaming / Andrea King / Mansi Narang / Kriti Mittal / Zohaib Khan)
 
 ## Planned ACE skills (V1)
 
-All three are slash commands under the `ace:` namespace, scoped narrowly to Connect Interviews (not part of the CRISPR-Connect phase pipeline):
+All three are slash commands under the `ace:` namespace, scoped narrowly to Connect Interviews (not part of the ACE phase pipeline):
 
 | Command | Reads | Writes |
 |---|---|---|

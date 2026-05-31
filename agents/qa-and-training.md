@@ -1,7 +1,7 @@
 ---
 name: qa-and-training
 description: >
-  Phase 6 of the CRISPR-Connect lifecycle: produce per-opp QA test plan +
+  Phase 6 of the ACE lifecycle: produce per-opp QA test plan +
   walkthrough screenshots + training materials (deck outline and video
   script). All derived from the design docs (PDD, app summaries, opp
   identifiers, OCS chatbot URL) so the Phase runs from artifacts; no live

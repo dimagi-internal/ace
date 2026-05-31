@@ -8,7 +8,7 @@ disable-model-invocation: false
 
 # PDD-to-Learn-App Eval
 
-The Learn app is the FLW-training side of every CRISPR-Connect opp.
+The Learn app is the FLW-training side of every ACE opp.
 This skill grades it on **two axes**: (1) does the build match the
 PDD's stated structure (module count, order, the Connect-readable
 Assessment Score tag, topic presence) — *conformance*; and (2) **does

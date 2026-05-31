@@ -42,7 +42,7 @@ The Apr 20 collection-clone cycle was anchored on the wrong premise (collection 
 |---|---|---|
 | Apr 8 | Archetype as PDD field with skill-level branches | CLAUDE.md Convention + `Archetype:` PDD frontmatter |
 | Apr 15 | `/ace:setup`, `/ace:doctor`, `/ace:update` first-run polish | Stable since 0.3.x |
-| Apr 16 | State.yaml lifecycle / fixture drift catches | `lib/artifact-manifest.ts` + `test/fixtures/CRISPR-Test-*` |
+| Apr 16 | State.yaml lifecycle / fixture drift catches | `lib/artifact-manifest.ts` + `test/fixtures/ACE-Test-*` |
 | Apr 17 | Per-opp ownership in state schema | `opp.yaml` / `run_state.yaml` split |
 | Apr 19 | qa+eval two-axis pattern + opp-eval umbrella | CLAUDE.md Convention + per-skill `-eval` siblings |
 | Apr 20 (am) | Cross-team collection scoping | `ocs_shared_collection_team` doctor probe |

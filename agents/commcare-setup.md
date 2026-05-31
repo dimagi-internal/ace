@@ -1,7 +1,7 @@
 ---
 name: commcare-setup
 description: >
-  Phase 3 of the CRISPR-Connect lifecycle: translate the approved PDD into
+  Phase 3 of the ACE lifecycle: translate the approved PDD into
   Learn and Deliver apps via Nova, deploy them to CommCare HQ, and test.
 model: inherit
 phase: commcare-setup
@@ -19,7 +19,7 @@ skills:
 
 # CommCare Setup (Phase 3 Procedure Document)
 
-This file specifies Phase 3 of the CRISPR-Connect lifecycle: build and
+This file specifies Phase 3 of the ACE lifecycle: build and
 deploy the CommCare-side apps.
 
 **This file is read and executed inline by the top-level Claude Code

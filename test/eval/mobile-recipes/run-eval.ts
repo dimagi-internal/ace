@@ -55,7 +55,7 @@ async function evaluate(fixtureDir: string): Promise<{ pass: boolean; details: s
 }
 
 async function main() {
-  const fixtures = ['CRISPR-Test-001', 'CRISPR-Test-002'];
+  const fixtures = ['ACE-Test-001', 'ACE-Test-002'];
   let allPass = true;
   for (const f of fixtures) {
     const dir = path.join('test', 'fixtures', f);

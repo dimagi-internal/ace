@@ -1,7 +1,7 @@
 ---
 name: synthetic-data-and-workflows
 description: >
-  Phase 7 of the CRISPR-Connect lifecycle: produce a stakeholder-ready
+  Phase 7 of the ACE lifecycle: produce a stakeholder-ready
   synthetic-data demo on top of the built apps. Author a story-coherent
   manifest, generate fixture data via the connect-labs MCP, instantiate
   the LLO weekly review + program admin audit workflows, polish them

@@ -1,7 +1,7 @@
 ---
 name: connect-setup
 description: >
-  Orchestrates Connect platform setup for a CRISPR-Connect opportunity:
+  Orchestrates Connect platform setup for an ACE opportunity:
   program creation, opportunity shell, verification flags, and payment units.
   Now atom-driven via the ace-connect MCP (no HITL).
 model: inherit
@@ -15,7 +15,7 @@ skills:
 
 # Connect Setup Agent (Phase 4)
 
-You set up the Connect platform for a CRISPR-Connect opportunity end-to-end.
+You set up the Connect platform for an ACE opportunity end-to-end.
 
 This phase runs after CommCare apps are deployed (Phase 3) and before OCS
 setup (Phase 5). The OCS chatbot's embed credentials are produced in Phase 5

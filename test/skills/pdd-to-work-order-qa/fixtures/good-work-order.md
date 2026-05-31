@@ -9,7 +9,7 @@
 
 ## 1. Background
 
-Dimagi is delivering the CRISPR-Connect platform for malaria ITN distribution verification. This Work Order engages a Partner organization to deploy FLWs in the field.
+Dimagi is delivering the ACE platform for malaria ITN distribution verification. This Work Order engages a Partner organization to deploy FLWs in the field.
 
 ## 2. Scope of Work
 

@@ -33,13 +33,13 @@ Each `*-qa` skill defines its static checks as importable TS functions in `skill
 import { checkAllSectionsPresent } from '../../../skills/idea-to-pdd-qa/checks';
 import { loadFixtureText } from '../../lib/fixture-loader';
 
-test('CRISPR-Test-001 PDD has all required sections', () => {
-  const pdd = loadFixtureText('CRISPR-Test-001', 'pdd.md');
+test('ACE-Test-001 PDD has all required sections', () => {
+  const pdd = loadFixtureText('ACE-Test-001', 'pdd.md');
   expect(checkAllSectionsPresent(pdd).pass).toBe(true);
 });
 
-test('CRISPR-Bad-001 PDD missing § Target Population', () => {
-  const pdd = loadFixtureText('CRISPR-Bad-001', 'pdd.md');
+test('ACE-Bad-001 PDD missing § Target Population', () => {
+  const pdd = loadFixtureText('ACE-Bad-001', 'pdd.md');
   const result = checkAllSectionsPresent(pdd);
   expect(result.pass).toBe(false);
   expect(result.detail).toContain('Target Population');
@@ -56,35 +56,35 @@ import { runChecks } from '../../lib/qa-runner';
 import { CHECKS } from '../../../skills/idea-to-pdd-qa/checks';
 import { expectQAPass, expectQAFailWithCheck } from '../../lib/qa-asserts';
 
-test('CRISPR-Test-001 passes idea-to-pdd-qa end-to-end', async () => {
+test('ACE-Test-001 passes idea-to-pdd-qa end-to-end', async () => {
   const result = await runChecks({
     skill: 'idea-to-pdd-qa',
-    target: 'CRISPR-Test-001',
+    target: 'ACE-Test-001',
     capture_path: '1-design/idea-to-pdd.md',
-    artifact: loadFixtureText('CRISPR-Test-001', 'pdd.md'),
+    artifact: loadFixtureText('ACE-Test-001', 'pdd.md'),
     checks: CHECKS,
   });
   expectQAPass(result);
 });
 
-test('CRISPR-Bad-001 fails on missing section', async () => {
+test('ACE-Bad-001 fails on missing section', async () => {
   const result = await runChecks({
     skill: 'idea-to-pdd-qa',
-    target: 'CRISPR-Bad-001',
+    target: 'ACE-Bad-001',
     capture_path: '1-design/idea-to-pdd.md',
-    artifact: loadFixtureText('CRISPR-Bad-001', 'pdd.md'),
+    artifact: loadFixtureText('ACE-Bad-001', 'pdd.md'),
     checks: CHECKS,
   });
   expectQAFailWithCheck(result, 'all_sections_present', 'Target Population');
 });
 ```
 
-### Adversarial fixtures (`CRISPR-Bad-*`)
+### Adversarial fixtures (`ACE-Bad-*`)
 
 Fixtures with deliberate defects. Each has an `expected/` subdirectory documenting what QA should catch:
 
 ```
-test/fixtures/CRISPR-Bad-001/
+test/fixtures/ACE-Bad-001/
 ├── pdd.md                                    artifact with missing section
 ├── inputs-manifest.yaml                      upstream inputs
 └── expected/
@@ -119,6 +119,6 @@ test('idea-to-pdd-qa result shape is stable', async () => {
 
 1. Create `test/skills/<skill-name>/` directory.
 2. Add `checks.test.ts` for the static-check functions in `skills/<producer>-qa/checks.ts`.
-3. Add `integration.test.ts` using `runChecks()` against `CRISPR-Test-*` (good) + `CRISPR-Bad-*` (adversarial) fixtures.
+3. Add `integration.test.ts` using `runChecks()` against `ACE-Test-*` (good) + `ACE-Bad-*` (adversarial) fixtures.
 4. (Optional) Add `snapshot.test.ts` for verdict-shape drift detection.
 5. Add `README.md` documenting which fixtures cover which scenarios.

@@ -2,7 +2,7 @@
 
 **Status:** Design approved. Implementation plan pending.
 **Date:** 2026-05-27
-**Touches:** ACE plugin only — `skills/app-test-cases`, `skills/app-screenshot-capture`, `skills/training-deck-generate`, `agents/qa-and-training.md`, `agents/commcare-setup.md`, `lib/verdict-schema.ts`, `lib/phase-closeout.ts`, `templates/app-test-cases-template.yaml`, `mcp/mobile/recipes/static/`, `mcp/mobile/selectors/connect-2.63.0.yaml`, `mcp/mobile/recipe-sanity-probe.ts`, plus paired tests + the `CRISPR-Test-001` fixture.
+**Touches:** ACE plugin only — `skills/app-test-cases`, `skills/app-screenshot-capture`, `skills/training-deck-generate`, `agents/qa-and-training.md`, `agents/commcare-setup.md`, `lib/verdict-schema.ts`, `lib/phase-closeout.ts`, `templates/app-test-cases-template.yaml`, `mcp/mobile/recipes/static/`, `mcp/mobile/selectors/connect-2.63.0.yaml`, `mcp/mobile/recipe-sanity-probe.ts`, plus paired tests + the `ACE-Test-001` fixture.
 
 ## Motivation
 
@@ -111,7 +111,7 @@ Everything else (composition logic, naming, decoupling, verdict model, contracts
 - **`mcp/mobile/recipes/static/deliver-launch.yaml`** — already ID-anchored + calibrated; reuse as-is. Add a small `connect-resume-opp.yaml` palette helper (opp-list → tap In-Progress card's Resume) only if no existing palette covers the Resume navigation the Deliver leg needs before `runFlow: deliver-launch.yaml`.
 - **`mcp/mobile/selectors/connect-2.63.0.yaml`** — `deliver-*` rows already present (2026-05-26). Touch only if the live verification surfaces a missing selector on a surface the full walk visits (calibration-on-gap fallback).
 - **`mcp/mobile/recipe-sanity-probe.ts`** + `test/mcp/mobile/recipe-sanity-probe.test.ts` — add a check that the Deliver smoke does **not** contain a full Learn re-walk (anti-monolith), and that Learn/Deliver legs are named per convention.
-- **`test/fixtures/CRISPR-Test-001/3-commcare/app-test-cases.yaml`** — rename `recipe_path` values.
+- **`test/fixtures/ACE-Test-001/3-commcare/app-test-cases.yaml`** — rename `recipe_path` values.
 - **`test/mcp/mobile/static-palette-health.test.ts`** — palette additions parse + lint + selectors resolve.
 
 ## Staged PR plan

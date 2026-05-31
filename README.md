@@ -1,6 +1,6 @@
 # ACE — AI Connect Engine
 
-Orchestrates the CRISPR-Connect lifecycle for Connect opportunities, from idea through app building, deployment, LLO management, and closeout.
+Orchestrates the ACE lifecycle for Connect opportunities, from idea through app building, deployment, LLO management, and closeout.
 
 ACE is a Claude Code plugin with the same architecture as canopy: agents orchestrate skills, skills are prompt-based capability definitions, and MCP servers provide programmatic access to external systems.
 

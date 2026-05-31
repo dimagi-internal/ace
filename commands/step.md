@@ -1,5 +1,5 @@
 ---
-description: Run a single step of the CRISPR-Connect process for an opportunity
+description: Run a single step of the ACE process for an opportunity
 argument-hint: [<skill-name> <opp>[/<run-id>]]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---

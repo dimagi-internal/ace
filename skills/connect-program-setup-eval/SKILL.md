@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # Connect Program Setup Eval
 
-The Connect-side configuration of a CRISPR-Connect opportunity is the
+The Connect-side configuration of an ACE opportunity is the
 artifact that ties everything together: the PDD's intervention design
 becomes a Program; the Learn/Deliver apps become Opportunity-linked
 Connectify modules; the verification rules in the PDD's Evidence Model

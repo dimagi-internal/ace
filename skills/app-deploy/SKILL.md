@@ -45,7 +45,7 @@ orchestrator from per-skill QA + eval verdicts. -->
    default `https://www.commcarehq.org`) from the loaded environment.
    That's the HQ project space ACE uploads each app to. If
    `ACE_HQ_DOMAIN` is unset or empty, default to `connect-ace-prod` (the
-   canonical CRISPR-Connect project space) with an `[INFO]` note in the
+   canonical ACE project space) with an `[INFO]` note in the
    gate brief — do not pause to ask. Only halt if the env loader
    returned an explicit non-empty value that looks malformed.
 

@@ -66,7 +66,7 @@ describe('Nova-plugin migration: artifact manifest reflects new contract', () =>
 });
 
 describe('Nova-plugin migration: app-summary fixtures carry nova_app_id frontmatter', () => {
-  const fixtures = ['CRISPR-Test-001', 'CRISPR-Test-002'];
+  const fixtures = ['ACE-Test-001', 'ACE-Test-002'];
   const summaryFiles = [
     '3-commcare/pdd-to-learn-app_summary.md',
     '3-commcare/pdd-to-deliver-app_summary.md',

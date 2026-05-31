@@ -16,7 +16,7 @@ describe('renderOrphanReport', () => {
       ...baseReport,
       totals: { high: 2, medium: 1, low: 0 },
       orphans: [
-        { id: 'a', name: 'CRISPR-Test-001', createdTime: '2026-04-01T00:00:00Z',
+        { id: 'a', name: 'ACE-Test-001', createdTime: '2026-04-01T00:00:00Z',
           confidence: 'high', signals: ['CRISPR- prefix'] },
         { id: 'b', name: 'paprika-pilot', createdTime: '2026-04-02T00:00:00Z',
           confidence: 'high', signals: ['kebab opp style'] },
@@ -39,12 +39,12 @@ describe('renderOrphanReport', () => {
       orphans: [
         { id: 'm', name: 'unknown', createdTime: '2026-04-02T00:00:00Z',
           confidence: 'medium', signals: ['?'] },
-        { id: 'h', name: 'CRISPR-Test-X', createdTime: '2026-04-01T00:00:00Z',
+        { id: 'h', name: 'ACE-Test-X', createdTime: '2026-04-01T00:00:00Z',
           confidence: 'high', signals: ['CRISPR-'] },
       ],
     });
     expect(md.indexOf('## High confidence')).toBeLessThan(md.indexOf('## Medium confidence'));
-    expect(md.indexOf('CRISPR-Test-X')).toBeLessThan(md.indexOf('unknown'));
+    expect(md.indexOf('ACE-Test-X')).toBeLessThan(md.indexOf('unknown'));
   });
 
   it('skips empty confidence sections', () => {

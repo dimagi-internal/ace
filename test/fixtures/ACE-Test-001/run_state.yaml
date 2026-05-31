@@ -1,0 +1,58 @@
+opportunity: ACE-Test-001
+mode: review
+created: 2026-04-03T00:00:00Z
+type: synthetic-test-fixture
+archetype: atomic-visit
+
+# Operator identity (added 0.3.3). ACE-Test-001 is a "just kicked off"
+# fixture — initiated_by set, but last_actor has not moved past creation
+# because no skill has run yet. /ace:status should tag this ACTION NEEDED
+# (the idea-to-pdd gate is pending) and show 'last touched by <initiated_by>'.
+initiated_by: jjackson@dimagi.com
+last_actor: jjackson@dimagi.com
+last_actor_at: 2026-04-03T00:00:00Z
+
+# State schema aligned with the 6-phase orchestrator introduced in 0.2.0.
+# Skill names and phase groupings mirror agents/*.md and lib/artifact-manifest.ts.
+phases:
+  design-review:        # Phase 1
+    idea-to-pdd: pending
+    pdd-to-test-prompts: pending
+  commcare-setup:       # Phase 3
+    pdd-to-learn-app: pending
+    pdd-to-deliver-app: pending
+    app-deploy: pending
+    app-test-cases: pending
+  connect-setup:        # Phase 4
+    connect-program-setup: pending
+    connect-opp-setup: pending
+    llo-invite: pending
+  ocs-setup:            # Phase 5
+    ocs-agent-setup: pending
+    ocs-chatbot-qa-quick: pending
+    ocs-chatbot-eval-quick: pending
+    ocs-chatbot-qa-deep: pending
+    ocs-chatbot-eval-deep: pending
+  llo-management:       # Phase 6
+    llo-onboarding: pending
+    llo-uat: pending
+    llo-launch: pending
+    # Recurring (run on schedule after launch, no terminal "done" state)
+    timeline-monitor: pending
+    flw-data-review: pending
+    ocs-chatbot-qa-monitor: pending
+    ocs-chatbot-eval-monitor: pending
+  closeout:             # Phase 7
+    opp-closeout: pending
+    llo-feedback: pending
+    learnings-summary: pending
+    cycle-grade: pending
+
+# Gate approvals. Operator acknowledgement required in review mode before
+# the next step dispatches.
+gates:
+  idea-to-pdd: pending             # Phase 1 exit
+  app-deploy: pending              # Phase 3 exit
+  ocs-chatbot-eval-deep: pending   # Phase 5 exit (gate is on the eval, not the qa capture)
+  llo-invite: pending              # Phase 4 exit (invites sent in Phase 6)
+  llo-launch: pending              # Phase 6 go-live
