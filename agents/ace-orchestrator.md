@@ -93,9 +93,22 @@ Emits YAML with `env_file`, `plugin.version`, `plugin.install_path`,
 ACE-relevant variable as either its public value (Drive root, HQ
 domain, OCS team slug, etc.) or `present`/`missing` (passwords, tokens).
 Read the YAML; do NOT run additional probes for any field that's
-already in it. (Auth liveness is *not* included — orchestrator
+already in it. (Live auth liveness is *not* included — orchestrator
 pre-flight trusts the cached session and lets phase atoms surface
 auth failures at point-of-use.)
+
+**Two static blocks the preflight DOES emit — halt before Phase 1 if
+either is `fail`:** `selector_map_currency` and `nova_needs_auth_cache`.
+Both are no-network static checks for halt-classes that are
+*unrecoverable in-session*. `nova_needs_auth_cache: {status: fail}`
+means `plugin:nova:nova` is stuck in Claude Code's needs-auth cache
+despite a valid `NOVA_API_KEY` — the architect would hallucinate
+fabricated `app_id`s at Phase 3, and the only fix is a full Claude Code
+restart. Catching it here (second 0) instead of at Phase 3 Step 0
+(~25 min in) saves the operator from running Phases 1–2 only to halt.
+On `fail`: surface the block's `remediation`, run the cache-clear node
+one-liner the full `/ace:doctor` prints, and tell the operator to
+Cmd-Q + reopen, then resume. See jjackson/ace#582.
 
 **Anti-pattern observed in real sessions (2026-05-24 e2e-malaria-rdt,
 2026-05-26 bednet-spot-check):** orchestrator burns 2–3 turns probing

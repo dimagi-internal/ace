@@ -273,6 +273,44 @@ if [ "$PREFLIGHT" = "1" ]; then
     fi
   fi
 
+  # nova_needs_auth_cache — STATIC check (no network), mirrors the named
+  # human-readable probe (~line 1700). A stuck `plugin:nova:nova` entry in
+  # Claude Code's needs-auth cache means only
+  # `mcp__plugin_nova_nova__authenticate` surfaces and the architect would
+  # hallucinate fabricated app_ids. This is the one halt-class that is
+  # static to detect yet UNRECOVERABLE in-session (needs a full Claude Code
+  # restart), so it belongs in preflight even though live auth probes don't.
+  # Fail iff the cache key is present AND NOVA_API_KEY resolves (the same
+  # gate as the full doctor at ~line 1732); warn on key-present-but-no-NOVA
+  # or unparseable cache; pass otherwise. See jjackson/ace#582.
+  PF_NOVA_CACHE_FILE="$HOME/.claude/mcp-needs-auth-cache.json"
+  PF_NOVA_KEY="$(pf_get_env NOVA_API_KEY)"
+  PF_NOVA_KEY_PRESENT=$( [ -n "$PF_NOVA_KEY" ] && echo true || echo false )
+  PF_NOVA_CACHE_KEY_PRESENT=false
+  PF_NOVA_CACHE_STATUS=pass
+  PF_NOVA_CACHE_REMEDIATION=""
+  if [ -f "$PF_NOVA_CACHE_FILE" ]; then
+    PF_NOVA_CACHE_HAS="$(node -e "
+      try {
+        const d = JSON.parse(require('fs').readFileSync('$PF_NOVA_CACHE_FILE','utf8'));
+        console.log('plugin:nova:nova' in d ? '1' : '0');
+      } catch(_) { console.log('error'); }
+    " 2>/dev/null)"
+    if [ "$PF_NOVA_CACHE_HAS" = "1" ]; then
+      PF_NOVA_CACHE_KEY_PRESENT=true
+      if [ "$PF_NOVA_KEY_PRESENT" = "true" ]; then
+        PF_NOVA_CACHE_STATUS=fail
+        PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova stuck in needs-auth cache despite valid NOVA_API_KEY; clear it from $PF_NOVA_CACHE_FILE then Cmd-Q + reopen Claude Code (run /ace:doctor for the exact node one-liner)"
+      else
+        PF_NOVA_CACHE_STATUS=warn
+        PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova cached as needs-auth but NOVA_API_KEY not set; entry may be correct. To use Nova, set the key, clear the entry, restart Claude Code"
+      fi
+    elif [ "$PF_NOVA_CACHE_HAS" = "error" ]; then
+      PF_NOVA_CACHE_STATUS=warn
+      PF_NOVA_CACHE_REMEDIATION="$PF_NOVA_CACHE_FILE present but unparseable; inspect or remove it (Claude Code recreates as needed)"
+    fi
+  fi
+
   # Build the YAML body. Missing public values render as empty strings; the
   # orchestrator can decide how to react (some are required, some optional).
   cat <<EOF
@@ -312,6 +350,11 @@ selector_map_currency:
   recipes_scanned: ${PF_SEL_RECIPES_SCANNED}
   unresolved_selectors: ${PF_SEL_UNRESOLVED_YAML}
   remediation: "${PF_SEL_REMEDIATION}"
+nova_needs_auth_cache:
+  status: ${PF_NOVA_CACHE_STATUS}
+  cache_key_present: ${PF_NOVA_CACHE_KEY_PRESENT}
+  nova_api_key: ${PF_NOVA_KEY_PRESENT}
+  remediation: "${PF_NOVA_CACHE_REMEDIATION}"
 EOF
   exit 0
 fi
