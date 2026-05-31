@@ -190,8 +190,12 @@ by `--persona` / `--personas`):
             eval_score: <float — average across scenes>
             run_at: <ISO>
       ```
-   3. `update_yaml_file` with `merge: 'two-level'` on the full
-      `phases.synthetic-data-and-workflows.outputs` payload.
+   3. `update_yaml_file` with `merge: 'deep'` on the
+      `phases.synthetic-data-and-workflows.products.synthetic.walkthroughs`
+      payload (`deep` preserves sibling sub-keys + the phase's
+      `status`/`steps`; `two-level` would replace the whole phase block,
+      #572/#587). The walkthroughs list is read-appended-rewritten in
+      full above, so `deep`'s array-replace is correct.
 
    **No write to `opp.yaml.synthetic` — synthetic state is per-run only.**
 

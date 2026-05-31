@@ -319,18 +319,21 @@ phases:
       synthetic-summary:        { status: done, ... }
 ```
 
-Each step uses `update_yaml_file({..., merge: 'two-level'})` — the
-two-level mode (added 0.13.118) recurses one level into object-valued
-top-level keys, so each phase's patch leaves sibling phases' blocks
-intact while still threading the read+CAS internally. The legacy
-read-merge-write pattern via `drive_update_file` is no longer needed
-for this case and should not be reintroduced.
+Each step uses `update_yaml_file({..., merge: 'deep'})` — `deep`
+(recommended for partial run_state patches) recursively merges at every
+depth, so each step's patch of `products.synthetic.<sub-key>` leaves
+sibling phases, sibling products, AND the phase's own `status`/`steps`
+intact, while still threading the read+CAS internally. `two-level`
+must NOT be used for these partial patches: it replaces the named phase
+child wholesale and silently drops the rest of the block (#572/#587).
+The legacy read-merge-write pattern via `drive_update_file` is no
+longer needed for this case and should not be reintroduced.
 
 `phases.synthetic-data-and-workflows.products.synthetic` accumulates
 across writers within a single run (current run's `run_state.yaml`).
 Each `/ace:run` is independent — no cross-run inheritance. Three
-skills own different sub-keys, so each does read-modify-write to
-preserve siblings under `merge: 'two-level'`:
+skills own different sub-keys; `merge: 'deep'` preserves siblings
+automatically:
 
 ```yaml
 phases:

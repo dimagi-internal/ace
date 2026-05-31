@@ -145,7 +145,8 @@ orchestrator from per-skill QA + eval verdicts. -->
 
 6. **Write the `products.apps` block to `run_state.yaml`** as one atomic
    patch. This skill is the sole writer of `products.apps`, so the
-   two-level `update_yaml_file` merge replaces the whole block cleanly.
+   `deep` `update_yaml_file` merge replaces the `apps` block cleanly
+   while preserving sibling phase keys (`status`, `started_at`, `steps`).
 
    For each app, read the friendly name from the source summary's
    frontmatter (`title`), the `nova_app_id` from the same summary, and
@@ -176,10 +177,18 @@ orchestrator from per-skill QA + eval verdicts. -->
    ```
 
    Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
-   `merge: 'two-level'` on the current run's `run_state.yaml`. The
-   two-level merge replaces `products:` wholesale under
-   `phases.commcare-setup` — that's the intended shape because this
-   skill owns the entire block.
+   `merge: 'deep'` on the current run's `run_state.yaml`. This patch is
+   rooted at `phases.commcare-setup.products` — a *partial* patch of the
+   `commcare-setup` phase child. `two-level` would replace the entire
+   `commcare-setup` child wholesale, silently dropping any sibling keys
+   already set on it (`status`, `started_at`, `halt_reason`, `steps` —
+   e.g. when the orchestrator set `status: in_progress` on resume before
+   this write). `deep` recursively merges `apps` under `products` while
+   preserving every sibling at every depth. This skill is still the sole
+   writer of `products.apps`, but it does NOT own the rest of the phase
+   block, so it must not clobber it. See the CLAUDE.md gotcha
+   (`update_yaml_file two-level merge replaces a phase child WHOLESALE`)
+   and jjackson/ace#572 / #587.
 
 <!-- 0.13.116: gate-brief write step + ## Gate Brief section removed.
 At the Phase 3→4 Pause Point, the orchestrator composes the

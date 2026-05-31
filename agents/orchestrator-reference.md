@@ -622,25 +622,37 @@ key. The contract above is specifically for incremental run_state.yaml
 writes during a `/ace:run`.
 
 **Writing `phases.<phase>.products.<block>`.** Products nest three
-levels deep (`phases` → `<phase>` → `products` → `<block>`). With
-`merge: 'two-level'`, a patch like
-`phases: { <phase>: { products: { <block>: {...} } } }` replaces the
-*entire* `products:` subtree under that phase wholesale. Two cases:
+levels deep (`phases` → `<phase>` → `products` → `<block>`). A patch
+like `phases: { <phase>: { products: { <block>: {...} } } }` is a
+*partial* patch of the phase child — it does NOT resend the phase's
+`status`/`steps`. **Use `merge: 'deep'` for these, never `two-level`.**
+`two-level` replaces the entire `<phase>` child wholesale, silently
+dropping `status`/`steps` and any sibling `products.<other-block>`
+(the #572/#587 lost-update footgun). `deep` recursively merges at every
+depth, so the partial products patch preserves every sibling. Two cases:
 
 - **Single-writer block.** One skill produces the whole block (e.g.
   `connect-opp-setup` owns `products.connect`,
   `solicitation-create` owns `products.solicitation`). The skill
   accumulates in-memory through its steps and writes the consolidated
-  block once at end-of-skill.
+  block once at end-of-skill — via `merge: 'deep'`, so the write does
+  not clobber the phase's `status`/`steps` set by the orchestrator (this
+  is exactly the case that bit `app-deploy` on malaria-rdt 20260531-0739).
 - **Multi-writer block.** Several skills produce different sub-keys
   of the same block within the same run (e.g. `products.synthetic` is
   written by `synthetic-data-generate` (top-level fields +
   `labs_opp_id`), `synthetic-workflow-seed` (`workflows.*`), and
-  `synthetic-walkthrough-run` (`walkthroughs[]`)). Each writer reads
-  the existing block from the *current* run's `run_state.yaml`, merges
-  in its contribution preserving siblings, and writes back. The
-  `update_yaml_file` CAS retry handles concurrent writers across
+  `synthetic-walkthrough-run` (`walkthroughs[]`)). With `merge: 'deep'`
+  each writer's partial patch merges in cleanly, preserving the other
+  writers' sub-keys automatically — no in-memory read-modify-write is
+  required to protect siblings (it remains harmless belt-and-suspenders).
+  The `update_yaml_file` CAS retry handles concurrent writers across
   skills within the same run.
+
+(`two-level` is still correct for the orchestrator's own phase-completion
+write, which resends the phase's COMPLETE child block — status, steps,
+verdict, AND products — in one patch. The rule is: `two-level` only when
+you resend the complete child; `deep` for every partial patch.)
 
 Either way, every read and every write operates only on the current
 run's `run_state.yaml`. Cross-run reads are not allowed.

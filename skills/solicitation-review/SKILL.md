@@ -144,12 +144,14 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
 
 10. **Populate `selected_llo` and update solicitation status.** Only
     on a successful award, write to the current run's
-    `run_state.yaml` via `update_yaml_file` + `merge: 'two-level'`.
+    `run_state.yaml` via `update_yaml_file` + `merge: 'deep'`.
     Read the existing `products.solicitation` block first, set
     `status: awarded` and populate the `awarded.*` block, then write
     both `products.solicitation` and `products.selected_llo` in one
-    consolidated payload (two-level merge replaces `products:`
-    wholesale):
+    consolidated payload. `deep` merges these under the
+    `solicitation-management` phase block while preserving its `status`,
+    `steps`, etc. — `two-level` would replace the whole phase block
+    wholesale and drop them (#572/#587):
 
     ```yaml
     phases:

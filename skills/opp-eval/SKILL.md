@@ -257,8 +257,10 @@ If no mode is passed, default to `--quick`.
     ```
 
     Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
-    `merge: 'two-level'`. Sole writer of `products.opp_eval`. Each
-    re-run replaces the block in full — this is intended; consumers
+    `merge: 'deep'` (partial phase-child patch — `deep` preserves the
+    phase's `status`/`steps`; `two-level` would drop them, #572/#587).
+    Sole writer of `products.opp_eval`. Each
+    re-run replaces the `opp_eval` keys in full — this is intended; consumers
     read the latest scorecard, not the history (the trend file
     captures history).
 

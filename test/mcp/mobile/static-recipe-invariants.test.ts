@@ -214,6 +214,29 @@ describe('learn-tap-module.yaml', () => {
     );
   });
 
+  it('Branch B TAP is body-scoped to MODULE_NAME (not the bare toolbar-colliding text match)', () => {
+    // Regression guard for jjackson/ace#590 (malaria-rdt/20260531-0739
+    // Phase 6 halt on Module 1 "Program Orientation"). Branch B's
+    // *when:* guard was already body-scoped, but its *tap* still used
+    // the bare `${SELECTOR:learn-suite-row-by-name}` (a `text:
+    // ${MODULE_NAME}` matcher). On the intermediate form-list screen the
+    // TOOLBAR TITLE also reads ${MODULE_NAME}, so the bare matcher
+    // resolved to the non-tappable toolbar title, the form row was never
+    // opened, and the nav_btn_next assert expired.
+    //
+    // The fix mirrors Branch C: Branch B's tap must be scoped to the
+    // menu-list body via `below: id: screen_suite_menu_list` so it lands
+    // on the (tappable) form row, not the (non-tappable) toolbar title.
+    // FORM_NAME identifies Branch C's tap; MODULE_NAME identifies
+    // Branch B's — this regex matches only Branch B.
+    expect(
+      yaml,
+      'expected Branch B to tapOn text:${MODULE_NAME} scoped to the menu-list body (below: screen_suite_menu_list)',
+    ).toMatch(
+      /- tapOn:\s*\n\s*text: "\$\{MODULE_NAME\}"\s*\n\s*below:\s*\n\s*id: "org\.commcare\.dalvik:id\/screen_suite_menu_list"/,
+    );
+  });
+
   it('opens the form via FORM_NAME when form-name != module-name (Branch C — name-mismatch case)', () => {
     // Regression guard for the malaria-itn-app/20260528-1607 Phase 6
     // halt. The ITN Learn app uses distinct, descriptive per-form names

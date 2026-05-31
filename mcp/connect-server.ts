@@ -260,16 +260,22 @@ server.tool('connect_create_opportunity',
       'Must fit inside `program.budget − Σ(other managed opps)`.',
     ),
     is_test: z.boolean().optional().describe('Defaults true server-side.'),
-    auto_activate: z.boolean().optional().default(true).describe(
-      'When true (default), call `activateOpportunity` after a successful ' +
-      'create so the returned opp reflects truly-active server state. The ' +
-      'create response\'s `active: true` field is set in the Connect DB ' +
-      'column but the activation hook hasn\'t run yet — downstream ' +
-      'endpoints (`sendFlwInvite` / `invite_users/`) reject with ' +
-      '"Opportunity must be active to invite users" until `/activate/` ' +
-      'is POSTed. The activate endpoint is idempotent. Set false only ' +
-      'for intentional drafts. Verified live on malaria-itn-fgd ' +
-      '20260514-2352 Phase 4 (0.13.240).',
+    auto_activate: z.boolean().optional().default(false).describe(
+      'When true, call `activateOpportunity` after a successful create. ' +
+      'Defaults FALSE (0.13.x / jjackson/ace#584): Connect rejects ' +
+      'activation with "At least one payment unit must exist before ' +
+      'activating" and rolls back the ENTIRE create when no PaymentUnit ' +
+      'exists yet — which is always the case at create time in the ' +
+      'documented `connect-opp-setup` flow (create → create_payment_unit ' +
+      '→ activate). So `auto_activate: true` here collapses create+activate ' +
+      'before the PU exists and fails transactionally, leaving the caller ' +
+      'with no opportunity_id and a confusing orphan inactive opp. With the ' +
+      'false default, create returns a draft opp; the skill creates the ' +
+      'payment unit(s) and then explicitly calls `connect_activate_opportunity` ' +
+      '(idempotent). Pass true only when you have already created the ' +
+      'payment unit(s) inline or genuinely want a one-step activate. ' +
+      'Downstream endpoints (`sendFlwInvite` / `invite_users/`) still ' +
+      'require the opp to be active, so the skill MUST activate after the PU.',
     ),
     learn_app: HqAppZ.extend({
       description: z.string().describe('Required — Connect form marks it *.'),

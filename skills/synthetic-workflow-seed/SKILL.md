@@ -197,7 +197,35 @@ places.
 
    On `VERSION_CONFLICT`, re-fetch via `pipeline_get` and retry once.
 
+   **Shared-path guardrail (jjackson/ace#595).** Do NOT emit a bare
+   `last`/`first`/`list` aggregation field on the **same `field_path`** as
+   one or more `count` fields that carry a `filter_path`/`filter_value` on
+   that path. The labs pipeline SQL generator collapses the JSONB column
+   extraction for a shared path and the bare extraction wins, so the
+   *filtered* `count` fields after the first one silently compute **0**
+   (not null — all-zero, so `fields_all_null` does NOT catch it). This
+   under-reports headline KPIs in the demo with no error surfaced (live on
+   malaria-rdt 20260531-0739: a `last_visit_channel` (`last` on
+   `form.channel_type`) zeroed the `pmv_samples`/`public_phc_samples`
+   filtered counts on the same path). When building `fields`: if two or
+   more fields share a `field_path` and at least one is a `filter_path`
+   `count`, drop the bare `last`/`first`/`list` on that path (derive that
+   value a different way, e.g. a separate filtered field or in render code).
+   **Then assert it held:** after the schema save, run `pipeline_preview`
+   (`sample_size` ≥ 10) and check that no `filter_path` `count` field on a
+   shared path is uniformly 0 across rows that have data — if one is, a
+   shared-path collision slipped through; surface a `[WARN]` and remove the
+   colliding bare aggregation. (Upstream fix tracked at jjackson/ace#595 —
+   give each field its own filtered extraction expression.)
+
 5. **Spawn coaching tasks.**
+
+   This is the **authoritative path for coaching arcs.** `synthetic-data-generate`
+   deliberately strips `coaching_arcs` from the manifest it sends to
+   `synthetic_generate_from_manifest` (that in-generate Task path 500s —
+   jjackson/ace#594), so the arcs are created here via the standalone
+   `task_create_synthetic` atom, which is reliable. Do NOT move arc creation
+   back into the generate call until #594 is fixed upstream.
 
    For each entry in `manifest.coaching_arcs`:
 
@@ -362,8 +390,11 @@ places.
            llo_weekly_review_id: <int>
            program_admin_audit_id: <int>
        ```
-    3. `update_yaml_file` with `merge: 'two-level'` on the full
-       `phases.synthetic-data-and-workflows.outputs` payload.
+    3. `update_yaml_file` with `merge: 'deep'` on the
+       `phases.synthetic-data-and-workflows.products.synthetic.workflows`
+       payload (`deep` preserves sibling sub-keys + the phase's
+       `status`/`steps`; `two-level` would replace the whole phase block,
+       #572/#587).
 
     **No write to `opp.yaml.synthetic` — synthetic state is per-run only.**
 
@@ -405,7 +436,7 @@ places.
 - `mcp__plugin_ace_ace-gdrive__drive_read_file`
 - `mcp__plugin_ace_ace-gdrive__drive_create_file` (find-or-update)
 - `mcp__plugin_ace_ace-gdrive__drive_update_file` (run_state read-merge-write)
-- `mcp__plugin_ace_ace-gdrive__update_yaml_file` — writes `phases.synthetic-data-and-workflows.products.synthetic.workflows` to `run_state.yaml` (read-modify-write + `merge: 'two-level'`)
+- `mcp__plugin_ace_ace-gdrive__update_yaml_file` — writes `phases.synthetic-data-and-workflows.products.synthetic.workflows` to `run_state.yaml` (`merge: 'deep'` — preserves sibling sub-keys + the phase's status/steps; #572/#587)
 
 ## Mode Behavior
 

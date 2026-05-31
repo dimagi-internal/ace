@@ -54,7 +54,9 @@ Produce a final grade and assessment of the complete CRISPR-Connect cycle.
    ```
 
    Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
-   `merge: 'two-level'`. Sole writer of `products.cycle_grade`.
+   `merge: 'deep'` (partial phase-child patch — `deep` preserves the
+   phase's `status`/`steps` and sibling products; `two-level` would
+   drop them, #572/#587). Sole writer of `products.cycle_grade`.
 
 6. **Email admin group** with the full cycle grade report.
 

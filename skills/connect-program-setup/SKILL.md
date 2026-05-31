@@ -60,6 +60,39 @@ Create or select a Connect program for this opportunity.
      (e.g. `"United States of America"`, not `"USA"`)
    - `start_date` / `end_date`: PDD timeline (YYYY-MM-DD)
 
+4a. **Ensure program budget headroom (idempotent — both reuse and create
+   paths) (jjackson/ace#588).** Connect's program-budget validation on
+   `connect_create_opportunity` ("Budget exceeds the program budget") sums
+   the `total_budget` of **all** managed opps on the program — including
+   the inactive opps left by every prior `/ace:run` — against the fixed
+   program ceiling. There is no budget reclamation when a per-run opp goes
+   inactive, and per-run opp accumulation is expected by design (see
+   CLAUDE.md). So the ceiling monotonically fills until Phase 4 can no
+   longer create *any* opp (observed on malaria-rdt 20260531-0739: even a
+   2000 opp rejected against a 25000 ceiling with ~14 prior opps).
+
+   Because this is the durable, reused program (the reuse path skips
+   create, so its budget never grows on its own), size the headroom here:
+
+   1. `connect_get_program({ organization_slug, program_id })` →
+      `program.budget`.
+   2. `connect_list_opportunities({ organization_slug, program_id })` →
+      `Σ(total_budget)` across all managed opps.
+   3. If `program.budget − Σ < EXPECTED_OPP_BUDGET × 3` (keep room for at
+      least a few more runs; `EXPECTED_OPP_BUDGET` = the PDD's per-opp
+      budget, default the program's own per-opp figure), raise the ceiling
+      via `connect_update_program({ organization_slug, program_id,
+      budget: Σ + EXPECTED_OPP_BUDGET × 10 })` — a generous buffer so this
+      step rarely re-fires. Idempotent: a no-op when headroom is already
+      ample. Log the before/after budget in the program notes (Step 5).
+
+   This makes the by-design per-run accumulation safe without a
+   reclamation mechanism (none exists yet — a payment-unit-delete /
+   opp-budget-zeroing capability is tracked upstream, see
+   jjackson/ace#573). When Connect's budget check is changed to count
+   only *active* managed opps (the real fix, jjackson/ace#588), this
+   headroom step can be relaxed.
+
 5. **Write program details** to `ACE/<opp-name>/runs/<run-id>/4-connect/connect-program-setup.md`:
    - Program ID (UUID)
    - Program name
@@ -98,7 +131,9 @@ Create or select a Connect program for this opportunity.
   - `connect_list_programs` — discovery
   - `connect_list_delivery_types` — resolve human name → slug/int FK if needed
   - `connect_create_program` — create (REST `POST /api/programs/`)
-  - `connect_get_program` — verify after create
+  - `connect_get_program` — verify after create; read `budget` for the headroom check (Step 4a)
+  - `connect_list_opportunities` — sum managed-opp budgets for the headroom check (Step 4a)
+  - `connect_update_program` — raise the program budget ceiling idempotently (Step 4a)
 
 ## Mode Behavior
 - **Auto:** Create program (or reuse), proceed

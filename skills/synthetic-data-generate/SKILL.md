@@ -217,10 +217,26 @@ deferred to later stages. This skill is the data plumbing only.
 
 3. **Call the labs MCP.**
 
+   **First, strip any `coaching_arcs` block from the manifest text before
+   passing it to `synthetic_generate_from_manifest`.** The in-generate
+   coaching-arc Task-create path 500s at `POST /export/labs_record/`
+   (jjackson/ace#594 — the generate sequence references a synthetic FLW
+   user/record that isn't persisted at that point; the visit/user_data
+   writes in the same call are fine). A single `coaching_arcs` entry aborts
+   the entire generation, so no visits land either. Coaching arcs are
+   instead created separately and reliably via `task_create_synthetic` in
+   `synthetic-workflow-seed` (which already does exactly this). So: keep the
+   authored `coaching_arcs` block in the saved
+   `synthetic-data-generate_manifest.yaml` / narrative-plan (it's the
+   source-of-truth narrative), but send a `coaching_arcs: []` (or omit the
+   key) in the `manifest_yaml` passed to the atom below. When the upstream
+   500 is fixed (jjackson/ace#594 / `commcare_connect/mcp/tools/synthetic.py`
+   ~L326), this strip can be dropped.
+
    ```
    mcp__connect-labs__synthetic_generate_from_manifest(
      opportunity_id: <integer from --opp-int-id>,
-     manifest_yaml: "<full text of the manifest from step 2>"
+     manifest_yaml: "<full text of the manifest from step 2, with coaching_arcs emptied>"
    )
    ```
 
@@ -294,8 +310,10 @@ deferred to later stages. This skill is the data plumbing only.
    the current run's `run_state.yaml`. Other writers
    (`synthetic-workflow-seed`, `synthetic-walkthrough-run`) own
    different sub-keys (`workflows`, `walkthroughs[]`); `update_yaml_file`
-   + `merge: 'two-level'` would replace `products:` wholesale, so do
-   read-modify-write:
+   + `merge: 'two-level'` would replace the whole phase block wholesale
+   (#572/#587), so use `merge: 'deep'` (recursively preserves every
+   sibling at every depth). The read-modify-write below is then
+   belt-and-suspenders, not load-bearing:
 
    1. `drive_read_file` on the current run's `run_state.yaml`. Parse,
       extract any existing
@@ -321,8 +339,8 @@ deferred to later stages. This skill is the data plumbing only.
         workflows: { ... }
         walkthroughs: [ ... ]
       ```
-   3. `update_yaml_file` with `merge: 'two-level'` on the full
-      `phases.synthetic-data-and-workflows.outputs` payload.
+   3. `update_yaml_file` with `merge: 'deep'` on the
+      `phases.synthetic-data-and-workflows.products.synthetic` payload.
 
    If a `synthetic:` block already exists at the new location (re-run
    in same run), this skill's keys overwrite the prior values; other
@@ -382,7 +400,7 @@ deferred to later stages. This skill is the data plumbing only.
 - `mcp__plugin_ace_ace-gdrive__drive_create_folder`
 - `mcp__plugin_ace_ace-gdrive__drive_list_folder` (fixture verification, step 3a)
 - `mcp__plugin_ace_ace-gdrive__drive_update_file` (run_state merge, step 6)
-- `mcp__plugin_ace_ace-gdrive__update_yaml_file` — writes `phases.synthetic-data-and-workflows.products.synthetic` to `run_state.yaml` (merge: 'two-level' after read-modify-write to preserve sibling sub-keys from other writers in the same run)
+- `mcp__plugin_ace_ace-gdrive__update_yaml_file` — writes `phases.synthetic-data-and-workflows.products.synthetic` to `run_state.yaml` (merge: 'deep' — preserves sibling sub-keys from other writers + the phase's status/steps; #572/#587)
 
 ## Mode Behavior
 

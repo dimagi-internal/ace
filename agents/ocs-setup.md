@@ -88,6 +88,18 @@ Unless `--no-evals` was passed, invoke the `ocs-widget-handoff-eval` skill.
   uses `5-ocs/ocs-chatbot-eval_verdict-quick.yaml` (Step 2).
 
 ### Completion
+Before writing any phase state, the `ocs-agent-setup` skill MUST pass its
+**hard embed round-trip gate** (Step 11.5): re-call
+`ocs_get_chatbot_embed_info({ experiment_id })` and confirm the
+`public_id`/`embed_key` about to be written round-trip against the live
+chatbot. If they don't, the phase fails loudly rather than writing a
+block with fabricated/placeholder IDs (jjackson/ace#585). The dependent
+OCS calls inside that skill run **strictly serially** — clone → create
+collection → upload → set pipeline → publish → embed_info — never batched
+in one parallel block, so a latency-delayed result can't tempt an invented
+placeholder id. `classify_phase_writeback` only checks block shape, so the
+live round-trip is the only real guard against fabricated identifiers.
+
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-setup_summary.md`,
 then write the `phases.ocs-setup` block per `agents/ace-orchestrator.md §
 Phase Write-Back Contract`. Required top-level keys on the patch: `phases`,

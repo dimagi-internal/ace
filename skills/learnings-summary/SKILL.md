@@ -68,7 +68,9 @@ Synthesize all information from the completed opportunity into actionable learni
    directly, and consumers don't have to guess.
 
    Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
-   `merge: 'two-level'`. Sole writer of `products.learnings`.
+   `merge: 'deep'` (partial phase-child patch — `deep` preserves the
+   phase's `status`/`steps` and sibling products; `two-level` would
+   drop them, #572/#587). Sole writer of `products.learnings`.
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`
