@@ -13,6 +13,7 @@ import {
 import { MaestroBackend } from './backends/maestro.js';
 import {
   DeviceUserStateError,
+  isTransientBootRaceError,
   MaestroDriverError,
   MobileError,
   NoInviteSuspectedError,
@@ -395,10 +396,38 @@ export class MobileClient {
       const deviceUserState = await this.restoreDeviceUserState(info);
       return { ...info, heal: { deviceUserState } };
     }
-    const info = await this.avd.ensureAvdRunning(name);
-    await this.assertMaestroDriverHealthy(info.serial);
-    const deviceUserState = await this.restoreDeviceUserState(info);
-    return { ...info, heal: { deviceUserState } };
+    // Bounded retry over the WHOLE idempotent funnel (cold-boot → driver
+    // assert → restore/register). The driver readiness probe
+    // (`assertMaestroDriverHealthy`) can pass and the gRPC channel then drop
+    // on the very first `deviceInfo` of the registration recipe — a transient
+    // boot→driver→recipe handoff race (jjackson/ace#589). The agent's only
+    // recovery was to re-dispatch this exact funnel, so we do it here instead
+    // of surfacing a typed throw. Cold-boot is idempotent (kill + `-wipe-data`
+    // + re-register), so a re-run is safe. Only the boot-race signature
+    // triggers the retry; any other failure throws on the first attempt.
+    const MAX_FUNNEL_ATTEMPTS = 2;
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= MAX_FUNNEL_ATTEMPTS; attempt++) {
+      try {
+        const info = await this.avd.ensureAvdRunning(name);
+        await this.assertMaestroDriverHealthy(info.serial);
+        const deviceUserState = await this.restoreDeviceUserState(info);
+        return { ...info, heal: { deviceUserState } };
+      } catch (e) {
+        lastErr = e;
+        if (attempt < MAX_FUNNEL_ATTEMPTS && isTransientBootRaceError(e)) {
+          logInfo(
+            `ensure_avd_running: transient boot-race on attempt ${attempt}/${MAX_FUNNEL_ATTEMPTS} ` +
+              `(${e instanceof Error ? e.message.split('\n')[0] : String(e)}); ` +
+              `re-running the cold-boot funnel`,
+          );
+          continue;
+        }
+        throw e;
+      }
+    }
+    // Unreachable: the loop either returns or throws. Satisfies the type checker.
+    throw lastErr;
   }
 
   /**
