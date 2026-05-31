@@ -103,9 +103,9 @@ describe('injectAceEnvVars', () => {
   });
 
   it('passes through arbitrary caller-provided keys', () => {
-    const out = injectAceEnvVars({ OPP_NAME: 'turmeric', SCREENSHOT_NAME: 'sc-J1-01' });
+    const out = injectAceEnvVars({ OPP_NAME: 'turmeric', SCREENSHOT_NAME: 'journey-learn-01' });
     expect(out.OPP_NAME).toBe('turmeric');
-    expect(out.SCREENSHOT_NAME).toBe('sc-J1-01');
+    expect(out.SCREENSHOT_NAME).toBe('journey-learn-01');
   });
 
   it('returns an empty-ish dict when neither caller nor env supply values', () => {

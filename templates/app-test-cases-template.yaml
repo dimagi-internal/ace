@@ -22,13 +22,16 @@ nova_apps:
 #     (journey-learn.yaml / journey-deliver.yaml)
 #   - additional journeys append a kebab-case slug from `name`
 #     (journey-learn-assessment-retry.yaml)
-# `id: J<n>` stays as the stable internal key; recipe_path is the file.
+# Journey `id` is a meaningful intent-derived kebab-case slug, app-prefixed
+# and unique per opp — e.g. learn-happy-path, learn-wrong-retry, deliver-yes,
+# deliver-no, deliver-multi-visit, deliver-gated-on-learn. NOT a cryptic J<n>
+# ordinal. See skills/app-test-cases/SKILL.md § Journey id convention.
 journeys:
   # The Learn smoke walks Learn to COMPLETION (all modules + final
   # assessment) — this both captures Learn screenshots AND unlocks the
   # Deliver app (Connect gates Deliver behind Learn-assessment
   # completion). recipe_path uses the bare smoke name journey-learn.yaml.
-  - id: J1
+  - id: learn-happy-path
     name: {{journey_name from expected-journeys.md}}
     app: learn
     is_smoke: true   # exactly one is_smoke:true journey per app
@@ -49,7 +52,7 @@ journeys:
   #   connect-resume-opp.yaml -> deliver-launch.yaml -> first Deliver form.
   # Warm-session only; not independently cold-runnable. See
   # skills/app-test-cases/SKILL.md § Step 2 "Deliver-smoke composition".
-  - id: J2
+  - id: deliver-yes
     name: {{journey_name from expected-journeys.md}}
     app: deliver
     is_smoke: true   # exactly one is_smoke:true journey per app
