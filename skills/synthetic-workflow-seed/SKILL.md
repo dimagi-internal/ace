@@ -299,8 +299,13 @@ places.
    )
    ```
 
-   The audit workflow reads the watched workflow's saved runs and
-   renders a week-over-week compliance dashboard.
+   The audit workflow renders a week-over-week compliance dashboard from
+   its snapshot's `watched_summary`. **Note:** this `config` wiring is
+   definition-level metadata only — the `build_snapshot` hook does NOT read
+   watched sources from the config. The functional requirement is the
+   per-run `initial_state` set in step 8b (and the hook's key is
+   `workflow_definition_id`, whereas the config field is `watched_workflow_id`
+   / `watched_sources[].workflow_id` — don't assume they're the same name).
 
 8. **Saved-runs progression — Week 1 + Week 2 snapshots.**
 
@@ -319,8 +324,12 @@ places.
    ```
 
    Then for each week, do create-then-snapshot against the LLO weekly
-   review workflow (the audit workflow's saved-runs come for free as
-   it reads the LLO weekly review's snapshots):
+   review workflow. **The audit's rollup is NOT free** — despite the old
+   "it just reads the LLO review's snapshots" assumption, the audit's
+   `watched_summary` is built by a server-side hook that fires only when an
+   *audit* run is snapshotted, and reads its inputs from that run's own
+   state. Step 8b below creates it. (Root-caused live 2026-05-31 against
+   workflow 3448 — jjackson/ace#596.)
 
    ```
    # Week 1
@@ -357,6 +366,82 @@ places.
    Operators wanting a longer run can edit the manifest's timeline to
    N weeks, then call `workflow_create_run` + `workflow_save_snapshot`
    N times via direct MCP calls.
+
+8b. **Snapshot the program admin audit run (REQUIRED — without this the
+    audit renders "0 opportunities watched" + an empty WINDOW AGGREGATE).**
+
+    The audit's `watched_summary` is built by the `program_admin_report`
+    template's `build_snapshot` hook. That hook fires **only when an
+    *audit* run is snapshotted**, and it reads its inputs from the audit
+    run's **own `state`** (`run.data.state`) — NOT from the definition
+    config, and NOT "for free" from the LLO review snapshots. So after the
+    LLO-review weeks are seeded, create + snapshot exactly **one** audit run
+    whose `initial_state` carries the window + watched sources in the exact
+    shape the hook reads (verified live 2026-05-31, jjackson/ace#596):
+
+    ```
+    # Mondays covered by the window, one ISO date each (drives the grid columns)
+    expected_weeks = [ <Monday ISO> for each week in the window ]
+
+    audit_run = mcp__connect-labs__workflow_create_run(
+      definition_id: <program_admin_audit_id>,
+      opportunity_id: <synthetic.labs_opp_id>,
+      period_start:   <window_start date>,
+      period_end:     <window_end date>,
+      initial_state: {
+        # Window the hook FILTERS watched runs by. Must be END-OF-DAY
+        # inclusive: the LLO-review snapshots you just saved have
+        # completed_at = NOW (wall-clock), and a date-only window_end
+        # parses to MIDNIGHT, which excludes same-day snapshots — the
+        # exact "empty aggregate" trap. Use a T23:59:59Z upper bound that
+        # is >= the latest snapshot's completed_at.
+        window_start: "<window_start>T00:00:00Z",
+        window_end:   "<today>T23:59:59Z",
+        # Calendar strings the render shows verbatim (keep these date-only).
+        display_window_start: "<window_start>",
+        display_window_end:   "<window_end>",
+        expected_weeks: expected_weeks,
+        # One entry per watched workflow. The hook does
+        # source["workflow_definition_id"] — the key MUST be
+        # workflow_definition_id, NOT workflow_id (the config field name).
+        watched_sources: [
+          { name: "<llo review display name>",
+            workflow_definition_id: <llo_weekly_review_id>,
+            opportunity_id: <synthetic.labs_opp_id> }
+        ],
+      },
+    )
+    mcp__connect-labs__workflow_save_snapshot(
+      run_id:         audit_run.run_id,
+      opportunity_id: <synthetic.labs_opp_id>,
+      snapshot_name:  "Audit rollup",
+      captured_at:    "<now ISO>",
+    )
+    ```
+
+    **Verify it populated** (don't trust the save's 200): GET
+    `${LABS_BASE_URL}/labs/workflow/api/run/<audit_run_id>/snapshot/?opportunity_id=<opp>`
+    and assert `snapshot.state.watched_summary` is non-empty with `runs` per
+    source. Diagnostics if it isn't:
+    - `snapshot.error == "missing_window"` → `window_start`/`window_end`
+      missing from `initial_state`.
+    - sources present but every `runs: []` → `window_end` was date-only
+      (midnight) and excluded the same-day snapshots, OR a `watched_sources`
+      entry used `workflow_id` instead of `workflow_definition_id`.
+
+    Record the `audit_run_id` for the run summary.
+
+    **Known residuals (NOT fixed by this step — labs-side; see
+    jjackson/ace#596 + the connect-labs cadence-backdating issue):**
+    - The cadence **grid** can't show a real week-over-week trend yet:
+      `workflow_save_snapshot` has no `completed_at` override, so every
+      synthetic watched snapshot lands at wall-clock-now (the current week),
+      and the rollup/render group by `completed_at`, not run `period`. The
+      window AGGREGATE populates correctly; the per-week columns will show
+      the runs only in the current week.
+    - `flw_rows` (per-FLW flags/audits/tasks drill-down) are empty unless the
+      governance artifacts are seeded for the watched runs via
+      `program_admin_demo_seed`.
 
 9. **Write the run summary** to
    `7-synthetic/synthetic-workflow-seed.md` via `drive_create_file`
