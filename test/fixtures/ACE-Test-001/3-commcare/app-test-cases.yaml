@@ -12,7 +12,7 @@ nova_apps:
   deliver: nova-fake-deliver-001
 
 journeys:
-  - id: deliver-yes
+  - id: journey-deliver-yes
     name: Complete a household visit
     app: deliver
     is_smoke: true
@@ -30,7 +30,7 @@ journeys:
       - submission_confirmed
     pdd_time_budget_seconds: 180
 
-  - id: learn-happy-path
+  - id: journey-learn-happy-path
     name: Pass the Learn assessment
     app: learn
     is_smoke: true

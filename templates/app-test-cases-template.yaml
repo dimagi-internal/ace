@@ -22,10 +22,15 @@ nova_apps:
 #     (journey-learn.yaml / journey-deliver.yaml)
 #   - additional journeys append a kebab-case slug from `name`
 #     (journey-learn-assessment-retry.yaml)
-# Journey `id` is a meaningful intent-derived kebab-case slug, app-prefixed
-# and unique per opp — e.g. learn-happy-path, learn-wrong-retry, deliver-yes,
-# deliver-no, deliver-multi-visit, deliver-gated-on-learn. NOT a cryptic J<n>
-# ordinal. See skills/app-test-cases/SKILL.md § Journey id convention.
+# Journey `id` is a `journey-`-prefixed, intent-derived kebab-case slug,
+# unique per opp — id = journey-<app>-<intent>, always starting with the
+# literal `journey-` prefix. e.g. journey-learn-happy-path,
+# journey-learn-wrong-retry, journey-deliver-yes, journey-deliver-no,
+# journey-deliver-multi-visit, journey-deliver-gated-on-learn. NOT a
+# cryptic J<n> ordinal. NOTE: the recipe_path filenames are NOT prefixed
+# again (smokes use the bare journey-learn.yaml / journey-deliver.yaml) —
+# filename and id share the journey- prefix but are otherwise distinct.
+# See skills/app-test-cases/SKILL.md § Journey id convention.
 journeys:
   # The Learn smoke walks Learn to COMPLETION (all modules + final
   # assessment) — this both captures Learn screenshots AND unlocks the
