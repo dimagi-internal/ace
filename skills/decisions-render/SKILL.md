@@ -27,28 +27,31 @@ write the result to `decisions.gdoc` at one stable URL.
 
    Use `drive_list_folder` from the opp folder to find the run folder.
 
-2. **Render via the MCP atoms** (the canonical agent-drivable path). The
-   `scripts/decisions-render.ts` CLI entry is **not wired** (it requires a
-   live Drive client; its `import.meta.url === ...` branch exits with a
-   pointer to this skill). An agent drives the render directly through the
-   ace-gdrive atoms — do NOT shell out to the script:
+2. **Render via the `render_decisions_log` atom** (the canonical, single-call
+   path). Pass the run-folder file ID; the atom reads `decisions.yaml` from it,
+   renders the prose log via `lib/decisions-renderer.ts`, and find-or-updates
+   `decisions.gdoc` in the same folder — read + render + clear + batchUpdate all
+   happen server-side, so you never relay the generated Docs API JSON yourself:
 
-   - `drive_read_file` on `decisions.yaml` in the run folder; parse + validate
-     the structure (schema: `lib/decisions-schema.ts § parseDecisionsYaml`).
-   - Render the rows to a prose document. The supported atom path is
-     `mcp__plugin_ace_ace-gdrive__drive_create_doc_from_markdown` with
-     `findOrCreate: true` and a stable `name: decisions` in the run folder —
-     each row renders an `AI-default:` line, an `Override:` line when the row
-     is overridden, and a plain `Status: applied | overridden` line (see
-     § Products for the exact shape). This is the path the orchestrator and
-     phase agents use; it produces an equivalent doc to the library renderer.
-   - (Programmatic/library use only: `renderDecisionsToDoc` in
-     `scripts/decisions-render.ts` + `renderDecisionsLog` in
-     `lib/decisions-renderer.ts` produce a list of Google Docs API requests
-     for `docs_batch_update`. These are exercised by the unit tests and
-     available for future CLI wiring, but are not the agent entry point.)
+   ```
+   mcp__plugin_ace_ace-gdrive__render_decisions_log
+     { runFolderFileId: "<run-folder file ID from step 1>" }
+   ```
 
-3. **Confirm the gdoc URL** by reading the create result's `webViewLink` and emit it on stdout. The orchestrator captures this URL for the gate brief's `Decisions Log:` line.
+   Returns `{ gdocId, reused, requestCount, webViewLink }`. Each row renders an
+   `AI-default:` line, an `Override:` line when the row is overridden, and a
+   plain `Status: applied | overridden` line (see § Products for the exact
+   shape). The schema is validated server-side (`lib/decisions-schema.ts §
+   parseDecisionsYaml`); a malformed row throws with its dot-path.
+
+   - **Do NOT** hand-render the rows through `drive_create_doc_from_markdown`
+     or hand-relay `renderDecisionsLog` output through `docs_batch_update` —
+     that was the ~65KB-per-phase manual relay this atom replaces (jjackson/ace#574).
+   - `scripts/decisions-render.ts` (`runDecisionsRender`) is the library the
+     atom wraps; its `import.meta.url === ...` CLI branch is still intentionally
+     unwired (it needs a live Drive client). Don't shell out to the script.
+
+3. **Confirm the gdoc URL** from the atom's `webViewLink` field. The orchestrator captures this URL for the gate brief's `Decisions Log:` line.
 
 ## Failure modes
 
@@ -58,7 +61,7 @@ write the result to `decisions.gdoc` at one stable URL.
 
 ## MCP Tools Used
 
-- Google Drive: `drive_list_folder`, `drive_read_file`, `drive_create_file`, `docs_batch_update`
+- Google Drive: `drive_list_folder` (step 1, resolve run folder), `render_decisions_log` (step 2, the single-call render)
 
 ## Mode Behavior
 
@@ -70,3 +73,4 @@ write the result to `decisions.gdoc` at one stable URL.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-08 | Initial skill — pairs with `lib/decisions-renderer.ts` and `scripts/decisions-render.ts`. Renders decisions.yaml as a prose Google Doc; idempotent; runs at end of every phase. | ACE team (decisions-log PR #2) |
+| 2026-05-31 | Canonical path is now the `render_decisions_log` MCP atom (wraps `runDecisionsRender` server-side) — one call with the run-folder file ID instead of hand-relaying ~65KB of `docs_batch_update` JSON per phase (jjackson/ace#574). | ACE team |

@@ -34,6 +34,10 @@ import {
   withTransientRetry as withTransientRetryLib,
 } from '../lib/transient-retry.js';
 import { generateRunReadme, type PhaseStatus } from '../lib/run-readme.js';
+import {
+  runDecisionsRender,
+  type DecisionsRenderDriveClient,
+} from '../scripts/decisions-render.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LEGACY_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
@@ -1553,6 +1557,132 @@ server.tool(
         documentId: resp.data.documentId,
         replies: resp.data.replies,
       });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+/**
+ * Build the Drive-client adapter `runDecisionsRender` expects, bridging its
+ * four-method interface to the live ace-gdrive Drive + Docs clients. Exported
+ * (and parameterized on the clients) so it's unit-testable with mocks.
+ *
+ * Closes jjackson/ace#574: before this, the only agent-drivable path that used
+ * the library renderer (`renderDecisionsLog` → `docs_batch_update`) forced
+ * subagents to hand-relay ~65KB of generated batchUpdate JSON per phase
+ * boundary. The `render_decisions_log` atom does the read + render + clear +
+ * batch entirely server-side, so the agent passes only the run-folder file ID.
+ */
+export function makeDecisionsRenderDriveClient(
+  driveClient: typeof drive = drive,
+  docsClient: typeof docs = docs,
+): DecisionsRenderDriveClient {
+  const findByName = async (parentFolderId: string, name: string) => {
+    const escaped = name.replace(/'/g, "\\'");
+    const list = await withTransientRetry(() =>
+      driveClient.files.list({
+        q: `name='${escaped}' and '${parentFolderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`,
+        fields: 'files(id, name)',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      }),
+    );
+    return list.data.files?.[0];
+  };
+
+  return {
+    async readFile({ parentFolderId, name }) {
+      const found = await findByName(parentFolderId, name);
+      if (!found?.id) {
+        throw new Error(`${name} not found in folder ${parentFolderId}`);
+      }
+      const read = await handleReadFile({ fileId: found.id }, driveClient);
+      return { content: read.content };
+    },
+
+    async findOrCreateDoc({ parentFolderId, name }) {
+      const existing = await findByName(parentFolderId, name);
+      if (existing?.id) return { id: existing.id, reused: true };
+      const created = await withTransientRetry(() =>
+        driveClient.files.create({
+          requestBody: {
+            name,
+            mimeType: 'application/vnd.google-apps.document',
+            parents: [parentFolderId],
+          },
+          fields: 'id',
+          supportsAllDrives: true,
+        }),
+      );
+      return { id: created.data.id!, reused: false };
+    },
+
+    async clearDocBody(docId) {
+      const doc = await withTransientRetry(() =>
+        docsClient.documents.get({ documentId: docId }),
+      );
+      const content = doc.data.body?.content ?? [];
+      const last = content[content.length - 1];
+      const endIndex = last?.endIndex ?? 1;
+      // A non-empty body spans [1, endIndex). The final newline at endIndex-1
+      // cannot be deleted, so an empty doc has endIndex===2 (nothing to clear).
+      if (endIndex > 2) {
+        await withTransientRetry(() =>
+          docsClient.documents.batchUpdate({
+            documentId: docId,
+            requestBody: {
+              requests: [
+                { deleteContentRange: { range: { startIndex: 1, endIndex: endIndex - 1 } } },
+              ],
+            },
+          }),
+        );
+      }
+    },
+
+    async batchUpdateDoc({ documentId, requests }) {
+      const resp = await withTransientRetry(() =>
+        docsClient.documents.batchUpdate({
+          documentId,
+          requestBody: { requests: requests as any[] },
+        }),
+      );
+      return { replies: resp.data.replies ?? [] };
+    },
+  };
+}
+
+// 17b. Render a run's decisions.yaml into its decisions.gdoc (server-side).
+server.tool(
+  'render_decisions_log',
+  "Render a run's decisions.yaml into its decisions.gdoc at one stable URL — read + render + clear + batchUpdate done entirely server-side. Pass the run-folder file ID; the atom reads decisions.yaml from it, renders the prose log via lib/decisions-renderer, and find-or-updates decisions.gdoc in the same folder (idempotent). Use this instead of hand-relaying renderDecisionsLog output through docs_batch_update.",
+  {
+    runFolderFileId: z
+      .string()
+      .describe('Drive file ID of the run folder (ACE/<opp>/runs/<run-id>/) containing decisions.yaml'),
+  },
+  async ({ runFolderFileId }) => {
+    try {
+      const renderResult = await runDecisionsRender({
+        runFolderFileId,
+        driveClient: makeDecisionsRenderDriveClient(),
+      });
+      // Surface the stable webViewLink so the orchestrator can cite it.
+      let webViewLink: string | undefined;
+      try {
+        const meta = await withTransientRetry(() =>
+          drive.files.get({
+            fileId: renderResult.gdocId,
+            fields: 'webViewLink',
+            supportsAllDrives: true,
+          }),
+        );
+        webViewLink = meta.data.webViewLink ?? undefined;
+      } catch {
+        // Link is a convenience; the render itself succeeded.
+      }
+      return result({ ...renderResult, webViewLink });
     } catch (e: any) {
       return error(e.message);
     }

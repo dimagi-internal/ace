@@ -28,10 +28,15 @@ const folder = (overrides: Partial<DriveFolderInfo> = {}): DriveFolderInfo => ({
 });
 
 describe('scoreDriveFolder', () => {
-  it('returns high for ACE-shaped name (CRISPR-prefix)', () => {
+  it('returns high for ACE-shaped name (ACE- prefix)', () => {
     const r = scoreDriveFolder(folder({ name: 'ACE-Test-001' }), LIVE_SET, 'ace-root');
     expect(r.confidence).toBe('high');
-    expect(r.signals.some((s) => s.toLowerCase().includes('crispr'))).toBe(true);
+    expect(r.signals.some((s) => s.toLowerCase().includes('ace'))).toBe(true);
+  });
+
+  it('still returns high for legacy CRISPR- prefix', () => {
+    const r = scoreDriveFolder(folder({ name: 'CRISPR-Test-001' }), LIVE_SET, 'ace-root');
+    expect(r.confidence).toBe('high');
   });
 
   it('returns high for kebab-case opp-style name', () => {

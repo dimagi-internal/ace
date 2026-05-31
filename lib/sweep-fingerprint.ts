@@ -98,8 +98,8 @@ export function scoreDriveFolder(
 
   // (5) Name-shape fallback — only reached when the caller did not probe
   // (`isOppShaped` undefined). Weaker than the structural test above.
-  if (CRISPR_PREFIX.test(folder.name)) {
-    signals.push('name has CRISPR- prefix (canonical test opp pattern)');
+  if (ACE_NAME_PREFIX.test(folder.name) || CRISPR_PREFIX.test(folder.name)) {
+    signals.push('name has ACE-/CRISPR- prefix (canonical test opp pattern)');
     return { confidence: 'high', signals };
   }
 
