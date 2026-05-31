@@ -33,7 +33,38 @@ Phase 6 needs them.
 ## Products
 
 - `3-commcare/app-test-cases.yaml` — per-journey test entries (one per journey, exactly one `is_smoke: true` per app)
-- `3-commcare/recipes/journey-<app>[-<slug>].yaml` — one Maestro recipe per journey. The single `is_smoke: true` journey per app uses the bare name (`journey-learn.yaml`, `journey-deliver.yaml`); additional journeys append a kebab-case slug from the journey title (`journey-learn-assessment-retry.yaml`). `id: J<n>` stays as the stable internal key in `app-test-cases.yaml`; `recipe_path` points at the descriptive file.
+- `3-commcare/recipes/journey-<app>[-<slug>].yaml` — one Maestro recipe per journey. The single `is_smoke: true` journey per app uses the bare name (`journey-learn.yaml`, `journey-deliver.yaml`); additional journeys append a kebab-case slug from the journey title (`journey-learn-assessment-retry.yaml`). Each journey's `id` in `app-test-cases.yaml` is a meaningful kebab-case slug (`learn-happy-path`, `deliver-yes`) — see § Journey id convention; `recipe_path` points at the descriptive file.
+
+### Journey id convention
+
+Each journey's `id` is a **short, meaningful kebab-case slug derived from
+the journey's intent** — NOT a cryptic `J<n>` ordinal. The slug must be
+unique within the opp and stable across re-runs. It pairs naturally with
+the descriptive recipe filenames (`journey-learn.yaml` /
+`journey-deliver.yaml`) so run artifacts, screenshot labels, smoke-subset
+lists, and verdicts all read meaningfully.
+
+Canonical examples (use these verbatim when the journey matches; coin a
+new intent-derived slug otherwise):
+
+| `id` | What it covers |
+|---|---|
+| `learn-happy-path` | Learn smoke — walk all modules + pass the final assessment first try |
+| `learn-wrong-retry` | answer a quiz question wrong, then retry and pass |
+| `deliver-yes` | Deliver smoke — a positive/eligible service-delivery visit |
+| `deliver-no` | a negative/ineligible visit (the "No" branch) |
+| `deliver-multi-visit` | multiple visits in one session (multi-stage archetype) |
+| `deliver-gated-on-learn` | confirm Deliver is locked until Learn is complete |
+
+Rules:
+- Prefix the slug with the app (`learn-` / `deliver-`) so app membership
+  is legible from the id alone.
+- The `is_smoke: true` journey per app conventionally uses the simplest
+  happy-path slug (`learn-happy-path` for Learn, `deliver-yes` for
+  Deliver) and a bare `journey-<app>.yaml` recipe filename.
+- Keep slugs ≤ ~30 chars, lowercase, hyphen-separated, no spaces.
+- Slugs are derived from the journey's intent (the journey `name` /
+  goal in `pdd-to-app-journeys.md`), not from ordinal position.
 
 ## Process
 
@@ -126,7 +157,7 @@ step per UI interaction, with `${SELECTOR:logical-name}`
 placeholders resolved at write time, and `takeScreenshot` calls
 between major form sections):
 
-- Recipes are named by app + intent, not journey-id: `journey-learn.yaml` / `journey-deliver.yaml` for the smokes, `journey-<app>-<slug>.yaml` for extras. The journey-id (`J<n>`) lives in `app-test-cases.yaml`, not the filename.
+- Recipes are named by app + intent, not journey-id: `journey-learn.yaml` / `journey-deliver.yaml` for the smokes, `journey-<app>-<slug>.yaml` for extras. The journey `id` (a meaningful kebab-case slug like `learn-happy-path` / `deliver-yes` — see § Journey id convention) lives in `app-test-cases.yaml`, not the filename.
 - Each journey's recipe MUST include a final `takeScreenshot: "<recipe-base>-final"` (e.g. `journey-learn-final`, `journey-deliver-final`) for the deep UX judge to grade
 - Resolve any `${SELECTOR:logical-name}` placeholders via
   `mobile_resolve_selectors` against the current APK selector map
@@ -168,7 +199,8 @@ scalar and a mapping form (`tapOn`, `assertVisible`,
 `extendedWaitUntil`, etc.): use the mapping form whenever you need
 *any* option beyond the bare value.
 
-Caught in vivo on leep Phase 6 attempt 8 (2026-05-12) — J1.yaml
+Caught in vivo on leep Phase 6 attempt 8 (2026-05-12) — the Learn
+smoke recipe (`journey-learn.yaml`, id `learn-happy-path`)
 emitted the broken sibling form, Phase 6 halted, the cloud
 emulator stack returned a full structured error envelope with the
 Maestro parse-error frame which named this exact pattern.
@@ -302,7 +334,8 @@ and skip the prefix — but flag that assumption in the YAML header
 comment so a reviewer doesn't try to run them cold.
 
 Caught in vivo on leep Phase 5 attempt 10 (2026-05-13). Before this
-guidance landed, J1.yaml and J7.yaml emitted the broken `launchApp +
+guidance landed, the smoke recipes (`journey-learn.yaml` /
+`journey-deliver.yaml`) emitted the broken `launchApp +
 tapOn:<app-name>` model, the live `tapOn` never found a target, and
 the recipes failed with selector-miss errors — even though the
 emulator + Maestro + cloud-stack were healthy.
@@ -442,15 +475,17 @@ literal label.
 `form-advance.yaml` (or `${SELECTOR:form-nav-next}` taps) directly
 after the question rendering with no answer-selection step in between
 on a required-input field. This was the canonical structural failure
-on malaria-rdt run 20260522-1002 — every quiz step in J1's recipe
+on malaria-rdt run 20260522-1002 — every quiz step in the Learn smoke
+recipe (`journey-learn.yaml`, id `learn-happy-path`)
 chained `form-advance` without an answer tap, stalling on
 `warning_root` ("Sorry, this response is required!") before the
 recipe could reach `deliver-launch.yaml`. The recipe validated as YAML
 but could not advance past the first required quiz question.
 
 Caught in vivo on malaria-rdt run 20260522-1002 Phase 6 (2026-05-22).
-Both smoke recipes carried this class of defect: J5 referenced an
-unresolved `${SELECTOR:radio-first-option}` placeholder, and J1
+Both smoke recipes carried this class of defect: a quiz-retry journey
+referenced an unresolved `${SELECTOR:radio-first-option}` placeholder,
+and the Learn smoke (`journey-learn.yaml`, id `learn-happy-path`)
 chained `form-advance.yaml` across 10+ required-input quiz questions
 with zero answer-selection steps in between.
 
@@ -520,7 +555,7 @@ set:
 
    ```
    mcp__plugin_ace_ace-mobile__mobile_run_recipe({
-     recipe_path: <path/to/J<n>.yaml>,
+     recipe_path: <path/to/journey-<app>[-<slug>].yaml>,
      dry_run_selectors: true,   // resolve every selector, don't actuate
      env_vars: { OPP_NAME, ... },
    })
@@ -656,3 +691,4 @@ already maps the producer to `3-commcare/` (see
 | 2026-05-27 | Recipe naming convention: `J<n>.yaml` → `journey-<app>[-<slug>].yaml` (smokes use bare `journey-learn`/`journey-deliver`). `id: J<n>` retained as internal key. Screenshot labels `sc-J<n>-*` → `<recipe-base>-*`. See spec 2026-05-27-phase6-learn-deliver-decoupling. | ACE team |
 | 2026-05-27 | Deliver-smoke composition: split the 80-step Learn-re-walk monolith into journey-learn (walks Learn to completion) + journey-deliver (resumes from unlocked state via connect-resume-opp -> deliver-launch). Closes the leep 20260527 J2 deferral class — composition is now the default, BLOCKER reserved for genuinely un-composable structures. | ACE team |
 | 2026-05-29 | Fix Step 4 output-path bug: was `ACE/<opp>/runs/<run-id>/app-test-cases.yaml` (run root), contradicting the Products section + artifact manifest (`3-commcare/app-test-cases.yaml`). The run-root write passed the skill's own Step 5 self-eval but failed the Phase 3 boundary fence's `verify_phase_artifacts(commcare)` with `missing: 3-commcare/app-test-cases.yaml`. Step 4 now writes to `3-commcare/` and calls out the mismatch explicitly. Reproducer: malaria-itn-app/20260529-1124 (orchestrator had to drive_move_file the master yaml into 3-commcare/). | ACE team |
+| 2026-05-31 | **Meaningful journey ids.** Journey `id` in `app-test-cases.yaml` is now a short intent-derived kebab-case slug (`learn-happy-path`, `learn-wrong-retry`, `deliver-yes`, `deliver-no`, `deliver-multi-visit`, `deliver-gated-on-learn`) instead of the cryptic `J<n>` ordinal — so run artifacts, screenshot labels, smoke-subset lists, and verdicts all read meaningfully and pair with the descriptive recipe filenames. Added § Journey id convention; updated every example/snippet, the template, the fixture, and downstream readers (`app-screenshot-capture`, `app-ux-eval`). Recipe filenames already descriptive (2026-05-27); this completes the convention by making the ids themselves meaningful. | ACE team |
