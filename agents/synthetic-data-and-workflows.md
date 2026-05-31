@@ -154,9 +154,11 @@ Invoke `synthetic-workflow-seed`.
   entry).
 - Creates Week 1 + Week 2 workflow runs via `workflow_create_run` and
   saves snapshots via `workflow_save_snapshot` (both atoms shipped
-  in connect-labs PR #168, 2026-05-07). The audit workflow reads the
-  LLO weekly review's snapshots automatically — no separate
-  saved-runs loop needed for the audit.
+  in connect-labs PR #168, 2026-05-07). **The audit needs its OWN
+  snapshotted run** (step 8b of the seed skill) — its `watched_summary`
+  is built by the `program_admin_report` `build_snapshot` hook from the
+  audit run's own `state`, NOT read automatically from the LLO review's
+  snapshots. Skipping it renders "0 opportunities watched" (jjackson/ace#596).
 - **LLM-as-Judge:** dispatch `synthetic-workflow-seed-eval` immediately
   after the producer. Writes `7-synthetic/synthetic-workflow-seed-eval_verdict.yaml`.
 
