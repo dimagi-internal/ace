@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 40 atoms
+Source: `mcp/google-drive-server.ts` — 41 atoms
 
 ### `sheets_list_tabs`
 
@@ -264,6 +264,12 @@ Execute raw Google Docs API batchUpdate requests. Supports all 40 request types:
 |-------|------|----------|-------------|
 | `documentId` | `z.string` | **required** | The Google Doc ID |
 | `requests` | `z.array` | **required** | _—_ |
+
+### `render_decisions_log`
+
+Render a run's decisions.yaml into its decisions.gdoc at one stable URL — read + render + clear + batchUpdate done entirely server-side. Pass the run-folder file ID; the atom reads decisions.yaml from it, renders the prose log via lib/decisions-renderer, and find-or-updates decisions.gdoc in the same folder (idempotent). Use this instead of hand-relaying renderDecisionsLog output through docs_batc…
+
+_no parameters_
 
 ### `docs_copy_template`
 

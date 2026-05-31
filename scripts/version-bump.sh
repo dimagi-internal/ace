@@ -159,6 +159,30 @@ fi
 echo "$NEXT" > "$VERSION_FILE"
 "$REPO_ROOT/scripts/sync-version.sh" >/dev/null
 
+# In --rebase-first mode the rebased tip carries origin/main's (old) version,
+# because the version-file conflicts were auto-resolved with --ours (which, in a
+# rebase, means upstream/origin-main). The bump above was written to the WORKING
+# TREE only — so without this step the pushed branch ships the code with the OLD
+# version, /ace:update sees "up to date", and the new code never re-installs
+# (jjackson/ace#578). Fold the bump into the rebased tip so it's part of the push.
+if [ "$REBASE_FIRST" = "1" ]; then
+  for vf in "${VERSION_FILES[@]}"; do
+    git add -- "$vf"
+  done
+  GIT_EDITOR=true git commit --amend --no-edit >/dev/null
+  # Guard: after committing, the version files MUST be clean. If they're still
+  # dirty the bump didn't make it into the commit — fail loudly rather than let
+  # a no-bump branch get pushed.
+  DIRTY="$(git status --porcelain -- "${VERSION_FILES[@]}" || true)"
+  if [ -n "$DIRTY" ]; then
+    echo "version-bump: ERROR — version files still dirty after --rebase-first amend:" >&2
+    echo "$DIRTY" | sed 's/^/  /' >&2
+    echo "  the bump was NOT committed; do not push." >&2
+    exit 1
+  fi
+  echo "version-bump: folded bump into rebased tip (amended); version files committed"
+fi
+
 echo "Bumped to v$NEXT"
 echo "  was: local=v$LOCAL_VERSION  origin/main=v$ORIGIN_DISPLAY"
 echo "  wrote: $VERSION_FILE"
