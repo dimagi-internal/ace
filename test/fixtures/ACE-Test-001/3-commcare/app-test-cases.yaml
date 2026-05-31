@@ -46,3 +46,21 @@ journeys:
       - no_crash
       - assessment_complete
     pdd_time_budget_seconds: 600
+
+  # Deep (non-smoke) journey: catalogued but recipe is DEFERRED — no recipe
+  # file is authored at Phase 3 (jjackson/ace#605). /ace:qa-deep generates it
+  # on demand. Downstream readers must tolerate `recipe: deferred`.
+  - id: journey-learn-retry
+    name: Answer a quiz question wrong, then retry and pass
+    app: learn
+    is_smoke: false
+    forms_exercised:
+      - module_1_assessment
+    fields_exercised:
+      - assessment_q1
+    recipe: deferred
+    structural_pass_criteria:
+      - app_boots
+      - no_crash
+      - assessment_complete
+    pdd_time_budget_seconds: 600
