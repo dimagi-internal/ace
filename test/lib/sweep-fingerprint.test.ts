@@ -29,7 +29,7 @@ const folder = (overrides: Partial<DriveFolderInfo> = {}): DriveFolderInfo => ({
 
 describe('scoreDriveFolder', () => {
   it('returns high for ACE-shaped name (CRISPR-prefix)', () => {
-    const r = scoreDriveFolder(folder({ name: 'CRISPR-Test-001' }), LIVE_SET, 'ace-root');
+    const r = scoreDriveFolder(folder({ name: 'ACE-Test-001' }), LIVE_SET, 'ace-root');
     expect(r.confidence).toBe('high');
     expect(r.signals.some((s) => s.toLowerCase().includes('crispr'))).toBe(true);
   });
@@ -51,7 +51,7 @@ describe('scoreDriveFolder', () => {
 
   it('returns low for folders not under ACE root', () => {
     const r = scoreDriveFolder(
-      folder({ name: 'CRISPR-Test-001', parentId: 'some-other-folder' }),
+      folder({ name: 'ACE-Test-001', parentId: 'some-other-folder' }),
       LIVE_SET,
       'ace-root',
     );
@@ -102,7 +102,7 @@ describe('scoreDriveFolder', () => {
 
   it('isOppShaped === false overrides an opp-style name', () => {
     const r = scoreDriveFolder(
-      folder({ name: 'CRISPR-Test-999', isOppShaped: false }),
+      folder({ name: 'ACE-Test-999', isOppShaped: false }),
       LIVE_SET,
       'ace-root',
     );

@@ -1,7 +1,7 @@
 ---
 name: scenarios-and-acceptance
 description: >
-  Phase 2 of the CRISPR-Connect lifecycle: derive testable scenarios and
+  Phase 2 of the ACE lifecycle: derive testable scenarios and
   acceptance material from the approved PDD. Produces (a) opp-specific
   test prompts that Phase 5 OCS deep QA judges chatbot answers against,
   and (b) expected user journeys that Phase 6 shallow app QA and
@@ -19,7 +19,7 @@ skills:
 
 # Scenarios-and-Acceptance Agent (Phase 2)
 
-You run the second phase of a CRISPR-Connect opportunity: deriving
+You run the second phase of an ACE opportunity: deriving
 testable scenarios and acceptance material from the approved PDD.
 
 Phase 2 produces two artifacts, both AI interpretations of the

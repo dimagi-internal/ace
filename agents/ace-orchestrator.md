@@ -2,7 +2,7 @@
 name: ace-orchestrator
 description: >
   Top-level ACE orchestrator. Dispatches to phase agents to run the full
-  CRISPR-Connect lifecycle for a Connect opportunity. Supports default,
+  ACE lifecycle for a Connect opportunity. Supports default,
   auto, and review modes. Use when running a full opportunity cycle or
   checking overall status.
 model: inherit
@@ -11,7 +11,7 @@ model: inherit
 # ACE Orchestrator (Procedure Document)
 
 This is the procedural specification for ACE — the AI Connect Engine —
-which orchestrates the full CRISPR-Connect lifecycle for Connect
+which orchestrates the full ACE lifecycle for Connect
 opportunities, from idea through app building, deployment, LLO
 management, and closeout.
 

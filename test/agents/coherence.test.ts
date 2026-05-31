@@ -286,7 +286,7 @@ describe('agent coherence', () => {
     // phases (e.g. "Phase 9 is where LLOs first hear from ACE"), so we
     // can't assert the description mentions ONLY its own phase number.
     // What we CAN assert: when the description mentions a phase number
-    // in the "Phase N of the CRISPR-Connect lifecycle" opening clause
+    // in the "Phase N of the ACE lifecycle" opening clause
     // (the agent's claim about itself), that number matches
     // phase_ordinal.
     const drift: string[] = [];

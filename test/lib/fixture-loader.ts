@@ -7,7 +7,7 @@
  * - An `inputs/` subdirectory of upstream artifacts
  * - An `expected/` subdirectory with expected QA results / verdict shapes
  *
- * `CRISPR-Test-001` and similar are well-formed fixtures. `CRISPR-Bad-*`
+ * `ACE-Test-001` and similar are well-formed fixtures. `ACE-Bad-*`
  * are adversarial fixtures with deliberate defects; their `expected/`
  * directories document what QA should catch.
  */

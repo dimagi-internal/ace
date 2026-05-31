@@ -151,7 +151,7 @@ This is the largest infrastructure investment in the plan. The current test setu
 
 - `test/mcp/` — vitest unit + integration + E2E tests for MCP servers
 - `test/eval/` — PDD eval runner (`run-eval.ts`)
-- `test/fixtures/` — partial-coverage manifest fixtures (`CRISPR-Test-001/002/004/005`)
+- `test/fixtures/` — partial-coverage manifest fixtures (`ACE-Test-001/002/004/005`)
 - `npm test`, `npm run test:integration`, `npm run eval`
 
 What's missing:
@@ -168,13 +168,13 @@ test/
 ├── mcp/                        (unchanged)
 ├── eval/                       (unchanged — PDD eval runner)
 ├── fixtures/                   (extended — see below)
-│   ├── CRISPR-Test-001/        (existing)
+│   ├── ACE-Test-001/        (existing)
 │   │   ├── pdd.md              (existing)
 │   │   ├── ...
 │   │   └── expected/           (NEW)
 │   │       ├── idea-to-pdd-qa_result.yaml
 │   │       └── idea-to-pdd-eval_verdict.shape.yaml  (structure-only)
-│   ├── CRISPR-Bad-001/         (NEW — adversarial fixtures)
+│   ├── ACE-Bad-001/         (NEW — adversarial fixtures)
 │   │   ├── pdd.md              (PDD with missing sections)
 │   │   └── expected/
 │   │       └── idea-to-pdd-qa_result.yaml
@@ -234,13 +234,13 @@ A vitest suite that dispatches the skill against a fixture and asserts the verdi
 import { runSkill } from '@/test/lib/skill-runner';
 import { assertQAResultMatches } from '@/test/lib/verdict-asserts';
 
-test('CRISPR-Test-001 passes idea-to-pdd-qa', async () => {
-  const result = await runSkill('idea-to-pdd-qa', { fixture: 'CRISPR-Test-001' });
-  assertQAResultMatches(result, fixture('CRISPR-Test-001/expected/idea-to-pdd-qa_result.yaml'));
+test('ACE-Test-001 passes idea-to-pdd-qa', async () => {
+  const result = await runSkill('idea-to-pdd-qa', { fixture: 'ACE-Test-001' });
+  assertQAResultMatches(result, fixture('ACE-Test-001/expected/idea-to-pdd-qa_result.yaml'));
 });
 
-test('CRISPR-Bad-001 (missing section) fails idea-to-pdd-qa with specific check', async () => {
-  const result = await runSkill('idea-to-pdd-qa', { fixture: 'CRISPR-Bad-001' });
+test('ACE-Bad-001 (missing section) fails idea-to-pdd-qa with specific check', async () => {
+  const result = await runSkill('idea-to-pdd-qa', { fixture: 'ACE-Bad-001' });
   expect(result.verdict).toBe('fail');
   expect(result.failures).toContainEqual(expect.objectContaining({
     check: 'all_sections_present',
@@ -277,7 +277,7 @@ viability-broken.md:
 Verdict YAML structure (not exact scores) snapshotted via vitest's `toMatchSnapshot()`. Detects accidental schema drift when someone refactors the verdict shape.
 
 **5. Adversarial fixture generation.**
-For each producer, a small set of `CRISPR-Bad-*` fixtures with deliberately broken inputs. Each fixture's `expected/` directory documents what QA should catch. Fixtures are versioned alongside the skill.
+For each producer, a small set of `ACE-Bad-*` fixtures with deliberately broken inputs. Each fixture's `expected/` directory documents what QA should catch. Fixtures are versioned alongside the skill.
 
 ### Migration order for the test harness
 
@@ -341,7 +341,7 @@ The QA/eval migration is **done** when:
 - **What's the auto-fix attempt budget per QA failure?** Default 2 attempts. Configurable per skill via descriptor field? Revisit after observing real auto-fix behavior in Phase 1.
 - **How does the QA → auto-fix loop interact with `/ace:run`'s default vs review mode?** Auto-fix is silent in default mode; surfaces in review mode? Or always surfaces? Revisit during Phase 1.
 - **Do we need a `qa-status` field in `run_state.yaml`** to expose to the orchestrator? Currently `run_state.yaml` tracks phase status but not per-skill QA pass/fail. Likely yes; design during Phase 1.
-- **Should the calibration corpus be opp-shaped or artifact-shaped?** Today fixtures are opp-shaped (`CRISPR-Test-001/`). For per-eval calibration we may want artifact-shaped (`pdds/`, `apps/`, `bots/`). Revisit after corpus reaches 5+ entries.
+- **Should the calibration corpus be opp-shaped or artifact-shaped?** Today fixtures are opp-shaped (`ACE-Test-001/`). For per-eval calibration we may want artifact-shaped (`pdds/`, `apps/`, `bots/`). Revisit after corpus reaches 5+ entries.
 - **What's the ace-web rendering for "QA passed but eval scored low"?** Distinct from "QA failed irrecoverably" but both are concerning. Visual treatment tbd.
 
 ## Update log

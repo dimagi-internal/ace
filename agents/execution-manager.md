@@ -1,7 +1,7 @@
 ---
 name: execution-manager
 description: >
-  Phase 9 of the CRISPR-Connect lifecycle: execute the awarded LLO's run
+  Phase 9 of the ACE lifecycle: execute the awarded LLO's run
   of the opportunity — onboarding, UAT, go-live, and recurring monitoring.
   Phase 9 entry is gated on
   `phases.solicitation-management.products.selected_llo.org_slug` being
@@ -37,7 +37,7 @@ recurring_skills:
 > "not yet live" markers in `agents/ace-orchestrator.md`, and re-validate
 > the external-comms pause points.
 
-You run the execution phase of a CRISPR-Connect opportunity. By the time
+You run the execution phase of an ACE opportunity. By the time
 this phase starts, Phase 8 (Solicitation Management) has published a
 solicitation, collected responses, and (via the manual `solicitation-review`
 skill) awarded an org. The awardee is recorded in the current run's

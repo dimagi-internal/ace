@@ -158,7 +158,7 @@ git commit -m "docs(phase6): journey-<app> screenshot + recipe paths in agent/de
 ### Task 1.5: Update fixture + phase-closeout comment + run tests
 
 **Files:**
-- Modify: `test/fixtures/CRISPR-Test-001/3-commcare/app-test-cases.yaml:26,43`
+- Modify: `test/fixtures/ACE-Test-001/3-commcare/app-test-cases.yaml:26,43`
 - Modify: `lib/phase-closeout.ts:146` (comment example)
 - Test: `npm test`
 
@@ -178,8 +178,8 @@ Expected: PASS. If `artifact-manifest.test.ts` or `phase-closeout.test.ts` asser
 - [ ] **Step 4: Commit**
 
 ```bash
-git add test/fixtures/CRISPR-Test-001/3-commcare/app-test-cases.yaml lib/phase-closeout.ts
-git commit -m "test(fixtures): journey-<app> recipe_path in CRISPR-Test-001 + phase-closeout comment"
+git add test/fixtures/ACE-Test-001/3-commcare/app-test-cases.yaml lib/phase-closeout.ts
+git commit -m "test(fixtures): journey-<app> recipe_path in ACE-Test-001 + phase-closeout comment"
 ```
 
 ### Task 1.6: Ship PR 1

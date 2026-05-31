@@ -28,14 +28,14 @@ Synthesize all information from the completed opportunity into actionable learni
    - What was unexpected?
 
 3. **Synthesize learnings:**
-   - **Process learnings** — what to change about the CRISPR-Connect process itself
+   - **Process learnings** — what to change about the ACE process itself
    - **Content learnings** — what to change about the intervention design
    - **Technical learnings** — what to change about the apps or configuration
    - **Relationship learnings** — what to change about LLO engagement
 
 4. **Determine if iteration is warranted:**
    - If yes, draft a new PDD incorporating the learnings
-   - This new PDD can trigger another CRISPR-Connect cycle
+   - This new PDD can trigger another ACE cycle
 
 5. **Write to GDrive:**
    - `ACE/<opp-name>/runs/<run-id>/10-closeout/learnings-summary.md` — full learnings document

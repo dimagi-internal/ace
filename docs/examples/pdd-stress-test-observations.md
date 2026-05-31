@@ -1,6 +1,6 @@
 # Sample PDD Observations
 
-Analysis of two sample Program Design Documents to inform how the ACE pipeline (CRISPR-Connect) should stress test PDDs and verify LLO execution.
+Analysis of two sample Program Design Documents to inform how the ACE pipeline (ACE) should stress test PDDs and verify LLO execution.
 
 These notes were generated in conversation while exploring the kinds of stress tests, evidence layers, and Connect/CommCare configurations the ACE skills will need to support.
 

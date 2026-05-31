@@ -1,6 +1,6 @@
 # End-to-End Walk-Through Validation (2026-04-16)
 
-Desk-trace of `/ace:run CRISPR-Test-001 --dry-run` against the current
+Desk-trace of `/ace:run ACE-Test-001 --dry-run` against the current
 (post-0.3.1) plugin: 6-phase orchestrator, 22 skills, PDD terminology.
 Updates and supersedes the 2026-04-08 validation (which predated the
 0.2.0 phase restructure and 0.3.0 PDD rename).
@@ -12,22 +12,22 @@ next-best check: it confirms the orchestrator's phase ordering, each
 SKILL.md's input/output contract, and the artifact-manifest handoffs
 are internally consistent with the current fixture contents.
 
-Companion fixture (`test/fixtures/CRISPR-Test-003-Turmeric/`) ships the
+Companion fixture (`test/fixtures/ACE-Test-003-Turmeric/`) ships the
 same day as a **complete** end-to-end stub with phase-4–6 artifacts
 populated, so CI can catch manifest drift all the way through closeout.
-`CRISPR-Test-001` remains a partial (Phase-1–3) fixture used for
+`ACE-Test-001` remains a partial (Phase-1–3) fixture used for
 scenario-style input testing into Phase 5 (`ocs-agent-setup`).
 
 ## State schema refresh
 
-`CRISPR-Test-001/state.yaml` was rewritten to match the 6-phase
+`ACE-Test-001/state.yaml` was rewritten to match the 6-phase
 orchestrator. Before: a flat map of 19 skills in the pre-0.2.0 order.
 After: phases → skills nested map covering all 22 skills + the three
 `ocs-chatbot-qa` modes (`quick`, `deep`, `monitor`). Gate list updated
 to the five actual review-mode gates (was missing `ocs-chatbot-qa-deep`,
 wasn't tracking `llo-launch`).
 
-## Per-phase trace against CRISPR-Test-001
+## Per-phase trace against ACE-Test-001
 
 Phase signature is `input → skill → output`, cross-checked against
 `lib/artifact-manifest.ts`. "OK" = inputs exist in the fixture,
@@ -39,7 +39,7 @@ skill contract is readable, expected outputs line up with the manifest.
 | Skill | Input state | Output contract | Verdict |
 |---|---|---|---|
 | `idea-to-pdd` | `idea.md` ✓ | `pdd.md` ✓ (already in fixture) | OK |
-| `pdd-to-test-prompts` | `pdd.md` ✓ | `test-prompts.md` | Gap — fixture missing `test-prompts.md`. Intentional: this is a Phase-1 output, so running the skill against the fixture *produces* it. Noted in `artifact-manifest.test.ts` expectedMissing list. CRISPR-Test-003-Turmeric ships it populated. |
+| `pdd-to-test-prompts` | `pdd.md` ✓ | `test-prompts.md` | Gap — fixture missing `test-prompts.md`. Intentional: this is a Phase-1 output, so running the skill against the fixture *produces* it. Noted in `artifact-manifest.test.ts` expectedMissing list. ACE-Test-003-Turmeric ships it populated. |
 
 **Gate:** operator approves `pdd.md` before Phase 3.
 
@@ -50,7 +50,7 @@ skill contract is readable, expected outputs line up with the manifest.
 | `pdd-to-learn-app` | `pdd.md` ✓ | `apps/learn-app.json`, `app-summaries/learn-app-summary.md` | Learn app JSON would be produced; summary already in fixture |
 | `pdd-to-deliver-app` | `pdd.md` ✓ | `apps/deliver-app.json`, `app-summaries/deliver-app-summary.md` | Same — summary present, JSON absent |
 | `app-deploy` | `apps/*.json` (absent) | `deployment-summary.md` ✓ | Fixture ships a stub `deployment-summary.md` from the 2026-04-08 walk-through so downstream skills (`app-test`, `connect-opp-setup`) can consume it without running upstream first |
-| `app-test` | `deployment-summary.md` ✓, `app-summaries/*` ✓ | `test-results/{test-plan,test-results,bugs}.md` | Gap — `test-results/` absent. CRISPR-Test-003 ships these populated |
+| `app-test` | `deployment-summary.md` ✓, `app-summaries/*` ✓ | `test-results/{test-plan,test-results,bugs}.md` | Gap — `test-results/` absent. ACE-Test-003 ships these populated |
 | `training-materials` | `app-summaries/*` ✓, `pdd.md` ✓ | `training-materials/{llo-manager-guide,flw-training-guide,quick-reference,faq}.md` ✓ | OK — already in fixture |
 
 **Gate:** operator approves `deployment-summary.md` before Phase 4.
@@ -69,7 +69,7 @@ skill contract is readable, expected outputs line up with the manifest.
 
 | Skill | Input state | Output contract | Verdict |
 |---|---|---|---|
-| `ocs-agent-setup` | `pdd.md` ✓, `training-materials/*` ✓, `app-summaries/*` ✓, `opportunity.md` ✓ | `ocs-agent-config.md` | Inputs OK; output absent in CRISPR-Test-001 (this is the skill the fixture is designed to feed) |
+| `ocs-agent-setup` | `pdd.md` ✓, `training-materials/*` ✓, `app-summaries/*` ✓, `opportunity.md` ✓ | `ocs-agent-config.md` | Inputs OK; output absent in ACE-Test-001 (this is the skill the fixture is designed to feed) |
 | `ocs-chatbot-qa --quick` | `experiment_id` from above | stdout report | Smoke gate, no file artifact |
 | `ocs-chatbot-qa --deep` | `experiment_id`, `test-prompts.md` | `qa-reports/YYYY-MM-DD-ocs-qa.md` | Gap — requires `test-prompts.md` from Phase 1. This is exactly the silent-failure mode that P2's prereq check catches |
 | (manual step) | `ocs-agent-config.md` | `ocs-setup/widget-handoff.md` | Operator pastes creds into Connect until `update_opportunity` API lands |
@@ -98,14 +98,14 @@ skill contract is readable, expected outputs line up with the manifest.
 | `learnings-summary` | all upstream artifacts | `closeout/learnings.md`, optional `closeout/new-pdd.md` | — |
 | `cycle-grade` | all artifacts + feedback + learnings | `closeout/cycle-grade.md` | — |
 
-CRISPR-Test-001 doesn't exercise Phase 7. CRISPR-Test-003-Turmeric ships
+ACE-Test-001 doesn't exercise Phase 7. ACE-Test-003-Turmeric ships
 populated closeout stubs so the artifact-manifest test can span the full
 lifecycle.
 
 ## Gaps surfaced by this trace
 
-1. **Silent prereq failure.** `/ace:step ocs-chatbot-qa CRISPR-Test-001 --deep` today runs without noticing that `test-prompts.md` is absent. Fixed by P2 (prereq check in `/ace:step` via `artifactsConsumedBy`).
-2. **Fixture coverage stops at Phase 4.** `artifact-manifest.test.ts` validates CRISPR-Test-001 only `upToPhase: 'connect'`. Phases 4–6 are silently uncovered. Fixed by P3 (new CRISPR-Test-003-Turmeric + test span extended to `'closeout'`).
+1. **Silent prereq failure.** `/ace:step ocs-chatbot-qa ACE-Test-001 --deep` today runs without noticing that `test-prompts.md` is absent. Fixed by P2 (prereq check in `/ace:step` via `artifactsConsumedBy`).
+2. **Fixture coverage stops at Phase 4.** `artifact-manifest.test.ts` validates ACE-Test-001 only `upToPhase: 'connect'`. Phases 4–6 are silently uncovered. Fixed by P3 (new ACE-Test-003-Turmeric + test span extended to `'closeout'`).
 3. **`state.yaml` was stale.** The flat 19-skill list predated 0.2.0; two skills were missing entirely (`pdd-to-test-prompts`, `ocs-chatbot-qa` in any form). Fixed in this cycle (refreshed to 6-phase nested schema).
 
 ## What this walk-through does NOT cover

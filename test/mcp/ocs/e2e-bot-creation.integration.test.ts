@@ -32,7 +32,7 @@ const integration = process.env.OCS_INTEGRATION === '1';
 const describeFn = integration ? describe : describe.skip;
 
 // ── Test fixture paths ──────────────────────────────────────────────
-const FIXTURE_DIR = path.resolve(import.meta.dirname, '../../fixtures/CRISPR-Test-001');
+const FIXTURE_DIR = path.resolve(import.meta.dirname, '../../fixtures/ACE-Test-001');
 
 /** Read a fixture file as a Buffer. */
 function readFixture(relativePath: string): Buffer {
@@ -180,7 +180,7 @@ describeFn('OCS bot creation E2E (requires OCS_INTEGRATION=1 + live session)', (
     try {
       const result = await backend.createCollection({
         name: `ACE-e2e-bot-creation-${Date.now()}`,
-        summary: 'E2E test collection for CRISPR-Test-001 fixture',
+        summary: 'E2E test collection for ACE-Test-001 fixture',
         is_index: true,
         is_remote_index: false,
         llm_provider: llmProviderId,
@@ -275,7 +275,7 @@ describeFn('OCS bot creation E2E (requires OCS_INTEGRATION=1 + live session)', (
   it('composes and sets the system prompt', async () => {
     if (!clonedExperimentId) return;
 
-    const prompt = `You are the support chatbot for the "Community Health Worker Training Pilot — TestLand" opportunity on CRISPR-Connect.
+    const prompt = `You are the support chatbot for the "Community Health Worker Training Pilot — TestLand" opportunity on ACE.
 
 ## Opportunity Context
 - Opportunity: Community Health Worker Training Pilot — TestLand
@@ -287,8 +287,8 @@ describeFn('OCS bot creation E2E (requires OCS_INTEGRATION=1 + live session)', (
 
 ## Knowledge Sources
 You have access to two knowledge collections:
-1. Shared Connect knowledge — general CRISPR-Connect platform docs
-2. CRISPR-Test-001 collection — the PDD, app summaries, and training materials for this opportunity
+1. Shared Connect knowledge — general ACE platform docs
+2. ACE-Test-001 collection — the PDD, app summaries, and training materials for this opportunity
 
 ## Escalation Rules
 - For questions you cannot answer from your knowledge sources, direct the user to ace@dimagi-ai.com

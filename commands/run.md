@@ -1,12 +1,12 @@
 ---
-description: Run the full CRISPR-Connect lifecycle for an opportunity
+description: Run the full ACE lifecycle for an opportunity
 argument-hint: [<opp>[/<run-id>]] [--mode default|review|auto] [--ace-web-url URL] [--dry-run] [--sandbox] [--no-evals]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---
 
 # /ace:run
 
-Run the full CRISPR-Connect lifecycle for a Connect opportunity.
+Run the full ACE lifecycle for a Connect opportunity.
 
 - Phase 5 (OCS) and Phase 6 (apps) run **shallow** QA only. Deep
   quality assessment is a separate command — see /ace:qa-deep <opp>.

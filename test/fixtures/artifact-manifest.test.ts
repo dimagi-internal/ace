@@ -30,8 +30,8 @@ function listFiles(dir: string, root: string = dir): string[] {
   return files;
 }
 
-describe('CRISPR-Test-001 fixture', () => {
-  const fixtureDir = path.join(FIXTURES_DIR, 'CRISPR-Test-001');
+describe('ACE-Test-001 fixture', () => {
+  const fixtureDir = path.join(FIXTURES_DIR, 'ACE-Test-001');
 
   it('fixture directory exists', () => {
     expect(fs.existsSync(fixtureDir)).toBe(true);
@@ -48,7 +48,7 @@ describe('CRISPR-Test-001 fixture', () => {
   });
 
   it('reports expected missing files for this partial fixture', () => {
-    // CRISPR-Test-001 provides inputs for ocs-agent-setup, not a complete
+    // ACE-Test-001 provides inputs for ocs-agent-setup, not a complete
     // opportunity folder. These artifacts are intentionally absent:
     // test-prompts.md is consumed by ocs-chatbot-qa (not ocs-agent-setup);
     // gate-briefs/* are produced during gate pauses that this fixture never
@@ -66,7 +66,7 @@ describe('CRISPR-Test-001 fixture', () => {
     // `app-test-cases.yaml` (Phase 3) in the same release; both ship in
     // the fixture so they don't appear in expectedMissing.
     const expectedMissing = [
-      // inputs/ is an opp-level required artifact; CRISPR-Test-001 is a
+      // inputs/ is an opp-level required artifact; ACE-Test-001 is a
       // partial fixture scoped to ocs-agent-setup inputs and doesn't model
       // the full opp folder layout, so inputs/ is intentionally absent here.
       'inputs/',
@@ -140,16 +140,16 @@ describe('CRISPR-Test-001 fixture', () => {
   });
 });
 
-describe('CRISPR-Test-002 fixture', () => {
-  const fixtureDir = path.join(FIXTURES_DIR, 'CRISPR-Test-002');
+describe('ACE-Test-002 fixture', () => {
+  const fixtureDir = path.join(FIXTURES_DIR, 'ACE-Test-002');
 
   it('fixture directory exists', () => {
     expect(fs.existsSync(fixtureDir)).toBe(true);
   });
 });
 
-describe('CRISPR-Test-004-Solicitation fixture (Phase 7)', () => {
-  const fixtureDir = path.join(FIXTURES_DIR, 'CRISPR-Test-004-Solicitation');
+describe('ACE-Test-004-Solicitation fixture (Phase 7)', () => {
+  const fixtureDir = path.join(FIXTURES_DIR, 'ACE-Test-004-Solicitation');
 
   it('fixture directory exists', () => {
     expect(fs.existsSync(fixtureDir)).toBe(true);

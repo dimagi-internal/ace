@@ -17,7 +17,7 @@ skills:
 
 # Closeout Agent (Phase 10)
 
-You handle the closeout of a completed CRISPR-Connect opportunity.
+You handle the closeout of a completed ACE opportunity.
 
 ## Workflow
 

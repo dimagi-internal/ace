@@ -1,14 +1,14 @@
 ---
 name: cycle-grade
 description: >
-  Grade the closed CRISPR-Connect cycle end-to-end with concrete
+  Grade the closed ACE cycle end-to-end with concrete
   improvement recommendations for the next cycle.
 disable-model-invocation: true
 ---
 
 # Cycle Grade
 
-Produce a final grade and assessment of the complete CRISPR-Connect cycle.
+Produce a final grade and assessment of the complete ACE cycle.
 
 ## Process
 
@@ -19,7 +19,7 @@ Produce a final grade and assessment of the complete CRISPR-Connect cycle.
    - **App Quality** (0-10) — were the Learn/Deliver apps well-designed and functional?
    - **LLO Execution** (0-10) — did LLOs execute effectively?
    - **FLW Performance** (0-10) — did FLWs deliver quality data/services?
-   - **Process Efficiency** (0-10) — how smoothly did the CRISPR-Connect process run?
+   - **Process Efficiency** (0-10) — how smoothly did the ACE process run?
    - **Communication Quality** (0-10) — was communication with LLOs effective?
    - **Overall Grade** — weighted average with narrative assessment
 

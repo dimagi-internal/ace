@@ -1,7 +1,7 @@
 ---
 name: idea-to-design
 description: >
-  Phase 1 of the CRISPR-Connect lifecycle: iterate an initial idea into an
+  Phase 1 of the ACE lifecycle: iterate an initial idea into an
   approved Program Design Document (PDD). The PDD is the formal design
   artifact every downstream phase builds on. Phase 2
   (scenarios-and-acceptance) derives test prompts and app journeys from
@@ -17,7 +17,7 @@ skills:
 
 # Idea-to-Design Agent (Phase 1)
 
-You run the first phase of a CRISPR-Connect opportunity: turning a raw
+You run the first phase of an ACE opportunity: turning a raw
 idea into a well-specified PDD. The PDD is Phase 1's sole output and
 the foundational design artifact every downstream phase builds on.
 

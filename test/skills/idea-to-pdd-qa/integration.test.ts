@@ -25,12 +25,12 @@ interface ExpectedQA {
   expected_passes?: string[];
 }
 
-describe('CRISPR-PDD-Pass-001 (synthetic clean PDD)', () => {
+describe('ACE-PDD-Pass-001 (synthetic clean PDD)', () => {
   test('passes all 6 idea-to-pdd-qa checks', async () => {
-    const pdd = loadFixtureText('CRISPR-PDD-Pass-001', 'pdd.md');
+    const pdd = loadFixtureText('ACE-PDD-Pass-001', 'pdd.md');
     const result = await runChecks({
       skill: 'idea-to-pdd-qa',
-      target: 'CRISPR-PDD-Pass-001',
+      target: 'ACE-PDD-Pass-001',
       capture_path: '1-design/idea-to-pdd.md',
       artifact: pdd,
       checks: CHECKS,
@@ -42,14 +42,14 @@ describe('CRISPR-PDD-Pass-001 (synthetic clean PDD)', () => {
   });
 });
 
-describe('CRISPR-PDD-Bad-001 (adversarial fixture with intentional defects)', () => {
+describe('ACE-PDD-Bad-001 (adversarial fixture with intentional defects)', () => {
   test('matches the documented expected QA result', async () => {
-    const pdd = loadFixtureText('CRISPR-PDD-Bad-001', 'pdd.md');
-    const expected = loadExpectedQAResult('CRISPR-PDD-Bad-001', 'idea-to-pdd-qa_result.yaml') as ExpectedQA;
+    const pdd = loadFixtureText('ACE-PDD-Bad-001', 'pdd.md');
+    const expected = loadExpectedQAResult('ACE-PDD-Bad-001', 'idea-to-pdd-qa_result.yaml') as ExpectedQA;
 
     const result = await runChecks({
       skill: 'idea-to-pdd-qa',
-      target: 'CRISPR-PDD-Bad-001',
+      target: 'ACE-PDD-Bad-001',
       capture_path: '1-design/idea-to-pdd.md',
       artifact: pdd,
       checks: CHECKS,
@@ -73,10 +73,10 @@ describe('CRISPR-PDD-Bad-001 (adversarial fixture with intentional defects)', ()
   });
 
   test('every failure has a non-empty auto_fix_hint', async () => {
-    const pdd = loadFixtureText('CRISPR-PDD-Bad-001', 'pdd.md');
+    const pdd = loadFixtureText('ACE-PDD-Bad-001', 'pdd.md');
     const result = await runChecks({
       skill: 'idea-to-pdd-qa',
-      target: 'CRISPR-PDD-Bad-001',
+      target: 'ACE-PDD-Bad-001',
       capture_path: '1-design/idea-to-pdd.md',
       artifact: pdd,
       checks: CHECKS,

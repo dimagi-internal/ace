@@ -2,7 +2,7 @@
 
 This file is the contract for authoring SKILL.md files in `skills/`. Read it before adding a new skill or making non-trivial edits to an existing one. Existing skills are the source of truth — if this contract drifts from them, fix the contract or fix the skills, but they should agree.
 
-ACE skills are prompt-based capability definitions. Each one handles one step of the CRISPR-Connect process (see the repo-root `CLAUDE.md` for the phase pipeline and `agents/orchestrator-reference.md` for state schemas). Skills are stateless — they read from and write to the opportunity's Google Drive folder (`ACE/<opp-name>/`) and call MCP tools for external system access. The agents in `agents/` are what dispatch to skills.
+ACE skills are prompt-based capability definitions. Each one handles one step of the ACE process (see the repo-root `CLAUDE.md` for the phase pipeline and `agents/orchestrator-reference.md` for state schemas). Skills are stateless — they read from and write to the opportunity's Google Drive folder (`ACE/<opp-name>/`) and call MCP tools for external system access. The agents in `agents/` are what dispatch to skills.
 
 ## File location and naming
 
@@ -561,7 +561,7 @@ The 3 current archetypes are `atomic-visit`, `focus-group`, and `multi-stage`. A
 
 Do **not** create a new skill per archetype. The whole point of the archetype mechanism is to avoid forking the framework — a new archetype is an additive change inside the existing 9 skills, not a fan-out of new skill files. (See Lesson 9 of the canopy `product-management` skill: *"Framework changes mean variation points, not new components."*)
 
-After adding a new archetype, add a regression fixture under `test/fixtures/` (mirror the structure of `CRISPR-Test-001` for `atomic-visit` and `CRISPR-Test-002` for `focus-group`).
+After adding a new archetype, add a regression fixture under `test/fixtures/` (mirror the structure of `ACE-Test-001` for `atomic-visit` and `ACE-Test-002` for `focus-group`).
 
 ## Where shared templates and prompts live
 
@@ -601,12 +601,12 @@ Before committing a new SKILL.md, verify:
 - [ ] If the skill has external side effects, `## Dry-Run Behavior` is present
 - [ ] If the skill is blocked on un-built APIs, `## Current Workaround` is present (and gets removed when the API ships)
 - [ ] Initial change log entry exists with the date and author
-- [ ] If the skill is archetype-aware and a focus-group fixture exists, the `test/fixtures/CRISPR-Test-002/README.md` regression spec covers it
+- [ ] If the skill is archetype-aware and a focus-group fixture exists, the `test/fixtures/ACE-Test-002/README.md` regression spec covers it
 
 ## Checklist for editing an existing skill
 
 - [ ] Step numbering verified after any insertion (`grep -nE '^[0-9]+\.' SKILL.md`)
 - [ ] Change log appended with date, change description, author/context
 - [ ] If you changed the `description:` frontmatter or the Process, plan to re-run `/ace:docs`
-- [ ] If you changed archetype branching, dry-run the affected fixtures (`CRISPR-Test-001` for atomic-visit, `CRISPR-Test-002` for focus-group) and update fixture READMEs if behavior expectations changed
+- [ ] If you changed archetype branching, dry-run the affected fixtures (`ACE-Test-001` for atomic-visit, `ACE-Test-002` for focus-group) and update fixture READMEs if behavior expectations changed
 - [ ] If you added a new MCP tool dependency, mark it as built or "NOT YET BUILT" with the ticket number

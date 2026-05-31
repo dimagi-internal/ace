@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # LLO Launch Eval
 
-`llo-launch` is the Phase 6 skill that activates a CRISPR-Connect
+`llo-launch` is the Phase 6 skill that activates an ACE
 opportunity for live FLW use. It's the production gate: any defect that
 slips past it ships to real LLOs and FLWs in the field. This rubric
 grades whether the activation was faithful to the PDD's launch

@@ -75,7 +75,7 @@ Mis-calibration shows up as a failed range assertion. The fix is either:
 
 ## Why corpus over fixtures
 
-- **Fixtures are scenario-based** (`CRISPR-Test-001` represents a full atomic-visit opp; `CRISPR-Bad-001` represents one with a structural defect). They test integration of one skill in context.
+- **Fixtures are scenario-based** (`ACE-Test-001` represents a full atomic-visit opp; `ACE-Bad-001` represents one with a structural defect). They test integration of one skill in context.
 - **Calibration is range-based** (every PDD in `pdds/` is a real PDD shape; the corpus spans good→thin→broken). It tests rubric discrimination across artifacts.
 
 A rubric that scores every fixture identically passes integration tests but is mis-calibrated. A rubric that fails every fixture passes calibration tests on `structurally-bad.md` but is broken in integration. Both views are needed.

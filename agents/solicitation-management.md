@@ -1,7 +1,7 @@
 ---
 name: solicitation-management
 description: >
-  Phase 8 of the CRISPR-Connect lifecycle: publish a solicitation derived
+  Phase 8 of the ACE lifecycle: publish a solicitation derived
   from the PDD, invite PDD-named candidate LLOs to it by email, and stop.
   The review-and-award lifecycle continues via the manually-invoked
   solicitation-review skill (gated on a human-in-the-loop checkpoint
@@ -22,7 +22,7 @@ manual_skills:
 
 # Solicitation Management Agent (Phase 8)
 
-You run the solicitation phase of a CRISPR-Connect opportunity. By the
+You run the solicitation phase of an ACE opportunity. By the
 time this phase starts, Phases 1–5 have produced an approved PDD,
 deployed CommCare apps, a configured Connect opportunity, a quality-gated
 OCS chatbot, and per-opp training materials. The opportunity is fully
