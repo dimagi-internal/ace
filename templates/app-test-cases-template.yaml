@@ -31,7 +31,7 @@ journeys:
   # assessment) — this both captures Learn screenshots AND unlocks the
   # Deliver app (Connect gates Deliver behind Learn-assessment
   # completion). recipe_path uses the bare smoke name journey-learn.yaml.
-  - id: learn-happy-path
+  - id: journey-learn-happy-path
     name: {{journey_name from expected-journeys.md}}
     app: learn
     is_smoke: true   # exactly one is_smoke:true journey per app
@@ -52,7 +52,7 @@ journeys:
   #   connect-resume-opp.yaml -> deliver-launch.yaml -> first Deliver form.
   # Warm-session only; not independently cold-runnable. See
   # skills/app-test-cases/SKILL.md § Step 2 "Deliver-smoke composition".
-  - id: deliver-yes
+  - id: journey-deliver-yes
     name: {{journey_name from expected-journeys.md}}
     app: deliver
     is_smoke: true   # exactly one is_smoke:true journey per app
