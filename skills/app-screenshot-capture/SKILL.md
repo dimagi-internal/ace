@@ -347,6 +347,40 @@ recipe surfaces a false-positive `tapOn:text` hit on the wrong tile.
 
 ### Step 5: Run the smoke recipes — two independent legs
 
+**Palette-composition footguns (jjackson/ace#592) — read before composing recipes:**
+
+1. **`mobile_run_recipe` does NOT resolve `${SELECTOR:...}` placeholders
+   inside `runFlow`'d palette files.** It resolves selectors in the
+   top-level recipe body it's handed, but a palette piece pulled in via
+   `runFlow:` runs *verbatim* — Maestro receives the literal
+   `${SELECTOR:foo}` token and (because `${...}` is also Maestro's env-var
+   syntax) resolves it to `NaN` (e.g. `Assert that "NaN" is visible`).
+   When composing static palette pieces, either (a) run
+   `mobile_resolve_selectors` on the composed body first, or (b) inline
+   literal selectors. Do NOT assume nested `runFlow` inherits the parent's
+   selector resolution.
+2. **`runFlow` relative paths resolve against Maestro's temp chunk dir,
+   not the recipe-file dir.** `runFlow: ../../../../mcp/...` fails with
+   `Flow file does not exist: /var/folders/.../mcp/...`. Always use
+   **absolute paths** when composing palette pieces.
+3. **Login credentials are easy to mis-split.** `COUNTRY_CODE` is `7`
+   (the dialing code), `PHONE_LOCAL` is `4260000101`, and the PIN is the
+   full `${ACE_E2E_PIN}` (`111111`, 6 digits). The `+7426` demo prefix in
+   the docs is CC `7` + local starting `4260000101` — do NOT mis-split it
+   as CC `7426`.
+4. **Mid-session re-login surface (tracked recipe gap).** Between the
+   Learn and Deliver legs the Connect session can drop to a
+   signed-out-but-registered screen — `screen_login_main` with
+   `welcome_msg` "Welcome ACE Test!" and a `login_button`
+   "LOGIN WITH PERSONALID". `connect-login.yaml` today only branches on
+   first-start (`str_setup_message`) and already-signed-in
+   (`connect_fragment_jobs_list`); it halts on this intermediate screen.
+   The branch (tap `login_button` → `lockPassword` → PIN) is documented
+   but **not yet live-validated** — calibrate it the next time this
+   surface is reached on-device, then add the branch + a
+   static-recipe-invariants assertion. Until then, a re-login drop
+   between legs is a known cause of a Deliver-leg halt.
+
 Capture is split into a **Learn leg** and a **Deliver leg**. The legs
 are graded independently; a Deliver failure never suppresses Learn
 capture.

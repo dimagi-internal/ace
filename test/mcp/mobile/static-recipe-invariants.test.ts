@@ -316,3 +316,66 @@ describe('learn-tap-module.yaml', () => {
     );
   });
 });
+
+describe('connect-resume-opp.yaml', () => {
+  const yaml = readRecipe('connect-resume-opp.yaml');
+
+  it('scopes the CTA tap to the target card (childOf containsChild), not the leaky below:text pattern', () => {
+    // Regression guard for jjackson/ace#591 (malaria-rdt/20260531-0739):
+    // the prior recipe tapped `id: btn_resume, below: text: ${OPP_NAME}`,
+    // which matches the FIRST btn_resume in DOCUMENT ORDER below the title
+    // and leaked into a LATER tile's button — resuming the WRONG opp when
+    // the target was Learn-complete (its own CTA is "Proceed", not
+    // "Resume"). Live-confirmed fix (ACE_Pixel_API_34, 2.63.0): each tile
+    // is a rootCardView whose inner ViewGroup holds tvTitle + the CTA as
+    // sibling direct children, so `childOf: { containsChild: { text:
+    // ${OPP_NAME} } }` pins the tap to the target card.
+    expect(
+      yaml,
+      'expected card-scoped CTA tap via childOf/containsChild on ${OPP_NAME}',
+    ).toMatch(
+      /childOf:\s*\n\s*containsChild:\s*\n\s*text:\s*\$\{OPP_NAME\}/,
+    );
+    // The old leaky tap (btn_resume directly below the title text) must be gone.
+    expect(
+      yaml,
+      'the leaky `id: btn_resume / below: text: ${OPP_NAME}` tap must not return',
+    ).not.toMatch(
+      /id: "org\.commcare\.dalvik:id\/btn_resume"\s*\n\s*below:\s*\n\s*text:\s*\$\{OPP_NAME\}/,
+    );
+  });
+
+  it('Branch B (Learn-complete) guards POSITIVELY on the Proceed CTA, not on btn_resume absence', () => {
+    // Caught live 2026-05-31: a `notVisible btn_resume` guard for the
+    // Proceed branch becomes TRUE after Branch A taps Resume and navigates
+    // away, wrongly firing Branch B (which then fails to find "Proceed").
+    // The two CTA branches must use mutually-exclusive POSITIVE guards
+    // (only one CTA label is present per card), so neither re-fires after
+    // a tap navigates off the jobs list.
+    expect(
+      yaml,
+      'expected a positive `visible: text: "Proceed"` guard for the Learn-complete branch',
+    ).toMatch(
+      /when:\s*\n\s*visible:\s*\n\s*text: "Proceed"/,
+    );
+    expect(
+      yaml,
+      'the Proceed branch must NOT guard on `notVisible btn_resume` (fires post-navigation)',
+    ).not.toMatch(
+      /when:\s*\n\s*notVisible:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_resume"/,
+    );
+  });
+
+  it('fails loud if the CTA tap did not leave the jobs list (no silent wrong-opp resume)', () => {
+    // #591: a correct CTA tap navigates off connect_fragment_jobs_list.
+    // The recipe must assert we left the list so a no-op / wrong-surface
+    // tap halts with a named failure instead of silently proceeding into
+    // the wrong opp's app.
+    expect(
+      yaml,
+      'expected a fail-loud notVisible assertion on connect_fragment_jobs_list after the CTA tap',
+    ).toMatch(
+      /notVisible:\s*\n\s*id: "org\.commcare\.dalvik:id\/connect_fragment_jobs_list"/,
+    );
+  });
+});

@@ -186,20 +186,33 @@ selectors:
     purpose: "Pre-claim Learn-Details preview TextView on the opp-detail page. Renders as a single TextView with the module-list label(s) (e.g. '1. Form walkthrough' for atomic-visit opps). NOT a RecyclerView; NOT tappable; NOT the post-claim Learn-app module list. Use as a structural anchor for opp-detail-screen presence checks only — for the interactive Learn-app modules, use learn-suite-row-by-name on the MenuActivity surface (see atlas §6)."
 
   # ── Photo capture ──────────────────────────────────────────────
+  # CALIBRATION NOTE (jjackson/ace#593): the CommCare 2.63.0 image-capture
+  # widget does NOT render a `take_photo_button` resource-id. It renders
+  # two TEXT buttons — "TAKE PICTURE" (launches the system camera) and
+  # "CHOOSE IMAGE" (gallery) — confirmed from the malaria-rdt/20260531-0739
+  # `deliver-product-photo.png` capture. The in-form entry point is now
+  # text-matched below. The AOSP camera app's shutter + save/done controls
+  # live in a SEPARATE package (com.android.camera2 / the emulator camera
+  # app) and were NOT reachable this session (no live Deliver photo walk),
+  # so `camera-shutter-button` / `camera-save-photo` remain UNVERIFIED
+  # best-guesses — dump them live the first time "TAKE PICTURE" opens the
+  # camera, then replace these.
   camera-shutter-button:
     type: id
     value: "org.commcare.dalvik:id/camera_shutter_button"
-    purpose: "Shutter button when the device camera is open via a CommCare photo question"
+    unverified: true
+    purpose: "Shutter button in the AOSP camera app opened from the CommCare 'TAKE PICTURE' button. UNVERIFIED (#593) — wrong package guess; the live shutter is in com.android.camera2. Dump live when reachable."
 
   camera-take-photo:
-    type: id
-    value: "org.commcare.dalvik:id/take_photo_button"
-    purpose: "Take Photo button on the photo-question prompt screen (before opening the camera)"
+    type: text
+    value: "TAKE PICTURE"
+    purpose: "In-form image-capture entry button on a CommCare 2.63.0 photo question (text button, no resource-id; launches the system camera). Confirmed from the #593 captured screenshot. Gallery alternative is the 'CHOOSE IMAGE' text button."
 
   camera-save-photo:
     type: id
     value: "org.commcare.dalvik:id/save_photo_button"
-    purpose: "Save / Use Photo button after capturing"
+    unverified: true
+    purpose: "Save / Use Photo button after capturing. UNVERIFIED (#593) — lives in the AOSP camera app, not org.commcare.dalvik. Dump live when the camera surface is reachable."
 
   # ── Post-claim Learn-app surfaces (atlas-verified 2026-05-14) ──────
   # These selectors were calibrated against ACE_Pixel_API_34_PS on the
@@ -345,7 +358,6 @@ selectors:
     purpose: "Free-text answer EditText in a CommCare/ODK form question. Best-guess from ODK Collect 2.62.0 chrome (CommCare embeds ODK). Used 3× in J1 (Bidiani Market name, '200' weight, 'Northern region farms' origin). NOT YET REACHED 2026-05-12 — Deliver app unreachable due to upstream 500. Verify against the live form question once reachable; common alternates: `org.commcare.dalvik:id/answer_text`, plain `android.widget.EditText` matched by parent prompt."
 
   form-photo-capture:
-    type: id
-    value: "org.commcare.dalvik:id/take_photo_button"
-    unverified: true
-    purpose: "Take Photo button on a CommCare photo-capture question (the one that opens the camera; the captured 2026-04-30 `camera-take-photo` selector targets the same id). NOT YET REACHED 2026-05-12 — Deliver app unreachable due to upstream 500. If a separate question-prompt EditText surfaces before the take_photo_button, this row may need to point at that prompt instead; verify when reachable."
+    type: text
+    value: "TAKE PICTURE"
+    purpose: "In-form image-capture entry button on a CommCare 2.63.0 photo question — text button 'TAKE PICTURE', NOT a `take_photo_button` resource-id (corrected per jjackson/ace#593 from the malaria-rdt/20260531-0739 deliver-product-photo.png capture). Mirrors `camera-take-photo`. Gallery alternative: 'CHOOSE IMAGE'."
