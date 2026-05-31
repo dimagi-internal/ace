@@ -132,7 +132,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - `{{partner_signatory_name}}`, `{{partner_signatory_title}}`, `{{partner_address}}` (left cell — Subcontractor)
      - Dimagi cell is hardcoded in the template (Lucina Tse, COO, Cambridge MA address) — no tokens for the right cell.
 
-6. **Write `run_state.yaml.phases.idea-to-design.products.work_order`** via `update_yaml_file` with `merge: 'two-level'`:
+6. **Write `run_state.yaml.phases.idea-to-design.products.work_order`** via `update_yaml_file` with `merge: 'deep'` (partial phase-child patch — `two-level` would replace the `design` block wholesale and clobber the sibling `products.pdd` written by `idea-to-pdd`, plus `status`/`steps`; #572/#587):
 
    ```yaml
    phases:

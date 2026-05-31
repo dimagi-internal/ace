@@ -179,7 +179,9 @@ Activate the opportunity and notify LLOs that they are live.
     ```
 
     Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
-    `merge: 'two-level'`. Sole writer of `products.launch`.
+    `merge: 'deep'` (partial patch of the phase child — `deep` preserves
+    the phase's `status`/`steps`; `two-level` would drop them, #572/#587).
+    Sole writer of `products.launch`.
 
 <!-- 0.13.116: gate-brief write step + ## Gate Brief section removed.
 The Phase 9 "Before llo-launch" Pause Point is unconditional in all

@@ -153,8 +153,17 @@ appId: org.commcare.dalvik
                 id: "org.commcare.dalvik:id/screen_suite_menu_list"
           commands:
             - takeScreenshot: "learn-tap-module-intermediate-${MODULE_NAME}"
+            # Body-scoped re-tap (mirrors Branch C). On the intermediate
+            # form-list screen the TOOLBAR TITLE also reads ${MODULE_NAME},
+            # so a bare text match (the old `${SELECTOR:learn-suite-row-by-name}`)
+            # resolved ambiguously to the non-tappable toolbar title and the
+            # form never opened (jjackson/ace#590, malaria-rdt/20260531-0739).
+            # `below: id: screen_suite_menu_list` keeps the tap on the
+            # (tappable) form row in the list body. Load-bearing.
             - tapOn:
-                ${SELECTOR:learn-suite-row-by-name}
+                text: "${MODULE_NAME}"
+                below:
+                  id: "org.commcare.dalvik:id/screen_suite_menu_list"
             - waitForAnimationToEnd:
                 timeout: 5000
             - extendedWaitUntil:

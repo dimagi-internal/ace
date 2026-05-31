@@ -48,6 +48,29 @@ no inline self-eval.
   RAG content didn't change but the prompt needs a tweak — the typical
   outcome of a `--quick` quality fail.
 
+## Sequencing contract — dependent OCS calls run STRICTLY serially (jjackson/ace#585)
+
+Every OCS call below that consumes an identifier produced by an earlier
+call (`create_collection` needs the cloned `experiment_id`; `upload`
+needs `collection_id` + the returned `file_ids`; `set_chatbot_pipeline`
+needs `pipeline_id`; `publish` / `get_chatbot_embed_info` need
+`experiment_id`) MUST be issued **one at a time, each AFTER the producing
+call's real result has flushed to context.** Do NOT batch dependent OCS
+calls in a single parallel block. Under OCS/Drive result-delivery
+latency, a real result can arrive several turns after its call; batching
+dependents makes it tempting to "fill the gap" with an invented
+placeholder id — the documented #1 Phase-5 derail (bednet-spot-check
+20260530-2015: duplicate collections 486/487, 403 "Invalid widget embed
+key" on placeholder `send_test_message`, and a `run_state` block written
+with fabricated `experiment_id`/`public_id`/`embed_key`).
+
+**NEVER fabricate, guess, or placeholder an OCS identifier.** Use only
+IDs returned by a real, flushed tool result. If a result hasn't arrived,
+WAIT for it — do not proceed with a stand-in. `classify_phase_writeback`
+checks block *shape*, not ID realness, so a fabricated-but-well-formed
+block passes structural validation; the only real guard is the live
+round-trip gate in Step 11.5 below.
+
 ## Process
 
 0. **Idempotency short-circuit (read state file first — runs before any
@@ -195,6 +218,21 @@ no inline self-eval.
     - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`, optional `last_prompt_patched_at` (set by `--prompt-patch` re-runs)
     - This file is the source of truth for idempotency — Step 0 reads it before any OCS call
 
+11.5. **Hard embed round-trip gate (mandatory — runs before the
+    `run_state` writeback, jjackson/ace#585).** The IDs about to be written
+    must correspond to a LIVE OCS object, not a value carried through a
+    latency window. Re-call `ocs_get_chatbot_embed_info({ experiment_id })`
+    fresh and assert the `public_id` + `embed_key` it returns are exactly
+    the ones captured in Steps 10–11. If they do not round-trip — or
+    `experiment_id` does not resolve to a live chatbot via
+    `ocs_get_chatbot({ experiment_id })` — **fail the phase loudly** with a
+    typed error naming the mismatch; do NOT write `products.ocs_chatbot`.
+    (Optional belt-and-suspenders: also confirm exactly one collection
+    named `ACE <opp-name>` exists via `ocs_list_*` to catch the
+    duplicate-collection symptom.) This is the structural backstop that
+    `classify_phase_writeback` cannot provide — it validates shape, not
+    whether the IDs are real. Only on a clean round-trip proceed to Step 12.
+
 12. **Write `products.ocs_chatbot` to `run_state.yaml`** so downstream
     readers (ace-web summary, llo-onboarding, Connect handoff) can read
     the chatbot identity directly from typed state without parsing the
@@ -213,7 +251,10 @@ no inline self-eval.
     ```
 
     Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
-    `merge: 'two-level'`. Sole writer. The `admin_url` is the OCS
+    `merge: 'deep'` (partial patch of the `ocs-setup` phase child —
+    `deep` preserves the phase's `status`/`steps`; `two-level` would
+    drop them, #572/#587). Sole writer of `products.ocs_chatbot`. The
+    `admin_url` is the OCS
     chatbot home page (auth-gated; useful for ACE operators with OCS
     access). The `/chatbots/embed/<public_id>/` URL once written by
     `ocs-widget-handoff` is a 404 — there's no standalone embed page,

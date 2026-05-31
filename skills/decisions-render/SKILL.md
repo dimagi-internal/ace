@@ -27,19 +27,26 @@ write the result to `decisions.gdoc` at one stable URL.
 
    Use `drive_list_folder` from the opp folder to find the run folder.
 
-2. **Run the renderer script**:
+2. **Render via the MCP atoms** (the canonical agent-drivable path). The
+   `scripts/decisions-render.ts` CLI entry is **not wired** (it requires a
+   live Drive client; its `import.meta.url === ...` branch exits with a
+   pointer to this skill). An agent drives the render directly through the
+   ace-gdrive atoms — do NOT shell out to the script:
 
-   ```bash
-   npx tsx scripts/decisions-render.ts <run-folder-fileId>
-   ```
-
-   The script:
-   - Reads `decisions.yaml` via `drive_read_file`.
-   - Parses and validates via `parseDecisionsYaml` from `lib/decisions-schema.ts`.
-   - Renders via `renderDecisionsLog` from `lib/decisions-renderer.ts` (pure function — produces a list of Google Docs API requests).
-   - Finds-or-creates `decisions.gdoc` via `drive_create_file` (with `findOrCreate: true`).
-   - Clears existing body (single `deleteContentRange` request covering the doc).
-   - Applies the rendered requests via `docs_batch_update`.
+   - `drive_read_file` on `decisions.yaml` in the run folder; parse + validate
+     the structure (schema: `lib/decisions-schema.ts § parseDecisionsYaml`).
+   - Render the rows to a prose document. The supported atom path is
+     `mcp__plugin_ace_ace-gdrive__drive_create_doc_from_markdown` with
+     `findOrCreate: true` and a stable `name: decisions` in the run folder —
+     each row renders an `AI-default:` line, an `Override:` line when the row
+     is overridden, and a plain `Status: applied | overridden` line (see
+     § Products for the exact shape). This is the path the orchestrator and
+     phase agents use; it produces an equivalent doc to the library renderer.
+   - (Programmatic/library use only: `renderDecisionsToDoc` in
+     `scripts/decisions-render.ts` + `renderDecisionsLog` in
+     `lib/decisions-renderer.ts` produce a list of Google Docs API requests
+     for `docs_batch_update`. These are exercised by the unit tests and
+     available for future CLI wiring, but are not the agent entry point.)
 
 3. **Confirm the gdoc URL** by reading the create result's `webViewLink` and emit it on stdout. The orchestrator captures this URL for the gate brief's `Decisions Log:` line.
 

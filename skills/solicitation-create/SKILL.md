@@ -497,8 +497,10 @@ contract.
       program's integer `id`.
    3. **Cache:** write the result to
       `opp.yaml.connect.program.labs_int_id` via `update_yaml_file`
-      (`merge: 'two-level'` — `connect:` is the top-level key with
-      `program` as a sub-object). This is opp-level state (the
+      (`merge: 'deep'` — a partial patch of `connect.program`;
+      `two-level` would replace the `program` sub-object wholesale and
+      drop the existing `program.id`/`program.url`). This is opp-level
+      state (the
       program is reused across runs, so its labs int mirror is also
       opp-level). Also carry the value into this run's
       `phases.solicitation-management.products.solicitation.labs_program_id`
@@ -689,7 +691,7 @@ contract.
 
 9. **Write the consolidated solicitation outputs block** to the
    current run's `run_state.yaml.phases.solicitation-management.products.solicitation`
-   via `update_yaml_file` + `merge: 'two-level'`:
+   via `update_yaml_file` + `merge: 'deep'`:
 
    ```yaml
    phases:
@@ -713,9 +715,11 @@ contract.
              award_amount: null
    ```
 
-   The two-level merge replaces `products:` wholesale under
-   `solicitation-management`. This skill is the sole writer of
-   `products.solicitation` within the run; `solicitation-review`
+   `deep` merges `products.solicitation` while preserving sibling keys
+   on the `solicitation-management` phase block (`status`, `steps`, and
+   `products.selected_llo`) at every depth — `two-level` would replace
+   the whole phase block wholesale (#572/#587). This skill is the sole
+   writer of `products.solicitation` within the run; `solicitation-review`
    updates the same block in place at award time (within the same
    run).
 

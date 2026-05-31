@@ -62,11 +62,15 @@ solicitation and selecting one winner, Phase 9 onboards exactly one org.
      `run_state.yaml`.
 
    Capture the returned `program_application_id` and write it back via
-   `update_yaml_file` (`merge: 'two-level'`) into the current run's
+   `update_yaml_file` (`merge: 'deep'`) into the current run's
    `phases.solicitation-management.products.selected_llo.program_application_id`
-   for the auto-accept step (2a). Carry the full `products.selected_llo`
-   payload to avoid clobbering siblings under two-level merge. Single
-   org, single call — no roster iteration.
+   for the auto-accept step (2a). `deep` merges just that one field
+   while preserving every sibling at every depth (the rest of
+   `selected_llo`, `products.solicitation`, and the phase's
+   `status`/`steps`) — so there's no need to re-send the full
+   `products.selected_llo` payload, and no risk of the `two-level`
+   whole-phase-block clobber (#572/#587). Single org, single call — no
+   roster iteration.
 
    **2a. (Optional, ACE-driven dogfood runs only.)** If the target org
    is an ACE-controlled fixture and there's no real LLO who will accept

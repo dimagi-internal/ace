@@ -153,6 +153,17 @@ Two modes:
    contract — surface in the run summary as a `[WARN]` and recommend
    the operator open the workflow in labs UI to inspect.
 
+   **Also check for silently-zeroed filtered counts (jjackson/ace#595).**
+   The preview returning rows is NOT sufficient. If the schema has `count`
+   fields with a `filter_path`/`filter_value` that share a `field_path`
+   with a bare `last`/`first`/`list` field, the labs SQL generator
+   collapses the shared-path extraction and the filtered counts read **0**
+   (not null — so no schema error fires). Inspect the preview: any
+   `filter_path` `count` field that is uniformly 0 across rows that have
+   data is the smoking gun — remove the colliding bare aggregation on that
+   path (see `synthetic-workflow-seed` § Step 4 shared-path guardrail) and
+   re-preview before declaring the pipeline healthy.
+
    We can't yet headlessly screenshot the rendered JSX from this
    skill (would require driving the labs UI through Playwright);
    visual eval lives in `synthetic-workflow-polish-eval` (Stage 4).

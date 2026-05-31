@@ -78,12 +78,21 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.error("Usage: npx tsx scripts/decisions-render.ts <run-folder-fileId>");
     process.exit(1);
   }
-  // CLI mode requires a real Drive client wired to the ace-gdrive MCP.
-  // The skill body (skills/decisions-render/SKILL.md, Task 5) wires
-  // those atoms into a DecisionsRenderDriveClient at invocation time.
-  // Direct CLI mode is not yet wired — invoke via the skill instead.
+  // Direct CLI mode is intentionally not wired: it would require a live
+  // Drive client bound to the ace-gdrive MCP, which only exists inside a
+  // Claude Code session. The canonical agent path drives the render
+  // through the ace-gdrive atoms directly (drive_read_file +
+  // drive_create_doc_from_markdown with findOrCreate) — see
+  // skills/decisions-render/SKILL.md § Process Step 2. The
+  // `renderDecisionsToDoc` / `renderDecisionsLog` functions above remain
+  // importable for tests and any future wiring. Standalone phase agents
+  // (e.g. idea-to-design) use the same MCP-atom path; they do not shell
+  // out to this script.
   console.error(
-    "Direct CLI mode not yet wired — invoke via /ace:step decisions-render <opp>/<run-id> instead.",
+    "scripts/decisions-render.ts has no standalone CLI: render via the " +
+      "ace-gdrive atoms (drive_read_file + drive_create_doc_from_markdown) " +
+      "as documented in skills/decisions-render/SKILL.md § Process Step 2, " +
+      "or /ace:step decisions-render <opp>/<run-id>.",
   );
   process.exit(2);
 }

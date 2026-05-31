@@ -300,15 +300,18 @@ export class RestBackend implements ConnectClient {
     if (status !== 201 || !data) await this.raiseForStatus(raw, path, 'POST');
     const opp = opportunityFromResponse(data!, args.organization_slug);
 
-    // Auto-activate by default. The create response's `active: true` is
-    // set in the Connect DB column but the activation hook hasn't run
-    // yet — downstream endpoints (sendFlwInvite's `/invite_users/`)
-    // reject with "Opportunity must be active to invite users" until
-    // `/activate/` is POSTed. Verified live on malaria-itn-fgd
-    // 20260514-2352 Phase 4. The activate endpoint is idempotent.
-    // Set `auto_activate: false` to opt out (rare — for intentional
-    // drafts).
-    if (args.auto_activate !== false) {
+    // Activate ONLY when the caller explicitly opts in (default false,
+    // jjackson/ace#584). Activation requires at least one PaymentUnit,
+    // which does not exist at create time in the documented
+    // create → create_payment_unit → activate flow. `auto_activate: true`
+    // before the PU exists fails transactionally ("At least one payment
+    // unit must exist before activating") and rolls back the ENTIRE
+    // create, leaving an orphan inactive opp and no opportunity_id. The
+    // skill creates the PU then calls `connect_activate_opportunity`
+    // (idempotent) — downstream endpoints (sendFlwInvite's
+    // `/invite_users/`) still require active. Pass true only when PU(s)
+    // already exist or a one-step activate is genuinely intended.
+    if (args.auto_activate === true) {
       await this.activateOpportunity({
         organization_slug: args.organization_slug,
         opportunity_id: opp.id,

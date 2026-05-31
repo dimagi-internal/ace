@@ -208,8 +208,11 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
    ```
 
    Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
-   `merge: 'two-level'` on the current run's `run_state.yaml`. This
-   skill is the sole writer of `products.pdd`.
+   `merge: 'deep'` on the current run's `run_state.yaml`. This skill is
+   the sole writer of `products.pdd`, but the `design` phase block also
+   carries `status`/`steps` and a sibling `products.work_order` (written
+   by `pdd-to-work-order`) — so this must be a `deep` partial-patch, not
+   `two-level` (which would replace the whole `design` block). #572/#587.
 
 8. **Render the decisions log to a human-readable Google Doc** by
    invoking the `decisions-render` skill against the run-id. The

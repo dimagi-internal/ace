@@ -168,6 +168,14 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
      - `passing_score`: 0–100 (from PDD § Quality Floor; default 80)
    - `deliver_app`: `{ hq_server_url, api_key, cc_domain, cc_app_id }`
      — `cc_app_id` MUST differ from `learn_app.cc_app_id` (server-validated)
+   - `auto_activate`: **pass `false` explicitly** (it is also the atom
+     default since #584). This skill's ordering is create (Step 4) →
+     create payment unit(s) (Step 6) → activate (Step 6.5). Activation
+     requires at least one PaymentUnit; `auto_activate: true` would try to
+     activate at create time before any PU exists, which Connect rejects
+     ("At least one payment unit must exist before activating") AND rolls
+     back the entire create — leaving no `opportunity_id` and an orphan
+     inactive opp. Create the draft here, then activate in Step 6.5.
 
    The response includes `opportunity_id` (UUID), the resolved app names,
    and arrays of `learn_modules` / `deliver_units` already synced from HQ.
@@ -558,11 +566,14 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
     ```
 
     Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
-    `merge: 'two-level'` on the current run's `run_state.yaml`. The
-    two-level merge preserves sibling `phases.<other-phase>` blocks
-    (and `connect-setup`'s own `status`, `steps`, etc.) while
-    replacing `products:` wholesale — which is the intended shape
-    because this skill is the sole writer of `products.connect`.
+    `merge: 'deep'` on the current run's `run_state.yaml`. This is a
+    *partial* patch of the `connect-setup` phase child (just
+    `products.connect`), so `two-level` would replace the entire
+    `connect-setup` block wholesale — dropping `connect-setup`'s own
+    `status`, `steps`, etc. when the orchestrator already set them (the
+    #572/#587 lost-update footgun). `deep` recursively merges
+    `products.connect` while preserving every sibling at every depth.
+    This skill is still the sole writer of `products.connect`.
 
     Phase 8's `synthetic-data-generate` reads
     `phases.connect-setup.products.connect.opportunity.labs_int_id` from
