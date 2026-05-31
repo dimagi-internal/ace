@@ -845,6 +845,65 @@ describe('MobileClient.ensureAvdRunning', () => {
     const client = new MobileClient({ avd, maestro });
     await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(/Maestro driver.*unhealthy after recovery/);
   });
+
+  // jjackson/ace#589 — the boot→driver→recipe handoff race. The driver probe
+  // passes, then the gRPC channel drops on the registration recipe's first
+  // deviceInfo. The funnel retries itself (cold-boot is idempotent) instead of
+  // making the agent re-dispatch by hand.
+  describe('boot-race retry', () => {
+    function clientWithStubbedHeal() {
+      const avd = {
+        ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+      } as any;
+      const client = new MobileClient({ avd, maestro: {} as any });
+      // Isolate the retry loop: the driver assert + restore are exercised by
+      // their own tests above; here we script their resolution per attempt.
+      vi.spyOn(client, 'assertMaestroDriverHealthy').mockResolvedValue(undefined);
+      return { avd, client };
+    }
+
+    it('re-runs the whole funnel once on a boot-race error, then succeeds', async () => {
+      const { avd, client } = clientWithStubbedHeal();
+      const restore = vi
+        .spyOn(client, 'restoreDeviceUserState')
+        .mockRejectedValueOnce(
+          new Error(
+            'register_test_user part A failed: io.grpc.StatusRuntimeException: UNAVAILABLE\n' +
+              'Caused by: dadb.AdbStreamClosed: ADB stream is closed for localId: 97188347',
+          ),
+        )
+        .mockResolvedValueOnce({ attempted: true, classified_as: 'ready', steps: [] } as any);
+
+      const r = await client.ensureAvdRunning('AVD');
+      expect(r.serial).toBe('emulator-5554');
+      expect(r.heal?.deviceUserState).toMatchObject({ classified_as: 'ready' });
+      // Both the cold-boot and the restore ran twice — the full idempotent funnel.
+      expect(avd.ensureAvdRunning).toHaveBeenCalledTimes(2);
+      expect(restore).toHaveBeenCalledTimes(2);
+    });
+
+    it('does NOT retry a non-boot-race failure (throws on first attempt)', async () => {
+      const { avd, client } = clientWithStubbedHeal();
+      const restore = vi
+        .spyOn(client, 'restoreDeviceUserState')
+        .mockRejectedValue(new Error('register_test_user part B failed: element not found'));
+
+      await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(/part B failed/);
+      expect(avd.ensureAvdRunning).toHaveBeenCalledTimes(1);
+      expect(restore).toHaveBeenCalledTimes(1);
+    });
+
+    it('gives up after the bounded attempts when the boot-race persists', async () => {
+      const { avd, client } = clientWithStubbedHeal();
+      const restore = vi
+        .spyOn(client, 'restoreDeviceUserState')
+        .mockRejectedValue(new Error('dadb.AdbStreamClosed: ADB stream is closed for localId: 1'));
+
+      await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(/AdbStreamClosed/);
+      expect(avd.ensureAvdRunning).toHaveBeenCalledTimes(2);
+      expect(restore).toHaveBeenCalledTimes(2);
+    });
+  });
 });
 
 describe('classifyDeviceUserState', () => {

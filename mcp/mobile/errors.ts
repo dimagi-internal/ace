@@ -112,6 +112,44 @@ export class NoInviteSuspectedError extends MobileError {
   }
 }
 
+/**
+ * Recognises the transient boot→driver-install→recipe handoff race where a
+ * freshly cold-booted emulator's Maestro gRPC channel passes the readiness
+ * probe but then drops on the VERY FIRST `deviceInfo` call of the next recipe
+ * (the registration walk). Canonical signatures, observed on
+ * malaria-rdt/20260531-0739 Phase 6 (jjackson/ace#589):
+ *
+ *   io.grpc.StatusRuntimeException: UNAVAILABLE
+ *   Caused by: dadb.AdbStreamClosed: ADB stream is closed for localId: ...
+ *   [ERROR] Not able to reach the gRPC server while processing deviceInfo command
+ *
+ * The only recovery is to re-run the idempotent cold-boot funnel
+ * (`MobileClient.ensureAvdRunning`), which is now done automatically rather
+ * than surfaced as a typed throw the agent has to manually re-dispatch.
+ * Matched on message/stack text so it fires regardless of which error class
+ * wraps the underlying Maestro failure (it surfaces as a bare `Error` from
+ * `registerTestUser`'s `part A failed:` path).
+ */
+const TRANSIENT_BOOT_RACE_PATTERNS: RegExp[] = [
+  /AdbStreamClosed/i,
+  /ADB stream is closed/i,
+  /StatusRuntimeException:\s*UNAVAILABLE/i,
+  /Not able to reach the gRPC server/i,
+];
+
+export function isTransientBootRaceError(err: unknown): boolean {
+  if (err == null) return false;
+  const parts: string[] = [];
+  if (err instanceof Error) {
+    parts.push(err.message);
+    if (err.stack) parts.push(err.stack);
+  } else {
+    parts.push(String(err));
+  }
+  const haystack = parts.join('\n');
+  return TRANSIENT_BOOT_RACE_PATTERNS.some((re) => re.test(haystack));
+}
+
 export class AdbError extends MobileError {
   constructor(public readonly subcommand: string, public readonly exitCode: number, stderr: string) {
     super('ADB_ERROR', `adb ${subcommand} failed (exit ${exitCode}): ${stderr.slice(0, 200)}`);
