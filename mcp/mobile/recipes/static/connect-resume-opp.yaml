@@ -1,17 +1,16 @@
 # Navigate Connect's opp list to the target opp's In-Progress card and
-# tap Resume, landing on the post-Learn certificate/opp-detail surface
-# (atlas § 8) that deliver-launch.yaml consumes.
+# tap its CTA (Resume OR Proceed), landing on the post-Learn
+# certificate/opp-detail surface (atlas § 8) that deliver-launch.yaml consumes.
 #
 # Pre-state: Connect opp-list (connect_fragment_jobs_list) visible;
-# the target opp is already Learn-complete or in-progress (placed in the
-# "In Progress" section with a btn_resume card button). Warm-session only
-# — assumes the journey-learn leg just completed Learn in this dispatch.
+# the target opp is in the "In Progress" section. Warm-session only —
+# assumes the journey-learn leg just completed Learn in this dispatch.
 #
 # Post-state: the certificate/opp-detail surface (atlas § 8):
 # either the "Congratulations" certificate overlay or the
 # connect_learning_button ("VIEW OPPORTUNITY DETAILS") on the opp-detail
-# screen — whichever Connect renders on Resume after Learn completion.
-# deliver-launch.yaml handles both variants and drives forward from here.
+# screen — whichever Connect renders after the CTA tap. deliver-launch.yaml
+# handles both variants and drives forward from here.
 #
 # Required env vars (pass via mobile_run_recipe.envVars):
 #   OPP_NAME — display name of the opportunity (verbatim from
@@ -19,15 +18,29 @@
 #               Must include the run-id suffix so the substring match is
 #               unique on the card list (same contract as connect-claim-opp.yaml).
 #
-# SELECTOR STATUS — pending live confirmation (see plan Task 3.5):
-#   `btn_resume` and `connect_fragment_jobs_list` are reused verbatim
-#   from connect-claim-opp.yaml, where they are production-proven. They
-#   are NOT yet dump-confirmed on THIS specific surface — the
-#   Learn-complete, pre-Deliver-download opp-list "In Progress" card.
-#   The atlas (docs/mobile-atlas/connect-2.62.0.md § 8) marks this
-#   surface's resource-ids as not-yet-captured. The live-AVD verification
-#   run finalizes/corrects these against a fresh mobile_capture_ui_dump
-#   before this recipe is relied on in a real Phase 6 capture.
+# SELECTOR STATUS — card list dump-confirmed live on ACE_Pixel_API_34,
+# CommCare 2.63.0, 2026-05-31 (jjackson/ace#591):
+#   - Each opp tile is one `rootCardView`; its inner (unnamed) ViewGroup
+#     holds `tvTitle` + the CTA button (`btn_resume`) + `btn_view_info` as
+#     SIBLING direct children. (The secondary button is `btn_view_info`,
+#     NOT `btn_view_opportunity`.)
+#   - A Learn-IN-PROGRESS card shows `btn_resume` (text "Resume").
+#   - A Learn-100%-COMPLETE card shows a "Proceed" CTA instead (jjackson/ace#591
+#     screenshot evidence). Its resource-id was NOT dump-confirmable this
+#     session (no Learn-complete opp on the calibration device), so the
+#     Proceed branch matches by its text label — which is fine because the
+#     tap is card-scoped (see below) and therefore leak-proof regardless.
+#
+# WHY card-scoping (the #591 fix): the prior recipe tapped
+# `id: btn_resume, below: text: ${OPP_NAME}` — which matches the FIRST
+# btn_resume in DOCUMENT ORDER below the title. On a Learn-complete target
+# (whose own CTA is "Proceed", not "Resume") this leaked to a LATER tile's
+# Resume button and resumed the WRONG opp. The fix scopes every CTA tap to
+# the card whose subtree directly contains ${OPP_NAME} via
+# `childOf: { containsChild: { text: ${OPP_NAME} } }`. Validated live: this
+# selector resolves to exactly the target card's button. `containsChild` is
+# DIRECT-child only, which is why it pins to the inner ViewGroup (title +
+# button siblings) and not the outer rootCardView/RecyclerView.
 appId: org.commcare.dalvik
 ---
 # Confirm we are on the opp-list.
@@ -46,29 +59,62 @@ appId: org.commcare.dalvik
 - assertVisible:
     text: ${OPP_NAME}
 
-# Scroll btn_resume into view below the target title before tapping.
-# Without this, the title may sit at the viewport bottom with the button
-# clipped below the fold — matching the pattern from connect-claim-opp.yaml.
-- scrollUntilVisible:
-    element:
-      id: "org.commcare.dalvik:id/btn_resume"
-      below:
-        text: ${OPP_NAME}
-    direction: DOWN
-    timeout: 10000
-    visibilityPercentage: 60
-
 - takeScreenshot: "connect-resume-opp-tile"
 
-# Tap Resume on the In-Progress card scoped to our target opp.
-- tapOn:
-    id: "org.commcare.dalvik:id/btn_resume"
-    below:
-      text: ${OPP_NAME}
-    retryTapIfNoChange: true
+# Tap the target card's CTA, STRICTLY scoped to the card whose subtree
+# directly contains ${OPP_NAME}. Two label variants depending on Learn
+# state; whichever is present in THIS card is tapped. Maestro auto-scrolls
+# the tap target into view, so no separate button-scroll step is needed.
+#
+# Branch A — Learn in progress: the card's CTA is `btn_resume`.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/btn_resume"
+        childOf:
+          containsChild:
+            text: ${OPP_NAME}
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/btn_resume"
+          childOf:
+            containsChild:
+              text: ${OPP_NAME}
+          retryTapIfNoChange: true
 
-# Post-Resume: Connect surfaces either the certificate screen (atlas § 8)
+# Branch B — Learn complete: the card's CTA is the "Proceed" button
+# (resource-id not yet dump-confirmed; matched by label, card-scoped).
+# Guard is POSITIVE ("Proceed" present in the target card), NOT
+# "btn_resume not visible" — otherwise, after Branch A taps Resume and
+# navigates away, a "btn_resume not visible" guard would become true and
+# this branch would wrongly fire (caught live 2026-05-31). Only one CTA
+# label is present per card, so the two positive guards are mutually
+# exclusive, and after either taps + navigates, neither re-fires.
+- runFlow:
+    when:
+      visible:
+        text: "Proceed"
+        childOf:
+          containsChild:
+            text: ${OPP_NAME}
+    commands:
+      - tapOn:
+          text: "Proceed"
+          childOf:
+            containsChild:
+              text: ${OPP_NAME}
+          retryTapIfNoChange: true
+
+# FAIL LOUD (#591): a correct CTA tap leaves the jobs list. If we are still
+# on connect_fragment_jobs_list, the tap was a no-op or hit the wrong
+# surface — halt here with a named failure instead of silently proceeding
+# into the wrong opp's app (the exact silent wrong-opp resume #591 reported).
+- extendedWaitUntil:
+    notVisible:
+      id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+    timeout: 10000
+
+# Post-CTA: Connect surfaces either the certificate screen (atlas § 8)
 # or the opp-detail screen with connect_learning_button. Both are the
-# correct pre-state for deliver-launch.yaml; no additional wait needed
-# beyond what deliver-launch.yaml's own branch guards handle.
+# correct pre-state for deliver-launch.yaml.
 - takeScreenshot: "connect-resume-opp-landed"
