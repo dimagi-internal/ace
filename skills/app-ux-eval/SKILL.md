@@ -133,14 +133,14 @@ dimensions:
   capture_robustness:   { score: 6.0, weight: 0.30 }   # fitness: does the form refuse bad data on negative-path journeys
 
 per_item:                # per-journey verdicts; key is the journey id (a meaningful slug) from app-test-cases.yaml
-  - ref: "journey-deliver-yes"
-    journey: "journey-deliver-yes"
+  - ref: "journey-deliver-submit"
+    journey: "journey-deliver-submit"
     is_smoke: true
     score: 9.0
     verdict: pass
     note: "Final screenshot shows submission confirmation; all dimensions clear"
-  - ref: "journey-deliver-no"
-    journey: "journey-deliver-no"
+  - ref: "journey-deliver-alt-answer"
+    journey: "journey-deliver-alt-answer"
     is_smoke: false
     score: 5.0
     verdict: fail
@@ -169,7 +169,7 @@ Required top-level fields:
 - `per_item` — per-journey verdicts (canonical key per
   `skills/README.md § QA vs Eval`); `ref`/`journey` is the journey's
   `journey-`-prefixed slug id from `app-test-cases.yaml` (e.g.
-  `journey-learn-happy-path`, `journey-deliver-yes`), each entry includes a `journey` domain-specific subkey
+  `journey-learn-pass`, `journey-deliver-submit`), each entry includes a `journey` domain-specific subkey
 - `overall_score`, `verdict` (`pass | fail`)
 
 Also append a row to
@@ -231,5 +231,5 @@ released build IDs — see Task 7 in the shallow/deep split plan).
 | 2026-05-04 | Initial version. Deep-only LLM-as-Judge for app UX. Five dimensions (clarity, flow_predictability, error_recovery, time_budget, journey_completion) with hard-deductions. Used by /ace:qa-deep and the Phase 8 gate. Introduced as part of the shallow/deep QA split (spec: `docs/superpowers/specs/2026-05-04-shallow-deep-qa-split-design.md`). | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Inputs repointed to `2-scenarios/pdd-to-app-journeys.md`, `3-commcare/app-test-cases.yaml`, `6-qa-and-training/screenshots/` + `6-qa-and-training/app-screenshot-capture_manifest.yaml`, `3-commcare/app-deploy_summary.md`. Verdict output is now `6-qa-and-training/app-ux-eval_verdict-deep.yaml` (per manifest). Calibration audit trail at `ACE/<opp>/eval-calibration/app-ux-eval-runs.md` corrected to opp-level (was incorrectly under `runs/<run-id>/`). Phase references updated 6 → 7 to match the 8-phase topology. No behavior change beyond paths. | ACE team |
 | 2026-05-31 | **Meaningful journey ids.** `per_item[].ref`/`journey` keys now use the journey's meaningful slug id (`learn-happy-path`, `deliver-yes`) from `app-test-cases.yaml` instead of `J<n>` ordinals; example verdict updated. See `skills/app-test-cases/SKILL.md § Journey id convention`. | ACE team |
-| 2026-05-31 | **`journey-` prefix.** `per_item[].ref`/`journey` example values now carry the `journey-` prefix (`journey-deliver-yes`, `journey-deliver-no`) to match the amended id convention. See `skills/app-test-cases/SKILL.md § Journey id convention`. | ACE team |
+| 2026-05-31 | **`journey-` prefix.** `per_item[].ref`/`journey` example values now carry the `journey-` prefix (`journey-deliver-submit`, `journey-deliver-alt-answer`) to match the amended id convention. See `skills/app-test-cases/SKILL.md § Journey id convention`. | ACE team |
 | 2026-05-29 | **Fitness dim + time_budget fix (ITN post-mortem).** Added `capture_robustness` (0.30) — grades negative-path journeys (blank-required / out-of-range / low-GPS / "Other") for whether the form *refuses bad data*, with an adversarial-coverage cap (zero negative-path journeys → ≤2, not pass). Fixed `time_budget`: being far UNDER budget is now a thinness WARN (≤2), not a 9.5 — the old rule only penalized "too slow," which rewarded the ITN-style skeletal build. Reweighted to 6 dims (capture_robustness heaviest at 0.30). Per `_eval-template.md § out-of-chain fitness requirement` + `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. Note: in-`/ace:run` build-fitness gating is handled cheaply (no AVD) by the revised `pdd-to-*-app-eval` blueprint checks; this deep screenshot check is complementary. | ACE team |
