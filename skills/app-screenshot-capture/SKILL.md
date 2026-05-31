@@ -64,17 +64,28 @@ master yaml present but recipes missing — is the canonical "upstream
 incomplete output" failure mode. Catch it here before AVD wall-clock
 burns.
 
-Read `app-test-cases.yaml`. Filter `journeys[]` to entries with
-`is_smoke: true`, then group by the `app:` field. Run these checks
-in order. Halt at the first failure with a structured PLATFORM-tag
-auto_surfaced entry naming the exact remediation command:
+Read `app-test-cases.yaml`. **Filter `journeys[]` to entries with
+`is_smoke: true`** (this is the only set Phase 6 walks). Deep
+(non-smoke) journeys carry `recipe: deferred` — Phase 3 does NOT author
+their recipe files (they are generated lazily by `/ace:qa-deep`; see
+`skills/app-test-cases/SKILL.md § Products` + jjackson/ace#605). This
+skill never reads or runs deep journeys, so a `recipe: deferred` entry
+is expected and must NOT be treated as a missing-recipe failure. Scope
+every check below to the `is_smoke: true` subset. Then group the smokes
+by the `app:` field. Run these checks in order. Halt at the first
+failure with a structured PLATFORM-tag auto_surfaced entry naming the
+exact remediation command:
 
 | Failure mode | PLATFORM message | Remediation |
 |---|---|---|
 | Master yaml has zero `is_smoke: true` journeys | `app-test-cases.yaml has no is_smoke:true journeys; upstream Phase 3 (app-test-cases) emitted no smoke set` | `/ace:step app-test-cases <opp>/<run-id>` |
 | `app: learn` smoke count != 1 OR `app: deliver` smoke count != 1 | `app-test-cases.yaml smoke set malformed: expected exactly one is_smoke:true journey per app, got learn=N deliver=M` | `/ace:step app-test-cases <opp>/<run-id>` |
 | `3-commcare/recipes/` subfolder does not exist on Drive | `app-test-cases.yaml declares is_smoke:true journeys but 3-commcare/recipes/ subfolder is missing — upstream Phase 3 produced incomplete output (master yaml without per-journey recipes)` | `/ace:step app-test-cases <opp>/<run-id>` BEFORE retrying this skill |
-| One or more smoke journeys' `recipe_path` doesn't resolve to a real file | `recipe_path journey-<app>.yaml referenced by app-test-cases.yaml does not resolve under 3-commcare/recipes/ — upstream Phase 3 produced an incomplete output set` | `/ace:step app-test-cases <opp>/<run-id>` BEFORE retrying |
+| One or more **smoke** journeys' `recipe_path` doesn't resolve to a real file | `recipe_path journey-<app>.yaml referenced by app-test-cases.yaml does not resolve under 3-commcare/recipes/ — upstream Phase 3 produced an incomplete output set` | `/ace:step app-test-cases <opp>/<run-id>` BEFORE retrying |
+
+(A non-smoke journey with `recipe: deferred` and no recipe file is NOT a
+failure — those are generated on demand by `/ace:qa-deep`. Only the
+`is_smoke: true` journeys are checked here.)
 
 Each of these halts writes the **incomplete-mode verdict shape** (see
 Step 9 below) with `verdict: incomplete` and the matching PLATFORM
@@ -711,6 +722,7 @@ Notes:
 | 2026-05-27 | **Recipe naming convention.** Screenshot dirs updated from `<journey-id>/` to `<recipe-base>/` (`journey-learn/`, `journey-deliver/`). Recipe read references updated from `J*.yaml` to `journey-*.yaml`. Structural verdict `per_item` refs changed from `ref: "J1.yaml"` to `ref: learn` / `ref: deliver`. No runtime behavior change. See spec 2026-05-27-phase6-learn-deliver-decoupling. | ACE team |
 | 2026-05-31 | **Meaningful journey ids.** The manifest's journey-id reference is now a meaningful slug (`learn-happy-path` / `deliver-yes`) from `app-test-cases.yaml` instead of `J<n>`. Pairs with the descriptive recipe filenames / screenshot dirs already in place. See `skills/app-test-cases/SKILL.md § Journey id convention`. | ACE team |
 | 2026-05-31 | **`journey-` prefix.** The manifest's journey-id reference examples now carry the `journey-` prefix (`journey-learn-pass` / `journey-deliver-submit`) to match the amended id convention. See `skills/app-test-cases/SKILL.md § Journey id convention`. | ACE team |
+| 2026-05-31 | **Tolerate `recipe: deferred` (lazy deep recipes, #605).** Phase 3 now authors recipe files only for the two `is_smoke: true` journeys; deep journeys carry `recipe: deferred` and have no file (generated on demand by `/ace:qa-deep`). Step 2's pre-flight is scoped explicitly to the `is_smoke: true` subset, and a deferred deep journey with no recipe file is no longer a missing-recipe failure. This skill already only walked the smokes — this change makes the deferred-deep state explicitly non-fatal. | ACE team |
 | 2026-05-27 | **Two-leg capture split.** Step 5 rewritten as independent Learn leg + Deliver leg. Learn always runs first; a Deliver failure (or missing recipe) no longer suppresses Learn screenshots. Per-app `per_item` verdict mapping table added (pass/fail/incomplete/blocked-by-learn outcomes). Coverage rubric updated: "both legs attempted; Learn always; Deliver iff Learn completed." See spec 2026-05-27-phase6-learn-deliver-decoupling. | ACE team |
 | 2026-05-06 | **Step 2 input-completeness pre-flight** — restructured the post-Step-1 logic into an explicit failure-mode table that distinguishes upstream Phase 3 incomplete output (master yaml without recipes) from smoke-flag malformation. Each failure halts with a named PLATFORM auto_surfaced message + the exact `/ace:step` remediation command, and writes `verdict: incomplete` (not `fail` — upstream gaps aren't smoke failures). Surfaced by leep-paint-collection run 20260506-1440 where a Phase 3 dispatch paraphrased the `app-test-cases` SKILL contract and elided the per-journey recipe outputs; `app-screenshot-capture` halted correctly but the operator-facing message conflated the failure mode with general "missing input" diagnostics. See jjackson/ace#106 finding #3 + #16. | ACE team |
 | 2026-05-07 | **Step 5 anyone-with-link via `drive_upload_binary({shareAnyoneWithLink: true})`** — replaces the previous unfulfillable contract (the SKILL named `drive.permissions.create` but no MCP atom implemented it). The new flag sets `role: reader, type: anyone` atomically at upload time, eliminating the "deck builds without errors but slides are empty" failure mode. Standalone `drive_set_anyone_with_link({fileId})` atom also added for retroactive sharing. See jjackson/ace#115 finding #3. | ACE team |

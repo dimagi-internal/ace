@@ -1,7 +1,7 @@
 ---
 description: Run deep QA (OCS + apps) against an existing opportunity. Manual gate, not part of /ace:run.
 argument-hint: <opp-name> [--ocs-only | --apps-only]
-allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion, mcp__plugin_ace_ace-mobile__mobile_run_recipe]
+allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion, mcp__plugin_ace_ace-mobile__mobile_run_recipe, mcp__plugin_ace_ace-mobile__mobile_resolve_selectors, mcp__plugin_ace_ace-mobile__mobile_validate_recipe, mcp__plugin_nova_nova__get_form, mcp__plugin_nova_nova__get_app]
 ---
 
 # /ace:qa-deep — Manual Deep QA
@@ -34,15 +34,47 @@ Writes (under `ACE/$1/runs/<run-id>/5-ocs/`):
 ### Stage B — Apps deep (skip if `--ocs-only`)
 
 1. Read `3-commcare/app-test-cases.yaml` for the run.
-2. For each journey: call `mobile_run_recipe` against a fresh AVD,
+2. **Lazy deep-recipe generation — generate the deferred deep recipes
+   ON DEMAND before executing them.** Phase 3 (`app-test-cases`) authors
+   Maestro recipe files only for the two `is_smoke: true` journeys; every
+   non-smoke (deep) journey is carried in the catalog with
+   `recipe: deferred` (the literal string, not a path) and has NO recipe
+   file yet. This is the only place deep recipes are generated (the
+   lazy-generation design tracked as jjackson/ace#605 — `/ace:run`'s
+   Phase 6 never needs them). For each catalog journey whose `recipe` is
+   `deferred`:
+   1. Compose the Maestro recipe using the **same composition rules
+      `app-test-cases` uses** — see `skills/app-test-cases/SKILL.md`
+      § Step 3 (static palette in `mcp/mobile/recipes/static/`, live form
+      labels from Nova `get_form` against the run's released app, the
+      MANDATORY quiz answer-tap rule, and the strict selector placeholder
+      gate). The Nova `app_id` is recorded in the catalog
+      (`nova_apps.{learn,deliver}`) / the Phase 3 app summaries, and
+      `get_form` still returns the as-built structure within a run, so
+      authoring at qa-deep time is safe — the "author before app-release
+      freezes it" concern does NOT apply within a single run.
+   2. Run the § Step 3.4 selector-resolution gate
+      (`mobile_resolve_selectors`) over the composed recipe; halt with a
+      `[BLOCKER]` if `unresolved` is non-empty (same contract as Phase 3).
+      Validate via `mobile_validate_recipe`.
+   3. Write the recipe to
+      `ACE/<opp>/runs/<run-id>/3-commcare/recipes/journey-<app>-<slug>.yaml`
+      and update that catalog entry's `recipe:` from `deferred` to the
+      written path (so a re-run of `/ace:qa-deep` is idempotent — already
+      -generated deep recipes are reused, not regenerated).
+   (Smoke journeys already have authored recipe files from Phase 3 — leave
+   them as-is.)
+3. For each journey: call `mobile_run_recipe` against a fresh AVD,
    capture screenshots into
    `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/`, appending
    entries to `6-qa-and-training/app-screenshot-capture_manifest.yaml`.
    Deep runs may overwrite or augment screenshots from a prior shallow
    Phase 6 run — the deep set is authoritative when both exist.
-3. Dispatch `app-ux-eval` to grade the captured set.
+4. Dispatch `app-ux-eval` to grade the captured set.
 
 Writes:
+- 3-commcare/recipes/journey-<app>-<slug>.yaml (lazily generated for each `recipe: deferred` deep journey on first qa-deep run)
+- 3-commcare/app-test-cases.yaml (updated — each generated deep journey's `recipe:` flipped from `deferred` to its written path)
 - 6-qa-and-training/screenshots/*.png (full per-journey set, supersedes any shallow run)
 - 6-qa-and-training/app-screenshot-capture_manifest.yaml (updated)
 - 6-qa-and-training/app-ux-eval_verdict-deep.yaml

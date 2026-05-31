@@ -17,11 +17,22 @@ nova_apps:
 # `is_smoke: true` marks the recipe Phase 6 runs in shallow mode (one
 # per app — the cheapest representative happy path).
 
-# recipe_path convention: 3-commcare/recipes/journey-<app>[-<slug>].yaml
-#   - the single is_smoke:true journey per app uses the bare name
-#     (journey-learn.yaml / journey-deliver.yaml)
-#   - additional journeys append a kebab-case slug from `name`
-#     (journey-learn-assessment-retry.yaml)
+# LAZY DEEP RECIPES (jjackson/ace#605): this catalog lists EVERY journey
+# (smoke + deep), but Phase 3 authors recipe FILES only for the two
+# `is_smoke: true` journeys. Each non-smoke (deep) journey carries
+# `recipe: deferred` (the literal string) instead of a recipe_path — its
+# recipe file is generated on demand by `/ace:qa-deep` the first time it
+# runs, using the same composition rules in app-test-cases/SKILL.md.
+# Phase 6 (shallow, in /ace:run) only walks the smokes, so deep recipes
+# would be wasted work up front.
+#
+# recipe convention:
+#   - is_smoke:true journeys: `recipe_path: 3-commcare/recipes/journey-<app>.yaml`
+#     (the single smoke per app uses the bare name — journey-learn.yaml /
+#     journey-deliver.yaml — and the file is authored at Phase 3)
+#   - deep (is_smoke:false) journeys: `recipe: deferred` (no file at Phase 3;
+#     /ace:qa-deep generates 3-commcare/recipes/journey-<app>-<slug>.yaml on
+#     demand and flips `recipe:` from `deferred` to that path)
 # Journey `id` is a `journey-`-prefixed, intent-derived kebab-case slug,
 # unique per opp — id = journey-<app>-<intent>, always starting with the
 # literal `journey-` prefix. e.g. journey-learn-pass,
@@ -66,6 +77,25 @@ journeys:
     fields_exercised:
       - {{field_id}}
     recipe_path: 3-commcare/recipes/journey-deliver.yaml
+    structural_pass_criteria:
+      - app_boots
+      - no_crash
+      - submission_confirmed
+    pdd_time_budget_seconds: {{from PDD if specified, else null}}
+
+  # Deep (non-smoke) journeys: listed in the catalog, but recipe is DEFERRED.
+  # No recipe file is authored at Phase 3 — /ace:qa-deep generates it on
+  # demand (jjackson/ace#605). Emit one entry per deep journey from
+  # expected-journeys.md, each with `recipe: deferred` (NOT a recipe_path).
+  - id: deliver-no
+    name: {{a negative/ineligible-visit journey from expected-journeys.md}}
+    app: deliver
+    is_smoke: false
+    forms_exercised:
+      - {{form_id_or_name}}
+    fields_exercised:
+      - {{field_id}}
+    recipe: deferred   # generated on demand by /ace:qa-deep — no Phase 3 file
     structural_pass_criteria:
       - app_boots
       - no_crash

@@ -32,8 +32,13 @@ Phase 6 needs them.
 
 ## Products
 
-- `3-commcare/app-test-cases.yaml` — per-journey test entries (one per journey, exactly one `is_smoke: true` per app)
-- `3-commcare/recipes/journey-<app>[-<slug>].yaml` — one Maestro recipe per journey. The single `is_smoke: true` journey per app uses the bare name (`journey-learn.yaml`, `journey-deliver.yaml`); additional journeys append a kebab-case slug from the journey title (`journey-learn-assessment-retry.yaml`). Each journey's `id` in `app-test-cases.yaml` is a meaningful `journey-`-prefixed kebab-case slug (`journey-learn-pass`, `journey-deliver-submit`) — see § Journey id convention; `recipe_path` points at the descriptive file.
+- `3-commcare/app-test-cases.yaml` — the full journey **catalog**: per-journey test entries for EVERY journey (smoke + deep), one per journey, exactly one `is_smoke: true` per app. The catalog documents the intended coverage; it lists every journey regardless of whether its recipe file exists yet.
+- `3-commcare/recipes/journey-<app>[-<slug>].yaml` — a Maestro recipe **only for the `is_smoke: true` journeys** (the two smokes: `journey-learn-pass` → `journey-learn.yaml`, `journey-deliver-submit` → `journey-deliver.yaml`). The single `is_smoke: true` journey per app uses the bare name (`journey-learn.yaml`, `journey-deliver.yaml`). Each journey's `id` in `app-test-cases.yaml` is a meaningful `journey-`-prefixed kebab-case slug (`journey-learn-pass`, `journey-deliver-submit`) — see § Journey id convention; for a smoke journey, `recipe:` points at the descriptive file.
+
+**Deep recipes are generated lazily — NOT at Phase 3.** Phase 6 (shallow, inside `/ace:run`) only ever walks the `is_smoke: true` journeys, one per app. The non-smoke (deep) journeys are consumed exclusively by `/ace:qa-deep`, which is a manual gate that is frequently not run. Authoring + persisting a Maestro recipe for every deep journey up front is therefore wasted work + clutter. So:
+
+- This skill writes recipe files **only** for the smoke journeys.
+- For every non-smoke (deep) journey, the catalog entry's `recipe:` value is the literal string `deferred` (NOT a path). `/ace:qa-deep` generates the missing deep recipes on demand — using the SAME composition rules in this SKILL.md (static palette + live `get_form` labels + selector-resolution gate) — the first time it runs against the run, because the Nova `app_id` and `get_form` still return the as-built app structure within a run (the "author before app-release freezes it" concern does not apply within a single run). See `commands/qa-deep.md § Stage B`. This is tracked as jjackson/ace#605.
 
 ### Journey id convention
 
@@ -162,14 +167,22 @@ in the first place). With the split model, composition is the default
 path; Defer only by halting with a `[BLOCKER]`; never by writing a
 known-broken recipe.
 
-### Step 3: For each journey, compose the Maestro recipe
+### Step 3: For the SMOKE journeys, compose the Maestro recipe
 
-Compose each recipe using the static palette pattern (one Maestro
+**Compose recipes ONLY for the `is_smoke: true` journeys** (the two
+smokes: `journey-learn-pass` → `journey-learn.yaml`,
+`journey-deliver-submit` → `journey-deliver.yaml`). For every non-smoke
+(deep) journey, do NOT author a recipe file at Phase 3 — set the catalog
+entry's `recipe: deferred` instead (see § Products and Step 4). The
+composition rules below apply to the smoke recipes; `/ace:qa-deep` reuses
+these exact rules to generate the deferred deep recipes on demand.
+
+Compose each smoke recipe using the static palette pattern (one Maestro
 step per UI interaction, with `${SELECTOR:logical-name}`
 placeholders resolved at write time, and `takeScreenshot` calls
 between major form sections):
 
-- Recipes are named by app + intent, not journey-id: `journey-learn.yaml` / `journey-deliver.yaml` for the smokes, `journey-<app>-<slug>.yaml` for extras. The journey `id` (a `journey-`-prefixed meaningful kebab-case slug like `journey-learn-pass` / `journey-deliver-submit` — see § Journey id convention) lives in `app-test-cases.yaml`, not the filename.
+- Recipes are named by app + intent, not journey-id: `journey-learn.yaml` / `journey-deliver.yaml` for the smokes, `journey-<app>-<slug>.yaml` for the (lazily-generated) deep recipes. The journey `id` (a `journey-`-prefixed meaningful kebab-case slug like `journey-learn-pass` / `journey-deliver-submit` — see § Journey id convention) lives in `app-test-cases.yaml`, not the filename.
 - Each journey's recipe MUST include a final `takeScreenshot: "<recipe-base>-final"` (e.g. `journey-learn-final`, `journey-deliver-final`) for the deep UX judge to grade
 - Resolve any `${SELECTOR:logical-name}` placeholders via
   `mobile_resolve_selectors` against the current APK selector map
@@ -501,12 +514,14 @@ and the Learn smoke (`journey-learn.yaml`, id `journey-learn-pass`)
 chained `form-advance.yaml` across 10+ required-input quiz questions
 with zero answer-selection steps in between.
 
-**Write recipes to `ACE/<opp>/runs/<run-id>/3-commcare/recipes/journey-<app>[-<slug>].yaml`**
+**Write the smoke recipes to `ACE/<opp>/runs/<run-id>/3-commcare/recipes/journey-<app>.yaml`**
 (NOT `app-test-cases/recipes/` — earlier drafts of this SKILL.md had
 the wrong path and the recipes silently weren't being created;
 [#106 finding 3](https://github.com/jjackson/ace/issues/106) fixed
 this. The path must mirror the output spec at the top of the file so
-Phase 6's `app-screenshot-capture` can find them.)
+Phase 6's `app-screenshot-capture` can find them.) Only the two smoke
+recipes are written here; deep journeys carry `recipe: deferred` and
+their files are generated later by `/ace:qa-deep`.
 
 Create the `3-commcare/recipes/` subfolder via `drive_create_folder`
 (idempotent — `findOrCreate: true` is the default) BEFORE writing the
@@ -517,7 +532,9 @@ first recipe.
 Before writing any recipe to Drive, run a recipe-wide
 `mobile_resolve_selectors` pass against the current APK selector map
 (`mcp/mobile/selectors/connect-<ACE_CONNECT_APK_VERSION>.yaml`,
-default `2.62.0`). For each composed recipe, call:
+default `2.62.0`). At Phase 3 this applies to the two smoke recipes
+(the only recipes authored here); `/ace:qa-deep` runs the SAME gate over
+each deep recipe it generates on demand. For each composed recipe, call:
 
 ```
 mcp__plugin_ace_ace-mobile__mobile_resolve_selectors({
@@ -611,19 +628,26 @@ and the orchestrator had to `drive_move_file` it into `3-commcare/`.
   a silent downstream halt with no Learn-app screenshots in the
   training deck. Caught in vivo on malaria-itn-app run 20260517-1829;
   Phase 2 contract tightened in the same PR.
-- **Every `is_smoke: true` journey has its `recipes/journey-<app>.yaml` file
-  written under `3-commcare/recipes/`.** Confirm via
-  `drive_list_folder` against the recipes folder — count must equal
-  the number of `is_smoke: true` journeys. Phase 6's
-  `app-screenshot-capture` reads from this folder; a missing recipe
-  silently degrades the deck-build to placeholder screenshots
+- **Exactly the SMOKE recipes exist as files; deep journeys carry
+  `recipe: deferred`.** Confirm via `drive_list_folder` against the
+  recipes folder — the file count must equal the number of
+  `is_smoke: true` journeys (normally 2: `journey-learn.yaml` +
+  `journey-deliver.yaml`). Do NOT require deep-journey recipe files to
+  exist at Phase 3 — they are generated on demand by `/ace:qa-deep` (see
+  § Products + jjackson/ace#605). For each non-smoke journey, assert the
+  catalog entry's `recipe:` is the literal `deferred` (not a path and not
+  an authored file). Phase 6's `app-screenshot-capture` reads only the
+  smoke recipes from this folder; a missing SMOKE recipe silently
+  degrades the deck-build to placeholder screenshots
   ([#106 finding 3](https://github.com/jjackson/ace/issues/106) — the
   leep-paint-collection run hit this exact gap and required two
   manual `/ace:step` retries to recover).
-- Every recipe passes `mobile_validate_recipe`
-- Every recipe's `mobile_resolve_selectors` pass returned
+- Every authored (smoke) recipe passes `mobile_validate_recipe`
+- Every authored (smoke) recipe's `mobile_resolve_selectors` pass returned
   `unresolved: []` (Step 3.4 gate; non-empty means the APK selector
-  map is missing rows and Phase 6 will block)
+  map is missing rows and Phase 6 will block). Deep journeys
+  (`recipe: deferred`) are not checked here — `/ace:qa-deep` runs the
+  same gate when it generates them.
 - Every `forms_exercised` entry resolves to a real Nova form ID
 - **No `composition_status` (or any composition-escape field) on any
   `is_smoke: true` journey entry.** Per § Step 2's closed-escape rule,
@@ -635,7 +659,8 @@ and the orchestrator had to `drive_move_file` it into `3-commcare/`.
 
 **If any check fails, halt with a `[BLOCKER]` in the gate brief.**
 Do NOT write `app-test-cases.yaml` until the recipe coverage matches
-the `is_smoke` count. This is a pre-write structural gate — no
+the `is_smoke` count (smoke recipes authored as files; deep journeys
+carried as `recipe: deferred`). This is a pre-write structural gate — no
 verdict file is emitted (no LLM-as-Judge in this skill; the deep UX
 judging happens later in `app-ux-eval`).
 
@@ -706,3 +731,4 @@ already maps the producer to `3-commcare/` (see
 | 2026-05-31 | **Meaningful journey ids.** Journey `id` in `app-test-cases.yaml` is now a short intent-derived kebab-case slug (`learn-happy-path`, `learn-wrong-retry`, `deliver-yes`, `deliver-no`, `deliver-multi-visit`, `deliver-gated-on-learn`) instead of the cryptic `J<n>` ordinal — so run artifacts, screenshot labels, smoke-subset lists, and verdicts all read meaningfully and pair with the descriptive recipe filenames. Added § Journey id convention; updated every example/snippet, the template, the fixture, and downstream readers (`app-screenshot-capture`, `app-ux-eval`). Recipe filenames already descriptive (2026-05-27); this completes the convention by making the ids themselves meaningful. | ACE team |
 | 2026-05-31 | **`journey-` prefix on every journey id.** Amended the convention so the `id` now carries the literal `journey-` prefix (`journey-learn-pass`, `journey-learn-retry`, `journey-deliver-submit`, `journey-deliver-alt-answer`, `journey-deliver-multiple`, `journey-deliver-locked`) — `id = journey-<app>-<intent>`, always starting with `journey-` — so the id is self-describing wherever it is listed. Recipe *filenames* are unchanged (still `journey-<app>[-<slug>].yaml`; smokes still `journey-learn.yaml` / `journey-deliver.yaml`); the doc now states the filename-vs-id distinction explicitly. Producer + downstream readers (`app-screenshot-capture`, `app-ux-eval`, `app-test-cases-template.yaml`, `ACE-Test-001` fixture) updated. (follow-up to PR #597) | ACE team |
 | 2026-05-31 | **Intent-based journey-id slugs (replace answer-value names).** Renamed the canonical intent slugs from answer-value names to test-intent names — the learn smoke is now `journey-learn-pass`, learn retry `journey-learn-retry`, the deliver smoke `journey-deliver-submit`, the alternate-answer journey `journey-deliver-alt-answer`, the multi-visit journey `journey-deliver-multiple`, and the gate-locked journey `journey-deliver-locked`. The old slugs named a raw domain answer value (e.g. a literal `yes`/`no` response), which is meaningless unless you already know the question and doesn't generalize across opps; the intent names describe the behavior being verified, so they read clearly for any opportunity (bednet, vaccination, anything). The `journey-` prefix rule, the `journey-<app>-<intent>` shape, and the filename-vs-id nuance (PR #603) are all unchanged. Example/canonical slug rename only — no lazy-generation / deep-recipe-timing changes. Updated every example/snippet here plus downstream readers (`app-screenshot-capture`, `app-ux-eval`), `app-test-cases-template.yaml`, and the `ACE-Test-001` fixture. | ACE team |
+| 2026-05-31 | **Lazy deep-recipe generation (closes #605).** Phase 3 now authors Maestro recipe files ONLY for the two `is_smoke: true` journeys; every non-smoke (deep) journey stays in the `app-test-cases.yaml` catalog with `recipe: deferred` (the literal string, not a path). Phase 6 (shallow, in `/ace:run`) only ever walks the smokes, so pre-authoring deep recipes was wasted work + clutter when `/ace:qa-deep` isn't run. `/ace:qa-deep` now generates the deferred deep recipes on demand using the SAME composition rules here (static palette + live `get_form` labels + selector-resolution gate) — safe because Nova `app_id` + `get_form` still return the as-built structure within a run. Step 3 scoped to "smoke journeys"; Step 5 coverage invariant changed from "every journey has a recipe file" to "exactly the smoke recipes exist as files; deep journeys carry `recipe: deferred`" (two-app smoke invariant + selector-resolution gate for the smokes KEPT). Updated `commands/qa-deep.md`, `app-screenshot-capture`, `app-test-cases-template.yaml`, and the `ACE-Test-001` fixture. | ACE team |
