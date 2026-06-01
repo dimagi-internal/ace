@@ -23,6 +23,17 @@ Two modes:
   Replaces the entire render_code with bespoke JSX. Higher risk; eval
   must catch any broken-render regressions.
 
+**Preserve the pipeline alias when editing render_code (jjackson/ace#633).**
+Whatever the workflow's pipeline reads as — `view.pipelines.<alias>` —
+is fixed by the workflow definition's `pipeline_sources[].alias`, not by
+you. On an ADAPTed template the alias is the template's (for
+`llo_weekly_review` it is **`data`**, NOT `flw_kpis`). A surgical patch
+must keep the existing `view.pipelines.<alias>` key verbatim; a full
+rewrite must read the alias from the captured `render_code` /
+`get_workflow` and use that exact key. Substituting a guessed alias
+renders every saved-run view all-zero while passing every patch/update
+call — see the seed skill's alias-consistency guardrail.
+
 ## Inputs
 
 | Source | Artifact | Used for |
