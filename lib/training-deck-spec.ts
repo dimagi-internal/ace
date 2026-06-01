@@ -366,6 +366,33 @@ export interface ResolvedManifest {
 }
 
 /**
+ * Normalize any Google Drive image URL to the embeddable
+ * `uc?export=view&id=<id>` form that the Slides API's `createImage`
+ * accepts. Non-Drive URLs pass through unchanged.
+ *
+ * Slides `createImage` REJECTS the share/view URL shapes Drive hands
+ * back from `webViewLink` / the file picker — `…/file/d/<id>/view`,
+ * `…/file/d/<id>/edit`, `…/open?id=<id>` — with an "invalid image URL"
+ * error. Only the `uc?export=view&id=<id>` (and `…/uc?id=<id>`) form
+ * loads. Before this, `resolveImageRef` only produced the right form
+ * from the `drive:<id>` alias-prefix path; a raw Drive https URL in a
+ * manifest value or `slide.image` passed straight through and the deck
+ * render failed. (jjackson/ace#630)
+ *
+ * Idempotent: a `uc?export=view&id=<id>` input re-extracts the same id
+ * and rebuilds the same URL.
+ */
+export function normalizeDriveImageUrl(url: string): string {
+  // Only touch Google Drive/Docs hosted URLs; everything else is left as-is.
+  if (!/(?:drive|docs)\.google\.com/.test(url)) return url;
+  // Forms: /file/d/<id>/{view,edit,preview} ; ?id=<id> / &id=<id> (open?id=, uc?id=, uc?export=view&id=)
+  let m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (!m) m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (!m) return url; // unrecognized Drive URL shape — leave untouched
+  return `https://drive.google.com/uc?export=view&id=${m[1]}`;
+}
+
+/**
  * Merge `manifest.common` and `manifest.opp` into a single `ResolvedManifest`.
  * Opp entries win on key collision.
  */
@@ -393,9 +420,10 @@ export function resolveManifest(manifest: {
     },
 
     resolveImageRef(ref: string): string {
-      // HTTPS URLs pass through unchanged.
+      // HTTPS URLs pass through — but rewrite Drive share/view URLs to
+      // the createImage-embeddable form first (#630).
       if (ref.startsWith('https://')) {
-        return ref;
+        return normalizeDriveImageUrl(ref);
       }
 
       // @alias references: strip the prefix, look up, resolve.
@@ -411,11 +439,14 @@ export function resolveManifest(manifest: {
           const fileId = value.slice('drive:'.length);
           return `https://drive.google.com/uc?export=view&id=${fileId}`;
         }
-        return value;
+        // A manifest value may itself be a raw Drive share/view URL —
+        // normalize it the same way (#630).
+        return normalizeDriveImageUrl(value);
       }
 
-      // Fallback: return as-is (bare URLs, relative paths, etc.).
-      return ref;
+      // Fallback: bare URLs / relative paths. Still normalize a bare
+      // Drive URL; non-Drive refs pass through.
+      return normalizeDriveImageUrl(ref);
     },
   };
 }
