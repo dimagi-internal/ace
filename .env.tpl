@@ -43,6 +43,16 @@ OCS_SHARED_COLLECTION_ID=op://AI-Agents/ACE - Open Chat Studio/Config/shared_col
 ACE_GMAIL_ACCOUNT=op://AI-Agents/ACE - Open Chat Studio/Config/gmail_account
 ACE_GMAIL_CLIENT=op://AI-Agents/ACE - Open Chat Studio/Config/gmail_client
 
+# ── Solicitations ───────────────────────────────────────────────────
+
+# Point-of-contact email shown on published solicitations — candidate
+# LLO questions + responses surface to this inbox. Defaults to the ACE
+# gmail account (op-injected to the same value as ACE_GMAIL_ACCOUNT) so a
+# clean machine never hard-halts `solicitation-create` at publish.
+# OVERRIDE with a human-monitored inbox for any production solicitation
+# you intend to award from. (jjackson/ace#636)
+ACE_SOLICITATION_CONTACT_EMAIL=op://AI-Agents/ACE - Open Chat Studio/Config/gmail_account
+
 # ── Google Drive ─────────────────────────────────────────────────────
 
 ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
