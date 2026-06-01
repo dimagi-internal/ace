@@ -75,6 +75,31 @@ appId: org.commcare.dalvik
     timeout: 15000
 - takeScreenshot: "claim-opp-list"
 
+# Sync the jobs list BEFORE searching for the target tile (#628).
+#
+# A restored AVD snapshot (the cloud backend's AMI cold-boot, and any
+# local snapshot-load) carries the Connect jobs list as of snapshot
+# time — which predates THIS run's Phase-4 invite. So the fresh-run opp
+# is genuinely ABSENT from the list (not merely below the fold), and the
+# `scrollUntilVisible text: ${OPP_NAME}` below would scroll to the bottom
+# and time out on a tile that was never pulled. An in-app sync (toolbar
+# `action_sync`, content-desc "Sync") pulls the current invite set so the
+# tile renders. Live reproducer: bednet-spot-check/20260601-0651 Phase 6
+# claim — opp tile not on-device until a manual in-app sync.
+#
+# `optional: true` on the tap: a warm post-login surface may land
+# already-synced, or the toolbar may momentarily re-render; a missing
+# `action_sync` must NOT abort the claim (the title-scroll below still
+# runs). The fixed settle lets the server pull + RecyclerView re-render
+# land before we start scrolling; the existing 20s scroll timeout gives
+# additional buffer if the pull is still in flight.
+- tapOn:
+    id: "org.commcare.dalvik:id/action_sync"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 8000
+- takeScreenshot: "claim-opp-list-synced"
+
 # THE CARD-IDENTITY PROBLEM (re-authored 2026-05-15, v0.13.237 candidate):
 #
 # The ACE test user accumulates invites across every /ace:run; on a real
