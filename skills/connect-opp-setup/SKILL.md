@@ -393,8 +393,17 @@ alone makes the artifact land outside `4-connect` and fail
      ```
      <ISO> connect-opp-setup: opp <id> already activated; treating activate rejection as idempotent.
      ```
-   - **Verify** by calling `connect_get_opportunity` and confirming
-     `active=true` (whether activated this run or already-activated).
+   - **Verify activation via Step 7's invite succeeding — NOT via the
+     scraped `active` flag.** Do not call `connect_get_opportunity` to
+     confirm `active=true` here: that read-back flag is the same
+     create-side signal that returns `true` on an un-transitioned opp
+     (see above), so it can't distinguish a real `/activate/` from a
+     no-op. The authoritative confirmation is the downstream
+     `connect_send_flw_invite` in Step 7 — `invite_users/` hard-rejects a
+     non-active opp ("Opportunity must be active to invite users"), so a
+     successful invite is the only proof the transition actually landed.
+     If Step 7's invite rejects with that error, the activate didn't take
+     — halt there with `[BLOCKER]`.
    - **On hard error from the activate call**, halt with `[BLOCKER]` and
      surface the server error verbatim in the gate brief. The most
      common cause is "no PaymentUnit" — Step 6's verify-after-create
@@ -732,6 +741,7 @@ decisions_append_rows({
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (verification-flags, payment-unit-shape, opportunity-end-date) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-10 | Move opp activation + ACE test-user invite from Phase 9 into Phase 4 (new Step 6.5 + rewritten Step 7). Closes the chicken-and-egg gap where Phase 6 `app-screenshot-capture` produced placeholder screenshots because the test user wasn't on the new opp yet — the opp couldn't be activated until Phase 9, but the test user couldn't be invited until activation. Phase 9 `llo-launch` now hits its idempotent skip-if-active path on every ACE-driven run; it still sends the real-LLO invite to the awarded LLO. Also: tighten Step 4 `is_test` from "defaults true server-side" to "set explicitly to true" — ACE is in dogfood mode and every opp it creates must be test-flagged so prod analytics, payment exports, and partner dashboards exclude these runs. | ACE team |
 | 2026-06-01 | **Step 6.5: always attempt `/activate/`; treat only the "already active" error as the skip signal (jjackson/ace#624).** The managed-opp create endpoint returns a create-side `active: true` flag that is NOT the `/activate/` state transition `invite_users/` requires — so the old "read `active`, skip if true" pre-check skipped the only call that enables invites, and Step 7 failed. Calling `/activate/` on such an opp succeeds; it rejects only an opp that already completed the transition. Removed the pre-check; now call unconditionally and branch on the result, not the read-back flag. | ACE team |
+| 2026-06-01 | **Step 6.5: verify activation via Step 7's invite, not the scraped `active` flag (closes jjackson/ace#617, and its #634 duplicate).** Dropped the post-activate `connect_get_opportunity` read-back check — that flag returns `true` on un-transitioned opps and can't distinguish a real `/activate/` from a no-op (the same create-side flag that motivated #624). The authoritative confirmation is `connect_send_flw_invite` in Step 7 succeeding: `invite_users/` hard-rejects a non-active opp, so a successful invite is the only proof the transition landed. | ACE team |
 | 2026-05-10 | State consolidation PR a: retire `connect-state.yaml`; emit a single `run_state.yaml.phases.connect-setup.products.connect` block at end of Step 10. Step 7 holds invite metadata in memory rather than writing immediately. (Initial implementation dual-wrote to `opp.yaml.connect`; corrected on 2026-05-11 — runs are now independent. `opp.yaml.connect.program` is durable cross-run state written by `connect-program-setup`; `opp.yaml.connect.opportunity` / `ace_test_user` are no longer written here.) See `docs/superpowers/specs/2026-05-10-state-consolidation.md`. | ACE team |
 
 <!-- Stage 4.5 of Plan B: post-create labs_context lookup for labs_int_id (0.13.59) -->
