@@ -221,6 +221,24 @@ Mark Phase 1 `in_progress`; leave the rest `pending`. Sequential
 `TaskCreate → TaskCreate → ...` over 11 turns burns ~30s of
 unnecessary model-output time at run start.
 
+**Phase allowlist (`--only`).** When `--only <ordinals>` is set, still create
+the task list, but mark seeded phases (`seed_phases`, from Step 4b) `done`,
+mark `min(--only)` `in_progress`, and mark every phase NOT in `--only`
+`skipped` (not `pending`) so no pause ever fires for them. Then iterate the
+phase list and **execute ONLY the listed ordinals**. For each listed phase,
+before dispatch, confirm its required input artifacts (per
+`lib/artifact-manifest.ts` `artifactsConsumedBy`) are present — produced
+either by an earlier listed phase or by the seeded prefix. If a required input
+is missing AND its producer is neither listed nor seeded, halt loud:
+
+> `/ace:run --only <ordinals>`: phase <N> needs `<artifact>` produced by phase
+> <M>, which is neither in --only nor seeded via --seed-from. Add <M> to
+> --only or pass --seed-from <golden-run-id>.
+
+The phase-boundary fence + Phase Write-Back Contract still apply to listed
+phases; skipped phases are never dispatched and never pause. `--only` with no
+`--seed-from` is legal (e.g. `--only 1,2`) — it just runs a prefix and stops.
+
 **Step 5 — Create the run folder FIRST, then batch the file writes.**
 This is two messages, not one — `drive_create_file` requires
 `parentFolderId`, which is the run folder's id, which does not exist
@@ -646,6 +664,32 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    `drive_create_folder` `<opp>/runs/<runId>/`. Capture the resulting
    folder ID; this is the **run folder ID** that gets passed to every
    downstream skill in place of the previous "opp folder ID".
+
+   **Step 4b — Seed substitution (`--seed-from` only).**
+
+   When `--seed-from <golden-run-id>` was passed:
+
+   1. Validate `--only` is also present and non-empty. If not, halt:
+      `--seed-from requires --only (which phases to actually run).`
+   2. Compute `seed_phases` = every phase ordinal **below** `min(--only)`.
+      For `--only 3,4,6`, `seed_phases = [1, 2]`.
+   3. Invoke the `fork-run` skill against the golden run to copy the seed
+      prefix into THIS new run folder:
+      `fork-run --opp_slug <opp> --from_run_id <golden-run-id>
+       --from_skill <first-skill-of min(--only)> --mode keep-all
+       --feedback "seeded run for --only <ordinals>"`.
+      (`min(--only)=3` → `from_skill: pdd-to-learn-app`; `=4` →
+      `connect-program-setup`; `=5` → `ocs-agent-setup`; `=8` →
+      `solicitation-create`.) `fork-run` copies every skill upstream of the
+      fork boundary — i.e. exactly `seed_phases` — plus `decisions.yaml` and
+      the upstream `phases.*.products.*` blocks, into the new run.
+   4. In this run's `run_state.yaml`, mark every `seed_phases` block
+      `status: done`, `verdict: seeded`, and copy its `summary_artifact`
+      from the forked-in state. Record `seeded_from: <golden-run-id>` at the
+      run-state root (informational; not read by any skill).
+   5. Set the start pointer to `min(--only)` instead of Phase 1.
+
+   When `--seed-from` is absent, run-init is unchanged (start at Phase 1).
 
 5. **Capture the inputs manifest.**
 
