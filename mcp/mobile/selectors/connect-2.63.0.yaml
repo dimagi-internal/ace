@@ -1,13 +1,29 @@
 # Connect APK 2.63.0 selector map
 #
-# PLACEHOLDER STATE — this file was copied verbatim from connect-2.62.0.yaml
-# when the AMI was bumped from CommCare 2.62.0 → 2.63.0. Selectors are
-# UNVERIFIED against a live 2.63.0 device. Run
-# `connect-baseline-screenshots` (or equivalent baseline flow) against a
-# 2.63.0 emulator and patch any rows that drifted before relying on this
-# map for non-trivial recipes. Until then, recipes referencing
-# `${SELECTOR:logical-name}` may resolve to selectors that no longer
-# match the on-device tree.
+# PARTIAL CALIBRATION (status 2026-06-01). Originally copied verbatim from
+# connect-2.62.0.yaml when the AMI bumped CommCare 2.62.0 → 2.63.0. Surfaces
+# calibrated live on a 2.63.0 device SINCE the copy (rows carrying a
+# `Live-verified …` note in `purpose:`): jobs-list / opp-detail cluster
+# (#663, 2026-06-01; re-confirmed via read-only snapshot the same day),
+# in-form camera (#593), deliver-side ids (#526), and the login/register/
+# learn ids promoted off raw literals by #650/#665. Rows still flagged
+# `unverified: true` (14 as of 2026-06-01: cold-start, learn-home, login,
+# registration, form-entry, quiz-result, start-delivering) are best-guesses
+# pending a live walk of those states. The static recipes are now migrated
+# off raw ids (#665) EXCEPT connect-register-from-otp.yaml's 7 camera ids
+# (the #666 photo surface, deliberately raw pending live calibration).
+# Rows WITHOUT either an `unverified: true` flag OR a `Live-verified` note
+# are inherited 2.62.0 values not yet independently confirmed on 2.63.0 —
+# treat with mild caution.
+#
+# To FINISH calibration, run the systematic state-walk:
+#     /ace:step selector-map-calibrate
+# It drives a THROWAWAY user through every device state, harvests ui-dumps
+# via scripts/probe-atlas-drift.ts, promotes/corrects rows, migrates recipes
+# off raw ids, and re-validates on-device. This is the skill the
+# `selector_map_currency` doctor probe points at — NOT
+# connect-baseline-screenshots (that only captures training PNGs). See
+# docs/learnings/2026-06-01-selector-map-calibration-framework.md.
 #
 # Original 2.62.0 header below:
 # Connect APK 2.62.0 selector map

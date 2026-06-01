@@ -234,7 +234,7 @@ if [ "$PREFLIGHT" = "1" ]; then
   PF_SEL_ROWS_UNVERIFIED=0
   PF_SEL_RECIPES_SCANNED=0
   PF_SEL_UNRESOLVED_YAML="[]"
-  PF_SEL_REMEDIATION="run /ace:step connect-baseline-screenshots"
+  PF_SEL_REMEDIATION="run /ace:step selector-map-calibrate"
   if [ -n "$PF_SEL_APK" ] && [ -f "$PF_SEL_MAP_PATH" ]; then
     PF_SEL_KNOWN="$(awk '
       /^selectors:[[:space:]]*$/ { in_sel=1; next }
@@ -266,7 +266,7 @@ if [ "$PREFLIGHT" = "1" ]; then
         PF_SEL_UNRESOLVED_YAML="[]"
       else
         PF_SEL_STATUS="warn"
-        PF_SEL_REMEDIATION="run /ace:step connect-baseline-screenshots to calibrate against the live APK"
+        PF_SEL_REMEDIATION="run /ace:step selector-map-calibrate to calibrate against the live APK"
         # Inline JSON-style list — YAML 1.1 accepts ["a","b"].
         PF_SEL_UNRESOLVED_YAML="[$(printf '%s\n' "$PF_SEL_UNRESOLVED" | grep . | sed 's/^/"/; s/$/"/' | tr '\n' ',' | sed 's/,$//')]"
       fi
@@ -2058,11 +2058,11 @@ unset MOBILE_ISSUES _MOBILE_MAESTRO _MOBILE_AVD_NAME _MOBILE_EMULATOR_BIN _MOBIL
 #   - all resolvable + zero unverified → PASS
 #   - all resolvable + some unverified → PASS with INFO line listing the
 #     unverified count (unverified rows are best-guesses pending a
-#     baseline-screenshot calibration — see skills/connect-baseline-screenshots)
+#     baseline-screenshot calibration — see skills/selector-map-calibrate)
 #
 # Companion of cloud_emu and ocs_shared_collection_team: same shape —
 # named probe, single-line gate, PASS/WARN/FAIL + concrete remediation
-# (`/ace:step connect-baseline-screenshots`).
+# (`/ace:step selector-map-calibrate`).
 SELECTOR_MAP_DIR="$ROOT/mcp/mobile/selectors"
 SELECTOR_RECIPES_DIR="$ROOT/mcp/mobile/recipes/static"
 SELECTOR_APK_VERSION="$(get_env ACE_CONNECT_APK_VERSION)"
@@ -2078,9 +2078,9 @@ SELECTOR_MAP_REL="mcp/mobile/selectors/connect-${SELECTOR_APK_VERSION}.yaml"
 SELECTOR_MAP_PATH="$ROOT/$SELECTOR_MAP_REL"
 
 if [ -z "$SELECTOR_APK_VERSION" ]; then
-  fail "selector_map_currency: no selector maps found under $SELECTOR_MAP_DIR and ACE_CONNECT_APK_VERSION unset" "run /ace:step connect-baseline-screenshots to seed a map for the deployed APK"
+  fail "selector_map_currency: no selector maps found under $SELECTOR_MAP_DIR and ACE_CONNECT_APK_VERSION unset" "run /ace:step selector-map-calibrate to seed a map for the deployed APK"
 elif ! [ -f "$SELECTOR_MAP_PATH" ]; then
-  fail "selector_map_currency: no map for APK $SELECTOR_APK_VERSION at $SELECTOR_MAP_REL" "run /ace:step connect-baseline-screenshots"
+  fail "selector_map_currency: no map for APK $SELECTOR_APK_VERSION at $SELECTOR_MAP_REL" "run /ace:step selector-map-calibrate"
 else
   # Selector keys live under `selectors:` at 2-space indent; each row is
   # `  <kebab-name>:` on its own line. Awk slice between the `^selectors:$`
@@ -2100,7 +2100,7 @@ else
   SELECTOR_VERIFIED_COUNT=$((SELECTOR_KNOWN_COUNT - SELECTOR_UNVERIFIED_COUNT))
 
   if [ "$SELECTOR_KNOWN_COUNT" -eq 0 ]; then
-    fail "selector_map_currency: $SELECTOR_MAP_REL exists but has zero selector rows" "run /ace:step connect-baseline-screenshots"
+    fail "selector_map_currency: $SELECTOR_MAP_REL exists but has zero selector rows" "run /ace:step selector-map-calibrate"
   else
     # Logical names referenced by every static recipe. `-h` suppresses
     # filenames so the sed pipeline only sees `${SELECTOR:foo}` tokens.
@@ -2127,11 +2127,11 @@ else
       if [ "$SELECTOR_UNRESOLVED_COUNT" -gt 5 ]; then
         SELECTOR_OVERFLOW=" (+$((SELECTOR_UNRESOLVED_COUNT - 5)) more)"
       fi
-      warn "selector_map_currency: $SELECTOR_UNRESOLVED_COUNT selector(s) referenced by recipes have no matcher in $SELECTOR_MAP_REL: ${SELECTOR_UNRESOLVED_HEAD}${SELECTOR_OVERFLOW}" "run /ace:step connect-baseline-screenshots to calibrate against the live APK"
+      warn "selector_map_currency: $SELECTOR_UNRESOLVED_COUNT selector(s) referenced by recipes have no matcher in $SELECTOR_MAP_REL: ${SELECTOR_UNRESOLVED_HEAD}${SELECTOR_OVERFLOW}" "run /ace:step selector-map-calibrate to calibrate against the live APK"
     else
       pass "selector_map_currency: APK $SELECTOR_APK_VERSION, $SELECTOR_VERIFIED_COUNT verified + $SELECTOR_UNVERIFIED_COUNT unverified row(s), $SELECTOR_REFD_COUNT selector(s) referenced across $SELECTOR_RECIPE_COUNT recipe(s) all resolvable"
       if [ "$SELECTOR_UNVERIFIED_COUNT" -gt 0 ]; then
-        info "selector_map_currency: $SELECTOR_UNVERIFIED_COUNT row(s) marked unverified: true — best-guess values pending live calibration via connect-baseline-screenshots"
+        info "selector_map_currency: $SELECTOR_UNVERIFIED_COUNT row(s) marked unverified: true — best-guess values pending live calibration via selector-map-calibrate"
       fi
     fi
     if [ "$SELECTOR_APK_VERSION_SOURCE" = "newest-on-disk" ]; then
@@ -2142,7 +2142,7 @@ else
     # Static recipes ALSO hardcode raw `org.commcare.dalvik:id/*` literals
     # that bypass the `${SELECTOR}` resolution checked above — they are
     # invisible to this currency check AND to the
-    # connect-baseline-screenshots calibration step, so an APK rename of
+    # selector-map-calibrate calibration step, so an APK rename of
     # one silently breaks a recipe with no warning (the #637 class, one
     # layer down). Surface the count + how many are not even represented
     # as a value in the active map, so the APK-bump verification checklist
