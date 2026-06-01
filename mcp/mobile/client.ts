@@ -33,6 +33,7 @@ import type {
   SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
 } from './types.js';
 import { logInfo } from './logging.js';
+import { runRecipeWithDriverHeal } from './maestro-driver-retry.js';
 import {
   buildProvenance,
   getAceVersion,
@@ -1051,17 +1052,38 @@ export class MobileClient {
         { state: avdName, paletteTarB64 },
       );
     } else {
-      const avdInfo = avdName ? await this.resolveAvdInfo(avdName) : undefined;
-      // Pass `serial` through so MaestroBackend can capture per-screenshot
-      // UI hierarchy dumps in the quiet windows between sub-recipes. See
-      // `MaestroBackend.runRecipeWithDumps` for the split-and-capture
-      // contract and `docs/learnings/2026-05-14-atlas-side-channel-capture.md`
-      // for why a side-channel dump (running concurrent with Maestro)
-      // doesn't work. When `serial` is undefined the backend falls back
-      // to the pre-0.13.229 single-invocation path with no dumps.
-      result = await this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, screenshotDir, {
-        adbPort: avdInfo?.adbPort,
-        serial: avdInfo?.serial,
+      // Bounded driver-death heal-and-retry envelope (jjackson/ace#592 item
+      // 5). A Maestro driver / gRPC transport crash ("Broken pipe",
+      // UNAVAILABLE) can take the AVD down mid-run, leaving the recipe
+      // classified `failureClass: 'driver'` (or throwing a transport error).
+      // On that — and ONLY that — cold-boot the AVD (restores the phase
+      // precondition deterministically) and retry once. Any other failure
+      // class is a real result and is returned untouched. Re-resolve avdInfo
+      // INSIDE runOnce: a cold-boot can change serial / adbPort.
+      // See `mcp/mobile/maestro-driver-retry.ts` for the safety rationale.
+      result = await runRecipeWithDriverHeal({
+        // No avdName → nothing to heal; disable retry (maxRetries 0).
+        maxRetries: avdName ? 1 : 0,
+        log: logInfo,
+        runOnce: async () => {
+          const avdInfo = avdName ? await this.resolveAvdInfo(avdName) : undefined;
+          // Pass `serial` through so MaestroBackend can capture per-screenshot
+          // UI hierarchy dumps in the quiet windows between sub-recipes. See
+          // `MaestroBackend.runRecipeWithDumps` for the split-and-capture
+          // contract and `docs/learnings/2026-05-14-atlas-side-channel-capture.md`
+          // for why a side-channel dump (running concurrent with Maestro)
+          // doesn't work. When `serial` is undefined the backend falls back
+          // to the pre-0.13.229 single-invocation path with no dumps.
+          return this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, screenshotDir, {
+            adbPort: avdInfo?.adbPort,
+            serial: avdInfo?.serial,
+          });
+        },
+        heal: async () => {
+          // Full cold-boot funnel — restores AVD + driver + fresh demo user
+          // at the Connect home (the journey-recipe precondition).
+          if (avdName) await this.ensureAvdRunning(avdName);
+        },
       });
     }
 

@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.505 — 2026-06-01
+
+**`mobile_run_recipe`: bounded driver-death heal-and-retry envelope (closes jjackson/ace#592 item 5).**
+
+A Maestro driver / gRPC transport crash ("Broken pipe", `UNAVAILABLE`, a thrown `EPIPE`/`ECONNRESET`) can take the AVD down mid-run — observed live (bednet-spot-check 20260530-2015 Phase 6): the recipe came back `failureClass: 'driver'` and every subsequent `mobile_capture_ui_dump` returned "AVD not currently running", aborting the whole phase.
+
+The local `runRecipe` path now wraps the Maestro invocation in `runRecipeWithDriverHeal` (`mcp/mobile/maestro-driver-retry.ts`): on a `'driver'` classification (or a thrown transient transport error) it cold-boots the AVD via `ensureAvdRunning` — which deterministically restores the phase precondition (fresh demo user at Connect home) — and retries **once**. Re-running from the top is safe specifically here: a `'driver'` failure means the driver couldn't be talked to, and the cold-boot wipes any partial on-device progress while ACE's journey recipes are cold-runnable + branch on server-side state (#570). Every **other** failure class (`selector-not-found`, `app-crash`, `test-logic`, `timeout`, `network`) is a real result and is returned untouched — no masking of genuine failures, no wasted cold-boot. `avdInfo` (serial / adbPort) is re-resolved inside the retry since a cold-boot can change it; with no AVD name to heal, retry is disabled (`maxRetries: 0`).
+
+Pure, injected `runOnce`/`heal` helper — unit-tested without a device across 11 cases (`test/mcp/mobile/maestro-driver-retry.test.ts`). Mirrors the "preconditions are restored, not adapted" rule.
+
 ## 0.13.503 — 2026-06-01
 
 **`connect-login.yaml`: handle the signed-out-but-registered re-login surface (closes jjackson/ace#592 item 3); fix a misleading text-match comment in `connect-claim-opp.yaml`.**
