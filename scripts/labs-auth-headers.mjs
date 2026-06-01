@@ -29,6 +29,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -82,6 +83,16 @@ export function buildAuthHeaders(token) {
  *      `$CLAUDE_PLUGIN_DATA` if it's a real path, else self-derived from
  *      `callerPath`.
  *   3. A repo-root `.env` relative to this script (dev-checkout fallback).
+ *   4. The canonical installed default `~/.claude/plugins/data/ace-ace/.env`
+ *      (worktree-safe last resort). When this helper runs from a *worktree*
+ *      checkout, `${CLAUDE_PLUGIN_ROOT}` resolves to the worktree path, so
+ *      `derivePluginDataDir` finds no `plugins/cache/<mp>/<plugin>/<ver>`
+ *      segment (returns null) AND the dev-root `.env` doesn't exist (the real
+ *      env lives under ~/.claude). Without this candidate the helper emits {}
+ *      headers, Claude Code connects to labs unauthenticated, the server 406s,
+ *      and ZERO connect-labs atoms bind into the session (jjackson/ace#620).
+ *      This mirrors bin/ace-doctor's DATA_DIR fallback so the helper's
+ *      resolution order is never narrower than doctor's.
  * Returns null when no token is found anywhere.
  */
 export function resolveToken(callerPath, env = process.env) {
@@ -94,6 +105,10 @@ export function resolveToken(callerPath, env = process.env) {
   const derived = derivePluginDataDir(callerPath);
   if (derived) candidates.push(path.join(derived, '.env'));
   candidates.push(path.join(path.dirname(callerPath), '..', '.env'));
+  const home = env.HOME || homedir();
+  if (home) {
+    candidates.push(path.join(home, '.claude', 'plugins', 'data', 'ace-ace', '.env'));
+  }
 
   for (const candidate of candidates) {
     try {

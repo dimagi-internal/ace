@@ -92,9 +92,36 @@ describe('labs-auth-headers: resolveToken', () => {
   });
 
   it('ignores a literal unexpanded ${CLAUDE_PLUGIN_DATA} and returns null when nothing resolves', () => {
-    expect(
-      resolveToken('/nope/cache-miss/path.mjs', { CLAUDE_PLUGIN_DATA: '${CLAUDE_PLUGIN_DATA}' }),
-    ).toBeNull();
+    // HOME points at a token-free sandbox so the ~/.claude default candidate
+    // can't accidentally resolve a real token on a developer machine.
+    const emptyHome = mkdtempSync(path.join(tmpdir(), 'labs-auth-home-'));
+    try {
+      expect(
+        resolveToken('/nope/cache-miss/path.mjs', {
+          CLAUDE_PLUGIN_DATA: '${CLAUDE_PLUGIN_DATA}',
+          HOME: emptyHome,
+        }),
+      ).toBeNull();
+    } finally {
+      rmSync(emptyHome, { recursive: true, force: true });
+    }
+  });
+
+  it('recovers the token from ~/.claude/plugins/data/ace-ace/.env from a worktree checkout with CLAUDE_PLUGIN_DATA unset (jjackson/ace#620)', () => {
+    // Emulates the worktree-resume failure: caller path is NOT under
+    // plugins/cache (derive => null), no dev-root .env, CLAUDE_PLUGIN_DATA
+    // unset — only the installed default under HOME carries the token.
+    const home = mkdtempSync(path.join(tmpdir(), 'labs-auth-home-'));
+    try {
+      const dataDir = path.join(home, '.claude', 'plugins', 'data', 'ace-ace');
+      mkdirSync(dataDir, { recursive: true });
+      writeFileSync(path.join(dataDir, '.env'), 'LABS_MCP_TOKEN=from-home-default\n');
+      const worktreeCaller =
+        '/Users/x/emdash/worktrees/ace/emdash/some-branch/scripts/labs-auth-headers.mjs';
+      expect(resolveToken(worktreeCaller, { HOME: home })).toBe('from-home-default');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
 
@@ -124,6 +151,9 @@ describe('labs-auth-headers: executable contract (stdout JSON, exit 0)', () => {
       const env = { ...process.env };
       delete env.LABS_MCP_TOKEN;
       env.CLAUDE_PLUGIN_DATA = path.join(root, 'no-such-data-dir');
+      // Sandbox HOME too so the ~/.claude default candidate (jjackson/ace#620)
+      // can't resolve the developer machine's real token.
+      env.HOME = path.join(root, 'no-such-home');
       const out = execFileSync('node', [copyReal], { env, encoding: 'utf8' });
       expect(JSON.parse(out)).toEqual({});
     } finally {
