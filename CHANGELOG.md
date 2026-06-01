@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.503 — 2026-06-01
+
+**`connect-login.yaml`: handle the signed-out-but-registered re-login surface (closes jjackson/ace#592 item 3); fix a misleading text-match comment in `connect-claim-opp.yaml`.**
+
+The recipe opened with a *hard* `extendedWaitUntil` on `str_setup_message`. On a warm launch where the PersonalID session has dropped, the app lands on `screen_login_main` (welcome_msg "Welcome ACE Test!", `connect_login_button` "GO TO CONNECT MENU", `login_button` "LOGIN WITH PERSONALID") — which has **no** `str_setup_message` — so the recipe aborted before any branch ran. Live-captured this surface 2026-06-01.
+
+Fix: replace the hard wait with `if not already on the jobs list → optional wait for connect_login_button` (present on both first-start *and* the re-login surface). The existing branch (a) then taps it, the existing `lockPassword` branch enters the PIN, and the final jobs-list wait completes. The full tap-path (`connect_login_button` → `lockPassword`/PIN → jobs list) was verified live this session. Header now documents four resilient entry states instead of three.
+
+Also corrected `connect-claim-opp.yaml`'s "Maestro `text:` is substring by default" note: a live repro proved it's a **whole-label** match — passing the bare program name `"Malaria RDT Performance Sampling"` matched nothing (scroll timed out over a visibly-present tile), while the full label `"… — malaria-rdt (run 20260531-0739)"` matched first try. `OPP_NAME` must be the exact, complete tile title (verbatim from `…connect.opportunity.name`), never a truncation. (This also retracts a bogus "claim-opp scroll fragility" finding from #592 — it was operator error passing a truncated name, not a recipe bug.)
+
 ## 0.13.500 — 2026-05-31
 
 **Live-calibrate the connect-2.63.0 in-form camera selectors (closes jjackson/ace#593).**
