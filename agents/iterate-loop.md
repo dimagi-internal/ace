@@ -64,18 +64,23 @@ run). The golden run must have `phases.idea-to-design` and
 2. **Cap check.** If `streak >= required_streak` → success, go to Exit. If
    `len(iterations) >= caps.max_iterations` → halt-and-surface.
 3. **Launch a seeded run** on the runner:
-   - **web**: POST the `seeded-run` action
-     (`POST <ACE_WEB_BASE_URL>/api/opps/<opp>/runs/<golden_run_id>/actions/seeded-run`
-     with `{only: "3,4,6"}`) — or, until that action ships, inject the prompt
-     `/ace:run <opp> --seed-from <golden_run_id> --only 3,4,6` into a working
-     session via the existing message path. Capture the working-session slug.
+   - **web**: POST the **workspace-scoped** `seeded-run` action. First resolve
+     the workspace slug: `GET <ACE_WEB_BASE_URL>/api/workspaces` (Bearer
+     `ACE_WEB_PAT_TOKEN`) → the workspace whose `drive_root_folder_id` matches
+     the ACE root (for labs/`dimagi-team` this is the only one). Then:
+     `POST <ACE_WEB_BASE_URL>/api/w/<ws>/opps/<opp>/actions/seeded-run`
+     with `{"golden_run_id": "<golden>", "only": "3,4,6"}`. Returns **202**
+     `{session_slug, assistant_message_id}` — the action seeds the command as a
+     user turn AND starts the run headlessly (no workbench needed; ace-web#585).
+     The endpoint is also an MCP tool (`x-mcp-expose`) if reaching it via MCP.
    - **local**: spawn `/ace:run <opp> --seed-from <golden_run_id> --only 3,4,6`.
-   Capture the new run-id (from the fork result / the run's run-folder).
+   Capture the new run-id by listing `ACE/<opp>/runs/` for the folder that
+   appears after launch (the server-side run mints its own id at setup).
 4. **Observe** until phases 3 + 6 reach a terminal state — the loop's only
    inputs, both produced by the run itself:
    - Poll `ACE/<opp>/runs/<new-run-id>/run_state.yaml` on Drive.
    - Read the Claude session transcript for progress + failure detail
-     (web: `GET /api/sessions/<slug>/messages`; local: the session `.jsonl`).
+     (web: `GET /api/w/<ws>/sessions/<slug>/messages`; local: the `.jsonl`).
 5. **Judge** (client-side interpretation of the standard verdicts):
    - **clean** iff `classifyPhaseWriteBack(run_state, 'commcare-setup') == 'ok'`
      AND `classifyPhaseWriteBack(run_state, 'qa-and-training') == 'ok'` AND the
