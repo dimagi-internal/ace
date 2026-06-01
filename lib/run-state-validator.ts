@@ -340,3 +340,135 @@ export function classifyPhaseWriteBack(
   if (status === 'blocked') return 'blocked';
   return 'in_progress';
 }
+
+// ── iterate-state.yaml (CLIENT-ONLY loop log) ──────────────────────────────
+// Read by /ace:iterate --resume. The server-side first-class run NEVER reads
+// or writes this file (see docs/superpowers/specs/2026-06-01-ace-iterate-loop-design.md).
+
+const ITERATE_RUNNERS = new Set(['web', 'local']);
+const ITERATE_VERDICTS = new Set(['clean', 'dirty']);
+
+export interface IterateIteration {
+  run_id: string;
+  verdict: 'clean' | 'dirty';
+  failure_class?: string;
+  fix_pr?: string;
+  version_at_run?: string;
+  started_at?: string;
+}
+
+export interface IterateState {
+  opp: string;
+  target_phases: number[];
+  golden_run_id: string;
+  runner: 'web' | 'local';
+  plugin_version?: string;
+  streak: number;
+  required_streak: number;
+  caps?: { per_failure_class_fix?: number; max_iterations?: number };
+  kill?: boolean;
+  iterations: IterateIteration[];
+}
+
+function isInt(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v);
+}
+
+/**
+ * Validate `iterate-state.yaml` — the CLIENT-ONLY loop log read by
+ * `/ace:iterate --resume`. Null/undefined is valid (fresh state before the
+ * first write). The server-side run never reads or writes this file.
+ */
+export function validateIterateState(parsed: unknown): ValidationResult {
+  const errors: ValidationIssue[] = [];
+  const warnings: ValidationIssue[] = [];
+
+  if (parsed === null || parsed === undefined) {
+    return { valid: true, errors, warnings };
+  }
+  if (!isObject(parsed)) {
+    pushError(
+      errors,
+      '',
+      `iterate-state.yaml must be a mapping, got ${typeof parsed}`,
+      'object',
+      parsed,
+    );
+    return { valid: false, errors, warnings };
+  }
+
+  if (typeof parsed.opp !== 'string' || parsed.opp.length === 0) {
+    pushError(errors, 'opp', 'opp must be a non-empty string', 'string', parsed.opp);
+  }
+  if (typeof parsed.golden_run_id !== 'string' || parsed.golden_run_id.length === 0) {
+    pushError(
+      errors,
+      'golden_run_id',
+      'golden_run_id must be a non-empty string',
+      'string',
+      parsed.golden_run_id,
+    );
+  }
+  if (typeof parsed.runner !== 'string' || !ITERATE_RUNNERS.has(parsed.runner)) {
+    pushError(
+      errors,
+      'runner',
+      `runner must be one of ${[...ITERATE_RUNNERS].join(', ')}`,
+      'enum',
+      parsed.runner,
+    );
+  }
+  if (!isInt(parsed.streak) || (parsed.streak as number) < 0) {
+    pushError(errors, 'streak', 'streak must be a non-negative integer', 'integer', parsed.streak);
+  }
+  if (!isInt(parsed.required_streak) || (parsed.required_streak as number) < 1) {
+    pushError(
+      errors,
+      'required_streak',
+      'required_streak must be a positive integer',
+      'integer',
+      parsed.required_streak,
+    );
+  }
+  if (
+    !Array.isArray(parsed.target_phases) ||
+    parsed.target_phases.length === 0 ||
+    !parsed.target_phases.every(isInt)
+  ) {
+    pushError(
+      errors,
+      'target_phases',
+      'target_phases must be a non-empty array of integers',
+      'array',
+      parsed.target_phases,
+    );
+  }
+
+  if (parsed.iterations !== undefined) {
+    if (!Array.isArray(parsed.iterations)) {
+      pushError(errors, 'iterations', 'iterations must be an array when present', 'array', parsed.iterations);
+    } else {
+      parsed.iterations.forEach((it, i) => {
+        const p = `iterations[${i}]`;
+        if (!isObject(it)) {
+          pushError(errors, p, 'iteration entry must be a mapping', 'object', it);
+          return;
+        }
+        if (typeof it.run_id !== 'string' || it.run_id.length === 0) {
+          pushError(errors, `${p}.run_id`, 'run_id must be a non-empty string', 'string', it.run_id);
+        }
+        if (typeof it.verdict !== 'string' || !ITERATE_VERDICTS.has(it.verdict)) {
+          pushError(
+            errors,
+            `${p}.verdict`,
+            `verdict must be one of ${[...ITERATE_VERDICTS].join(', ')}`,
+            'enum',
+            it.verdict,
+          );
+        }
+      });
+    }
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
