@@ -5,6 +5,7 @@ import {
   TrainingDeckSpecSchema,
   SlideSpecSchema,
   resolveManifest,
+  normalizeDriveImageUrl,
   resolveModuleRefs,
   STENCILS,
   buildSlidesRequestsV2,
@@ -358,6 +359,49 @@ describe('resolveManifest', () => {
   it('handles empty manifest (both fields undefined)', () => {
     const resolved = resolveManifest({});
     expect(resolved.get('anything')).toBeUndefined();
+  });
+
+  // #630 — Slides createImage rejects Drive share/view URLs; resolveImageRef
+  // must rewrite them to the embeddable uc?export=view&id=<id> form.
+  const UC = 'https://drive.google.com/uc?export=view&id=1AbC_dEf-123';
+  it('resolveImageRef rewrites a raw Drive /file/d/<id>/view https URL (#630)', () => {
+    const resolved = resolveManifest({});
+    expect(
+      resolved.resolveImageRef('https://drive.google.com/file/d/1AbC_dEf-123/view?usp=drivesdk'),
+    ).toBe(UC);
+  });
+
+  it('resolveImageRef rewrites a Drive /file/d/<id>/view value behind an @alias (#630)', () => {
+    const resolved = resolveManifest({
+      opp: { shot: 'https://drive.google.com/file/d/1AbC_dEf-123/view' },
+    });
+    expect(resolved.resolveImageRef('@shot')).toBe(UC);
+  });
+});
+
+describe('normalizeDriveImageUrl (#630)', () => {
+  const ID = '1AbC_dEf-123';
+  const UC = `https://drive.google.com/uc?export=view&id=${ID}`;
+
+  it('rewrites /file/d/<id>/view, /edit, /preview', () => {
+    expect(normalizeDriveImageUrl(`https://drive.google.com/file/d/${ID}/view?usp=drivesdk`)).toBe(UC);
+    expect(normalizeDriveImageUrl(`https://drive.google.com/file/d/${ID}/edit`)).toBe(UC);
+    expect(normalizeDriveImageUrl(`https://drive.google.com/file/d/${ID}/preview`)).toBe(UC);
+  });
+
+  it('rewrites open?id= and is idempotent on the uc form', () => {
+    expect(normalizeDriveImageUrl(`https://drive.google.com/open?id=${ID}`)).toBe(UC);
+    expect(normalizeDriveImageUrl(UC)).toBe(UC);
+  });
+
+  it('passes non-Drive URLs through unchanged', () => {
+    expect(normalizeDriveImageUrl('https://example.com/x.png')).toBe('https://example.com/x.png');
+    expect(normalizeDriveImageUrl('https://cdn.example.com/a/b/c.jpg')).toBe('https://cdn.example.com/a/b/c.jpg');
+  });
+
+  it('leaves an unrecognized Drive URL shape untouched', () => {
+    const weird = 'https://drive.google.com/drive/folders/1XYZ';
+    expect(normalizeDriveImageUrl(weird)).toBe(weird);
   });
 });
 
