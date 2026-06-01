@@ -441,6 +441,25 @@ appId: org.commcare.dalvik
 # Fresh-Learn branch: Learn not yet complete → wait for the Learn home.
 # (Guarded on the Deliver gate NOT being present so we don't burn the
 # 180s timeout on an already-complete opp.)
+#
+# #629 wedge diagnostics. The expected post-Start signal is the Learn-app
+# home (`nsv_home_screen`), which only renders after Connect fires
+# POST /users/start_learn_app/ and the 14-step CCZ download completes. On
+# the #629 failure the btn_start handoff is INERT — start_learn_app never
+# fires, the download never begins, and the opp-detail screen just sits
+# there until the 180s wait expires. The old bare `extendedWaitUntil`
+# then hard-failed with a generic "nsv_home_screen not found" and an
+# end-screenshot still on opp-detail, indistinguishable from a slow
+# download or an AVD/recipe defect.
+#
+# Make the wait `optional` so we can branch on the outcome and capture a
+# DISTINCTLY-NAMED diagnostic before failing, so the failure artifact
+# itself names the #629 signature (Start tapped, neither Learn home nor
+# Deliver gate ever rendered). When this fires, the operator/skill should
+# run `connect_preflight_learn_app_user` (the auth/domain/conflict
+# boundary preflight referenced by the btn_start selector) to confirm
+# whether start_learn_app is 500-ing server-side vs a genuine device wedge
+# — that's the Connect-platform half of #629, downstream of ACE.
 - runFlow:
     when:
       notVisible:
@@ -450,4 +469,19 @@ appId: org.commcare.dalvik
           visible:
             id: "org.commcare.dalvik:id/nsv_home_screen"
           timeout: 180000
+          optional: true
+      # Wedge detector: still no Learn home (and not the deliver gate) →
+      # capture the labeled #629 artifact, THEN fail loud so the phase
+      # halts with a precise signature instead of a generic timeout.
+      - runFlow:
+          when:
+            notVisible:
+              id: "org.commcare.dalvik:id/nsv_home_screen"
+          commands:
+            - takeScreenshot: "claim-START-HANDOFF-WEDGED-issue629"
+            # Fails loudly now that the diagnostic is captured — the
+            # screenshot name + this assert pinpoint the inert btn_start
+            # handoff (jjackson/ace#629), not a slow download.
+            - assertVisible:
+                id: "org.commcare.dalvik:id/nsv_home_screen"
 - takeScreenshot: "claim-opp-handoff-learn-home"
