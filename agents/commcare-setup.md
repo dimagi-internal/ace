@@ -111,6 +111,26 @@ result:
 Do NOT dispatch the architect until `get_hq_connection` returns
 `configured: true` with `<ACE_HQ_DOMAIN>` among `available_domains`.
 
+**This call is ALSO the level-0 Nova-binding check — actually make it;
+do not skip it or hand-wave it as "the architect subagent will
+re-probe."** If the Nova tools won't load at level 0 at all (a
+`ToolSearch` for a Nova tool name returns nothing, or `get_hq_connection`
+errors as tool-unavailable rather than returning a `configured` payload),
+the main session's Nova MCP connection failed at startup — a transient
+where the plugin MCP times out at session start and Claude Code does NOT
+retry it mid-session (and `/reload-plugins` does not respawn it). **HALT
+immediately** with: "Nova MCP did not bind at level 0 this session — quit
+and reopen Claude Code (a full restart, not just `/reload-plugins`), then
+resume `/ace:run <opp>/<run-id>`." Do NOT proceed into Step 1 on the
+assumption that the architect subagent's own connection covers Phase 3:
+the architect *builds* work (each dispatch opens its own connection), but
+the level-0-direct steps — `app-deploy`'s `/nova:upload_to_hq`, the
+`pdd-to-*-app-eval` `get_app` reads, and `app-connect-coverage` — all
+need the level-0 connection and are unrunnable without it. Catching this
+at second 0 instead of mid-phase (~25 min in, after both apps are built)
+is the whole point of Step 0. See jjackson/ace#659
+(bednet-spot-check 20260601-1252).
+
 #### Subagent inheritance
 
 Apply the same gate at the start of any later subagent dispatch in
