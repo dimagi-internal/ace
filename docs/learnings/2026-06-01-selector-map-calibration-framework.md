@@ -52,13 +52,14 @@ calibrated. Sampling a random live device — as we did this session, finding it
 mid-Learn on a shared opp — can only **re-confirm** the rows reachable from that
 state; it cannot clear the backlog.
 
-**The only convergent procedure is to walk a throwaway user through every state
-in order, dump each, then reconcile the whole map in one pass.**
+**The only convergent procedure is to cold-boot a fresh device and drive it
+through every state in order, dump each, then reconcile the whole map in one
+pass** (with the Learn-dependent states pointed at a Learn-incomplete opp).
 
 ## What we did about it
 
 1. **Built `skills/selector-map-calibrate/SKILL.md`** — a dedicated, repeatable
-   calibration procedure: a 10-state walk on a throwaway device →
+   calibration procedure: a 10-state walk on a freshly cold-booted device →
    `probe-atlas-drift` harvest → map reconciliation (promote/correct/add/remove
    with dated provenance) → recipe migration off raw ids (#650) → **on-device
    re-validation** (the close-the-loop step piecemeal fixes skipped) → a
@@ -71,19 +72,31 @@ in order, dump each, then reconcile the whole map in one pass.**
    `home-jobs-list`, `opp-list-resume-button`, and `connect_learning_button` on a
    fresh 2.63.0 dump (read-only; no preconditions consumed).
 
-## The cardinal rule
+## The "fresh" requirement is about the opp, not the device
 
-**Never run the destructive full walk on a shared/in-flight device** — it
-consumes another run's one-way preconditions. Use a dedicated/secondary AVD with
-a throwaway user, or a throwaway `/ace:run` opp. On a device you don't own,
-read-only snapshot mode only.
+Subtle but load-bearing (and I got it wrong in the first draft): ACE never
+reuses device state — `mobile_ensure_avd_running` cold-boots every dispatch
+(`-wipe-data` → reinstall → re-register the demo user; `mobile-integration.md:54`).
+So the **device** is always fresh; there is no "throwaway device" to find and
+nothing to protect. States 1–3 (cold-start, login, registration incl. #666's
+photo surface) are walked by the cold-boot's own registration recipes.
+
+What does NOT reset on a device wipe is **Connect-side Learn-completion**, which
+is one-way per (phone, opp) and tracked server-side (#568). So the Learn/Deliver
+states (6–10) need a **Learn-incomplete opp** — that's what a fresh `/ace:run`
+provides. The thing that has to be fresh is the **opp**, not the device. The
+only device-level caution is operator courtesy: cold-boot kills+wipes the
+running AVD, so don't do it over an emulator a human is driving by hand.
 
 ## Residual / follow-up
 
 The full state-walk that clears the **14-row** unverified backlog (and
-calibrates #666's camera surface + confirms #618's Learn-home gesture)
-**requires a dedicated throwaway-user session** — it could not be run this
-session without clobbering the shared in-flight emulator. (#650's static-recipe
+calibrates #666's camera surface + confirms #618's Learn-home gesture) is a
+standard `mobile_ensure_avd_running` cold-boot plus a **Learn-incomplete opp**
+for states 6–10 (a fresh `/ace:run`). It wasn't run this session only because
+`emulator-5580` was a warm, human-or-leftover session I chose not to cold-boot
+over without a heads-up — not because of any architectural blocker. (#650's
+static-recipe
 migration off raw ids landed separately in #665 while this work was in flight,
 leaving only `connect-register-from-otp.yaml`'s 7 camera ids raw — the #666
 surface; so #650 is now reduced to live-verifying the promoted rows, which IS

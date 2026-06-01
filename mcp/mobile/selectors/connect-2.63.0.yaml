@@ -18,7 +18,8 @@
 #
 # To FINISH calibration, run the systematic state-walk:
 #     /ace:step selector-map-calibrate
-# It drives a THROWAWAY user through every device state, harvests ui-dumps
+# It cold-boots a fresh device (states 1-5) + uses a Learn-incomplete opp for
+# the Learn/Deliver states (6-10), harvests ui-dumps
 # via scripts/probe-atlas-drift.ts, promotes/corrects rows, migrates recipes
 # off raw ids, and re-validates on-device. This is the skill the
 # `selector_map_currency` doctor probe points at — NOT
