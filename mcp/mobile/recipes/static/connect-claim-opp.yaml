@@ -171,22 +171,35 @@ appId: org.commcare.dalvik
 # skills/app-screenshot-capture/SKILL.md § Step 4 "OPP_NAME
 # uniqueness assumption" as a known follow-up.
 #
-# `visibilityPercentage: 60` (not Maestro's default 100) to tolerate
+# `visibilityPercentage: 30` (not Maestro's default 100) to tolerate
 # multi-line title-wrap on opp tiles. The card layout wraps long
 # `OPP_NAME` strings to 2-3 lines; at 100% the second line stays clipped
 # below the fold even after `scrollUntilVisible` reports success.
-# 60% is enough for the title-anchored Branch A/B `runFlow.when` guards
+# 30% is enough for the title-anchored Branch A/B `runFlow.when` guards
 # to evaluate true on the wrapped first line. Live reproducer: Phase 6
 # agent in bednet-spot-check/20260525-2022 forked a `bednet-claim-
 # custom.yaml` workaround that just relaxed this one knob — folded back
 # into canonical here. Applied to every `scrollUntilVisible` in this
 # file for parity.
+#
+# SCROLL BUDGET (jjackson/ace#647) — `speed: 80`, `timeout: 40000`,
+# `visibilityPercentage: 30`, live-calibrated 2026-06-01 on
+# malaria-rdt/20260601-0929. The ACE test user accumulates invites
+# across every /ace:run; on a dogfood machine the target tile sits
+# 8+ prior-run tiles deep. The prior budget (`speed 40`, `timeout
+# 20000`, `visibilityPercentage 60`, no explicit speed) exhausted its
+# 20s window before reaching a tile that was PRESENT and claimable —
+# deterministic FAILED (twice). The calibrated probe (`speed 80`,
+# `timeout 40000`, `visibilityPercentage 30`) reached + asserted the
+# target on the first try. Applied to every `scrollUntilVisible` in
+# this file for parity.
 - scrollUntilVisible:
     element:
       text: ${OPP_NAME}
     direction: DOWN
-    timeout: 20000
-    visibilityPercentage: 60
+    speed: 80
+    timeout: 40000
+    visibilityPercentage: 30
 - assertVisible:
     text: ${OPP_NAME}
 
@@ -257,8 +270,9 @@ appId: org.commcare.dalvik
             below:
               text: ${OPP_NAME}
           direction: DOWN
-          timeout: 10000
-          visibilityPercentage: 60
+          speed: 80
+          timeout: 40000
+          visibilityPercentage: 30
           optional: true
 - runFlow:
     when:
@@ -271,8 +285,9 @@ appId: org.commcare.dalvik
             below:
               text: ${OPP_NAME}
           direction: DOWN
-          timeout: 10000
-          visibilityPercentage: 60
+          speed: 80
+          timeout: 40000
+          visibilityPercentage: 30
           optional: true
 
 # --- BRANCH A: in-progress (btn_resume present) ---
@@ -291,8 +306,9 @@ appId: org.commcare.dalvik
             below:
               text: ${OPP_NAME}
           direction: DOWN
-          timeout: 20000
-          visibilityPercentage: 60
+          speed: 80
+          timeout: 40000
+          visibilityPercentage: 30
       - takeScreenshot: "claim-opp-resume-tile"
       - tapOn:
           id: "org.commcare.dalvik:id/btn_resume"
@@ -356,8 +372,9 @@ appId: org.commcare.dalvik
             below:
               text: ${OPP_NAME}
           direction: DOWN
-          timeout: 20000
-          visibilityPercentage: 60
+          speed: 80
+          timeout: 40000
+          visibilityPercentage: 30
       - takeScreenshot: "claim-opp-new-tile"
       - tapOn:
           id: "org.commcare.dalvik:id/btn_view_opportunity"
