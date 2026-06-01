@@ -88,15 +88,33 @@ it (Template Anatomy, Render Code Contract, Actions API, Pipeline Schema,
 Saved-runs). It is the constantly-improving source of truth served live by
 labs — re-fetch every run; never author `render_code` from memory.
 
-**SCRATCH alias-consistency guardrail (load-bearing).** When you author
-from scratch, the pipeline's `pipeline_sources[].alias`, the key the
+**Alias-consistency guardrail (load-bearing — applies to BOTH build
+paths).** The pipeline's `pipeline_sources[].alias`, the key the
 `render_code` reads (`view.pipelines.<alias>`), and the key in the
 saved-run `snapshot_inputs.pipelines` MUST be the **same string**. A
-mismatch (e.g. alias `data` while render/snapshot read `flw_kpis`) passes
-every create call yet renders blank KPIs in saved-run views and an empty
-audit rollup — the failure mode that motivated the from-scratch path
-(`bednet-spot-check/20260528-0556`). Pick one alias and use it in all three
-places.
+mismatch (e.g. alias `data` while the render/snapshot read `flw_kpis`)
+passes every create + run call yet renders blank KPIs in saved-run views
+and an empty audit rollup.
+
+- **SCRATCH:** you own the alias — pick one string and use it in all
+  three places.
+- **ADAPT:** the alias is **owned by the template**, not yours to
+  choose. For `llo_weekly_review` the live template alias is **`data`**.
+  READ the actual alias from the `workflow_create_from_template`
+  response's pipelines list (or `get_workflow`) — do NOT assume
+  `flw_kpis` or re-author the `render_code` against a guessed key. Any
+  render edit you make (the Polish step's `workflow_patch_render_code` /
+  `workflow_update_render_code`) **and** the saved-run
+  `snapshot_inputs.pipelines` MUST use that exact template alias.
+  Re-authoring the render against a guessed alias is the
+  blank-KPI-in-saved-run failure: the `llo_weekly_review` template ships
+  alias `data`, ACE assumed `flw_kpis`, and every saved-run view
+  rendered all-zero (`bednet-spot-check/20260528-0556` and
+  /20260601-0651; jjackson/ace#633).
+
+Either way: confirm the three strings match before you ship the
+workflow — a blank-KPI render passes all create/run calls and only
+surfaces in the saved-run screenshot.
 
 2. **Create the LLO weekly review workflow — via the path decided above.**
 
@@ -551,7 +569,7 @@ tracks as `dry-run-success`.
 | `workflow_create_run` or `workflow_save_snapshot` returns transport error | step 8 partial | Capture the labs error in the run summary; re-run `/ace:step synthetic-workflow-seed` after the transient resolves. Idempotency caveat: re-runs create NEW workflow definitions; use `workflow_delete` to retire stale ones first OR open the just-failed workflow in labs UI and finish the snapshot manually. |
 | `workflow_save_snapshot` returns INVALID_SCHEMA cross-check error | step 8 halt | The run's `opportunity_id` doesn't match the param. Should never fire if step 8's loop is built correctly (uses the same `synthetic.labs_opp_id` for both create and snapshot). If it does, the run record was created against a different opp than the skill thinks — investigate via `workflow_get`. |
 | Re-run on existing workflows | step 2 idempotency | `workflow_create_from_template` always creates a NEW workflow (no find-or-create on labs side). Re-runs append to opp.yaml; old workflow_ids are orphaned in labs and need manual cleanup. Use `workflow_delete` directly if you need to retire a stale instance. |
-| SCRATCH build renders blank KPIs in saved-run views | post-build smoke (walkthrough screenshot) shows `—` for KPI tiles | The `pipeline_sources[].alias`, the render's `view.pipelines.<alias>` read, and `snapshot_inputs.pipelines` disagree. Re-author so all three use the same alias — see the SCRATCH alias-consistency guardrail before step 2. |
+| Saved-run views render blank KPIs (`—` tiles) — either build path | post-build smoke (walkthrough screenshot) shows `—` for KPI tiles | The `pipeline_sources[].alias`, the render's `view.pipelines.<alias>` read, and `snapshot_inputs.pipelines` disagree. SCRATCH: pick one alias for all three. ADAPT: the alias is the template's (`llo_weekly_review` → `data`) — read it from the create-from-template response, don't assume `flw_kpis`. See the alias-consistency guardrail before step 2 (jjackson/ace#633). |
 
 ## Related skills
 
