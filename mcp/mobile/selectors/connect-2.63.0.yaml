@@ -153,6 +153,46 @@ selectors:
     value: "org.commcare.dalvik:id/snackbar_action"
     purpose: "OK button on the demo-user OTP-bypass snackbar (for +7426 phones)"
 
+  # ── Login / registration / learn-menu — promoted from raw literals (#650) ──
+  # Referenced by connect-login / connect-register-* / learn-* recipes,
+  # migrated off raw resource-id literals so they no longer bypass
+  # selector_map_currency. NOT live-verified this session: the login +
+  # registration surfaces can't be reached non-destructively from a
+  # registered+logged-in test user, and the learn-suite-menu sits behind
+  # the #629 Start-handoff wedge. Values are byte-identical to the
+  # recipes' prior raw literals (calibrated-by-prior-passing-run on
+  # 2.63.0) — flagged `unverified: true` until a live dump confirms them.
+  personalid-login-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_login_button"
+    unverified: true
+    purpose: "Login button on the Connect sign-in screen. connect-login. #650."
+  personalid-name-continue:
+    type: id
+    value: "org.commcare.dalvik:id/personalid_name_continue_button"
+    unverified: true
+    purpose: "Continue button on the registration name-entry screen. connect-register-from-otp. #650."
+  personalid-confirm-code-view:
+    type: id
+    value: "org.commcare.dalvik:id/confirm_code_view"
+    unverified: true
+    purpose: "Confirm-code entry on the registration OTP/confirmation screen. connect-register-from-otp. #650."
+  personalid-backup-code-view:
+    type: id
+    value: "org.commcare.dalvik:id/backup_code_view"
+    unverified: true
+    purpose: "Backup-code display/entry view on the registration backup-code screen. connect-register-from-otp. #650."
+  personalid-message-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_message_button"
+    unverified: true
+    purpose: "Message/continue button on a registration prompt screen. connect-register-from-otp. #650."
+  learn-suite-menu:
+    type: id
+    value: "org.commcare.dalvik:id/screen_suite_menu_list"
+    unverified: true
+    purpose: "Learn-app MenuActivity suite-menu list (post-Start, behind the #629 wedge). learn-launch / learn-suite-reentry / learn-tap-module. #650."
+
   # ── Google Play Services phone-hint sheet ───────────────────────
   gms-phone-hint-cancel:
     type: id

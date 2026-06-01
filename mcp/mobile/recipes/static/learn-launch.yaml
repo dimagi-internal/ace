@@ -46,6 +46,6 @@ appId: org.commcare.dalvik
 # ListView itself) keeps the recipe opp-agnostic.
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/screen_suite_menu_list"
+      id: "${SELECTOR:learn-suite-menu}"
     timeout: 15000
 - takeScreenshot: "learn-launch-suite-root"
