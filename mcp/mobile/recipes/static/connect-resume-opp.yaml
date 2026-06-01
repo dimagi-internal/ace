@@ -2,9 +2,12 @@
 # tap its CTA (Resume OR Proceed), landing on the post-Learn
 # certificate/opp-detail surface (atlas § 8) that deliver-launch.yaml consumes.
 #
-# Pre-state: Connect opp-list (connect_fragment_jobs_list) visible;
-# the target opp is in the "In Progress" section. Warm-session only —
-# assumes the journey-learn leg just completed Learn in this dispatch.
+# Pre-state: either (a) Connect opp-list (connect_fragment_jobs_list)
+# visible, or (b) the CommCare Learn-app StandardHomeActivity
+# (nsv_home_screen) — the documented end-state of the journey-learn leg
+# (#618). The inter-leg handoff bridge below normalises (b) → (a) before
+# the pre-state assert. Warm-session only — assumes the journey-learn leg
+# just completed Learn in this dispatch; the target opp is in "In Progress".
 #
 # Post-state: the certificate/opp-detail surface (atlas § 8):
 # either the "Congratulations" certificate overlay or the
@@ -43,6 +46,48 @@
 # button siblings) and not the outer rootCardView/RecyclerView.
 appId: org.commcare.dalvik
 ---
+# ── INTER-LEG HANDOFF BRIDGE (#618) ───────────────────────────────────
+# The journey-learn leg ends on the CommCare Learn-app StandardHomeActivity
+# (root nsv_home_screen = ${SELECTOR:learn-home-screen}, "1 form sent to
+# server!") — NOT on Connect's jobs list. journey-deliver's FIRST palette
+# step is this recipe, whose pre-state assert below requires the Connect
+# jobs list. With nothing bridging the two legs, that assert fails
+# immediately — the deterministic inter-leg navigation gap #618 reported.
+#
+# Fix: if we detect the CommCare Learn home, back out to the Connect jobs
+# list before the pre-state assert. CommCare and ConnectID are the same
+# app (org.commcare.dalvik); a system Back press unwinds the Learn-app
+# StandardHomeActivity toward the ConnectID activity that launched it. The
+# branch is a no-op when we already land on the jobs list (warm-state
+# contract for runs that did NOT just walk Learn).
+#
+# ⚠️  UNVALIDATED GESTURE — DRAFT (#618). The exact back-navigation (single
+# Back vs repeated Back vs an explicit nav element) has NOT been confirmed
+# against a live post-Learn StandardHomeActivity ui-dump. Learn completion
+# is one-way per (test user, opp), so on-device validation rides a fresh
+# Phase 6 /ace:run. Per CLAUDE.md "validate recipe/selector logic live
+# before shipping", DO NOT merge until this branch is confirmed on-device.
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:learn-home-screen}"
+    commands:
+      - pressKey: Back
+      # Second Back if the first didn't clear the Learn home (the gesture
+      # depth is the unvalidated part). Guarded so it no-ops once we leave.
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:learn-home-screen}"
+          commands:
+            - pressKey: Back
+      # Verify the bridge landed us on the Connect jobs list before the
+      # pre-state assert below takes over.
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:home-jobs-list}"
+          timeout: 15000
+
 # Confirm we are on the opp-list.
 - assertVisible:
     id: "${SELECTOR:home-jobs-list}"

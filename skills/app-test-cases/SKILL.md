@@ -142,6 +142,15 @@ two smoke recipes share device state within one Phase 6 dispatch:
   the first Deliver module → first Deliver form screenshot. ~12 steps,
   NO Learn duplication.
 
+  **Inter-leg end-state contract (#618).** The journey-learn leg leaves
+  the device on the CommCare Learn-app StandardHomeActivity
+  (`nsv_home_screen`, "1 form sent to server!"), NOT on Connect's jobs
+  list. `connect-resume-opp.yaml` opens with an inter-leg handoff bridge
+  that backs out of the CommCare Learn home to the Connect jobs list
+  before its pre-state assert, so the two legs compose without a separate
+  return step prepended here. (The bridge's exact back-navigation gesture
+  is pending live-device validation — see the recipe header + #618.)
+
 State the warm-state dependency in `journey-deliver.yaml`'s header
 comment: it is NOT independently cold-runnable; runners execute
 journey-learn → journey-deliver in order.
