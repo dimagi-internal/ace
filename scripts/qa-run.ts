@@ -31,7 +31,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stringify as stringifyYaml } from 'yaml';
 import { runChecks } from '../lib/qa-runner.js';
-import type { QACheck } from '../lib/qa-types.js';
+import type { QACheck, QACheckContext } from '../lib/qa-types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -43,6 +43,10 @@ interface Args {
   target: string;
   capture_path: string;
   include_passed: boolean;
+  /** Optional: path to a decisions.yaml whose text becomes ctx.decisionsYaml. */
+  decisions?: string;
+  /** Optional: archetype value passed through as ctx.archetype. */
+  archetype?: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -64,6 +68,12 @@ function parseArgs(argv: string[]): Args {
         break;
       case '--include-passed':
         args.include_passed = true;
+        break;
+      case '--decisions':
+        args.decisions = argv[++i];
+        break;
+      case '--archetype':
+        args.archetype = argv[++i];
         break;
       case '-h':
       case '--help':
@@ -87,7 +97,7 @@ function parseArgs(argv: string[]): Args {
 
 function printUsage(): void {
   process.stderr.write(
-    'usage: qa-run.ts --skill <skill> --artifact <path> --target <id> --capture-path <relative> [--include-passed]\n',
+    'usage: qa-run.ts --skill <skill> --artifact <path> --target <id> --capture-path <relative> [--include-passed] [--decisions <path>] [--archetype <value>]\n',
   );
 }
 
@@ -116,6 +126,24 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Build optional context for context-dependent checks. Only include fields
+  // that were actually supplied so skills that don't need context are unaffected.
+  const context: QACheckContext = {};
+  if (args.decisions !== undefined) {
+    try {
+      context.decisionsYaml = readFileSync(args.decisions, 'utf-8');
+    } catch (err) {
+      process.stderr.write(
+        `failed to read decisions at '${args.decisions}': ${(err as Error).message}\n`,
+      );
+      process.exit(1);
+    }
+  }
+  if (args.archetype !== undefined) {
+    context.archetype = args.archetype;
+  }
+  const hasContext = Object.keys(context).length > 0;
+
   let result;
   try {
     result = await runChecks({
@@ -125,6 +153,7 @@ async function main(): Promise<void> {
       artifact,
       checks: CHECKS,
       include_passed: args.include_passed,
+      context: hasContext ? context : undefined,
     });
   } catch (err) {
     process.stderr.write(`internal error running checks: ${(err as Error).message}\n`);
