@@ -47,10 +47,10 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/snackbar_action"
+        id: "${SELECTOR:demo-snackbar-action}"
     commands:
       - tapOn:
-          id: "org.commcare.dalvik:id/snackbar_action"
+          id: "${SELECTOR:demo-snackbar-action}"
 
 # App Lock screen offers Configure Fingerprint and Configure PIN; AVD has
 # no fingerprint enrolled so we use PIN.
@@ -66,10 +66,10 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/connect_verify_pin_button"
+        id: "${SELECTOR:personalid-pin-verify}"
     commands:
       - tapOn:
-          id: "org.commcare.dalvik:id/connect_verify_pin_button"
+          id: "${SELECTOR:personalid-pin-verify}"
 
 # Two branches here:
 #
@@ -129,10 +129,10 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/snackbar_action"
+        id: "${SELECTOR:demo-snackbar-action}"
     commands:
       - tapOn:
-          id: "org.commcare.dalvik:id/snackbar_action"
+          id: "${SELECTOR:demo-snackbar-action}"
 
 # Three flow paths to handle (CommCare 2.62.0):
 #
@@ -181,14 +181,14 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/nameTextValue"
+        id: "${SELECTOR:personalid-name-input}"
     commands:
       - tapOn:
-          id: "org.commcare.dalvik:id/nameTextValue"
+          id: "${SELECTOR:personalid-name-input}"
       - inputText: ${NAME}
       - hideKeyboard
       - tapOn:
-          id: "org.commcare.dalvik:id/personalid_name_continue_button"
+          id: "${SELECTOR:personalid-name-continue}"
 
 # Settle whichever Backup Code surface is rendering before probing
 # visibility — the screen swaps in via fragment transition.
@@ -203,10 +203,10 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/backup_code_view"
+        id: "${SELECTOR:personalid-backup-code-view}"
     commands:
       - tapOn:
-          id: "org.commcare.dalvik:id/backup_code_view"
+          id: "${SELECTOR:personalid-backup-code-view}"
       - inputText: ${BACKUP_CODE}
       - waitForAnimationToEnd:
           timeout: 2000
@@ -242,7 +242,7 @@ appId: org.commcare.dalvik
       - runFlow:
           when:
             visible:
-              id: "org.commcare.dalvik:id/confirm_code_view"
+              id: "${SELECTOR:personalid-confirm-code-view}"
           commands:
             - tapOn:
                 point: "254,1410"
@@ -250,7 +250,7 @@ appId: org.commcare.dalvik
             - waitForAnimationToEnd:
                 timeout: 2000
             - tapOn:
-                id: "org.commcare.dalvik:id/connect_backup_code_button"
+                id: "${SELECTOR:personalid-backup-code-button}"
             - extendedWaitUntil:
                 visible:
                   id: "org.commcare.dalvik:id/take_photo_button"
@@ -261,25 +261,25 @@ appId: org.commcare.dalvik
       - runFlow:
           when:
             notVisible:
-              id: "org.commcare.dalvik:id/confirm_code_view"
+              id: "${SELECTOR:personalid-confirm-code-view}"
           commands:
             - tapOn:
-                id: "org.commcare.dalvik:id/connect_backup_code_button"
+                id: "${SELECTOR:personalid-backup-code-button}"
 
 # 2.62.0 path: single-field initial entry. erase a generous 12 chars so a
 # pre-filled value doesn't get concatenated.
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/connect_backup_code_input"
+        id: "${SELECTOR:personalid-backup-code-input}"
     commands:
       - tapOn:
-          id: "org.commcare.dalvik:id/connect_backup_code_input"
+          id: "${SELECTOR:personalid-backup-code-input}"
       - eraseText: 12
       - inputText: ${BACKUP_CODE}
       - hideKeyboard
       - tapOn:
-          id: "org.commcare.dalvik:id/connect_backup_code_button"
+          id: "${SELECTOR:personalid-backup-code-button}"
 
 # 2.62.0 only: some recovery flows re-prompt with "Welcome back" + the
 # same single backup-code field as a confirmation step. (2.63.0 handles
@@ -289,15 +289,15 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/connect_backup_code_input"
+        id: "${SELECTOR:personalid-backup-code-input}"
     commands:
       - tapOn:
-          id: "org.commcare.dalvik:id/connect_backup_code_input"
+          id: "${SELECTOR:personalid-backup-code-input}"
       - eraseText: 12
       - inputText: ${BACKUP_CODE}
       - hideKeyboard
       - tapOn:
-          id: "org.commcare.dalvik:id/connect_backup_code_button"
+          id: "${SELECTOR:personalid-backup-code-button}"
 
 # "Account Recovered" success dialog (every recovery path lands here).
 - waitForAnimationToEnd:
@@ -305,10 +305,10 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/connect_message_button"
+        id: "${SELECTOR:personalid-message-button}"
     commands:
       - tapOn:
-          id: "org.commcare.dalvik:id/connect_message_button"
+          id: "${SELECTOR:personalid-message-button}"
 
 # Photo capture (only truly-fresh registration reaches this — server has
 # no prior account, so neither welcome_back nor connect_message_button
@@ -404,5 +404,5 @@ appId: org.commcare.dalvik
           timeout: 3000
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/rvJobList"
+      id: "${SELECTOR:home-jobs-recycler}"
     timeout: 60000

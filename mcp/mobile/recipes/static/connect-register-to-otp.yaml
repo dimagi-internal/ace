@@ -64,7 +64,7 @@ appId: org.commcare.dalvik
 
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/str_setup_message"
+      id: "${SELECTOR:app-splash-message}"
     timeout: 30000
 
 # Open the navigation drawer (top-left burger icon at this resolution)
@@ -73,21 +73,21 @@ appId: org.commcare.dalvik
     point: "73,209"
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+      id: "${SELECTOR:nav-drawer-sign-in}"
     timeout: 5000
 - tapOn:
-    id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+    id: "${SELECTOR:nav-drawer-sign-in}"
 
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/countryCode"
+      id: "${SELECTOR:personalid-country-code}"
     timeout: 10000
 - waitForAnimationToEnd:
     timeout: 3000
 
 # Country code: tap → dismiss any phone-hint sheet → tap again → type
 - tapOn:
-    id: "org.commcare.dalvik:id/countryCode"
+    id: "${SELECTOR:personalid-country-code}"
 - runFlow:
     when:
       visible:
@@ -96,13 +96,13 @@ appId: org.commcare.dalvik
       - tapOn:
           id: "com.google.android.gms:id/cancel"
 - tapOn:
-    id: "org.commcare.dalvik:id/countryCode"
+    id: "${SELECTOR:personalid-country-code}"
 - eraseText: 5
 - inputText: ${COUNTRY_CODE}
 
 # Phone: same dance — sheet WILL appear on first focus
 - tapOn:
-    id: "org.commcare.dalvik:id/connect_primary_phone_input"
+    id: "${SELECTOR:personalid-phone-input}"
 - runFlow:
     when:
       visible:
@@ -111,13 +111,13 @@ appId: org.commcare.dalvik
       - tapOn:
           id: "com.google.android.gms:id/cancel"
 - tapOn:
-    id: "org.commcare.dalvik:id/connect_primary_phone_input"
+    id: "${SELECTOR:personalid-phone-input}"
 - eraseText: 15
 - inputText: ${PHONE_LOCAL}
 
 # Consent + Continue
 - tapOn:
-    id: "org.commcare.dalvik:id/connect_consent_check"
+    id: "${SELECTOR:personalid-consent-check}"
 
 # If the phone is already registered, surface a sentinel for the composite caller.
 - runFlow:
@@ -129,7 +129,7 @@ appId: org.commcare.dalvik
       - stopApp
 
 - tapOn:
-    id: "org.commcare.dalvik:id/personalid_phone_continue_button"
+    id: "${SELECTOR:personalid-phone-continue}"
 
 # Wait for the demo-user snackbar (+7426 bypass). Caller
 # (connect-register-from-otp.yaml) handles the rest of the demo flow.

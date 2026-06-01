@@ -62,11 +62,11 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       notVisible:
-        id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+        id: "${SELECTOR:home-jobs-list}"
     commands:
       - extendedWaitUntil:
           visible:
-            id: "org.commcare.dalvik:id/connect_login_button"
+            id: "${SELECTOR:personalid-login-button}"
           timeout: 30000
           optional: true
 
@@ -78,11 +78,11 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/connect_login_button"
+        id: "${SELECTOR:personalid-login-button}"
     commands:
       - takeScreenshot: "connect-login-first-start"
       - tapOn:
-          id: "org.commcare.dalvik:id/connect_login_button"
+          id: "${SELECTOR:personalid-login-button}"
 
 # Branch (b) post-install: open nav drawer + tap sign-in. Gated on the
 # splash being STILL VISIBLE — which is true on a post-install signed-out
@@ -97,16 +97,16 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/str_setup_message"
+        id: "${SELECTOR:app-splash-message}"
     commands:
       - tapOn:
           point: "73,209"
       - extendedWaitUntil:
           visible:
-            id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+            id: "${SELECTOR:nav-drawer-sign-in}"
           timeout: 5000
       - tapOn:
-          id: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+          id: "${SELECTOR:nav-drawer-sign-in}"
 
 # Already signed in? The Connect home is anchored on the
 # `connect_fragment_jobs_list` id — present whether or not the user has
@@ -118,7 +118,7 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+        id: "${SELECTOR:home-jobs-list}"
     commands:
       - takeScreenshot: "connect-login-already-signed-in"
       - stopApp
@@ -134,11 +134,11 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/connect_primary_phone_input"
+        id: "${SELECTOR:personalid-phone-input}"
     commands:
       # Country code: tap, dismiss GMS phone-hint sheet if it pops, tap again, type.
       - tapOn:
-          id: "org.commcare.dalvik:id/countryCode"
+          id: "${SELECTOR:personalid-country-code}"
       - runFlow:
           when:
             visible:
@@ -147,13 +147,13 @@ appId: org.commcare.dalvik
             - tapOn:
                 id: "com.google.android.gms:id/cancel"
       - tapOn:
-          id: "org.commcare.dalvik:id/countryCode"
+          id: "${SELECTOR:personalid-country-code}"
       - eraseText: 10
       - inputText: ${COUNTRY_CODE}
 
       # Phone: same dance — sheet WILL appear on first focus.
       - tapOn:
-          id: "org.commcare.dalvik:id/connect_primary_phone_input"
+          id: "${SELECTOR:personalid-phone-input}"
       - runFlow:
           when:
             visible:
@@ -162,15 +162,15 @@ appId: org.commcare.dalvik
             - tapOn:
                 id: "com.google.android.gms:id/cancel"
       - tapOn:
-          id: "org.commcare.dalvik:id/connect_primary_phone_input"
+          id: "${SELECTOR:personalid-phone-input}"
       - eraseText: 15
       - inputText: ${PHONE_LOCAL}
 
       # Consent + Continue
       - tapOn:
-          id: "org.commcare.dalvik:id/connect_consent_check"
+          id: "${SELECTOR:personalid-consent-check}"
       - tapOn:
-          id: "org.commcare.dalvik:id/personalid_phone_continue_button"
+          id: "${SELECTOR:personalid-phone-continue}"
 
       # Post-Continue:
       # - Demo-user (+7426): snackbar "I see you're a demo user, so we'll
@@ -180,10 +180,10 @@ appId: org.commcare.dalvik
       - runFlow:
           when:
             visible:
-              id: "org.commcare.dalvik:id/snackbar_action"
+              id: "${SELECTOR:demo-snackbar-action}"
           commands:
             - tapOn:
-                id: "org.commcare.dalvik:id/snackbar_action"
+                id: "${SELECTOR:demo-snackbar-action}"
 
 # OS-level BiometricPrompt requesting the device PIN to unlock PersonalID.
 # This is the OS unlock surface (`com.android.systemui:id/lockPassword`),
@@ -205,6 +205,6 @@ appId: org.commcare.dalvik
 # used but it disappears once every invite has been claimed.
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+      id: "${SELECTOR:home-jobs-list}"
     timeout: 30000
 - takeScreenshot: "connect-login-home"

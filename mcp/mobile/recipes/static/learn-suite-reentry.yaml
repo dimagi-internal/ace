@@ -47,6 +47,6 @@ appId: org.commcare.dalvik
 # drill the next module.
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/screen_suite_menu_list"
+      id: "${SELECTOR:learn-suite-menu}"
     timeout: 15000
 - takeScreenshot: "learn-suite-reentry-suite-root"

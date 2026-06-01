@@ -54,7 +54,7 @@ appId: org.commcare.dalvik
 ---
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/screen_suite_menu_list"
+      id: "${SELECTOR:learn-suite-menu}"
     timeout: 10000
 - takeScreenshot: "learn-tap-module-before-${MODULE_NAME}"
 
@@ -136,9 +136,9 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/screen_suite_menu_list"
+        id: "${SELECTOR:learn-suite-menu}"
       notVisible:
-        id: "org.commcare.dalvik:id/nav_btn_next"
+        id: "${SELECTOR:form-nav-next}"
     commands:
       - runFlow:
           when:
@@ -150,7 +150,7 @@ appId: org.commcare.dalvik
             visible:
               text: "${MODULE_NAME}"
               below:
-                id: "org.commcare.dalvik:id/screen_suite_menu_list"
+                id: "${SELECTOR:learn-suite-menu}"
           commands:
             - takeScreenshot: "learn-tap-module-intermediate-${MODULE_NAME}"
             # Body-scoped re-tap (mirrors Branch C). On the intermediate
@@ -163,12 +163,12 @@ appId: org.commcare.dalvik
             - tapOn:
                 text: "${MODULE_NAME}"
                 below:
-                  id: "org.commcare.dalvik:id/screen_suite_menu_list"
+                  id: "${SELECTOR:learn-suite-menu}"
             - waitForAnimationToEnd:
                 timeout: 5000
             - extendedWaitUntil:
                 visible:
-                  id: "org.commcare.dalvik:id/nav_btn_next"
+                  id: "${SELECTOR:form-nav-next}"
                 timeout: 10000
       # Branch C: name-mismatch case. Form-name != module-name, so
       # Branch B's same-name guard skipped (no ${MODULE_NAME} node in
@@ -185,18 +185,18 @@ appId: org.commcare.dalvik
             visible:
               text: "${FORM_NAME}"
               below:
-                id: "org.commcare.dalvik:id/screen_suite_menu_list"
+                id: "${SELECTOR:learn-suite-menu}"
           commands:
             - takeScreenshot: "learn-tap-module-form-row-${FORM_NAME}"
             - tapOn:
                 text: "${FORM_NAME}"
                 below:
-                  id: "org.commcare.dalvik:id/screen_suite_menu_list"
+                  id: "${SELECTOR:learn-suite-menu}"
             - waitForAnimationToEnd:
                 timeout: 5000
             - extendedWaitUntil:
                 visible:
-                  id: "org.commcare.dalvik:id/nav_btn_next"
+                  id: "${SELECTOR:form-nav-next}"
                 timeout: 10000
 
 - takeScreenshot: "learn-tap-module-after-${MODULE_NAME}"
