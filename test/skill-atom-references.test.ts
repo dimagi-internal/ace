@@ -92,6 +92,7 @@ const ALLOWLIST = new Set([
 
   // ---- Android view IDs referenced by mobile skills ----
   'connect_fragment_jobs_list',  // org.commcare.dalvik:id/connect_fragment_jobs_list
+  'connect_learning_button',     // org.commcare.dalvik:id/connect_learning_button (opp-detail; selector-map-calibrate)
 
   // ---- Training-deck template kinds (recipe types, not atoms) ----
   'mobile_flow',  // template_kind for training-deck-render

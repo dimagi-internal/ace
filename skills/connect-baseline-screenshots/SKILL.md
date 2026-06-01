@@ -12,6 +12,16 @@ Capture the per-Connect-version baseline of "how Connect works" screenshots
 that every ACE opp's training deck reuses. **NOT a per-opp skill** — runs
 once when the Connect APK updates and the previous baseline goes stale.
 
+> **This skill captures training PNGs — it does NOT calibrate the selector
+> map.** Reconciling `mcp/mobile/selectors/connect-<apk>.yaml` (promoting
+> `unverified` rows, fixing drift, migrating recipes off raw ids) is owned by
+> **`selector-map-calibrate`**, which the `selector_map_currency` doctor probe
+> points at. The two share the live device + baseline recipes but produce
+> different products. Don't conflate them (the doctor remediation used to point
+> here by mistake — see `docs/learnings/2026-06-01-selector-map-calibration-framework.md`).
+> The `01-sign-in … 08-settings` recipe list in Step 2 below is aspirational;
+> the real on-disk set is in `mcp/mobile/recipes/baseline/README.md`.
+
 ## Inputs
 
 | Source | Artifact | Used for |
