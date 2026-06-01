@@ -2,8 +2,14 @@
 # tap its CTA (Resume OR Proceed), landing on the post-Learn
 # certificate/opp-detail surface (atlas § 8) that deliver-launch.yaml consumes.
 #
-# Pre-state: Connect opp-list (connect_fragment_jobs_list) visible;
-# the target opp is in the "In Progress" section. Warm-session only —
+# Pre-state: EITHER Connect opp-list (connect_fragment_jobs_list) visible,
+# OR — the steady warm-session case — the CommCare Learn-app home
+# (StandardHomeActivity, root `nsv_home_screen`) that the immediately-
+# preceding journey-learn leg leaves us on after the final
+# assessment-pass + sync (jjackson/ace#618). The leading back-out branch
+# below bridges Learn-home → jobs list so this recipe is the legitimate
+# first Deliver-leg step regardless of which of those two surfaces is up.
+# The target opp is in the "In Progress" section. Warm-session only —
 # assumes the journey-learn leg just completed Learn in this dispatch.
 #
 # Post-state: the certificate/opp-detail surface (atlas § 8):
@@ -43,7 +49,38 @@
 # button siblings) and not the outer rootCardView/RecyclerView.
 appId: org.commcare.dalvik
 ---
-# Confirm we are on the opp-list.
+# BACK-OUT BRIDGE (jjackson/ace#618). After journey-learn completes Learn
+# (final assessment-pass + sync), CommCare returns to the Learn-app home —
+# StandardHomeActivity, whose root ScrollView is `nsv_home_screen` (the
+# same anchor learn-launch.yaml waits on). That is NOT the Connect jobs
+# list, so the bare `assertVisible: connect_fragment_jobs_list` below used
+# to fail immediately as step 1 with nothing to bridge the two surfaces.
+#
+# Pressing the system Back key from StandardHomeActivity pops the
+# CommCare Learn-app activity and returns to ConnectActivity's jobs list
+# (`connect_fragment_jobs_list`) — the same surface connect-claim-opp.yaml
+# launched the Learn app from. Guard the back-press on `nsv_home_screen`
+# so this is a true no-op when we are already on the jobs list (the
+# recipe's original documented pre-state). `back` is on the recipe-
+# validator allowlist (mcp/mobile/backends/maestro.ts ALLOWED_STEP_KEYS).
+#
+# `extendedWaitUntil` (not a bare assert) gives the activity pop +
+# RecyclerView re-render time to land before the post-condition assert
+# below; the jobs list is the verified post-state of the back-out.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/nsv_home_screen"
+    commands:
+      - takeScreenshot: "resume-opp-learn-home-before-backout"
+      - back
+      - extendedWaitUntil:
+          visible:
+            id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+          timeout: 15000
+
+# Post-condition: we are on the opp-list (either we started here, or the
+# back-out branch above bridged Learn-home → jobs list).
 - assertVisible:
     id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
 
