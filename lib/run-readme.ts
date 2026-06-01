@@ -18,7 +18,12 @@
  * for the broader rationale.
  */
 
-import { ARTIFACT_MANIFEST, PHASES, type Phase } from './artifact-manifest.js';
+import {
+  ARTIFACT_MANIFEST,
+  PHASES,
+  normalizePhaseKey,
+  type Phase,
+} from './artifact-manifest.js';
 
 export type PhaseStatus = 'pending' | 'in-progress' | 'done' | 'skipped';
 
@@ -29,40 +34,10 @@ const OPP_LEVEL_PATHS = new Set<string>([
   'eval-calibration/known-issues.md',
 ]);
 
-/**
- * Maps phase-agent-file names (the public key-space used by the
- * `render_run_readme` MCP atom's docs and by `ace-orchestrator.md`) to
- * the internal short `Phase` keys used by `ARTIFACT_MANIFEST`. Only the
- * entries that DIFFER are listed; identity keys
- * (`scenarios-and-acceptance`, `qa-and-training`,
- * `synthetic-data-and-workflows`, `solicitation-management`, `closeout`)
- * resolve via the is-already-a-Phase branch in `normalizePhaseKey`.
- *
- * Without this map, a caller passing the documented long key (e.g.
- * `idea-to-design`) silently no-ops because `generateRunReadme` looks up
- * by short `Phase` key (`design`) — the row stays `pending`. Exactly the
- * four mismatched pairs below (plus `execution-manager`) were the
- * half-pending-render bug (jjackson/ace#637).
- */
-const AGENT_NAME_TO_PHASE: Record<string, Phase> = {
-  'idea-to-design': 'design',
-  'commcare-setup': 'commcare',
-  'connect-setup': 'connect',
-  'ocs-setup': 'ocs',
-  'execution-manager': 'execution-management',
-};
-
-const PHASE_KEY_SET = new Set<string>(PHASES);
-
-/**
- * Resolve an incoming phaseStatus key (either an internal short `Phase`
- * key or a long phase-agent-file name) to its short `Phase` key.
- * Returns `undefined` for keys that match neither space.
- */
-function normalizePhaseKey(key: string): Phase | undefined {
-  if (PHASE_KEY_SET.has(key)) return key as Phase;
-  return AGENT_NAME_TO_PHASE[key];
-}
+// Phase-key normalization (short `Phase` keys ⇄ long phase-agent-file
+// names) is provided by `normalizePhaseKey` from artifact-manifest.ts —
+// the single source of truth for phase identity (jjackson/ace#637). The
+// per-file alias map that used to live here was folded into PHASE_DEFS.
 
 /**
  * Render the run-folder README markdown.

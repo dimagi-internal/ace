@@ -1115,7 +1115,10 @@ empty even on a fully-populated run (observed: leep run 20260527-1528).
 **Manifest-key map** for the `phase` arg `verify_phase_artifacts` expects
 — the SHORT key from `lib/artifact-manifest.ts § PHASES`, NOT the
 agent-file name. The verifier rejects unknown values (zod enum), so
-passing the wrong key is loud and immediate:
+passing the wrong key is loud and immediate. **Canonical source: the
+`PHASE_DEFS` table in `lib/artifact-manifest.ts` (`{key, agentName,
+ordinal, folder}`) — this table mirrors it for human reference; if they
+disagree, `PHASE_DEFS` wins.**
 
 | Phase (agent file) | Manifest key |
 |---|---|

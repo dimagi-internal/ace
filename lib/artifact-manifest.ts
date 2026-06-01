@@ -73,20 +73,93 @@ export interface ArtifactEntry {
   description: string;
 }
 
-// ── Phase ordering ─────────────────────────────────────────────────
+// ── Phase identity (single source of truth) ────────────────────────
 
-export const PHASES = [
-  'design',
-  'scenarios-and-acceptance',
-  'commcare',
-  'connect',
-  'ocs',
-  'qa-and-training',
-  'synthetic-data-and-workflows',
-  'solicitation-management',
-  'execution-management',
-  'closeout',
+/**
+ * One canonical definition per lifecycle phase. Everything that needs a
+ * phase's *other* names derives from here instead of re-encoding the
+ * relationship:
+ *
+ *   - `key`       — the internal short key (the value of every
+ *                   `ArtifactEntry.phase`, and the `verify_phase_artifacts`
+ *                   enum). e.g. `design`, `commcare`.
+ *   - `agentName` — the phase-agent dispatch / file name and the public
+ *                   key-space the `render_run_readme` atom + the
+ *                   orchestrator doc use. e.g. `idea-to-design`,
+ *                   `commcare-setup`, `execution-manager`. DIFFERS from
+ *                   `key` for 5 of the 10 phases.
+ *   - `ordinal`   — 1-based lifecycle position.
+ *   - `folder`    — the run-folder subfolder prefix where the phase's
+ *                   artifacts live. NOT derivable from `key` (`design` →
+ *                   `1-design`, `synthetic-data-and-workflows` →
+ *                   `7-synthetic`), so it must be declared.
+ *
+ * Before this existed the (agentName ↔ key ↔ folder) relationship was
+ * hand-re-encoded in ≥4 places (the orchestrator doc's "Manifest-key
+ * map" table, `render_run_readme`'s private alias map, the
+ * `verify_phase_artifacts` enum, the manifest path prefixes) and they
+ * drifted — `render_run_readme` silently no-op'd the 5 phases where
+ * `agentName != key` (jjackson/ace#637). Add a phase here and the
+ * derived exports + helpers below pick it up.
+ */
+export interface PhaseDef {
+  key: Phase;
+  agentName: string;
+  ordinal: number;
+  folder: string;
+}
+
+export const PHASE_DEFS: readonly PhaseDef[] = [
+  { key: 'design',                       agentName: 'idea-to-design',               ordinal: 1,  folder: '1-design' },
+  { key: 'scenarios-and-acceptance',     agentName: 'scenarios-and-acceptance',     ordinal: 2,  folder: '2-scenarios' },
+  { key: 'commcare',                     agentName: 'commcare-setup',               ordinal: 3,  folder: '3-commcare' },
+  { key: 'connect',                      agentName: 'connect-setup',                ordinal: 4,  folder: '4-connect' },
+  { key: 'ocs',                          agentName: 'ocs-setup',                    ordinal: 5,  folder: '5-ocs' },
+  { key: 'qa-and-training',              agentName: 'qa-and-training',              ordinal: 6,  folder: '6-qa-and-training' },
+  { key: 'synthetic-data-and-workflows', agentName: 'synthetic-data-and-workflows', ordinal: 7,  folder: '7-synthetic' },
+  { key: 'solicitation-management',      agentName: 'solicitation-management',      ordinal: 8,  folder: '8-solicitation-management' },
+  { key: 'execution-management',         agentName: 'execution-manager',            ordinal: 9,  folder: '9-execution-manager' },
+  { key: 'closeout',                     agentName: 'closeout',                     ordinal: 10, folder: '10-closeout' },
 ] as const;
+
+// ── Phase ordering (derived — do not hand-edit; edit PHASE_DEFS) ─────
+
+export const PHASES: readonly Phase[] = PHASE_DEFS.map((p) => p.key);
+
+// ── Phase identity helpers (all derived from PHASE_DEFS) ─────────────
+
+const PHASE_BY_KEY: Record<string, PhaseDef> = Object.fromEntries(
+  PHASE_DEFS.map((p) => [p.key, p]),
+);
+const PHASE_BY_AGENT_NAME: Record<string, PhaseDef> = Object.fromEntries(
+  PHASE_DEFS.map((p) => [p.agentName, p]),
+);
+
+/** True iff `s` is a valid internal short `Phase` key. */
+export function isPhaseKey(s: string): s is Phase {
+  return s in PHASE_BY_KEY;
+}
+
+/**
+ * Normalize a phase identifier from EITHER key-space — an internal short
+ * `Phase` key OR a long phase-agent-file name — to its short `Phase`
+ * key. Returns `undefined` for a string that matches neither space.
+ * Canonical replacement for ad-hoc per-file alias maps.
+ */
+export function normalizePhaseKey(s: string): Phase | undefined {
+  if (s in PHASE_BY_KEY) return s as Phase;
+  return PHASE_BY_AGENT_NAME[s]?.key;
+}
+
+/** The run-folder subfolder prefix for a phase (e.g. `design` → `1-design`). */
+export function phaseFolder(key: Phase): string {
+  return PHASE_BY_KEY[key].folder;
+}
+
+/** The phase-agent dispatch / file name for a phase (e.g. `design` → `idea-to-design`). */
+export function phaseAgentName(key: Phase): string {
+  return PHASE_BY_KEY[key].agentName;
+}
 
 // ── Manifest ───────────────────────────────────────────────────────
 
