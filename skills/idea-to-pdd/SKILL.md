@@ -362,7 +362,7 @@ to the opp; add others not listed when they meet the bar.
 | `notetaker-required` | Is a separate notetaker required? Always / when audio recording / never? | PDD `Facilitation Protocol` |
 | `venue-acceptable-list` | Which venue types are acceptable / disallowed? | PDD `Facilitation Protocol` |
 | `site-selection` | Sites pre-named in PDD, or deferred to solicitation review? | PDD `Target Population` + `solicitation-review` |
-| `payment-unit-entity-id` | Default `entity_id` (`concat(username, today())`) or override to `#case/case_id`? Affects payment collapse when one FLW runs ≥2 sessions/day | `connect-opp-setup` Connect form |
+| `payment-unit-entity-id` | `entity_id` is a business key (Connect's dedup grain), never the case id. Default `concat(username, today())` = one paid session/facilitator/day; if ≥2 sessions/day per facilitator, override to a finer-grained business key (e.g. `concat(username, '-', session_date, '-', venue)`). Affects payment collapse. | `connect-opp-setup` Connect form; `pdd-to-deliver-app` §entity_id |
 | `saturation-early-stop` | Threshold + sign-off for stopping the pilot before the planned session count? | PDD `Success Metrics` |
 
 **`multi-stage` (additive):**
