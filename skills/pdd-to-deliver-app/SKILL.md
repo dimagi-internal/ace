@@ -48,6 +48,28 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      more robust path is for this brief to be unambiguous up front.
      See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
      § Bug 1 for the prompt-quality dependency.
+   - **State the marker MECHANISM, not just the requirement: the
+     `connect.deliver_unit` marker is set at the MODULE level via
+     `module_type` — NOT a nested `connect:{}` object and NOT a form
+     field.** Name this in the brief so the architect calls the right
+     tool: `add_module`/`update_module(module_type:
+     "connect.deliver_unit", id: "<slug>", entity_id: "/data/<key>",
+     entity_name: "/data/<label>")` (the module's `deliver_unit_slug`
+     auto-derives from its id). The form itself stays
+     `form_type: "basic"` — there is NO deliver `form_type`. Live Nova
+     enums: `module_type` ∈ {`basic`, `connect.learn_module`,
+     `connect.deliver_unit`}; `form_type` ∈ {`basic`,
+     `connect.assessment`}. Do NOT instruct the architect to pass a
+     `connect: {deliver_unit: {...}}` object — `add_module` throws an
+     opaque `"Unknown error"` and `update_form` type-rejects it, and an
+     architect that takes that path ships a marker-less Deliver app
+     (Connect surfaces no deliver unit → Phase 4 cannot create a payment
+     unit). This mirrors the Learn marker mechanism
+     (`module_type: "connect.learn_module"` +
+     `form_type: "connect.assessment"`): an architect that gets Learn
+     right first-try gets Deliver right too once the brief names the
+     mechanism. Verified live on bednet-spot-check 20260601-1252; see
+     jjackson/ace#660.
    - **REQUIRED — every form that needs its own paid deliver_unit
      MUST live in its own module.** Nova's `compile_app` emits the
      module slug as the `<learn:deliver id="...">` attribute for

@@ -287,8 +287,18 @@ to the ACE Gmail identity (`ACE_GMAIL_ACCOUNT`) at mint time.
 - **No known upstream bugs.** 16 of 18 filed issues are closed;
   remaining two (#8 field-level multimedia, #12 multi-project-space
   picker) are feature requests. Notable capabilities:
-  - `update_form` `deliver_unit` schema exposes `entity_id` and
-    `entity_name` as optional fields with sensible defaults.
+  - The `connect.deliver_unit` marker is **module-level**: set it via
+    `add_module`/`update_module(module_type: "connect.deliver_unit",
+    entity_id, entity_name)` (the module's `deliver_unit_slug`
+    auto-derives from its id). There is no deliver `form_type` — the
+    deliver form stays `form_type: "basic"`. Do NOT pass a nested
+    `connect: {deliver_unit: {...}}` object: `add_module` throws an
+    opaque `"Unknown error"` and `update_form` type-rejects it. Live
+    enums: `module_type` ∈ {basic, connect.learn_module,
+    connect.deliver_unit}; `form_type` ∈ {basic, connect.assessment}.
+    (Corrected 2026-06-01 — the prior note here wrongly placed deliver
+    `entity_id`/`entity_name` on `update_form`; verified live on
+    bednet-spot-check 20260601-1252, jjackson/ace#660.)
   - `update_form` with nullable properties (e.g. `connect: null`)
     correctly clears on disk.
   - Autonomous architect has all case-list-config tools
