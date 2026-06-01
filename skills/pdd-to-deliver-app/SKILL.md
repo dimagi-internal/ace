@@ -159,84 +159,101 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      bumped in lock-step. (b) KEEP the explicit-id rule even after the
      column widens — it's a cleanliness invariant matching Vellum's
      slug-vs-name separation, not just a workaround for the column width.
-   - **REQUIRED — `entity_id` must resolve at install/parse time;
-     branch the directive on case action (create vs update).** Nova's
-     compiler emits the same casedb-lookup XPath shape for both case
-     actions when handed the Vellum-style `#case/case_id` shortcut.
-     That XPath works for case-update forms (the case exists in
-     `casedb`, the session-data `case_id` datum is populated by
-     Connect's update-flow deeplink) but FAILS install for case-create
-     forms on two independent grounds:
+   - **REQUIRED — `entity_id` is Connect's dedup / payment grain; make
+     it a BUSINESS KEY built from form fields, NOT the system case id.**
+     `entity_id` is the value Connect uses to collapse duplicate
+     deliveries and aggregate visits to the same real-world entity. It
+     must therefore be a human-meaningful key derived from the PDD's
+     `duplicate-detection-key` (Evidence Model Layer A) — the natural
+     identifiers that define one unique entity (e.g. beneficiary name +
+     phone; outlet + brand + batch) — built from the form's own fields.
 
-       1. Connect's create-flow deeplink populates `case_id_new_visit_<n>`
-          in session data, NOT `case_id` — Nova's emitted XPath keys
-          off an unbound datum.
-       2. The case being created isn't in `casedb` yet — it lands only
-          after form submission. A create-form bind can't look itself
-          up.
+     **Do NOT use the raw case id.** Both forms of it are wrong:
+       1. `/data/case/@case_id` is hard-rejected by Nova `validate_app`
+          ("references `/data/case` which doesn't exist in this form") —
+          the case block is a build-time-emitted XForm node, not a
+          blueprint field the validator's reference oracle can resolve.
+       2. `#case/case_id` compiles to a casedb-lookup XPath that breaks
+          install on a CASE-CREATE form (`XPathTypeMismatchException`
+          from `FormDef.initAllTriggerables`; "A part of your
+          application is invalid" on device) — Connect populates
+          `case_id_new_<type>_<n>` not `case_id`, and the case isn't in
+          `casedb` yet.
+       3. Even if the validator accepted it, a per-registration case
+          UUID gives **zero cross-registration / cross-FLW dedup** — two
+          FLWs registering the same entity get two case_ids → two paid
+          entities → the PDD's duplicate-detection is defeated. The case
+          id is the wrong *grain*, independent of the validator quirk.
 
-     The install-time gate (`commcare-cli.jar play` → `FormDef.initAll-
-     Triggerables`) catches this as `XPathTypeMismatchException` with
-     `unresolved_xpath: instance(commcaresession)/session/data/case_id`.
-     CommCare's mobile runtime surfaces the same exception class as
-     "A part of your application is invalid."
+     Grounded in deployed practice: across 6 real human-built Connect
+     Deliver apps (KMC, MBW; both atomic-create-payment and multi-visit),
+     **0/6 use the case id for `entity_id`** — all build a `concat(...)`
+     business key from form fields and persist it to a case property for
+     downstream forms to reuse. A single `/data/...` field path as
+     `entity_id` is install-safe (form fields resolve at `xforms-ready`)
+     and `validate_app`-clean (it's a real form reference) — the same
+     shape the malaria-rdt run verified end-to-end through
+     `validate_app` + `make_build` + release + `commcare-cli play`.
 
-     Tracked upstream as
-     [voidcraft-labs/nova-plugin#20](https://github.com/voidcraft-labs/nova-plugin/issues/20).
-     Until that lands, the workaround is to emit a literal XPath that
-     references the form's own case block (case-create) instead of the
-     Vellum shortcut. The casedb-lookup shape is correct as-is for
-     case-update forms.
-
-     Insert ONE of these two paragraphs **verbatim** into the brief,
-     in its own paragraph, prefixed `REQUIRED:`:
+     Insert the matching paragraph(s) **verbatim** into the brief, in
+     their own paragraph, prefixed `REQUIRED:`.
 
      **Case-CREATE deliver_units** (registration forms — the typical
      atomic-visit Deliver app):
 
      > REQUIRED: For any `connect.deliver_unit` block on a CASE-CREATE
-     > form (form type `registration`), set
-     > `entity_id: '/data/case/@case_id'` and
-     > `entity_name: '/data/case_name'` — literal XPaths against the
-     > form's own case block, NOT Vellum shortcuts like `#case/case_id`
-     > or `#case/case_name`. Reason: Nova's compiler currently emits
-     > a casedb-lookup XPath for `#case/case_id` regardless of case
-     > action; that lookup keys off `session/data/case_id` which is
-     > unbound on a case-create deeplink (Connect populates
-     > `case_id_new_visit_<n>` instead), AND looks up the case in
-     > `casedb` where it doesn't exist yet (the create form is
-     > allocating it). Both grounds break install
-     > (`XPathTypeMismatchException` from `FormDef.initAllTriggerables`,
-     > "A part of your application is invalid" on device). The form's
-     > own `<setvalue ref="/data/case/@case_id" value="...case_id_new_visit_<n>" event="xforms-ready"/>`
-     > chain populates `/data/case/@case_id` deterministically — that
-     > XPath IS install-time resolvable. Tracked upstream as
-     > voidcraft-labs/nova-plugin#20; remove this workaround once that
-     > ships.
+     > form, set `entity_id` to a BUSINESS KEY built from the form's own
+     > fields — NOT the case id. Create a hidden calculate field (e.g.
+     > `entity_key`) whose `calculate` is a `concat(...)` of the
+     > natural-identifier fields that define a unique entity per the
+     > PDD's duplicate-detection key, then set
+     > `entity_id: '/data/<group>/entity_key'` and `entity_name` to the
+     > human-readable label field (e.g. `entity_id: '/data/entity_key'`,
+     > `entity_name: '/data/beneficiary_name'`). Example for a malaria
+     > RDT outlet visit whose dedup key is (outlet, brand, batch):
+     > `entity_key` = `concat(/data/outlet_name, ' - ', /data/rdt_brand,
+     > ' - ', /data/batch_number)`. Do NOT use `/data/case/@case_id`
+     > (rejected by `validate_app` — the case block is not a blueprint
+     > field) or `#case/case_id` (compiles to a casedb lookup that breaks
+     > create-form install, and is the wrong dedup grain anyway: a
+     > per-registration UUID gives no cross-registration/cross-FLW
+     > dedup). Form fields resolve at `xforms-ready`, so a `concat(...)`
+     > of them is install-time resolvable and validator-clean.
 
-     **Case-UPDATE deliver_units** (forms that update an existing case
-     looked up via a Connect session datum):
+     **Case-UPDATE / multi-form deliver_units** (visit-series and
+     multi-stage apps where the SAME entity is referenced across forms):
 
-     > REQUIRED: For any `connect.deliver_unit` block on a CASE-UPDATE
-     > form, set `entity_id: '#case/case_id'` and
-     > `entity_name: '#case/case_name'`. Nova's casedb-lookup
-     > compilation is correct for case-update forms — Connect's
-     > update-flow deeplink populates `session/data/case_id` and the
-     > target case exists in `casedb`.
+     > REQUIRED: When a `connect.deliver_unit` spans multiple forms (a
+     > registration form plus later visit forms for the same entity),
+     > every form MUST emit the IDENTICAL `entity_id` grain. (a) On the
+     > CASE-CREATE form, in addition to setting `entity_id` to the
+     > business key, persist that key to a case property
+     > (`case_property_on` the relevant case type, e.g. write
+     > `/data/entity_key` to a case property `entity_key`). (b) On each
+     > CASE-UPDATE form, set `entity_id` to read that stored property
+     > back off the case (`#case/entity_key`, or a casedb lookup of the
+     > parent's stored key for child-case forms) — NOT `#case/case_id`.
+     > Optionally suffix ` - <form_name>` (a per-form constant) so each
+     > visit type is a distinct deliver entity while repeat submissions
+     > of the same type for the same entity dedup. This is the pattern
+     > all 6 deployed apps use.
 
-     Reproducers (both case-CREATE, both pre-workaround):
+     Upstream (secondary): Nova's `validate_app` reference oracle could
+     be taught to recognize `/data/case/@case_id` as a runtime-valid path
+     (tracked at
+     [voidcraft-labs/nova-plugin#20](https://github.com/voidcraft-labs/nova-plugin/issues/20)),
+     but that's no longer load-bearing for ACE — `entity_id` should be a
+     business key regardless of whether the validator accepts the case id.
 
-     - `bednet-spot-check/20260525-1405` Phase 6 — operator-side
-       substitution to `#case/case_name`. Passed every static gate;
-       failed on-device install with "A part of your application is
-       invalid."
-     - `bednet-spot-check/20260525-2022` Phase 3 step 2.8 — restored
-       `#case/case_id` per the prior REQUIRED rule. Passed every static
-       gate; failed `commcare-cli.jar play` with the same exception
-       class. (This run is what surfaced the underlying Nova compiler
-       bug and the workaround above; see
-       `docs/learnings/2026-05-25-entity-id-misdiagnosis.md` for the
-       initial misdiagnosis postmortem.)
+     History (why the case id was abandoned): the prior rule prescribed
+     `/data/case/@case_id` (case-create) / `#case/case_id` (case-update)
+     as a workaround for the Nova compiler shape — see the reproducers
+     `bednet-spot-check/20260525-1405` (`#case/case_name`, failed
+     on-device install) and `20260525-2022` (`#case/case_id`, failed
+     `commcare-cli.jar play`), and `docs/learnings/2026-05-25-entity-id-misdiagnosis.md`.
+     The 6-app audit (jjackson/ace#586) showed the case id was the wrong
+     target all along; the fix is a business key, not a different
+     case-id XPath.
 
    - **REQUIRED — Architect must verify-then-retry every `add_fields`
      call.** Nova's `add_fields` has a partial-persistence quirk: a
@@ -542,9 +559,11 @@ the case list legible.
 - `connect.deliver_unit` set on the form.
 - `connect.entity_id` defaults to `concat(#user/username, '-', today())` —
   one paid delivery per facilitator per day, the realistic case for
-  60-90 min sessions + travel. Override to `#case/case_id` only if any
-  LLO schedules ≥2 sessions/day per facilitator (`payment-unit-entity-id`
-  Decisions Log row).
+  60-90 min sessions + travel. This is already a business key (good — see
+  the §`entity_id` REQUIRED rule). If any LLO schedules ≥2 sessions/day
+  per facilitator, override to a finer-grained business key, e.g.
+  `concat(#user/username, '-', /data/session_date, '-', /data/venue)` —
+  NOT `#case/case_id` (`payment-unit-entity-id` Decisions Log row).
 
 **Coordinator review flow (out-of-band):**
 
@@ -649,6 +668,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-06-01 | **`entity_id` rule reframed: prescribe a BUSINESS KEY from form fields, NOT the case id (supersedes the 2026-05-26 `/data/case/@case_id` rule).** Audited 6 real human-built Connect Deliver CCZs (3 KMC, 3 MBW; atomic-create-payment and multi-visit): **0/6 use the case id for `entity_id`** — all build a `concat(...)` business key from form fields (name+phone, outlet+brand+batch) and persist it to a case property so downstream visit forms reproduce the same grain via casedb. Reframes jjackson/ace#586: `/data/case/@case_id` isn't just `validate_app`-rejected (case block is build-time-emitted, not a blueprint field) — a per-registration case UUID is the wrong *dedup grain* (no cross-registration/cross-FLW dedup), so the case id is wrong independent of the validator quirk. The malaria-rdt heal to `/data/case_name` (=`concat(outlet,brand,batch)`) was correct-by-design, not luck. New REQUIRED rule: case-CREATE → hidden `concat(...)` field of the PDD `duplicate-detection-key` natural identifiers, `entity_id: '/data/…/entity_key'`; multi-form → persist the key to a case property + read it back on case-UPDATE forms (`#case/<key>`), never `#case/case_id`. Upstream voidcraft-labs/nova-plugin#20 demoted to secondary (not load-bearing — `entity_id` should be a business key regardless). Prior reproducers + 2026-05-25 misdiagnosis postmortem retained as history. Companion: `idea-to-pdd` `payment-unit-entity-id` row + focus-group override note aligned. Evidence: 6 CCZs read 2026-06-01. | ACE team |
 | 2026-05-29 | **Extracted the deployability/fitness `REQUIRED:` paragraphs into the shared [`_app-component-library.md`](../_app-component-library.md).** The Step-3 "Deployability (fitness) requirements" block (GPS accuracy-gating, init-safe calculates, data-quality constraints, case-write-back, structured-capture, section-timestamps, embedded-BC-script, localization) is no longer inlined — it's now an emit-checklist of **named components** the build inserts verbatim from the library by trigger. Single source of truth for the paragraph text (dedups localization, previously duplicated with `pdd-to-learn-app`); the library pairs each component 1:1 with the `pdd-to-deliver-app-eval` fitness dimension that hard-fails a build omitting it, so the eval is the backstop for the indirection. Closes the reusable-component-library item (PR-8 build track) in `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` / open decision #2. | ACE team |
 | 2026-05-15 | Tighten Step 4a (post-build field-count verification) from "the in-context LLM must..." prose into a numbered tool-call recipe. Mirrors the same change in `pdd-to-learn-app/SKILL.md`. Prompted by `malaria-itn-fgd/20260514-2007` Learn-app cert-assessment partial-persistence (FGD Deliver apps with the ~45-70-field per-section summary form are the highest-risk surface for the same class). See jjackson/ace#303. | ACE team |
 | 2026-05-15 | **focus-group archetype rewritten to attestation-form-only.** Previously: 3-module / 69-field per-section-summary Deliver app capturing all qualitative content in CommCare. New: one module, one ~14-field attestation form (date / venue / participants / audio / photo / gdoc link / consent / reflection). Content lives in a Google Doc out-of-band; the gdoc_link field is the bridge. One submission = one payment trigger. Prompted by post-run reframe from operator: "all the content collection... will happen manually and they will send us a gdoc". See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
