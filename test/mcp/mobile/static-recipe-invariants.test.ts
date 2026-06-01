@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { resolveSelectorsInYaml } from '../../../mcp/mobile/recipe-resolver.js';
 
 // Static-recipe content invariants. These guard against regressions in the
 // hand-tuned palette recipes under `mcp/mobile/recipes/static/` — the kind
@@ -11,8 +12,15 @@ const STATIC_DIR = fileURLToPath(
   new URL('../../../mcp/mobile/recipes/static/', import.meta.url),
 );
 
+// Assert on the RESOLVED recipe (every `${SELECTOR:logical-name}` /
+// `"${SELECTOR:logical-name}"` replaced with its concrete matcher) so
+// these structural invariants test the EFFECTIVE recipe Maestro runs —
+// robust to whether a selector is written as a raw resource-id literal
+// or referenced via the selector map (jjackson/ace#650). Resolving here
+// also implicitly asserts the recipe's placeholders all resolve.
 function readRecipe(name: string): string {
-  return readFileSync(`${STATIC_DIR}${name}`, 'utf8');
+  const raw = readFileSync(`${STATIC_DIR}${name}`, 'utf8');
+  return resolveSelectorsInYaml(raw, '2.63.0').yaml;
 }
 
 describe('connect-claim-opp.yaml', () => {

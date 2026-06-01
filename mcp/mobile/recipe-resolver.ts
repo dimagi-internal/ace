@@ -126,8 +126,45 @@ export function resolveSelectorsInYaml(
 
   const unresolved: string[] = [];
   const unverified: string[] = [];
-  const re = /\$\{SELECTOR:([a-z0-9-]+)\}/g;
-  const out = yaml.replace(re, (_m, name: string) => {
+
+  // Two placeholder forms, resolved in this order:
+  //
+  //   1. VALUE position — `"${SELECTOR:name}"` (placeholder inside double
+  //      quotes, occupying a matcher's value). Resolves to just the bare
+  //      `"<value>"`, leaving the surrounding `id:` / `text:` key the
+  //      recipe author wrote intact. This form is raw-YAML-valid even
+  //      beside `below:` / `childOf:` siblings (the `:` in `SELECTOR:name`
+  //      lives inside a quoted string), so it is the form to use for
+  //      card-scoped matchers like
+  //      `id: "${SELECTOR:opp-list-resume-button}"\n  below:\n    text: ${OPP_NAME}`.
+  //      (jjackson/ace#650 — the key-position form below cannot express
+  //      scoped matchers without producing raw-invalid YAML.)
+  //
+  //   2. KEY position — bare `${SELECTOR:name}` on its own. Resolves to
+  //      the full `id: "<value>"` / `text: "<value>"` / `point: "<value>"`
+  //      matcher key+value. The original form; only raw-YAML-valid as a
+  //      sole matcher (no sibling keys).
+  //
+  // Value position MUST run first: the key-position regex would otherwise
+  // also match the bare token *inside* the quotes and corrupt it.
+  const valueRe = /"\$\{SELECTOR:([a-z0-9-]+)\}"/g;
+  const keyRe = /\$\{SELECTOR:([a-z0-9-]+)\}/g;
+
+  let out = yaml.replace(valueRe, (_m, name: string) => {
+    const entry = map.selectors[name];
+    if (!entry) {
+      unresolved.push(name);
+      return `"# UNRESOLVED ${name}"`;
+    }
+    if (entry.unverified) unverified.push(name);
+    if (entry.type === 'id' || entry.type === 'text' || entry.type === 'point') {
+      return `"${entry.value}"`;
+    }
+    unresolved.push(name);
+    return `"# UNRESOLVED-TYPE ${name}"`;
+  });
+
+  out = out.replace(keyRe, (_m, name: string) => {
     const entry = map.selectors[name];
     if (!entry) {
       unresolved.push(name);
