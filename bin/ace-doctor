@@ -2137,13 +2137,40 @@ else
     if [ "$SELECTOR_APK_VERSION_SOURCE" = "newest-on-disk" ]; then
       info "selector_map_currency: ACE_CONNECT_APK_VERSION not set in .env — used newest map on disk ($SELECTOR_APK_VERSION); set the env var to gate on a specific deployed version"
     fi
+
+    # ── Raw resource-id inventory (jjackson/ace#650) ──────────────────
+    # Static recipes ALSO hardcode raw `org.commcare.dalvik:id/*` literals
+    # that bypass the `${SELECTOR}` resolution checked above — they are
+    # invisible to this currency check AND to the
+    # connect-baseline-screenshots calibration step, so an APK rename of
+    # one silently breaks a recipe with no warning (the #637 class, one
+    # layer down). Surface the count + how many are not even represented
+    # as a value in the active map, so the APK-bump verification checklist
+    # covers them. INFORMATIONAL only (never a gate): the raw ids are
+    # calibrated-by-passing-run on the active APK, and catching genuine
+    # drift still needs a live-device dump — promoting them into the map
+    # is tracked in #650.
+    if [ -d "$SELECTOR_RECIPES_DIR" ]; then
+      SELECTOR_RAW_IDS="$(grep -h -oE 'org\.commcare\.dalvik:id/[a-zA-Z_]+' "$SELECTOR_RECIPES_DIR"/*.yaml 2>/dev/null | sort -u)"
+      SELECTOR_RAW_COUNT=$(printf '%s\n' "$SELECTOR_RAW_IDS" | grep -c . | tr -d '[:space:]')
+      : "${SELECTOR_RAW_COUNT:=0}"
+      if [ "$SELECTOR_RAW_COUNT" -gt 0 ]; then
+        SELECTOR_MAP_VALUES="$(grep -h -oE 'org\.commcare\.dalvik:id/[a-zA-Z_]+' "$SELECTOR_MAP_PATH" 2>/dev/null | sort -u)"
+        SELECTOR_RAW_UNTRACKED_COUNT=$(comm -23 \
+          <(printf '%s\n' "$SELECTOR_RAW_IDS" | grep .) \
+          <(printf '%s\n' "$SELECTOR_MAP_VALUES" | grep .) | grep -c . | tr -d '[:space:]')
+        : "${SELECTOR_RAW_UNTRACKED_COUNT:=0}"
+        info "selector_map_currency: $SELECTOR_RAW_COUNT distinct raw resource-id(s) hardcoded in static recipes ($SELECTOR_RAW_UNTRACKED_COUNT not represented in $SELECTOR_MAP_REL) bypass \${SELECTOR} resolution + baseline-screenshots calibration — re-verify them against the live device on an APK bump (jjackson/ace#650)"
+      fi
+    fi
   fi
 fi
 unset SELECTOR_MAP_DIR SELECTOR_RECIPES_DIR SELECTOR_APK_VERSION SELECTOR_APK_VERSION_SOURCE \
       SELECTOR_MAP_REL SELECTOR_MAP_PATH SELECTOR_KNOWN SELECTOR_KNOWN_COUNT \
       SELECTOR_UNVERIFIED_COUNT SELECTOR_VERIFIED_COUNT SELECTOR_REFD SELECTOR_RECIPE_COUNT \
       SELECTOR_UNRESOLVED SELECTOR_UNRESOLVED_COUNT SELECTOR_UNRESOLVED_HEAD \
-      SELECTOR_OVERFLOW SELECTOR_REFD_COUNT
+      SELECTOR_OVERFLOW SELECTOR_REFD_COUNT \
+      SELECTOR_RAW_IDS SELECTOR_RAW_COUNT SELECTOR_MAP_VALUES SELECTOR_RAW_UNTRACKED_COUNT
 
 echo ""
 echo "[Mobile]"
