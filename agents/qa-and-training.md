@@ -222,6 +222,32 @@ halts under us), the return summary MUST include:
 The pre-flight has the evidence; reading it costs three tool calls
 and prevents a whole class of "guessed from indirect signals" mistakes.
 
+## Mode: app-QA-only
+
+Active when the orchestrator runs this phase under `--only` **without** Phase 5
+(OCS) in the allowlist (e.g. `--only 3,4,6`). The iteration loop
+(`/ace:iterate`) is the primary caller; a normal full `/ace:run` always runs
+Phase 5 before Phase 6, so this mode never fires there.
+
+In this mode:
+
+- **Run Step 1 only** — `app-screenshot-capture` (the mobile app-QA walk: claim
+  opp → Learn leg → Deliver leg + its inline thin UX judge). Its
+  `app-screenshot-capture_verdict-shallow.yaml` is the sole input to the phase
+  verdict.
+- **Skip all of Step 2** — the training skills depend on the OCS chatbot URL,
+  which is absent without Phase 5: `training-llo-guide`, `training-flw-guide`,
+  `training-quick-reference`, `training-faq`, `training-deck-generate`,
+  `training-deck-render`, `training-onboarding-email` (and their `-eval`s).
+  Mark each `steps.<skill>.status: skipped`, `note: "app-QA-only mode (no Phase 5)"`.
+- **Write-back**: the phase verdict is computed from the app-QA judge alone.
+  The skipped training skills are marked `skipped` (NOT `deferred`) so the
+  Phase Write-Back Contract's "no `has_judge` skill left `deferred`" rule does
+  not refuse `verdict: pass`.
+
+Everything below (the pre-flight checklist, Step 1 detail) applies unchanged;
+only Step 2 is short-circuited.
+
 ## Workflow
 
 ### Step 1: Capture smoke screenshots + thin UX judge
