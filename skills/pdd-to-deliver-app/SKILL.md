@@ -475,6 +475,60 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        summary. (Single-form atomic-visit apps with no case-update form
        have nothing to check — skip cleanly.)
 
+4d. **Case-list column heal — runs at LEVEL 0 (deterministic preventer
+    for the autonomous-architect allowlist gap).** A case-CREATE module
+    whose `caseListConfig.columns` is empty (`case_list_config: null`)
+    fails Nova's `validate_app` with a single error against that module.
+    The autonomous architect dispatched in Step 4 (`/nova:autobuild` →
+    `Agent(nova:nova-architect-autonomous)`) **cannot clear this error
+    on its own**: the case-list-config tool family
+    (`add_case_list_column`, `set_case_list_filter`,
+    `update_case_list_column`, `remove_case_list_column`,
+    `reorder_case_list_columns`, `set_case_search_display`,
+    `set_case_search_advanced`, `add_search_input`, …) is **not present
+    in the autonomous architect's tool allowlist**. It will try
+    `generate_scaffold`, a fresh `create_module`, and promoting
+    `case_name` to a visible field — none of which auto-seeds the
+    default column — and report it cannot reach validate-clean.
+
+    **Why this step lives in the skill (at level 0) and not in the
+    architect brief:** these case-list-config atoms (`add_case_list_column`
+    et al.) ARE available to the level-0 Claude Code session that
+    executes this skill, even though they are absent from the autonomous
+    architect's allowlist. So the heal is a deterministic L0 operation:
+    run it here, after the autonomous build returns, rather than asking
+    the architect to do something its tools can't. (The upstream half —
+    adding the case-list-config family to the
+    `nova:nova-architect-autonomous` allowlist — is tracked separately
+    and lives in the **external nova plugin**, which is not editable from
+    this repo. jjackson/ace#632.)
+
+    Cheap; runs on the already-fetched blueprint. Same bounded-loop
+    shape as 4a/4b/4c.
+
+    1. Call `validate_app({app_id})`. If it returns clean, skip the rest
+       of this step — there is nothing to heal.
+    2. If it reports an empty / missing `caseListConfig.columns` (or
+       `case_list_config: null`) on one or more modules, identify each
+       offending **case-CREATE** module from `get_app({app_id})` (use
+       `get_module({app_id, moduleIndex})` to confirm the module's case
+       type + that its case list is empty).
+    3. For each offending module, call
+       `add_case_list_column({app_id, moduleIndex, ...})` to add ONE
+       plain column over the case name field (the module's `case_name` /
+       case-name field). A single default column is sufficient to clear
+       the validate error; this is the same one-column heal an operator
+       applies by hand.
+    4. Re-run `validate_app({app_id})`. **Bounded loop, max 3
+       iterations** over steps 2–4. If `validate_app` still reports an
+       empty `caseListConfig.columns` after the third iteration, surface
+       a clear failure naming each module still missing its case-list
+       column, and do NOT write the success summary.
+
+    (Apps with no case-CREATE module, or whose case-create modules
+    already carry a non-empty case list, validate clean at step 1 and
+    skip cleanly.)
+
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check structure against the PDD before writing the summary.
 
@@ -668,6 +722,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-06-01 | **Added Step 4d — L0 case-list column heal for case-CREATE Deliver builds (closes jjackson/ace#632).** A case-CREATE module with an empty `caseListConfig.columns` (`case_list_config: null`) fails `validate_app`, and the autonomous architect dispatched by Step 4 (`/nova:autobuild` → `Agent(nova:nova-architect-autonomous)`) **cannot clear it** — the case-list-config tool family (`add_case_list_column` / `set_case_list_filter` / `update_case_list_column` / `reorder_case_list_columns` / `set_case_search_*` / `add_search_input` / …) is absent from the autonomous architect's tool allowlist. New Step 4d runs the deterministic heal at LEVEL 0 (where those atoms ARE available): `validate_app` → for each offending case-create module `add_case_list_column` (one plain column over the case name) → re-`validate_app`, bounded max 3 iterations, halt-loud on residual. Mirrors the L0 heal that unblocked malaria-rdt/20260601-0929 Phase 3. The upstream half (adding the case-list-config family to the `nova:nova-architect-autonomous` allowlist) is tracked separately and lives in the external nova plugin, not editable from this repo. | ACE team |
 | 2026-06-01 | **`entity_id` rule reframed: prescribe a BUSINESS KEY from form fields, NOT the case id (supersedes the 2026-05-26 `/data/case/@case_id` rule).** Audited 6 real human-built Connect Deliver CCZs (3 KMC, 3 MBW; atomic-create-payment and multi-visit): **0/6 use the case id for `entity_id`** — all build a `concat(...)` business key from form fields (name+phone, outlet+brand+batch) and persist it to a case property so downstream visit forms reproduce the same grain via casedb. Reframes jjackson/ace#586: `/data/case/@case_id` isn't just `validate_app`-rejected (case block is build-time-emitted, not a blueprint field) — a per-registration case UUID is the wrong *dedup grain* (no cross-registration/cross-FLW dedup), so the case id is wrong independent of the validator quirk. The malaria-rdt heal to `/data/case_name` (=`concat(outlet,brand,batch)`) was correct-by-design, not luck. New REQUIRED rule: case-CREATE → hidden `concat(...)` field of the PDD `duplicate-detection-key` natural identifiers, `entity_id: '/data/…/entity_key'`; multi-form → persist the key to a case property + read it back on case-UPDATE forms (`#case/<key>`), never `#case/case_id`. Upstream voidcraft-labs/nova-plugin#20 demoted to secondary (not load-bearing — `entity_id` should be a business key regardless). Prior reproducers + 2026-05-25 misdiagnosis postmortem retained as history. Companion: `idea-to-pdd` `payment-unit-entity-id` row + focus-group override note aligned. Evidence: 6 CCZs read 2026-06-01. | ACE team |
 | 2026-05-29 | **Extracted the deployability/fitness `REQUIRED:` paragraphs into the shared [`_app-component-library.md`](../_app-component-library.md).** The Step-3 "Deployability (fitness) requirements" block (GPS accuracy-gating, init-safe calculates, data-quality constraints, case-write-back, structured-capture, section-timestamps, embedded-BC-script, localization) is no longer inlined — it's now an emit-checklist of **named components** the build inserts verbatim from the library by trigger. Single source of truth for the paragraph text (dedups localization, previously duplicated with `pdd-to-learn-app`); the library pairs each component 1:1 with the `pdd-to-deliver-app-eval` fitness dimension that hard-fails a build omitting it, so the eval is the backstop for the indirection. Closes the reusable-component-library item (PR-8 build track) in `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` / open decision #2. | ACE team |
 | 2026-05-15 | Tighten Step 4a (post-build field-count verification) from "the in-context LLM must..." prose into a numbered tool-call recipe. Mirrors the same change in `pdd-to-learn-app/SKILL.md`. Prompted by `malaria-itn-fgd/20260514-2007` Learn-app cert-assessment partial-persistence (FGD Deliver apps with the ~45-70-field per-section summary form are the highest-risk surface for the same class). See jjackson/ace#303. | ACE team |
