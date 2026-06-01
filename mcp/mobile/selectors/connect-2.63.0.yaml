@@ -186,33 +186,53 @@ selectors:
     purpose: "Pre-claim Learn-Details preview TextView on the opp-detail page. Renders as a single TextView with the module-list label(s) (e.g. '1. Form walkthrough' for atomic-visit opps). NOT a RecyclerView; NOT tappable; NOT the post-claim Learn-app module list. Use as a structural anchor for opp-detail-screen presence checks only — for the interactive Learn-app modules, use learn-suite-row-by-name on the MenuActivity surface (see atlas §6)."
 
   # ── Photo capture ──────────────────────────────────────────────
-  # CALIBRATION NOTE (jjackson/ace#593): the CommCare 2.63.0 image-capture
-  # widget does NOT render a `take_photo_button` resource-id. It renders
-  # two TEXT buttons — "TAKE PICTURE" (launches the system camera) and
-  # "CHOOSE IMAGE" (gallery) — confirmed from the malaria-rdt/20260531-0739
-  # `deliver-product-photo.png` capture. The in-form entry point is now
-  # text-matched below. The AOSP camera app's shutter + save/done controls
-  # live in a SEPARATE package (com.android.camera2 / the emulator camera
-  # app) and were NOT reachable this session (no live Deliver photo walk),
-  # so `camera-shutter-button` / `camera-save-photo` remain UNVERIFIED
-  # best-guesses — dump them live the first time "TAKE PICTURE" opens the
-  # camera, then replace these.
-  camera-shutter-button:
-    type: id
-    value: "org.commcare.dalvik:id/camera_shutter_button"
-    unverified: true
-    purpose: "Shutter button in the AOSP camera app opened from the CommCare 'TAKE PICTURE' button. UNVERIFIED (#593) — wrong package guess; the live shutter is in com.android.camera2. Dump live when reachable."
-
+  # LIVE-CALIBRATED 2026-05-31 (jjackson/ace#593) against malaria-rdt
+  # run 20260531-0739, ACE_Pixel_API_34, CommCare 2.63.0. The full
+  # in-form photo walk was driven live: tap "TAKE PICTURE" → AOSP camera
+  # opens → shutter → intent-review tray → "Done". UI dumps captured at
+  # each surface; resource-ids below are transcribed from those dumps
+  # (NOT guessed). The camera app is the SEPARATE package
+  # `com.android.camera2`; the in-form entry button is in
+  # `org.commcare.dalvik`. Confirmed the prior `org.commcare.dalvik:id/
+  # camera_shutter_button` / `save_photo_button` guesses were WRONG
+  # (wrong package + wrong id).
   camera-take-photo:
     type: text
     value: "TAKE PICTURE"
-    purpose: "In-form image-capture entry button on a CommCare 2.63.0 photo question (text button, no resource-id; launches the system camera). Confirmed from the #593 captured screenshot. Gallery alternative is the 'CHOOSE IMAGE' text button."
+    purpose: "In-form image-capture entry button on a CommCare 2.63.0 photo question (text button, no resource-id; launches the system camera com.android.camera2 via ACTION_IMAGE_CAPTURE). Live-verified #593. Gallery alternative is the 'CHOOSE IMAGE' text button."
+
+  camera-shutter-button:
+    type: id
+    value: "com.android.camera2:id/shutter_button"
+    purpose: "Shutter button in the AOSP camera app (com.android.camera2) opened from the CommCare 'TAKE PICTURE' button. content-desc='Shutter', full-width bottom bar. Live-verified 2026-05-31 #593 (was a wrong-package guess org.commcare.dalvik:id/camera_shutter_button)."
 
   camera-save-photo:
     type: id
-    value: "org.commcare.dalvik:id/save_photo_button"
-    unverified: true
-    purpose: "Save / Use Photo button after capturing. UNVERIFIED (#593) — lives in the AOSP camera app, not org.commcare.dalvik. Dump live when the camera surface is reachable."
+    value: "com.android.camera2:id/done_button"
+    purpose: "Use-photo / Done button on the camera intent-review tray (com.android.camera2:id/bottombar_intent_review) shown after the shutter fires. content-desc='Done'. Returns the captured image to the CommCare form. Live-verified 2026-05-31 #593 (was a wrong guess org.commcare.dalvik:id/save_photo_button). Siblings on the same tray: camera-retake-photo, camera-cancel-photo."
+
+  camera-retake-photo:
+    type: id
+    value: "com.android.camera2:id/retake_button"
+    purpose: "Retake button on the camera intent-review tray (content-desc='Retake'). Discards the capture and returns to the live camera. Live-verified 2026-05-31 #593."
+
+  camera-cancel-photo:
+    type: id
+    value: "com.android.camera2:id/cancel_button"
+    purpose: "Cancel button on the camera intent-review tray (content-desc='Cancel'). Aborts capture and returns to the CommCare form with no image set. Live-verified 2026-05-31 #593."
+
+  # ── Geopoint (GPS) — NOTE, not a selector ──────────────────────
+  # jjackson/ace#593 anticipated an "accuracy-gated geopoint" native
+  # widget needing a Capture button + emulator mock-location fix. Live
+  # observation 2026-05-31 (malaria-rdt RDT Sample form): the "GPS
+  # location" question is a PLAIN android.widget.EditText (no resource-id,
+  # NAF) — a free-text field. The "reach 25 m / 50 m max" wording is the
+  # question HINT, and the value is typed as a "lat lon alt accuracy"
+  # string (e.g. "12.0022 8.5920 500 10"); the accuracy gate is an XForm
+  # constraint on the typed value, not a widget. There is therefore NO
+  # native-geopoint logical selector to calibrate for this form shape.
+  # If a future Nova form uses a real CommCare geopoint widget (with a
+  # Capture button), add its selector here and dump it live first.
 
   # ── Post-claim Learn-app surfaces (atlas-verified 2026-05-14) ──────
   # These selectors were calibrated against ACE_Pixel_API_34_PS on the
