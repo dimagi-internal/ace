@@ -355,29 +355,36 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    controlled. No real LLO sees this state until Phase 9's awardee
    email, which is still gated behind the unconditional Phase 8→9 pause.
 
-   - **Idempotency check first.** Call
-     `connect_get_opportunity({organization_slug, opportunity_id})` and
-     read `active`. If `active=true` already (Connect's managed-opp create
-     flow can auto-activate as a side effect when `total_budget`/dates
-     are populated up front), log `[INFO]` to `comms-log/observations.md`:
+   - **Always attempt the activate transition — do NOT pre-check the
+     `active` flag to decide whether to call it.** Call
+     `connect_activate_opportunity({organization_slug, opportunity_id})`
+     unconditionally. The atom hits `POST /api/opportunities/<id>/activate/`,
+     which validates that the opp hasn't ended and at least one
+     PaymentUnit exists (Step 6 satisfies the latter). Returns
+     `{ id, opportunity_id, name, active: true }` on success.
+
+     **Why unconditional (jjackson/ace#624):** the managed-opp create
+     endpoint returns `active: true` as a create-side flag, but that is
+     NOT the `/activate/` state transition `invite_users/` (Step 7)
+     requires. `connect_get_opportunity` reports `active=true` while the
+     opp is still un-transitioned, so the old "skip if already active"
+     pre-check skipped the only call that actually enables invites — and
+     Step 7 then failed. Calling `/activate/` on such an opp **succeeds**
+     (it is not yet active by the endpoint's definition); it rejects only
+     an opp that already went through this same transition. So always
+     call it and branch on the result, never on the read-back flag.
+   - **Treat the "already active" validation error as the idempotent
+     skip signal** (NOT a hard error). If the activate call rejects
+     specifically because the opp already completed the `/activate/`
+     transition (e.g. a Phase-4 re-run on the same opp), catch that one
+     error, log `[INFO]` to `comms-log/observations.md`, and proceed to
+     Step 7:
 
      ```
-     <ISO> connect-opp-setup: opp <id> already active; skipping activate call (idempotent path).
+     <ISO> connect-opp-setup: opp <id> already activated; treating activate rejection as idempotent.
      ```
-
-     and proceed to Step 7. `connect_activate_opportunity` itself rejects
-     already-active opps as a validation error — without this pre-check,
-     a managed-opp side-effect activation cascades into a confusing
-     Phase 4 failure.
-   - **Otherwise activate.** Call
-     `connect_activate_opportunity({organization_slug, opportunity_id})`.
-     The atom hits `POST /api/opportunities/<id>/activate/`, which
-     validates that (a) the opp isn't already active, (b) the opp hasn't
-     ended, and (c) at least one PaymentUnit exists. Step 6 above
-     satisfies (c). Returns `{ id, opportunity_id, name, active: true }`.
    - **Verify** by calling `connect_get_opportunity` and confirming
-     `active=true` (whether activated this run or skipped because already-
-     active).
+     `active=true` (whether activated this run or already-activated).
    - **On hard error from the activate call**, halt with `[BLOCKER]` and
      surface the server error verbatim in the gate brief. The most
      common cause is "no PaymentUnit" — Step 6's verify-after-create
@@ -712,6 +719,7 @@ decisions_append_rows({
 |------|--------|--------|
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (verification-flags, payment-unit-shape, opportunity-end-date) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-10 | Move opp activation + ACE test-user invite from Phase 9 into Phase 4 (new Step 6.5 + rewritten Step 7). Closes the chicken-and-egg gap where Phase 6 `app-screenshot-capture` produced placeholder screenshots because the test user wasn't on the new opp yet — the opp couldn't be activated until Phase 9, but the test user couldn't be invited until activation. Phase 9 `llo-launch` now hits its idempotent skip-if-active path on every ACE-driven run; it still sends the real-LLO invite to the awarded LLO. Also: tighten Step 4 `is_test` from "defaults true server-side" to "set explicitly to true" — ACE is in dogfood mode and every opp it creates must be test-flagged so prod analytics, payment exports, and partner dashboards exclude these runs. | ACE team |
+| 2026-06-01 | **Step 6.5: always attempt `/activate/`; treat only the "already active" error as the skip signal (jjackson/ace#624).** The managed-opp create endpoint returns a create-side `active: true` flag that is NOT the `/activate/` state transition `invite_users/` requires — so the old "read `active`, skip if true" pre-check skipped the only call that enables invites, and Step 7 failed. Calling `/activate/` on such an opp succeeds; it rejects only an opp that already completed the transition. Removed the pre-check; now call unconditionally and branch on the result, not the read-back flag. | ACE team |
 | 2026-05-10 | State consolidation PR a: retire `connect-state.yaml`; emit a single `run_state.yaml.phases.connect-setup.products.connect` block at end of Step 10. Step 7 holds invite metadata in memory rather than writing immediately. (Initial implementation dual-wrote to `opp.yaml.connect`; corrected on 2026-05-11 — runs are now independent. `opp.yaml.connect.program` is durable cross-run state written by `connect-program-setup`; `opp.yaml.connect.opportunity` / `ace_test_user` are no longer written here.) See `docs/superpowers/specs/2026-05-10-state-consolidation.md`. | ACE team |
 
 <!-- Stage 4.5 of Plan B: post-create labs_context lookup for labs_int_id (0.13.59) -->
